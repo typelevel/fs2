@@ -34,6 +34,19 @@ object ChunkProps
     forAll { c: C =>
       c.toArray.toVector shouldBe c.toVector
     }
+    
+  def propCopyToArray[A: ClassTag: Arbitrary, C <: Chunk[A]: Arbitrary] =
+    forAll { c: C =>
+      val arr = new Array[A](c.size * 2)
+      c.copyToArray(arr, 0)
+      c.copyToArray(arr, c.size)
+      arr.toVector shouldBe (c.toVector ++ c.toVector)
+    }
+
+  def propConcat[A: ClassTag: Arbitrary, C <: Chunk[A]: Arbitrary] =
+    forAll { (c1: C, c2: C) =>
+      Chunk.concat(List(Chunk.empty, c1, Chunk.empty, c2)).toVector shouldBe (c1.toVector ++ c2.toVector)
+    }
 
   def propToByteBuffer[C <: Chunk[Byte]: Arbitrary] =
     forAll { c: C =>

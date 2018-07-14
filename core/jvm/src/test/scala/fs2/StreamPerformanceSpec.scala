@@ -145,10 +145,9 @@ class StreamPerformanceSpec extends Fs2Spec {
         N.toString in {
           val open = new AtomicInteger(0)
           val ok = new AtomicInteger(0)
-          val bracketed = bracket(IO { open.incrementAndGet })(
-            _ => emit(1) ++ Stream.raiseError(FailWhale),
-            _ => IO { ok.incrementAndGet; open.decrementAndGet; () }
-          )
+          val bracketed = bracket(IO { open.incrementAndGet }) { _ =>
+            IO { ok.incrementAndGet; open.decrementAndGet; () }
+          }.flatMap(_ => emit(1) ++ Stream.raiseError(FailWhale))
           // left-associative handleErrorWith chains
           assert(throws(FailWhale) {
             List
@@ -179,9 +178,18 @@ class StreamPerformanceSpec extends Fs2Spec {
     }
 
     "chunky flatMap" - {
-      Ns.take(9).foreach { N =>
+      Ns.foreach { N =>
         N.toString in {
           runLog(emits(Vector.range(0, N)).flatMap(i => emit(i))) shouldBe Vector
+            .range(0, N)
+        }
+      }
+    }
+
+    "chunky map with unconsChunk" - {
+      Ns.foreach { N =>
+        N.toString in {
+          runLog(emits(Vector.range(0, N)).map(i => i).chunks.flatMap(chunk(_))) shouldBe Vector
             .range(0, N)
         }
       }

@@ -76,8 +76,7 @@ class WatcherSpec extends Fs2Spec {
   }
 
   private def tempDirectory: Stream[IO, Path] =
-    Stream.bracket(IO(Files.createTempDirectory("WatcherSpec")))(Stream.emit(_),
-                                                                 deleteDirectoryRecursively(_))
+    Stream.bracket(IO(Files.createTempDirectory("WatcherSpec")))(deleteDirectoryRecursively(_))
 
   private def tempFile: Stream[IO, Path] =
     tempDirectory.flatMap(dir => aFile(dir))

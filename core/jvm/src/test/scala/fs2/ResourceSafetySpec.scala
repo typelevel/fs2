@@ -3,7 +3,7 @@ package fs2
 import java.util.concurrent.atomic.AtomicLong
 
 import cats.effect.IO
-import cats.implicits._
+import cats.implicits.{catsSyntaxEither => _, _}
 import org.scalacheck._
 import org.scalatest.concurrent.PatienceConfiguration.Timeout
 
@@ -15,8 +15,8 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
   "Resource Safety" - {
 
     "pure fail" in {
-      an[Err.type] should be thrownBy {
-        Stream.emit(0).flatMap(_ => Stream.raiseError(Err)).toVector
+      an[Err] should be thrownBy {
+        Stream.emit(0).flatMap(_ => Stream.raiseError(new Err)).toVector
         ()
       }
     }
@@ -35,7 +35,7 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
 
     "bracket ++ throw Err" in forAll { (s: PureStream[Int]) =>
       val c = new AtomicLong(0)
-      val b = bracket(c)(s.get ++ ((throw Err): Stream[Pure, Int]))
+      val b = bracket(c)(s.get ++ ((throw new Err): Stream[Pure, Int]))
       swallow { b }
       c.get shouldBe 0
     }
@@ -56,13 +56,14 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
       val innermost =
         if (!finalizerFail) f.get
         else
-          Stream.bracket(IO(c.decrementAndGet))(_ => f.get,
-                                                _ => IO { c.incrementAndGet; throw Err })
+          Stream
+            .bracket(IO(c.decrementAndGet))(_ => IO { c.incrementAndGet; throw new Err })
+            .flatMap(_ => f.get)
       val nested = s0.foldRight(innermost)((i, inner) => bracket(c)(Stream.emit(i) ++ inner))
-      try { runLog { nested }; throw Err } // this test should always fail, so the `run` should throw
+      try { runLog { nested }; throw new Err } // this test should always fail, so the `run` should throw
       catch {
-        case Err => ()
-        case e: CompositeFailure if e.all.forall { case Err => true; case _ => false } => ()
+        case e: Err => ()
+        case e: CompositeFailure if e.all.forall { case e: Err => true; case _ => false } => ()
       }
       withClue(f.tag) { 0L shouldBe c.get }
     }
@@ -106,13 +107,16 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
     "bracket release should not be called until necessary" in {
       val buffer = collection.mutable.ListBuffer[Symbol]()
       runLog {
-        val s = Stream.bracket(IO(buffer += 'Acquired))(_ => {
-          buffer += 'Used
-          Stream.emit(())
-        }, _ => {
-          buffer += 'ReleaseInvoked
-          IO { buffer += 'Released; () }
-        })
+        val s = Stream
+          .bracket(IO(buffer += 'Acquired)) { _ =>
+            buffer += 'ReleaseInvoked
+            IO { buffer += 'Released; () }
+          }
+          .flatMap { _ =>
+            buffer += 'Used
+            Stream.emit(())
+          }
+
         s.flatMap { s =>
           buffer += 'FlatMapped; Stream.emit(s)
         }
@@ -132,8 +136,8 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
     }
 
     "asynchronous resource allocation (2a)" in forAll { (u: Unit) =>
-      val s1 = Stream.raiseError(Err)
-      val s2 = Stream.raiseError(Err)
+      val s1 = Stream.raiseError(new Err)
+      val s2 = Stream.raiseError(new Err)
       val c = new AtomicLong(0)
       val b1 = bracket(c)(s1)
       val b2 = s2: Stream[IO, Int]
@@ -200,14 +204,14 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
           .unsafeRunSync()
         runLog {
           s.get.evalMap { inner =>
-            async.shiftStart(
-              bracket(c)(inner.get)
-                .evalMap { _ =>
-                  IO.async[Unit](_ => ())
-                }
-                .interruptWhen(signal.continuous)
-                .compile
-                .drain)
+            bracket(c)(inner.get)
+              .evalMap { _ =>
+                IO.async[Unit](_ => ())
+              }
+              .interruptWhen(signal.continuous)
+              .compile
+              .drain
+              .start
           }
         }
         eventually(Timeout(3 seconds)) { c.get shouldBe 0L }
@@ -221,32 +225,28 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
       val s = Stream(Stream(1))
       val signal = async.signalOf[IO, Boolean](false).unsafeRunSync()
       val c = new AtomicLong(0)
-      async
-        .shiftStart(IO.shift *> IO { Thread.sleep(50L) } *> signal.set(true))
+      (IO.shift *> IO { Thread.sleep(50L) } *> signal.set(true)).start
         .unsafeRunSync() // after 50 ms, interrupt
       runLog {
         s.evalMap { inner =>
-          async.shiftStart {
-            Stream
-              .bracket(IO { c.incrementAndGet; Thread.sleep(2000) })( // which will be in the middle of acquiring the resource
-                _ => inner,
-                _ => IO { c.decrementAndGet; () })
-              .evalMap { _ =>
-                IO.async[Unit](_ => ())
-              }
-              .interruptWhen(signal.discrete)
-              .compile
-              .drain
-          }
+          Stream
+            .bracket(IO { c.incrementAndGet; Thread.sleep(2000) })( // which will be in the middle of acquiring the resource
+              _ => IO { c.decrementAndGet; () })
+            .flatMap(_ => inner)
+            .evalMap(_ => IO.never)
+            .interruptWhen(signal.discrete)
+            .compile
+            .drain
+            .start
         }
       }
-      // required longer delay here, hence the sleep of 2s and async.shiftStart that is not bound.
+      // required longer delay here due to the sleep of 2s
       eventually(Timeout(5 second)) { c.get shouldBe 0L }
     }
 
     "evaluating a bracketed stream multiple times is safe" in {
       val s = Stream
-        .bracket(IO.pure(()))(Stream.emit(_), _ => IO.pure(()))
+        .bracket(IO.unit)(_ => IO.unit)
         .compile
         .drain
       s.unsafeRunSync
@@ -257,7 +257,7 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
       var o: Vector[Int] = Vector.empty
       runLog {
         (0 until 10).foldLeft(Stream.eval(IO(0)))((acc, i) =>
-          Stream.bracket(IO(i))(i => acc, i => IO { o = o :+ i }))
+          Stream.bracket(IO(i))(i => IO { o = o :+ i }).flatMap(i => acc))
       }
       o shouldBe (0 until 10).toVector
     }
@@ -266,16 +266,26 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
       var o: Vector[Int] = Vector.empty
       throws(Err) {
         (0 until 10)
-          .foldLeft(Stream.emit(1).map(_ => throw Err).covaryAll[IO, Int])((acc, i) =>
-            Stream.emit(i) ++ Stream.bracket(IO(i))(i => acc, i => IO { o = o :+ i }))
+          .foldLeft(Stream.emit(1).map(_ => throw new Err).covaryAll[IO, Int])((acc, i) =>
+            Stream.emit(i) ++ Stream.bracket(IO(i))(i => IO { o = o :+ i }).flatMap(i => acc))
           .attempt
       }
       o shouldBe (0 until 10).toVector
     }
 
+    "propagate error from closing the root scope" in {
+      val s1 = Stream.bracket(IO(1))(_ => IO.unit)
+      val s2 = Stream.bracket(IO("a"))(_ => IO.raiseError(new Err))
+
+      val r1 = s1.zip(s2).compile.drain.attempt.unsafeRunSync()
+      r1.swap.toOption.get shouldBe an[Err]
+      val r2 = s2.zip(s1).compile.drain.attempt.unsafeRunSync()
+      r2.swap.toOption.get shouldBe an[Err]
+    }
+
     def bracket[A](c: AtomicLong)(s: Stream[IO, A]): Stream[IO, A] =
       Stream.suspend {
-        Stream.bracket(IO { c.decrementAndGet })(_ => s, _ => IO { c.incrementAndGet; () })
+        Stream.bracket(IO { c.decrementAndGet })(_ => IO { c.incrementAndGet; () }).flatMap(_ => s)
       }
   }
 }

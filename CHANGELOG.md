@@ -1,3 +1,5 @@
+Note: as of 0.10, release notes are available on each release in GitHub - https://github.com/functional-streams-for-scala/fs2/releases
+
 0.9.6
 =====
  - Empty deflated streams are now handled properly [#865](https://github.com/functional-streams-for-scala/fs2/pull/865)

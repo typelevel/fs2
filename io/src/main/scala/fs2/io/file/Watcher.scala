@@ -2,7 +2,6 @@ package fs2
 package io
 
 import scala.collection.JavaConverters._
-import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
 
 import cats.effect._
@@ -126,14 +125,14 @@ object Watcher {
   }
 
   /** Creates a watcher for the default file system. */
-  def default[F[_]](implicit F: Concurrent[F], ec: ExecutionContext): Stream[F, Watcher[F]] =
-    Stream.eval(F.delay(FileSystems.getDefault)).flatMap(fromFileSystem(_))
+  def default[F[_]](implicit F: Concurrent[F]): Resource[F, Watcher[F]] =
+    Resource.liftF(F.delay(FileSystems.getDefault)).flatMap(fromFileSystem(_))
 
   /** Creates a watcher for the supplied file system. */
-  def fromFileSystem[F[_]](fs: FileSystem)(implicit F: Concurrent[F],
-                                           ec: ExecutionContext): Stream[F, Watcher[F]] =
-    Stream.bracket(F.delay(fs.newWatchService))(ws => Stream.eval(fromWatchService(ws)),
-                                                ws => F.delay(ws.close))
+  def fromFileSystem[F[_]](fs: FileSystem)(implicit F: Concurrent[F]): Resource[F, Watcher[F]] =
+    Resource(F.delay(fs.newWatchService).flatMap { ws =>
+      fromWatchService(ws).map(w => w -> F.delay(ws.close))
+    })
 
   private case class Registration[F[_]](types: Seq[EventType],
                                         modifiers: Seq[WatchEvent.Modifier],
@@ -143,8 +142,7 @@ object Watcher {
                                         cleanup: F[Unit])
 
   /** Creates a watcher for the supplied NIO `WatchService`. */
-  def fromWatchService[F[_]](ws: WatchService)(implicit F: Concurrent[F],
-                                               ec: ExecutionContext): F[Watcher[F]] =
+  def fromWatchService[F[_]](ws: WatchService)(implicit F: Concurrent[F]): F[Watcher[F]] =
     async
       .signalOf[F, Map[WatchKey, Registration[F]]](Map.empty)
       .map(new DefaultWatcher(ws, _))
@@ -158,11 +156,12 @@ object Watcher {
 
     private def track(key: WatchKey, r: Registration[F]): F[F[Unit]] =
       registrations
-        .modify(_.updated(key, r))
-        .as(
-          F.delay(key.cancel) *> registrations
-            .modify(_ - key)
-            .flatMap(c => c.previous.get(key).map(_.cleanup).getOrElse(F.pure(()))))
+        .update(_.updated(key, r))
+        .as {
+          F.delay(key.cancel) *> registrations.modify { s =>
+            (s - key) -> s.get(key).map(_.cleanup).getOrElse(F.unit)
+          }.flatten
+        }
 
     override def watch(path: Path,
                        types: Seq[Watcher.EventType] = Nil,
@@ -261,7 +260,7 @@ object Watcher {
                   val (cancels, events) = x.separate
                   val cancelAll: F[Unit] = cancels.sequence.void
                   val updateRegistration: F[Unit] = this.registrations
-                    .modify(
+                    .update(
                       m =>
                         m.get(key)
                           .map(r => m.updated(key, r.copy(cleanup = r.cleanup *> cancelAll)))

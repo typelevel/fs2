@@ -2,6 +2,7 @@ import microsites.ExtraMdFileConfig
 import com.typesafe.sbt.pgp.PgpKeys.publishSigned
 import com.typesafe.tools.mima.core.{Problem, ProblemFilters}
 import sbtrelease.Version
+import sbtcrossproject.crossProject
 
 val ReleaseTag = """^release/([\d\.]+a?)$""".r
 
@@ -48,22 +49,22 @@ lazy val commonSettings = Seq(
   },
   scalacOptions in (Compile, console) += "-Ydelambdafy:inline",
   scalacOptions in (Test, console) := (scalacOptions in (Compile, console)).value,
+  javaOptions in (Test, run) ++= Seq("-Xms64m", "-Xmx64m"),
   libraryDependencies ++= Seq(
     compilerPlugin("org.spire-math" %% "kind-projector" % "0.9.6"),
-    "org.typelevel" %%% "cats-effect" % "1.0.0-RC",
+    "org.typelevel" %%% "cats-effect" % "1.0.0-RC2-35bac78",
     "org.typelevel" %%% "cats-core" % "1.1.0",
     "org.scalatest" %%% "scalatest" % "3.0.5" % "test",
     "org.scalacheck" %%% "scalacheck" % "1.13.5" % "test",
     "org.typelevel" %%% "cats-laws" % "1.1.0" % "test",
-    "org.typelevel" %%% "cats-effect-laws" % "1.0.0-RC" % "test"
+    "org.typelevel" %%% "cats-effect-laws" % "1.0.0-RC2-35bac78" % "test"
   ),
   scmInfo := Some(ScmInfo(url("https://github.com/functional-streams-for-scala/fs2"),
                           "git@github.com:functional-streams-for-scala/fs2.git")),
   homepage := Some(url("https://github.com/functional-streams-for-scala/fs2")),
   licenses += ("MIT", url("http://opensource.org/licenses/MIT")),
   initialCommands := s"""
-    import fs2._
-    import cats.effect._
+    import fs2._, cats.effect._, cats.implicits._
     import scala.concurrent.ExecutionContext.Implicits.global, scala.concurrent.duration._
   """,
   doctestTestFramework := DoctestTestFramework.ScalaTest,
@@ -72,6 +73,11 @@ lazy val commonSettings = Seq(
 
 lazy val testSettings = Seq(
   fork in Test := !isScalaJSProject.value,
+  javaOptions in Test ++= Seq(
+    "-Dscala.concurrent.context.minThreads=8",
+    "-Dscala.concurrent.context.numThreads=8",
+    "-Dscala.concurrent.context.maxThreads=8"
+  ),
   parallelExecution in Test := false,
   testOptions in Test += Tests.Argument(TestFrameworks.ScalaTest, "-oDF"),
   publishArtifact in Test := true
@@ -208,7 +214,7 @@ lazy val root = project
   .settings(noPublish)
   .aggregate(coreJVM, coreJS, io, scodecJVM, scodecJS, benchmark)
 
-lazy val core = crossProject
+lazy val core = crossProject(JVMPlatform, JSPlatform)
   .in(file("core"))
   .settings(commonSettings: _*)
   .settings(
@@ -260,7 +266,7 @@ lazy val io = project
   )
   .dependsOn(coreJVM % "compile->compile;test->test")
 
-lazy val scodec = crossProject
+lazy val scodec = crossProject(JVMPlatform, JSPlatform)
   .in(file("scodec"))
   .settings(commonSettings)
   .settings(
@@ -347,3 +353,6 @@ lazy val microsite = project
   )
   .settings(tutSettings)
   .dependsOn(coreJVM, io)
+
+addCommandAlias("testJVM", ";coreJVM/test;io/test;scodecJVM/test;benchmark/test")
+addCommandAlias("testJS", ";coreJS/test;scodecJS/test")

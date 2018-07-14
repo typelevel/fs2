@@ -1,10 +1,10 @@
 package fs2
 
-import cats.Show
-import cats.effect.Sync
-import cats.implicits._
-
 import java.io.PrintStream
+
+import cats.Show
+import cats.effect.{Concurrent, Sync}
+import cats.implicits._
 
 /** Companion for [[Sink]]. */
 object Sink {
@@ -28,4 +28,18 @@ object Sink {
     * using the `Show` instance for the input type.
     */
   def showLinesStdOut[F[_]: Sync, I: Show]: Sink[F, I] = showLines(Console.out)
+
+  /**
+    * Sink that routes each element to one of two sinks.
+    * `Left` values get sent to the `left` sink, and likewise for `Right`
+    *
+    * If either of `left` or `right` fails, then resulting stream will fail.
+    * If either `halts` the evaluation will halt too.
+    */
+  def either[F[_]: Concurrent, L, R](
+      left: Sink[F, L],
+      right: Sink[F, R]
+  ): Sink[F, Either[L, R]] =
+    _.observe(_.collect { case Left(l) => l } to left)
+      .to(_.collect { case Right(r) => r } to right)
 }

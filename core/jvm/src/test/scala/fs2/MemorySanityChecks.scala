@@ -8,7 +8,7 @@ import cats.effect.IO
 
 object ResourceTrackerSanityTest extends App {
   val big = Stream.constant(1).flatMap { n =>
-    Stream.bracket(IO(()))(_ => Stream.emits(List(1, 2, 3)), _ => IO(()))
+    Stream.bracket(IO(()))(_ => IO(())).flatMap(_ => Stream.emits(List(1, 2, 3)))
   }
   big.compile.drain.unsafeRunSync()
 }
@@ -20,7 +20,7 @@ object RepeatPullSanityTest extends App {
       case None         => Pull.pure(None)
     }
   }
-  Stream.constant(1).covary[IO].throughPure(id).compile.drain.unsafeRunSync()
+  Stream.constant(1).covary[IO].through(id[Int]).compile.drain.unsafeRunSync()
 }
 
 object RepeatEvalSanityTest extends App {
@@ -32,7 +32,7 @@ object RepeatEvalSanityTest extends App {
     in =>
       go(in).stream
   }
-  Stream.repeatEval(IO(1)).throughPure(id).compile.drain.unsafeRunSync()
+  Stream.repeatEval(IO(1)).through(id[Int]).compile.drain.unsafeRunSync()
 }
 
 object AppendSanityTest extends App {
@@ -49,8 +49,7 @@ object DrainOnCompleteSanityTest extends App {
 object ConcurrentJoinSanityTest extends App {
   import ExecutionContext.Implicits.global
   Stream
-    .constant(Stream.empty.covary[IO])
-    .covary[IO]
+    .constant(Stream.empty[IO])
     .join(5)
     .compile
     .drain
@@ -210,4 +209,22 @@ object HungMerge extends App {
   val hung = Stream.eval(IO.async[Int](_ => ()))
   val progress = Stream.constant(1, 128).covary[IO]
   hung.merge(progress).compile.drain.unsafeRunSync()
+}
+
+object ZipThenBindThenJoin extends App {
+  import scala.concurrent.ExecutionContext.Implicits.global
+  import scala.concurrent.duration._
+
+  val sources: Stream[IO, Stream[IO, Int]] = Stream(Stream.empty).repeat
+
+  Stream
+    .fixedDelay[IO](1.milliseconds)
+    .zip(sources)
+    .flatMap {
+      case (_, s) =>
+        s.map(Stream.constant(_).covary[IO]).joinUnbounded
+    }
+    .compile
+    .drain
+    .unsafeRunSync()
 }

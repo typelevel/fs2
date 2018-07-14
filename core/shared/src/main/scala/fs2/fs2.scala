@@ -22,6 +22,13 @@ package object fs2 {
     */
   type Sink[F[_], -I] = Pipe[F, I, Unit]
 
+  /**
+    * Indicates that a stream evaluates no effects.
+    *
+    * A `Stream[Pure,O]` can be safely converted to a `Stream[F,O]` for all `F`.
+    */
+  type Pure[A] <: Nothing
+
   // Trick to get right-biased syntax for Either in 2.11 while retaining source compatibility with 2.12 and leaving
   // -Xfatal-warnings and -Xwarn-unused-imports enabled. Delete when no longer supporting 2.11.
   private[fs2] implicit class EitherSyntax[L, R](private val self: Either[L, R]) extends AnyVal {

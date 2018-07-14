@@ -1,14 +1,24 @@
 package fs2
 package interop.scodec
 
+import scala.reflect.ClassTag
 import scodec.bits.ByteVector
 
-final class ByteVectorChunk private (val toByteVector: ByteVector) extends Chunk[Byte] {
+final class ByteVectorChunk private (val toByteVector: ByteVector)
+    extends Chunk[Byte]
+    with Chunk.KnownElementType[Byte] {
+  def elementClassTag = ClassTag.Byte
+
   def apply(i: Int): Byte =
     toByteVector(i)
 
   def size: Int =
     toByteVector.size.toInt
+
+  def copyToArray[O2 >: Byte](xs: Array[O2], start: Int): Unit =
+    if (xs.isInstanceOf[Array[Byte]])
+      toByteVector.copyToArray(xs.asInstanceOf[Array[Byte]], start)
+    else toByteVector.toIndexedSeq.copyToArray(xs)
 
   override def drop(n: Int): Chunk[Byte] =
     if (n <= 0) this

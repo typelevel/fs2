@@ -1,10 +1,9 @@
 package fs2
 
-import scala.concurrent.ExecutionContext
 import cats.effect.Concurrent
-import cats.implicits._
 import fs2.async.mutable.Queue
-import fs2.internal.{FreeC, NonFatal}
+import fs2.internal.FreeC
+import scala.util.control.NonFatal
 
 object Pipe {
 
@@ -86,8 +85,8 @@ object Pipe {
   }
 
   /** Queue based version of [[join]] that uses the specified queue. */
-  def joinQueued[F[_], A, B](q: F[Queue[F, Option[Segment[A, Unit]]]])(
-      s: Stream[F, Pipe[F, A, B]])(implicit F: Concurrent[F], ec: ExecutionContext): Pipe[F, A, B] =
+  def joinQueued[F[_], A, B](q: F[Queue[F, Option[Segment[A, Unit]]]])(s: Stream[F, Pipe[F, A, B]])(
+      implicit F: Concurrent[F]): Pipe[F, A, B] =
     in => {
       for {
         done <- Stream.eval(async.signalOf(false))
@@ -107,8 +106,8 @@ object Pipe {
     }
 
   /** Asynchronous version of [[join]] that queues up to `maxQueued` elements. */
-  def joinAsync[F[_]: Concurrent, A, B](maxQueued: Int)(s: Stream[F, Pipe[F, A, B]])(
-      implicit ec: ExecutionContext): Pipe[F, A, B] =
+  def joinAsync[F[_]: Concurrent, A, B](maxQueued: Int)(
+      s: Stream[F, Pipe[F, A, B]]): Pipe[F, A, B] =
     joinQueued[F, A, B](async.boundedQueue(maxQueued))(s)
 
   /**
@@ -116,7 +115,6 @@ object Pipe {
     * Input is fed to the first pipe until it terminates, at which point input is
     * fed to the second pipe, and so on.
     */
-  def join[F[_]: Concurrent, A, B](s: Stream[F, Pipe[F, A, B]])(
-      implicit ec: ExecutionContext): Pipe[F, A, B] =
+  def join[F[_]: Concurrent, A, B](s: Stream[F, Pipe[F, A, B]]): Pipe[F, A, B] =
     joinQueued[F, A, B](async.synchronousQueue)(s)
 }

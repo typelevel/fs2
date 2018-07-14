@@ -4,7 +4,7 @@ import java.util.concurrent.atomic.AtomicLong
 import org.scalacheck.Gen
 
 import cats.effect.IO
-import cats.implicits._
+import cats.implicits.{catsSyntaxEither => _, _}
 import scala.concurrent.duration._
 
 import TestUtil._
@@ -175,6 +175,18 @@ class PipeSpec extends Fs2Spec {
       val g = (a: String, b: Int) => a + b
       runLog(s.get.covary[IO].evalScan(n)(f)) shouldBe runLog(s.get)
         .scanLeft(n)(g)
+    }
+
+    "mapAsync" in forAll { s: PureStream[Int] =>
+      val f = (_: Int) + 1
+      val r = s.get.covary[IO].mapAsync(16)(i => IO(f(i)))
+      runLog(r) shouldBe runLog(s.get).map(f)
+    }
+
+    "mapAsyncUnordered" in forAll { s: PureStream[Int] =>
+      val f = (_: Int) + 1
+      val r = s.get.covary[IO].mapAsyncUnordered(16)(i => IO(f(i)))
+      runLog(r) should contain theSameElementsAs runLog(s.get).map(f)
     }
 
     "exists" in forAll { (s: PureStream[Int], n: SmallPositive) =>
@@ -544,39 +556,47 @@ class PipeSpec extends Fs2Spec {
     }
     "handle errors from observing sink" in {
       forAll { (s: PureStream[Int]) =>
-        runLog {
+        val r1 = runLog {
           s.get
             .covary[IO]
             .observe { _ =>
-              Stream.raiseError(Err)
+              Stream.raiseError(new Err)
             }
             .attempt
-        } shouldBe Vector(Left(Err))
-        runLog {
+        }
+        r1 should have size (1)
+        r1.head.swap.toOption.get shouldBe an[Err]
+        val r2 = runLog {
           s.get
             .covary[IO]
             .observeAsync(2) { _ =>
-              Stream.raiseError(Err)
+              Stream.raiseError(new Err)
             }
             .attempt
-        } shouldBe Vector(Left(Err))
+        }
+        r2 should have size (1)
+        r2.head.swap.toOption.get shouldBe an[Err]
       }
     }
 
     "propagate error from source" in {
       forAll { (f: Failure) =>
-        runLog {
+        val r1 = runLog {
           f.get
             .covary[IO]
             .observe(_.drain)
             .attempt
-        } shouldBe Vector(Left(Err))
-        runLog {
+        }
+        r1 should have size (1)
+        r1.head.swap.toOption.get shouldBe an[Err]
+        val r2 = runLog {
           f.get
             .covary[IO]
             .observeAsync(2)(_.drain)
             .attempt
-        } shouldBe Vector(Left(Err))
+        }
+        r2 should have size (1)
+        r2.head.swap.toOption.get shouldBe an[Err]
       }
     }
 

@@ -1,6 +1,7 @@
 package fs2
 
-import fs2.internal.{FreeC, NonFatal}
+import fs2.internal.FreeC
+import scala.util.control.NonFatal
 
 object Pipe2 {
 

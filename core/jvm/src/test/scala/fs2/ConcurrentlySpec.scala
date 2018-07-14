@@ -1,8 +1,9 @@
 package fs2
 
 import scala.concurrent.duration._
+import cats.implicits._
 import cats.effect.IO
-import fs2.async.Promise
+import cats.effect.concurrent.Deferred
 import TestUtil._
 import org.scalatest.concurrent.PatienceConfiguration.Timeout
 
@@ -21,7 +22,7 @@ class ConcurrentlySpec extends Fs2Spec with EventuallySupport {
       (s: PureStream[Int], f: Failure) =>
         val prg = (Stream.sleep_[IO](25.millis) ++ s.get).concurrently(f.get)
         val throws = f.get.compile.drain.attempt.unsafeRunSync.isLeft
-        if (throws) an[Err.type] should be thrownBy runLog(prg)
+        if (throws) an[Err] should be thrownBy runLog(prg)
         else runLog(prg)
     }
 
@@ -30,7 +31,7 @@ class ConcurrentlySpec extends Fs2Spec with EventuallySupport {
         var bgDone = false
         val bg = Stream.repeatEval(IO(1)).onFinalize(IO { bgDone = true })
         val prg = (Stream.sleep_[IO](25.millis) ++ f.get).concurrently(bg)
-        an[Err.type] should be thrownBy runLog(prg)
+        an[Err] should be thrownBy runLog(prg)
         eventually(Timeout(3 seconds)) { bgDone shouldBe true }
     }
 
@@ -45,17 +46,15 @@ class ConcurrentlySpec extends Fs2Spec with EventuallySupport {
 
     "when background stream fails, primary stream fails even when hung" in forAll {
       (s: PureStream[Int], f: Failure) =>
-        val promise = Promise.unsafeCreate[IO, Unit]
-        val prg = (Stream.sleep_[IO](25.millis) ++ (Stream(1) ++ s.get))
-          .concurrently(f.get)
-          .flatMap { i =>
-            Stream.eval(promise.get).map { _ =>
-              i
-            }
+        val prg =
+          Stream.eval(Deferred[IO, Unit]).flatMap { gate =>
+            (Stream.sleep_[IO](25.millis) ++ Stream(1) ++ s.get)
+              .concurrently(f.get)
+              .evalMap(i => gate.get.as(i))
           }
 
         val throws = f.get.compile.drain.attempt.unsafeRunSync.isLeft
-        if (throws) an[Err.type] should be thrownBy runLog(prg)
+        if (throws) an[Err] should be thrownBy runLog(prg)
         else runLog(prg)
     }
   }

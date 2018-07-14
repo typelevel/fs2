@@ -2,9 +2,8 @@ package fs2
 package async
 package mutable
 
-import scala.concurrent.ExecutionContext
-
 import cats.effect.Concurrent
+import cats.effect.concurrent.{Deferred, Ref}
 import cats.implicits._
 
 import fs2.Stream._
@@ -85,8 +84,7 @@ abstract class Topic[F[_], A] { self =>
 
 object Topic {
 
-  def apply[F[_], A](initial: A)(implicit F: Concurrent[F],
-                                 ec: ExecutionContext): F[Topic[F, A]] = {
+  def apply[F[_], A](initial: A)(implicit F: Concurrent[F]): F[Topic[F, A]] = {
     // Id identifying each subscriber uniquely
     class ID
 
@@ -98,22 +96,22 @@ object Topic {
       def unSubscribe: F[Unit]
     }
 
-    async
-      .refOf[F, (A, Vector[Subscriber])]((initial, Vector.empty[Subscriber]))
+    Ref
+      .of[F, (A, Vector[Subscriber])]((initial, Vector.empty[Subscriber]))
       .flatMap { state =>
         async.signalOf[F, Int](0).map { subSignal =>
           def mkSubscriber(maxQueued: Int): F[Subscriber] =
             for {
               q <- async.boundedQueue[F, A](maxQueued)
-              firstA <- async.promise[F, A]
-              done <- async.promise[F, Boolean]
+              firstA <- Deferred[F, A]
+              done <- Deferred[F, Boolean]
               sub = new Subscriber {
                 def unSubscribe: F[Unit] =
                   for {
-                    _ <- state.modify {
+                    _ <- state.update {
                       case (a, subs) => a -> subs.filterNot(_.id == id)
                     }
-                    _ <- subSignal.modify(_ - 1)
+                    _ <- subSignal.update(_ - 1)
                     _ <- done.complete(true)
                   } yield ()
                 def subscribe: Stream[F, A] = eval(firstA.get) ++ q.dequeue
@@ -137,9 +135,9 @@ object Topic {
                   eval(firstA.get).map(_ -> 0) ++ q.dequeue.zip(q.size.continuous)
                 val id: ID = new ID
               }
-              c <- state.modify { case (a, s) => a -> (s :+ sub) }
-              _ <- subSignal.modify(_ + 1)
-              _ <- firstA.complete(c.now._1)
+              a <- state.modify { case (a, s) => (a, s :+ sub) -> a }
+              _ <- subSignal.update(_ + 1)
+              _ <- firstA.complete(a)
             } yield sub
 
           new Topic[F, A] {
@@ -149,15 +147,16 @@ object Topic {
             def subscribers: Signal[F, Int] = subSignal
 
             def publish1(a: A): F[Unit] =
-              state.modify { case (_, subs) => a -> subs }.flatMap { c =>
-                c.now._2.traverse(_.publish(a)).as(())
-              }
+              state.modify {
+                case (_, subs) =>
+                  (a, subs) -> subs.traverse_(_.publish(a))
+              }.flatten
 
             def subscribe(maxQueued: Int): Stream[F, A] =
-              bracket(mkSubscriber(maxQueued))(_.subscribe, _.unSubscribe)
+              bracket(mkSubscriber(maxQueued))(_.unSubscribe).flatMap(_.subscribe)
 
             def subscribeSize(maxQueued: Int): Stream[F, (A, Int)] =
-              bracket(mkSubscriber(maxQueued))(_.subscribeSize, _.unSubscribe)
+              bracket(mkSubscriber(maxQueued))(_.unSubscribe).flatMap(_.subscribeSize)
           }
         }
       }

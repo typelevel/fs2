@@ -29,7 +29,7 @@ class MergeJoinSpec extends Fs2Spec {
 
     "merge/join consistency" in forAll { (s1: PureStream[Int], s2: PureStream[Int]) =>
       runLog { s1.get.covary[IO].merge(s2.get) }.toSet shouldBe
-        runLog { Stream(s1.get.covary[IO], s2.get.covary[IO]).join(2) }.toSet
+        runLog { Stream(s1.get.covary[IO], s2.get).join(2) }.toSet
     }
 
     "join (1)" in forAll { (s1: PureStream[Int]) =>
@@ -50,14 +50,13 @@ class MergeJoinSpec extends Fs2Spec {
 
     "join - resources acquired in outer stream are released after inner streams complete" in {
       val bracketed =
-        Stream.bracket(IO(new java.util.concurrent.atomic.AtomicBoolean(true)))(
-          Stream(_),
-          b => IO(b.set(false)))
+        Stream.bracket(IO(new java.util.concurrent.atomic.AtomicBoolean(true)))(b =>
+          IO(b.set(false)))
       // Starts an inner stream which fails if the resource b is finalized
       val s: Stream[IO, Stream[IO, Unit]] = bracketed.map { b =>
         Stream
           .eval(IO(b.get))
-          .flatMap(b => if (b) Stream(()) else Stream.raiseError(Err))
+          .flatMap(b => if (b) Stream(()) else Stream.raiseError(new Err))
           .repeat
           .take(10000)
       }
@@ -67,7 +66,7 @@ class MergeJoinSpec extends Fs2Spec {
     "merge (left/right failure)" in {
       pending
       forAll { (s1: PureStream[Int], f: Failure) =>
-        an[Err.type] should be thrownBy {
+        an[Err] should be thrownBy {
           s1.get.merge(f.get).compile.drain.unsafeRunSync()
         }
       }
@@ -76,7 +75,7 @@ class MergeJoinSpec extends Fs2Spec {
     "merge (left/right failure) never-ending flatMap, failure after emit" in {
       pending
       forAll { (s1: PureStream[Int], f: Failure) =>
-        an[Err.type] should be thrownBy {
+        an[Err] should be thrownBy {
           s1.get
           // To ensure errors are generated before the merge occurs, we chunk/unchunk here to force any segment computations
           // This is necessary b/c this test depends on any errors in f occurring before the first flatMapped output of the
@@ -95,7 +94,7 @@ class MergeJoinSpec extends Fs2Spec {
     "merge (left/right failure) constant flatMap, failure after emit" in {
       pending
       forAll { (s1: PureStream[Int], f: Failure) =>
-        an[Err.type] should be thrownBy {
+        an[Err] should be thrownBy {
           s1.get
           // To ensure errors are generated before the merge occurs, we chunk/unchunk here to force any segment computations
           // This is necessary b/c this test depends on any errors in f occurring before the first flatMapped output of the
@@ -113,7 +112,7 @@ class MergeJoinSpec extends Fs2Spec {
 
     "hanging awaits" - {
 
-      val full = Stream.constant(42).covary[IO]
+      val full = Stream.constant(42)
       val hang = Stream.repeatEval(IO.async[Unit] { cb =>
         ()
       }) // never call `cb`!
@@ -143,8 +142,8 @@ class MergeJoinSpec extends Fs2Spec {
     }
 
     "join - outer-failed" in {
-      an[Err.type] should be thrownBy {
-        runLog(Stream(Stream.sleep_[IO](1 minute), Stream.raiseError(Err).covary[IO]).joinUnbounded)
+      an[Err] should be thrownBy {
+        runLog(Stream(Stream.sleep_[IO](1 minute), Stream.raiseError(new Err)).joinUnbounded)
       }
     }
   }

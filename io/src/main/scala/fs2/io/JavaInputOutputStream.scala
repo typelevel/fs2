@@ -1,20 +1,21 @@
 package fs2
 package io
 
-import scala.concurrent.{ExecutionContext, SyncVar}
+import scala.concurrent.{SyncVar, blocking}
 
 import java.io.{IOException, InputStream, OutputStream}
 
-import cats.effect.{Concurrent, ConcurrentEffect, Effect, IO, Sync}
+import cats.effect.{ConcurrentEffect, ExitCase, IO, Sync, Timer}
 import cats.implicits.{catsSyntaxEither => _, _}
 
 import fs2.Chunk.Bytes
-import fs2.async.{Ref, mutable}
+import fs2.async.mutable
+import fs2.internal.Canceled
 
 private[io] object JavaInputOutputStream {
   def readBytesFromInputStream[F[_]](is: InputStream, buf: Array[Byte])(
       implicit F: Sync[F]): F[Option[Chunk[Byte]]] =
-    F.delay(is.read(buf)).map { numBytes =>
+    F.delay(blocking(is.read(buf))).map { numBytes =>
       if (numBytes < 0) None
       else if (numBytes == 0) Some(Chunk.empty)
       else if (numBytes < buf.size) Some(Chunk.bytes(buf.slice(0, numBytes)))
@@ -34,14 +35,14 @@ private[io] object JavaInputOutputStream {
         .flatMap(c => Stream.chunk(c))
 
     if (closeAfterUse)
-      Stream.bracket(fis)(useIs, is => F.delay(is.close()))
+      Stream.bracket(fis)(is => F.delay(is.close())).flatMap(useIs)
     else
       Stream.eval(fis).flatMap(useIs)
   }
 
   def writeBytesToOutputStream[F[_]](os: OutputStream, bytes: Chunk[Byte])(
       implicit F: Sync[F]): F[Unit] =
-    F.delay(os.write(bytes.toArray))
+    F.delay(blocking(os.write(bytes.toArray)))
 
   def writeOutputStreamGeneric[F[_]](
       fos: F[OutputStream],
@@ -51,13 +52,13 @@ private[io] object JavaInputOutputStream {
       s.chunks.evalMap(f(os, _))
 
     if (closeAfterUse)
-      Stream.bracket(fos)(useOs, os => F.delay(os.close()))
+      Stream.bracket(fos)(os => F.delay(os.close())).flatMap(useOs)
     else
       Stream.eval(fos).flatMap(useOs)
   }
 
   def toInputStream[F[_]](implicit F: ConcurrentEffect[F],
-                          ec: ExecutionContext): Pipe[F, Byte, InputStream] = {
+                          timer: Timer[F]): Pipe[F, Byte, InputStream] = {
 
     /** See Implementation notes at the end of this code block **/
     /** state of the upstream, we only indicate whether upstream is done and if it failed **/
@@ -83,23 +84,24 @@ private[io] object JavaInputOutputStream {
         queue: mutable.Queue[F, Either[Option[Throwable], Bytes]],
         upState: mutable.Signal[F, UpStreamState],
         dnState: mutable.Signal[F, DownStreamState]
-    )(implicit F: Concurrent[F], ec: ExecutionContext): Stream[F, Unit] =
+    ): Stream[F, Unit] =
       Stream
-        .eval(async.shiftStart {
+        .eval(F.start {
           def markUpstreamDone(result: Option[Throwable]): F[Unit] =
             F.flatMap(upState.set(UpStreamState(done = true, err = result))) { _ =>
               queue.enqueue1(Left(result))
             }
 
-          F.flatMap(
-            F.attempt(
-              source.chunks
-                .evalMap(ch => queue.enqueue1(Right(ch.toBytes)))
-                .interruptWhen(dnState.discrete.map(_.isDone).filter(identity))
-                .compile
-                .drain
-            )) { r =>
-            markUpstreamDone(r.swap.toOption)
+          F.guaranteeCase(
+            source.chunks
+              .evalMap(ch => queue.enqueue1(Right(ch.toBytes)))
+              .interruptWhen(dnState.discrete.map(_.isDone).filter(identity))
+              .compile
+              .drain
+          ) {
+            case ExitCase.Completed => markUpstreamDone(None)
+            case ExitCase.Error(t)  => markUpstreamDone(Some(t))
+            case ExitCase.Canceled  => markUpstreamDone(Some(Canceled))
           }
         })
         .map(_ => ())
@@ -112,12 +114,12 @@ private[io] object JavaInputOutputStream {
     def closeIs(
         upState: mutable.Signal[F, UpStreamState],
         dnState: mutable.Signal[F, DownStreamState]
-    )(implicit F: Effect[F], ec: ExecutionContext): Unit = {
+    ): Unit = {
       val done = new SyncVar[Either[Throwable, Unit]]
       async.unsafeRunAsync(close(upState, dnState)) { r =>
         IO(done.put(r))
       }
-      done.get.fold(throw _, identity)
+      blocking(done.get.fold(throw _, identity))
     }
 
     /**
@@ -126,8 +128,6 @@ private[io] object JavaInputOutputStream {
       * This is implementation of InputStream#read.
       *
       * Inherently this method will block until data from the queue are available
-      *
-      *
       */
     def readIs(
         dest: Array[Byte],
@@ -135,10 +135,10 @@ private[io] object JavaInputOutputStream {
         len: Int,
         queue: mutable.Queue[F, Either[Option[Throwable], Bytes]],
         dnState: mutable.Signal[F, DownStreamState]
-    )(implicit F: Effect[F], ec: ExecutionContext): Int = {
+    ): Int = {
       val sync = new SyncVar[Either[Throwable, Int]]
       async.unsafeRunAsync(readOnce(dest, off, len, queue, dnState))(r => IO(sync.put(r)))
-      sync.get.fold(throw _, identity)
+      blocking(sync.get.fold(throw _, identity))
     }
 
     /**
@@ -153,7 +153,7 @@ private[io] object JavaInputOutputStream {
     def readIs1(
         queue: mutable.Queue[F, Either[Option[Throwable], Bytes]],
         dnState: mutable.Signal[F, DownStreamState]
-    )(implicit F: Effect[F], ec: ExecutionContext): Int = {
+    ): Int = {
 
       def go(acc: Array[Byte]): F[Int] =
         F.flatMap(readOnce(acc, 0, 1, queue, dnState)) { read =>
@@ -164,7 +164,7 @@ private[io] object JavaInputOutputStream {
 
       val sync = new SyncVar[Either[Throwable, Int]]
       async.unsafeRunAsync(go(new Array[Byte](1)))(r => IO(sync.put(r)))
-      sync.get.fold(throw _, identity)
+      blocking(sync.get.fold(throw _, identity))
     }
 
     def readOnce(
@@ -173,7 +173,7 @@ private[io] object JavaInputOutputStream {
         len: Int,
         queue: mutable.Queue[F, Either[Option[Throwable], Bytes]],
         dnState: mutable.Signal[F, DownStreamState]
-    )(implicit F: Sync[F]): F[Int] = {
+    ): F[Int] = {
       // in case current state has any data available from previous read
       // this will cause the data to be acquired, state modified and chunk returned
       // won't modify state if the data cannot be acquired
@@ -196,44 +196,50 @@ private[io] object JavaInputOutputStream {
         case _           => Done(rsn)
       }
 
-      F.flatMap[(Ref.Change[DownStreamState], Option[Bytes]), Int](dnState.modify2(tryGetChunk)) {
-        case (Ref.Change(o, n), Some(bytes)) =>
-          F.delay {
-            Array.copy(bytes.values, 0, dest, off, bytes.size)
-            bytes.size
-          }
-        case (Ref.Change(o, n), None) =>
-          n match {
-            case Done(None) => F.pure(-1)
-            case Done(Some(err)) =>
-              F.raiseError(new IOException("Stream is in failed state", err))
-            case _ =>
-              // Ready is guaranteed at this time to be empty
-              F.flatMap(queue.dequeue1) {
-                case Left(None) =>
-                  F.map(dnState.modify(setDone(None)))(_ => -1) // update we are done, next read won't succeed
-                case Left(Some(err)) => // update we are failed, next read won't succeed
-                  F.flatMap(dnState.modify(setDone(Some(err))))(_ =>
-                    F.raiseError[Int](new IOException("UpStream failed", err)))
-                case Right(bytes) =>
-                  val (copy, maybeKeep) =
-                    if (bytes.size <= len) bytes -> None
-                    else {
-                      val (out, rem) = bytes.splitAt(len)
-                      out.toBytes -> Some(rem.toBytes)
-                    }
-                  F.flatMap(F.delay {
-                    Array.copy(copy.values, 0, dest, off, copy.size)
-                  }) { _ =>
-                    maybeKeep match {
+      dnState.modify { s =>
+        val (n, out) = tryGetChunk(s)
+
+        val result = out match {
+          case Some(bytes) =>
+            F.delay {
+              Array.copy(bytes.values, 0, dest, off, bytes.size)
+              bytes.size
+            }
+          case None =>
+            n match {
+              case Done(None) => (-1).pure[F]
+              case Done(Some(err)) =>
+                F.raiseError[Int](new IOException("Stream is in failed state", err))
+              case _ =>
+                // Ready is guaranteed at this time to be empty
+                queue.dequeue1.flatMap {
+                  case Left(None) =>
+                    dnState
+                      .update(setDone(None))
+                      .as(-1) // update we are done, next read won't succeed
+                  case Left(Some(err)) => // update we are failed, next read won't succeed
+                    dnState.update(setDone(err.some)) *> F.raiseError[Int](
+                      new IOException("UpStream failed", err))
+                  case Right(bytes) =>
+                    val (copy, maybeKeep) =
+                      if (bytes.size <= len) bytes -> None
+                      else {
+                        val (out, rem) = bytes.splitAt(len)
+                        out.toBytes -> rem.toBytes.some
+                      }
+                    F.delay {
+                      Array.copy(copy.values, 0, dest, off, copy.size)
+                    } *> (maybeKeep match {
                       case Some(rem) if rem.size > 0 =>
-                        F.map(dnState.set(Ready(Some(rem))))(_ => copy.size)
-                      case _ => F.pure(copy.size)
-                    }
-                  }
-              }
-          }
-      }
+                        dnState.set(Ready(rem.some)).as(copy.size)
+                      case _ => copy.size.pure[F]
+                    })
+                }
+            }
+        }
+
+        n -> result
+      }.flatten
     }
 
     /**
@@ -242,8 +248,8 @@ private[io] object JavaInputOutputStream {
     def close(
         upState: mutable.Signal[F, UpStreamState],
         dnState: mutable.Signal[F, DownStreamState]
-    )(implicit F: Effect[F]): F[Unit] =
-      F.flatMap(dnState.modify {
+    ): F[Unit] =
+      F.flatMap(dnState.update {
         case s @ Done(_) => s
         case other       => Done(None)
       }) { _ =>
