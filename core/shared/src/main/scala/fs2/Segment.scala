@@ -434,9 +434,9 @@ abstract class Segment[+O, +R] { self =>
   private[fs2] final def foldRightLazy[B](z: B)(f: (O, => B) => B): B =
     force.unconsChunks match {
       case Right((hds, tl)) =>
-        def loopOnChunks(hds: Catenable[Chunk[O]]): B =
-          hds.uncons match {
-            case Some((hd, hds)) =>
+        def loopOnChunks(hds: List[Chunk[O]]): B =
+          hds match {
+            case hd :: hds =>
               val sz = hd.size
               if (sz == 1) f(hd(0), loopOnChunks(hds))
               else {
@@ -445,7 +445,7 @@ abstract class Segment[+O, +R] { self =>
                   else loopOnChunks(hds)
                 loopOnElements(0)
               }
-            case None => tl.foldRightLazy(z)(f)
+            case Nil => tl.foldRightLazy(z)(f)
           }
         loopOnChunks(hds)
 
@@ -1594,7 +1594,7 @@ object Segment {
           unconsChunks match {
             case Left(r) => Left(r)
             case Right((cs, tl)) =>
-              Right(catenated(cs.map(Segment.chunk)) -> tl)
+              Right(catenatedChunks(Catenable.fromSeq(cs)) -> tl)
           }
       }
 
@@ -1612,7 +1612,7 @@ object Segment {
       @annotation.tailrec
       def go(acc: Catenable[Chunk[O]], s: Segment[O, R]): (Catenable[Chunk[O]], R) =
         s.force.unconsChunks match {
-          case Right((hds, tl)) => go(acc ++ hds, tl)
+          case Right((hds, tl)) => go(acc ++ Catenable.fromSeq(hds), tl)
           case Left(r)          => (acc, r)
         }
       go(Catenable.empty, self)
@@ -1688,39 +1688,40 @@ object Segment {
       *
       * @example {{{
       * scala> Segment(1, 2, 3).prepend(Segment(-1, 0)).force.unconsChunks
-      * res0: Either[Unit,(Catenable[Chunk[Int]], Segment[Int,Unit])] = Right((Catenable(Chunk(-1, 0)),Chunk(1, 2, 3)))
+      * res0: Either[Unit,(List[Chunk[Int]], Segment[Int,Unit])] = Right((List(Chunk(-1, 0)),Chunk(1, 2, 3)))
       * scala> Segment.empty[Int].force.unconsChunks
-      * res1: Either[Unit,(Catenable[Chunk[Int]], Segment[Int,Unit])] = Left(())
+      * res1: Either[Unit,(List[Chunk[Int]], Segment[Int,Unit])] = Left(())
       * }}}
       */
-    final def unconsChunks: Either[R, (Catenable[Chunk[O]], Segment[O, R])] =
+    final def unconsChunks: Either[R, (List[Chunk[O]], Segment[O, R])] =
       self match {
         case c: SingleChunk[O] =>
           if (c.chunk.isEmpty) Left(().asInstanceOf[R])
           else
             Right(
-              Catenable.singleton(c.chunk) -> empty[O]
+              List(c.chunk) -> empty[O]
                 .asInstanceOf[Segment[O, R]])
         case _ =>
-          var out: Catenable[Chunk[O]] = Catenable.empty
+          var out = List.newBuilder[Chunk[O]]
           var result: Option[R] = None
           var ok = true
           val trampoline = new Trampoline
           val step = self
             .stage(Depth(0), trampoline.defer, o => {
-              out = out :+ Chunk.singleton(o); ok = false
-            }, os => { out = out :+ os; ok = false }, r => {
+              out = out += Chunk.singleton(o); ok = false
+            }, os => { out = out += os; ok = false }, r => {
               result = Some(r); throw Done
             })
             .value
           try while (ok) stepAll(step, trampoline)
           catch { case Done => }
+          val outList = out.result
           result match {
             case None =>
-              Right(out -> step.remainder)
+              Right(outList -> step.remainder)
             case Some(r) =>
-              if (out.isEmpty) Left(r)
-              else Right(out -> pure(r))
+              if (outList.isEmpty) Left(r)
+              else Right(outList -> pure(r))
           }
       }
   }

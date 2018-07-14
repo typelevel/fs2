@@ -41,7 +41,6 @@ class UdpSpec extends Fs2Spec with BeforeAndAfterAll {
               .drain
             val client = Stream.resource(open[IO]()).flatMap { clientSocket =>
               Stream(Packet(serverAddress, msg))
-                .covary[IO]
                 .to(clientSocket.writes())
                 .drain ++ Stream.eval(clientSocket.read())
             }
@@ -72,7 +71,6 @@ class UdpSpec extends Fs2Spec with BeforeAndAfterAll {
                 .emits(msgs.map { msg =>
                   Packet(serverAddress, msg)
                 })
-                .covary[IO]
                 .flatMap { msg =>
                   Stream.eval_(clientSocket.write(msg)) ++ Stream.eval(clientSocket.read())
                 }
@@ -117,7 +115,6 @@ class UdpSpec extends Fs2Spec with BeforeAndAfterAll {
                   .drain
               val client = Stream.resource(open[IO]()).flatMap { clientSocket =>
                 Stream(Packet(new InetSocketAddress(group, serverPort), msg))
-                  .covary[IO]
                   .to(clientSocket.writes())
                   .drain ++ Stream.eval(clientSocket.read())
               }

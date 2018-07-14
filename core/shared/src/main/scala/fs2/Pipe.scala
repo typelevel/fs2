@@ -1,7 +1,6 @@
 package fs2
 
 import cats.effect.Concurrent
-import cats.implicits._
 import fs2.async.mutable.Queue
 import fs2.internal.FreeC
 import scala.util.control.NonFatal

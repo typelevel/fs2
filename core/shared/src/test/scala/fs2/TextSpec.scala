@@ -13,12 +13,12 @@ class TextSpec extends Fs2Spec {
       def utf8String(bs: Chunk[Byte]): String = new String(bs.toArray, "UTF-8")
 
       def checkChar(c: Char) = (1 to 6).foreach { n =>
-        Stream.chunk(utf8Bytes(c.toString)).covary[Pure].chunkLimit(n).flatMap(Stream.chunk).through(utf8Decode).toList shouldBe List(c.toString)
+        Stream.chunk(utf8Bytes(c.toString)).chunkLimit(n).flatMap(Stream.chunk).through(utf8Decode).toList shouldBe List(c.toString)
       }
 
       def checkBytes(is: Int*) = (1 to 6).foreach { n =>
         val bytes = Chunk.bytes(is.map(_.toByte).toArray)
-        Stream.chunk(bytes).covary[Pure].chunkLimit(n).flatMap(Stream.chunk).through(utf8Decode).toList shouldBe List(utf8String(bytes))
+        Stream.chunk(bytes).chunkLimit(n).flatMap(Stream.chunk).through(utf8Decode).toList shouldBe List(utf8String(bytes))
       }
 
       def checkBytes2(is: Int*) = {
@@ -49,12 +49,12 @@ class TextSpec extends Fs2Spec {
       }
 
       "1 byte sequences" in forAll { (s: String) =>
-        Stream.chunk(utf8Bytes(s)).covary[Pure].chunkLimit(1).flatMap(Stream.chunk).through(utf8Decode).toList shouldBe s.grouped(1).toList
+        Stream.chunk(utf8Bytes(s)).chunkLimit(1).flatMap(Stream.chunk).through(utf8Decode).toList shouldBe s.grouped(1).toList
       }
 
       "n byte sequences" in forAll { (s: String) =>
         val n = Gen.choose(1,9).sample.getOrElse(1)
-        Stream.chunk(utf8Bytes(s)).covary[Pure].chunkLimit(n).flatMap(Stream.chunk).through(utf8Decode).toList.mkString shouldBe s
+        Stream.chunk(utf8Bytes(s)).chunkLimit(n).flatMap(Stream.chunk).through(utf8Decode).toList.mkString shouldBe s
       }
 
       // The next tests were taken from:
@@ -165,15 +165,15 @@ class TextSpec extends Fs2Spec {
 
       "newlines appear in between chunks" in forAll { (lines0: PureStream[String]) =>
         val lines = lines0.get.map(escapeCrLf)
-        lines.intersperse("\n").throughPure(text.lines).toList shouldBe lines.toList
-        lines.intersperse("\r\n").throughPure(text.lines).toList shouldBe lines.toList
+        lines.intersperse("\n").through(text.lines).toList shouldBe lines.toList
+        lines.intersperse("\r\n").through(text.lines).toList shouldBe lines.toList
       }
 
       "single string" in forAll { (lines0: PureStream[String]) =>
         val lines = lines0.get.map(escapeCrLf)
         if (lines.toList.nonEmpty) {
           val s = lines.intersperse("\r\n").toList.mkString
-          Stream.emit(s).throughPure(text.lines).toList shouldBe lines.toList
+          Stream.emit(s).through(text.lines).toList shouldBe lines.toList
         }
       }
 
@@ -181,10 +181,10 @@ class TextSpec extends Fs2Spec {
         val lines = lines0.get.map(escapeCrLf)
         val s = lines.intersperse("\r\n").toList.mkString.grouped(3).toList
         if (s.isEmpty) {
-          Stream.emits(s).throughPure(text.lines).toList shouldBe Nil
+          Stream.emits(s).through(text.lines).toList shouldBe Nil
         } else {
-          Stream.emits(s).throughPure(text.lines).toList shouldBe lines.toList
-          Stream.emits(s).unchunk.throughPure(text.lines).toList shouldBe lines.toList
+          Stream.emits(s).through(text.lines).toList shouldBe lines.toList
+          Stream.emits(s).unchunk.through(text.lines).toList shouldBe lines.toList
         }
       }
     }
