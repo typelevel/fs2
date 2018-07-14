@@ -71,8 +71,8 @@ object text {
           Pull.pure(None)
       }
 
-    ((in: Stream[Pure, Chunk[Byte]]) => doPull(Chunk.empty, in).stream)
-      .covary[F]
+    (in: Stream[Pure, Chunk[Byte]]) =>
+      doPull(Chunk.empty, in).stream
   }
 
   /** Encodes a stream of `String` in to a stream of bytes using the UTF-8 charset. */

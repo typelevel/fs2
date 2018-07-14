@@ -20,9 +20,9 @@ class PullSpec extends Fs2Spec {
   implicit def arbPull[O: Arbitrary, R: Arbitrary: Cogen]: Arbitrary[Pull[IO, O, R]] =
     Arbitrary(
       Gen.oneOf(
-        arbitrary[R].map(Pull.pure(_).covaryAll[IO, O, R]),
-        arbitrary[IO[R]].map(Pull.eval(_).covaryAll[IO, O, R]),
-        arbitrary[PureStream[O]].flatMap(s => arbitrary[R].map(r => s.get.covary[IO].pull.echo >> Pull.pure(r)))
+        arbitrary[R].map(Pull.pure(_)),
+        arbitrary[IO[R]].map(Pull.eval(_)),
+        arbitrary[PureStream[O]].flatMap(s => arbitrary[R].map(r => s.get.pull.echo >> Pull.pure(r)))
       )
     )
 

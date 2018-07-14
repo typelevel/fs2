@@ -2,13 +2,13 @@ package fs2
 
 import cats.{Applicative, Id}
 import cats.effect.IO
+import scala.concurrent.ExecutionContext.Implicits.global
 
 object ThisModuleShouldCompile {
 
   /* Some checks that `.pull` can be used without annotations */
   Stream(1,2,3,4) through (_.take(2))
   Stream.eval(IO.pure(1)) through (_.take(2))
-  Stream(1,2,3,4) through[Int] (_.take(2))
   Stream(1,2,3).covary[IO].pull.uncons1.stream
   Stream.eval(IO.pure(1)).pull.uncons1.stream
 
@@ -16,6 +16,11 @@ object ThisModuleShouldCompile {
   def a[F[_],A](s: Stream[F,A]) = s through (_.take(2))
   def b[F[_],A](s: Stream[F,A]): Stream[F,A] = s through (_.take(2))
   def c[F[_],A](s: Stream[F,A]): Stream[F,A] = s through (_.take(2))
+
+  Stream.empty[IO]
+  Stream.empty.covary[IO]
+  Stream.empty.covaryAll[IO, Int]
+  Stream.empty.covaryOutput[Int]
 
   Stream(1,2,3) ++ Stream(4,5,6)
   Stream(1,2,3) ++ Stream.eval(IO.pure(4))
@@ -56,10 +61,17 @@ object ThisModuleShouldCompile {
 
   def polyId[F[_]: Applicative, A](stream: Stream[Id, A]): Stream[F, A] = stream.covaryId[F] through (_.take(2))
 
-  // With cats implicits enabled, some of the above fail to compile due to the cats syntax being invariant:
+  // Ensure that Stream#flatMap is favored over cats's flatMap
   {
     import cats.implicits._
-    Stream(1,2,3).covary[IO].flatMap(i => Stream.eval(IO.pure(i)))
-    (Stream(1,2,3).covary[IO].flatMap(i => Stream.eval(IO(i)))): Stream[IO,Int]
+    1 |+| 1 // Mask unused warning from cats.implicits._ import
+    Stream(1,2,3).flatMap(i => Stream.eval(IO.pure(i)))
+    (Stream(1,2,3).flatMap(i => Stream.eval(IO(i)))): Stream[IO,Int]
   }
+
+  // Join a pure stream of effectful streams without type annotations
+  Stream(s, s).joinUnbounded
+
+  // Join an effectul stream of pure streams requires type annotation on inner stream
+  Stream[IO, Stream[IO, Nothing]](Stream.empty).joinUnbounded
 }
