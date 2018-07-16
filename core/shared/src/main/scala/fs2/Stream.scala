@@ -2251,6 +2251,7 @@ object Stream {
 
     /**
       * Like `observe` but observes with a function `O => F[Unit]` instead of a sink.
+      * It's not as powerful as `observe` since not all Sinks can be represented by `O => F[Unit]`, but much faster.
       * Alias for `evalMap(o => f(o).as(o))`.
       */
     def observe1(f: O => F[Unit])(implicit F: Functor[F]): Stream[F, O] =
@@ -2262,8 +2263,10 @@ object Stream {
       * If `sink` fails, then resulting stream will fail. If sink `halts` the evaluation will halt too.
       *
       * Note that observe will only output full segments of `O` that are known to be successfully processed
-      * by `sink`. So if Sink terminates/fail in midle of segment processing, the segment will not be available
+      * by `sink`. So if Sink terminates/fail in middle of segment processing, the segment will not be available
       * in resulting stream.
+      *
+      * Note that if your Sink can be represented by an `O => F[Unit]`, `observe1` will provide much greater performance.
       *
       * @example {{{
       * scala> import scala.concurrent.ExecutionContext.Implicits.global, cats.effect.IO, cats.implicits._
