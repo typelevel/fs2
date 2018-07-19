@@ -4,7 +4,7 @@ package interop.scodec
 import scala.reflect.ClassTag
 import scodec.bits.ByteVector
 
-final class ByteVectorChunk private (val toByteVector: ByteVector)
+final case class ByteVectorChunk(toByteVector: ByteVector)
     extends Chunk[Byte]
     with Chunk.KnownElementType[Byte] {
   def elementClassTag = ClassTag.Byte
@@ -37,8 +37,4 @@ final class ByteVectorChunk private (val toByteVector: ByteVector)
 
   override def map[O2](f: Byte => O2): Chunk[O2] =
     Chunk.indexedSeq(toByteVector.toIndexedSeq.map(f))
-}
-
-object ByteVectorChunk {
-  def apply(bv: ByteVector): ByteVectorChunk = new ByteVectorChunk(bv)
 }
