@@ -3,7 +3,7 @@ package interop.scodec
 
 import scodec.bits.ByteVector
 
-final class ByteVectorChunk private (val toByteVector: ByteVector) extends Chunk[Byte] {
+final case class ByteVectorChunk(toByteVector: ByteVector) extends Chunk[Byte] {
   def apply(i: Int): Byte =
     toByteVector(i)
 
@@ -27,8 +27,4 @@ final class ByteVectorChunk private (val toByteVector: ByteVector) extends Chunk
 
   override def map[O2](f: Byte => O2): Chunk[O2] =
     Chunk.indexedSeq(toByteVector.toIndexedSeq.map(f))
-}
-
-object ByteVectorChunk {
-  def apply(bv: ByteVector): ByteVectorChunk = new ByteVectorChunk(bv)
 }
