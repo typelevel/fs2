@@ -178,9 +178,18 @@ class StreamPerformanceSpec extends Fs2Spec {
     }
 
     "chunky flatMap" - {
-      Ns.take(9).foreach { N =>
+      Ns.foreach { N =>
         N.toString in {
           runLog(emits(Vector.range(0, N)).flatMap(i => emit(i))) shouldBe Vector
+            .range(0, N)
+        }
+      }
+    }
+
+    "chunky map with unconsChunk" - {
+      Ns.foreach { N =>
+        N.toString in {
+          runLog(emits(Vector.range(0, N)).map(i => i).chunks.flatMap(chunk(_))) shouldBe Vector
             .range(0, N)
         }
       }

@@ -55,13 +55,11 @@ class SocketSpec extends Fs2Spec with BeforeAndAfterAll {
       val clients: Stream[IO, Array[Byte]] = {
         Stream
           .range(0, clientCount)
-          .covary[IO]
           .map { idx =>
             Stream.eval(localBindAddress.get).flatMap { local =>
               Stream.resource(client[IO](local)).flatMap { socket =>
                 Stream
                   .chunk(message)
-                  .covary[IO]
                   .to(socket.writes())
                   .drain
                   .onFinalize(socket.endOfOutput) ++
@@ -99,7 +97,6 @@ class SocketSpec extends Fs2Spec with BeforeAndAfterAll {
               Stream.emit(Stream.resource(s).flatMap { socket =>
                 Stream
                   .chunk(message)
-                  .covary[IO]
                   .to(socket.writes())
                   .drain
                   .onFinalize(socket.endOfOutput)
@@ -114,7 +111,7 @@ class SocketSpec extends Fs2Spec with BeforeAndAfterAll {
         for {
           addr <- Stream.eval(localBindAddress.get)
           sock <- Stream.resource(client[IO](addr))
-          size <- Stream.emits(sizes).covary[IO]
+          size <- Stream.emits(sizes)
           op <- Stream.eval(sock.readN(size, None))
         } yield op.map(_.size).getOrElse(-1)
 

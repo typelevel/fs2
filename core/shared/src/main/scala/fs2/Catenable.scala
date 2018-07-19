@@ -15,28 +15,31 @@ import scala.annotation.tailrec
 sealed abstract class Catenable[+A] {
 
   /** Returns the head and tail of this catenable if non empty, none otherwise. Amortized O(1). */
-  final def uncons: Option[(A, Catenable[A])] = {
-    var c: Catenable[A] = this
-    val rights = new collection.mutable.ArrayBuffer[Catenable[A]]
-    var result: Option[(A, Catenable[A])] = null
-    while (result eq null) {
-      c match {
-        case Empty =>
-          if (rights.isEmpty) {
-            result = None
-          } else {
-            c = rights.last
-            rights.trimEnd(1)
-          }
-        case Singleton(a) =>
-          val next =
-            if (rights.isEmpty) empty
-            else rights.reduceLeft((x, y) => Append(y, x))
-          result = Some(a -> next)
-        case Append(l, r) => c = l; rights += r
+  final def uncons: Option[(A, Catenable[A])] = this match {
+    case Empty        => None
+    case Singleton(a) => Some((a, Empty))
+    case other =>
+      var c: Catenable[A] = this
+      val rights = new collection.mutable.ArrayBuffer[Catenable[A]]
+      var result: Option[(A, Catenable[A])] = null
+      while (result eq null) {
+        c match {
+          case Empty =>
+            if (rights.isEmpty) {
+              result = None
+            } else {
+              c = rights.last
+              rights.trimEnd(1)
+            }
+          case Singleton(a) =>
+            val next =
+              if (rights.isEmpty) empty
+              else rights.reduceLeft((x, y) => Append(y, x))
+            result = Some(a -> next)
+          case Append(l, r) => c = l; rights += r
+        }
       }
-    }
-    result
+      result
   }
 
   /** Returns true if there are no elements in this collection. */
@@ -107,27 +110,30 @@ sealed abstract class Catenable[+A] {
   }
 
   /** Applies the supplied function to each element, left to right. */
-  final def foreach(f: A => Unit): Unit = {
-    var c: Catenable[A] = this
-    val rights = new collection.mutable.ArrayBuffer[Catenable[A]]
-    while (c ne null) {
-      c match {
-        case Empty =>
-          if (rights.isEmpty) {
-            c = null
-          } else {
-            c = rights.last
-            rights.trimEnd(1)
-          }
-        case Singleton(a) =>
-          f(a)
-          c =
-            if (rights.isEmpty) Empty
-            else rights.reduceLeft((x, y) => Append(y, x))
-          rights.clear()
-        case Append(l, r) => c = l; rights += r
+  final def foreach(f: A => Unit): Unit = this match {
+    case Empty        => ()
+    case Singleton(a) => f(a)
+    case _ =>
+      var c: Catenable[A] = this
+      val rights = new collection.mutable.ArrayBuffer[Catenable[A]]
+      while (c ne null) {
+        c match {
+          case Empty =>
+            if (rights.isEmpty) {
+              c = null
+            } else {
+              c = rights.last
+              rights.trimEnd(1)
+            }
+          case Singleton(a) =>
+            f(a)
+            c =
+              if (rights.isEmpty) Empty
+              else rights.reduceLeft((x, y) => Append(y, x))
+            rights.clear()
+          case Append(l, r) => c = l; rights += r
+        }
       }
-    }
   }
 
   /** Converts to a list. */
@@ -179,6 +185,7 @@ object Catenable {
   /** Creates a catenable from the specified sequence. */
   def fromSeq[A](s: Seq[A]): Catenable[A] =
     if (s.isEmpty) empty
+    else if (s.size == 1) singleton(s.head)
     else s.view.reverse.map(singleton).reduceLeft((x, y) => Append(y, x))
 
   /** Creates a catenable from the specified elements. */
