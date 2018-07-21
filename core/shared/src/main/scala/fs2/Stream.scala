@@ -2539,8 +2539,12 @@ object Stream {
   def repeatEval[F[_], O](fo: F[O]): Stream[F, O] = eval(fo).repeat
 
   /** Converts the supplied resource in to a singleton stream. */
-  def resource[F[_], O](r: Resource[F, O]): Stream[F, O] =
-    Stream.bracket(r.allocate)(_._2).map(_._1)
+  def resource[F[_], O](r: Resource[F, O]): Stream[F, O] = r match {
+    case Resource.Allocate(a) =>
+      Stream.bracket(a) { case (_, release) => release(ExitCase.Completed) }.map(_._1)
+    case Resource.Bind(r, f) => resource(r).flatMap(o => resource(f(o)))
+    case Resource.Suspend(r) => Stream.eval(r).flatMap(resource)
+  }
 
   /**
     * Retries `fo` on failure, returning a singleton stream with the
