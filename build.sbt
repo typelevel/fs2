@@ -311,7 +311,9 @@ lazy val benchmark = project
   .settings(commonSettings)
   .settings(noPublish)
   .settings(
-    name := "fs2-benchmark"
+    name := "fs2-benchmark",
+    javaOptions in (Test, run) := (javaOptions in (Test, run)).value.filterNot(o =>
+      o.startsWith("-Xmx") || o.startsWith("-Xms")) ++ Seq("-Xms256m", "-Xmx256m")
   )
   .settings(
     addCompilerPlugin(("org.scalamacros" % "paradise" % "2.1.1").cross(CrossVersion.patch)),
