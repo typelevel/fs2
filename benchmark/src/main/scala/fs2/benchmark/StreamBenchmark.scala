@@ -8,7 +8,7 @@ import java.util.concurrent.TimeUnit
 @State(Scope.Thread)
 class StreamBenchmark {
 
-  @GenerateN(2, 3, 100, 200, 400, 800, 1600, 3200, 6400, 12800, 25600, 51200, 102400)
+  @GenerateN(1, 10, 100, 1000, 10000, 100000)
   @Benchmark
   def leftAssocConcat(N: Int): Int =
     (1 until N)
@@ -20,7 +20,7 @@ class StreamBenchmark {
       .unsafeRunSync
       .get
 
-  @GenerateN(2, 3, 100, 200, 400, 800, 1600, 3200, 6400, 12800, 25600, 51200, 102400)
+  @GenerateN(1, 10, 100, 1000, 10000, 100000)
   @Benchmark
   def rightAssocConcat(N: Int): Int =
     (0 until N)
@@ -32,7 +32,7 @@ class StreamBenchmark {
       .unsafeRunSync
       .get
 
-  @GenerateN(2, 3, 100, 200, 400, 800, 1600, 3200, 6400, 12800, 25600, 51200, 102400)
+  @GenerateN(1, 10, 100, 1000, 10000, 100000)
   @Benchmark
   def leftAssocFlatMap(N: Int): Int =
     (1 until N)
@@ -44,7 +44,7 @@ class StreamBenchmark {
       .unsafeRunSync
       .get
 
-  @GenerateN(2, 3, 100, 200, 400, 800, 1600, 3200, 6400, 12800, 25600, 51200, 102400)
+  @GenerateN(1, 10, 100, 1000, 10000, 100000)
   @Benchmark
   def rightAssocFlatMap(N: Int): Int =
     (1 until N)
@@ -57,22 +57,21 @@ class StreamBenchmark {
       .unsafeRunSync
       .get
 
-  @GenerateN(2, 3, 100, 200, 400, 800, 1600, 3200, 6400, 12800, 25600, 51200, 102400)
+  @GenerateN(1, 10, 100, 1000, 10000, 100000)
   @Benchmark
   def eval(N: Int): Unit =
     Stream.repeatEval(IO(())).take(N).compile.last.unsafeRunSync.get
 
-  @GenerateN(0, 2, 3, 6, 12, 25, 50, 100, 200, 400, 800, 1600, 3200, 6400, 12800, 25600, 51200,
-    102400)
+  @GenerateN(1, 10, 100, 1000, 10000, 100000)
   @Benchmark
   def toVector(N: Int): Vector[Int] =
     Stream.emits(0 until N).covary[IO].compile.toVector.unsafeRunSync
 
-  @GenerateN(1, 2, 4, 8, 16, 32, 64, 128, 256)
+  @GenerateN(8, 256)
   @Benchmark
   def unconsPull(N: Int): Int =
     (Stream
-      .chunk(Chunk.seq(0 to 256000)))
+      .chunk(Chunk.seq(0 to 2560)))
       .repeatPull { s =>
         s.unconsN(N).flatMap {
           case Some((h, t)) => Pull.output(h).as(Some(t))
