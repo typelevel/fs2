@@ -139,8 +139,8 @@ object StepperSanityTest extends App {
       stepper.step match {
         case Stepper.Done      => Pull.done
         case Stepper.Fail(err) => Pull.raiseError(err)
-        case Stepper.Emits(segment, next) =>
-          Pull.output(segment) >> go(next, s)
+        case Stepper.Emits(chunk, next) =>
+          Pull.output(chunk) >> go(next, s)
         case Stepper.Await(receive) =>
           s.pull.uncons.flatMap {
             case Some((hd, tl)) => go(receive(Some(hd)), tl)
@@ -161,7 +161,7 @@ object StepperSanityTest2 extends App {
       case Stepper.Done        => ()
       case Stepper.Fail(err)   => throw err
       case Stepper.Emits(s, n) => go(i)(n)
-      case Stepper.Await(r)    => go(i)(r(Some(Segment(i))))
+      case Stepper.Await(r)    => go(i)(r(Some(Chunk(i))))
     }
   go(0)(Pipe.stepper(_.map(_ + 1)))
 }

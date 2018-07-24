@@ -31,19 +31,19 @@ object compress {
 
   private def _deflate_stream[F[_]](deflater: Deflater,
                                     buffer: Array[Byte]): Stream[F, Byte] => Pull[F, Byte, Unit] =
-    _.pull.unconsChunk.flatMap {
+    _.pull.uncons.flatMap {
       case Some((hd, tl)) =>
         deflater.setInput(hd.toArray)
         val result =
           _deflate_collect(deflater, buffer, ArrayBuffer.empty, false).toArray
-        Pull.outputChunk(Chunk.bytes(result)) >> _deflate_stream(deflater, buffer)(tl)
+        Pull.output(Chunk.bytes(result)) >> _deflate_stream(deflater, buffer)(tl)
       case None =>
         deflater.setInput(Array.empty)
         deflater.finish()
         val result =
           _deflate_collect(deflater, buffer, ArrayBuffer.empty, true).toArray
         deflater.end()
-        Pull.outputChunk(Chunk.bytes(result))
+        Pull.output(Chunk.bytes(result))
     }
 
   @tailrec
@@ -65,7 +65,7 @@ object compress {
     *                   decompressor. Default size is 32 KB.
     */
   def inflate[F[_]](nowrap: Boolean = false, bufferSize: Int = 1024 * 32): Pipe[F, Byte, Byte] =
-    _.pull.unconsChunk.flatMap {
+    _.pull.uncons.flatMap {
       case None => Pull.pure(None)
       case Some((hd, tl)) =>
         val inflater = new Inflater(nowrap)
@@ -73,17 +73,17 @@ object compress {
         inflater.setInput(hd.toArray)
         val result =
           _inflate_collect(inflater, buffer, ArrayBuffer.empty).toArray
-        Pull.outputChunk(Chunk.bytes(result)) >> _inflate_stream(inflater, buffer)(tl)
+        Pull.output(Chunk.bytes(result)) >> _inflate_stream(inflater, buffer)(tl)
     }.stream
 
   private def _inflate_stream[F[_]](inflater: Inflater,
                                     buffer: Array[Byte]): Stream[F, Byte] => Pull[F, Byte, Unit] =
-    _.pull.unconsChunk.flatMap {
+    _.pull.uncons.flatMap {
       case Some((hd, tl)) =>
         inflater.setInput(hd.toArray)
         val result =
           _inflate_collect(inflater, buffer, ArrayBuffer.empty).toArray
-        Pull.outputChunk(Chunk.bytes(result)) >> _inflate_stream(inflater, buffer)(tl)
+        Pull.output(Chunk.bytes(result)) >> _inflate_stream(inflater, buffer)(tl)
       case None =>
         if (!inflater.finished)
           Pull.raiseError(new DataFormatException("Insufficient data"))

@@ -49,7 +49,7 @@ class TextSpec extends Fs2Spec {
       }
 
       "1 byte sequences" in forAll { (s: String) =>
-        Stream.chunk(utf8Bytes(s)).chunkLimit(1).flatMap(Stream.chunk).through(utf8Decode).toList shouldBe s.grouped(1).toList
+        Stream.chunk(utf8Bytes(s)).chunkLimit(1).flatMap(Stream.chunk).through(utf8Decode).filter(_.nonEmpty).toList shouldBe s.grouped(1).toList
       }
 
       "n byte sequences" in forAll { (s: String) =>

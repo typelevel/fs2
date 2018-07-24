@@ -53,8 +53,8 @@ object ThisModuleShouldCompile {
   t2.attachL(p2)
   t2.attachR(p2)
 
-  val p: Pull[Pure,Nothing,Option[(Segment[Int,Unit],Stream[Pure,Int])]] = Stream(1, 2, 3).pull.uncons
-  val q: Pull[IO,Nothing,Option[(Segment[Int,Unit],Stream[Pure,Int])]] = p
+  val p: Pull[Pure,Nothing,Option[(Chunk[Int],Stream[Pure,Int])]] = Stream(1, 2, 3).pull.uncons
+  val q: Pull[IO,Nothing,Option[(Chunk[Int],Stream[Pure,Int])]] = p
 
   val streamId: Stream[Id, Int] = Stream(1,2,3)
   (streamId.covaryId[IO]): Stream[IO, Int]

@@ -262,7 +262,7 @@ class StreamSpec extends Fs2Spec with Inside {
     }
 
     "translate (5)" in {
-      // tests that it is ok to have translate step leg that emits multiple segments
+      // tests that it is ok to have translate step leg that emits multiple chunks
 
       def goStep(step: Option[Stream.StepLeg[Function0, Int]]): Pull[Function0, Int, Unit] =
         step match {
@@ -348,10 +348,10 @@ class StreamSpec extends Fs2Spec with Inside {
         .toList shouldBe List(0, 1, 1, 2, 3, 5, 8, 13)
     }
 
-    "unfoldSegment" in {
+    "unfoldChunk" in {
       Stream
-        .unfoldSegment(4L) { s =>
-          if (s > 0) Some((Chunk.longs(Array[Long](s, s)).toSegment, s - 1))
+        .unfoldChunk(4L) { s =>
+          if (s > 0) Some((Chunk.longs(Array[Long](s, s)), s - 1))
           else None
         }
         .toList shouldBe List[Long](4, 4, 3, 3, 2, 2, 1, 1)
@@ -463,14 +463,6 @@ class StreamSpec extends Fs2Spec with Inside {
       }
     }
 
-    "infinite segments that emit few elements" in {
-      Stream
-        .segment(Segment.from(0L))
-        .filter(_ < 2)
-        .take(2)
-        .toVector shouldBe Vector(0L, 1L)
-    }
-
     "regression #1089" in {
       (Stream.chunk(Chunk.bytes(Array.fill(2000)(1.toByte))) ++ Stream.eval(
         IO.async[Byte](_ => ())))
@@ -488,7 +480,7 @@ class StreamSpec extends Fs2Spec with Inside {
         .repeat
         .take(10000)
         .flatMap(_ => Stream.empty) // Never emit an element downstream
-        .mapSegments(identity) // Use a combinator that calls Stream#pull.uncons
+        .mapChunks(identity) // Use a combinator that calls Stream#pull.uncons
         .compile
         .drain
         .unsafeRunSync()
@@ -501,7 +493,7 @@ class StreamSpec extends Fs2Spec with Inside {
         .unchunk
         .prefetch
         .flatMap(_ => Stream.empty)
-        .mapSegments(identity)
+        .mapChunks(identity)
         .compile
         .drain
         .unsafeRunSync()

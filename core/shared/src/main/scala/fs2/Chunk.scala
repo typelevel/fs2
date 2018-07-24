@@ -3,7 +3,7 @@ package fs2
 import scala.reflect.ClassTag
 import java.nio.{ByteBuffer => JByteBuffer}
 
-import cats.{Applicative, Eq, Eval, Foldable, Monad, Traverse}
+import cats.{Applicative, Eq, Eval, Monad, Traverse}
 import cats.implicits._
 
 /**
@@ -27,17 +27,63 @@ abstract class Chunk[+O] extends Serializable { self =>
   /** Returns the element at the specified index. Throws if index is < 0 or >= size. */
   def apply(i: Int): O
 
-  /** True if size is zero, false otherwise. */
-  final def isEmpty: Boolean = size == 0
-
-  /** False if size is zero, true otherwise. */
-  final def nonEmpty: Boolean = size > 0
+  /** More efficient version of `filter(pf.isDefinedAt).map(pf)`. */
+  def collect[O2](pf: PartialFunction[O, O2]): Chunk[O2] = {
+    val b = collection.mutable.Buffer.newBuilder[O2]
+    b.sizeHint(size)
+    var i = 0
+    while (i < size) {
+      val o = apply(i)
+      if (pf.isDefinedAt(o))
+        b += pf(o)
+      i += 1
+    }
+    Chunk.buffer(b.result)
+  }
 
   /** Copies the elements of this chunk in to the specified array at the specified start index. */
   def copyToArray[O2 >: O](xs: Array[O2], start: Int = 0): Unit
 
   /** Drops the first `n` elements of this chunk. */
   def drop(n: Int): Chunk[O] = splitAt(n)._2
+
+  /** Returns a chunk that has only the elements that satifsy the supplied predicate. */
+  def filter(p: O => Boolean): Chunk[O] = {
+    val b = collection.mutable.Buffer.newBuilder[O]
+    b.sizeHint(size)
+    var i = 0
+    while (i < size) {
+      val e = apply(i)
+      if (p(e)) b += e
+      i += 1
+    }
+    Chunk.buffer(b.result)
+  }
+
+  /** Returns the first element for which the predicate returns true or `None` if no elements satifsy the predicate. */
+  def find(p: O => Boolean): Option[O] = {
+    var result: Option[O] = None
+    var i = 0
+    while (i < size && result.isEmpty) {
+      val o = apply(i)
+      if (p(o)) result = Some(o)
+      i += 1
+    }
+    result
+  }
+
+  /** Maps `f` over the elements of this chunk and concatenates the result. */
+  def flatMap[O2](f: O => Chunk[O2]): Chunk[O2] =
+    if (isEmpty) Chunk.empty
+    else {
+      val buf = new collection.mutable.ListBuffer[Chunk[O2]]
+      foreach(o => buf += f(o))
+      val totalSize = buf.foldLeft(0)((acc, c) => acc + c.size)
+      val b = collection.mutable.Buffer.newBuilder[O2]
+      b.sizeHint(totalSize)
+      buf.foreach(c => b ++= c.iterator)
+      Chunk.buffer(b.result)
+    }
 
   /** Left-folds the elements of this chunk. */
   def foldLeft[A](init: A)(f: (A, O) => A): A = {
@@ -48,6 +94,14 @@ abstract class Chunk[+O] extends Serializable { self =>
       i += 1
     }
     acc
+  }
+
+  private[fs2] final def foldRightLazy[B](z: B)(f: (O, => B) => B): B = {
+    val sz = size
+    def loop(idx: Int): B =
+      if (idx < sz) f(apply(idx), loop(idx + 1))
+      else z
+    loop(0)
   }
 
   /** Returns true if the predicate passes for all elements. */
@@ -61,8 +115,20 @@ abstract class Chunk[+O] extends Serializable { self =>
     result
   }
 
+  /** Invokes the supplied function for each element of this chunk. */
+  def foreach(f: O => Unit): Unit = {
+    var i = 0
+    while (i < size) {
+      f(apply(i))
+      i += 1
+    }
+  }
+
   /** Gets the first element of this chunk. */
   def head: Option[O] = if (isEmpty) None else Some(apply(0))
+
+  /** True if size is zero, false otherwise. */
+  final def isEmpty: Boolean = size == 0
 
   /** Creates an iterator that iterates the elements of this chunk. The returned iterator is not thread safe. */
   def iterator: Iterator[O] = new Iterator[O] {
@@ -92,8 +158,67 @@ abstract class Chunk[+O] extends Serializable { self =>
   def map[O2](f: O => O2): Chunk[O2] = {
     val b = collection.mutable.Buffer.newBuilder[O2]
     b.sizeHint(size)
-    for (i <- 0 until size) b += f(apply(i))
+    var i = 0
+    while (i < size) {
+      b += f(apply(i))
+      i += 1
+    }
     Chunk.buffer(b.result)
+  }
+
+  /**
+    * Maps the supplied stateful function over each element, outputting the final state and the accumulated outputs.
+    * The first invocation of `f` uses `init` as the input state value. Each successive invocation uses
+    * the output state of the previous invocation.
+    */
+  def mapAccumulate[S, O2](init: S)(f: (S, O) => (S, O2)): (S, Chunk[O2]) = {
+    val b = collection.mutable.Buffer.newBuilder[O2]
+    b.sizeHint(size)
+    var i = 0
+    var s = init
+    while (i < size) {
+      val (s2, o2) = f(s, apply(i))
+      b += o2
+      s = s2
+      i += 1
+    }
+    s -> Chunk.buffer(b.result)
+  }
+
+  /** False if size is zero, true otherwise. */
+  final def nonEmpty: Boolean = size > 0
+
+  /** Creates an iterator that iterates the elements of this chunk in reverse order. The returned iterator is not thread safe. */
+  def reverseIterator: Iterator[O] = new Iterator[O] {
+    private[this] var i = self.size - 1
+    def hasNext = i >= 0
+    def next = { val result = apply(i); i -= 1; result }
+  }
+
+  /** Like `foldLeft` but emits each intermediate result of `f`. */
+  def scanLeft[O2](z: O2)(f: (O2, O) => O2): Chunk[O2] =
+    scanLeft_(z, true)(f)._1
+
+  /** Like `scanLeft` except the final element is emitted as a standalone value instead of as
+    * the last element of the accumulated chunk.
+    *
+    * Equivalent to `val b = a.scanLeft(z)(f); val (c, carry) = b.splitAt(b.size - 1)`.
+    */
+  def scanLeftCarry[O2](z: O2)(f: (O2, O) => O2): (Chunk[O2], O2) =
+    scanLeft_(z, false)(f)
+
+  protected def scanLeft_[O2](z: O2, emitFinal: Boolean)(f: (O2, O) => O2): (Chunk[O2], O2) = {
+    val b = collection.mutable.Buffer.newBuilder[O2]
+    b.sizeHint(if (emitFinal) size + 1 else size)
+    var acc = z
+    var i = 0
+    while (i < size) {
+      acc = f(acc, apply(i))
+      b += acc
+      i += 1
+    }
+    if (emitFinal) b += acc
+    Chunk.buffer(b.result) -> acc
   }
 
   /** Splits this chunk in to two chunks at the specified index. */
@@ -143,6 +268,7 @@ abstract class Chunk[+O] extends Serializable { self =>
     }
   }
 
+  /** Converts this chunk to a `java.nio.ByteBuffer`. */
   def toByteBuffer[B >: O](implicit ev: B =:= Byte): JByteBuffer = {
     val _ = ev // Convince scalac that ev is used
     this match {
@@ -229,15 +355,6 @@ abstract class Chunk[+O] extends Serializable { self =>
     }
   }
 
-  /** Invokes the supplied function for each element of this chunk. */
-  def foreach(f: O => Unit): Unit = {
-    var i = 0
-    while (i < size) {
-      f(apply(i))
-      i += 1
-    }
-  }
-
   /** Converts this chunk to a list. */
   def toList: List[O] =
     if (isEmpty) Nil
@@ -275,6 +392,27 @@ abstract class Chunk[+O] extends Serializable { self =>
   def knownElementType[B](implicit classTag: ClassTag[B]): Boolean = this match {
     case ket: Chunk.KnownElementType[_] if ket.elementClassTag eq classTag => true
     case _                                                                 => false
+  }
+
+  /**
+    * Zips this chunk the the supplied chunk, returning a chunk of tuples.
+    */
+  def zip[O2](that: Chunk[O2]): Chunk[(O, O2)] = zipWith(that)(Tuple2.apply)
+
+  /**
+    * Zips this chunk with the supplied chunk, passing each pair to `f`, resulting in
+    * an output chunk.
+    */
+  def zipWith[O2, O3](that: Chunk[O2])(f: (O, O2) => O3): Chunk[O3] = {
+    val sz = size.min(that.size)
+    val b = collection.mutable.Buffer.newBuilder[O3]
+    b.sizeHint(sz)
+    var i = 0
+    while (i < sz) {
+      b += f(apply(i), that.apply(i))
+      i += 1
+    }
+    Chunk.buffer(b.result)
   }
 
   override def hashCode: Int = toVector.hashCode
@@ -972,19 +1110,45 @@ object Chunk {
   }
 
   implicit val instance: Traverse[Chunk] with Monad[Chunk] = new Traverse[Chunk] with Monad[Chunk] {
-    def foldLeft[A, B](fa: Chunk[A], b: B)(f: (B, A) => B): B =
-      fa.foldLeft(b)(f)
-    def foldRight[A, B](fa: Chunk[A], b: Eval[B])(f: (A, Eval[B]) => Eval[B]): Eval[B] =
-      Foldable[Vector].foldRight(fa.toVector, b)(f)
+    def foldLeft[A, B](fa: Chunk[A], b: B)(f: (B, A) => B): B = fa.foldLeft(b)(f)
+    def foldRight[A, B](fa: Chunk[A], b: Eval[B])(f: (A, Eval[B]) => Eval[B]): Eval[B] = {
+      def loop(i: Int): Eval[B] =
+        if (i < fa.size) f(fa(i), Eval.defer(loop(i + 1)))
+        else b
+      loop(0)
+    }
     override def toList[A](fa: Chunk[A]): List[A] = fa.toList
     override def isEmpty[A](fa: Chunk[A]): Boolean = fa.isEmpty
-    def traverse[F[_], A, B](fa: Chunk[A])(f: A => F[B])(implicit G: Applicative[F]): F[Chunk[B]] =
-      G.map(Traverse[Vector].traverse(fa.toVector)(f))(Chunk.vector)
+    def traverse[F[_], A, B](fa: Chunk[A])(f: A => F[B])(implicit F: Applicative[F]): F[Chunk[B]] = {
+      foldRight[A, F[Vector[B]]](fa, Eval.always(F.pure(Vector.empty))) { (a, efv) =>
+        F.map2Eval(f(a), efv)(_ +: _)
+      }.value
+    }.map(Chunk.vector)
     def pure[A](a: A): Chunk[A] = Chunk.singleton(a)
     override def map[A, B](fa: Chunk[A])(f: A => B): Chunk[B] = fa.map(f)
-    def flatMap[A, B](fa: Chunk[A])(f: A => Chunk[B]): Chunk[B] =
-      fa.toSegment.flatMap(f.andThen(_.toSegment)).force.toChunk
-    def tailRecM[A, B](a: A)(f: A => Chunk[Either[A, B]]): Chunk[B] =
-      Chunk.seq(Monad[Vector].tailRecM(a)(f.andThen(_.toVector)))
+    def flatMap[A, B](fa: Chunk[A])(f: A => Chunk[B]): Chunk[B] = fa.flatMap(f)
+    def tailRecM[A, B](a: A)(f: A => Chunk[Either[A, B]]): Chunk[B] = {
+      // Based on the implementation of tailRecM for Vector from cats, licensed under MIT
+      val buf = collection.mutable.Buffer.newBuilder[B]
+      var state = List(f(a).iterator)
+      @annotation.tailrec
+      def loop(): Unit = state match {
+        case Nil => ()
+        case h :: tail if h.isEmpty =>
+          state = tail
+          loop()
+        case h :: tail =>
+          h.next match {
+            case Right(b) =>
+              buf += b
+              loop()
+            case Left(a) =>
+              state = (f(a).iterator) :: h :: tail
+              loop()
+          }
+      }
+      loop()
+      Chunk.buffer(buf.result)
+    }
   }
 }

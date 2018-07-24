@@ -96,7 +96,7 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
       Stream(1, 2, 3)
         .onFinalize(IO { n = 1 })
         .pull
-        .echoSegment
+        .echoChunk
         .stream
         .compile
         .drain
