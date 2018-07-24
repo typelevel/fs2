@@ -264,7 +264,7 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
 
     "finalizers are run in LIFO order - scope closure" in {
       var o: Vector[Int] = Vector.empty
-      runLog {
+      throws(Err) {
         (0 until 10)
           .foldLeft(Stream.emit(1).map(_ => throw new Err).covaryAll[IO, Int])((acc, i) =>
             Stream.emit(i) ++ Stream.bracket(IO(i))(i => IO { o = o :+ i }).flatMap(i => acc))
