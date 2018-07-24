@@ -60,11 +60,11 @@ object text {
     def doPull(
         buf: Chunk[Byte],
         s: Stream[Pure, Chunk[Byte]]): Pull[Pure, String, Option[Stream[Pure, Chunk[Byte]]]] =
-      s.pull.unconsChunk.flatMap {
+      s.pull.uncons.flatMap {
         case Some((byteChunks, tail)) =>
           val (output, nextBuffer) =
             byteChunks.toList.foldLeft((Nil: List[String], buf))(processSingleChunk)
-          Pull.output(Segment.seq(output.reverse)) >> doPull(nextBuffer, tail)
+          Pull.output(Chunk.seq(output.reverse)) >> doPull(nextBuffer, tail)
         case None if !buf.isEmpty =>
           Pull.output1(new String(buf.toArray, utf8Charset)) >> Pull.pure(None)
         case None =>
@@ -146,11 +146,11 @@ object text {
     def go(buffer: Vector[String],
            pendingLineFeed: Boolean,
            s: Stream[F, String]): Pull[F, String, Option[Unit]] =
-      s.pull.unconsChunk.flatMap {
+      s.pull.uncons.flatMap {
         case Some((chunk, s)) =>
           val (toOutput, newBuffer, newPendingLineFeed) =
             extractLines(buffer, chunk, pendingLineFeed)
-          Pull.outputChunk(toOutput) >> go(newBuffer, newPendingLineFeed, s)
+          Pull.output(toOutput) >> go(newBuffer, newPendingLineFeed, s)
         case None if buffer.nonEmpty =>
           Pull.output1(buffer.mkString) >> Pull.pure(None)
         case None => Pull.pure(None)

@@ -17,7 +17,7 @@ This is the official FS2 guide. It gives an overview of the library and its feat
 
 * [Overview](#overview)
 * [Building streams](#building-streams)
-* [Segments & Chunks](#segments--chunks)
+* [Chunks](#chunks)
 * [Basic stream operations](#basic-stream-operations)
 * [Error handling](#error-handling)
 * [Resource acquisition](#resource-acquisition)
@@ -129,13 +129,10 @@ Here we finally see the tasks being executed. As is shown with `rc`, rerunning a
 
 _Note:_ The various `run*` functions aren't specialized to `IO` and work for any `F[_]` with an implicit `Sync[F]` --- FS2 needs to know how to catch errors that occur during evaluation of `F` effects, how to suspend computations.
 
-### Segments & Chunks
+### Chunks
 
-FS2 streams are segmented internally for performance. You can construct an individual stream segment using `Stream.segment`, which accepts an `fs2.Segment` and lots of functions in the library are segment-aware and/or try to preserve segments when possible.
+FS2 streams are chunked internally for performance. You can construct an individual stream chunk using `Stream.chunk`, which accepts an `fs2.Chunk` and lots of functions in the library are chunk-aware and/or try to preserve chunks when possible. A `Chunk` is a strict, finite sequence of values that supports efficient indexed based lookup of elements.
 
-Segments are potentially infinite and support lazy, fused operations. A `Chunk` is a strict, finite sequence of values that supports efficient indexed based lookup of elements. A chunk can be lifted to a segment via `Segment.chunk(c)` or `c.toSegment`.
-
-```tut
 import fs2.Chunk
 
 val s1c = Stream.chunk(Chunk.doubles(Array(1.0, 2.0, 3.0)))
@@ -143,10 +140,14 @@ val s1c = Stream.chunk(Chunk.doubles(Array(1.0, 2.0, 3.0)))
 s1c.mapChunks { ds =>
   val doubles = ds.toDoubles
   /* do things unboxed using doubles.{values,size} */
- doubles.toSegment
+ doubles
 }
 ```
 
+FS2 also provides an alternative to `Chunk` which is potentially infinite and supports fusion of arbitrary operations. This type is called `Segment`. To create a stream from a segment `s`, call `Stream.segment(s)`.
+Note: in FS2 0.10.x, `Segment` played a much larger role in the core design. This was changed in FS2 1.0, as chunk based algorithms are often faster than their segment based equivalents and almost always significantly simpler. However, `Segment` is still available for when a workload requires operator fusion.
+
+```tut
 ### Basic stream operations
 
 Streams have a small but powerful set of operations, some of which we've seen already. The key operations are `++`, `map`, `flatMap`, `handleErrorWith`, and `bracket`:
@@ -244,17 +245,17 @@ Stream.eval_(IO(println("!!"))).compile.toVector.unsafeRunSync()
 
 We often wish to statefully transform one or more streams in some way, possibly evaluating effects as we do so. As a running example, consider taking just the first 5 elements of a `s: Stream[IO,Int]`. To produce a `Stream[IO,Int]` which takes just the first 5 elements of `s`, we need to repeatedly await (or pull) values from `s`, keeping track of the number of values seen so far and stopping as soon as we hit 5 elements. In more complex scenarios, we may want to evaluate additional effects as we pull from one or more streams.
 
-Let's look at an implementation of `take` using the `scanSegmentsOpt` combinator:
+Let's look at an implementation of `take` using the `scanChunksOpt` combinator:
 
 ```tut:book
 import fs2._
 
 def tk[F[_],O](n: Long): Pipe[F,O,O] =
-  in => in.scanSegmentsOpt(n) { n =>
+  in => in.scanChunksOpt(n) { n =>
     if (n <= 0) None
-    else Some(seg => seg.take(n).mapResult {
-      case Left((_,n)) => n
-      case Right(_) => 0
+    else Some(c => c.size match {
+      case m if m < n => (c, n - m)
+      case m => (c.take(n), 0)
     })
   }
 
@@ -264,27 +265,27 @@ Stream(1,2,3,4).through(tk(2)).toList
 Let's take this line by line.
 
 ```scala
-in => in.scanSegmentsOpt(n) { n =>
+in => in.scanChunksOpt(n) { n =>
 ```
 
-Here we create an anonymous function from `Stream[F,O]` to `Stream[F,O]` and we call `scanSegmentsOpt` passing an initial state of `n` and a function which we define on subsequent lines. The function takes the current state as an argument, which we purposefully give the name `n`, shadowing the `n` defined in the signature of `tk`, to make sure we can't accidentally reference it.
+Here we create an anonymous function from `Stream[F,O]` to `Stream[F,O]` and we call `scanChunksOpt` passing an initial state of `n` and a function which we define on subsequent lines. The function takes the current state as an argument, which we purposefully give the name `n`, shadowing the `n` defined in the signature of `tk`, to make sure we can't accidentally reference it.
 
 ```scala
 if (n <= 0) None
 ```
 
-If the current state value is 0 (or less), we're done so we return `None`. This indicates to `scanSegmentsOpt` that the stream should terminate.
+If the current state value is 0 (or less), we're done so we return `None`. This indicates to `scanChunksOpt` that the stream should terminate.
 
 ```scala
-else Some(seg => seg.take(n).mapResult {
-  case Left((_,n)) => n
-  case Right(_) => 0
+else Some(c => c.size match {
+  case m if m <= n => (c, n - m)
+  case m => (c.take(n), 0)
 })
 ```
 
-Otherwise, we return a function which processes the next segment in the stream. The function is implemented by taking `n` elements from the segment. `seg.take(n)` returns a `Segment[O,Either[(Unit,Long),Segment[O,Unit]]]`. We map over the result of the segment and pattern match on the either. If we encounter a `Left`, we discard the unit result and return the new remainder `n` returned from `take`. If instead we encounter a `Right`, we discard the remaining elements in the segment and return 0.
+Otherwise, we return a function which processes the next chunk in the stream. The function first checks the size of the chunk. If it is less than the number of elements to take, it returns the chunk unmodified, causing it to be output downstream, along with the number of remaining elements to take from subsequent chunks (`n - m`). If instead, the chunks size is greater than the number of elements left to take, `n` elements are taken from the chunk and output, along with an indication that there are no more elements to take.
 
-Sometimes, `scanSegmentsOpt` isn't powerful enough to express the stream transformation. Regardless of how complex the job, the `fs2.Pull` type can usually express it.
+Sometimes, `scanChunksOpt` isn't powerful enough to express the stream transformation. Regardless of how complex the job, the `fs2.Pull` type can usually express it.
 
 The `Pull[+F[_],+O,+R]` type represents a program that may pull values from one or more streams, write _output_ of type `O`, and return a _result_ of type `R`. It forms a monad in `R` and comes equipped with lots of other useful operations. See the
 [`Pull` class](https://github.com/functional-streams-for-scala/fs2/blob/series/0.10/core/shared/src/main/scala/fs2/Pull.scala)
@@ -299,9 +300,9 @@ def tk[F[_],O](n: Long): Pipe[F,O,O] = {
   def go(s: Stream[F,O], n: Long): Pull[F,O,Unit] = {
     s.pull.uncons.flatMap {
       case Some((hd,tl)) =>
-        Pull.segment(hd.take(n)).flatMap {
-          case Left((_,rem)) => go(tl,rem)
-          case Right(_) => Pull.done
+        hd.size match {
+          case m if m <= n => Pull.output(c) >> go(tl, n - m)
+          case m => Pull.output(hd.take(n)) >> Pull.done
         }
       case None => Pull.done
     }
@@ -324,17 +325,17 @@ We implement this with a recursive function that returns a `Pull`. On each invoc
 s.pull.uncons.flatMap {
 ```
 
-Calling `s.pull` gives us a variety of methods which convert the stream to a `Pull`. We use `uncons` to pull the next segment from the stream, giving us a `Pull[F,Nothing,Option[(Segment[O,Unit],Stream[F,O])]]`. We then `flatMap` in to that pull to access the option.
+Calling `s.pull` gives us a variety of methods which convert the stream to a `Pull`. We use `uncons` to pull the next chunk from the stream, giving us a `Pull[F,Nothing,Option[(Chunk[O],Stream[F,O])]]`. We then `flatMap` in to that pull to access the option.
 
 ```scala
 case Some((hd,tl)) =>
-  Pull.segment(hd.take(n)).flatMap {
-    case Left((_,rem)) => go(tl,rem)
-    case Right(_) => Pull.done
+  hd.size match {
+    case m if m <= n => Pull.output(c) >> go(tl, n - m)
+    case m => Pull.output(hd.take(n)) >> Pull.done
   }
 ```
 
-If we receive a `Some`, we destructure the tuple as `hd: Segment[O,Unit]` and `tl: Stream[F,O]`. We call then call `hd.take(n)`, resulting in a `Segment[O,Either[(Unit,Long),Segment[O,Unit]]]`. We lift that segment in to `Pull` via `Pull.segment`, which binds the output type of the pull to `O`, resulting in the output elements of the segment being output to the resulting pull. We then `flatMap` the resulting pull, giving us access to the result of the `take` on the head segment. If the result was a left, we call `go` recursively on the tail stream with the new remainder. If it was a right, we're done.
+If we receive a `Some`, we destructure the tuple as `hd: Chunk[O]` and `tl: Stream[F,O]`. We then check the size of the head chunk, similar to the logic we used in the `scanChunksOpt` version. If the chunk size is less than or equal to the remaining elements to take, the chunk is output via `Pull.output` and we then recurse on the tail by calling `go`, passing the remaining elements to take. Otherwise we output the first `n` elements of the head and indicate we are done pulling.
 
 ```scala
 in => go(in,n).stream

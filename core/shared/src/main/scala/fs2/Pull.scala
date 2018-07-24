@@ -96,7 +96,7 @@ final class Pull[+F[_], +O, +R] private (private val free: FreeC[Algebra[Nothing
 
 object Pull {
 
-  private[fs2] def fromFreeC[F[_], O, R](free: FreeC[Algebra[F, O, ?], R]): Pull[F, O, R] =
+  @inline private[fs2] def fromFreeC[F[_], O, R](free: FreeC[Algebra[F, O, ?], R]): Pull[F, O, R] =
     new Pull(free.asInstanceOf[FreeC[Algebra[Nothing, Nothing, ?], R]])
 
   /** Result of `acquireCancellable`. */
@@ -177,7 +177,6 @@ object Pull {
         .translate(new (Algebra[F, O, ?] ~> Algebra[F, O2, ?]) {
           def apply[X](in: Algebra[F, O, X]): Algebra[F, O2, X] = in match {
             case o: Algebra.Output[F, O] => Algebra.Output(o.values.map(f))
-            case o: Algebra.Run[F, O, X] => Algebra.Run(o.values.map(f))
             case other                   => other.asInstanceOf[Algebra[F, O2, X]]
           }
         }))
@@ -187,12 +186,8 @@ object Pull {
     fromFreeC(Algebra.output1[F, O](o))
 
   /** Ouptuts a chunk of values. */
-  def outputChunk[F[x] >: Pure[x], O](os: Chunk[O]): Pull[F, O, Unit] =
-    output(Segment.chunk(os))
-
-  /** Ouptuts a segment of values. */
-  def output[F[x] >: Pure[x], O](os: Segment[O, Unit]): Pull[F, O, Unit] =
-    fromFreeC(Algebra.output[F, O](os))
+  def output[F[x] >: Pure[x], O](os: Chunk[O]): Pull[F, O, Unit] =
+    if (os.isEmpty) Pull.done else fromFreeC(Algebra.output[F, O](os))
 
   /** Pull that outputs nothing and has result of `r`. */
   def pure[F[x] >: Pure[x], R](r: R): Pull[F, Nothing, R] =
@@ -203,11 +198,27 @@ object Pull {
     new Pull(Algebra.raiseError[Nothing, Nothing, Nothing](err))
 
   /**
-    * Pull that outputs the specified segment and returns the result of the segment as the result
-    * of the pull. Less efficient than [[output]].
+    * Creates a pull from the supplied segment. The output values of the segment
+    * are output from the pull and the result value of the segment is the result of the pull.
+    *
+    * The segment is unfolded in chunks of up to the specified size.
+    *
+    * @param s segment to lift
+    * @param chunkSize max chunk size to emit before yielding execution downstream
+    * @param maxSteps max number of times to step the segment while waiting for a chunk to be output; upon reaching this limit, an empty chunk is emitted and execution is yielded downstream
     */
-  def segment[F[x] >: Pure[x], O, R](s: Segment[O, R]): Pull[F, O, R] =
-    fromFreeC(Algebra.segment[F, O, R](s))
+  def segment[F[x] >: Pure[x], O, R](s: Segment[O, R],
+                                     chunkSize: Int = 1024,
+                                     maxSteps: Long = 1024): Pull[F, O, R] = {
+    def loop(s: Segment[O, R]): Pull[F, O, R] =
+      s.force.splitAt(chunkSize, Some(maxSteps)) match {
+        case Left((r, chunks, rem)) =>
+          Pull.output(Chunk.concat(chunks.toList)) >> Pull.pure(r)
+        case Right((chunks, tl)) =>
+          Pull.output(Chunk.concat(chunks.toList)) >> loop(tl)
+      }
+    suspend(loop(s))
+  }
 
   /**
     * Returns a pull that evaluates the supplied by-name each time the pull is used,

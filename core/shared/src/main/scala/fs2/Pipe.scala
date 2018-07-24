@@ -9,16 +9,16 @@ object Pipe {
 
   /** Creates a [[Stepper]], which allows incrementally stepping a pure pipe. */
   def stepper[I, O](p: Pipe[Pure, I, O]): Stepper[I, O] = {
-    type ReadSegment[R] = Option[Segment[I, Unit]] => R
-    type Read[R] = FreeC[ReadSegment, R]
-    type UO = Option[(Segment[O, Unit], Stream[Read, O])]
+    type ReadChunk[R] = Option[Chunk[I]] => R
+    type Read[R] = FreeC[ReadChunk, R]
+    type UO = Option[(Chunk[O], Stream[Read, O])]
 
     def prompts: Stream[Read, I] =
       Stream
-        .eval[Read, Option[Segment[I, Unit]]](FreeC.Eval(identity))
+        .eval[Read, Option[Chunk[I]]](FreeC.Eval(identity))
         .flatMap {
-          case None          => Stream.empty
-          case Some(segment) => Stream.segment(segment).append(prompts)
+          case None        => Stream.empty
+          case Some(chunk) => Stream.chunk(chunk).append(prompts)
         }
 
     // Steps `s` without overhead of resource tracking
@@ -37,11 +37,11 @@ object Pipe {
         case FreeC.Pure(None)           => Stepper.Done
         case FreeC.Pure(Some((hd, tl))) => Stepper.Emits(hd, go(stepf(tl)))
         case FreeC.Fail(t)              => Stepper.Fail(t)
-        case bound: FreeC.Bind[ReadSegment, x, UO] =>
-          val fx = bound.fx.asInstanceOf[FreeC.Eval[ReadSegment, x]].fr
+        case bound: FreeC.Bind[ReadChunk, x, UO] =>
+          val fx = bound.fx.asInstanceOf[FreeC.Eval[ReadChunk, x]].fr
           Stepper.Await(
-            segment =>
-              try go(bound.f(Right(fx(segment))))
+            chunk =>
+              try go(bound.f(Right(fx(chunk))))
               catch { case NonFatal(t) => go(bound.f(Left(t))) })
         case e =>
           sys.error(
@@ -76,22 +76,21 @@ object Pipe {
     /** Pipe failed with the specified exception. */
     final case class Fail(err: Throwable) extends Step[Any, Nothing]
 
-    /** Pipe emitted a segment of elements. */
-    final case class Emits[A, B](segment: Segment[B, Unit], next: Stepper[A, B]) extends Step[A, B]
+    /** Pipe emitted a chunk of elements. */
+    final case class Emits[A, B](chunk: Chunk[B], next: Stepper[A, B]) extends Step[A, B]
 
     /** Pipe is awaiting input. */
-    final case class Await[A, B](receive: Option[Segment[A, Unit]] => Stepper[A, B])
-        extends Step[A, B]
+    final case class Await[A, B](receive: Option[Chunk[A]] => Stepper[A, B]) extends Step[A, B]
   }
 
   /** Queue based version of [[join]] that uses the specified queue. */
-  def joinQueued[F[_], A, B](q: F[Queue[F, Option[Segment[A, Unit]]]])(s: Stream[F, Pipe[F, A, B]])(
+  def joinQueued[F[_], A, B](q: F[Queue[F, Option[Chunk[A]]]])(s: Stream[F, Pipe[F, A, B]])(
       implicit F: Concurrent[F]): Pipe[F, A, B] =
     in => {
       for {
         done <- Stream.eval(async.signalOf(false))
         q <- Stream.eval(q)
-        b <- in.segments
+        b <- in.chunks
           .map(Some(_))
           .evalMap(q.enqueue1)
           .drain
@@ -99,7 +98,7 @@ object Pipe {
           .onFinalize(done.set(true))
           .merge(done.interrupt(s).flatMap { f =>
             f(q.dequeue.unNoneTerminate.flatMap { x =>
-              Stream.segment(x)
+              Stream.chunk(x)
             })
           })
       } yield b

@@ -10,14 +10,12 @@ private[fs2] sealed trait Algebra[F[_], O, R]
 
 private[fs2] object Algebra {
 
-  final case class Output[F[_], O](values: Segment[O, Unit]) extends Algebra[F, O, Unit]
-
-  final case class Run[F[_], O, R](values: Segment[O, R]) extends Algebra[F, O, R]
+  final case class Output[F[_], O](values: Chunk[O]) extends Algebra[F, O, Unit]
 
   final case class Step[F[_], X, O](
       stream: FreeC[Algebra[F, X, ?], Unit],
       scope: Option[Token]
-  ) extends Algebra[F, O, Option[(Segment[X, Unit], Token, FreeC[Algebra[F, X, ?], Unit])]]
+  ) extends Algebra[F, O, Option[(Chunk[X], Token, FreeC[Algebra[F, X, ?], Unit])]]
 
   final case class Eval[F[_], O, R](value: F[R]) extends AlgEffect[F, O, R]
 
@@ -61,14 +59,11 @@ private[fs2] object Algebra {
       self.asInstanceOf[AlgScope[F, O2, R]]
   }
 
-  def output[F[_], O](values: Segment[O, Unit]): FreeC[Algebra[F, O, ?], Unit] =
+  def output[F[_], O](values: Chunk[O]): FreeC[Algebra[F, O, ?], Unit] =
     FreeC.Eval[Algebra[F, O, ?], Unit](Output(values))
 
   def output1[F[_], O](value: O): FreeC[Algebra[F, O, ?], Unit] =
-    output(Segment.singleton(value))
-
-  def segment[F[_], O, R](values: Segment[O, R]): FreeC[Algebra[F, O, ?], R] =
-    FreeC.Eval[Algebra[F, O, ?], R](Run(values))
+    output(Chunk.singleton(value))
 
   def eval[F[_], O, R](value: F[R]): FreeC[Algebra[F, O, ?], R] =
     FreeC.Eval[Algebra[F, O, ?], R](Eval(value))
@@ -82,7 +77,7 @@ private[fs2] object Algebra {
 
   /**
     * Steps through the stream, providing either `uncons` or `stepLeg`.
-    * Yields to head in form of segment, then id of the scope that was active after step evaluated and tail of the `stream`.
+    * Yields to head in form of chunk, then id of the scope that was active after step evaluated and tail of the `stream`.
     *
     * @param stream             Stream to step
     * @param scopeId            If scope has to be changed before this step is evaluated, id of the scope must be supplied
@@ -90,9 +85,9 @@ private[fs2] object Algebra {
   private def step[F[_], O, X](
       stream: FreeC[Algebra[F, O, ?], Unit],
       scopeId: Option[Token]
-  ): FreeC[Algebra[F, X, ?], Option[(Segment[O, Unit], Token, FreeC[Algebra[F, O, ?], Unit])]] =
+  ): FreeC[Algebra[F, X, ?], Option[(Chunk[O], Token, FreeC[Algebra[F, O, ?], Unit])]] =
     FreeC
-      .Eval[Algebra[F, X, ?], Option[(Segment[O, Unit], Token, FreeC[Algebra[F, O, ?], Unit])]](
+      .Eval[Algebra[F, X, ?], Option[(Chunk[O], Token, FreeC[Algebra[F, O, ?], Unit])]](
         Algebra.Step[F, O, X](stream, scopeId))
 
   def stepLeg[F[_], O](
@@ -162,7 +157,7 @@ private[fs2] object Algebra {
     translate0[F, G, O](u, s, G.concurrentInstance)
 
   def uncons[F[_], X, O](s: FreeC[Algebra[F, O, ?], Unit])
-    : FreeC[Algebra[F, X, ?], Option[(Segment[O, Unit], FreeC[Algebra[F, O, ?], Unit])]] =
+    : FreeC[Algebra[F, X, ?], Option[(Chunk[O], FreeC[Algebra[F, O, ?], Unit])]] =
     step(s, None).map { _.map { case (h, _, t) => (h, t) } }
 
   /** Left-folds the output of a stream. */
@@ -177,7 +172,7 @@ private[fs2] object Algebra {
     compileLoop[F, O](scope, stream).flatMap {
       case Some((output, scope, tail)) =>
         try {
-          val b = output.fold(init)(g).force.run._2
+          val b = output.foldLeft(init)(g)
           compileScope(scope, tail, b)(g)
         } catch {
           case NonFatal(err) =>
@@ -191,10 +186,10 @@ private[fs2] object Algebra {
       scope: CompileScope[F, O],
       stream: FreeC[Algebra[F, O, ?], Unit]
   )(implicit F: Sync[F])
-    : F[Option[(Segment[O, Unit], CompileScope[F, O], FreeC[Algebra[F, O, ?], Unit])]] = {
+    : F[Option[(Chunk[O], CompileScope[F, O], FreeC[Algebra[F, O, ?], Unit])]] = {
 
     case class Done[X](scope: CompileScope[F, O]) extends R[X]
-    case class Out[X](head: Segment[X, Unit],
+    case class Out[X](head: Chunk[X],
                       scope: CompileScope[F, O],
                       tail: FreeC[Algebra[F, X, ?], Unit])
         extends R[X]
@@ -247,19 +242,6 @@ private[fs2] object Algebra {
               interruptGuard(
                 F.pure(Out(output.values, scope, FreeC.Pure(()).transformWith(f)))
               )
-
-            case run: Algebra.Run[F, X, r] =>
-              interruptGuard {
-                val (h, t) =
-                  // Values hardcoded here until we figure out how to properly expose them
-                  run.values.force.splitAt(1024, Some(10000)) match {
-                    case Left((r, chunks, _)) => (chunks, FreeC.Pure(r).transformWith(f))
-                    case Right((chunks, tail)) =>
-                      (chunks, segment(tail).transformWith(f))
-                  }
-
-                F.pure(Out(Segment.catenatedChunks(h), scope, t))
-              }
 
             case u: Algebra.Step[F, y, X] =>
               // if scope was specified in step, try to find it, otherwise use the current scope.
@@ -411,21 +393,9 @@ private[fs2] object Algebra {
               case Left(err) => translateStep(fK, f(Left(err)), concurrent)
             }
 
-          case run: Algebra.Run[F, X, r] =>
-            Algebra.segment[G, X, r](run.values).transformWith {
-              case Right(v) =>
-                // Cast is safe here, as at this point the evaluation of this Step will end
-                // and the remainder of the free will be passed as a result in Bind. As such
-                // next Step will have this to evaluate, and will try to translate again.
-                f(Right(v))
-                  .asInstanceOf[FreeC[Algebra[G, X, ?], Unit]]
-              case Left(err) => translateStep(fK, f(Left(err)), concurrent)
-            }
-
           case step: Algebra.Step[F, x, X] =>
             FreeC
-              .Eval[Algebra[G, X, ?],
-                    Option[(Segment[x, Unit], Token, FreeC[Algebra[G, x, ?], Unit])]](
+              .Eval[Algebra[G, X, ?], Option[(Chunk[x], Token, FreeC[Algebra[G, x, ?], Unit])]](
                 Algebra.Step[G, x, X](
                   stream = translateStep[F, G, x](fK, step.stream, concurrent),
                   scope = step.scope
@@ -469,15 +439,9 @@ private[fs2] object Algebra {
               translate0(fK, f(r), concurrent)
             }
 
-          case run: Algebra.Run[F, O, r] =>
-            Algebra.segment[G, O, r](run.values).transformWith { r =>
-              translate0(fK, f(r), concurrent)
-            }
-
           case step: Algebra.Step[F, x, O] =>
             FreeC
-              .Eval[Algebra[G, O, ?],
-                    Option[(Segment[x, Unit], Token, FreeC[Algebra[G, x, ?], Unit])]](
+              .Eval[Algebra[G, O, ?], Option[(Chunk[x], Token, FreeC[Algebra[G, x, ?], Unit])]](
                 Algebra.Step[G, x, O](
                   stream = translateStep[F, G, x](fK, step.stream, concurrent),
                   scope = step.scope

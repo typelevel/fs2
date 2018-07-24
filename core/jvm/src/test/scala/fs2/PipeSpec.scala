@@ -70,28 +70,28 @@ class PipeSpec extends Fs2Spec {
       assert(sizeV.forall(_ <= n0.get) && sizeV.combineAll == s.get.toVector.size)
     }
 
-    "segmentN.fewer" in forAll { (s: PureStream[Int], n0: SmallPositive) =>
-      val segmentedV = s.get.segmentN(n0.get, true).toVector
-      val unsegmentedV = s.get.toVector
+    "chunkN.fewer" in forAll { (s: PureStream[Int], n0: SmallPositive) =>
+      val chunkedV = s.get.chunkN(n0.get, true).toVector
+      val unchunkedV = s.get.toVector
       assert {
         // All but last list have n0 values
-        segmentedV.dropRight(1).forall(_.force.toChunk.size == n0.get) &&
+        chunkedV.dropRight(1).forall(_.size == n0.get) &&
         // Last list has at most n0 values
-        segmentedV.lastOption.fold(true)(_.force.toChunk.size <= n0.get) &&
-        // Flattened sequence is equal to vector without segmenting
-        segmentedV.foldLeft(Vector.empty[Int])((v, l) => v ++ l.force.toVector) == unsegmentedV
+        chunkedV.lastOption.fold(true)(_.size <= n0.get) &&
+        // Flattened sequence is equal to vector without chunking
+        chunkedV.foldLeft(Vector.empty[Int])((v, l) => v ++ l.toVector) == unchunkedV
       }
     }
 
-    "segmentN.no-fewer" in forAll { (s: PureStream[Int], n0: SmallPositive) =>
-      val segmentedV = s.get.segmentN(n0.get, false).toVector
-      val unsegmentedV = s.get.toVector
-      val expectedSize = unsegmentedV.size - (unsegmentedV.size % n0.get)
+    "chunkN.no-fewer" in forAll { (s: PureStream[Int], n0: SmallPositive) =>
+      val chunkedV = s.get.chunkN(n0.get, false).toVector
+      val unchunkedV = s.get.toVector
+      val expectedSize = unchunkedV.size - (unchunkedV.size % n0.get)
       assert {
         // All lists have n0 values
-        segmentedV.forall(_.force.toChunk.size == n0.get) &&
-        // Flattened sequence is equal to vector without segmenting, minus "left over" values that could not fit in a segment
-        segmentedV.foldLeft(Vector.empty[Int])((v, l) => v ++ l.force.toVector) == unsegmentedV
+        chunkedV.forall(_.size == n0.get) &&
+        // Flattened sequence is equal to vector without chunking, minus "left over" values that could not fit in a chunk
+        chunkedV.foldLeft(Vector.empty[Int])((v, l) => v ++ l.toVector) == unchunkedV
           .take(expectedSize)
       }
     }
@@ -201,19 +201,19 @@ class PipeSpec extends Fs2Spec {
 
     "filter (2)" in forAll { (s: PureStream[Double]) =>
       val predicate = (i: Double) => i - i.floor < 0.5
-      val s2 = s.get.mapSegments(s => Chunk.doubles(s.force.toArray).toSegment)
+      val s2 = s.get.mapChunks(c => Chunk.doubles(c.toArray))
       runLog(s2.filter(predicate)) shouldBe runLog(s2).filter(predicate)
     }
 
     "filter (3)" in forAll { (s: PureStream[Byte]) =>
       val predicate = (b: Byte) => b < 0
-      val s2 = s.get.mapSegments(s => Chunk.bytes(s.force.toArray).toSegment)
+      val s2 = s.get.mapChunks(c => Chunk.bytes(c.toArray))
       runLog(s2.filter(predicate)) shouldBe runLog(s2).filter(predicate)
     }
 
     "filter (4)" in forAll { (s: PureStream[Boolean]) =>
       val predicate = (b: Boolean) => !b
-      val s2 = s.get.mapSegments(s => Chunk.booleans(s.force.toArray).toSegment)
+      val s2 = s.get.mapChunks(c => Chunk.booleans(c.toArray))
       runLog(s2.filter(predicate)) shouldBe runLog(s2).filter(predicate)
     }
 
@@ -258,9 +258,9 @@ class PipeSpec extends Fs2Spec {
       val f = (i: Int) => i % n.get
       val s1 = s.get.groupAdjacentBy(f)
       val s2 = s.get.map(f).changes
-      runLog(s1.map(_._2)).flatMap(_.force.toVector) shouldBe runLog(s.get)
+      runLog(s1.map(_._2)).flatMap(_.toVector) shouldBe runLog(s.get)
       runLog(s1.map(_._1)) shouldBe runLog(s2)
-      runLog(s1.map { case (k, vs) => vs.force.toVector.forall(f(_) == k) }) shouldBe runLog(
+      runLog(s1.map { case (k, vs) => vs.toVector.forall(f(_) == k) }) shouldBe runLog(
         s2.map(_ => true))
     }
 
@@ -274,8 +274,8 @@ class PipeSpec extends Fs2Spec {
         .dropRight(1)
     }
 
-    "mapSegments" in forAll { (s: PureStream[Int]) =>
-      runLog(s.get.mapSegments(identity).segments) shouldBe runLog(s.get.segments)
+    "mapChunks" in forAll { (s: PureStream[Int]) =>
+      runLog(s.get.mapChunks(identity).chunks) shouldBe runLog(s.get.chunks)
     }
 
     "performance of multi-stage pipeline" in {
@@ -284,7 +284,7 @@ class PipeSpec extends Fs2Spec {
       val s = (v.map(Stream.emits(_)): Vector[Stream[Pure, Int]]).reduce(_ ++ _)
       val s2 =
         (v2.map(Stream.emits(_)): Vector[Stream[Pure, Int]]).reduce(_ ++ _)
-      val id = (_: Stream[Pure, Int]).mapSegments(s => s)
+      val id = (_: Stream[Pure, Int]).mapChunks(identity)
       runLog(s.through(id).through(id).through(id).through(id).through(id)) shouldBe Vector()
       runLog(s2.through(id).through(id).through(id).through(id).through(id)) shouldBe Vector
         .fill(1000)(0)
@@ -346,7 +346,7 @@ class PipeSpec extends Fs2Spec {
             .intersperse(Chunk.singleton(0))
             .flatMap(Stream.chunk)
             .split(_ == 0)
-            .map(_.force.toVector)
+            .map(_.toVector)
             .filter(_.nonEmpty)
         } shouldBe
           s2.chunkLimit(n.get).filter(_.nonEmpty).map(_.toVector).toVector
@@ -354,20 +354,19 @@ class PipeSpec extends Fs2Spec {
     }
 
     "split (2)" in {
-      Stream(1, 2, 0, 0, 3, 0, 4).split(_ == 0).toVector.map(_.force.toVector) shouldBe Vector(
-        Vector(1, 2),
-        Vector(),
-        Vector(3),
-        Vector(4))
-      Stream(1, 2, 0, 0, 3, 0).split(_ == 0).toVector.map(_.force.toVector) shouldBe Vector(
-        Vector(1, 2),
-        Vector(),
-        Vector(3))
-      Stream(1, 2, 0, 0, 3, 0, 0).split(_ == 0).toVector.map(_.force.toVector) shouldBe Vector(
-        Vector(1, 2),
-        Vector(),
-        Vector(3),
-        Vector())
+      Stream(1, 2, 0, 0, 3, 0, 4).split(_ == 0).toVector.map(_.toVector) shouldBe Vector(Vector(1,
+                                                                                                2),
+                                                                                         Vector(),
+                                                                                         Vector(3),
+                                                                                         Vector(4))
+      Stream(1, 2, 0, 0, 3, 0).split(_ == 0).toVector.map(_.toVector) shouldBe Vector(Vector(1, 2),
+                                                                                      Vector(),
+                                                                                      Vector(3))
+      Stream(1, 2, 0, 0, 3, 0, 0).split(_ == 0).toVector.map(_.toVector) shouldBe Vector(Vector(1,
+                                                                                                2),
+                                                                                         Vector(),
+                                                                                         Vector(3),
+                                                                                         Vector())
     }
 
     "take" in forAll { (s: PureStream[Int], negate: Boolean, n0: SmallNonnegative) =>
@@ -432,14 +431,13 @@ class PipeSpec extends Fs2Spec {
       runLog(s.get.tail) shouldBe runLog(s.get).drop(1)
     }
 
-    "take.segments" in {
+    "take.chunks" in {
       val s = Stream(1, 2) ++ Stream(3, 4)
-      runLog(s.take(3).segments.map(_.force.toVector)) shouldBe Vector(Vector(1, 2), Vector(3))
+      runLog(s.take(3).chunks.map(_.toVector)) shouldBe Vector(Vector(1, 2), Vector(3))
     }
 
     "unNone" in forAll { (s: PureStream[Option[Int]]) =>
-      runLog(s.get.unNone.chunks.filter(_.nonEmpty)) shouldBe runLog(
-        s.get.filter(_.isDefined).map(_.get).chunks)
+      runLog(s.get.unNone.chunks) shouldBe runLog(s.get.filter(_.isDefined).map(_.get).chunks)
     }
 
     "zipWithIndex" in forAll { (s: PureStream[Int]) =>
@@ -651,10 +649,10 @@ class PipeSpec extends Fs2Spec {
             stepper.step match {
               case Stepper.Done      => Pull.done
               case Stepper.Fail(err) => Pull.raiseError(err)
-              case Stepper.Emits(segment, next) =>
+              case Stepper.Emits(chunk, next) =>
                 last match {
                   case Some(a) =>
-                    Pull.output(segment.map { o =>
+                    Pull.output(chunk.map { o =>
                       (o, a)
                     }) >> go(last, next, s)
                   case None => go(last, next, s)
@@ -662,7 +660,7 @@ class PipeSpec extends Fs2Spec {
               case Stepper.Await(receive) =>
                 s.pull.uncons1.flatMap {
                   case Some(((i, a), s)) =>
-                    go(Some(a), receive(Some(Segment.singleton(i))), s)
+                    go(Some(a), receive(Some(Chunk.singleton(i))), s)
                   case None => go(last, receive(None), s)
                 }
             }

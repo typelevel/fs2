@@ -7,15 +7,15 @@ object Pipe2 {
 
   /** Creates a [[Stepper]], which allows incrementally stepping a pure `Pipe2`. */
   def stepper[I, I2, O](p: Pipe2[Pure, I, I2, O]): Stepper[I, I2, O] = {
-    type ReadSegment[R] =
-      Either[Option[Segment[I, Unit]] => R, Option[Segment[I2, Unit]] => R]
-    type Read[R] = FreeC[ReadSegment, R]
-    type UO = Option[(Segment[O, Unit], Stream[Read, O])]
+    type ReadChunk[R] =
+      Either[Option[Chunk[I]] => R, Option[Chunk[I2]] => R]
+    type Read[R] = FreeC[ReadChunk, R]
+    type UO = Option[(Chunk[O], Stream[Read, O])]
 
-    def prompts[X](id: ReadSegment[Option[Segment[X, Unit]]]): Stream[Read, X] =
-      Stream.eval[Read, Option[Segment[X, Unit]]](FreeC.Eval(id)).flatMap {
-        case None          => Stream.empty
-        case Some(segment) => Stream.segment(segment).append(prompts(id))
+    def prompts[X](id: ReadChunk[Option[Chunk[X]]]): Stream[Read, X] =
+      Stream.eval[Read, Option[Chunk[X]]](FreeC.Eval(id)).flatMap {
+        case None        => Stream.empty
+        case Some(chunk) => Stream.chunk(chunk).append(prompts(id))
       }
     def promptsL: Stream[Read, I] = prompts[I](Left(identity))
     def promptsR: Stream[Read, I2] = prompts[I2](Right(identity))
@@ -36,19 +36,19 @@ object Pipe2 {
         case FreeC.Pure(None)           => Stepper.Done
         case FreeC.Pure(Some((hd, tl))) => Stepper.Emits(hd, go(stepf(tl)))
         case FreeC.Fail(t)              => Stepper.Fail(t)
-        case bound: FreeC.Bind[ReadSegment, _, UO] =>
-          val f = bound.asInstanceOf[FreeC.Bind[ReadSegment, Any, UO]].f
-          val fx = bound.fx.asInstanceOf[FreeC.Eval[ReadSegment, UO]].fr
+        case bound: FreeC.Bind[ReadChunk, _, UO] =>
+          val f = bound.asInstanceOf[FreeC.Bind[ReadChunk, Any, UO]].f
+          val fx = bound.fx.asInstanceOf[FreeC.Eval[ReadChunk, UO]].fr
           fx match {
             case Left(recv) =>
               Stepper.AwaitL(
-                segment =>
-                  try go(f(Right(recv(segment))))
+                chunk =>
+                  try go(f(Right(recv(chunk))))
                   catch { case NonFatal(t) => go(f(Left(t))) })
             case Right(recv) =>
               Stepper.AwaitR(
-                segment =>
-                  try go(f(Right(recv(segment))))
+                chunk =>
+                  try go(f(Right(recv(chunk))))
                   catch { case NonFatal(t) => go(f(Left(t))) })
           }
         case e =>
@@ -87,16 +87,16 @@ object Pipe2 {
     /** Pipe failed with the specified exception. */
     final case class Fail(err: Throwable) extends Step[Any, Any, Nothing]
 
-    /** Pipe emitted a segment of elements. */
-    final case class Emits[I, I2, O](segment: Segment[O, Unit], next: Stepper[I, I2, O])
+    /** Pipe emitted a chunk of elements. */
+    final case class Emits[I, I2, O](chunk: Chunk[O], next: Stepper[I, I2, O])
         extends Step[I, I2, O]
 
     /** Pipe is awaiting input from the left. */
-    final case class AwaitL[I, I2, O](receive: Option[Segment[I, Unit]] => Stepper[I, I2, O])
+    final case class AwaitL[I, I2, O](receive: Option[Chunk[I]] => Stepper[I, I2, O])
         extends Step[I, I2, O]
 
     /** Pipe is awaiting input from the right. */
-    final case class AwaitR[I, I2, O](receive: Option[Segment[I2, Unit]] => Stepper[I, I2, O])
+    final case class AwaitR[I, I2, O](receive: Option[Chunk[I2]] => Stepper[I, I2, O])
         extends Step[I, I2, O]
   }
 }
