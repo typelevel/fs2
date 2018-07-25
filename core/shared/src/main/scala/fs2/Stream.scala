@@ -2187,48 +2187,65 @@ object Stream {
       Stream.eval(async.semaphore(0)).flatMap { doneSem =>
         Stream.eval(async.promise[F, Unit]).flatMap { interruptL =>
           Stream.eval(async.promise[F, Unit]).flatMap { interruptR =>
-            Stream.eval(async.promise[F, Throwable]).flatMap { interruptY =>
-              Stream
-                .eval(async.unboundedQueue[F, Option[(F[Unit], Segment[O2, Unit])]])
-                .flatMap { outQ => // note that the queue actually contains up to 2 max elements thanks to semaphores guarding each side.
-                  def runUpstream(s: Stream[F, O2], interrupt: Promise[F, Unit]): F[Unit] =
-                    async.semaphore(1).flatMap { guard =>
-                      s.segments
-                        .interruptWhen(interrupt.get.attempt)
-                        .evalMap { segment =>
-                          guard.decrement >>
-                            outQ.enqueue1(Some((guard.increment, segment)))
+            Stream.eval(async.promise[F, Option[Throwable]]).flatMap { doneL =>
+              Stream.eval(async.promise[F, Option[Throwable]]).flatMap { doneR =>
+                Stream.eval(async.promise[F, Unit]).flatMap { interruptY =>
+                  Stream
+                    .eval(async.unboundedQueue[F, Option[(F[Unit], Segment[O2, Unit])]])
+                    .flatMap { outQ => // note that the queue actually contains up to 2 max elements thanks to semaphores guarding each side.
+                      def runUpstream(s: Stream[F, O2],
+                                      interrupt: Promise[F, Unit],
+                                      done: Promise[F, Option[Throwable]]): F[Unit] =
+                        async.semaphore(1).flatMap { guard =>
+                          s.segments
+                            .interruptWhen(interrupt.get.attempt)
+                            .evalMap { segment =>
+                              guard.decrement >>
+                                outQ.enqueue1(Some((guard.increment, segment)))
+                            }
+                            .compile
+                            .drain
+                            .attempt
+                            .flatMap {
+                              case Right(_) =>
+                                done.complete(None) >>
+                                  doneSem.increment >>
+                                  doneSem.decrementBy(2) >>
+                                  async.fork(outQ.enqueue1(None))
+
+                              case Left(err) =>
+                                done.complete(Some(err)) >>
+                                  interruptY.complete(()) >>
+                                  doneSem.increment
+                            }
                         }
-                        .compile
-                        .drain
-                        .attempt
-                        .flatMap {
-                          case Right(_) =>
-                            doneSem.increment >>
-                              doneSem.decrementBy(2) >>
-                              async.fork(outQ.enqueue1(None))
-                          case Left(err) =>
-                            interruptY.complete(err) >>
-                              doneSem.increment
-                        }
+
+                      Stream.eval(async.fork(runUpstream(self, interruptL, doneL))) >>
+                        Stream.eval(async.fork(runUpstream(that, interruptR, doneR))) >>
+                        outQ.dequeue.unNoneTerminate
+                          .flatMap {
+                            case (signal, segment) =>
+                              Stream.eval(signal) >>
+                                Stream.segment(segment)
+                          }
+                          .interruptWhen(interruptY.get.map(Right(_): Either[Throwable, Unit]))
+                          .onFinalize {
+                            interruptL.complete(()) >>
+                              interruptR.complete(()) >>
+                              doneL.get.flatMap { l =>
+                                doneR.get.flatMap { r =>
+                                  CompositeFailure.fromList(l.toList ++ r.toList) match {
+                                    case Some(err) => F.raiseError(err)
+                                    case None      => F.pure(())
+                                  }
+                                }
+                              }
+                          }
+
                     }
 
-                  Stream.eval(async.fork(runUpstream(self, interruptL))) >>
-                    Stream.eval(async.fork(runUpstream(that, interruptR))) >>
-                    outQ.dequeue.unNoneTerminate
-                      .flatMap {
-                        case (signal, segment) =>
-                          Stream.eval(signal) >>
-                            Stream.segment(segment)
-                      }
-                      .interruptWhen(interruptY.get.map(Left(_): Either[Throwable, Unit]))
-                      .onFinalize {
-                        interruptL.complete(()) >>
-                          interruptR.complete(())
-                      }
-
                 }
-
+              }
             }
           }
         }

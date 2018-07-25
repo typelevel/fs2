@@ -65,7 +65,6 @@ class MergeJoinSpec extends Fs2Spec {
     }
 
     "merge (left/right failure)" in {
-      pending
       forAll { (s1: PureStream[Int], f: Failure) =>
         an[Err.type] should be thrownBy {
           s1.get.merge(f.get).compile.drain.unsafeRunSync()
@@ -74,7 +73,6 @@ class MergeJoinSpec extends Fs2Spec {
     }
 
     "merge (left/right failure) never-ending flatMap, failure after emit" in {
-      pending
       forAll { (s1: PureStream[Int], f: Failure) =>
         an[Err.type] should be thrownBy {
           s1.get
@@ -93,7 +91,6 @@ class MergeJoinSpec extends Fs2Spec {
     }
 
     "merge (left/right failure) constant flatMap, failure after emit" in {
-      pending
       forAll { (s1: PureStream[Int], f: Failure) =>
         an[Err.type] should be thrownBy {
           s1.get
@@ -109,6 +106,37 @@ class MergeJoinSpec extends Fs2Spec {
             .unsafeRunSync()
         }
       }
+    }
+
+    "merge - run finalizers of outer streams first" in {
+      val hang = Stream.repeatEval(IO.async[Unit] { cb =>
+        ()
+      }) // never call `cb`!
+
+      Stream
+        .eval(async.signalOf[IO, Boolean](false))
+        .flatMap { halt =>
+          val bracketed =
+            Stream.bracket(IO(new java.util.concurrent.atomic.AtomicBoolean(true)))(
+              Stream(_),
+              b => IO(b.set(false))
+            )
+
+          bracketed
+            .flatMap { b =>
+              hang
+                .onFinalize(
+                  IO.sleep(100.millis) >>
+                    (if (b.get) IO(()) else IO.raiseError(Err))
+                )
+                .mergeHaltBoth(Stream.eval(halt.set(true)))
+            }
+            .interruptWhen(halt)
+        }
+        .compile
+        .drain
+        .flatMap(_ => IO.sleep(200.millis))
+        .unsafeRunSync()
     }
 
     "hanging awaits" - {
