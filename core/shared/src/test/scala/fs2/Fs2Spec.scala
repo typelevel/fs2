@@ -26,12 +26,12 @@ trait Fs2SpecLike extends Suite
   with GeneratorDrivenPropertyChecks
   with Matchers {
 
-  implicit val timeout: FiniteDuration = 600.seconds
+  implicit val timeout: FiniteDuration = 60.seconds
 
   lazy val verbose: Boolean = sys.props.get("fs2.test.verbose").isDefined
 
   implicit override val generatorDrivenConfig: PropertyCheckConfiguration =
-    PropertyCheckConfiguration(minSuccessful = 10000, workers = 1)
+    PropertyCheckConfiguration(minSuccessful = 25, workers = 1)
 
   override def runTest(testName: String, args: Args): Status = {
     if (verbose) println("Starting " + testName)
