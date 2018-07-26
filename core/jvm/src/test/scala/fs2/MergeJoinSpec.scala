@@ -27,41 +27,32 @@ class MergeJoinSpec extends Fs2Spec {
       runLog { Stream.empty.merge(s1.get.covary[IO]) } shouldBe runLog(s1.get)
     }
 
-    "merge/join consistency" in forAll { (s1: PureStream[Int], s2: PureStream[Int]) =>
-      runLog { s1.get.covary[IO].merge(s2.get) }.toSet shouldBe
-        runLog { Stream(s1.get.covary[IO], s2.get.covary[IO]).join(2) }.toSet
-    }
+    "join - run finalizers of inner streams first" in {
+      val prg = Stream
+        .eval(async.signalOf[IO, Boolean](false))
+        .flatMap { halt =>
+          val bracketed =
+            Stream.bracket(IO(new java.util.concurrent.atomic.AtomicBoolean(true)))(
+              Stream(_),
+              b => IO(b.set(false))
+            )
 
-    "join (1)" in forAll { (s1: PureStream[Int]) =>
-      runLog { s1.get.covary[IO].map(Stream.emit(_).covary[IO]).join(1) }.toSet shouldBe runLog {
-        s1.get
-      }.toSet
-    }
+          val s: Stream[IO, Stream[IO, Unit]] = bracketed.flatMap { b =>
+            val s1 = Stream
+              .eval(IO.never)
+              .onFinalize(
+                IO.sleep(100.millis) >>
+                  (if (b.get) IO.raiseError(Err) else IO(()))
+              )
+            val s2 = Stream.eval(halt.set(true))
 
-    "join (2)" in forAll { (s1: PureStream[Int], n: SmallPositive) =>
-      runLog { s1.get.covary[IO].map(Stream.emit(_).covary[IO]).join(n.get) }.toSet shouldBe
-        runLog { s1.get }.toSet
-    }
+            Stream(s1, s2).covary[IO]
+          }
 
-    "join (3)" in forAll { (s1: PureStream[PureStream[Int]], n: SmallPositive) =>
-      runLog { s1.get.map(_.get.covary[IO]).covary[IO].join(n.get) }.toSet shouldBe
-        runLog { s1.get.flatMap(_.get) }.toSet
-    }
+          s.joinUnbounded.interruptWhen(halt)
+        }
 
-    "join - resources acquired in outer stream are released after inner streams complete" in {
-      val bracketed =
-        Stream.bracket(IO(new java.util.concurrent.atomic.AtomicBoolean(true)))(
-          Stream(_),
-          b => IO(b.set(false)))
-      // Starts an inner stream which fails if the resource b is finalized
-      val s: Stream[IO, Stream[IO, Unit]] = bracketed.map { b =>
-        Stream
-          .eval(IO(b.get))
-          .flatMap(b => if (b) Stream(()) else Stream.raiseError(Err))
-          .repeat
-          .take(10000)
-      }
-      s.joinUnbounded.compile.drain.unsafeRunSync()
+      an[Err.type] should be thrownBy runLog(prg)
     }
 
     "merge (left/right failure)" in {
@@ -108,12 +99,8 @@ class MergeJoinSpec extends Fs2Spec {
       }
     }
 
-    "merge - run finalizers of outer streams first" in {
-      val hang = Stream.repeatEval(IO.async[Unit] { cb =>
-        ()
-      }) // never call `cb`!
-
-      Stream
+    "merge - run finalizers of inner streams first" in {
+      val prg = Stream
         .eval(async.signalOf[IO, Boolean](false))
         .flatMap { halt =>
           val bracketed =
@@ -124,19 +111,18 @@ class MergeJoinSpec extends Fs2Spec {
 
           bracketed
             .flatMap { b =>
-              hang
+              Stream
+                .eval(IO.never)
                 .onFinalize(
                   IO.sleep(100.millis) >>
-                    (if (b.get) IO(()) else IO.raiseError(Err))
+                    (if (b.get) IO.raiseError(Err) else IO(()))
                 )
                 .mergeHaltBoth(Stream.eval(halt.set(true)))
             }
             .interruptWhen(halt)
         }
-        .compile
-        .drain
-        .flatMap(_ => IO.sleep(200.millis))
-        .unsafeRunSync()
+
+      an[Err.type] should be thrownBy runLog(prg)
     }
 
     "hanging awaits" - {
