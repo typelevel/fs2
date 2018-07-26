@@ -12,6 +12,8 @@ trait TestUtilPlatform {
   implicit val executionContext: ExecutionContext =
     ExecutionContext.Implicits.global
 
+  def isJVM: Boolean = true
+
   def runLog[A](s: Stream[IO, A])(implicit timeout: FiniteDuration): Vector[A] =
     s.compile.toVector
       .unsafeRunTimed(timeout)
