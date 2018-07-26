@@ -30,7 +30,7 @@ class TopicSpec extends Fs2Spec {
       val result = (Stream
         .range(0, subs)
         .map(idx => subscriber.map(idx -> _)) ++ publisher.drain)
-        .join(subs + 1)
+        .parJoin(subs + 1)
         .compile
         .toVector
         .unsafeRunSync()
@@ -66,7 +66,7 @@ class TopicSpec extends Fs2Spec {
       val result = (Stream
         .range(0, subs)
         .map(idx => subscriber.map(idx -> _)) ++ publisher.drain)
-        .join(subs + 1)
+        .parJoin(subs + 1)
         .compile
         .toVector
         .unsafeRunSync()

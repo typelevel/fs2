@@ -49,7 +49,7 @@ class SocketSpec extends Fs2Spec with BeforeAndAfterAll {
                 .to(socket.writes())
                 .onFinalize(socket.endOfOutput)
             }
-        }.joinUnbounded
+        }.parJoinUnbounded
       }
 
       val clients: Stream[IO, Array[Byte]] = {
@@ -67,11 +67,11 @@ class SocketSpec extends Fs2Spec with BeforeAndAfterAll {
               }
             }
           }
-          .join(10)
+          .parJoin(10)
       }
 
       val result = Stream(echoServer.drain, clients)
-        .join(2)
+        .parJoin(2)
         .take(clientCount)
         .compile
         .toVector
@@ -102,7 +102,7 @@ class SocketSpec extends Fs2Spec with BeforeAndAfterAll {
                   .onFinalize(socket.endOfOutput)
               })
           }
-          .joinUnbounded
+          .parJoinUnbounded
           .drain
 
       val sizes = Vector(1, 2, 3, 4, 3, 2, 1)
@@ -117,7 +117,7 @@ class SocketSpec extends Fs2Spec with BeforeAndAfterAll {
 
       val result =
         Stream(junkServer, klient)
-          .join(2)
+          .parJoin(2)
           .take(sizes.length)
           .compile
           .toVector

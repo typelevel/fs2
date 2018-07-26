@@ -27,28 +27,28 @@ class MergeJoinSpec extends Fs2Spec {
       runLog { Stream.empty.merge(s1.get.covary[IO]) } shouldBe runLog(s1.get)
     }
 
-    "merge/join consistency" in forAll { (s1: PureStream[Int], s2: PureStream[Int]) =>
+    "merge/parJoin consistency" in forAll { (s1: PureStream[Int], s2: PureStream[Int]) =>
       runLog { s1.get.covary[IO].merge(s2.get) }.toSet shouldBe
-        runLog { Stream(s1.get.covary[IO], s2.get).join(2) }.toSet
+        runLog { Stream(s1.get.covary[IO], s2.get).parJoin(2) }.toSet
     }
 
-    "join (1)" in forAll { (s1: PureStream[Int]) =>
-      runLog { s1.get.covary[IO].map(Stream.emit(_).covary[IO]).join(1) }.toSet shouldBe runLog {
+    "parJoin (1)" in forAll { (s1: PureStream[Int]) =>
+      runLog { s1.get.covary[IO].map(Stream.emit(_).covary[IO]).parJoin(1) }.toSet shouldBe runLog {
         s1.get
       }.toSet
     }
 
-    "join (2)" in forAll { (s1: PureStream[Int], n: SmallPositive) =>
-      runLog { s1.get.covary[IO].map(Stream.emit(_).covary[IO]).join(n.get) }.toSet shouldBe
+    "parJoin (2)" in forAll { (s1: PureStream[Int], n: SmallPositive) =>
+      runLog { s1.get.covary[IO].map(Stream.emit(_).covary[IO]).parJoin(n.get) }.toSet shouldBe
         runLog { s1.get }.toSet
     }
 
-    "join (3)" in forAll { (s1: PureStream[PureStream[Int]], n: SmallPositive) =>
-      runLog { s1.get.map(_.get.covary[IO]).covary[IO].join(n.get) }.toSet shouldBe
+    "parJoin (3)" in forAll { (s1: PureStream[PureStream[Int]], n: SmallPositive) =>
+      runLog { s1.get.map(_.get.covary[IO]).covary[IO].parJoin(n.get) }.toSet shouldBe
         runLog { s1.get.flatMap(_.get) }.toSet
     }
 
-    "join - resources acquired in outer stream are released after inner streams complete" in {
+    "parJoin - resources acquired in outer stream are released after inner streams complete" in {
       val bracketed =
         Stream.bracket(IO(new java.util.concurrent.atomic.AtomicBoolean(true)))(b =>
           IO(b.set(false)))
@@ -60,7 +60,7 @@ class MergeJoinSpec extends Fs2Spec {
           .repeat
           .take(10000)
       }
-      s.joinUnbounded.compile.drain.unsafeRunSync()
+      s.parJoinUnbounded.compile.drain.unsafeRunSync()
     }
 
     "merge (left/right failure)" in {
@@ -127,17 +127,17 @@ class MergeJoinSpec extends Fs2Spec {
         runLog(hang3.merge(full).take(1)) shouldBe Vector(42)
       }
 
-      "join" in {
-        runLog(Stream(full, hang).join(10).take(1)) shouldBe Vector(42)
-        runLog(Stream(full, hang2).join(10).take(1)) shouldBe Vector(42)
-        runLog(Stream(full, hang3).join(10).take(1)) shouldBe Vector(42)
-        runLog(Stream(hang3, hang2, full).join(10).take(1)) shouldBe Vector(42)
+      "parJoin" in {
+        runLog(Stream(full, hang).parJoin(10).take(1)) shouldBe Vector(42)
+        runLog(Stream(full, hang2).parJoin(10).take(1)) shouldBe Vector(42)
+        runLog(Stream(full, hang3).parJoin(10).take(1)) shouldBe Vector(42)
+        runLog(Stream(hang3, hang2, full).parJoin(10).take(1)) shouldBe Vector(42)
       }
     }
 
-    "join - outer-failed" in {
+    "parJoin - outer-failed" in {
       an[Err] should be thrownBy {
-        runLog(Stream(Stream.sleep_[IO](1 minute), Stream.raiseError(new Err)).joinUnbounded)
+        runLog(Stream(Stream.sleep_[IO](1 minute), Stream.raiseError(new Err)).parJoinUnbounded)
       }
     }
   }

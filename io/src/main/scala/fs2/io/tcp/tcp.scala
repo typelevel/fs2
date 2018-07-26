@@ -69,7 +69,7 @@ package object tcp {
     *
     * The outer stream first emits a left value specifying the bound address followed by right values -- one per client connection.
     */
-  def serverWithLocalAddress[F[_]](flatMap: InetSocketAddress,
+  def serverWithLocalAddress[F[_]](bind: InetSocketAddress,
                                    maxQueued: Int = 0,
                                    reuseAddress: Boolean = true,
                                    receiveBufferSize: Int = 256 * 1024)(
@@ -77,5 +77,5 @@ package object tcp {
       F: ConcurrentEffect[F],
       timer: Timer[F]
   ): Stream[F, Either[InetSocketAddress, Resource[F, Socket[F]]]] =
-    Socket.server(flatMap, maxQueued, reuseAddress, receiveBufferSize)
+    Socket.server(bind, maxQueued, reuseAddress, receiveBufferSize)
 }

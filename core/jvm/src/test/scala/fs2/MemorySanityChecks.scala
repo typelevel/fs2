@@ -46,11 +46,11 @@ object DrainOnCompleteSanityTest extends App {
   Stream.empty.covary[IO].merge(s).compile.drain.unsafeRunSync()
 }
 
-object ConcurrentJoinSanityTest extends App {
+object ParJoinSanityTest extends App {
   import ExecutionContext.Implicits.global
   Stream
     .constant(Stream.empty[IO])
-    .join(5)
+    .parJoin(5)
     .compile
     .drain
     .unsafeRunSync
@@ -211,7 +211,7 @@ object HungMerge extends App {
   hung.merge(progress).compile.drain.unsafeRunSync()
 }
 
-object ZipThenBindThenJoin extends App {
+object ZipThenBindThenParJoin extends App {
   import scala.concurrent.ExecutionContext.Implicits.global
   import scala.concurrent.duration._
 
@@ -222,7 +222,7 @@ object ZipThenBindThenJoin extends App {
     .zip(sources)
     .flatMap {
       case (_, s) =>
-        s.map(Stream.constant(_).covary[IO]).joinUnbounded
+        s.map(Stream.constant(_).covary[IO]).parJoinUnbounded
     }
     .compile
     .drain
