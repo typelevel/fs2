@@ -8,11 +8,15 @@ import cats.implicits._
 import java.nio.ByteBuffer
 import org.scalacheck.{ Arbitrary, Cogen, Gen }
 import scala.reflect.ClassTag
+import scodec.bits.ByteVector
 
 import TestUtil._
 import ChunkProps._
 
 class ChunkSpec extends Fs2Spec {
+
+  implicit override val generatorDrivenConfig: PropertyCheckConfiguration =
+    PropertyCheckConfiguration(minSuccessful = 500, workers = 1)
 
   "Chunk" - {
     "chunk-formation (1)" in {
@@ -30,7 +34,7 @@ class ChunkSpec extends Fs2Spec {
 
   implicit val arbBooleanChunk: Arbitrary[Chunk[Boolean]] = Arbitrary {
     for {
-      n <- Gen.choose(0, 100)
+      n <- Gen.choose(0, 20)
       values <- Gen.containerOfN[Array, Boolean](n, Arbitrary.arbBool.arbitrary)
       offset <- Gen.choose(0, n)
       sz <- Gen.choose(0, n - offset)
@@ -39,7 +43,7 @@ class ChunkSpec extends Fs2Spec {
 
   implicit val arbByteChunk: Arbitrary[Chunk[Byte]] = Arbitrary {
     for {
-      n <- Gen.choose(0, 100)
+      n <- Gen.choose(0, 20)
       values <- Gen.containerOfN[Array, Byte](n, Arbitrary.arbByte.arbitrary)
       offset <- Gen.choose(0, n)
       sz <- Gen.choose(0, n - offset)
@@ -48,7 +52,7 @@ class ChunkSpec extends Fs2Spec {
 
   val arbByteBufferChunk: Arbitrary[Chunk[Byte]] = Arbitrary {
     for {
-      n <- Gen.choose(0, 100)
+      n <- Gen.choose(0, 20)
       values <- Gen.containerOfN[Array, Byte](n, Arbitrary.arbByte.arbitrary)
       pos <- Gen.choose(0, n)
       lim <- Gen.choose(pos, n)
@@ -58,9 +62,16 @@ class ChunkSpec extends Fs2Spec {
     } yield Chunk.byteBuffer(bb)
   }
 
+  val arbByteVectorChunk: Arbitrary[Chunk[Byte]] = Arbitrary {
+    for {
+      n <- Gen.choose(0, 20)
+      values <- Gen.containerOfN[Array, Byte](n, Arbitrary.arbByte.arbitrary)
+    } yield Chunk.byteVector(ByteVector.view(values))
+  }
+
   implicit val arbShortChunk: Arbitrary[Chunk[Short]] = Arbitrary {
     for {
-      n <- Gen.choose(0, 100)
+      n <- Gen.choose(0, 20)
       values <- Gen.containerOfN[Array, Short](n, Arbitrary.arbShort.arbitrary)
       offset <- Gen.choose(0, n)
       sz <- Gen.choose(0, n - offset)
@@ -69,7 +80,7 @@ class ChunkSpec extends Fs2Spec {
 
   implicit val arbIntChunk: Arbitrary[Chunk[Int]] = Arbitrary {
     for {
-      n <- Gen.choose(0, 100)
+      n <- Gen.choose(0, 20)
       values <- Gen.containerOfN[Array, Int](n, Arbitrary.arbInt.arbitrary)
       offset <- Gen.choose(0, n)
       sz <- Gen.choose(0, n - offset)
@@ -78,7 +89,7 @@ class ChunkSpec extends Fs2Spec {
 
   implicit val arbLongChunk: Arbitrary[Chunk[Long]] = Arbitrary {
     for {
-      n <- Gen.choose(0, 100)
+      n <- Gen.choose(0, 20)
       values <- Gen.containerOfN[Array, Long](n, Arbitrary.arbLong.arbitrary)
       offset <- Gen.choose(0, n)
       sz <- Gen.choose(0, n - offset)
@@ -87,7 +98,7 @@ class ChunkSpec extends Fs2Spec {
 
   implicit val arbFloatChunk: Arbitrary[Chunk[Float]] = Arbitrary {
     for {
-      n <- Gen.choose(0, 100)
+      n <- Gen.choose(0, 20)
       values <- Gen.containerOfN[Array, Float](n, Arbitrary.arbFloat.arbitrary)
       offset <- Gen.choose(0, n)
       sz <- Gen.choose(0, n - offset)
@@ -96,7 +107,7 @@ class ChunkSpec extends Fs2Spec {
 
   implicit val arbDoubleChunk: Arbitrary[Chunk[Double]] = Arbitrary {
     for {
-      n <- Gen.choose(0, 100)
+      n <- Gen.choose(0, 20)
       values <- Gen.containerOfN[Array, Double](n, Arbitrary.arbDouble.arbitrary)
       offset <- Gen.choose(0, n)
       sz <- Gen.choose(0, n - offset)
@@ -138,4 +149,5 @@ class ChunkSpec extends Fs2Spec {
   testChunk[Float]("Floats", "Float", false)
   testChunk[Char]("Unspecialized", "Char")
   testChunk[Byte]("ByteBuffer", "Byte")(implicitly, implicitly, implicitly, implicitly, implicitly, arbByteBufferChunk)
+  testChunk[Byte]("ByteVector", "Byte")(implicitly, implicitly, implicitly, implicitly, implicitly, arbByteVectorChunk)
 }
