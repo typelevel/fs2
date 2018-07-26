@@ -132,7 +132,7 @@ class StreamSpec extends Fs2Spec with Inside {
                       Stream.raiseError(new Err).covary[IO],
                       Stream.emit(2).covary[IO])
         .covary[IO]
-        .join(4)
+        .parJoin(4)
         .attempt
         .compile
         .toVector

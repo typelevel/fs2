@@ -59,7 +59,7 @@ class StreamTimerSpec extends AsyncFs2Spec {
           IO.async[Unit](cb => executionContext.execute(() => cb(Right(()))))
         }
         .take(200)
-      Stream(s, s, s, s, s).join(5).compile.toVector.unsafeToFuture().map { _ =>
+      Stream(s, s, s, s, s).parJoin(5).compile.toVector.unsafeToFuture().map { _ =>
         Succeeded
       }
     }

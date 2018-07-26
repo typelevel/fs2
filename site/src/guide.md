@@ -382,12 +382,12 @@ Stream(1,2,3).merge(Stream.eval(IO { Thread.sleep(200); 4 })).compile.toVector.u
 
 The `merge` function supports concurrency. FS2 has a number of other useful concurrency functions like `concurrently` (runs another stream concurrently and discards its output), `interrupt` (halts if the left branch produces `false`), `either` (like `merge` but returns an `Either`), `mergeHaltBoth` (halts if either branch halts), and others.
 
-The function `join` runs multiple streams concurrently. The signature is:
+The function `parJoin` runs multiple streams concurrently. The signature is:
 
 ```Scala
 // note Concurrent[F] bound
 import cats.effect.Concurrent
-def join[F[_]:Concurrent,O](maxOpen: Int)(outer: Stream[F,Stream[F,O]]): Stream[F,O]
+def parJoin[F[_]: Concurrent,O](maxOpen: Int)(outer: Stream[F, Stream[F, O]]): Stream[F, O]
 ```
 
 It flattens the nested stream, letting up to `maxOpen` inner streams run at a time.

@@ -70,8 +70,8 @@ object ThisModuleShouldCompile {
   }
 
   // Join a pure stream of effectful streams without type annotations
-  Stream(s, s).joinUnbounded
+  Stream(s, s).parJoinUnbounded
 
   // Join an effectul stream of pure streams requires type annotation on inner stream
-  Stream[IO, Stream[IO, Nothing]](Stream.empty).joinUnbounded
+  Stream[IO, Stream[IO, Nothing]](Stream.empty).parJoinUnbounded
 }

@@ -10,12 +10,12 @@ import TestUtil._
 // tested as a result of the ScalaTest limitation.
 class ScalaJsSanityTests extends AsyncFs2Spec {
 
-  "join" in {
+  "parJoin" in {
     val src: Stream[IO, Stream[IO, Int]] =
       Stream.range(1, 100).covary[IO].map { i =>
         Stream.repeatEval(IO(i)).take(10)
       }
-    runLogF(src.join(10)).map { result =>
+    runLogF(src.parJoin(10)).map { result =>
       result.sorted shouldBe (1 until 100).toVector
         .flatMap(Vector.fill(10)(_))
         .sorted
