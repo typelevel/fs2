@@ -212,14 +212,15 @@ lazy val root = project
   .in(file("."))
   .settings(commonSettings)
   .settings(noPublish)
-  .aggregate(coreJVM, coreJS, io, scodecJVM, scodecJS, benchmark)
+  .aggregate(coreJVM, coreJS, io, benchmark)
 
 lazy val core = crossProject(JVMPlatform, JSPlatform)
   .in(file("core"))
   .settings(commonSettings: _*)
   .settings(
     name := "fs2-core",
-    sourceDirectories in (Compile, scalafmt) += baseDirectory.value / "../shared/src/main/scala"
+    sourceDirectories in (Compile, scalafmt) += baseDirectory.value / "../shared/src/main/scala",
+    libraryDependencies += "org.scodec" %%% "scodec-bits" % "1.1.5"
   )
   .jsSettings(commonJsSettings: _*)
 
@@ -265,34 +266,6 @@ lazy val io = project
     osgiSettings
   )
   .dependsOn(coreJVM % "compile->compile;test->test")
-
-lazy val scodec = crossProject(JVMPlatform, JSPlatform)
-  .in(file("scodec"))
-  .settings(commonSettings)
-  .settings(
-    name := "fs2-scodec",
-    libraryDependencies += "org.scodec" %%% "scodec-bits" % "1.1.5",
-    sourceDirectories in (Compile, scalafmt) += baseDirectory.value / "../shared/src/main/scala"
-  )
-  .dependsOn(core % "compile->compile;test->test")
-  .jsSettings(commonJsSettings: _*)
-
-lazy val scodecJVM = scodec.jvm
-  .enablePlugins(SbtOsgi)
-  .settings(mimaSettings)
-  .settings(
-    OsgiKeys.exportPackage := Seq("fs2.interop.scodec.*"),
-    OsgiKeys.privatePackage := Seq(),
-    OsgiKeys.importPackage := {
-      val Some((major, minor)) = CrossVersion.partialVersion(scalaVersion.value)
-      Seq(s"""scala.*;version="[$major.$minor,$major.${minor + 1})"""",
-          """fs2.*;version="${Bundle-Version}"""",
-          "*")
-    },
-    OsgiKeys.additionalHeaders := Map("-removeheaders" -> "Include-Resource,Private-Package"),
-    osgiSettings
-  )
-lazy val scodecJS = scodec.js.disablePlugins(DoctestPlugin, MimaPlugin)
 
 lazy val benchmarkMacros = project
   .in(file("benchmark-macros"))
@@ -356,5 +329,5 @@ lazy val microsite = project
   .settings(tutSettings)
   .dependsOn(coreJVM, io)
 
-addCommandAlias("testJVM", ";coreJVM/test;io/test;scodecJVM/test;benchmark/test")
-addCommandAlias("testJS", ";coreJS/test;scodecJS/test")
+addCommandAlias("testJVM", ";coreJVM/test;io/test;benchmark/test")
+addCommandAlias("testJS", "coreJS/test")
