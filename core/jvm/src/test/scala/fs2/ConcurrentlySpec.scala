@@ -57,5 +57,35 @@ class ConcurrentlySpec extends Fs2Spec with EventuallySupport {
         if (throws) an[Err] should be thrownBy runLog(prg)
         else runLog(prg)
     }
+
+    "run finalizers of background stream and properly handle exception" in forAll {
+      s: PureStream[Int] =>
+        val prg = Stream
+          .eval(Deferred[IO, Unit])
+          .flatMap { halt =>
+            val bracketed =
+              Stream.bracket(IO(new java.util.concurrent.atomic.AtomicBoolean(true)))(
+                b => IO(b.set(false))
+              )
+
+            bracketed
+              .flatMap { b =>
+                s.get
+                  .covary[IO]
+                  .concurrently(
+                    (Stream.eval_(IO.sleep(20.millis)) ++
+                      Stream
+                        .eval_(halt.complete(())))
+                      .onFinalize(
+                        IO.sleep(100.millis) >>
+                          (if (b.get) IO.raiseError(new Err) else IO(()))
+                      ))
+              }
+              .interruptWhen(halt.get.attempt)
+          }
+
+        an[Err] should be thrownBy runLog(prg)
+
+    }
   }
 }

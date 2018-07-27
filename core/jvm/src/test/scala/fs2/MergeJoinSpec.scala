@@ -2,6 +2,7 @@ package fs2
 
 import scala.concurrent.duration._
 import cats.effect.IO
+import cats.effect.concurrent.Deferred
 import cats.implicits._
 
 import TestUtil._
@@ -63,8 +64,33 @@ class MergeJoinSpec extends Fs2Spec {
       s.parJoinUnbounded.compile.drain.unsafeRunSync()
     }
 
+    "parJoin - run finalizers of inner streams first" in forAll { s2: PureStream[Int] =>
+      val prg = Stream
+        .eval(Deferred[IO, Unit])
+        .flatMap { halt =>
+          val bracketed =
+            Stream.bracket(IO(new java.util.concurrent.atomic.AtomicBoolean(true)))(
+              b => IO(b.set(false))
+            )
+
+          val s: Stream[IO, Stream[IO, Int]] = bracketed.flatMap { b =>
+            val s1 = (Stream.eval_(IO.sleep(20.millis)) ++
+              Stream.eval_(halt.complete(())))
+              .onFinalize(
+                IO.sleep(100.millis) >>
+                  (if (b.get) IO.raiseError(new Err) else IO(()))
+              )
+
+            Stream(s1, s2.get.covary[IO]).covary[IO]
+          }
+
+          s.parJoinUnbounded.interruptWhen(halt.get.attempt)
+        }
+
+      an[Err] should be thrownBy runLog(prg)
+    }
+
     "merge (left/right failure)" in {
-      pending
       forAll { (s1: PureStream[Int], f: Failure) =>
         an[Err] should be thrownBy {
           s1.get.merge(f.get).compile.drain.unsafeRunSync()
@@ -73,7 +99,6 @@ class MergeJoinSpec extends Fs2Spec {
     }
 
     "merge (left/right failure) never-ending flatMap, failure after emit" in {
-      pending
       forAll { (s1: PureStream[Int], f: Failure) =>
         an[Err] should be thrownBy {
           s1.get
@@ -89,7 +114,6 @@ class MergeJoinSpec extends Fs2Spec {
     }
 
     "merge (left/right failure) constant flatMap, failure after emit" in {
-      pending
       forAll { (s1: PureStream[Int], f: Failure) =>
         an[Err] should be thrownBy {
           s1.get
@@ -102,6 +126,34 @@ class MergeJoinSpec extends Fs2Spec {
             .unsafeRunSync()
         }
       }
+    }
+
+    "merge - run finalizers of inner streams first" in forAll { s: PureStream[Int] =>
+      val prg = Stream
+        .eval(Deferred[IO, Unit])
+        .flatMap { halt =>
+          val bracketed =
+            Stream.bracket(IO(new java.util.concurrent.atomic.AtomicBoolean(true)))(
+              b => IO(b.set(false))
+            )
+
+          bracketed
+            .flatMap { b =>
+              s.get
+                .covary[IO]
+                .merge(
+                  (Stream.eval_(IO.sleep(20.millis)) ++
+                    Stream
+                      .eval(halt.complete(())))
+                    .onFinalize(
+                      IO.sleep(100.millis) >>
+                        (if (b.get) IO.raiseError(new Err) else IO(()))
+                    ))
+            }
+            .interruptWhen(halt.get.attempt)
+        }
+
+      an[Err] should be thrownBy runLog(prg)
     }
 
     "hanging awaits" - {
