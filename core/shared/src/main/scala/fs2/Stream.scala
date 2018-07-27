@@ -2448,6 +2448,26 @@ object Stream {
     fromFreeC(Algebra.raiseError(e))
 
   /**
+    * Creates a random stream of integers using a random seed.
+    */
+  def random[F[_]](implicit F: Sync[F]): Stream[F, Int] =
+    Stream.eval(F.delay(new scala.util.Random())).flatMap { r =>
+      def loop: Stream[F, Int] = Stream.emit(r.nextInt) ++ loop
+      loop
+    }
+
+  /**
+    * Creates a random stream of integers using the supplied seed.
+    * Returns a pure stream, as the psuedo random number generator is
+    * deterministic based on the supplied seed.
+    */
+  def randomSeeded[F[x] >: Pure[x]](seed: Long): Stream[F, Int] = Stream.suspend {
+    val r = new scala.util.Random(seed)
+    def loop: Stream[F, Int] = Stream.emit(r.nextInt) ++ loop
+    loop
+  }
+
+  /**
     * Lazily produce the range `[start, stopExclusive)`. If you want to produce
     * the sequence in one chunk, instead of lazily, use
     * `emits(start until stopExclusive)`.

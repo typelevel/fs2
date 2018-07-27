@@ -463,6 +463,18 @@ class StreamSpec extends Fs2Spec with Inside {
       }
     }
 
+    "random" in {
+      val x = runLog(Stream.random[IO].take(100))
+      val y = runLog(Stream.random[IO].take(100))
+      x should not be y
+    }
+
+    "randomSeeded" in {
+      val x = Stream.randomSeeded(1L).take(100).toList
+      val y = Stream.randomSeeded(1L).take(100).toList
+      x shouldBe y
+    }
+
     "regression #1089" in {
       (Stream.chunk(Chunk.bytes(Array.fill(2000)(1.toByte))) ++ Stream.eval(
         IO.async[Byte](_ => ())))
