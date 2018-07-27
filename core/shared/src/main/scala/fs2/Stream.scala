@@ -349,7 +349,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
       implicit F: Concurrent[F2]): Stream[F2, O] =
     Stream.eval(Deferred[F2, Unit]).flatMap { interruptR =>
       Stream.eval(Deferred[F2, Option[Throwable]]).flatMap { doneR =>
-        Stream.eval(Deferred[F2, Throwable]).flatMap { interruptL =>
+        Stream.eval(Deferred[F2, Unit]).flatMap { interruptL =>
           def runR =
             that
               .interruptWhen(interruptR.get.attempt)
@@ -363,7 +363,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
                 // its `append` code, that requires `get` to complete, which won't ever complete,
                 // b/c it will be evaluated after `interruptL`
                 doneR.complete(r) >>
-                  r.fold(F.unit)(interruptL.complete)
+                  r.fold(F.unit)(_ => interruptL.complete(()))
               }
 
           // There is slight chance that interruption in case of failure will arrive later than
@@ -372,12 +372,13 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
           // evaluation of the result.
           Stream.eval(F.start(runR)) >>
             this
-              .interruptWhen(interruptL.get.map(Either.left[Throwable, Unit]))
-              .onFinalize { interruptR.complete(()) }
-              .append(Stream.eval(doneR.get).flatMap {
-                case None      => Stream.empty
-                case Some(err) => Stream.raiseError(err)
-              })
+              .interruptWhen(interruptL.get.map(Either.right[Throwable, Unit]))
+              .onFinalize {
+                interruptR.complete(()) >> doneR.get.flatMap {
+                  case None      => F.unit
+                  case Some(err) => F.raiseError(err)
+                }
+              }
         }
       }
     }
@@ -1262,46 +1263,62 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     Stream.eval(Semaphore(0)).flatMap { doneSem =>
       Stream.eval(Deferred[F2, Unit]).flatMap { interruptL =>
         Stream.eval(Deferred[F2, Unit]).flatMap { interruptR =>
-          Stream.eval(Deferred[F2, Throwable]).flatMap { interruptY =>
-            Stream
-              .eval(async.unboundedQueue[F2, Option[(F2[Unit], Chunk[O2])]])
-              .flatMap { outQ => // note that the queue actually contains up to 2 max elements thanks to semaphores guarding each side.
-                def runUpstream(s: Stream[F2, O2], interrupt: Deferred[F2, Unit]): F2[Unit] =
-                  Semaphore(1).flatMap { guard =>
-                    s.chunks
-                      .interruptWhen(interrupt.get.attempt)
-                      .evalMap { chunk =>
-                        guard.acquire >>
-                          outQ.enqueue1(Some((guard.release, chunk)))
+          Stream.eval(Deferred[F2, Option[Throwable]]).flatMap { doneL =>
+            Stream.eval(Deferred[F2, Option[Throwable]]).flatMap { doneR =>
+              Stream.eval(Deferred[F2, Throwable]).flatMap { interruptY =>
+                Stream
+                  .eval(async.unboundedQueue[F2, Option[(F2[Unit], Chunk[O2])]])
+                  .flatMap { outQ => // note that the queue actually contains up to 2 max elements thanks to semaphores guarding each side.
+                    def runUpstream(s: Stream[F2, O2],
+                                    done: Deferred[F2, Option[Throwable]],
+                                    interrupt: Deferred[F2, Unit]): F2[Unit] =
+                      Semaphore(1).flatMap { guard =>
+                        s.chunks
+                          .interruptWhen(interrupt.get.attempt)
+                          .evalMap { chunk =>
+                            guard.acquire >>
+                              outQ.enqueue1(Some((guard.release, chunk)))
+                          }
+                          .compile
+                          .drain
+                          .attempt
+                          .flatMap {
+                            case Right(_) =>
+                              done.complete(None) >>
+                                doneSem.release >>
+                                doneSem.acquireN(2) >>
+                                F2.start(outQ.enqueue1(None)).void
+                            case Left(err) =>
+                              done.complete(Some(err)) >>
+                                interruptY.complete(err) >>
+                                doneSem.release
+                          }
                       }
-                      .compile
-                      .drain
-                      .attempt
-                      .flatMap {
-                        case Right(_) =>
-                          doneSem.release >>
-                            doneSem.acquireN(2) >>
-                            F2.start(outQ.enqueue1(None)).void
-                        case Left(err) =>
-                          interruptY.complete(err) >>
-                            doneSem.release
-                      }
-                  }
 
-                Stream.eval(F2.start(runUpstream(this, interruptL))) >>
-                  Stream.eval(F2.start(runUpstream(that, interruptR))) >>
-                  outQ.dequeue.unNoneTerminate
-                    .flatMap {
-                      case (signal, chunk) =>
-                        Stream.eval(signal) >>
-                          Stream.chunk(chunk)
-                    }
-                    .interruptWhen(interruptY.get.map(Left(_): Either[Throwable, Unit]))
-                    .onFinalize {
-                      interruptL.complete(()) >>
-                        interruptR.complete(())
-                    }
+                    Stream.eval(F2.start(runUpstream(this, doneL, interruptL))) >>
+                      Stream.eval(F2.start(runUpstream(that, doneR, interruptR))) >>
+                      outQ.dequeue.unNoneTerminate
+                        .flatMap {
+                          case (signal, chunk) =>
+                            Stream.eval(signal) >>
+                              Stream.chunk(chunk)
+                        }
+                        .interruptWhen(interruptY.get.map(Left(_): Either[Throwable, Unit]))
+                        .onFinalize {
+                          interruptL.complete(()) >>
+                            interruptR.complete(()) >>
+                            doneL.get.flatMap { l =>
+                              doneR.get.flatMap { r =>
+                                CompositeFailure.fromList(l.toList ++ r.toList) match {
+                                  case None      => F2.pure(())
+                                  case Some(err) => F2.raiseError(err)
+                                }
+                              }
+                            }
+                        }
+                  }
               }
+            }
           }
         }
       }
@@ -1474,10 +1491,10 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
 
                 // awaits when all streams (outer + inner) finished,
                 // and then collects result of the stream (outer + inner) execution
-                def signalResult: Stream[F2, O2] =
-                  done.discrete.take(1).flatMap {
+                def signalResult: F2[Unit] =
+                  done.get.flatMap {
                     _.flatten
-                      .fold[Stream[Pure, O2]](Stream.empty)(Stream.raiseError)
+                      .fold[F2[Unit]](F2.unit)(F2.raiseError)
                   }
 
                 Stream.eval(F2.start(runOuter)) >>
@@ -1488,9 +1505,8 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
                         .dropWhile(_ > 0)
                         .take(1)
                         .compile
-                        .drain
-                    } ++
-                    signalResult
+                        .drain >> signalResult
+                    }
               }
           }
       }
