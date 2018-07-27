@@ -66,33 +66,34 @@ class ConcurrentlySpec extends Fs2Spec with EventuallySupport {
         else runLog(prg)
     }
 
-    "run finalizers of background stream and properly handle exception" in {
-      val hang = Stream.eval(IO.never)
+    "run finalizers of background stream and properly handle exception" in forAll {
+      s: PureStream[Int] =>
+        val prg = Stream
+          .eval(async.signalOf[IO, Boolean](false))
+          .flatMap { halt =>
+            val bracketed =
+              Stream.bracket(IO(new java.util.concurrent.atomic.AtomicBoolean(true)))(
+                Stream(_),
+                b => IO(b.set(false))
+              )
 
-      val prg = Stream
-        .eval(async.signalOf[IO, Boolean](false))
-        .flatMap { halt =>
-          val bracketed =
-            Stream.bracket(IO(new java.util.concurrent.atomic.AtomicBoolean(true)))(
-              Stream(_),
-              b => IO(b.set(false))
-            )
+            bracketed
+              .flatMap { b =>
+                s.get
+                  .covary[IO]
+                  .concurrently(
+                    (Stream.eval_(IO.sleep(20.millis)) ++
+                      Stream
+                        .eval_(halt.set(true)))
+                      .onFinalize(
+                        IO.sleep(100.millis) >>
+                          (if (b.get) IO.raiseError(Err) else IO { println("failure") })
+                      ))
+              }
+              .interruptWhen(halt)
+          }
 
-          bracketed
-            .flatMap { b =>
-              hang.concurrently(
-                (Stream
-                  .eval(halt.set(true))
-                  .drain ++ hang)
-                  .onFinalize(
-                    IO.sleep(100.millis) >>
-                      (if (b.get) IO.raiseError(Err) else IO { println("failure") })
-                  ))
-            }
-            .interruptWhen(halt)
-        }
-
-      an[Err.type] should be thrownBy runLog(prg)
+        an[Err.type] should be thrownBy runLog(prg)
 
     }
   }

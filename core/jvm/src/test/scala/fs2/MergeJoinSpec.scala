@@ -64,7 +64,7 @@ class MergeJoinSpec extends Fs2Spec {
       s.joinUnbounded.compile.drain.unsafeRunSync()
     }
 
-    "join - run finalizers of inner streams first" in {
+    "join - run finalizers of inner streams first" in forAll { s2: PureStream[Int] =>
       val prg = Stream
         .eval(async.signalOf[IO, Boolean](false))
         .flatMap { halt =>
@@ -74,16 +74,15 @@ class MergeJoinSpec extends Fs2Spec {
               b => IO(b.set(false))
             )
 
-          val s: Stream[IO, Stream[IO, Unit]] = bracketed.flatMap { b =>
-            val s1 = Stream
-              .eval(IO.never)
+          val s: Stream[IO, Stream[IO, Int]] = bracketed.flatMap { b =>
+            val s1 = (Stream.eval_(IO.sleep(20.millis)) ++
+              Stream.eval_(halt.set(true)))
               .onFinalize(
                 IO.sleep(100.millis) >>
                   (if (b.get) IO.raiseError(Err) else IO(()))
               )
-            val s2 = Stream.eval(halt.set(true))
 
-            Stream(s1, s2).covary[IO]
+            Stream(s1, s2.get.covary[IO]).covary[IO]
           }
 
           s.joinUnbounded.interruptWhen(halt)
@@ -136,7 +135,7 @@ class MergeJoinSpec extends Fs2Spec {
       }
     }
 
-    "merge - run finalizers of inner streams first" in {
+    "merge - run finalizers of inner streams first" in forAll { s: PureStream[Int] =>
       val prg = Stream
         .eval(async.signalOf[IO, Boolean](false))
         .flatMap { halt =>
@@ -148,13 +147,16 @@ class MergeJoinSpec extends Fs2Spec {
 
           bracketed
             .flatMap { b =>
-              Stream
-                .eval(IO.never)
-                .onFinalize(
-                  IO.sleep(100.millis) >>
-                    (if (b.get) IO.raiseError(Err) else IO(()))
-                )
-                .mergeHaltBoth(Stream.eval(halt.set(true)))
+              s.get
+                .covary[IO]
+                .merge(
+                  (Stream.eval_(IO.sleep(20.millis)) ++
+                    Stream
+                      .eval(halt.set(true)))
+                    .onFinalize(
+                      IO.sleep(100.millis) >>
+                        (if (b.get) IO.raiseError(Err) else IO(()))
+                    ))
             }
             .interruptWhen(halt)
         }
