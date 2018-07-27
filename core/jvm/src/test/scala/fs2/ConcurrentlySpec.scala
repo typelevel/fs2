@@ -87,7 +87,7 @@ class ConcurrentlySpec extends Fs2Spec with EventuallySupport {
                         .eval_(halt.set(true)))
                       .onFinalize(
                         IO.sleep(100.millis) >>
-                          (if (b.get) IO.raiseError(Err) else IO { println("failure") })
+                          (if (b.get) IO.raiseError(Err) else IO(()))
                       ))
               }
               .interruptWhen(halt)
