@@ -712,7 +712,7 @@ object Chunk {
       extends Chunk[C]
       with KnownElementType[C] {
 
-    def elementClassTag = implicitly
+    def elementClassTag: ClassTag[C] = implicitly[ClassTag[C]]
     def readOnly(b: B): B
     def buffer(b: B): A
     def get(b: B, n: Int): C
