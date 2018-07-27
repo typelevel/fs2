@@ -82,7 +82,7 @@ class SignalSpec extends Fs2Spec {
     Ref.of[F, A](initial).map { ref =>
       new immutable.Signal[F, A] {
         override def discrete: Stream[F, A] =
-          Stream(initial) ++ source.observe1(ref.set)
+          Stream(initial) ++ source.evalTap(ref.set)
 
         override def continuous: Stream[F, A] = Stream.repeatEval(get)
 

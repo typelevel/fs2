@@ -698,6 +698,14 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
   }
 
   /**
+    * Like `observe` but observes with a function `O => F[Unit]` instead of a sink.
+    * Not as powerful as `observe` since not all sinks can be represented by `O => F[Unit]`, but much faster.
+    * Alias for `evalMap(o => f(o).as(o))`.
+    */
+  def evalTap[F2[x] >: F[x]: Functor](f: O => F2[Unit]): Stream[F2, O] =
+    evalMap(o => f(o).as(o))
+
+  /**
     * Emits `true` as soon as a matching element is received, else `false` if no input matches.
     *
     * @example {{{
@@ -1322,13 +1330,6 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * }}}
     */
   def noneTerminate: Stream[F, Option[O]] = map(Some(_)) ++ Stream.emit(None)
-
-  /**
-    * Like `observe` but observes with a function `O => F[Unit]` instead of a sink.
-    * Alias for `evalMap(o => f(o).as(o))`.
-    */
-  def observe1[F2[x] >: F[x]: Functor](f: O => F2[Unit]): Stream[F2, O] =
-    evalMap(o => f(o).as(o))
 
   /**
     * Run `s2` after `this`, regardless of errors during `this`, then reraise any errors encountered during `this`.
@@ -2646,6 +2647,8 @@ object Stream {
       * Note that observe will only output full chunks of `O` that are known to be successfully processed
       * by `sink`. So if Sink terminates/fail in middle of chunk processing, the chunk will not be available
       * in resulting stream.
+      *
+      * Note that if your sink can be represented by an `O => F[Unit]`, `evalTap` will provide much greater performance.
       *
       * @example {{{
       * scala> import scala.concurrent.ExecutionContext.Implicits.global, cats.effect.IO, cats.implicits._
