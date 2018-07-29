@@ -111,6 +111,7 @@ If you have a project you'd like to include in this list, either open a PR or le
 * [fs2-http](https://github.com/Spinoco/fs2-http): Http server and client library implemented in fs2.
 * [http4s](http://http4s.org/): Minimal, idiomatic Scala interface for HTTP services using fs2.
 * [fs2-kafka](https://github.com/Spinoco/fs2-kafka): Simple client for Apache Kafka.
+* [fs2-mail](https://github.com/Spinoco/fs2-mail): Fully asynchronous java non-blocking email client using fs2.
 * [fs2-rabbit](https://github.com/gvolpe/fs2-rabbit): Stream-based client for RabbitMQ built on top of Fs2.
 * [scodec-stream](https://github.com/scodec/scodec-stream): A library for streaming binary decoding and encoding, built using fs2 and [scodec](https://github.com/scodec/scodec).
 * [scodec-protocols](https://github.com/scodec/scodec-protocols): A library for working with libpcap files. Contains many interesting pipes (e.g., working with time series and playing back streams at various rates).
