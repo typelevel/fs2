@@ -5,7 +5,9 @@ import cats.data.NonEmptyList
 import cats.effect._
 import cats.effect.concurrent.{Deferred, Ref, Semaphore}
 import cats.implicits.{catsSyntaxEither => _, _}
+import fs2.internal.FreeC.Result
 import fs2.internal.{Algebra, Canceled, FreeC, Token}
+
 import scala.collection.generic.CanBuildFrom
 import scala.concurrent.duration._
 
@@ -796,8 +798,8 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
         // check if hd has only a single element, and if so, process it directly instead of folding.
         // This allows recursive infinite streams of the form `def s: Stream[Pure,O] = Stream(o).flatMap { _ => s }`
         val only: Option[O] = tl match {
-          case FreeC.Pure(_) => hd.head
-          case _             => None
+          case FreeC.Result.Pure(_) => hd.head
+          case _                    => None
         }
         only match {
           case None =>
@@ -2217,8 +2219,10 @@ object Stream {
     fromFreeC(Algebra.acquire[F, R, R](acquire, release).flatMap {
       case (r, token) =>
         Stream.emit(r).covary[F].get[F, R].transformWith {
-          case Left(err) => Algebra.release(token).flatMap(_ => FreeC.Fail(err))
-          case Right(_)  => Algebra.release(token)
+          case Result.Fail(err) => Algebra.release(token).flatMap(_ => FreeC.raiseError(err))
+          case Result.Interrupted(scopeId, err) =>
+            Algebra.release(token).flatMap(_ => FreeC.interrupted(scopeId, err))
+          case Result.Pure(_) => Algebra.release(token)
         }
     })
 
@@ -2232,8 +2236,10 @@ object Stream {
           .map(o => (token, o))
           .get[F, (Token, R)]
           .transformWith {
-            case Left(err) => Algebra.release(token).flatMap(_ => FreeC.Fail(err))
-            case Right(_)  => Algebra.release(token)
+            case Result.Fail(err) => Algebra.release(token).flatMap(_ => FreeC.raiseError(err))
+            case Result.Interrupted(scopeId, err) =>
+              Algebra.release(token).flatMap(_ => FreeC.interrupted(scopeId, err))
+            case Result.Pure(_) => Algebra.release(token)
           }
     })
 

@@ -437,6 +437,35 @@ class Pipe2Spec extends Fs2Spec {
 
     }
 
+    "interrupt (16)" in {
+      // this tests that if the pipe1 accumulating results that is interrupted
+      // will not restart evaluation ignoring the previous results
+      def p: Pipe[IO, Int, Int] = {
+        def loop(acc: Int, s: Stream[IO, Int]): Pull[IO, Int, Unit] =
+          s.pull.uncons1.flatMap {
+            case None           => Pull.output1[IO, Int](acc)
+            case Some((hd, tl)) => Pull.output1[IO, Int](hd) >> loop(acc + hd, tl)
+          }
+        in =>
+          loop(0, in).stream
+      }
+
+      val result: Vector[Int] =
+        runLog(
+          Stream
+            .unfold(0)(i => Some((i, i + 1)))
+            .flatMap(Stream.emit(_).delayBy[IO](10.millis))
+            .interruptWhen(Stream.emit(true).delayBy[IO](150.millis))
+            .through(p)
+        )
+
+//      println(s"RES: $result")
+//      println(s"EXP: ${result.headOption.toVector ++ result.tail.filter(_ != 0)}")
+
+      result shouldBe (result.headOption.toVector ++ result.tail.filter(_ != 0))
+
+    }
+
     "nested-interrupt (1)" in forAll { s1: PureStream[Int] =>
       val s = Semaphore[IO](0).unsafeRunSync()
       val interrupt: IO[Either[Throwable, Unit]] =
