@@ -459,8 +459,8 @@ class Pipe2Spec extends Fs2Spec {
             .through(p)
         )
 
-//      println(s"RES: $result")
-//      println(s"EXP: ${result.headOption.toVector ++ result.tail.filter(_ != 0)}")
+      println(s"RES: $result")
+      println(s"EXP: ${result.headOption.toVector ++ result.tail.filter(_ != 0)}")
 
       result shouldBe (result.headOption.toVector ++ result.tail.filter(_ != 0))
 
