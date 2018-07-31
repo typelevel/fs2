@@ -36,7 +36,12 @@ object Pipe2 {
         case FreeC.Result.Pure(None)           => Stepper.Done
         case FreeC.Result.Pure(Some((hd, tl))) => Stepper.Emits(hd, go(stepf(tl)))
         case FreeC.Result.Fail(t)              => Stepper.Fail(t)
-        case FreeC.Result.Interrupted(_, _)    => ???
+        case FreeC.Result.Interrupted(_, err) =>
+          err
+            .map { t =>
+              Stepper.Fail(t)
+            }
+            .getOrElse(Stepper.Done)
         case bound: FreeC.Bind[ReadChunk, _, UO] =>
           val f = bound.asInstanceOf[FreeC.Bind[ReadChunk, Any, UO]].f
           val fx = bound.fx.asInstanceOf[FreeC.Eval[ReadChunk, UO]].fr
