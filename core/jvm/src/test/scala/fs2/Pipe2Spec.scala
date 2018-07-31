@@ -461,7 +461,7 @@ class Pipe2Spec extends Fs2Spec {
 
       def s1 = Stream(1).covary[IO].unchunk
 
-      def interrupt = IO.sleep(3000.millis).attempt
+      def interrupt = IO.sleep(100.millis).attempt
 
       def prg =
         s1.interruptWhen(interrupt)

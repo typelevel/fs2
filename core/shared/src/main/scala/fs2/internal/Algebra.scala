@@ -27,7 +27,7 @@ private[fs2] object Algebra {
   final case class Release[F[_], O](token: Token) extends AlgEffect[F, O, Unit]
 
   final case class OpenScope[F[_], O](interruptible: Option[Concurrent[F]])
-      extends AlgScope[F, O, Option[Token]]
+      extends AlgScope[F, O, Token]
 
   // `InterruptedScope` contains id of the scope currently being interrupted
   // together with any errors accumulated during interruption process
@@ -120,8 +120,8 @@ private[fs2] object Algebra {
     scope0(s, Some(F))
 
   private[fs2] def openScope[F[_], O](
-      interruptible: Option[Concurrent[F]]): FreeC[Algebra[F, O, ?], Option[Token]] =
-    FreeC.Eval[Algebra[F, O, ?], Option[Token]](OpenScope(interruptible))
+      interruptible: Option[Concurrent[F]]): FreeC[Algebra[F, O, ?], Token] =
+    FreeC.Eval[Algebra[F, O, ?], Token](OpenScope(interruptible))
 
   private[fs2] def closeScope[F[_], O](
       token: Token,
@@ -130,23 +130,20 @@ private[fs2] object Algebra {
 
   private def scope0[F[_], O](s: FreeC[Algebra[F, O, ?], Unit],
                               interruptible: Option[Concurrent[F]]): FreeC[Algebra[F, O, ?], Unit] =
-    openScope(interruptible).flatMap {
-      case None =>
-        pure(()) // in case of interruption the scope closure is handled by scope itself, before next step is returned
-      case Some(scopeId) =>
-        s.transformWith {
-          case Result.Pure(_) => closeScope(scopeId, interruptedScope = None)
-          case Result.Interrupted(interruptedScopeId, err) =>
-            closeScope(scopeId, interruptedScope = Some((interruptedScopeId, err)))
-          case Result.Fail(err) =>
-            closeScope(scopeId, interruptedScope = None).transformWith {
-              case Result.Pure(_)    => raiseError(err)
-              case Result.Fail(err0) => raiseError(CompositeFailure(err, err0, Nil))
-              case Result.Interrupted(interruptedScopeId, _) =>
-                sys.error(
-                  s"Impossible, cannot interrupt when closing failed scope: $scopeId, $interruptedScopeId $err")
-            }
-        }
+    openScope(interruptible).flatMap { scopeId =>
+      s.transformWith {
+        case Result.Pure(_) => closeScope(scopeId, interruptedScope = None)
+        case Result.Interrupted(interruptedScopeId, err) =>
+          closeScope(scopeId, interruptedScope = Some((interruptedScopeId, err)))
+        case Result.Fail(err) =>
+          closeScope(scopeId, interruptedScope = None).transformWith {
+            case Result.Pure(_)    => raiseError(err)
+            case Result.Fail(err0) => raiseError(CompositeFailure(err, err0, Nil))
+            case Result.Interrupted(interruptedScopeId, _) =>
+              sys.error(
+                s"Impossible, cannot interrupt when closing failed scope: $scopeId, $interruptedScopeId $err")
+          }
+      }
     }
 
   def getScope[F[_], O, X]: FreeC[Algebra[F, O, ?], CompileScope[F, X]] =
@@ -205,12 +202,6 @@ private[fs2] object Algebra {
                       tail: FreeC[Algebra[F, X, ?], Unit])
         extends R[X]
     case class Interrupted[X](scopeId: Token, err: Option[Throwable]) extends R[X]
-    case class OpenInterruptibly[X](
-        scope: CompileScope[F, O],
-        concurrent: Concurrent[F],
-        onInterrupt: FreeC[Algebra[F, X, ?], Unit],
-        next: Either[Throwable, CompileScope[F, O]] => FreeC[Algebra[F, X, ?], Unit]
-    ) extends R[X]
 
     sealed trait R[X]
 
@@ -275,16 +266,10 @@ private[fs2] object Algebra {
                       interruptGuard(nextScope)(
                         go(nextScope, f(Result.pure(Some((head, outScope.id, tail)))))
                       )
+
                     case Right(Interrupted(scopeId, err)) =>
                       go(scope, f(Result.interrupted(scopeId, err)))
-                    case Right(OpenInterruptibly(scope, concurrent, onInterrupt, next)) =>
-                      def transform(s: FreeC[Algebra[F, y, ?], Unit]) =
-                        step(s, None).transformWith(f)
-                      F.pure(
-                        OpenInterruptibly(scope, concurrent, transform(onInterrupt), next.andThen {
-                          s =>
-                            transform(s)
-                        }))
+
                     case Left(err) =>
                       go(scope, f(Result.raiseError(err)))
                   }
@@ -319,19 +304,8 @@ private[fs2] object Algebra {
 
             case open: Algebra.OpenScope[F, X] =>
               interruptGuard(scope) {
-                open.interruptible match {
-                  case None =>
-                    F.flatMap(scope.open(None)) { childScope =>
-                      go(childScope, f(Result.pure(Some(childScope.id))))
-                    }
-
-                  case Some(concurrent) =>
-                    F.pure(
-                      OpenInterruptibly(
-                        scope,
-                        concurrent,
-                        FreeC.suspend(f(Result.pure(None))),
-                        r => f(Result.fromEither(r.right.map(scope => Some(scope.id))))))
+                F.flatMap(scope.open(open.interruptible)) { childScope =>
+                  go(childScope, f(Result.pure(childScope.id)))
                 }
               }
 
@@ -388,11 +362,6 @@ private[fs2] object Algebra {
         err match {
           case None      => F.pure(None)
           case Some(err) => F.raiseError(err)
-        }
-
-      case OpenInterruptibly(scope, concurrent, onInterrupt, next) =>
-        F.flatMap(scope.open(Some(concurrent))) { childScope =>
-          compileLoop(childScope, next(Right(childScope)))
         }
     }
   }
