@@ -1383,7 +1383,7 @@ object Segment {
             r => {
               if (result.isEmpty || result
                     .flatMap(_.toOption)
-                    .fold(false)(_ == Segment.empty)) result = Some(Left(r));
+                    .fold(false)(_ eq Segment.empty)) result = Some(Left(r));
               throw Done
             }
           )
