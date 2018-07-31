@@ -798,28 +798,27 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     Stream.fromFreeC[F2, O2](Algebra.uncons(get[F2, O]).flatMap {
       case Some((hd, tl)) =>
         tl match {
-          case FreeC.Result.Pure(_) if hd.size == 1  =>
+          case FreeC.Result.Pure(_) if hd.size == 1 =>
             // nb: If tl is Pure, there's no need to propagate flatMap through the tail. Hence, we
             // check if hd has only a single element, and if so, process it directly instead of folding.
             // This allows recursive infinite streams of the form `def s: Stream[Pure,O] = Stream(o).flatMap { _ => s }`
             f(hd(0)).get
 
           case _ =>
-            def go(rem: Chunk[O]): FreeC[Algebra[F2, O2, ?], Unit] =
-              rem.head match {
-                case Some(o) =>
-                  f(o).get.transformWith {
-                    case Result.Pure(_)   => go(rem.drop(1))
-                    case Result.Fail(err) => Algebra.raiseError(err)
-                    case Result.Interrupted(scopeId, err) =>
-                      Stream.fromFreeC(Algebra.interruptBoundary(tl, scopeId, err)).flatMap(f).get
-                  }
-                case None => Stream.fromFreeC(tl).flatMap(f).get
+            def go(idx: Int): FreeC[Algebra[F2, O2, ?], Unit] =
+              if (idx == hd.size) Stream.fromFreeC(tl).flatMap(f).get
+              else {
+                f(hd(idx)).get.transformWith {
+                  case Result.Pure(_)   => go(idx + 1)
+                  case Result.Fail(err) => Algebra.raiseError(err)
+                  case Result.Interrupted(scopeId, err) =>
+                    Stream.fromFreeC(Algebra.interruptBoundary(tl, scopeId, err)).flatMap(f).get
+                }
               }
 
-            go(hd)
+            go(0)
         }
- 
+
       case None => Stream.empty.get
     })
 
@@ -1062,14 +1061,6 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     */
   def interruptWhen[F2[x] >: F[x]](haltOnSignal: F2[Either[Throwable, Unit]])(
       implicit F2: Concurrent[F2]): Stream[F2, O] =
-//    Stream.fromFreeC(
-//      Algebra.interruptScope(
-//        Algebra.getScope[F2, O, O].flatMap { scope =>
-//          Algebra
-//            .eval(F2.start(haltOnSignal.map { x => println("INTERR"); x }.flatMap(scope.interrupt)))
-//            .flatMap(_ => get[F2, O]) // todo bracket this and issue cancel on fiber
-//        }
-//      ))
     Stream
       .getScope[F2]
       .flatMap { scope =>

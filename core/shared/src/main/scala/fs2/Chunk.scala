@@ -97,7 +97,6 @@ abstract class Chunk[+O] extends Serializable { self =>
     acc
   }
 
-
   /** Returns true if the predicate passes for all elements. */
   def forall(p: O => Boolean): Boolean = {
     var i = 0
