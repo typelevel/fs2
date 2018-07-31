@@ -277,7 +277,7 @@ abstract class Chunk[+O] extends Serializable { self =>
         JByteBuffer.wrap(c.values, c.offset, c.length)
       case c: Chunk.ByteBuffer =>
         val b = c.buf.asReadOnlyBuffer
-        if (c.offset == 0 && b.position == 0 && c.size == b.limit) b
+        if (c.offset == 0 && b.position() == 0 && c.size == b.limit()) b
         else {
           b.position(c.offset.toInt)
           b.limit(c.offset.toInt + c.size)
