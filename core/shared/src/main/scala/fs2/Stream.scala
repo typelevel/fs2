@@ -797,15 +797,14 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
   def flatMap[F2[x] >: F[x], O2](f: O => Stream[F2, O2]): Stream[F2, O2] =
     Stream.fromFreeC[F2, O2](Algebra.uncons(get[F2, O]).flatMap {
       case Some((hd, tl)) =>
-        // nb: If tl is Pure, there's no need to propagate flatMap through the tail. Hence, we
-        // check if hd has only a single element, and if so, process it directly instead of folding.
-        // This allows recursive infinite streams of the form `def s: Stream[Pure,O] = Stream(o).flatMap { _ => s }`
-        val only: Option[O] = tl match {
-          case FreeC.Result.Pure(_) => if (hd.size == 1) hd.head else None
-          case _                    => None
-        }
-        only match {
-          case None =>
+        tl match {
+          case FreeC.Result.Pure(_) if hd.size == 1  =>
+            // nb: If tl is Pure, there's no need to propagate flatMap through the tail. Hence, we
+            // check if hd has only a single element, and if so, process it directly instead of folding.
+            // This allows recursive infinite streams of the form `def s: Stream[Pure,O] = Stream(o).flatMap { _ => s }`
+            f(hd(0)).get
+
+          case _ =>
             def go(rem: Chunk[O]): FreeC[Algebra[F2, O2, ?], Unit] =
               rem.head match {
                 case Some(o) =>
@@ -819,11 +818,8 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
               }
 
             go(hd)
-
-          case Some(o) =>
-            f(o).get
-
         }
+ 
       case None => Stream.empty.get
     })
 

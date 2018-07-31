@@ -97,13 +97,6 @@ abstract class Chunk[+O] extends Serializable { self =>
     acc
   }
 
-  private[fs2] final def foldRightLazy[B](z: B)(f: (O, => B) => B): B = {
-    val sz = size
-    def loop(idx: Int): B =
-      if (idx < sz) f(apply(idx), loop(idx + 1))
-      else z
-    loop(0)
-  }
 
   /** Returns true if the predicate passes for all elements. */
   def forall(p: O => Boolean): Boolean = {
