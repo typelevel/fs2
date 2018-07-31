@@ -391,7 +391,7 @@ private[fs2] object Algebra {
         }
 
       case OpenInterruptibly(scope, concurrent, onInterrupt, next) =>
-        F.flatMap(scope.open(Some((concurrent, onInterrupt)))) { childScope =>
+        F.flatMap(scope.open(Some(concurrent))) { childScope =>
           compileLoop(childScope, next(Right(childScope)))
         }
     }

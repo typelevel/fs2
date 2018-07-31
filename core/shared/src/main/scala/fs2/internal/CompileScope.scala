@@ -103,9 +103,7 @@ private[fs2] final class CompileScope[F[_], O] private (
     *
     */
   def open(
-      interruptible: Option[
-        (Concurrent[F], FreeC[Algebra[F, O, ?], Unit])
-      ]
+      interruptible: Option[Concurrent[F]]
   ): F[CompileScope[F, O]] = {
 
     /**
@@ -388,42 +386,6 @@ private[fs2] final class CompileScope[F[_], O] private (
     }
 
   /**
-    * Consulted in interruptible scope when interrupt occurred to determine next step of the evaluation.
-    *
-    * This will try to find an ancestor scope with the token of the interrupted scope. Which will be used
-    * to recover from interrupt.
-    *
-    * Also note once this is evaluated, then, we clear the `interruptible` step and instead this will result in failure
-    */
-  def whenInterrupted(
-      interruptedScope: Token): F[(CompileScope[F, O], FreeC[Algebra[F, O, ?], Unit])] = {
-    // need to close the scope first and then, return the evaluation of the next step
-    val toClose =
-      if (interruptedScope == self.id) Some(self)
-      else findAncestor(interruptedScope)
-
-    toClose match {
-      case None =>
-        F.pure(
-          (self,
-           Algebra.raiseError(new IllegalStateException("Interrupt root scope cannot be found"))))
-      case Some(scope) =>
-        scope.interruptible match {
-          case None =>
-            F.raiseError(new IllegalStateException("Non-interruptible scope was interrupted"))
-          case Some(iCtx) =>
-            F.flatMap(scope.close) { r =>
-              F.map(scope.openAncestor) { scope =>
-                (scope, r.left.toOption.fold(iCtx.whenInterrupted) { err =>
-                  Algebra.raiseError(err)
-                })
-              }
-            }
-        }
-    }
-  }
-
-  /**
     * When the stream is evaluated, there may be `Eval` that needs to be cancelled early,
     * when scope allows interruption.
     * Instead of just allowing eval to complete, this will race between eval and interruption promise.
@@ -443,9 +405,7 @@ private[fs2] final class CompileScope[F[_], O] private (
           iCtx.concurrent
             .race(iCtx.deferred.get, F.attempt(iCtx.concurrent.uncancelable(f)))) {
           case Right(result) => result.left.map(Left(_))
-          case Left(other)   =>
-            //println(s"XXXY INTERRUPT RESULT: $other")
-            Left(other)
+          case Left(other)   => Left(other)
         }
     }
 
@@ -520,7 +480,6 @@ private[internal] object CompileScope {
     *                 when Some(Some(err)) scope has to be terminated with supplied failure.
     * @param interruptRoot Id of the scope that is root of this interruption andis guaranteed to be a parent of this scope.
     *                      Once interrupted, this scope must be closed and `whenInterrupted` must be consulted to provide next step of evaluation.
-    * @param whenInterrupted Contains next step to be evaluated, when interruption occurs.
     * @param cancelParent  Cancels listening on parent's interrupt.
     */
   final private[internal] case class InterruptContext[F[_], O](
@@ -528,7 +487,6 @@ private[internal] object CompileScope {
       deferred: Deferred[F, Either[Throwable, Token]],
       ref: Ref[F, Option[Either[Throwable, Token]]],
       interruptRoot: Token,
-      whenInterrupted: FreeC[Algebra[F, O, ?], Unit],
       cancelParent: F[Unit]
   ) { self =>
 
@@ -545,31 +503,27 @@ private[internal] object CompileScope {
       * @param newScopeId     The id of the new scope.
       */
     def childContext(
-        interruptible: Option[
-          (Concurrent[F], FreeC[Algebra[F, O, ?], Unit])
-        ],
+        interruptible: Option[Concurrent[F]],
         newScopeId: Token
     )(implicit F: Sync[F]): F[InterruptContext[F, O]] =
       interruptible
-        .map {
-          case (concurrent, whenInterrupted) =>
-            F.flatMap(concurrent.start(self.deferred.get)) { fiber =>
-              val context = InterruptContext[F, O](
-                concurrent = concurrent,
-                deferred = Deferred.unsafe[F, Either[Throwable, Token]](concurrent),
-                ref = Ref.unsafe[F, Option[Either[Throwable, Token]]](None),
-                interruptRoot = newScopeId,
-                whenInterrupted = whenInterrupted,
-                cancelParent = fiber.cancel
-              )
+        .map { concurent =>
+          F.flatMap(concurrent.start(self.deferred.get)) { fiber =>
+            val context = InterruptContext[F, O](
+              concurrent = concurrent,
+              deferred = Deferred.unsafe[F, Either[Throwable, Token]](concurrent),
+              ref = Ref.unsafe[F, Option[Either[Throwable, Token]]](None),
+              interruptRoot = newScopeId,
+              cancelParent = fiber.cancel
+            )
 
-              F.map(concurrent.start(F.flatMap(fiber.join)(interrupt =>
-                F.flatMap(context.ref.update(_.orElse(Some(interrupt)))) { _ =>
-                  F.map(F.attempt(context.deferred.complete(interrupt)))(_ => ())
-              }))) { _ =>
-                context
-              }
+            F.map(concurrent.start(F.flatMap(fiber.join)(interrupt =>
+              F.flatMap(context.ref.update(_.orElse(Some(interrupt)))) { _ =>
+                F.map(F.attempt(context.deferred.complete(interrupt)))(_ => ())
+            }))) { _ =>
+              context
             }
+          }
         }
         .getOrElse(F.pure(copy(cancelParent = F.unit)))
 
@@ -587,21 +541,17 @@ private[internal] object CompileScope {
       * @param newScopeId     The id of the new scope.
       */
     def unsafeFromInteruptible[F[_], O](
-        interruptible: Option[
-          (Concurrent[F], FreeC[Algebra[F, O, ?], Unit])
-        ],
+        interruptible: Option[Concurrent[F]],
         newScopeId: Token
     )(implicit F: Sync[F]): Option[InterruptContext[F, O]] =
-      interruptible.map {
-        case (concurrent, whenInterrupted) =>
-          InterruptContext[F, O](
-            concurrent = concurrent,
-            deferred = Deferred.unsafe[F, Either[Throwable, Token]](concurrent),
-            ref = Ref.unsafe[F, Option[Either[Throwable, Token]]](None),
-            interruptRoot = newScopeId,
-            whenInterrupted = whenInterrupted,
-            cancelParent = F.unit
-          )
+      interruptible.map { concurrent =>
+        InterruptContext[F, O](
+          concurrent = concurrent,
+          deferred = Deferred.unsafe[F, Either[Throwable, Token]](concurrent),
+          ref = Ref.unsafe[F, Option[Either[Throwable, Token]]](None),
+          interruptRoot = newScopeId,
+          cancelParent = F.unit
+        )
       }
 
   }

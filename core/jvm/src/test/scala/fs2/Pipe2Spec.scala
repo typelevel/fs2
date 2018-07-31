@@ -452,7 +452,6 @@ class Pipe2Spec extends Fs2Spec {
             .through(p)
         )
 
-
       result shouldBe (result.headOption.toVector ++ result.tail.filter(_ != 0))
 
     }
