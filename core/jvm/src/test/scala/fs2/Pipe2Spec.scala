@@ -5,7 +5,6 @@ import cats.effect.IO
 import cats.effect.concurrent.Semaphore
 import cats.implicits._
 import org.scalacheck.Gen
-
 import TestUtil._
 
 class Pipe2Spec extends Fs2Spec {
@@ -397,14 +396,11 @@ class Pipe2Spec extends Fs2Spec {
     "interrupt (14)" in forAll { s1: PureStream[Int] =>
       // tests that when interrupted, the interruption will resume with append.
 
-      val s = Semaphore[IO](0).unsafeRunSync()
       val interrupt =
-        Stream.sleep_[IO](50.millis).compile.drain.attempt
+        IO.sleep(50.millis).attempt
       val prg = (
         (s1.get.covary[IO].interruptWhen(interrupt).evalMap { _ =>
-          s.acquire.map { _ =>
-            None
-          }
+          IO.never.as(None)
         })
           ++ (s1.get.map(Some(_)))
       ).collect { case Some(v) => v }
@@ -417,18 +413,15 @@ class Pipe2Spec extends Fs2Spec {
       // tests that interruption works even when flatMap is followed by `collect`
       // also tests scenario when interrupted stream is followed by other stream and both have map fusion defined
 
-      val s = Semaphore[IO](0).unsafeRunSync()
       val interrupt =
         Stream.sleep_[IO](20.millis).compile.drain.attempt
+
       val prg =
-        (s1.get.covary[IO].interruptWhen(interrupt).map { i =>
+        ((s1.get.covary[IO] ++ Stream(1)).interruptWhen(interrupt).map { i =>
           None
         } ++ s1.get.map(Some(_)))
           .flatMap {
-            case None =>
-              Stream.eval(s.acquire.map { _ =>
-                None
-              })
+            case None    => Stream.eval(IO.never)
             case Some(i) => Stream.emit(Some(i))
           }
           .collect { case Some(i) => i }
@@ -459,22 +452,52 @@ class Pipe2Spec extends Fs2Spec {
             .through(p)
         )
 
-      println(s"RES: $result")
-      println(s"EXP: ${result.headOption.toVector ++ result.tail.filter(_ != 0)}")
 
       result shouldBe (result.headOption.toVector ++ result.tail.filter(_ != 0))
+
+    }
+
+    "interrupt (17)" in {
+      // minimal test that when interrupted, the interruption will resume with append (pull.uncons case).
+
+      def s1 = Stream(1).covary[IO].unchunk
+
+      def interrupt = IO.sleep(3000.millis).attempt
+
+      def prg =
+        s1.interruptWhen(interrupt)
+          .pull
+          .uncons
+          .flatMap {
+            case None           => Pull.done
+            case Some((hd, tl)) => Pull.eval(IO.never)
+          }
+          .stream ++ Stream(5)
+
+      runLog(prg) shouldBe Vector(5)
+
+    }
+
+    "interrupt (18)" in {
+      // minimal tests that when interrupted, the interruption will resume with append (flatMap case).
+
+      def s1 = Stream(1).covary[IO]
+
+      def interrupt =
+        IO.sleep(200.millis).attempt
+
+      def prg =
+        s1.interruptWhen(interrupt).evalMap[IO, Int](_ => IO.never) ++ Stream(5)
+
+      runLog(prg) shouldBe Vector(5)
 
     }
 
     "nested-interrupt (1)" in forAll { s1: PureStream[Int] =>
       val s = Semaphore[IO](0).unsafeRunSync()
       val interrupt: IO[Either[Throwable, Unit]] =
-        Stream.sleep_[IO](20.millis).compile.drain.attempt
-      val neverInterrupt = IO
-        .async[Unit] { _ =>
-          ()
-        }
-        .attempt
+        IO.sleep(50.millis).attempt
+      val neverInterrupt = (IO.never: IO[Unit]).attempt
 
       val prg =
         (s1.get.covary[IO].interruptWhen(interrupt).map(_ => None) ++ s1.get

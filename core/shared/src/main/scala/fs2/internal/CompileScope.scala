@@ -443,7 +443,9 @@ private[fs2] final class CompileScope[F[_], O] private (
           iCtx.concurrent
             .race(iCtx.deferred.get, F.attempt(iCtx.concurrent.uncancelable(f)))) {
           case Right(result) => result.left.map(Left(_))
-          case Left(other)   => Left(other)
+          case Left(other)   =>
+            //println(s"XXXY INTERRUPT RESULT: $other")
+            Left(other)
         }
     }
 
@@ -510,6 +512,8 @@ private[internal] object CompileScope {
     * A context of interruption status. This is shared from the parent that was created as interruptible to all
     * its children. It assures consistent view of the interruption through the stack
     * @param concurrent   Concurrent, used to create interruption at Eval.
+    * @param ec       Execution context used to create promise and ref, and interruption at Eval.
+    * @param promise  Promise signalling once the interruption to the scopes. Only completed once.
     *                 If signalled with None, normal interruption is signalled. If signaled with Some(err) failure is signalled.
     * @param ref      When None, scope is not interrupted,
     *                 when Some(None) scope was interrupted, and shall continue with `whenInterrupted`
