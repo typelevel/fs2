@@ -1,11 +1,11 @@
 package fs2.internal
 
-import cats.{MonadError, ~>}
+import cats.{Monad, MonadError, ~>}
 import cats.effect.{ExitCase, Sync}
-
 import fs2.CompositeFailure
 import FreeC._
 
+import scala.annotation.tailrec
 import scala.util.control.NonFatal
 
 /** Free monad with a catch -- catches exceptions and provides mechanisms for handling them. */
@@ -31,7 +31,7 @@ private[fs2] sealed abstract class FreeC[F[_], +R] {
                      catch { case NonFatal(e) => FreeC.Result.Fail(e) })
 
   def map[R2](f: R => R2): FreeC[F, R2] =
-    Bind[F, R, R2](this, _.map(f).asFreeC[F])
+    Bind[F, R, R2](this, Result.monadInstance.map(_)(f).asFreeC[F])
 
   def handleErrorWith[R2 >: R](h: Throwable => FreeC[F, R2]): FreeC[F, R2] =
     Bind[F, R2, R2](this,
@@ -157,15 +157,28 @@ private[fs2] object FreeC {
         s"FreeC.Interrupted($scope, ${finalizerErrors.map(_.getMessage)})"
     }
 
-    implicit class ResultSyntax[R](val self: Result[R]) extends AnyVal {
-
-      def map[R2](f: R => R2): Result[R2] = self match {
+    val monadInstance: Monad[Result] = new Monad[Result] {
+      def flatMap[A, B](fa: Result[A])(f: A => Result[B]): Result[B] = fa match {
         case Result.Pure(r) =>
-          try { Result.Pure(f(r)) } catch { case NonFatal(err) => Result.Fail(err) }
-        case failure @ Result.Fail(_)               => failure.asInstanceOf[Result[R2]]
-        case interrupted @ Result.Interrupted(_, _) => interrupted.asInstanceOf[Result[R2]]
+          try { f(r) } catch { case NonFatal(err) => Result.Fail(err) }
+        case failure @ Result.Fail(_)               => failure.asInstanceOf[Result[B]]
+        case interrupted @ Result.Interrupted(_, _) => interrupted.asInstanceOf[Result[B]]
       }
 
+      def tailRecM[A, B](a: A)(f: A => Result[Either[A, B]]): Result[B] = {
+        @tailrec
+        def go(a: A): Result[B] =
+          f(a) match {
+            case Result.Pure(Left(a))                   => go(a)
+            case Result.Pure(Right(b))                  => Result.Pure(b)
+            case failure @ Result.Fail(_)               => failure.asInstanceOf[Result[B]]
+            case interrupted @ Result.Interrupted(_, _) => interrupted.asInstanceOf[Result[B]]
+          }
+
+        try { go(a) } catch { case t: Throwable => Result.Fail(t) }
+      }
+
+      def pure[A](x: A): Result[A] = Result.Pure(x)
     }
 
   }
