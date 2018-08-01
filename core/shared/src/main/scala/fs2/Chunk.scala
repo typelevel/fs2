@@ -416,17 +416,33 @@ abstract class Chunk[+O] extends Serializable { self =>
     Chunk.buffer(b.result)
   }
 
-  override def hashCode: Int = toVector.hashCode
+  override def hashCode: Int = {
+    import util.hashing.MurmurHash3
+    var i = 0
+    var h = MurmurHash3.stringHash("Chunk")
+    while (i < size) {
+      h = MurmurHash3.mix(h, apply(i).##)
+      i += 1
+    }
+    MurmurHash3.finalizeHash(h, i)
+  }
 
   override def equals(a: Any): Boolean = a match {
-    case c: Chunk[O] => toVector == c.toVector
-    case _           => false
+    case c: Chunk[O] =>
+      size == c.size && {
+        var i = 0
+        var result = true
+        while (result && i < size) {
+          result = apply(i) == c(i)
+          i += 1
+        }
+        result
+      }
+    case _ => false
   }
 
-  override def toString = {
-    val vs = (0 until size).view.map(i => apply(i)).mkString(", ")
-    s"Chunk($vs)"
-  }
+  override def toString: String =
+    (0 until size).iterator.map(i => apply(i)).mkString("Chunk(", ", ", ")")
 }
 
 object Chunk {
