@@ -994,7 +994,7 @@ object Segment {
     catenated(os.map(chunk))
 
   def chunk[O](c: Chunk[O]): Segment[O, Unit] = new SingleChunk(c)
-  final case class SingleChunk[O](chunk: Chunk[O]) extends Segment[O, Unit] {
+  final class SingleChunk[O](val chunk: Chunk[O]) extends Segment[O, Unit] {
     private[fs2] def stage0(depth: Segment.Depth,
                             defer: Segment.Defer,
                             emit: O => Unit,
@@ -1013,6 +1013,13 @@ object Segment {
     }
 
     override def toString: String = chunk.toString
+  }
+  object SingleChunk {
+    def apply[O](chunk: Chunk[O]): Segment[O, Unit] =
+      new SingleChunk(chunk)
+
+    def unapply[O](segment: SingleChunk[O]): Option[Chunk[O]] =
+      Some(segment.chunk)
   }
 
   /** Creates an infinite segment of the specified value. */
