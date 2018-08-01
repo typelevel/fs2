@@ -133,7 +133,10 @@ private[fs2] object FreeC {
       *
       * @param context Any user specific context that needs to be captured during interruption
       *                for eventual resume of the operation.
+      *
       * @param deferredError Any errors, accumulated during resume of the interruption.
+      *                      Instead throwing errors immediately during interruption,
+      *                      signalling of the errors may be deferred until the Interruption resumes.
       */
     final case class Interrupted[F[_], X, R](context: X, deferredError: Option[Throwable])
         extends FreeC[F, R]

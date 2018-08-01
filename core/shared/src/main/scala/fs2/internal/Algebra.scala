@@ -198,24 +198,16 @@ private[fs2] object Algebra {
    * Reason for this is unlike interruption of `F` type (i.e. IO) we need to find
    * recovery point where stream evaluation has to continue in Stream algebra
    *
-   * As such the `CompileInterruptContext` is passed to FreeC.Interrupted as glue between FreeC/Algebra that allows pass-along
+   * As such the `Token` is passed to FreeC.Interrupted as glue between FreeC/Algebra that allows pass-along
    * information for Algebra and scope to correctly compute recovery point after interruption was signalled via `CompilerScope`.
    *
-   *
-   * Parameter `scopeId` indicates scope of the computation where interruption actually happened.
+   * This token indicates scope of the computation where interruption actually happened.
    * This is used to precisely find most relevant interruption scope where interruption shall be resumed
    * for normal continuation of the stream evaluation.
    *
    * Interpreter uses this to find any parents of this scope that has to be interrupted, and guards the
    * interruption so it won't propagate to scope that shall not be anymore interrupted.
    *
-   *
-   * Parameter `finalizerErrors` allows to collect errors that may accumulate during interruption propagation.
-   * When interruption is executed, all finalizers are executed, until interruption resumes. During this time,
-   * finalizers may accumulate errors. These errors are then stored in `finalizerErrors`,
-   * and are raised when interruption resumes.
-   *
-   * Reason for this approach is delayed error propagation is to allow proper recovery with `handleErrorWith` handlers.
    */
 
   private[fs2] def compileLoop[F[_], O](
