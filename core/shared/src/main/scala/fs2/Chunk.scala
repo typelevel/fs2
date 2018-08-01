@@ -442,7 +442,7 @@ abstract class Chunk[+O] extends Serializable { self =>
   }
 
   override def toString: String =
-    (0 until size).iterator.map(i => apply(i)).mkString("Chunk(", ", ", ")")
+    iterator.mkString("Chunk(", ", ", ")")
 }
 
 object Chunk {
