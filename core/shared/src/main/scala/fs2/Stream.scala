@@ -811,8 +811,10 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
                 f(hd(idx)).get.transformWith {
                   case Result.Pure(_)   => go(idx + 1)
                   case Result.Fail(err) => Algebra.raiseError(err)
-                  case Result.Interrupted(scopeId, err) =>
+                  case Result.Interrupted(scopeId: Token, err) =>
                     Stream.fromFreeC(Algebra.interruptBoundary(tl, scopeId, err)).flatMap(f).get
+                  case Result.Interrupted(invalid, err) =>
+                    sys.error(s"Invalid interruption context: $invalid (flatMap)")
                 }
               }
 

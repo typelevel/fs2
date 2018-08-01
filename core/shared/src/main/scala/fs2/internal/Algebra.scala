@@ -133,7 +133,7 @@ private[fs2] object Algebra {
     openScope(interruptible).flatMap { scopeId =>
       s.transformWith {
         case Result.Pure(_) => closeScope(scopeId, interruptedScope = None)
-        case Result.Interrupted(interruptedScopeId, err) =>
+        case Result.Interrupted(interruptedScopeId: Token, err) =>
           closeScope(scopeId, interruptedScope = Some((interruptedScopeId, err)))
         case Result.Fail(err) =>
           closeScope(scopeId, interruptedScope = None).transformWith {
@@ -143,6 +143,8 @@ private[fs2] object Algebra {
               sys.error(
                 s"Impossible, cannot interrupt when closing failed scope: $scopeId, $interruptedScopeId $err")
           }
+
+        case Result.Interrupted(ctx, err) => sys.error(s"Impossible context: $ctx")
       }
     }
 
@@ -190,6 +192,32 @@ private[fs2] object Algebra {
         F.pure(init)
     }
 
+  /*
+   *
+   * Interruption of the stream is tightly coupled between FreeC, Algebra and CompileScope
+   * Reason for this is unlike interruption of `F` type (i.e. IO) we need to find
+   * recovery point where stream evaluation has to continue in Stream algebra
+   *
+   * As such the `CompileInterruptContext` is passed to FreeC.Interrupted as glue between FreeC/Algebra that allows pass-along
+   * information for Algebra and scope to correctly compute recovery point after interruption was signalled via `CompilerScope`.
+   *
+   *
+   * Parameter `scopeId` indicates scope of the computation where interruption actually happened.
+   * This is used to precisely find most relevant interruption scope where interruption shall be resumed
+   * for normal continuation of the stream evaluation.
+   *
+   * Interpreter uses this to find any parents of this scope that has to be interrupted, and guards the
+   * interruption so it won't propagate to scope that shall not be anymore interrupted.
+   *
+   *
+   * Parameter `finalizerErrors` allows to collect errors that may accumulate during interruption propagation.
+   * When interruption is executed, all finalizers are executed, until interruption resumes. During this time,
+   * finalizers may accumulate errors. These errors are then stored in `finalizerErrors`,
+   * and are raised when interruption resumes.
+   *
+   * Reason for this approach is delayed error propagation is to allow proper recovery with `handleErrorWith` handlers.
+   */
+
   private[fs2] def compileLoop[F[_], O](
       scope: CompileScope[F, O],
       stream: FreeC[Algebra[F, O, ?], Unit]
@@ -219,8 +247,11 @@ private[fs2] object Algebra {
         case failed: FreeC.Result.Fail[Algebra[F, X, ?], Unit] =>
           F.raiseError(failed.error)
 
-        case interrupted: FreeC.Result.Interrupted[Algebra[F, X, ?], Unit] =>
-          F.pure(Interrupted(interrupted.scope, interrupted.finalizerErrors))
+        case interrupted: FreeC.Result.Interrupted[Algebra[F, X, ?], _, Unit] =>
+          interrupted.context match {
+            case scopeId: Token => F.pure(Interrupted(scopeId, interrupted.deferredError))
+            case other          => sys.error(s"Unexpected interruption context: $other (compileLoop)")
+          }
 
         case e: FreeC.Eval[Algebra[F, X, ?], Unit] =>
           F.raiseError(
@@ -390,9 +421,9 @@ private[fs2] object Algebra {
           CompositeFailure
             .fromList(interruptedError.toList :+ failed.error)
             .getOrElse(failed.error))
-      case interrupted: FreeC.Result.Interrupted[Algebra[F, O, ?], Unit] =>
+      case interrupted: FreeC.Result.Interrupted[Algebra[F, O, ?], _, Unit] =>
         // impossible
-        FreeC.interrupted(interrupted.scope, interrupted.finalizerErrors)
+        FreeC.interrupted(interrupted.context, interrupted.deferredError)
 
       case bound: FreeC.Bind[Algebra[F, O, ?], _, Unit] =>
         val f = bound.f
@@ -427,8 +458,8 @@ private[fs2] object Algebra {
       case failed: FreeC.Result.Fail[Algebra[F, X, ?], Unit] =>
         Algebra.raiseError(failed.error)
 
-      case interrupted: FreeC.Result.Interrupted[Algebra[F, X, ?], Unit] =>
-        FreeC.interrupted(interrupted.scope, interrupted.finalizerErrors)
+      case interrupted: FreeC.Result.Interrupted[Algebra[F, X, ?], _, Unit] =>
+        FreeC.interrupted(interrupted.context, interrupted.deferredError)
 
       case bound: FreeC.Bind[Algebra[F, X, ?], _, Unit] =>
         val f = bound.f
@@ -485,8 +516,8 @@ private[fs2] object Algebra {
       case failed: FreeC.Result.Fail[Algebra[F, O, ?], Unit] =>
         Algebra.raiseError(failed.error)
 
-      case interrupted: FreeC.Result.Interrupted[Algebra[F, O, ?], Unit] =>
-        FreeC.interrupted(interrupted.scope, interrupted.finalizerErrors)
+      case interrupted: FreeC.Result.Interrupted[Algebra[F, O, ?], _, Unit] =>
+        FreeC.interrupted(interrupted.context, interrupted.deferredError)
 
       case bound: FreeC.Bind[Algebra[F, O, ?], _, Unit] =>
         val f = bound.f

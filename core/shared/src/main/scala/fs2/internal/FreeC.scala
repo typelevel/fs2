@@ -46,8 +46,8 @@ private[fs2] sealed abstract class FreeC[F[_], +R] {
   def asHandler(e: Throwable): FreeC[F, R] = viewL.get match {
     case Result.Pure(_)  => Result.Fail(e)
     case Result.Fail(e2) => Result.Fail(CompositeFailure(e2, e))
-    case Result.Interrupted(scope, err) =>
-      Result.Interrupted(scope, err.map(t => CompositeFailure(e, t)).orElse(Some(e)))
+    case Result.Interrupted(ctx, err) =>
+      Result.Interrupted(ctx, err.map(t => CompositeFailure(e, t)).orElse(Some(e)))
     case Bind(_, k) => k(Result.Fail(e))
     case Eval(_)    => sys.error("impossible")
   }
@@ -72,8 +72,8 @@ private[fs2] object FreeC {
 
   def raiseError[F[_], A](rsn: Throwable): FreeC[F, A] = Result.Fail(rsn)
 
-  def interrupted[F[_], A](scopeId: Token, failure: Option[Throwable]): FreeC[F, A] =
-    Result.Interrupted(scopeId, failure)
+  def interrupted[F[_], X, A](interruptContext: X, failure: Option[Throwable]): FreeC[F, A] =
+    Result.Interrupted(interruptContext, failure)
 
   sealed trait Result[+R] { self =>
 
@@ -128,33 +128,20 @@ private[fs2] object FreeC {
       override def toString: String = s"FreeC.Fail($error)"
     }
 
-    /*
-     * Interruption of the stream is tightly coupled between FreeC, Algebra and CompileScope
-     * Reason for this is unlike interruption of `F` type (i.e. IO) we need to find
-     * recovery point where stream evaluation has to continue in Stream algebra
-     *
-     * As such the `Interrupted` is necessary glue between FreeC/Algebra that allows pass-along
-     * information for Algebra and scope to correctly compute recovery point after interruption was signalled via `CompilerScope`.
-     *
-     * Parameter `scope` indicates scope of the computation where interruption actually happened.
-     * This is used to precisely find most relevant interruption scope where interruption shall be resumed
-     * for normal continuation.
-     * Essentially interpreter uses this to find any parents of this scope that has to be interrupted, and guards the
-     * interruption so it won't propagate to scope that shall not be anymore interrupted.
-     *
-     * Parameter `finalizerErrors` allows to collect errors that may accumulate during interruption propagation.
-     * When interruption is executed, all finalizers are executed, until interruption resumes. During this time,
-     * finalizers may accumulate errors. These errors are then stored here, and are raised when interruption resumes.
-     * Reason for this delayed reporting is to allow proper recovery with `handleErrorWith` handlers.
-     *
-     */
-    final case class Interrupted[F[_], R](scope: Token, finalizerErrors: Option[Throwable])
+    /**
+      * Signals that FreeC evaluation was interrupted.
+      *
+      * @param context Any user specific context that needs to be captured during interruption
+      *                for eventual resume of the operation.
+      * @param deferredError Any errors, accumulated during resume of the interruption.
+      */
+    final case class Interrupted[F[_], X, R](context: X, deferredError: Option[Throwable])
         extends FreeC[F, R]
         with Result[R] {
       override def translate[G[_]](f: F ~> G): FreeC[G, R] =
         this.asInstanceOf[FreeC[G, R]]
       override def toString: String =
-        s"FreeC.Interrupted($scope, ${finalizerErrors.map(_.getMessage)})"
+        s"FreeC.Interrupted($context, ${deferredError.map(_.getMessage)})"
     }
 
     val monadInstance: Monad[Result] = new Monad[Result] {
