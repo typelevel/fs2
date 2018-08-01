@@ -85,7 +85,7 @@ private[fs2] object FreeC {
       case Result.Interrupted(_, _) => ExitCase.Canceled
     }
 
-    def covary[R2 >: R]: Result[R2] = self.asInstanceOf[Result[R2]]
+    def covary[R2 >: R]: Result[R2] = self
 
     def recoverWith[R2 >: R](f: Throwable => Result[R2]): Result[R2] = self match {
       case Result.Fail(err) =>
@@ -128,14 +128,33 @@ private[fs2] object FreeC {
       override def toString: String = s"FreeC.Fail($error)"
     }
 
-    // finalizerErrors contains accumulated errors during finalization of interruption.
-    // they will be presented to freeC after interupted scope will be closed
+    /*
+     * Interruption of the stream is tightly coupled between FreeC, Algebra and CompileScope
+     * Reason for this is unlike interruption of `F` type (i.e. IO) we need to find
+     * recovery point where stream evaluation has to continue in Stream algebra
+     *
+     * As such the `Interrupted` is necessary glue between FreeC/Algebra that allows pass-along
+     * information for Algebra and scope to correctly compute recovery point after interruption was signalled via `CompilerScope`.
+     *
+     * Parameter `scope` indicates scope of the computation where interruption actually happened.
+     * This is used to precisely find most relevant interruption scope where interruption shall be resumed
+     * for normal continuation.
+     * Essentially interpreter uses this to find any parents of this scope that has to be interrupted, and guards the
+     * interruption so it won't propagate to scope that shall not be anymore interrupted.
+     *
+     * Parameter `finalizerErrors` allows to collect errors that may accumulate during interruption propagation.
+     * When interruption is executed, all finalizers are executed, until interruption resumes. During this time,
+     * finalizers may accumulate errors. These errors are then stored here, and are raised when interruption resumes.
+     * Reason for this delayed reporting is to allow proper recovery with `handleErrorWith` handlers.
+     *
+     */
     final case class Interrupted[F[_], R](scope: Token, finalizerErrors: Option[Throwable])
         extends FreeC[F, R]
         with Result[R] {
       override def translate[G[_]](f: F ~> G): FreeC[G, R] =
         this.asInstanceOf[FreeC[G, R]]
-      override def toString: String = s"FreeC.Interrupted($scope, ${})"
+      override def toString: String =
+        s"FreeC.Interrupted($scope, ${finalizerErrors.map(_.getMessage)})"
     }
 
     implicit class ResultSyntax[R](val self: Result[R]) extends AnyVal {
