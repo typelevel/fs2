@@ -3,6 +3,7 @@ package fs2
 import cats.effect.Concurrent
 import fs2.async.mutable.Queue
 import fs2.internal.FreeC
+import fs2.internal.FreeC.ViewL
 
 import scala.util.control.NonFatal
 
@@ -34,7 +35,7 @@ object Pipe {
         .last
 
     def go(s: Read[UO]): Stepper[I, O] = Stepper.Suspend { () =>
-      s.viewL.get match {
+      s.viewL match {
         case FreeC.Result.Pure(None)           => Stepper.Done
         case FreeC.Result.Pure(Some((hd, tl))) => Stepper.Emits(hd, go(stepf(tl)))
         case FreeC.Result.Fail(t)              => Stepper.Fail(t)
@@ -44,12 +45,11 @@ object Pipe {
               Stepper.Fail(t)
             }
             .getOrElse(Stepper.Done)
-        case bound: FreeC.Bind[ReadChunk, x, UO] =>
-          val fx = bound.fx.asInstanceOf[FreeC.Eval[ReadChunk, x]].fr
+        case view: ViewL.View[ReadChunk, x, UO] =>
           Stepper.Await(
             chunk =>
-              try go(bound.f(FreeC.Result.Pure(fx(chunk))))
-              catch { case NonFatal(t) => go(bound.f(FreeC.Result.Fail(t))) })
+              try go(view.next(FreeC.Result.Pure(view.step(chunk))))
+              catch { case NonFatal(t) => go(view.next(FreeC.Result.Fail(t))) })
         case e =>
           sys.error(
             "FreeC.ViewL structure must be Pure(a), Fail(e), or Bind(Eval(fx),k), was: " + e)

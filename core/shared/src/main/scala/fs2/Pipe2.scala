@@ -1,6 +1,8 @@
 package fs2
 
 import fs2.internal.FreeC
+import fs2.internal.FreeC.ViewL
+
 import scala.util.control.NonFatal
 
 object Pipe2 {
@@ -32,7 +34,7 @@ object Pipe2 {
         .last
 
     def go(s: Read[UO]): Stepper[I, I2, O] = Stepper.Suspend { () =>
-      s.viewL.get match {
+      s.viewL match {
         case FreeC.Result.Pure(None)           => Stepper.Done
         case FreeC.Result.Pure(Some((hd, tl))) => Stepper.Emits(hd, go(stepf(tl)))
         case FreeC.Result.Fail(t)              => Stepper.Fail(t)
@@ -42,24 +44,19 @@ object Pipe2 {
               Stepper.Fail(t)
             }
             .getOrElse(Stepper.Done)
-        case bound: FreeC.Bind[ReadChunk, _, UO] =>
-          val f = bound.asInstanceOf[FreeC.Bind[ReadChunk, Any, UO]].f
-          val fx = bound.fx.asInstanceOf[FreeC.Eval[ReadChunk, UO]].fr
-          fx match {
+        case view: ViewL.View[ReadChunk, x, UO] =>
+          view.step match {
             case Left(recv) =>
               Stepper.AwaitL(
                 chunk =>
-                  try go(f(FreeC.Result.Pure(recv(chunk))))
-                  catch { case NonFatal(t) => go(f(FreeC.Result.Fail(t))) })
+                  try go(view.next(FreeC.Result.Pure(recv(chunk))))
+                  catch { case NonFatal(t) => go(view.next(FreeC.Result.Fail(t))) })
             case Right(recv) =>
               Stepper.AwaitR(
                 chunk =>
-                  try go(f(FreeC.Result.Pure(recv(chunk))))
-                  catch { case NonFatal(t) => go(f(FreeC.Result.Fail(t))) })
+                  try go(view.next(FreeC.Result.Pure(recv(chunk))))
+                  catch { case NonFatal(t) => go(view.next(FreeC.Result.Fail(t))) })
           }
-        case e =>
-          sys.error(
-            "FreeC.ViewL structure must be Pure(a), Fail(e), or Bind(Eval(fx),k), was: " + e)
       }
     }
     go(stepf(p.covary[Read].apply(promptsL, promptsR)))

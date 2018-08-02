@@ -4,7 +4,7 @@ import cats.~>
 import cats.effect.{Concurrent, Sync}
 import cats.implicits._
 import fs2._
-import fs2.internal.FreeC.Result
+import fs2.internal.FreeC.{Result, ViewL}
 
 import scala.util.control.NonFatal
 
@@ -229,7 +229,7 @@ private[fs2] object Algebra {
         scope: CompileScope[F, O],
         stream: FreeC[Algebra[F, X, ?], Unit]
     ): F[R[X]] = {
-      F.flatMap(F.map(F.delay(stream.viewL.get)) { a =>
+      F.flatMap(F.map(F.delay(stream.viewL)) { a =>
         //println(s"XXXA $scope : $a"); a
         a
       }) {
@@ -245,29 +245,21 @@ private[fs2] object Algebra {
             case other          => sys.error(s"Unexpected interruption context: $other (compileLoop)")
           }
 
-        case e: FreeC.Eval[Algebra[F, X, ?], Unit] =>
-          F.raiseError(
-            new Throwable(s"FreeC.ViewL structure must be Result, or Bind(Eval(fx),k) was: $e"))
-
-        case bound: FreeC.Bind[Algebra[F, X, ?], y, Unit] =>
-          val f = bound.f
-            .asInstanceOf[Result[Any] => FreeC[Algebra[F, X, ?], Unit]]
-          val fx = bound.fx.asInstanceOf[FreeC.Eval[Algebra[F, X, ?], y]].fr
-
+        case view: ViewL.View[Algebra[F, X, ?], y, Unit] =>
           def interruptGuard(scope: CompileScope[F, O])(next: => F[R[X]]): F[R[X]] =
             F.flatMap(scope.isInterrupted) {
               case None => next
               case Some(Left(err)) =>
-                go(scope, f(Result.raiseError(err)))
+                go(scope, view.next(Result.raiseError(err)))
               case Some(Right(scopeId)) =>
-                go(scope, f(Result.interrupted(scopeId, None)))
+                go(scope, view.next(Result.interrupted(scopeId, None)))
 
             }
 
-          fx match {
+          view.step match {
             case output: Algebra.Output[F, X] =>
               interruptGuard(scope)(
-                F.pure(Out(output.values, scope, f(FreeC.Result.Pure(()))))
+                F.pure(Out(output.values, scope, view.next(FreeC.Result.Pure(()))))
               )
 
             case u: Algebra.Step[F, y, X] =>
@@ -280,21 +272,21 @@ private[fs2] object Algebra {
                   F.flatMap(F.attempt(go[y](stepScope, u.stream))) {
                     case Right(Done(scope)) =>
                       interruptGuard(scope)(
-                        go(scope, f(Result.pure(None)))
+                        go(scope, view.next(Result.pure(None)))
                       )
                     case Right(Out(head, outScope, tail)) =>
                       // if we originally swapped scopes we want to return the original
                       // scope back to the go as that is the scope that is expected to be here.
                       val nextScope = u.scope.fold(outScope)(_ => scope)
                       interruptGuard(nextScope)(
-                        go(nextScope, f(Result.pure(Some((head, outScope.id, tail)))))
+                        go(nextScope, view.next(Result.pure(Some((head, outScope.id, tail)))))
                       )
 
                     case Right(Interrupted(scopeId, err)) =>
-                      go(scope, f(Result.interrupted(scopeId, err)))
+                      go(scope, view.next(Result.interrupted(scopeId, err)))
 
                     case Left(err) =>
-                      go(scope, f(Result.raiseError(err)))
+                      go(scope, view.next(Result.raiseError(err)))
                   }
                 case None =>
                   F.raiseError(
@@ -304,31 +296,31 @@ private[fs2] object Algebra {
 
             case eval: Algebra.Eval[F, X, r] =>
               F.flatMap(scope.interruptibleEval(eval.value)) {
-                case Right(r)           => go[X](scope, f(Result.pure(r)))
-                case Left(Left(err))    => go[X](scope, f(Result.raiseError(err)))
-                case Left(Right(token)) => go[X](scope, f(Result.interrupted(token, None)))
+                case Right(r)           => go[X](scope, view.next(Result.pure(r)))
+                case Left(Left(err))    => go[X](scope, view.next(Result.raiseError(err)))
+                case Left(Right(token)) => go[X](scope, view.next(Result.interrupted(token, None)))
 
               }
 
             case acquire: Algebra.Acquire[F, X, r] =>
               interruptGuard(scope) {
                 F.flatMap(scope.acquireResource(acquire.resource, acquire.release)) { r =>
-                  go[X](scope, f(Result.fromEither(r)))
+                  go[X](scope, view.next(Result.fromEither(r)))
                 }
               }
 
             case release: Algebra.Release[F, X] =>
               F.flatMap(scope.releaseResource(release.token)) { r =>
-                go[X](scope, f(Result.fromEither(r)))
+                go[X](scope, view.next(Result.fromEither(r)))
               }
 
-            case _: Algebra.GetScope[F, X, y] =>
-              go(scope, f(Result.pure(scope)))
+            case _: Algebra.GetScope[F, X, _] =>
+              go(scope, view.next(Result.pure(scope.asInstanceOf[y])))
 
             case open: Algebra.OpenScope[F, X] =>
               interruptGuard(scope) {
                 F.flatMap(scope.open(open.interruptible)) { childScope =>
-                  go(childScope, f(Result.pure(childScope.id)))
+                  go(childScope, view.next(Result.pure(childScope.id)))
                 }
               }
 
@@ -337,17 +329,17 @@ private[fs2] object Algebra {
                 F.flatMap(toClose.close) { r =>
                   F.flatMap(toClose.openAncestor) { ancestor =>
                     close.interruptedScope match {
-                      case None => go(ancestor, f(Result.fromEither(r)))
+                      case None => go(ancestor, view.next(Result.fromEither(r)))
                       case Some((interruptedScopeId, err)) =>
                         def err1 = CompositeFailure.fromList(r.left.toOption.toList ++ err.toList)
                         if (ancestor.findSelfOrAncestor(interruptedScopeId).isDefined) {
                           // we still have scopes to interrupt, lets build interrupted tail
-                          go(ancestor, f(Result.interrupted(interruptedScopeId, err1)))
+                          go(ancestor, view.next(Result.interrupted(interruptedScopeId, err1)))
                         } else {
                           // interrupts scope was already interrupted, resume operation
                           err1 match {
-                            case None      => go(ancestor, f(Result.unit))
-                            case Some(err) => go(ancestor, f(Result.raiseError(err)))
+                            case None      => go(ancestor, view.next(Result.unit))
+                            case Some(err) => go(ancestor, view.next(Result.raiseError(err)))
                           }
 
                         }
@@ -368,7 +360,7 @@ private[fs2] object Algebra {
                         close.interruptedScope
                           .map { Result.interrupted _ tupled }
                           .getOrElse(Result.unit)
-                      go(scope, f(result))
+                      go(scope, view.next(result))
                   }
               }
 
@@ -405,7 +397,7 @@ private[fs2] object Algebra {
       interruptedScope: Token,
       interruptedError: Option[Throwable]
   ): FreeC[Algebra[F, O, ?], Unit] =
-    stream.viewL.get match {
+    stream.viewL match {
       case _: FreeC.Result.Pure[Algebra[F, O, ?], Unit] =>
         FreeC.interrupted(interruptedScope, interruptedError)
       case failed: FreeC.Result.Fail[Algebra[F, O, ?], Unit] =>
@@ -417,25 +409,18 @@ private[fs2] object Algebra {
         // impossible
         FreeC.interrupted(interrupted.context, interrupted.deferredError)
 
-      case bound: FreeC.Bind[Algebra[F, O, ?], _, Unit] =>
-        val f = bound.f
-          .asInstanceOf[Result[Any] => FreeC[Algebra[F, O, ?], Unit]]
-        val fx = bound.fx.asInstanceOf[FreeC.Eval[Algebra[F, O, ?], _]].fr
-
-        fx match {
+      case view: ViewL.View[Algebra[F, O, ?], _, Unit] =>
+        view.step match {
           case close: Algebra.CloseScope[F, O] =>
             Algebra
               .closeScope(close.scopeId, Some((interruptedScope, interruptedError))) // assumes it is impossible so the `close` will be already from interrupted stream
-              .transformWith(f)
-          case other =>
+              .transformWith(view.next)
+          case _ =>
             // all other cases insert interruption cause
-            f(Result.interrupted(interruptedScope, interruptedError))
+            view.next(Result.interrupted(interruptedScope, interruptedError))
 
         }
 
-      case e =>
-        sys.error(
-          "FreeC.ViewL structure must be Pure(a), Fail(e), or Bind(Eval(fx),k), (interruptBoundary) was: " + e)
     }
 
   private def translateStep[F[_], G[_], X](
@@ -443,7 +428,7 @@ private[fs2] object Algebra {
       next: FreeC[Algebra[F, X, ?], Unit],
       concurrent: Option[Concurrent[G]]
   ): FreeC[Algebra[G, X, ?], Unit] =
-    next.viewL.get match {
+    next.viewL match {
       case _: FreeC.Result.Pure[Algebra[F, X, ?], Unit] =>
         FreeC.pure[Algebra[G, X, ?], Unit](())
 
@@ -453,24 +438,21 @@ private[fs2] object Algebra {
       case interrupted: FreeC.Result.Interrupted[Algebra[F, X, ?], _, Unit] =>
         FreeC.interrupted(interrupted.context, interrupted.deferredError)
 
-      case bound: FreeC.Bind[Algebra[F, X, ?], _, Unit] =>
-        val f = bound.f
-          .asInstanceOf[Result[Any] => FreeC[Algebra[F, X, ?], Unit]]
-        val fx = bound.fx.asInstanceOf[FreeC.Eval[Algebra[F, X, ?], _]].fr
-
-        fx match {
+      case view: ViewL.View[Algebra[F, X, ?], y, Unit] =>
+        view.step match {
           case output: Algebra.Output[F, X] =>
             Algebra.output[G, X](output.values).transformWith {
               case r @ Result.Pure(v) =>
                 // Cast is safe here, as at this point the evaluation of this Step will end
                 // and the remainder of the free will be passed as a result in Bind. As such
                 // next Step will have this to evaluate, and will try to translate again.
-                f(r)
+                view
+                  .next(r)
                   .asInstanceOf[FreeC[Algebra[G, X, ?], Unit]]
 
-              case r @ Result.Fail(err) => translateStep(fK, f(r), concurrent)
+              case r @ Result.Fail(err) => translateStep(fK, view.next(r), concurrent)
 
-              case r @ Result.Interrupted(_, _) => translateStep(fK, f(r), concurrent)
+              case r @ Result.Interrupted(_, _) => translateStep(fK, view.next(r), concurrent)
             }
 
           case step: Algebra.Step[F, x, X] =>
@@ -481,19 +463,16 @@ private[fs2] object Algebra {
                   scope = step.scope
                 ))
               .transformWith { r =>
-                translateStep[F, G, X](fK, f(r), concurrent)
+                translateStep[F, G, X](fK, view.next(r.asInstanceOf[Result[y]]), concurrent)
               }
 
           case alg: Algebra.AlgEffect[F, X, r] =>
             FreeC.Eval[Algebra[G, X, ?], r](alg.translate[G](concurrent, fK)).transformWith { r =>
-              translateStep(fK, f(r), concurrent)
+              translateStep(fK, view.next(r), concurrent)
             }
 
         }
 
-      case e =>
-        sys.error(
-          "FreeC.ViewL structure must be Pure(a), Fail(e), or Bind(Eval(fx),k), (translateLeg) was: " + e)
     }
 
   private def translate0[F[_], G[_], O](
@@ -501,7 +480,7 @@ private[fs2] object Algebra {
       s: FreeC[Algebra[F, O, ?], Unit],
       concurrent: Option[Concurrent[G]]
   ): FreeC[Algebra[G, O, ?], Unit] =
-    s.viewL.get match {
+    s.viewL match {
       case _: FreeC.Result.Pure[Algebra[F, O, ?], Unit] =>
         FreeC.pure[Algebra[G, O, ?], Unit](())
 
@@ -511,15 +490,11 @@ private[fs2] object Algebra {
       case interrupted: FreeC.Result.Interrupted[Algebra[F, O, ?], _, Unit] =>
         FreeC.interrupted(interrupted.context, interrupted.deferredError)
 
-      case bound: FreeC.Bind[Algebra[F, O, ?], _, Unit] =>
-        val f = bound.f
-          .asInstanceOf[Result[Any] => FreeC[Algebra[F, O, ?], Unit]]
-        val fx = bound.fx.asInstanceOf[FreeC.Eval[Algebra[F, O, ?], _]].fr
-
-        fx match {
+      case view: ViewL.View[Algebra[F, O, ?], y, Unit] =>
+        view.step match {
           case output: Algebra.Output[F, O] =>
             Algebra.output[G, O](output.values).transformWith { r =>
-              translate0(fK, f(r), concurrent)
+              translate0(fK, view.next(r), concurrent)
             }
 
           case step: Algebra.Step[F, x, O] =>
@@ -530,19 +505,16 @@ private[fs2] object Algebra {
                   scope = step.scope
                 ))
               .transformWith { r =>
-                translate0(fK, f(r), concurrent)
+                translate0(fK, view.next(r.asInstanceOf[Result[y]]), concurrent)
               }
 
           case alg: Algebra.AlgEffect[F, O, r] =>
             FreeC.Eval[Algebra[G, O, ?], r](alg.translate[G](concurrent, fK)).transformWith { r =>
-              translate0(fK, f(r), concurrent)
+              translate0(fK, view.next(r), concurrent)
             }
 
         }
 
-      case e =>
-        sys.error(
-          "FreeC.ViewL structure must be Pure(a), Fail(e), or Bind(Eval(fx),k), (translateLeg) was: " + e)
     }
 
 }

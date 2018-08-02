@@ -43,23 +43,23 @@ private[fs2] sealed abstract class FreeC[F[_], +R] {
                         case other => other.covary[R2].asFreeC[F]
                     })
 
-  def asHandler(e: Throwable): FreeC[F, R] = viewL.get match {
+  def asHandler(e: Throwable): FreeC[F, R] = ViewL(this) match {
     case Result.Pure(_)  => Result.Fail(e)
     case Result.Fail(e2) => Result.Fail(CompositeFailure(e2, e))
     case Result.Interrupted(ctx, err) =>
       Result.Interrupted(ctx, err.map(t => CompositeFailure(e, t)).orElse(Some(e)))
-    case Bind(_, k) => k(Result.Fail(e))
-    case Eval(_)    => sys.error("impossible")
+    case ViewL.View(_, k) => k(Result.Fail(e))
   }
 
-  def viewL: ViewL[F, R] = mkViewL(this)
+  def viewL[R2 >: R]: ViewL[F, R2] = ViewL(this)
 
   def translate[G[_]](f: F ~> G): FreeC[G, R] = FreeC.suspend {
-    viewL.get match {
-      case Bind(fx, k) =>
-        Bind(fx.translate(f), (e: Result[Any]) => k(e).translate(f))
-      case Eval(fx)  => sys.error("impossible")
-      case Result(r) => r.asFreeC[G]
+    viewL match {
+      case ViewL.View(fx, k) =>
+        Bind(Eval(fx).translate(f), (e: Result[Any]) => k(e).translate(f))
+      case r @ Result.Pure(_)           => r.asFreeC[G]
+      case r @ Result.Fail(_)           => r.asFreeC[G]
+      case r @ Result.Interrupted(_, _) => r.asFreeC[G]
     }
   }
 }
@@ -116,13 +116,16 @@ private[fs2] object FreeC {
       case _                            => None
     }
 
-    final case class Pure[F[_], R](r: R) extends FreeC[F, R] with Result[R] {
+    final case class Pure[F[_], R](r: R) extends FreeC[F, R] with Result[R] with ViewL[F, R] {
       override def translate[G[_]](f: F ~> G): FreeC[G, R] =
         this.asInstanceOf[FreeC[G, R]]
       override def toString: String = s"FreeC.Pure($r)"
     }
 
-    final case class Fail[F[_], R](error: Throwable) extends FreeC[F, R] with Result[R] {
+    final case class Fail[F[_], R](error: Throwable)
+        extends FreeC[F, R]
+        with Result[R]
+        with ViewL[F, R] {
       override def translate[G[_]](f: F ~> G): FreeC[G, R] =
         this.asInstanceOf[FreeC[G, R]]
       override def toString: String = s"FreeC.Fail($error)"
@@ -140,7 +143,8 @@ private[fs2] object FreeC {
       */
     final case class Interrupted[F[_], X, R](context: X, deferredError: Option[Throwable])
         extends FreeC[F, R]
-        with Result[R] {
+        with Result[R]
+        with ViewL[F, R] {
       override def translate[G[_]](f: F ~> G): FreeC[G, R] =
         this.asInstanceOf[FreeC[G, R]]
       override def toString: String =
@@ -191,39 +195,46 @@ private[fs2] object FreeC {
     Result.Pure[F, Unit](()).flatMap(_ => fr)
 
   /**
-    * Unrolled view of a `FreeC` structure. The `get` value is guaranteed to be one of:
-    * `Result(r)`,  `Bind(Eval(fx), k)`.
+    * Unrolled view of a `FreeC` structure. may be `Result` or `EvalBind`
     */
-  final class ViewL[F[_], +R](val get: FreeC[F, R]) extends AnyVal
+  sealed trait ViewL[F[_], +R]
 
-  private def mkViewL[F[_], R](free: FreeC[F, R]): ViewL[F, R] = {
-    @annotation.tailrec
-    def go[X](free: FreeC[F, X]): ViewL[F, R] = free match {
-      case Eval(fx) =>
-        new ViewL(Bind(free.asInstanceOf[FreeC[F, R]], pureContinuation[F, R]))
-      case b: FreeC.Bind[F, y, X] =>
-        b.fx match {
-          case Result(r)  => go(b.f(r))
-          case Eval(_)    => new ViewL(b.asInstanceOf[FreeC[F, R]])
-          case Bind(w, g) => go(Bind(w, (e: Result[Any]) => Bind(g(e), b.f)))
-        }
-      case Result(r) => new ViewL(r.asInstanceOf[FreeC[F, R]])
-    }
-    go(free)
+  object ViewL {
+
+    /** unrolled view of FreeC `bind` structure **/
+    final case class View[F[_], X, R](step: F[X], next: Result[X] => FreeC[F, R])
+        extends ViewL[F, R]
+
+    private[fs2] def apply[F[_], R](free: FreeC[F, R]): ViewL[F, R] = mk(free)
+
+    @tailrec
+    private def mk[F[_], R](free: FreeC[F, R]): ViewL[F, R] =
+      free match {
+        case Eval(fx) => View(fx, pureContinuation[F, R])
+        case b: FreeC.Bind[F, y, R] =>
+          b.fx match {
+            case Result(r)  => mk(b.f(r))
+            case Eval(fr)   => ViewL.View(fr, b.f)
+            case Bind(w, g) => mk(Bind(w, (e: Result[Any]) => Bind(g(e), b.f)))
+          }
+        case r @ Result.Pure(_)           => r
+        case r @ Result.Fail(_)           => r
+        case r @ Result.Interrupted(_, _) => r
+      }
+
   }
 
   implicit final class InvariantOps[F[_], R](private val self: FreeC[F, R]) extends AnyVal {
     // None indicates the FreeC was interrupted
     def run(implicit F: MonadError[F, Throwable]): F[Option[R]] =
-      self.viewL.get match {
+      self.viewL match {
         case Result.Pure(r)             => F.pure(Some(r))
         case Result.Fail(e)             => F.raiseError(e)
         case Result.Interrupted(_, err) => err.fold[F[Option[R]]](F.pure(None)) { F.raiseError }
-        case Bind(fr, k) =>
-          F.flatMap(F.attempt(fr.asInstanceOf[Eval[F, Any]].fr)) { r =>
-            k(Result.fromEither(r)).run
+        case ViewL.View(step, next) =>
+          F.flatMap(F.attempt(step)) { r =>
+            next(Result.fromEither(r)).run
           }
-        case Eval(_) => sys.error("impossible")
       }
   }
 
