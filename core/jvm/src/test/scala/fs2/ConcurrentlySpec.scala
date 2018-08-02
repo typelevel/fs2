@@ -73,7 +73,7 @@ class ConcurrentlySpec extends Fs2Spec with EventuallySupport {
                 s.get
                   .covary[IO]
                   .concurrently(
-                    (Stream.eval_(IO.sleep(20.millis)) ++
+                    (Stream.eval_(IO.sleep(50.millis)) ++
                       Stream
                         .eval_(halt.complete(())))
                       .onFinalize(

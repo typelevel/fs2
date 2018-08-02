@@ -5,7 +5,9 @@ import cats.data.NonEmptyList
 import cats.effect._
 import cats.effect.concurrent.{Deferred, Ref, Semaphore}
 import cats.implicits.{catsSyntaxEither => _, _}
+import fs2.internal.FreeC.Result
 import fs2.internal.{Algebra, Canceled, FreeC, Token}
+
 import scala.collection.generic.CanBuildFrom
 import scala.concurrent.duration._
 
@@ -74,7 +76,10 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
 
   /** Appends `s2` to the end of this stream. Alias for `s1 ++ s2`. */
   def append[F2[x] >: F[x], O2 >: O](s2: => Stream[F2, O2]): Stream[F2, O2] =
-    Stream.fromFreeC(get[F2, O2].flatMap(_ => s2.get))
+    Stream.fromFreeC(get[F2, O2].transformWith {
+      case Result.Pure(_) => s2.get
+      case other          => other.asFreeC[Algebra[F2, O2, ?]]
+    })
 
   /**
     * Alias for `_.map(_ => o2)`.
@@ -792,23 +797,30 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
   def flatMap[F2[x] >: F[x], O2](f: O => Stream[F2, O2]): Stream[F2, O2] =
     Stream.fromFreeC[F2, O2](Algebra.uncons(get[F2, O]).flatMap {
       case Some((hd, tl)) =>
-        // nb: If tl is Pure, there's no need to propagate flatMap through the tail. Hence, we
-        // check if hd has only a single element, and if so, process it directly instead of folding.
-        // This allows recursive infinite streams of the form `def s: Stream[Pure,O] = Stream(o).flatMap { _ => s }`
-        val only: Option[O] = tl match {
-          case FreeC.Pure(_) => hd.head
-          case _             => None
-        }
-        only match {
-          case None =>
-            hd.map(f)
-              .foldRightLazy(Stream.fromFreeC(tl).flatMap(f))(_ ++ _)
-              .get
+        tl match {
+          case FreeC.Result.Pure(_) if hd.size == 1 =>
+            // nb: If tl is Pure, there's no need to propagate flatMap through the tail. Hence, we
+            // check if hd has only a single element, and if so, process it directly instead of folding.
+            // This allows recursive infinite streams of the form `def s: Stream[Pure,O] = Stream(o).flatMap { _ => s }`
+            f(hd(0)).get
 
-          case Some(o) =>
-            f(o).get
+          case _ =>
+            def go(idx: Int): FreeC[Algebra[F2, O2, ?], Unit] =
+              if (idx == hd.size) Stream.fromFreeC(tl).flatMap(f).get
+              else {
+                f(hd(idx)).get.transformWith {
+                  case Result.Pure(_)   => go(idx + 1)
+                  case Result.Fail(err) => Algebra.raiseError(err)
+                  case Result.Interrupted(scopeId: Token, err) =>
+                    Stream.fromFreeC(Algebra.interruptBoundary(tl, scopeId, err)).flatMap(f).get
+                  case Result.Interrupted(invalid, err) =>
+                    sys.error(s"Invalid interruption context: $invalid (flatMap)")
+                }
+              }
 
+            go(0)
         }
+
       case None => Stream.empty.get
     })
 
@@ -2217,8 +2229,10 @@ object Stream {
     fromFreeC(Algebra.acquire[F, R, R](acquire, release).flatMap {
       case (r, token) =>
         Stream.emit(r).covary[F].get[F, R].transformWith {
-          case Left(err) => Algebra.release(token).flatMap(_ => FreeC.Fail(err))
-          case Right(_)  => Algebra.release(token)
+          case Result.Fail(err) => Algebra.release(token).flatMap(_ => FreeC.raiseError(err))
+          case Result.Interrupted(scopeId, err) =>
+            Algebra.release(token).flatMap(_ => FreeC.interrupted(scopeId, err))
+          case Result.Pure(_) => Algebra.release(token)
         }
     })
 
@@ -2232,8 +2246,10 @@ object Stream {
           .map(o => (token, o))
           .get[F, (Token, R)]
           .transformWith {
-            case Left(err) => Algebra.release(token).flatMap(_ => FreeC.Fail(err))
-            case Right(_)  => Algebra.release(token)
+            case Result.Fail(err) => Algebra.release(token).flatMap(_ => FreeC.raiseError(err))
+            case Result.Interrupted(scopeId, err) =>
+              Algebra.release(token).flatMap(_ => FreeC.interrupted(scopeId, err))
+            case Result.Pure(_) => Algebra.release(token)
           }
     })
 

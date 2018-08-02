@@ -33,9 +33,15 @@ object Pipe2 {
 
     def go(s: Read[UO]): Stepper[I, I2, O] = Stepper.Suspend { () =>
       s.viewL.get match {
-        case FreeC.Pure(None)           => Stepper.Done
-        case FreeC.Pure(Some((hd, tl))) => Stepper.Emits(hd, go(stepf(tl)))
-        case FreeC.Fail(t)              => Stepper.Fail(t)
+        case FreeC.Result.Pure(None)           => Stepper.Done
+        case FreeC.Result.Pure(Some((hd, tl))) => Stepper.Emits(hd, go(stepf(tl)))
+        case FreeC.Result.Fail(t)              => Stepper.Fail(t)
+        case FreeC.Result.Interrupted(_, err) =>
+          err
+            .map { t =>
+              Stepper.Fail(t)
+            }
+            .getOrElse(Stepper.Done)
         case bound: FreeC.Bind[ReadChunk, _, UO] =>
           val f = bound.asInstanceOf[FreeC.Bind[ReadChunk, Any, UO]].f
           val fx = bound.fx.asInstanceOf[FreeC.Eval[ReadChunk, UO]].fr
@@ -43,13 +49,13 @@ object Pipe2 {
             case Left(recv) =>
               Stepper.AwaitL(
                 chunk =>
-                  try go(f(Right(recv(chunk))))
-                  catch { case NonFatal(t) => go(f(Left(t))) })
+                  try go(f(FreeC.Result.Pure(recv(chunk))))
+                  catch { case NonFatal(t) => go(f(FreeC.Result.Fail(t))) })
             case Right(recv) =>
               Stepper.AwaitR(
                 chunk =>
-                  try go(f(Right(recv(chunk))))
-                  catch { case NonFatal(t) => go(f(Left(t))) })
+                  try go(f(FreeC.Result.Pure(recv(chunk))))
+                  catch { case NonFatal(t) => go(f(FreeC.Result.Fail(t))) })
           }
         case e =>
           sys.error(
