@@ -229,10 +229,7 @@ private[fs2] object Algebra {
         scope: CompileScope[F, O],
         stream: FreeC[Algebra[F, X, ?], Unit]
     ): F[R[X]] = {
-      F.flatMap(F.map(F.delay(stream.viewL)) { a =>
-        //println(s"XXXA $scope : $a"); a
-        a
-      }) {
+      stream.viewL match {
         case _: FreeC.Result.Pure[Algebra[F, X, ?], Unit] =>
           F.pure(Done(scope))
 
@@ -315,7 +312,7 @@ private[fs2] object Algebra {
               }
 
             case _: Algebra.GetScope[F, X, _] =>
-              go(scope, view.next(Result.pure(scope.asInstanceOf[y])))
+              F.suspend(go(scope, view.next(Result.pure(scope.asInstanceOf[y]))))
 
             case open: Algebra.OpenScope[F, X] =>
               interruptGuard(scope) {
