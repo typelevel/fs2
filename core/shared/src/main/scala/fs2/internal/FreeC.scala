@@ -8,7 +8,22 @@ import FreeC._
 import scala.annotation.tailrec
 import scala.util.control.NonFatal
 
-/** Free monad with a catch -- catches exceptions and provides mechanisms for handling them. */
+/**
+  * Free Monad with Catch (and Interruption).
+  *
+  * [[FreeC]] provides mechanism for ensuring stack safety and capturing any exceptions that may arise during computation.
+  *
+  * Furthermore, it may capture Interruption of the evaluation, although [[FreeC]] itself does not have any
+  * interruptible behaviour per se.
+  *
+  * Interruption cause may be captured in [[FreeC.Result.Interrupted]] and allows user to pass along any information relevant
+  * to interpreter.
+  *
+  * Typically the [[FreeC]] user provides interpretation of FreeC in form of [[ViewL]] structure, that allows to step
+  * FreeC via series of Results ([[Result.Pure]], [[Result.Fail]] and [[Result.Interrupted]]) and FreeC step ([[ViewL.View]])
+  *
+  *
+  */
 private[fs2] sealed abstract class FreeC[F[_], +R] {
 
   def flatMap[R2](f: R => FreeC[F, R2]): FreeC[F, R2] =
