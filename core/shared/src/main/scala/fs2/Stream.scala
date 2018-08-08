@@ -64,7 +64,7 @@ import scala.concurrent.duration._
   *
   * @hideImplicitConversion PureOps
   * @hideImplicitConversion IdOps
-  */
+  **/
 final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, Nothing, ?], Unit])
     extends AnyVal {
 
@@ -1236,6 +1236,36 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * }}}
     */
   def mask: Stream[F, O] = this.handleErrorWith(_ => Stream.empty)
+
+  /**
+    * Like [[Stream.flatMap]] but interrupts the inner stream when new elements arrive in the outer stream.
+    * 
+    * 
+    * When the outer stream stops gracefully, the currently running inner stream will be inturrupted
+    * 
+    * 
+    */
+  def switchMap[F2[x] >: F[x], O2](f: O => Stream[F2, O2])(implicit F2: Concurrent[F2]): Stream[F2, O2] = {
+      for {
+        haltRef <- Stream.eval(Ref.of[F2, Option[Deferred[F2, Unit]]](None))
+        queue <- Stream.eval(fs2.async.unboundedQueue[F2, Option[O2]])
+        pulse <- Stream.eval(fs2.async.unboundedQueue[F2, (O, Deferred[F2, Unit])])
+        guard <- Stream.eval(Semaphore(1))
+        o2 <- queue.dequeue.unNoneTerminate concurrently
+              pulse.dequeue.evalMap { case (o, halt) => 
+                  f(o).evalMap { x =>  queue.enqueue1(x.some) } 
+                      .interruptWhen(halt.get.attempt)
+                      .compile.drain
+              }.mergeHaltR (this
+                   .onFinalize { guard.withPermit(queue.enqueue1(None)) }
+                   .evalMap(x => Deferred[F2, Unit].flatMap { halt =>
+                     guard.withPermit(haltRef.modify {
+                       case None       => halt.some -> F2.unit
+                       case Some(last) => halt.some -> last.complete(())
+                     }.flatten *> pulse.enqueue1(x -> halt))
+                   })) 
+      } yield o2
+  }
 
   /**
     * Interleaves the two inputs nondeterministically. The output stream
