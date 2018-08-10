@@ -183,6 +183,16 @@ private[fs2] final class CompileScope[F[_], O] private (
     }
   }
 
+  /** like `acquireResource` but instead of acquiring resource, just registers finalizer **/
+  def registerFinalizer(release: F[Unit]): F[Either[Throwable, Token]] = {
+    val resource = Resource.asFinalizer(release)
+    F.flatMap(register(resource)) { mayAcquire =>
+      if (!mayAcquire) F.raiseError(AcquireAfterScopeClosed)
+      else F.pure(Right(resource.id))
+    }
+
+  }
+
   /**
     * Unregisters the child scope identified by the supplied id.
     *

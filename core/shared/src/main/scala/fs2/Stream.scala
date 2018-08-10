@@ -1378,8 +1378,10 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
   /**
     * Run the supplied effectful action at the end of this stream, regardless of how the stream terminates.
     */
-  def onFinalize[F2[x] >: F[x]](f: F2[Unit])(implicit F2: Applicative[F2]): Stream[F2, O] =
-    Stream.bracket(F2.unit)(_ => f) >> this
+  def onFinalize[F2[x] >: F[x]](f: F2[Unit]): Stream[F2, O] =
+    Stream.fromFreeC(Algebra.finalizer[F2, O](f).flatMap { token =>
+      this.get[F2, O].transformWith(Stream.bracketFinalizer(token))
+    })
 
   /**
     * Nondeterministically merges a stream of streams (`outer`) in to a single stream,
@@ -2230,12 +2232,7 @@ object Stream {
   def bracket[F[x] >: Pure[x], R](acquire: F[R])(release: R => F[Unit]): Stream[F, R] =
     fromFreeC(Algebra.acquire[F, R, R](acquire, release).flatMap {
       case (r, token) =>
-        Stream.emit(r).covary[F].get[F, R].transformWith {
-          case Result.Fail(err) => Algebra.release(token).flatMap(_ => FreeC.raiseError(err))
-          case Result.Interrupted(scopeId, err) =>
-            Algebra.release(token).flatMap(_ => FreeC.interrupted(scopeId, err))
-          case Result.Pure(_) => Algebra.release(token)
-        }
+        Stream.emit(r).covary[F].get[F, R].transformWith(bracketFinalizer(token))
     })
 
   private[fs2] def bracketWithToken[F[x] >: Pure[x], R](acquire: F[R])(
@@ -2247,13 +2244,17 @@ object Stream {
           .covary[F]
           .map(o => (token, o))
           .get[F, (Token, R)]
-          .transformWith {
-            case Result.Fail(err) => Algebra.release(token).flatMap(_ => FreeC.raiseError(err))
-            case Result.Interrupted(scopeId, err) =>
-              Algebra.release(token).flatMap(_ => FreeC.interrupted(scopeId, err))
-            case Result.Pure(_) => Algebra.release(token)
-          }
+          .transformWith(bracketFinalizer(token))
     })
+
+  private[fs2] def bracketFinalizer[F[_], O](token: Token)(
+      r: Result[Unit]): FreeC[Algebra[F, O, ?], Unit] =
+    r match {
+      case Result.Fail(err) => Algebra.release(token).flatMap(_ => FreeC.raiseError(err))
+      case Result.Interrupted(scopeId, err) =>
+        Algebra.release(token).flatMap(_ => FreeC.interrupted(scopeId, err))
+      case Result.Pure(_) => Algebra.release(token)
+    }
 
   /**
     * Creates a pure stream that emits the elements of the supplied chunk.

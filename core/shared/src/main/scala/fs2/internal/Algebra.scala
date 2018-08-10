@@ -24,6 +24,11 @@ private[fs2] object Algebra {
   final case class Acquire[F[_], O, R](resource: F[R], release: R => F[Unit])
       extends AlgEffect[F, O, (R, Token)]
 
+  // Like Acquire, but runs' finalizer w/o acquiring the resource
+  // this guarantees proper sequencing in finalizers due standard `Acquire` allowing for asynchronous resource allocation
+  // and thus non-deterministic finalizer evaluation
+  final case class Finalize[F[_], O](release: F[Unit]) extends AlgEffect[F, O, Token]
+
   final case class Release[F[_], O](token: Token) extends AlgEffect[F, O, Unit]
 
   final case class OpenScope[F[_], O](interruptible: Option[Concurrent[F]])
@@ -48,6 +53,7 @@ private[fs2] object Algebra {
       self match {
         case a: Acquire[F, O, r] =>
           Acquire[G, O, r](fK(a.resource), r => fK(a.release(r))).asInstanceOf[AlgEffect[G, O, R]]
+        case fin: Finalize[F, O]  => Finalize[G, O](fK(fin.release)).asInstanceOf[AlgEffect[G, O, R]]
         case e: Eval[F, O, R]     => Eval[G, O, R](fK(e.value))
         case o: OpenScope[F, O]   => OpenScope[G, O](concurrent).asInstanceOf[AlgEffect[G, O, R]]
         case r: Release[F, O]     => r.asInstanceOf[AlgEffect[G, O, R]]
@@ -76,6 +82,9 @@ private[fs2] object Algebra {
   def acquire[F[_], O, R](resource: F[R],
                           release: R => F[Unit]): FreeC[Algebra[F, O, ?], (R, Token)] =
     FreeC.Eval[Algebra[F, O, ?], (R, Token)](Acquire(resource, release))
+
+  def finalizer[F[_], O](release: F[Unit]): FreeC[Algebra[F, O, ?], Token] =
+    FreeC.Eval[Algebra[F, O, ?], Token](Algebra.Finalize(release))
 
   def release[F[_], O](token: Token): FreeC[Algebra[F, O, ?], Unit] =
     FreeC.Eval[Algebra[F, O, ?], Unit](Release(token))
@@ -302,6 +311,13 @@ private[fs2] object Algebra {
             case acquire: Algebra.Acquire[F, X, r] =>
               interruptGuard(scope) {
                 F.flatMap(scope.acquireResource(acquire.resource, acquire.release)) { r =>
+                  go[X](scope, view.next(Result.fromEither(r)))
+                }
+              }
+
+            case finalize: Algebra.Finalize[F, X] =>
+              interruptGuard(scope) {
+                F.flatMap(scope.registerFinalizer(finalize.release)) { r =>
                   go[X](scope, view.next(Result.fromEither(r)))
                 }
               }
