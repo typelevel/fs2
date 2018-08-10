@@ -63,7 +63,7 @@ class ConcurrentlySpec extends Fs2Spec with EventuallySupport {
     "run finalizers of background stream and properly handle exception" in forAll {
       s: PureStream[Int] =>
         val streamStarted = new java.util.concurrent.atomic.AtomicBoolean(false)
-        val idx = Index.idx.get()
+        val idx = Index.idx.incrementAndGet()
         println(s"$idx: STARTING: $s")
         val Boom = new Err
         val prg = Stream
