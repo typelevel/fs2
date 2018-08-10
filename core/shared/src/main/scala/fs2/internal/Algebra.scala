@@ -24,9 +24,13 @@ private[fs2] object Algebra {
   final case class Acquire[F[_], O, R](resource: F[R], release: R => F[Unit])
       extends AlgEffect[F, O, (R, Token)]
 
-  // Like Acquire, but runs' finalizer w/o acquiring the resource
-  // this guarantees proper sequencing in finalizers due standard `Acquire` allowing for asynchronous resource allocation
-  // and thus non-deterministic finalizer evaluation
+  // Like Acquire, but runs finalizer w/o acquiring the resource
+  // this guarantees proper sequencing of finalizers.
+  // Normally Acquire allows to allocate Asynchronous resources, that in turn allows for asynchronous finalizers.
+  // As such Stream.bracket(F.unit)(_ = finalizer) is not enough, hence the orchestration of asynchronous allocation and
+  // finalizers may execute out of order.
+  // This `Finalize` case assures that finalizers created with `onFinalize` are always registered synchronously
+  // and always evaluated in correct order.
   final case class Finalize[F[_], O](release: F[Unit]) extends AlgEffect[F, O, Token]
 
   final case class Release[F[_], O](token: Token) extends AlgEffect[F, O, Unit]
