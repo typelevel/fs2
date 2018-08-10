@@ -1,5 +1,7 @@
 package fs2
 
+import java.util.concurrent.atomic.AtomicInteger
+
 import scala.concurrent.duration._
 import cats.implicits._
 import cats.effect.IO
@@ -61,7 +63,8 @@ class ConcurrentlySpec extends Fs2Spec with EventuallySupport {
     "run finalizers of background stream and properly handle exception" in forAll {
       s: PureStream[Int] =>
         val streamStarted = new java.util.concurrent.atomic.AtomicBoolean(false)
-
+        val idx = Index.idx.get()
+        println(s"$idx: STARTING: $s")
         val Boom = new Err
         val prg = Stream
           .eval(Deferred[IO, Unit])
@@ -81,7 +84,9 @@ class ConcurrentlySpec extends Fs2Spec with EventuallySupport {
                         .eval_(halt.complete(())))
                       .onFinalize(
                         IO.sleep(100.millis) >>
-                          (if (b.get) IO.raiseError(Boom) else IO(()))
+                          (if (b.get) { println(s"$idx RAISED"); IO.raiseError(Boom) } else {
+                             println(s"$idx SILENT"); IO(())
+                           })
                       ))
               }
               .interruptWhen(halt.get.attempt)
@@ -89,9 +94,16 @@ class ConcurrentlySpec extends Fs2Spec with EventuallySupport {
 
         val r = prg.compile.drain.attempt.unsafeRunSync()
 
+        println(s"$idx: RESULT: $r")
+        println(s"$idx: STARTED: ${streamStarted.get}")
+        println(s"$idx: ${if (streamStarted.get) r.isLeft else r.isRight}")
         if (streamStarted.get) r shouldBe Left(Boom)
         else r shouldBe Right(())
 
     }
   }
+}
+
+object Index {
+  val idx = new AtomicInteger(0)
 }
