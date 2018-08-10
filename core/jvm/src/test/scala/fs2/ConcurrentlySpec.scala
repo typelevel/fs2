@@ -60,6 +60,9 @@ class ConcurrentlySpec extends Fs2Spec with EventuallySupport {
 
     "run finalizers of background stream and properly handle exception" in forAll {
       s: PureStream[Int] =>
+        val streamStarted = new java.util.concurrent.atomic.AtomicBoolean(false)
+
+        val Boom = new Err
         val prg = Stream
           .eval(Deferred[IO, Unit])
           .flatMap { halt =>
@@ -73,18 +76,21 @@ class ConcurrentlySpec extends Fs2Spec with EventuallySupport {
                 s.get
                   .covary[IO]
                   .concurrently(
-                    (Stream.eval_(IO.sleep(50.millis)) ++
+                    (Stream.eval_(IO(streamStarted.set(true))) ++
                       Stream
                         .eval_(halt.complete(())))
                       .onFinalize(
                         IO.sleep(100.millis) >>
-                          (if (b.get) IO.raiseError(new Err) else IO(()))
+                          (if (b.get) IO.raiseError(Boom) else IO(()))
                       ))
               }
               .interruptWhen(halt.get.attempt)
           }
 
-        an[Err] should be thrownBy runLog(prg)
+        val r = prg.compile.drain.attempt.unsafeRunSync()
+
+        if (streamStarted.get) r shouldBe Left(Boom)
+        else r shouldBe Right(())
 
     }
   }

@@ -74,12 +74,13 @@ class MergeJoinSpec extends Fs2Spec {
             )
 
           val s: Stream[IO, Stream[IO, Int]] = bracketed.flatMap { b =>
-            val s1 = (Stream.eval_(IO.sleep(20.millis)) ++
-              Stream.eval_(halt.complete(())))
-              .onFinalize(
-                IO.sleep(100.millis) >>
-                  (if (b.get) IO.raiseError(new Err) else IO(()))
-              )
+            val s1 =
+              Stream
+                .eval_(halt.complete(()))
+                .onFinalize(
+                  IO.sleep(100.millis) >>
+                    (if (b.get) IO.raiseError(new Err) else IO(()))
+                )
 
             Stream(s1, s2.get.covary[IO]).covary[IO]
           }
@@ -142,9 +143,8 @@ class MergeJoinSpec extends Fs2Spec {
               s.get
                 .covary[IO]
                 .merge(
-                  (Stream.eval_(IO.sleep(20.millis)) ++
-                    Stream
-                      .eval(halt.complete(())))
+                  Stream
+                    .eval(halt.complete(()))
                     .onFinalize(
                       IO.sleep(100.millis) >>
                         (if (b.get) IO.raiseError(new Err) else IO(()))

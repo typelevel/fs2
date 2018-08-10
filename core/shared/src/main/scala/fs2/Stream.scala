@@ -1066,7 +1066,9 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     Stream
       .getScope[F2]
       .flatMap { scope =>
-        Stream.eval(F2.start(haltOnSignal.flatMap(scope.interrupt))).flatMap(_ => this)
+        Stream.eval(F2.start(haltOnSignal.flatMap(scope.interrupt))).flatMap { fiber =>
+          this.onFinalize(fiber.cancel)
+        }
       }
       .interruptScope
 
