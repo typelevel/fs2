@@ -1417,7 +1417,7 @@ object Segment {
     /**
       * Splits this segment at the first element where the supplied predicate returns false.
       *
-      * Analagous to siumultaneously running `takeWhile` and `dropWhile`.
+      * Analogous to siumultaneously running `takeWhile` and `dropWhile`.
       *
       * If `emitFailure` is false, the first element which fails the predicate is returned in the suffix segment. If true,
       * it is returned as the last element in the prefix segment.

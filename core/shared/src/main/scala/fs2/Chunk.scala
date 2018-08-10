@@ -48,7 +48,7 @@ abstract class Chunk[+O] extends Serializable { self =>
   /** Drops the first `n` elements of this chunk. */
   def drop(n: Int): Chunk[O] = splitAt(n)._2
 
-  /** Returns a chunk that has only the elements that satifsy the supplied predicate. */
+  /** Returns a chunk that has only the elements that satisfy the supplied predicate. */
   def filter(p: O => Boolean): Chunk[O] = {
     val b = collection.mutable.Buffer.newBuilder[O]
     b.sizeHint(size)
@@ -61,7 +61,7 @@ abstract class Chunk[+O] extends Serializable { self =>
     Chunk.buffer(b.result)
   }
 
-  /** Returns the first element for which the predicate returns true or `None` if no elements satifsy the predicate. */
+  /** Returns the first element for which the predicate returns true or `None` if no elements satisfy the predicate. */
   def find(p: O => Boolean): Option[O] = {
     var result: Option[O] = None
     var i = 0

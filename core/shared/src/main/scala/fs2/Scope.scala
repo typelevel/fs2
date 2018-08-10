@@ -28,7 +28,7 @@ abstract class Scope[F[_]] {
   def lease: F[Option[Scope.Lease[F]]]
 
   /**
-    * Interrupts evaluation of the current scope. Only scopes previously indicated wih Stream.interruptScope may be interrupted.
+    * Interrupts evaluation of the current scope. Only scopes previously indicated with Stream.interruptScope may be interrupted.
     * For other scopes this will fail.
     *
     * Interruption is final and may take two forms:

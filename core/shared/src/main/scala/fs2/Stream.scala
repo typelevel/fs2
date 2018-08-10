@@ -2474,7 +2474,7 @@ object Stream {
 
   /**
     * Creates a random stream of integers using the supplied seed.
-    * Returns a pure stream, as the psuedo random number generator is
+    * Returns a pure stream, as the pseudo random number generator is
     * deterministic based on the supplied seed.
     */
   def randomSeeded[F[x] >: Pure[x]](seed: Long): Stream[F, Int] = Stream.suspend {
@@ -3054,9 +3054,9 @@ object Stream {
       * run the stream up to the first chunk available.
       * Useful when zipping multiple streams (legs) into one stream.
       * Assures that scopes are correctly held for each stream `leg`
-      * indepentently of scopes from other legs.
+      * independently of scopes from other legs.
       *
-      * If you are not pulling from mulitple streams, consider using `uncons`.
+      * If you are not pulling from multiple streams, consider using `uncons`.
       */
     def stepLeg: Pull[F, Nothing, Option[StepLeg[F, O]]] =
       Pull

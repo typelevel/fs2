@@ -51,7 +51,7 @@ import fs2.internal.CompileScope.InterruptContext
   * via `Stream.bracket` or `Pull.acquire`. See [[Resource]] docs for more information.
   *
   * @param id              Unique identification of the scope
-  * @param parent          If empty indicates root scope. If non-emtpy, indicates parent of this scope.
+  * @param parent          If empty indicates root scope. If non-empty, indicates parent of this scope.
   * @param interruptible   If defined, allows this scope to interrupt any of its operation. Interruption
   *                       is performed using the supplied context.
   *                       Normally the interruption awaits next step in Algebra to be evaluated, with exception
@@ -115,10 +115,10 @@ private[fs2] final class CompileScope[F[_], O] private (
       *     close the listening on parent scope close when the new scope will close.
       *
       *  The new scope is interruptible but this scope is not interruptible -
-      *     This is a new interrupt root that can be only interrupted from withing the new scope or its children scopes.
+      *     This is a new interrupt root that can be only interrupted from within the new scope or its children scopes.
       *
       *  The new scope is interruptible as well as this scope is interruptible -
-      *     This is a new interrupt root that can be interrupted from withing the new scope, its children scopes
+      *     This is a new interrupt root that can be interrupted from within the new scope, its children scopes
       *     or as a result of interrupting this scope. But it should not propagate its own interruption to this scope.
       *
       */
