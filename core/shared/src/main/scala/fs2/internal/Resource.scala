@@ -60,7 +60,7 @@ private[internal] sealed abstract class Resource[F[_]] {
   def release: F[Either[Throwable, Unit]]
 
   /**
-    * Signals that resource was succesfully acquired. Finalizer to be run on release is provided.
+    * Signals that resource was successfully acquired. Finalizer to be run on release is provided.
     *
     * If the resource was closed before beqing acquired, then supplied finalizer is run.
     * That may result in finalizer eventually failing.

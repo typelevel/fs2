@@ -34,7 +34,7 @@ _Unless otherwise noted, the type `Stream` mentioned in this document refers to 
 
 ### Overview
 
-The FS2 library has two major capabilites:
+The FS2 library has two major capabilities:
 
 * The ability to _build_ arbitrarily complex streams, possibly with embedded effects.
 * The ability to _transform_ one or more streams using a small but powerful set of operations
