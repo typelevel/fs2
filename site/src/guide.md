@@ -147,7 +147,6 @@ s1c.mapChunks { ds =>
 FS2 also provides an alternative to `Chunk` which is potentially infinite and supports fusion of arbitrary operations. This type is called `Segment`. To create a stream from a segment `s`, call `Stream.segment(s)`.
 Note: in FS2 0.10.x, `Segment` played a much larger role in the core design. This was changed in FS2 1.0, as chunk based algorithms are often faster than their segment based equivalents and almost always significantly simpler. However, `Segment` is still available for when a workload requires operator fusion.
 
-```tut
 ### Basic stream operations
 
 Streams have a small but powerful set of operations, some of which we've seen already. The key operations are `++`, `map`, `flatMap`, `handleErrorWith`, and `bracket`:
@@ -254,8 +253,8 @@ def tk[F[_],O](n: Long): Pipe[F,O,O] =
   in => in.scanChunksOpt(n) { n =>
     if (n <= 0) None
     else Some(c => c.size match {
-      case m if m < n => (c, n - m)
-      case m => (c.take(n), 0)
+      case m if m < n => (n - m, c)
+      case m => (0, c.take(n.toInt))
     })
   }
 
@@ -301,8 +300,8 @@ def tk[F[_],O](n: Long): Pipe[F,O,O] = {
     s.pull.uncons.flatMap {
       case Some((hd,tl)) =>
         hd.size match {
-          case m if m <= n => Pull.output(c) >> go(tl, n - m)
-          case m => Pull.output(hd.take(n)) >> Pull.done
+          case m if m <= n => Pull.output(hd) >> go(tl, n - m)
+          case m => Pull.output(hd.take(n.toInt)) >> Pull.done
         }
       case None => Pull.done
     }
@@ -506,7 +505,7 @@ Let's look at a complete example:
 import fs2._
 import fs2.async
 import scala.concurrent.ExecutionContext
-import cats.effect.{ ConcurrentEffect, IO }
+import cats.effect.{ ConcurrentEffect, IO, Timer }
 
 type Row = List[String]
 
@@ -514,7 +513,7 @@ trait CSVHandle {
   def withRows(cb: Either[Throwable,Row] => Unit): Unit
 }
 
-def rows[F[_]](h: CSVHandle)(implicit F: ConcurrentEffect[F], ec: ExecutionContext): Stream[F,Row] =
+def rows[F[_]](h: CSVHandle)(implicit F: ConcurrentEffect[F], timer: Timer[F]): Stream[F,Row] =
   for {
     q <- Stream.eval(async.unboundedQueue[F,Either[Throwable,Row]])
     _ <-  Stream.eval { F.delay(h.withRows(e => async.unsafeRunAsync(q.enqueue1(e))(_ => IO.unit))) }

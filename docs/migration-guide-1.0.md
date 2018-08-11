@@ -125,3 +125,14 @@ Some methods were renamed to improve discoverability and avoid surprises.
 ### Interop with scodec-bits
 
 The `fs2-scodec` interop project has been folded directly in to `fs2-core`. The `fs2.interop.scodec.ByteVectorChunk` type is now `fs2.Chunk.ByteVectorChunk`.
+
+### StreamApp
+
+The `StreamApp` class was removed in favor of `cats.effect.IOApp`, which has a much simpler usage model.
+
+```scala
+object MyApp extends IOApp {
+  def run(args: List[String]): IO[ExitCode] =
+    myStream.compile.drain.as(ExitCode.Success)
+}
+```
