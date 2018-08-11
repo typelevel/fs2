@@ -2253,20 +2253,21 @@ object Stream {
 
       case Result.Fail(err) =>
         Algebra.release(token).transformWith {
-          case Result.Pure(_)    => Algebra.raiseError(err)
-          case Result.Fail(err2) => Algebra.raiseError(CompositeFailure(err, err2))
+          case Result.Pure(_) => Algebra.raiseError(err)
+          case Result.Fail(err2) =>
+            if (!err.eq(err2)) Algebra.raiseError(CompositeFailure(err, err2))
+            else Algebra.raiseError(err)
           case Result.Interrupted(_, _) =>
             Algebra.raiseError(new Throwable(s"Cannot interrupt while releasing resource ($err)"))
         }
 
       case Result.Interrupted(scopeId, err) =>
-        Algebra.release(token).transformWith {
-          case Result.Pure(_)   => Algebra.pure(())
-          case Result.Fail(err) => Algebra.raiseError(err)
-          case Result.Interrupted(_, _) =>
-            Algebra.raiseError(new Throwable("Cannot interrupt while releasing resource"))
-        }
-      case Result.Pure(_) => Algebra.release(token)
+        // this is interrupted lets leave the release util the scope terminates
+        Result.Interrupted(scopeId, err)
+
+      case Result.Pure(_) =>
+        // the stream finsihed, lets clean up any resources
+        Algebra.release(token)
     }
 
   /**
