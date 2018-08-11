@@ -2250,9 +2250,22 @@ object Stream {
   private[fs2] def bracketFinalizer[F[_], O](token: Token)(
       r: Result[Unit]): FreeC[Algebra[F, O, ?], Unit] =
     r match {
-      case Result.Fail(err) => Algebra.release(token).flatMap(_ => FreeC.raiseError(err))
+
+      case Result.Fail(err) =>
+        Algebra.release(token).transformWith {
+          case Result.Pure(_)    => Algebra.raiseError(err)
+          case Result.Fail(err2) => Algebra.raiseError(CompositeFailure(err, err2))
+          case Result.Interrupted(_, _) =>
+            Algebra.raiseError(new Throwable(s"Cannot interrupt while releasing resource ($err)"))
+        }
+
       case Result.Interrupted(scopeId, err) =>
-        Algebra.release(token).flatMap(_ => FreeC.interrupted(scopeId, err))
+        Algebra.release(token).transformWith {
+          case Result.Pure(_)   => Algebra.pure(())
+          case Result.Fail(err) => Algebra.raiseError(err)
+          case Result.Interrupted(_, _) =>
+            Algebra.raiseError(new Throwable("Cannot interrupt while releasing resource"))
+        }
       case Result.Pure(_) => Algebra.release(token)
     }
 
