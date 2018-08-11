@@ -320,10 +320,27 @@ private[fs2] object Algebra {
               }
 
             case finalize: Algebra.Finalize[F, X] =>
-              interruptGuard(scope) {
-                F.flatMap(scope.registerFinalizer(finalize.release)) { r =>
-                  go[X](scope, view.next(Result.fromEither(r)))
-                }
+              // we couldn't attach finalizer to stream where scope
+              // was interrupted just before the finalizer algebra was evaluated.
+              // however we want to guarantee that finalizers are run for any stream
+              // that started its evaluation as such we just run finalizer here w/o attaching it to the scope.
+              F.flatMap(scope.isInterrupted) {
+                case None =>
+                  F.flatMap(scope.registerFinalizer(finalize.release)) { r =>
+                    go[X](scope, view.next(Result.fromEither(r)))
+                  }
+
+                case Some(Left(err)) =>
+                  finalize.release.attempt.flatMap { r =>
+                    go(scope,
+                       view.next(Result.raiseError(
+                         CompositeFailure.fromList(err +: r.left.toOption.toList).getOrElse(err))))
+                  }
+
+                case Some(Right(scopeId)) =>
+                  finalize.release.attempt.flatMap { r =>
+                    go(scope, view.next(Result.interrupted(scopeId, r.left.toOption)))
+                  }
               }
 
             case release: Algebra.Release[F, X] =>

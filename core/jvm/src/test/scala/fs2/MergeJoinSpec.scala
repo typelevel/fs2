@@ -105,9 +105,9 @@ class MergeJoinSpec extends Fs2Spec {
         val r = prg.compile.toVector.unsafeRunSync
         val finalizers = r.lastOption.toVector.flatMap { _.right.toOption.toVector.flatten }
 
-        r.headOption shouldBe Some(Left(Boom))
         (finalizers should contain).allOf("Inner 1", "Inner 2", "Outer")
         finalizers.lastOption shouldBe Some("Outer")
+        r.headOption shouldBe Some(Left(Boom))
     }
 
     "merge (left/right failure)" in {
@@ -195,9 +195,9 @@ class MergeJoinSpec extends Fs2Spec {
         val r = prg.compile.toVector.unsafeRunSync
         val finalizers = r.lastOption.toVector.flatMap { _.right.toOption.toVector.flatten }
 
-        r.headOption shouldBe Some(Left(Boom))
         (finalizers should contain).allOf("Inner L", "Inner R", "Outer")
         finalizers.lastOption shouldBe Some("Outer")
+        r.headOption shouldBe Some(Left(Boom))
 
     }
 
