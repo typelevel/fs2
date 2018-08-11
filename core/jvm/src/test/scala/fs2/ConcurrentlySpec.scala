@@ -3,7 +3,7 @@ package fs2
 import scala.concurrent.duration._
 import cats.implicits._
 import cats.effect.IO
-import cats.effect.concurrent.Deferred
+import cats.effect.concurrent.{Deferred, Ref}
 import TestUtil._
 import org.scalatest.concurrent.PatienceConfiguration.Timeout
 
@@ -60,36 +60,44 @@ class ConcurrentlySpec extends Fs2Spec with EventuallySupport {
 
     "run finalizers of background stream and properly handle exception" in forAll {
       s: PureStream[Int] =>
-        val streamStarted = new java.util.concurrent.atomic.AtomicBoolean(false)
         val Boom = new Err
-        val prg = Stream
-          .eval(Deferred[IO, Unit])
-          .flatMap { halt =>
-            val bracketed =
-              Stream.bracket(IO(new java.util.concurrent.atomic.AtomicBoolean(true)))(
-                b => IO(b.set(false))
-              )
 
-            bracketed
-              .flatMap { b =>
-                s.get
-                  .covary[IO]
-                  .concurrently(
-                    (Stream.eval_(IO(streamStarted.set(true))) ++
-                      Stream
-                        .eval_(halt.complete(())))
-                      .onFinalize(
-                        IO.sleep(100.millis) >>
-                          (if (b.get) IO.raiseError(Boom) else IO(()))
-                      ))
+        val prg =
+          Stream.eval(Ref.of[IO, Boolean](false)).flatMap { runnerRun =>
+            Stream.eval(Ref.of[IO, List[String]](Nil)).flatMap { finRef =>
+              Stream.eval(Deferred[IO, Unit]).flatMap { halt =>
+                def bracketed: Stream[IO, Unit] =
+                  Stream.bracket(IO.unit)(
+                    _ => finRef.update(_ :+ "Outer")
+                  )
+
+                def runner: Stream[IO, Unit] =
+                  Stream
+                    .eval(runnerRun.set(true)) // flag the concurrently had chance to start
+                    .append(Stream.eval(halt.complete(()))) // immediatelly interrupt the outer stream
+                    .onFinalize {
+                      IO.sleep(100.millis) >> // assure this inner finalizer always take longer run than `outer`
+                        finRef.update(_ :+ "Inner") >> // signal finalizer invoked
+                        IO.raiseError[Unit](Boom) // throw a failrue
+                    }
+
+                val prg0 =
+                  bracketed
+                    .flatMap { b =>
+                      s.get.covary[IO].concurrently(runner)
+                    }
+                    .interruptWhen(halt.get.attempt)
+
+                Stream.eval(prg0.compile.drain.attempt) ++
+                  Stream.eval(finRef.get).map(Right(_))
               }
-              .interruptWhen(halt.get.attempt)
+            }
           }
 
-        val r = prg.compile.drain.attempt.unsafeRunSync()
-
-        if (streamStarted.get) r shouldBe Left(Boom)
-        else r shouldBe Right(())
+        prg.compile.toVector.unsafeRunSync() shouldBe Vector(
+          Left(Boom),
+          Right(List("Inner", "Outer"))
+        )
 
     }
   }
