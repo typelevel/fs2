@@ -73,7 +73,7 @@ class ConcurrentlySpec extends Fs2Spec with EventuallySupport {
 
                 def runner: Stream[IO, Unit] =
                   Stream
-                    .eval(runnerRun.set(true)) // flag the concurrently had chance to start
+                    .eval(runnerRun.set(true)) // flag the concurrently had chance to start, as if the `s` will be empty `runner` may not be evaluated at all.
                     .append(Stream.eval(halt.complete(()))) // immediatelly interrupt the outer stream
                     .onFinalize {
                       IO.sleep(100.millis) >> // assure this inner finalizer always take longer run than `outer`
