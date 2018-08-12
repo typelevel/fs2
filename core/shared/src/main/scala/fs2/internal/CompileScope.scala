@@ -104,7 +104,7 @@ private[fs2] final class CompileScope[F[_], O] private (
     */
   def open(
       interruptible: Option[Concurrent[F]]
-  ): F[CompileScope[F, O]] = {
+  ): F[Either[Throwable, CompileScope[F, O]]] = {
 
     /**
       * Creates a context for a new scope.
@@ -142,7 +142,7 @@ private[fs2] final class CompileScope[F[_], O] private (
             (s.copy(children = s.children :+ scope), Some(scope))
           }
         }) {
-          case Some(s) => F.pure(s)
+          case Some(s) => F.pure(Right(s))
           case None    =>
             // This scope is already closed so try to promote the open to an ancestor; this can fail
             // if the root scope has already been closed, in which case, we can safely throw
@@ -153,7 +153,7 @@ private[fs2] final class CompileScope[F[_], O] private (
                 }
 
               case None =>
-                F.raiseError(throw new IllegalStateException("cannot re-open root scope"))
+                F.pure(Left(new IllegalStateException("cannot re-open root scope")))
             }
         }
     }
