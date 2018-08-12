@@ -3073,7 +3073,7 @@ object Stream {
           case None => Pull.pure(None)
           case Some((hd, tl)) =>
             hd.size.toLong match {
-              case m if m <= n => Pull.output(hd) >> tl.pull.take(n - m)
+              case m if m < n => Pull.output(hd) >> tl.pull.take(n - m)
               case m if m == n => Pull.output(hd).as(Some(tl))
               case m =>
                 val (pfx, sfx) = hd.splitAt(n.toInt)
