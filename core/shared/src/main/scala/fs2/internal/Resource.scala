@@ -136,7 +136,7 @@ private[internal] object Resource {
         releaseResource(state)
 
       def acquired(finalizer: F[Unit]): F[Either[Throwable, Unit]] =
-        F.raiseError(new Throwable(s"Finalizer resource cannot be acquired: $id"))
+        F.pure(Left(new Throwable(s"Finalizer resource cannot be acquired: $id")))
 
       def lease: F[Option[Scope.Lease[F]]] =
         leaseResource(state)

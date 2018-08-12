@@ -162,7 +162,7 @@ private[fs2] final class CompileScope[F[_], O] private (
   def acquireResource[R](fr: F[R], release: R => F[Unit]): F[Either[Throwable, (R, Token)]] = {
     val resource = Resource.create
     F.flatMap(register(resource)) { mayAcquire =>
-      if (!mayAcquire) F.raiseError(AcquireAfterScopeClosed)
+      if (!mayAcquire) F.pure(Left(AcquireAfterScopeClosed))
       else {
         F.flatMap(F.attempt(fr)) {
           case Right(r) =>
@@ -187,7 +187,7 @@ private[fs2] final class CompileScope[F[_], O] private (
   def registerFinalizer(release: F[Unit]): F[Either[Throwable, Token]] = {
     val resource = Resource.asFinalizer(release)
     F.flatMap(register(resource)) { mayAcquire =>
-      if (!mayAcquire) F.raiseError(AcquireAfterScopeClosed)
+      if (!mayAcquire) F.pure(Left(AcquireAfterScopeClosed))
       else F.pure(Right(resource.id))
     }
 
