@@ -104,14 +104,14 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
   def attempt: Stream[F, Either[Throwable, O]] =
     map(Right(_): Either[Throwable, O]).handleErrorWith(e => Stream.emit(Left(e)))
 
-  /*
-   * Retries on failure, returning a stream of attempts that can
-   * be manipulated with standard stream operations such as `take`,
-   * `collectFirst` and `interruptWhen`.
-   *
-   * Note: The resulting stream does *not* automatically halt at the
-   * first successful attempt. Also see `retry`.
-   */
+  /**
+    * Retries on failure, returning a stream of attempts that can
+    * be manipulated with standard stream operations such as `take`,
+    * `collectFirst` and `interruptWhen`.
+    *
+    * Note: The resulting stream does *not* automatically halt at the
+    * first successful attempt. Also see `retry`.
+    */
   def attempts[F2[x] >: F[x]: Timer](
       delays: Stream[F2, FiniteDuration]): Stream[F2, Either[Throwable, O]] =
     attempt ++ delays.flatMap(delay => Stream.sleep_(delay) ++ attempt)
