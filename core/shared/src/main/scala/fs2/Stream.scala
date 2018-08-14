@@ -1239,33 +1239,54 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
 
   /**
     * Like [[Stream.flatMap]] but interrupts the inner stream when new elements arrive in the outer stream.
-    * 
-    * 
-    * When the outer stream stops gracefully, the currently running inner stream will be inturrupted
-    * 
-    * 
+    *
+    * Finializers of each inner stream are garuenteed to run before the next inner stream starts.
+    *
+    * When the outer stream stops gracefully, the currently running inner stream will continue to run.
+    *
+    * When either the inner or outer stream fails, the entire streams fails.
+    *
     */
-  def switchMap[F2[x] >: F[x], O2](f: O => Stream[F2, O2])(implicit F2: Concurrent[F2]): Stream[F2, O2] = {
-      for {
-        haltRef <- Stream.eval(Ref.of[F2, Option[Deferred[F2, Unit]]](None))
-        queue <- Stream.eval(fs2.async.unboundedQueue[F2, Option[O2]])
-        pulse <- Stream.eval(fs2.async.unboundedQueue[F2, (O, Deferred[F2, Unit])])
-        guard <- Stream.eval(Semaphore(1))
-        o2 <- queue.dequeue.unNoneTerminate concurrently
-              pulse.dequeue.evalMap { case (o, halt) => 
-                  f(o).evalMap { x =>  queue.enqueue1(x.some) } 
-                      .interruptWhen(halt.get.attempt)
-                      .compile.drain
-              }.mergeHaltR (this
-                   .onFinalize { guard.withPermit(queue.enqueue1(None)) }
-                   .evalMap(x => Deferred[F2, Unit].flatMap { halt =>
-                     guard.withPermit(haltRef.modify {
-                       case None       => halt.some -> F2.unit
-                       case Some(last) => halt.some -> last.complete(())
-                     }.flatten *> pulse.enqueue1(x -> halt))
-                   })) 
-      } yield o2
-  }
+  def switchMap[F2[x] >: F[x], O2](f: O => Stream[F2, O2])(
+      implicit F2: Concurrent[F2]): Stream[F2, O2] =
+    for {
+      haltRef <- Stream.eval(Ref.of[F2, Option[Deferred[F2, Unit]]](None))
+      haltOuter <- Stream.eval(Deferred[F2, Unit])
+      queue <- Stream.eval(fs2.async.unboundedQueue[F2, Option[Either[Throwable, Chunk[O2]]]])
+      pulse <- Stream.eval(fs2.async.unboundedQueue[F2, Option[(O, Deferred[F2, Unit])]])
+      guard <- Stream.eval(Semaphore(1))
+      o2 <- queue.dequeue.unNoneTerminate.rethrow
+        .flatMap(Stream.chunk(_))
+        .concurrently(
+          pulse.dequeue.unNoneTerminate
+            .onFinalize(queue.enqueue1(None))
+            .evalMap {
+              case (o, haltInner) =>
+                guard.withPermit(
+                  f(o).chunks
+                    .evalMap(x => queue.enqueue1(Right(x).some))
+                    .interruptWhen(haltInner.get.attempt)
+                    .interruptWhen(haltOuter.get.attempt)
+                    .compile
+                    .drain
+                    .handleErrorWith(e => haltOuter.complete(()) *> queue.enqueue1(Left(e).some)))
+            }
+            .merge(this.attempt
+              .interruptWhen(haltOuter.get.attempt)
+              .onFinalize(pulse.enqueue1(None))
+              .evalMap {
+                case Left(e) =>
+                  haltRef.modify(x => None -> x.fold(F2.unit)(_.complete(()))).flatten *>
+                    guard.withPermit(queue.enqueue1(Left(e).some))
+                case Right(x) =>
+                  Deferred[F2, Unit].flatMap { halt =>
+                    haltRef.modify {
+                      case None       => halt.some -> F2.unit
+                      case Some(last) => halt.some -> last.complete(())
+                    }.flatten *> pulse.enqueue1((x -> halt).some)
+                  }
+              }))
+    } yield o2
 
   /**
     * Interleaves the two inputs nondeterministically. The output stream
