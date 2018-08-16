@@ -62,13 +62,13 @@ class ErrorHandlingSpec extends Fs2Spec {
 
     "ex6" in {
       var i = 0
-      (Stream.range(0, 10).covary[IO] ++ Stream.raiseError(new Err)).handleErrorWith { t => i += 1; Stream.empty }.compile.drain.unsafeRunSync
+      (Stream.range(0, 10).covary[IO] ++ Stream.raiseError[IO](new Err)).handleErrorWith { t => i += 1; Stream.empty }.compile.drain.unsafeRunSync
       i shouldBe 1
     }
 
     "ex7" in {
       try {
-        (Stream.range(0, 3).covary[IO] ++ Stream.raiseError(new Err)).unchunk.pull.echo.stream.compile.drain.unsafeRunSync
+        (Stream.range(0, 3).covary[IO] ++ Stream.raiseError[IO](new Err)).unchunk.pull.echo.stream.compile.drain.unsafeRunSync
         fail("SHOULD NOT REACH")
       }
       catch { case e: Throwable => () }
@@ -76,7 +76,7 @@ class ErrorHandlingSpec extends Fs2Spec {
 
     "ex8" in {
       var i = 0
-      (Stream.range(0, 3).covary[IO] ++ Stream.raiseError(new Err)).unchunk.pull.echo.handleErrorWith { t => i += 1; println(i); Pull.done }.stream.compile.drain.unsafeRunSync
+      (Stream.range(0, 3).covary[IO] ++ Stream.raiseError[IO](new Err)).unchunk.pull.echo.handleErrorWith { t => i += 1; println(i); Pull.done }.stream.compile.drain.unsafeRunSync
       i shouldBe 1
     }
   }

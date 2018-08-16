@@ -29,12 +29,16 @@ class StreamSpec extends Fs2Spec with Inside {
     }
 
     "fail (2)" in {
-      assertThrows[Err] { Stream.raiseError(new Err).covary[IO].compile.drain.unsafeRunSync }
+      assertThrows[Err] { Stream.raiseError[IO](new Err).compile.drain.unsafeRunSync }
     }
 
     "fail (3)" in {
       assertThrows[Err] {
-        (Stream.emit(1) ++ Stream.raiseError(new Err)).covary[IO].compile.drain.unsafeRunSync
+        (Stream.emit(1) ++ Stream.raiseError[IO](new Err))
+          .covary[IO]
+          .compile
+          .drain
+          .unsafeRunSync
       }
     }
 
@@ -88,13 +92,13 @@ class StreamSpec extends Fs2Spec with Inside {
     }
 
     "handleErrorWith (2)" in {
-      runLog(Stream.raiseError(new Err).handleErrorWith { _ =>
+      runLog(Stream.raiseError[IO](new Err).handleErrorWith { _ =>
         Stream.emit(1)
       }) shouldBe Vector(1)
     }
 
     "handleErrorWith (3)" in {
-      runLog((Stream.emit(1) ++ Stream.raiseError(new Err)).handleErrorWith { _ =>
+      runLog((Stream.emit(1) ++ Stream.raiseError[IO](new Err)).handleErrorWith { _ =>
         Stream.emit(1)
       }) shouldBe Vector(1, 1)
     }
@@ -113,7 +117,7 @@ class StreamSpec extends Fs2Spec with Inside {
 
     "handleErrorWith (5)" in {
       val r = Stream
-        .raiseError(new Err)
+        .raiseError[IO](new Err)
         .covary[IO]
         .handleErrorWith(e => Stream.emit(e))
         .flatMap(Stream.emit(_))
@@ -121,22 +125,21 @@ class StreamSpec extends Fs2Spec with Inside {
         .toVector
         .unsafeRunSync()
       val r2 = Stream
-        .raiseError(new Err)
+        .raiseError[IO](new Err)
         .covary[IO]
         .handleErrorWith(e => Stream.emit(e))
         .map(identity)
         .compile
         .toVector
         .unsafeRunSync()
-      val r3 = Stream(Stream.emit(1).covary[IO],
-                      Stream.raiseError(new Err).covary[IO],
-                      Stream.emit(2).covary[IO])
-        .covary[IO]
-        .parJoin(4)
-        .attempt
-        .compile
-        .toVector
-        .unsafeRunSync()
+      val r3 =
+        Stream(Stream.emit(1).covary[IO], Stream.raiseError[IO](new Err), Stream.emit(2).covary[IO])
+          .covary[IO]
+          .parJoin(4)
+          .attempt
+          .compile
+          .toVector
+          .unsafeRunSync()
       r should have size (1)
       r.head shouldBe an[Err]
       r2 should have size (1)

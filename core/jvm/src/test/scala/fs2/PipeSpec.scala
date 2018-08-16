@@ -558,7 +558,7 @@ class PipeSpec extends Fs2Spec {
           s.get
             .covary[IO]
             .observe { _ =>
-              Stream.raiseError(new Err)
+              Stream.raiseError[IO](new Err)
             }
             .attempt
         }
@@ -568,7 +568,7 @@ class PipeSpec extends Fs2Spec {
           s.get
             .covary[IO]
             .observeAsync(2) { _ =>
-              Stream.raiseError(new Err)
+              Stream.raiseError[IO](new Err)
             }
             .attempt
         }

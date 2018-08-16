@@ -178,9 +178,9 @@ protected[tcp] object Socket {
 
       go.handleErrorWith {
         case err: AsynchronousCloseException =>
-          if (sch.isOpen) Stream.raiseError(err)
+          if (sch.isOpen) Stream.raiseError[F](err)
           else Stream.empty
-        case err => Stream.raiseError(err)
+        case err => Stream.raiseError[F](err)
       }
     }
 
