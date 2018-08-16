@@ -5,17 +5,21 @@ import scala.concurrent.{SyncVar, blocking}
 
 import java.io.{IOException, InputStream, OutputStream}
 
-import cats.effect.{ConcurrentEffect, ExitCase, IO, Sync, Timer}
+import cats.effect.{Async, ConcurrentEffect, ExitCase, IO, Sync, Timer}
 import cats.implicits.{catsSyntaxEither => _, _}
 
 import fs2.Chunk.Bytes
 import fs2.async.mutable
 import fs2.internal.Canceled
 
+import _root_.io.chrisdavenport.linebacker.Linebacker
+
 private[io] object JavaInputOutputStream {
   def readBytesFromInputStream[F[_]](is: InputStream, buf: Array[Byte])(
-      implicit F: Sync[F]): F[Option[Chunk[Byte]]] =
-    F.delay(blocking(is.read(buf))).map { numBytes =>
+      implicit F: Async[F],
+      linebacker: Linebacker[F],
+      timer: Timer[F]): F[Option[Chunk[Byte]]] =
+    Linebacker[F].blockTimer(Sync[F].delay(is.read(buf))).map { numBytes =>
       if (numBytes < 0) None
       else if (numBytes == 0) Some(Chunk.empty)
       else if (numBytes < buf.size) Some(Chunk.bytes(buf.slice(0, numBytes)))
@@ -41,8 +45,10 @@ private[io] object JavaInputOutputStream {
   }
 
   def writeBytesToOutputStream[F[_]](os: OutputStream, bytes: Chunk[Byte])(
-      implicit F: Sync[F]): F[Unit] =
-    F.delay(blocking(os.write(bytes.toArray)))
+      implicit F: Async[F],
+      linebacker: Linebacker[F],
+      timer: Timer[F]): F[Unit] =
+    Linebacker[F].blockTimer(Sync[F].delay(os.write(bytes.toArray)))
 
   def writeOutputStreamGeneric[F[_]](
       fos: F[OutputStream],
