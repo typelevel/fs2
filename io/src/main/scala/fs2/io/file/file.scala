@@ -7,7 +7,7 @@ import java.nio.channels.CompletionHandler
 import java.nio.file.{Path, StandardOpenOption, WatchEvent}
 import java.util.concurrent.ExecutorService
 
-import cats.effect.{Concurrent, Effect, IO, Resource, Sync, Timer}
+import cats.effect.{Concurrent, ContextShift, Effect, IO, Resource, Sync}
 import cats.implicits._
 
 /** Provides support for working with files. */
@@ -17,7 +17,7 @@ package object file {
     * Provides a handler for NIO methods which require a `java.nio.channels.CompletionHandler` instance.
     */
   private[fs2] def asyncCompletionHandler[F[_], O](
-      f: CompletionHandler[O, Null] => Unit)(implicit F: Effect[F], timer: Timer[F]): F[O] =
+      f: CompletionHandler[O, Null] => Unit)(implicit F: Effect[F], cs: ContextShift[F]): F[O] =
     F.async[O] { cb =>
       f(new CompletionHandler[O, Null] {
         override def completed(result: O, attachment: Null): Unit =
@@ -47,7 +47,7 @@ package object file {
                          chunkSize: Int,
                          executorService: Option[ExecutorService] = None)(
       implicit F: Effect[F],
-      timer: Timer[F]): Stream[F, Byte] =
+      cs: ContextShift[F]): Stream[F, Byte] =
     pulls
       .fromPathAsync(path, List(StandardOpenOption.READ), executorService)
       .flatMap(c => pulls.readAllFromFileHandle(chunkSize)(c.resource))
@@ -76,7 +76,7 @@ package object file {
                           flags: Seq[StandardOpenOption] = List(StandardOpenOption.CREATE),
                           executorService: Option[ExecutorService] = None)(
       implicit F: Effect[F],
-      timer: Timer[F]): Sink[F, Byte] =
+      cs: ContextShift[F]): Sink[F, Byte] =
     in =>
       pulls
         .fromPathAsync(path, StandardOpenOption.WRITE :: flags.toList, executorService)

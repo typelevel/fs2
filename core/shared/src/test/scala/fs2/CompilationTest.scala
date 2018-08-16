@@ -1,10 +1,11 @@
 package fs2
 
 import cats.{Applicative, Id}
-import cats.effect.IO
-import scala.concurrent.ExecutionContext.Implicits.global
+import cats.effect.{ContextShift, IO, Timer}
 
 object ThisModuleShouldCompile {
+  implicit val timerIO: Timer[IO] = IO.timer(scala.concurrent.ExecutionContext.Implicits.global)
+  implicit val contextShiftIO: ContextShift[IO] = IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
 
   /* Some checks that `.pull` can be used without annotations */
   Stream(1,2,3,4) through (_.take(2))

@@ -2,7 +2,7 @@ package fs2
 
 import java.io.{InputStream, OutputStream}
 
-import cats.effect.{Async, ConcurrentEffect, Sync, Timer}
+import cats.effect.{Async, ConcurrentEffect, ContextShift, Sync}
 
 import scala.concurrent.ExecutionContext
 
@@ -34,13 +34,11 @@ package object io {
       fis: F[InputStream],
       chunkSize: Int,
       blockingExecutionContext: ExecutionContext,
-      closeAfterUse: Boolean = true)(implicit F: Async[F], timer: Timer[F]): Stream[F, Byte] =
+      closeAfterUse: Boolean = true)(implicit F: Async[F], cs: ContextShift[F]): Stream[F, Byte] =
     readInputStreamGeneric(
       fis,
       F.delay(new Array[Byte](chunkSize)),
-      (is, buf) =>
-        F.bracket(Async.shift(blockingExecutionContext))(_ => readBytesFromInputStream(is, buf))(
-          _ => timer.shift),
+      (is, buf) => cs.evalOn(blockingExecutionContext)(readBytesFromInputStream(is, buf)),
       closeAfterUse
     )
 
@@ -80,13 +78,11 @@ package object io {
       fis: F[InputStream],
       chunkSize: Int,
       blockingExecutionContext: ExecutionContext,
-      closeAfterUse: Boolean = true)(implicit F: Async[F], timer: Timer[F]): Stream[F, Byte] =
+      closeAfterUse: Boolean = true)(implicit F: Async[F], cs: ContextShift[F]): Stream[F, Byte] =
     readInputStreamGeneric(
       fis,
       F.pure(new Array[Byte](chunkSize)),
-      (is, buf) =>
-        F.bracket(Async.shift(blockingExecutionContext))(_ => readBytesFromInputStream(is, buf))(
-          _ => timer.shift),
+      (is, buf) => cs.evalOn(blockingExecutionContext)(readBytesFromInputStream(is, buf)),
       closeAfterUse
     )
 
@@ -110,12 +106,11 @@ package object io {
   def writeOutputStreamAsync[F[_]](
       fos: F[OutputStream],
       blockingExecutionContext: ExecutionContext,
-      closeAfterUse: Boolean = true)(implicit F: Async[F], timer: Timer[F]): Sink[F, Byte] =
-    writeOutputStreamGeneric(fos,
-                             closeAfterUse,
-                             (os, buf) =>
-                               F.bracket(Async.shift(blockingExecutionContext))(_ =>
-                                 writeBytesToOutputStream(os, buf))(_ => timer.shift))
+      closeAfterUse: Boolean = true)(implicit F: Async[F], cs: ContextShift[F]): Sink[F, Byte] =
+    writeOutputStreamGeneric(
+      fos,
+      closeAfterUse,
+      (os, buf) => cs.evalOn(blockingExecutionContext)(writeBytesToOutputStream(os, buf)))
 
   //
   // STDIN/STDOUT Helpers
@@ -127,7 +122,7 @@ package object io {
   /** Stream of bytes read asynchronously from standard input. */
   def stdinAsync[F[_]](bufSize: Int, blockingExecutionContext: ExecutionContext)(
       implicit F: Async[F],
-      timer: Timer[F]): Stream[F, Byte] =
+      cs: ContextShift[F]): Stream[F, Byte] =
     readInputStreamAsync(F.delay(System.in), bufSize, blockingExecutionContext, false)
 
   /** Sink of bytes that writes emitted values to standard output. */
@@ -137,7 +132,7 @@ package object io {
   /** Sink of bytes that writes emitted values to standard output asynchronously. */
   def stdoutAsync[F[_]](blockingExecutionContext: ExecutionContext)(
       implicit F: Async[F],
-      timer: Timer[F]): Sink[F, Byte] =
+      cs: ContextShift[F]): Sink[F, Byte] =
     writeOutputStreamAsync(F.delay(System.out), blockingExecutionContext, false)
 
   /**
@@ -148,13 +143,13 @@ package object io {
     * original stream completely terminates.
     *
     * Because all `InputStream` methods block (including `close`), the resulting `InputStream`
-    * should be consumed on a different thread pool than the one that is backing the `Timer`.
+    * should be consumed on a different thread pool than the one that is backing the `ConcurrentEffect`.
     *
     * Note that the implementation is not thread safe -- only one thread is allowed at any time
     * to operate on the resulting `java.io.InputStream`.
     */
   def toInputStream[F[_]](implicit F: ConcurrentEffect[F],
-                          timer: Timer[F]): Pipe[F, Byte, InputStream] =
+                          cs: ContextShift[F]): Pipe[F, Byte, InputStream] =
     JavaInputOutputStream.toInputStream
 
 }

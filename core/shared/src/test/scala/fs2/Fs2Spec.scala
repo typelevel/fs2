@@ -3,6 +3,8 @@ package fs2
 import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
 
+import cats.effect.{ContextShift, IO, Timer}
+
 import org.typelevel.discipline.Laws
 import org.scalatest.{ Args, AsyncFreeSpec, FreeSpec, Matchers, Status, Suite }
 import org.scalatest.concurrent.{ AsyncTimeLimitedTests, TimeLimitedTests }
@@ -27,6 +29,9 @@ trait Fs2SpecLike extends Suite
   with Matchers {
 
   implicit val timeout: FiniteDuration = 60.seconds
+
+  implicit val timerIO: Timer[IO] = IO.timer(TestUtil.executionContext)
+  implicit val contextShiftIO: ContextShift[IO] = IO.contextShift(TestUtil.executionContext)
 
   lazy val verbose: Boolean = sys.props.get("fs2.test.verbose").isDefined
 

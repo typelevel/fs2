@@ -1,7 +1,7 @@
 package fs2
 
 import scala.concurrent.ExecutionContext
-import cats.effect.IO
+import cats.effect.{ContextShift, IO, Timer}
 
 // Sanity tests - not run as part of unit tests, but these should run forever
 // at constant memory.
@@ -41,13 +41,13 @@ object AppendSanityTest extends App {
 }
 
 object DrainOnCompleteSanityTest extends App {
-  import ExecutionContext.Implicits.global
+  implicit val cs: ContextShift[IO] = IO.contextShift(ExecutionContext.Implicits.global)
   val s = Stream.repeatEval(IO(1)).pull.echo.stream.drain ++ Stream.eval_(IO(println("done")))
   Stream.empty.covary[IO].merge(s).compile.drain.unsafeRunSync()
 }
 
 object ParJoinSanityTest extends App {
-  import ExecutionContext.Implicits.global
+  implicit val cs: ContextShift[IO] = IO.contextShift(ExecutionContext.Implicits.global)
   Stream
     .constant(Stream.empty[IO])
     .parJoin(5)
@@ -57,7 +57,7 @@ object ParJoinSanityTest extends App {
 }
 
 object DanglingDequeueSanityTest extends App {
-  import ExecutionContext.Implicits.global
+  implicit val cs: ContextShift[IO] = IO.contextShift(ExecutionContext.Implicits.global)
   Stream
     .eval(async.unboundedQueue[IO, Int])
     .flatMap { q =>
@@ -72,7 +72,8 @@ object DanglingDequeueSanityTest extends App {
 
 object AwakeEverySanityTest extends App {
   import scala.concurrent.duration._
-  import ExecutionContext.Implicits.global
+  implicit val cs: ContextShift[IO] = IO.contextShift(ExecutionContext.Implicits.global)
+  implicit val timer: Timer[IO] = IO.timer(ExecutionContext.Implicits.global)
   Stream
     .awakeEvery[IO](1.millis)
     .flatMap { _ =>
@@ -84,7 +85,7 @@ object AwakeEverySanityTest extends App {
 }
 
 object SignalDiscreteSanityTest extends App {
-  import ExecutionContext.Implicits.global
+  implicit val cs: ContextShift[IO] = IO.contextShift(ExecutionContext.Implicits.global)
   Stream
     .eval(async.signalOf[IO, Unit](()))
     .flatMap { signal =>
@@ -96,7 +97,7 @@ object SignalDiscreteSanityTest extends App {
 }
 
 object SignalContinuousSanityTest extends App {
-  import ExecutionContext.Implicits.global
+  implicit val cs: ContextShift[IO] = IO.contextShift(ExecutionContext.Implicits.global)
   Stream
     .eval(async.signalOf[IO, Unit](()))
     .flatMap { signal =>
@@ -178,7 +179,7 @@ object EvalFlatMapMapTest extends App {
 }
 
 object QueueTest extends App {
-  import ExecutionContext.Implicits.global
+  implicit val cs: ContextShift[IO] = IO.contextShift(ExecutionContext.Implicits.global)
   Stream
     .eval(async.boundedQueue[IO, Either[Throwable, Option[Int]]](10))
     .flatMap { queue =>
@@ -199,20 +200,21 @@ object QueueTest extends App {
 }
 
 object ProgressMerge extends App {
-  import ExecutionContext.Implicits.global
+  implicit val cs: ContextShift[IO] = IO.contextShift(ExecutionContext.Implicits.global)
   val progress = Stream.constant(1, 128).covary[IO]
   progress.merge(progress).compile.drain.unsafeRunSync()
 }
 
 object HungMerge extends App {
-  import ExecutionContext.Implicits.global
+  implicit val cs: ContextShift[IO] = IO.contextShift(ExecutionContext.Implicits.global)
   val hung = Stream.eval(IO.async[Int](_ => ()))
   val progress = Stream.constant(1, 128).covary[IO]
   hung.merge(progress).compile.drain.unsafeRunSync()
 }
 
 object ZipThenBindThenParJoin extends App {
-  import scala.concurrent.ExecutionContext.Implicits.global
+  implicit val cs: ContextShift[IO] = IO.contextShift(ExecutionContext.Implicits.global)
+  implicit val timer: Timer[IO] = IO.timer(ExecutionContext.Implicits.global)
   import scala.concurrent.duration._
 
   val sources: Stream[IO, Stream[IO, Int]] = Stream(Stream.empty).repeat

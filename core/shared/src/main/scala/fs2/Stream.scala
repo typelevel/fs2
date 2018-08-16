@@ -344,7 +344,8 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * `this`.
     *
     * @example {{{
-    * scala> import cats.effect.IO, scala.concurrent.ExecutionContext.Implicits.global
+    * scala> import cats.effect.{ContextShift, IO}
+    * scala> implicit val cs: ContextShift[IO] = IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
     * scala> val data: Stream[IO,Int] = Stream.range(1, 10).covary[IO]
     * scala> Stream.eval(async.signalOf[IO,Int](0)).flatMap(s => Stream(s).concurrently(data.evalMap(s.set))).flatMap(_.discrete).takeWhile(_ < 9, true).compile.last.unsafeRunSync
     * res0: Option[Int] = Some(9)
@@ -446,7 +447,9 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * Debounce the stream with a minimum period of `d` between each element.
     *
     * @example {{{
-    * scala> import scala.concurrent.duration._, scala.concurrent.ExecutionContext.Implicits.global, cats.effect.IO
+    * scala> import scala.concurrent.duration._, cats.effect.{ContextShift, IO, Timer}
+    * scala> implicit val cs: ContextShift[IO] = IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
+    * scala> implicit val timer: Timer[IO] = IO.timer(scala.concurrent.ExecutionContext.Implicits.global)
     * scala> val s = Stream(1, 2, 3) ++ Stream.sleep_[IO](500.millis) ++ Stream(4, 5) ++ Stream.sleep_[IO](10.millis) ++ Stream(6)
     * scala> val s2 = s.debounce(100.milliseconds)
     * scala> s2.compile.toVector.unsafeRunSync
@@ -630,7 +633,9 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * Like `[[merge]]`, but tags each output with the branch it came from.
     *
     * @example {{{
-    * scala> import scala.concurrent.duration._, scala.concurrent.ExecutionContext.Implicits.global, cats.effect.IO
+    * scala> import scala.concurrent.duration._, cats.effect.{ContextShift, IO, Timer}
+    * scala> implicit val cs: ContextShift[IO] = IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
+    * scala> implicit val timer: Timer[IO] = IO.timer(scala.concurrent.ExecutionContext.Implicits.global)
     * scala> val s1 = Stream.awakeEvery[IO](1000.millis).scan(0)((acc, i) => acc + 1)
     * scala> val s = s1.either(Stream.sleep_[IO](500.millis) ++ s1).take(10)
     * scala> s.take(10).compile.toVector.unsafeRunSync
@@ -1170,7 +1175,8 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * the original stream.
     *
     * @example {{{
-    * scala> import cats.effect.IO, scala.concurrent.ExecutionContext.Implicits.global
+    * scala> import cats.effect.{ContextShift, IO}
+    * scala> implicit val cs: ContextShift[IO] = IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
     * scala> Stream(1,2,3,4).covary[IO].mapAsync(2)(i => IO(println(i))).compile.drain.unsafeRunSync
     * res0: Unit = ()
     * }}}
@@ -1202,7 +1208,8 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * See [[Stream#mapAsync]] if retaining the original order of the stream is required.
     *
     * @example {{{
-    * scala> import cats.effect.IO, scala.concurrent.ExecutionContext.Implicits.global
+    * scala> import cats.effect.{ContextShift, IO}
+    * scala> implicit val cs: ContextShift[IO] = IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
     * scala> Stream(1,2,3,4).covary[IO].mapAsyncUnordered(2)(i => IO(println(i))).compile.drain.unsafeRunSync
     * res0: Unit = ()
     * }}}
@@ -1263,7 +1270,9 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     *
     *
     * @example {{{
-    * scala> import scala.concurrent.duration._, scala.concurrent.ExecutionContext.Implicits.global, cats.effect.IO
+    * scala> import scala.concurrent.duration._, cats.effect.{ContextShift, IO, Timer}
+    * scala> implicit val cs: ContextShift[IO] = IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
+    * scala> implicit val timer: Timer[IO] = IO.timer(scala.concurrent.ExecutionContext.Implicits.global)
     * scala> val s1 = Stream.awakeEvery[IO](500.millis).scan(0)((acc, i) => acc + 1)
     * scala> val s = s1.merge(Stream.sleep_[IO](250.millis) ++ s1)
     * scala> s.take(6).compile.toVector.unsafeRunSync
@@ -2189,9 +2198,9 @@ object Stream {
     */
   def awakeDelay[F[x] >: Pure[x]](d: FiniteDuration)(implicit timer: Timer[F],
                                                      F: Functor[F]): Stream[F, FiniteDuration] =
-    Stream.eval(timer.clockMonotonic(NANOSECONDS)).flatMap { start =>
+    Stream.eval(timer.clock.monotonic(NANOSECONDS)).flatMap { start =>
       fixedDelay[F](d) *> Stream.eval(
-        timer.clockMonotonic(NANOSECONDS).map(now => (now - start).nanos))
+        timer.clock.monotonic(NANOSECONDS).map(now => (now - start).nanos))
     }
 
   /**
@@ -2206,9 +2215,9 @@ object Stream {
     */
   def awakeEvery[F[x] >: Pure[x]](d: FiniteDuration)(implicit timer: Timer[F],
                                                      F: Functor[F]): Stream[F, FiniteDuration] =
-    Stream.eval(timer.clockMonotonic(NANOSECONDS)).flatMap { start =>
+    Stream.eval(timer.clock.monotonic(NANOSECONDS)).flatMap { start =>
       fixedRate[F](d) *> Stream.eval(
-        timer.clockMonotonic(NANOSECONDS).map(now => (now - start).nanos))
+        timer.clock.monotonic(NANOSECONDS).map(now => (now - start).nanos))
     }
 
   /**
@@ -2354,7 +2363,7 @@ object Stream {
     */
   def every[F[x] >: Pure[x]](d: FiniteDuration)(implicit timer: Timer[F]): Stream[F, Boolean] = {
     def go(lastSpikeNanos: Long): Stream[F, Boolean] =
-      Stream.eval(timer.clockMonotonic(NANOSECONDS)).flatMap { now =>
+      Stream.eval(timer.clock.monotonic(NANOSECONDS)).flatMap { now =>
         if ((now - lastSpikeNanos) > d.toNanos) Stream.emit(true) ++ go(now)
         else Stream.emit(false) ++ go(lastSpikeNanos)
       }
@@ -2382,7 +2391,7 @@ object Stream {
     * @param d FiniteDuration between emits of the resulting stream
     */
   def fixedRate[F[_]](d: FiniteDuration)(implicit timer: Timer[F]): Stream[F, Unit] = {
-    def now: Stream[F, Long] = Stream.eval(timer.clockMonotonic(NANOSECONDS))
+    def now: Stream[F, Long] = Stream.eval(timer.clock.monotonic(NANOSECONDS))
     def loop(started: Long): Stream[F, Unit] =
       now.flatMap { finished =>
         val elapsed = finished - started
@@ -2703,7 +2712,8 @@ object Stream {
       * Note that if your sink can be represented by an `O => F[Unit]`, `evalTap` will provide much greater performance.
       *
       * @example {{{
-      * scala> import scala.concurrent.ExecutionContext.Implicits.global, cats.effect.IO, cats.implicits._
+      * scala> import cats.effect.{ContextShift, IO}, cats.implicits._
+      * scala> implicit val cs: ContextShift[IO] = IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
       * scala> Stream(1, 2, 3).covary[IO].observe(Sink.showLinesStdOut).map(_ + 1).compile.toVector.unsafeRunSync
       * res0: Vector[Int] = Vector(2, 3, 4)
       * }}}
@@ -3073,7 +3083,7 @@ object Stream {
           case None => Pull.pure(None)
           case Some((hd, tl)) =>
             hd.size.toLong match {
-              case m if m < n => Pull.output(hd) >> tl.pull.take(n - m)
+              case m if m < n  => Pull.output(hd) >> tl.pull.take(n - m)
               case m if m == n => Pull.output(hd).as(Some(tl))
               case m =>
                 val (pfx, sfx) = hd.splitAt(n.toInt)

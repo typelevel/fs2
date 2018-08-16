@@ -1,7 +1,7 @@
 package fs2
 
 import java.util.{LinkedList => JLinkedList}
-import cats._
+import cats.{Defer => _, _}
 import cats.implicits.{catsSyntaxEither => _, _}
 
 import Segment._
