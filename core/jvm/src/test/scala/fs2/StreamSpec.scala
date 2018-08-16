@@ -47,6 +47,15 @@ class StreamSpec extends Fs2Spec with Inside {
       runLog(s.get >> s2.get) shouldBe { runLog(s.get.flatMap(_ => s2.get)) }
     }
 
+    "fromEither" in forAll { either: Either[Throwable, Int] =>
+      val stream: Stream[IO, Int] = Stream.fromEither[IO](either)
+
+      either match {
+        case Left(_) ⇒ stream.compile.toList.attempt.unsafeRunSync() shouldBe either
+        case Right(_) ⇒ stream.compile.toList.unsafeRunSync() shouldBe either.right.toSeq.toList
+      }
+    }
+
     "fromIterator" in forAll { vec: Vector[Int] =>
       val iterator = vec.toIterator
       val stream = Stream.fromIterator[IO, Int](iterator)
