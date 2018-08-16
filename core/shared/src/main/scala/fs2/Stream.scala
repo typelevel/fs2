@@ -2394,6 +2394,25 @@ object Stream extends StreamLowPriority {
     now.flatMap(loop)
   }
 
+  final class PartiallyAppliedFromEither[F[_]] {
+    def apply[A](either: Either[Throwable, A])(
+        implicit ev: ApplicativeError[F, Throwable]): Stream[F, A] =
+      either.fold(Stream.raiseError[F], Stream.emit)
+  }
+
+  /**
+    * Lifts an Either[Throwable, A] to an effectful Stream.
+    *
+    * @example {{{
+    * scala> import cats.effect.IO, scala.util.Try
+    * scala> Stream.fromEither[IO](Right(42)).compile.toList.unsafeRunSync
+    * res0: List[Int] = List(42)
+    * scala> Try(Stream.fromEither[IO](Left(new RuntimeException)).compile.toList.unsafeRunSync)
+    * res1: Try[List[Nothing]] = Failure(java.lang.RuntimeException)
+    * }}}
+    */
+  def fromEither[F[_]] = new PartiallyAppliedFromEither[F]
+
   /**
     * Lifts an iterator into a Stream
     */
