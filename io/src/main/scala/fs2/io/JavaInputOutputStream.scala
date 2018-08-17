@@ -3,9 +3,9 @@ package io
 
 import scala.concurrent.{SyncVar, blocking}
 
-import java.io.{IOException, InputStream, OutputStream}
+import java.io.{IOException, InputStream}
 
-import cats.effect.{ConcurrentEffect, ContextShift, ExitCase, IO, Sync}
+import cats.effect.{ConcurrentEffect, ContextShift, ExitCase, IO}
 import cats.implicits.{catsSyntaxEither => _, _}
 
 import fs2.Chunk.Bytes
@@ -13,49 +13,6 @@ import fs2.async.mutable
 import fs2.internal.Canceled
 
 private[io] object JavaInputOutputStream {
-  def readBytesFromInputStream[F[_]](is: InputStream, buf: Array[Byte])(
-      implicit F: Sync[F]): F[Option[Chunk[Byte]]] =
-    F.delay(blocking(is.read(buf))).map { numBytes =>
-      if (numBytes < 0) None
-      else if (numBytes == 0) Some(Chunk.empty)
-      else if (numBytes < buf.size) Some(Chunk.bytes(buf.slice(0, numBytes)))
-      else Some(Chunk.bytes(buf))
-    }
-
-  def readInputStreamGeneric[F[_]](
-      fis: F[InputStream],
-      buf: F[Array[Byte]],
-      f: (InputStream, Array[Byte]) => F[Option[Chunk[Byte]]],
-      closeAfterUse: Boolean = true)(implicit F: Sync[F]): Stream[F, Byte] = {
-    def useIs(is: InputStream) =
-      Stream
-        .eval(buf.flatMap(f(is, _)))
-        .repeat
-        .unNoneTerminate
-        .flatMap(c => Stream.chunk(c))
-
-    if (closeAfterUse)
-      Stream.bracket(fis)(is => F.delay(is.close())).flatMap(useIs)
-    else
-      Stream.eval(fis).flatMap(useIs)
-  }
-
-  def writeBytesToOutputStream[F[_]](os: OutputStream, bytes: Chunk[Byte])(
-      implicit F: Sync[F]): F[Unit] =
-    F.delay(blocking(os.write(bytes.toArray)))
-
-  def writeOutputStreamGeneric[F[_]](
-      fos: F[OutputStream],
-      closeAfterUse: Boolean,
-      f: (OutputStream, Chunk[Byte]) => F[Unit])(implicit F: Sync[F]): Sink[F, Byte] = s => {
-    def useOs(os: OutputStream): Stream[F, Unit] =
-      s.chunks.evalMap(f(os, _))
-
-    if (closeAfterUse)
-      Stream.bracket(fos)(os => F.delay(os.close())).flatMap(useOs)
-    else
-      Stream.eval(fos).flatMap(useOs)
-  }
 
   def toInputStream[F[_]](implicit F: ConcurrentEffect[F],
                           cs: ContextShift[F]): Pipe[F, Byte, InputStream] = {
