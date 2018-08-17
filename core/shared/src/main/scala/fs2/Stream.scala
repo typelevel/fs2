@@ -5,11 +5,11 @@ import cats.data.NonEmptyList
 import scala.collection.generic.CanBuildFrom
 import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
-import cats.{Applicative, Eq, Functor, Id, Monoid, Semigroup, ~>}
-import cats.effect.{Effect, IO, Sync}
+import cats._
+import cats.effect._
 import cats.implicits.{catsSyntaxEither => _, _}
 import fs2.async.Promise
-import fs2.internal.{Algebra, FreeC, Token}
+import fs2.internal._
 
 /**
   * A stream producing output of type `O` and which may evaluate `F`
@@ -1392,6 +1392,27 @@ object Stream {
       }
     go(0)
   }
+
+  final class PartiallyAppliedFromEither[F[_]] {
+    def apply[A](either: Either[Throwable, A])(
+        implicit ev: ApplicativeError[F, Throwable]): Stream[F, A] = {
+      val _ = ev
+      either.fold(Stream.raiseError[A], Stream.emit(_))
+    }
+  }
+
+  /**
+    * Lifts an Either[Throwable, A] to an effectful Stream.
+    *
+    * @example {{{
+    * scala> import cats.effect.IO, scala.util.Try
+    * scala> Stream.fromEither[IO](Right(42)).compile.toList.unsafeRunSync
+    * res0: List[Int] = List(42)
+    * scala> Try(Stream.fromEither[IO](Left(new RuntimeException)).compile.toList.unsafeRunSync)
+    * res1: Try[List[Nothing]] = Failure(java.lang.RuntimeException)
+    * }}}
+    */
+  def fromEither[F[_]] = new PartiallyAppliedFromEither[F]
 
   /**
     * Lifts an iterator into a Stream
