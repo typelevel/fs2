@@ -106,7 +106,7 @@ object TestUtil extends TestUtilPlatform {
 
   implicit def failingStreamArb: Arbitrary[Failure] = Arbitrary(
     Gen.oneOf[Failure](
-      Failure("pure-failure", Stream.raiseError(new Err)),
+      Failure("pure-failure", Stream.raiseError[IO](new Err)),
       Failure("failure-inside-effect", Stream.eval(IO(throw new Err))),
       Failure("failure-mid-effect", Stream.eval(IO.pure(()).flatMap(_ => throw new Err))),
       Failure("failure-in-pure-code", Stream.emit(42).map(_ => throw new Err)),

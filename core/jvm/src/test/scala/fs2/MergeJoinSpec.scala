@@ -57,7 +57,7 @@ class MergeJoinSpec extends Fs2Spec {
       val s: Stream[IO, Stream[IO, Unit]] = bracketed.map { b =>
         Stream
           .eval(IO(b.get))
-          .flatMap(b => if (b) Stream(()) else Stream.raiseError(new Err))
+          .flatMap(b => if (b) Stream(()) else Stream.raiseError[IO](new Err))
           .repeat
           .take(10000)
       }
@@ -189,7 +189,7 @@ class MergeJoinSpec extends Fs2Spec {
 
     "parJoin - outer-failed" in {
       an[Err] should be thrownBy {
-        runLog(Stream(Stream.sleep_[IO](1 minute), Stream.raiseError(new Err)).parJoinUnbounded)
+        runLog(Stream(Stream.sleep_[IO](1 minute), Stream.raiseError[IO](new Err)).parJoinUnbounded)
       }
     }
   }
