@@ -2605,20 +2605,6 @@ object Stream extends StreamLowPriority {
   }
 
   /**
-    * Creates a stream from the supplied segment.
-    *
-    * The segment is unfolded in chunks of up to the specified size.
-    *
-    * @param s segment to lift
-    * @param chunkSize max chunk size to emit before yielding execution downstream
-    * @param maxSteps max number of times to step the segment while waiting for a chunk to be output; upon reaching this limit, an empty chunk is emitted and execution is yielded downstream
-    */
-  def segment[F[x] >: Pure[x], O, R](s: Segment[O, R],
-                                     chunkSize: Int = 1024,
-                                     maxSteps: Long = 1024): Stream[F, O] =
-    Pull.segment(s, chunkSize, maxSteps).streamNoScope
-
-  /**
     * A single-element `Stream` that waits for the duration `d` before emitting unit. This uses the implicit
     * `Timer` to avoid blocking a thread.
     */
