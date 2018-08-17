@@ -1,5 +1,6 @@
 package fs2
 
+import cats._
 import cats.effect.Sync
 import fs2.internal.{Algebra, FreeC, Token}
 
@@ -196,6 +197,27 @@ object Pull {
   /** Reads and outputs nothing, and fails with the given error. */
   def raiseError(err: Throwable): Pull[Nothing, Nothing, Nothing] =
     new Pull(Algebra.raiseError[Nothing, Nothing, Nothing](err))
+
+  final class PartiallyAppliedFromEither[F[_]] {
+    def apply[A](either: Either[Throwable, A])(
+        implicit ev: ApplicativeError[F, Throwable]): Pull[F, A, Unit] = {
+      val _ = ev
+      either.fold(Pull.raiseError, Pull.output1)
+    }
+  }
+
+  /**
+    * Lifts an Either[Throwable, A] to an effectful Pull[F, A, Unit].
+    *
+    * @example {{{
+    * scala> import cats.effect.IO, scala.util.Try
+    * scala> Pull.fromEither[IO](Right(42)).stream.compile.toList.unsafeRunSync()
+    * res0: List[Int] = List(42)
+    * scala> Try(Pull.fromEither[IO](Left(new RuntimeException)).stream.compile.toList.unsafeRunSync())
+    * res1: Try[List[Nothing]] = Failure(java.lang.RuntimeException)
+    * }}}
+    */
+  def fromEither[F[x]] = new PartiallyAppliedFromEither[F]
 
   /**
     * Pull that outputs the specified segment and returns the result of the segment as the result
