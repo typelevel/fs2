@@ -3,28 +3,36 @@
 This walks through the implementation of the example given in [the README](../README.md). This program opens a file, `fahrenheit.txt`, containing temperatures in degrees fahrenheit, one per line, and converts each temperature to celsius, incrementally writing to the file `celsius.txt`. Both files will be closed, regardless of whether any errors occur.
 
 ```scala
-object Converter {
-  import cats.effect.IO
-  import fs2.{io, text}
-  import java.nio.file.Paths
+import cats.effect.{ExitCode, IO, IOApp}
+// import cats.effect.{ExitCode, IO, IOApp}
 
-  def fahrenheitToCelsius(f: Double): Double =
-    (f - 32.0) * (5.0/9.0)
+import cats.implicits._
+// import cats.implicits._
 
-  val converter: IO[Unit] =
-    io.file.readAll[IO](Paths.get("testdata/fahrenheit.txt"), 4096)
+import fs2.{io, text}
+// import fs2.{io, text}
+
+import java.nio.file.Paths
+// import java.nio.file.Paths
+
+object Converter extends IOApp {
+  def run(args: List[String]): IO[ExitCode] = {
+    def fahrenheitToCelsius(f: Double): Double =
+      (f - 32.0) * (5.0/9.0)
+
+    io.file.readAllAsync[IO](Paths.get("testdata/fahrenheit.txt"), 4096)
       .through(text.utf8Decode)
       .through(text.lines)
       .filter(s => !s.trim.isEmpty && !s.startsWith("//"))
       .map(line => fahrenheitToCelsius(line.toDouble).toString)
       .intersperse("\n")
       .through(text.utf8Encode)
-      .through(io.file.writeAll(Paths.get("testdata/celsius.txt")))
+      .through(io.file.writeAllAsync(Paths.get("testdata/celsius.txt")))
       .compile.drain
+      .as(ExitCode.Success)
+  }
 }
 // defined object Converter
-
-Converter.converter.unsafeRunSync()
 ```
 
 Let's dissect this line by line.
@@ -36,10 +44,14 @@ Operations on `Stream` are defined for any choice of type constructor, not just 
 `fs2.io` has a number of helper functions for constructing or working with streams that talk to the outside world. `readAll` creates a stream of bytes from a file name (specified via a `java.nio.file.Path`). It encapsulates the logic for opening and closing the file, so that users of this stream do not need to remember to close the file when they are done or in the event of exceptions during processing of the stream.
 
 ```scala
-import cats.effect.IO
+import cats.effect.{ContextShift, IO}
 import fs2.{io, text}
 import java.nio.file.Paths
-import Converter._
+
+implicit val cs: ContextShift[IO] = IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
+
+def fahrenheitToCelsius(f: Double): Double =
+  (f - 32.0) * (5.0/9.0)
 ```
 
 ```scala
@@ -47,7 +59,7 @@ scala> import fs2.Stream
 import fs2.Stream
 
 scala> val src: Stream[IO, Byte] =
-     |   io.file.readAll[IO](Paths.get("testdata/fahrenheit.txt"), 4096)
+     |   io.file.readAllAsync[IO](Paths.get("testdata/fahrenheit.txt"), 4096)
 src: fs2.Stream[cats.effect.IO,Byte] = Stream(..)
 ```
 
@@ -90,7 +102,7 @@ encodedBytes: fs2.Stream[cats.effect.IO,Byte] = Stream(..)
 We then write the encoded bytes to a file. Note that nothing has happened at this point -- we are just constructing a description of a computation that, when interpreted, will incrementally consume the stream, sending converted values to the specified file.
 
 ```scala
-scala> val written: Stream[IO, Unit] = encodedBytes.through(io.file.writeAll(Paths.get("testdata/celsius.txt")))
+scala> val written: Stream[IO, Unit] = encodedBytes.through(io.file.writeAllAsync(Paths.get("testdata/celsius.txt")))
 written: fs2.Stream[cats.effect.IO,Unit] = Stream(..)
 ```
 
@@ -98,12 +110,7 @@ There are a number of ways of interpreting the stream. In this case, we call `co
 
 ```scala
 scala> val task: IO[Unit] = written.compile.drain
-task: cats.effect.IO[Unit] = IO$733618819
+task: cats.effect.IO[Unit] = IO$581289187
 ```
 
-We still haven't *done* anything yet. Effects only occur when we run the resulting task. We can run a `IO` by calling `unsafeRunSync()` -- the name is telling us that calling it performs effects and hence, it is not referentially transparent.
-
-```scala
-scala> val result: Unit = task.unsafeRunSync()
-result: Unit = ()
-```
+We still haven't *done* anything yet. Effects only occur when we run the resulting task. We can run a `IO` by calling `unsafeRunSync()` -- the name is telling us that calling it performs effects and hence, it is not referentially transparent. In this example, we extended `IOApp`, which lets us express our overall program as an `IO[ExitCase]`. The `IOApp` class handles running the task and hooking it up to the application entry point.
