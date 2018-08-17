@@ -1,8 +1,8 @@
 package fs2
 
-import cats.~>
-import cats.effect.{ExitCase, Sync}
-import fs2.internal.{Algebra, FreeC, Token}
+import cats._
+import cats.effect._
+import fs2.internal._
 
 /**
   * A `p: Pull[F,O,R]` reads values from one or more streams, returns a
@@ -83,7 +83,7 @@ final class Pull[+F[_], +O, +R] private (private val free: FreeC[Algebra[Nothing
 
   /** Run `p2` after `this`, regardless of errors during `this`, then reraise any errors encountered during `this`. */
   def onComplete[F2[x] >: F[x], O2 >: O, R2 >: R](p2: => Pull[F2, O2, R2]): Pull[F2, O2, R2] =
-    handleErrorWith(e => p2 >> Pull.raiseError(e)) >> p2
+    handleErrorWith(e => p2 >> new Pull(Algebra.raiseError[Nothing, Nothing, Nothing](e))) >> p2
 
   /** If `this` terminates with `Pull.raiseError(e)`, invoke `h(e)`. */
   def handleErrorWith[F2[x] >: F[x], O2 >: O, R2 >: R](
@@ -94,7 +94,7 @@ final class Pull[+F[_], +O, +R] private (private val free: FreeC[Algebra[Nothing
   def scope: Pull[F, O, Unit] = Pull.fromFreeC(Algebra.scope(get[F, O, R].map(_ => ())))
 }
 
-object Pull {
+object Pull extends PullLowPriority {
 
   @inline private[fs2] def fromFreeC[F[_], O, R](free: FreeC[Algebra[F, O, ?], R]): Pull[F, O, R] =
     new Pull(free.asInstanceOf[FreeC[Algebra[Nothing, Nothing, ?], R]])
@@ -125,7 +125,8 @@ object Pull {
     * of the `.stream` scope which executes the returned `Pull`. The acquired
     * resource is returned as the result value of the pull.
     */
-  def acquire[F[_], R](r: F[R])(cleanup: R => F[Unit]): Pull[F, Nothing, R] =
+  def acquire[F[_], R](r: F[R])(cleanup: R => F[Unit])(
+      implicit ev: ApplicativeError[F, Throwable]): Pull[F, Nothing, R] =
     acquireCancellable(r)(cleanup).map(_.resource)
 
   /**
@@ -134,14 +135,14 @@ object Pull {
     * This allows the acquired resource to be released earlier than at the end of the
     * containing pull scope.
     */
-  def acquireCancellable[F[_], R](r: F[R])(
-      cleanup: R => F[Unit]): Pull[F, Nothing, Cancellable[F, R]] =
+  def acquireCancellable[F[_], R](r: F[R])(cleanup: R => F[Unit])(
+      implicit ev: ApplicativeError[F, Throwable]): Pull[F, Nothing, Cancellable[F, R]] =
     Stream
       .bracketWithToken(r)(cleanup)
       .pull
       .uncons1
       .flatMap {
-        case None                   => Pull.raiseError(new RuntimeException("impossible"))
+        case None                   => Pull.raiseError[F](new RuntimeException("impossible"))
         case Some(((token, r), tl)) => Pull.pure(Cancellable(release(token), r))
       }
 
@@ -194,8 +195,30 @@ object Pull {
     fromFreeC(Algebra.pure(r))
 
   /** Reads and outputs nothing, and fails with the given error. */
-  def raiseError[F[x] >: Pure[x]](err: Throwable): Pull[F, Nothing, Nothing] =
+  def raiseError[F[x]](err: Throwable)(
+      implicit ev: ApplicativeError[F, Throwable]): Pull[F, Nothing, Nothing] = {
+    val _ = ev
     new Pull(Algebra.raiseError[Nothing, Nothing, Nothing](err))
+  }
+
+  final class PartiallyAppliedFromEither[F[_]] {
+    def apply[A](either: Either[Throwable, A])(
+        implicit ev: ApplicativeError[F, Throwable]): Pull[F, A, Unit] =
+      either.fold(Pull.raiseError[F], Pull.output1)
+  }
+
+  /**
+    * Lifts an Either[Throwable, A] to an effectful Pull[F, A, Unit].
+    *
+    * @example {{{
+    * scala> import cats.effect.IO, scala.util.Try
+    * scala> Pull.fromEither[IO](Right(42)).stream.compile.toList.unsafeRunSync()
+    * res0: List[Int] = List(42)
+    * scala> Try(Pull.fromEither[IO](Left(new RuntimeException)).stream.compile.toList.unsafeRunSync())
+    * res1: Try[List[Nothing]] = Failure(java.lang.RuntimeException)
+    * }}}
+    */
+  def fromEither[F[x]] = new PartiallyAppliedFromEither[F]
 
   /**
     * Creates a pull from the supplied segment. The output values of the segment
@@ -231,12 +254,13 @@ object Pull {
     fromFreeC[F, Nothing, Unit](Algebra.release(token))
 
   /** `Sync` instance for `Pull`. */
-  implicit def syncInstance[F[_], O]: Sync[Pull[F, O, ?]] =
+  implicit def syncInstance[F[_], O](
+      implicit ev: ApplicativeError[F, Throwable]): Sync[Pull[F, O, ?]] =
     new Sync[Pull[F, O, ?]] {
       def pure[A](a: A): Pull[F, O, A] = Pull.pure(a)
       def handleErrorWith[A](p: Pull[F, O, A])(h: Throwable => Pull[F, O, A]) =
         p.handleErrorWith(h)
-      def raiseError[A](t: Throwable) = Pull.raiseError(t)
+      def raiseError[A](t: Throwable) = Pull.raiseError[F](t)
       def flatMap[A, B](p: Pull[F, O, A])(f: A => Pull[F, O, B]) = p.flatMap(f)
       def tailRecM[A, B](a: A)(f: A => Pull[F, O, Either[A, B]]) =
         f(a).flatMap {
@@ -250,5 +274,19 @@ object Pull {
           FreeC
             .syncInstance[Algebra[F, O, ?]]
             .bracketCase(acquire.get)(a => use(a).get)((a, c) => release(a, c).get))
+    }
+}
+
+private[fs2] trait PullLowPriority {
+  implicit def monadInstance[F[_], O]: Monad[Pull[F, O, ?]] =
+    new Monad[Pull[F, O, ?]] {
+      override def pure[A](a: A): Pull[F, O, A] = Pull.pure(a)
+      override def flatMap[A, B](p: Pull[F, O, A])(f: A ⇒ Pull[F, O, B]): Pull[F, O, B] =
+        p.flatMap(f)
+      override def tailRecM[A, B](a: A)(f: A ⇒ Pull[F, O, Either[A, B]]): Pull[F, O, B] =
+        f(a).flatMap {
+          case Left(a)  => tailRecM(a)(f)
+          case Right(b) => Pull.pure(b)
+        }
     }
 }

@@ -1,6 +1,7 @@
 package fs2
 
 import fs2.Stream._
+import cats.effect._
 
 import org.scalacheck.Arbitrary.arbitrary
 import org.scalacheck.Gen
@@ -67,8 +68,11 @@ class CompressSpec extends Fs2Spec {
           val expectedInflated = inflateStream(expected, nowrap).toVector
           val actualInflated = Stream
             .chunk(Chunk.bytes(actual))
+            .covary[IO]
             .through(inflate(nowrap = nowrap))
+            .compile
             .toVector
+            .unsafeRunSync()
           actualInflated should equal(expectedInflated)
         }
 
@@ -76,11 +80,14 @@ class CompressSpec extends Fs2Spec {
         expectEqual(expectedDeflated.toArray, actualDeflated.toArray)
     }
 
-    "deflate |> inflate ~= id" in forAll { (s: PureStream[Byte]) =>
+    "deflate |> inflate ~= id" in forAll { s: PureStream[Byte] =>
       s.get.toVector shouldBe s.get
+        .covary[IO]
         .through(compress.deflate())
         .through(compress.inflate())
+        .compile
         .toVector
+        .unsafeRunSync()
     }
 
     "deflate.compresses input" in {

@@ -11,9 +11,10 @@ class ErrorHandlingSpec extends Fs2Spec {
       var i = 0
       try {
         Pull.pure(1)
+            .covary[IO]
             .handleErrorWith(_ => { i += 1; Pull.pure(2) })
-            .flatMap { _ => Pull.output1(i) >> Pull.raiseError(new RuntimeException("woot")) }
-            .stream.toList
+            .flatMap { _ => Pull.output1(i) >> Pull.raiseError[IO](new RuntimeException("woot")) }
+            .stream.compile.toList.unsafeRunSync()
         fail("should not reach, exception thrown above")
       }
       catch { case e: Throwable => i shouldBe 0 }
@@ -24,7 +25,7 @@ class ErrorHandlingSpec extends Fs2Spec {
       try {
         Pull.eval(IO(1))
             .handleErrorWith(_ => { i += 1; Pull.pure(2) })
-            .flatMap { _ => Pull.output1(i) >> Pull.raiseError(new RuntimeException("woot")) }
+            .flatMap { _ => Pull.output1(i) >> Pull.raiseError[IO](new RuntimeException("woot")) }
             .stream.compile.toVector.unsafeRunSync
         fail("should not reach, exception thrown above")
       }
@@ -37,7 +38,7 @@ class ErrorHandlingSpec extends Fs2Spec {
         Pull.eval(IO(1)).flatMap { x =>
           Pull.pure(x)
               .handleErrorWith(_ => { i += 1; Pull.pure(2) })
-              .flatMap { _ => Pull.output1(i) >> Pull.raiseError(new RuntimeException("woot")) }
+              .flatMap { _ => Pull.output1(i) >> Pull.raiseError[IO](new RuntimeException("woot")) }
         }.stream.compile.toVector.unsafeRunSync
         fail("should not reach, exception thrown above")
       }
@@ -62,13 +63,13 @@ class ErrorHandlingSpec extends Fs2Spec {
 
     "ex6" in {
       var i = 0
-      (Stream.range(0, 10).covary[IO] ++ Stream.raiseError(new Err)).handleErrorWith { t => i += 1; Stream.empty }.compile.drain.unsafeRunSync
+      (Stream.range(0, 10).covary[IO] ++ Stream.raiseError[IO](new Err)).handleErrorWith { t => i += 1; Stream.empty }.compile.drain.unsafeRunSync
       i shouldBe 1
     }
 
     "ex7" in {
       try {
-        (Stream.range(0, 3).covary[IO] ++ Stream.raiseError(new Err)).unchunk.pull.echo.stream.compile.drain.unsafeRunSync
+        (Stream.range(0, 3).covary[IO] ++ Stream.raiseError[IO](new Err)).unchunk.pull.echo.stream.compile.drain.unsafeRunSync
         fail("SHOULD NOT REACH")
       }
       catch { case e: Throwable => () }
@@ -76,7 +77,7 @@ class ErrorHandlingSpec extends Fs2Spec {
 
     "ex8" in {
       var i = 0
-      (Stream.range(0, 3).covary[IO] ++ Stream.raiseError(new Err)).unchunk.pull.echo.handleErrorWith { t => i += 1; println(i); Pull.done }.stream.compile.drain.unsafeRunSync
+      (Stream.range(0, 3).covary[IO] ++ Stream.raiseError[IO](new Err)).unchunk.pull.echo.handleErrorWith { t => i += 1; println(i); Pull.done }.stream.compile.drain.unsafeRunSync
       i shouldBe 1
     }
   }

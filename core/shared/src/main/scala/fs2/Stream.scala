@@ -1,12 +1,12 @@
 package fs2
 
-import cats.{Applicative, Eq, Functor, Id, MonadError, Monoid, Semigroup, ~>}
+import cats._
 import cats.data.NonEmptyList
 import cats.effect._
-import cats.effect.concurrent.{Deferred, Ref, Semaphore}
+import cats.effect.concurrent._
 import cats.implicits.{catsSyntaxEither => _, _}
 import fs2.internal.FreeC.Result
-import fs2.internal.{Algebra, Canceled, FreeC, Token}
+import fs2.internal._
 
 import scala.collection.generic.CanBuildFrom
 import scala.concurrent.duration._
@@ -95,7 +95,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * Returns a stream of `O` values wrapped in `Right` until the first error, which is emitted wrapped in `Left`.
     *
     * @example {{{
-    * scala> (Stream(1,2,3) ++ Stream.raiseError(new RuntimeException) ++ Stream(4,5,6)).attempt.toList
+    * scala> (Stream(1,2,3) ++ Stream.raiseError[cats.effect.IO](new RuntimeException) ++ Stream(4,5,6)).attempt.compile.toList.unsafeRunSync()
     * res0: List[Either[Throwable,Int]] = List(Right(1), Right(2), Right(3), Left(java.lang.RuntimeException))
     * }}}
     *
@@ -104,14 +104,14 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
   def attempt: Stream[F, Either[Throwable, O]] =
     map(Right(_): Either[Throwable, O]).handleErrorWith(e => Stream.emit(Left(e)))
 
-  /*
-   * Retries on failure, returning a stream of attempts that can
-   * be manipulated with standard stream operations such as `take`,
-   * `collectFirst` and `interruptWhen`.
-   *
-   * Note: The resulting stream does *not* automatically halt at the
-   * first successful attempt. Also see `retry`.
-   */
+  /**
+    * Retries on failure, returning a stream of attempts that can
+    * be manipulated with standard stream operations such as `take`,
+    * `collectFirst` and `interruptWhen`.
+    *
+    * Note: The resulting stream does *not* automatically halt at the
+    * first successful attempt. Also see `retry`.
+    */
   def attempts[F2[x] >: F[x]: Timer](
       delays: Stream[F2, FiniteDuration]): Stream[F2, Either[Throwable, O]] =
     attempt ++ delays.flatMap(delay => Stream.sleep_(delay) ++ attempt)
@@ -344,7 +344,8 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * `this`.
     *
     * @example {{{
-    * scala> import cats.effect.IO, scala.concurrent.ExecutionContext.Implicits.global
+    * scala> import cats.effect.{ContextShift, IO}
+    * scala> implicit val cs: ContextShift[IO] = IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
     * scala> val data: Stream[IO,Int] = Stream.range(1, 10).covary[IO]
     * scala> Stream.eval(async.signalOf[IO,Int](0)).flatMap(s => Stream(s).concurrently(data.evalMap(s.set))).flatMap(_.discrete).takeWhile(_ < 9, true).compile.last.unsafeRunSync
     * res0: Option[Int] = Some(9)
@@ -446,7 +447,9 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * Debounce the stream with a minimum period of `d` between each element.
     *
     * @example {{{
-    * scala> import scala.concurrent.duration._, scala.concurrent.ExecutionContext.Implicits.global, cats.effect.IO
+    * scala> import scala.concurrent.duration._, cats.effect.{ContextShift, IO, Timer}
+    * scala> implicit val cs: ContextShift[IO] = IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
+    * scala> implicit val timer: Timer[IO] = IO.timer(scala.concurrent.ExecutionContext.Implicits.global)
     * scala> val s = Stream(1, 2, 3) ++ Stream.sleep_[IO](500.millis) ++ Stream(4, 5) ++ Stream.sleep_[IO](10.millis) ++ Stream(6)
     * scala> val s2 = s.debounce(100.milliseconds)
     * scala> s2.compile.toVector.unsafeRunSync
@@ -630,7 +633,9 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * Like `[[merge]]`, but tags each output with the branch it came from.
     *
     * @example {{{
-    * scala> import scala.concurrent.duration._, scala.concurrent.ExecutionContext.Implicits.global, cats.effect.IO
+    * scala> import scala.concurrent.duration._, cats.effect.{ContextShift, IO, Timer}
+    * scala> implicit val cs: ContextShift[IO] = IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
+    * scala> implicit val timer: Timer[IO] = IO.timer(scala.concurrent.ExecutionContext.Implicits.global)
     * scala> val s1 = Stream.awakeEvery[IO](1000.millis).scan(0)((acc, i) => acc + 1)
     * scala> val s = s1.either(Stream.sleep_[IO](500.millis) ++ s1).take(10)
     * scala> s.take(10).compile.toVector.unsafeRunSync
@@ -965,7 +970,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * If `this` terminates with `Stream.raiseError(e)`, invoke `h(e)`.
     *
     * @example {{{
-    * scala> Stream(1, 2, 3).append(Stream.raiseError(new RuntimeException)).handleErrorWith(t => Stream(0)).toList
+    * scala> Stream(1, 2, 3).append(Stream.raiseError[cats.effect.IO](new RuntimeException)).handleErrorWith(t => Stream(0)).compile.toList.unsafeRunSync()
     * res0: List[Int] = List(1, 2, 3, 0)
     * }}}
     */
@@ -1172,7 +1177,8 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * the original stream.
     *
     * @example {{{
-    * scala> import cats.effect.IO, scala.concurrent.ExecutionContext.Implicits.global
+    * scala> import cats.effect.{ContextShift, IO}
+    * scala> implicit val cs: ContextShift[IO] = IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
     * scala> Stream(1,2,3,4).covary[IO].mapAsync(2)(i => IO(println(i))).compile.drain.unsafeRunSync
     * res0: Unit = ()
     * }}}
@@ -1204,7 +1210,8 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * See [[Stream#mapAsync]] if retaining the original order of the stream is required.
     *
     * @example {{{
-    * scala> import cats.effect.IO, scala.concurrent.ExecutionContext.Implicits.global
+    * scala> import cats.effect.{ContextShift, IO}
+    * scala> implicit val cs: ContextShift[IO] = IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
     * scala> Stream(1,2,3,4).covary[IO].mapAsyncUnordered(2)(i => IO(println(i))).compile.drain.unsafeRunSync
     * res0: Unit = ()
     * }}}
@@ -1233,7 +1240,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * Behaves like the identity function but halts the stream on an error and does not return the error.
     *
     * @example {{{
-    * scala> (Stream(1,2,3) ++ Stream.raiseError(new RuntimeException) ++ Stream(4, 5, 6)).mask.toList
+    * scala> (Stream(1,2,3) ++ Stream.raiseError[cats.effect.IO](new RuntimeException) ++ Stream(4, 5, 6)).mask.compile.toList.unsafeRunSync()
     * res0: List[Int] = List(1, 2, 3)
     * }}}
     */
@@ -1265,7 +1272,9 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     *
     *
     * @example {{{
-    * scala> import scala.concurrent.duration._, scala.concurrent.ExecutionContext.Implicits.global, cats.effect.IO
+    * scala> import scala.concurrent.duration._, cats.effect.{ContextShift, IO, Timer}
+    * scala> implicit val cs: ContextShift[IO] = IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
+    * scala> implicit val timer: Timer[IO] = IO.timer(scala.concurrent.ExecutionContext.Implicits.global)
     * scala> val s1 = Stream.awakeEvery[IO](500.millis).scan(0)((acc, i) => acc + 1)
     * scala> val s = s1.merge(Stream.sleep_[IO](250.millis) ++ s1)
     * scala> s.take(6).compile.toVector.unsafeRunSync
@@ -1373,7 +1382,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * }}}
     */
   def onComplete[F2[x] >: F[x], O2 >: O](s2: => Stream[F2, O2]): Stream[F2, O2] =
-    handleErrorWith(e => s2 ++ Stream.raiseError(e)) ++ s2
+    handleErrorWith(e => s2 ++ Stream.fromFreeC(Algebra.raiseError(e))) ++ s2
 
   /**
     * Run the supplied effectful action at the end of this stream, regardless of how the stream terminates.
@@ -1639,17 +1648,18 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * Preserves chunkiness.
     *
     * @example {{{
-    * scala> Stream(Right(1), Right(2), Left(new RuntimeException), Right(3)).rethrow.handleErrorWith(t => Stream(-1)).toList
+    * scala> Stream(Right(1), Right(2), Left(new RuntimeException), Right(3)).rethrow[cats.effect.IO, Int].handleErrorWith(t => Stream(-1)).compile.toList.unsafeRunSync
     * res0: List[Int] = List(-1)
     * }}}
     */
-  def rethrow[O2](implicit ev: O <:< Either[Throwable, O2]): Stream[F, O2] = {
+  def rethrow[F2[x] >: F[x], O2](implicit ev: O <:< Either[Throwable, O2],
+                                 AE: ApplicativeError[F2, Throwable]): Stream[F2, O2] = {
     val _ = ev // Convince scalac that ev is used
     this.asInstanceOf[Stream[F, Either[Throwable, O2]]].chunks.flatMap { c =>
       val firstError = c.find(_.isLeft)
       firstError match {
         case None    => Stream.chunk(c.collect { case Right(i) => i })
-        case Some(h) => Stream.raiseError(h.swap.toOption.get)
+        case Some(h) => Stream.raiseError[F2](h.swap.toOption.get)
       }
     }
   }
@@ -2164,7 +2174,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
   override def toString: String = "Stream(..)"
 }
 
-object Stream {
+object Stream extends StreamLowPriority {
   @inline private[fs2] def fromFreeC[F[_], O](free: FreeC[Algebra[F, O, ?], Unit]): Stream[F, O] =
     new Stream(free.asInstanceOf[FreeC[Algebra[Nothing, Nothing, ?], Unit]])
 
@@ -2193,9 +2203,9 @@ object Stream {
     */
   def awakeDelay[F[x] >: Pure[x]](d: FiniteDuration)(implicit timer: Timer[F],
                                                      F: Functor[F]): Stream[F, FiniteDuration] =
-    Stream.eval(timer.clockMonotonic(NANOSECONDS)).flatMap { start =>
+    Stream.eval(timer.clock.monotonic(NANOSECONDS)).flatMap { start =>
       fixedDelay[F](d) *> Stream.eval(
-        timer.clockMonotonic(NANOSECONDS).map(now => (now - start).nanos))
+        timer.clock.monotonic(NANOSECONDS).map(now => (now - start).nanos))
     }
 
   /**
@@ -2210,9 +2220,9 @@ object Stream {
     */
   def awakeEvery[F[x] >: Pure[x]](d: FiniteDuration)(implicit timer: Timer[F],
                                                      F: Functor[F]): Stream[F, FiniteDuration] =
-    Stream.eval(timer.clockMonotonic(NANOSECONDS)).flatMap { start =>
+    Stream.eval(timer.clock.monotonic(NANOSECONDS)).flatMap { start =>
       fixedRate[F](d) *> Stream.eval(
-        timer.clockMonotonic(NANOSECONDS).map(now => (now - start).nanos))
+        timer.clock.monotonic(NANOSECONDS).map(now => (now - start).nanos))
     }
 
   /**
@@ -2371,7 +2381,7 @@ object Stream {
     */
   def every[F[x] >: Pure[x]](d: FiniteDuration)(implicit timer: Timer[F]): Stream[F, Boolean] = {
     def go(lastSpikeNanos: Long): Stream[F, Boolean] =
-      Stream.eval(timer.clockMonotonic(NANOSECONDS)).flatMap { now =>
+      Stream.eval(timer.clock.monotonic(NANOSECONDS)).flatMap { now =>
         if ((now - lastSpikeNanos) > d.toNanos) Stream.emit(true) ++ go(now)
         else Stream.emit(false) ++ go(lastSpikeNanos)
       }
@@ -2399,7 +2409,7 @@ object Stream {
     * @param d FiniteDuration between emits of the resulting stream
     */
   def fixedRate[F[_]](d: FiniteDuration)(implicit timer: Timer[F]): Stream[F, Unit] = {
-    def now: Stream[F, Long] = Stream.eval(timer.clockMonotonic(NANOSECONDS))
+    def now: Stream[F, Long] = Stream.eval(timer.clock.monotonic(NANOSECONDS))
     def loop(started: Long): Stream[F, Unit] =
       now.flatMap { finished =>
         val elapsed = finished - started
@@ -2409,6 +2419,25 @@ object Stream {
       }
     now.flatMap(loop)
   }
+
+  final class PartiallyAppliedFromEither[F[_]] {
+    def apply[A](either: Either[Throwable, A])(
+        implicit ev: ApplicativeError[F, Throwable]): Stream[F, A] =
+      either.fold(Stream.raiseError[F], Stream.emit)
+  }
+
+  /**
+    * Lifts an Either[Throwable, A] to an effectful Stream.
+    *
+    * @example {{{
+    * scala> import cats.effect.IO, scala.util.Try
+    * scala> Stream.fromEither[IO](Right(42)).compile.toList.unsafeRunSync
+    * res0: List[Int] = List(42)
+    * scala> Try(Stream.fromEither[IO](Left(new RuntimeException)).compile.toList.unsafeRunSync)
+    * res1: Try[List[Nothing]] = Failure(java.lang.RuntimeException)
+    * }}}
+    */
+  def fromEither[F[_]] = new PartiallyAppliedFromEither[F]
 
   /**
     * Lifts an iterator into a Stream
@@ -2469,16 +2498,16 @@ object Stream {
     * Creates a stream that, when run, fails with the supplied exception.
     *
     * @example {{{
-    * scala> import scala.util.Try
-    * scala> Try(Stream.raiseError(new RuntimeException).toList)
-    * res0: Try[List[Nothing]] = Failure(java.lang.RuntimeException)
     * scala> import cats.effect.IO
-    * scala> Stream.raiseError(new RuntimeException).covary[IO].compile.drain.attempt.unsafeRunSync
+    * scala> Stream.raiseError[IO](new RuntimeException).compile.drain.attempt.unsafeRunSync
     * res0: Either[Throwable,Unit] = Left(java.lang.RuntimeException)
     * }}}
     */
-  def raiseError[F[x] >: Pure[x], O](e: Throwable): Stream[F, O] =
+  def raiseError[F[x]](e: Throwable)(
+      implicit ev: ApplicativeError[F, Throwable]): Stream[F, Nothing] = {
+    val _ = ev
     fromFreeC(Algebra.raiseError(e))
+  }
 
   /**
     * Creates a random stream of integers using a random seed.
@@ -2578,7 +2607,8 @@ object Stream {
                      nextDelay: FiniteDuration => FiniteDuration,
                      maxRetries: Int,
                      retriable: Throwable => Boolean = scala.util.control.NonFatal.apply)(
-      implicit F: Timer[F]): Stream[F, O] = {
+      implicit F: Timer[F],
+      AE: ApplicativeError[F, Throwable]): Stream[F, O] = {
     val delays = Stream.unfold(delay)(d => Some(d -> nextDelay(d))).covary[F]
 
     Stream
@@ -2720,7 +2750,8 @@ object Stream {
       * Note that if your sink can be represented by an `O => F[Unit]`, `evalTap` will provide much greater performance.
       *
       * @example {{{
-      * scala> import scala.concurrent.ExecutionContext.Implicits.global, cats.effect.IO, cats.implicits._
+      * scala> import cats.effect.{ContextShift, IO}, cats.implicits._
+      * scala> implicit val cs: ContextShift[IO] = IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
       * scala> Stream(1, 2, 3).covary[IO].observe(Sink.showLinesStdOut).map(_ + 1).compile.toVector.unsafeRunSync
       * res0: Vector[Int] = Vector(2, 3, 4)
       * }}}
@@ -3090,7 +3121,7 @@ object Stream {
           case None => Pull.pure(None)
           case Some((hd, tl)) =>
             hd.size.toLong match {
-              case m if m <= n => Pull.output(hd) >> tl.pull.take(n - m)
+              case m if m < n  => Pull.output(hd) >> tl.pull.take(n - m)
               case m if m == n => Pull.output(hd).as(Some(tl))
               case m =>
                 val (pfx, sfx) = hd.splitAt(n.toInt)
@@ -3348,12 +3379,13 @@ object Stream {
     * res0: List[(Int, Int)] = List((1,1), (-2,2), (3,3))
     * }}}
     */
-  implicit def monadErrorInstance[F[_]]: MonadError[Stream[F, ?], Throwable] =
+  implicit def monadErrorInstance[F[_]](
+      implicit ev: ApplicativeError[F, Throwable]): MonadError[Stream[F, ?], Throwable] =
     new MonadError[Stream[F, ?], Throwable] {
       def pure[A](a: A) = Stream(a)
       def handleErrorWith[A](s: Stream[F, A])(h: Throwable => Stream[F, A]) =
         s.handleErrorWith(h)
-      def raiseError[A](t: Throwable) = Stream.raiseError(t)
+      def raiseError[A](t: Throwable) = Stream.raiseError[F](t)(ev)
       def flatMap[A, B](s: Stream[F, A])(f: A => Stream[F, B]) = s.flatMap(f)
       def tailRecM[A, B](a: A)(f: A => Stream[F, Either[A, B]]) = f(a).flatMap {
         case Left(a)  => tailRecM(a)(f)
@@ -3366,5 +3398,21 @@ object Stream {
     new Monoid[Stream[F, O]] {
       def empty = Stream.empty
       def combine(x: Stream[F, O], y: Stream[F, O]) = x ++ y
+    }
+}
+
+private[fs2] trait StreamLowPriority {
+  implicit def monadInstance[F[_]]: Monad[Stream[F, ?]] =
+    new Monad[Stream[F, ?]] {
+      override def pure[A](x: A): Stream[F, A] = Stream(x)
+
+      override def flatMap[A, B](fa: Stream[F, A])(f: A ⇒ Stream[F, B]): Stream[F, B] =
+        fa.flatMap(f)
+
+      override def tailRecM[A, B](a: A)(f: A ⇒ Stream[F, Either[A, B]]): Stream[F, B] =
+        f(a).flatMap {
+          case Left(a)  => tailRecM(a)(f)
+          case Right(b) => Stream(b)
+        }
     }
 }

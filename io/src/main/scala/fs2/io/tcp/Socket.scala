@@ -16,7 +16,7 @@ import java.nio.channels.{
 }
 import java.util.concurrent.TimeUnit
 
-import cats.effect.{ConcurrentEffect, IO, Resource, Timer}
+import cats.effect.{ConcurrentEffect, ContextShift, IO, Resource}
 import cats.effect.concurrent.{Ref, Semaphore}
 import cats.implicits._
 
@@ -102,7 +102,7 @@ protected[tcp] object Socket {
   )(
       implicit AG: AsynchronousChannelGroup,
       F: ConcurrentEffect[F],
-      timer: Timer[F]
+      cs: ContextShift[F]
   ): Resource[F, Socket[F]] = {
 
     def setup: F[AsynchronousSocketChannel] = F.delay {
@@ -139,7 +139,7 @@ protected[tcp] object Socket {
                    receiveBufferSize: Int)(
       implicit AG: AsynchronousChannelGroup,
       F: ConcurrentEffect[F],
-      timer: Timer[F]
+      cs: ContextShift[F]
   ): Stream[F, Either[InetSocketAddress, Resource[F, Socket[F]]]] = {
 
     val setup: F[AsynchronousServerSocketChannel] = F.delay {
@@ -178,9 +178,9 @@ protected[tcp] object Socket {
 
       go.handleErrorWith {
         case err: AsynchronousCloseException =>
-          if (sch.isOpen) Stream.raiseError(err)
+          if (sch.isOpen) Stream.raiseError[F](err)
           else Stream.empty
-        case err => Stream.raiseError(err)
+        case err => Stream.raiseError[F](err)
       }
     }
 
@@ -194,7 +194,7 @@ protected[tcp] object Socket {
   }
 
   def mkSocket[F[_]](ch: AsynchronousSocketChannel)(implicit F: ConcurrentEffect[F],
-                                                    timer: Timer[F]): Resource[F, Socket[F]] = {
+                                                    cs: ContextShift[F]): Resource[F, Socket[F]] = {
     val socket = Semaphore(1).flatMap { readSemaphore =>
       Ref.of[F, ByteBuffer](ByteBuffer.allocate(0)).map { bufferRef =>
         // Reads data to remaining capacity of supplied ByteBuffer

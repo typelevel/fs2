@@ -7,7 +7,7 @@ import scala.concurrent.duration.FiniteDuration
 import java.net.{InetAddress, InetSocketAddress, NetworkInterface}
 import java.nio.channels.{ClosedChannelException, DatagramChannel}
 
-import cats.effect.{Effect, IO, Timer}
+import cats.effect.{ContextShift, Effect, IO}
 
 /**
   * Provides the ability to read/write from a UDP socket in the effect `F`.
@@ -100,7 +100,7 @@ private[udp] object Socket {
 
   private[fs2] def mkSocket[F[_]](channel: DatagramChannel)(implicit AG: AsynchronousSocketGroup,
                                                             F: Effect[F],
-                                                            timer: Timer[F]): F[Socket[F]] =
+                                                            cs: ContextShift[F]): F[Socket[F]] =
     F.delay {
       new Socket[F] {
         private val ctx = AG.register(channel)

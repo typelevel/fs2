@@ -1,8 +1,17 @@
 package fs2
 
 import scala.reflect.ClassTag
-import java.nio.{ByteBuffer => JByteBuffer}
 import scodec.bits.ByteVector
+import java.nio.{
+  Buffer => JBuffer,
+  ByteBuffer => JByteBuffer,
+  ShortBuffer => JShortBuffer,
+  LongBuffer => JLongBuffer,
+  CharBuffer => JCharBuffer,
+  IntBuffer => JIntBuffer,
+  FloatBuffer => JFloatBuffer,
+  DoubleBuffer => JDoubleBuffer
+}
 
 import cats.{Applicative, Eq, Eval, Monad, Traverse}
 import cats.implicits._
@@ -700,71 +709,326 @@ object Chunk {
     override def toArray[O2 >: Byte: ClassTag]: Array[O2] =
       values.slice(offset, offset + length).asInstanceOf[Array[O2]]
   }
+
   object Bytes {
     def apply(values: Array[Byte]): Bytes = Bytes(values, 0, values.length)
   }
 
-  /** Creates a chunk backed by an byte buffer, bounded by the current position and limit. */
-  def byteBuffer(buf: JByteBuffer): Chunk[Byte] = ByteBuffer(buf)
+  sealed abstract class Buffer[A <: Buffer[A, B, C], B <: JBuffer, C: ClassTag](buf: B,
+                                                                                val offset: Int,
+                                                                                val size: Int)
+      extends Chunk[C]
+      with KnownElementType[C] {
 
-  final case class ByteBuffer private (buf: JByteBuffer, offset: Int, size: Int)
-      extends Chunk[Byte]
-      with KnownElementType[Byte] {
-    def elementClassTag = ClassTag.Byte
+    def elementClassTag: ClassTag[C] = implicitly[ClassTag[C]]
+    def readOnly(b: B): B
+    def buffer(b: B): A
+    def get(b: B, n: Int): C
+    def get(b: B, dest: Array[C], offset: Int, length: Int): B
+    def duplicate(b: B): B
 
-    def apply(i: Int): Byte = buf.get(i + offset)
+    def apply(i: Int): C =
+      get(buf, offset + i)
 
-    def copyToArray[O2 >: Byte](xs: Array[O2], start: Int): Unit = {
-      val b = buf.asReadOnlyBuffer
+    override def drop(n: Int): Chunk[C] =
+      if (n <= 0) this
+      else if (n >= size) Chunk.empty
+      else {
+        val second = readOnly(buf)
+        second.position(n + offset)
+        buffer(second)
+      }
+
+    override def take(n: Int): Chunk[C] =
+      if (n <= 0) Chunk.empty
+      else if (n >= size) this
+      else {
+        val first = readOnly(buf)
+        first.limit(n + offset)
+        buffer(first)
+      }
+
+    def copyToArray[O2 >: C](xs: Array[O2], start: Int): Unit = {
+      val b = readOnly(buf)
       b.position(offset)
       b.limit(offset + size)
-      if (xs.isInstanceOf[Array[Byte]]) {
-        b.get(xs.asInstanceOf[Array[Byte]], start, size)
+      if (xs.isInstanceOf[Array[C]]) {
+        get(b, xs.asInstanceOf[Array[C]], start, size)
         ()
       } else {
-        val arr = new Array[Byte](size)
-        b.get(arr)
+        val arr = new Array[C](size)
+        get(b, arr, 0, size)
         arr.copyToArray(xs, start)
       }
     }
 
-    override def drop(n: Int): Chunk[Byte] =
-      if (n <= 0) this
-      else if (n >= size) Chunk.empty
-      else {
-        val second = buf.asReadOnlyBuffer
-        second.position(n + offset)
-        ByteBuffer(second)
-      }
-
-    override def take(n: Int): Chunk[Byte] =
-      if (n <= 0) Chunk.empty
-      else if (n >= size) this
-      else {
-        val first = buf.asReadOnlyBuffer
-        first.limit(n + offset)
-        ByteBuffer(first)
-      }
-
-    protected def splitAtChunk_(n: Int): (Chunk[Byte], Chunk[Byte]) = {
-      val first = buf.asReadOnlyBuffer
+    protected def splitAtChunk_(n: Int): (A, A) = {
+      val first = readOnly(buf)
       first.limit(n + offset)
-      val second = buf.asReadOnlyBuffer
+      val second = readOnly(buf)
       second.position(n + offset)
-      (ByteBuffer(first), ByteBuffer(second))
+      (buffer(first), buffer(second))
     }
-    override def toArray[O2 >: Byte: ClassTag]: Array[O2] = {
-      val bs = new Array[Byte](size)
-      val b = buf.duplicate
+
+    override def toArray[O2 >: C: ClassTag]: Array[O2] = {
+      val bs = new Array[C](size)
+      val b = duplicate(buf)
       b.position(offset)
-      b.get(bs, 0, size)
+      get(buf, bs, 0, size)
       bs.asInstanceOf[Array[O2]]
     }
+
   }
+
+  object ShortBuffer {
+
+    def apply(buf: JShortBuffer): ShortBuffer =
+      view(buf.duplicate().asReadOnlyBuffer)
+
+    def view(buf: JShortBuffer): ShortBuffer =
+      new ShortBuffer(buf, buf.position, buf.remaining)
+
+  }
+
+  final case class ShortBuffer(buf: JShortBuffer, override val offset: Int, override val size: Int)
+      extends Buffer[ShortBuffer, JShortBuffer, Short](buf, offset, size) {
+
+    def readOnly(b: JShortBuffer): JShortBuffer =
+      b.asReadOnlyBuffer()
+
+    def get(b: JShortBuffer, n: Int) =
+      b.get(n)
+
+    def buffer(b: JShortBuffer): ShortBuffer = ShortBuffer.view(b)
+
+    override def get(b: JShortBuffer, dest: Array[Short], offset: Int, length: Int): JShortBuffer =
+      b.get(dest, offset, length)
+
+    def duplicate(b: JShortBuffer): JShortBuffer = b.duplicate()
+
+    // Duplicated from superclass to work around Scala.js ClassCastException when using inherited version
+    override def copyToArray[O2 >: Short](xs: Array[O2], start: Int): Unit = {
+      val b = readOnly(buf)
+      b.position(offset)
+      b.limit(offset + size)
+      if (xs.isInstanceOf[Array[Short]]) {
+        get(b, xs.asInstanceOf[Array[Short]], start, size)
+        ()
+      } else {
+        val arr = new Array[Short](size)
+        get(b, arr, 0, size)
+        arr.copyToArray(xs, start)
+      }
+    }
+  }
+
+  /** Creates a chunk backed by an short buffer, bounded by the current position and limit */
+  def shortBuffer(buf: JShortBuffer): Chunk[Short] = ShortBuffer(buf)
+
+  object LongBuffer {
+    def apply(buf: JLongBuffer): LongBuffer =
+      view(buf.duplicate().asReadOnlyBuffer)
+
+    def view(buf: JLongBuffer): LongBuffer =
+      new LongBuffer(buf, buf.position, buf.remaining)
+  }
+
+  final case class LongBuffer(buf: JLongBuffer, override val offset: Int, override val size: Int)
+      extends Buffer[LongBuffer, JLongBuffer, Long](buf, offset, size) {
+
+    def readOnly(b: JLongBuffer): JLongBuffer =
+      b.asReadOnlyBuffer()
+
+    def get(b: JLongBuffer, n: Int) =
+      b.get(n)
+
+    def buffer(b: JLongBuffer): LongBuffer = LongBuffer.view(b)
+
+    override def get(b: JLongBuffer, dest: Array[Long], offset: Int, length: Int): JLongBuffer =
+      b.get(dest, offset, length)
+
+    def duplicate(b: JLongBuffer): JLongBuffer = b.duplicate()
+  }
+
+  /** Creates a chunk backed by an long buffer, bounded by the current position and limit */
+  def longBuffer(buf: JLongBuffer): Chunk[Long] = LongBuffer(buf)
+
+  object DoubleBuffer {
+    def apply(buf: JDoubleBuffer): DoubleBuffer =
+      view(buf.duplicate().asReadOnlyBuffer)
+
+    def view(buf: JDoubleBuffer): DoubleBuffer =
+      new DoubleBuffer(buf, buf.position, buf.remaining)
+  }
+
+  final case class DoubleBuffer(buf: JDoubleBuffer,
+                                override val offset: Int,
+                                override val size: Int)
+      extends Buffer[DoubleBuffer, JDoubleBuffer, Double](buf, offset, size) {
+
+    def readOnly(b: JDoubleBuffer): JDoubleBuffer =
+      b.asReadOnlyBuffer()
+
+    def get(b: JDoubleBuffer, n: Int) =
+      b.get(n)
+
+    def buffer(b: JDoubleBuffer): DoubleBuffer = DoubleBuffer.view(b)
+
+    override def get(b: JDoubleBuffer,
+                     dest: Array[Double],
+                     offset: Int,
+                     length: Int): JDoubleBuffer =
+      b.get(dest, offset, length)
+
+    def duplicate(b: JDoubleBuffer): JDoubleBuffer = b.duplicate()
+
+    // Duplicated from superclass to work around Scala.js ClassCastException when using inherited version
+    override def copyToArray[O2 >: Double](xs: Array[O2], start: Int): Unit = {
+      val b = readOnly(buf)
+      b.position(offset)
+      b.limit(offset + size)
+      if (xs.isInstanceOf[Array[Double]]) {
+        get(b, xs.asInstanceOf[Array[Double]], start, size)
+        ()
+      } else {
+        val arr = new Array[Double](size)
+        get(b, arr, 0, size)
+        arr.copyToArray(xs, start)
+      }
+    }
+  }
+
+  /** Creates a chunk backed by an double buffer, bounded by the current position and limit */
+  def doubleBuffer(buf: JDoubleBuffer): Chunk[Double] = DoubleBuffer(buf)
+
+  object FloatBuffer {
+    def apply(buf: JFloatBuffer): FloatBuffer =
+      view(buf.duplicate().asReadOnlyBuffer)
+
+    def view(buf: JFloatBuffer): FloatBuffer =
+      new FloatBuffer(buf, buf.position, buf.remaining)
+  }
+
+  final case class FloatBuffer(buf: JFloatBuffer, override val offset: Int, override val size: Int)
+      extends Buffer[FloatBuffer, JFloatBuffer, Float](buf, offset, size) {
+
+    def readOnly(b: JFloatBuffer): JFloatBuffer =
+      b.asReadOnlyBuffer()
+
+    def get(b: JFloatBuffer, n: Int) =
+      b.get(n)
+
+    def buffer(b: JFloatBuffer): FloatBuffer = FloatBuffer.view(b)
+
+    override def get(b: JFloatBuffer, dest: Array[Float], offset: Int, length: Int): JFloatBuffer =
+      b.get(dest, offset, length)
+
+    def duplicate(b: JFloatBuffer): JFloatBuffer = b.duplicate()
+  }
+
+  /** Creates a chunk backed by an float buffer, bounded by the current position and limit */
+  def floatBuffer(buf: JFloatBuffer): Chunk[Float] = FloatBuffer(buf)
+
+  object IntBuffer {
+    def apply(buf: JIntBuffer): IntBuffer =
+      view(buf.duplicate().asReadOnlyBuffer)
+
+    def view(buf: JIntBuffer): IntBuffer =
+      new IntBuffer(buf, buf.position, buf.remaining)
+  }
+
+  final case class IntBuffer(buf: JIntBuffer, override val offset: Int, override val size: Int)
+      extends Buffer[IntBuffer, JIntBuffer, Int](buf, offset, size) {
+
+    def readOnly(b: JIntBuffer): JIntBuffer =
+      b.asReadOnlyBuffer()
+
+    def get(b: JIntBuffer, n: Int) =
+      b.get(n)
+
+    def buffer(b: JIntBuffer): IntBuffer = IntBuffer.view(b)
+
+    override def get(b: JIntBuffer, dest: Array[Int], offset: Int, length: Int): JIntBuffer =
+      b.get(dest, offset, length)
+
+    def duplicate(b: JIntBuffer): JIntBuffer = b.duplicate()
+
+    // Duplicated from superclass to work around Scala.js ClassCastException when using inherited version
+    override def copyToArray[O2 >: Int](xs: Array[O2], start: Int): Unit = {
+      val b = readOnly(buf)
+      b.position(offset)
+      b.limit(offset + size)
+      if (xs.isInstanceOf[Array[Int]]) {
+        get(b, xs.asInstanceOf[Array[Int]], start, size)
+        ()
+      } else {
+        val arr = new Array[Int](size)
+        get(b, arr, 0, size)
+        arr.copyToArray(xs, start)
+      }
+    }
+  }
+
+  /** Creates a chunk backed by an int buffer, bounded by the current position and limit */
+  def intBuffer(buf: JIntBuffer): Chunk[Int] = IntBuffer(buf)
+
+  object CharBuffer {
+    def apply(buf: JCharBuffer): CharBuffer =
+      view(buf.duplicate().asReadOnlyBuffer)
+
+    def view(buf: JCharBuffer): CharBuffer =
+      new CharBuffer(buf, buf.position, buf.remaining)
+  }
+
+  final case class CharBuffer(buf: JCharBuffer, override val offset: Int, override val size: Int)
+      extends Buffer[CharBuffer, JCharBuffer, Char](buf, offset, size) {
+
+    def readOnly(b: JCharBuffer): JCharBuffer =
+      b.asReadOnlyBuffer()
+
+    def get(b: JCharBuffer, n: Int) =
+      b.get(n)
+
+    def buffer(b: JCharBuffer): CharBuffer = CharBuffer.view(b)
+
+    override def get(b: JCharBuffer, dest: Array[Char], offset: Int, length: Int): JCharBuffer =
+      b.get(dest, offset, length)
+
+    def duplicate(b: JCharBuffer): JCharBuffer = b.duplicate()
+  }
+
+  /** Creates a chunk backed by an char buffer, bounded by the current position and limit */
+  def charBuffer(buf: JCharBuffer): Chunk[Char] = CharBuffer(buf)
+
   object ByteBuffer {
     def apply(buf: JByteBuffer): ByteBuffer =
-      ByteBuffer(buf, buf.position, buf.remaining)
+      view(buf.duplicate().asReadOnlyBuffer)
+
+    def view(buf: JByteBuffer): ByteBuffer =
+      new ByteBuffer(buf, buf.position, buf.remaining)
   }
+
+  final case class ByteBuffer private (buf: JByteBuffer,
+                                       override val offset: Int,
+                                       override val size: Int)
+      extends Buffer[ByteBuffer, JByteBuffer, Byte](buf, offset, size) {
+
+    def readOnly(b: JByteBuffer): JByteBuffer =
+      b.asReadOnlyBuffer()
+
+    def get(b: JByteBuffer, n: Int) =
+      b.get(n)
+
+    def buffer(b: JByteBuffer): ByteBuffer = ByteBuffer.view(b)
+
+    override def get(b: JByteBuffer, dest: Array[Byte], offset: Int, length: Int): JByteBuffer =
+      b.get(dest, offset, length)
+
+    def duplicate(b: JByteBuffer): JByteBuffer = b.duplicate()
+  }
+
+  /** Creates a chunk backed by an byte buffer, bounded by the current position and limit */
+  def byteBuffer(buf: JByteBuffer): Chunk[Byte] = ByteBuffer(buf)
 
   /** Creates a chunk backed by an array of shorts. */
   def shorts(values: Array[Short]): Chunk[Short] =

@@ -1,7 +1,7 @@
 package fs2
 package async
 
-import cats.effect.{IO, Timer}
+import cats.effect.IO
 import cats.effect.concurrent.Ref
 import cats.implicits._
 
@@ -17,7 +17,7 @@ class OnceSpec extends AsyncFs2Spec with EitherValues {
         ref <- Ref.of[IO, Int](42)
         act = ref.update(_ + 1)
         _ <- async.once(act)
-        _ <- Timer[IO].sleep(100.millis)
+        _ <- timerIO.sleep(100.millis)
         v <- ref.get
       } yield v
       t.unsafeToFuture.map(_ shouldBe 42)
@@ -48,7 +48,7 @@ class OnceSpec extends AsyncFs2Spec with EitherValues {
         memoized <- async.once(act)
         _ <- memoized.start
         x <- memoized
-        _ <- Timer[IO].sleep(100.millis)
+        _ <- timerIO.sleep(100.millis)
         v <- ref.get
       } yield (x, v)
       t.unsafeToFuture.map(_ shouldBe ((43, 43)))
@@ -65,7 +65,7 @@ class OnceSpec extends AsyncFs2Spec with EitherValues {
         act2 = async.once(act1).flatten
         _ <- Stream.repeatEval(act1).take(n).compile.drain.start
         _ <- Stream.repeatEval(act2).take(n).compile.drain.start
-        _ <- Timer[IO].sleep(200.millis)
+        _ <- timerIO.sleep(200.millis)
         v <- ref.get
       } yield v
       t.unsafeToFuture.map(_ shouldBe (42 + 2 * n))

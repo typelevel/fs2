@@ -2,6 +2,8 @@ package fs2
 
 import java.util.zip.{DataFormatException, Deflater, Inflater}
 
+import cats.ApplicativeError
+
 import scala.annotation.tailrec
 import scala.collection.mutable.ArrayBuffer
 
@@ -64,7 +66,8 @@ object compress {
     * @param bufferSize size of the internal buffer that is used by the
     *                   decompressor. Default size is 32 KB.
     */
-  def inflate[F[_]](nowrap: Boolean = false, bufferSize: Int = 1024 * 32): Pipe[F, Byte, Byte] =
+  def inflate[F[_]](nowrap: Boolean = false, bufferSize: Int = 1024 * 32)(
+      implicit ev: ApplicativeError[F, Throwable]): Pipe[F, Byte, Byte] =
     _.pull.uncons.flatMap {
       case None => Pull.pure(None)
       case Some((hd, tl)) =>
@@ -73,17 +76,17 @@ object compress {
         inflater.setInput(hd.toArray)
         val result =
           _inflate_collect(inflater, buffer, ArrayBuffer.empty).toArray
-        Pull.output(Chunk.bytes(result)) >> _inflate_stream(inflater, buffer)(tl)
+        Pull.output(Chunk.bytes(result)) >> _inflate_stream(inflater, buffer)(ev)(tl)
     }.stream
 
-  private def _inflate_stream[F[_]](inflater: Inflater,
-                                    buffer: Array[Byte]): Stream[F, Byte] => Pull[F, Byte, Unit] =
+  private def _inflate_stream[F[_]](inflater: Inflater, buffer: Array[Byte])(
+      implicit ev: ApplicativeError[F, Throwable]): Stream[F, Byte] => Pull[F, Byte, Unit] =
     _.pull.uncons.flatMap {
       case Some((hd, tl)) =>
         inflater.setInput(hd.toArray)
         val result =
           _inflate_collect(inflater, buffer, ArrayBuffer.empty).toArray
-        Pull.output(Chunk.bytes(result)) >> _inflate_stream(inflater, buffer)(tl)
+        Pull.output(Chunk.bytes(result)) >> _inflate_stream(inflater, buffer)(ev)(tl)
       case None =>
         if (!inflater.finished)
           Pull.raiseError(new DataFormatException("Insufficient data"))
