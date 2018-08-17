@@ -5,8 +5,6 @@ import cats.effect.IO
 import fs2._
 import fs2.Stream._
 
-import TestUtil._
-
 import scala.concurrent.duration._
 
 class TopicSpec extends Fs2Spec {

@@ -5,7 +5,7 @@ import scala.concurrent.{SyncVar, blocking}
 
 import java.io.{IOException, InputStream, OutputStream}
 
-import cats.effect.{ConcurrentEffect, ExitCase, IO, Sync, Timer}
+import cats.effect.{ConcurrentEffect, ContextShift, ExitCase, IO, Sync}
 import cats.implicits.{catsSyntaxEither => _, _}
 
 import fs2.Chunk.Bytes
@@ -58,7 +58,7 @@ private[io] object JavaInputOutputStream {
   }
 
   def toInputStream[F[_]](implicit F: ConcurrentEffect[F],
-                          timer: Timer[F]): Pipe[F, Byte, InputStream] = {
+                          cs: ContextShift[F]): Pipe[F, Byte, InputStream] = {
 
     /** See Implementation notes at the end of this code block **/
     /** state of the upstream, we only indicate whether upstream is done and if it failed **/
