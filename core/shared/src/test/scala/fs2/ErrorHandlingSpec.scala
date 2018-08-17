@@ -11,9 +11,10 @@ class ErrorHandlingSpec extends Fs2Spec {
       var i = 0
       try {
         Pull.pure(1)
+            .covary[IO]
             .handleErrorWith(_ => { i += 1; Pull.pure(2) })
-            .flatMap { _ => Pull.output1(i) >> Pull.raiseError(new RuntimeException("woot")) }
-            .stream.toList
+            .flatMap { _ => Pull.output1(i) >> Pull.raiseError[IO](new RuntimeException("woot")) }
+            .stream.compile.toList.unsafeRunSync()
         fail("should not reach, exception thrown above")
       }
       catch { case e: Throwable => i shouldBe 0 }
@@ -24,7 +25,7 @@ class ErrorHandlingSpec extends Fs2Spec {
       try {
         Pull.eval(IO(1))
             .handleErrorWith(_ => { i += 1; Pull.pure(2) })
-            .flatMap { _ => Pull.output1(i) >> Pull.raiseError(new RuntimeException("woot")) }
+            .flatMap { _ => Pull.output1(i) >> Pull.raiseError[IO](new RuntimeException("woot")) }
             .stream.compile.toVector.unsafeRunSync
         fail("should not reach, exception thrown above")
       }
@@ -37,7 +38,7 @@ class ErrorHandlingSpec extends Fs2Spec {
         Pull.eval(IO(1)).flatMap { x =>
           Pull.pure(x)
               .handleErrorWith(_ => { i += 1; Pull.pure(2) })
-              .flatMap { _ => Pull.output1(i) >> Pull.raiseError(new RuntimeException("woot")) }
+              .flatMap { _ => Pull.output1(i) >> Pull.raiseError[IO](new RuntimeException("woot")) }
         }.stream.compile.toVector.unsafeRunSync
         fail("should not reach, exception thrown above")
       }

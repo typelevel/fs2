@@ -139,7 +139,7 @@ object StepperSanityTest extends App {
     def go(stepper: Stepper[I, O], s: Stream[Pure, I]): Pull[Pure, O, Unit] =
       stepper.step match {
         case Stepper.Done      => Pull.done
-        case Stepper.Fail(err) => Pull.raiseError(err)
+        case Stepper.Fail(err) => Pull.done.map(_ ⇒ throw err)
         case Stepper.Emits(chunk, next) =>
           Pull.output(chunk) >> go(next, s)
         case Stepper.Await(receive) =>
