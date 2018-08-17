@@ -1,12 +1,12 @@
 package fs2
 
 import java.util.concurrent.atomic.AtomicLong
+
 import org.scalacheck.Gen
-
 import cats.effect.IO
-import cats.implicits.{catsSyntaxEither => _, _}
-import scala.concurrent.duration._
+import cats.implicits.{catsSyntaxEither ⇒ _, _}
 
+import scala.concurrent.duration._
 import TestUtil._
 import fs2.Stream._
 
@@ -648,7 +648,7 @@ class PipeSpec extends Fs2Spec {
                  s: Stream[Pure, (I, A)]): Pull[Pure, (O, A), Unit] =
             stepper.step match {
               case Stepper.Done      => Pull.done
-              case Stepper.Fail(err) => Pull.raiseError(err)
+              case Stepper.Fail(err) => Pull.done.map(_ ⇒ throw err)
               case Stepper.Emits(chunk, next) =>
                 last match {
                   case Some(a) =>

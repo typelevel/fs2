@@ -35,5 +35,16 @@ class PullSpec extends Fs2Spec {
 
   "Pull" - {
     checkAll("Sync[Pull[F, O, ?]]", SyncTests[Pull[IO, Int, ?]].sync[Int, Int, Int])
+
+    "fromEither" in forAll { either: Either[Throwable, Int] =>
+      val pull: Pull[IO, Int, Unit] = Pull.fromEither[IO](either)
+
+      either match {
+        case Left(_) ⇒ pull.stream.compile.toList.attempt.unsafeRunSync() shouldBe either
+        case Right(_) ⇒
+          pull.stream.compile.toList.unsafeRunSync() shouldBe either.right.toSeq.toList
+      }
+    }
+
   }
 }
