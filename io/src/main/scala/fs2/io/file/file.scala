@@ -1,6 +1,7 @@
 package fs2
 package io
 
+import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
 
 import java.nio.channels.CompletionHandler
@@ -34,9 +35,12 @@ package object file {
   /**
     * Reads all data synchronously from the file at the specified `java.nio.file.Path`.
     */
-  def readAll[F[_]: Sync](path: Path, chunkSize: Int): Stream[F, Byte] =
+  def readAll[F[_]: Sync: ContextShift](
+      path: Path,
+      chunkSize: Int,
+      blockingExecutionContext: ExecutionContext): Stream[F, Byte] =
     pulls
-      .fromPath(path, List(StandardOpenOption.READ))
+      .fromPath(path, List(StandardOpenOption.READ), blockingExecutionContext)
       .flatMap(c => pulls.readAllFromFileHandle(chunkSize)(c.resource))
       .stream
 
@@ -58,12 +62,15 @@ package object file {
     *
     * Adds the WRITE flag to any other `OpenOption` flags specified. By default, also adds the CREATE flag.
     */
-  def writeAll[F[_]: Sync](
+  def writeAll[F[_]: Sync: ContextShift](
       path: Path,
-      flags: Seq[StandardOpenOption] = List(StandardOpenOption.CREATE)): Sink[F, Byte] =
+      flags: Seq[StandardOpenOption] = List(StandardOpenOption.CREATE),
+      blockingExecutionContext: ExecutionContext): Sink[F, Byte] =
     in =>
       (for {
-        out <- pulls.fromPath(path, StandardOpenOption.WRITE :: flags.toList)
+        out <- pulls.fromPath(path,
+                              StandardOpenOption.WRITE :: flags.toList,
+                              blockingExecutionContext)
         _ <- pulls.writeAllToFileHandle(in, out.resource)
       } yield ()).stream
 
