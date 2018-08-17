@@ -1682,7 +1682,7 @@ object Stream {
                                               ec: ExecutionContext): Stream[F, O] =
       Stream.eval(async.promise[F, Unit]).flatMap { interruptR =>
         Stream.eval(async.promise[F, Option[Throwable]]).flatMap { doneR =>
-          Stream.eval(async.promise[F, Throwable]).flatMap { interruptL =>
+          Stream.eval(async.promise[F, Unit]).flatMap { interruptL =>
             def runR =
               that
                 .interruptWhen(interruptR.get.attempt)
@@ -1696,7 +1696,7 @@ object Stream {
                   // its `append` code, that requires `get` to complete, which won't ever complete,
                   // b/c it will be evaluated after `interruptL`
                   doneR.complete(r) >>
-                    r.fold(F.unit)(interruptL.complete)
+                    r.fold(F.unit)(_ => interruptL.complete(()))
                 }
 
             // There is slight chance that interruption in case of failure will arrive later than
@@ -1705,12 +1705,14 @@ object Stream {
             // evaluation of the result.
             Stream.eval(async.fork(runR)) >>
               self
-                .interruptWhen(interruptL.get.map(Either.left[Throwable, Unit]))
-                .onFinalize { interruptR.complete(()) }
-                .append(Stream.eval(doneR.get).flatMap {
-                  case None      => Stream.empty
-                  case Some(err) => Stream.raiseError(err)
-                })
+                .interruptWhen(interruptL.get.map(Either.right[Throwable, Unit]))
+                .onFinalize {
+                  interruptR.complete(()) >>
+                    doneR.get.flatMap {
+                      case None      => F.unit
+                      case Some(err) => F.raiseError(err)
+                    }
+                }
           }
         }
       }
@@ -2139,11 +2141,11 @@ object Stream {
 
                   // awaits when all streams (outer + inner) finished,
                   // and then collects result of the stream (outer + inner) execution
-                  def signalResult: Stream[F, O2] =
-                    done.discrete.take(1).flatMap {
+                  def signalResult: F[Unit] =
+                    done.get.flatMap(
                       _.flatten
-                        .fold[Stream[Pure, O2]](Stream.empty)(Stream.raiseError)
-                    }
+                        .fold[F[Unit]](F.unit)(F.raiseError)
+                    )
 
                   Stream.eval(async.start(runOuter)) >>
                     outputQ.dequeue.unNoneTerminate
@@ -2153,9 +2155,8 @@ object Stream {
                           .dropWhile(_ > 0)
                           .take(1)
                           .compile
-                          .drain
-                      } ++
-                      signalResult
+                          .drain >> signalResult
+                      }
                 }
             }
         }
@@ -2206,50 +2207,64 @@ object Stream {
     def merge[O2 >: O](that: Stream[F, O2])(implicit F: Effect[F],
                                             ec: ExecutionContext): Stream[F, O2] =
       Stream.eval(async.semaphore(0)).flatMap { doneSem =>
-        Stream.eval(async.promise[F, Unit]).flatMap { interruptL =>
-          Stream.eval(async.promise[F, Unit]).flatMap { interruptR =>
-            Stream.eval(async.promise[F, Throwable]).flatMap { interruptY =>
-              Stream
-                .eval(async.unboundedQueue[F, Option[(F[Unit], Segment[O2, Unit])]])
-                .flatMap { outQ => // note that the queue actually contains up to 2 max elements thanks to semaphores guarding each side.
-                  def runUpstream(s: Stream[F, O2], interrupt: Promise[F, Unit]): F[Unit] =
-                    async.semaphore(1).flatMap { guard =>
-                      s.segments
-                        .interruptWhen(interrupt.get.attempt)
-                        .evalMap { segment =>
-                          guard.decrement >>
-                            outQ.enqueue1(Some((guard.increment, segment)))
-                        }
-                        .compile
-                        .drain
-                        .attempt
+        Stream.eval(async.promise[F, Unit]).flatMap { interruptUp =>
+          Stream.eval(async.promise[F, Option[Throwable]]).flatMap { doneL =>
+            Stream.eval(async.promise[F, Option[Throwable]]).flatMap { doneR =>
+              Stream.eval(async.promise[F, Unit]).flatMap { interruptDown =>
+                Stream
+                  .eval(async.unboundedQueue[F, Option[(F[Unit], Segment[O2, Unit])]])
+                  .flatMap { outQ => // note that the queue actually contains up to 2 max elements thanks to semaphores guarding each side.
+                    def runUpstream(s: Stream[F, O2],
+                                    interrupt: Promise[F, Unit],
+                                    done: Promise[F, Option[Throwable]]): F[Unit] =
+                      async.semaphore(1).flatMap { guard =>
+                        s.segments
+                          .interruptWhen(interrupt.get.attempt)
+                          .evalMap { segment =>
+                            guard.decrement >>
+                              outQ.enqueue1(Some((guard.increment, segment)))
+                          }
+                          .compile
+                          .drain
+                          .attempt
+                          .flatMap {
+                            case Right(_) =>
+                              done.complete(None) >>
+                                doneSem.increment >>
+                                doneSem.decrementBy(2) >>
+                                async.fork(outQ.enqueue1(None))
+
+                            case Left(err) =>
+                              done.complete(Some(err)) >>
+                                interruptDown.complete(()) >>
+                                doneSem.increment
+                          }
+                      }
+
+                    Stream.eval(async.fork(runUpstream(self, interruptUp, doneL))) >>
+                      Stream.eval(async.fork(runUpstream(that, interruptUp, doneR))) >>
+                      outQ.dequeue.unNoneTerminate
                         .flatMap {
-                          case Right(_) =>
-                            doneSem.increment >>
-                              doneSem.decrementBy(2) >>
-                              async.fork(outQ.enqueue1(None))
-                          case Left(err) =>
-                            interruptY.complete(err) >>
-                              doneSem.increment
+                          case (signal, segment) =>
+                            Stream.eval(signal) >>
+                              Stream.segment(segment)
                         }
-                    }
+                        .interruptWhen(interruptDown.get.map(Right(_): Either[Throwable, Unit]))
+                        .onFinalize {
+                          interruptUp.complete(()) >>
+                            doneL.get.flatMap { l =>
+                              doneR.get.flatMap { r =>
+                                CompositeFailure.fromList(l.toList ++ r.toList) match {
+                                  case Some(err) => F.raiseError(err)
+                                  case None      => F.pure(())
+                                }
+                              }
+                            }
+                        }
 
-                  Stream.eval(async.fork(runUpstream(self, interruptL))) >>
-                    Stream.eval(async.fork(runUpstream(that, interruptR))) >>
-                    outQ.dequeue.unNoneTerminate
-                      .flatMap {
-                        case (signal, segment) =>
-                          Stream.eval(signal) >>
-                            Stream.segment(segment)
-                      }
-                      .interruptWhen(interruptY.get.map(Left(_): Either[Throwable, Unit]))
-                      .onFinalize {
-                        interruptL.complete(()) >>
-                          interruptR.complete(())
-                      }
+                  }
 
-                }
-
+              }
             }
           }
         }

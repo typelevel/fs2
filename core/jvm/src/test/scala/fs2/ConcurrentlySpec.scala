@@ -2,6 +2,7 @@ package fs2
 
 import scala.concurrent.duration._
 import cats.effect.IO
+import cats.syntax.all._
 import fs2.async.Promise
 import TestUtil._
 import org.scalatest.concurrent.PatienceConfiguration.Timeout
@@ -63,6 +64,37 @@ class ConcurrentlySpec extends Fs2Spec with EventuallySupport {
         val throws = f.get.compile.drain.attempt.unsafeRunSync.isLeft
         if (throws) an[Err.type] should be thrownBy runLog(prg)
         else runLog(prg)
+    }
+
+    "run finalizers of background stream and properly handle exception" in forAll {
+      s: PureStream[Int] =>
+        val prg = Stream
+          .eval(async.signalOf[IO, Boolean](false))
+          .flatMap { halt =>
+            val bracketed =
+              Stream.bracket(IO(new java.util.concurrent.atomic.AtomicBoolean(true)))(
+                Stream(_),
+                b => IO(b.set(false))
+              )
+
+            bracketed
+              .flatMap { b =>
+                s.get
+                  .covary[IO]
+                  .concurrently(
+                    (Stream.eval_(IO.sleep(20.millis)) ++
+                      Stream
+                        .eval_(halt.set(true)))
+                      .onFinalize(
+                        IO.sleep(100.millis) >>
+                          (if (b.get) IO.raiseError(Err) else IO(()))
+                      ))
+              }
+              .interruptWhen(halt)
+          }
+
+        an[Err.type] should be thrownBy runLog(prg)
+
     }
   }
 }

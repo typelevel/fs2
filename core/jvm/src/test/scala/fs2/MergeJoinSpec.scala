@@ -64,8 +64,34 @@ class MergeJoinSpec extends Fs2Spec {
       s.joinUnbounded.compile.drain.unsafeRunSync()
     }
 
+    "join - run finalizers of inner streams first" in forAll { s2: PureStream[Int] =>
+      val prg = Stream
+        .eval(async.signalOf[IO, Boolean](false))
+        .flatMap { halt =>
+          val bracketed =
+            Stream.bracket(IO(new java.util.concurrent.atomic.AtomicBoolean(true)))(
+              Stream(_),
+              b => IO(b.set(false))
+            )
+
+          val s: Stream[IO, Stream[IO, Int]] = bracketed.flatMap { b =>
+            val s1 = (Stream.eval_(IO.sleep(20.millis)) ++
+              Stream.eval_(halt.set(true)))
+              .onFinalize(
+                IO.sleep(100.millis) >>
+                  (if (b.get) IO.raiseError(Err) else IO(()))
+              )
+
+            Stream(s1, s2.get.covary[IO]).covary[IO]
+          }
+
+          s.joinUnbounded.interruptWhen(halt)
+        }
+
+      an[Err.type] should be thrownBy runLog(prg)
+    }
+
     "merge (left/right failure)" in {
-      pending
       forAll { (s1: PureStream[Int], f: Failure) =>
         an[Err.type] should be thrownBy {
           s1.get.merge(f.get).compile.drain.unsafeRunSync()
@@ -74,7 +100,6 @@ class MergeJoinSpec extends Fs2Spec {
     }
 
     "merge (left/right failure) never-ending flatMap, failure after emit" in {
-      pending
       forAll { (s1: PureStream[Int], f: Failure) =>
         an[Err.type] should be thrownBy {
           s1.get
@@ -93,7 +118,6 @@ class MergeJoinSpec extends Fs2Spec {
     }
 
     "merge (left/right failure) constant flatMap, failure after emit" in {
-      pending
       forAll { (s1: PureStream[Int], f: Failure) =>
         an[Err.type] should be thrownBy {
           s1.get
@@ -109,6 +133,35 @@ class MergeJoinSpec extends Fs2Spec {
             .unsafeRunSync()
         }
       }
+    }
+
+    "merge - run finalizers of inner streams first" in forAll { s: PureStream[Int] =>
+      val prg = Stream
+        .eval(async.signalOf[IO, Boolean](false))
+        .flatMap { halt =>
+          val bracketed =
+            Stream.bracket(IO(new java.util.concurrent.atomic.AtomicBoolean(true)))(
+              Stream(_),
+              b => IO(b.set(false))
+            )
+
+          bracketed
+            .flatMap { b =>
+              s.get
+                .covary[IO]
+                .merge(
+                  (Stream.eval_(IO.sleep(20.millis)) ++
+                    Stream
+                      .eval(halt.set(true)))
+                    .onFinalize(
+                      IO.sleep(100.millis) >>
+                        (if (b.get) IO.raiseError(Err) else IO(()))
+                    ))
+            }
+            .interruptWhen(halt)
+        }
+
+      an[Err.type] should be thrownBy runLog(prg)
     }
 
     "hanging awaits" - {
