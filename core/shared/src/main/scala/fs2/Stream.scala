@@ -3170,7 +3170,7 @@ object Stream extends StreamLowPriority {
       * compiles the stream down to the target effect type.
       */
     def fold[B](init: B)(f: (B, O) => B)(implicit F: Sync[F]): F[B] =
-      Algebra.compile(self.get, init)(f)
+      Algebra.compile(self.get, init)((acc, c) => c.foldLeft(acc)(f))
 
     /**
       * Compiles this stream in to a value of the target effect type `F` by folding
@@ -3181,7 +3181,7 @@ object Stream extends StreamLowPriority {
       * compiles the stream down to the target effect type.
       */
     def foldChunks[B](init: B)(f: (B, Chunk[O]) => B)(implicit F: Sync[F]): F[B] =
-      Algebra.compile(self.chunks.get, init)(f)
+      Algebra.compile(self.get, init)(f)
 
     /**
       * Like [[fold]] but uses the implicitly available `Monoid[O]` to combine elements.
@@ -3257,7 +3257,7 @@ object Stream extends StreamLowPriority {
       * }}}
       */
     def toChunk(implicit F: Sync[F]): F[Chunk[O]] =
-      self.chunks.compile.toList.map(Chunk.concat(_))
+      F.suspend(F.map(foldChunks(List.newBuilder[Chunk[O]])(_ += _))(_.result)).map(Chunk.concat(_))
 
     /**
       * Compiles this stream in to a value of the target effect type `F` by logging
