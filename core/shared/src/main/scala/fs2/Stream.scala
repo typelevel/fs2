@@ -1019,26 +1019,17 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * listening asynchronously for the left branch to become `true`.
     * This halts as soon as either branch halts.
     *
-    * Consider using the overload that takes a `Signal`.
+    * Consider using the overload that takes a `Signal`, `Deferred` or `F[Either[Throwable, Unit]]`.
     *
-    * Caution: interruption is checked as elements are pulled from the returned stream. As a result,
-    * streams which stop pulling from the returned stream end up uninterruptible. For example,
-    * `s.interruptWhen(s2).flatMap(_ => infiniteStream)` will not be interrupted when `s2` is true
-    * because `s1.interruptWhen(s2)` is never pulled for another element after the first element has been
-    * emitted. To fix, consider `s.flatMap(_ => infiniteStream).interruptWhen(s2)`.
     */
   def interruptWhen[F2[x] >: F[x]](haltWhenTrue: Stream[F2, Boolean])(
       implicit F2: Concurrent[F2]): Stream[F2, O] =
-    Stream.eval(Deferred[F2, Either[Throwable, Unit]]).flatMap { interruptL =>
-      Stream.eval(Deferred[F2, Unit]).flatMap { doneR =>
+    Stream.eval(Deferred[F2, Unit]).flatMap { interruptL =>
+      Stream.eval(Deferred[F2, Either[Throwable, Unit]]).flatMap { doneR =>
         Stream.eval(Deferred[F2, Unit]).flatMap { interruptR =>
           def runR =
             F2.guaranteeCase(
               haltWhenTrue
-                .evalMap {
-                  case false => F2.pure(false)
-                  case true  => interruptL.complete(Right(())).as(true)
-                }
                 .takeWhile(!_)
                 .interruptWhen(interruptR.get.attempt)
                 .compile
@@ -1046,17 +1037,27 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
               val r = c match {
                 case ExitCase.Completed => Right(())
                 case ExitCase.Error(t)  => Left(t)
-                case ExitCase.Canceled  => Left(Canceled)
+                case ExitCase.Canceled  => Right(())
               }
-              interruptL.complete(r).attempt *> doneR.complete(())
+              doneR.complete(r) >>
+                interruptL.complete(())
             }
 
           Stream.eval(F2.start(runR)) >>
-            interruptWhen(interruptL.get).onFinalize(interruptR.complete(()) *> doneR.get)
+            interruptWhen(interruptL.get.attempt)
+              .onFinalize {
+                interruptR.complete(()) >>
+                  doneR.get.flatMap { F2.fromEither }
+              }
 
         }
       }
     }
+
+  /** Alias for `interruptWhen(haltWhenTrue.get)`. */
+  def interruptWhen[F2[x] >: F[x]: Concurrent](
+      haltWhenTrue: Deferred[F2, Either[Throwable, Unit]]): Stream[F2, O] =
+    interruptWhen(haltWhenTrue.get)
 
   /** Alias for `interruptWhen(haltWhenTrue.discrete)`. */
   def interruptWhen[F2[x] >: F[x]: Concurrent](
