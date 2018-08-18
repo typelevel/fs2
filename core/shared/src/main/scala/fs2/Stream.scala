@@ -1231,8 +1231,8 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * If either side does not emit anything (i.e. as result of drain) that side
     * will continue to run even when the resulting stream did not ask for more data.
     *
-    * Note that even when `s1.merge(s2.drain) == s1.concurrently(s2)`, the `concurrently` alternative is
-    * more efficient.
+    * Note that even when this is equivalent to `Stream(this, that).parJoinUnbounded`,
+    * this implementation is little more efficient
     *
     *
     * @example {{{
@@ -1247,69 +1247,66 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     */
   def merge[F2[x] >: F[x], O2 >: O](that: Stream[F2, O2])(
       implicit F2: Concurrent[F2]): Stream[F2, O2] =
-    Stream.eval(Semaphore(0)).flatMap { doneSem =>
-      Stream.eval(Deferred[F2, Unit]).flatMap { interruptL =>
-        Stream.eval(Deferred[F2, Unit]).flatMap { interruptR =>
-          Stream.eval(Deferred[F2, Option[Throwable]]).flatMap { doneL =>
-            Stream.eval(Deferred[F2, Option[Throwable]]).flatMap { doneR =>
-              Stream.eval(Deferred[F2, Throwable]).flatMap { interruptY =>
-                Stream
-                  .eval(async.unboundedQueue[F2, Option[(F2[Unit], Chunk[O2])]])
-                  .flatMap { outQ => // note that the queue actually contains up to 2 max elements thanks to semaphores guarding each side.
-                    def runUpstream(s: Stream[F2, O2],
-                                    done: Deferred[F2, Option[Throwable]],
-                                    interrupt: Deferred[F2, Unit]): F2[Unit] =
-                      Semaphore(1).flatMap { guard =>
-                        s.chunks
-                          .interruptWhen(interrupt.get.attempt)
-                          .evalMap { chunk =>
-                            guard.acquire >>
-                              outQ.enqueue1(Some((guard.release, chunk)))
-                          }
-                          .compile
-                          .drain
-                          .attempt
-                          .flatMap {
-                            case Right(_) =>
-                              done.complete(None) >>
-                                doneSem.release >>
-                                doneSem.acquireN(2) >>
-                                F2.start(outQ.enqueue1(None)).void
-                            case Left(err) =>
-                              done.complete(Some(err)) >>
-                                interruptY.complete(err) >>
-                                doneSem.release
-                          }
+    Stream.eval {
+      Deferred[F2, Unit].flatMap { interrupt =>
+        Deferred[F2, Either[Throwable, Unit]].flatMap { resultL =>
+          Deferred[F2, Either[Throwable, Unit]].flatMap { resultR =>
+            Ref.of[F2, Boolean](false).flatMap { otherSideDone =>
+              async.unboundedQueue[F2, Option[Stream[F2, O2]]].flatMap { resultQ =>
+                def runStream(s: Stream[F2, O2],
+                              whenDone: Deferred[F2, Either[Throwable, Unit]]): F2[Unit] =
+                  Semaphore(1).flatMap { guard => // guarantee we process only single chunk at any given time from any given side.
+                    s.chunks
+                      .evalMap { chunk =>
+                        guard.acquire >>
+                          resultQ.enqueue1(Some(Stream.chunk(chunk).onFinalize(guard.release)))
                       }
-
-                    Stream.eval(F2.start(runUpstream(this, doneL, interruptL))) >>
-                      Stream.eval(F2.start(runUpstream(that, doneR, interruptR))) >>
-                      outQ.dequeue.unNoneTerminate
-                        .flatMap {
-                          case (signal, chunk) =>
-                            Stream.eval(signal) >>
-                              Stream.chunk(chunk)
-                        }
-                        .interruptWhen(interruptY.get.map(Left(_): Either[Throwable, Unit]))
-                        .onFinalize {
-                          interruptL.complete(()) >>
-                            interruptR.complete(()) >>
-                            doneL.get.flatMap { l =>
-                              doneR.get.flatMap { r =>
-                                CompositeFailure.fromList(l.toList ++ r.toList) match {
-                                  case None      => F2.pure(())
-                                  case Some(err) => F2.raiseError(err)
-                                }
+                      .interruptWhen(interrupt.get.attempt)
+                      .compile
+                      .drain
+                      .attempt
+                      .flatMap { r =>
+                        whenDone.complete(r) >> { // signal completion of our side before we will signal interruption, to make sure our result is always available to others
+                          if (r.isLeft)
+                            interrupt.complete(()).attempt.void // we need to attempt interruption in case the interrupt was already completed.
+                          else
+                            otherSideDone
+                              .modify { prev =>
+                                (true, prev)
                               }
-                            }
+                              .flatMap { otherDone =>
+                                if (otherDone)
+                                  resultQ
+                                    .enqueue1(None) // complete only if other side is done too.
+                                else F2.unit
+                              }
                         }
+                      }
                   }
+
+                def resultStream: Stream[F2, O2] =
+                  resultQ.dequeue.unNoneTerminate.flatten
+                    .interruptWhen(interrupt.get.attempt)
+                    .onFinalize {
+                      interrupt
+                        .complete(())
+                        .attempt >> // interrupt so the upstreams have chance to complete
+                        resultL.get.flatMap { left =>
+                          resultR.get.flatMap { right =>
+                            F2.fromEither(CompositeFailure.fromResults(left, right))
+                          }
+                        }
+                    }
+
+                (F2.start(runStream(this, resultL)) >>
+                  F2.start(runStream(that, resultR))).as(resultStream)
+
               }
             }
           }
         }
       }
-    }
+    }.flatten
 
   /** Like `merge`, but halts as soon as _either_ branch halts. */
   def mergeHaltBoth[F2[x] >: F[x]: Concurrent, O2 >: O](that: Stream[F2, O2]): Stream[F2, O2] =
