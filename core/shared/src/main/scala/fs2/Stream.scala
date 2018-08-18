@@ -2801,6 +2801,9 @@ object Stream extends StreamLowPriority {
     def to[C[_]](implicit cbf: CanBuildFrom[Nothing, O, C[O]]): C[O] =
       self.covary[IO].compile.to[C].unsafeRunSync
 
+    /** Runs this pure stream and returns the emitted elements in a chunk. Note: this method is only available on pure streams. */
+    def toChunk: Chunk[O] = self.covary[IO].compile.toChunk.unsafeRunSync
+
     /** Runs this pure stream and returns the emitted elements in a list. Note: this method is only available on pure streams. */
     def toList: List[O] = self.covary[IO].compile.toList.unsafeRunSync
 
@@ -3156,7 +3159,7 @@ object Stream extends StreamLowPriority {
       * When this method has returned, the stream has not begun execution -- this method simply
       * compiles the stream down to the target effect type.
       */
-    def drain(implicit F: Sync[F]): F[Unit] = fold(())((u, o) => u)
+    def drain(implicit F: Sync[F]): F[Unit] = foldChunks(())((_, _) => ())
 
     /**
       * Compiles this stream in to a value of the target effect type `F` by folding
@@ -3168,6 +3171,17 @@ object Stream extends StreamLowPriority {
       */
     def fold[B](init: B)(f: (B, O) => B)(implicit F: Sync[F]): F[B] =
       Algebra.compile(self.get, init)(f)
+
+    /**
+      * Compiles this stream in to a value of the target effect type `F` by folding
+      * the output chunks together, starting with the provided `init` and combining the
+      * current value with each output chunk.
+      *
+      * When this method has returned, the stream has not begun execution -- this method simply
+      * compiles the stream down to the target effect type.
+      */
+    def foldChunks[B](init: B)(f: (B, Chunk[O]) => B)(implicit F: Sync[F]): F[B] =
+      Algebra.compile(self.chunks.get, init)(f)
 
     /**
       * Like [[fold]] but uses the implicitly available `Monoid[O]` to combine elements.
@@ -3211,7 +3225,7 @@ object Stream extends StreamLowPriority {
       * }}}
       */
     def last(implicit F: Sync[F]): F[Option[O]] =
-      fold(Option.empty[O])((_, a) => Some(a))
+      foldChunks(Option.empty[O])((acc, c) => c.last.orElse(acc))
 
     /**
       * Compiles this stream into a value of the target effect type `F` by logging
@@ -3227,7 +3241,23 @@ object Stream extends StreamLowPriority {
       * }}}
       */
     def to[C[_]](implicit F: Sync[F], cbf: CanBuildFrom[Nothing, O, C[O]]): F[C[O]] =
-      F.suspend(F.map(fold(cbf())(_ += _))(_.result))
+      F.suspend(F.map(foldChunks(cbf())(_ ++= _.iterator))(_.result))
+
+    /**
+      * Compiles this stream in to a value of the target effect type `F` by logging
+      * the output values to a `Chunk`.
+      *
+      * When this method has returned, the stream has not begun execution -- this method simply
+      * compiles the stream down to the target effect type.
+      *
+      * @example {{{
+      * scala> import cats.effect.IO
+      * scala> Stream.range(0,100).take(5).covary[IO].compile.toChunk.unsafeRunSync
+      * res0: Chunk[Int] = Chunk(0, 1, 2, 3, 4)
+      * }}}
+      */
+    def toChunk(implicit F: Sync[F]): F[Chunk[O]] =
+      self.chunks.compile.toList.map(Chunk.concat(_))
 
     /**
       * Compiles this stream in to a value of the target effect type `F` by logging
@@ -3260,7 +3290,6 @@ object Stream extends StreamLowPriority {
       */
     def toVector(implicit F: Sync[F]): F[Vector[O]] =
       to[Vector]
-
   }
 
   /**
