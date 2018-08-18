@@ -4,7 +4,6 @@ import cats.effect.IO
 import cats.effect.concurrent.{Ref, Semaphore}
 import org.scalatest.concurrent.PatienceConfiguration.Timeout
 
-//import cats.implicits._
 import cats.implicits._
 import fs2.TestUtil._
 
@@ -28,7 +27,7 @@ class SwitchMapSpec extends Fs2Spec with EventuallySupport {
       val prg = Stream.eval(Ref[IO].of(true)).flatMap { ref =>
         s.get.covary[IO].switchMap { i =>
           Stream.eval(ref.get).flatMap { released =>
-            if (!released) Stream.raiseError(new Err)
+            if (!released) Stream.raiseError[IO](new Err)
             else
               Stream
                 .eval(ref.set(false) *> IO.sleep(20.millis))
