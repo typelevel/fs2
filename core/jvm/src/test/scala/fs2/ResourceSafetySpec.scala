@@ -16,7 +16,7 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
 
     "pure fail" in {
       an[Err] should be thrownBy {
-        Stream.emit(0).flatMap(_ => Stream.raiseError(new Err)).toVector
+        Stream.emit(0).flatMap(_ => throw new Err).toVector
         ()
       }
     }
@@ -136,8 +136,8 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
     }
 
     "asynchronous resource allocation (2a)" in forAll { (u: Unit) =>
-      val s1 = Stream.raiseError(new Err)
-      val s2 = Stream.raiseError(new Err)
+      val s1 = Stream.raiseError[IO](new Err)
+      val s2 = Stream.raiseError[IO](new Err)
       val c = new AtomicLong(0)
       val b1 = bracket(c)(s1)
       val b2 = s2: Stream[IO, Int]

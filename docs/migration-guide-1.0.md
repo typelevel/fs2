@@ -125,3 +125,20 @@ Some methods were renamed to improve discoverability and avoid surprises.
 ### Interop with scodec-bits
 
 The `fs2-scodec` interop project has been folded directly in to `fs2-core`. The `fs2.interop.scodec.ByteVectorChunk` type is now `fs2.Chunk.ByteVectorChunk`.
+
+### StreamApp
+
+The `StreamApp` class was removed in favor of `cats.effect.IOApp`, which has a much simpler usage model.
+
+```scala
+object MyApp extends IOApp {
+  def run(args: List[String]): IO[ExitCode] =
+    myStream.compile.drain.as(ExitCode.Success)
+}
+```
+
+### fs2.io Changes
+
+Methods in the `fs2.io` package that performed blocking I/O have been either removed or the blocking has been implemented via a call to `ContextSwitch[F].evalOn(blockingExecutionContext)(...)`. This ensures that a blocking call is not made from the same thread pool used for non-blocking tasks.
+
+For example, `fs2.io.readInputStream` now takes a blocking execution context argument, as well as an implicit `ContextShift[F]` argument. The `readInputStreamAsync` function was removed, as it was redundant with `readInputStream` once the blocking calls were shifted to a dedicated execution context.

@@ -11,7 +11,7 @@ import cats.implicits._
 
 object TestUtil extends TestUtilPlatform {
 
-  def runLogF[A](s: Stream[IO,A]): Future[Vector[A]] = (IO.shift *> s.compile.toVector).unsafeToFuture
+  def runLogF[A](s: Stream[IO,A]): Future[Vector[A]] = (IO.shift(executionContext) *> s.compile.toVector).unsafeToFuture
 
   def spuriousFail(s: Stream[IO,Int], f: Failure): Stream[IO,Int] =
     s.flatMap { i => if (i % (math.random * 10 + 1).toInt == 0) f.get
@@ -72,6 +72,13 @@ object TestUtil extends TestUtilPlatform {
         PureStream(s"randomly-chunked: $size ${chunks.map(_.size)}", Stream.emits(chunks).flatMap(Stream.emits))
       }
     }
+    def filtered[A](implicit A: Arbitrary[A]): Gen[PureStream[A]] =
+      Gen.sized { size =>
+        A.arbitrary.flatMap { a =>
+          Gen.listOfN(size, A.arbitrary).map(as =>
+            PureStream(s"filtered: $a $size $as", Stream.emits(as).unchunk.filter(_ == a)))
+        }
+      }
     def uniformlyChunked[A:Arbitrary]: Gen[PureStream[A]] = Gen.sized { size =>
       for {
         n <- Gen.choose(0, size)
@@ -84,7 +91,8 @@ object TestUtil extends TestUtilPlatform {
     def gen[A:Arbitrary]: Gen[PureStream[A]] =
       Gen.oneOf(
         rightAssociated[A], leftAssociated[A], singleChunk[A],
-        unchunked[A], randomlyChunked[A], uniformlyChunked[A])
+        unchunked[A], randomlyChunked[A], uniformlyChunked[A],
+        filtered[A])
 
     implicit def pureStreamCoGen[A: Cogen]: Cogen[PureStream[A]] = Cogen[List[A]].contramap[PureStream[A]](_.get.toList)
 
@@ -98,7 +106,7 @@ object TestUtil extends TestUtilPlatform {
 
   implicit def failingStreamArb: Arbitrary[Failure] = Arbitrary(
     Gen.oneOf[Failure](
-      Failure("pure-failure", Stream.raiseError(new Err)),
+      Failure("pure-failure", Stream.raiseError[IO](new Err)),
       Failure("failure-inside-effect", Stream.eval(IO(throw new Err))),
       Failure("failure-mid-effect", Stream.eval(IO.pure(()).flatMap(_ => throw new Err))),
       Failure("failure-in-pure-code", Stream.emit(42).map(_ => throw new Err)),

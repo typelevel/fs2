@@ -29,12 +29,16 @@ class StreamSpec extends Fs2Spec with Inside {
     }
 
     "fail (2)" in {
-      assertThrows[Err] { Stream.raiseError(new Err).covary[IO].compile.drain.unsafeRunSync }
+      assertThrows[Err] { Stream.raiseError[IO](new Err).compile.drain.unsafeRunSync }
     }
 
     "fail (3)" in {
       assertThrows[Err] {
-        (Stream.emit(1) ++ Stream.raiseError(new Err)).covary[IO].compile.drain.unsafeRunSync
+        (Stream.emit(1) ++ Stream.raiseError[IO](new Err))
+          .covary[IO]
+          .compile
+          .drain
+          .unsafeRunSync
       }
     }
 
@@ -54,6 +58,15 @@ class StreamSpec extends Fs2Spec with Inside {
 
     ">>" in forAll { (s: PureStream[Int], s2: PureStream[Int]) =>
       runLog(s.get >> s2.get) shouldBe { runLog(s.get.flatMap(_ => s2.get)) }
+    }
+
+    "fromEither" in forAll { either: Either[Throwable, Int] =>
+      val stream: Stream[IO, Int] = Stream.fromEither[IO](either)
+
+      either match {
+        case Left(_) ⇒ stream.compile.toList.attempt.unsafeRunSync() shouldBe either
+        case Right(_) ⇒ stream.compile.toList.unsafeRunSync() shouldBe either.right.toSeq.toList
+      }
     }
 
     "fromIterator" in forAll { vec: Vector[Int] =>
@@ -88,13 +101,13 @@ class StreamSpec extends Fs2Spec with Inside {
     }
 
     "handleErrorWith (2)" in {
-      runLog(Stream.raiseError(new Err).handleErrorWith { _ =>
+      runLog(Stream.raiseError[IO](new Err).handleErrorWith { _ =>
         Stream.emit(1)
       }) shouldBe Vector(1)
     }
 
     "handleErrorWith (3)" in {
-      runLog((Stream.emit(1) ++ Stream.raiseError(new Err)).handleErrorWith { _ =>
+      runLog((Stream.emit(1) ++ Stream.raiseError[IO](new Err)).handleErrorWith { _ =>
         Stream.emit(1)
       }) shouldBe Vector(1, 1)
     }
@@ -113,7 +126,7 @@ class StreamSpec extends Fs2Spec with Inside {
 
     "handleErrorWith (5)" in {
       val r = Stream
-        .raiseError(new Err)
+        .raiseError[IO](new Err)
         .covary[IO]
         .handleErrorWith(e => Stream.emit(e))
         .flatMap(Stream.emit(_))
@@ -121,22 +134,21 @@ class StreamSpec extends Fs2Spec with Inside {
         .toVector
         .unsafeRunSync()
       val r2 = Stream
-        .raiseError(new Err)
+        .raiseError[IO](new Err)
         .covary[IO]
         .handleErrorWith(e => Stream.emit(e))
         .map(identity)
         .compile
         .toVector
         .unsafeRunSync()
-      val r3 = Stream(Stream.emit(1).covary[IO],
-                      Stream.raiseError(new Err).covary[IO],
-                      Stream.emit(2).covary[IO])
-        .covary[IO]
-        .parJoin(4)
-        .attempt
-        .compile
-        .toVector
-        .unsafeRunSync()
+      val r3 =
+        Stream(Stream.emit(1).covary[IO], Stream.raiseError[IO](new Err), Stream.emit(2).covary[IO])
+          .covary[IO]
+          .parJoin(4)
+          .attempt
+          .compile
+          .toVector
+          .unsafeRunSync()
       r should have size (1)
       r.head shouldBe an[Err]
       r2 should have size (1)
@@ -201,7 +213,7 @@ class StreamSpec extends Fs2Spec with Inside {
       Stream(1, 2, 3, 4, 5).repartition(i => Chunk(i, i)).toList shouldBe List(1, 3, 6, 10, 15, 15)
 
       Stream(1, 10, 100)
-        .repartition(i => Segment.from(i).map(_.toInt).take(1000).force.toChunk)
+        .repartition(i => Chunk.seq(1 to 1000))
         .take(4)
         .toList shouldBe List(1, 2, 3, 4)
     }

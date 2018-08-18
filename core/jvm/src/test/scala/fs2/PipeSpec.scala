@@ -1,12 +1,12 @@
 package fs2
 
 import java.util.concurrent.atomic.AtomicLong
+
 import org.scalacheck.Gen
-
 import cats.effect.IO
-import cats.implicits.{catsSyntaxEither => _, _}
-import scala.concurrent.duration._
+import cats.implicits.{catsSyntaxEither ⇒ _, _}
 
+import scala.concurrent.duration._
 import TestUtil._
 import fs2.Stream._
 
@@ -558,7 +558,7 @@ class PipeSpec extends Fs2Spec {
           s.get
             .covary[IO]
             .observe { _ =>
-              Stream.raiseError(new Err)
+              Stream.raiseError[IO](new Err)
             }
             .attempt
         }
@@ -568,7 +568,7 @@ class PipeSpec extends Fs2Spec {
           s.get
             .covary[IO]
             .observeAsync(2) { _ =>
-              Stream.raiseError(new Err)
+              Stream.raiseError[IO](new Err)
             }
             .attempt
         }
@@ -637,42 +637,6 @@ class PipeSpec extends Fs2Spec {
       }
     }
 
-    "stepping" - {
-      "example" in {
-        import Pipe.Stepper
-        // Note: this is a useful but unsafe function - for each input (I,A), it remembers the A value, feeds the inner pipe, and then
-        // tags any output values with the remembered A value. This scheme breaks when the inner pipe buffers elements before emitting.
-        def first[I, O, A](p: Pipe[Pure, I, O]): Pipe[Pure, (I, A), (O, A)] = {
-          def go(last: Option[A],
-                 stepper: Stepper[I, O],
-                 s: Stream[Pure, (I, A)]): Pull[Pure, (O, A), Unit] =
-            stepper.step match {
-              case Stepper.Done      => Pull.done
-              case Stepper.Fail(err) => Pull.raiseError(err)
-              case Stepper.Emits(chunk, next) =>
-                last match {
-                  case Some(a) =>
-                    Pull.output(chunk.map { o =>
-                      (o, a)
-                    }) >> go(last, next, s)
-                  case None => go(last, next, s)
-                }
-              case Stepper.Await(receive) =>
-                s.pull.uncons1.flatMap {
-                  case Some(((i, a), s)) =>
-                    go(Some(a), receive(Some(Chunk.singleton(i))), s)
-                  case None => go(last, receive(None), s)
-                }
-            }
-          s =>
-            go(None, Pipe.stepper(p), s).stream
-        }
-        Stream
-          .range(0, 100)
-          .map(i => (i, i))
-          .through(first(_.map(_ + 1).take(5)))
-          .toList shouldBe List((1, 0), (2, 1), (3, 2), (4, 3), (5, 4))
-      }
-    }
   }
+
 }

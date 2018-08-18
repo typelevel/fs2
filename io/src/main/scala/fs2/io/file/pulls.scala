@@ -2,11 +2,13 @@ package fs2
 package io
 package file
 
+import scala.concurrent.ExecutionContext
+
 import java.nio.channels._
 import java.nio.file._
 import java.util.concurrent.ExecutorService
 
-import cats.effect.{Effect, Sync, Timer}
+import cats.effect.{ContextShift, Effect, Sync}
 
 /** Provides various `Pull`s for working with files. */
 object pulls {
@@ -55,9 +57,12 @@ object pulls {
     *
     * The `Pull` closes the acquired `java.nio.channels.FileChannel` when it is done.
     */
-  def fromPath[F[_]](path: Path, flags: Seq[OpenOption])(
-      implicit F: Sync[F]): Pull[F, Nothing, Pull.Cancellable[F, FileHandle[F]]] =
-    fromFileChannel(F.delay(FileChannel.open(path, flags: _*)))
+  def fromPath[F[_]](path: Path,
+                     flags: Seq[OpenOption],
+                     blockingExecutionContext: ExecutionContext)(
+      implicit F: Sync[F],
+      cs: ContextShift[F]): Pull[F, Nothing, Pull.Cancellable[F, FileHandle[F]]] =
+    fromFileChannel(F.delay(FileChannel.open(path, flags: _*)), blockingExecutionContext)
 
   /**
     * Creates a `Pull` which allows asynchronous file operations against the file at the specified `java.nio.file.Path`.
@@ -68,7 +73,7 @@ object pulls {
                           flags: Seq[OpenOption],
                           executorService: Option[ExecutorService] = None)(
       implicit F: Effect[F],
-      timer: Timer[F]): Pull[F, Nothing, Pull.Cancellable[F, FileHandle[F]]] = {
+      cs: ContextShift[F]): Pull[F, Nothing, Pull.Cancellable[F, FileHandle[F]]] = {
     import collection.JavaConverters._
     fromAsynchronousFileChannel(
       F.delay(AsynchronousFileChannel
@@ -80,11 +85,12 @@ object pulls {
     *
     * The `Pull` closes the provided `java.nio.channels.FileChannel` when it is done.
     */
-  def fromFileChannel[F[_]](channel: F[FileChannel])(
-      implicit F: Sync[F]): Pull[F, Nothing, Pull.Cancellable[F, FileHandle[F]]] =
+  def fromFileChannel[F[_]](channel: F[FileChannel], blockingExecutionContext: ExecutionContext)(
+      implicit F: Sync[F],
+      cs: ContextShift[F]): Pull[F, Nothing, Pull.Cancellable[F, FileHandle[F]]] =
     Pull
       .acquireCancellable(channel)(ch => F.delay(ch.close()))
-      .map(_.map(FileHandle.fromFileChannel[F]))
+      .map(_.map(FileHandle.fromFileChannel[F](_, blockingExecutionContext)))
 
   /**
     * Given a `java.nio.channels.AsynchronousFileChannel`, will create a `Pull` which allows asynchronous operations against the underlying file.
@@ -93,7 +99,7 @@ object pulls {
     */
   def fromAsynchronousFileChannel[F[_]](channel: F[AsynchronousFileChannel])(
       implicit F: Effect[F],
-      timer: Timer[F]): Pull[F, Nothing, Pull.Cancellable[F, FileHandle[F]]] =
+      cs: ContextShift[F]): Pull[F, Nothing, Pull.Cancellable[F, FileHandle[F]]] =
     Pull
       .acquireCancellable(channel)(ch => F.delay(ch.close()))
       .map(_.map(FileHandle.fromAsynchronousFileChannel[F]))
