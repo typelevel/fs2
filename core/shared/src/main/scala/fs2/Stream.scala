@@ -338,10 +338,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * Upon finalization, the resulting stream will interrupt the background stream and wait for it to be
     * finalized.
     *
-    * This method is similar to `this mergeHaltL that.drain` but ensures the `that.drain` stream continues
-    * to be evaluated regardless of how `this` is evaluated or how the resulting stream is processed.
-    * This method is also similar to `Stream(this,that).parJoin(2)` but terminates `that` upon termination of
-    * `this`.
+    * This method is equivalent to `this mergeHaltL that.drain`
     *
     * @example {{{
     * scala> import cats.effect.{ContextShift, IO}
@@ -353,41 +350,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     */
   def concurrently[F2[x] >: F[x], O2](that: Stream[F2, O2])(
       implicit F: Concurrent[F2]): Stream[F2, O] =
-    Stream.eval(Deferred[F2, Unit]).flatMap { interruptR =>
-      Stream.eval(Deferred[F2, Option[Throwable]]).flatMap { doneR =>
-        Stream.eval(Deferred[F2, Unit]).flatMap { interruptL =>
-          def runR =
-            that
-              .interruptWhen(interruptR.get.attempt)
-              .compile
-              .drain
-              .attempt
-              .map { _.left.toOption }
-              .flatMap { r =>
-                // to prevent deadlock, done must be signalled before `interruptL`
-                // in case the interruptL is signaled before the `L` stream may be in
-                // its `append` code, that requires `get` to complete, which won't ever complete,
-                // b/c it will be evaluated after `interruptL`
-                doneR.complete(r) >>
-                  r.fold(F.unit)(_ => interruptL.complete(()))
-              }
-
-          // There is slight chance that interruption in case of failure will arrive later than
-          // `self` terminates.
-          // To prevent such interruption to be `swallowed` we append stream, that results in
-          // evaluation of the result.
-          Stream.eval(F.start(runR)) >>
-            this
-              .interruptWhen(interruptL.get.map(Either.right[Throwable, Unit]))
-              .onFinalize {
-                interruptR.complete(()) >> doneR.get.flatMap {
-                  case None      => F.unit
-                  case Some(err) => F.raiseError(err)
-                }
-              }
-        }
-      }
-    }
+    this.mergeHaltL(that.drain)
 
   /**
     * Prepends a chunk onto the front of this stream.
