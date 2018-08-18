@@ -16,7 +16,7 @@ class GroupWithinSpec extends Fs2Spec {
           .covary[IO]
           .evalTap(shortDuration => IO.sleep(shortDuration.get))
           .groupWithin(maxGroupSize.get, d.get)
-          .flatMap(s => Stream.emits(s.force.toList))
+          .flatMap(s => Stream.emits(s.toList))
 
       runLog(action) shouldBe (result)
   }
@@ -29,7 +29,7 @@ class GroupWithinSpec extends Fs2Spec {
           .covary[IO]
           .evalTap(shortDuration => IO.sleep(shortDuration.get))
           .groupWithin(maxGroupSizeAsInt, d.get)
-          .map(_.force.toList.size)
+          .map(_.toList.size)
 
       runLog(action).foreach(size => size shouldBe <=(maxGroupSizeAsInt))
   }
@@ -44,7 +44,7 @@ class GroupWithinSpec extends Fs2Spec {
 
       val fullResult = runLog(action)
       withClue(s"Our full result looked like: $fullResult") {
-        fullResult.head.force.toList shouldBe streamAsList.toList
+        fullResult.head.toList shouldBe streamAsList.toList
       }
   }
 
