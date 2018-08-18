@@ -338,7 +338,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * Upon finalization, the resulting stream will interrupt the background stream and wait for it to be
     * finalized.
     *
-    * This method is equivalent to `this mergeHaltL that.drain`
+    * This method is equivalent to `this mergeHaltL that.drain`, just more efficient for `this` and `that` evaluation. 
     *
     * @example {{{
     * scala> import cats.effect.{ContextShift, IO}
@@ -350,7 +350,35 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     */
   def concurrently[F2[x] >: F[x], O2](that: Stream[F2, O2])(
       implicit F: Concurrent[F2]): Stream[F2, O] =
-    this.mergeHaltL(that.drain)
+    Stream.eval {
+      Deferred[F2, Unit].flatMap { interrupt =>
+        Deferred[F2, Either[Throwable, Unit]].flatMap { doneR =>
+          def runR: F2[Unit] =
+            that.interruptWhen(interrupt.get.attempt).compile.drain.attempt.flatMap { r =>
+              doneR.complete(r) >> {
+                if (r.isLeft)
+                  interrupt
+                    .complete(())
+                    .attempt
+                    .void // interrupt only if this failed otherwise give change to `this` to finalize
+                else F.unit
+              }
+            }
+
+          def stream: Stream[F2, O] =
+            this
+              .interruptWhen(interrupt.get.attempt)
+              .onFinalize {
+                interrupt.complete(()).attempt >> // always interrupt `that`
+                  doneR.get.flatMap(F.fromEither) // always await `that` result
+              }
+
+          F.start(runR).as(stream)
+        }
+
+      }
+
+    }.flatten
 
   /**
     * Prepends a chunk onto the front of this stream.
@@ -2725,7 +2753,7 @@ object Stream extends StreamLowPriority {
       Stream.eval(Semaphore[F](maxQueued - 1)).flatMap { guard =>
         Stream.eval(async.unboundedQueue[F, Option[Chunk[O]]]).flatMap { outQ =>
           Stream.eval(async.unboundedQueue[F, Option[Chunk[O]]]).flatMap { sinkQ =>
-            val inputStream =
+            def inputStream =
               self.chunks.noneTerminate.evalMap {
                 case Some(chunk) =>
                   sinkQ.enqueue1(Some(chunk)) >>
@@ -2735,7 +2763,7 @@ object Stream extends StreamLowPriority {
                   sinkQ.enqueue1(None)
               }
 
-            val sinkStream =
+            def sinkStream =
               sinkQ.dequeue.unNoneTerminate
                 .flatMap { chunk =>
                   Stream.chunk(chunk) ++
@@ -2744,11 +2772,11 @@ object Stream extends StreamLowPriority {
                 .to(sink) ++
                 Stream.eval_(outQ.enqueue1(None))
 
-            val runner =
+            def runner =
               sinkStream.concurrently(inputStream) ++
                 Stream.eval_(outQ.enqueue1(None))
 
-            val outputStream =
+            def outputStream =
               outQ.dequeue.unNoneTerminate
                 .flatMap { chunk =>
                   Stream.chunk(chunk) ++
