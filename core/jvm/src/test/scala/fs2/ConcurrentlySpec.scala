@@ -74,11 +74,11 @@ class ConcurrentlySpec extends Fs2Spec with EventuallySupport {
                 def runner: Stream[IO, Unit] =
                   Stream
                     .eval(runnerRun.set(true)) // flag the concurrently had chance to start, as if the `s` will be empty `runner` may not be evaluated at all.
-                    .append(Stream.eval(halt.complete(()))) // immediatelly interrupt the outer stream
+                    .append(Stream.eval(halt.complete(()))) // immediately interrupt the outer stream
                     .onFinalize {
                       IO.sleep(100.millis) >> // assure this inner finalizer always take longer run than `outer`
                         finRef.update(_ :+ "Inner") >> // signal finalizer invoked
-                        IO.raiseError[Unit](Boom) // throw a failrue
+                        IO.raiseError[Unit](Boom) // signal a failure
                     }
 
                 val prg0 =
@@ -88,16 +88,30 @@ class ConcurrentlySpec extends Fs2Spec with EventuallySupport {
                     }
                     .interruptWhen(halt.get.attempt)
 
-                Stream.eval(prg0.compile.drain.attempt) ++
-                  Stream.eval(finRef.get).map(Right(_))
+                Stream.eval {
+                  prg0.compile.drain.attempt.flatMap { r =>
+                    runnerRun.get.flatMap { runnerStarted =>
+                      finRef.get.map { finalizers =>
+                        if (runnerStarted) {
+                          // finalizers shall be called in correct order and
+                          // exception shall be thrown
+                          IO(finalizers shouldBe List("Inner", "Outer")) >>
+                            IO(r shouldBe Left(Boom))
+                        } else {
+                          // still the outer finalizer shall be run, but there is no failure in `s`
+                          IO(finalizers shouldBe List("Outer")) >>
+                            IO(r shouldBe Right(()))
+
+                        }
+                      }
+                    }
+                  }
+                }
               }
             }
           }
 
-        prg.compile.toVector.unsafeRunSync() shouldBe Vector(
-          Left(Boom),
-          Right(List("Inner", "Outer"))
-        )
+        prg.compile.toVector.unsafeRunSync()
 
     }
   }
