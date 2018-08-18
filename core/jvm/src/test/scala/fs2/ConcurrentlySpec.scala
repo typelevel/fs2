@@ -2,7 +2,7 @@ package fs2
 
 import scala.concurrent.duration._
 import cats.implicits._
-import cats.effect.IO
+import cats.effect.{Concurrent, IO}
 import cats.effect.concurrent.{Deferred, Ref}
 import TestUtil._
 import org.scalatest.concurrent.PatienceConfiguration.Timeout
@@ -74,7 +74,7 @@ class ConcurrentlySpec extends Fs2Spec with EventuallySupport {
                 def runner: Stream[IO, Unit] =
                   Stream
                     .eval(runnerRun.set(true)) // flag the concurrently had chance to start, as if the `s` will be empty `runner` may not be evaluated at all.
-                    .append(Stream.eval(halt.complete(()))) // immediately interrupt the outer stream
+                    .append(Stream.eval(Concurrent[IO].start(halt.complete(())).void)) // immediately interrupt the outer stream
                     .onFinalize {
                       IO.sleep(100.millis) >> // assure this inner finalizer always take longer run than `outer`
                         finRef.update(_ :+ "Inner") >> // signal finalizer invoked

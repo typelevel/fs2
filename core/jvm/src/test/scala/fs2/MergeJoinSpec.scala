@@ -1,7 +1,7 @@
 package fs2
 
 import scala.concurrent.duration._
-import cats.effect.IO
+import cats.effect.{Concurrent, IO}
 import cats.effect.concurrent.{Deferred, Ref}
 import cats.implicits._
 import TestUtil._
@@ -95,7 +95,8 @@ class MergeJoinSpec extends Fs2Spec {
                     Stream(
                       (registerRun(0) ++ s1.get)
                         .onFinalize(finalizer(0)),
-                      (registerRun(1) ++ Stream.eval_(halt.complete(()))).onFinalize(finalizer(1))
+                      (registerRun(1) ++ Stream.eval_(Concurrent[IO].start(halt.complete(())).void))
+                        .onFinalize(finalizer(1))
                     )
                   }
 
@@ -194,7 +195,7 @@ class MergeJoinSpec extends Fs2Spec {
                         .merge(
                           Stream.eval(sideRunRef.update { case (left, _) => (left, true) }) ++
                             Stream
-                              .eval(halt.complete(())) // immediately interrupt the outer stream
+                              .eval(Concurrent[IO].start(halt.complete(())).void) // immediately interrupt the outer stream
                               .onFinalize(finalizer("R"))
                         )
                     }
