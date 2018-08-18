@@ -64,50 +64,62 @@ class MergeJoinSpec extends Fs2Spec {
     }
 
     "parJoin - run finalizers of inner streams first" in forAll {
-      (s1: PureStream[Int], leftBiased: Boolean) =>
+      (s1: PureStream[Int], bias: Boolean) =>
         val Boom = new Err
+        val biasIdx = if (bias) 1 else 0
 
         val prg =
-          Stream
-            .eval(Ref.of[IO, List[String]](Nil))
-            .flatMap { finalizerRef =>
-              Stream.eval(Deferred[IO, Unit]).flatMap { halt =>
+          Ref.of[IO, List[String]](Nil).flatMap { finalizerRef =>
+            Ref.of[IO, List[Int]](Nil).flatMap { runEvidenceRef =>
+              Deferred[IO, Unit].flatMap { halt =>
                 def bracketed =
                   Stream.bracket(IO.unit)(
                     _ => finalizerRef.update(_ :+ "Outer")
                   )
 
+                def registerRun(idx: Int): Stream[IO, Nothing] =
+                  Stream.eval_(runEvidenceRef.update(_ :+ idx))
+
                 def finalizer(idx: Int): IO[Unit] =
                   // this introduces delay and failure based on bias of the test
-                  if (leftBiased && idx == 1)
-                    IO.sleep(100.millis) >> finalizerRef.update(_ :+ s"Inner $idx") >> IO
-                      .raiseError(Boom)
-                  else if (!leftBiased && idx == 2)
-                    IO.sleep(100.millis) >> finalizerRef.update(_ :+ s"Inner $idx") >> IO
-                      .raiseError(Boom)
-                  else IO.sleep(50.millis) >> finalizerRef.update(_ :+ s"Inner $idx")
+                  if (idx == biasIdx) {
+                    IO.sleep(100.millis) >>
+                      finalizerRef.update(_ :+ s"Inner $idx") >>
+                      IO.raiseError(Boom)
+                  } else {
+                    finalizerRef.update(_ :+ s"Inner $idx")
+                  }
 
                 val prg0 =
                   bracketed.flatMap { _ =>
                     Stream(
-                      s1.get.onFinalize(finalizer(1)),
-                      Stream.eval_(halt.complete(())).onFinalize(finalizer(2))
+                      (registerRun(0) ++ s1.get)
+                        .onFinalize(finalizer(0)),
+                      (registerRun(1) ++ Stream.eval_(halt.complete(()))).onFinalize(finalizer(1))
                     )
                   }
 
-                Stream.eval(prg0.parJoinUnbounded.compile.drain.attempt.map(_.right.map(_ =>
-                  List.empty[String]))) ++
-                  Stream.eval(finalizerRef.get).map(Right(_))
+                prg0.parJoinUnbounded.compile.drain.attempt.flatMap { r =>
+                  finalizerRef.get.flatMap { finalizers =>
+                    runEvidenceRef.get.flatMap { streamRunned =>
+                      IO {
+                        val expectedFinalizers = (streamRunned.map { idx =>
+                          s"Inner $idx"
+                        }) :+ "Outer"
+                        (finalizers should contain).theSameElementsAs(expectedFinalizers)
+                        finalizers.lastOption shouldBe Some("Outer")
+                        if (streamRunned.contains(biasIdx)) r shouldBe Left(Boom)
+                        else r shouldBe Right(())
+                      }
+                    }
+                  }
+                }
 
               }
             }
+          }
 
-        val r = prg.compile.toVector.unsafeRunSync
-        val finalizers = r.lastOption.toVector.flatMap { _.right.toOption.toVector.flatten }
-
-        (finalizers should contain).allOf("Inner 1", "Inner 2", "Outer")
-        finalizers.lastOption shouldBe Some("Outer")
-        r.headOption shouldBe Some(Left(Boom))
+        prg.unsafeRunSync()
     }
 
     "merge (left/right failure)" in {
@@ -156,48 +168,68 @@ class MergeJoinSpec extends Fs2Spec {
         val Boom = new Err
 
         val prg =
-          Stream.eval(Ref.of[IO, List[String]](Nil)).flatMap { finalizerRef =>
-            Stream.eval(Deferred[IO, Unit]).flatMap { halt =>
-              def bracketed =
-                Stream.bracket(IO.unit)(
-                  _ => finalizerRef.update(_ :+ "Outer")
-                )
+          Ref.of[IO, List[String]](Nil).flatMap { finalizerRef =>
+            Ref.of[IO, (Boolean, Boolean)]((false, false)).flatMap { sideRunRef =>
+              Deferred[IO, Unit].flatMap { halt =>
+                def bracketed =
+                  Stream.bracket(IO.unit)(
+                    _ => finalizerRef.update(_ :+ "Outer")
+                  )
 
-              def finalizer(side: String): IO[Unit] =
-                // this introduces delay and failure based on bias of the test
-                if (leftBiased && side == "L")
-                  IO.sleep(100.millis) >> finalizerRef.update(_ :+ s"Inner $side") >> IO.raiseError(
-                    Boom)
-                else if (!leftBiased && side == "R")
-                  IO.sleep(100.millis) >> finalizerRef.update(_ :+ s"Inner $side") >> IO.raiseError(
-                    Boom)
-                else IO.sleep(50.millis) >> finalizerRef.update(_ :+ s"Inner $side")
+                def finalizer(side: String): IO[Unit] =
+                  // this introduces delay and failure based on bias of the test
+                  if (leftBiased && side == "L")
+                    IO.sleep(100.millis) >> finalizerRef.update(_ :+ s"Inner $side") >> IO
+                      .raiseError(Boom)
+                  else if (!leftBiased && side == "R")
+                    IO.sleep(100.millis) >> finalizerRef.update(_ :+ s"Inner $side") >> IO
+                      .raiseError(Boom)
+                  else IO.sleep(50.millis) >> finalizerRef.update(_ :+ s"Inner $side")
 
-              val prg0 =
-                bracketed
-                  .flatMap { b =>
-                    s.get
-                      .covary[IO]
-                      .onFinalize(finalizer("L"))
-                      .merge(
-                        Stream
-                          .eval(halt.complete(())) // immediatelly interrupt the outer stream
-                          .onFinalize(finalizer("R"))
-                      )
+                val prg0 =
+                  bracketed
+                    .flatMap { b =>
+                      (Stream.eval(sideRunRef.update { case (_, right) => (true, right) }) ++ s.get)
+                        .onFinalize(finalizer("L"))
+                        .merge(
+                          Stream.eval(sideRunRef.update { case (left, _) => (left, true) }) ++
+                            Stream
+                              .eval(halt.complete(())) // immediately interrupt the outer stream
+                              .onFinalize(finalizer("R"))
+                        )
+                    }
+                    .interruptWhen(halt.get.attempt)
+
+                prg0.compile.drain.attempt.flatMap { r =>
+                  finalizerRef.get.flatMap { finalizers =>
+                    sideRunRef.get.flatMap {
+                      case (left, right) =>
+                        if (left && right) IO {
+                          (finalizers should contain).allOf("Inner L", "Inner R", "Outer")
+                          finalizers.lastOption shouldBe Some("Outer")
+                          r shouldBe Left(Boom)
+                        } else if (left) IO {
+                          finalizers shouldBe List("Inner L", "Outer")
+                          if (leftBiased) r shouldBe Left(Boom)
+                          else r shouldBe Right(())
+                        } else if (right) IO {
+                          finalizers shouldBe List("Inner R", "Outer")
+                          if (!leftBiased) r shouldBe Left(Boom)
+                          else r shouldBe Right(())
+                        } else
+                          IO {
+                            finalizers shouldBe List("Outer")
+                            r shouldBe Right(())
+                          }
+
+                    }
                   }
-                  .interruptWhen(halt.get.attempt)
-
-              Stream.eval(prg0.compile.drain.attempt.map(_.right.map(_ => List.empty[String]))) ++
-                Stream.eval(finalizerRef.get).map(Right(_))
+                }
+              }
             }
           }
 
-        val r = prg.compile.toVector.unsafeRunSync
-        val finalizers = r.lastOption.toVector.flatMap { _.right.toOption.toVector.flatten }
-
-        (finalizers should contain).allOf("Inner L", "Inner R", "Outer")
-        finalizers.lastOption shouldBe Some("Outer")
-        r.headOption shouldBe Some(Left(Boom))
+        prg.unsafeRunSync
 
     }
 

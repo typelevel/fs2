@@ -338,7 +338,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * Upon finalization, the resulting stream will interrupt the background stream and wait for it to be
     * finalized.
     *
-    * This method is equivalent to `this mergeHaltL that.drain`, just more efficient for `this` and `that` evaluation. 
+    * This method is equivalent to `this mergeHaltL that.drain`, just more efficient for `this` and `that` evaluation.
     *
     * @example {{{
     * scala> import cats.effect.{ContextShift, IO}
