@@ -964,7 +964,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
   def groupWithin[F2[x] >: F[x]](n: Int, d: FiniteDuration)(
       implicit timer: Timer[F2],
       F: Concurrent[F2]): Stream[F2, Chunk[O]] =
-    Stream.eval(async.boundedQueue[F2, Option[Either[Token, O]]](n)).flatMap { q =>
+    Stream.eval(async.boundedQueue[F2, Option[Either[Token, Chunk[O]]]](n)).flatMap { q =>
       def startTimeout: Stream[F2, Token] =
         Stream.eval {
           F.delay(new Token).flatTap { t =>
@@ -972,11 +972,17 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
           }
         }
 
-      def producer = this.map(_.asRight.some).to(q.enqueue).onFinalize(q.enqueue1(None))
-
+      def producer = this.chunks.map(_.asRight.some).to(q.enqueue).onFinalize(q.enqueue1(None))
       def emitNonEmpty(c: Catenable[Chunk[O]]): Stream[F2, Chunk[O]] =
         if (c.nonEmpty) Stream.emit(Chunk.concat(c.toList))
         else Stream.empty
+
+      def resize(c: Chunk[O], s: Stream[F2, Chunk[O]]): (Stream[F2, Chunk[O]], Chunk[O]) =
+        if (c.size < n) s -> c
+        else {
+          val (unit, rest) = c.splitAt(n)
+          resize(rest, s ++ Stream.emit(unit))
+        }
 
       def go(acc: Catenable[Chunk[O]], elems: Int, currentTimeout: Token): Stream[F2, Chunk[O]] =
         Stream.eval(q.dequeue1).flatMap {
@@ -987,14 +993,16 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
                 emitNonEmpty(acc) ++ startTimeout.flatMap { newTimeout =>
                   go(Catenable.empty, 0, newTimeout)
                 }
+              case Left(t) if t != currentTimeout => go(acc, elems, currentTimeout)
+              case Right(c) if elems + c.size >= n =>
+                val totalChunk = Chunk.concat(acc.snoc(c).toList)
+                val (toEmit, rest) = resize(totalChunk, Stream.empty)
 
-              case Left(t) => go(acc, elems, currentTimeout)
-              case Right(a) if elems >= n =>
-                emitNonEmpty(acc) ++ startTimeout.flatMap { newTimeout =>
-                  go(Catenable.singleton(Chunk.singleton(a)), 1, newTimeout)
+                toEmit ++ startTimeout.flatMap { newTimeout =>
+                  go(Catenable.singleton(rest), rest.size, newTimeout)
                 }
-              case Right(a) if elems < n =>
-                go(acc.snoc(Chunk.singleton(a)), elems + 1, currentTimeout)
+              case Right(c) if elems + c.size < n =>
+                go(acc.snoc(c), elems + c.size, currentTimeout)
             }
         }
 
