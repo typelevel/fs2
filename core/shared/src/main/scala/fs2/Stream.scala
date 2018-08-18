@@ -4,6 +4,7 @@ import cats._
 import cats.data.NonEmptyList
 import cats.effect._
 import cats.effect.concurrent._
+import cats.effect.implicits._
 import cats.implicits.{catsSyntaxEither => _, _}
 import fs2.internal.FreeC.Result
 import fs2.internal._
@@ -952,6 +953,53 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
 
     go(None, this).stream
   }
+
+  /**
+    * Divide this streams into groups of elements received within a time window,
+    * or limited by the number of the elements, whichever happens first.
+    * Empty groups, which can occur if no elements can be pulled from upstream
+    * in a given time window, will not be emitted.
+    *
+    * Note: a time window starts each time downstream pulls.
+    */
+  def groupWithin[F2[x] >: F[x]: Concurrent](n: Int, d: FiniteDuration)(
+      implicit timer: Timer[F2]): Stream[F2, Segment[O, Unit]] =
+    Stream.eval(async.boundedQueue[F2, Option[Either[Int, O]]](n)).flatMap { q =>
+      def startTimeout(tick: Int): Stream[F2, Nothing] =
+        Stream.eval {
+          (timer.sleep(d) *> q.enqueue1(tick.asLeft.some)).start
+        }.drain
+
+      def producer = this.map(_.asRight.some).to(q.enqueue).onFinalize(q.enqueue1(None))
+
+      def emitNonEmpty(c: Catenable[Segment[O, Unit]]): Stream[F2, Segment[O, Unit]] =
+        if (c.nonEmpty) Stream.emit(Segment.catenated(c))
+        else Stream.empty
+
+      def go(acc: Catenable[Segment[O, Unit]],
+             elems: Int,
+             currentTimeout: Int): Stream[F2, Segment[O, Unit]] =
+        Stream.eval(q.dequeue1).flatMap {
+          case None => emitNonEmpty(acc)
+          case Some(e) =>
+            e match {
+              case Left(t) if t == currentTimeout =>
+                emitNonEmpty(acc) ++ startTimeout(currentTimeout + 1) ++ go(Catenable.empty,
+                                                                            0,
+                                                                            currentTimeout + 1)
+              case Left(t) => go(acc, elems, currentTimeout)
+              case Right(a) if elems >= n =>
+                emitNonEmpty(acc) ++ startTimeout(currentTimeout + 1) ++ go(
+                  Catenable.singleton(Segment.singleton(a)),
+                  1,
+                  currentTimeout + 1)
+              case Right(a) if elems < n =>
+                go(acc.snoc(Segment.singleton(a)), elems + 1, currentTimeout)
+            }
+        }
+
+      startTimeout(0) ++ go(Catenable.empty, 0, 0).concurrently(producer)
+    }
 
   /**
     * If `this` terminates with `Stream.raiseError(e)`, invoke `h(e)`.
