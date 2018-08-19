@@ -10,7 +10,6 @@ import cats.implicits.{catsSyntaxEither => _, _}
 
 import fs2.Chunk.Bytes
 import fs2.async.mutable
-import fs2.internal.Canceled
 
 private[io] object JavaInputOutputStream {
 

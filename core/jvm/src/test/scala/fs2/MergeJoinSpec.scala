@@ -1,7 +1,7 @@
 package fs2
 
 import scala.concurrent.duration._
-import cats.effect.{Concurrent, IO}
+import cats.effect.IO
 import cats.effect.concurrent.{Deferred, Ref}
 import cats.implicits._
 import TestUtil._
@@ -77,8 +77,8 @@ class MergeJoinSpec extends Fs2Spec {
                     _ => finalizerRef.update(_ :+ "Outer")
                   )
 
-                def registerRun(idx: Int): Stream[IO, Nothing] =
-                  Stream.eval_(runEvidenceRef.update(_ :+ idx))
+                def registerRun(idx: Int): IO[Unit] =
+                  runEvidenceRef.update(_ :+ idx)
 
                 def finalizer(idx: Int): IO[Unit] =
                   // this introduces delay and failure based on bias of the test
@@ -93,10 +93,9 @@ class MergeJoinSpec extends Fs2Spec {
                 val prg0 =
                   bracketed.flatMap { _ =>
                     Stream(
-                      (registerRun(0) ++ s1.get)
-                        .onFinalize(finalizer(0)),
-                      (registerRun(1) ++ Stream.eval_(Concurrent[IO].start(halt.complete(())).void))
-                        .onFinalize(finalizer(1))
+                      Stream.bracket(registerRun(0))(_ => finalizer(0)) >> s1.get,
+                      Stream.bracket(registerRun(1))(_ => finalizer(1)) >> Stream.eval_(
+                        halt.complete(()))
                     )
                   }
 
@@ -177,6 +176,13 @@ class MergeJoinSpec extends Fs2Spec {
                     _ => finalizerRef.update(_ :+ "Outer")
                   )
 
+                def register(side: String): IO[Unit] =
+                  sideRunRef.update {
+                    case (left, right) =>
+                      if (side == "L") (true, right)
+                      else (left, true)
+                  }
+
                 def finalizer(side: String): IO[Unit] =
                   // this introduces delay and failure based on bias of the test
                   if (leftBiased && side == "L")
@@ -190,13 +196,11 @@ class MergeJoinSpec extends Fs2Spec {
                 val prg0 =
                   bracketed
                     .flatMap { b =>
-                      (Stream.eval(sideRunRef.update { case (_, right) => (true, right) }) ++ s.get)
-                        .onFinalize(finalizer("L"))
+                      (Stream.bracket(register("L"))(_ => finalizer("L")) >> s.get)
                         .merge(
-                          Stream.eval(sideRunRef.update { case (left, _) => (left, true) }) ++
+                          Stream.bracket(register("R"))(_ => finalizer("R")) >>
                             Stream
-                              .eval(Concurrent[IO].start(halt.complete(())).void) // immediately interrupt the outer stream
-                              .onFinalize(finalizer("R"))
+                              .eval(halt.complete(())) // immediately interrupt the outer stream
                         )
                     }
                     .interruptWhen(halt.get.attempt)

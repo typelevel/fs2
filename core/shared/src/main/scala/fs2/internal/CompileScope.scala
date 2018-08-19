@@ -2,7 +2,6 @@ package fs2.internal
 
 import scala.annotation.tailrec
 
-import cats.data.NonEmptyList
 import cats.effect.{Concurrent, Sync}
 import cats.effect.concurrent.{Deferred, Ref}
 import fs2.{Catenable, CompositeFailure, Scope}
@@ -71,12 +70,11 @@ private[fs2] final class CompileScope[F[_], O] private (
 
   /**
     * Registers supplied resource in this scope.
-    * Returns false if the resource may not be registered because scope is closed already.
+    * This is always invoked before state can be marked as closed.
     */
-  def register(resource: Resource[F]): F[Boolean] =
-    state.modify { s =>
-      val now = if (!s.open) s else s.copy(resources = resource +: s.resources)
-      now -> now.open
+  def register(resource: Resource[F]): F[Unit] =
+    state.update { s =>
+      s.copy(resources = resource +: s.resources)
     }
 
   /**
@@ -139,7 +137,7 @@ private[fs2] final class CompileScope[F[_], O] private (
           if (!s.open) (s, None)
           else {
             val scope = new CompileScope[F, O](newScopeId, Some(self), iCtx)
-            (s.copy(children = s.children :+ scope), Some(scope))
+            (s.copy(children = scope +: s.children), Some(scope))
           }
         }) {
           case Some(s) => F.pure(Right(s))
@@ -159,38 +157,30 @@ private[fs2] final class CompileScope[F[_], O] private (
     }
   }
 
+  /**
+    * fs2 Stream is interpreted synchronously, as such the resource acquisition is fully synchronous.
+    * No next step (even when stream was interrupted) is run before the resource
+    * is fully acquired.
+    *
+    * If, during resource acquisition the stream is interrupted, this will still await for the resource to be fully
+    * acquired, and then such stream will continue, likely with resource cleanup during the interpretation of the stream.
+    *
+    * There is only one situation where resource cleanup may be somewhat concurrent and that is when resources are
+    * leased in `parJoin`. But even then the order of the lease of the resources respects acquisition of the resources that leased them.
+    */
   def acquireResource[R](fr: F[R], release: R => F[Unit]): F[Either[Throwable, (R, Token)]] = {
     val resource = Resource.create
-    F.flatMap(register(resource)) { mayAcquire =>
-      if (!mayAcquire) F.pure(Left(AcquireAfterScopeClosed))
-      else {
-        F.flatMap(F.attempt(fr)) {
-          case Right(r) =>
-            val finalizer = F.suspend(release(r))
-            F.map(resource.acquired(finalizer)) { result =>
-              result.right.map(_ => (r, resource.id))
-            }
-          case Left(err) =>
-            F.map(releaseResource(resource.id)) { result =>
-              result.left.toOption
-                .map { err0 =>
-                  Left(new CompositeFailure(err, NonEmptyList.of(err0)))
-                }
-                .getOrElse(Left(err))
-            }
+    F.flatMap(F.attempt(fr)) {
+      case Right(r) =>
+        val finalizer = F.suspend(release(r))
+        F.flatMap(resource.acquired(finalizer)) { result =>
+          if (result.right.exists(identity)) F.map(register(resource))(_ => Right((r, resource.id)))
+          else F.pure(Left(result.left.getOrElse(AcquireAfterScopeClosed)))
         }
-      }
-    }
-  }
 
-  /** like `acquireResource` but instead of acquiring resource, just registers finalizer **/
-  def registerFinalizer(release: F[Unit]): F[Either[Throwable, Token]] = {
-    val resource = Resource.asFinalizer(release)
-    F.flatMap(register(resource)) { mayAcquire =>
-      if (!mayAcquire) F.pure(Left(AcquireAfterScopeClosed))
-      else F.pure(Right(resource.id))
-    }
+      case Left(err) => F.pure(Left(err))
 
+    }
   }
 
   /**
@@ -200,9 +190,7 @@ private[fs2] final class CompileScope[F[_], O] private (
     * reachable from its parent.
     */
   def releaseChildScope(id: Token): F[Unit] =
-    F.map(state.modify { _.unregisterChild(id) }) { _ =>
-      ()
-    }
+    state.update { _.unregisterChild(id) }
 
   /** Returns all direct resources of this scope (does not return resources in ancestor scopes or child scopes). **/
   def resources: F[Catenable[Resource[F]]] =
@@ -457,13 +445,10 @@ private[internal] object CompileScope {
             (self.copy(resources = c), Some(r))
         }
 
-    def unregisterChild(id: Token): (State[F, O], Option[CompileScope[F, O]]) =
-      self.children
-        .deleteFirst(_.id == id)
-        .fold((self, None: Option[CompileScope[F, O]])) {
-          case (s, c) =>
-            (self.copy(children = c), Some(s))
-        }
+    def unregisterChild(id: Token): State[F, O] =
+      self.copy(
+        children = self.children.deleteFirst(_.id == id).map(_._2).getOrElse(self.children)
+      )
 
     def close: State[F, O] = CompileScope.State.closed
   }

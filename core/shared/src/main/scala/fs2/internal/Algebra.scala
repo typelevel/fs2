@@ -24,15 +24,6 @@ private[fs2] object Algebra {
   final case class Acquire[F[_], O, R](resource: F[R], release: R => F[Unit])
       extends AlgEffect[F, O, (R, Token)]
 
-  // Like Acquire, but runs finalizer w/o acquiring the resource
-  // this guarantees proper sequencing of finalizers.
-  // Normally Acquire allows to allocate Asynchronous resources, that in turn allows for asynchronous finalizers.
-  // As such Stream.bracket(F.unit)(_ = finalizer) is not enough, hence the orchestration of asynchronous allocation and
-  // finalizers may execute out of order.
-  // This `Finalize` case assures that finalizers created with `onFinalize` are always registered synchronously
-  // and always evaluated in correct order.
-  final case class Finalize[F[_], O](release: F[Unit]) extends AlgEffect[F, O, Token]
-
   final case class Release[F[_], O](token: Token) extends AlgEffect[F, O, Unit]
 
   final case class OpenScope[F[_], O](interruptible: Option[Concurrent[F]])
@@ -57,7 +48,6 @@ private[fs2] object Algebra {
       self match {
         case a: Acquire[F, O, r] =>
           Acquire[G, O, r](fK(a.resource), r => fK(a.release(r))).asInstanceOf[AlgEffect[G, O, R]]
-        case fin: Finalize[F, O]  => Finalize[G, O](fK(fin.release)).asInstanceOf[AlgEffect[G, O, R]]
         case e: Eval[F, O, R]     => Eval[G, O, R](fK(e.value))
         case o: OpenScope[F, O]   => OpenScope[G, O](concurrent).asInstanceOf[AlgEffect[G, O, R]]
         case r: Release[F, O]     => r.asInstanceOf[AlgEffect[G, O, R]]
@@ -86,9 +76,6 @@ private[fs2] object Algebra {
   def acquire[F[_], O, R](resource: F[R],
                           release: R => F[Unit]): FreeC[Algebra[F, O, ?], (R, Token)] =
     FreeC.Eval[Algebra[F, O, ?], (R, Token)](Acquire(resource, release))
-
-  def finalizer[F[_], O](release: F[Unit]): FreeC[Algebra[F, O, ?], Token] =
-    FreeC.Eval[Algebra[F, O, ?], Token](Algebra.Finalize(release))
 
   def release[F[_], O](token: Token): FreeC[Algebra[F, O, ?], Unit] =
     FreeC.Eval[Algebra[F, O, ?], Unit](Release(token))
@@ -319,30 +306,6 @@ private[fs2] object Algebra {
                 }
               }
 
-            case finalize: Algebra.Finalize[F, X] =>
-              // we couldn't attach finalizer to stream where scope
-              // was interrupted just before the finalizer algebra was evaluated.
-              // however we want to guarantee that finalizers are run for any stream
-              // that started its evaluation as such we just run finalizer here w/o attaching it to the scope.
-              F.flatMap(scope.isInterrupted) {
-                case None =>
-                  F.flatMap(scope.registerFinalizer(finalize.release)) { r =>
-                    go[X](scope, view.next(Result.fromEither(r)))
-                  }
-
-                case Some(Left(err)) =>
-                  finalize.release.attempt.flatMap { r =>
-                    go(scope,
-                       view.next(Result.raiseError(
-                         CompositeFailure.fromList(err +: r.left.toOption.toList).getOrElse(err))))
-                  }
-
-                case Some(Right(scopeId)) =>
-                  finalize.release.attempt.flatMap { r =>
-                    go(scope, view.next(Result.interrupted(scopeId, r.left.toOption)))
-                  }
-              }
-
             case release: Algebra.Release[F, X] =>
               F.flatMap(scope.releaseResource(release.token)) { r =>
                 go[X](scope, view.next(Result.fromEither(r)))
@@ -422,9 +385,9 @@ private[fs2] object Algebra {
     * Inject interruption to the tail used in flatMap.
     * Assures that close of the scope is invoked if at the flatMap tail, otherwise switches evaluation to `interrupted` path
     *
-    * @param stream             tail to inject interuption into
+    * @param stream             tail to inject interruption into
     * @param interruptedScope   scopeId to interrupt
-    * @param interruptedError   Addiitional finalizer errors
+    * @param interruptedError   Additional finalizer errors
     * @tparam F
     * @tparam O
     * @return
