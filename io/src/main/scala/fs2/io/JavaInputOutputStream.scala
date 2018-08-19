@@ -57,7 +57,7 @@ private[io] object JavaInputOutputStream {
           ) {
             case ExitCase.Completed => markUpstreamDone(None)
             case ExitCase.Error(t)  => markUpstreamDone(Some(t))
-            case ExitCase.Canceled  => markUpstreamDone(Some(Canceled))
+            case ExitCase.Canceled  => markUpstreamDone(None)
           }
         })
         .map(_ => ())
