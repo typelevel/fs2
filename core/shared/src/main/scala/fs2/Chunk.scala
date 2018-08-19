@@ -370,9 +370,6 @@ abstract class Chunk[+O] extends Serializable { self =>
       buf.result
     }
 
-  /** Converts this chunk to a segment. */
-  def toSegment: Segment[O, Unit] = Segment.chunk(this)
-
   /** Converts this chunk to a vector. */
   def toVector: Vector[O] =
     if (isEmpty) Vector.empty

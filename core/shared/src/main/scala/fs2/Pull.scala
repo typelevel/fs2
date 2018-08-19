@@ -221,29 +221,6 @@ object Pull extends PullLowPriority {
   def fromEither[F[x]] = new PartiallyAppliedFromEither[F]
 
   /**
-    * Creates a pull from the supplied segment. The output values of the segment
-    * are output from the pull and the result value of the segment is the result of the pull.
-    *
-    * The segment is unfolded in chunks of up to the specified size.
-    *
-    * @param s segment to lift
-    * @param chunkSize max chunk size to emit before yielding execution downstream
-    * @param maxSteps max number of times to step the segment while waiting for a chunk to be output; upon reaching this limit, an empty chunk is emitted and execution is yielded downstream
-    */
-  def segment[F[x] >: Pure[x], O, R](s: Segment[O, R],
-                                     chunkSize: Int = 1024,
-                                     maxSteps: Long = 1024): Pull[F, O, R] = {
-    def loop(s: Segment[O, R]): Pull[F, O, R] =
-      s.force.splitAt(chunkSize, Some(maxSteps)) match {
-        case Left((r, chunks, rem)) =>
-          Pull.output(Chunk.concat(chunks.toList)) >> Pull.pure(r)
-        case Right((chunks, tl)) =>
-          Pull.output(Chunk.concat(chunks.toList)) >> loop(tl)
-      }
-    suspend(loop(s))
-  }
-
-  /**
     * Returns a pull that evaluates the supplied by-name each time the pull is used,
     * allowing use of a mutable value in pull computations.
     */
