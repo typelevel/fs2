@@ -10,7 +10,6 @@ import cats.implicits.{catsSyntaxEither => _, _}
 
 import fs2.Chunk.Bytes
 import fs2.async.mutable
-import fs2.internal.Canceled
 
 private[io] object JavaInputOutputStream {
 
@@ -58,7 +57,7 @@ private[io] object JavaInputOutputStream {
           ) {
             case ExitCase.Completed => markUpstreamDone(None)
             case ExitCase.Error(t)  => markUpstreamDone(Some(t))
-            case ExitCase.Canceled  => markUpstreamDone(Some(Canceled))
+            case ExitCase.Canceled  => markUpstreamDone(None)
           }
         })
         .map(_ => ())

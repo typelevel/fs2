@@ -60,15 +60,18 @@ private[internal] sealed abstract class Resource[F[_]] {
   def release: F[Either[Throwable, Unit]]
 
   /**
-    * Signals that resource was successfully acquired. Finalizer to be run on release is provided.
+    * Signals that resource was successfully acquired.
     *
-    * If the resource was closed before beqing acquired, then supplied finalizer is run.
+    * If the resource was closed before being acquired, then supplied finalizer is run.
     * That may result in finalizer eventually failing.
     *
-    * @param finalizer
+    * Yields to true, if the resource's finalizer was successfully acquired and not run, otherwise to false or an error.
+    * If the error is yielded then finalizer was run and failed.
+    *
+    * @param finalizer Finalizer to be run on release is provided.
     * @return
     */
-  def acquired(finalizer: F[Unit]): F[Either[Throwable, Unit]]
+  def acquired(finalizer: F[Unit]): F[Either[Throwable, Boolean]]
 
   /**
     * Signals that this resource was leased by another scope than one allocating this resource.
@@ -113,14 +116,14 @@ private[internal] object Resource {
             (s.copy(open = false, finalizer = None), s.finalizer) // reset finalizer to None, will be run, it available, otherwise the acquire will take care of it
         })(finalizer => finalizer.getOrElse(F.pure(Right(()))))
 
-      def acquired(finalizer: F[Unit]): F[Either[Throwable, Unit]] = {
+      def acquired(finalizer: F[Unit]): F[Either[Throwable, Boolean]] = {
         val attemptFinalizer = F.attempt(finalizer)
         F.flatten(state.modify { s =>
           if (!s.open && s.leases == 0)
-            s -> attemptFinalizer // state is closed and there are no leases, finalizer has to be invoked stright away
+            s -> F.map(attemptFinalizer)(_.right.map(_ => false)) // state is closed and there are no leases, finalizer has to be invoked right away
           else
             s.copy(finalizer = Some(attemptFinalizer)) -> F
-              .pure(Right(())) // either state is open, or leases are present, either release or `Lease#cancel` will run the finalizer
+              .pure(Right(true)) // either state is open, or leases are present, either release or `Lease#cancel` will run the finalizer
         })
       }
 

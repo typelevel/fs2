@@ -316,8 +316,11 @@ private[fs2] object Algebra {
 
             case open: Algebra.OpenScope[F, X] =>
               interruptGuard(scope) {
-                F.flatMap(scope.open(open.interruptible)) { childScope =>
-                  go(childScope, view.next(Result.pure(childScope.id)))
+                F.flatMap(scope.open(open.interruptible)) {
+                  case Left(err) =>
+                    go(scope, view.next(Result.raiseError(err)))
+                  case Right(childScope) =>
+                    go(childScope, view.next(Result.pure(childScope.id)))
                 }
               }
 
@@ -382,9 +385,9 @@ private[fs2] object Algebra {
     * Inject interruption to the tail used in flatMap.
     * Assures that close of the scope is invoked if at the flatMap tail, otherwise switches evaluation to `interrupted` path
     *
-    * @param stream             tail to inject interuption into
+    * @param stream             tail to inject interruption into
     * @param interruptedScope   scopeId to interrupt
-    * @param interruptedError   Addiitional finalizer errors
+    * @param interruptedError   Additional finalizer errors
     * @tparam F
     * @tparam O
     * @return
