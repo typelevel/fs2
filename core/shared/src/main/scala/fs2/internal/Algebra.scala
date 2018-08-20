@@ -171,18 +171,19 @@ private[fs2] object Algebra {
     step(s, None).map { _.map { case (h, _, t) => (h, t) } }
 
   /** Left-folds the output of a stream. */
-  def compile[F[_], O, B](stream: FreeC[Algebra[F, O, ?], Unit], init: B)(f: (B, O) => B)(
+  def compile[F[_], O, B](stream: FreeC[Algebra[F, O, ?], Unit], init: B)(f: (B, Chunk[O]) => B)(
       implicit F: Sync[F]): F[B] =
     F.bracket(F.delay(CompileScope.newRoot[F, O]))(scope =>
       compileScope[F, O, B](scope, stream, init)(f))(scope => scope.close.rethrow)
 
-  private[fs2] def compileScope[F[_], O, B](scope: CompileScope[F, O],
-                                            stream: FreeC[Algebra[F, O, ?], Unit],
-                                            init: B)(g: (B, O) => B)(implicit F: Sync[F]): F[B] =
+  private[fs2] def compileScope[F[_], O, B](
+      scope: CompileScope[F, O],
+      stream: FreeC[Algebra[F, O, ?], Unit],
+      init: B)(g: (B, Chunk[O]) => B)(implicit F: Sync[F]): F[B] =
     compileLoop[F, O](scope, stream).flatMap {
       case Some((output, scope, tail)) =>
         try {
-          val b = output.foldLeft(init)(g)
+          val b = g(init, output)
           compileScope(scope, tail, b)(g)
         } catch {
           case NonFatal(err) =>
