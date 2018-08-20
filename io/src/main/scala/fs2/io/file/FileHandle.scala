@@ -5,10 +5,9 @@ package file
 import scala.concurrent.{ExecutionContext, blocking}
 
 import java.nio.ByteBuffer
-import java.nio.channels.{AsynchronousFileChannel, FileChannel, FileLock}
+import java.nio.channels.{FileChannel, FileLock}
 
-import cats.effect.{ContextShift, Effect, Sync}
-import cats.implicits._
+import cats.effect.{ContextShift, Sync}
 
 /**
   * Provides the ability to read/write/lock/inspect a file in the effect `F`.
@@ -92,56 +91,6 @@ trait FileHandle[F[_]] {
 }
 
 private[file] object FileHandle {
-
-  /**
-    * Creates a `FileHandle[F]` from a `java.nio.channels.AsynchronousFileChannel`.
-    *
-    * Uses a `java.nio.Channels.CompletionHandler` to handle callbacks from IO operations.
-    */
-  private[file] def fromAsynchronousFileChannel[F[_]](
-      chan: AsynchronousFileChannel)(implicit F: Effect[F], cs: ContextShift[F]): FileHandle[F] =
-    new FileHandle[F] {
-      type Lock = FileLock
-
-      override def force(metaData: Boolean): F[Unit] =
-        F.delay(chan.force(metaData))
-
-      override def lock: F[Lock] =
-        asyncCompletionHandler[F, Lock](f => chan.lock(null, f))
-
-      override def lock(position: Long, size: Long, shared: Boolean): F[Lock] =
-        asyncCompletionHandler[F, Lock](f => chan.lock(position, size, shared, null, f))
-
-      override def read(numBytes: Int, offset: Long): F[Option[Chunk[Byte]]] =
-        F.delay(ByteBuffer.allocate(numBytes)).flatMap { buf =>
-          asyncCompletionHandler[F, Integer](f => chan.read(buf, offset, null, f)).map { len =>
-            if (len < 0) None
-            else if (len == 0) Some(Chunk.empty)
-            else Some(Chunk.bytes(buf.array, 0, len))
-          }
-        }
-
-      override def size: F[Long] =
-        F.delay(chan.size)
-
-      override def truncate(size: Long): F[Unit] =
-        F.delay { chan.truncate(size); () }
-
-      override def tryLock: F[Option[Lock]] =
-        F.map(F.delay(chan.tryLock()))(Option.apply)
-
-      override def tryLock(position: Long, size: Long, shared: Boolean): F[Option[Lock]] =
-        F.map(F.delay(chan.tryLock(position, size, shared)))(Option.apply)
-
-      override def unlock(f: Lock): F[Unit] =
-        F.delay(f.release())
-
-      override def write(bytes: Chunk[Byte], offset: Long): F[Int] =
-        F.map(asyncCompletionHandler[F, Integer](f =>
-          chan.write(bytes.toBytes.toByteBuffer, offset, null, f)))(
-          i => i.toInt
-        )
-    }
 
   /**
     * Creates a `FileHandle[F]` from a `java.nio.channels.FileChannel`.
