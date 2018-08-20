@@ -142,3 +142,5 @@ object MyApp extends IOApp {
 Methods in the `fs2.io` package that performed blocking I/O have been either removed or the blocking has been implemented via a call to `ContextSwitch[F].evalOn(blockingExecutionContext)(...)`. This ensures that a blocking call is not made from the same thread pool used for non-blocking tasks.
 
 For example, `fs2.io.readInputStream` now takes a blocking execution context argument, as well as an implicit `ContextShift[F]` argument. The `readInputStreamAsync` function was removed, as it was redundant with `readInputStream` once the blocking calls were shifted to a dedicated execution context.
+
+Additionally, the `*Async` methods from `fs2.io.file` have been removed (e.g. `readAllAsync`). Those methods used `java.nio.file.AsynchronousFileChannel`, which does *not* perform asynchronous I/O and instead performs blocking I/O on a dedicated thread pool. Hence, these methods are redundant with their blocking equivalents, which shift blocking calls to a dedicated blocking execution context.

@@ -7,20 +7,24 @@ import cats.effect.{ExitCode, IO, IOApp}
 import cats.implicits._
 import fs2.{io, text}
 import java.nio.file.Paths
+import java.util.concurrent.Executors
+import scala.concurrent.ExecutionContext
 
 object Converter extends IOApp {
   def run(args: List[String]): IO[ExitCode] = {
     def fahrenheitToCelsius(f: Double): Double =
       (f - 32.0) * (5.0/9.0)
 
-    io.file.readAllAsync[IO](Paths.get("testdata/fahrenheit.txt"), 4096)
+    val blockingExecutionContext = ExecutionContext.fromExecutorService(Executors.newFixedThreadPool(2))
+
+    io.file.readAll[IO](Paths.get("testdata/fahrenheit.txt"), blockingExecutionContext, 4096)
       .through(text.utf8Decode)
       .through(text.lines)
       .filter(s => !s.trim.isEmpty && !s.startsWith("//"))
       .map(line => fahrenheitToCelsius(line.toDouble).toString)
       .intersperse("\n")
       .through(text.utf8Encode)
-      .through(io.file.writeAllAsync(Paths.get("testdata/celsius.txt")))
+      .through(io.file.writeAll(Paths.get("testdata/celsius.txt"), blockingExecutionContext))
       .compile.drain
       .as(ExitCode.Success)
   }
@@ -39,8 +43,11 @@ Operations on `Stream` are defined for any choice of type constructor, not just 
 import cats.effect.{ContextShift, IO}
 import fs2.{io, text}
 import java.nio.file.Paths
+import java.util.concurrent.Executors
+import scala.concurrent.ExecutionContext
 
 implicit val cs: ContextShift[IO] = IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
+val blockingExecutionContext = ExecutionContext.fromExecutorService(Executors.newFixedThreadPool(2))
 
 def fahrenheitToCelsius(f: Double): Double =
   (f - 32.0) * (5.0/9.0)
@@ -50,7 +57,7 @@ def fahrenheitToCelsius(f: Double): Double =
 import fs2.Stream
 
 val src: Stream[IO, Byte] =
-  io.file.readAllAsync[IO](Paths.get("testdata/fahrenheit.txt"), 4096)
+  io.file.readAll[IO](Paths.get("testdata/fahrenheit.txt"), blockingExecutionContext, 4096)
 ```
 
 A stream can be attached to a pipe, allowing for stateful transformations of the input values. Here, we attach the source stream to the `text.utf8Decode` pipe, which converts the stream of bytes to a stream of strings. We then attach the result to the `text.lines` pipe, which buffers strings and emits full lines. Pipes are expressed using the type `Pipe[F,I,O]`, which describes a pipe that can accept input values of type `I` and can output values of type `O`, potentially evaluating an effect periodically.
@@ -85,7 +92,7 @@ val encodedBytes: Stream[IO, Byte] = withNewlines.through(text.utf8Encode)
 We then write the encoded bytes to a file. Note that nothing has happened at this point -- we are just constructing a description of a computation that, when interpreted, will incrementally consume the stream, sending converted values to the specified file.
 
 ```tut
-val written: Stream[IO, Unit] = encodedBytes.through(io.file.writeAllAsync(Paths.get("testdata/celsius.txt")))
+val written: Stream[IO, Unit] = encodedBytes.through(io.file.writeAll(Paths.get("testdata/celsius.txt"), blockingExecutionContext))
 ```
 
 There are a number of ways of interpreting the stream. In this case, we call `compile.drain`, which returns a val value of the effect type, `IO`. The output of the stream is ignored - we compile it solely for its effect.
