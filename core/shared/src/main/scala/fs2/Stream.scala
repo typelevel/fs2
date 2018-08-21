@@ -1252,6 +1252,10 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     *
     * When the outer stream stops gracefully, the currently running inner stream will continue to run.
     *
+    * When an inner stream terminates/interrupts, nothing happens until the next element arrives
+    * in the outer stream(i.e the outer stream holds the stream open during this time or else the
+    * stream terminates)
+    *
     * When either the inner or outer stream fails, the entire streams fails.
     *
     */
@@ -1259,6 +1263,9 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
       implicit F2: Concurrent[F2]): Stream[F2, O2] =
     Stream.eval(Ref.of[F2, Option[Deferred[F2, Unit]]](None)).flatMap { haltRef =>
       Stream.eval(Deferred[F2, Unit]).flatMap { haltOuter =>
+        // consumes the upstream by sending a packet(stream and a ref) to the next queue and
+        // also does error handling/inturruption/switching by terminating the currently running
+        // inner tream
         def runUpstream(guard: Semaphore[F2],
                         next: Queue[F2, Option[(O, Deferred[F2, Unit])]],
                         downstream: Queue[F2, Option[Either[Throwable, Chunk[O2]]]]) =
@@ -1277,6 +1284,8 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
                   }.flatten *> next.enqueue1((x -> halt).some))
             }
 
+        // consumes the packets produced by runUpstream and drains the content to downstream
+        // upon error/inturruption, the downstream will also be signalled for termination
         def runInner(guard: Semaphore[F2],
                      next: Queue[F2, Option[(O, Deferred[F2, Unit])]],
                      downstream: Queue[F2, Option[Either[Throwable, Chunk[O2]]]]) =
@@ -1300,6 +1309,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
         outQueue.flatMap { downstream =>
           nextQueue.flatMap { next =>
             Stream.eval(Semaphore(1)).flatMap { guard =>
+              // continously dequeue the downstream while we process the upstream
               downstream.dequeue.unNoneTerminate.rethrow
                 .flatMap(Stream.chunk(_))
                 .concurrently(
