@@ -1265,9 +1265,8 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
       Stream.eval(Deferred[F2, Unit]).flatMap { haltOuter =>
         // consumes the upstream by sending a packet(stream and a ref) to the next queue and
         // also does error handling/inturruption/switching by terminating the currently running
-        // inner tream
-        def runUpstream(guard: Semaphore[F2],
-                        next: Queue[F2, Option[(O, Deferred[F2, Unit])]],
+        // inner stream
+        def runUpstream(next: Queue[F2, Option[(O, Deferred[F2, Unit])]],
                         downstream: Queue[F2, Option[Either[Throwable, Chunk[O2]]]]) =
           this.attempt
             .interruptWhen(haltOuter.get.attempt)
@@ -1275,7 +1274,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
             .evalMap {
               case Left(e) =>
                 haltRef.modify(x => None -> x.fold(F2.unit)(_.complete(()))).flatten *>
-                  guard.withPermit(downstream.enqueue1(Left(e).some))
+                  downstream.enqueue1(Left(e).some)
               case Right(x) =>
                 Deferred[F2, Unit].flatMap(halt =>
                   haltRef.modify {
@@ -1285,22 +1284,19 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
             }
 
         // consumes the packets produced by runUpstream and drains the content to downstream
-        // upon error/inturruption, the downstream will also be signalled for termination
-        def runInner(guard: Semaphore[F2],
-                     next: Queue[F2, Option[(O, Deferred[F2, Unit])]],
+        // upon error/interruption, the downstream will also be signalled for termination
+        def runInner(next: Queue[F2, Option[(O, Deferred[F2, Unit])]],
                      downstream: Queue[F2, Option[Either[Throwable, Chunk[O2]]]]) =
           next.dequeue.unNoneTerminate
             .onFinalize(downstream.enqueue1(None))
             .evalMap {
               case (o, haltInner) =>
-                guard.withPermit(
-                  f(o).chunks
-                    .evalMap(x => downstream.enqueue1(Right(x).some))
-                    .interruptWhen(haltInner.get.attempt)
-                    .compile
-                    .drain
-                    .handleErrorWith(e =>
-                      haltOuter.complete(()) *> downstream.enqueue1(Left(e).some)))
+                f(o).chunks
+                  .evalMap(x => downstream.enqueue1(Right(x).some))
+                  .interruptWhen(haltInner.get.attempt)
+                  .compile
+                  .drain
+                  .handleErrorWith(e => haltOuter.complete(()) *> downstream.enqueue1(Left(e).some))
             }
 
         val outQueue = Stream.eval(async.unboundedQueue[F2, Option[Either[Throwable, Chunk[O2]]]])
@@ -1308,13 +1304,10 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
 
         outQueue.flatMap { downstream =>
           nextQueue.flatMap { next =>
-            Stream.eval(Semaphore(1)).flatMap { guard =>
-              // continously dequeue the downstream while we process the upstream
-              downstream.dequeue.unNoneTerminate.rethrow
-                .flatMap(Stream.chunk(_))
-                .concurrently(
-                  runInner(guard, next, downstream).merge(runUpstream(guard, next, downstream)))
-            }
+            // continuously dequeue the downstream while we process the upstream
+            downstream.dequeue.unNoneTerminate.rethrow
+              .flatMap(Stream.chunk(_))
+              .concurrently(runInner(next, downstream).merge(runUpstream(next, downstream)))
           }
         }
       }
