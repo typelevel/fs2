@@ -5,6 +5,7 @@ import cats.data.NonEmptyList
 import cats.effect._
 import cats.effect.concurrent._
 import cats.implicits.{catsSyntaxEither => _, _}
+import fs2.async.mutable.Queue
 import fs2.internal.FreeC.Result
 import fs2.internal._
 
@@ -1258,43 +1259,53 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
       implicit F2: Concurrent[F2]): Stream[F2, O2] =
     Stream.eval(Ref.of[F2, Option[Deferred[F2, Unit]]](None)).flatMap { haltRef =>
       Stream.eval(Deferred[F2, Unit]).flatMap { haltOuter =>
-        Stream.eval(async.unboundedQueue[F2, Option[Either[Throwable, Chunk[O2]]]]).flatMap {
-          queue =>
-            Stream.eval(async.unboundedQueue[F2, Option[(O, Deferred[F2, Unit])]]).flatMap {
-              pulse =>
-                Stream.eval(Semaphore(1)).flatMap { guard =>
-                  queue.dequeue.unNoneTerminate.rethrow
-                    .flatMap(Stream.chunk(_))
-                    .concurrently(pulse.dequeue.unNoneTerminate
-                      .onFinalize(queue.enqueue1(None))
-                      .evalMap {
-                        case (o, haltInner) =>
-                          guard.withPermit(
-                            f(o).chunks
-                              .evalMap(x => queue.enqueue1(Right(x).some))
-                              .interruptWhen(haltInner.get.attempt)
-                              .interruptWhen(haltOuter.get.attempt)
-                              .compile
-                              .drain
-                              .handleErrorWith(e =>
-                                haltOuter.complete(()) *> queue.enqueue1(Left(e).some)))
-                      }
-                      .merge(this.attempt
-                        .interruptWhen(haltOuter.get.attempt)
-                        .onFinalize(pulse.enqueue1(None))
-                        .evalMap {
-                          case Left(e) =>
-                            haltRef.modify(x => None -> x.fold(F2.unit)(_.complete(()))).flatten *>
-                              guard.withPermit(queue.enqueue1(Left(e).some))
-                          case Right(x) =>
-                            Deferred[F2, Unit].flatMap(halt =>
-                              haltRef.modify {
-                                case None       => halt.some -> F2.unit
-                                case Some(last) => halt.some -> last.complete(())
-                              }.flatten *> pulse.enqueue1((x -> halt).some))
-                        }))
-                }
+        def runUpstream(guard: Semaphore[F2],
+                        next: Queue[F2, Option[(O, Deferred[F2, Unit])]],
+                        downstream: Queue[F2, Option[Either[Throwable, Chunk[O2]]]]) =
+          this.attempt
+            .interruptWhen(haltOuter.get.attempt)
+            .onFinalize(next.enqueue1(None))
+            .evalMap {
+              case Left(e) =>
+                haltRef.modify(x => None -> x.fold(F2.unit)(_.complete(()))).flatten *>
+                  guard.withPermit(downstream.enqueue1(Left(e).some))
+              case Right(x) =>
+                Deferred[F2, Unit].flatMap(halt =>
+                  haltRef.modify {
+                    case None       => halt.some -> F2.unit
+                    case Some(last) => halt.some -> last.complete(())
+                  }.flatten *> next.enqueue1((x -> halt).some))
             }
+
+        def runInner(guard: Semaphore[F2],
+                     next: Queue[F2, Option[(O, Deferred[F2, Unit])]],
+                     downstream: Queue[F2, Option[Either[Throwable, Chunk[O2]]]]) =
+          next.dequeue.unNoneTerminate
+            .onFinalize(downstream.enqueue1(None))
+            .evalMap {
+              case (o, haltInner) =>
+                guard.withPermit(
+                  f(o).chunks
+                    .evalMap(x => downstream.enqueue1(Right(x).some))
+                    .interruptWhen(haltInner.get.attempt)
+                    .compile
+                    .drain
+                    .handleErrorWith(e =>
+                      haltOuter.complete(()) *> downstream.enqueue1(Left(e).some)))
+            }
+
+        val outQueue = Stream.eval(async.unboundedQueue[F2, Option[Either[Throwable, Chunk[O2]]]])
+        val nextQueue = Stream.eval(async.unboundedQueue[F2, Option[(O, Deferred[F2, Unit])]])
+
+        outQueue.flatMap { downstream =>
+          nextQueue.flatMap { next =>
+            Stream.eval(Semaphore(1)).flatMap { guard =>
+              downstream.dequeue.unNoneTerminate.rethrow
+                .flatMap(Stream.chunk(_))
+                .concurrently(
+                  runInner(guard, next, downstream).merge(runUpstream(guard, next, downstream)))
+            }
+          }
         }
       }
     }
