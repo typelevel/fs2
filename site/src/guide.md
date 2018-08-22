@@ -174,7 +174,7 @@ Regardless of how a `Stream` is built up, each operation takes constant time. So
 A stream can raise errors, either explicitly, using `Stream.raiseError`, or implicitly via an exception in pure code or inside an effect passed to `eval`:
 
 ```tut
-val err = Stream.raiseError(new Exception("oh noes!"))
+val err = Stream.raiseError[IO](new Exception("oh noes!"))
 val err2 = Stream(1,2,3) ++ (throw new Exception("!@#$"))
 val err3 = Stream.eval(IO(throw new Exception("error in effect!!!")))
 ```
@@ -182,7 +182,7 @@ val err3 = Stream.eval(IO(throw new Exception("error in effect!!!")))
 All these fail when running:
 
 ```tut
-try err.toList catch { case e: Exception => println(e) }
+try err.compile.toList.unsafeRunSync catch { case e: Exception => println(e) }
 ```
 
 ```tut
@@ -196,7 +196,7 @@ try err3.compile.drain.unsafeRunSync() catch { case e: Exception => println(e) }
 The `handleErrorWith` method lets us catch any of these errors:
 
 ```tut
-err.handleErrorWith { e => Stream.emit(e.getMessage) }.toList
+err.handleErrorWith { e => Stream.emit(e.getMessage) }.compile.toList.unsafeRunSync()
 ```
 
 _Note: Don't use `handleErrorWith` for doing resource cleanup; use `bracket` as discussed in the next section. Also see [this section of the appendix](#a1) for more details._
@@ -371,10 +371,13 @@ FS2 comes with lots of concurrent operations. The `merge` function runs two stre
 Stream(1,2,3).merge(Stream.eval(IO { Thread.sleep(200); 4 })).compile.toVector.unsafeRunSync()
 ```
 
-Oops, we need a `scala.concurrent.ExecutionContext` in implicit scope. Let's add that:
+Oops, we need a `cats.effect.ContextShift[IO]` in implicit scope. Let's add that:
 
 ```tut
-import scala.concurrent.ExecutionContext.Implicits.global
+import cats.effect.ContextShift
+
+// This normally comes from IOApp
+implicit val ioContextShift: ContextShift[IO] = IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
 
 Stream(1,2,3).merge(Stream.eval(IO { Thread.sleep(200); 4 })).compile.toVector.unsafeRunSync()
 ```
@@ -504,8 +507,7 @@ Let's look at a complete example:
 ```tut:book:reset
 import fs2._
 import fs2.async
-import scala.concurrent.ExecutionContext
-import cats.effect.{ ConcurrentEffect, IO, Timer }
+import cats.effect.{ConcurrentEffect, ContextShift, IO}
 
 type Row = List[String]
 
@@ -513,7 +515,7 @@ trait CSVHandle {
   def withRows(cb: Either[Throwable,Row] => Unit): Unit
 }
 
-def rows[F[_]](h: CSVHandle)(implicit F: ConcurrentEffect[F], timer: Timer[F]): Stream[F,Row] =
+def rows[F[_]](h: CSVHandle)(implicit F: ConcurrentEffect[F], cs: ContextShift[F]): Stream[F,Row] =
   for {
     q <- Stream.eval(async.unboundedQueue[F,Either[Throwable,Row]])
     _ <-  Stream.eval { F.delay(h.withRows(e => async.unsafeRunAsync(q.enqueue1(e))(_ => IO.unit))) }
@@ -559,13 +561,13 @@ Let's look at some examples of how this plays out, starting with the synchronous
 case object Err extends Throwable
 
 (Stream(1) ++ (throw Err)).take(1).toList
-(Stream(1) ++ Stream.raiseError(Err)).take(1).toList
+(Stream(1) ++ Stream.raiseError[IO](Err)).take(1).compile.toList.unsafeRunSync()
 ```
 
 The `take 1` uses `Pull` but doesn't examine the entire stream, and neither of these examples will ever throw an error. This makes sense. A bit more subtle is that this code will _also_ never throw an error:
 
 ```tut
-(Stream(1) ++ Stream.raiseError(Err)).take(1).toList
+(Stream(1) ++ Stream.raiseError[IO](Err)).take(1).compile.toList.unsafeRunSync()
 ```
 
 The reason is simple: the consumer (the `take(1)`) terminates as soon as it has an element. Once it has that element, it is done consuming the stream and doesn't bother running any further steps of it, so the stream never actually completes normally---it has been interrupted before that can occur. We may be able to see in this case that nothing follows the emitted `1`, but FS2 doesn't know this until it actually runs another step of the stream.
@@ -582,9 +584,9 @@ Stream(1).covary[IO].
 That covers synchronous interrupts. Let's look at asynchronous interrupts. Ponder what the result of `merged` will be in this example:
 
 ```tut
-import scala.concurrent.ExecutionContext.Implicits.global
+implicit val ioContextShift: ContextShift[IO] = IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
 val s1 = (Stream(1) ++ Stream(2)).covary[IO]
-val s2 = (Stream.empty ++ Stream.raiseError(Err)) handleErrorWith { e => println(e); Stream.raiseError(e) }
+val s2 = (Stream.empty ++ Stream.raiseError[IO](Err)).handleErrorWith { e => println(e); Stream.raiseError[IO](e) }
 val merged = s1 merge s2 take 1
 ```
 

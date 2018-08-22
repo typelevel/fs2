@@ -153,10 +153,9 @@ import fs2.{Stream, async}
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration._
 
-class PreciousResource[F[_]: Concurrent](name: String, s: Semaphore[F]) {
+class PreciousResource[F[_]: Concurrent: Timer](name: String, s: Semaphore[F]) {
 
   def use: Stream[F, Unit] = {
-    implicit val timer: Timer[F] = Timer.derive[F]
     for {
       _ <- Stream.eval(s.available.map(a => println(s"$name >> Availability: $a")))
       _ <- Stream.eval(s.acquire)
