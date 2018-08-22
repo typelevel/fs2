@@ -24,7 +24,7 @@ class SwitchMapSpec extends Fs2Spec with EventuallySupport {
     }
 
     "inner stream finalizer always runs before switching" in forAll { s: PureStream[Int] =>
-      val prg = Stream.eval(Ref[IO].of(true)).flatMap { ref =>
+      val prog = Stream.eval(Ref[IO].of(true)).flatMap { ref =>
         s.get.covary[IO].switchMap { i =>
           Stream.eval(ref.get).flatMap { released =>
             if (!released) Stream.raiseError[IO](new Err)
@@ -35,7 +35,7 @@ class SwitchMapSpec extends Fs2Spec with EventuallySupport {
           }
         }
       }
-      runLog(prg)
+      runLog(prog)
     }
 
     "when primary stream terminates, inner stream continues" in forAll {
@@ -50,11 +50,10 @@ class SwitchMapSpec extends Fs2Spec with EventuallySupport {
     "when inner stream fails, overall stream fails" in forAll { (s: PureStream[Int], f: Failure) =>
       // filter out empty streams as switching will never occur
       if (s.get.toList.nonEmpty) {
-        val prg = (Stream.sleep_[IO](25.millis) ++ s.get).switchMap(_ => f.get)
+        val prog = (Stream.sleep_[IO](25.millis) ++ s.get).switchMap(_ => f.get)
         val throws = f.get.compile.drain.attempt.unsafeRunSync.isLeft
-        if (throws) {
-          an[Err] should be thrownBy runLog(prg)
-        } else runLog(prg)
+        if (throws) an[Err] should be thrownBy runLog(prog)
+        else runLog(prog)
       }
     }
 
@@ -62,8 +61,10 @@ class SwitchMapSpec extends Fs2Spec with EventuallySupport {
       (f: Failure) =>
         var bgDone = false
         val bg = Stream.repeatEval(IO(1)).onFinalize(IO { bgDone = true })
-        val prg = (Stream.emit(1) ++ Stream.sleep_[IO](10 millis) ++ f.get).switchMap(_ => bg)
-        an[Err] should be thrownBy runLog(prg)
+        val prog = (Stream.emit(1) ++ Stream.sleep_[IO](10 millis) ++ f.get).switchMap(_ => bg)
+        val throws = f.get.compile.drain.attempt.unsafeRunSync.isLeft
+        if (throws) an[Err] should be thrownBy runLog(prog)
+        else runLog(prog)
         eventually(Timeout(3 seconds)) { bgDone shouldBe true }
     }
 
