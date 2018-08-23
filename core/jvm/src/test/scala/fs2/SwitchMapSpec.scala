@@ -68,5 +68,40 @@ class SwitchMapSpec extends Fs2Spec with EventuallySupport {
         eventually(Timeout(3 seconds)) { bgDone shouldBe true }
     }
 
+    "when inner stream fails, inner stream finalizer run before the primary one" in forAll {
+      (s: PureStream[Int], f: Failure) =>
+        if (s.get.toList.nonEmpty) {
+          val prog = Stream.eval(Ref[IO].of(false)).flatMap { verdict =>
+            Stream.eval(Ref[IO].of(false)).flatMap { innerReleased =>
+              (Stream.sleep_[IO](25.millis) ++ s.get)
+                .onFinalize(innerReleased.get.flatMap(inner => verdict.set(inner)))
+                .switchMap(_ => f.get.onFinalize(innerReleased.set(true)))
+                .attempt
+                .drain ++
+                Stream.eval(verdict.get.flatMap(if (_) IO.raiseError(new Err) else IO(())))
+            }
+          }
+          an[Err] should be thrownBy runLog(prog)
+        }
+    }
+
+    "when primary stream fails, inner stream finalizer run before the primary one" in forAll {
+      (f: Failure) =>
+        var bgDone = false
+        val bg = Stream.repeatEval(IO(1)).onFinalize(IO { bgDone = true })
+        val prog = Stream.eval(Ref[IO].of(false)).flatMap { verdict =>
+          Stream.eval(Ref[IO].of(false)).flatMap { innerReleased =>
+            (Stream.emit(1) ++
+              Stream.sleep_[IO](10 millis) ++ f.get)
+              .onFinalize(innerReleased.get.flatMap(inner => verdict.set(inner)))
+              .switchMap(_ => bg.onFinalize(innerReleased.set(true)))
+              .attempt
+              .drain ++
+              Stream.eval(verdict.get.flatMap(if (_) IO.raiseError(new Err) else IO(())))
+          }
+        }
+        an[Err] should be thrownBy runLog(prog)
+    }
+
   }
 }
