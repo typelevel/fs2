@@ -199,7 +199,7 @@ object Queue {
                   F.guaranteeCase(d.get) {
                     case ExitCase.Completed => F.unit
                     case ExitCase.Error(t)  => cleanup *> F.raiseError(t)
-                    case ExitCase.Canceled  => cleanup *> F.never
+                    case ExitCase.Canceled  => cleanup *> F.unit
                   }
               }
 
@@ -224,7 +224,7 @@ object Queue {
                   F.guaranteeCase(newState.peek.get.get) {
                     case ExitCase.Completed => F.unit
                     case ExitCase.Error(t)  => cleanup *> F.raiseError(t)
-                    case ExitCase.Canceled  => cleanup *> F.never
+                    case ExitCase.Canceled  => cleanup *> F.unit
                   }
                 }
 

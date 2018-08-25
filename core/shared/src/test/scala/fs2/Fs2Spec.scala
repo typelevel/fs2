@@ -1,12 +1,12 @@
 package fs2
 
-import scala.concurrent.ExecutionContext
+import scala.concurrent.{ExecutionContext, Future}
 import scala.concurrent.duration._
 
 import cats.effect.{ContextShift, IO, Timer}
 
 import org.typelevel.discipline.Laws
-import org.scalatest.{ Args, AsyncFreeSpec, FreeSpec, Matchers, Status, Suite }
+import org.scalatest.{ Args, Assertion, AsyncFreeSpec, FreeSpec, Matchers, Status, Succeeded, Suite }
 import org.scalatest.concurrent.{ AsyncTimeLimitedTests, TimeLimitedTests }
 import org.scalatest.prop.{ Checkers, GeneratorDrivenPropertyChecks }
 import org.scalatest.time.Span
@@ -22,6 +22,8 @@ abstract class Fs2Spec extends FreeSpec with Fs2SpecLike with TimeLimitedTests w
 abstract class AsyncFs2Spec extends AsyncFreeSpec with Fs2SpecLike with AsyncTimeLimitedTests {
   val timeLimit: Span = timeout
   implicit override val executionContext: ExecutionContext = ExecutionContext.Implicits.global
+
+  implicit def futureUnitToFutureAssertion(fu: Future[Unit]): Future[Assertion] = fu.map(_ => Succeeded)
 }
 
 trait Fs2SpecLike extends Suite
