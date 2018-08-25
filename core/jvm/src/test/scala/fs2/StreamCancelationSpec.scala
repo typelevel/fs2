@@ -14,7 +14,8 @@ class StreamCancelationSpec extends AsyncFs2Spec {
 
   "cancelation of compiled streams" - {
     "constant" in testCancelation(Stream.constant(1))
-    "bracketed stream" in testCancelation(Stream.bracket(IO.unit)(_ => IO.unit).flatMap(_ => Stream.constant(1)))
+    "bracketed stream" in testCancelation(
+      Stream.bracket(IO.unit)(_ => IO.unit).flatMap(_ => Stream.constant(1)))
     "concurrently" in testCancelation {
       val s = Stream.constant(1).covary[IO]
       s.concurrently(s)
@@ -28,7 +29,8 @@ class StreamCancelationSpec extends AsyncFs2Spec {
       Stream(s, s).parJoin(2)
     }
     "#1236" in testCancelation {
-      Stream.eval(async.boundedQueue[IO, Int](1))
+      Stream
+        .eval(async.boundedQueue[IO, Int](1))
         .flatMap { q =>
           Stream(
             Stream

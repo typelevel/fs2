@@ -968,13 +968,12 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
       .eval(async.mutable.Queue.synchronousNoneTerminated[F2, Either[Token, Chunk[O]]])
       .flatMap { q =>
         def startTimeout: Stream[F2, Token] =
-          Stream.eval {
-            F.delay(new Token).flatTap { t =>
-              F.start { timer.sleep(d) *> q.enqueue1(t.asLeft.some) }
-            }
+          Stream.eval(F.delay(new Token)).flatTap { t =>
+            Stream.supervise { timer.sleep(d) *> q.enqueue1(t.asLeft.some) }
           }
 
         def producer = this.chunks.map(_.asRight.some).to(q.enqueue).onFinalize(q.enqueue1(None))
+
         def emitNonEmpty(c: Catenable[Chunk[O]]): Stream[F2, Chunk[O]] =
           if (c.nonEmpty) Stream.emit(Chunk.concat(c.toList))
           else Stream.empty
