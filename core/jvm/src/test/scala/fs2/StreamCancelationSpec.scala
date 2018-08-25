@@ -7,7 +7,7 @@ import cats.implicits._
 
 class StreamCancelationSpec extends AsyncFs2Spec {
   def startAndCancelSoonAfter[A](fa: IO[A]): IO[Unit] =
-    fa.start.flatMap(fiber => timerIO.sleep(100.milliseconds) *> fiber.cancel)
+    fa.start.flatMap(fiber => timerIO.sleep(1000.milliseconds) *> fiber.cancel)
 
   def testCancelation[A](s: Stream[IO, A]): Future[Unit] =
     startAndCancelSoonAfter(s.compile.drain).unsafeToFuture
@@ -34,7 +34,7 @@ class StreamCancelationSpec extends AsyncFs2Spec {
             Stream
               .unfold(0)(i => (i + 1, i + 1).some)
               .flatMap { i =>
-                Stream.sleep_(10.milliseconds) ++ Stream.emit(i)
+                Stream.sleep_(50.milliseconds) ++ Stream.emit(i)
               }
               .to(q.enqueue),
             q.dequeue.to(Sink.showLinesStdOut)
