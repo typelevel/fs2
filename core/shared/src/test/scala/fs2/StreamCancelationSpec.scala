@@ -27,7 +27,7 @@ class StreamCancelationSpec extends AsyncFs2Spec {
       val s = Stream.constant(1).covary[IO]
       Stream(s, s).parJoin(2)
     }
-    "complex case with queue and parJoin" in testCancelation {
+    "#1236" in testCancelation {
       Stream.eval(async.boundedQueue[IO, Int](1))
         .flatMap { q =>
           Stream(

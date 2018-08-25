@@ -1497,7 +1497,6 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
                     }
 
                   Stream.bracket(F2.start(runOuter))(_ => {
-                    println("FINALIZING OUTER")
                     stop(None) *> running.discrete
                       .dropWhile(_ > 0)
                       .take(1)
@@ -2612,8 +2611,8 @@ object Stream extends StreamLowPriority {
     sleep(d).drain
 
   /**
-   * Starts the supplied task and cancels it as finalization of the returned stream.
-   */
+    * Starts the supplied task and cancels it as finalization of the returned stream.
+    */
   def supervise[F[_], A](fa: F[A])(implicit F: Concurrent[F]): Stream[F, Fiber[F, A]] =
     bracket(F.start(fa))(_.cancel)
 
