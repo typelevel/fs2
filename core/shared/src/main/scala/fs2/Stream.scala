@@ -1056,9 +1056,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     Stream
       .getScope[F2]
       .flatMap { scope =>
-        Stream.eval(F2.start(haltOnSignal.flatMap(scope.interrupt))).flatMap { fiber =>
-          this.onFinalize(fiber.cancel)
-        }
+        Stream.supervise(haltOnSignal.flatMap(scope.interrupt)) >> this
       }
       .interruptScope
 
@@ -1498,13 +1496,14 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
                         .fold[F2[Unit]](F2.unit)(F2.raiseError)
                     }
 
-                  Stream.bracket(F2.start(runOuter))(
-                    _ =>
-                      stop(None) *> running.discrete
-                        .dropWhile(_ > 0)
-                        .take(1)
-                        .compile
-                        .drain >> signalResult) >>
+                  Stream.bracket(F2.start(runOuter))(_ => {
+                    println("FINALIZING OUTER")
+                    stop(None) *> running.discrete
+                      .dropWhile(_ > 0)
+                      .take(1)
+                      .compile
+                      .drain >> signalResult
+                  }) >>
                     outputQ.dequeue.unNoneTerminate
                       .flatMap(Stream.chunk(_).covary[F2])
 
@@ -2611,6 +2610,12 @@ object Stream extends StreamLowPriority {
     */
   def sleep_[F[_]](d: FiniteDuration)(implicit timer: Timer[F]): Stream[F, Nothing] =
     sleep(d).drain
+
+  /**
+   * Starts the supplied task and cancels it as finalization of the returned stream.
+   */
+  def supervise[F[_], A](fa: F[A])(implicit F: Concurrent[F]): Stream[F, Fiber[F, A]] =
+    bracket(F.start(fa))(_.cancel)
 
   /**
     * Returns a stream that evaluates the supplied by-name each time the stream is used,
