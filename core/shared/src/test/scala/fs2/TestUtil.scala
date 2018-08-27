@@ -5,6 +5,7 @@ import org.scalacheck.{Arbitrary, Cogen, Gen, Shrink}
 
 import scala.concurrent.Future
 import scala.util.control.NonFatal
+import scala.concurrent.duration._
 
 import cats.effect.IO
 import cats.implicits._
@@ -47,6 +48,20 @@ object TestUtil extends TestUtilPlatform {
 
   case class SmallNonnegative(get: Int)
   implicit def arbSmallNonnegative = Arbitrary(Gen.choose(0,20).map(SmallNonnegative(_)))
+
+    case class ShortFiniteDuration(get: FiniteDuration)
+   implicit def arbShortFiniteDuration = Arbitrary{
+     Gen.choose(1L, 50000L)
+       .map(_.microseconds)
+       .map(ShortFiniteDuration(_))
+   }
+
+   case class VeryShortFiniteDuration(get: FiniteDuration)
+   implicit def arbVeryShortFiniteDuration = Arbitrary{
+     Gen.choose(1L, 500L)
+       .map(_.microseconds)
+       .map(VeryShortFiniteDuration(_))
+   }
 
   object PureStream {
     def singleChunk[A](implicit A: Arbitrary[A]): Gen[PureStream[A]] = Gen.sized { size =>
