@@ -38,14 +38,6 @@ object Signal extends SignalLowPriorityImplicits {
     new Signal[F, A] {
       def get = F.pure(a)
       def continuous = Stream.constant(a)
-
-      /**
-        * We put a single element here because otherwise the implementations of
-        * Signal as a Monad or Applicative get more annoying. In particular if
-        * this stream were empty, Applicatively zipping another Signal in the
-        * straightforward way would cause the (non-deterministically) zipped
-        * stream to be empty.
-        */
       def discrete = Stream(a) ++ Stream.eval_(F.never)
     }
 

@@ -1079,12 +1079,17 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
       }
 
   /**
+    * Interrupts this stream after the specified duration has passed.
+    */
+  def interruptAfter[F2[x] >: F[x]: Concurrent: Timer](duration: FiniteDuration): Stream[F2, O] =
+    interruptWhen[F2](Stream.sleep_[F2](duration) ++ Stream(true))
+
+  /**
     * Let through the `s2` branch as long as the `s1` branch is `false`,
     * listening asynchronously for the left branch to become `true`.
     * This halts as soon as either branch halts.
     *
     * Consider using the overload that takes a `Signal`, `Deferred` or `F[Either[Throwable, Unit]]`.
-    *
     */
   def interruptWhen[F2[x] >: F[x]](haltWhenTrue: Stream[F2, Boolean])(
       implicit F2: Concurrent[F2]): Stream[F2, O] =
