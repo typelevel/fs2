@@ -63,7 +63,7 @@ abstract class Topic[F[_], A] { self =>
   /**
     * Signal of current active subscribers.
     */
-  def subscribers: ReadableSignal[F, Int]
+  def subscribers: Signal[F, Int]
 
   /**
     * Returns an alternate view of this `Topic` where its elements are of type `B`,
@@ -75,7 +75,7 @@ abstract class Topic[F[_], A] { self =>
       def publish1(b: B): F[Unit] = self.publish1(g(b))
       def subscribe(maxQueued: Int): Stream[F, B] =
         self.subscribe(maxQueued).map(f)
-      def subscribers: ReadableSignal[F, Int] = self.subscribers
+      def subscribers: Signal[F, Int] = self.subscribers
       def subscribeSize(maxQueued: Int): Stream[F, (B, Int)] =
         self.subscribeSize(maxQueued).map { case (a, i) => f(a) -> i }
     }
@@ -98,7 +98,7 @@ object Topic {
     Ref
       .of[F, (A, Vector[Subscriber])]((initial, Vector.empty[Subscriber]))
       .flatMap { state =>
-        Signal[F, Int](0).map { subSignal =>
+        SignallingRef[F, Int](0).map { subSignal =>
           def mkSubscriber(maxQueued: Int): F[Subscriber] =
             for {
               q <- InspectableQueue.bounded[F, A](maxQueued)

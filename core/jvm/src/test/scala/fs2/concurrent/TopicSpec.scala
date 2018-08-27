@@ -45,7 +45,7 @@ class TopicSpec extends Fs2Spec {
     "synchronous publish" in {
       pending // TODO I think there's a race condition on the signal in this test
       val topic = Topic[IO, Int](-1).unsafeRunSync()
-      val signal = Signal[IO, Int](0).unsafeRunSync()
+      val signal = SignallingRef[IO, Int](0).unsafeRunSync()
       val count = 100
       val subs = 10
 

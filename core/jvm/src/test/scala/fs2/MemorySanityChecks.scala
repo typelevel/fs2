@@ -2,7 +2,7 @@ package fs2
 
 import scala.concurrent.ExecutionContext
 import cats.effect.{ContextShift, IO, Timer}
-import fs2.concurrent.{Queue, Signal}
+import fs2.concurrent.{Queue, SignallingRef}
 
 // Sanity tests - not run as part of unit tests, but these should run forever
 // at constant memory.
@@ -88,7 +88,7 @@ object AwakeEverySanityTest extends App {
 object SignalDiscreteSanityTest extends App {
   implicit val cs: ContextShift[IO] = IO.contextShift(ExecutionContext.Implicits.global)
   Stream
-    .eval(Signal[IO, Unit](()))
+    .eval(SignallingRef[IO, Unit](()))
     .flatMap { signal =>
       signal.discrete.evalMap(a => signal.set(a))
     }
@@ -100,7 +100,7 @@ object SignalDiscreteSanityTest extends App {
 object SignalContinuousSanityTest extends App {
   implicit val cs: ContextShift[IO] = IO.contextShift(ExecutionContext.Implicits.global)
   Stream
-    .eval(Signal[IO, Unit](()))
+    .eval(SignallingRef[IO, Unit](()))
     .flatMap { signal =>
       signal.continuous.evalMap(a => signal.set(a))
     }

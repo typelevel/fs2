@@ -74,7 +74,7 @@ Some of the data types from the old `fs2.async` package have moved to `cats.effe
 
 #### Signal
 
-The `fs2.async.immutable.Signal` type is now `fs2.concurrent.ReadableSignal` while `fs2.async.mutable.Signal` is replaced by either `fs2.concurrent.WritableSignal`, if you only need the ability to update the signal, or `fs2.concurrent.Signal`, if you need both read and write ability. Constructing a signal is now accomplished via `Signal.apply` instead of `fs2.async.signalOf`.
+The `fs2.async.immutable.Signal` type is now `fs2.concurrent.Signal` while `fs2.async.mutable.Signal` is replaced by `fs2.concurrent.SignallingRef`, which extends both `Signal` and `Ref`. Constructing a signalling ref is now accomplished via `SignallingRef[F, A](a)` instead of `fs2.async.signalOf`.
 
 #### Queue
 

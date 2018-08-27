@@ -375,7 +375,7 @@ trait InspectableQueue[F[_], A] extends Queue[F, A] {
     * only when size changes. Offsetting enqueues and de-queues may
     * not result in refreshes.
     */
-  def size: ReadableSignal[F, Int]
+  def size: Signal[F, Int]
 
   /** The size bound on the queue. `None` if the queue is unbounded. */
   def upperBound: Option[Int]
@@ -384,13 +384,13 @@ trait InspectableQueue[F[_], A] extends Queue[F, A] {
     * Returns the available number of entries in the queue.
     * Always `Int.MaxValue` when the queue is unbounded.
     */
-  def available: ReadableSignal[F, Int]
+  def available: Signal[F, Int]
 
   /**
     * Returns `true` when the queue has reached its upper size bound.
     * Always `false` when the queue is unbounded.
     */
-  def full: ReadableSignal[F, Boolean]
+  def full: Signal[F, Boolean]
 }
 
 object InspectableQueue {
@@ -400,7 +400,7 @@ object InspectableQueue {
   def unbounded[F[_], A](implicit F: Concurrent[F]): F[InspectableQueue[F, A]] =
     for {
       qref <- Ref.of[F, State[F, A]](State(Vector.empty, Vector.empty, None))
-      szSignal <- Signal(0)
+      szSignal <- SignallingRef(0)
     } yield
       new Unbounded(qref) with InspectableQueue[F, A] {
         override protected def sizeChanged(s: State[F, A], ns: State[F, A]): F[Unit] =
@@ -411,11 +411,11 @@ object InspectableQueue {
 
         def size = szSignal
 
-        def full: ReadableSignal[F, Boolean] =
-          ReadableSignal.constant[F, Boolean](false)
+        def full: Signal[F, Boolean] =
+          Signal.constant[F, Boolean](false)
 
-        def available: ReadableSignal[F, Int] =
-          ReadableSignal.constant[F, Int](Int.MaxValue)
+        def available: Signal[F, Int] =
+          Signal.constant[F, Int](Int.MaxValue)
       }
 
   /** Creates a queue with the specified size bound. */
@@ -427,8 +427,8 @@ object InspectableQueue {
       new Bounded(permits, q) with InspectableQueue[F, A] {
         def upperBound: Option[Int] = Some(maxSize)
         def size = q.size
-        def full: ReadableSignal[F, Boolean] = q.size.map(_ >= maxSize)
-        def available: ReadableSignal[F, Int] = q.size.map(maxSize - _)
+        def full: Signal[F, Boolean] = q.size.map(_ >= maxSize)
+        def available: Signal[F, Int] = q.size.map(maxSize - _)
       }
 
   /** Creates a queue which stores the last `maxSize` enqueued elements and which never blocks on enqueue. */
@@ -440,7 +440,7 @@ object InspectableQueue {
       new CircularBufer(permits, q) with InspectableQueue[F, A] {
         def upperBound: Option[Int] = Some(maxSize)
         def size = q.size
-        def full: ReadableSignal[F, Boolean] = q.size.map(_ >= maxSize)
-        def available: ReadableSignal[F, Int] = q.size.map(maxSize - _)
+        def full: Signal[F, Boolean] = q.size.map(_ >= maxSize)
+        def available: Signal[F, Int] = q.size.map(maxSize - _)
       }
 }

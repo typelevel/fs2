@@ -1,7 +1,7 @@
 package fs2
 
 import cats.effect.Concurrent
-import fs2.concurrent.{Queue, Signal}
+import fs2.concurrent.{Queue, SignallingRef}
 
 object Pipe {
 
@@ -10,7 +10,7 @@ object Pipe {
       implicit F: Concurrent[F]): Pipe[F, A, B] =
     in => {
       for {
-        done <- Stream.eval(Signal(false))
+        done <- Stream.eval(SignallingRef(false))
         q <- Stream.eval(q)
         b <- in.chunks
           .map(Some(_))

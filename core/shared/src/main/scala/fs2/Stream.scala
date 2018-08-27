@@ -5,7 +5,7 @@ import cats.data.NonEmptyList
 import cats.effect._
 import cats.effect.concurrent._
 import cats.implicits.{catsSyntaxEither => _, _}
-import fs2.concurrent.{Queue, ReadableSignal, Signal}
+import fs2.concurrent.{Queue, Signal, SignallingRef}
 import fs2.internal.FreeC.Result
 import fs2.internal._
 
@@ -345,7 +345,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * scala> import cats.effect.{ContextShift, IO}
     * scala> implicit val cs: ContextShift[IO] = IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
     * scala> val data: Stream[IO,Int] = Stream.range(1, 10).covary[IO]
-    * scala> Stream.eval(fs2.concurrent.Signal[IO,Int](0)).flatMap(s => Stream(s).concurrently(data.evalMap(s.set))).flatMap(_.discrete).takeWhile(_ < 9, true).compile.last.unsafeRunSync
+    * scala> Stream.eval(fs2.concurrent.SignallingRef[IO,Int](0)).flatMap(s => Stream(s).concurrently(data.evalMap(s.set))).flatMap(_.discrete).takeWhile(_ < 9, true).compile.last.unsafeRunSync
     * res0: Option[Int] = Some(9)
     * }}}
     */
@@ -1042,13 +1042,13 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * will always be `initial`.
     */
   def hold[F2[x] >: F[x], O2 >: O](initial: O2)(
-      implicit F: Concurrent[F2]): Stream[F2, ReadableSignal[F2, O2]] =
-    Stream.eval(Signal[F2, O2](initial)).flatMap { sig =>
+      implicit F: Concurrent[F2]): Stream[F2, Signal[F2, O2]] =
+    Stream.eval(SignallingRef[F2, O2](initial)).flatMap { sig =>
       Stream(sig).concurrently(evalMap(sig.set))
     }
 
   /** Like [[hold]] but does not require an initial value, and hence all output elements are wrapped in `Some`. */
-  def holdOption[F2[x] >: F[x]: Concurrent, O2 >: O]: Stream[F2, ReadableSignal[F2, Option[O2]]] =
+  def holdOption[F2[x] >: F[x]: Concurrent, O2 >: O]: Stream[F2, Signal[F2, Option[O2]]] =
     map(Some(_): Option[O2]).hold(None)
 
   /**
@@ -1121,8 +1121,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     interruptWhen(haltWhenTrue.get)
 
   /** Alias for `interruptWhen(haltWhenTrue.discrete)`. */
-  def interruptWhen[F2[x] >: F[x]: Concurrent](
-      haltWhenTrue: ReadableSignal[F2, Boolean]): Stream[F2, O] =
+  def interruptWhen[F2[x] >: F[x]: Concurrent](haltWhenTrue: Signal[F2, Boolean]): Stream[F2, O] =
     interruptWhen(haltWhenTrue.discrete)
 
   /**
@@ -1487,9 +1486,9 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     val _ = (ev, ev2)
     val outer = this.asInstanceOf[Stream[F2, Stream[F2, O2]]]
     Stream.eval {
-      Signal(None: Option[Option[Throwable]]).flatMap { done =>
+      SignallingRef(None: Option[Option[Throwable]]).flatMap { done =>
         Semaphore(maxOpen).flatMap { available =>
-          Signal(1L)
+          SignallingRef(1L)
             .flatMap { running => // starts with 1 because outer stream is running by default
               Queue
                 .synchronousNoneTerminated[F2, Chunk[O2]]
@@ -1614,8 +1613,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     }
 
   /** Alias for `pauseWhen(pauseWhenTrue.discrete)`. */
-  def pauseWhen[F2[x] >: F[x]: Concurrent](
-      pauseWhenTrue: ReadableSignal[F2, Boolean]): Stream[F2, O] =
+  def pauseWhen[F2[x] >: F[x]: Concurrent](pauseWhenTrue: Signal[F2, Boolean]): Stream[F2, O] =
     pauseWhen(pauseWhenTrue.discrete)
 
   /** Alias for `prefetchN(1)`. */
