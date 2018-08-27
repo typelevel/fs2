@@ -86,7 +86,9 @@ The `fs2.async.immutable.Signal` type is now `fs2.concurrent.ReadableSignal` whi
 
 #### fs2.async Package Object
 
-The `fs2.async` package object contained constructors for concurrent data types and miscellaneous concurrency utilities (e.g., `start`, `fork`, `parallelTraverse`). Most of the miscellaneous concurrency utilities are no longer necessary because they are directly supported by cats. For example, `start` now exists on the `cats.effect.Concurrent` type class and `parTraverse` is available for any `Concurrent[F]`.
+The `fs2.async` package object contained constructors for concurrent data types and miscellaneous concurrency utilities (e.g., `start`, `fork`, `parallelTraverse`). The data type constructors have all been moved to data type companions with the exception of `hold` and `holdOption` which have been moved to methods on `Stream` (e.g., instead of `async.hold(0, src)`, write `src.hold(0)`).
+
+Most of the miscellaneous concurrency utilities are no longer necessary because they are directly supported by cats. For example, `start` now exists on the `cats.effect.Concurrent` type class and `parTraverse` is available for any `Concurrent[F]`.
 
 One exception is `unsafeRunAsync`, which was removed from fs2 without a direct replacement in cats-effect. To run a computation asynchronously, you can use the following:
 
