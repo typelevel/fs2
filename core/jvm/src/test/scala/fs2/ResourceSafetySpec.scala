@@ -6,6 +6,7 @@ import cats.effect.IO
 import cats.implicits.{catsSyntaxEither => _, _}
 import org.scalacheck._
 import org.scalatest.concurrent.PatienceConfiguration.Timeout
+import fs2.concurrent.SignallingRef
 
 import scala.concurrent.duration._
 import TestUtil._
@@ -198,7 +199,7 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
 
     "asynchronous resource allocation (5)" in {
       forAll { (s: PureStream[PureStream[Int]]) =>
-        val signal = async.signalOf[IO, Boolean](false).unsafeRunSync()
+        val signal = SignallingRef[IO, Boolean](false).unsafeRunSync()
         val c = new AtomicLong(0)
         (IO.shift *> IO { Thread.sleep(20L) } *> signal.set(true))
           .unsafeRunSync()
@@ -223,7 +224,7 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
       // stream is interrupted while in the middle of a resource acquire that is immediately followed
       // by a step that never completes!
       val s = Stream(Stream(1))
-      val signal = async.signalOf[IO, Boolean](false).unsafeRunSync()
+      val signal = SignallingRef[IO, Boolean](false).unsafeRunSync()
       val c = new AtomicLong(0)
       (IO.shift *> IO { Thread.sleep(50L) } *> signal.set(true)).start
         .unsafeRunSync() // after 50 ms, interrupt

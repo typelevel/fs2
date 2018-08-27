@@ -7,7 +7,7 @@ import scala.concurrent.duration.FiniteDuration
 import java.net.{InetAddress, InetSocketAddress, NetworkInterface}
 import java.nio.channels.{ClosedChannelException, DatagramChannel}
 
-import cats.effect.{ContextShift, Effect, IO}
+import cats.effect.ConcurrentEffect
 
 /**
   * Provides the ability to read/write from a UDP socket in the effect `F`.
@@ -99,14 +99,10 @@ sealed trait Socket[F[_]] {
 private[udp] object Socket {
 
   private[fs2] def mkSocket[F[_]](channel: DatagramChannel)(implicit AG: AsynchronousSocketGroup,
-                                                            F: Effect[F],
-                                                            cs: ContextShift[F]): F[Socket[F]] =
+                                                            F: ConcurrentEffect[F]): F[Socket[F]] =
     F.delay {
       new Socket[F] {
         private val ctx = AG.register(channel)
-
-        private def invoke(f: => Unit): Unit =
-          async.unsafeRunAsync(F.delay(f))(_ => IO.pure(()))
 
         def localAddress: F[InetSocketAddress] =
           F.delay(
@@ -114,13 +110,13 @@ private[udp] object Socket {
               .getOrElse(throw new ClosedChannelException))
 
         def read(timeout: Option[FiniteDuration]): F[Packet] =
-          F.async(cb => AG.read(ctx, timeout, result => invoke(cb(result))))
+          F.async(cb => AG.read(ctx, timeout, result => invokeCallback(cb(result))))
 
         def reads(timeout: Option[FiniteDuration]): Stream[F, Packet] =
           Stream.repeatEval(read(timeout))
 
         def write(packet: Packet, timeout: Option[FiniteDuration]): F[Unit] =
-          F.async(cb => AG.write(ctx, packet, timeout, t => invoke(cb(t.toLeft(())))))
+          F.async(cb => AG.write(ctx, packet, timeout, t => invokeCallback(cb(t.toLeft(())))))
 
         def writes(timeout: Option[FiniteDuration]): Sink[F, Packet] =
           _.flatMap(p => Stream.eval(write(p, timeout)))

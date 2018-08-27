@@ -7,7 +7,7 @@ position: 2
 
 # Concurrency Primitives
 
-In the [`fs2.async` package object](https://github.com/functional-streams-for-scala/fs2/blob/series/1.0/core/shared/src/main/scala/fs2/async/async.scala) you'll find a bunch of useful concurrency primitives built on the concurrency primitives defined in `cats.effect.concurrent`:
+In the [`fs2.concurrent` package](https://github.com/functional-streams-for-scala/fs2/blob/series/1.0/core/shared/src/main/scala/fs2/concurrent/) you'll find a bunch of useful concurrency primitives built on the concurrency primitives defined in `cats.effect.concurrent`:
 
 - `Queue[F, A]`
 - `Topic[F, A]`
@@ -17,15 +17,15 @@ These data structures could be very handy in a few cases. See below examples of 
 
 ### FIFO (First IN / First OUT)
 
-A typical use case of a `fs2.async.mutable.Queue[F, A]`, also quite useful to communicate with the external word as shown in the [guide](guide#talking-to-the-external-world).
+A typical use case of a `fs2.concurrent.Queue[F, A]`, also quite useful to communicate with the external word as shown in the [guide](guide#talking-to-the-external-world).
 
 q1 has a buffer size of 1 while q2 has a buffer size of 100 so you will notice the buffering when  pulling elements out of the q2.
 
 ```tut:silent
 import cats.implicits._
 import cats.effect.{Concurrent, ExitCode, IO, IOApp, Timer}
-import fs2.async.mutable.Queue
-import fs2.{Stream, async}
+import fs2.concurrent.Queue
+import fs2.Stream
 
 import scala.concurrent.duration._
 
@@ -44,8 +44,8 @@ class Fifo extends IOApp {
 
   override def run(args: List[String]): IO[ExitCode] = {
     val stream = for {
-      q1 <- Stream.eval(async.boundedQueue[IO, Int](1))
-      q2 <- Stream.eval(async.boundedQueue[IO, Int](100))
+      q1 <- Stream.eval(Queue.bounded[IO, Int](1))
+      q2 <- Stream.eval(Queue.bounded[IO, Int](100))
       bp = new Buffering[IO](q1, q2)
       _  <- Stream.sleep_[IO](5.seconds) concurrently bp.start.drain
     } yield ()
@@ -56,7 +56,7 @@ class Fifo extends IOApp {
 
 ### Single Publisher / Multiple Subscriber
 
-Having a Kafka like system built on top of concurrency primitives is possible by making use of `fs2.async.mutable.Topic[F, A]`. In this more complex example, we will also show you how to make use of a `fs2.async.mutable.Signal[F, A]` to interrupt a scheduled Stream.
+Having a Kafka like system built on top of concurrency primitives is possible by making use of `fs2.concurrent.Topic[F, A]`. In this more complex example, we will also show you how to make use of a `fs2.concurrent.Signal[F, A]` to interrupt a scheduled Stream.
 
 The program ends after 15 seconds when the signal interrupts the publishing of more events given that the final streaming merge halts on the end of its left stream (the publisher).
 
@@ -68,8 +68,8 @@ The program ends after 15 seconds when the signal interrupts the publishing of m
 
 ```scala
 import cats.effect.{Concurrent, ExitCode, IO, IOApp}
-import fs2.async.mutable.{Signal, Topic}
-import fs2.{Sink, Stream, StreamApp, async}
+import fs2.concurrent.{Signal, Topic}
+import fs2.{Sink, Stream}
 
 import scala.concurrent.duration._
 
@@ -102,8 +102,8 @@ class PubSub extends IOApp {
 
   override def run(args: List[String]): IO[ExitCode] = {
     val stream = for {
-      topic     <- Stream.eval(async.topic[IO, Event](Event("")))
-      signal    <- Stream.eval(async.signalOf[IO, Boolean](false))
+      topic     <- Stream.eval(Topic[IO, Event](Event("")))
+      signal    <- Stream.eval(Signal[IO, Boolean](false))
       service   = new EventService[IO](topic, signal)
       _         <- Stream(
                     S.delay(Stream.eval(signal.set(true)), 15.seconds),
@@ -117,7 +117,7 @@ class PubSub extends IOApp {
 
 ### Shared Resource
 
-When multiple processes try to access a precious resource you might want to constraint the number of accesses. Here is where `fs2.async.mutable.Semaphore[F]` comes in useful.
+When multiple processes try to access a precious resource you might want to constraint the number of accesses. Here is where `cats.effect.concurrent.Semaphore[F]` comes in useful.
 
 Three processes are trying to access a shared resource at the same time but only one at a time will be granted access and the next process have to wait until the resource gets available again (availability is one as indicated by the semaphore counter).
 
@@ -148,7 +148,7 @@ Finally, R3 was done showing an availability of one once again.
 import cats.effect.{Concurrent, ExitCode, IO, IOApp}
 import cats.effect.concurrent.Semaphore
 import cats.syntax.functor._
-import fs2.{Stream, async}
+import fs2.Stream
 
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration._

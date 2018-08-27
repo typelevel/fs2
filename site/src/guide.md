@@ -287,7 +287,7 @@ Otherwise, we return a function which processes the next chunk in the stream. Th
 Sometimes, `scanChunksOpt` isn't powerful enough to express the stream transformation. Regardless of how complex the job, the `fs2.Pull` type can usually express it.
 
 The `Pull[+F[_],+O,+R]` type represents a program that may pull values from one or more streams, write _output_ of type `O`, and return a _result_ of type `R`. It forms a monad in `R` and comes equipped with lots of other useful operations. See the
-[`Pull` class](https://github.com/functional-streams-for-scala/fs2/blob/series/0.10/core/shared/src/main/scala/fs2/Pull.scala)
+[`Pull` class](https://github.com/functional-streams-for-scala/fs2/blob/series/1.0/core/shared/src/main/scala/fs2/Pull.scala)
 for the full set of operations on `Pull`.
 
 Let's look at an implementation of `take` using `Pull`:
@@ -350,7 +350,7 @@ s2.toList
 FS2 takes care to guarantee that any resources allocated by the `Pull` are released when the stream completes. Note again that _nothing happens_ when we call `.stream` on a `Pull`, it is merely converting back to the `Stream` API.
 
 There are lots of useful transformation functions in
-[`Stream`](https://github.com/functional-streams-for-scala/fs2/blob/series/0.10/core/shared/src/main/scala/fs2/Stream.scala)
+[`Stream`](https://github.com/functional-streams-for-scala/fs2/blob/series/1.0/core/shared/src/main/scala/fs2/Stream.scala)
 built using the `Pull` type.
 
 ### Exercises
@@ -483,9 +483,7 @@ val c = new Connection {
   }
 }
 
-// Concurrent extends both Sync and Async
-val T = cats.effect.Concurrent[IO]
-val bytes = T.async[Array[Byte]] { (cb: Either[Throwable,Array[Byte]] => Unit) =>
+val bytes = cats.effect.Async[IO].async[Array[Byte]] { (cb: Either[Throwable,Array[Byte]] => Unit) =>
   c.readBytesE(cb)
 }
 
@@ -493,20 +491,20 @@ Stream.eval(bytes).map(_.toList).compile.toVector.unsafeRunSync()
 ```
 
 Be sure to check out the
-[`fs2.io`](https://github.com/functional-streams-for-scala/fs2/tree/series/0.10/io/)
+[`fs2.io`](https://github.com/functional-streams-for-scala/fs2/tree/series/1.0/io/)
 package which has nice FS2 bindings to Java NIO libraries, using exactly this approach.
 
 #### Asynchronous effects (callbacks invoked multiple times)
 
 The nice thing about callback-y APIs that invoke their callbacks once is that throttling/back-pressure can be handled within FS2 itself. If you don't want more values, just don't read them, and they won't be produced! But sometimes you'll be dealing with a callback-y API which invokes callbacks you provide it _more than once_. Perhaps it's a streaming API of some sort and it invokes your callback whenever new data is available. In these cases, you can use an asynchronous queue to broker between the nice stream processing world of FS2 and the external API, and use whatever ad hoc mechanism that API provides for throttling of the producer.
 
-_Note:_ Some of these APIs don't provide any means of throttling the producer, in which case you either have accept possibly unbounded memory usage (if the producer and consumer operate at very different rates), or use blocking concurrency primitives like `fs2.async.boundedQueue` or the primitives in `java.util.concurrent`.
+_Note:_ Some of these APIs don't provide any means of throttling the producer, in which case you either have accept possibly unbounded memory usage (if the producer and consumer operate at very different rates), or use blocking concurrency primitives like `fs2.concurrent.Queue.bounded` or the primitives in `java.util.concurrent`.
 
 Let's look at a complete example:
 
 ```tut:book:reset
 import fs2._
-import fs2.async
+import fs2.concurrent._
 import cats.effect.{ConcurrentEffect, ContextShift, IO}
 
 type Row = List[String]
@@ -517,21 +515,21 @@ trait CSVHandle {
 
 def rows[F[_]](h: CSVHandle)(implicit F: ConcurrentEffect[F], cs: ContextShift[F]): Stream[F,Row] =
   for {
-    q <- Stream.eval(async.unboundedQueue[F,Either[Throwable,Row]])
-    _ <-  Stream.eval { F.delay(h.withRows(e => async.unsafeRunAsync(q.enqueue1(e))(_ => IO.unit))) }
+    q <- Stream.eval(Queue.unbounded[F,Either[Throwable,Row]])
+    _ <-  Stream.eval { F.delay(h.withRows(e => F.runAsync(q.enqueue1(e))(_ => IO.unit).unsafeRunSync)) }
     row <- q.dequeue.rethrow
   } yield row
 ```
 
-See [`Queue`](https://github.com/functional-streams-for-scala/fs2/blob/series/0.10/core/shared/src/main/scala/fs2/async/mutable/Queue.scala)
-for more useful methods. All asynchronous queues in FS2 track their size, which is handy for implementing size-based throttling of the producer.
+See [`Queue`](https://github.com/functional-streams-for-scala/fs2/blob/series/1.0/core/shared/src/main/scala/fs2/concurrent/Queue.scala)
+for more useful methods. Most concurrent queues in FS2 support tracking their size, which is handy for implementing size-based throttling of the producer.
 
 ### Learning more
 
 Want to learn more?
 
 * Worked examples: these present a nontrivial example of use of the library, possibly making use of lots of different library features.
-  * [The README example](https://github.com/functional-streams-for-scala/fs2/blob/series/0.10/docs/ReadmeExample.md)
+  * [The README example](https://github.com/functional-streams-for-scala/fs2/blob/series/1.0/docs/ReadmeExample.md)
   * More contributions welcome! Open a PR, following the style of one of the examples above. You can either start with a large block of code and break it down line by line, or work up to something more complicated using some smaller bits of code first.
 * Detailed coverage of different modules in the library:
   * File I/O

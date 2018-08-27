@@ -4,7 +4,7 @@ package io
 import java.net.{InetSocketAddress, NetworkInterface, ProtocolFamily, StandardSocketOptions}
 import java.nio.channels.DatagramChannel
 
-import cats.effect.{ContextShift, Effect, Resource}
+import cats.effect.{ConcurrentEffect, Resource}
 import cats.implicits._
 
 /** Provides support for UDP networking. */
@@ -33,9 +33,7 @@ package object udp {
       multicastInterface: Option[NetworkInterface] = None,
       multicastTTL: Option[Int] = None,
       multicastLoopback: Boolean = true
-  )(implicit AG: AsynchronousSocketGroup,
-    F: Effect[F],
-    cs: ContextShift[F]): Resource[F, Socket[F]] = {
+  )(implicit AG: AsynchronousSocketGroup, F: ConcurrentEffect[F]): Resource[F, Socket[F]] = {
     val mkChannel = F.delay {
       val channel = protocolFamily
         .map { pf =>

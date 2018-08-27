@@ -58,8 +58,7 @@ package object tcp {
                    reuseAddress: Boolean = true,
                    receiveBufferSize: Int = 256 * 1024)(
       implicit AG: AsynchronousChannelGroup,
-      F: ConcurrentEffect[F],
-      cs: ContextShift[F]
+      F: ConcurrentEffect[F]
   ): Stream[F, Resource[F, Socket[F]]] =
     serverWithLocalAddress(bind, maxQueued, reuseAddress, receiveBufferSize)
       .collect { case Right(s) => s }
@@ -74,8 +73,7 @@ package object tcp {
                                    reuseAddress: Boolean = true,
                                    receiveBufferSize: Int = 256 * 1024)(
       implicit AG: AsynchronousChannelGroup,
-      F: ConcurrentEffect[F],
-      cs: ContextShift[F]
+      F: ConcurrentEffect[F]
   ): Stream[F, Either[InetSocketAddress, Resource[F, Socket[F]]]] =
     Socket.server(bind, maxQueued, reuseAddress, receiveBufferSize)
 }

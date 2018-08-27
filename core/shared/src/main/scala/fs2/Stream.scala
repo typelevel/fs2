@@ -5,6 +5,7 @@ import cats.data.NonEmptyList
 import cats.effect._
 import cats.effect.concurrent._
 import cats.implicits.{catsSyntaxEither => _, _}
+import fs2.concurrent.{Queue, Signal, SignallingRef}
 import fs2.internal.FreeC.Result
 import fs2.internal._
 
@@ -344,7 +345,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * scala> import cats.effect.{ContextShift, IO}
     * scala> implicit val cs: ContextShift[IO] = IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
     * scala> val data: Stream[IO,Int] = Stream.range(1, 10).covary[IO]
-    * scala> Stream.eval(async.signalOf[IO,Int](0)).flatMap(s => Stream(s).concurrently(data.evalMap(s.set))).flatMap(_.discrete).takeWhile(_ < 9, true).compile.last.unsafeRunSync
+    * scala> Stream.eval(fs2.concurrent.SignallingRef[IO,Int](0)).flatMap(s => Stream(s).concurrently(data.evalMap(s.set))).flatMap(_.discrete).takeWhile(_ < 9, true).compile.last.unsafeRunSync
     * res0: Option[Int] = Some(9)
     * }}}
     */
@@ -451,7 +452,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
         lastOpt.map(Pull.output1(_)).getOrElse(Pull.done).stream
       }
 
-    Stream.eval(async.boundedQueue[F2, Option[O]](1)).flatMap { queue =>
+    Stream.eval(Queue.bounded[F2, Option[O]](1)).flatMap { queue =>
       Stream.eval(Ref.of[F2, Option[O]](None)).flatMap { ref =>
         def enqueueLatest: F2[Unit] =
           ref.modify(s => None -> s).flatMap {
@@ -965,7 +966,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
       implicit timer: Timer[F2],
       F: Concurrent[F2]): Stream[F2, Chunk[O]] =
     Stream
-      .eval(async.mutable.Queue.synchronousNoneTerminated[F2, Either[Token, Chunk[O]]])
+      .eval(Queue.synchronousNoneTerminated[F2, Either[Token, Chunk[O]]])
       .flatMap { q =>
         def startTimeout: Stream[F2, Token] =
           Stream.eval(F.delay(new Token)).flatTap { t =>
@@ -1032,6 +1033,23 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * }}}
     */
   def head: Stream[F, O] = take(1)
+
+  /**
+    * Converts a discrete stream to a signal. Returns a single-element stream.
+    *
+    * Resulting signal is initially `initial`, and is updated with latest value
+    * produced by `source`. If the source stream is empty, the resulting signal
+    * will always be `initial`.
+    */
+  def hold[F2[x] >: F[x], O2 >: O](initial: O2)(
+      implicit F: Concurrent[F2]): Stream[F2, Signal[F2, O2]] =
+    Stream.eval(SignallingRef[F2, O2](initial)).flatMap { sig =>
+      Stream(sig).concurrently(evalMap(sig.set))
+    }
+
+  /** Like [[hold]] but does not require an initial value, and hence all output elements are wrapped in `Some`. */
+  def holdOption[F2[x] >: F[x]: Concurrent, O2 >: O]: Stream[F2, Signal[F2, Option[O2]]] =
+    map(Some(_): Option[O2]).hold(None)
 
   /**
     * Determinsitically interleaves elements, starting on the left, terminating when the end of either branch is reached naturally.
@@ -1103,8 +1121,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     interruptWhen(haltWhenTrue.get)
 
   /** Alias for `interruptWhen(haltWhenTrue.discrete)`. */
-  def interruptWhen[F2[x] >: F[x]: Concurrent](
-      haltWhenTrue: async.immutable.Signal[F2, Boolean]): Stream[F2, O] =
+  def interruptWhen[F2[x] >: F[x]: Concurrent](haltWhenTrue: Signal[F2, Boolean]): Stream[F2, O] =
     interruptWhen(haltWhenTrue.discrete)
 
   /**
@@ -1227,7 +1244,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     */
   def mapAsync[F2[x] >: F[x]: Concurrent, O2](parallelism: Int)(f: O => F2[O2]): Stream[F2, O2] =
     Stream
-      .eval(async.mutable.Queue.bounded[F2, Option[F2[Either[Throwable, O2]]]](parallelism))
+      .eval(Queue.bounded[F2, Option[F2[Either[Throwable, O2]]]](parallelism))
       .flatMap { queue =>
         queue.dequeue.unNoneTerminate
           .evalMap(identity)
@@ -1330,7 +1347,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
         Deferred[F2, Either[Throwable, Unit]].flatMap { resultL =>
           Deferred[F2, Either[Throwable, Unit]].flatMap { resultR =>
             Ref.of[F2, Boolean](false).flatMap { otherSideDone =>
-              async.unboundedQueue[F2, Option[Stream[F2, O2]]].map { resultQ =>
+              Queue.unbounded[F2, Option[Stream[F2, O2]]].map { resultQ =>
                 def runStream(tag: String,
                               s: Stream[F2, O2],
                               whenDone: Deferred[F2, Either[Throwable, Unit]]): F2[Unit] =
@@ -1469,12 +1486,11 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     val _ = (ev, ev2)
     val outer = this.asInstanceOf[Stream[F2, Stream[F2, O2]]]
     Stream.eval {
-      async.signalOf(None: Option[Option[Throwable]]).flatMap { done =>
+      SignallingRef(None: Option[Option[Throwable]]).flatMap { done =>
         Semaphore(maxOpen).flatMap { available =>
-          async
-            .signalOf(1l)
+          SignallingRef(1L)
             .flatMap { running => // starts with 1 because outer stream is running by default
-              async.mutable.Queue
+              Queue
                 .synchronousNoneTerminated[F2, Chunk[O2]]
                 .map { outputQ => // sync queue assures we won't overload heap when resulting stream is not able to catchup with inner streams
                   // stops the join evaluation
@@ -1581,25 +1597,23 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
   /** Like `interrupt` but resumes the stream when left branch goes to true. */
   def pauseWhen[F2[x] >: F[x]](pauseWhenTrue: Stream[F2, Boolean])(
       implicit F2: Concurrent[F2]): Stream[F2, O] =
-    async.hold[F2, Option[Boolean]](Some(false), pauseWhenTrue.noneTerminate).flatMap {
-      pauseSignal =>
-        def pauseIfNeeded: F2[Unit] =
-          pauseSignal.get.flatMap {
-            case Some(false) => F2.pure(())
-            case _           => pauseSignal.discrete.dropWhile(_.getOrElse(true)).take(1).compile.drain
-          }
+    pauseWhenTrue.noneTerminate.hold(Some(false)).flatMap { pauseSignal =>
+      def pauseIfNeeded: F2[Unit] =
+        pauseSignal.get.flatMap {
+          case Some(false) => F2.pure(())
+          case _           => pauseSignal.discrete.dropWhile(_.getOrElse(true)).take(1).compile.drain
+        }
 
-        chunks
-          .flatMap { chunk =>
-            Stream.eval(pauseIfNeeded) >>
-              Stream.chunk(chunk)
-          }
-          .interruptWhen(pauseSignal.discrete.map(_.isEmpty))
+      chunks
+        .flatMap { chunk =>
+          Stream.eval(pauseIfNeeded) >>
+            Stream.chunk(chunk)
+        }
+        .interruptWhen(pauseSignal.discrete.map(_.isEmpty))
     }
 
   /** Alias for `pauseWhen(pauseWhenTrue.discrete)`. */
-  def pauseWhen[F2[x] >: F[x]: Concurrent](
-      pauseWhenTrue: async.immutable.Signal[F2, Boolean]): Stream[F2, O] =
+  def pauseWhen[F2[x] >: F[x]: Concurrent](pauseWhenTrue: Signal[F2, Boolean]): Stream[F2, O] =
     pauseWhen(pauseWhenTrue.discrete)
 
   /** Alias for `prefetchN(1)`. */
@@ -1610,7 +1624,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * consumption, enabling processing on either side of the `prefetchN` to run in parallel.
     */
   def prefetchN[F2[x] >: F[x]: Concurrent](n: Int): Stream[F2, O] =
-    Stream.eval(async.boundedQueue[F2, Option[Chunk[O]]](n)).flatMap { queue =>
+    Stream.eval(Queue.bounded[F2, Option[Chunk[O]]](n)).flatMap { queue =>
       queue.dequeue.unNoneTerminate
         .flatMap(Stream.chunk(_))
         .concurrently(chunks.noneTerminate.covary[F2].to(queue.enqueue))
@@ -2788,8 +2802,8 @@ object Stream extends StreamLowPriority {
     /** Send chunks through `sink`, allowing up to `maxQueued` pending _chunks_ before blocking `s`. */
     def observeAsync(maxQueued: Int)(sink: Sink[F, O])(implicit F: Concurrent[F]): Stream[F, O] =
       Stream.eval(Semaphore[F](maxQueued - 1)).flatMap { guard =>
-        Stream.eval(async.unboundedQueue[F, Option[Chunk[O]]]).flatMap { outQ =>
-          Stream.eval(async.unboundedQueue[F, Option[Chunk[O]]]).flatMap { sinkQ =>
+        Stream.eval(Queue.unbounded[F, Option[Chunk[O]]]).flatMap { outQ =>
+          Stream.eval(Queue.unbounded[F, Option[Chunk[O]]]).flatMap { sinkQ =>
             def inputStream =
               self.chunks.noneTerminate.evalMap {
                 case Some(chunk) =>
