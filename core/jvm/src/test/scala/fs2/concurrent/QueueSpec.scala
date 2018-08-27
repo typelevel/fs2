@@ -85,7 +85,7 @@ class QueueSpec extends Fs2Spec {
       runLog(
         Stream.eval(
           for {
-            q <- Queue.unbounded[IO, Int]
+            q <- InspectableQueue.unbounded[IO, Int]
             f <- q.peek1.start
             g <- q.peek1.start
             _ <- q.enqueue1(42)
@@ -98,7 +98,7 @@ class QueueSpec extends Fs2Spec {
       runLog(
         Stream.eval(
           for {
-            q <- Queue.unbounded[IO, Int]
+            q <- InspectableQueue.unbounded[IO, Int]
             f <- q.peek1.product(q.dequeue1).start
             _ <- q.enqueue1(42)
             x <- f.join
@@ -114,7 +114,7 @@ class QueueSpec extends Fs2Spec {
       runLog(
         Stream.eval(
           for {
-            q <- Queue.bounded[IO, Int](maxSize = 1)
+            q <- InspectableQueue.bounded[IO, Int](maxSize = 1)
             f <- q.peek1.start
             g <- q.peek1.start
             _ <- q.enqueue1(42)
@@ -129,7 +129,7 @@ class QueueSpec extends Fs2Spec {
       runLog(
         Stream.eval(
           for {
-            q <- Queue.circularBuffer[IO, Int](maxSize = 1)
+            q <- InspectableQueue.circularBuffer[IO, Int](maxSize = 1)
             f <- q.peek1.start
             g <- q.peek1.start
             _ <- q.enqueue1(42)
@@ -139,34 +139,6 @@ class QueueSpec extends Fs2Spec {
             z <- q.peek1
           } yield List(b, x, y, z)
         )).flatten shouldBe Vector(true, 42, 42, 43)
-    }
-    "peek1 synchronous queue" in {
-      runLog(
-        Stream.eval(
-          for {
-            q <- Queue.synchronous[IO, Int]
-            f <- q.peek1.start
-            g <- q.peek1.start
-            _ <- q.enqueue1(42).start
-            x <- q.dequeue1
-            y <- f.join
-            z <- g.join
-          } yield List(x, y, z)
-        )).flatten shouldBe Vector(42, 42, 42)
-    }
-    "peek1 synchronous None-terminated queue" in {
-      runLog(
-        Stream.eval(
-          for {
-            q <- Queue.synchronousNoneTerminated[IO, Int]
-            f <- q.peek1.start
-            g <- q.peek1.start
-            _ <- q.enqueue1(None)
-            y <- f.join
-            z <- g.join
-            x <- q.dequeue1
-          } yield List(x, y, z)
-        )).flatten shouldBe Vector(None, None, None)
     }
   }
 }

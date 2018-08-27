@@ -3,7 +3,7 @@ package concurrent
 
 import cats.{Applicative, Functor, Invariant}
 import cats.data.{OptionT, State}
-import cats.effect.Concurrent
+import cats.effect.{Async, Concurrent}
 import cats.effect.concurrent.{Deferred, Ref}
 import cats.implicits._
 import fs2.internal.Token
@@ -34,7 +34,7 @@ trait Signal[F[_], A] {
 
 object Signal extends SignalLowPriorityImplicits {
 
-  def constant[F[_], A](a: A)(implicit F: Applicative[F]): Signal[F, A] =
+  def constant[F[_], A](a: A)(implicit F: Async[F]): Signal[F, A] =
     new Signal[F, A] {
       def get = F.pure(a)
       def continuous = Stream.constant(a)
@@ -46,7 +46,7 @@ object Signal extends SignalLowPriorityImplicits {
         * straightforward way would cause the (non-deterministically) zipped
         * stream to be empty.
         */
-      def discrete = Stream(a)
+      def discrete = Stream(a) ++ Stream.eval_(F.never)
     }
 
   implicit def applicativeInstance[F[_]](
