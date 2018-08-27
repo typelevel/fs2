@@ -17,8 +17,7 @@ import java.nio.channels.{
 import java.util.concurrent.TimeUnit
 
 import cats.implicits._
-import cats.effect.{ConcurrentEffect, ContextShift, IO, Resource}
-import cats.effect.implicits._
+import cats.effect.{ConcurrentEffect, Resource}
 import cats.effect.concurrent.{Ref, Semaphore}
 
 import fs2.Stream._
@@ -102,8 +101,7 @@ protected[tcp] object Socket {
       noDelay: Boolean
   )(
       implicit AG: AsynchronousChannelGroup,
-      F: ConcurrentEffect[F],
-      cs: ContextShift[F]
+      F: ConcurrentEffect[F]
   ): Resource[F, Socket[F]] = {
 
     def setup: F[AsynchronousSocketChannel] = F.delay {
@@ -124,9 +122,9 @@ protected[tcp] object Socket {
           null,
           new CompletionHandler[Void, Void] {
             def completed(result: Void, attachment: Void): Unit =
-              (cs.shift *> F.delay(cb(Right(ch)))).runAsync(_ => IO.unit).unsafeRunSync
+              invokeCallback(cb(Right(ch)))
             def failed(rsn: Throwable, attachment: Void): Unit =
-              (cs.shift *> F.delay(cb(Left(rsn)))).runAsync(_ => IO.unit).unsafeRunSync
+              invokeCallback(cb(Left(rsn)))
           }
         )
       }
