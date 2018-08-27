@@ -4,6 +4,7 @@ import scala.concurrent.Future
 import scala.concurrent.duration._
 import cats.effect.IO
 import cats.implicits._
+import fs2.concurrent.Queue
 
 class StreamCancelationSpec extends AsyncFs2Spec {
   def startAndCancelSoonAfter[A](fa: IO[A]): IO[Unit] =

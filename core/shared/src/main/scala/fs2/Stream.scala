@@ -966,7 +966,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
       implicit timer: Timer[F2],
       F: Concurrent[F2]): Stream[F2, Chunk[O]] =
     Stream
-      .eval(async.mutable.Queue.synchronousNoneTerminated[F2, Either[Token, Chunk[O]]])
+      .eval(Queue.synchronousNoneTerminated[F2, Either[Token, Chunk[O]]])
       .flatMap { q =>
         def startTimeout: Stream[F2, Token] =
           Stream.eval(F.delay(new Token)).flatTap { t =>
