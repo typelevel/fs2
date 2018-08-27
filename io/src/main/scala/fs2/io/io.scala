@@ -1,6 +1,7 @@
 package fs2
 
-import cats.effect.{ConcurrentEffect, ContextShift, Sync}
+import cats.effect.{ConcurrentEffect, ContextShift, IO, Sync}
+
 import cats.implicits._
 import java.io.{InputStream, OutputStream}
 import scala.concurrent.{ExecutionContext, blocking}
@@ -133,8 +134,10 @@ package object io {
     * Note that the implementation is not thread safe -- only one thread is allowed at any time
     * to operate on the resulting `java.io.InputStream`.
     */
-  def toInputStream[F[_]](implicit F: ConcurrentEffect[F],
-                          cs: ContextShift[F]): Pipe[F, Byte, InputStream] =
+  def toInputStream[F[_]](implicit F: ConcurrentEffect[F]): Pipe[F, Byte, InputStream] =
     JavaInputOutputStream.toInputStream
+
+  private[io] def invokeCallback[F[_]](f: => Unit)(implicit F: ConcurrentEffect[F]): Unit =
+    F.runAsync(F.start(F.delay(f)).flatMap(_.join))(_ => IO.unit).unsafeRunSync
 
 }

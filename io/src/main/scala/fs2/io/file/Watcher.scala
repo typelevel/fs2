@@ -9,6 +9,7 @@ import cats.implicits._
 import java.nio.file._
 import java.nio.file.attribute.BasicFileAttributes
 import java.util.concurrent.TimeUnit
+import fs2.concurrent.Signal
 
 /**
   * Allows watching the file system for changes to directories and files by using the platform's `WatchService`.
@@ -143,13 +144,12 @@ object Watcher {
 
   /** Creates a watcher for the supplied NIO `WatchService`. */
   def fromWatchService[F[_]](ws: WatchService)(implicit F: Concurrent[F]): F[Watcher[F]] =
-    async
-      .signalOf[F, Map[WatchKey, Registration[F]]](Map.empty)
+    Signal[F, Map[WatchKey, Registration[F]]](Map.empty)
       .map(new DefaultWatcher(ws, _))
 
   private class DefaultWatcher[F[_]](
       ws: WatchService,
-      registrations: async.mutable.Signal[F, Map[WatchKey, Registration[F]]])(implicit F: Sync[F])
+      registrations: Signal[F, Map[WatchKey, Registration[F]]])(implicit F: Sync[F])
       extends Watcher[F] {
 
     private def isDir(p: Path): F[Boolean] = F.delay(Files.isDirectory(p))

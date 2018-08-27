@@ -1,6 +1,5 @@
 package fs2
-package async
-package mutable
+package concurrent
 
 import cats.effect.Concurrent
 import cats.effect.concurrent.{Deferred, Ref}
@@ -64,7 +63,7 @@ abstract class Topic[F[_], A] { self =>
   /**
     * Signal of current active subscribers.
     */
-  def subscribers: fs2.async.immutable.Signal[F, Int]
+  def subscribers: ReadableSignal[F, Int]
 
   /**
     * Returns an alternate view of this `Topic` where its elements are of type `B`,
@@ -76,7 +75,7 @@ abstract class Topic[F[_], A] { self =>
       def publish1(b: B): F[Unit] = self.publish1(g(b))
       def subscribe(maxQueued: Int): Stream[F, B] =
         self.subscribe(maxQueued).map(f)
-      def subscribers: fs2.async.immutable.Signal[F, Int] = self.subscribers
+      def subscribers: ReadableSignal[F, Int] = self.subscribers
       def subscribeSize(maxQueued: Int): Stream[F, (B, Int)] =
         self.subscribeSize(maxQueued).map { case (a, i) => f(a) -> i }
     }
@@ -99,10 +98,10 @@ object Topic {
     Ref
       .of[F, (A, Vector[Subscriber])]((initial, Vector.empty[Subscriber]))
       .flatMap { state =>
-        async.signalOf[F, Int](0).map { subSignal =>
+        Signal[F, Int](0).map { subSignal =>
           def mkSubscriber(maxQueued: Int): F[Subscriber] =
             for {
-              q <- async.boundedQueue[F, A](maxQueued)
+              q <- InspectableQueue.bounded[F, A](maxQueued)
               firstA <- Deferred[F, A]
               done <- Deferred[F, Boolean]
               sub = new Subscriber {

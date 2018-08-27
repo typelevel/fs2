@@ -1,5 +1,5 @@
 package fs2
-package async
+package concurrent
 
 import java.util.concurrent.atomic.AtomicLong
 
@@ -18,7 +18,7 @@ class SignalSpec extends Fs2Spec {
         val vs = vs0.map { n =>
           if (n == 0) 1 else n
         }
-        val s = async.signalOf[IO, Long](0L).unsafeRunSync()
+        val s = Signal[IO, Long](0L).unsafeRunSync()
         val r = new AtomicLong(0)
         (IO.shift *> s.discrete.map(r.set).compile.drain).unsafeToFuture()
         assert(vs.forall { v =>
@@ -37,7 +37,7 @@ class SignalSpec extends Fs2Spec {
       // verifies that discrete always receives the most recent value, even when updates occur rapidly
       forAll { (v0: Long, vsTl: List[Long]) =>
         val vs = v0 :: vsTl
-        val s = async.signalOf[IO, Long](0L).unsafeRunSync()
+        val s = Signal[IO, Long](0L).unsafeRunSync()
         val r = new AtomicLong(0)
         (IO.shift *> s.discrete
           .map { i =>
@@ -55,7 +55,7 @@ class SignalSpec extends Fs2Spec {
     }
 
     "holdOption" in {
-      runLog(async.holdOption(Stream.range(1, 10).covary[IO]))
+      runLog(Stream.range(1, 10).covary[IO].holdOption)
     }
   }
 
@@ -77,10 +77,9 @@ class SignalSpec extends Fs2Spec {
     * value, since the last get just gets overwritten with a None. So we use
     * this instead.
     */
-  private def unsafeHold[F[_]: Sync, A](initial: A,
-                                        source: Stream[F, A]): F[immutable.Signal[F, A]] =
+  private def unsafeHold[F[_]: Sync, A](initial: A, source: Stream[F, A]): F[ReadableSignal[F, A]] =
     Ref.of[F, A](initial).map { ref =>
-      new immutable.Signal[F, A] {
+      new ReadableSignal[F, A] {
         override def discrete: Stream[F, A] =
           Stream(initial) ++ source.evalTap(ref.set)
 
@@ -94,7 +93,7 @@ class SignalSpec extends Fs2Spec {
     * In order to generate a Signal we have to effectfully run a stream so we
     * need an unsafeRunSync here.
     */
-  private implicit def unsafeSignalArbitrary[A: Arbitrary]: Arbitrary[immutable.Signal[IO, A]] = {
+  private implicit def unsafeSignalArbitrary[A: Arbitrary]: Arbitrary[ReadableSignal[IO, A]] = {
     val gen = for {
       firstElem <- Arbitrary.arbitrary[A]
       finiteElems <- Arbitrary.arbitrary[List[A]]
@@ -105,7 +104,7 @@ class SignalSpec extends Fs2Spec {
     Arbitrary(gen.map(_.unsafeRunSync()))
   }
 
-  private type SignalIO[A] = immutable.Signal[IO, A]
+  private type ReadableSignalIO[A] = ReadableSignal[IO, A]
 
   /**
     * We need an instance of Eq for the Discipline laws to work, but actually
@@ -132,39 +131,40 @@ class SignalSpec extends Fs2Spec {
     * element of the discrete stream instead of doing some time-based wait for
     * the Signal to settle.
     */
-  private implicit def unsafeSignalEquality[A: Eq]: Eq[SignalIO[A]] = new Eq[SignalIO[A]] {
-    override def eqv(x: SignalIO[A], y: SignalIO[A]): Boolean = {
-      val action = for {
-        lastDiscreteX <- x.discrete.compile.last.map(_.get)
-        lastDiscreteY <- y.discrete.compile.last.map(_.get)
-        retrievedX <- x.get
-        retrievedY <- y.get
-        aContinuousX <- x.continuous.head.compile.last.map(_.get)
-        aContinuousY <- y.continuous.head.compile.last.map(_.get)
-      } yield {
-        val lastDiscretesAreSame = Eq[A].eqv(lastDiscreteX, lastDiscreteY)
-        val lastGetsAreTheSame = Eq[A].eqv(retrievedX, retrievedY)
-        val continuousAfterGetIsTheSame = Eq[A].eqv(aContinuousX, aContinuousY)
-        val lastDiscreteAgreesWithGet = Eq[A].eqv(lastDiscreteX, retrievedX)
-        val continuousAfterGetAgreesWithGet = Eq[A].eqv(aContinuousX, retrievedX)
+  private implicit def unsafeSignalEquality[A: Eq]: Eq[ReadableSignalIO[A]] =
+    new Eq[ReadableSignalIO[A]] {
+      override def eqv(x: ReadableSignalIO[A], y: ReadableSignalIO[A]): Boolean = {
+        val action = for {
+          lastDiscreteX <- x.discrete.compile.last.map(_.get)
+          lastDiscreteY <- y.discrete.compile.last.map(_.get)
+          retrievedX <- x.get
+          retrievedY <- y.get
+          aContinuousX <- x.continuous.head.compile.last.map(_.get)
+          aContinuousY <- y.continuous.head.compile.last.map(_.get)
+        } yield {
+          val lastDiscretesAreSame = Eq[A].eqv(lastDiscreteX, lastDiscreteY)
+          val lastGetsAreTheSame = Eq[A].eqv(retrievedX, retrievedY)
+          val continuousAfterGetIsTheSame = Eq[A].eqv(aContinuousX, aContinuousY)
+          val lastDiscreteAgreesWithGet = Eq[A].eqv(lastDiscreteX, retrievedX)
+          val continuousAfterGetAgreesWithGet = Eq[A].eqv(aContinuousX, retrievedX)
 
-        lastDiscretesAreSame &&
-        lastGetsAreTheSame &&
-        continuousAfterGetIsTheSame &&
-        lastDiscreteAgreesWithGet &&
-        continuousAfterGetAgreesWithGet
+          lastDiscretesAreSame &&
+          lastGetsAreTheSame &&
+          continuousAfterGetIsTheSame &&
+          lastDiscreteAgreesWithGet &&
+          continuousAfterGetAgreesWithGet
+        }
+        action.unsafeRunSync()
       }
-      action.unsafeRunSync()
     }
-  }
 
   checkAll(
-    "immutable.Signal (stand-alone functor instance)",
-    FunctorTests[SignalIO](immutable.Signal.functorInstance).functor[String, Int, Double]
+    "ReadableSignal (stand-alone functor instance)",
+    FunctorTests[ReadableSignalIO](ReadableSignal.functorInstance).functor[String, Int, Double]
   )
 
   checkAll(
-    "immutable.Signal",
-    ApplicativeTests[SignalIO].applicative[String, Int, Double]
+    "ReadableSignal",
+    ApplicativeTests[ReadableSignalIO].applicative[String, Int, Double]
   )
 }

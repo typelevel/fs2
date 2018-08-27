@@ -1,7 +1,7 @@
 package fs2
 
 import cats.effect.Concurrent
-import fs2.async.mutable.Queue
+import fs2.concurrent.{Queue, Signal}
 
 object Pipe {
 
@@ -10,7 +10,7 @@ object Pipe {
       implicit F: Concurrent[F]): Pipe[F, A, B] =
     in => {
       for {
-        done <- Stream.eval(async.signalOf(false))
+        done <- Stream.eval(Signal(false))
         q <- Stream.eval(q)
         b <- in.chunks
           .map(Some(_))
@@ -29,7 +29,7 @@ object Pipe {
   /** Asynchronous version of [[join]] that queues up to `maxQueued` elements. */
   def joinAsync[F[_]: Concurrent, A, B](maxQueued: Int)(
       s: Stream[F, Pipe[F, A, B]]): Pipe[F, A, B] =
-    joinQueued[F, A, B](async.boundedQueue(maxQueued))(s)
+    joinQueued[F, A, B](Queue.bounded(maxQueued))(s)
 
   /**
     * Joins a stream of pipes in to a single pipe.
@@ -37,5 +37,5 @@ object Pipe {
     * fed to the second pipe, and so on.
     */
   def join[F[_]: Concurrent, A, B](s: Stream[F, Pipe[F, A, B]]): Pipe[F, A, B] =
-    joinQueued[F, A, B](async.synchronousQueue)(s)
+    joinQueued[F, A, B](Queue.synchronous)(s)
 }
