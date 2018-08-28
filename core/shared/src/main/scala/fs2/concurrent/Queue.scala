@@ -55,12 +55,6 @@ trait Dequeue[F[_], A] {
   def dequeueAvailable: Stream[F, A] =
     Stream.constant(Int.MaxValue).covary[F].through(dequeueBatch)
 
-  /**
-    * Returns the element which would be dequeued next,
-    * but without removing it. Completes when such an
-    * element is available.
-    */
-  def peek1: F[A]
 }
 
 /**
@@ -85,7 +79,6 @@ trait Queue[F[_], A] extends Enqueue[F, A] with Dequeue[F, A] { self =>
         self.dequeueBatch1(batchSize).map(_.map(f))
       def dequeueBatch: Pipe[F, Int, B] =
         in => self.dequeueBatch(in).map(f)
-      def peek1: F[B] = self.peek1.map(f)
     }
 }
 
@@ -185,30 +178,6 @@ object Queue {
         }.flatten
       }
 
-    def peek1: F[A] =
-      Deferred[F, A].flatMap { d =>
-        qref.modify { state =>
-          val newState =
-            if (state.queue.isEmpty && state.peek.isEmpty)
-              state.copy(peek = Some(d))
-            else state
-
-          val cleanup = qref.update { state =>
-            if (state.peek == Some(d)) state.copy(peek = None) else state
-          }
-
-          val peekAction =
-            state.queue.headOption.map(_.pure[F]).getOrElse {
-              F.guaranteeCase(newState.peek.get.get) {
-                case ExitCase.Completed => F.unit
-                case ExitCase.Error(t)  => cleanup *> F.raiseError(t)
-                case ExitCase.Canceled  => cleanup *> F.unit
-              }
-            }
-
-          newState -> peekAction
-        }.flatten
-      }
   }
 
   /** Creates a queue with the specified size bound. */
@@ -236,7 +205,6 @@ object Queue {
     def dequeueBatch: Pipe[F, Int, A] =
       q.dequeueBatch.andThen(_.chunks.flatMap(c =>
         Stream.eval(permits.releaseN(c.size)).flatMap(_ => Stream.chunk(c))))
-    def peek1: F[A] = q.peek1
   }
 
   /** Creates a queue which stores the last `maxSize` enqueued elements and which never blocks on enqueue. */
@@ -264,7 +232,6 @@ object Queue {
     def dequeueBatch: Pipe[F, Int, A] =
       q.dequeueBatch.andThen(_.chunks.flatMap(c =>
         Stream.eval(permits.releaseN(c.size)).flatMap(_ => Stream.chunk(c))))
-    def peek1: F[A] = q.peek1
   }
 
   /** Creates a queue which allows a single element to be enqueued at any time. */
@@ -303,7 +270,6 @@ object Queue {
       in =>
         loop(q.dequeueBatch(in)).stream
     }
-    def peek1: F[A] = q.peek1
   }
 
   /** Like [[synchronous]], except that an enqueue or offer of `None` will never block. */
@@ -364,11 +330,17 @@ object Queue {
       in =>
         loop(q.dequeueBatch(in)).stream
     }
-    def peek1: F[Option[A]] = q.peek1
   }
 }
 
 trait InspectableQueue[F[_], A] extends Queue[F, A] {
+
+  /**
+    * Returns the element which would be dequeued next,
+    * but without removing it. Completes when such an
+    * element is available.
+    */
+  def peek1: F[A]
 
   /**
     * The time-varying size of this `Queue`. This signal refreshes
@@ -416,6 +388,31 @@ object InspectableQueue {
 
         def available: Signal[F, Int] =
           Signal.constant[F, Int](Int.MaxValue)
+
+        def peek1: F[A] =
+          Deferred[F, A].flatMap { d =>
+            qref.modify { state =>
+              val newState =
+                if (state.queue.isEmpty && state.peek.isEmpty)
+                  state.copy(peek = Some(d))
+                else state
+
+              val cleanup = qref.update { state =>
+                if (state.peek == Some(d)) state.copy(peek = None) else state
+              }
+
+              val peekAction =
+                state.queue.headOption.map(_.pure[F]).getOrElse {
+                  F.guaranteeCase(newState.peek.get.get) {
+                    case ExitCase.Completed => F.unit
+                    case ExitCase.Error(t)  => cleanup *> F.raiseError(t)
+                    case ExitCase.Canceled  => cleanup *> F.unit
+                  }
+                }
+
+              newState -> peekAction
+            }.flatten
+          }
       }
 
   /** Creates a queue with the specified size bound. */
@@ -429,6 +426,7 @@ object InspectableQueue {
         def size = q.size
         def full: Signal[F, Boolean] = q.size.map(_ >= maxSize)
         def available: Signal[F, Int] = q.size.map(maxSize - _)
+        def peek1: F[A] = q.peek1
       }
 
   /** Creates a queue which stores the last `maxSize` enqueued elements and which never blocks on enqueue. */
@@ -442,5 +440,6 @@ object InspectableQueue {
         def size = q.size
         def full: Signal[F, Boolean] = q.size.map(_ >= maxSize)
         def available: Signal[F, Int] = q.size.map(maxSize - _)
+        def peek1: F[A] = q.peek1
       }
 }
