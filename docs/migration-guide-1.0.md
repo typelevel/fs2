@@ -45,11 +45,12 @@ Some of the data types from the old `fs2.async` package have moved to `cats.effe
 |`fs2.async.refOf[F, A](a)`|`cats.effect.concurrent.Ref.of[F, A](a)`|
 |`r.setSync(a)`|`r.set(a)`|
 |`r.setAsync(a)`|`r.lazySet(a)`|
-|`r.modify(f)`|`r.update(f)`|Returns `F[Unit]` instead of `F[Change[A]]`|
+|`r.modify(f)`|`r.update(f)`|Returns `F[Unit]` instead of `F[Change[A]]`. See below for notes.|
 |`r.modify2(f)`|`r.modify(f)`|Returns `F[B]` isntead of `F[(Change[A], B)]`|
 |`r.tryModify(f)`|`r.tryUpdate(f)`|Returns `F[Boolean]` instead of `F[Option[Change[A]]]`|
 |`r.tryModify2(f)`|`r.tryModify(f)`|Returns `F[Option[B]]` instead of `F[Option[(Change[A], B)]]`|
 
+Note: `modify`'s signature has changed, so if you want to extract the value before or after the change, you can do it explicitly - `modify`'s argument is now `f: A => (A, B)`, so to apply a change `g: A => B` and get the value before you can do `modify(a => (g(a), a)`. To get both values (before and after), you can do e.g. `modify(a => (g(a), (a, g(a)))`.
 
 #### Deferred
 
