@@ -110,6 +110,7 @@ If you have a project you'd like to include in this list, either open a PR or le
 * [doobie](https://github.com/tpolecat/doobie): Pure functional JDBC built on fs2.
 * [fs2-blobstore](https://github.com/lendup/fs2-blobstore): Minimal, idiomatic, stream-based Scala interface for key/value store implementations.
 * [fs2-cassandra](https://github.com/Spinoco/fs2-cassandra): Cassandra bindings for fs2.
+* [fs2-cron](https://github.com/fthomas/fs2-cron): FS2 streams based on cron expressions.
 * [fs2-crypto](https://github.com/Spinoco/fs2-crypto): TLS support for fs2.
 * [fs2-elastic](https://github.com/amarrella/fs2-elastic): Simple client for Elasticsearch.
 * [fs2-grpc](https://github.com/fiadliel/fs2-grpc): gRPC implementation for FS2 / Cats Effect.
