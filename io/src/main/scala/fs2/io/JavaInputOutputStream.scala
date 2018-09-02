@@ -5,17 +5,16 @@ import scala.concurrent.{SyncVar, blocking}
 
 import java.io.{IOException, InputStream}
 
-import cats.effect.{ConcurrentEffect, ContextShift, ExitCase, IO}
+import cats.effect.{ConcurrentEffect, ExitCase, IO}
+import cats.effect.implicits._
 import cats.implicits.{catsSyntaxEither => _, _}
 
 import fs2.Chunk.Bytes
-import fs2.async.mutable
-import fs2.internal.Canceled
+import fs2.concurrent.{Queue, SignallingRef}
 
 private[io] object JavaInputOutputStream {
 
-  def toInputStream[F[_]](implicit F: ConcurrentEffect[F],
-                          cs: ContextShift[F]): Pipe[F, Byte, InputStream] = {
+  def toInputStream[F[_]](implicit F: ConcurrentEffect[F]): Pipe[F, Byte, InputStream] = {
 
     /** See Implementation notes at the end of this code block **/
     /** state of the upstream, we only indicate whether upstream is done and if it failed **/
@@ -38,9 +37,9 @@ private[io] object JavaInputOutputStream {
       */
     def processInput(
         source: Stream[F, Byte],
-        queue: mutable.Queue[F, Either[Option[Throwable], Bytes]],
-        upState: mutable.Signal[F, UpStreamState],
-        dnState: mutable.Signal[F, DownStreamState]
+        queue: Queue[F, Either[Option[Throwable], Bytes]],
+        upState: SignallingRef[F, UpStreamState],
+        dnState: SignallingRef[F, DownStreamState]
     ): Stream[F, Unit] =
       Stream
         .eval(F.start {
@@ -58,7 +57,7 @@ private[io] object JavaInputOutputStream {
           ) {
             case ExitCase.Completed => markUpstreamDone(None)
             case ExitCase.Error(t)  => markUpstreamDone(Some(t))
-            case ExitCase.Canceled  => markUpstreamDone(Some(Canceled))
+            case ExitCase.Canceled  => markUpstreamDone(None)
           }
         })
         .map(_ => ())
@@ -69,13 +68,11 @@ private[io] object JavaInputOutputStream {
       * releases any resources that upstream may hold.
       */
     def closeIs(
-        upState: mutable.Signal[F, UpStreamState],
-        dnState: mutable.Signal[F, DownStreamState]
+        upState: SignallingRef[F, UpStreamState],
+        dnState: SignallingRef[F, DownStreamState]
     ): Unit = {
       val done = new SyncVar[Either[Throwable, Unit]]
-      async.unsafeRunAsync(close(upState, dnState)) { r =>
-        IO(done.put(r))
-      }
+      close(upState, dnState).start.flatMap(_.join).runAsync(r => IO(done.put(r))).unsafeRunSync
       blocking(done.get.fold(throw _, identity))
     }
 
@@ -90,11 +87,14 @@ private[io] object JavaInputOutputStream {
         dest: Array[Byte],
         off: Int,
         len: Int,
-        queue: mutable.Queue[F, Either[Option[Throwable], Bytes]],
-        dnState: mutable.Signal[F, DownStreamState]
+        queue: Queue[F, Either[Option[Throwable], Bytes]],
+        dnState: SignallingRef[F, DownStreamState]
     ): Int = {
       val sync = new SyncVar[Either[Throwable, Int]]
-      async.unsafeRunAsync(readOnce(dest, off, len, queue, dnState))(r => IO(sync.put(r)))
+      readOnce(dest, off, len, queue, dnState).start
+        .flatMap(_.join)
+        .runAsync(r => IO(sync.put(r)))
+        .unsafeRunSync
       blocking(sync.get.fold(throw _, identity))
     }
 
@@ -108,8 +108,8 @@ private[io] object JavaInputOutputStream {
       *
       */
     def readIs1(
-        queue: mutable.Queue[F, Either[Option[Throwable], Bytes]],
-        dnState: mutable.Signal[F, DownStreamState]
+        queue: Queue[F, Either[Option[Throwable], Bytes]],
+        dnState: SignallingRef[F, DownStreamState]
     ): Int = {
 
       def go(acc: Array[Byte]): F[Int] =
@@ -120,7 +120,7 @@ private[io] object JavaInputOutputStream {
         }
 
       val sync = new SyncVar[Either[Throwable, Int]]
-      async.unsafeRunAsync(go(new Array[Byte](1)))(r => IO(sync.put(r)))
+      go(new Array[Byte](1)).start.flatMap(_.join).runAsync(r => IO(sync.put(r))).unsafeRunSync
       blocking(sync.get.fold(throw _, identity))
     }
 
@@ -128,8 +128,8 @@ private[io] object JavaInputOutputStream {
         dest: Array[Byte],
         off: Int,
         len: Int,
-        queue: mutable.Queue[F, Either[Option[Throwable], Bytes]],
-        dnState: mutable.Signal[F, DownStreamState]
+        queue: Queue[F, Either[Option[Throwable], Bytes]],
+        dnState: SignallingRef[F, DownStreamState]
     ): F[Int] = {
       // in case current state has any data available from previous read
       // this will cause the data to be acquired, state modified and chunk returned
@@ -203,27 +203,26 @@ private[io] object JavaInputOutputStream {
       * Closes input stream and awaits completion of the upstream
       */
     def close(
-        upState: mutable.Signal[F, UpStreamState],
-        dnState: mutable.Signal[F, DownStreamState]
+        upState: SignallingRef[F, UpStreamState],
+        dnState: SignallingRef[F, DownStreamState]
     ): F[Unit] =
-      F.flatMap(dnState.update {
+      dnState.update {
         case s @ Done(_) => s
         case other       => Done(None)
-      }) { _ =>
-        F.flatMap(
-          upState.discrete
-            .collectFirst {
-              case UpStreamState(true, maybeErr) =>
-                maybeErr // await upStreamDome to yield as true
-            }
-            .compile
-            .last) {
-          _.flatten match {
-            case None      => F.pure(())
-            case Some(err) => F.raiseError[Unit](err)
+      } >>
+        upState.discrete
+          .collectFirst {
+            case UpStreamState(true, maybeErr) =>
+              maybeErr // await upStreamDome to yield as true
           }
-        }
-      }
+          .compile
+          .last
+          .flatMap {
+            _.flatten match {
+              case None      => F.pure(())
+              case Some(err) => F.raiseError[Unit](err)
+            }
+          }
 
     /*
      * Implementation note:
@@ -239,13 +238,13 @@ private[io] object JavaInputOutputStream {
      */
     (source: Stream[F, Byte]) =>
       Stream
-        .eval(async.synchronousQueue[F, Either[Option[Throwable], Bytes]])
+        .eval(Queue.synchronous[F, Either[Option[Throwable], Bytes]])
         .flatMap { queue =>
           Stream
-            .eval(async.signalOf[F, UpStreamState](UpStreamState(done = false, err = None)))
+            .eval(SignallingRef[F, UpStreamState](UpStreamState(done = false, err = None)))
             .flatMap { upState =>
               Stream
-                .eval(async.signalOf[F, DownStreamState](Ready(None)))
+                .eval(SignallingRef[F, DownStreamState](Ready(None)))
                 .flatMap { dnState =>
                   processInput(source, queue, upState, dnState)
                     .map { _ =>

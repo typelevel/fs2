@@ -4,56 +4,23 @@ package io
 import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
 
-import java.nio.channels.CompletionHandler
 import java.nio.file.{Path, StandardOpenOption, WatchEvent}
-import java.util.concurrent.ExecutorService
 
-import cats.effect.{Concurrent, ContextShift, Effect, IO, Resource, Sync}
+import cats.effect.{Concurrent, ContextShift, Resource, Sync}
 import cats.implicits._
 
 /** Provides support for working with files. */
 package object file {
 
   /**
-    * Provides a handler for NIO methods which require a `java.nio.channels.CompletionHandler` instance.
-    */
-  private[fs2] def asyncCompletionHandler[F[_], O](
-      f: CompletionHandler[O, Null] => Unit)(implicit F: Effect[F], cs: ContextShift[F]): F[O] =
-    F.async[O] { cb =>
-      f(new CompletionHandler[O, Null] {
-        override def completed(result: O, attachment: Null): Unit =
-          async.unsafeRunAsync(F.delay(cb(Right(result))))(_ => IO.unit)
-        override def failed(exc: Throwable, attachment: Null): Unit =
-          async.unsafeRunAsync(F.delay(cb(Left(exc))))(_ => IO.unit)
-      })
-    }
-
-  //
-  // Stream constructors
-  //
-
-  /**
     * Reads all data synchronously from the file at the specified `java.nio.file.Path`.
     */
-  def readAll[F[_]: Sync: ContextShift](
-      path: Path,
-      chunkSize: Int,
-      blockingExecutionContext: ExecutionContext): Stream[F, Byte] =
+  def readAll[F[_]: Sync: ContextShift](path: Path,
+                                        blockingExecutionContext: ExecutionContext,
+                                        chunkSize: Int)(
+      ): Stream[F, Byte] =
     pulls
-      .fromPath(path, List(StandardOpenOption.READ), blockingExecutionContext)
-      .flatMap(c => pulls.readAllFromFileHandle(chunkSize)(c.resource))
-      .stream
-
-  /**
-    * Reads all data asynchronously from the file at the specified `java.nio.file.Path`.
-    */
-  def readAllAsync[F[_]](path: Path,
-                         chunkSize: Int,
-                         executorService: Option[ExecutorService] = None)(
-      implicit F: Effect[F],
-      cs: ContextShift[F]): Stream[F, Byte] =
-    pulls
-      .fromPathAsync(path, List(StandardOpenOption.READ), executorService)
+      .fromPath(path, blockingExecutionContext, List(StandardOpenOption.READ))
       .flatMap(c => pulls.readAllFromFileHandle(chunkSize)(c.resource))
       .stream
 
@@ -64,33 +31,16 @@ package object file {
     */
   def writeAll[F[_]: Sync: ContextShift](
       path: Path,
-      flags: Seq[StandardOpenOption] = List(StandardOpenOption.CREATE),
-      blockingExecutionContext: ExecutionContext): Sink[F, Byte] =
+      blockingExecutionContext: ExecutionContext,
+      flags: Seq[StandardOpenOption] = List(StandardOpenOption.CREATE)
+  ): Sink[F, Byte] =
     in =>
       (for {
         out <- pulls.fromPath(path,
-                              StandardOpenOption.WRITE :: flags.toList,
-                              blockingExecutionContext)
+                              blockingExecutionContext,
+                              StandardOpenOption.WRITE :: flags.toList)
         _ <- pulls.writeAllToFileHandle(in, out.resource)
       } yield ()).stream
-
-  /**
-    * Writes all data asynchronously to the file at the specified `java.nio.file.Path`.
-    *
-    * Adds the WRITE flag to any other `OpenOption` flags specified. By default, also adds the CREATE flag.
-    */
-  def writeAllAsync[F[_]](path: Path,
-                          flags: Seq[StandardOpenOption] = List(StandardOpenOption.CREATE),
-                          executorService: Option[ExecutorService] = None)(
-      implicit F: Effect[F],
-      cs: ContextShift[F]): Sink[F, Byte] =
-    in =>
-      pulls
-        .fromPathAsync(path, StandardOpenOption.WRITE :: flags.toList, executorService)
-        .flatMap { out =>
-          _writeAll0(in, out.resource, 0)
-        }
-        .stream
 
   private def _writeAll0[F[_]](in: Stream[F, Byte],
                                out: FileHandle[F],

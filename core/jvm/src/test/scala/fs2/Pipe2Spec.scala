@@ -7,6 +7,8 @@ import cats.implicits._
 import org.scalacheck.Gen
 import TestUtil._
 
+import fs2.concurrent.SignallingRef
+
 class Pipe2Spec extends Fs2Spec {
 
   // number of interrupt tests to run successive
@@ -540,7 +542,7 @@ class Pipe2Spec extends Fs2Spec {
     "pause" in {
       forAll { (s1: PureStream[Int]) =>
         val pausedStream =
-          Stream.eval(async.signalOf[IO, Boolean](false)).flatMap { pause =>
+          Stream.eval(SignallingRef[IO, Boolean](false)).flatMap { pause =>
             Stream
               .awakeEvery[IO](10.millis)
               .scan(0)((acc, _) => acc + 1)

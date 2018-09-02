@@ -54,8 +54,8 @@ lazy val commonSettings = Seq(
     compilerPlugin("org.spire-math" %% "kind-projector" % "0.9.6"),
     "org.typelevel" %%% "cats-core" % "1.2.0",
     "org.typelevel" %%% "cats-laws" % "1.2.0" % "test",
-    "org.typelevel" %%% "cats-effect" % "1.0.0-RC2-3433449",
-    "org.typelevel" %%% "cats-effect-laws" % "1.0.0-RC2-3433449" % "test",
+    "org.typelevel" %%% "cats-effect" % "1.0.0-RC3",
+    "org.typelevel" %%% "cats-effect-laws" % "1.0.0-RC3" % "test",
     "org.scalatest" %%% "scalatest" % "3.0.5" % "test",
     "org.scalacheck" %%% "scalacheck" % "1.13.5" % "test"
   ),
@@ -64,8 +64,10 @@ lazy val commonSettings = Seq(
   homepage := Some(url("https://github.com/functional-streams-for-scala/fs2")),
   licenses += ("MIT", url("http://opensource.org/licenses/MIT")),
   initialCommands := s"""
-    import fs2._, cats.effect._, cats.implicits._
+    import fs2._, cats.effect._, cats.effect.implicits._, cats.implicits._
     import scala.concurrent.ExecutionContext.Implicits.global, scala.concurrent.duration._
+    implicit val contextShiftIO: ContextShift[IO] = IO.contextShift(global)
+    implicit val timerIO: Timer[IO] = IO.timer(global)
   """,
   doctestTestFramework := DoctestTestFramework.ScalaTest,
   scalafmtOnCompile := true

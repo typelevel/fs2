@@ -16,9 +16,9 @@ import java.nio.channels.{
 }
 import java.util.concurrent.TimeUnit
 
-import cats.effect.{ConcurrentEffect, ContextShift, IO, Resource}
-import cats.effect.concurrent.{Ref, Semaphore}
 import cats.implicits._
+import cats.effect.{ConcurrentEffect, Resource}
+import cats.effect.concurrent.{Ref, Semaphore}
 
 import fs2.Stream._
 
@@ -101,8 +101,7 @@ protected[tcp] object Socket {
       noDelay: Boolean
   )(
       implicit AG: AsynchronousChannelGroup,
-      F: ConcurrentEffect[F],
-      cs: ContextShift[F]
+      F: ConcurrentEffect[F]
   ): Resource[F, Socket[F]] = {
 
     def setup: F[AsynchronousSocketChannel] = F.delay {
@@ -123,9 +122,9 @@ protected[tcp] object Socket {
           null,
           new CompletionHandler[Void, Void] {
             def completed(result: Void, attachment: Void): Unit =
-              async.unsafeRunAsync(F.delay(cb(Right(ch))))(_ => IO.unit)
+              invokeCallback(cb(Right(ch)))
             def failed(rsn: Throwable, attachment: Void): Unit =
-              async.unsafeRunAsync(F.delay(cb(Left(rsn))))(_ => IO.unit)
+              invokeCallback(cb(Left(rsn)))
           }
         )
       }
@@ -138,8 +137,7 @@ protected[tcp] object Socket {
                    reuseAddress: Boolean,
                    receiveBufferSize: Int)(
       implicit AG: AsynchronousChannelGroup,
-      F: ConcurrentEffect[F],
-      cs: ContextShift[F]
+      F: ConcurrentEffect[F]
   ): Stream[F, Either[InetSocketAddress, Resource[F, Socket[F]]]] = {
 
     val setup: F[AsynchronousServerSocketChannel] = F.delay {
@@ -163,9 +161,9 @@ protected[tcp] object Socket {
               null,
               new CompletionHandler[AsynchronousSocketChannel, Void] {
                 def completed(ch: AsynchronousSocketChannel, attachment: Void): Unit =
-                  async.unsafeRunAsync(F.delay(cb(Right(ch))))(_ => IO.pure(()))
+                  invokeCallback(cb(Right(ch)))
                 def failed(rsn: Throwable, attachment: Void): Unit =
-                  async.unsafeRunAsync(F.delay(cb(Left(rsn))))(_ => IO.pure(()))
+                  invokeCallback(cb(Left(rsn)))
               }
             )
           }
@@ -193,8 +191,8 @@ protected[tcp] object Socket {
       }
   }
 
-  def mkSocket[F[_]](ch: AsynchronousSocketChannel)(implicit F: ConcurrentEffect[F],
-                                                    cs: ContextShift[F]): Resource[F, Socket[F]] = {
+  def mkSocket[F[_]](ch: AsynchronousSocketChannel)(
+      implicit F: ConcurrentEffect[F]): Resource[F, Socket[F]] = {
     val socket = Semaphore(1).flatMap { readSemaphore =>
       Ref.of[F, ByteBuffer](ByteBuffer.allocate(0)).map { bufferRef =>
         // Reads data to remaining capacity of supplied ByteBuffer
@@ -211,10 +209,10 @@ protected[tcp] object Socket {
               new CompletionHandler[Integer, Unit] {
                 def completed(result: Integer, attachment: Unit): Unit = {
                   val took = System.currentTimeMillis() - started
-                  async.unsafeRunAsync(F.delay(cb(Right((result, took)))))(_ => IO.unit)
+                  invokeCallback(cb(Right((result, took))))
                 }
                 def failed(err: Throwable, attachment: Unit): Unit =
-                  async.unsafeRunAsync(F.delay(cb(Left(err))))(_ => IO.unit)
+                  invokeCallback(cb(Left(err)))
               }
             )
           }
@@ -297,14 +295,14 @@ protected[tcp] object Socket {
                   (),
                   new CompletionHandler[Integer, Unit] {
                     def completed(result: Integer, attachment: Unit): Unit =
-                      async.unsafeRunAsync(
-                        F.delay(
-                          cb(Right(
+                      invokeCallback(
+                        cb(
+                          Right(
                             if (buff.remaining() <= 0) None
                             else Some(System.currentTimeMillis() - start)
-                          ))))(_ => IO.unit)
+                          )))
                     def failed(err: Throwable, attachment: Unit): Unit =
-                      async.unsafeRunAsync(F.delay(cb(Left(err))))(_ => IO.unit)
+                      invokeCallback(cb(Left(err)))
                   }
                 )
               }

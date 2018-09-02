@@ -15,19 +15,27 @@ import fs2.{io, text}
 import java.nio.file.Paths
 // import java.nio.file.Paths
 
+import java.util.concurrent.Executors
+// import java.util.concurrent.Executors
+
+import scala.concurrent.ExecutionContext
+// import scala.concurrent.ExecutionContext
+
 object Converter extends IOApp {
   def run(args: List[String]): IO[ExitCode] = {
     def fahrenheitToCelsius(f: Double): Double =
       (f - 32.0) * (5.0/9.0)
 
-    io.file.readAllAsync[IO](Paths.get("testdata/fahrenheit.txt"), 4096)
+    val blockingExecutionContext = ExecutionContext.fromExecutorService(Executors.newFixedThreadPool(2))
+
+    io.file.readAll[IO](Paths.get("testdata/fahrenheit.txt"), blockingExecutionContext, 4096)
       .through(text.utf8Decode)
       .through(text.lines)
       .filter(s => !s.trim.isEmpty && !s.startsWith("//"))
       .map(line => fahrenheitToCelsius(line.toDouble).toString)
       .intersperse("\n")
       .through(text.utf8Encode)
-      .through(io.file.writeAllAsync(Paths.get("testdata/celsius.txt")))
+      .through(io.file.writeAll(Paths.get("testdata/celsius.txt"), blockingExecutionContext))
       .compile.drain
       .as(ExitCode.Success)
   }
@@ -47,8 +55,11 @@ Operations on `Stream` are defined for any choice of type constructor, not just 
 import cats.effect.{ContextShift, IO}
 import fs2.{io, text}
 import java.nio.file.Paths
+import java.util.concurrent.Executors
+import scala.concurrent.ExecutionContext
 
 implicit val cs: ContextShift[IO] = IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
+val blockingExecutionContext = ExecutionContext.fromExecutorService(Executors.newFixedThreadPool(2))
 
 def fahrenheitToCelsius(f: Double): Double =
   (f - 32.0) * (5.0/9.0)
@@ -59,7 +70,7 @@ scala> import fs2.Stream
 import fs2.Stream
 
 scala> val src: Stream[IO, Byte] =
-     |   io.file.readAllAsync[IO](Paths.get("testdata/fahrenheit.txt"), 4096)
+     |   io.file.readAll[IO](Paths.get("testdata/fahrenheit.txt"), blockingExecutionContext, 4096)
 src: fs2.Stream[cats.effect.IO,Byte] = Stream(..)
 ```
 
@@ -102,7 +113,7 @@ encodedBytes: fs2.Stream[cats.effect.IO,Byte] = Stream(..)
 We then write the encoded bytes to a file. Note that nothing has happened at this point -- we are just constructing a description of a computation that, when interpreted, will incrementally consume the stream, sending converted values to the specified file.
 
 ```scala
-scala> val written: Stream[IO, Unit] = encodedBytes.through(io.file.writeAllAsync(Paths.get("testdata/celsius.txt")))
+scala> val written: Stream[IO, Unit] = encodedBytes.through(io.file.writeAll(Paths.get("testdata/celsius.txt"), blockingExecutionContext))
 written: fs2.Stream[cats.effect.IO,Unit] = Stream(..)
 ```
 
@@ -110,7 +121,7 @@ There are a number of ways of interpreting the stream. In this case, we call `co
 
 ```scala
 scala> val task: IO[Unit] = written.compile.drain
-task: cats.effect.IO[Unit] = IO$581289187
+task: cats.effect.IO[Unit] = IO$1896711092
 ```
 
 We still haven't *done* anything yet. Effects only occur when we run the resulting task. We can run a `IO` by calling `unsafeRunSync()` -- the name is telling us that calling it performs effects and hence, it is not referentially transparent. In this example, we extended `IOApp`, which lets us express our overall program as an `IO[ExitCase]`. The `IOApp` class handles running the task and hooking it up to the application entry point.
