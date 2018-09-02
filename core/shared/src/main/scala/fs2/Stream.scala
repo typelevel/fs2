@@ -1329,8 +1329,8 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     */
   def switchMap[F2[x] >: F[x], O2](f: O => Stream[F2, O2])(
       implicit F2: Concurrent[F2]): Stream[F2, O2] =
-    Stream.eval(async.unboundedQueue[F2, Option[Chunk[O2]]]).flatMap { downstream =>
-      Stream.eval(async.unboundedQueue[F2, Option[(O, Deferred[F2, Unit])]]).flatMap { next =>
+    Stream.eval(Queue.unbounded[F2, Option[Chunk[O2]]]).flatMap { downstream =>
+      Stream.eval(Queue.unbounded[F2, Option[(O, Deferred[F2, Unit])]]).flatMap { next =>
         Stream.eval(Ref.of[F2, Option[Deferred[F2, Unit]]](None)).flatMap { haltRef =>
           // consumes the upstream by sending a packet(stream and a ref) to the next queue and
           // also does error handling/inturruption/switching by terminating the currently running
