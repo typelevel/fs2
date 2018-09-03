@@ -125,8 +125,7 @@ object Pull extends PullLowPriority {
     * of the `.stream` scope which executes the returned `Pull`. The acquired
     * resource is returned as the result value of the pull.
     */
-  def acquire[F[_], R](r: F[R])(cleanup: R => F[Unit])(
-      implicit ev: ApplicativeError[F, Throwable]): Pull[F, Nothing, R] =
+  def acquire[F[_]: RaiseThrowable, R](r: F[R])(cleanup: R => F[Unit]): Pull[F, Nothing, R] =
     acquireCancellable(r)(cleanup).map(_.resource)
 
   /**
@@ -135,8 +134,8 @@ object Pull extends PullLowPriority {
     * This allows the acquired resource to be released earlier than at the end of the
     * containing pull scope.
     */
-  def acquireCancellable[F[_], R](r: F[R])(cleanup: R => F[Unit])(
-      implicit ev: ApplicativeError[F, Throwable]): Pull[F, Nothing, Cancellable[F, R]] =
+  def acquireCancellable[F[_]: RaiseThrowable, R](r: F[R])(
+      cleanup: R => F[Unit]): Pull[F, Nothing, Cancellable[F, R]] =
     Stream
       .bracketWithToken(r)(cleanup)
       .pull
@@ -194,16 +193,16 @@ object Pull extends PullLowPriority {
   def pure[F[x] >: Pure[x], R](r: R): Pull[F, Nothing, R] =
     fromFreeC(Algebra.pure(r))
 
-  /** Reads and outputs nothing, and fails with the given error. */
-  def raiseError[F[x]](err: Throwable)(
-      implicit ev: ApplicativeError[F, Throwable]): Pull[F, Nothing, Nothing] = {
-    val _ = ev
+  /**
+    * Reads and outputs nothing, and fails with the given error.
+    *
+    * The `F` type must be explicitly provided (e.g., via `raiseError[IO]` or `raiseError[Fallible]`).
+    */
+  def raiseError[F[_]: RaiseThrowable](err: Throwable): Pull[F, Nothing, Nothing] =
     new Pull(Algebra.raiseError[Nothing, Nothing, Nothing](err))
-  }
 
   final class PartiallyAppliedFromEither[F[_]] {
-    def apply[A](either: Either[Throwable, A])(
-        implicit ev: ApplicativeError[F, Throwable]): Pull[F, A, Unit] =
+    def apply[A](either: Either[Throwable, A])(implicit ev: RaiseThrowable[F]): Pull[F, A, Unit] =
       either.fold(Pull.raiseError[F], Pull.output1)
   }
 

@@ -1706,7 +1706,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * }}}
     */
   def rethrow[F2[x] >: F[x], O2](implicit ev: O <:< Either[Throwable, O2],
-                                 AE: ApplicativeError[F2, Throwable]): Stream[F2, O2] = {
+                                 rt: RaiseThrowable[F2]): Stream[F2, O2] = {
     val _ = ev // Convince scalac that ev is used
     this.asInstanceOf[Stream[F, Either[Throwable, O2]]].chunks.flatMap { c =>
       val firstError = c.find(_.isLeft)
@@ -2474,8 +2474,7 @@ object Stream extends StreamLowPriority {
   }
 
   final class PartiallyAppliedFromEither[F[_]] {
-    def apply[A](either: Either[Throwable, A])(
-        implicit ev: ApplicativeError[F, Throwable]): Stream[F, A] =
+    def apply[A](either: Either[Throwable, A])(implicit ev: RaiseThrowable[F]): Stream[F, A] =
       either.fold(Stream.raiseError[F], Stream.emit)
   }
 
@@ -2550,17 +2549,18 @@ object Stream extends StreamLowPriority {
   /**
     * Creates a stream that, when run, fails with the supplied exception.
     *
+    * The `F` type must be explicitly provided (e.g., via `raiseError[IO]` or `raiseError[Fallible]`).
+    *
     * @example {{{
     * scala> import cats.effect.IO
+    * scala> Stream.raiseError[Fallible](new RuntimeException).toList
+    * res0: Either[Throwable,List[Nothing]] = Left(java.lang.RuntimeException)
     * scala> Stream.raiseError[IO](new RuntimeException).compile.drain.attempt.unsafeRunSync
     * res0: Either[Throwable,Unit] = Left(java.lang.RuntimeException)
     * }}}
     */
-  def raiseError[F[x]](e: Throwable)(
-      implicit ev: ApplicativeError[F, Throwable]): Stream[F, Nothing] = {
-    val _ = ev
+  def raiseError[F[_]: RaiseThrowable](e: Throwable): Stream[F, Nothing] =
     fromFreeC(Algebra.raiseError(e))
-  }
 
   /**
     * Creates a random stream of integers using a random seed.
@@ -2655,13 +2655,12 @@ object Stream extends StreamLowPriority {
     *                  returned when a non-retriable failure is
     *                  encountered
     */
-  def retry[F[_], O](fo: F[O],
-                     delay: FiniteDuration,
-                     nextDelay: FiniteDuration => FiniteDuration,
-                     maxRetries: Int,
-                     retriable: Throwable => Boolean = scala.util.control.NonFatal.apply)(
-      implicit F: Timer[F],
-      AE: ApplicativeError[F, Throwable]): Stream[F, O] = {
+  def retry[F[_]: Timer: RaiseThrowable, O](fo: F[O],
+                                            delay: FiniteDuration,
+                                            nextDelay: FiniteDuration => FiniteDuration,
+                                            maxRetries: Int,
+                                            retriable: Throwable => Boolean =
+                                              scala.util.control.NonFatal.apply): Stream[F, O] = {
     val delays = Stream.unfold(delay)(d => Some(d -> nextDelay(d))).covary[F]
 
     Stream
@@ -2858,11 +2857,11 @@ object Stream extends StreamLowPriority {
 
   }
 
-  /** Provides syntax for pure pipes. */
+  /** Provides syntax for pure streams. */
   implicit def PureOps[O](s: Stream[Pure, O]): PureOps[O] =
     new PureOps(s.get[Pure, O])
 
-  /** Provides syntax for pure pipes. */
+  /** Provides syntax for pure streams. */
   final class PureOps[O] private[Stream] (private val free: FreeC[Algebra[Pure, O, ?], Unit])
       extends AnyVal {
     private def self: Stream[Pure, O] = Stream.fromFreeC[Pure, O](free)
@@ -2887,7 +2886,7 @@ object Stream extends StreamLowPriority {
     def toVector: Vector[O] = self.covary[IO].compile.toVector.unsafeRunSync
   }
 
-  /** Provides syntax for pure pipes based on `cats.Id`. */
+  /** Provides syntax for streams with effect type `cats.Id`. */
   implicit def IdOps[O](s: Stream[Id, O]): IdOps[O] =
     new IdOps(s.get[Id, O])
 
@@ -2900,6 +2899,37 @@ object Stream extends StreamLowPriority {
       new (Id ~> F) { def apply[A](a: Id[A]) = a.pure[F] }
 
     def covaryId[F[_]: Applicative]: Stream[F, O] = self.translate(idToApplicative[F])
+  }
+
+  /** Provides syntax for streams with effect type `Fallible`. */
+  implicit def FallibleOps[O](s: Stream[Fallible, O]): FallibleOps[O] =
+    new FallibleOps(s.get[Fallible, O])
+
+  /** Provides syntax for fallible streams. */
+  final class FallibleOps[O] private[Stream] (
+      private val free: FreeC[Algebra[Fallible, O, ?], Unit])
+      extends AnyVal {
+    private def self: Stream[Fallible, O] = Stream.fromFreeC[Fallible, O](free)
+
+    /** Lifts this stream to the specified effect type. */
+    def lift[F[_]](implicit F: ApplicativeError[F, Throwable]): Stream[F, O] = {
+      val _ = F
+      self.asInstanceOf[Stream[F, O]]
+    }
+
+    /** Runs this fallible stream and returns the emitted elements in a collection of the specified type. Note: this method is only available on fallible streams. */
+    def to[C[_]](implicit cbf: CanBuildFrom[Nothing, O, C[O]]): Either[Throwable, C[O]] =
+      lift[IO].compile.to[C].attempt.unsafeRunSync
+
+    /** Runs this fallible stream and returns the emitted elements in a chunk. Note: this method is only available on fallible streams. */
+    def toChunk: Either[Throwable, Chunk[O]] = lift[IO].compile.toChunk.attempt.unsafeRunSync
+
+    /** Runs this fallible stream and returns the emitted elements in a list. Note: this method is only available on fallible streams. */
+    def toList: Either[Throwable, List[O]] = lift[IO].compile.toList.attempt.unsafeRunSync
+
+    /** Runs this fallible stream and returns the emitted elements in a vector. Note: this method is only available on fallible streams. */
+    def toVector: Either[Throwable, Vector[O]] =
+      lift[IO].compile.toVector.attempt.unsafeRunSync
   }
 
   /** Projection of a `Stream` providing various ways to get a `Pull` from the `Stream`. */
@@ -3459,7 +3489,7 @@ object Stream extends StreamLowPriority {
       def pure[A](a: A) = Stream(a)
       def handleErrorWith[A](s: Stream[F, A])(h: Throwable => Stream[F, A]) =
         s.handleErrorWith(h)
-      def raiseError[A](t: Throwable) = Stream.raiseError[F](t)(ev)
+      def raiseError[A](t: Throwable) = Stream.raiseError[F](t)
       def flatMap[A, B](s: Stream[F, A])(f: A => Stream[F, B]) = s.flatMap(f)
       def tailRecM[A, B](a: A)(f: A => Stream[F, Either[A, B]]) = f(a).flatMap {
         case Left(a)  => tailRecM(a)(f)
