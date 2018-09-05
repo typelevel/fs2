@@ -1,7 +1,7 @@
 package fs2
 
 import cats._
-import cats.data.NonEmptyList
+import cats.data.{Chain, NonEmptyList}
 import cats.effect._
 import cats.effect.concurrent._
 import cats.implicits.{catsSyntaxEither => _, _}
@@ -976,7 +976,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
 
         def producer = this.chunks.map(_.asRight.some).to(q.enqueue).onFinalize(q.enqueue1(None))
 
-        def emitNonEmpty(c: Catenable[Chunk[O]]): Stream[F2, Chunk[O]] =
+        def emitNonEmpty(c: Chain[Chunk[O]]): Stream[F2, Chunk[O]] =
           if (c.nonEmpty) Stream.emit(Chunk.concat(c.toList))
           else Stream.empty
 
@@ -987,30 +987,30 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
             resize(rest, s ++ Stream.emit(unit))
           }
 
-        def go(acc: Catenable[Chunk[O]], elems: Int, currentTimeout: Token): Stream[F2, Chunk[O]] =
+        def go(acc: Chain[Chunk[O]], elems: Int, currentTimeout: Token): Stream[F2, Chunk[O]] =
           Stream.eval(q.dequeue1).flatMap {
             case None => emitNonEmpty(acc)
             case Some(e) =>
               e match {
                 case Left(t) if t == currentTimeout =>
                   emitNonEmpty(acc) ++ startTimeout.flatMap { newTimeout =>
-                    go(Catenable.empty, 0, newTimeout)
+                    go(Chain.empty, 0, newTimeout)
                   }
                 case Left(t) if t != currentTimeout => go(acc, elems, currentTimeout)
                 case Right(c) if elems + c.size >= n =>
-                  val totalChunk = Chunk.concat(acc.snoc(c).toList)
+                  val totalChunk = Chunk.concat((acc :+ c).toList)
                   val (toEmit, rest) = resize(totalChunk, Stream.empty)
 
                   toEmit ++ startTimeout.flatMap { newTimeout =>
-                    go(Catenable.singleton(rest), rest.size, newTimeout)
+                    go(Chain.one(rest), rest.size, newTimeout)
                   }
                 case Right(c) if elems + c.size < n =>
-                  go(acc.snoc(c), elems + c.size, currentTimeout)
+                  go(acc :+ c, elems + c.size, currentTimeout)
               }
           }
 
         startTimeout.flatMap { t =>
-          go(Catenable.empty, 0, t).concurrently(producer)
+          go(Chain.empty, 0, t).concurrently(producer)
         }
       }
 
