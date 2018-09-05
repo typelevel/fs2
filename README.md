@@ -128,7 +128,7 @@ If you have a project you'd like to include in this list, either open a PR or le
 
 ### Related projects ###
 
-FS2 has evolved from earlier work on streaming APIs in Scala and Haskell and in Scala. Some influences:
+FS2 has evolved from earlier work on streaming APIs in Scala and Haskell. Some influences:
 
 * [Machines](https://github.com/ekmett/machines/), a Haskell library by Ed Kmett, which spawned [`scala-machines`](https://github.com/runarorama/scala-machines)
 * [The FP in Scala stream processing library](https://github.com/fpinscala/fpinscala/blob/master/answers/src/main/scala/fpinscala/streamingio/StreamingIO.scala) developed for the book [FP in Scala](https://www.manning.com/books/functional-programming-in-scala)
