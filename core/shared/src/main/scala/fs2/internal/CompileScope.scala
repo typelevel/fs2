@@ -2,9 +2,11 @@ package fs2.internal
 
 import scala.annotation.tailrec
 
+import cats.Traverse
+import cats.data.Chain
 import cats.effect.{Concurrent, Sync}
 import cats.effect.concurrent.{Deferred, Ref}
-import fs2.{Catenable, CompositeFailure, Scope}
+import fs2.{CompositeFailure, Scope}
 import fs2.internal.CompileScope.InterruptContext
 
 /**
@@ -193,16 +195,16 @@ private[fs2] final class CompileScope[F[_], O] private (
     state.update { _.unregisterChild(id) }
 
   /** Returns all direct resources of this scope (does not return resources in ancestor scopes or child scopes). **/
-  def resources: F[Catenable[Resource[F]]] =
+  def resources: F[Chain[Resource[F]]] =
     F.map(state.get) { _.resources }
 
   /**
-    * Traverses supplied `Catenable` with `f` that may produce a failure, and collects these failures.
+    * Traverses supplied `Chain` with `f` that may produce a failure, and collects these failures.
     * Returns failure with collected failures, or `Unit` on successful traversal.
     */
-  private def traverseError[A](ca: Catenable[A],
+  private def traverseError[A](ca: Chain[A],
                                f: A => F[Either[Throwable, Unit]]): F[Either[Throwable, Unit]] =
-    F.map(Catenable.instance.traverse(ca)(f)) { results =>
+    F.map(Traverse[Chain].traverse(ca)(f)) { results =>
       CompositeFailure
         .fromList(results.collect { case Left(err) => err }.toList)
         .toLeft(())
@@ -245,15 +247,14 @@ private[fs2] final class CompileScope[F[_], O] private (
     }
 
   /** Gets all ancestors of this scope, inclusive of root scope. **/
-  private def ancestors: F[Catenable[CompileScope[F, O]]] = {
+  private def ancestors: F[Chain[CompileScope[F, O]]] = {
     @tailrec
-    def go(curr: CompileScope[F, O],
-           acc: Catenable[CompileScope[F, O]]): F[Catenable[CompileScope[F, O]]] =
+    def go(curr: CompileScope[F, O], acc: Chain[CompileScope[F, O]]): F[Chain[CompileScope[F, O]]] =
       curr.parent match {
         case Some(parent) => go(parent, acc :+ parent)
         case None         => F.pure(acc)
       }
-    go(self, Catenable.empty)
+    go(self, Chain.empty)
   }
 
   /** finds ancestor of this scope given `scopeId` **/
@@ -275,7 +276,7 @@ private[fs2] final class CompileScope[F[_], O] private (
 
   /** finds scope in child hierarchy of current scope **/
   def findSelfOrChild(scopeId: Token): F[Option[CompileScope[F, O]]] = {
-    def go(scopes: Catenable[CompileScope[F, O]]): F[Option[CompileScope[F, O]]] =
+    def go(scopes: Chain[CompileScope[F, O]]): F[Option[CompileScope[F, O]]] =
       scopes.uncons match {
         case None => F.pure(None)
         case Some((scope, tail)) =>
@@ -328,17 +329,16 @@ private[fs2] final class CompileScope[F[_], O] private (
   }
 
   // See docs on [[Scope#lease]]
-  def lease: F[Option[Scope.Lease[F]]] = {
-    val T = Catenable.instance
+  def lease: F[Option[Scope.Lease[F]]] =
     F.flatMap(state.get) { s =>
       if (!s.open) F.pure(None)
       else {
-        F.flatMap(T.traverse(s.children :+ self)(_.resources)) { childResources =>
+        F.flatMap(Traverse[Chain].traverse(s.children :+ self)(_.resources)) { childResources =>
           F.flatMap(ancestors) { anc =>
-            F.flatMap(T.traverse(anc) { _.resources }) { ancestorResources =>
+            F.flatMap(Traverse[Chain].traverse(anc) { _.resources }) { ancestorResources =>
               val allLeases = childResources.flatMap(identity) ++ ancestorResources
                 .flatMap(identity)
-              F.map(T.traverse(allLeases) { r =>
+              F.map(Traverse[Chain].traverse(allLeases) { r =>
                 r.lease
               }) { leased =>
                 val allLeases = leased.collect {
@@ -355,7 +355,6 @@ private[fs2] final class CompileScope[F[_], O] private (
         }
       }
     }
-  }
 
   // See docs on [[Scope#interrupt]]
   def interrupt(cause: Either[Throwable, Unit]): F[Unit] =
@@ -433,8 +432,8 @@ private[internal] object CompileScope {
     */
   final private case class State[F[_], O](
       open: Boolean,
-      resources: Catenable[Resource[F]],
-      children: Catenable[CompileScope[F, O]]
+      resources: Chain[Resource[F]],
+      children: Chain[CompileScope[F, O]]
   ) { self =>
 
     def unregisterResource(id: Token): (State[F, O], Option[Resource[F]]) =
@@ -455,11 +454,11 @@ private[internal] object CompileScope {
 
   private object State {
     private val initial_ =
-      State[Nothing, Nothing](open = true, resources = Catenable.empty, children = Catenable.empty)
+      State[Nothing, Nothing](open = true, resources = Chain.empty, children = Chain.empty)
     def initial[F[_], O]: State[F, O] = initial_.asInstanceOf[State[F, O]]
 
     private val closed_ =
-      State[Nothing, Nothing](open = false, resources = Catenable.empty, children = Catenable.empty)
+      State[Nothing, Nothing](open = false, resources = Chain.empty, children = Chain.empty)
     def closed[F[_], O]: State[F, O] = closed_.asInstanceOf[State[F, O]]
   }
 
