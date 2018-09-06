@@ -174,28 +174,11 @@ object SignallingRef {
 
     override def set(a: A): F[Unit] = update(_ => a)
 
-    override def lazySet(a: A): F[Unit] = F.start(set(a)).void
-
     override def getAndSet(a: A): F[A] = modify(old => (a, old))
 
-    override def compareAndSet(expected: A, newValue: A): F[Boolean] =
-      access.flatMap {
-        case (old, setter) =>
-          if (old.asInstanceOf[AnyRef] eq expected.asInstanceOf[AnyRef]) setter(newValue)
-          else F.pure(false)
-      }
-
-    override def access: F[(A, A => F[Boolean])] = state.get.flatMap { snapshot =>
-      F.delay {
-        val hasBeenCalled = new java.util.concurrent.atomic.AtomicBoolean(false)
-        val setter =
-          (a: A) =>
-            F.delay(hasBeenCalled.compareAndSet(false, true))
-              .ifM(state
-                     .compareAndSet(snapshot, (a, snapshot._2, snapshot._3)),
-                   F.pure(false))
-        (snapshot._1, setter)
-      }
+    override def access: F[(A, A => F[Boolean])] = state.access.map {
+      case (snapshot, setter) =>
+        (snapshot._1, (a: A) => setter((a, snapshot._2, snapshot._3)))
     }
 
     override def tryUpdate(f: A => A): F[Boolean] =
@@ -254,10 +237,7 @@ object SignallingRef {
           override def discrete: Stream[F, B] = fa.discrete.map(f)
           override def continuous: Stream[F, B] = fa.continuous.map(f)
           override def set(b: B): F[Unit] = fa.set(g(b))
-          override def lazySet(b: B): F[Unit] = fa.lazySet(g(b))
           override def getAndSet(b: B): F[B] = fa.getAndSet(g(b)).map(f)
-          override def compareAndSet(expected: B, newValue: B): F[Boolean] =
-            fa.compareAndSet(g(expected), g(newValue))
           override def access: F[(B, B => F[Boolean])] = fa.access.map {
             case (getter, setter) => (f(getter), b => setter(g(b)))
           }
