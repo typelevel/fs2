@@ -3251,8 +3251,8 @@ object Stream extends StreamLowPriority {
 
   /** Type class which describes compilation of a `Stream[F, O]` to a `G[?]`. */
   sealed trait Compiler[F[_], G[_]] {
-    def apply[O, B, C](s: Stream[F, O], init: Eval[B])(fold: (B, Chunk[O]) => B,
-                                                       finalize: B => C): G[C]
+    private[Stream] def apply[O, B, C](s: Stream[F, O], init: Eval[B])(fold: (B, Chunk[O]) => B,
+                                                                       finalize: B => C): G[C]
   }
 
   object Compiler {
