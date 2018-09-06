@@ -25,6 +25,22 @@ package object file {
       .stream
 
   /**
+    * Reads a range of data synchronously from the file at the specified `java.nio.file.Path`.
+    * `start` is inclusive, `end` is exclusive, so when `start` is 0 and `end` is 2,
+    * two bytes are read.
+    */
+  def readRange[F[_]: Sync: ContextShift](path: Path,
+                                          blockingExecutionContext: ExecutionContext,
+                                          chunkSize: Int,
+                                          start: Int,
+                                          end: Int)(
+      ): Stream[F, Byte] =
+    pulls
+      .fromPath(path, blockingExecutionContext, List(StandardOpenOption.READ))
+      .flatMap(c => pulls.readRangeFromFileHandle(chunkSize, start, end)(c.resource))
+      .stream
+
+  /**
     * Writes all data synchronously to the file at the specified `java.nio.file.Path`.
     *
     * Adds the WRITE flag to any other `OpenOption` flags specified. By default, also adds the CREATE flag.
