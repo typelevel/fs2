@@ -1329,39 +1329,43 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     */
   def switchMap[F2[x] >: F[x], O2](f: O => Stream[F2, O2])(
       implicit F2: Concurrent[F2]): Stream[F2, O2] =
-    Stream.eval(Queue.unbounded[F2, Option[Chunk[O2]]]).flatMap { downstream =>
+    Stream.eval(Queue.unbounded[F2, Option[Stream[F2, O2]]]).flatMap { downstream =>
       Stream.eval(Queue.unbounded[F2, Option[(O, Deferred[F2, Unit])]]).flatMap { next =>
         Stream.eval(Ref.of[F2, Option[Deferred[F2, Unit]]](None)).flatMap { haltRef =>
-          // consumes the upstream by sending a packet(stream and a ref) to the next queue and
-          // also does error handling/inturruption/switching by terminating the currently running
-          // inner stream
-          def runUpstream =
-            this
-              .onFinalize(next.enqueue1(None))
-              .evalMap { x =>
-                Deferred[F2, Unit].flatMap(halt =>
-                  haltRef.modify {
-                    case None       => halt.some -> F2.unit
-                    case Some(last) => halt.some -> last.complete(())
-                  }.flatten *> next.enqueue1((x -> halt).some))
-              }
+          Stream.eval(Semaphore(1)).flatMap { guard =>
+            // consumes the upstream by sending a packet(stream and a ref) to the next queue and
+            // also does error handling/inturruption/switching by terminating the currently running
+            // inner stream
+            def runUpstream =
+              this
+                .onFinalize(next.enqueue1(None))
+                .evalMap { x =>
+                  Deferred[F2, Unit].flatMap(halt =>
+                    haltRef.modify {
+                      case None       => halt.some -> F2.unit
+                      case Some(last) => halt.some -> last.complete(())
+                    }.flatten *> next.enqueue1((x -> halt).some))
+                }
 
-          // consumes the packets produced by runUpstream and drains the content to downstream
-          // upon error/interruption, the downstream will also be signalled for termination
-          def runInner =
-            next.dequeue.unNoneTerminate
-              .onFinalize(downstream.enqueue1(None))
-              .flatMap {
-                case (o, haltInner) =>
-                  f(o).chunks
-                    .evalMap(x => downstream.enqueue1(x.some))
-                    .interruptWhen(haltInner.get.attempt)
-              }
+            // consumes the packets produced by runUpstream and drains the content to downstream
+            // upon error/interruption, the downstream will also be signalled for termination
+            def runInner =
+              next.dequeue.unNoneTerminate
+                .onFinalize(downstream.enqueue1(None))
+                .flatMap {
+                  case (o, haltInner) =>
+                    f(o).chunks
+                      .evalMap { chunk =>
+                        guard.acquire >>
+                          downstream.enqueue1(Stream.chunk(chunk).onFinalize(guard.release).some)
+                      }
+                      .interruptWhen(haltInner.get.attempt)
+                }
 
-          // continuously dequeue the downstream while we process the upstream
-          downstream.dequeue.unNoneTerminate
-            .flatMap(Stream.chunk(_))
-            .concurrently(runInner.concurrently(runUpstream))
+            // continuously dequeue the downstream while we process the upstream
+            downstream.dequeue.unNoneTerminate.flatten
+              .concurrently(runInner.concurrently(runUpstream))
+          }
         }
       }
     }
