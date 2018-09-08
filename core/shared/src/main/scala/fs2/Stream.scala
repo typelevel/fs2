@@ -3364,6 +3364,25 @@ object Stream extends StreamLowPriority {
       foldChunks(Option.empty[O])((acc, c) => c.last.orElse(acc))
 
     /**
+      * Compiles this stream in to a value of the target effect type `F`,
+      * raising a `NoSuchElementException` if the stream emitted no values
+      * and returning the last value emitted otherwise.
+      *
+      * When this method has returned, the stream has not begun execution -- this method simply
+      * compiles the stream down to the target effect type.
+      *
+      * @example {{{
+      * scala> import cats.effect.IO
+      * scala> Stream.range(0,100).take(5).covary[IO].compile.lastOrError.unsafeRunSync
+      * res0: Int = 4
+      * scala> Stream.empty.covaryAll[IO, Int].compile.lastOrError.attempt.unsafeRunSync
+      * res1: Either[Throwable, Int] = Left(java.util.NoSuchElementException)
+      * }}}
+      */
+    def lastOrError(implicit G: MonadError[G, Throwable]): G[O] =
+      last.flatMap(_.fold(G.raiseError(new NoSuchElementException): G[O])(G.pure))
+
+    /**
       * Compiles this stream into a value of the target effect type `F` by logging
       * the output values to a `C`, given a `CanBuildFrom`.
       *
