@@ -6,13 +6,11 @@ import scala.concurrent.duration._
 
 import cats.effect.IO
 import cats.implicits._
-import java.io.IOException
 import java.nio.file._
-import java.nio.file.attribute.BasicFileAttributes
 
 import TestUtil._
 
-class WatcherSpec extends Fs2Spec {
+class WatcherSpec extends BaseFileSpec {
   "Watcher" - {
     "supports watching a file" - {
       "for modifications" in {
@@ -73,35 +71,6 @@ class WatcherSpec extends Fs2Spec {
         }
       }
     }
-  }
-
-  private def tempDirectory: Stream[IO, Path] =
-    Stream.bracket(IO(Files.createTempDirectory("WatcherSpec")))(deleteDirectoryRecursively(_))
-
-  private def tempFile: Stream[IO, Path] =
-    tempDirectory.flatMap(dir => aFile(dir))
-
-  private def aFile(dir: Path): Stream[IO, Path] =
-    Stream.eval(IO(Files.createTempFile(dir, "WatcherSpec", ".tmp")))
-
-  private def modify(file: Path): Stream[IO, Unit] =
-    Stream.eval(IO(Files.write(file, Array[Byte](0, 1, 2, 3))).void)
-
-  private def deleteDirectoryRecursively(dir: Path): IO[Unit] = IO {
-    Files.walkFileTree(
-      dir,
-      new SimpleFileVisitor[Path] {
-        override def visitFile(path: Path, attrs: BasicFileAttributes) = {
-          Files.delete(path)
-          FileVisitResult.CONTINUE
-        }
-        override def postVisitDirectory(path: Path, e: IOException) = {
-          Files.delete(path)
-          FileVisitResult.CONTINUE
-        }
-      }
-    )
-    ()
   }
 
   private def smallDelay: Stream[IO, Nothing] =

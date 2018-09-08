@@ -54,7 +54,7 @@ val s1a = Stream(1,2,3) // variadic
 val s1b = Stream.emits(List(1,2,3)) // accepts any Seq
 ```
 
-The `s1` stream has the type `Stream[Pure,Int]`. It's output type is of course `Int`, and its effect type is `Pure`, which means it does not require evaluation of any effects to produce its output. Streams that don't use any effects are called _pure_ streams. You can convert a pure stream to a `List` or `Vector` using:
+The `s1` stream has the type `Stream[Pure,Int]`. Its output type is of course `Int`, and its effect type is `Pure`, which means it does not require evaluation of any effects to produce its output. Streams that don't use any effects are called _pure_ streams. You can convert a pure stream to a `List` or `Vector` using:
 
 ```tut
 s1.toList
@@ -133,6 +133,7 @@ _Note:_ The various `run*` functions aren't specialized to `IO` and work for any
 
 FS2 streams are chunked internally for performance. You can construct an individual stream chunk using `Stream.chunk`, which accepts an `fs2.Chunk` and lots of functions in the library are chunk-aware and/or try to preserve chunks when possible. A `Chunk` is a strict, finite sequence of values that supports efficient indexed based lookup of elements.
 
+```tut
 import fs2.Chunk
 
 val s1c = Stream.chunk(Chunk.doubles(Array(1.0, 2.0, 3.0)))

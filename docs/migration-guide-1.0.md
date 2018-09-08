@@ -45,11 +45,12 @@ Some of the data types from the old `fs2.async` package have moved to `cats.effe
 |`fs2.async.refOf[F, A](a)`|`cats.effect.concurrent.Ref.of[F, A](a)`|
 |`r.setSync(a)`|`r.set(a)`|
 |`r.setAsync(a)`|`r.lazySet(a)`|
-|`r.modify(f)`|`r.update(f)`|Returns `F[Unit]` instead of `F[Change[A]]`|
+|`r.modify(f)`|`r.update(f)`|Returns `F[Unit]` instead of `F[Change[A]]`. See below for notes.|
 |`r.modify2(f)`|`r.modify(f)`|Returns `F[B]` isntead of `F[(Change[A], B)]`|
 |`r.tryModify(f)`|`r.tryUpdate(f)`|Returns `F[Boolean]` instead of `F[Option[Change[A]]]`|
 |`r.tryModify2(f)`|`r.tryModify(f)`|Returns `F[Option[B]]` instead of `F[Option[(Change[A], B)]]`|
 
+Note: `modify`'s signature has changed, so if you want to extract the value before or after the change, you can do it explicitly - `modify`'s argument is now `f: A => (A, B)`, so to apply a change `g: A => B` and get the value before you can do `modify(a => (g(a), a)`. To get both values (before and after), you can do e.g. `modify(a => (g(a), (a, g(a)))`.
 
 #### Deferred
 
@@ -171,3 +172,7 @@ Methods in the `fs2.io` package that performed blocking I/O have been either rem
 For example, `fs2.io.readInputStream` now takes a blocking execution context argument, as well as an implicit `ContextShift[F]` argument. The `readInputStreamAsync` function was removed, as it was redundant with `readInputStream` once the blocking calls were shifted to a dedicated execution context.
 
 Additionally, the `*Async` methods from `fs2.io.file` have been removed (e.g. `readAllAsync`). Those methods used `java.nio.file.AsynchronousFileChannel`, which does *not* perform asynchronous I/O and instead performs blocking I/O on a dedicated thread pool. Hence, these methods are redundant with their blocking equivalents, which shift blocking calls to a dedicated blocking execution context.
+
+### Catenable
+
+The `fs2.Catenable` type has moved to cats-core, was renamed to `cats.data.Chain`, and underwent some minor method name changes (e.g., `snoc` is now `:+`, `singleton` is now `one`).
