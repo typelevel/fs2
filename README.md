@@ -144,3 +144,9 @@ See [Additional resources](https://github.com/functional-streams-for-scala/fs2/w
 [![YourKit](https://www.yourkit.com/images/yklogo.png)](https://www.yourkit.com/)
 
 Special thanks to [YourKit](https://www.yourkit.com/) for supporting this project's ongoing performance tuning efforts with licenses to their excellent product.
+
+### Code of Conduct ###
+
+People are expected to follow the [Scala Code of Conduct](https://www.scala-lang.org/conduct/) when discussing FS2 on the Github page, Gitter channel, or other venues.
+
+Concerns or issues can be sent to Michael Pilquist (@mpilquist), Pavel Chlupacek (@pchlupacek), or Fabio Labella (@systemfw).
