@@ -1334,17 +1334,17 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
         Stream.eval(Ref.of[F2, Option[Deferred[F2, Unit]]](None)).flatMap { haltRef =>
           Stream.eval(Semaphore(1)).flatMap { guard =>
             // consumes the upstream by sending a packet(stream and a ref) to the next queue and
-            // also does error handling/inturruption/switching by terminating the currently running
+            // also does error handling/interruption/switching by terminating the currently running
             // inner stream
             def runUpstream =
               this
                 .onFinalize(next.enqueue1(None))
-                .evalMap { x =>
-                  Deferred[F2, Unit].flatMap(halt =>
+                .evalMap { o =>
+                  Deferred[F2, Unit].flatMap(haltInner =>
                     haltRef.modify {
-                      case None       => halt.some -> F2.unit
-                      case Some(last) => halt.some -> last.complete(())
-                    }.flatten *> next.enqueue1((x -> halt).some))
+                      case None       => haltInner.some -> F2.unit
+                      case Some(last) => haltInner.some -> last.complete(())
+                    }.flatten *> next.enqueue1((o -> haltInner).some))
                 }
 
             // consumes the packets produced by runUpstream and drains the content to downstream
