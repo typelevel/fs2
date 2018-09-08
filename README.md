@@ -147,6 +147,5 @@ Special thanks to [YourKit](https://www.yourkit.com/) for supporting this projec
 
 ### Code of Conduct ###
 
-People are expected to follow the [Scala Code of Conduct](https://www.scala-lang.org/conduct/) when discussing FS2 on the Github page, Gitter channel, or other venues.
+See the [Code of Conduct](CODE_OF_CONDUCT.md).
 
-Concerns or issues can be sent to Michael Pilquist (@mpilquist), Pavel Chlupacek (@pchlupacek), or Fabio Labella (@systemfw).
