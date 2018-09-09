@@ -2647,7 +2647,7 @@ object Stream extends StreamLowPriority {
     * @param nextDelay Applied to the previous delay to compute the
     *                  next, e.g. to implement exponential backoff
     *
-    * @param maxRetries Number of attempts before failing with the
+    * @param maxAttempts Number of attempts before failing with the
     *                   latest error, if `fo` never succeeds
     *
     * @param retriable Function to determine whether a failure is
@@ -2659,18 +2659,20 @@ object Stream extends StreamLowPriority {
   def retry[F[_]: Timer: RaiseThrowable, O](fo: F[O],
                                             delay: FiniteDuration,
                                             nextDelay: FiniteDuration => FiniteDuration,
-                                            maxRetries: Int,
+                                            maxAttempts: Int,
                                             retriable: Throwable => Boolean =
                                               scala.util.control.NonFatal.apply): Stream[F, O] = {
+    assert(maxAttempts > 0, s"maxAttempts should > 0, was $maxAttempts")
+
     val delays = Stream.unfold(delay)(d => Some(d -> nextDelay(d))).covary[F]
 
     Stream
       .eval(fo)
       .attempts(delays)
-      .take(maxRetries)
+      .take(maxAttempts)
       .takeThrough(_.fold(err => retriable(err), _ => false))
       .last
-      .map(_.getOrElse(sys.error("[fs2] impossible: empty stream in retry")))
+      .map(_.get)
       .rethrow
   }
 
