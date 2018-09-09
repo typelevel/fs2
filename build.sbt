@@ -319,7 +319,7 @@ lazy val microsite = project
     micrositeDescription := "fs2 - Functional Streams for Scala",
     micrositeGithubOwner := "functional-streams-for-scala",
     micrositeGithubRepo := "fs2",
-    micrositeBaseUrl := "/fs2",
+    micrositeBaseUrl := "",
     micrositeExtraMdFiles := Map(
       file("README.md") -> ExtraMdFileConfig(
         "index.md",
