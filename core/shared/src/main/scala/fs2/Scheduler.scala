@@ -159,7 +159,7 @@ abstract class Scheduler {
     * @param nextDelay Applied to the previous delay to compute the
     *                  next, e.g. to implement exponential backoff
     *
-    * @param maxRetries Number of attempts before failing with the
+    * @param maxAttempts Number of attempts before failing with the
     *                   latest error, if `fa` never succeeds
     *
     * @param retriable Function to determine whether a failure is
@@ -171,17 +171,19 @@ abstract class Scheduler {
   def retry[F[_], A](fa: F[A],
                      delay: FiniteDuration,
                      nextDelay: FiniteDuration => FiniteDuration,
-                     maxRetries: Int,
+                     maxAttempts: Int,
                      retriable: Throwable => Boolean = internal.NonFatal.apply)(
       implicit F: Async[F],
       ec: ExecutionContext): Stream[F, A] = {
+    assert(maxAttempts > 0, s"maxAttempts should > 0, was $maxAttempts")
+
     val delays = Stream.unfold(delay)(d => Some(d -> nextDelay(d))).covary[F]
 
     attempts(Stream.eval(fa), delays)
-      .take(maxRetries)
+      .take(maxAttempts)
       .takeThrough(_.fold(err => retriable(err), _ => false))
       .last
-      .map(_.getOrElse(sys.error("[fs2] impossible: empty stream in retry")))
+      .map(_.get)
       .rethrow
   }
 
