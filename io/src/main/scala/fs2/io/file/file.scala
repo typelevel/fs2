@@ -32,8 +32,8 @@ package object file {
   def readRange[F[_]: Sync: ContextShift](path: Path,
                                           blockingExecutionContext: ExecutionContext,
                                           chunkSize: Int,
-                                          start: Int,
-                                          end: Int)(
+                                          start: Long,
+                                          end: Long)(
       ): Stream[F, Byte] =
     pulls
       .fromPath(path, blockingExecutionContext, List(StandardOpenOption.READ))
