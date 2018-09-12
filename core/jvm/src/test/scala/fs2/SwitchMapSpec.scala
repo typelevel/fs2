@@ -3,7 +3,6 @@ package fs2
 import cats.effect.IO
 import cats.effect.concurrent.{Ref, Semaphore}
 import org.scalatest.concurrent.PatienceConfiguration.Timeout
-
 import cats.implicits._
 import fs2.TestUtil._
 
@@ -59,7 +58,7 @@ class SwitchMapSpec extends Fs2Spec with EventuallySupport {
 
     "when primary stream fails, overall stream fails and inner stream is terminated" in forAll {
       (f: Failure) =>
-        var bgDone = false
+        var bgDone = false // TODO upgrade to IO based ones
         val bg = Stream.repeatEval(IO(1)).onFinalize(IO { bgDone = true })
         val prog = (Stream.emit(1) ++ Stream.sleep_[IO](10 millis) ++ f.get).switchMap(_ => bg)
         val throws = f.get.compile.drain.attempt.unsafeRunSync.isLeft
@@ -87,12 +86,11 @@ class SwitchMapSpec extends Fs2Spec with EventuallySupport {
 
     "when primary stream fails, inner stream finalizer run before the primary one" in forAll {
       (f: Failure) =>
-        var bgDone = false
-        val bg = Stream.repeatEval(IO(1)).onFinalize(IO { bgDone = true })
+        val bg = Stream.repeatEval(IO(1))
         val prog = Stream.eval(Ref[IO].of(false)).flatMap { verdict =>
           Stream.eval(Ref[IO].of(false)).flatMap { innerReleased =>
-            (Stream.emit(1) ++
-              Stream.sleep_[IO](10 millis) ++ f.get)
+            // TODO ideally make sure the inner stream has actually started
+            (Stream.emit(1) ++ Stream.sleep_[IO](25.millis) ++ f.get)
               .onFinalize(innerReleased.get.flatMap(inner => verdict.set(inner)))
               .switchMap(_ => bg.onFinalize(innerReleased.set(true)))
               .attempt

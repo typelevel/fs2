@@ -1330,43 +1330,33 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     */
   def switchMap[F2[x] >: F[x], O2](f: O => Stream[F2, O2])(
       implicit F2: Concurrent[F2]): Stream[F2, O2] =
-    Stream.eval(Queue.unbounded[F2, Option[Stream[F2, O2]]]).flatMap { downstream =>
-      Stream.eval(Queue.unbounded[F2, Option[(O, Deferred[F2, Unit])]]).flatMap { next =>
-        Stream.eval(Ref.of[F2, Option[Deferred[F2, Unit]]](None)).flatMap { haltRef =>
-          Stream.eval(Semaphore(1)).flatMap { guard =>
-            // consumes the upstream by sending a packet(stream and a ref) to the next queue and
-            // also does error handling/interruption/switching by terminating the currently running
-            // inner stream
-            def runUpstream =
-              this
-                .onFinalize(next.enqueue1(None))
-                .evalMap { o =>
-                  Deferred[F2, Unit].flatMap(haltInner =>
-                    haltRef.modify {
-                      case None       => haltInner.some -> F2.unit
-                      case Some(last) => haltInner.some -> last.complete(())
-                    }.flatten *> next.enqueue1((o -> haltInner).some))
+    Stream.eval(Semaphore[F2](1)).flatMap { guard =>
+      Stream.eval(Ref.of[F2, Option[Deferred[F2, Unit]]](None)).flatMap { haltRef =>
+        Stream.eval(SignallingRef.apply(false)).flatMap { innerFailed =>
+          def runInner(o: O, halt: Deferred[F2, Unit]) =
+            Stream.eval(guard.acquire) >> // guard inner to prevent parallel inner streams
+              f(o)
+                .interruptWhen(halt.get.attempt)
+                .handleErrorWith { e =>
+                  Stream.eval(innerFailed.set(true)) >> Stream.raiseError[F2](e)
                 }
+                // upon failure, do not release the guard(prevents the next stream from running)
+                .onFinalize(innerFailed.get.flatMap { if (_) F2.unit else guard.release })
 
-            // consumes the packets produced by runUpstream and drains the content to downstream
-            // upon error/interruption, the downstream will also be signalled for termination
-            def runInner =
-              next.dequeue.unNoneTerminate
-                .onFinalize(downstream.enqueue1(None))
-                .flatMap {
-                  case (o, haltInner) =>
-                    f(o).chunks
-                      .evalMap { chunk =>
-                        guard.acquire >>
-                          downstream.enqueue1(Stream.chunk(chunk).onFinalize(guard.release).some)
-                      }
-                      .interruptWhen(haltInner.get.attempt)
-                }
+          this
+          // although failure on inner propagates, it is still possible for parJoin to
+          // keep pulling before it fails so we interrupt it anyway
+            .interruptWhen(innerFailed)
+            .evalMap { o =>
+              Deferred[F2, Unit].flatMap { halt =>
+                haltRef.modify {
+                  case None       => halt.some -> F2.unit
+                  case Some(last) => halt.some -> last.complete(()) // interrupt the previous one
+                }.flatten *> F2.pure(runInner(o, halt))
+              }
 
-            // continuously dequeue the downstream while we process the upstream
-            downstream.dequeue.unNoneTerminate.flatten
-              .concurrently(runInner.concurrently(runUpstream))
-          }
+            }
+            .parJoin(2)
         }
       }
     }
