@@ -1584,7 +1584,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
                         .take(1)
                         .compile
                         .drain >> signalResult) >>
-                    outputQ.dequeue.unNoneTerminate
+                    outputQ.dequeue
                       .flatMap(Stream.chunk(_).covary[F2])
 
                 }
@@ -2426,6 +2426,10 @@ object Stream extends StreamLowPriority {
     */
   def eval_[F[_], A](fa: F[A]): Stream[F, INothing] =
     fromFreeC(Algebra.eval(fa).map(_ => ()))
+
+  /** like `eval` but resulting chunk is flatten efficiently **/
+  def evalUnChunk[F[_], O](fo: F[Chunk[O]]): Stream[F, O] =
+    fromFreeC(Algebra.eval(fo).flatMap(Algebra.output))
 
   /**
     * A continuous stream which is true after `d, 2d, 3d...` elapsed duration,

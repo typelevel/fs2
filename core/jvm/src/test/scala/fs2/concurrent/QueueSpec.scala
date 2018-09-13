@@ -78,7 +78,7 @@ class QueueSpec extends Fs2Spec {
       runLog(
         Stream
           .eval(InspectableQueue.unbounded[IO, Int])
-          .flatMap(_.size.discrete)
+          .flatMap(_.size)
           .take(1)) shouldBe Vector(0)
     }
     "peek1" in {
