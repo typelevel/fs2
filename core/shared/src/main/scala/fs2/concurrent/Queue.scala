@@ -41,19 +41,23 @@ trait Dequeue1[F[_], A] {
   /** Dequeues one `A` from this queue. Completes once one is ready. */
   def dequeue1: F[A]
 
+  /** tries to dequeue element, yields to None if the element cannot be dequeue **/
+  def tryDequeue1: F[Option[A]]
+
 }
 
 trait Dequeue[F[_], A] {
 
-  /** Repeatedly calls `dequeue1` forever. */
-  def dequeue: Stream[F, A]
+  /** Dequeue elements from the queue */
+  def dequeue: Stream[F, A] =
+    dequeueChunk(1)
 
-  /** Calls `dequeueBatch1` once with a provided bound on the elements dequeued. */
+  /** Dequeue elements from the queue, size of the chunks dequeue is restricted by `maxSize` */
+  def dequeueChunk(maxSize: Int): Stream[F, A]
+
+  /** provides a pipe, that for each dequeue sets the constrain on maximum number of element dequeued */
   def dequeueBatch: Pipe[F, Int, A]
 
-  /** Calls `dequeueBatch1` forever, with a bound of `Int.MaxValue` */
-  def dequeueAvailable: Stream[F, A] =
-    Stream.constant(Int.MaxValue).covary[F].through(dequeueBatch)
 }
 
 /**
@@ -64,9 +68,6 @@ trait Dequeue[F[_], A] {
   */
 trait Queue[F[_], A] extends Enqueue[F, A] with Dequeue1[F, A] with Dequeue[F, A] { self =>
 
-  /** Dequeues at most `batchSize` `A`s from this queue. Completes once at least one value is ready. */
-  def dequeueBatch1(batchSize: Int): F[Chunk[A]]
-
   /**
     * Returns an alternate view of this `Queue` where its elements are of type `B`,
     * given two functions, `A => B` and `B => A`.
@@ -76,11 +77,9 @@ trait Queue[F[_], A] extends Enqueue[F, A] with Dequeue1[F, A] with Dequeue[F, A
       def enqueue1(a: B): F[Unit] = self.enqueue1(g(a))
       def offer1(a: B): F[Boolean] = self.offer1(g(a))
       def dequeue1: F[B] = self.dequeue1.map(f)
-      def dequeue: Stream[F, B] = self.dequeue.map(f)
-      def dequeueBatch1(batchSize: Int): F[Chunk[B]] =
-        self.dequeueBatch1(batchSize).map(_.map(f))
-      def dequeueBatch: Pipe[F, Int, B] =
-        in => self.dequeueBatch(in).map(f)
+      def tryDequeue1: F[Option[B]] = self.tryDequeue1.map(_.map(f))
+      def dequeueChunk(maxSize: Int): Stream[F, B] = self.dequeueChunk(maxSize).map(f)
+      def dequeueBatch: Pipe[F, Int, B] = self.dequeueBatch.andThen(_.map(f))
     }
 }
 
@@ -93,9 +92,6 @@ trait NoneTerminatedQueue[F[_], A]
     with Dequeue1[F, Option[A]]
     with Dequeue[F, A] { self =>
 
-  /** Dequeues at most `batchSize` `A`s from this queue. Completes once at least one value is ready. None signals the queue is closed. */
-  def dequeueBatch1(batchSize: Int): F[Option[Chunk[A]]]
-
   /**
     * Returns an alternate view of this `NoneTerminatedQueue` where its elements are of type `B`,
     * given two functions, `A => B` and `B => A`.
@@ -105,11 +101,9 @@ trait NoneTerminatedQueue[F[_], A]
       def enqueue1(a: Option[B]): F[Unit] = self.enqueue1(a.map(g))
       def offer1(a: Option[B]): F[Boolean] = self.offer1(a.map(g))
       def dequeue1: F[Option[B]] = self.dequeue1.map(_.map(f))
-      def dequeue: Stream[F, B] = self.dequeue.map(f)
-      def dequeueBatch1(batchSize: Int): F[Option[Chunk[B]]] =
-        self.dequeueBatch1(batchSize).map(_.map(_.map(f)))
-      def dequeueBatch: Pipe[F, Int, B] =
-        in => self.dequeueBatch(in).map(f)
+      def tryDequeue1: F[Option[Option[B]]] = self.tryDequeue1.map(_.map(_.map(f)))
+      def dequeueChunk(maxSize: Int): Stream[F, B] = self.dequeueChunk(maxSize).map(f)
+      def dequeueBatch: Pipe[F, Int, B] = self.dequeueBatch.andThen(_.map(f))
     }
 }
 
@@ -135,23 +129,34 @@ object Queue {
   def synchronousNoneTerminated[F[_], A](implicit F: Concurrent[F]): F[NoneTerminatedQueue[F, A]] =
     forStrategyNoneTerminated(NoneTerminated.closeNow(BoundedQueue.synchronous))
 
+  private[fs2] def headUnsafe[F[_]: Sync, A](chunk: Chunk[A]): F[A] =
+    if (chunk.size == 1) Applicative[F].pure(chunk(0))
+    else Sync[F].raiseError(new Throwable(s"Expected chunk of size 1. got $chunk"))
+
   /** creates queue from supplied strategy **/
   def forStrategy[F[_]: Concurrent, S, A](
       strategy: PubSubStrategy[A, Chunk[A], S, Int]): F[Queue[F, A]] =
     PubSub(strategy).map { pubSub =>
       new Queue[F, A] {
-        def enqueue1(a: A): F[Unit] = pubSub.publish(a)
-        def offer1(a: A): F[Boolean] = pubSub.tryPublish(a)
-        def dequeue1: F[A] = pubSub.get(1).flatMap { chunk =>
-          if (chunk.size == 1) Applicative[F].pure(chunk(0))
-          else Sync[F].raiseError(new Throwable(s"Expected chunk of size 1. got $chunk"))
+
+        def enqueue1(a: A): F[Unit] =
+          pubSub.publish(a)
+
+        def offer1(a: A): F[Boolean] =
+          pubSub.tryPublish(a)
+
+        def dequeue1: F[A] =
+          pubSub.get(1).flatMap(headUnsafe[F, A])
+
+        def tryDequeue1: F[Option[A]] = pubSub.tryGet(1).flatMap {
+          case Some(chunk) => headUnsafe[F, A](chunk).map(Some(_))
+          case None        => Applicative[F].pure(None)
         }
-        def dequeueBatch1(batchSize: Int): F[Chunk[A]] = pubSub.get(batchSize)
-        def dequeueMax(maxSize: Int): Stream[F, A] =
+        def dequeueChunk(maxSize: Int): Stream[F, A] =
           Stream.evalUnChunk(pubSub.get(maxSize)).repeat
-        def dequeue: Stream[F, A] = dequeueMax(1)
+
         def dequeueBatch: Pipe[F, Int, A] =
-          _.evalMap(dequeueBatch1).flatMap(Stream.chunk)
+          _.flatMap(sz => Stream.evalUnChunk(pubSub.get(sz)))
       }
     }
 
@@ -160,24 +165,29 @@ object Queue {
       strategy: PubSubStrategy[Option[A], Option[Chunk[A]], S, Int]): F[NoneTerminatedQueue[F, A]] =
     PubSub(strategy).map { pubSub =>
       new NoneTerminatedQueue[F, A] {
-        def dequeueBatch1(batchSize: Int): F[Option[Chunk[A]]] =
-          pubSub.get(batchSize)
         def enqueue1(a: Option[A]): F[Unit] =
           pubSub.publish(a)
+
         def offer1(a: Option[A]): F[Boolean] =
           pubSub.tryPublish(a)
-        def dequeueMax(maxSize: Int): Stream[F, A] =
+
+        def dequeueChunk(maxSize: Int): Stream[F, A] =
           Stream.repeatEval(pubSub.get(maxSize)).unNoneTerminate.flatMap(Stream.chunk)
-        def dequeue: Stream[F, A] =
-          dequeueMax(1)
+
         def dequeueBatch: Pipe[F, Int, A] =
-          _.evalMap(pubSub.get).unNoneTerminate.flatMap(Stream.chunk)
+          _.flatMap(sz => Stream.eval(pubSub.get(sz))).unNoneTerminate.flatMap(Stream.chunk)
+
+        def tryDequeue1: F[Option[Option[A]]] =
+          pubSub.tryGet(1).flatMap {
+            case None              => Applicative[F].pure(None)
+            case Some(None)        => Applicative[F].pure(Some(None))
+            case Some(Some(chunk)) => headUnsafe[F, A](chunk).map(a => Some(Some(a)))
+          }
+
         def dequeue1: F[Option[A]] =
           pubSub.get(1).flatMap {
-            case None => Applicative[F].pure(None)
-            case Some(chunk) =>
-              if (chunk.size == 1) Applicative[F].pure(Some(chunk(0)))
-              else Sync[F].raiseError(new Throwable(s"Expected chunk of size 1. got $chunk"))
+            case None        => Applicative[F].pure(None)
+            case Some(chunk) => headUnsafe[F, A](chunk).map(Some(_))
           }
       }
     }
@@ -235,24 +245,33 @@ object InspectableQueue {
             Sync[F].raiseError(new Throwable(
               s"Inspectable `dequeue1` requires chunk of size 1 with `A` got Left($s)"))
           case Right(chunk) =>
-            if (chunk.size == 1) Applicative[F].pure(chunk(0))
-            else Sync[F].raiseError(new Throwable(s"Expected chunk of size 1. got $chunk"))
+            Queue.headUnsafe[F, A](chunk)
 
         }
-        def dequeueBatch1(batchSize: Int): F[Chunk[A]] =
-          pubSub.get(Right(batchSize)).map {
-            _.right.toOption.getOrElse(Chunk.empty)
-          }
-        def dequeueMax(maxSize: Int): Stream[F, A] =
+
+        def tryDequeue1: F[Option[A]] = pubSub.tryGet(Right(1)).flatMap {
+          case None => Applicative[F].pure(None)
+          case Some(Left(s)) =>
+            Sync[F].raiseError(new Throwable(
+              s"Inspectable `dequeue1` requires chunk of size 1 with `A` got Left($s)"))
+          case Some(Right(chunk)) =>
+            Queue.headUnsafe[F, A](chunk).map(Some(_))
+        }
+
+        def dequeueChunk(maxSize: Int): Stream[F, A] =
           Stream
             .evalUnChunk(
               pubSub.get(Right(maxSize)).map { _.right.toOption.getOrElse(Chunk.empty) }
             )
             .repeat
 
-        def dequeue: Stream[F, A] = dequeueMax(1)
         def dequeueBatch: Pipe[F, Int, A] =
-          _.evalMap(dequeueBatch1).flatMap(Stream.chunk)
+          _.flatMap { sz =>
+            Stream
+              .evalUnChunk(
+                pubSub.get(Right(sz)).map { _.right.toOption.getOrElse(Chunk.empty) }
+              )
+          }
 
         def peek1: F[A] =
           Sync[F].bracket(Sync[F].delay(new Token))({ token =>

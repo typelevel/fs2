@@ -40,7 +40,7 @@ class QueueSpec extends Fs2Spec {
             runLog(Stream.eval(Queue.unbounded[IO, Option[Int]]).flatMap { q =>
               s.get.noneTerminate
                 .evalMap(q.enqueue1)
-                .drain ++ q.dequeueAvailable.unNoneTerminate.chunks
+                .drain ++ q.dequeueChunk(Int.MaxValue).unNoneTerminate.chunks
             })
           result.size should be < 2
           result.flatMap(_.toVector) shouldBe s.get.toVector
