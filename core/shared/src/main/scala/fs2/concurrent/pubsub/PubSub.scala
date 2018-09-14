@@ -123,7 +123,7 @@ object PubSub {
                 go(queue, remains.tail, keep :+ sub, acc)
               case (queue, Some(chunk)) =>
                 def action = acc.map(_ >> sub.complete(chunk)).getOrElse(sub.complete(chunk))
-                if (!strategy.empty(queue)) go(queue, remains.tail, remains, Some(action))
+                if (!strategy.empty(queue)) go(queue, remains.tail, keep, Some(action))
                 else (ps.copy(queue = queue, subscribers = keep ++ remains.tail), Some(action))
             }
         }
@@ -163,7 +163,7 @@ object PubSub {
      * there was no successful publish // subscription in the last loop
      */
     @tailrec
-    def loop1(ps: PS, action: F[Unit]): (PS, F[Unit]) =
+    def loop(ps: PS, action: F[Unit]): (PS, F[Unit]) =
       publishPublishers(ps) match {
         case (ps, resultPublish) =>
           consumeSubscribers(ps) match {
@@ -173,7 +173,7 @@ object PubSub {
                 def nextAction =
                   resultConsume.map(action >> _).getOrElse(action) >>
                     resultPublish.getOrElse(Applicative[F].unit)
-                loop1(ps, nextAction)
+                loop(ps, nextAction)
               }
           }
       }
@@ -191,7 +191,7 @@ object PubSub {
       def update[X](f: PS => (PS, F[X])): F[X] =
         state.modify { ps =>
           val (ps1, result) = f(ps)
-          val (ps2, action) = loop1(ps1, Applicative[F].unit)
+          val (ps2, action) = loop(ps1, Applicative[F].unit)
           (ps2, action >> result)
         }.flatten
 
