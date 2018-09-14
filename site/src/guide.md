@@ -562,7 +562,7 @@ stream.toUnicastPublisher
 To convert an upstream `org.reactivestreams.Publisher` into a `Stream`:
 
 ```tut:book
-val publisher: org.reactivestreams.Publisher[Int] = Stream(1, 2, 3).covary[IO].toUnicastPublisher
+val publisher: StreamUnicastPublisher[IO, Int] = Stream(1, 2, 3).covary[IO].toUnicastPublisher
 publisher.toStream[IO]
 ```
 

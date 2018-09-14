@@ -17,7 +17,7 @@ import org.reactivestreams._
   * scala> implicit val contextShift: ContextShift[IO] = IO.contextShift(ExecutionContext.global)
   * scala>
   * scala> val upstream: Stream[IO, Int] = Stream(1, 2, 3).covary[IO]
-  * scala> val publisher: org.reactivestreams.Publisher[Int] = upstream.toUnicastPublisher
+  * scala> val publisher: StreamUnicastPublisher[IO, Int] = upstream.toUnicastPublisher
   * scala> val downstream: Stream[IO, Int] = publisher.toStream[IO]
   * scala>
   * scala> downstream.compile.toVector.unsafeRunSync()
