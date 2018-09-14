@@ -21,7 +21,7 @@ import org.scalatest.testng.TestNGSuiteLike
 import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
 
-class SubscriberWhiteboxSpec
+final class SubscriberWhiteboxSpec
     extends SubscriberWhiteboxVerification[Int](new TestEnvironment(1000L))
     with TestNGSuiteLike {
 
@@ -74,7 +74,7 @@ final class WhiteboxSubscriber[A](sub: StreamSubscriber[IO, A], probe: WhiteboxS
   }
 }
 
-class SubscriberBlackboxSpec
+final class SubscriberBlackboxSpec
     extends SubscriberBlackboxVerification[Int](new TestEnvironment(1000L))
     with TestNGSuiteLike {
 

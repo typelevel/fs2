@@ -7,7 +7,8 @@ import org.reactivestreams._
 
 package object reactivestreams {
 
-  /** Creates a lazy stream from an org.reactivestreams.Publisher.
+  /**
+    * Creates a lazy stream from an org.reactivestreams.Publisher.
     *
     * The publisher only receives a subscriber when the stream is run.
     */
@@ -28,7 +29,8 @@ package object reactivestreams {
 
   implicit final class StreamOps[F[_], A](val stream: Stream[F, A]) {
 
-    /** Creates a [[fs2.interop.reactivestreams.StreamUnicastPublisher]] from a stream.
+    /**
+      * Creates a [[fs2.interop.reactivestreams.StreamUnicastPublisher]] from a stream.
       *
       * This publisher can only have a single subscription.
       * The stream is only ran when elements are requested.

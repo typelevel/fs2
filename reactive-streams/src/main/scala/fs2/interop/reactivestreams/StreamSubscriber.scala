@@ -8,7 +8,8 @@ import cats.effect.concurrent.{Deferred, Ref}
 import cats.implicits._
 import org.reactivestreams._
 
-/** Implementation of a org.reactivestreams.Subscriber.
+/**
+  * Implementation of a org.reactivestreams.Subscriber.
   *
   * This is used to obtain a Stream from an upstream reactivestreams system.
   *

@@ -6,7 +6,8 @@ import cats.effect._
 import cats.implicits._
 import org.reactivestreams._
 
-/** Implementation of an org.reactivestreams.Publisher.
+/**
+  * Implementation of an org.reactivestreams.Publisher.
   *
   * This is used to publish elements from an fs2.Stream to a downstream reactivestreams system.
   *

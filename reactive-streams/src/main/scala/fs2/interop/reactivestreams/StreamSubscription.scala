@@ -9,7 +9,8 @@ import fs2._
 import fs2.concurrent.{Queue, SignallingRef}
 import org.reactivestreams._
 
-/** Implementation of a org.reactivestreams.Subscription.
+/**
+  * Implementation of a org.reactivestreams.Subscription.
   *
   * This is used by the [[fs2.interop.reactivestreams.StreamUnicastPublisher]] to send elements from a Stream to a downstream reactivestreams system.
   *
