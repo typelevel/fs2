@@ -1,11 +1,12 @@
 # Contributors
 
-This project is the work of numerous individuals. Names are listed below, ordered alphabetically by last name, along with a brief description of each person's role and contributions. 
+This project is the work of numerous individuals. Names are listed below, ordered alphabetically by last name, along with a brief description of each person's role and contributions.
 
 Each individual maintains their own description, and if you don't see your name listed here, please do open a PR!
 
 Also see the [GitHub contributor stats](https://github.com/functional-streams-for-scala/fs2/graphs/contributors).
 
+- Zainab Ali ([@zainab-ali](https://github.com/zainab-ali)): reactive streams implementation
 - Paul Chiusano ([@pchiusano](https://github.com/pchiusano)): project founder and maintainer
 - Pavel Chlupáček ([@pchlupacek](https://github.com/pchlupacek)): concurrency, original implementation of `Append` algebra
 - Gary Coady ([@fiadliel](https://github.com/fiadliel)): NIO file implementation, port of compress from scalaz-stream, other minor features
