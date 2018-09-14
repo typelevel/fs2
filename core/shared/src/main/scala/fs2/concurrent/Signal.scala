@@ -160,7 +160,8 @@ object SignallingRef {
             case (access, setter) =>
               (access._2, { (a: A) =>
                 setter((access._1 + 1, a)).flatMap { success =>
-                  if (success) pubSub.publish((access._1, (access._1 + 1, a))).as(true)
+                  if (success)
+                    Concurrent[F].start(pubSub.publish((access._1, (access._1 + 1, a)))).as(true)
                   else Applicative[F].pure(false)
                 }
               })
@@ -174,7 +175,7 @@ object SignallingRef {
           def tryModify[B](f: A => (A, B)): F[Option[B]] =
             ref.tryModify(modify_(f)).flatMap {
               case None              => Applicative[F].pure(None)
-              case Some((signal, b)) => pubSub.publish(signal).as(Some(b))
+              case Some((signal, b)) => Concurrent[F].start(pubSub.publish(signal)).as(Some(b))
             }
 
           def update(f: A => A): F[Unit] =
@@ -185,7 +186,7 @@ object SignallingRef {
           def modify[B](f: A => (A, B)): F[B] =
             ref.modify(modify_(f)).flatMap {
               case (signal, b) =>
-                pubSub.publish(signal).as(b)
+                Concurrent[F].start(pubSub.publish(signal)).as(b)
             }
 
           def tryModifyState[B](state: State[A, B]): F[Option[B]] =
