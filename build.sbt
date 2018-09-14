@@ -214,7 +214,7 @@ lazy val root = project
   .in(file("."))
   .settings(commonSettings)
   .settings(noPublish)
-  .aggregate(coreJVM, coreJS, io, benchmark)
+  .aggregate(coreJVM, coreJS, io, reactiveStreams, benchmark)
 
 lazy val core = crossProject(JVMPlatform, JSPlatform)
   .in(file("core"))
@@ -257,6 +257,31 @@ lazy val io = project
   .settings(
     name := "fs2-io",
     OsgiKeys.exportPackage := Seq("fs2.io.*"),
+    OsgiKeys.privatePackage := Seq(),
+    OsgiKeys.importPackage := {
+      val Some((major, minor)) = CrossVersion.partialVersion(scalaVersion.value)
+      Seq(s"""scala.*;version="[$major.$minor,$major.${minor + 1})"""",
+          """fs2.*;version="${Bundle-Version}"""",
+          "*")
+    },
+    OsgiKeys.additionalHeaders := Map("-removeheaders" -> "Include-Resource,Private-Package"),
+    osgiSettings
+  )
+  .dependsOn(coreJVM % "compile->compile;test->test")
+
+lazy val reactiveStreams = project
+  .in(file("reactive-streams"))
+  .enablePlugins(SbtOsgi)
+  .settings(commonSettings)
+  .settings(
+    libraryDependencies ++= Seq(
+      "org.reactivestreams" % "reactive-streams" % "1.0.2",
+      "org.reactivestreams" % "reactive-streams-tck" % "1.0.2" % "test"
+    ))
+  .settings(mimaSettings)
+  .settings(
+    name := "fs2-reactive-streams",
+    OsgiKeys.exportPackage := Seq("fs2.interop.reactivestreams.*"),
     OsgiKeys.privatePackage := Seq(),
     OsgiKeys.importPackage := {
       val Some((major, minor)) = CrossVersion.partialVersion(scalaVersion.value)
@@ -331,5 +356,5 @@ lazy val microsite = project
   .settings(tutSettings)
   .dependsOn(coreJVM, io)
 
-addCommandAlias("testJVM", ";coreJVM/test;io/test;benchmark/test")
+addCommandAlias("testJVM", ";coreJVM/test;io/test;reactiveStreams/test;benchmark/test")
 addCommandAlias("testJS", "coreJS/test")
