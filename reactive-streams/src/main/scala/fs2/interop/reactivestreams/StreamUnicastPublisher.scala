@@ -7,19 +7,18 @@ import cats.implicits._
 import org.reactivestreams._
 
 /**
-  * Implementation of an org.reactivestreams.Publisher.
+  * Implementation of a `org.reactivestreams.Publisher`
   *
-  * This is used to publish elements from an fs2.Stream to a downstream reactivestreams system.
+  * This is used to publish elements from a `fs2.Stream` to a downstream reactivestreams system.
   *
-  * @see https://github.com/reactive-streams/reactive-streams-jvm#1-publisher-code
-  *
+  * @see [[https://github.com/reactive-streams/reactive-streams-jvm#1-publisher-code]]
   */
-final class StreamUnicastPublisher[F[_]: ConcurrentEffect, A](val s: Stream[F, A])
+final class StreamUnicastPublisher[F[_]: ConcurrentEffect, A](val stream: Stream[F, A])
     extends Publisher[A] {
 
   def subscribe(subscriber: Subscriber[_ >: A]): Unit = {
     nonNull(subscriber)
-    StreamSubscription(subscriber, s).flatMap { subscription =>
+    StreamSubscription(subscriber, stream).flatMap { subscription =>
       Sync[F].delay {
         subscriber.onSubscribe(subscription)
         subscription.unsafeStart

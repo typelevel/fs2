@@ -10,16 +10,17 @@ import fs2.concurrent.{Queue, SignallingRef}
 import org.reactivestreams._
 
 /**
-  * Implementation of a org.reactivestreams.Subscription.
+  * Implementation of a `org.reactivestreams.Subscription`.
   *
-  * This is used by the [[fs2.interop.reactivestreams.StreamUnicastPublisher]] to send elements from a Stream to a downstream reactivestreams system.
+  * This is used by the [[StreamUnicastPublisher]] to send elements from a `fs2.Stream` to a downstream reactivestreams system.
   *
-  * @see https://github.com/reactive-streams/reactive-streams-jvm#3-subscription-code
+  * @see [[https://github.com/reactive-streams/reactive-streams-jvm#3-subscription-code]]
   */
-final class StreamSubscription[F[_], A](requests: Queue[F, StreamSubscription.Request],
-                                        cancelled: SignallingRef[F, Boolean],
-                                        sub: Subscriber[A],
-                                        stream: Stream[F, A])(implicit F: ConcurrentEffect[F])
+private[reactivestreams] final class StreamSubscription[F[_], A](
+    requests: Queue[F, StreamSubscription.Request],
+    cancelled: SignallingRef[F, Boolean],
+    sub: Subscriber[A],
+    stream: Stream[F, A])(implicit F: ConcurrentEffect[F])
     extends Subscription {
   import StreamSubscription._
 
@@ -79,7 +80,7 @@ final class StreamSubscription[F[_], A](requests: Queue[F, StreamSubscription.Re
   }
 }
 
-object StreamSubscription {
+private[reactivestreams] object StreamSubscription {
 
   /** Represents a downstream subscriber's request to publish elements */
   sealed trait Request

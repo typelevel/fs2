@@ -9,11 +9,11 @@ import cats.implicits._
 import org.reactivestreams._
 
 /**
-  * Implementation of a org.reactivestreams.Subscriber.
+  * Implementation of a `org.reactivestreams.Subscriber`.
   *
-  * This is used to obtain a Stream from an upstream reactivestreams system.
+  * This is used to obtain a `fs2.Stream` from an upstream reactivestreams system.
   *
-  * @see https://github.com/reactive-streams/reactive-streams-jvm#2-subscriber-code
+  * @see [[https://github.com/reactive-streams/reactive-streams-jvm#2-subscriber-code]]
   */
 final class StreamSubscriber[F[_]: ConcurrentEffect, A](val sub: StreamSubscriber.FSM[F, A])
     extends Subscriber[A] {
@@ -39,7 +39,7 @@ final class StreamSubscriber[F[_]: ConcurrentEffect, A](val sub: StreamSubscribe
     sub.onError(t).unsafeRunAsync
   }
 
-  /** Obtain a Stream */
+  /** Obtain a fs2.Stream */
   def stream: Stream[F, A] = sub.stream
 
   private def nonNull[B](b: B): Unit = if (b == null) throw new NullPointerException()
