@@ -3,11 +3,8 @@ package interop
 package reactivestreams
 
 import cats.effect._
-import cats.effect.implicits._
 import cats.implicits._
 import org.reactivestreams._
-
-import scala.concurrent.ExecutionContext
 
 /** Implementation of an org.reactivestreams.Publisher.
   *
@@ -29,7 +26,7 @@ final class StreamUnicastPublisher[F[_]: ConcurrentEffect, A](val s: Stream[F, A
     }.unsafeRunAsync
   }
 
-  private def nonNull[A](a: A): Unit = if (a == null) throw new NullPointerException()
+  private def nonNull[B](b: B): Unit = if (b == null) throw new NullPointerException()
 }
 
 object StreamUnicastPublisher {

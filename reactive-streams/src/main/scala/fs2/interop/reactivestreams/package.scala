@@ -2,11 +2,8 @@ package fs2
 package interop
 
 import cats.effect._
-import cats.implicits._
 import cats.effect.implicits._
 import org.reactivestreams._
-
-import scala.concurrent.ExecutionContext
 
 package object reactivestreams {
 
@@ -47,7 +44,7 @@ package object reactivestreams {
         case h    => h.uncaughtException(Thread.currentThread(), e)
       }
 
-    def unsafeRunAsync: Unit =
+    def unsafeRunAsync(): Unit =
       fa.runAsync {
         case Left(e)  => IO(reportFailure(e))
         case Right(_) => IO.unit

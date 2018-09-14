@@ -31,7 +31,7 @@ class SubscriberWhiteboxSpec
   private val counter = new AtomicInteger()
 
   def createSubscriber(
-    p: SubscriberWhiteboxVerification.WhiteboxSubscriberProbe[Int]
+      p: SubscriberWhiteboxVerification.WhiteboxSubscriberProbe[Int]
   ): Subscriber[Int] =
     StreamSubscriber[IO, Int]
       .map { s =>
@@ -53,15 +53,13 @@ final class WhiteboxSubscriber[A](sub: StreamSubscriber[IO, A], probe: WhiteboxS
   def onSubscribe(s: Subscription): Unit = {
     sub.onSubscribe(s)
     probe.registerOnSubscribe(new SubscriberPuppet {
-      override def triggerRequest(elements: Long): Unit = {
+      override def triggerRequest(elements: Long): Unit =
         (0 to elements.toInt)
           .foldLeft(IO.unit)((t, _) => t.flatMap(_ => sub.sub.dequeue1.map(_ => ())))
           .unsafeRunAsync(_ => ())
-      }
 
-      override def signalCancel(): Unit = {
+      override def signalCancel(): Unit =
         s.cancel()
-      }
     })
   }
 

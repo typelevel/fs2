@@ -20,7 +20,6 @@ class CancellationSpec extends FunSuite {
   implicit val ctx: ContextShift[IO] =
     IO.contextShift(ExecutionContext.global)
 
-
   case class Sub[A](b: AtomicBoolean) extends Subscriber[A] {
     def onNext(t: A) = b.set(true)
     def onComplete() = b.set(true)
@@ -35,7 +34,7 @@ class CancellationSpec extends FunSuite {
   test("after subscription is cancelled request must be noOps") {
     var i = 0
     val b = new AtomicBoolean(false)
-    while(i < attempts) {
+    while (i < attempts) {
       val sub = StreamSubscription(Sub[Int](b), s).unsafeRunSync
       sub.unsafeStart
       sub.cancel
@@ -50,7 +49,7 @@ class CancellationSpec extends FunSuite {
   test("after subscription is cancelled additional cancelations must be noOps") {
     var i = 0
     val b = new AtomicBoolean(false)
-    while(i < attempts) {
+    while (i < attempts) {
       val sub = StreamSubscription(Sub[Int](b), s).unsafeRunSync
       sub.unsafeStart
       sub.cancel

@@ -6,10 +6,8 @@ import cats.effect._
 import cats.effect.implicits._
 import cats.implicits._
 import fs2._
-import fs2.concurrent.{Queue, Signal, SignallingRef}
+import fs2.concurrent.{Queue, SignallingRef}
 import org.reactivestreams._
-
-import scala.concurrent.ExecutionContext
 
 /** Implementation of a org.reactivestreams.Subscription.
   *

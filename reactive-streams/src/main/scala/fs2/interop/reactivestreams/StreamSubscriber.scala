@@ -8,8 +8,6 @@ import cats.effect.concurrent.{Deferred, Ref}
 import cats.implicits._
 import org.reactivestreams._
 
-import scala.concurrent.ExecutionContext
-
 /** Implementation of a org.reactivestreams.Subscriber.
   *
   * This is used to obtain a Stream from an upstream reactivestreams system.
@@ -43,7 +41,7 @@ final class StreamSubscriber[F[_]: ConcurrentEffect, A](val sub: StreamSubscribe
   /** Obtain a Stream */
   def stream: Stream[F, A] = sub.stream
 
-  private def nonNull[A](a: A): Unit = if (a == null) throw new NullPointerException()
+  private def nonNull[B](b: B): Unit = if (b == null) throw new NullPointerException()
 }
 
 object StreamSubscriber {
@@ -106,9 +104,9 @@ object StreamSubscriber {
           o -> F.delay(s.cancel) *> F.raiseError(err)
       }
       case OnNext(a) => {
-        case WaitingOnUpstream(s, r)    => Idle(s) -> r.complete(a.some.asRight)
-        case c @ DownstreamCancellation => c -> F.unit
-        case o                          => o -> F.raiseError(new Error(s"received record [$a] in invalid state [$o]"))
+        case WaitingOnUpstream(s, r) => Idle(s) -> r.complete(a.some.asRight)
+        case DownstreamCancellation  => DownstreamCancellation -> F.unit
+        case o                       => o -> F.raiseError(new Error(s"received record [$a] in invalid state [$o]"))
       }
       case OnComplete => {
         case WaitingOnUpstream(sub, r) => UpstreamCompletion -> r.complete(None.asRight)
@@ -128,7 +126,7 @@ object StreamSubscriber {
         case Uninitialized          => RequestBeforeSubscription(r) -> F.unit
         case Idle(sub)              => WaitingOnUpstream(sub, r) -> F.delay(sub.request(1))
         case err @ UpstreamError(e) => err -> r.complete(e.asLeft)
-        case c @ UpstreamCompletion => c -> r.complete(None.asRight)
+        case UpstreamCompletion     => UpstreamCompletion -> r.complete(None.asRight)
         case o                      => o -> r.complete((new Error(s"received request in invalid state [$o]")).asLeft)
       }
     }
