@@ -1,6 +1,6 @@
 package fs2.concurrent.pubsub
 
-trait PubSubStrategy[I, O, S, Selector] {
+trait PubSubStrategy[I, O, S, Selector] { self =>
 
   /** provides initial state **/
   def initial: S
@@ -55,4 +55,24 @@ trait PubSubStrategy[I, O, S, Selector] {
     * @param selector Selector, whose selection shall be cancelled. Shall contain subscriber's identity.
     */
   def unsubscribe(selector: Selector, queueState: S): S
+
+  /** transforms selector to selector of this state by applying the `f` to Sel2 and state of this strategy **/
+  def transformSelector[Sel2](f: (Sel2, S) => Selector): PubSubStrategy[I, O, S, Sel2] =
+    new PubSubStrategy[I, O, S, Sel2] {
+      def initial: S =
+        self.initial
+      def accepts(i: I, queueState: S): Boolean =
+        self.accepts(i, queueState)
+      def publish(i: I, queueState: S): S =
+        self.publish(i, queueState)
+      def get(selector: Sel2, queueState: S): (S, Option[O]) =
+        self.get(f(selector, queueState), queueState)
+      def empty(queueState: S): Boolean =
+        self.empty(queueState)
+      def subscribe(selector: Sel2, queueState: S): (S, Boolean) =
+        self.subscribe(f(selector, queueState), queueState)
+      def unsubscribe(selector: Sel2, queueState: S): S =
+        self.unsubscribe(f(selector, queueState), queueState)
+    }
+
 }

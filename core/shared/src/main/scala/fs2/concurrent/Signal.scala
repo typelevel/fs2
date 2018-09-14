@@ -202,7 +202,6 @@ object SignallingRef {
         }
       }
     }
-  
 
   implicit def invariantInstance[F[_]: Functor]: Invariant[SignallingRef[F, ?]] =
     new Invariant[SignallingRef[F, ?]] {

@@ -50,7 +50,7 @@ trait Dequeue[F[_], A] {
 
   /** Dequeue elements from the queue */
   def dequeue: Stream[F, A] =
-    dequeueChunk(1)
+    dequeueChunk(Int.MaxValue)
 
   /** Dequeue elements from the queue, size of the chunks dequeue is restricted by `maxSize` */
   def dequeueChunk(maxSize: Int): Stream[F, A]
@@ -113,9 +113,17 @@ object Queue {
   def unbounded[F[_], A](implicit F: Concurrent[F]): F[Queue[F, A]] =
     forStrategy(UnboundedQueue.strategy[A])
 
+  /** unbounded queue that distributed always at max `fairSize` elements to any subscriber **/
+  def fairUnbounded[F[_], A](fairSize: Int)(implicit F: Concurrent[F]): F[Queue[F, A]] =
+    forStrategy(UnboundedQueue.strategy[A].transformSelector[Int]((sz, _) => sz.min(fairSize)))
+
   /** Creates a queue with the specified size bound. */
   def bounded[F[_], A](maxSize: Int)(implicit F: Concurrent[F]): F[Queue[F, A]] =
     forStrategy(BoundedQueue.strategy(maxSize))
+
+  /** bounded queue that distributed always at max `fairSize` elements to any subscriber **/
+  def fairBounded[F[_], A](maxSize: Int, fairSize: Int)(implicit F: Concurrent[F]): F[Queue[F, A]] =
+    forStrategy(BoundedQueue.strategy(maxSize).transformSelector[Int]((sz, _) => sz.min(fairSize)))
 
   /** Creates a queue which stores the last `maxSize` enqueued elements and which never blocks on enqueue. */
   def circularBuffer[F[_], A](maxSize: Int)(implicit F: Concurrent[F]): F[Queue[F, A]] =
