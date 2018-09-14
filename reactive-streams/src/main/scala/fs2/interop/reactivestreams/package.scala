@@ -9,7 +9,9 @@ import org.reactivestreams._
   * Implementation of the reactivestreams protocol for fs2
   *
   * @example {{{
-  * scala> import cats.effect._, fs2._, fs2.interop.reactivestreams._
+  * scala> import fs2._
+  * scala> import fs2.interop.reactivestreams._
+  * scala> import cats.effect.{ContextShift, IO}
   * scala> import scala.concurrent.ExecutionContext
   * scala>
   * scala> implicit val contextShift: ContextShift[IO] = IO.contextShift(ExecutionContext.global)

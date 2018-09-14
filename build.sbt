@@ -332,7 +332,7 @@ lazy val docs = project
     tutTargetDirectory := file("docs")
   )
   .settings(tutSettings)
-  .dependsOn(coreJVM, io)
+  .dependsOn(coreJVM, io, reactiveStreams)
 
 lazy val microsite = project
   .in(file("site"))
@@ -354,7 +354,7 @@ lazy val microsite = project
     )
   )
   .settings(tutSettings)
-  .dependsOn(coreJVM, io)
+  .dependsOn(coreJVM, io, reactiveStreams)
 
 addCommandAlias("testJVM", ";coreJVM/test;io/test;reactiveStreams/test;benchmark/test")
 addCommandAlias("testJS", "coreJS/test")
