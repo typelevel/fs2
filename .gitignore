@@ -15,3 +15,4 @@ z_local.sbt
 /.ensime_cache
 .tags
 .metaserver
+test-output

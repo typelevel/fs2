@@ -27,6 +27,7 @@ This is the official FS2 guide. It gives an overview of the library and its feat
 * [Concurrency](#concurrency)
 * [Exercises (concurrency)](#exercises-2)
 * [Talking to the external world](#talking-to-the-external-world)
+* [Reactive streams](#reactive-streams)
 * [Learning more](#learning-more)
 * [Appendix: How interruption of streams works](#a1)
 
@@ -525,6 +526,48 @@ def rows[F[_]](h: CSVHandle)(implicit F: ConcurrentEffect[F], cs: ContextShift[F
 See [`Queue`](https://github.com/functional-streams-for-scala/fs2/blob/series/1.0/core/shared/src/main/scala/fs2/concurrent/Queue.scala)
 for more useful methods. Most concurrent queues in FS2 support tracking their size, which is handy for implementing size-based throttling of the producer.
 
+### Reactive streams
+
+The [reactive streams initiative](http://www.reactive-streams.org/) is complicated, mutable and unsafe - it is not something that is desired for use over fs2.
+But there are times when we need use fs2 in conjunction with a different streaming library, and this is where reactive streams shines.
+
+Any reactive streams system can interoperate with any other reactive streams system by exposing an `org.reactivestreams.Publisher` or an `org.reactivestreams.Subscriber`.
+
+The `reactive-streams` library provides instances of reactive streams compliant publishers and subscribers to ease interoperability with other streaming libraries.
+
+#### Usage
+
+You may require the following imports:
+
+```tut:book:reset
+import fs2._
+import fs2.interop.reactivestreams._
+import cats.effect.{ContextShift, IO}
+import scala.concurrent.ExecutionContext
+```
+
+A `ContextShift` instance is necessary when working with `IO`
+
+```tut:book
+implicit val contextShift: ContextShift[IO] = IO.contextShift(ExecutionContext.global)
+```
+
+To convert a `Stream` into a downstream unicast `org.reactivestreams.Publisher`:
+
+```tut:book
+val stream = Stream(1, 2, 3).covary[IO]
+stream.toUnicastPublisher
+```
+
+To convert an upstream `org.reactivestreams.Publisher` into a `Stream`:
+
+```tut:book
+val publisher: StreamUnicastPublisher[IO, Int] = Stream(1, 2, 3).covary[IO].toUnicastPublisher
+publisher.toStream[IO]
+```
+
+A unicast publisher must have a single subscriber only.
+
 ### Learning more
 
 Want to learn more?
@@ -556,7 +599,9 @@ Regarding 3:
 
 Let's look at some examples of how this plays out, starting with the synchronous interruption case:
 
-```tut
+```tut:reset
+import fs2._
+import cats.effect.IO
 case object Err extends Throwable
 
 (Stream(1) ++ (throw Err)).take(1).toList
@@ -583,6 +628,8 @@ Stream(1).covary[IO].
 That covers synchronous interrupts. Let's look at asynchronous interrupts. Ponder what the result of `merged` will be in this example:
 
 ```tut
+import cats.effect.ContextShift
+
 implicit val ioContextShift: ContextShift[IO] = IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
 val s1 = (Stream(1) ++ Stream(2)).covary[IO]
 val s2 = (Stream.empty ++ Stream.raiseError[IO](Err)).handleErrorWith { e => println(e); Stream.raiseError[IO](e) }

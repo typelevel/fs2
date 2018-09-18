@@ -2651,7 +2651,7 @@ object Stream extends StreamLowPriority {
     * @param nextDelay Applied to the previous delay to compute the
     *                  next, e.g. to implement exponential backoff
     *
-    * @param maxRetries Number of attempts before failing with the
+    * @param maxAttempts Number of attempts before failing with the
     *                   latest error, if `fo` never succeeds
     *
     * @param retriable Function to determine whether a failure is
@@ -2663,18 +2663,20 @@ object Stream extends StreamLowPriority {
   def retry[F[_]: Timer: RaiseThrowable, O](fo: F[O],
                                             delay: FiniteDuration,
                                             nextDelay: FiniteDuration => FiniteDuration,
-                                            maxRetries: Int,
+                                            maxAttempts: Int,
                                             retriable: Throwable => Boolean =
                                               scala.util.control.NonFatal.apply): Stream[F, O] = {
+    assert(maxAttempts > 0, s"maxAttempts should > 0, was $maxAttempts")
+
     val delays = Stream.unfold(delay)(d => Some(d -> nextDelay(d))).covary[F]
 
     Stream
       .eval(fo)
       .attempts(delays)
-      .take(maxRetries)
+      .take(maxAttempts)
       .takeThrough(_.fold(err => retriable(err), _ => false))
       .last
-      .map(_.getOrElse(sys.error("[fs2] impossible: empty stream in retry")))
+      .map(_.get)
       .rethrow
   }
 
@@ -3366,6 +3368,25 @@ object Stream extends StreamLowPriority {
       */
     def last: G[Option[O]] =
       foldChunks(Option.empty[O])((acc, c) => c.last.orElse(acc))
+
+    /**
+      * Compiles this stream in to a value of the target effect type `F`,
+      * raising a `NoSuchElementException` if the stream emitted no values
+      * and returning the last value emitted otherwise.
+      *
+      * When this method has returned, the stream has not begun execution -- this method simply
+      * compiles the stream down to the target effect type.
+      *
+      * @example {{{
+      * scala> import cats.effect.IO
+      * scala> Stream.range(0,100).take(5).covary[IO].compile.lastOrError.unsafeRunSync
+      * res0: Int = 4
+      * scala> Stream.empty.covaryAll[IO, Int].compile.lastOrError.attempt.unsafeRunSync
+      * res1: Either[Throwable, Int] = Left(java.util.NoSuchElementException)
+      * }}}
+      */
+    def lastOrError(implicit G: MonadError[G, Throwable]): G[O] =
+      last.flatMap(_.fold(G.raiseError(new NoSuchElementException): G[O])(G.pure))
 
     /**
       * Compiles this stream into a value of the target effect type `F` by logging
