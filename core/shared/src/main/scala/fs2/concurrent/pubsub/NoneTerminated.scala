@@ -57,7 +57,7 @@ object NoneTerminated {
     }
 
   /**
-    * Like `terminateNow` but instead terminating immediately, it will terminate when all elements in the queue were consumed.
+    * Like `closeNow` but instead terminating immediately, it will terminate when all elements in the queue were consumed.
     * When the queue is closed, but not all elements yet consumed, any publish operation will complete immediately.
     *
     */

@@ -1,6 +1,6 @@
 package fs2.concurrent.pubsub
 
-trait PubSubStrategy[I, O, S, Selector] { self =>
+private[fs2] trait PubSubStrategy[I, O, S, Selector] { self =>
 
   /** provides initial state **/
   def initial: S

@@ -111,19 +111,19 @@ object Queue {
 
   /** Creates a queue with no size bound. */
   def unbounded[F[_], A](implicit F: Concurrent[F]): F[Queue[F, A]] =
-    forStrategy(UnboundedQueue.strategy[A])
+    forStrategy(UnboundedQueue.lifo[A])
 
   /** unbounded queue that distributed always at max `fairSize` elements to any subscriber **/
   def fairUnbounded[F[_], A](fairSize: Int)(implicit F: Concurrent[F]): F[Queue[F, A]] =
-    forStrategy(UnboundedQueue.strategy[A].transformSelector[Int]((sz, _) => sz.min(fairSize)))
+    forStrategy(UnboundedQueue.lifo[A].transformSelector[Int]((sz, _) => sz.min(fairSize)))
 
   /** Creates a queue with the specified size bound. */
   def bounded[F[_], A](maxSize: Int)(implicit F: Concurrent[F]): F[Queue[F, A]] =
-    forStrategy(BoundedQueue.strategy(maxSize))
+    forStrategy(Bounded.lifo(maxSize))
 
   /** bounded queue that distributed always at max `fairSize` elements to any subscriber **/
   def fairBounded[F[_], A](maxSize: Int, fairSize: Int)(implicit F: Concurrent[F]): F[Queue[F, A]] =
-    forStrategy(BoundedQueue.strategy(maxSize).transformSelector[Int]((sz, _) => sz.min(fairSize)))
+    forStrategy(Bounded.lifo(maxSize).transformSelector[Int]((sz, _) => sz.min(fairSize)))
 
   /** Creates a queue which stores the last `maxSize` enqueued elements and which never blocks on enqueue. */
   def circularBuffer[F[_], A](maxSize: Int)(implicit F: Concurrent[F]): F[Queue[F, A]] =
@@ -131,11 +131,11 @@ object Queue {
 
   /** Creates a queue which allows a single element to be enqueued at any time. */
   def synchronous[F[_], A](implicit F: Concurrent[F]): F[Queue[F, A]] =
-    forStrategy(BoundedQueue.synchronous)
+    forStrategy(Bounded.synchronous)
 
   /** Like [[synchronous]], except that any enqueue of `None` will never block and cancels any dequeue operation */
   def synchronousNoneTerminated[F[_], A](implicit F: Concurrent[F]): F[NoneTerminatedQueue[F, A]] =
-    forStrategyNoneTerminated(NoneTerminated.closeNow(BoundedQueue.synchronous))
+    forStrategyNoneTerminated(NoneTerminated.closeNow(Bounded.synchronous))
 
   private[fs2] def headUnsafe[F[_]: Sync, A](chunk: Chunk[A]): F[A] =
     if (chunk.size == 1) Applicative[F].pure(chunk(0))
@@ -227,11 +227,11 @@ object InspectableQueue {
 
   /** Creates a queue with no size bound. */
   def unbounded[F[_], A](implicit F: Concurrent[F]): F[InspectableQueue[F, A]] =
-    forStrategy(UnboundedQueue.strategy[A])(_.headOption)(_.size)
+    forStrategy(UnboundedQueue.lifo[A])(_.headOption)(_.size)
 
   /** Creates a queue with the specified size bound. */
   def bounded[F[_], A](maxSize: Int)(implicit F: Concurrent[F]): F[InspectableQueue[F, A]] =
-    forStrategy(BoundedQueue.strategy[A](maxSize))(_.headOption)(_.size)
+    forStrategy(Bounded.lifo[A](maxSize))(_.headOption)(_.size)
 
   /** Creates a queue which stores the last `maxSize` enqueued elements and which never blocks on enqueue. */
   def circularBuffer[F[_], A](maxSize: Int)(implicit F: Concurrent[F]): F[InspectableQueue[F, A]] =

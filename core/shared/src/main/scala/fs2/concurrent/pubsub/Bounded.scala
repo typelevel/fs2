@@ -2,46 +2,45 @@ package fs2.concurrent.pubsub
 import fs2.Chunk
 import scala.collection.immutable.{Queue => ScalaQueue}
 
-object BoundedQueue {
+object Bounded {
 
   /** unbounded fifo strategy **/
   def fifo[A](maxSize: Int): PubSubStrategy[A, Chunk[A], ScalaQueue[A], Int] =
-    strategy(maxSize)(_ :+ _)
+    strategy(maxSize)(UnboundedQueue.fifo[A])(_.size)
 
   /** unbounded lifo strategy **/
   def lifo[A](maxSize: Int): PubSubStrategy[A, Chunk[A], ScalaQueue[A], Int] =
-    strategy(maxSize)((q, a) => a +: q)
+    strategy(maxSize)(UnboundedQueue.lifo[A])(_.size)
 
   /**
-    * Creates bounded queue strategy for `A` with configurable append function
+    * Creates bounded strategy, that won't accepts elements if size produced by `f` is >= `maxSize`
     *
-    * @param maxSize    Maximum size of `A` before this is full
-    * @param append     Function used to append new elements to the queue.
+    * @param maxSize    Maximum size of enqueued `A` before this is full
+    * @param szOf       Function to extract current size of `S`
     */
-  def strategy[A](maxSize: Int)(append: (ScalaQueue[A], A) => ScalaQueue[A])
-    : PubSubStrategy[A, Chunk[A], ScalaQueue[A], Int] =
-    new PubSubStrategy[A, Chunk[A], ScalaQueue[A], Int] {
-      val unboundedStrategy = UnboundedQueue.mk(append)
+  def strategy[A, S](maxSize: Int)(strategy: PubSubStrategy[A, Chunk[A], S, Int])(
+      f: S => Int): PubSubStrategy[A, Chunk[A], S, Int] =
+    new PubSubStrategy[A, Chunk[A], S, Int] {
 
-      val initial: ScalaQueue[A] = ScalaQueue.empty
+      val initial: S = strategy.initial
 
-      def publish(a: A, queueState: ScalaQueue[A]): ScalaQueue[A] =
-        append(queueState, a)
+      def publish(a: A, queueState: S): S =
+        strategy.publish(a, queueState)
 
-      def accepts(i: A, queueState: ScalaQueue[A]): Boolean =
-        queueState.size < maxSize
+      def accepts(i: A, queueState: S): Boolean =
+        f(queueState) < maxSize
 
-      def empty(queueState: ScalaQueue[A]): Boolean =
-        queueState.isEmpty
+      def empty(queueState: S): Boolean =
+        strategy.empty(queueState)
 
-      def get(selector: Int, queueState: ScalaQueue[A]): (ScalaQueue[A], Option[Chunk[A]]) =
-        unboundedStrategy.get(selector, queueState)
+      def get(selector: Int, queueState: S): (S, Option[Chunk[A]]) =
+        strategy.get(selector, queueState)
 
-      def subscribe(selector: Int, queueState: ScalaQueue[A]): (ScalaQueue[A], Boolean) =
-        (queueState, false)
+      def subscribe(selector: Int, queueState: S): (S, Boolean) =
+        strategy.subscribe(selector, queueState)
 
-      def unsubscribe(selector: Int, queueState: ScalaQueue[A]): ScalaQueue[A] =
-        queueState
+      def unsubscribe(selector: Int, queueState: S): S =
+        strategy.unsubscribe(selector, queueState)
     }
 
   /**

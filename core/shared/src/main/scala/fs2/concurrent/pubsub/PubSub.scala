@@ -9,7 +9,7 @@ import fs2.internal.Token
 import scala.annotation.tailrec
 import scala.collection.immutable.{Queue => ScalaQueue}
 
-trait Publish[F[_], A] {
+private[fs2] trait Publish[F[_], A] {
 
   /**
     * Publishes one element
@@ -30,7 +30,7 @@ trait Publish[F[_], A] {
 
 }
 
-trait Subscribe[F[_], A, QS, Selector] {
+private[fs2] trait Subscribe[F[_], A, Selector] {
 
   /**
     * Gets element satisfying the `selector`, Yields whenever element is available.
@@ -67,9 +67,9 @@ trait Subscribe[F[_], A, QS, Selector] {
 
 }
 
-trait PubSub[F[_], I, O, QS, Selector] extends Publish[F, I] with Subscribe[F, O, QS, Selector]
+private[fs2] trait PubSub[F[_], I, O, Selector] extends Publish[F, I] with Subscribe[F, O, Selector]
 
-object PubSub {
+private[fs2] object PubSub {
 
   private case class Publisher[F[_], A](
       token: Token,
@@ -96,7 +96,7 @@ object PubSub {
   )
 
   def apply[F[_]: Concurrent, I, O, QS, Selector](
-      strategy: PubSubStrategy[I, O, QS, Selector]): F[PubSub[F, I, O, QS, Selector]] = {
+      strategy: PubSubStrategy[I, O, QS, Selector]): F[PubSub[F, I, O, Selector]] = {
 
     type PS = PubSubState[F, I, O, QS, Selector]
 
@@ -212,7 +212,7 @@ object PubSub {
 
       }
 
-      new PubSub[F, I, O, QS, Selector] {
+      new PubSub[F, I, O, Selector] {
         def publish(i: I): F[Unit] =
           update { ps =>
             if (strategy.accepts(i, ps.queue)) {
