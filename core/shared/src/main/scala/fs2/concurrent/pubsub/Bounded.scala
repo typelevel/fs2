@@ -1,7 +1,16 @@
 package fs2.concurrent.pubsub
 import fs2.Chunk
+import scala.collection.immutable.{Queue => ScalaQueue}
 
 object BoundedQueue {
+
+  /** unbounded fifo strategy **/
+  def fifo[A](maxSize: Int): PubSubStrategy[A, Chunk[A], ScalaQueue[A], Int] =
+    strategy(maxSize)(_ :+ _)
+
+  /** unbounded lifo strategy **/
+  def lifo[A](maxSize: Int): PubSubStrategy[A, Chunk[A], ScalaQueue[A], Int] =
+    strategy(maxSize)((q, a) => a +: q)
 
   /**
     * Creates bounded queue strategy for `A` with configurable append function
@@ -9,41 +18,31 @@ object BoundedQueue {
     * @param maxSize    Maximum size of `A` before this is full
     * @param append     Function used to append new elements to the queue.
     */
-  def mk[A](maxSize: Int)(
-      append: (Vector[A], A) => Vector[A]): PubSubStrategy[A, Chunk[A], Vector[A], Int] =
-    new PubSubStrategy[A, Chunk[A], Vector[A], Int] {
+  def strategy[A](maxSize: Int)(append: (ScalaQueue[A], A) => ScalaQueue[A])
+    : PubSubStrategy[A, Chunk[A], ScalaQueue[A], Int] =
+    new PubSubStrategy[A, Chunk[A], ScalaQueue[A], Int] {
       val unboundedStrategy = UnboundedQueue.mk(append)
 
-      val initial: Vector[A] = Vector.empty
+      val initial: ScalaQueue[A] = ScalaQueue.empty
 
-      def publish(a: A, queueState: Vector[A]): Vector[A] =
+      def publish(a: A, queueState: ScalaQueue[A]): ScalaQueue[A] =
         append(queueState, a)
 
-      def accepts(i: A, queueState: Vector[A]): Boolean =
+      def accepts(i: A, queueState: ScalaQueue[A]): Boolean =
         queueState.size < maxSize
 
-      def empty(queueState: Vector[A]): Boolean =
+      def empty(queueState: ScalaQueue[A]): Boolean =
         queueState.isEmpty
 
-      def get(selector: Int, queueState: Vector[A]): (Vector[A], Option[Chunk[A]]) =
+      def get(selector: Int, queueState: ScalaQueue[A]): (ScalaQueue[A], Option[Chunk[A]]) =
         unboundedStrategy.get(selector, queueState)
 
-      def subscribe(selector: Int, queueState: Vector[A]): (Vector[A], Boolean) =
+      def subscribe(selector: Int, queueState: ScalaQueue[A]): (ScalaQueue[A], Boolean) =
         (queueState, false)
 
-      def unsubscribe(selector: Int, queueState: Vector[A]): Vector[A] =
+      def unsubscribe(selector: Int, queueState: ScalaQueue[A]): ScalaQueue[A] =
         queueState
     }
-
-  /** unbounded fifo strategy **/
-  def strategy[A](maxSize: Int): PubSubStrategy[A, Chunk[A], Vector[A], Int] = fifo(maxSize)
-
-  /** unbounded fifo strategy **/
-  def fifo[A](maxSize: Int): PubSubStrategy[A, Chunk[A], Vector[A], Int] = mk(maxSize)(_ :+ _)
-
-  /** unbounded lifo strategy **/
-  def lifo[A](maxSize: Int): PubSubStrategy[A, Chunk[A], Vector[A], Int] =
-    mk(maxSize)((q, a) => a +: q)
 
   /**
     * Queue Strategy that allows only single element to be enqueued.
