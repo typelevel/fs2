@@ -6,7 +6,6 @@ import cats.data.{OptionT, State}
 import cats.effect.{Async, Concurrent, Sync}
 import cats.effect.concurrent.Ref
 import cats.implicits._
-import fs2.concurrent.pubsub.{Discrete, PubSub}
 import fs2.internal.Token
 
 /** Pure holder of a single value of type `A` that can be read in the effect `F`. */
@@ -136,7 +135,7 @@ abstract class SignallingRef[F[_], A] extends Ref[F, A] with Signal[F, A]
 object SignallingRef {
   def apply[F[_]: Concurrent, A](initial: A): F[SignallingRef[F, A]] =
     Ref.of[F, (Long, A)]((0, initial)).flatMap { ref =>
-      PubSub(Discrete.strategy[A](0, initial)).map { pubSub =>
+      PubSub(PubSub.Strategy.Discrete.strategy[A](0, initial)).map { pubSub =>
         def modify_[B](f: A => (A, B))(stamped: (Long, A)): ((Long, A), ((Long, (Long, A)), B)) = {
           val (a1, b) = f(stamped._2)
           val stamp = stamped._1 + 1
