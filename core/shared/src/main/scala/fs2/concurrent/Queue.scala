@@ -228,11 +228,11 @@ object Queue {
         else q.tail :+ a
       }
 
-    /** unbounded fifo strategy **/
-    def fifo[A]: PubSub.Strategy[A, Chunk[A], ScalaQueue[A], Int] = unbounded(_ :+ _)
-
     /** unbounded lifo strategy **/
-    def lifo[A]: PubSub.Strategy[A, Chunk[A], ScalaQueue[A], Int] = unbounded((q, a) => a +: q)
+    def fifo[A]: PubSub.Strategy[A, Chunk[A], ScalaQueue[A], Int] = unbounded((q, a) => a +: q)
+
+    /** unbounded fifo strategy **/
+    def lifo[A]: PubSub.Strategy[A, Chunk[A], ScalaQueue[A], Int] = unbounded(_ :+ _)
 
     /**
       * Strategy that allows only single element to be published.
