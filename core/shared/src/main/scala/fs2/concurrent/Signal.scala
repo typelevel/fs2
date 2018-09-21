@@ -3,8 +3,8 @@ package concurrent
 
 import cats.{Applicative, Functor, Invariant}
 import cats.data.{OptionT, State}
-import cats.effect.{Async, Concurrent}
-import cats.effect.concurrent.{Deferred, Ref}
+import cats.effect.{Async, Concurrent, Sync}
+import cats.effect.concurrent.Ref
 import cats.implicits._
 import fs2.internal.Token
 
@@ -133,101 +133,75 @@ private[concurrent] trait SignalLowPriorityImplicits {
 abstract class SignallingRef[F[_], A] extends Ref[F, A] with Signal[F, A]
 
 object SignallingRef {
-  def apply[F[_], A](initial: A)(implicit F: Concurrent[F]): F[SignallingRef[F, A]] =
-    for {
-      stateRef <- Ref.of[F, (A, Long, Map[Token, Deferred[F, (A, Long)]])]((initial, 0, Map.empty))
-    } yield new SignallingRefImpl(stateRef)
-
-  private final class SignallingRefImpl[F[_], A](
-      state: Ref[F, (A, Long, Map[Token, Deferred[F, (A, Long)]])])(implicit F: Concurrent[F])
-      extends SignallingRef[F, A] {
-
-    override def get: F[A] = state.get.map(_._1)
-
-    override def continuous: Stream[F, A] =
-      Stream.repeatEval(get)
-
-    override def discrete: Stream[F, A] = {
-      def go(id: Token, lastUpdate: Long): Stream[F, A] = {
-        def getNext: F[(A, Long)] =
-          Deferred[F, (A, Long)]
-            .flatMap { deferred =>
-              state.modify {
-                case s @ (a, updates, listeners) =>
-                  if (updates != lastUpdate) s -> (a -> updates).pure[F]
-                  else (a, updates, listeners + (id -> deferred)) -> deferred.get
-              }.flatten
-            }
-
-        Stream.eval(getNext).flatMap { case (a, l) => Stream.emit(a) ++ go(id, l) }
-      }
-
-      def cleanup(id: Token): F[Unit] =
-        state.update(s => s.copy(_3 = s._3 - id))
-
-      Stream.bracket(F.delay(new Token))(cleanup).flatMap { id =>
-        Stream.eval(state.get).flatMap {
-          case (a, l, _) => Stream.emit(a) ++ go(id, l)
-        }
-      }
-    }
-
-    override def set(a: A): F[Unit] = update(_ => a)
-
-    override def getAndSet(a: A): F[A] = modify(old => (a, old))
-
-    override def access: F[(A, A => F[Boolean])] = state.access.map {
-      case (snapshot, setter) =>
-        (snapshot._1, (a: A) => setter((a, snapshot._2, snapshot._3)))
-    }
-
-    override def tryUpdate(f: A => A): F[Boolean] =
-      F.map(tryModify(a => (f(a), ())))(_.isDefined)
-
-    override def tryModify[B](f: A => (A, B)): F[Option[B]] =
-      state
-        .tryModify {
-          case (a, updates, listeners) =>
-            val (newA, result) = f(a)
-            val newUpdates = updates + 1
-            val newState = (newA, newUpdates, Map.empty[Token, Deferred[F, (A, Long)]])
-            val action = listeners.toVector.traverse {
-              case (_, deferred) =>
-                F.start(deferred.complete(newA -> newUpdates))
-            }
-            newState -> (action *> result.pure[F])
-        }
-        .flatMap {
-          case None     => F.pure(None)
-          case Some(fb) => fb.map(Some(_))
+  def apply[F[_]: Concurrent, A](initial: A): F[SignallingRef[F, A]] =
+    Ref.of[F, (Long, A)]((0, initial)).flatMap { ref =>
+      PubSub(PubSub.Strategy.Discrete.strategy[A](0, initial)).map { pubSub =>
+        def modify_[B](f: A => (A, B))(stamped: (Long, A)): ((Long, A), ((Long, (Long, A)), B)) = {
+          val (a1, b) = f(stamped._2)
+          val stamp = stamped._1 + 1
+          ((stamp, a1), ((stamped._1, (stamp, a1)), b))
         }
 
-    override def update(f: A => A): F[Unit] =
-      modify(a => (f(a), ()))
+        new SignallingRef[F, A] {
+          def get: F[A] =
+            ref.get.map(_._2)
 
-    override def modify[B](f: A => (A, B)): F[B] =
-      state.modify {
-        case (a, updates, listeners) =>
-          val (newA, result) = f(a)
-          val newUpdates = updates + 1
-          val newState = (newA, newUpdates, Map.empty[Token, Deferred[F, (A, Long)]])
-          val action = listeners.toVector.traverse {
-            case (_, deferred) =>
-              F.start(deferred.complete(newA -> newUpdates))
+          def continuous: Stream[F, A] =
+            Stream.repeatEval(get)
+
+          def set(a: A): F[Unit] =
+            update(_ => a)
+
+          def getAndSet(a: A): F[A] =
+            modify(old => (a, old))
+
+          def access: F[(A, A => F[Boolean])] = ref.access.map {
+            case (access, setter) =>
+              (access._2, { (a: A) =>
+                setter((access._1 + 1, a)).flatMap { success =>
+                  if (success)
+                    Concurrent[F].start(pubSub.publish((access._1, (access._1 + 1, a)))).as(true)
+                  else Applicative[F].pure(false)
+                }
+              })
           }
-          newState -> (action *> result.pure[F])
-      }.flatten
 
-    override def tryModifyState[B](state: State[A, B]): F[Option[B]] = {
-      val f = state.runF.value
-      tryModify(a => f(a).value)
-    }
+          def tryUpdate(f: A => A): F[Boolean] =
+            tryModify { a =>
+              (f(a), ())
+            }.map(_.nonEmpty)
 
-    override def modifyState[B](state: State[A, B]): F[B] = {
-      val f = state.runF.value
-      modify(a => f(a).value)
+          def tryModify[B](f: A => (A, B)): F[Option[B]] =
+            ref.tryModify(modify_(f)).flatMap {
+              case None              => Applicative[F].pure(None)
+              case Some((signal, b)) => Concurrent[F].start(pubSub.publish(signal)).as(Some(b))
+            }
+
+          def update(f: A => A): F[Unit] =
+            modify { a =>
+              (f(a), ())
+            }
+
+          def modify[B](f: A => (A, B)): F[B] =
+            ref.modify(modify_(f)).flatMap {
+              case (signal, b) =>
+                Concurrent[F].start(pubSub.publish(signal)).as(b)
+            }
+
+          def tryModifyState[B](state: State[A, B]): F[Option[B]] =
+            tryModify(a => state.run(a).value)
+
+          def modifyState[B](state: State[A, B]): F[B] =
+            modify(a => state.run(a).value)
+
+          def discrete: Stream[F, A] =
+            Stream.bracket(Sync[F].delay(Some(new Token)))(pubSub.unsubscribe).flatMap { selector =>
+              Stream.repeatEval(pubSub.get(selector))
+            }
+
+        }
+      }
     }
-  }
 
   implicit def invariantInstance[F[_]: Functor]: Invariant[SignallingRef[F, ?]] =
     new Invariant[SignallingRef[F, ?]] {
