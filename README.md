@@ -110,6 +110,7 @@ If you have a project you'd like to include in this list, either open a PR or le
 * [doobie](https://github.com/tpolecat/doobie): Pure functional JDBC built on fs2.
 * [fs2-blobstore](https://github.com/lendup/fs2-blobstore): Minimal, idiomatic, stream-based Scala interface for key/value store implementations.
 * [fs2-cassandra](https://github.com/Spinoco/fs2-cassandra): Cassandra bindings for fs2.
+* [fs2-cron](https://github.com/fthomas/fs2-cron): FS2 streams based on cron expressions.
 * [fs2-crypto](https://github.com/Spinoco/fs2-crypto): TLS support for fs2.
 * [fs2-elastic](https://github.com/amarrella/fs2-elastic): Simple client for Elasticsearch.
 * [fs2-grpc](https://github.com/fiadliel/fs2-grpc): gRPC implementation for FS2 / Cats Effect.
@@ -127,7 +128,7 @@ If you have a project you'd like to include in this list, either open a PR or le
 
 ### Related projects ###
 
-FS2 has evolved from earlier work on streaming APIs in Scala and Haskell and in Scala. Some influences:
+FS2 has evolved from earlier work on streaming APIs in Scala and Haskell. Some influences:
 
 * [Machines](https://github.com/ekmett/machines/), a Haskell library by Ed Kmett, which spawned [`scala-machines`](https://github.com/runarorama/scala-machines)
 * [The FP in Scala stream processing library](https://github.com/fpinscala/fpinscala/blob/master/answers/src/main/scala/fpinscala/streamingio/StreamingIO.scala) developed for the book [FP in Scala](https://www.manning.com/books/functional-programming-in-scala)
@@ -143,3 +144,8 @@ See [Additional resources](https://github.com/functional-streams-for-scala/fs2/w
 [![YourKit](https://www.yourkit.com/images/yklogo.png)](https://www.yourkit.com/)
 
 Special thanks to [YourKit](https://www.yourkit.com/) for supporting this project's ongoing performance tuning efforts with licenses to their excellent product.
+
+### Code of Conduct ###
+
+See the [Code of Conduct](CODE_OF_CONDUCT.md).
+

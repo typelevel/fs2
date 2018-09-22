@@ -27,6 +27,7 @@ This is the official FS2 guide. It gives an overview of the library and its feat
 * [Concurrency](#concurrency)
 * [Exercises (concurrency)](#exercises-2)
 * [Talking to the external world](#talking-to-the-external-world)
+* [Reactive streams](#reactive-streams)
 * [Learning more](#learning-more)
 * [Appendix: How interruption of streams works](#a1)
 
@@ -54,7 +55,7 @@ val s1a = Stream(1,2,3) // variadic
 val s1b = Stream.emits(List(1,2,3)) // accepts any Seq
 ```
 
-The `s1` stream has the type `Stream[Pure,Int]`. It's output type is of course `Int`, and its effect type is `Pure`, which means it does not require evaluation of any effects to produce its output. Streams that don't use any effects are called _pure_ streams. You can convert a pure stream to a `List` or `Vector` using:
+The `s1` stream has the type `Stream[Pure,Int]`. Its output type is of course `Int`, and its effect type is `Pure`, which means it does not require evaluation of any effects to produce its output. Streams that don't use any effects are called _pure_ streams. You can convert a pure stream to a `List` or `Vector` using:
 
 ```tut
 s1.toList
@@ -133,6 +134,7 @@ _Note:_ The various `run*` functions aren't specialized to `IO` and work for any
 
 FS2 streams are chunked internally for performance. You can construct an individual stream chunk using `Stream.chunk`, which accepts an `fs2.Chunk` and lots of functions in the library are chunk-aware and/or try to preserve chunks when possible. A `Chunk` is a strict, finite sequence of values that supports efficient indexed based lookup of elements.
 
+```tut
 import fs2.Chunk
 
 val s1c = Stream.chunk(Chunk.doubles(Array(1.0, 2.0, 3.0)))
@@ -174,7 +176,7 @@ Regardless of how a `Stream` is built up, each operation takes constant time. So
 A stream can raise errors, either explicitly, using `Stream.raiseError`, or implicitly via an exception in pure code or inside an effect passed to `eval`:
 
 ```tut
-val err = Stream.raiseError(new Exception("oh noes!"))
+val err = Stream.raiseError[IO](new Exception("oh noes!"))
 val err2 = Stream(1,2,3) ++ (throw new Exception("!@#$"))
 val err3 = Stream.eval(IO(throw new Exception("error in effect!!!")))
 ```
@@ -182,7 +184,7 @@ val err3 = Stream.eval(IO(throw new Exception("error in effect!!!")))
 All these fail when running:
 
 ```tut
-try err.toList catch { case e: Exception => println(e) }
+try err.compile.toList.unsafeRunSync catch { case e: Exception => println(e) }
 ```
 
 ```tut
@@ -196,7 +198,7 @@ try err3.compile.drain.unsafeRunSync() catch { case e: Exception => println(e) }
 The `handleErrorWith` method lets us catch any of these errors:
 
 ```tut
-err.handleErrorWith { e => Stream.emit(e.getMessage) }.toList
+err.handleErrorWith { e => Stream.emit(e.getMessage) }.compile.toList.unsafeRunSync()
 ```
 
 _Note: Don't use `handleErrorWith` for doing resource cleanup; use `bracket` as discussed in the next section. Also see [this section of the appendix](#a1) for more details._
@@ -212,7 +214,7 @@ val release = IO { println("decremented: " + count.decrementAndGet); () }
 ```
 
 ```tut:fail
-Stream.bracket(acquire)(_ => Stream(1,2,3) ++ err, _ => release).compile.drain.unsafeRunSync()
+Stream.bracket(acquire)(_ => release).flatMap(_ => Stream(1,2,3) ++ err).compile.drain.unsafeRunSync()
 ```
 
 The inner stream fails, but notice the `release` action is still run:
@@ -224,7 +226,7 @@ count.get
 No matter how you transform an FS2 `Stream` or where any errors occur, the library guarantees that if the resource is acquired via a `bracket`, the release action associated with that `bracket` will be run. Here's the signature of `bracket`:
 
 ```Scala
-def bracket[F[_],R,O](acquire: F[R])(use: R => Stream[F,O], release: R => F[Unit]): Stream[F,O]
+def bracket[F[_], R](acquire: F[R])(release: R => F[Unit]): Stream[F, R]
 ```
 
 FS2 guarantees _once and only once_ semantics for resource cleanup actions introduced by the `Stream.bracket` function.
@@ -287,7 +289,7 @@ Otherwise, we return a function which processes the next chunk in the stream. Th
 Sometimes, `scanChunksOpt` isn't powerful enough to express the stream transformation. Regardless of how complex the job, the `fs2.Pull` type can usually express it.
 
 The `Pull[+F[_],+O,+R]` type represents a program that may pull values from one or more streams, write _output_ of type `O`, and return a _result_ of type `R`. It forms a monad in `R` and comes equipped with lots of other useful operations. See the
-[`Pull` class](https://github.com/functional-streams-for-scala/fs2/blob/series/0.10/core/shared/src/main/scala/fs2/Pull.scala)
+[`Pull` class](https://github.com/functional-streams-for-scala/fs2/blob/series/1.0/core/shared/src/main/scala/fs2/Pull.scala)
 for the full set of operations on `Pull`.
 
 Let's look at an implementation of `take` using `Pull`:
@@ -350,7 +352,7 @@ s2.toList
 FS2 takes care to guarantee that any resources allocated by the `Pull` are released when the stream completes. Note again that _nothing happens_ when we call `.stream` on a `Pull`, it is merely converting back to the `Stream` API.
 
 There are lots of useful transformation functions in
-[`Stream`](https://github.com/functional-streams-for-scala/fs2/blob/series/0.10/core/shared/src/main/scala/fs2/Stream.scala)
+[`Stream`](https://github.com/functional-streams-for-scala/fs2/blob/series/1.0/core/shared/src/main/scala/fs2/Stream.scala)
 built using the `Pull` type.
 
 ### Exercises
@@ -371,10 +373,13 @@ FS2 comes with lots of concurrent operations. The `merge` function runs two stre
 Stream(1,2,3).merge(Stream.eval(IO { Thread.sleep(200); 4 })).compile.toVector.unsafeRunSync()
 ```
 
-Oops, we need a `scala.concurrent.ExecutionContext` in implicit scope. Let's add that:
+Oops, we need a `cats.effect.ContextShift[IO]` in implicit scope. Let's add that:
 
 ```tut
-import scala.concurrent.ExecutionContext.Implicits.global
+import cats.effect.ContextShift
+
+// This normally comes from IOApp
+implicit val ioContextShift: ContextShift[IO] = IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
 
 Stream(1,2,3).merge(Stream.eval(IO { Thread.sleep(200); 4 })).compile.toVector.unsafeRunSync()
 ```
@@ -480,9 +485,7 @@ val c = new Connection {
   }
 }
 
-// Concurrent extends both Sync and Async
-val T = cats.effect.Concurrent[IO]
-val bytes = T.async[Array[Byte]] { (cb: Either[Throwable,Array[Byte]] => Unit) =>
+val bytes = cats.effect.Async[IO].async[Array[Byte]] { (cb: Either[Throwable,Array[Byte]] => Unit) =>
   c.readBytesE(cb)
 }
 
@@ -490,22 +493,21 @@ Stream.eval(bytes).map(_.toList).compile.toVector.unsafeRunSync()
 ```
 
 Be sure to check out the
-[`fs2.io`](https://github.com/functional-streams-for-scala/fs2/tree/series/0.10/io/)
+[`fs2.io`](https://github.com/functional-streams-for-scala/fs2/tree/series/1.0/io/)
 package which has nice FS2 bindings to Java NIO libraries, using exactly this approach.
 
 #### Asynchronous effects (callbacks invoked multiple times)
 
 The nice thing about callback-y APIs that invoke their callbacks once is that throttling/back-pressure can be handled within FS2 itself. If you don't want more values, just don't read them, and they won't be produced! But sometimes you'll be dealing with a callback-y API which invokes callbacks you provide it _more than once_. Perhaps it's a streaming API of some sort and it invokes your callback whenever new data is available. In these cases, you can use an asynchronous queue to broker between the nice stream processing world of FS2 and the external API, and use whatever ad hoc mechanism that API provides for throttling of the producer.
 
-_Note:_ Some of these APIs don't provide any means of throttling the producer, in which case you either have accept possibly unbounded memory usage (if the producer and consumer operate at very different rates), or use blocking concurrency primitives like `fs2.async.boundedQueue` or the primitives in `java.util.concurrent`.
+_Note:_ Some of these APIs don't provide any means of throttling the producer, in which case you either have accept possibly unbounded memory usage (if the producer and consumer operate at very different rates), or use blocking concurrency primitives like `fs2.concurrent.Queue.bounded` or the primitives in `java.util.concurrent`.
 
 Let's look at a complete example:
 
 ```tut:book:reset
 import fs2._
-import fs2.async
-import scala.concurrent.ExecutionContext
-import cats.effect.{ ConcurrentEffect, IO, Timer }
+import fs2.concurrent._
+import cats.effect.{ConcurrentEffect, ContextShift, IO}
 
 type Row = List[String]
 
@@ -513,23 +515,65 @@ trait CSVHandle {
   def withRows(cb: Either[Throwable,Row] => Unit): Unit
 }
 
-def rows[F[_]](h: CSVHandle)(implicit F: ConcurrentEffect[F], timer: Timer[F]): Stream[F,Row] =
+def rows[F[_]](h: CSVHandle)(implicit F: ConcurrentEffect[F], cs: ContextShift[F]): Stream[F,Row] =
   for {
-    q <- Stream.eval(async.unboundedQueue[F,Either[Throwable,Row]])
-    _ <-  Stream.eval { F.delay(h.withRows(e => async.unsafeRunAsync(q.enqueue1(e))(_ => IO.unit))) }
+    q <- Stream.eval(Queue.unbounded[F,Either[Throwable,Row]])
+    _ <-  Stream.eval { F.delay(h.withRows(e => F.runAsync(q.enqueue1(e))(_ => IO.unit).unsafeRunSync)) }
     row <- q.dequeue.rethrow
   } yield row
 ```
 
-See [`Queue`](https://github.com/functional-streams-for-scala/fs2/blob/series/0.10/core/shared/src/main/scala/fs2/async/mutable/Queue.scala)
-for more useful methods. All asynchronous queues in FS2 track their size, which is handy for implementing size-based throttling of the producer.
+See [`Queue`](https://github.com/functional-streams-for-scala/fs2/blob/series/1.0/core/shared/src/main/scala/fs2/concurrent/Queue.scala)
+for more useful methods. Most concurrent queues in FS2 support tracking their size, which is handy for implementing size-based throttling of the producer.
+
+### Reactive streams
+
+The [reactive streams initiative](http://www.reactive-streams.org/) is complicated, mutable and unsafe - it is not something that is desired for use over fs2.
+But there are times when we need use fs2 in conjunction with a different streaming library, and this is where reactive streams shines.
+
+Any reactive streams system can interoperate with any other reactive streams system by exposing an `org.reactivestreams.Publisher` or an `org.reactivestreams.Subscriber`.
+
+The `reactive-streams` library provides instances of reactive streams compliant publishers and subscribers to ease interoperability with other streaming libraries.
+
+#### Usage
+
+You may require the following imports:
+
+```tut:book:reset
+import fs2._
+import fs2.interop.reactivestreams._
+import cats.effect.{ContextShift, IO}
+import scala.concurrent.ExecutionContext
+```
+
+A `ContextShift` instance is necessary when working with `IO`
+
+```tut:book
+implicit val contextShift: ContextShift[IO] = IO.contextShift(ExecutionContext.global)
+```
+
+To convert a `Stream` into a downstream unicast `org.reactivestreams.Publisher`:
+
+```tut:book
+val stream = Stream(1, 2, 3).covary[IO]
+stream.toUnicastPublisher
+```
+
+To convert an upstream `org.reactivestreams.Publisher` into a `Stream`:
+
+```tut:book
+val publisher: StreamUnicastPublisher[IO, Int] = Stream(1, 2, 3).covary[IO].toUnicastPublisher
+publisher.toStream[IO]
+```
+
+A unicast publisher must have a single subscriber only.
 
 ### Learning more
 
 Want to learn more?
 
 * Worked examples: these present a nontrivial example of use of the library, possibly making use of lots of different library features.
-  * [The README example](https://github.com/functional-streams-for-scala/fs2/blob/series/0.10/docs/ReadmeExample.md)
+  * [The README example](https://github.com/functional-streams-for-scala/fs2/blob/series/1.0/docs/ReadmeExample.md)
   * More contributions welcome! Open a PR, following the style of one of the examples above. You can either start with a large block of code and break it down line by line, or work up to something more complicated using some smaller bits of code first.
 * Detailed coverage of different modules in the library:
   * File I/O
@@ -555,17 +599,19 @@ Regarding 3:
 
 Let's look at some examples of how this plays out, starting with the synchronous interruption case:
 
-```tut
+```tut:reset
+import fs2._
+import cats.effect.IO
 case object Err extends Throwable
 
 (Stream(1) ++ (throw Err)).take(1).toList
-(Stream(1) ++ Stream.raiseError(Err)).take(1).toList
+(Stream(1) ++ Stream.raiseError[IO](Err)).take(1).compile.toList.unsafeRunSync()
 ```
 
 The `take 1` uses `Pull` but doesn't examine the entire stream, and neither of these examples will ever throw an error. This makes sense. A bit more subtle is that this code will _also_ never throw an error:
 
 ```tut
-(Stream(1) ++ Stream.raiseError(Err)).take(1).toList
+(Stream(1) ++ Stream.raiseError[IO](Err)).take(1).compile.toList.unsafeRunSync()
 ```
 
 The reason is simple: the consumer (the `take(1)`) terminates as soon as it has an element. Once it has that element, it is done consuming the stream and doesn't bother running any further steps of it, so the stream never actually completes normally---it has been interrupted before that can occur. We may be able to see in this case that nothing follows the emitted `1`, but FS2 doesn't know this until it actually runs another step of the stream.
@@ -582,9 +628,11 @@ Stream(1).covary[IO].
 That covers synchronous interrupts. Let's look at asynchronous interrupts. Ponder what the result of `merged` will be in this example:
 
 ```tut
-import scala.concurrent.ExecutionContext.Implicits.global
+import cats.effect.ContextShift
+
+implicit val ioContextShift: ContextShift[IO] = IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
 val s1 = (Stream(1) ++ Stream(2)).covary[IO]
-val s2 = (Stream.empty ++ Stream.raiseError(Err)) handleErrorWith { e => println(e); Stream.raiseError(e) }
+val s2 = (Stream.empty ++ Stream.raiseError[IO](Err)).handleErrorWith { e => println(e); Stream.raiseError[IO](e) }
 val merged = s1 merge s2 take 1
 ```
 

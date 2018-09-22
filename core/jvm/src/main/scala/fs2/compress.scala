@@ -2,8 +2,6 @@ package fs2
 
 import java.util.zip.{DataFormatException, Deflater, Inflater}
 
-import cats.ApplicativeError
-
 import scala.annotation.tailrec
 import scala.collection.mutable.ArrayBuffer
 
@@ -67,7 +65,7 @@ object compress {
     *                   decompressor. Default size is 32 KB.
     */
   def inflate[F[_]](nowrap: Boolean = false, bufferSize: Int = 1024 * 32)(
-      implicit ev: ApplicativeError[F, Throwable]): Pipe[F, Byte, Byte] =
+      implicit ev: RaiseThrowable[F]): Pipe[F, Byte, Byte] =
     _.pull.uncons.flatMap {
       case None => Pull.pure(None)
       case Some((hd, tl)) =>
@@ -80,7 +78,7 @@ object compress {
     }.stream
 
   private def _inflate_stream[F[_]](inflater: Inflater, buffer: Array[Byte])(
-      implicit ev: ApplicativeError[F, Throwable]): Stream[F, Byte] => Pull[F, Byte, Unit] =
+      implicit ev: RaiseThrowable[F]): Stream[F, Byte] => Pull[F, Byte, Unit] =
     _.pull.uncons.flatMap {
       case Some((hd, tl)) =>
         inflater.setInput(hd.toArray)
@@ -89,7 +87,7 @@ object compress {
         Pull.output(Chunk.bytes(result)) >> _inflate_stream(inflater, buffer)(ev)(tl)
       case None =>
         if (!inflater.finished)
-          Pull.raiseError(new DataFormatException("Insufficient data"))
+          Pull.raiseError[F](new DataFormatException("Insufficient data"))
         else { inflater.end(); Pull.done }
     }
 

@@ -18,6 +18,28 @@ object pulls {
   def readAllFromFileHandle[F[_]](chunkSize: Int)(h: FileHandle[F]): Pull[F, Byte, Unit] =
     _readAllFromFileHandle0(chunkSize, 0)(h)
 
+  def readRangeFromFileHandle[F[_]](chunkSize: Int, start: Long, end: Long)(
+      h: FileHandle[F]): Pull[F, Byte, Unit] =
+    _readRangeFromFileHandle0(chunkSize, start, end)(h)
+
+  private def _readRangeFromFileHandle0[F[_]](chunkSize: Int, offset: Long, end: Long)(
+      h: FileHandle[F]): Pull[F, Byte, Unit] = {
+
+    val bytesLeft = end - offset
+    if (bytesLeft <= 0L) {
+      Pull.done
+    } else {
+      val actualChunkSize =
+        if (bytesLeft > Int.MaxValue) chunkSize else math.min(chunkSize, bytesLeft.toInt)
+
+      Pull.eval(h.read(actualChunkSize, offset)).flatMap {
+        case Some(o) =>
+          Pull.output(o) >> _readRangeFromFileHandle0(chunkSize, offset + o.size, end)(h)
+        case None => Pull.done
+      }
+    }
+  }
+
   private def _readAllFromFileHandle0[F[_]](chunkSize: Int, offset: Long)(
       h: FileHandle[F]): Pull[F, Byte, Unit] =
     Pull.eval(h.read(chunkSize, offset)).flatMap {

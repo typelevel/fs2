@@ -26,7 +26,7 @@ import ChunkProps._
 class ChunkSpec extends Fs2Spec {
 
   implicit override val generatorDrivenConfig: PropertyCheckConfiguration =
-    PropertyCheckConfiguration(minSuccessful = if (isJVM) 500 else 50, workers = 1)
+    PropertyCheckConfiguration(minSuccessful = if (isJVM) 300 else 50, workers = 1)
 
   "Chunk" - {
     "chunk-formation (1)" in {

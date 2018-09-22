@@ -1,4 +1,5 @@
-package fs2.async
+package fs2
+package concurrent
 
 import cats.effect.IO
 
@@ -13,7 +14,7 @@ class TopicSpec extends Fs2Spec {
 
     "subscribers see all elements published" in {
 
-      val topic = async.topic[IO, Int](-1).unsafeRunSync()
+      val topic = Topic[IO, Int](-1).unsafeRunSync()
       val count = 100
       val subs = 10
       val publisher = Stream.sleep[IO](1.second) ++ Stream
@@ -43,8 +44,8 @@ class TopicSpec extends Fs2Spec {
 
     "synchronous publish" in {
       pending // TODO I think there's a race condition on the signal in this test
-      val topic = async.topic[IO, Int](-1).unsafeRunSync()
-      val signal = async.signalOf[IO, Int](0).unsafeRunSync()
+      val topic = Topic[IO, Int](-1).unsafeRunSync()
+      val signal = SignallingRef[IO, Int](0).unsafeRunSync()
       val count = 100
       val subs = 10
 

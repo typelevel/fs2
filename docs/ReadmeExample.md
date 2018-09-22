@@ -121,7 +121,7 @@ There are a number of ways of interpreting the stream. In this case, we call `co
 
 ```scala
 scala> val task: IO[Unit] = written.compile.drain
-task: cats.effect.IO[Unit] = IO$1713557785
+task: cats.effect.IO[Unit] = IO$1896711092
 ```
 
 We still haven't *done* anything yet. Effects only occur when we run the resulting task. We can run a `IO` by calling `unsafeRunSync()` -- the name is telling us that calling it performs effects and hence, it is not referentially transparent. In this example, we extended `IOApp`, which lets us express our overall program as an `IO[ExitCase]`. The `IOApp` class handles running the task and hooking it up to the application entry point.

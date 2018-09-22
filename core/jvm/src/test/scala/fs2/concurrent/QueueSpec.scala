@@ -1,5 +1,5 @@
 package fs2
-package async
+package concurrent
 
 import cats.effect.IO
 import cats.implicits._
@@ -11,7 +11,7 @@ class QueueSpec extends Fs2Spec {
     "unbounded producer/consumer" in {
       forAll { (s: PureStream[Int]) =>
         withClue(s.tag) {
-          runLog(Stream.eval(async.unboundedQueue[IO, Int]).flatMap { q =>
+          runLog(Stream.eval(Queue.unbounded[IO, Int]).flatMap { q =>
             q.dequeue
               .merge(s.get.evalMap(q.enqueue1).drain)
               .take(s.get.toVector.size)
@@ -24,7 +24,7 @@ class QueueSpec extends Fs2Spec {
         withClue(s.tag) {
           runLog(
             Stream
-              .eval(async.circularBuffer[IO, Option[Int]](maxSize.get + 1))
+              .eval(Queue.circularBuffer[IO, Option[Int]](maxSize.get + 1))
               .flatMap { q =>
                 s.get.noneTerminate
                   .evalMap(q.enqueue1)
@@ -37,10 +37,10 @@ class QueueSpec extends Fs2Spec {
       forAll { (s: PureStream[Int]) =>
         withClue(s.tag) {
           val result =
-            runLog(Stream.eval(async.unboundedQueue[IO, Option[Int]]).flatMap { q =>
+            runLog(Stream.eval(Queue.unbounded[IO, Option[Int]]).flatMap { q =>
               s.get.noneTerminate
                 .evalMap(q.enqueue1)
-                .drain ++ q.dequeueAvailable.unNoneTerminate.chunks
+                .drain ++ q.dequeueChunk(Int.MaxValue).unNoneTerminate.chunks
             })
           result.size should be < 2
           result.flatMap(_.toVector) shouldBe s.get.toVector
@@ -50,7 +50,7 @@ class QueueSpec extends Fs2Spec {
     "dequeueBatch unbounded" in {
       forAll { (s: PureStream[Int], batchSize: SmallPositive) =>
         withClue(s.tag) {
-          runLog(Stream.eval(async.unboundedQueue[IO, Option[Int]]).flatMap { q =>
+          runLog(Stream.eval(Queue.unbounded[IO, Option[Int]]).flatMap { q =>
             s.get.noneTerminate.evalMap(q.enqueue1).drain ++ Stream
               .constant(batchSize.get)
               .through(q.dequeueBatch)
@@ -64,7 +64,7 @@ class QueueSpec extends Fs2Spec {
         withClue(s.tag) {
           runLog(
             Stream
-              .eval(async.circularBuffer[IO, Option[Int]](maxSize.get + 1))
+              .eval(Queue.circularBuffer[IO, Option[Int]](maxSize.get + 1))
               .flatMap { q =>
                 s.get.noneTerminate.evalMap(q.enqueue1).drain ++ Stream
                   .constant(batchSize.get)
@@ -77,15 +77,15 @@ class QueueSpec extends Fs2Spec {
     "size signal is initialized to zero" in {
       runLog(
         Stream
-          .eval(async.unboundedQueue[IO, Int])
-          .flatMap(_.size.discrete)
+          .eval(InspectableQueue.unbounded[IO, Int])
+          .flatMap(_.size)
           .take(1)) shouldBe Vector(0)
     }
     "peek1" in {
       runLog(
         Stream.eval(
           for {
-            q <- async.unboundedQueue[IO, Int]
+            q <- InspectableQueue.unbounded[IO, Int]
             f <- q.peek1.start
             g <- q.peek1.start
             _ <- q.enqueue1(42)
@@ -98,7 +98,7 @@ class QueueSpec extends Fs2Spec {
       runLog(
         Stream.eval(
           for {
-            q <- async.unboundedQueue[IO, Int]
+            q <- InspectableQueue.unbounded[IO, Int]
             f <- q.peek1.product(q.dequeue1).start
             _ <- q.enqueue1(42)
             x <- f.join
@@ -114,7 +114,7 @@ class QueueSpec extends Fs2Spec {
       runLog(
         Stream.eval(
           for {
-            q <- async.boundedQueue[IO, Int](maxSize = 1)
+            q <- InspectableQueue.bounded[IO, Int](maxSize = 1)
             f <- q.peek1.start
             g <- q.peek1.start
             _ <- q.enqueue1(42)
@@ -129,7 +129,7 @@ class QueueSpec extends Fs2Spec {
       runLog(
         Stream.eval(
           for {
-            q <- async.circularBuffer[IO, Int](maxSize = 1)
+            q <- InspectableQueue.circularBuffer[IO, Int](maxSize = 1)
             f <- q.peek1.start
             g <- q.peek1.start
             _ <- q.enqueue1(42)
@@ -139,34 +139,6 @@ class QueueSpec extends Fs2Spec {
             z <- q.peek1
           } yield List(b, x, y, z)
         )).flatten shouldBe Vector(true, 42, 42, 43)
-    }
-    "peek1 synchronous queue" in {
-      runLog(
-        Stream.eval(
-          for {
-            q <- async.synchronousQueue[IO, Int]
-            f <- q.peek1.start
-            g <- q.peek1.start
-            _ <- q.enqueue1(42).start
-            x <- q.dequeue1
-            y <- f.join
-            z <- g.join
-          } yield List(x, y, z)
-        )).flatten shouldBe Vector(42, 42, 42)
-    }
-    "peek1 synchronous None-terminated queue" in {
-      runLog(
-        Stream.eval(
-          for {
-            q <- async.mutable.Queue.synchronousNoneTerminated[IO, Int]
-            f <- q.peek1.start
-            g <- q.peek1.start
-            _ <- q.enqueue1(None)
-            y <- f.join
-            z <- g.join
-            x <- q.dequeue1
-          } yield List(x, y, z)
-        )).flatten shouldBe Vector(None, None, None)
     }
   }
 }

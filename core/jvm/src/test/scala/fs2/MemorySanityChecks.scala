@@ -2,6 +2,7 @@ package fs2
 
 import scala.concurrent.ExecutionContext
 import cats.effect.{ContextShift, IO, Timer}
+import fs2.concurrent.{Queue, SignallingRef}
 
 // Sanity tests - not run as part of unit tests, but these should run forever
 // at constant memory.
@@ -59,7 +60,7 @@ object ParJoinSanityTest extends App {
 object DanglingDequeueSanityTest extends App {
   implicit val cs: ContextShift[IO] = IO.contextShift(ExecutionContext.Implicits.global)
   Stream
-    .eval(async.unboundedQueue[IO, Int])
+    .eval(Queue.unbounded[IO, Int])
     .flatMap { q =>
       Stream.constant(1).flatMap { _ =>
         Stream.empty.mergeHaltBoth(q.dequeue)
@@ -87,7 +88,7 @@ object AwakeEverySanityTest extends App {
 object SignalDiscreteSanityTest extends App {
   implicit val cs: ContextShift[IO] = IO.contextShift(ExecutionContext.Implicits.global)
   Stream
-    .eval(async.signalOf[IO, Unit](()))
+    .eval(SignallingRef[IO, Unit](()))
     .flatMap { signal =>
       signal.discrete.evalMap(a => signal.set(a))
     }
@@ -99,7 +100,7 @@ object SignalDiscreteSanityTest extends App {
 object SignalContinuousSanityTest extends App {
   implicit val cs: ContextShift[IO] = IO.contextShift(ExecutionContext.Implicits.global)
   Stream
-    .eval(async.signalOf[IO, Unit](()))
+    .eval(SignallingRef[IO, Unit](()))
     .flatMap { signal =>
       signal.continuous.evalMap(a => signal.set(a))
     }
@@ -147,9 +148,12 @@ object EvalFlatMapMapTest extends App {
 object QueueTest extends App {
   implicit val cs: ContextShift[IO] = IO.contextShift(ExecutionContext.Implicits.global)
   Stream
-    .eval(async.boundedQueue[IO, Either[Throwable, Option[Int]]](10))
+    .eval(Queue.bounded[IO, Either[Throwable, Option[Int]]](10))
     .flatMap { queue =>
-      queue.dequeueAvailable.rethrow.unNoneTerminate
+      queue
+        .dequeueChunk(Int.MaxValue)
+        .rethrow
+        .unNoneTerminate
         .concurrently(
           Stream
             .constant(1, 128)
