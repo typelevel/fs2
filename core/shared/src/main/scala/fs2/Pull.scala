@@ -181,11 +181,11 @@ object Pull extends PullLowPriority {
           }
         }))
 
-  /** Ouptuts a single value. */
+  /** Outputs a single value. */
   def output1[F[x] >: Pure[x], O](o: O): Pull[F, O, Unit] =
     fromFreeC(Algebra.output1[F, O](o))
 
-  /** Ouptuts a chunk of values. */
+  /** Outputs a chunk of values. */
   def output[F[x] >: Pure[x], O](os: Chunk[O]): Pull[F, O, Unit] =
     if (os.isEmpty) Pull.done else fromFreeC(Algebra.output[F, O](os))
 
