@@ -36,7 +36,7 @@ trait Enqueue[F[_], A] {
   def offer1(a: A): F[Boolean]
 }
 
-/** Provides the ability to dequeue elements from a `Queue`. */
+/** Provides the ability to dequeue individual elements from a `Queue`. */
 trait Dequeue1[F[_], A] {
 
   /** Dequeues one `A` from this queue. Completes once one is ready. */
@@ -44,9 +44,9 @@ trait Dequeue1[F[_], A] {
 
   /** tries to dequeue element, yields to None if the element cannot be dequeue **/
   def tryDequeue1: F[Option[A]]
-
 }
 
+/** Provides the ability to dequeue chunks of elements from a `Queue` as streams. */
 trait Dequeue[F[_], A] {
 
   /** Dequeue elements from the queue */
@@ -58,7 +58,6 @@ trait Dequeue[F[_], A] {
 
   /** provides a pipe, that for each dequeue sets the constrain on maximum number of element dequeued */
   def dequeueBatch: Pipe[F, Int, A]
-
 }
 
 /**
@@ -85,7 +84,7 @@ trait Queue[F[_], A] extends Enqueue[F, A] with Dequeue1[F, A] with Dequeue[F, A
 }
 
 /**
-  * Like Queue, but allows to signal no more elements arriving to queue by enqueueing `None`.
+  * Like [[Queue]], but allows allows signalling of no further enqueues by enqueueing `None`.
   * Optimizes dequeue to minimum possible boxing.
   */
 trait NoneTerminatedQueue[F[_], A]
@@ -114,7 +113,7 @@ object Queue {
   def unbounded[F[_], A](implicit F: Concurrent[F]): F[Queue[F, A]] =
     forStrategy(Strategy.lifo[A])
 
-  /** unbounded queue that distributed always at max `fairSize` elements to any subscriber **/
+  /** Creates an unbounded queue that distributed always at max `fairSize` elements to any subscriber. */
   def fairUnbounded[F[_], A](fairSize: Int)(implicit F: Concurrent[F]): F[Queue[F, A]] =
     forStrategy(Strategy.lifo[A].transformSelector[Int]((sz, _) => sz.min(fairSize)))
 
@@ -122,7 +121,7 @@ object Queue {
   def bounded[F[_], A](maxSize: Int)(implicit F: Concurrent[F]): F[Queue[F, A]] =
     forStrategy(Strategy.boundedLifo(maxSize))
 
-  /** bounded queue terminated by enqueueing None for the first time. All element before None are preserved in Queue. **/
+  /** Creates a bounded queue terminated by enqueueing `None`. All elements before `None` are preserved. */
   def boundedNoneTerminated[F[_], A](maxSize: Int)(
       implicit F: Concurrent[F]): F[NoneTerminatedQueue[F, A]] =
     forStrategyNoneTerminated(PubSub.Strategy.closeDrainFirst(Strategy.boundedLifo(maxSize)))
@@ -131,19 +130,19 @@ object Queue {
   def circularBuffer[F[_], A](maxSize: Int)(implicit F: Concurrent[F]): F[Queue[F, A]] =
     forStrategy(Strategy.circularBuffer(maxSize))
 
-  /** bounded queue that distributed always at max `fairSize` elements to any subscriber **/
+  /** Created a bounded queue that distributed always at max `fairSize` elements to any subscriber. */
   def fairBounded[F[_], A](maxSize: Int, fairSize: Int)(implicit F: Concurrent[F]): F[Queue[F, A]] =
     forStrategy(Strategy.boundedLifo(maxSize).transformSelector[Int]((sz, _) => sz.min(fairSize)))
 
-  /** unbounded queue terminated by enqueueing None for the first time. All element before None are preserved in Queue. **/
+  /** Created an unbounded queue terminated by enqueueing `None`. All elements before `None`. */
   def noneTerminated[F[_], A](implicit F: Concurrent[F]): F[NoneTerminatedQueue[F, A]] =
     forStrategyNoneTerminated(PubSub.Strategy.closeDrainFirst(Strategy.lifo))
 
-  /** Creates a queue which allows a single element to be enqueued at any time. */
+  /** Creates a queue which allows at most a single element to be enqueued at any time. */
   def synchronous[F[_], A](implicit F: Concurrent[F]): F[Queue[F, A]] =
     forStrategy(Strategy.synchronous)
 
-  /** Like [[synchronous]], except that any enqueue of `None` will never block and cancels any dequeue operation */
+  /** Like [[synchronous]], except that any enqueue of `None` will never block and cancels any dequeue operation. */
   def synchronousNoneTerminated[F[_], A](implicit F: Concurrent[F]): F[NoneTerminatedQueue[F, A]] =
     forStrategyNoneTerminated(PubSub.Strategy.closeNow(Strategy.synchronous))
 
@@ -151,7 +150,7 @@ object Queue {
     if (chunk.size == 1) Applicative[F].pure(chunk(0))
     else Sync[F].raiseError(new Throwable(s"Expected chunk of size 1. got $chunk"))
 
-  /** creates queue from supplied strategy **/
+  /** Creates a queue from the supplied strategy. */
   private[fs2] def forStrategy[F[_]: Concurrent, S, A](
       strategy: PubSub.Strategy[A, Chunk[A], S, Int]): F[Queue[F, A]] =
     PubSub(strategy).map { pubSub =>
@@ -178,7 +177,7 @@ object Queue {
       }
     }
 
-  /** creates queue that is terminated by enqueueing None for supplied strategy **/
+  /** Creates a queue that is terminated by enqueueing `None` from the supplied strategy. */
   private[fs2] def forStrategyNoneTerminated[F[_]: Concurrent, S, A](
       strategy: PubSub.Strategy[Option[A], Option[Chunk[A]], S, Int])
     : F[NoneTerminatedQueue[F, A]] =
@@ -213,30 +212,30 @@ object Queue {
 
   private[fs2] object Strategy {
 
-    /** unbounded fifo strategy **/
+    /** Unbounded fifo strategy. */
     def boundedFifo[A](maxSize: Int): PubSub.Strategy[A, Chunk[A], ScalaQueue[A], Int] =
       PubSub.Strategy.bounded(maxSize)(fifo[A])(_.size)
 
-    /** unbounded lifo strategy **/
+    /** Unbounded lifo strategy. */
     def boundedLifo[A](maxSize: Int): PubSub.Strategy[A, Chunk[A], ScalaQueue[A], Int] =
       PubSub.Strategy.bounded(maxSize)(lifo[A])(_.size)
 
-    /** unbounded strategy of CyclicBuffer, that memoize always `maxSize` elements and never blocks. **/
+    /** Strategy for circular buffer, which stores the last `maxSize` enqueued elements and never blocks on enqueue. */
     def circularBuffer[A](maxSize: Int): PubSub.Strategy[A, Chunk[A], ScalaQueue[A], Int] =
       unbounded { (q, a) =>
         if (q.size < maxSize) q :+ a
         else q.tail :+ a
       }
 
-    /** unbounded lifo strategy **/
+    /** Unbounded lifo strategy. */
     def fifo[A]: PubSub.Strategy[A, Chunk[A], ScalaQueue[A], Int] = unbounded((q, a) => a +: q)
 
-    /** unbounded fifo strategy **/
+    /** Unbounded fifo strategy. */
     def lifo[A]: PubSub.Strategy[A, Chunk[A], ScalaQueue[A], Int] = unbounded(_ :+ _)
 
     /**
-      * Strategy that allows only single element to be published.
-      * Before the `A` is published, at least one subscriber must be ready to consume.
+      * Strategy that allows at most a single element to be published.
+      * Before the `A` is published successfully, at least one subscriber must be ready to consume.
       */
     def synchronous[A]: PubSub.Strategy[A, Chunk[A], (Boolean, Option[A]), Int] =
       new PubSub.Strategy[A, Chunk[A], (Boolean, Option[A]), Int] {
@@ -267,9 +266,9 @@ object Queue {
       }
 
     /**
-      * Creates unbounded queue strategy for `A` with configurable append function
+      * Creates unbounded queue strategy for `A` with configurable append function.
       *
-      * @param append Function used to append new elements to the queue.
+      * @param append function used to append new elements to the queue
       */
     def unbounded[A](append: (ScalaQueue[A], A) => ScalaQueue[A])
       : PubSub.Strategy[A, Chunk[A], ScalaQueue[A], Int] =
@@ -299,11 +298,10 @@ object Queue {
         def unsubscribe(selector: Int, queueState: ScalaQueue[A]): ScalaQueue[A] =
           queueState
       }
-
   }
-
 }
 
+/** Extension of [[Queue]] that allows peeking and inspection of the current size. */
 trait InspectableQueue[F[_], A] extends Queue[F, A] {
 
   /**
@@ -314,15 +312,14 @@ trait InspectableQueue[F[_], A] extends Queue[F, A] {
   def peek1: F[A]
 
   /**
-    * The time-varying size of this `Queue`. This signal refreshes
-    * only when size changes. Offsetting enqueues and de-queues may
-    * not result in refreshes.
+    * The time-varying size of this `Queue`.
+    * Emits elements describing the current size of the queue.
+    * Offsetting enqueues and de-queues may not result in refreshes.
     */
   def size: Stream[F, Int]
 
-  /** gets current size of the queue **/
+  /** Gets the current size of the queue. */
   def getSize: F[Int]
-
 }
 
 object InspectableQueue {
@@ -417,5 +414,4 @@ object InspectableQueue {
           }
       }
     }
-
 }
