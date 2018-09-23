@@ -144,9 +144,9 @@ object Topic {
         }
     }
 
-  object Strategy {
+  private[fs2] object Strategy {
 
-    case class State[A](
+    final case class State[A](
         last: A,
         subcribers: Map[(Token, Int), ScalaQueue[A]]
     )
@@ -162,39 +162,34 @@ object Topic {
         start: A): PubSub.Strategy[A, ScalaQueue[A], State[A], (Token, Int)] =
       new PubSub.Strategy[A, ScalaQueue[A], State[A], (Token, Int)] {
         def initial: State[A] = State(start, Map.empty)
-        def accepts(i: A, queueState: State[A]): Boolean =
-          queueState.subcribers.forall { case ((_, max), q) => q.size < max }
+        def accepts(i: A, state: State[A]): Boolean =
+          state.subcribers.forall { case ((_, max), q) => q.size < max }
 
-        def publish(i: A, queueState: State[A]): State[A] =
+        def publish(i: A, state: State[A]): State[A] =
           State(
             last = i,
-            subcribers = queueState.subcribers.mapValues(_ :+ i)
+            subcribers = state.subcribers.mapValues(_ :+ i)
           )
 
-        def get(selector: (Token, Int), queueState: State[A]): (State[A], Option[ScalaQueue[A]]) =
-          queueState.subcribers.get(selector) match {
+        def get(selector: (Token, Int), state: State[A]): (State[A], Option[ScalaQueue[A]]) =
+          state.subcribers.get(selector) match {
             case None =>
-              (queueState, Some(ScalaQueue(queueState.last)))
+              (state, Some(ScalaQueue(state.last)))
             case r @ Some(q) =>
-              if (q.isEmpty) (queueState, None)
+              if (q.isEmpty) (state, None)
               else {
-                (queueState.copy(
-                   subcribers = queueState.subcribers + (selector -> ScalaQueue.empty)),
-                 r)
+                (state.copy(subcribers = state.subcribers + (selector -> ScalaQueue.empty)), r)
               }
           }
 
-        def empty(queueState: State[A]): Boolean =
+        def empty(state: State[A]): Boolean =
           false
 
-        def subscribe(selector: (Token, Int), queueState: State[A]): (State[A], Boolean) =
-          (queueState.copy(
-             subcribers = queueState.subcribers + (selector -> ScalaQueue(queueState.last))),
-           true)
+        def subscribe(selector: (Token, Int), state: State[A]): (State[A], Boolean) =
+          (state.copy(subcribers = state.subcribers + (selector -> ScalaQueue(state.last))), true)
 
-        def unsubscribe(selector: (Token, Int), queueState: State[A]): State[A] =
-          queueState.copy(subcribers = queueState.subcribers - selector)
+        def unsubscribe(selector: (Token, Int), state: State[A]): State[A] =
+          state.copy(subcribers = state.subcribers - selector)
       }
-
   }
 }
