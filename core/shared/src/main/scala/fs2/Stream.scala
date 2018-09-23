@@ -180,7 +180,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     */
   def bufferBy(f: O => Boolean): Stream[F, O] = {
     def go(buffer: List[Chunk[O]], last: Boolean, s: Stream[F, O]): Pull[F, O, Unit] =
-      s.pull.unconsChunk.flatMap {
+      s.pull.uncons.flatMap {
         case Some((hd, tl)) =>
           val (out, buf, newLast) = {
             hd.foldLeft((Nil: List[Chunk[O]], Vector.empty[O], last)) {
@@ -545,7 +545,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     */
   def dropLastIf(p: O => Boolean): Stream[F, O] = {
     def go(last: Chunk[O], s: Stream[F, O]): Pull[F, O, Unit] =
-      s.pull.unconsChunk.flatMap {
+      s.pull.uncons.flatMap {
         case Some((hd, tl)) =>
           if (hd.nonEmpty) Pull.output(last) >> go(hd, tl)
           else go(last, tl)
@@ -557,7 +557,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
           } else Pull.output(last)
       }
     def unconsNonEmptyChunk(s: Stream[F, O]): Pull[F, INothing, Option[(Chunk[O], Stream[F, O])]] =
-      s.pull.unconsChunk.flatMap {
+      s.pull.uncons.flatMap {
         case Some((hd, tl)) =>
           if (hd.nonEmpty) Pull.pure(Some((hd, tl)))
           else unconsNonEmptyChunk(tl)
@@ -903,7 +903,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     */
   def groupAdjacentBy[O2](f: O => O2)(implicit eq: Eq[O2]): Stream[F, (O2, Chunk[O])] = {
     def go(current: Option[(O2, Chunk[O])], s: Stream[F, O]): Pull[F, (O2, Chunk[O]), Unit] =
-      s.pull.unconsChunk.flatMap {
+      s.pull.uncons.flatMap {
         case Some((hd, tl)) =>
           if (hd.nonEmpty) {
             val (k1, out) = current.getOrElse((f(hd(0)), Chunk.empty[O]))
@@ -1295,7 +1295,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     */
   def mapChunks[O2](f: Chunk[O] => Chunk[O2]): Stream[F, O2] =
     this.repeatPull {
-      _.unconsChunk.flatMap {
+      _.uncons.flatMap {
         case None           => Pull.pure(None)
         case Some((hd, tl)) => Pull.output(f(hd)).as(Some(tl))
       }
@@ -2958,9 +2958,6 @@ object Stream extends StreamLowPriority {
         _.map { case (hd, tl) => (hd, Stream.fromFreeC(tl)) }
       }
 
-    /** Like [[uncons]] but waits for a chunk instead of an entire chunk. */
-    def unconsChunk: Pull[F, INothing, Option[(Chunk[O], Stream[F, O])]] = uncons
-
     /** Like [[uncons]] but waits for a single element instead of an entire chunk. */
     def uncons1: Pull[F, INothing, Option[(O, Stream[F, O])]] =
       uncons.flatMap {
@@ -3080,7 +3077,7 @@ object Stream extends StreamLowPriority {
 
     /** Awaits the next available element where the predicate returns true. */
     def find(f: O => Boolean): Pull[F, INothing, Option[(O, Stream[F, O])]] =
-      unconsChunk.flatMap {
+      uncons.flatMap {
         case None => Pull.pure(None)
         case Some((hd, tl)) =>
           hd.indexWhere(f) match {
