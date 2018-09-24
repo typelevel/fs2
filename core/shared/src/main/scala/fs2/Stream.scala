@@ -2101,6 +2101,38 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     zipWith(that)(Tuple2.apply)
 
   /**
+    * Like `zip`, but selects the right values only.
+    * Useful with timed streams, the example below will emit a number every 100 milliseconds.
+    *
+    * @example {{{
+    * scala> import scala.concurrent.duration._, cats.effect.{ContextShift, IO, Timer}
+    * scala> implicit val cs: ContextShift[IO] = IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
+    * scala> implicit val timer: Timer[IO] = IO.timer(scala.concurrent.ExecutionContext.Implicits.global)
+    * scala> val s = Stream.fixedDelay(100.millis) zipRight Stream.range(0, 5)
+    * scala> s.compile.toVector.unsafeRunSync
+    * res0: Vector[Int] = Vector(0, 1, 2 , 3, 4)
+    * }}}
+    */
+  def zipRight[F2[x] >: F[x], O2](that: Stream[F2, O2]): Stream[F2, O2] =
+    zipWith(that)((_, y) => y)
+
+  /**
+    * Like `zip`, but selects the left values only.
+    * Useful with timed streams, the example below will emit a number every 100 milliseconds.
+    *
+    * @example {{{
+    * scala> import scala.concurrent.duration._, cats.effect.{ContextShift, IO, Timer}
+    * scala> implicit val cs: ContextShift[IO] = IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
+    * scala> implicit val timer: Timer[IO] = IO.timer(scala.concurrent.ExecutionContext.Implicits.global)
+    * scala> val s = Stream.range(0, 5) zipLeft Stream.fixedDelay(100.millis)
+    * scala> s.compile.toVector.unsafeRunSync
+    * res0: Vector[Int] = Vector(0, 1, 2 , 3, 4)
+    * }}}
+    */
+  def zipLeft[F2[x] >: F[x], O2](that: Stream[F2, O2]): Stream[F2, O] =
+    zipWith(that)((x, _) => x)
+
+  /**
     * Determinsitically zips elements using the specified function,
     * terminating when the end of either branch is reached naturally.
     *
