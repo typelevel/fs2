@@ -118,7 +118,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     attempt ++ delays.flatMap(delay => Stream.sleep_(delay) ++ attempt)
 
   /**
-    * Alias for `this.through(Broadcast.broadcast)`
+    * Alias for `this.through(Broadcast(1))`
     */
   def broadcast[F2[x] >: F[x]: Concurrent]: Stream[F2, Stream[F2, O]] =
     this.through(Broadcast(1))
@@ -150,7 +150,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     this.broadcastTo[F2]((0 until maxConcurrent).map(_ => sink): _*)
 
   /**
-    * Alias for `this.tp(Broadcast.broadcastTo(sinks))`
+    * Alias for `this.to(Broadcast.through(pipes))`
     */
   def broadcastThrough[F2[x] >: F[x]: Concurrent, O2](pipes: Pipe[F2, O, O2]*): Stream[F2, O2] =
     this.through(Broadcast.through(pipes: _*))
@@ -546,10 +546,10 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
       .stream
 
   /**
-    * Alias for `this.through(Distribute.distribute(Int.MaxValue))`
+    * Alias for `this.through(Balance(Int.MaxValue))`
     */
-  def distributeAvailable[F2[x] >: F[x]: Concurrent]: Stream[F2, Stream[F2, O]] =
-    this.through(Balance.apply(Int.MaxValue))
+  def balanceAvailable[F2[x] >: F[x]: Concurrent]: Stream[F2, Stream[F2, O]] =
+    this.through(Balance(Int.MaxValue))
 
   /**
     * Alias for `this.through(Balance(chunkSize))`
@@ -558,7 +558,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     this.through(Balance(chunkSize))
 
   /**
-    * Like `distribute` but instead of providing stream as source for worker, it runs each worker through
+    * Like `balance` but instead of providing stream as source for worker, it runs each worker through
     * supplied sink.
     *
     * Each supplied sink is run concurrently with other. This means that amount of sinks determines parallelism.
@@ -576,7 +576,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     balanceThrough[F2, Unit](chunkSize)(sinks.map(_.andThen(_.drain)): _*)
 
   /**
-    * Variant of `distributedTo` that takes number of concurrency required and single sink
+    * Variant of `balanceTo` that takes number of concurrency required and single sink
     * @param chunkSize        Max size of output chunk for each stream supplied to sink
     * @param maxConcurrent    Maximum number of sinks to run concurrently
     * @param sink             Sink to use to process elements
@@ -587,14 +587,14 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     this.balanceThrough[F2, Unit](chunkSize, maxConcurrent)(sink.andThen(_.drain))
 
   /**
-    * Alias for `this.through(Distribute.distributeThrough(chunkSize)(pipes)`
+    * Alias for `this.through(Balance.through(chunkSize)(pipes)`
     */
   def balanceThrough[F2[x] >: F[x]: Concurrent, O2](chunkSize: Int)(
       pipes: Pipe[F2, O, O2]*): Stream[F2, O2] =
     this.through(Balance.through[F2, O, O2](chunkSize)(pipes: _*))
 
   /**
-    * Variant of `distributeThrough` that takes number of concurrency required and single pipe
+    * Variant of `balanceThrough` that takes number of concurrency required and single pipe
     * @param chunkSize        Max size of output chunk for each stream supplied to sink
     * @param maxConcurrent    Maximum number of pipes to run concurrently
     * @param sink             Pipe to use to process elements
