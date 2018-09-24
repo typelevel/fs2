@@ -12,8 +12,8 @@ Quick links:
 * [API docs (fs2-core)][core-api], [API docs (fs2-io)][io-api]
 * [Docs and getting help](#docs)
 
-[io-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-io_2.12/0.10.5/fs2-io_2.12-0.10.5-javadoc.jar/!/fs2/io/index.html
-[core-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-core_2.12/0.10.5/fs2-core_2.12-0.10.5-javadoc.jar/!/fs2/index.html
+[io-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-io_2.12/0.10.6/fs2-io_2.12-0.10.6-javadoc.jar/!/fs2/io/index.html
+[core-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-core_2.12/0.10.6/fs2-core_2.12-0.10.6-javadoc.jar/!/fs2/index.html
 
 ### <a id="about"></a>About the library ###
 
@@ -62,8 +62,8 @@ Blog posts and other external resources are listed on the [Additional Resources]
 
 ### <a id="getit"></a> Where to get the latest version ###
 
-* [API docs (fs2-core 0.10.4)][core-api]
-* [API docs (fs2-io 0.10.4)][io-api]
+* [API docs (fs2-core 0.10.6)][core-api]
+* [API docs (fs2-io 0.10.6)][io-api]
 
 The latest version is 0.10.x. See the badge at the top of the README for the exact version number.
 
@@ -72,10 +72,10 @@ summarizes the differences between 0.10 and 0.9. To get 0.10.x, add the followin
 
 ```
 // available for Scala 2.11, 2.12
-libraryDependencies += "co.fs2" %% "fs2-core" % "0.10.4" // For cats 1.1.0 and cats-effect 0.10
+libraryDependencies += "co.fs2" %% "fs2-core" % "0.10.6" // For cats 1.1.0 and cats-effect 0.10
 
 // optional I/O library
-libraryDependencies += "co.fs2" %% "fs2-io" % "0.10.4"
+libraryDependencies += "co.fs2" %% "fs2-io" % "0.10.6"
 ```
 
 The previous stable release is 0.9.7. You may want to first
