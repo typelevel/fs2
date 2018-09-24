@@ -1342,9 +1342,6 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
                 .onFinalize(innerFailed.get.flatMap { if (_) F2.unit else guard.release })
 
           this
-          // although failure on inner propagates, it is still possible for parJoin to
-          // keep pulling before it fails so we interrupt it anyway
-            .interruptWhen(innerFailed)
             .evalMap { o =>
               Deferred[F2, Unit].flatMap { halt =>
                 haltRef.modify {
