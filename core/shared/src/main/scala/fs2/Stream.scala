@@ -5,8 +5,7 @@ import cats.data.{Chain, NonEmptyList}
 import cats.effect._
 import cats.effect.concurrent._
 import cats.implicits.{catsSyntaxEither => _, _}
-import fs2.concurrent.{Queue, Signal, SignallingRef}
-import fs2.async.mutable.Broadcast
+import fs2.concurrent._
 import fs2.internal.FreeC.Result
 import fs2.internal._
 
@@ -119,130 +118,45 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     attempt ++ delays.flatMap(delay => Stream.sleep_(delay) ++ attempt)
 
   /**
-    * Allows to broadcast `O` to multiple workers.
-    *
-    * As the elements arrive, they are broadcasted to all `workers` that started evaluation just before the
-    * element was pulled from `this`.
-    *
-    * Elements are pulled as chunks from `this` and next chunk is pulled when all workers are done
-    * with processing that chunk.
-    *
-    * This behaviour may slow down processing of incoming chunks by faster workers. If this is not desired,
-    * consider using any `buffer` combinator on workers to compensate for slower workers, or introduce any further
-    * queueing using [[async.mutable.Queue]].
-    *
-    * Usually this combinator is used together with parJoin, such as :
-    *
-    * {{{
-    *   Stream(1,2,3,4).broadcast.flatMap { worker =>
-    *     Stream.emits(
-    *       worker.evalMap { o => IO.println(s"1:$o") }
-    *       , worker.evalMap { o => IO.println(s"2:$o") }
-    *       , worker.evalMap { o => IO.println(s"3:$o") }
-    *     )
-    *   }.parJoinUnbounded.compile.drain.unsafeRunSync
-    * }}}
-    *
-    * Note that in the example above the workers are not guaranteed to see all elements emitted. This is
-    * due different subscription time of each worker and speed of emitting the elements by `this`.
-    *
-    * If this is not desired, consider using `broadcastTo` or `broadcastThrough` alternatives.
-    *
-    * When `this` terminates, the resulting streams (workers) are terminated once all elements so far pulled
-    * from `this` are processed by all workers.
-    *
-    *
-    * @tparam F2
-    * @return
+    * Alias for `this.through(Broadcast.broadcast)`
     */
   def broadcast[F2[x] >: F[x]: Concurrent]: Stream[F2, Stream[F2, O]] =
-    Broadcast[F2, O](this)
+    this.through(Broadcast(1))
 
   /**
-    * Like `broadcast` but instead of providing stream as source for worker, it runs each worker through
-    * supplied sink.
+    * Like `broadcast` but instead of providing stream as source for worker, it runs each stream through
+    * supplied workers defined as `sink`
     *
-    * Each supplied sink is run concurrently with other. This means that amount of sinks determines parallelism.
+    * Each supplied `sink` is run concurrently with each other. This means that amount of sinks determines parallelism.
     * Each sink may have different implementation, if required, for example one sink may process elements, the other
     * may send elements for processing to another machine.
     *
-    * Also this guarantees, that each sink will view all `O` pulled from `this`.
+    * Also this guarantees, that each sink will view all `O` pulled from source stream, unlike `broadcast`
+    * where the resulting stream (worker) sees only elements when it starts its evaluation.
     *
-    * Note that resulting stream will not emit single value (Unit). If you need to emit unit values from your sinks, consider
-    * using `broadcastThrough`
+    * Note that resulting stream will not emit single value (Unit), even if the sinks do.
+    * If you need to emit Unit values from your sinks, consider using `broadcastThrough`
     *
     * @param sinks    Sinks that will concurrently process the work.
-    * @tparam F2
-    * @return
     */
   def broadcastTo[F2[x] >: F[x]: Concurrent](sinks: Sink[F2, O]*): Stream[F2, Unit] =
-    broadcastThrough[F2, Nothing](sinks.map { _.andThen { _.drain } }: _*)
+    this.to(Broadcast.through(sinks.map(_.andThen(_.drain)): _*))
 
   /**
-    * Variant of `broadcastTo` that takes number of concurrency required and single sink
-    * @param maxConcurrent   Maximum number of sinks to run concurrently
-    * @param sink          Sink to use to process elements
-    * @return
+    * Variant of `broadcastTo` that takes number of concurrency required and single sink definition
     */
   def broadcastTo[F2[x] >: F[x]: Concurrent](maxConcurrent: Int)(
       sink: Sink[F2, O]): Stream[F2, Unit] =
     this.broadcastTo[F2]((0 until maxConcurrent).map(_ => sink): _*)
 
+  /**
+    * Alias for `this.tp(Broadcast.broadcastTo(sinks))`
+    */
   def broadcastThrough[F2[x] >: F[x]: Concurrent, O2](pipes: Pipe[F2, O, O2]*): Stream[F2, O2] =
-    Stream
-      .eval {
-        Deferred[F2, Unit].flatMap { start =>
-          Semaphore[F2](0).map { started =>
-            // relies on fact that next element won't be pulled from source until all subscribers
-            // will commit. As such we just take first source, that asks for the first element
-            // and then start all remaining  sinks
-            // when all registers their start, we just terminate the first and continue with all remianing.
-
-            if (pipes.isEmpty) Stream.empty
-            else {
-              this.broadcast[F2].flatMap { source =>
-                def subscribe(pipe: Pipe[F2, O, O2]) =
-                  source.pull.uncons1
-                    .flatMap {
-                      case None => Pull.done
-                      case Some((o2, tl)) =>
-                        Pull.eval(started.release) >>
-                          Pull.eval(start.get) >>
-                          Pull.output1(tl.cons1(o2))
-                    }
-                    .stream
-                    .flatten
-                    .through(pipe)
-
-                def control =
-                  source.pull.uncons1
-                    .flatMap {
-                      case None => Pull.done
-                      case Some((h, tl)) =>
-                        Pull.eval(started.acquireN(pipes.size)) >>
-                          Pull.eval(start.complete(()))
-                    }
-                    .stream
-                    .drain
-
-                Stream.emits[F2, Stream[F2, O2]](
-                  control +: pipes.map(subscribe)
-                )
-              }
-
-            }
-
-          }
-        }
-      }
-      .flatten
-      .parJoinUnbounded
+    this.through(Broadcast.through(pipes: _*))
 
   /**
     * Variant of `broadcastThrough` that takes number of concurrency required and single pipe
-    * @param maxConcurrent Maximum number of sinks to run concurrently
-    * @param pipe          Pipe to use to process elements
-    * @return
     */
   def broadcastThrough[F2[x] >: F[x]: Concurrent, O2](maxConcurrent: Int)(
       pipe: Pipe[F2, O, O2]): Stream[F2, O2] =
@@ -632,52 +546,16 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
       .stream
 
   /**
-    * Allows to distribute processing of this stream to parallel streams.
-    *
-    * This could be viewed as Stream `fan-out` operation allowing to process incoming `O` in parallel.
-    *
-    * As the elements arrive, they are evenly distributed to streams that already started their evaluation.
-    * Note that this will pull only that much `O` to satisfy needs of all workers currently being evaluated
-    * (possibly pulling more based on distribution of `O` in chunks).
-    * For increased performance, consider supplying stream with `Chunk[O]` instead of `O` by `this.chunks.distribute`.
-    *
-    * Usually this combinator is used together with parJoin, such as :
-    *
-    * {{{
-    *   Stream(1,2,3,4).distribute.map { worker =>
-    *     worker.map(_.toString)
-    *   }.take(3).parJoinUnbounded.compile.toVector.unsafeRunSync.toSet
-    * }}}
-    *
-    *
-    * When `this` terminates, the resulting streams (workers) are terminated once all elements so far pulled
-    * from `this` are processed.
-    *
-    * When the resulting stream is evaluated, then `this` will terminate if resulting stream will terminate.
-    *
-    * @return
+    * Alias for `this.through(Distribute.distribute(Int.MaxValue))`
     */
-  def distribute[F2[x] >: F[x]: Concurrent]: Stream[F2, Stream[F2, O]] =
-    Stream.eval {
-      async.unboundedQueue[F2, Option[O]].flatMap { queue =>
-        Semaphore[F2](0).map { guard =>
-          def worker: Stream[F2, O] =
-            Stream.eval(guard.release) >>
-              queue.dequeue.unNone.flatMap { o =>
-                Stream.emit(o) ++ Stream.eval_(guard.release)
-              }
+  def distributeAvailable[F2[x] >: F[x]: Concurrent]: Stream[F2, Stream[F2, O]] =
+    this.through(Distribute.apply(Int.MaxValue))
 
-          def runner: Stream[F2, Unit] =
-            this
-              .evalMap { o =>
-                guard.acquire >> queue.enqueue1(Some(o))
-              }
-              .onFinalize(queue.enqueue1(None))
-
-          Stream.constant(worker).concurrently(runner)
-        }
-      }
-    }.flatten
+  /**
+    * Alias for `this.through(Distribute.distribute(chunkSize))`
+    */
+  def distribute[F2[x] >: F[x]: Concurrent](chunkSize: Int): Stream[F2, Stream[F2, O]] =
+    this.through(Distribute(chunkSize))
 
   /**
     * Like `distribute` but instead of providing stream as source for worker, it runs each worker through
@@ -694,63 +572,38 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * @tparam F2
     * @return
     */
-  def distributeTo[F2[x] >: F[x]: Concurrent](sinks: Sink[F2, O]*): Stream[F2, Unit] =
-    this
-      .distribute[F2]
-      .flatMap { source =>
-        Stream.emits(sinks.map(sink => source.to(sink).drain))
-      }
-      .parJoinUnbounded
+  def distributeTo[F2[x] >: F[x]: Concurrent](chunkSize: Int)(
+      sinks: Sink[F2, O]*): Stream[F2, Unit] =
+    distributeThrough[F2, Unit](chunkSize)(sinks.map(_.andThen(_.drain)): _*)
 
   /**
     * Variant of `distributedTo` that takes number of concurrency required and single sink
-    * @param maxConcurrent   Maximum number of sinks to run concurrently
-    * @param sink          Sink to use to process elements
+    * @param chunkSize        Max size of output chunk for each stream supplied to sink
+    * @param maxConcurrent    Maximum number of sinks to run concurrently
+    * @param sink             Sink to use to process elements
     * @return
     */
-  def distributeTo[F2[x] >: F[x]: Concurrent](maxConcurrent: Int)(
+  def distributeTo[F2[x] >: F[x]: Concurrent](chunkSize: Int, maxConcurrent: Int)(
       sink: Sink[F2, O]): Stream[F2, Unit] =
-    this.distributeTo[F2]((0 until maxConcurrent).map(_ => sink): _*)
+    this.distributeThrough[F2, Unit](chunkSize, maxConcurrent)(sink.andThen(_.drain))
 
   /**
-    * Like `distribute` but instead of providing stream as source for worker, it runs each worker through
-    * supplied pipe.
-    *
-    * Each supplied pipe is run concurrently with other. This means that amount of pipes determines parallelism.
-    * Each pipe may have different implementation, if required, for example one pipe may process elements, the other
-    * may send elements for processing to another machine.
-    *
-    * Results from pipes are collected and emitted as resulting stream.
-    *
-    * This will terminate when :
-    *
-    *  - this terminates
-    *  - any pipe fails
-    *  - all pipes terminate
-    *
-    * @param pipes  Pipes to use to process work, that will be concurrently evaluated
-    * @tparam F2
-    * @return
+    * Alias for `this.through(Distribute.distributeThrough(chunkSize)(pipes)`
     */
-  def distributeThrough[F2[x] >: F[x]: Concurrent, O2](pipes: Pipe[F2, O, O2]*): Stream[F2, O2] =
-    this
-      .distribute[F2]
-      .flatMap { source =>
-        Stream.emits(pipes.map { pipe =>
-          source.through(pipe)
-        })
-      }
-      .parJoinUnbounded
+  def distributeThrough[F2[x] >: F[x]: Concurrent, O2](chunkSize: Int)(
+      pipes: Pipe[F2, O, O2]*): Stream[F2, O2] =
+    this.through(Distribute.through[F2, O, O2](chunkSize)(pipes: _*))
 
   /**
     * Variant of `distributeThrough` that takes number of concurrency required and single pipe
-    * @param maxConcurrent   Maximum number of pipes to run concurrently
-    * @param sink          Pipe to use to process elements
+    * @param chunkSize        Max size of output chunk for each stream supplied to sink
+    * @param maxConcurrent    Maximum number of pipes to run concurrently
+    * @param sink             Pipe to use to process elements
     * @return
     */
-  def distributeThrough[F2[x] >: F[x]: Concurrent, O2](maxConcurrent: Int)(
+  def distributeThrough[F2[x] >: F[x]: Concurrent, O2](chunkSize: Int, maxConcurrent: Int)(
       pipe: Pipe[F2, O, O2]): Stream[F2, O2] =
-    this.distributeThrough[F2, O2]((0 until maxConcurrent).map(_ => pipe): _*)
+    this.distributeThrough[F2, O2](chunkSize)((0 until maxConcurrent).map(_ => pipe): _*)
 
   /**
     * Removes all output values from this stream.
