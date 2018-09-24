@@ -2584,6 +2584,12 @@ object Stream extends StreamLowPriority {
     Stream.fromFreeC(Algebra.getScope[F, Scope[F], Scope[F]].flatMap(Algebra.output1(_)))
 
   /**
+    * A stream that never emits and never terminates.
+    */
+  def never[F[_]](implicit F: Async[F]): Stream[F, Nothing] =
+    Stream.eval_(F.never)
+
+  /**
     * Creates a stream that, when run, fails with the supplied exception.
     *
     * The `F` type must be explicitly provided (e.g., via `raiseError[IO]` or `raiseError[Fallible]`).
