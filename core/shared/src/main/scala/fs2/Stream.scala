@@ -1337,9 +1337,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
             Stream.eval(guard.acquire) >> // guard inner to prevent parallel inner streams
               f(o)
                 .interruptWhen(halt.get.attempt)
-                .handleErrorWith { e =>
-                  Stream.eval(innerFailed.set(true)) >> Stream.raiseError[F2](e)
-                }
+                .onError { case e => Stream.eval(innerFailed.set(true)) }
                 // upon failure, do not release the guard(prevents the next stream from running)
                 .onFinalize(innerFailed.get.flatMap { if (_) F2.unit else guard.release })
 
