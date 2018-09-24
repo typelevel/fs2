@@ -1,11 +1,11 @@
 package fs2
 package concurrent
 
-import cats.effect.Concurrent
-import cats.effect.concurrent.{Deferred, Ref}
-import cats.implicits._
+import cats.syntax.all._
+import cats.effect.{Concurrent, Sync}
 
-import fs2.Stream._
+import scala.collection.immutable.{Queue => ScalaQueue}
+import fs2.internal.Token
 
 /**
   * Asynchronous Topic.
@@ -63,7 +63,7 @@ abstract class Topic[F[_], A] { self =>
   /**
     * Signal of current active subscribers.
     */
-  def subscribers: Signal[F, Int]
+  def subscribers: Stream[F, Int]
 
   /**
     * Returns an alternate view of this `Topic` where its elements are of type `B`,
@@ -75,7 +75,7 @@ abstract class Topic[F[_], A] { self =>
       def publish1(b: B): F[Unit] = self.publish1(g(b))
       def subscribe(maxQueued: Int): Stream[F, B] =
         self.subscribe(maxQueued).map(f)
-      def subscribers: Signal[F, Int] = self.subscribers
+      def subscribers: Stream[F, Int] = self.subscribers
       def subscribeSize(maxQueued: Int): Stream[F, (B, Int)] =
         self.subscribeSize(maxQueued).map { case (a, i) => f(a) -> i }
     }
@@ -83,81 +83,113 @@ abstract class Topic[F[_], A] { self =>
 
 object Topic {
 
-  def apply[F[_], A](initial: A)(implicit F: Concurrent[F]): F[Topic[F, A]] = {
-    // Id identifying each subscriber uniquely
-    class ID
+  def apply[F[_], A](initial: A)(implicit F: Concurrent[F]): F[Topic[F, A]] =
+    PubSub(PubSub.Strategy.Inspectable.strategy(Strategy.boundedSubscribers(initial))).map {
+      pubSub =>
+        new Topic[F, A] {
 
-    sealed trait Subscriber {
-      def publish(a: A): F[Unit]
-      def id: ID
-      def subscribe: Stream[F, A]
-      def subscribeSize: Stream[F, (A, Int)]
-      def unSubscribe: F[Unit]
+          def subscriber(size: Int): Stream[F, ((Token, Int), Stream[F, ScalaQueue[A]])] =
+            Stream
+              .bracket(
+                Sync[F]
+                  .delay((new Token, size))
+                  .flatTap(selector => pubSub.subscribe(Right(selector)))
+              )(selector => pubSub.unsubscribe(Right(selector)))
+              .map { selector =>
+                selector ->
+                  Stream
+                    .repeatEval(pubSub.get(Right(selector)))
+                    .flatMap {
+                      case Right(q) => Stream.emit(q)
+                      case Left(_)  => Stream.empty // impossible
+                    }
+
+              }
+
+          def publish: Sink[F, A] =
+            _.evalMap(publish1)
+
+          def publish1(a: A): F[Unit] =
+            pubSub.publish(a)
+
+          def subscribe(maxQueued: Int): Stream[F, A] =
+            subscriber(maxQueued).flatMap { case (_, s) => s.flatMap(Stream.emits) }
+
+          def subscribeSize(maxQueued: Int): Stream[F, (A, Int)] =
+            subscriber(maxQueued).flatMap {
+              case (selector, stream) =>
+                stream
+                  .flatMap { q =>
+                    Stream.emits(q.zipWithIndex.map { case (a, idx) => (a, q.size - idx) })
+                  }
+                  .evalMap {
+                    case (a, remQ) =>
+                      pubSub.get(Left(None)).map {
+                        case Left(s) =>
+                          (a, s.subcribers.get(selector).map(_.size + remQ).getOrElse(remQ))
+                        case Right(_) => (a, -1) // impossible
+                      }
+                  }
+            }
+
+          def subscribers: Stream[F, Int] =
+            Stream
+              .bracket(Sync[F].delay(new Token))(token => pubSub.unsubscribe(Left(Some(token))))
+              .flatMap { token =>
+                Stream.repeatEval(pubSub.get(Left(Some(token)))).flatMap {
+                  case Left(s)  => Stream.emit(s.subcribers.size)
+                  case Right(_) => Stream.empty //impossible
+                }
+              }
+        }
     }
 
-    Ref
-      .of[F, (A, Vector[Subscriber])]((initial, Vector.empty[Subscriber]))
-      .flatMap { state =>
-        SignallingRef[F, Int](0).map { subSignal =>
-          def mkSubscriber(maxQueued: Int): F[Subscriber] =
-            for {
-              q <- InspectableQueue.bounded[F, A](maxQueued)
-              firstA <- Deferred[F, A]
-              done <- Deferred[F, Boolean]
-              sub = new Subscriber {
-                def unSubscribe: F[Unit] =
-                  for {
-                    _ <- state.update {
-                      case (a, subs) => a -> subs.filterNot(_.id == id)
-                    }
-                    _ <- subSignal.update(_ - 1)
-                    _ <- done.complete(true)
-                  } yield ()
-                def subscribe: Stream[F, A] = eval(firstA.get) ++ q.dequeue
-                def publish(a: A): F[Unit] =
-                  q.offer1(a).flatMap { offered =>
-                    if (offered) F.unit
-                    else {
-                      eval(done.get)
-                        .interruptWhen(q.full.discrete.map(!_))
-                        .last
-                        .flatMap {
-                          case None    => eval(publish(a))
-                          case Some(_) => Stream.empty
-                        }
-                        .compile
-                        .drain
-                    }
-                  }
+  private[fs2] object Strategy {
 
-                def subscribeSize: Stream[F, (A, Int)] =
-                  eval(firstA.get).map(_ -> 0) ++ q.dequeue.zip(q.size.continuous)
-                val id: ID = new ID
+    final case class State[A](
+        last: A,
+        subcribers: Map[(Token, Int), ScalaQueue[A]]
+    )
+
+    /**
+      * Strategy for topic, where every subscriber can specify max size of queued elements.
+      * If that subscription is exceeded any other `publish` to the topic will hold,
+      * until such subscriber disappears, or consumes more elements.
+      *
+      * @param initial  Initial value of the topic.
+      */
+    def boundedSubscribers[F[_], A](
+        start: A): PubSub.Strategy[A, ScalaQueue[A], State[A], (Token, Int)] =
+      new PubSub.Strategy[A, ScalaQueue[A], State[A], (Token, Int)] {
+        def initial: State[A] = State(start, Map.empty)
+        def accepts(i: A, state: State[A]): Boolean =
+          state.subcribers.forall { case ((_, max), q) => q.size < max }
+
+        def publish(i: A, state: State[A]): State[A] =
+          State(
+            last = i,
+            subcribers = state.subcribers.mapValues(_ :+ i)
+          )
+
+        def get(selector: (Token, Int), state: State[A]): (State[A], Option[ScalaQueue[A]]) =
+          state.subcribers.get(selector) match {
+            case None =>
+              (state, Some(ScalaQueue(state.last)))
+            case r @ Some(q) =>
+              if (q.isEmpty) (state, None)
+              else {
+                (state.copy(subcribers = state.subcribers + (selector -> ScalaQueue.empty)), r)
               }
-              a <- state.modify { case (a, s) => (a, s :+ sub) -> a }
-              _ <- subSignal.update(_ + 1)
-              _ <- firstA.complete(a)
-            } yield sub
-
-          new Topic[F, A] {
-            def publish: Sink[F, A] =
-              _.flatMap(a => eval(publish1(a)))
-
-            def subscribers: Signal[F, Int] = subSignal
-
-            def publish1(a: A): F[Unit] =
-              state.modify {
-                case (_, subs) =>
-                  (a, subs) -> subs.traverse_(_.publish(a))
-              }.flatten
-
-            def subscribe(maxQueued: Int): Stream[F, A] =
-              bracket(mkSubscriber(maxQueued))(_.unSubscribe).flatMap(_.subscribe)
-
-            def subscribeSize(maxQueued: Int): Stream[F, (A, Int)] =
-              bracket(mkSubscriber(maxQueued))(_.unSubscribe).flatMap(_.subscribeSize)
           }
-        }
+
+        def empty(state: State[A]): Boolean =
+          false
+
+        def subscribe(selector: (Token, Int), state: State[A]): (State[A], Boolean) =
+          (state.copy(subcribers = state.subcribers + (selector -> ScalaQueue(state.last))), true)
+
+        def unsubscribe(selector: (Token, Int), state: State[A]): State[A] =
+          state.copy(subcribers = state.subcribers - selector)
       }
   }
 }

@@ -214,7 +214,7 @@ lazy val root = project
   .in(file("."))
   .settings(commonSettings)
   .settings(noPublish)
-  .aggregate(coreJVM, coreJS, io, benchmark)
+  .aggregate(coreJVM, coreJS, io, reactiveStreams, benchmark, experimental)
 
 lazy val core = crossProject(JVMPlatform, JSPlatform)
   .in(file("core"))
@@ -269,6 +269,31 @@ lazy val io = project
   )
   .dependsOn(coreJVM % "compile->compile;test->test")
 
+lazy val reactiveStreams = project
+  .in(file("reactive-streams"))
+  .enablePlugins(SbtOsgi)
+  .settings(commonSettings)
+  .settings(
+    libraryDependencies ++= Seq(
+      "org.reactivestreams" % "reactive-streams" % "1.0.2",
+      "org.reactivestreams" % "reactive-streams-tck" % "1.0.2" % "test"
+    ))
+  .settings(mimaSettings)
+  .settings(
+    name := "fs2-reactive-streams",
+    OsgiKeys.exportPackage := Seq("fs2.interop.reactivestreams.*"),
+    OsgiKeys.privatePackage := Seq(),
+    OsgiKeys.importPackage := {
+      val Some((major, minor)) = CrossVersion.partialVersion(scalaVersion.value)
+      Seq(s"""scala.*;version="[$major.$minor,$major.${minor + 1})"""",
+          """fs2.*;version="${Bundle-Version}"""",
+          "*")
+    },
+    OsgiKeys.additionalHeaders := Map("-removeheaders" -> "Include-Resource,Private-Package"),
+    osgiSettings
+  )
+  .dependsOn(coreJVM % "compile->compile;test->test")
+
 lazy val benchmarkMacros = project
   .in(file("benchmark-macros"))
   .disablePlugins(MimaPlugin)
@@ -307,7 +332,7 @@ lazy val docs = project
     tutTargetDirectory := file("docs")
   )
   .settings(tutSettings)
-  .dependsOn(coreJVM, io)
+  .dependsOn(coreJVM, io, reactiveStreams)
 
 lazy val microsite = project
   .in(file("site"))
@@ -319,7 +344,7 @@ lazy val microsite = project
     micrositeDescription := "fs2 - Functional Streams for Scala",
     micrositeGithubOwner := "functional-streams-for-scala",
     micrositeGithubRepo := "fs2",
-    micrositeBaseUrl := "/fs2",
+    micrositeBaseUrl := "",
     micrositeExtraMdFiles := Map(
       file("README.md") -> ExtraMdFileConfig(
         "index.md",
@@ -329,7 +354,26 @@ lazy val microsite = project
     )
   )
   .settings(tutSettings)
-  .dependsOn(coreJVM, io)
+  .dependsOn(coreJVM, io, reactiveStreams)
 
-addCommandAlias("testJVM", ";coreJVM/test;io/test;benchmark/test")
+lazy val experimental = project
+  .in(file("experimental"))
+  .enablePlugins(SbtOsgi)
+  .settings(commonSettings)
+  .settings(
+    name := "fs2-experimental",
+    OsgiKeys.exportPackage := Seq("fs2.experimental.*"),
+    OsgiKeys.privatePackage := Seq(),
+    OsgiKeys.importPackage := {
+      val Some((major, minor)) = CrossVersion.partialVersion(scalaVersion.value)
+      Seq(s"""scala.*;version="[$major.$minor,$major.${minor + 1})"""",
+          """fs2.*;version="${Bundle-Version}"""",
+          "*")
+    },
+    OsgiKeys.additionalHeaders := Map("-removeheaders" -> "Include-Resource,Private-Package"),
+    osgiSettings
+  )
+  .dependsOn(coreJVM % "compile->compile;test->test")
+
+addCommandAlias("testJVM", ";coreJVM/test;io/test;reactiveStreams/test;benchmark/test")
 addCommandAlias("testJS", "coreJS/test")

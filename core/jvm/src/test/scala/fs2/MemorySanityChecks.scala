@@ -150,7 +150,10 @@ object QueueTest extends App {
   Stream
     .eval(Queue.bounded[IO, Either[Throwable, Option[Int]]](10))
     .flatMap { queue =>
-      queue.dequeueAvailable.rethrow.unNoneTerminate
+      queue
+        .dequeueChunk(Int.MaxValue)
+        .rethrow
+        .unNoneTerminate
         .concurrently(
           Stream
             .constant(1, 128)

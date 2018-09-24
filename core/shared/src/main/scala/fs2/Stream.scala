@@ -180,7 +180,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     */
   def bufferBy(f: O => Boolean): Stream[F, O] = {
     def go(buffer: List[Chunk[O]], last: Boolean, s: Stream[F, O]): Pull[F, O, Unit] =
-      s.pull.unconsChunk.flatMap {
+      s.pull.uncons.flatMap {
         case Some((hd, tl)) =>
           val (out, buf, newLast) = {
             hd.foldLeft((Nil: List[Chunk[O]], Vector.empty[O], last)) {
@@ -545,7 +545,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     */
   def dropLastIf(p: O => Boolean): Stream[F, O] = {
     def go(last: Chunk[O], s: Stream[F, O]): Pull[F, O, Unit] =
-      s.pull.unconsChunk.flatMap {
+      s.pull.uncons.flatMap {
         case Some((hd, tl)) =>
           if (hd.nonEmpty) Pull.output(last) >> go(hd, tl)
           else go(last, tl)
@@ -557,7 +557,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
           } else Pull.output(last)
       }
     def unconsNonEmptyChunk(s: Stream[F, O]): Pull[F, INothing, Option[(Chunk[O], Stream[F, O])]] =
-      s.pull.unconsChunk.flatMap {
+      s.pull.uncons.flatMap {
         case Some((hd, tl)) =>
           if (hd.nonEmpty) Pull.pure(Some((hd, tl)))
           else unconsNonEmptyChunk(tl)
@@ -903,7 +903,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     */
   def groupAdjacentBy[O2](f: O => O2)(implicit eq: Eq[O2]): Stream[F, (O2, Chunk[O])] = {
     def go(current: Option[(O2, Chunk[O])], s: Stream[F, O]): Pull[F, (O2, Chunk[O]), Unit] =
-      s.pull.unconsChunk.flatMap {
+      s.pull.uncons.flatMap {
         case Some((hd, tl)) =>
           if (hd.nonEmpty) {
             val (k1, out) = current.getOrElse((f(hd(0)), Chunk.empty[O]))
@@ -1295,7 +1295,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     */
   def mapChunks[O2](f: Chunk[O] => Chunk[O2]): Stream[F, O2] =
     this.repeatPull {
-      _.unconsChunk.flatMap {
+      _.uncons.flatMap {
         case None           => Pull.pure(None)
         case Some((hd, tl)) => Pull.output(f(hd)).as(Some(tl))
       }
@@ -1634,7 +1634,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
                         .take(1)
                         .compile
                         .drain >> signalResult) >>
-                    outputQ.dequeue.unNoneTerminate
+                    outputQ.dequeue
                       .flatMap(Stream.chunk(_).covary[F2])
 
                 }
@@ -2151,6 +2151,38 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     zipWith(that)(Tuple2.apply)
 
   /**
+    * Like `zip`, but selects the right values only.
+    * Useful with timed streams, the example below will emit a number every 100 milliseconds.
+    *
+    * @example {{{
+    * scala> import scala.concurrent.duration._, cats.effect.{ContextShift, IO, Timer}
+    * scala> implicit val cs: ContextShift[IO] = IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
+    * scala> implicit val timer: Timer[IO] = IO.timer(scala.concurrent.ExecutionContext.Implicits.global)
+    * scala> val s = Stream.fixedDelay(100.millis) zipRight Stream.range(0, 5)
+    * scala> s.compile.toVector.unsafeRunSync
+    * res0: Vector[Int] = Vector(0, 1, 2 , 3, 4)
+    * }}}
+    */
+  def zipRight[F2[x] >: F[x], O2](that: Stream[F2, O2]): Stream[F2, O2] =
+    zipWith(that)((_, y) => y)
+
+  /**
+    * Like `zip`, but selects the left values only.
+    * Useful with timed streams, the example below will emit a number every 100 milliseconds.
+    *
+    * @example {{{
+    * scala> import scala.concurrent.duration._, cats.effect.{ContextShift, IO, Timer}
+    * scala> implicit val cs: ContextShift[IO] = IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
+    * scala> implicit val timer: Timer[IO] = IO.timer(scala.concurrent.ExecutionContext.Implicits.global)
+    * scala> val s = Stream.range(0, 5) zipLeft Stream.fixedDelay(100.millis)
+    * scala> s.compile.toVector.unsafeRunSync
+    * res0: Vector[Int] = Vector(0, 1, 2 , 3, 4)
+    * }}}
+    */
+  def zipLeft[F2[x] >: F[x], O2](that: Stream[F2, O2]): Stream[F2, O] =
+    zipWith(that)((x, _) => x)
+
+  /**
     * Determinsitically zips elements using the specified function,
     * terminating when the end of either branch is reached naturally.
     *
@@ -2477,6 +2509,10 @@ object Stream extends StreamLowPriority {
   def eval_[F[_], A](fa: F[A]): Stream[F, INothing] =
     fromFreeC(Algebra.eval(fa).map(_ => ()))
 
+  /** like `eval` but resulting chunk is flatten efficiently **/
+  def evalUnChunk[F[_], O](fo: F[Chunk[O]]): Stream[F, O] =
+    fromFreeC(Algebra.eval(fo).flatMap(Algebra.output))
+
   /**
     * A continuous stream which is true after `d, 2d, 3d...` elapsed duration,
     * and false otherwise.
@@ -2697,7 +2733,7 @@ object Stream extends StreamLowPriority {
     * @param nextDelay Applied to the previous delay to compute the
     *                  next, e.g. to implement exponential backoff
     *
-    * @param maxRetries Number of attempts before failing with the
+    * @param maxAttempts Number of attempts before failing with the
     *                   latest error, if `fo` never succeeds
     *
     * @param retriable Function to determine whether a failure is
@@ -2709,18 +2745,20 @@ object Stream extends StreamLowPriority {
   def retry[F[_]: Timer: RaiseThrowable, O](fo: F[O],
                                             delay: FiniteDuration,
                                             nextDelay: FiniteDuration => FiniteDuration,
-                                            maxRetries: Int,
+                                            maxAttempts: Int,
                                             retriable: Throwable => Boolean =
                                               scala.util.control.NonFatal.apply): Stream[F, O] = {
+    assert(maxAttempts > 0, s"maxAttempts should > 0, was $maxAttempts")
+
     val delays = Stream.unfold(delay)(d => Some(d -> nextDelay(d))).covary[F]
 
     Stream
       .eval(fo)
       .attempts(delays)
-      .take(maxRetries)
+      .take(maxAttempts)
       .takeThrough(_.fold(err => retriable(err), _ => false))
       .last
-      .map(_.getOrElse(sys.error("[fs2] impossible: empty stream in retry")))
+      .map(_.get)
       .rethrow
   }
 
@@ -3002,9 +3040,6 @@ object Stream extends StreamLowPriority {
         _.map { case (hd, tl) => (hd, Stream.fromFreeC(tl)) }
       }
 
-    /** Like [[uncons]] but waits for a chunk instead of an entire chunk. */
-    def unconsChunk: Pull[F, INothing, Option[(Chunk[O], Stream[F, O])]] = uncons
-
     /** Like [[uncons]] but waits for a single element instead of an entire chunk. */
     def uncons1: Pull[F, INothing, Option[(O, Stream[F, O])]] =
       uncons.flatMap {
@@ -3124,7 +3159,7 @@ object Stream extends StreamLowPriority {
 
     /** Awaits the next available element where the predicate returns true. */
     def find(f: O => Boolean): Pull[F, INothing, Option[(O, Stream[F, O])]] =
-      unconsChunk.flatMap {
+      uncons.flatMap {
         case None => Pull.pure(None)
         case Some((hd, tl)) =>
           hd.indexWhere(f) match {
@@ -3412,6 +3447,25 @@ object Stream extends StreamLowPriority {
       */
     def last: G[Option[O]] =
       foldChunks(Option.empty[O])((acc, c) => c.last.orElse(acc))
+
+    /**
+      * Compiles this stream in to a value of the target effect type `F`,
+      * raising a `NoSuchElementException` if the stream emitted no values
+      * and returning the last value emitted otherwise.
+      *
+      * When this method has returned, the stream has not begun execution -- this method simply
+      * compiles the stream down to the target effect type.
+      *
+      * @example {{{
+      * scala> import cats.effect.IO
+      * scala> Stream.range(0,100).take(5).covary[IO].compile.lastOrError.unsafeRunSync
+      * res0: Int = 4
+      * scala> Stream.empty.covaryAll[IO, Int].compile.lastOrError.attempt.unsafeRunSync
+      * res1: Either[Throwable, Int] = Left(java.util.NoSuchElementException)
+      * }}}
+      */
+    def lastOrError(implicit G: MonadError[G, Throwable]): G[O] =
+      last.flatMap(_.fold(G.raiseError(new NoSuchElementException): G[O])(G.pure))
 
     /**
       * Compiles this stream into a value of the target effect type `F` by logging

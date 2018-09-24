@@ -98,8 +98,6 @@ One exception is `unsafeRunAsync`, which was removed from fs2 without a direct r
 fa.start.flatMap(_.join).runAsync(_ => IO.unit).unsafeRunSync
 ```
 
-The only remaining concurrency utility is `fs2.concurrent.once`, which supports memoization of a task.
-
 ### Chunks and Segments
 
 In 0.10, a stream was internally represented by `Segment`s and many advanced APIs allowed direct observation and manipulation of the segments of a stream. In 1.0, a stream is internally represented by `Chunk`s. As a result, all APIs that returned segments now return chunks. For example `s.pull.uncons` returns a `Pull[F, Nothing, Option[(Chunk[O], Stream[F, O])]]` now instead of a `Pull[F, Nothing, Option[(Segment[O, Unit], Stream[F, O])]]`.

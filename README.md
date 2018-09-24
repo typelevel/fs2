@@ -144,3 +144,8 @@ See [Additional resources](https://github.com/functional-streams-for-scala/fs2/w
 [![YourKit](https://www.yourkit.com/images/yklogo.png)](https://www.yourkit.com/)
 
 Special thanks to [YourKit](https://www.yourkit.com/) for supporting this project's ongoing performance tuning efforts with licenses to their excellent product.
+
+### Code of Conduct ###
+
+See the [Code of Conduct](CODE_OF_CONDUCT.md).
+
