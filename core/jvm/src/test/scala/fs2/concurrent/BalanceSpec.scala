@@ -4,9 +4,9 @@ import cats.effect.IO
 import fs2._
 import TestUtil._
 
-class DistributeSpec extends Fs2Spec {
+class BalanceSpec extends Fs2Spec {
 
-  "Distribute" - {
+  "Balance" - {
 
     "all elements are processed" in {
       forAll { (source: PureStream[Int], concurrent: SmallPositive, chunkSize: SmallPositive) =>
@@ -15,7 +15,7 @@ class DistributeSpec extends Fs2Spec {
         val result =
           source.get
             .covary[IO]
-            .distributeThrough(chunkSize = chunkSize.get, maxConcurrent = concurrent.get)(
+            .balanceThrough(chunkSize = chunkSize.get, maxConcurrent = concurrent.get)(
               _.map(_.toLong))
             .compile
             .toVector

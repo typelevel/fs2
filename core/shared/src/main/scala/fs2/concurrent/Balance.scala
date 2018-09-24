@@ -1,68 +1,63 @@
 package fs2.concurrent
 
 import cats.effect.Concurrent
-import cats.effect.concurrent.Ref
 import fs2._
 
-object Distribute {
+object Balance {
 
   /**
-    * Allows to distribute processing of this stream to parallel streams.
+    * Allows to balance processing of this stream to parallel streams.
     *
     * This could be viewed as Stream `fan-out` operation allowing to process incoming `O` in parallel.
     *
-    * As the elements arrive, they are distributed to streams that already started their evaluation.
-    * To control the fairness of the distribution, the `chunkSize` parameter is available, that controls
+    * As the elements arrive, they are balanced to streams that already started their evaluation.
+    * To control the fairness of the balance, the `chunkSize` parameter is available, that controls
     * a maximum number of element pulled by single `stream`.
     *
     * Note that this will pull only that much `O` to satisfy needs of all workers currently being evaluated.
     * When there are no stream awaiting the elements, this will stop pulling more elements from source.
     *
-    * If there is need to achieve high throughput, `distribute` may be used together with `prefetch` to initially prefetch
+    * If there is need to achieve high throughput, `balance` may be used together with `prefetch` to initially prefetch
     * large chunks that will be available for immediate distribution to streams. For example
     * {{{
-    *   source.prefetch(100).distribute(chunkSize=10).take(10)
+    *   source.prefetch(100).balance(chunkSize=10).take(10)
     * }}}
     * Constructs stream of 10 subscribers, that always takes 100 elements, and gives 10 elements to each subscriber. While
-    * subscriber processes the elements, this will pull another 100 elements, that will be again available shall
-    * distribute be done with supplying 10 elements to each of its subscribers.
+    * subscriber processes the elements, this will pull another 100 elements, that will be again available, shall
+    * balance be done with supplying 10 elements to each of its subscribers.
     *
     * Usually this combinator is used together with parJoin, such as :
     *
     * {{{
-    *   Stream(1,2,3,4).distribute.map { worker =>
+    *   Stream(1,2,3,4).balance.map { worker =>
     *     worker.map(_.toString)
     *   }.take(3).parJoinUnbounded.compile.toVector.unsafeRunSync.toSet
     * }}}
     *
     *
-    * When `this` terminates, the resulting streams (workers) are terminated once all elements so far pulled
-    * from `this` are processed.
+    * When `source` terminates, the resulting streams (workers) are terminated once all elements so far pulled
+    * from `source` are processed.
     *
-    * When the resulting stream is evaluated, then `this` will terminate if resulting stream will terminate.
+    * When `source` terminates, the resulting stream won't terminate.
+    *
+    * When the resulting stream is evaluated, then `source` will terminate if resulting stream will terminate.
     *
     * @return
     */
   def apply[F[_]: Concurrent, O](chunkSize: Int): Pipe[F, O, Stream[F, O]] = { source =>
-    Stream.eval(Ref.of[F, Boolean](false)).flatMap { doneRef =>
-      Stream.eval(PubSub(PubSub.Strategy.closeDrainFirst(strategy[O]))).flatMap { pubSub =>
-        def subscriber =
-          Stream
-            .repeatEval(pubSub.get(chunkSize))
-            .unNoneTerminate
-            .flatMap(Stream.chunk)
-
-        def push =
-          source.chunks
-            .evalMap(chunk => pubSub.publish(Some(chunk)))
-            .onFinalize(pubSub.publish(None))
-
+    Stream.eval(PubSub(PubSub.Strategy.closeDrainFirst(strategy[O]))).flatMap { pubSub =>
+      def subscriber =
         Stream
-          .repeatEval(doneRef.get)
-          .takeWhile(!_)
-          .map(_ => subscriber)
-          .concurrently(push)
-      }
+          .repeatEval(pubSub.get(chunkSize))
+          .unNoneTerminate
+          .flatMap(Stream.chunk)
+
+      def push =
+        source.chunks
+          .evalMap(chunk => pubSub.publish(Some(chunk)))
+          .onFinalize(pubSub.publish(None))
+
+      Stream.constant(subscriber).concurrently(push)
     }
   }
 
@@ -88,7 +83,7 @@ object Distribute {
     * @return
     */
   def through[F[_]: Concurrent, O, O2](chunkSize: Int)(pipes: Pipe[F, O, O2]*): Pipe[F, O, O2] =
-    _.distribute(chunkSize)
+    _.balance(chunkSize)
       .take(pipes.size)
       .zipWith(Stream.emits(pipes)) { case (stream, pipe) => stream.through(pipe) }
       .parJoinUnbounded

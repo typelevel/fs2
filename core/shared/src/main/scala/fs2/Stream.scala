@@ -549,13 +549,13 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * Alias for `this.through(Distribute.distribute(Int.MaxValue))`
     */
   def distributeAvailable[F2[x] >: F[x]: Concurrent]: Stream[F2, Stream[F2, O]] =
-    this.through(Distribute.apply(Int.MaxValue))
+    this.through(Balance.apply(Int.MaxValue))
 
   /**
-    * Alias for `this.through(Distribute.distribute(chunkSize))`
+    * Alias for `this.through(Balance(chunkSize))`
     */
-  def distribute[F2[x] >: F[x]: Concurrent](chunkSize: Int): Stream[F2, Stream[F2, O]] =
-    this.through(Distribute(chunkSize))
+  def balance[F2[x] >: F[x]: Concurrent](chunkSize: Int): Stream[F2, Stream[F2, O]] =
+    this.through(Balance(chunkSize))
 
   /**
     * Like `distribute` but instead of providing stream as source for worker, it runs each worker through
@@ -572,9 +572,8 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * @tparam F2
     * @return
     */
-  def distributeTo[F2[x] >: F[x]: Concurrent](chunkSize: Int)(
-      sinks: Sink[F2, O]*): Stream[F2, Unit] =
-    distributeThrough[F2, Unit](chunkSize)(sinks.map(_.andThen(_.drain)): _*)
+  def balanceTo[F2[x] >: F[x]: Concurrent](chunkSize: Int)(sinks: Sink[F2, O]*): Stream[F2, Unit] =
+    balanceThrough[F2, Unit](chunkSize)(sinks.map(_.andThen(_.drain)): _*)
 
   /**
     * Variant of `distributedTo` that takes number of concurrency required and single sink
@@ -583,16 +582,16 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * @param sink             Sink to use to process elements
     * @return
     */
-  def distributeTo[F2[x] >: F[x]: Concurrent](chunkSize: Int, maxConcurrent: Int)(
+  def balanceTo[F2[x] >: F[x]: Concurrent](chunkSize: Int, maxConcurrent: Int)(
       sink: Sink[F2, O]): Stream[F2, Unit] =
-    this.distributeThrough[F2, Unit](chunkSize, maxConcurrent)(sink.andThen(_.drain))
+    this.balanceThrough[F2, Unit](chunkSize, maxConcurrent)(sink.andThen(_.drain))
 
   /**
     * Alias for `this.through(Distribute.distributeThrough(chunkSize)(pipes)`
     */
-  def distributeThrough[F2[x] >: F[x]: Concurrent, O2](chunkSize: Int)(
+  def balanceThrough[F2[x] >: F[x]: Concurrent, O2](chunkSize: Int)(
       pipes: Pipe[F2, O, O2]*): Stream[F2, O2] =
-    this.through(Distribute.through[F2, O, O2](chunkSize)(pipes: _*))
+    this.through(Balance.through[F2, O, O2](chunkSize)(pipes: _*))
 
   /**
     * Variant of `distributeThrough` that takes number of concurrency required and single pipe
@@ -601,9 +600,9 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * @param sink             Pipe to use to process elements
     * @return
     */
-  def distributeThrough[F2[x] >: F[x]: Concurrent, O2](chunkSize: Int, maxConcurrent: Int)(
+  def balanceThrough[F2[x] >: F[x]: Concurrent, O2](chunkSize: Int, maxConcurrent: Int)(
       pipe: Pipe[F2, O, O2]): Stream[F2, O2] =
-    this.distributeThrough[F2, O2](chunkSize)((0 until maxConcurrent).map(_ => pipe): _*)
+    this.balanceThrough[F2, O2](chunkSize)((0 until maxConcurrent).map(_ => pipe): _*)
 
   /**
     * Removes all output values from this stream.
