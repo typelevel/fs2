@@ -138,6 +138,10 @@ object Pull extends PullLowPriority {
       cleanup: R => F[Unit]): Pull[F, INothing, Cancellable[F, R]] =
     acquireCancellableCase(r)((r, _) => cleanup(r))
 
+  /**
+   * Like [[acquireCancellable]] but provides an `ExitCase[Throwable]` to the `cleanup` action,
+   * indicating the cause for cleanup execution.
+   */
   def acquireCancellableCase[F[_]: RaiseThrowable, R](r: F[R])(
       cleanup: (R, ExitCase[Throwable]) => F[Unit]): Pull[F, INothing, Cancellable[F, R]] =
     Stream

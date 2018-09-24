@@ -2328,7 +2328,12 @@ object Stream extends StreamLowPriority {
   def bracket[F[x] >: Pure[x], R](acquire: F[R])(release: R => F[Unit]): Stream[F, R] =
     bracketCase(acquire)((r, _) => release(r))
 
-  /** Like [[bracket]] but the release action is passed an `ExitCase[Throwable]`. */
+  /**
+   * Like [[bracket]] but the release action is passed an `ExitCase[Throwable]`.
+   *
+   * `ExitCase.Canceled` is passed to the release action in the event of either stream interruption or
+   * overall compiled effect cancelation.
+   */
   def bracketCase[F[x] >: Pure[x], R](acquire: F[R])(
       release: (R, ExitCase[Throwable]) => F[Unit]): Stream[F, R] =
     fromFreeC(Algebra.acquire[F, R, R](acquire, release).flatMap {
