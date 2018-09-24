@@ -225,7 +225,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     */
   def bufferBy(f: O => Boolean): Stream[F, O] = {
     def go(buffer: List[Chunk[O]], last: Boolean, s: Stream[F, O]): Pull[F, O, Unit] =
-      s.pull.unconsChunk.flatMap {
+      s.pull.uncons.flatMap {
         case Some((hd, tl)) =>
           val (out, buf, newLast) = {
             hd.foldLeft((Nil: List[Chunk[O]], Vector.empty[O], last)) {
@@ -650,7 +650,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     */
   def dropLastIf(p: O => Boolean): Stream[F, O] = {
     def go(last: Chunk[O], s: Stream[F, O]): Pull[F, O, Unit] =
-      s.pull.unconsChunk.flatMap {
+      s.pull.uncons.flatMap {
         case Some((hd, tl)) =>
           if (hd.nonEmpty) Pull.output(last) >> go(hd, tl)
           else go(last, tl)
@@ -662,7 +662,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
           } else Pull.output(last)
       }
     def unconsNonEmptyChunk(s: Stream[F, O]): Pull[F, INothing, Option[(Chunk[O], Stream[F, O])]] =
-      s.pull.unconsChunk.flatMap {
+      s.pull.uncons.flatMap {
         case Some((hd, tl)) =>
           if (hd.nonEmpty) Pull.pure(Some((hd, tl)))
           else unconsNonEmptyChunk(tl)
@@ -1008,7 +1008,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     */
   def groupAdjacentBy[O2](f: O => O2)(implicit eq: Eq[O2]): Stream[F, (O2, Chunk[O])] = {
     def go(current: Option[(O2, Chunk[O])], s: Stream[F, O]): Pull[F, (O2, Chunk[O]), Unit] =
-      s.pull.unconsChunk.flatMap {
+      s.pull.uncons.flatMap {
         case Some((hd, tl)) =>
           if (hd.nonEmpty) {
             val (k1, out) = current.getOrElse((f(hd(0)), Chunk.empty[O]))
@@ -1400,7 +1400,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     */
   def mapChunks[O2](f: Chunk[O] => Chunk[O2]): Stream[F, O2] =
     this.repeatPull {
-      _.unconsChunk.flatMap {
+      _.uncons.flatMap {
         case None           => Pull.pure(None)
         case Some((hd, tl)) => Pull.output(f(hd)).as(Some(tl))
       }
@@ -2206,6 +2206,38 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     zipWith(that)(Tuple2.apply)
 
   /**
+    * Like `zip`, but selects the right values only.
+    * Useful with timed streams, the example below will emit a number every 100 milliseconds.
+    *
+    * @example {{{
+    * scala> import scala.concurrent.duration._, cats.effect.{ContextShift, IO, Timer}
+    * scala> implicit val cs: ContextShift[IO] = IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
+    * scala> implicit val timer: Timer[IO] = IO.timer(scala.concurrent.ExecutionContext.Implicits.global)
+    * scala> val s = Stream.fixedDelay(100.millis) zipRight Stream.range(0, 5)
+    * scala> s.compile.toVector.unsafeRunSync
+    * res0: Vector[Int] = Vector(0, 1, 2 , 3, 4)
+    * }}}
+    */
+  def zipRight[F2[x] >: F[x], O2](that: Stream[F2, O2]): Stream[F2, O2] =
+    zipWith(that)((_, y) => y)
+
+  /**
+    * Like `zip`, but selects the left values only.
+    * Useful with timed streams, the example below will emit a number every 100 milliseconds.
+    *
+    * @example {{{
+    * scala> import scala.concurrent.duration._, cats.effect.{ContextShift, IO, Timer}
+    * scala> implicit val cs: ContextShift[IO] = IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
+    * scala> implicit val timer: Timer[IO] = IO.timer(scala.concurrent.ExecutionContext.Implicits.global)
+    * scala> val s = Stream.range(0, 5) zipLeft Stream.fixedDelay(100.millis)
+    * scala> s.compile.toVector.unsafeRunSync
+    * res0: Vector[Int] = Vector(0, 1, 2 , 3, 4)
+    * }}}
+    */
+  def zipLeft[F2[x] >: F[x], O2](that: Stream[F2, O2]): Stream[F2, O] =
+    zipWith(that)((x, _) => x)
+
+  /**
     * Determinsitically zips elements using the specified function,
     * terminating when the end of either branch is reached naturally.
     *
@@ -2657,6 +2689,12 @@ object Stream extends StreamLowPriority {
     Stream.fromFreeC(Algebra.getScope[F, Scope[F], Scope[F]].flatMap(Algebra.output1(_)))
 
   /**
+    * A stream that never emits and never terminates.
+    */
+  def never[F[_]](implicit F: Async[F]): Stream[F, Nothing] =
+    Stream.eval_(F.never)
+
+  /**
     * Creates a stream that, when run, fails with the supplied exception.
     *
     * The `F` type must be explicitly provided (e.g., via `raiseError[IO]` or `raiseError[Fallible]`).
@@ -3063,9 +3101,6 @@ object Stream extends StreamLowPriority {
         _.map { case (hd, tl) => (hd, Stream.fromFreeC(tl)) }
       }
 
-    /** Like [[uncons]] but waits for a chunk instead of an entire chunk. */
-    def unconsChunk: Pull[F, INothing, Option[(Chunk[O], Stream[F, O])]] = uncons
-
     /** Like [[uncons]] but waits for a single element instead of an entire chunk. */
     def uncons1: Pull[F, INothing, Option[(O, Stream[F, O])]] =
       uncons.flatMap {
@@ -3185,7 +3220,7 @@ object Stream extends StreamLowPriority {
 
     /** Awaits the next available element where the predicate returns true. */
     def find(f: O => Boolean): Pull[F, INothing, Option[(O, Stream[F, O])]] =
-      unconsChunk.flatMap {
+      uncons.flatMap {
         case None => Pull.pure(None)
         case Some((hd, tl)) =>
           hd.indexWhere(f) match {

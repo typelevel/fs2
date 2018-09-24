@@ -14,6 +14,7 @@ import java.nio.{
 }
 
 import cats.{Applicative, Eq, Eval, Monad, Traverse}
+import cats.data.Chain
 import cats.implicits._
 
 /**
@@ -357,6 +358,11 @@ abstract class Chunk[+O] extends Serializable { self =>
     }
   }
 
+  /** Converts this chunk to a chain. */
+  def toChain: Chain[O] =
+    if (isEmpty) Chain.empty
+    else Chain.fromSeq(toList)
+
   /** Converts this chunk to a list. */
   def toList: List[O] =
     if (isEmpty) Nil
@@ -533,8 +539,15 @@ object Chunk {
     case a: collection.mutable.WrappedArray[O] => array(a.array)
     case v: Vector[O]                          => vector(v)
     case ix: IndexedSeq[O]                     => indexedSeq(ix)
-    case _                                     => buffer(collection.mutable.Buffer(s: _*))
+    case _ =>
+      if (s.isEmpty) empty
+      else if (s.tail.isEmpty) singleton(s.head)
+      else buffer(collection.mutable.Buffer(s: _*))
   }
+
+  /** Creates a chunk backed by a `Chain`. */
+  def chain[O](c: Chain[O]): Chunk[O] =
+    seq(c.toList)
 
   /**
     * Creates a chunk backed by a mutable buffer. The underlying buffer must not be modified after
