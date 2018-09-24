@@ -149,7 +149,7 @@ private[internal] object Resource {
                     F.flatten(state.modify { s =>
                       // previous finalizer shall be always present at this point, this shall invoke it
                       s.copy(finalizer = None) -> s.finalizer
-                        .map(_(ExitCase.Canceled))
+                        .map(_(ExitCase.Completed))
                         .getOrElse(F.pure(Right(())))
                     })
                   }
