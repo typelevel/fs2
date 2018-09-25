@@ -62,7 +62,7 @@ object Balance {
   }
 
   /**
-    * Like `distribute` but instead of providing stream as source, it runs each stream through
+    * Like `apply` but instead of providing stream as source, it runs each stream through
     * supplied pipe.
     *
     * Each supplied pipe is run concurrently with other. This means that amount of pipes determines parallelism.

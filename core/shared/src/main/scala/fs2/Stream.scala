@@ -566,7 +566,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * may send elements for processing to another machine.
     *
     * Note that resulting stream will not emit single value (Unit). If you need to emit unit values from your sinks, consider
-    * using `distributeThrough`
+    * using `balanceThrough`
     *
     * @param sinks    Sinks that will concurrently process the work.
     * @tparam F2
