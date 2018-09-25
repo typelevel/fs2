@@ -177,15 +177,15 @@ class PipeSpec extends Fs2Spec {
         .scanLeft(n)(g)
     }
 
-    "mapAsync" in forAll { s: PureStream[Int] =>
+    "evalMapPar" in forAll { s: PureStream[Int] =>
       val f = (_: Int) + 1
-      val r = s.get.covary[IO].mapAsync(16)(i => IO(f(i)))
+      val r = s.get.covary[IO].evalMapPar(16)(i => IO(f(i)))
       runLog(r) shouldBe runLog(s.get).map(f)
     }
 
-    "mapAsyncUnordered" in forAll { s: PureStream[Int] =>
+    "evalMapParUnordered" in forAll { s: PureStream[Int] =>
       val f = (_: Int) + 1
-      val r = s.get.covary[IO].mapAsyncUnordered(16)(i => IO(f(i)))
+      val r = s.get.covary[IO].evalMapParUnordered(16)(i => IO(f(i)))
       runLog(r) should contain theSameElementsAs runLog(s.get).map(f)
     }
 

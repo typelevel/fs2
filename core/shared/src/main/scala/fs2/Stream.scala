@@ -775,6 +775,101 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
   }
 
   /**
+    * Like [[Stream#evalMap]], but will evaluate effects in parallel, emitting the results
+    * downstream in the same order as the input stream. The number of concurrent effects
+    * is limited by the `maxConcurrent` attribute and by size of chunk, whichever is lower.
+    *
+    * For example chunks of size 1 will always get evaluated synchronously, even when `maxConcurrent`
+    * will be set to Int.MaxValue.
+    *
+    * Similarly, if the chunk has size of 100, but `maxConcurrent` is set to 1, then effects will be evaluated
+    * sequentially.
+    *
+    *
+    * If any of concurrently running computations fails, the remainder of the computations iimmediately
+    * cancelled, and ocne all computations are cancelled, this will fail.
+    *
+    * @param maxConcurrent  Maximum number of concurrent effects.
+    * @param f              A function to transform `O` to `O2` evaluating effect `F`
+    */
+  def evalMapPar[F2[x] >: F[x]: Concurrent, O2](maxConcurrent: Int)(
+      f: O => F2[O2]): Stream[F2, O2] = {
+    def go(remains: Vector[O]): F2[Vector[O2]] = {
+      val (head, tail) = remains.splitAt(maxConcurrent)
+      if (head.isEmpty) Applicative[F2].pure(Vector.empty)
+      else {
+        head.traverse(o => Concurrent[F2].start(f(o))).flatMap { fibers =>
+          fibers.traverse(_.join).attempt.flatMap {
+            case Right(v) =>
+              go(tail).map(v ++ _)
+            case Left(err) =>
+              fibers.traverse_(_.cancel).attempt >> Sync[F2].raiseError(err)
+          }
+        }
+      }
+    }
+
+    this.chunks.flatMap { chunk =>
+      Stream.evalUnChunk(go(chunk.toVector).map(Chunk.vector))
+    }
+  }
+
+  /**
+    * Like [[Stream#evalMap]], but will evaluate effects in parallel, emitting the results
+    * downstream. The number of concurrent effects is limited by the `maxConcurrent` attribute
+    * and by size of chunk, whichever is lower.
+    *
+    * If any of concurrently running computations fails, the remainder of the computations iimmediately
+    * cancelled, and ocne all computations are cancelled, this will fail.
+    *
+    * See [[Stream#evalMapPar]] if retaining the original order of the stream is required.
+    *
+    */
+  def evalMapParUnordered[F2[x] >: F[x]: Concurrent, O2](maxConcurrent: Int)(
+      f: O => F2[O2]): Stream[F2, O2] = {
+
+    def go(remains: Vector[O]): F2[Vector[O2]] = {
+      val (head, tail) = remains.splitAt(maxConcurrent)
+      if (head.isEmpty) Applicative[F2].pure(Vector.empty)
+      else {
+        Ref.of[F2, Vector[O2]](Vector.empty).flatMap { result =>
+          Deferred[F2, Either[Throwable, Vector[O2]]].flatMap { signal =>
+            def compute(o: O): F2[Unit] =
+              f(o).attempt.flatMap {
+                case Right(o2) =>
+                  result
+                    .modify { v =>
+                      val v1 = v :+ o2; (v1, v1)
+                    }
+                    .flatMap { v =>
+                      if (v.size == head.size) signal.complete(Right(v)).attempt.void
+                      else Applicative[F2].unit
+                    }
+                case Left(err) =>
+                  signal.complete(Left(err))
+              }
+
+            head.traverse(o => Concurrent[F2].start(compute(o))).flatMap { fibers =>
+              signal.get.flatMap {
+                case Right(v) =>
+                  go(tail).map(v ++ _)
+                case Left(err) =>
+                  fibers.traverse_(_.cancel).attempt >> Sync[F2].raiseError(err)
+              }
+            }
+
+          }
+        }
+      }
+    }
+
+    this.chunks.flatMap { chunk =>
+      Stream.evalUnChunk(go(chunk.toVector).map(Chunk.vector))
+    }
+
+  }
+
+  /**
     * Like `[[Stream#scan]]`, but accepts a function returning an `F[_]`.
     *
     * @example {{{
@@ -1336,58 +1431,6 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     }
     this.scanChunks(init)((acc, c) => c.mapAccumulate(acc)(f2))
   }
-
-  /**
-    * Like [[Stream#evalMap]], but will evaluate effects in parallel, emitting the results
-    * downstream in the same order as the input stream. The number of concurrent effects
-    * is limited by the `parallelism` parameter.
-    *
-    * See [[Stream#mapAsyncUnordered]] if there is no requirement to retain the order of
-    * the original stream.
-    *
-    * @example {{{
-    * scala> import cats.effect.{ContextShift, IO}
-    * scala> implicit val cs: ContextShift[IO] = IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
-    * scala> Stream(1,2,3,4).covary[IO].mapAsync(2)(i => IO(println(i))).compile.drain.unsafeRunSync
-    * res0: Unit = ()
-    * }}}
-    */
-  def mapAsync[F2[x] >: F[x]: Concurrent, O2](parallelism: Int)(f: O => F2[O2]): Stream[F2, O2] =
-    Stream
-      .eval(Queue.bounded[F2, Option[F2[Either[Throwable, O2]]]](parallelism))
-      .flatMap { queue =>
-        queue.dequeue.unNoneTerminate
-          .evalMap(identity)
-          .rethrow
-          .concurrently {
-            evalMap { o =>
-              Deferred[F2, Either[Throwable, O2]].flatMap { value =>
-                queue.enqueue1(Some(value.get)).as {
-                  Stream.eval(f(o).attempt).evalMap(value.complete)
-                }
-              }
-            }.parJoin(parallelism)
-              .drain
-              .onFinalize(queue.enqueue1(None))
-          }
-      }
-
-  /**
-    * Like [[Stream#evalMap]], but will evaluate effects in parallel, emitting the results
-    * downstream. The number of concurrent effects is limited by the `parallelism` parameter.
-    *
-    * See [[Stream#mapAsync]] if retaining the original order of the stream is required.
-    *
-    * @example {{{
-    * scala> import cats.effect.{ContextShift, IO}
-    * scala> implicit val cs: ContextShift[IO] = IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
-    * scala> Stream(1,2,3,4).covary[IO].mapAsyncUnordered(2)(i => IO(println(i))).compile.drain.unsafeRunSync
-    * res0: Unit = ()
-    * }}}
-    */
-  def mapAsyncUnordered[F2[x] >: F[x]: Concurrent, O2](parallelism: Int)(
-      f: O => F2[O2]): Stream[F2, O2] =
-    map(o => Stream.eval(f(o))).parJoin(parallelism)
 
   /**
     * Applies the specified pure function to each chunk in this stream.
