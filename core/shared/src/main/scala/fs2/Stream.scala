@@ -65,7 +65,7 @@ import scala.concurrent.duration._
   *
   * @hideImplicitConversion PureOps
   * @hideImplicitConversion IdOps
-  */
+  **/
 final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, Nothing, ?], Unit])
     extends AnyVal {
 
@@ -1436,6 +1436,48 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
   def mask: Stream[F, O] = this.handleErrorWith(_ => Stream.empty)
 
   /**
+    * Like [[Stream.flatMap]] but interrupts the inner stream when new elements arrive in the outer stream.
+    *
+    * The implementation will try to preserve chunks like [[Stream.merge]].
+    *
+    * Finializers of each inner stream are guaranteed to run before the next inner stream starts.
+    *
+    * When the outer stream stops gracefully, the currently running inner stream will continue to run.
+    *
+    * When an inner stream terminates/interrupts, nothing happens until the next element arrives
+    * in the outer stream(i.e the outer stream holds the stream open during this time or else the
+    * stream terminates)
+    *
+    * When either the inner or outer stream fails, the entire stream fails and the finalizer of the
+	* inner stream runs before the outer one.
+    *
+    */
+  def switchMap[F2[x] >: F[x], O2](f: O => Stream[F2, O2])(
+      implicit F2: Concurrent[F2]): Stream[F2, O2] =
+    Stream.force(Semaphore[F2](1).flatMap {
+      guard =>
+        Ref.of[F2, Option[Deferred[F2, Unit]]](None).map { haltRef =>
+          def runInner(o: O, halt: Deferred[F2, Unit]): Stream[F2, O2] =
+            Stream.eval(guard.acquire) >> // guard inner to prevent parallel inner streams
+              f(o).interruptWhen(halt.get.attempt) ++ Stream.eval_(guard.release)
+
+          this
+            .evalMap { o =>
+              Deferred[F2, Unit].flatMap { halt =>
+                haltRef
+                  .getAndSet(halt.some)
+                  .flatMap {
+                    case None       => F2.unit
+                    case Some(last) => last.complete(()) // interrupt the previous one
+                  }
+                  .as(runInner(o, halt))
+              }
+            }
+            .parJoin(2)
+        }
+    })
+
+  /**
     * Interleaves the two inputs nondeterministically. The output stream
     * halts after BOTH `s1` and `s2` terminate normally, or in the event
     * of an uncaught failure on either `s1` or `s2`. Has the property that
@@ -1577,6 +1619,13 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     */
   def onFinalize[F2[x] >: F[x]](f: F2[Unit])(implicit F2: Applicative[F2]): Stream[F2, O] =
     Stream.bracket(F2.unit)(_ => f) >> this
+
+  /**
+    * Like [[onFinalize]] but provides the reason for finalization as an `ExitCase[Throwable]`.
+    */
+  def onFinalizeCase[F2[x] >: F[x]](f: ExitCase[Throwable] => F2[Unit])(
+      implicit F2: Applicative[F2]): Stream[F2, O] =
+    Stream.bracketCase(F2.unit)((_, ec) => f(ec)) >> this
 
   /**
     * Nondeterministically merges a stream of streams (`outer`) in to a single stream,
@@ -2234,7 +2283,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * scala> implicit val timer: Timer[IO] = IO.timer(scala.concurrent.ExecutionContext.Implicits.global)
     * scala> val s = Stream.fixedDelay(100.millis) zipRight Stream.range(0, 5)
     * scala> s.compile.toVector.unsafeRunSync
-    * res0: Vector[Int] = Vector(0, 1, 2 , 3, 4)
+    * res0: Vector[Int] = Vector(0, 1, 2, 3, 4)
     * }}}
     */
   def zipRight[F2[x] >: F[x], O2](that: Stream[F2, O2]): Stream[F2, O2] =
@@ -2250,7 +2299,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * scala> implicit val timer: Timer[IO] = IO.timer(scala.concurrent.ExecutionContext.Implicits.global)
     * scala> val s = Stream.range(0, 5) zipLeft Stream.fixedDelay(100.millis)
     * scala> s.compile.toVector.unsafeRunSync
-    * res0: Vector[Int] = Vector(0, 1, 2 , 3, 4)
+    * res0: Vector[Int] = Vector(0, 1, 2, 3, 4)
     * }}}
     */
   def zipLeft[F2[x] >: F[x], O2](that: Stream[F2, O2]): Stream[F2, O] =
@@ -2439,24 +2488,34 @@ object Stream extends StreamLowPriority {
     * Creates a stream that emits a resource allocated by an effect, ensuring the resource is
     * eventually released regardless of how the stream is used.
     *
-    * @param acquire resource to acquire at start of stream
-    * @param release function which returns an effect that releases the resource
-    *
     * A typical use case for bracket is working with files or network sockets. The resource effect
     * opens a file and returns a reference to it. One can then flatMap on the returned Stream to access
     *  the file, e.g to read bytes and transform them in to some stream of elements
     * (e.g., bytes, strings, lines, etc.).
     * The `release` action then closes the file once the result Stream terminates, even in case of interruption
     * or errors.
+    *
+    * @param acquire resource to acquire at start of stream
+    * @param release function which returns an effect that releases the resource
     */
   def bracket[F[x] >: Pure[x], R](acquire: F[R])(release: R => F[Unit]): Stream[F, R] =
+    bracketCase(acquire)((r, _) => release(r))
+
+  /**
+    * Like [[bracket]] but the release action is passed an `ExitCase[Throwable]`.
+    *
+    * `ExitCase.Canceled` is passed to the release action in the event of either stream interruption or
+    * overall compiled effect cancelation.
+    */
+  def bracketCase[F[x] >: Pure[x], R](acquire: F[R])(
+      release: (R, ExitCase[Throwable]) => F[Unit]): Stream[F, R] =
     fromFreeC(Algebra.acquire[F, R, R](acquire, release).flatMap {
       case (r, token) =>
         Stream.emit(r).covary[F].get[F, R].transformWith(bracketFinalizer(token))
     })
 
   private[fs2] def bracketWithToken[F[x] >: Pure[x], R](acquire: F[R])(
-      release: R => F[Unit]): Stream[F, (Token, R)] =
+      release: (R, ExitCase[Throwable]) => F[Unit]): Stream[F, (Token, R)] =
     fromFreeC(Algebra.acquire[F, (Token, R), R](acquire, release).flatMap {
       case (r, token) =>
         Stream
@@ -2472,7 +2531,7 @@ object Stream extends StreamLowPriority {
     r match {
 
       case Result.Fail(err) =>
-        Algebra.release(token).transformWith {
+        Algebra.release(token, Some(err)).transformWith {
           case Result.Pure(_) => Algebra.raiseError(err)
           case Result.Fail(err2) =>
             if (!err.eq(err2)) Algebra.raiseError(CompositeFailure(err, err2))
@@ -2487,7 +2546,7 @@ object Stream extends StreamLowPriority {
 
       case Result.Pure(_) =>
         // the stream finsihed, lets clean up any resources
-        Algebra.release(token)
+        Algebra.release(token, None)
     }
 
   /**

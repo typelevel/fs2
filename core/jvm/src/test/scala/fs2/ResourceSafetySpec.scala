@@ -2,7 +2,8 @@ package fs2
 
 import java.util.concurrent.atomic.AtomicLong
 
-import cats.effect.IO
+import cats.data.Chain
+import cats.effect.{ExitCase, IO}
 import cats.implicits.{catsSyntaxEither => _, _}
 import org.scalacheck._
 import org.scalatest.concurrent.PatienceConfiguration.Timeout
@@ -39,6 +40,79 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
       val b = bracket(c)(s.get ++ ((throw new Err): Stream[Pure, Int]))
       swallow { b }
       c.get shouldBe 0
+    }
+
+    "bracketCase / normal termination" in forAll { (s0: List[PureStream[Int]]) =>
+      val c = new AtomicLong(0)
+      var ecs: Chain[ExitCase[Throwable]] = Chain.empty
+      val s = s0.map { s =>
+        Stream
+          .bracketCase(IO { c.incrementAndGet; c }) { (r, ec) =>
+            IO {
+              r.decrementAndGet
+              ecs = ecs :+ ec
+            }
+          }
+          .flatMap(_ => s.get)
+      }
+      val s2 = s.foldLeft(Stream.empty: Stream[IO, Int])(_ ++ _)
+      runLog(s2)
+      runLog(s2.take(10))
+      c.get shouldBe 0L
+      ecs.toList.foreach(ec => assert(ec == ExitCase.Completed))
+    }
+
+    "bracketCase / failure" in forAll { (s0: List[PureStream[Int]], f: Failure) =>
+      val c = new AtomicLong(0)
+      var ecs: Chain[ExitCase[Throwable]] = Chain.empty
+      val s = s0.map { s =>
+        Stream
+          .bracketCase(IO { c.incrementAndGet; c }) { (r, ec) =>
+            IO {
+              r.decrementAndGet
+              ecs = ecs :+ ec
+            }
+          }
+          .flatMap(_ => s.get ++ f.get)
+      }
+      val s2 = s.foldLeft(Stream.empty: Stream[IO, Int])(_ ++ _)
+      swallow { runLog(s2) }
+      c.get shouldBe 0L
+      ecs.toList.foreach(ec => assert(ec.isInstanceOf[ExitCase.Error[Throwable]]))
+    }
+
+    "bracketCase / cancelation" in forAll { (s0: PureStream[Int]) =>
+      val c = new AtomicLong(0)
+      var ecs: Chain[ExitCase[Throwable]] = Chain.empty
+      val s =
+        Stream
+          .bracketCase(IO { c.incrementAndGet; c }) { (r, ec) =>
+            IO {
+              r.decrementAndGet
+              ecs = ecs :+ ec
+            }
+          }
+          .flatMap(_ => s0.get ++ Stream.never[IO])
+      s.compile.drain.start.flatMap(f => IO.sleep(50.millis) *> f.cancel).unsafeRunSync
+      c.get shouldBe 0L
+      ecs.toList.foreach(ec => assert(ec == ExitCase.Canceled))
+    }
+
+    "bracketCase / interruption" in forAll { (s0: PureStream[Int]) =>
+      val c = new AtomicLong(0)
+      var ecs: Chain[ExitCase[Throwable]] = Chain.empty
+      val s =
+        Stream
+          .bracketCase(IO { c.incrementAndGet; c }) { (r, ec) =>
+            IO {
+              r.decrementAndGet
+              ecs = ecs :+ ec
+            }
+          }
+          .flatMap(_ => s0.get ++ Stream.never[IO])
+      s.interruptAfter(50.millis).compile.drain.unsafeRunSync
+      c.get shouldBe 0L
+      ecs.toList.foreach(ec => assert(ec == ExitCase.Canceled))
     }
 
     "1 million brackets in sequence" in {

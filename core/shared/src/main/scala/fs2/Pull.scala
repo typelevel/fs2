@@ -136,6 +136,14 @@ object Pull extends PullLowPriority {
     */
   def acquireCancellable[F[_]: RaiseThrowable, R](r: F[R])(
       cleanup: R => F[Unit]): Pull[F, INothing, Cancellable[F, R]] =
+    acquireCancellableCase(r)((r, _) => cleanup(r))
+
+  /**
+    * Like [[acquireCancellable]] but provides an `ExitCase[Throwable]` to the `cleanup` action,
+    * indicating the cause for cleanup execution.
+    */
+  def acquireCancellableCase[F[_]: RaiseThrowable, R](r: F[R])(
+      cleanup: (R, ExitCase[Throwable]) => F[Unit]): Pull[F, INothing, Cancellable[F, R]] =
     Stream
       .bracketWithToken(r)(cleanup)
       .pull
@@ -227,7 +235,7 @@ object Pull extends PullLowPriority {
     fromFreeC(Algebra.suspend(p.get))
 
   private def release[F[x] >: Pure[x]](token: Token): Pull[F, INothing, Unit] =
-    fromFreeC[F, INothing, Unit](Algebra.release(token))
+    fromFreeC[F, INothing, Unit](Algebra.release(token, None))
 
   /** `Sync` instance for `Pull`. */
   implicit def syncInstance[F[_], O](
