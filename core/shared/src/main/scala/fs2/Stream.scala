@@ -121,7 +121,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * Returns a stream of streams where each inner stream sees all elements of the
     * source stream (after the inner stream has started evaluation).
     * For example, `src.broadcast.take(2)` results in two
-    * inner streams, each which see every element of the source.
+    * inner streams, each of which see every element of the source.
     *
     * Alias for `through(Broadcast(1))`./
     */
