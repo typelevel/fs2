@@ -115,7 +115,7 @@ private[concurrent] trait SignalLowPriorityImplicits {
     * since it non-deterministically zips elements together while our
     * `Functor` instance has no other constraints.
     *
-    * Separating the two instances allows us to make the [[Functor]] instance
+    * Separating the two instances allows us to make the `Functor` instance
     * more general.
     *
     * We put this in a [[SignalLowPriorityImplicits]] to resolve ambiguous
