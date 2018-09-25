@@ -253,14 +253,14 @@ private[fs2] object PubSub {
           }
 
         def subscribe(selector: Selector): F[Boolean] =
-          state.modify { ps =>
+          update { ps =>
             val (queue, success) = strategy.subscribe(selector, ps.queue)
-            (ps.copy(queue = queue), success)
+            (ps.copy(queue = queue), Applicative[F].pure(success))
           }
 
         def unsubscribe(selector: Selector): F[Unit] =
-          state.update { ps =>
-            ps.copy(queue = strategy.unsubscribe(selector, ps.queue))
+          update { ps =>
+            (ps.copy(queue = strategy.unsubscribe(selector, ps.queue)), Applicative[F].unit)
           }
       }
 

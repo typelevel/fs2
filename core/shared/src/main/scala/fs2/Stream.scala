@@ -5,7 +5,7 @@ import cats.data.{Chain, NonEmptyList}
 import cats.effect._
 import cats.effect.concurrent._
 import cats.implicits.{catsSyntaxEither => _, _}
-import fs2.concurrent.{Queue, Signal, SignallingRef}
+import fs2.concurrent._
 import fs2.internal.FreeC.Result
 import fs2.internal._
 
@@ -116,6 +116,51 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
   def attempts[F2[x] >: F[x]: Timer](
       delays: Stream[F2, FiniteDuration]): Stream[F2, Either[Throwable, O]] =
     attempt ++ delays.flatMap(delay => Stream.sleep_(delay) ++ attempt)
+
+  /**
+    * Alias for `this.through(Broadcast(1))`
+    */
+  def broadcast[F2[x] >: F[x]: Concurrent]: Stream[F2, Stream[F2, O]] =
+    this.through(Broadcast(1))
+
+  /**
+    * Like `broadcast` but instead of providing stream as source for worker, it runs each stream through
+    * supplied workers defined as `sink`
+    *
+    * Each supplied `sink` is run concurrently with each other. This means that amount of sinks determines parallelism.
+    * Each sink may have different implementation, if required, for example one sink may process elements, the other
+    * may send elements for processing to another machine.
+    *
+    * Also this guarantees, that each sink will view all `O` pulled from source stream, unlike `broadcast`
+    * where the resulting stream (worker) sees only elements when it starts its evaluation.
+    *
+    * Note that resulting stream will not emit single value (Unit), even if the sinks do.
+    * If you need to emit Unit values from your sinks, consider using `broadcastThrough`
+    *
+    * @param sinks    Sinks that will concurrently process the work.
+    */
+  def broadcastTo[F2[x] >: F[x]: Concurrent](sinks: Sink[F2, O]*): Stream[F2, Unit] =
+    this.to(Broadcast.through(sinks.map(_.andThen(_.drain)): _*))
+
+  /**
+    * Variant of `broadcastTo` that takes number of concurrency required and single sink definition
+    */
+  def broadcastTo[F2[x] >: F[x]: Concurrent](maxConcurrent: Int)(
+      sink: Sink[F2, O]): Stream[F2, Unit] =
+    this.broadcastTo[F2]((0 until maxConcurrent).map(_ => sink): _*)
+
+  /**
+    * Alias for `this.to(Broadcast.through(pipes))`
+    */
+  def broadcastThrough[F2[x] >: F[x]: Concurrent, O2](pipes: Pipe[F2, O, O2]*): Stream[F2, O2] =
+    this.through(Broadcast.through(pipes: _*))
+
+  /**
+    * Variant of `broadcastThrough` that takes number of concurrency required and single pipe
+    */
+  def broadcastThrough[F2[x] >: F[x]: Concurrent, O2](maxConcurrent: Int)(
+      pipe: Pipe[F2, O, O2]): Stream[F2, O2] =
+    this.broadcastThrough[F2, O2]((0 until maxConcurrent).map(_ => pipe): _*)
 
   /**
     * Behaves like the identity function, but requests `n` elements at a time from the input.
@@ -499,6 +544,65 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
         case Some(s) => s.drop(1).pull.echo
       }
       .stream
+
+  /**
+    * Alias for `this.through(Balance(Int.MaxValue))`
+    */
+  def balanceAvailable[F2[x] >: F[x]: Concurrent]: Stream[F2, Stream[F2, O]] =
+    this.through(Balance(Int.MaxValue))
+
+  /**
+    * Alias for `this.through(Balance(chunkSize))`
+    */
+  def balance[F2[x] >: F[x]: Concurrent](chunkSize: Int): Stream[F2, Stream[F2, O]] =
+    this.through(Balance(chunkSize))
+
+  /**
+    * Like `balance` but instead of providing stream as source for worker, it runs each worker through
+    * supplied sink.
+    *
+    * Each supplied sink is run concurrently with other. This means that amount of sinks determines parallelism.
+    * Each sink may have different implementation, if required, for example one sink may process elements, the other
+    * may send elements for processing to another machine.
+    *
+    * Note that resulting stream will not emit single value (Unit). If you need to emit unit values from your sinks, consider
+    * using `balanceThrough`
+    *
+    * @param sinks    Sinks that will concurrently process the work.
+    * @tparam F2
+    * @return
+    */
+  def balanceTo[F2[x] >: F[x]: Concurrent](chunkSize: Int)(sinks: Sink[F2, O]*): Stream[F2, Unit] =
+    balanceThrough[F2, Unit](chunkSize)(sinks.map(_.andThen(_.drain)): _*)
+
+  /**
+    * Variant of `balanceTo` that takes number of concurrency required and single sink
+    * @param chunkSize        Max size of output chunk for each stream supplied to sink
+    * @param maxConcurrent    Maximum number of sinks to run concurrently
+    * @param sink             Sink to use to process elements
+    * @return
+    */
+  def balanceTo[F2[x] >: F[x]: Concurrent](chunkSize: Int, maxConcurrent: Int)(
+      sink: Sink[F2, O]): Stream[F2, Unit] =
+    this.balanceThrough[F2, Unit](chunkSize, maxConcurrent)(sink.andThen(_.drain))
+
+  /**
+    * Alias for `this.through(Balance.through(chunkSize)(pipes)`
+    */
+  def balanceThrough[F2[x] >: F[x]: Concurrent, O2](chunkSize: Int)(
+      pipes: Pipe[F2, O, O2]*): Stream[F2, O2] =
+    this.through(Balance.through[F2, O, O2](chunkSize)(pipes: _*))
+
+  /**
+    * Variant of `balanceThrough` that takes number of concurrency required and single pipe
+    * @param chunkSize        Max size of output chunk for each stream supplied to sink
+    * @param maxConcurrent    Maximum number of pipes to run concurrently
+    * @param sink             Pipe to use to process elements
+    * @return
+    */
+  def balanceThrough[F2[x] >: F[x]: Concurrent, O2](chunkSize: Int, maxConcurrent: Int)(
+      pipe: Pipe[F2, O, O2]): Stream[F2, O2] =
+    this.balanceThrough[F2, O2](chunkSize)((0 until maxConcurrent).map(_ => pipe): _*)
 
   /**
     * Removes all output values from this stream.
