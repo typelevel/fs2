@@ -1434,31 +1434,28 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     */
   def switchMap[F2[x] >: F[x], O2](f: O => Stream[F2, O2])(
       implicit F2: Concurrent[F2]): Stream[F2, O2] =
-    Stream.eval(Semaphore[F2](1)).flatMap { guard =>
-      Stream.eval(Ref.of[F2, Option[Deferred[F2, Unit]]](None)).flatMap { haltRef =>
-        Stream.eval(SignallingRef.apply(false)).flatMap { innerFailed =>
-          def runInner(o: O, halt: Deferred[F2, Unit]) =
+    Stream.force(Semaphore[F2](1).flatMap {
+      guard =>
+        Ref.of[F2, Option[Deferred[F2, Unit]]](None).map { haltRef =>
+          def runInner(o: O, halt: Deferred[F2, Unit]): Stream[F2, O2] =
             Stream.eval(guard.acquire) >> // guard inner to prevent parallel inner streams
-              f(o)
-                .interruptWhen(halt.get.attempt)
-                .onError { case e => Stream.eval(innerFailed.set(true)) }
-                // upon failure, do not release the guard(prevents the next stream from running)
-                .onFinalize(innerFailed.get.flatMap { if (_) F2.unit else guard.release })
+              f(o).interruptWhen(halt.get.attempt) ++ Stream.eval_(guard.release)
 
           this
             .evalMap { o =>
               Deferred[F2, Unit].flatMap { halt =>
-                haltRef.modify {
-                  case None       => halt.some -> F2.unit
-                  case Some(last) => halt.some -> last.complete(()) // interrupt the previous one
-                }.flatten *> F2.pure(runInner(o, halt))
+                haltRef
+                  .getAndSet(halt.some)
+                  .flatMap {
+                    case None       => F2.unit
+                    case Some(last) => last.complete(()) // interrupt the previous one
+                  }
+                  .as(runInner(o, halt))
               }
-
             }
             .parJoin(2)
         }
-      }
-    }
+    })
 
   /**
     * Interleaves the two inputs nondeterministically. The output stream
