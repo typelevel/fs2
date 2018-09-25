@@ -1455,6 +1455,13 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     Stream.bracket(F2.unit)(_ => f) >> this
 
   /**
+    * Like [[onFinalize]] but provides the reason for finalization as an `ExitCase[Throwable]`.
+    */
+  def onFinalizeCase[F2[x] >: F[x]](f: ExitCase[Throwable] => F2[Unit])(
+      implicit F2: Applicative[F2]): Stream[F2, O] =
+    Stream.bracketCase(F2.unit)((_, ec) => f(ec)) >> this
+
+  /**
     * Nondeterministically merges a stream of streams (`outer`) in to a single stream,
     * opening at most `maxOpen` streams at any point in time.
     *
@@ -2329,11 +2336,11 @@ object Stream extends StreamLowPriority {
     bracketCase(acquire)((r, _) => release(r))
 
   /**
-   * Like [[bracket]] but the release action is passed an `ExitCase[Throwable]`.
-   *
-   * `ExitCase.Canceled` is passed to the release action in the event of either stream interruption or
-   * overall compiled effect cancelation.
-   */
+    * Like [[bracket]] but the release action is passed an `ExitCase[Throwable]`.
+    *
+    * `ExitCase.Canceled` is passed to the release action in the event of either stream interruption or
+    * overall compiled effect cancelation.
+    */
   def bracketCase[F[x] >: Pure[x], R](acquire: F[R])(
       release: (R, ExitCase[Throwable]) => F[Unit]): Stream[F, R] =
     fromFreeC(Algebra.acquire[F, R, R](acquire, release).flatMap {
