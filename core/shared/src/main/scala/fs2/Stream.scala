@@ -65,7 +65,7 @@ import scala.concurrent.duration._
   *
   * @hideImplicitConversion PureOps
   * @hideImplicitConversion IdOps
-  */
+  **/
 final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, Nothing, ?], Unit])
     extends AnyVal {
 
@@ -1414,6 +1414,48 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * }}}
     */
   def mask: Stream[F, O] = this.handleErrorWith(_ => Stream.empty)
+
+  /**
+    * Like [[Stream.flatMap]] but interrupts the inner stream when new elements arrive in the outer stream.
+    *
+    * The implementation will try to preserve chunks like [[Stream.merge]].
+    *
+    * Finializers of each inner stream are guaranteed to run before the next inner stream starts.
+    *
+    * When the outer stream stops gracefully, the currently running inner stream will continue to run.
+    *
+    * When an inner stream terminates/interrupts, nothing happens until the next element arrives
+    * in the outer stream(i.e the outer stream holds the stream open during this time or else the
+    * stream terminates)
+    *
+    * When either the inner or outer stream fails, the entire stream fails and the finalizer of the
+	* inner stream runs before the outer one.
+    *
+    */
+  def switchMap[F2[x] >: F[x], O2](f: O => Stream[F2, O2])(
+      implicit F2: Concurrent[F2]): Stream[F2, O2] =
+    Stream.force(Semaphore[F2](1).flatMap {
+      guard =>
+        Ref.of[F2, Option[Deferred[F2, Unit]]](None).map { haltRef =>
+          def runInner(o: O, halt: Deferred[F2, Unit]): Stream[F2, O2] =
+            Stream.eval(guard.acquire) >> // guard inner to prevent parallel inner streams
+              f(o).interruptWhen(halt.get.attempt) ++ Stream.eval_(guard.release)
+
+          this
+            .evalMap { o =>
+              Deferred[F2, Unit].flatMap { halt =>
+                haltRef
+                  .getAndSet(halt.some)
+                  .flatMap {
+                    case None       => F2.unit
+                    case Some(last) => last.complete(()) // interrupt the previous one
+                  }
+                  .as(runInner(o, halt))
+              }
+            }
+            .parJoin(2)
+        }
+    })
 
   /**
     * Interleaves the two inputs nondeterministically. The output stream
