@@ -4,42 +4,39 @@ import cats.effect.{Concurrent, Sync}
 import fs2.internal.Token
 import fs2._
 
+/** Provides mechanisms for broadcast distribution of elements to multiple streams. */
 object Broadcast {
 
   /**
-    * Allows to broadcast `O` to multiple workers.
+    * Allows elements of a stream to be broadcast to multiple workers.
     *
-    * As the elements arrive, they are broadcasted to all `workers` that started evaluation just before the
-    * element was pulled from `this`.
+    * As the elements arrive, they are broadcast to all `workers` that have started evaluation before the
+    * element was pulled.
     *
-    * Elements are pulled as chunks from `this` and next chunk is pulled when all workers are done
-    * with processing that chunk.
+    * Elements are pulled as chunks from the source and the next chunk is pulled when all workers are done
+    * with processing the current chunk. This behaviour may slow down processing of incoming chunks by
+    * faster workers. If this is not desired, consider using `prefetch` combinator on workers to compensate
+    * for slower workers.
     *
-    * This behaviour may slow down processing of incoming chunks by faster workers. If this is not desired,
-    * consider using `prefetch` combinator on workers to compensate for slower workers.
-    *
-    * Usually this combinator is used together with parJoin, such as :
+    * Often this combinator is used together with parJoin, such as :
     *
     * {{{
     *   Stream(1,2,3,4).broadcast.map { worker =>
-    *     worker.evalMap { o => IO.println(s"1:$o") }
+    *     worker.evalMap { o => IO.println("1:" + o.toString) }
     *   }.take(3).parJoinUnbounded.compile.drain.unsafeRunSync
     * }}}
     *
-    * Note that in the example above the workers are not guaranteed to see all elements emitted. This is
-    * due different subscription time of each worker and speed of emitting the elements by `this`.
+    * Note that in the example, above the workers are not guaranteed to see all elements emitted. This is
+    * due to different subscription times of each worker and speed of emitting the elements by the source.
+    * If this is not desired, consider using `broadcastN` alternative. This will hold on pulling from
+    * source if there are no workers ready.
     *
-    * If this is not desired, consider using `broadcastN` alternative.
+    * When `source` terminates, then the inner streams (workers) are terminated once all elements pulled
+    * from `source` are processed by all workers. However, note that when that `source` terminates,
+    * resulting stream will not terminate until the inner streams terminate.
     *
-    * This will hold on pulling from source, if there was not single worker ready.
-    *
-    * When `source` terminates, then _RESULTING_ streams (workers) are terminated once all elements so far pulled
-    * from `source` are processed by all workers.
-    * However, note that when that `source` terminates, resulting stream will not terminate.
-    *
-    * @param minReady Allows to specify that broadcasting will hold off until at least `minReady` subscribers will
-    *                 be available for the first time.
-    *
+    * @param minReady specifies that broadcasting will hold off until at least `minReady` subscribers will
+    *                 be ready
     */
   def apply[F[_]: Concurrent, O](minReady: Int): Pipe[F, O, Stream[F, O]] = { source =>
     Stream.eval(PubSub(PubSub.Strategy.closeDrainFirst(strategy[Chunk[O]](minReady)))).flatMap {
@@ -59,21 +56,18 @@ object Broadcast {
 
         Stream.constant(subscriber).concurrently(publish)
     }
-
   }
 
   /**
-    * Like `Broadcast` but instead of providing stream as source for worker, it runs each stream through
-    * supplied workers defined as `pipe`
+    * Like [[apply]] but instead of providing a stream of worker streams, it runs each inner stream through
+    * the supplied pipes.
     *
-    * Each supplied `pipe` is run concurrently with each other. This means that amount of pipes determines parallelism.
-    * Each pipe may have different implementation.
+    * Supplied pipes are run concurrently with each other. Hence, the number of pipes determines concurrency.
+    * Also, this guarantees that each sink will view all `O` pulled from source stream, unlike `broadcast`.
     *
-    * Also this guarantees, that each sink will view all `O` pulled from source stream, unlike `broadcast`.
+    * Resulting values are collected and returned in a single stream of `O2` values.
     *
-    * Resulting values are collected and produced by single Stream of `O2` values
-    *
-    * @param sinks    Sinks that will concurrently process the work.
+    * @param pipes pipes that will concurrently process the work
     */
   def through[F[_]: Concurrent, O, O2](pipes: Pipe[F, O, O2]*): Pipe[F, O, O2] =
     _.through(apply(pipes.size))

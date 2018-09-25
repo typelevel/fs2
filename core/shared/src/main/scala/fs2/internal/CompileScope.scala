@@ -106,22 +106,22 @@ private[fs2] final class CompileScope[F[_], O] private (
       interruptible: Option[Concurrent[F]]
   ): F[Either[Throwable, CompileScope[F, O]]] = {
 
-    /**
-      * Creates a context for a new scope.
-      *
-      * We need to differentiate between three states:
-      *  The new scope is not interruptible -
-      *     It should respect the interrupt of the current scope. But it should not
-      *     close the listening on parent scope close when the new scope will close.
-      *
-      *  The new scope is interruptible but this scope is not interruptible -
-      *     This is a new interrupt root that can be only interrupted from within the new scope or its children scopes.
-      *
-      *  The new scope is interruptible as well as this scope is interruptible -
-      *     This is a new interrupt root that can be interrupted from within the new scope, its children scopes
-      *     or as a result of interrupting this scope. But it should not propagate its own interruption to this scope.
-      *
-      */
+    /*
+     * Creates a context for a new scope.
+     *
+     * We need to differentiate between three states:
+     *  The new scope is not interruptible -
+     *     It should respect the interrupt of the current scope. But it should not
+     *     close the listening on parent scope close when the new scope will close.
+     *
+     *  The new scope is interruptible but this scope is not interruptible -
+     *     This is a new interrupt root that can be only interrupted from within the new scope or its children scopes.
+     *
+     *  The new scope is interruptible as well as this scope is interruptible -
+     *     This is a new interrupt root that can be interrupted from within the new scope, its children scopes
+     *     or as a result of interrupting this scope. But it should not propagate its own interruption to this scope.
+     *
+     */
     def createScopeContext: F[(Option[InterruptContext[F, O]], Token)] = {
       val newScopeId = new Token
       self.interruptible match {
