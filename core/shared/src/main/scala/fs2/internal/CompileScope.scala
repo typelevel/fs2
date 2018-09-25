@@ -4,7 +4,7 @@ import scala.annotation.tailrec
 
 import cats.Traverse
 import cats.data.Chain
-import cats.effect.{Concurrent, Sync}
+import cats.effect.{Concurrent, ExitCase, Sync}
 import cats.effect.concurrent.{Deferred, Ref}
 import fs2.{CompositeFailure, Scope}
 import fs2.internal.CompileScope.InterruptContext
@@ -86,9 +86,9 @@ private[fs2] final class CompileScope[F[_], O] private (
     * When the action returns, the resource may not be released yet, as
     * it may have been `leased` to other scopes.
     */
-  def releaseResource(id: Token): F[Either[Throwable, Unit]] =
+  def releaseResource(id: Token, ec: ExitCase[Throwable]): F[Either[Throwable, Unit]] =
     F.flatMap(state.modify { _.unregisterResource(id) }) {
-      case Some(resource) => resource.release
+      case Some(resource) => resource.release(ec)
       case None           => F.pure(Right(())) // resource does not exist in scope any more.
     }
 
@@ -99,8 +99,7 @@ private[fs2] final class CompileScope[F[_], O] private (
     * open ancestor of this scope.
     *
     * Returns scope that has to be used in next compilation step and the next stream
-    * to be evaluated
-    *
+    * to be evaluated.
     */
   def open(
       interruptible: Option[Concurrent[F]]
@@ -170,18 +169,18 @@ private[fs2] final class CompileScope[F[_], O] private (
     * There is only one situation where resource cleanup may be somewhat concurrent and that is when resources are
     * leased in `parJoin`. But even then the order of the lease of the resources respects acquisition of the resources that leased them.
     */
-  def acquireResource[R](fr: F[R], release: R => F[Unit]): F[Either[Throwable, (R, Token)]] = {
+  def acquireResource[R](
+      fr: F[R],
+      release: (R, ExitCase[Throwable]) => F[Unit]): F[Either[Throwable, (R, Token)]] = {
     val resource = Resource.create
     F.flatMap(F.attempt(fr)) {
       case Right(r) =>
-        val finalizer = F.suspend(release(r))
+        val finalizer = (ec: ExitCase[Throwable]) => F.suspend(release(r, ec))
         F.flatMap(resource.acquired(finalizer)) { result =>
           if (result.right.exists(identity)) F.map(register(resource))(_ => Right((r, resource.id)))
           else F.pure(Left(result.left.getOrElse(AcquireAfterScopeClosed)))
         }
-
       case Left(err) => F.pure(Left(err))
-
     }
   }
 
@@ -223,17 +222,19 @@ private[fs2] final class CompileScope[F[_], O] private (
     * finalized after this scope is closed, but they will get finalized shortly after. See [[Resource]] for
     * more details.
     */
-  def close: F[Either[Throwable, Unit]] =
+  def close(ec: ExitCase[Throwable]): F[Either[Throwable, Unit]] =
     F.flatMap(state.modify(s => s.close -> s)) { previous =>
-      F.flatMap(traverseError[CompileScope[F, O]](previous.children, _.close)) { resultChildren =>
-        F.flatMap(traverseError[Resource[F]](previous.resources, _.release)) { resultResources =>
-          F.flatMap(self.interruptible.map(_.cancelParent).getOrElse(F.unit)) { _ =>
-            F.map(self.parent.fold(F.unit)(_.releaseChildScope(self.id))) { _ =>
-              val results = resultChildren.left.toSeq ++ resultResources.left.toSeq
-              CompositeFailure.fromList(results.toList).toLeft(())
-            }
+      F.flatMap(traverseError[CompileScope[F, O]](previous.children, _.close(ec))) {
+        resultChildren =>
+          F.flatMap(traverseError[Resource[F]](previous.resources, _.release(ec))) {
+            resultResources =>
+              F.flatMap(self.interruptible.map(_.cancelParent).getOrElse(F.unit)) { _ =>
+                F.map(self.parent.fold(F.unit)(_.releaseChildScope(self.id))) { _ =>
+                  val results = resultChildren.left.toSeq ++ resultResources.left.toSeq
+                  CompositeFailure.fromList(results.toList).toLeft(())
+                }
+              }
           }
-        }
       }
     }
 
