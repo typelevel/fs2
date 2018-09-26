@@ -1,7 +1,7 @@
 package fs2
 package concurrent
 
-import cats.{Applicative, Functor}
+import cats.{Applicative, Functor, Id}
 import cats.effect.{Concurrent, Sync}
 import cats.implicits._
 import fs2.internal.Token
@@ -47,13 +47,13 @@ trait Dequeue1[F[_], A] {
 }
 
 /** Provides the ability to dequeue individual chunks from a `Queue`. */
-trait DequeueChunk1[F[_], A] {
+trait DequeueChunk1[F[_], G[_], A] {
 
   /** Dequeues one `Chunk[A]` with no more than `maxSize` elements. Completes once one is ready. */
-  def dequeueChunk1(maxSize: Int): F[Chunk[A]]
+  def dequeueChunk1(maxSize: Int): F[G[Chunk[A]]]
 
   /** Tries to dequeue a single chunk of no more than `max size` elements; yields to `None` if the element cannot be dequeued. */
-  def tryDequeueChunk1(maxSize: Int): F[Option[Chunk[A]]]
+  def tryDequeueChunk1(maxSize: Int): F[Option[G[Chunk[A]]]]
 }
 
 /** Provides the ability to dequeue chunks of elements from a `Queue` as streams. */
@@ -82,7 +82,7 @@ trait Dequeue[F[_], A] {
 trait Queue[F[_], A]
     extends Enqueue[F, A]
     with Dequeue1[F, A]
-    with DequeueChunk1[F, A]
+    with DequeueChunk1[F, Id, A]
     with Dequeue[F, A] { self =>
 
   /**
@@ -110,7 +110,7 @@ trait Queue[F[_], A]
 trait NoneTerminatedQueue[F[_], A]
     extends Enqueue[F, Option[A]]
     with Dequeue1[F, Option[A]]
-    with DequeueChunk1[F, Option[A]]
+    with DequeueChunk1[F, Option, A]
     with Dequeue[F, A] { self =>
 
   /**
@@ -234,11 +234,11 @@ object Queue {
             case Some(Some(chunk)) => headUnsafe[F, A](chunk).map(a => Some(Some(a)))
           }
 
-        def dequeueChunk1(maxSize: Int): F[Chunk[Option[A]]] =
-          pubSub.get(maxSize).map(_.sequence)
+        def dequeueChunk1(maxSize: Int): F[Option[Chunk[A]]] =
+          pubSub.get(maxSize)
 
-        def tryDequeueChunk1(maxSize: Int): F[Option[Chunk[Option[A]]]] =
-          pubSub.tryGet(maxSize).map(_.map(_.sequence))
+        def tryDequeueChunk1(maxSize: Int): F[Option[Option[Chunk[A]]]] =
+          pubSub.tryGet(maxSize)
 
         def dequeue1: F[Option[A]] =
           pubSub.get(1).flatMap {
