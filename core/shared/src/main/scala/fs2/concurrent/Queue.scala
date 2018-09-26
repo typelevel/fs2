@@ -12,21 +12,21 @@ import scala.collection.immutable.{Queue => ScalaQueue}
 trait Enqueue[F[_], A] {
 
   /**
-    * Enqueues one element in this `Queue`.
-    * If the queue is `full` this waits until queue is empty.
+    * Enqueues one element to this `Queue`.
+    * If the queue is `full` this waits until queue has space.
     *
     * This completes after `a`  has been successfully enqueued to this `Queue`
     */
   def enqueue1(a: A): F[Unit]
 
   /**
-    * Enqueues each element of the input stream to this `Queue` by
+    * Enqueues each element of the input stream to this queue by
     * calling `enqueue1` on each element.
     */
   def enqueue: Sink[F, A] = _.evalMap(enqueue1)
 
   /**
-    * Offers one element in this `Queue`.
+    * Offers one element to this `Queue`.
     *
     * Evaluates to `false` if the queue is full, indicating the `a` was not queued up.
     * Evaluates to `true` if the `a` was queued up successfully.
@@ -42,26 +42,29 @@ trait Dequeue1[F[_], A] {
   /** Dequeues one `A` from this queue. Completes once one is ready. */
   def dequeue1: F[A]
 
-  /** tries to dequeue element, yields to None if the element cannot be dequeue **/
+  /** Tries to dequeue a single element; yields to `None` if the element cannot be dequeued. */
   def tryDequeue1: F[Option[A]]
 }
 
 /** Provides the ability to dequeue chunks of elements from a `Queue` as streams. */
 trait Dequeue[F[_], A] {
 
-  /** Dequeue elements from the queue */
+  /** Dequeues elements from the queue. */
   def dequeue: Stream[F, A] =
     dequeueChunk(Int.MaxValue)
 
-  /** Dequeue elements from the queue, size of the chunks dequeue is restricted by `maxSize` */
+  /** Dequeues elements from the queue, ensuring elements are dequeued in chunks not exceeding `maxSize`. */
   def dequeueChunk(maxSize: Int): Stream[F, A]
 
-  /** provides a pipe, that for each dequeue sets the constrain on maximum number of element dequeued */
+  /**
+    * Provides a pipe that converts a stream of batch sizes in to a stream of elements by dequeuing
+    * batches of the specified size.
+    */
   def dequeueBatch: Pipe[F, Int, A]
 }
 
 /**
-  * A Queue of elements. Operations are all nonblocking in their
+  * A queue of elements. Operations are all nonblocking in their
   * implementations, but may be 'semantically' blocking. For instance,
   * a queue may have a bound on its size, in which case enqueuing may
   * block (be delayed asynchronously) until there is an offsetting dequeue.
