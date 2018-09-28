@@ -43,9 +43,9 @@ trait Dequeue1[F[_], A] {
   def dequeue1: F[A]
 
   /**
-   * Tries to dequeue a single element. Unlike `dequeue1`, this method does not semantically
-   * block until a chunk is available - instead, `None` is returned immediately.
-   */
+    * Tries to dequeue a single element. Unlike `dequeue1`, this method does not semantically
+    * block until a chunk is available - instead, `None` is returned immediately.
+    */
   def tryDequeue1: F[Option[A]]
 }
 
@@ -56,10 +56,10 @@ trait DequeueChunk1[F[_], G[_], A] {
   def dequeueChunk1(maxSize: Int): F[G[Chunk[A]]]
 
   /**
-   * Tries to dequeue a single chunk of no more than `max size` elements.
-   * Unlike `dequeueChunk1`, this method does not semantically block until a chunk is available -
-   * instead, `None` is returned immediately.
-   */
+    * Tries to dequeue a single chunk of no more than `max size` elements.
+    * Unlike `dequeueChunk1`, this method does not semantically block until a chunk is available -
+    * instead, `None` is returned immediately.
+    */
   def tryDequeueChunk1(maxSize: Int): F[Option[G[Chunk[A]]]]
 }
 
