@@ -1,5 +1,4 @@
 import microsites.ExtraMdFileConfig
-import com.typesafe.sbt.pgp.PgpKeys.publishSigned
 import com.typesafe.tools.mima.core.{Problem, ProblemFilters}
 import sbtrelease.Version
 import sbtcrossproject.crossProject
@@ -184,13 +183,11 @@ lazy val commonJsSettings = Seq(
 lazy val noPublish = Seq(
   publish := {},
   publishLocal := {},
-  publishSigned := {},
   publishArtifact := false
 )
 
 lazy val releaseSettings = Seq(
-  releaseCrossBuild := true,
-  releasePublishArtifactsAction := PgpKeys.publishSigned.value
+  releaseCrossBuild := true
 )
 
 lazy val mimaSettings = Seq(
