@@ -33,8 +33,10 @@ object ChunkProps
   def propToArray[A: ClassTag: Arbitrary, C <: Chunk[A]: Arbitrary] =
     forAll { c: C =>
       c.toArray.toVector shouldBe c.toVector
+      // Do it twice to make sure the first time didn't mutate state
+      c.toArray.toVector shouldBe c.toVector
     }
-    
+
   def propCopyToArray[A: ClassTag: Arbitrary, C <: Chunk[A]: Arbitrary] =
     forAll { c: C =>
       val arr = new Array[A](c.size * 2)

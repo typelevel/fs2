@@ -784,7 +784,7 @@ object Chunk {
       val bs = new Array[C](size)
       val b = duplicate(buf)
       b.position(offset)
-      get(buf, bs, 0, size)
+      get(b, bs, 0, size)
       bs.asInstanceOf[Array[O2]]
     }
 
