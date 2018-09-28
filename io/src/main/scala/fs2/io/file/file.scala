@@ -7,7 +7,6 @@ import scala.concurrent.duration._
 import java.nio.file.{Path, StandardOpenOption, WatchEvent}
 
 import cats.effect.{Concurrent, ContextShift, Resource, Sync}
-import cats.implicits._
 
 /** Provides support for working with files. */
 package object file {
