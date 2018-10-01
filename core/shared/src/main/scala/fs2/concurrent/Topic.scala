@@ -1,6 +1,7 @@
 package fs2
 package concurrent
 
+import cats.Eq
 import cats.syntax.all._
 import cats.effect.{Concurrent, Sync}
 
@@ -83,7 +84,10 @@ abstract class Topic[F[_], A] { self =>
 
 object Topic {
 
-  def apply[F[_], A](initial: A)(implicit F: Concurrent[F]): F[Topic[F, A]] =
+  def apply[F[_], A](initial: A)(implicit F: Concurrent[F]): F[Topic[F, A]] = {
+    implicit def eqInstance: Eq[Strategy.State[A]] =
+      Eq.instance[Strategy.State[A]](_.subscribers.keySet == _.subscribers.keySet)
+
     PubSub(PubSub.Strategy.Inspectable.strategy(Strategy.boundedSubscribers(initial))).map {
       pubSub =>
         new Topic[F, A] {
@@ -126,7 +130,7 @@ object Topic {
                     case (a, remQ) =>
                       pubSub.get(Left(None)).map {
                         case Left(s) =>
-                          (a, s.subcribers.get(selector).map(_.size + remQ).getOrElse(remQ))
+                          (a, s.subscribers.get(selector).map(_.size + remQ).getOrElse(remQ))
                         case Right(_) => (a, -1) // impossible
                       }
                   }
@@ -137,18 +141,19 @@ object Topic {
               .bracket(Sync[F].delay(new Token))(token => pubSub.unsubscribe(Left(Some(token))))
               .flatMap { token =>
                 Stream.repeatEval(pubSub.get(Left(Some(token)))).flatMap {
-                  case Left(s)  => Stream.emit(s.subcribers.size)
+                  case Left(s)  => Stream.emit(s.subscribers.size)
                   case Right(_) => Stream.empty //impossible
                 }
               }
         }
     }
+  }
 
   private[fs2] object Strategy {
 
     final case class State[A](
         last: A,
-        subcribers: Map[(Token, Int), ScalaQueue[A]]
+        subscribers: Map[(Token, Int), ScalaQueue[A]]
     )
 
     /**
@@ -163,33 +168,36 @@ object Topic {
       new PubSub.Strategy[A, ScalaQueue[A], State[A], (Token, Int)] {
         def initial: State[A] = State(start, Map.empty)
         def accepts(i: A, state: State[A]): Boolean =
-          state.subcribers.forall { case ((_, max), q) => q.size < max }
+          state.subscribers.forall { case ((_, max), q) => q.size < max }
 
         def publish(i: A, state: State[A]): State[A] =
           State(
             last = i,
-            subcribers = state.subcribers.mapValues(_ :+ i)
+            subscribers = state.subscribers.mapValues(_ :+ i)
           )
 
+        // Register empty queue
+        def regEmpty(selector: (Token, Int), state: State[A]): State[A] =
+          state.copy(subscribers = state.subscribers + (selector -> ScalaQueue.empty))
+
         def get(selector: (Token, Int), state: State[A]): (State[A], Option[ScalaQueue[A]]) =
-          state.subcribers.get(selector) match {
+          state.subscribers.get(selector) match {
             case None =>
-              (state, Some(ScalaQueue(state.last)))
+              (regEmpty(selector, state), Some(ScalaQueue(state.last)))
             case r @ Some(q) =>
               if (q.isEmpty) (state, None)
-              else {
-                (state.copy(subcribers = state.subcribers + (selector -> ScalaQueue.empty)), r)
-              }
+              else (regEmpty(selector, state), r)
+
           }
 
         def empty(state: State[A]): Boolean =
           false
 
         def subscribe(selector: (Token, Int), state: State[A]): (State[A], Boolean) =
-          (state.copy(subcribers = state.subcribers + (selector -> ScalaQueue(state.last))), true)
+          (state, true) // no subscribe necessary, as we always subscribe by first attempt to `get`
 
         def unsubscribe(selector: (Token, Int), state: State[A]): State[A] =
-          state.copy(subcribers = state.subcribers - selector)
+          state.copy(subscribers = state.subscribers - selector)
       }
   }
 }
