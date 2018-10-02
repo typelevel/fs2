@@ -7,6 +7,11 @@ scala:
 jdk:
   - oraclejdk8
 
+matrix:
+  include:
+  - jdk: oraclejdk11
+    scala: 2.12.7
+
 sudo: required
 dist: trusty
 

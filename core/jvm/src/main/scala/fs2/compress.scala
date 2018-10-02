@@ -38,7 +38,7 @@ object compress {
           _deflate_collect(deflater, buffer, ArrayBuffer.empty, false).toArray
         Pull.output(Chunk.bytes(result)) >> _deflate_stream(deflater, buffer)(tl)
       case None =>
-        deflater.setInput(Array.empty)
+        deflater.setInput(Array.empty[Byte])
         deflater.finish()
         val result =
           _deflate_collect(deflater, buffer, ArrayBuffer.empty, true).toArray
