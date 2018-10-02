@@ -612,7 +612,7 @@ private[fs2] object PubSub {
           def publish(i: I, state: State[S]): State[S] = {
             val qs1 = strategy.publish(i, state.qs)
             if (Eq[S].eqv(state.qs, qs1)) state.copy(qs = qs1)
-            else State(state.qs, Set.empty)
+            else State(qs1, Set.empty)
           }
 
           def get(selector: Either[Option[Token], Sel],

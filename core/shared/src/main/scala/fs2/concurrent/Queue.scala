@@ -450,7 +450,7 @@ object InspectableQueue {
 
                 case Right(chunk) =>
                   Sync[F].raiseError(new Throwable(
-                    s"Inspectable `peek1` requires chunk of size 1 with state, got: $chunk"))
+                    s"Inspectable `peek1` requires state to be returned, got: $chunk"))
               }
 
             take
