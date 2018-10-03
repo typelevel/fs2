@@ -704,7 +704,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
   def dropRight(n: Int): Stream[F, O] =
     if (n <= 0) this
     else {
-      def go(acc: ChunkQueue[O], s: Stream[F, O]): Pull[F, O, Option[Unit]] =
+      def go(acc: Chunk.Queue[O], s: Stream[F, O]): Pull[F, O, Option[Unit]] =
         s.pull.uncons.flatMap {
           case None => Pull.pure(None)
           case Some((hd, tl)) =>
@@ -716,7 +716,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
               all.takeRight(n),
               tl)
         }
-      go(ChunkQueue.empty, this).stream
+      go(Chunk.Queue.empty, this).stream
     }
 
   /**
@@ -3444,15 +3444,15 @@ object Stream extends StreamLowPriority {
         }
 
     /** Emits the last `n` elements of the input. */
-    def takeRight(n: Int): Pull[F, INothing, ChunkQueue[O]] = {
-      def go(acc: ChunkQueue[O], s: Stream[F, O]): Pull[F, INothing, ChunkQueue[O]] =
+    def takeRight(n: Int): Pull[F, INothing, Chunk.Queue[O]] = {
+      def go(acc: Chunk.Queue[O], s: Stream[F, O]): Pull[F, INothing, Chunk.Queue[O]] =
         s.pull.unconsN(n, true).flatMap {
           case None => Pull.pure(acc)
           case Some((hd, tl)) =>
             go(acc.drop(hd.size) :+ hd, tl)
         }
-      if (n <= 0) Pull.pure(ChunkQueue.empty)
-      else go(ChunkQueue.empty, self)
+      if (n <= 0) Pull.pure(Chunk.Queue.empty)
+      else go(Chunk.Queue.empty, self)
     }
 
     /** Like [[takeWhile]], but emits the first value which tests false. */

@@ -3,10 +3,10 @@ package fs2
 import TestUtil._
 
 class ChunkQueueSpec extends Fs2Spec {
-  "ChunkQueue" - {
+  "Chunk.Queue" - {
     "take" in {
       forAll { (chunks: List[Chunk[Int]], n: Int) =>
-        val result = ChunkQueue(chunks: _*).take(n)
+        val result = Chunk.Queue(chunks: _*).take(n)
         result.toChunk.toList shouldBe chunks.flatMap(_.toList).take(n)
         result.chunks.size should be <= chunks.size
       }
@@ -14,7 +14,7 @@ class ChunkQueueSpec extends Fs2Spec {
 
     "drop" in {
       forAll { (chunks: List[Chunk[Int]], n: Int) =>
-        val result = ChunkQueue(chunks: _*).drop(n)
+        val result = Chunk.Queue(chunks: _*).drop(n)
         result.toChunk.toList shouldBe chunks.flatMap(_.toList).drop(n)
         result.chunks.size should be <= chunks.size
       }
@@ -22,7 +22,7 @@ class ChunkQueueSpec extends Fs2Spec {
 
     "takeRight" in {
       forAll { (chunks: List[Chunk[Int]], n: Int) =>
-        val result = ChunkQueue(chunks: _*).takeRight(n)
+        val result = Chunk.Queue(chunks: _*).takeRight(n)
         result.toChunk.toList shouldBe chunks.flatMap(_.toList).takeRight(n)
         result.chunks.size should be <= chunks.size
       }
@@ -30,7 +30,7 @@ class ChunkQueueSpec extends Fs2Spec {
 
     "dropRight" in {
       forAll { (chunks: List[Chunk[Int]], n: Int) =>
-        val result = ChunkQueue(chunks: _*).dropRight(n)
+        val result = Chunk.Queue(chunks: _*).dropRight(n)
         result.toChunk.toList shouldBe chunks.flatMap(_.toList).dropRight(n)
         result.chunks.size should be <= chunks.size
       }
@@ -38,18 +38,18 @@ class ChunkQueueSpec extends Fs2Spec {
 
     "equals" in {
       forAll { (chunks: List[Chunk[Int]], n: Int) =>
-        val cq = ChunkQueue(chunks: _*)
+        val cq = Chunk.Queue(chunks: _*)
         cq shouldBe cq
-        cq shouldBe ChunkQueue(chunks: _*)
+        cq shouldBe Chunk.Queue(chunks: _*)
         if (cq.size > 1) cq.drop(1) should not be cq
       }
     }
 
     "hashCode" in {
       forAll { (chunks: List[Chunk[Int]], n: Int) =>
-        val cq = ChunkQueue(chunks: _*)
+        val cq = Chunk.Queue(chunks: _*)
         cq.hashCode shouldBe cq.hashCode
-        cq.hashCode shouldBe ChunkQueue(chunks: _*).hashCode
+        cq.hashCode shouldBe Chunk.Queue(chunks: _*).hashCode
         if (cq.size > 1) cq.drop(1).hashCode should not be cq.hashCode
       }
     }
