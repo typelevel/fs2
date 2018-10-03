@@ -704,14 +704,19 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
   def dropRight(n: Int): Stream[F, O] =
     if (n <= 0) this
     else {
-      def go(acc: collection.immutable.Queue[O], s: Stream[F, O]): Pull[F, O, Option[Unit]] =
+      def go(acc: ChunkQueue[O], s: Stream[F, O]): Pull[F, O, Option[Unit]] =
         s.pull.uncons.flatMap {
           case None => Pull.pure(None)
           case Some((hd, tl)) =>
-            val all = acc ++ hd.toVector
-            Pull.output(Chunk.seq(all.dropRight(n))) >> go(all.takeRight(n), tl)
+            val all = acc :+ hd
+            all
+              .dropRight(n)
+              .chunks
+              .foldLeft(Pull.done.covaryAll[F, O, Unit])((acc, c) => acc *> Pull.output(c)) *> go(
+              all.takeRight(n),
+              tl)
         }
-      go(collection.immutable.Queue.empty, this).stream
+      go(ChunkQueue.empty, this).stream
     }
 
   /**
@@ -1290,6 +1295,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
               case Some((hd, tl)) =>
                 val interspersed = {
                   val bldr = Vector.newBuilder[O2]
+                  bldr.sizeHint(hd.size * 2)
                   hd.foreach { o =>
                     bldr += separator
                     bldr += o
@@ -2058,7 +2064,11 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * }}}
     */
   def takeRight(n: Int): Stream[F, O] =
-    this.pull.takeRight(n).flatMap(c => Pull.output(c)).stream
+    this.pull
+      .takeRight(n)
+      .flatMap(cq =>
+        cq.chunks.foldLeft(Pull.done.covaryAll[F, O, Unit])((acc, c) => acc *> Pull.output(c)))
+      .stream
 
   /**
     * Like [[takeWhile]], but emits the first value which tests false.
@@ -3434,15 +3444,15 @@ object Stream extends StreamLowPriority {
         }
 
     /** Emits the last `n` elements of the input. */
-    def takeRight(n: Int): Pull[F, INothing, Chunk[O]] = {
-      def go(acc: collection.immutable.Queue[O], s: Stream[F, O]): Pull[F, INothing, Chunk[O]] =
+    def takeRight(n: Int): Pull[F, INothing, ChunkQueue[O]] = {
+      def go(acc: ChunkQueue[O], s: Stream[F, O]): Pull[F, INothing, ChunkQueue[O]] =
         s.pull.unconsN(n, true).flatMap {
-          case None => Pull.pure(Chunk.seq(acc))
+          case None => Pull.pure(acc)
           case Some((hd, tl)) =>
-            go(acc.drop(hd.size) ++ hd.iterator, tl)
+            go(acc.drop(hd.size) :+ hd, tl)
         }
-      if (n <= 0) Pull.pure(Chunk.empty)
-      else go(collection.immutable.Queue.empty, self)
+      if (n <= 0) Pull.pure(ChunkQueue.empty)
+      else go(ChunkQueue.empty, self)
     }
 
     /** Like [[takeWhile]], but emits the first value which tests false. */
