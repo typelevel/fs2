@@ -3435,15 +3435,14 @@ object Stream extends StreamLowPriority {
 
     /** Emits the last `n` elements of the input. */
     def takeRight(n: Int): Pull[F, INothing, Chunk[O]] = {
-      def go(acc: Vector[O], s: Stream[F, O]): Pull[F, INothing, Chunk[O]] =
+      def go(acc: collection.immutable.Queue[O], s: Stream[F, O]): Pull[F, INothing, Chunk[O]] =
         s.pull.unconsN(n, true).flatMap {
-          case None => Pull.pure(Chunk.vector(acc))
+          case None => Pull.pure(Chunk.seq(acc))
           case Some((hd, tl)) =>
-            val vector = hd.toVector
-            go(acc.drop(vector.length) ++ vector, tl)
+            go(acc.drop(hd.size) ++ hd.iterator, tl)
         }
       if (n <= 0) Pull.pure(Chunk.empty)
-      else go(Vector.empty, self)
+      else go(collection.immutable.Queue.empty, self)
     }
 
     /** Like [[takeWhile]], but emits the first value which tests false. */
