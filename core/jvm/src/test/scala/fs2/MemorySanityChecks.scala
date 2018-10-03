@@ -2,10 +2,17 @@ package fs2
 
 import scala.concurrent.ExecutionContext
 import cats.effect.{ContextShift, IO, Timer}
-import fs2.concurrent.{Queue, SignallingRef}
+import fs2.concurrent.{Queue, SignallingRef, Topic}
 
 // Sanity tests - not run as part of unit tests, but these should run forever
 // at constant memory.
+
+object TopicContinuousPublishSanityTest extends App {
+  implicit val cs: ContextShift[IO] = IO.contextShift(ExecutionContext.Implicits.global)
+  Topic[IO, Int](-1)
+    .flatMap(topic => Stream.repeatEval(topic.publish1(1)).compile.drain)
+    .unsafeRunSync()
+}
 
 object ResourceTrackerSanityTest extends App {
   val big = Stream.constant(1).flatMap { n =>

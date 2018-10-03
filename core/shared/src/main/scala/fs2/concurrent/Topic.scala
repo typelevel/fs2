@@ -168,7 +168,7 @@ object Topic {
         def publish(i: A, state: State[A]): State[A] =
           State(
             last = i,
-            subcribers = state.subcribers.mapValues(_ :+ i)
+            subcribers = state.subcribers.map { case (k, v) => (k, v :+ i) }
           )
 
         def get(selector: (Token, Int), state: State[A]): (State[A], Option[ScalaQueue[A]]) =
