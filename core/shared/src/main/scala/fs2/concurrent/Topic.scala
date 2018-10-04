@@ -173,7 +173,7 @@ object Topic {
         def publish(i: A, state: State[A]): State[A] =
           State(
             last = i,
-            subscribers = state.subscribers.mapValues(_ :+ i)
+            subcribers = state.subcribers.map { case (k, v) => (k, v :+ i) }
           )
 
         // Register empty queue
