@@ -97,20 +97,6 @@ class QueueSpec extends Fs2Spec {
 
       p.compile.toList.unsafeRunSync.size shouldBe <=(11) // if the stream won't be discrete we will get much more size notifications
     }
-    "size stream should decrease" in {
-      def p =
-        Stream
-          .eval(InspectableQueue.unbounded[IO, Int])
-          .flatMap { q =>
-            def changes =
-              (Stream.range(1, 1).to(q.enqueue) ++ q.dequeue.take(1))
-                .zip(Stream.fixedRate[IO](200.millis))
-            q.size.concurrently(changes)
-          }
-          .interruptWhen(Stream.sleep[IO](2.seconds).as(true))
-
-      p.compile.last.unsafeRunSync.get shouldBe 1
-    }
     "peek1" in {
       runLog(
         Stream.eval(

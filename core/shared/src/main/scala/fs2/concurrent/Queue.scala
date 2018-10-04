@@ -360,6 +360,13 @@ trait InspectableQueue[F[_], A] extends Queue[F, A] {
     * The time-varying size of this `Queue`.
     * Emits elements describing the current size of the queue.
     * Offsetting enqueues and de-queues may not result in refreshes.
+    *
+    * Finally, note that operations like `dequeue` are optimized to
+    * work on chunks when possible, which will result in faster
+    * decreases in size that one might expect.
+    * More granular updates can be achieved by calling `dequeue1`
+    * repeatedly, but this is less efficient than dequeueing in
+    * batches.
     */
   def size: Stream[F, Int]
 
