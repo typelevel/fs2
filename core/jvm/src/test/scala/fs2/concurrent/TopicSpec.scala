@@ -1,8 +1,8 @@
 package fs2
 package concurrent
 
+import cats.implicits._
 import cats.effect.IO
-
 import fs2._
 import fs2.Stream._
 
@@ -80,6 +80,25 @@ class TopicSpec extends Fs2Spec {
           assert(diff.min == 0 || diff.min == 1)
           assert(diff.max == 0 || diff.max == 1)
       }
+    }
+
+    "discrete-size-signal-is-discrete" in {
+
+      def p =
+        Stream
+          .eval(Topic[IO, Int](0))
+          .flatMap { topic =>
+            def subscribers = topic.subscribers
+            def subscribe = Stream.fixedDelay[IO](200.millis).evalMap { _ =>
+              topic.subscribe(10).compile.drain.start.void
+            }
+            subscribers.concurrently(subscribe)
+          }
+          .interruptWhen(Stream.sleep[IO](2.seconds).as(true))
+
+      p.compile.toList
+        .unsafeRunSync()
+        .size shouldBe <=(11) // if the stream won't be discrete we will get much more size notifications
     }
   }
 }

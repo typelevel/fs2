@@ -1,6 +1,6 @@
 package fs2.concurrent
 
-import cats.Applicative
+import cats.{Applicative, Eq}
 import cats.effect.concurrent.{Deferred, Ref}
 import cats.effect.{Concurrent, ExitCase, Sync}
 import cats.syntax.all._
@@ -590,7 +590,15 @@ private[fs2] object PubSub {
           inspected: Set[Token]
       )
 
-      def strategy[I, O, S, Sel](
+      /**
+        * Allows to enhance the supplied strategy by ability to inspect the state.
+        * If the `S` is same as previous state (by applying the supplied `Eq` then
+        * `get` will not be signalled, if invoked with `Left(Some(token))` - subscription based
+        * subscriber.
+        *
+        * @return
+        */
+      def strategy[I, O, S: Eq, Sel](
           strategy: PubSub.Strategy[I, O, S, Sel]
       ): PubSub.Strategy[I, Either[S, O], State[S], Either[Option[Token], Sel]] =
         new PubSub.Strategy[I, Either[S, O], State[S], Either[Option[Token], Sel]] {
@@ -601,8 +609,11 @@ private[fs2] object PubSub {
           def accepts(i: I, state: State[S]): Boolean =
             strategy.accepts(i, state.qs)
 
-          def publish(i: I, state: State[S]): State[S] =
-            State(strategy.publish(i, state.qs), Set.empty)
+          def publish(i: I, state: State[S]): State[S] = {
+            val qs1 = strategy.publish(i, state.qs)
+            if (Eq[S].eqv(state.qs, qs1)) state.copy(qs = qs1)
+            else State(qs1, Set.empty)
+          }
 
           def get(selector: Either[Option[Token], Sel],
                   state: State[S]): (State[S], Option[Either[S, O]]) =
@@ -615,7 +626,8 @@ private[fs2] object PubSub {
                   (state.copy(inspected = state.inspected + token), Some(Left(state.qs)))
               case Right(sel) =>
                 val (s, r) = strategy.get(sel, state.qs)
-                (State(s, Set.empty), r.map(Right(_)))
+                val tokens: Set[Token] = if (Eq[S].eqv(state.qs, s)) state.inspected else Set.empty
+                (State(s, tokens), r.map(Right(_)))
             }
 
           def empty(state: State[S]): Boolean =
@@ -634,7 +646,11 @@ private[fs2] object PubSub {
             selector match {
               case Left(None)        => state
               case Left(Some(token)) => state.copy(inspected = state.inspected - token)
-              case Right(sel)        => state.copy(qs = strategy.unsubscribe(sel, state.qs))
+              case Right(sel) =>
+                val qs1 = strategy.unsubscribe(sel, state.qs)
+                val tokens: Set[Token] =
+                  if (cats.Eq[S].eqv(state.qs, qs1)) state.inspected else Set.empty
+                State(qs1, tokens)
             }
         }
     }

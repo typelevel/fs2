@@ -1,7 +1,7 @@
 package fs2
 package concurrent
 
-import cats.{Applicative, Functor, Id}
+import cats.{Applicative, Eq, Functor, Id}
 import cats.effect.{Concurrent, Sync}
 import cats.implicits._
 import fs2.internal.Token
@@ -360,6 +360,13 @@ trait InspectableQueue[F[_], A] extends Queue[F, A] {
     * The time-varying size of this `Queue`.
     * Emits elements describing the current size of the queue.
     * Offsetting enqueues and de-queues may not result in refreshes.
+    *
+    * Finally, note that operations like `dequeue` are optimized to
+    * work on chunks when possible, which will result in faster
+    * decreases in size that one might expect.
+    * More granular updates can be achieved by calling `dequeue1`
+    * repeatedly, but this is less efficient than dequeueing in
+    * batches.
     */
   def size: Stream[F, Int]
 
@@ -387,11 +394,14 @@ object InspectableQueue {
       headOf: S => Option[A]
   )(
       sizeOf: S => Int
-  ): F[InspectableQueue[F, A]] =
+  ): F[InspectableQueue[F, A]] = {
+    implicit def eqInstance: Eq[S] = Eq.fromUniversalEquals[S]
     PubSub(PubSub.Strategy.Inspectable.strategy(strategy)).map { pubSub =>
       new InspectableQueue[F, A] {
         def enqueue1(a: A): F[Unit] = pubSub.publish(a)
+
         def offer1(a: A): F[Boolean] = pubSub.tryPublish(a)
+
         def dequeue1: F[A] = pubSub.get(Right(1)).flatMap {
           case Left(s) =>
             Sync[F].raiseError(new Throwable(
@@ -419,7 +429,9 @@ object InspectableQueue {
         def dequeueChunk(maxSize: Int): Stream[F, A] =
           Stream
             .evalUnChunk(
-              pubSub.get(Right(maxSize)).map { _.right.toOption.getOrElse(Chunk.empty) }
+              pubSub.get(Right(maxSize)).map {
+                _.right.toOption.getOrElse(Chunk.empty)
+              }
             )
             .repeat
 
@@ -427,7 +439,9 @@ object InspectableQueue {
           _.flatMap { sz =>
             Stream
               .evalUnChunk(
-                pubSub.get(Right(sz)).map { _.right.toOption.getOrElse(Chunk.empty) }
+                pubSub.get(Right(sz)).map {
+                  _.right.toOption.getOrElse(Chunk.empty)
+                }
               )
           }
 
@@ -443,8 +457,9 @@ object InspectableQueue {
 
                 case Right(chunk) =>
                   Sync[F].raiseError(new Throwable(
-                    s"Inspectable `peek1` requires chunk of size 1 with state, got: $chunk"))
+                    s"Inspectable `peek1` requires state to be returned, got: $chunk"))
               }
+
             take
           })(token => pubSub.unsubscribe(Left(Some(token))))
 
@@ -465,4 +480,5 @@ object InspectableQueue {
           }
       }
     }
+  }
 }
