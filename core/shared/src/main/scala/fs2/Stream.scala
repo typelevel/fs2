@@ -1364,56 +1364,17 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
   }
 
   /**
-    * Like [[Stream#evalMap]], but will evaluate effects in parallel, emitting the results
-    * downstream in the same order as the input stream. The number of concurrent effects
-    * is limited by the `parallelism` parameter.
-    *
-    * See [[Stream#mapAsyncUnordered]] if there is no requirement to retain the order of
-    * the original stream.
-    *
-    * @example {{{
-    * scala> import cats.effect.{ContextShift, IO}
-    * scala> implicit val cs: ContextShift[IO] = IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
-    * scala> Stream(1,2,3,4).covary[IO].mapAsync(2)(i => IO(println(i))).compile.drain.unsafeRunSync
-    * res0: Unit = ()
-    * }}}
+    * Alias for [[parEvalMap]].
     */
-  def mapAsync[F2[x] >: F[x]: Concurrent, O2](parallelism: Int)(f: O => F2[O2]): Stream[F2, O2] =
-    Stream
-      .eval(Queue.bounded[F2, Option[F2[Either[Throwable, O2]]]](parallelism))
-      .flatMap { queue =>
-        queue.dequeue.unNoneTerminate
-          .evalMap(identity)
-          .rethrow
-          .concurrently {
-            evalMap { o =>
-              Deferred[F2, Either[Throwable, O2]].flatMap { value =>
-                queue.enqueue1(Some(value.get)).as {
-                  Stream.eval(f(o).attempt).evalMap(value.complete)
-                }
-              }
-            }.parJoin(parallelism)
-              .drain
-              .onFinalize(queue.enqueue1(None))
-          }
-      }
+  def mapAsync[F2[x] >: F[x]: Concurrent, O2](maxConcurrent: Int)(f: O => F2[O2]): Stream[F2, O2] =
+    parEvalMap[F2, O2](maxConcurrent)(f)
 
   /**
-    * Like [[Stream#evalMap]], but will evaluate effects in parallel, emitting the results
-    * downstream. The number of concurrent effects is limited by the `parallelism` parameter.
-    *
-    * See [[Stream#mapAsync]] if retaining the original order of the stream is required.
-    *
-    * @example {{{
-    * scala> import cats.effect.{ContextShift, IO}
-    * scala> implicit val cs: ContextShift[IO] = IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
-    * scala> Stream(1,2,3,4).covary[IO].mapAsyncUnordered(2)(i => IO(println(i))).compile.drain.unsafeRunSync
-    * res0: Unit = ()
-    * }}}
+    * Alias for [[parEvalMapUnordered]].
     */
-  def mapAsyncUnordered[F2[x] >: F[x]: Concurrent, O2](parallelism: Int)(
+  def mapAsyncUnordered[F2[x] >: F[x]: Concurrent, O2](maxConcurrent: Int)(
       f: O => F2[O2]): Stream[F2, O2] =
-    map(o => Stream.eval(f(o))).parJoin(parallelism)
+    map(o => Stream.eval(f(o))).parJoin(maxConcurrent)
 
   /**
     * Applies the specified pure function to each chunk in this stream.
@@ -1632,6 +1593,59 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
   def onFinalizeCase[F2[x] >: F[x]](f: ExitCase[Throwable] => F2[Unit])(
       implicit F2: Applicative[F2]): Stream[F2, O] =
     Stream.bracketCase(F2.unit)((_, ec) => f(ec)) >> this
+
+  /**
+    * Like [[Stream#evalMap]], but will evaluate effects in parallel, emitting the results
+    * downstream in the same order as the input stream. The number of concurrent effects
+    * is limited by the `maxConcurrent` parameter.
+    *
+    * See [[Stream#parEvalMapUnordered]] if there is no requirement to retain the order of
+    * the original stream.
+    *
+    * @example {{{
+    * scala> import cats.effect.{ContextShift, IO}
+    * scala> implicit val cs: ContextShift[IO] = IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
+    * scala> Stream(1,2,3,4).covary[IO].parEvalMap(2)(i => IO(println(i))).compile.drain.unsafeRunSync
+    * res0: Unit = ()
+    * }}}
+    */
+  def parEvalMap[F2[x] >: F[x]: Concurrent, O2](maxConcurrent: Int)(
+      f: O => F2[O2]): Stream[F2, O2] =
+    Stream
+      .eval(Queue.bounded[F2, Option[F2[Either[Throwable, O2]]]](maxConcurrent))
+      .flatMap { queue =>
+        queue.dequeue.unNoneTerminate
+          .evalMap(identity)
+          .rethrow
+          .concurrently {
+            evalMap { o =>
+              Deferred[F2, Either[Throwable, O2]].flatMap { value =>
+                queue.enqueue1(Some(value.get)).as {
+                  Stream.eval(f(o).attempt).evalMap(value.complete)
+                }
+              }
+            }.parJoin(maxConcurrent)
+              .drain
+              .onFinalize(queue.enqueue1(None))
+          }
+      }
+
+  /**
+    * Like [[Stream#evalMap]], but will evaluate effects in parallel, emitting the results
+    * downstream. The number of concurrent effects is limited by the `maxConcurrent` parameter.
+    *
+    * See [[Stream#parEvalMap]] if retaining the original order of the stream is required.
+    *
+    * @example {{{
+    * scala> import cats.effect.{ContextShift, IO}
+    * scala> implicit val cs: ContextShift[IO] = IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
+    * scala> Stream(1,2,3,4).covary[IO].parEvalMapUnordered(2)(i => IO(println(i))).compile.drain.unsafeRunSync
+    * res0: Unit = ()
+    * }}}
+    */
+  def parEvalMapUnordered[F2[x] >: F[x]: Concurrent, O2](maxConcurrent: Int)(
+      f: O => F2[O2]): Stream[F2, O2] =
+    map(o => Stream.eval(f(o))).parJoin(maxConcurrent)
 
   /**
     * Nondeterministically merges a stream of streams (`outer`) in to a single stream,
