@@ -146,8 +146,8 @@ s1c.mapChunks { ds =>
 }
 ```
 
-FS2 also provides an alternative to `Chunk` which is potentially infinite and supports fusion of arbitrary operations. This type is called `Segment`. To create a stream from a segment `s`, call `Stream.segment(s)`.
-Note: in FS2 0.10.x, `Segment` played a much larger role in the core design. This was changed in FS2 1.0, as chunk based algorithms are often faster than their segment based equivalents and almost always significantly simpler. However, `Segment` is still available for when a workload requires operator fusion.
+Note: FS2 used to provide an alternative to `Chunk` which was potentially infinite and supported fusion of arbitrary operations. This type was called `Segment`.
+In FS2 0.10.x, `Segment` played a large role in the core design. In FS2 1.0, `Segment` was completely removed, as chunk based algorithms are often faster than their segment based equivalents and almost always significantly simpler.
 
 ### Basic stream operations
 
