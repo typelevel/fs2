@@ -7,12 +7,13 @@ FS2: Functional Streams for Scala (previously 'Scalaz-Stream')
 
 Quick links:
 
-* [Microsite](http://fs2.io)(#microsite)
+* [Microsite][microsite]
 * [About the library](#about)
 * [How to get latest version](#getit)
 * API docs: [fs2-core][core-api], [fs2-io][io-api], [fs2-reactive-streams][rx-api], [fs2-experimental][experimental-api]
 * [Docs and getting help](#docs)
 
+[microsite]: http://fs2.io/index.html
 [core-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-core_2.12/1.0.0/fs2-core_2.12-1.0.0-javadoc.jar/!/fs2/index.html
 [io-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-io_2.12/1.0.0/fs2-io_2.12-1.0.0-javadoc.jar/!/fs2/io/index.html
 [rx-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-reactive-streams_2.12/1.0.0/fs2-reactive-streams_2.12-1.0.0-javadoc.jar/!/fs2/interop/reactivestreams/index.html
