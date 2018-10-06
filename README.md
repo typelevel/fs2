@@ -1,7 +1,7 @@
 FS2: Functional Streams for Scala (previously 'Scalaz-Stream')
 =============
 
-[![Build Status](https://travis-ci.org/functional-streams-for-scala/fs2.svg?branch=series/0.9)](http://travis-ci.org/functional-streams-for-scala/fs2)
+[![Build Status](https://travis-ci.org/functional-streams-for-scala/fs2.svg?branch=series/1.0)](http://travis-ci.org/functional-streams-for-scala/fs2)
 [![Gitter Chat](https://badges.gitter.im/functional-streams-for-scala/fs2.svg)](https://gitter.im/functional-streams-for-scala/fs2)
 [![Latest version](https://index.scala-lang.org/functional-streams-for-scala/fs2/fs2-core/latest.svg?color=orange)](https://index.scala-lang.org/functional-streams-for-scala/fs2/fs2-core)
 
@@ -9,11 +9,13 @@ Quick links:
 
 * [About the library](#about)
 * [How to get latest version](#getit)
-* [API docs (fs2-core)][core-api], [API docs (fs2-io)][io-api]
+* API docs: [fs2-core][core-api], [fs2-io][io-api], [fs2-reactive-streams][rx-api], [fs2-experimental][experimental-api]
 * [Docs and getting help](#docs)
 
-[io-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-io_2.12/0.10.5/fs2-io_2.12-0.10.5-javadoc.jar/!/fs2/io/index.html
-[core-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-core_2.12/0.10.5/fs2-core_2.12-0.10.5-javadoc.jar/!/fs2/index.html
+[core-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-core_2.12/1.0.0/fs2-core_2.12-1.0.0-javadoc.jar/!/fs2/index.html
+[io-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-io_2.12/1.0.0/fs2-io_2.12-1.0.0-javadoc.jar/!/fs2/io/index.html
+[rx-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-reactive-streams_2.12/1.0.0/fs2-reactive-streams_2.12-1.0.0-javadoc.jar/!/fs2/interop/reactivestreams/index.html
+[experimental-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-experimental_2.12/1.0.0/fs2-experimental_2.12-1.0.0-javadoc.jar/!/fs2/experimental/index.html
 
 ### <a id="about"></a>About the library ###
 
@@ -62,39 +64,41 @@ Blog posts and other external resources are listed on the [Additional Resources]
 
 ### <a id="getit"></a> Where to get the latest version ###
 
-* [API docs (fs2-core 0.10.4)][core-api]
-* [API docs (fs2-io 0.10.4)][io-api]
+The latest version is 1.0.x. See the badge at the top of the README for the exact version number.
 
-The latest version is 0.10.x. See the badge at the top of the README for the exact version number.
-
-The [0.10 migration guide](https://github.com/functional-streams-for-scala/fs2/blob/series/0.10/docs/migration-guide-0.10.md)
-summarizes the differences between 0.10 and 0.9. To get 0.10.x, add the following to your SBT build:
+The [1.0 migration guide](https://github.com/functional-streams-for-scala/fs2/blob/series/1.0/docs/migration-guide-1.0.md)
+summarizes the differences between 1.0 and 0.10. To get 1.0.x, add the following to your SBT build:
 
 ```
 // available for Scala 2.11, 2.12
-libraryDependencies += "co.fs2" %% "fs2-core" % "0.10.4" // For cats 1.1.0 and cats-effect 0.10
+libraryDependencies += "co.fs2" %% "fs2-core" % "1.0.0" // For cats 1.4.0 and cats-effect 1.0
 
 // optional I/O library
-libraryDependencies += "co.fs2" %% "fs2-io" % "0.10.4"
+libraryDependencies += "co.fs2" %% "fs2-io" % "1.0.0"
+
+// optional reactive streams interop
+libraryDependencies += "co.fs2" %% "fs2-reactive-streams" % "1.0.0"
+
+// optional experimental library
+libraryDependencies += "co.fs2" %% "fs2-experimental" % "1.0.0"
 ```
 
-The previous stable release is 0.9.7. You may want to first
-[read the 0.9 migration guide](https://github.com/functional-streams-for-scala/fs2/blob/series/0.10/docs/migration-guide-0.9.md)
-if you are upgrading from 0.8 or earlier. To get 0.9, add the following to your SBT build:
+The previous stable release is 0.10.6. You may want to first
+[read the 0.10 migration guide](https://github.com/functional-streams-for-scala/fs2/blob/series/0.10/docs/migration-guide-0.10.md)
+if you are upgrading from 0.9 or earlier. To get 0.10, add the following to your SBT build:
 
 ```
 // available for Scala 2.11, 2.12
-libraryDependencies += "co.fs2" %% "fs2-core" % "0.9.7"
+libraryDependencies += "co.fs2" %% "fs2-core" % "0.10.6"
 
 // optional I/O library
-libraryDependencies += "co.fs2" %% "fs2-io" % "0.9.7"
+libraryDependencies += "co.fs2" %% "fs2-io" % "0.10.6"
 ```
 
 The fs2-core library is also supported on Scala.js:
 
 ```
-// available for Scala 2.11.8, 2.12.0
-libraryDependencies += "co.fs2" %%% "fs2-core" % "0.9.7"
+libraryDependencies += "co.fs2" %%% "fs2-core" % "0.10.6"
 ```
 
 API docs:
