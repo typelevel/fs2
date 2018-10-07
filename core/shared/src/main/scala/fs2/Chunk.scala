@@ -28,8 +28,7 @@ import cats.implicits._
   * and then access the array directly.
   *
   * The operations on `Chunk` are all defined strictly. For example, `c.map(f).map(g).map(h)` results in
-  * intermediate chunks being created (1 per call to `map`). In contrast, a chunk can be lifted to a segment
-  * (via `toSegment`) to get arbitrary operator fusion.
+  * intermediate chunks being created (1 per call to `map`).
   */
 abstract class Chunk[+O] extends Serializable { self =>
 
