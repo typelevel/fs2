@@ -15,7 +15,7 @@ object Broadcast {
     *
     * Elements are pulled as chunks from the source and the next chunk is pulled when all workers are done
     * with processing the current chunk. This behaviour may slow down processing of incoming chunks by
-    * faster workers. If this is not desired, consider using `prefetch` combinator on workers to compensate
+    * faster workers. If this is not desired, consider using the `prefetch` and `prefetchN` combinators on workers to compensate
     * for slower workers.
     *
     * Often this combinator is used together with parJoin, such as :
@@ -28,8 +28,8 @@ object Broadcast {
     *
     * Note that in the example, above the workers are not guaranteed to see all elements emitted. This is
     * due to different subscription times of each worker and speed of emitting the elements by the source.
-    * If this is not desired, consider using `broadcastN` alternative. This will hold on pulling from
-    * source if there are no workers ready.
+    * If this is not desired, consider using `broacastThrough` and `broadcastTo`, which are built on top of `Broadcast.through`, as an alternative.
+    * They will hold on pulling from  source if there are no workers ready.
     *
     * When `source` terminates, then the inner streams (workers) are terminated once all elements pulled
     * from `source` are processed by all workers. However, note that when that `source` terminates,
