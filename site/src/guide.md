@@ -331,7 +331,7 @@ Calling `s.pull` gives us a variety of methods which convert the stream to a `Pu
 ```scala
 case Some((hd,tl)) =>
   hd.size match {
-    case m if m <= n => Pull.output(c) >> go(tl, n - m)
+    case m if m <= n => Pull.output(hd) >> go(tl, n - m)
     case m => Pull.output(hd.take(n)) >> Pull.done
   }
 ```
