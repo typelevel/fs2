@@ -2022,6 +2022,12 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
   }
 
   /**
+    * Starts this stream and cancels it as finalization of the returned stream.
+    */
+  def spawn[F2[x] >: F[x]: Concurrent]: Stream[F2, Fiber[F2, Unit]] =
+    Stream.supervise(this.covary[F2].compile.drain)
+
+  /**
     * Breaks the input into chunks where the delimiter matches the predicate.
     * The delimiter does not appear in the output. Two adjacent delimiters in the
     * input result in an empty chunk in the output.
