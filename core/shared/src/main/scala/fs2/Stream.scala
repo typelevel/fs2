@@ -142,6 +142,12 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * Note: the resulting stream will not emit values, even if the sinks do.
     * If you need to emit `Unit` values, consider using `broadcastThrough`.
     *
+    * Note:  Elements are pulled as chunks from the source and the next chunk is pulled when all
+    * workers are done with processing the current chunk. This behaviour may slow down processing
+    * of incoming chunks by faster workers.
+    * If this is not desired, consider using the `prefetch` and `prefetchN` combinators on workers
+    * to compensate for slower workers.
+    *
     * @param sinks    Sinks that will concurrently process the work.
     */
   def broadcastTo[F2[x] >: F[x]: Concurrent](sinks: Sink[F2, O]*): Stream[F2, Unit] =
