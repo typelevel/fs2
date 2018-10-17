@@ -532,6 +532,15 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
   }
 
   /**
+    * Throttles the stream to the specified `rate`. Unlike [[debounce]], [[metered]] doesn't drop elements.
+    *
+    * Provided `rate` should be viewed as maximum rate:
+    * resulting rate can't exceed the output rate of `this` stream.
+    */
+  def metered[F2[x] >: F[x]: Timer](rate: FiniteDuration): Stream[F2, O] =
+    Stream.fixedRate[F2](rate).zipRight(this)
+
+  /**
     * Returns a stream that when run, sleeps for duration `d` and then pulls from this stream.
     *
     * Alias for `sleep_[F](d) ++ this`.
