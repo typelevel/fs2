@@ -272,10 +272,10 @@ object Queue {
         else q.tail :+ a
       }
 
-    /** Unbounded lifo strategy. */
+    /** Unbounded fifo strategy. */
     def fifo[A]: PubSub.Strategy[A, Chunk[A], ScalaQueue[A], Int] = unbounded((q, a) => a +: q)
 
-    /** Unbounded fifo strategy. */
+    /** Unbounded lifo strategy. */
     def lifo[A]: PubSub.Strategy[A, Chunk[A], ScalaQueue[A], Int] = unbounded(_ :+ _)
 
     /**
