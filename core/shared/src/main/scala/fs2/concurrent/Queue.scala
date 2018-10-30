@@ -151,12 +151,12 @@ object Queue {
 
   /** Creates a queue with the specified size bound. */
   def bounded[F[_], A](maxSize: Int)(implicit F: Concurrent[F]): F[Queue[F, A]] =
-    forStrategy(Strategy.boundedLifo(maxSize))
+    forStrategy(Strategy.boundedFifo(maxSize))
 
   /** Creates a bounded queue terminated by enqueueing `None`. All elements before `None` are preserved. */
   def boundedNoneTerminated[F[_], A](maxSize: Int)(
       implicit F: Concurrent[F]): F[NoneTerminatedQueue[F, A]] =
-    forStrategyNoneTerminated(PubSub.Strategy.closeDrainFirst(Strategy.boundedLifo(maxSize)))
+    forStrategyNoneTerminated(PubSub.Strategy.closeDrainFirst(Strategy.boundedFifo(maxSize)))
 
   /** Creates a queue which stores the last `maxSize` enqueued elements and which never blocks on enqueue. */
   def circularBuffer[F[_], A](maxSize: Int)(implicit F: Concurrent[F]): F[Queue[F, A]] =
@@ -164,7 +164,7 @@ object Queue {
 
   /** Created a bounded queue that distributed always at max `fairSize` elements to any subscriber. */
   def fairBounded[F[_], A](maxSize: Int, fairSize: Int)(implicit F: Concurrent[F]): F[Queue[F, A]] =
-    forStrategy(Strategy.boundedLifo(maxSize).transformSelector[Int]((sz, _) => sz.min(fairSize)))
+    forStrategy(Strategy.boundedFifo(maxSize).transformSelector[Int]((sz, _) => sz.min(fairSize)))
 
   /** Created an unbounded queue terminated by enqueueing `None`. All elements before `None`. */
   def noneTerminated[F[_], A](implicit F: Concurrent[F]): F[NoneTerminatedQueue[F, A]] =
