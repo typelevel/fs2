@@ -333,8 +333,8 @@ object Queue {
         def get(selector: Int, queueState: ScalaQueue[A]): (ScalaQueue[A], Option[Chunk[A]]) =
           if (queueState.isEmpty) (queueState, None)
           else {
-            val (out, rem) = queueState.splitAt(selector)
-            (rem, Some(Chunk.seq(out)))
+            val (out, rem) = Chunk.queueFirstN(queueState, selector)
+            (rem, Some(out))
           }
 
         def subscribe(selector: Int, queueState: ScalaQueue[A]): (ScalaQueue[A], Boolean) =
