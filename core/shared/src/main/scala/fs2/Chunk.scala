@@ -1442,7 +1442,8 @@ object Chunk {
       (Chunk.singleton(hd), tl)
     } else {
       val bldr = collection.mutable.Buffer.newBuilder[A]
-      bldr.sizeHint(n.min(queue.size))
+      // Note: can't use sizeHint here as `n` might be huge (e.g. Int.MaxValue)
+      // and calling n.min(queue.size) has linear time complexity in queue size
       var cur = queue
       var rem = n
       while (rem > 0 && cur.nonEmpty) {
