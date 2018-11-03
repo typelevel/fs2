@@ -20,8 +20,10 @@ object StreamAppRules {
 
   private[this] def replaceStreamApp(d: Defn)(implicit doc: SemanticDocument): Patch = d match {
     case c@Defn.Class(_, _, _, _, tpl@Template(_, is, _, _)) if is.exists{case streamAppInit(_) => true; case _ => false} =>
-      val newApp = Defn.Object(c.mods, Term.Name(c.name.value), replaceTemplate(tpl))
-      Patch.replaceTree(c, newApp.toString()) ++ streamAppObjects(c).map(o => Patch.replaceTree(o, ""))
+      val newApp = c.copy(
+        templ = replaceClassTemplate(tpl)
+      )
+      Patch.replaceTree(c, newApp.toString()) ++ streamAppObjects(c).map(o => Patch.replaceTree(o.templ, replaceObjectTemplate(o.templ).toString()))
     case o@Defn.Object(_, _, tpl@Template(_, is, _, _)) if is.exists{case streamAppInit(_) => true; case _ => false} =>
       val newApp = o.copy(
         templ = replaceTemplate(tpl)
@@ -52,13 +54,28 @@ object StreamAppRules {
     case _ => List()
   }.flatten
 
-  private[this] def replaceStreamAppType(inits: List[Init]): List[Init] =
-    Init.apply(Type.Name("IOApp"), Name("IOApp"), List()) :: inits.filter{ case streamAppInit(_) => false; case _ => true}
+  private[this] def addIOAppType(inits: List[Init]): List[Init] =
+    inits :+ Init.apply(Type.Name("IOApp"), Name("IOApp"), List())
+
+  private[this] def removeStreamAppType(inits: List[Init]): List[Init] =
+    inits.filter{ case streamAppInit(_) => false; case _ => true}
 
   private[this] def replaceTemplate(tpl: Template)(implicit doc: SemanticDocument): Template =
     tpl.copy(
       stats = replaceStats(tpl.stats),
-      inits = replaceStreamAppType(tpl.inits))
+      inits = removeStreamAppType(addIOAppType(tpl.inits))
+    )
+
+  private[this] def replaceClassTemplate(tpl: Template)(implicit doc: SemanticDocument): Template =
+    tpl.copy(
+      stats = replaceClassStats(tpl.stats),
+      inits = removeStreamAppType(tpl.inits)
+    )
+
+  private[this] def replaceObjectTemplate(tpl: Template)(implicit doc: SemanticDocument): Template =
+    tpl.copy(
+      stats = addProgramRun(tpl.stats),
+      inits = addIOAppType(tpl.inits))
 
   private[this] def replaceStats(stats: List[Stat]): List[Stat] =
     stats.map{
@@ -67,10 +84,10 @@ object StreamAppRules {
         val newDef = d.copy(
           name = Term.Name("run"),
           paramss = List(List(Term.Param(List(), Name("args"), Some(Type.Apply(Type.Name("List"), List(Type.Name("String")))), None))),
-          decltpe = Some(Type.Apply(Type.Name("IO"), List(Type.Name("ExitCode")))),
+          decltpe = Some(Type.Apply(Type.Name(fName), List(Type.Name("ExitCode")))),
           body = Term.Apply(Term.Select(
             Term.Select(
-              Term.Select(replaceF(fName, body), //TODO: replace F with IO
+              Term.Select(body,
                 Term.Name("compile")),
               Term.Name("drain")),
             Term.Name("as")),
@@ -80,12 +97,44 @@ object StreamAppRules {
       case s => s
     }
 
+  private[this] val params = List(Term.Param(List(), Name("args"), Some(Type.Apply(Type.Name("List"), List(Type.Name("String")))), None))
+
+  private[this] def replaceClassStats(stats: List[Stat]): List[Stat] =
+    stats.map{
+      case d@Defn.Def(_, _, _, _, tpe, body) =>
+        val fName = tpe.flatMap(getFName).get
+        val newDef = d.copy(
+          name = Term.Name("program"),
+          paramss = List(params),
+          decltpe = Some(Type.Apply(Type.Name(fName), List(Type.Name("ExitCode")))),
+          body = Term.Apply(Term.Select(
+            Term.Select(
+              Term.Select(body,
+                Term.Name("compile")),
+              Term.Name("drain")),
+            Term.Name("as")),
+            List(Term.Select(Term.Name("ExitCode"), Term.Name("Success"))))
+        )
+        newDef
+      case s => s
+    }
+
+  private[this] def addProgramRun(stats: List[Stat]): List[Stat] =
+    Defn.Def(
+          mods = List(),
+          name = Term.Name("run"),
+          tparams = List(),
+          paramss = List(params),
+          decltpe = Some(Type.Apply(Type.Name("IO"), List(Type.Name("ExitCode")))),
+          body = Term.Apply(Term.Name("program"), params.map(p => Term.Name(p.name.value)))
+        ) :: stats
+
   private[this] def replaceF(fName: String, body: Tree): Term =
     body.transform{
       case t@Type.Name(n) if n == fName =>
         Type.Name("IO")
       case t => t
-    }.asInstanceOf[Term] // I know, it's horrible, but I have to fight against scalafix api 
+    }.asInstanceOf[Term] // I know, it's horrible, but I have to fight against scalafix api
 
   private[this] def getFName(t: Type): Option[String] = t match {
     case Type.Apply(_, f :: _) =>
