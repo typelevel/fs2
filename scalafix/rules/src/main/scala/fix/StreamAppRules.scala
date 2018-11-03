@@ -62,14 +62,15 @@ object StreamAppRules {
 
   private[this] def replaceStats(stats: List[Stat]): List[Stat] =
     stats.map{
-      case d@Defn.Def(_, _, _, _, _, body) =>
+      case d@Defn.Def(_, _, _, _, tpe, body) =>
+        val fName = tpe.flatMap(getFName).get
         val newDef = d.copy(
           name = Term.Name("run"),
           paramss = List(List(Term.Param(List(), Name("args"), Some(Type.Apply(Type.Name("List"), List(Type.Name("String")))), None))),
           decltpe = Some(Type.Apply(Type.Name("IO"), List(Type.Name("ExitCode")))),
           body = Term.Apply(Term.Select(
             Term.Select(
-              Term.Select(body, //TODO: replace F with IO
+              Term.Select(replaceF(fName, body), //TODO: replace F with IO
                 Term.Name("compile")),
               Term.Name("drain")),
             Term.Name("as")),
@@ -78,6 +79,24 @@ object StreamAppRules {
         newDef
       case s => s
     }
+
+  private[this] def replaceF(fName: String, body: Tree): Term =
+    body.transform{
+      case t@Type.Name(n) if n == fName =>
+        Type.Name("IO")
+      case t => t
+    }.asInstanceOf[Term] // I know, it's horrible, but I have to fight against scalafix api 
+
+  private[this] def getFName(t: Type): Option[String] = t match {
+    case Type.Apply(_, f :: _) =>
+      f match {
+        case Type.Name(n) => Some(n)
+        case _ => None
+      }
+    case _ =>
+      None
+  }
+
 
   private[this] def addCatsEffectImports(implicit c: SemanticContext): Patch =
     Patch.addGlobalImport(Symbol("cats/effect/IO.")) +

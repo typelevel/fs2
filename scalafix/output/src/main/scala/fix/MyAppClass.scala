@@ -6,4 +6,4 @@ import fs2.Stream
 import cats.effect.{ ExitCode, IOApp }
 import cats.syntax.functor._
 
-object MyApp extends IOApp { override def run(args: List[String]): IO[ExitCode] = Stream.eval(Applicative[F].pure("hello")).flatMap(_ => Stream.eval(Applicative[F].pure(StreamApp.ExitCode.Success))).compile.drain.as(ExitCode.Success) }
+object MyApp extends IOApp { override def run(args: List[String]): IO[ExitCode] = Stream.eval(Applicative[IO].pure("hello")).flatMap(_ => Stream.eval(Applicative[IO].pure(StreamApp.ExitCode.Success))).compile.drain.as(ExitCode.Success) }
