@@ -291,6 +291,70 @@ lazy val reactiveStreams = project
   )
   .dependsOn(coreJVM % "compile->compile;test->test")
 
+lazy val scalafixInputs = project
+  .in(file("scalafix-inputs"))
+  .disablePlugins(MimaPlugin)
+  .settings(commonSettings)
+  .settings(noPublish)
+  .settings(
+    fork := true,
+    libraryDependencies ++= Seq(
+      "co.fs2" %%% "fs2-core" % "0.10.6"
+    ),
+    addCompilerPlugin(scalafixSemanticdb),
+    scalacOptions in Compile -= "-Xfatal-warnings",
+    scalacOptions in Test -= "-Xfatal-warnings"  )
+
+lazy val scalafixOutputs= project
+  .in(file("scalafix-outputs"))
+  .disablePlugins(MimaPlugin)
+  .settings(commonSettings)
+  .settings(noPublish)
+  .settings(
+    skip in publish := true,
+    skip in compile := true,
+    fork := true,
+    addCompilerPlugin(scalafixSemanticdb),
+    scalacOptions in Compile -= "-Xfatal-warnings",
+    scalacOptions in Test -= "-Xfatal-warnings"
+  )
+  .dependsOn(coreJVM)
+
+lazy val scalafixRules = project
+  .in(file("scalafix"))
+  .disablePlugins(MimaPlugin)
+  .settings(commonSettings)
+  .settings(noPublish)
+  .settings(
+    description := "Scalafix for fs2",
+    fork := true,
+    libraryDependencies += "ch.epfl.scala" %% "scalafix-core" % "0.9.0",
+    addCompilerPlugin(scalafixSemanticdb),
+  )
+
+lazy val scalafixTests = project
+  .in(file("scalafix-tests"))
+  .disablePlugins(MimaPlugin)
+  .settings(commonSettings)
+  .settings(noPublish)
+  .settings(
+    fork := true,
+    libraryDependencies += "ch.epfl.scala" % "scalafix-testkit" % "0.9.0" % Test cross CrossVersion.full,
+    compile.in(Compile) :=
+      compile.in(Compile).dependsOn(compile.in(scalafixInputs, Compile)).value,
+    scalafixTestkitOutputSourceDirectories :=
+      sourceDirectories.in(scalafixOutputs, Compile).value,
+    scalafixTestkitInputSourceDirectories :=
+      sourceDirectories.in(scalafixInputs, Compile).value,
+    scalafixTestkitInputClasspath :=
+      fullClasspath.in(scalafixInputs, Compile).value,
+    addCompilerPlugin(scalafixSemanticdb),
+    scalacOptions in Compile -= "-Xfatal-warnings",
+    scalacOptions in Test -= "-Xfatal-warnings"
+  )
+  .dependsOn(scalafixRules)
+  .enablePlugins(ScalafixTestkitPlugin)
+
 lazy val benchmarkMacros = project
   .in(file("benchmark-macros"))
   .disablePlugins(MimaPlugin)
