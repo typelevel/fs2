@@ -6,19 +6,13 @@ import scala.meta._
 
 object BracketRules {
   def unapply(t: Tree): Option[Patch] =
-    Some(
-      t.children
-        .flatMap(traverse)
-        .asPatch)
+    t.children.flatMap(traverse) match {
+      case Nil => None
+      case r   => Some(r.asPatch)
+    }
 
-  def traverse(t: Tree): Option[Patch] =
+  def traverse(t: Tree): Option[Patch] = //TODO: Find a better way of doing defn brackets
     t match {
-      case d: Defn.Val =>
-        Some(replaceBracket(d.rhs))
-      case d: Defn.Def =>
-        Some(replaceBracket(d.body))
-      case d: Defn.Var =>
-        d.rhs.map(replaceBracket)
       case b: Term.ForYield =>
         Some(b.enums.collect {
           case e: Enumerator.Generator => replaceBracket(e.rhs)
@@ -79,13 +73,4 @@ object BracketRules {
       case Term.Function(params, body) =>
         Term.Function(params, traverseBracket(body).asInstanceOf[Term])
     }
-
-  def containsBracket(p: Tree): Boolean =
-    p.collect {
-        case Term.Apply(Term.Apply(Term.Select(_, Term.Name("bracket")), _), _) =>
-          true
-        case _ =>
-          false
-      }
-      .exists(identity)
 }
