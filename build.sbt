@@ -303,7 +303,8 @@ lazy val scalafixInputs = project
     ),
     addCompilerPlugin(scalafixSemanticdb),
     scalacOptions in Compile -= "-Xfatal-warnings",
-    scalacOptions in Test -= "-Xfatal-warnings"  )
+    scalacOptions in Test -= "-Xfatal-warnings"
+  )
 
 lazy val scalafixOutputs = project
   .in(file("scalafix-outputs"))
@@ -329,7 +330,7 @@ lazy val scalafixRules = project
     description := "Scalafix for fs2",
     fork := true,
     libraryDependencies += "ch.epfl.scala" %% "scalafix-core" % "0.9.0",
-    addCompilerPlugin(scalafixSemanticdb),
+    addCompilerPlugin(scalafixSemanticdb)
   )
 
 lazy val scalafixTests = project
@@ -339,7 +340,8 @@ lazy val scalafixTests = project
   .settings(noPublish)
   .settings(
     fork := true,
-    libraryDependencies += "ch.epfl.scala" % "scalafix-testkit" % "0.9.0" % Test cross CrossVersion.full,
+    libraryDependencies += ("ch.epfl.scala" % "scalafix-testkit" % "0.9.0" % Test).cross(
+      CrossVersion.full),
     compile.in(Compile) :=
       compile.in(Compile).dependsOn(compile.in(scalafixInputs, Compile)).value,
     scalafixTestkitOutputSourceDirectories :=
