@@ -305,7 +305,7 @@ lazy val scalafixInputs = project
     scalacOptions in Compile -= "-Xfatal-warnings",
     scalacOptions in Test -= "-Xfatal-warnings"  )
 
-lazy val scalafixOutputs= project
+lazy val scalafixOutputs = project
   .in(file("scalafix-outputs"))
   .disablePlugins(MimaPlugin)
   .settings(commonSettings)
