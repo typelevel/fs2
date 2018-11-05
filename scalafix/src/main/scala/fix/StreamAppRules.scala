@@ -152,12 +152,17 @@ object StreamAppRules {
   }
 
   private[this] def addCatsEffectImports(implicit doc: SemanticDocument): Patch =
-    Patch.addGlobalImport(Symbol("cats/effect/IO.")) +
-      Patch.addGlobalImport(Symbol("cats/effect/ExitCode.")) +
-      Patch.addGlobalImport(Symbol("cats/effect/IOApp."))
+    if (!containsImport(importer"cats.effect._")) // the other cases are handled directly by scalafix
+      Patch.addGlobalImport(Symbol("cats/effect/IO.")) +
+        Patch.addGlobalImport(Symbol("cats/effect/ExitCode.")) +
+        Patch.addGlobalImport(Symbol("cats/effect/IOApp."))
+    else Patch.empty
 
-  private[this] def addCatsSyntaxImport: Patch =
-    Patch.addGlobalImport(importer"cats.syntax.functor._")
+  private[this] def addCatsSyntaxImport(implicit doc: SemanticDocument): Patch =
+    if (containsImport(importer"cats.syntax.functor._") || containsImport(
+          importer"cats.syntax.functor._") || containsImport(importer"cats.implicits._"))
+      Patch.empty
+    else Patch.addGlobalImport(importer"cats.syntax.functor._")
 
   private[this] val exitCodeSuccessMatcher = SymbolMatcher.exact("fs2/StreamApp.ExitCode.Success.")
 

@@ -58,10 +58,9 @@ object SchedulerRules {
             Term.Select(Term.Select(s, Term.Name("effect")), Term.Name("delayCancellable")),
             List(fa, d)) if isScheduler(s) =>
         val concurrent = Term.Apply(
-          Term.Select(Term.ApplyType(
-                        Term.Name("Concurrent"),
-                        List(Type.Name(getEffectType(fa.symbol)))),
-                      Term.Name("race")),
+          Term.Select(
+            Term.ApplyType(Term.Name("Concurrent"), List(Type.Name(getEffectType(fa.symbol)))),
+            Term.Name("race")),
           List(fa, Term.Apply(Term.Select(s, Term.Name("sleep")), List(d)))
         )
         Patch.replaceTree(sched, concurrent.toString())

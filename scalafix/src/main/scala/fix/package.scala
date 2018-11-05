@@ -18,6 +18,8 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
  */
 import scalafix.v1._
 
+import scala.meta.Importer
+
 package object fix {
   // Maybe to improve, but not needed for our purposes
   def getTypeSymbol(symbol: Symbol)(implicit doc: SemanticDocument): Option[Symbol] =
@@ -45,4 +47,10 @@ package object fix {
       case _ => NoType
     }
 
+  def containsImport(importer: Importer)(implicit doc: SemanticDocument): Boolean =
+    doc.tree.collect {
+      case i: Importer if i == importer =>
+        true
+      case _ => false
+    }.head
 }
