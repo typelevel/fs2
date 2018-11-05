@@ -32,4 +32,17 @@ package object fix {
         }
       case _ => None
     }
+
+  def getEffectType(symbol: Symbol)(implicit doc: SemanticDocument): String =
+    getType(symbol).toString
+      .takeWhile(_ != '[') // There might be a better way, but for our purposes it's enough
+
+  // From https://scalacenter.github.io/scalafix/docs/developers/semantic-type.html
+  def getType(symbol: Symbol)(implicit doc: SemanticDocument): SemanticType =
+    symbol.info.get.signature match {
+      case MethodSignature(_, _, returnType) =>
+        returnType
+      case _ => NoType
+    }
+
 }
