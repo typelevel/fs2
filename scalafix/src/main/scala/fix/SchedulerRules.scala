@@ -4,39 +4,39 @@ import scala.meta._
 
 object SchedulerRules {
 
-  def unapply(t: Tree)(implicit doc: SemanticDocument): Option[Patch] =
-    t match {
+  def apply(t: Tree)(implicit doc: SemanticDocument): List[Patch] =
+    t.collect {
       case t @ scheduler(_: Type.Name) =>
-        Some(Patch.replaceTree(t, timer(Type.Name("F")).toString())) //TODO: Use actual effect
+        Patch.replaceTree(t, timer(Type.Name("F")).toString()) //TODO: Use actual effect
       case Term.ApplyType(scheduler(_), List(f)) =>
-        Some(Patch.replaceTree(t, timer(f).toString()))
+        Patch.replaceTree(t, timer(f).toString())
       case sched @ Term.Apply(
             Term.ApplyType(Term.Select(Term.Select(s, Term.Name("effect")), Term.Name("sleep")), _),
             List(d)) => //TODO: use symbol matcher to make sure we are changing fs2 scheduler
         val timerSleep = Term.Apply(Term.Select(s, Term.Name("sleep")), List(d))
-        Some(Patch.replaceTree(sched, timerSleep.toString()))
+        Patch.replaceTree(sched, timerSleep.toString())
       case sched @ Term
             .Apply(Term.ApplyType(Term.Select(s, Term.Name("sleep")), List(f)), List(d)) =>
-        val stream = Term.Apply(
-          Term.ApplyType(Term.Select(Term.Name("Stream"), Term.Name("sleep")), List(f)),
-          List(d))
-        Some(Patch.replaceTree(sched, stream.toString()))
+        val stream =
+          Term.Apply(Term.ApplyType(Term.Select(Term.Name("Stream"), Term.Name("sleep")), List(f)),
+                     List(d))
+        Patch.replaceTree(sched, stream.toString())
       case sched @ Term
             .Apply(Term.ApplyType(Term.Select(s, Term.Name("sleep_")), List(f)), List(d)) =>
-        val stream = Term.Apply(
-          Term.ApplyType(Term.Select(Term.Name("Stream"), Term.Name("sleep_")), List(f)),
-          List(d))
-        Some(Patch.replaceTree(sched, stream.toString()))
+        val stream =
+          Term.Apply(Term.ApplyType(Term.Select(Term.Name("Stream"), Term.Name("sleep_")), List(f)),
+                     List(d))
+        Patch.replaceTree(sched, stream.toString())
       case sched @ Term
             .Apply(Term.ApplyType(Term.Select(s, Term.Name("awakeEvery")), List(f)), List(d)) =>
         val stream = Term.Apply(
           Term.ApplyType(Term.Select(Term.Name("Stream"), Term.Name("awakeEvery")), List(f)),
           List(d))
-        Some(Patch.replaceTree(sched, stream.toString()))
+        Patch.replaceTree(sched, stream.toString())
       case sched @ Term
             .Apply(Term.Select(s, Term.Name("retry")), params) =>
         val stream = Term.Apply(Term.Select(Term.Name("Stream"), Term.Name("retry")), params)
-        Some(Patch.replaceTree(sched, stream.toString()))
+        Patch.replaceTree(sched, stream.toString())
       case sched @ Term.Apply(
             Term.Select(
               Term.Apply(
@@ -56,10 +56,8 @@ object SchedulerRules {
                 List(Term.Name("duration"))
               )
             )
-          ) => //TODO
-        println(sched.structure)
-        None
-      case _ => None
+          ) =>
+        Patch.empty //TODO
     }
 
   def stream(f: Type, a: Term): Term =

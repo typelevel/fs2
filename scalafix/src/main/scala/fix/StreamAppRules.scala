@@ -6,21 +6,18 @@ import scalafix.v1._
 import scala.meta._
 
 object StreamAppRules {
-  def unapply(t: Tree)(implicit doc: SemanticDocument): Option[Patch] =
-    t match {
+  def apply(t: Tree)(implicit doc: SemanticDocument): List[Patch] =
+    t.collect {
       case d: Defn =>
-        Some(replaceStreamApp(d))
+        replaceStreamApp(d)
       case exitCodeSuccessMatcher(fs2ExitCode @ Name(_)) =>
-        Some(
-          Patch.lint(
-            Diagnostic("StreamAppExitCode",
-                       message = "You can remove this",
-                       position = fs2ExitCode.pos,
-                       severity = LintSeverity.Warning)))
+        Patch.lint(
+          Diagnostic("StreamAppExitCode",
+                     message = "You can remove this",
+                     position = fs2ExitCode.pos,
+                     severity = LintSeverity.Warning))
       case i @ Importee.Name(Name("StreamApp")) =>
-        Some(Patch.removeImportee(i) + addCatsEffectImports + addCatsSyntaxImport)
-      case _ =>
-        None
+        Patch.removeImportee(i) + addCatsEffectImports + addCatsSyntaxImport
     }
 
   private[this] def replaceStreamApp(d: Defn)(implicit doc: SemanticDocument): Patch = d match {

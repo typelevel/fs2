@@ -5,36 +5,34 @@ import scalafix.v1._
 import scala.meta._
 
 object BracketRules {
-  def unapply(t: Tree): Option[Patch] =
-    t.children.flatMap(traverse) match {
-      case Nil => None
-      case r   => Some(r.asPatch)
-    }
 
-  def traverse(t: Tree): Option[Patch] = //TODO: Find a better way of doing defn brackets
-    t match {
-      case b: Term.ForYield =>
-        Some(b.enums.collect {
-          case e: Enumerator.Generator => replaceBracket(e.rhs)
-          case e: Enumerator.Val       => replaceBracket(e.rhs)
-          case e: Enumerator.Guard     => replaceBracket(e.cond)
-        }.asPatch)
-      case b: Term.For =>
-        Some(b.enums.collect {
-          case e: Enumerator.Generator => replaceBracket(e.rhs)
-          case e: Enumerator.Val       => replaceBracket(e.rhs)
-          case e: Enumerator.Guard     => replaceBracket(e.cond)
-        }.asPatch)
+  def apply(t: Tree): List[Patch] =
+    t.collect {
+      case e: Enumerator.Generator => replaceBracket(e.rhs)
+      case e: Enumerator.Val       => replaceBracket(e.rhs)
       case b: Term.Apply =>
-        Some(b.args.map(replaceBracket).asPatch)
+        b.args.map(replaceBracket).asPatch
       case b: Term.Tuple =>
-        Some(b.args.map(replaceBracket).asPatch)
+        b.args.map(replaceBracket).asPatch
       case b: Term.Block =>
-        Some(b.stats.map {
+        b.stats.collect {
           case s: Term.Apply => replaceBracket(s)
+        }.asPatch
+      case d: Defn.Val =>
+        d.rhs match {
+          case t: Term.Apply => replaceBracket(t)
           case _             => Patch.empty
-        }.asPatch)
-      case _ => None
+        }
+      case d: Defn.Def =>
+        d.body match {
+          case t: Term.Apply => replaceBracket(t)
+          case _             => Patch.empty
+        }
+      case d: Defn.Var =>
+        d.rhs match {
+          case Some(t: Term.Apply) => replaceBracket(t)
+          case s                   => Patch.empty
+        }
     }
 
   def replaceBracket(p: Tree): Patch =
@@ -53,7 +51,7 @@ object BracketRules {
           ) =>
         val newBracket = traverseBracket(b)
         Patch.replaceTree(b, newBracket.toString)
-      case b => traverse(b).asPatch
+      case b => apply(b).asPatch
     }
 
   def traverseBracket(s: Stat): Stat =

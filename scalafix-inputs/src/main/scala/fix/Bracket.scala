@@ -29,4 +29,11 @@ object Bracket {
     } yield r
     Stream.bracket(IO.pure("resource"))(r => Stream.bracket(IO.pure(r+"2"))(r2 => Stream.emit(r2), _ => IO.unit), _ => IO.unit)
   }
+
+  def bracketDef: Stream[IO, String] = Stream.bracket(IO.pure("resource"))(r => Stream.emit(r), _ => IO.unit)
+  var bracketVar: Stream[IO, String] = Stream.bracket(IO.pure("resource"))(r => Stream.emit(r), _ => IO.unit)
+
+  def bracketDefFor: Stream[IO, String] = for {
+    r <- Stream.bracket(IO.pure("resource"))(r => Stream.emit(r), _ => IO.unit)
+  } yield r
 }
