@@ -93,20 +93,26 @@ private[internal] object Resource {
     *                   invoked when the resource is released.
     * @param leases     References (leases) of this resource
     */
-  final case class State[+F[_]](
+  private[this] final case class State[+F[_]](
       open: Boolean,
       finalizer: Option[ExitCase[Throwable] => F[Either[Throwable, Unit]]],
       leases: Int
-  )
+  ){
+    /* The `isFinished` predicate indicates that the finalizer can be run at the present state:
+      which happens IF it is closed, AND there are no acquired leases pending to be released. */
+    @inline def isFinished: Boolean = !open && leases == 0
+  }
 
-  val initial = State(open = true, finalizer = None, leases = 0)
+  private[this] val initial = State(open = true, finalizer = None, leases = 0)
 
   def create[F[_]](implicit F: Sync[F]): Resource[F] =
     new Resource[F] {
 
-      val state: Ref[F, State[F]] = Ref.unsafe(initial)
+      private[this] val state: Ref[F, State[F]] = Ref.unsafe(initial)
 
-      val id: Token = new Token
+      override val id: Token = new Token
+
+      private[this] val pru: F[Either[Throwable, Unit]] = F.pure(Right(()))
 
       def release(ec: ExitCase[Throwable]): F[Either[Throwable, Unit]] =
         F.flatMap(state.modify { s =>
@@ -114,49 +120,47 @@ private[internal] object Resource {
             (s.copy(open = false), None) // do not allow to run finalizer if there are leases open
           else
             (s.copy(open = false, finalizer = None), s.finalizer) // reset finalizer to None, will be run, it available, otherwise the acquire will take care of it
-        })(finalizer => finalizer.map(_(ec)).getOrElse(F.pure(Right(()))))
+        })(finalizer => finalizer.map(_(ec)).getOrElse(pru))
 
-      def acquired(finalizer: ExitCase[Throwable] => F[Unit]): F[Either[Throwable, Boolean]] = {
-        val attemptFinalizer = (ec: ExitCase[Throwable]) => F.attempt(finalizer(ec))
+      def acquired(finalizer: ExitCase[Throwable] => F[Unit]): F[Either[Throwable, Boolean]] =
         F.flatten(state.modify { s =>
-          if (!s.open && s.leases == 0)
-            s -> F.map(attemptFinalizer(ExitCase.Completed))(_.right.map(_ => false)) // state is closed and there are no leases, finalizer has to be invoked right away
-          else
-            s.copy(finalizer = Some(attemptFinalizer)) -> F
-              .pure(Right(true)) // either state is open, or leases are present, either release or `Lease#cancel` will run the finalizer
+          if (s.isFinished)
+            // state is closed and there are no leases, finalizer has to be invoked right away
+            s -> F.attempt(F.as(finalizer(ExitCase.Completed), false))
+          else {
+            val attemptFinalizer = (ec: ExitCase[Throwable]) => F.attempt(finalizer(ec))
+            // either state is open, or leases are present, either release or `Lease#cancel` will run the finalizer
+            s.copy(finalizer = Some(attemptFinalizer)) -> F.pure(Right(true))
+          }
         })
-      }
 
       def lease: F[Option[Scope.Lease[F]]] =
-        F.map(state.modify { s =>
-          val now = if (!s.open) s else s.copy(leases = s.leases + 1)
-          now -> now
-        }) { now =>
-          if (!now.open) None
-          else {
-            val lease = new Scope.Lease[F] {
-              def cancel: F[Either[Throwable, Unit]] =
-                F.flatMap(state.modify { s =>
-                  val now = s.copy(leases = s.leases - 1)
-                  now -> now
-                }) { now =>
-                  if (now.open)
-                    F.pure(Right(())) // scope is open, we don't have to invoke finalizer
-                  else if (now.leases != 0)
-                    F.pure(Right(())) // scope is closed, but leases still pending
-                  else {
-                    // scope is closed and this is last lease, assure finalizer is removed from the state and run
-                    F.flatten(state.modify { s =>
-                      // previous finalizer shall be always present at this point, this shall invoke it
-                      s.copy(finalizer = None) -> s.finalizer
-                        .map(_(ExitCase.Completed))
-                        .getOrElse(F.pure(Right(())))
-                    })
-                  }
-                }
-            }
-            Some(lease)
-          }
+        state.modify { s =>
+          if (s.open)
+            s.copy(leases = s.leases + 1) -> Some(TheLease)
+          else
+            s -> None
         }
+
+      private[this] object TheLease extends Scope.Lease[F] {
+        def cancel: F[Either[Throwable, Unit]] =
+          F.flatMap(state.modify { s =>
+            val now = s.copy(leases = s.leases - 1)
+            now -> now
+          }) { now =>
+            if (now.isFinished)
+              F.flatten(state.modify { s =>
+                // Scope is closed and this is last lease, assure finalizer is removed from the state and run
+                // previous finalizer shall be always present at this point, this shall invoke it
+                s.copy(finalizer = None) -> (s.finalizer match {
+                  case Some(ff) => ff(ExitCase.Completed)
+                  case None     => pru
+                })
+              })
+            else
+              pru
+          }
+      }
+
     }
 }
