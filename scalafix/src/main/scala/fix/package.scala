@@ -25,14 +25,18 @@ package object fix {
   def getTypeSymbol(symbol: Symbol)(implicit doc: SemanticDocument): Option[Symbol] =
     symbol.info.get.signature match {
       case MethodSignature(_, _, returnType) =>
-        returnType match {
-          case t: TypeRef    => Some(t.symbol)
-          case t: SingleType => Some(t.symbol)
-          case t: ThisType   => Some(t.symbol)
-          case t: SuperType  => Some(t.symbol)
-          case _             => None
-        }
-      case _ => None
+        getSymbol(returnType)
+      case ValueSignature(t) => getSymbol(t)
+      case _                 => None
+    }
+
+  def getSymbol(t: SemanticType): Option[Symbol] =
+    t match {
+      case t: TypeRef    => Some(t.symbol)
+      case t: SingleType => Some(t.symbol)
+      case t: ThisType   => Some(t.symbol)
+      case t: SuperType  => Some(t.symbol)
+      case _             => None
     }
 
   def getEffectType(symbol: Symbol)(implicit doc: SemanticDocument): String =
