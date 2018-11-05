@@ -2,7 +2,7 @@ package fs2.concurrent
 
 import cats.{Applicative, Eq}
 import cats.effect.concurrent.{Deferred, Ref}
-import cats.effect.{Concurrent, ExitCase, Sync}
+import cats.effect.{Concurrent, ExitCase, Resource, Sync}
 import cats.syntax.all._
 import fs2.Chunk
 import fs2.internal.Token
@@ -32,9 +32,12 @@ private[fs2] trait Subscribe[F[_], A, Selector] {
   /**
     * Gets elements satisfying the `selector`, yielding when such an element is available.
     *
-    * @param selector selector describing which `A` to receive
+    * Note that resulting `F[A]` may not be used concurrently. If oyu need concurrent
+    * operations use multiple `get` for each concurrent operation.
+    *
+    * @param selector selector describing which A` to receive
     */
-  def get(selector: Selector): F[A]
+  def get(selector: Selector): Resource[F, F[A]]
 
   /**
     * Like `get`, but instead of semantically blocking for a matching element, returns immediately
@@ -231,20 +234,24 @@ private[fs2] object PubSub {
             }
           }
 
-        def get(selector: Selector): F[O] =
-          update { ps =>
-            tryGet_(selector, ps) match {
-              case (ps, None) =>
-                val sub =
-                  Subscriber(new Token, selector, Deferred.unsafe[F, O])
-                def cancellableGet =
-                  Sync[F].guaranteeCase(sub.signal.get)(clearSubscriber(sub.token))
+        def get(selector: Selector): Resource[F, F[O]] = Resource.applyCase {
+          Sync[F].delay {
+            val token = new Token
+            def get_ =
+              update { ps =>
+                tryGet_(selector, ps) match {
+                  case (ps, None) =>
+                    val sub =
+                      Subscriber(token, selector, Deferred.unsafe[F, O])
 
-                (ps.copy(subscribers = ps.subscribers :+ sub), cancellableGet)
-              case (ps, Some(o)) =>
-                (ps, Applicative[F].pure(o))
-            }
+                    (ps.copy(subscribers = ps.subscribers :+ sub), sub.signal.get)
+                  case (ps, Some(o)) =>
+                    (ps, Applicative[F].pure(o))
+                }
+              }
+            (get_, clearSubscriber(token) _)
           }
+        }
 
         def tryGet(selector: Selector): F[Option[O]] =
           update { ps =>
