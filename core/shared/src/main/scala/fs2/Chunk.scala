@@ -1426,6 +1426,35 @@ object Chunk {
       Chunk.longs(arr)
     }
 
+  /**
+    * Creates a chunk consisting of the elements of `queue`.
+    */
+  def queue[A](queue: collection.immutable.Queue[A]): Chunk[A] = seq(queue)
+
+  /**
+    * Creates a chunk consisting of the first `n` elements of `queue` and returns the remainder.
+    */
+  def queueFirstN[A](queue: collection.immutable.Queue[A],
+                     n: Int): (Chunk[A], collection.immutable.Queue[A]) =
+    if (n <= 0) (Chunk.empty, queue)
+    else if (n == 1) {
+      val (hd, tl) = queue.dequeue
+      (Chunk.singleton(hd), tl)
+    } else {
+      val bldr = collection.mutable.Buffer.newBuilder[A]
+      // Note: can't use sizeHint here as `n` might be huge (e.g. Int.MaxValue)
+      // and calling n.min(queue.size) has linear time complexity in queue size
+      var cur = queue
+      var rem = n
+      while (rem > 0 && cur.nonEmpty) {
+        val (hd, tl) = cur.dequeue
+        bldr += hd
+        cur = tl
+        rem -= 1
+      }
+      (Chunk.buffer(bldr.result), cur)
+    }
+
   implicit def fs2EqForChunk[A: Eq]: Eq[Chunk[A]] = new Eq[Chunk[A]] {
     def eqv(c1: Chunk[A], c2: Chunk[A]) =
       c1.size === c2.size && (0 until c1.size).forall(i => c1(i) === c2(i))
@@ -1497,9 +1526,9 @@ object Chunk {
         def loop(acc: SQueue[Chunk[A]], rem: SQueue[Chunk[A]], toTake: Int): Queue[A] =
           if (toTake <= 0) new Queue(acc, n)
           else {
-            val next = rem.head
+            val (next, tail) = rem.dequeue
             val nextSize = next.size
-            if (nextSize < toTake) loop(acc :+ next, rem.tail, toTake - nextSize)
+            if (nextSize < toTake) loop(acc :+ next, tail, toTake - nextSize)
             else if (nextSize == toTake) new Queue(acc :+ next, n)
             else new Queue(acc :+ next.take(toTake), n)
           }
