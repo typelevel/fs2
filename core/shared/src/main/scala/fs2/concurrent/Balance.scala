@@ -46,12 +46,10 @@ object Balance {
   def apply[F[_]: Concurrent, O](chunkSize: Int): Pipe[F, O, Stream[F, O]] = { source =>
     Stream.eval(PubSub(PubSub.Strategy.closeDrainFirst(strategy[O]))).flatMap { pubSub =>
       def subscriber =
-        Stream.resource(pubSub.get(chunkSize)).flatMap { get =>
-          Stream
-            .repeatEval(get)
-            .unNoneTerminate
-            .flatMap(Stream.chunk)
-        }
+        pubSub
+          .getStream(chunkSize)
+          .unNoneTerminate
+          .flatMap(Stream.chunk)
 
       def push =
         source.chunks

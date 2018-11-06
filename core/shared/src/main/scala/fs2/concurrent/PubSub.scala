@@ -2,9 +2,9 @@ package fs2.concurrent
 
 import cats.{Applicative, Eq}
 import cats.effect.concurrent.{Deferred, Ref}
-import cats.effect.{Concurrent, ExitCase, Resource, Sync}
+import cats.effect.{Concurrent, ExitCase, Sync}
 import cats.syntax.all._
-import fs2.Chunk
+import fs2._
 import fs2.internal.Token
 
 import scala.annotation.tailrec
@@ -32,12 +32,18 @@ private[fs2] trait Subscribe[F[_], A, Selector] {
   /**
     * Gets elements satisfying the `selector`, yielding when such an element is available.
     *
-    * Note that resulting `F[A]` may not be used concurrently. If oyu need concurrent
-    * operations use multiple `get` for each concurrent operation.
-    *
-    * @param selector selector describing which A` to receive
+    * @param selector selector describing which `A` to receive
     */
-  def get(selector: Selector): Resource[F, F[A]]
+  def get(selector: Selector): F[A]
+
+  /**
+    * A variant of `get`, that instead or returning one element will return multiple elements
+    * in form of stream.
+    *
+    * @param selector selector describing which `A` to receive
+    * @return
+    */
+  def getStream(selector: Selector): Stream[F, A]
 
   /**
     * Like `get`, but instead of semantically blocking for a matching element, returns immediately
@@ -199,14 +205,16 @@ private[fs2] object PubSub {
           }
       }
 
-      def clearSubscriber(token: Token)(exitCase: ExitCase[Throwable]): F[Unit] = exitCase match {
-        case ExitCase.Completed => Applicative[F].unit
-        case ExitCase.Error(_) | ExitCase.Canceled =>
-          state.update { ps =>
-            ps.copy(subscribers = ps.subscribers.filterNot(_.token == token))
-          }
+      def clearSubscriber(token: Token): F[Unit] =
+        state.update { ps =>
+          ps.copy(subscribers = ps.subscribers.filterNot(_.token == token))
+        }
 
-      }
+      def clearSubscriberOnCancel(token: Token)(exitCase: ExitCase[Throwable]): F[Unit] =
+        exitCase match {
+          case ExitCase.Completed                    => Applicative[F].unit
+          case ExitCase.Error(_) | ExitCase.Canceled => clearSubscriber(token)
+        }
 
       new PubSub[F, I, O, Selector] {
         def publish(i: I): F[Unit] =
@@ -234,9 +242,26 @@ private[fs2] object PubSub {
             }
           }
 
-        def get(selector: Selector): Resource[F, F[O]] = Resource.applyCase {
-          Sync[F].delay {
-            val token = new Token
+        def get(selector: Selector): F[O] =
+          update { ps =>
+            tryGet_(selector, ps) match {
+              case (ps, None) =>
+                val token = new Token
+
+                val sub =
+                  Subscriber(token, selector, Deferred.unsafe[F, O])
+
+                def cancellableGet =
+                  Sync[F].guaranteeCase(sub.signal.get)(clearSubscriberOnCancel(token))
+
+                (ps.copy(subscribers = ps.subscribers :+ sub), cancellableGet)
+              case (ps, Some(o)) =>
+                (ps, Applicative[F].pure(o))
+            }
+          }
+
+        def getStream(selector: Selector): Stream[F, O] =
+          Stream.bracket(Sync[F].delay(new Token))(clearSubscriber).flatMap { token =>
             def get_ =
               update { ps =>
                 tryGet_(selector, ps) match {
@@ -245,13 +270,14 @@ private[fs2] object PubSub {
                       Subscriber(token, selector, Deferred.unsafe[F, O])
 
                     (ps.copy(subscribers = ps.subscribers :+ sub), sub.signal.get)
+
                   case (ps, Some(o)) =>
                     (ps, Applicative[F].pure(o))
                 }
               }
-            (get_, clearSubscriber(token) _)
+
+            Stream.repeatEval(get_)
           }
-        }
 
         def tryGet(selector: Selector): F[Option[O]] =
           update { ps =>

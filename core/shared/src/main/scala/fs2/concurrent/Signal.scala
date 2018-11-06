@@ -196,8 +196,7 @@ object SignallingRef {
 
           def discrete: Stream[F, A] =
             Stream.bracket(Sync[F].delay(Some(new Token)))(pubSub.unsubscribe).flatMap { selector =>
-              Stream.resource(pubSub.get(selector)).flatMap { Stream.repeatEval }
-
+              pubSub.getStream(selector)
             }
 
         }

@@ -43,13 +43,12 @@ object Broadcast {
       pubSub =>
         def subscriber =
           Stream.bracket(Sync[F].delay(new Token))(pubSub.unsubscribe).flatMap { selector =>
-            Stream.resource(pubSub.get(selector)).flatMap { get =>
-              Stream
-                .repeatEval(get)
-                .unNoneTerminate
-                .flatMap(Stream.chunk)
-            }
+            pubSub
+              .getStream(selector)
+              .unNoneTerminate
+              .flatMap(Stream.chunk)
           }
+
         def publish =
           source.chunks
             .evalMap(chunk => pubSub.publish(Some(chunk)))

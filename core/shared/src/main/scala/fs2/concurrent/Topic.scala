@@ -101,13 +101,9 @@ object Topic {
               )(selector => pubSub.unsubscribe(Right(selector)))
               .map { selector =>
                 selector ->
-                  Stream.resource(pubSub.get(Right(selector))).flatMap { get =>
-                    Stream
-                      .repeatEval(get)
-                      .flatMap {
-                        case Right(q) => Stream.emit(q)
-                        case Left(_)  => Stream.empty // impossible
-                      }
+                  pubSub.getStream(Right(selector)).flatMap {
+                    case Right(q) => Stream.emit(q)
+                    case Left(_)  => Stream.empty // impossible
                   }
 
               }
@@ -122,33 +118,30 @@ object Topic {
             subscriber(maxQueued).flatMap { case (_, s) => s.flatMap(Stream.emits) }
 
           def subscribeSize(maxQueued: Int): Stream[F, (A, Int)] =
-            Stream.resource(pubSub.get(Left(None))).flatMap { getSize =>
-              subscriber(maxQueued).flatMap {
-                case (selector, stream) =>
-                  stream
-                    .flatMap { q =>
-                      Stream.emits(q.zipWithIndex.map { case (a, idx) => (a, q.size - idx) })
-                    }
-                    .evalMap {
-                      case (a, remQ) =>
-                        getSize.map {
-                          case Left(s) =>
-                            (a, s.subscribers.get(selector).map(_.size + remQ).getOrElse(remQ))
-                          case Right(_) => (a, -1) // impossible
-                        }
-                    }
-              }
+            subscriber(maxQueued).flatMap {
+              case (selector, stream) =>
+                stream
+                  .flatMap { q =>
+                    Stream.emits(q.zipWithIndex.map { case (a, idx) => (a, q.size - idx) })
+                  }
+                  .evalMap {
+                    case (a, remQ) =>
+                      pubSub.get(Left(None)).map {
+                        case Left(s) =>
+                          (a, s.subscribers.get(selector).map(_.size + remQ).getOrElse(remQ))
+                        case Right(_) => (a, -1) // impossible
+                      }
+                  }
             }
 
           def subscribers: Stream[F, Int] =
             Stream
               .bracket(Sync[F].delay(new Token))(token => pubSub.unsubscribe(Left(Some(token))))
               .flatMap { token =>
-                Stream.resource(pubSub.get(Left(Some(token)))).flatMap { get =>
-                  Stream.repeatEval(get).flatMap {
-                    case Left(s)  => Stream.emit(s.subscribers.size)
-                    case Right(_) => Stream.empty //impossible
-                  }
+                pubSub.getStream(Left(Some(token))).flatMap {
+                  case Left(s)  => Stream.emit(s.subscribers.size)
+                  case Right(_) => Stream.empty //impossible
+
                 }
               }
         }

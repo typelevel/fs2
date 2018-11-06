@@ -1,6 +1,6 @@
 package fs2.experimental.concurrent
 
-import cats.effect.{Concurrent, Resource}
+import cats.effect.Concurrent
 import cats.syntax.all._
 import fs2._
 
@@ -18,7 +18,8 @@ object PubSub {
       strategy: Strategy[I, O, QS, Selector]): F[PubSub[F, I, O, Selector]] =
     fs2.concurrent.PubSub(strategy).map { self =>
       new PubSub[F, I, O, Selector] {
-        def get(selector: Selector): Resource[F, F[O]] = self.get(selector)
+        def get(selector: Selector): F[O] = self.get(selector)
+        def getStream(selector: Selector): Stream[F, O] = self.getStream(selector)
         def tryGet(selector: Selector): F[Option[O]] = self.tryGet(selector)
         def subscribe(selector: Selector): F[Boolean] = self.subscribe(selector)
         def unsubscribe(selector: Selector): F[Unit] = self.unsubscribe(selector)
