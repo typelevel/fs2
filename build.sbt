@@ -197,9 +197,9 @@ lazy val mimaSettings = Seq(
   mimaBinaryIssueFilters ++= Seq(
     ProblemFilters.exclude[Problem]("fs2.internal.*"),
     ProblemFilters.exclude[Problem]("fs2.Stream#StepLeg.this"),
-    ProblemFilters.exclude[Problem]("fs2.concurrent.Publish"),
-    ProblemFilters.exclude[Problem]("fs2.concurrent.Subscribe"),
-    ProblemFilters.exclude[Problem]("fs2.concurrent.PubSub")
+    ProblemFilters.exclude[Problem]("fs2.concurrent.Publish.*"),
+    ProblemFilters.exclude[Problem]("fs2.concurrent.Subscribe.*"),
+    ProblemFilters.exclude[Problem]("fs2.concurrent.PubSub.*")
   )
 )
 
