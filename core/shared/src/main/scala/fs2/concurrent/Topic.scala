@@ -101,12 +101,10 @@ object Topic {
               )(selector => pubSub.unsubscribe(Right(selector)))
               .map { selector =>
                 selector ->
-                  Stream
-                    .repeatEval(pubSub.get(Right(selector)))
-                    .flatMap {
-                      case Right(q) => Stream.emit(q)
-                      case Left(_)  => Stream.empty // impossible
-                    }
+                  pubSub.getStream(Right(selector)).flatMap {
+                    case Right(q) => Stream.emit(q)
+                    case Left(_)  => Stream.empty // impossible
+                  }
 
               }
 
@@ -140,9 +138,10 @@ object Topic {
             Stream
               .bracket(Sync[F].delay(new Token))(token => pubSub.unsubscribe(Left(Some(token))))
               .flatMap { token =>
-                Stream.repeatEval(pubSub.get(Left(Some(token)))).flatMap {
+                pubSub.getStream(Left(Some(token))).flatMap {
                   case Left(s)  => Stream.emit(s.subscribers.size)
                   case Right(_) => Stream.empty //impossible
+
                 }
               }
         }

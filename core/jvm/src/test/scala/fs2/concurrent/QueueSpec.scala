@@ -75,6 +75,37 @@ class QueueSpec extends Fs2Spec {
         }
       }
     }
+
+    "dequeue releases subscriber on " - {
+      "interrupt" in {
+
+        Queue
+          .unbounded[IO, Int]
+          .flatMap { q =>
+            q.dequeue.interruptAfter(1.second).compile.drain *>
+              q.enqueue1(1) *>
+              q.enqueue1(2) *>
+              q.dequeue1
+          }
+          .unsafeRunSync shouldBe 1
+
+      }
+
+      "cancel" in {
+
+        Queue
+          .unbounded[IO, Int]
+          .flatMap { q =>
+            q.dequeue1.timeout(1.second).attempt *>
+              q.enqueue1(1) *>
+              q.enqueue1(2) *>
+              q.dequeue1
+          }
+          .unsafeRunSync shouldBe 1
+
+      }
+    }
+
     "size signal is initialized to zero" in {
       runLog(
         Stream

@@ -19,6 +19,7 @@ object PubSub {
     fs2.concurrent.PubSub(strategy).map { self =>
       new PubSub[F, I, O, Selector] {
         def get(selector: Selector): F[O] = self.get(selector)
+        def getStream(selector: Selector): Stream[F, O] = self.getStream(selector)
         def tryGet(selector: Selector): F[Option[O]] = self.tryGet(selector)
         def subscribe(selector: Selector): F[Boolean] = self.subscribe(selector)
         def unsubscribe(selector: Selector): F[Unit] = self.unsubscribe(selector)

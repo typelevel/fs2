@@ -209,10 +209,12 @@ object Queue {
           pubSub.tryGet(maxSize)
 
         def dequeueChunk(maxSize: Int): Stream[F, A] =
-          Stream.evalUnChunk(pubSub.get(maxSize)).repeat
+          pubSub.getStream(maxSize).flatMap(Stream.chunk)
 
         def dequeueBatch: Pipe[F, Int, A] =
-          _.flatMap(sz => Stream.evalUnChunk(pubSub.get(sz)))
+          _.flatMap { sz =>
+            Stream.evalUnChunk(pubSub.get(sz))
+          }
       }
     }
 
@@ -229,10 +231,14 @@ object Queue {
           pubSub.tryPublish(a)
 
         def dequeueChunk(maxSize: Int): Stream[F, A] =
-          Stream.repeatEval(pubSub.get(maxSize)).unNoneTerminate.flatMap(Stream.chunk)
+          pubSub
+            .getStream(maxSize)
+            .unNoneTerminate
+            .flatMap(Stream.chunk)
 
         def dequeueBatch: Pipe[F, Int, A] =
-          _.flatMap(sz => Stream.eval(pubSub.get(sz))).unNoneTerminate.flatMap(Stream.chunk)
+          _.evalMap(pubSub.get).unNoneTerminate
+            .flatMap(Stream.chunk)
 
         def tryDequeue1: F[Option[Option[A]]] =
           pubSub.tryGet(1).flatMap {
@@ -427,13 +433,10 @@ object InspectableQueue {
           pubSub.tryGet(Right(maxSize)).map(_.map(_.right.toOption.getOrElse(Chunk.empty)))
 
         def dequeueChunk(maxSize: Int): Stream[F, A] =
-          Stream
-            .evalUnChunk(
-              pubSub.get(Right(maxSize)).map {
-                _.right.toOption.getOrElse(Chunk.empty)
-              }
-            )
-            .repeat
+          pubSub.getStream(Right(maxSize)).flatMap {
+            case Left(_)      => Stream.empty
+            case Right(chunk) => Stream.chunk(chunk)
+          }
 
         def dequeueBatch: Pipe[F, Int, A] =
           _.flatMap { sz =>
@@ -467,7 +470,7 @@ object InspectableQueue {
           Stream
             .bracket(Sync[F].delay(new Token))(token => pubSub.unsubscribe(Left(Some(token))))
             .flatMap { token =>
-              Stream.repeatEval(pubSub.get(Left(Some(token)))).flatMap {
+              pubSub.getStream(Left(Some(token))).flatMap {
                 case Left(s)  => Stream.emit(sizeOf(s))
                 case Right(_) => Stream.empty // impossible
               }
