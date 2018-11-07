@@ -48,7 +48,7 @@ object ConcurrentDataTypesRules {
         Patch.replaceTree(s, "get")
       case timedGetMatcher(s @ Term.Apply(Term.Select(pre, Term.Name("timedGet")), List(d, _))) =>
         Patch.replaceTree(s, s"${pre}.timeout($d)")
-    }
+    } :+ replaceSemaphore
 
   def timer(f: Type) = Type.Apply(Type.Name("Timer"), List(f))
 
@@ -56,7 +56,8 @@ object ConcurrentDataTypesRules {
     getTypeSymbol(s.symbol).fold(false)(refMatcher.matches)
 
   // This is doable because fs2.async.mutable.Semaphore and cats.effect.concurrent.Semaphore symbols have the same depth
-  val replaceSemaphore = Patch.replaceSymbols("fs2/async/mutable/Semaphore." -> "cats.effect.concurrent.Semaphore")
+  def replaceSemaphore(implicit doc: SemanticDocument) =
+    Patch.replaceSymbols("fs2/async/mutable/Semaphore." -> "cats.effect.concurrent.Semaphore")
 
   val refMatcher = SymbolMatcher.normalized("fs2/async/Ref.")
   val setSyncMatcher = SymbolMatcher.normalized("fs2/async/Ref#setSync.")
