@@ -9,7 +9,7 @@ import fs2.async.Ref
 import fs2.async.refOf
 import cats.implicits._
 import fs2._
-import fs2.async.mutable.Semaphore
+import fs2.async.mutable.{Semaphore, Signal}
 
 import scala.concurrent.duration._
 import scala.concurrent.ExecutionContext.Implicits.global
@@ -40,4 +40,8 @@ abstract class ConcurrentDataTypes[F[_]: Effect] {
   // Semaphore
   val s: F[mutable.Semaphore[F]] = fs2.async.mutable.Semaphore(1)
   Semaphore(2)
+
+  // Signal
+  val sig: fs2.async.immutable.Signal[F, Int] = Signal.constant[F, Int](1)
+  val sigRef: F[Signal[F, Int]] = Signal(1)
 }

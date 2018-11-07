@@ -48,7 +48,18 @@ object ConcurrentDataTypesRules {
         Patch.replaceTree(s, "get")
       case timedGetMatcher(s @ Term.Apply(Term.Select(pre, Term.Name("timedGet")), List(d, _))) =>
         Patch.replaceTree(s, s"${pre}.timeout($d)")
-    } :+ replaceSemaphore
+
+      // Signal
+      case t @ immutableSignalMatcher(_: Term.Name) =>
+        Patch.replaceTree(t, "fs2.concurrent.Signal")
+      case immutableSignalMatcher(Type.Apply(s, _)) =>
+        Patch.replaceTree(s, "fs2.concurrent.Signal")
+      case mutableSignalMatcher(Term.Apply(s, _)) =>
+        Patch.replaceTree(s, "fs2.concurrent.SignallingRef")
+      case mutableSignalMatcher(Type.Apply(s, _)) =>
+        Patch.replaceTree(s, "fs2.concurrent.SignallingRef")
+    } :+ replaceSemaphore //:+ // Semaphore
+  //Patch.renameSymbol(Symbol("fs2/async/mutable/Signal."), "fs2.concurrent.SignallingRef") // Mutable signal
 
   def timer(f: Type) = Type.Apply(Type.Name("Timer"), List(f))
 
@@ -70,6 +81,7 @@ object ConcurrentDataTypesRules {
   val promiseLowercaseMatcher = SymbolMatcher.normalized("fs2/async/promise.")
   val cancellableGetMatcher = SymbolMatcher.normalized("fs2/async/Promise#cancellableGet.")
   val timedGetMatcher = SymbolMatcher.normalized("fs2/async/Promise#timedGet.")
-  val semaphoreMatcher = SymbolMatcher.normalized("fs2/async/mutable/Semaphore.")
+  val immutableSignalMatcher = SymbolMatcher.normalized("fs2/async/immutable/Signal.")
+  val mutableSignalMatcher = SymbolMatcher.normalized("fs2/async/mutable/Signal.")
 
 }
