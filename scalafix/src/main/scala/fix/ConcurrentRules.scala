@@ -32,7 +32,6 @@ object ConcurrentRules {
       case tryModify2Matcher(Term.Apply(t @ Term.Select(_, s), _)) =>
         Patch.replaceTree(s, Term.Name("tryModify").toString())
     }
-
   def timer(f: Type) = Type.Apply(Type.Name("Timer"), List(f))
 
   def isRef(s: Tree)(implicit doc: SemanticDocument): Boolean =

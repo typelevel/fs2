@@ -52,9 +52,12 @@ package object fix {
     }
 
   def containsImport(importer: Importer)(implicit doc: SemanticDocument): Boolean =
-    doc.tree.collect {
-      case i: Importer if i == importer =>
-        true
-      case _ => false
-    }.head
+    doc.tree
+      .collect {
+        case i: Importer if i == importer =>
+          true
+        case _ =>
+          false
+      }
+      .exists(identity)
 }

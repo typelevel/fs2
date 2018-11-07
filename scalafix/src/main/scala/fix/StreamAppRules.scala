@@ -160,7 +160,7 @@ object StreamAppRules {
 
   private[this] def addCatsSyntaxImport(implicit doc: SemanticDocument): Patch =
     if (containsImport(importer"cats.syntax.functor._") || containsImport(
-          importer"cats.syntax.functor._") || containsImport(importer"cats.implicits._"))
+          importer"cats.implicits._"))
       Patch.empty
     else Patch.addGlobalImport(importer"cats.syntax.functor._")
 
