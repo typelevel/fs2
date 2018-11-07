@@ -41,4 +41,10 @@ abstract class ConcurrentDataTypes[F[_]: Effect] {
   // Signal
   val sig: fs2.concurrent.Signal[F, Int] = Signal.constant[F, Int](1)
   val sigRef: F[fs2.concurrent.SignallingRef[F, Int]] = fs2.concurrent.SignallingRef(1)
+
+  // Queue
+  val q: F[fs2.concurrent.Queue[F, Int]] = fs2.concurrent.Queue.unbounded
+
+  // Topic
+  val t: F[fs2.concurrent.Topic[F, Int]] = fs2.concurrent.Topic(1)
 }

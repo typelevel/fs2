@@ -8,7 +8,7 @@ import scala.meta._
 object ConcurrentDataTypesRules {
 
   def apply(t: Tree)(implicit doc: SemanticDocument): List[Patch] = //TODO: return types
-    t.collect {
+    replaceSemaphore :: renameQueue :: renameTopic :: t.collect {
       // fs2 Ref -> cats effect Ref
       case Term.Apply(refMatcher(n: Term.Name), _) =>
         Patch.replaceTree(n, "cats.effect.concurrent.Ref.of")
@@ -58,8 +58,8 @@ object ConcurrentDataTypesRules {
         Patch.replaceTree(s, "fs2.concurrent.SignallingRef")
       case mutableSignalMatcher(Type.Apply(s, _)) =>
         Patch.replaceTree(s, "fs2.concurrent.SignallingRef")
-    } :+ replaceSemaphore //:+ // Semaphore
-  //Patch.renameSymbol(Symbol("fs2/async/mutable/Signal."), "fs2.concurrent.SignallingRef") // Mutable signal
+
+    }
 
   def timer(f: Type) = Type.Apply(Type.Name("Timer"), List(f))
 
@@ -69,6 +69,12 @@ object ConcurrentDataTypesRules {
   // This is doable because fs2.async.mutable.Semaphore and cats.effect.concurrent.Semaphore symbols have the same depth
   def replaceSemaphore(implicit doc: SemanticDocument) =
     Patch.replaceSymbols("fs2/async/mutable/Semaphore." -> "cats.effect.concurrent.Semaphore")
+
+  def renameQueue(implicit doc: SemanticDocument) =
+    Patch.renameSymbol(Symbol("fs2/async/mutable/Queue."), "fs2.concurrent.Queue")
+
+  def renameTopic(implicit doc: SemanticDocument) =
+    Patch.renameSymbol(Symbol("fs2/async/mutable/Topic."), "fs2.concurrent.Topic")
 
   val refMatcher = SymbolMatcher.normalized("fs2/async/Ref.")
   val setSyncMatcher = SymbolMatcher.normalized("fs2/async/Ref#setSync.")
@@ -83,5 +89,6 @@ object ConcurrentDataTypesRules {
   val timedGetMatcher = SymbolMatcher.normalized("fs2/async/Promise#timedGet.")
   val immutableSignalMatcher = SymbolMatcher.normalized("fs2/async/immutable/Signal.")
   val mutableSignalMatcher = SymbolMatcher.normalized("fs2/async/mutable/Signal.")
+  val queueMatcher = SymbolMatcher.normalized("fs2/async/mutable/Queue.")
 
 }
