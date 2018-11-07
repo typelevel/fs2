@@ -6,9 +6,11 @@ import fs2.async.Ref
 import fs2.async.refOf
 import cats.implicits._
 import fs2._
-import scala.concurrent.duration._
 
+import scala.concurrent.duration._
 import scala.concurrent.ExecutionContext.Implicits.global
+import cats.effect.concurrent
+import cats.effect.concurrent.Semaphore
 
 abstract class ConcurrentDataTypes[F[_]: Effect] {
   // Ref
@@ -30,4 +32,8 @@ abstract class ConcurrentDataTypes[F[_]: Effect] {
   e.map(_.get)
   def scheduler: Timer[F]
   e.map(_.timeout(1.second))
+
+  // Semaphore
+  val s: F[concurrent.Semaphore[F]] = cats.effect.concurrent.Semaphore(1)
+  Semaphore(2)
 }

@@ -55,6 +55,9 @@ object ConcurrentDataTypesRules {
   def isRef(s: Tree)(implicit doc: SemanticDocument): Boolean =
     getTypeSymbol(s.symbol).fold(false)(refMatcher.matches)
 
+  // This is doable because fs2.async.mutable.Semaphore and cats.effect.concurrent.Semaphore symbols have the same depth
+  val replaceSemaphore = Patch.replaceSymbols("fs2/async/mutable/Semaphore." -> "cats.effect.concurrent.Semaphore")
+
   val refMatcher = SymbolMatcher.normalized("fs2/async/Ref.")
   val setSyncMatcher = SymbolMatcher.normalized("fs2/async/Ref#setSync.")
   val setAsyncMatcher = SymbolMatcher.normalized("fs2/async/Ref#setAsync.")
@@ -66,4 +69,6 @@ object ConcurrentDataTypesRules {
   val promiseLowercaseMatcher = SymbolMatcher.normalized("fs2/async/promise.")
   val cancellableGetMatcher = SymbolMatcher.normalized("fs2/async/Promise#cancellableGet.")
   val timedGetMatcher = SymbolMatcher.normalized("fs2/async/Promise#timedGet.")
+  val semaphoreMatcher = SymbolMatcher.normalized("fs2/async/mutable/Semaphore.")
+
 }

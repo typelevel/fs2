@@ -9,8 +9,9 @@ import fs2.async.Ref
 import fs2.async.refOf
 import cats.implicits._
 import fs2._
-import scala.concurrent.duration._
+import fs2.async.mutable.Semaphore
 
+import scala.concurrent.duration._
 import scala.concurrent.ExecutionContext.Implicits.global
 
 abstract class ConcurrentDataTypes[F[_]: Effect] {
@@ -35,4 +36,8 @@ abstract class ConcurrentDataTypes[F[_]: Effect] {
   e.map(_.cancellableGet)
   def scheduler: Scheduler
   e.map(_.timedGet(1.second, scheduler))
+
+  // Semaphore
+  val s: F[mutable.Semaphore[F]] = fs2.async.mutable.Semaphore(1)
+  Semaphore(2)
 }
