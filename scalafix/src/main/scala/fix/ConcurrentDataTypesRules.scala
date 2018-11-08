@@ -7,7 +7,7 @@ import scala.meta._
 
 object ConcurrentDataTypesRules {
 
-  def apply(t: Tree)(implicit doc: SemanticDocument): List[Patch] = //TODO: return types
+  def apply(t: Tree)(implicit doc: SemanticDocument): List[Patch] =
     replaceSemaphore :: renameQueue :: renameTopic :: t.collect {
       // fs2 Ref -> cats effect Ref
       case Term.Apply(refMatcher(n: Term.Name), _) =>
