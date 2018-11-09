@@ -6,6 +6,20 @@ import fs2.concurrent.{Queue, SignallingRef, Topic}
 
 // Sanity tests - not run as part of unit tests, but these should run forever
 // at constant memory.
+object GroupWithinSanityTest extends App {
+  implicit val cs: ContextShift[IO] = IO.contextShift(ExecutionContext.global)
+  implicit val timer: Timer[IO] = IO.timer(ExecutionContext.global)
+
+  import scala.concurrent.duration._
+
+  Stream
+    .eval(IO.never)
+    .covary[IO]
+    .groupWithin(Int.MaxValue, 1.millis)
+    .compile
+    .drain
+    .unsafeRunSync()
+}
 
 object TopicContinuousPublishSanityTest extends App {
   implicit val cs: ContextShift[IO] = IO.contextShift(ExecutionContext.Implicits.global)
