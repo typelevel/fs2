@@ -21,6 +21,22 @@ object GroupWithinSanityTest extends App {
     .unsafeRunSync()
 }
 
+object GroupWithinSanityTest2 extends App {
+  implicit val cs: ContextShift[IO] = IO.contextShift(ExecutionContext.global)
+  implicit val timer: Timer[IO] = IO.timer(ExecutionContext.global)
+
+  import scala.concurrent.duration._
+
+  val a: Stream[IO, Chunk[Int]] = Stream
+    .eval(IO.never)
+    .covary[IO]
+    .groupWithin(Int.MaxValue, 1.second)
+    .interruptAfter(100.millis) ++ a
+
+  a.compile.drain
+    .unsafeRunSync()
+}
+
 object TopicContinuousPublishSanityTest extends App {
   implicit val cs: ContextShift[IO] = IO.contextShift(ExecutionContext.Implicits.global)
   Topic[IO, Int](-1)

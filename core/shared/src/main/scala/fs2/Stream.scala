@@ -4,6 +4,7 @@ import cats._
 import cats.data.{Chain, NonEmptyList}
 import cats.effect._
 import cats.effect.concurrent._
+import cats.effect.implicits._
 import cats.implicits.{catsSyntaxEither => _, _}
 import fs2.concurrent._
 import fs2.internal.FreeC.Result
@@ -1111,60 +1112,62 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
       implicit timer: Timer[F2],
       F: Concurrent[F2]): Stream[F2, Chunk[O]] =
     Stream
-      .eval(Queue.synchronousNoneTerminated[F2, Either[Token, Chunk[O]]])
-      .flatMap { q =>
-        import cats.effect.implicits._
-        def startTimeout: Stream[F2, (Token, CancelToken[F2])] =
-          Stream.eval(F.delay(new Token)).evalMap { t =>
-            val fiber = (timer.sleep(d) *> q.enqueue1(t.asLeft.some)).start
-            fiber.map(f => t -> f.cancel)
-          }
+      .eval {
+        Queue
+          .synchronousNoneTerminated[F2, Either[Token, Chunk[O]]]
+          .product(Ref[F2].of(F.unit))
+      }
+      .flatMap {
+        case (q, lastTimeout) =>
+          def startTimeout: Stream[F2, Token] =
+            Stream.eval(F.delay(new Token)).evalTap { t =>
+              val timeout = timer.sleep(d) *> q.enqueue1(t.asLeft.some)
 
-        def producer = this.chunks.map(_.asRight.some).to(q.enqueue).onFinalize(q.enqueue1(None))
-
-        def emitNonEmpty(c: Chain[Chunk[O]]): Stream[F2, Chunk[O]] =
-          if (c.nonEmpty) Stream.emit(Chunk.concat(c.toList))
-          else Stream.empty
-
-        def resize(c: Chunk[O], s: Stream[F2, Chunk[O]]): (Stream[F2, Chunk[O]], Chunk[O]) =
-          if (c.size < n) s -> c
-          else {
-            val (unit, rest) = c.splitAt(n)
-            resize(rest, s ++ Stream.emit(unit))
-          }
-
-        def go(acc: Chain[Chunk[O]],
-               elems: Int,
-               currentTimeout: Token,
-               cancelCurrentTimeout: CancelToken[F2]): Stream[F2, Chunk[O]] =
-          Stream.eval(q.dequeue1).flatMap {
-            case None => emitNonEmpty(acc)
-            case Some(e) =>
-              e match {
-                case Left(t) if t == currentTimeout =>
-                  emitNonEmpty(acc) ++ startTimeout.flatMap {
-                    case (newTimeout, newCancel) =>
-                      go(Chain.empty, 0, newTimeout, newCancel)
-                  }
-                case Left(t) if t != currentTimeout =>
-                  go(acc, elems, currentTimeout, cancelCurrentTimeout)
-                case Right(c) if elems + c.size >= n =>
-                  val totalChunk = Chunk.concat((acc :+ c).toList)
-                  val (toEmit, rest) = resize(totalChunk, Stream.empty)
-
-                  toEmit ++ Stream.eval_(cancelCurrentTimeout) ++ startTimeout.flatMap {
-                    case (newTimeout, newCancel) =>
-                      go(Chain.one(rest), rest.size, newTimeout, newCancel)
-                  }
-                case Right(c) if elems + c.size < n =>
-                  go(acc :+ c, elems + c.size, currentTimeout, cancelCurrentTimeout)
+              timeout.start.bracket(_ => F.unit) { fiber =>
+                lastTimeout.getAndSet(fiber.cancel).flatten // start the cancel? (now using flatten)
               }
-          }
+            }
 
-        startTimeout.flatMap {
-          case (t, c) =>
-            go(Chain.empty, 0, t, c).concurrently(producer)
-        }
+          def producer = this.chunks.map(_.asRight.some).to(q.enqueue).onFinalize(q.enqueue1(None))
+
+          def emitNonEmpty(c: Chain[Chunk[O]]): Stream[F2, Chunk[O]] =
+            if (c.nonEmpty) Stream.emit(Chunk.concat(c.toList))
+            else Stream.empty
+
+          def resize(c: Chunk[O], s: Stream[F2, Chunk[O]]): (Stream[F2, Chunk[O]], Chunk[O]) =
+            if (c.size < n) s -> c
+            else {
+              val (unit, rest) = c.splitAt(n)
+              resize(rest, s ++ Stream.emit(unit))
+            }
+
+          def go(acc: Chain[Chunk[O]], elems: Int, currentTimeout: Token): Stream[F2, Chunk[O]] =
+            Stream.eval(q.dequeue1).flatMap {
+              case None => emitNonEmpty(acc)
+              case Some(e) =>
+                e match {
+                  case Left(t) if t == currentTimeout =>
+                    emitNonEmpty(acc) ++ startTimeout.flatMap { newTimeout =>
+                      go(Chain.empty, 0, newTimeout)
+                    }
+                  case Left(t) if t != currentTimeout => go(acc, elems, currentTimeout)
+                  case Right(c) if elems + c.size >= n =>
+                    val totalChunk = Chunk.concat((acc :+ c).toList)
+                    val (toEmit, rest) = resize(totalChunk, Stream.empty)
+
+                    toEmit ++ startTimeout.flatMap { newTimeout =>
+                      go(Chain.one(rest), rest.size, newTimeout)
+                    }
+                  case Right(c) if elems + c.size < n =>
+                    go(acc :+ c, elems + c.size, currentTimeout)
+                }
+            }
+
+          startTimeout
+            .flatMap { t =>
+              go(Chain.empty, 0, t).concurrently(producer)
+            }
+            .onFinalize(lastTimeout.get.flatten)
       }
 
   /**
