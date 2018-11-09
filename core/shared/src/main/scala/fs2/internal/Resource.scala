@@ -97,7 +97,7 @@ private[internal] object Resource {
       open: Boolean,
       finalizer: Option[ExitCase[Throwable] => F[Either[Throwable, Unit]]],
       leases: Int
-  ){
+  ) {
     /* The `isFinished` predicate indicates that the finalizer can be run at the present state:
       which happens IF it is closed, AND there are no acquired leases pending to be released. */
     @inline def isFinished: Boolean = !open && leases == 0
