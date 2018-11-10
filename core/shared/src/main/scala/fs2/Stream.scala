@@ -2568,7 +2568,7 @@ object Stream extends StreamLowPriority {
     * the resource is still guaranteed be release at the end of the containing Stream scope.
     */
   def bracketCancellable[F[x] >: Pure[x], R](acquire: F[R])(
-      release: R => F[Unit]): Stream[F, (Stream[F, INothing], R)] =
+      release: R => F[Unit]): Stream[F, (Stream[F, Unit], R)] =
     bracketCaseCancellable(acquire)((r, _) => release(r))
 
   /**
@@ -2578,9 +2578,9 @@ object Stream extends StreamLowPriority {
     * overall compiled effect cancelation.
     */
   def bracketCaseCancellable[F[x] >: Pure[x], R](acquire: F[R])(
-      release: (R, ExitCase[Throwable]) => F[Unit]): Stream[F, (Stream[F, INothing], R)] =
+      release: (R, ExitCase[Throwable]) => F[Unit]): Stream[F, (Stream[F, Unit], R)] =
     bracketWithToken(acquire)(release).map {
-      case (token, r) => (Stream.fromFreeC(Algebra.release(token, None)), r)
+      case (token, r) => (Stream.fromFreeC(Algebra.release(token, None)) ++ Stream.emit(()), r)
     }
 
   private[fs2] def bracketWithToken[F[x] >: Pure[x], R](acquire: F[R])(
