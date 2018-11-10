@@ -2,7 +2,7 @@ package fs2.internal
 
 import scala.annotation.tailrec
 
-import cats.Traverse
+import cats.{Traverse, TraverseFilter}
 import cats.data.Chain
 import cats.effect.{Concurrent, ExitCase, Sync}
 import cats.effect.concurrent.{Deferred, Ref}
@@ -334,22 +334,16 @@ private[fs2] final class CompileScope[F[_], O] private (
     F.flatMap(state.get) { s =>
       if (!s.open) F.pure(None)
       else {
-        F.flatMap(Traverse[Chain].traverse(s.children :+ self)(_.resources)) { childResources =>
-          F.flatMap(Traverse[Chain].traverse(ancestors) { _.resources }) { ancestorResources =>
-            val allLeases = childResources.flatMap(identity) ++ ancestorResources
-              .flatMap(identity)
-            F.map(Traverse[Chain].traverse(allLeases) { r =>
-              r.lease
-            }) { leased =>
-              val allLeases = leased.collect {
-                case Some(resourceLease) => resourceLease
-              }
-              val lease = new Scope.Lease[F] {
-                def cancel: F[Either[Throwable, Unit]] =
-                  traverseError[Scope.Lease[F]](allLeases, _.cancel)
-              }
-              Some(lease)
+        val allScopes = (s.children :+ self) ++ ancestors
+        F.flatMap(Traverse[Chain].flatTraverse(allScopes)(_.resources)) { allResources =>
+          F.map(TraverseFilter[Chain].traverseFilter(allResources){ r =>
+            r.lease
+          }){ allLeases =>
+            val lease = new Scope.Lease[F] {
+              def cancel: F[Either[Throwable, Unit]] =
+                traverseError[Scope.Lease[F]](allLeases, _.cancel)
             }
+            Some(lease)
           }
         }
       }
