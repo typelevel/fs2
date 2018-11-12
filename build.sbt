@@ -156,7 +156,8 @@ lazy val publishingSettings = Seq(
       n.label == "dependency" && (n \ "scope").text == "test"
     }
     new RuleTransformer(stripTestScope).transform(node)(0)
-  }
+  },
+  gpgWarnOnFailure := Option(System.getenv().get("GPG_WARN_ON_FAILURE")).isDefined
 )
 
 lazy val commonJsSettings = Seq(
