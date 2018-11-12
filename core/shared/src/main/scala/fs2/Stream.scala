@@ -4,6 +4,7 @@ import cats._
 import cats.data.{Chain, NonEmptyList}
 import cats.effect._
 import cats.effect.concurrent._
+import cats.effect.implicits._
 import cats.implicits.{catsSyntaxEither => _, _}
 import fs2.concurrent._
 import fs2.internal.FreeC.Result
@@ -1111,51 +1112,85 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
       implicit timer: Timer[F2],
       F: Concurrent[F2]): Stream[F2, Chunk[O]] =
     Stream
-      .eval(Queue.synchronousNoneTerminated[F2, Either[Token, Chunk[O]]])
-      .flatMap { q =>
-        def startTimeout: Stream[F2, Token] =
-          Stream.eval(F.delay(new Token)).flatTap { t =>
-            Stream.supervise { timer.sleep(d) *> q.enqueue1(t.asLeft.some) }
-          }
+      .eval {
+        Queue
+          .synchronousNoneTerminated[F2, Either[Token, Chunk[O]]]
+          .product(Ref[F2].of(F.unit -> false))
+      }
+      .flatMap {
+        case (q, currentTimeout) =>
+          def startTimeout: Stream[F2, Token] =
+            Stream.eval(F.delay(new Token)).evalTap { t =>
+              val timeout = timer.sleep(d) *> q.enqueue1(t.asLeft.some)
 
-        def producer = this.chunks.map(_.asRight.some).to(q.enqueue).onFinalize(q.enqueue1(None))
+              // Just using `supervise(timeout)` will ensure resource safety
+              // but finalisers accumulate and cause a leak, so we
+              // need to dispose of outstanding timeouts manually
+              timeout.start
+                .bracket(_ => F.unit) { fiber =>
+                  // note the this is in a `release` action, and therefore uninterruptible
+                  currentTimeout.modify {
+                    case st @ (cancelInFlightTimeout, streamTerminated) =>
+                      if (streamTerminated) {
+                        // the stream finaliser will cancel the in flight
+                        // timeout, we need to cancel the timeout we have
+                        // just started
+                        st -> fiber.cancel
+                      } else {
+                        // The stream finaliser hasn't run, so we cancel
+                        // the current timeout and store the finaliser for
+                        // the timeout we have just started
+                        (fiber.cancel, streamTerminated) -> cancelInFlightTimeout
+                      }
+                  }.flatten
+                }
+            }
 
-        def emitNonEmpty(c: Chain[Chunk[O]]): Stream[F2, Chunk[O]] =
-          if (c.nonEmpty) Stream.emit(Chunk.concat(c.toList))
-          else Stream.empty
+          def producer = this.chunks.map(_.asRight.some).to(q.enqueue).onFinalize(q.enqueue1(None))
 
-        def resize(c: Chunk[O], s: Stream[F2, Chunk[O]]): (Stream[F2, Chunk[O]], Chunk[O]) =
-          if (c.size < n) s -> c
-          else {
-            val (unit, rest) = c.splitAt(n)
-            resize(rest, s ++ Stream.emit(unit))
-          }
+          def emitNonEmpty(c: Chain[Chunk[O]]): Stream[F2, Chunk[O]] =
+            if (c.nonEmpty) Stream.emit(Chunk.concat(c.toList))
+            else Stream.empty
 
-        def go(acc: Chain[Chunk[O]], elems: Int, currentTimeout: Token): Stream[F2, Chunk[O]] =
-          Stream.eval(q.dequeue1).flatMap {
-            case None => emitNonEmpty(acc)
-            case Some(e) =>
-              e match {
-                case Left(t) if t == currentTimeout =>
-                  emitNonEmpty(acc) ++ startTimeout.flatMap { newTimeout =>
-                    go(Chain.empty, 0, newTimeout)
-                  }
-                case Left(t) if t != currentTimeout => go(acc, elems, currentTimeout)
-                case Right(c) if elems + c.size >= n =>
-                  val totalChunk = Chunk.concat((acc :+ c).toList)
-                  val (toEmit, rest) = resize(totalChunk, Stream.empty)
+          def resize(c: Chunk[O], s: Stream[F2, Chunk[O]]): (Stream[F2, Chunk[O]], Chunk[O]) =
+            if (c.size < n) s -> c
+            else {
+              val (unit, rest) = c.splitAt(n)
+              resize(rest, s ++ Stream.emit(unit))
+            }
 
-                  toEmit ++ startTimeout.flatMap { newTimeout =>
-                    go(Chain.one(rest), rest.size, newTimeout)
-                  }
-                case Right(c) if elems + c.size < n =>
-                  go(acc :+ c, elems + c.size, currentTimeout)
-              }
-          }
+          def go(acc: Chain[Chunk[O]], elems: Int, currentTimeout: Token): Stream[F2, Chunk[O]] =
+            Stream.eval(q.dequeue1).flatMap {
+              case None => emitNonEmpty(acc)
+              case Some(e) =>
+                e match {
+                  case Left(t) if t == currentTimeout =>
+                    emitNonEmpty(acc) ++ startTimeout.flatMap { newTimeout =>
+                      go(Chain.empty, 0, newTimeout)
+                    }
+                  case Left(t) if t != currentTimeout => go(acc, elems, currentTimeout)
+                  case Right(c) if elems + c.size >= n =>
+                    val totalChunk = Chunk.concat((acc :+ c).toList)
+                    val (toEmit, rest) = resize(totalChunk, Stream.empty)
 
-        startTimeout.flatMap { t =>
-          go(Chain.empty, 0, t).concurrently(producer)
-        }
+                    toEmit ++ startTimeout.flatMap { newTimeout =>
+                      go(Chain.one(rest), rest.size, newTimeout)
+                    }
+                  case Right(c) if elems + c.size < n =>
+                    go(acc :+ c, elems + c.size, currentTimeout)
+                }
+            }
+
+          startTimeout
+            .flatMap { t =>
+              go(Chain.empty, 0, t).concurrently(producer)
+            }
+            .onFinalize {
+              currentTimeout.modify {
+                case st @ (cancelInFlightTimeout, streamTerminated) =>
+                  (F.unit, true) -> cancelInFlightTimeout
+              }.flatten
+            }
       }
 
   /**
