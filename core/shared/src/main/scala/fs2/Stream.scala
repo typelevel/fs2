@@ -2927,7 +2927,7 @@ object Stream extends StreamLowPriority {
   /** Converts the supplied resource in to a singleton stream. */
   def resource[F[_], O](r: Resource[F, O]): Stream[F, O] = r match {
     case Resource.Allocate(a) =>
-      Stream.bracket(a) { case (_, release) => release(ExitCase.Completed) }.map(_._1)
+      Stream.bracketCase(a) { case ((_, release), e) => release(e) }.map(_._1)
     case Resource.Bind(r, f) => resource(r).flatMap(o => resource(f(o)))
     case Resource.Suspend(r) => Stream.eval(r).flatMap(resource)
   }
