@@ -1123,9 +1123,17 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
             Stream.eval(F.delay(new Token)).evalTap { t =>
               val timeout = timer.sleep(d) *> q.enqueue1(t.asLeft.some)
 
-              // Just using `supervise(timeout)` will ensure resource safety
-              // but finalisers accumulate and cause a leak, so we
-              // need to dispose of outstanding timeouts manually
+              // We need to cancel outstanding timeouts to avoid leaks
+              // on interruption, but using `Stream.bracket` or
+              // derivatives causes a memory leak due to all the
+              // finalisers accumulating. Therefore we dispose of them
+              // manually, with a cooperative strategy between a single
+              // stream finaliser, and F finalisers on each timeout.
+              //
+              // Note that to avoid races, the correctness of the
+              // algorithm does not depend on timely cancellation of
+              // previous timeouts, but uses a versioning scheme to
+              // ensure stale timeouts are no-ops.
               timeout.start
                 .bracket(_ => F.unit) { fiber =>
                   // note the this is in a `release` action, and therefore uninterruptible
@@ -1138,7 +1146,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
                         st -> fiber.cancel
                       } else {
                         // The stream finaliser hasn't run, so we cancel
-                        // the current timeout and store the finaliser for
+                        // the in flight timeout and store the finaliser for
                         // the timeout we have just started
                         (fiber.cancel, streamTerminated) -> cancelInFlightTimeout
                       }
