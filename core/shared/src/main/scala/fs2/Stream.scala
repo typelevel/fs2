@@ -1661,24 +1661,31 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     */
   def parEvalMap[F2[x] >: F[x]: Concurrent, O2](maxConcurrent: Int)(
       f: O => F2[O2]): Stream[F2, O2] =
-    Stream
-      .eval(Queue.bounded[F2, Option[F2[Either[Throwable, O2]]]](maxConcurrent))
-      .flatMap { queue =>
-        queue.dequeue.unNoneTerminate
-          .evalMap(identity)
-          .rethrow
-          .concurrently {
-            evalMap { o =>
-              Deferred[F2, Either[Throwable, O2]].flatMap { value =>
-                queue.enqueue1(Some(value.get)).as {
-                  Stream.eval(f(o).attempt).evalMap(value.complete)
+    Stream.eval(Queue.bounded[F2, Option[F2[Either[Throwable, O2]]]](maxConcurrent)).flatMap {
+      queue =>
+        Stream.eval(Deferred[F2, Unit]).flatMap { dequeueDone =>
+          queue.dequeue.unNoneTerminate
+            .evalMap(identity)
+            .rethrow
+            .onFinalize(dequeueDone.complete(()))
+            .concurrently {
+              evalMap { o =>
+                Deferred[F2, Either[Throwable, O2]].flatMap { value =>
+                  val enqueue =
+                    queue.enqueue1(Some(value.get)).as {
+                      Stream.eval(f(o).attempt).evalMap(value.complete)
+                    }
+
+                  Concurrent[F2].race(dequeueDone.get, enqueue).map {
+                    case Left(())      => Stream.empty.covaryAll[F2, Unit]
+                    case Right(stream) => stream
+                  }
                 }
-              }
-            }.parJoin(maxConcurrent)
-              .drain
-              .onFinalize(queue.enqueue1(None))
-          }
-      }
+              }.parJoin(maxConcurrent)
+                .onFinalize(Concurrent[F2].race(dequeueDone.get, queue.enqueue1(None)).void)
+            }
+        }
+    }
 
   /**
     * Like [[Stream#evalMap]], but will evaluate effects in parallel, emitting the results
