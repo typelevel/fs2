@@ -3,8 +3,8 @@ package fix
 import cats.effect._
 import cats.implicits._
 import fs2._
-import fs2.async.mutable.Signal
-import fs2.async.{Ref, refOf, _}
+
+
 
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration._

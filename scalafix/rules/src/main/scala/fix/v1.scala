@@ -180,6 +180,12 @@ object ConcurrentDataTypesRules {
       case mutableSignalMatcher(Type.Apply(s, _)) =>
         Patch.replaceTree(s, "fs2.concurrent.SignallingRef")
 
+      // Imports
+      case i: Import =>
+        i.collect{
+          case Term.Select(Term.Name("fs2"), Term.Name("async")) =>
+            Patch.replaceTree(i, "")
+        }.asPatch
     }
 
   def timer(f: Type) = Type.Apply(Type.Name("Timer"), List(f))
