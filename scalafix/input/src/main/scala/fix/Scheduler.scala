@@ -1,5 +1,5 @@
 /*
-rule = Fs2v010Tov1
+rule = v1
  */
 package fix
 

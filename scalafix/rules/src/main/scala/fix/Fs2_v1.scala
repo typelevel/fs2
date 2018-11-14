@@ -5,12 +5,10 @@ import scala.meta._
 import scalafix.lint.LintSeverity
 import fixUtils._
 
-class Fs2v010Tov1 extends SemanticRule("Fs2v010Tov1") {
-
+class v1 extends SemanticRule("v1") {
   override def fix(implicit doc: SemanticDocument): Patch =
     (StreamAppRules(doc.tree) ++ SchedulerRules(doc.tree) ++ BracketRules(doc.tree) ++ ConcurrentDataTypesRules(
       doc.tree)).asPatch
-
 }
 
 object fixUtils {

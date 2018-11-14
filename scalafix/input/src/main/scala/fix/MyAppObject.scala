@@ -1,5 +1,5 @@
 /*
-rule = Fs2v010Tov1
+rule = v1
  */
 package fix
 
@@ -12,7 +12,7 @@ object MyAppObject extends StreamApp[IO] {
                       requestShutdown: IO[Unit]): fs2.Stream[IO, StreamApp.ExitCode] =
     Stream
       .eval(Applicative[IO].pure("hello"))
-      .flatMap(_ => Stream.eval(Applicative[IO].pure(StreamApp.ExitCode.Success))) /* assert: Fs2v010Tov1.StreamAppExitCode
+      .flatMap(_ => Stream.eval(Applicative[IO].pure(StreamApp.ExitCode.Success))) /* assert: v1.StreamAppExitCode
                                                                         ^^^^^^^
                                                                         You can remove this
  */
