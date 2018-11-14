@@ -378,7 +378,7 @@ object StreamAppRules {
 
   private[this] def replaceStats(stats: List[Stat]): List[Stat] =
     stats.map {
-      case d @ Defn.Def(_, _, _, _, tpe, body) =>
+      case d @ Defn.Def(_, Term.Name("stream"), _, _, tpe, body) =>
         val fName = tpe.flatMap(getFName).get
         val newDef = d.copy(
           name = Term.Name("run"),
