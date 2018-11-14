@@ -8,7 +8,7 @@ import fixUtils._
 class v1 extends SemanticRule("v1") {
   override def fix(implicit doc: SemanticDocument): Patch =
     (StreamAppRules(doc.tree) ++ SchedulerRules(doc.tree) ++ BracketRules(doc.tree) ++ ConcurrentDataTypesRules(
-      doc.tree)).asPatch
+      doc.tree) ++ ChunkRules(doc.tree)).asPatch
 }
 
 object fixUtils {
@@ -296,7 +296,6 @@ object SchedulerRules {
 
 }
 
-
 object StreamAppRules {
   def apply(t: Tree)(implicit doc: SemanticDocument): List[Patch] =
     t.collect {
@@ -457,5 +456,34 @@ object StreamAppRules {
     else Patch.addGlobalImport(importer"cats.syntax.functor._")
 
   private[this] val exitCodeSuccessMatcher = SymbolMatcher.exact("fs2/StreamApp.ExitCode.Success.")
+
+}
+
+object ChunkRules {
+  def apply(t: Tree)(implicit doc: SemanticDocument): List[Patch] =
+    t.collect{
+      case t @ segmentsMatcher(_: Term.Name) =>
+        Patch.replaceTree(t, "chunks")
+      case t @ mapSegmentsMatcher(_: Term.Name) =>
+        Patch.replaceTree(t, "mapChunks")
+      case t @ scanSegmentsMatcher(_: Term.Name) =>
+        Patch.replaceTree(t, "scanChunks")
+      case t @ scanSegmentsOptMatcher(_: Term.Name) =>
+        Patch.replaceTree(t, "scanChunksOpt")
+      case t @ unconsChunkMatcher(_: Term.Name) =>
+        Patch.replaceTree(t, "uncons")
+      case t @ pullOutputMatcher(_: Term.Name) =>
+        Patch.replaceTree(t, "output")
+    } :+ Patch.renameSymbol(Symbol("fs2/Segment."), "fs2.Chunk")
+
+
+
+  val segmentsMatcher = SymbolMatcher.normalized("fs2/Stream#segments.")
+  val mapSegmentsMatcher = SymbolMatcher.normalized("fs2/Stream#mapSegments.")
+  val scanSegmentsMatcher = SymbolMatcher.normalized("fs2/Stream.InvariantOps#scanSegments.")
+  val scanSegmentsOptMatcher = SymbolMatcher.normalized("fs2/Stream.InvariantOps#scanSegmentsOpt.")
+  val unconsChunkMatcher = SymbolMatcher.normalized("fs2/Stream.ToPull#unconsChunk.")
+  val pullOutputMatcher = SymbolMatcher.normalized("fs2/Pull#outputChunk.")
+  val segmentMatcher = SymbolMatcher.normalized("fs2/Segment.")
 
 }
