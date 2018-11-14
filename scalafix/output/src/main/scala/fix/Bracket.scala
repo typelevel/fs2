@@ -1,6 +1,7 @@
 package fix
-import fs2._
+
 import cats.effect.IO
+import fs2._
 
 object Bracket {
   val myResource = Stream.bracket(IO.pure("resource"))(_ => IO.unit).flatMap(r => Stream.emit(r))

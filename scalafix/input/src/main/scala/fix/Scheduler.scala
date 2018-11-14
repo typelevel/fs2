@@ -5,8 +5,9 @@ package fix
 
 import cats.effect._
 import fs2._
-import scala.concurrent.duration._
+
 import scala.concurrent.ExecutionContext.Implicits.global
+import scala.concurrent.duration._
 
 abstract class SchedulerTimer[F[_]: Effect] {
 

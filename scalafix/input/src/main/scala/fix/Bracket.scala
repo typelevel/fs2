@@ -2,8 +2,9 @@
 rule = Fs2v010Tov1
  */
 package fix
-import fs2._
+
 import cats.effect.IO
+import fs2._
 
 object Bracket {
   val myResource = Stream.bracket(IO.pure("resource"))(r => Stream.emit(r), _ => IO.unit)

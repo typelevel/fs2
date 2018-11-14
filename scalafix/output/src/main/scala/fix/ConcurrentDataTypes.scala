@@ -1,15 +1,13 @@
 package fix
 
 import cats.effect._
-import fs2.async._
-import fs2.async.Ref
-import fs2.async.refOf
 import cats.implicits._
 import fs2._
 import fs2.async.mutable.Signal
+import fs2.async.{Ref, refOf, _}
 
-import scala.concurrent.duration._
 import scala.concurrent.ExecutionContext.Implicits.global
+import scala.concurrent.duration._
 import cats.effect.concurrent
 import cats.effect.concurrent.Semaphore
 
