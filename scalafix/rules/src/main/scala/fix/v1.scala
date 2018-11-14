@@ -15,12 +15,13 @@ object fixUtils {
 
   // Maybe to improve, but not needed for our purposes
   def getTypeSymbol(symbol: Symbol)(implicit doc: SemanticDocument): Option[Symbol] =
-    symbol.info.get.signature match {
-      case MethodSignature(_, _, returnType) =>
-        getSymbol(returnType)
-      case ValueSignature(t) => getSymbol(t)
-      case _                 => None
+    symbol.info.flatMap {_.signature match {
+    case MethodSignature(_, _, returnType) =>
+      getSymbol(returnType)
+    case ValueSignature(t) => getSymbol(t)
+    case _                 => None
     }
+  }
 
   def getSymbol(t: SemanticType): Option[Symbol] =
     t match {
@@ -37,11 +38,11 @@ object fixUtils {
 
   // From https://scalacenter.github.io/scalafix/docs/developers/semantic-type.html
   def getType(symbol: Symbol)(implicit doc: SemanticDocument): SemanticType =
-    symbol.info.get.signature match {
+    symbol.info.map{_.signature match {
       case MethodSignature(_, _, returnType) =>
-        returnType
-      case _ => NoType
-    }
+      returnType
+    case _ => NoType
+    }.getOrElse(NoType)
 
   def containsImport(importer: Importer)(implicit doc: SemanticDocument): Boolean =
     doc.tree
