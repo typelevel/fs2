@@ -8,7 +8,7 @@ import fixUtils._
 class v1 extends SemanticRule("v1") {
   override def fix(implicit doc: SemanticDocument): Patch =
     (StreamAppRules(doc.tree) ++ SchedulerRules(doc.tree) ++ BracketRules(doc.tree) ++ ConcurrentDataTypesRules(
-      doc.tree) ++ ChunkRules(doc.tree)).asPatch
+      doc.tree) ++ ChunkRules(doc.tree) ++ UsabilityRenameRules(doc.tree)).asPatch
 }
 
 object fixUtils {
@@ -491,5 +491,22 @@ object ChunkRules {
   val unconsChunkMatcher = SymbolMatcher.normalized("fs2/Stream.ToPull#unconsChunk.")
   val pullOutputMatcher = SymbolMatcher.normalized("fs2/Pull#outputChunk.")
   val segmentMatcher = SymbolMatcher.normalized("fs2/Segment.")
+
+}
+
+object UsabilityRenameRules {
+  def apply(t: Tree)(implicit doc: SemanticDocument): List[Patch] =
+    t.collect {
+      case t @ observeMatcher(_: Term.Name) =>
+        Patch.replaceTree(t, "evalTap")
+      case t @ joinMatcher(_: Term.Name) =>
+        Patch.replaceTree(t, "parJoin")
+      case t @ joinUnboundedMatcher(_: Term.Name) =>
+        Patch.replaceTree(t, "parJoinUnbounded")
+    }
+
+  val observeMatcher = SymbolMatcher.normalized("fs2/Stream.InvariantOps#observe1.")
+  val joinMatcher = SymbolMatcher.normalized("fs2/Stream.PureOps#join.")
+  val joinUnboundedMatcher = SymbolMatcher.normalized("fs2/Stream.PureOps#joinUnbounded.")
 
 }
