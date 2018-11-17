@@ -336,9 +336,9 @@ private[fs2] final class CompileScope[F[_], O] private (
       else {
         val allScopes = (s.children :+ self) ++ ancestors
         F.flatMap(Traverse[Chain].flatTraverse(allScopes)(_.resources)) { allResources =>
-          F.map(TraverseFilter[Chain].traverseFilter(allResources){ r =>
+          F.map(TraverseFilter[Chain].traverseFilter(allResources) { r =>
             r.lease
-          }){ allLeases =>
+          }) { allLeases =>
             val lease = new Scope.Lease[F] {
               def cancel: F[Either[Throwable, Unit]] =
                 traverseError[Scope.Lease[F]](allLeases, _.cancel)
