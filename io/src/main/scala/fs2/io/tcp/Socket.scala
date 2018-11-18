@@ -17,6 +17,7 @@ import java.nio.channels.{
 import java.util.concurrent.TimeUnit
 
 import cats.implicits._
+import cats.effect.implicits._
 import cats.effect.{Concurrent, Resource}
 import cats.effect.concurrent.{Ref, Semaphore}
 
@@ -117,17 +118,18 @@ protected[tcp] object Socket {
 
     def connect(ch: AsynchronousSocketChannel): F[AsynchronousSocketChannel] =
       F.async[AsynchronousSocketChannel] { cb =>
-        ch.connect(
-          to,
-          null,
-          new CompletionHandler[Void, Void] {
-            def completed(result: Void, attachment: Void): Unit =
-              cb(Right(ch))
-            def failed(rsn: Throwable, attachment: Void): Unit =
-              cb(Left(rsn))
-          }
-        )
-      } <* yieldBack
+          ch.connect(
+            to,
+            null,
+            new CompletionHandler[Void, Void] {
+              def completed(result: Void, attachment: Void): Unit =
+                cb(Right(ch))
+              def failed(rsn: Throwable, attachment: Void): Unit =
+                cb(Left(rsn))
+            }
+          )
+        }
+        .guarantee(yieldBack)
 
     Resource.liftF(setup.flatMap(connect)).flatMap(mkSocket(_))
   }
@@ -157,16 +159,17 @@ protected[tcp] object Socket {
       def go: Stream[F, Resource[F, Socket[F]]] = {
         def acceptChannel: F[AsynchronousSocketChannel] =
           F.async[AsynchronousSocketChannel] { cb =>
-            sch.accept(
-              null,
-              new CompletionHandler[AsynchronousSocketChannel, Void] {
-                def completed(ch: AsynchronousSocketChannel, attachment: Void): Unit =
-                  cb(Right(ch))
-                def failed(rsn: Throwable, attachment: Void): Unit =
-                  cb(Left(rsn))
-              }
-            )
-          } <* yieldBack
+              sch.accept(
+                null,
+                new CompletionHandler[AsynchronousSocketChannel, Void] {
+                  def completed(ch: AsynchronousSocketChannel, attachment: Void): Unit =
+                    cb(Right(ch))
+                  def failed(rsn: Throwable, attachment: Void): Unit =
+                    cb(Left(rsn))
+                }
+              )
+            }
+            .guarantee(yieldBack)
 
         eval(acceptChannel.attempt).flatMap {
           case Left(err)       => Stream.empty[F]
@@ -200,22 +203,23 @@ protected[tcp] object Socket {
         // of (bytes_read, read_duration)
         def readChunk(buff: ByteBuffer, timeoutMs: Long): F[(Int, Long)] =
           F.async[(Int, Long)] { cb =>
-            val started = System.currentTimeMillis()
-            ch.read(
-              buff,
-              timeoutMs,
-              TimeUnit.MILLISECONDS,
-              (),
-              new CompletionHandler[Integer, Unit] {
-                def completed(result: Integer, attachment: Unit): Unit = {
-                  val took = System.currentTimeMillis() - started
-                  cb(Right((result, took)))
+              val started = System.currentTimeMillis()
+              ch.read(
+                buff,
+                timeoutMs,
+                TimeUnit.MILLISECONDS,
+                (),
+                new CompletionHandler[Integer, Unit] {
+                  def completed(result: Integer, attachment: Unit): Unit = {
+                    val took = System.currentTimeMillis() - started
+                    cb(Right((result, took)))
+                  }
+                  def failed(err: Throwable, attachment: Unit): Unit =
+                    cb(Left(err))
                 }
-                def failed(err: Throwable, attachment: Unit): Unit =
-                  cb(Left(err))
-              }
-            )
-          } <* yieldBack
+              )
+            }
+            .guarantee(yieldBack)
 
         // gets buffer of desired capacity, ready for the first read operation
         // If the buffer does not have desired capacity it is resized (recreated)
@@ -304,7 +308,7 @@ protected[tcp] object Socket {
                   }
                 )
               }
-              .flatTap(_ => yieldBack)
+              .guarantee(yieldBack)
               .flatMap {
                 case None       => F.pure(())
                 case Some(took) => go(buff, (remains - took).max(0))
