@@ -24,7 +24,7 @@ Quick links:
 FS2 is a streaming I/O library. The design goals are compositionality, expressiveness, resource safety, and speed. Here's a simple example of its use:
 
 ```scala
-import cats.effect.{ExitCode, IO, IOApp}
+import cats.effect.{ExitCode, IO, IOApp, Resource}
 import cats.implicits._
 import fs2.{io, text}
 import java.nio.file.Paths
@@ -32,11 +32,13 @@ import java.util.concurrent.Executors
 import scala.concurrent.ExecutionContext
 
 object Converter extends IOApp {
-  def run(args: List[String]): IO[ExitCode] = {
+  private val blockingExecutionContextResource =
+    Resource.make(IO(ExecutionContext.fromExecutorService(Executors.newFixedThreadPool(2))))(ec => IO(ec.shutdown()))
+
+  def run(args: List[String]): IO[ExitCode] = blockingExecutionContextResource.use { blockingExecutionContext =>
     def fahrenheitToCelsius(f: Double): Double =
       (f - 32.0) * (5.0/9.0)
 
-    val blockingExecutionContext = ExecutionContext.fromExecutorService(Executors.newFixedThreadPool(2))
 
     io.file.readAll[IO](Paths.get("testdata/fahrenheit.txt"), blockingExecutionContext, 4096)
       .through(text.utf8Decode)
