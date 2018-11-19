@@ -90,16 +90,27 @@ trait Socket[F[_]] {
   def writes(timeout: Option[FiniteDuration] = None): Sink[F, Byte]
 }
 
-protected[tcp] object Socket {
+object Socket {
 
-  /** see [[fs2.io.tcp.client]] **/
+  /**
+    * Stream that connects to the specified server and emits a single socket,
+    * allowing reads/writes via operations on the socket. The socket is closed
+    * when the outer stream terminates.
+    *
+    * @param to                   address of remote server
+    * @param reuseAddress         whether address may be reused (see `java.net.StandardSocketOptions.SO_REUSEADDR`)
+    * @param sendBufferSize       size of send buffer  (see `java.net.StandardSocketOptions.SO_SNDBUF`)
+    * @param receiveBufferSize    size of receive buffer  (see `java.net.StandardSocketOptions.SO_RCVBUF`)
+    * @param keepAlive            whether keep-alive on tcp is used (see `java.net.StandardSocketOptions.SO_KEEPALIVE`)
+    * @param noDelay              whether tcp no-delay flag is set  (see `java.net.StandardSocketOptions.TCP_NODELAY`)
+    */
   def client[F[_]](
       to: InetSocketAddress,
-      reuseAddress: Boolean,
-      sendBufferSize: Int,
-      receiveBufferSize: Int,
-      keepAlive: Boolean,
-      noDelay: Boolean
+      reuseAddress: Boolean = true,
+      sendBufferSize: Int = 256 * 1024,
+      receiveBufferSize: Int = 256 * 1024,
+      keepAlive: Boolean = false,
+      noDelay: Boolean = false
   )(
       implicit AG: AsynchronousChannelGroup,
       F: Concurrent[F]
@@ -131,13 +142,48 @@ protected[tcp] object Socket {
         }
         .guarantee(yieldBack)
 
-    Resource.liftF(setup.flatMap(connect)).flatMap(mkSocket(_))
+    Resource.liftF(setup.flatMap(connect)).flatMap(Socket(_))
   }
 
+  /**
+    * Stream that binds to the specified address and provides a connection for,
+    * represented as a [[Socket]], for each client that connects to the bound address.
+    *
+    * Returns a stream of stream of sockets.
+    *
+    * The outer stream scopes the lifetime of the server socket.
+    * When the outer stream terminates, all open connections will terminate as well.
+    * The outer stream emits an element (an inner stream) for each client connection.
+    *
+    * Each inner stream represents an individual connection, and as such, is a stream
+    * that emits a single socket. Failures that occur in an inner stream do *NOT* cause
+    * the outer stream to fail.
+    *
+    * @param address            address to accept connections from
+    * @param maxQueued          number of queued requests before they will become rejected by server
+    *                           (supply <= 0 for unbounded)
+    * @param reuseAddress       whether address may be reused (see `java.net.StandardSocketOptions.SO_REUSEADDR`)
+    * @param receiveBufferSize  size of receive buffer (see `java.net.StandardSocketOptions.SO_RCVBUF`)
+    */
   def server[F[_]](address: InetSocketAddress,
-                   maxQueued: Int,
-                   reuseAddress: Boolean,
-                   receiveBufferSize: Int)(
+                   maxQueued: Int = 0,
+                   reuseAddress: Boolean = true,
+                   receiveBufferSize: Int = 256 * 1024)(
+      implicit AG: AsynchronousChannelGroup,
+      F: Concurrent[F]
+  ): Stream[F, Resource[F, Socket[F]]] =
+    serverWithLocalAddress(address, maxQueued, reuseAddress, receiveBufferSize)
+      .collect { case Right(s) => s }
+
+  /**
+    * Like [[server]] but provides the `InetSocketAddress` of the bound server socket before providing accepted sockets.
+    *
+    * The outer stream first emits a left value specifying the bound address followed by right values -- one per client connection.
+    */
+  def serverWithLocalAddress[F[_]](address: InetSocketAddress,
+                                   maxQueued: Int = 0,
+                                   reuseAddress: Boolean = true,
+                                   receiveBufferSize: Int = 256 * 1024)(
       implicit AG: AsynchronousChannelGroup,
       F: Concurrent[F]
   ): Stream[F, Either[InetSocketAddress, Resource[F, Socket[F]]]] = {
@@ -173,7 +219,7 @@ protected[tcp] object Socket {
 
         eval(acceptChannel.attempt).flatMap {
           case Left(err)       => Stream.empty[F]
-          case Right(accepted) => Stream.emit(mkSocket(accepted))
+          case Right(accepted) => Stream.emit(Socket(accepted))
         } ++ go
       }
 
@@ -194,7 +240,7 @@ protected[tcp] object Socket {
       }
   }
 
-  def mkSocket[F[_]](ch: AsynchronousSocketChannel)(
+  private def apply[F[_]](ch: AsynchronousSocketChannel)(
       implicit F: Concurrent[F]): Resource[F, Socket[F]] = {
     val socket = Semaphore[F](1).flatMap { readSemaphore =>
       Ref.of[F, ByteBuffer](ByteBuffer.allocate(0)).map { bufferRef =>
