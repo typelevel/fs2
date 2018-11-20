@@ -169,9 +169,7 @@ private[fs2] final class CompileScope[F[_], O] private (
     * There is only one situation where resource cleanup may be somewhat concurrent and that is when resources are
     * leased in `parJoin`. But even then the order of the lease of the resources respects acquisition of the resources that leased them.
     */
-  def acquireResource[R](
-      fr: F[R],
-      release: (R, ExitCase[Throwable]) => F[Unit]): F[Either[Throwable, (R, Token)]] = {
+  def acquireResource[R](fr: F[R], release: Cleanup[R, F]): F[Either[Throwable, (R, Token)]] = {
     val resource = Resource.create
     F.flatMap(F.attempt(fr)) {
       case Right(r) =>

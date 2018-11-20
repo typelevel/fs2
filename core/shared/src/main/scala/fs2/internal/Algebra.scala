@@ -8,55 +8,65 @@ import fs2.internal.FreeC.{Result, ViewL}
 
 import scala.util.control.NonFatal
 
-private[fs2] sealed trait Algebra[F[_], O, R]
+/* `Algebra[F[_], O, R]` is a Generalised Algebraic Data Type (GADT)
+ * of atomic instructions that can be evaluated in the effect `F`
+ * to generate by-product outputs of type `O`.
+ *
+ * Each operation also generates an output of type `R` that is used
+ * as control information for the rest of the interpretation or compilation.
+ */
+private[fs2] sealed trait Algebra[F[_], +O, R]
 
 private[fs2] object Algebra {
 
+  type ExprFA[F[_], O, R] = FreeC[Algebra[F, O, ?], R]
+  type ProgFA[F[_], O] = ExprFA[F, O, Unit]
+  type StepFA[F[_], O, M] = Option[(Chunk[O], M, ProgFA[F, O])]
+
   final case class Output[F[_], O](values: Chunk[O]) extends Algebra[F, O, Unit]
 
-  final case class Step[F[_], X, O](
-      stream: FreeC[Algebra[F, X, ?], Unit],
-      scope: Option[Token]
-  ) extends Algebra[F, O, Option[(Chunk[X], Token, FreeC[Algebra[F, X, ?], Unit])]]
+  final case class Step[F[_], X, O](stream: ProgFA[F, X], scope: Option[Token])
+      extends Algebra[F, O, StepFA[F, X, Token]]
 
-  final case class Eval[F[_], O, R](value: F[R]) extends AlgEffect[F, O, R]
+  /* The `AlgEffect` trait is for operations on the `F` effect that create no `O` output.
+   * They are related to resources and scopes. */
+  sealed trait AlgEffect[F[_], R] extends Algebra[F, INothing, R]
 
-  final case class Acquire[F[_], O, R](resource: F[R], release: (R, ExitCase[Throwable]) => F[Unit])
-      extends AlgEffect[F, O, (R, Token)]
+  final case class Eval[F[_], R](value: F[R]) extends AlgEffect[F, R]
 
-  final case class Release[F[_], O](token: Token, err: Option[Throwable])
-      extends AlgEffect[F, O, Unit]
+  final case class Acquire[F[_], R](resource: F[R], release: Cleanup[R, F])
+      extends AlgEffect[F, (R, Token)]
 
-  final case class OpenScope[F[_], O](interruptible: Option[Concurrent[F]])
-      extends AlgEffect[F, O, Token]
+  final case class Release[F[_]](token: Token, err: Option[Throwable]) extends AlgEffect[F, Unit]
+
+  final case class OpenScope[F[_]](interruptible: Option[Concurrent[F]]) extends AlgEffect[F, Token]
 
   // `InterruptedScope` contains id of the scope currently being interrupted
   // together with any errors accumulated during interruption process
-  final case class CloseScope[F[_], O](scopeId: Token,
-                                       interruptedScope: Option[(Token, Option[Throwable])],
-                                       exitCase: ExitCase[Throwable])
-      extends AlgEffect[F, O, Unit]
+  final case class CloseScope[F[_]](scopeId: Token,
+                                    interruptedScope: Option[(Token, Option[Throwable])],
+                                    exitCase: ExitCase[Throwable])
+      extends AlgEffect[F, Unit]
 
-  final case class GetScope[F[_], O, X]() extends AlgEffect[F, O, CompileScope[F, X]]
+  final case class GetScope[F[_], X]() extends AlgEffect[F, CompileScope[F, X]]
 
-  sealed trait AlgEffect[F[_], O, R] extends Algebra[F, O, R]
+  @inline
+  private[this] final def liftFA[F[_], O, R](alg: Algebra[F, O, R]): ExprFA[F, O, R] =
+    FreeC.Eval[Algebra[F, O, ?], R](alg)
 
-  def output[F[_], O](values: Chunk[O]): FreeC[Algebra[F, O, ?], Unit] =
-    FreeC.Eval[Algebra[F, O, ?], Unit](Output(values))
+  def output[F[_], O](values: Chunk[O]): ProgFA[F, O] =
+    liftFA[F, O, Unit](Output(values))
 
-  def output1[F[_], O](value: O): FreeC[Algebra[F, O, ?], Unit] =
+  def output1[F[_], O](value: O): ProgFA[F, O] =
     output(Chunk.singleton(value))
 
-  def eval[F[_], O, R](value: F[R]): FreeC[Algebra[F, O, ?], R] =
-    FreeC.Eval[Algebra[F, O, ?], R](Eval(value))
+  def eval[F[_], O, R](value: F[R]): ExprFA[F, O, R] = liftFA(Eval(value))
 
-  def acquire[F[_], O, R](
-      resource: F[R],
-      release: (R, ExitCase[Throwable]) => F[Unit]): FreeC[Algebra[F, O, ?], (R, Token)] =
-    FreeC.Eval[Algebra[F, O, ?], (R, Token)](Acquire(resource, release))
+  def acquire[F[_], O, R](resource: F[R], release: Cleanup[R, F]): ExprFA[F, O, (R, Token)] =
+    liftFA(Acquire(resource, release))
 
-  def release[F[_], O](token: Token, err: Option[Throwable]): FreeC[Algebra[F, O, ?], Unit] =
-    FreeC.Eval[Algebra[F, O, ?], Unit](Release(token, err))
+  def release[F[_], O](token: Token, err: Option[Throwable]): ProgFA[F, O] =
+    liftFA(Release(token, err))
 
   /**
     * Steps through the stream, providing either `uncons` or `stepLeg`.
@@ -65,16 +75,12 @@ private[fs2] object Algebra {
     * @param stream             Stream to step
     * @param scopeId            If scope has to be changed before this step is evaluated, id of the scope must be supplied
     */
-  private def step[F[_], O, X](
-      stream: FreeC[Algebra[F, O, ?], Unit],
-      scopeId: Option[Token]
-  ): FreeC[Algebra[F, X, ?], Option[(Chunk[O], Token, FreeC[Algebra[F, O, ?], Unit])]] =
-    FreeC
-      .Eval[Algebra[F, X, ?], Option[(Chunk[O], Token, FreeC[Algebra[F, O, ?], Unit])]](
-        Algebra.Step[F, O, X](stream, scopeId))
+  private def step[F[_], O, X](stream: ProgFA[F, O],
+                               scopeId: Option[Token]): ExprFA[F, X, StepFA[F, O, Token]] =
+    liftFA[F, X, StepFA[F, O, Token]](Algebra.Step[F, O, X](stream, scopeId))
 
   def stepLeg[F[_], O](
-      leg: Stream.StepLeg[F, O]): FreeC[Algebra[F, Nothing, ?], Option[Stream.StepLeg[F, O]]] =
+      leg: Stream.StepLeg[F, O]): ExprFA[F, INothing, Option[Stream.StepLeg[F, O]]] =
     step[F, O, Nothing](
       leg.next,
       Some(leg.scopeId)
@@ -86,29 +92,26 @@ private[fs2] object Algebra {
     * Wraps supplied pull in new scope, that will be opened before this pull is evaluated
     * and closed once this pull either finishes its evaluation or when it fails.
     */
-  def scope[F[_], O](s: FreeC[Algebra[F, O, ?], Unit]): FreeC[Algebra[F, O, ?], Unit] =
-    scope0(s, None)
+  def scope[F[_], O](s: ProgFA[F, O]): ProgFA[F, O] = scope0(s, None)
 
   /**
     * Like `scope` but allows this scope to be interrupted.
     * Note that this may fail with `Interrupted` when interruption occurred
     */
-  private[fs2] def interruptScope[F[_], O](s: FreeC[Algebra[F, O, ?], Unit])(
-      implicit F: Concurrent[F]): FreeC[Algebra[F, O, ?], Unit] =
-    scope0(s, Some(F))
+  def interruptScope[F[_]: Concurrent, O](s: ProgFA[F, O]): ProgFA[F, O] =
+    scope0(s, Some(Concurrent[F]))
 
-  private[fs2] def openScope[F[_], O](
-      interruptible: Option[Concurrent[F]]): FreeC[Algebra[F, O, ?], Token] =
-    FreeC.Eval[Algebra[F, O, ?], Token](OpenScope(interruptible))
+  def openScope[F[_], O](interruptible: Option[Concurrent[F]]): ExprFA[F, O, Token] =
+    liftFA(OpenScope(interruptible))
 
-  private[fs2] def closeScope[F[_], O](
+  def closeScope[F[_], O](
       token: Token,
       interruptedScope: Option[(Token, Option[Throwable])],
-      exitCase: ExitCase[Throwable]): FreeC[Algebra[F, O, ?], Unit] =
-    FreeC.Eval[Algebra[F, O, ?], Unit](CloseScope(token, interruptedScope, exitCase))
+      exitCase: ExitCase[Throwable]
+  ): ProgFA[F, O] =
+    liftFA(CloseScope(token, interruptedScope, exitCase))
 
-  private def scope0[F[_], O](s: FreeC[Algebra[F, O, ?], Unit],
-                              interruptible: Option[Concurrent[F]]): FreeC[Algebra[F, O, ?], Unit] =
+  private def scope0[F[_], O](s: ProgFA[F, O], interruptible: Option[Concurrent[F]]): ProgFA[F, O] =
     openScope(interruptible).flatMap { scopeId =>
       s.transformWith {
         case Result.Pure(_) => closeScope(scopeId, interruptedScope = None, ExitCase.Completed)
@@ -127,38 +130,34 @@ private[fs2] object Algebra {
       }
     }
 
-  def getScope[F[_], O, X]: FreeC[Algebra[F, O, ?], CompileScope[F, X]] =
-    FreeC.eval[Algebra[F, O, ?], CompileScope[F, X]](GetScope())
+  def getScope[F[_], O, X]: ExprFA[F, O, CompileScope[F, X]] = liftFA(GetScope())
 
-  def pure[F[_], O, R](r: R): FreeC[Algebra[F, O, ?], R] =
+  def pure[F[_], O, R](r: R): ExprFA[F, O, R] =
     FreeC.pure[Algebra[F, O, ?], R](r)
 
   def raiseError[F[_], O, R](t: Throwable): FreeC[Algebra[F, O, ?], R] =
     FreeC.raiseError[Algebra[F, O, ?], R](t)
 
-  def suspend[F[_], O, R](f: => FreeC[Algebra[F, O, ?], R]): FreeC[Algebra[F, O, ?], R] =
-    FreeC.suspend(f)
+  def suspend[F[_], O, R](f: => ExprFA[F, O, R]): ExprFA[F, O, R] = FreeC.suspend(f)
 
-  def translate[F[_], G[_], O](
-      s: FreeC[Algebra[F, O, ?], Unit],
-      u: F ~> G
-  )(implicit G: TranslateInterrupt[G]): FreeC[Algebra[G, O, ?], Unit] =
+  def translate[F[_], G[_], O](s: ProgFA[F, O], u: F ~> G)(
+      implicit G: TranslateInterrupt[G]): ProgFA[G, O] =
     translate0[F, G, O](u, s, G.concurrentInstance)
 
-  def uncons[F[_], X, O](s: FreeC[Algebra[F, O, ?], Unit])
-    : FreeC[Algebra[F, X, ?], Option[(Chunk[O], FreeC[Algebra[F, O, ?], Unit])]] =
-    step(s, None).map { _.map { case (h, _, t) => (h, t) } }
+  def uncons[F[_], X, O](s: ProgFA[F, O]): ExprFA[F, X, Option[(Chunk[O], ProgFA[F, O])]] =
+    step(s, None).map(_.map { case (h, _, t) => (h, t) })
 
   /** Left-folds the output of a stream. */
-  def compile[F[_], O, B](stream: FreeC[Algebra[F, O, ?], Unit], init: B)(f: (B, Chunk[O]) => B)(
+  def compile[F[_], O, B](stream: ProgFA[F, O], init: B)(f: (B, Chunk[O]) => B)(
       implicit F: Sync[F]): F[B] =
     F.bracketCase(F.delay(CompileScope.newRoot[F, O]))(scope =>
       compileScope[F, O, B](scope, stream, init)(f))((scope, ec) => scope.close(ec).rethrow)
 
-  private[fs2] def compileScope[F[_], O, B](
-      scope: CompileScope[F, O],
-      stream: FreeC[Algebra[F, O, ?], Unit],
-      init: B)(g: (B, Chunk[O]) => B)(implicit F: Sync[F]): F[B] =
+  private[fs2] def compileScope[F[_], O, B](scope: CompileScope[F, O],
+                                            stream: ProgFA[F, O],
+                                            init: B)(g: (B, Chunk[O]) => B)(
+      implicit F: Sync[F]
+  ): F[B] =
     compileLoop[F, O](scope, stream).flatMap {
       case Some((output, scope, tail)) =>
         try {
@@ -192,23 +191,16 @@ private[fs2] object Algebra {
 
   private[fs2] def compileLoop[F[_], O](
       scope: CompileScope[F, O],
-      stream: FreeC[Algebra[F, O, ?], Unit]
-  )(implicit F: Sync[F])
-    : F[Option[(Chunk[O], CompileScope[F, O], FreeC[Algebra[F, O, ?], Unit])]] = {
+      stream: ProgFA[F, O]
+  )(implicit F: Sync[F]): F[StepFA[F, O, CompileScope[F, O]]] = {
 
     case class Done[X](scope: CompileScope[F, O]) extends R[X]
-    case class Out[X](head: Chunk[X],
-                      scope: CompileScope[F, O],
-                      tail: FreeC[Algebra[F, X, ?], Unit])
-        extends R[X]
+    case class Out[X](head: Chunk[X], scope: CompileScope[F, O], tail: ProgFA[F, X]) extends R[X]
     case class Interrupted[X](scopeId: Token, err: Option[Throwable]) extends R[X]
 
     sealed trait R[X]
 
-    def go[X](
-        scope: CompileScope[F, O],
-        stream: FreeC[Algebra[F, X, ?], Unit]
-    ): F[R[X]] = {
+    def go[X](scope: CompileScope[F, O], stream: ProgFA[F, X]): F[R[X]] =
       stream.viewL match {
         case _: FreeC.Result.Pure[Algebra[F, X, ?], Unit] =>
           F.pure(Done(scope))
@@ -271,7 +263,7 @@ private[fs2] object Algebra {
                       s"Fail to find scope for next step: current: ${scope.id}, step: $u"))
               }
 
-            case eval: Algebra.Eval[F, X, r] =>
+            case eval: Algebra.Eval[F, r] =>
               F.flatMap(scope.interruptibleEval(eval.value)) {
                 case Right(r)           => go[X](scope, view.next(Result.pure(r)))
                 case Left(Left(err))    => go[X](scope, view.next(Result.raiseError(err)))
@@ -279,14 +271,14 @@ private[fs2] object Algebra {
 
               }
 
-            case acquire: Algebra.Acquire[F, X, r] =>
+            case acquire: Algebra.Acquire[F, r] =>
               interruptGuard(scope) {
                 F.flatMap(scope.acquireResource(acquire.resource, acquire.release)) { r =>
                   go[X](scope, view.next(Result.fromEither(r)))
                 }
               }
 
-            case release: Algebra.Release[F, X] =>
+            case release: Algebra.Release[F] =>
               F.flatMap(
                 scope.releaseResource(release.token,
                                       release.err
@@ -295,10 +287,10 @@ private[fs2] object Algebra {
                 go[X](scope, view.next(Result.fromEither(r)))
               }
 
-            case _: Algebra.GetScope[F, X, _] =>
+            case _: Algebra.GetScope[F, _] =>
               F.suspend(go(scope, view.next(Result.pure(scope.asInstanceOf[y]))))
 
-            case open: Algebra.OpenScope[F, X] =>
+            case open: Algebra.OpenScope[F] =>
               interruptGuard(scope) {
                 F.flatMap(scope.open(open.interruptible)) {
                   case Left(err) =>
@@ -308,7 +300,7 @@ private[fs2] object Algebra {
                 }
               }
 
-            case close: Algebra.CloseScope[F, X] =>
+            case close: Algebra.CloseScope[F] =>
               def closeAndGo(toClose: CompileScope[F, O], ec: ExitCase[Throwable]) =
                 F.flatMap(toClose.close(ec)) { r =>
                   F.flatMap(toClose.openAncestor) { ancestor =>
@@ -352,8 +344,6 @@ private[fs2] object Algebra {
 
       }
 
-    }
-
     F.flatMap(go(scope, stream)) {
       case Done(_)                => F.pure(None)
       case Out(head, scope, tail) => F.pure(Some((head, scope, tail)))
@@ -377,10 +367,10 @@ private[fs2] object Algebra {
     * @return
     */
   def interruptBoundary[F[_], O](
-      stream: FreeC[Algebra[F, O, ?], Unit],
+      stream: ProgFA[F, O],
       interruptedScope: Token,
       interruptedError: Option[Throwable]
-  ): FreeC[Algebra[F, O, ?], Unit] =
+  ): ProgFA[F, O] =
     stream.viewL match {
       case _: FreeC.Result.Pure[Algebra[F, O, ?], Unit] =>
         FreeC.interrupted(interruptedScope, interruptedError)
@@ -395,7 +385,7 @@ private[fs2] object Algebra {
 
       case view: ViewL.View[Algebra[F, O, ?], _, Unit] =>
         view.step match {
-          case close: Algebra.CloseScope[F, O] =>
+          case close: Algebra.CloseScope[F] =>
             Algebra
               .closeScope(close.scopeId, Some((interruptedScope, interruptedError)), close.exitCase) // assumes it is impossible so the `close` will be already from interrupted stream
               .transformWith(view.next)
@@ -409,9 +399,9 @@ private[fs2] object Algebra {
 
   private def translateStep[F[_], G[_], X](
       fK: F ~> G,
-      next: FreeC[Algebra[F, X, ?], Unit],
+      next: ProgFA[F, X],
       concurrent: Option[Concurrent[G]]
-  ): FreeC[Algebra[G, X, ?], Unit] =
+  ): ProgFA[G, X] =
     next.viewL match {
       case _: FreeC.Result.Pure[Algebra[F, X, ?], Unit] =>
         FreeC.pure[Algebra[G, X, ?], Unit](())
@@ -430,9 +420,7 @@ private[fs2] object Algebra {
                 // Cast is safe here, as at this point the evaluation of this Step will end
                 // and the remainder of the free will be passed as a result in Bind. As such
                 // next Step will have this to evaluate, and will try to translate again.
-                view
-                  .next(r)
-                  .asInstanceOf[FreeC[Algebra[G, X, ?], Unit]]
+                view.next(r).asInstanceOf[ProgFA[G, X]]
 
               case r @ Result.Fail(err) => translateStep(fK, view.next(r), concurrent)
 
@@ -441,7 +429,7 @@ private[fs2] object Algebra {
 
           case step: Algebra.Step[F, x, X] =>
             FreeC
-              .Eval[Algebra[G, X, ?], Option[(Chunk[x], Token, FreeC[Algebra[G, x, ?], Unit])]](
+              .Eval[Algebra[G, X, ?], StepFA[G, x, Token]](
                 Algebra.Step[G, x, X](
                   stream = translateStep[F, G, x](fK, step.stream, concurrent),
                   scope = step.scope
@@ -450,7 +438,7 @@ private[fs2] object Algebra {
                 translateStep[F, G, X](fK, view.next(r.asInstanceOf[Result[y]]), concurrent)
               }
 
-          case alg: Algebra.AlgEffect[F, X, r] =>
+          case alg: Algebra.AlgEffect[F, r] =>
             FreeC
               .Eval[Algebra[G, X, ?], r](translateAlgEffect(alg, concurrent, fK))
               .transformWith(r => translateStep(fK, view.next(r), concurrent))
@@ -461,9 +449,9 @@ private[fs2] object Algebra {
 
   private def translate0[F[_], G[_], O](
       fK: F ~> G,
-      s: FreeC[Algebra[F, O, ?], Unit],
+      s: ProgFA[F, O],
       concurrent: Option[Concurrent[G]]
-  ): FreeC[Algebra[G, O, ?], Unit] =
+  ): ProgFA[G, O] =
     s.viewL match {
       case _: FreeC.Result.Pure[Algebra[F, O, ?], Unit] =>
         FreeC.pure[Algebra[G, O, ?], Unit](())
@@ -483,7 +471,7 @@ private[fs2] object Algebra {
 
           case step: Algebra.Step[F, x, O] =>
             FreeC
-              .Eval[Algebra[G, O, ?], Option[(Chunk[x], Token, FreeC[Algebra[G, x, ?], Unit])]](
+              .Eval[Algebra[G, O, ?], StepFA[G, x, Token]](
                 Algebra.Step[G, x, O](
                   stream = translateStep[F, G, x](fK, step.stream, concurrent),
                   scope = step.scope
@@ -492,7 +480,7 @@ private[fs2] object Algebra {
                 translate0(fK, view.next(r.asInstanceOf[Result[y]]), concurrent)
               }
 
-          case alg: Algebra.AlgEffect[F, O, r] =>
+          case alg: Algebra.AlgEffect[F, r] =>
             FreeC
               .Eval[Algebra[G, O, ?], r](translateAlgEffect(alg, concurrent, fK))
               .transformWith(r => translate0(fK, view.next(r), concurrent))
@@ -501,21 +489,21 @@ private[fs2] object Algebra {
 
     }
 
-  private[this] def translateAlgEffect[F[_], G[_], O, R](
-      self: AlgEffect[F, O, R],
+  private[this] def translateAlgEffect[F[_], G[_], R](
+      self: AlgEffect[F, R],
       concurrent: Option[Concurrent[G]],
       fK: F ~> G
-  ): AlgEffect[G, O, R] = self match {
+  ): AlgEffect[G, R] = self match {
     // safe to cast, used in translate only
     // if interruption has to be supported concurrent for G has to be passed
-    case a: Acquire[F, O, r] =>
-      Acquire[G, O, r](fK(a.resource), (r, ec) => fK(a.release(r, ec)))
-        .asInstanceOf[AlgEffect[G, O, R]]
-    case e: Eval[F, O, R]     => Eval[G, O, R](fK(e.value))
-    case o: OpenScope[F, O]   => OpenScope[G, O](concurrent).asInstanceOf[AlgEffect[G, O, R]]
-    case r: Release[F, O]     => r.asInstanceOf[AlgEffect[G, O, R]]
-    case c: CloseScope[F, O]  => c.asInstanceOf[AlgEffect[G, O, R]]
-    case g: GetScope[F, O, x] => g.asInstanceOf[AlgEffect[G, O, R]]
+    case a: Acquire[F, r] =>
+      Acquire[G, r](fK(a.resource), (r, ec) => fK(a.release(r, ec)))
+        .asInstanceOf[AlgEffect[G, R]]
+    case e: Eval[F, R]     => Eval[G, R](fK(e.value))
+    case o: OpenScope[F]   => OpenScope[G](concurrent).asInstanceOf[AlgEffect[G, R]]
+    case r: Release[F]     => r.asInstanceOf[AlgEffect[G, R]]
+    case c: CloseScope[F]  => c.asInstanceOf[AlgEffect[G, R]]
+    case g: GetScope[F, x] => g.asInstanceOf[AlgEffect[G, R]]
   }
 
 }
