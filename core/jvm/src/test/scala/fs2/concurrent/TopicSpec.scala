@@ -42,6 +42,36 @@ class TopicSpec extends Fs2Spec {
       result.toMap shouldBe expected
     }
 
+    "subscribers see all published elements (no initial value case)" in {
+
+      val topic = Topic[IO, Int]().unsafeRunSync()
+      val count = 100
+      val subs = 10
+      val publisher = Stream.sleep[IO](1.second) ++ Stream
+        .range(0, count)
+        .covary[IO]
+        .through(topic.publish)
+      val subscriber =
+        topic.subscribe(Int.MaxValue).take(count).fold(Vector.empty[Int]) {
+          _ :+ _
+        }
+
+      val result = (Stream
+        .range(0, subs)
+        .map(idx => subscriber.map(idx -> _)) ++ publisher.drain)
+        .parJoin(subs + 1)
+        .compile
+        .toVector
+        .unsafeRunSync()
+
+      val expected = (for { i <- 0 until subs } yield i).map { idx =>
+        idx -> (for { i <- 0 until count } yield i).toVector
+      }.toMap
+
+      result.toMap.size shouldBe subs
+      result.toMap shouldBe expected
+    }
+
     "synchronous publish" in {
       pending // TODO I think there's a race condition on the signal in this test
       val topic = Topic[IO, Int](-1).unsafeRunSync()

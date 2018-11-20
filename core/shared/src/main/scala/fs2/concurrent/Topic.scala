@@ -84,7 +84,19 @@ abstract class Topic[F[_], A] { self =>
 
 object Topic {
 
-  def apply[F[_], A](initial: A)(implicit F: Concurrent[F]): F[Topic[F, A]] = {
+  /**
+    * Creates an empty topic.
+    */
+  def apply[F[_], A]()(implicit F: Concurrent[F]): F[Topic[F, A]] =
+    apply[F, A](None)
+
+  /**
+    * Creates a topic with an initial value.
+    */
+  def apply[F[_], A](initial: A)(implicit F: Concurrent[F]): F[Topic[F, A]] =
+    apply[F, A](Some(initial))
+
+  private def apply[F[_], A](initial: Option[A])(implicit F: Concurrent[F]): F[Topic[F, A]] = {
     implicit def eqInstance: Eq[Strategy.State[A]] =
       Eq.instance[Strategy.State[A]](_.subscribers.keySet == _.subscribers.keySet)
 
@@ -141,7 +153,6 @@ object Topic {
                 pubSub.getStream(Left(Some(token))).flatMap {
                   case Left(s)  => Stream.emit(s.subscribers.size)
                   case Right(_) => Stream.empty //impossible
-
                 }
               }
         }
@@ -151,7 +162,7 @@ object Topic {
   private[fs2] object Strategy {
 
     final case class State[A](
-        last: A,
+        last: Option[A],
         subscribers: Map[(Token, Int), ScalaQueue[A]]
     )
 
@@ -160,10 +171,10 @@ object Topic {
       * If that subscription is exceeded any other `publish` to the topic will hold,
       * until such subscriber disappears, or consumes more elements.
       *
-      * @param initial  Initial value of the topic.
+      * @param start Initial value of the topic.
       */
     def boundedSubscribers[F[_], A](
-        start: A): PubSub.Strategy[A, ScalaQueue[A], State[A], (Token, Int)] =
+        start: Option[A]): PubSub.Strategy[A, ScalaQueue[A], State[A], (Token, Int)] =
       new PubSub.Strategy[A, ScalaQueue[A], State[A], (Token, Int)] {
         def initial: State[A] = State(start, Map.empty)
         def accepts(i: A, state: State[A]): Boolean =
@@ -171,7 +182,7 @@ object Topic {
 
         def publish(i: A, state: State[A]): State[A] =
           State(
-            last = i,
+            last = Some(i),
             subscribers = state.subscribers.map { case (k, v) => (k, v :+ i) }
           )
 
@@ -182,11 +193,12 @@ object Topic {
         def get(selector: (Token, Int), state: State[A]): (State[A], Option[ScalaQueue[A]]) =
           state.subscribers.get(selector) match {
             case None =>
-              (regEmpty(selector, state), Some(ScalaQueue(state.last)))
+              val queue = state.last.map(ScalaQueue(_)).getOrElse(ScalaQueue.empty[A])
+              (regEmpty(selector, state), Some(queue))
+
             case r @ Some(q) =>
               if (q.isEmpty) (state, None)
               else (regEmpty(selector, state), r)
-
           }
 
         def empty(state: State[A]): Boolean =
