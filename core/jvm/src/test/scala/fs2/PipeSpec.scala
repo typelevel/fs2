@@ -569,7 +569,7 @@ class PipeSpec extends Fs2Spec {
             .attempt
         }
         r1 should have size (1)
-        r1.head.swap.toOption.get shouldBe an[Err]
+        r1.head.swap.right.get shouldBe an[Err]
         val r2 = runLog {
           s.get
             .covary[IO]
@@ -579,7 +579,7 @@ class PipeSpec extends Fs2Spec {
             .attempt
         }
         r2 should have size (1)
-        r2.head.swap.toOption.get shouldBe an[Err]
+        r2.head.swap.right.get shouldBe an[Err]
       }
     }
 
@@ -592,7 +592,7 @@ class PipeSpec extends Fs2Spec {
             .attempt
         }
         r1 should have size (1)
-        r1.head.swap.toOption.get shouldBe an[Err]
+        r1.head.swap.right.get shouldBe an[Err]
         val r2 = runLog {
           f.get
             .covary[IO]
@@ -600,7 +600,7 @@ class PipeSpec extends Fs2Spec {
             .attempt
         }
         r2 should have size (1)
-        r2.head.swap.toOption.get shouldBe an[Err]
+        r2.head.swap.right.get shouldBe an[Err]
       }
     }
 

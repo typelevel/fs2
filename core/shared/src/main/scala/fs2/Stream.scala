@@ -1971,7 +1971,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
       val firstError = c.find(_.isLeft)
       firstError match {
         case None    => Stream.chunk(c.collect { case Right(i) => i })
-        case Some(h) => Stream.raiseError[F2](h.swap.toOption.get)
+        case Some(h) => Stream.raiseError[F2](h.swap.right.get)
       }
     }
   }
