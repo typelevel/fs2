@@ -501,7 +501,6 @@ private[fs2] object Algebra {
 
     }
 
-  @inline
   private[this] def translateAlgEffect[F[_], G[_], O, R](
       self: AlgEffect[F, O, R],
       concurrent: Option[Concurrent[G]],
