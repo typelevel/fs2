@@ -1968,10 +1968,10 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
                                  rt: RaiseThrowable[F2]): Stream[F2, O2] = {
     val _ = ev // Convince scalac that ev is used
     this.asInstanceOf[Stream[F, Either[Throwable, O2]]].chunks.flatMap { c =>
-      val firstError = c.find(_.isLeft)
+      val firstError = c.collectFirst { case Left(err) => err }
       firstError match {
         case None    => Stream.chunk(c.collect { case Right(i) => i })
-        case Some(h) => Stream.raiseError[F2](h.swap.right.get)
+        case Some(h) => Stream.raiseError[F2](h)
       }
     }
   }
