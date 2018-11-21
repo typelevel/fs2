@@ -1,6 +1,6 @@
 package fs2.io
 
-import cats.effect.IO
+import cats.effect.{Concurrent, IO}
 import fs2.{Chunk, EventuallySupport, Fs2Spec, Stream}
 import org.scalacheck.{Arbitrary, Gen}
 
@@ -29,7 +29,7 @@ class JavaInputOutputStreamSpec extends Fs2Spec with EventuallySupport {
 
       val fromInputStream =
         stream
-          .through(toInputStream)
+          .through(toInputStream(Concurrent[IO], Concurrent[IO]))
           .evalMap { is =>
             // consume in same thread pool. Production application should never do this,
             // instead they have to fork this to dedicated thread pool
@@ -56,7 +56,7 @@ class JavaInputOutputStreamSpec extends Fs2Spec with EventuallySupport {
       val s: Stream[IO, Byte] =
         Stream(1.toByte).onFinalize(IO { closed = true })
 
-      s.through(toInputStream).compile.drain.unsafeRunSync()
+      s.through(toInputStream(Concurrent[IO], Concurrent[IO])).compile.drain.unsafeRunSync()
 
       eventually { closed shouldBe true }
     }
@@ -68,7 +68,7 @@ class JavaInputOutputStreamSpec extends Fs2Spec with EventuallySupport {
         Stream(1.toByte).onFinalize(IO { closed = true })
 
       val result =
-        s.through(toInputStream)
+        s.through(toInputStream(Concurrent[IO], Concurrent[IO]))
           .evalMap { is =>
             IO {
               is.close()
@@ -85,7 +85,7 @@ class JavaInputOutputStreamSpec extends Fs2Spec with EventuallySupport {
     "converts to 0..255 int values except EOF mark" in {
       val s: Stream[IO, Byte] = Stream.range(0, 256, 1).map(_.toByte)
       val result = s
-        .through(toInputStream)
+        .through(toInputStream(Concurrent[IO], Concurrent[IO]))
         .map { is =>
           Vector.fill(257)(is.read())
         }

@@ -1,6 +1,6 @@
 package fs2
 
-import cats.effect.{Concurrent, ConcurrentEffect, ContextShift, Sync}
+import cats.effect.{Concurrent, ConcurrentEffect, ContextShift, IO, Sync}
 
 import cats.implicits._
 import java.io.{InputStream, OutputStream}
@@ -134,8 +134,20 @@ package object io {
     * Note that the implementation is not thread safe -- only one thread is allowed at any time
     * to operate on the resulting `java.io.InputStream`.
     */
-  def toInputStream[F[_]](implicit F: ConcurrentEffect[F]): Pipe[F, Byte, InputStream] =
+  def toInputStream[F[_]](implicit F: Concurrent[F], ioConcurrent: Concurrent[IO]): Pipe[F, Byte, InputStream] =
     JavaInputOutputStream.toInputStream
+
+  // Provided for binary compatibilty with 1.0.0 release
+  private[io] def toInputStream[F[_]](
+      implicit F: ConcurrentEffect[F]): Pipe[F, Byte, InputStream] = {
+    implicit val ioConcurrent: Concurrent[IO] = {
+      if (F.getClass.getName.startsWith("cats.effect.IOInstances"))
+        F.asInstanceOf[Concurrent[IO]]
+      else
+        IO.ioConcurrentEffect(IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global))
+    }
+    JavaInputOutputStream.toInputStream
+  }
 
   /** Shifts execution to the default execution context for `F`. */
   private[io] def yieldBack[F[_]](implicit F: Concurrent[F]): F[Unit] =

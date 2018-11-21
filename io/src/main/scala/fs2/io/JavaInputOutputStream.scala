@@ -1,32 +1,37 @@
 package fs2
 package io
 
-import scala.concurrent.{SyncVar, blocking}
-
 import java.io.{IOException, InputStream}
 
-import cats.effect.{ConcurrentEffect, ExitCase, IO}
+import cats.~>
+import cats.implicits._
+import cats.effect.{Concurrent, ExitCase, IO}
 import cats.effect.implicits._
-import cats.implicits.{catsSyntaxEither => _, _}
 
 import fs2.Chunk.Bytes
 import fs2.concurrent.{Queue, SignallingRef}
 
 private[io] object JavaInputOutputStream {
 
-  def toInputStream[F[_]](implicit F: ConcurrentEffect[F]): Pipe[F, Byte, InputStream] = {
-
-    /** See Implementation notes at the end of this code block **/
-    /** state of the upstream, we only indicate whether upstream is done and if it failed **/
-    final case class UpStreamState(done: Boolean, err: Option[Throwable])
-    final case class Done(rslt: Option[Throwable]) extends DownStreamState
-    final case class Ready(rem: Option[Bytes]) extends DownStreamState
-    sealed trait DownStreamState { self =>
-      def isDone: Boolean = self match {
-        case Done(_) => true
-        case _       => false
-      }
+  /** state of the upstream, we only indicate whether upstream is done and if it failed **/
+  private final case class UpStreamState(done: Boolean, err: Option[Throwable])
+  private sealed trait DownStreamState { self =>
+    def isDone: Boolean = self match {
+      case Done(_) => true
+      case _       => false
     }
+  }
+  private final case class Done(rslt: Option[Throwable]) extends DownStreamState
+  private final case class Ready(rem: Option[Bytes]) extends DownStreamState
+
+  def toInputStream[F[_]](implicit F: Concurrent[F],
+                          ioConcurrent: Concurrent[IO]): Pipe[F, Byte, InputStream] = {
+
+    def markUpstreamDone(queue: Queue[IO, Either[Option[Throwable], Bytes]],
+                         upState: SignallingRef[IO, UpStreamState],
+                         result: Option[Throwable]): F[Unit] =
+      F.liftIO(
+        upState.set(UpStreamState(done = true, err = result)) *> queue.enqueue1(Left(result)))
 
     /**
       * Takes source and runs it through queue, interrupting when dnState signals stream is done.
@@ -37,30 +42,29 @@ private[io] object JavaInputOutputStream {
       */
     def processInput(
         source: Stream[F, Byte],
-        queue: Queue[F, Either[Option[Throwable], Bytes]],
-        upState: SignallingRef[F, UpStreamState],
-        dnState: SignallingRef[F, DownStreamState]
+        queue: Queue[IO, Either[Option[Throwable], Bytes]],
+        upState: SignallingRef[IO, UpStreamState],
+        dnState: SignallingRef[IO, DownStreamState]
     ): Stream[F, Unit] =
       Stream
-        .eval(F.start {
-          def markUpstreamDone(result: Option[Throwable]): F[Unit] =
-            F.flatMap(upState.set(UpStreamState(done = true, err = result))) { _ =>
-              queue.enqueue1(Left(result))
+        .eval(
+          source.chunks
+            .evalMap(ch => F.liftIO(queue.enqueue1(Right(ch.toBytes))))
+            .interruptWhen(
+              dnState.discrete
+                .map(_.isDone)
+                .filter(identity)
+                .translate(new (IO ~> F) { def apply[X](ix: IO[X]) = F.liftIO(ix) }))
+            .compile
+            .drain
+            .guaranteeCase {
+              case ExitCase.Completed => markUpstreamDone(queue, upState, None)
+              case ExitCase.Error(t)  => markUpstreamDone(queue, upState, Some(t))
+              case ExitCase.Canceled  => markUpstreamDone(queue, upState, None)
             }
-
-          F.guaranteeCase(
-            source.chunks
-              .evalMap(ch => queue.enqueue1(Right(ch.toBytes)))
-              .interruptWhen(dnState.discrete.map(_.isDone).filter(identity))
-              .compile
-              .drain
-          ) {
-            case ExitCase.Completed => markUpstreamDone(None)
-            case ExitCase.Error(t)  => markUpstreamDone(Some(t))
-            case ExitCase.Canceled  => markUpstreamDone(None)
-          }
-        })
-        .map(_ => ())
+            .start
+        )
+        .void
 
     /**
       * Closes the stream if not closed yet.
@@ -68,13 +72,10 @@ private[io] object JavaInputOutputStream {
       * releases any resources that upstream may hold.
       */
     def closeIs(
-        upState: SignallingRef[F, UpStreamState],
-        dnState: SignallingRef[F, DownStreamState]
-    ): Unit = {
-      val done = new SyncVar[Either[Throwable, Unit]]
-      close(upState, dnState).start.flatMap(_.join).runAsync(r => IO(done.put(r))).unsafeRunSync
-      blocking(done.get.fold(throw _, identity))
-    }
+        upState: SignallingRef[IO, UpStreamState],
+        dnState: SignallingRef[IO, DownStreamState]
+    ): Unit =
+      close(upState, dnState).unsafeRunSync
 
     /**
       * Reads single chunk of bytes of size `len` into array b.
@@ -87,16 +88,10 @@ private[io] object JavaInputOutputStream {
         dest: Array[Byte],
         off: Int,
         len: Int,
-        queue: Queue[F, Either[Option[Throwable], Bytes]],
-        dnState: SignallingRef[F, DownStreamState]
-    ): Int = {
-      val sync = new SyncVar[Either[Throwable, Int]]
-      readOnce(dest, off, len, queue, dnState).start
-        .flatMap(_.join)
-        .runAsync(r => IO(sync.put(r)))
-        .unsafeRunSync
-      blocking(sync.get.fold(throw _, identity))
-    }
+        queue: Queue[IO, Either[Option[Throwable], Bytes]],
+        dnState: SignallingRef[IO, DownStreamState]
+    ): Int =
+      readOnce(dest, off, len, queue, dnState).unsafeRunSync
 
     /**
       * Reads single int value
@@ -108,29 +103,27 @@ private[io] object JavaInputOutputStream {
       *
       */
     def readIs1(
-        queue: Queue[F, Either[Option[Throwable], Bytes]],
-        dnState: SignallingRef[F, DownStreamState]
+        queue: Queue[IO, Either[Option[Throwable], Bytes]],
+        dnState: SignallingRef[IO, DownStreamState]
     ): Int = {
 
-      def go(acc: Array[Byte]): F[Int] =
-        F.flatMap(readOnce(acc, 0, 1, queue, dnState)) { read =>
-          if (read < 0) F.pure(-1)
+      def go(acc: Array[Byte]): IO[Int] =
+        readOnce(acc, 0, 1, queue, dnState).flatMap { read =>
+          if (read < 0) IO.pure(-1)
           else if (read == 0) go(acc)
-          else F.pure(acc(0) & 0xFF)
+          else IO.pure(acc(0) & 0xFF)
         }
 
-      val sync = new SyncVar[Either[Throwable, Int]]
-      go(new Array[Byte](1)).start.flatMap(_.join).runAsync(r => IO(sync.put(r))).unsafeRunSync
-      blocking(sync.get.fold(throw _, identity))
+      go(new Array[Byte](1)).unsafeRunSync
     }
 
     def readOnce(
         dest: Array[Byte],
         off: Int,
         len: Int,
-        queue: Queue[F, Either[Option[Throwable], Bytes]],
-        dnState: SignallingRef[F, DownStreamState]
-    ): F[Int] = {
+        queue: Queue[IO, Either[Option[Throwable], Bytes]],
+        dnState: SignallingRef[IO, DownStreamState]
+    ): IO[Int] = {
       // in case current state has any data available from previous read
       // this will cause the data to be acquired, state modified and chunk returned
       // won't modify state if the data cannot be acquired
@@ -158,15 +151,15 @@ private[io] object JavaInputOutputStream {
 
         val result = out match {
           case Some(bytes) =>
-            F.delay {
+            IO.delay {
               Array.copy(bytes.values, 0, dest, off, bytes.size)
               bytes.size
             }
           case None =>
             n match {
-              case Done(None) => (-1).pure[F]
+              case Done(None) => (-1).pure[IO]
               case Done(Some(err)) =>
-                F.raiseError[Int](new IOException("Stream is in failed state", err))
+                IO.raiseError[Int](new IOException("Stream is in failed state", err))
               case _ =>
                 // Ready is guaranteed at this time to be empty
                 queue.dequeue1.flatMap {
@@ -175,7 +168,7 @@ private[io] object JavaInputOutputStream {
                       .update(setDone(None))
                       .as(-1) // update we are done, next read won't succeed
                   case Left(Some(err)) => // update we are failed, next read won't succeed
-                    dnState.update(setDone(err.some)) >> F.raiseError[Int](
+                    dnState.update(setDone(err.some)) >> IO.raiseError[Int](
                       new IOException("UpStream failed", err))
                   case Right(bytes) =>
                     val (copy, maybeKeep) =
@@ -184,12 +177,12 @@ private[io] object JavaInputOutputStream {
                         val (out, rem) = bytes.splitAt(len)
                         out.toBytes -> rem.toBytes.some
                       }
-                    F.delay {
+                    IO.delay {
                       Array.copy(copy.values, 0, dest, off, copy.size)
                     } >> (maybeKeep match {
                       case Some(rem) if rem.size > 0 =>
                         dnState.set(Ready(rem.some)).as(copy.size)
-                      case _ => copy.size.pure[F]
+                      case _ => copy.size.pure[IO]
                     })
                 }
             }
@@ -203,9 +196,9 @@ private[io] object JavaInputOutputStream {
       * Closes input stream and awaits completion of the upstream
       */
     def close(
-        upState: SignallingRef[F, UpStreamState],
-        dnState: SignallingRef[F, DownStreamState]
-    ): F[Unit] =
+        upState: SignallingRef[IO, UpStreamState],
+        dnState: SignallingRef[IO, DownStreamState]
+    ): IO[Unit] =
       dnState.update {
         case s @ Done(_) => s
         case other       => Done(None)
@@ -219,8 +212,8 @@ private[io] object JavaInputOutputStream {
           .last
           .flatMap {
             _.flatten match {
-              case None      => F.pure(())
-              case Some(err) => F.raiseError[Unit](err)
+              case None      => IO.pure(())
+              case Some(err) => IO.raiseError[Unit](err)
             }
           }
 
@@ -234,30 +227,28 @@ private[io] object JavaInputOutputStream {
      *                        that upstream has finished and is safe time to terminate
      * - DownStream signal -  keeps any remainders from last `read` and signals
      *                        that downstream has been terminated that in turn kills upstream
-     *
      */
     (source: Stream[F, Byte]) =>
       Stream
-        .eval(Queue.synchronous[F, Either[Option[Throwable], Bytes]])
-        .flatMap { queue =>
-          Stream
-            .eval(SignallingRef[F, UpStreamState](UpStreamState(done = false, err = None)))
-            .flatMap { upState =>
-              Stream
-                .eval(SignallingRef[F, DownStreamState](Ready(None)))
-                .flatMap { dnState =>
-                  processInput(source, queue, upState, dnState)
-                    .map { _ =>
-                      new InputStream {
-                        override def close(): Unit = closeIs(upState, dnState)
-                        override def read(b: Array[Byte], off: Int, len: Int): Int =
-                          readIs(b, off, len, queue, dnState)
-                        def read(): Int = readIs1(queue, dnState)
-                      }
-                    }
-                    .onFinalize(close(upState, dnState))
+        .eval(
+          F.liftIO(
+            (
+              Queue.synchronous[IO, Either[Option[Throwable], Bytes]],
+              SignallingRef[IO, UpStreamState](UpStreamState(done = false, err = None)),
+              SignallingRef[IO, DownStreamState](Ready(None))
+            ).tupled))
+        .flatMap {
+          case (queue, upState, dnState) =>
+            processInput(source, queue, upState, dnState)
+              .as(
+                new InputStream {
+                  override def close(): Unit = closeIs(upState, dnState)
+                  override def read(b: Array[Byte], off: Int, len: Int): Int =
+                    readIs(b, off, len, queue, dnState)
+                  def read(): Int = readIs1(queue, dnState)
                 }
-            }
+              )
+              .onFinalize(F.liftIO(close(upState, dnState)))
         }
   }
 }
