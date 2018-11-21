@@ -25,8 +25,8 @@ private[reactivestreams] final class StreamSubscription[F[_], A](
   import StreamSubscription._
 
   // We want to make sure `cancelled` is set _before_ signalling the subscriber
-  def onError(e: Throwable) = cancelled.set(true) *> F.delay(sub.onError(e))
-  def onComplete = cancelled.set(true) *> F.delay(sub.onComplete)
+  def onError(e: Throwable) = cancelled.set(true) >> F.delay(sub.onError(e))
+  def onComplete = cancelled.set(true) >> F.delay(sub.onComplete)
 
   def unsafeStart(): Unit = {
     def subscriptionPipe: Pipe[F, A, A] =

@@ -523,7 +523,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
             case None    => F.start(timer.sleep(d) >> enqueueLatest).void
             case Some(_) => F.unit
           }
-        } ++ Stream.eval_(enqueueLatest *> queue.enqueue1(None))
+        } ++ Stream.eval_(enqueueLatest >> queue.enqueue1(None))
 
         val out: Stream[F2, O] = queue.dequeue.unNoneTerminate
 
@@ -728,7 +728,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
             all
               .dropRight(n)
               .chunks
-              .foldLeft(Pull.done.covaryAll[F, O, Unit])((acc, c) => acc *> Pull.output(c)) *> go(
+              .foldLeft(Pull.done.covaryAll[F, O, Unit])((acc, c) => acc >> Pull.output(c)) >> go(
               all.takeRight(n),
               tl)
         }
@@ -1121,7 +1121,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
         case (q, currentTimeout) =>
           def startTimeout: Stream[F2, Token] =
             Stream.eval(F.delay(new Token)).evalTap { t =>
-              val timeout = timer.sleep(d) *> q.enqueue1(t.asLeft.some)
+              val timeout = timer.sleep(d) >> q.enqueue1(t.asLeft.some)
 
               // We need to cancel outstanding timeouts to avoid leaks
               // on interruption, but using `Stream.bracket` or
@@ -1766,7 +1766,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
                           Some(Some(new CompositeFailure(err0, NonEmptyList.of(err))))
                         }
                       case _ => Some(rslt)
-                    } *> outputQ.enqueue1(None)
+                    } >> outputQ.enqueue1(None)
 
                   val incrementRunning: F2[Unit] = running.update(_ + 1)
                   val decrementRunning: F2[Unit] =
@@ -1784,8 +1784,8 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
                   def runInner(inner: Stream[F2, O2], outerScope: Scope[F2]): F2[Unit] =
                     outerScope.lease.flatMap {
                       case Some(lease) =>
-                        available.acquire *>
-                          incrementRunning *>
+                        available.acquire >>
+                          incrementRunning >>
                           F2.start {
                             inner.chunks
                               .evalMap(s => outputQ.enqueue1(Some(s)))
@@ -1837,7 +1837,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
 
                   Stream.bracket(F2.start(runOuter))(
                     _ =>
-                      stop(None) *> running.discrete
+                      stop(None) >> running.discrete
                         .dropWhile(_ > 0)
                         .take(1)
                         .compile
@@ -2152,7 +2152,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     this.pull
       .takeRight(n)
       .flatMap(cq =>
-        cq.chunks.foldLeft(Pull.done.covaryAll[F, O, Unit])((acc, c) => acc *> Pull.output(c)))
+        cq.chunks.foldLeft(Pull.done.covaryAll[F, O, Unit])((acc, c) => acc >> Pull.output(c)))
       .stream
 
   /**
@@ -2558,7 +2558,7 @@ object Stream extends StreamLowPriority {
   def awakeDelay[F[x] >: Pure[x]](d: FiniteDuration)(implicit timer: Timer[F],
                                                      F: Functor[F]): Stream[F, FiniteDuration] =
     Stream.eval(timer.clock.monotonic(NANOSECONDS)).flatMap { start =>
-      fixedDelay[F](d) *> Stream.eval(
+      fixedDelay[F](d) >> Stream.eval(
         timer.clock.monotonic(NANOSECONDS).map(now => (now - start).nanos))
     }
 
@@ -2575,7 +2575,7 @@ object Stream extends StreamLowPriority {
   def awakeEvery[F[x] >: Pure[x]](d: FiniteDuration)(implicit timer: Timer[F],
                                                      F: Functor[F]): Stream[F, FiniteDuration] =
     Stream.eval(timer.clock.monotonic(NANOSECONDS)).flatMap { start =>
-      fixedRate[F](d) *> Stream.eval(
+      fixedRate[F](d) >> Stream.eval(
         timer.clock.monotonic(NANOSECONDS).map(now => (now - start).nanos))
     }
 

@@ -8,7 +8,7 @@ import fs2.concurrent.Queue
 
 class StreamCancelationSpec extends AsyncFs2Spec {
   def startAndCancelSoonAfter[A](fa: IO[A]): IO[Unit] =
-    fa.start.flatMap(fiber => timerIO.sleep(1000.milliseconds) *> fiber.cancel)
+    fa.start.flatMap(fiber => timerIO.sleep(1000.milliseconds) >> fiber.cancel)
 
   def testCancelation[A](s: Stream[IO, A]): Future[Unit] =
     startAndCancelSoonAfter(s.compile.drain).unsafeToFuture
