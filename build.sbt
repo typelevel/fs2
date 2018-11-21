@@ -196,6 +196,7 @@ lazy val mimaSettings = Seq(
     organization.value % (normalizedName.value + "_" + scalaBinaryVersion.value) % pv
   }.toSet,
   mimaBinaryIssueFilters ++= Seq(
+    ProblemFilters.exclude[Problem]("fs2.package*EitherSyntax*"),
     ProblemFilters.exclude[Problem]("fs2.internal.*"),
     ProblemFilters.exclude[Problem]("fs2.Stream#StepLeg.this"),
     ProblemFilters.exclude[Problem]("fs2.concurrent.Publish.*"),

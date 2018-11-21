@@ -121,7 +121,7 @@ class StreamSpec extends Fs2Spec with Inside {
         .compile
         .toVector
         .unsafeRunSync()
-      r.foreach(_.swap.toOption.get shouldBe an[Err])
+      r.foreach(_.left.get shouldBe an[Err])
     }
 
     "handleErrorWith (5)" in {
