@@ -12,7 +12,7 @@ import cats.implicits._
 
 object TestUtil extends TestUtilPlatform {
 
-  def runLogF[A](s: Stream[IO,A]): Future[Vector[A]] = (IO.shift(executionContext) *> s.compile.toVector).unsafeToFuture
+  def runLogF[A](s: Stream[IO,A]): Future[Vector[A]] = (IO.shift(executionContext) >> s.compile.toVector).unsafeToFuture
 
   def spuriousFail(s: Stream[IO,Int], f: Failure): Stream[IO,Int] =
     s.flatMap { i => if (i % (math.random * 10 + 1).toInt == 0) f.get

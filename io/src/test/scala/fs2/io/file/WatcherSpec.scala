@@ -45,7 +45,7 @@ class WatcherSpec extends BaseFileSpec {
           tempDirectory.flatMap { dir =>
             val a = dir.resolve("a")
             val b = a.resolve("b")
-            Stream.eval(IO(Files.createDirectory(a)) *> IO(Files.write(b, Array[Byte]()))) *>
+            Stream.eval(IO(Files.createDirectory(a)) >> IO(Files.write(b, Array[Byte]()))) >>
               (file
                 .watch[IO](dir, modifiers = modifiers)
                 .takeWhile({
@@ -66,7 +66,7 @@ class WatcherSpec extends BaseFileSpec {
                 case Watcher.Event.Created(b, _) => false; case _ => true
               })
               .concurrently(smallDelay ++ Stream.eval(
-                IO(Files.createDirectory(a)) *> IO(Files.write(b, Array[Byte]()))))
+                IO(Files.createDirectory(a)) >> IO(Files.write(b, Array[Byte]()))))
           }
         }
       }

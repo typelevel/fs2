@@ -175,7 +175,7 @@ private[io] object JavaInputOutputStream {
                       .update(setDone(None))
                       .as(-1) // update we are done, next read won't succeed
                   case Left(Some(err)) => // update we are failed, next read won't succeed
-                    dnState.update(setDone(err.some)) *> F.raiseError[Int](
+                    dnState.update(setDone(err.some)) >> F.raiseError[Int](
                       new IOException("UpStream failed", err))
                   case Right(bytes) =>
                     val (copy, maybeKeep) =
@@ -186,7 +186,7 @@ private[io] object JavaInputOutputStream {
                       }
                     F.delay {
                       Array.copy(copy.values, 0, dest, off, copy.size)
-                    } *> (maybeKeep match {
+                    } >> (maybeKeep match {
                       case Some(rem) if rem.size > 0 =>
                         dnState.set(Ready(rem.some)).as(copy.size)
                       case _ => copy.size.pure[F]

@@ -93,7 +93,7 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
             }
           }
           .flatMap(_ => s0.get ++ Stream.never[IO])
-      s.compile.drain.start.flatMap(f => IO.sleep(50.millis) *> f.cancel).unsafeRunSync
+      s.compile.drain.start.flatMap(f => IO.sleep(50.millis) >> f.cancel).unsafeRunSync
       c.get shouldBe 0L
       ecs.toList.foreach(ec => assert(ec == ExitCase.Canceled))
     }
@@ -275,7 +275,7 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
       forAll { (s: PureStream[PureStream[Int]]) =>
         val signal = SignallingRef[IO, Boolean](false).unsafeRunSync()
         val c = new AtomicLong(0)
-        (IO.shift *> IO { Thread.sleep(20L) } *> signal.set(true))
+        (IO.shift >> IO { Thread.sleep(20L) } >> signal.set(true))
           .unsafeRunSync()
         runLog {
           s.get.evalMap { inner =>
@@ -300,7 +300,7 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
       val s = Stream(Stream(1))
       val signal = SignallingRef[IO, Boolean](false).unsafeRunSync()
       val c = new AtomicLong(0)
-      (IO.shift *> IO { Thread.sleep(50L) } *> signal.set(true)).start
+      (IO.shift >> IO { Thread.sleep(50L) } >> signal.set(true)).start
         .unsafeRunSync() // after 50 ms, interrupt
       runLog {
         s.evalMap { inner =>

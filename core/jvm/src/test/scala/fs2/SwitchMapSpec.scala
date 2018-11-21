@@ -29,8 +29,8 @@ class SwitchMapSpec extends Fs2Spec with EventuallySupport {
             if (!released) Stream.raiseError[IO](new Err)
             else
               Stream
-                .eval(ref.set(false) *> IO.sleep(20.millis))
-                .onFinalize(IO.sleep(100.millis) *> ref.set(true))
+                .eval(ref.set(false) >> IO.sleep(20.millis))
+                .onFinalize(IO.sleep(100.millis) >> ref.set(true))
           }
         }
       }

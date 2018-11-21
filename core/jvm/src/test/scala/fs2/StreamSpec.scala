@@ -407,7 +407,7 @@ class StreamSpec extends Fs2Spec with Inside {
       val t =
         emitAndSleep.zip(Stream.duration[IO]).drop(1).map(_._2).compile.toVector
 
-      (IO.shift *> t).unsafeToFuture.collect {
+      (IO.shift >> t).unsafeToFuture.collect {
         case Vector(d) => assert(d.toMillis >= delay.toMillis - 5)
       }
     }
@@ -440,7 +440,7 @@ class StreamSpec extends Fs2Spec with Inside {
         .take(draws.toInt)
         .through(durationSinceLastTrue)
 
-      (IO.shift *> durationsSinceSpike.compile.toVector).unsafeToFuture().map { result =>
+      (IO.shift >> durationsSinceSpike.compile.toVector).unsafeToFuture().map { result =>
         val (head :: tail) = result.toList
         withClue("every always emits true first") { assert(head._1) }
         withClue("true means the delay has passed: " + tail) {
