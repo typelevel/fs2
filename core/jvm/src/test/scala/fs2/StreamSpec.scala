@@ -5,7 +5,7 @@ import cats.effect.IO
 import cats.effect.laws.discipline.arbitrary._
 import cats.effect.laws.util.TestContext
 import cats.effect.laws.util.TestInstances._
-import cats.implicits.{catsSyntaxEither => _, catsSyntaxFlatMapOps => _, _}
+import cats.implicits._
 import cats.laws.discipline.MonadErrorTests
 
 import org.scalacheck.{Arbitrary, Gen}
@@ -121,7 +121,7 @@ class StreamSpec extends Fs2Spec with Inside {
         .compile
         .toVector
         .unsafeRunSync()
-      r.foreach(_.swap.toOption.get shouldBe an[Err])
+      r.foreach(_.left.get shouldBe an[Err])
     }
 
     "handleErrorWith (5)" in {
@@ -407,7 +407,7 @@ class StreamSpec extends Fs2Spec with Inside {
       val t =
         emitAndSleep.zip(Stream.duration[IO]).drop(1).map(_._2).compile.toVector
 
-      (IO.shift *> t).unsafeToFuture.collect {
+      (IO.shift >> t).unsafeToFuture.collect {
         case Vector(d) => assert(d.toMillis >= delay.toMillis - 5)
       }
     }
@@ -440,7 +440,7 @@ class StreamSpec extends Fs2Spec with Inside {
         .take(draws.toInt)
         .through(durationSinceLastTrue)
 
-      (IO.shift *> durationsSinceSpike.compile.toVector).unsafeToFuture().map { result =>
+      (IO.shift >> durationsSinceSpike.compile.toVector).unsafeToFuture().map { result =>
         val (head :: tail) = result.toList
         withClue("every always emits true first") { assert(head._1) }
         withClue("true means the delay has passed: " + tail) {

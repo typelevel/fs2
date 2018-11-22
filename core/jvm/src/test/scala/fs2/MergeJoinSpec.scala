@@ -249,7 +249,7 @@ class MergeJoinSpec extends Fs2Spec {
         Stream
           .repeatEval[IO, Unit](IO.async[Unit] { cb =>
             cb(Right(()))
-          } *> IO.shift)
+          } >> IO.shift)
           .drain
 
       "merge" in {

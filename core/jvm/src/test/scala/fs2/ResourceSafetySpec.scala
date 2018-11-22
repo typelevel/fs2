@@ -93,7 +93,7 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
             }
           }
           .flatMap(_ => s0.get ++ Stream.never[IO])
-      s.compile.drain.start.flatMap(f => IO.sleep(50.millis) *> f.cancel).unsafeRunSync
+      s.compile.drain.start.flatMap(f => IO.sleep(50.millis) >> f.cancel).unsafeRunSync
       c.get shouldBe 0L
       ecs.toList.foreach(ec => assert(ec == ExitCase.Canceled))
     }
@@ -275,7 +275,7 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
       forAll { (s: PureStream[PureStream[Int]]) =>
         val signal = SignallingRef[IO, Boolean](false).unsafeRunSync()
         val c = new AtomicLong(0)
-        (IO.shift *> IO { Thread.sleep(20L) } *> signal.set(true))
+        (IO.shift >> IO { Thread.sleep(20L) } >> signal.set(true))
           .unsafeRunSync()
         runLog {
           s.get.evalMap { inner =>
@@ -300,7 +300,7 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
       val s = Stream(Stream(1))
       val signal = SignallingRef[IO, Boolean](false).unsafeRunSync()
       val c = new AtomicLong(0)
-      (IO.shift *> IO { Thread.sleep(50L) } *> signal.set(true)).start
+      (IO.shift >> IO { Thread.sleep(50L) } >> signal.set(true)).start
         .unsafeRunSync() // after 50 ms, interrupt
       runLog {
         s.evalMap { inner =>
@@ -353,9 +353,9 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
       val s2 = Stream.bracket(IO("a"))(_ => IO.raiseError(new Err))
 
       val r1 = s1.zip(s2).compile.drain.attempt.unsafeRunSync()
-      r1.swap.toOption.get shouldBe an[Err]
+      r1.left.get shouldBe an[Err]
       val r2 = s2.zip(s1).compile.drain.attempt.unsafeRunSync()
-      r2.swap.toOption.get shouldBe an[Err]
+      r2.left.get shouldBe an[Err]
     }
 
     def bracket[A](c: AtomicLong)(s: Stream[IO, A]): Stream[IO, A] =

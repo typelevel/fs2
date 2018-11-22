@@ -1,5 +1,5 @@
 import microsites.ExtraMdFileConfig
-import com.typesafe.tools.mima.core.{Problem, ProblemFilters}
+import com.typesafe.tools.mima.core._
 import sbtrelease.Version
 import sbtcrossproject.crossProject
 
@@ -196,11 +196,21 @@ lazy val mimaSettings = Seq(
     organization.value % (normalizedName.value + "_" + scalaBinaryVersion.value) % pv
   }.toSet,
   mimaBinaryIssueFilters ++= Seq(
+    ProblemFilters.exclude[Problem]("fs2.package*EitherSyntax*"),
     ProblemFilters.exclude[Problem]("fs2.internal.*"),
     ProblemFilters.exclude[Problem]("fs2.Stream#StepLeg.this"),
     ProblemFilters.exclude[Problem]("fs2.concurrent.Publish.*"),
     ProblemFilters.exclude[Problem]("fs2.concurrent.Subscribe.*"),
-    ProblemFilters.exclude[Problem]("fs2.concurrent.PubSub.*")
+    ProblemFilters.exclude[Problem]("fs2.concurrent.PubSub.*"),
+    // The following changes to the io package were all package private
+    ProblemFilters
+      .exclude[DirectMissingMethodProblem]("fs2.io.package.invokeCallback"),
+    ProblemFilters
+      .exclude[IncompatibleMethTypeProblem]("fs2.io.tcp.Socket.client"),
+    ProblemFilters
+      .exclude[IncompatibleMethTypeProblem]("fs2.io.tcp.Socket.server"),
+    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.tcp.Socket.mkSocket"),
+    ProblemFilters.exclude[IncompatibleMethTypeProblem]("fs2.io.udp.Socket.mkSocket")
   )
 )
 
