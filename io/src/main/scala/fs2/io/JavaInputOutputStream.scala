@@ -28,7 +28,7 @@ private[io] object JavaInputOutputStream {
     def markUpstreamDone(queue: Queue[F, Either[Option[Throwable], Bytes]],
                          upState: SignallingRef[F, UpStreamState],
                          result: Option[Throwable]): F[Unit] =
-      upState.set(UpStreamState(done = true, err = result)) *> queue.enqueue1(Left(result))
+      upState.set(UpStreamState(done = true, err = result)) >> queue.enqueue1(Left(result))
 
     /**
       * Takes source and runs it through queue, interrupting when dnState signals stream is done.
