@@ -59,57 +59,6 @@ private[io] object JavaInputOutputStream {
         )
         .void
 
-    /**
-      * Closes the stream if not closed yet.
-      * If the stream is closed, this will return once the upstream stream finishes its work and
-      * releases any resources that upstream may hold.
-      */
-    def closeIs(
-        upState: SignallingRef[F, UpStreamState],
-        dnState: SignallingRef[F, DownStreamState]
-    ): Unit =
-      close(upState, dnState).toIO.unsafeRunSync
-
-    /**
-      * Reads single chunk of bytes of size `len` into array b.
-      *
-      * This is implementation of InputStream#read.
-      *
-      * Inherently this method will block until data from the queue are available
-      */
-    def readIs(
-        dest: Array[Byte],
-        off: Int,
-        len: Int,
-        queue: Queue[F, Either[Option[Throwable], Bytes]],
-        dnState: SignallingRef[F, DownStreamState]
-    ): Int =
-      readOnce(dest, off, len, queue, dnState).toIO.unsafeRunSync
-
-    /**
-      * Reads single int value
-      *
-      * This is implementation of InputStream#read.
-      *
-      * Inherently this method will block until data from the queue are available
-      *
-      *
-      */
-    def readIs1(
-        queue: Queue[F, Either[Option[Throwable], Bytes]],
-        dnState: SignallingRef[F, DownStreamState]
-    ): Int = {
-
-      def go(acc: Array[Byte]): F[Int] =
-        readOnce(acc, 0, 1, queue, dnState).flatMap { read =>
-          if (read < 0) F.pure(-1)
-          else if (read == 0) go(acc)
-          else F.pure(acc(0) & 0xFF)
-        }
-
-      go(new Array[Byte](1)).toIO.unsafeRunSync
-    }
-
     def readOnce(
         dest: Array[Byte],
         off: Int,
@@ -185,10 +134,7 @@ private[io] object JavaInputOutputStream {
       }.flatten
     }
 
-    /**
-      * Closes input stream and awaits completion of the upstream
-      */
-    def close(
+    def closeIs(
         upState: SignallingRef[F, UpStreamState],
         dnState: SignallingRef[F, DownStreamState]
     ): F[Unit] =
@@ -234,13 +180,25 @@ private[io] object JavaInputOutputStream {
             processInput(source, queue, upState, dnState)
               .as(
                 new InputStream {
-                  override def close(): Unit = closeIs(upState, dnState)
+                  override def close(): Unit =
+                    closeIs(upState, dnState).toIO.unsafeRunSync
+
                   override def read(b: Array[Byte], off: Int, len: Int): Int =
-                    readIs(b, off, len, queue, dnState)
-                  def read(): Int = readIs1(queue, dnState)
+                    readOnce(b, off, len, queue, dnState).toIO.unsafeRunSync
+
+                  def read(): Int = {
+                    def go(acc: Array[Byte]): F[Int] =
+                      readOnce(acc, 0, 1, queue, dnState).flatMap { read =>
+                        if (read < 0) F.pure(-1)
+                        else if (read == 0) go(acc)
+                        else F.pure(acc(0) & 0xFF)
+                      }
+
+                    go(new Array[Byte](1)).toIO.unsafeRunSync
+                  }
                 }
               )
-              .onFinalize(close(upState, dnState))
+              .onFinalize(closeIs(upState, dnState))
         }
   }
 }
