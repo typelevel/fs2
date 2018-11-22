@@ -16,64 +16,52 @@ import scala.concurrent.duration._
 /**
   * A stream producing output of type `O` and which may evaluate `F`
   * effects.
-  * Or: a lazy sequence of computations that may evaluate `F` effects `F` and yield values of type `O`.
   *
-  * Streams are purely functional: a `Stream[F, O]` is a description for a computation,
-  * much like `cats.effect.IO` or `scalaz.Task` are just descriptions of computations.
-  * The methods in the `Stream` class only calculate new descriptions from others.
+  * - '''Purely functional''' a value of type `Stream[F, O]` _describes_ an effectful computation.
+  *    A function that returns a `Stream[F, O]` builds a _description_ of an effectful computation,
+  *    but does not perform them. The methods of the `Stream` class derive new descriptions from others.
+  *    This is similar to  `cats.effect.IO`, `monix.Task`, or `scalaz.zio.IO`.
   *
-  * Streams are lazy, pull-based data sources. To '''evaluate''' a stream is to extract from it
-  * as many elements as a _consumer_ of the stream may need for the result.
-  *   by performing as many `F`-effectful computations as necessary to get those elements.
-  *   Thus, the effects in `F` are not evaluated unless and until they are required (pulled) by a stream consumer.
+  * - '''Pull''': to evaluate a stream, a consumer pulls its values from it, by repeatedly performing one pull step at a time.
+  *   Each step is a `F`-effectful computation that may yield some `O` values (or none), and a stream from which to continue pulling.
+  *   The consumer controls the evaluation of the stream, which effectful operations are performed, and when.
   *
-  * - '''Laziness''': streams are lazily evaluated sources for effectful computations.
-  *   The operations on a Stream only evaluate a finite prefix,
-  *   a finite part of a whole stream, as needed to supply the requests of the stream _consumers_.
-  *   Thus, there can be infinite streams, or Streams based on
-  *   an unlimited source of information (e.g. a Signal that may be sampled with as frequently as desired).
+  * - '''Non-Strict''': stream evaluation only pulls from the stream a prefix large enough to compute its results.
+  *   Thus, although a stream may yield an unbounded number of values or, after successfully yielding several values,
+  *   either raise an error or hang up and never yield any value, the consumer need not reach those points of failure.
+  *   For the same reason, in general, no effect in `F` is evaluated unless and until the consumer needs it.
   *
-  * - '''Source''': a stream may simply be a fixed list of pre-defined F-effectful computations.
-  *   However, it can also be backed by an external data source (e.g. a network connection).
-  *   It can also be backed by a effectful computation that can be re-evaluated,
-  *   such as a Stream to read the current system time.
+  * - '''Abstract''': a stream needs not be a plain finite list of fixed effectful computations in F.
+  *   It can also represent an input or output connection through which data incrementally arrives.
+  *   It can represent an effectful computation, such as reading the system's time, that can be re-evaluated
+  *   as often as the consumer of the stream requires.
+  *
+  * === Special properties for streams ===
   *
   * There are some special properties or cases of streams:
-  *  - A '''pure''' stream is a `Stream` in which the `F` is [[Pure]], which evaluates no effects.
-  *  - A stream is '''terminating''', or '''finite''', if pulling from it reaches the end after yielding
-  *    a finite number of elements.
-  *  - In particular, a stream is ''''empty''' if it terminates after yielding no value.
+  *  - A stream is '''finite''', or if we can reach the end after a limited number of pull steps, 
+  *    which may yield a finite number of values. It is '''empty''' if it terminates and yields no values.
   *  - A '''singleton''' stream is a stream that ends after yielding one single value.
+  *  - A '''pure''' stream is one in which the `F` is [[Pure]], which indicates that it evaluates no effects.
   *  - A '''never''' stream is a stream that never terminates and never yields any value.
   *
-  * == List-Like API and operations ==
+  * == Pure Streams and operations ==
   *
-  * A `Stream[F, O]` can be (naively) seen as a list of elements with `F`-effects.
-  * Following the analogy between lists and streams, the API of the `Stream` class
-  * defines several methods similar to those of the `List` class.
-
-  * We can convert every ''pure and finite''' stream into a `List[O]` with the `.toList` method.
-  * This conversion obeys some equivalences between `Stream` and `List` operations.
+  * We can sometimes think of streams, naively, as lists of `O` elements with `F`-effects.
+  * This is particularly true for '''pure''' streams, which are instances of `Stream` which use the [[Pure]] effect type.
+  * We can convert every ''pure and finite'' stream into a `List[O]` using the `.toList` method.
+  * Also, we can convert pure ''infinite'' streams into instances of the `Stream[O]` class from the Scala standard library.
   *
-  *  - For any pure stream `s`, `s.foo().toList == s.toList.foo()`, is true if `foo` is one of `map`, `as`, `delete`, `take`, `drop`, `takeWhile`, `dropWhile`, `zipWithIndex`, `filter`, or `collect`.
-  *  - Likewise, `s.foo().toList == List(s.toList.foo() )` holds if `foo` is one of:  `exists`, `forall`, `fold`.
-  *  - Other equalities of the form `leftSide.toList == rightSide` are shown in this table, where we use `SP[A]` as alias for `Stream[Pure, A]`
+  * A method of the `Stream` class is '''pure''' if it can be applied to pure streams. Such methods are identified
+  * in that their signature includes no type-class constraint (or implicit parameter) on the `F` method.
+  * Pure methods in `Stream[F, O]` can be projected ''naturally'' to methods in the `List` class, which means 
+  * that we can applying the stream's method and converting the result to a list gets the same result as
+  * first converting the stream to a list, and then applying list methods. 
   *
-  * | Method    | Left side         | Right side | Variables |
-  * | --------- | ----------------: | :----------------------------- | -------- |
-  * | head      | `s.head`          | `s.toList.headOption.toList` |
-  * | last      | `s.last`          | `s.toList.lastOption.toList` |
-  * | append    | `s1 ++ s2`        | `s1.toList ++ s2.toList`  | `s1, s2: SP[O]` |
-  * | takeRight | `s.takeRight(n)`  | `s.toList.reverse.take(n).reverse` | `n: Int` |
-  * | dropRight | `s.dropRight(n)`  | `s.toList.reverse.drop(n).reverse` | `n: Int` |
-  * | takeThrough | `s.takeThrough(n)`  | `s.toList.takeWhile(p) ++ s.toList.dropWhile(p).take(1)` | `p: O => Boolean` |
-  * | dropThrough | `s.dropThrough(n)`  | `s.toList.dropWhile(p).drop(1)` | `p: O => Boolean` |
-  * | flatMap   | `s.flatMap(f)`    | `s.toList.flatMap(f andThen toList)`  | `s: SP[O]`, and `f: O => SP[B]` |
-  * | flatten   | `ss.flatten`      | `s.toList.flatMap(_.toList)`  | `ss: SP[SP[O]]` |
-  * | zip       | `s.zip(t)`        | `s.toList zip t.toList`     | `s: SP[O]` and `t: SP[B]` |
-  * | zipWith   | `s.zipWith(t)(f)` | `(s.toList zip t.toList).map(f)`  | `s: SP[O]`, `t: SP[B]`, and `f: (O,B) => C` |
-  * | zipWithPrevious | `s.zipWithPrevious` | `(None :: s.toList.map(Some)) zip s.toList` |
-  * | zipWithNext | `s.zipWithNext` | `s.toList zip (s.drop(1).map(Some) ++ List(None))` |
+  * Some methods that project directly to list methods are, are `map`, `filter`, `takeWhile`, etc. 
+  * There are other methods, like `exists` or `find`, that in the `List` class they return a value or an `Option`, 
+  * but their stream counterparts return an (either empty or singleton) stream. 
+  * Other methods, like `zipWithPrevious`, have a more complicated but still pure translation to list methods. 
   *
   * == Type-Class instances and laws of the Stream Operations ==
   *
@@ -790,6 +778,9 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
   /**
     * Outputs all but the last `n` elements of the input.
     *
+    * This is a '''pure''' stream operation: if `s a finite pure stream, then `s.dropRight(n).toList`
+    * is equal to `this.toList.reverse.drop(n).reverse`.
+    *
     * @example {{{
     * scala> Stream.range(0,10).dropRight(5).toList
     * res0: List[Int] = List(0, 1, 2, 3, 4)
@@ -820,6 +811,9 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * scala> Stream.range(0,10).dropThrough(_ != 4).toList
     * res0: List[Int] = List(5, 6, 7, 8, 9)
     * }}}
+    *
+    * '''Pure:''' if `this` is a finite pure stream, then `this.dropThrough(p).toList` is equal to
+    *   `this.toList.dropWhile(p).drop(1)`
     */
   def dropThrough(p: O => Boolean): Stream[F, O] =
     this.pull
@@ -834,6 +828,8 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * scala> Stream.range(0,10).dropWhile(_ != 4).toList
     * res0: List[Int] = List(4, 5, 6, 7, 8, 9)
     * }}}
+    *
+    * '''Pure''' this operation maps directly to `List.dropWhile`
     */
   def dropWhile(p: O => Boolean): Stream[F, O] =
     this.pull
@@ -930,6 +926,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
 
   /**
     * Emits `true` as soon as a matching element is received, else `false` if no input matches.
+    * '''Pure''': this operation maps to `List.exists`
     *
     * @example {{{
     * scala> Stream.range(0,10).exists(_ == 4).toList
@@ -939,7 +936,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * }}}
     *
     * @returns Either a singleton stream, or a `never` stream.
-    *  - If `this` is a finite stream, the result is a singleton stream, with    after yielding one single value.
+    *  - If `this` is a finite stream, the result is a singleton stream, with after yielding one single value.
     *    If `this` is empty, that value is the `mempty` of the instance of `Monoid`.
     *  - If `this` is a non-terminating stream, and no matter if it yields any value, then the result is
     *    equivalent to the `Stream.never`: it never terminates nor yields any value.
@@ -950,6 +947,8 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
 
   /**
     * Emits only inputs which match the supplied predicate.
+    *
+    * This is a '''pure''' operation, that projects directly into `List.filter`
     *
     * @example {{{
     * scala> Stream.range(0,10).filter(_ % 2 == 0).toList
@@ -1000,6 +999,8 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * scala> Stream.range(1,10).find(_ % 2 == 0).toList
     * res0: List[Int] = List(2)
     * }}}
+    * '''Pure''' if `s` is a finite pure stream, `s.find(p).toList` is equal to `s.toList.find(p).toList`,
+    *  where the second `toList` is to turn `Option` into `List`.
     */
   def find(f: O => Boolean): Stream[F, O] =
     this.pull
@@ -1084,9 +1085,6 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
 
   /**
     * Alias for `map(f).foldMonoid`.
-    *
-    * @returns A singleton stream whose value is the result of the fold, if `this` is a finite stream.
-    * If `this` is an infinite stream, then the result is a never-stream.
     *
     * @example {{{
     * scala> import cats.implicits._
