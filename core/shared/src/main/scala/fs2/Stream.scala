@@ -39,7 +39,7 @@ import scala.concurrent.duration._
   * === Special properties for streams ===
   *
   * There are some special properties or cases of streams:
-  *  - A stream is '''finite''', or if we can reach the end after a limited number of pull steps, 
+  *  - A stream is '''finite''', or if we can reach the end after a limited number of pull steps,
   *    which may yield a finite number of values. It is '''empty''' if it terminates and yields no values.
   *  - A '''singleton''' stream is a stream that ends after yielding one single value.
   *  - A '''pure''' stream is one in which the `F` is [[Pure]], which indicates that it evaluates no effects.
@@ -54,14 +54,14 @@ import scala.concurrent.duration._
   *
   * A method of the `Stream` class is '''pure''' if it can be applied to pure streams. Such methods are identified
   * in that their signature includes no type-class constraint (or implicit parameter) on the `F` method.
-  * Pure methods in `Stream[F, O]` can be projected ''naturally'' to methods in the `List` class, which means 
+  * Pure methods in `Stream[F, O]` can be projected ''naturally'' to methods in the `List` class, which means
   * that we can applying the stream's method and converting the result to a list gets the same result as
-  * first converting the stream to a list, and then applying list methods. 
+  * first converting the stream to a list, and then applying list methods.
   *
-  * Some methods that project directly to list methods are, are `map`, `filter`, `takeWhile`, etc. 
-  * There are other methods, like `exists` or `find`, that in the `List` class they return a value or an `Option`, 
-  * but their stream counterparts return an (either empty or singleton) stream. 
-  * Other methods, like `zipWithPrevious`, have a more complicated but still pure translation to list methods. 
+  * Some methods that project directly to list methods are, are `map`, `filter`, `takeWhile`, etc.
+  * There are other methods, like `exists` or `find`, that in the `List` class they return a value or an `Option`,
+  * but their stream counterparts return an (either empty or singleton) stream.
+  * Other methods, like `zipWithPrevious`, have a more complicated but still pure translation to list methods.
   *
   * == Type-Class instances and laws of the Stream Operations ==
   *
