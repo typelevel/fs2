@@ -1,4 +1,4 @@
-package fs2.compress
+package fs2.internal
 
 import cats.effect.Sync
 
@@ -13,7 +13,7 @@ import java.io.InputStream
   * reads *before* changing any internal state. Reads that are interleaved with state changes may
   * result in invalid continuations.
   */
-private[compress] final class AsyncByteArrayInputStream[F[_]: Sync] private (val bound: Int)
+private[fs2] final class AsyncByteArrayInputStream[F[_]: Sync] private (val bound: Int)
     extends InputStream {
   private[this] val bytes = new mutable.ListBuffer[Array[Byte]]
   private[this] var headOffset = 0
@@ -84,7 +84,7 @@ private[compress] final class AsyncByteArrayInputStream[F[_]: Sync] private (val
     }
 }
 
-private[compress] object AsyncByteArrayInputStream {
+private[fs2] object AsyncByteArrayInputStream {
 
   def apply[F[_]: Sync](bound: Int): F[AsyncByteArrayInputStream[F]] =
     Sync[F].delay(new AsyncByteArrayInputStream[F](bound))

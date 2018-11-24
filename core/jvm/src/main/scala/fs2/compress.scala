@@ -3,6 +3,8 @@ package fs2
 import cats.effect.Sync
 import cats.syntax.all._
 
+import fs2.internal.AsyncByteArrayInputStream
+
 import java.io.ByteArrayOutputStream
 import java.util.zip.{DataFormatException, Deflater, GZIPInputStream, GZIPOutputStream, Inflater}
 
@@ -10,7 +12,7 @@ import scala.annotation.tailrec
 import scala.collection.mutable.ArrayBuffer
 
 /** Provides utilities for compressing/decompressing byte streams. */
-package object compress {
+object compress {
 
   /**
     * Returns a `Pipe` that deflates (compresses) its input elements using
@@ -265,4 +267,6 @@ package object compress {
     }
   }
 
+  final case class NonProgressiveDecompressionException(bufferSize: Int)
+      extends RuntimeException(s"buffer size $bufferSize is too small; gunzip cannot make progress")
 }
