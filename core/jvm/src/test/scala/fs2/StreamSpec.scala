@@ -524,26 +524,23 @@ class StreamSpec extends Fs2Spec with Inside {
     }
 
     "regression #1335 - stack safety of map" in {
-      case class Tree[A](label: A, subForest: Stream[Pure, Tree[A]]) {
 
-        /** Depth-first pre-order traversal */
+      case class Tree[A](label: A, subForest: Stream[Pure, Tree[A]]) {
         def flatten: Stream[Pure, A] =
           Stream(this.label) ++ this.subForest.flatMap(_.flatten)
       }
 
-      object Tree {
-        def unfoldForest[A, B](s: Stream[Pure, A])(
-            f: A => (B, Stream[Pure, A])): Stream[Pure, Tree[B]] =
-          s.map(unfoldTree(_)(f))
+      def unfoldForest[A, B](s: Stream[Pure, A])(
+          f: A => (B, Stream[Pure, A])): Stream[Pure, Tree[B]] =
+        s.map(unfoldTree(_)(f))
 
-        def unfoldTree[A, B](seed: A)(f: A => (B, Stream[Pure, A])): Tree[B] =
-          f(seed) match {
-            case (a, bs) => Tree(a, unfoldForest(bs)(f))
-          }
-      }
+      def unfoldTree[A, B](seed: A)(f: A => (B, Stream[Pure, A])): Tree[B] =
+        f(seed) match {
+          case (a, bs) => Tree(a, unfoldForest(bs)(f))
+        }
 
-      Tree.unfoldTree(1)(x => (x, Stream(x + 1))).flatten.take(10).toList shouldBe List.tabulate(
-        10)(_ + 1)
+      unfoldTree(1)(x => (x, Stream(x + 1))).flatten.take(10).toList shouldBe List.tabulate(10)(
+        _ + 1)
     }
 
     {
