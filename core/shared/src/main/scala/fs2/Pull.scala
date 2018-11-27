@@ -187,7 +187,8 @@ object Pull extends PullLowPriority {
             case o: Algebra.Output[F, O] => Algebra.Output(o.values.map(f))
             case other                   => other.asInstanceOf[Algebra[F, O2, X]]
           }
-        }))
+        })
+    )
 
   /** Outputs a single value. */
   def output1[F[x] >: Pure[x], O](o: O): Pull[F, O, Unit] =

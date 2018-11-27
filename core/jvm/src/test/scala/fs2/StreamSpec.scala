@@ -523,6 +523,19 @@ class StreamSpec extends Fs2Spec with Inside {
         .unsafeRunSync()
     }
 
+    "regression #1335 - stack safety of map" in {
+
+      case class Tree[A](label: A, subForest: Stream[Pure, Tree[A]]) {
+        def flatten: Stream[Pure, A] =
+          Stream(this.label) ++ this.subForest.flatMap(_.flatten)
+      }
+
+      def unfoldTree(seed: Int): Tree[Int] =
+        Tree(seed, Stream(seed + 1).map(unfoldTree))
+
+      unfoldTree(1).flatten.take(10).toList shouldBe List.tabulate(10)(_ + 1)
+    }
+
     {
       implicit val ec: TestContext = TestContext()
 
