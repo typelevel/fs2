@@ -21,8 +21,6 @@ import scala.util.control.NonFatal
   *
   * Typically the [[FreeC]] user provides interpretation of FreeC in form of [[ViewL]] structure, that allows to step
   * FreeC via series of Results ([[Result.Pure]], [[Result.Fail]] and [[Result.Interrupted]]) and FreeC step ([[ViewL.View]])
-  *
-  *
   */
 private[fs2] sealed abstract class FreeC[F[_], +R] {
 
@@ -68,7 +66,7 @@ private[fs2] sealed abstract class FreeC[F[_], +R] {
 
   def viewL[R2 >: R]: ViewL[F, R2] = ViewL(this)
 
-  def translate[G[_]](f: F ~> G): FreeC[G, R] = FreeC.suspend {
+  def translate[G[_]](f: F ~> G): FreeC[G, R] = suspend {
     viewL match {
       case ViewL.View(fx, k) =>
         Bind(Eval(fx).translate(f), (e: Result[Any]) => k(e).translate(f))
@@ -80,6 +78,8 @@ private[fs2] sealed abstract class FreeC[F[_], +R] {
 }
 
 private[fs2] object FreeC {
+
+  def unit[F[_]]: FreeC[F, Unit] = Result.unit.asFreeC
 
   def pure[F[_], A](a: A): FreeC[F, A] = Result.Pure(a)
 
@@ -194,8 +194,10 @@ private[fs2] object FreeC {
 
   final case class Eval[F[_], R](fr: F[R]) extends FreeC[F, R] {
     override def translate[G[_]](f: F ~> G): FreeC[G, R] =
-      try Eval(f(fr))
-      catch { case NonFatal(t) => Result.Fail[G, R](t) }
+      suspend {
+        try Eval(f(fr))
+        catch { case NonFatal(t) => Result.Fail[G, R](t) }
+      }
     override def toString: String = s"FreeC.Eval($fr)"
   }
   final case class Bind[F[_], X, R](fx: FreeC[F, X], f: Result[X] => FreeC[F, R])
@@ -207,7 +209,7 @@ private[fs2] object FreeC {
     _.asFreeC[F]
 
   def suspend[F[_], R](fr: => FreeC[F, R]): FreeC[F, R] =
-    Result.Pure[F, Unit](()).flatMap(_ => fr)
+    unit.flatMap(_ => fr)
 
   /**
     * Unrolled view of a `FreeC` structure. may be `Result` or `EvalBind`

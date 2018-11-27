@@ -530,17 +530,10 @@ class StreamSpec extends Fs2Spec with Inside {
           Stream(this.label) ++ this.subForest.flatMap(_.flatten)
       }
 
-      def unfoldForest[A, B](s: Stream[Pure, A])(
-          f: A => (B, Stream[Pure, A])): Stream[Pure, Tree[B]] =
-        s.map(unfoldTree(_)(f))
+      def unfoldTree(seed: Int): Tree[Int] =
+        Tree(seed, Stream(seed + 1).map(unfoldTree))
 
-      def unfoldTree[A, B](seed: A)(f: A => (B, Stream[Pure, A])): Tree[B] =
-        f(seed) match {
-          case (a, bs) => Tree(a, unfoldForest(bs)(f))
-        }
-
-      unfoldTree(1)(x => (x, Stream(x + 1))).flatten.take(10).toList shouldBe List.tabulate(10)(
-        _ + 1)
+      unfoldTree(1).flatten.take(10).toList shouldBe List.tabulate(10)(_ + 1)
     }
 
     {
