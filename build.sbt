@@ -56,7 +56,7 @@ lazy val commonSettings = Seq(
     "org.typelevel" %%% "cats-effect" % "1.0.0",
     "org.typelevel" %%% "cats-effect-laws" % "1.0.0" % "test",
     "org.scalatest" %%% "scalatest" % "3.0.5" % "test",
-    "org.scalacheck" %%% "scalacheck" % "1.13.5" % "test"
+    "org.scalacheck" %%% "scalacheck" % "1.14.0" % "test"
   ),
   scmInfo := Some(ScmInfo(url("https://github.com/functional-streams-for-scala/fs2"),
                           "git@github.com:functional-streams-for-scala/fs2.git")),
