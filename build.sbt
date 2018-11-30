@@ -247,15 +247,7 @@ lazy val coreJVM = core.jvm
       Seq(s"""scala.*;version="[$major.$minor,$major.${minor + 1})"""", "*")
     },
     OsgiKeys.additionalHeaders := Map("-removeheaders" -> "Include-Resource,Private-Package"),
-    osgiSettings,
-    libraryDependencies ++= {
-      CrossVersion.partialVersion(scalaVersion.value) match {
-        case Some((2, minor)) if minor >= 13 =>
-          Seq("org.scala-lang.modules" %% "scala-parallel-collections" % "0.1.2" % "test")
-        case _ =>
-          Seq()
-      }
-    }
+    osgiSettings
   )
   .settings(mimaSettings)
 lazy val coreJS = core.js.disablePlugins(DoctestPlugin, MimaPlugin)
