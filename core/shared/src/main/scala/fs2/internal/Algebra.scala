@@ -8,7 +8,14 @@ import fs2.internal.FreeC.{Result, ViewL}
 
 import scala.util.control.NonFatal
 
-private[fs2] sealed trait Algebra[F[_], O, R]
+/* `Algebra[F[_], O, R]` is a Generalised Algebraic Data Type (GADT)
+ * of atomic instructions that can be evaluated in the effect `F`
+ * to generate by-product outputs of type `O`.
+ *
+ * Each operation also generates an output of type `R` that is used
+ * as control information for the rest of the interpretation or compilation.
+ */
+private[fs2] sealed trait Algebra[F[_], +O, R]
 
 private[fs2] object Algebra {
 
@@ -19,27 +26,27 @@ private[fs2] object Algebra {
       scope: Option[Token]
   ) extends Algebra[F, O, Option[(Chunk[X], Token, FreeC[Algebra[F, X, ?], Unit])]]
 
-  final case class Eval[F[_], O, R](value: F[R]) extends AlgEffect[F, O, R]
+  /* The `AlgEffect` trait is for operations on the `F` effect that create no `O` output.
+   * They are related to resources and scopes. */
+  sealed trait AlgEffect[F[_], R] extends Algebra[F, INothing, R]
 
-  final case class Acquire[F[_], O, R](resource: F[R], release: (R, ExitCase[Throwable]) => F[Unit])
-      extends AlgEffect[F, O, (R, Token)]
+  final case class Eval[F[_], R](value: F[R]) extends AlgEffect[F, R]
 
-  final case class Release[F[_], O](token: Token, err: Option[Throwable])
-      extends AlgEffect[F, O, Unit]
+  final case class Acquire[F[_], R](resource: F[R], release: (R, ExitCase[Throwable]) => F[Unit])
+      extends AlgEffect[F, (R, Token)]
 
-  final case class OpenScope[F[_], O](interruptible: Option[Concurrent[F]])
-      extends AlgEffect[F, O, Token]
+  final case class Release[F[_]](token: Token, err: Option[Throwable]) extends AlgEffect[F, Unit]
+
+  final case class OpenScope[F[_]](interruptible: Option[Concurrent[F]]) extends AlgEffect[F, Token]
 
   // `InterruptedScope` contains id of the scope currently being interrupted
   // together with any errors accumulated during interruption process
-  final case class CloseScope[F[_], O](scopeId: Token,
-                                       interruptedScope: Option[(Token, Option[Throwable])],
-                                       exitCase: ExitCase[Throwable])
-      extends AlgEffect[F, O, Unit]
+  final case class CloseScope[F[_]](scopeId: Token,
+                                    interruptedScope: Option[(Token, Option[Throwable])],
+                                    exitCase: ExitCase[Throwable])
+      extends AlgEffect[F, Unit]
 
-  final case class GetScope[F[_], O, X]() extends AlgEffect[F, O, CompileScope[F, X]]
-
-  sealed trait AlgEffect[F[_], O, R] extends Algebra[F, O, R]
+  final case class GetScope[F[_], X]() extends AlgEffect[F, CompileScope[F, X]]
 
   def output[F[_], O](values: Chunk[O]): FreeC[Algebra[F, O, ?], Unit] =
     FreeC.Eval[Algebra[F, O, ?], Unit](Output(values))
@@ -271,7 +278,7 @@ private[fs2] object Algebra {
                       s"Fail to find scope for next step: current: ${scope.id}, step: $u"))
               }
 
-            case eval: Algebra.Eval[F, X, r] =>
+            case eval: Algebra.Eval[F, r] =>
               F.flatMap(scope.interruptibleEval(eval.value)) {
                 case Right(r)           => go[X](scope, view.next(Result.pure(r)))
                 case Left(Left(err))    => go[X](scope, view.next(Result.raiseError(err)))
@@ -279,14 +286,14 @@ private[fs2] object Algebra {
 
               }
 
-            case acquire: Algebra.Acquire[F, X, r] =>
+            case acquire: Algebra.Acquire[F, r] =>
               interruptGuard(scope) {
                 F.flatMap(scope.acquireResource(acquire.resource, acquire.release)) { r =>
                   go[X](scope, view.next(Result.fromEither(r)))
                 }
               }
 
-            case release: Algebra.Release[F, X] =>
+            case release: Algebra.Release[F] =>
               F.flatMap(
                 scope.releaseResource(release.token,
                                       release.err
@@ -295,10 +302,10 @@ private[fs2] object Algebra {
                 go[X](scope, view.next(Result.fromEither(r)))
               }
 
-            case _: Algebra.GetScope[F, X, _] =>
+            case _: Algebra.GetScope[F, _] =>
               F.suspend(go(scope, view.next(Result.pure(scope.asInstanceOf[y]))))
 
-            case open: Algebra.OpenScope[F, X] =>
+            case open: Algebra.OpenScope[F] =>
               interruptGuard(scope) {
                 F.flatMap(scope.open(open.interruptible)) {
                   case Left(err) =>
@@ -308,7 +315,7 @@ private[fs2] object Algebra {
                 }
               }
 
-            case close: Algebra.CloseScope[F, X] =>
+            case close: Algebra.CloseScope[F] =>
               def closeAndGo(toClose: CompileScope[F, O], ec: ExitCase[Throwable]) =
                 F.flatMap(toClose.close(ec)) { r =>
                   F.flatMap(toClose.openAncestor) { ancestor =>
@@ -395,7 +402,7 @@ private[fs2] object Algebra {
 
       case view: ViewL.View[Algebra[F, O, ?], _, Unit] =>
         view.step match {
-          case close: Algebra.CloseScope[F, O] =>
+          case close: Algebra.CloseScope[F] =>
             Algebra
               .closeScope(close.scopeId, Some((interruptedScope, interruptedError)), close.exitCase) // assumes it is impossible so the `close` will be already from interrupted stream
               .transformWith(view.next)
@@ -450,7 +457,7 @@ private[fs2] object Algebra {
                 translateStep[F, G, X](fK, view.next(r.asInstanceOf[Result[y]]), concurrent)
               }
 
-          case alg: Algebra.AlgEffect[F, X, r] =>
+          case alg: Algebra.AlgEffect[F, r] =>
             FreeC
               .Eval[Algebra[G, X, ?], r](translateAlgEffect(alg, concurrent, fK))
               .transformWith(r => translateStep(fK, view.next(r), concurrent))
@@ -492,7 +499,7 @@ private[fs2] object Algebra {
                 translate0(fK, view.next(r.asInstanceOf[Result[y]]), concurrent)
               }
 
-          case alg: Algebra.AlgEffect[F, O, r] =>
+          case alg: Algebra.AlgEffect[F, r] =>
             FreeC
               .Eval[Algebra[G, O, ?], r](translateAlgEffect(alg, concurrent, fK))
               .transformWith(r => translate0(fK, view.next(r), concurrent))
@@ -501,21 +508,21 @@ private[fs2] object Algebra {
 
     }
 
-  private[this] def translateAlgEffect[F[_], G[_], O, R](
-      self: AlgEffect[F, O, R],
+  private[this] def translateAlgEffect[F[_], G[_], R](
+      self: AlgEffect[F, R],
       concurrent: Option[Concurrent[G]],
       fK: F ~> G
-  ): AlgEffect[G, O, R] = self match {
+  ): AlgEffect[G, R] = self match {
     // safe to cast, used in translate only
     // if interruption has to be supported concurrent for G has to be passed
-    case a: Acquire[F, O, r] =>
-      Acquire[G, O, r](fK(a.resource), (r, ec) => fK(a.release(r, ec)))
-        .asInstanceOf[AlgEffect[G, O, R]]
-    case e: Eval[F, O, R]     => Eval[G, O, R](fK(e.value))
-    case o: OpenScope[F, O]   => OpenScope[G, O](concurrent).asInstanceOf[AlgEffect[G, O, R]]
-    case r: Release[F, O]     => r.asInstanceOf[AlgEffect[G, O, R]]
-    case c: CloseScope[F, O]  => c.asInstanceOf[AlgEffect[G, O, R]]
-    case g: GetScope[F, O, x] => g.asInstanceOf[AlgEffect[G, O, R]]
+    case a: Acquire[F, r] =>
+      Acquire[G, r](fK(a.resource), (r, ec) => fK(a.release(r, ec)))
+        .asInstanceOf[AlgEffect[G, R]]
+    case e: Eval[F, R]     => Eval[G, R](fK(e.value))
+    case o: OpenScope[F]   => OpenScope[G](concurrent).asInstanceOf[AlgEffect[G, R]]
+    case r: Release[F]     => r.asInstanceOf[AlgEffect[G, R]]
+    case c: CloseScope[F]  => c.asInstanceOf[AlgEffect[G, R]]
+    case g: GetScope[F, x] => g.asInstanceOf[AlgEffect[G, R]]
   }
 
 }
