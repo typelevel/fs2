@@ -53,8 +53,8 @@ lazy val commonSettings = Seq(
     compilerPlugin("org.spire-math" %% "kind-projector" % "0.9.9"),
     "org.typelevel" %%% "cats-core" % "1.5.0",
     "org.typelevel" %%% "cats-laws" % "1.5.0" % "test",
-    "org.typelevel" %%% "cats-effect" % "1.0.0",
-    "org.typelevel" %%% "cats-effect-laws" % "1.0.0" % "test",
+    "org.typelevel" %%% "cats-effect" % "1.1.0",
+    "org.typelevel" %%% "cats-effect-laws" % "1.1.0" % "test",
     "org.scalatest" %%% "scalatest" % "3.0.5" % "test",
     "org.scalacheck" %%% "scalacheck" % "1.13.5" % "test"
   ),
