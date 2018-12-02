@@ -2,7 +2,7 @@ package fs2.internal
 
 import scala.annotation.tailrec
 
-import cats.{Traverse, TraverseFilter}
+import cats.{Applicative, Traverse, TraverseFilter}
 import cats.data.Chain
 import cats.effect.{Concurrent, ExitCase, Sync}
 import cats.effect.concurrent.{Deferred, Ref}
@@ -341,14 +341,8 @@ private[fs2] final class CompileScope[F[_]] private (
       else {
         val allScopes = (s.children :+ self) ++ ancestors
         F.flatMap(Traverse[Chain].flatTraverse(allScopes)(_.resources)) { allResources =>
-          F.map(TraverseFilter[Chain].traverseFilter(allResources) { r =>
-            r.lease
-          }) { allLeases =>
-            val lease = new Scope.Lease[F] {
-              def cancel: F[Either[Throwable, Unit]] =
-                traverseError[Scope.Lease[F]](allLeases, _.cancel)
-            }
-            Some(lease)
+          F.map(TraverseFilter[Chain].traverseFilter(allResources)(_.lease)) { allLeases =>
+            Some(new CompileScope.Lease[F](allLeases))
           }
         }
       }
@@ -538,5 +532,17 @@ private[internal] object CompileScope {
         cancelParent = cancel
       )
 
+  }
+
+  /* A Lease for the compile scope, which is just an aggregation of leases */
+  private class Lease[F[_]](leases: Chain[Scope.Lease[F]])(implicit F: Applicative[F])
+      extends Scope.Lease[F] {
+
+    def cancel: F[Either[Throwable, Unit]] =
+      F.map(Traverse[Chain].traverse(leases)(_.cancel)) { results =>
+        CompositeFailure
+          .fromList(results.collect { case Left(err) => err }.toList)
+          .toLeft(())
+      }
   }
 }
