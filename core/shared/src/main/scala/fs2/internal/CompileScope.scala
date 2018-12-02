@@ -121,40 +121,41 @@ private[fs2] final class CompileScope[F[_]] private (
      *     or as a result of interrupting this scope. But it should not propagate its own interruption to this scope.
      *
      */
-    def createScopeContext: F[(Option[InterruptContext[F]], Token)] = {
-      val newScopeId = new Token
+    def createScopeContext(newScopeId: Token): F[Option[InterruptContext[F]]] =
       self.interruptible match {
         case None =>
-          F.pure(InterruptContext.unsafeFromInteruptible(interruptible, newScopeId) -> newScopeId)
+          F.pure {
+            interruptible.map(concf =>
+              InterruptContext.unsafeFromConcurrent[F](concf, newScopeId, F.unit))
+          }
 
         case Some(parentICtx) =>
-          F.map(parentICtx.childContext(interruptible, newScopeId))(Some(_) -> newScopeId)
+          F.map(parentICtx.childContext(interruptible, newScopeId))(Some(_))
       }
-    }
 
-    F.flatMap(createScopeContext) {
-      case (iCtx, newScopeId) =>
-        F.flatMap(state.modify { s =>
-          if (!s.open) (s, None)
-          else {
-            val scope = new CompileScope[F](newScopeId, Some(self), iCtx)
-            (s.copy(children = scope +: s.children), Some(scope))
-          }
-        }) {
-          case Some(s) => F.pure(Right(s))
-          case None    =>
-            // This scope is already closed so try to promote the open to an ancestor; this can fail
-            // if the root scope has already been closed, in which case, we can safely throw
-            self.parent match {
-              case Some(parent) =>
-                F.flatMap(self.interruptible.map(_.cancelParent).getOrElse(F.unit)) { _ =>
-                  parent.open(interruptible)
-                }
-
-              case None =>
-                F.pure(Left(new IllegalStateException("cannot re-open root scope")))
-            }
+    val newScopeId = new Token
+    F.flatMap(createScopeContext(newScopeId)) { iCtx =>
+      F.flatMap(state.modify { s =>
+        if (!s.open) (s, None)
+        else {
+          val scope = new CompileScope[F](newScopeId, Some(self), iCtx)
+          (s.copy(children = scope +: s.children), Some(scope))
         }
+      }) {
+        case Some(s) => F.pure(Right(s))
+        case None    =>
+          // This scope is already closed so try to promote the open to an ancestor; this can fail
+          // if the root scope has already been closed, in which case, we can safely throw
+          self.parent match {
+            case Some(parent) =>
+              F.productR(
+                self.interruptible.fold(F.unit)(_.cancelParent)
+              )(parent.open(interruptible))
+
+            case None =>
+              F.pure(Left(new IllegalStateException("cannot re-open root scope")))
+          }
+      }
     }
   }
 
@@ -176,9 +177,10 @@ private[fs2] final class CompileScope[F[_]] private (
     F.flatMap(F.attempt(fr)) {
       case Right(r) =>
         val finalizer = (ec: ExitCase[Throwable]) => F.suspend(release(r, ec))
-        F.flatMap(resource.acquired(finalizer)) { result =>
-          if (result.right.exists(identity)) F.map(register(resource))(_ => Right((r, resource.id)))
-          else F.pure(Left(result.left.getOrElse(AcquireAfterScopeClosed)))
+        F.flatMap(resource.acquired(finalizer)) {
+          case Right(true)  => F.as(register(resource), Right((r, resource.id)))
+          case Right(false) => F.pure(Left(AcquireAfterScopeClosed))
+          case Left(err)    => F.pure(Left(err))
         }
       case Left(err) => F.pure(Left(err))
     }
@@ -222,20 +224,24 @@ private[fs2] final class CompileScope[F[_]] private (
     * finalized after this scope is closed, but they will get finalized shortly after. See [[Resource]] for
     * more details.
     */
-  def close(ec: ExitCase[Throwable]): F[Either[Throwable, Unit]] =
+  def close(ec: ExitCase[Throwable]): F[Either[Throwable, Unit]] = {
+    val selfClean: F[Unit] = F.productR(
+      self.interruptible.fold(F.unit)(_.cancelParent)
+    )(self.parent.fold(F.unit)(_.releaseChildScope(self.id)))
+
+    def mergeError(x: Either[Throwable, Unit],
+                   y: Either[Throwable, Unit]): Either[Throwable, Unit] =
+      CompositeFailure.fromList((x.left.toSeq ++ y.left.toSeq).toList).toLeft(())
+
     F.flatMap(state.modify(s => s.close -> s)) { previous =>
-      F.flatMap(traverseError[CompileScope[F]](previous.children, _.close(ec))) { resultChildren =>
-        F.flatMap(traverseError[Resource[F]](previous.resources, _.release(ec))) {
-          resultResources =>
-            F.flatMap(self.interruptible.map(_.cancelParent).getOrElse(F.unit)) { _ =>
-              F.map(self.parent.fold(F.unit)(_.releaseChildScope(self.id))) { _ =>
-                val results = resultChildren.left.toSeq ++ resultResources.left.toSeq
-                CompositeFailure.fromList(results.toList).toLeft(())
-              }
-            }
-        }
-      }
+      F.productL(
+        F.map2(
+          traverseError[CompileScope[F]](previous.children, _.close(ec)),
+          traverseError[Resource[F]](previous.resources, _.release(ec))
+        )(mergeError)
+      )(selfClean)
     }
+  }
 
   /** Returns closest open parent scope or root. */
   def openAncestor: F[CompileScope[F]] =
@@ -493,20 +499,14 @@ private[internal] object CompileScope {
       interruptible
         .map { concurent =>
           F.flatMap(concurrent.start(self.deferred.get)) { fiber =>
-            val context = InterruptContext[F](
-              concurrent = concurrent,
-              deferred = Deferred.unsafe[F, Either[Throwable, Token]](concurrent),
-              ref = Ref.unsafe[F, Option[Either[Throwable, Token]]](None),
-              interruptRoot = newScopeId,
-              cancelParent = fiber.cancel
-            )
-
-            F.map(concurrent.start(F.flatMap(fiber.join)(interrupt =>
-              F.flatMap(context.ref.update(_.orElse(Some(interrupt)))) { _ =>
-                F.map(F.attempt(context.deferred.complete(interrupt)))(_ => ())
-            }))) { _ =>
-              context
+            val context =
+              InterruptContext.unsafeFromConcurrent(concurrent, newScopeId, fiber.cancel)
+            val spawn = F.flatMap(fiber.join) { interrupt =>
+              F.productR(
+                context.ref.update(_.orElse(Some(interrupt)))
+              )(F.attempt(context.deferred.complete(interrupt)))
             }
+            F.as(concurrent.start(spawn), context)
           }
         }
         .getOrElse(F.pure(copy(cancelParent = F.unit)))
@@ -516,27 +516,27 @@ private[internal] object CompileScope {
   private object InterruptContext {
 
     /**
-      * Creates a new interrupt context for a new scope if the scope is interruptible.
+      * Creates a new interrupt context for a new scope with the given Concurrent.
       *
       * This is UNSAFE method as we are creating promise and ref directly here.
       *
       * @param interruptible  Whether the scope is interruptible by providing effect, execution context and the
       *                       continuation in case of interruption.
       * @param newScopeId     The id of the new scope.
+      * @param cancel         the parent cancellation method for the new scope.
       */
-    def unsafeFromInteruptible[F[_]](
-        interruptible: Option[Concurrent[F]],
-        newScopeId: Token
-    )(implicit F: Sync[F]): Option[InterruptContext[F]] =
-      interruptible.map { concurrent =>
-        InterruptContext[F](
-          concurrent = concurrent,
-          deferred = Deferred.unsafe[F, Either[Throwable, Token]](concurrent),
-          ref = Ref.unsafe[F, Option[Either[Throwable, Token]]](None),
-          interruptRoot = newScopeId,
-          cancelParent = F.unit
-        )
-      }
+    def unsafeFromConcurrent[F[_]: Sync](
+        concurrent: Concurrent[F],
+        scopeId: Token,
+        cancel: F[Unit]
+    ): InterruptContext[F] =
+      InterruptContext[F](
+        concurrent = concurrent,
+        deferred = Deferred.unsafe[F, Either[Throwable, Token]](concurrent),
+        ref = Ref.unsafe[F, Option[Either[Throwable, Token]]](None),
+        interruptRoot = scopeId,
+        cancelParent = cancel
+      )
 
   }
 }
