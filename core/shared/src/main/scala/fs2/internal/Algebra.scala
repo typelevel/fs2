@@ -34,10 +34,6 @@ private[fs2] object Algebra {
    * They are related to resources and scopes. */
   sealed trait AlgEffect[F[_], R] extends Algebra[F, INothing, R]
 
-  /* The `AlgEffect` trait is for operations on the `F` effect that create no `O` output.
-   * They are related to resources and scopes. */
-  sealed trait AlgEffect[F[_], R] extends Algebra[F, INothing, R]
-
   final case class Eval[F[_], R](value: F[R]) extends AlgEffect[F, R]
 
   final case class Acquire[F[_], R](resource: F[R], release: (R, ExitCase[Throwable]) => F[Unit])
