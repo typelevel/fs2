@@ -51,22 +51,22 @@ private[fs2] object Algebra {
   final case class GetScope[F[_], X]() extends AlgEffect[F, CompileScope[F, X]]
 
   @inline
-  private[this] final def liftFA[F[_], O, R](alg: Algebra[F, O, R]): ExprFA[F, O, R] =
+  private[this] final def liftAlg[F[_], O, R](alg: Algebra[F, O, R]): ExprFA[F, O, R] =
     FreeC.Eval[Algebra[F, O, ?], R](alg)
 
   def output[F[_], O](values: Chunk[O]): ProgFA[F, O] =
-    liftFA[F, O, Unit](Output(values))
+    liftAlg[F, O, Unit](Output(values))
 
   def output1[F[_], O](value: O): ProgFA[F, O] =
     output(Chunk.singleton(value))
 
-  def eval[F[_], O, R](value: F[R]): ExprFA[F, O, R] = liftFA(Eval(value))
+  def eval[F[_], O, R](value: F[R]): ExprFA[F, O, R] = liftAlg(Eval(value))
 
   def acquire[F[_], O, R](resource: F[R], release: Cleanup[R, F]): ExprFA[F, O, (R, Token)] =
-    liftFA(Acquire(resource, release))
+    liftAlg(Acquire(resource, release))
 
   def release[F[_], O](token: Token, err: Option[Throwable]): ProgFA[F, O] =
-    liftFA(Release(token, err))
+    liftAlg(Release(token, err))
 
   /**
     * Steps through the stream, providing either `uncons` or `stepLeg`.
@@ -77,7 +77,7 @@ private[fs2] object Algebra {
     */
   private def step[F[_], O, X](stream: ProgFA[F, O],
                                scopeId: Option[Token]): ExprFA[F, X, StepFA[F, O, Token]] =
-    liftFA[F, X, StepFA[F, O, Token]](Algebra.Step[F, O, X](stream, scopeId))
+    liftAlg[F, X, StepFA[F, O, Token]](Algebra.Step[F, O, X](stream, scopeId))
 
   def stepLeg[F[_], O](
       leg: Stream.StepLeg[F, O]): ExprFA[F, INothing, Option[Stream.StepLeg[F, O]]] =
@@ -102,14 +102,14 @@ private[fs2] object Algebra {
     scope0(s, Some(Concurrent[F]))
 
   def openScope[F[_], O](interruptible: Option[Concurrent[F]]): ExprFA[F, O, Token] =
-    liftFA(OpenScope(interruptible))
+    liftAlg(OpenScope(interruptible))
 
   def closeScope[F[_], O](
       token: Token,
       interruptedScope: Option[(Token, Option[Throwable])],
       exitCase: ExitCase[Throwable]
   ): ProgFA[F, O] =
-    liftFA(CloseScope(token, interruptedScope, exitCase))
+    liftAlg(CloseScope(token, interruptedScope, exitCase))
 
   private def scope0[F[_], O](s: ProgFA[F, O], interruptible: Option[Concurrent[F]]): ProgFA[F, O] =
     openScope(interruptible).flatMap { scopeId =>
@@ -130,7 +130,7 @@ private[fs2] object Algebra {
       }
     }
 
-  def getScope[F[_], O, X]: ExprFA[F, O, CompileScope[F, X]] = liftFA(GetScope())
+  def getScope[F[_], O, X]: ExprFA[F, O, CompileScope[F, X]] = liftAlg(GetScope())
 
   def pure[F[_], O, R](r: R): ExprFA[F, O, R] =
     FreeC.pure[Algebra[F, O, ?], R](r)
