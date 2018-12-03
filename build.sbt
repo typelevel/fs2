@@ -205,12 +205,10 @@ lazy val mimaSettings = Seq(
     // The following changes to the io package were all package private
     ProblemFilters
       .exclude[DirectMissingMethodProblem]("fs2.io.package.invokeCallback"),
-    ProblemFilters
-      .exclude[IncompatibleMethTypeProblem]("fs2.io.tcp.Socket.client"),
-    ProblemFilters
-      .exclude[IncompatibleMethTypeProblem]("fs2.io.tcp.Socket.server"),
+    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.tcp.Socket.client"),
+    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.tcp.Socket.server"),
     ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.tcp.Socket.mkSocket"),
-    ProblemFilters.exclude[IncompatibleMethTypeProblem]("fs2.io.udp.Socket.mkSocket")
+    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.udp.Socket.mkSocket")
   )
 )
 
