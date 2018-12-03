@@ -183,6 +183,12 @@ class PipeSpec extends Fs2Spec {
       runLog(r) shouldBe runLog(s.get).map(f)
     }
 
+    "mapAsync.exception" in forAll { s: PureStream[Int] =>
+      val f = (_: Int) => IO.raiseError[Int](new RuntimeException)
+      val r = s.get.covary[IO].mapAsync(1)(f).attempt
+      runLog(r).size == 1
+    }
+
     "mapAsyncUnordered" in forAll { s: PureStream[Int] =>
       val f = (_: Int) + 1
       val r = s.get.covary[IO].mapAsyncUnordered(16)(i => IO(f(i)))

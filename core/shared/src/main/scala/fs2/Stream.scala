@@ -1834,26 +1834,35 @@ object Stream {
       * }}}
       */
     def mapAsync[O2](parallelism: Int)(
-        f: O => F[O2])(implicit F: Effect[F], executionContext: ExecutionContext): Stream[F, O2] =
+        f: O => F[O2])(implicit F: ConcurrentEffect[F], executionContext: ExecutionContext): Stream[F, O2] =
       Stream
         .eval(async.mutable.Queue.bounded[F, Option[F[Either[Throwable, O2]]]](parallelism))
         .flatMap { queue =>
-          queue.dequeue.unNoneTerminate
-            .evalMap(identity)
-            .rethrow
-            .concurrently {
-              self
-                .evalMap { o =>
-                  Promise.empty[F, Either[Throwable, O2]].flatMap { promise =>
-                    queue.enqueue1(Some(promise.get)).as {
-                      Stream.eval(f(o).attempt).evalMap(promise.complete)
+          Stream.eval(Promise.empty[F, Unit]).flatMap { dequeueDone =>
+            queue.dequeue.unNoneTerminate
+              .evalMap(identity)
+              .rethrow
+              .onFinalize(dequeueDone.complete(()))
+              .concurrently {
+                self
+                  .evalMap { o =>
+                    Promise.empty[F, Either[Throwable, O2]].flatMap { promise =>
+                      val enqueue =
+                        queue.enqueue1(Some(promise.get)).as {
+                          Stream.eval(f(o).attempt).evalMap(promise.complete)
+                        }
+
+                      F.race(dequeueDone.get, enqueue).map {
+                        case Left(())      => Stream.empty.covaryAll[F, Unit]
+                        case Right(stream) => stream
+                      }
                     }
                   }
-                }
-                .join(parallelism)
-                .drain
-                .onFinalize(queue.enqueue1(None))
-            }
+                  .join(parallelism)
+                  .drain
+                  .onFinalize(F.race(dequeueDone.get, queue.enqueue1(None)).void)
+              }
+          }
         }
 
     /**
@@ -2737,11 +2746,11 @@ object Stream {
       covary[F].evalScan(z)(f)
 
     def mapAsync[F[_], O2](parallelism: Int)(
-        f: O => F[O2])(implicit F: Effect[F], executionContext: ExecutionContext): Stream[F, O2] =
+      f: O => F[O2])(implicit F: ConcurrentEffect[F], executionContext: ExecutionContext): Stream[F, O2] =
       covary[F].mapAsync(parallelism)(f)
 
     def mapAsyncUnordered[F[_], O2](parallelism: Int)(
-        f: O => F[O2])(implicit F: Effect[F], executionContext: ExecutionContext): Stream[F, O2] =
+      f: O => F[O2])(implicit F: ConcurrentEffect[F], executionContext: ExecutionContext): Stream[F, O2] =
       covary[F].mapAsyncUnordered(parallelism)(f)
 
     def flatMap[F[_], O2](f: O => Stream[F, O2]): Stream[F, O2] =
