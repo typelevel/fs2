@@ -536,7 +536,7 @@ object Chunk {
 
   /** Creates a chunk backed by a `Seq`. */
   def seq[O](s: Seq[O]): Chunk[O] = s match {
-    case a: collection.mutable.WrappedArray[O] => array(a.array)
+    case a: collection.mutable.WrappedArray[O] => array[O](a.array)
     case v: Vector[O]                          => vector(v)
     case ix: IndexedSeq[O]                     => indexedSeq(ix)
     case _ =>
