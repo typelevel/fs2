@@ -18,7 +18,7 @@ package object tcp {
       keepAlive: Boolean = false,
       noDelay: Boolean = false
   )(implicit AG: AsynchronousChannelGroup, F: ConcurrentEffect[F]): Resource[F, Socket[F]] =
-    Socket.client(to, reuseAddress, sendBufferSize, receiveBufferSize, keepAlive, noDelay)
+    Socket.mkClient(to, reuseAddress, sendBufferSize, receiveBufferSize, keepAlive, noDelay)
 
   @deprecated("Use fs2.io.tcp.Socket.server", "1.0.1")
   def server[F[_]](bind: InetSocketAddress,
@@ -28,7 +28,8 @@ package object tcp {
       implicit AG: AsynchronousChannelGroup,
       F: ConcurrentEffect[F]
   ): Stream[F, Resource[F, Socket[F]]] =
-    serverWithLocalAddress(bind, maxQueued, reuseAddress, receiveBufferSize)
+    Socket
+      .mkServerWithLocalAddress(bind, maxQueued, reuseAddress, receiveBufferSize)
       .collect { case Right(s) => s }
 
   @deprecated("Use fs2.io.tcp.Socket.serverWithLocalAddress", "1.0.1")
@@ -39,5 +40,5 @@ package object tcp {
       implicit AG: AsynchronousChannelGroup,
       F: ConcurrentEffect[F]
   ): Stream[F, Either[InetSocketAddress, Resource[F, Socket[F]]]] =
-    Socket.serverWithLocalAddress(bind, maxQueued, reuseAddress, receiveBufferSize)
+    Socket.mkServerWithLocalAddress(bind, maxQueued, reuseAddress, receiveBufferSize)
 }

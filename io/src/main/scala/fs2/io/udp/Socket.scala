@@ -14,8 +14,7 @@ import java.net.{
 import java.nio.channels.{ClosedChannelException, DatagramChannel}
 
 import cats.implicits._
-import cats.effect.{Concurrent, Resource}
-import cats.effect.implicits._
+import cats.effect.{Concurrent, ContextShift, Resource}
 
 /**
   * Provides the ability to read/write from a UDP socket in the effect `F`.
@@ -129,7 +128,32 @@ object Socket {
       multicastInterface: Option[NetworkInterface] = None,
       multicastTTL: Option[Int] = None,
       multicastLoopback: Boolean = true
-  )(implicit AG: AsynchronousSocketGroup, F: Concurrent[F]): Resource[F, Socket[F]] = {
+  )(implicit AG: AsynchronousSocketGroup,
+    F: Concurrent[F],
+    CS: ContextShift[F]): Resource[F, Socket[F]] =
+    mk(address,
+       reuseAddress,
+       sendBufferSize,
+       receiveBufferSize,
+       allowBroadcast,
+       protocolFamily,
+       multicastInterface,
+       multicastTTL,
+       multicastLoopback)
+
+  private[udp] def mk[F[_]](
+      address: InetSocketAddress = new InetSocketAddress(0),
+      reuseAddress: Boolean = false,
+      sendBufferSize: Option[Int] = None,
+      receiveBufferSize: Option[Int] = None,
+      allowBroadcast: Boolean = true,
+      protocolFamily: Option[ProtocolFamily] = None,
+      multicastInterface: Option[NetworkInterface] = None,
+      multicastTTL: Option[Int] = None,
+      multicastLoopback: Boolean = true
+  )(implicit AG: AsynchronousSocketGroup,
+    F: Concurrent[F],
+    Y: AsyncYield[F]): Resource[F, Socket[F]] = {
     val mkChannel = F.delay {
       val channel = protocolFamily
         .map { pf =>
@@ -159,7 +183,8 @@ object Socket {
   }
 
   private[udp] def mkSocket[F[_]](channel: DatagramChannel)(implicit AG: AsynchronousSocketGroup,
-                                                            F: Concurrent[F]): F[Socket[F]] =
+                                                            F: Concurrent[F],
+                                                            Y: AsyncYield[F]): F[Socket[F]] =
     F.delay {
       new Socket[F] {
         private val ctx = AG.register(channel)
@@ -170,14 +195,13 @@ object Socket {
               .getOrElse(throw new ClosedChannelException))
 
         def read(timeout: Option[FiniteDuration]): F[Packet] =
-          F.async[Packet](cb => AG.read(ctx, timeout, result => cb(result))).guarantee(yieldBack)
+          Y.asyncYield[Packet](cb => AG.read(ctx, timeout, result => cb(result)))
 
         def reads(timeout: Option[FiniteDuration]): Stream[F, Packet] =
           Stream.repeatEval(read(timeout))
 
         def write(packet: Packet, timeout: Option[FiniteDuration]): F[Unit] =
-          F.async[Unit](cb => AG.write(ctx, packet, timeout, t => cb(t.toLeft(()))))
-            .guarantee(yieldBack)
+          Y.asyncYield[Unit](cb => AG.write(ctx, packet, timeout, t => cb(t.toLeft(()))))
 
         def writes(timeout: Option[FiniteDuration]): Sink[F, Packet] =
           _.flatMap(p => Stream.eval(write(p, timeout)))

@@ -20,14 +20,14 @@ package object udp {
       multicastTTL: Option[Int] = None,
       multicastLoopback: Boolean = true
   )(implicit AG: AsynchronousSocketGroup, F: ConcurrentEffect[F]): Resource[F, Socket[F]] =
-    Socket(address,
-           reuseAddress,
-           sendBufferSize,
-           receiveBufferSize,
-           allowBroadcast,
-           protocolFamily,
-           multicastInterface,
-           multicastTTL,
-           multicastLoopback)
+    Socket.mk(address,
+              reuseAddress,
+              sendBufferSize,
+              receiveBufferSize,
+              allowBroadcast,
+              protocolFamily,
+              multicastInterface,
+              multicastTTL,
+              multicastLoopback)
 
 }

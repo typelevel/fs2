@@ -1,6 +1,6 @@
 package fs2
 
-import cats.effect.{Concurrent, ConcurrentEffect, ContextShift, Sync}
+import cats.effect.{ConcurrentEffect, ContextShift, Sync}
 
 import cats.implicits._
 import java.io.{InputStream, OutputStream}
@@ -136,8 +136,4 @@ package object io {
     */
   def toInputStream[F[_]](implicit F: ConcurrentEffect[F]): Pipe[F, Byte, InputStream] =
     JavaInputOutputStream.toInputStream
-
-  /** Shifts execution to the default execution context for `F`. */
-  private[io] def yieldBack[F[_]](implicit F: Concurrent[F]): F[Unit] =
-    F.bracket(F.start(F.unit))(_.join)(_.cancel)
 }
