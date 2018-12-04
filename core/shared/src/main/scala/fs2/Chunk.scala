@@ -281,8 +281,8 @@ abstract class Chunk[+O] extends Serializable { self =>
         val b = c.buf.asReadOnlyBuffer
         if (c.offset == 0 && b.position() == 0 && c.size == b.limit()) b
         else {
-          b.position(c.offset.toInt)
-          b.limit(c.offset.toInt + c.size)
+          (b: JBuffer).position(c.offset.toInt)
+          (b: JBuffer).limit(c.offset.toInt + c.size)
           b
         }
       case other =>
@@ -745,7 +745,7 @@ object Chunk {
       else if (n >= size) Chunk.empty
       else {
         val second = readOnly(buf)
-        second.position(n + offset)
+        (second: JBuffer).position(n + offset)
         buffer(second)
       }
 
@@ -754,14 +754,14 @@ object Chunk {
       else if (n >= size) this
       else {
         val first = readOnly(buf)
-        first.limit(n + offset)
+        (first: JBuffer).limit(n + offset)
         buffer(first)
       }
 
     def copyToArray[O2 >: C](xs: Array[O2], start: Int): Unit = {
       val b = readOnly(buf)
-      b.position(offset)
-      b.limit(offset + size)
+      (b: JBuffer).position(offset)
+      (b: JBuffer).limit(offset + size)
       if (xs.isInstanceOf[Array[C]]) {
         get(b, xs.asInstanceOf[Array[C]], start, size)
         ()
@@ -774,16 +774,16 @@ object Chunk {
 
     protected def splitAtChunk_(n: Int): (A, A) = {
       val first = readOnly(buf)
-      first.limit(n + offset)
+      (first: JBuffer).limit(n + offset)
       val second = readOnly(buf)
-      second.position(n + offset)
+      (second: JBuffer).position(n + offset)
       (buffer(first), buffer(second))
     }
 
     override def toArray[O2 >: C: ClassTag]: Array[O2] = {
       val bs = new Array[C](size)
       val b = duplicate(buf)
-      b.position(offset)
+      (b: JBuffer).position(offset)
       get(b, bs, 0, size)
       bs.asInstanceOf[Array[O2]]
     }
@@ -819,8 +819,8 @@ object Chunk {
     // Duplicated from superclass to work around Scala.js ClassCastException when using inherited version
     override def copyToArray[O2 >: Short](xs: Array[O2], start: Int): Unit = {
       val b = readOnly(buf)
-      b.position(offset)
-      b.limit(offset + size)
+      (b: JBuffer).position(offset)
+      (b: JBuffer).limit(offset + size)
       if (xs.isInstanceOf[Array[Short]]) {
         get(b, xs.asInstanceOf[Array[Short]], start, size)
         ()
@@ -895,8 +895,8 @@ object Chunk {
     // Duplicated from superclass to work around Scala.js ClassCastException when using inherited version
     override def copyToArray[O2 >: Double](xs: Array[O2], start: Int): Unit = {
       val b = readOnly(buf)
-      b.position(offset)
-      b.limit(offset + size)
+      (b: JBuffer).position(offset)
+      (b: JBuffer).limit(offset + size)
       if (xs.isInstanceOf[Array[Double]]) {
         get(b, xs.asInstanceOf[Array[Double]], start, size)
         ()
@@ -916,7 +916,7 @@ object Chunk {
       view(buf.duplicate().asReadOnlyBuffer)
 
     def view(buf: JFloatBuffer): FloatBuffer =
-      new FloatBuffer(buf, buf.position, buf.remaining)
+      new FloatBuffer(buf, (buf: JBuffer).position, buf.remaining)
   }
 
   final case class FloatBuffer(buf: JFloatBuffer, override val offset: Int, override val size: Int)
@@ -944,7 +944,7 @@ object Chunk {
       view(buf.duplicate().asReadOnlyBuffer)
 
     def view(buf: JIntBuffer): IntBuffer =
-      new IntBuffer(buf, buf.position, buf.remaining)
+      new IntBuffer(buf, (buf: JBuffer).position, buf.remaining)
   }
 
   final case class IntBuffer(buf: JIntBuffer, override val offset: Int, override val size: Int)
@@ -966,8 +966,8 @@ object Chunk {
     // Duplicated from superclass to work around Scala.js ClassCastException when using inherited version
     override def copyToArray[O2 >: Int](xs: Array[O2], start: Int): Unit = {
       val b = readOnly(buf)
-      b.position(offset)
-      b.limit(offset + size)
+      (b: JBuffer).position(offset)
+      (b: JBuffer).limit(offset + size)
       if (xs.isInstanceOf[Array[Int]]) {
         get(b, xs.asInstanceOf[Array[Int]], start, size)
         ()
@@ -987,7 +987,7 @@ object Chunk {
       view(buf.duplicate().asReadOnlyBuffer)
 
     def view(buf: JCharBuffer): CharBuffer =
-      new CharBuffer(buf, buf.position, buf.remaining)
+      new CharBuffer(buf, (buf: JBuffer).position, buf.remaining)
   }
 
   final case class CharBuffer(buf: JCharBuffer, override val offset: Int, override val size: Int)

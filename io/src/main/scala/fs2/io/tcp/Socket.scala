@@ -5,7 +5,7 @@ package tcp
 import scala.concurrent.duration._
 
 import java.net.{InetSocketAddress, SocketAddress, StandardSocketOptions}
-import java.nio.ByteBuffer
+import java.nio.{Buffer, ByteBuffer}
 import java.nio.channels.spi.AsynchronousChannelProvider
 import java.nio.channels.{
   AsynchronousChannelGroup,
@@ -300,8 +300,8 @@ object Socket {
               F.delay(ByteBuffer.allocate(sz)).flatTap(bufferRef.set)
             else
               F.delay {
-                buff.clear()
-                buff.limit(sz)
+                (buff: Buffer).clear()
+                (buff: Buffer).limit(sz)
                 buff
               }
           }
@@ -314,11 +314,11 @@ object Socket {
             if (read == 0) Chunk.bytes(Array.empty)
             else {
               val dest = new Array[Byte](read)
-              buff.flip()
+              (buff: Buffer).flip()
               buff.get(dest)
               Chunk.bytes(dest)
             }
-          buff.clear()
+          (buff: Buffer).clear()
           result
         }
 
