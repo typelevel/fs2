@@ -1828,41 +1828,70 @@ object Stream {
       * the original stream.
       *
       * @example {{{
-      * scala> import cats.effect.IO, scala.concurrent.ExecutionContext.Implicits.global
-      * scala> Stream(1,2,3,4).mapAsync(2)(i => IO(println(i))).compile.drain.unsafeRunSync
-      * res0: Unit = ()
-      * }}}
+      *           scala> import cats.effect.IO, scala.concurrent.ExecutionContext.Implicits.global
+      *           scala> Stream(1,2,3,4).mapAsync(2)(i => IO(println(i))).compile.drain.unsafeRunSync
+      *           res0: Unit = ()
+      *          }}}
       */
     def mapAsync[O2](parallelism: Int)(
-        f: O => F[O2])(implicit F: ConcurrentEffect[F], executionContext: ExecutionContext): Stream[F, O2] =
+        f: O => F[O2])(implicit F: Effect[F], executionContext: ExecutionContext): Stream[F, O2] =
+      // backward compatibility workaround. see https://github.com/functional-streams-for-scala/fs2/pull/1355
+      F match {
+        case c: ConcurrentEffect[F] =>
+          Stream
+            .eval(async.mutable.Queue.bounded[F, Option[F[Either[Throwable, O2]]]](parallelism))
+            .flatMap { queue =>
+              Stream.eval(Promise.empty[F, Unit]).flatMap { dequeueDone =>
+                queue.dequeue.unNoneTerminate
+                  .evalMap(identity)
+                  .rethrow
+                  .onFinalize(dequeueDone.complete(()))
+                  .concurrently {
+                    self
+                      .evalMap { o =>
+                        Promise.empty[F, Either[Throwable, O2]].flatMap { promise =>
+                          val enqueue =
+                            queue.enqueue1(Some(promise.get)).as {
+                              Stream.eval(f(o).attempt).evalMap(promise.complete)
+                            }
+
+                          c.race(dequeueDone.get, enqueue).map {
+                            case Left(())      => Stream.empty.covaryAll[F, Unit]
+                            case Right(stream) => stream
+                          }
+                        }
+                      }
+                      .join(parallelism)
+                      .drain
+                      .onFinalize(c.race(dequeueDone.get, queue.enqueue1(None)).void)
+                  }
+              }
+            }
+        case _ => mapAsyncCompat(parallelism)(f)
+      }
+
+    // this is a version of mapAsync without #1297 fixed
+    private def mapAsyncCompat[O2](parallelism: Int)(
+        f: O => F[O2])(implicit F: Effect[F], executionContext: ExecutionContext): Stream[F, O2] =
       Stream
         .eval(async.mutable.Queue.bounded[F, Option[F[Either[Throwable, O2]]]](parallelism))
         .flatMap { queue =>
-          Stream.eval(Promise.empty[F, Unit]).flatMap { dequeueDone =>
-            queue.dequeue.unNoneTerminate
-              .evalMap(identity)
-              .rethrow
-              .onFinalize(dequeueDone.complete(()))
-              .concurrently {
-                self
-                  .evalMap { o =>
-                    Promise.empty[F, Either[Throwable, O2]].flatMap { promise =>
-                      val enqueue =
-                        queue.enqueue1(Some(promise.get)).as {
-                          Stream.eval(f(o).attempt).evalMap(promise.complete)
-                        }
-
-                      F.race(dequeueDone.get, enqueue).map {
-                        case Left(())      => Stream.empty.covaryAll[F, Unit]
-                        case Right(stream) => stream
-                      }
+          queue.dequeue.unNoneTerminate
+            .evalMap(identity)
+            .rethrow
+            .concurrently {
+              self
+                .evalMap { o =>
+                  Promise.empty[F, Either[Throwable, O2]].flatMap { promise =>
+                    queue.enqueue1(Some(promise.get)).as {
+                      Stream.eval(f(o).attempt).evalMap(promise.complete)
                     }
                   }
-                  .join(parallelism)
-                  .drain
-                  .onFinalize(F.race(dequeueDone.get, queue.enqueue1(None)).void)
-              }
-          }
+                }
+                .join(parallelism)
+                .drain
+                .onFinalize(queue.enqueue1(None))
+            }
         }
 
     /**
@@ -2746,11 +2775,11 @@ object Stream {
       covary[F].evalScan(z)(f)
 
     def mapAsync[F[_], O2](parallelism: Int)(
-      f: O => F[O2])(implicit F: ConcurrentEffect[F], executionContext: ExecutionContext): Stream[F, O2] =
+        f: O => F[O2])(implicit F: Effect[F], executionContext: ExecutionContext): Stream[F, O2] =
       covary[F].mapAsync(parallelism)(f)
 
     def mapAsyncUnordered[F[_], O2](parallelism: Int)(
-      f: O => F[O2])(implicit F: ConcurrentEffect[F], executionContext: ExecutionContext): Stream[F, O2] =
+        f: O => F[O2])(implicit F: Effect[F], executionContext: ExecutionContext): Stream[F, O2] =
       covary[F].mapAsyncUnordered(parallelism)(f)
 
     def flatMap[F[_], O2](f: O => Stream[F, O2]): Stream[F, O2] =
