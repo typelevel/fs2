@@ -24,10 +24,7 @@ lazy val commonSettings = Seq(
     "-feature",
     "-deprecation",
     "-language:implicitConversions",
-    "-language:higherKinds",
-    "-language:existentials",
-    "-language:postfixOps",
-    "-Ypartial-unification"
+    "-language:higherKinds"
   ) ++
     (if (scalaBinaryVersion.value.startsWith("2.12"))
        List(
@@ -35,10 +32,11 @@ lazy val commonSettings = Seq(
          "-Xfatal-warnings",
          "-Yno-adapted-args",
          "-Ywarn-value-discard",
-         "-Ywarn-unused-import"
+         "-Ywarn-unused-import",
+         "-Ypartial-unification"
        )
      else Nil) ++ (if (scalaBinaryVersion.value.startsWith("2.11"))
-                     List("-Xexperimental")
+                     List("-Xexperimental", "-Ypartial-unification")
                    else
                      Nil), // 2.11 needs -Xexperimental to enable SAM conversion
   scalacOptions in (Compile, console) ~= {
@@ -55,8 +53,8 @@ lazy val commonSettings = Seq(
     "org.typelevel" %%% "cats-laws" % "1.5.0" % "test",
     "org.typelevel" %%% "cats-effect" % "1.1.0",
     "org.typelevel" %%% "cats-effect-laws" % "1.1.0" % "test",
-    "org.scalatest" %%% "scalatest" % "3.0.5" % "test",
-    "org.scalacheck" %%% "scalacheck" % "1.13.5" % "test"
+    //"org.scalatest" %%% "scalatest" % "3.0.5" % "test",
+    //"org.scalacheck" %%% "scalacheck" % "1.13.5" % "test"
   ),
   scmInfo := Some(ScmInfo(url("https://github.com/functional-streams-for-scala/fs2"),
                           "git@github.com:functional-streams-for-scala/fs2.git")),
