@@ -1,9 +1,9 @@
 package fs2
 package concurrent
 
-import cats.Eq
+import cats.{Applicative, Eq}
 import cats.syntax.all._
-import cats.effect.{Concurrent, Sync}
+import cats.effect.{Concurrent, Resource, Sync}
 
 import scala.collection.immutable.{Queue => ScalaQueue}
 import fs2.internal.Token
@@ -56,6 +56,17 @@ abstract class Topic[F[_], A] { self =>
   def subscribe(maxQueued: Int): Stream[F, A]
 
   /**
+    * Like [[subscribe]] but returns a "subscription" as a `Resource`.
+    *
+    * Useful when you need to know the point when specific "subscription" will start
+    * receiving values.
+    *
+    * @param maxQueued maximum number of elements to enqueue to the subscription
+    * queue before blocking publishers
+    */
+  def subscribeAwait(maxQueued: Int): Resource[F, Stream[F, A]]
+
+  /**
     * Like [[subscribe]] but emits an approximate number of queued elements for this subscription
     * with each emitted `A` value.
     */
@@ -70,12 +81,16 @@ abstract class Topic[F[_], A] { self =>
     * Returns an alternate view of this `Topic` where its elements are of type `B`,
     * given two functions, `A => B` and `B => A`.
     */
-  def imap[B](f: A => B)(g: B => A): Topic[F, B] =
+  def imap[B](f: A => B)(g: B => A)(implicit F: Applicative[F]): Topic[F, B] =
     new Topic[F, B] {
       def publish: Sink[F, B] = sfb => self.publish(sfb.map(g))
       def publish1(b: B): F[Unit] = self.publish1(g(b))
       def subscribe(maxQueued: Int): Stream[F, B] =
         self.subscribe(maxQueued).map(f)
+      def subscribeAwait(maxQueued: Int): Resource[F, Stream[F, B]] =
+        // replace with `map` after cats-effect release with
+        // https://github.com/typelevel/cats-effect/pull/437
+        self.subscribeAwait(maxQueued).flatMap(s => Resource.pure[F, Stream[F, B]](s.map(f)))
       def subscribers: Stream[F, Int] = self.subscribers
       def subscribeSize(maxQueued: Int): Stream[F, (B, Int)] =
         self.subscribeSize(maxQueued).map { case (a, i) => f(a) -> i }
@@ -92,9 +107,9 @@ object Topic {
       pubSub =>
         new Topic[F, A] {
 
-          def subscriber(size: Int): Stream[F, ((Token, Int), Stream[F, ScalaQueue[A]])] =
-            Stream
-              .bracket(
+          def subscriber(size: Int): Resource[F, ((Token, Int), Stream[F, ScalaQueue[A]])] =
+            Resource
+              .make(
                 Sync[F]
                   .delay((new Token, size))
                   .flatTap(selector => pubSub.subscribe(Right(selector)))
@@ -114,11 +129,16 @@ object Topic {
           def publish1(a: A): F[Unit] =
             pubSub.publish(a)
 
+          def subscribeAwait(maxQueued: Int): Resource[F, Stream[F, A]] =
+            subscriber(maxQueued).map {
+              case (_, s) => s.flatMap(Stream.emits)
+            }
+
           def subscribe(maxQueued: Int): Stream[F, A] =
-            subscriber(maxQueued).flatMap { case (_, s) => s.flatMap(Stream.emits) }
+            Stream.resource(subscribeAwait(maxQueued)).flatten
 
           def subscribeSize(maxQueued: Int): Stream[F, (A, Int)] =
-            subscriber(maxQueued).flatMap {
+            Stream.resource(subscriber(maxQueued)).flatMap {
               case (selector, stream) =>
                 stream
                   .flatMap { q =>
