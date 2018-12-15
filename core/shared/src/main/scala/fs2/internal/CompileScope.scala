@@ -386,7 +386,7 @@ private[fs2] final class CompileScope[F[_]] private (
     * Or if the evaluation is interrupted by a failure this evaluates on `Left` - `Left` where the exception
     * that caused the interruption is returned so that it can be handled.
     */
-  private[internal] def interruptibleEval[A](f: F[A]): F[Either[Either[Throwable, Token], A]] =
+  private[fs2] def interruptibleEval[A](f: F[A]): F[Either[Either[Throwable, Token], A]] =
     interruptible match {
       case None => F.map(F.attempt(f)) { _.left.map(Left(_)) }
       case Some(iCtx) =>
@@ -402,7 +402,7 @@ private[fs2] final class CompileScope[F[_]] private (
     s"RunFoldScope(id=$id,interruptible=${interruptible.nonEmpty})"
 }
 
-private[internal] object CompileScope {
+private[fs2] object CompileScope {
 
   /** Creates a new root scope. */
   def newRoot[F[_]: Sync]: CompileScope[F] =
@@ -466,7 +466,7 @@ private[internal] object CompileScope {
     *                      Once interrupted, this scope must be closed and `FreeC` must be signalled to provide recovery of the interruption.
     * @param cancelParent  Cancels listening on parent's interrupt.
     */
-  final private[internal] case class InterruptContext[F[_]](
+  final private[fs2] case class InterruptContext[F[_]](
       concurrent: Concurrent[F],
       deferred: Deferred[F, Either[Throwable, Token]],
       ref: Ref[F, Option[Either[Throwable, Token]]],

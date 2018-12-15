@@ -1,17 +1,37 @@
 package fs2.tagless
 
-import fs2.{Chunk, Fallible, INothing, Pure, RaiseThrowable}
+import fs2.{Chunk, CompositeFailure, Fallible, INothing, Pure, RaiseThrowable}
+import fs2.internal.{CompileScope, Token}
 
 import cats._
 import cats.implicits._
 import cats.effect._
+import cats.effect.implicits._
 
 import scala.collection.generic.CanBuildFrom
 
 sealed trait Pull[+F[_], +O, +R] {
+
+  def attempt: Pull[F, O, Either[Throwable, R]] =
+    map(r => Right(r): Either[Throwable, R]).handleErrorWith(t =>
+      Pull.pure(Left(t): Either[Throwable, R]))
+
   def compile[F2[x] >: F[x], R2 >: R, S](initial: S)(f: (S, Chunk[O]) => S)(
-      implicit F: Sync[F2]): F2[(S, R2)]
-  def step: Pull[F, INothing, Either[R, (Chunk[O], Pull[F, O, R])]]
+      implicit F: Sync[F2]): F2[(S, R2)] =
+    F.delay(CompileScope.newRoot[F2])
+      .bracketCase(scope => compileScope[F2, R2, S](scope, initial)(f))((scope, ec) =>
+        scope.close(ec).rethrow)
+
+  private def compileScope[F2[x] >: F[x]: Sync, R2 >: R, S](scope: CompileScope[F2], initial: S)(
+      f: (S, Chunk[O]) => S): F2[(S, R2)] =
+    step[F2, O, R2](scope).flatMap {
+      case Right((hd, tl)) => tl.compileScope[F2, R2, S](scope, f(initial, hd))(f)
+      case Left(r)         => (initial, r: R2).pure[F2]
+    }
+
+  private[fs2] def step[F2[x] >: F[x]: Sync, O2 >: O, R2 >: R](
+      scope: CompileScope[F2]): F2[Either[R2, (Chunk[O2], Pull[F2, O2, R2])]]
+
   def translate[F2[x] >: F[x], G[_]](f: F2 ~> G): Pull[G, O, R]
 
   def flatMap[F2[x] >: F[x], R2, O2 >: O](f: R => Pull[F2, O2, R2]): Pull[F2, O2, R2] =
@@ -26,6 +46,7 @@ sealed trait Pull[+F[_], +O, +R] {
     new Pull.HandleErrorWith(this, f)
 
   def map[R2](f: R => R2): Pull[F, O, R2] = flatMap(r => Pull.pure(f(r)))
+
 }
 
 object Pull {
@@ -35,11 +56,9 @@ object Pull {
   def pure[F[x] >: Pure[x], R](r: R): Pull[F, INothing, R] = new Result[R](r)
 
   private[fs2] final class Result[R](r: R) extends Pull[Pure, INothing, R] {
-    def compile[F2[x] >: Pure[x], R2 >: R, S](initial: S)(f: (S, Chunk[INothing]) => S)(
-        implicit F: Sync[F2]): F2[(S, R2)] =
-      (initial, r: R2).pure[F2]
-    def step: Pull[Pure, INothing, Either[R, (Chunk[INothing], Pull[Pure, INothing, R])]] =
-      pure(Either.left[R, (Chunk[INothing], Pull[Pure, INothing, R])](r))
+    private[fs2] def step[F2[x] >: Pure[x], O2 >: INothing, R2 >: R](scope: CompileScope[F2])(
+        implicit F: Sync[F2]): F2[Either[R2, (Chunk[O2], Pull[F2, O2, R2])]] =
+      F.pure(Either.left(r))
     def translate[F2[x] >: Pure[x], G[_]](f: F2 ~> G): Pull[G, INothing, R] = this
   }
 
@@ -49,36 +68,31 @@ object Pull {
     if (os.isEmpty) done else new Output(os)
 
   private final class Output[O](os: Chunk[O]) extends Pull[Pure, O, Unit] {
-    def compile[F2[x] >: Pure[x], R2 >: Unit, S](initial: S)(f: (S, Chunk[O]) => S)(
-        implicit F: Sync[F2]): F2[(S, R2)] =
-      (f(initial, os), (): R2).pure[F2]
-    def step: Pull[Pure, INothing, Either[Unit, (Chunk[O], Pull[Pure, O, Unit])]] =
-      pure(Either.right((os -> Pull.done)))
+    private[fs2] def step[F2[x] >: Pure[x], O2 >: O, R2 >: Unit](scope: CompileScope[F2])(
+        implicit F: Sync[F2]): F2[Either[R2, (Chunk[O2], Pull[F2, O2, R2])]] =
+      F.pure(Right((os, done)))
     def translate[F2[x] >: Pure[x], G[_]](f: F2 ~> G): Pull[G, O, Unit] = this
   }
 
   def eval[F[_], R](fr: F[R]): Pull[F, INothing, R] = new Eval(fr)
 
   private final class Eval[F[_], R](fr: F[R]) extends Pull[F, INothing, R] {
-    def compile[F2[x] >: F[x], R2 >: R, S](initial: S)(f: (S, Chunk[INothing]) => S)(
-        implicit F: Sync[F2]): F2[(S, R2)] =
-      (fr: F2[R]).map(r => (initial, r: R2))
-    def step: Pull[F, INothing, Either[R, (Chunk[INothing], Pull[F, INothing, R])]] =
-      eval(fr).flatMap(r => pure(Either.left(r)))
+    private[fs2] def step[F2[x] >: F[x]: Sync, O2 >: INothing, R2 >: R](
+        scope: CompileScope[F2]): F2[Either[R2, (Chunk[O2], Pull[F2, O2, R2])]] =
+      (fr: F2[R]).map(Left(_))
     def translate[F2[x] >: F[x], G[_]](f: F2 ~> G): Pull[G, INothing, R] =
       eval(f(fr))
   }
 
   private final class FlatMap[F[_], O, R0, R](source: Pull[F, O, R0], g: R0 => Pull[F, O, R])
       extends Pull[F, O, R] {
-    def compile[F2[x] >: F[x], R2 >: R, S](initial: S)(f: (S, Chunk[O]) => S)(
-        implicit F: Sync[F2]): F2[(S, R2)] =
-      source.compile[F2, R0, S](initial)(f).flatMap { case (s, r) => g(r).compile[F2, R2, S](s)(f) }
 
-    def step: Pull[F, INothing, Either[R, (Chunk[O], Pull[F, O, R])]] =
-      source.step.flatMap {
-        case Right((hd, tl)) => Pull.pure(Right((hd, tl.flatMap(g))))
-        case Left(r)         => g(r).step
+    private[fs2] def step[F2[x] >: F[x]: Sync, O2 >: O, R2 >: R](
+        scope: CompileScope[F2]): F2[Either[R2, (Chunk[O2], Pull[F2, O2, R2])]] =
+      source.step(scope).flatMap {
+        case Right((hd, tl)) =>
+          (Right((hd, tl.flatMap(g))): Either[R2, (Chunk[O2], Pull[F2, O2, R2])]).pure[F2]
+        case Left(r) => g(r).step(scope)
       }
 
     def translate[F2[x] >: F[x], G[_]](f: F2 ~> G): Pull[G, O, R] =
@@ -88,14 +102,10 @@ object Pull {
   private final class HandleErrorWith[F[_], O, R](source: Pull[F, O, R],
                                                   h: Throwable => Pull[F, O, R])
       extends Pull[F, O, R] {
-    def compile[F2[x] >: F[x], R2 >: R, S](initial: S)(f: (S, Chunk[O]) => S)(
-        implicit F: Sync[F2]): F2[(S, R2)] =
-      source
-        .compile[F2, R2, S](initial)(f)
-        .handleErrorWith(t => h(t).compile[F2, R2, S](initial)(f))
 
-    def step: Pull[F, INothing, Either[R, (Chunk[O], Pull[F, O, R])]] =
-      source.step.handleErrorWith(t => h(t).step)
+    private[fs2] def step[F2[x] >: F[x]: Sync, O2 >: O, R2 >: R](
+        scope: CompileScope[F2]): F2[Either[R2, (Chunk[O2], Pull[F2, O2, R2])]] =
+      source.step[F2, O2, R2](scope).handleErrorWith(t => h(t).step(scope))
 
     def translate[F2[x] >: F[x], G[_]](f: F2 ~> G): Pull[G, O, R] =
       source.translate(f).handleErrorWith(t => h(t).translate(f))
@@ -104,14 +114,81 @@ object Pull {
   def raiseError[F[_]: RaiseThrowable](err: Throwable): Pull[F, INothing, INothing] =
     new RaiseError(err)
 
+  private[fs2] def raiseErrorForce[F[_]](err: Throwable): Pull[F, INothing, INothing] =
+    new RaiseError(err)
+
   private final class RaiseError[F[_]](err: Throwable) extends Pull[F, INothing, INothing] {
-    def compile[F2[x] >: F[x], R2 >: INothing, S](initial: S)(f: (S, Chunk[INothing]) => S)(
-        implicit F: Sync[F2]): F2[(S, R2)] =
+    private[fs2] def step[F2[x] >: F[x], O2 >: INothing, R2 >: INothing](scope: CompileScope[F2])(
+        implicit F: Sync[F2]): F2[Either[R2, (Chunk[O2], Pull[F2, O2, R2])]] =
       F.raiseError(err)
-    def step: Pull[F, INothing, Either[INothing, (Chunk[INothing], Pull[F, INothing, INothing])]] =
-      new RaiseError[F](err)
+
     def translate[F2[x] >: F[x], G[_]](f: F2 ~> G): Pull[G, INothing, INothing] =
       new RaiseError[G](err)
+  }
+
+  def mapConcat[F[_], O, O2](p: Pull[F, O, Unit])(f: O => Pull[F, O2, Unit]): Pull[F, O2, Unit] =
+    new MapConcat(p, f)
+
+  private final class MapConcat[F[_], O, O2](source: Pull[F, O, Unit], g: O => Pull[F, O2, Unit])
+      extends Pull[F, O2, Unit] {
+
+    private[fs2] def step[F2[x] >: F[x]: Sync, O3 >: O2, R2 >: Unit](
+        scope: CompileScope[F2]): F2[Either[R2, (Chunk[O3], Pull[F2, O3, R2])]] =
+      source.step(scope).flatMap {
+        case Right((hd, tl)) =>
+          tl match {
+            case _: Result[_] if hd.size == 1 =>
+              // nb: If tl is Pure, there's no need to propagate flatMap through the tail. Hence, we
+              // check if hd has only a single element, and if so, process it directly instead of folding.
+              // This allows recursive infinite streams of the form `def s: Stream[Pure,O] = Stream(o).flatMap { _ => s }`
+              g(hd(0)).step(scope)
+            case _ =>
+              def go(idx: Int): Pull[F2, O2, Unit] =
+                if (idx == hd.size) mapConcat(tl)(g)
+                else g(hd(idx)) >> go(idx + 1) // TODO: handle interruption specifics here
+              go(0).step(scope)
+          }
+        case Left(()) => Either.left[R2, (Chunk[O3], Pull[F2, O3, R2])](()).pure[F2]
+      }
+
+    def translate[F2[x] >: F[x], G[_]](f: F2 ~> G): Pull[G, O2, Unit] =
+      new MapConcat[G, O, O2](source.translate(f), o => g(o).translate(f))
+  }
+
+  private[fs2] def acquireWithToken[F[_], R](
+      resource: F[R],
+      release: (R, ExitCase[Throwable]) => F[Unit]): Pull[F, INothing, (R, Token)] =
+    new Acquire(resource, release)
+
+  private final class Acquire[F[_], R](resource: F[R], release: (R, ExitCase[Throwable]) => F[Unit])
+      extends Pull[F, INothing, (R, Token)] {
+
+    private[fs2] def step[F2[x] >: F[x], O2 >: INothing, R2 >: (R, Token)](scope: CompileScope[F2])(
+        implicit F: Sync[F2]): F2[Either[R2, (Chunk[O2], Pull[F2, O2, R2])]] =
+      scope.acquireResource(resource, release).flatMap {
+        case Right(rt) => F.pure(Left(rt))
+        case Left(t)   => F.raiseError(t)
+      }
+
+    def translate[F2[x] >: F[x], G[_]](f: F2 ~> G): Pull[G, INothing, (R, Token)] =
+      new Acquire[G, R](f(resource), (r, ec) => f(release(r, ec)))
+  }
+
+  private[fs2] def release[F[x] >: Pure[x]](token: Token,
+                                            err: Option[Throwable]): Pull[F, INothing, Unit] =
+    new Release(token, err)
+
+  private final class Release(token: Token, err: Option[Throwable])
+      extends Pull[Pure, INothing, Unit] {
+
+    private[fs2] def step[F2[x] >: Pure[x], O2 >: INothing, R2 >: Unit](scope: CompileScope[F2])(
+        implicit F: Sync[F2]): F2[Either[R2, (Chunk[O2], Pull[F2, O2, R2])]] =
+      scope.releaseResource(token, err.map(ExitCase.error).getOrElse(ExitCase.Completed)).flatMap {
+        case Right(_) => F.pure(Left(()))
+        case Left(t)  => F.raiseError(t)
+      }
+
+    def translate[F2[x] >: Pure[x], G[_]](f: F2 ~> G): Pull[G, INothing, Unit] = this
   }
 
   implicit def monadInstance[F[_], O]: Monad[Pull[F, O, ?]] =
@@ -150,23 +227,7 @@ final class Stream[+F[_], +O] private (private val asPull: Pull[F, O, Unit]) ext
   def covary[F2[x] >: F[x]]: Stream[F2, O] = this
 
   def flatMap[F2[x] >: F[x], O2](f: O => Stream[F2, O2]): Stream[F2, O2] =
-    Stream.fromPull(asPull.step.flatMap {
-      case Right((hd, tl)) =>
-        tl match {
-          case _: Pull.Result[_] if hd.size == 1 =>
-            // nb: If tl is Pure, there's no need to propagate flatMap through the tail. Hence, we
-            // check if hd has only a single element, and if so, process it directly instead of folding.
-            // This allows recursive infinite streams of the form `def s: Stream[Pure,O] = Stream(o).flatMap { _ => s }`
-            f(hd(0)).asPull
-          case _ =>
-            def go(idx: Int): Pull[F2, O2, Unit] =
-              if (idx == hd.size) Stream.fromPull(tl).flatMap(f).asPull
-              else f(hd(idx)).asPull >> go(idx + 1) // TODO: handle interruption specifics here
-
-            go(0)
-        }
-      case Left(()) => Pull.done
-    })
+    Stream.fromPull(Pull.mapConcat(asPull: Pull[F2, O, Unit])(o => f(o).asPull))
 
   /**
     * If `this` terminates with `Stream.raiseError(e)`, invoke `h(e)`.
@@ -187,6 +248,45 @@ object Stream {
   private[fs2] def fromPull[F[_], O](p: Pull[F, O, Unit]): Stream[F, O] = new Stream(p)
 
   def apply[O](os: O*): Stream[Pure, O] = emits(os)
+
+  /**
+    * Creates a stream that emits a resource allocated by an effect, ensuring the resource is
+    * eventually released regardless of how the stream is used.
+    *
+    * A typical use case for bracket is working with files or network sockets. The resource effect
+    * opens a file and returns a reference to it. One can then flatMap on the returned Stream to access
+    *  the file, e.g to read bytes and transform them in to some stream of elements
+    * (e.g., bytes, strings, lines, etc.).
+    * The `release` action then closes the file once the result Stream terminates, even in case of interruption
+    * or errors.
+    *
+    * @param acquire resource to acquire at start of stream
+    * @param release function which returns an effect that releases the resource
+    */
+  def bracket[F[x] >: Pure[x], R](acquire: F[R])(release: R => F[Unit]): Stream[F, R] =
+    bracketCase(acquire)((r, _) => release(r))
+
+  /**
+    * Like [[bracket]] but the release action is passed an `ExitCase[Throwable]`.
+    *
+    * `ExitCase.Canceled` is passed to the release action in the event of either stream interruption or
+    * overall compiled effect cancelation.
+    */
+  def bracketCase[F[x] >: Pure[x], R](acquire: F[R])(
+      release: (R, ExitCase[Throwable]) => F[Unit]): Stream[F, R] =
+    Stream.fromPull(Pull.acquireWithToken(acquire, release).flatMap {
+      case (r, token) =>
+        Pull.output1(r).attempt.flatMap {
+          case Right(_) => Pull.release(token, None)
+          case Left(err) =>
+            Pull.release(token, Some(err)).attempt.flatMap {
+              case Right(_) => Pull.raiseErrorForce(err)
+              case Left(err2) =>
+                if (!err.eq(err2)) Pull.raiseErrorForce(CompositeFailure(err, err2))
+                else Pull.raiseErrorForce(err)
+            }
+        }
+    })
 
   def chunk[O](c: Chunk[O]): Stream[Pure, O] = fromPull(Pull.output(c))
 
