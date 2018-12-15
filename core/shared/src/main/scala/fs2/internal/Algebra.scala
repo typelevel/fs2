@@ -35,7 +35,7 @@ private[fs2] object Algebra {
   final case class Acquire[F[_], R](resource: F[R], release: (R, ExitCase[Throwable]) => F[Unit])
       extends AlgEffect[F, (R, Token)]
 
-  final case class Release[F[_]](token: Token, err: Option[Throwable]) extends AlgEffect[F, Unit]
+  final case class Release[F[_]](token: Token) extends AlgEffect[F, Unit]
 
   final case class OpenScope[F[_]](interruptible: Option[Concurrent[F]]) extends AlgEffect[F, Token]
 
@@ -62,8 +62,8 @@ private[fs2] object Algebra {
       release: (R, ExitCase[Throwable]) => F[Unit]): FreeC[Algebra[F, O, ?], (R, Token)] =
     FreeC.Eval[Algebra[F, O, ?], (R, Token)](Acquire(resource, release))
 
-  def release[F[_], O](token: Token, err: Option[Throwable]): FreeC[Algebra[F, O, ?], Unit] =
-    FreeC.Eval[Algebra[F, O, ?], Unit](Release(token, err))
+  def release[F[_], O](token: Token): FreeC[Algebra[F, O, ?], Unit] =
+    FreeC.Eval[Algebra[F, O, ?], Unit](Release(token))
 
   /**
     * Steps through the stream, providing either `uncons` or `stepLeg`.
@@ -290,11 +290,7 @@ private[fs2] object Algebra {
               }
 
             case release: Algebra.Release[F] =>
-              F.flatMap(
-                scope.releaseResource(release.token,
-                                      release.err
-                                        .map(ExitCase.error)
-                                        .getOrElse(ExitCase.Completed))) { r =>
+              F.flatMap(scope.releaseResource(release.token, ExitCase.Completed)) { r =>
                 go[X](scope, view.next(Result.fromEither(r)))
               }
 
