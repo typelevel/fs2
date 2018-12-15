@@ -29,6 +29,18 @@ sealed trait Pull[+F[_], +O, +R] {
       case Left(r)         => (initial, r: R2).pure[F2]
     }
 
+  /** Lifts this pull to the specified effect type. */
+  def covary[F2[x] >: F[x]]: Pull[F2, O, R] = this
+
+  /** Lifts this pull to the specified effect type, output type, and resource type. */
+  def covaryAll[F2[x] >: F[x], O2 >: O, R2 >: R]: Pull[F2, O2, R2] = this
+
+  /** Lifts this pull to the specified output type. */
+  def covaryOutput[O2 >: O]: Pull[F, O2, R] = this
+
+  /** Lifts this pull to the specified resource type. */
+  def covaryResource[R2 >: R]: Pull[F, O, R2] = this
+
   private[fs2] def step[F2[x] >: F[x]: Sync, O2 >: O, R2 >: R](
       scope: CompileScope[F2]): F2[Either[R2, (Chunk[O2], Pull[F2, O2, R2])]]
 
@@ -47,6 +59,7 @@ sealed trait Pull[+F[_], +O, +R] {
 
   def map[R2](f: R => R2): Pull[F, O, R2] = flatMap(r => Pull.pure(f(r)))
 
+  def streamNoScope: Stream[F, O] = Stream.fromPull(map(_ => ()))
 }
 
 object Pull {
