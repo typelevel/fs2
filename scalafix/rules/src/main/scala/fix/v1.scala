@@ -394,26 +394,16 @@ object StreamAppRules {
     )
 
   private[this] def replaceStats(stats: List[Stat]): List[Patch] =
-    stats.map {
+    stats.flatMap{
       case d @ Defn.Def(_, Term.Name("stream"), _, _, tpe, body) =>
         val fName = tpe.flatMap(getFName).get
-        val newDef = d.copy(
-          name = Term.Name("run"),
-          paramss = List(
-            List(
-              Term.Param(List(),
-                Name("args"),
-                Some(Type.Apply(Type.Name("List"), List(Type.Name("String")))),
-                None))),
-          decltpe = Some(Type.Apply(Type.Name(fName), List(Type.Name("ExitCode")))),
-          body = Term.Apply(
-            Term.Select(Term.Select(Term.Select(body, Term.Name("compile")), Term.Name("drain")),
-              Term.Name("as")),
-            List(Term.Select(Term.Name("ExitCode"), Term.Name("Success")))
-          )
-        )
-        Patch.replaceTree(d, newDef.toString())
-      case s => Patch.empty
+        List(Patch.replaceTree(d.name, "run"), Patch.addRight(body, ".compile.drain.as(ExitCode.Success)")) ++
+        d.paramss.flatMap(_.lift(1)).map(p => Patch.removeTokens(p.tokens)) ++
+        d.tokens.collectFirst{
+          case t: Token.Comma => Patch.removeToken(t)
+        } ++
+        d.decltpe.map(t => Patch.replaceTree(t, Type.Apply(Type.Name(fName), List(Type.Name("ExitCode"))).toString()))
+      case _ => List(Patch.empty)
     }
 
   private[this] val params = List(
