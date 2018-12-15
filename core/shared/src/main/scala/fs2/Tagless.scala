@@ -1,6 +1,6 @@
 package fs2.tagless
 
-import fs2.{Chunk, CompositeFailure, Fallible, INothing, Pure, RaiseThrowable}
+import fs2.{Chunk, Fallible, INothing, Pure, RaiseThrowable}
 import fs2.internal.{CompileScope, Token}
 
 import cats._
@@ -187,16 +187,15 @@ object Pull {
       new Acquire[G, R](f(resource), (r, ec) => f(release(r, ec)))
   }
 
-  private[fs2] def release[F[x] >: Pure[x]](token: Token,
-                                            err: Option[Throwable]): Pull[F, INothing, Unit] =
-    new Release(token, err)
+  private[fs2] def release[F[x] >: Pure[x]](token: Token): Pull[F, INothing, Unit] =
+    new Release(token)
 
-  private final class Release(token: Token, err: Option[Throwable])
+  private final class Release(token: Token)
       extends Pull[Pure, INothing, Unit] {
 
     private[fs2] def step[F2[x] >: Pure[x], O2 >: INothing, R2 >: Unit](scope: CompileScope[F2])(
         implicit F: Sync[F2]): F2[Either[R2, (Chunk[O2], Pull[F2, O2, R2])]] =
-      scope.releaseResource(token, err.map(ExitCase.error).getOrElse(ExitCase.Completed)).flatMap {
+      scope.releaseResource(token, ExitCase.Completed).flatMap {
         case Right(_) => F.pure(Left(()))
         case Left(t)  => F.raiseError(t)
       }
@@ -288,17 +287,7 @@ object Stream {
   def bracketCase[F[x] >: Pure[x], R](acquire: F[R])(
       release: (R, ExitCase[Throwable]) => F[Unit]): Stream[F, R] =
     Stream.fromPull(Pull.acquireWithToken(acquire, release).flatMap {
-      case (r, token) =>
-        Pull.output1(r).attempt.flatMap {
-          case Right(_) => Pull.release(token, None)
-          case Left(err) =>
-            Pull.release(token, Some(err)).attempt.flatMap {
-              case Right(_) => Pull.raiseErrorForce(err)
-              case Left(err2) =>
-                if (!err.eq(err2)) Pull.raiseErrorForce(CompositeFailure(err, err2))
-                else Pull.raiseErrorForce(err)
-            }
-        }
+      case (r, token) => Pull.output1(r) >> Pull.release(token)
     })
 
   def chunk[O](c: Chunk[O]): Stream[Pure, O] = fromPull(Pull.output(c))
