@@ -321,20 +321,25 @@ object StreamAppRules {
     case c @ Defn.Class(_, _, _, _, tpl @ Template(_, is, _, _)) if is.exists {
       case streamAppInit(_) => true; case _ => false
     } =>
-      val newApp = c.copy(
-        templ = replaceClassTemplate(tpl)
-      )
-      Patch.replaceTree(c, newApp.toString()) ++ streamAppObjects(c).map(o =>
-        Patch.replaceTree(o.templ, replaceObjectTemplate(o.templ).toString()))
+      (replaceClassTemplate(tpl) ++ streamAppObjects(c).map(o =>
+        replaceObjectTemplate(o.templ))).asPatch + removeExtends(c)
+
     case o @ Defn.Object(_, _, tpl @ Template(_, is, _, _)) if is.exists {
       case streamAppInit(_) => true; case _ => false
     } =>
-      val newApp = o.copy(
-        templ = replaceTemplate(tpl)
-      )
-      Patch.replaceTree(o, newApp.toString())
+      replaceTemplate(tpl).asPatch
     case _ => Patch.empty
   }
+
+  def removeExtends(c: Defn.Class): Patch =
+    if (c.templ.inits.length == 1) {
+      c.tokens.collectFirst{
+        case t: Token.KwExtends =>
+          t
+      }.map(t => Patch.removeToken(t)).getOrElse(Patch.empty)
+    } else {
+      Patch.empty
+    }
 
   object streamAppInit {
     def unapply(i: Init): Option[Init] = i match {
@@ -355,33 +360,40 @@ object StreamAppRules {
               case i =>
                 None
             }
-          case i => None
+          case _ => None
         }
       case _ => List()
     }.flatten
 
-  private[this] def addIOAppType(inits: List[Init]): List[Init] =
-    inits :+ Init.apply(Type.Name("IOApp"), Name("IOApp"), List())
+  private[this] def addIOAppType(inits: List[Init]): List[Patch] =
+    inits.map {
+      case s@streamAppInit(_) =>
+        Patch.addRight(s.tokens.head, "IOApp")
+      case _ => Patch.empty
+    }
 
-  private[this] def removeStreamAppType(inits: List[Init]): List[Init] =
-    inits.filter { case streamAppInit(_) => false; case _ => true }
+  private[this] def removeStreamAppType(inits: List[Init]): List[Patch] =
+    inits.map {
+      case s@streamAppInit(_) =>
+        Patch.removeTokens(s.tokens)
+      case _ => Patch.empty
+    }
 
-  private[this] def replaceTemplate(tpl: Template): Template =
-    tpl.copy(
-      stats = replaceStats(tpl.stats),
-      inits = removeStreamAppType(addIOAppType(tpl.inits))
+  private[this] def replaceTemplate(tpl: Template): List[Patch] =
+    replaceStats(tpl.stats) ++ removeStreamAppType(tpl.inits) ++ addIOAppType(tpl.inits)
+
+  private[this] def replaceClassTemplate(tpl: Template): List[Patch] =
+    replaceClassStats(tpl.stats) ++ removeStreamAppType(tpl.inits)
+
+  private[this] def replaceObjectTemplate(tpl: Template): Patch =
+    Patch.replaceTree(
+      tpl,
+      tpl.copy(
+        inits = tpl.inits :+ Init(Type.Name("IOApp"), Name("IOApp"), List()),
+        stats = addProgramRun(tpl.stats)).toString()
     )
 
-  private[this] def replaceClassTemplate(tpl: Template): Template =
-    tpl.copy(
-      stats = replaceClassStats(tpl.stats),
-      inits = removeStreamAppType(tpl.inits)
-    )
-
-  private[this] def replaceObjectTemplate(tpl: Template): Template =
-    tpl.copy(stats = addProgramRun(tpl.stats), inits = addIOAppType(tpl.inits))
-
-  private[this] def replaceStats(stats: List[Stat]): List[Stat] =
+  private[this] def replaceStats(stats: List[Stat]): List[Patch] =
     stats.map {
       case d @ Defn.Def(_, Term.Name("stream"), _, _, tpe, body) =>
         val fName = tpe.flatMap(getFName).get
@@ -400,8 +412,8 @@ object StreamAppRules {
             List(Term.Select(Term.Name("ExitCode"), Term.Name("Success")))
           )
         )
-        newDef
-      case s => s
+        Patch.replaceTree(d, newDef.toString())
+      case s => Patch.empty
     }
 
   private[this] val params = List(
@@ -410,7 +422,7 @@ object StreamAppRules {
       Some(Type.Apply(Type.Name("List"), List(Type.Name("String")))),
       None))
 
-  private[this] def replaceClassStats(stats: List[Stat]): List[Stat] =
+  private[this] def replaceClassStats(stats: List[Stat]): List[Patch] =
     stats.map {
       case d @ Defn.Def(_, _, _, _, tpe, body) =>
         val fName = tpe.flatMap(getFName).get
@@ -424,19 +436,21 @@ object StreamAppRules {
             List(Term.Select(Term.Name("ExitCode"), Term.Name("Success")))
           )
         )
-        newDef
-      case s => s
+        Patch.replaceTree(d, newDef.toString())
+      case _ => Patch.empty
     }
 
-  private[this] def addProgramRun(stats: List[Stat]): List[Stat] =
-    Defn.Def(
+  private[this] def addProgramRun(stats: List[Stat]): List[Stat] = {
+    val run = Defn.Def(
       mods = List(),
       name = Term.Name("run"),
       tparams = List(),
       paramss = List(params),
       decltpe = Some(Type.Apply(Type.Name("IO"), List(Type.Name("ExitCode")))),
       body = Term.Apply(Term.Name("program"), params.map(p => Term.Name(p.name.value)))
-    ) :: stats
+    )
+    run :: stats
+  }
 
   private[this] def getFName(t: Type): Option[String] = t match {
     case Type.Apply(_, f :: _) =>
