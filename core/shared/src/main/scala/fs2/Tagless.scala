@@ -83,7 +83,7 @@ sealed trait Pull[+F[_], +O, +R] {
   def streamNoScope: Stream[F, O] = Stream.fromPull(map(_ => ()))
 }
 
-object Pull {
+object Pull extends PullInstancesLowPriority {
 
   val done: Pull[Pure, INothing, Unit] = pure(())
 
@@ -231,18 +231,66 @@ object Pull {
 
   def scope[F[_], O, R](p: Pull[F, O, R]): Pull[F, O, R] = new Scope(p)
 
+  private def stepWith[F[_], O, R](scopeId: Token, p: Pull[F, O, R]): Pull[F, O, R] =
+    new StepWith(scopeId, p)
+  private final class StepWith[F[_], O, R](scopeId: Token, source: Pull[F, O, R])
+      extends Pull[F, O, R] {
+    private[fs2] def step[F2[x] >: F[x], O2 >: O, R2 >: R](scope: CompileScope[F2])(
+        implicit F: Sync[F2]): F2[Either[R2, (Chunk[O2], Pull[F2, O2, R2])]] =
+      scope.findStepScope(scopeId).map(_.getOrElse(scope)).flatMap { scope =>
+        (source: Pull[F2, O2, R2])
+          .flatTap(r => Pull.eval(scope.close(ExitCase.Completed)).rethrow)
+          .onError { case t => Pull.eval(scope.close(ExitCase.Error(t))).rethrow }
+          .step(scope)
+      }
+    def translate[F2[x] >: F[x], G[_]](f: F2 ~> G): Pull[G, O, R] =
+      new StepWith(scopeId, source.translate(f))
+  }
+
   private final class Scope[F[_], O, R](source: Pull[F, O, R]) extends Pull[F, O, R] {
     private[fs2] def step[F2[x] >: F[x], O2 >: O, R2 >: R](scope: CompileScope[F2])(
         implicit F: Sync[F2]): F2[Either[R2, (Chunk[O2], Pull[F2, O2, R2])]] =
       scope
         .open(None /* TODO */ )
         .rethrow
-        .bracketCase(childScope => source.step[F2, O2, R2](childScope))((childScope, ec) =>
-          childScope.close(ec).rethrow)
-          // TODO this isn't right - scope must extend over lifetime of the pull returned from source.step
+        .flatMap { childScope =>
+          source.step[F2, O2, R2](childScope).map {
+            case Right((hd, tl)) => Right((hd, stepWith(childScope.id, tl)))
+            case Left(r)         => Left(r)
+          }
+        }
 
     def translate[F2[x] >: F[x], G[_]](f: F2 ~> G): Pull[G, O, R] = new Scope(source.translate(f))
   }
+
+  /** `Sync` instance for `Pull`. */
+  implicit def syncInstance[F[_], O](
+      implicit ev: ApplicativeError[F, Throwable]): Sync[Pull[F, O, ?]] =
+    new Sync[Pull[F, O, ?]] {
+      def pure[A](a: A): Pull[F, O, A] = Pull.pure(a)
+      def handleErrorWith[A](p: Pull[F, O, A])(h: Throwable => Pull[F, O, A]) =
+        p.handleErrorWith(h)
+      def raiseError[A](t: Throwable) = Pull.raiseError[F](t)
+      def flatMap[A, B](p: Pull[F, O, A])(f: A => Pull[F, O, B]) = p.flatMap(f)
+      def tailRecM[A, B](a: A)(f: A => Pull[F, O, Either[A, B]]) =
+        f(a).flatMap {
+          case Left(a)  => tailRecM(a)(f)
+          case Right(b) => Pull.pure(b)
+        }
+      def suspend[R](p: => Pull[F, O, R]) = ??? // TODO Pull.suspend(p)
+      def bracketCase[A, B](acquire: Pull[F, O, A])(use: A => Pull[F, O, B])(
+          release: (A, ExitCase[Throwable]) => Pull[F, O, Unit]): Pull[F, O, B] =
+        ???
+      /* TODO
+        Pull.fromFreeC(
+          FreeC
+            .syncInstance[Algebra[F, O, ?]]
+            .bracketCase(acquire.get)(a => use(a).get)((a, c) => release(a, c).get))
+     */
+    }
+}
+
+private[fs2] trait PullInstancesLowPriority {
 
   implicit def monadInstance[F[_], O]: Monad[Pull[F, O, ?]] =
     new Monad[Pull[F, O, ?]] {
