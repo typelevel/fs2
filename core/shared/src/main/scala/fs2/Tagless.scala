@@ -239,6 +239,7 @@ object Pull {
         .rethrow
         .bracketCase(childScope => source.step[F2, O2, R2](childScope))((childScope, ec) =>
           childScope.close(ec).rethrow)
+          // TODO this isn't right - scope must extend over lifetime of the pull returned from source.step
 
     def translate[F2[x] >: F[x], G[_]](f: F2 ~> G): Pull[G, O, R] = new Scope(source.translate(f))
   }
