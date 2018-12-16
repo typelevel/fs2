@@ -231,22 +231,6 @@ object Pull extends PullInstancesLowPriority {
 
   def scope[F[_], O, R](p: Pull[F, O, R]): Pull[F, O, R] = new Scope(p)
 
-  private def stepWith[F[_], O, R](scopeId: Token, p: Pull[F, O, R]): Pull[F, O, R] =
-    new StepWith(scopeId, p)
-  private final class StepWith[F[_], O, R](scopeId: Token, source: Pull[F, O, R])
-      extends Pull[F, O, R] {
-    private[fs2] def step[F2[x] >: F[x], O2 >: O, R2 >: R](scope: CompileScope[F2])(
-        implicit F: Sync[F2]): F2[Either[R2, (Chunk[O2], Pull[F2, O2, R2])]] =
-      scope.findStepScope(scopeId).map(_.getOrElse(scope)).flatMap { scope =>
-        (source: Pull[F2, O2, R2])
-          .flatTap(r => Pull.eval(scope.close(ExitCase.Completed)).rethrow)
-          .onError { case t => Pull.eval(scope.close(ExitCase.Error(t))).rethrow }
-          .step(scope)
-      }
-    def translate[F2[x] >: F[x], G[_]](f: F2 ~> G): Pull[G, O, R] =
-      new StepWith(scopeId, source.translate(f))
-  }
-
   private final class Scope[F[_], O, R](source: Pull[F, O, R]) extends Pull[F, O, R] {
     private[fs2] def step[F2[x] >: F[x], O2 >: O, R2 >: R](scope: CompileScope[F2])(
         implicit F: Sync[F2]): F2[Either[R2, (Chunk[O2], Pull[F2, O2, R2])]] =
@@ -261,6 +245,27 @@ object Pull extends PullInstancesLowPriority {
         }
 
     def translate[F2[x] >: F[x], G[_]](f: F2 ~> G): Pull[G, O, R] = new Scope(source.translate(f))
+  }
+
+  private def stepWith[F[_], O, R](scopeId: Token, p: Pull[F, O, R]): Pull[F, O, R] =
+    new StepWith(scopeId, p)
+
+  private final class StepWith[F[_], O, R](scopeId: Token, source: Pull[F, O, R])
+      extends Pull[F, O, R] {
+    private[fs2] def step[F2[x] >: F[x], O2 >: O, R2 >: R](scope: CompileScope[F2])(
+        implicit F: Sync[F2]): F2[Either[R2, (Chunk[O2], Pull[F2, O2, R2])]] =
+      scope.findStepScope(scopeId).map(_.getOrElse(scope)).flatMap { scope =>
+        (source: Pull[F2, O2, R2])
+          .flatTap(r => Pull.eval(scope.close(ExitCase.Completed)).rethrow)
+          .onError { case t => Pull.eval(scope.close(ExitCase.Error(t))).rethrow }
+          .step(scope)
+          .map {
+            case Right((hd, tl)) => Right((hd, stepWith(scopeId, tl)))
+            case Left(r)         => Left(r)
+          }
+      }
+    def translate[F2[x] >: F[x], G[_]](f: F2 ~> G): Pull[G, O, R] =
+      new StepWith(scopeId, source.translate(f))
   }
 
   /** `Sync` instance for `Pull`. */
