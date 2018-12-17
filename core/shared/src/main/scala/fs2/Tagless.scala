@@ -81,6 +81,8 @@ sealed trait Pull[+F[_], +O, +R] {
     * which may be infinite in the worst case.
     */
   def streamNoScope: Stream[F, O] = Stream.fromPull(map(_ => ()))
+
+  def uncons: Pull[F, INothing, Either[R, (Chunk[O], Pull[F, O, R])]] = new Pull.Uncons(this)
 }
 
 object Pull extends PullInstancesLowPriority {
@@ -268,6 +270,21 @@ object Pull extends PullInstancesLowPriority {
       new StepWith(scopeId, source.translate(f))
   }
 
+  private final class Uncons[F[_], O, R](source: Pull[F, O, R])
+      extends Pull[F, INothing, Either[R, (Chunk[O], Pull[F, O, R])]] {
+
+    private[fs2] def step[F2[x] >: F[x],
+                          O2 >: INothing,
+                          R2 >: Either[R, (Chunk[O], Pull[F, O, R])]](scope: CompileScope[F2])(
+        implicit F: Sync[F2]): F2[Either[R2, (Chunk[O2], Pull[F2, O2, R2])]] =
+      source.step(scope).map(r => Left(r.asInstanceOf[R2]))
+
+    def translate[F2[x] >: F[x], G[_]](
+        f: F2 ~> G): Pull[G, INothing, Either[R, (Chunk[O], Pull[F, O, R])]] =
+      new Uncons(source.translate(f)).asInstanceOf[Pull[G, INothing, Either[R, (Chunk[O], Pull[F, O, R])]]]
+    // TODO: this is wrong
+  }
+
   /** `Sync` instance for `Pull`. */
   implicit def syncInstance[F[_], O](
       implicit ev: ApplicativeError[F, Throwable]): Sync[Pull[F, O, ?]] =
@@ -329,6 +346,17 @@ final class Stream[+F[_], +O] private (private val asPull: Pull[F, O, Unit]) ext
   def compile[F2[x] >: F[x], G[_], O2 >: O](
       implicit compiler: Stream.Compiler[F2, G]): Stream.CompileOps[F2, G, O2] =
     new Stream.CompileOps[F2, G, O2](asPull)
+
+  /**
+    * Prepends a chunk onto the front of this stream.
+    *
+    * @example {{{
+    * scala> Stream(1,2,3).cons(Chunk(-1, 0)).toList
+    * res0: List[Int] = List(-1, 0, 1, 2, 3)
+    * }}}
+    */
+  def cons[O2 >: O](c: Chunk[O2]): Stream[F, O2] =
+    if (c.isEmpty) this else Stream.chunk(c) ++ this
 
   def covary[F2[x] >: F[x]]: Stream[F2, O] = this
 
@@ -401,6 +429,99 @@ object Stream {
   def raiseError[F[_]: RaiseThrowable](e: Throwable): Stream[F, INothing] =
     fromPull(Pull.raiseError(e))
 
+  /** Provides syntax for streams that are invariant in `F` and `O`. */
+  implicit def InvariantOps[F[_], O](s: Stream[F, O]): InvariantOps[F, O] =
+    new InvariantOps(s.asPull)
+
+  /** Provides syntax for streams that are invariant in `F` and `O`. */
+  final class InvariantOps[F[_], O] private[Stream] (private val asPull: Pull[F, O, Unit])
+      extends AnyVal {
+    private def self: Stream[F, O] = Stream.fromPull(asPull)
+
+    /**
+      * Lifts this stream to the specified effect type.
+      *
+      * @example {{{
+      * scala> import cats.effect.IO
+      * scala> Stream(1, 2, 3).covary[IO]
+      * res0: Stream[IO,Int] = Stream(..)
+      * }}}
+      */
+    def covary[F2[x] >: F[x]]: Stream[F2, O] = self
+
+    // /**
+    //   * Synchronously sends values through `sink`.
+    //   *
+    //   * If `sink` fails, then resulting stream will fail. If sink `halts` the evaluation will halt too.
+    //   *
+    //   * Note that observe will only output full chunks of `O` that are known to be successfully processed
+    //   * by `sink`. So if Sink terminates/fail in middle of chunk processing, the chunk will not be available
+    //   * in resulting stream.
+    //   *
+    //   * Note that if your sink can be represented by an `O => F[Unit]`, `evalTap` will provide much greater performance.
+    //   *
+    //   * @example {{{
+    //   * scala> import cats.effect.{ContextShift, IO}, cats.implicits._
+    //   * scala> implicit val cs: ContextShift[IO] = IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
+    //   * scala> Stream(1, 2, 3).covary[IO].observe(Sink.showLinesStdOut).map(_ + 1).compile.toVector.unsafeRunSync
+    //   * res0: Vector[Int] = Vector(2, 3, 4)
+    //   * }}}
+    //   */
+    // def observe(sink: Sink[F, O])(implicit F: Concurrent[F]): Stream[F, O] =
+    //   observeAsync(1)(sink)
+
+    // /** Send chunks through `sink`, allowing up to `maxQueued` pending _chunks_ before blocking `s`. */
+    // def observeAsync(maxQueued: Int)(sink: Sink[F, O])(implicit F: Concurrent[F]): Stream[F, O] =
+    //   Stream.eval(Semaphore[F](maxQueued - 1)).flatMap { guard =>
+    //     Stream.eval(Queue.unbounded[F, Option[Chunk[O]]]).flatMap { outQ =>
+    //       Stream.eval(Queue.unbounded[F, Option[Chunk[O]]]).flatMap { sinkQ =>
+    //         def inputStream =
+    //           self.chunks.noneTerminate.evalMap {
+    //             case Some(chunk) =>
+    //               sinkQ.enqueue1(Some(chunk)) >>
+    //                 guard.acquire
+
+    //             case None =>
+    //               sinkQ.enqueue1(None)
+    //           }
+
+    //         def sinkStream =
+    //           sinkQ.dequeue.unNoneTerminate
+    //             .flatMap { chunk =>
+    //               Stream.chunk(chunk) ++
+    //                 Stream.eval_(outQ.enqueue1(Some(chunk)))
+    //             }
+    //             .to(sink) ++
+    //             Stream.eval_(outQ.enqueue1(None))
+
+    //         def runner =
+    //           sinkStream.concurrently(inputStream) ++
+    //             Stream.eval_(outQ.enqueue1(None))
+
+    //         def outputStream =
+    //           outQ.dequeue.unNoneTerminate
+    //             .flatMap { chunk =>
+    //               Stream.chunk(chunk) ++
+    //                 Stream.eval_(guard.release)
+    //             }
+
+    //         outputStream.concurrently(runner)
+    //       }
+    //     }
+    //   }
+
+    /** Gets a projection of this stream that allows converting it to a `Pull` in a number of ways. */
+    def pull: ToPull[F, O] = new ToPull[F, O](asPull)
+
+    // /**
+    //   * Repeatedly invokes `using`, running the resultant `Pull` each time, halting when a pull
+    //   * returns `None` instead of `Some(nextStream)`.
+    //   */
+    // def repeatPull[O2](
+    //     using: Stream.ToPull[F, O] => Pull[F, O2, Option[Stream[F, O]]]): Stream[F, O2] =
+    //   Pull.loop(using.andThen(_.map(_.map(_.pull))))(pull).stream
+  }
+
   /** Provides syntax for pure streams. */
   implicit def PureOps[O](s: Stream[Pure, O]): PureOps[O] = new PureOps(s.asPull)
 
@@ -469,6 +590,37 @@ object Stream {
     /** Runs this fallible stream and returns the emitted elements in a vector. Note: this method is only available on fallible streams. */
     def toVector: Either[Throwable, Vector[O]] =
       lift[IO].compile.toVector.attempt.unsafeRunSync
+  }
+
+  /** Projection of a `Stream` providing various ways to get a `Pull` from the `Stream`. */
+  final class ToPull[F[_], O] private[Stream] (private val self: Pull[F, O, Unit]) extends AnyVal {
+
+    /**
+      * Waits for a chunk of elements to be available in the source stream.
+      * The chunk of elements along with a new stream are provided as the resource of the returned pull.
+      * The new stream can be used for subsequent operations, like awaiting again.
+      * A `None` is returned as the resource of the pull upon reaching the end of the stream.
+      */
+    def uncons: Pull[F, INothing, Option[(Chunk[O], Stream[F, O])]] =
+      self.uncons.map {
+        case Right((hd, tl)) => Some((hd, Stream.fromPull(tl)))
+        case Left(_)         => None
+      }
+
+    /** Like [[uncons]] but waits for a single element instead of an entire chunk. */
+    def uncons1: Pull[F, INothing, Option[(O, Stream[F, O])]] =
+      uncons.flatMap {
+        case None => Pull.pure(None)
+        case Some((hd, tl)) =>
+          hd.size match {
+            case 0 => tl.pull.uncons1
+            case 1 => Pull.pure(Some(hd(0) -> tl))
+            case n => Pull.pure(Some(hd(0) -> tl.cons(hd.drop(1))))
+          }
+      }
+
+    /** Writes all inputs to the output of the returned `Pull`. */
+    def echo: Pull[F, O, Unit] = self
   }
 
   /** Type class which describes compilation of a `Stream[F, O]` to a `G[?]`. */
