@@ -280,9 +280,23 @@ object Pull extends PullInstancesLowPriority {
       source.step(scope).map(r => Left(r.asInstanceOf[R2]))
 
     def translate[F2[x] >: F[x], G[_]](
-        f: F2 ~> G): Pull[G, INothing, Either[R, (Chunk[O], Pull[F, O, R])]] =
-      new Uncons(source.translate(f)).asInstanceOf[Pull[G, INothing, Either[R, (Chunk[O], Pull[F, O, R])]]]
-    // TODO: this is wrong
+        f: F2 ~> G): Pull[G, INothing, Either[R, (Chunk[O], Pull[F, O, R])]] = {
+      val p: Pull[G, O, R] = source.translate(f)
+      val q: Pull[G, INothing, Either[R, (Chunk[O], Pull[G, O, R])]] = p.uncons.map {
+        case Right((hd, tl)) => Right((hd, new AlreadyTranslated(tl)))
+        case Left(r)         => Left(r)
+      }
+      q.asInstanceOf[Pull[G, INothing, Either[R, (Chunk[O], Pull[F, O, R])]]]
+    }
+  }
+
+  private final class AlreadyTranslated[F[_], O, R](source: Pull[F, O, R]) extends Pull[F, O, R] {
+    private[fs2] def step[F2[x] >: F[x], O2 >: O, R2 >: R](scope: CompileScope[F2])(
+        implicit F: Sync[F2]): F2[Either[R2, (Chunk[O2], Pull[F2, O2, R2])]] =
+      source.step(scope)
+
+    def translate[F2[x] >: F[x], G[_]](f: F2 ~> G): Pull[G, O, R] =
+      this.asInstanceOf[Pull[G, O, R]]
   }
 
   /** `Sync` instance for `Pull`. */
