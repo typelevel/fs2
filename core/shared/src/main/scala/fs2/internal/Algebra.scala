@@ -115,7 +115,7 @@ private[fs2] object Algebra {
       implicit F: Concurrent[F]): FreeC[Algebra[F, O, ?], Unit] =
     scope0(s, Some(F))
 
-  private[fs2] def openScope[F[_], O](
+  private[this] def openScope[F[_], O](
       interruptible: Option[Concurrent[F]]): FreeC[Algebra[F, O, ?], Token] =
     FreeC.Eval[Algebra[F, O, ?], Token](OpenScope(interruptible))
 
@@ -173,7 +173,7 @@ private[fs2] object Algebra {
     F.bracketCase(F.delay(CompileScope.newRoot[F]))(scope =>
       compileScope[F, O, B](scope, stream, init)(f))((scope, ec) => scope.close(ec).rethrow)
 
-  private[fs2] def compileScope[F[_], O, B](
+  private[this] def compileScope[F[_], O, B](
       scope: CompileScope[F],
       stream: FreeC[Algebra[F, O, ?], Unit],
       init: B)(g: (B, Chunk[O]) => B)(implicit F: Sync[F]): F[B] =
@@ -208,7 +208,7 @@ private[fs2] object Algebra {
    *
    */
 
-  private[fs2] def compileLoop[F[_], O](
+  private[this] def compileLoop[F[_], O](
       scope: CompileScope[F],
       stream: FreeC[Algebra[F, O, ?], Unit]
   )(implicit F: Sync[F]): F[Option[(Chunk[O], CompileScope[F], FreeC[Algebra[F, O, ?], Unit])]] = {
