@@ -16,3 +16,5 @@ z_local.sbt
 .tags
 .metaserver
 test-output
+.metals
+.bloop

@@ -2708,7 +2708,7 @@ object Stream extends StreamLowPriority {
       release: (R, ExitCase[Throwable]) => F[Unit]): Stream[F, R] =
     fromFreeC(Algebra.acquire[F, R, R](acquire, release).flatMap {
       case (r, token) =>
-        Stream.emit(r).covary[F].get[F, R].transformWith(bracketFinalizer(token))
+        Stream.emit(r).covary[F].get[F, R] >> Algebra.release(token)
     })
 
   /**
@@ -2732,7 +2732,7 @@ object Stream extends StreamLowPriority {
   def bracketCaseCancellable[F[x] >: Pure[x], R](acquire: F[R])(
       release: (R, ExitCase[Throwable]) => F[Unit]): Stream[F, (Stream[F, Unit], R)] =
     bracketWithToken(acquire)(release).map {
-      case (token, r) => (Stream.fromFreeC(Algebra.release(token, None)) ++ Stream.emit(()), r)
+      case (token, r) => (Stream.fromFreeC(Algebra.release(token)) ++ Stream.emit(()), r)
     }
 
   private[fs2] def bracketWithToken[F[x] >: Pure[x], R](acquire: F[R])(
@@ -2743,32 +2743,8 @@ object Stream extends StreamLowPriority {
           .emit(r)
           .covary[F]
           .map(o => (token, o))
-          .get[F, (Token, R)]
-          .transformWith(bracketFinalizer(token))
+          .get[F, (Token, R)] >> Algebra.release(token)
     })
-
-  private[fs2] def bracketFinalizer[F[_], O](token: Token)(
-      r: Result[Unit]): FreeC[Algebra[F, O, ?], Unit] =
-    r match {
-
-      case Result.Fail(err) =>
-        Algebra.release(token, Some(err)).transformWith {
-          case Result.Pure(_) => Algebra.raiseError(err)
-          case Result.Fail(err2) =>
-            if (!err.eq(err2)) Algebra.raiseError(CompositeFailure(err, err2))
-            else Algebra.raiseError(err)
-          case Result.Interrupted(_, _) =>
-            Algebra.raiseError(new Throwable(s"Cannot interrupt while releasing resource ($err)"))
-        }
-
-      case Result.Interrupted(scopeId, err) =>
-        // this is interrupted lets leave the release util the scope terminates
-        Result.Interrupted(scopeId, err)
-
-      case Result.Pure(_) =>
-        // the stream finsihed, lets clean up any resources
-        Algebra.release(token, None)
-    }
 
   /**
     * Creates a pure stream that emits the elements of the supplied chunk.

@@ -236,7 +236,7 @@ object Pull extends PullLowPriority {
     fromFreeC(Algebra.suspend(p.get))
 
   private def release[F[x] >: Pure[x]](token: Token): Pull[F, INothing, Unit] =
-    fromFreeC[F, INothing, Unit](Algebra.release(token, None))
+    fromFreeC[F, INothing, Unit](Algebra.release(token))
 
   /** `Sync` instance for `Pull`. */
   implicit def syncInstance[F[_], O](

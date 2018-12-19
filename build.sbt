@@ -210,7 +210,8 @@ lazy val mimaSettings = Seq(
     ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.tcp.Socket.mkSocket"),
     ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.udp.Socket.mkSocket"),
     ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Pipe.joinQueued"),
-    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Pipe.joinAsync")
+    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Pipe.joinAsync"),
+    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Stream.bracketFinalizer")
   )
 )
 
