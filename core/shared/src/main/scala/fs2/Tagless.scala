@@ -1,6 +1,6 @@
 package fs2.tagless
 
-import fs2.{Chunk, Fallible, INothing, Pure, RaiseThrowable}
+import fs2.{Chunk, Fallible, INothing, Pure, RaiseThrowable, Scope}
 import fs2.internal.{CompileScope, Token}
 
 import cats._
@@ -9,6 +9,14 @@ import cats.effect._
 import cats.effect.implicits._
 
 import scala.collection.generic.CanBuildFrom
+
+// trait CompilationScope {
+//   def open: F[Scope]
+//   def close(ec: ExitCase): F[Unit]
+//   def findStepScope(scopeId: Token): F[Option[Scope]]
+//   def acquireResource[R](fr: F[R], release: (R, ExitCase[Throwable]) => F[Unit]): F[Either[Throwable, (R, Token)]]
+//   def releaseResource(id: Token, ec: ExitCase[Throwable]): F[Either[Throwable, Unit]]
+// }
 
 sealed trait Pull[+F[_], +O, +R] { self =>
 
@@ -63,7 +71,7 @@ sealed trait Pull[+F[_], +O, +R] { self =>
       override def toString = s"FlatMap($self, $f)"
     }
 
-  final def >>[F2[x] >: F[x], O2 >: O, R2 >: R](that: => Pull[F2, O2, R2]): Pull[F2, O2, R2] =
+  final def >>[F2[x] >: F[x], O2 >: O, R2](that: => Pull[F2, O2, R2]): Pull[F2, O2, R2] =
     flatMap(_ => that)
 
   /** If `this` terminates with `Pull.raiseError(e)`, invoke `h(e)`. */
@@ -88,6 +96,15 @@ sealed trait Pull[+F[_], +O, +R] { self =>
 
   def map[R2](f: R => R2): Pull[F, O, R2] = flatMap(r => Pull.pure(f(r)))
 
+  /** Applies the outputs of this pull to `f` and returns the result in a new `Pull`. */
+  def mapOutput[O2](f: O => O2): Pull[F, O2, R] = new Pull[F, O2, R] {
+    private[fs2] def step[F2[x] >: F[x]: Sync, O3 >: O2, R2 >: R](
+        scope: CompileScope[F2]): F2[Either[R2, (Chunk[O3], Pull[F2, O3, R2])]] =
+      self.step(scope).map(_.map { case (hd, tl) => (hd.map(f), tl.mapOutput(f)) })
+    private[fs2] def translate[F2[x] >: F[x], G[_]](g: F2 ~> G): Pull[G, O2, R] =
+      self.translate(g).mapOutput(f)
+  }
+
   /** Tracks any resources acquired during this pull and releases them when the pull completes. */
   def scope: Pull[F, O, R] = new Pull[F, O, R] {
     private[fs2] def step[F2[x] >: F[x], O2 >: O, R2 >: R](scope: CompileScope[F2])(
@@ -108,13 +125,14 @@ sealed trait Pull[+F[_], +O, +R] { self =>
     override def toString = s"Scope($self)"
   }
 
-  private def stepWith(scopeId: Token): Pull[F, O, R] = new Pull[F, O, R] {
+  private[fs2] def stepWith(scopeId: Token): Pull[F, O, R] = new Pull[F, O, R] {
     private[fs2] def step[F2[x] >: F[x], O2 >: O, R2 >: R](scope: CompileScope[F2])(
         implicit F: Sync[F2]): F2[Either[R2, (Chunk[O2], Pull[F2, O2, R2])]] =
       scope.findStepScope(scopeId).map(_.getOrElse(scope)).flatMap { scope =>
         (self: Pull[F2, O2, R2])
-          .flatTap(r => Pull.eval(scope.close(ExitCase.Completed)).rethrow)
-          .onError { case t => Pull.eval(scope.close(ExitCase.Error(t))).rethrow }
+        // TODO this is not the right place to close the scope as we use it still in stepping the tail
+        // .flatTap(r => Pull.eval(scope.close(ExitCase.Completed)).rethrow)
+        // .onError { case t => Pull.eval(scope.close(ExitCase.Error(t))).rethrow }
           .step(scope)
           .map {
             case Right((hd, tl)) => Right((hd, tl.stepWith(scopeId)))
@@ -218,6 +236,13 @@ object Pull extends PullInstancesLowPriority {
     override def toString = s"Eval($fr)"
   }
 
+  /**
+    * Repeatedly uses the output of the pull as input for the next step of the pull.
+    * Halts when a step terminates with `None` or `Pull.raiseError`.
+    */
+  def loop[F[_], O, R](using: R => Pull[F, O, Option[R]]): R => Pull[F, O, Option[R]] =
+    r => using(r).flatMap { _.map(loop(using)).getOrElse(Pull.pure(None)) }
+
   def raiseError[F[_]: RaiseThrowable](err: Throwable): Pull[F, INothing, INothing] =
     new RaiseError(err)
 
@@ -297,6 +322,20 @@ object Pull extends PullInstancesLowPriority {
       override def toString = s"Release($token)"
     }
 
+  def getScope[F[_]]: Pull[F, INothing, Scope[F]] = new Pull[F, INothing, Scope[F]] {
+
+    private[fs2] def step[F2[x] >: F[x]: Sync, O2 >: INothing, R2 >: Scope[F]](
+        scope: CompileScope[F2]): F2[Either[R2, (Chunk[O2], Pull[F2, O2, R2])]] =
+      Either
+        .left[R2, (Chunk[O2], Pull[F2, O2, R2])](scope.asInstanceOf[Scope[F]])
+        .pure[F2] // TODO make Scope covariant in F
+
+    private[fs2] def translate[F2[x] >: F[x], G[_]](f: F2 ~> G): Pull[G, INothing, Scope[F]] =
+      getScope[G].asInstanceOf[Pull[G, INothing, Scope[F]]]
+
+    override def toString = "GetScope"
+  }
+
   /** `Sync` instance for `Pull`. */
   implicit def syncInstance[F[_], O](
       implicit ev: ApplicativeError[F, Throwable]): Sync[Pull[F, O, ?]] =
@@ -372,6 +411,27 @@ final class Stream[+F[_], +O] private (private val asPull: Pull[F, O, Unit]) ext
 
   def covary[F2[x] >: F[x]]: Stream[F2, O] = this
 
+  /**
+    * Lifts this stream to the specified effect and output types.
+    *
+    * @example {{{
+    * scala> import cats.effect.IO
+    * scala> Stream.empty.covaryAll[IO,Int]
+    * res0: Stream[IO,Int] = Stream(..)
+    * }}}
+    */
+  def covaryAll[F2[x] >: F[x], O2 >: O]: Stream[F2, O2] = this
+
+  /**
+    * Lifts this stream to the specified output type.
+    *
+    * @example {{{
+    * scala> Stream(Some(1), Some(2), Some(3)).covaryOutput[Option[Int]]
+    * res0: Stream[Pure,Option[Int]] = Stream(..)
+    * }}}
+    */
+  def covaryOutput[O2 >: O]: Stream[F, O2] = this
+
   def flatMap[F2[x] >: F[x], O2](f: O => Stream[F2, O2]): Stream[F2, O2] =
     Stream.fromPull(Pull.mapConcat(asPull: Pull[F2, O, Unit])(o => f(o).asPull))
 
@@ -386,8 +446,199 @@ final class Stream[+F[_], +O] private (private val asPull: Pull[F, O, Unit]) ext
   def handleErrorWith[F2[x] >: F[x], O2 >: O](h: Throwable => Stream[F2, O2]): Stream[F2, O2] =
     Stream.fromPull(asPull.scope.handleErrorWith(e => h(e).asPull))
 
+  /**
+    * Applies the specified pure function to each input and emits the result.
+    *
+    * @example {{{
+    * scala> Stream("Hello", "World!").map(_.size).toList
+    * res0: List[Int] = List(5, 6)
+    * }}}
+    */
+  def map[O2](f: O => O2): Stream[F, O2] =
+    this.pull.echo.mapOutput(f).streamNoScope
+
+  /**
+    * Repeat this stream an infinite number of times.
+    *
+    * `s.repeat == s ++ s ++ s ++ ...`
+    *
+    * @example {{{
+    * scala> Stream(1,2,3).repeat.take(8).toList
+    * res0: List[Int] = List(1, 2, 3, 1, 2, 3, 1, 2)
+    * }}}
+    */
+  def repeat: Stream[F, O] =
+    this ++ repeat
+
+  def scope: Stream[F, O] = Stream.fromPull(asPull.scope)
+
+  /**
+    * Emits the first `n` elements of this stream.
+    *
+    * @example {{{
+    * scala> Stream.range(0,1000).take(5).toList
+    * res0: List[Int] = List(0, 1, 2, 3, 4)
+    * }}}
+    */
+  def take(n: Long): Stream[F, O] = this.pull.take(n).stream
+
   def translate[F2[x] >: F[x], G[_]](u: F2 ~> G): Stream[G, O] =
     Stream.fromPull(asPull.translate(u))
+
+  private type ZipWithCont[G[_], I, O2, R] =
+    Either[(Chunk[I], Stream[G, I]), Stream[G, I]] => Pull[G, O2, Option[R]]
+
+  private def zipWith_[F2[x] >: F[x], O2 >: O, O3, O4](that: Stream[F2, O3])(
+      k1: ZipWithCont[F2, O2, O4, INothing],
+      k2: ZipWithCont[F2, O3, O4, INothing])(f: (O2, O3) => O4): Stream[F2, O4] = {
+    def go(leg1: Stream.StepLeg[F2, O2],
+           leg2: Stream.StepLeg[F2, O3]): Pull[F2, O4, Option[INothing]] = {
+      val l1h = leg1.head
+      val l2h = leg2.head
+      val out = l1h.zipWith(l2h)(f)
+      Pull.output(out) >> {
+        if (l1h.size > l2h.size) {
+          val extra1 = l1h.drop(l2h.size)
+          leg2.stepLeg.flatMap {
+            case None      => k1(Left((extra1, leg1.stream)))
+            case Some(tl2) => go(leg1.setHead(extra1), tl2)
+          }
+        } else {
+          val extra2 = l2h.drop(l1h.size)
+          leg1.stepLeg.flatMap {
+            case None      => k2(Left((extra2, leg2.stream)))
+            case Some(tl1) => go(tl1, leg2.setHead(extra2))
+          }
+        }
+      }
+    }
+
+    covaryAll[F2, O2].pull.stepLeg.flatMap {
+      case Some(leg1) =>
+        that.pull.stepLeg
+          .flatMap {
+            case Some(leg2) => go(leg1, leg2)
+            case None       => k1(Left((leg1.head, leg1.stream)))
+          }
+
+      case None => k2(Right(that))
+    }.stream
+  }
+
+  /**
+    * Determinsitically zips elements, terminating when the ends of both branches
+    * are reached naturally, padding the left branch with `pad1` and padding the right branch
+    * with `pad2` as necessary.
+    *
+    *
+    * @example {{{
+    * scala> Stream(1,2,3).zipAll(Stream(4,5,6,7))(0,0).toList
+    * res0: List[(Int,Int)] = List((1,4), (2,5), (3,6), (0,7))
+    * }}}
+    */
+  def zipAll[F2[x] >: F[x], O2 >: O, O3](that: Stream[F2, O3])(pad1: O2,
+                                                               pad2: O3): Stream[F2, (O2, O3)] =
+    zipAllWith[F2, O2, O3, (O2, O3)](that)(pad1, pad2)(Tuple2.apply)
+
+  /**
+    * Determinsitically zips elements with the specified function, terminating
+    * when the ends of both branches are reached naturally, padding the left
+    * branch with `pad1` and padding the right branch with `pad2` as necessary.
+    *
+    * @example {{{
+    * scala> Stream(1,2,3).zipAllWith(Stream(4,5,6,7))(0, 0)(_ + _).toList
+    * res0: List[Int] = List(5, 7, 9, 7)
+    * }}}
+    */
+  def zipAllWith[F2[x] >: F[x], O2 >: O, O3, O4](that: Stream[F2, O3])(pad1: O2, pad2: O3)(
+      f: (O2, O3) => O4): Stream[F2, O4] = {
+    def cont1(
+        z: Either[(Chunk[O2], Stream[F2, O2]), Stream[F2, O2]]): Pull[F2, O4, Option[INothing]] = {
+      def contLeft(s: Stream[F2, O2]): Pull[F2, O4, Option[INothing]] =
+        s.pull.uncons.flatMap {
+          case None => Pull.pure(None)
+          case Some((hd, tl)) =>
+            Pull.output(hd.map(o => f(o, pad2))) >> contLeft(tl)
+        }
+      z match {
+        case Left((hd, tl)) =>
+          Pull.output(hd.map(o => f(o, pad2))) >> contLeft(tl)
+        case Right(h) => contLeft(h)
+      }
+    }
+    def cont2(
+        z: Either[(Chunk[O3], Stream[F2, O3]), Stream[F2, O3]]): Pull[F2, O4, Option[INothing]] = {
+      def contRight(s: Stream[F2, O3]): Pull[F2, O4, Option[INothing]] =
+        s.pull.uncons.flatMap {
+          case None => Pull.pure(None)
+          case Some((hd, tl)) =>
+            Pull.output(hd.map(o2 => f(pad1, o2))) >> contRight(tl)
+        }
+      z match {
+        case Left((hd, tl)) =>
+          Pull.output(hd.map(o2 => f(pad1, o2))) >> contRight(tl)
+        case Right(h) => contRight(h)
+      }
+    }
+    zipWith_[F2, O2, O3, O4](that)(cont1, cont2)(f)
+  }
+
+  /**
+    * Determinsitically zips elements, terminating when the end of either branch is reached naturally.
+    *
+    * @example {{{
+    * scala> Stream(1, 2, 3).zip(Stream(4, 5, 6, 7)).toList
+    * res0: List[(Int,Int)] = List((1,4), (2,5), (3,6))
+    * }}}
+    */
+  def zip[F2[x] >: F[x], O2](that: Stream[F2, O2]): Stream[F2, (O, O2)] =
+    zipWith(that)(Tuple2.apply)
+
+  /**
+    * Like `zip`, but selects the right values only.
+    * Useful with timed streams, the example below will emit a number every 100 milliseconds.
+    *
+    * @example {{{
+    * scala> import scala.concurrent.duration._, cats.effect.{ContextShift, IO, Timer}
+    * scala> implicit val cs: ContextShift[IO] = IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
+    * scala> implicit val timer: Timer[IO] = IO.timer(scala.concurrent.ExecutionContext.Implicits.global)
+    * scala> val s = Stream.fixedDelay(100.millis) zipRight Stream.range(0, 5)
+    * scala> s.compile.toVector.unsafeRunSync
+    * res0: Vector[Int] = Vector(0, 1, 2, 3, 4)
+    * }}}
+    */
+  def zipRight[F2[x] >: F[x], O2](that: Stream[F2, O2]): Stream[F2, O2] =
+    zipWith(that)((_, y) => y)
+
+  /**
+    * Like `zip`, but selects the left values only.
+    * Useful with timed streams, the example below will emit a number every 100 milliseconds.
+    *
+    * @example {{{
+    * scala> import scala.concurrent.duration._, cats.effect.{ContextShift, IO, Timer}
+    * scala> implicit val cs: ContextShift[IO] = IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
+    * scala> implicit val timer: Timer[IO] = IO.timer(scala.concurrent.ExecutionContext.Implicits.global)
+    * scala> val s = Stream.range(0, 5) zipLeft Stream.fixedDelay(100.millis)
+    * scala> s.compile.toVector.unsafeRunSync
+    * res0: Vector[Int] = Vector(0, 1, 2, 3, 4)
+    * }}}
+    */
+  def zipLeft[F2[x] >: F[x], O2](that: Stream[F2, O2]): Stream[F2, O] =
+    zipWith(that)((x, _) => x)
+
+  /**
+    * Determinsitically zips elements using the specified function,
+    * terminating when the end of either branch is reached naturally.
+    *
+    * @example {{{
+    * scala> Stream(1, 2, 3).zipWith(Stream(4, 5, 6, 7))(_ + _).toList
+    * res0: List[Int] = List(5, 7, 9)
+    * }}}
+    */
+  def zipWith[F2[x] >: F[x], O2 >: O, O3, O4](that: Stream[F2, O3])(
+      f: (O2, O3) => O4): Stream[F2, O4] =
+    zipWith_[F2, O2, O3, O4](that)(sh => Pull.pure(None), h => Pull.pure(None))(f)
+
 }
 
 object Stream {
@@ -532,6 +783,7 @@ object Stream {
     // def repeatPull[O2](
     //     using: Stream.ToPull[F, O] => Pull[F, O2, Option[Stream[F, O]]]): Stream[F, O2] =
     //   Pull.loop(using.andThen(_.map(_.map(_.pull))))(pull).stream
+
   }
 
   /** Provides syntax for pure streams. */
@@ -633,6 +885,39 @@ object Stream {
 
     /** Writes all inputs to the output of the returned `Pull`. */
     def echo: Pull[F, O, Unit] = self
+
+    /**
+      * Like `uncons`, but instead of performing normal `uncons`, this will
+      * run the stream up to the first chunk available.
+      * Useful when zipping multiple streams (legs) into one stream.
+      * Assures that scopes are correctly held for each stream `leg`
+      * independently of scopes from other legs.
+      *
+      * If you are not pulling from multiple streams, consider using `uncons`.
+      */
+    def stepLeg: Pull[F, INothing, Option[StepLeg[F, O]]] =
+      Pull
+        .getScope[F]
+        .flatMap { scope =>
+          new StepLeg[F, O](Chunk.empty, scope.asInstanceOf[CompileScope[F]].id, self).stepLeg
+        }
+
+    /** Emits the first `n` elements of the input. */
+    def take(n: Long): Pull[F, O, Option[Stream[F, O]]] =
+      if (n <= 0) Pull.pure(None)
+      else
+        uncons.flatMap {
+          case None => Pull.pure(None)
+          case Some((hd, tl)) =>
+            hd.size.toLong match {
+              case m if m < n  => Pull.output(hd) >> tl.pull.take(n - m)
+              case m if m == n => Pull.output(hd).as(Some(tl))
+              case m =>
+                val (pfx, sfx) = hd.splitAt(n.toInt)
+                Pull.output(pfx).as(Some(tl.cons(sfx)))
+            }
+        }
+
   }
 
   /** Type class which describes compilation of a `Stream[F, O]` to a `G[?]`. */
@@ -833,5 +1118,54 @@ object Stream {
       */
     def toVector: G[Vector[O]] =
       to[Vector]
+  }
+
+  /**
+    * When merging multiple streams, this represents step of one leg.
+    *
+    * It is common to `uncons`, however unlike `uncons`, it keeps track
+    * of stream scope independently of the main scope of the stream.
+    *
+    * This assures, that after each next `stepLeg` each Stream `leg` keeps its scope
+    * when interpreting.
+    *
+    * Usual scenarios is to first invoke `stream.pull.stepLeg` and then consume whatever is
+    * available in `leg.head`. If the next step is required `leg.stepLeg` will yield next `Leg`.
+    *
+    * Once the stream will stop to be interleaved (merged), then `stream` allows to return to normal stream
+    * invocation.
+    *
+    */
+  final class StepLeg[F[_], O](
+      val head: Chunk[O],
+      private[fs2] val scopeId: Token,
+      private[fs2] val next: Pull[F, O, Unit]
+  ) { self =>
+
+    /**
+      * Converts this leg back to regular stream. Scope is updated to the scope associated with this leg.
+      * Note that when this is invoked, no more interleaving legs are allowed, and this must be very last
+      * leg remaining.
+      *
+      * Note that resulting stream won't contain the `head` of this leg.
+      */
+    def stream: Stream[F, O] =
+      Pull
+        .loop[F, O, StepLeg[F, O]] { leg =>
+          Pull.output(leg.head).flatMap(_ => leg.stepLeg)
+        }(self.setHead(Chunk.empty))
+        .stream
+
+    /** Replaces head of this leg. Useful when the head was not fully consumed. */
+    def setHead(nextHead: Chunk[O]): StepLeg[F, O] =
+      new StepLeg[F, O](nextHead, scopeId, next)
+
+    /** Provides an `uncons`-like operation on this leg of the stream. */
+    def stepLeg: Pull[F, INothing, Option[StepLeg[F, O]]] =
+      next.uncons
+        .stepWith(scopeId)
+        .map(_.map {
+          case (hd, tl) => new StepLeg[F, O](hd, scopeId, tl)
+        }.toOption)
   }
 }
