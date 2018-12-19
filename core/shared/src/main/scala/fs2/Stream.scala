@@ -2058,6 +2058,22 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     this ++ repeat
 
   /**
+    * Repeat this stream a given number of times.
+    *
+    * `s.repeatN(n) == s ++ s ++ s ++ ... (n times)`
+    *
+    * @example {{{
+    * scala> Stream(1,2,3).repeatN(3).take(100).toList
+    * res0: List[Int] = List(1, 2, 3, 1, 2, 3, 1, 2, 3)
+    * }}}
+    */
+  def repeatN(n: Long): Stream[F, O] = {
+    require(n > 0, "n must be > 0") // same behaviour as sliding
+    if (n > 1) this ++ repeatN(n - 1)
+    else this
+  }
+
+  /**
     * Converts a `Stream[F,Either[Throwable,O]]` to a `Stream[F,O]`, which emits right values and fails upon the first `Left(t)`.
     * Preserves chunkiness.
     *
