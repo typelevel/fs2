@@ -343,7 +343,6 @@ lazy val microsite = project
   .enablePlugins(MicrositesPlugin)
   .settings(commonSettings)
   .settings(
-    tutSourceDirectory := file("site") / "src",
     micrositeName := "fs2",
     micrositeDescription := "fs2 - Functional Streams for Scala",
     micrositeGithubOwner := "functional-streams-for-scala",
