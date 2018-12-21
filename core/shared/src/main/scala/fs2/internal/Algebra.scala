@@ -209,7 +209,7 @@ private[fs2] object Algebra {
    */
 
   private[this] def compileLoop[F[_], O](
-      scope: CompileScope[F],
+      compileScope: CompileScope[F],
       stream: FreeC[Algebra[F, O, ?], Unit]
   )(implicit F: Sync[F]): F[Option[(Chunk[O], CompileScope[F], FreeC[Algebra[F, O, ?], Unit])]] = {
 
@@ -221,12 +221,12 @@ private[fs2] object Algebra {
     sealed trait R[X]
 
     def go[X](
-        scope: CompileScope[F],
+        goScope: CompileScope[F],
         stream: FreeC[Algebra[F, X, ?], Unit]
     ): F[R[X]] = {
       stream.viewL match {
         case _: FreeC.Result.Pure[Algebra[F, X, ?], Unit] =>
-          F.pure(Done(scope))
+          F.pure(Done(goScope))
 
         case failed: FreeC.Result.Fail[Algebra[F, X, ?], Unit] =>
           F.raiseError(failed.error)
@@ -238,81 +238,83 @@ private[fs2] object Algebra {
           }
 
         case view: ViewL.View[Algebra[F, X, ?], y, Unit] =>
-          def interruptGuard(scope: CompileScope[F])(next: => F[R[X]]): F[R[X]] =
-            F.flatMap(scope.isInterrupted) {
+          def interruptGuard(guardScope: CompileScope[F])(next: => F[R[X]]): F[R[X]] =
+            F.flatMap(guardScope.isInterrupted) {
               case None => next
               case Some(Left(err)) =>
-                go(scope, view.next(Result.raiseError(err)))
+                go(guardScope, view.next(Result.raiseError(err)))
               case Some(Right(scopeId)) =>
-                go(scope, view.next(Result.interrupted(scopeId, None)))
-
+                go(guardScope, view.next(Result.interrupted(scopeId, None)))
             }
 
           view.step match {
             case output: Output[F, X] =>
-              interruptGuard(scope)(
-                F.pure(Out(output.values, scope, view.next(FreeC.Result.Pure(()))))
+              interruptGuard(goScope)(
+                F.pure(Out(output.values, goScope, view.next(FreeC.Result.unit)))
               )
 
             case u: Step[F, y, X] =>
               // if scope was specified in step, try to find it, otherwise use the current scope.
-              F.flatMap(u.scope.fold[F[Option[CompileScope[F]]]](F.pure(Some(scope))) { scopeId =>
-                scope.findStepScope(scopeId)
+              F.flatMap(u.scope.fold[F[Option[CompileScope[F]]]](F.pure(Some(goScope))) { scopeId =>
+                goScope.findStepScope(scopeId)
               }) {
                 case Some(stepScope) =>
                   F.flatMap(F.attempt(go[y](stepScope, u.stream))) {
-                    case Right(Done(scope)) =>
-                      interruptGuard(scope)(
-                        go(scope, view.next(Result.pure(None)))
+                    case Right(Done(doneScope)) =>
+                      interruptGuard(doneScope)(
+                        go(doneScope, view.next(Result.pure(None)))
                       )
                     case Right(Out(head, outScope, tail)) =>
                       // if we originally swapped scopes we want to return the original
                       // scope back to the go as that is the scope that is expected to be here.
-                      val nextScope = u.scope.fold(outScope)(_ => scope)
+                      val nextScope = if (u.scope.isEmpty) outScope else goScope
                       interruptGuard(nextScope)(
                         go(nextScope, view.next(Result.pure(Some((head, outScope.id, tail)))))
                       )
 
                     case Right(Interrupted(scopeId, err)) =>
-                      go(scope, view.next(Result.interrupted(scopeId, err)))
+                      go(goScope, view.next(Result.interrupted(scopeId, err)))
 
                     case Left(err) =>
-                      go(scope, view.next(Result.raiseError(err)))
+                      go(goScope, view.next(Result.raiseError(err)))
                   }
                 case None =>
                   F.raiseError(
                     new Throwable(
-                      s"Fail to find scope for next step: current: ${scope.id}, step: $u"))
+                      s"Fail to find scope for next step: current: ${goScope.id}, step: $u"))
               }
 
             case eval: Eval[F, r] =>
-              F.flatMap(scope.interruptibleEval(eval.value)) {
-                case Right(r)           => go[X](scope, view.next(Result.pure(r)))
-                case Left(Left(err))    => go[X](scope, view.next(Result.raiseError(err)))
-                case Left(Right(token)) => go[X](scope, view.next(Result.interrupted(token, None)))
+              F.flatMap(goScope.interruptibleEval(eval.value)) { eit =>
+                val res: Result[r] = eit match {
+                  case Right(r)           => Result.pure(r)
+                  case Left(Left(err))    => Result.raiseError(err)
+                  case Left(Right(token)) => Result.interrupted(token, None)
 
+                }
+                go[X](goScope, view.next(res))
               }
 
             case acquire: Acquire[F, r] =>
-              interruptGuard(scope) {
-                F.flatMap(scope.acquireResource(acquire.resource, acquire.release)) { r =>
-                  go[X](scope, view.next(Result.fromEither(r)))
+              interruptGuard(goScope) {
+                F.flatMap(goScope.acquireResource(acquire.resource, acquire.release)) { r =>
+                  go[X](goScope, view.next(Result.fromEither(r)))
                 }
               }
 
             case release: Release[F] =>
-              F.flatMap(scope.releaseResource(release.token, ExitCase.Completed)) { r =>
-                go[X](scope, view.next(Result.fromEither(r)))
+              F.flatMap(goScope.releaseResource(release.token, ExitCase.Completed)) { r =>
+                go[X](goScope, view.next(Result.fromEither(r)))
               }
 
             case _: GetScope[F] =>
-              F.suspend(go(scope, view.next(Result.pure(scope.asInstanceOf[y]))))
+              F.suspend(go(goScope, view.next(Result.pure(goScope.asInstanceOf[y]))))
 
             case open: OpenScope[F] =>
-              interruptGuard(scope) {
-                F.flatMap(scope.open(open.interruptible)) {
+              interruptGuard(goScope) {
+                F.flatMap(goScope.open(open.interruptible)) {
                   case Left(err) =>
-                    go(scope, view.next(Result.raiseError(err)))
+                    go(goScope, view.next(Result.raiseError(err)))
                   case Right(childScope) =>
                     go(childScope, view.next(Result.pure(childScope.id)))
                 }
@@ -342,10 +344,10 @@ private[fs2] object Algebra {
                   }
                 }
 
-              scope.findSelfOrAncestor(close.scopeId) match {
+              goScope.findSelfOrAncestor(close.scopeId) match {
                 case Some(toClose) => closeAndGo(toClose, close.exitCase)
                 case None =>
-                  scope.findSelfOrChild(close.scopeId).flatMap {
+                  goScope.findSelfOrChild(close.scopeId).flatMap {
                     case Some(toClose) =>
                       closeAndGo(toClose, close.exitCase)
                     case None =>
@@ -354,7 +356,7 @@ private[fs2] object Algebra {
                         close.interruptedScope
                           .map { Result.interrupted _ tupled }
                           .getOrElse(Result.unit)
-                      go(scope, view.next(result))
+                      go(goScope, view.next(result))
                   }
               }
 
@@ -364,9 +366,9 @@ private[fs2] object Algebra {
 
     }
 
-    F.flatMap(go(scope, stream)) {
-      case Done(_)                => F.pure(None)
-      case Out(head, scope, tail) => F.pure(Some((head, scope, tail)))
+    F.flatMap(go(compileScope, stream)) {
+      case Done(_)                   => F.pure(None)
+      case Out(head, outScope, tail) => F.pure(Some((head, outScope, tail)))
       case Interrupted(_, err) =>
         err match {
           case None      => F.pure(None)
