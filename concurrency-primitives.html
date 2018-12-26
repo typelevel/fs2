@@ -12,7 +12,7 @@
 
 <h3 id="fifo-first-in--first-out">FIFO (First IN / First OUT)</h3>
 
-<p>A typical use case of a <code class="highlighter-rouge">fs2.concurrent.Queue[F, A]</code>, also quite useful to communicate with the external word as shown in the <a href="guide#talking-to-the-external-world">guide</a>.</p>
+<p>A typical use case of a <code class="highlighter-rouge">fs2.concurrent.Queue[F, A]</code>, also quite useful to communicate with the external world as shown in the <a href="guide#talking-to-the-external-world">guide</a>.</p>
 
 <p>q1 has a buffer size of 1 while q2 has a buffer size of 100 so you will notice the buffering when  pulling elements out of the q2.</p>
 
@@ -57,25 +57,34 @@
 <div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>- Subscriber #1 should receive 15 events + the initial empty event
 - Subscriber #2 should receive 10 events
 - Subscriber #3 should receive 5 events
+- Publisher sends Quit event
+- Subscribers raise interrupt signal on Quit event
 </code></pre></div></div>
 
-<div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">import</span> <span class="nn">cats.effect.</span><span class="o">{</span><span class="nc">Concurrent</span><span class="o">,</span> <span class="nc">ExitCode</span><span class="o">,</span> <span class="nc">IO</span><span class="o">,</span> <span class="nc">IOApp</span><span class="o">}</span>
-<span class="k">import</span> <span class="nn">fs2.concurrent.</span><span class="o">{</span><span class="nc">Signal</span><span class="o">,</span> <span class="nc">Topic</span><span class="o">}</span>
+<div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">import</span> <span class="nn">scala.concurrent.duration._</span>
+
+<span class="k">import</span> <span class="nn">cats.effect.</span><span class="o">{</span><span class="nc">Concurrent</span><span class="o">,</span> <span class="nc">ExitCode</span><span class="o">,</span> <span class="nc">IO</span><span class="o">,</span> <span class="nc">IOApp</span><span class="o">,</span> <span class="nc">Timer</span><span class="o">}</span>
+<span class="k">import</span> <span class="nn">cats.syntax.all._</span>
 <span class="k">import</span> <span class="nn">fs2.</span><span class="o">{</span><span class="nc">Sink</span><span class="o">,</span> <span class="nc">Stream</span><span class="o">}</span>
+<span class="k">import</span> <span class="nn">fs2.concurrent.</span><span class="o">{</span><span class="nc">SignallingRef</span><span class="o">,</span> <span class="nc">Topic</span><span class="o">}</span>
 
-<span class="k">import</span> <span class="nn">scala.concurrent.duration._</span>
-
-<span class="k">case</span> <span class="k">class</span> <span class="nc">Event</span><span class="o">(</span><span class="n">value</span><span class="k">:</span> <span class="kt">String</span><span class="o">)</span>
+<span class="k">sealed</span> <span class="k">trait</span> <span class="nc">Event</span>
+<span class="k">case</span> <span class="k">class</span> <span class="nc">Text</span><span class="o">(</span><span class="n">value</span><span class="k">:</span> <span class="kt">String</span><span class="o">)</span> <span class="k">extends</span> <span class="nc">Event</span>
+<span class="k">case</span> <span class="k">object</span> <span class="nc">Quit</span> <span class="k">extends</span> <span class="nc">Event</span>
 
 <span class="k">class</span> <span class="nc">EventService</span><span class="o">[</span><span class="kt">F</span><span class="o">[</span><span class="k">_</span><span class="o">]](</span><span class="n">eventsTopic</span><span class="k">:</span> <span class="kt">Topic</span><span class="o">[</span><span class="kt">F</span>, <span class="kt">Event</span><span class="o">],</span>
-                         <span class="n">interrupter</span><span class="k">:</span> <span class="kt">Signal</span><span class="o">[</span><span class="kt">F</span>, <span class="kt">Boolean</span><span class="o">])(</span><span class="k">implicit</span> <span class="n">F</span><span class="k">:</span> <span class="kt">Concurrent</span><span class="o">[</span><span class="kt">F</span><span class="o">],</span> <span class="n">timer</span><span class="k">:</span> <span class="kt">Timer</span><span class="o">[</span><span class="kt">F</span><span class="o">])</span> <span class="o">{</span>
+  <span class="n">interrupter</span><span class="k">:</span> <span class="kt">SignallingRef</span><span class="o">[</span><span class="kt">F</span>, <span class="kt">Boolean</span><span class="o">])(</span><span class="k">implicit</span> <span class="n">F</span><span class="k">:</span> <span class="kt">Concurrent</span><span class="o">[</span><span class="kt">F</span><span class="o">],</span> <span class="n">timer</span><span class="k">:</span> <span class="kt">Timer</span><span class="o">[</span><span class="kt">F</span><span class="o">])</span> <span class="o">{</span>
 
-  <span class="c1">// Publishing events every one second until signaling interruption
-</span>  <span class="k">def</span> <span class="n">startPublisher</span><span class="k">:</span> <span class="kt">Stream</span><span class="o">[</span><span class="kt">F</span>, <span class="kt">Unit</span><span class="o">]</span> <span class="k">=</span>
-    <span class="nc">Stream</span><span class="o">.</span><span class="n">awakeEvery</span><span class="o">(</span><span class="mf">1.</span><span class="n">second</span><span class="o">).</span><span class="n">flatMap</span> <span class="o">{</span> <span class="k">_</span> <span class="k">=&gt;</span>
-      <span class="k">val</span> <span class="n">event</span> <span class="k">=</span> <span class="nc">Event</span><span class="o">(</span><span class="nc">System</span><span class="o">.</span><span class="n">currentTimeMillis</span><span class="o">().</span><span class="n">toString</span><span class="o">)</span>
-      <span class="nc">Stream</span><span class="o">.</span><span class="n">eval</span><span class="o">(</span><span class="n">eventsTopic</span><span class="o">.</span><span class="n">publish1</span><span class="o">(</span><span class="n">event</span><span class="o">))</span>
-    <span class="o">}.</span><span class="n">interruptWhen</span><span class="o">(</span><span class="n">interrupter</span><span class="o">)</span>
+  <span class="c1">// Publishing 15 text events, then single Quit event, and still publishing text events
+</span>  <span class="k">def</span> <span class="n">startPublisher</span><span class="k">:</span> <span class="kt">Stream</span><span class="o">[</span><span class="kt">F</span>, <span class="kt">Unit</span><span class="o">]</span> <span class="k">=</span> <span class="o">{</span>
+    <span class="k">val</span> <span class="n">textEvents</span> <span class="k">=</span> <span class="n">eventsTopic</span><span class="o">.</span><span class="n">publish</span><span class="o">(</span>
+      <span class="nc">Stream</span><span class="o">.</span><span class="n">awakeEvery</span><span class="o">[</span><span class="kt">F</span><span class="o">](</span><span class="mf">1.</span><span class="n">second</span><span class="o">)</span>
+        <span class="o">.</span><span class="n">zipRight</span><span class="o">(</span><span class="nc">Stream</span><span class="o">(</span><span class="nc">Text</span><span class="o">(</span><span class="nc">System</span><span class="o">.</span><span class="n">currentTimeMillis</span><span class="o">().</span><span class="n">toString</span><span class="o">)).</span><span class="n">repeat</span><span class="o">)</span>
+    <span class="o">)</span>
+    <span class="k">val</span> <span class="n">quitEvent</span> <span class="k">=</span> <span class="nc">Stream</span><span class="o">.</span><span class="n">eval</span><span class="o">(</span><span class="n">eventsTopic</span><span class="o">.</span><span class="n">publish1</span><span class="o">(</span><span class="nc">Quit</span><span class="o">))</span>
+
+    <span class="o">(</span><span class="n">textEvents</span><span class="o">.</span><span class="n">take</span><span class="o">(</span><span class="mi">15</span><span class="o">)</span> <span class="o">++</span> <span class="n">quitEvent</span> <span class="o">++</span> <span class="n">textEvents</span><span class="o">).</span><span class="n">interruptWhen</span><span class="o">(</span><span class="n">interrupter</span><span class="o">)</span>
+  <span class="o">}</span>
 
   <span class="c1">// Creating 3 subscribers in a different period of time and join them to run concurrently
 </span>  <span class="k">def</span> <span class="n">startSubscribers</span><span class="k">:</span> <span class="kt">Stream</span><span class="o">[</span><span class="kt">F</span>, <span class="kt">Unit</span><span class="o">]</span> <span class="k">=</span> <span class="o">{</span>
@@ -83,22 +92,25 @@
     <span class="k">val</span> <span class="n">s2</span><span class="k">:</span> <span class="kt">Stream</span><span class="o">[</span><span class="kt">F</span>, <span class="kt">Event</span><span class="o">]</span> <span class="k">=</span> <span class="nc">Stream</span><span class="o">.</span><span class="n">sleep_</span><span class="o">[</span><span class="kt">F</span><span class="o">](</span><span class="mf">5.</span><span class="n">seconds</span><span class="o">)</span> <span class="o">++</span> <span class="n">eventsTopic</span><span class="o">.</span><span class="n">subscribe</span><span class="o">(</span><span class="mi">10</span><span class="o">)</span>
     <span class="k">val</span> <span class="n">s3</span><span class="k">:</span> <span class="kt">Stream</span><span class="o">[</span><span class="kt">F</span>, <span class="kt">Event</span><span class="o">]</span> <span class="k">=</span> <span class="nc">Stream</span><span class="o">.</span><span class="n">sleep_</span><span class="o">[</span><span class="kt">F</span><span class="o">](</span><span class="mf">10.</span><span class="n">seconds</span><span class="o">)</span> <span class="o">++</span> <span class="n">eventsTopic</span><span class="o">.</span><span class="n">subscribe</span><span class="o">(</span><span class="mi">10</span><span class="o">)</span>
 
-    <span class="k">def</span> <span class="n">sink</span><span class="o">(</span><span class="n">subscriberNumber</span><span class="k">:</span> <span class="kt">Int</span><span class="o">)</span><span class="k">:</span> <span class="kt">Sink</span><span class="o">[</span><span class="kt">F</span>, <span class="kt">Event</span><span class="o">]</span> <span class="k">=</span>
-      <span class="k">_</span><span class="o">.</span><span class="n">evalMap</span><span class="o">(</span><span class="n">e</span> <span class="k">=&gt;</span> <span class="n">F</span><span class="o">.</span><span class="n">delay</span><span class="o">(</span><span class="n">println</span><span class="o">(</span><span class="n">s</span><span class="s">"Subscriber #$subscriberNumber processing event: $e"</span><span class="o">)))</span>
+    <span class="c1">// When Quit message received - terminate the program
+</span>    <span class="k">def</span> <span class="n">sink</span><span class="o">(</span><span class="n">subscriberNumber</span><span class="k">:</span> <span class="kt">Int</span><span class="o">)</span><span class="k">:</span> <span class="kt">Sink</span><span class="o">[</span><span class="kt">F</span>, <span class="kt">Event</span><span class="o">]</span> <span class="k">=</span>
+      <span class="k">_</span><span class="o">.</span><span class="n">flatMap</span> <span class="o">{</span>
+        <span class="k">case</span> <span class="n">e</span> <span class="k">@</span> <span class="nc">Text</span><span class="o">(</span><span class="k">_</span><span class="o">)</span> <span class="k">=&gt;</span> <span class="nc">Stream</span><span class="o">.</span><span class="n">eval</span><span class="o">(</span><span class="n">F</span><span class="o">.</span><span class="n">delay</span><span class="o">(</span><span class="n">println</span><span class="o">(</span><span class="n">s</span><span class="s">"Subscriber #$subscriberNumber processing event: $e"</span><span class="o">)))</span>
+        <span class="k">case</span> <span class="nc">Quit</span> <span class="k">=&gt;</span> <span class="nc">Stream</span><span class="o">.</span><span class="n">eval</span><span class="o">(</span><span class="n">interrupter</span><span class="o">.</span><span class="n">set</span><span class="o">(</span><span class="kc">true</span><span class="o">))</span>
+      <span class="o">}</span>
 
     <span class="nc">Stream</span><span class="o">(</span><span class="n">s1</span><span class="o">.</span><span class="n">to</span><span class="o">(</span><span class="n">sink</span><span class="o">(</span><span class="mi">1</span><span class="o">)),</span> <span class="n">s2</span><span class="o">.</span><span class="n">to</span><span class="o">(</span><span class="n">sink</span><span class="o">(</span><span class="mi">2</span><span class="o">)),</span> <span class="n">s3</span><span class="o">.</span><span class="n">to</span><span class="o">(</span><span class="n">sink</span><span class="o">(</span><span class="mi">3</span><span class="o">))).</span><span class="n">parJoin</span><span class="o">(</span><span class="mi">3</span><span class="o">)</span>
   <span class="o">}</span>
 <span class="o">}</span>
 
-<span class="k">class</span> <span class="nc">PubSub</span> <span class="k">extends</span> <span class="nc">IOApp</span> <span class="o">{</span>
+<span class="k">object</span> <span class="nc">PubSub</span> <span class="k">extends</span> <span class="nc">IOApp</span> <span class="o">{</span>
 
   <span class="k">override</span> <span class="k">def</span> <span class="n">run</span><span class="o">(</span><span class="n">args</span><span class="k">:</span> <span class="kt">List</span><span class="o">[</span><span class="kt">String</span><span class="o">])</span><span class="k">:</span> <span class="kt">IO</span><span class="o">[</span><span class="kt">ExitCode</span><span class="o">]</span> <span class="k">=</span> <span class="o">{</span>
     <span class="k">val</span> <span class="n">stream</span> <span class="k">=</span> <span class="k">for</span> <span class="o">{</span>
-      <span class="n">topic</span>     <span class="k">&lt;-</span> <span class="nc">Stream</span><span class="o">.</span><span class="n">eval</span><span class="o">(</span><span class="nc">Topic</span><span class="o">[</span><span class="kt">IO</span>, <span class="kt">Event</span><span class="o">](</span><span class="nc">Event</span><span class="o">(</span><span class="s">""</span><span class="o">)))</span>
-      <span class="n">signal</span>    <span class="k">&lt;-</span> <span class="nc">Stream</span><span class="o">.</span><span class="n">eval</span><span class="o">(</span><span class="nc">Signal</span><span class="o">[</span><span class="kt">IO</span>, <span class="kt">Boolean</span><span class="o">](</span><span class="kc">false</span><span class="o">))</span>
+      <span class="n">topic</span>     <span class="k">&lt;-</span> <span class="nc">Stream</span><span class="o">.</span><span class="n">eval</span><span class="o">(</span><span class="nc">Topic</span><span class="o">[</span><span class="kt">IO</span>, <span class="kt">Event</span><span class="o">](</span><span class="nc">Text</span><span class="o">(</span><span class="s">""</span><span class="o">)))</span>
+      <span class="n">signal</span>    <span class="k">&lt;-</span> <span class="nc">Stream</span><span class="o">.</span><span class="n">eval</span><span class="o">(</span><span class="nc">SignallingRef</span><span class="o">[</span><span class="kt">IO</span>, <span class="kt">Boolean</span><span class="o">](</span><span class="kc">false</span><span class="o">))</span>
       <span class="n">service</span>   <span class="k">=</span> <span class="k">new</span> <span class="nc">EventService</span><span class="o">[</span><span class="kt">IO</span><span class="o">](</span><span class="n">topic</span><span class="o">,</span> <span class="n">signal</span><span class="o">)</span>
       <span class="k">_</span>         <span class="k">&lt;-</span> <span class="nc">Stream</span><span class="o">(</span>
-                    <span class="n">S</span><span class="o">.</span><span class="n">delay</span><span class="o">(</span><span class="nc">Stream</span><span class="o">.</span><span class="n">eval</span><span class="o">(</span><span class="n">signal</span><span class="o">.</span><span class="n">set</span><span class="o">(</span><span class="kc">true</span><span class="o">)),</span> <span class="mf">15.</span><span class="n">seconds</span><span class="o">),</span>
                     <span class="n">service</span><span class="o">.</span><span class="n">startPublisher</span><span class="o">.</span><span class="n">concurrently</span><span class="o">(</span><span class="n">service</span><span class="o">.</span><span class="n">startSubscribers</span><span class="o">)</span>
                  <span class="o">).</span><span class="n">parJoin</span><span class="o">(</span><span class="mi">2</span><span class="o">).</span><span class="n">drain</span>
     <span class="o">}</span> <span class="k">yield</span> <span class="o">()</span>

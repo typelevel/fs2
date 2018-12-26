@@ -93,6 +93,9 @@ This markdown file contains code examples which can be compiled using tut. Switc
 
 <span class="n">scala</span><span class="o">&gt;</span> <span class="nc">Stream</span><span class="o">(</span><span class="mi">1</span><span class="o">,</span><span class="mi">2</span><span class="o">,</span><span class="mi">3</span><span class="o">).</span><span class="n">repeat</span><span class="o">.</span><span class="n">take</span><span class="o">(</span><span class="mi">9</span><span class="o">).</span><span class="n">toList</span>
 <span class="n">res9</span><span class="k">:</span> <span class="kt">List</span><span class="o">[</span><span class="kt">Int</span><span class="o">]</span> <span class="k">=</span> <span class="nc">List</span><span class="o">(</span><span class="mi">1</span><span class="o">,</span> <span class="mi">2</span><span class="o">,</span> <span class="mi">3</span><span class="o">,</span> <span class="mi">1</span><span class="o">,</span> <span class="mi">2</span><span class="o">,</span> <span class="mi">3</span><span class="o">,</span> <span class="mi">1</span><span class="o">,</span> <span class="mi">2</span><span class="o">,</span> <span class="mi">3</span><span class="o">)</span>
+
+<span class="n">scala</span><span class="o">&gt;</span> <span class="nc">Stream</span><span class="o">(</span><span class="mi">1</span><span class="o">,</span><span class="mi">2</span><span class="o">,</span><span class="mi">3</span><span class="o">).</span><span class="n">repeatN</span><span class="o">(</span><span class="mi">2</span><span class="o">).</span><span class="n">toList</span>
+<span class="n">res10</span><span class="k">:</span> <span class="kt">List</span><span class="o">[</span><span class="kt">Int</span><span class="o">]</span> <span class="k">=</span> <span class="nc">List</span><span class="o">(</span><span class="mi">1</span><span class="o">,</span> <span class="mi">2</span><span class="o">,</span> <span class="mi">3</span><span class="o">,</span> <span class="mi">1</span><span class="o">,</span> <span class="mi">2</span><span class="o">,</span> <span class="mi">3</span><span class="o">)</span>
 </code></pre></div></div>
 
 <p>Of these, only <code class="highlighter-rouge">flatMap</code> is primitive, the rest are built using combinations of various other primitives. We’ll take a look at how that works shortly.</p>
@@ -125,7 +128,7 @@ This markdown file contains code examples which can be compiled using tut. Switc
 
 <div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">scala</span><span class="o">&gt;</span> <span class="n">eff</span><span class="o">.</span><span class="n">compile</span><span class="o">.</span><span class="n">toVector</span><span class="o">.</span><span class="n">unsafeRunSync</span><span class="o">()</span>
 <span class="nc">BEING</span> <span class="nc">RUN</span><span class="o">!!</span>
-<span class="n">res11</span><span class="k">:</span> <span class="kt">Vector</span><span class="o">[</span><span class="kt">Int</span><span class="o">]</span> <span class="k">=</span> <span class="nc">Vector</span><span class="o">(</span><span class="mi">2</span><span class="o">)</span>
+<span class="n">res12</span><span class="k">:</span> <span class="kt">Vector</span><span class="o">[</span><span class="kt">Int</span><span class="o">]</span> <span class="k">=</span> <span class="nc">Vector</span><span class="o">(</span><span class="mi">2</span><span class="o">)</span>
 </code></pre></div></div>
 
 <p>The first <code class="highlighter-rouge">.compile.toVector</code> is one of several methods available to ‘compile’ the stream to a single effect:</p>
@@ -149,18 +152,18 @@ This markdown file contains code examples which can be compiled using tut. Switc
 
 <div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">scala</span><span class="o">&gt;</span> <span class="n">ra</span><span class="o">.</span><span class="n">unsafeRunSync</span><span class="o">()</span>
 <span class="nc">TASK</span> <span class="nc">BEING</span> <span class="nc">RUN</span><span class="o">!!</span>
-<span class="n">res12</span><span class="k">:</span> <span class="kt">Vector</span><span class="o">[</span><span class="kt">Int</span><span class="o">]</span> <span class="k">=</span> <span class="nc">Vector</span><span class="o">(</span><span class="mi">2</span><span class="o">)</span>
+<span class="n">res13</span><span class="k">:</span> <span class="kt">Vector</span><span class="o">[</span><span class="kt">Int</span><span class="o">]</span> <span class="k">=</span> <span class="nc">Vector</span><span class="o">(</span><span class="mi">2</span><span class="o">)</span>
 
 <span class="n">scala</span><span class="o">&gt;</span> <span class="n">rb</span><span class="o">.</span><span class="n">unsafeRunSync</span><span class="o">()</span>
 <span class="nc">TASK</span> <span class="nc">BEING</span> <span class="nc">RUN</span><span class="o">!!</span>
 
 <span class="n">scala</span><span class="o">&gt;</span> <span class="n">rc</span><span class="o">.</span><span class="n">unsafeRunSync</span><span class="o">()</span>
 <span class="nc">TASK</span> <span class="nc">BEING</span> <span class="nc">RUN</span><span class="o">!!</span>
-<span class="n">res14</span><span class="k">:</span> <span class="kt">Int</span> <span class="o">=</span> <span class="mi">2</span>
+<span class="n">res15</span><span class="k">:</span> <span class="kt">Int</span> <span class="o">=</span> <span class="mi">2</span>
 
 <span class="n">scala</span><span class="o">&gt;</span> <span class="n">rc</span><span class="o">.</span><span class="n">unsafeRunSync</span><span class="o">()</span>
 <span class="nc">TASK</span> <span class="nc">BEING</span> <span class="nc">RUN</span><span class="o">!!</span>
-<span class="n">res15</span><span class="k">:</span> <span class="kt">Int</span> <span class="o">=</span> <span class="mi">2</span>
+<span class="n">res16</span><span class="k">:</span> <span class="kt">Int</span> <span class="o">=</span> <span class="mi">2</span>
 </code></pre></div></div>
 
 <p>Here we finally see the tasks being executed. As is shown with <code class="highlighter-rouge">rc</code>, rerunning a task executes the entire computation again; nothing is cached for you automatically.</p>
@@ -182,7 +185,7 @@ This markdown file contains code examples which can be compiled using tut. Switc
      <span class="o">|</span>   <span class="cm">/* do things unboxed using doubles.{values,size} */</span>
      <span class="o">|</span>  <span class="n">doubles</span>
      <span class="o">|</span> <span class="o">}</span>
-<span class="n">res16</span><span class="k">:</span> <span class="kt">fs2.Stream</span><span class="o">[[</span><span class="kt">x</span><span class="o">]</span><span class="kt">fs2.Pure</span><span class="o">[</span><span class="kt">x</span><span class="o">]</span>,<span class="kt">Double</span><span class="o">]</span> <span class="k">=</span> <span class="nc">Stream</span><span class="o">(..)</span>
+<span class="n">res17</span><span class="k">:</span> <span class="kt">fs2.Stream</span><span class="o">[[</span><span class="kt">x</span><span class="o">]</span><span class="kt">fs2.Pure</span><span class="o">[</span><span class="kt">x</span><span class="o">]</span>,<span class="kt">Double</span><span class="o">]</span> <span class="k">=</span> <span class="nc">Stream</span><span class="o">(..)</span>
 </code></pre></div></div>
 
 <p>Note: FS2 used to provide an alternative to <code class="highlighter-rouge">Chunk</code> which was potentially infinite and supported fusion of arbitrary operations. This type was called <code class="highlighter-rouge">Segment</code>.
@@ -199,19 +202,19 @@ In FS2 0.10.x, <code class="highlighter-rouge">Segment</code> played a large rol
 <span class="n">appendEx2</span><span class="k">:</span> <span class="kt">fs2.Stream</span><span class="o">[</span><span class="kt">cats.effect.IO</span>,<span class="kt">Int</span><span class="o">]</span> <span class="k">=</span> <span class="nc">Stream</span><span class="o">(..)</span>
 
 <span class="n">scala</span><span class="o">&gt;</span> <span class="n">appendEx1</span><span class="o">.</span><span class="n">toVector</span>
-<span class="n">res17</span><span class="k">:</span> <span class="kt">Vector</span><span class="o">[</span><span class="kt">Int</span><span class="o">]</span> <span class="k">=</span> <span class="nc">Vector</span><span class="o">(</span><span class="mi">1</span><span class="o">,</span> <span class="mi">2</span><span class="o">,</span> <span class="mi">3</span><span class="o">,</span> <span class="mi">42</span><span class="o">)</span>
+<span class="n">res18</span><span class="k">:</span> <span class="kt">Vector</span><span class="o">[</span><span class="kt">Int</span><span class="o">]</span> <span class="k">=</span> <span class="nc">Vector</span><span class="o">(</span><span class="mi">1</span><span class="o">,</span> <span class="mi">2</span><span class="o">,</span> <span class="mi">3</span><span class="o">,</span> <span class="mi">42</span><span class="o">)</span>
 
 <span class="n">scala</span><span class="o">&gt;</span> <span class="n">appendEx2</span><span class="o">.</span><span class="n">compile</span><span class="o">.</span><span class="n">toVector</span><span class="o">.</span><span class="n">unsafeRunSync</span><span class="o">()</span>
-<span class="n">res18</span><span class="k">:</span> <span class="kt">Vector</span><span class="o">[</span><span class="kt">Int</span><span class="o">]</span> <span class="k">=</span> <span class="nc">Vector</span><span class="o">(</span><span class="mi">1</span><span class="o">,</span> <span class="mi">2</span><span class="o">,</span> <span class="mi">3</span><span class="o">,</span> <span class="mi">4</span><span class="o">)</span>
+<span class="n">res19</span><span class="k">:</span> <span class="kt">Vector</span><span class="o">[</span><span class="kt">Int</span><span class="o">]</span> <span class="k">=</span> <span class="nc">Vector</span><span class="o">(</span><span class="mi">1</span><span class="o">,</span> <span class="mi">2</span><span class="o">,</span> <span class="mi">3</span><span class="o">,</span> <span class="mi">4</span><span class="o">)</span>
 
 <span class="n">scala</span><span class="o">&gt;</span> <span class="n">appendEx1</span><span class="o">.</span><span class="n">map</span><span class="o">(</span><span class="k">_</span> <span class="o">+</span> <span class="mi">1</span><span class="o">).</span><span class="n">toList</span>
-<span class="n">res19</span><span class="k">:</span> <span class="kt">List</span><span class="o">[</span><span class="kt">Int</span><span class="o">]</span> <span class="k">=</span> <span class="nc">List</span><span class="o">(</span><span class="mi">2</span><span class="o">,</span> <span class="mi">3</span><span class="o">,</span> <span class="mi">4</span><span class="o">,</span> <span class="mi">43</span><span class="o">)</span>
+<span class="n">res20</span><span class="k">:</span> <span class="kt">List</span><span class="o">[</span><span class="kt">Int</span><span class="o">]</span> <span class="k">=</span> <span class="nc">List</span><span class="o">(</span><span class="mi">2</span><span class="o">,</span> <span class="mi">3</span><span class="o">,</span> <span class="mi">4</span><span class="o">,</span> <span class="mi">43</span><span class="o">)</span>
 </code></pre></div></div>
 
 <p>The <code class="highlighter-rouge">flatMap</code> operation is the same idea as lists - it maps, then concatenates:</p>
 
 <div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">scala</span><span class="o">&gt;</span> <span class="n">appendEx1</span><span class="o">.</span><span class="n">flatMap</span><span class="o">(</span><span class="n">i</span> <span class="k">=&gt;</span> <span class="nc">Stream</span><span class="o">.</span><span class="n">emits</span><span class="o">(</span><span class="nc">List</span><span class="o">(</span><span class="n">i</span><span class="o">,</span><span class="n">i</span><span class="o">))).</span><span class="n">toList</span>
-<span class="n">res20</span><span class="k">:</span> <span class="kt">List</span><span class="o">[</span><span class="kt">Int</span><span class="o">]</span> <span class="k">=</span> <span class="nc">List</span><span class="o">(</span><span class="mi">1</span><span class="o">,</span> <span class="mi">1</span><span class="o">,</span> <span class="mi">2</span><span class="o">,</span> <span class="mi">2</span><span class="o">,</span> <span class="mi">3</span><span class="o">,</span> <span class="mi">3</span><span class="o">,</span> <span class="mi">42</span><span class="o">,</span> <span class="mi">42</span><span class="o">)</span>
+<span class="n">res21</span><span class="k">:</span> <span class="kt">List</span><span class="o">[</span><span class="kt">Int</span><span class="o">]</span> <span class="k">=</span> <span class="nc">List</span><span class="o">(</span><span class="mi">1</span><span class="o">,</span> <span class="mi">1</span><span class="o">,</span> <span class="mi">2</span><span class="o">,</span> <span class="mi">2</span><span class="o">,</span> <span class="mi">3</span><span class="o">,</span> <span class="mi">3</span><span class="o">,</span> <span class="mi">42</span><span class="o">,</span> <span class="mi">42</span><span class="o">)</span>
 </code></pre></div></div>
 
 <p>Regardless of how a <code class="highlighter-rouge">Stream</code> is built up, each operation takes constant time. So <code class="highlighter-rouge">s ++ s2</code> takes constant time, regardless of whether <code class="highlighter-rouge">s</code> is <code class="highlighter-rouge">Stream.emit(1)</code> or it’s a huge stream with millions of elements and lots of embedded effects. Likewise with <code class="highlighter-rouge">s.flatMap(f)</code> and <code class="highlighter-rouge">handleErrorWith</code>, which we’ll see in a minute. The runtime of these operations do not depend on the structure of <code class="highlighter-rouge">s</code>.</p>
@@ -234,12 +237,12 @@ In FS2 0.10.x, <code class="highlighter-rouge">Segment</code> played a large rol
 
 <div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">scala</span><span class="o">&gt;</span> <span class="k">try</span> <span class="n">err</span><span class="o">.</span><span class="n">compile</span><span class="o">.</span><span class="n">toList</span><span class="o">.</span><span class="n">unsafeRunSync</span> <span class="k">catch</span> <span class="o">{</span> <span class="k">case</span> <span class="n">e</span><span class="k">:</span> <span class="kt">Exception</span> <span class="o">=&gt;</span> <span class="n">println</span><span class="o">(</span><span class="n">e</span><span class="o">)</span> <span class="o">}</span>
 <span class="n">java</span><span class="o">.</span><span class="n">lang</span><span class="o">.</span><span class="nc">Exception</span><span class="k">:</span> <span class="kt">oh</span> <span class="kt">noes!</span>
-<span class="kt">res21:</span> <span class="kt">Any</span> <span class="o">=</span> <span class="o">()</span>
+<span class="kt">res22:</span> <span class="kt">Any</span> <span class="o">=</span> <span class="o">()</span>
 </code></pre></div></div>
 
 <div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">scala</span><span class="o">&gt;</span> <span class="k">try</span> <span class="n">err2</span><span class="o">.</span><span class="n">toList</span> <span class="k">catch</span> <span class="o">{</span> <span class="k">case</span> <span class="n">e</span><span class="k">:</span> <span class="kt">Exception</span> <span class="o">=&gt;</span> <span class="n">println</span><span class="o">(</span><span class="n">e</span><span class="o">)</span> <span class="o">}</span>
 <span class="n">java</span><span class="o">.</span><span class="n">lang</span><span class="o">.</span><span class="nc">Exception</span><span class="k">:</span> <span class="kt">!@#$</span>
-<span class="n">res22</span><span class="k">:</span> <span class="kt">Any</span> <span class="o">=</span> <span class="o">()</span>
+<span class="n">res23</span><span class="k">:</span> <span class="kt">Any</span> <span class="o">=</span> <span class="o">()</span>
 </code></pre></div></div>
 
 <div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">scala</span><span class="o">&gt;</span> <span class="k">try</span> <span class="n">err3</span><span class="o">.</span><span class="n">compile</span><span class="o">.</span><span class="n">drain</span><span class="o">.</span><span class="n">unsafeRunSync</span><span class="o">()</span> <span class="k">catch</span> <span class="o">{</span> <span class="k">case</span> <span class="n">e</span><span class="k">:</span> <span class="kt">Exception</span> <span class="o">=&gt;</span> <span class="n">println</span><span class="o">(</span><span class="n">e</span><span class="o">)</span> <span class="o">}</span>
@@ -249,7 +252,7 @@ In FS2 0.10.x, <code class="highlighter-rouge">Segment</code> played a large rol
 <p>The <code class="highlighter-rouge">handleErrorWith</code> method lets us catch any of these errors:</p>
 
 <div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">scala</span><span class="o">&gt;</span> <span class="n">err</span><span class="o">.</span><span class="n">handleErrorWith</span> <span class="o">{</span> <span class="n">e</span> <span class="k">=&gt;</span> <span class="nc">Stream</span><span class="o">.</span><span class="n">emit</span><span class="o">(</span><span class="n">e</span><span class="o">.</span><span class="n">getMessage</span><span class="o">)</span> <span class="o">}.</span><span class="n">compile</span><span class="o">.</span><span class="n">toList</span><span class="o">.</span><span class="n">unsafeRunSync</span><span class="o">()</span>
-<span class="n">res24</span><span class="k">:</span> <span class="kt">List</span><span class="o">[</span><span class="kt">String</span><span class="o">]</span> <span class="k">=</span> <span class="nc">List</span><span class="o">(</span><span class="n">oh</span> <span class="n">noes</span><span class="o">!)</span>
+<span class="n">res25</span><span class="k">:</span> <span class="kt">List</span><span class="o">[</span><span class="kt">String</span><span class="o">]</span> <span class="k">=</span> <span class="nc">List</span><span class="o">(</span><span class="n">oh</span> <span class="n">noes</span><span class="o">!)</span>
 </code></pre></div></div>
 
 <p><em>Note: Don’t use <code class="highlighter-rouge">handleErrorWith</code> for doing resource cleanup; use <code class="highlighter-rouge">bracket</code> as discussed in the next section. Also see <a href="#a1">this section of the appendix</a> for more details.</em></p>
@@ -262,10 +265,10 @@ In FS2 0.10.x, <code class="highlighter-rouge">Segment</code> played a large rol
 <span class="n">count</span><span class="k">:</span> <span class="kt">java.util.concurrent.atomic.AtomicLong</span> <span class="o">=</span> <span class="mi">0</span>
 
 <span class="n">scala</span><span class="o">&gt;</span> <span class="k">val</span> <span class="n">acquire</span> <span class="k">=</span> <span class="nc">IO</span> <span class="o">{</span> <span class="n">println</span><span class="o">(</span><span class="s">"incremented: "</span> <span class="o">+</span> <span class="n">count</span><span class="o">.</span><span class="n">incrementAndGet</span><span class="o">);</span> <span class="o">()</span> <span class="o">}</span>
-<span class="n">acquire</span><span class="k">:</span> <span class="kt">cats.effect.IO</span><span class="o">[</span><span class="kt">Unit</span><span class="o">]</span> <span class="k">=</span> <span class="nc">IO$643927529</span>
+<span class="n">acquire</span><span class="k">:</span> <span class="kt">cats.effect.IO</span><span class="o">[</span><span class="kt">Unit</span><span class="o">]</span> <span class="k">=</span> <span class="nc">IO$770170167</span>
 
 <span class="n">scala</span><span class="o">&gt;</span> <span class="k">val</span> <span class="n">release</span> <span class="k">=</span> <span class="nc">IO</span> <span class="o">{</span> <span class="n">println</span><span class="o">(</span><span class="s">"decremented: "</span> <span class="o">+</span> <span class="n">count</span><span class="o">.</span><span class="n">decrementAndGet</span><span class="o">);</span> <span class="o">()</span> <span class="o">}</span>
-<span class="n">release</span><span class="k">:</span> <span class="kt">cats.effect.IO</span><span class="o">[</span><span class="kt">Unit</span><span class="o">]</span> <span class="k">=</span> <span class="nc">IO$807963620</span>
+<span class="n">release</span><span class="k">:</span> <span class="kt">cats.effect.IO</span><span class="o">[</span><span class="kt">Unit</span><span class="o">]</span> <span class="k">=</span> <span class="nc">IO$1441180428</span>
 </code></pre></div></div>
 
 <div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">scala</span><span class="o">&gt;</span> <span class="nc">Stream</span><span class="o">.</span><span class="n">bracket</span><span class="o">(</span><span class="n">acquire</span><span class="o">)(</span><span class="k">_</span> <span class="k">=&gt;</span> <span class="n">release</span><span class="o">).</span><span class="n">flatMap</span><span class="o">(</span><span class="k">_</span> <span class="k">=&gt;</span> <span class="nc">Stream</span><span class="o">(</span><span class="mi">1</span><span class="o">,</span><span class="mi">2</span><span class="o">,</span><span class="mi">3</span><span class="o">)</span> <span class="o">++</span> <span class="n">err</span><span class="o">).</span><span class="n">compile</span><span class="o">.</span><span class="n">drain</span><span class="o">.</span><span class="n">unsafeRunSync</span><span class="o">()</span>
@@ -278,7 +281,7 @@ In FS2 0.10.x, <code class="highlighter-rouge">Segment</code> played a large rol
 <p>The inner stream fails, but notice the <code class="highlighter-rouge">release</code> action is still run:</p>
 
 <div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">scala</span><span class="o">&gt;</span> <span class="n">count</span><span class="o">.</span><span class="n">get</span>
-<span class="n">res26</span><span class="k">:</span> <span class="kt">Long</span> <span class="o">=</span> <span class="mi">0</span>
+<span class="n">res27</span><span class="k">:</span> <span class="kt">Long</span> <span class="o">=</span> <span class="mi">0</span>
 </code></pre></div></div>
 
 <p>No matter how you transform an FS2 <code class="highlighter-rouge">Stream</code> or where any errors occur, the library guarantees that if the resource is acquired via a <code class="highlighter-rouge">bracket</code>, the release action associated with that <code class="highlighter-rouge">bracket</code> will be run. Here’s the signature of <code class="highlighter-rouge">bracket</code>:</p>
@@ -293,17 +296,17 @@ In FS2 0.10.x, <code class="highlighter-rouge">Segment</code> played a large rol
 <p>Implement <code class="highlighter-rouge">repeat</code>, which repeats a stream indefinitely, <code class="highlighter-rouge">drain</code>, which strips all output from a stream, <code class="highlighter-rouge">eval_</code>, which runs an effect and ignores its output, and <code class="highlighter-rouge">attempt</code>, which catches any errors produced by a stream:</p>
 
 <div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">scala</span><span class="o">&gt;</span> <span class="nc">Stream</span><span class="o">(</span><span class="mi">1</span><span class="o">,</span><span class="mi">0</span><span class="o">).</span><span class="n">repeat</span><span class="o">.</span><span class="n">take</span><span class="o">(</span><span class="mi">6</span><span class="o">).</span><span class="n">toList</span>
-<span class="n">res27</span><span class="k">:</span> <span class="kt">List</span><span class="o">[</span><span class="kt">Int</span><span class="o">]</span> <span class="k">=</span> <span class="nc">List</span><span class="o">(</span><span class="mi">1</span><span class="o">,</span> <span class="mi">0</span><span class="o">,</span> <span class="mi">1</span><span class="o">,</span> <span class="mi">0</span><span class="o">,</span> <span class="mi">1</span><span class="o">,</span> <span class="mi">0</span><span class="o">)</span>
+<span class="n">res28</span><span class="k">:</span> <span class="kt">List</span><span class="o">[</span><span class="kt">Int</span><span class="o">]</span> <span class="k">=</span> <span class="nc">List</span><span class="o">(</span><span class="mi">1</span><span class="o">,</span> <span class="mi">0</span><span class="o">,</span> <span class="mi">1</span><span class="o">,</span> <span class="mi">0</span><span class="o">,</span> <span class="mi">1</span><span class="o">,</span> <span class="mi">0</span><span class="o">)</span>
 
 <span class="n">scala</span><span class="o">&gt;</span> <span class="nc">Stream</span><span class="o">(</span><span class="mi">1</span><span class="o">,</span><span class="mi">2</span><span class="o">,</span><span class="mi">3</span><span class="o">).</span><span class="n">drain</span><span class="o">.</span><span class="n">toList</span>
-<span class="n">res28</span><span class="k">:</span> <span class="kt">List</span><span class="o">[</span><span class="kt">fs2.INothing</span><span class="o">]</span> <span class="k">=</span> <span class="nc">List</span><span class="o">()</span>
+<span class="n">res29</span><span class="k">:</span> <span class="kt">List</span><span class="o">[</span><span class="kt">fs2.INothing</span><span class="o">]</span> <span class="k">=</span> <span class="nc">List</span><span class="o">()</span>
 
 <span class="n">scala</span><span class="o">&gt;</span> <span class="nc">Stream</span><span class="o">.</span><span class="n">eval_</span><span class="o">(</span><span class="nc">IO</span><span class="o">(</span><span class="n">println</span><span class="o">(</span><span class="s">"!!"</span><span class="o">))).</span><span class="n">compile</span><span class="o">.</span><span class="n">toVector</span><span class="o">.</span><span class="n">unsafeRunSync</span><span class="o">()</span>
 <span class="o">!!</span>
-<span class="n">res29</span><span class="k">:</span> <span class="kt">Vector</span><span class="o">[</span><span class="kt">fs2.INothing</span><span class="o">]</span> <span class="k">=</span> <span class="nc">Vector</span><span class="o">()</span>
+<span class="n">res30</span><span class="k">:</span> <span class="kt">Vector</span><span class="o">[</span><span class="kt">fs2.INothing</span><span class="o">]</span> <span class="k">=</span> <span class="nc">Vector</span><span class="o">()</span>
 
 <span class="n">scala</span><span class="o">&gt;</span> <span class="o">(</span><span class="nc">Stream</span><span class="o">(</span><span class="mi">1</span><span class="o">,</span><span class="mi">2</span><span class="o">)</span> <span class="o">++</span> <span class="o">(</span><span class="k">throw</span> <span class="k">new</span> <span class="nc">Exception</span><span class="o">(</span><span class="s">"nooo!!!"</span><span class="o">))).</span><span class="n">attempt</span><span class="o">.</span><span class="n">toList</span>
-<span class="n">res30</span><span class="k">:</span> <span class="kt">List</span><span class="o">[</span><span class="kt">Either</span><span class="o">[</span><span class="kt">Throwable</span>,<span class="kt">Int</span><span class="o">]]</span> <span class="k">=</span> <span class="nc">List</span><span class="o">(</span><span class="nc">Right</span><span class="o">(</span><span class="mi">1</span><span class="o">),</span> <span class="nc">Right</span><span class="o">(</span><span class="mi">2</span><span class="o">),</span> <span class="nc">Left</span><span class="o">(</span><span class="n">java</span><span class="o">.</span><span class="n">lang</span><span class="o">.</span><span class="nc">Exception</span><span class="k">:</span> <span class="kt">nooo!!!</span><span class="o">))</span>
+<span class="n">res31</span><span class="k">:</span> <span class="kt">List</span><span class="o">[</span><span class="kt">Either</span><span class="o">[</span><span class="kt">Throwable</span>,<span class="kt">Int</span><span class="o">]]</span> <span class="k">=</span> <span class="nc">List</span><span class="o">(</span><span class="nc">Right</span><span class="o">(</span><span class="mi">1</span><span class="o">),</span> <span class="nc">Right</span><span class="o">(</span><span class="mi">2</span><span class="o">),</span> <span class="nc">Left</span><span class="o">(</span><span class="n">java</span><span class="o">.</span><span class="n">lang</span><span class="o">.</span><span class="nc">Exception</span><span class="k">:</span> <span class="kt">nooo!!!</span><span class="o">))</span>
 </code></pre></div></div>
 
 <h3 id="statefully-transforming-streams">Statefully transforming streams</h3>
@@ -326,7 +329,7 @@ In FS2 0.10.x, <code class="highlighter-rouge">Segment</code> played a large rol
 <span class="c1">// tk: [F[_], O](n: Long)fs2.Pipe[F,O,O]
 </span>
 <span class="nc">Stream</span><span class="o">(</span><span class="mi">1</span><span class="o">,</span><span class="mi">2</span><span class="o">,</span><span class="mi">3</span><span class="o">,</span><span class="mi">4</span><span class="o">).</span><span class="n">through</span><span class="o">(</span><span class="n">tk</span><span class="o">(</span><span class="mi">2</span><span class="o">)).</span><span class="n">toList</span>
-<span class="c1">// res31: List[Int] = List(1, 2)
+<span class="c1">// res32: List[Int] = List(1, 2)
 </span></code></pre></div></div>
 
 <p>Let’s take this line by line.</p>
@@ -376,7 +379,7 @@ for the full set of operations on <code class="highlighter-rouge">Pull</code>.</
 <span class="c1">// tk: [F[_], O](n: Long)fs2.Pipe[F,O,O]
 </span>
 <span class="nc">Stream</span><span class="o">(</span><span class="mi">1</span><span class="o">,</span><span class="mi">2</span><span class="o">,</span><span class="mi">3</span><span class="o">,</span><span class="mi">4</span><span class="o">).</span><span class="n">through</span><span class="o">(</span><span class="n">tk</span><span class="o">(</span><span class="mi">2</span><span class="o">)).</span><span class="n">toList</span>
-<span class="c1">// res32: List[Int] = List(1, 2)
+<span class="c1">// res33: List[Int] = List(1, 2)
 </span></code></pre></div></div>
 
 <p>Taking this line by line:</p>
@@ -393,7 +396,7 @@ for the full set of operations on <code class="highlighter-rouge">Pull</code>.</
 
 <div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">case</span> <span class="nc">Some</span><span class="o">((</span><span class="n">hd</span><span class="o">,</span><span class="n">tl</span><span class="o">))</span> <span class="k">=&gt;</span>
   <span class="n">hd</span><span class="o">.</span><span class="n">size</span> <span class="k">match</span> <span class="o">{</span>
-    <span class="k">case</span> <span class="n">m</span> <span class="k">if</span> <span class="n">m</span> <span class="o">&lt;=</span> <span class="n">n</span> <span class="k">=&gt;</span> <span class="nc">Pull</span><span class="o">.</span><span class="n">output</span><span class="o">(</span><span class="n">c</span><span class="o">)</span> <span class="o">&gt;&gt;</span> <span class="n">go</span><span class="o">(</span><span class="n">tl</span><span class="o">,</span> <span class="n">n</span> <span class="o">-</span> <span class="n">m</span><span class="o">)</span>
+    <span class="k">case</span> <span class="n">m</span> <span class="k">if</span> <span class="n">m</span> <span class="o">&lt;=</span> <span class="n">n</span> <span class="k">=&gt;</span> <span class="nc">Pull</span><span class="o">.</span><span class="n">output</span><span class="o">(</span><span class="n">hd</span><span class="o">)</span> <span class="o">&gt;&gt;</span> <span class="n">go</span><span class="o">(</span><span class="n">tl</span><span class="o">,</span> <span class="n">n</span> <span class="o">-</span> <span class="n">m</span><span class="o">)</span>
     <span class="k">case</span> <span class="n">m</span> <span class="k">=&gt;</span> <span class="nc">Pull</span><span class="o">.</span><span class="n">output</span><span class="o">(</span><span class="n">hd</span><span class="o">.</span><span class="n">take</span><span class="o">(</span><span class="n">n</span><span class="o">))</span> <span class="o">&gt;&gt;</span> <span class="nc">Pull</span><span class="o">.</span><span class="n">done</span>
   <span class="o">}</span>
 </code></pre></div></div>
@@ -409,7 +412,7 @@ for the full set of operations on <code class="highlighter-rouge">Pull</code>.</
 <span class="n">s2</span><span class="k">:</span> <span class="kt">fs2.Stream</span><span class="o">[[</span><span class="kt">x</span><span class="o">]</span><span class="kt">fs2.Pure</span><span class="o">[</span><span class="kt">x</span><span class="o">]</span>,<span class="kt">Int</span><span class="o">]</span> <span class="k">=</span> <span class="nc">Stream</span><span class="o">(..)</span>
 
 <span class="n">scala</span><span class="o">&gt;</span> <span class="n">s2</span><span class="o">.</span><span class="n">toList</span>
-<span class="n">res33</span><span class="k">:</span> <span class="kt">List</span><span class="o">[</span><span class="kt">Int</span><span class="o">]</span> <span class="k">=</span> <span class="nc">List</span><span class="o">(</span><span class="mi">1</span><span class="o">,</span> <span class="mi">2</span><span class="o">)</span>
+<span class="n">res34</span><span class="k">:</span> <span class="kt">List</span><span class="o">[</span><span class="kt">Int</span><span class="o">]</span> <span class="k">=</span> <span class="nc">List</span><span class="o">(</span><span class="mi">1</span><span class="o">,</span> <span class="mi">2</span><span class="o">)</span>
 </code></pre></div></div>
 
 <p>FS2 takes care to guarantee that any resources allocated by the <code class="highlighter-rouge">Pull</code> are released when the stream completes. Note again that <em>nothing happens</em> when we call <code class="highlighter-rouge">.stream</code> on a <code class="highlighter-rouge">Pull</code>, it is merely converting back to the <code class="highlighter-rouge">Stream</code> API.</p>
@@ -423,13 +426,13 @@ built using the <code class="highlighter-rouge">Pull</code> type.</p>
 <p>Try implementing <code class="highlighter-rouge">takeWhile</code>, <code class="highlighter-rouge">intersperse</code>, and <code class="highlighter-rouge">scan</code>:</p>
 
 <div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">scala</span><span class="o">&gt;</span> <span class="nc">Stream</span><span class="o">.</span><span class="n">range</span><span class="o">(</span><span class="mi">0</span><span class="o">,</span><span class="mi">100</span><span class="o">).</span><span class="n">takeWhile</span><span class="o">(</span><span class="k">_</span> <span class="o">&lt;</span> <span class="mi">7</span><span class="o">).</span><span class="n">toList</span>
-<span class="n">res34</span><span class="k">:</span> <span class="kt">List</span><span class="o">[</span><span class="kt">Int</span><span class="o">]</span> <span class="k">=</span> <span class="nc">List</span><span class="o">(</span><span class="mi">0</span><span class="o">,</span> <span class="mi">1</span><span class="o">,</span> <span class="mi">2</span><span class="o">,</span> <span class="mi">3</span><span class="o">,</span> <span class="mi">4</span><span class="o">,</span> <span class="mi">5</span><span class="o">,</span> <span class="mi">6</span><span class="o">)</span>
+<span class="n">res35</span><span class="k">:</span> <span class="kt">List</span><span class="o">[</span><span class="kt">Int</span><span class="o">]</span> <span class="k">=</span> <span class="nc">List</span><span class="o">(</span><span class="mi">0</span><span class="o">,</span> <span class="mi">1</span><span class="o">,</span> <span class="mi">2</span><span class="o">,</span> <span class="mi">3</span><span class="o">,</span> <span class="mi">4</span><span class="o">,</span> <span class="mi">5</span><span class="o">,</span> <span class="mi">6</span><span class="o">)</span>
 
 <span class="n">scala</span><span class="o">&gt;</span> <span class="nc">Stream</span><span class="o">(</span><span class="s">"Alice"</span><span class="o">,</span><span class="s">"Bob"</span><span class="o">,</span><span class="s">"Carol"</span><span class="o">).</span><span class="n">intersperse</span><span class="o">(</span><span class="s">"|"</span><span class="o">).</span><span class="n">toList</span>
-<span class="n">res35</span><span class="k">:</span> <span class="kt">List</span><span class="o">[</span><span class="kt">String</span><span class="o">]</span> <span class="k">=</span> <span class="nc">List</span><span class="o">(</span><span class="nc">Alice</span><span class="o">,</span> <span class="o">|,</span> <span class="nc">Bob</span><span class="o">,</span> <span class="o">|,</span> <span class="nc">Carol</span><span class="o">)</span>
+<span class="n">res36</span><span class="k">:</span> <span class="kt">List</span><span class="o">[</span><span class="kt">String</span><span class="o">]</span> <span class="k">=</span> <span class="nc">List</span><span class="o">(</span><span class="nc">Alice</span><span class="o">,</span> <span class="o">|,</span> <span class="nc">Bob</span><span class="o">,</span> <span class="o">|,</span> <span class="nc">Carol</span><span class="o">)</span>
 
 <span class="n">scala</span><span class="o">&gt;</span> <span class="nc">Stream</span><span class="o">.</span><span class="n">range</span><span class="o">(</span><span class="mi">1</span><span class="o">,</span><span class="mi">10</span><span class="o">).</span><span class="n">scan</span><span class="o">(</span><span class="mi">0</span><span class="o">)(</span><span class="k">_</span> <span class="o">+</span> <span class="k">_</span><span class="o">).</span><span class="n">toList</span> <span class="c1">// running sum
-</span><span class="n">res36</span><span class="k">:</span> <span class="kt">List</span><span class="o">[</span><span class="kt">Int</span><span class="o">]</span> <span class="k">=</span> <span class="nc">List</span><span class="o">(</span><span class="mi">0</span><span class="o">,</span> <span class="mi">1</span><span class="o">,</span> <span class="mi">3</span><span class="o">,</span> <span class="mi">6</span><span class="o">,</span> <span class="mi">10</span><span class="o">,</span> <span class="mi">15</span><span class="o">,</span> <span class="mi">21</span><span class="o">,</span> <span class="mi">28</span><span class="o">,</span> <span class="mi">36</span><span class="o">,</span> <span class="mi">45</span><span class="o">)</span>
+</span><span class="n">res37</span><span class="k">:</span> <span class="kt">List</span><span class="o">[</span><span class="kt">Int</span><span class="o">]</span> <span class="k">=</span> <span class="nc">List</span><span class="o">(</span><span class="mi">0</span><span class="o">,</span> <span class="mi">1</span><span class="o">,</span> <span class="mi">3</span><span class="o">,</span> <span class="mi">6</span><span class="o">,</span> <span class="mi">10</span><span class="o">,</span> <span class="mi">15</span><span class="o">,</span> <span class="mi">21</span><span class="o">,</span> <span class="mi">28</span><span class="o">,</span> <span class="mi">36</span><span class="o">,</span> <span class="mi">45</span><span class="o">)</span>
 </code></pre></div></div>
 
 <h3 id="concurrency">Concurrency</h3>
@@ -452,10 +455,10 @@ built using the <code class="highlighter-rouge">Pull</code> type.</p>
 
 <span class="n">scala</span><span class="o">&gt;</span> <span class="c1">// This normally comes from IOApp
 </span>     <span class="o">|</span> <span class="k">implicit</span> <span class="k">val</span> <span class="n">ioContextShift</span><span class="k">:</span> <span class="kt">ContextShift</span><span class="o">[</span><span class="kt">IO</span><span class="o">]</span> <span class="k">=</span> <span class="nc">IO</span><span class="o">.</span><span class="n">contextShift</span><span class="o">(</span><span class="n">scala</span><span class="o">.</span><span class="n">concurrent</span><span class="o">.</span><span class="nc">ExecutionContext</span><span class="o">.</span><span class="nc">Implicits</span><span class="o">.</span><span class="n">global</span><span class="o">)</span>
-<span class="n">ioContextShift</span><span class="k">:</span> <span class="kt">cats.effect.ContextShift</span><span class="o">[</span><span class="kt">cats.effect.IO</span><span class="o">]</span> <span class="k">=</span> <span class="n">cats</span><span class="o">.</span><span class="n">effect</span><span class="o">.</span><span class="n">internals</span><span class="o">.</span><span class="nc">IOContextShift</span><span class="k">@</span><span class="mi">76</span><span class="n">a24ee2</span>
+<span class="n">ioContextShift</span><span class="k">:</span> <span class="kt">cats.effect.ContextShift</span><span class="o">[</span><span class="kt">cats.effect.IO</span><span class="o">]</span> <span class="k">=</span> <span class="n">cats</span><span class="o">.</span><span class="n">effect</span><span class="o">.</span><span class="n">internals</span><span class="o">.</span><span class="nc">IOContextShift</span><span class="k">@</span><span class="mi">2</span><span class="n">e957e81</span>
 
 <span class="n">scala</span><span class="o">&gt;</span> <span class="nc">Stream</span><span class="o">(</span><span class="mi">1</span><span class="o">,</span><span class="mi">2</span><span class="o">,</span><span class="mi">3</span><span class="o">).</span><span class="n">merge</span><span class="o">(</span><span class="nc">Stream</span><span class="o">.</span><span class="n">eval</span><span class="o">(</span><span class="nc">IO</span> <span class="o">{</span> <span class="nc">Thread</span><span class="o">.</span><span class="n">sleep</span><span class="o">(</span><span class="mi">200</span><span class="o">);</span> <span class="mi">4</span> <span class="o">})).</span><span class="n">compile</span><span class="o">.</span><span class="n">toVector</span><span class="o">.</span><span class="n">unsafeRunSync</span><span class="o">()</span>
-<span class="n">res39</span><span class="k">:</span> <span class="kt">Vector</span><span class="o">[</span><span class="kt">Int</span><span class="o">]</span> <span class="k">=</span> <span class="nc">Vector</span><span class="o">(</span><span class="mi">1</span><span class="o">,</span> <span class="mi">2</span><span class="o">,</span> <span class="mi">3</span><span class="o">,</span> <span class="mi">4</span><span class="o">)</span>
+<span class="n">res40</span><span class="k">:</span> <span class="kt">Vector</span><span class="o">[</span><span class="kt">Int</span><span class="o">]</span> <span class="k">=</span> <span class="nc">Vector</span><span class="o">(</span><span class="mi">1</span><span class="o">,</span> <span class="mi">2</span><span class="o">,</span> <span class="mi">3</span><span class="o">,</span> <span class="mi">4</span><span class="o">)</span>
 </code></pre></div></div>
 
 <p>The <code class="highlighter-rouge">merge</code> function supports concurrency. FS2 has a number of other useful concurrency functions like <code class="highlighter-rouge">concurrently</code> (runs another stream concurrently and discards its output), <code class="highlighter-rouge">interrupt</code> (halts if the left branch produces <code class="highlighter-rouge">false</code>), <code class="highlighter-rouge">either</code> (like <code class="highlighter-rouge">merge</code> but returns an <code class="highlighter-rouge">Either</code>), <code class="highlighter-rouge">mergeHaltBoth</code> (halts if either branch halts), and others.</p>
@@ -507,7 +510,7 @@ def mergeHaltBoth[F[_]:Concurrent,O]: Pipe2[F,O,O,O] = (s1, s2) =&gt; ???
 </span>
 <span class="n">s</span><span class="o">.</span><span class="n">compile</span><span class="o">.</span><span class="n">toVector</span><span class="o">.</span><span class="n">unsafeRunSync</span><span class="o">()</span>
 <span class="c1">// BOOOOM!!!
-// res40: Vector[String] = Vector(...moving on)
+// res41: Vector[String] = Vector(...moving on)
 </span></code></pre></div></div>
 
 <p>The way you bring synchronous effects into your effect type may differ. <code class="highlighter-rouge">Sync.delay</code> can be used for this generally, without committing to a particular effect:</p>
@@ -516,14 +519,14 @@ def mergeHaltBoth[F[_]:Concurrent,O]: Pipe2[F,O,O,O] = (s1, s2) =&gt; ???
 <span class="c1">// import cats.effect.Sync
 </span>
 <span class="k">val</span> <span class="n">T</span> <span class="k">=</span> <span class="nc">Sync</span><span class="o">[</span><span class="kt">IO</span><span class="o">]</span>
-<span class="c1">// T: cats.effect.Sync[cats.effect.IO] = cats.effect.IOInstances$$anon$1@49d07da5
+<span class="c1">// T: cats.effect.Sync[cats.effect.IO] = cats.effect.IOInstances$$anon$1@5e24e708
 </span>
 <span class="k">val</span> <span class="n">s</span> <span class="k">=</span> <span class="nc">Stream</span><span class="o">.</span><span class="n">eval_</span><span class="o">(</span><span class="n">T</span><span class="o">.</span><span class="n">delay</span> <span class="o">{</span> <span class="n">destroyUniverse</span><span class="o">()</span> <span class="o">})</span> <span class="o">++</span> <span class="nc">Stream</span><span class="o">(</span><span class="s">"...moving on"</span><span class="o">)</span>
 <span class="c1">// s: fs2.Stream[[x]cats.effect.IO[x],String] = Stream(..)
 </span>
 <span class="n">s</span><span class="o">.</span><span class="n">compile</span><span class="o">.</span><span class="n">toVector</span><span class="o">.</span><span class="n">unsafeRunSync</span><span class="o">()</span>
 <span class="c1">// BOOOOM!!!
-// res41: Vector[String] = Vector(...moving on)
+// res42: Vector[String] = Vector(...moving on)
 </span></code></pre></div></div>
 
 <p>When using this approach, be sure the expression you pass to delay doesn’t throw exceptions.</p>
@@ -571,10 +574,10 @@ def mergeHaltBoth[F[_]:Concurrent,O]: Pipe2[F,O,O,O] = (s1, s2) =&gt; ???
 <span class="k">val</span> <span class="n">bytes</span> <span class="k">=</span> <span class="n">cats</span><span class="o">.</span><span class="n">effect</span><span class="o">.</span><span class="nc">Async</span><span class="o">[</span><span class="kt">IO</span><span class="o">].</span><span class="n">async</span><span class="o">[</span><span class="kt">Array</span><span class="o">[</span><span class="kt">Byte</span><span class="o">]]</span> <span class="o">{</span> <span class="o">(</span><span class="n">cb</span><span class="k">:</span> <span class="kt">Either</span><span class="o">[</span><span class="kt">Throwable</span>,<span class="kt">Array</span><span class="o">[</span><span class="kt">Byte</span><span class="o">]]</span> <span class="k">=&gt;</span> <span class="nc">Unit</span><span class="o">)</span> <span class="k">=&gt;</span>
   <span class="n">c</span><span class="o">.</span><span class="n">readBytesE</span><span class="o">(</span><span class="n">cb</span><span class="o">)</span>
 <span class="o">}</span>
-<span class="c1">// bytes: cats.effect.IO[Array[Byte]] = IO$1674196283
+<span class="c1">// bytes: cats.effect.IO[Array[Byte]] = IO$1429184237
 </span>
 <span class="nc">Stream</span><span class="o">.</span><span class="n">eval</span><span class="o">(</span><span class="n">bytes</span><span class="o">).</span><span class="n">map</span><span class="o">(</span><span class="k">_</span><span class="o">.</span><span class="n">toList</span><span class="o">).</span><span class="n">compile</span><span class="o">.</span><span class="n">toVector</span><span class="o">.</span><span class="n">unsafeRunSync</span><span class="o">()</span>
-<span class="c1">// res42: Vector[List[Byte]] = Vector(List(0, 1, 2))
+<span class="c1">// res43: Vector[List[Byte]] = Vector(List(0, 1, 2))
 </span></code></pre></div></div>
 
 <p>Be sure to check out the
@@ -647,7 +650,7 @@ But there are times when we need use fs2 in conjunction with a different streami
 <p>A <code class="highlighter-rouge">ContextShift</code> instance is necessary when working with <code class="highlighter-rouge">IO</code></p>
 
 <div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">implicit</span> <span class="k">val</span> <span class="n">contextShift</span><span class="k">:</span> <span class="kt">ContextShift</span><span class="o">[</span><span class="kt">IO</span><span class="o">]</span> <span class="k">=</span> <span class="nc">IO</span><span class="o">.</span><span class="n">contextShift</span><span class="o">(</span><span class="nc">ExecutionContext</span><span class="o">.</span><span class="n">global</span><span class="o">)</span>
-<span class="c1">// contextShift: cats.effect.ContextShift[cats.effect.IO] = cats.effect.internals.IOContextShift@34effe43
+<span class="c1">// contextShift: cats.effect.ContextShift[cats.effect.IO] = cats.effect.internals.IOContextShift@69d2dbe8
 </span></code></pre></div></div>
 
 <p>To convert a <code class="highlighter-rouge">Stream</code> into a downstream unicast <code class="highlighter-rouge">org.reactivestreams.Publisher</code>:</p>
@@ -656,13 +659,13 @@ But there are times when we need use fs2 in conjunction with a different streami
 <span class="c1">// stream: fs2.Stream[cats.effect.IO,Int] = Stream(..)
 </span>
 <span class="n">stream</span><span class="o">.</span><span class="n">toUnicastPublisher</span>
-<span class="c1">// res0: fs2.interop.reactivestreams.StreamUnicastPublisher[cats.effect.IO,Int] = fs2.interop.reactivestreams.StreamUnicastPublisher@3e92cfde
+<span class="c1">// res0: fs2.interop.reactivestreams.StreamUnicastPublisher[cats.effect.IO,Int] = fs2.interop.reactivestreams.StreamUnicastPublisher@1ed1116
 </span></code></pre></div></div>
 
 <p>To convert an upstream <code class="highlighter-rouge">org.reactivestreams.Publisher</code> into a <code class="highlighter-rouge">Stream</code>:</p>
 
 <div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">val</span> <span class="n">publisher</span><span class="k">:</span> <span class="kt">StreamUnicastPublisher</span><span class="o">[</span><span class="kt">IO</span>, <span class="kt">Int</span><span class="o">]</span> <span class="k">=</span> <span class="nc">Stream</span><span class="o">(</span><span class="mi">1</span><span class="o">,</span> <span class="mi">2</span><span class="o">,</span> <span class="mi">3</span><span class="o">).</span><span class="n">covary</span><span class="o">[</span><span class="kt">IO</span><span class="o">].</span><span class="n">toUnicastPublisher</span>
-<span class="c1">// publisher: fs2.interop.reactivestreams.StreamUnicastPublisher[cats.effect.IO,Int] = fs2.interop.reactivestreams.StreamUnicastPublisher@3cebff58
+<span class="c1">// publisher: fs2.interop.reactivestreams.StreamUnicastPublisher[cats.effect.IO,Int] = fs2.interop.reactivestreams.StreamUnicastPublisher@2480f060
 </span>
 <span class="n">publisher</span><span class="o">.</span><span class="n">toStream</span><span class="o">[</span><span class="kt">IO</span><span class="o">]</span>
 <span class="c1">// res1: fs2.Stream[cats.effect.IO,Int] = Stream(..)
@@ -753,7 +756,7 @@ But there are times when we need use fs2 in conjunction with a different streami
 <span class="k">import</span> <span class="nn">cats.effect.ContextShift</span>
 
 <span class="n">scala</span><span class="o">&gt;</span> <span class="k">implicit</span> <span class="k">val</span> <span class="n">ioContextShift</span><span class="k">:</span> <span class="kt">ContextShift</span><span class="o">[</span><span class="kt">IO</span><span class="o">]</span> <span class="k">=</span> <span class="nc">IO</span><span class="o">.</span><span class="n">contextShift</span><span class="o">(</span><span class="n">scala</span><span class="o">.</span><span class="n">concurrent</span><span class="o">.</span><span class="nc">ExecutionContext</span><span class="o">.</span><span class="nc">Implicits</span><span class="o">.</span><span class="n">global</span><span class="o">)</span>
-<span class="n">ioContextShift</span><span class="k">:</span> <span class="kt">cats.effect.ContextShift</span><span class="o">[</span><span class="kt">cats.effect.IO</span><span class="o">]</span> <span class="k">=</span> <span class="n">cats</span><span class="o">.</span><span class="n">effect</span><span class="o">.</span><span class="n">internals</span><span class="o">.</span><span class="nc">IOContextShift</span><span class="k">@</span><span class="mi">17</span><span class="n">bd44cb</span>
+<span class="n">ioContextShift</span><span class="k">:</span> <span class="kt">cats.effect.ContextShift</span><span class="o">[</span><span class="kt">cats.effect.IO</span><span class="o">]</span> <span class="k">=</span> <span class="n">cats</span><span class="o">.</span><span class="n">effect</span><span class="o">.</span><span class="n">internals</span><span class="o">.</span><span class="nc">IOContextShift</span><span class="k">@</span><span class="mi">35</span><span class="n">aca4c0</span>
 
 <span class="n">scala</span><span class="o">&gt;</span> <span class="k">val</span> <span class="n">s1</span> <span class="k">=</span> <span class="o">(</span><span class="nc">Stream</span><span class="o">(</span><span class="mi">1</span><span class="o">)</span> <span class="o">++</span> <span class="nc">Stream</span><span class="o">(</span><span class="mi">2</span><span class="o">)).</span><span class="n">covary</span><span class="o">[</span><span class="kt">IO</span><span class="o">]</span>
 <span class="n">s1</span><span class="k">:</span> <span class="kt">fs2.Stream</span><span class="o">[</span><span class="kt">cats.effect.IO</span>,<span class="kt">Int</span><span class="o">]</span> <span class="k">=</span> <span class="nc">Stream</span><span class="o">(..)</span>
