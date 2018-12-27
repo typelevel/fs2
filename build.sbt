@@ -344,7 +344,7 @@ lazy val microsite = project
   .settings(commonSettings)
   .settings(
     micrositeName := "fs2",
-    micrositeDescription := "Purely functional, effectful, resourceful, concurrent streams for Scala",
+    micrositeDescription := "Purely functional, effectful, resource-safe, concurrent streams for Scala",
     micrositeGithubOwner := "functional-streams-for-scala",
     micrositeGithubRepo := "fs2",
     micrositeBaseUrl := "",
