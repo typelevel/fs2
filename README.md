@@ -7,11 +7,11 @@ FS2: Functional Streams for Scala
 
 ### Overview
 
-FS2 is a library for purely functional, effectful, and polymorphic stream processing library in the [Scala programming language]((https://scala-lang.org). Its design goals are compositionality, expressiveness, resource safety, and speed. The name is a modified acronym for **F**unctional **S**treams for **Scala** (FSS, or FS2).
+FS2 is a library for purely functional, effectful, and polymorphic stream processing library in the [Scala programming language](https://scala-lang.org). Its design goals are compositionality, expressiveness, resource safety, and speed. The name is a modified acronym for **F**unctional **S**treams for **Scala** (FSS, or FS2).
 
 FS2 is available for Scala 2.11, Scala 2.12, and [Scala.js](http://www.scala-js.org/). FS2 is built upon two major functional libraries for Scala, [Cats](https://typelevel.org/cats/), and [Cats-Effect](https://typelevel.org/cats-effect/). Regardless of those dependencies, FS2 core types (streams and pulls) are polymorphic in the effect type (as long as it is compatible with `cats-effect` typeclasses), and thus FS2 can be used with other IO libraries, such as [Monix](https://monix.io/), or [ZIO](https://scalaz.github.io/scalaz-zio/).
 
-Prior to 2016, FS2 was known as `scalaz-stream`, which was based on the [`scalaz`](https://github.com/scalaz/scalaz) library.
+Prior to the 0.9 release in 2016, FS2 was known as `scalaz-stream`, which was based on the [`scalaz`](https://github.com/scalaz/scalaz) library.
 
 ### Getting Started
 
@@ -117,7 +117,7 @@ These features mean that FS2 goes beyond streaming I/O to offer a very general a
 
 ### <a id="docs"></a>Documentation and getting help ###
 
-* Here are the API ScalaDocs for [The core library][core-api], which defines and implements the core types for streams and pulls, as well as the type aliases for pipes and sinks. [The `io` library][io-api], FS2 bindings for NIO-based file I/O and TCP/UDP networking
+* There are Scaladoc API documentations for [the core library][core-api], which defines and implements the core types for streams and pulls, as well as the type aliases for pipes and sinks. [The `io` library][io-api] provides FS2 bindings for NIO-based file I/O and TCP/UDP networking
 * [The official guide](https://functional-streams-for-scala.github.io/fs2/guide.html) is a good starting point for learning more about the library.
 * The [documentation page](https://functional-streams-for-scala.github.io/fs2/faq.html) is intended to serve as a list of all references, including conference presentation recordings, academic papers, and blog posts, on the use and implementation of `fs2`. 
 * [The FAQ](https://functional-streams-for-scala.github.io/fs2/faq.html) has frequently asked questions. Feel free to open issues or PRs with additions to the FAQ!
