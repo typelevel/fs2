@@ -166,7 +166,7 @@ class PipeSpec extends Fs2Spec {
       val f = (_: Int) % n1.get == 0
       val r = s.get.covary[IO].evalMapAccumulate(n0)((s, i) => IO.pure((s + i, f(i))))
 
-      runLog(r.map(_._1)) shouldBe runLog(s.get).scan(n0)(_ + _).tail
+      runLog(r.map(_._1)) shouldBe runLog(s.get).scanLeft(n0)(_ + _).tail
       runLog(r.map(_._2)) shouldBe runLog(s.get).map(f)
     }
 
@@ -310,7 +310,7 @@ class PipeSpec extends Fs2Spec {
       val f = (_: Int) % n1.get == 0
       val r = s.get.mapAccumulate(n0)((s, i) => (s + i, f(i)))
 
-      runLog(r.map(_._1)) shouldBe runLog(s.get).scan(n0)(_ + _).tail
+      runLog(r.map(_._1)) shouldBe runLog(s.get).scanLeft(n0)(_ + _).tail
       runLog(r.map(_._2)) shouldBe runLog(s.get).map(f)
     }
 
@@ -407,8 +407,8 @@ class PipeSpec extends Fs2Spec {
       val never = Stream.eval(IO.async[Int](_ => ()))
       val s = Stream(1)
       val f = (a: Int, b: Int) => a + b
-      val result = s.toVector.scan(0)(f)
-      runLog((s ++ never).scan(0)(f).take(result.size))(1 second) shouldBe result
+      val result = s.toVector.scanLeft(0)(f)
+      runLog((s ++ never).scan(0)(f).take(result.size))(1.second) shouldBe result
     }
 
     "scan" in forAll { (s: PureStream[Int], n: Int) =>
@@ -569,7 +569,7 @@ class PipeSpec extends Fs2Spec {
             .attempt
         }
         r1 should have size (1)
-        r1.head.left.get shouldBe an[Err]
+        r1.head.swap.toOption.get shouldBe an[Err]
         val r2 = runLog {
           s.get
             .covary[IO]
@@ -579,7 +579,7 @@ class PipeSpec extends Fs2Spec {
             .attempt
         }
         r2 should have size (1)
-        r2.head.left.get shouldBe an[Err]
+        r2.head.swap.toOption.get shouldBe an[Err]
       }
     }
 
@@ -592,7 +592,7 @@ class PipeSpec extends Fs2Spec {
             .attempt
         }
         r1 should have size (1)
-        r1.head.left.get shouldBe an[Err]
+        r1.head.swap.toOption.get shouldBe an[Err]
         val r2 = runLog {
           f.get
             .covary[IO]
@@ -600,7 +600,7 @@ class PipeSpec extends Fs2Spec {
             .attempt
         }
         r2 should have size (1)
-        r2.head.left.get shouldBe an[Err]
+        r2.head.swap.toOption.get shouldBe an[Err]
       }
     }
 

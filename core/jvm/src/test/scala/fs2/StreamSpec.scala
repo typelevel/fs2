@@ -65,12 +65,12 @@ class StreamSpec extends Fs2Spec with Inside {
 
       either match {
         case Left(_) ⇒ stream.compile.toList.attempt.unsafeRunSync() shouldBe either
-        case Right(_) ⇒ stream.compile.toList.unsafeRunSync() shouldBe either.right.toSeq.toList
+        case Right(_) ⇒ stream.compile.toList.unsafeRunSync() shouldBe either.toSeq.toList
       }
     }
 
     "fromIterator" in forAll { vec: Vector[Int] =>
-      val iterator = vec.toIterator
+      val iterator = vec.iterator
       val stream = Stream.fromIterator[IO, Int](iterator)
       val example = stream.compile.toVector.unsafeRunSync
       example shouldBe vec
@@ -121,7 +121,7 @@ class StreamSpec extends Fs2Spec with Inside {
         .compile
         .toVector
         .unsafeRunSync()
-      r.foreach(_.left.get shouldBe an[Err])
+      r.foreach(_.swap.toOption.get shouldBe an[Err])
     }
 
     "handleErrorWith (5)" in {
@@ -399,7 +399,7 @@ class StreamSpec extends Fs2Spec with Inside {
     }
 
     "duration" in {
-      val delay = 200 millis
+      val delay = 200.millis
 
       val blockingSleep = IO { Thread.sleep(delay.toMillis) }
 

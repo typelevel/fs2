@@ -22,7 +22,7 @@ class BroadcastSpec extends Fs2Spec {
             .broadcastThrough((0 until concurrent.get).map(idx => pipe(idx)): _*)
             .compile
             .toVector
-            .map(_.groupBy(_._1).mapValues(_.map(_._2).toVector))
+            .map(_.groupBy(_._1).view.mapValues(_.map(_._2).toVector).toMap)
             .unsafeRunSync()
 
         if (expect.nonEmpty) {

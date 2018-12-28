@@ -10,7 +10,7 @@ import fs2.concurrent._
 import fs2.internal.FreeC.Result
 import fs2.internal._
 
-import scala.collection.generic.CanBuildFrom
+import scala.collection.compat._
 import scala.concurrent.duration._
 
 /**
@@ -3323,7 +3323,7 @@ object Stream extends StreamLowPriority {
     def covary[F[_]]: Stream[F, O] = self
 
     /** Runs this pure stream and returns the emitted elements in a collection of the specified type. Note: this method is only available on pure streams. */
-    def to[C[_]](implicit cbf: CanBuildFrom[Nothing, O, C[O]]): C[O] =
+    def to[C[_]](implicit f: Factory[O, C[O]]): C[O] =
       self.covary[IO].compile.to[C].unsafeRunSync
 
     /** Runs this pure stream and returns the emitted elements in a chunk. Note: this method is only available on pure streams. */
@@ -3368,7 +3368,7 @@ object Stream extends StreamLowPriority {
     }
 
     /** Runs this fallible stream and returns the emitted elements in a collection of the specified type. Note: this method is only available on fallible streams. */
-    def to[C[_]](implicit cbf: CanBuildFrom[Nothing, O, C[O]]): Either[Throwable, C[O]] =
+    def to[C[_]](implicit f: Factory[O, C[O]]): Either[Throwable, C[O]] =
       lift[IO].compile.to[C].attempt.unsafeRunSync
 
     /** Runs this fallible stream and returns the emitted elements in a chunk. Note: this method is only available on fallible streams. */
@@ -3829,7 +3829,7 @@ object Stream extends StreamLowPriority {
 
     /**
       * Compiles this stream into a value of the target effect type `F` by logging
-      * the output values to a `C`, given a `CanBuildFrom`.
+      * the output values to a `C`, given a `Factory`.
       *
       * When this method has returned, the stream has not begun execution -- this method simply
       * compiles the stream down to the target effect type.
@@ -3840,8 +3840,8 @@ object Stream extends StreamLowPriority {
       * res0: List[Int] = List(0, 1, 2, 3, 4)
       * }}}
       */
-    def to[C[_]](implicit cbf: CanBuildFrom[Nothing, O, C[O]]): G[C[O]] =
-      compiler(self, Eval.always(cbf()))(_ ++= _.iterator, _.result)
+    def to[C[_]](implicit f: Factory[O, C[O]]): G[C[O]] =
+      compiler(self, Eval.always(f.newBuilder))(_ ++= _.iterator, _.result)
 
     /**
       * Compiles this stream in to a value of the target effect type `F` by logging

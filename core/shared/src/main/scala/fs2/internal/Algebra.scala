@@ -318,7 +318,7 @@ private[fs2] object Algebra {
                     close.interruptedScope match {
                       case None => go(ancestor, view.next(Result.fromEither(r)))
                       case Some((interruptedScopeId, err)) =>
-                        def err1 = CompositeFailure.fromList(r.left.toOption.toList ++ err.toList)
+                        def err1 = CompositeFailure.fromList(r.swap.toOption.toList ++ err.toList)
                         if (ancestor.findSelfOrAncestor(interruptedScopeId).isDefined) {
                           // we still have scopes to interrupt, lets build interrupted tail
                           go(ancestor, view.next(Result.interrupted(interruptedScopeId, err1)))
