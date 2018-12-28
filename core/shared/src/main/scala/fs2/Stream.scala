@@ -1035,7 +1035,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
               else {
                 f(hd(idx)).get.transformWith {
                   case Result.Pure(_)   => go(idx + 1)
-                  case Result.Fail(err) => Algebra.raiseError(err)
+                  case Result.Fail(err) => Algebra.raiseError[F2, O2, Unit](err)
                   case Result.Interrupted(scopeId: Token, err) =>
                     Stream.fromFreeC(Algebra.interruptBoundary(tl, scopeId, err)).flatMap(f).get
                   case Result.Interrupted(invalid, err) =>
@@ -1739,7 +1739,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * }}}
     */
   def onComplete[F2[x] >: F[x], O2 >: O](s2: => Stream[F2, O2]): Stream[F2, O2] =
-    handleErrorWith(e => s2 ++ Stream.fromFreeC(Algebra.raiseError(e))) ++ s2
+    handleErrorWith(e => s2 ++ Stream.fromFreeC(Algebra.raiseError[F2, O2, Unit](e))) ++ s2
 
   /**
     * Run the supplied effectful action at the end of this stream, regardless of how the stream terminates.
@@ -2732,7 +2732,8 @@ object Stream extends StreamLowPriority {
   def bracketCaseCancellable[F[x] >: Pure[x], R](acquire: F[R])(
       release: (R, ExitCase[Throwable]) => F[Unit]): Stream[F, (Stream[F, Unit], R)] =
     bracketWithToken(acquire)(release).map {
-      case (token, r) => (Stream.fromFreeC(Algebra.release(token, None)) ++ Stream.emit(()), r)
+      case (token, r) =>
+        (Stream.fromFreeC(Algebra.release[F, Unit](token, None)) ++ Stream.emit(()), r)
     }
 
   private[fs2] def bracketWithToken[F[x] >: Pure[x], R](acquire: F[R])(
@@ -3007,7 +3008,7 @@ object Stream extends StreamLowPriority {
     * }}}
     */
   def raiseError[F[_]: RaiseThrowable](e: Throwable): Stream[F, INothing] =
-    fromFreeC(Algebra.raiseError(e))
+    fromFreeC(Algebra.raiseError[F, INothing, INothing](e))
 
   /**
     * Creates a random stream of integers using a random seed.
