@@ -53,7 +53,7 @@ lazy val commonSettings = Seq(
     "org.typelevel" %%% "cats-laws" % "1.5.0" % "test",
     "org.typelevel" %%% "cats-effect" % "1.1.0",
     "org.typelevel" %%% "cats-effect-laws" % "1.1.0" % "test",
-    "org.scala-lang.modules" %% "scala-collection-compat" % "0.2.1"
+    "org.scala-lang.modules" %%% "scala-collection-compat" % "0.2.1"
   ),
   libraryDependencies ++= {
     CrossVersion.partialVersion(scalaVersion.value) match {
