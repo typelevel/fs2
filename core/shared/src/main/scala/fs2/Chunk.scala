@@ -536,8 +536,8 @@ object Chunk {
 
   /** Creates a chunk backed by a `Seq`. */
   def seq[O](s: Seq[O]): Chunk[O] = s match {
-    // TODO a.array returns Array[_] as of 2.13
-    // case a: collection.mutable.WrappedArray[O] => array(a.array)
+    case a: collection.mutable.WrappedArray[O] =>
+      array(a.array.asInstanceOf[Array[O]])
     case v: Vector[O]      => vector(v)
     case ix: IndexedSeq[O] => indexedSeq(ix)
     case _ =>
