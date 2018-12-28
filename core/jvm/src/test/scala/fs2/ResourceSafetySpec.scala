@@ -353,9 +353,9 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
       val s2 = Stream.bracket(IO("a"))(_ => IO.raiseError(new Err))
 
       val r1 = s1.zip(s2).compile.drain.attempt.unsafeRunSync()
-      r1.swap.toOption.get shouldBe an[Err]
+      r1.fold(identity, r => fail(s"expected left but got Right($r)")) shouldBe an[Err]
       val r2 = s2.zip(s1).compile.drain.attempt.unsafeRunSync()
-      r2.swap.toOption.get shouldBe an[Err]
+      r2.fold(identity, r => fail(s"expected left but got Right($r)")) shouldBe an[Err]
     }
 
     def bracket[A](c: AtomicLong)(s: Stream[IO, A]): Stream[IO, A] =

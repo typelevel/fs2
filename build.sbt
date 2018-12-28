@@ -203,9 +203,15 @@ lazy val releaseSettings = Seq(
 )
 
 lazy val mimaSettings = Seq(
-  mimaPreviousArtifacts := previousVersion(version.value).map { pv =>
-    organization.value % (normalizedName.value + "_" + scalaBinaryVersion.value) % pv
-  }.toSet,
+  mimaPreviousArtifacts := {
+    CrossVersion.partialVersion(scalaVersion.value) match {
+      case Some((2, v)) if v >= 13 => Set.empty
+      case _ =>
+        previousVersion(version.value).map { pv =>
+          organization.value % (normalizedName.value + "_" + scalaBinaryVersion.value) % pv
+        }.toSet
+    }
+  },
   mimaBinaryIssueFilters ++= Seq(
     ProblemFilters.exclude[Problem]("fs2.package*EitherSyntax*"),
     ProblemFilters.exclude[Problem]("fs2.internal.*"),

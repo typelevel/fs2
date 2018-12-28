@@ -6,6 +6,7 @@ import cats.{Traverse, TraverseFilter}
 import cats.data.Chain
 import cats.effect.{Concurrent, ExitCase, Sync}
 import cats.effect.concurrent.{Deferred, Ref}
+import cats.implicits._
 import fs2.{CompositeFailure, Pure, Scope}
 import fs2.internal.CompileScope.InterruptContext
 
@@ -229,7 +230,9 @@ private[fs2] final class CompileScope[F[_]] private (
           resultResources =>
             F.flatMap(self.interruptible.map(_.cancelParent).getOrElse(F.unit)) { _ =>
               F.map(self.parent.fold(F.unit)(_.releaseChildScope(self.id))) { _ =>
-                val results = resultChildren.swap.toSeq ++ resultResources.swap.toSeq
+                val results = resultChildren.fold(List(_), _ => Nil) ++ resultResources.fold(
+                  List(_),
+                  _ => Nil)
                 CompositeFailure.fromList(results.toList).toLeft(())
               }
             }
@@ -393,7 +396,7 @@ private[fs2] final class CompileScope[F[_]] private (
         F.map(
           iCtx.concurrent
             .race(iCtx.deferred.get, F.attempt(iCtx.concurrent.uncancelable(f)))) {
-          case Right(result) => result.swap.map(Left(_)).swap
+          case Right(result) => result.leftMap(Left(_))
           case Left(other)   => Left(other)
         }
     }

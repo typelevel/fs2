@@ -65,7 +65,7 @@ class StreamSpec extends Fs2Spec with Inside {
 
       either match {
         case Left(_) ⇒ stream.compile.toList.attempt.unsafeRunSync() shouldBe either
-        case Right(_) ⇒ stream.compile.toList.unsafeRunSync() shouldBe either.toSeq.toList
+        case Right(_) ⇒ stream.compile.toList.unsafeRunSync() shouldBe either.toList
       }
     }
 
