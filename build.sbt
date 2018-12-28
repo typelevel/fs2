@@ -316,7 +316,24 @@ lazy val benchmarkMacros = project
   .settings(noPublish)
   .settings(
     name := "fs2-benchmark-macros",
-    addCompilerPlugin(("org.scalamacros" % "paradise" % "2.1.1").cross(CrossVersion.patch)),
+    scalacOptions ++= {
+      CrossVersion.partialVersion(scalaVersion.value) match {
+        case Some((2, v)) if v >= 13 =>
+          List("-Ymacro-annotations")
+        case _ =>
+          Nil
+      }
+    },
+    libraryDependencies ++= {
+      CrossVersion.partialVersion(scalaVersion.value) match {
+        case Some((2, v)) if v <= 12 =>
+          Seq(
+            compilerPlugin(("org.scalamacros" % "paradise" % "2.1.1").cross(CrossVersion.full))
+          )
+        case _ =>
+          Nil
+      }
+    },
     libraryDependencies += scalaOrganization.value % "scala-reflect" % scalaVersion.value
   )
 
@@ -328,11 +345,25 @@ lazy val benchmark = project
   .settings(
     name := "fs2-benchmark",
     javaOptions in (Test, run) := (javaOptions in (Test, run)).value.filterNot(o =>
-      o.startsWith("-Xmx") || o.startsWith("-Xms")) ++ Seq("-Xms256m", "-Xmx256m")
-  )
-  .settings(
-    addCompilerPlugin(("org.scalamacros" % "paradise" % "2.1.1").cross(CrossVersion.patch)),
-    libraryDependencies += scalaOrganization.value % "scala-reflect" % scalaVersion.value
+      o.startsWith("-Xmx") || o.startsWith("-Xms")) ++ Seq("-Xms256m", "-Xmx256m"),
+    scalacOptions ++= {
+      CrossVersion.partialVersion(scalaVersion.value) match {
+        case Some((2, v)) if v >= 13 =>
+          List("-Ymacro-annotations")
+        case _ =>
+          Nil
+      }
+    },
+    libraryDependencies ++= {
+      CrossVersion.partialVersion(scalaVersion.value) match {
+        case Some((2, v)) if v <= 12 =>
+          Seq(
+            compilerPlugin(("org.scalamacros" % "paradise" % "2.1.1").cross(CrossVersion.full))
+          )
+        case _ =>
+          Nil
+      }
+    },
   )
   .enablePlugins(JmhPlugin)
   .dependsOn(io, benchmarkMacros)
