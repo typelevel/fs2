@@ -6,7 +6,15 @@ import cats.implicits._
 import java.io.{InputStream, OutputStream}
 import scala.concurrent.{ExecutionContext, blocking}
 
-/** Provides various ways to work with streams that perform IO. */
+/**
+  * Provides various ways to work with streams that perform IO.
+  *
+  * These methods accept a blocking `ExecutionContext`, as the underlying
+  * implementations perform blocking IO. The recommendation is to use an
+  * unbounded thread pool with application level bounds.
+  *
+  * @see [[https://typelevel.org/cats-effect/concurrency/basics.html#blocking-threads]]
+  */
 package object io {
 
   /**

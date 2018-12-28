@@ -180,15 +180,7 @@ object Pull extends PullLowPriority {
     r => using(r).flatMap { _.map(loop(using)).getOrElse(Pull.pure(None)) }
 
   private def mapOutput[F[_], O, O2, R](p: Pull[F, O, R])(f: O => O2): Pull[F, O2, R] =
-    Pull.fromFreeC(
-      p.get[F, O, R]
-        .translate(new (Algebra[F, O, ?] ~> Algebra[F, O2, ?]) {
-          def apply[X](in: Algebra[F, O, X]): Algebra[F, O2, X] = in match {
-            case o: Algebra.Output[F, O] => Algebra.Output(o.values.map(f))
-            case other                   => other.asInstanceOf[Algebra[F, O2, X]]
-          }
-        })
-    )
+    Pull.fromFreeC(p.get[F, O, R].translate(Algebra.mapOutput(f)))
 
   /** Outputs a single value. */
   def output1[F[x] >: Pure[x], O](o: O): Pull[F, O, Unit] =
@@ -236,7 +228,7 @@ object Pull extends PullLowPriority {
     fromFreeC(Algebra.suspend(p.get))
 
   private def release[F[x] >: Pure[x]](token: Token): Pull[F, INothing, Unit] =
-    fromFreeC(Algebra.release[F, INothing](token, None))
+    fromFreeC(Algebra.release[F, INothing](token))
 
   /** `Sync` instance for `Pull`. */
   implicit def syncInstance[F[_], O](

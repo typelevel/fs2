@@ -219,7 +219,10 @@ lazy val mimaSettings = Seq(
     ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.tcp.Socket.client"),
     ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.tcp.Socket.server"),
     ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.tcp.Socket.mkSocket"),
-    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.udp.Socket.mkSocket")
+    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.udp.Socket.mkSocket"),
+    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Pipe.joinQueued"),
+    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Pipe.joinAsync"),
+    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Stream.bracketFinalizer")
   )
 )
 
@@ -351,7 +354,6 @@ lazy val microsite = project
   .enablePlugins(MicrositesPlugin)
   .settings(commonSettings)
   .settings(
-    tutSourceDirectory := file("site") / "src",
     micrositeName := "fs2",
     micrositeDescription := "fs2 - Functional Streams for Scala",
     micrositeGithubOwner := "functional-streams-for-scala",

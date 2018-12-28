@@ -73,6 +73,7 @@ Stream(None,Some(2),Some(3)).collect { case Some(i) => i }.toList
 Stream.range(0,5).intersperse(42).toList
 Stream(1,2,3).flatMap(i => Stream(i,i)).toList
 Stream(1,2,3).repeat.take(9).toList
+Stream(1,2,3).repeatN(2).toList
 ```
 
 Of these, only `flatMap` is primitive, the rest are built using combinations of various other primitives. We'll take a look at how that works shortly.
