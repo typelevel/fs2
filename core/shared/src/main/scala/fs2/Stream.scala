@@ -3828,7 +3828,7 @@ object Stream extends StreamLowPriority {
       *
       * @example {{{
       * scala> import cats.effect.IO
-      * scala> Stream.range(0,100).take(5).covary[IO].compile.to[List].unsafeRunSync
+      * scala> Stream.range(0,100).take(5).covary[IO].compile.toList.unsafeRunSync
       * res0: List[Int] = List(0, 1, 2, 3, 4)
       * }}}
       */
