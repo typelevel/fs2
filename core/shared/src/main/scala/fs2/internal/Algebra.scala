@@ -21,10 +21,10 @@ private[fs2] object Algebra {
 
   private[this] final case class Output[F[_], O](values: Chunk[O]) extends Algebra[F, O, Unit]
 
-  private[this] final case class Step[F[_], X, O](
+  private[this] final case class Step[F[_], X](
       stream: FreeC[Algebra[F, X, ?], Unit],
       scope: Option[Token]
-  ) extends Algebra[F, O, Option[(Chunk[X], Token, FreeC[Algebra[F, X, ?], Unit])]]
+  ) extends Algebra[F, INothing, Option[(Chunk[X], Token, FreeC[Algebra[F, X, ?], Unit])]]
 
   /* The `AlgEffect` trait is for operations on the `F` effect that create no `O` output.
    * They are related to resources and scopes. */
@@ -89,7 +89,7 @@ private[fs2] object Algebra {
   ): FreeC[Algebra[F, X, ?], Option[(Chunk[O], Token, FreeC[Algebra[F, O, ?], Unit])]] =
     FreeC
       .Eval[Algebra[F, X, ?], Option[(Chunk[O], Token, FreeC[Algebra[F, O, ?], Unit])]](
-        Step[F, O, X](stream, scopeId))
+        Step[F, O](stream, scopeId))
 
   def stepLeg[F[_], O](
       leg: Stream.StepLeg[F, O]): FreeC[Algebra[F, Nothing, ?], Option[Stream.StepLeg[F, O]]] =
@@ -254,7 +254,7 @@ private[fs2] object Algebra {
                 F.pure(Out(output.values, scope, view.next(FreeC.Result.Pure(()))))
               )
 
-            case u: Step[F, y, X] =>
+            case u: Step[F, y] =>
               // if scope was specified in step, try to find it, otherwise use the current scope.
               F.flatMap(u.scope.fold[F[Option[CompileScope[F]]]](F.pure(Some(scope))) { scopeId =>
                 scope.findStepScope(scopeId)
@@ -449,10 +449,10 @@ private[fs2] object Algebra {
               case r @ Result.Interrupted(_, _) => translateStep(fK, view.next(r), concurrent)
             }
 
-          case step: Step[F, x, X] =>
+          case step: Step[F, x] =>
             FreeC
               .Eval[Algebra[G, X, ?], Option[(Chunk[x], Token, FreeC[Algebra[G, x, ?], Unit])]](
-                Step[G, x, X](
+                Step[G, x](
                   stream = translateStep[F, G, x](fK, step.stream, concurrent),
                   scope = step.scope
                 ))
@@ -491,10 +491,10 @@ private[fs2] object Algebra {
               translate0(fK, view.next(r), concurrent)
             }
 
-          case step: Step[F, x, O] =>
+          case step: Step[F, x] =>
             FreeC
               .Eval[Algebra[G, O, ?], Option[(Chunk[x], Token, FreeC[Algebra[G, x, ?], Unit])]](
-                Step[G, x, O](
+                Step[G, x](
                   stream = translateStep[F, G, x](fK, step.stream, concurrent),
                   scope = step.scope
                 ))
