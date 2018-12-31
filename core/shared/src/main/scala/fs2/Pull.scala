@@ -192,7 +192,7 @@ object Pull extends PullLowPriority {
 
   /** Pull that outputs nothing and has result of `r`. */
   def pure[F[x] >: Pure[x], R](r: R): Pull[F, INothing, R] =
-    fromFreeC(Algebra.pure(r))
+    fromFreeC(Algebra.pure[F, INothing, R](r))
 
   /**
     * Reads and outputs nothing, and fails with the given error.
@@ -228,7 +228,7 @@ object Pull extends PullLowPriority {
     fromFreeC(Algebra.suspend(p.get))
 
   private def release[F[x] >: Pure[x]](token: Token): Pull[F, INothing, Unit] =
-    fromFreeC[F, INothing, Unit](Algebra.release(token))
+    fromFreeC(Algebra.release[F, INothing](token))
 
   /** `Sync` instance for `Pull`. */
   implicit def syncInstance[F[_], O](

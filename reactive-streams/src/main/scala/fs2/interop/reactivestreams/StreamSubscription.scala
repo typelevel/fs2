@@ -68,9 +68,9 @@ private[reactivestreams] final class StreamSubscription[F[_], A](
     cancelled.set(true).toIO.unsafeRunSync
 
   def request(n: Long): Unit = {
-    val request =
-      if (n == java.lang.Long.MAX_VALUE) Infinite.pure[F]
-      else if (n > 0) Finite(n).pure[F]
+    val request: F[Request] =
+      if (n == java.lang.Long.MAX_VALUE) (Infinite: Request).pure[F]
+      else if (n > 0) (Finite(n): Request).pure[F]
       else F.raiseError(new IllegalArgumentException(s"3.9 - invalid number of elements [$n]"))
 
     val prog = cancelled.get

@@ -206,7 +206,7 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
         val b2 = f1.get
         swallow { runLog { b1.merge(b2) } }
         swallow { runLog { b2.merge(b1) } }
-        eventually(Timeout(3 seconds)) { c.get shouldBe 0L }
+        eventually(Timeout(3.seconds)) { c.get shouldBe 0L }
       }
     }
 
@@ -221,7 +221,7 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
       // `b1` has just caught `s1` error when `s2` fails
       // `b1` fully completes before `s2` fails
       swallow { runLog { b1.merge(b2) } }
-      eventually(Timeout(3 seconds)) { c.get shouldBe 0L }
+      eventually(Timeout(3.seconds)) { c.get shouldBe 0L }
     }
 
     "asynchronous resource allocation (2b)" in {
@@ -232,7 +232,7 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
         swallow { runLog { spuriousFail(b1, f1).merge(b2) } }
         swallow { runLog { b1.merge(spuriousFail(b2, f2)) } }
         swallow { runLog { spuriousFail(b1, f1).merge(spuriousFail(b2, f2)) } }
-        eventually(Timeout(3 seconds)) { c.get shouldBe 0L }
+        eventually(Timeout(3.seconds)) { c.get shouldBe 0L }
       }
     }
 
@@ -253,9 +253,9 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
           })
           swallow { runLog { s2.parJoin(n.get).take(10) } }
           swallow { runLog { s2.parJoin(n.get) } }
-          eventually(Timeout(3 seconds)) { outer.get shouldBe 0L }
+          eventually(Timeout(3.seconds)) { outer.get shouldBe 0L }
           outer.get shouldBe 0L
-          eventually(Timeout(3 seconds)) { inner.get shouldBe 0L }
+          eventually(Timeout(3.seconds)) { inner.get shouldBe 0L }
       }
     }
 
@@ -268,7 +268,7 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
       swallow { runLog { s2.prefetch } }
       swallow { runLog { s2.prefetch.prefetch } }
       swallow { runLog { s2.prefetch.prefetch.prefetch } }
-      eventually(Timeout(3 seconds)) { c.get shouldBe 0L }
+      eventually(Timeout(3.seconds)) { c.get shouldBe 0L }
     }
 
     "asynchronous resource allocation (5)" in {
@@ -289,7 +289,7 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
               .start
           }
         }
-        eventually(Timeout(3 seconds)) { c.get shouldBe 0L }
+        eventually(Timeout(3.seconds)) { c.get shouldBe 0L }
       }
     }
 
@@ -316,7 +316,7 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
         }
       }
       // required longer delay here due to the sleep of 2s
-      eventually(Timeout(5 second)) { c.get shouldBe 0L }
+      eventually(Timeout(5.seconds)) { c.get shouldBe 0L }
     }
 
     "evaluating a bracketed stream multiple times is safe" in {
@@ -353,9 +353,9 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
       val s2 = Stream.bracket(IO("a"))(_ => IO.raiseError(new Err))
 
       val r1 = s1.zip(s2).compile.drain.attempt.unsafeRunSync()
-      r1.left.get shouldBe an[Err]
+      r1.fold(identity, r => fail(s"expected left but got Right($r)")) shouldBe an[Err]
       val r2 = s2.zip(s1).compile.drain.attempt.unsafeRunSync()
-      r2.left.get shouldBe an[Err]
+      r2.fold(identity, r => fail(s"expected left but got Right($r)")) shouldBe an[Err]
     }
 
     def bracket[A](c: AtomicLong)(s: Stream[IO, A]): Stream[IO, A] =

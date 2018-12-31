@@ -536,9 +536,10 @@ object Chunk {
 
   /** Creates a chunk backed by a `Seq`. */
   def seq[O](s: Seq[O]): Chunk[O] = s match {
-    case a: collection.mutable.WrappedArray[O] => array[O](a.array)
-    case v: Vector[O]                          => vector(v)
-    case ix: IndexedSeq[O]                     => indexedSeq(ix)
+    case a: collection.mutable.WrappedArray[O] =>
+      array(a.array.asInstanceOf[Array[O]])
+    case v: Vector[O]      => vector(v)
+    case ix: IndexedSeq[O] => indexedSeq(ix)
     case _ =>
       if (s.isEmpty) empty
       else if (s.tail.isEmpty) singleton(s.head)
@@ -916,7 +917,7 @@ object Chunk {
       view(buf.duplicate().asReadOnlyBuffer)
 
     def view(buf: JFloatBuffer): FloatBuffer =
-      new FloatBuffer(buf, (buf: JBuffer).position, buf.remaining)
+      new FloatBuffer(buf, buf.position, buf.remaining)
   }
 
   final case class FloatBuffer(buf: JFloatBuffer, override val offset: Int, override val size: Int)
@@ -944,7 +945,7 @@ object Chunk {
       view(buf.duplicate().asReadOnlyBuffer)
 
     def view(buf: JIntBuffer): IntBuffer =
-      new IntBuffer(buf, (buf: JBuffer).position, buf.remaining)
+      new IntBuffer(buf, buf.position, buf.remaining)
   }
 
   final case class IntBuffer(buf: JIntBuffer, override val offset: Int, override val size: Int)
@@ -987,7 +988,7 @@ object Chunk {
       view(buf.duplicate().asReadOnlyBuffer)
 
     def view(buf: JCharBuffer): CharBuffer =
-      new CharBuffer(buf, (buf: JBuffer).position, buf.remaining)
+      new CharBuffer(buf, buf.position, buf.remaining)
   }
 
   final case class CharBuffer(buf: JCharBuffer, override val offset: Int, override val size: Int)

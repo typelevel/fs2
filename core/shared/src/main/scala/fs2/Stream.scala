@@ -10,7 +10,7 @@ import fs2.concurrent._
 import fs2.internal.FreeC.Result
 import fs2.internal._
 
-import scala.collection.generic.CanBuildFrom
+import scala.collection.compat._
 import scala.concurrent.duration._
 
 /**
@@ -1035,7 +1035,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
               else {
                 f(hd(idx)).get.transformWith {
                   case Result.Pure(_)   => go(idx + 1)
-                  case Result.Fail(err) => Algebra.raiseError(err)
+                  case Result.Fail(err) => Algebra.raiseError[F2, O2, Unit](err)
                   case Result.Interrupted(scopeId: Token, err) =>
                     Stream.fromFreeC(Algebra.interruptBoundary(tl, scopeId, err)).flatMap(f).get
                   case Result.Interrupted(invalid, err) =>
@@ -1739,7 +1739,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * }}}
     */
   def onComplete[F2[x] >: F[x], O2 >: O](s2: => Stream[F2, O2]): Stream[F2, O2] =
-    handleErrorWith(e => s2 ++ Stream.fromFreeC(Algebra.raiseError(e))) ++ s2
+    handleErrorWith(e => s2 ++ Stream.fromFreeC(Algebra.raiseError[F2, O2, Unit](e))) ++ s2
 
   /**
     * Run the supplied effectful action at the end of this stream, regardless of how the stream terminates.
@@ -2748,7 +2748,8 @@ object Stream extends StreamLowPriority {
   def bracketCaseCancellable[F[x] >: Pure[x], R](acquire: F[R])(
       release: (R, ExitCase[Throwable]) => F[Unit]): Stream[F, (Stream[F, Unit], R)] =
     bracketWithToken(acquire)(release).map {
-      case (token, r) => (Stream.fromFreeC(Algebra.release(token)) ++ Stream.emit(()), r)
+      case (token, r) =>
+        (Stream.fromFreeC(Algebra.release[F, Unit](token)) ++ Stream.emit(()), r)
     }
 
   private[fs2] def bracketWithToken[F[x] >: Pure[x], R](acquire: F[R])(
@@ -2999,7 +3000,7 @@ object Stream extends StreamLowPriority {
     * }}}
     */
   def raiseError[F[_]: RaiseThrowable](e: Throwable): Stream[F, INothing] =
-    fromFreeC(Algebra.raiseError(e))
+    fromFreeC(Algebra.raiseError[F, INothing, INothing](e))
 
   /**
     * Creates a random stream of integers using a random seed.
@@ -3314,7 +3315,7 @@ object Stream extends StreamLowPriority {
     def covary[F[_]]: Stream[F, O] = self
 
     /** Runs this pure stream and returns the emitted elements in a collection of the specified type. Note: this method is only available on pure streams. */
-    def to[C[_]](implicit cbf: CanBuildFrom[Nothing, O, C[O]]): C[O] =
+    def to[C[_]](implicit f: Factory[O, C[O]]): C[O] =
       self.covary[IO].compile.to[C].unsafeRunSync
 
     /** Runs this pure stream and returns the emitted elements in a chunk. Note: this method is only available on pure streams. */
@@ -3359,7 +3360,7 @@ object Stream extends StreamLowPriority {
     }
 
     /** Runs this fallible stream and returns the emitted elements in a collection of the specified type. Note: this method is only available on fallible streams. */
-    def to[C[_]](implicit cbf: CanBuildFrom[Nothing, O, C[O]]): Either[Throwable, C[O]] =
+    def to[C[_]](implicit f: Factory[O, C[O]]): Either[Throwable, C[O]] =
       lift[IO].compile.to[C].attempt.unsafeRunSync
 
     /** Runs this fallible stream and returns the emitted elements in a chunk. Note: this method is only available on fallible streams. */
@@ -3820,19 +3821,19 @@ object Stream extends StreamLowPriority {
 
     /**
       * Compiles this stream into a value of the target effect type `F` by logging
-      * the output values to a `C`, given a `CanBuildFrom`.
+      * the output values to a `C`, given a `Factory`.
       *
       * When this method has returned, the stream has not begun execution -- this method simply
       * compiles the stream down to the target effect type.
       *
       * @example {{{
       * scala> import cats.effect.IO
-      * scala> Stream.range(0,100).take(5).covary[IO].compile.to[List].unsafeRunSync
+      * scala> Stream.range(0,100).take(5).covary[IO].compile.toList.unsafeRunSync
       * res0: List[Int] = List(0, 1, 2, 3, 4)
       * }}}
       */
-    def to[C[_]](implicit cbf: CanBuildFrom[Nothing, O, C[O]]): G[C[O]] =
-      compiler(self, Eval.always(cbf()))(_ ++= _.iterator, _.result)
+    def to[C[_]](implicit f: Factory[O, C[O]]): G[C[O]] =
+      compiler(self, Eval.always(f.newBuilder))(_ ++= _.iterator, _.result)
 
     /**
       * Compiles this stream in to a value of the target effect type `F` by logging
