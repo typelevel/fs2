@@ -32,7 +32,7 @@ class ConcurrentlySpec extends Fs2Spec with EventuallySupport {
         val bg = Stream.repeatEval(IO(1)).onFinalize(IO { bgDone = true })
         val prg = (Stream.sleep_[IO](25.millis) ++ f.get).concurrently(bg)
         an[Err] should be thrownBy runLog(prg)
-        eventually(Timeout(3 seconds)) { bgDone shouldBe true }
+        eventually(Timeout(3.seconds)) { bgDone shouldBe true }
     }
 
     "when primary stream termiantes, background stream is terminated" in forAll {

@@ -42,7 +42,7 @@ class PullSpec extends Fs2Spec {
       either match {
         case Left(_) ⇒ pull.stream.compile.toList.attempt.unsafeRunSync() shouldBe either
         case Right(_) ⇒
-          pull.stream.compile.toList.unsafeRunSync() shouldBe either.right.toSeq.toList
+          pull.stream.compile.toList.unsafeRunSync() shouldBe either.toList
       }
     }
 
