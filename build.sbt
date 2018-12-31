@@ -369,7 +369,7 @@ lazy val benchmark = project
         case _ =>
           Nil
       }
-    },
+    }
   )
   .enablePlugins(JmhPlugin)
   .dependsOn(io, benchmarkMacros)
