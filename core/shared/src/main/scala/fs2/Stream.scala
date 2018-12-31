@@ -3820,6 +3820,26 @@ object Stream extends StreamLowPriority {
       last.flatMap(_.fold(G.raiseError(new NoSuchElementException): G[O])(G.pure))
 
     /**
+      * Compiles this stream of strings in to a single string.
+      * This is more efficient than `foldMonoid` because it uses a `StringBuilder`
+      * internally, minimizing string creation.
+      *
+      * @example {{{
+      * scala> Stream("Hello ", "world!").compile.string
+      * res0: String = "Hello world!"
+      * }}}
+      */
+    def string(implicit ev: O <:< String): G[String] = {
+      val _ = ev
+      compiler(self.asInstanceOf[Stream[F, String]], new StringBuilder)((b, c) => {
+        c.foreach { s =>
+          b.append(s); ()
+        }
+        b
+      }, _.result)
+    }
+
+    /**
       * Compiles this stream into a value of the target effect type `F` by logging
       * the output values to a `C`, given a `Factory`.
       *
