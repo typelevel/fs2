@@ -3688,35 +3688,35 @@ object Stream extends StreamLowPriority {
 
   /** Type class which describes compilation of a `Stream[F, O]` to a `G[?]`. */
   sealed trait Compiler[F[_], G[_]] {
-    private[Stream] def apply[O, B, C](s: Stream[F, O], init: => B)(fold: (B, Chunk[O]) => B,
-                                                                    finalize: B => C): G[C]
+    private[Stream] def apply[O, B, C](s: Stream[F, O], init: () => B)(fold: (B, Chunk[O]) => B,
+                                                                       finalize: B => C): G[C]
   }
 
   object Compiler {
     implicit def syncInstance[F[_]](implicit F: Sync[F]): Compiler[F, F] = new Compiler[F, F] {
-      def apply[O, B, C](s: Stream[F, O], init: => B)(foldChunk: (B, Chunk[O]) => B,
-                                                      finalize: B => C): F[C] =
-        F.delay(init).flatMap(i => Algebra.compile(s.get, i)(foldChunk)).map(finalize)
+      def apply[O, B, C](s: Stream[F, O], init: () => B)(foldChunk: (B, Chunk[O]) => B,
+                                                         finalize: B => C): F[C] =
+        F.delay(init()).flatMap(i => Algebra.compile(s.get, i)(foldChunk)).map(finalize)
     }
 
     implicit val pureInstance: Compiler[Pure, Id] = new Compiler[Pure, Id] {
-      def apply[O, B, C](s: Stream[Pure, O], init: => B)(foldChunk: (B, Chunk[O]) => B,
-                                                         finalize: B => C): C =
-        finalize(Algebra.compile(s.covary[IO].get, init)(foldChunk).unsafeRunSync)
+      def apply[O, B, C](s: Stream[Pure, O], init: () => B)(foldChunk: (B, Chunk[O]) => B,
+                                                            finalize: B => C): C =
+        finalize(Algebra.compile(s.covary[IO].get, init())(foldChunk).unsafeRunSync)
     }
 
     implicit val idInstance: Compiler[Id, Id] = new Compiler[Id, Id] {
-      def apply[O, B, C](s: Stream[Id, O], init: => B)(foldChunk: (B, Chunk[O]) => B,
-                                                       finalize: B => C): C =
-        finalize(Algebra.compile(s.covaryId[IO].get, init)(foldChunk).unsafeRunSync)
+      def apply[O, B, C](s: Stream[Id, O], init: () => B)(foldChunk: (B, Chunk[O]) => B,
+                                                          finalize: B => C): C =
+        finalize(Algebra.compile(s.covaryId[IO].get, init())(foldChunk).unsafeRunSync)
     }
 
     implicit val fallibleInstance: Compiler[Fallible, Either[Throwable, ?]] =
       new Compiler[Fallible, Either[Throwable, ?]] {
-        def apply[O, B, C](s: Stream[Fallible, O], init: => B)(
+        def apply[O, B, C](s: Stream[Fallible, O], init: () => B)(
             foldChunk: (B, Chunk[O]) => B,
             finalize: B => C): Either[Throwable, C] =
-          Algebra.compile(s.lift[IO].get, init)(foldChunk).attempt.unsafeRunSync.map(finalize)
+          Algebra.compile(s.lift[IO].get, init())(foldChunk).attempt.unsafeRunSync.map(finalize)
       }
   }
 
@@ -3754,7 +3754,7 @@ object Stream extends StreamLowPriority {
       * compiles the stream down to the target effect type.
       */
     def foldChunks[B](init: B)(f: (B, Chunk[O]) => B): G[B] =
-      compiler(self, init)(f, identity)
+      compiler(self, () => init)(f, identity)
 
     /**
       * Like [[fold]] but uses the implicitly available `Monoid[O]` to combine elements.
@@ -3826,12 +3826,12 @@ object Stream extends StreamLowPriority {
       *
       * @example {{{
       * scala> Stream("Hello ", "world!").compile.string
-      * res0: String = "Hello world!"
+      * res0: String = Hello world!
       * }}}
       */
     def string(implicit ev: O <:< String): G[String] = {
       val _ = ev
-      compiler(self.asInstanceOf[Stream[F, String]], new StringBuilder)((b, c) => {
+      compiler(self.asInstanceOf[Stream[F, String]], () => new StringBuilder)((b, c) => {
         c.foreach { s =>
           b.append(s); ()
         }
@@ -3853,7 +3853,7 @@ object Stream extends StreamLowPriority {
       * }}}
       */
     def to[C[_]](implicit f: Factory[O, C[O]]): G[C[O]] =
-      compiler(self, f.newBuilder)(_ ++= _.iterator, _.result)
+      compiler(self, () => f.newBuilder)(_ ++= _.iterator, _.result)
 
     /**
       * Compiles this stream in to a value of the target effect type `F` by logging
@@ -3869,7 +3869,7 @@ object Stream extends StreamLowPriority {
       * }}}
       */
     def toChunk: G[Chunk[O]] =
-      compiler(self, List.newBuilder[Chunk[O]])(_ += _, bldr => Chunk.concat(bldr.result))
+      compiler(self, () => List.newBuilder[Chunk[O]])(_ += _, bldr => Chunk.concat(bldr.result))
 
     /**
       * Compiles this stream in to a value of the target effect type `F` by logging
