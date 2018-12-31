@@ -435,13 +435,7 @@ private[fs2] object Algebra {
         case interrupted: FreeC.Result.Interrupted[Algebra[F, X, ?], _, Unit] =>
           FreeC.interrupted(interrupted.context, interrupted.deferredError)
 
-        case view: ViewL.View[Algebra[F, X, ?], y, Unit] => {
-          def evalCont[Q](alg: Algebra[G, X, Q]): FreeC[Algebra[G, X, ?], Unit] =
-            FreeC
-              .Eval[Algebra[G, X, ?], Q](alg)
-              .transformWith(res =>
-                translateStep(view.next(res.asInstanceOf[Result[y]]), isMainLevel))
-
+        case view: ViewL.View[Algebra[F, X, ?], y, Unit] =>
           view.step match {
             case output: Output[F, X] =>
               Algebra.output[G, X](output.values).transformWith {
@@ -460,34 +454,42 @@ private[fs2] object Algebra {
               }
 
             case step: Step[F, x] =>
-              evalCont[Option[(Chunk[x], Token, FreeC[Algebra[G, x, ?], Unit])]] {
-                Step[G, x](
-                  stream = translateStep[x](step.stream, false),
-                  scope = step.scope
-                )
-              }
+              FreeC
+                .Eval[Algebra[G, X, ?], Option[(Chunk[x], Token, FreeC[Algebra[G, x, ?], Unit])]](
+                  Step[G, x](
+                    stream = translateStep[x](step.stream, false),
+                    scope = step.scope
+                  ))
+                .transformWith { r =>
+                  translateStep[X](view.next(r.asInstanceOf[Result[y]]), isMainLevel)
+                }
 
-            case alg: AlgEffect[F, res] => {
-              def translateAlgEffect[R](self: AlgEffect[F, R]): AlgEffect[G, R] = self match {
-                // safe to cast, used in translate only
-                // if interruption has to be supported concurrent for G has to be passed
-                case a: Acquire[F, r] =>
-                  Acquire[G, r](fK(a.resource), (r, ec) => fK(a.release(r, ec)))
-                    .asInstanceOf[AlgEffect[G, R]]
-                case e: Eval[F, R]    => Eval[G, R](fK(e.value))
-                case o: OpenScope[F]  => OpenScope[G](concurrent).asInstanceOf[AlgEffect[G, R]]
-                case r: Release[F]    => r.asInstanceOf[AlgEffect[G, R]]
-                case c: CloseScope[F] => c.asInstanceOf[AlgEffect[G, R]]
-                case g: GetScope[F]   => g.asInstanceOf[AlgEffect[G, R]]
-              }
-              evalCont[res](translateAlgEffect(alg))
-            }
+            case alg: AlgEffect[F, r] =>
+              FreeC
+                .Eval[Algebra[G, X, ?], r](translateAlgEffect(alg, concurrent, fK))
+                .transformWith(r => translateStep(view.next(r), isMainLevel))
 
           }
-        }
       }
 
     translateStep[O](stream, true)
+  }
+
+  private[this] def translateAlgEffect[F[_], G[_], R](
+      self: AlgEffect[F, R],
+      concurrent: Option[Concurrent[G]],
+      fK: F ~> G
+  ): AlgEffect[G, R] = self match {
+    // safe to cast, used in translate only
+    // if interruption has to be supported concurrent for G has to be passed
+    case a: Acquire[F, r] =>
+      Acquire[G, r](fK(a.resource), (r, ec) => fK(a.release(r, ec)))
+        .asInstanceOf[AlgEffect[G, R]]
+    case e: Eval[F, R]    => Eval[G, R](fK(e.value))
+    case o: OpenScope[F]  => OpenScope[G](concurrent).asInstanceOf[AlgEffect[G, R]]
+    case r: Release[F]    => r.asInstanceOf[AlgEffect[G, R]]
+    case c: CloseScope[F] => c.asInstanceOf[AlgEffect[G, R]]
+    case g: GetScope[F]   => g.asInstanceOf[AlgEffect[G, R]]
   }
 
 }
