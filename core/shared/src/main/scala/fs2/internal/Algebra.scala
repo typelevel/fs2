@@ -228,10 +228,10 @@ private[fs2] object Algebra {
         case _: FreeC.Result.Pure[Algebra[F, X, ?], Unit] =>
           F.pure(Done(scope))
 
-        case failed: FreeC.Result.Fail[Algebra[F, X, ?], Unit] =>
+        case failed: FreeC.Result.Fail[Algebra[F, X, ?]] =>
           F.raiseError(failed.error)
 
-        case interrupted: FreeC.Result.Interrupted[Algebra[F, X, ?], _, Unit] =>
+        case interrupted: FreeC.Result.Interrupted[Algebra[F, X, ?], _] =>
           interrupted.context match {
             case scopeId: Token => F.pure(Interrupted(scopeId, interrupted.deferredError))
             case other          => sys.error(s"Unexpected interruption context: $other (compileLoop)")
@@ -394,12 +394,12 @@ private[fs2] object Algebra {
     stream.viewL match {
       case _: FreeC.Result.Pure[Algebra[F, O, ?], Unit] =>
         FreeC.interrupted(interruptedScope, interruptedError)
-      case failed: FreeC.Result.Fail[Algebra[F, O, ?], Unit] =>
+      case failed: FreeC.Result.Fail[Algebra[F, O, ?]] =>
         Algebra.raiseError(
           CompositeFailure
             .fromList(interruptedError.toList :+ failed.error)
             .getOrElse(failed.error))
-      case interrupted: FreeC.Result.Interrupted[Algebra[F, O, ?], _, Unit] =>
+      case interrupted: FreeC.Result.Interrupted[Algebra[F, O, ?], _] =>
         // impossible
         FreeC.interrupted(interrupted.context, interrupted.deferredError)
 
@@ -429,10 +429,10 @@ private[fs2] object Algebra {
         case _: FreeC.Result.Pure[Algebra[F, X, ?], Unit] =>
           FreeC.pure[Algebra[G, X, ?], Unit](())
 
-        case failed: FreeC.Result.Fail[Algebra[F, X, ?], Unit] =>
+        case failed: FreeC.Result.Fail[Algebra[F, X, ?]] =>
           Algebra.raiseError(failed.error)
 
-        case interrupted: FreeC.Result.Interrupted[Algebra[F, X, ?], _, Unit] =>
+        case interrupted: FreeC.Result.Interrupted[Algebra[F, X, ?], _] =>
           FreeC.interrupted(interrupted.context, interrupted.deferredError)
 
         case view: ViewL.View[Algebra[F, X, ?], y, Unit] =>
