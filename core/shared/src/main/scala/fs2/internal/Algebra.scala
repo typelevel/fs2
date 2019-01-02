@@ -417,99 +417,63 @@ private[fs2] object Algebra {
 
     }
 
-  private def translateStep[F[_], G[_], X](
-      fK: F ~> G,
-      next: FreeC[Algebra[F, X, ?], Unit],
-      concurrent: Option[Concurrent[G]]
-  ): FreeC[Algebra[G, X, ?], Unit] =
-    next.viewL match {
-      case _: FreeC.Result.Pure[Algebra[F, X, ?], Unit] =>
-        FreeC.pure[Algebra[G, X, ?], Unit](())
-
-      case failed: FreeC.Result.Fail[Algebra[F, X, ?], Unit] =>
-        Algebra.raiseError(failed.error)
-
-      case interrupted: FreeC.Result.Interrupted[Algebra[F, X, ?], _, Unit] =>
-        FreeC.interrupted(interrupted.context, interrupted.deferredError)
-
-      case view: ViewL.View[Algebra[F, X, ?], y, Unit] =>
-        view.step match {
-          case output: Output[F, X] =>
-            Algebra.output[G, X](output.values).transformWith {
-              case r @ Result.Pure(v) =>
-                // Cast is safe here, as at this point the evaluation of this Step will end
-                // and the remainder of the free will be passed as a result in Bind. As such
-                // next Step will have this to evaluate, and will try to translate again.
-                view
-                  .next(r)
-                  .asInstanceOf[FreeC[Algebra[G, X, ?], Unit]]
-
-              case r @ Result.Fail(err) => translateStep(fK, view.next(r), concurrent)
-
-              case r @ Result.Interrupted(_, _) => translateStep(fK, view.next(r), concurrent)
-            }
-
-          case step: Step[F, x] =>
-            FreeC
-              .Eval[Algebra[G, X, ?], Option[(Chunk[x], Token, FreeC[Algebra[G, x, ?], Unit])]](
-                Step[G, x](
-                  stream = translateStep[F, G, x](fK, step.stream, concurrent),
-                  scope = step.scope
-                ))
-              .transformWith { r =>
-                translateStep[F, G, X](fK, view.next(r.asInstanceOf[Result[y]]), concurrent)
-              }
-
-          case alg: AlgEffect[F, r] =>
-            FreeC
-              .Eval[Algebra[G, X, ?], r](translateAlgEffect(alg, concurrent, fK))
-              .transformWith(r => translateStep(fK, view.next(r), concurrent))
-
-        }
-
-    }
-
   private def translate0[F[_], G[_], O](
       fK: F ~> G,
-      s: FreeC[Algebra[F, O, ?], Unit],
+      stream: FreeC[Algebra[F, O, ?], Unit],
       concurrent: Option[Concurrent[G]]
-  ): FreeC[Algebra[G, O, ?], Unit] =
-    s.viewL match {
-      case _: FreeC.Result.Pure[Algebra[F, O, ?], Unit] =>
-        FreeC.pure[Algebra[G, O, ?], Unit](())
+  ): FreeC[Algebra[G, O, ?], Unit] = {
 
-      case failed: FreeC.Result.Fail[Algebra[F, O, ?], Unit] =>
-        Algebra.raiseError(failed.error)
+    def translateStep[X](next: FreeC[Algebra[F, X, ?], Unit],
+                         isMainLevel: Boolean): FreeC[Algebra[G, X, ?], Unit] =
+      next.viewL match {
+        case _: FreeC.Result.Pure[Algebra[F, X, ?], Unit] =>
+          FreeC.pure[Algebra[G, X, ?], Unit](())
 
-      case interrupted: FreeC.Result.Interrupted[Algebra[F, O, ?], _, Unit] =>
-        FreeC.interrupted(interrupted.context, interrupted.deferredError)
+        case failed: FreeC.Result.Fail[Algebra[F, X, ?], Unit] =>
+          Algebra.raiseError(failed.error)
 
-      case view: ViewL.View[Algebra[F, O, ?], y, Unit] =>
-        view.step match {
-          case output: Output[F, O] =>
-            Algebra.output[G, O](output.values).transformWith { r =>
-              translate0(fK, view.next(r), concurrent)
-            }
+        case interrupted: FreeC.Result.Interrupted[Algebra[F, X, ?], _, Unit] =>
+          FreeC.interrupted(interrupted.context, interrupted.deferredError)
 
-          case step: Step[F, x] =>
-            FreeC
-              .Eval[Algebra[G, O, ?], Option[(Chunk[x], Token, FreeC[Algebra[G, x, ?], Unit])]](
-                Step[G, x](
-                  stream = translateStep[F, G, x](fK, step.stream, concurrent),
-                  scope = step.scope
-                ))
-              .transformWith { r =>
-                translate0(fK, view.next(r.asInstanceOf[Result[y]]), concurrent)
+        case view: ViewL.View[Algebra[F, X, ?], y, Unit] =>
+          view.step match {
+            case output: Output[F, X] =>
+              Algebra.output[G, X](output.values).transformWith {
+                case r @ Result.Pure(v) if isMainLevel =>
+                  translateStep(view.next(r), isMainLevel)
+
+                case r @ Result.Pure(v) if !isMainLevel =>
+                  // Cast is safe here, as at this point the evaluation of this Step will end
+                  // and the remainder of the free will be passed as a result in Bind. As such
+                  // next Step will have this to evaluate, and will try to translate again.
+                  view.next(r).asInstanceOf[FreeC[Algebra[G, X, ?], Unit]]
+
+                case r @ Result.Fail(err) => translateStep(view.next(r), isMainLevel)
+
+                case r @ Result.Interrupted(_, _) => translateStep(view.next(r), isMainLevel)
               }
 
-          case alg: AlgEffect[F, r] =>
-            FreeC
-              .Eval[Algebra[G, O, ?], r](translateAlgEffect(alg, concurrent, fK))
-              .transformWith(r => translate0(fK, view.next(r), concurrent))
+            case step: Step[F, x] =>
+              FreeC
+                .Eval[Algebra[G, X, ?], Option[(Chunk[x], Token, FreeC[Algebra[G, x, ?], Unit])]](
+                  Step[G, x](
+                    stream = translateStep[x](step.stream, false),
+                    scope = step.scope
+                  ))
+                .transformWith { r =>
+                  translateStep[X](view.next(r.asInstanceOf[Result[y]]), isMainLevel)
+                }
 
-        }
+            case alg: AlgEffect[F, r] =>
+              FreeC
+                .Eval[Algebra[G, X, ?], r](translateAlgEffect(alg, concurrent, fK))
+                .transformWith(r => translateStep(view.next(r), isMainLevel))
 
-    }
+          }
+      }
+
+    translateStep[O](stream, true)
+  }
 
   private[this] def translateAlgEffect[F[_], G[_], R](
       self: AlgEffect[F, R],
