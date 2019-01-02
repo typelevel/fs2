@@ -624,7 +624,7 @@ class PipeSpec extends Fs2Spec {
     "handle multiple consecutive observations" in {
       forAll { (s: PureStream[Int], f: Failure) =>
         runLog {
-          val sink: Sink[IO, Int] = _.evalMap(i => IO(()))
+          val sink: Pipe[IO, Int, Unit] = _.evalMap(i => IO(()))
           val src: Stream[IO, Int] = s.get.covary[IO]
           src.observe(sink).observe(sink)
         } shouldBe s.get.toVector
@@ -634,7 +634,7 @@ class PipeSpec extends Fs2Spec {
       forAll { (s: PureStream[Int], f: Failure) =>
         swallow {
           runLog {
-            val sink: Sink[IO, Int] =
+            val sink: Pipe[IO, Int, Unit] =
               in => spuriousFail(in.evalMap(i => IO(i)), f).map(_ => ())
             val src: Stream[IO, Int] = spuriousFail(s.get.covary[IO], f)
             src.observe(sink).observe(sink)

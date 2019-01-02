@@ -57,10 +57,10 @@ sealed trait Socket[F[_]] {
   /**
     * Writes supplied packets to this udp socket.
     *
-    * If `timeout` is specified, then resulting sink will fail with `java.nio.channels.InterruptedByTimeoutException`
+    * If `timeout` is specified, then resulting pipe will fail with `java.nio.channels.InterruptedByTimeoutException`
     * if a write was not completed in given timeout.
     */
-  def writes(timeout: Option[FiniteDuration] = None): Sink[F, Packet]
+  def writes(timeout: Option[FiniteDuration] = None): Pipe[F, Packet, Unit]
 
   /** Returns the local address of this udp socket. */
   def localAddress: F[InetSocketAddress]
@@ -203,7 +203,7 @@ object Socket {
         def write(packet: Packet, timeout: Option[FiniteDuration]): F[Unit] =
           Y.asyncYield[Unit](cb => AG.write(ctx, packet, timeout, t => cb(t.toLeft(()))))
 
-        def writes(timeout: Option[FiniteDuration]): Sink[F, Packet] =
+        def writes(timeout: Option[FiniteDuration]): Pipe[F, Packet, Unit] =
           _.flatMap(p => Stream.eval(write(p, timeout)))
 
         def close: F[Unit] = F.delay { AG.close(ctx) }
