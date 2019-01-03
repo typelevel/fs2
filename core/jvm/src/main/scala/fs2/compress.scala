@@ -1,8 +1,5 @@
 package fs2
 
-import cats.effect.Sync
-import cats.syntax.all._
-
 import fs2.internal.AsyncByteArrayInputStream
 
 import java.io.ByteArrayOutputStream
@@ -127,49 +124,42 @@ object compress {
     *                   stream will result in performance degradation of
     *                   roughly 50-75%.
     */
-  def gzip[F[_]: Sync](bufferSize: Int): Pipe[F, Byte, Byte] = { in =>
-    for {
-      bos <- Stream.eval(Sync[F].delay(new ByteArrayOutputStream(bufferSize)))
-      gzos <- Stream.eval(Sync[F].delay(new GZIPOutputStream(bos, bufferSize, true)))
-
-      slurpBytes = Sync[F].delay {
-        val back = bos.toByteArray
-        bos.reset()
-        back
-      }
-
-      body = in.chunks.flatMap { chunk =>
-        Stream.evalUnChunk {
-          for {
-            _ <- Sync[F].delay {
-              chunk match {
-                case Chunk.Bytes(values, off, len) =>
-                  gzos.write(values, off, len)
-
-                case Chunk.ByteVectorChunk(bv) =>
-                  bv.copyToStream(gzos)
-
-                // TODO is there a better way of doing this?
-                case chunk =>
-                  val len = chunk.size
-                  val buf = new Array[Byte](len)
-
-                  chunk.copyToArray(buf, 0)
-                  gzos.write(buf)
-              }
-            }
-
-            _ <- Sync[F].delay(gzos.flush()) // eagerly flush on each chunk
-
-            arr <- slurpBytes
-          } yield Chunk.bytes(arr)
+  def gzip[F[_]](bufferSize: Int): Pipe[F, Byte, Byte] =
+    in =>
+      Stream.suspend {
+        val bos: ByteArrayOutputStream = new ByteArrayOutputStream(bufferSize)
+        val gzos: GZIPOutputStream = new GZIPOutputStream(bos, bufferSize, true)
+        def slurpBytes: Stream[F, Byte] = {
+          val back = bos.toByteArray
+          bos.reset()
+          Stream.chunk(Chunk.bytes(back))
         }
-      }
 
-      b <- body ++ Stream.eval_(Sync[F].delay(gzos.close())) ++ Stream.evalUnChunk(
-        slurpBytes.map(Chunk.bytes(_)))
-    } yield b
-  }
+        def processChunk(c: Chunk[Byte]): Unit = c match {
+          case Chunk.Bytes(values, off, len) =>
+            gzos.write(values, off, len)
+          case Chunk.ByteVectorChunk(bv) =>
+            bv.copyToStream(gzos)
+          case chunk =>
+            val len = chunk.size
+            val buf = new Array[Byte](len)
+            chunk.copyToArray(buf, 0)
+            gzos.write(buf)
+        }
+
+        val body: Stream[F, Byte] = in.chunks.flatMap { c =>
+          processChunk(c)
+          gzos.flush()
+          slurpBytes
+        }
+
+        val trailer: Stream[F, Byte] = Stream.suspend {
+          gzos.close()
+          slurpBytes
+        }
+
+        body ++ trailer
+    }
 
   /**
     * Returns a pipe that incrementally decompresses input according to the GZIP
@@ -198,49 +188,46 @@ object compress {
     *                   The chunk size in the output stream will be determined by
     *                   double this value.
     */
-  def gunzip[F[_]: Sync](bufferSize: Int): Pipe[F, Byte, Byte] = { in =>
-    Stream.eval(AsyncByteArrayInputStream(bufferSize)).flatMap { abis =>
-      def push(chunk: Chunk[Byte]): F[Unit] =
-        for {
-          arr <- Sync[F].delay {
+  def gunzip[F[_]: RaiseThrowable](bufferSize: Int): Pipe[F, Byte, Byte] =
+    in =>
+      Stream.suspend {
+        val abis: AsyncByteArrayInputStream = new AsyncByteArrayInputStream(bufferSize)
+
+        def push(chunk: Chunk[Byte]): Unit = {
+          val arr: Array[Byte] = {
             val buf = new Array[Byte](chunk.size)
-            chunk.copyToArray(buf) // TODO we can be slightly better than this for Chunk.Bytes if we track incoming offsets in abis
+            chunk.copyToArray(buf) // Note: we can be slightly better than this for Chunk.Bytes if we track incoming offsets in abis
             buf
           }
-
-          pushed <- abis.push(arr)
-
-          _ <- if (!pushed)
-            Sync[F].raiseError(NonProgressiveDecompressionException(bufferSize))
-          else
-            ().pure[F]
-        } yield ()
-
-      def pageBeginning(in: Stream[F, Byte]): Pull[F, (GZIPInputStream, Stream[F, Byte]), Unit] =
-        in.pull.uncons.flatMap {
-          case Some((chunk, tail)) =>
-            val tryAcquire = abis.checkpoint >> Sync[F]
-              .delay(new GZIPInputStream(abis, bufferSize))
-              .attempt // GZIPInputStream has no resources, so we don't need to bracket
-            val createOrLoop = Pull.eval(tryAcquire).flatMap {
-              case Right(gzis) =>
-                Pull.output1((gzis, tail)) >> Pull.eval(abis.release) >> Pull.done
-              case Left(AsyncByteArrayInputStream.AsyncError) =>
-                Pull.eval(abis.restore) >> pageBeginning(tail)
-              case Left(t) => Pull.raiseError(t)
-            }
-
-            Pull.eval(push(chunk)) >> createOrLoop
-
-          // we got all the way to the end of the input without moving forward
-          case None =>
-            Pull.raiseError(NonProgressiveDecompressionException(bufferSize))
+          val pushed = abis.push(arr)
+          if (!pushed) throw NonProgressiveDecompressionException(bufferSize)
         }
 
-      pageBeginning(in).stream.flatMap {
-        case (gzis, in) =>
-          lazy val stepDecompress: Stream[F, Byte] = Stream.force {
-            Sync[F].delay {
+        def pageBeginning(in: Stream[F, Byte]): Pull[F, (GZIPInputStream, Stream[F, Byte]), Unit] =
+          in.pull.uncons.flatMap {
+            case Some((chunk, tail)) =>
+              try {
+                push(chunk)
+                abis.checkpoint()
+                val gzis: GZIPInputStream = new GZIPInputStream(abis, bufferSize)
+                Pull.output1((gzis, tail)) >> Pull.suspend {
+                  abis.release()
+                  Pull.done
+                }
+              } catch {
+                case AsyncByteArrayInputStream.AsyncError =>
+                  abis.restore()
+                  pageBeginning(tail)
+              }
+
+            // we got all the way to the end of the input without moving forward
+            case None =>
+              Pull.raiseError(NonProgressiveDecompressionException(bufferSize))
+          }
+
+        pageBeginning(in).stream.flatMap {
+          case (gzis, in) =>
+            lazy val stepDecompress: Stream[F, Byte] = Stream.suspend {
               val inner = new Array[Byte](bufferSize * 2) // double the input buffer size since we're decompressing
 
               val len = try {
@@ -254,18 +241,17 @@ object compress {
               else
                 Stream.empty[F]
             }
-          }
 
-          // TODO: It is possible for this to fail with a non-progressive error
-          //       if `in` contains bytes in addition to the compressed data.
-          val mainline = in.chunks.flatMap { chunk =>
-            Stream.eval_(push(chunk)) ++ stepDecompress
-          }
+            // Note: It is possible for this to fail with a non-progressive error
+            //       if `in` contains bytes in addition to the compressed data.
+            val mainline = in.chunks.flatMap { chunk =>
+              push(chunk)
+              stepDecompress
+            }
 
-          stepDecompress ++ mainline
-      }
+            stepDecompress ++ mainline
+        }
     }
-  }
 
   final case class NonProgressiveDecompressionException(bufferSize: Int)
       extends RuntimeException(s"buffer size $bufferSize is too small; gunzip cannot make progress")

@@ -1,7 +1,5 @@
 package fs2.internal
 
-import cats.effect.Sync
-
 import scala.collection.mutable
 import scala.util.control.NoStackTrace
 
@@ -13,8 +11,7 @@ import java.io.InputStream
   * reads *before* changing any internal state. Reads that are interleaved with state changes may
   * result in invalid continuations.
   */
-private[fs2] final class AsyncByteArrayInputStream[F[_]: Sync] private (val bound: Int)
-    extends InputStream {
+private[fs2] final class AsyncByteArrayInputStream(val bound: Int) extends InputStream {
   private[this] val bytes = new mutable.ListBuffer[Array[Byte]]
   private[this] var headOffset = 0
   private[this] var _available = 0
@@ -24,35 +21,29 @@ private[fs2] final class AsyncByteArrayInputStream[F[_]: Sync] private (val boun
   private[this] var cheadOffset: Int = _
   private[this] var cavailable: Int = _
 
-  def checkpoint: F[Unit] =
-    Sync[F].delay {
-      cbytes = bytes.toList // we can do better here, probably
-      cheadOffset = headOffset
-      cavailable = _available
-    }
+  def checkpoint(): Unit = {
+    cbytes = bytes.toList // we can do better here, probably
+    cheadOffset = headOffset
+    cavailable = _available
+  }
 
-  def restore: F[Unit] =
-    Sync[F].delay {
-      bytes.clear()
-      val _ = bytes ++= cbytes // we can do a lot better here
-      headOffset = cheadOffset
-      _available = cavailable
-    }
+  def restore(): Unit = {
+    bytes.clear()
+    val _ = bytes ++= cbytes // we can do a lot better here
+    headOffset = cheadOffset
+    _available = cavailable
+  }
 
-  def release: F[Unit] =
-    Sync[F].delay {
-      cbytes = null
-    }
+  def release(): Unit =
+    cbytes = null
 
-  def push(chunk: Array[Byte]): F[Boolean] =
-    Sync[F].delay {
-      if (available < bound) {
-        val _ = bytes += chunk
-        _available += chunk.length
-        true
-      } else {
-        false
-      }
+  def push(chunk: Array[Byte]): Boolean =
+    if (available < bound) {
+      val _ = bytes += chunk
+      _available += chunk.length
+      true
+    } else {
+      false
     }
 
   override def available() = _available
@@ -86,8 +77,5 @@ private[fs2] final class AsyncByteArrayInputStream[F[_]: Sync] private (val boun
 
 private[fs2] object AsyncByteArrayInputStream {
 
-  def apply[F[_]: Sync](bound: Int): F[AsyncByteArrayInputStream[F]] =
-    Sync[F].delay(new AsyncByteArrayInputStream[F](bound))
-
-  case object AsyncError extends Error with NoStackTrace
+  final case object AsyncError extends Error with NoStackTrace
 }
