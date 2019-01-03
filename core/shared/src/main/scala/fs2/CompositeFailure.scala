@@ -39,6 +39,6 @@ object CompositeFailure {
     first match {
       case Right(_) => second
       case Left(err) =>
-        Left(second.left.toOption.map(err1 => CompositeFailure(err, err1, Nil)).getOrElse(err))
+        Left(second.fold(err1 => CompositeFailure(err, err1, Nil), _ => err))
     }
 }

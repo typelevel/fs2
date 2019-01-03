@@ -54,7 +54,10 @@ package object file {
         out <- pulls.fromPath(path,
                               blockingExecutionContext,
                               StandardOpenOption.WRITE :: flags.toList)
-        _ <- pulls.writeAllToFileHandle(in, out.resource)
+        fileHandle = out.resource
+        offset <- if (flags.contains(StandardOpenOption.APPEND)) Pull.eval(fileHandle.size)
+        else Pull.pure(0L)
+        _ <- pulls.writeAllToFileHandleAtOffset(in, fileHandle, offset)
       } yield ()).stream
 
   private def _writeAll0[F[_]](in: Stream[F, Byte],

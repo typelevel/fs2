@@ -1,12 +1,20 @@
 package fs2
 
-import cats.effect.{Concurrent, ConcurrentEffect, ContextShift, Sync}
+import cats.effect.{ConcurrentEffect, ContextShift, Sync}
 
 import cats.implicits._
 import java.io.{InputStream, OutputStream}
 import scala.concurrent.{ExecutionContext, blocking}
 
-/** Provides various ways to work with streams that perform IO. */
+/**
+  * Provides various ways to work with streams that perform IO.
+  *
+  * These methods accept a blocking `ExecutionContext`, as the underlying
+  * implementations perform blocking IO. The recommendation is to use an
+  * unbounded thread pool with application level bounds.
+  *
+  * @see [[https://typelevel.org/cats-effect/concurrency/basics.html#blocking-threads]]
+  */
 package object io {
 
   /**
@@ -136,8 +144,4 @@ package object io {
     */
   def toInputStream[F[_]](implicit F: ConcurrentEffect[F]): Pipe[F, Byte, InputStream] =
     JavaInputOutputStream.toInputStream
-
-  /** Shifts execution to the default execution context for `F`. */
-  private[io] def yieldBack[F[_]](implicit F: Concurrent[F]): F[Unit] =
-    F.bracket(F.start(F.unit))(_.join)(_.cancel)
 }

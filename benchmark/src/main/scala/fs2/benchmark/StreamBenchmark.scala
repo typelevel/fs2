@@ -11,7 +11,7 @@ class StreamBenchmark {
   @GenerateN(1, 10, 100, 1000, 10000, 100000)
   @Benchmark
   def leftAssocConcat(N: Int): Int =
-    (1 until N)
+    (0 until N)
       .map(Stream.emit)
       .foldRight(Stream.empty.covaryOutput[Int])(_ ++ _)
       .covary[IO]
@@ -35,7 +35,7 @@ class StreamBenchmark {
   @GenerateN(1, 10, 100, 1000, 10000, 100000)
   @Benchmark
   def leftAssocFlatMap(N: Int): Int =
-    (1 until N)
+    (0 until N)
       .map(Stream.emit)
       .foldLeft(Stream.emit(0))((acc, a) => acc.flatMap(_ => a))
       .covary[IO]
@@ -47,7 +47,7 @@ class StreamBenchmark {
   @GenerateN(1, 10, 100, 1000, 10000, 100000)
   @Benchmark
   def rightAssocFlatMap(N: Int): Int =
-    (1 until N)
+    (0 until N)
       .map(Stream.emit)
       .reverse
       .foldLeft(Stream.emit(0))((acc, a) => a.flatMap(_ => acc))
