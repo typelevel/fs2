@@ -151,8 +151,8 @@ private[fs2] object Algebra {
   def pure[F[_], O, R](r: R): FreeC[Algebra[F, O, ?], R] =
     FreeC.pure[Algebra[F, O, ?], R](r)
 
-  def raiseError[F[_], O, R](t: Throwable): FreeC[Algebra[F, O, ?], R] =
-    FreeC.raiseError[Algebra[F, O, ?], R](t)
+  def raiseError[F[_], O](t: Throwable): FreeC[Algebra[F, O, ?], INothing] =
+    FreeC.raiseError[Algebra[F, O, ?], INothing](t)
 
   def suspend[F[_], O, R](f: => FreeC[Algebra[F, O, ?], R]): FreeC[Algebra[F, O, ?], R] =
     FreeC.suspend(f)
