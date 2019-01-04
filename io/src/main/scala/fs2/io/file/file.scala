@@ -48,7 +48,7 @@ package object file {
       path: Path,
       blockingExecutionContext: ExecutionContext,
       flags: Seq[StandardOpenOption] = List(StandardOpenOption.CREATE)
-  ): Sink[F, Byte] =
+  ): Pipe[F, Byte, Unit] =
     in =>
       (for {
         out <- pulls.fromPath(path,

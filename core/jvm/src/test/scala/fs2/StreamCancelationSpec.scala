@@ -39,8 +39,8 @@ class StreamCancelationSpec extends AsyncFs2Spec {
               .flatMap { i =>
                 Stream.sleep_(50.milliseconds) ++ Stream.emit(i)
               }
-              .to(q.enqueue),
-            q.dequeue.to(Sink.showLinesStdOut)
+              .through(q.enqueue),
+            q.dequeue.showLinesStdOut
           ).parJoin(2)
         }
     }
