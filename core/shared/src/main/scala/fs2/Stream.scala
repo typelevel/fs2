@@ -3697,12 +3697,18 @@ object Stream extends StreamLowPriority {
       new Compiler[F, Resource[F, ?]] {
         def apply[O, B, C](s: Stream[F, O], init: () => B)(foldChunk: (B, Chunk[O]) => B,
                                                            finalize: B => C): Resource[F, C] =
-          Resource.liftF(
-            F.delay(init())
-              .flatMap(i => Compiler.compile(s.get, i)(foldChunk))
-              .map(finalize))
-      }
+          Resource
+            .makeCase(CompileScope.newRoot[F])((scope, ec) => scope.close(ec).rethrow)
+            .flatMap { scope =>
+              println("correct interpreter")
+              Resource.liftF {
+                F.delay(init())
+                  .flatMap(i => Algebra.compile(s.get, scope, i)(foldChunk))
+                  .map(finalize)
+              }
+            }
 
+      }
   }
 
   object Compiler extends LowPrioCompiler {

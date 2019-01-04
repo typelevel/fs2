@@ -6,9 +6,10 @@ import cats.effect.concurrent.{Deferred, Ref}
 import scala.concurrent.duration._
 
 class ResourceCompilationSpec extends AsyncFs2Spec {
+  // NOTE: still doesn't work. There are Release nodes being inserted, whose finaliser gets called anyway.
+  // Basic is the minimised case
 
   "compile.toResource - concurrently" in {
-    pending
     val prog: Resource[IO, IO[Unit]] =
       Stream
         .eval(Deferred[IO, Unit].product(Deferred[IO, Unit]))
@@ -27,7 +28,6 @@ class ResourceCompilationSpec extends AsyncFs2Spec {
   }
 
   "compile.toResource - onFinalise" in {
-    pending
     val expected = List(
       "stream - start",
       "stream - done",
@@ -71,6 +71,18 @@ class ResourceCompilationSpec extends AsyncFs2Spec {
       }
       .unsafeToFuture
       .map(_ shouldBe expected)
+  }
+
+  "basic test" in {
+    Stream
+      .emit(())
+      .onFinalize(IO(println("done")))
+      .compile
+      .toResource
+      .lastOrError
+      .allocated
+      .map(_._1)
+      .unsafeToFuture
   }
 }
 
