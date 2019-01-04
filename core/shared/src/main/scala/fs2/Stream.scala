@@ -9,8 +9,10 @@ import cats.implicits.{catsSyntaxEither => _, _}
 import fs2.concurrent._
 import fs2.internal.FreeC.Result
 import fs2.internal._
+import java.io.PrintStream
 
 import scala.collection.compat._
+import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
 
 /**
@@ -196,17 +198,17 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     through(Broadcast(1))
 
   /**
-    * Like [[broadcast]] but instead of providing a stream of sources, runs each sink.
+    * Like [[broadcast]] but instead of providing a stream of sources, runs each pipe.
     *
-    * The sinks are run concurrently with each other. Hence, the parallelism factor is equal
-    * to the number of sinks.
-    * Each sink may have a different implementation, if required; for example one sink may
+    * The pipes are run concurrently with each other. Hence, the parallelism factor is equal
+    * to the number of pipes.
+    * Each pipe may have a different implementation, if required; for example one pipe may
     * process elements while another may send elements for processing to another machine.
     *
-    * Each sink is guaranteed to see all `O` pulled from the source stream, unlike `broadcast`,
+    * Each pipe is guaranteed to see all `O` pulled from the source stream, unlike `broadcast`,
     * where workers see only the elements after the start of each worker evaluation.
     *
-    * Note: the resulting stream will not emit values, even if the sinks do.
+    * Note: the resulting stream will not emit values, even if the pipes do.
     * If you need to emit `Unit` values, consider using `broadcastThrough`.
     *
     * Note:  Elements are pulled as chunks from the source and the next chunk is pulled when all
@@ -215,17 +217,17 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * If this is not desired, consider using the `prefetch` and `prefetchN` combinators on workers
     * to compensate for slower workers.
     *
-    * @param sinks    Sinks that will concurrently process the work.
+    * @param pipes    Pipes that will concurrently process the work.
     */
-  def broadcastTo[F2[x] >: F[x]: Concurrent](sinks: Sink[F2, O]*): Stream[F2, Unit] =
-    this.to(Broadcast.through(sinks.map(_.andThen(_.drain)): _*))
+  def broadcastTo[F2[x] >: F[x]: Concurrent](pipes: Pipe[F2, O, Unit]*): Stream[F2, Unit] =
+    this.through(Broadcast.through(pipes.map(_.andThen(_.drain)): _*))
 
   /**
-    * Variant of `broadcastTo` that broadcasts to `maxConcurrent` instances of a single sink.
+    * Variant of `broadcastTo` that broadcasts to `maxConcurrent` instances of a single pipe.
     */
   def broadcastTo[F2[x] >: F[x]: Concurrent](maxConcurrent: Int)(
-      sink: Sink[F2, O]): Stream[F2, Unit] =
-    this.broadcastTo[F2]((0 until maxConcurrent).map(_ => sink): _*)
+      pipe: Pipe[F2, O, Unit]): Stream[F2, Unit] =
+    this.broadcastTo[F2](List.fill(maxConcurrent)(pipe): _*)
 
   /**
     * Alias for `through(Broadcast.through(pipes))`.
@@ -238,7 +240,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     */
   def broadcastThrough[F2[x] >: F[x]: Concurrent, O2](maxConcurrent: Int)(
       pipe: Pipe[F2, O, O2]): Stream[F2, O2] =
-    this.broadcastThrough[F2, O2]((0 until maxConcurrent).map(_ => pipe): _*)
+    this.broadcastThrough[F2, O2](List.fill(maxConcurrent)(pipe): _*)
 
   /**
     * Behaves like the identity function, but requests `n` elements at a time from the input.
@@ -658,35 +660,36 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     through(Balance(chunkSize))
 
   /**
-    * Like [[balance]] but instead of providing a stream of sources, runs each sink.
+    * Like [[balance]] but instead of providing a stream of sources, runs each pipe.
     *
-    * The sinks are run concurrently with each other. Hence, the parallelism factor is equal
-    * to the number of sinks.
-    * Each sink may have a different implementation, if required; for example one sink may
+    * The pipes are run concurrently with each other. Hence, the parallelism factor is equal
+    * to the number of pipes.
+    * Each pipe may have a different implementation, if required; for example one pipe may
     * process elements while another may send elements for processing to another machine.
     *
-    * Each sink is guaranteed to see all `O` pulled from the source stream, unlike `broadcast`,
+    * Each pipe is guaranteed to see all `O` pulled from the source stream, unlike `broadcast`,
     * where workers see only the elements after the start of each worker evaluation.
     *
-    * Note: the resulting stream will not emit values, even if the sinks do.
+    * Note: the resulting stream will not emit values, even if the pipes do.
     * If you need to emit `Unit` values, consider using `balanceThrough`.
     *
     * @param chunkSie max size of chunks taken from the source stream
-    * @param sinks sinks that will concurrently process the work
+    * @param pipes pipes that will concurrently process the work
     */
-  def balanceTo[F2[x] >: F[x]: Concurrent](chunkSize: Int)(sinks: Sink[F2, O]*): Stream[F2, Unit] =
-    balanceThrough[F2, Unit](chunkSize)(sinks.map(_.andThen(_.drain)): _*)
+  def balanceTo[F2[x] >: F[x]: Concurrent](chunkSize: Int)(
+      pipes: Pipe[F2, O, Unit]*): Stream[F2, Unit] =
+    balanceThrough[F2, Unit](chunkSize)(pipes.map(_.andThen(_.drain)): _*)
 
   /**
-    * Variant of `balanceTo` that broadcasts to `maxConcurrent` instances of a single sink.
+    * Variant of `balanceTo` that broadcasts to `maxConcurrent` instances of a single pipe.
     *
     * @param chunkSize max size of chunks taken from the source stream
-    * @param maxConcurrent maximum number of sinks to run concurrently
-    * @param sinks sinks that will concurrently process the work
+    * @param maxConcurrent maximum number of pipes to run concurrently
+    * @param pipe pipe to use to process elements
     */
   def balanceTo[F2[x] >: F[x]: Concurrent](chunkSize: Int, maxConcurrent: Int)(
-      sink: Sink[F2, O]): Stream[F2, Unit] =
-    balanceThrough[F2, Unit](chunkSize, maxConcurrent)(sink.andThen(_.drain))
+      pipe: Pipe[F2, O, Unit]): Stream[F2, Unit] =
+    balanceThrough[F2, Unit](chunkSize, maxConcurrent)(pipe.andThen(_.drain))
 
   /**
     * Alias for `through(Balance.through(chunkSize)(pipes)`.
@@ -696,11 +699,11 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     through(Balance.through[F2, O, O2](chunkSize)(pipes: _*))
 
   /**
-    * Variant of `balanceThrough` that takes number of concurrency required and single pipe
+    * Variant of `balanceThrough` that takes number of concurrency required and single pipe.
     *
     * @param chunkSize max size of chunks taken from the source stream
     * @param maxConcurrent maximum number of pipes to run concurrently
-    * @param sink pipe to use to process elements
+    * @param pipe pipe to use to process elements
     */
   def balanceThrough[F2[x] >: F[x]: Concurrent, O2](chunkSize: Int, maxConcurrent: Int)(
       pipe: Pipe[F2, O, O2]): Stream[F2, O2] =
@@ -917,8 +920,8 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
   }
 
   /**
-    * Like `observe` but observes with a function `O => F[Unit]` instead of a sink.
-    * Not as powerful as `observe` since not all sinks can be represented by `O => F[Unit]`, but much faster.
+    * Like `observe` but observes with a function `O => F[Unit]` instead of a pipe.
+    * Not as powerful as `observe` since not all pipes can be represented by `O => F[Unit]`, but much faster.
     * Alias for `evalMap(o => f(o).as(o))`.
     */
   def evalTap[F2[x] >: F[x]: Functor](f: O => F2[Unit]): Stream[F2, O] =
@@ -935,7 +938,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * res1: List[Boolean] = List(false)
     * }}}
     *
-    * @returns Either a singleton stream, or a `never` stream.
+    * @return Either a singleton stream, or a `never` stream.
     *  - If `this` is a finite stream, the result is a singleton stream, with after yielding one single value.
     *    If `this` is empty, that value is the `mempty` of the instance of `Monoid`.
     *  - If `this` is a non-terminating stream, and no matter if it yields any value, then the result is
@@ -1035,7 +1038,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
               else {
                 f(hd(idx)).get.transformWith {
                   case Result.Pure(_)   => go(idx + 1)
-                  case Result.Fail(err) => Algebra.raiseError[F2, O2, Unit](err)
+                  case Result.Fail(err) => Algebra.raiseError[F2, O2](err)
                   case Result.Interrupted(scopeId: Token, err) =>
                     Stream.fromFreeC(Algebra.interruptBoundary(tl, scopeId, err)).flatMap(f).get
                   case Result.Interrupted(invalid, err) =>
@@ -1098,7 +1101,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
   /**
     * Folds this stream with the monoid for `O`.
     *
-    * @returns Either a singleton stream or a `never` stream:
+    * @return Either a singleton stream or a `never` stream:
     *  - If `this` is a finite stream, the result is a singleton stream.
     *    If `this` is empty, that value is the `mempty` of the instance of `Monoid`.
     *  - If `this` is a non-terminating stream, and no matter if it yields any value, then the result is
@@ -1123,7 +1126,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * res0: List[Boolean] = List(true)
     * }}}
     *
-    * @returns Either a singleton or a never stream:
+    * @return Either a singleton or a never stream:
     * - '''If''' `this` yields an element `x` for which `¬ p(x)`, '''then'''
     *   a singleton stream with the value `false`. Pulling from the resultg
     *   performs all the effects needed until reaching the counterexample `x`.
@@ -1256,7 +1259,8 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
                 }
             }
 
-          def producer = this.chunks.map(_.asRight.some).to(q.enqueue).onFinalize(q.enqueue1(None))
+          def producer =
+            this.chunks.map(_.asRight.some).through(q.enqueue).onFinalize(q.enqueue1(None))
 
           def emitNonEmpty(c: Chain[Chunk[O]]): Stream[F2, Chunk[O]] =
             if (c.nonEmpty) Stream.emit(Chunk.concat(c.toList))
@@ -1495,6 +1499,33 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
       case Some(o) => Pull.output1(o)
       case None    => Pull.output1(fallback)
     }.stream
+
+  /**
+    * Writes this stream of strings to the supplied `PrintStream`.
+    *
+    * Note: printing to the `PrintStream` is performed *synchronously*.
+    * Use `linesAsync(out, blockingEc)` if synchronous writes are a concern.
+    */
+  def lines[F2[x] >: F[x]](out: PrintStream)(implicit F: Sync[F2],
+                                             ev: O <:< String): Stream[F2, Unit] = {
+    val _ = ev
+    val src = this.asInstanceOf[Stream[F2, String]]
+    src.evalMap(str => F.delay(out.println(str)))
+  }
+
+  /**
+    * Writes this stream of strings to the supplied `PrintStream`.
+    *
+    * Note: printing to the `PrintStream` is performed on the supplied blocking execution context.
+    */
+  def linesAsync[F2[x] >: F[x]](out: PrintStream, blockingExecutionContext: ExecutionContext)(
+      implicit F: Sync[F2],
+      cs: ContextShift[F2],
+      ev: O <:< String): Stream[F2, Unit] = {
+    val _ = ev
+    val src = this.asInstanceOf[Stream[F2, String]]
+    src.evalMap(str => cs.evalOn(blockingExecutionContext)(F.delay(out.println(str))))
+  }
 
   /**
     * Applies the specified pure function to each input and emits the result.
@@ -1739,7 +1770,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * }}}
     */
   def onComplete[F2[x] >: F[x], O2 >: O](s2: => Stream[F2, O2]): Stream[F2, O2] =
-    handleErrorWith(e => s2 ++ Stream.fromFreeC(Algebra.raiseError[F2, O2, Unit](e))) ++ s2
+    handleErrorWith(e => s2 ++ Stream.fromFreeC(Algebra.raiseError[F2, O2](e))) ++ s2
 
   /**
     * Run the supplied effectful action at the end of this stream, regardless of how the stream terminates.
@@ -1993,7 +2024,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     Stream.eval(Queue.bounded[F2, Option[Chunk[O]]](n)).flatMap { queue =>
       queue.dequeue.unNoneTerminate
         .flatMap(Stream.chunk(_))
-        .concurrently(chunks.noneTerminate.covary[F2].to(queue.enqueue))
+        .concurrently(chunks.noneTerminate.covary[F2].through(queue.enqueue))
     }
 
   /** Alias for [[fold1]]. */
@@ -2173,6 +2204,49 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
   def scope: Stream[F, O] = Stream.fromFreeC(Algebra.scope(get))
 
   /**
+    * Writes this stream to the supplied `PrintStream`, converting each element to a `String` via `Show`.
+    *
+    * Note: printing to the `PrintStream` is performed *synchronously*.
+    * Use `showLinesAsync(out, blockingEc)` if synchronous writes are a concern.
+    */
+  def showLines[F2[x] >: F[x], O2 >: O](out: PrintStream)(implicit F: Sync[F2],
+                                                          showO: Show[O2]): Stream[F2, Unit] =
+    covaryAll[F2, O2].map(_.show).lines(out)
+
+  /**
+    * Writes this stream to the supplied `PrintStream`, converting each element to a `String` via `Show`.
+    *
+    * Note: printing to the `PrintStream` is performed on the supplied blocking execution context.
+    */
+  def showLinesAsync[F2[x] >: F[x], O2 >: O](out: PrintStream,
+                                             blockingExecutionContext: ExecutionContext)(
+      implicit F: Sync[F2],
+      cs: ContextShift[F2],
+      showO: Show[O2]): Stream[F2, Unit] =
+    covaryAll[F2, O2].map(_.show).linesAsync(out, blockingExecutionContext)
+
+  /**
+    * Writes this stream to standard out, converting each element to a `String` via `Show`.
+    *
+    * Note: printing to standard out is performed *synchronously*.
+    * Use `showLinesStdOutAsync(blockingEc)` if synchronous writes are a concern.
+    */
+  def showLinesStdOut[F2[x] >: F[x], O2 >: O](implicit F: Sync[F2],
+                                              showO: Show[O2]): Stream[F2, Unit] =
+    showLines[F2, O2](Console.out)
+
+  /**
+    * Writes this stream to standard out, converting each element to a `String` via `Show`.
+    *
+    * Note: printing to the `PrintStream` is performed on the supplied blocking execution context.
+    */
+  def showLinesStdOutAsync[F2[x] >: F[x], O2 >: O](blockingExecutionContext: ExecutionContext)(
+      implicit F: Sync[F2],
+      cs: ContextShift[F2],
+      showO: Show[O2]): Stream[F2, Unit] =
+    showLinesAsync[F2, O2](Console.out, blockingExecutionContext)
+
+  /**
     * Groups inputs in fixed size chunks by passing a "sliding window"
     * of size `n` over them. If the input contains less than or equal to
     * `n` elements, only one chunk of this size will be emitted.
@@ -2312,13 +2386,8 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
 
   /**
     * Applies the given sink to this stream.
-    *
-    * @example {{{
-    * scala> import cats.effect.IO, cats.implicits._
-    * scala> Stream(1,2,3).covary[IO].to(Sink.showLinesStdOut).compile.drain.unsafeRunSync
-    * res0: Unit = ()
-    * }}}
     */
+  @deprecated("Use .through instead", "1.0.2")
   def to[F2[x] >: F[x]](f: Stream[F, O] => Stream[F2, Unit]): Stream[F2, Unit] = f(this)
 
   /**
@@ -3000,7 +3069,7 @@ object Stream extends StreamLowPriority {
     * }}}
     */
   def raiseError[F[_]: RaiseThrowable](e: Throwable): Stream[F, INothing] =
-    fromFreeC(Algebra.raiseError[F, INothing, INothing](e))
+    fromFreeC(Algebra.raiseError[F, INothing](e))
 
   /**
     * Creates a random stream of integers using a random seed.
@@ -3225,28 +3294,28 @@ object Stream extends StreamLowPriority {
     def covary[F2[x] >: F[x]]: Stream[F2, O] = self
 
     /**
-      * Synchronously sends values through `sink`.
+      * Synchronously sends values through `p`.
       *
-      * If `sink` fails, then resulting stream will fail. If sink `halts` the evaluation will halt too.
+      * If `p` fails, then resulting stream will fail. If `p` halts the evaluation will halt too.
       *
       * Note that observe will only output full chunks of `O` that are known to be successfully processed
-      * by `sink`. So if Sink terminates/fail in middle of chunk processing, the chunk will not be available
+      * by `p`. So if `p` terminates/fails in the middle of chunk processing, the chunk will not be available
       * in resulting stream.
       *
-      * Note that if your sink can be represented by an `O => F[Unit]`, `evalTap` will provide much greater performance.
+      * Note that if your pipe can be represented by an `O => F[Unit]`, `evalTap` will provide much greater performance.
       *
       * @example {{{
       * scala> import cats.effect.{ContextShift, IO}, cats.implicits._
       * scala> implicit val cs: ContextShift[IO] = IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
-      * scala> Stream(1, 2, 3).covary[IO].observe(Sink.showLinesStdOut).map(_ + 1).compile.toVector.unsafeRunSync
+      * scala> Stream(1, 2, 3).covary[IO].observe(_.showLinesStdOut).map(_ + 1).compile.toVector.unsafeRunSync
       * res0: Vector[Int] = Vector(2, 3, 4)
       * }}}
       */
-    def observe(sink: Sink[F, O])(implicit F: Concurrent[F]): Stream[F, O] =
-      observeAsync(1)(sink)
+    def observe(p: Pipe[F, O, Unit])(implicit F: Concurrent[F]): Stream[F, O] =
+      observeAsync(1)(p)
 
-    /** Send chunks through `sink`, allowing up to `maxQueued` pending _chunks_ before blocking `s`. */
-    def observeAsync(maxQueued: Int)(sink: Sink[F, O])(implicit F: Concurrent[F]): Stream[F, O] =
+    /** Send chunks through `p`, allowing up to `maxQueued` pending _chunks_ before blocking `s`. */
+    def observeAsync(maxQueued: Int)(p: Pipe[F, O, Unit])(implicit F: Concurrent[F]): Stream[F, O] =
       Stream.eval(Semaphore[F](maxQueued - 1)).flatMap { guard =>
         Stream.eval(Queue.unbounded[F, Option[Chunk[O]]]).flatMap { outQ =>
           Stream.eval(Queue.unbounded[F, Option[Chunk[O]]]).flatMap { sinkQ =>
@@ -3266,7 +3335,7 @@ object Stream extends StreamLowPriority {
                   Stream.chunk(chunk) ++
                     Stream.eval_(outQ.enqueue1(Some(chunk)))
                 }
-                .to(sink) ++
+                .through(p) ++
                 Stream.eval_(outQ.enqueue1(None))
 
             def runner =
@@ -3284,6 +3353,24 @@ object Stream extends StreamLowPriority {
           }
         }
       }
+
+    /**
+      * Observes this stream of `Either[L, R]` values with two pipes, one that
+      * observes left values and another that observes right values.
+      *
+      * If either of `left` or `right` fails, then resulting stream will fail.
+      * If either `halts` the evaluation will halt too.
+      */
+    def observeEither[L, R](
+        left: Pipe[F, L, Unit],
+        right: Pipe[F, R, Unit]
+    )(implicit F: Concurrent[F], ev: O <:< Either[L, R]): Stream[F, Either[L, R]] = {
+      val _ = ev
+      val src = self.asInstanceOf[Stream[F, Either[L, R]]]
+      src
+        .observe(_.collect { case Left(l) => l }.through(left))
+        .observe(_.collect { case Right(r) => r }.through(right))
+    }
 
     /** Gets a projection of this stream that allows converting it to a `Pull` in a number of ways. */
     def pull: ToPull[F, O] =

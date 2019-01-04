@@ -46,7 +46,7 @@ class SocketSpec extends Fs2Spec with BeforeAndAfterAll {
               Stream.resource(s).map { socket =>
                 socket
                   .reads(1024)
-                  .to(socket.writes())
+                  .through(socket.writes())
                   .onFinalize(socket.endOfOutput)
               }
           }
@@ -61,7 +61,7 @@ class SocketSpec extends Fs2Spec with BeforeAndAfterAll {
               Stream.resource(Socket.client[IO](local)).flatMap { socket =>
                 Stream
                   .chunk(message)
-                  .to(socket.writes())
+                  .through(socket.writes())
                   .drain
                   .onFinalize(socket.endOfOutput) ++
                   socket.reads(1024, None).chunks.map(_.toArray)
@@ -99,7 +99,7 @@ class SocketSpec extends Fs2Spec with BeforeAndAfterAll {
               Stream.emit(Stream.resource(s).flatMap { socket =>
                 Stream
                   .chunk(message)
-                  .to(socket.writes())
+                  .through(socket.writes())
                   .drain
                   .onFinalize(socket.endOfOutput)
               })

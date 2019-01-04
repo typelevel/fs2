@@ -120,7 +120,8 @@ class QueueSpec extends Fs2Spec {
           .eval(InspectableQueue.unbounded[IO, Int])
           .flatMap { q =>
             def changes =
-              (Stream.range(1, 6).to(q.enqueue) ++ q.dequeue).zip(Stream.fixedRate[IO](200.millis))
+              (Stream.range(1, 6).through(q.enqueue) ++ q.dequeue)
+                .zip(Stream.fixedRate[IO](200.millis))
 
             q.size.concurrently(changes)
           }

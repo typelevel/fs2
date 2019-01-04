@@ -20,6 +20,7 @@ package object fs2 {
     *
     * Sinks are typically applied with the `to` operation on `Stream`.
     */
+  @deprecated("Use Pipe[F, I, Unit] instead", "1.0.2")
   type Sink[F[_], -I] = Pipe[F, I, Unit]
 
   /**
