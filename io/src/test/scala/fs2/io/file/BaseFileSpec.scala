@@ -12,13 +12,13 @@ import java.nio.file.attribute.BasicFileAttributes
 class BaseFileSpec extends Fs2Spec {
 
   protected def tempDirectory: Stream[IO, Path] =
-    Stream.bracket(IO(Files.createTempDirectory("WatcherSpec")))(deleteDirectoryRecursively(_))
+    Stream.bracket(IO(Files.createTempDirectory("BaseFileSpec")))(deleteDirectoryRecursively(_))
 
   protected def tempFile: Stream[IO, Path] =
     tempDirectory.flatMap(dir => aFile(dir))
 
   protected def aFile(dir: Path): Stream[IO, Path] =
-    Stream.eval(IO(Files.createTempFile(dir, "WatcherSpec", ".tmp")))
+    Stream.eval(IO(Files.createTempFile(dir, "BaseFileSpec", ".tmp")))
 
   protected def modify(file: Path): Stream[IO, Unit] =
     Stream.eval(IO(Files.write(file, Array[Byte](0, 1, 2, 3))).void)

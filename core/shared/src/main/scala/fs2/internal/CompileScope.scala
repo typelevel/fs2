@@ -6,6 +6,7 @@ import cats.{Traverse, TraverseFilter}
 import cats.data.Chain
 import cats.effect.{Concurrent, ExitCase, Sync}
 import cats.effect.concurrent.{Deferred, Ref}
+import cats.implicits._
 import fs2.{CompositeFailure, Pure, Scope}
 import fs2.internal.CompileScope.InterruptContext
 
@@ -177,8 +178,8 @@ private[fs2] final class CompileScope[F[_]] private (
       case Right(r) =>
         val finalizer = (ec: ExitCase[Throwable]) => F.suspend(release(r, ec))
         F.flatMap(resource.acquired(finalizer)) { result =>
-          if (result.right.exists(identity)) F.map(register(resource))(_ => Right((r, resource.id)))
-          else F.pure(Left(result.left.getOrElse(AcquireAfterScopeClosed)))
+          if (result.exists(identity)) F.map(register(resource))(_ => Right((r, resource.id)))
+          else F.pure(Left(result.swap.getOrElse(AcquireAfterScopeClosed)))
         }
       case Left(err) => F.pure(Left(err))
     }
@@ -229,7 +230,9 @@ private[fs2] final class CompileScope[F[_]] private (
           resultResources =>
             F.flatMap(self.interruptible.map(_.cancelParent).getOrElse(F.unit)) { _ =>
               F.map(self.parent.fold(F.unit)(_.releaseChildScope(self.id))) { _ =>
-                val results = resultChildren.left.toSeq ++ resultResources.left.toSeq
+                val results = resultChildren.fold(List(_), _ => Nil) ++ resultResources.fold(
+                  List(_),
+                  _ => Nil)
                 CompositeFailure.fromList(results.toList).toLeft(())
               }
             }
@@ -356,7 +359,7 @@ private[fs2] final class CompileScope[F[_]] private (
           new IllegalStateException("Scope#interrupt called for Scope that cannot be interrupted"))
       case Some(iCtx) =>
         // note that we guard interruption here by Attempt to prevent failure on multiple sets.
-        val interruptCause = cause.right.map(_ => iCtx.interruptRoot)
+        val interruptCause = cause.map(_ => iCtx.interruptRoot)
         F.guarantee(iCtx.deferred.complete(interruptCause)) {
           iCtx.ref.update { _.orElse(Some(interruptCause)) }
         }
@@ -388,12 +391,12 @@ private[fs2] final class CompileScope[F[_]] private (
     */
   private[fs2] def interruptibleEval[A](f: F[A]): F[Either[Either[Throwable, Token], A]] =
     interruptible match {
-      case None => F.map(F.attempt(f)) { _.left.map(Left(_)) }
+      case None => F.map(F.attempt(f)) { _.swap.map(Left(_)).swap }
       case Some(iCtx) =>
         F.map(
           iCtx.concurrent
             .race(iCtx.deferred.get, F.attempt(iCtx.concurrent.uncancelable(f)))) {
-          case Right(result) => result.left.map(Left(_))
+          case Right(result) => result.leftMap(Left(_))
           case Left(other)   => Left(other)
         }
     }

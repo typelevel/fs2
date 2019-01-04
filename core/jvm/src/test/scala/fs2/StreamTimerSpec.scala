@@ -10,7 +10,7 @@ class StreamTimerSpec extends AsyncFs2Spec {
   "Stream's Timer based operations" - {
 
     "sleep" in {
-      val delay = 200 millis
+      val delay = 200.millis
 
       // force a sync up in duration, then measure how long sleep takes
       val emitAndSleep = Stream.emit(()) ++ Stream.sleep[IO](delay)
@@ -23,7 +23,7 @@ class StreamTimerSpec extends AsyncFs2Spec {
     }
 
     "debounce" in {
-      val delay = 200 milliseconds
+      val delay = 200.milliseconds
       val t = (Stream(1, 2, 3) ++ Stream.sleep[IO](delay * 2) ++ Stream() ++ Stream(4, 5) ++ Stream
         .sleep[IO](delay / 2) ++ Stream(6)).debounce(delay).compile.toVector
       t.unsafeToFuture().map { r =>
