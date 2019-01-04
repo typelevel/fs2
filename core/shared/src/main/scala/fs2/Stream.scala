@@ -3692,7 +3692,12 @@ object Stream extends StreamLowPriority {
                                                                        finalize: B => C): G[C]
   }
 
-  object Compiler {
+  trait LowPrioCompiler {
+    implicit def resourceInstance[F[_]](implicit F: Sync[F]): Compiler[F, Resource[F, ?]] = ???
+
+  }
+
+  object Compiler extends LowPrioCompiler {
     implicit def syncInstance[F[_]](implicit F: Sync[F]): Compiler[F, F] = new Compiler[F, F] {
       def apply[O, B, C](s: Stream[F, O], init: () => B)(foldChunk: (B, Chunk[O]) => B,
                                                          finalize: B => C): F[C] =
@@ -3886,6 +3891,11 @@ object Stream extends StreamLowPriority {
       */
     def toList: G[List[O]] =
       to[List]
+
+    /** TODO scaladoc **/
+    def toResource(implicit compiler: Stream.Compiler[G, Resource[G, ?]])
+      : Stream.CompileOps[G, Resource[G, ?], O] =
+      new Stream.CompileOps[G, Resource[G, ?], O](free)
 
     /**
       * Compiles this stream in to a value of the target effect type `F` by logging
