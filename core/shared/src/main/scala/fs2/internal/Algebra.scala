@@ -170,8 +170,8 @@ private[fs2] object Algebra {
   /** Left-folds the output of a stream. */
   def compile[F[_], O, B](stream: FreeC[Algebra[F, O, ?], Unit], init: B)(f: (B, Chunk[O]) => B)(
       implicit F: Sync[F]): F[B] =
-    F.bracketCase(F.delay(CompileScope.newRoot[F]))(scope =>
-      compileScope[F, O, B](scope, stream, init)(f))((scope, ec) => scope.close(ec).rethrow)
+    F.bracketCase(CompileScope.newRoot[F])(scope => compileScope[F, O, B](scope, stream, init)(f))(
+      (scope, ec) => scope.close(ec).rethrow)
 
   private[this] def compileScope[F[_], O, B](
       scope: CompileScope[F],

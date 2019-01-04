@@ -408,8 +408,8 @@ private[fs2] final class CompileScope[F[_]] private (
 private[internal] object CompileScope {
 
   /** Creates a new root scope. */
-  def newRoot[F[_]: Sync]: CompileScope[F] =
-    new CompileScope[F](new Token(), None, None)
+  def newRoot[F[_]: Sync]: F[CompileScope[F]] =
+    Sync[F].delay(new CompileScope[F](new Token(), None, None))
 
   /**
     * State of a scope.
