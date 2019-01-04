@@ -2,7 +2,7 @@ package fs2.internal
 
 import cats.{MonadError, ~>}
 import cats.effect.{ExitCase, Sync}
-import fs2.CompositeFailure
+import fs2.{CompositeFailure, INothing}
 import FreeC._
 
 import scala.annotation.tailrec
@@ -53,7 +53,7 @@ private[fs2] sealed abstract class FreeC[F[_], +R] {
                         case Result.Fail(e) =>
                           try h(e)
                           catch { case NonFatal(e) => FreeC.Result.Fail(e) }
-                        case other => other.covary[R2].asFreeC[F]
+                        case other => other.asFreeC[F]
                     })
 
   def asHandler(e: Throwable): FreeC[F, R] = ViewL(this) match {
@@ -100,12 +100,10 @@ private[fs2] object FreeC {
       case Result.Interrupted(_, _) => ExitCase.Canceled
     }
 
-    def covary[R2 >: R]: Result[R2] = self
-
     def recoverWith[R2 >: R](f: Throwable => Result[R2]): Result[R2] = self match {
       case Result.Fail(err) =>
         try { f(err) } catch { case NonFatal(err2) => Result.Fail(CompositeFailure(err, err2)) }
-      case _ => covary[R2]
+      case _ => self
     }
 
   }
@@ -116,12 +114,12 @@ private[fs2] object FreeC {
 
     def pure[A](a: A): Result[A] = Result.Pure(a)
 
-    def raiseError[A](rsn: Throwable): Result[A] = Result.Fail(rsn)
+    def raiseError(rsn: Throwable): Result[INothing] = Result.Fail(rsn)
 
-    def interrupted[A](scopeId: Token, failure: Option[Throwable]): Result[A] =
+    def interrupted(scopeId: Token, failure: Option[Throwable]): Result[INothing] =
       Result.Interrupted(scopeId, failure)
 
-    def fromEither[F[_], R](either: Either[Throwable, R]): Result[R] =
+    def fromEither[R](either: Either[Throwable, R]): Result[R] =
       either.fold(Result.Fail(_), Result.Pure(_))
 
     def unapply[F[_], R](freeC: FreeC[F, R]): Option[Result[R]] = freeC match {
@@ -137,12 +135,12 @@ private[fs2] object FreeC {
       override def toString: String = s"FreeC.Pure($r)"
     }
 
-    final case class Fail[F[_], R](error: Throwable)
-        extends FreeC[F, R]
-        with Result[R]
-        with ViewL[F, R] {
-      override def translate[G[_]](f: F ~> G): FreeC[G, R] =
-        this.asInstanceOf[FreeC[G, R]]
+    final case class Fail[F[_]](error: Throwable)
+        extends FreeC[F, INothing]
+        with Result[INothing]
+        with ViewL[F, INothing] {
+      override def translate[G[_]](f: F ~> G): FreeC[G, INothing] =
+        this.asInstanceOf[FreeC[G, INothing]]
       override def toString: String = s"FreeC.Fail($error)"
     }
 
@@ -156,12 +154,12 @@ private[fs2] object FreeC {
       *                      Instead throwing errors immediately during interruption,
       *                      signalling of the errors may be deferred until the Interruption resumes.
       */
-    final case class Interrupted[F[_], X, R](context: X, deferredError: Option[Throwable])
-        extends FreeC[F, R]
-        with Result[R]
-        with ViewL[F, R] {
-      override def translate[G[_]](f: F ~> G): FreeC[G, R] =
-        this.asInstanceOf[FreeC[G, R]]
+    final case class Interrupted[F[_], X](context: X, deferredError: Option[Throwable])
+        extends FreeC[F, INothing]
+        with Result[INothing]
+        with ViewL[F, INothing] {
+      override def translate[G[_]](f: F ~> G): FreeC[G, INothing] =
+        this.asInstanceOf[FreeC[G, INothing]]
       override def toString: String =
         s"FreeC.Interrupted($context, ${deferredError.map(_.getMessage)})"
     }
@@ -179,7 +177,7 @@ private[fs2] object FreeC {
     override def translate[G[_]](f: F ~> G): FreeC[G, R] =
       suspend {
         try Eval(f(fr))
-        catch { case NonFatal(t) => Result.Fail[G, R](t) }
+        catch { case NonFatal(t) => Result.Fail[G](t) }
       }
     override def toString: String = s"FreeC.Eval($fr)"
   }
@@ -256,7 +254,7 @@ private[fs2] object FreeC {
       acquire.flatMap { a =>
         val used =
           try use(a)
-          catch { case NonFatal(t) => FreeC.Result.Fail[F, B](t) }
+          catch { case NonFatal(t) => FreeC.Result.Fail[F](t) }
         used.transformWith { result =>
           release(a, result.asExitCase).transformWith {
             case Result.Fail(t2) =>
