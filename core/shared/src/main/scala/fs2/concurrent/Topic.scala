@@ -23,9 +23,9 @@ abstract class Topic[F[_], A] { self =>
 
   /**
     * Publishes elements from source of `A` to this topic.
-    * [[Sink]] equivalent of `publish1`.
+    * [[Pipe]] equivalent of `publish1`.
     */
-  def publish: Sink[F, A]
+  def publish: Pipe[F, A, Unit]
 
   /**
     * Publishes one `A` to topic.
@@ -72,7 +72,7 @@ abstract class Topic[F[_], A] { self =>
     */
   def imap[B](f: A => B)(g: B => A): Topic[F, B] =
     new Topic[F, B] {
-      def publish: Sink[F, B] = sfb => self.publish(sfb.map(g))
+      def publish: Pipe[F, B, Unit] = sfb => self.publish(sfb.map(g))
       def publish1(b: B): F[Unit] = self.publish1(g(b))
       def subscribe(maxQueued: Int): Stream[F, B] =
         self.subscribe(maxQueued).map(f)
@@ -108,7 +108,7 @@ object Topic {
 
               }
 
-          def publish: Sink[F, A] =
+          def publish: Pipe[F, A, Unit] =
             _.evalMap(publish1)
 
           def publish1(a: A): F[Unit] =

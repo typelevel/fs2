@@ -94,10 +94,11 @@ package object io {
     * Each write operation is performed on the supplied execution context. Writes are
     * blocking so the execution context should be configured appropriately.
     */
-  def writeOutputStream[F[_]](
-      fos: F[OutputStream],
-      blockingExecutionContext: ExecutionContext,
-      closeAfterUse: Boolean = true)(implicit F: Sync[F], cs: ContextShift[F]): Sink[F, Byte] =
+  def writeOutputStream[F[_]](fos: F[OutputStream],
+                              blockingExecutionContext: ExecutionContext,
+                              closeAfterUse: Boolean = true)(
+      implicit F: Sync[F],
+      cs: ContextShift[F]): Pipe[F, Byte, Unit] =
     s => {
       def useOs(os: OutputStream): Stream[F, Unit] =
         s.chunks.evalMap(c => writeBytesToOutputStream(os, c, blockingExecutionContext))
@@ -124,9 +125,10 @@ package object io {
       cs: ContextShift[F]): Stream[F, Byte] =
     readInputStream(F.delay(System.in), bufSize, blockingExecutionContext, false)
 
-  /** Sink of bytes that writes emitted values to standard output asynchronously. */
-  def stdout[F[_]](blockingExecutionContext: ExecutionContext)(implicit F: Sync[F],
-                                                               cs: ContextShift[F]): Sink[F, Byte] =
+  /** Pipe of bytes that writes emitted values to standard output asynchronously. */
+  def stdout[F[_]](blockingExecutionContext: ExecutionContext)(
+      implicit F: Sync[F],
+      cs: ContextShift[F]): Pipe[F, Byte, Unit] =
     writeOutputStream(F.delay(System.out), blockingExecutionContext, false)
 
   /**

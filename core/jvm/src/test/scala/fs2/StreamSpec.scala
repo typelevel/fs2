@@ -2,6 +2,7 @@ package fs2
 
 import cats.{Eq, ~>}
 import cats.effect.IO
+import cats.effect.concurrent.Ref
 import cats.effect.laws.discipline.arbitrary._
 import cats.effect.laws.util.TestContext
 import cats.effect.laws.util.TestInstances._
@@ -448,6 +449,41 @@ class StreamSpec extends Fs2Spec with Inside {
         }
         withClue("false means the delay has not passed: " + tail) {
           assert(tail.filterNot(_._1).map(_._2).forall { _ <= delay })
+        }
+      }
+    }
+
+    "observeEither" - {
+      val s = Stream.emits(Seq(Left(1), Right("a"))).repeat.covary[IO]
+
+      "does not drop elements" in {
+        val is = Ref.of[IO, Vector[Int]](Vector.empty)
+        val as = Ref.of[IO, Vector[String]](Vector.empty)
+
+        val test = for {
+          iref <- is
+          aref <- as
+          iSink = (_: Stream[IO, Int]).evalMap(i => iref.update(_ :+ i))
+          aSink = (_: Stream[IO, String]).evalMap(a => aref.update(_ :+ a))
+          _ <- s.take(10).observeEither(iSink, aSink).compile.drain
+          iResult <- iref.get
+          aResult <- aref.get
+        } yield {
+          assert(iResult.length == 5)
+          assert(aResult.length == 5)
+        }
+
+        test.unsafeToFuture
+      }
+
+      "termination" - {
+
+        "left" in {
+          assert(runLog(s.observeEither[Int, String](_.take(0).void, _.void)).length == 0)
+        }
+
+        "right" in {
+          assert(runLog(s.observeEither[Int, String](_.void, _.take(0).void)).length == 0)
         }
       }
     }

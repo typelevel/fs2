@@ -73,7 +73,7 @@ import scala.concurrent.duration._
 
 import cats.effect.{Concurrent, ExitCode, IO, IOApp, Timer}
 import cats.syntax.all._
-import fs2.{Sink, Stream}
+import fs2.{Pipe, Stream}
 import fs2.concurrent.{SignallingRef, Topic}
 
 sealed trait Event
@@ -101,7 +101,7 @@ class EventService[F[_]](eventsTopic: Topic[F, Event],
     val s3: Stream[F, Event] = Stream.sleep_[F](10.seconds) ++ eventsTopic.subscribe(10)
 
     // When Quit message received - terminate the program
-    def sink(subscriberNumber: Int): Sink[F, Event] =
+    def sink(subscriberNumber: Int): Pipe[F, Event, Unit] =
       _.flatMap {
         case e @ Text(_) => Stream.eval(F.delay(println(s"Subscriber #$subscriberNumber processing event: $e")))
         case Quit => Stream.eval(interrupter.set(true))

@@ -86,7 +86,7 @@ trait Socket[F[_]] {
   /**
     * Writes the supplied stream of bytes to this socket via `write` semantics.
     */
-  def writes(timeout: Option[FiniteDuration] = None): Sink[F, Byte]
+  def writes(timeout: Option[FiniteDuration] = None): Pipe[F, Byte, Unit]
 }
 
 object Socket {
@@ -403,7 +403,7 @@ object Socket {
 
           def write(bytes: Chunk[Byte], timeout: Option[FiniteDuration]): F[Unit] =
             write0(bytes, timeout)
-          def writes(timeout: Option[FiniteDuration]): Sink[F, Byte] =
+          def writes(timeout: Option[FiniteDuration]): Pipe[F, Byte, Unit] =
             _.chunks.flatMap { bs =>
               Stream.eval(write(bs, timeout))
             }
