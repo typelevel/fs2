@@ -3693,7 +3693,13 @@ object Stream extends StreamLowPriority {
   }
 
   trait LowPrioCompiler {
-    implicit def resourceInstance[F[_]](implicit F: Sync[F]): Compiler[F, Resource[F, ?]] = ???
+    implicit def resourceInstance[F[_]](implicit F: Sync[F]): Compiler[F, Resource[F, ?]] =
+      new Compiler[F, Resource[F, ?]] {
+        def apply[O, B, C](s: Stream[F, O], init: () => B)(foldChunk: (B, Chunk[O]) => B,
+                                                           finalize: B => C): Resource[F, C] =
+          Resource.liftF(
+            F.delay(init()).flatMap(i => Algebra.compile(s.get, i)(foldChunk)).map(finalize))
+      }
 
   }
 
