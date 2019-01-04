@@ -8,7 +8,7 @@ import cats.implicits._
 import cats.effect._
 import cats.effect.implicits._
 
-import scala.collection.generic.CanBuildFrom
+import scala.collection.compat._
 
 // trait CompilationScope {
 //   def open: F[Scope]
@@ -800,7 +800,7 @@ object Stream {
     def covary[F[_]]: Stream[F, O] = self
 
     /** Runs this pure stream and returns the emitted elements in a collection of the specified type. Note: this method is only available on pure streams. */
-    def to[C[_]](implicit cbf: CanBuildFrom[Nothing, O, C[O]]): C[O] =
+    def to[C[_]](implicit f: Factory[O, C[O]]): C[O] =
       self.covary[IO].compile.to[C].unsafeRunSync
 
     /** Runs this pure stream and returns the emitted elements in a chunk. Note: this method is only available on pure streams. */
@@ -842,7 +842,7 @@ object Stream {
     }
 
     /** Runs this fallible stream and returns the emitted elements in a collection of the specified type. Note: this method is only available on fallible streams. */
-    def to[C[_]](implicit cbf: CanBuildFrom[Nothing, O, C[O]]): Either[Throwable, C[O]] =
+    def to[C[_]](implicit f: Factory[O, C[O]]): Either[Throwable, C[O]] =
       lift[IO].compile.to[C].attempt.unsafeRunSync
 
     /** Runs this fallible stream and returns the emitted elements in a chunk. Note: this method is only available on fallible streams. */
@@ -922,37 +922,37 @@ object Stream {
 
   /** Type class which describes compilation of a `Stream[F, O]` to a `G[?]`. */
   sealed trait Compiler[F[_], G[_]] {
-    private[Stream] def apply[O, B, C](s: Stream[F, O], init: Eval[B])(fold: (B, Chunk[O]) => B,
+    private[Stream] def apply[O, B, C](s: Stream[F, O], init: () => B)(fold: (B, Chunk[O]) => B,
                                                                        finalize: B => C): G[C]
   }
 
   object Compiler {
     implicit def syncInstance[F[_]](implicit F: Sync[F]): Compiler[F, F] = new Compiler[F, F] {
-      def apply[O, B, C](s: Stream[F, O], init: Eval[B])(foldChunk: (B, Chunk[O]) => B,
+      def apply[O, B, C](s: Stream[F, O], init: () => B)(foldChunk: (B, Chunk[O]) => B,
                                                          finalize: B => C): F[C] =
-        F.delay(init.value).flatMap(i => s.asPull.compile(i)(foldChunk)).map {
+        F.delay(init()).flatMap(i => s.asPull.compile(i)(foldChunk)).map {
           case (b, _) => finalize(b)
         }
     }
 
     implicit val pureInstance: Compiler[Pure, Id] = new Compiler[Pure, Id] {
-      def apply[O, B, C](s: Stream[Pure, O], init: Eval[B])(foldChunk: (B, Chunk[O]) => B,
+      def apply[O, B, C](s: Stream[Pure, O], init: () => B)(foldChunk: (B, Chunk[O]) => B,
                                                             finalize: B => C): C =
-        finalize(s.covary[IO].asPull.compile(init.value)(foldChunk).unsafeRunSync._1)
+        finalize(s.covary[IO].asPull.compile(init())(foldChunk).unsafeRunSync._1)
     }
 
     implicit val idInstance: Compiler[Id, Id] = new Compiler[Id, Id] {
-      def apply[O, B, C](s: Stream[Id, O], init: Eval[B])(foldChunk: (B, Chunk[O]) => B,
+      def apply[O, B, C](s: Stream[Id, O], init: () => B)(foldChunk: (B, Chunk[O]) => B,
                                                           finalize: B => C): C =
-        finalize(s.covaryId[IO].asPull.compile(init.value)(foldChunk).unsafeRunSync._1)
+        finalize(s.covaryId[IO].asPull.compile(init())(foldChunk).unsafeRunSync._1)
     }
 
     implicit val fallibleInstance: Compiler[Fallible, Either[Throwable, ?]] =
       new Compiler[Fallible, Either[Throwable, ?]] {
-        def apply[O, B, C](s: Stream[Fallible, O], init: Eval[B])(
+        def apply[O, B, C](s: Stream[Fallible, O], init: () => B)(
             foldChunk: (B, Chunk[O]) => B,
             finalize: B => C): Either[Throwable, C] =
-          s.lift[IO].asPull.compile(init.value)(foldChunk).attempt.unsafeRunSync.map {
+          s.lift[IO].asPull.compile(init())(foldChunk).attempt.unsafeRunSync.map {
             case (b, _) => finalize(b)
           }
       }
@@ -988,7 +988,7 @@ object Stream {
       * compiles the stream down to the target effect type.
       */
     def foldChunks[B](init: B)(f: (B, Chunk[O]) => B): G[B] =
-      compiler(fromPull(self), Eval.now(init))(f, identity)
+      compiler(fromPull(self), () => init)(f, identity)
 
     /**
       * Like [[fold]] but uses the implicitly available `Monoid[O]` to combine elements.
@@ -1055,7 +1055,7 @@ object Stream {
 
     /**
       * Compiles this stream into a value of the target effect type `F` by logging
-      * the output values to a `C`, given a `CanBuildFrom`.
+      * the output values to a `C`, given a `Factory`.
       *
       * When this method has returned, the stream has not begun execution -- this method simply
       * compiles the stream down to the target effect type.
@@ -1066,8 +1066,8 @@ object Stream {
       * res0: List[Int] = List(0, 1, 2, 3, 4)
       * }}}
       */
-    def to[C[_]](implicit cbf: CanBuildFrom[Nothing, O, C[O]]): G[C[O]] =
-      compiler(Stream.fromPull(self), Eval.always(cbf()))(_ ++= _.iterator, _.result)
+    def to[C[_]](implicit f: Factory[O, C[O]]): G[C[O]] =
+      compiler(fromPull(self), () => f.newBuilder)(_ ++= _.iterator, _.result)
 
     /**
       * Compiles this stream in to a value of the target effect type `F` by logging
@@ -1083,7 +1083,7 @@ object Stream {
       * }}}
       */
     def toChunk: G[Chunk[O]] =
-      compiler(Stream.fromPull(self), Eval.always(List.newBuilder[Chunk[O]]))(
+      compiler(Stream.fromPull(self), () => List.newBuilder[Chunk[O]])(
         _ += _,
         bldr => Chunk.concat(bldr.result))
 
