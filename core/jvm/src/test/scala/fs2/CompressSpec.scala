@@ -6,8 +6,17 @@ import cats.effect._
 import org.scalacheck.Arbitrary.arbitrary
 import org.scalacheck.Gen
 
-import java.io.ByteArrayOutputStream
-import java.util.zip.{Deflater, DeflaterOutputStream, Inflater, InflaterOutputStream}
+import java.io.{ByteArrayInputStream, ByteArrayOutputStream}
+import java.util.zip.{
+  Deflater,
+  DeflaterOutputStream,
+  GZIPInputStream,
+  Inflater,
+  InflaterOutputStream
+}
+
+import scala.collection.mutable
+import scala.collection.compat._
 
 import TestUtil._
 import compress._
@@ -99,6 +108,76 @@ class CompressSpec extends Fs2Spec {
           |-- Pierce, Benjamin C. (2002). Types and Programming Languages""")
       val compressed =
         Stream.chunk(Chunk.bytes(uncompressed)).through(deflate(9)).toVector
+
+      compressed.length should be < uncompressed.length
+    }
+
+    "gzip |> gunzip ~= id" in forAll { s: PureStream[Byte] =>
+      s.get.toVector shouldBe s.get
+        .covary[IO]
+        .through(compress.gzip[IO](8192))
+        .through(compress.gunzip[IO](8192))
+        .compile
+        .toVector
+        .unsafeRunSync()
+    }
+
+    "gzip |> gunzip ~= id (mutually prime chunk sizes, compression larger)" in forAll {
+      s: PureStream[Byte] =>
+        s.get.toVector shouldBe s.get
+          .covary[IO]
+          .through(compress.gzip[IO](1031))
+          .through(compress.gunzip[IO](509))
+          .compile
+          .toVector
+          .unsafeRunSync()
+    }
+
+    "gzip |> gunzip ~= id (mutually prime chunk sizes, decompression larger)" in forAll {
+      s: PureStream[Byte] =>
+        s.get.toVector shouldBe s.get
+          .covary[IO]
+          .through(compress.gzip[IO](509))
+          .through(compress.gunzip[IO](1031))
+          .compile
+          .toVector
+          .unsafeRunSync()
+    }
+
+    "gzip |> GZIPInputStream ~= id" in forAll { s: PureStream[Byte] =>
+      val bytes = s.get
+        .covary[IO]
+        .through(compress.gzip[IO](1024))
+        .compile
+        .to[Array]
+        .unsafeRunSync()
+
+      val bis = new ByteArrayInputStream(bytes)
+      val gzis = new GZIPInputStream(bis)
+
+      val buffer = mutable.ArrayBuffer[Byte]()
+      var read = gzis.read()
+      while (read >= 0) {
+        buffer += read.toByte
+        read = gzis.read()
+      }
+
+      buffer.toVector shouldBe s.get.toVector
+    }
+
+    "gzip.compresses input" in {
+      val uncompressed =
+        getBytes(""""
+          |"A type system is a tractable syntactic method for proving the absence
+          |of certain program behaviors by classifying phrases according to the
+          |kinds of values they compute."
+          |-- Pierce, Benjamin C. (2002). Types and Programming Languages""")
+      val compressed = Stream
+        .chunk(Chunk.bytes(uncompressed))
+        .through(gzip[IO](2048))
+        .compile
+        .toVector
+        .unsafeRunSync()
 
       compressed.length should be < uncompressed.length
     }
