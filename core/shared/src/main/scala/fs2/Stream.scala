@@ -3698,28 +3698,36 @@ object Stream extends StreamLowPriority {
         def apply[O, B, C](s: Stream[F, O], init: () => B)(foldChunk: (B, Chunk[O]) => B,
                                                            finalize: B => C): Resource[F, C] =
           Resource.liftF(
-            F.delay(init()).flatMap(i => Algebra.compile(s.get, i)(foldChunk)).map(finalize))
+            F.delay(init())
+              .flatMap(i => Compiler.compile(s.get, i)(foldChunk))
+              .map(finalize))
       }
 
   }
 
   object Compiler extends LowPrioCompiler {
+    // TOOD make this private once the Resource compiler is properly implemented
+    private[Stream] def compile[F[_], O, B](stream: FreeC[Algebra[F, O, ?], Unit], init: B)(
+        f: (B, Chunk[O]) => B)(implicit F: Sync[F]): F[B] =
+      F.bracketCase(CompileScope.newRoot[F])(scope =>
+        Algebra.compile[F, O, B](stream, scope, init)(f))((scope, ec) => scope.close(ec).rethrow)
+
     implicit def syncInstance[F[_]](implicit F: Sync[F]): Compiler[F, F] = new Compiler[F, F] {
       def apply[O, B, C](s: Stream[F, O], init: () => B)(foldChunk: (B, Chunk[O]) => B,
                                                          finalize: B => C): F[C] =
-        F.delay(init()).flatMap(i => Algebra.compile(s.get, i)(foldChunk)).map(finalize)
+        F.delay(init()).flatMap(i => Compiler.compile(s.get, i)(foldChunk)).map(finalize)
     }
 
     implicit val pureInstance: Compiler[Pure, Id] = new Compiler[Pure, Id] {
       def apply[O, B, C](s: Stream[Pure, O], init: () => B)(foldChunk: (B, Chunk[O]) => B,
                                                             finalize: B => C): C =
-        finalize(Algebra.compile(s.covary[IO].get, init())(foldChunk).unsafeRunSync)
+        finalize(Compiler.compile(s.covary[IO].get, init())(foldChunk).unsafeRunSync)
     }
 
     implicit val idInstance: Compiler[Id, Id] = new Compiler[Id, Id] {
       def apply[O, B, C](s: Stream[Id, O], init: () => B)(foldChunk: (B, Chunk[O]) => B,
                                                           finalize: B => C): C =
-        finalize(Algebra.compile(s.covaryId[IO].get, init())(foldChunk).unsafeRunSync)
+        finalize(Compiler.compile(s.covaryId[IO].get, init())(foldChunk).unsafeRunSync)
     }
 
     implicit val fallibleInstance: Compiler[Fallible, Either[Throwable, ?]] =
@@ -3727,7 +3735,7 @@ object Stream extends StreamLowPriority {
         def apply[O, B, C](s: Stream[Fallible, O], init: () => B)(
             foldChunk: (B, Chunk[O]) => B,
             finalize: B => C): Either[Throwable, C] =
-          Algebra.compile(s.lift[IO].get, init())(foldChunk).attempt.unsafeRunSync.map(finalize)
+          Compiler.compile(s.lift[IO].get, init())(foldChunk).attempt.unsafeRunSync.map(finalize)
       }
   }
 

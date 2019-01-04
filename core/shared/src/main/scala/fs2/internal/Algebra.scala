@@ -168,23 +168,16 @@ private[fs2] object Algebra {
     step(s, None).map { _.map { case (h, _, t) => (h, t) } }
 
   /** Left-folds the output of a stream. */
-  def compile[F[_], O, B](stream: FreeC[Algebra[F, O, ?], Unit], init: B)(f: (B, Chunk[O]) => B)(
-      implicit F: Sync[F]): F[B] =
-    F.bracketCase(CompileScope.newRoot[F])(scope => compileScope[F, O, B](scope, stream, init)(f))(
-      (scope, ec) => scope.close(ec).rethrow)
-
-  private[this] def compileScope[F[_], O, B](
-      scope: CompileScope[F],
-      stream: FreeC[Algebra[F, O, ?], Unit],
-      init: B)(g: (B, Chunk[O]) => B)(implicit F: Sync[F]): F[B] =
+  def compile[F[_], O, B](stream: FreeC[Algebra[F, O, ?], Unit], scope: CompileScope[F], init: B)(
+      g: (B, Chunk[O]) => B)(implicit F: Sync[F]): F[B] =
     compileLoop[F, O](scope, stream).flatMap {
       case Some((output, scope, tail)) =>
         try {
           val b = g(init, output)
-          compileScope(scope, tail, b)(g)
+          compile(tail, scope, b)(g)
         } catch {
           case NonFatal(err) =>
-            compileScope(scope, tail.asHandler(err), init)(g)
+            compile(tail.asHandler(err), scope, init)(g)
         }
       case None =>
         F.pure(init)

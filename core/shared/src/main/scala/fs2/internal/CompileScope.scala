@@ -405,7 +405,7 @@ private[fs2] final class CompileScope[F[_]] private (
     s"RunFoldScope(id=$id,interruptible=${interruptible.nonEmpty})"
 }
 
-private[internal] object CompileScope {
+private[fs2] object CompileScope {
 
   /** Creates a new root scope. */
   def newRoot[F[_]: Sync]: F[CompileScope[F]] =
