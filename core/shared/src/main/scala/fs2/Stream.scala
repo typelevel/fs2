@@ -3700,7 +3700,6 @@ object Stream extends StreamLowPriority {
           Resource
             .makeCase(CompileScope.newRoot[F])((scope, ec) => scope.close(ec).rethrow)
             .flatMap { scope =>
-              println("correct interpreter")
               Resource.liftF {
                 F.delay(init())
                   .flatMap(i => Algebra.compile(s.get, scope, i)(foldChunk))

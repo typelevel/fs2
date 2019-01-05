@@ -88,10 +88,12 @@ private[fs2] final class CompileScope[F[_]] private (
     * it may have been `leased` to other scopes.
     */
   def releaseResource(id: Token, ec: ExitCase[Throwable]): F[Either[Throwable, Unit]] =
-    F.flatMap(state.modify { _.unregisterResource(id) }) {
-      case Some(resource) => resource.release(ec)
-      case None           => F.pure(Right(())) // resource does not exist in scope any more.
-    }
+    if (!parent.isEmpty) { // TODO comment to explain this
+      F.flatMap(state.modify { _.unregisterResource(id) }) {
+        case Some(resource) => resource.release(ec)
+        case None           => F.pure(Right(())) // resource does not exist in scope any more.
+      }
+    } else F.pure(Right(()))
 
   /**
     * Opens a child scope.
