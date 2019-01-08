@@ -3648,10 +3648,8 @@ object Stream extends StreamLowPriority {
     def last: Pull[F, INothing, Option[O]] = {
       def go(prev: Option[O], s: Stream[F, O]): Pull[F, INothing, Option[O]] =
         s.pull.uncons.flatMap {
-          case None => Pull.pure(prev)
-          case Some((hd, tl)) =>
-            val last = hd.foldLeft(prev)((_, o) => Some(o))
-            go(last, tl)
+          case None           => Pull.pure(prev)
+          case Some((hd, tl)) => go(hd.last.orElse(prev), tl)
         }
       go(None, self)
     }
