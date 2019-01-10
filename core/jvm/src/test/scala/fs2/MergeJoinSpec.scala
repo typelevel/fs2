@@ -249,7 +249,7 @@ class MergeJoinSpec extends Fs2Spec {
         Stream
           .repeatEval[IO, Unit](IO.async[Unit] { cb =>
             cb(Right(()))
-          } *> IO.shift)
+          } >> IO.shift)
           .drain
 
       "merge" in {
@@ -271,7 +271,7 @@ class MergeJoinSpec extends Fs2Spec {
 
     "parJoin - outer-failed" in {
       an[Err] should be thrownBy {
-        runLog(Stream(Stream.sleep_[IO](1 minute), Stream.raiseError[IO](new Err)).parJoinUnbounded)
+        runLog(Stream(Stream.sleep_[IO](1.minute), Stream.raiseError[IO](new Err)).parJoinUnbounded)
       }
     }
   }

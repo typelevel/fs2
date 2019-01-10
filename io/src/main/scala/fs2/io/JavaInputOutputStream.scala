@@ -1,32 +1,34 @@
 package fs2
 package io
 
-import scala.concurrent.{SyncVar, blocking}
-
 import java.io.{IOException, InputStream}
 
-import cats.effect.{ConcurrentEffect, ExitCase, IO}
+import cats.implicits._
+import cats.effect.{ConcurrentEffect, ExitCase}
 import cats.effect.implicits._
-import cats.implicits.{catsSyntaxEither => _, _}
 
 import fs2.Chunk.Bytes
 import fs2.concurrent.{Queue, SignallingRef}
 
 private[io] object JavaInputOutputStream {
 
+  /** state of the upstream, we only indicate whether upstream is done and if it failed **/
+  private final case class UpStreamState(done: Boolean, err: Option[Throwable])
+  private sealed trait DownStreamState { self =>
+    def isDone: Boolean = self match {
+      case Done(_) => true
+      case _       => false
+    }
+  }
+  private final case class Done(rslt: Option[Throwable]) extends DownStreamState
+  private final case class Ready(rem: Option[Bytes]) extends DownStreamState
+
   def toInputStream[F[_]](implicit F: ConcurrentEffect[F]): Pipe[F, Byte, InputStream] = {
 
-    /** See Implementation notes at the end of this code block **/
-    /** state of the upstream, we only indicate whether upstream is done and if it failed **/
-    final case class UpStreamState(done: Boolean, err: Option[Throwable])
-    final case class Done(rslt: Option[Throwable]) extends DownStreamState
-    final case class Ready(rem: Option[Bytes]) extends DownStreamState
-    sealed trait DownStreamState { self =>
-      def isDone: Boolean = self match {
-        case Done(_) => true
-        case _       => false
-      }
-    }
+    def markUpstreamDone(queue: Queue[F, Either[Option[Throwable], Bytes]],
+                         upState: SignallingRef[F, UpStreamState],
+                         result: Option[Throwable]): F[Unit] =
+      upState.set(UpStreamState(done = true, err = result)) >> queue.enqueue1(Left(result))
 
     /**
       * Takes source and runs it through queue, interrupting when dnState signals stream is done.
@@ -42,87 +44,20 @@ private[io] object JavaInputOutputStream {
         dnState: SignallingRef[F, DownStreamState]
     ): Stream[F, Unit] =
       Stream
-        .eval(F.start {
-          def markUpstreamDone(result: Option[Throwable]): F[Unit] =
-            F.flatMap(upState.set(UpStreamState(done = true, err = result))) { _ =>
-              queue.enqueue1(Left(result))
+        .eval(
+          source.chunks
+            .evalMap(ch => queue.enqueue1(Right(ch.toBytes)))
+            .interruptWhen(dnState.discrete.map(_.isDone).filter(identity))
+            .compile
+            .drain
+            .guaranteeCase {
+              case ExitCase.Completed => markUpstreamDone(queue, upState, None)
+              case ExitCase.Error(t)  => markUpstreamDone(queue, upState, Some(t))
+              case ExitCase.Canceled  => markUpstreamDone(queue, upState, None)
             }
-
-          F.guaranteeCase(
-            source.chunks
-              .evalMap(ch => queue.enqueue1(Right(ch.toBytes)))
-              .interruptWhen(dnState.discrete.map(_.isDone).filter(identity))
-              .compile
-              .drain
-          ) {
-            case ExitCase.Completed => markUpstreamDone(None)
-            case ExitCase.Error(t)  => markUpstreamDone(Some(t))
-            case ExitCase.Canceled  => markUpstreamDone(None)
-          }
-        })
-        .map(_ => ())
-
-    /**
-      * Closes the stream if not closed yet.
-      * If the stream is closed, this will return once the upstream stream finishes its work and
-      * releases any resources that upstream may hold.
-      */
-    def closeIs(
-        upState: SignallingRef[F, UpStreamState],
-        dnState: SignallingRef[F, DownStreamState]
-    ): Unit = {
-      val done = new SyncVar[Either[Throwable, Unit]]
-      close(upState, dnState).start.flatMap(_.join).runAsync(r => IO(done.put(r))).unsafeRunSync
-      blocking(done.get.fold(throw _, identity))
-    }
-
-    /**
-      * Reads single chunk of bytes of size `len` into array b.
-      *
-      * This is implementation of InputStream#read.
-      *
-      * Inherently this method will block until data from the queue are available
-      */
-    def readIs(
-        dest: Array[Byte],
-        off: Int,
-        len: Int,
-        queue: Queue[F, Either[Option[Throwable], Bytes]],
-        dnState: SignallingRef[F, DownStreamState]
-    ): Int = {
-      val sync = new SyncVar[Either[Throwable, Int]]
-      readOnce(dest, off, len, queue, dnState).start
-        .flatMap(_.join)
-        .runAsync(r => IO(sync.put(r)))
-        .unsafeRunSync
-      blocking(sync.get.fold(throw _, identity))
-    }
-
-    /**
-      * Reads single int value
-      *
-      * This is implementation of InputStream#read.
-      *
-      * Inherently this method will block until data from the queue are available
-      *
-      *
-      */
-    def readIs1(
-        queue: Queue[F, Either[Option[Throwable], Bytes]],
-        dnState: SignallingRef[F, DownStreamState]
-    ): Int = {
-
-      def go(acc: Array[Byte]): F[Int] =
-        F.flatMap(readOnce(acc, 0, 1, queue, dnState)) { read =>
-          if (read < 0) F.pure(-1)
-          else if (read == 0) go(acc)
-          else F.pure(acc(0) & 0xFF)
-        }
-
-      val sync = new SyncVar[Either[Throwable, Int]]
-      go(new Array[Byte](1)).start.flatMap(_.join).runAsync(r => IO(sync.put(r))).unsafeRunSync
-      blocking(sync.get.fold(throw _, identity))
-    }
+            .start
+        )
+        .void
 
     def readOnce(
         dest: Array[Byte],
@@ -175,7 +110,7 @@ private[io] object JavaInputOutputStream {
                       .update(setDone(None))
                       .as(-1) // update we are done, next read won't succeed
                   case Left(Some(err)) => // update we are failed, next read won't succeed
-                    dnState.update(setDone(err.some)) *> F.raiseError[Int](
+                    dnState.update(setDone(err.some)) >> F.raiseError[Int](
                       new IOException("UpStream failed", err))
                   case Right(bytes) =>
                     val (copy, maybeKeep) =
@@ -186,7 +121,7 @@ private[io] object JavaInputOutputStream {
                       }
                     F.delay {
                       Array.copy(copy.values, 0, dest, off, copy.size)
-                    } *> (maybeKeep match {
+                    } >> (maybeKeep match {
                       case Some(rem) if rem.size > 0 =>
                         dnState.set(Ready(rem.some)).as(copy.size)
                       case _ => copy.size.pure[F]
@@ -199,10 +134,7 @@ private[io] object JavaInputOutputStream {
       }.flatten
     }
 
-    /**
-      * Closes input stream and awaits completion of the upstream
-      */
-    def close(
+    def closeIs(
         upState: SignallingRef[F, UpStreamState],
         dnState: SignallingRef[F, DownStreamState]
     ): F[Unit] =
@@ -234,30 +166,39 @@ private[io] object JavaInputOutputStream {
      *                        that upstream has finished and is safe time to terminate
      * - DownStream signal -  keeps any remainders from last `read` and signals
      *                        that downstream has been terminated that in turn kills upstream
-     *
      */
     (source: Stream[F, Byte]) =>
       Stream
-        .eval(Queue.synchronous[F, Either[Option[Throwable], Bytes]])
-        .flatMap { queue =>
-          Stream
-            .eval(SignallingRef[F, UpStreamState](UpStreamState(done = false, err = None)))
-            .flatMap { upState =>
-              Stream
-                .eval(SignallingRef[F, DownStreamState](Ready(None)))
-                .flatMap { dnState =>
-                  processInput(source, queue, upState, dnState)
-                    .map { _ =>
-                      new InputStream {
-                        override def close(): Unit = closeIs(upState, dnState)
-                        override def read(b: Array[Byte], off: Int, len: Int): Int =
-                          readIs(b, off, len, queue, dnState)
-                        def read(): Int = readIs1(queue, dnState)
+        .eval(
+          (
+            Queue.synchronous[F, Either[Option[Throwable], Bytes]],
+            SignallingRef[F, UpStreamState](UpStreamState(done = false, err = None)),
+            SignallingRef[F, DownStreamState](Ready(None))
+          ).tupled)
+        .flatMap {
+          case (queue, upState, dnState) =>
+            processInput(source, queue, upState, dnState)
+              .as(
+                new InputStream {
+                  override def close(): Unit =
+                    closeIs(upState, dnState).toIO.unsafeRunSync
+
+                  override def read(b: Array[Byte], off: Int, len: Int): Int =
+                    readOnce(b, off, len, queue, dnState).toIO.unsafeRunSync
+
+                  def read(): Int = {
+                    def go(acc: Array[Byte]): F[Int] =
+                      readOnce(acc, 0, 1, queue, dnState).flatMap { read =>
+                        if (read < 0) F.pure(-1)
+                        else if (read == 0) go(acc)
+                        else F.pure(acc(0) & 0xFF)
                       }
-                    }
-                    .onFinalize(close(upState, dnState))
+
+                    go(new Array[Byte](1)).toIO.unsafeRunSync
+                  }
                 }
-            }
+              )
+              .onFinalize(closeIs(upState, dnState))
         }
   }
 }

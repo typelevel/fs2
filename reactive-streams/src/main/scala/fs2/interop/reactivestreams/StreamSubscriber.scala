@@ -102,7 +102,7 @@ object StreamSubscriber {
         case Uninitialized                  => Idle(s) -> F.unit
         case o =>
           val err = new Error(s"received subscription in invalid state [$o]")
-          o -> F.delay(s.cancel) *> F.raiseError(err)
+          o -> (F.delay(s.cancel) >> F.raiseError(err))
       }
       case OnNext(a) => {
         case WaitingOnUpstream(s, r) => Idle(s) -> r.complete(a.some.asRight)
@@ -119,7 +119,7 @@ object StreamSubscriber {
       }
       case OnFinalize => {
         case WaitingOnUpstream(sub, r) =>
-          DownstreamCancellation -> F.delay(sub.cancel) *> r.complete(None.asRight)
+          DownstreamCancellation -> (F.delay(sub.cancel) >> r.complete(None.asRight))
         case Idle(sub) => DownstreamCancellation -> F.delay(sub.cancel)
         case o         => o -> F.unit
       }
@@ -142,7 +142,7 @@ object StreamSubscriber {
         def onFinalize: F[Unit] = nextState(OnFinalize)
         def dequeue1: F[Either[Throwable, Option[A]]] =
           Deferred[F, Out].flatMap { p =>
-            ref.modify(step(OnDequeue(p))).flatten *> p.get
+            ref.modify(step(OnDequeue(p))).flatten >> p.get
           }
       }
     }

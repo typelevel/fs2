@@ -25,7 +25,7 @@ class SignalSpec extends Fs2Spec {
         }
         val s = SignallingRef[IO, Long](0L).unsafeRunSync()
         val r = new AtomicLong(0)
-        (IO.shift *> s.discrete.map(r.set).compile.drain).unsafeToFuture()
+        (IO.shift >> s.discrete.map(r.set).compile.drain).unsafeToFuture()
         assert(vs.forall { v =>
           s.set(v).unsafeRunSync()
           while (s.get.unsafeRunSync() != v) {} // wait for set to arrive
@@ -44,7 +44,7 @@ class SignalSpec extends Fs2Spec {
         val vs = v0 :: vsTl
         val s = SignallingRef[IO, Long](0L).unsafeRunSync()
         val r = new AtomicLong(0)
-        (IO.shift *> s.discrete
+        (IO.shift >> s.discrete
           .map { i =>
             Thread.sleep(10); r.set(i)
           }

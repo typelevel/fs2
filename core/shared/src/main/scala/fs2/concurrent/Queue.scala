@@ -23,7 +23,7 @@ trait Enqueue[F[_], A] {
     * Enqueues each element of the input stream to this queue by
     * calling `enqueue1` on each element.
     */
-  def enqueue: Sink[F, A] = _.evalMap(enqueue1)
+  def enqueue: Pipe[F, A, Unit] = _.evalMap(enqueue1)
 
   /**
     * Offers one element to this `Queue`.
@@ -427,10 +427,10 @@ object InspectableQueue {
         }
 
         def dequeueChunk1(maxSize: Int): F[Chunk[A]] =
-          pubSub.get(Right(maxSize)).map(_.right.toOption.getOrElse(Chunk.empty))
+          pubSub.get(Right(maxSize)).map(_.toOption.getOrElse(Chunk.empty))
 
         def tryDequeueChunk1(maxSize: Int): F[Option[Chunk[A]]] =
-          pubSub.tryGet(Right(maxSize)).map(_.map(_.right.toOption.getOrElse(Chunk.empty)))
+          pubSub.tryGet(Right(maxSize)).map(_.map(_.toOption.getOrElse(Chunk.empty)))
 
         def dequeueChunk(maxSize: Int): Stream[F, A] =
           pubSub.getStream(Right(maxSize)).flatMap {
@@ -443,7 +443,7 @@ object InspectableQueue {
             Stream
               .evalUnChunk(
                 pubSub.get(Right(sz)).map {
-                  _.right.toOption.getOrElse(Chunk.empty)
+                  _.toOption.getOrElse(Chunk.empty)
                 }
               )
           }

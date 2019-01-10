@@ -30,7 +30,7 @@ class UdpSpec extends Fs2Spec with BeforeAndAfterAll {
     "echo one" in {
       val msg = Chunk.bytes("Hello, world!".getBytes)
       runLog {
-        Stream.resource(open[IO]()).flatMap { serverSocket =>
+        Stream.resource(Socket[IO]()).flatMap { serverSocket =>
           Stream.eval(serverSocket.localAddress).map { _.getPort }.flatMap { serverPort =>
             val serverAddress = new InetSocketAddress("localhost", serverPort)
             val server = serverSocket
@@ -39,9 +39,9 @@ class UdpSpec extends Fs2Spec with BeforeAndAfterAll {
                 serverSocket.write(packet)
               }
               .drain
-            val client = Stream.resource(open[IO]()).flatMap { clientSocket =>
+            val client = Stream.resource(Socket[IO]()).flatMap { clientSocket =>
               Stream(Packet(serverAddress, msg))
-                .to(clientSocket.writes())
+                .through(clientSocket.writes())
                 .drain ++ Stream.eval(clientSocket.read())
             }
             server.mergeHaltBoth(client)
@@ -57,7 +57,7 @@ class UdpSpec extends Fs2Spec with BeforeAndAfterAll {
       val numClients = 50
       val numParallelClients = 10
       runLog {
-        Stream.resource(open[IO]()).flatMap { serverSocket =>
+        Stream.resource(Socket[IO]()).flatMap { serverSocket =>
           Stream.eval(serverSocket.localAddress).map { _.getPort }.flatMap { serverPort =>
             val serverAddress = new InetSocketAddress("localhost", serverPort)
             val server = serverSocket
@@ -66,7 +66,7 @@ class UdpSpec extends Fs2Spec with BeforeAndAfterAll {
                 serverSocket.write(packet)
               }
               .drain
-            val client = Stream.resource(open[IO]()).flatMap { clientSocket =>
+            val client = Stream.resource(Socket[IO]()).flatMap { clientSocket =>
               Stream
                 .emits(msgs.map { msg =>
                   Packet(serverAddress, msg)
@@ -95,7 +95,7 @@ class UdpSpec extends Fs2Spec with BeforeAndAfterAll {
       runLog {
         Stream
           .resource(
-            open[IO](
+            Socket[IO](
               protocolFamily = Some(StandardProtocolFamily.INET),
               multicastTTL = Some(1)
             ))
@@ -113,9 +113,9 @@ class UdpSpec extends Fs2Spec with BeforeAndAfterAll {
                     serverSocket.write(packet)
                   }
                   .drain
-              val client = Stream.resource(open[IO]()).flatMap { clientSocket =>
+              val client = Stream.resource(Socket[IO]()).flatMap { clientSocket =>
                 Stream(Packet(new InetSocketAddress(group, serverPort), msg))
-                  .to(clientSocket.writes())
+                  .through(clientSocket.writes())
                   .drain ++ Stream.eval(clientSocket.read())
               }
               server.mergeHaltBoth(client)
@@ -127,7 +127,7 @@ class UdpSpec extends Fs2Spec with BeforeAndAfterAll {
     "timeouts supported" in {
       an[InterruptedByTimeoutException] should be thrownBy {
         runLog {
-          Stream.resource(open[IO]()).flatMap { socket =>
+          Stream.resource(Socket[IO]()).flatMap { socket =>
             socket.reads(timeout = Some(50.millis))
           }
         }

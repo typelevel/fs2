@@ -1,5 +1,5 @@
 import microsites.ExtraMdFileConfig
-import com.typesafe.tools.mima.core.{Problem, ProblemFilters}
+import com.typesafe.tools.mima.core._
 import sbtrelease.Version
 import sbtcrossproject.crossProject
 
@@ -24,10 +24,7 @@ lazy val commonSettings = Seq(
     "-feature",
     "-deprecation",
     "-language:implicitConversions",
-    "-language:higherKinds",
-    "-language:existentials",
-    "-language:postfixOps",
-    "-Ypartial-unification"
+    "-language:higherKinds"
   ) ++
     (if (scalaBinaryVersion.value.startsWith("2.12"))
        List(
@@ -35,10 +32,11 @@ lazy val commonSettings = Seq(
          "-Xfatal-warnings",
          "-Yno-adapted-args",
          "-Ywarn-value-discard",
-         "-Ywarn-unused-import"
+         "-Ywarn-unused-import",
+         "-Ypartial-unification"
        )
      else Nil) ++ (if (scalaBinaryVersion.value.startsWith("2.11"))
-                     List("-Xexperimental")
+                     List("-Xexperimental", "-Ypartial-unification")
                    else
                      Nil), // 2.11 needs -Xexperimental to enable SAM conversion
   scalacOptions in (Compile, console) ~= {
@@ -50,14 +48,27 @@ lazy val commonSettings = Seq(
   scalacOptions in (Test, console) := (scalacOptions in (Compile, console)).value,
   javaOptions in (Test, run) ++= Seq("-Xms64m", "-Xmx64m"),
   libraryDependencies ++= Seq(
-    compilerPlugin("org.spire-math" %% "kind-projector" % "0.9.6"),
-    "org.typelevel" %%% "cats-core" % "1.4.0",
-    "org.typelevel" %%% "cats-laws" % "1.4.0" % "test",
-    "org.typelevel" %%% "cats-effect" % "1.0.0",
-    "org.typelevel" %%% "cats-effect-laws" % "1.0.0" % "test",
-    "org.scalatest" %%% "scalatest" % "3.0.5" % "test",
-    "org.scalacheck" %%% "scalacheck" % "1.13.5" % "test"
+    compilerPlugin("org.spire-math" %% "kind-projector" % "0.9.9"),
+    "org.typelevel" %%% "cats-core" % "1.5.0",
+    "org.typelevel" %%% "cats-laws" % "1.5.0" % "test",
+    "org.typelevel" %%% "cats-effect" % "1.1.0",
+    "org.typelevel" %%% "cats-effect-laws" % "1.1.0" % "test",
+    "org.scala-lang.modules" %%% "scala-collection-compat" % "0.2.1"
   ),
+  libraryDependencies ++= {
+    CrossVersion.partialVersion(scalaVersion.value) match {
+      case Some((2, v)) if v >= 13 =>
+        Seq(
+          "org.scalatest" %%% "scalatest" % "3.0.6-SNAP5" % "test",
+          "org.scalacheck" %%% "scalacheck" % "1.14.0" % "test"
+        )
+      case _ =>
+        Seq(
+          "org.scalatest" %%% "scalatest" % "3.0.5" % "test",
+          "org.scalacheck" %%% "scalacheck" % "1.13.5" % "test"
+        )
+    }
+  },
   scmInfo := Some(ScmInfo(url("https://github.com/functional-streams-for-scala/fs2"),
                           "git@github.com:functional-streams-for-scala/fs2.git")),
   homepage := Some(url("https://github.com/functional-streams-for-scala/fs2")),
@@ -156,7 +167,8 @@ lazy val publishingSettings = Seq(
       n.label == "dependency" && (n \ "scope").text == "test"
     }
     new RuleTransformer(stripTestScope).transform(node)(0)
-  }
+  },
+  gpgWarnOnFailure := Option(System.getenv().get("GPG_WARN_ON_FAILURE")).isDefined
 )
 
 lazy val commonJsSettings = Seq(
@@ -191,15 +203,35 @@ lazy val releaseSettings = Seq(
 )
 
 lazy val mimaSettings = Seq(
-  mimaPreviousArtifacts := previousVersion(version.value).map { pv =>
-    organization.value % (normalizedName.value + "_" + scalaBinaryVersion.value) % pv
-  }.toSet,
+  mimaPreviousArtifacts := {
+    CrossVersion.partialVersion(scalaVersion.value) match {
+      case Some((2, v)) if v >= 13 => Set.empty
+      case _ =>
+        previousVersion(version.value).map { pv =>
+          organization.value % (normalizedName.value + "_" + scalaBinaryVersion.value) % pv
+        }.toSet
+    }
+  },
   mimaBinaryIssueFilters ++= Seq(
+    ProblemFilters.exclude[Problem]("fs2.package*EitherSyntax*"),
     ProblemFilters.exclude[Problem]("fs2.internal.*"),
     ProblemFilters.exclude[Problem]("fs2.Stream#StepLeg.this"),
     ProblemFilters.exclude[Problem]("fs2.concurrent.Publish.*"),
     ProblemFilters.exclude[Problem]("fs2.concurrent.Subscribe.*"),
-    ProblemFilters.exclude[Problem]("fs2.concurrent.PubSub.*")
+    ProblemFilters.exclude[Problem]("fs2.concurrent.PubSub.*"),
+    // The following changes to the io package were all package private
+    ProblemFilters
+      .exclude[DirectMissingMethodProblem]("fs2.io.package.invokeCallback"),
+    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.tcp.Socket.client"),
+    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.tcp.Socket.server"),
+    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.tcp.Socket.mkSocket"),
+    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.udp.Socket.mkSocket"),
+    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Pipe.joinQueued"),
+    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Pipe.joinAsync"),
+    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Stream.bracketFinalizer"),
+    // Compiler#apply is private[fs2]
+    ProblemFilters.exclude[IncompatibleMethTypeProblem]("fs2.Stream#Compiler.apply"),
+    ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.Stream#Compiler.apply")
   )
 )
 
@@ -222,7 +254,7 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
   .settings(
     name := "fs2-core",
     sourceDirectories in (Compile, scalafmt) += baseDirectory.value / "../shared/src/main/scala",
-    libraryDependencies += "org.scodec" %%% "scodec-bits" % "1.1.5"
+    libraryDependencies += "org.scodec" %%% "scodec-bits" % "1.1.7"
   )
   .jsSettings(commonJsSettings: _*)
 
@@ -236,15 +268,7 @@ lazy val coreJVM = core.jvm
       Seq(s"""scala.*;version="[$major.$minor,$major.${minor + 1})"""", "*")
     },
     OsgiKeys.additionalHeaders := Map("-removeheaders" -> "Include-Resource,Private-Package"),
-    osgiSettings,
-    libraryDependencies ++= {
-      CrossVersion.partialVersion(scalaVersion.value) match {
-        case Some((2, minor)) if minor >= 13 =>
-          Seq("org.scala-lang.modules" %% "scala-parallel-collections" % "0.1.2" % "test")
-        case _ =>
-          Seq()
-      }
-    }
+    osgiSettings
   )
   .settings(mimaSettings)
 lazy val coreJS = core.js.disablePlugins(DoctestPlugin, MimaPlugin)
@@ -301,7 +325,24 @@ lazy val benchmarkMacros = project
   .settings(noPublish)
   .settings(
     name := "fs2-benchmark-macros",
-    addCompilerPlugin(("org.scalamacros" % "paradise" % "2.1.1").cross(CrossVersion.patch)),
+    scalacOptions ++= {
+      CrossVersion.partialVersion(scalaVersion.value) match {
+        case Some((2, v)) if v >= 13 =>
+          List("-Ymacro-annotations")
+        case _ =>
+          Nil
+      }
+    },
+    libraryDependencies ++= {
+      CrossVersion.partialVersion(scalaVersion.value) match {
+        case Some((2, v)) if v <= 12 =>
+          Seq(
+            compilerPlugin(("org.scalamacros" % "paradise" % "2.1.1").cross(CrossVersion.full))
+          )
+        case _ =>
+          Nil
+      }
+    },
     libraryDependencies += scalaOrganization.value % "scala-reflect" % scalaVersion.value
   )
 
@@ -313,11 +354,25 @@ lazy val benchmark = project
   .settings(
     name := "fs2-benchmark",
     javaOptions in (Test, run) := (javaOptions in (Test, run)).value.filterNot(o =>
-      o.startsWith("-Xmx") || o.startsWith("-Xms")) ++ Seq("-Xms256m", "-Xmx256m")
-  )
-  .settings(
-    addCompilerPlugin(("org.scalamacros" % "paradise" % "2.1.1").cross(CrossVersion.patch)),
-    libraryDependencies += scalaOrganization.value % "scala-reflect" % scalaVersion.value
+      o.startsWith("-Xmx") || o.startsWith("-Xms")) ++ Seq("-Xms256m", "-Xmx256m"),
+    scalacOptions ++= {
+      CrossVersion.partialVersion(scalaVersion.value) match {
+        case Some((2, v)) if v >= 13 =>
+          List("-Ymacro-annotations")
+        case _ =>
+          Nil
+      }
+    },
+    libraryDependencies ++= {
+      CrossVersion.partialVersion(scalaVersion.value) match {
+        case Some((2, v)) if v <= 12 =>
+          Seq(
+            compilerPlugin(("org.scalamacros" % "paradise" % "2.1.1").cross(CrossVersion.full))
+          )
+        case _ =>
+          Nil
+      }
+    }
   )
   .enablePlugins(JmhPlugin)
   .dependsOn(io, benchmarkMacros)
@@ -339,9 +394,8 @@ lazy val microsite = project
   .enablePlugins(MicrositesPlugin)
   .settings(commonSettings)
   .settings(
-    tutSourceDirectory := file("site") / "src",
     micrositeName := "fs2",
-    micrositeDescription := "fs2 - Functional Streams for Scala",
+    micrositeDescription := "Purely functional, effectful, resource-safe, concurrent streams for Scala",
     micrositeGithubOwner := "functional-streams-for-scala",
     micrositeGithubRepo := "fs2",
     micrositeBaseUrl := "",

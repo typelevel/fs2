@@ -1,6 +1,7 @@
 package fs2
 
 import cats.effect.IO
+import cats.implicits._
 import java.security.MessageDigest
 import org.scalacheck.Gen
 
@@ -61,10 +62,7 @@ class HashSpec extends Fs2Spec {
       .covary[IO]
       .flatMap(i => Stream.chunk(Chunk.bytes(i.toString.getBytes)))
       .through(sha512)
-    // avoid using .par here because it's not source-compatible across 2.12/2.13
-    // (2.13 needs an import, but in 2.12 the same import won't compile)
-    val vec = collection.parallel.immutable.ParVector.fill(100)(s)
     val res = s.compile.toVector.unsafeRunSync()
-    vec.map(_.compile.toVector.unsafeRunSync()) shouldBe Vector.fill(100)(res)
+    Vector.fill(100)(s.compile.toVector).parSequence.unsafeRunSync() shouldBe Vector.fill(100)(res)
   }
 }

@@ -5,7 +5,7 @@ package tcp
 import scala.concurrent.duration._
 
 import java.net.{InetSocketAddress, SocketAddress, StandardSocketOptions}
-import java.nio.ByteBuffer
+import java.nio.{Buffer, ByteBuffer}
 import java.nio.channels.spi.AsynchronousChannelProvider
 import java.nio.channels.{
   AsynchronousChannelGroup,
@@ -17,7 +17,7 @@ import java.nio.channels.{
 import java.util.concurrent.TimeUnit
 
 import cats.implicits._
-import cats.effect.{ConcurrentEffect, Resource}
+import cats.effect.{Concurrent, ContextShift, Resource}
 import cats.effect.concurrent.{Ref, Semaphore}
 
 import fs2.Stream._
@@ -86,22 +86,48 @@ trait Socket[F[_]] {
   /**
     * Writes the supplied stream of bytes to this socket via `write` semantics.
     */
-  def writes(timeout: Option[FiniteDuration] = None): Sink[F, Byte]
+  def writes(timeout: Option[FiniteDuration] = None): Pipe[F, Byte, Unit]
 }
 
-protected[tcp] object Socket {
+object Socket {
 
-  /** see [[fs2.io.tcp.client]] **/
+  /**
+    * Stream that connects to the specified server and emits a single socket,
+    * allowing reads/writes via operations on the socket. The socket is closed
+    * when the outer stream terminates.
+    *
+    * @param to                   address of remote server
+    * @param reuseAddress         whether address may be reused (see `java.net.StandardSocketOptions.SO_REUSEADDR`)
+    * @param sendBufferSize       size of send buffer  (see `java.net.StandardSocketOptions.SO_SNDBUF`)
+    * @param receiveBufferSize    size of receive buffer  (see `java.net.StandardSocketOptions.SO_RCVBUF`)
+    * @param keepAlive            whether keep-alive on tcp is used (see `java.net.StandardSocketOptions.SO_KEEPALIVE`)
+    * @param noDelay              whether tcp no-delay flag is set  (see `java.net.StandardSocketOptions.TCP_NODELAY`)
+    */
   def client[F[_]](
       to: InetSocketAddress,
-      reuseAddress: Boolean,
-      sendBufferSize: Int,
-      receiveBufferSize: Int,
-      keepAlive: Boolean,
-      noDelay: Boolean
+      reuseAddress: Boolean = true,
+      sendBufferSize: Int = 256 * 1024,
+      receiveBufferSize: Int = 256 * 1024,
+      keepAlive: Boolean = false,
+      noDelay: Boolean = false
   )(
       implicit AG: AsynchronousChannelGroup,
-      F: ConcurrentEffect[F]
+      F: Concurrent[F],
+      CS: ContextShift[F]
+  ): Resource[F, Socket[F]] =
+    mkClient(to, reuseAddress, sendBufferSize, receiveBufferSize, keepAlive, noDelay)
+
+  private[tcp] def mkClient[F[_]](
+      to: InetSocketAddress,
+      reuseAddress: Boolean = true,
+      sendBufferSize: Int = 256 * 1024,
+      receiveBufferSize: Int = 256 * 1024,
+      keepAlive: Boolean = false,
+      noDelay: Boolean = false
+  )(
+      implicit AG: AsynchronousChannelGroup,
+      F: Concurrent[F],
+      Y: AsyncYield[F]
   ): Resource[F, Socket[F]] = {
 
     def setup: F[AsynchronousSocketChannel] = F.delay {
@@ -116,28 +142,75 @@ protected[tcp] object Socket {
     }
 
     def connect(ch: AsynchronousSocketChannel): F[AsynchronousSocketChannel] =
-      F.async { cb =>
+      Y.asyncYield[AsynchronousSocketChannel] { cb =>
         ch.connect(
           to,
           null,
           new CompletionHandler[Void, Void] {
             def completed(result: Void, attachment: Void): Unit =
-              invokeCallback(cb(Right(ch)))
+              cb(Right(ch))
             def failed(rsn: Throwable, attachment: Void): Unit =
-              invokeCallback(cb(Left(rsn)))
+              cb(Left(rsn))
           }
         )
       }
 
-    Resource.liftF(setup.flatMap(connect)).flatMap(mkSocket(_))
+    Resource.liftF(setup.flatMap(connect)).flatMap(Socket(_))
   }
 
+  /**
+    * Stream that binds to the specified address and provides a connection for,
+    * represented as a [[Socket]], for each client that connects to the bound address.
+    *
+    * Returns a stream of stream of sockets.
+    *
+    * The outer stream scopes the lifetime of the server socket.
+    * When the outer stream terminates, all open connections will terminate as well.
+    * The outer stream emits an element (an inner stream) for each client connection.
+    *
+    * Each inner stream represents an individual connection, and as such, is a stream
+    * that emits a single socket. Failures that occur in an inner stream do *NOT* cause
+    * the outer stream to fail.
+    *
+    * @param address            address to accept connections from
+    * @param maxQueued          number of queued requests before they will become rejected by server
+    *                           (supply <= 0 for unbounded)
+    * @param reuseAddress       whether address may be reused (see `java.net.StandardSocketOptions.SO_REUSEADDR`)
+    * @param receiveBufferSize  size of receive buffer (see `java.net.StandardSocketOptions.SO_RCVBUF`)
+    */
   def server[F[_]](address: InetSocketAddress,
-                   maxQueued: Int,
-                   reuseAddress: Boolean,
-                   receiveBufferSize: Int)(
+                   maxQueued: Int = 0,
+                   reuseAddress: Boolean = true,
+                   receiveBufferSize: Int = 256 * 1024)(
       implicit AG: AsynchronousChannelGroup,
-      F: ConcurrentEffect[F]
+      F: Concurrent[F],
+      CS: ContextShift[F]
+  ): Stream[F, Resource[F, Socket[F]]] =
+    serverWithLocalAddress(address, maxQueued, reuseAddress, receiveBufferSize)
+      .collect { case Right(s) => s }
+
+  /**
+    * Like [[server]] but provides the `InetSocketAddress` of the bound server socket before providing accepted sockets.
+    *
+    * The outer stream first emits a left value specifying the bound address followed by right values -- one per client connection.
+    */
+  def serverWithLocalAddress[F[_]](address: InetSocketAddress,
+                                   maxQueued: Int = 0,
+                                   reuseAddress: Boolean = true,
+                                   receiveBufferSize: Int = 256 * 1024)(
+      implicit AG: AsynchronousChannelGroup,
+      F: Concurrent[F],
+      CS: ContextShift[F]
+  ): Stream[F, Either[InetSocketAddress, Resource[F, Socket[F]]]] =
+    mkServerWithLocalAddress(address, maxQueued, reuseAddress, receiveBufferSize)
+
+  private[tcp] def mkServerWithLocalAddress[F[_]](address: InetSocketAddress,
+                                                  maxQueued: Int = 0,
+                                                  reuseAddress: Boolean = true,
+                                                  receiveBufferSize: Int = 256 * 1024)(
+      implicit AG: AsynchronousChannelGroup,
+      F: Concurrent[F],
+      Y: AsyncYield[F]
   ): Stream[F, Either[InetSocketAddress, Resource[F, Socket[F]]]] = {
 
     val setup: F[AsynchronousServerSocketChannel] = F.delay {
@@ -156,21 +229,21 @@ protected[tcp] object Socket {
     def acceptIncoming(sch: AsynchronousServerSocketChannel): Stream[F, Resource[F, Socket[F]]] = {
       def go: Stream[F, Resource[F, Socket[F]]] = {
         def acceptChannel: F[AsynchronousSocketChannel] =
-          F.async[AsynchronousSocketChannel] { cb =>
+          Y.asyncYield[AsynchronousSocketChannel] { cb =>
             sch.accept(
               null,
               new CompletionHandler[AsynchronousSocketChannel, Void] {
                 def completed(ch: AsynchronousSocketChannel, attachment: Void): Unit =
-                  invokeCallback(cb(Right(ch)))
+                  cb(Right(ch))
                 def failed(rsn: Throwable, attachment: Void): Unit =
-                  invokeCallback(cb(Left(rsn)))
+                  cb(Left(rsn))
               }
             )
           }
 
         eval(acceptChannel.attempt).flatMap {
           case Left(err)       => Stream.empty[F]
-          case Right(accepted) => Stream.emit(mkSocket(accepted))
+          case Right(accepted) => Stream.emit(Socket(accepted))
         } ++ go
       }
 
@@ -191,15 +264,16 @@ protected[tcp] object Socket {
       }
   }
 
-  def mkSocket[F[_]](ch: AsynchronousSocketChannel)(
-      implicit F: ConcurrentEffect[F]): Resource[F, Socket[F]] = {
-    val socket = Semaphore(1).flatMap { readSemaphore =>
+  private def apply[F[_]](ch: AsynchronousSocketChannel)(
+      implicit F: Concurrent[F],
+      Y: AsyncYield[F]): Resource[F, Socket[F]] = {
+    val socket = Semaphore[F](1).flatMap { readSemaphore =>
       Ref.of[F, ByteBuffer](ByteBuffer.allocate(0)).map { bufferRef =>
         // Reads data to remaining capacity of supplied ByteBuffer
         // Also measures time the read took returning this as tuple
         // of (bytes_read, read_duration)
         def readChunk(buff: ByteBuffer, timeoutMs: Long): F[(Int, Long)] =
-          F.async { cb =>
+          Y.asyncYield[(Int, Long)] { cb =>
             val started = System.currentTimeMillis()
             ch.read(
               buff,
@@ -209,10 +283,10 @@ protected[tcp] object Socket {
               new CompletionHandler[Integer, Unit] {
                 def completed(result: Integer, attachment: Unit): Unit = {
                   val took = System.currentTimeMillis() - started
-                  invokeCallback(cb(Right((result, took))))
+                  cb(Right((result, took)))
                 }
                 def failed(err: Throwable, attachment: Unit): Unit =
-                  invokeCallback(cb(Left(err)))
+                  cb(Left(err))
               }
             )
           }
@@ -226,8 +300,8 @@ protected[tcp] object Socket {
               F.delay(ByteBuffer.allocate(sz)).flatTap(bufferRef.set)
             else
               F.delay {
-                buff.clear()
-                buff.limit(sz)
+                (buff: Buffer).clear()
+                (buff: Buffer).limit(sz)
                 buff
               }
           }
@@ -240,16 +314,16 @@ protected[tcp] object Socket {
             if (read == 0) Chunk.bytes(Array.empty)
             else {
               val dest = new Array[Byte](read)
-              buff.flip()
+              (buff: Buffer).flip()
               buff.get(dest)
               Chunk.bytes(dest)
             }
-          buff.clear()
+          (buff: Buffer).clear()
           result
         }
 
         def read0(max: Int, timeout: Option[FiniteDuration]): F[Option[Chunk[Byte]]] =
-          readSemaphore.acquire *>
+          readSemaphore.withPermit {
             F.attempt[Option[Chunk[Byte]]](getBufferOf(max).flatMap { buff =>
                 readChunk(buff, timeout.map(_.toMillis).getOrElse(0l)).flatMap {
                   case (read, _) =>
@@ -257,36 +331,35 @@ protected[tcp] object Socket {
                     else releaseBuffer(buff).map(Some(_))
                 }
               })
-              .flatMap { r =>
-                readSemaphore.release *> (r match {
-                  case Left(err)         => F.raiseError(err)
-                  case Right(maybeChunk) => F.pure(maybeChunk)
-                })
+              .flatMap {
+                case Left(err)         => F.raiseError(err)
+                case Right(maybeChunk) => F.pure(maybeChunk)
               }
+          }
 
         def readN0(max: Int, timeout: Option[FiniteDuration]): F[Option[Chunk[Byte]]] =
-          (readSemaphore.acquire *>
+          readSemaphore.withPermit {
             F.attempt(getBufferOf(max).flatMap { buff =>
-              def go(timeoutMs: Long): F[Option[Chunk[Byte]]] =
-                readChunk(buff, timeoutMs).flatMap {
-                  case (readBytes, took) =>
-                    if (readBytes < 0 || buff.position() >= max) {
-                      // read is done
-                      releaseBuffer(buff).map(Some(_))
-                    } else go((timeoutMs - took).max(0))
-                }
+                def go(timeoutMs: Long): F[Option[Chunk[Byte]]] =
+                  readChunk(buff, timeoutMs).flatMap {
+                    case (readBytes, took) =>
+                      if (readBytes < 0 || buff.position() >= max) {
+                        // read is done
+                        releaseBuffer(buff).map(Some(_))
+                      } else go((timeoutMs - took).max(0))
+                  }
 
-              go(timeout.map(_.toMillis).getOrElse(0l))
-            })).flatMap { r =>
-            readSemaphore.release *> (r match {
-              case Left(err)         => F.raiseError(err)
-              case Right(maybeChunk) => F.pure(maybeChunk)
-            })
+                go(timeout.map(_.toMillis).getOrElse(0l))
+              })
+              .flatMap {
+                case Left(err)         => F.raiseError(err)
+                case Right(maybeChunk) => F.pure(maybeChunk)
+              }
           }
 
         def write0(bytes: Chunk[Byte], timeout: Option[FiniteDuration]): F[Unit] = {
           def go(buff: ByteBuffer, remains: Long): F[Unit] =
-            F.async[Option[Long]] { cb =>
+            Y.asyncYield[Option[Long]] { cb =>
                 val start = System.currentTimeMillis()
                 ch.write(
                   buff,
@@ -295,14 +368,13 @@ protected[tcp] object Socket {
                   (),
                   new CompletionHandler[Integer, Unit] {
                     def completed(result: Integer, attachment: Unit): Unit =
-                      invokeCallback(
-                        cb(
-                          Right(
-                            if (buff.remaining() <= 0) None
-                            else Some(System.currentTimeMillis() - start)
-                          )))
+                      cb(
+                        Right(
+                          if (buff.remaining() <= 0) None
+                          else Some(System.currentTimeMillis() - start)
+                        ))
                     def failed(err: Throwable, attachment: Unit): Unit =
-                      invokeCallback(cb(Left(err)))
+                      cb(Left(err))
                   }
                 )
               }
@@ -331,7 +403,7 @@ protected[tcp] object Socket {
 
           def write(bytes: Chunk[Byte], timeout: Option[FiniteDuration]): F[Unit] =
             write0(bytes, timeout)
-          def writes(timeout: Option[FiniteDuration]): Sink[F, Byte] =
+          def writes(timeout: Option[FiniteDuration]): Pipe[F, Byte, Unit] =
             _.chunks.flatMap { bs =>
               Stream.eval(write(bs, timeout))
             }

@@ -2,10 +2,11 @@ package fs2
 
 import cats.{Eq, ~>}
 import cats.effect.IO
+import cats.effect.concurrent.Ref
 import cats.effect.laws.discipline.arbitrary._
 import cats.effect.laws.util.TestContext
 import cats.effect.laws.util.TestInstances._
-import cats.implicits.{catsSyntaxEither => _, catsSyntaxFlatMapOps => _, _}
+import cats.implicits._
 import cats.laws.discipline.MonadErrorTests
 
 import org.scalacheck.{Arbitrary, Gen}
@@ -65,12 +66,12 @@ class StreamSpec extends Fs2Spec with Inside {
 
       either match {
         case Left(_) ⇒ stream.compile.toList.attempt.unsafeRunSync() shouldBe either
-        case Right(_) ⇒ stream.compile.toList.unsafeRunSync() shouldBe either.right.toSeq.toList
+        case Right(_) ⇒ stream.compile.toList.unsafeRunSync() shouldBe either.toList
       }
     }
 
     "fromIterator" in forAll { vec: Vector[Int] =>
-      val iterator = vec.toIterator
+      val iterator = vec.iterator
       val stream = Stream.fromIterator[IO, Int](iterator)
       val example = stream.compile.toVector.unsafeRunSync
       example shouldBe vec
@@ -399,7 +400,7 @@ class StreamSpec extends Fs2Spec with Inside {
     }
 
     "duration" in {
-      val delay = 200 millis
+      val delay = 200.millis
 
       val blockingSleep = IO { Thread.sleep(delay.toMillis) }
 
@@ -407,7 +408,7 @@ class StreamSpec extends Fs2Spec with Inside {
       val t =
         emitAndSleep.zip(Stream.duration[IO]).drop(1).map(_._2).compile.toVector
 
-      (IO.shift *> t).unsafeToFuture.collect {
+      (IO.shift >> t).unsafeToFuture.collect {
         case Vector(d) => assert(d.toMillis >= delay.toMillis - 5)
       }
     }
@@ -440,7 +441,7 @@ class StreamSpec extends Fs2Spec with Inside {
         .take(draws.toInt)
         .through(durationSinceLastTrue)
 
-      (IO.shift *> durationsSinceSpike.compile.toVector).unsafeToFuture().map { result =>
+      (IO.shift >> durationsSinceSpike.compile.toVector).unsafeToFuture().map { result =>
         val (head :: tail) = result.toList
         withClue("every always emits true first") { assert(head._1) }
         withClue("true means the delay has passed: " + tail) {
@@ -448,6 +449,41 @@ class StreamSpec extends Fs2Spec with Inside {
         }
         withClue("false means the delay has not passed: " + tail) {
           assert(tail.filterNot(_._1).map(_._2).forall { _ <= delay })
+        }
+      }
+    }
+
+    "observeEither" - {
+      val s = Stream.emits(Seq(Left(1), Right("a"))).repeat.covary[IO]
+
+      "does not drop elements" in {
+        val is = Ref.of[IO, Vector[Int]](Vector.empty)
+        val as = Ref.of[IO, Vector[String]](Vector.empty)
+
+        val test = for {
+          iref <- is
+          aref <- as
+          iSink = (_: Stream[IO, Int]).evalMap(i => iref.update(_ :+ i))
+          aSink = (_: Stream[IO, String]).evalMap(a => aref.update(_ :+ a))
+          _ <- s.take(10).observeEither(iSink, aSink).compile.drain
+          iResult <- iref.get
+          aResult <- aref.get
+        } yield {
+          assert(iResult.length == 5)
+          assert(aResult.length == 5)
+        }
+
+        test.unsafeToFuture
+      }
+
+      "termination" - {
+
+        "left" in {
+          assert(runLog(s.observeEither[Int, String](_.take(0).void, _.void)).length == 0)
+        }
+
+        "right" in {
+          assert(runLog(s.observeEither[Int, String](_.void, _.take(0).void)).length == 0)
         }
       }
     }
@@ -521,6 +557,19 @@ class StreamSpec extends Fs2Spec with Inside {
         .compile
         .drain
         .unsafeRunSync()
+    }
+
+    "regression #1335 - stack safety of map" in {
+
+      case class Tree[A](label: A, subForest: Stream[Pure, Tree[A]]) {
+        def flatten: Stream[Pure, A] =
+          Stream(this.label) ++ this.subForest.flatMap(_.flatten)
+      }
+
+      def unfoldTree(seed: Int): Tree[Int] =
+        Tree(seed, Stream(seed + 1).map(unfoldTree))
+
+      unfoldTree(1).flatten.take(10).toList shouldBe List.tabulate(10)(_ + 1)
     }
 
     {

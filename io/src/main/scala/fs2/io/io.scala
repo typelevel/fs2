@@ -1,12 +1,20 @@
 package fs2
 
-import cats.effect.{ConcurrentEffect, ContextShift, IO, Sync}
+import cats.effect.{ConcurrentEffect, ContextShift, Sync}
 
 import cats.implicits._
 import java.io.{InputStream, OutputStream}
 import scala.concurrent.{ExecutionContext, blocking}
 
-/** Provides various ways to work with streams that perform IO. */
+/**
+  * Provides various ways to work with streams that perform IO.
+  *
+  * These methods accept a blocking `ExecutionContext`, as the underlying
+  * implementations perform blocking IO. The recommendation is to use an
+  * unbounded thread pool with application level bounds.
+  *
+  * @see [[https://typelevel.org/cats-effect/concurrency/basics.html#blocking-threads]]
+  */
 package object io {
 
   /**
@@ -86,10 +94,11 @@ package object io {
     * Each write operation is performed on the supplied execution context. Writes are
     * blocking so the execution context should be configured appropriately.
     */
-  def writeOutputStream[F[_]](
-      fos: F[OutputStream],
-      blockingExecutionContext: ExecutionContext,
-      closeAfterUse: Boolean = true)(implicit F: Sync[F], cs: ContextShift[F]): Sink[F, Byte] =
+  def writeOutputStream[F[_]](fos: F[OutputStream],
+                              blockingExecutionContext: ExecutionContext,
+                              closeAfterUse: Boolean = true)(
+      implicit F: Sync[F],
+      cs: ContextShift[F]): Pipe[F, Byte, Unit] =
     s => {
       def useOs(os: OutputStream): Stream[F, Unit] =
         s.chunks.evalMap(c => writeBytesToOutputStream(os, c, blockingExecutionContext))
@@ -116,9 +125,10 @@ package object io {
       cs: ContextShift[F]): Stream[F, Byte] =
     readInputStream(F.delay(System.in), bufSize, blockingExecutionContext, false)
 
-  /** Sink of bytes that writes emitted values to standard output asynchronously. */
-  def stdout[F[_]](blockingExecutionContext: ExecutionContext)(implicit F: Sync[F],
-                                                               cs: ContextShift[F]): Sink[F, Byte] =
+  /** Pipe of bytes that writes emitted values to standard output asynchronously. */
+  def stdout[F[_]](blockingExecutionContext: ExecutionContext)(
+      implicit F: Sync[F],
+      cs: ContextShift[F]): Pipe[F, Byte, Unit] =
     writeOutputStream(F.delay(System.out), blockingExecutionContext, false)
 
   /**
@@ -136,8 +146,4 @@ package object io {
     */
   def toInputStream[F[_]](implicit F: ConcurrentEffect[F]): Pipe[F, Byte, InputStream] =
     JavaInputOutputStream.toInputStream
-
-  private[io] def invokeCallback[F[_]](f: => Unit)(implicit F: ConcurrentEffect[F]): Unit =
-    F.runAsync(F.start(F.delay(f)).flatMap(_.join))(_ => IO.unit).unsafeRunSync
-
 }

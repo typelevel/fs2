@@ -29,8 +29,8 @@ class SwitchMapSpec extends Fs2Spec with EventuallySupport {
             if (!released) Stream.raiseError[IO](new Err)
             else
               Stream
-                .eval(ref.set(false) *> IO.sleep(20.millis))
-                .onFinalize(IO.sleep(100.millis) *> ref.set(true))
+                .eval(ref.set(false) >> IO.sleep(20.millis))
+                .onFinalize(IO.sleep(100.millis) >> ref.set(true))
           }
         }
       }
@@ -60,11 +60,11 @@ class SwitchMapSpec extends Fs2Spec with EventuallySupport {
       (f: Failure) =>
         var bgDone = false // TODO upgrade to IO based ones
         val bg = Stream.repeatEval(IO(1)).onFinalize(IO { bgDone = true })
-        val prog = (Stream.emit(1) ++ Stream.sleep_[IO](10 millis) ++ f.get).switchMap(_ => bg)
+        val prog = (Stream.emit(1) ++ Stream.sleep_[IO](10.millis) ++ f.get).switchMap(_ => bg)
         val throws = f.get.compile.drain.attempt.unsafeRunSync.isLeft
         if (throws) an[Err] should be thrownBy runLog(prog)
         else runLog(prog)
-        eventually(Timeout(3 seconds)) { bgDone shouldBe true }
+        eventually(Timeout(3.seconds)) { bgDone shouldBe true }
     }
 
     "when inner stream fails, inner stream finalizer run before the primary one" in forAll {

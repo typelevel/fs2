@@ -38,16 +38,19 @@ class SocketSpec extends Fs2Spec with BeforeAndAfterAll {
         Deferred[IO, InetSocketAddress].unsafeRunSync()
 
       val echoServer: Stream[IO, Unit] = {
-        serverWithLocalAddress[IO](new InetSocketAddress(InetAddress.getByName(null), 0)).flatMap {
-          case Left(local) => Stream.eval_(localBindAddress.complete(local))
-          case Right(s) =>
-            Stream.resource(s).map { socket =>
-              socket
-                .reads(1024)
-                .to(socket.writes())
-                .onFinalize(socket.endOfOutput)
-            }
-        }.parJoinUnbounded
+        Socket
+          .serverWithLocalAddress[IO](new InetSocketAddress(InetAddress.getByName(null), 0))
+          .flatMap {
+            case Left(local) => Stream.eval_(localBindAddress.complete(local))
+            case Right(s) =>
+              Stream.resource(s).map { socket =>
+                socket
+                  .reads(1024)
+                  .through(socket.writes())
+                  .onFinalize(socket.endOfOutput)
+              }
+          }
+          .parJoinUnbounded
       }
 
       val clients: Stream[IO, Array[Byte]] = {
@@ -55,10 +58,10 @@ class SocketSpec extends Fs2Spec with BeforeAndAfterAll {
           .range(0, clientCount)
           .map { idx =>
             Stream.eval(localBindAddress.get).flatMap { local =>
-              Stream.resource(client[IO](local)).flatMap { socket =>
+              Stream.resource(Socket.client[IO](local)).flatMap { socket =>
                 Stream
                   .chunk(message)
-                  .to(socket.writes())
+                  .through(socket.writes())
                   .drain
                   .onFinalize(socket.endOfOutput) ++
                   socket.reads(1024, None).chunks.map(_.toArray)
@@ -88,14 +91,15 @@ class SocketSpec extends Fs2Spec with BeforeAndAfterAll {
         Deferred[IO, InetSocketAddress].unsafeRunSync()
 
       val junkServer: Stream[IO, Nothing] =
-        serverWithLocalAddress[IO](new InetSocketAddress(InetAddress.getByName(null), 0))
+        Socket
+          .serverWithLocalAddress[IO](new InetSocketAddress(InetAddress.getByName(null), 0))
           .flatMap {
             case Left(local) => Stream.eval_(localBindAddress.complete(local))
             case Right(s) =>
               Stream.emit(Stream.resource(s).flatMap { socket =>
                 Stream
                   .chunk(message)
-                  .to(socket.writes())
+                  .through(socket.writes())
                   .drain
                   .onFinalize(socket.endOfOutput)
               })
@@ -108,7 +112,7 @@ class SocketSpec extends Fs2Spec with BeforeAndAfterAll {
       val klient: Stream[IO, Int] =
         for {
           addr <- Stream.eval(localBindAddress.get)
-          sock <- Stream.resource(client[IO](addr))
+          sock <- Stream.resource(Socket.client[IO](addr))
           size <- Stream.emits(sizes)
           op <- Stream.eval(sock.readN(size, None))
         } yield op.map(_.size).getOrElse(-1)

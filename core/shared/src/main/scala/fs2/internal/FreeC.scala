@@ -1,8 +1,8 @@
 package fs2.internal
 
-import cats.{Monad, MonadError, ~>}
+import cats.{MonadError, ~>}
 import cats.effect.{ExitCase, Sync}
-import fs2.CompositeFailure
+import fs2.{CompositeFailure, INothing}
 import FreeC._
 
 import scala.annotation.tailrec
@@ -21,8 +21,6 @@ import scala.util.control.NonFatal
   *
   * Typically the [[FreeC]] user provides interpretation of FreeC in form of [[ViewL]] structure, that allows to step
   * FreeC via series of Results ([[Result.Pure]], [[Result.Fail]] and [[Result.Interrupted]]) and FreeC step ([[ViewL.View]])
-  *
-  *
   */
 private[fs2] sealed abstract class FreeC[F[_], +R] {
 
@@ -46,7 +44,7 @@ private[fs2] sealed abstract class FreeC[F[_], +R] {
                      catch { case NonFatal(e) => FreeC.Result.Fail(e) })
 
   def map[R2](f: R => R2): FreeC[F, R2] =
-    Bind[F, R, R2](this, Result.monadInstance.map(_)(f).asFreeC[F])
+    Bind[F, R, R2](this, Result.map(_)(f).asFreeC[F])
 
   def handleErrorWith[R2 >: R](h: Throwable => FreeC[F, R2]): FreeC[F, R2] =
     Bind[F, R2, R2](this,
@@ -55,7 +53,7 @@ private[fs2] sealed abstract class FreeC[F[_], +R] {
                         case Result.Fail(e) =>
                           try h(e)
                           catch { case NonFatal(e) => FreeC.Result.Fail(e) }
-                        case other => other.covary[R2].asFreeC[F]
+                        case other => other.asFreeC[F]
                     })
 
   def asHandler(e: Throwable): FreeC[F, R] = ViewL(this) match {
@@ -68,7 +66,7 @@ private[fs2] sealed abstract class FreeC[F[_], +R] {
 
   def viewL[R2 >: R]: ViewL[F, R2] = ViewL(this)
 
-  def translate[G[_]](f: F ~> G): FreeC[G, R] = FreeC.suspend {
+  def translate[G[_]](f: F ~> G): FreeC[G, R] = suspend {
     viewL match {
       case ViewL.View(fx, k) =>
         Bind(Eval(fx).translate(f), (e: Result[Any]) => k(e).translate(f))
@@ -80,6 +78,8 @@ private[fs2] sealed abstract class FreeC[F[_], +R] {
 }
 
 private[fs2] object FreeC {
+
+  def unit[F[_]]: FreeC[F, Unit] = Result.unit.asFreeC
 
   def pure[F[_], A](a: A): FreeC[F, A] = Result.Pure(a)
 
@@ -100,12 +100,10 @@ private[fs2] object FreeC {
       case Result.Interrupted(_, _) => ExitCase.Canceled
     }
 
-    def covary[R2 >: R]: Result[R2] = self
-
     def recoverWith[R2 >: R](f: Throwable => Result[R2]): Result[R2] = self match {
       case Result.Fail(err) =>
         try { f(err) } catch { case NonFatal(err2) => Result.Fail(CompositeFailure(err, err2)) }
-      case _ => covary[R2]
+      case _ => self
     }
 
   }
@@ -116,12 +114,12 @@ private[fs2] object FreeC {
 
     def pure[A](a: A): Result[A] = Result.Pure(a)
 
-    def raiseError[A](rsn: Throwable): Result[A] = Result.Fail(rsn)
+    def raiseError(rsn: Throwable): Result[INothing] = Result.Fail(rsn)
 
-    def interrupted[A](scopeId: Token, failure: Option[Throwable]): Result[A] =
+    def interrupted(scopeId: Token, failure: Option[Throwable]): Result[INothing] =
       Result.Interrupted(scopeId, failure)
 
-    def fromEither[F[_], R](either: Either[Throwable, R]): Result[R] =
+    def fromEither[R](either: Either[Throwable, R]): Result[R] =
       either.fold(Result.Fail(_), Result.Pure(_))
 
     def unapply[F[_], R](freeC: FreeC[F, R]): Option[Result[R]] = freeC match {
@@ -137,12 +135,12 @@ private[fs2] object FreeC {
       override def toString: String = s"FreeC.Pure($r)"
     }
 
-    final case class Fail[F[_], R](error: Throwable)
-        extends FreeC[F, R]
-        with Result[R]
-        with ViewL[F, R] {
-      override def translate[G[_]](f: F ~> G): FreeC[G, R] =
-        this.asInstanceOf[FreeC[G, R]]
+    final case class Fail[F[_]](error: Throwable)
+        extends FreeC[F, INothing]
+        with Result[INothing]
+        with ViewL[F, INothing] {
+      override def translate[G[_]](f: F ~> G): FreeC[G, INothing] =
+        this.asInstanceOf[FreeC[G, INothing]]
       override def toString: String = s"FreeC.Fail($error)"
     }
 
@@ -156,46 +154,31 @@ private[fs2] object FreeC {
       *                      Instead throwing errors immediately during interruption,
       *                      signalling of the errors may be deferred until the Interruption resumes.
       */
-    final case class Interrupted[F[_], X, R](context: X, deferredError: Option[Throwable])
-        extends FreeC[F, R]
-        with Result[R]
-        with ViewL[F, R] {
-      override def translate[G[_]](f: F ~> G): FreeC[G, R] =
-        this.asInstanceOf[FreeC[G, R]]
+    final case class Interrupted[F[_], X](context: X, deferredError: Option[Throwable])
+        extends FreeC[F, INothing]
+        with Result[INothing]
+        with ViewL[F, INothing] {
+      override def translate[G[_]](f: F ~> G): FreeC[G, INothing] =
+        this.asInstanceOf[FreeC[G, INothing]]
       override def toString: String =
         s"FreeC.Interrupted($context, ${deferredError.map(_.getMessage)})"
     }
 
-    val monadInstance: Monad[Result] = new Monad[Result] {
-      def flatMap[A, B](fa: Result[A])(f: A => Result[B]): Result[B] = fa match {
-        case Result.Pure(r) =>
-          try { f(r) } catch { case NonFatal(err) => Result.Fail(err) }
-        case failure @ Result.Fail(_)               => failure.asInstanceOf[Result[B]]
-        case interrupted @ Result.Interrupted(_, _) => interrupted.asInstanceOf[Result[B]]
-      }
-
-      def tailRecM[A, B](a: A)(f: A => Result[Either[A, B]]): Result[B] = {
-        @tailrec
-        def go(a: A): Result[B] =
-          f(a) match {
-            case Result.Pure(Left(a))                   => go(a)
-            case Result.Pure(Right(b))                  => Result.Pure(b)
-            case failure @ Result.Fail(_)               => failure.asInstanceOf[Result[B]]
-            case interrupted @ Result.Interrupted(_, _) => interrupted.asInstanceOf[Result[B]]
-          }
-
-        try { go(a) } catch { case t: Throwable => Result.Fail(t) }
-      }
-
-      def pure[A](x: A): Result[A] = Result.Pure(x)
+    private[FreeC] def map[A, B](fa: Result[A])(f: A => B): Result[B] = fa match {
+      case Result.Pure(r) =>
+        try { Result.Pure(f(r)) } catch { case NonFatal(err) => Result.Fail(err) }
+      case failure @ Result.Fail(_)               => failure.asInstanceOf[Result[B]]
+      case interrupted @ Result.Interrupted(_, _) => interrupted.asInstanceOf[Result[B]]
     }
 
   }
 
   final case class Eval[F[_], R](fr: F[R]) extends FreeC[F, R] {
     override def translate[G[_]](f: F ~> G): FreeC[G, R] =
-      try Eval(f(fr))
-      catch { case NonFatal(t) => Result.Fail[G, R](t) }
+      suspend {
+        try Eval(f(fr))
+        catch { case NonFatal(t) => Result.Fail[G](t) }
+      }
     override def toString: String = s"FreeC.Eval($fr)"
   }
   final case class Bind[F[_], X, R](fx: FreeC[F, X], f: Result[X] => FreeC[F, R])
@@ -207,7 +190,7 @@ private[fs2] object FreeC {
     _.asFreeC[F]
 
   def suspend[F[_], R](fr: => FreeC[F, R]): FreeC[F, R] =
-    Result.Pure[F, Unit](()).flatMap(_ => fr)
+    unit.flatMap(_ => fr)
 
   /**
     * Unrolled view of a `FreeC` structure. may be `Result` or `EvalBind`
@@ -271,7 +254,7 @@ private[fs2] object FreeC {
       acquire.flatMap { a =>
         val used =
           try use(a)
-          catch { case NonFatal(t) => FreeC.Result.Fail[F, B](t) }
+          catch { case NonFatal(t) => FreeC.Result.Fail[F](t) }
         used.transformWith { result =>
           release(a, result.asExitCase).transformWith {
             case Result.Fail(t2) =>

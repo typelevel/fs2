@@ -118,7 +118,7 @@ private[concurrent] trait SignalLowPriorityImplicits {
     * Separating the two instances allows us to make the `Functor` instance
     * more general.
     *
-    * We put this in a [[SignalLowPriorityImplicits]] to resolve ambiguous
+    * We put this in a `SignalLowPriorityImplicits` trait to resolve ambiguous
     * implicits if the [[Signal.applicativeInstance]] is applicable, allowing
     * the `Applicative` instance to be chosen.
     */

@@ -25,8 +25,8 @@ private[reactivestreams] final class StreamSubscription[F[_], A](
   import StreamSubscription._
 
   // We want to make sure `cancelled` is set _before_ signalling the subscriber
-  def onError(e: Throwable) = cancelled.set(true) *> F.delay(sub.onError(e))
-  def onComplete = cancelled.set(true) *> F.delay(sub.onComplete)
+  def onError(e: Throwable) = cancelled.set(true) >> F.delay(sub.onError(e))
+  def onComplete = cancelled.set(true) >> F.delay(sub.onComplete)
 
   def unsafeStart(): Unit = {
     def subscriptionPipe: Pipe[F, A, A] =
@@ -68,9 +68,9 @@ private[reactivestreams] final class StreamSubscription[F[_], A](
     cancelled.set(true).toIO.unsafeRunSync
 
   def request(n: Long): Unit = {
-    val request =
-      if (n == java.lang.Long.MAX_VALUE) Infinite.pure[F]
-      else if (n > 0) Finite(n).pure[F]
+    val request: F[Request] =
+      if (n == java.lang.Long.MAX_VALUE) (Infinite: Request).pure[F]
+      else if (n > 0) (Finite(n): Request).pure[F]
       else F.raiseError(new IllegalArgumentException(s"3.9 - invalid number of elements [$n]"))
 
     val prog = cancelled.get

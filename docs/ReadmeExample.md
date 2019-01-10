@@ -3,14 +3,14 @@
 This walks through the implementation of the example given in [the README](../README.md). This program opens a file, `fahrenheit.txt`, containing temperatures in degrees fahrenheit, one per line, and converts each temperature to celsius, incrementally writing to the file `celsius.txt`. Both files will be closed, regardless of whether any errors occur.
 
 ```scala
-import cats.effect.{ExitCode, IO, IOApp}
-// import cats.effect.{ExitCode, IO, IOApp}
+import cats.effect.{ExitCode, IO, IOApp, Resource}
+// import cats.effect.{ExitCode, IO, IOApp, Resource}
 
 import cats.implicits._
 // import cats.implicits._
 
-import fs2.{io, text}
-// import fs2.{io, text}
+import fs2.{io, text, Stream}
+// import fs2.{io, text, Stream}
 
 import java.nio.file.Paths
 // import java.nio.file.Paths
@@ -22,23 +22,25 @@ import scala.concurrent.ExecutionContext
 // import scala.concurrent.ExecutionContext
 
 object Converter extends IOApp {
-  def run(args: List[String]): IO[ExitCode] = {
+  private val blockingExecutionContext =
+    Resource.make(IO(ExecutionContext.fromExecutorService(Executors.newFixedThreadPool(2))))(ec => IO(ec.shutdown()))
+
+  val converter: Stream[IO, Unit] = Stream.resource(blockingExecutionContext).flatMap { blockingEC =>
     def fahrenheitToCelsius(f: Double): Double =
       (f - 32.0) * (5.0/9.0)
 
-    val blockingExecutionContext = ExecutionContext.fromExecutorService(Executors.newFixedThreadPool(2))
-
-    io.file.readAll[IO](Paths.get("testdata/fahrenheit.txt"), blockingExecutionContext, 4096)
+    io.file.readAll[IO](Paths.get("testdata/fahrenheit.txt"), blockingEC, 4096)
       .through(text.utf8Decode)
       .through(text.lines)
       .filter(s => !s.trim.isEmpty && !s.startsWith("//"))
       .map(line => fahrenheitToCelsius(line.toDouble).toString)
       .intersperse("\n")
       .through(text.utf8Encode)
-      .through(io.file.writeAll(Paths.get("testdata/celsius.txt"), blockingExecutionContext))
-      .compile.drain
-      .as(ExitCode.Success)
+      .through(io.file.writeAll(Paths.get("testdata/celsius.txt"), blockingEC))
   }
+  
+  def run(args: List[String]): IO[ExitCode] =
+    converter.compile.drain.as(ExitCode.Success)
 }
 // defined object Converter
 ```
@@ -59,6 +61,9 @@ import java.util.concurrent.Executors
 import scala.concurrent.ExecutionContext
 
 implicit val cs: ContextShift[IO] = IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
+
+//note: this should be shut down when it's no longer necessary - normally that's at the end of your app.
+//See the whole README example for proper resource management in terms of ExecutionContexts.
 val blockingExecutionContext = ExecutionContext.fromExecutorService(Executors.newFixedThreadPool(2))
 
 def fahrenheitToCelsius(f: Double): Double =
@@ -121,7 +126,13 @@ There are a number of ways of interpreting the stream. In this case, we call `co
 
 ```scala
 scala> val task: IO[Unit] = written.compile.drain
-task: cats.effect.IO[Unit] = IO$1896711092
+task: cats.effect.IO[Unit] = <function1>
 ```
 
 We still haven't *done* anything yet. Effects only occur when we run the resulting task. We can run a `IO` by calling `unsafeRunSync()` -- the name is telling us that calling it performs effects and hence, it is not referentially transparent. In this example, we extended `IOApp`, which lets us express our overall program as an `IO[ExitCase]`. The `IOApp` class handles running the task and hooking it up to the application entry point.
+
+Let's shut down the ExecutionContext that we allocated earlier.
+
+```scala
+scala> blockingExecutionContext.shutdown()
+```

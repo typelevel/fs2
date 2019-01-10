@@ -82,9 +82,9 @@ class QueueSpec extends Fs2Spec {
         Queue
           .unbounded[IO, Int]
           .flatMap { q =>
-            q.dequeue.interruptAfter(1.second).compile.drain *>
-              q.enqueue1(1) *>
-              q.enqueue1(2) *>
+            q.dequeue.interruptAfter(1.second).compile.drain >>
+              q.enqueue1(1) >>
+              q.enqueue1(2) >>
               q.dequeue1
           }
           .unsafeRunSync shouldBe 1
@@ -96,9 +96,9 @@ class QueueSpec extends Fs2Spec {
         Queue
           .unbounded[IO, Int]
           .flatMap { q =>
-            q.dequeue1.timeout(1.second).attempt *>
-              q.enqueue1(1) *>
-              q.enqueue1(2) *>
+            q.dequeue1.timeout(1.second).attempt >>
+              q.enqueue1(1) >>
+              q.enqueue1(2) >>
               q.dequeue1
           }
           .unsafeRunSync shouldBe 1
@@ -120,7 +120,8 @@ class QueueSpec extends Fs2Spec {
           .eval(InspectableQueue.unbounded[IO, Int])
           .flatMap { q =>
             def changes =
-              (Stream.range(1, 6).to(q.enqueue) ++ q.dequeue).zip(Stream.fixedRate[IO](200.millis))
+              (Stream.range(1, 6).through(q.enqueue) ++ q.dequeue)
+                .zip(Stream.fixedRate[IO](200.millis))
 
             q.size.concurrently(changes)
           }

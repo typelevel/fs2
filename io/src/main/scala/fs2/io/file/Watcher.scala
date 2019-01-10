@@ -158,7 +158,7 @@ object Watcher {
       registrations
         .update(_.updated(key, r))
         .as {
-          F.delay(key.cancel) *> registrations.modify { s =>
+          F.delay(key.cancel) >> registrations.modify { s =>
             (s - key) -> s.get(key).map(_.cleanup).getOrElse(F.unit)
           }.flatten
         }
@@ -263,7 +263,7 @@ object Watcher {
                     .update(
                       m =>
                         m.get(key)
-                          .map(r => m.updated(key, r.copy(cleanup = r.cleanup *> cancelAll)))
+                          .map(r => m.updated(key, r.copy(cleanup = r.cleanup >> cancelAll)))
                           .getOrElse(m))
                     .void
                   updateRegistration.as(events.flatten)

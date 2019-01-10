@@ -166,7 +166,7 @@ class PipeSpec extends Fs2Spec {
       val f = (_: Int) % n1.get == 0
       val r = s.get.covary[IO].evalMapAccumulate(n0)((s, i) => IO.pure((s + i, f(i))))
 
-      runLog(r.map(_._1)) shouldBe runLog(s.get).scan(n0)(_ + _).tail
+      runLog(r.map(_._1)) shouldBe runLog(s.get).scanLeft(n0)(_ + _).tail
       runLog(r.map(_._2)) shouldBe runLog(s.get).map(f)
     }
 
@@ -181,6 +181,12 @@ class PipeSpec extends Fs2Spec {
       val f = (_: Int) + 1
       val r = s.get.covary[IO].mapAsync(16)(i => IO(f(i)))
       runLog(r) shouldBe runLog(s.get).map(f)
+    }
+
+    "mapAsync.exception" in forAll { s: PureStream[Int] =>
+      val f = (_: Int) => IO.raiseError[Int](new RuntimeException)
+      val r = s.get.covary[IO].mapAsync(1)(f).attempt
+      runLog(r).size == 1
     }
 
     "mapAsyncUnordered" in forAll { s: PureStream[Int] =>
@@ -304,7 +310,7 @@ class PipeSpec extends Fs2Spec {
       val f = (_: Int) % n1.get == 0
       val r = s.get.mapAccumulate(n0)((s, i) => (s + i, f(i)))
 
-      runLog(r.map(_._1)) shouldBe runLog(s.get).scan(n0)(_ + _).tail
+      runLog(r.map(_._1)) shouldBe runLog(s.get).scanLeft(n0)(_ + _).tail
       runLog(r.map(_._2)) shouldBe runLog(s.get).map(f)
     }
 
@@ -401,8 +407,8 @@ class PipeSpec extends Fs2Spec {
       val never = Stream.eval(IO.async[Int](_ => ()))
       val s = Stream(1)
       val f = (a: Int, b: Int) => a + b
-      val result = s.toVector.scan(0)(f)
-      runLog((s ++ never).scan(0)(f).take(result.size))(1 second) shouldBe result
+      val result = s.toVector.scanLeft(0)(f)
+      runLog((s ++ never).scan(0)(f).take(result.size))(1.second) shouldBe result
     }
 
     "scan" in forAll { (s: PureStream[Int], n: Int) =>
@@ -563,7 +569,7 @@ class PipeSpec extends Fs2Spec {
             .attempt
         }
         r1 should have size (1)
-        r1.head.swap.toOption.get shouldBe an[Err]
+        r1.head.fold(identity, r => fail(s"expected left but got Right($r)")) shouldBe an[Err]
         val r2 = runLog {
           s.get
             .covary[IO]
@@ -573,7 +579,7 @@ class PipeSpec extends Fs2Spec {
             .attempt
         }
         r2 should have size (1)
-        r2.head.swap.toOption.get shouldBe an[Err]
+        r2.head.fold(identity, r => fail(s"expected left but got Right($r)")) shouldBe an[Err]
       }
     }
 
@@ -586,7 +592,7 @@ class PipeSpec extends Fs2Spec {
             .attempt
         }
         r1 should have size (1)
-        r1.head.swap.toOption.get shouldBe an[Err]
+        r1.head.fold(identity, r => fail(s"expected left but got Right($r)")) shouldBe an[Err]
         val r2 = runLog {
           f.get
             .covary[IO]
@@ -594,7 +600,7 @@ class PipeSpec extends Fs2Spec {
             .attempt
         }
         r2 should have size (1)
-        r2.head.swap.toOption.get shouldBe an[Err]
+        r2.head.fold(identity, r => fail(s"expected left but got Right($r)")) shouldBe an[Err]
       }
     }
 
@@ -618,7 +624,7 @@ class PipeSpec extends Fs2Spec {
     "handle multiple consecutive observations" in {
       forAll { (s: PureStream[Int], f: Failure) =>
         runLog {
-          val sink: Sink[IO, Int] = _.evalMap(i => IO(()))
+          val sink: Pipe[IO, Int, Unit] = _.evalMap(i => IO(()))
           val src: Stream[IO, Int] = s.get.covary[IO]
           src.observe(sink).observe(sink)
         } shouldBe s.get.toVector
@@ -628,7 +634,7 @@ class PipeSpec extends Fs2Spec {
       forAll { (s: PureStream[Int], f: Failure) =>
         swallow {
           runLog {
-            val sink: Sink[IO, Int] =
+            val sink: Pipe[IO, Int, Unit] =
               in => spuriousFail(in.evalMap(i => IO(i)), f).map(_ => ())
             val src: Stream[IO, Int] = spuriousFail(s.get.covary[IO], f)
             src.observe(sink).observe(sink)
