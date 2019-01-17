@@ -218,7 +218,7 @@ object Pull extends PullLowPriority {
 
   /** Pull that outputs nothing and has result of `r`. */
   def pure[F[x] >: Pure[x], R](r: R): Pull[F, INothing, R] =
-    fromFreeC(Algebra.pure[F, INothing, R](r))
+    fromFreeC(Algebra.pure(r))
 
   /**
     * Reads and outputs nothing, and fails with the given error.
