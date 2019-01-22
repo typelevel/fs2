@@ -51,8 +51,8 @@ lazy val commonSettings = Seq(
     compilerPlugin("org.spire-math" %% "kind-projector" % "0.9.9"),
     "org.typelevel" %%% "cats-core" % "1.5.0",
     "org.typelevel" %%% "cats-laws" % "1.5.0" % "test",
-    "org.typelevel" %%% "cats-effect" % "1.1.0",
-    "org.typelevel" %%% "cats-effect-laws" % "1.1.0" % "test",
+    "org.typelevel" %%% "cats-effect" % "1.2.0",
+    "org.typelevel" %%% "cats-effect-laws" % "1.2.0" % "test",
     "org.scala-lang.modules" %%% "scala-collection-compat" % "0.2.1"
   ),
   libraryDependencies ++= {
