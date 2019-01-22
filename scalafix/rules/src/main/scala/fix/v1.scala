@@ -48,7 +48,7 @@ object fixUtils {
   def containsImport(importer: Importer)(implicit doc: SemanticDocument): Boolean =
     doc.tree
       .collect {
-        case i: Importer if i == importer =>
+        case i: Importer if i.importees.intersect(importer.importees) == importer.importees =>
           true
         case _ =>
           false
@@ -479,9 +479,9 @@ object ChunkRules {
         Patch.replaceTree(t, "uncons")
       case t @ pullOutputMatcher(_: Term.Name) =>
         Patch.replaceTree(t, "output")
-    } :+ Patch.renameSymbol(Symbol("fs2/Segment."), "fs2.Chunk")
-
-
+      case segmentMatcher(s@Type.Apply(_, List(o, _))) =>
+        Patch.replaceTree(s, s"Chunk[$o]") + Patch.addGlobalImport(Symbol("fs2/Chunk."))
+    } :+ Patch.removeGlobalImport(Symbol("fs2/Segment."))
 
   val segmentsMatcher = SymbolMatcher.normalized("fs2/Stream#segments.")
   val mapSegmentsMatcher = SymbolMatcher.normalized("fs2/Stream#mapSegments.")

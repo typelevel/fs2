@@ -4,7 +4,7 @@ rule = v1
 package fix
 import fs2._
 
-trait Chunk {
+trait ChunkRules {
   def s: Stream[Pure, String]
 
   val segments = s.segments
@@ -13,4 +13,5 @@ trait Chunk {
   val scanSegmentsOpt = s.scanSegmentsOpt(0)(_ => None)
   val unconsChunk = s.pull.unconsChunk
   val pullOutput = Pull.outputChunk(Chunk(1))
+  def aSegment: Segment[Int, Unit]
 }
