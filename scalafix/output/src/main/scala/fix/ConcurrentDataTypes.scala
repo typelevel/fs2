@@ -9,13 +9,14 @@ import fs2._
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration._
 import cats.effect.concurrent
-import cats.effect.concurrent.Semaphore
+import cats.effect.concurrent.{ Deferred, Ref, Semaphore }
+import fs2.concurrent.{ Signal, SignallingRef }
 
 abstract class ConcurrentDataTypes[F[_]: Effect] {
   // Ref
-  val ref: F[cats.effect.concurrent.Ref[F, Int]] = cats.effect.concurrent.Ref.of(1)
-  cats.effect.concurrent.Ref.of[F, Int](1)
-  cats.effect.concurrent.Ref.of(1)
+  val ref: F[Ref[F, Int]] = Ref.of(1)
+  Ref.of[F, Int](1)
+  Ref.of(1)
   ref.map(_.set(1))
   ref.map(_.setAsync(1))
   val a = ref.flatMap(_.update(_ + 1))
@@ -24,10 +25,10 @@ abstract class ConcurrentDataTypes[F[_]: Effect] {
   val d = ref.flatMap(_.tryModify(i => (i, "a")))
 
   // Deferred
-  val e: F[cats.effect.concurrent.Deferred[F, Int]] = cats.effect.concurrent.Deferred[F, Int]
-  val e2: F[cats.effect.concurrent.Deferred[F, Int]] = cats.effect.concurrent.Deferred
-  val f: F[cats.effect.concurrent.Deferred[F, Int]] = promise[F, Int]
-  val f2: F[cats.effect.concurrent.Deferred[F, Int]] = promise
+  val e: F[Deferred[F, Int]] = Deferred[F, Int]
+  val e2: F[Deferred[F, Int]] = Deferred
+  val f: F[Deferred[F, Int]] = promise[F, Int]
+  val f2: F[Deferred[F, Int]] = promise
   e.map(_.get)
   def scheduler: Timer[F]
   e.map(_.timeout(1.second))
@@ -37,8 +38,8 @@ abstract class ConcurrentDataTypes[F[_]: Effect] {
   Semaphore(2)
 
   // Signal
-  val sig: fs2.concurrent.Signal[F, Int] = Signal.constant[F, Int](1)
-  val sigRef: F[fs2.concurrent.SignallingRef[F, Int]] = fs2.concurrent.SignallingRef(1)
+  val sig: Signal[F, Int] = Signal.constant[F, Int](1)
+  val sigRef: F[SignallingRef[F, Int]] = SignallingRef(1)
 
   // Queue
   val q: F[fs2.concurrent.Queue[F, Int]] = fs2.concurrent.Queue.unbounded

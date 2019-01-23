@@ -132,15 +132,15 @@ object ConcurrentDataTypesRules {
     replaceSemaphore :: renameQueue :: renameTopic :: t.collect {
       // fs2 Ref -> cats effect Ref
       case Term.Apply(refMatcher(n: Term.Name), _) =>
-        Patch.replaceTree(n, "cats.effect.concurrent.Ref.of")
+        Patch.replaceTree(n, "Ref.of") + Patch.addGlobalImport(Symbol("cats/effect/concurrent/Ref."))
       case Type.Apply(t @ Type.Name("Ref"), _) =>
-        Patch.replaceTree(t, "cats.effect.concurrent.Ref")
+        Patch.replaceTree(t, "Ref") + Patch.addGlobalImport(Symbol("cats/effect/concurrent/Ref."))
       case Term.Apply(Term.ApplyType(r @ refMatcher(_), _), _) =>
-        Patch.replaceTree(r, "cats.effect.concurrent.Ref")
+        Patch.replaceTree(r, "Ref") + Patch.addGlobalImport(Symbol("cats/effect/concurrent/Ref."))
       case Term.Apply(r @ Term.Name("refOf"), _) =>
-        Patch.replaceTree(r, "cats.effect.concurrent.Ref.of")
+        Patch.replaceTree(r, "Ref.of") + Patch.addGlobalImport(Symbol("cats/effect/concurrent/Ref."))
       case Term.Apply(Term.ApplyType(r @ Term.Name("refOf"), _), _) =>
-        Patch.replaceTree(r, "cats.effect.concurrent.Ref.of")
+        Patch.replaceTree(r, "Ref.of") + Patch.addGlobalImport(Symbol("cats/effect/concurrent/Ref."))
       case setSyncMatcher(Term.Apply(t @ Term.Select(_, s), _)) =>
         Patch.replaceTree(s, "set")
       case setAsyncMatcher(Term.Apply(t @ Term.Select(_, s), _)) =>
@@ -160,11 +160,11 @@ object ConcurrentDataTypesRules {
 
       // Promise -> Deferred
       case t @ Term.Select(promiseMatcher(_), Term.Name("empty")) =>
-        Patch.replaceTree(t, "cats.effect.concurrent.Deferred")
+        Patch.replaceTree(t, "Deferred") + Patch.addGlobalImport(Symbol("cats/effect/concurrent/Deferred."))
       case promiseMatcher(t @ Type.Name("Promise")) =>
-        Patch.replaceTree(t, s"cats.effect.concurrent.Deferred")
+        Patch.replaceTree(t, s"Deferred") + Patch.addGlobalImport(Symbol("cats/effect/concurrent/Deferred."))
       case t @ promiseLowercaseMatcher(_) =>
-        Patch.replaceTree(t, "cats.effect.concurrent.Deferred")
+        Patch.replaceTree(t, "Deferred") + Patch.addGlobalImport(Symbol("cats/effect/concurrent/Deferred."))
       case cancellableGetMatcher(Term.Select(_, s)) =>
         Patch.replaceTree(s, "get")
       case timedGetMatcher(s @ Term.Apply(Term.Select(pre, Term.Name("timedGet")), List(d, _))) =>
@@ -172,13 +172,13 @@ object ConcurrentDataTypesRules {
 
       // Signal
       case t @ immutableSignalMatcher(_: Term.Name) =>
-        Patch.replaceTree(t, "fs2.concurrent.Signal")
+        Patch.replaceTree(t, "Signal") + Patch.addGlobalImport(Symbol("fs2/concurrent/Signal."))
       case immutableSignalMatcher(Type.Apply(s, _)) =>
-        Patch.replaceTree(s, "fs2.concurrent.Signal")
+        Patch.replaceTree(s, "Signal") + Patch.addGlobalImport(Symbol("fs2/concurrent/Signal."))
       case mutableSignalMatcher(Term.Apply(s, _)) =>
-        Patch.replaceTree(s, "fs2.concurrent.SignallingRef")
+        Patch.replaceTree(s, "SignallingRef") + Patch.addGlobalImport(Symbol("fs2/concurrent/SignallingRef."))
       case mutableSignalMatcher(Type.Apply(s, _)) =>
-        Patch.replaceTree(s, "fs2.concurrent.SignallingRef")
+        Patch.replaceTree(s, "SignallingRef") + Patch.addGlobalImport(Symbol("fs2/concurrent/SignallingRef."))
 
       // Imports
       case i: Import =>
