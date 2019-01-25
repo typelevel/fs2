@@ -3843,6 +3843,97 @@ object Stream extends StreamLowPriority {
       last.flatMap(_.fold(G.raiseError(new NoSuchElementException): G[O])(G.pure))
 
     /**
+      * Gives access to the whole compilation api, where the result is
+      * expressed as a `cats.effect.Resource`, instead of bare `F`.
+      *
+      * {{{
+      *  import fs2._
+      *  import cats.effect._
+      *  import cats.implicits._
+      *
+      *  val stream = Stream.iterate(0)(_ + 1).take(5).covary[IO]
+      *
+      *  val s1: Resource[IO, List[Int]] = stream.compile.resource.toList
+      *  val s2: Resource[IO, Int] = stream.compile.resource.foldMonoid
+      *  val s3: Resource[IO, Option[Int]] = stream.compile.resource.last
+      * }}}
+      *
+      * And so on for the every method in `compile`.
+      *
+      * The main use case is interacting with Stream methods whose
+      * behaviour depends on the Stream lifetime, in cases where you
+      * only want to ultimately return a single element.
+      *
+      * A typical example of this is concurrent combinators: here is
+      * an example with `concurrently`:
+      *
+      * {{{
+      * import fs2._
+      * import cats.effect._
+      * import cats.effect.concurrent.Ref
+      * import scala.concurrent.duration._
+      *
+      * trait StopWatch[F[_]] {
+      *   def elapsedSeconds: F[Int]
+      * }
+      * object StopWatch {
+      *   def create[F[_]: Concurrent: Timer]: Stream[F, StopWatch[F]] =
+      *     Stream.eval(Ref[F].of(0)).flatMap { c =>
+      *       val api = new StopWatch[F] {
+      *         def elapsedSeconds: F[Int] = c.get
+      *       }
+      *
+      *       val process = Stream.fixedRate(1.second).evalMap(_ => c.update(_ + 1))
+      *
+      *       Stream.emit(api).concurrently(process)
+      *   }
+      * }
+      * }}}
+      *
+      * This creates a simple abstraction that can be queried by
+      * multiple consumers to find out how much time has passed, with
+      * a concurrent stream to update it every second.
+      *
+      * Note that `create` returns a `Stream[F, StopWatch[F]]`, even
+      * though there is only one instance being emitted: this is less than ideal,
+      *  so we might think about returning an `F[StopWatch[F]]` with the following code
+      *
+      * {{{
+      * StopWatch.create[F].compile.lastOrError
+      * }}}
+      *
+      * but it does not work: the returned `F` terminates the lifetime of the stream,
+      * which causes `concurrently` to stop the `process` stream. As a  result, `elapsedSeconds`
+      * never gets updated.
+      *
+      * Alternatively, we could implement `StopWatch` in `F` only
+      * using `Fiber.start`, but this is not ideal either:
+      * `concurrently` already handles errors, interruption and
+      * stopping the producer stream once the consumer lifetime is
+      * over, and we don't want to reimplement the machinery for that.
+      *
+      * So basically what we need is a type that expresses the concept of lifetime,
+      * while only ever emitting a single element, which is exactly what `cats.effect.Resource` does.
+      *
+      * What `compile.resource` provides is the ability to do this:
+      *
+      * {{{
+      * object StopWatch {
+      *   // ... def create as before ...
+      *
+      *   def betterCreate[F[_]: Concurrent: Timer]: Resource[F, StopWatch[F]] =
+      *     create.compile.resource.lastOrError
+      * }
+      * }}}
+      *
+      * This works for every other `compile.` method, although it's a
+      * very natural fit with `lastOrError`.
+      **/
+    def resource(implicit compiler: Stream.Compiler[G, Resource[G, ?]])
+      : Stream.CompileOps[G, Resource[G, ?], O] =
+      new Stream.CompileOps[G, Resource[G, ?], O](free)
+
+    /**
       * Compiles this stream of strings in to a single string.
       * This is more efficient than `foldMonoid` because it uses a `StringBuilder`
       * internally, minimizing string creation.
@@ -3909,11 +4000,6 @@ object Stream extends StreamLowPriority {
       */
     def toList: G[List[O]] =
       to[List]
-
-    /** TODO scaladoc **/
-    def resource(implicit compiler: Stream.Compiler[G, Resource[G, ?]])
-      : Stream.CompileOps[G, Resource[G, ?], O] =
-      new Stream.CompileOps[G, Resource[G, ?], O](free)
 
     /**
       * Compiles this stream in to a value of the target effect type `F` by logging
