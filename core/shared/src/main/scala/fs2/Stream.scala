@@ -1342,6 +1342,28 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     map(Some(_): Option[O2]).hold(None)
 
   /**
+    * Like [[hold]] but returns a `Resource` rather than a single element stream.
+    */
+  def holdResource[F2[x] >: F[x], O2 >: O](initial: O2)(
+      implicit F: Concurrent[F2]): Resource[F2, Signal[F2, O2]] =
+    Stream
+      .eval(SignallingRef[F2, O2](initial))
+      .flatMap { sig =>
+        Stream(sig).concurrently(evalMap(sig.set))
+      }
+      .compile
+      .resource
+      .lastOrError
+      .widen[Signal[F2, O2]] // TODO remove when Resource becomes covariant
+
+  /**
+    *  Like [[holdResource]] but does not require an initial value,
+    *  and hence all output elements are wrapped in `Some`.
+    */
+  def holdOptionResource[F2[x] >: F[x]: Concurrent, O2 >: O]: Resource[F2, Signal[F2, Option[O2]]] =
+    map(Some(_): Option[O2]).holdResource(None)
+
+  /**
     * Determinsitically interleaves elements, starting on the left, terminating when the end of either branch is reached naturally.
     *
     * @example {{{
