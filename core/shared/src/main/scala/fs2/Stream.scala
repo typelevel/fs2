@@ -3711,8 +3711,7 @@ object Stream extends StreamLowPriority {
   }
 
   object Compiler extends LowPrioCompiler {
-    // TOOD make this private once the Resource compiler is properly implemented
-    private[Stream] def compile[F[_], O, B](stream: FreeC[Algebra[F, O, ?], Unit], init: B)(
+    private def compile[F[_], O, B](stream: FreeC[Algebra[F, O, ?], Unit], init: B)(
         f: (B, Chunk[O]) => B)(implicit F: Sync[F]): F[B] =
       F.bracketCase(CompileScope.newRoot[F])(scope =>
         Algebra.compile[F, O, B](stream, scope, init)(f))((scope, ec) => scope.close(ec).rethrow)
@@ -3912,7 +3911,7 @@ object Stream extends StreamLowPriority {
       to[List]
 
     /** TODO scaladoc **/
-    def toResource(implicit compiler: Stream.Compiler[G, Resource[G, ?]])
+    def resource(implicit compiler: Stream.Compiler[G, Resource[G, ?]])
       : Stream.CompileOps[G, Resource[G, ?], O] =
       new Stream.CompileOps[G, Resource[G, ?], O](free)
 

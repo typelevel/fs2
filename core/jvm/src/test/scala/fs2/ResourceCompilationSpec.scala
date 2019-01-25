@@ -6,7 +6,7 @@ import cats.effect.concurrent.{Deferred, Ref}
 import scala.concurrent.duration._
 
 class ResourceCompilationSpec extends AsyncFs2Spec {
-  "compile.toResource - concurrently" in {
+  "compile.resource - concurrently" in {
     val prog: Resource[IO, IO[Unit]] =
       Stream
         .eval(Deferred[IO, Unit].product(Deferred[IO, Unit]))
@@ -18,13 +18,13 @@ class ResourceCompilationSpec extends AsyncFs2Spec {
             Stream.emit(result).concurrently(worker)
         }
         .compile
-        .toResource
+        .resource
         .lastOrError
 
     prog.use(x => x).timeout(5.seconds).unsafeToFuture
   }
 
-  "compile.toResource - onFinalise" in {
+  "compile.resource - onFinalise" in {
     val expected = List(
       "stream - start",
       "stream - done",
@@ -60,7 +60,7 @@ class ResourceCompilationSpec extends AsyncFs2Spec {
             .emit("resource - start")
             .onFinalize(record("resource - done"))
             .compile
-            .toResource
+            .resource
             .lastOrError
             .use(x => record(x))
 
@@ -70,7 +70,7 @@ class ResourceCompilationSpec extends AsyncFs2Spec {
       .map(_ shouldBe expected)
   }
 
-  "compile.toResource - allocated" in {
+  "compile.resource - allocated" in {
     Ref[IO]
       .of(false)
       .flatMap { written =>
@@ -78,7 +78,7 @@ class ResourceCompilationSpec extends AsyncFs2Spec {
           .emit(())
           .onFinalize(written.set(true))
           .compile
-          .toResource
+          .resource
           .lastOrError
           .allocated >> written.get
       }
@@ -92,5 +92,5 @@ object ResourceCompilationSpec {
   /** This should compile */
   val pure: List[Int] = Stream.range(0, 5).compile.toList
   val io: IO[List[Int]] = Stream.range(0, 5).covary[IO].compile.toList
-  val resource: Resource[IO, List[Int]] = Stream.range(0, 5).covary[IO].compile.toResource.toList
+  val resource: Resource[IO, List[Int]] = Stream.range(0, 5).covary[IO].compile.resource.toList
 }
