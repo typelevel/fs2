@@ -25,7 +25,7 @@ import fs2.internal.CompileScope.InterruptContext
   * For example, `s.chunks` is defined with `s.repeatPull` which in turn is defined with `Pull.loop(...).stream`.
   * In this case, a single scope is created as a result of the call to `.stream`.
   *
-  * The `root` scope is special is that is closed by the top level compile loop, rather than by instructions in the
+  * The `root` scope is special in that it is closed by the top level compile loop, rather than by instructions in the
   * Stream structure. This is to allow extending the lifetime of Stream when compiling to a `cats.effect.Resource`
   *  (not to be confused with `fs2.internal.Resource`).
   *
