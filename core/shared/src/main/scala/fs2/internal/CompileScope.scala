@@ -25,6 +25,10 @@ import fs2.internal.CompileScope.InterruptContext
   * For example, `s.chunks` is defined with `s.repeatPull` which in turn is defined with `Pull.loop(...).stream`.
   * In this case, a single scope is created as a result of the call to `.stream`.
   *
+  * The `root` scope is special in that it is closed by the top level compile loop, rather than by instructions in the
+  * Stream structure. This is to allow extending the lifetime of Stream when compiling to a `cats.effect.Resource`
+  *  (not to be confused with `fs2.internal.Resource`).
+  *
   * Scopes may also be opened and closed manually with `Stream#scope`. For the stream `s.scope`, a scope
   * is opened before evaluation of `s` and closed once `s` finishes evaluation.
   *
@@ -86,12 +90,25 @@ private[fs2] final class CompileScope[F[_]] private (
     * Invoked when a resource is released during the scope's lifetime.
     * When the action returns, the resource may not be released yet, as
     * it may have been `leased` to other scopes.
+    *
+    * Note:
+    *
+    * This method is a no-op for the `root` scope, because we want to
+    * close it through the toplevel compile loop, rather than by
+    * instructions in the stream structure.
+    *
+    * This is to allow extending the lifetime of Stream when compiling
+    * to a `cats.effect.Resource` (not to be confused with
+    * `fs2.internal.Resource`).
+    *
     */
   def releaseResource(id: Token, ec: ExitCase[Throwable]): F[Either[Throwable, Unit]] =
-    F.flatMap(state.modify { _.unregisterResource(id) }) {
-      case Some(resource) => resource.release(ec)
-      case None           => F.pure(Right(())) // resource does not exist in scope any more.
-    }
+    if (!parent.isEmpty) {
+      F.flatMap(state.modify { _.unregisterResource(id) }) {
+        case Some(resource) => resource.release(ec)
+        case None           => F.pure(Right(())) // resource does not exist in scope any more.
+      }
+    } else F.pure(Right(()))
 
   /**
     * Opens a child scope.
@@ -405,11 +422,11 @@ private[fs2] final class CompileScope[F[_]] private (
     s"RunFoldScope(id=$id,interruptible=${interruptible.nonEmpty})"
 }
 
-private[internal] object CompileScope {
+private[fs2] object CompileScope {
 
   /** Creates a new root scope. */
-  def newRoot[F[_]: Sync]: CompileScope[F] =
-    new CompileScope[F](new Token(), None, None)
+  def newRoot[F[_]: Sync]: F[CompileScope[F]] =
+    Sync[F].delay(new CompileScope[F](new Token(), None, None))
 
   /**
     * State of a scope.

@@ -1351,6 +1351,28 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     map(Some(_): Option[O2]).hold(None)
 
   /**
+    * Like [[hold]] but returns a `Resource` rather than a single element stream.
+    */
+  def holdResource[F2[x] >: F[x], O2 >: O](initial: O2)(
+      implicit F: Concurrent[F2]): Resource[F2, Signal[F2, O2]] =
+    Stream
+      .eval(SignallingRef[F2, O2](initial))
+      .flatMap { sig =>
+        Stream(sig).concurrently(evalMap(sig.set))
+      }
+      .compile
+      .resource
+      .lastOrError
+      .widen[Signal[F2, O2]] // TODO remove when Resource becomes covariant
+
+  /**
+    *  Like [[holdResource]] but does not require an initial value,
+    *  and hence all output elements are wrapped in `Some`.
+    */
+  def holdOptionResource[F2[x] >: F[x]: Concurrent, O2 >: O]: Resource[F2, Signal[F2, Option[O2]]] =
+    map(Some(_): Option[O2]).holdResource(None)
+
+  /**
     * Determinsitically interleaves elements, starting on the left, terminating when the end of either branch is reached naturally.
     *
     * @example {{{
@@ -3782,23 +3804,46 @@ object Stream extends StreamLowPriority {
                                                                        finalize: B => C): G[C]
   }
 
-  object Compiler {
+  trait LowPrioCompiler {
+    implicit def resourceInstance[F[_]](implicit F: Sync[F]): Compiler[F, Resource[F, ?]] =
+      new Compiler[F, Resource[F, ?]] {
+        def apply[O, B, C](s: Stream[F, O], init: () => B)(foldChunk: (B, Chunk[O]) => B,
+                                                           finalize: B => C): Resource[F, C] =
+          Resource
+            .makeCase(CompileScope.newRoot[F])((scope, ec) => scope.close(ec).rethrow)
+            .flatMap { scope =>
+              Resource.liftF {
+                F.delay(init())
+                  .flatMap(i => Algebra.compile(s.get, scope, i)(foldChunk))
+                  .map(finalize)
+              }
+            }
+
+      }
+  }
+
+  object Compiler extends LowPrioCompiler {
+    private def compile[F[_], O, B](stream: FreeC[Algebra[F, O, ?], Unit], init: B)(
+        f: (B, Chunk[O]) => B)(implicit F: Sync[F]): F[B] =
+      F.bracketCase(CompileScope.newRoot[F])(scope =>
+        Algebra.compile[F, O, B](stream, scope, init)(f))((scope, ec) => scope.close(ec).rethrow)
+
     implicit def syncInstance[F[_]](implicit F: Sync[F]): Compiler[F, F] = new Compiler[F, F] {
       def apply[O, B, C](s: Stream[F, O], init: () => B)(foldChunk: (B, Chunk[O]) => B,
                                                          finalize: B => C): F[C] =
-        F.delay(init()).flatMap(i => Algebra.compile(s.get, i)(foldChunk)).map(finalize)
+        F.delay(init()).flatMap(i => Compiler.compile(s.get, i)(foldChunk)).map(finalize)
     }
 
     implicit val pureInstance: Compiler[Pure, Id] = new Compiler[Pure, Id] {
       def apply[O, B, C](s: Stream[Pure, O], init: () => B)(foldChunk: (B, Chunk[O]) => B,
                                                             finalize: B => C): C =
-        finalize(Algebra.compile(s.covary[IO].get, init())(foldChunk).unsafeRunSync)
+        finalize(Compiler.compile(s.covary[IO].get, init())(foldChunk).unsafeRunSync)
     }
 
     implicit val idInstance: Compiler[Id, Id] = new Compiler[Id, Id] {
       def apply[O, B, C](s: Stream[Id, O], init: () => B)(foldChunk: (B, Chunk[O]) => B,
                                                           finalize: B => C): C =
-        finalize(Algebra.compile(s.covaryId[IO].get, init())(foldChunk).unsafeRunSync)
+        finalize(Compiler.compile(s.covaryId[IO].get, init())(foldChunk).unsafeRunSync)
     }
 
     implicit val fallibleInstance: Compiler[Fallible, Either[Throwable, ?]] =
@@ -3806,7 +3851,7 @@ object Stream extends StreamLowPriority {
         def apply[O, B, C](s: Stream[Fallible, O], init: () => B)(
             foldChunk: (B, Chunk[O]) => B,
             finalize: B => C): Either[Throwable, C] =
-          Algebra.compile(s.lift[IO].get, init())(foldChunk).attempt.unsafeRunSync.map(finalize)
+          Compiler.compile(s.lift[IO].get, init())(foldChunk).attempt.unsafeRunSync.map(finalize)
       }
   }
 
@@ -3908,6 +3953,97 @@ object Stream extends StreamLowPriority {
       */
     def lastOrError(implicit G: MonadError[G, Throwable]): G[O] =
       last.flatMap(_.fold(G.raiseError(new NoSuchElementException): G[O])(G.pure))
+
+    /**
+      * Gives access to the whole compilation api, where the result is
+      * expressed as a `cats.effect.Resource`, instead of bare `F`.
+      *
+      * {{{
+      *  import fs2._
+      *  import cats.effect._
+      *  import cats.implicits._
+      *
+      *  val stream = Stream.iterate(0)(_ + 1).take(5).covary[IO]
+      *
+      *  val s1: Resource[IO, List[Int]] = stream.compile.resource.toList
+      *  val s2: Resource[IO, Int] = stream.compile.resource.foldMonoid
+      *  val s3: Resource[IO, Option[Int]] = stream.compile.resource.last
+      * }}}
+      *
+      * And so on for the every method in `compile`.
+      *
+      * The main use case is interacting with Stream methods whose
+      * behaviour depends on the Stream lifetime, in cases where you
+      * only want to ultimately return a single element.
+      *
+      * A typical example of this is concurrent combinators: here is
+      * an example with `concurrently`:
+      *
+      * {{{
+      * import fs2._
+      * import cats.effect._
+      * import cats.effect.concurrent.Ref
+      * import scala.concurrent.duration._
+      *
+      * trait StopWatch[F[_]] {
+      *   def elapsedSeconds: F[Int]
+      * }
+      * object StopWatch {
+      *   def create[F[_]: Concurrent: Timer]: Stream[F, StopWatch[F]] =
+      *     Stream.eval(Ref[F].of(0)).flatMap { c =>
+      *       val api = new StopWatch[F] {
+      *         def elapsedSeconds: F[Int] = c.get
+      *       }
+      *
+      *       val process = Stream.fixedRate(1.second).evalMap(_ => c.update(_ + 1))
+      *
+      *       Stream.emit(api).concurrently(process)
+      *   }
+      * }
+      * }}}
+      *
+      * This creates a simple abstraction that can be queried by
+      * multiple consumers to find out how much time has passed, with
+      * a concurrent stream to update it every second.
+      *
+      * Note that `create` returns a `Stream[F, StopWatch[F]]`, even
+      * though there is only one instance being emitted: this is less than ideal,
+      *  so we might think about returning an `F[StopWatch[F]]` with the following code
+      *
+      * {{{
+      * StopWatch.create[F].compile.lastOrError
+      * }}}
+      *
+      * but it does not work: the returned `F` terminates the lifetime of the stream,
+      * which causes `concurrently` to stop the `process` stream. As a  result, `elapsedSeconds`
+      * never gets updated.
+      *
+      * Alternatively, we could implement `StopWatch` in `F` only
+      * using `Fiber.start`, but this is not ideal either:
+      * `concurrently` already handles errors, interruption and
+      * stopping the producer stream once the consumer lifetime is
+      * over, and we don't want to reimplement the machinery for that.
+      *
+      * So basically what we need is a type that expresses the concept of lifetime,
+      * while only ever emitting a single element, which is exactly what `cats.effect.Resource` does.
+      *
+      * What `compile.resource` provides is the ability to do this:
+      *
+      * {{{
+      * object StopWatch {
+      *   // ... def create as before ...
+      *
+      *   def betterCreate[F[_]: Concurrent: Timer]: Resource[F, StopWatch[F]] =
+      *     create.compile.resource.lastOrError
+      * }
+      * }}}
+      *
+      * This works for every other `compile.` method, although it's a
+      * very natural fit with `lastOrError`.
+      **/
+    def resource(implicit compiler: Stream.Compiler[G, Resource[G, ?]])
+      : Stream.CompileOps[G, Resource[G, ?], O] =
+      new Stream.CompileOps[G, Resource[G, ?], O](free)
 
     /**
       * Compiles this stream of strings in to a single string.
