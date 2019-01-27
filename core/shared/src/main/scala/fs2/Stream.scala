@@ -560,12 +560,12 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
   /**
     * Debounce the stream with a minimum period of `d` between each element.
     *
-    * Use-case: if this is a stream of updates about external state, we may want to refresh (side-effectful) 
+    * Use-case: if this is a stream of updates about external state, we may want to refresh (side-effectful)
     * once every 'd' milliseconds, and every time we refresh we only care about the latest update.
     *
     * @return A stream whose values is an in-order, not necessarily strict subsequence of this stream,
     * and whose evaluation will force a delay `d` between emitting each element.
-    * The exact subsequence would depend on the chunk structure of this stream, and the timing they arrive. 
+    * The exact subsequence would depend on the chunk structure of this stream, and the timing they arrive.
     * There is no guarantee ta
     *
     * @example {{{
@@ -2217,6 +2217,30 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
   def scanChunksOpt[S, O2 >: O, O3](init: S)(
       f: S => Option[Chunk[O2] => (S, Chunk[O3])]): Stream[F, O3] =
     this.pull.scanChunksOpt(init)(f).stream
+
+  /**
+    * Alias for `map(f).scanMonoid`.
+    *
+    * @example {{{
+    * scala> import cats.implicits._
+    * scala> Stream("a", "aa", "aaa", "aaaa").scanMap(_.length).toList
+    * res0: List[Int] = List(0, 1, 3, 6, 10)
+    * }}}
+    */
+  def scanMap[O2](f: O => O2)(implicit O2: Monoid[O2]): Stream[F, O2] =
+    scan(O2.empty)((acc, el) => acc |+| f(el))
+
+  /**
+    * Folds this stream with the monoid for `O` while emitting all intermediate results.
+    *
+    * @example {{{
+    * scala> import cats.implicits._
+    * scala> Stream(1, 2, 3, 4).scanMonoid.toList
+    * res0: List[Int] = List(0, 1, 3, 6, 10)
+    * }}}
+    */
+  def scanMonoid[O2 >: O](implicit O: Monoid[O2]): Stream[F, O2] =
+    scan(O.empty)(O.combine)
 
   /**
     * Scopes are typically inserted automatically, at the boundary of a pull (i.e., when a pull
