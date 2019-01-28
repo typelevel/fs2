@@ -1268,7 +1268,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
             this.chunks.map(_.asRight.some).through(q.enqueue).onFinalize(q.enqueue1(None))
 
           def emitNonEmpty(c: Chain[Chunk[O]]): Stream[F2, Chunk[O]] =
-            if (c.nonEmpty) Stream.emit(Chunk.concat(c.toList))
+            if (c.nonEmpty && !c.forall(_.isEmpty)) Stream.emit(Chunk.concat(c.toList))
             else Stream.empty
 
           def resize(c: Chunk[O], s: Stream[F2, Chunk[O]]): (Stream[F2, Chunk[O]], Chunk[O]) =
