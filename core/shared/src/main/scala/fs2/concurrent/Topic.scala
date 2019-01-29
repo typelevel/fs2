@@ -1,12 +1,7 @@
 package fs2
 package concurrent
 
-import cats.Eq
-import cats.syntax.all._
-import cats.effect.{Concurrent, Sync}
-
-import scala.collection.immutable.{Queue => ScalaQueue}
-import fs2.internal.Token
+import cats.effect.Concurrent
 
 /**
   * Asynchronous Topic.
@@ -83,120 +78,50 @@ abstract class Topic[F[_], A] { self =>
 }
 
 object Topic {
+  import cats.effect.concurrent.Ref
+  import cats.implicits._
 
-  def apply[F[_], A](initial: A)(implicit F: Concurrent[F]): F[Topic[F, A]] = {
-    implicit def eqInstance: Eq[Strategy.State[A]] =
-      Eq.instance[Strategy.State[A]](_.subscribers.keySet == _.subscribers.keySet)
-
-    PubSub(PubSub.Strategy.Inspectable.strategy(Strategy.boundedSubscribers(initial))).map {
-      pubSub =>
+  def apply[F[_], A](initial: A)(implicit F: Concurrent[F]): F[Topic[F, A]] =
+    Ref
+      .of[F, List[fs2.concurrent.Queue[F, A]]](List.empty)
+      .map(cache ⇒
         new Topic[F, A] {
-
-          def subscriber(size: Int): Stream[F, ((Token, Int), Stream[F, ScalaQueue[A]])] =
-            Stream
-              .bracket(
-                Sync[F]
-                  .delay((new Token, size))
-                  .flatTap(selector => pubSub.subscribe(Right(selector)))
-              )(selector => pubSub.unsubscribe(Right(selector)))
-              .map { selector =>
-                selector ->
-                  pubSub.getStream(Right(selector)).flatMap {
-                    case Right(q) => Stream.emit(q)
-                    case Left(_)  => Stream.empty // impossible
-                  }
-
-              }
-
-          def publish: Pipe[F, A, Unit] =
+          override def publish: Pipe[F, A, Unit] =
             _.evalMap(publish1)
 
-          def publish1(a: A): F[Unit] =
-            pubSub.publish(a)
-
-          def subscribe(maxQueued: Int): Stream[F, A] =
-            subscriber(maxQueued).flatMap { case (_, s) => s.flatMap(Stream.emits) }
-
-          def subscribeSize(maxQueued: Int): Stream[F, (A, Int)] =
-            subscriber(maxQueued).flatMap {
-              case (selector, stream) =>
-                stream
-                  .flatMap { q =>
-                    Stream.emits(q.zipWithIndex.map { case (a, idx) => (a, q.size - idx) })
-                  }
-                  .evalMap {
-                    case (a, remQ) =>
-                      pubSub.get(Left(None)).map {
-                        case Left(s) =>
-                          (a, s.subscribers.get(selector).map(_.size + remQ).getOrElse(remQ))
-                        case Right(_) => (a, -1) // impossible
-                      }
-                  }
+          override def publish1(a: A): F[Unit] =
+            cache.get.flatMap { subscribers ⇒
+              subscribers.traverse(_.enqueue1(a)).void
             }
 
-          def subscribers: Stream[F, Int] =
-            Stream
-              .bracket(Sync[F].delay(new Token))(token => pubSub.unsubscribe(Left(Some(token))))
-              .flatMap { token =>
-                pubSub.getStream(Left(Some(token))).flatMap {
-                  case Left(s)  => Stream.emit(s.subscribers.size)
-                  case Right(_) => Stream.empty //impossible
-
-                }
-              }
-        }
-    }
-  }
-
-  private[fs2] object Strategy {
-
-    final case class State[A](
-        last: A,
-        subscribers: Map[(Token, Int), ScalaQueue[A]]
-    )
-
-    /**
-      * Strategy for topic, where every subscriber can specify max size of queued elements.
-      * If that subscription is exceeded any other `publish` to the topic will hold,
-      * until such subscriber disappears, or consumes more elements.
-      *
-      * @param initial  Initial value of the topic.
-      */
-    def boundedSubscribers[F[_], A](
-        start: A): PubSub.Strategy[A, ScalaQueue[A], State[A], (Token, Int)] =
-      new PubSub.Strategy[A, ScalaQueue[A], State[A], (Token, Int)] {
-        def initial: State[A] = State(start, Map.empty)
-        def accepts(i: A, state: State[A]): Boolean =
-          state.subscribers.forall { case ((_, max), q) => q.size < max }
-
-        def publish(i: A, state: State[A]): State[A] =
-          State(
-            last = i,
-            subscribers = state.subscribers.map { case (k, v) => (k, v :+ i) }
-          )
-
-        // Register empty queue
-        def regEmpty(selector: (Token, Int), state: State[A]): State[A] =
-          state.copy(subscribers = state.subscribers + (selector -> ScalaQueue.empty))
-
-        def get(selector: (Token, Int), state: State[A]): (State[A], Option[ScalaQueue[A]]) =
-          state.subscribers.get(selector) match {
-            case None =>
-              (regEmpty(selector, state), Some(ScalaQueue(state.last)))
-            case r @ Some(q) =>
-              if (q.isEmpty) (state, None)
-              else (regEmpty(selector, state), r)
-
+          override def subscribe(maxQueued: Int): fs2.Stream[F, A] = {
+            def emptyQueue(maxQueued: Int): fs2.Stream[F, fs2.concurrent.Queue[F, A]] =
+              fs2.Stream.bracket(fs2.concurrent.Queue.bounded[F, A](maxQueued))(
+                queue ⇒ cache.update(_.filter(_ ne queue))
+              )
+            emptyQueue(maxQueued)
+              .evalTap(_.enqueue1(initial))
+              .evalTap(q ⇒ cache.update(_ :+ q))
+              .flatMap(_.dequeue)
           }
 
-        def empty(state: State[A]): Boolean =
-          false
+          override def subscribeSize(maxQueued: Int): fs2.Stream[F, (A, Int)] = {
+            def emptyQueue(maxQueued: Int): fs2.Stream[F, fs2.concurrent.InspectableQueue[F, A]] =
+              fs2.Stream.bracket(fs2.concurrent.InspectableQueue.bounded[F, A](maxQueued))(
+                queue ⇒ cache.update(_.filter(_ ne queue))
+              )
+            for {
+              queue ← emptyQueue(maxQueued)
+                .evalTap(_.enqueue1(initial))
+                .evalTap(q ⇒ cache.update(_ :+ q))
+              element ← queue.dequeue
+              number ← queue.size
+            } yield {
+              (element, number)
+            }
+          }
 
-        def subscribe(selector: (Token, Int), state: State[A]): (State[A], Boolean) =
-          (state, true) // no subscribe necessary, as we always subscribe by first attempt to `get`
-
-        def unsubscribe(selector: (Token, Int), state: State[A]): State[A] =
-          state.copy(subscribers = state.subscribers - selector)
-      }
-  }
+          override def subscribers: fs2.Stream[F, Int] =
+            fs2.Stream.eval(cache.get.map(_.size))
+      })
 }
