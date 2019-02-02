@@ -53,20 +53,15 @@ lazy val commonSettings = Seq(
     "org.typelevel" %%% "cats-laws" % "1.5.0" % "test",
     "org.typelevel" %%% "cats-effect" % "1.2.0",
     "org.typelevel" %%% "cats-effect-laws" % "1.2.0" % "test",
-    "org.scala-lang.modules" %%% "scala-collection-compat" % "0.2.1"
+    "org.scala-lang.modules" %%% "scala-collection-compat" % "0.2.1",
+    "org.scalatest" %%% "scalatest" % "3.0.6-SNAP6" % "test"
   ),
-  libraryDependencies ++= {
+  libraryDependencies += {
     CrossVersion.partialVersion(scalaVersion.value) match {
       case Some((2, v)) if v >= 13 =>
-        Seq(
-          "org.scalatest" %%% "scalatest" % "3.0.6-SNAP5" % "test",
-          "org.scalacheck" %%% "scalacheck" % "1.14.0" % "test"
-        )
+        "org.scalacheck" %%% "scalacheck" % "1.14.0" % "test"
       case _ =>
-        Seq(
-          "org.scalatest" %%% "scalatest" % "3.0.5" % "test",
-          "org.scalacheck" %%% "scalacheck" % "1.13.5" % "test"
-        )
+        "org.scalacheck" %%% "scalacheck" % "1.13.5" % "test"
     }
   },
   scmInfo := Some(ScmInfo(url("https://github.com/functional-streams-for-scala/fs2"),
