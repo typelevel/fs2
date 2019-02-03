@@ -74,7 +74,7 @@ lazy val commonSettings = Seq(
     implicit val contextShiftIO: ContextShift[IO] = IO.contextShift(global)
     implicit val timerIO: Timer[IO] = IO.timer(global)
   """,
-  doctestTestFramework := DoctestTestFramework.ScalaTest,
+  // doctestTestFramework := DoctestTestFramework.ScalaTest,
   scalafmtOnCompile := true
 ) ++ testSettings ++ scaladocSettings ++ publishingSettings ++ releaseSettings
 
@@ -266,7 +266,8 @@ lazy val coreJVM = core.jvm
     osgiSettings
   )
   .settings(mimaSettings)
-lazy val coreJS = core.js.disablePlugins(DoctestPlugin, MimaPlugin)
+// lazy val coreJS = core.js.disablePlugins(DoctestPlugin, MimaPlugin)
+lazy val coreJS = core.js.disablePlugins(MimaPlugin)
 
 lazy val io = project
   .in(file("io"))
