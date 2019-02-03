@@ -26,7 +26,8 @@ sealed trait Pull[+F[_], +O, +R] { self =>
 
   def compile[F2[x] >: F[x], R2 >: R, S](initial: S)(f: (S, Chunk[O]) => S)(
       implicit F: Sync[F2]): F2[(S, R2)] =
-    F.delay(CompileScope.newRoot[F2])
+    CompileScope
+      .newRoot[F2]
       .bracketCase(scope => compileScope[F2, R2, S](scope, initial)(f))((scope, ec) =>
         scope.close(ec).rethrow)
 
