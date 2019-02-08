@@ -1,6 +1,7 @@
 package fs2
 
 import scala.collection.immutable.{Queue => SQueue}
+import scala.collection.{Seq => GSeq}
 import scala.reflect.ClassTag
 import scodec.bits.ByteVector
 import java.nio.{
@@ -534,8 +535,8 @@ object Chunk {
         override def map[O2](f: O => O2): Chunk[O2] = indexedSeq(s.map(f))
       }
 
-  /** Creates a chunk backed by a `Seq`. */
-  def seq[O](s: Seq[O]): Chunk[O] = s match {
+  /** Creates a chunk backed by a mutable `Seq`. */
+  def seq[O](s: GSeq[O]): Chunk[O] = s match {
     case a: collection.mutable.WrappedArray[O] =>
       array(a.array.asInstanceOf[Array[O]])
     case v: Vector[O]      => vector(v)
@@ -543,7 +544,7 @@ object Chunk {
     case _ =>
       if (s.isEmpty) empty
       else if (s.tail.isEmpty) singleton(s.head)
-      else buffer(collection.mutable.Buffer(s: _*))
+      else buffer(collection.mutable.Buffer((s.toSeq): _*))
   }
 
   /** Creates a chunk backed by a `Chain`. */
@@ -1290,23 +1291,23 @@ object Chunk {
   }
 
   /** Concatenates the specified sequence of chunks in to a single chunk, avoiding boxing. */
-  def concat[A](chunks: Seq[Chunk[A]]): Chunk[A] =
+  def concat[A](chunks: GSeq[Chunk[A]]): Chunk[A] =
     if (chunks.isEmpty) {
       Chunk.empty
     } else if (chunks.forall(c => c.knownElementType[Boolean] || c.forall(_.isInstanceOf[Boolean]))) {
-      concatBooleans(chunks.asInstanceOf[Seq[Chunk[Boolean]]]).asInstanceOf[Chunk[A]]
+      concatBooleans(chunks.asInstanceOf[GSeq[Chunk[Boolean]]]).asInstanceOf[Chunk[A]]
     } else if (chunks.forall(c => c.knownElementType[Byte] || c.forall(_.isInstanceOf[Byte]))) {
-      concatBytes(chunks.asInstanceOf[Seq[Chunk[Byte]]]).asInstanceOf[Chunk[A]]
+      concatBytes(chunks.asInstanceOf[GSeq[Chunk[Byte]]]).asInstanceOf[Chunk[A]]
     } else if (chunks.forall(c => c.knownElementType[Float] || c.forall(_.isInstanceOf[Float]))) {
-      concatFloats(chunks.asInstanceOf[Seq[Chunk[Float]]]).asInstanceOf[Chunk[A]]
+      concatFloats(chunks.asInstanceOf[GSeq[Chunk[Float]]]).asInstanceOf[Chunk[A]]
     } else if (chunks.forall(c => c.knownElementType[Double] || c.forall(_.isInstanceOf[Double]))) {
-      concatDoubles(chunks.asInstanceOf[Seq[Chunk[Double]]]).asInstanceOf[Chunk[A]]
+      concatDoubles(chunks.asInstanceOf[GSeq[Chunk[Double]]]).asInstanceOf[Chunk[A]]
     } else if (chunks.forall(c => c.knownElementType[Short] || c.forall(_.isInstanceOf[Short]))) {
-      concatShorts(chunks.asInstanceOf[Seq[Chunk[Short]]]).asInstanceOf[Chunk[A]]
+      concatShorts(chunks.asInstanceOf[GSeq[Chunk[Short]]]).asInstanceOf[Chunk[A]]
     } else if (chunks.forall(c => c.knownElementType[Int] || c.forall(_.isInstanceOf[Int]))) {
-      concatInts(chunks.asInstanceOf[Seq[Chunk[Int]]]).asInstanceOf[Chunk[A]]
+      concatInts(chunks.asInstanceOf[GSeq[Chunk[Int]]]).asInstanceOf[Chunk[A]]
     } else if (chunks.forall(c => c.knownElementType[Long] || c.forall(_.isInstanceOf[Long]))) {
-      concatLongs(chunks.asInstanceOf[Seq[Chunk[Long]]]).asInstanceOf[Chunk[A]]
+      concatLongs(chunks.asInstanceOf[GSeq[Chunk[Long]]]).asInstanceOf[Chunk[A]]
     } else {
       val size = chunks.foldLeft(0)(_ + _.size)
       val b = collection.mutable.Buffer.newBuilder[A]
@@ -1316,7 +1317,7 @@ object Chunk {
     }
 
   /** Concatenates the specified sequence of boolean chunks in to a single chunk. */
-  def concatBooleans(chunks: Seq[Chunk[Boolean]]): Chunk[Boolean] =
+  def concatBooleans(chunks: GSeq[Chunk[Boolean]]): Chunk[Boolean] =
     if (chunks.isEmpty) Chunk.empty
     else {
       val size = chunks.foldLeft(0)(_ + _.size)
@@ -1332,7 +1333,7 @@ object Chunk {
     }
 
   /** Concatenates the specified sequence of byte chunks in to a single chunk. */
-  def concatBytes(chunks: Seq[Chunk[Byte]]): Chunk[Byte] =
+  def concatBytes(chunks: GSeq[Chunk[Byte]]): Chunk[Byte] =
     if (chunks.isEmpty) Chunk.empty
     else {
       val size = chunks.foldLeft(0)(_ + _.size)
@@ -1348,7 +1349,7 @@ object Chunk {
     }
 
   /** Concatenates the specified sequence of float chunks in to a single chunk. */
-  def concatFloats(chunks: Seq[Chunk[Float]]): Chunk[Float] =
+  def concatFloats(chunks: GSeq[Chunk[Float]]): Chunk[Float] =
     if (chunks.isEmpty) Chunk.empty
     else {
       val size = chunks.foldLeft(0)(_ + _.size)
@@ -1364,7 +1365,7 @@ object Chunk {
     }
 
   /** Concatenates the specified sequence of double chunks in to a single chunk. */
-  def concatDoubles(chunks: Seq[Chunk[Double]]): Chunk[Double] =
+  def concatDoubles(chunks: GSeq[Chunk[Double]]): Chunk[Double] =
     if (chunks.isEmpty) Chunk.empty
     else {
       val size = chunks.foldLeft(0)(_ + _.size)
@@ -1380,7 +1381,7 @@ object Chunk {
     }
 
   /** Concatenates the specified sequence of short chunks in to a single chunk. */
-  def concatShorts(chunks: Seq[Chunk[Short]]): Chunk[Short] =
+  def concatShorts(chunks: GSeq[Chunk[Short]]): Chunk[Short] =
     if (chunks.isEmpty) Chunk.empty
     else {
       val size = chunks.foldLeft(0)(_ + _.size)
@@ -1396,7 +1397,7 @@ object Chunk {
     }
 
   /** Concatenates the specified sequence of int chunks in to a single chunk. */
-  def concatInts(chunks: Seq[Chunk[Int]]): Chunk[Int] =
+  def concatInts(chunks: GSeq[Chunk[Int]]): Chunk[Int] =
     if (chunks.isEmpty) Chunk.empty
     else {
       val size = chunks.foldLeft(0)(_ + _.size)
@@ -1412,7 +1413,7 @@ object Chunk {
     }
 
   /** Concatenates the specified sequence of long chunks in to a single chunk. */
-  def concatLongs(chunks: Seq[Chunk[Long]]): Chunk[Long] =
+  def concatLongs(chunks: GSeq[Chunk[Long]]): Chunk[Long] =
     if (chunks.isEmpty) Chunk.empty
     else {
       val size = chunks.foldLeft(0)(_ + _.size)
