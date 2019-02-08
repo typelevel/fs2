@@ -36,7 +36,7 @@ trait ChunkGenLowPriority1 {
       10 -> genSmallCollection[IndexedSeq, A].map(Chunk.indexedSeq),
       10 -> genSmallCollection[Seq, A].map(Chunk.seq),
       10 -> arbitrary[Chain[A]].map(Chunk.chain),
-      10 -> genSmallCollection[collection.mutable.Buffer, A].map(Chunk.buffer),
+      10 -> genSmallCollection[collection.mutable.Buffer, A].map(Chunk.buffer)
     )
 
   implicit def arbUnspecializedChunk[A: Arbitrary]: Arbitrary[Chunk[A]] = Arbitrary(genUnspecializedChunk[A])
