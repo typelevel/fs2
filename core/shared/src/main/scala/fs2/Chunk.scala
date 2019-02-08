@@ -535,7 +535,7 @@ object Chunk {
         override def map[O2](f: O => O2): Chunk[O2] = indexedSeq(s.map(f))
       }
 
-  /** Creates a chunk backed by a mutable `Seq`. */
+  /** Creates a chunk backed by a `scala.collection.Seq`. */
   def seq[O](s: GSeq[O]): Chunk[O] = s match {
     case a: collection.mutable.WrappedArray[O] =>
       array(a.array.asInstanceOf[Array[O]])
