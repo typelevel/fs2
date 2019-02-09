@@ -43,10 +43,14 @@ class ChunkSpec extends Fs2Spec {
     }
 
     "Chunk.apply is optimized" in {
-      Chunk(1, 2, 3) shouldBe a[Chunk.Ints]
       Chunk(1) shouldBe a[Chunk.Singleton[_]]
-      Chunk("Hello", "world") shouldBe a[Chunk.Boxed[_]]
       Chunk("Hello") shouldBe a[Chunk.Singleton[_]]
+      // Varargs on Scala.js use a scala.scalajs.js.WrappedArray, which
+      // ends up falling through to the Chunk.indexedSeq constructor
+      if (isJVM) {
+        Chunk(1, 2, 3) shouldBe a[Chunk.Ints]
+        Chunk("Hello", "world") shouldBe a[Chunk.Boxed[_]]
+      }
     }
     
     "Chunk.seq is optimized" in {
