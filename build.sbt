@@ -249,6 +249,13 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
   .settings(
     name := "fs2-core",
     sourceDirectories in (Compile, scalafmt) += baseDirectory.value / "../shared/src/main/scala",
+    unmanagedSourceDirectories in Compile += {
+      val dir = CrossVersion.partialVersion(scalaVersion.value) match {
+        case Some((2, v)) if v >= 13 => "scala-pos-2.13"
+        case _                       => "scala-pre-2.13"
+      }
+      baseDirectory.value / "../shared/src/main" / dir
+    },
     libraryDependencies += "org.scodec" %%% "scodec-bits" % "1.1.9"
   )
   .jsSettings(commonJsSettings: _*)

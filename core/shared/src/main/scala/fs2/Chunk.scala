@@ -19,6 +19,8 @@ import cats.{Applicative, Eq, Eval, Monad, Traverse}
 import cats.data.Chain
 import cats.implicits._
 
+import fs2.internal.ArrayBackedSeq
+
 /**
   * Strict, finite sequence of values that allows index-based random access of elements.
   *
@@ -457,7 +459,8 @@ object Chunk {
     def elementClassTag: ClassTag[A]
   }
 
-  private val empty_ : Chunk[Nothing] = new Chunk[Nothing] {
+  private val empty_ : Chunk[Nothing] = new EmptyChunk
+  private final class EmptyChunk extends Chunk[Nothing] {
     def size = 0
     def apply(i: Int) = sys.error(s"Chunk.empty.apply($i)")
     def copyToArray[O2 >: Nothing](xs: Array[O2], start: Int): Unit = ()
@@ -471,81 +474,109 @@ object Chunk {
   def empty[A]: Chunk[A] = empty_
 
   /** Creates a chunk consisting of a single element. */
-  def singleton[O](o: O): Chunk[O] = new Chunk[O] {
-    def size = 1
-    def apply(i: Int) =
-      if (i == 0) o else throw new IndexOutOfBoundsException()
-    def copyToArray[O2 >: O](xs: Array[O2], start: Int): Unit = xs(start) = o
+  def singleton[O](o: O): Chunk[O] = new Singleton(o)
+  final class Singleton[O](val value: O) extends Chunk[O] {
+    def size: Int = 1
+    def apply(i: Int): O =
+      if (i == 0) value else throw new IndexOutOfBoundsException()
+    def copyToArray[O2 >: O](xs: Array[O2], start: Int): Unit = xs(start) = value
     protected def splitAtChunk_(n: Int): (Chunk[O], Chunk[O]) =
       sys.error("impossible")
-    override def map[O2](f: O => O2): Chunk[O2] = singleton(f(o))
+    override def map[O2](f: O => O2): Chunk[O2] = singleton(f(value))
   }
 
   /** Creates a chunk backed by a vector. */
   def vector[O](v: Vector[O]): Chunk[O] =
     if (v.isEmpty) empty
-    else
-      new Chunk[O] {
-        def size = v.length
-        def apply(i: Int) = v(i)
-        def copyToArray[O2 >: O](xs: Array[O2], start: Int): Unit = v.copyToArray(xs, start)
-        override def toVector = v
-        protected def splitAtChunk_(n: Int): (Chunk[O], Chunk[O]) = {
-          val (fst, snd) = v.splitAt(n)
-          vector(fst) -> vector(snd)
-        }
+    else if (v.size == 1)
+      singleton(v.head) // Use size instead of tail.isEmpty as vectors know their size
+    else new VectorChunk(v)
 
-        override def drop(n: Int): Chunk[O] =
-          if (n <= 0) this
-          else if (n >= size) Chunk.empty
-          else vector(v.drop(n))
+  private final class VectorChunk[O](v: Vector[O]) extends Chunk[O] {
+    def size = v.length
+    def apply(i: Int) = v(i)
+    def copyToArray[O2 >: O](xs: Array[O2], start: Int): Unit = v.copyToArray(xs, start)
+    override def toVector = v
+    protected def splitAtChunk_(n: Int): (Chunk[O], Chunk[O]) = {
+      val (fst, snd) = v.splitAt(n)
+      vector(fst) -> vector(snd)
+    }
 
-        override def take(n: Int): Chunk[O] =
-          if (n <= 0) Chunk.empty
-          else if (n >= size) this
-          else vector(v.take(n))
+    override def drop(n: Int): Chunk[O] =
+      if (n <= 0) this
+      else if (n >= size) Chunk.empty
+      else vector(v.drop(n))
 
-        override def map[O2](f: O => O2): Chunk[O2] = vector(v.map(f))
-      }
+    override def take(n: Int): Chunk[O] =
+      if (n <= 0) Chunk.empty
+      else if (n >= size) this
+      else vector(v.take(n))
+
+    override def map[O2](f: O => O2): Chunk[O2] = vector(v.map(f))
+  }
 
   /** Creates a chunk backed by an `IndexedSeq`. */
   def indexedSeq[O](s: IndexedSeq[O]): Chunk[O] =
     if (s.isEmpty) empty
-    else
-      new Chunk[O] {
-        def size = s.length
-        def apply(i: Int) = s(i)
-        def copyToArray[O2 >: O](xs: Array[O2], start: Int): Unit = s.copyToArray(xs, start)
-        override def toVector = s.toVector
+    else if (s.size == 1)
+      singleton(s.head) // Use size instead of tail.isEmpty as indexed seqs know their size
+    else new IndexedSeqChunk(s)
 
-        override def drop(n: Int): Chunk[O] =
-          if (n <= 0) this
-          else if (n >= size) Chunk.empty
-          else indexedSeq(s.drop(n))
+  private final class IndexedSeqChunk[O](s: IndexedSeq[O]) extends Chunk[O] {
+    def size = s.length
+    def apply(i: Int) = s(i)
+    def copyToArray[O2 >: O](xs: Array[O2], start: Int): Unit = s.copyToArray(xs, start)
+    override def toVector = s.toVector
 
-        override def take(n: Int): Chunk[O] =
-          if (n <= 0) Chunk.empty
-          else if (n >= size) this
-          else indexedSeq(s.take(n))
+    override def drop(n: Int): Chunk[O] =
+      if (n <= 0) this
+      else if (n >= size) Chunk.empty
+      else indexedSeq(s.drop(n))
 
-        protected def splitAtChunk_(n: Int): (Chunk[O], Chunk[O]) = {
-          val (fst, snd) = s.splitAt(n)
-          indexedSeq(fst) -> indexedSeq(snd)
-        }
-        override def map[O2](f: O => O2): Chunk[O2] = indexedSeq(s.map(f))
-      }
+    override def take(n: Int): Chunk[O] =
+      if (n <= 0) Chunk.empty
+      else if (n >= size) this
+      else indexedSeq(s.take(n))
 
-  /** Creates a chunk backed by a `scala.collection.Seq`. */
-  def seq[O](s: GSeq[O]): Chunk[O] = s match {
-    case a: collection.mutable.WrappedArray[O] =>
-      array(a.array.asInstanceOf[Array[O]])
+    protected def splitAtChunk_(n: Int): (Chunk[O], Chunk[O]) = {
+      val (fst, snd) = s.splitAt(n)
+      indexedSeq(fst) -> indexedSeq(snd)
+    }
+    override def map[O2](f: O => O2): Chunk[O2] = indexedSeq(s.map(f))
+  }
+
+  /** Creates a chunk from a `scala.collection.Seq`. */
+  def seq[O](s: GSeq[O]): Chunk[O] = iterable(s)
+
+  /** Creates a chunk from a `scala.collection.Iterable`. */
+  def iterable[O](i: collection.Iterable[O]): Chunk[O] = i match {
+    case ArrayBackedSeq(arr) =>
+      // arr is either a primitive array or a boxed array
+      // cast is safe b/c the array constructor will check for primitive vs boxed arrays
+      array(arr.asInstanceOf[Array[O]])
     case v: Vector[O]                    => vector(v)
     case ix: IndexedSeq[O]               => indexedSeq(ix)
     case b: collection.mutable.Buffer[O] => buffer(b)
+    case l: List[O] =>
+      if (l.isEmpty) empty
+      else if (l.tail.isEmpty) singleton(l.head)
+      else {
+        val bldr = collection.mutable.Buffer.newBuilder[O]
+        bldr ++= l
+        buffer(bldr.result)
+      }
     case _ =>
-      if (s.isEmpty) empty
-      else if (s.tail.isEmpty) singleton(s.head)
-      else buffer(collection.mutable.Buffer((s.toSeq): _*)) // Check if toSeq is needed after upgrading to 2.13.0-RC1
+      if (i.isEmpty) empty
+      else {
+        val itr = i.iterator
+        val head = itr.next
+        if (itr.hasNext) {
+          val bldr = collection.mutable.Buffer.newBuilder[O]
+          bldr += head
+          bldr ++= itr
+          buffer(bldr.result)
+        } else singleton(head)
+      }
   }
 
   /** Creates a chunk backed by a `Chain`. */
@@ -558,44 +589,52 @@ object Chunk {
     */
   def buffer[O](b: collection.mutable.Buffer[O]): Chunk[O] =
     if (b.isEmpty) empty
-    else
-      new Chunk[O] {
-        def size = b.length
-        def apply(i: Int) = b(i)
-        def copyToArray[O2 >: O](xs: Array[O2], start: Int): Unit = b.copyToArray(xs, start)
-        override def toVector = b.toVector
+    else if (b.size == 1) singleton(b.head)
+    else new BufferChunk(b)
 
-        override def drop(n: Int): Chunk[O] =
-          if (n <= 0) this
-          else if (n >= size) Chunk.empty
-          else buffer(b.drop(n))
+  private final class BufferChunk[O](b: collection.mutable.Buffer[O]) extends Chunk[O] {
+    def size = b.length
+    def apply(i: Int) = b(i)
+    def copyToArray[O2 >: O](xs: Array[O2], start: Int): Unit = b.copyToArray(xs, start)
+    override def toVector = b.toVector
 
-        override def take(n: Int): Chunk[O] =
-          if (n <= 0) Chunk.empty
-          else if (n >= size) this
-          else buffer(b.take(n))
+    override def drop(n: Int): Chunk[O] =
+      if (n <= 0) this
+      else if (n >= size) Chunk.empty
+      else buffer(b.drop(n))
 
-        protected def splitAtChunk_(n: Int): (Chunk[O], Chunk[O]) = {
-          val (fst, snd) = b.splitAt(n)
-          buffer(fst) -> buffer(snd)
-        }
-        override def map[O2](f: O => O2): Chunk[O2] = buffer(b.map(f))
-      }
+    override def take(n: Int): Chunk[O] =
+      if (n <= 0) Chunk.empty
+      else if (n >= size) this
+      else buffer(b.take(n))
+
+    protected def splitAtChunk_(n: Int): (Chunk[O], Chunk[O]) = {
+      val (fst, snd) = b.splitAt(n)
+      buffer(fst) -> buffer(snd)
+    }
+    override def map[O2](f: O => O2): Chunk[O2] = buffer(b.map(f))
+  }
 
   /** Creates a chunk with the specified values. */
   def apply[O](os: O*): Chunk[O] = seq(os)
 
   /** Creates a chunk backed by an array. */
-  def array[O](values: Array[O]): Chunk[O] = values match {
-    case a: Array[Boolean] => booleans(a)
-    case a: Array[Byte]    => bytes(a)
-    case a: Array[Short]   => shorts(a)
-    case a: Array[Int]     => ints(a)
-    case a: Array[Long]    => longs(a)
-    case a: Array[Float]   => floats(a)
-    case a: Array[Double]  => doubles(a)
-    case _                 => boxed(values)
-  }
+  def array[O](values: Array[O]): Chunk[O] =
+    values.size match {
+      case 0 => empty
+      case 1 => singleton(values(0))
+      case n =>
+        values match {
+          case a: Array[Boolean] => booleans(a)
+          case a: Array[Byte]    => bytes(a)
+          case a: Array[Short]   => shorts(a)
+          case a: Array[Int]     => ints(a)
+          case a: Array[Long]    => longs(a)
+          case a: Array[Float]   => floats(a)
+          case a: Array[Double]  => doubles(a)
+          case _                 => boxed(values)
+        }
+    }
 
   private def checkBounds(values: Array[_], offset: Int, length: Int): Unit = {
     require(offset >= 0 && offset <= values.size)
