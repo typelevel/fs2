@@ -539,12 +539,13 @@ object Chunk {
   def seq[O](s: GSeq[O]): Chunk[O] = s match {
     case a: collection.mutable.WrappedArray[O] =>
       array(a.array.asInstanceOf[Array[O]])
-    case v: Vector[O]      => vector(v)
-    case ix: IndexedSeq[O] => indexedSeq(ix)
+    case v: Vector[O]                    => vector(v)
+    case ix: IndexedSeq[O]               => indexedSeq(ix)
+    case b: collection.mutable.Buffer[O] => buffer(b)
     case _ =>
       if (s.isEmpty) empty
       else if (s.tail.isEmpty) singleton(s.head)
-      else buffer(collection.mutable.Buffer((s.toSeq): _*))
+      else buffer(collection.mutable.Buffer((s.toSeq): _*)) // Check if toSeq is needed after upgrading to 2.13.0-RC1
   }
 
   /** Creates a chunk backed by a `Chain`. */
