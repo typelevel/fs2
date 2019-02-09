@@ -53,7 +53,7 @@ lazy val commonSettings = Seq(
     "org.typelevel" %%% "cats-laws" % "1.6.0" % "test",
     "org.typelevel" %%% "cats-effect" % "1.2.0",
     "org.typelevel" %%% "cats-effect-laws" % "1.2.0" % "test",
-    "org.scala-lang.modules" %%% "scala-collection-compat" % "0.2.1",
+    "org.scala-lang.modules" %%% "scala-collection-compat" % "0.3.0",
     "org.scalatest" %%% "scalatest" % "3.0.6-SNAP6" % "test"
   ),
   libraryDependencies += {
