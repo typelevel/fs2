@@ -56,9 +56,9 @@ class ChunkSpec extends Fs2Spec {
     "Array casts in Chunk.seq are safe" in {
       val as = collection.mutable.ArraySeq[Int](0, 1, 2)
       val c = Chunk.seq(as)
-      try c shouldBe a[Chunk.Boxed[_]]
+      try c shouldBe a[Chunk.Boxed[_]] // 2.11/2.12
       catch {
-        case NonFatal(t) => c shouldBe a[Chunk.Ints]
+        case NonFatal(t) => c shouldBe a[Chunk.Ints] // 2.13+
       }
     }
   }
