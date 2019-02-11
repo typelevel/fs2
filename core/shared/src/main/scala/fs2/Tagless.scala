@@ -433,6 +433,18 @@ final class Stream[+F[_], +O] private (private val asPull: Pull[F, O, Unit]) ext
     */
   def covaryOutput[O2 >: O]: Stream[F, O2] = this
 
+  /**
+    * Alias for `flatMap(o => Stream.eval(f(o)))`.
+    *
+    * @example {{{
+    * scala> import cats.effect.IO
+    * scala> Stream(1,2,3,4).evalMap(i => IO(println(i))).compile.drain.unsafeRunSync
+    * res0: Unit = ()
+    * }}}
+    */
+  def evalMap[F2[x] >: F[x], O2](f: O => F2[O2]): Stream[F2, O2] =
+    flatMap(o => Stream.eval(f(o)))
+
   def flatMap[F2[x] >: F[x], O2](f: O => Stream[F2, O2]): Stream[F2, O2] =
     Stream.fromPull(Pull.mapConcat(asPull: Pull[F2, O, Unit])(o => f(o).asPull))
 
