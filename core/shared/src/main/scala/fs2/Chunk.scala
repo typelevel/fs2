@@ -1,7 +1,7 @@
 package fs2
 
 import scala.collection.immutable.{Queue => SQueue}
-import scala.collection.{Seq => GSeq}
+import scala.collection.{IndexedSeq => GIndexedSeq, Seq => GSeq}
 import scala.reflect.ClassTag
 import scodec.bits.ByteVector
 import java.nio.{
@@ -516,13 +516,13 @@ object Chunk {
   }
 
   /** Creates a chunk backed by an `IndexedSeq`. */
-  def indexedSeq[O](s: IndexedSeq[O]): Chunk[O] =
+  def indexedSeq[O](s: GIndexedSeq[O]): Chunk[O] =
     if (s.isEmpty) empty
     else if (s.size == 1)
       singleton(s.head) // Use size instead of tail.isEmpty as indexed seqs know their size
     else new IndexedSeqChunk(s)
 
-  private final class IndexedSeqChunk[O](s: IndexedSeq[O]) extends Chunk[O] {
+  private final class IndexedSeqChunk[O](s: GIndexedSeq[O]) extends Chunk[O] {
     def size = s.length
     def apply(i: Int) = s(i)
     def copyToArray[O2 >: O](xs: Array[O2], start: Int): Unit = s.copyToArray(xs, start)
@@ -555,7 +555,6 @@ object Chunk {
       // cast is safe b/c the array constructor will check for primitive vs boxed arrays
       array(arr.asInstanceOf[Array[O]])
     case v: Vector[O]                    => vector(v)
-    case ix: IndexedSeq[O]               => indexedSeq(ix)
     case b: collection.mutable.Buffer[O] => buffer(b)
     case l: List[O] =>
       if (l.isEmpty) empty
@@ -565,6 +564,7 @@ object Chunk {
         bldr ++= l
         buffer(bldr.result)
       }
+    case ix: GIndexedSeq[O] => indexedSeq(ix)
     case _ =>
       if (i.isEmpty) empty
       else {
