@@ -33,14 +33,14 @@ class Buffering[F[_]](q1: Queue[F, Int], q2: Queue[F, Int])(implicit F: Concurre
 
   def start: Stream[F, Unit] =
     Stream(
-      Stream.range(0, 1000).covary[F].to(q1.enqueue),
-      q1.dequeue.to(q2.enqueue),
+      Stream.range(0, 1000).covary[F].through(q1.enqueue),
+      q1.dequeue.through(q2.enqueue),
       //.map won't work here as you're trying to map a pure value with a side effect. Use `evalMap` instead.
       q2.dequeue.evalMap(n => F.delay(println(s"Pulling out $n from Queue #2")))
     ).parJoin(3)
 }
 
-class Fifo extends IOApp {
+object Fifo extends IOApp {
 
   override def run(args: List[String]): IO[ExitCode] = {
     val stream = for {
@@ -107,7 +107,7 @@ class EventService[F[_]](eventsTopic: Topic[F, Event],
         case Quit => Stream.eval(interrupter.set(true))
       }
 
-    Stream(s1.to(sink(1)), s2.to(sink(2)), s3.to(sink(3))).parJoin(3)
+    Stream(s1.through(sink(1)), s2.through(sink(2)), s3.through(sink(3))).parJoin(3)
   }
 }
 
@@ -179,7 +179,7 @@ class PreciousResource[F[_]: Concurrent: Timer](name: String, s: Semaphore[F]) {
   }
 }
 
-class Resources extends IOApp {
+object Resources extends IOApp {
 
   override def run(args: List[String]): IO[ExitCode] = {
     val stream = for {

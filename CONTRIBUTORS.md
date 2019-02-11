@@ -19,3 +19,4 @@ Also see the [GitHub contributor stats](https://github.com/functional-streams-fo
 - Jed Wesley-Smith ([@jedws](https://github.com/jedws)): really very minor tweaks, cleanups and pestering, hardly worth the mention
 - Michael Pilquist ([@mpilquist](https://github.com/mpilquist)): 0.9 redesign work, maintenance
 - Daniel Urban ([@durban](https://github.com/durban)): queue peek implementation
+- Tamer Abdulradi ([@tabdulradi](https://github.com/tabdulradi)): implementation of scanMap and scanMonoid
