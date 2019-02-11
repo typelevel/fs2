@@ -7,6 +7,7 @@ import cats.laws.discipline.{ MonadTests, TraverseTests }
 import cats.implicits._
 import org.scalacheck.{Arbitrary, Cogen, Gen}
 import scala.reflect.ClassTag
+import scala.util.control.NonFatal
 
 import TestUtil._
 import ChunkProps._
@@ -27,6 +28,30 @@ class ChunkSpec extends Fs2Spec {
       Chunk.seq(c).toList shouldBe c.toList
       Chunk.indexedSeq(c).toVector shouldBe c
       Chunk.indexedSeq(c).toList shouldBe c.toList
+    }
+
+    "Chunk.apply is optimized" in {
+      Chunk(1) shouldBe a[Chunk.Singleton[_]]
+      Chunk("Hello") shouldBe a[Chunk.Singleton[_]]
+      // Varargs on Scala.js use a scala.scalajs.js.WrappedArray, which
+      // ends up falling through to the Chunk.indexedSeq constructor
+      if (isJVM) {
+        Chunk(1, 2, 3) shouldBe a[Chunk.Ints]
+        Chunk("Hello", "world") shouldBe a[Chunk.Boxed[_]]
+      }
+    }
+
+    "Chunk.seq is optimized" in {
+      Chunk.seq(List(1)) shouldBe a[Chunk.Singleton[_]]
+    }
+
+    "Array casts in Chunk.seq are safe" in {
+      val as = collection.mutable.ArraySeq[Int](0, 1, 2)
+      val c = Chunk.seq(as)
+      try c shouldBe a[Chunk.Boxed[_]] // 2.11/2.12
+      catch {
+        case NonFatal(t) => c shouldBe a[Chunk.Ints] // 2.13+
+      }
     }
   }
 
