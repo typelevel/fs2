@@ -110,20 +110,7 @@ sealed trait Pull[+F[_], +O, +R] { self =>
   def scope: Pull[F, O, R] = new Pull[F, O, R] {
     private[fs2] def step[F2[x] >: F[x], O2 >: O, R2 >: R](scope: CompileScope[F2])(
         implicit F: Sync[F2]): F2[Either[R2, (Chunk[O2], Pull[F2, O2, R2])]] =
-      F.bracketCase(scope.open(None /* TODO */ ).rethrow) { childScope =>
-        self.step[F2, O2, R2](childScope).flatMap {
-          case Right((hd, tl)) =>
-            (Right((hd, tl.stepWith(childScope.id))): Either[R2, (Chunk[O2], Pull[F2, O2, R2])])
-              .pure[F2]
-          case Left(r) =>
-            childScope
-              .close(ExitCase.Completed)
-              .as(Left(r): Either[R2, (Chunk[O2], Pull[F2, O2, R2])])
-        }
-      } {
-        case (childScope, ExitCase.Completed) => F.unit
-        case (childScope, other)              => childScope.close(other).rethrow
-      }
+      scope.open(None).rethrow.flatMap(childScope => self.stepWith(childScope.id).step(childScope))
 
     private[fs2] def translate[F2[x] >: F[x], G[_]](f: F2 ~> G): Pull[G, O, R] =
       self.translate(f).scope
@@ -134,15 +121,22 @@ sealed trait Pull[+F[_], +O, +R] { self =>
   private[fs2] def stepWith(scopeId: Token): Pull[F, O, R] = new Pull[F, O, R] {
     private[fs2] def step[F2[x] >: F[x], O2 >: O, R2 >: R](scope: CompileScope[F2])(
         implicit F: Sync[F2]): F2[Either[R2, (Chunk[O2], Pull[F2, O2, R2])]] =
-      // TODO Handle errors/cancelation here and propagate scope closure
-      scope.findStepScope(scopeId).map(_.getOrElse(scope)).flatMap { scope =>
-        (self: Pull[F2, O2, R2])
-          .step(scope)
-          .flatMap {
+      scope.findStepScope(scopeId).map(_.map(_ -> true).getOrElse(scope -> false)).flatMap {
+        case (scope, closeAfterUse) =>
+          F.bracketCase((self: Pull[F2, O2, R2]).step(scope)) {
             case Right((hd, tl)) =>
               (Right((hd, tl.stepWith(scopeId))): Either[R2, (Chunk[O2], Pull[F2, O2, R2])])
                 .pure[F2]
-            case Left(r) => scope.close(ExitCase.Completed).rethrow.as(Left(r))
+            case Left(r) =>
+              if (closeAfterUse)
+                scope
+                  .close(ExitCase.Completed)
+                  .rethrow
+                  .as(Left(r): Either[R2, (Chunk[O2], Pull[F2, O2, R2])])
+              else (Left(r): Either[R2, (Chunk[O2], Pull[F2, O2, R2])]).pure[F2]
+          } {
+            case (_, ExitCase.Completed) => F.unit
+            case (_, other)              => if (closeAfterUse) scope.close(other).rethrow else F.unit
           }
       }
 
