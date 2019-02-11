@@ -110,15 +110,20 @@ sealed trait Pull[+F[_], +O, +R] { self =>
   def scope: Pull[F, O, R] = new Pull[F, O, R] {
     private[fs2] def step[F2[x] >: F[x], O2 >: O, R2 >: R](scope: CompileScope[F2])(
         implicit F: Sync[F2]): F2[Either[R2, (Chunk[O2], Pull[F2, O2, R2])]] =
-      scope
-        .open(None /* TODO */ )
-        .rethrow
-        .flatMap { childScope =>
-          self.step[F2, O2, R2](childScope).map {
-            case Right((hd, tl)) => Right((hd, tl.stepWith(childScope.id)))
-            case Left(r)         => Left(r)
-          }
+      F.bracketCase(scope.open(None /* TODO */ ).rethrow) { childScope =>
+        self.step[F2, O2, R2](childScope).flatMap {
+          case Right((hd, tl)) =>
+            (Right((hd, tl.stepWith(childScope.id))): Either[R2, (Chunk[O2], Pull[F2, O2, R2])])
+              .pure[F2]
+          case Left(r) =>
+            childScope
+              .close(ExitCase.Completed)
+              .as(Left(r): Either[R2, (Chunk[O2], Pull[F2, O2, R2])])
         }
+      } {
+        case (childScope, ExitCase.Completed) => F.unit
+        case (childScope, other)              => childScope.close(other).rethrow
+      }
 
     private[fs2] def translate[F2[x] >: F[x], G[_]](f: F2 ~> G): Pull[G, O, R] =
       self.translate(f).scope
@@ -129,15 +134,15 @@ sealed trait Pull[+F[_], +O, +R] { self =>
   private[fs2] def stepWith(scopeId: Token): Pull[F, O, R] = new Pull[F, O, R] {
     private[fs2] def step[F2[x] >: F[x], O2 >: O, R2 >: R](scope: CompileScope[F2])(
         implicit F: Sync[F2]): F2[Either[R2, (Chunk[O2], Pull[F2, O2, R2])]] =
+      // TODO Handle errors/cancelation here and propagate scope closure
       scope.findStepScope(scopeId).map(_.getOrElse(scope)).flatMap { scope =>
         (self: Pull[F2, O2, R2])
-        // TODO this is not the right place to close the scope as we use it still in stepping the tail
-        // .flatTap(r => Pull.eval(scope.close(ExitCase.Completed)).rethrow)
-        // .onError { case t => Pull.eval(scope.close(ExitCase.Error(t))).rethrow }
           .step(scope)
-          .map {
-            case Right((hd, tl)) => Right((hd, tl.stepWith(scopeId)))
-            case Left(r)         => Left(r)
+          .flatMap {
+            case Right((hd, tl)) =>
+              (Right((hd, tl.stepWith(scopeId))): Either[R2, (Chunk[O2], Pull[F2, O2, R2])])
+                .pure[F2]
+            case Left(r) => scope.close(ExitCase.Completed).rethrow.as(Left(r))
           }
       }
 
