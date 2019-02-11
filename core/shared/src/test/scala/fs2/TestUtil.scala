@@ -10,7 +10,7 @@ import scala.concurrent.duration._
 import cats.effect.IO
 import cats.implicits._
 
-object TestUtil extends TestUtilPlatform {
+object TestUtil extends TestUtilPlatform with ChunkGen {
 
   def runLogF[A](s: Stream[IO,A]): Future[Vector[A]] = (IO.shift(executionContext) >> s.compile.toVector).unsafeToFuture
 
@@ -26,18 +26,6 @@ object TestUtil extends TestUtilPlatform {
       case e: Err => ()
       case NonFatal(e) => ()
     }
-
-  implicit def arbChunk[A](implicit A: Arbitrary[A]): Arbitrary[Chunk[A]] = Arbitrary(
-    Gen.frequency(
-      10 -> Gen.listOf(A.arbitrary).map(as => Chunk.indexedSeq(as.toVector)),
-      10 -> Gen.listOf(A.arbitrary).map(Chunk.seq),
-      5 -> A.arbitrary.map(a => Chunk.singleton(a)),
-      1 -> Chunk.empty[A]
-    )
-  )
-
-  implicit def cogenChunk[A: Cogen]: Cogen[Chunk[A]] =
-    Cogen[List[A]].contramap(_.toList)
 
   /** Newtype for generating test cases. Use the `tag` for labeling properties. */
   case class PureStream[+A](tag: String, get: Stream[Pure,A])
