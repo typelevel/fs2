@@ -4259,6 +4259,30 @@ object Stream extends StreamLowPriority {
       def empty = Stream.empty
       def combine(x: Stream[F, O], y: Stream[F, O]) = x ++ y
     }
+
+  /**
+    * `FunctorFilter` instance for `Stream`.
+    *
+    * @example {{{
+    * scala> import cats.implicits._, scala.util._
+    * scala> Stream("1", "2", "NaN").mapFilter(s => Try(s.toInt).toOption).toList
+    * res0: List[Int] = List(1, 2)
+    * }}}
+    */
+  implicit def functorFilterInstance[F[_]]: FunctorFilter[Stream[F, ?]] =
+    new FunctorFilter[Stream[F, ?]] {
+      override def functor: Functor[Stream[F, ?]] = Functor[Stream[F, ?]]
+      override def mapFilter[A, B](fa: Stream[F, A])(f: A => Option[B]): Stream[F, B] = {
+        def pull: Stream[F, A] => Pull[F, B, Unit] =
+          _.pull.uncons.flatMap {
+            case None => Pull.done
+            case Some((chunk, rest)) =>
+              Pull.output(chunk.mapFilter(f)) >> pull(rest)
+          }
+
+        pull(fa).stream
+      }
+    }
 }
 
 private[fs2] trait StreamLowPriority {

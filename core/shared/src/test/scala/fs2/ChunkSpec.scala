@@ -3,12 +3,12 @@ package fs2
 import cats.Eq
 import cats.kernel.CommutativeMonoid
 import cats.kernel.laws.discipline.EqTests
-import cats.laws.discipline.{ MonadTests, TraverseTests }
+import cats.laws.discipline.{FunctorFilterTests, MonadTests, TraverseTests}
 import cats.implicits._
 import org.scalacheck.{Arbitrary, Cogen, Gen}
+
 import scala.reflect.ClassTag
 import scala.util.control.NonFatal
-
 import TestUtil._
 import ChunkProps._
 
@@ -57,6 +57,11 @@ class ChunkSpec extends Fs2Spec {
 
   def testChunk[A: Arbitrary: ClassTag: Cogen: CommutativeMonoid: Eq](genChunk: Gen[Chunk[A]], name: String, of: String, testTraverse: Boolean = true): Unit = {
     s"$name" - {
+      // borrowed from ScalaCheck 1.14
+      // TODO remove when the project upgrades to ScalaCheck 1.14
+      implicit def arbPartialFunction[B: Arbitrary]: Arbitrary[PartialFunction[A, B]] =
+        Arbitrary(implicitly[Arbitrary[A => Option[B]]].arbitrary.map(Function.unlift))
+
       implicit val arbChunk: Arbitrary[Chunk[A]] = Arbitrary(genChunk)
       "size" in propSize[A, Chunk[A]]
       "take" in propTake[A, Chunk[A]]
@@ -71,6 +76,7 @@ class ChunkSpec extends Fs2Spec {
 
       checkAll(s"Eq[Chunk[$of]]", EqTests[Chunk[A]].eqv)
       checkAll(s"Monad[Chunk]", MonadTests[Chunk].monad[A, A, A])
+      checkAll(s"FunctorFilter[Chunk]", FunctorFilterTests[Chunk].functorFilter[A, A, A])
 
       if (testTraverse)
         checkAll(s"Traverse[Chunk]", TraverseTests[Chunk].traverse[A, A, A, A, Option, Option])
