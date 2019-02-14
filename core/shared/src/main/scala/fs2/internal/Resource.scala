@@ -7,8 +7,7 @@ import fs2.Scope
 /**
   * Represents a resource acquired during stream interpretation.
   *
-  * A resource is acquired by `Algebra.Acquire` and then released by either `Algebra.Release` or
-  * `Algebra.CloseScope`.
+  * A resource is acquired by `Algebra.Acquire` and then released by `Algebra.CloseScope`.
   *
   * The acquisition of a resource has three steps:
   *
@@ -23,13 +22,11 @@ import fs2.Scope
   *
   * A resource may be released by any of the following methods:
   *
-  * (1) `Algebra.Release` is interpreted. In this case, the finalizer will be invoked if
-  *     the resource was successfully acquired (the `acquired` was evaluated) and resource was not leased to another scope.
-  * (2) The owning scope was closed by `Algebra.CloseScope`. This essentially evaluates `release` of
+  * (1) The owning scope was closed by `Algebra.CloseScope`. This essentially evaluates `release` of
   *     the `Resource` and acts like (1).
-  * (3) `acquired` was evaluated after scope was `released` by either (1) or (2). In this case,
+  * (2) `acquired` was evaluated after scope was `released` by either (1) or (2). In this case,
   *     finalizer will be invoked immediately if the resource is not leased.
-  * (4) `cancel` is invoked on a `Lease` for the resource. This will invoke the finalizer
+  * (3) `cancel` is invoked on a `Lease` for the resource. This will invoke the finalizer
   *     if the resource was already acquired and released and there are no other outstanding leases.
   *
   * Resources may be leased to other scopes. Each scope must lease with `lease` and  when the other
@@ -38,7 +35,7 @@ import fs2.Scope
   * Note that every method which may potentially call a resource finalizer returns `F[Either[Throwable, Unit]]`
   * instead of `F[Unit]`` to make sure any errors that occur when releasing the resource are properly handled.
   */
-private[internal] sealed abstract class Resource[F[_]] {
+private[fs2] sealed abstract class Resource[F[_]] {
 
   /**
     * Id of the resource

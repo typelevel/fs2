@@ -34,10 +34,7 @@ private[fs2] object Algebra {
 
   private[this] final case class Acquire[F[_], R](resource: F[R],
                                                   release: (R, ExitCase[Throwable]) => F[Unit])
-      extends AlgEffect[F, (R, Token)]
-
-  private[this] final case class Release[F[_]](token: Token) extends AlgEffect[F, Unit]
-
+      extends AlgEffect[F, (R, Resource[F])]
   private[this] final case class OpenScope[F[_]](interruptible: Option[Concurrent[F]])
       extends AlgEffect[F, Token]
 
@@ -62,11 +59,8 @@ private[fs2] object Algebra {
 
   def acquire[F[_], O, R](
       resource: F[R],
-      release: (R, ExitCase[Throwable]) => F[Unit]): FreeC[Algebra[F, O, ?], (R, Token)] =
-    FreeC.Eval[Algebra[F, O, ?], (R, Token)](Acquire(resource, release))
-
-  def release[F[_], O](token: Token): FreeC[Algebra[F, O, ?], Unit] =
-    FreeC.Eval[Algebra[F, O, ?], Unit](Release(token))
+      release: (R, ExitCase[Throwable]) => F[Unit]): FreeC[Algebra[F, O, ?], (R, Resource[F])] =
+    FreeC.Eval[Algebra[F, O, ?], (R, Resource[F])](Acquire(resource, release))
 
   def mapOutput[F[_], A, B](fun: A => B): Algebra[F, A, ?] ~> Algebra[F, B, ?] =
     new (Algebra[F, A, ?] ~> Algebra[F, B, ?]) {
@@ -293,11 +287,6 @@ private[fs2] object Algebra {
                 }
               }
 
-            case release: Release[F] =>
-              F.flatMap(scope.releaseResource(release.token, ExitCase.Completed)) { r =>
-                go[X](scope, view.next(Result.fromEither(r)))
-              }
-
             case _: GetScope[F] =>
               F.suspend(go(scope, view.next(Result.pure(scope.asInstanceOf[y]))))
 
@@ -480,7 +469,6 @@ private[fs2] object Algebra {
         .asInstanceOf[AlgEffect[G, R]]
     case e: Eval[F, R]    => Eval[G, R](fK(e.value))
     case o: OpenScope[F]  => OpenScope[G](concurrent).asInstanceOf[AlgEffect[G, R]]
-    case r: Release[F]    => r.asInstanceOf[AlgEffect[G, R]]
     case c: CloseScope[F] => c.asInstanceOf[AlgEffect[G, R]]
     case g: GetScope[F]   => g.asInstanceOf[AlgEffect[G, R]]
   }
