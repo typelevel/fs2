@@ -2870,7 +2870,7 @@ object Stream extends StreamLowPriority {
     bracketWithResource(acquire)(release).map {
       case (res, r) =>
         (Stream.eval(res.release(ExitCase.Canceled)).flatMap {
-          case Left(t)  => Stream.fromFreeC(Algebra.raiseError(t))
+          case Left(t)  => Stream.fromFreeC(Algebra.raiseError[F, Unit](t))
           case Right(u) => Stream.emit(u)
         }, r)
     }

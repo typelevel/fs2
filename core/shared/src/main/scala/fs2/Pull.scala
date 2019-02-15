@@ -152,7 +152,7 @@ object Pull extends PullLowPriority {
         case None => Pull.raiseError[F](new RuntimeException("impossible"))
         case Some(((res, r), tl)) =>
           Pull.pure(Cancellable(Pull.eval(res.release(ExitCase.Canceled)).flatMap {
-            case Left(t)  => Pull.fromFreeC(Algebra.raiseError(t))
+            case Left(t)  => Pull.fromFreeC(Algebra.raiseError[F, INothing](t))
             case Right(r) => Pull.pure(r)
           }, r))
       }
