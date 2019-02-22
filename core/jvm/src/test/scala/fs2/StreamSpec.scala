@@ -594,6 +594,9 @@ class StreamSpec extends Fs2Spec with Inside {
                MonadErrorTests[Stream[IO, ?], Throwable].monadError[Int, Int, Int])
       checkAll("FunctorFilter[Stream[F, ?]]",
                FunctorFilterTests[Stream[IO, ?]].functorFilter[String, Int, Int])
+      checkAll("Alternative[Stream[F, ?]]",
+               AlternativeTests[Stream[IO, ?]].alternative[Int, Int, Int])
+
     }
   }
 }

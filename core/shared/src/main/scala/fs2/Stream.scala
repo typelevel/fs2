@@ -3994,13 +3994,13 @@ object Stream extends StreamLowPriority {
       *  val s3: Resource[IO, Option[Int]] = stream.compile.resource.last
       * }}}
       *
-      * And so on for the every method in `compile`.
+      * And so on for every other method in `compile`.
       *
       * The main use case is interacting with Stream methods whose
       * behaviour depends on the Stream lifetime, in cases where you
       * only want to ultimately return a single element.
       *
-      * A typical example of this is concurrent combinators: here is
+      * A typical example of this is concurrent combinators, here is
       * an example with `concurrently`:
       *
       * {{{
@@ -4286,8 +4286,8 @@ object Stream extends StreamLowPriority {
 }
 
 private[fs2] trait StreamLowPriority {
-  implicit def monadInstance[F[_]]: Monad[Stream[F, ?]] =
-    new Monad[Stream[F, ?]] {
+  implicit def lowPriorityInstances[F[_]]: Alternative[Stream[F, ?]] with Monad[Stream[F, ?]] =
+    new Alternative[Stream[F, ?]] with Monad[Stream[F, ?]] {
       override def pure[A](x: A): Stream[F, A] = Stream(x)
 
       override def flatMap[A, B](fa: Stream[F, A])(f: A ⇒ Stream[F, B]): Stream[F, B] =
@@ -4298,6 +4298,12 @@ private[fs2] trait StreamLowPriority {
           case Left(a)  => tailRecM(a)(f)
           case Right(b) => Stream(b)
         }
+
+      override def empty[A]: Stream[F, A] =
+        Stream.empty
+
+      override def combineK[A](x: Stream[F, A], y: Stream[F, A]): Stream[F, A] =
+        x ++ y
     }
 
 }
