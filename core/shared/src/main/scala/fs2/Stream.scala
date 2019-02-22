@@ -4283,11 +4283,17 @@ object Stream extends StreamLowPriority {
         pull(fa).stream
       }
     }
+
+  implicit def monoidKInstance[F[_]]: MonoidK[Stream[F, ?]] =
+    new MonoidK[Stream[F, ?]] {
+      def empty[A]: Stream[F, A] = Stream.empty
+      def combineK[A](x: Stream[F, A], y: Stream[F, A]): Stream[F, A] = x ++ y
+    }
 }
 
 private[fs2] trait StreamLowPriority {
-  implicit def lowPriorityInstances[F[_]]: Alternative[Stream[F, ?]] with Monad[Stream[F, ?]] =
-    new Alternative[Stream[F, ?]] with Monad[Stream[F, ?]] {
+  implicit def monadInstance[F[_]]: Monad[Stream[F, ?]] =
+    new Monad[Stream[F, ?]] {
       override def pure[A](x: A): Stream[F, A] = Stream(x)
 
       override def flatMap[A, B](fa: Stream[F, A])(f: A ⇒ Stream[F, B]): Stream[F, B] =
@@ -4298,12 +4304,6 @@ private[fs2] trait StreamLowPriority {
           case Left(a)  => tailRecM(a)(f)
           case Right(b) => Stream(b)
         }
-
-      override def empty[A]: Stream[F, A] =
-        Stream.empty
-
-      override def combineK[A](x: Stream[F, A], y: Stream[F, A]): Stream[F, A] =
-        x ++ y
     }
 
 }
