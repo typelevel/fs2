@@ -226,7 +226,9 @@ lazy val mimaSettings = Seq(
     ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Stream.bracketFinalizer"),
     // Compiler#apply is private[fs2]
     ProblemFilters.exclude[IncompatibleMethTypeProblem]("fs2.Stream#Compiler.apply"),
-    ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.Stream#Compiler.apply")
+    ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.Stream#Compiler.apply"),
+    // bracketWithToken was private[fs2]
+    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Stream.bracketWithToken")
   )
 )
 

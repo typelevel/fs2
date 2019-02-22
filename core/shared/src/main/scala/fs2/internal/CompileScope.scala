@@ -85,32 +85,6 @@ private[fs2] final class CompileScope[F[_]] private (
     }
 
   /**
-    * Releases the resource identified by the supplied token.
-    *
-    * Invoked when a resource is released during the scope's lifetime.
-    * When the action returns, the resource may not be released yet, as
-    * it may have been `leased` to other scopes.
-    *
-    * Note:
-    *
-    * This method is a no-op for the `root` scope, because we want to
-    * close it through the toplevel compile loop, rather than by
-    * instructions in the stream structure.
-    *
-    * This is to allow extending the lifetime of Stream when compiling
-    * to a `cats.effect.Resource` (not to be confused with
-    * `fs2.internal.Resource`).
-    *
-    */
-  def releaseResource(id: Token, ec: ExitCase[Throwable]): F[Either[Throwable, Unit]] =
-    if (!parent.isEmpty) {
-      F.flatMap(state.modify { _.unregisterResource(id) }) {
-        case Some(resource) => resource.release(ec)
-        case None           => F.pure(Right(())) // resource does not exist in scope any more.
-      }
-    } else F.pure(Right(()))
-
-  /**
     * Opens a child scope.
     *
     * If this scope is currently closed, then the child scope is opened on the first
@@ -189,13 +163,13 @@ private[fs2] final class CompileScope[F[_]] private (
     */
   def acquireResource[R](
       fr: F[R],
-      release: (R, ExitCase[Throwable]) => F[Unit]): F[Either[Throwable, (R, Token)]] = {
+      release: (R, ExitCase[Throwable]) => F[Unit]): F[Either[Throwable, (R, Resource[F])]] = {
     val resource = Resource.create
     F.flatMap(F.attempt(fr)) {
       case Right(r) =>
         val finalizer = (ec: ExitCase[Throwable]) => F.suspend(release(r, ec))
         F.flatMap(resource.acquired(finalizer)) { result =>
-          if (result.exists(identity)) F.map(register(resource))(_ => Right((r, resource.id)))
+          if (result.exists(identity)) F.map(register(resource))(_ => Right((r, resource)))
           else F.pure(Left(result.swap.getOrElse(AcquireAfterScopeClosed)))
         }
       case Left(err) => F.pure(Left(err))

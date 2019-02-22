@@ -145,12 +145,16 @@ object Pull extends PullLowPriority {
   def acquireCancellableCase[F[_]: RaiseThrowable, R](r: F[R])(
       cleanup: (R, ExitCase[Throwable]) => F[Unit]): Pull[F, INothing, Cancellable[F, R]] =
     Stream
-      .bracketWithToken(r)(cleanup)
+      .bracketWithResource(r)(cleanup)
       .pull
       .uncons1
       .flatMap {
-        case None                   => Pull.raiseError[F](new RuntimeException("impossible"))
-        case Some(((token, r), tl)) => Pull.pure(Cancellable(release(token), r))
+        case None => Pull.raiseError[F](new RuntimeException("impossible"))
+        case Some(((res, r), tl)) =>
+          Pull.pure(Cancellable(Pull.eval(res.release(ExitCase.Canceled)).flatMap {
+            case Left(t)  => Pull.fromFreeC(Algebra.raiseError[F, INothing](t))
+            case Right(r) => Pull.pure(r)
+          }, r))
       }
 
   /**
@@ -226,9 +230,6 @@ object Pull extends PullLowPriority {
     */
   def suspend[F[x] >: Pure[x], O, R](p: => Pull[F, O, R]): Pull[F, O, R] =
     fromFreeC(Algebra.suspend(p.get))
-
-  private def release[F[x] >: Pure[x]](token: Token): Pull[F, INothing, Unit] =
-    fromFreeC(Algebra.release[F, INothing](token))
 
   /** `Sync` instance for `Pull`. */
   implicit def syncInstance[F[_], O](

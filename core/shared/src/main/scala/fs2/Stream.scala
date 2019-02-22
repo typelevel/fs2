@@ -8,7 +8,7 @@ import cats.effect.implicits._
 import cats.implicits.{catsSyntaxEither => _, _}
 import fs2.concurrent._
 import fs2.internal.FreeC.Result
-import fs2.internal._
+import fs2.internal.{Resource => _, _}
 import java.io.PrintStream
 
 import scala.collection.compat._
@@ -1712,7 +1712,8 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
                     s.chunks
                       .evalMap { chunk =>
                         guard.acquire >>
-                          resultQ.enqueue1(Some(Stream.chunk(chunk).onFinalize(guard.release)))
+                          resultQ.enqueue1(
+                            Some(Stream.chunk(chunk).onFinalize(guard.release).scope))
                       }
                       .interruptWhen(interrupt.get.attempt)
                       .compile
@@ -2843,8 +2844,7 @@ object Stream extends StreamLowPriority {
   def bracketCase[F[x] >: Pure[x], R](acquire: F[R])(
       release: (R, ExitCase[Throwable]) => F[Unit]): Stream[F, R] =
     fromFreeC(Algebra.acquire[F, R, R](acquire, release).flatMap {
-      case (r, token) =>
-        Stream.emit(r).covary[F].get[F, R] >> Algebra.release(token)
+      case (r, token) => Stream.emit(r).covary[F].get[F, R]
     })
 
   /**
@@ -2867,20 +2867,23 @@ object Stream extends StreamLowPriority {
     */
   def bracketCaseCancellable[F[x] >: Pure[x], R](acquire: F[R])(
       release: (R, ExitCase[Throwable]) => F[Unit]): Stream[F, (Stream[F, Unit], R)] =
-    bracketWithToken(acquire)(release).map {
-      case (token, r) =>
-        (Stream.fromFreeC(Algebra.release[F, Unit](token)) ++ Stream.emit(()), r)
+    bracketWithResource(acquire)(release).map {
+      case (res, r) =>
+        (Stream.eval(res.release(ExitCase.Canceled)).flatMap {
+          case Left(t)  => Stream.fromFreeC(Algebra.raiseError[F, Unit](t))
+          case Right(u) => Stream.emit(u)
+        }, r)
     }
 
-  private[fs2] def bracketWithToken[F[x] >: Pure[x], R](acquire: F[R])(
-      release: (R, ExitCase[Throwable]) => F[Unit]): Stream[F, (Token, R)] =
-    fromFreeC(Algebra.acquire[F, (Token, R), R](acquire, release).flatMap {
-      case (r, token) =>
+  private[fs2] def bracketWithResource[F[x] >: Pure[x], R](acquire: F[R])(
+      release: (R, ExitCase[Throwable]) => F[Unit]): Stream[F, (fs2.internal.Resource[F], R)] =
+    fromFreeC(Algebra.acquire[F, (fs2.internal.Resource[F], R), R](acquire, release).flatMap {
+      case (r, res) =>
         Stream
           .emit(r)
           .covary[F]
-          .map(o => (token, o))
-          .get[F, (Token, R)] >> Algebra.release(token)
+          .map(o => (res, o))
+          .get[F, (fs2.internal.Resource[F], R)]
     })
 
   /**
