@@ -25,10 +25,6 @@ import fs2.internal.CompileScope.InterruptContext
   * For example, `s.chunks` is defined with `s.repeatPull` which in turn is defined with `Pull.loop(...).stream`.
   * In this case, a single scope is created as a result of the call to `.stream`.
   *
-  * The `root` scope is special in that it is closed by the top level compile loop, rather than by instructions in the
-  * Stream structure. This is to allow extending the lifetime of Stream when compiling to a `cats.effect.Resource`
-  *  (not to be confused with `fs2.internal.Resource`).
-  *
   * Scopes may also be opened and closed manually with `Stream#scope`. For the stream `s.scope`, a scope
   * is opened before evaluation of `s` and closed once `s` finishes evaluation.
   *
@@ -117,7 +113,7 @@ private[fs2] final class CompileScope[F[_]] private (
       val newScopeId = new Token
       self.interruptible match {
         case None =>
-          F.pure(InterruptContext.unsafeFromInteruptible(interruptible, newScopeId) -> newScopeId)
+          F.pure(InterruptContext.unsafeFromInterruptible(interruptible, newScopeId) -> newScopeId)
 
         case Some(parentICtx) =>
           F.map(parentICtx.childContext(interruptible, newScopeId))(Some(_) -> newScopeId)
@@ -518,7 +514,7 @@ private[fs2] object CompileScope {
       *                       continuation in case of interruption.
       * @param newScopeId     The id of the new scope.
       */
-    def unsafeFromInteruptible[F[_]](
+    def unsafeFromInterruptible[F[_]](
         interruptible: Option[Concurrent[F]],
         newScopeId: Token
     )(implicit F: Sync[F]): Option[InterruptContext[F]] =
