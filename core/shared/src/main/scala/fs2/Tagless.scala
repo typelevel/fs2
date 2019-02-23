@@ -288,38 +288,22 @@ object Pull extends PullInstancesLowPriority {
       override def toString = s"MapConcat($p, $f)"
     }
 
-  private[fs2] def acquireWithToken[F[_], R](
+  private[fs2] def acquire[F[_], R](
       resource: F[R],
-      release: (R, ExitCase[Throwable]) => F[Unit]): Pull[F, INothing, (R, Token)] =
-    new Pull[F, INothing, (R, Token)] {
+      release: (R, ExitCase[Throwable]) => F[Unit]): Pull[F, INothing, R] =
+    new Pull[F, INothing, R] {
 
-      private[fs2] def step[F2[x] >: F[x], O2 >: INothing, R2 >: (R, Token)](
-          scope: CompileScope[F2])(
+      private[fs2] def step[F2[x] >: F[x], O2 >: INothing, R2 >: R](scope: CompileScope[F2])(
           implicit F: Sync[F2]): F2[Either[R2, (Chunk[O2], Pull[F2, O2, R2])]] =
         scope.acquireResource(resource, release).flatMap {
-          case Right(rt) => F.pure(Left(rt))
-          case Left(t)   => F.raiseError(t)
+          case Right((rt, _)) => F.pure(Left(rt))
+          case Left(t)        => F.raiseError(t)
         }
 
-      private[fs2] def translate[F2[x] >: F[x], G[_]](f: F2 ~> G): Pull[G, INothing, (R, Token)] =
-        acquireWithToken[G, R](f(resource), (r, ec) => f(release(r, ec)))
+      private[fs2] def translate[F2[x] >: F[x], G[_]](f: F2 ~> G): Pull[G, INothing, R] =
+        acquire[G, R](f(resource), (r, ec) => f(release(r, ec)))
 
       override def toString = s"Acquire($resource, $release)"
-    }
-
-  private[fs2] def release(token: Token): Pull[Pure, INothing, Unit] =
-    new Pull[Pure, INothing, Unit] {
-
-      private[fs2] def step[F2[x] >: Pure[x], O2 >: INothing, R2 >: Unit](scope: CompileScope[F2])(
-          implicit F: Sync[F2]): F2[Either[R2, (Chunk[O2], Pull[F2, O2, R2])]] =
-        scope.releaseResource(token, ExitCase.Completed).flatMap {
-          case Right(_) => F.pure(Left(()))
-          case Left(t)  => F.raiseError(t)
-        }
-
-      private[fs2] def translate[F2[x] >: Pure[x], G[_]](f: F2 ~> G): Pull[G, INothing, Unit] = this
-
-      override def toString = s"Release($token)"
     }
 
   def getScope[F[_]]: Pull[F, INothing, Scope[F]] = new Pull[F, INothing, Scope[F]] {
@@ -683,9 +667,7 @@ object Stream {
     */
   def bracketCase[F[x] >: Pure[x], R](acquire: F[R])(
       release: (R, ExitCase[Throwable]) => F[Unit]): Stream[F, R] =
-    Stream.fromPull(Pull.acquireWithToken(acquire, release).flatMap {
-      case (r, token) => Pull.output1(r) >> Pull.release(token)
-    })
+    Stream.fromPull(Pull.acquire(acquire, release).flatMap(Pull.output1))
 
   def chunk[O](c: Chunk[O]): Stream[Pure, O] = fromPull(Pull.output(c))
 
