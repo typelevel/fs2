@@ -382,7 +382,7 @@ private[fs2] final class CompileScope[F[_]] private (
       case Some(iCtx) =>
         F.map(
           iCtx.concurrent
-            .race(iCtx.deferred.get, F.attempt(iCtx.concurrent.uncancelable(f)))) {
+            .race(iCtx.deferred.get, F.attempt(f))) {
           case Right(result) => result.leftMap(Left(_))
           case Left(other)   => Left(other)
         }

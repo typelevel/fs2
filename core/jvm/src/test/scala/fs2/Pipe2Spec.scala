@@ -495,7 +495,6 @@ class Pipe2Spec extends Fs2Spec {
     }
 
     "interrupt (19)" in {
-      pending
       // interruptible eval
 
       def prg =

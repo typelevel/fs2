@@ -1943,32 +1943,34 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
                   // note that supplied scope's resources must be leased before the inner stream forks the execution to another thread
                   // and that it must be released once the inner stream terminates or fails.
                   def runInner(inner: Stream[F2, O2], outerScope: Scope[F2]): F2[Unit] =
-                    outerScope.lease.flatMap {
-                      case Some(lease) =>
-                        available.acquire >>
-                          incrementRunning >>
-                          F2.start {
-                            inner.chunks
-                              .evalMap(s => outputQ.enqueue1(Some(s)))
-                              .interruptWhen(done.map(_.nonEmpty)) // must be AFTER enqueue to the sync queue, otherwise the process may hang to enq last item while being interrupted
-                              .compile
-                              .drain
-                              .attempt
-                              .flatMap { r =>
-                                lease.cancel.flatMap { cancelResult =>
-                                  available.release >>
-                                    (CompositeFailure.fromResults(r, cancelResult) match {
-                                      case Right(()) => F2.unit
-                                      case Left(err) =>
-                                        stop(Some(err))
-                                    }) >> decrementRunning
+                    F2.uncancelable {
+                      outerScope.lease.flatMap {
+                        case Some(lease) =>
+                          available.acquire >>
+                            incrementRunning >>
+                            F2.start {
+                              inner.chunks
+                                .evalMap(s => outputQ.enqueue1(Some(s)))
+                                .interruptWhen(done.map(_.nonEmpty)) // must be AFTER enqueue to the sync queue, otherwise the process may hang to enq last item while being interrupted
+                                .compile
+                                .drain
+                                .attempt
+                                .flatMap { r =>
+                                  lease.cancel.flatMap { cancelResult =>
+                                    available.release >>
+                                      (CompositeFailure.fromResults(r, cancelResult) match {
+                                        case Right(()) => F2.unit
+                                        case Left(err) =>
+                                          stop(Some(err))
+                                      }) >> decrementRunning
+                                  }
                                 }
-                              }
-                          }.void
+                            }.void
 
-                      case None =>
-                        F2.raiseError(
-                          new Throwable("Outer scope is closed during inner stream startup"))
+                        case None =>
+                          F2.raiseError(
+                            new Throwable("Outer scope is closed during inner stream startup"))
+                      }
                     }
 
                   // runs the outer stream, interrupts when kill == true, and then decrements the `running`
