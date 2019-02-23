@@ -3997,13 +3997,13 @@ object Stream extends StreamLowPriority {
       *  val s3: Resource[IO, Option[Int]] = stream.compile.resource.last
       * }}}
       *
-      * And so on for the every method in `compile`.
+      * And so on for every other method in `compile`.
       *
       * The main use case is interacting with Stream methods whose
       * behaviour depends on the Stream lifetime, in cases where you
       * only want to ultimately return a single element.
       *
-      * A typical example of this is concurrent combinators: here is
+      * A typical example of this is concurrent combinators, here is
       * an example with `concurrently`:
       *
       * {{{
@@ -4285,6 +4285,12 @@ object Stream extends StreamLowPriority {
 
         pull(fa).stream
       }
+    }
+
+  implicit def monoidKInstance[F[_]]: MonoidK[Stream[F, ?]] =
+    new MonoidK[Stream[F, ?]] {
+      def empty[A]: Stream[F, A] = Stream.empty
+      def combineK[A](x: Stream[F, A], y: Stream[F, A]): Stream[F, A] = x ++ y
     }
 }
 
