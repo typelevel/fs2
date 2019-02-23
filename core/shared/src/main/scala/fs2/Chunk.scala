@@ -7,18 +7,17 @@ import scodec.bits.ByteVector
 import java.nio.{
   Buffer => JBuffer,
   ByteBuffer => JByteBuffer,
-  ShortBuffer => JShortBuffer,
-  LongBuffer => JLongBuffer,
   CharBuffer => JCharBuffer,
-  IntBuffer => JIntBuffer,
+  DoubleBuffer => JDoubleBuffer,
   FloatBuffer => JFloatBuffer,
-  DoubleBuffer => JDoubleBuffer
+  IntBuffer => JIntBuffer,
+  LongBuffer => JLongBuffer,
+  ShortBuffer => JShortBuffer
 }
 
-import cats.{Applicative, Eq, Eval, Monad, Traverse}
+import cats.{Applicative, Eq, Eval, Functor, FunctorFilter, Monad, Traverse}
 import cats.data.Chain
 import cats.implicits._
-
 import fs2.internal.ArrayBackedSeq
 
 /**
@@ -1502,48 +1501,62 @@ object Chunk {
       c1.size === c2.size && (0 until c1.size).forall(i => c1(i) === c2(i))
   }
 
-  implicit val instance: Traverse[Chunk] with Monad[Chunk] = new Traverse[Chunk] with Monad[Chunk] {
-    def foldLeft[A, B](fa: Chunk[A], b: B)(f: (B, A) => B): B = fa.foldLeft(b)(f)
-    def foldRight[A, B](fa: Chunk[A], b: Eval[B])(f: (A, Eval[B]) => Eval[B]): Eval[B] = {
-      def loop(i: Int): Eval[B] =
-        if (i < fa.size) f(fa(i), Eval.defer(loop(i + 1)))
-        else b
-      loop(0)
-    }
-    override def toList[A](fa: Chunk[A]): List[A] = fa.toList
-    override def isEmpty[A](fa: Chunk[A]): Boolean = fa.isEmpty
-    def traverse[F[_], A, B](fa: Chunk[A])(f: A => F[B])(implicit F: Applicative[F]): F[Chunk[B]] = {
-      foldRight[A, F[Vector[B]]](fa, Eval.always(F.pure(Vector.empty))) { (a, efv) =>
-        F.map2Eval(f(a), efv)(_ +: _)
-      }.value
-    }.map(Chunk.vector)
-    def pure[A](a: A): Chunk[A] = Chunk.singleton(a)
-    override def map[A, B](fa: Chunk[A])(f: A => B): Chunk[B] = fa.map(f)
-    def flatMap[A, B](fa: Chunk[A])(f: A => Chunk[B]): Chunk[B] = fa.flatMap(f)
-    def tailRecM[A, B](a: A)(f: A => Chunk[Either[A, B]]): Chunk[B] = {
-      // Based on the implementation of tailRecM for Vector from cats, licensed under MIT
-      val buf = collection.mutable.Buffer.newBuilder[B]
-      var state = List(f(a).iterator)
-      @annotation.tailrec
-      def loop(): Unit = state match {
-        case Nil => ()
-        case h :: tail if h.isEmpty =>
-          state = tail
-          loop()
-        case h :: tail =>
-          h.next match {
-            case Right(b) =>
-              buf += b
-              loop()
-            case Left(a) =>
-              state = (f(a).iterator) :: h :: tail
-              loop()
-          }
+  /**
+    * `Traverse`, `Monad`, and `FunctorFilter` instance for `Chunk`.
+    *
+    * @example {{{
+    * scala> import cats.implicits._, scala.util._
+    * scala> Chunk("1", "2", "NaN").mapFilter(s => Try(s.toInt).toOption)
+    * res0: fs2.Chunk[Int] = Chunk(1, 2)
+    * }}}
+    */
+  implicit val instance: Traverse[Chunk] with Monad[Chunk] with FunctorFilter[Chunk] =
+    new Traverse[Chunk] with Monad[Chunk] with FunctorFilter[Chunk] {
+      def foldLeft[A, B](fa: Chunk[A], b: B)(f: (B, A) => B): B = fa.foldLeft(b)(f)
+      def foldRight[A, B](fa: Chunk[A], b: Eval[B])(f: (A, Eval[B]) => Eval[B]): Eval[B] = {
+        def loop(i: Int): Eval[B] =
+          if (i < fa.size) f(fa(i), Eval.defer(loop(i + 1)))
+          else b
+        loop(0)
       }
-      loop()
-      Chunk.buffer(buf.result)
+      override def toList[A](fa: Chunk[A]): List[A] = fa.toList
+      override def isEmpty[A](fa: Chunk[A]): Boolean = fa.isEmpty
+      def traverse[F[_], A, B](fa: Chunk[A])(f: A => F[B])(
+          implicit F: Applicative[F]): F[Chunk[B]] = {
+        foldRight[A, F[Vector[B]]](fa, Eval.always(F.pure(Vector.empty))) { (a, efv) =>
+          F.map2Eval(f(a), efv)(_ +: _)
+        }.value
+      }.map(Chunk.vector)
+      def pure[A](a: A): Chunk[A] = Chunk.singleton(a)
+      override def map[A, B](fa: Chunk[A])(f: A => B): Chunk[B] = fa.map(f)
+      def flatMap[A, B](fa: Chunk[A])(f: A => Chunk[B]): Chunk[B] = fa.flatMap(f)
+      def tailRecM[A, B](a: A)(f: A => Chunk[Either[A, B]]): Chunk[B] = {
+        // Based on the implementation of tailRecM for Vector from cats, licensed under MIT
+        val buf = collection.mutable.Buffer.newBuilder[B]
+        var state = List(f(a).iterator)
+        @annotation.tailrec
+        def loop(): Unit = state match {
+          case Nil => ()
+          case h :: tail if h.isEmpty =>
+            state = tail
+            loop()
+          case h :: tail =>
+            h.next match {
+              case Right(b) =>
+                buf += b
+                loop()
+              case Left(a) =>
+                state = (f(a).iterator) :: h :: tail
+                loop()
+            }
+        }
+        loop()
+        Chunk.buffer(buf.result)
+      }
+      override def functor: Functor[Chunk] = this
+      override def mapFilter[A, B](fa: Chunk[A])(f: A => Option[B]): Chunk[B] =
+        fa.collect(Function.unlift(f))
     }
-  }
 
   /**
     * A FIFO queue of chunks that provides an O(1) size method and provides the ability to
