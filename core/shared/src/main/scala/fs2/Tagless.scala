@@ -21,7 +21,26 @@ final class Scope[F[_]] private (private[fs2] val id: Token,
       release: (R, ExitCase[Throwable]) => F[Unit]): F[Either[Throwable, R]] =
     ???
 
-  private[fs2] def open: F[Scope[F]] = ???
+  private[fs2] def open(implicit F: Sync[F]): F[Scope[F]] =
+    state
+      .modify { s =>
+        if (s.open) {
+          val child = Scope.unsafe(Some(this))
+          (s.copy(children = s.children :+ child), Some(child))
+        } else (s, None)
+      }
+      .flatMap {
+        case Some(child) => F.pure(child)
+        case None =>
+          parent match {
+            case Some(p) => p.open
+            case None =>
+              F.raiseError(
+                new IllegalStateException(
+                  "Root scope already closed so a new scope cannot be opened"))
+          }
+      }
+
   private[fs2] def close(ec: ExitCase[Throwable]): F[Unit] = ???
 
   /**
@@ -73,11 +92,10 @@ final class Scope[F[_]] private (private[fs2] val id: Token,
 
 object Scope {
 
-  def newRoot[F[_]: Sync]: F[Scope[F]] =
-    for {
-      state <- Ref.of(initialState[F])
-      scope <- Sync[F].delay(new Scope(new Token, None, state))
-    } yield scope
+  private[fs2] def unsafe[F[_]: Sync](parent: Option[Scope[F]]): Scope[F] = {
+    val state = Ref.unsafe[F, State[F]](initialState[F])
+    new Scope(new Token, parent, state)
+  }
 
   private case class State[F[_]](
       open: Boolean,
@@ -102,8 +120,7 @@ sealed trait Pull[+F[_], +O, +R] { self =>
 
   def compile[F2[x] >: F[x], R2 >: R, S](initial: S)(f: (S, Chunk[O]) => S)(
       implicit F: Sync[F2]): F2[(S, R2)] =
-    Scope
-      .newRoot[F2]
+    F.delay(Scope.unsafe[F2](None))
       .bracketCase(scope => compileWithScope[F2, R2, S](scope, initial)(f))((scope, ec) =>
         scope.close(ec))
 
