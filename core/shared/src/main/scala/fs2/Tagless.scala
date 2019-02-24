@@ -1,22 +1,98 @@
 package fs2.tagless
 
-import fs2.{Chunk, Fallible, INothing, Pure, RaiseThrowable, Scope}
-import fs2.internal.{CompileScope, Token}
+import fs2.{Chunk, Fallible, INothing, Pure, RaiseThrowable}
+import fs2.internal.Token
 
 import cats._
+import cats.data.Chain
 import cats.implicits._
 import cats.effect._
+import cats.effect.concurrent._
 import cats.effect.implicits._
 
 import scala.collection.compat._
 
-// trait CompilationScope {
-//   def open: F[Scope]
-//   def close(ec: ExitCase): F[Unit]
-//   def findStepScope(scopeId: Token): F[Option[Scope]]
-//   def acquireResource[R](fr: F[R], release: (R, ExitCase[Throwable]) => F[Unit]): F[Either[Throwable, (R, Token)]]
-//   def releaseResource(id: Token, ec: ExitCase[Throwable]): F[Either[Throwable, Unit]]
-// }
+final class Scope[F[_]] private (private[fs2] val id: Token,
+                                 private val parent: Option[Scope[F]],
+                                 private[this] val state: Ref[F, Scope.State[F]]) {
+
+  private[fs2] def acquireResource[R](
+      fr: F[R],
+      release: (R, ExitCase[Throwable]) => F[Unit]): F[Either[Throwable, R]] =
+    ???
+
+  private[fs2] def open: F[Scope[F]] = ???
+  private[fs2] def close(ec: ExitCase[Throwable]): F[Unit] = ???
+
+  /**
+    * Finds the scope with the supplied identifier.
+    *
+    * The search strategy is:
+    * - check if the target is this scope
+    * - check if the target is a descendant of this scope
+    * - repeat the search at the parent of this scope, excluding this scope when searching descendants
+    */
+  private[fs2] def findScope(scopeId: Token)(implicit F: Monad[F]): F[Option[Scope[F]]] =
+    findLocalScope(scopeId, None).flatMap {
+      case Some(scope) => F.pure(Some(scope))
+      case None =>
+        parent match {
+          case Some(p) => p.findLocalScope(scopeId, Some(id))
+          case None    => F.pure(None)
+        }
+    }
+
+  /**
+    * Finds the scope with the supplied identifier by checking the id of this scope
+    * and by searching descendant scopes.
+    */
+  private def findLocalScope(scopeId: Token, excludedChild: Option[Token])(
+      implicit F: Monad[F]): F[Option[Scope[F]]] =
+    if (scopeId == id) F.pure(Some(this))
+    else
+      state.get
+        .flatMap { s =>
+          def loop(remaining: Chain[Scope[F]]): F[Option[Scope[F]]] =
+            remaining.uncons match {
+              case Some((hd, tl)) =>
+                val exclude = excludedChild.map(_ == hd.id).getOrElse(false)
+                if (exclude) loop(tl)
+                else
+                  hd.findLocalScope(scopeId, None).flatMap {
+                    case None        => loop(tl)
+                    case Some(scope) => F.pure(Some(scope))
+                  }
+              case None => F.pure(None)
+            }
+          loop(s.children)
+        }
+
+  // def lease: F[Option[Scope.Lease[F]]] = ???
+  // def interrupt(cause: Either[Throwable, Unit]): F[Unit] = ???
+}
+
+object Scope {
+
+  def newRoot[F[_]: Sync]: F[Scope[F]] =
+    for {
+      state <- Ref.of(initialState[F])
+      scope <- Sync[F].delay(new Scope(new Token, None, state))
+    } yield scope
+
+  private case class State[F[_]](
+      open: Boolean,
+      resources: Chain[ScopedResource[F]],
+      children: Chain[Scope[F]]
+  )
+
+  private def initialState[F[_]]: State[F] = new State[F](true, Chain.empty, Chain.empty)
+
+  // abstract class Lease[F[_]] {
+  //   def cancel: F[Either[Throwable, Unit]]
+  // }
+}
+
+trait ScopedResource[F[_]]
 
 sealed trait Pull[+F[_], +O, +R] { self =>
 
@@ -26,15 +102,15 @@ sealed trait Pull[+F[_], +O, +R] { self =>
 
   def compile[F2[x] >: F[x], R2 >: R, S](initial: S)(f: (S, Chunk[O]) => S)(
       implicit F: Sync[F2]): F2[(S, R2)] =
-    CompileScope
+    Scope
       .newRoot[F2]
-      .bracketCase(scope => compileScope[F2, R2, S](scope, initial)(f))((scope, ec) =>
-        scope.close(ec).rethrow)
+      .bracketCase(scope => compileWithScope[F2, R2, S](scope, initial)(f))((scope, ec) =>
+        scope.close(ec))
 
-  private def compileScope[F2[x] >: F[x]: Sync, R2 >: R, S](scope: CompileScope[F2], initial: S)(
+  private def compileWithScope[F2[x] >: F[x]: Sync, R2 >: R, S](scope: Scope[F2], initial: S)(
       f: (S, Chunk[O]) => S): F2[(S, R2)] =
     step[F2, O, R2](scope).flatMap {
-      case Right((hd, tl)) => tl.compileScope[F2, R2, S](scope, f(initial, hd))(f)
+      case Right((hd, tl)) => tl.compileWithScope[F2, R2, S](scope, f(initial, hd))(f)
       case Left(r)         => (initial, r: R2).pure[F2]
     }
 
@@ -51,7 +127,7 @@ sealed trait Pull[+F[_], +O, +R] { self =>
   def covaryResource[R2 >: R]: Pull[F, O, R2] = this
 
   private[fs2] def step[F2[x] >: F[x]: Sync, O2 >: O, R2 >: R](
-      scope: CompileScope[F2]): F2[Either[R2, (Chunk[O2], Pull[F2, O2, R2])]]
+      scope: Scope[F2]): F2[Either[R2, (Chunk[O2], Pull[F2, O2, R2])]]
 
   // Note: private because this is unsound in presence of uncons, but safe when used from Stream#translate
   private[fs2] def translate[F2[x] >: F[x], G[_]](f: F2 ~> G): Pull[G, O, R]
@@ -59,7 +135,7 @@ sealed trait Pull[+F[_], +O, +R] { self =>
   def flatMap[F2[x] >: F[x], R2, O2 >: O](f: R => Pull[F2, O2, R2]): Pull[F2, O2, R2] =
     new Pull[F2, O2, R2] {
       private[fs2] def step[F3[x] >: F2[x]: Sync, O3 >: O2, R3 >: R2](
-          scope: CompileScope[F3]): F3[Either[R3, (Chunk[O3], Pull[F3, O3, R3])]] =
+          scope: Scope[F3]): F3[Either[R3, (Chunk[O3], Pull[F3, O3, R3])]] =
         self.step(scope).flatMap {
           case Right((hd, tl)) =>
             (Right((hd, tl.flatMap(f))): Either[R3, (Chunk[O3], Pull[F3, O3, R3])]).pure[F3]
@@ -80,7 +156,7 @@ sealed trait Pull[+F[_], +O, +R] { self =>
       h: Throwable => Pull[F2, O2, R2]): Pull[F2, O2, R2] = new Pull[F2, O2, R2] {
 
     private[fs2] def step[F3[x] >: F2[x]: Sync, O3 >: O2, R3 >: R2](
-        scope: CompileScope[F3]): F3[Either[R3, (Chunk[O3], Pull[F3, O3, R3])]] =
+        scope: Scope[F3]): F3[Either[R3, (Chunk[O3], Pull[F3, O3, R3])]] =
       self
         .step[F3, O3, R3](scope)
         .map {
@@ -100,7 +176,7 @@ sealed trait Pull[+F[_], +O, +R] { self =>
   /** Applies the outputs of this pull to `f` and returns the result in a new `Pull`. */
   def mapOutput[O2](f: O => O2): Pull[F, O2, R] = new Pull[F, O2, R] {
     private[fs2] def step[F2[x] >: F[x]: Sync, O3 >: O2, R2 >: R](
-        scope: CompileScope[F2]): F2[Either[R2, (Chunk[O3], Pull[F2, O3, R2])]] =
+        scope: Scope[F2]): F2[Either[R2, (Chunk[O3], Pull[F2, O3, R2])]] =
       self.step(scope).map(_.map { case (hd, tl) => (hd.map(f), tl.mapOutput(f)) })
     private[fs2] def translate[F2[x] >: F[x], G[_]](g: F2 ~> G): Pull[G, O2, R] =
       self.translate(g).mapOutput(f)
@@ -108,9 +184,9 @@ sealed trait Pull[+F[_], +O, +R] { self =>
 
   /** Tracks any resources acquired during this pull and releases them when the pull completes. */
   def scope: Pull[F, O, R] = new Pull[F, O, R] {
-    private[fs2] def step[F2[x] >: F[x], O2 >: O, R2 >: R](scope: CompileScope[F2])(
+    private[fs2] def step[F2[x] >: F[x], O2 >: O, R2 >: R](scope: Scope[F2])(
         implicit F: Sync[F2]): F2[Either[R2, (Chunk[O2], Pull[F2, O2, R2])]] =
-      scope.open(None).rethrow.flatMap(childScope => self.stepWith(childScope.id).step(childScope))
+      scope.open.flatMap(childScope => self.stepWith(childScope.id).step(childScope))
 
     private[fs2] def translate[F2[x] >: F[x], G[_]](f: F2 ~> G): Pull[G, O, R] =
       self.translate(f).scope
@@ -119,9 +195,9 @@ sealed trait Pull[+F[_], +O, +R] { self =>
   }
 
   private[fs2] def stepWith(scopeId: Token): Pull[F, O, R] = new Pull[F, O, R] {
-    private[fs2] def step[F2[x] >: F[x], O2 >: O, R2 >: R](scope: CompileScope[F2])(
+    private[fs2] def step[F2[x] >: F[x], O2 >: O, R2 >: R](scope: Scope[F2])(
         implicit F: Sync[F2]): F2[Either[R2, (Chunk[O2], Pull[F2, O2, R2])]] =
-      scope.findStepScope(scopeId).map(_.map(_ -> true).getOrElse(scope -> false)).flatMap {
+      scope.findScope(scopeId).map(_.map(_ -> true).getOrElse(scope -> false)).flatMap {
         case (scope, closeAfterUse) =>
           F.bracketCase((self: Pull[F2, O2, R2]).step(scope)) {
             case Right((hd, tl)) =>
@@ -131,12 +207,11 @@ sealed trait Pull[+F[_], +O, +R] { self =>
               if (closeAfterUse)
                 scope
                   .close(ExitCase.Completed)
-                  .rethrow
                   .as(Left(r): Either[R2, (Chunk[O2], Pull[F2, O2, R2])])
               else (Left(r): Either[R2, (Chunk[O2], Pull[F2, O2, R2])]).pure[F2]
           } {
             case (_, ExitCase.Completed) => F.unit
-            case (_, other)              => if (closeAfterUse) scope.close(other).rethrow else F.unit
+            case (_, other)              => if (closeAfterUse) scope.close(other) else F.unit
           }
       }
 
@@ -171,7 +246,7 @@ sealed trait Pull[+F[_], +O, +R] { self =>
 
       private[fs2] def step[F2[x] >: F[x],
                             O2 >: INothing,
-                            R2 >: Either[R, (Chunk[O], Pull[F, O, R])]](scope: CompileScope[F2])(
+                            R2 >: Either[R, (Chunk[O], Pull[F, O, R])]](scope: Scope[F2])(
           implicit F: Sync[F2]): F2[Either[R2, (Chunk[O2], Pull[F2, O2, R2])]] =
         self.step(scope).map(r => Left(r.asInstanceOf[R2]))
 
@@ -189,7 +264,7 @@ sealed trait Pull[+F[_], +O, +R] { self =>
     }
 
   private def suppressTranslate: Pull[F, O, R] = new Pull[F, O, R] {
-    private[fs2] def step[F2[x] >: F[x], O2 >: O, R2 >: R](scope: CompileScope[F2])(
+    private[fs2] def step[F2[x] >: F[x], O2 >: O, R2 >: R](scope: Scope[F2])(
         implicit F: Sync[F2]): F2[Either[R2, (Chunk[O2], Pull[F2, O2, R2])]] =
       self.step(scope)
 
@@ -207,7 +282,7 @@ object Pull extends PullInstancesLowPriority {
   def pure[F[x] >: Pure[x], R](r: R): Pull[F, INothing, R] = new Result[R](r)
 
   private[fs2] final class Result[R](r: R) extends Pull[Pure, INothing, R] {
-    private[fs2] def step[F2[x] >: Pure[x], O2 >: INothing, R2 >: R](scope: CompileScope[F2])(
+    private[fs2] def step[F2[x] >: Pure[x], O2 >: INothing, R2 >: R](scope: Scope[F2])(
         implicit F: Sync[F2]): F2[Either[R2, (Chunk[O2], Pull[F2, O2, R2])]] =
       F.pure(Either.left(r))
     private[fs2] def translate[F2[x] >: Pure[x], G[_]](f: F2 ~> G): Pull[G, INothing, R] = this
@@ -220,7 +295,7 @@ object Pull extends PullInstancesLowPriority {
     if (os.isEmpty) done else new Output(os)
 
   private final class Output[O](os: Chunk[O]) extends Pull[Pure, O, Unit] {
-    private[fs2] def step[F2[x] >: Pure[x], O2 >: O, R2 >: Unit](scope: CompileScope[F2])(
+    private[fs2] def step[F2[x] >: Pure[x], O2 >: O, R2 >: Unit](scope: Scope[F2])(
         implicit F: Sync[F2]): F2[Either[R2, (Chunk[O2], Pull[F2, O2, R2])]] =
       F.pure(Right((os, done)))
     private[fs2] def translate[F2[x] >: Pure[x], G[_]](f: F2 ~> G): Pull[G, O, Unit] = this
@@ -229,7 +304,7 @@ object Pull extends PullInstancesLowPriority {
 
   def eval[F[_], R](fr: F[R]): Pull[F, INothing, R] = new Pull[F, INothing, R] {
     private[fs2] def step[F2[x] >: F[x]: Sync, O2 >: INothing, R2 >: R](
-        scope: CompileScope[F2]): F2[Either[R2, (Chunk[O2], Pull[F2, O2, R2])]] =
+        scope: Scope[F2]): F2[Either[R2, (Chunk[O2], Pull[F2, O2, R2])]] =
       (fr: F2[R]).map(Left(_))
     private[fs2] def translate[F2[x] >: F[x], G[_]](f: F2 ~> G): Pull[G, INothing, R] =
       eval(f(fr))
@@ -250,7 +325,7 @@ object Pull extends PullInstancesLowPriority {
     new RaiseError(err)
 
   private final class RaiseError[F[_]](err: Throwable) extends Pull[F, INothing, INothing] {
-    private[fs2] def step[F2[x] >: F[x], O2 >: INothing, R2 >: INothing](scope: CompileScope[F2])(
+    private[fs2] def step[F2[x] >: F[x], O2 >: INothing, R2 >: INothing](scope: Scope[F2])(
         implicit F: Sync[F2]): F2[Either[R2, (Chunk[O2], Pull[F2, O2, R2])]] =
       F.raiseError(err)
 
@@ -264,7 +339,7 @@ object Pull extends PullInstancesLowPriority {
     new Pull[F, O2, Unit] {
 
       private[fs2] def step[F2[x] >: F[x]: Sync, O3 >: O2, R2 >: Unit](
-          scope: CompileScope[F2]): F2[Either[R2, (Chunk[O3], Pull[F2, O3, R2])]] =
+          scope: Scope[F2]): F2[Either[R2, (Chunk[O3], Pull[F2, O3, R2])]] =
         p.step(scope).flatMap {
           case Right((hd, tl)) =>
             tl match {
@@ -293,11 +368,11 @@ object Pull extends PullInstancesLowPriority {
       release: (R, ExitCase[Throwable]) => F[Unit]): Pull[F, INothing, R] =
     new Pull[F, INothing, R] {
 
-      private[fs2] def step[F2[x] >: F[x], O2 >: INothing, R2 >: R](scope: CompileScope[F2])(
+      private[fs2] def step[F2[x] >: F[x], O2 >: INothing, R2 >: R](scope: Scope[F2])(
           implicit F: Sync[F2]): F2[Either[R2, (Chunk[O2], Pull[F2, O2, R2])]] =
         scope.acquireResource(resource, release).flatMap {
-          case Right((rt, _)) => F.pure(Left(rt))
-          case Left(t)        => F.raiseError(t)
+          case Right(rt) => F.pure(Left(rt))
+          case Left(t)   => F.raiseError(t)
         }
 
       private[fs2] def translate[F2[x] >: F[x], G[_]](f: F2 ~> G): Pull[G, INothing, R] =
@@ -309,10 +384,10 @@ object Pull extends PullInstancesLowPriority {
   def getScope[F[_]]: Pull[F, INothing, Scope[F]] = new Pull[F, INothing, Scope[F]] {
 
     private[fs2] def step[F2[x] >: F[x]: Sync, O2 >: INothing, R2 >: Scope[F]](
-        scope: CompileScope[F2]): F2[Either[R2, (Chunk[O2], Pull[F2, O2, R2])]] =
+        scope: Scope[F2]): F2[Either[R2, (Chunk[O2], Pull[F2, O2, R2])]] =
       Either
         .left[R2, (Chunk[O2], Pull[F2, O2, R2])](scope.asInstanceOf[Scope[F]])
-        .pure[F2] // TODO make Scope covariant in F
+        .pure[F2]
 
     private[fs2] def translate[F2[x] >: F[x], G[_]](f: F2 ~> G): Pull[G, INothing, Scope[F]] =
       getScope[G].asInstanceOf[Pull[G, INothing, Scope[F]]]
@@ -893,7 +968,7 @@ object Stream {
       Pull
         .getScope[F]
         .flatMap { scope =>
-          new StepLeg[F, O](Chunk.empty, scope.asInstanceOf[CompileScope[F]].id, self).stepLeg
+          new StepLeg[F, O](Chunk.empty, scope.asInstanceOf[Scope[F]].id, self).stepLeg
         }
 
     /** Emits the first `n` elements of the input. */
