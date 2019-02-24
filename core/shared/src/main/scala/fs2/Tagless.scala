@@ -1,6 +1,6 @@
 package fs2.tagless
 
-import fs2.{Chunk, Fallible, INothing, Pure, RaiseThrowable}
+import fs2.{Chunk, CompositeFailure, Fallible, INothing, Pure, RaiseThrowable}
 import fs2.internal.Token
 
 import cats._
@@ -16,17 +16,30 @@ final class Scope[F[_]] private (private[fs2] val id: Token,
                                  private val parent: Option[Scope[F]],
                                  private[this] val state: Ref[F, Scope.State[F]]) {
 
-  private[fs2] def acquireResource[R](
-      fr: F[R],
-      release: (R, ExitCase[Throwable]) => F[Unit]): F[Either[Throwable, R]] =
-    ???
+  private[fs2] def acquire[R](fr: F[R], release: (R, ExitCase[Throwable]) => F[Unit])(
+      implicit F: Sync[F]): F[Either[Throwable, R]] =
+    fr.attempt.flatMap {
+      case Right(r) =>
+        val finalizer = (ec: ExitCase[Throwable]) => F.suspend(release(r, ec))
+        val resource = ScopedResource(finalizer)
+        state
+          .modify { s =>
+            if (s.open) (s.copy(resources = resource +: s.resources), true)
+            else (s, false)
+          }
+          .flatMap { successful =>
+            if (successful) F.pure(Right(r): Either[Throwable, R])
+            else finalizer(ExitCase.Completed).attempt.map(_.as(r))
+          }
+      case Left(err) => F.pure(Left(err))
+    }
 
   private[fs2] def open(implicit F: Sync[F]): F[Scope[F]] =
     state
       .modify { s =>
         if (s.open) {
           val child = Scope.unsafe(Some(this))
-          (s.copy(children = s.children :+ child), Some(child))
+          (s.copy(children = child +: s.children), Some(child))
         } else (s, None)
       }
       .flatMap {
@@ -41,7 +54,25 @@ final class Scope[F[_]] private (private[fs2] val id: Token,
           }
       }
 
-  private[fs2] def close(ec: ExitCase[Throwable]): F[Unit] = ???
+  private[fs2] def closeAndThrow(ec: ExitCase[Throwable])(
+      implicit F: MonadError[F, Throwable]): F[Unit] =
+    close(ec).flatMap(errs =>
+      CompositeFailure.fromList(errs.toList).map(F.raiseError(_): F[Unit]).getOrElse(F.unit))
+
+  private[fs2] def close(ec: ExitCase[Throwable])(
+      implicit F: MonadError[F, Throwable]): F[Chain[Throwable]] =
+    for {
+      previous <- state.modify(s => (Scope.State.closed[F], s))
+      resultsChildren <- previous.children.flatTraverse(_.close(ec))
+      resultsResources <- previous.resources.traverse(_.release(ec))
+      _ <- parent.fold(F.unit)(p => p.unregisterChild(id))
+    } yield resultsChildren ++ resultsResources.collect { case Some(t) => t: Throwable }
+
+  private def unregisterChild(id: Token): F[Unit] =
+    state.update(
+      state =>
+        state.copy(
+          children = state.children.deleteFirst(_.id == id).map(_._2).getOrElse(state.children)))
 
   /**
     * Finds the scope with the supplied identifier.
@@ -93,7 +124,7 @@ final class Scope[F[_]] private (private[fs2] val id: Token,
 object Scope {
 
   private[fs2] def unsafe[F[_]: Sync](parent: Option[Scope[F]]): Scope[F] = {
-    val state = Ref.unsafe[F, State[F]](initialState[F])
+    val state = Ref.unsafe[F, State[F]](State.initial[F])
     new Scope(new Token, parent, state)
   }
 
@@ -103,14 +134,31 @@ object Scope {
       children: Chain[Scope[F]]
   )
 
-  private def initialState[F[_]]: State[F] = new State[F](true, Chain.empty, Chain.empty)
+  private object State {
+    private val initial_ =
+      State[Pure](open = true, resources = Chain.empty, children = Chain.empty)
+    def initial[F[_]]: State[F] = initial_.asInstanceOf[State[F]]
+
+    private val closed_ =
+      State[Pure](open = false, resources = Chain.empty, children = Chain.empty)
+    def closed[F[_]]: State[F] = closed_.asInstanceOf[State[F]]
+  }
 
   // abstract class Lease[F[_]] {
   //   def cancel: F[Either[Throwable, Unit]]
   // }
 }
 
-trait ScopedResource[F[_]]
+private[fs2] final class ScopedResource[F[_]](finalizer: ExitCase[Throwable] => F[Unit]) {
+  def release(ec: ExitCase[Throwable])(
+      implicit F: ApplicativeError[F, Throwable]): F[Option[Throwable]] =
+    finalizer(ec).attempt.map(_.swap.toOption)
+}
+
+private[fs2] object ScopedResource {
+  def apply[F[_]](finalizer: ExitCase[Throwable] => F[Unit]): ScopedResource[F] =
+    new ScopedResource(finalizer)
+}
 
 sealed trait Pull[+F[_], +O, +R] { self =>
 
@@ -122,7 +170,7 @@ sealed trait Pull[+F[_], +O, +R] { self =>
       implicit F: Sync[F2]): F2[(S, R2)] =
     F.delay(Scope.unsafe[F2](None))
       .bracketCase(scope => compileWithScope[F2, R2, S](scope, initial)(f))((scope, ec) =>
-        scope.close(ec))
+        scope.closeAndThrow(ec))
 
   private def compileWithScope[F2[x] >: F[x]: Sync, R2 >: R, S](scope: Scope[F2], initial: S)(
       f: (S, Chunk[O]) => S): F2[(S, R2)] =
@@ -223,12 +271,12 @@ sealed trait Pull[+F[_], +O, +R] { self =>
             case Left(r) =>
               if (closeAfterUse)
                 scope
-                  .close(ExitCase.Completed)
+                  .closeAndThrow(ExitCase.Completed)
                   .as(Left(r): Either[R2, (Chunk[O2], Pull[F2, O2, R2])])
               else (Left(r): Either[R2, (Chunk[O2], Pull[F2, O2, R2])]).pure[F2]
           } {
             case (_, ExitCase.Completed) => F.unit
-            case (_, other)              => if (closeAfterUse) scope.close(other) else F.unit
+            case (_, other)              => if (closeAfterUse) scope.closeAndThrow(other) else F.unit
           }
       }
 
@@ -387,7 +435,7 @@ object Pull extends PullInstancesLowPriority {
 
       private[fs2] def step[F2[x] >: F[x], O2 >: INothing, R2 >: R](scope: Scope[F2])(
           implicit F: Sync[F2]): F2[Either[R2, (Chunk[O2], Pull[F2, O2, R2])]] =
-        scope.acquireResource(resource, release).flatMap {
+        scope.acquire(resource, release).flatMap {
           case Right(rt) => F.pure(Left(rt))
           case Left(t)   => F.raiseError(t)
         }
