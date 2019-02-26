@@ -31,8 +31,8 @@ final class Scope[F[_]] private (private[fs2] val id: Token,
             if (successful) F.pure(Right(r): Either[Throwable, R])
             else finalizer(ExitCase.Completed).attempt.map(_.as(r))
           }
-      case Left(err) => F.pure(Left(err))
-    }
+      case Left(err) => F.pure(Left(err): Either[Throwable, R])
+    }.uncancelable
 
   private[fs2] def open(implicit F: Sync[F]): F[Scope[F]] =
     state
@@ -54,10 +54,11 @@ final class Scope[F[_]] private (private[fs2] val id: Token,
           }
       }
 
-  private[fs2] def closeAndThrow(ec: ExitCase[Throwable])(
-      implicit F: MonadError[F, Throwable]): F[Unit] =
-    close(ec).flatMap(errs =>
-      CompositeFailure.fromList(errs.toList).map(F.raiseError(_): F[Unit]).getOrElse(F.unit))
+  private[fs2] def closeAndThrow(ec: ExitCase[Throwable])(implicit F: Sync[F]): F[Unit] =
+    close(ec)
+      .flatMap(errs =>
+        CompositeFailure.fromList(errs.toList).map(F.raiseError(_): F[Unit]).getOrElse(F.unit))
+      .uncancelable
 
   private[fs2] def close(ec: ExitCase[Throwable])(
       implicit F: MonadError[F, Throwable]): F[Chain[Throwable]] =
