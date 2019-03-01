@@ -277,6 +277,35 @@ lazy val coreJVM = core.jvm
   .settings(mimaSettings)
 lazy val coreJS = core.js.disablePlugins(DoctestPlugin, MimaPlugin)
 
+lazy val fs3 = crossProject(JVMPlatform, JSPlatform)
+  .in(file("fs3"))
+  .settings(commonSettings: _*)
+  .settings(
+    name := "fs3-core",
+    sourceDirectories in (Compile, scalafmt) += baseDirectory.value / "../shared/src/main/scala",
+    unmanagedSourceDirectories in Compile += {
+      val dir = CrossVersion.partialVersion(scalaVersion.value) match {
+        case Some((2, v)) if v >= 13 => "scala-2.13+"
+        case _                       => "scala-2.12-"
+      }
+      baseDirectory.value / "../shared/src/main" / dir
+    },
+    libraryDependencies := libraryDependencies.value
+      .filterNot(_.name.startsWith("scalatest"))
+      .filterNot(_.name.startsWith("scalacheck")),
+    libraryDependencies ++= Seq(
+      "org.scodec" %%% "scodec-bits" % "1.1.9",
+      "org.scalatest" %%% "scalatest" % "3.1.0-SNAP7"
+    ),
+    (scalacOptions in Test) := (scalacOptions in Test).value.filterNot(_ == "-Xfatal-warnings")
+  )
+  .jsSettings(commonJsSettings: _*)
+
+lazy val fs3JVM = fs3.jvm
+  .enablePlugins(SbtOsgi)
+  .settings(mimaSettings)
+lazy val fs3JS = fs3.js.disablePlugins(DoctestPlugin, MimaPlugin)
+
 lazy val io = project
   .in(file("io"))
   .enablePlugins(SbtOsgi)
