@@ -6,16 +6,23 @@ import scala.concurrent.duration._
 import cats.effect.{ContextShift, IO, Timer}
 
 import org.typelevel.discipline.Laws
-import org.scalatest.{ Args, Assertion, AsyncFreeSpec, FreeSpec, Matchers, Status, Succeeded, Suite }
-import org.scalatest.concurrent.{ AsyncTimeLimitedTests, TimeLimitedTests }
+import org.scalatest.{Args, Assertion, AsyncFreeSpec, FreeSpec, Matchers, Status, Succeeded, Suite}
+import org.scalatest.concurrent.{AsyncTimeLimitedTests, TimeLimitedTests}
 import org.scalatest.prop.GeneratorDrivenPropertyChecks
 import org.scalatest.time.Span
 
-abstract class Fs2Spec extends AsyncFreeSpec with AsyncTimeLimitedTests with GeneratorDrivenPropertyChecks with Matchers with ChunkGenerators {
+abstract class Fs2Spec
+    extends AsyncFreeSpec
+    with AsyncTimeLimitedTests
+    with GeneratorDrivenPropertyChecks
+    with Matchers
+    with ChunkGenerators
+    with TestPlatform {
+
   implicit val timeout: FiniteDuration = 60.seconds
   val timeLimit: Span = timeout
 
-  implicit override val executionContext: ExecutionContext = ExecutionContext.Implicits.global
+  // implicit override val executionContext: ExecutionContext = ExecutionContext.Implicits.global
 
   implicit val timerIO: Timer[IO] = IO.timer(executionContext)
   implicit val contextShiftIO: ContextShift[IO] = IO.contextShift(executionContext)
@@ -32,4 +39,4 @@ abstract class Fs2Spec extends AsyncFreeSpec with AsyncTimeLimitedTests with Gen
   }
 }
 
-  // implicit def futureUnitToFutureAssertion(fu: Future[Unit]): Future[Assertion] = fu.map(_ => Succeeded)
+// implicit def futureUnitToFutureAssertion(fu: Future[Unit]): Future[Assertion] = fu.map(_ => Succeeded)

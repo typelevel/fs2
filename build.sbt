@@ -283,6 +283,7 @@ lazy val fs3 = crossProject(JVMPlatform, JSPlatform)
   .settings(
     name := "fs3-core",
     sourceDirectories in (Compile, scalafmt) += baseDirectory.value / "../shared/src/main/scala",
+    sourceDirectories in (Test, scalafmt) += baseDirectory.value / "../shared/src/test/scala",
     unmanagedSourceDirectories in Compile += {
       val dir = CrossVersion.partialVersion(scalaVersion.value) match {
         case Some((2, v)) if v >= 13 => "scala-2.13+"
