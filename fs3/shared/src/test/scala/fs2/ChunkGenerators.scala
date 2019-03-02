@@ -31,6 +31,7 @@ trait ChunkGeneratorsLowPriority1 {
     withShrinker(g) { (c, rnd) =>
       if (c.isEmpty) (Iterator.empty, rnd)
       else {
+        // TODO This would be better as a lazily computed iterator
         def loop(c: Chunk[A]): List[Chunk[A]] =
           if (c.isEmpty) Nil else {
             val c2 = c.take(c.size / 2)
