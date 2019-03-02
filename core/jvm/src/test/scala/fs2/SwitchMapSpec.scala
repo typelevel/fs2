@@ -12,6 +12,15 @@ class SwitchMapSpec extends Fs2Spec with EventuallySupport {
 
   "switchMap" - {
 
+    "sanity check" in forAll { s: PureStream[Int] =>
+      runLog(
+        s.get
+          .covary[IO]
+          .switchMap(Stream.emit)
+          .last
+      ) shouldBe runLog(s.get.last)
+    }
+
     "flatMap equivalence when switching never occurs" in forAll { s: PureStream[Int] =>
       runLog(Stream.eval(Semaphore[IO](1)).flatMap { guard =>
         s.get

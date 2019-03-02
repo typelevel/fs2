@@ -1644,7 +1644,12 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
         Ref.of[F2, Option[Deferred[F2, Unit]]](None).map { haltRef =>
           def runInner(o: O, halt: Deferred[F2, Unit]): Stream[F2, O2] =
             Stream.eval(guard.acquire) >> // guard inner to prevent parallel inner streams
-              f(o).interruptWhen(halt.get.attempt) ++ Stream.eval_(guard.release)
+              f(o)
+                .interruptWhen(halt.get.attempt)
+                .onFinalizeCase {
+                  case ExitCase.Completed | ExitCase.Canceled => guard.release
+                  case ExitCase.Error(_)                      => F2.unit
+                }
 
           this
             .evalMap { o =>
