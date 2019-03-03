@@ -296,7 +296,8 @@ lazy val fs3 = crossProject(JVMPlatform, JSPlatform)
       .filterNot(_.name.startsWith("scalacheck")),
     libraryDependencies ++= Seq(
       "org.scodec" %%% "scodec-bits" % "1.1.9",
-      "org.scalatest" %%% "scalatest" % "3.1.0-SNAP7"
+      "org.scalatest" %%% "scalatest" % "3.1.0-SNAP7",
+      "org.scalatestplus" %%% "scalatestplus-scalacheck" % "1.0.0-SNAP2"
     ),
     (scalacOptions in Test) := (scalacOptions in Test).value.filterNot(_ == "-Xfatal-warnings")
   )

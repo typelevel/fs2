@@ -256,6 +256,45 @@ class StreamSpec extends Fs2Spec {
       }
     }
 
+    "observeEither" - {
+      val s = Stream.emits(Seq(Left(1), Right("a"))).repeat.covary[IO]
+
+      "does not drop elements" in {
+        val is = Ref.of[IO, Vector[Int]](Vector.empty)
+        val as = Ref.of[IO, Vector[String]](Vector.empty)
+        val test = for {
+          iref <- is
+          aref <- as
+          iSink = (_: Stream[IO, Int]).evalMap(i => iref.update(_ :+ i))
+          aSink = (_: Stream[IO, String]).evalMap(a => aref.update(_ :+ a))
+          _ <- s.take(10).observeEither(iSink, aSink).compile.drain
+          iResult <- iref.get
+          aResult <- aref.get
+        } yield {
+          assert(iResult.length == 5)
+          assert(aResult.length == 5)
+        }
+        test.assertNoException
+      }
+
+      "termination" - {
+
+        "left" in {
+          s.observeEither[Int, String](_.take(0).void, _.void)
+            .compile
+            .toList
+            .asserting(r => (r should have).length(0))
+        }
+
+        "right" in {
+          s.observeEither[Int, String](_.void, _.take(0).void)
+            .compile
+            .toList
+            .asserting(r => (r should have).length(0))
+        }
+      }
+    }
+
     "raiseError" - {
       "compiled stream fails with an error raised in stream" in {
         Stream.raiseError[SyncIO](new Err).compile.drain.assertThrows[Err]
@@ -281,6 +320,20 @@ class StreamSpec extends Fs2Spec {
           .drain
           .assertNoException
       }
+    }
+
+    "random" in {
+      val x = Stream.random[SyncIO].take(100).compile.toList
+      (x, x).tupled.asserting {
+        case (first, second) =>
+          first should not be second
+      }
+    }
+
+    "randomSeeded" in {
+      val x = Stream.randomSeeded(1L).take(100).toList
+      val y = Stream.randomSeeded(1L).take(100).toList
+      x shouldBe y
     }
 
     "range" in {
@@ -339,6 +392,27 @@ class StreamSpec extends Fs2Spec {
         .repartition(i => Chunk.seq(1 to 1000))
         .take(4)
         .toList shouldBe List(1, 2, 3, 4)
+    }
+
+    "scope" in {
+      pending // TODO
+      // TODO This test should be replaced with one that shows proper usecase for .scope
+      val c = new java.util.concurrent.atomic.AtomicLong(0)
+      val s1 = Stream.emit("a").covary[IO]
+      val s2 = Stream
+        .bracket(IO { c.incrementAndGet() shouldBe 1L; () }) { _ =>
+          IO { c.decrementAndGet(); () }
+        }
+        .flatMap(_ => Stream.emit("b"))
+      (s1.scope ++ s2)
+        .take(2)
+        .scope
+        .repeat
+        .take(4)
+        .merge(Stream.eval_(IO.unit))
+        .compile
+        .drain
+        .asserting(_ => c.get shouldBe 0L)
     }
 
     "translate" - {
@@ -518,6 +592,45 @@ class StreamSpec extends Fs2Spec {
           .zip(Stream(4, 5, 6).map(_ + 1).repeat)
           .take(4)
           .toList shouldBe List((2, 5), (3, 6), (4, 7), (2, 5))
+      }
+    }
+
+    "regressions" - {
+
+      "#1089" in {
+        (Stream.chunk(Chunk.bytes(Array.fill(2000)(1.toByte))) ++ Stream.eval(
+          IO.async[Byte](_ => ())))
+          .take(2000)
+          .chunks
+          .compile
+          .toVector
+          .assertNoException
+      }
+
+      "#1107 - scope" in {
+        Stream(0)
+          .covary[IO]
+          .scope // Create a source that opens/closes a new scope for every element emitted
+          .repeat
+          .take(10000)
+          .flatMap(_ => Stream.empty) // Never emit an element downstream
+          .mapChunks(identity) // Use a combinator that calls Stream#pull.uncons
+          .compile
+          .drain
+          .assertNoException
+      }
+
+      "#1107 - queue" in {
+        Stream
+          .range(0, 10000)
+          .covary[IO]
+          .unchunk
+          .prefetch
+          .flatMap(_ => Stream.empty)
+          .mapChunks(identity)
+          .compile
+          .drain
+          .assertNoException
       }
     }
   }

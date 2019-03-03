@@ -15,8 +15,8 @@ import org.scalatest.time.Span
 abstract class Fs2Spec
     extends AsyncFreeSpec
     with AsyncTimeLimitedTests
-    with GeneratorDrivenPropertyChecks
     with Matchers
+    with GeneratorDrivenPropertyChecks
     with MiscellaneousGenerators
     with ChunkGenerators
     with StreamGenerators
