@@ -3,6 +3,7 @@ package fs2
 import scala.concurrent.Future
 import scala.concurrent.duration._
 
+import cats.{Functor, ~>}
 import cats.effect.{ContextShift, IO, Sync, SyncIO, Timer}
 import cats.implicits._
 
@@ -17,7 +18,10 @@ abstract class Fs2Spec
     with AsyncTimeLimitedTests
     with GeneratorDrivenPropertyChecks
     with Matchers
+    with MiscellaneousGenerators
     with ChunkGenerators
+    with StreamGenerators
+    with EffectTestSupport
     with TestPlatform {
 
   implicit val timeout: FiniteDuration = 60.seconds
@@ -37,21 +41,38 @@ abstract class Fs2Spec
     finally if (verbose) println("Finished " + testName)
   }
 
+  /** Provides various ways to make test assertions on an `F[A]`. */
   implicit class Asserting[F[_], A](private val self: F[A]) {
+
+    /**
+      * Asserts that the `F[A]` completes with an `A` which passes the supplied function.
+      *
+      * @example {{{
+      * IO(1).asserting(_ shouldBe 1)
+      * }}}
+      */
     def asserting(f: A => Assertion)(implicit F: Sync[F]): F[Assertion] =
       self.flatMap(a => F.delay(f(a)))
+
+    /**
+      * Asserts that the `F[A]` completes with an `A` and no exception is thrown.
+      */
+    def assertNoException(implicit F: Functor[F]): F[Assertion] =
+      self.as(Succeeded)
+
+    /**
+      * Asserts that the `F[A]` fails with an exception of type `E`.
+      */
+    def assertThrows[E <: Throwable](implicit F: Sync[F], ct: reflect.ClassTag[E]): F[Assertion] =
+      self.attempt.flatMap {
+        case Left(t: E) => F.pure(Succeeded: Assertion)
+        case Left(t) =>
+          F.delay(
+            fail(
+              s"Expected an exception of type ${ct.runtimeClass.getName} but got an exception: $t"))
+        case Right(a) =>
+          F.delay(
+            fail(s"Expected an exception of type ${ct.runtimeClass.getName} but got a result: $a"))
+      }
   }
-
-  implicit def syncIoToFutureAssertion(io: SyncIO[Assertion]): Future[Assertion] =
-    io.toIO.unsafeToFuture
-  implicit def ioToFutureAssertion(io: IO[Assertion]): Future[Assertion] =
-    io.unsafeToFuture
-  implicit def syncIoUnitToFutureAssertion(io: SyncIO[Unit]): Future[Assertion] =
-    io.toIO.as(Succeeded).unsafeToFuture
-  implicit def ioUnitToFutureAssertion(io: IO[Unit]): Future[Assertion] =
-    io.as(Succeeded).unsafeToFuture
-
-  class Err extends RuntimeException
 }
-
-// implicit def futureUnitToFutureAssertion(fu: Future[Unit]): Future[Assertion] = fu.map(_ => Succeeded)
