@@ -11,16 +11,22 @@ import cats.laws.discipline._
 import org.scalacheck.{Arbitrary, Gen}
 import Arbitrary.arbitrary
 
-class StreamLawsSpec extends LawsSpec with StreamGenerators {
+class StreamLawsSpec extends LawsSpec {
   implicit val ec: TestContext = TestContext()
 
   implicit def arbStream[F[_], O](implicit arbO: Arbitrary[O],
-                                  arbFo: Arbitrary[F[O]]): Arbitrary[Stream[F, O]] =
+                                  arbFo: Arbitrary[F[O]],
+                                  arbFu: Arbitrary[F[Unit]]): Arbitrary[Stream[F, O]] =
     Arbitrary(
       Gen.frequency(
-        4 -> arbitrary[List[O]].map(os => Stream.emits(os).take(10)),
-        4 -> arbitrary[List[O]].map(os => Stream.emits(os).take(10).unchunk),
-        2 -> arbitrary[F[O]].map(fo => Stream.eval(fo))
+        10 -> arbitrary[List[O]].map(os => Stream.emits(os).take(10)),
+        10 -> arbitrary[List[O]].map(os => Stream.emits(os).take(10).unchunk),
+        5 -> arbitrary[F[O]].map(fo => Stream.eval(fo)),
+        1 -> (for {
+          acquire <- arbitrary[F[O]]
+          release <- arbitrary[F[Unit]]
+          use <- arbStream[F, O].arbitrary
+        } yield Stream.bracket(acquire)(_ => release).flatMap(_ => use))
       ))
 
   implicit def eqStream[O: Eq]: Eq[Stream[IO, O]] =
