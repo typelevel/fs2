@@ -5,6 +5,8 @@ import cats.effect._
 import cats.effect.concurrent.Ref
 import cats.implicits._
 
+import scala.concurrent.duration._
+
 class StreamSpec extends Fs2Spec {
   "Stream" - {
     "++" in forAll { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
@@ -75,7 +77,64 @@ class StreamSpec extends Fs2Spec {
       }
     }
 
+    "duration" in {
+      val delay = 200.millis
+      Stream
+        .emit(())
+        .append(Stream.eval(IO(Thread.sleep(delay.toMillis))))
+        .zip(Stream.duration[IO])
+        .drop(1)
+        .map(_._2)
+        .compile
+        .toVector
+        .asserting { result =>
+          result should have size (1)
+          val head = result.head
+          head.toMillis should be >= (delay.toMillis - 5)
+        }
+    }
+
     "eval" in { Stream.eval(SyncIO(23)).compile.toList.asserting(_ shouldBe List(23)) }
+
+    "every" in {
+      flickersOnTravis
+      type BD = (Boolean, FiniteDuration)
+      val durationSinceLastTrue: Pipe[Pure, BD, BD] = {
+        def go(lastTrue: FiniteDuration, s: Stream[Pure, BD]): Pull[Pure, BD, Unit] =
+          s.pull.uncons1.flatMap {
+            case None => Pull.done
+            case Some((pair, tl)) =>
+              pair match {
+                case (true, d) =>
+                  Pull.output1((true, d - lastTrue)) >> go(d, tl)
+                case (false, d) =>
+                  Pull.output1((false, d - lastTrue)) >> go(lastTrue, tl)
+              }
+          }
+        s =>
+          go(0.seconds, s).stream
+      }
+
+      val delay = 20.millis
+      val draws = (600.millis / delay).min(50) // don't take forever
+
+      val durationsSinceSpike = Stream
+        .every[IO](delay)
+        .map(d => (d, System.nanoTime.nanos))
+        .take(draws.toInt)
+        .through(durationSinceLastTrue)
+
+      (IO.shift >> durationsSinceSpike.compile.toVector).unsafeToFuture().map { result =>
+        val (head :: tail) = result.toList
+        withClue("every always emits true first") { assert(head._1) }
+        withClue("true means the delay has passed: " + tail) {
+          assert(tail.filter(_._1).map(_._2).forall { _ >= delay })
+        }
+        withClue("false means the delay has not passed: " + tail) {
+          assert(tail.filterNot(_._1).map(_._2).forall { _ <= delay })
+        }
+      }
+    }
 
     "flatMap" in forAll { (s: Stream[Pure, Stream[Pure, Int]]) =>
       s.flatMap(inner => inner).toList shouldBe s.toList.flatMap(inner => inner.toList)
@@ -304,7 +363,7 @@ class StreamSpec extends Fs2Spec {
           .asserting(_ shouldBe s.toList)
       }
 
-      "3 - okay to have multiple translates" in forAll { (s: Stream[Pure, Int]) =>
+      "3 - ok to have multiple translates" in forAll { (s: Stream[Pure, Int]) =>
         s.covary[Function0]
           .flatMap(i => Stream.eval(() => i))
           .flatMap(i => Stream.eval(() => i))

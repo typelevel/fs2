@@ -1,14 +1,13 @@
 package fs2
 
-import scala.concurrent.Future
 import scala.concurrent.duration._
 
-import cats.{Functor, ~>}
-import cats.effect.{ContextShift, IO, Sync, SyncIO, Timer}
+import cats.Functor
+import cats.effect.{ContextShift, IO, Sync, Timer}
 import cats.implicits._
 
 import org.typelevel.discipline.Laws
-import org.scalatest.{Args, Assertion, AsyncFreeSpec, FreeSpec, Matchers, Status, Succeeded, Suite}
+import org.scalatest.{Args, Assertion, AsyncFreeSpec, Matchers, Status, Succeeded}
 import org.scalatest.concurrent.AsyncTimeLimitedTests
 import org.scalatest.prop.GeneratorDrivenPropertyChecks
 import org.scalatest.time.Span
@@ -31,6 +30,9 @@ abstract class Fs2Spec
   implicit val contextShiftIO: ContextShift[IO] = IO.contextShift(executionContext)
 
   lazy val verbose: Boolean = sys.props.get("fs2.test.verbose").isDefined
+
+  protected def flickersOnTravis: Assertion =
+    if (verbose) pending else Succeeded
 
   implicit override val generatorDrivenConfig: PropertyCheckConfiguration =
     PropertyCheckConfiguration(minSuccessful = 25, workers = 1)
