@@ -1,5 +1,6 @@
 package fs2
 
+import cats.~>
 import cats.effect._
 import cats.effect.concurrent.Ref
 import cats.implicits._
@@ -96,6 +97,74 @@ class StreamSpec extends Fs2Spec {
         .asserting(_ shouldBe x)
     }
 
+    "handleErrorWith" - {
+
+      "1" in forAll { (s: Stream[Pure, Int]) =>
+        val s2 = s.covary[Fallible] ++ Stream.raiseError[Fallible](new Err)
+        s2.handleErrorWith(_ => Stream.empty).toList shouldBe Right(s.toList)
+      }
+
+      "2" in {
+        Stream.raiseError[Fallible](new Err).handleErrorWith(_ => Stream(1)).toList shouldBe Right(
+          List(1))
+      }
+
+      "3" in {
+        Stream(1)
+          .append(Stream.raiseError[Fallible](new Err))
+          .handleErrorWith(_ => Stream(1))
+          .toList shouldBe Right(List(1, 1))
+      }
+
+      "4 - error in eval" in {
+        Stream
+          .eval(SyncIO(throw new Err))
+          .map(Right(_): Either[Throwable, Int])
+          .handleErrorWith(t => Stream.emit(Left(t)).covary[SyncIO])
+          .take(1)
+          .compile
+          .toVector
+          .asserting(_.head.swap.toOption.get shouldBe an[Err])
+      }
+
+      "5" in {
+        Stream
+          .raiseError[SyncIO](new Err)
+          .handleErrorWith(e => Stream(e))
+          .flatMap(Stream.emit)
+          .compile
+          .toVector
+          .asserting { v =>
+            v should have size (1)
+            v.head shouldBe an[Err]
+          }
+      }
+
+      "6" in {
+        Stream
+          .raiseError[IO](new Err)
+          .handleErrorWith(Stream.emit)
+          .map(identity)
+          .compile
+          .toVector
+          .asserting { v =>
+            v should have size (1)
+            v.head shouldBe an[Err]
+          }
+      }
+
+      "7 - parJoin" in {
+        Stream(Stream.emit(1).covary[IO], Stream.raiseError[IO](new Err), Stream.emit(2).covary[IO])
+          .covary[IO]
+          .parJoin(4)
+          .attempt
+          .compile
+          .toVector
+          .asserting(
+            _.collect { case Left(t) => t }.find(_.isInstanceOf[Err]).isDefined shouldBe true)
+      }
+    }
+
     "iterate" in {
       Stream.iterate(0)(_ + 1).take(100).toList shouldBe List.iterate(0, 100)(_ + 1)
     }
@@ -110,6 +179,10 @@ class StreamSpec extends Fs2Spec {
     }
 
     "map" - {
+      "map.toList == toList.map" in forAll { (s: Stream[Pure, Int], f: Int => Int) =>
+        s.map(f).toList shouldBe s.toList.map(f)
+      }
+
       "regression #1335 - stack safety of map" in {
 
         case class Tree[A](label: A, subForest: Stream[Pure, Tree[A]]) {
@@ -149,6 +222,223 @@ class StreamSpec extends Fs2Spec {
           .drain
           .assertNoException
       }
+    }
+
+    "range" in {
+      Stream.range(0, 100).toList shouldBe List.range(0, 100)
+      Stream.range(0, 1).toList shouldBe List.range(0, 1)
+      Stream.range(0, 0).toList shouldBe List.range(0, 0)
+      Stream.range(0, 101, 2).toList shouldBe List.range(0, 101, 2)
+      Stream.range(5, 0, -1).toList shouldBe List.range(5, 0, -1)
+      Stream.range(5, 0, 1).toList shouldBe Nil
+      Stream.range(10, 50, 0).toList shouldBe Nil
+    }
+
+    "ranges" in forAll(intsBetween(1, 101)) { size =>
+      Stream
+        .ranges(0, 100, size)
+        .flatMap { case (i, j) => Stream.emits(i until j) }
+        .toVector shouldBe IndexedSeq.range(0, 100)
+    }
+
+    "repartition" in {
+      Stream("Lore", "m ip", "sum dolo", "r sit amet")
+        .repartition(s => Chunk.array(s.split(" ")))
+        .toList shouldBe
+        List("Lorem", "ipsum", "dolor", "sit", "amet")
+      Stream("hel", "l", "o Wor", "ld")
+        .repartition(s => Chunk.indexedSeq(s.grouped(2).toVector))
+        .toList shouldBe
+        List("he", "ll", "o ", "Wo", "rl", "d")
+      Stream.empty
+        .covaryOutput[String]
+        .repartition(_ => Chunk.empty)
+        .toList shouldBe List()
+      Stream("hello").repartition(_ => Chunk.empty).toList shouldBe List()
+
+      def input = Stream("ab").repeat
+      def ones(s: String) = Chunk.vector(s.grouped(1).toVector)
+      input.take(2).repartition(ones).toVector shouldBe Vector("a", "b", "a", "b")
+      input.take(4).repartition(ones).toVector shouldBe Vector("a",
+                                                               "b",
+                                                               "a",
+                                                               "b",
+                                                               "a",
+                                                               "b",
+                                                               "a",
+                                                               "b")
+      input.repartition(ones).take(2).toVector shouldBe Vector("a", "b")
+      input.repartition(ones).take(4).toVector shouldBe Vector("a", "b", "a", "b")
+      Stream
+        .emits(input.take(4).toVector)
+        .repartition(ones)
+        .toVector shouldBe Vector("a", "b", "a", "b", "a", "b", "a", "b")
+
+      Stream(1, 2, 3, 4, 5).repartition(i => Chunk(i, i)).toList shouldBe List(1, 3, 6, 10, 15, 15)
+
+      Stream(1, 10, 100)
+        .repartition(i => Chunk.seq(1 to 1000))
+        .take(4)
+        .toList shouldBe List(1, 2, 3, 4)
+    }
+
+    "translate" - {
+      "1 - id" in forAll { (s: Stream[Pure, Int]) =>
+        s.covary[SyncIO]
+          .flatMap(i => Stream.eval(SyncIO.pure(i)))
+          .translate(cats.arrow.FunctionK.id[SyncIO])
+          .compile
+          .toList
+          .asserting(_ shouldBe s.toList)
+      }
+
+      "2" in forAll { (s: Stream[Pure, Int]) =>
+        s.covary[Function0]
+          .flatMap(i => Stream.eval(() => i))
+          .flatMap(i => Stream.eval(() => i))
+          .translate(new (Function0 ~> SyncIO) {
+            def apply[A](thunk: Function0[A]) = SyncIO(thunk())
+          })
+          .compile
+          .toList
+          .asserting(_ shouldBe s.toList)
+      }
+
+      "3 - okay to have multiple translates" in forAll { (s: Stream[Pure, Int]) =>
+        s.covary[Function0]
+          .flatMap(i => Stream.eval(() => i))
+          .flatMap(i => Stream.eval(() => i))
+          .translate(new (Function0 ~> Some) {
+            def apply[A](thunk: Function0[A]) = Some(thunk())
+          })
+          .flatMap(i => Stream.eval(Some(i)))
+          .flatMap(i => Stream.eval(Some(i)))
+          .translate(new (Some ~> SyncIO) {
+            def apply[A](some: Some[A]) = SyncIO(some.get)
+          })
+          .compile
+          .toList
+          .asserting(_ shouldBe s.toList)
+      }
+
+      "4 - ok to translate after zip with effects" in {
+        val stream: Stream[Function0, Int] =
+          Stream.eval(() => 1)
+        stream
+          .zip(stream)
+          .translate(new (Function0 ~> SyncIO) {
+            def apply[A](thunk: Function0[A]) = SyncIO(thunk())
+          })
+          .compile
+          .toList
+          .asserting(_ shouldBe List((1, 1)))
+      }
+
+      "5 - ok to translate a step leg that emits multiple chunks" in {
+        def goStep(step: Option[Stream.StepLeg[Function0, Int]]): Pull[Function0, Int, Unit] =
+          step match {
+            case None       => Pull.done
+            case Some(step) => Pull.output(step.head) >> step.stepLeg.flatMap(goStep)
+          }
+        (Stream.eval(() => 1) ++ Stream.eval(() => 2)).pull.stepLeg
+          .flatMap(goStep)
+          .stream
+          .translate(new (Function0 ~> SyncIO) {
+            def apply[A](thunk: Function0[A]) = SyncIO(thunk())
+          })
+          .compile
+          .toList
+          .asserting(_ shouldBe List(1, 2))
+      }
+
+      "6 - ok to translate step leg that has uncons in its structure" in {
+        def goStep(step: Option[Stream.StepLeg[Function0, Int]]): Pull[Function0, Int, Unit] =
+          step match {
+            case None       => Pull.done
+            case Some(step) => Pull.output(step.head) >> step.stepLeg.flatMap(goStep)
+          }
+        (Stream.eval(() => 1) ++ Stream.eval(() => 2))
+          .flatMap { a =>
+            Stream.emit(a)
+          }
+          .flatMap { a =>
+            Stream.eval(() => a + 1) ++ Stream.eval(() => a + 2)
+          }
+          .pull
+          .stepLeg
+          .flatMap(goStep)
+          .stream
+          .translate(new (Function0 ~> SyncIO) {
+            def apply[A](thunk: Function0[A]) = SyncIO(thunk())
+          })
+          .compile
+          .toList
+          .asserting(_ shouldBe List(2, 3, 3, 4))
+      }
+
+      "7 - ok to translate step leg that is forced back in to a stream" in {
+        def goStep(step: Option[Stream.StepLeg[Function0, Int]]): Pull[Function0, Int, Unit] =
+          step match {
+            case None => Pull.done
+            case Some(step) =>
+              Pull.output(step.head) >> step.stream.pull.echo
+          }
+        (Stream.eval(() => 1) ++ Stream.eval(() => 2)).pull.stepLeg
+          .flatMap(goStep)
+          .stream
+          .translate(new (Function0 ~> SyncIO) {
+            def apply[A](thunk: Function0[A]) = SyncIO(thunk())
+          })
+          .compile
+          .toList
+          .asserting(_ shouldBe List(1, 2))
+      }
+
+      "stack safety" in {
+        Stream
+          .repeatEval(SyncIO(0))
+          .translate(new (SyncIO ~> SyncIO) { def apply[X](x: SyncIO[X]) = SyncIO.suspend(x) })
+          .take(1000000)
+          .compile
+          .drain
+          .assertNoException
+      }
+    }
+
+    "unfold" in {
+      Stream
+        .unfold((0, 1)) {
+          case (f1, f2) =>
+            if (f1 <= 13) Some(((f1, f2), (f2, f1 + f2))) else None
+        }
+        .map(_._1)
+        .toList shouldBe List(0, 1, 1, 2, 3, 5, 8, 13)
+    }
+
+    "unfoldChunk" in {
+      Stream
+        .unfoldChunk(4L) { s =>
+          if (s > 0) Some((Chunk.longs(Array[Long](s, s)), s - 1))
+          else None
+        }
+        .toList shouldBe List[Long](4, 4, 3, 3, 2, 2, 1, 1)
+    }
+
+    "unfoldEval" in {
+      Stream
+        .unfoldEval(10)(s => IO.pure(if (s > 0) Some((s, s - 1)) else None))
+        .compile
+        .toList
+        .asserting(_ shouldBe List.range(10, 0, -1))
+    }
+
+    "unfoldChunkEval" in {
+      Stream
+        .unfoldChunkEval(true)(s =>
+          SyncIO.pure(if (s) Some((Chunk.booleans(Array[Boolean](s)), false)) else None))
+        .compile
+        .toList
+        .asserting(_ shouldBe List(true))
     }
 
     "zip" - {
