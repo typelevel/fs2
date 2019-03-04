@@ -550,53 +550,53 @@ final class Stream[+F[_], +O] private (private val asPull: Pull[F, O, Unit]) ext
     */
   def covaryOutput[O2 >: O]: Stream[F, O2] = this
 
-  // /**
-  //   * Debounce the stream with a minimum period of `d` between each element.
-  //   *
-  //   * Use-case: if this is a stream of updates about external state, we may want to refresh (side-effectful)
-  //   * once every 'd' milliseconds, and every time we refresh we only care about the latest update.
-  //   *
-  //   * @return A stream whose values is an in-order, not necessarily strict subsequence of this stream,
-  //   * and whose evaluation will force a delay `d` between emitting each element.
-  //   * The exact subsequence would depend on the chunk structure of this stream, and the timing they arrive.
-  //   * There is no guarantee ta
-  //   *
-  //   * @example {{{
-  //   * scala> import scala.concurrent.duration._, cats.effect.{ContextShift, IO, Timer}
-  //   * scala> implicit val cs: ContextShift[IO] = IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
-  //   * scala> implicit val timer: Timer[IO] = IO.timer(scala.concurrent.ExecutionContext.Implicits.global)
-  //   * scala> val s = Stream(1, 2, 3) ++ Stream.sleep_[IO](500.millis) ++ Stream(4, 5) ++ Stream.sleep_[IO](10.millis) ++ Stream(6)
-  //   * scala> val s2 = s.debounce(100.milliseconds)
-  //   * scala> s2.compile.toVector.unsafeRunSync
-  //   * res0: Vector[Int] = Vector(3, 6)
-  //   * }}}
-  //   */
-  // def debounce[F2[x] >: F[x]](d: FiniteDuration)(implicit F: Concurrent[F2],
-  //                                                timer: Timer[F2]): Stream[F2, O] =
-  //   Stream.eval(Queue.bounded[F2, Option[O]](1)).flatMap { queue =>
-  //     Stream.eval(Ref.of[F2, Option[O]](None)).flatMap { ref =>
-  //       val enqueueLatest: F2[Unit] =
-  //         ref.modify(s => None -> s).flatMap {
-  //           case v @ Some(_) => queue.enqueue1(v)
-  //           case None        => F.unit
-  //         }
+  /**
+    * Debounce the stream with a minimum period of `d` between each element.
+    *
+    * Use-case: if this is a stream of updates about external state, we may want to refresh (side-effectful)
+    * once every 'd' milliseconds, and every time we refresh we only care about the latest update.
+    *
+    * @return A stream whose values is an in-order, not necessarily strict subsequence of this stream,
+    * and whose evaluation will force a delay `d` between emitting each element.
+    * The exact subsequence would depend on the chunk structure of this stream, and the timing they arrive.
+    * There is no guarantee ta
+    *
+    * @example {{{
+    * scala> import scala.concurrent.duration._, cats.effect.{ContextShift, IO, Timer}
+    * scala> implicit val cs: ContextShift[IO] = IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
+    * scala> implicit val timer: Timer[IO] = IO.timer(scala.concurrent.ExecutionContext.Implicits.global)
+    * scala> val s = Stream(1, 2, 3) ++ Stream.sleep_[IO](500.millis) ++ Stream(4, 5) ++ Stream.sleep_[IO](10.millis) ++ Stream(6)
+    * scala> val s2 = s.debounce(100.milliseconds)
+    * scala> s2.compile.toVector.unsafeRunSync
+    * res0: Vector[Int] = Vector(3, 6)
+    * }}}
+    */
+  def debounce[F2[x] >: F[x]](d: FiniteDuration)(implicit F: Concurrent[F2],
+                                                 timer: Timer[F2]): Stream[F2, O] =
+    Stream.eval(Queue.bounded[F2, Option[O]](1)).flatMap { queue =>
+      Stream.eval(Ref.of[F2, Option[O]](None)).flatMap { ref =>
+        val enqueueLatest: F2[Unit] =
+          ref.modify(s => None -> s).flatMap {
+            case v @ Some(_) => queue.enqueue1(v)
+            case None        => F.unit
+          }
 
-  //       def onChunk(ch: Chunk[O]): F2[Unit] =
-  //         if (ch.isEmpty) F.unit
-  //         else
-  //           ref.modify(s => Some(ch(ch.size - 1)) -> s).flatMap {
-  //             case None    => F.start(timer.sleep(d) >> enqueueLatest).void
-  //             case Some(_) => F.unit
-  //           }
+        def onChunk(ch: Chunk[O]): F2[Unit] =
+          if (ch.isEmpty) F.unit
+          else
+            ref.modify(s => Some(ch(ch.size - 1)) -> s).flatMap {
+              case None    => F.start(timer.sleep(d) >> enqueueLatest).void
+              case Some(_) => F.unit
+            }
 
-  //       val in: Stream[F2, Unit] = chunks.evalMap(onChunk) ++
-  //         Stream.eval_(enqueueLatest >> queue.enqueue1(None))
+        val in: Stream[F2, Unit] = chunks.evalMap(onChunk) ++
+          Stream.eval_(enqueueLatest >> queue.enqueue1(None))
 
-  //       val out: Stream[F2, O] = queue.dequeue.unNoneTerminate
+        val out: Stream[F2, O] = queue.dequeue.unNoneTerminate
 
-  //       out.concurrently(in)
-  //     }
-  //   }
+        out.concurrently(in)
+      }
+    }
 
   /**
     * Throttles the stream to the specified `rate`. Unlike [[debounce]], [[metered]] doesn't drop elements.
