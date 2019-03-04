@@ -117,6 +117,10 @@ sealed trait Pull[+F[_], +O, +R] { self =>
   /** Applies the resource of this pull to `f` and returns the result in a new `Pull`. */
   def map[R2](f: R => R2): Pull[F, O, R2] = flatMap(r => Pull.pure(f(r)))
 
+  /**
+    * Maps the supplied function over the *outputs* of this pull and concatenates all the results.
+    * The result type of this pull, and of each mapped pull, must be unit.
+    */
   def mapConcat[F2[x] >: F[x], O2](f: O => Pull[F2, O2, Unit])(
       implicit ev: R <:< Unit): Pull[F2, O2, Unit] =
     new Pull[F2, O2, Unit] {
