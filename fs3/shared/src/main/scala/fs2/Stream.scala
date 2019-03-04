@@ -1022,7 +1022,7 @@ final class Stream[+F[_], +O] private (private val asPull: Pull[F, O, Unit]) ext
     * }}}
     */
   def flatMap[F2[x] >: F[x], O2](f: O => Stream[F2, O2]): Stream[F2, O2] =
-    Stream.fromPull((asPull: Pull[F2, O, Unit]).mapConcat(o => f(o).asPull))
+    Stream.fromPull((asPull: Pull[F2, O, Unit]).flatMapOutput(o => f(o).asPull))
 
   /** Alias for `flatMap(_ => s2)`. */
   def >>[F2[x] >: F[x], O2](s2: => Stream[F2, O2]): Stream[F2, O2] =

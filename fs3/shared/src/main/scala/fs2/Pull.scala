@@ -108,6 +108,39 @@ sealed trait Pull[+F[_], +O, +R] { self =>
   final def >>[F2[x] >: F[x], O2 >: O, R2](that: => Pull[F2, O2, R2]): Pull[F2, O2, R2] =
     flatMap(_ => that)
 
+  /**
+    * Maps the supplied function over the *outputs* of this pull and concatenates all the results.
+    * The result type of this pull, and of each mapped pull, must be unit.
+    */
+  def flatMapOutput[F2[x] >: F[x], O2](f: O => Pull[F2, O2, Unit])(
+      implicit ev: R <:< Unit): Pull[F2, O2, Unit] =
+    new Pull[F2, O2, Unit] {
+
+      protected def step[F3[x] >: F2[x]: Sync, O3 >: O2, R2 >: Unit](
+          scope: Scope[F3]): F3[Either[R2, (Chunk[O3], Pull[F3, O3, R2])]] =
+        self.step(scope).flatMap {
+          case Right((hd, tl)) =>
+            tl match {
+              case _: Pull.Result[_] if hd.size == 1 =>
+                // nb: If tl is Pure, there's no need to propagate flatMap through the tail. Hence, we
+                // check if hd has only a single element, and if so, process it directly instead of folding.
+                // This allows recursive infinite streams of the form `def s: Stream[Pure,O] = Stream(o).flatMap { _ => s }`
+                f(hd(0)).step(scope)
+              case _ =>
+                def go(idx: Int): Pull[F3, O2, Unit] =
+                  if (idx == hd.size) tl.flatMapOutput(f)
+                  else f(hd(idx)) >> go(idx + 1) // TODO: handle interruption specifics here
+                go(0).step(scope)
+            }
+          case Left(_) => Either.left[R2, (Chunk[O3], Pull[F3, O3, R2])](()).pure[F3]
+        }
+
+      private[fs2] def translate[F3[x] >: F2[x], G[_]](g: F3 ~> G): Pull[G, O2, Unit] =
+        self.translate(g).flatMapOutput[G, O2](o => f(o).translate(g))
+
+      override def toString = s"FlatMapOutput($self, $f)"
+    }
+
   /** If `this` terminates with `Pull.raiseError(e)`, invoke `h(e)`. */
   def handleErrorWith[F2[x] >: F[x], O2 >: O, R2 >: R](
       h: Throwable => Pull[F2, O2, R2]): Pull[F2, O2, R2] = new Pull[F2, O2, R2] {
@@ -130,39 +163,6 @@ sealed trait Pull[+F[_], +O, +R] { self =>
 
   /** Applies the result of this pull to `f` and returns the result in a new `Pull`. */
   def map[R2](f: R => R2): Pull[F, O, R2] = flatMap(r => Pull.pure(f(r)))
-
-  /**
-    * Maps the supplied function over the *outputs* of this pull and concatenates all the results.
-    * The result type of this pull, and of each mapped pull, must be unit.
-    */
-  def mapConcat[F2[x] >: F[x], O2](f: O => Pull[F2, O2, Unit])(
-      implicit ev: R <:< Unit): Pull[F2, O2, Unit] =
-    new Pull[F2, O2, Unit] {
-
-      protected def step[F3[x] >: F2[x]: Sync, O3 >: O2, R2 >: Unit](
-          scope: Scope[F3]): F3[Either[R2, (Chunk[O3], Pull[F3, O3, R2])]] =
-        self.step(scope).flatMap {
-          case Right((hd, tl)) =>
-            tl match {
-              case _: Pull.Result[_] if hd.size == 1 =>
-                // nb: If tl is Pure, there's no need to propagate flatMap through the tail. Hence, we
-                // check if hd has only a single element, and if so, process it directly instead of folding.
-                // This allows recursive infinite streams of the form `def s: Stream[Pure,O] = Stream(o).flatMap { _ => s }`
-                f(hd(0)).step(scope)
-              case _ =>
-                def go(idx: Int): Pull[F3, O2, Unit] =
-                  if (idx == hd.size) tl.mapConcat(f)
-                  else f(hd(idx)) >> go(idx + 1) // TODO: handle interruption specifics here
-                go(0).step(scope)
-            }
-          case Left(_) => Either.left[R2, (Chunk[O3], Pull[F3, O3, R2])](()).pure[F3]
-        }
-
-      private[fs2] def translate[F3[x] >: F2[x], G[_]](g: F3 ~> G): Pull[G, O2, Unit] =
-        self.translate(g).mapConcat[G, O2](o => f(o).translate(g))
-
-      override def toString = s"MapConcat($self, $f)"
-    }
 
   /** Applies the outputs of this pull to `f` and returns the result in a new `Pull`. */
   def mapOutput[O2](f: O => O2): Pull[F, O2, R] = new Pull[F, O2, R] {
