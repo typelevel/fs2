@@ -5,10 +5,11 @@ import cats.implicits._
 import cats.effect._
 
 /**
-  * A `p: Pull[F,O,R]` reads values from one or more streams, returns a
-  * result of type `R`, and produces a `Stream[F,O]` when calling `p.stream`.
+  * A `p: Pull[F,O,R]` reads values from one or more streams, outputs values of type `O`,
+  * and returns a result of type `R`.
   *
-  * Any resources acquired by `p` are freed following the call to `stream`.
+  * Any resources acquired by `p` are registered in the active scope and released when that
+  * scope is closed. Converting a pull to a stream via `p.stream` introduces a scope.
   *
   * Laws:
   *
@@ -32,26 +33,38 @@ sealed trait Pull[+F[_], +O, +R] { self =>
   protected def step[F2[x] >: F[x]: Sync, O2 >: O, R2 >: R](
       scope: Scope[F2]): F2[Either[R2, (Chunk[O2], Pull[F2, O2, R2])]]
 
-  /** Alias for `_.map(_ => o2)`. */
-  def as[R2](r2: R2): Pull[F, O, R2] = map(_ => r2)
+  /** Alias for `map(_ => r2)`. */
+  final def as[R2](r2: R2): Pull[F, O, R2] = map(_ => r2)
 
   /** Returns a pull with the result wrapped in `Right`, or an error wrapped in `Left` if the pull has failed. */
-  def attempt: Pull[F, O, Either[Throwable, R]] =
+  final def attempt: Pull[F, O, Either[Throwable, R]] =
     map(r => Right(r): Either[Throwable, R]).handleErrorWith(t =>
       Pull.pure(Left(t): Either[Throwable, R]))
 
-  private[fs2] def compile[F2[x] >: F[x], R2 >: R, S](initial: S)(f: (S, Chunk[O]) => S)(
+  /** Compiles a pull to an effectful value using a chunk based fold. */
+  private[fs2] final def compile[F2[x] >: F[x], R2 >: R, S](initial: S)(f: (S, Chunk[O]) => S)(
       implicit F: Sync[F2]): F2[(S, R2)] =
     compileAsResource[F2, R2, S](initial)(f).use(F.pure)
 
-  private[fs2] def compileAsResource[F2[x] >: F[x], R2 >: R, S](initial: S)(f: (S, Chunk[O]) => S)(
-      implicit F: Sync[F2]): Resource[F2, (S, R2)] =
+  /**
+    * Compiles a pull to an effectful resource using a chunk based fold.
+    *
+    * A root scope is allocated as a resource and used during pull compilation. The lifetime of
+    * the root scope is tied to the returned resource, allowing root scope lifetime extension
+    * via methods on `Resource` such as `use`.
+    */
+  private[fs2] final def compileAsResource[F2[x] >: F[x], R2 >: R, S](initial: S)(
+      f: (S, Chunk[O]) => S)(implicit F: Sync[F2]): Resource[F2, (S, R2)] =
     Resource
       .makeCase(F.delay(Scope.unsafe[F2](None)))((scope, ec) => scope.closeAndThrow(ec))
       .flatMap { scope =>
         Resource.liftF(compileWithScope[F2, R2, S](scope, initial)(f))
       }
 
+  /**
+    * Compiles this pull to an effectful value using a chunk based fols and the supplied scope
+    * for resource tracking.
+    */
   private def compileWithScope[F2[x] >: F[x]: Sync, R2 >: R, S](scope: Scope[F2], initial: S)(
       f: (S, Chunk[O]) => S): F2[(S, R2)] =
     step[F2, O, R2](scope).flatMap {
@@ -60,21 +73,21 @@ sealed trait Pull[+F[_], +O, +R] { self =>
     }
 
   /** Lifts this pull to the specified effect type. */
-  def covary[F2[x] >: F[x]]: Pull[F2, O, R] = this
+  final def covary[F2[x] >: F[x]]: Pull[F2, O, R] = this
 
-  /** Lifts this pull to the specified effect type, output type, and resource type. */
-  def covaryAll[F2[x] >: F[x], O2 >: O, R2 >: R]: Pull[F2, O2, R2] = this
+  /** Lifts this pull to the specified effect type, output type, and result type. */
+  final def covaryAll[F2[x] >: F[x], O2 >: O, R2 >: R]: Pull[F2, O2, R2] = this
 
   /** Lifts this pull to the specified output type. */
-  def covaryOutput[O2 >: O]: Pull[F, O2, R] = this
+  final def covaryOutput[O2 >: O]: Pull[F, O2, R] = this
 
-  /** Lifts this pull to the specified resource type. */
-  def covaryResource[R2 >: R]: Pull[F, O, R2] = this
+  /** Lifts this pull to the specified result type. */
+  final def covaryResult[R2 >: R]: Pull[F, O, R2] = this
 
   // Note: private because this is unsound in presence of uncons, but safe when used from Stream#translate
   private[fs2] def translate[F2[x] >: F[x], G[_]](f: F2 ~> G): Pull[G, O, R]
 
-  /** Applies the resource of this pull to `f` and returns the result. */
+  /** Applies the result of this pull to `f` and returns the result. */
   def flatMap[F2[x] >: F[x], R2, O2 >: O](f: R => Pull[F2, O2, R2]): Pull[F2, O2, R2] =
     new Pull[F2, O2, R2] {
       protected def step[F3[x] >: F2[x]: Sync, O3 >: O2, R3 >: R2](
@@ -91,6 +104,7 @@ sealed trait Pull[+F[_], +O, +R] { self =>
       override def toString = s"FlatMap($self, $f)"
     }
 
+  /** Alias for `flatMap(_ => that)`. */
   final def >>[F2[x] >: F[x], O2 >: O, R2](that: => Pull[F2, O2, R2]): Pull[F2, O2, R2] =
     flatMap(_ => that)
 
@@ -114,7 +128,7 @@ sealed trait Pull[+F[_], +O, +R] { self =>
     override def toString = s"HandleErrorWith($self, $h)"
   }
 
-  /** Applies the resource of this pull to `f` and returns the result in a new `Pull`. */
+  /** Applies the result of this pull to `f` and returns the result in a new `Pull`. */
   def map[R2](f: R => R2): Pull[F, O, R2] = flatMap(r => Pull.pure(f(r)))
 
   /**
@@ -269,6 +283,7 @@ object Pull extends PullInstancesLowPriority {
   def acquire[F[_], R](resource: F[R])(release: R => F[Unit]): Pull[F, INothing, R] =
     acquireCase(resource)((r, ec) => release(r))
 
+  /** Like [[acquire]] but the release function is given an `ExitCase[Throwable]`. */
   def acquireCase[F[_], R](resource: F[R])(
       release: (R, ExitCase[Throwable]) => F[Unit]): Pull[F, INothing, R] =
     new Pull[F, INothing, R] {
@@ -298,7 +313,7 @@ object Pull extends PullInstancesLowPriority {
   /** The completed `Pull`. Reads and outputs nothing. */
   val done: Pull[Pure, INothing, Unit] = pure(())
 
-  /** Evaluates the supplied effectful value and returns the result as the resource of the returned pull. */
+  /** Evaluates the supplied effectful value and returns the result. */
   def eval[F[_], R](fr: F[R]): Pull[F, INothing, R] = new Pull[F, INothing, R] {
     protected def step[F2[x] >: F[x]: Sync, O2 >: INothing, R2 >: R](
         scope: Scope[F2]): F2[Either[R2, (Chunk[O2], Pull[F2, O2, R2])]] =
