@@ -1022,7 +1022,7 @@ final class Stream[+F[_], +O] private (private val asPull: Pull[F, O, Unit]) ext
     * }}}
     */
   def flatMap[F2[x] >: F[x], O2](f: O => Stream[F2, O2]): Stream[F2, O2] =
-    Stream.fromPull(Pull.mapConcat(asPull: Pull[F2, O, Unit])(o => f(o).asPull))
+    Stream.fromPull((asPull: Pull[F2, O, Unit]).mapConcat(o => f(o).asPull))
 
   /** Alias for `flatMap(_ => s2)`. */
   def >>[F2[x] >: F[x], O2](s2: => Stream[F2, O2]): Stream[F2, O2] =
@@ -2812,7 +2812,7 @@ object Stream extends StreamLowPriority {
     */
   def bracketCase[F[x] >: Pure[x], R](acquire: F[R])(
       release: (R, ExitCase[Throwable]) => F[Unit]): Stream[F, R] =
-    Stream.fromPull(Pull.acquire(acquire, release).flatMap(Pull.output1))
+    Stream.fromPull(Pull.acquireCase(acquire)(release).flatMap(Pull.output1))
 
   /**
     * Creates a pure stream that emits the elements of the supplied chunk.

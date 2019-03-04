@@ -3,21 +3,48 @@ package fs2
 import cats._
 import cats.implicits._
 import cats.effect._
-import cats.effect.implicits._
 
+/**
+  * A `p: Pull[F,O,R]` reads values from one or more streams, returns a
+  * result of type `R`, and produces a `Stream[F,O]` when calling `p.stream`.
+  *
+  * Any resources acquired by `p` are freed following the call to `stream`.
+  *
+  * Laws:
+  *
+  * `Pull` forms a monad in `R` with `pure` and `flatMap`:
+  *   - `pure >=> f == f`
+  *   - `f >=> pure == f`
+  *   - `(f >=> g) >=> h == f >=> (g >=> h)`
+  * where `f >=> g` is defined as `a => a flatMap f flatMap g`
+  *
+  * `raiseError` is caught by `handleErrorWith`:
+  *   - `handleErrorWith(raiseError(e))(f) == f(e)`
+  */
 sealed trait Pull[+F[_], +O, +R] { self =>
 
+  /**
+    * Used during compilation of a pull to make progress. A single step of a pull
+    * results in either:
+    *  - reaching the end of the pull, represented by a 'Left(r)'
+    *  - emission of a chunk of 0 or more output values along with a new pull representing the rest of the computation
+    */
+  protected def step[F2[x] >: F[x]: Sync, O2 >: O, R2 >: R](
+      scope: Scope[F2]): F2[Either[R2, (Chunk[O2], Pull[F2, O2, R2])]]
+
+  /** Alias for `_.map(_ => o2)`. */
+  def as[R2](r2: R2): Pull[F, O, R2] = map(_ => r2)
+
+  /** Returns a pull with the result wrapped in `Right`, or an error wrapped in `Left` if the pull has failed. */
   def attempt: Pull[F, O, Either[Throwable, R]] =
     map(r => Right(r): Either[Throwable, R]).handleErrorWith(t =>
       Pull.pure(Left(t): Either[Throwable, R]))
 
-  def compile[F2[x] >: F[x], R2 >: R, S](initial: S)(f: (S, Chunk[O]) => S)(
+  private[fs2] def compile[F2[x] >: F[x], R2 >: R, S](initial: S)(f: (S, Chunk[O]) => S)(
       implicit F: Sync[F2]): F2[(S, R2)] =
-    F.delay(Scope.unsafe[F2](None))
-      .bracketCase(scope => compileWithScope[F2, R2, S](scope, initial)(f))((scope, ec) =>
-        scope.closeAndThrow(ec))
+    compileAsResource[F2, R2, S](initial)(f).use(F.pure)
 
-  def compileAsResource[F2[x] >: F[x], R2 >: R, S](initial: S)(f: (S, Chunk[O]) => S)(
+  private[fs2] def compileAsResource[F2[x] >: F[x], R2 >: R, S](initial: S)(f: (S, Chunk[O]) => S)(
       implicit F: Sync[F2]): Resource[F2, (S, R2)] =
     Resource
       .makeCase(F.delay(Scope.unsafe[F2](None)))((scope, ec) => scope.closeAndThrow(ec))
@@ -44,15 +71,13 @@ sealed trait Pull[+F[_], +O, +R] { self =>
   /** Lifts this pull to the specified resource type. */
   def covaryResource[R2 >: R]: Pull[F, O, R2] = this
 
-  private[fs2] def step[F2[x] >: F[x]: Sync, O2 >: O, R2 >: R](
-      scope: Scope[F2]): F2[Either[R2, (Chunk[O2], Pull[F2, O2, R2])]]
-
   // Note: private because this is unsound in presence of uncons, but safe when used from Stream#translate
   private[fs2] def translate[F2[x] >: F[x], G[_]](f: F2 ~> G): Pull[G, O, R]
 
+  /** Applies the resource of this pull to `f` and returns the result. */
   def flatMap[F2[x] >: F[x], R2, O2 >: O](f: R => Pull[F2, O2, R2]): Pull[F2, O2, R2] =
     new Pull[F2, O2, R2] {
-      private[fs2] def step[F3[x] >: F2[x]: Sync, O3 >: O2, R3 >: R2](
+      protected def step[F3[x] >: F2[x]: Sync, O3 >: O2, R3 >: R2](
           scope: Scope[F3]): F3[Either[R3, (Chunk[O3], Pull[F3, O3, R3])]] =
         self.step(scope).flatMap {
           case Right((hd, tl)) =>
@@ -73,7 +98,7 @@ sealed trait Pull[+F[_], +O, +R] { self =>
   def handleErrorWith[F2[x] >: F[x], O2 >: O, R2 >: R](
       h: Throwable => Pull[F2, O2, R2]): Pull[F2, O2, R2] = new Pull[F2, O2, R2] {
 
-    private[fs2] def step[F3[x] >: F2[x]: Sync, O3 >: O2, R3 >: R2](
+    protected def step[F3[x] >: F2[x]: Sync, O3 >: O2, R3 >: R2](
         scope: Scope[F3]): F3[Either[R3, (Chunk[O3], Pull[F3, O3, R3])]] =
       self
         .step[F3, O3, R3](scope)
@@ -89,20 +114,54 @@ sealed trait Pull[+F[_], +O, +R] { self =>
     override def toString = s"HandleErrorWith($self, $h)"
   }
 
+  /** Applies the resource of this pull to `f` and returns the result in a new `Pull`. */
   def map[R2](f: R => R2): Pull[F, O, R2] = flatMap(r => Pull.pure(f(r)))
+
+  def mapConcat[F2[x] >: F[x], O2](f: O => Pull[F2, O2, Unit])(
+      implicit ev: R <:< Unit): Pull[F2, O2, Unit] =
+    new Pull[F2, O2, Unit] {
+
+      protected def step[F3[x] >: F2[x]: Sync, O3 >: O2, R2 >: Unit](
+          scope: Scope[F3]): F3[Either[R2, (Chunk[O3], Pull[F3, O3, R2])]] =
+        self.step(scope).flatMap {
+          case Right((hd, tl)) =>
+            tl match {
+              case _: Pull.Result[_] if hd.size == 1 =>
+                // nb: If tl is Pure, there's no need to propagate flatMap through the tail. Hence, we
+                // check if hd has only a single element, and if so, process it directly instead of folding.
+                // This allows recursive infinite streams of the form `def s: Stream[Pure,O] = Stream(o).flatMap { _ => s }`
+                f(hd(0)).step(scope)
+              case _ =>
+                def go(idx: Int): Pull[F3, O2, Unit] =
+                  if (idx == hd.size) tl.mapConcat(f)
+                  else f(hd(idx)) >> go(idx + 1) // TODO: handle interruption specifics here
+                go(0).step(scope)
+            }
+          case Left(_) => Either.left[R2, (Chunk[O3], Pull[F3, O3, R2])](()).pure[F3]
+        }
+
+      private[fs2] def translate[F3[x] >: F2[x], G[_]](g: F3 ~> G): Pull[G, O2, Unit] =
+        self.translate(g).mapConcat[G, O2](o => f(o).translate(g))
+
+      override def toString = s"MapConcat($self, $f)"
+    }
 
   /** Applies the outputs of this pull to `f` and returns the result in a new `Pull`. */
   def mapOutput[O2](f: O => O2): Pull[F, O2, R] = new Pull[F, O2, R] {
-    private[fs2] def step[F2[x] >: F[x]: Sync, O3 >: O2, R2 >: R](
+    protected def step[F2[x] >: F[x]: Sync, O3 >: O2, R2 >: R](
         scope: Scope[F2]): F2[Either[R2, (Chunk[O3], Pull[F2, O3, R2])]] =
       self.step(scope).map(_.map { case (hd, tl) => (hd.map(f), tl.mapOutput(f)) })
     private[fs2] def translate[F2[x] >: F[x], G[_]](g: F2 ~> G): Pull[G, O2, R] =
       self.translate(g).mapOutput(f)
   }
 
+  /** Run `p2` after `this`, regardless of errors during `this`, then reraise any errors encountered during `this`. */
+  def onComplete[F2[x] >: F[x], O2 >: O, R2 >: R](p2: => Pull[F2, O2, R2]): Pull[F2, O2, R2] =
+    handleErrorWith(e => p2 >> Pull.raiseErrorForce(e)) >> p2
+
   /** Tracks any resources acquired during this pull and releases them when the pull completes. */
   def scope: Pull[F, O, R] = new Pull[F, O, R] {
-    private[fs2] def step[F2[x] >: F[x], O2 >: O, R2 >: R](scope: Scope[F2])(
+    protected def step[F2[x] >: F[x], O2 >: O, R2 >: R](scope: Scope[F2])(
         implicit F: Sync[F2]): F2[Either[R2, (Chunk[O2], Pull[F2, O2, R2])]] =
       scope.open.flatMap(childScope => self.stepWith(childScope.id).step(childScope))
 
@@ -113,7 +172,7 @@ sealed trait Pull[+F[_], +O, +R] { self =>
   }
 
   private[fs2] def stepWith(scopeId: Token): Pull[F, O, R] = new Pull[F, O, R] {
-    private[fs2] def step[F2[x] >: F[x], O2 >: O, R2 >: R](scope: Scope[F2])(
+    protected def step[F2[x] >: F[x], O2 >: O, R2 >: R](scope: Scope[F2])(
         implicit F: Sync[F2]): F2[Either[R2, (Chunk[O2], Pull[F2, O2, R2])]] =
       scope.findScope(scopeId).map(_.map(_ -> true).getOrElse(scope -> false)).flatMap {
         case (scope, closeAfterUse) =>
@@ -159,13 +218,15 @@ sealed trait Pull[+F[_], +O, +R] { self =>
     */
   def streamNoScope: Stream[F, O] = Stream.fromPull(map(_ => ()))
 
-  def uncons: Pull[F, INothing, Either[R, (Chunk[O], Pull[F, O, R])]] =
+  /**
+    * Steps this pull and returns the result as the result of a new pull.
+    * Note: this operation is private as `translate` is unsound.
+    */
+  private[fs2] def uncons: Pull[F, INothing, Either[R, (Chunk[O], Pull[F, O, R])]] =
     new Pull[F, INothing, Either[R, (Chunk[O], Pull[F, O, R])]] {
 
-      private[fs2] def step[F2[x] >: F[x],
-                            O2 >: INothing,
-                            R2 >: Either[R, (Chunk[O], Pull[F, O, R])]](scope: Scope[F2])(
-          implicit F: Sync[F2]): F2[Either[R2, (Chunk[O2], Pull[F2, O2, R2])]] =
+      protected def step[F2[x] >: F[x], O2 >: INothing, R2 >: Either[R, (Chunk[O], Pull[F, O, R])]](
+          scope: Scope[F2])(implicit F: Sync[F2]): F2[Either[R2, (Chunk[O2], Pull[F2, O2, R2])]] =
         self.step(scope).map(r => Left(r.asInstanceOf[R2]))
 
       private[fs2] def translate[F2[x] >: F[x], G[_]](
@@ -181,8 +242,9 @@ sealed trait Pull[+F[_], +O, +R] { self =>
       override def toString = s"Uncons($self)"
     }
 
+  /** Suppresses future calls to `translate`. Used in the implementation of [[uncons]]. */
   private def suppressTranslate: Pull[F, O, R] = new Pull[F, O, R] {
-    private[fs2] def step[F2[x] >: F[x], O2 >: O, R2 >: R](scope: Scope[F2])(
+    protected def step[F2[x] >: F[x], O2 >: O, R2 >: R](scope: Scope[F2])(
         implicit F: Sync[F2]): F2[Either[R2, (Chunk[O2], Pull[F2, O2, R2])]] =
       self.step(scope)
 
@@ -196,6 +258,31 @@ sealed trait Pull[+F[_], +O, +R] { self =>
 object Pull extends PullInstancesLowPriority {
 
   /**
+    * Acquire a resource within a `Pull`. The cleanup action will be run at the end
+    * of the scope which executes the returned `Pull`. The acquired
+    * resource is returned as the result value of the pull.
+    */
+  def acquire[F[_], R](resource: F[R])(release: R => F[Unit]): Pull[F, INothing, R] =
+    acquireCase(resource)((r, ec) => release(r))
+
+  def acquireCase[F[_], R](resource: F[R])(
+      release: (R, ExitCase[Throwable]) => F[Unit]): Pull[F, INothing, R] =
+    new Pull[F, INothing, R] {
+
+      protected def step[F2[x] >: F[x], O2 >: INothing, R2 >: R](scope: Scope[F2])(
+          implicit F: Sync[F2]): F2[Either[R2, (Chunk[O2], Pull[F2, O2, R2])]] =
+        scope.acquire(resource, release).flatMap {
+          case Right(rt) => F.pure(Left(rt))
+          case Left(t)   => F.raiseError(t)
+        }
+
+      private[fs2] def translate[F2[x] >: F[x], G[_]](f: F2 ~> G): Pull[G, INothing, R] =
+        acquireCase[G, R](f(resource))((r, ec) => f(release(r, ec)))
+
+      override def toString = s"Acquire($resource, $release)"
+    }
+
+  /**
     * Like [[eval]] but if the effectful value fails, the exception is returned in a `Left`
     * instead of failing the pull.
     */
@@ -204,33 +291,12 @@ object Pull extends PullInstancesLowPriority {
       .map(r => Right(r): Either[Throwable, R])
       .handleErrorWith(t => pure[F, Either[Throwable, R]](Left(t)))
 
+  /** The completed `Pull`. Reads and outputs nothing. */
   val done: Pull[Pure, INothing, Unit] = pure(())
 
-  def pure[F[x] >: Pure[x], R](r: R): Pull[F, INothing, R] = new Result[R](r)
-
-  private[fs2] final class Result[R](r: R) extends Pull[Pure, INothing, R] {
-    private[fs2] def step[F2[x] >: Pure[x], O2 >: INothing, R2 >: R](scope: Scope[F2])(
-        implicit F: Sync[F2]): F2[Either[R2, (Chunk[O2], Pull[F2, O2, R2])]] =
-      F.pure(Either.left(r))
-    private[fs2] def translate[F2[x] >: Pure[x], G[_]](f: F2 ~> G): Pull[G, INothing, R] = this
-    override def toString = s"Result($r)"
-  }
-
-  def output1[F[x] >: Pure[x], O](o: O): Pull[F, O, Unit] = new Output(Chunk.singleton(o))
-
-  def output[F[x] >: Pure[x], O](os: Chunk[O]): Pull[F, O, Unit] =
-    if (os.isEmpty) done else new Output(os)
-
-  private final class Output[O](os: Chunk[O]) extends Pull[Pure, O, Unit] {
-    private[fs2] def step[F2[x] >: Pure[x], O2 >: O, R2 >: Unit](scope: Scope[F2])(
-        implicit F: Sync[F2]): F2[Either[R2, (Chunk[O2], Pull[F2, O2, R2])]] =
-      F.pure(Right((os, done)))
-    private[fs2] def translate[F2[x] >: Pure[x], G[_]](f: F2 ~> G): Pull[G, O, Unit] = this
-    override def toString = s"Output($os)"
-  }
-
+  /** Evaluates the supplied effectful value and returns the result as the resource of the returned pull. */
   def eval[F[_], R](fr: F[R]): Pull[F, INothing, R] = new Pull[F, INothing, R] {
-    private[fs2] def step[F2[x] >: F[x]: Sync, O2 >: INothing, R2 >: R](
+    protected def step[F2[x] >: F[x]: Sync, O2 >: INothing, R2 >: R](
         scope: Scope[F2]): F2[Either[R2, (Chunk[O2], Pull[F2, O2, R2])]] =
       (fr: F2[R]).map(Left(_))
     private[fs2] def translate[F2[x] >: F[x], G[_]](f: F2 ~> G): Pull[G, INothing, R] =
@@ -239,80 +305,27 @@ object Pull extends PullInstancesLowPriority {
   }
 
   /**
-    * Repeatedly uses the output of the pull as input for the next step of the pull.
-    * Halts when a step terminates with `None` or `Pull.raiseError`.
+    * Lifts an Either[Throwable, A] to an effectful Pull[F, A, Unit].
+    *
+    * @example {{{
+    * scala> import cats.effect.IO, scala.util.Try
+    * scala> Pull.fromEither[IO](Right(42)).stream.compile.toList.unsafeRunSync()
+    * res0: List[Int] = List(42)
+    * scala> Try(Pull.fromEither[IO](Left(new RuntimeException)).stream.compile.toList.unsafeRunSync())
+    * res1: Try[List[INothing]] = Failure(java.lang.RuntimeException)
+    * }}}
     */
-  def loop[F[_], O, R](using: R => Pull[F, O, Option[R]]): R => Pull[F, O, Option[R]] =
-    r => using(r).flatMap { _.map(loop(using)).getOrElse(Pull.pure(None)) }
+  def fromEither[F[_]]: PartiallyAppliedFromEither[F] = new PartiallyAppliedFromEither[F]
 
-  def raiseError[F[_]: RaiseThrowable](err: Throwable): Pull[F, INothing, INothing] =
-    new RaiseError(err)
-
-  private[fs2] def raiseErrorForce[F[_]](err: Throwable): Pull[F, INothing, INothing] =
-    new RaiseError(err)
-
-  private final class RaiseError[F[_]](err: Throwable) extends Pull[F, INothing, INothing] {
-    private[fs2] def step[F2[x] >: F[x], O2 >: INothing, R2 >: INothing](scope: Scope[F2])(
-        implicit F: Sync[F2]): F2[Either[R2, (Chunk[O2], Pull[F2, O2, R2])]] =
-      F.raiseError(err)
-
-    private[fs2] def translate[F2[x] >: F[x], G[_]](f: F2 ~> G): Pull[G, INothing, INothing] =
-      new RaiseError[G](err)
-
-    override def toString = s"RaiseError($err)"
+  final class PartiallyAppliedFromEither[F[_]] {
+    def apply[A](either: Either[Throwable, A])(implicit ev: RaiseThrowable[F]): Pull[F, A, Unit] =
+      either.fold(Pull.raiseError[F], Pull.output1)
   }
 
-  def suspend[F[_], O, R](p: => Pull[F, O, R]): Pull[F, O, R] = done >> p
+  /** Creates a pull that returns the current scope as its result. */
+  private[fs2] def getScope[F[_]]: Pull[F, INothing, Scope[F]] = new Pull[F, INothing, Scope[F]] {
 
-  def mapConcat[F[_], O, O2](p: Pull[F, O, Unit])(f: O => Pull[F, O2, Unit]): Pull[F, O2, Unit] =
-    new Pull[F, O2, Unit] {
-
-      private[fs2] def step[F2[x] >: F[x]: Sync, O3 >: O2, R2 >: Unit](
-          scope: Scope[F2]): F2[Either[R2, (Chunk[O3], Pull[F2, O3, R2])]] =
-        p.step(scope).flatMap {
-          case Right((hd, tl)) =>
-            tl match {
-              case _: Result[_] if hd.size == 1 =>
-                // nb: If tl is Pure, there's no need to propagate flatMap through the tail. Hence, we
-                // check if hd has only a single element, and if so, process it directly instead of folding.
-                // This allows recursive infinite streams of the form `def s: Stream[Pure,O] = Stream(o).flatMap { _ => s }`
-                f(hd(0)).step(scope)
-              case _ =>
-                def go(idx: Int): Pull[F2, O2, Unit] =
-                  if (idx == hd.size) mapConcat(tl)(f)
-                  else f(hd(idx)) >> go(idx + 1) // TODO: handle interruption specifics here
-                go(0).step(scope)
-            }
-          case Left(()) => Either.left[R2, (Chunk[O3], Pull[F2, O3, R2])](()).pure[F2]
-        }
-
-      private[fs2] def translate[F2[x] >: F[x], G[_]](g: F2 ~> G): Pull[G, O2, Unit] =
-        mapConcat[G, O, O2](p.translate(g))(o => f(o).translate(g))
-
-      override def toString = s"MapConcat($p, $f)"
-    }
-
-  private[fs2] def acquire[F[_], R](
-      resource: F[R],
-      release: (R, ExitCase[Throwable]) => F[Unit]): Pull[F, INothing, R] =
-    new Pull[F, INothing, R] {
-
-      private[fs2] def step[F2[x] >: F[x], O2 >: INothing, R2 >: R](scope: Scope[F2])(
-          implicit F: Sync[F2]): F2[Either[R2, (Chunk[O2], Pull[F2, O2, R2])]] =
-        scope.acquire(resource, release).flatMap {
-          case Right(rt) => F.pure(Left(rt))
-          case Left(t)   => F.raiseError(t)
-        }
-
-      private[fs2] def translate[F2[x] >: F[x], G[_]](f: F2 ~> G): Pull[G, INothing, R] =
-        acquire[G, R](f(resource), (r, ec) => f(release(r, ec)))
-
-      override def toString = s"Acquire($resource, $release)"
-    }
-
-  def getScope[F[_]]: Pull[F, INothing, Scope[F]] = new Pull[F, INothing, Scope[F]] {
-
-    private[fs2] def step[F2[x] >: F[x]: Sync, O2 >: INothing, R2 >: Scope[F]](
+    protected def step[F2[x] >: F[x]: Sync, O2 >: INothing, R2 >: Scope[F]](
         scope: Scope[F2]): F2[Either[R2, (Chunk[O2], Pull[F2, O2, R2])]] =
       Either
         .left[R2, (Chunk[O2], Pull[F2, O2, R2])](scope.asInstanceOf[Scope[F]])
@@ -323,6 +336,71 @@ object Pull extends PullInstancesLowPriority {
 
     override def toString = "GetScope"
   }
+
+  /**
+    * Repeatedly uses the output of the pull as input for the next step of the pull.
+    * Halts when a step terminates with `None` or `Pull.raiseError`.
+    */
+  def loop[F[_], O, R](using: R => Pull[F, O, Option[R]]): R => Pull[F, O, Option[R]] =
+    r => using(r).flatMap { _.map(loop(using)).getOrElse(Pull.pure(None)) }
+
+  /** Creates a pull that outputs a single value and returns a unit. */
+  def output1[F[x] >: Pure[x], O](o: O): Pull[F, O, Unit] = new Output(Chunk.singleton(o))
+
+  /** Creates a pull that outputs a single chunk and returns a unit. */
+  def output[F[x] >: Pure[x], O](os: Chunk[O]): Pull[F, O, Unit] =
+    if (os.isEmpty) done else new Output(os)
+
+  private final class Output[O](os: Chunk[O]) extends Pull[Pure, O, Unit] {
+    protected def step[F2[x] >: Pure[x], O2 >: O, R2 >: Unit](scope: Scope[F2])(
+        implicit F: Sync[F2]): F2[Either[R2, (Chunk[O2], Pull[F2, O2, R2])]] =
+      F.pure(Right((os, done)))
+    private[fs2] def translate[F2[x] >: Pure[x], G[_]](f: F2 ~> G): Pull[G, O, Unit] = this
+    override def toString = s"Output($os)"
+  }
+
+  /** Pull that outputs nothing and has result of `r`. */
+  def pure[F[x] >: Pure[x], R](r: R): Pull[F, INothing, R] = new Result[R](r)
+
+  private[fs2] final class Result[R](r: R) extends Pull[Pure, INothing, R] {
+    protected def step[F2[x] >: Pure[x], O2 >: INothing, R2 >: R](scope: Scope[F2])(
+        implicit F: Sync[F2]): F2[Either[R2, (Chunk[O2], Pull[F2, O2, R2])]] =
+      F.pure(Either.left(r))
+    private[fs2] def translate[F2[x] >: Pure[x], G[_]](f: F2 ~> G): Pull[G, INothing, R] = this
+    override def toString = s"Result($r)"
+  }
+
+  /**
+    * Creates a pull that outputs nothing and fails with the given error.
+    *
+    * The `F` type must be explicitly provided (e.g., via `raiseError[IO]` or `raiseError[Fallible]`).
+    */
+  def raiseError[F[_]: RaiseThrowable](err: Throwable): Pull[F, INothing, INothing] =
+    new RaiseError(err)
+
+  /**
+    * Alternative to `raiseError` which does not require a `RaiseThrowable` constraint on `F`.
+    * Used internal to propagate caught errors.
+    */
+  private[fs2] def raiseErrorForce[F[_]](err: Throwable): Pull[F, INothing, INothing] =
+    new RaiseError(err)
+
+  private final class RaiseError[F[_]](err: Throwable) extends Pull[F, INothing, INothing] {
+    protected def step[F2[x] >: F[x], O2 >: INothing, R2 >: INothing](scope: Scope[F2])(
+        implicit F: Sync[F2]): F2[Either[R2, (Chunk[O2], Pull[F2, O2, R2])]] =
+      F.raiseError(err)
+
+    private[fs2] def translate[F2[x] >: F[x], G[_]](f: F2 ~> G): Pull[G, INothing, INothing] =
+      new RaiseError[G](err)
+
+    override def toString = s"RaiseError($err)"
+  }
+
+  /**
+    * Returns a pull that evaluates the supplied by-name each time the pull is used,
+    * allowing use of a mutable value in pull computations.
+    */
+  def suspend[F[_], O, R](p: => Pull[F, O, R]): Pull[F, O, R] = done >> p
 
   /** `Sync` instance for `Pull`. */
   implicit def syncInstance[F[_], O](
