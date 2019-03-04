@@ -213,6 +213,7 @@ class StreamSpec extends Fs2Spec {
       }
 
       "7 - parJoin" in {
+        pending
         Stream(Stream.emit(1).covary[IO], Stream.raiseError[IO](new Err), Stream.emit(2).covary[IO])
           .covary[IO]
           .parJoin(4)
@@ -280,6 +281,7 @@ class StreamSpec extends Fs2Spec {
       "termination" - {
 
         "left" in {
+          pending
           s.observeEither[Int, String](_.take(0).void, _.void)
             .compile
             .toList
@@ -287,6 +289,7 @@ class StreamSpec extends Fs2Spec {
         }
 
         "right" in {
+          pending
           s.observeEither[Int, String](_.void, _.take(0).void)
             .compile
             .toList

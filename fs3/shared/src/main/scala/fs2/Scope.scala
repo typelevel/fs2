@@ -114,7 +114,8 @@ final class Scope[F[_]] private (private[fs2] val id: Token,
         }
 
   def lease: F[Option[Scope.Lease[F]]] = ???
-  def interrupt(cause: Either[Throwable, Unit]): F[Unit] = ???
+  def interrupt(cause: Either[Throwable, Unit])(implicit F: Applicative[F]): F[Unit] =
+    F.unit // TODO
 }
 
 object Scope {
