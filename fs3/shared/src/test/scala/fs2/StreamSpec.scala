@@ -225,6 +225,64 @@ class StreamSpec extends Fs2Spec {
       }
     }
 
+    "interleave" - {
+      "interleave left/right side infinite" in {
+        val ones = Stream.constant("1")
+        val s = Stream("A", "B", "C")
+        ones.interleave(s).toList shouldBe List("1", "A", "1", "B", "1", "C")
+        s.interleave(ones).toList shouldBe List("A", "1", "B", "1", "C", "1")
+      }
+
+      "interleave both side infinite" in {
+        val ones = Stream.constant("1")
+        val as = Stream.constant("A")
+        ones.interleave(as).take(3).toList shouldBe List("1", "A", "1")
+        as.interleave(ones).take(3).toList shouldBe List("A", "1", "A")
+      }
+
+      "interleaveAll left/right side infinite" in {
+        val ones = Stream.constant("1")
+        val s = Stream("A", "B", "C")
+        ones.interleaveAll(s).take(9).toList shouldBe List("1",
+                                                           "A",
+                                                           "1",
+                                                           "B",
+                                                           "1",
+                                                           "C",
+                                                           "1",
+                                                           "1",
+                                                           "1")
+        s.interleaveAll(ones).take(9).toList shouldBe List("A",
+                                                           "1",
+                                                           "B",
+                                                           "1",
+                                                           "C",
+                                                           "1",
+                                                           "1",
+                                                           "1",
+                                                           "1")
+      }
+
+      "interleaveAll both side infinite" in {
+        val ones = Stream.constant("1")
+        val as = Stream.constant("A")
+        ones.interleaveAll(as).take(3).toList shouldBe List("1", "A", "1")
+        as.interleaveAll(ones).take(3).toList shouldBe List("A", "1", "A")
+      }
+
+      // Uses a small scope to avoid using time to generate too large streams and not finishing
+      "interleave is equal to interleaveAll on infinite streams (by step-indexing)" in {
+        forAll(intsBetween(0, 100)) { (n: Int) =>
+          val ones = Stream.constant("1")
+          val as = Stream.constant("A")
+          ones.interleaveAll(as).take(n).toVector shouldBe ones
+            .interleave(as)
+            .take(n)
+            .toVector
+        }
+      }
+    }
+
     "iterate" in {
       Stream.iterate(0)(_ + 1).take(100).toList shouldBe List.iterate(0, 100)(_ + 1)
     }
