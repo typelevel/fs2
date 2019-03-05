@@ -418,26 +418,29 @@ class StreamSpec extends Fs2Spec {
             .asserting(_ shouldBe s.toList)
       }
 
-      // "interrupt (11)" in forAll { (s1: PureStream[Int]) =>
-      //   val barrier = Semaphore[IO](0).unsafeRunSync()
-      //   val enableInterrupt = Semaphore[IO](0).unsafeRunSync()
-      //   val interruptedS1 = s1.get.covary[IO].evalMap { i =>
-      //     // enable interruption and hang when hitting a value divisible by 7
-      //     if (i % 7 == 0) enableInterrupt.release.flatMap { _ =>
-      //       barrier.acquire.as(i)
-      //     } else IO.pure(i)
-      //   }
-      //   val interrupt = Stream.eval(enableInterrupt.acquire).flatMap { _ =>
-      //     Stream.emit(false)
-      //   }
-      //   val out = runLog {
-      //     interruptedS1.interruptWhen(interrupt)
-      //   }
-      //   // as soon as we hit a value divisible by 7, we enable interruption then hang before emitting it,
-      //   // so there should be no elements in the output that are divisible by 7
-      //   // this also checks that interruption works fine even if one or both streams are in a hung state
-      //   assert(out.forall(i => i % 7 != 0))
-      // }
+      "11 - both streams hung" in forAll { (s: Stream[Pure, Int]) =>
+        Stream
+          .eval(Semaphore[IO](0))
+          .flatMap { barrier =>
+            Stream.eval(Semaphore[IO](0)).flatMap { enableInterrupt =>
+              val interrupt = Stream.eval(enableInterrupt.acquire) >> Stream.emit(false)
+              s.covary[IO].evalMap { i =>
+                // enable interruption and hang when hitting a value divisible by 7
+                if (i % 7 == 0) enableInterrupt.release.flatMap { _ =>
+                  barrier.acquire.as(i)
+                } else IO.pure(i)
+              }.interruptWhen(interrupt)
+            }
+          }
+          .compile
+          .toList
+          .asserting { result =>
+            // as soon as we hit a value divisible by 7, we enable interruption then hang before emitting it,
+            // so there should be no elements in the output that are divisible by 7
+            // this also checks that interruption works fine even if one or both streams are in a hung state
+            result.forall(i => i % 7 != 0) shouldBe true
+          }
+      }
 
       // "interrupt (12)" in forAll { (s1: PureStream[Int]) =>
       //   // tests interruption of stream that never terminates in flatMap
