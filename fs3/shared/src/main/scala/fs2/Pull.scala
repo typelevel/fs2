@@ -4,21 +4,6 @@ import cats._
 import cats.implicits._
 import cats.effect._
 
-private[fs2] sealed abstract class StepResult[F[_], O, R]
-private[fs2] object StepResult {
-  final case class Done[F[_], O, R](result: R) extends StepResult[F, O, R]
-  final case class Output[F[_], O, R](head: Chunk[O], tail: Pull[F, O, R])
-      extends StepResult[F, O, R]
-  final case class Interrupted[F[_], O, R](scopeId: Token, err: Option[Throwable])
-      extends StepResult[F, O, R]
-
-  def done[F[_], O, R](result: R): StepResult[F, O, R] = Done(result)
-  def output[F[_], O, R](head: Chunk[O], tail: Pull[F, O, R]): StepResult[F, O, R] =
-    Output(head, tail)
-  def interrupted[F[_], O, R](scopeId: Token, err: Option[Throwable]): StepResult[F, O, R] =
-    Interrupted(scopeId, err)
-}
-
 /**
   * A `p: Pull[F,O,R]` reads values from one or more streams, outputs values of type `O`,
   * and returns a result of type `R`.
@@ -86,7 +71,7 @@ sealed trait Pull[+F[_], +O, +R] { self =>
       case StepResult.Output(hd, tl) =>
         tl.compileWithScope[F2, R2, S](scope, f(initial, hd))(f)
       case StepResult.Done(r) => (initial, Some(r: R2): Option[R2]).pure[F2]
-      case StepResult.Interrupted(scopeId, err) =>
+      case StepResult.Interrupted(err) =>
         err match {
           case None    => Sync[F2].pure((initial, None))
           case Some(e) => Sync[F2].raiseError(e)
@@ -117,8 +102,8 @@ sealed trait Pull[+F[_], +O, +R] { self =>
           case StepResult.Output(hd, tl) =>
             StepResult.output[F3, O3, R3](hd, tl.flatMap(f)).pure[F3]
           case StepResult.Done(r) => f(r).step(scope)
-          case StepResult.Interrupted(scopeId, err) =>
-            StepResult.interrupted[F3, O3, R3](scopeId, err).pure[F3]
+          case StepResult.Interrupted(err) =>
+            StepResult.interrupted[F3, O3, R3](err).pure[F3]
         }
 
       private[fs2] def translate[F3[x] >: F2[x], G[_]](g: F3 ~> G): Pull[G, O2, R2] =
@@ -156,8 +141,8 @@ sealed trait Pull[+F[_], +O, +R] { self =>
                 go(0).step(scope)
             }
           case StepResult.Done(_) => StepResult.done[F3, O3, R2](()).pure[F3]
-          case StepResult.Interrupted(scopeId, err) =>
-            StepResult.interrupted[F3, O3, R2](scopeId, err).pure[F3]
+          case StepResult.Interrupted(err) =>
+            StepResult.interrupted[F3, O3, R2](err).pure[F3]
         }
 
       private[fs2] def translate[F3[x] >: F2[x], G[_]](g: F3 ~> G): Pull[G, O2, Unit] =
@@ -177,8 +162,8 @@ sealed trait Pull[+F[_], +O, +R] { self =>
         .map {
           case StepResult.Output(hd, tl) => StepResult.output[F3, O3, R3](hd, tl.handleErrorWith(h))
           case StepResult.Done(r)        => StepResult.done[F3, O3, R3](r)
-          case StepResult.Interrupted(scopeId, err) =>
-            StepResult.interrupted[F3, O3, R3](scopeId, err)
+          case StepResult.Interrupted(err) =>
+            StepResult.interrupted[F3, O3, R3](err)
         }
         .handleErrorWith(t => h(t).step[F3, O3, R3](scope))
 
@@ -196,9 +181,9 @@ sealed trait Pull[+F[_], +O, +R] { self =>
     protected def step[F2[x] >: F[x]: Sync, O3 >: O2, R2 >: R](
         scope: Scope[F2]): F2[StepResult[F2, O3, R2]] =
       self.step(scope).map {
-        case StepResult.Output(hd, tl)            => StepResult.output(hd.map(f), tl.mapOutput(f))
-        case StepResult.Done(r)                   => StepResult.done(r)
-        case StepResult.Interrupted(scopeId, err) => StepResult.interrupted(scopeId, err)
+        case StepResult.Output(hd, tl)   => StepResult.output(hd.map(f), tl.mapOutput(f))
+        case StepResult.Done(r)          => StepResult.done(r)
+        case StepResult.Interrupted(err) => StepResult.interrupted(err)
       }
     private[fs2] def translate[F2[x] >: F[x], G[_]](g: F2 ~> G): Pull[G, O2, R] =
       self.translate(g).mapOutput(f)
@@ -234,8 +219,8 @@ sealed trait Pull[+F[_], +O, +R] { self =>
                   .closeAndThrow(ExitCase.Completed)
                   .as(StepResult.done[F2, O2, R2](r))
               else StepResult.done[F2, O2, R2](r).pure[F2]
-            case StepResult.Interrupted(scopeId, err) =>
-              StepResult.interrupted[F2, O2, R2](scopeId, err).pure[F2]
+            case StepResult.Interrupted(err) =>
+              StepResult.interrupted[F2, O2, R2](err).pure[F2]
           } {
             case (_, ExitCase.Completed) => F.unit
             case (_, other)              => if (closeAfterUse) scope.closeAndThrow(other) else F.unit
@@ -281,8 +266,8 @@ sealed trait Pull[+F[_], +O, +R] { self =>
           case StepResult.Output(hd, tl) =>
             StepResult.done[F2, O2, R2](Right((hd, tl)).asInstanceOf[R2])
           case StepResult.Done(r) => StepResult.done[F2, O2, R2](Left(r))
-          case StepResult.Interrupted(scopeId, err) =>
-            StepResult.interrupted[F2, O2, R2](scopeId, err)
+          case StepResult.Interrupted(err) =>
+            StepResult.interrupted[F2, O2, R2](err)
         }
 
       private[fs2] def translate[F2[x] >: F[x], G[_]](
