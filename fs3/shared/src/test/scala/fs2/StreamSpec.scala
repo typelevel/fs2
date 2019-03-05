@@ -220,8 +220,9 @@ class StreamSpec extends Fs2Spec {
           .attempt
           .compile
           .toVector
-          .asserting(
-            _.collect { case Left(t) => t }.find(_.isInstanceOf[Err]).isDefined shouldBe true)
+          .asserting(_.collect { case Left(t) => t }
+            .find(_.isInstanceOf[Err])
+            .isDefined shouldBe true)
       }
     }
 
@@ -326,103 +327,96 @@ class StreamSpec extends Fs2Spec {
           .repeatTest(interruptRepeatCount)
       }
 
-      // "interrupt (4)" in {
-      //   // tests the interruption of the constant stream with flatMap combinator
-      //   (1 until interruptN).foreach { _ =>
-      //     val interrupt =
-      //       Stream.sleep_[IO](20.millis).compile.drain.attempt
-      //     runLog(
-      //       Stream
-      //         .constant(true)
-      //         .covary[IO]
-      //         .interruptWhen(interrupt)
-      //         .flatMap(_ => Stream.emit(1))
-      //         .drain)
-      //   }
-      // }
+      "4 - interruption of constant stream with a flatMap" in {
+        val interrupt =
+          Stream.sleep_[IO](20.millis).compile.drain.attempt
+        Stream
+          .constant(true)
+          .covary[IO]
+          .interruptWhen(interrupt)
+          .flatMap(_ => Stream.emit(1))
+          .compile
+          .drain
+          .assertNoException
+          .repeatTest(interruptRepeatCount)
+      }
 
-      // "interrupt (5)" in {
-      //   // tests the interruption of the stream that recurses infinitelly
-      //   (1 until interruptN).foreach { _ =>
-      //     val interrupt =
-      //       Stream.sleep_[IO](20.millis).compile.drain.attempt
+      "5 - interruption of an infinitely recursive stream" in {
+        val interrupt =
+          Stream.sleep_[IO](20.millis).compile.drain.attempt
 
-      //     def loop(i: Int): Stream[IO, Int] = Stream.emit(i).covary[IO].flatMap { i =>
-      //       Stream.emit(i) ++ loop(i + 1)
-      //     }
+        def loop(i: Int): Stream[IO, Int] = Stream.emit(i).covary[IO].flatMap { i =>
+          Stream.emit(i) ++ loop(i + 1)
+        }
 
-      //     runLog(loop(0).interruptWhen(interrupt).drain)
-      //   }
-      // }
+        loop(0)
+          .interruptWhen(interrupt)
+          .compile
+          .drain
+          .assertNoException
+          .repeatTest(interruptRepeatCount)
+      }
 
-      // "interrupt (6)" in {
-      //   // tests the interruption of the stream that recurse infinitely and never emits
-      //   (1 until interruptN).foreach { _ =>
-      //     val interrupt =
-      //       Stream.sleep_[IO](20.millis).compile.drain.attempt
+      "6 - interruption of an infinitely recursive stream that never emits" in {
+        val interrupt =
+          Stream.sleep_[IO](20.millis).compile.drain.attempt
 
-      //     def loop: Stream[IO, Int] =
-      //       Stream
-      //         .eval(IO {
-      //           ()
-      //         })
-      //         .flatMap { _ =>
-      //           loop
-      //         }
+        def loop: Stream[IO, Int] =
+          Stream.eval(IO.unit) >> loop
 
-      //     runLog(loop.interruptWhen(interrupt).drain)
-      //   }
-      // }
+        loop
+          .interruptWhen(interrupt)
+          .compile
+          .drain
+          .assertNoException
+          .repeatTest(interruptRepeatCount)
+      }
 
-      // "interrupt (7)" in {
-      //   (1 until interruptN).foreach { _ =>
-      //     // tests the interruption of the stream that recurse infinitely, is pure and never emits
-      //     val interrupt =
-      //       Stream.sleep_[IO](20.millis).compile.drain.attempt
+      "7 - interruption of an infinitely recursive stream that never emits and has no eval" in {
+        val interrupt = Stream.sleep_[IO](20.millis).compile.drain.attempt
+        def loop: Stream[IO, Int] = Stream.emit(()).covary[IO] >> loop
+        loop
+          .interruptWhen(interrupt)
+          .compile
+          .drain
+          .assertNoException
+          .repeatTest(interruptRepeatCount)
+      }
 
-      //     def loop: Stream[IO, Int] = Stream.emit(()).covary[IO].flatMap { _ =>
-      //       loop
-      //     }
+      "8 - interruption of a stream that repeatedly evaluates" in {
+        val interrupt =
+          Stream.sleep_[IO](20.millis).compile.drain.attempt
+        Stream
+          .repeatEval(IO.unit)
+          .interruptWhen(interrupt)
+          .compile
+          .drain
+          .assertNoException
+          .repeatTest(interruptRepeatCount)
+      }
 
-      //     runLog(loop.interruptWhen(interrupt).drain)
-      //   }
-      // }
+      "9 - interruption of the constant drained stream" in {
+        val interrupt =
+          Stream.sleep_[IO](1.millis).compile.drain.attempt
+        Stream
+          .constant(true)
+          .dropWhile(!_)
+          .covary[IO]
+          .interruptWhen(interrupt)
+          .compile
+          .drain
+          .assertNoException
+          .repeatTest(interruptRepeatCount)
+      }
 
-      // "interrupt (8)" in {
-      //   (1 until interruptN).foreach { _ =>
-      //     // tests the interruption of the stream that repeatedly evaluates
-      //     val interrupt =
-      //       Stream.sleep_[IO](20.millis).compile.drain.attempt
-      //     runLog(
-      //       Stream
-      //         .repeatEval(IO.unit)
-      //         .interruptWhen(interrupt)
-      //         .drain)
-      //   }
-      // }
-
-      // "interrupt (9)" in {
-      //   // tests the interruption of the constant drained stream
-      //   (1 until interruptN).foreach { _ =>
-      //     val interrupt =
-      //       Stream.sleep_[IO](1.millis).compile.drain.attempt
-      //     runLog(
-      //       Stream
-      //         .constant(true)
-      //         .dropWhile(!_)
-      //         .covary[IO]
-      //         .interruptWhen(interrupt)
-      //         .drain)
-      //   }
-      // }
-
-      // "interrupt (10)" in forAll { (s1: PureStream[Int]) =>
-      //   // tests that termination is successful even if interruption stream is infinitely false
-      //   runLog {
-      //     s1.get.covary[IO].interruptWhen(Stream.constant(false))
-      //   } shouldBe runLog(s1.get)
-
-      // }
+      "10 - terminates when interruption stream is infinitely false" in forAll {
+        (s: Stream[Pure, Int]) =>
+          s.covary[IO]
+            .interruptWhen(Stream.constant(false))
+            .compile
+            .toList
+            .asserting(_ shouldBe s.toList)
+      }
 
       // "interrupt (11)" in forAll { (s1: PureStream[Int]) =>
       //   val barrier = Semaphore[IO](0).unsafeRunSync()
@@ -698,7 +692,6 @@ class StreamSpec extends Fs2Spec {
       "termination" - {
 
         "left" in {
-          pending
           s.observeEither[Int, String](_.take(0).void, _.void)
             .compile
             .toList
@@ -706,7 +699,6 @@ class StreamSpec extends Fs2Spec {
         }
 
         "right" in {
-          pending
           s.observeEither[Int, String](_.void, _.take(0).void)
             .compile
             .toList
