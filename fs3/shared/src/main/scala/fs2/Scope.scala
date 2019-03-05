@@ -114,8 +114,19 @@ final class Scope[F[_]] private (private[fs2] val id: Token,
         }
 
   def lease: F[Option[Scope.Lease[F]]] = ???
+
   def interrupt(cause: Either[Throwable, Unit])(implicit F: Applicative[F]): F[Unit] =
     F.unit // TODO
+
+  /**
+    * Checks if current scope is interrupted.
+    * - `None` indicates the scope has not been interrupted.
+    * - `Some(Left(t))` indicates the scope was interrupted due to the exception `t`.
+    * - `Some(Right(token))` indicates the scope was interrupted and evaluation
+    *    should continue using the scope with the supplied token.
+    */
+  private[fs2] def isInterrupted(implicit F: Applicative[F]): F[Option[Either[Throwable, Token]]] =
+    F.pure(None)
 }
 
 object Scope {

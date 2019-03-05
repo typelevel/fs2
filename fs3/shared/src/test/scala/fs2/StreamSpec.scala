@@ -398,7 +398,6 @@ class StreamSpec extends Fs2Spec {
     }
 
     "scope" in {
-      pending // TODO
       // TODO This test should be replaced with one that shows proper usecase for .scope
       val c = new java.util.concurrent.atomic.AtomicLong(0)
       val s1 = Stream.emit("a").covary[IO]
