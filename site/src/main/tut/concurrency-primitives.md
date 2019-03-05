@@ -118,9 +118,7 @@ object PubSub extends IOApp {
       topic     <- Stream.eval(Topic[IO, Event](Text("")))
       signal    <- Stream.eval(SignallingRef[IO, Boolean](false))
       service   = new EventService[IO](topic, signal)
-      _         <- Stream(
-                    service.startPublisher.concurrently(service.startSubscribers)
-                 ).parJoin(2).drain
+      _         <- service.startPublisher.concurrently(service.startSubscribers).drain
     } yield ()
     stream.compile.drain.as(ExitCode.Success)
   }
