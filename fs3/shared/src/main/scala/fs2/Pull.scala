@@ -33,6 +33,14 @@ sealed trait Pull[+F[_], +O, +R] { self =>
   protected def step[F2[x] >: F[x]: Sync, O2 >: O, R2 >: R](
       scope: Scope[F2]): F2[StepResult[F2, O2, R2]]
 
+  /** Checks if the scope has been interrupted before running the `ifNotInterrupted` task. */
+  protected def checkForInterrupt[F2[x] >: F[x]: Sync, O2 >: O, R2 >: R](scope: Scope[F2])(
+      ifNotInterrupted: F2[StepResult[F2, O2, R2]]): F2[StepResult[F2, O2, R2]] =
+    scope.isInterrupted.flatMap {
+      case None    => ifNotInterrupted
+      case Some(e) => StepResult.interrupted(e).pure[F2]
+    }
+
   /** Alias for `map(_ => r2)`. */
   final def as[R2](r2: R2): Pull[F, O, R2] = map(_ => r2)
 
@@ -56,7 +64,7 @@ sealed trait Pull[+F[_], +O, +R] { self =>
   private[fs2] final def compileAsResource[F2[x] >: F[x], R2 >: R, S](initial: S)(
       f: (S, Chunk[O]) => S)(implicit F: Sync[F2]): Resource[F2, (S, Option[R2])] =
     Resource
-      .makeCase(F.delay(Scope.unsafe[F2](None)))((scope, ec) => scope.closeAndThrow(ec))
+      .makeCase(F.delay(Scope.unsafe[F2](None, None)))((scope, ec) => scope.closeAndThrow(ec))
       .flatMap { scope =>
         Resource.liftF(compileWithScope[F2, R2, S](scope, initial)(f))
       }
@@ -98,12 +106,14 @@ sealed trait Pull[+F[_], +O, +R] { self =>
     new Pull[F2, O2, R2] {
       protected def step[F3[x] >: F2[x]: Sync, O3 >: O2, R3 >: R2](
           scope: Scope[F3]): F3[StepResult[F3, O3, R3]] =
-        self.step(scope).flatMap {
-          case StepResult.Output(hd, tl) =>
-            StepResult.output[F3, O3, R3](hd, tl.flatMap(f)).pure[F3]
-          case StepResult.Done(r) => f(r).step(scope)
-          case StepResult.Interrupted(err) =>
-            StepResult.interrupted[F3, O3, R3](err).pure[F3]
+        checkForInterrupt[F3, O3, R3](scope) {
+          self.step(scope).flatMap {
+            case StepResult.Output(hd, tl) =>
+              StepResult.output[F3, O3, R3](hd, tl.flatMap(f)).pure[F3]
+            case StepResult.Done(r) => f(r).step(scope)
+            case StepResult.Interrupted(err) =>
+              StepResult.interrupted[F3, O3, R3](err).pure[F3]
+          }
         }
 
       private[fs2] def translate[F3[x] >: F2[x], G[_]](g: F3 ~> G): Pull[G, O2, R2] =
@@ -126,23 +136,25 @@ sealed trait Pull[+F[_], +O, +R] { self =>
 
       protected def step[F3[x] >: F2[x]: Sync, O3 >: O2, R2 >: Unit](
           scope: Scope[F3]): F3[StepResult[F3, O3, R2]] =
-        self.step(scope).flatMap {
-          case StepResult.Output(hd, tl) =>
-            tl match {
-              case _: Pull.Result[_] if hd.size == 1 =>
-                // nb: If tl is Pure, there's no need to propagate flatMap through the tail. Hence, we
-                // check if hd has only a single element, and if so, process it directly instead of folding.
-                // This allows recursive infinite streams of the form `def s: Stream[Pure,O] = Stream(o).flatMap { _ => s }`
-                f(hd(0)).step(scope)
-              case _ =>
-                def go(idx: Int): Pull[F3, O2, Unit] =
-                  if (idx == hd.size) tl.flatMapOutput(f)
-                  else f(hd(idx)) >> go(idx + 1)
-                go(0).step(scope)
-            }
-          case StepResult.Done(_) => StepResult.done[F3, O3, R2](()).pure[F3]
-          case StepResult.Interrupted(err) =>
-            StepResult.interrupted[F3, O3, R2](err).pure[F3]
+        checkForInterrupt[F3, O3, R2](scope) {
+          self.step(scope).flatMap {
+            case StepResult.Output(hd, tl) =>
+              tl match {
+                case _: Pull.Result[_] if hd.size == 1 =>
+                  // nb: If tl is Pure, there's no need to propagate flatMap through the tail. Hence, we
+                  // check if hd has only a single element, and if so, process it directly instead of folding.
+                  // This allows recursive infinite streams of the form `def s: Stream[Pure,O] = Stream(o).flatMap { _ => s }`
+                  f(hd(0)).step(scope)
+                case _ =>
+                  def go(idx: Int): Pull[F3, O2, Unit] =
+                    if (idx == hd.size) tl.flatMapOutput(f)
+                    else f(hd(idx)) >> go(idx + 1)
+                  go(0).step(scope)
+              }
+            case StepResult.Done(_) => StepResult.done[F3, O3, R2](()).pure[F3]
+            case StepResult.Interrupted(err) =>
+              StepResult.interrupted[F3, O3, R2](err).pure[F3]
+          }
         }
 
       private[fs2] def translate[F3[x] >: F2[x], G[_]](g: F3 ~> G): Pull[G, O2, Unit] =
@@ -194,16 +206,24 @@ sealed trait Pull[+F[_], +O, +R] { self =>
     handleErrorWith(e => p2 >> Pull.raiseErrorForce(e)) >> p2
 
   /** Tracks any resources acquired during this pull and releases them when the pull completes. */
-  def scope: Pull[F, O, R] = new Pull[F, O, R] {
-    protected def step[F2[x] >: F[x], O2 >: O, R2 >: R](scope: Scope[F2])(
-        implicit F: Sync[F2]): F2[StepResult[F2, O2, R2]] =
-      scope.open.flatMap(childScope => self.stepWith(childScope.id).step(childScope))
+  def scope: Pull[F, O, R] = scope_(None)
 
-    private[fs2] def translate[F2[x] >: F[x], G[_]](f: F2 ~> G): Pull[G, O, R] =
-      self.translate(f).scope
+  private[fs2] def interruptScope[F2[x] >: F[x]](implicit F: Concurrent[F2]): Pull[F2, O, R] =
+    scope_(Some(F))
 
-    override def toString = s"Scope($self)"
-  }
+  private def scope_[F2[x] >: F[x]](concurrent: Option[Concurrent[F2]]): Pull[F2, O, R] =
+    new Pull[F2, O, R] {
+      protected def step[F3[x] >: F2[x], O2 >: O, R2 >: R](scope: Scope[F3])(
+          implicit F: Sync[F3]): F3[StepResult[F3, O2, R2]] =
+        scope
+          .open(concurrent.asInstanceOf[Option[Concurrent[F3]]])
+          .flatMap(childScope => self.stepWith(childScope.id).step(childScope))
+
+      private[fs2] def translate[F3[x] >: F2[x], G[_]](f: F3 ~> G): Pull[G, O, R] =
+        self.translate(f).scope
+
+      override def toString = s"Scope($concurrent, $self)"
+    }
 
   private[fs2] def stepWith(scopeId: Token): Pull[F, O, R] = new Pull[F, O, R] {
     protected def step[F2[x] >: F[x], O2 >: O, R2 >: R](scope: Scope[F2])(
@@ -340,7 +360,13 @@ object Pull extends PullInstancesLowPriority {
   def eval[F[_], R](fr: F[R]): Pull[F, INothing, R] = new Pull[F, INothing, R] {
     protected def step[F2[x] >: F[x]: Sync, O2 >: INothing, R2 >: R](
         scope: Scope[F2]): F2[StepResult[F2, O2, R2]] =
-      (fr: F2[R]).map(StepResult.done(_))
+      checkForInterrupt[F2, O2, R2](scope) {
+        scope.interruptibleEval(fr).flatMap {
+          case Right(res) =>
+            res.fold(Sync[F2].raiseError(_), r => StepResult.done[F2, O2, R2](r).pure[F2])
+          case Left(err) => StepResult.interrupted(err).pure[F2]
+        }
+      }
     private[fs2] def translate[F2[x] >: F[x], G[_]](f: F2 ~> G): Pull[G, INothing, R] =
       eval(f(fr))
     override def toString = s"Eval($fr)"

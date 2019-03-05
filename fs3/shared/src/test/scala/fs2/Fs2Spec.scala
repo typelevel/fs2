@@ -2,7 +2,7 @@ package fs2
 
 import scala.concurrent.duration._
 
-import cats.Functor
+import cats.{Functor, Monad}
 import cats.effect.{ContextShift, IO, Sync, Timer}
 import cats.implicits._
 
@@ -26,8 +26,9 @@ abstract class Fs2Spec
   implicit val timeout: FiniteDuration = 60.seconds
   val timeLimit: Span = timeout
 
-  implicit val timerIO: Timer[IO] = IO.timer(executionContext)
-  implicit val contextShiftIO: ContextShift[IO] = IO.contextShift(executionContext)
+  implicit val timerIO: Timer[IO] = IO.timer(scala.concurrent.ExecutionContext.Implicits.global)
+  implicit val contextShiftIO: ContextShift[IO] =
+    IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
 
   lazy val verbose: Boolean = sys.props.get("fs2.test.verbose").isDefined
 
@@ -76,5 +77,16 @@ abstract class Fs2Spec
           F.delay(
             fail(s"Expected an exception of type ${ct.runtimeClass.getName} but got a result: $a"))
       }
+  }
+
+  implicit class EffectfulAssertionOps[F[_]](private val self: F[Assertion]) {
+    def repeatTest(n: Int)(implicit F: Monad[F]): F[Assertion] =
+      if (n <= 0) F.pure(Succeeded)
+      else
+        self.flatMap {
+          case Succeeded => repeatTest(n - 1)
+          case other     => F.pure(other)
+        }
+
   }
 }

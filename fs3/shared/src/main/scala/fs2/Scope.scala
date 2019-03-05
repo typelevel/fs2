@@ -7,9 +7,13 @@ import cats.effect._
 import cats.effect.concurrent._
 import cats.effect.implicits._
 
-final class Scope[F[_]] private (private[fs2] val id: Token,
-                                 private val parent: Option[Scope[F]],
-                                 private[this] val state: Ref[F, Scope.State[F]]) {
+final class Scope[F[_]] private (
+    private[fs2] val id: Token,
+    private val parent: Option[Scope[F]],
+    private[this] val state: Ref[F, Scope.State[F]],
+    private[this] val interruptionContext: Option[Scope.InterruptionContext[F]]) {
+
+  override def toString = s"Scope($id, $parent, $interruptionContext)"
 
   private[fs2] def acquire[R](fr: F[R], release: (R, ExitCase[Throwable]) => F[Unit])(
       implicit F: Sync[F]): F[Either[Throwable, R]] =
@@ -29,25 +33,33 @@ final class Scope[F[_]] private (private[fs2] val id: Token,
       case Left(err) => F.pure(Left(err): Either[Throwable, R])
     }.uncancelable
 
-  private[fs2] def open(implicit F: Sync[F]): F[Scope[F]] =
-    state
-      .modify { s =>
-        if (s.open) {
-          val child = Scope.unsafe(Some(this))
-          (s.copy(children = child +: s.children), Some(child))
-        } else (s, None)
-      }
-      .flatMap {
-        case Some(child) => F.pure(child)
-        case None =>
-          parent match {
-            case Some(p) => p.open
-            case None =>
-              F.raiseError(
-                new IllegalStateException(
-                  "Root scope already closed so a new scope cannot be opened"))
-          }
-      }
+  private[fs2] def open(interruptible: Option[Concurrent[F]])(implicit F: Sync[F]): F[Scope[F]] = {
+    val newInterruptionContext: F[Option[Scope.InterruptionContext[F]]] =
+      interruptionContext
+        .map(_.open(interruptible).map(Option(_)))
+        .getOrElse(Scope.InterruptionContext.unsafeFromInterruptible(interruptible).pure[F])
+    newInterruptionContext.flatMap { ictx =>
+      state
+        .modify { s =>
+          if (s.open) {
+            val child = Scope.unsafe(Some(this), ictx)
+            (s.copy(children = child +: s.children), Some(child))
+          } else (s, None)
+        }
+        .flatMap {
+          case Some(child) =>
+            F.pure(child)
+          case None =>
+            parent match {
+              case Some(p) => p.open(interruptible)
+              case None =>
+                F.raiseError(
+                  new IllegalStateException(
+                    "Root scope already closed so a new scope cannot be opened"))
+            }
+        }
+    }
+  }
 
   private[fs2] def closeAndThrow(ec: ExitCase[Throwable])(implicit F: Sync[F]): F[Unit] =
     close(ec)
@@ -61,6 +73,7 @@ final class Scope[F[_]] private (private[fs2] val id: Token,
       previous <- state.modify(s => (Scope.State.closed[F], s))
       resultsChildren <- previous.children.flatTraverse(_.close(ec))
       resultsResources <- previous.resources.traverse(_.release(ec))
+      _ <- interruptionContext.map(_.cancelParent).getOrElse(F.unit)
       _ <- parent.fold(F.unit)(p => p.unregisterChild(id))
     } yield resultsChildren ++ resultsResources.collect { case Some(t) => t: Throwable }
 
@@ -115,25 +128,48 @@ final class Scope[F[_]] private (private[fs2] val id: Token,
 
   def lease: F[Option[Scope.Lease[F]]] = ???
 
-  def interrupt(cause: Either[Throwable, Unit])(implicit F: Applicative[F]): F[Unit] =
-    F.unit // TODO
+  def interrupt(cause: Option[Throwable])(implicit F: Sync[F]): F[Unit] =
+    interruptionContext match {
+      case Some(ictx) =>
+        ictx.deferred.complete(cause).guarantee(ictx.interrupted.update(_.orElse(Some(cause))))
+      case None =>
+        F.raiseError(
+          new IllegalStateException("cannot interrupt a scope that does not support interruption"))
+    }
 
   /**
     * Checks if current scope is interrupted.
     * - `None` indicates the scope has not been interrupted.
-    * - `Some(Left(t))` indicates the scope was interrupted due to the exception `t`.
-    * - `Some(Right(token))` indicates the scope was interrupted and evaluation
-    *    should continue using the scope with the supplied token.
+    * - `Some(None)` indicates the scope has not been interrupted.
+    * - `Some(Some(t))` indicates the scope was interrupted due to the exception `t`.
     */
-  private[fs2] def isInterrupted(implicit F: Applicative[F]): F[Option[Either[Throwable, Token]]] =
-    F.pure(None)
+  private[fs2] def isInterrupted(implicit F: Applicative[F]): F[Option[Option[Throwable]]] =
+    interruptionContext match {
+      case Some(ctx) => ctx.interrupted.get
+      case None      => F.pure(None)
+    }
+
+  /**
+    * Evaluates the supplied `fa` in a way that respects scope interruption.
+    * If the supplied value completes, its result is returned wrapped in a `Right`.
+    * If instead, the scope is interrupted while the task is running, a `Left` is returned
+    * indicating whether interruption occurred due to an error or not.
+    */
+  private[fs2] def interruptibleEval[A](fa: F[A])(
+      implicit F: MonadError[F, Throwable]): F[Either[Option[Throwable], Either[Throwable, A]]] =
+    interruptionContext match {
+      case None       => fa.attempt.map(Right(_))
+      case Some(ictx) => ictx.concurrent.race(ictx.deferred.get, fa.attempt)
+    }
 }
 
 object Scope {
 
-  private[fs2] def unsafe[F[_]: Sync](parent: Option[Scope[F]]): Scope[F] = {
+  private[fs2] def unsafe[F[_]: Sync](
+      parent: Option[Scope[F]],
+      interruptionContext: Option[InterruptionContext[F]]): Scope[F] = {
     val state = Ref.unsafe[F, State[F]](State.initial[F])
-    new Scope(new Token, parent, state)
+    new Scope(new Token, parent, state, interruptionContext)
   }
 
   private case class State[F[_]](
@@ -150,6 +186,45 @@ object Scope {
     private val closed_ =
       State[Pure](open = false, resources = Chain.empty, children = Chain.empty)
     def closed[F[_]]: State[F] = closed_.asInstanceOf[State[F]]
+  }
+
+  private case class InterruptionContext[F[_]](
+      concurrent: Concurrent[F],
+      interrupted: Ref[F, Option[Option[Throwable]]],
+      deferred: Deferred[F, Option[Throwable]],
+      cancelParent: F[Unit]
+  ) {
+    def open(interruptible: Option[Concurrent[F]])(implicit F: Sync[F]): F[InterruptionContext[F]] =
+      interruptible
+        .map { concurrent =>
+          concurrent.start(deferred.get).flatMap { fiber =>
+            val context = InterruptionContext[F](
+              concurrent = concurrent,
+              interrupted = Ref.unsafe[F, Option[Option[Throwable]]](None),
+              deferred = Deferred.unsafe[F, Option[Throwable]](concurrent),
+              cancelParent = fiber.cancel
+            )
+            val x = fiber.join.flatMap { interrupt =>
+              context.interrupted.update(_.orElse(Some(interrupt))) >>
+                context.deferred.complete(interrupt).attempt.void
+            }
+            concurrent.start(x).as(context)
+          }
+        }
+        .getOrElse(F.pure(copy(cancelParent = F.unit)))
+  }
+
+  private object InterruptionContext {
+    def unsafeFromInterruptible[F[_]](interruptible: Option[Concurrent[F]])(
+        implicit F: Sync[F]): Option[InterruptionContext[F]] =
+      interruptible.map { concurrent =>
+        InterruptionContext[F](
+          concurrent = concurrent,
+          interrupted = Ref.unsafe(None),
+          deferred = Deferred.unsafe(concurrent),
+          cancelParent = F.unit
+        )
+      }
   }
 
   abstract class Lease[F[_]] {

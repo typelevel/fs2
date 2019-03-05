@@ -1425,7 +1425,9 @@ final class Stream[+F[_], +O] private (private val asPull: Pull[F, O, Unit]) ext
     Stream
       .getScope[F2]
       .flatMap { scope =>
-        Stream.supervise(haltOnSignal.flatMap(scope.interrupt)) >> this
+        Stream.supervise(haltOnSignal.flatMap { e =>
+          scope.interrupt(e.swap.toOption)
+        }) >> this
       }
       .interruptScope
 
@@ -1433,8 +1435,7 @@ final class Stream[+F[_], +O] private (private val asPull: Pull[F, O, Unit]) ext
     * Creates a scope that may be interrupted by calling scope#interrupt.
     */
   def interruptScope[F2[x] >: F[x]: Concurrent]: Stream[F2, O] =
-    this // TODO
-  // Stream.fromFreeC(Algebra.interruptScope(get[F2, O]))
+    Stream.fromPull(asPull.interruptScope[F2])
 
   /**
     * Emits the specified separator between every pair of elements in the source stream.
