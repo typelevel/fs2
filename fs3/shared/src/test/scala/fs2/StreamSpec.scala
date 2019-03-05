@@ -595,6 +595,92 @@ class StreamSpec extends Fs2Spec {
           .take(4)
           .toList shouldBe List((2, 5), (3, 6), (4, 7), (2, 5))
       }
+
+      "zipWith left/right side infinite" in {
+        val ones = Stream.constant("1")
+        val s = Stream("A", "B", "C")
+        ones.zipWith(s)(_ + _).toList shouldBe List("1A", "1B", "1C")
+        s.zipWith(ones)(_ + _).toList shouldBe List("A1", "B1", "C1")
+      }
+
+      "zipWith both side infinite" in {
+        val ones = Stream.constant("1")
+        val as = Stream.constant("A")
+        ones.zipWith(as)(_ + _).take(3).toList shouldBe List("1A", "1A", "1A")
+        as.zipWith(ones)(_ + _).take(3).toList shouldBe List("A1", "A1", "A1")
+      }
+
+      "zipAllWith left/right side infinite" in {
+        val ones = Stream.constant("1")
+        val s = Stream("A", "B", "C")
+        ones.zipAllWith(s)("2", "Z")(_ + _).take(5).toList shouldBe
+          List("1A", "1B", "1C", "1Z", "1Z")
+        s.zipAllWith(ones)("Z", "2")(_ + _).take(5).toList shouldBe
+          List("A1", "B1", "C1", "Z1", "Z1")
+      }
+
+      "zipAllWith both side infinite" in {
+        val ones = Stream.constant("1")
+        val as = Stream.constant("A")
+        ones.zipAllWith(as)("2", "Z")(_ + _).take(3).toList shouldBe
+          List("1A", "1A", "1A")
+        as.zipAllWith(ones)("Z", "2")(_ + _).take(3).toList shouldBe
+          List("A1", "A1", "A1")
+      }
+
+      "zip left/right side infinite" in {
+        val ones = Stream.constant("1")
+        val s = Stream("A", "B", "C")
+        ones.zip(s).toList shouldBe List("1" -> "A", "1" -> "B", "1" -> "C")
+        s.zip(ones).toList shouldBe List("A" -> "1", "B" -> "1", "C" -> "1")
+      }
+
+      "zip both side infinite" in {
+        val ones = Stream.constant("1")
+        val as = Stream.constant("A")
+        ones.zip(as).take(3).toList shouldBe List("1" -> "A", "1" -> "A", "1" -> "A")
+        as.zip(ones).take(3).toList shouldBe List("A" -> "1", "A" -> "1", "A" -> "1")
+      }
+
+      "zipAll left/right side infinite" in {
+        val ones = Stream.constant("1")
+        val s = Stream("A", "B", "C")
+        ones.zipAll(s)("2", "Z").take(5).toList shouldBe List("1" -> "A",
+                                                              "1" -> "B",
+                                                              "1" -> "C",
+                                                              "1" -> "Z",
+                                                              "1" -> "Z")
+        s.zipAll(ones)("Z", "2").take(5).toList shouldBe List("A" -> "1",
+                                                              "B" -> "1",
+                                                              "C" -> "1",
+                                                              "Z" -> "1",
+                                                              "Z" -> "1")
+      }
+
+      "zipAll both side infinite" in {
+        val ones = Stream.constant("1")
+        val as = Stream.constant("A")
+        ones.zipAll(as)("2", "Z").take(3).toList shouldBe List("1" -> "A", "1" -> "A", "1" -> "A")
+        as.zipAll(ones)("Z", "2").take(3).toList shouldBe List("A" -> "1", "A" -> "1", "A" -> "1")
+      }
+
+      "zip with scopes" in {
+        // this tests that streams opening resources on each branch will close
+        // scopes independently.
+        val s = Stream(0).scope
+        (s ++ s).zip(s).toList shouldBe List((0, 0))
+      }
+
+      "issue #1120 - zip with uncons" in {
+        // this tests we can properly look up scopes for the zipped streams
+        val rangeStream = Stream.emits((0 to 3).toList)
+        rangeStream.zip(rangeStream).attempt.map(identity).toVector shouldBe Vector(
+          Right((0, 0)),
+          Right((1, 1)),
+          Right((2, 2)),
+          Right((3, 3))
+        )
+      }
     }
 
     "regressions" - {
