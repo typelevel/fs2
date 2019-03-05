@@ -1,6 +1,6 @@
 package fs2
 
-import cats.effect.{ConcurrentEffect, ContextShift, Sync}
+import cats.effect.{ConcurrentEffect, ContextShift, Resource, Sync}
 
 import cats.implicits._
 import java.io.{InputStream, OutputStream}
@@ -145,5 +145,12 @@ package object io {
     * to operate on the resulting `java.io.InputStream`.
     */
   def toInputStream[F[_]](implicit F: ConcurrentEffect[F]): Pipe[F, Byte, InputStream] =
-    JavaInputOutputStream.toInputStream
+    source => Stream.resource(toInputStreamResource(source))
+
+  /**
+    * Like [[toInputStream]] but returns a `Resource` rather than a single element stream.
+    */
+  def toInputStreamResource[F[_]](source: Stream[F, Byte])(
+      implicit F: ConcurrentEffect[F]): Resource[F, InputStream] =
+    JavaInputOutputStream.toInputStream(source)
 }
