@@ -206,55 +206,78 @@ sealed trait Pull[+F[_], +O, +R] { self =>
     handleErrorWith(e => p2 >> Pull.raiseErrorForce(e)) >> p2
 
   /** Tracks any resources acquired during this pull and releases them when the pull completes. */
-  def scope: Pull[F, O, R] = scope_(None)
-
-  private[fs2] def interruptScope[F2[x] >: F[x]](implicit F: Concurrent[F2]): Pull[F2, O, R] =
-    scope_(Some(F))
-
-  private def scope_[F2[x] >: F[x]](concurrent: Option[Concurrent[F2]]): Pull[F2, O, R] =
-    new Pull[F2, O, R] {
-      protected def step[F3[x] >: F2[x], O2 >: O, R2 >: R](scope: Scope[F3])(
-          implicit F: Sync[F3]): F3[StepResult[F3, O2, R2]] =
-        scope
-          .open(concurrent.asInstanceOf[Option[Concurrent[F3]]])
-          .flatMap(childScope => self.stepWith(childScope.id).step(childScope))
-
-      private[fs2] def translate[F3[x] >: F2[x], G[_]](f: F3 ~> G): Pull[G, O, R] =
-        self.translate(f).scope
-
-      override def toString = s"Scope($concurrent, $self)"
-    }
-
-  private[fs2] def stepWith(scopeId: Token): Pull[F, O, R] = new Pull[F, O, R] {
+  def scope: Pull[F, O, R] = new Pull[F, O, R] {
     protected def step[F2[x] >: F[x], O2 >: O, R2 >: R](scope: Scope[F2])(
         implicit F: Sync[F2]): F2[StepResult[F2, O2, R2]] =
-      scope.findScope(scopeId).map(_.map(_ -> true).getOrElse(scope -> false)).flatMap {
-        case (scope, closeAfterUse) =>
-          F.bracketCase((self: Pull[F2, O2, R2]).step(scope)) {
-            case StepResult.Output(hd, tl) =>
-              StepResult.output[F2, O2, R2](hd, tl.stepWith(scopeId)).pure[F2]
-            case StepResult.Done(r) =>
-              if (closeAfterUse)
-                scope
-                  .closeAndThrow(ExitCase.Completed)
-                  .as(StepResult.done[F2, O2, R2](r))
-              else StepResult.done[F2, O2, R2](r).pure[F2]
-            case StepResult.Interrupted(err) =>
-              StepResult.interrupted[F2, O2, R2](err).pure[F2]
-          } {
-            case (_, ExitCase.Completed) => F.unit
-            case (_, other)              => if (closeAfterUse) scope.closeAndThrow(other) else F.unit
-          }
-      }
+      scope
+        .open(None)
+        .flatMap(childScope => self.stepWith(childScope.id, None).step(childScope))
 
     private[fs2] def translate[F2[x] >: F[x], G[_]](f: F2 ~> G): Pull[G, O, R] =
-      self.translate(f).stepWith(scopeId)
+      self.translate(f).scope
 
-    override def toString = s"StepWith($self, $scopeId)"
+    override def toString = s"Scope($self)"
   }
 
+  private[fs2] def interruptScope[F2[x] >: F[x]](implicit F: Concurrent[F2]): Pull[F2, O, Unit] =
+    new Pull[F2, O, Unit] {
+      protected def step[F3[x] >: F2[x], O2 >: O, R2 >: Unit](scope: Scope[F3])(
+          implicit F: Sync[F3]): F3[StepResult[F3, O2, R2]] =
+        scope
+          .open(Some(F).asInstanceOf[Option[Concurrent[F3]]])
+          .flatMap(childScope => self.void.stepWith(childScope.id, Some(())).step(childScope))
+
+      private[fs2] def translate[F3[x] >: F2[x], G[_]](f: F3 ~> G): Pull[G, O, Unit] =
+        // We don't have a Concurrent[G] instance here so we convert the interruptScope to a regular scope
+        // This is what happened in 1.0 as well, though it was hidden a bit by the TranslateInterrupt type class
+        self.void.translate(f).scope
+
+      override def toString = s"InterruptScope($F, $self)"
+    }
+
+  private[fs2] def stepWith[R2 >: R](scopeId: Token, onInterrupt: Option[R2]): Pull[F, O, R2] =
+    new Pull[F, O, R2] {
+      protected def step[F2[x] >: F[x], O2 >: O, R3 >: R2](scope: Scope[F2])(
+          implicit F: Sync[F2]): F2[StepResult[F2, O2, R3]] =
+        scope.findScope(scopeId).map(_.map(_ -> true).getOrElse(scope -> false)).flatMap {
+          case (scope, closeAfterUse) =>
+            F.bracketCase((self: Pull[F2, O2, R3]).step(scope)) {
+              case StepResult.Output(hd, tl) =>
+                StepResult.output[F2, O2, R3](hd, tl.stepWith(scopeId, onInterrupt)).pure[F2]
+              case StepResult.Done(r) =>
+                if (closeAfterUse)
+                  scope
+                    .closeAndThrow(ExitCase.Completed)
+                    .as(StepResult.done[F2, O2, R3](r))
+                else StepResult.done[F2, O2, R3](r).pure[F2]
+              case StepResult.Interrupted(err) =>
+                val result: F2[StepResult[F2, O2, R3]] = onInterrupt match {
+                  case None => StepResult.interrupted[F2, O2, R3](err).pure[F2]
+                  case Some(r) =>
+                    err match {
+                      case None    => StepResult.done[F2, O2, R3](r).pure[F2]
+                      case Some(e) => F.raiseError(e)
+                    }
+                }
+                if (closeAfterUse) scope.closeAndThrow(ExitCase.Canceled) >> result
+                else result
+            } {
+              case (_, ExitCase.Completed) => F.unit
+              case (_, other)              => if (closeAfterUse) scope.closeAndThrow(other) else F.unit
+            }
+        }
+
+      private[fs2] def translate[F2[x] >: F[x], G[_]](f: F2 ~> G): Pull[G, O, R2] =
+        self.translate(f).stepWith(scopeId, onInterrupt)
+
+      override def toString = s"StepWith($self, $scopeId)"
+    }
+
   /** Interpret this `Pull` to produce a `Stream`. The result type `R` is discarded. */
-  def stream: Stream[F, O] = Stream.fromPull(scope.map(_ => ()))
+  def stream(implicit ev: R <:< Unit): Stream[F, O] = {
+    val _ = ev
+    Stream.fromPull(this.asInstanceOf[Pull[F, O, Unit]].scope)
+  }
 
   /**
     * Like [[stream]] but no scope is inserted around the pull, resulting in any resources being
@@ -271,7 +294,10 @@ sealed trait Pull[+F[_], +O, +R] { self =>
     * closing but when using `streamNoScope`, they get promoted to the current stream scope,
     * which may be infinite in the worst case.
     */
-  def streamNoScope: Stream[F, O] = Stream.fromPull(map(_ => ()))
+  def streamNoScope(implicit ev: R <:< Unit): Stream[F, O] = {
+    val _ = ev
+    Stream.fromPull(this.asInstanceOf[Pull[F, O, Unit]])
+  }
 
   /**
     * Steps this pull and returns the result as the result of a new pull.
@@ -314,6 +340,9 @@ sealed trait Pull[+F[_], +O, +R] { self =>
 
     override def toString = s"SuppressTranslate($self)"
   }
+
+  /** Replaces the result of this pull with a unit. */
+  def void: Pull[F, O, Unit] = map(_ => ())
 }
 
 object Pull extends PullInstancesLowPriority {

@@ -427,8 +427,8 @@ final class Stream[+F[_], +O] private (private val asPull: Pull[F, O, Unit]) ext
     this.pull
       .find(pf.isDefinedAt)
       .flatMap {
-        case None           => Pull.pure(None)
-        case Some((hd, tl)) => Pull.output1(pf(hd)).as(None)
+        case None           => Pull.done
+        case Some((hd, tl)) => Pull.output1(pf(hd))
       }
       .stream
 
@@ -627,7 +627,7 @@ final class Stream[+F[_], +O] private (private val asPull: Pull[F, O, Unit]) ext
     this.pull
       .takeWhile(o => !p(o))
       .flatMap {
-        case None    => Pull.pure(None)
+        case None    => Pull.done
         case Some(s) => s.drop(1).pull.echo
       }
       .stream
@@ -790,9 +790,9 @@ final class Stream[+F[_], +O] private (private val asPull: Pull[F, O, Unit]) ext
   def dropRight(n: Int): Stream[F, O] =
     if (n <= 0) this
     else {
-      def go(acc: Chunk.Queue[O], s: Stream[F, O]): Pull[F, O, Option[Unit]] =
+      def go(acc: Chunk.Queue[O], s: Stream[F, O]): Pull[F, O, Unit] =
         s.pull.uncons.flatMap {
-          case None => Pull.pure(None)
+          case None => Pull.done
           case Some((hd, tl)) =>
             val all = acc :+ hd
             all
@@ -901,20 +901,20 @@ final class Stream[+F[_], +O] private (private val asPull: Pull[F, O, Unit]) ext
     * }}}
     */
   def evalScan[F2[x] >: F[x], O2](z: O2)(f: (O2, O) => F2[O2]): Stream[F2, O2] = {
-    def go(z: O2, s: Stream[F2, O]): Pull[F2, O2, Option[Stream[F2, O2]]] =
+    def go(z: O2, s: Stream[F2, O]): Pull[F2, O2, Unit] =
       s.pull.uncons1.flatMap {
         case Some((hd, tl)) =>
           Pull.eval(f(z, hd)).flatMap { o =>
             Pull.output1(o) >> go(o, tl)
           }
-        case None => Pull.pure(None)
+        case None => Pull.done
       }
     this.pull.uncons1.flatMap {
       case Some((hd, tl)) =>
         Pull.eval(f(z, hd)).flatMap { o =>
           Pull.output(Chunk.seq(List(z, o))) >> go(o, tl)
         }
-      case None => Pull.output1(z) >> Pull.pure(None)
+      case None => Pull.output1(z)
     }.stream
   }
 
@@ -969,9 +969,9 @@ final class Stream[+F[_], +O] private (private val asPull: Pull[F, O, Unit]) ext
     * }}}
     */
   def filterWithPrevious(f: (O, O) => Boolean): Stream[F, O] = {
-    def go(last: O, s: Stream[F, O]): Pull[F, O, Option[Unit]] =
+    def go(last: O, s: Stream[F, O]): Pull[F, O, Unit] =
       s.pull.uncons.flatMap {
-        case None           => Pull.pure(None)
+        case None           => Pull.done
         case Some((hd, tl)) =>
           // Check if we can emit this chunk unmodified
           val (allPass, newLast) = hd.foldLeft((true, last)) {
@@ -989,7 +989,7 @@ final class Stream[+F[_], +O] private (private val asPull: Pull[F, O, Unit]) ext
           }
       }
     this.pull.uncons1.flatMap {
-      case None           => Pull.pure(None)
+      case None           => Pull.done
       case Some((hd, tl)) => Pull.output1(hd) >> go(hd, tl)
     }.stream
   }
@@ -1447,7 +1447,7 @@ final class Stream[+F[_], +O] private (private val asPull: Pull[F, O, Unit]) ext
     */
   def intersperse[O2 >: O](separator: O2): Stream[F, O2] =
     this.pull.echo1.flatMap {
-      case None => Pull.pure(None)
+      case None => Pull.done
       case Some(s) =>
         s.repeatPull {
             _.uncons.flatMap {
@@ -2189,7 +2189,7 @@ final class Stream[+F[_], +O] private (private val asPull: Pull[F, O, Unit]) ext
     */
   def scanChunksOpt[S, O2 >: O, O3](init: S)(
       f: S => Option[Chunk[O2] => (S, Chunk[O3])]): Stream[F, O3] =
-    this.pull.scanChunksOpt(init)(f).stream
+    this.pull.scanChunksOpt(init)(f).void.stream
 
   /**
     * Alias for `map(f).scanMonoid`.
@@ -2354,7 +2354,7 @@ final class Stream[+F[_], +O] private (private val asPull: Pull[F, O, Unit]) ext
     * res0: List[Int] = List(0, 1, 2, 3, 4)
     * }}}
     */
-  def take(n: Long): Stream[F, O] = this.pull.take(n).stream
+  def take(n: Long): Stream[F, O] = this.pull.take(n).void.stream
 
   /**
     * Emits the last `n` elements of the input.
@@ -2380,7 +2380,7 @@ final class Stream[+F[_], +O] private (private val asPull: Pull[F, O, Unit]) ext
     * }}}
     */
   def takeThrough(p: O => Boolean): Stream[F, O] =
-    this.pull.takeThrough(p).stream
+    this.pull.takeThrough(p).void.stream
 
   /**
     * Emits the longest prefix of the input for which all elements test true according to `f`.
@@ -2391,7 +2391,7 @@ final class Stream[+F[_], +O] private (private val asPull: Pull[F, O, Unit]) ext
     * }}}
     */
   def takeWhile(p: O => Boolean, takeFailure: Boolean = false): Stream[F, O] =
-    this.pull.takeWhile(p, takeFailure).stream
+    this.pull.takeWhile(p, takeFailure).void.stream
 
   /**
     * Transforms this stream using the given `Pipe`.
@@ -2470,14 +2470,13 @@ final class Stream[+F[_], +O] private (private val asPull: Pull[F, O, Unit]) ext
       }
     }
 
-  private type ZipWithCont[G[_], I, O2, R] =
-    Either[(Chunk[I], Stream[G, I]), Stream[G, I]] => Pull[G, O2, Option[R]]
+  private type ZipWithCont[G[_], I, O2] =
+    Either[(Chunk[I], Stream[G, I]), Stream[G, I]] => Pull[G, O2, Unit]
 
   private def zipWith_[F2[x] >: F[x], O2 >: O, O3, O4](that: Stream[F2, O3])(
-      k1: ZipWithCont[F2, O2, O4, INothing],
-      k2: ZipWithCont[F2, O3, O4, INothing])(f: (O2, O3) => O4): Stream[F2, O4] = {
-    def go(leg1: Stream.StepLeg[F2, O2],
-           leg2: Stream.StepLeg[F2, O3]): Pull[F2, O4, Option[INothing]] = {
+      k1: ZipWithCont[F2, O2, O4],
+      k2: ZipWithCont[F2, O3, O4])(f: (O2, O3) => O4): Stream[F2, O4] = {
+    def go(leg1: Stream.StepLeg[F2, O2], leg2: Stream.StepLeg[F2, O3]): Pull[F2, O4, Unit] = {
       val l1h = leg1.head
       val l2h = leg2.head
       val out = l1h.zipWith(l2h)(f)
@@ -2537,11 +2536,10 @@ final class Stream[+F[_], +O] private (private val asPull: Pull[F, O, Unit]) ext
     */
   def zipAllWith[F2[x] >: F[x], O2 >: O, O3, O4](that: Stream[F2, O3])(pad1: O2, pad2: O3)(
       f: (O2, O3) => O4): Stream[F2, O4] = {
-    def cont1(
-        z: Either[(Chunk[O2], Stream[F2, O2]), Stream[F2, O2]]): Pull[F2, O4, Option[INothing]] = {
-      def contLeft(s: Stream[F2, O2]): Pull[F2, O4, Option[INothing]] =
+    def cont1(z: Either[(Chunk[O2], Stream[F2, O2]), Stream[F2, O2]]): Pull[F2, O4, Unit] = {
+      def contLeft(s: Stream[F2, O2]): Pull[F2, O4, Unit] =
         s.pull.uncons.flatMap {
-          case None => Pull.pure(None)
+          case None => Pull.done
           case Some((hd, tl)) =>
             Pull.output(hd.map(o => f(o, pad2))) >> contLeft(tl)
         }
@@ -2551,11 +2549,10 @@ final class Stream[+F[_], +O] private (private val asPull: Pull[F, O, Unit]) ext
         case Right(h) => contLeft(h)
       }
     }
-    def cont2(
-        z: Either[(Chunk[O3], Stream[F2, O3]), Stream[F2, O3]]): Pull[F2, O4, Option[INothing]] = {
-      def contRight(s: Stream[F2, O3]): Pull[F2, O4, Option[INothing]] =
+    def cont2(z: Either[(Chunk[O3], Stream[F2, O3]), Stream[F2, O3]]): Pull[F2, O4, Unit] = {
+      def contRight(s: Stream[F2, O3]): Pull[F2, O4, Unit] =
         s.pull.uncons.flatMap {
-          case None => Pull.pure(None)
+          case None => Pull.done
           case Some((hd, tl)) =>
             Pull.output(hd.map(o2 => f(pad1, o2))) >> contRight(tl)
         }
@@ -2622,7 +2619,7 @@ final class Stream[+F[_], +O] private (private val asPull: Pull[F, O, Unit]) ext
     */
   def zipWith[F2[x] >: F[x], O2 >: O, O3, O4](that: Stream[F2, O3])(
       f: (O2, O3) => O4): Stream[F2, O4] =
-    zipWith_[F2, O2, O3, O4](that)(sh => Pull.pure(None), h => Pull.pure(None))(f)
+    zipWith_[F2, O2, O3, O4](that)(sh => Pull.done, h => Pull.done)(f)
 
   /**
     * Zips the elements of the input stream with its indices, and returns the new stream.
@@ -3363,7 +3360,7 @@ object Stream extends StreamLowPriority {
       */
     def repeatPull[O2](
         using: Stream.ToPull[F, O] => Pull[F, O2, Option[Stream[F, O]]]): Stream[F, O2] =
-      Pull.loop(using.andThen(_.map(_.map(_.pull))))(pull).stream
+      Pull.loop(using.andThen(_.map(_.map(_.pull))))(pull).void.stream
 
   }
 
@@ -4105,6 +4102,7 @@ object Stream extends StreamLowPriority {
         .loop[F, O, StepLeg[F, O]] { leg =>
           Pull.output(leg.head).flatMap(_ => leg.stepLeg)
         }(self.setHead(Chunk.empty))
+        .void
         .stream
 
     /** Replaces head of this leg. Useful when the head was not fully consumed. */
@@ -4114,7 +4112,7 @@ object Stream extends StreamLowPriority {
     /** Provides an `uncons`-like operation on this leg of the stream. */
     def stepLeg: Pull[F, INothing, Option[StepLeg[F, O]]] =
       next.uncons
-        .stepWith(scopeId)
+        .stepWith(scopeId, None)
         .map(_.map {
           case (hd, tl) => new StepLeg[F, O](hd, scopeId, tl)
         }.toOption)

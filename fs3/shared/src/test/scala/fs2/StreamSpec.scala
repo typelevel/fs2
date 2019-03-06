@@ -478,7 +478,17 @@ class StreamSpec extends Fs2Spec {
         }
       }
 
-      "14 - resume on append" in {
+      "14 - minimal resume on append" in {
+        Stream
+          .eval(IO.never)
+          .interruptWhen(IO.sleep(10.millis).attempt)
+          .append(Stream(5))
+          .compile
+          .toList
+          .asserting(_ shouldBe List(5))
+      }
+
+      "14a - interrupt evalMap and then resume on append" in {
         pending // Broken
         forAll { s: Stream[Pure, Int] =>
           val interrupt = IO.sleep(50.millis).attempt
@@ -540,27 +550,25 @@ class StreamSpec extends Fs2Spec {
 
       // }
 
-      // "interrupt (17)" in {
-      //   // minimal test that when interrupted, the interruption will resume with append (pull.uncons case).
-
-      //   def s1 = Stream(1).covary[IO].unchunk
-
-      //   def interrupt = IO.sleep(100.millis).attempt
-
-      //   def prg =
-      //     s1.interruptWhen(interrupt)
-      //       .pull
-      //       .uncons
-      //       .flatMap {
-      //         case None           => Pull.done
-      //         case Some((hd, tl)) => Pull.eval(IO.never)
-      //       }
-      //       .stream ++ Stream(5)
-
-      //   runLog(prg) shouldBe Vector(5)
-
-      // }
-
+      "17 - minimal resume on append with pull" in {
+        pending // Broken
+        val interrupt = IO.sleep(100.millis).attempt
+        Stream(1)
+          .covary[IO]
+          .unchunk
+          .interruptWhen(interrupt)
+          .pull
+          .uncons
+          .flatMap {
+            case None           => Pull.done
+            case Some((hd, tl)) => Pull.eval(IO.never)
+          }
+          .stream
+          .append(Stream(5))
+          .compile
+          .toList
+          .asserting(_ shouldBe List(5))
+      }
       // "interrupt (18)" in {
       //   // minimal tests that when interrupted, the interruption will resume with append (flatMap case).
 
