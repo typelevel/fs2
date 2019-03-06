@@ -424,12 +424,14 @@ class StreamSpec extends Fs2Spec {
           .flatMap { barrier =>
             Stream.eval(Semaphore[IO](0)).flatMap { enableInterrupt =>
               val interrupt = Stream.eval(enableInterrupt.acquire) >> Stream.emit(false)
-              s.covary[IO].evalMap { i =>
-                // enable interruption and hang when hitting a value divisible by 7
-                if (i % 7 == 0) enableInterrupt.release.flatMap { _ =>
-                  barrier.acquire.as(i)
-                } else IO.pure(i)
-              }.interruptWhen(interrupt)
+              s.covary[IO]
+                .evalMap { i =>
+                  // enable interruption and hang when hitting a value divisible by 7
+                  if (i % 7 == 0) enableInterrupt.release.flatMap { _ =>
+                    barrier.acquire.as(i)
+                  } else IO.pure(i)
+                }
+                .interruptWhen(interrupt)
             }
           }
           .compile
@@ -442,54 +444,54 @@ class StreamSpec extends Fs2Spec {
           }
       }
 
-      // "interrupt (12)" in forAll { (s1: PureStream[Int]) =>
-      //   // tests interruption of stream that never terminates in flatMap
-      //   val s = Semaphore[IO](0).unsafeRunSync()
-      //   val interrupt =
-      //     Stream.sleep_[IO](50.millis).compile.drain.attempt
-      //   // tests that termination is successful even when flatMapped stream is hung
-      //   runLog {
-      //     s1.get
-      //       .covary[IO]
-      //       .interruptWhen(interrupt)
-      //       .flatMap(_ => Stream.eval_(s.acquire))
-      //   } shouldBe Vector()
+      "12 - interruption of stream that never terminates in flatMap" in {
+        pending // Broken; the eval_ ends up occurring the the parent scope of the interruption scope
+        forAll { (s: Stream[Pure, Int]) =>
+          val interrupt = Stream.sleep_[IO](50.millis).compile.drain.attempt
+          Stream
+            .eval(Semaphore[IO](0))
+            .flatMap { semaphore =>
+              s.covary[IO].interruptWhen(interrupt) >> Stream.eval_(semaphore.acquire)
+            }
+            .compile
+            .toList
+            .asserting(_ shouldBe Nil)
+        }
+      }
 
-      // }
+      "13 - failure from interruption signal will be propagated to main stream even when flatMap stream is hung" in {
+        pending // Broken
+        forAll { (s: Stream[Pure, Int]) =>
+          val interrupt = Stream.sleep_[IO](50.millis) ++ Stream.raiseError[IO](new Err)
+          Stream
+            .eval(Semaphore[IO](0))
+            .flatMap { semaphore =>
+              Stream(1)
+                .append(s)
+                .covary[IO]
+                .interruptWhen(interrupt)
+                .flatMap(_ => Stream.eval_(semaphore.acquire))
+            }
+            .compile
+            .toList
+            .assertNoException
+        }
+      }
 
-      // "interrupt (13)" in forAll { (s1: PureStream[Int], f: Failure) =>
-      //   // tests that failure from the interrupt signal stream will be propagated to main stream
-      //   // even when flatMap stream is hung
-      //   val s = Semaphore[IO](0).unsafeRunSync()
-      //   val interrupt =
-      //     Stream.sleep_[IO](50.millis) ++ f.get.map { _ =>
-      //       false
-      //     }
-      //   val prg = (Stream(1) ++ s1.get)
-      //     .covary[IO]
-      //     .interruptWhen(interrupt)
-      //     .flatMap(_ => Stream.eval_(s.acquire))
-      //   val throws = f.get.compile.drain.attempt.unsafeRunSync.isLeft
-      //   if (throws) an[Err] should be thrownBy runLog(prg)
-      //   else runLog(prg)
-
-      // }
-
-      // "interrupt (14)" in forAll { s1: PureStream[Int] =>
-      //   // tests that when interrupted, the interruption will resume with append.
-
-      //   val interrupt =
-      //     IO.sleep(50.millis).attempt
-      //   val prg = (
-      //     (s1.get.covary[IO].interruptWhen(interrupt).evalMap { _ =>
-      //       IO.never.as(None)
-      //     })
-      //       ++ (s1.get.map(Some(_)))
-      //   ).collect { case Some(v) => v }
-
-      //   runLog(prg) shouldBe runLog(s1.get)
-
-      // }
+      "14 - resume on append" in {
+        pending // Broken
+        forAll { s: Stream[Pure, Int] =>
+          val interrupt = IO.sleep(50.millis).attempt
+          s.covary[IO]
+            .interruptWhen(interrupt)
+            .evalMap(_ => IO.never.as(None))
+            .append(s.map(Some(_)))
+            .collect { case Some(v) => v }
+            .compile
+            .toList
+            .asserting(_ shouldBe s.toList)
+        }
+      }
 
       // "interrupt (15)" in forAll { s1: PureStream[Int] =>
       //   // tests that interruption works even when flatMap is followed by `collect`

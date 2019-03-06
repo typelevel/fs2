@@ -132,6 +132,7 @@ final class Scope[F[_]] private (
     interruptionContext match {
       case Some(ictx) =>
         ictx.deferred.complete(cause).guarantee(ictx.interrupted.update(_.orElse(Some(cause))))
+      // >> state.get.flatMap(_.children.traverse_(_.interrupt(cause))) TODO?
       case None =>
         F.raiseError(
           new IllegalStateException("cannot interrupt a scope that does not support interruption"))
@@ -158,8 +159,10 @@ final class Scope[F[_]] private (
   private[fs2] def interruptibleEval[A](fa: F[A])(
       implicit F: MonadError[F, Throwable]): F[Either[Option[Throwable], Either[Throwable, A]]] =
     interruptionContext match {
-      case None       => fa.attempt.map(Right(_))
-      case Some(ictx) => ictx.concurrent.race(ictx.deferred.get, fa.attempt)
+      case None =>
+        fa.attempt.map(Right(_))
+      case Some(ictx) =>
+        ictx.concurrent.race(ictx.deferred.get, fa.attempt)
     }
 }
 
