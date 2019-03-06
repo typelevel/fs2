@@ -819,24 +819,42 @@ class StreamSpec extends Fs2Spec {
         .toList shouldBe List(1, 2, 3, 4)
     }
 
-    "scope" in {
-      // TODO This test should be replaced with one that shows proper usecase for .scope
-      val c = new java.util.concurrent.atomic.AtomicLong(0)
-      val s1 = Stream.emit("a").covary[IO]
-      val s2 = Stream
-        .bracket(IO { c.incrementAndGet() shouldBe 1L; () }) { _ =>
-          IO { c.decrementAndGet(); () }
-        }
-        .flatMap(_ => Stream.emit("b"))
-      (s1.scope ++ s2)
-        .take(2)
-        .scope
-        .repeat
-        .take(4)
-        .merge(Stream.eval_(IO.unit))
-        .compile
-        .drain
-        .asserting(_ => c.get shouldBe 0L)
+    "scope" - {
+      "1" in {
+        // TODO This test should be replaced with one that shows proper usecase for .scope
+        val c = new java.util.concurrent.atomic.AtomicLong(0)
+        val s1 = Stream.emit("a").covary[IO]
+        val s2 = Stream
+          .bracket(IO { c.incrementAndGet() shouldBe 1L; () }) { _ =>
+            IO { c.decrementAndGet(); () }
+          }
+          .flatMap(_ => Stream.emit("b"))
+        (s1.scope ++ s2)
+          .take(2)
+          .scope
+          .repeat
+          .take(4)
+          .merge(Stream.eval_(IO.unit))
+          .compile
+          .drain
+          .asserting(_ => c.get shouldBe 0L)
+      }
+
+      "2" in {
+        Stream
+          .eval(Ref.of[IO, Int](0))
+          .flatMap { ref =>
+            Stream(1)
+              .flatMap { i =>
+                Stream
+                  .bracket(ref.update(_ + 1))(_ => ref.update(_ - 1))
+                  .flatMap(_ => Stream.eval(ref.get)) ++ Stream.eval(ref.get)
+              }.scope ++ Stream.eval(ref.get)
+          }
+          .compile
+          .toList
+          .asserting(_ shouldBe List(1, 1, 0))
+      }
     }
 
     "translate" - {
