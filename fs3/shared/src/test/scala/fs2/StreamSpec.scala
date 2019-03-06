@@ -2,7 +2,7 @@ package fs2
 
 import cats.~>
 import cats.effect._
-import cats.effect.concurrent.{Ref, Semaphore}
+import cats.effect.concurrent.{Deferred, Ref, Semaphore}
 import cats.implicits._
 
 import scala.concurrent.duration._
@@ -511,52 +511,46 @@ class StreamSpec extends Fs2Spec {
         }
       }
 
-      // "interrupt (15)" in forAll { s1: PureStream[Int] =>
-      //   // tests that interruption works even when flatMap is followed by `collect`
-      //   // also tests scenario when interrupted stream is followed by other stream and both have map fusion defined
+      "15 - interruption works when flatMap is followed by collect" in {
+        pending // Broken - results in an empty list instead of s.toList
+        forAll { s: Stream[Pure, Int] =>
+          val interrupt = Stream.sleep_[IO](20.millis).compile.drain.attempt
+          s.covary[IO]
+            .append(Stream(1))
+            .interruptWhen(interrupt)
+            .map(i => None)
+            .append(s.map(Some(_)))
+            .flatMap {
+              case None    => Stream.eval(IO.never)
+              case Some(i) => Stream.emit(Some(i))
+            }
+            .collect { case Some(i) => i }
+            .compile
+            .toList
+            .asserting(_ shouldBe s.toList)
+        }
+      }
 
-      //   val interrupt =
-      //     Stream.sleep_[IO](20.millis).compile.drain.attempt
-
-      //   val prg =
-      //     ((s1.get.covary[IO] ++ Stream(1)).interruptWhen(interrupt).map { i =>
-      //       None
-      //     } ++ s1.get.map(Some(_)))
-      //       .flatMap {
-      //         case None    => Stream.eval(IO.never)
-      //         case Some(i) => Stream.emit(Some(i))
-      //       }
-      //       .collect { case Some(i) => i }
-
-      //   runLog(prg) shouldBe runLog(s1.get)
-
-      // }
-
-      // "interrupt (16)" in {
-      //   // this tests that if the pipe1 accumulating results that is interrupted
-      //   // will not restart evaluation ignoring the previous results
-      //   def p: Pipe[IO, Int, Int] = {
-      //     def loop(acc: Int, s: Stream[IO, Int]): Pull[IO, Int, Unit] =
-      //       s.pull.uncons1.flatMap {
-      //         case None           => Pull.output1[IO, Int](acc)
-      //         case Some((hd, tl)) => Pull.output1[IO, Int](hd) >> loop(acc + hd, tl)
-      //       }
-      //     in =>
-      //       loop(0, in).stream
-      //   }
-
-      //   val result: Vector[Int] =
-      //     runLog(
-      //       Stream
-      //         .unfold(0)(i => Some((i, i + 1)))
-      //         .flatMap(Stream.emit(_).delayBy[IO](10.millis))
-      //         .interruptWhen(Stream.emit(true).delayBy[IO](150.millis))
-      //         .through(p)
-      //     )
-
-      //   result shouldBe (result.headOption.toVector ++ result.tail.filter(_ != 0))
-
-      // }
+      "16 - if a pipe is interrupted, it will not restart evaluation" in {
+        def p: Pipe[IO, Int, Int] = {
+          def loop(acc: Int, s: Stream[IO, Int]): Pull[IO, Int, Unit] =
+            s.pull.uncons1.flatMap {
+              case None           => Pull.output1[IO, Int](acc)
+              case Some((hd, tl)) => Pull.output1[IO, Int](hd) >> loop(acc + hd, tl)
+            }
+          in =>
+            loop(0, in).stream
+        }
+        Stream
+          .unfold(0)(i => Some((i, i + 1)))
+          .flatMap(Stream.emit(_).delayBy[IO](10.millis))
+          .interruptWhen(Stream.emit(true).delayBy[IO](150.millis))
+          .through(p)
+          .compile
+          .toList
+          .asserting(result =>
+            result shouldBe (result.headOption.toList ++ result.tail.filter(_ != 0)))
+      }
 
       "17 - minimal resume on append with pull" in {
         pending // Broken
@@ -577,84 +571,78 @@ class StreamSpec extends Fs2Spec {
           .toList
           .asserting(_ shouldBe List(5))
       }
-      // "interrupt (18)" in {
-      //   // minimal tests that when interrupted, the interruption will resume with append (flatMap case).
 
-      //   def s1 = Stream(1).covary[IO]
+      "18 - resume with append after evalMap interruption" in {
+        pending // Broken
+        Stream(1)
+          .covary[IO]
+          .interruptWhen(IO.sleep(50.millis).attempt)
+          .evalMap(_ => IO.never)
+          .append(Stream(5))
+          .compile
+          .toList
+          .asserting(_ shouldBe List(5))
+      }
 
-      //   def interrupt =
-      //     IO.sleep(200.millis).attempt
+      "19 - interrupted eval is cancelled" in {
+        Deferred[IO, Unit]
+          .flatMap { latch =>
+            Stream
+              .eval(latch.get.guarantee(latch.complete(())))
+              .interruptAfter(200.millis)
+              .compile
+              .drain >> latch.get.as(true)
+          }
+          .timeout(3.seconds)
+          .assertNoException
+      }
 
-      //   def prg =
-      //     s1.interruptWhen(interrupt).evalMap[IO, Int](_ => IO.never) ++ Stream(5)
+      "20 - nested-interrupt" in {
+        pending // Results in an empty list
+        forAll { s: Stream[Pure, Int] =>
+          Stream
+            .eval(Semaphore[IO](0))
+            .flatMap { semaphore =>
+              val interrupt = IO.sleep(50.millis).attempt
+              val neverInterrupt = (IO.never: IO[Unit]).attempt
+              s.covary[IO]
+                .interruptWhen(interrupt)
+                .as(None)
+                .append(s.map(Option(_)))
+                .interruptWhen(neverInterrupt)
+                .flatMap {
+                  case None    => Stream.eval(semaphore.acquire.as(None))
+                  case Some(i) => Stream(Some(i))
+                }
+                .collect { case Some(i) => i }
+            }
+            .compile
+            .toList
+            .asserting(_ shouldBe s.toList)
+        }
+      }
 
-      //   runLog(prg) shouldBe Vector(5)
+      "21 - nested-interrupt - interrupt in outer scope interrupts the inner scope" in {
+        Stream
+          .eval(IO.async[Unit](_ => ()))
+          .interruptWhen(IO.async[Either[Throwable, Unit]](_ => ()))
+          .interruptWhen(IO(Right(()): Either[Throwable, Unit]))
+          .compile
+          .toList
+          .asserting(_ shouldBe Nil)
+      }
 
-      // }
-
-      // "interrupt (19)" in {
-      //   // interruptible eval
-
-      //   def prg =
-      //     Deferred[IO, Unit]
-      //       .flatMap { latch =>
-      //         Stream
-      //           .eval {
-      //             latch.get.guarantee(latch.complete(()))
-      //           }
-      //           .interruptAfter(200.millis)
-      //           .compile
-      //           .drain >> latch.get.as(true)
-      //       }
-      //       .timeout(3.seconds)
-
-      //   prg.unsafeRunSync shouldBe true
-      // }
-
-      // "nested-interrupt (1)" in forAll { s1: PureStream[Int] =>
-      //   val s = Semaphore[IO](0).unsafeRunSync()
-      //   val interrupt: IO[Either[Throwable, Unit]] =
-      //     IO.sleep(50.millis).attempt
-      //   val neverInterrupt = (IO.never: IO[Unit]).attempt
-
-      //   val prg =
-      //     (s1.get.covary[IO].interruptWhen(interrupt).map(_ => None) ++ s1.get
-      //       .map(Some(_)))
-      //       .interruptWhen(neverInterrupt)
-      //       .flatMap {
-      //         case None =>
-      //           Stream.eval(s.acquire.map { _ =>
-      //             None
-      //           })
-      //         case Some(i) => Stream.emit(Some(i))
-      //       }
-      //       .collect { case Some(i) => i }
-
-      //   runLog(prg) shouldBe runLog(s1.get)
-
-      // }
-
-      // "nested-interrupt (2)" in {
-      //   //Tests whether an interrupt in enclosing scope interrupts the inner scope.
-      //   val prg =
-      //     Stream
-      //       .eval(IO.async[Unit](_ => ()))
-      //       .interruptWhen(IO.async[Either[Throwable, Unit]](_ => ()))
-      //       .interruptWhen(IO(Right(()): Either[Throwable, Unit]))
-
-      //   runLog(prg) shouldBe Vector()
-      // }
-
-      // "nested-interrupt (3)" in {
-      //   //Tests whether an interrupt in enclosing scope correctly recovers.
-      //   val prg =
-      //     (Stream
-      //       .eval(IO.async[Unit](_ => ()))
-      //       .interruptWhen(IO.async[Either[Throwable, Unit]](_ => ())) ++ Stream(1))
-      //       .interruptWhen(IO(Right(()): Either[Throwable, Unit])) ++ Stream(2)
-
-      //   runLog(prg) shouldBe Vector(2)
-      // }
+      "22 - nested-interrupt - interrupt in enclosing scope recovers" in {
+        Stream
+          .eval(IO.async[Unit](_ => ()))
+          .interruptWhen(IO.async[Either[Throwable, Unit]](_ => ()))
+          .append(Stream(1).delayBy[IO](10.millis))
+          .interruptWhen(IO(Right(()): Either[Throwable, Unit]))
+          .append(Stream(2))
+          .compile
+          .toList
+          .asserting(_ shouldBe List(2))
+      }
     }
 
     "iterate" in {
