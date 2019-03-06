@@ -207,11 +207,11 @@ object Scope {
               deferred = Deferred.unsafe[F, Option[Throwable]](concurrent),
               cancelParent = fiber.cancel
             )
-            val x = fiber.join.flatMap { interrupt =>
+            val onInterrupted = fiber.join.flatMap { interrupt =>
               context.interrupted.update(_.orElse(Some(interrupt))) >>
                 context.deferred.complete(interrupt).attempt.void
             }
-            concurrent.start(x).as(context)
+            concurrent.start(onInterrupted).as(context)
           }
         }
         .getOrElse(F.pure(copy(cancelParent = F.unit)))

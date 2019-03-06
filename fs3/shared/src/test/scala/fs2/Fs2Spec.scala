@@ -23,7 +23,7 @@ abstract class Fs2Spec
     with EffectTestSupport
     with TestPlatform {
 
-  implicit val timeout: FiniteDuration = 60.seconds
+  implicit val timeout: FiniteDuration = 10.seconds
   val timeLimit: Span = timeout
 
   implicit val timerIO: Timer[IO] = IO.timer(scala.concurrent.ExecutionContext.Implicits.global)

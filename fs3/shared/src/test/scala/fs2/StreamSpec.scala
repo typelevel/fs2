@@ -445,7 +445,6 @@ class StreamSpec extends Fs2Spec {
       }
 
       "12 - interruption of stream that never terminates in flatMap" in {
-        pending // Broken; the eval_ ends up occurring the the parent scope of the interruption scope
         forAll { (s: Stream[Pure, Int]) =>
           val interrupt = Stream.sleep_[IO](50.millis).compile.drain.attempt
           Stream
@@ -459,8 +458,17 @@ class StreamSpec extends Fs2Spec {
         }
       }
 
+      "12a - minimal interruption of stream that never terminates in flatMap" in {
+        Stream(1)
+          .covary[IO]
+          .interruptWhen(IO.sleep(10.millis).attempt)
+          .flatMap(_ => Stream.eval(IO.never))
+          .compile
+          .drain
+          .assertNoException
+      }
+
       "13 - failure from interruption signal will be propagated to main stream even when flatMap stream is hung" in {
-        pending // Broken
         forAll { (s: Stream[Pure, Int]) =>
           val interrupt = Stream.sleep_[IO](50.millis) ++ Stream.raiseError[IO](new Err)
           Stream
@@ -474,7 +482,7 @@ class StreamSpec extends Fs2Spec {
             }
             .compile
             .toList
-            .assertNoException
+            .assertThrows[Err]
         }
       }
 
@@ -844,12 +852,11 @@ class StreamSpec extends Fs2Spec {
         Stream
           .eval(Ref.of[IO, Int](0))
           .flatMap { ref =>
-            Stream(1)
-              .flatMap { i =>
-                Stream
-                  .bracket(ref.update(_ + 1))(_ => ref.update(_ - 1))
-                  .flatMap(_ => Stream.eval(ref.get)) ++ Stream.eval(ref.get)
-              }.scope ++ Stream.eval(ref.get)
+            Stream(1).flatMap { i =>
+              Stream
+                .bracket(ref.update(_ + 1))(_ => ref.update(_ - 1))
+                .flatMap(_ => Stream.eval(ref.get)) ++ Stream.eval(ref.get)
+            }.scope ++ Stream.eval(ref.get)
           }
           .compile
           .toList
