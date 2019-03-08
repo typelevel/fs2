@@ -838,20 +838,19 @@ final class Stream[+F[_], +O] private (private val asPull: Pull[F, O, Unit]) ext
       .flatMap(_.map(_.pull.echo).getOrElse(Pull.done))
       .stream
 
-  // TODO Uncomment when merge is working
-  // /**
-  //   * Like `[[merge]]`, but tags each output with the branch it came from.
-  //   *
-  //   * @example {{{
-  //   * scala> import scala.concurrent.duration._, cats.effect.{ContextShift, IO, Timer}
-  //   * scala> implicit val cs: ContextShift[IO] = IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
-  //   * scala> implicit val timer: Timer[IO] = IO.timer(scala.concurrent.ExecutionContext.Implicits.global)
-  //   * scala> val s1 = Stream.awakeEvery[IO](1000.millis).scan(0)((acc, i) => acc + 1)
-  //   * scala> val s = s1.either(Stream.sleep_[IO](500.millis) ++ s1).take(10)
-  //   * scala> s.take(10).compile.toVector.unsafeRunSync
-  //   * res0: Vector[Either[Int,Int]] = Vector(Left(0), Right(0), Left(1), Right(1), Left(2), Right(2), Left(3), Right(3), Left(4), Right(4))
-  //   * }}}
-  //   */
+  /**
+    * Like `[[merge]]`, but tags each output with the branch it came from.
+    *
+    * @example {{{
+    * scala> import scala.concurrent.duration._, cats.effect.{ContextShift, IO, Timer}
+    * scala> implicit val cs: ContextShift[IO] = IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
+    * scala> implicit val timer: Timer[IO] = IO.timer(scala.concurrent.ExecutionContext.Implicits.global)
+    * scala> val s1 = Stream.awakeEvery[IO](1000.millis).scan(0)((acc, i) => acc + 1)
+    * scala> val s = s1.either(Stream.sleep_[IO](500.millis) ++ s1).take(10)
+    * scala> s.take(10).compile.toVector.unsafeRunSync
+    * res0: Vector[Either[Int,Int]] = Vector(Left(0), Right(0), Left(1), Right(1), Left(2), Right(2), Left(3), Right(3), Left(4), Right(4))
+    * }}}
+    */
   def either[F2[x] >: F[x]: Concurrent, O2](that: Stream[F2, O2]): Stream[F2, Either[O, O2]] =
     map(Left(_)).merge(that.map(Right(_)))
 
@@ -1603,8 +1602,7 @@ final class Stream[+F[_], +O] private (private val asPull: Pull[F, O, Unit]) ext
     * stream terminates)
     *
     * When either the inner or outer stream fails, the entire stream fails and the finalizer of the
-	* inner stream runs before the outer one.
-    *
+  	* inner stream runs before the outer one.
     */
   def switchMap[F2[x] >: F[x], O2](f: O => Stream[F2, O2])(
       implicit F2: Concurrent[F2]): Stream[F2, O2] =
@@ -1631,42 +1629,41 @@ final class Stream[+F[_], +O] private (private val asPull: Pull[F, O, Unit]) ext
         }
     })
 
-  // TODO uncomment when merge is working
-  // /**
-  //   * Interleaves the two inputs nondeterministically. The output stream
-  //   * halts after BOTH `s1` and `s2` terminate normally, or in the event
-  //   * of an uncaught failure on either `s1` or `s2`. Has the property that
-  //   * `merge(Stream.empty, s) == s` and `merge(raiseError(e), s)` will
-  //   * eventually terminate with `raiseError(e)`, possibly after emitting some
-  //   * elements of `s` first.
-  //   *
-  //   * The implementation always tries to pull one chunk from each side
-  //   * before waiting for it to be consumed by resulting stream.
-  //   * As such, there may be up to two chunks (one from each stream)
-  //   * waiting to be processed while the resulting stream
-  //   * is processing elements.
-  //   *
-  //   * Also note that if either side produces empty chunk,
-  //   * the processing on that side continues,
-  //   * w/o downstream requiring to consume result.
-  //   *
-  //   * If either side does not emit anything (i.e. as result of drain) that side
-  //   * will continue to run even when the resulting stream did not ask for more data.
-  //   *
-  //   * Note that even when this is equivalent to `Stream(this, that).parJoinUnbounded`,
-  //   * this implementation is little more efficient
-  //   *
-  //   *
-  //   * @example {{{
-  //   * scala> import scala.concurrent.duration._, cats.effect.{ContextShift, IO, Timer}
-  //   * scala> implicit val cs: ContextShift[IO] = IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
-  //   * scala> implicit val timer: Timer[IO] = IO.timer(scala.concurrent.ExecutionContext.Implicits.global)
-  //   * scala> val s1 = Stream.awakeEvery[IO](500.millis).scan(0)((acc, i) => acc + 1)
-  //   * scala> val s = s1.merge(Stream.sleep_[IO](250.millis) ++ s1)
-  //   * scala> s.take(6).compile.toVector.unsafeRunSync
-  //   * res0: Vector[Int] = Vector(0, 0, 1, 1, 2, 2)
-  //   * }}}
-  //   */
+  /**
+    * Interleaves the two inputs nondeterministically. The output stream
+    * halts after BOTH `s1` and `s2` terminate normally, or in the event
+    * of an uncaught failure on either `s1` or `s2`. Has the property that
+    * `merge(Stream.empty, s) == s` and `merge(raiseError(e), s)` will
+    * eventually terminate with `raiseError(e)`, possibly after emitting some
+    * elements of `s` first.
+    *
+    * The implementation always tries to pull one chunk from each side
+    * before waiting for it to be consumed by resulting stream.
+    * As such, there may be up to two chunks (one from each stream)
+    * waiting to be processed while the resulting stream
+    * is processing elements.
+    *
+    * Also note that if either side produces empty chunk,
+    * the processing on that side continues,
+    * w/o downstream requiring to consume result.
+    *
+    * If either side does not emit anything (i.e. as result of drain) that side
+    * will continue to run even when the resulting stream did not ask for more data.
+    *
+    * Note that even when this is equivalent to `Stream(this, that).parJoinUnbounded`,
+    * this implementation is little more efficient
+    *
+    *
+    * @example {{{
+    * scala> import scala.concurrent.duration._, cats.effect.{ContextShift, IO, Timer}
+    * scala> implicit val cs: ContextShift[IO] = IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
+    * scala> implicit val timer: Timer[IO] = IO.timer(scala.concurrent.ExecutionContext.Implicits.global)
+    * scala> val s1 = Stream.awakeEvery[IO](500.millis).scan(0)((acc, i) => acc + 1)
+    * scala> val s = s1.merge(Stream.sleep_[IO](250.millis) ++ s1)
+    * scala> s.take(6).compile.toVector.unsafeRunSync
+    * res0: Vector[Int] = Vector(0, 0, 1, 1, 2, 2)
+    * }}}
+    */
   def merge[F2[x] >: F[x], O2 >: O](that: Stream[F2, O2])(
       implicit F2: Concurrent[F2]): Stream[F2, O2] =
     Stream.eval {
@@ -1926,13 +1923,15 @@ final class Stream[+F[_], +O] private (private val asPull: Pull[F, O, Unit]) ext
                                 .drain
                                 .attempt
                                 .flatMap { r =>
-                                  lease.cancel.flatMap { cancelResult =>
-                                    available.release >>
-                                      (CompositeFailure.fromResults(r, cancelResult) match {
-                                        case Right(()) => F2.unit
-                                        case Left(err) =>
-                                          stop(Some(err))
-                                      }) >> decrementRunning
+                                  lease.cancel.flatMap { leaseExceptions =>
+                                    val allExceptions = r.swap.toOption
+                                      .map(_ +: leaseExceptions)
+                                      .getOrElse(leaseExceptions)
+                                    val compositeException =
+                                      CompositeFailure.fromList(allExceptions.toList)
+                                    available.release >> compositeException
+                                      .map(t => stop(Some(t)))
+                                      .getOrElse(F2.unit) >> decrementRunning
                                   }
                                 }
                             }.void

@@ -20,7 +20,7 @@ final class Scope[F[_]] private (
     fr.attempt.flatMap {
       case Right(r) =>
         val finalizer = (ec: ExitCase[Throwable]) => F.suspend(release(r, ec))
-        val resource = ScopedResource(finalizer)
+        val resource = Scope.ScopedResource(finalizer)
         state
           .modify { s =>
             if (s.open) (s.copy(resources = resource +: s.resources), true)
@@ -126,13 +126,42 @@ final class Scope[F[_]] private (
           loop(s.children)
         }
 
-  def lease: F[Option[Scope.Lease[F]]] = ???
+  def lease(implicit F: Monad[F]): F[Option[Scope.Lease[F]]] =
+    state.get.flatMap { s =>
+      if (!s.open) Option.empty[Scope.Lease[F]].pure[F]
+      else {
+        val allScopes = (s.children :+ this) ++ ancestors
+        allScopes.flatTraverse(_.resources).flatMap { allResources =>
+          allResources.traverseFilter(_.lease).map { allLeases =>
+            val lease: Scope.Lease[F] = new Scope.Lease[F] {
+              def cancel(implicit F: MonadError[F, Throwable]): F[Chain[Throwable]] =
+                allLeases.flatTraverse(_.cancel)
+            }
+            Some(lease)
+          }
+        }
+      }
+    }
+
+  /** Returns all direct resources of this scope (does not return resources in ancestor scopes or child scopes). **/
+  private def resources(implicit F: Functor[F]): F[Chain[Scope.ScopedResource[F]]] =
+    state.get.map(_.resources)
+
+  /** Gets all ancestors of this scope, inclusive of root scope. **/
+  private def ancestors: Chain[Scope[F]] = {
+    @annotation.tailrec
+    def go(current: Scope[F], acc: Chain[Scope[F]]): Chain[Scope[F]] =
+      current.parent match {
+        case Some(parent) => go(parent, acc :+ parent)
+        case None         => acc
+      }
+    go(this, Chain.empty)
+  }
 
   def interrupt(cause: Option[Throwable])(implicit F: Sync[F]): F[Unit] =
     interruptionContext match {
       case Some(ictx) =>
         ictx.deferred.complete(cause).guarantee(ictx.interrupted.update(_.orElse(Some(cause))))
-      // >> state.get.flatMap(_.children.traverse_(_.interrupt(cause))) TODO?
       case None =>
         F.raiseError(
           new IllegalStateException("cannot interrupt a scope that does not support interruption"))
@@ -177,7 +206,7 @@ object Scope {
 
   private case class State[F[_]](
       open: Boolean,
-      resources: Chain[ScopedResource[F]],
+      resources: Chain[Scope.ScopedResource[F]],
       children: Chain[Scope[F]]
   )
 
@@ -231,17 +260,50 @@ object Scope {
   }
 
   abstract class Lease[F[_]] {
-    def cancel: F[Either[Throwable, Unit]]
+    def cancel(implicit F: MonadError[F, Throwable]): F[Chain[Throwable]]
   }
-}
 
-private[fs2] final class ScopedResource[F[_]](finalizer: ExitCase[Throwable] => F[Unit]) {
-  def release(ec: ExitCase[Throwable])(
-      implicit F: ApplicativeError[F, Throwable]): F[Option[Throwable]] =
-    finalizer(ec).attempt.map(_.swap.toOption)
-}
+  private[fs2] final class ScopedResource[F[_]](state: Ref[F, ScopedResource.State[F]]) {
+    def release(ec: ExitCase[Throwable])(
+        implicit F: MonadError[F, Throwable]): F[Option[Throwable]] =
+      state
+        .modify(s => s.copy(finalizer = None) -> s.finalizer)
+        .flatMap(finalizer => finalizer.flatTraverse(ff => ff(ec).attempt.map(_.swap.toOption)))
 
-private[fs2] object ScopedResource {
-  def apply[F[_]](finalizer: ExitCase[Throwable] => F[Unit]): ScopedResource[F] =
-    new ScopedResource(finalizer)
+    def lease: F[Option[Scope.Lease[F]]] =
+      state.modify { s =>
+        if (s.open)
+          s.copy(leases = s.leases + 1) -> Some(TheLease)
+        else
+          s -> None
+      }
+
+    private[this] object TheLease extends Scope.Lease[F] {
+      def cancel(implicit F: MonadError[F, Throwable]): F[Chain[Throwable]] =
+        state
+          .modify { s =>
+            val now = s.copy(leases = s.leases - 1)
+            now -> now
+          }
+          .flatMap { now =>
+            if (now.isFinished)
+              release(ExitCase.Completed).map(_.map(Chain.one).getOrElse(Chain.empty))
+            else
+              F.pure(Chain.empty)
+          }
+    }
+  }
+
+  private[fs2] object ScopedResource {
+    def apply[F[_]: Sync](finalizer: ExitCase[Throwable] => F[Unit]): ScopedResource[F] =
+      new ScopedResource(Ref.unsafe[F, State[F]](State(Some(finalizer), true, 0)))
+
+    final case class State[F[_]](finalizer: Option[ExitCase[Throwable] => F[Unit]],
+                                 open: Boolean,
+                                 leases: Int) {
+      /* The `isFinished` predicate indicates that the finalizer can be run at the present state:
+        which happens IF it is closed, AND there are no acquired leases pending to be released. */
+      @inline def isFinished: Boolean = !open && leases == 0
+    }
+  }
 }

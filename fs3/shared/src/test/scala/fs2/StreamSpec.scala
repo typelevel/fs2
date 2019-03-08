@@ -213,7 +213,6 @@ class StreamSpec extends Fs2Spec {
       }
 
       "7 - parJoin" in {
-        pending
         Stream(Stream.emit(1).covary[IO], Stream.raiseError[IO](new Err), Stream.emit(2).covary[IO])
           .covary[IO]
           .parJoin(4)
