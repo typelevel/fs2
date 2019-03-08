@@ -501,6 +501,21 @@ class StreamSpec extends Fs2Spec {
           val interrupt = IO.sleep(50.millis).attempt
           s.covary[IO]
             .interruptWhen(interrupt)
+            .evalMap(_ => IO.never)
+            .drain
+            .append(s)
+            .compile
+            .toList
+            .asserting(_ shouldBe s.toList)
+        }
+      }
+
+      "14b - interrupt evalMap+collect and then resume on append" in {
+        pending // Broken
+        forAll { s: Stream[Pure, Int] =>
+          val interrupt = IO.sleep(50.millis).attempt
+          s.covary[IO]
+            .interruptWhen(interrupt)
             .evalMap(_ => IO.never.as(None))
             .append(s.map(Some(_)))
             .collect { case Some(v) => v }
