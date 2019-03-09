@@ -184,6 +184,41 @@ class StreamSpec extends Fs2Spec {
       }
     }
 
+    "chunks" - {
+      "chunks.map identity" in forAll { (v: Vector[Vector[Int]]) =>
+        val s = if (v.isEmpty) Stream.empty else v.map(Stream.emits).reduce(_ ++ _)
+        s.chunks.map(_.toVector).toVector shouldBe v.filter(_.nonEmpty)
+      }
+
+      "chunks.flatMap(chunk) identity" in forAll { (v: Vector[Vector[Int]]) =>
+        val s = if (v.isEmpty) Stream.empty else v.map(Stream.emits).reduce(_ ++ _)
+        s.chunks.flatMap(Stream.chunk).toVector shouldBe v.flatten
+      }
+    }
+
+    "collect" in forAll { (s: Stream[Pure, Int]) =>
+      val pf: PartialFunction[Int, Int] = { case x if x % 2 == 0 => x }
+      s.collect(pf).toVector shouldBe s.toVector.collect(pf)
+    }
+
+    "collectFirst" in forAll { (s: Stream[Pure, Int]) =>
+      val pf: PartialFunction[Int, Int] = { case x if x % 2 == 0 => x }
+      s.collectFirst(pf).toVector shouldBe s.collectFirst(pf).toVector
+    }
+
+    "delete" in forAll { (s: Stream[Pure, Int], idx0: PosZInt) =>
+      val v = s.toVector
+      val i = if (v.isEmpty) 0 else v(idx0 % v.size)
+      s.delete(_ == i).toVector shouldBe v.diff(Vector(i))
+    }
+
+    "drop" in forAll { (s: Stream[Pure, Int], negate: Boolean, n0: PosZInt) =>
+      val v = s.toVector
+      val n1 = if (v.isEmpty) 0 else n0 % v.size
+      val n = if (negate) -n1 else n1
+      s.drop(n).toVector shouldBe s.toVector.drop(n)
+    }
+
     "duration" in {
       val delay = 200.millis
       Stream

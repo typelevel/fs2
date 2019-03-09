@@ -14,44 +14,6 @@ class PipeSpec extends Fs2Spec {
 
   "Pipe" - {
 
-    "chunks" in forAll(nonEmptyNestedVectorGen) { (v0: Vector[Vector[Int]]) =>
-      val v = Vector(Vector(11, 2, 2, 2),
-                     Vector(2, 2, 3),
-                     Vector(2, 3, 4),
-                     Vector(1, 2, 2, 2, 2, 2, 3, 3))
-      val s = if (v.isEmpty) Stream.empty else v.map(emits).reduce(_ ++ _)
-      runLog(s.chunks.map(_.toVector)) shouldBe v
-    }
-
-    "chunks (2)" in forAll(nestedVectorGen[Int](0, 10, emptyChunks = true)) {
-      (v: Vector[Vector[Int]]) =>
-        val s = if (v.isEmpty) Stream.empty else v.map(emits).reduce(_ ++ _)
-        runLog(s.chunks.flatMap(Stream.chunk(_))) shouldBe v.flatten
-    }
-
-    "collect" in forAll { (s: PureStream[Int]) =>
-      val pf: PartialFunction[Int, Int] = { case x if x % 2 == 0 => x }
-      runLog(s.get.collect(pf)) shouldBe runLog(s.get).collect(pf)
-    }
-
-    "collectFirst" in forAll { (s: PureStream[Int]) =>
-      val pf: PartialFunction[Int, Int] = { case x if x % 2 == 0 => x }
-      runLog(s.get.collectFirst(pf)) shouldBe runLog(s.get)
-        .collectFirst(pf)
-        .toVector
-    }
-
-    "delete" in forAll { (s: PureStream[Int]) =>
-      val v = runLog(s.get)
-      val i = if (v.isEmpty) 0 else Gen.oneOf(v).sample.getOrElse(0)
-      runLog(s.get.delete(_ == i)) shouldBe v.diff(Vector(i))
-    }
-
-    "drop" in forAll { (s: PureStream[Int], negate: Boolean, n0: SmallNonnegative) =>
-      val n = if (negate) -n0.get else n0.get
-      runLog(s.get.drop(n)) shouldBe runLog(s.get).drop(n)
-    }
-
     "dropLast" in forAll { (s: PureStream[Int]) =>
       runLog { s.get.dropLast } shouldBe s.get.toVector.dropRight(1)
     }
