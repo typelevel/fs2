@@ -5,6 +5,7 @@ import cats.effect._
 import cats.effect.concurrent.{Deferred, Ref, Semaphore}
 import cats.implicits._
 import scala.concurrent.duration._
+import org.scalactic.anyvals._
 
 class StreamSpec extends Fs2Spec {
   "Stream" - {
@@ -70,9 +71,116 @@ class StreamSpec extends Fs2Spec {
       }
     }
 
+    "buffer" - {
+      "identity" in forAll { (s: Stream[Pure, Int], n: PosInt) =>
+        s.buffer(n).toVector shouldBe s.toVector
+      }
+
+      "buffer results of evalMap" in forAll { (s: Stream[Pure, Int], n0: PosInt) =>
+        val n = n0 % 20 + 1
+        IO.suspend {
+          var counter = 0
+          val s2 = s.append(Stream.emits(List.fill(n + 1)(0))).repeat
+          s2.evalMap { i =>
+              IO { counter += 1; i }
+            }
+            .buffer(n)
+            .take(n + 1)
+            .compile
+            .drain
+            .asserting(_ => counter shouldBe (n * 2))
+        }
+      }
+    }
+
+    "bufferAll" - {
+      "identity" in forAll { (s: Stream[Pure, Int]) =>
+        s.bufferAll.toVector shouldBe s.toVector
+      }
+
+      "buffer results of evalMap" in forAll { (s: Stream[Pure, Int]) =>
+        IO.suspend {
+          var counter = 0
+          s.append(s)
+            .evalMap { i =>
+              IO { counter += 1; i }
+            }
+            .bufferAll
+            .take(s.toList.size + 1)
+            .compile
+            .drain
+            .asserting(_ => counter shouldBe (s.toList.size * 2))
+        }
+      }
+    }
+
+    "bufferBy" - {
+      "identity" in forAll { (s: Stream[Pure, Int]) =>
+        s.bufferBy(_ >= 0).toVector shouldBe s.toVector
+      }
+
+      "buffer results of evalMap" in forAll { (s: Stream[Pure, Int]) =>
+        IO.suspend {
+          var counter = 0
+          val s2 = s.map(x => if (x == Int.MinValue) x + 1 else x).map(_.abs)
+          val s3 = s2.append(Stream.emit(-1)).append(s2).evalMap { i =>
+            IO { counter += 1; i }
+          }
+          s3.bufferBy(_ >= 0)
+            .take(s.toList.size + 2)
+            .compile
+            .drain
+            .asserting(_ => counter shouldBe (s.toList.size * 2 + 1))
+        }
+      }
+    }
+
+    "changes" in {
+      Stream.empty.covaryOutput[Int].changes.toList shouldBe Nil
+      Stream(1, 2, 3, 4).changes.toList shouldBe List(1, 2, 3, 4)
+      Stream(1, 1, 2, 2, 3, 3, 4, 3).changes.toList shouldBe List(1, 2, 3, 4, 3)
+      Stream("1", "2", "33", "44", "5", "66")
+        .changesBy(_.length)
+        .toList shouldBe
+        List("1", "33", "5", "66")
+    }
+
     "chunk" in {
       forAll { (c: Chunk[Int]) =>
         Stream.chunk(c).toChunk shouldBe c
+      }
+    }
+
+    "chunkLimit" in forAll { (s: Stream[Pure, Int], n0: PosInt) =>
+      val n = n0 % 20 + 1
+      val sizeV = s.chunkLimit(n).toVector.map(_.size)
+      sizeV.forall(_ <= n) shouldBe true
+      sizeV.combineAll shouldBe s.toVector.size
+    }
+
+    "chunkN" - {
+      "fewer" in forAll { (s: Stream[Pure, Int], n0: PosInt) =>
+        val n = n0 % 20 + 1
+        val chunkedV = s.chunkN(n, true).toVector
+        val unchunkedV = s.toVector
+        // All but last list have n0 values
+        chunkedV.dropRight(1).forall(_.size == n) shouldBe true
+        // Last list has at most n0 values
+        chunkedV.lastOption.fold(true)(_.size <= n) shouldBe true
+        // Flattened sequence is equal to vector without chunking
+        chunkedV.foldLeft(Vector.empty[Int])((v, l) => v ++ l.toVector) shouldBe unchunkedV
+      }
+
+      "no-fewer" in forAll { (s: Stream[Pure, Int], n0: PosInt) =>
+        val n = n0 % 20 + 1
+        val chunkedV = s.chunkN(n, false).toVector
+        val unchunkedV = s.toVector
+        val expectedSize = unchunkedV.size - (unchunkedV.size % n)
+        // All lists have n0 values
+        chunkedV.forall(_.size == n) shouldBe true
+        // Flattened sequence is equal to vector without chunking, minus "left over" values that could not fit in a chunk
+        chunkedV.foldLeft(Vector.empty[Int])((v, l) => v ++ l.toVector) shouldBe unchunkedV.take(
+          expectedSize)
       }
     }
 
