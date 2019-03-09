@@ -829,9 +829,25 @@ class StreamSpec extends Fs2Spec {
         .toList shouldBe List(1, 2, 3, 4)
     }
 
+    "repeat" in {
+      forAll(intsBetween(1, 200), lists[Int].havingSizesBetween(1, 200)) {
+        (n: Int, testValues: List[Int]) =>
+          Stream.emits(testValues).repeat.take(n).toList shouldBe List
+            .fill(n / testValues.size + 1)(testValues)
+            .flatten
+            .take(n)
+      }
+    }
+
+    "repeatN" in {
+      forAll(intsBetween(1, 200), lists[Int].havingSizesBetween(1, 200)) {
+        (n: Int, testValues: List[Int]) =>
+          Stream.emits(testValues).repeatN(n).toList shouldBe List.fill(n)(testValues).flatten
+      }
+    }
+
     "scope" - {
       "1" in {
-        // TODO This test should be replaced with one that shows proper usecase for .scope
         val c = new java.util.concurrent.atomic.AtomicLong(0)
         val s1 = Stream.emit("a").covary[IO]
         val s2 = Stream

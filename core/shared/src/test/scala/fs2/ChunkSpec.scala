@@ -99,12 +99,12 @@ class ChunkSpec extends Fs2Spec {
           arr.toVector shouldBe c.toArray.toVector
         }
 
-          // checkAll(s"Eq[Chunk[$of]]", EqTests[Chunk[A]].eqv)
-          // checkAll(s"Monad[Chunk]", MonadTests[Chunk].monad[A, A, A])
-          // checkAll(s"FunctorFilter[Chunk]", FunctorFilterTests[Chunk].functorFilter[A, A, A])
+      // checkAll(s"Eq[Chunk[$of]]", EqTests[Chunk[A]].eqv)
+      // checkAll(s"Monad[Chunk]", MonadTests[Chunk].monad[A, A, A])
+      // checkAll(s"FunctorFilter[Chunk]", FunctorFilterTests[Chunk].functorFilter[A, A, A])
 
-          // if (testTraverse)
-          //   checkAll(s"Traverse[Chunk]", TraverseTests[Chunk].traverse[A, A, A, A, Option, Option])
+      // if (testTraverse)
+      //   checkAll(s"Traverse[Chunk]", TraverseTests[Chunk].traverse[A, A, A, A, Option, Option])
     }
 
   implicit val commutativeMonoidForChar = new CommutativeMonoid[Char] {
