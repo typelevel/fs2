@@ -976,6 +976,102 @@ class StreamSpec extends Fs2Spec {
       }
     }
 
+    "retry" - {
+      case class RetryErr(msg: String = "") extends RuntimeException(msg)
+
+      "immediate success" in {
+        IO.suspend {
+          var attempts = 0
+          val job = IO {
+            attempts += 1
+            "success"
+          }
+          Stream.retry(job, 1.seconds, x => x, 100).compile.toList.asserting { r =>
+            attempts shouldBe 1
+            r shouldBe List("success")
+          }
+        }
+      }
+
+      "eventual success" in {
+        IO.suspend {
+          var failures, successes = 0
+          val job = IO {
+            if (failures == 5) { successes += 1; "success" } else {
+              failures += 1; throw RetryErr()
+            }
+          }
+          Stream.retry(job, 100.millis, x => x, 100).compile.toList.asserting { r =>
+            failures shouldBe 5
+            successes shouldBe 1
+            r shouldBe List("success")
+          }
+        }
+      }
+
+      "maxRetries" in {
+        IO.suspend {
+          var failures = 0
+          val job = IO {
+            failures += 1
+            throw RetryErr(failures.toString)
+          }
+          Stream.retry(job, 100.millis, x => x, 5).compile.drain.attempt.asserting {
+            case Left(RetryErr(msg)) =>
+              failures shouldBe 5
+              msg shouldBe "5"
+            case other => fail("Expected a RetryErr")
+          }
+        }
+      }
+
+      "fatal" in {
+        IO.suspend {
+          var failures, successes = 0
+          val job = IO {
+            if (failures == 5) { failures += 1; throw RetryErr("fatal") } else if (failures > 5) {
+              successes += 1; "success"
+            } else { failures += 1; throw RetryErr() }
+          }
+          val f: Throwable => Boolean = _.getMessage != "fatal"
+          Stream.retry(job, 100.millis, x => x, 100, f).compile.drain.attempt.asserting {
+            case Left(RetryErr(msg)) =>
+              failures shouldBe 6
+              successes shouldBe 0
+              msg shouldBe "fatal"
+            case other => fail("Expected a RetryErr")
+          }
+        }
+      }
+
+      "delays" in {
+        flickersOnTravis
+        val delays = scala.collection.mutable.ListBuffer.empty[Long]
+        val unit = 200
+        val maxTries = 5
+        def getDelays =
+          delays
+            .synchronized(delays.toList)
+            .sliding(2)
+            .map(s => (s.tail.head - s.head) / unit)
+            .toList
+
+        val job = {
+          val start = System.currentTimeMillis()
+          IO {
+            delays.synchronized { delays += System.currentTimeMillis() - start }
+            throw RetryErr()
+          }
+        }
+
+        Stream.retry(job, unit.millis, _ + unit.millis, maxTries).compile.drain.attempt.asserting {
+          case Left(RetryErr(_)) =>
+            getDelays shouldBe List.range(1, maxTries)
+          case other => fail("Expected a RetryErr")
+        }
+      }
+    }
+
     "scope" - {
       "1" in {
         val c = new java.util.concurrent.atomic.AtomicLong(0)
