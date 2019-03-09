@@ -6,7 +6,6 @@ import cats.data.{OptionT, State}
 import cats.effect.{Async, Concurrent, Sync}
 import cats.effect.concurrent.Ref
 import cats.implicits._
-import fs2.internal.Token
 
 /** Pure holder of a single value of type `A` that can be read in the effect `F`. */
 trait Signal[F[_], A] {
@@ -74,7 +73,7 @@ object Signal extends SignalLowPriorityImplicits {
       (y, restOfYs) = firstYAndRestOfYs
       _ <- OptionT.liftF(Pull.output1[F, PullOutput]((x, y, restOfXs, restOfYs)))
     } yield ()
-    firstPull.value.stream
+    firstPull.value.void.stream
       .covaryOutput[PullOutput]
       .flatMap {
         case (x, y, restOfXs, restOfYs) =>

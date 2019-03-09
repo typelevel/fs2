@@ -12,7 +12,7 @@ class FileSpec extends BaseFileSpec {
   "readAll" - {
     "retrieves whole content of a file" in {
       Stream
-        .resource(TestUtil.blockingExecutionContext)
+        .resource(blockingExecutionContext)
         .flatMap { bec =>
           tempFile
             .flatTap(modify)
@@ -28,7 +28,7 @@ class FileSpec extends BaseFileSpec {
   "readRange" - {
     "reads half of a file" in {
       Stream
-        .resource(TestUtil.blockingExecutionContext)
+        .resource(blockingExecutionContext)
         .flatMap { bec =>
           tempFile
             .flatTap(modify)
@@ -42,7 +42,7 @@ class FileSpec extends BaseFileSpec {
 
     "reads full file if end is bigger than file size" in {
       Stream
-        .resource(TestUtil.blockingExecutionContext)
+        .resource(blockingExecutionContext)
         .flatMap { bec =>
           tempFile
             .flatTap(modify)
@@ -58,7 +58,7 @@ class FileSpec extends BaseFileSpec {
   "writeAll" - {
     "simple write" in {
       Stream
-        .resource(TestUtil.blockingExecutionContext)
+        .resource(blockingExecutionContext)
         .flatMap { bec =>
           tempFile
             .flatMap(
@@ -76,7 +76,7 @@ class FileSpec extends BaseFileSpec {
 
     "append" in {
       Stream
-        .resource(TestUtil.blockingExecutionContext)
+        .resource(blockingExecutionContext)
         .flatMap { bec =>
           tempFile
             .flatMap { path =>

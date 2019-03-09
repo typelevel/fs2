@@ -1,8 +1,7 @@
-package fs2.concurrent
+package fs2
+package concurrent
 
 import cats.effect.{Concurrent, Sync}
-import fs2.internal.Token
-import fs2._
 
 /** Provides mechanisms for broadcast distribution of elements to multiple streams. */
 object Broadcast {

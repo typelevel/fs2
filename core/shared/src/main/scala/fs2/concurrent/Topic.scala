@@ -6,7 +6,6 @@ import cats.syntax.all._
 import cats.effect.{Concurrent, Sync}
 
 import scala.collection.immutable.{Queue => ScalaQueue}
-import fs2.internal.Token
 
 /**
   * Asynchronous Topic.

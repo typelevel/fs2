@@ -83,9 +83,8 @@ object pulls {
     */
   def fromPath[F[_]](path: Path,
                      blockingExecutionContext: ExecutionContext,
-                     flags: Seq[OpenOption])(
-      implicit F: Sync[F],
-      cs: ContextShift[F]): Pull[F, Nothing, Pull.Cancellable[F, FileHandle[F]]] =
+                     flags: Seq[OpenOption])(implicit F: Sync[F],
+                                             cs: ContextShift[F]): Pull[F, Nothing, FileHandle[F]] =
     fromFileChannel(F.delay(FileChannel.open(path, flags: _*)), blockingExecutionContext)
 
   /**
@@ -95,8 +94,8 @@ object pulls {
     */
   def fromFileChannel[F[_]](channel: F[FileChannel], blockingExecutionContext: ExecutionContext)(
       implicit F: Sync[F],
-      cs: ContextShift[F]): Pull[F, Nothing, Pull.Cancellable[F, FileHandle[F]]] =
+      cs: ContextShift[F]): Pull[F, Nothing, FileHandle[F]] =
     Pull
-      .acquireCancellable(channel)(ch => F.delay(ch.close()))
-      .map(_.map(FileHandle.fromFileChannel[F](_, blockingExecutionContext)))
+      .acquire(channel)(ch => F.delay(ch.close()))
+      .map(FileHandle.fromFileChannel[F](_, blockingExecutionContext))
 }

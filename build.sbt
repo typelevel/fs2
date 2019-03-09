@@ -29,7 +29,7 @@ lazy val commonSettings = Seq(
     (if (scalaBinaryVersion.value.startsWith("2.12"))
        List(
          "-Xlint",
-         "-Xfatal-warnings",
+         //  "-Xfatal-warnings",
          "-Yno-adapted-args",
          "-Ywarn-value-discard",
          "-Ywarn-unused-import",
@@ -54,16 +54,9 @@ lazy val commonSettings = Seq(
     "org.typelevel" %%% "cats-effect" % "1.2.0",
     "org.typelevel" %%% "cats-effect-laws" % "1.2.0" % "test",
     "org.scala-lang.modules" %%% "scala-collection-compat" % "0.3.0",
-    "org.scalatest" %%% "scalatest" % "3.0.6" % "test"
+    "org.scalatest" %%% "scalatest" % "3.1.0-SNAP7",
+    "org.scalatestplus" %%% "scalatestplus-scalacheck" % "1.0.0-SNAP2"
   ),
-  libraryDependencies += {
-    CrossVersion.partialVersion(scalaVersion.value) match {
-      case Some((2, v)) if v >= 13 =>
-        "org.scalacheck" %%% "scalacheck" % "1.14.0" % "test"
-      case _ =>
-        "org.scalacheck" %%% "scalacheck" % "1.13.5" % "test"
-    }
-  },
   scmInfo := Some(ScmInfo(url("https://github.com/functional-streams-for-scala/fs2"),
                           "git@github.com:functional-streams-for-scala/fs2.git")),
   homepage := Some(url("https://github.com/functional-streams-for-scala/fs2")),
@@ -276,37 +269,6 @@ lazy val coreJVM = core.jvm
   )
   .settings(mimaSettings)
 lazy val coreJS = core.js.disablePlugins(DoctestPlugin, MimaPlugin)
-
-lazy val fs3 = crossProject(JVMPlatform, JSPlatform)
-  .in(file("fs3"))
-  .settings(commonSettings: _*)
-  .settings(
-    name := "fs3-core",
-    sourceDirectories in (Compile, scalafmt) += baseDirectory.value / "../shared/src/main/scala",
-    sourceDirectories in (Test, scalafmt) += baseDirectory.value / "../shared/src/test/scala",
-    unmanagedSourceDirectories in Compile += {
-      val dir = CrossVersion.partialVersion(scalaVersion.value) match {
-        case Some((2, v)) if v >= 13 => "scala-2.13+"
-        case _                       => "scala-2.12-"
-      }
-      baseDirectory.value / "../shared/src/main" / dir
-    },
-    libraryDependencies := libraryDependencies.value
-      .filterNot(_.name.startsWith("scalatest"))
-      .filterNot(_.name.startsWith("scalacheck")),
-    libraryDependencies ++= Seq(
-      "org.scodec" %%% "scodec-bits" % "1.1.9",
-      "org.scalatest" %%% "scalatest" % "3.1.0-SNAP7",
-      "org.scalatestplus" %%% "scalatestplus-scalacheck" % "1.0.0-SNAP2"
-    ),
-    (scalacOptions in Test) := (scalacOptions in Test).value.filterNot(_ == "-Xfatal-warnings")
-  )
-  .jsSettings(commonJsSettings: _*)
-
-lazy val fs3JVM = fs3.jvm
-  .enablePlugins(SbtOsgi)
-  .settings(mimaSettings)
-lazy val fs3JS = fs3.js.disablePlugins(DoctestPlugin, MimaPlugin)
 
 lazy val io = project
   .in(file("io"))

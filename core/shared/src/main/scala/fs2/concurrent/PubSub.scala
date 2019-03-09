@@ -1,11 +1,10 @@
-package fs2.concurrent
+package fs2
+package concurrent
 
 import cats.{Applicative, Eq}
 import cats.effect.concurrent.{Deferred, Ref}
 import cats.effect.{Concurrent, ExitCase, Sync}
 import cats.syntax.all._
-import fs2._
-import fs2.internal.Token
 
 import scala.annotation.tailrec
 import scala.collection.immutable.{Queue => ScalaQueue}

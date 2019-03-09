@@ -8,14 +8,12 @@ import cats.effect.IO
 import cats.implicits._
 import java.nio.file._
 
-import TestUtil._
-
 class WatcherSpec extends BaseFileSpec {
   "Watcher" - {
     "supports watching a file" - {
       "for modifications" in {
-        runLog {
-          tempFile.flatMap { f =>
+        tempFile
+          .flatMap { f =>
             file
               .watch[IO](f, modifiers = modifiers)
               .takeWhile({
@@ -23,11 +21,13 @@ class WatcherSpec extends BaseFileSpec {
               }, true)
               .concurrently(smallDelay ++ modify(f))
           }
-        }
+          .compile
+          .drain
+          .assertNoException
       }
       "for deletions" in {
-        runLog {
-          tempFile.flatMap { f =>
+        tempFile
+          .flatMap { f =>
             file
               .watch[IO](f, modifiers = modifiers)
               .takeWhile({
@@ -35,14 +35,16 @@ class WatcherSpec extends BaseFileSpec {
               }, true)
               .concurrently(smallDelay ++ Stream.eval(IO(Files.delete(f))))
           }
-        }
+          .compile
+          .drain
+          .assertNoException
       }
     }
 
     "supports watching a directory" - {
       "static recursive watching" in {
-        runLog {
-          tempDirectory.flatMap { dir =>
+        tempDirectory
+          .flatMap { dir =>
             val a = dir.resolve("a")
             val b = a.resolve("b")
             Stream.eval(IO(Files.createDirectory(a)) >> IO(Files.write(b, Array[Byte]()))) >>
@@ -53,11 +55,13 @@ class WatcherSpec extends BaseFileSpec {
                 })
                 .concurrently(smallDelay ++ modify(b)))
           }
-        }
+          .compile
+          .drain
+          .assertNoException
       }
       "dynamic recursive watching" in {
-        runLog {
-          tempDirectory.flatMap { dir =>
+        tempDirectory
+          .flatMap { dir =>
             val a = dir.resolve("a")
             val b = a.resolve("b")
             file
@@ -68,7 +72,9 @@ class WatcherSpec extends BaseFileSpec {
               .concurrently(smallDelay ++ Stream.eval(
                 IO(Files.createDirectory(a)) >> IO(Files.write(b, Array[Byte]()))))
           }
-        }
+          .compile
+          .drain
+          .assertNoException
       }
     }
   }

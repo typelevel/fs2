@@ -9,7 +9,6 @@ import cats.effect.IO
 import cats.effect.concurrent.Deferred
 
 import fs2._
-import fs2.internal.ThreadFactories
 
 import org.scalatest.BeforeAndAfterAll
 

@@ -20,7 +20,7 @@ package object file {
       ): Stream[F, Byte] =
     pulls
       .fromPath(path, blockingExecutionContext, List(StandardOpenOption.READ))
-      .flatMap(c => pulls.readAllFromFileHandle(chunkSize)(c.resource))
+      .flatMap(r => pulls.readAllFromFileHandle(chunkSize)(r))
       .stream
 
   /**
@@ -36,7 +36,7 @@ package object file {
       ): Stream[F, Byte] =
     pulls
       .fromPath(path, blockingExecutionContext, List(StandardOpenOption.READ))
-      .flatMap(c => pulls.readRangeFromFileHandle(chunkSize, start, end)(c.resource))
+      .flatMap(r => pulls.readRangeFromFileHandle(chunkSize, start, end)(r))
       .stream
 
   /**
@@ -51,10 +51,9 @@ package object file {
   ): Pipe[F, Byte, Unit] =
     in =>
       (for {
-        out <- pulls.fromPath(path,
-                              blockingExecutionContext,
-                              StandardOpenOption.WRITE :: flags.toList)
-        fileHandle = out.resource
+        fileHandle <- pulls.fromPath(path,
+                                     blockingExecutionContext,
+                                     StandardOpenOption.WRITE :: flags.toList)
         offset <- if (flags.contains(StandardOpenOption.APPEND)) Pull.eval(fileHandle.size)
         else Pull.pure(0L)
         _ <- pulls.writeAllToFileHandleAtOffset(in, fileHandle, offset)

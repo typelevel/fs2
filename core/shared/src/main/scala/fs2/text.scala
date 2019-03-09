@@ -57,18 +57,16 @@ object text {
          Chunk.bytes(allBytes.drop(splitAt)))
     }
 
-    def doPull(
-        buf: Chunk[Byte],
-        s: Stream[Pure, Chunk[Byte]]): Pull[Pure, String, Option[Stream[Pure, Chunk[Byte]]]] =
+    def doPull(buf: Chunk[Byte], s: Stream[Pure, Chunk[Byte]]): Pull[Pure, String, Unit] =
       s.pull.uncons.flatMap {
         case Some((byteChunks, tail)) =>
           val (output, nextBuffer) =
             byteChunks.toList.foldLeft((Nil: List[String], buf))(processSingleChunk)
           Pull.output(Chunk.seq(output.reverse)) >> doPull(nextBuffer, tail)
         case None if !buf.isEmpty =>
-          Pull.output1(new String(buf.toArray, utf8Charset)) >> Pull.pure(None)
+          Pull.output1(new String(buf.toArray, utf8Charset)) >> Pull.done
         case None =>
-          Pull.pure(None)
+          Pull.done
       }
 
     (in: Stream[Pure, Chunk[Byte]]) =>
@@ -157,6 +155,6 @@ object text {
       }
 
     s =>
-      go(Vector.empty, false, s).stream
+      go(Vector.empty, false, s).void.stream
   }
 }

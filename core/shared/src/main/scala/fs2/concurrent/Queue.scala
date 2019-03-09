@@ -4,7 +4,6 @@ package concurrent
 import cats.{Applicative, Eq, Functor, Id}
 import cats.effect.{Concurrent, Sync}
 import cats.implicits._
-import fs2.internal.Token
 
 import scala.collection.immutable.{Queue => ScalaQueue}
 
