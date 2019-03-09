@@ -4,7 +4,6 @@ import cats.~>
 import cats.effect._
 import cats.effect.concurrent.{Deferred, Ref, Semaphore}
 import cats.implicits._
-
 import scala.concurrent.duration._
 
 class StreamSpec extends Fs2Spec {
@@ -81,7 +80,7 @@ class StreamSpec extends Fs2Spec {
       val delay = 200.millis
       Stream
         .emit(())
-        .append(Stream.eval(IO(Thread.sleep(delay.toMillis))))
+        .append(Stream.eval(IO.sleep(delay)))
         .zip(Stream.duration[IO])
         .drop(1)
         .map(_._2)
@@ -222,6 +221,137 @@ class StreamSpec extends Fs2Spec {
           .asserting(_.collect { case Left(t) => t }
             .find(_.isInstanceOf[Err])
             .isDefined shouldBe true)
+      }
+
+      "8" in {
+        SyncIO.suspend {
+          var i = 0
+          Pull
+            .pure(1)
+            .covary[SyncIO]
+            .handleErrorWith(_ => { i += 1; Pull.pure(2) })
+            .flatMap { _ =>
+              Pull.output1(i) >> Pull.raiseError[SyncIO](new Err)
+            }
+            .stream
+            .compile
+            .drain
+            .assertThrows[Err]
+            .asserting(_ => i shouldBe 0)
+        }
+      }
+
+      "9" in {
+        SyncIO.suspend {
+          var i = 0
+          Pull
+            .eval(SyncIO(1))
+            .handleErrorWith(_ => { i += 1; Pull.pure(2) })
+            .flatMap { _ =>
+              Pull.output1(i) >> Pull.raiseError[SyncIO](new Err)
+            }
+            .stream
+            .compile
+            .drain
+            .assertThrows[Err]
+            .asserting(_ => i shouldBe 0)
+        }
+      }
+
+      "10" in {
+        SyncIO.suspend {
+          var i = 0
+          Pull
+            .eval(SyncIO(1))
+            .flatMap { x =>
+              Pull
+                .pure(x)
+                .handleErrorWith(_ => { i += 1; Pull.pure(2) })
+                .flatMap { _ =>
+                  Pull.output1(i) >> Pull.raiseError[SyncIO](new Err)
+                }
+            }
+            .stream
+            .compile
+            .drain
+            .assertThrows[Err]
+            .asserting(_ => i shouldBe 0)
+        }
+      }
+
+      "11" in {
+        SyncIO.suspend {
+          var i = 0
+          Pull
+            .eval(SyncIO(???))
+            .handleErrorWith(_ => Pull.pure(i += 1))
+            .flatMap { _ =>
+              Pull.output1(i)
+            }
+            .stream
+            .compile
+            .drain
+            .asserting(_ => i shouldBe 1)
+        }
+      }
+
+      "12" in {
+        SyncIO.suspend {
+          var i = 0
+          Stream
+            .bracket(SyncIO(1))(_ => SyncIO(i += 1))
+            .flatMap(_ => Stream.eval(SyncIO(???)))
+            .compile
+            .drain
+            .assertThrows[NotImplementedError]
+            .asserting(_ => i shouldBe 1)
+        }
+      }
+
+      "13" in {
+        SyncIO.suspend {
+          var i = 0
+          Stream
+            .range(0, 10)
+            .covary[SyncIO]
+            .append(Stream.raiseError[SyncIO](new Err))
+            .handleErrorWith { t =>
+              i += 1; Stream.empty
+            }
+            .compile
+            .drain
+            .asserting(_ => i shouldBe 1)
+        }
+      }
+
+      "14" in {
+        Stream
+          .range(0, 3)
+          .covary[SyncIO]
+          .append(Stream.raiseError[SyncIO](new Err))
+          .unchunk
+          .pull
+          .echo
+          .stream
+          .compile
+          .drain
+          .assertThrows[Err]
+      }
+
+      "15" in {
+        SyncIO.suspend {
+          var i = 0
+          (Stream
+            .range(0, 3)
+            .covary[SyncIO] ++ Stream.raiseError[SyncIO](new Err)).unchunk.pull.echo
+            .handleErrorWith { t =>
+              i += 1; println(i); Pull.done
+            }
+            .stream
+            .compile
+            .drain
+            .asserting(_ => i shouldBe 1)
+        }
       }
     }
 
