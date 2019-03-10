@@ -329,8 +329,74 @@ class StreamSpec extends Fs2Spec {
       s.exists(f).toList shouldBe List(s.toList.exists(f))
     }
 
+    "filter" - {
+      "1" in forAll { (s: Stream[Pure, Int], n0: PosInt) =>
+        val n = n0 % 20 + 1
+        val predicate = (i: Int) => i % n == 0
+        s.filter(predicate).toList shouldBe s.toList.filter(predicate)
+      }
+
+      "2" in forAll { (s: Stream[Pure, Double]) =>
+        val predicate = (i: Double) => i - i.floor < 0.5
+        val s2 = s.mapChunks(c => Chunk.doubles(c.toArray))
+        s2.filter(predicate).toList shouldBe s2.toList.filter(predicate)
+      }
+
+      "3" in forAll { (s: Stream[Pure, Byte]) =>
+        val predicate = (b: Byte) => b < 0
+        val s2 = s.mapChunks(c => Chunk.bytes(c.toArray))
+        s2.filter(predicate).toList shouldBe s2.toList.filter(predicate)
+      }
+
+      "4" in forAll { (s: Stream[Pure, Boolean]) =>
+        val predicate = (b: Boolean) => !b
+        val s2 = s.mapChunks(c => Chunk.booleans(c.toArray))
+        s2.filter(predicate).toList shouldBe s2.toList.filter(predicate)
+      }
+    }
+
+    "find" in forAll { (s: Stream[Pure, Int], i: Int) =>
+      val predicate = (item: Int) => item < i
+      s.find(predicate).toList shouldBe s.toList.find(predicate).toList
+    }
+
     "flatMap" in forAll { (s: Stream[Pure, Stream[Pure, Int]]) =>
       s.flatMap(inner => inner).toList shouldBe s.toList.flatMap(inner => inner.toList)
+    }
+
+    "fold" - {
+      "1" in forAll { (s: Stream[Pure, Int], n: Int) =>
+        val f = (a: Int, b: Int) => a + b
+        s.fold(n)(f).toList shouldBe List(s.toList.foldLeft(n)(f))
+      }
+
+      "2" in forAll { (s: Stream[Pure, Int], n: String) =>
+        val f = (a: String, b: Int) => a + b
+        s.fold(n)(f).toList shouldBe List(s.toList.foldLeft(n)(f))
+      }
+    }
+
+    "foldMonoid" - {
+      "1" in forAll { (s: Stream[Pure, Int]) =>
+        s.foldMonoid.toVector shouldBe Vector(s.toVector.combineAll)
+      }
+
+      "2" in forAll { (s: Stream[Pure, Double]) =>
+        s.foldMonoid.toVector shouldBe Vector(s.toVector.combineAll)
+      }
+    }
+
+    "fold1" in forAll { (s: Stream[Pure, Int]) =>
+      val v = s.toVector
+      val f = (a: Int, b: Int) => a + b
+      s.fold1(f).toVector shouldBe v.headOption.fold(Vector.empty[Int])(h =>
+        Vector(v.drop(1).foldLeft(h)(f)))
+    }
+
+    "forall" in forAll { (s: Stream[Pure, Int], n0: PosInt) =>
+      val n = n0 % 20 + 1
+      val f = (i: Int) => i % n == 0
+      s.forall(f).toList shouldBe List(s.toList.forall(f))
     }
 
     "fromEither" in forAll { either: Either[Throwable, Int] =>
@@ -347,6 +413,18 @@ class StreamSpec extends Fs2Spec {
         .compile
         .toList
         .asserting(_ shouldBe x)
+    }
+
+    "groupAdjacentBy" in forAll { (s: Stream[Pure, Int], n0: PosInt) =>
+      val n = n0 % 20 + 1
+      val f = (i: Int) => i % n
+      val s1 = s.groupAdjacentBy(f)
+      val s2 = s.map(f).changes
+      s1.map(_._2).toList.flatMap(_.toList) shouldBe s.toList
+      s1.map(_._1).toList shouldBe s2.toList
+      s1.map { case (k, vs) => vs.toVector.forall(f(_) == k) }.toList shouldBe s2
+        .map(_ => true)
+        .toList
     }
 
     "handleErrorWith" - {
@@ -547,6 +625,10 @@ class StreamSpec extends Fs2Spec {
             .asserting(_ => i shouldBe 1)
         }
       }
+    }
+
+    "head" in forAll { (s: Stream[Pure, Int]) =>
+      s.head.toList shouldBe s.toList.take(1)
     }
 
     "interleave" - {
@@ -983,6 +1065,10 @@ class StreamSpec extends Fs2Spec {
       }
     }
 
+    "intersperse" in forAll { (s: Stream[Pure, Int], n: Int) =>
+      s.intersperse(n).toList shouldBe s.toList.flatMap(i => List(i, n)).dropRight(1)
+    }
+
     "iterate" in {
       Stream.iterate(0)(_ + 1).take(100).toList shouldBe List.iterate(0, 100)(_ + 1)
     }
@@ -994,6 +1080,16 @@ class StreamSpec extends Fs2Spec {
         .compile
         .toVector
         .asserting(_ shouldBe List.iterate(0, 100)(_ + 1))
+    }
+
+    "last" in forAll { (s: Stream[Pure, Int]) =>
+      val _ = s.last
+      s.last.toList shouldBe List(s.toList.lastOption)
+    }
+
+    "lastOr" in forAll { (s: Stream[Pure, Int], n0: PosInt) =>
+      val n = n0 % 20 + 1
+      s.lastOr(n).toList shouldBe List(s.toList.lastOption.getOrElse(n))
     }
 
     "map" - {
@@ -1015,6 +1111,15 @@ class StreamSpec extends Fs2Spec {
       }
     }
 
+    "mapAccumulate" in forAll { (s: Stream[Pure, Int], m: Int, n0: PosInt) =>
+      val n = n0 % 20 + 1
+      val f = (_: Int) % n == 0
+      val r = s.mapAccumulate(m)((s, i) => (s + i, f(i)))
+
+      r.map(_._1).toList shouldBe s.toList.scanLeft(m)(_ + _).tail
+      r.map(_._2).toList shouldBe s.toList.map(f)
+    }
+
     "mapAsync" - {
       "same as map" in forAll { s: Stream[Pure, Int] =>
         val f = (_: Int) + 1
@@ -1033,6 +1138,10 @@ class StreamSpec extends Fs2Spec {
       val f = (_: Int) + 1
       val r = s.covary[IO].mapAsyncUnordered(16)(i => IO(f(i)))
       r.compile.toVector.asserting(_ should contain theSameElementsAs s.toVector.map(f))
+    }
+
+    "mapChunks" in forAll { (s: Stream[Pure, Int]) =>
+      s.mapChunks(identity).chunks.toList shouldBe s.chunks.toList
     }
 
     "observeEither" - {
@@ -1070,6 +1179,32 @@ class StreamSpec extends Fs2Spec {
             .compile
             .toList
             .asserting(r => (r should have).length(0))
+        }
+      }
+    }
+
+    "prefetch" - {
+      "identity" in forAll { (s: Stream[Pure, Int]) =>
+        s.covary[IO].prefetch.compile.toList.asserting(_ shouldBe s.toList)
+      }
+
+      "timing" in {
+        // should finish in about 3-4 seconds
+        IO.suspend {
+          val start = System.currentTimeMillis
+          Stream(1, 2, 3)
+            .evalMap(i => IO { Thread.sleep(1000); i })
+            .prefetch
+            .flatMap { i =>
+              Stream.eval(IO { Thread.sleep(1000); i })
+            }
+            .compile
+            .toList
+            .asserting { _ =>
+              val stop = System.currentTimeMillis
+              val elapsed = stop - start
+              elapsed should be < 6000L
+            }
         }
       }
     }
@@ -1286,6 +1421,34 @@ class StreamSpec extends Fs2Spec {
       }
     }
 
+    "scan" - {
+      "1" in forAll { (s: Stream[Pure, Int], n: Int) =>
+        val f = (a: Int, b: Int) => a + b
+        s.scan(n)(f).toList shouldBe s.toList.scanLeft(n)(f)
+      }
+
+      "2" in {
+        val s = Stream(1).map(x => x)
+        val f = (a: Int, b: Int) => a + b
+        s.scan(0)(f).toList shouldBe s.toList.scanLeft(0)(f)
+      }
+
+      "temporal" in {
+        val never = Stream.eval(IO.async[Int](_ => ()))
+        val s = Stream(1)
+        val f = (a: Int, b: Int) => a + b
+        val result = s.toList.scanLeft(0)(f)
+        s.append(never).scan(0)(f).take(result.size).compile.toList.asserting(_ shouldBe result)
+      }
+    }
+
+    "scan1" in forAll { (s: Stream[Pure, Int]) =>
+      val v = s.toVector
+      val f = (a: Int, b: Int) => a + b
+      s.scan1(f).toVector shouldBe v.headOption.fold(Vector.empty[Int])(h =>
+        v.drop(1).scanLeft(h)(f))
+    }
+
     "scope" - {
       "1" in {
         val c = new java.util.concurrent.atomic.AtomicLong(0)
@@ -1320,6 +1483,76 @@ class StreamSpec extends Fs2Spec {
           .toList
           .asserting(_ shouldBe List(1, 1, 0))
       }
+    }
+
+    "sliding" in forAll { (s: Stream[Pure, Int], n0: PosInt) =>
+      val n = n0 % 20 + 1
+      s.sliding(n).toList.map(_.toList) shouldBe s.toList
+        .sliding(n)
+        .map(_.toList)
+        .toList
+    }
+
+    "split" - {
+      "1" in forAll { (s: Stream[Pure, Int], n0: PosInt) =>
+        val n = n0 % 20 + 1
+        val s2 = s
+          .map(x => if (x == Int.MinValue) x + 1 else x)
+          .map(_.abs)
+          .filter(_ != 0)
+        withClue(s"n = $n, s = ${s.toList}, s2 = " + s2.toList) {
+          s2.chunkLimit(n)
+            .intersperse(Chunk.singleton(0))
+            .flatMap(Stream.chunk)
+            .split(_ == 0)
+            .map(_.toVector)
+            .filter(_.nonEmpty)
+            .toVector shouldBe s2.chunkLimit(n).filter(_.nonEmpty).map(_.toVector).toVector
+        }
+      }
+
+      "2" in {
+        Stream(1, 2, 0, 0, 3, 0,
+          4).split(_ == 0).toVector.map(_.toVector) shouldBe Vector(Vector(1, 2),
+                                                                    Vector(),
+                                                                    Vector(3),
+                                                                    Vector(4))
+        Stream(1, 2, 0, 0, 3, 0).split(_ == 0).toVector.map(_.toVector) shouldBe Vector(Vector(1,
+                                                                                               2),
+                                                                                        Vector(),
+                                                                                        Vector(3))
+        Stream(1, 2, 0, 0, 3, 0,
+          0).split(_ == 0).toVector.map(_.toVector) shouldBe Vector(Vector(1, 2),
+                                                                    Vector(),
+                                                                    Vector(3),
+                                                                    Vector())
+      }
+    }
+
+    "take" in forAll { (s: Stream[Pure, Int], negate: Boolean, n0: PosInt) =>
+      val n1 = n0 % 20 + 1
+      val n = if (negate) -n1 else n1
+      s.take(n).toList shouldBe s.toList.take(n)
+    }
+
+    "takeRight" in forAll { (s: Stream[Pure, Int], negate: Boolean, n0: PosInt) =>
+      val n1 = n0 % 20 + 1
+      val n = if (negate) -n1 else n1
+      s.takeRight(n).toList shouldBe s.toList.takeRight(n)
+    }
+
+    "takeWhile" in forAll { (s: Stream[Pure, Int], n0: PosInt) =>
+      val n = n0 % 20 + 1
+      val set = s.toList.take(n).toSet
+      s.takeWhile(set).toList shouldBe s.toList.takeWhile(set)
+    }
+
+    "takeThrough" in forAll { (s: Stream[Pure, Int], n0: PosInt) =>
+      val n = n0 % 20 + 1
+      val f = (i: Int) => i % n == 0
+      val vec = s.toVector
+      val result = vec.takeWhile(f) ++ vec.dropWhile(f).headOption
+      withClue(vec)(s.takeThrough(f).toVector shouldBe result)
     }
 
     "translate" - {
