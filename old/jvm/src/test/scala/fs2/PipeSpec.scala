@@ -14,49 +14,6 @@ class PipeSpec extends Fs2Spec {
 
   "Pipe" - {
 
-    "dropLast" in forAll { (s: PureStream[Int]) =>
-      runLog { s.get.dropLast } shouldBe s.get.toVector.dropRight(1)
-    }
-
-    "dropLastIf" in forAll { (s: PureStream[Int]) =>
-      runLog { s.get.dropLastIf(_ => false) } shouldBe s.get.toVector
-      runLog { s.get.dropLastIf(_ => true) } shouldBe s.get.toVector
-        .dropRight(1)
-    }
-
-    "dropRight" in forAll { (s: PureStream[Int], negate: Boolean, n0: SmallNonnegative) =>
-      val n = if (negate) -n0.get else n0.get
-      runLog(s.get.dropRight(n)) shouldBe runLog(s.get).dropRight(n)
-    }
-
-    "dropWhile" in forAll { (s: PureStream[Int], n: SmallNonnegative) =>
-      val set = runLog(s.get).take(n.get).toSet
-      runLog(s.get.dropWhile(set)) shouldBe runLog(s.get).dropWhile(set)
-    }
-
-    "dropThrough" in forAll { (s: PureStream[Int], n: SmallNonnegative) =>
-      val set = runLog(s.get).take(n.get).toSet
-      runLog(s.get.dropThrough(set)) shouldBe {
-        val vec = runLog(s.get).dropWhile(set)
-        if (vec.isEmpty) vec else vec.tail
-      }
-    }
-
-    "evalMapAccumulate" in forAll { (s: PureStream[Int], n0: Int, n1: SmallPositive) =>
-      val f = (_: Int) % n1.get == 0
-      val r = s.get.covary[IO].evalMapAccumulate(n0)((s, i) => IO.pure((s + i, f(i))))
-
-      runLog(r.map(_._1)) shouldBe runLog(s.get).scanLeft(n0)(_ + _).tail
-      runLog(r.map(_._2)) shouldBe runLog(s.get).map(f)
-    }
-
-    "evalScan" in forAll { (s: PureStream[Int], n: String) =>
-      val f: (String, Int) => IO[String] = (a: String, b: Int) => IO.pure(a + b)
-      val g = (a: String, b: Int) => a + b
-      runLog(s.get.covary[IO].evalScan(n)(f)) shouldBe runLog(s.get)
-        .scanLeft(n)(g)
-    }
-
     "mapAsync" in forAll { s: PureStream[Int] =>
       val f = (_: Int) + 1
       val r = s.get.covary[IO].mapAsync(16)(i => IO(f(i)))

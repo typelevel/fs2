@@ -219,6 +219,37 @@ class StreamSpec extends Fs2Spec {
       s.drop(n).toVector shouldBe s.toVector.drop(n)
     }
 
+    "dropLast" in forAll { (s: Stream[Pure, Int]) =>
+      s.dropLast.toVector shouldBe s.toVector.dropRight(1)
+    }
+
+    "dropLastIf" in forAll { (s: Stream[Pure, Int]) =>
+      s.dropLastIf(_ => false).toVector shouldBe s.toVector
+      s.dropLastIf(_ => true).toVector shouldBe s.toVector.dropRight(1)
+    }
+
+    "dropRight" in forAll { (s: Stream[Pure, Int], negate: Boolean, n0: PosZInt) =>
+      val v = s.toVector
+      val n1 = if (v.isEmpty) 0 else n0 % v.size
+      val n = if (negate) -n1 else n1
+      s.dropRight(n).toVector shouldBe v.dropRight(n)
+    }
+
+    "dropWhile" in forAll { (s: Stream[Pure, Int], n0: PosZInt) =>
+      val n = n0 % 20
+      val set = s.toVector.take(n).toSet
+      s.dropWhile(set).toVector shouldBe s.toVector.dropWhile(set)
+    }
+
+    "dropThrough" in forAll { (s: Stream[Pure, Int], n0: PosZInt) =>
+      val n = n0 % 20
+      val set = s.toVector.take(n).toSet
+      s.dropThrough(set).toVector shouldBe {
+        val vec = s.toVector.dropWhile(set)
+        if (vec.isEmpty) vec else vec.tail
+      }
+    }
+
     "duration" in {
       val delay = 200.millis
       Stream
@@ -237,6 +268,20 @@ class StreamSpec extends Fs2Spec {
     }
 
     "eval" in { Stream.eval(SyncIO(23)).compile.toList.asserting(_ shouldBe List(23)) }
+
+    "evalMapAccumulate" in forAll { (s: Stream[Pure, Int], m: Int, n0: PosInt) =>
+      val n = n0 % 20 + 1
+      val f = (_: Int) % n == 0
+      val r = s.covary[IO].evalMapAccumulate(m)((s, i) => IO.pure((s + i, f(i))))
+      r.map(_._1).compile.toVector.asserting(_ shouldBe s.toVector.scanLeft(m)(_ + _).tail)
+      r.map(_._2).compile.toVector.asserting(_ shouldBe s.toVector.map(f))
+    }
+
+    "evalScan" in forAll { (s: Stream[Pure, Int], n: String) =>
+      val f: (String, Int) => IO[String] = (a: String, b: Int) => IO.pure(a + b)
+      val g = (a: String, b: Int) => a + b
+      s.covary[IO].evalScan(n)(f).compile.toVector.asserting(_ shouldBe s.toVector.scanLeft(n)(g))
+    }
 
     "every" in {
       flickersOnTravis
