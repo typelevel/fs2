@@ -22,7 +22,7 @@ import cats.effect._
   * `raiseError` is caught by `handleErrorWith`:
   *   - `handleErrorWith(raiseError(e))(f) == f(e)`
   */
-sealed trait Pull[+F[_], +O, +R] { self =>
+sealed trait Pull[+F[_], +O, +R] extends Serializable { self =>
 
   /**
     * Used during compilation of a pull to make progress. A single step of a pull

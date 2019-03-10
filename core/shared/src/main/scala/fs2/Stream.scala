@@ -127,7 +127,9 @@ import scala.concurrent.duration._
   * @hideImplicitConversion PureOps
   * @hideImplicitConversion IdOps
   **/
-final class Stream[+F[_], +O] private (private val asPull: Pull[F, O, Unit]) extends AnyVal {
+final class Stream[+F[_], +O] private (private val asPull: Pull[F, O, Unit])
+    extends AnyVal
+    with Serializable {
 
   /**
     * Appends `s2` to the end of this stream.

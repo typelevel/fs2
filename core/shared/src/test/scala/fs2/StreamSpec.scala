@@ -323,6 +323,12 @@ class StreamSpec extends Fs2Spec {
       }
     }
 
+    "exists" in forAll { (s: Stream[Pure, Int], n0: PosInt) =>
+      val n = n0 % 20 + 1
+      val f = (i: Int) => i % n == 0
+      s.exists(f).toList shouldBe List(s.toList.exists(f))
+    }
+
     "flatMap" in forAll { (s: Stream[Pure, Stream[Pure, Int]]) =>
       s.flatMap(inner => inner).toList shouldBe s.toList.flatMap(inner => inner.toList)
     }
@@ -1021,6 +1027,12 @@ class StreamSpec extends Fs2Spec {
         val r = (s ++ Stream(1)).covary[IO].mapAsync(1)(f).attempt
         r.compile.toVector.asserting(_.size shouldBe 1)
       }
+    }
+
+    "mapAsyncUnordered" in forAll { s: Stream[Pure, Int] =>
+      val f = (_: Int) + 1
+      val r = s.covary[IO].mapAsyncUnordered(16)(i => IO(f(i)))
+      r.compile.toVector.asserting(_ should contain theSameElementsAs s.toVector.map(f))
     }
 
     "observeEither" - {
