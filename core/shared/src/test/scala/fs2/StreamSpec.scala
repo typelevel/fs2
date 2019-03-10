@@ -1529,10 +1529,16 @@ class StreamSpec extends Fs2Spec {
       }
     }
 
-    "take" in forAll { (s: Stream[Pure, Int], negate: Boolean, n0: PosInt) =>
-      val n1 = n0 % 20 + 1
-      val n = if (negate) -n1 else n1
-      s.take(n).toList shouldBe s.toList.take(n)
+    "take" - {
+      "identity" in forAll { (s: Stream[Pure, Int], negate: Boolean, n0: PosInt) =>
+        val n1 = n0 % 20 + 1
+        val n = if (negate) -n1 else n1
+        s.take(n).toList shouldBe s.toList.take(n)
+      }
+      "chunks" in {
+        val s = Stream(1, 2) ++ Stream(3, 4)
+        s.take(3).chunks.map(_.toList).toList shouldBe List(List(1, 2), List(3))
+      }
     }
 
     "takeRight" in forAll { (s: Stream[Pure, Int], negate: Boolean, n0: PosInt) =>
@@ -1714,6 +1720,10 @@ class StreamSpec extends Fs2Spec {
         .asserting(_ shouldBe List(true))
     }
 
+    "unNone" in forAll { (s: Stream[Pure, Option[Int]]) =>
+      s.unNone.chunks.toList shouldBe s.filter(_.isDefined).map(_.get).chunks.toList
+    }
+
     "zip" - {
       "propagate error from closing the root scope" in {
         val s1 = Stream.bracket(IO(1))(_ => IO.unit)
@@ -1819,6 +1829,75 @@ class StreamSpec extends Fs2Spec {
           Right((3, 3))
         )
       }
+    }
+
+    "zipWithIndex" in forAll { (s: Stream[Pure, Int]) =>
+      s.zipWithIndex.toList shouldBe s.toList.zipWithIndex
+    }
+
+    "zipWithNext" - {
+      "1" in forAll { (s: Stream[Pure, Int]) =>
+        s.zipWithNext.toList shouldBe {
+          val xs = s.toList
+          xs.zipAll(xs.map(Some(_)).drop(1), -1, None)
+        }
+      }
+
+      "2" in {
+        Stream().zipWithNext.toList shouldBe Nil
+        Stream(0).zipWithNext.toList shouldBe List((0, None))
+        Stream(0, 1, 2).zipWithNext.toList shouldBe List((0, Some(1)), (1, Some(2)), (2, None))
+      }
+    }
+
+    "zipWithPrevious" - {
+      "1" in forAll { (s: Stream[Pure, Int]) =>
+        s.zipWithPrevious.toList shouldBe {
+          val xs = s.toList
+          (None +: xs.map(Some(_))).zip(xs)
+        }
+      }
+
+      "2" in {
+        Stream().zipWithPrevious.toList shouldBe Nil
+        Stream(0).zipWithPrevious.toList shouldBe List((None, 0))
+        Stream(0, 1, 2).zipWithPrevious.toList shouldBe List((None, 0), (Some(0), 1), (Some(1), 2))
+      }
+    }
+
+    "zipWithPreviousAndNext" - {
+      "1" in forAll { (s: Stream[Pure, Int]) =>
+        s.zipWithPreviousAndNext.toList shouldBe {
+          val xs = s.toList
+          val zipWithPrevious = (None +: xs.map(Some(_))).zip(xs)
+          val zipWithPreviousAndNext = zipWithPrevious
+            .zipAll(xs.map(Some(_)).drop(1), (None, -1), None)
+            .map { case ((prev, that), next) => (prev, that, next) }
+          zipWithPreviousAndNext
+        }
+      }
+
+      "2" in {
+        Stream().zipWithPreviousAndNext.toList shouldBe Nil
+        Stream(0).zipWithPreviousAndNext.toList shouldBe List((None, 0, None))
+        Stream(0, 1, 2).zipWithPreviousAndNext.toList shouldBe List((None, 0, Some(1)),
+                                                                    (Some(0), 1, Some(2)),
+                                                                    (Some(1), 2, None))
+      }
+    }
+
+    "zipWithScan" in {
+      Stream("uno", "dos", "tres", "cuatro")
+        .zipWithScan(0)(_ + _.length)
+        .toList shouldBe List("uno" -> 0, "dos" -> 3, "tres" -> 6, "cuatro" -> 10)
+      Stream().zipWithScan(())((acc, i) => ???).toList shouldBe Nil
+    }
+
+    "zipWithScan1" in {
+      Stream("uno", "dos", "tres", "cuatro")
+        .zipWithScan1(0)(_ + _.length)
+        .toList shouldBe List("uno" -> 3, "dos" -> 6, "tres" -> 10, "cuatro" -> 16)
+      Stream().zipWithScan1(())((acc, i) => ???).toList shouldBe Nil
     }
 
     "regressions" - {
