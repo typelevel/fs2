@@ -1009,6 +1009,20 @@ class StreamSpec extends Fs2Spec {
       }
     }
 
+    "mapAsync" - {
+      "same as map" in forAll { s: Stream[Pure, Int] =>
+        val f = (_: Int) + 1
+        val r = s.covary[IO].mapAsync(16)(i => IO(f(i)))
+        r.compile.toVector.asserting(_ shouldBe s.toVector.map(f))
+      }
+
+      "exception" in forAll { s: Stream[Pure, Int] =>
+        val f = (_: Int) => IO.raiseError[Int](new RuntimeException)
+        val r = (s ++ Stream(1)).covary[IO].mapAsync(1)(f).attempt
+        r.compile.toVector.asserting(_.size shouldBe 1)
+      }
+    }
+
     "observeEither" - {
       val s = Stream.emits(Seq(Left(1), Right("a"))).repeat.covary[IO]
 
