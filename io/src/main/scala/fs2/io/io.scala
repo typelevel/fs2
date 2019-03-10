@@ -2,8 +2,11 @@ package fs2
 
 import cats.effect.{ConcurrentEffect, ContextShift, Sync}
 
+import cats._
 import cats.implicits._
 import java.io.{InputStream, OutputStream}
+import java.nio.charset.Charset
+
 import scala.concurrent.{ExecutionContext, blocking}
 
 /**
@@ -16,6 +19,7 @@ import scala.concurrent.{ExecutionContext, blocking}
   * @see [[https://typelevel.org/cats-effect/concurrency/basics.html#blocking-threads]]
   */
 package object io {
+  private val utf8Charset = Charset.forName("UTF-8")
 
   /**
     * Reads all bytes from the specified `InputStream` with a buffer size of `chunkSize`.
@@ -130,6 +134,25 @@ package object io {
       implicit F: Sync[F],
       cs: ContextShift[F]): Pipe[F, Byte, Unit] =
     writeOutputStream(F.delay(System.out), blockingExecutionContext, false)
+
+  /**
+    * Writes this stream to standard output asynchronously, converting each element to
+    * a sequence of bytes via `Show` and the given `Charset`.
+    *
+    * Each write operation is performed on the supplied execution context. Writes are
+    * blocking so the execution context should be configured appropriately.
+    */
+  def stdoutLines[F[_], O](blockingExecutionContext: ExecutionContext, charset: Charset = utf8Charset)(
+      implicit F: Sync[F],
+      cs: ContextShift[F],
+      show: Show[O]): Pipe[F, O, Unit] =
+    _.map(_.show).through(text.encode(charset)).through(stdout(blockingExecutionContext))
+
+  /** Stream of `String` read asynchronously from standard input decoded in UTF-8. */
+  def stdinUtf8[F[_]](bufSize: Int, blockingExecutionContext: ExecutionContext)(
+      implicit F: Sync[F],
+      cs: ContextShift[F]): Stream[F, String] =
+    stdin(bufSize, blockingExecutionContext).through(text.utf8Decode)
 
   /**
     * Pipe that converts a stream of bytes to a stream that will emits a single `java.io.InputStream`,
