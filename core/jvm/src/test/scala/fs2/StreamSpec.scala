@@ -570,6 +570,23 @@ class StreamSpec extends Fs2Spec with Inside {
       unfoldTree(1).flatten.take(10).toList shouldBe List.tabulate(10)(_ + 1)
     }
 
+    "rechunkRandomlyWithSeed" - {
+
+      "is deterministic" in forAll { (s: PureStream[Int], seed: Long) =>
+        val x = runLog(s.get.rechunkRandomlyWithSeed[IO](minFactor = 0.1, maxFactor = 2.0)(seed))
+        val y = runLog(s.get.rechunkRandomlyWithSeed[IO](minFactor = 0.1, maxFactor = 2.0)(seed))
+        x shouldBe y
+      }
+
+      "does not drop elements" in forAll { (s: PureStream[Int], seed: Long) =>
+        runLog(s.get.rechunkRandomlyWithSeed[IO](minFactor = 0.1, maxFactor = 2.0)(seed)) shouldBe s.get.toVector
+      }
+    }
+
+    "rechunkRandomly" in forAll { (s: PureStream[Int]) =>
+      runLog(s.get.rechunkRandomly[IO]()) shouldBe s.get.toVector
+    }
+
     {
       implicit val ec: TestContext = TestContext()
 
