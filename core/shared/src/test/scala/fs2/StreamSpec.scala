@@ -6,6 +6,7 @@ import cats.effect.concurrent.{Deferred, Ref, Semaphore}
 import cats.implicits._
 import scala.concurrent.duration._
 import org.scalactic.anyvals._
+import org.scalatest.Succeeded
 
 class StreamSpec extends Fs2Spec {
   "Stream" - {
@@ -18,6 +19,38 @@ class StreamSpec extends Fs2Spec {
     }
 
     "apply" in { Stream(1, 2, 3).toList shouldBe List(1, 2, 3) }
+
+    "awakeEvery" - {
+      "basic" in {
+        Stream
+          .awakeEvery[IO](500.millis)
+          .map(_.toMillis)
+          .take(5)
+          .compile
+          .toVector
+          .asserting { r =>
+            r.sliding(2)
+              .map { s =>
+                (s.head, s.tail.head)
+              }
+              .map { case (prev, next) => next - prev }
+              .foreach { delta =>
+                delta shouldBe 500L +- 150
+              }
+            Succeeded
+          }
+      }
+
+      "liveness" in {
+        val s = Stream
+          .awakeEvery[IO](1.milli)
+          .evalMap { i =>
+            IO.async[Unit](cb => executionContext.execute(() => cb(Right(()))))
+          }
+          .take(200)
+        Stream(s, s, s, s, s).parJoin(5).compile.drain.assertNoException
+      }
+    }
 
     "bracket" - {
       sealed trait BracketEvent
@@ -396,6 +429,16 @@ class StreamSpec extends Fs2Spec {
             }
             .assertNoException
       }
+    }
+
+    "debounce" in {
+      val delay = 200.milliseconds
+      (Stream(1, 2, 3) ++ Stream.sleep[IO](delay * 2) ++ Stream() ++ Stream(4, 5) ++ Stream
+        .sleep[IO](delay / 2) ++ Stream(6))
+        .debounce(delay)
+        .compile
+        .toList
+        .asserting(_ shouldBe List(3, 6))
     }
 
     "delete" in forAll { (s: Stream[Pure, Int], idx0: PosZInt) =>
@@ -1848,6 +1891,19 @@ class StreamSpec extends Fs2Spec {
           .toList
           .asserting(_ shouldBe List(1, 1, 0))
       }
+    }
+
+    "sleep" in {
+      val delay = 200.millis
+      // force a sync up in duration, then measure how long sleep takes
+      val emitAndSleep = Stream(()) ++ Stream.sleep[IO](delay)
+      emitAndSleep
+        .zip(Stream.duration[IO])
+        .drop(1)
+        .map(_._2)
+        .compile
+        .toList
+        .asserting(result => result.head should be >= delay)
     }
 
     "sliding" in forAll { (s: Stream[Pure, Int], n0: PosInt) =>
