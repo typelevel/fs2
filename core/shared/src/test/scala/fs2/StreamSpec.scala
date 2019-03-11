@@ -103,6 +103,31 @@ class StreamSpec extends Fs2Spec {
           appendBracketTest[SyncIO, Unit](Stream.empty, Stream.raiseError[SyncIO](new Err))
         }
       }
+
+      "1 million brackets in sequence" in {
+        Counter[IO].flatMap { counter =>
+          Stream
+            .range(0, 1000000)
+            .covary[IO]
+            .flatMap { _ =>
+              Stream
+                .bracket(counter.increment)(_ => counter.decrement)
+                .flatMap(_ => Stream(1))
+            }
+            .compile
+            .drain
+            .flatMap(_ => counter.get)
+            .asserting(_ shouldBe 0)
+        }
+      }
+
+      "evaluating a bracketed stream multiple times is safe" in {
+        val s = Stream
+          .bracket(IO.unit)(_ => IO.unit)
+          .compile
+          .drain
+        s.flatMap(_ => s).assertNoException
+      }
     }
 
     "buffer" - {

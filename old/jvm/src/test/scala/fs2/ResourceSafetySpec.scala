@@ -16,13 +16,6 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
 
   "Resource Safety" - {
 
-    "pure fail" in {
-      an[Err] should be thrownBy {
-        Stream.emit(0).flatMap(_ => throw new Err).toVector
-        ()
-      }
-    }
-
     "bracket (normal termination / failing)" in forAll {
       (s0: List[PureStream[Int]], f: Failure, ignoreFailure: Boolean) =>
         val c = new AtomicLong(0)
@@ -115,14 +108,6 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
       ecs.toList.foreach(ec => assert(ec == ExitCase.Canceled))
     }
 
-    "1 million brackets in sequence" in {
-      val c = new AtomicLong(0)
-      val b = bracket(c)(Stream.emit(1))
-      val bs = Stream.range(0, 1000000).covary[IO].flatMap(_ => b)
-      runLog { bs }
-      c.get shouldBe 0
-    }
-
     "nested bracket" in forAll { (s0: List[Int], f: Failure, finalizerFail: Boolean) =>
       val c = new AtomicLong(0)
       // construct a deeply nested bracket stream in which the innermost stream fails
@@ -164,19 +149,6 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
           .take(i.get)
       }
       withClue(s.tag) { 0L shouldBe c.get }
-    }
-
-    "early termination of uncons" in {
-      var n = 0
-      Stream(1, 2, 3)
-        .onFinalize(IO { n = 1 })
-        .pull
-        .echoChunk
-        .stream
-        .compile
-        .drain
-        .unsafeRunSync
-      n shouldBe 1
     }
 
     "bracket release should not be called until necessary" in {
@@ -317,15 +289,6 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
       }
       // required longer delay here due to the sleep of 2s
       eventually(Timeout(5.seconds)) { c.get shouldBe 0L }
-    }
-
-    "evaluating a bracketed stream multiple times is safe" in {
-      val s = Stream
-        .bracket(IO.unit)(_ => IO.unit)
-        .compile
-        .drain
-      s.unsafeRunSync
-      s.unsafeRunSync
     }
 
     "finalizers are run in LIFO order - explicit release" in {
