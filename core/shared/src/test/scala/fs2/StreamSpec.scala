@@ -206,6 +206,86 @@ class StreamSpec extends Fs2Spec {
       s.collectFirst(pf).toVector shouldBe s.collectFirst(pf).toVector
     }
 
+    "compile" - {
+      "resource - concurrently" in {
+        val prog: Resource[IO, IO[Unit]] =
+          Stream
+            .eval(Deferred[IO, Unit].product(Deferred[IO, Unit]))
+            .flatMap {
+              case (startCondition, waitForStream) =>
+                val worker = Stream.eval(startCondition.get) ++ Stream.eval(
+                  waitForStream.complete(()))
+                val result = startCondition.complete(()) >> waitForStream.get
+
+                Stream.emit(result).concurrently(worker)
+            }
+            .compile
+            .resource
+            .lastOrError
+        prog.use(x => x).assertNoException
+      }
+
+      "resource - onFinalise" in {
+        val expected = List(
+          "stream - start",
+          "stream - done",
+          "io - done",
+          "io - start",
+          "resource - start",
+          "resource - done"
+        )
+
+        Ref[IO]
+          .of(List.empty[String])
+          .flatMap { st =>
+            def record(s: String): IO[Unit] = st.update(_ :+ s)
+
+            def stream =
+              Stream
+                .emit("stream - start")
+                .onFinalize(record("stream - done"))
+                .evalMap(x => record(x))
+                .compile
+                .lastOrError
+
+            def io =
+              Stream
+                .emit("io - start")
+                .onFinalize(record("io - done"))
+                .compile
+                .lastOrError
+                .flatMap(x => record(x))
+
+            def resource =
+              Stream
+                .emit("resource - start")
+                .onFinalize(record("resource - done"))
+                .compile
+                .resource
+                .lastOrError
+                .use(x => record(x))
+
+            stream >> io >> resource >> st.get
+          }
+          .asserting(_ shouldBe expected)
+      }
+
+      "resource - allocated" in {
+        Ref[IO]
+          .of(false)
+          .flatMap { written =>
+            Stream
+              .emit(())
+              .onFinalize(written.set(true))
+              .compile
+              .resource
+              .lastOrError
+              .allocated >> written.get
+          }
+          .asserting(_ shouldBe false)
+      }
+    }
+
     "concurrently" - {
 
       "when background stream terminates, overall stream continues" in forAll {

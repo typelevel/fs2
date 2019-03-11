@@ -1,7 +1,7 @@
 package fs2
 
 import cats.{Applicative, Id}
-import cats.effect.{ContextShift, IO, Timer}
+import cats.effect.{ContextShift, IO, Resource, Timer}
 
 object ThisModuleShouldCompile {
   implicit val timerIO: Timer[IO] = IO.timer(scala.concurrent.ExecutionContext.Implicits.global)
@@ -89,4 +89,8 @@ object ThisModuleShouldCompile {
 
   // Join an effectul stream of pure streams requires type annotation on inner stream
   Stream[IO, Stream[IO, Nothing]](Stream.empty).parJoinUnbounded
+
+  val pure: List[Int] = Stream.range(0, 5).compile.toList
+  val io: IO[List[Int]] = Stream.range(0, 5).covary[IO].compile.toList
+  val resource: Resource[IO, List[Int]] = Stream.range(0, 5).covary[IO].compile.resource.toList
 }
