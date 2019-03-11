@@ -1144,6 +1144,122 @@ class StreamSpec extends Fs2Spec {
       s.mapChunks(identity).chunks.toList shouldBe s.chunks.toList
     }
 
+    "observe/observeAsync" - {
+      trait Observer {
+        def apply[F[_]: Concurrent, O](s: Stream[F, O])(observation: Pipe[F, O, Unit]): Stream[F, O]
+      }
+
+      def observationTests(label: String, observer: Observer): Unit =
+        label - {
+          "basic functionality" in {
+            forAll { (s: Stream[Pure, Int]) =>
+              Ref
+                .of[IO, Int](0)
+                .flatMap { sum =>
+                  val ints =
+                    observer(s.covary[IO])(_.evalMap(i => sum.update(_ + i))).compile.toList
+                  ints.flatMap(out => sum.get.map(out -> _))
+                }
+                .asserting {
+                  case (out, sum) =>
+                    out.sum shouldBe sum
+                }
+            }
+          }
+
+          "handle errors from observing sink" in {
+            forAll { (s: Stream[Pure, Int]) =>
+              observer(s.covary[IO])(_ => Stream.raiseError[IO](new Err)).attempt.compile.toList
+                .asserting { result =>
+                  result should have size (1)
+                  result.head
+                    .fold(identity, r => fail(s"expected left but got Right($r)")) shouldBe an[Err]
+                }
+            }
+          }
+
+          "propagate error from source" in {
+            forAll { (s: Stream[Pure, Int]) =>
+              observer(s.drain ++ Stream.raiseError[IO](new Err))(_.drain).attempt.compile.toList
+                .asserting { result =>
+                  result should have size (1)
+                  result.head
+                    .fold(identity, r => fail(s"expected left but got Right($r)")) shouldBe an[Err]
+                }
+            }
+          }
+
+          "handle finite observing sink" - {
+            "1" in forAll { (s: Stream[Pure, Int]) =>
+              observer(s.covary[IO])(_ => Stream.empty).compile.toList.asserting(_ shouldBe Nil)
+            }
+            "2" in forAll { (s: Stream[Pure, Int]) =>
+              observer(Stream(1, 2) ++ s.covary[IO])(_.take(1).drain).compile.toList
+                .asserting(_ shouldBe Nil)
+            }
+          }
+
+          "handle multiple consecutive observations" in {
+            forAll { (s: Stream[Pure, Int]) =>
+              val sink: Pipe[IO, Int, Unit] = _.evalMap(i => IO.unit)
+              observer(observer(s.covary[IO])(sink))(sink).compile.toList
+                .asserting(_ shouldBe s.toList)
+            }
+          }
+
+          "no hangs on failures" in {
+            forAll { (s: Stream[Pure, Int]) =>
+              val sink: Pipe[IO, Int, Unit] =
+                in => spuriousFail(in.evalMap(i => IO(i))).void
+              val src: Stream[IO, Int] = spuriousFail(s.covary[IO])
+              src.observe(sink).observe(sink).attempt.compile.drain.assertNoException
+            }
+          }
+        }
+
+      observationTests("observe", new Observer {
+        def apply[F[_]: Concurrent, O](s: Stream[F, O])(
+            observation: Pipe[F, O, Unit]): Stream[F, O] =
+          s.observe(observation)
+      })
+
+      observationTests(
+        "observeAsync",
+        new Observer {
+          def apply[F[_]: Concurrent, O](s: Stream[F, O])(
+              observation: Pipe[F, O, Unit]): Stream[F, O] =
+            s.observeAsync(maxQueued = 10)(observation)
+        }
+      )
+
+      "observe" - {
+        "not-eager" - {
+          "1 - do not pull another element before we emit the current" in {
+            Stream
+              .eval(IO(1))
+              .append(Stream.eval(IO.raiseError(new Err)))
+              .observe(_.evalMap(_ => IO.sleep(100.millis))) //Have to do some work here, so that we give time for the underlying stream to try pull more
+              .take(1)
+              .compile
+              .toList
+              .asserting(_ shouldBe List(1))
+          }
+
+          "2 - do not pull another element before downstream asks" in {
+            Stream
+              .eval(IO(1))
+              .append(Stream.eval(IO.raiseError(new Err)))
+              .observe(_.drain)
+              .flatMap(_ => Stream.eval(IO.sleep(100.millis)) >> Stream(1, 2)) //Have to do some work here, so that we give time for the underlying stream to try pull more
+              .take(2)
+              .compile
+              .toList
+              .asserting(_ shouldBe List(1, 2))
+          }
+        }
+      }
+    }
+
     "observeEither" - {
       val s = Stream.emits(Seq(Left(1), Right("a"))).repeat.covary[IO]
 
@@ -1527,6 +1643,10 @@ class StreamSpec extends Fs2Spec {
                                                                     Vector(3),
                                                                     Vector())
       }
+    }
+
+    "tail" in forAll { (s: Stream[Pure, Int]) =>
+      s.tail.toList shouldBe s.toList.drop(1)
     }
 
     "take" - {
