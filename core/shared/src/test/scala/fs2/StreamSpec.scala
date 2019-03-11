@@ -539,6 +539,63 @@ class StreamSpec extends Fs2Spec {
         .toList
     }
 
+    "groupWithin" - {
+      "should never lose any elements" in forAll {
+        (s0: Stream[Pure, PosInt], d0: PosInt, maxGroupSize0: PosZInt) =>
+          val maxGroupSize = maxGroupSize0 % 20 + 1
+          val d = (d0 % 50).millis
+          val s = s0.map(_ % 500)
+          s.covary[IO]
+            .evalTap(shortDuration => IO.sleep(shortDuration.micros))
+            .groupWithin(maxGroupSize, d)
+            .flatMap(s => Stream.emits(s.toList))
+            .compile
+            .toList
+            .asserting(_ shouldBe s.toList)
+      }
+
+      "should never emit empty groups" in forAll {
+        (s: Stream[Pure, PosInt], d0: PosInt, maxGroupSize0: PosZInt) =>
+          val maxGroupSize = maxGroupSize0 % 20 + 1
+          val d = (d0 % 50).millis
+          Stream(PosInt(1))
+            .append(s)
+            .map(_ % 500)
+            .covary[IO]
+            .evalTap(shortDuration => IO.sleep(shortDuration.micros))
+            .groupWithin(maxGroupSize, d)
+            .map(_.toList)
+            .compile
+            .toList
+            .asserting(_.forall(_.nonEmpty) shouldBe true)
+      }
+
+      "should never have more elements than in its specified limit" in forAll {
+        (s: Stream[Pure, PosInt], d0: PosInt, maxGroupSize0: PosZInt) =>
+          val maxGroupSize = maxGroupSize0 % 20 + 1
+          val d = (d0 % 50).millis
+          s.map(_ % 500)
+            .evalTap(shortDuration => IO.sleep(shortDuration.micros))
+            .groupWithin(maxGroupSize, d)
+            .map(_.toList.size)
+            .compile
+            .toList
+            .asserting(_.forall(_ <= maxGroupSize) shouldBe true)
+      }
+
+      "should return a finite stream back in a single chunk given a group size equal to the stream size and an absurdly high duration" in forAll {
+        (streamAsList0: List[Int]) =>
+          val streamAsList = 0 :: streamAsList0
+          Stream
+            .emits(streamAsList)
+            .covary[IO]
+            .groupWithin(streamAsList.size, (Long.MaxValue - 1L).nanoseconds)
+            .compile
+            .toList
+            .asserting(_.head.toList shouldBe streamAsList)
+      }
+    }
+
     "handleErrorWith" - {
 
       "1" in forAll { (s: Stream[Pure, Int]) =>
