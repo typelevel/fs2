@@ -7,6 +7,7 @@ import cats.implicits._
 import scala.concurrent.duration._
 import org.scalactic.anyvals._
 import org.scalatest.Succeeded
+import fs2.concurrent.SignallingRef
 
 class StreamSpec extends Fs2Spec {
   "Stream" - {
@@ -500,6 +501,13 @@ class StreamSpec extends Fs2Spec {
           val head = result.head
           head.toMillis should be >= (delay.toMillis - 5)
         }
+    }
+
+    "either" in forAll { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
+      s1.covary[IO].either(s2).compile.toList.asserting { result =>
+        result.collect { case Left(i)  => i } shouldBe s1.toList
+        result.collect { case Right(i) => i } shouldBe s2.toList
+      }
     }
 
     "eval" in { Stream.eval(SyncIO(23)).compile.toList.asserting(_ shouldBe List(23)) }
@@ -1436,6 +1444,50 @@ class StreamSpec extends Fs2Spec {
       s.mapChunks(identity).chunks.toList shouldBe s.chunks.toList
     }
 
+    "merge" - {
+      "basic" in forAll { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
+        s1.merge(s2.covary[IO])
+          .compile
+          .toList
+          .asserting(result => result.toSet shouldBe (s1.toList.toSet ++ s2.toList.toSet))
+      }
+
+      "left/right identity" - {
+        "1" in forAll { (s1: Stream[Pure, Int]) =>
+          s1.covary[IO].merge(Stream.empty).compile.toList.asserting(_ shouldBe s1.toList)
+        }
+        "2" in forAll { (s1: Stream[Pure, Int]) =>
+          Stream.empty.merge(s1.covary[IO]).compile.toList.asserting(_ shouldBe s1.toList)
+        }
+      }
+
+      "left/right failure" in {
+        forAll { (s1: Stream[Pure, Int]) =>
+          s1.covary[IO].merge(Stream.raiseError[IO](new Err)).compile.drain.assertThrows[Err]
+        }
+      }
+    }
+
+    "mergeHaltBoth" in forAll { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
+      s1.covary[IO].map(Left(_)).mergeHaltBoth(s2.map(Right(_))).compile.toList.asserting {
+        result =>
+          (result.collect { case Left(a)  => a } == s1.toList) ||
+          (result.collect { case Right(a) => a } == s2.toList) shouldBe true
+      }
+    }
+
+    "mergeHaltL" in forAll { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
+      s1.covary[IO].map(Left(_)).mergeHaltL(s2.map(Right(_))).compile.toList.asserting { result =>
+        result.collect { case Left(a) => a } shouldBe s1.toList
+      }
+    }
+
+    "mergeHaltR" in forAll { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
+      s1.covary[IO].map(Left(_)).mergeHaltR(s2.map(Right(_))).compile.toList.asserting { result =>
+        result.collect { case Right(a) => a } shouldBe s2.toList
+      }
+    }
+
     "observe/observeAsync" - {
       trait Observer {
         def apply[F[_]: Concurrent, O](s: Stream[F, O])(observation: Pipe[F, O, Unit]): Stream[F, O]
@@ -1589,6 +1641,27 @@ class StreamSpec extends Fs2Spec {
             .asserting(r => (r should have).length(0))
         }
       }
+    }
+
+    "pause" in forAll { (s1: Stream[Pure, Int]) =>
+      Stream
+        .eval(SignallingRef[IO, Boolean](false))
+        .flatMap { pause =>
+          Stream
+            .awakeEvery[IO](10.millis)
+            .scan(0)((acc, _) => acc + 1)
+            .evalMap { n =>
+              if (n % 2 != 0)
+                pause.set(true) >> ((Stream.sleep_[IO](10.millis) ++ Stream.eval(pause.set(false))).compile.drain).start >> IO
+                  .pure(n)
+              else IO.pure(n)
+            }
+            .take(5)
+            .pauseWhen(pause)
+        }
+        .compile
+        .toList
+        .asserting(_ shouldBe List(0, 1, 2, 3, 4))
     }
 
     "prefetch" - {
