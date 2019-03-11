@@ -581,6 +581,26 @@ class StreamSpec extends Fs2Spec with Inside {
       "does not drop elements" in forAll { (s: PureStream[Int], seed: Long) =>
         runLog(s.get.rechunkRandomlyWithSeed[IO](minFactor = 0.1, maxFactor = 2.0)(seed)) shouldBe s.get.toVector
       }
+
+      "chunk size in interval [inputChunk.size * minFactor, inputChunk.size * maxFactor]" in forAll {
+        (s: PureStream[Int], seed: Long) =>
+          val c = s.get.chunks.toVector
+          if (c.nonEmpty) {
+            val (min, max) = c.tail.foldLeft(c.head.size -> c.head.size) {
+              case ((min, max), c) => Math.min(min, c.size) -> Math.max(max, c.size)
+            }
+            val (minChunkSize, maxChunkSize) = (min * 0.1, max * 2.0)
+            // Last element is drop as it may not fulfill size constraint
+            all(
+              runLog(
+                s.get
+                  .rechunkRandomlyWithSeed[IO](minFactor = 0.1, maxFactor = 2.0)(seed)
+                  .chunks
+                  .map(_.size)).dropRight(1)
+            ) should ((be >= minChunkSize.toInt).and(be <= maxChunkSize.toInt))
+          }
+      }
+
     }
 
     "rechunkRandomly" in forAll { (s: PureStream[Int]) =>
