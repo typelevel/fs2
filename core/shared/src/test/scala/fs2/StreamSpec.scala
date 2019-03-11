@@ -1894,6 +1894,117 @@ class StreamSpec extends Fs2Spec {
       }
     }
 
+    "switchMap" - {
+
+      "flatMap equivalence when switching never occurs" in forAll { s: Stream[Pure, Int] =>
+        Stream
+          .eval(Semaphore[IO](1))
+          .flatMap { guard =>
+            s.covary[IO]
+              .evalTap(_ => guard.acquire) // wait for inner to emit to prevent switching
+              .onFinalize(guard.acquire) // outer terminates, wait for last inner to emit
+              .switchMap(x => Stream.emit(x).onFinalize(guard.release))
+          }
+          .compile
+          .toList
+          .asserting(_ shouldBe s.toList)
+      }
+
+      "inner stream finalizer always runs before switching" in forAll { s: Stream[Pure, Int] =>
+        Stream
+          .eval(Ref[IO].of(true))
+          .flatMap { ref =>
+            s.covary[IO].switchMap { i =>
+              Stream.eval(ref.get).flatMap { released =>
+                if (!released) Stream.raiseError[IO](new Err)
+                else
+                  Stream
+                    .eval(ref.set(false) >> IO.sleep(1.millis))
+                    .onFinalize(IO.sleep(10.millis) >> ref.set(true))
+              }
+            }
+          }
+          .compile
+          .drain
+          .assertNoException
+      }
+
+      "when primary stream terminates, inner stream continues" in forAll {
+        (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
+          s1.covary[IO]
+            .switchMap(s => Stream.sleep_[IO](25.millis) ++ s2 ++ Stream.emit(s))
+            .compile
+            .toList
+            .asserting(_ shouldBe s1.last.unNoneTerminate.flatMap(s => s2 ++ Stream(s)).toList)
+      }
+
+      "when inner stream fails, overall stream fails" in forAll { (s0: Stream[Pure, Int]) =>
+        val s = Stream(0) ++ s0
+        s.delayBy[IO](25.millis)
+          .switchMap(_ => Stream.raiseError[IO](new Err))
+          .compile
+          .drain
+          .assertThrows[Err]
+      }
+
+      "when primary stream fails, overall stream fails and inner stream is terminated" in {
+        Stream
+          .eval(Semaphore[IO](0))
+          .flatMap { semaphore =>
+            Stream(0)
+              .append(Stream.raiseError[IO](new Err).delayBy(10.millis))
+              .switchMap(_ => Stream.repeatEval(IO(1)).onFinalize(semaphore.release))
+              .onFinalize(semaphore.acquire)
+          }
+          .compile
+          .drain
+          .assertThrows[Err]
+      }
+
+      "when inner stream fails, inner stream finalizer run before the primary one" in {
+        pending // Broken
+        forAll { (s0: Stream[Pure, Int]) =>
+          val s = Stream(0) ++ s0
+          Stream
+            .eval(Deferred[IO, Boolean])
+            .flatMap { verdict =>
+              Stream.eval(Ref[IO].of(false)).flatMap { innerReleased =>
+                s.delayBy[IO](25.millis)
+                  .onFinalize(innerReleased.get.flatMap(inner => verdict.complete(inner)))
+                  .switchMap(_ =>
+                    Stream.raiseError[IO](new Err).onFinalize(innerReleased.set(true)))
+                  .attempt
+                  .drain ++
+                  Stream.eval(verdict.get.flatMap(if (_) IO.raiseError(new Err) else IO.unit))
+              }
+            }
+            .compile
+            .drain
+            .assertThrows[Err]
+        }
+      }
+
+      "when primary stream fails, inner stream finalizer run before the primary one" in {
+        pending
+        Stream
+          .eval(Ref[IO].of(false))
+          .flatMap { verdict =>
+            Stream.eval(Ref[IO].of(false)).flatMap { innerReleased =>
+              // TODO ideally make sure the inner stream has actually started
+              (Stream(1).delayBy[IO](25.millis) ++ Stream.raiseError[IO](new Err))
+                .onFinalize(innerReleased.get.flatMap(inner => verdict.set(inner)))
+                .switchMap(_ => Stream.repeatEval(IO(1)).onFinalize(innerReleased.set(true)))
+                .attempt
+                .drain ++
+                Stream.eval(verdict.get.flatMap(if (_) IO.raiseError(new Err) else IO(())))
+            }
+          }
+          .compile
+          .drain
+          .assertThrows[Err]
+      }
+    }
+
     "tail" in forAll { (s: Stream[Pure, Int]) =>
       s.tail.toList shouldBe s.toList.drop(1)
     }
