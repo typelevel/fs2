@@ -206,6 +206,118 @@ class StreamSpec extends Fs2Spec {
       s.collectFirst(pf).toVector shouldBe s.collectFirst(pf).toVector
     }
 
+    "concurrently" - {
+
+      "when background stream terminates, overall stream continues" in forAll {
+        (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
+          s1.delayBy[IO](25.millis).concurrently(s2).compile.toList.asserting(_ shouldBe s1.toList)
+      }
+
+      "when background stream fails, overall stream fails" in forAll { (s: Stream[Pure, Int]) =>
+        s.delayBy[IO](25.millis)
+          .concurrently(Stream.raiseError[IO](new Err))
+          .compile
+          .drain
+          .assertThrows[Err]
+      }
+
+      "when primary stream fails, overall stream fails and background stream is terminated" in {
+        Stream
+          .eval(Semaphore[IO](0))
+          .flatMap { semaphore =>
+            val bg = Stream.repeatEval(IO(1)).onFinalize(semaphore.release)
+            val fg = Stream.raiseError[IO](new Err).delayBy(25.millis)
+            fg.concurrently(bg)
+              .scope
+              .onFinalize(semaphore.acquire)
+          }
+          .compile
+          .drain
+          .assertThrows[Err]
+      }
+
+      "when primary stream terminates, background stream is terminated" in forAll {
+        (s: Stream[Pure, Int]) =>
+          Stream
+            .eval(Semaphore[IO](0))
+            .flatMap { semaphore =>
+              val bg = Stream.repeatEval(IO(1)).onFinalize(semaphore.release)
+              val fg = s.delayBy[IO](25.millis)
+              fg.concurrently(bg)
+                .scope
+                .onFinalize(semaphore.acquire)
+            }
+            .compile
+            .drain
+            .assertNoException
+      }
+
+      "when background stream fails, primary stream fails even when hung" in forAll {
+        (s: Stream[Pure, Int]) =>
+          Stream
+            .eval(Deferred[IO, Unit])
+            .flatMap { gate =>
+              Stream(1)
+                .delayBy[IO](25.millis)
+                .append(s)
+                .concurrently(Stream.raiseError[IO](new Err))
+                .evalTap(i => gate.get)
+            }
+            .compile
+            .drain
+            .assertThrows[Err]
+      }
+
+      "run finalizers of background stream and properly handle exception" in forAll {
+        s: Stream[Pure, Int] =>
+          Ref
+            .of[IO, Boolean](false)
+            .flatMap { runnerRun =>
+              Ref.of[IO, List[String]](Nil).flatMap { finRef =>
+                Deferred[IO, Unit].flatMap { halt =>
+                  def runner: Stream[IO, Unit] =
+                    Stream
+                      .bracket(runnerRun.set(true))(_ =>
+                        IO.sleep(100.millis) >> // assure this inner finalizer always take longer run than `outer`
+                          finRef.update(_ :+ "Inner") >> // signal finalizer invoked
+                          IO.raiseError[Unit](new Err) // signal a failure
+                      ) >> // flag the concurrently had chance to start, as if the `s` will be empty `runner` may not be evaluated at all.
+                      Stream.eval_(halt.complete(())) // immediately interrupt the outer stream
+
+                  Stream
+                    .bracket(IO.unit)(_ => finRef.update(_ :+ "Outer"))
+                    .flatMap { b =>
+                      s.covary[IO].concurrently(runner)
+                    }
+                    .interruptWhen(halt.get.attempt)
+                    .compile
+                    .drain
+                    .attempt
+                    .flatMap { r =>
+                      runnerRun.get.flatMap { runnerStarted =>
+                        finRef.get.flatMap { finalizers =>
+                          if (runnerStarted) IO {
+                            // finalizers shall be called in correct order and
+                            // exception shall be thrown
+                            finalizers shouldBe List("Inner", "Outer")
+                            r.swap.toOption.get shouldBe an[Err]
+                          } else
+                            IO {
+                              // still the outer finalizer shall be run, but there is no failure in `s`
+                              finalizers shouldBe List("Outer")
+                              r shouldBe Right(())
+                            }
+                        }
+                      }
+                    }
+
+                }
+              }
+            }
+            .assertNoException
+      }
+    }
+
     "delete" in forAll { (s: Stream[Pure, Int], idx0: PosZInt) =>
       val v = s.toVector
       val i = if (v.isEmpty) 0 else v(idx0 % v.size)
