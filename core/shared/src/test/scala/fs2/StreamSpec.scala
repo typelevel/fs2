@@ -7,8 +7,8 @@ import cats.effect.concurrent.{Deferred, Ref, Semaphore}
 import cats.implicits._
 import scala.concurrent.duration._
 import org.scalactic.anyvals._
-import org.scalatest.Succeeded
-import fs2.concurrent.SignallingRef
+import org.scalatest.{Assertion, Succeeded}
+import fs2.concurrent.{Queue, SignallingRef}
 
 class StreamSpec extends Fs2Spec {
   "Stream" - {
@@ -269,7 +269,6 @@ class StreamSpec extends Fs2Spec {
       }
 
       "cancelation" in {
-        pending // Broken; hangs on fiber cancelation
         forAll { (s0: Stream[Pure, Int]) =>
           Counter[IO].flatMap { counter =>
             var ecs: Chain[ExitCase[Throwable]] = Chain.empty
@@ -370,6 +369,50 @@ class StreamSpec extends Fs2Spec {
             .drain
             .asserting(_ => counter shouldBe (s.toList.size * 2 + 1))
         }
+      }
+    }
+
+    "cancelation of compiled streams" - {
+      def startAndCancelSoonAfter[A](fa: IO[A]): IO[Unit] =
+        fa.start.flatMap(fiber => IO.sleep(1.second) >> fiber.cancel)
+
+      def testCancelation[A](s: Stream[IO, A]): IO[Assertion] =
+        startAndCancelSoonAfter(s.compile.drain).assertNoException
+
+      "constant" in testCancelation(Stream.constant(1))
+
+      "bracketed stream" in testCancelation(
+        Stream.bracket(IO.unit)(_ => IO.unit).flatMap(_ => Stream.constant(1)))
+
+      "concurrently" in testCancelation {
+        val s = Stream.constant(1).covary[IO]
+        s.concurrently(s)
+      }
+
+      "merge" in testCancelation {
+        val s = Stream.constant(1).covary[IO]
+        s.merge(s)
+      }
+
+      "parJoin" in testCancelation {
+        val s = Stream.constant(1).covary[IO]
+        Stream(s, s).parJoin(2)
+      }
+
+      "#1236" in testCancelation {
+        Stream
+          .eval(Queue.bounded[IO, Int](1))
+          .flatMap { q =>
+            Stream(
+              Stream
+                .unfold(0)(i => (i + 1, i + 1).some)
+                .flatMap { i =>
+                  Stream.sleep_(50.milliseconds) ++ Stream.emit(i)
+                }
+                .through(q.enqueue),
+              q.dequeue.drain
+            ).parJoin(2)
+          }
       }
     }
 
@@ -2389,7 +2432,7 @@ class StreamSpec extends Fs2Spec {
           Counter[IO].flatMap { counter =>
             val sleepAndSet = IO.sleep(20.millis) >> signal.set(true)
             Stream
-              .eval_(sleepAndSet)
+              .eval_(sleepAndSet.start)
               .append(Stream(Stream(1)).map { inner =>
                 Stream
                   .bracket(counter.increment >> IO.sleep(2.seconds))(_ => counter.decrement)
