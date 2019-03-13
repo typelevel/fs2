@@ -1,6 +1,7 @@
 package fs2
 
 import cats.~>
+import cats.data.Chain
 import cats.effect._
 import cats.effect.concurrent.{Deferred, Ref, Semaphore}
 import cats.implicits._
@@ -104,6 +105,66 @@ class StreamSpec extends Fs2Spec {
         }
       }
 
+      "nested" in forAll { (s0: List[Int], finalizerFail: Boolean) =>
+        // construct a deeply nested bracket stream in which the innermost stream fails
+        // and check that as we unwind the stack, all resources get released
+        // Also test for case where finalizer itself throws an error
+        Counter[IO].flatMap { counter =>
+          val innermost: Stream[IO, Int] =
+            if (finalizerFail)
+              Stream
+                .bracket(counter.increment)(_ => counter.decrement >> IO.raiseError(new Err))
+                .drain
+            else Stream.raiseError[IO](new Err)
+          val nested = s0.foldRight(innermost)(
+            (i, inner) =>
+              Stream
+                .bracket(counter.increment)(_ => counter.decrement)
+                .flatMap(_ => Stream(i) ++ inner))
+          nested.compile.drain.assertThrows[Err].flatMap(_ => counter.get).asserting(_ shouldBe 0L)
+        }
+      }
+
+      "early termination" in forAll { (s: Stream[Pure, Int], i0: Long, j0: Long, k0: Long) =>
+        val i = i0 % 10
+        val j = j0 % 10
+        val k = k0 % 10
+        Counter[IO].flatMap { counter =>
+          val bracketed = Stream.bracket(counter.increment)(_ => counter.decrement) >> s
+          val earlyTermination = bracketed.take(i)
+          val twoLevels = bracketed.take(i).take(j)
+          val twoLevels2 = bracketed.take(i).take(i)
+          val threeLevels = bracketed.take(i).take(j).take(k)
+          val fiveLevels = bracketed.take(i).take(j).take(k).take(j).take(i)
+          val all = earlyTermination ++ twoLevels ++ twoLevels2 ++ threeLevels ++ fiveLevels
+          all.compile.drain.flatMap(_ => counter.get).asserting(_ shouldBe 0L)
+        }
+      }
+
+      "finalizer should not be called until necessary" in {
+        IO.suspend {
+          val buffer = collection.mutable.ListBuffer[Symbol]()
+          Stream
+            .bracket(IO(buffer += 'Acquired)) { _ =>
+              buffer += 'ReleaseInvoked
+              IO(buffer += 'Released).void
+            }
+            .flatMap { _ =>
+              buffer += 'Used
+              Stream.emit(())
+            }
+            .flatMap { s =>
+              buffer += 'FlatMapped
+              Stream(s)
+            }
+            .compile
+            .toList
+            .asserting { _ =>
+              buffer.toList shouldBe List('Acquired, 'Used, 'FlatMapped, 'ReleaseInvoked, 'Released)
+            }
+        }
+      }
+
       "1 million brackets in sequence" in {
         Counter[IO].flatMap { counter =>
           Stream
@@ -127,6 +188,124 @@ class StreamSpec extends Fs2Spec {
           .compile
           .drain
         s.flatMap(_ => s).assertNoException
+      }
+
+      "finalizers are run in LIFO order" - {
+        "explicit release" in {
+          IO.suspend {
+            var o: Vector[Int] = Vector.empty
+            (0 until 10)
+              .foldLeft(Stream.eval(IO(0))) { (acc, i) =>
+                Stream.bracket(IO(i))(i => IO { o = o :+ i }).flatMap(i => acc)
+              }
+              .compile
+              .drain
+              .asserting(_ => o shouldBe Vector(0, 1, 2, 3, 4, 5, 6, 7, 8, 9))
+          }
+        }
+
+        "scope closure" in {
+          IO.suspend {
+            var o: Vector[Int] = Vector.empty
+            (0 until 10)
+              .foldLeft(Stream.emit(1).map(_ => throw new Err).covaryAll[IO, Int]) { (acc, i) =>
+                Stream.emit(i) ++ Stream.bracket(IO(i))(i => IO { o = o :+ i }).flatMap(i => acc)
+              }
+              .attempt
+              .compile
+              .drain
+              .asserting(_ => o shouldBe Vector(0, 1, 2, 3, 4, 5, 6, 7, 8, 9))
+          }
+        }
+      }
+
+      "propagate error from closing the root scope" - {
+        val s1 = Stream.bracket(IO(1))(_ => IO.unit)
+        val s2 = Stream.bracket(IO("a"))(_ => IO.raiseError(new Err))
+
+        "fail left" in s1.zip(s2).compile.drain.assertThrows[Err]
+        "fail right" in s2.zip(s1).compile.drain.assertThrows[Err]
+      }
+    }
+
+    "bracketCase" - {
+      "normal termination" in forAll { (s0: List[Stream[Pure, Int]]) =>
+        Counter[IO].flatMap { counter =>
+          var ecs: Chain[ExitCase[Throwable]] = Chain.empty
+          val s = s0.map { s =>
+            Stream
+              .bracketCase(counter.increment) { (_, ec) =>
+                counter.decrement >> IO { ecs = ecs :+ ec }
+              }
+              .flatMap(_ => s)
+          }
+          val s2 = s.foldLeft(Stream.empty: Stream[IO, Int])(_ ++ _)
+          s2.append(s2.take(10)).take(10).compile.drain.flatMap(_ => counter.get).asserting {
+            count =>
+              count shouldBe 0L
+              ecs.toList.foreach(_ shouldBe ExitCase.Completed)
+              Succeeded
+          }
+        }
+      }
+
+      "failure" in forAll { (s0: List[Stream[Pure, Int]]) =>
+        Counter[IO].flatMap { counter =>
+          var ecs: Chain[ExitCase[Throwable]] = Chain.empty
+          val s = s0.map { s =>
+            Stream
+              .bracketCase(counter.increment) { (_, ec) =>
+                counter.decrement >> IO { ecs = ecs :+ ec }
+              }
+              .flatMap(_ => s ++ Stream.raiseError[IO](new Err))
+          }
+          val s2 = s.foldLeft(Stream.empty: Stream[IO, Int])(_ ++ _)
+          s2.compile.drain.attempt.flatMap(_ => counter.get).asserting { count =>
+            count shouldBe 0L
+            ecs.toList.foreach(_ shouldBe an[ExitCase.Error[Throwable]])
+            Succeeded
+          }
+        }
+      }
+
+      "cancelation" in {
+        pending // Broken; hangs on fiber cancelation
+        forAll { (s0: Stream[Pure, Int]) =>
+          Counter[IO].flatMap { counter =>
+            var ecs: Chain[ExitCase[Throwable]] = Chain.empty
+            val s =
+              Stream
+                .bracketCase(counter.increment) { (_, ec) =>
+                  counter.decrement >> IO { ecs = ecs :+ ec }
+                }
+                .flatMap(_ => s0 ++ Stream.never[IO])
+            s.compile.drain.start
+              .flatMap(f => IO.sleep(50.millis) >> f.cancel)
+              .flatMap(_ => counter.get)
+              .asserting { count =>
+                count shouldBe 0L
+                ecs.toList.foreach(_ shouldBe ExitCase.Canceled)
+                Succeeded
+              }
+          }
+        }
+      }
+
+      "interruption" in forAll { (s0: Stream[Pure, Int]) =>
+        Counter[IO].flatMap { counter =>
+          var ecs: Chain[ExitCase[Throwable]] = Chain.empty
+          val s =
+            Stream
+              .bracketCase(counter.increment) { (_, ec) =>
+                counter.decrement >> IO { ecs = ecs :+ ec }
+              }
+              .flatMap(_ => s0 ++ Stream.never[IO])
+          s.interruptAfter(50.millis).compile.drain.flatMap(_ => counter.get).asserting { count =>
+            count shouldBe 0L
+            ecs.toList.foreach(_ shouldBe ExitCase.Canceled)
+            Succeeded
+          }
+        }
       }
     }
 
@@ -2083,6 +2262,148 @@ class StreamSpec extends Fs2Spec {
       forAll(intsBetween(1, 200), lists[Int].havingSizesBetween(1, 200)) {
         (n: Int, testValues: List[Int]) =>
           Stream.emits(testValues).repeatN(n).toList shouldBe List.fill(n)(testValues).flatten
+      }
+    }
+
+    "resource safety" - {
+      "1" in {
+        forAll { (s1: Stream[Pure, Int]) =>
+          Counter[IO].flatMap { counter =>
+            val x = Stream.bracket(counter.increment)(_ => counter.decrement) >> s1
+            val y = Stream.raiseError[IO](new Err)
+            x.merge(y)
+              .attempt
+              .append(y.merge(x).attempt)
+              .compile
+              .drain
+              .flatMap(_ => counter.get)
+              .asserting(_ shouldBe 0L)
+          }
+        }
+      }
+
+      "2a" in {
+        Counter[IO].flatMap { counter =>
+          val s = Stream.raiseError[IO](new Err)
+          val b = Stream.bracket(counter.increment)(_ => counter.decrement) >> s
+          // subtle test, get different scenarios depending on interleaving:
+          // `s` completes with failure before the resource is acquired by `b`
+          // `b` has just caught inner error when outer `s` fails
+          // `b` fully completes before outer `s` fails
+          b.merge(s)
+            .compile
+            .drain
+            .attempt
+            .flatMap(_ => counter.get)
+            .asserting(_ shouldBe 0L)
+            .repeatTest(25)
+        }
+      }
+
+      "2b" in {
+        forAll { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
+          Counter[IO].flatMap { counter =>
+            val b1 = Stream.bracket(counter.increment)(_ => counter.decrement) >> s1
+            val b2 = Stream.bracket(counter.increment)(_ => counter.decrement) >> s2
+            spuriousFail(b1)
+              .merge(b2)
+              .attempt
+              .append(b1.merge(spuriousFail(b2)).attempt)
+              .append(spuriousFail(b1).merge(spuriousFail(b2)).attempt)
+              .compile
+              .drain
+              .flatMap(_ => counter.get)
+              .asserting(_ shouldBe 0L)
+          }
+        }
+      }
+
+      "3" in {
+        forAll { (s: Stream[Pure, Stream[Pure, Int]], n0: PosInt) =>
+          val n = n0 % 10 + 1
+          Counter[IO].flatMap { outer =>
+            Counter[IO].flatMap { inner =>
+              val s2 = Stream.bracket(outer.increment)(_ => outer.decrement) >> s.map { i =>
+                spuriousFail(Stream.bracket(inner.increment)(_ => inner.decrement) >> s)
+              }
+              val one = s2.parJoin(n).take(10).attempt
+              val two = s2.parJoin(n).attempt
+              one
+                .append(two)
+                .compile
+                .drain
+                .flatMap(_ => outer.get)
+                .asserting(_ shouldBe 0L)
+                .flatMap(_ => inner.get)
+                .asserting(_ shouldBe 0L)
+            }
+          }
+        }
+      }
+
+      "4" in forAll { (s: Stream[Pure, Int]) =>
+        Counter[IO].flatMap { counter =>
+          val s2 = Stream.bracket(counter.increment)(_ => counter.decrement) >> spuriousFail(
+            s.covary[IO])
+          val one = s2.prefetch.attempt
+          val two = s2.prefetch.prefetch.attempt
+          val three = s2.prefetch.prefetch.prefetch.attempt
+          one
+            .append(two)
+            .append(three)
+            .compile
+            .drain
+            .flatMap(_ => counter.get)
+            .asserting(_ shouldBe 0L)
+        }
+      }
+
+      "5" in {
+        forAll { (s: Stream[Pure, Stream[Pure, Int]]) =>
+          SignallingRef[IO, Boolean](false).flatMap { signal =>
+            Counter[IO].flatMap { counter =>
+              val sleepAndSet = IO.sleep(20.millis) >> signal.set(true)
+              Stream
+                .eval_(sleepAndSet.start)
+                .append(s.map { inner =>
+                  Stream
+                    .bracket(counter.increment)(_ => counter.decrement)
+                    .evalMap(_ => IO.never)
+                    .interruptWhen(signal.continuous)
+                })
+                .parJoinUnbounded
+                .compile
+                .drain
+                .flatMap(_ => counter.get)
+                .asserting(_ shouldBe 0L)
+            }
+          }
+        }
+      }
+
+      "6" in {
+        // simpler version of (5) above which previously failed reliably, checks the case where a
+        // stream is interrupted while in the middle of a resource acquire that is immediately followed
+        // by a step that never completes!
+        SignallingRef[IO, Boolean](false).flatMap { signal =>
+          Counter[IO].flatMap { counter =>
+            val sleepAndSet = IO.sleep(20.millis) >> signal.set(true)
+            Stream
+              .eval_(sleepAndSet)
+              .append(Stream(Stream(1)).map { inner =>
+                Stream
+                  .bracket(counter.increment >> IO.sleep(2.seconds))(_ => counter.decrement)
+                  .flatMap(_ => inner)
+                  .evalMap(_ => IO.never)
+                  .interruptWhen(signal.discrete)
+              })
+              .parJoinUnbounded
+              .compile
+              .drain
+              .flatMap(_ => counter.get)
+              .asserting(_ shouldBe 0L)
+          }
+        }
       }
     }
 
