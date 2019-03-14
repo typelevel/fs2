@@ -218,7 +218,8 @@ lazy val mimaSettings = Seq(
     ProblemFilters
       .exclude[DirectMissingMethodProblem]("fs2.io.package.invokeCallback"),
     ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.tcp.Socket.client"),
-    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.JavaInputOutputStream.toInputStream"),
+    ProblemFilters.exclude[DirectMissingMethodProblem](
+      "fs2.io.JavaInputOutputStream.toInputStream"),
     ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.tcp.Socket.server"),
     ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.tcp.Socket.mkSocket"),
     ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.udp.Socket.mkSocket"),

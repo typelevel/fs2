@@ -2061,18 +2061,17 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * Rechunks the stream such that output chunks are within `[inputChunk.size * minFactor, inputChunk.size * maxFactor]`.
     * The pseudo random generator is deterministic based on the supplied seed.
     */
-  def rechunkRandomlyWithSeed[F2[x] >: F[x]](minFactor: Double, maxFactor: Double)(seed: Long)(
-      implicit F: Sync[F2]): Stream[F2, O] = {
+  def rechunkRandomlyWithSeed[F2[x] >: F[x]](minFactor: Double, maxFactor: Double)(
+      seed: Long): Stream[F2, O] = Stream.suspend {
     assert(maxFactor >= minFactor, "maxFactor should be greater or equal to minFactor")
     val random = new scala.util.Random(seed)
-    def factor: F2[Double] =
-      F.delay(Math.abs(random.nextInt()) % (maxFactor - minFactor) + minFactor)
+    def factor: Double = Math.abs(random.nextInt()) % (maxFactor - minFactor) + minFactor
 
     def go(acc: Chunk.Queue[O], size: Option[Int], s: Stream[F2, Chunk[O]]): Pull[F2, O, Unit] = {
       def nextSize(chunk: Chunk[O]): Pull[F2, INothing, Int] =
         size match {
           case Some(size) => Pull.pure(size)
-          case None       => Pull.eval(factor).map(factor => (factor * chunk.size).toInt)
+          case None       => Pull.pure((factor * chunk.size).toInt)
         }
 
       s.pull.uncons1.flatMap {
