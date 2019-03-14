@@ -2058,8 +2058,8 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     }
 
   /**
-    * Rechunks the stream such that output chunks are within [inputChunk.size * minFactor, inputChunk.size * maxFactor].
-    * The pseudo random generator is deterministic base on the supplied seed.
+    * Rechunks the stream such that output chunks are within `[inputChunk.size * minFactor, inputChunk.size * maxFactor]`.
+    * The pseudo random generator is deterministic based on the supplied seed.
     */
   def rechunkRandomlyWithSeed[F2[x] >: F[x]](minFactor: Double, maxFactor: Double)(seed: Long)(
       implicit F: Sync[F2]): Stream[F2, O] = {
