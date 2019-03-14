@@ -125,6 +125,10 @@ sealed trait Pull[+F[_], +O, +R] extends Serializable { self =>
       private[fs2] def translate[F3[x] >: F2[x], G[_]](g: F3 ~> G): Pull[G, O2, R2] =
         self.translate(g).flatMap(r => f(r).translate(g))
 
+      override def flatMap[F3[x] >: F2[x], R3, O3 >: O2](
+          g: R2 => Pull[F3, O3, R3]): Pull[F3, O3, R3] =
+        self.flatMap(r => f(r).flatMap(g))
+
       override def toString = s"FlatMap($self, $f)"
     }
 
