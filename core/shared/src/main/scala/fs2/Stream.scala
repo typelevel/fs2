@@ -2028,6 +2028,49 @@ final class Stream[+F[_], +O] private (private val asPull: Pull[F, O, Unit])
         .concurrently(chunks.noneTerminate.covary[F2].through(queue.enqueue))
     }
 
+  /**
+    * Rechunks the stream such that output chunks are within `[inputChunk.size * minFactor, inputChunk.size * maxFactor]`.
+    * The pseudo random generator is deterministic based on the supplied seed.
+    */
+  def rechunkRandomlyWithSeed[F2[x] >: F[x]](minFactor: Double, maxFactor: Double)(
+      seed: Long): Stream[F2, O] = Stream.suspend {
+    assert(maxFactor >= minFactor, "maxFactor should be greater or equal to minFactor")
+    val random = new scala.util.Random(seed)
+    def factor: Double = Math.abs(random.nextInt()) % (maxFactor - minFactor) + minFactor
+
+    def go(acc: Chunk.Queue[O], size: Option[Int], s: Stream[F2, Chunk[O]]): Pull[F2, O, Unit] = {
+      def nextSize(chunk: Chunk[O]): Pull[F2, INothing, Int] =
+        size match {
+          case Some(size) => Pull.pure(size)
+          case None       => Pull.pure((factor * chunk.size).toInt)
+        }
+
+      s.pull.uncons1.flatMap {
+        case Some((hd, tl)) =>
+          nextSize(hd).flatMap { size =>
+            if (acc.size < size) go(acc :+ hd, size.some, tl)
+            else if (acc.size == size)
+              Pull.output(acc.toChunk) >> go(Chunk.Queue(hd), size.some, tl)
+            else {
+              val (out, rem) = acc.toChunk.splitAt(size - 1)
+              Pull.output(out) >> go(Chunk.Queue(rem, hd), None, tl)
+            }
+          }
+        case None =>
+          Pull.output(acc.toChunk)
+      }
+    }
+
+    go(Chunk.Queue.empty, None, chunks).stream
+  }
+
+  /**
+    * Rechunks the stream such that output chunks are within [inputChunk.size * minFactor, inputChunk.size * maxFactor].
+    */
+  def rechunkRandomly[F2[x] >: F[x]: Sync](minFactor: Double = 0.1,
+                                           maxFactor: Double = 2.0): Stream[F2, O] =
+    Stream.suspend(this.rechunkRandomlyWithSeed[F2](minFactor, maxFactor)(System.nanoTime()))
+
   /** Alias for [[fold1]]. */
   def reduce[O2 >: O](f: (O2, O2) => O2): Stream[F, O2] = fold1(f)
 

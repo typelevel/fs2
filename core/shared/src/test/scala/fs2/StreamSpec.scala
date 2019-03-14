@@ -2250,6 +2250,41 @@ class StreamSpec extends Fs2Spec {
         .toVector shouldBe IndexedSeq.range(0, 100)
     }
 
+    "rechunkRandomlyWithSeed" - {
+
+      "is deterministic" in forAll { (s0: Stream[Pure, Int], seed: Long) =>
+        def s = s0.rechunkRandomlyWithSeed(minFactor = 0.1, maxFactor = 2.0)(seed)
+        s.toList shouldBe s.toList
+      }
+
+      "does not drop elements" in forAll { (s: Stream[Pure, Int], seed: Long) =>
+        s.rechunkRandomlyWithSeed(minFactor = 0.1, maxFactor = 2.0)(seed).toList shouldBe s.toList
+      }
+
+      "chunk size in interval [inputChunk.size * minFactor, inputChunk.size * maxFactor]" in forAll {
+        (s: Stream[Pure, Int], seed: Long) =>
+          val c = s.chunks.toVector
+          if (c.nonEmpty) {
+            val (min, max) = c.tail.foldLeft(c.head.size -> c.head.size) {
+              case ((min, max), c) => Math.min(min, c.size) -> Math.max(max, c.size)
+            }
+            val (minChunkSize, maxChunkSize) = (min * 0.1, max * 2.0)
+            // Last element is drop as it may not fulfill size constraint
+            all(
+              s.rechunkRandomlyWithSeed(minFactor = 0.1, maxFactor = 2.0)(seed)
+                .chunks
+                .map(_.size)
+                .toVector
+                .dropRight(1)
+            ) should ((be >= minChunkSize.toInt).and(be <= maxChunkSize.toInt))
+          } else Succeeded
+      }
+    }
+
+    "rechunkRandomly" in forAll { (s: Stream[Pure, Int]) =>
+      s.rechunkRandomly[IO]().compile.toList.asserting(_ shouldBe s.toList)
+    }
+
     "repartition" in {
       Stream("Lore", "m ip", "sum dolo", "r sit amet")
         .repartition(s => Chunk.array(s.split(" ")))

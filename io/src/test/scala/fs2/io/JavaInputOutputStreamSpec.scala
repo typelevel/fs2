@@ -26,9 +26,8 @@ class JavaInputOutputStreamSpec extends Fs2Spec with EventuallySupport {
       val example = stream.compile.toVector.unsafeRunSync()
 
       val fromInputStream =
-        stream
-          .through(toInputStream)
-          .evalMap { is =>
+        toInputStreamResource(stream)
+          .use { is =>
             // consume in same thread pool. Production application should never do this,
             // instead they have to fork this to dedicated thread pool
             val buff = new Array[Byte](20)
@@ -40,9 +39,6 @@ class JavaInputOutputStreamSpec extends Fs2Spec with EventuallySupport {
               }
             go(Vector.empty)
           }
-          .compile
-          .toVector
-          .map(_.flatten)
           .unsafeRunSync()
 
       example shouldBe fromInputStream
@@ -54,7 +50,7 @@ class JavaInputOutputStreamSpec extends Fs2Spec with EventuallySupport {
       val s: Stream[IO, Byte] =
         Stream(1.toByte).onFinalize(IO { closed = true })
 
-      s.through(toInputStream).compile.drain.unsafeRunSync()
+      toInputStreamResource(s).use(_ => IO.unit).unsafeRunSync()
 
       eventually { closed shouldBe true }
     }
@@ -66,15 +62,13 @@ class JavaInputOutputStreamSpec extends Fs2Spec with EventuallySupport {
         Stream(1.toByte).onFinalize(IO { closed = true })
 
       val result =
-        s.through(toInputStream)
-          .evalMap { is =>
+        toInputStreamResource(s)
+          .use { is =>
             IO {
               is.close()
               closed // verifies that once close() terminates upstream was already cleaned up
             }
           }
-          .compile
-          .toVector
           .unsafeRunSync()
 
       result shouldBe Vector(true)

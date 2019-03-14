@@ -16,7 +16,7 @@ import java.nio.{
 }
 
 import cats.{Applicative, Eq, Eval, Functor, FunctorFilter, Monad, Traverse}
-import cats.data.Chain
+import cats.data.{Chain, NonEmptyList}
 import cats.implicits._
 import fs2.internal.ArrayBackedSeq
 
@@ -359,6 +359,10 @@ abstract class Chunk[+O] extends Serializable { self =>
         Chunk.Doubles(this.asInstanceOf[Chunk[Double]].toArray, 0, size)
     }
   }
+
+  /** Converts this chunk to a NonEmptyList */
+  def toNel: Option[NonEmptyList[O]] =
+    NonEmptyList.fromList(toList)
 
   /** Converts this chunk to a chain. */
   def toChain: Chain[O] =
