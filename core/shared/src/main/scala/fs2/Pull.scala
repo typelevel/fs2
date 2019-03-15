@@ -109,6 +109,10 @@ sealed trait Pull[+F[_], +O, +R] extends Serializable { self =>
 
   /** Applies the result of this pull to `f` and returns the result. */
   def flatMap[F2[x] >: F[x], R2, O2 >: O](f: R => Pull[F2, O2, R2]): Pull[F2, O2, R2] =
+    flatMap_(f)(0)
+
+  private def flatMap_[F2[x] >: F[x], R2, O2 >: O](f: R => Pull[F2, O2, R2])(
+      depth: Int): Pull[F2, O2, R2] =
     new Pull[F2, O2, R2] {
       protected def step[F3[x] >: F2[x]: Sync, O3 >: O2, R3 >: R2](
           scope: Scope[F3]): F3[StepResult[F3, O3, R3]] =
@@ -127,7 +131,8 @@ sealed trait Pull[+F[_], +O, +R] extends Serializable { self =>
 
       override def flatMap[F3[x] >: F2[x], R3, O3 >: O2](
           g: R2 => Pull[F3, O3, R3]): Pull[F3, O3, R3] =
-        self.flatMap(r => f(r).flatMap(g))
+        if (depth < Pull.MaxDepth) self.flatMap_(r => f(r).flatMap_(g)(depth))(depth + 1)
+        else super.flatMap(g)
 
       override def toString = s"FlatMap($self, $f)"
     }
@@ -141,6 +146,10 @@ sealed trait Pull[+F[_], +O, +R] extends Serializable { self =>
     * The result type of this pull, and of each mapped pull, must be unit.
     */
   def flatMapOutput[F2[x] >: F[x], O2](f: O => Pull[F2, O2, Unit])(
+      implicit ev: R <:< Unit): Pull[F2, O2, Unit] =
+    flatMapOutput_(f)(0)
+
+  def flatMapOutput_[F2[x] >: F[x], O2](f: O => Pull[F2, O2, Unit])(depth: Int)(
       implicit ev: R <:< Unit): Pull[F2, O2, Unit] =
     new Pull[F2, O2, Unit] {
 
@@ -170,12 +179,22 @@ sealed trait Pull[+F[_], +O, +R] extends Serializable { self =>
       private[fs2] def translate[F3[x] >: F2[x], G[_]](g: F3 ~> G): Pull[G, O2, Unit] =
         self.translate(g).flatMapOutput[G, O2](o => f(o).translate(g))
 
+      override def flatMapOutput[F3[x] >: F2[x], O3](g: O2 => Pull[F3, O3, Unit])(
+          implicit ev2: Unit <:< Unit): Pull[F3, O3, Unit] =
+        if (depth < Pull.MaxDepth)
+          self.flatMapOutput_(o => f(o).flatMapOutput_(g)(depth))(depth + 1)
+        else super.flatMapOutput(g)
+
       override def toString = s"FlatMapOutput($self, $f)"
     }
 
   /** If `this` terminates with `Pull.raiseError(e)`, invoke `h(e)`. */
   def handleErrorWith[F2[x] >: F[x], O2 >: O, R2 >: R](
-      h: Throwable => Pull[F2, O2, R2]): Pull[F2, O2, R2] = new Pull[F2, O2, R2] {
+      h: Throwable => Pull[F2, O2, R2]): Pull[F2, O2, R2] =
+    handleErrorWith_(h)(0)
+
+  private def handleErrorWith_[F2[x] >: F[x], O2 >: O, R2 >: R](h: Throwable => Pull[F2, O2, R2])(
+      depth: Int): Pull[F2, O2, R2] = new Pull[F2, O2, R2] {
 
     protected def step[F3[x] >: F2[x]: Sync, O3 >: O2, R3 >: R2](
         scope: Scope[F3]): F3[StepResult[F3, O3, R3]] =
@@ -192,6 +211,12 @@ sealed trait Pull[+F[_], +O, +R] extends Serializable { self =>
 
     private[fs2] def translate[F3[x] >: F2[x], G[_]](f: F3 ~> G): Pull[G, O2, R2] =
       self.translate(f).handleErrorWith(t => h(t).translate(f))
+
+    override def handleErrorWith[F3[x] >: F2[x], O3 >: O2, R3 >: R2](
+        i: Throwable => Pull[F3, O3, R3]): Pull[F3, O3, R3] =
+      if (depth < Pull.MaxDepth)
+        self.handleErrorWith_(t => h(t).handleErrorWith_(i)(depth))(depth + 1)
+      else super.handleErrorWith(i)
 
     override def toString = s"HandleErrorWith($self, $h)"
   }
@@ -358,6 +383,8 @@ sealed trait Pull[+F[_], +O, +R] extends Serializable { self =>
 }
 
 object Pull extends PullInstancesLowPriority {
+
+  private final val MaxDepth = 24
 
   /**
     * Acquire a resource within a `Pull`. The cleanup action will be run at the end

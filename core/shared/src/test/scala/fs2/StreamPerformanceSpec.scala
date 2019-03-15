@@ -12,7 +12,6 @@ class StreamPerformanceSpec extends Fs2Spec {
     "left-associated ++" - {
       Ns.foreach { N =>
         N.toString in {
-          if (N > 1600) pending
           (1 until N).map(Stream.emit).foldLeft(Stream.emit(0))(_ ++ _).toVector shouldBe Vector
             .range(0, N)
         }
@@ -33,7 +32,6 @@ class StreamPerformanceSpec extends Fs2Spec {
     "left-associated flatMap 1" - {
       Ns.foreach { N =>
         N.toString in {
-          if (N > 1600) pending
           (1 until N)
             .map(Stream.emit)
             .foldLeft(Stream.emit(0))((acc, a) => acc.flatMap(_ => a))
@@ -43,10 +41,8 @@ class StreamPerformanceSpec extends Fs2Spec {
     }
 
     "left-associated eval() ++ flatMap 1" - {
-      pending
       Ns.foreach { N =>
         N.toString in {
-          if (N > 1600) pending
           (1 until N)
             .map(Stream.emit)
             .foldLeft(Stream.emit(0).covary[IO])((acc, a) =>
@@ -86,10 +82,8 @@ class StreamPerformanceSpec extends Fs2Spec {
     }
 
     "left-associated flatMap 2" - {
-      pending
       Ns.foreach { N =>
         N.toString in {
-          if (N > 1600) pending
           (1 until N)
             .map(Stream.emit)
             .foldLeft(Stream.emit(0) ++ Stream.emit(1) ++ Stream.emit(2))((acc, a) =>
