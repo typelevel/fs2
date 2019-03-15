@@ -3,76 +3,88 @@ package concurrent
 
 import cats.effect.IO
 import cats.implicits._
+import org.scalactic.anyvals.PosInt
 import scala.concurrent.duration._
-
-import TestUtil._
 
 class QueueSpec extends Fs2Spec {
   "Queue" - {
     "unbounded producer/consumer" in {
-      forAll { (s: PureStream[Int]) =>
-        withClue(s.tag) {
-          runLog(Stream.eval(Queue.unbounded[IO, Int]).flatMap { q =>
+      forAll { (s: Stream[Pure, Int]) =>
+        Stream
+          .eval(Queue.unbounded[IO, Int])
+          .flatMap { q =>
             q.dequeue
-              .merge(s.get.evalMap(q.enqueue1).drain)
-              .take(s.get.toVector.size)
-          }) shouldBe s.get.toVector
-        }
+              .merge(s.evalMap(q.enqueue1).drain)
+              .take(s.toVector.size)
+          }
+          .compile
+          .toList
+          .asserting(_ shouldBe s.toList)
       }
     }
     "circularBuffer" in {
-      forAll { (s: PureStream[Int], maxSize: SmallPositive) =>
-        withClue(s.tag) {
-          runLog(
-            Stream
-              .eval(Queue.circularBuffer[IO, Option[Int]](maxSize.get + 1))
-              .flatMap { q =>
-                s.get.noneTerminate
-                  .evalMap(q.enqueue1)
-                  .drain ++ q.dequeue.unNoneTerminate
-              }) shouldBe s.get.toVector.takeRight(maxSize.get)
-        }
+      forAll { (s: Stream[Pure, Int], maxSize0: PosInt) =>
+        val maxSize = maxSize0 % 20 + 1
+        Stream
+          .eval(Queue.circularBuffer[IO, Option[Int]](maxSize + 1))
+          .flatMap { q =>
+            s.noneTerminate
+              .evalMap(q.enqueue1)
+              .drain ++ q.dequeue.unNoneTerminate
+          }
+          .compile
+          .toList
+          .asserting(_ shouldBe s.toList.takeRight(maxSize))
       }
     }
     "dequeueAvailable" in {
-      forAll { (s: PureStream[Int]) =>
-        withClue(s.tag) {
-          val result =
-            runLog(Stream.eval(Queue.unbounded[IO, Option[Int]]).flatMap { q =>
-              s.get.noneTerminate
-                .evalMap(q.enqueue1)
-                .drain ++ q.dequeueChunk(Int.MaxValue).unNoneTerminate.chunks
-            })
-          result.size should be < 2
-          result.flatMap(_.toVector) shouldBe s.get.toVector
-        }
+      forAll { (s: Stream[Pure, Int]) =>
+        Stream
+          .eval(Queue.unbounded[IO, Option[Int]])
+          .flatMap { q =>
+            s.noneTerminate
+              .evalMap(q.enqueue1)
+              .drain ++ q.dequeueChunk(Int.MaxValue).unNoneTerminate.chunks
+          }
+          .compile
+          .toList
+          .asserting { result =>
+            result.size should be < 2
+            result.flatMap(_.toList) shouldBe s.toList
+          }
       }
     }
     "dequeueBatch unbounded" in {
-      forAll { (s: PureStream[Int], batchSize: SmallPositive) =>
-        withClue(s.tag) {
-          runLog(Stream.eval(Queue.unbounded[IO, Option[Int]]).flatMap { q =>
-            s.get.noneTerminate.evalMap(q.enqueue1).drain ++ Stream
-              .constant(batchSize.get)
+      forAll { (s: Stream[Pure, Int], batchSize0: PosInt) =>
+        val batchSize = batchSize0 % 20 + 1
+        Stream
+          .eval(Queue.unbounded[IO, Option[Int]])
+          .flatMap { q =>
+            s.noneTerminate.evalMap(q.enqueue1).drain ++ Stream
+              .constant(batchSize)
               .through(q.dequeueBatch)
               .unNoneTerminate
-          }) shouldBe s.get.toVector
-        }
+          }
+          .compile
+          .toList
+          .asserting(_ shouldBe s.toList)
       }
     }
     "dequeueBatch circularBuffer" in {
-      forAll { (s: PureStream[Int], maxSize: SmallPositive, batchSize: SmallPositive) =>
-        withClue(s.tag) {
-          runLog(
-            Stream
-              .eval(Queue.circularBuffer[IO, Option[Int]](maxSize.get + 1))
-              .flatMap { q =>
-                s.get.noneTerminate.evalMap(q.enqueue1).drain ++ Stream
-                  .constant(batchSize.get)
-                  .through(q.dequeueBatch)
-                  .unNoneTerminate
-              }) shouldBe s.get.toVector.takeRight(maxSize.get)
-        }
+      forAll { (s: Stream[Pure, Int], maxSize0: PosInt, batchSize0: PosInt) =>
+        val maxSize = maxSize0 % 20 + 1
+        val batchSize = batchSize0 % 20 + 1
+        Stream
+          .eval(Queue.circularBuffer[IO, Option[Int]](maxSize + 1))
+          .flatMap { q =>
+            s.noneTerminate.evalMap(q.enqueue1).drain ++ Stream
+              .constant(batchSize)
+              .through(q.dequeueBatch)
+              .unNoneTerminate
+          }
+          .compile
+          .toList
+          .asserting(_ shouldBe s.toList.takeRight(maxSize))
       }
     }
 
@@ -87,7 +99,7 @@ class QueueSpec extends Fs2Spec {
               q.enqueue1(2) >>
               q.dequeue1
           }
-          .unsafeRunSync shouldBe 1
+          .asserting(_ shouldBe 1)
 
       }
 
@@ -101,17 +113,19 @@ class QueueSpec extends Fs2Spec {
               q.enqueue1(2) >>
               q.dequeue1
           }
-          .unsafeRunSync shouldBe 1
+          .asserting(_ shouldBe 1)
 
       }
     }
 
     "size signal is initialized to zero" in {
-      runLog(
-        Stream
-          .eval(InspectableQueue.unbounded[IO, Int])
-          .flatMap(_.size)
-          .take(1)) shouldBe Vector(0)
+      Stream
+        .eval(InspectableQueue.unbounded[IO, Int])
+        .flatMap(_.size)
+        .take(1)
+        .compile
+        .toList
+        .asserting(_ shouldBe List(0))
     }
 
     "size stream is discrete" in {
@@ -130,8 +144,8 @@ class QueueSpec extends Fs2Spec {
       p.compile.toList.unsafeRunSync.size shouldBe <=(11) // if the stream won't be discrete we will get much more size notifications
     }
     "peek1" in {
-      runLog(
-        Stream.eval(
+      Stream
+        .eval(
           for {
             q <- InspectableQueue.unbounded[IO, Int]
             f <- q.peek1.start
@@ -140,11 +154,14 @@ class QueueSpec extends Fs2Spec {
             x <- f.join
             y <- g.join
           } yield List(x, y)
-        )).flatten shouldBe Vector(42, 42)
+        )
+        .compile
+        .toList
+        .asserting(_.flatten shouldBe List(42, 42))
     }
     "peek1 with dequeue1" in {
-      runLog(
-        Stream.eval(
+      Stream
+        .eval(
           for {
             q <- InspectableQueue.unbounded[IO, Int]
             f <- q.peek1.product(q.dequeue1).start
@@ -156,11 +173,14 @@ class QueueSpec extends Fs2Spec {
             yz <- g.join
             (y, z) = yz
           } yield List(x, y, z)
-        )).flatten shouldBe Vector((42, 42), (43, 43), (44, 44))
+        )
+        .compile
+        .toList
+        .asserting(_.flatten shouldBe List((42, 42), (43, 43), (44, 44)))
     }
     "peek1 bounded queue" in {
-      runLog(
-        Stream.eval(
+      Stream
+        .eval(
           for {
             q <- InspectableQueue.bounded[IO, Int](maxSize = 1)
             f <- q.peek1.start
@@ -171,11 +191,14 @@ class QueueSpec extends Fs2Spec {
             y <- g.join
             z <- q.dequeue1
           } yield List(b, x, y, z)
-        )).flatten shouldBe Vector(false, 42, 42, 42)
+        )
+        .compile
+        .toList
+        .asserting(_.flatten shouldBe List(false, 42, 42, 42))
     }
     "peek1 circular buffer" in {
-      runLog(
-        Stream.eval(
+      Stream
+        .eval(
           for {
             q <- InspectableQueue.circularBuffer[IO, Int](maxSize = 1)
             f <- q.peek1.start
@@ -186,7 +209,10 @@ class QueueSpec extends Fs2Spec {
             b <- q.offer1(43)
             z <- q.peek1
           } yield List(b, x, y, z)
-        )).flatten shouldBe Vector(true, 42, 42, 43)
+        )
+        .compile
+        .toList
+        .asserting(_.flatten shouldBe List(true, 42, 42, 43))
     }
   }
 }
