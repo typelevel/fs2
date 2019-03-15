@@ -2397,6 +2397,7 @@ class StreamSpec extends Fs2Spec {
       }
 
       "3" in {
+        // pending // Sometimes fails with inner == 1 on final assertion
         forAll { (s: Stream[Pure, Stream[Pure, Int]], n0: PosInt) =>
           val n = n0 % 10 + 1
           Counter[IO].flatMap { outer =>
@@ -2412,6 +2413,7 @@ class StreamSpec extends Fs2Spec {
                 .drain
                 .flatMap(_ => outer.get)
                 .asserting(_ shouldBe 0L)
+                .flatMap(_ => IO.sleep(50.millis)) // Allow time for inner stream to terminate
                 .flatMap(_ => inner.get)
                 .asserting(_ shouldBe 0L)
             }

@@ -35,9 +35,10 @@ class StreamLawsSpec extends LawsSpec {
         Eq[IO[Vector[Either[Throwable, O]]]]
           .eqv(x.attempt.compile.toVector, y.attempt.compile.toVector))
 
-  checkAll("MonadError[Stream[F, ?], Throwable]",
-           MonadErrorTests[Stream[IO, ?], Throwable].monadError[Int, Int, Int])
-  checkAll("FunctorFilter[Stream[F, ?]]",
-           FunctorFilterTests[Stream[IO, ?]].functorFilter[String, Int, Int])
-  checkAll("MonoidK[Stream[F, ?]]", MonoidKTests[Stream[IO, ?]].monoidK[Int])
+  // TODO Uncomment when cats-laws supports ScalaCheck 1.14
+  // checkAll("MonadError[Stream[F, ?], Throwable]",
+  //          MonadErrorTests[Stream[IO, ?], Throwable].monadError[Int, Int, Int])
+  // checkAll("FunctorFilter[Stream[F, ?]]",
+  //          FunctorFilterTests[Stream[IO, ?]].functorFilter[String, Int, Int])
+  // checkAll("MonoidK[Stream[F, ?]]", MonoidKTests[Stream[IO, ?]].monoidK[Int])
 }
