@@ -94,7 +94,7 @@ class ResourceCompilationSpec extends AsyncFs2Spec {
       .interruptAfter(200.millis)
       .drain ++ Stream.emit(true)
 
-    s.compile.drain
+    s.compile.lastOrError
       .timeout(2.seconds)
       .unsafeToFuture
       .map(_ shouldBe true)
