@@ -101,7 +101,7 @@ class ResourceCompilationSpec extends AsyncFs2Spec {
   }
 
   "compile.resource - interruption (2)" in {
-    val p = (Deferred[IO, Unit], Deferred[IO, ExitCase[Throwable]]).mapN { (started, stop) =>
+    val p = (Deferred[IO, ExitCase[Throwable]]).flatMap { stop =>
       val r = Stream
         .never[IO]
         .compile
@@ -112,13 +112,12 @@ class ResourceCompilationSpec extends AsyncFs2Spec {
         }
         .guaranteeCase(stop.complete)
 
-      (started.complete(()) >> r).start.flatMap { fiber =>
-        started.get >> fiber.cancel >> stop.get
+      r.start.flatMap { fiber =>
+        IO.sleep(200.millis) >> fiber.cancel >> stop.get
       }
     }
 
-    p.flatten
-      .timeout(2.seconds)
+    p.timeout(2.seconds)
       .unsafeToFuture
       .map(_ shouldBe ExitCase.Canceled)
   }
