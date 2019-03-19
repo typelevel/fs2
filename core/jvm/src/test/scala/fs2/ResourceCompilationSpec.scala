@@ -94,7 +94,9 @@ class ResourceCompilationSpec extends AsyncFs2Spec {
       .interruptAfter(200.millis)
       .drain ++ Stream.emit(true)
 
-    s.compile.lastOrError.unsafeToFuture
+    s.compile.lastOrError
+      .timeout(2.seconds)
+      .unsafeToFuture
       .map(_ shouldBe true)
   }
 
@@ -113,9 +115,11 @@ class ResourceCompilationSpec extends AsyncFs2Spec {
       (started.complete(()) >> r).start.flatMap { fiber =>
         started.get >> fiber.cancel >> stop.get
       }
-    }.flatten
+    }
 
-    p.unsafeToFuture
+    p.flatten
+      .timeout(2.seconds)
+      .unsafeToFuture
       .map(_ shouldBe ExitCase.Canceled)
   }
 }
