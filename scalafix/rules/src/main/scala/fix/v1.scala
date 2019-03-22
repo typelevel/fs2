@@ -511,7 +511,9 @@ object UsabilityRenameRules {
 }
 
 object SinkToPipeRules {
-  val toMethodMatcher = SymbolMatcher.exact("fs2/Stream.InvariantOps#to().")
+  val pre102ToMethodMatcher = SymbolMatcher.exact("fs2/Stream#to().")
+  val post102ToMethodMatcher = SymbolMatcher.exact("fs2/Stream.InvariantOps#to().")
+  val toMethodMatcher = pre102ToMethodMatcher + post102ToMethodMatcher
 
   def isFs2SinkImported(t: Tree): Boolean =
     t.collect {
