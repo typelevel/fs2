@@ -38,16 +38,16 @@ summarizes the differences between 1.0 and 0.10. To get 1.0.x, add the following
 
 ```
 // available for Scala 2.11, 2.12
-libraryDependencies += "co.fs2" %% "fs2-core" % "1.0.3" // For cats 1.5.0 and cats-effect 1.2.0
+libraryDependencies += "co.fs2" %% "fs2-core" % "1.0.4" // For cats 1.5.0 and cats-effect 1.2.0
 
 // optional I/O library
-libraryDependencies += "co.fs2" %% "fs2-io" % "1.0.3"
+libraryDependencies += "co.fs2" %% "fs2-io" % "1.0.4"
 
 // optional reactive streams interop
-libraryDependencies += "co.fs2" %% "fs2-reactive-streams" % "1.0.3"
+libraryDependencies += "co.fs2" %% "fs2-reactive-streams" % "1.0.4"
 
 // optional experimental library
-libraryDependencies += "co.fs2" %% "fs2-experimental" % "1.0.3"
+libraryDependencies += "co.fs2" %% "fs2-experimental" % "1.0.4"
 ```
 
 The previous stable release is 0.10.7. You may want to first
@@ -65,7 +65,7 @@ libraryDependencies += "co.fs2" %% "fs2-io" % "0.10.7"
 The fs2-core library is also supported on Scala.js:
 
 ```
-libraryDependencies += "co.fs2" %%% "fs2-core" % "0.10.7"
+libraryDependencies += "co.fs2" %%% "fs2-core" % "1.0.4"
 ```
 
 ### <a id="about"></a>Example ###
