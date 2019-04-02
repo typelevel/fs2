@@ -52,13 +52,7 @@ sealed trait Pull[+F[_], +O, +R] extends Serializable { self =>
   /** Compiles a pull to an effectful value using a chunk based fold. */
   private[fs2] final def compile[F2[x] >: F[x], R2 >: R, S](initial: S)(f: (S, Chunk[O]) => S)(
       implicit F: Sync[F2]): F2[(S, Option[R2])] =
-    // TODO - when compileAsResource is fixed, allowing interruption, replace implementation with commented out implementation
-    // compileAsResource[F2, R2, S](initial)(f).use(F.pure)
-    Resource
-      .makeCase(F.delay(Scope.unsafe[F2](None, None)))((scope, ec) => scope.closeAndThrow(ec))
-      .use { scope =>
-        compileWithScope[F2, R2, S](scope, initial)(f)
-      }
+    compileAsResource[F2, R2, S](initial)(f).use(F.pure)
 
   /**
     * Compiles a pull to an effectful resource using a chunk based fold.
@@ -72,7 +66,9 @@ sealed trait Pull[+F[_], +O, +R] extends Serializable { self =>
     Resource
       .makeCase(F.delay(Scope.unsafe[F2](None, None)))((scope, ec) => scope.closeAndThrow(ec))
       .flatMap { scope =>
-        Resource.liftF(compileWithScope[F2, R2, S](scope, initial)(f))
+        def resourceEval[A](fa: F2[A]): Resource[F2, A] =
+          Resource.suspend(fa.map(a => a.pure[Resource[F2, ?]]))
+        resourceEval(compileWithScope[F2, R2, S](scope, initial)(f))
       }
 
   /**

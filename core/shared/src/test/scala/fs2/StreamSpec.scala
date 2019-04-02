@@ -488,82 +488,120 @@ class StreamSpec extends Fs2Spec {
     }
 
     "compile" - {
-      "resource - concurrently" in {
-        val prog: Resource[IO, IO[Unit]] =
-          Stream
-            .eval(Deferred[IO, Unit].product(Deferred[IO, Unit]))
-            .flatMap {
-              case (startCondition, waitForStream) =>
-                val worker = Stream.eval(startCondition.get) ++ Stream.eval(
-                  waitForStream.complete(()))
-                val result = startCondition.complete(()) >> waitForStream.get
-
-                Stream.emit(result).concurrently(worker)
-            }
-            .compile
-            .resource
-            .lastOrError
-        prog.use(x => x).assertNoException
-      }
-
-      "resource - onFinalise" in {
-        val expected = List(
-          "stream - start",
-          "stream - done",
-          "io - done",
-          "io - start",
-          "resource - start",
-          "resource - done"
-        )
-
-        Ref[IO]
-          .of(List.empty[String])
-          .flatMap { st =>
-            def record(s: String): IO[Unit] = st.update(_ :+ s)
-
-            def stream =
-              Stream
-                .emit("stream - start")
-                .onFinalize(record("stream - done"))
-                .evalMap(x => record(x))
-                .compile
-                .lastOrError
-
-            def io =
-              Stream
-                .emit("io - start")
-                .onFinalize(record("io - done"))
-                .compile
-                .lastOrError
-                .flatMap(x => record(x))
-
-            def resource =
-              Stream
-                .emit("resource - start")
-                .onFinalize(record("resource - done"))
-                .compile
-                .resource
-                .lastOrError
-                .use(x => record(x))
-
-            stream >> io >> resource >> st.get
-          }
-          .asserting(_ shouldBe expected)
-      }
-
-      "resource - allocated" in {
-        Ref[IO]
-          .of(false)
-          .flatMap { written =>
+      "resource" - {
+        "concurrently" in {
+          val prog: Resource[IO, IO[Unit]] =
             Stream
-              .emit(())
-              .onFinalize(written.set(true))
+              .eval(Deferred[IO, Unit].product(Deferred[IO, Unit]))
+              .flatMap {
+                case (startCondition, waitForStream) =>
+                  val worker = Stream.eval(startCondition.get) ++ Stream.eval(
+                    waitForStream.complete(()))
+                  val result = startCondition.complete(()) >> waitForStream.get
+
+                  Stream.emit(result).concurrently(worker)
+              }
               .compile
               .resource
               .lastOrError
-              .allocated >> written.get
+          prog.use(x => x).assertNoException
+        }
+
+        "onFinalise" in {
+          val expected = List(
+            "stream - start",
+            "stream - done",
+            "io - done",
+            "io - start",
+            "resource - start",
+            "resource - done"
+          )
+
+          Ref[IO]
+            .of(List.empty[String])
+            .flatMap { st =>
+              def record(s: String): IO[Unit] = st.update(_ :+ s)
+
+              def stream =
+                Stream
+                  .emit("stream - start")
+                  .onFinalize(record("stream - done"))
+                  .evalMap(x => record(x))
+                  .compile
+                  .lastOrError
+
+              def io =
+                Stream
+                  .emit("io - start")
+                  .onFinalize(record("io - done"))
+                  .compile
+                  .lastOrError
+                  .flatMap(x => record(x))
+
+              def resource =
+                Stream
+                  .emit("resource - start")
+                  .onFinalize(record("resource - done"))
+                  .compile
+                  .resource
+                  .lastOrError
+                  .use(x => record(x))
+
+              stream >> io >> resource >> st.get
+            }
+            .asserting(_ shouldBe expected)
+        }
+
+        "allocated" in {
+          Ref[IO]
+            .of(false)
+            .flatMap { written =>
+              Stream
+                .emit(())
+                .onFinalize(written.set(true))
+                .compile
+                .resource
+                .lastOrError
+                .allocated >> written.get
+            }
+            .asserting(_ shouldBe false)
+        }
+
+        "interruption" - {
+          "1" in {
+            Stream
+              .resource {
+                Stream.never[IO].compile.resource.drain
+              }
+              .interruptAfter(200.millis)
+              .drain
+              .append(Stream.emit(true))
+              .compile
+              .lastOrError
+              .timeout(2.seconds)
+              .asserting(_ shouldBe true)
           }
-          .asserting(_ shouldBe false)
+
+          "2" in {
+            val p = (Deferred[IO, ExitCase[Throwable]]).flatMap { stop =>
+              val r = Stream
+                .never[IO]
+                .compile
+                .resource
+                .drain
+                .use { _ =>
+                  IO.unit
+                }
+                .guaranteeCase(stop.complete)
+
+              r.start.flatMap { fiber =>
+                IO.sleep(200.millis) >> fiber.cancel >> stop.get
+              }
+            }
+            p.timeout(2.seconds)
+              .asserting(_ shouldBe ExitCase.Canceled)
+          }
+        }
       }
     }
 
