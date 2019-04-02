@@ -142,10 +142,10 @@ package object io {
     * Each write operation is performed on the supplied execution context. Writes are
     * blocking so the execution context should be configured appropriately.
     */
-  def stdoutLines[F[_], O](blockingExecutionContext: ExecutionContext, charset: Charset = utf8Charset)(
-      implicit F: Sync[F],
-      cs: ContextShift[F],
-      show: Show[O]): Pipe[F, O, Unit] =
+  def stdoutLines[F[_], O](blockingExecutionContext: ExecutionContext,
+                           charset: Charset = utf8Charset)(implicit F: Sync[F],
+                                                           cs: ContextShift[F],
+                                                           show: Show[O]): Pipe[F, O, Unit] =
     _.map(_.show).through(text.encode(charset)).through(stdout(blockingExecutionContext))
 
   /** Stream of `String` read asynchronously from standard input decoded in UTF-8. */

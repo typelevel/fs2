@@ -3884,7 +3884,10 @@ object Stream extends StreamLowPriority {
           Resource
             .makeCase(CompileScope.newRoot[F])((scope, ec) => scope.close(ec).rethrow)
             .flatMap { scope =>
-              Resource.liftF {
+              def resourceEval[A](fa: F[A]): Resource[F, A] =
+                Resource.suspend(fa.map(a => a.pure[Resource[F, ?]]))
+
+              resourceEval {
                 F.delay(init())
                   .flatMap(i => Algebra.compile(s.get, scope, i)(foldChunk))
                   .map(finalize)

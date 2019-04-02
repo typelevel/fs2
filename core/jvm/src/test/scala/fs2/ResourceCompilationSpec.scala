@@ -1,7 +1,7 @@
 package fs2
 
 import cats.implicits._
-import cats.effect.{IO, Resource}
+import cats.effect.{ExitCase, IO, Resource}
 import cats.effect.concurrent.{Deferred, Ref}
 import scala.concurrent.duration._
 
@@ -84,6 +84,42 @@ class ResourceCompilationSpec extends AsyncFs2Spec {
       }
       .unsafeToFuture
       .map(written => written shouldBe false)
+  }
+
+  "compile.resource - interruption (1)" in {
+    val s = Stream
+      .resource {
+        Stream.never[IO].compile.resource.drain
+      }
+      .interruptAfter(200.millis)
+      .drain ++ Stream.emit(true)
+
+    s.compile.lastOrError
+      .timeout(2.seconds)
+      .unsafeToFuture
+      .map(_ shouldBe true)
+  }
+
+  "compile.resource - interruption (2)" in {
+    val p = (Deferred[IO, ExitCase[Throwable]]).flatMap { stop =>
+      val r = Stream
+        .never[IO]
+        .compile
+        .resource
+        .drain
+        .use { _ =>
+          IO.unit
+        }
+        .guaranteeCase(stop.complete)
+
+      r.start.flatMap { fiber =>
+        IO.sleep(200.millis) >> fiber.cancel >> stop.get
+      }
+    }
+
+    p.timeout(2.seconds)
+      .unsafeToFuture
+      .map(_ shouldBe ExitCase.Canceled)
   }
 }
 
