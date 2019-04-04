@@ -40,6 +40,18 @@ class StreamPerformanceSpec extends Fs2Spec {
       }
     }
 
+    "left-associated map 1" - {
+      pending
+      Ns.foreach { N =>
+        N.toString in {
+          (1 until N)
+            .map(Stream.emit)
+            .foldLeft(Stream.emit(0))((acc, a) => acc.map(_ + 1))
+            .toVector shouldBe Vector(N)
+        }
+      }
+    }
+
     "left-associated eval() ++ flatMap 1" - {
       Ns.foreach { N =>
         N.toString in {
