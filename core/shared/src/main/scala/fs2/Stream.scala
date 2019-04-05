@@ -406,34 +406,36 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * }}}
     */
   def chunkMin(n: Int, allowFewerTotal: Boolean = true): Stream[F, Chunk[O]] = {
-    def go[A](accFull: Option[Chunk[A]], nextChunk: Chunk[A], s: Stream[F, A]): Pull[F, Chunk[A], Option[Unit]] =
+    def go[A](accFull: Option[Chunk[A]],
+              nextChunk: Chunk[A],
+              s: Stream[F, A]): Pull[F, Chunk[A], Option[Unit]] =
       s.pull.uncons.flatMap {
-        case None           =>
+        case None =>
           accFull match {
             case Some(c) => Pull.output1(Chunk.concat(Seq(c, nextChunk))) >> Pull.pure(None)
-            case None => 
-            // Never Had Enough Elements to Fill A Chunk Min
-            if (allowFewerTotal && nextChunk.size > 0) Pull.output1(nextChunk) >> Pull.pure(None)
-            else Pull.pure(None)
+            case None    =>
+              // Never Had Enough Elements to Fill A Chunk Min
+              if (allowFewerTotal && nextChunk.size > 0) Pull.output1(nextChunk) >> Pull.pure(None)
+              else Pull.pure(None)
           }
         case Some((hd, tl)) =>
           val next = Chunk.concat(Seq(nextChunk, hd))
           accFull match {
-            case Some(s) => 
+            case Some(s) =>
               if (next.size >= n) Pull.output1(s) >> go(Some(next), Chunk.empty, tl)
               else go(accFull, next, tl)
-            case None => 
+            case None =>
               if (next.size >= n) go(Some(next), Chunk.empty, tl)
               else go(None, next, tl)
           }
       }
-    
-    this.pull.uncons.flatMap{
+
+    this.pull.uncons.flatMap {
       case None => Pull.pure(None)
-      case Some((hdChunk, tl)) => 
-        if (hdChunk.size >= n) 
-          go(Some(hdChunk), Chunk.empty,tl)
-        else 
+      case Some((hdChunk, tl)) =>
+        if (hdChunk.size >= n)
+          go(Some(hdChunk), Chunk.empty, tl)
+        else
           go(None, hdChunk, tl)
     }.stream
   }

@@ -70,6 +70,20 @@ class PipeSpec extends Fs2Spec {
       assert(sizeV.forall(_ <= n0.get) && sizeV.combineAll == s.get.toVector.size)
     }
 
+    "chunkMin" in forAll { (s: PureStream[Int], n0: SmallPositive) =>
+      val chunkedV = s.get.chunkMin(n0.get, true).toVector
+      val withIfSmallerV = s.get.chunkMin(n0.get, false).toVector
+      val unchunkedV = s.get.toVector
+      assert {
+        // All but last list have n0 values
+        chunkedV.dropRight(1).forall(_.size >= n0.get) &&
+        // Equivalent to last chunk with allowTotalFewer
+        chunkedV.dropRight(1) == withIfSmallerV.dropRight(1) &&
+        // Flattened sequence with allowMinSmallerTotal is equal to vector without chunking
+        chunkedV.foldLeft(Vector.empty[Int])((v, l) => v ++ l.toVector) == unchunkedV
+      }
+    }
+
     "chunkN.fewer" in forAll { (s: PureStream[Int], n0: SmallPositive) =>
       val chunkedV = s.get.chunkN(n0.get, true).toVector
       val unchunkedV = s.get.toVector
