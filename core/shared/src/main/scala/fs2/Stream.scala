@@ -393,6 +393,52 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     }
 
   /**
+    * Outputs chunks of size larger than N
+    *
+    * Chunks from the source stream are split as necessary.
+    *
+    * If `allowFewerTotal` is true,
+    * if the stream is smaller than N, should the elements be included
+    *
+    * @example {{{
+    * scala> (Stream(1,2) ++ Stream(3,4) ++ Stream(5,6,7)).chunkMin(3).toList
+    * res0: List[Chunk[Int]] = List(Chunk(1,2,3,4), Chunk(5,6,7))
+    * }}}
+    */
+  def chunkMin(n: Int, allowFewerTotal: Boolean = true): Stream[F, Chunk[O]] = {
+    def go[A](accFull: Option[Chunk[A]], nextChunk: Chunk[A], s: Stream[F, A]): Pull[F, Chunk[A], Option[Unit]] =
+      s.pull.uncons.flatMap {
+        case None           =>
+          accFull match {
+            case Some(c) => Pull.output1(Chunk.concat(Seq(c, nextChunk))) >> Pull.pure(None)
+            case None => 
+            // Never Had Enough Elements to Fill A Chunk Min
+            if (allowFewerTotal && nextChunk.size > 0) Pull.output1(nextChunk) >> Pull.pure(None)
+            else Pull.pure(None)
+          }
+        case Some((hd, tl)) =>
+          val next = Chunk.concat(Seq(nextChunk, hd))
+          accFull match {
+            case Some(s) => 
+              if (next.size >= n) Pull.output1(s) >> go(Some(next), Chunk.empty, tl)
+              else go(accFull, next, tl)
+            case None => 
+              if (next.size >= n) go(Some(next), Chunk.empty, tl)
+              else go(None, next, tl)
+          }
+      }
+    
+    this.pull.uncons.flatMap{
+      case None => Pull.pure(None)
+      case Some((hdChunk, tl)) => 
+        if (hdChunk.size >= n) 
+          go(Some(hdChunk), Chunk.empty,tl)
+        else 
+          go(None, hdChunk, tl)
+    }.stream
+  }
+
+  /**
     * Outputs chunks of size `n`.
     *
     * Chunks from the source stream are split as necessary.
