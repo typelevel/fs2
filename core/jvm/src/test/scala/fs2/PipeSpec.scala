@@ -89,7 +89,7 @@ class PipeSpec extends Fs2Spec {
         smallerN == Vector.empty &&
         // If smaller than Chunk Size and allowFewerTotal true is equal to the size
         // of the taken chunk initially
-        smallerY.foldLeft(Vector.empty[Int])((v, l) => v ++ l.toVector) == smallerSet &&
+        smallerY.foldLeft(Vector.empty[Int])((v, l) => v ++ l.toVector) == smallerSet
       }
     }
 
