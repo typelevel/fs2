@@ -2984,9 +2984,11 @@ object Stream extends StreamLowPriority {
     * }}}
     */
   def emits[F[x] >: Pure[x], O](os: Seq[O]): Stream[F, O] =
-    if (os.isEmpty) empty
-    else if (os.size == 1) emit(os.head)
-    else fromFreeC(Algebra.output[F, O](Chunk.seq(os)))
+    os match {
+      case Nil    => empty
+      case Seq(x) => emit(x)
+      case _      => fromFreeC(Algebra.output[F, O](Chunk.seq(os)))
+    }
 
   /** Empty pure stream. */
   val empty: Stream[Pure, INothing] =
