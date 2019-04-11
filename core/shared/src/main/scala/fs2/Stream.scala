@@ -1,6 +1,7 @@
 package fs2
 
 import cats._
+import cats.arrow.FunctionK
 import cats.data.{Chain, NonEmptyList}
 import cats.effect._
 import cats.effect.concurrent._
@@ -4336,6 +4337,18 @@ object Stream extends StreamLowPriority {
         pull(fa).stream
       }
     }
+
+  /**
+    * `FunctionK` instance for `F ~> Stream[F, ?]`
+    *
+    * @example {{{
+    * scala> import cats.Id
+    * scala> Stream.functionKInstance[Id](42).compile.toList
+    * res0: cats.Id[List[Int]] = List(42)
+    * }}}
+    */
+  implicit def functionKInstance[F[_]]: F ~> Stream[F, ?] =
+    FunctionK.lift[F, Stream[F, ?]](Stream.eval)
 
   implicit def monoidKInstance[F[_]]: MonoidK[Stream[F, ?]] =
     new MonoidK[Stream[F, ?]] {
