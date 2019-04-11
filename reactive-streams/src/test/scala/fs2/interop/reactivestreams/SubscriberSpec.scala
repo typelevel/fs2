@@ -16,7 +16,7 @@ import org.reactivestreams.tck.{
   SubscriberWhiteboxVerification,
   TestEnvironment
 }
-import org.scalatest.testng.TestNGSuiteLike
+import org.scalatestplus.testng.TestNGSuiteLike
 
 import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._

@@ -48,6 +48,7 @@ class SocketSpec extends Fs2Spec with BeforeAndAfterAll {
                   .reads(1024)
                   .through(socket.writes())
                   .onFinalize(socket.endOfOutput)
+                  .scope
               }
           }
           .parJoinUnbounded
@@ -63,7 +64,8 @@ class SocketSpec extends Fs2Spec with BeforeAndAfterAll {
                   .chunk(message)
                   .through(socket.writes())
                   .drain
-                  .onFinalize(socket.endOfOutput) ++
+                  .onFinalize(socket.endOfOutput)
+                  .scope ++
                   socket.reads(1024, None).chunks.map(_.toArray)
               }
             }
@@ -102,6 +104,7 @@ class SocketSpec extends Fs2Spec with BeforeAndAfterAll {
                   .through(socket.writes())
                   .drain
                   .onFinalize(socket.endOfOutput)
+                  .scope
               })
           }
           .parJoinUnbounded

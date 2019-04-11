@@ -81,19 +81,6 @@ private[fs2] final class CompileScope[F[_]] private (
     }
 
   /**
-    * Releases the resource identified by the supplied token.
-    *
-    * Invoked when a resource is released during the scope's lifetime.
-    * When the action returns, the resource may not be released yet, as
-    * it may have been `leased` to other scopes.
-    */
-  def releaseResource(id: Token, ec: ExitCase[Throwable]): F[Either[Throwable, Unit]] =
-    F.flatMap(state.modify { _.unregisterResource(id) }) {
-      case Some(resource) => resource.release(ec)
-      case None           => F.pure(Right(())) // resource does not exist in scope any more.
-    }
-
-  /**
     * Opens a child scope.
     *
     * If this scope is currently closed, then the child scope is opened on the first
@@ -126,7 +113,7 @@ private[fs2] final class CompileScope[F[_]] private (
       val newScopeId = new Token
       self.interruptible match {
         case None =>
-          F.pure(InterruptContext.unsafeFromInteruptible(interruptible, newScopeId) -> newScopeId)
+          F.pure(InterruptContext.unsafeFromInterruptible(interruptible, newScopeId) -> newScopeId)
 
         case Some(parentICtx) =>
           F.map(parentICtx.childContext(interruptible, newScopeId))(Some(_) -> newScopeId)
@@ -172,13 +159,13 @@ private[fs2] final class CompileScope[F[_]] private (
     */
   def acquireResource[R](
       fr: F[R],
-      release: (R, ExitCase[Throwable]) => F[Unit]): F[Either[Throwable, (R, Token)]] = {
+      release: (R, ExitCase[Throwable]) => F[Unit]): F[Either[Throwable, (R, Resource[F])]] = {
     val resource = Resource.create
     F.flatMap(F.attempt(fr)) {
       case Right(r) =>
         val finalizer = (ec: ExitCase[Throwable]) => F.suspend(release(r, ec))
         F.flatMap(resource.acquired(finalizer)) { result =>
-          if (result.exists(identity)) F.map(register(resource))(_ => Right((r, resource.id)))
+          if (result.exists(identity)) F.map(register(resource))(_ => Right((r, resource)))
           else F.pure(Left(result.swap.getOrElse(AcquireAfterScopeClosed)))
         }
       case Left(err) => F.pure(Left(err))
@@ -395,7 +382,7 @@ private[fs2] final class CompileScope[F[_]] private (
       case Some(iCtx) =>
         F.map(
           iCtx.concurrent
-            .race(iCtx.deferred.get, F.attempt(iCtx.concurrent.uncancelable(f)))) {
+            .race(iCtx.deferred.get, F.attempt(f))) {
           case Right(result) => result.leftMap(Left(_))
           case Left(other)   => Left(other)
         }
@@ -405,11 +392,11 @@ private[fs2] final class CompileScope[F[_]] private (
     s"RunFoldScope(id=$id,interruptible=${interruptible.nonEmpty})"
 }
 
-private[internal] object CompileScope {
+private[fs2] object CompileScope {
 
   /** Creates a new root scope. */
-  def newRoot[F[_]: Sync]: CompileScope[F] =
-    new CompileScope[F](new Token(), None, None)
+  def newRoot[F[_]: Sync]: F[CompileScope[F]] =
+    Sync[F].delay(new CompileScope[F](new Token(), None, None))
 
   /**
     * State of a scope.
@@ -527,7 +514,7 @@ private[internal] object CompileScope {
       *                       continuation in case of interruption.
       * @param newScopeId     The id of the new scope.
       */
-    def unsafeFromInteruptible[F[_]](
+    def unsafeFromInterruptible[F[_]](
         interruptible: Option[Concurrent[F]],
         newScopeId: Token
     )(implicit F: Sync[F]): Option[InterruptContext[F]] =

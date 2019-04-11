@@ -2,7 +2,7 @@ package fs2
 
 import scala.concurrent.duration._
 import cats.effect.IO
-import cats.effect.concurrent.Semaphore
+import cats.effect.concurrent.{Deferred, Semaphore}
 import cats.implicits._
 import org.scalacheck.Gen
 import TestUtil._
@@ -492,6 +492,25 @@ class Pipe2Spec extends Fs2Spec {
 
       runLog(prg) shouldBe Vector(5)
 
+    }
+
+    "interrupt (19)" in {
+      // interruptible eval
+
+      def prg =
+        Deferred[IO, Unit]
+          .flatMap { latch =>
+            Stream
+              .eval {
+                latch.get.guarantee(latch.complete(()))
+              }
+              .interruptAfter(200.millis)
+              .compile
+              .drain >> latch.get.as(true)
+          }
+          .timeout(3.seconds)
+
+      prg.unsafeRunSync shouldBe true
     }
 
     "nested-interrupt (1)" in forAll { s1: PureStream[Int] =>

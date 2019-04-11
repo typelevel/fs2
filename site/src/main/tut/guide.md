@@ -501,7 +501,7 @@ package which has nice FS2 bindings to Java NIO libraries, using exactly this ap
 
 The nice thing about callback-y APIs that invoke their callbacks once is that throttling/back-pressure can be handled within FS2 itself. If you don't want more values, just don't read them, and they won't be produced! But sometimes you'll be dealing with a callback-y API which invokes callbacks you provide it _more than once_. Perhaps it's a streaming API of some sort and it invokes your callback whenever new data is available. In these cases, you can use an asynchronous queue to broker between the nice stream processing world of FS2 and the external API, and use whatever ad hoc mechanism that API provides for throttling of the producer.
 
-_Note:_ Some of these APIs don't provide any means of throttling the producer, in which case you either have accept possibly unbounded memory usage (if the producer and consumer operate at very different rates), or use blocking concurrency primitives like `fs2.concurrent.Queue.bounded` or the primitives in `java.util.concurrent`.
+_Note:_ Some of these APIs don't provide any means of throttling the producer, in which case you either have to accept possibly unbounded memory usage (if the producer and consumer operate at very different rates), or use blocking concurrency primitives like `fs2.concurrent.Queue.bounded` or the primitives in `java.util.concurrent`.
 
 Let's look at a complete example:
 

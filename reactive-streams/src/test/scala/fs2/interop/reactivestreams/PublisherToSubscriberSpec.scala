@@ -4,9 +4,9 @@ package reactivestreams
 
 import cats.effect._
 import org.scalatest._
-import org.scalatest.prop._
+import org.scalatestplus.scalacheck.ScalaCheckPropertyChecks
 
-final class PublisherToSubscriberSpec extends FlatSpec with Matchers with PropertyChecks {
+final class PublisherToSubscriberSpec extends FlatSpec with Matchers with ScalaCheckPropertyChecks {
 
   implicit val ctx: ContextShift[IO] =
     IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)

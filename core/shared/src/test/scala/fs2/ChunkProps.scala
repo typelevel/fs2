@@ -4,12 +4,12 @@ import scala.reflect.ClassTag
 
 import org.scalacheck.Arbitrary
 import org.scalatest.Matchers
-import org.scalatest.prop.GeneratorDrivenPropertyChecks
+import org.scalatestplus.scalacheck.ScalaCheckDrivenPropertyChecks
 import TestUtil._
 
 object ChunkProps
     extends Matchers
-    with GeneratorDrivenPropertyChecks {
+    with ScalaCheckDrivenPropertyChecks {
   def propSize[A: Arbitrary, C <: Chunk[A]: Arbitrary] =
     forAll { c: C =>
       c.size shouldBe c.toVector.size

@@ -49,24 +49,19 @@ lazy val commonSettings = Seq(
   javaOptions in (Test, run) ++= Seq("-Xms64m", "-Xmx64m"),
   libraryDependencies ++= Seq(
     compilerPlugin("org.spire-math" %% "kind-projector" % "0.9.9"),
-    "org.typelevel" %%% "cats-core" % "1.5.0",
-    "org.typelevel" %%% "cats-laws" % "1.5.0" % "test",
-    "org.typelevel" %%% "cats-effect" % "1.1.0",
-    "org.typelevel" %%% "cats-effect-laws" % "1.1.0" % "test",
-    "org.scala-lang.modules" %%% "scala-collection-compat" % "0.2.1"
+    "org.typelevel" %%% "cats-core" % "1.6.0",
+    "org.typelevel" %%% "cats-laws" % "1.6.0" % "test",
+    "org.typelevel" %%% "cats-effect" % "1.2.0",
+    "org.typelevel" %%% "cats-effect-laws" % "1.2.0" % "test",
+    "org.scala-lang.modules" %%% "scala-collection-compat" % "0.3.0",
+    "org.scalatest" %%% "scalatest" % "3.0.6" % "test"
   ),
-  libraryDependencies ++= {
+  libraryDependencies += {
     CrossVersion.partialVersion(scalaVersion.value) match {
       case Some((2, v)) if v >= 13 =>
-        Seq(
-          "org.scalatest" %%% "scalatest" % "3.0.6-SNAP5" % "test",
-          "org.scalacheck" %%% "scalacheck" % "1.14.0" % "test"
-        )
+        "org.scalacheck" %%% "scalacheck" % "1.14.0" % "test"
       case _ =>
-        Seq(
-          "org.scalatest" %%% "scalatest" % "3.0.5" % "test",
-          "org.scalacheck" %%% "scalacheck" % "1.13.5" % "test"
-        )
+        "org.scalacheck" %%% "scalacheck" % "1.13.5" % "test"
     }
   },
   scmInfo := Some(ScmInfo(url("https://github.com/functional-streams-for-scala/fs2"),
@@ -223,6 +218,8 @@ lazy val mimaSettings = Seq(
     ProblemFilters
       .exclude[DirectMissingMethodProblem]("fs2.io.package.invokeCallback"),
     ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.tcp.Socket.client"),
+    ProblemFilters.exclude[DirectMissingMethodProblem](
+      "fs2.io.JavaInputOutputStream.toInputStream"),
     ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.tcp.Socket.server"),
     ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.tcp.Socket.mkSocket"),
     ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.udp.Socket.mkSocket"),
@@ -231,7 +228,9 @@ lazy val mimaSettings = Seq(
     ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Stream.bracketFinalizer"),
     // Compiler#apply is private[fs2]
     ProblemFilters.exclude[IncompatibleMethTypeProblem]("fs2.Stream#Compiler.apply"),
-    ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.Stream#Compiler.apply")
+    ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.Stream#Compiler.apply"),
+    // bracketWithToken was private[fs2]
+    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Stream.bracketWithToken")
   )
 )
 
@@ -254,7 +253,14 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
   .settings(
     name := "fs2-core",
     sourceDirectories in (Compile, scalafmt) += baseDirectory.value / "../shared/src/main/scala",
-    libraryDependencies += "org.scodec" %%% "scodec-bits" % "1.1.7"
+    unmanagedSourceDirectories in Compile += {
+      val dir = CrossVersion.partialVersion(scalaVersion.value) match {
+        case Some((2, v)) if v >= 13 => "scala-2.13+"
+        case _                       => "scala-2.12-"
+      }
+      baseDirectory.value / "../shared/src/main" / dir
+    },
+    libraryDependencies += "org.scodec" %%% "scodec-bits" % "1.1.9"
   )
   .jsSettings(commonJsSettings: _*)
 

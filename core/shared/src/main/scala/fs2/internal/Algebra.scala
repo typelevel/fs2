@@ -34,10 +34,7 @@ private[fs2] object Algebra {
 
   private[this] final case class Acquire[F[_], R](resource: F[R],
                                                   release: (R, ExitCase[Throwable]) => F[Unit])
-      extends AlgEffect[F, (R, Token)]
-
-  private[this] final case class Release[F[_]](token: Token) extends AlgEffect[F, Unit]
-
+      extends AlgEffect[F, (R, Resource[F])]
   private[this] final case class OpenScope[F[_]](interruptible: Option[Concurrent[F]])
       extends AlgEffect[F, Token]
 
@@ -62,11 +59,8 @@ private[fs2] object Algebra {
 
   def acquire[F[_], O, R](
       resource: F[R],
-      release: (R, ExitCase[Throwable]) => F[Unit]): FreeC[Algebra[F, O, ?], (R, Token)] =
-    FreeC.Eval[Algebra[F, O, ?], (R, Token)](Acquire(resource, release))
-
-  def release[F[_], O](token: Token): FreeC[Algebra[F, O, ?], Unit] =
-    FreeC.Eval[Algebra[F, O, ?], Unit](Release(token))
+      release: (R, ExitCase[Throwable]) => F[Unit]): FreeC[Algebra[F, O, ?], (R, Resource[F])] =
+    FreeC.Eval[Algebra[F, O, ?], (R, Resource[F])](Acquire(resource, release))
 
   def mapOutput[F[_], A, B](fun: A => B): Algebra[F, A, ?] ~> Algebra[F, B, ?] =
     new (Algebra[F, A, ?] ~> Algebra[F, B, ?]) {
@@ -168,23 +162,16 @@ private[fs2] object Algebra {
     step(s, None).map { _.map { case (h, _, t) => (h, t) } }
 
   /** Left-folds the output of a stream. */
-  def compile[F[_], O, B](stream: FreeC[Algebra[F, O, ?], Unit], init: B)(f: (B, Chunk[O]) => B)(
-      implicit F: Sync[F]): F[B] =
-    F.bracketCase(F.delay(CompileScope.newRoot[F]))(scope =>
-      compileScope[F, O, B](scope, stream, init)(f))((scope, ec) => scope.close(ec).rethrow)
-
-  private[this] def compileScope[F[_], O, B](
-      scope: CompileScope[F],
-      stream: FreeC[Algebra[F, O, ?], Unit],
-      init: B)(g: (B, Chunk[O]) => B)(implicit F: Sync[F]): F[B] =
+  def compile[F[_], O, B](stream: FreeC[Algebra[F, O, ?], Unit], scope: CompileScope[F], init: B)(
+      g: (B, Chunk[O]) => B)(implicit F: Sync[F]): F[B] =
     compileLoop[F, O](scope, stream).flatMap {
       case Some((output, scope, tail)) =>
         try {
           val b = g(init, output)
-          compileScope(scope, tail, b)(g)
+          compile(tail, scope, b)(g)
         } catch {
           case NonFatal(err) =>
-            compileScope(scope, tail.asHandler(err), init)(g)
+            compile(tail.asHandler(err), scope, init)(g)
         }
       case None =>
         F.pure(init)
@@ -298,11 +285,6 @@ private[fs2] object Algebra {
                 F.flatMap(scope.acquireResource(acquire.resource, acquire.release)) { r =>
                   go[X](scope, view.next(Result.fromEither(r)))
                 }
-              }
-
-            case release: Release[F] =>
-              F.flatMap(scope.releaseResource(release.token, ExitCase.Completed)) { r =>
-                go[X](scope, view.next(Result.fromEither(r)))
               }
 
             case _: GetScope[F] =>
@@ -487,7 +469,6 @@ private[fs2] object Algebra {
         .asInstanceOf[AlgEffect[G, R]]
     case e: Eval[F, R]    => Eval[G, R](fK(e.value))
     case o: OpenScope[F]  => OpenScope[G](concurrent).asInstanceOf[AlgEffect[G, R]]
-    case r: Release[F]    => r.asInstanceOf[AlgEffect[G, R]]
     case c: CloseScope[F] => c.asInstanceOf[AlgEffect[G, R]]
     case g: GetScope[F]   => g.asInstanceOf[AlgEffect[G, R]]
   }

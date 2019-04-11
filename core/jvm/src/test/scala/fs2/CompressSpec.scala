@@ -16,7 +16,6 @@ import java.util.zip.{
 }
 
 import scala.collection.mutable
-import scala.collection.compat._
 
 import TestUtil._
 import compress._

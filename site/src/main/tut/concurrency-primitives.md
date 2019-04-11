@@ -33,14 +33,14 @@ class Buffering[F[_]](q1: Queue[F, Int], q2: Queue[F, Int])(implicit F: Concurre
 
   def start: Stream[F, Unit] =
     Stream(
-      Stream.range(0, 1000).covary[F].to(q1.enqueue),
-      q1.dequeue.to(q2.enqueue),
+      Stream.range(0, 1000).covary[F].through(q1.enqueue),
+      q1.dequeue.through(q2.enqueue),
       //.map won't work here as you're trying to map a pure value with a side effect. Use `evalMap` instead.
       q2.dequeue.evalMap(n => F.delay(println(s"Pulling out $n from Queue #2")))
     ).parJoin(3)
 }
 
-class Fifo extends IOApp {
+object Fifo extends IOApp {
 
   override def run(args: List[String]): IO[ExitCode] = {
     val stream = for {
@@ -81,15 +81,18 @@ sealed trait Event
 case class Text(value: String) extends Event
 case object Quit extends Event
 
-class EventService[F[_]](eventsTopic: Topic[F, Event],
-  interrupter: SignallingRef[F, Boolean])(implicit F: Concurrent[F], timer: Timer[F]) {
+class EventService[F[_]](eventsTopic: Topic[F, Event], interrupter: SignallingRef[F, Boolean])(
+  implicit F: Concurrent[F],
+  timer: Timer[F]
+) {
 
   // Publishing 15 text events, then single Quit event, and still publishing text events
   def startPublisher: Stream[F, Unit] = {
     val textEvents = eventsTopic.publish(
       Stream.awakeEvery[F](1.second)
-        .zipRight(Stream.eval(timer.clock.realTime(TimeUnit.MILLISECONDS).map(t=>Text(t.toString()))).repeat)
+        .zipRight(Stream.eval(timer.clock.realTime(TimeUnit.MILLISECONDS).map(t => Text(t.toString))).repeat)
     )
+  
     val quitEvent = Stream.eval(eventsTopic.publish1(Quit))
 
     (textEvents.take(15) ++ quitEvent ++ textEvents).interruptWhen(interrupter)
@@ -97,33 +100,35 @@ class EventService[F[_]](eventsTopic: Topic[F, Event],
 
   // Creating 3 subscribers in a different period of time and join them to run concurrently
   def startSubscribers: Stream[F, Unit] = {
-    val s1: Stream[F, Event] = eventsTopic.subscribe(10)
-    val s2: Stream[F, Event] = Stream.sleep_[F](5.seconds) ++ eventsTopic.subscribe(10)
-    val s3: Stream[F, Event] = Stream.sleep_[F](10.seconds) ++ eventsTopic.subscribe(10)
-
-    // When Quit message received - terminate the program
-    def sink(subscriberNumber: Int): Pipe[F, Event, Unit] =
+    def processEvent(subscriberNumber: Int): Pipe[F, Event, Unit] =
       _.flatMap {
-        case e @ Text(_) => Stream.eval(F.delay(println(s"Subscriber #$subscriberNumber processing event: $e")))
-        case Quit => Stream.eval(interrupter.set(true))
-      }
+        case e @ Text(_) =>
+           Stream.eval(F.delay(println(s"Subscriber #$subscriberNumber processing event: $e")))
+       case Quit => Stream.eval(interrupter.set(true))
+     }
 
-    Stream(s1.to(sink(1)), s2.to(sink(2)), s3.to(sink(3))).parJoin(3)
+    val events: Stream[F, Event] =
+      eventsTopic.subscribe(10)
+
+    Stream(
+      events.through(processEvent(1)),
+      events.delayBy(5.second).through(processEvent(2)),
+      events.delayBy(10.second).through(processEvent(3))
+    ).parJoin(3)
   }
 }
 
 object PubSub extends IOApp {
 
-  override def run(args: List[String]): IO[ExitCode] = {
-    val stream = for {
-      topic     <- Stream.eval(Topic[IO, Event](Text("")))
-      signal    <- Stream.eval(SignallingRef[IO, Boolean](false))
-      service   = new EventService[IO](topic, signal)
-      _         <- Stream(
-                    service.startPublisher.concurrently(service.startSubscribers)
-                 ).parJoin(2).drain
-    } yield ()
-    stream.compile.drain.as(ExitCode.Success)
+  val program = for {
+    topic <- Stream.eval(Topic[IO, Event](Text("Initial Event")))
+    signal <- Stream.eval(SignallingRef[IO, Boolean](false))
+    service = new EventService[IO](topic, signal)
+    _ <- service.startPublisher.concurrently(service.startSubscribers)
+  } yield ()
+
+  override def run(args: List[String]): IO[ExitCode] =
+    program.compile.drain.as(ExitCode.Success)
   }
 }
 ```
@@ -180,7 +185,7 @@ class PreciousResource[F[_]: Concurrent: Timer](name: String, s: Semaphore[F]) {
   }
 }
 
-class Resources extends IOApp {
+object Resources extends IOApp {
 
   override def run(args: List[String]): IO[ExitCode] = {
     val stream = for {

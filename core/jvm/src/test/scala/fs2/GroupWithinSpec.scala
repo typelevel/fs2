@@ -21,6 +21,20 @@ class GroupWithinSpec extends Fs2Spec {
       runLog(action) shouldBe (result)
   }
 
+  "groupWithin should never emit empty groups" in forAll {
+    (s: PureStream[VeryShortFiniteDuration], d: ShortFiniteDuration, maxGroupSize: SmallPositive) =>
+      whenever(s.get.toVector.nonEmpty) {
+        val action =
+          s.get
+            .covary[IO]
+            .evalTap(shortDuration => IO.sleep(shortDuration.get))
+            .groupWithin(maxGroupSize.get, d.get)
+            .map(_.toList)
+
+        runLog(action).foreach(group => group should not be empty)
+      }
+  }
+
   "groupWithin should never have more elements than in its specified limit" in forAll {
     (s: PureStream[VeryShortFiniteDuration], d: ShortFiniteDuration, maxGroupSize: SmallPositive) =>
       val maxGroupSizeAsInt = maxGroupSize.get

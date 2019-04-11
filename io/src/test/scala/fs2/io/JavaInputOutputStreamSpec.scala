@@ -28,9 +28,8 @@ class JavaInputOutputStreamSpec extends Fs2Spec with EventuallySupport {
       val example = stream.compile.toVector.unsafeRunSync()
 
       val fromInputStream =
-        stream
-          .through(toInputStream)
-          .evalMap { is =>
+        toInputStreamResource(stream)
+          .use { is =>
             // consume in same thread pool. Production application should never do this,
             // instead they have to fork this to dedicated thread pool
             val buff = new Array[Byte](20)
@@ -42,9 +41,6 @@ class JavaInputOutputStreamSpec extends Fs2Spec with EventuallySupport {
               }
             go(Vector.empty)
           }
-          .compile
-          .toVector
-          .map(_.flatten)
           .unsafeRunSync()
 
       example shouldBe fromInputStream
@@ -56,7 +52,7 @@ class JavaInputOutputStreamSpec extends Fs2Spec with EventuallySupport {
       val s: Stream[IO, Byte] =
         Stream(1.toByte).onFinalize(IO { closed = true })
 
-      s.through(toInputStream).compile.drain.unsafeRunSync()
+      toInputStreamResource(s).use(_ => IO.unit).unsafeRunSync()
 
       eventually { closed shouldBe true }
     }
@@ -68,15 +64,13 @@ class JavaInputOutputStreamSpec extends Fs2Spec with EventuallySupport {
         Stream(1.toByte).onFinalize(IO { closed = true })
 
       val result =
-        s.through(toInputStream)
-          .evalMap { is =>
+        toInputStreamResource(s)
+          .use { is =>
             IO {
               is.close()
               closed // verifies that once close() terminates upstream was already cleaned up
             }
           }
-          .compile
-          .toVector
           .unsafeRunSync()
 
       result shouldBe Vector(true)
@@ -84,14 +78,10 @@ class JavaInputOutputStreamSpec extends Fs2Spec with EventuallySupport {
 
     "converts to 0..255 int values except EOF mark" in {
       val s: Stream[IO, Byte] = Stream.range(0, 256, 1).map(_.toByte)
-      val result = s
-        .through(toInputStream)
-        .map { is =>
-          Vector.fill(257)(is.read())
+      val result = toInputStreamResource(s)
+        .use { is =>
+          IO.pure(Vector.fill(257)(is.read()))
         }
-        .compile
-        .toVector
-        .map(_.flatten)
         .unsafeRunSync()
       result shouldBe (Stream.range(0, 256, 1) ++ Stream(-1)).toVector
     }

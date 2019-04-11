@@ -1,6 +1,7 @@
 package fs2
 
 import cats._
+import cats.arrow.FunctionK
 import cats.effect._
 import fs2.internal._
 
@@ -145,12 +146,16 @@ object Pull extends PullLowPriority {
   def acquireCancellableCase[F[_]: RaiseThrowable, R](r: F[R])(
       cleanup: (R, ExitCase[Throwable]) => F[Unit]): Pull[F, INothing, Cancellable[F, R]] =
     Stream
-      .bracketWithToken(r)(cleanup)
+      .bracketWithResource(r)(cleanup)
       .pull
       .uncons1
       .flatMap {
-        case None                   => Pull.raiseError[F](new RuntimeException("impossible"))
-        case Some(((token, r), tl)) => Pull.pure(Cancellable(release(token), r))
+        case None => Pull.raiseError[F](new RuntimeException("impossible"))
+        case Some(((res, r), tl)) =>
+          Pull.pure(Cancellable(Pull.eval(res.release(ExitCase.Canceled)).flatMap {
+            case Left(t)  => Pull.fromFreeC(Algebra.raiseError[F, INothing](t))
+            case Right(r) => Pull.pure(r)
+          }, r))
       }
 
   /**
@@ -227,9 +232,6 @@ object Pull extends PullLowPriority {
   def suspend[F[x] >: Pure[x], O, R](p: => Pull[F, O, R]): Pull[F, O, R] =
     fromFreeC(Algebra.suspend(p.get))
 
-  private def release[F[x] >: Pure[x]](token: Token): Pull[F, INothing, Unit] =
-    fromFreeC(Algebra.release[F, INothing](token))
-
   /** `Sync` instance for `Pull`. */
   implicit def syncInstance[F[_], O](
       implicit ev: ApplicativeError[F, Throwable]): Sync[Pull[F, O, ?]] =
@@ -252,6 +254,18 @@ object Pull extends PullLowPriority {
             .syncInstance[Algebra[F, O, ?]]
             .bracketCase(acquire.get)(a => use(a).get)((a, c) => release(a, c).get))
     }
+
+  /**
+    * `FunctionK` instance for `F ~> Pull[F, INothing, ?]`
+    *
+    * @example {{{
+    * scala> import cats.Id
+    * scala> Pull.functionKInstance[Id](42).flatMap(Pull.output1).stream.compile.toList
+    * res0: cats.Id[List[Int]] = List(42)
+    * }}}
+    */
+  implicit def functionKInstance[F[_]]: F ~> Pull[F, INothing, ?] =
+    FunctionK.lift[F, Pull[F, INothing, ?]](Pull.eval)
 }
 
 private[fs2] trait PullLowPriority {

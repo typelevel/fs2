@@ -8,7 +8,7 @@ import cats.effect.{ContextShift, IO, Timer}
 import org.typelevel.discipline.Laws
 import org.scalatest.{ Args, Assertion, AsyncFreeSpec, FreeSpec, Matchers, Status, Succeeded, Suite }
 import org.scalatest.concurrent.{ AsyncTimeLimitedTests, TimeLimitedTests }
-import org.scalatest.prop.{ Checkers, GeneratorDrivenPropertyChecks }
+import org.scalatestplus.scalacheck.{ Checkers, ScalaCheckDrivenPropertyChecks }
 import org.scalatest.time.Span
 
 abstract class Fs2Spec extends FreeSpec with Fs2SpecLike with TimeLimitedTests with Checkers {
@@ -27,7 +27,7 @@ abstract class AsyncFs2Spec extends AsyncFreeSpec with Fs2SpecLike with AsyncTim
 }
 
 trait Fs2SpecLike extends Suite
-  with GeneratorDrivenPropertyChecks
+  with ScalaCheckDrivenPropertyChecks
   with Matchers {
 
   implicit val timeout: FiniteDuration = 60.seconds

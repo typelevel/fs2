@@ -7,14 +7,12 @@ import cats.effect.laws.discipline.arbitrary._
 import cats.effect.laws.util.TestContext
 import cats.effect.laws.util.TestInstances._
 import cats.implicits._
-import cats.laws.discipline.MonadErrorTests
-
-import org.scalacheck.{Arbitrary, Gen}
+import cats.laws.discipline._
+import org.scalacheck.{Arbitrary, Cogen, Gen}
 import Arbitrary.arbitrary
-import org.scalacheck.Arbitrary
 import org.scalatest.Inside
-import scala.concurrent.duration._
 
+import scala.concurrent.duration._
 import TestUtil._
 
 class StreamSpec extends Fs2Spec with Inside {
@@ -572,6 +570,43 @@ class StreamSpec extends Fs2Spec with Inside {
       unfoldTree(1).flatten.take(10).toList shouldBe List.tabulate(10)(_ + 1)
     }
 
+    "rechunkRandomlyWithSeed" - {
+
+      "is deterministic" in forAll { (s: PureStream[Int], seed: Long) =>
+        val x = runLog(s.get.rechunkRandomlyWithSeed[IO](minFactor = 0.1, maxFactor = 2.0)(seed))
+        val y = runLog(s.get.rechunkRandomlyWithSeed[IO](minFactor = 0.1, maxFactor = 2.0)(seed))
+        x shouldBe y
+      }
+
+      "does not drop elements" in forAll { (s: PureStream[Int], seed: Long) =>
+        runLog(s.get.rechunkRandomlyWithSeed[IO](minFactor = 0.1, maxFactor = 2.0)(seed)) shouldBe s.get.toVector
+      }
+
+      "chunk size in interval [inputChunk.size * minFactor, inputChunk.size * maxFactor]" in forAll {
+        (s: PureStream[Int], seed: Long) =>
+          val c = s.get.chunks.toVector
+          if (c.nonEmpty) {
+            val (min, max) = c.tail.foldLeft(c.head.size -> c.head.size) {
+              case ((min, max), c) => Math.min(min, c.size) -> Math.max(max, c.size)
+            }
+            val (minChunkSize, maxChunkSize) = (min * 0.1, max * 2.0)
+            // Last element is drop as it may not fulfill size constraint
+            all(
+              runLog(
+                s.get
+                  .rechunkRandomlyWithSeed[IO](minFactor = 0.1, maxFactor = 2.0)(seed)
+                  .chunks
+                  .map(_.size)).dropRight(1)
+            ) should ((be >= minChunkSize.toInt).and(be <= maxChunkSize.toInt))
+          }
+      }
+
+    }
+
+    "rechunkRandomly" in forAll { (s: PureStream[Int]) =>
+      runLog(s.get.rechunkRandomly[IO]()) shouldBe s.get.toVector
+    }
+
     {
       implicit val ec: TestContext = TestContext()
 
@@ -581,13 +616,22 @@ class StreamSpec extends Fs2Spec with Inside {
           Gen.frequency(8 -> arbitrary[PureStream[O]].map(_.get.take(10).covary[F]),
                         2 -> arbitrary[F[O]].map(fo => Stream.eval(fo))))
 
+      // borrowed from ScalaCheck 1.14
+      // TODO remove when the project upgrades to ScalaCheck 1.14
+      implicit def arbPartialFunction[A: Cogen, B: Arbitrary]: Arbitrary[PartialFunction[A, B]] =
+        Arbitrary(implicitly[Arbitrary[A => Option[B]]].arbitrary.map(Function.unlift))
+
       implicit def eqStream[O: Eq]: Eq[Stream[IO, O]] =
         Eq.instance(
           (x, y) =>
             Eq[IO[Vector[Either[Throwable, O]]]]
               .eqv(x.attempt.compile.toVector, y.attempt.compile.toVector))
+
       checkAll("MonadError[Stream[F, ?], Throwable]",
                MonadErrorTests[Stream[IO, ?], Throwable].monadError[Int, Int, Int])
+      checkAll("FunctorFilter[Stream[F, ?]]",
+               FunctorFilterTests[Stream[IO, ?]].functorFilter[String, Int, Int])
+      checkAll("MonoidK[Stream[F, ?]]", MonoidKTests[Stream[IO, ?]].monoidK[Int])
     }
   }
 }
