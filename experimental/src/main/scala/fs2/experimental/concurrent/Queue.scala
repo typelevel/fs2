@@ -10,12 +10,12 @@ object Queue {
   def forStrategy[F[_]: Concurrent, S, A](
       strategy: PubSub.Strategy[A, Chunk[A], S, Int]
   ): F[fs2.concurrent.Queue[F, A]] =
-    fs2.concurrent.Queue.forStrategy(strategy)
+    fs2.concurrent.Queue.in[F].forStrategy(strategy)
 
   private[fs2] def forStrategyNoneTerminated[F[_]: Concurrent, S, A](
       strategy: PubSub.Strategy[Option[A], Option[Chunk[A]], S, Int])
     : F[fs2.concurrent.NoneTerminatedQueue[F, A]] =
-    fs2.concurrent.Queue.forStrategyNoneTerminated(strategy)
+    fs2.concurrent.Queue.in[F].forStrategyNoneTerminated(strategy)
 
   object Strategy {
 
