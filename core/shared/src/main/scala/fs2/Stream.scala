@@ -406,27 +406,31 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * }}}
     */
   def chunkMin(n: Int, allowFewerTotal: Boolean = true): Stream[F, Chunk[O]] = {
-    def go[A](accFull: Option[Chunk[A]],
-              nextChunk: Chunk[A],
+    // Untyped Guarantee: accFull.size >= n | accFull.size == 0
+    def go[A](accFull: Chunk.Queue[A],
+              nextChunk: Chunk.Queue[A],
               s: Stream[F, A]): Pull[F, Chunk[A], Option[Unit]] =
       s.pull.uncons.flatMap {
         case None =>
-          accFull match {
-            case Some(c) => Pull.output1(Chunk.concat(Seq(c, nextChunk))) >> Pull.pure(None)
-            case None    =>
-              // Never Had Enough Elements to Fill A Chunk Min
-              if (allowFewerTotal && nextChunk.size > 0) Pull.output1(nextChunk) >> Pull.pure(None)
-              else Pull.pure(None)
+          if (accFull.size >= n) {
+            Pull.output1((accFull :+ nextChunk.toChunk).toChunk) >> Pull.pure(None)
+          } else if (allowFewerTotal && nextChunk.size > 0) {
+            // Never Had Enough Elements to Fill A Chunk Min
+            // accFull is empty
+            Pull.output1(nextChunk.toChunk) >> Pull.pure(None)
+          } else {
+            Pull.pure(None)
           }
         case Some((hd, tl)) =>
-          val next = Chunk.concat(Seq(nextChunk, hd))
-          accFull match {
-            case Some(s) =>
-              if (next.size >= n) Pull.output1(s) >> go(Some(next), Chunk.empty, tl)
-              else go(accFull, next, tl)
-            case None =>
-              if (next.size >= n) go(Some(next), Chunk.empty, tl)
-              else go(None, next, tl)
+          val next = nextChunk :+ hd
+          if (accFull.size >= n && next.size >= n) {
+            Pull.output1(accFull.toChunk) >> go(next, Chunk.Queue.empty, tl)
+          } else if (accFull.size >= n) {
+            go(accFull, next, tl)
+          } else if (next.size >= n) {
+            go(next, Chunk.Queue.empty, tl)
+          } else {
+            go(accFull, next, tl)
           }
       }
 
@@ -434,9 +438,9 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
       case None => Pull.pure(None)
       case Some((hdChunk, tl)) =>
         if (hdChunk.size >= n)
-          go(Some(hdChunk), Chunk.empty, tl)
+          go(Chunk.Queue(hdChunk), Chunk.Queue.empty, tl)
         else
-          go(None, hdChunk, tl)
+          go(Chunk.Queue.empty, Chunk.Queue(hdChunk), tl)
     }.stream
   }
 
