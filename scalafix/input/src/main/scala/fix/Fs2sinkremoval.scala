@@ -12,5 +12,5 @@ object Fs2sinkremoval {
   private def foo[F[_], A](s: Stream[F, A], sink: Sink[F, A]): Stream[F, Unit] =
     s.to(sink)
 
-  def bar[F[_], A, B](): Pipe[F, A, B] = ???
+  def bar[F[_], A, B](): Sink[F, A] = ???
 }
