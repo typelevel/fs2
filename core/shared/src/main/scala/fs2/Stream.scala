@@ -393,6 +393,47 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     }
 
   /**
+    * Outputs chunks of size larger than N
+    *
+    * Chunks from the source stream are split as necessary.
+    *
+    * If `allowFewerTotal` is true,
+    * if the stream is smaller than N, should the elements be included
+    *
+    * @example {{{
+    * scala> (Stream(1,2) ++ Stream(3,4) ++ Stream(5,6,7)).chunkMin(3).toList
+    * res0: List[Chunk[Int]] = List(Chunk(1, 2, 3, 4), Chunk(5, 6, 7))
+    * }}}
+    */
+  def chunkMin(n: Int, allowFewerTotal: Boolean = true): Stream[F, Chunk[O]] = {
+    // Untyped Guarantee: accFull.size >= n | accFull.size == 0
+    def go[A](nextChunk: Chunk.Queue[A], s: Stream[F, A]): Pull[F, Chunk[A], Unit] =
+      s.pull.uncons.flatMap {
+        case None =>
+          if (allowFewerTotal && nextChunk.size > 0) {
+            Pull.output1(nextChunk.toChunk)
+          } else {
+            Pull.done
+          }
+        case Some((hd, tl)) =>
+          val next = nextChunk :+ hd
+          if (next.size >= n) {
+            Pull.output1(next.toChunk) >> go(Chunk.Queue.empty, tl)
+          } else {
+            go(next, tl)
+          }
+      }
+
+    this.pull.uncons.flatMap {
+      case None => Pull.pure(None)
+      case Some((hd, tl)) =>
+        if (hd.size >= n)
+          Pull.output1(hd) >> go(Chunk.Queue.empty, tl)
+        else go(Chunk.Queue(hd), tl)
+    }.stream
+  }
+
+  /**
     * Outputs chunks of size `n`.
     *
     * Chunks from the source stream are split as necessary.
