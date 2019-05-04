@@ -4362,10 +4362,10 @@ private[fs2] trait StreamLowPriority {
     new Monad[Stream[F, ?]] {
       override def pure[A](x: A): Stream[F, A] = Stream(x)
 
-      override def flatMap[A, B](fa: Stream[F, A])(f: A ⇒ Stream[F, B]): Stream[F, B] =
+      override def flatMap[A, B](fa: Stream[F, A])(f: A => Stream[F, B]): Stream[F, B] =
         fa.flatMap(f)
 
-      override def tailRecM[A, B](a: A)(f: A ⇒ Stream[F, Either[A, B]]): Stream[F, B] =
+      override def tailRecM[A, B](a: A)(f: A => Stream[F, Either[A, B]]): Stream[F, B] =
         f(a).flatMap {
           case Left(a)  => tailRecM(a)(f)
           case Right(b) => Stream(b)
