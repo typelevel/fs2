@@ -272,9 +272,9 @@ private[fs2] trait PullLowPriority {
   implicit def monadInstance[F[_], O]: Monad[Pull[F, O, ?]] =
     new Monad[Pull[F, O, ?]] {
       override def pure[A](a: A): Pull[F, O, A] = Pull.pure(a)
-      override def flatMap[A, B](p: Pull[F, O, A])(f: A ⇒ Pull[F, O, B]): Pull[F, O, B] =
+      override def flatMap[A, B](p: Pull[F, O, A])(f: A => Pull[F, O, B]): Pull[F, O, B] =
         p.flatMap(f)
-      override def tailRecM[A, B](a: A)(f: A ⇒ Pull[F, O, Either[A, B]]): Pull[F, O, B] =
+      override def tailRecM[A, B](a: A)(f: A => Pull[F, O, Either[A, B]]): Pull[F, O, B] =
         f(a).flatMap {
           case Left(a)  => tailRecM(a)(f)
           case Right(b) => Pull.pure(b)

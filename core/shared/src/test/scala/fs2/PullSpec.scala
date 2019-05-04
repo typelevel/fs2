@@ -40,8 +40,8 @@ class PullSpec extends Fs2Spec {
       val pull: Pull[IO, Int, Unit] = Pull.fromEither[IO](either)
 
       either match {
-        case Left(_) ⇒ pull.stream.compile.toList.attempt.unsafeRunSync() shouldBe either
-        case Right(_) ⇒
+        case Left(_) => pull.stream.compile.toList.attempt.unsafeRunSync() shouldBe either
+        case Right(_) =>
           pull.stream.compile.toList.unsafeRunSync() shouldBe either.toList
       }
     }
