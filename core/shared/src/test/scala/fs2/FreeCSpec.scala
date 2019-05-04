@@ -33,7 +33,7 @@ class FreeCSpec extends Fs2Spec {
     def withBinds = for {
       fDepth <- nextDepth
       freeDepth <- nextDepth
-      f <- arbFunction1[Result[A], FreeC[F, A]](Arbitrary(freeGen[F, A](fDepth)), Cogen[Unit].contramap(_ => ())).arbitrary
+      f <- arbFunction1[Result[A], FreeC[F, A]](Arbitrary(freeGen[F, A](fDepth)), implicitly[Cogen[Unit]].contramap(_ => ())).arbitrary
       freeFA <- freeGen[F, A](freeDepth)
     } yield freeFA.transformWith(f)
 

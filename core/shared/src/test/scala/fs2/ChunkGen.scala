@@ -230,7 +230,7 @@ trait ChunkGen extends ChunkGenLowPriority {
     Arbitrary(genCharChunk)
 
   implicit def cogenChunk[A: Cogen]: Cogen[Chunk[A]] =
-    Cogen[List[A]].contramap(_.toList)
+    implicitly[Cogen[List[A]]].contramap(_.toList)
 
   implicit def shrinkChunk[A]: Shrink[Chunk[A]] =
     Shrink[Chunk[A]](c => removeChunks(c.size, c))
