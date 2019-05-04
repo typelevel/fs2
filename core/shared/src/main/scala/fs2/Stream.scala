@@ -407,40 +407,29 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     */
   def chunkMin(n: Int, allowFewerTotal: Boolean = true): Stream[F, Chunk[O]] = {
     // Untyped Guarantee: accFull.size >= n | accFull.size == 0
-    def go[A](accFull: Chunk.Queue[A],
-              nextChunk: Chunk.Queue[A],
-              s: Stream[F, A]): Pull[F, Chunk[A], Option[Unit]] =
+    def go[A](nextChunk: Chunk.Queue[A], s: Stream[F, A]): Pull[F, Chunk[A], Unit] =
       s.pull.uncons.flatMap {
         case None =>
-          if (accFull.size >= n) {
-            Pull.output1((accFull :+ nextChunk.toChunk).toChunk) >> Pull.pure(None)
-          } else if (allowFewerTotal && nextChunk.size > 0) {
-            // Never Had Enough Elements to Fill A Chunk Min
-            // accFull is empty
-            Pull.output1(nextChunk.toChunk) >> Pull.pure(None)
+          if (allowFewerTotal && nextChunk.size > 0) {
+            Pull.output1(nextChunk.toChunk)
           } else {
-            Pull.pure(None)
+            Pull.done
           }
         case Some((hd, tl)) =>
           val next = nextChunk :+ hd
-          if (accFull.size >= n && next.size >= n) {
-            Pull.output1(accFull.toChunk) >> go(next, Chunk.Queue.empty, tl)
-          } else if (accFull.size >= n) {
-            go(accFull, next, tl)
-          } else if (next.size >= n) {
-            go(next, Chunk.Queue.empty, tl)
+          if (next.size >= n) {
+            Pull.output1(next.toChunk) >> go(Chunk.Queue.empty, tl)
           } else {
-            go(accFull, next, tl)
+            go(next, tl)
           }
       }
 
     this.pull.uncons.flatMap {
       case None => Pull.pure(None)
-      case Some((hdChunk, tl)) =>
-        if (hdChunk.size >= n)
-          go(Chunk.Queue(hdChunk), Chunk.Queue.empty, tl)
-        else
-          go(Chunk.Queue.empty, Chunk.Queue(hdChunk), tl)
+      case Some((hd, tl)) =>
+        if (hd.size >= n)
+          Pull.output1(hd) >> go(Chunk.Queue.empty, tl)
+        else go(Chunk.Queue(hd), tl)
     }.stream
   }
 
