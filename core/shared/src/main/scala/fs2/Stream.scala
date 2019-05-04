@@ -12,7 +12,6 @@ import fs2.internal.FreeC.Result
 import fs2.internal.{Resource => _, _}
 import java.io.PrintStream
 
-import scala.collection.compat._
 import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
 
