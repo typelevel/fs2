@@ -63,8 +63,8 @@ class StreamSpec extends Fs2Spec with Inside {
       val stream: Stream[IO, Int] = Stream.fromEither[IO](either)
 
       either match {
-        case Left(_) ⇒ stream.compile.toList.attempt.unsafeRunSync() shouldBe either
-        case Right(_) ⇒ stream.compile.toList.unsafeRunSync() shouldBe either.toList
+        case Left(_)  => stream.compile.toList.attempt.unsafeRunSync() shouldBe either
+        case Right(_) => stream.compile.toList.unsafeRunSync() shouldBe either.toList
       }
     }
 

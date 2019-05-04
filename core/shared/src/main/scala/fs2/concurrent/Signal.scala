@@ -133,9 +133,21 @@ private[concurrent] trait SignalLowPriorityImplicits {
 abstract class SignallingRef[F[_], A] extends Ref[F, A] with Signal[F, A]
 
 object SignallingRef {
+
+  /**
+    * Builds a `SignallingRef` for a `Concurrent` datatype, initialized
+    * to a supplied value.
+    */
   def apply[F[_]: Concurrent, A](initial: A): F[SignallingRef[F, A]] =
-    Ref.of[F, (Long, A)]((0, initial)).flatMap { ref =>
-      PubSub(PubSub.Strategy.Discrete.strategy[A](0, initial)).map { pubSub =>
+    in[F, F, A](initial)
+
+  /**
+    * Builds a `SignallingRef` for `Concurrent` datatype.
+    * Like [[apply]], but initializes state using another effect constructor.
+    */
+  def in[G[_]: Sync, F[_]: Concurrent, A](initial: A): G[SignallingRef[F, A]] =
+    Ref.in[G, F, (Long, A)]((0, initial)).flatMap { ref =>
+      PubSub.in[G].from(PubSub.Strategy.Discrete.strategy[A](0, initial)).map { pubSub =>
         def modify_[B](f: A => (A, B))(stamped: (Long, A)): ((Long, A), ((Long, (Long, A)), B)) = {
           val (a1, b) = f(stamped._2)
           val stamp = stamped._1 + 1

@@ -97,7 +97,7 @@ object TestUtil extends TestUtilPlatform with ChunkGen {
         unchunked[A], randomlyChunked[A], uniformlyChunked[A],
         filtered[A])
 
-    implicit def pureStreamCoGen[A: Cogen]: Cogen[PureStream[A]] = Cogen[List[A]].contramap[PureStream[A]](_.get.toList)
+    implicit def pureStreamCoGen[A: Cogen]: Cogen[PureStream[A]] = implicitly[Cogen[List[A]]].contramap[PureStream[A]](_.get.toList)
 
     implicit def pureStreamShrink[A]: Shrink[PureStream[A]] = Shrink { s => Shrink.shrink(s.get.toList).map(as => PureStream(s"shrunk: ${as.size} from ${s.tag}", Stream.chunk(Chunk.seq(as)))) }
   }

@@ -1,6 +1,7 @@
 package fs2
 
 import cats._
+import cats.arrow.FunctionK
 import cats.effect._
 import fs2.internal._
 
@@ -253,15 +254,27 @@ object Pull extends PullLowPriority {
             .syncInstance[Algebra[F, O, ?]]
             .bracketCase(acquire.get)(a => use(a).get)((a, c) => release(a, c).get))
     }
+
+  /**
+    * `FunctionK` instance for `F ~> Pull[F, INothing, ?]`
+    *
+    * @example {{{
+    * scala> import cats.Id
+    * scala> Pull.functionKInstance[Id](42).flatMap(Pull.output1).stream.compile.toList
+    * res0: cats.Id[List[Int]] = List(42)
+    * }}}
+    */
+  implicit def functionKInstance[F[_]]: F ~> Pull[F, INothing, ?] =
+    FunctionK.lift[F, Pull[F, INothing, ?]](Pull.eval)
 }
 
 private[fs2] trait PullLowPriority {
   implicit def monadInstance[F[_], O]: Monad[Pull[F, O, ?]] =
     new Monad[Pull[F, O, ?]] {
       override def pure[A](a: A): Pull[F, O, A] = Pull.pure(a)
-      override def flatMap[A, B](p: Pull[F, O, A])(f: A ⇒ Pull[F, O, B]): Pull[F, O, B] =
+      override def flatMap[A, B](p: Pull[F, O, A])(f: A => Pull[F, O, B]): Pull[F, O, B] =
         p.flatMap(f)
-      override def tailRecM[A, B](a: A)(f: A ⇒ Pull[F, O, Either[A, B]]): Pull[F, O, B] =
+      override def tailRecM[A, B](a: A)(f: A => Pull[F, O, Either[A, B]]): Pull[F, O, B] =
         f(a).flatMap {
           case Left(a)  => tailRecM(a)(f)
           case Right(b) => Pull.pure(b)

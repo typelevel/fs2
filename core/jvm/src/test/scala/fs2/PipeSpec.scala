@@ -4,7 +4,7 @@ import java.util.concurrent.atomic.AtomicLong
 
 import org.scalacheck.Gen
 import cats.effect.IO
-import cats.implicits.{catsSyntaxEither ⇒ _, _}
+import cats.implicits.{catsSyntaxEither => _, _}
 
 import scala.concurrent.duration._
 import TestUtil._

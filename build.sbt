@@ -48,13 +48,12 @@ lazy val commonSettings = Seq(
   scalacOptions in (Test, console) := (scalacOptions in (Compile, console)).value,
   javaOptions in (Test, run) ++= Seq("-Xms64m", "-Xmx64m"),
   libraryDependencies ++= Seq(
-    compilerPlugin("org.spire-math" %% "kind-projector" % "0.9.9"),
-    "org.typelevel" %%% "cats-core" % "1.6.0",
-    "org.typelevel" %%% "cats-laws" % "1.6.0" % "test",
-    "org.typelevel" %%% "cats-effect" % "1.2.0",
-    "org.typelevel" %%% "cats-effect-laws" % "1.2.0" % "test",
-    "org.scala-lang.modules" %%% "scala-collection-compat" % "0.3.0",
-    "org.scalatest" %%% "scalatest" % "3.0.6" % "test"
+    compilerPlugin("org.typelevel" %% "kind-projector" % "0.10.0"),
+    "org.typelevel" %%% "cats-core" % "2.0.0-M1",
+    "org.typelevel" %%% "cats-laws" % "2.0.0-M1" % "test",
+    "org.typelevel" %%% "cats-effect" % "2.0.0-M1",
+    "org.typelevel" %%% "cats-effect-laws" % "2.0.0-M1" % "test",
+    "org.scalatest" %%% "scalatest" % "3.0.8-RC2" % "test"
   ),
   libraryDependencies += {
     CrossVersion.partialVersion(scalaVersion.value) match {
@@ -230,7 +229,13 @@ lazy val mimaSettings = Seq(
     ProblemFilters.exclude[IncompatibleMethTypeProblem]("fs2.Stream#Compiler.apply"),
     ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.Stream#Compiler.apply"),
     // bracketWithToken was private[fs2]
-    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Stream.bracketWithToken")
+    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Stream.bracketWithToken"),
+    //forStrategy/NoneTerminated were private[fs2]
+    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.concurrent.Queue.forStrategy"),
+    ProblemFilters.exclude[DirectMissingMethodProblem](
+      "fs2.concurrent.Queue.forStrategyNoneTerminated"),
+    ProblemFilters.exclude[DirectMissingMethodProblem](
+      "fs2.concurrent.InspectableQueue.forStrategy")
   )
 )
 
@@ -260,7 +265,7 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
       }
       baseDirectory.value / "../shared/src/main" / dir
     },
-    libraryDependencies += "org.scodec" %%% "scodec-bits" % "1.1.9"
+    libraryDependencies += "org.scodec" %%% "scodec-bits" % "1.1.10"
   )
   .jsSettings(commonJsSettings: _*)
 

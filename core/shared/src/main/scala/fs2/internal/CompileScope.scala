@@ -75,7 +75,7 @@ private[fs2] final class CompileScope[F[_]] private (
     * Registers supplied resource in this scope.
     * This is always invoked before state can be marked as closed.
     */
-  def register(resource: Resource[F]): F[Unit] =
+  private def register(resource: Resource[F]): F[Unit] =
     state.update { s =>
       s.copy(resources = resource +: s.resources)
     }
@@ -178,11 +178,11 @@ private[fs2] final class CompileScope[F[_]] private (
     * As a result of unregistering a child scope, its resources are no longer
     * reachable from its parent.
     */
-  def releaseChildScope(id: Token): F[Unit] =
+  private def releaseChildScope(id: Token): F[Unit] =
     state.update { _.unregisterChild(id) }
 
   /** Returns all direct resources of this scope (does not return resources in ancestor scopes or child scopes). **/
-  def resources: F[Chain[Resource[F]]] =
+  private def resources: F[Chain[Resource[F]]] =
     F.map(state.get) { _.resources }
 
   /**
@@ -248,7 +248,7 @@ private[fs2] final class CompileScope[F[_]] private (
   }
 
   /** finds ancestor of this scope given `scopeId` **/
-  def findAncestor(scopeId: Token): Option[CompileScope[F]] = {
+  def findSelfOrAncestor(scopeId: Token): Option[CompileScope[F]] = {
     @tailrec
     def go(curr: CompileScope[F]): Option[CompileScope[F]] =
       if (curr.id == scopeId) Some(curr)
@@ -259,10 +259,6 @@ private[fs2] final class CompileScope[F[_]] private (
         }
     go(self)
   }
-
-  def findSelfOrAncestor(scopeId: Token): Option[CompileScope[F]] =
-    if (self.id == scopeId) Some(self)
-    else findAncestor(scopeId)
 
   /** finds scope in child hierarchy of current scope **/
   def findSelfOrChild(scopeId: Token): F[Option[CompileScope[F]]] = {
@@ -418,18 +414,11 @@ private[fs2] object CompileScope {
       children: Chain[CompileScope[F]]
   ) { self =>
 
-    def unregisterResource(id: Token): (State[F], Option[Resource[F]]) =
-      self.resources
-        .deleteFirst(_.id == id)
-        .fold((self, None: Option[Resource[F]])) {
-          case (r, c) =>
-            (self.copy(resources = c), Some(r))
-        }
-
     def unregisterChild(id: Token): State[F] =
-      self.copy(
-        children = self.children.deleteFirst(_.id == id).map(_._2).getOrElse(self.children)
-      )
+      self.children.deleteFirst(_.id == id) match {
+        case Some((_, newChildren)) => self.copy(children = newChildren)
+        case None                   => self
+      }
 
     def close: State[F] = CompileScope.State.closed
   }

@@ -1,6 +1,7 @@
 package fs2
 
 import cats._
+import cats.arrow.FunctionK
 import cats.data.{Chain, NonEmptyList}
 import cats.effect._
 import cats.effect.concurrent._
@@ -11,7 +12,6 @@ import fs2.internal.FreeC.Result
 import fs2.internal.{Resource => _, _}
 import java.io.PrintStream
 
-import scala.collection.compat._
 import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
 
@@ -3025,9 +3025,11 @@ object Stream extends StreamLowPriority {
     * }}}
     */
   def emits[F[x] >: Pure[x], O](os: Seq[O]): Stream[F, O] =
-    if (os.isEmpty) empty
-    else if (os.size == 1) emit(os.head)
-    else fromFreeC(Algebra.output[F, O](Chunk.seq(os)))
+    os match {
+      case Nil    => empty
+      case Seq(x) => emit(x)
+      case _      => fromFreeC(Algebra.output[F, O](Chunk.seq(os)))
+    }
 
   /** Empty pure stream. */
   val empty: Stream[Pure, INothing] =
@@ -4376,6 +4378,18 @@ object Stream extends StreamLowPriority {
       }
     }
 
+  /**
+    * `FunctionK` instance for `F ~> Stream[F, ?]`
+    *
+    * @example {{{
+    * scala> import cats.Id
+    * scala> Stream.functionKInstance[Id](42).compile.toList
+    * res0: cats.Id[List[Int]] = List(42)
+    * }}}
+    */
+  implicit def functionKInstance[F[_]]: F ~> Stream[F, ?] =
+    FunctionK.lift[F, Stream[F, ?]](Stream.eval)
+
   implicit def monoidKInstance[F[_]]: MonoidK[Stream[F, ?]] =
     new MonoidK[Stream[F, ?]] {
       def empty[A]: Stream[F, A] = Stream.empty
@@ -4388,10 +4402,10 @@ private[fs2] trait StreamLowPriority {
     new Monad[Stream[F, ?]] {
       override def pure[A](x: A): Stream[F, A] = Stream(x)
 
-      override def flatMap[A, B](fa: Stream[F, A])(f: A ⇒ Stream[F, B]): Stream[F, B] =
+      override def flatMap[A, B](fa: Stream[F, A])(f: A => Stream[F, B]): Stream[F, B] =
         fa.flatMap(f)
 
-      override def tailRecM[A, B](a: A)(f: A ⇒ Stream[F, Either[A, B]]): Stream[F, B] =
+      override def tailRecM[A, B](a: A)(f: A => Stream[F, Either[A, B]]): Stream[F, B] =
         f(a).flatMap {
           case Left(a)  => tailRecM(a)(f)
           case Right(b) => Stream(b)
