@@ -48,7 +48,7 @@ lazy val commonSettings = Seq(
   scalacOptions in (Test, console) := (scalacOptions in (Compile, console)).value,
   javaOptions in (Test, run) ++= Seq("-Xms64m", "-Xmx64m"),
   libraryDependencies ++= Seq(
-    compilerPlugin("org.typelevel" %% "kind-projector" % "0.10.0"),
+    compilerPlugin("org.spire-math" %% "kind-projector" % "0.9.9"),
     "org.typelevel" %%% "cats-core" % "1.6.0",
     "org.typelevel" %%% "cats-laws" % "1.6.0" % "test",
     "org.typelevel" %%% "cats-effect" % "1.3.0",
