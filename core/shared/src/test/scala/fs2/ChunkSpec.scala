@@ -2,9 +2,10 @@ package fs2
 
 import cats.Eq
 import cats.kernel.CommutativeMonoid
-// import cats.kernel.laws.discipline.EqTests
-// import cats.laws.discipline.{FunctorFilterTests, MonadTests, TraverseTests}
+import cats.kernel.laws.discipline.EqTests
+import cats.laws.discipline.{FunctorFilterTests, MonadTests, TraverseTests}
 import cats.implicits._
+import org.scalacheck.Cogen
 import org.scalactic.anyvals._
 import org.scalatest.Succeeded
 import org.scalatest.prop.Generator
@@ -56,10 +57,11 @@ class ChunkSpec extends Fs2Spec {
     }
   }
 
-  def testChunk[A: Generator: ClassTag: CommutativeMonoid: Eq](genChunk: Generator[Chunk[A]],
-                                                               name: String,
-                                                               of: String,
-                                                               testTraverse: Boolean = true): Unit =
+  def testChunk[A: Generator: ClassTag: CommutativeMonoid: Eq: Cogen](
+      genChunk: Generator[Chunk[A]],
+      name: String,
+      of: String,
+      testTraverse: Boolean = true): Unit =
     s"$name" - {
       implicit val implicitChunkGenerator: Generator[Chunk[A]] = genChunk
       "size" in forAll { (c: Chunk[A]) =>
@@ -99,12 +101,14 @@ class ChunkSpec extends Fs2Spec {
           arr.toVector shouldBe c.toArray.toVector
         }
 
-      // checkAll(s"Eq[Chunk[$of]]", EqTests[Chunk[A]].eqv)
-      // checkAll(s"Monad[Chunk]", MonadTests[Chunk].monad[A, A, A])
-      // checkAll(s"FunctorFilter[Chunk]", FunctorFilterTests[Chunk].functorFilter[A, A, A])
+      import org.scalacheck.GeneratorCompat._
 
-      // if (testTraverse)
-      //   checkAll(s"Traverse[Chunk]", TraverseTests[Chunk].traverse[A, A, A, A, Option, Option])
+      checkAll(s"Eq[Chunk[$of]]", EqTests[Chunk[A]].eqv)
+      checkAll(s"Monad[Chunk]", MonadTests[Chunk].monad[A, A, A])
+      checkAll(s"FunctorFilter[Chunk]", FunctorFilterTests[Chunk].functorFilter[A, A, A])
+
+      if (testTraverse)
+        checkAll(s"Traverse[Chunk]", TraverseTests[Chunk].traverse[A, A, A, A, Option, Option])
     }
 
   implicit val commutativeMonoidForChar = new CommutativeMonoid[Char] {

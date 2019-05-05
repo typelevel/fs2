@@ -6,16 +6,21 @@ import cats.{Functor, Monad}
 import cats.effect.{ContextShift, IO, Sync, Timer}
 import cats.implicits._
 
-import org.scalatest.{Args, Assertion, AsyncFreeSpec, Matchers, Status, Succeeded}
+import org.scalatest.{Args, Assertion, Matchers, Status, Succeeded}
+import org.scalatest.check.Checkers
 import org.scalatest.concurrent.AsyncTimeLimitedTests
+import org.scalatest.freespec.AsyncFreeSpec
 import org.scalatest.prop.GeneratorDrivenPropertyChecks
 import org.scalatest.time.Span
+
+import org.typelevel.discipline.Laws
 
 abstract class Fs2Spec
     extends AsyncFreeSpec
     with AsyncTimeLimitedTests
     with Matchers
     with GeneratorDrivenPropertyChecks
+    with Checkers
     with MiscellaneousGenerators
     with ChunkGenerators
     with StreamGenerators
@@ -99,4 +104,8 @@ abstract class Fs2Spec
         }
 
   }
+
+  protected def checkAll(name: String, ruleSet: Laws#RuleSet): Unit =
+    for ((id, prop) <- ruleSet.all.properties)
+      s"${name}.${id}" in check(prop)
 }

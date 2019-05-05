@@ -29,7 +29,7 @@ trait StreamArbitrary {
 
 }
 
-class StreamLawsSpec extends LawsSpec with StreamArbitrary {
+class StreamLawsSpec extends Fs2Spec with StreamArbitrary {
   implicit val ec: TestContext = TestContext()
 
   implicit def eqStream[O: Eq]: Eq[Stream[IO, O]] =

@@ -12,7 +12,7 @@ import cats.effect.laws.discipline._
 import org.scalacheck.{Arbitrary, Gen}
 import Arbitrary.arbitrary
 
-class PullLawsSpec extends LawsSpec with StreamArbitrary {
+class PullLawsSpec extends Fs2Spec with StreamArbitrary {
 
   implicit val ec: TestContext = TestContext()
 
