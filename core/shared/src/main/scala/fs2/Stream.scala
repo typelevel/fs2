@@ -1,6 +1,7 @@
 package fs2
 
 import cats._
+import cats.arrow.FunctionK
 import cats.data.{Chain, NonEmptyList}
 import cats.implicits._
 import cats.effect._
@@ -8,10 +9,10 @@ import cats.effect.concurrent._
 import cats.effect.implicits._
 
 import fs2.concurrent._
+import fs2.internal._
 import java.io.PrintStream
 import java.util.concurrent.TimeUnit
 
-import scala.collection.compat._
 import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
 
@@ -386,6 +387,47 @@ final class Stream[+F[_], +O] private (private val asPull: Pull[F, O, Unit])
         case Some((hd, tl)) => Pull.output1(hd).as(Some(tl))
       }
     }
+
+  /**
+    * Outputs chunks of size larger than N
+    *
+    * Chunks from the source stream are split as necessary.
+    *
+    * If `allowFewerTotal` is true,
+    * if the stream is smaller than N, should the elements be included
+    *
+    * @example {{{
+    * scala> (Stream(1,2) ++ Stream(3,4) ++ Stream(5,6,7)).chunkMin(3).toList
+    * res0: List[Chunk[Int]] = List(Chunk(1, 2, 3, 4), Chunk(5, 6, 7))
+    * }}}
+    */
+  def chunkMin(n: Int, allowFewerTotal: Boolean = true): Stream[F, Chunk[O]] = {
+    // Untyped Guarantee: accFull.size >= n | accFull.size == 0
+    def go[A](nextChunk: Chunk.Queue[A], s: Stream[F, A]): Pull[F, Chunk[A], Unit] =
+      s.pull.uncons.flatMap {
+        case None =>
+          if (allowFewerTotal && nextChunk.size > 0) {
+            Pull.output1(nextChunk.toChunk)
+          } else {
+            Pull.done
+          }
+        case Some((hd, tl)) =>
+          val next = nextChunk :+ hd
+          if (next.size >= n) {
+            Pull.output1(next.toChunk) >> go(Chunk.Queue.empty, tl)
+          } else {
+            go(next, tl)
+          }
+      }
+
+    this.pull.uncons.flatMap {
+      case None => Pull.done
+      case Some((hd, tl)) =>
+        if (hd.size >= n)
+          Pull.output1(hd) >> go(Chunk.Queue.empty, tl)
+        else go(Chunk.Queue(hd), tl)
+    }.stream
+  }
 
   /**
     * Outputs chunks of size `n`.
@@ -2910,9 +2952,11 @@ object Stream extends StreamLowPriority {
     * }}}
     */
   def emits[F[x] >: Pure[x], O](os: Seq[O]): Stream[F, O] =
-    if (os.isEmpty) empty
-    else if (os.size == 1) emit(os.head)
-    else fromPull(Pull.output(Chunk.seq(os)))
+    os match {
+      case Nil    => empty
+      case Seq(x) => emit(x)
+      case _      => fromPull(Pull.output(Chunk.seq(os)))
+    }
 
   /** Empty pure stream. */
   val empty: Stream[Pure, INothing] = fromPull(Pull.done)
@@ -4247,6 +4291,18 @@ object Stream extends StreamLowPriority {
       }
     }
 
+  /**
+    * `FunctionK` instance for `F ~> Stream[F, ?]`
+    *
+    * @example {{{
+    * scala> import cats.Id
+    * scala> Stream.functionKInstance[Id](42).compile.toList
+    * res0: cats.Id[List[Int]] = List(42)
+    * }}}
+    */
+  implicit def functionKInstance[F[_]]: F ~> Stream[F, ?] =
+    FunctionK.lift[F, Stream[F, ?]](Stream.eval)
+
   implicit def monoidKInstance[F[_]]: MonoidK[Stream[F, ?]] =
     new MonoidK[Stream[F, ?]] {
       def empty[A]: Stream[F, A] = Stream.empty
@@ -4259,10 +4315,10 @@ private[fs2] trait StreamLowPriority {
     new Monad[Stream[F, ?]] {
       override def pure[A](x: A): Stream[F, A] = Stream(x)
 
-      override def flatMap[A, B](fa: Stream[F, A])(f: A ⇒ Stream[F, B]): Stream[F, B] =
+      override def flatMap[A, B](fa: Stream[F, A])(f: A => Stream[F, B]): Stream[F, B] =
         fa.flatMap(f)
 
-      override def tailRecM[A, B](a: A)(f: A ⇒ Stream[F, Either[A, B]]): Stream[F, B] =
+      override def tailRecM[A, B](a: A)(f: A => Stream[F, Either[A, B]]): Stream[F, B] =
         f(a).flatMap {
           case Left(a)  => tailRecM(a)(f)
           case Right(b) => Stream(b)

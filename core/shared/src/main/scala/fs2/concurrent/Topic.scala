@@ -83,12 +83,25 @@ abstract class Topic[F[_], A] { self =>
 
 object Topic {
 
-  def apply[F[_], A](initial: A)(implicit F: Concurrent[F]): F[Topic[F, A]] = {
+  /**
+    * Constructs a `Topic` for a provided `Concurrent` datatype. The
+    * `initial` value is immediately published.
+    */
+  def apply[F[_], A](initial: A)(implicit F: Concurrent[F]): F[Topic[F, A]] =
+    in[F, F, A](initial)
+
+  /**
+    * Constructs a `Topic` for a provided `Concurrent` datatype.
+    * Like [[apply]], but a `Topic` state is initialized using another effect constructor
+    */
+  def in[G[_], F[_], A](initial: A)(implicit F: Concurrent[F], G: Sync[G]): G[Topic[F, A]] = {
     implicit def eqInstance: Eq[Strategy.State[A]] =
       Eq.instance[Strategy.State[A]](_.subscribers.keySet == _.subscribers.keySet)
 
-    PubSub(PubSub.Strategy.Inspectable.strategy(Strategy.boundedSubscribers(initial))).map {
-      pubSub =>
+    PubSub
+      .in[G]
+      .from(PubSub.Strategy.Inspectable.strategy(Strategy.boundedSubscribers(initial)))
+      .map { pubSub =>
         new Topic[F, A] {
 
           def subscriber(size: Int): Stream[F, ((Token, Int), Stream[F, ScalaQueue[A]])] =
@@ -144,7 +157,7 @@ object Topic {
                 }
               }
         }
-    }
+      }
   }
 
   private[fs2] object Strategy {
@@ -159,12 +172,13 @@ object Topic {
       * If that subscription is exceeded any other `publish` to the topic will hold,
       * until such subscriber disappears, or consumes more elements.
       *
-      * @param initial  Initial value of the topic.
+      * @param initial Initial value of the topic.
       */
     def boundedSubscribers[F[_], A](
         start: A): PubSub.Strategy[A, ScalaQueue[A], State[A], (Token, Int)] =
       new PubSub.Strategy[A, ScalaQueue[A], State[A], (Token, Int)] {
         def initial: State[A] = State(start, Map.empty)
+
         def accepts(i: A, state: State[A]): Boolean =
           state.subscribers.forall { case ((_, max), q) => q.size < max }
 

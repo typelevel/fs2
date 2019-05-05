@@ -439,6 +439,29 @@ class StreamSpec extends Fs2Spec {
       sizeV.combineAll shouldBe s.toVector.size
     }
 
+    "chunkMin" in forAll { (s: Stream[Pure, Int], n0: PosInt) =>
+      val n = n0 % 20 + 1
+      val chunkedV = s.chunkMin(n, true).toVector
+      val withIfSmallerV = s.chunkMin(n, false).toVector
+      val unchunkedV = s.toVector
+      val smallerSet = s.take(n - 1).toVector
+      val smallerN = s.take(n - 1).chunkMin(n, false).toVector
+      val smallerY = s.take(n - 1).chunkMin(n, true).toVector
+      // All but last list have n values
+      chunkedV.dropRight(1).forall(_.size >= n) shouldBe true
+      // Equivalent to last chunk with allowFewerTotal
+      if (chunkedV.nonEmpty && chunkedV.last.size < n)
+        chunkedV.dropRight(1) shouldBe withIfSmallerV
+      // Flattened sequence with allowFewerTotal true is equal to vector without chunking
+      chunkedV.foldLeft(Vector.empty[Int])((v, l) => v ++ l.toVector) shouldBe unchunkedV
+      // If smaller than Chunk Size and allowFewerTotal false is empty then
+      // no elements should be emitted
+      smallerN shouldBe Vector.empty
+      // If smaller than Chunk Size and allowFewerTotal true is equal to the size
+      // of the taken chunk initially
+      smallerY.foldLeft(Vector.empty[Int])((v, l) => v ++ l.toVector) shouldBe smallerSet
+    }
+
     "chunkN" - {
       "fewer" in forAll { (s: Stream[Pure, Int], n0: PosInt) =>
         val n = n0 % 20 + 1
