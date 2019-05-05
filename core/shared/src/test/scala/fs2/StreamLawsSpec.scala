@@ -11,9 +11,7 @@ import cats.laws.discipline._
 import org.scalacheck.{Arbitrary, Gen}
 import Arbitrary.arbitrary
 
-class StreamLawsSpec extends LawsSpec {
-  implicit val ec: TestContext = TestContext()
-
+trait StreamArbitrary {
   implicit def arbStream[F[_], O](implicit arbO: Arbitrary[O],
                                   arbFo: Arbitrary[F[O]],
                                   arbFu: Arbitrary[F[Unit]]): Arbitrary[Stream[F, O]] =
@@ -29,16 +27,20 @@ class StreamLawsSpec extends LawsSpec {
         } yield Stream.bracket(acquire)(_ => release).flatMap(_ => use))
       ))
 
+}
+
+class StreamLawsSpec extends LawsSpec with StreamArbitrary {
+  implicit val ec: TestContext = TestContext()
+
   implicit def eqStream[O: Eq]: Eq[Stream[IO, O]] =
     Eq.instance(
       (x, y) =>
         Eq[IO[Vector[Either[Throwable, O]]]]
           .eqv(x.attempt.compile.toVector, y.attempt.compile.toVector))
 
-  // TODO Uncomment when cats-laws supports ScalaCheck 1.14
-  // checkAll("MonadError[Stream[F, ?], Throwable]",
-  //          MonadErrorTests[Stream[IO, ?], Throwable].monadError[Int, Int, Int])
-  // checkAll("FunctorFilter[Stream[F, ?]]",
-  //          FunctorFilterTests[Stream[IO, ?]].functorFilter[String, Int, Int])
-  // checkAll("MonoidK[Stream[F, ?]]", MonoidKTests[Stream[IO, ?]].monoidK[Int])
+  checkAll("MonadError[Stream[F, ?], Throwable]",
+           MonadErrorTests[Stream[IO, ?], Throwable].monadError[Int, Int, Int])
+  checkAll("FunctorFilter[Stream[F, ?]]",
+           FunctorFilterTests[Stream[IO, ?]].functorFilter[String, Int, Int])
+  checkAll("MonoidK[Stream[F, ?]]", MonoidKTests[Stream[IO, ?]].monoidK[Int])
 }

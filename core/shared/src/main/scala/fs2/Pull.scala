@@ -550,13 +550,11 @@ object Pull extends PullInstancesLowPriority {
       def suspend[R](p: => Pull[F, O, R]) = Pull.suspend(p)
       def bracketCase[A, B](acquire: Pull[F, O, A])(use: A => Pull[F, O, B])(
           release: (A, ExitCase[Throwable]) => Pull[F, O, Unit]): Pull[F, O, B] =
-        ???
-      /* TODO
-        Pull.fromFreeC(
-          FreeC
-            .syncInstance[Algebra[F, O, ?]]
-            .bracketCase(acquire.get)(a => use(a).get)((a, c) => release(a, c).get))
-     */
+        acquire.flatMap { a =>
+          use(a)
+            .flatMap(b => release(a, ExitCase.Completed).as(b))
+            .handleErrorWith(t => release(a, ExitCase.Error(t)) >> Pull.raiseErrorForce(t))
+        }
     }
 
   /**
