@@ -301,49 +301,34 @@ private[fs2] object Algebra {
               }
 
             case close: CloseScope[F] =>
-              def closeAndGo(toClose: CompileScope[F], ec: ExitCase[Throwable]) =
-                F.flatMap(toClose.close(ec)) { r =>
-                  F.flatMap(toClose.openAncestor) { ancestor =>
-                    close.interruptedScope match {
-                      case None => go(ancestor, view.next(Result.fromEither(r)))
-                      case Some((interruptedScopeId, err)) =>
-                        def err1 = CompositeFailure.fromList(r.swap.toOption.toList ++ err.toList)
-                        if (ancestor.findSelfOrAncestor(interruptedScopeId).isDefined) {
-                          // we still have scopes to interrupt, lets build interrupted tail
-                          go(ancestor, view.next(Result.interrupted(interruptedScopeId, err1)))
-                        } else {
+              F.flatMap(scope.closeRelative(close.scopeId, close.exitCase)) {
+                case Some((r, ancestor)) =>
+                  // We have just closed scope toClose, and we continue with its ancestor
+                  val result = close.interruptedScope match {
+                    case None => Result.fromEither(r)
+                    case Some((interruptedScopeId, err)) =>
+                      val err1 = CompositeFailure.fromList(r.swap.toOption.toList ++ err.toList)
+                      if (ancestor.descendsFrom(interruptedScopeId))
+                        // we still have scopes to interrupt, lets build interrupted tail
+                        Result.interrupted(interruptedScopeId, err1)
+                      else
+                        err1 match {
                           // interrupts scope was already interrupted, resume operation
-                          err1 match {
-                            case None      => go(ancestor, view.next(Result.unit))
-                            case Some(err) => go(ancestor, view.next(Result.raiseError(err)))
-                          }
-
+                          case None      => Result.unit
+                          case Some(err) => Result.raiseError(err)
                         }
-                    }
-
                   }
-                }
-
-              scope.findSelfOrAncestor(close.scopeId) match {
-                case Some(toClose) => closeAndGo(toClose, close.exitCase)
+                  go(ancestor, view.next(result))
                 case None =>
-                  scope.findSelfOrChild(close.scopeId).flatMap {
-                    case Some(toClose) =>
-                      closeAndGo(toClose, close.exitCase)
-                    case None =>
-                      // scope already closed, continue with current scope
-                      def result =
-                        close.interruptedScope
-                          .map { Result.interrupted _ tupled }
-                          .getOrElse(Result.unit)
-                      go(scope, view.next(result))
-                  }
+                  // The scope toClose was already closed, so we continue with current scope
+                  val result = close.interruptedScope
+                    .map { Result.interrupted _ tupled }
+                    .getOrElse(Result.unit)
+                  go(scope, view.next(result))
               }
 
           }
-
       }
-
     }
 
     F.flatMap(go(scope, stream)) {

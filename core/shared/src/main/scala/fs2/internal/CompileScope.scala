@@ -226,17 +226,8 @@ private[fs2] final class CompileScope[F[_]] private (
       }
     }
 
-  /** Returns closest open parent scope or root. */
-  def openAncestor: F[CompileScope[F]] =
-    self.parent.fold(F.pure(self)) { parent =>
-      F.flatMap(parent.state.get) { s =>
-        if (s.open) F.pure(parent)
-        else parent.openAncestor
-      }
-    }
-
   /** Gets all ancestors of this scope, inclusive of root scope. **/
-  private def ancestors: Chain[CompileScope[F]] = {
+  private[this] def ancestors: Chain[CompileScope[F]] = {
     @tailrec
     def go(curr: CompileScope[F], acc: Chain[CompileScope[F]]): Chain[CompileScope[F]] =
       curr.parent match {
@@ -246,8 +237,8 @@ private[fs2] final class CompileScope[F[_]] private (
     go(self, Chain.empty)
   }
 
-  /** finds ancestor of this scope given `scopeId` **/
-  def findSelfOrAncestor(scopeId: Token): Option[CompileScope[F]] = {
+  /* Looks for an ancestor of this scope with the given `scopeId` */
+  private[this] def findSelfOrAncestor(scopeId: Token): Option[CompileScope[F]] = {
     @tailrec
     def go(curr: CompileScope[F]): Option[CompileScope[F]] =
       if (curr.id == scopeId) Some(curr)
@@ -259,8 +250,8 @@ private[fs2] final class CompileScope[F[_]] private (
     go(self)
   }
 
-  /** finds scope in child hierarchy of current scope **/
-  def findSelfOrChild(scopeId: Token): F[Option[CompileScope[F]]] = {
+  /* finds scope in child hierarchy of current scope **/
+  private def findSelfOrChild(scopeId: Token): F[Option[CompileScope[F]]] = {
     def go(scopes: Chain[CompileScope[F]]): F[Option[CompileScope[F]]] =
       scopes.uncons match {
         case None => F.pure(None)
@@ -282,6 +273,42 @@ private[fs2] final class CompileScope[F[_]] private (
       F.flatMap(state.get) { s =>
         go(s.children)
       }
+  }
+
+  /** Says if this scope descends directly from the scope with the given scopeId. */
+  def descendsFrom(scopeId: Token): Boolean = findSelfOrAncestor(scopeId).isDefined
+
+  /** Looks for a Scope with the given `scopeId`, that is either an ancestor or a descendant (not avuncular)
+    * The target Scope may just be the receiver.
+    *
+    * If it finds a Scope with that id, alive, it closes it with the `ec` ExitCase and returns an `F` value with:
+    * 1) the nearest living ancestor of the scope that was just closed,
+    * 2) any unhandled error that the closed Scope left after him.
+    *
+    * If there is no Scope with that `scopeId`, or it is already closed, this returns `None`.
+    */
+  def closeRelative(
+      scopeId: Token,
+      ec: ExitCase[Throwable]
+  ): F[Option[(Either[Throwable, Unit], CompileScope[F])]] = {
+    /* Returns closest open parent scope or root. */
+    def nextLivingAncestor(scope: CompileScope[F]): F[CompileScope[F]] =
+      scope.parent.fold(F.pure(self)) { parent =>
+        F.flatMap(parent.state.get) { s =>
+          if (s.open) F.pure(parent) else nextLivingAncestor(parent)
+        }
+      }
+
+    val toCloseF: F[Option[CompileScope[F]]] =
+      findSelfOrAncestor(scopeId) match {
+        case Some(ancestor) => F.pure(Some(ancestor))
+        case None           => findSelfOrChild(scopeId)
+      }
+    F.flatMap(toCloseF) {
+      case Some(toClose) =>
+        F.flatMap(toClose.close(ec))(r => F.map(nextLivingAncestor(toClose))(a => Some(r -> a)))
+      case None => F.pure(None)
+    }
   }
 
   /**
