@@ -11,7 +11,7 @@ As described in the `README` file, FS2 is based mostly on `cats` and `cats-effec
 
 * The `cats` library provides definitions for the typeclasses `Functor`, `Applicative`, `Monad`, and `MonadError`.
 * FS2 also uses the data type [`cats.data.Chain`](https://typelevel.org/cats/datatypes/chain.html) from the `cats-core` module. This data structure implements an ordered list-like sequence as a catenable list, which allows for efficient insertion at both ends. This data type was originally developed in `fs2`, where it was called `Catenable`.
-* The `cats-effect` library extends the typeclasses from `cats` with other more specialised typeclasses, which describe effectful computations. These type-classes cover resource  bracketing, concurrency, asynchronicity, input-output, timing, and interruption. 
+* The `cats-effect` library extends the typeclasses from `cats` with other more specialised typeclasses, which describe effectful computations. These type-classes cover resource  bracketing, concurrency, asynchronicity, input-output, timing, and interruption.
 * FS2 also uses from `cats-effect` several data structures used for communicating  and coordinating concurrent processes, such as [semaphores](https://typelevel.org/cats-effect/concurrency/semaphore.html), [deferred values](https://typelevel.org/cats-effect/concurrency/deferred.html), [atomic references](https://typelevel.org/cats-effect/concurrency/ref.html). Some of these types were first developed as part of the internal implementation of FS2, but then moved to `cats-effect`.
 * From [scodec-bits](https://github.com/scodec/scodec-bits), FS2 uses the `ByteVector` data type to implement bytevector chunks. This is relevant for efficiently processing streams of binary data.
 
@@ -33,12 +33,12 @@ If you have a project you'd like to include in this list, either open a PR or le
 * [fs2-jms](https://github.com/kiambogo/fs2-jms): Connectors of the [Java Messaging Service (JMS)]() connectors for FS2 streams
 * [fs2-kafka](https://github.com/Spinoco/fs2-kafka): Simple client for Apache Kafka.
 * [fs2-mail](https://github.com/Spinoco/fs2-mail): Fully asynchronous java non-blocking email client using fs2.
-* [fs2-rabbit](https://github.com/gvolpe/fs2-rabbit): RabbitMQ stream-based client built on top of Fs2.
+* [fs2-rabbit](https://fs2-rabbit.profunktor.dev/): RabbitMQ stream-based client built on top of fs2 and cats effect.
 * [fs2-reactive-streams](https://github.com/zainab-ali/fs2-reactive-streams): A reactive streams implementation for fs2.
-* [fs2-redis](https://github.com/gvolpe/fs2-redis): Redis stream-based client built on top of Fs2 / Cats Effect.
 * [fs2-zk](https://github.com/Spinoco/fs2-zk): Simple Apache Zookeeper bindings for fs2.
 * [http4s](http://http4s.org/): Minimal, idiomatic Scala interface for HTTP services using fs2.
 * [mongosaur](https://gitlab.com/lJoublanc/mongosaur): fs2-based MongoDB driver.
+* [redis4cats](https://redis4cats.profunktor.dev/): Redis client built on top of fs2 and cats effect.
 * [scarctic](https://gitlab.com/lJoublanc/scarctic): fs2-based driver for [MAN/AHL's Arctic](https://github.com/manahl/arctic) data store.
 * [scodec-protocols](https://github.com/scodec/scodec-protocols): A library for working with libpcap files. Contains many interesting pipes (e.g., working with time series and playing back streams at various rates).
 * [scodec-stream](https://github.com/scodec/scodec-stream): A library for streaming binary decoding and encoding, built using fs2 and [scodec](https://github.com/scodec/scodec).
