@@ -1,5 +1,6 @@
 package fs2
 
+import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
 
 import cats.{Functor, Monad}
@@ -30,9 +31,11 @@ abstract class Fs2Spec
   implicit val timeout: FiniteDuration = 10.seconds
   val timeLimit: Span = timeout
 
-  implicit val timerIO: Timer[IO] = IO.timer(scala.concurrent.ExecutionContext.Implicits.global)
+  implicit override val executionContext: ExecutionContext =
+    scala.concurrent.ExecutionContext.Implicits.global
+  implicit val timerIO: Timer[IO] = IO.timer(executionContext)
   implicit val contextShiftIO: ContextShift[IO] =
-    IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
+    IO.contextShift(executionContext)
 
   lazy val verbose: Boolean = sys.props.get("fs2.test.verbose").isDefined
 

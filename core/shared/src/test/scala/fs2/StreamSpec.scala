@@ -2237,10 +2237,10 @@ class StreamSpec extends Fs2Spec {
         IO.suspend {
           val start = System.currentTimeMillis
           Stream(1, 2, 3)
-            .evalMap(i => IO { Thread.sleep(1000); i })
+            .evalMap(i => IO.sleep(1.second).as(i))
             .prefetch
             .flatMap { i =>
-              Stream.eval(IO { Thread.sleep(1000); i })
+              Stream.eval(IO.sleep(1.second).as(i))
             }
             .compile
             .toList
