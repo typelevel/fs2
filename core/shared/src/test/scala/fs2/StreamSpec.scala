@@ -819,26 +819,30 @@ class StreamSpec extends Fs2Spec {
     }
 
     "either" in forAll { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
+      val s1List = s1.toList
+      val s2List = s2.toList
       s1.covary[IO].either(s2).compile.toList.asserting { result =>
-        result.collect { case Left(i)  => i } shouldBe s1.toList
-        result.collect { case Right(i) => i } shouldBe s2.toList
+        result.collect { case Left(i)  => i } shouldBe s1List
+        result.collect { case Right(i) => i } shouldBe s2List
       }
     }
 
     "eval" in { Stream.eval(SyncIO(23)).compile.toList.asserting(_ shouldBe List(23)) }
 
     "evalMapAccumulate" in forAll { (s: Stream[Pure, Int], m: Int, n0: PosInt) =>
+      val sVector = s.toVector
       val n = n0 % 20 + 1
       val f = (_: Int) % n == 0
       val r = s.covary[IO].evalMapAccumulate(m)((s, i) => IO.pure((s + i, f(i))))
-      r.map(_._1).compile.toVector.asserting(_ shouldBe s.toVector.scanLeft(m)(_ + _).tail)
-      r.map(_._2).compile.toVector.asserting(_ shouldBe s.toVector.map(f))
+      r.map(_._1).compile.toVector.asserting(_ shouldBe sVector.scanLeft(m)(_ + _).tail)
+      r.map(_._2).compile.toVector.asserting(_ shouldBe sVector.map(f))
     }
 
     "evalScan" in forAll { (s: Stream[Pure, Int], n: String) =>
+      val sVector = s.toVector
       val f: (String, Int) => IO[String] = (a: String, b: Int) => IO.pure(a + b)
       val g = (a: String, b: Int) => a + b
-      s.covary[IO].evalScan(n)(f).compile.toVector.asserting(_ shouldBe s.toVector.scanLeft(n)(g))
+      s.covary[IO].evalScan(n)(f).compile.toVector.asserting(_ shouldBe sVector.scanLeft(n)(g))
     }
 
     "every" in {
@@ -991,13 +995,14 @@ class StreamSpec extends Fs2Spec {
           val maxGroupSize = maxGroupSize0 % 20 + 1
           val d = (d0 % 50).millis
           val s = s0.map(_ % 500)
+          val sList = s.toList
           s.covary[IO]
             .evalTap(shortDuration => IO.sleep(shortDuration.micros))
             .groupWithin(maxGroupSize, d)
             .flatMap(s => Stream.emits(s.toList))
             .compile
             .toList
-            .asserting(_ shouldBe s.toList)
+            .asserting(_ shouldBe sList)
       }
 
       "should never emit empty groups" in forAll {
@@ -1035,7 +1040,7 @@ class StreamSpec extends Fs2Spec {
           Stream
             .emits(streamAsList)
             .covary[IO]
-            .groupWithin(streamAsList.size, (Long.MaxValue - 1L).nanoseconds)
+            .groupWithin(streamAsList.size, (Int.MaxValue - 1L).nanoseconds)
             .compile
             .toList
             .asserting(_.head.toList shouldBe streamAsList)
@@ -1335,107 +1340,110 @@ class StreamSpec extends Fs2Spec {
         }
       }
 
-      "3 - constant stream" in {
-        val interruptSoon = Stream.sleep_[IO](20.millis).compile.drain.attempt
-        Stream
-          .constant(true)
-          .covary[IO]
-          .interruptWhen(interruptSoon)
-          .compile
-          .drain
-          .assertNoException
-          .repeatTest(interruptRepeatCount)
-      }
-
-      "4 - interruption of constant stream with a flatMap" in {
-        val interrupt =
-          Stream.sleep_[IO](20.millis).compile.drain.attempt
-        Stream
-          .constant(true)
-          .covary[IO]
-          .interruptWhen(interrupt)
-          .flatMap(_ => Stream.emit(1))
-          .compile
-          .drain
-          .assertNoException
-          .repeatTest(interruptRepeatCount)
-      }
-
-      "5 - interruption of an infinitely recursive stream" in {
-        val interrupt =
-          Stream.sleep_[IO](20.millis).compile.drain.attempt
-
-        def loop(i: Int): Stream[IO, Int] = Stream.emit(i).covary[IO].flatMap { i =>
-          Stream.emit(i) ++ loop(i + 1)
+      // These IO streams cannot be interrupted on JS b/c they never yield execution
+      if (isJVM) {
+        "3 - constant stream" in {
+          val interruptSoon = Stream.sleep_[IO](20.millis).compile.drain.attempt
+          Stream
+            .constant(true)
+            .covary[IO]
+            .interruptWhen(interruptSoon)
+            .compile
+            .drain
+            .assertNoException
+            .repeatTest(interruptRepeatCount)
         }
 
-        loop(0)
-          .interruptWhen(interrupt)
-          .compile
-          .drain
-          .assertNoException
-          .repeatTest(interruptRepeatCount)
-      }
-
-      "6 - interruption of an infinitely recursive stream that never emits" in {
-        val interrupt =
-          Stream.sleep_[IO](20.millis).compile.drain.attempt
-
-        def loop: Stream[IO, Int] =
-          Stream.eval(IO.unit) >> loop
-
-        loop
-          .interruptWhen(interrupt)
-          .compile
-          .drain
-          .assertNoException
-          .repeatTest(interruptRepeatCount)
-      }
-
-      "7 - interruption of an infinitely recursive stream that never emits and has no eval" in {
-        val interrupt = Stream.sleep_[IO](20.millis).compile.drain.attempt
-        def loop: Stream[IO, Int] = Stream.emit(()).covary[IO] >> loop
-        loop
-          .interruptWhen(interrupt)
-          .compile
-          .drain
-          .assertNoException
-          .repeatTest(interruptRepeatCount)
-      }
-
-      "8 - interruption of a stream that repeatedly evaluates" in {
-        val interrupt =
-          Stream.sleep_[IO](20.millis).compile.drain.attempt
-        Stream
-          .repeatEval(IO.unit)
-          .interruptWhen(interrupt)
-          .compile
-          .drain
-          .assertNoException
-          .repeatTest(interruptRepeatCount)
-      }
-
-      "9 - interruption of the constant drained stream" in {
-        val interrupt =
-          Stream.sleep_[IO](1.millis).compile.drain.attempt
-        Stream
-          .constant(true)
-          .dropWhile(!_)
-          .covary[IO]
-          .interruptWhen(interrupt)
-          .compile
-          .drain
-          .assertNoException
-          .repeatTest(interruptRepeatCount)
-      }
-
-      "10 - terminates when interruption stream is infinitely false" in forAll {
-        (s: Stream[Pure, Int]) =>
-          s.covary[IO]
-            .interruptWhen(Stream.constant(false))
+        "4 - interruption of constant stream with a flatMap" in {
+          val interrupt =
+            Stream.sleep_[IO](20.millis).compile.drain.attempt
+          Stream
+            .constant(true)
+            .covary[IO]
+            .interruptWhen(interrupt)
+            .flatMap(_ => Stream.emit(1))
             .compile
-            .toList
-            .asserting(_ shouldBe s.toList)
+            .drain
+            .assertNoException
+            .repeatTest(interruptRepeatCount)
+        }
+
+        "5 - interruption of an infinitely recursive stream" in {
+          val interrupt =
+            Stream.sleep_[IO](20.millis).compile.drain.attempt
+
+          def loop(i: Int): Stream[IO, Int] = Stream.emit(i).covary[IO].flatMap { i =>
+            Stream.emit(i) ++ loop(i + 1)
+          }
+
+          loop(0)
+            .interruptWhen(interrupt)
+            .compile
+            .drain
+            .assertNoException
+            .repeatTest(interruptRepeatCount)
+        }
+
+        "6 - interruption of an infinitely recursive stream that never emits" in {
+          val interrupt =
+            Stream.sleep_[IO](20.millis).compile.drain.attempt
+
+          def loop: Stream[IO, Int] =
+            Stream.eval(IO.unit) >> loop
+
+          loop
+            .interruptWhen(interrupt)
+            .compile
+            .drain
+            .assertNoException
+            .repeatTest(interruptRepeatCount)
+        }
+
+        "7 - interruption of an infinitely recursive stream that never emits and has no eval" in {
+          val interrupt = Stream.sleep_[IO](20.millis).compile.drain.attempt
+          def loop: Stream[IO, Int] = Stream.emit(()).covary[IO] >> loop
+          loop
+            .interruptWhen(interrupt)
+            .compile
+            .drain
+            .assertNoException
+            .repeatTest(interruptRepeatCount)
+        }
+
+        "8 - interruption of a stream that repeatedly evaluates" in {
+          val interrupt =
+            Stream.sleep_[IO](20.millis).compile.drain.attempt
+          Stream
+            .repeatEval(IO.unit)
+            .interruptWhen(interrupt)
+            .compile
+            .drain
+            .assertNoException
+            .repeatTest(interruptRepeatCount)
+        }
+
+        "9 - interruption of the constant drained stream" in {
+          val interrupt =
+            Stream.sleep_[IO](1.millis).compile.drain.attempt
+          Stream
+            .constant(true)
+            .dropWhile(!_)
+            .covary[IO]
+            .interruptWhen(interrupt)
+            .compile
+            .drain
+            .assertNoException
+            .repeatTest(interruptRepeatCount)
+        }
+
+        "10 - terminates when interruption stream is infinitely false" in forAll {
+          (s: Stream[Pure, Int]) =>
+            s.covary[IO]
+              .interruptWhen(Stream.constant(false))
+              .compile
+              .toList
+              .asserting(_ shouldBe s.toList)
+        }
       }
 
       "11 - both streams hung" in forAll { (s: Stream[Pure, Int]) =>
@@ -1739,7 +1747,8 @@ class StreamSpec extends Fs2Spec {
       "same as map" in forAll { s: Stream[Pure, Int] =>
         val f = (_: Int) + 1
         val r = s.covary[IO].mapAsync(16)(i => IO(f(i)))
-        r.compile.toVector.asserting(_ shouldBe s.toVector.map(f))
+        val sVector = s.toVector
+        r.compile.toVector.asserting(_ shouldBe sVector.map(f))
       }
 
       "exception" in forAll { s: Stream[Pure, Int] =>
@@ -1752,7 +1761,8 @@ class StreamSpec extends Fs2Spec {
     "mapAsyncUnordered" in forAll { s: Stream[Pure, Int] =>
       val f = (_: Int) + 1
       val r = s.covary[IO].mapAsyncUnordered(16)(i => IO(f(i)))
-      r.compile.toVector.asserting(_ should contain theSameElementsAs s.toVector.map(f))
+      val sVector = s.toVector
+      r.compile.toVector.asserting(_ should contain theSameElementsAs sVector.map(f))
     }
 
     "mapChunks" in forAll { (s: Stream[Pure, Int]) =>
@@ -1761,18 +1771,21 @@ class StreamSpec extends Fs2Spec {
 
     "merge" - {
       "basic" in forAll { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
+        val expected = s1.toList.toSet ++ s2.toList.toSet
         s1.merge(s2.covary[IO])
           .compile
           .toList
-          .asserting(result => result.toSet shouldBe (s1.toList.toSet ++ s2.toList.toSet))
+          .asserting(result => result.toSet shouldBe expected)
       }
 
       "left/right identity" - {
         "1" in forAll { (s1: Stream[Pure, Int]) =>
-          s1.covary[IO].merge(Stream.empty).compile.toList.asserting(_ shouldBe s1.toList)
+          val expected = s1.toList
+          s1.covary[IO].merge(Stream.empty).compile.toList.asserting(_ shouldBe expected)
         }
         "2" in forAll { (s1: Stream[Pure, Int]) =>
-          Stream.empty.merge(s1.covary[IO]).compile.toList.asserting(_ shouldBe s1.toList)
+          val expected = s1.toList
+          Stream.empty.merge(s1.covary[IO]).compile.toList.asserting(_ shouldBe expected)
         }
       }
 
