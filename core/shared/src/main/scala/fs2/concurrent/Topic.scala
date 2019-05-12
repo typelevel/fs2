@@ -196,18 +196,17 @@ object Topic {
         def get(selector: (Token, Int), state: State[A]): (State[A], Option[ScalaQueue[A]]) =
           state.subscribers.get(selector) match {
             case None =>
-              (regEmpty(selector, state), Some(ScalaQueue(state.last)))
+              (state, Some(ScalaQueue.empty)) // Prevent register, return empty
             case r @ Some(q) =>
               if (q.isEmpty) (state, None)
               else (regEmpty(selector, state), r)
-
           }
 
         def empty(state: State[A]): Boolean =
           false
 
         def subscribe(selector: (Token, Int), state: State[A]): (State[A], Boolean) =
-          (state, true) // no subscribe necessary, as we always subscribe by first attempt to `get`
+          (state.copy(subscribers = state.subscribers + (selector -> ScalaQueue(state.last))), true)
 
         def unsubscribe(selector: (Token, Int), state: State[A]): State[A] =
           state.copy(subscribers = state.subscribers - selector)
