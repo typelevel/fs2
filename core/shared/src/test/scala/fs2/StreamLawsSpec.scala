@@ -30,8 +30,6 @@ trait StreamArbitrary {
 }
 
 class StreamLawsSpec extends Fs2Spec with StreamArbitrary {
-  implicit override val generatorDrivenConfig: PropertyCheckConfiguration =
-    PropertyCheckConfiguration(minSuccessful = if (isJVM) 25 else 5, workers = 1)
 
   implicit val ec: TestContext = TestContext()
 

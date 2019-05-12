@@ -12,10 +12,10 @@ trait StreamGenerators {
     frequency(
       1 -> specificValue(Stream.empty),
       5 -> smallLists[A].map(as => Stream.emits(as)),
-      5 -> smallLists[A].map(as => Stream.emits(as).unchunk),
-      5 -> smallLists(smallLists[A]).map(_.foldLeft(Stream.empty.covaryOutput[A])((acc, as) =>
-        acc ++ Stream.emits(as))),
-      5 -> smallLists(smallLists[A]).map(_.foldRight(Stream.empty.covaryOutput[A])((as, acc) =>
-        Stream.emits(as) ++ acc))
+     5 -> smallLists[A].map(as => Stream.emits(as).unchunk),
+     5 -> smallLists(smallLists[A]).map(_.foldLeft(Stream.empty.covaryOutput[A])((acc, as) =>
+            acc ++ Stream.emits(as))),
+         5 -> smallLists(smallLists[A]).map(_.foldRight(Stream.empty.covaryOutput[A])((as, acc) =>
+          Stream.emits(as) ++ acc))
     )
 }

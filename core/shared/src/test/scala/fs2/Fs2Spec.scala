@@ -43,7 +43,7 @@ abstract class Fs2Spec
     if (verbose) pending else Succeeded
 
   implicit override val generatorDrivenConfig: PropertyCheckConfiguration =
-    PropertyCheckConfiguration(minSuccessful = 25, workers = 1)
+    PropertyCheckConfiguration(minSuccessful = if (isJVM) 25 else 5, workers = 1)
 
   override def runTest(testName: String, args: Args): Status = {
     if (verbose) println("Starting " + testName)

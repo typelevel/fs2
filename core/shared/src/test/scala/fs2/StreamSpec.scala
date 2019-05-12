@@ -11,6 +11,7 @@ import org.scalatest.{Assertion, Succeeded}
 import fs2.concurrent.{Queue, SignallingRef}
 
 class StreamSpec extends Fs2Spec {
+
   "Stream" - {
     "++" in forAll { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
       (s1 ++ s2).toList shouldBe (s1.toList ++ s2.toList)
@@ -165,10 +166,11 @@ class StreamSpec extends Fs2Spec {
         }
       }
 
-      "1 million brackets in sequence" in {
+      val bracketsInSequence = if (isJVM) 1000000 else 10000
+      bracketsInSequence + " brackets in sequence" in {
         Counter[IO].flatMap { counter =>
           Stream
-            .range(0, 1000000)
+            .range(0, bracketsInSequence)
             .covary[IO]
             .flatMap { _ =>
               Stream
@@ -336,6 +338,7 @@ class StreamSpec extends Fs2Spec {
       }
 
       "buffer results of evalMap" in forAll { (s: Stream[Pure, Int]) =>
+        val expected = s.toList.size * 2
         IO.suspend {
           var counter = 0
           s.append(s)
@@ -346,7 +349,7 @@ class StreamSpec extends Fs2Spec {
             .take(s.toList.size + 1)
             .compile
             .drain
-            .asserting(_ => counter shouldBe (s.toList.size * 2))
+            .asserting(_ => counter shouldBe expected)
         }
       }
     }
@@ -357,6 +360,7 @@ class StreamSpec extends Fs2Spec {
       }
 
       "buffer results of evalMap" in forAll { (s: Stream[Pure, Int]) =>
+        val expected = s.toList.size * 2 + 1
         IO.suspend {
           var counter = 0
           val s2 = s.map(x => if (x == Int.MinValue) x + 1 else x).map(_.abs)
@@ -367,52 +371,54 @@ class StreamSpec extends Fs2Spec {
             .take(s.toList.size + 2)
             .compile
             .drain
-            .asserting(_ => counter shouldBe (s.toList.size * 2 + 1))
+            .asserting(_ => counter shouldBe expected)
         }
       }
     }
 
-    "cancelation of compiled streams" - {
-      def startAndCancelSoonAfter[A](fa: IO[A]): IO[Unit] =
-        fa.start.flatMap(fiber => IO.sleep(1.second) >> fiber.cancel)
+    if (isJVM) { // TODO - some of these tests hang on JS due to fairness issues
+      "cancelation of compiled streams" - {
+        def startAndCancelSoonAfter[A](fa: IO[A]): IO[Unit] =
+          fa.start.flatMap(fiber => IO.sleep(1.second) >> fiber.cancel)
 
-      def testCancelation[A](s: Stream[IO, A]): IO[Assertion] =
-        startAndCancelSoonAfter(s.compile.drain).assertNoException
+        def testCancelation[A](s: Stream[IO, A]): IO[Assertion] =
+          startAndCancelSoonAfter(s.compile.drain).assertNoException
 
-      "constant" in testCancelation(Stream.constant(1))
+        "constant" in testCancelation(Stream.constant(1))
 
-      "bracketed stream" in testCancelation(
-        Stream.bracket(IO.unit)(_ => IO.unit).flatMap(_ => Stream.constant(1)))
+        "bracketed stream" in testCancelation(
+          Stream.bracket(IO.unit)(_ => IO.unit).flatMap(_ => Stream.constant(1)))
 
-      "concurrently" in testCancelation {
-        val s = Stream.constant(1).covary[IO]
-        s.concurrently(s)
-      }
+        "concurrently" in testCancelation {
+          val s = Stream.constant(1).covary[IO]
+          s.concurrently(s)
+        }
 
-      "merge" in testCancelation {
-        val s = Stream.constant(1).covary[IO]
-        s.merge(s)
-      }
+        "merge" in testCancelation {
+          val s = Stream.constant(1).covary[IO]
+          s.merge(s)
+        }
 
-      "parJoin" in testCancelation {
-        val s = Stream.constant(1).covary[IO]
-        Stream(s, s).parJoin(2)
-      }
+        "parJoin" in testCancelation {
+          val s = Stream.constant(1).covary[IO]
+          Stream(s, s).parJoin(2)
+        }
 
-      "#1236" in testCancelation {
-        Stream
-          .eval(Queue.bounded[IO, Int](1))
-          .flatMap { q =>
-            Stream(
-              Stream
-                .unfold(0)(i => (i + 1, i + 1).some)
-                .flatMap { i =>
-                  Stream.sleep_(50.milliseconds) ++ Stream.emit(i)
-                }
-                .through(q.enqueue),
-              q.dequeue.drain
-            ).parJoin(2)
-          }
+        "#1236" in testCancelation {
+          Stream
+            .eval(Queue.bounded[IO, Int](1))
+            .flatMap { q =>
+              Stream(
+                Stream
+                  .unfold(0)(i => (i + 1, i + 1).some)
+                  .flatMap { i =>
+                    Stream.sleep_(50.milliseconds) ++ Stream.emit(i)
+                  }
+                  .through(q.enqueue),
+                q.dequeue.drain
+              ).parJoin(2)
+            }
+        }
       }
     }
 
@@ -632,7 +638,8 @@ class StreamSpec extends Fs2Spec {
 
       "when background stream terminates, overall stream continues" in forAll {
         (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
-          s1.delayBy[IO](25.millis).concurrently(s2).compile.toList.asserting(_ shouldBe s1.toList)
+          val expected = s1.toList
+          s1.delayBy[IO](25.millis).concurrently(s2).compile.toList.asserting(_ shouldBe expected)
       }
 
       "when background stream fails, overall stream fails" in forAll { (s: Stream[Pure, Int]) =>
@@ -647,7 +654,7 @@ class StreamSpec extends Fs2Spec {
         Stream
           .eval(Semaphore[IO](0))
           .flatMap { semaphore =>
-            val bg = Stream.repeatEval(IO(1)).onFinalize(semaphore.release)
+            val bg = Stream.repeatEval(IO(1) *> IO.sleep(50.millis)).onFinalize(semaphore.release)
             val fg = Stream.raiseError[IO](new Err).delayBy(25.millis)
             fg.concurrently(bg)
               .scope
@@ -663,7 +670,7 @@ class StreamSpec extends Fs2Spec {
           Stream
             .eval(Semaphore[IO](0))
             .flatMap { semaphore =>
-              val bg = Stream.repeatEval(IO(1)).onFinalize(semaphore.release)
+              val bg = Stream.repeatEval(IO(1) *> IO.sleep(50.millis)).onFinalize(semaphore.release)
               val fg = s.delayBy[IO](25.millis)
               fg.concurrently(bg)
                 .scope
