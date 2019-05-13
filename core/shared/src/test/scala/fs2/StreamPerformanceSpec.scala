@@ -138,7 +138,7 @@ class StreamPerformanceSpec extends Fs2Spec {
       "left associated" - {
         Ns.foreach { N =>
           N.toString in {
-            if (N > 1600) pending
+            if (N >= 1600) pending
             Counter[IO].flatMap { open =>
               Counter[IO].flatMap { ok =>
                 val bracketed: Stream[IO, Int] = Stream

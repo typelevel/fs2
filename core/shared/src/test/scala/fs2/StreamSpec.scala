@@ -376,49 +376,47 @@ class StreamSpec extends Fs2Spec {
       }
     }
 
-    if (isJVM) { // TODO - some of these tests hang on JS due to fairness issues
-      "cancelation of compiled streams" - {
-        def startAndCancelSoonAfter[A](fa: IO[A]): IO[Unit] =
-          fa.start.flatMap(fiber => IO.sleep(1.second) >> fiber.cancel)
+    "cancelation of compiled streams" - {
+      def startAndCancelSoonAfter[A](fa: IO[A]): IO[Unit] =
+        fa.start.flatMap(fiber => IO.sleep(1.second) >> fiber.cancel)
 
-        def testCancelation[A](s: Stream[IO, A]): IO[Assertion] =
-          startAndCancelSoonAfter(s.compile.drain).assertNoException
+      def testCancelation[A](s: Stream[IO, A]): IO[Assertion] =
+        startAndCancelSoonAfter(s.compile.drain).assertNoException
 
-        "constant" in testCancelation(Stream.constant(1))
+      def constantStream: Stream[IO, Int] =
+        if (isJVM) Stream.constant(1) else Stream.constant(1).evalTap(_ => IO.sleep(1.milli))
 
-        "bracketed stream" in testCancelation(
-          Stream.bracket(IO.unit)(_ => IO.unit).flatMap(_ => Stream.constant(1)))
+      "constant" in testCancelation(constantStream)
 
-        "concurrently" in testCancelation {
-          val s = Stream.constant(1).covary[IO]
-          s.concurrently(s)
-        }
+      "bracketed stream" in testCancelation(
+        Stream.bracket(IO.unit)(_ => IO.unit).flatMap(_ => constantStream))
 
-        "merge" in testCancelation {
-          val s = Stream.constant(1).covary[IO]
-          s.merge(s)
-        }
+      "concurrently" in testCancelation {
+        constantStream.concurrently(constantStream)
+      }
 
-        "parJoin" in testCancelation {
-          val s = Stream.constant(1).covary[IO]
-          Stream(s, s).parJoin(2)
-        }
+      "merge" in testCancelation {
+        constantStream.merge(constantStream)
+      }
 
-        "#1236" in testCancelation {
-          Stream
-            .eval(Queue.bounded[IO, Int](1))
-            .flatMap { q =>
-              Stream(
-                Stream
-                  .unfold(0)(i => (i + 1, i + 1).some)
-                  .flatMap { i =>
-                    Stream.sleep_(50.milliseconds) ++ Stream.emit(i)
-                  }
-                  .through(q.enqueue),
-                q.dequeue.drain
-              ).parJoin(2)
-            }
-        }
+      "parJoin" in testCancelation {
+        Stream(constantStream, constantStream).parJoin(2)
+      }
+
+      "#1236" in testCancelation {
+        Stream
+          .eval(Queue.bounded[IO, Int](1))
+          .flatMap { q =>
+            Stream(
+              Stream
+                .unfold(0)(i => (i + 1, i + 1).some)
+                .flatMap { i =>
+                  Stream.sleep_(50.milliseconds) ++ Stream.emit(i)
+                }
+                .through(q.enqueue),
+              q.dequeue.drain
+            ).parJoin(2)
+          }
       }
     }
 
@@ -1802,14 +1800,16 @@ class StreamSpec extends Fs2Spec {
             .assertThrows[Err]
         }
 
-        "3 - constant flatMap, failure after emit" in {
-          pending
-          forAll { (s1: Stream[Pure, Int]) =>
-            s1.merge(Stream.raiseError[IO](new Err))
-              .flatMap(_ => Stream.constant(true))
-              .compile
-              .drain
-              .assertThrows[Err]
+        if (isJVM) {
+          "3 - constant flatMap, failure after emit" in {
+            pending
+            forAll { (s1: Stream[Pure, Int]) =>
+              s1.merge(Stream.raiseError[IO](new Err))
+                .flatMap(_ => Stream.constant(true))
+                .compile
+                .drain
+                .assertThrows[Err]
+            }
           }
         }
       }
@@ -1887,7 +1887,7 @@ class StreamSpec extends Fs2Spec {
       }
 
       "hangs" - {
-        val full = Stream.constant(42)
+        val full = if (isJVM) Stream.constant(42) else Stream.constant(42).evalTap(_ => IO.shift)
         val hang = Stream.repeatEval(IO.async[Unit](cb => ()))
         val hang2: Stream[IO, Nothing] = full.drain
         val hang3: Stream[IO, Nothing] =
@@ -1905,22 +1905,26 @@ class StreamSpec extends Fs2Spec {
     }
 
     "mergeHaltBoth" in forAll { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
+      val s1List = s1.toList
+      val s2List = s2.toList
       s1.covary[IO].map(Left(_)).mergeHaltBoth(s2.map(Right(_))).compile.toList.asserting {
         result =>
-          (result.collect { case Left(a)  => a } == s1.toList) ||
-          (result.collect { case Right(a) => a } == s2.toList) shouldBe true
+          (result.collect { case Left(a)  => a } == s1List) ||
+          (result.collect { case Right(a) => a } == s2List) shouldBe true
       }
     }
 
     "mergeHaltL" in forAll { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
+      val s1List = s1.toList
       s1.covary[IO].map(Left(_)).mergeHaltL(s2.map(Right(_))).compile.toList.asserting { result =>
-        result.collect { case Left(a) => a } shouldBe s1.toList
+        result.collect { case Left(a) => a } shouldBe s1List
       }
     }
 
     "mergeHaltR" in forAll { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
+      val s2List = s2.toList
       s1.covary[IO].map(Left(_)).mergeHaltR(s2.map(Right(_))).compile.toList.asserting { result =>
-        result.collect { case Right(a) => a } shouldBe s2.toList
+        result.collect { case Right(a) => a } shouldBe s2List
       }
     }
 
@@ -1981,9 +1985,10 @@ class StreamSpec extends Fs2Spec {
 
           "handle multiple consecutive observations" in {
             forAll { (s: Stream[Pure, Int]) =>
+              val expected = s.toList
               val sink: Pipe[IO, Int, Unit] = _.evalMap(i => IO.unit)
               observer(observer(s.covary[IO])(sink))(sink).compile.toList
-                .asserting(_ shouldBe s.toList)
+                .asserting(_ shouldBe expected)
             }
           }
 
@@ -2082,32 +2087,35 @@ class StreamSpec extends Fs2Spec {
     "parJoin" - {
 
       "no concurrency" in forAll { (s: Stream[Pure, Int]) =>
+        val expected = s.toList.toSet
         s.covary[IO]
           .map(Stream.emit(_).covary[IO])
           .parJoin(1)
           .compile
           .toList
-          .asserting(_.toSet shouldBe s.toList.toSet)
+          .asserting(_.toSet shouldBe expected)
       }
 
       "concurrency" in forAll { (s: Stream[Pure, Int], n0: PosInt) =>
         val n = n0 % 20 + 1
+        val expected = s.toList.toSet
         s.covary[IO]
           .map(Stream.emit(_).covary[IO])
           .parJoin(n)
           .compile
           .toList
-          .asserting(_.toSet shouldBe s.toList.toSet)
+          .asserting(_.toSet shouldBe expected)
       }
 
       "concurrent flattening" in forAll { (s: Stream[Pure, Stream[Pure, Int]], n0: PosInt) =>
         val n = n0 % 20 + 1
+        val expected = s.flatten.toList.toSet
         s.map(_.covary[IO])
           .covary[IO]
           .parJoin(n)
           .compile
           .toList
-          .asserting(_.toSet shouldBe s.flatten.toList.toSet)
+          .asserting(_.toSet shouldBe expected)
       }
 
       "merge consistency" in forAll { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
@@ -2193,7 +2201,7 @@ class StreamSpec extends Fs2Spec {
       }
 
       "hangs" - {
-        val full = Stream.constant(42)
+        val full = if (isJVM) Stream.constant(42) else Stream.constant(42).evalTap(_ => IO.shift)
         val hang = Stream.repeatEval(IO.async[Unit](cb => ()))
         val hang2: Stream[IO, Nothing] = full.drain
         val hang3: Stream[IO, Nothing] =
@@ -2249,7 +2257,8 @@ class StreamSpec extends Fs2Spec {
 
     "prefetch" - {
       "identity" in forAll { (s: Stream[Pure, Int]) =>
-        s.covary[IO].prefetch.compile.toList.asserting(_ shouldBe s.toList)
+        val expected = s.toList
+        s.covary[IO].prefetch.compile.toList.asserting(_ shouldBe expected)
       }
 
       "timing" in {
@@ -2363,7 +2372,8 @@ class StreamSpec extends Fs2Spec {
     }
 
     "rechunkRandomly" in forAll { (s: Stream[Pure, Int]) =>
-      s.rechunkRandomly[IO]().compile.toList.asserting(_ shouldBe s.toList)
+      val expected = s.toList
+      s.rechunkRandomly[IO]().compile.toList.asserting(_ shouldBe expected)
     }
 
     "repartition" in {
@@ -2520,6 +2530,7 @@ class StreamSpec extends Fs2Spec {
       }
 
       "5" in {
+        if (!isJVM) pending // Fails on Scala.js - seems to leave an inner stream running
         forAll { (s: Stream[Pure, Stream[Pure, Int]]) =>
           SignallingRef[IO, Boolean](false).flatMap { signal =>
             Counter[IO].flatMap { counter =>
@@ -2788,6 +2799,7 @@ class StreamSpec extends Fs2Spec {
     "switchMap" - {
 
       "flatMap equivalence when switching never occurs" in forAll { s: Stream[Pure, Int] =>
+        val expected = s.toList
         Stream
           .eval(Semaphore[IO](1))
           .flatMap { guard =>
@@ -2798,7 +2810,7 @@ class StreamSpec extends Fs2Spec {
           }
           .compile
           .toList
-          .asserting(_ shouldBe s.toList)
+          .asserting(_ shouldBe expected)
       }
 
       "inner stream finalizer always runs before switching" in forAll { s: Stream[Pure, Int] =>
@@ -2822,11 +2834,12 @@ class StreamSpec extends Fs2Spec {
 
       "when primary stream terminates, inner stream continues" in forAll {
         (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
+          val expected = s1.last.unNoneTerminate.flatMap(s => s2 ++ Stream(s)).toList
           s1.covary[IO]
             .switchMap(s => Stream.sleep_[IO](25.millis) ++ s2 ++ Stream.emit(s))
             .compile
             .toList
-            .asserting(_ shouldBe s1.last.unNoneTerminate.flatMap(s => s2 ++ Stream(s)).toList)
+            .asserting(_ shouldBe expected)
       }
 
       "when inner stream fails, overall stream fails" in forAll { (s0: Stream[Pure, Int]) =>
@@ -2844,7 +2857,8 @@ class StreamSpec extends Fs2Spec {
           .flatMap { semaphore =>
             Stream(0)
               .append(Stream.raiseError[IO](new Err).delayBy(10.millis))
-              .switchMap(_ => Stream.repeatEval(IO(1)).onFinalize(semaphore.release))
+              .switchMap(_ =>
+                Stream.repeatEval(IO(1) *> IO.sleep(10.millis)).onFinalize(semaphore.release))
               .onFinalize(semaphore.acquire)
           }
           .compile
@@ -2934,15 +2948,17 @@ class StreamSpec extends Fs2Spec {
 
     "translate" - {
       "1 - id" in forAll { (s: Stream[Pure, Int]) =>
+        val expected = s.toList
         s.covary[SyncIO]
           .flatMap(i => Stream.eval(SyncIO.pure(i)))
           .translate(cats.arrow.FunctionK.id[SyncIO])
           .compile
           .toList
-          .asserting(_ shouldBe s.toList)
+          .asserting(_ shouldBe expected)
       }
 
       "2" in forAll { (s: Stream[Pure, Int]) =>
+        val expected = s.toList
         s.covary[Function0]
           .flatMap(i => Stream.eval(() => i))
           .flatMap(i => Stream.eval(() => i))
@@ -2951,10 +2967,11 @@ class StreamSpec extends Fs2Spec {
           })
           .compile
           .toList
-          .asserting(_ shouldBe s.toList)
+          .asserting(_ shouldBe expected)
       }
 
       "3 - ok to have multiple translates" in forAll { (s: Stream[Pure, Int]) =>
+        val expected = s.toList
         s.covary[Function0]
           .flatMap(i => Stream.eval(() => i))
           .flatMap(i => Stream.eval(() => i))
@@ -2968,7 +2985,7 @@ class StreamSpec extends Fs2Spec {
           })
           .compile
           .toList
-          .asserting(_ shouldBe s.toList)
+          .asserting(_ shouldBe expected)
       }
 
       "4 - ok to translate after zip with effects" in {
@@ -3048,7 +3065,7 @@ class StreamSpec extends Fs2Spec {
         Stream
           .repeatEval(SyncIO(0))
           .translate(new (SyncIO ~> SyncIO) { def apply[X](x: SyncIO[X]) = SyncIO.suspend(x) })
-          .take(1000000)
+          .take(if (isJVM) 1000000 else 10000)
           .compile
           .drain
           .assertNoException

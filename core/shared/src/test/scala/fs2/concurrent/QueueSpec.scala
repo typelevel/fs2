@@ -10,21 +10,24 @@ class QueueSpec extends Fs2Spec {
   "Queue" - {
     "unbounded producer/consumer" in {
       forAll { (s: Stream[Pure, Int]) =>
+        val expected = s.toList
+        val n = expected.size
         Stream
           .eval(Queue.unbounded[IO, Int])
           .flatMap { q =>
             q.dequeue
               .merge(s.evalMap(q.enqueue1).drain)
-              .take(s.toVector.size)
+              .take(n)
           }
           .compile
           .toList
-          .asserting(_ shouldBe s.toList)
+          .asserting(_ shouldBe expected)
       }
     }
     "circularBuffer" in {
       forAll { (s: Stream[Pure, Int], maxSize0: PosInt) =>
         val maxSize = maxSize0 % 20 + 1
+        val expected = s.toList.takeRight(maxSize)
         Stream
           .eval(Queue.circularBuffer[IO, Option[Int]](maxSize + 1))
           .flatMap { q =>
@@ -34,11 +37,12 @@ class QueueSpec extends Fs2Spec {
           }
           .compile
           .toList
-          .asserting(_ shouldBe s.toList.takeRight(maxSize))
+          .asserting(_ shouldBe expected)
       }
     }
     "dequeueAvailable" in {
       forAll { (s: Stream[Pure, Int]) =>
+        val expected = s.toList
         Stream
           .eval(Queue.unbounded[IO, Option[Int]])
           .flatMap { q =>
@@ -50,13 +54,14 @@ class QueueSpec extends Fs2Spec {
           .toList
           .asserting { result =>
             result.size should be < 2
-            result.flatMap(_.toList) shouldBe s.toList
+            result.flatMap(_.toList) shouldBe expected
           }
       }
     }
     "dequeueBatch unbounded" in {
       forAll { (s: Stream[Pure, Int], batchSize0: PosInt) =>
         val batchSize = batchSize0 % 20 + 1
+        val expected = s.toList
         Stream
           .eval(Queue.unbounded[IO, Option[Int]])
           .flatMap { q =>
@@ -67,13 +72,14 @@ class QueueSpec extends Fs2Spec {
           }
           .compile
           .toList
-          .asserting(_ shouldBe s.toList)
+          .asserting(_ shouldBe expected)
       }
     }
     "dequeueBatch circularBuffer" in {
       forAll { (s: Stream[Pure, Int], maxSize0: PosInt, batchSize0: PosInt) =>
         val maxSize = maxSize0 % 20 + 1
         val batchSize = batchSize0 % 20 + 1
+        val expected = s.toList.takeRight(maxSize)
         Stream
           .eval(Queue.circularBuffer[IO, Option[Int]](maxSize + 1))
           .flatMap { q =>
@@ -84,13 +90,12 @@ class QueueSpec extends Fs2Spec {
           }
           .compile
           .toList
-          .asserting(_ shouldBe s.toList.takeRight(maxSize))
+          .asserting(_ shouldBe expected)
       }
     }
 
     "dequeue releases subscriber on " - {
       "interrupt" in {
-
         Queue
           .unbounded[IO, Int]
           .flatMap { q =>
@@ -100,11 +105,9 @@ class QueueSpec extends Fs2Spec {
               q.dequeue1
           }
           .asserting(_ shouldBe 1)
-
       }
 
       "cancel" in {
-
         Queue
           .unbounded[IO, Int]
           .flatMap { q =>
@@ -114,7 +117,6 @@ class QueueSpec extends Fs2Spec {
               q.dequeue1
           }
           .asserting(_ shouldBe 1)
-
       }
     }
 
@@ -129,20 +131,21 @@ class QueueSpec extends Fs2Spec {
     }
 
     "size stream is discrete" in {
-      def p =
-        Stream
-          .eval(InspectableQueue.unbounded[IO, Int])
-          .flatMap { q =>
-            def changes =
-              (Stream.range(1, 6).through(q.enqueue) ++ q.dequeue)
-                .zip(Stream.fixedRate[IO](200.millis))
+      Stream
+        .eval(InspectableQueue.unbounded[IO, Int])
+        .flatMap { q =>
+          def changes =
+            (Stream.range(1, 6).through(q.enqueue) ++ q.dequeue)
+              .zip(Stream.fixedRate[IO](200.millis))
 
-            q.size.concurrently(changes)
-          }
-          .interruptWhen(Stream.sleep[IO](2.seconds).as(true))
-
-      p.compile.toList.unsafeRunSync.size shouldBe <=(11) // if the stream won't be discrete we will get much more size notifications
+          q.size.concurrently(changes)
+        }
+        .interruptWhen(Stream.sleep[IO](2.seconds).as(true))
+        .compile
+        .toList
+        .asserting(_.size shouldBe <=(11)) // if the stream won't be discrete we will get much more size notifications
     }
+
     "peek1" in {
       Stream
         .eval(
@@ -159,6 +162,7 @@ class QueueSpec extends Fs2Spec {
         .toList
         .asserting(_.flatten shouldBe List(42, 42))
     }
+
     "peek1 with dequeue1" in {
       Stream
         .eval(
@@ -178,6 +182,7 @@ class QueueSpec extends Fs2Spec {
         .toList
         .asserting(_.flatten shouldBe List((42, 42), (43, 43), (44, 44)))
     }
+
     "peek1 bounded queue" in {
       Stream
         .eval(
@@ -196,6 +201,7 @@ class QueueSpec extends Fs2Spec {
         .toList
         .asserting(_.flatten shouldBe List(false, 42, 42, 42))
     }
+
     "peek1 circular buffer" in {
       Stream
         .eval(
