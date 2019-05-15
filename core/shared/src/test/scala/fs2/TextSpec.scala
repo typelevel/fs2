@@ -1,9 +1,7 @@
 package fs2
 
-import org.scalacheck._
 import fs2.text._
-
-import TestUtil._
+import org.scalatest.{Assertion, Succeeded}
 
 class TextSpec extends Fs2Spec {
   "text" - {
@@ -12,21 +10,41 @@ class TextSpec extends Fs2Spec {
       def utf8Bytes(s: String): Chunk[Byte] = Chunk.bytes(s.getBytes("UTF-8"))
       def utf8String(bs: Chunk[Byte]): String = new String(bs.toArray, "UTF-8")
 
-      def checkChar(c: Char) = (1 to 6).foreach { n =>
-        Stream.chunk(utf8Bytes(c.toString)).chunkLimit(n).flatMap(Stream.chunk).through(utf8Decode).toList shouldBe List(c.toString)
+      def checkChar(c: Char): Assertion = {
+        (1 to 6).foreach { n =>
+          Stream
+            .chunk(utf8Bytes(c.toString))
+            .chunkLimit(n)
+            .flatMap(Stream.chunk)
+            .through(utf8Decode)
+            .toList shouldBe List(c.toString)
+        }
+        Succeeded
       }
 
-      def checkBytes(is: Int*) = (1 to 6).foreach { n =>
+      def checkBytes(is: Int*): Assertion = {
+        (1 to 6).foreach { n =>
+          val bytes = Chunk.bytes(is.map(_.toByte).toArray)
+          Stream
+            .chunk(bytes)
+            .chunkLimit(n)
+            .flatMap(Stream.chunk)
+            .through(utf8Decode)
+            .toList shouldBe List(utf8String(bytes))
+        }
+        Succeeded
+      }
+
+      def checkBytes2(is: Int*): Assertion = {
         val bytes = Chunk.bytes(is.map(_.toByte).toArray)
-        Stream.chunk(bytes).chunkLimit(n).flatMap(Stream.chunk).through(utf8Decode).toList shouldBe List(utf8String(bytes))
+        Stream(bytes).flatMap(Stream.chunk).through(utf8Decode).toList.mkString shouldBe utf8String(
+          bytes)
+        Succeeded
       }
 
-      def checkBytes2(is: Int*) = {
-        val bytes = Chunk.bytes(is.map(_.toByte).toArray)
-        Stream(bytes).flatMap(Stream.chunk).through(utf8Decode).toList.mkString shouldBe utf8String(bytes)
+      "all chars" in forAll { (c: Char) =>
+        checkChar(c)
       }
-
-      "all chars" in forAll { (c: Char) => checkChar(c) }
 
       "1 byte char" in checkBytes(0x24) // $
       "2 byte char" in checkBytes(0xC2, 0xA2) // ¢
@@ -46,15 +64,27 @@ class TextSpec extends Fs2Spec {
       "utf8Encode |> utf8Decode = id" in forAll { (s: String) =>
         Stream(s).through(utf8EncodeC).through(utf8DecodeC).toList shouldBe List(s)
         if (s.nonEmpty) Stream(s).through(utf8Encode).through(utf8Decode).toList shouldBe List(s)
+        else Succeeded
       }
 
       "1 byte sequences" in forAll { (s: String) =>
-        Stream.chunk(utf8Bytes(s)).chunkLimit(1).flatMap(Stream.chunk).through(utf8Decode).filter(_.nonEmpty).toList shouldBe s.grouped(1).toList
+        Stream
+          .chunk(utf8Bytes(s))
+          .chunkLimit(1)
+          .flatMap(Stream.chunk)
+          .through(utf8Decode)
+          .filter(_.nonEmpty)
+          .toList shouldBe s.grouped(1).toList
       }
 
-      "n byte sequences" in forAll { (s: String) =>
-        val n = Gen.choose(1,9).sample.getOrElse(1)
-        Stream.chunk(utf8Bytes(s)).chunkLimit(n).flatMap(Stream.chunk).through(utf8Decode).toList.mkString shouldBe s
+      "n byte sequences" in forAll(strings, intsBetween(1, 9)) { (s: String, n: Int) =>
+        Stream
+          .chunk(utf8Bytes(s))
+          .chunkLimit(n)
+          .flatMap(Stream.chunk)
+          .through(utf8Decode)
+          .toList
+          .mkString shouldBe s
       }
 
       // The next tests were taken from:
@@ -163,22 +193,22 @@ class TextSpec extends Fs2Spec {
       def escapeCrLf(s: String): String =
         s.replaceAll("\r\n", "<CRLF>").replaceAll("\n", "<LF>").replaceAll("\r", "<CR>")
 
-      "newlines appear in between chunks" in forAll { (lines0: PureStream[String]) =>
-        val lines = lines0.get.map(escapeCrLf)
+      "newlines appear in between chunks" in forAll { (lines0: Stream[Pure, String]) =>
+        val lines = lines0.map(escapeCrLf)
         lines.intersperse("\n").through(text.lines).toList shouldBe lines.toList
         lines.intersperse("\r\n").through(text.lines).toList shouldBe lines.toList
       }
 
-      "single string" in forAll { (lines0: PureStream[String]) =>
-        val lines = lines0.get.map(escapeCrLf)
+      "single string" in forAll { (lines0: Stream[Pure, String]) =>
+        val lines = lines0.map(escapeCrLf)
         if (lines.toList.nonEmpty) {
           val s = lines.intersperse("\r\n").toList.mkString
           Stream.emit(s).through(text.lines).toList shouldBe lines.toList
-        }
+        } else Succeeded
       }
 
-      "grouped in 3 characater chunks" in forAll { (lines0: PureStream[String]) =>
-        val lines = lines0.get.map(escapeCrLf)
+      "grouped in 3 characater chunks" in forAll { (lines0: Stream[Pure, String]) =>
+        val lines = lines0.map(escapeCrLf)
         val s = lines.intersperse("\r\n").toList.mkString.grouped(3).toList
         if (s.isEmpty) {
           Stream.emits(s).through(text.lines).toList shouldBe Nil

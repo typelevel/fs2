@@ -29,7 +29,8 @@ lazy val commonSettings = Seq(
     (if (scalaBinaryVersion.value.startsWith("2.12"))
        List(
          "-Xlint",
-         "-Xfatal-warnings",
+         // Disabled because sbt-doctest generated tests generate warnings which leads to test failures.
+         // "-Xfatal-warnings",
          "-Yno-adapted-args",
          "-Ywarn-value-discard",
          "-Ywarn-unused-import",
@@ -53,7 +54,8 @@ lazy val commonSettings = Seq(
     "org.typelevel" %%% "cats-laws" % "2.0.0-M1" % "test",
     "org.typelevel" %%% "cats-effect" % "2.0.0-M1",
     "org.typelevel" %%% "cats-effect-laws" % "2.0.0-M1" % "test",
-    "org.scalatest" %%% "scalatest" % "3.0.8-RC2" % "test"
+    "org.scalatest" %%% "scalatest" % "3.1.0-SNAP9",
+    "org.scalatestplus" %%% "scalatestplus-scalacheck" % "1.0.0-SNAP4"
   ),
   libraryDependencies += {
     CrossVersion.partialVersion(scalaVersion.value) match {
@@ -308,11 +310,11 @@ lazy val reactiveStreams = project
   .in(file("reactive-streams"))
   .enablePlugins(SbtOsgi)
   .settings(commonSettings)
-  .settings(
-    libraryDependencies ++= Seq(
-      "org.reactivestreams" % "reactive-streams" % "1.0.2",
-      "org.reactivestreams" % "reactive-streams-tck" % "1.0.2" % "test"
-    ))
+  .settings(libraryDependencies ++= Seq(
+    "org.reactivestreams" % "reactive-streams" % "1.0.2",
+    "org.reactivestreams" % "reactive-streams-tck" % "1.0.2" % "test",
+    "org.scalatestplus" %% "scalatestplus-testng" % "1.0.0-SNAP4" % "test"
+  ))
   .settings(mimaSettings)
   .settings(
     name := "fs2-reactive-streams",

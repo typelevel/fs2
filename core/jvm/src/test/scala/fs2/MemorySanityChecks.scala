@@ -1,8 +1,9 @@
 package fs2
 
-import scala.concurrent.ExecutionContext
 import cats.effect.{ContextShift, IO, Timer}
 import fs2.concurrent.{Queue, SignallingRef, Topic}
+
+import scala.concurrent.ExecutionContext
 
 // Sanity tests - not run as part of unit tests, but these should run forever
 // at constant memory.

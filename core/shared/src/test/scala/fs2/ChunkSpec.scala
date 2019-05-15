@@ -1,16 +1,17 @@
 package fs2
 
 import cats.Eq
+import cats.implicits._
 import cats.kernel.CommutativeMonoid
 import cats.kernel.laws.discipline.EqTests
 import cats.laws.discipline.{FunctorFilterTests, MonadTests, TraverseTests}
-import cats.implicits._
-import org.scalacheck.{Arbitrary, Cogen, Gen}
+import org.scalacheck.Cogen
+import org.scalactic.anyvals._
+import org.scalatest.Succeeded
+import org.scalatest.prop.Generator
 
 import scala.reflect.ClassTag
 import scala.util.control.NonFatal
-import TestUtil._
-import ChunkProps._
 
 class ChunkSpec extends Fs2Spec {
 
@@ -38,6 +39,8 @@ class ChunkSpec extends Fs2Spec {
       if (isJVM) {
         Chunk(1, 2, 3) shouldBe a[Chunk.Ints]
         Chunk("Hello", "world") shouldBe a[Chunk.Boxed[_]]
+      } else {
+        Succeeded
       }
     }
 
@@ -55,24 +58,51 @@ class ChunkSpec extends Fs2Spec {
     }
   }
 
-  def testChunk[A: Arbitrary: ClassTag: Cogen: CommutativeMonoid: Eq](genChunk: Gen[Chunk[A]], name: String, of: String, testTraverse: Boolean = true): Unit = {
+  def testChunk[A: Generator: ClassTag: CommutativeMonoid: Eq: Cogen](
+      genChunk: Generator[Chunk[A]],
+      name: String,
+      of: String,
+      testTraverse: Boolean = true): Unit =
     s"$name" - {
-      // borrowed from ScalaCheck 1.14
-      // TODO remove when the project upgrades to ScalaCheck 1.14
-      implicit def arbPartialFunction[B: Arbitrary]: Arbitrary[PartialFunction[A, B]] =
-        Arbitrary(implicitly[Arbitrary[A => Option[B]]].arbitrary.map(Function.unlift))
-
-      implicit val arbChunk: Arbitrary[Chunk[A]] = Arbitrary(genChunk)
-      "size" in propSize[A, Chunk[A]]
-      "take" in propTake[A, Chunk[A]]
-      "drop" in propDrop[A, Chunk[A]]
-      "isEmpty" in propIsEmpty[A, Chunk[A]]
-      "toArray" in propToArray[A, Chunk[A]]
-      "copyToArray" in propCopyToArray[A, Chunk[A]]
-      "concat" in propConcat[A, Chunk[A]]
+      implicit val implicitChunkGenerator: Generator[Chunk[A]] = genChunk
+      "size" in forAll { (c: Chunk[A]) =>
+        c.size shouldBe c.toList.size
+      }
+      "take" in forAll { (c: Chunk[A], n: PosZInt) =>
+        c.take(n).toVector shouldBe c.toVector.take(n)
+      }
+      "drop" in forAll { (c: Chunk[A], n: PosZInt) =>
+        c.drop(n).toVector shouldBe c.toVector.drop(n)
+      }
+      "isEmpty" in forAll { (c: Chunk[A]) =>
+        c.isEmpty shouldBe c.toList.isEmpty
+      }
+      "toArray" in forAll { c: Chunk[A] =>
+        c.toArray.toVector shouldBe c.toVector
+        // Do it twice to make sure the first time didn't mutate state
+        c.toArray.toVector shouldBe c.toVector
+      }
+      "copyToArray" in forAll { c: Chunk[A] =>
+        val arr = new Array[A](c.size * 2)
+        c.copyToArray(arr, 0)
+        c.copyToArray(arr, c.size)
+        arr.toVector shouldBe (c.toVector ++ c.toVector)
+      }
+      "concat" in forAll { (c1: Chunk[A], c2: Chunk[A]) =>
+        Chunk
+          .concat(List(Chunk.empty, c1, Chunk.empty, c2))
+          .toVector shouldBe (c1.toVector ++ c2.toVector)
+      }
 
       if (implicitly[ClassTag[A]] == ClassTag.Byte)
-        "toByteBuffer.byte" in propToByteBuffer[Chunk[Byte]]
+        "toByteBuffer.byte" in forAll { c: Chunk[A] =>
+          implicit val ev: A =:= Byte = null
+          val arr = new Array[Byte](c.size)
+          c.toByteBuffer.get(arr, 0, c.size)
+          arr.toVector shouldBe c.toArray.toVector
+        }
+
+      import org.scalacheck.GeneratorCompat._
 
       checkAll(s"Eq[Chunk[$of]]", EqTests[Chunk[A]].eqv)
       checkAll(s"Monad[Chunk]", MonadTests[Chunk].monad[A, A, A])
@@ -81,28 +111,27 @@ class ChunkSpec extends Fs2Spec {
       if (testTraverse)
         checkAll(s"Traverse[Chunk]", TraverseTests[Chunk].traverse[A, A, A, A, Option, Option])
     }
-  }
 
   implicit val commutativeMonoidForChar = new CommutativeMonoid[Char] {
     def combine(x: Char, y: Char): Char = (x + y).toChar
     def empty: Char = 0
   }
 
-  testChunk[Byte](genByteChunk, "Bytes", "Byte")
-  testChunk[Short](genShortChunk, "Shorts", "Short")
-  testChunk[Int](genIntChunk, "Ints", "Int")
-  testChunk[Long](genLongChunk, "Longs", "Long")
+  testChunk[Byte](byteChunkGenerator, "Bytes", "Byte")
+  testChunk[Short](shortChunkGenerator, "Shorts", "Short")
+  testChunk[Int](intChunkGenerator, "Ints", "Int")
+  testChunk[Long](longChunkGenerator, "Longs", "Long")
   // Don't test traverse on Double or Float. They have naughty monoids.
-  testChunk[Double](genDoubleChunk, "Doubles", "Double", false)
-  testChunk[Float](genFloatChunk, "Floats", "Float", false)
-  testChunk[Char](genCharChunk, "Unspecialized", "Char")
+  testChunk[Double](doubleChunkGenerator, "Doubles", "Double", false)
+  testChunk[Float](floatChunkGenerator, "Floats", "Float", false)
+  testChunk[Char](charChunkGenerator, "Unspecialized", "Char")
 
-  testChunk[Byte](genByteBufferChunk, "ByteBuffer", "Byte")
-  testChunk[Byte](genByteVectorChunk, "ByteVector", "Byte")
-  testChunk[Short](genShortBufferChunk, "ShortBuffer", "Short")
-  testChunk[Int](genIntBufferChunk, "IntBuffer", "Int")
-  testChunk[Long](genLongBufferChunk, "LongBuffer", "Long")
-  testChunk[Double](genDoubleBufferChunk, "DoubleBuffer", "Double", false)
-  testChunk[Float](genFloatBufferChunk, "FloatBuffer", "Float", false)
-  testChunk[Char](genCharBufferChunk, "CharBuffer", "Char")
+  testChunk[Byte](byteBufferChunkGenerator, "ByteBuffer", "Byte")
+  testChunk[Byte](byteVectorChunkGenerator, "ByteVector", "Byte")
+  testChunk[Short](shortBufferChunkGenerator, "ShortBuffer", "Short")
+  testChunk[Int](intBufferChunkGenerator, "IntBuffer", "Int")
+  testChunk[Long](longBufferChunkGenerator, "LongBuffer", "Long")
+  testChunk[Double](doubleBufferChunkGenerator, "DoubleBuffer", "Double", false)
+  testChunk[Float](floatBufferChunkGenerator, "FloatBuffer", "Float", false)
+  testChunk[Char](charBufferChunkGenerator, "CharBuffer", "Char")
 }
