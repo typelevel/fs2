@@ -2,14 +2,16 @@ package fs2
 package io
 package tcp
 
-import java.net.{InetAddress, InetSocketAddress}
+import java.net.InetSocketAddress
+import java.net.InetAddress
 import java.nio.channels.AsynchronousChannelGroup
 import java.nio.channels.spi.AsynchronousChannelProvider
 
 import cats.effect.IO
 import cats.effect.concurrent.Deferred
-import fs2._
+
 import fs2.internal.ThreadFactories
+
 import org.scalatest.BeforeAndAfterAll
 
 class SocketSpec extends Fs2Spec with BeforeAndAfterAll {

@@ -2,15 +2,20 @@ package fs2
 package io
 package udp
 
-import java.net._
+import java.net.{
+  Inet4Address,
+  InetAddress,
+  InetSocketAddress,
+  NetworkInterface,
+  StandardProtocolFamily
+}
 import java.nio.channels.InterruptedByTimeoutException
+import scala.collection.JavaConverters._
+import scala.concurrent.duration._
 
 import cats.effect.IO
 import cats.implicits._
 import org.scalatest.BeforeAndAfterAll
-
-import scala.collection.JavaConverters._
-import scala.concurrent.duration._
 
 class UdpSpec extends Fs2Spec with BeforeAndAfterAll {
 

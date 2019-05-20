@@ -1,7 +1,6 @@
 package fs2.io
 
 import java.io.{ByteArrayInputStream, InputStream}
-
 import cats.effect.IO
 import fs2.Fs2Spec
 

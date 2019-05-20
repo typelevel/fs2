@@ -2,13 +2,15 @@ package fs2
 
 import cats.Eq
 import cats.effect.IO
-import cats.effect.laws.discipline._
 import cats.effect.laws.discipline.arbitrary._
 import cats.effect.laws.util.TestContext
 import cats.effect.laws.util.TestInstances._
 import cats.implicits._
-import org.scalacheck.Arbitrary.arbitrary
+import cats.laws.discipline._
+import cats.effect.laws.discipline._
+
 import org.scalacheck.{Arbitrary, Gen}
+import Arbitrary.arbitrary
 
 class PullLawsSpec extends Fs2Spec with StreamArbitrary {
 

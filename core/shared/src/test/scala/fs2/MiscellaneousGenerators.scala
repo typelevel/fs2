@@ -1,7 +1,7 @@
 package fs2
 
-import org.scalatest.prop.CommonGenerators._
 import org.scalatest.prop._
+import CommonGenerators._
 
 trait MiscellaneousGenerators {
 

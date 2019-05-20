@@ -1,7 +1,7 @@
 package fs2
 
-import fs2.text._
 import org.scalatest.{Assertion, Succeeded}
+import fs2.text._
 
 class TextSpec extends Fs2Spec {
   "text" - {

@@ -4,7 +4,6 @@ package concurrent
 import cats.effect.IO
 import cats.implicits._
 import org.scalactic.anyvals.PosInt
-
 import scala.concurrent.duration._
 
 class QueueSpec extends Fs2Spec {

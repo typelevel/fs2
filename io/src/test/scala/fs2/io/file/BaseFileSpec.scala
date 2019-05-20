@@ -2,12 +2,12 @@ package fs2
 package io
 package file
 
+import cats.effect.IO
+import cats.implicits._
+
 import java.io.IOException
 import java.nio.file._
 import java.nio.file.attribute.BasicFileAttributes
-
-import cats.effect.IO
-import cats.implicits._
 
 class BaseFileSpec extends Fs2Spec {
 

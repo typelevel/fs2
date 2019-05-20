@@ -1,11 +1,11 @@
 package fs2
 
-import java.util.concurrent.Executors
+import scala.concurrent.ExecutionContext
 
 import cats.effect.{IO, Resource}
 import cats.implicits._
 
-import scala.concurrent.ExecutionContext
+import java.util.concurrent.Executors
 
 trait TestPlatform {
 

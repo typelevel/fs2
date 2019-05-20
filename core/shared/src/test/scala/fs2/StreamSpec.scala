@@ -1,15 +1,14 @@
 package fs2
 
+import cats.~>
 import cats.data.Chain
 import cats.effect._
 import cats.effect.concurrent.{Deferred, Ref, Semaphore}
 import cats.implicits._
-import cats.~>
-import fs2.concurrent.{Queue, SignallingRef}
+import scala.concurrent.duration._
 import org.scalactic.anyvals._
 import org.scalatest.{Assertion, Succeeded}
-
-import scala.concurrent.duration._
+import fs2.concurrent.{Queue, SignallingRef}
 
 class StreamSpec extends Fs2Spec {
 
@@ -2126,7 +2125,6 @@ class StreamSpec extends Fs2Spec {
       }
 
       "resources acquired in outer stream are released after inner streams complete" in {
-        pending // Broken
         val bracketed =
           Stream.bracket(IO(new java.util.concurrent.atomic.AtomicBoolean(true)))(b =>
             IO(b.set(false)))
@@ -2142,7 +2140,6 @@ class StreamSpec extends Fs2Spec {
       }
 
       "run finalizers of inner streams first" in {
-        pending // Broken
         forAll { (s1: Stream[Pure, Int], bias: Boolean) =>
           val err = new Err
           val biasIdx = if (bias) 1 else 0
@@ -2489,7 +2486,7 @@ class StreamSpec extends Fs2Spec {
       }
 
       "3" in {
-        // pending // Sometimes fails with inner == 1 on final assertion
+        pending // TODO: Sometimes fails with inner == 1 on final assertion
         forAll { (s: Stream[Pure, Stream[Pure, Int]], n0: PosInt) =>
           val n = n0 % 10 + 1
           Counter[IO].flatMap { outer =>
@@ -2868,7 +2865,6 @@ class StreamSpec extends Fs2Spec {
       }
 
       "when inner stream fails, inner stream finalizer run before the primary one" in {
-        pending // Broken
         forAll { (s0: Stream[Pure, Int]) =>
           val s = Stream(0) ++ s0
           Stream

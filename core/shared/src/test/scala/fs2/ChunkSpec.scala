@@ -1,15 +1,14 @@
 package fs2
 
 import cats.Eq
-import cats.implicits._
 import cats.kernel.CommutativeMonoid
 import cats.kernel.laws.discipline.EqTests
 import cats.laws.discipline.{FunctorFilterTests, MonadTests, TraverseTests}
+import cats.implicits._
 import org.scalacheck.Cogen
 import org.scalactic.anyvals._
 import org.scalatest.Succeeded
 import org.scalatest.prop.Generator
-
 import scala.reflect.ClassTag
 import scala.util.control.NonFatal
 

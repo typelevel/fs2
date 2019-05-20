@@ -1,13 +1,20 @@
 package fs2
 
-import java.io.{ByteArrayInputStream, ByteArrayOutputStream}
-import java.util.zip._
-
-import cats.effect._
 import fs2.Stream._
-import fs2.compress._
+import cats.effect._
+
+import java.io.{ByteArrayInputStream, ByteArrayOutputStream}
+import java.util.zip.{
+  Deflater,
+  DeflaterOutputStream,
+  GZIPInputStream,
+  Inflater,
+  InflaterOutputStream
+}
 
 import scala.collection.mutable
+
+import compress._
 
 class CompressSpec extends Fs2Spec {
 

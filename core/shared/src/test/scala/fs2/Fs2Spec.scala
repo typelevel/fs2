@@ -1,18 +1,20 @@
 package fs2
 
+import scala.concurrent.ExecutionContext
+import scala.concurrent.duration._
+
+import cats.{Functor, Monad}
 import cats.effect.{ContextShift, IO, Sync, Timer}
 import cats.implicits._
-import cats.{Functor, Monad}
+
+import org.scalatest.{Args, Assertion, Matchers, Status, Succeeded}
 import org.scalatest.check.Checkers
 import org.scalatest.concurrent.AsyncTimeLimitedTests
 import org.scalatest.freespec.AsyncFreeSpec
 import org.scalatest.prop.GeneratorDrivenPropertyChecks
 import org.scalatest.time.Span
-import org.scalatest._
-import org.typelevel.discipline.Laws
 
-import scala.concurrent.ExecutionContext
-import scala.concurrent.duration._
+import org.typelevel.discipline.Laws
 
 abstract class Fs2Spec
     extends AsyncFreeSpec

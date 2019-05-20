@@ -5,7 +5,6 @@ import org.scalactic._
 import org.scalatest._
 import org.scalatest.enablers._
 import org.scalatest.prop._
-
 import scala.concurrent.{ExecutionContext, Future}
 
 class ToFuturePropCheckerAsserting[F[_]](toFuture: F ~> Future)(

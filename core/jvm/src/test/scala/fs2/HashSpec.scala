@@ -1,11 +1,11 @@
 package fs2
 
-import java.security.MessageDigest
-
 import cats.effect.IO
 import cats.implicits._
-import fs2.hash._
+import java.security.MessageDigest
 import org.scalacheck.Gen
+
+import hash._
 
 class HashSpec extends Fs2Spec {
   def digest(algo: String, str: String): List[Byte] =

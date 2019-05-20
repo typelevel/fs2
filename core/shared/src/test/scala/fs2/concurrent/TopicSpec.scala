@@ -1,11 +1,10 @@
 package fs2
 package concurrent
 
-import cats.effect.IO
 import cats.implicits._
-import org.scalatest.Succeeded
-
+import cats.effect.IO
 import scala.concurrent.duration._
+import org.scalatest.Succeeded
 
 class TopicSpec extends Fs2Spec {
 

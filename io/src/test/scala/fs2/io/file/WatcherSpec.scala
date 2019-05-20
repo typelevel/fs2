@@ -2,12 +2,11 @@ package fs2
 package io
 package file
 
-import java.nio.file._
+import scala.concurrent.duration._
 
 import cats.effect.IO
 import cats.implicits._
-
-import scala.concurrent.duration._
+import java.nio.file._
 
 class WatcherSpec extends BaseFileSpec {
   "Watcher" - {
