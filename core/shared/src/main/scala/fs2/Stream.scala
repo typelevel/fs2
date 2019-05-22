@@ -3108,14 +3108,14 @@ object Stream extends StreamLowPriority {
     */
   def fixedRate[F[_]](d: FiniteDuration)(implicit timer: Timer[F]): Stream[F, Unit] = {
     def now: Stream[F, Long] = Stream.eval(timer.clock.monotonic(NANOSECONDS))
-    def loop(started: Long): Stream[F, Unit] =
+    def go(started: Long): Stream[F, Unit] =
       now.flatMap { finished =>
         val elapsed = finished - started
         Stream.sleep_(d - elapsed.nanos) ++ now.flatMap { started =>
-          Stream.emit(()) ++ loop(started)
+          Stream.emit(()) ++ go(started)
         }
       }
-    now.flatMap(loop)
+    now.flatMap(go)
   }
 
   final class PartiallyAppliedFromEither[F[_]] {
@@ -3218,8 +3218,8 @@ object Stream extends StreamLowPriority {
     */
   def random[F[_]](implicit F: Sync[F]): Stream[F, Int] =
     Stream.eval(F.delay(new scala.util.Random())).flatMap { r =>
-      def loop: Stream[F, Int] = Stream.emit(r.nextInt) ++ loop
-      loop
+      def go: Stream[F, Int] = Stream.emit(r.nextInt) ++ go
+      go
     }
 
   /**
@@ -3229,8 +3229,8 @@ object Stream extends StreamLowPriority {
     */
   def randomSeeded[F[x] >: Pure[x]](seed: Long): Stream[F, Int] = Stream.suspend {
     val r = new scala.util.Random(seed)
-    def loop: Stream[F, Int] = Stream.emit(r.nextInt) ++ loop
-    loop
+    def go: Stream[F, Int] = Stream.emit(r.nextInt) ++ go
+    go
   }
 
   /**
@@ -3375,12 +3375,12 @@ object Stream extends StreamLowPriority {
     * }}}
     */
   def unfold[F[x] >: Pure[x], S, O](s: S)(f: S => Option[(O, S)]): Stream[F, O] = {
-    def loop(s: S): Stream[F, O] =
+    def go(s: S): Stream[F, O] =
       f(s) match {
-        case Some((o, s)) => emit(o) ++ loop(s)
+        case Some((o, s)) => emit(o) ++ go(s)
         case None         => empty
       }
-    suspend(loop(s))
+    suspend(go(s))
   }
 
   /**
@@ -3396,22 +3396,22 @@ object Stream extends StreamLowPriority {
 
   /** Like [[unfold]], but takes an effectful function. */
   def unfoldEval[F[_], S, O](s: S)(f: S => F[Option[(O, S)]]): Stream[F, O] = {
-    def loop(s: S): Stream[F, O] =
+    def go(s: S): Stream[F, O] =
       eval(f(s)).flatMap {
-        case Some((o, s)) => emit(o) ++ loop(s)
+        case Some((o, s)) => emit(o) ++ go(s)
         case None         => empty
       }
-    suspend(loop(s))
+    suspend(go(s))
   }
 
   /** Like [[unfoldChunk]], but takes an effectful function. */
   def unfoldChunkEval[F[_], S, O](s: S)(f: S => F[Option[(Chunk[O], S)]]): Stream[F, O] = {
-    def loop(s: S): Stream[F, O] =
+    def go(s: S): Stream[F, O] =
       eval(f(s)).flatMap {
-        case Some((c, s)) => chunk(c) ++ loop(s)
+        case Some((c, s)) => chunk(c) ++ go(s)
         case None         => empty
       }
-    suspend(loop(s))
+    suspend(go(s))
   }
 
   /** Provides syntax for streams that are invariant in `F` and `O`. */
