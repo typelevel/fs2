@@ -13,4 +13,6 @@ object Fs2sinkremoval {
     s.to(sink)
 
   def bar[F[_], A, B](): Sink[F, A] = ???
+
+  def baz[F[_], A, B](): X[F, A] = ???
 }

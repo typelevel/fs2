@@ -10,4 +10,6 @@ object Fs2sinkremoval {
     s.through(sink)
 
   def bar[F[_], A, B](): Pipe[F, A, Unit] = ???
+
+  def baz[F[_], A, B](): X[F, A, Unit] = ???
 }
