@@ -530,21 +530,20 @@ object SinkToPipeRules {
   ).asPatch
 
   def apply(t: Tree)(implicit doc: SemanticDocument): List[Patch] = {
-    //println("Tree.structureLabeled: " + doc.tree.structureLabeled)
-    //val sinkMatcher = SymbolMatcher.normalized("fs2.Sink")
-    val sinkMatcher = SymbolMatcher.exact("fs2/Sink.")
+    val sinkMatcher = SymbolMatcher.exact("fs2/package.Sink#")
     if (isFs2SinkImported(t)) {
       t.collect {
         case toMethodMatcher(t @ Term.Apply(Term.Select(obj, _), args)) => {
           Patch.replaceTree(t, Term.Apply(Term.Select(obj, Term.Name("through")), args).toString)
         }
 
-        //case sink @ Type.Apply(Type.Name("Sink"), List(f, a)) =>
-        //case sink @ sinkMatcher(name @ Type.Apply(Type.Name(_), List(f, a))) =>
         case sink @ Type.Apply(sinkMatcher(name), List(f, a)) =>
-        //case sink @ sinkMatcher(name) =>
-          println(s"Matched: $name")
-          Patch.replaceTree(sink, s"Pipe[$f, $a, Unit]")
+          if (name.toString == "Sink") {
+            Patch.replaceTree(sink, s"Pipe[$f, $a, Unit]")
+          } else {
+            val typeName = name.toString
+            Patch.replaceTree(sink, s"$typeName[$f, $a, Unit]")
+          }
 
         case sink @ Importee.Rename(Name("Sink"), rename) =>
           Patch.replaceTree(sink, s"Pipe => $rename")
