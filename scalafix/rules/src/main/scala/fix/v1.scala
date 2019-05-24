@@ -540,10 +540,7 @@ object SinkToPipeRules {
         case sink @ Type.Apply(sinkMatcher(name), List(f, a)) =>
           name match {
             case t"Sink" => Patch.replaceTree(sink, s"Pipe[$f, $a, Unit]")
-            case _ => {
-              val typeName = name.toString
-              Patch.replaceTree(sink, s"$typeName[$f, $a, Unit]")
-            }
+            case _ => Patch.addRight(a, ", Unit")
           }
 
         case sink @ Importee.Rename(Name("Sink"), rename) =>
