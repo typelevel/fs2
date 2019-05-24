@@ -29,8 +29,7 @@ lazy val commonSettings = Seq(
     (if (scalaBinaryVersion.value.startsWith("2.12"))
        List(
          "-Xlint",
-         // Disabled because sbt-doctest generated tests generate warnings which leads to test failures.
-         // "-Xfatal-warnings",
+         "-Xfatal-warnings",
          "-Yno-adapted-args",
          "-Ywarn-value-discard",
          "-Ywarn-unused-import",
@@ -44,6 +43,11 @@ lazy val commonSettings = Seq(
     _.filterNot("-Ywarn-unused-import" == _)
       .filterNot("-Xlint" == _)
       .filterNot("-Xfatal-warnings" == _)
+  },
+  // Disable fatal warnings for test compilation because sbt-doctest generated tests
+  // generate warnings which lead to test failures.
+  scalacOptions in (Test, compile) ~= {
+    _.filterNot("-Xfatal-warnings" == _)
   },
   scalacOptions in (Compile, console) += "-Ydelambdafy:inline",
   scalacOptions in (Test, console) := (scalacOptions in (Compile, console)).value,
