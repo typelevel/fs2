@@ -6,12 +6,13 @@ import scala.concurrent.duration._
 import cats.effect.{ContextShift, IO, Timer}
 
 import org.typelevel.discipline.Laws
-import org.scalatest.{ Args, Assertion, AsyncFreeSpec, FreeSpec, Matchers, Status, Succeeded, Suite }
+import org.scalatest.{ Args, Assertion, Matchers, Status, Succeeded, Suite }
 import org.scalatest.concurrent.{ AsyncTimeLimitedTests, TimeLimitedTests }
+import org.scalatest.freespec.{ AnyFreeSpec, AsyncFreeSpec }
 import org.scalatestplus.scalacheck.{ Checkers, ScalaCheckDrivenPropertyChecks }
 import org.scalatest.time.Span
 
-abstract class Fs2Spec extends FreeSpec with Fs2SpecLike with TimeLimitedTests with Checkers {
+abstract class Fs2Spec extends AnyFreeSpec with Fs2SpecLike with TimeLimitedTests with Checkers {
   val timeLimit: Span = timeout
 
   def checkAll(name: String, ruleSet: Laws#RuleSet): Unit =

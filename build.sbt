@@ -49,20 +49,13 @@ lazy val commonSettings = Seq(
   javaOptions in (Test, run) ++= Seq("-Xms64m", "-Xmx64m"),
   libraryDependencies ++= Seq(
     compilerPlugin("org.typelevel" %% "kind-projector" % "0.10.0"),
-    "org.typelevel" %%% "cats-core" % "2.0.0-M1",
-    "org.typelevel" %%% "cats-laws" % "2.0.0-M1" % "test",
-    "org.typelevel" %%% "cats-effect" % "2.0.0-M1",
-    "org.typelevel" %%% "cats-effect-laws" % "2.0.0-M1" % "test",
-    "org.scalatest" %%% "scalatest" % "3.0.8-RC2" % "test"
+    "org.typelevel" %%% "cats-core" % "2.0.0-M2",
+    "org.typelevel" %%% "cats-laws" % "2.0.0-M2" % "test",
+    "org.typelevel" %%% "cats-effect" % "2.0.0-M2",
+    "org.typelevel" %%% "cats-effect-laws" % "2.0.0-M2" % "test",
+    "org.scalacheck" %%% "scalacheck" % "1.14.0" % "test",
+    "org.scalatest" %%% "scalatest" % "3.1.0-SNAP11" % "test"
   ),
-  libraryDependencies += {
-    CrossVersion.partialVersion(scalaVersion.value) match {
-      case Some((2, v)) if v >= 13 =>
-        "org.scalacheck" %%% "scalacheck" % "1.14.0" % "test"
-      case _ =>
-        "org.scalacheck" %%% "scalacheck" % "1.13.5" % "test"
-    }
-  },
   scmInfo := Some(ScmInfo(url("https://github.com/functional-streams-for-scala/fs2"),
                           "git@github.com:functional-streams-for-scala/fs2.git")),
   homepage := Some(url("https://github.com/functional-streams-for-scala/fs2")),
@@ -73,7 +66,7 @@ lazy val commonSettings = Seq(
     implicit val contextShiftIO: ContextShift[IO] = IO.contextShift(global)
     implicit val timerIO: Timer[IO] = IO.timer(global)
   """,
-  doctestTestFramework := DoctestTestFramework.ScalaTest,
+  doctestTestFramework := DoctestTestFramework.ScalaCheck,
   scalafmtOnCompile := true
 ) ++ testSettings ++ scaladocSettings ++ publishingSettings ++ releaseSettings
 
