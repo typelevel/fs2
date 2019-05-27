@@ -32,8 +32,8 @@ private[fs2] sealed abstract class FreeC[F[_], +R] {
           case Result.Pure(r) =>
             try f(r)
             catch { case NonFatal(e) => FreeC.Result.Fail(e) }
-          case Result.Interrupted(scope, err) => FreeC.Result.Interrupted(scope, err)
-          case Result.Fail(e)                 => FreeC.Result.Fail(e)
+          case r @ Result.Interrupted(scope, err) => r.asInstanceOf[FreeC[F, R2]]
+          case r @ Result.Fail(e)                 => r.asInstanceOf[FreeC[F, R2]]
       }
     )
 
