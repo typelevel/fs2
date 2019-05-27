@@ -20,25 +20,26 @@ object CompositeFailure {
             rest: List[Throwable] = List.empty): CompositeFailure =
     new CompositeFailure(first, NonEmptyList(second, rest))
 
-  def fromList(errors: List[Throwable]): Option[Throwable] = errors match {
-    case Nil                     => None
-    case hd :: Nil               => Some(hd)
-    case first :: second :: rest => Some(apply(first, second, rest))
+  def fromList(errors: List[Throwable]): Throwable = errors match {
+    case Nil                     => NoExceptionIsGoodException
+    case hd :: Nil               => hd
+    case first :: second :: rest => apply(first, second, rest)
   }
 
   /**
     * Builds composite failure from the results supplied.
     *
-    * - When any of the results are on left, then the Left(err) is returned
-    * - When both results fail, the Left(CompositeFailure(_)) is returned
-    * - When both results succeeds then Right(()) is returned
+    * - When any result are on left, then the Left(err) is returned
+    * - When both results fail, a CompositeFailure(_) is returned
+    * - When both are NoExceptionIsGoodException, then that is returned
     *
     */
-  def fromResults(first: Either[Throwable, Unit],
-                  second: Either[Throwable, Unit]): Either[Throwable, Unit] =
-    first match {
-      case Right(_) => second
-      case Left(err) =>
-        Left(second.fold(err1 => CompositeFailure(err, err1, Nil), _ => err))
-    }
+  def fromResults(first: Throwable, second: Throwable): Throwable =
+    if (first eq NoExceptionIsGoodException)
+      second
+    else if (second eq NoExceptionIsGoodException)
+      first
+    else
+      CompositeFailure(err, NonEmptyList(err1, Nil))
+
 }

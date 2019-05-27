@@ -203,7 +203,9 @@ private[fs2] object Algebra {
     case class Done[X](scope: CompileScope[F]) extends R[X]
     case class Out[X](head: Chunk[X], scope: CompileScope[F], tail: FreeC[Algebra[F, X, ?], Unit])
         extends R[X]
-    case class Interrupted[X](scopeId: Token, err: Option[Throwable]) extends R[X]
+    case class Interrupted[X](scopeId: Token, err: Throwable) extends R[X] {
+      def isError: Boolean = err ne NoExceptionIsGoodException
+    }
 
     sealed trait R[X]
 
@@ -371,16 +373,16 @@ private[fs2] object Algebra {
   def interruptBoundary[F[_], O](
       stream: FreeC[Algebra[F, O, ?], Unit],
       interruptedScope: Token,
-      interruptedError: Option[Throwable]
+      interruptedError: Throwable
   ): FreeC[Algebra[F, O, ?], Unit] =
     stream.viewL match {
       case _: FreeC.Result.Pure[Algebra[F, O, ?], Unit] =>
         FreeC.interrupted(interruptedScope, interruptedError)
       case failed: FreeC.Result.Fail[Algebra[F, O, ?]] =>
-        Algebra.raiseError(
-          CompositeFailure
-            .fromList(interruptedError.toList :+ failed.error)
-            .getOrElse(failed.error))
+        val nerror = CompositeFailure
+          .fromList(interruptedError.toList :+ failed.error)
+          .getOrElse(failed.error)
+        Algebra.raiseError(nerror)
       case interrupted: FreeC.Result.Interrupted[Algebra[F, O, ?], _] =>
         // impossible
         FreeC.interrupted(interrupted.context, interrupted.deferredError)

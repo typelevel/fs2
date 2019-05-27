@@ -87,7 +87,7 @@ private[fs2] object FreeC {
 
   def raiseError[F[_], A](rsn: Throwable): FreeC[F, A] = Result.Fail(rsn)
 
-  def interrupted[F[_], X, A](interruptContext: X, failure: Option[Throwable]): FreeC[F, A] =
+  def interrupted[F[_], X, A](interruptContext: X, failure: Throwable): FreeC[F, A] =
     Result.Interrupted(interruptContext, failure)
 
   sealed trait Result[+R] { self =>
