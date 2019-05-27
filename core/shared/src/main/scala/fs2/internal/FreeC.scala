@@ -122,13 +122,6 @@ private[fs2] object FreeC {
     def fromEither[R](either: Either[Throwable, R]): Result[R] =
       either.fold(Result.Fail(_), Result.Pure(_))
 
-    def unapply[F[_], R](freeC: FreeC[F, R]): Option[Result[R]] = freeC match {
-      case r @ Result.Pure(_)           => Some(r: Result[R])
-      case r @ Result.Fail(_)           => Some(r: Result[R])
-      case r @ Result.Interrupted(_, _) => Some(r: Result[R])
-      case _                            => None
-    }
-
     final case class Pure[F[_], R](r: R) extends FreeC[F, R] with Result[R] with ViewL[F, R] {
       override def translate[G[_]](f: F ~> G): FreeC[G, R] =
         this.asInstanceOf[FreeC[G, R]]
@@ -211,13 +204,11 @@ private[fs2] object FreeC {
         case Eval(fx) => View(fx, pureContinuation[F, R])
         case b: FreeC.Bind[F, y, R] =>
           b.fx match {
-            case Result(r)  => mk(b.f(r))
-            case Eval(fr)   => ViewL.View(fr, b.f)
-            case Bind(w, g) => mk(Bind(w, (e: Result[Any]) => Bind(g(e), b.f)))
+            case r: Result[_] => mk(b.f(r.asInstanceOf[Result[y]]))
+            case Eval(fr)     => ViewL.View(fr, b.f)
+            case Bind(w, g)   => mk(Bind(w, (e: Result[Any]) => Bind(g(e), b.f)))
           }
-        case r @ Result.Pure(_)           => r
-        case r @ Result.Fail(_)           => r
-        case r @ Result.Interrupted(_, _) => r
+        case r: Result[_] => r.asInstanceOf[ViewL[F, R]]
       }
 
   }
