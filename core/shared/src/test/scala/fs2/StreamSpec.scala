@@ -2528,7 +2528,7 @@ class StreamSpec extends Fs2Spec {
       }
 
       "5" in {
-        if (!isJVM) pending // Fails on Scala.js - seems to leave an inner stream running
+        if (isJVM) flickersOnTravis else pending // Sometimes hangs on Travis JVM, fails on Scala.js, seems to leave an inner stream running
         forAll { (s: Stream[Pure, Stream[Pure, Int]]) =>
           SignallingRef[IO, Boolean](false).flatMap { signal =>
             Counter[IO].flatMap { counter =>
