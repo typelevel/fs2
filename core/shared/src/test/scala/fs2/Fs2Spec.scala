@@ -28,7 +28,7 @@ abstract class Fs2Spec
     with EffectTestSupport
     with TestPlatform {
 
-  implicit val timeout: FiniteDuration = 10.seconds
+  implicit val timeout: FiniteDuration = 60.seconds
   val timeLimit: Span = timeout
 
   implicit override val executionContext: ExecutionContext =
