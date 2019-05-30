@@ -85,11 +85,15 @@ lazy val commonSettings = Seq(
 
 lazy val testSettings = Seq(
   fork in Test := !isScalaJSProject.value,
-  javaOptions in Test ++= Seq(
+  javaOptions in Test ++= (Seq(
     "-Dscala.concurrent.context.minThreads=8",
     "-Dscala.concurrent.context.numThreads=8",
     "-Dscala.concurrent.context.maxThreads=8"
-  ),
+  ) ++ (sys.props.get("fs2.test.verbose") match {
+    case Some(value) =>
+      Seq(s"-Dfs2.test.verbose")
+    case None => Seq()
+  })),
   parallelExecution in Test := false,
   testOptions in Test += Tests.Argument(TestFrameworks.ScalaTest, "-oDF"),
   publishArtifact in Test := true

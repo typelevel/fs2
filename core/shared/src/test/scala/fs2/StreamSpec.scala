@@ -2125,7 +2125,6 @@ class StreamSpec extends Fs2Spec {
       }
 
       "resources acquired in outer stream are released after inner streams complete" in {
-        pending
         val bracketed =
           Stream.bracket(IO(new java.util.concurrent.atomic.AtomicBoolean(true)))(b =>
             IO(b.set(false)))
@@ -2141,7 +2140,6 @@ class StreamSpec extends Fs2Spec {
       }
 
       "run finalizers of inner streams first" in {
-        pending
         forAll { (s1: Stream[Pure, Int], bias: Boolean) =>
           val err = new Err
           val biasIdx = if (bias) 1 else 0
@@ -2813,23 +2811,27 @@ class StreamSpec extends Fs2Spec {
           .asserting(_ shouldBe expected)
       }
 
-      "inner stream finalizer always runs before switching" in forAll { s: Stream[Pure, Int] =>
-        Stream
-          .eval(Ref[IO].of(true))
-          .flatMap { ref =>
-            s.covary[IO].switchMap { i =>
-              Stream.eval(ref.get).flatMap { released =>
-                if (!released) Stream.raiseError[IO](new Err)
-                else
-                  Stream
-                    .eval(ref.set(false) >> IO.sleep(1.millis))
-                    .onFinalize(IO.sleep(10.millis) >> ref.set(true))
+
+      "inner stream finalizer always runs before switching" in {
+        pending // hangs locally and on travis occasionally
+        forAll { s: Stream[Pure, Int] =>
+          Stream
+            .eval(Ref[IO].of(true))
+            .flatMap { ref =>
+              s.covary[IO].switchMap { i =>
+                Stream.eval(ref.get).flatMap { released =>
+                  if (!released) Stream.raiseError[IO](new Err)
+                  else
+                    Stream
+                      .eval(ref.set(false) >> IO.sleep(1.millis))
+                      .onFinalize(IO.sleep(10.millis) >> ref.set(true))
+                }
               }
             }
-          }
-          .compile
-          .drain
-          .assertNoException
+            .compile
+            .drain
+            .assertNoException
+        }
       }
 
       "when primary stream terminates, inner stream continues" in forAll {
@@ -2867,7 +2869,6 @@ class StreamSpec extends Fs2Spec {
       }
 
       "when inner stream fails, inner stream finalizer run before the primary one" in {
-        pending
         forAll { (s0: Stream[Pure, Int]) =>
           val s = Stream(0) ++ s0
           Stream
