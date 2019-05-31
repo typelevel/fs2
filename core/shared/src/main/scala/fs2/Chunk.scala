@@ -1558,8 +1558,19 @@ object Chunk {
         Chunk.buffer(buf.result)
       }
       override def functor: Functor[Chunk] = this
-      override def mapFilter[A, B](fa: Chunk[A])(f: A => Option[B]): Chunk[B] =
-        fa.collect(Function.unlift(f))
+      override def mapFilter[A, B](fa: Chunk[A])(f: A => Option[B]): Chunk[B] = {
+        val size = fa.size
+        val b = collection.mutable.Buffer.newBuilder[B]
+        b.sizeHint(size)
+        var i = 0
+        while (i < size) {
+          val o = f(fa(i))
+          if (o.isDefined)
+            b += o.get
+          i += 1
+        }
+        Chunk.buffer(b.result)
+      }
     }
 
   /**
