@@ -109,40 +109,39 @@ private[fs2] final class CompileScope[F[_]] private (
      *     or as a result of interrupting this scope. But it should not propagate its own interruption to this scope.
      *
      */
-    def createScopeContext: F[(Option[InterruptContext[F]], Token)] = {
+    val createCompileScope: F[CompileScope[F]] = {
       val newScopeId = new Token
       self.interruptible match {
         case None =>
-          F.pure(InterruptContext.unsafeFromInterruptible(interruptible, newScopeId) -> newScopeId)
+          val iCtx = InterruptContext.unsafeFromInterruptible(interruptible, newScopeId)
+          F.pure(new CompileScope[F](newScopeId, Some(self), iCtx))
 
         case Some(parentICtx) =>
-          F.map(parentICtx.childContext(interruptible, newScopeId))(Some(_) -> newScopeId)
+          val fiCtx = parentICtx.childContext(interruptible, newScopeId)
+          F.map(fiCtx)(iCtx => new CompileScope[F](newScopeId, Some(self), Some(iCtx)))
       }
     }
 
-    F.flatMap(createScopeContext) {
-      case (iCtx, newScopeId) =>
-        F.flatMap(state.modify { s =>
-          if (!s.open) (s, None)
-          else {
-            val scope = new CompileScope[F](newScopeId, Some(self), iCtx)
-            (s.copy(children = scope +: s.children), Some(scope))
-          }
-        }) {
-          case Some(s) => F.pure(Right(s))
-          case None    =>
-            // This scope is already closed so try to promote the open to an ancestor; this can fail
-            // if the root scope has already been closed, in which case, we can safely throw
-            self.parent match {
-              case Some(parent) =>
-                F.flatMap(self.interruptible.map(_.cancelParent).getOrElse(F.unit)) { _ =>
-                  parent.open(interruptible)
-                }
+    F.flatMap(createCompileScope) { scope =>
+      F.flatMap(state.modify { s =>
+        if (!s.open) (s, None)
+        else
+          (s.copy(children = scope +: s.children), Some(scope))
+      }) {
+        case Some(s) => F.pure(Right(s))
+        case None    =>
+          // This scope is already closed so try to promote the open to an ancestor; this can fail
+          // if the root scope has already been closed, in which case, we can safely throw
+          self.parent match {
+            case Some(parent) =>
+              F.flatMap(self.interruptible.map(_.cancelParent).getOrElse(F.unit)) { _ =>
+                parent.open(interruptible)
+              }
 
-              case None =>
-                F.pure(Left(new IllegalStateException("cannot re-open root scope")))
-            }
-        }
+            case None =>
+              F.pure(Left(new IllegalStateException("cannot re-open root scope")))
+          }
+      }
     }
   }
 
