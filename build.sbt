@@ -44,6 +44,11 @@ lazy val commonSettings = Seq(
       .filterNot("-Xlint" == _)
       .filterNot("-Xfatal-warnings" == _)
   },
+  // Disable fatal warnings for test compilation because sbt-doctest generated tests
+  // generate warnings which lead to test failures.
+  scalacOptions in (Test, compile) ~= {
+    _.filterNot("-Xfatal-warnings" == _)
+  },
   scalacOptions in (Compile, console) += "-Ydelambdafy:inline",
   scalacOptions in (Test, console) := (scalacOptions in (Compile, console)).value,
   javaOptions in (Test, run) ++= Seq("-Xms64m", "-Xmx64m"),
@@ -54,7 +59,8 @@ lazy val commonSettings = Seq(
     "org.typelevel" %%% "cats-effect" % "2.0.0-M2",
     "org.typelevel" %%% "cats-effect-laws" % "2.0.0-M2" % "test",
     "org.scalacheck" %%% "scalacheck" % "1.14.0" % "test",
-    "org.scalatest" %%% "scalatest" % "3.1.0-SNAP11" % "test"
+    "org.scalatest" %%% "scalatest" % "3.1.0-SNAP11" % "test",
+    "org.scalatestplus" %%% "scalatestplus-scalacheck" % "1.0.0-SNAP4" % "test"
   ),
   scmInfo := Some(ScmInfo(url("https://github.com/functional-streams-for-scala/fs2"),
                           "git@github.com:functional-streams-for-scala/fs2.git")),
@@ -66,17 +72,21 @@ lazy val commonSettings = Seq(
     implicit val contextShiftIO: ContextShift[IO] = IO.contextShift(global)
     implicit val timerIO: Timer[IO] = IO.timer(global)
   """,
-  doctestTestFramework := DoctestTestFramework.ScalaCheck,
+  doctestTestFramework := DoctestTestFramework.ScalaTest,
   scalafmtOnCompile := true
 ) ++ testSettings ++ scaladocSettings ++ publishingSettings ++ releaseSettings
 
 lazy val testSettings = Seq(
   fork in Test := !isScalaJSProject.value,
-  javaOptions in Test ++= Seq(
+  javaOptions in Test ++= (Seq(
     "-Dscala.concurrent.context.minThreads=8",
     "-Dscala.concurrent.context.numThreads=8",
     "-Dscala.concurrent.context.maxThreads=8"
-  ),
+  ) ++ (sys.props.get("fs2.test.verbose") match {
+    case Some(value) =>
+      Seq(s"-Dfs2.test.verbose=true")
+    case None => Seq()
+  })),
   parallelExecution in Test := false,
   testOptions in Test += Tests.Argument(TestFrameworks.ScalaTest, "-oDF"),
   publishArtifact in Test := true
@@ -258,7 +268,7 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
       }
       baseDirectory.value / "../shared/src/main" / dir
     },
-    libraryDependencies += "org.scodec" %%% "scodec-bits" % "1.1.10"
+    libraryDependencies += "org.scodec" %%% "scodec-bits" % "1.1.11"
   )
   .jsSettings(commonJsSettings: _*)
 
