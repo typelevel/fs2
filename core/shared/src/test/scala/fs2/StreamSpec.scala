@@ -2883,6 +2883,7 @@ class StreamSpec extends Fs2Spec {
       }
 
       "when primary stream fails, inner stream finalizer run before the primary one" in {
+        flickersOnTravis
         Stream
           .eval(Ref[IO].of(false))
           .flatMap { verdict =>
