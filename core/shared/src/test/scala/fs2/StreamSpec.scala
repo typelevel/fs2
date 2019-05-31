@@ -1524,6 +1524,7 @@ class StreamSpec extends Fs2Spec {
 
       "14a - interrupt evalMap and then resume on append" in {
         forAll { s: Stream[Pure, Int] =>
+          val expected = s.toList
           val interrupt = IO.sleep(50.millis).attempt
           s.covary[IO]
             .interruptWhen(interrupt)
@@ -1532,12 +1533,13 @@ class StreamSpec extends Fs2Spec {
             .append(s)
             .compile
             .toList
-            .asserting(_ shouldBe s.toList)
+            .asserting(_ shouldBe expected)
         }
       }
 
       "14b - interrupt evalMap+collect and then resume on append" in {
         forAll { s: Stream[Pure, Int] =>
+          val expected = s.toList
           val interrupt = IO.sleep(50.millis).attempt
           s.covary[IO]
             .interruptWhen(interrupt)
@@ -1546,12 +1548,13 @@ class StreamSpec extends Fs2Spec {
             .collect { case Some(v) => v }
             .compile
             .toList
-            .asserting(_ shouldBe s.toList)
+            .asserting(_ shouldBe expected)
         }
       }
 
       "15 - interruption works when flatMap is followed by collect" in {
         forAll { s: Stream[Pure, Int] =>
+          val expected = s.toList
           val interrupt = Stream.sleep_[IO](20.millis).compile.drain.attempt
           s.covary[IO]
             .append(Stream(1))
@@ -1565,7 +1568,7 @@ class StreamSpec extends Fs2Spec {
             .collect { case Some(i) => i }
             .compile
             .toList
-            .asserting(_ shouldBe s.toList)
+            .asserting(_ shouldBe expected)
         }
       }
 
@@ -1635,6 +1638,7 @@ class StreamSpec extends Fs2Spec {
 
       "20 - nested-interrupt" in {
         forAll { s: Stream[Pure, Int] =>
+          val expected = s.toList
           Stream
             .eval(Semaphore[IO](0))
             .flatMap { semaphore =>
@@ -1653,7 +1657,7 @@ class StreamSpec extends Fs2Spec {
             }
             .compile
             .toList
-            .asserting(_ shouldBe s.toList)
+            .asserting(_ shouldBe expected)
         }
       }
 
