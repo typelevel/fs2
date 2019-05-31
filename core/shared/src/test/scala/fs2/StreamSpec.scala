@@ -1523,8 +1523,8 @@ class StreamSpec extends Fs2Spec {
       }
 
       "14a - interrupt evalMap and then resume on append" in {
-        pending // Broken
         forAll { s: Stream[Pure, Int] =>
+          val expected = s.toList
           val interrupt = IO.sleep(50.millis).attempt
           s.covary[IO]
             .interruptWhen(interrupt)
@@ -1533,13 +1533,13 @@ class StreamSpec extends Fs2Spec {
             .append(s)
             .compile
             .toList
-            .asserting(_ shouldBe s.toList)
+            .asserting(_ shouldBe expected)
         }
       }
 
       "14b - interrupt evalMap+collect and then resume on append" in {
-        pending // Broken
         forAll { s: Stream[Pure, Int] =>
+          val expected = s.toList
           val interrupt = IO.sleep(50.millis).attempt
           s.covary[IO]
             .interruptWhen(interrupt)
@@ -1548,13 +1548,13 @@ class StreamSpec extends Fs2Spec {
             .collect { case Some(v) => v }
             .compile
             .toList
-            .asserting(_ shouldBe s.toList)
+            .asserting(_ shouldBe expected)
         }
       }
 
       "15 - interruption works when flatMap is followed by collect" in {
-        pending // Broken - results in an empty list instead of s.toList
         forAll { s: Stream[Pure, Int] =>
+          val expected = s.toList
           val interrupt = Stream.sleep_[IO](20.millis).compile.drain.attempt
           s.covary[IO]
             .append(Stream(1))
@@ -1568,7 +1568,7 @@ class StreamSpec extends Fs2Spec {
             .collect { case Some(i) => i }
             .compile
             .toList
-            .asserting(_ shouldBe s.toList)
+            .asserting(_ shouldBe expected)
         }
       }
 
@@ -1594,7 +1594,6 @@ class StreamSpec extends Fs2Spec {
       }
 
       "17 - minimal resume on append with pull" in {
-        pending // Broken
         val interrupt = IO.sleep(100.millis).attempt
         Stream(1)
           .covary[IO]
@@ -1614,7 +1613,6 @@ class StreamSpec extends Fs2Spec {
       }
 
       "18 - resume with append after evalMap interruption" in {
-        pending // Broken
         Stream(1)
           .covary[IO]
           .interruptWhen(IO.sleep(50.millis).attempt)
@@ -1639,8 +1637,8 @@ class StreamSpec extends Fs2Spec {
       }
 
       "20 - nested-interrupt" in {
-        pending // Results in an empty list
         forAll { s: Stream[Pure, Int] =>
+          val expected = s.toList
           Stream
             .eval(Semaphore[IO](0))
             .flatMap { semaphore =>
@@ -1659,7 +1657,7 @@ class StreamSpec extends Fs2Spec {
             }
             .compile
             .toList
-            .asserting(_ shouldBe s.toList)
+            .asserting(_ shouldBe expected)
         }
       }
 
@@ -1802,7 +1800,6 @@ class StreamSpec extends Fs2Spec {
 
         if (isJVM) {
           "3 - constant flatMap, failure after emit" in {
-            pending
             forAll { (s1: Stream[Pure, Int]) =>
               s1.merge(Stream.raiseError[IO](new Err))
                 .flatMap(_ => Stream.constant(true))
@@ -2813,7 +2810,6 @@ class StreamSpec extends Fs2Spec {
 
 
       "inner stream finalizer always runs before switching" in {
-        pending // hangs locally and on travis occasionally
         forAll { s: Stream[Pure, Int] =>
           Stream
             .eval(Ref[IO].of(true))
@@ -2823,8 +2819,8 @@ class StreamSpec extends Fs2Spec {
                   if (!released) Stream.raiseError[IO](new Err)
                   else
                     Stream
-                      .eval(ref.set(false) >> IO.sleep(1.millis))
-                      .onFinalize(IO.sleep(10.millis) >> ref.set(true))
+                      .eval(ref.set(false) >> IO.sleep(20.millis))
+                      .onFinalize(IO.sleep(100.millis) >> ref.set(true))
                 }
               }
             }
@@ -2891,13 +2887,13 @@ class StreamSpec extends Fs2Spec {
       }
 
       "when primary stream fails, inner stream finalizer run before the primary one" in {
-        pending
+        flickersOnTravis
         Stream
           .eval(Ref[IO].of(false))
           .flatMap { verdict =>
             Stream.eval(Ref[IO].of(false)).flatMap { innerReleased =>
               // TODO ideally make sure the inner stream has actually started
-              (Stream(1).delayBy[IO](25.millis) ++ Stream.raiseError[IO](new Err))
+              (Stream(1) ++ Stream.sleep_[IO](25.millis) ++ Stream.raiseError[IO](new Err))
                 .onFinalize(innerReleased.get.flatMap(inner => verdict.set(inner)))
                 .switchMap(_ => Stream.repeatEval(IO(1)).onFinalize(innerReleased.set(true)))
                 .attempt

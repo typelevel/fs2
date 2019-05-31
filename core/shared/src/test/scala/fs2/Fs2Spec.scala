@@ -8,11 +8,11 @@ import cats.effect.{ContextShift, IO, Sync, Timer}
 import cats.implicits._
 
 import org.scalatest.{Args, Assertion, Matchers, Status, Succeeded}
-import org.scalatest.check.Checkers
 import org.scalatest.concurrent.AsyncTimeLimitedTests
 import org.scalatest.freespec.AsyncFreeSpec
 import org.scalatest.prop.GeneratorDrivenPropertyChecks
 import org.scalatest.time.Span
+import org.scalatestplus.scalacheck.Checkers
 
 import org.typelevel.discipline.Laws
 

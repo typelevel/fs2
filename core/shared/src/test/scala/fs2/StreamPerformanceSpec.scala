@@ -41,13 +41,13 @@ class StreamPerformanceSpec extends Fs2Spec {
     }
 
     "left-associated map 1" - {
-      pending
       Ns.foreach { N =>
         N.toString in {
+          pending
           (1 until N)
             .map(Stream.emit)
             .foldLeft(Stream.emit(0))((acc, a) => acc.map(_ + 1))
-            .toVector shouldBe Vector(N)
+            .toVector shouldBe Vector(N - 1)
         }
       }
     }
@@ -138,7 +138,6 @@ class StreamPerformanceSpec extends Fs2Spec {
       "left associated" - {
         Ns.foreach { N =>
           N.toString in {
-            if (N >= 1600) pending
             Counter[IO].flatMap { open =>
               Counter[IO].flatMap { ok =>
                 val bracketed: Stream[IO, Int] = Stream
