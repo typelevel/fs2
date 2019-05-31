@@ -44,6 +44,11 @@ lazy val commonSettings = Seq(
       .filterNot("-Xlint" == _)
       .filterNot("-Xfatal-warnings" == _)
   },
+  // Disable fatal warnings for test compilation because sbt-doctest generated tests
+  // generate warnings which lead to test failures.
+  scalacOptions in (Test, compile) ~= {
+    _.filterNot("-Xfatal-warnings" == _)
+  },
   scalacOptions in (Compile, console) += "-Ydelambdafy:inline",
   scalacOptions in (Test, console) := (scalacOptions in (Compile, console)).value,
   javaOptions in (Test, run) ++= Seq("-Xms64m", "-Xmx64m"),
@@ -53,7 +58,8 @@ lazy val commonSettings = Seq(
     "org.typelevel" %%% "cats-laws" % "2.0.0-M1" % "test",
     "org.typelevel" %%% "cats-effect" % "2.0.0-M1",
     "org.typelevel" %%% "cats-effect-laws" % "2.0.0-M1" % "test",
-    "org.scalatest" %%% "scalatest" % "3.0.8-RC2" % "test"
+    "org.scalatest" %%% "scalatest" % "3.1.0-SNAP9",
+    "org.scalatestplus" %%% "scalatestplus-scalacheck" % "1.0.0-SNAP4"
   ),
   libraryDependencies += {
     CrossVersion.partialVersion(scalaVersion.value) match {
@@ -79,11 +85,15 @@ lazy val commonSettings = Seq(
 
 lazy val testSettings = Seq(
   fork in Test := !isScalaJSProject.value,
-  javaOptions in Test ++= Seq(
+  javaOptions in Test ++= (Seq(
     "-Dscala.concurrent.context.minThreads=8",
     "-Dscala.concurrent.context.numThreads=8",
     "-Dscala.concurrent.context.maxThreads=8"
-  ),
+  ) ++ (sys.props.get("fs2.test.verbose") match {
+    case Some(value) =>
+      Seq(s"-Dfs2.test.verbose=true")
+    case None => Seq()
+  })),
   parallelExecution in Test := false,
   testOptions in Test += Tests.Argument(TestFrameworks.ScalaTest, "-oDF"),
   publishArtifact in Test := true
@@ -308,11 +318,11 @@ lazy val reactiveStreams = project
   .in(file("reactive-streams"))
   .enablePlugins(SbtOsgi)
   .settings(commonSettings)
-  .settings(
-    libraryDependencies ++= Seq(
-      "org.reactivestreams" % "reactive-streams" % "1.0.2",
-      "org.reactivestreams" % "reactive-streams-tck" % "1.0.2" % "test"
-    ))
+  .settings(libraryDependencies ++= Seq(
+    "org.reactivestreams" % "reactive-streams" % "1.0.2",
+    "org.reactivestreams" % "reactive-streams-tck" % "1.0.2" % "test",
+    "org.scalatestplus" %% "scalatestplus-testng" % "1.0.0-SNAP4" % "test"
+  ))
   .settings(mimaSettings)
   .settings(
     name := "fs2-reactive-streams",

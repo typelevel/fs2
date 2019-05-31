@@ -4,7 +4,7 @@ package reactivestreams
 
 import cats.effect._
 import org.scalatest._
-import org.scalatestplus.scalacheck.ScalaCheckPropertyChecks
+import org.scalatest.check.ScalaCheckPropertyChecks
 
 final class PublisherToSubscriberSpec extends FlatSpec with Matchers with ScalaCheckPropertyChecks {
 
