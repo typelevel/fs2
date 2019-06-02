@@ -24,10 +24,10 @@ Quick links:
 * [Docs and getting help](#docs)
 
 [microsite]: http://fs2.io/index.html
-[core-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-core_2.12/1.0.1/fs2-core_2.12-1.0.1-javadoc.jar/!/fs2/index.html
-[io-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-io_2.12/1.0.1/fs2-io_2.12-1.0.1-javadoc.jar/!/fs2/io/index.html
-[rx-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-reactive-streams_2.12/1.0.1/fs2-reactive-streams_2.12-1.0.1-javadoc.jar/!/fs2/interop/reactivestreams/index.html
-[experimental-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-experimental_2.12/1.0.1/fs2-experimental_2.12-1.0.1-javadoc.jar/!/fs2/experimental/index.html
+[core-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-core_2.12/1.0.4/fs2-core_2.12-1.0.4-javadoc.jar/!/fs2/index.html
+[io-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-io_2.12/1.0.4/fs2-io_2.12-1.0.4-javadoc.jar/!/fs2/io/index.html
+[rx-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-reactive-streams_2.12/1.0.4/fs2-reactive-streams_2.12-1.0.4-javadoc.jar/!/fs2/interop/reactivestreams/index.html
+[experimental-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-experimental_2.12/1.0.4/fs2-experimental_2.12-1.0.4-javadoc.jar/!/fs2/experimental/index.html
 
 ### <a id="getit"></a> Where to get the latest version ###
 
