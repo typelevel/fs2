@@ -2,6 +2,8 @@ package fs2
 
 import java.nio.charset.Charset
 
+import scala.annotation.tailrec
+
 /** Provides utilities for working with streams of text (e.g., encoding byte streams to strings). */
 object text {
   private val utf8Charset = Charset.forName("UTF-8")
@@ -121,11 +123,11 @@ object text {
     def extractLines(buffer: Vector[String],
                      chunk: Chunk[String],
                      pendingLineFeed: Boolean): (Chunk[String], Vector[String], Boolean) = {
-      @annotation.tailrec
+      @tailrec
       def go(remainingInput: Vector[String],
-               buffer: Vector[String],
-               output: Vector[String],
-               pendingLineFeed: Boolean): (Chunk[String], Vector[String], Boolean) =
+             buffer: Vector[String],
+             output: Vector[String],
+             pendingLineFeed: Boolean): (Chunk[String], Vector[String], Boolean) =
         if (remainingInput.isEmpty) {
           (Chunk.indexedSeq(output), buffer, pendingLineFeed)
         } else {
@@ -142,10 +144,10 @@ object text {
             val pendingLF =
               if (carry.nonEmpty) carry.last == '\r' else pendingLineFeed
             go(remainingInput.tail,
-                 if (out.isEmpty) buffer :+ carry else Vector(carry),
-                 if (out.isEmpty) output
-                 else output ++ ((buffer :+ out.head).mkString +: out.tail),
-                 pendingLF)
+               if (out.isEmpty) buffer :+ carry else Vector(carry),
+               if (out.isEmpty) output
+               else output ++ ((buffer :+ out.head).mkString +: out.tail),
+               pendingLF)
           }
         }
       go(chunk.toVector, buffer, Vector.empty, pendingLineFeed)

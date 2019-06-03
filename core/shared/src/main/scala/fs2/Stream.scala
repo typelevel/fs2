@@ -12,6 +12,7 @@ import fs2.internal.FreeC.Result
 import fs2.internal.{Resource => _, _}
 import java.io.PrintStream
 
+import scala.annotation.tailrec
 import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
 
@@ -1215,7 +1216,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
           l >> Pull.done
       }
 
-    @annotation.tailrec
+    @tailrec
     def doChunk(chunk: Chunk[O],
                 s: Stream[F, O],
                 k1: O2,

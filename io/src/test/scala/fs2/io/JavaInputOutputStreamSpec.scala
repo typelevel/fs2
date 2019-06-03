@@ -4,6 +4,8 @@ import cats.effect.IO
 import fs2.{Chunk, EventuallySupport, Fs2Spec, Stream}
 import org.scalacheck.{Arbitrary, Gen}
 
+import scala.annotation.tailrec
+
 class JavaInputOutputStreamSpec extends Fs2Spec with EventuallySupport {
 
   "ToInputStream" - {
@@ -33,7 +35,7 @@ class JavaInputOutputStreamSpec extends Fs2Spec with EventuallySupport {
             // consume in same thread pool. Production application should never do this,
             // instead they have to fork this to dedicated thread pool
             val buff = new Array[Byte](20)
-            @annotation.tailrec
+            @tailrec
             def go(acc: Vector[Byte]): IO[Vector[Byte]] =
               is.read(buff) match {
                 case -1   => IO.pure(acc)

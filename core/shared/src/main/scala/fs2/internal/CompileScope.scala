@@ -295,6 +295,7 @@ private[fs2] final class CompileScope[F[_]] private (
     *
     */
   def findStepScope(scopeId: Token): F[Option[CompileScope[F]]] = {
+    @tailrec
     def go(scope: CompileScope[F]): CompileScope[F] =
       scope.parent match {
         case None         => scope

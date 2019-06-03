@@ -1,5 +1,6 @@
 package fs2
 
+import scala.annotation.tailrec
 import scala.collection.immutable.{Queue => SQueue}
 import scala.collection.{IndexedSeq => GIndexedSeq, Seq => GSeq}
 import scala.reflect.ClassTag
@@ -1538,7 +1539,7 @@ object Chunk {
         // Based on the implementation of tailRecM for Vector from cats, licensed under MIT
         val buf = collection.mutable.Buffer.newBuilder[B]
         var state = List(f(a).iterator)
-        @annotation.tailrec
+        @tailrec
         def go(): Unit = state match {
           case Nil => ()
           case h :: tail if h.isEmpty =>
@@ -1582,6 +1583,7 @@ object Chunk {
       if (n <= 0) Queue.empty
       else if (n >= size) this
       else {
+        @tailrec
         def go(acc: SQueue[Chunk[A]], rem: SQueue[Chunk[A]], toTake: Int): Queue[A] =
           if (toTake <= 0) new Queue(acc, n)
           else {
@@ -1602,6 +1604,7 @@ object Chunk {
       if (n <= 0) this
       else if (n >= size) Queue.empty
       else {
+        @tailrec
         def go(rem: SQueue[Chunk[A]], toDrop: Int): Queue[A] =
           if (toDrop <= 0) new Queue(rem, size - n)
           else {
