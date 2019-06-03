@@ -1,5 +1,6 @@
 package fs2
 
+import scala.annotation.tailrec
 import scala.collection.immutable.{Queue => SQueue}
 import scala.collection.{IndexedSeq => GIndexedSeq, Seq => GSeq}
 import scala.reflect.ClassTag
@@ -1518,10 +1519,10 @@ object Chunk {
     new Traverse[Chunk] with Monad[Chunk] with FunctorFilter[Chunk] {
       def foldLeft[A, B](fa: Chunk[A], b: B)(f: (B, A) => B): B = fa.foldLeft(b)(f)
       def foldRight[A, B](fa: Chunk[A], b: Eval[B])(f: (A, Eval[B]) => Eval[B]): Eval[B] = {
-        def loop(i: Int): Eval[B] =
-          if (i < fa.size) f(fa(i), Eval.defer(loop(i + 1)))
+        def go(i: Int): Eval[B] =
+          if (i < fa.size) f(fa(i), Eval.defer(go(i + 1)))
           else b
-        loop(0)
+        go(0)
       }
       override def toList[A](fa: Chunk[A]): List[A] = fa.toList
       override def isEmpty[A](fa: Chunk[A]): Boolean = fa.isEmpty
@@ -1538,23 +1539,23 @@ object Chunk {
         // Based on the implementation of tailRecM for Vector from cats, licensed under MIT
         val buf = collection.mutable.Buffer.newBuilder[B]
         var state = List(f(a).iterator)
-        @annotation.tailrec
-        def loop(): Unit = state match {
+        @tailrec
+        def go(): Unit = state match {
           case Nil => ()
           case h :: tail if h.isEmpty =>
             state = tail
-            loop()
+            go()
           case h :: tail =>
             h.next match {
               case Right(b) =>
                 buf += b
-                loop()
+                go()
               case Left(a) =>
                 state = (f(a).iterator) :: h :: tail
-                loop()
+                go()
             }
         }
-        loop()
+        go()
         Chunk.buffer(buf.result)
       }
       override def functor: Functor[Chunk] = this
@@ -1593,16 +1594,17 @@ object Chunk {
       if (n <= 0) Queue.empty
       else if (n >= size) this
       else {
-        def loop(acc: SQueue[Chunk[A]], rem: SQueue[Chunk[A]], toTake: Int): Queue[A] =
+        @tailrec
+        def go(acc: SQueue[Chunk[A]], rem: SQueue[Chunk[A]], toTake: Int): Queue[A] =
           if (toTake <= 0) new Queue(acc, n)
           else {
             val (next, tail) = rem.dequeue
             val nextSize = next.size
-            if (nextSize < toTake) loop(acc :+ next, tail, toTake - nextSize)
+            if (nextSize < toTake) go(acc :+ next, tail, toTake - nextSize)
             else if (nextSize == toTake) new Queue(acc :+ next, n)
             else new Queue(acc :+ next.take(toTake), n)
           }
-        loop(SQueue.empty, chunks, n)
+        go(SQueue.empty, chunks, n)
       }
 
     /** Takes the right-most `n` elements of this chunk queue in a way that preserves chunk structure. */
@@ -1613,16 +1615,17 @@ object Chunk {
       if (n <= 0) this
       else if (n >= size) Queue.empty
       else {
-        def loop(rem: SQueue[Chunk[A]], toDrop: Int): Queue[A] =
+        @tailrec
+        def go(rem: SQueue[Chunk[A]], toDrop: Int): Queue[A] =
           if (toDrop <= 0) new Queue(rem, size - n)
           else {
             val next = rem.head
             val nextSize = next.size
-            if (nextSize < toDrop) loop(rem.tail, toDrop - nextSize)
+            if (nextSize < toDrop) go(rem.tail, toDrop - nextSize)
             else if (nextSize == toDrop) new Queue(rem.tail, size - n)
             else new Queue(next.drop(toDrop) +: rem.tail, size - n)
           }
-        loop(chunks, n)
+        go(chunks, n)
       }
 
     /** Drops the right-most `n` elements of this chunk queue in a way that preserves chunk structure. */
