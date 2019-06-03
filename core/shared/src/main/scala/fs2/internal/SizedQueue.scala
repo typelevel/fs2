@@ -20,4 +20,5 @@ private[fs2] final class SizedQueue[A](private val underlying: Queue[A], val siz
 
 private[fs2] object SizedQueue {
   def empty[A]: SizedQueue[A] = new SizedQueue(Queue.empty, 0)
+  def one[A](a: A): SizedQueue[A] = new SizedQueue(Queue(a), 1)
 }

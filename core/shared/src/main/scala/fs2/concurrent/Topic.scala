@@ -5,8 +5,7 @@ import cats.Eq
 import cats.syntax.all._
 import cats.effect.{Concurrent, Sync}
 
-import scala.collection.immutable.{Queue => ScalaQueue}
-import fs2.internal.Token
+import fs2.internal.{SizedQueue, Token}
 
 /**
   * Asynchronous Topic.
@@ -105,7 +104,7 @@ object Topic {
       .map { pubSub =>
         new Topic[F, A] {
 
-          def subscriber(size: Int): Stream[F, ((Token, Int), Stream[F, ScalaQueue[A]])] =
+          def subscriber(size: Int): Stream[F, ((Token, Int), Stream[F, SizedQueue[A]])] =
             Stream
               .bracket(
                 Sync[F]
@@ -128,14 +127,14 @@ object Topic {
             pubSub.publish(a)
 
           def subscribe(maxQueued: Int): Stream[F, A] =
-            subscriber(maxQueued).flatMap { case (_, s) => s.flatMap(Stream.emits) }
+            subscriber(maxQueued).flatMap { case (_, s) => s.flatMap(q => Stream.emits(q.toQueue)) }
 
           def subscribeSize(maxQueued: Int): Stream[F, (A, Int)] =
             subscriber(maxQueued).flatMap {
               case (selector, stream) =>
                 stream
                   .flatMap { q =>
-                    Stream.emits(q.zipWithIndex.map { case (a, idx) => (a, q.size - idx) })
+                    Stream.emits(q.toQueue.zipWithIndex.map { case (a, idx) => (a, q.size - idx) })
                   }
                   .evalMap {
                     case (a, remQ) =>
@@ -165,7 +164,7 @@ object Topic {
 
     final case class State[A](
         last: A,
-        subscribers: Map[(Token, Int), ScalaQueue[A]]
+        subscribers: Map[(Token, Int), SizedQueue[A]]
     )
 
     /**
@@ -176,8 +175,8 @@ object Topic {
       * @param initial Initial value of the topic.
       */
     def boundedSubscribers[F[_], A](
-        start: A): PubSub.Strategy[A, ScalaQueue[A], State[A], (Token, Int)] =
-      new PubSub.Strategy[A, ScalaQueue[A], State[A], (Token, Int)] {
+        start: A): PubSub.Strategy[A, SizedQueue[A], State[A], (Token, Int)] =
+      new PubSub.Strategy[A, SizedQueue[A], State[A], (Token, Int)] {
         def initial: State[A] = State(start, Map.empty)
 
         def accepts(i: A, state: State[A]): Boolean =
@@ -191,12 +190,12 @@ object Topic {
 
         // Register empty queue
         def regEmpty(selector: (Token, Int), state: State[A]): State[A] =
-          state.copy(subscribers = state.subscribers + (selector -> ScalaQueue.empty))
+          state.copy(subscribers = state.subscribers + (selector -> SizedQueue.empty))
 
-        def get(selector: (Token, Int), state: State[A]): (State[A], Option[ScalaQueue[A]]) =
+        def get(selector: (Token, Int), state: State[A]): (State[A], Option[SizedQueue[A]]) =
           state.subscribers.get(selector) match {
             case None =>
-              (regEmpty(selector, state), Some(ScalaQueue(state.last)))
+              (regEmpty(selector, state), Some(SizedQueue.one(state.last)))
             case r @ Some(q) =>
               if (q.isEmpty) (state, None)
               else (regEmpty(selector, state), r)
