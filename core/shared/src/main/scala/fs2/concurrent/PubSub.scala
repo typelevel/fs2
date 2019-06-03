@@ -170,7 +170,7 @@ private[fs2] object PubSub {
        * there was no successful publish // subscription in the last loop
        */
       @tailrec
-      def loop(ps: PS, action: F[Unit]): (PS, F[Unit]) =
+      def go(ps: PS, action: F[Unit]): (PS, F[Unit]) =
         publishPublishers(ps) match {
           case (ps, resultPublish) =>
             consumeSubscribers(ps) match {
@@ -180,7 +180,7 @@ private[fs2] object PubSub {
                   def nextAction =
                     resultConsume.map(action >> _).getOrElse(action) >>
                       resultPublish.getOrElse(Applicative[F].unit)
-                  loop(ps, nextAction)
+                  go(ps, nextAction)
                 }
             }
         }
@@ -199,7 +199,7 @@ private[fs2] object PubSub {
         def update[X](f: PS => (PS, F[X])): F[X] =
           state.modify { ps =>
             val (ps1, result) = f(ps)
-            val (ps2, action) = loop(ps1, Applicative[F].unit)
+            val (ps2, action) = go(ps1, Applicative[F].unit)
             (ps2, action >> result)
           }.flatten
 

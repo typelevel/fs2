@@ -24,10 +24,10 @@ Quick links:
 * [Docs and getting help](#docs)
 
 [microsite]: http://fs2.io/index.html
-[core-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-core_2.12/1.0.1/fs2-core_2.12-1.0.1-javadoc.jar/!/fs2/index.html
-[io-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-io_2.12/1.0.1/fs2-io_2.12-1.0.1-javadoc.jar/!/fs2/io/index.html
-[rx-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-reactive-streams_2.12/1.0.1/fs2-reactive-streams_2.12-1.0.1-javadoc.jar/!/fs2/interop/reactivestreams/index.html
-[experimental-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-experimental_2.12/1.0.1/fs2-experimental_2.12-1.0.1-javadoc.jar/!/fs2/experimental/index.html
+[core-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-core_2.12/1.0.4/fs2-core_2.12-1.0.4-javadoc.jar/!/fs2/index.html
+[io-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-io_2.12/1.0.4/fs2-io_2.12-1.0.4-javadoc.jar/!/fs2/io/index.html
+[rx-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-reactive-streams_2.12/1.0.4/fs2-reactive-streams_2.12-1.0.4-javadoc.jar/!/fs2/interop/reactivestreams/index.html
+[experimental-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-experimental_2.12/1.0.4/fs2-experimental_2.12-1.0.4-javadoc.jar/!/fs2/experimental/index.html
 
 ### <a id="getit"></a> Where to get the latest version ###
 
@@ -127,6 +127,7 @@ These features mean that FS2 goes beyond streaming I/O to offer a very general a
 
 If you have a project you'd like to include in this list, either open a PR or let us know in [the gitter channel](https://gitter.im/functional-streams-for-scala/fs2) and we'll add a link to it here.
 
+* [chromaprint](https://github.com/mgdigital/Chromaprint.scala): A Scala implementation of the Chromaprint/AcoustID audio fingerprinting algorithm, built with fs2 streams / Cats Effect.
 * [circe-fs2](https://github.com/circe/circe-fs2): Streaming JSON manipulation with [circe](https://github.com/circe/circe).
 * [doobie](https://github.com/tpolecat/doobie): Pure functional JDBC built on fs2.
 * [fs2-aws](https://github.com/saksdirect/fs2-aws): FS2 streams to interact with AWS utilities

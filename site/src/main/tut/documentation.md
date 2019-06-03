@@ -5,12 +5,6 @@ section: "documentation"
 position: 4
 ---
 
-#### API ScalaDocs
-
-* [The core library][core-api], which defines the basic types for streams and pulls. 
-* [The `io` library][io-api], FS2 bindings for NIO-based file I/O and TCP/UDP networking.
-
-
 #### Talks and Presentations
 
 * [Declarative Control Flow with fs2 Stream](https://www.youtube.com/watch?v=YSN__0VEsaw), a talk by [Fabio Labella][1] at the [Typelevel Summit](https://typelevel.org/event/2018-03-summit-boston/), celebrated in Boston in March 2018. Slides available at the author's [Github](https://github.com/SystemFw/TL-Summit-Boston-2018).

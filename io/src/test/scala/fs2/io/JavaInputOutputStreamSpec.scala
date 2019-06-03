@@ -2,17 +2,18 @@ package fs2.io
 
 import cats.effect.IO
 import fs2.{Chunk, EventuallySupport, Fs2Spec, Stream}
-import org.scalacheck.{Arbitrary, Gen}
+import org.scalatest.prop.Generator
+
+import scala.annotation.tailrec
 
 class JavaInputOutputStreamSpec extends Fs2Spec with EventuallySupport {
 
   "ToInputStream" - {
 
-    implicit val streamByteGen: Arbitrary[Stream[IO, Byte]] = Arbitrary {
+    implicit val streamByteGenerator: Generator[Stream[IO, Byte]] =
       for {
-        data <- implicitly[Arbitrary[String]].arbitrary
-        chunkSize <- if (data.length > 0) Gen.chooseNum(1, data.length)
-        else Gen.fail
+        data <- strings
+        chunkSize <- intsBetween(1.min(data.length), data.length)
       } yield {
         def go(rem: String): Stream[IO, Byte] =
           if (chunkSize >= rem.length) Stream.chunk(Chunk.bytes(rem.getBytes))
@@ -22,7 +23,6 @@ class JavaInputOutputStreamSpec extends Fs2Spec with EventuallySupport {
           }
         go(data)
       }
-    }
 
     "arbitrary.streams" in forAll { (stream: Stream[IO, Byte]) =>
       val example = stream.compile.toVector.unsafeRunSync()
@@ -33,7 +33,7 @@ class JavaInputOutputStreamSpec extends Fs2Spec with EventuallySupport {
             // consume in same thread pool. Production application should never do this,
             // instead they have to fork this to dedicated thread pool
             val buff = new Array[Byte](20)
-            @annotation.tailrec
+            @tailrec
             def go(acc: Vector[Byte]): IO[Vector[Byte]] =
               is.read(buff) match {
                 case -1   => IO.pure(acc)
@@ -77,13 +77,18 @@ class JavaInputOutputStreamSpec extends Fs2Spec with EventuallySupport {
     }
 
     "converts to 0..255 int values except EOF mark" in {
-      val s: Stream[IO, Byte] = Stream.range(0, 256, 1).map(_.toByte)
-      val result = toInputStreamResource(s)
-        .use { is =>
-          IO.pure(Vector.fill(257)(is.read()))
+      Stream
+        .range(0, 256, 1)
+        .map(_.toByte)
+        .covary[IO]
+        .through(toInputStream)
+        .map { is =>
+          Vector.fill(257)(is.read())
         }
-        .unsafeRunSync()
-      result shouldBe (Stream.range(0, 256, 1) ++ Stream(-1)).toVector
+        .compile
+        .toVector
+        .map(_.flatten)
+        .asserting(_ shouldBe (Stream.range(0, 256, 1) ++ Stream(-1)).toVector)
     }
   }
 }

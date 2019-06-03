@@ -8,7 +8,7 @@ import cats.effect._
 import java.util.concurrent.atomic.AtomicBoolean
 import scala.concurrent.ExecutionContext
 
-import org.scalatest.FunSuite
+import org.scalatest.funsuite.AnyFunSuite
 
 /**
   * This behaviour is already tested by the Reactive Stream test
@@ -16,7 +16,7 @@ import org.scalatest.FunSuite
   * tests that run the assertions multiple times to make possible
   * failures due to race conditions more repeatable
   */
-class CancellationSpec extends FunSuite {
+class CancellationSpec extends AnyFunSuite {
   implicit val ctx: ContextShift[IO] =
     IO.contextShift(ExecutionContext.global)
 
