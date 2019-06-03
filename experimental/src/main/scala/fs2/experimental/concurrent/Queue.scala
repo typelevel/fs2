@@ -19,10 +19,10 @@ object Queue {
 
   object Strategy {
 
-    def boundedFifo[A](maxSize: Int): PubSub.Strategy[A, Chunk[A], ScalaQueue[A], Int] =
+    def boundedFifo[A](maxSize: Int): PubSub.Strategy[A, Chunk[A], (ScalaQueue[A], Int), Int] =
       PubSub.Strategy.convert(fs2.concurrent.Queue.Strategy.boundedFifo(maxSize))
 
-    def boundedLifo[A](maxSize: Int): PubSub.Strategy[A, Chunk[A], ScalaQueue[A], Int] =
+    def boundedLifo[A](maxSize: Int): PubSub.Strategy[A, Chunk[A], (ScalaQueue[A], Int), Int] =
       PubSub.Strategy.convert(fs2.concurrent.Queue.Strategy.boundedLifo(maxSize))
 
     def circularBuffer[A](maxSize: Int): PubSub.Strategy[A, Chunk[A], ScalaQueue[A], Int] =
