@@ -436,36 +436,6 @@ private[fs2] object PubSub {
           strategy.unsubscribe(selector, state)
       }
 
-    def withSize[A, S](strategy: PubSub.Strategy[A, Chunk[A], S, Int])
-      : PubSub.Strategy[A, Chunk[A], (S, Int), Int] =
-      new PubSub.Strategy[A, Chunk[A], (S, Int), Int] {
-        val initial: (S, Int) = (strategy.initial, 0)
-
-        def publish(a: A, state: (S, Int)): (S, Int) = {
-          val (s, size) = state
-          (strategy.publish(a, s), size + 1)
-        }
-
-        def accepts(i: A, state: (S, Int)): Boolean =
-          strategy.accepts(i, state._1)
-
-        def empty(state: (S, Int)): Boolean = state._2 == 0
-
-        def get(selector: Int, state: (S, Int)): ((S, Int), Option[Chunk[A]]) = {
-          val (s, size) = state
-          val (rem, out) = strategy.get(selector, s)
-          (rem, size - out.size) -> out
-        }
-
-        def subscribe(selector: Int, state: (S, Int)): ((S, Int), Boolean) = {
-          val (s, res) = strategy.subscribe(selector, state._1)
-          (s -> state._2, res)
-        }
-
-        def unsubscribe(selector: Int, state: (S, Int)): (S, Int) =
-          strategy.unsubscribe(selector, state._1) -> state._2
-      }
-
     /**
       * Adapts a strategy to one that supports closing.
       *
