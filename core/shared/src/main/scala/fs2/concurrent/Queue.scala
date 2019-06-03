@@ -4,9 +4,7 @@ package concurrent
 import cats.{Applicative, Eq, Functor, Id}
 import cats.effect.{Concurrent, Sync}
 import cats.implicits._
-import fs2.internal.Token
-
-import scala.collection.immutable.{Queue => ScalaQueue}
+import fs2.internal.{SizedQueue, Token}
 
 /** Provides the ability to enqueue elements to a `Queue`. */
 trait Enqueue[F[_], A] {
@@ -321,25 +319,25 @@ object Queue {
   private[fs2] object Strategy {
 
     /** Unbounded fifo strategy. */
-    def boundedFifo[A](maxSize: Int): PubSub.Strategy[A, Chunk[A], (ScalaQueue[A], Int), Int] =
-      PubSub.Strategy.bounded(maxSize)(PubSub.Strategy.withSize(fifo[A]))(_._2)
+    def boundedFifo[A](maxSize: Int): PubSub.Strategy[A, Chunk[A], SizedQueue[A], Int] =
+      PubSub.Strategy.bounded(maxSize)(fifo[A])(_.size)
 
     /** Unbounded lifo strategy. */
-    def boundedLifo[A](maxSize: Int): PubSub.Strategy[A, Chunk[A], (ScalaQueue[A], Int), Int] =
-      PubSub.Strategy.bounded(maxSize)(PubSub.Strategy.withSize(lifo[A]))(_._2)
+    def boundedLifo[A](maxSize: Int): PubSub.Strategy[A, Chunk[A], SizedQueue[A], Int] =
+      PubSub.Strategy.bounded(maxSize)(lifo[A])(_.size)
 
     /** Strategy for circular buffer, which stores the last `maxSize` enqueued elements and never blocks on enqueue. */
-    def circularBuffer[A](maxSize: Int): PubSub.Strategy[A, Chunk[A], ScalaQueue[A], Int] =
+    def circularBuffer[A](maxSize: Int): PubSub.Strategy[A, Chunk[A], SizedQueue[A], Int] =
       unbounded { (q, a) =>
         if (q.size < maxSize) q :+ a
         else q.tail :+ a
       }
 
     /** Unbounded lifo strategy. */
-    def lifo[A]: PubSub.Strategy[A, Chunk[A], ScalaQueue[A], Int] = unbounded((q, a) => a +: q)
+    def lifo[A]: PubSub.Strategy[A, Chunk[A], SizedQueue[A], Int] = unbounded((q, a) => a +: q)
 
     /** Unbounded fifo strategy. */
-    def fifo[A]: PubSub.Strategy[A, Chunk[A], ScalaQueue[A], Int] = unbounded(_ :+ _)
+    def fifo[A]: PubSub.Strategy[A, Chunk[A], SizedQueue[A], Int] = unbounded(_ :+ _)
 
     /**
       * Strategy that allows at most a single element to be published.
@@ -378,34 +376,35 @@ object Queue {
       *
       * @param append function used to append new elements to the queue
       */
-    def unbounded[A](append: (ScalaQueue[A], A) => ScalaQueue[A])
-      : PubSub.Strategy[A, Chunk[A], ScalaQueue[A], Int] =
-      new PubSub.Strategy[A, Chunk[A], ScalaQueue[A], Int] {
+    def unbounded[A](append: (SizedQueue[A], A) => SizedQueue[A])
+      : PubSub.Strategy[A, Chunk[A], SizedQueue[A], Int] =
+      new PubSub.Strategy[A, Chunk[A], SizedQueue[A], Int] {
 
-        val initial: ScalaQueue[A] = ScalaQueue.empty
+        val initial: SizedQueue[A] = SizedQueue.empty
 
-        def publish(a: A, queueState: ScalaQueue[A]): ScalaQueue[A] =
+        def publish(a: A, queueState: SizedQueue[A]): SizedQueue[A] =
           append(queueState, a)
 
-        def accepts(i: A, queueState: ScalaQueue[A]): Boolean =
+        def accepts(i: A, queueState: SizedQueue[A]): Boolean =
           true
 
-        def empty(queueState: ScalaQueue[A]): Boolean =
+        def empty(queueState: SizedQueue[A]): Boolean =
           queueState.isEmpty
 
-        def get(selector: Int, queueState: ScalaQueue[A]): (ScalaQueue[A], Option[Chunk[A]]) =
+        def get(selector: Int, queueState: SizedQueue[A]): (SizedQueue[A], Option[Chunk[A]]) =
           if (queueState.isEmpty) (queueState, None)
           else {
-            val (out, rem) = Chunk.queueFirstN(queueState, selector)
-            (rem, Some(out))
+            val (out, rem) = Chunk.queueFirstN(queueState.toQueue, selector)
+            (new SizedQueue(rem, (queueState.size - selector).max(0)), Some(out))
           }
 
-        def subscribe(selector: Int, queueState: ScalaQueue[A]): (ScalaQueue[A], Boolean) =
+        def subscribe(selector: Int, queueState: SizedQueue[A]): (SizedQueue[A], Boolean) =
           (queueState, false)
 
-        def unsubscribe(selector: Int, queueState: ScalaQueue[A]): ScalaQueue[A] =
+        def unsubscribe(selector: Int, queueState: SizedQueue[A]): SizedQueue[A] =
           queueState
       }
+
   }
 }
 
@@ -447,7 +446,7 @@ object InspectableQueue {
 
     /** Creates a queue with the specified size bound. */
     def bounded[F[_], A](maxSize: Int)(implicit F: Concurrent[F]): G[InspectableQueue[F, A]] =
-      forStrategy(Queue.Strategy.boundedFifo[A](maxSize))(_._1.headOption)(_._2)
+      forStrategy(Queue.Strategy.boundedFifo[A](maxSize))(_.headOption)(_.size)
 
     /** Creates a queue which stores the last `maxSize` enqueued elements and which never blocks on enqueue. */
     def circularBuffer[F[_], A](maxSize: Int)(
