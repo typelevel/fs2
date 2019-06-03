@@ -8,7 +8,7 @@ import fixUtils._
 class v1 extends SemanticRule("v1") {
   override def fix(implicit doc: SemanticDocument): Patch =
     (StreamAppRules(doc.tree) ++ SchedulerRules(doc.tree) ++ BracketRules(doc.tree) ++ ConcurrentDataTypesRules(
-      doc.tree) ++ ChunkRules(doc.tree) ++ UsabilityRenameRules(doc.tree)).asPatch
+      doc.tree) ++ ChunkRules(doc.tree) ++ UsabilityRenameRules(doc.tree) ++ SinkToPipeRules(doc.tree)).asPatch
 }
 
 object fixUtils {
@@ -508,4 +508,50 @@ object UsabilityRenameRules {
   val joinMatcher = SymbolMatcher.normalized("fs2/Stream.PureOps#join.")
   val joinUnboundedMatcher = SymbolMatcher.normalized("fs2/Stream.PureOps#joinUnbounded.")
 
+}
+
+object SinkToPipeRules {
+  val pre102ToMethodMatcher = SymbolMatcher.exact("fs2/Stream#to().")
+  val post102ToMethodMatcher = SymbolMatcher.exact("fs2/Stream.InvariantOps#to().")
+  val toMethodMatcher = pre102ToMethodMatcher + post102ToMethodMatcher
+
+  def isFs2SinkImported(t: Tree): Boolean =
+    t.collect {
+      case Importer(Term.Name("fs2"), importees) =>
+        importees.collectFirst {
+          case Importee.Name(Name("Sink")) => ()
+          case _: Importee.Wildcard => ()
+        }.isDefined
+   }.exists(identity)
+
+  def replaceImport(sinkImportee: Importee)(implicit doc: SemanticDocument): Patch = List(
+    Patch.removeImportee(sinkImportee),
+    Patch.addGlobalImport(Symbol("fs2/Pipe."))
+  ).asPatch
+
+  def apply(t: Tree)(implicit doc: SemanticDocument): List[Patch] = {
+    val sinkMatcher = SymbolMatcher.exact("fs2/package.Sink#")
+    if (isFs2SinkImported(t)) {
+      t.collect {
+        case toMethodMatcher(t @ Term.Apply(Term.Select(obj, _), args)) => {
+          Patch.replaceTree(t, Term.Apply(Term.Select(obj, Term.Name("through")), args).toString)
+        }
+
+        case sink @ Type.Apply(sinkMatcher(name), List(f, a)) =>
+          name match {
+            case t"Sink" => Patch.replaceTree(sink, s"Pipe[$f, $a, Unit]")
+            case _ => Patch.addRight(a, ", Unit")
+          }
+
+        case sink @ Importee.Rename(Name("Sink"), rename) =>
+          Patch.replaceTree(sink, s"Pipe => $rename")
+
+        case sink @ Importee.Name(Name("Sink")) =>
+          replaceImport(sink)
+
+      }
+    } else {
+      Nil
+    }
+  }
 }
