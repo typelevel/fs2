@@ -1,6 +1,6 @@
 package fs2
 
-import TestUtil._
+import org.scalatest.Succeeded
 
 class ChunkQueueSpec extends Fs2Spec {
   "Chunk.Queue" - {
@@ -42,6 +42,7 @@ class ChunkQueueSpec extends Fs2Spec {
         cq shouldBe cq
         cq shouldBe Chunk.Queue(chunks: _*)
         if (cq.size > 1) cq.drop(1) should not be cq
+        else Succeeded
       }
     }
 
@@ -51,6 +52,7 @@ class ChunkQueueSpec extends Fs2Spec {
         cq.hashCode shouldBe cq.hashCode
         cq.hashCode shouldBe Chunk.Queue(chunks: _*).hashCode
         if (cq.size > 1) cq.drop(1).hashCode should not be cq.hashCode
+        else Succeeded
       }
     }
   }

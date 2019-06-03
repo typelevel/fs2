@@ -62,7 +62,11 @@ class HashSpec extends Fs2Spec {
       .covary[IO]
       .flatMap(i => Stream.chunk(Chunk.bytes(i.toString.getBytes)))
       .through(sha512)
-    val res = s.compile.toVector.unsafeRunSync()
-    Vector.fill(100)(s.compile.toVector).parSequence.unsafeRunSync() shouldBe Vector.fill(100)(res)
+    (for {
+      once <- s.compile.toVector
+      oneHundred <- Vector.fill(100)(s.compile.toVector).parSequence
+    } yield (once, oneHundred)).asserting {
+      case (once, oneHundred) => oneHundred shouldBe Vector.fill(100)(once)
+    }
   }
 }

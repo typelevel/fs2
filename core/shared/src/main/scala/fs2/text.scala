@@ -2,6 +2,8 @@ package fs2
 
 import java.nio.charset.Charset
 
+import scala.annotation.tailrec
+
 /** Provides utilities for working with streams of text (e.g., encoding byte streams to strings). */
 object text {
   private val utf8Charset = Charset.forName("UTF-8")
@@ -121,11 +123,11 @@ object text {
     def extractLines(buffer: Vector[String],
                      chunk: Chunk[String],
                      pendingLineFeed: Boolean): (Chunk[String], Vector[String], Boolean) = {
-      @annotation.tailrec
-      def loop(remainingInput: Vector[String],
-               buffer: Vector[String],
-               output: Vector[String],
-               pendingLineFeed: Boolean): (Chunk[String], Vector[String], Boolean) =
+      @tailrec
+      def go(remainingInput: Vector[String],
+             buffer: Vector[String],
+             output: Vector[String],
+             pendingLineFeed: Boolean): (Chunk[String], Vector[String], Boolean) =
         if (remainingInput.isEmpty) {
           (Chunk.indexedSeq(output), buffer, pendingLineFeed)
         } else {
@@ -133,22 +135,22 @@ object text {
           if (pendingLineFeed) {
             if (next.headOption == Some('\n')) {
               val out = (buffer.init :+ buffer.last.init).mkString
-              loop(next.tail +: remainingInput.tail, Vector.empty, output :+ out, false)
+              go(next.tail +: remainingInput.tail, Vector.empty, output :+ out, false)
             } else {
-              loop(remainingInput, buffer, output, false)
+              go(remainingInput, buffer, output, false)
             }
           } else {
             val (out, carry) = linesFromString(next)
             val pendingLF =
               if (carry.nonEmpty) carry.last == '\r' else pendingLineFeed
-            loop(remainingInput.tail,
-                 if (out.isEmpty) buffer :+ carry else Vector(carry),
-                 if (out.isEmpty) output
-                 else output ++ ((buffer :+ out.head).mkString +: out.tail),
-                 pendingLF)
+            go(remainingInput.tail,
+               if (out.isEmpty) buffer :+ carry else Vector(carry),
+               if (out.isEmpty) output
+               else output ++ ((buffer :+ out.head).mkString +: out.tail),
+               pendingLF)
           }
         }
-      loop(chunk.toVector, buffer, Vector.empty, pendingLineFeed)
+      go(chunk.toVector, buffer, Vector.empty, pendingLineFeed)
     }
 
     def go(buffer: Vector[String],

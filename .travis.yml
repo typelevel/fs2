@@ -2,8 +2,8 @@ language: scala
 
 scala:
   - 2.11.12
-  - 2.13.0-RC1
-  - 2.12.7
+  - 2.13.0-RC2
+  - 2.12.8
 
 jdk:
   - openjdk11
@@ -28,7 +28,7 @@ script:
   - sbt ++$TRAVIS_SCALA_VERSION -Dfile.encoding=UTF8 -Dfs2.test.verbose testJVM
   - sbt ++$TRAVIS_SCALA_VERSION -Dfile.encoding=UTF8 -Dfs2.test.verbose testJS
   - sbt ++$TRAVIS_SCALA_VERSION -Dfile.encoding=UTF8 doc mimaReportBinaryIssues
-  - (test $TRAVIS_SCALA_VERSION == "2.11.12" && sbt ++$TRAVIS_SCALA_VERSION -Dfile.encoding=UTF8 -J-Xms2g -J-Xmx2g docs/tut) || test $TRAVIS_SCALA_VERSION == "2.12.7" || test $TRAVIS_SCALA_VERSION == "2.13.0-RC1"
+  - (test $TRAVIS_SCALA_VERSION == "2.11.12" && sbt ++$TRAVIS_SCALA_VERSION -Dfile.encoding=UTF8 -J-Xms2g -J-Xmx2g docs/tut) || test $TRAVIS_SCALA_VERSION == "2.12.8" || test $TRAVIS_SCALA_VERSION == "2.13.0-RC2"
 
 after_success:
   - test $PUBLISH == "true" && test $TRAVIS_PULL_REQUEST == "false" && test $TRAVIS_BRANCH == "series/1.0" && GPG_WARN_ON_FAILURE=true sbt +publish
