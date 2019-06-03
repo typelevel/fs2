@@ -103,5 +103,18 @@ class TopicSpec extends Fs2Spec {
       p.compile.toList
         .asserting(_.size shouldBe <=(11)) // if the stream won't be discrete we will get much more size notifications
     }
+
+    "unregister subscribers under concurrent load" in {
+      Topic[IO, Int](0)
+        .flatMap { topic =>
+          Stream
+            .range(0, 500)
+            .map(_ => topic.subscribe(1).interruptWhen(Stream(true)))
+            .parJoinUnbounded
+            .compile
+            .drain >> topic.subscribers.take(1).compile.lastOrError
+        }
+        .asserting(_ shouldBe 0)
+    }
   }
 }
