@@ -82,7 +82,7 @@ import scala.concurrent.ExecutionContext
 
 object Converter extends IOApp {
   private val blockingExecutionContext =
-    Resource.make(IO(ExecutionContext.fromExecutorService(Executors.newFixedThreadPool(2))))(ec => IO(ec.shutdown()))
+    Resource.make(IO(ExecutionContext.fromExecutorService(Executors.newCachedThreadPool())))(ec => IO(ec.shutdown()))
 
   val converter: Stream[IO, Unit] = Stream.resource(blockingExecutionContext).flatMap { blockingEC =>
     def fahrenheitToCelsius(f: Double): Double =
