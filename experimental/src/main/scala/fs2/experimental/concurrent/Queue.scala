@@ -2,8 +2,7 @@ package fs2.experimental.concurrent
 
 import cats.effect.Concurrent
 import fs2.Chunk
-
-import scala.collection.immutable.{Queue => ScalaQueue}
+import fs2.internal.SizedQueue
 
 object Queue {
 
@@ -19,26 +18,26 @@ object Queue {
 
   object Strategy {
 
-    def boundedFifo[A](maxSize: Int): PubSub.Strategy[A, Chunk[A], ScalaQueue[A], Int] =
+    def boundedFifo[A](maxSize: Int): PubSub.Strategy[A, Chunk[A], SizedQueue[A], Int] =
       PubSub.Strategy.convert(fs2.concurrent.Queue.Strategy.boundedFifo(maxSize))
 
-    def boundedLifo[A](maxSize: Int): PubSub.Strategy[A, Chunk[A], ScalaQueue[A], Int] =
+    def boundedLifo[A](maxSize: Int): PubSub.Strategy[A, Chunk[A], SizedQueue[A], Int] =
       PubSub.Strategy.convert(fs2.concurrent.Queue.Strategy.boundedLifo(maxSize))
 
-    def circularBuffer[A](maxSize: Int): PubSub.Strategy[A, Chunk[A], ScalaQueue[A], Int] =
+    def circularBuffer[A](maxSize: Int): PubSub.Strategy[A, Chunk[A], SizedQueue[A], Int] =
       PubSub.Strategy.convert(fs2.concurrent.Queue.Strategy.circularBuffer(maxSize))
 
-    def fifo[A]: PubSub.Strategy[A, Chunk[A], ScalaQueue[A], Int] =
+    def fifo[A]: PubSub.Strategy[A, Chunk[A], SizedQueue[A], Int] =
       PubSub.Strategy.convert(fs2.concurrent.Queue.Strategy.fifo)
 
-    def lifo[A]: PubSub.Strategy[A, Chunk[A], ScalaQueue[A], Int] =
+    def lifo[A]: PubSub.Strategy[A, Chunk[A], SizedQueue[A], Int] =
       PubSub.Strategy.convert(fs2.concurrent.Queue.Strategy.lifo)
 
     def synchronous[A]: PubSub.Strategy[A, Chunk[A], (Boolean, Option[A]), Int] =
       PubSub.Strategy.convert(fs2.concurrent.Queue.Strategy.synchronous)
 
-    def unbounded[A](append: (ScalaQueue[A], A) => ScalaQueue[A])
-      : PubSub.Strategy[A, Chunk[A], ScalaQueue[A], Int] =
+    def unbounded[A](append: (SizedQueue[A], A) => SizedQueue[A])
+      : PubSub.Strategy[A, Chunk[A], SizedQueue[A], Int] =
       PubSub.Strategy.convert(fs2.concurrent.Queue.Strategy.unbounded(append))
 
   }
