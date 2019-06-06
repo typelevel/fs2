@@ -37,13 +37,13 @@ abstract class Fs2Spec
   implicit val contextShiftIO: ContextShift[IO] =
     IO.contextShift(realExecutionContext)
 
-  // Override the ScalaTest provided execution context and declare it non-implicit
-  // Note: don't override this to a truly concurrent execution context, as ScalaTest
-  // needs its own specialized one or else will fail intermittently with
-  // ConcurrentModificationExceptions
+  // On the JVM, use the default ScalaTest provided EC for test registration but do
+  // not declare it implicit, so that implicit uses pick up `realExecutionContext`.
+  // This works around a bug in ScalaTest with AsyncFreeSpec, nested scopes, and
+  // intermittent ConcurrentModificationExceptions.
+  // On JS, always use `realExecutionContext`, knowing that CMEs cannot occur.
   override val executionContext: ExecutionContext =
     if (isJVM) super.executionContext else realExecutionContext
-
 
   lazy val verbose: Boolean = sys.props.get("fs2.test.verbose").isDefined
 
