@@ -31,11 +31,17 @@ abstract class Fs2Spec
   implicit val timeout: FiniteDuration = 60.seconds
   val timeLimit: Span = timeout
 
-  implicit override val executionContext: ExecutionContext =
+  // Override the ScalaTest provided execution context and declare it non-implicit
+  // Note: don't override this to a truly concurrent execution context, as ScalaTest
+  // needs its own specialized one or else will fail intermittently with
+  // ConcurrentModificationExceptions
+  override val executionContext: ExecutionContext = super.executionContext
+
+  implicit val realExecutionContext: ExecutionContext =
     scala.concurrent.ExecutionContext.Implicits.global
-  implicit val timerIO: Timer[IO] = IO.timer(executionContext)
+  implicit val timerIO: Timer[IO] = IO.timer(realExecutionContext)
   implicit val contextShiftIO: ContextShift[IO] =
-    IO.contextShift(executionContext)
+    IO.contextShift(realExecutionContext)
 
   lazy val verbose: Boolean = sys.props.get("fs2.test.verbose").isDefined
 
