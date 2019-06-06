@@ -7,12 +7,12 @@ import scala.concurrent.{ExecutionContext, Future}
 import org.scalatest.{Assertion, Succeeded}
 
 trait EffectTestSupportLowPriority {
-  implicit def executionContext: ExecutionContext
+  protected def executionContext: ExecutionContext
 
   implicit def propCheckerAssertingSyncIO: ToFuturePropCheckerAsserting[SyncIO] =
     new ToFuturePropCheckerAsserting(new (SyncIO ~> Future) {
-      def apply[X](io: SyncIO[X]): Future[X] = Future(io.unsafeRunSync)
-    })
+      def apply[X](io: SyncIO[X]): Future[X] = Future(io.unsafeRunSync)(executionContext)
+    })(executionContext)
 }
 
 trait EffectTestSupport extends EffectTestSupportLowPriority {
@@ -28,5 +28,5 @@ trait EffectTestSupport extends EffectTestSupportLowPriority {
   implicit def propCheckerAssertingIO: ToFuturePropCheckerAsserting[IO] =
     new ToFuturePropCheckerAsserting(new (IO ~> Future) {
       def apply[X](io: IO[X]): Future[X] = io.unsafeToFuture
-    })
+    })(executionContext)
 }

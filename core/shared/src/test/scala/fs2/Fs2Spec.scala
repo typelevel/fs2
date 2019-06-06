@@ -31,11 +31,19 @@ abstract class Fs2Spec
   implicit val timeout: FiniteDuration = 60.seconds
   val timeLimit: Span = timeout
 
-  implicit override val executionContext: ExecutionContext =
+  implicit val realExecutionContext: ExecutionContext =
     scala.concurrent.ExecutionContext.Implicits.global
-  implicit val timerIO: Timer[IO] = IO.timer(executionContext)
+  implicit val timerIO: Timer[IO] = IO.timer(realExecutionContext)
   implicit val contextShiftIO: ContextShift[IO] =
-    IO.contextShift(executionContext)
+    IO.contextShift(realExecutionContext)
+
+  // On the JVM, use the default ScalaTest provided EC for test registration but do
+  // not declare it implicit, so that implicit uses pick up `realExecutionContext`.
+  // This works around a bug in ScalaTest with AsyncFreeSpec, nested scopes, and
+  // intermittent ConcurrentModificationExceptions.
+  // On JS, always use `realExecutionContext`, knowing that CMEs cannot occur.
+  override val executionContext: ExecutionContext =
+    if (isJVM) super.executionContext else realExecutionContext
 
   lazy val verbose: Boolean = sys.props.get("fs2.test.verbose").isDefined
 
