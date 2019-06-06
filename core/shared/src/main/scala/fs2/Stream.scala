@@ -2040,13 +2040,15 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
                         .fold[F2[Unit]](F2.unit)(F2.raiseError)
                     }
 
-                  Stream.bracket(F2.start(runOuter))(
-                    _ =>
-                      stop(None) >> running.discrete
-                        .dropWhile(_ > 0)
-                        .take(1)
-                        .compile
-                        .drain >> signalResult) >>
+                  Stream
+                    .bracket(F2.start(runOuter))(
+                      _ =>
+                        stop(None) >> running.discrete
+                          .dropWhile(_ > 0)
+                          .take(1)
+                          .compile
+                          .drain >> signalResult)
+                    .scope >>
                     outputQ.dequeue
                       .flatMap(Stream.chunk(_).covary[F2])
 

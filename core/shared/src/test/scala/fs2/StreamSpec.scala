@@ -2227,6 +2227,18 @@ class StreamSpec extends Fs2Spec {
         Stream(Stream.sleep_[IO](1.minute), Stream.raiseError[IO](new Err)).parJoinUnbounded.compile.drain
           .assertThrows[Err]
       }
+
+      "propagate error from inner stream before ++" in {
+
+        val err = new Err
+
+        (Stream.emit(Stream.raiseError[IO](err)).parJoinUnbounded ++ Stream.emit(1))
+        .compile
+        .toList
+        .attempt
+        .asserting ( _ shouldBe Left(err) )
+
+      }
     }
 
     "pause" in forAll { (s1: Stream[Pure, Int]) =>
