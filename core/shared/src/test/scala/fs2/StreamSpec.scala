@@ -3081,6 +3081,15 @@ class StreamSpec extends Fs2Spec {
       }
     }
 
+    "translateInterruptible" in {
+      Stream.eval(IO.never).merge(Stream.eval(IO(1)).repeat)
+        .interruptAfter(10.millis)
+        .translateInterruptible(cats.arrow.FunctionK.id[IO])
+        .compile
+        .drain
+        .assertNoException
+    }
+
     "unfold" in {
       Stream
         .unfold((0, 1)) {
