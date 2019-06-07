@@ -3082,7 +3082,7 @@ class StreamSpec extends Fs2Spec {
     }
 
     "translateInterruptible" in {
-      Stream.eval(IO.never).merge(Stream.eval(IO(1)).repeat)
+      Stream.eval(IO.never).merge(Stream.eval(IO(1)).delayBy(5.millis).repeat)
         .interruptAfter(10.millis)
         .translateInterruptible(cats.arrow.FunctionK.id[IO])
         .compile
