@@ -65,6 +65,8 @@ trait Socket[F[_]] {
   /** Indicates to peer, we are done writing. **/
   def endOfOutput: F[Unit]
 
+  def isOpen : F[Boolean]
+
   /** Closes the connection corresponding to this `Socket`. */
   def close: F[Unit]
 
@@ -410,6 +412,7 @@ object Socket {
 
           def localAddress: F[SocketAddress] = F.delay(ch.getLocalAddress)
           def remoteAddress: F[SocketAddress] = F.delay(ch.getRemoteAddress)
+          def isOpen : F[Boolean] = F.delay(ch.isOpen)
           def close: F[Unit] = F.delay(ch.close())
           def endOfOutput: F[Unit] = F.delay { ch.shutdownOutput(); () }
           def endOfInput: F[Unit] = F.delay { ch.shutdownInput(); () }
