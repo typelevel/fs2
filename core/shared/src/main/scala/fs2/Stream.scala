@@ -2542,9 +2542,6 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
 
   /**
     * Translates effect type from `F` to `G` using the supplied `FunctionK`.
-    *
-    * Note: the resulting stream is *not* interruptible in all cases. To get an interruptible
-    * stream, `translateInterruptible` instead, which requires a `Concurrent[G]` instance.
     */
   def translateInterruptible[F2[x] >: F[x], G[_]: Concurrent](u: F2 ~> G): Stream[G, O] =
     Stream.fromFreeC[G, O](
