@@ -107,10 +107,12 @@ package object io {
       def useOs(os: OutputStream): Stream[F, Unit] =
         s.chunks.evalMap(c => writeBytesToOutputStream(os, c, blockingExecutionContext))
 
-      if (closeAfterUse)
-        Stream.bracket(fos)(os => F.delay(os.close())).flatMap(useOs)
-      else
-        Stream.eval(fos).flatMap(useOs)
+      def close(os: OutputStream): F[Unit] =
+        cs.evalOn(blockingExecutionContext)(F.delay(os.close()))
+
+      val os = if (closeAfterUse) Stream.bracket(fos)(close) else Stream.eval(fos)
+      os.flatMap(os =>
+        useOs(os).scope ++ Stream.eval(cs.evalOn(blockingExecutionContext)(F.delay(os.flush()))))
     }
 
   private def writeBytesToOutputStream[F[_]](os: OutputStream,
