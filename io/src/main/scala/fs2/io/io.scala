@@ -7,7 +7,7 @@ import cats.implicits._
 import java.io.{InputStream, OutputStream}
 import java.nio.charset.Charset
 
-import scala.concurrent.{ExecutionContext, blocking}
+import scala.concurrent.ExecutionContext
 
 /**
   * Provides various ways to work with streams that perform IO.
@@ -185,7 +185,7 @@ package object io {
     */
   private[io] def blockingDelay[F[_], A](blockingExecutionContext: ExecutionContext)(
       thunk: => A)(implicit F: Sync[F], cs: ContextShift[F]): F[A] =
-    cs.evalOn(blockingExecutionContext)(F.delay(blocking(thunk)))
+    cs.evalOn(blockingExecutionContext)(F.delay(thunk))
 
   private[io] def asyncYield[F[_], A](
       k: (Either[Throwable, A] => Unit) => Unit)(implicit F: Async[F], cs: ContextShift[F]): F[A] =
