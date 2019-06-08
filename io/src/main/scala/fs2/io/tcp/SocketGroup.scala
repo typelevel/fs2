@@ -16,7 +16,7 @@ import java.nio.channels.{
 }
 import java.nio.channels.AsynchronousChannelGroup
 import java.nio.channels.spi.AsynchronousChannelProvider
-import java.util.concurrent.{Executors, ThreadFactory, TimeUnit}
+import java.util.concurrent.{ThreadFactory, TimeUnit}
 
 import cats.implicits._
 import cats.effect.{Concurrent, ContextShift, Resource, Sync}
@@ -25,9 +25,9 @@ import cats.effect.concurrent.{Ref, Semaphore}
 import fs2.internal.ThreadFactories
 
 /**
- * Resource that provides the ability to open client and server TCP sockets that all share
- * an underlying non-blocking channel group.
- */
+  * Resource that provides the ability to open client and server TCP sockets that all share
+  * an underlying non-blocking channel group.
+  */
 final class SocketGroup(private[fs2] val channelGroup: AsynchronousChannelGroup,
                         private[fs2] val blockingExecutionContext: ExecutionContext) {
 
@@ -335,30 +335,13 @@ object SocketGroup {
 
   def apply[F[_]: Sync: ContextShift](
       blockingExecutionContext: ExecutionContext,
-      nonBlockingThreadCount: Int,
-      nonBlockingThreadFactory: ThreadFactory): Resource[F, SocketGroup] =
+      nonBlockingThreadCount: Int = 4,
+      nonBlockingThreadFactory: ThreadFactory =
+        ThreadFactories.named("fs2-socket-group-blocking", true)): Resource[F, SocketGroup] =
     Resource(blockingDelay(blockingExecutionContext) {
       val acg = AsynchronousChannelGroup.withFixedThreadPool(nonBlockingThreadCount,
                                                              nonBlockingThreadFactory)
       val group = new SocketGroup(acg, blockingExecutionContext)
       (group, blockingDelay(blockingExecutionContext)(acg.shutdown()))
     })
-
-  def simple[F[_]](blockingThreadCount: Int = 1, nonBlockingThreadCount: Int = 4)(
-      implicit F: Sync[F],
-      cs: ContextShift[F]): Resource[F, SocketGroup] = {
-    val blockingExecutionContext: Resource[F, ExecutionContext] =
-      Resource
-        .make(F.delay {
-          ExecutionContext.fromExecutorService(
-            Executors.newFixedThreadPool(blockingThreadCount,
-                                         ThreadFactories.named("fs2-socket-group-blocking", true)))
-        })(ec => F.delay(ec.shutdown()))
-        .widen[ExecutionContext]
-    blockingExecutionContext.flatMap { ec =>
-      apply[F](ec,
-               nonBlockingThreadCount,
-               ThreadFactories.named("fs2-socket-group-non-blocking", true))
-    }
-  }
 }

@@ -10,6 +10,9 @@ import cats.effect.concurrent.Deferred
 
 class SocketSpec extends Fs2Spec {
 
+  def mkSocketGroup: Stream[IO, SocketGroup] =
+    Stream.resource(blockingExecutionContext.flatMap(ec => SocketGroup[IO](ec)))
+
   "tcp" - {
 
     // spawns echo server, takes whatever client sends and echoes it back
@@ -58,8 +61,7 @@ class SocketSpec extends Fs2Spec {
           .parJoin(10)
 
       val result =
-        Stream
-          .resource(SocketGroup.simple[IO]())
+        mkSocketGroup
           .flatMap { socketGroup =>
             Stream(echoServer(socketGroup).drain, clients(socketGroup))
               .parJoin(2)
@@ -110,8 +112,7 @@ class SocketSpec extends Fs2Spec {
         } yield op.map(_.size).getOrElse(-1)
 
       val result =
-        Stream
-          .resource(SocketGroup.simple[IO]())
+        mkSocketGroup
           .flatMap { socketGroup =>
             Stream(junkServer(socketGroup), klient(socketGroup))
               .parJoin(2)
