@@ -4,28 +4,11 @@ package tcp
 
 import java.net.InetSocketAddress
 import java.net.InetAddress
-import java.nio.channels.AsynchronousChannelGroup
-import java.nio.channels.spi.AsynchronousChannelProvider
 
 import cats.effect.IO
 import cats.effect.concurrent.Deferred
 
-import fs2.internal.ThreadFactories
-
-import org.scalatest.BeforeAndAfterAll
-
-import scala.concurrent.ExecutionContext
-
-class SocketSpec extends Fs2Spec with BeforeAndAfterAll {
-
-  implicit val tcpACG: AsynchronousChannelGroup = AsynchronousChannelProvider
-    .provider()
-    .openAsynchronousChannelGroup(8, ThreadFactories.named("fs2-ag-tcp", true))
-
-  override def afterAll() = {
-    tcpACG.shutdownNow
-    super.afterAll()
-  }
+class SocketSpec extends Fs2Spec {
 
   "tcp" - {
 
@@ -40,10 +23,9 @@ class SocketSpec extends Fs2Spec with BeforeAndAfterAll {
       val localBindAddress =
         Deferred[IO, InetSocketAddress].unsafeRunSync()
 
-      val echoServer: ExecutionContext => Stream[IO, Unit] = blockingExecutionContext =>
-        Socket
-          .serverWithLocalAddress[IO](blockingExecutionContext,
-                                      new InetSocketAddress(InetAddress.getByName(null), 0))
+      val echoServer: SocketGroup => Stream[IO, Unit] = socketGroup =>
+        socketGroup
+          .serverWithLocalAddress[IO](new InetSocketAddress(InetAddress.getByName(null), 0))
           .flatMap {
             case Left(local) => Stream.eval_(localBindAddress.complete(local))
             case Right(s) =>
@@ -57,20 +39,19 @@ class SocketSpec extends Fs2Spec with BeforeAndAfterAll {
           }
           .parJoinUnbounded
 
-      val clients: ExecutionContext => Stream[IO, Array[Byte]] = blockingExecutionContext =>
+      val clients: SocketGroup => Stream[IO, Array[Byte]] = socketGroup =>
         Stream
           .range(0, clientCount)
           .map { idx =>
             Stream.eval(localBindAddress.get).flatMap { local =>
-              Stream.resource(Socket.client[IO](blockingExecutionContext, local)).flatMap {
-                socket =>
-                  Stream
-                    .chunk(message)
-                    .through(socket.writes())
-                    .drain
-                    .onFinalize(socket.endOfOutput)
-                    .scope ++
-                    socket.reads(1024, None).chunks.map(_.toArray)
+              Stream.resource(socketGroup.client[IO](local)).flatMap { socket =>
+                Stream
+                  .chunk(message)
+                  .through(socket.writes())
+                  .drain
+                  .onFinalize(socket.endOfOutput)
+                  .scope ++
+                  socket.reads(1024, None).chunks.map(_.toArray)
               }
             }
           }
@@ -78,9 +59,9 @@ class SocketSpec extends Fs2Spec with BeforeAndAfterAll {
 
       val result =
         Stream
-          .resource(blockingExecutionContext)
-          .flatMap { blockingExecutionContext =>
-            Stream(echoServer(blockingExecutionContext).drain, clients(blockingExecutionContext))
+          .resource(SocketGroup.simple[IO]())
+          .flatMap { socketGroup =>
+            Stream(echoServer(socketGroup).drain, clients(socketGroup))
               .parJoin(2)
               .take(clientCount)
           }
@@ -100,10 +81,9 @@ class SocketSpec extends Fs2Spec with BeforeAndAfterAll {
       val localBindAddress =
         Deferred[IO, InetSocketAddress].unsafeRunSync()
 
-      val junkServer: ExecutionContext => Stream[IO, Nothing] = blockingExecutionContext =>
-        Socket
-          .serverWithLocalAddress[IO](blockingExecutionContext,
-                                      new InetSocketAddress(InetAddress.getByName(null), 0))
+      val junkServer: SocketGroup => Stream[IO, Nothing] = socketGroup =>
+        socketGroup
+          .serverWithLocalAddress[IO](new InetSocketAddress(InetAddress.getByName(null), 0))
           .flatMap {
             case Left(local) => Stream.eval_(localBindAddress.complete(local))
             case Right(s) =>
@@ -121,19 +101,19 @@ class SocketSpec extends Fs2Spec with BeforeAndAfterAll {
 
       val sizes = Vector(1, 2, 3, 4, 3, 2, 1)
 
-      val klient: ExecutionContext => Stream[IO, Int] = blockingExecutionContext =>
+      val klient: SocketGroup => Stream[IO, Int] = socketGroup =>
         for {
           addr <- Stream.eval(localBindAddress.get)
-          sock <- Stream.resource(Socket.client[IO](blockingExecutionContext, addr))
+          sock <- Stream.resource(socketGroup.client[IO](addr))
           size <- Stream.emits(sizes)
           op <- Stream.eval(sock.readN(size, None))
         } yield op.map(_.size).getOrElse(-1)
 
       val result =
         Stream
-          .resource(blockingExecutionContext)
-          .flatMap { blockingExecutionContext =>
-            Stream(junkServer(blockingExecutionContext), klient(blockingExecutionContext))
+          .resource(SocketGroup.simple[IO]())
+          .flatMap { socketGroup =>
+            Stream(junkServer(socketGroup), klient(socketGroup))
               .parJoin(2)
               .take(sizes.length)
           }
