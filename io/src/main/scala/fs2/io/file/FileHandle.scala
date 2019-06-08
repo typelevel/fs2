@@ -2,7 +2,7 @@ package fs2
 package io
 package file
 
-import scala.concurrent.{ExecutionContext, blocking}
+import scala.concurrent.ExecutionContext
 
 import java.nio.ByteBuffer
 import java.nio.channels.{FileChannel, FileLock}
@@ -103,7 +103,7 @@ private[file] object FileHandle {
       type Lock = FileLock
 
       private def doBlocking[A](a: => A): F[A] =
-        cs.evalOn(blockingExecutionContext)(F.delay(blocking(a)))
+        blockingDelay(blockingExecutionContext)(a)
 
       override def force(metaData: Boolean): F[Unit] =
         doBlocking(chan.force(metaData))
