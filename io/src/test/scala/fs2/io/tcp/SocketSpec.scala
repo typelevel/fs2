@@ -14,6 +14,8 @@ import fs2.internal.ThreadFactories
 
 import org.scalatest.BeforeAndAfterAll
 
+import scala.concurrent.ExecutionContext
+
 class SocketSpec extends Fs2Spec with BeforeAndAfterAll {
 
   implicit val tcpACG: AsynchronousChannelGroup = AsynchronousChannelProvider
@@ -38,9 +40,10 @@ class SocketSpec extends Fs2Spec with BeforeAndAfterAll {
       val localBindAddress =
         Deferred[IO, InetSocketAddress].unsafeRunSync()
 
-      val echoServer: Stream[IO, Unit] = {
+      val echoServer: ExecutionContext => Stream[IO, Unit] = blockingExecutionContext =>
         Socket
-          .serverWithLocalAddress[IO](new InetSocketAddress(InetAddress.getByName(null), 0))
+          .serverWithLocalAddress[IO](blockingExecutionContext,
+                                      new InetSocketAddress(InetAddress.getByName(null), 0))
           .flatMap {
             case Left(local) => Stream.eval_(localBindAddress.complete(local))
             case Right(s) =>
@@ -53,34 +56,38 @@ class SocketSpec extends Fs2Spec with BeforeAndAfterAll {
               }
           }
           .parJoinUnbounded
-      }
 
-      val clients: Stream[IO, Array[Byte]] = {
+      val clients: ExecutionContext => Stream[IO, Array[Byte]] = blockingExecutionContext =>
         Stream
           .range(0, clientCount)
           .map { idx =>
             Stream.eval(localBindAddress.get).flatMap { local =>
-              Stream.resource(Socket.client[IO](local)).flatMap { socket =>
-                Stream
-                  .chunk(message)
-                  .through(socket.writes())
-                  .drain
-                  .onFinalize(socket.endOfOutput)
-                  .scope ++
-                  socket.reads(1024, None).chunks.map(_.toArray)
+              Stream.resource(Socket.client[IO](blockingExecutionContext, local)).flatMap {
+                socket =>
+                  Stream
+                    .chunk(message)
+                    .through(socket.writes())
+                    .drain
+                    .onFinalize(socket.endOfOutput)
+                    .scope ++
+                    socket.reads(1024, None).chunks.map(_.toArray)
               }
             }
           }
           .parJoin(10)
-      }
 
-      val result = Stream(echoServer.drain, clients)
-        .parJoin(2)
-        .take(clientCount)
-        .compile
-        .toVector
-        .unsafeRunTimed(timeout)
-        .get
+      val result =
+        Stream
+          .resource(blockingExecutionContext)
+          .flatMap { blockingExecutionContext =>
+            Stream(echoServer(blockingExecutionContext).drain, clients(blockingExecutionContext))
+              .parJoin(2)
+              .take(clientCount)
+          }
+          .compile
+          .toVector
+          .unsafeRunTimed(timeout)
+          .get
       result.size shouldBe clientCount
       result.map { new String(_) }.toSet shouldBe Set("fs2.rocks")
     }
@@ -93,9 +100,10 @@ class SocketSpec extends Fs2Spec with BeforeAndAfterAll {
       val localBindAddress =
         Deferred[IO, InetSocketAddress].unsafeRunSync()
 
-      val junkServer: Stream[IO, Nothing] =
+      val junkServer: ExecutionContext => Stream[IO, Nothing] = blockingExecutionContext =>
         Socket
-          .serverWithLocalAddress[IO](new InetSocketAddress(InetAddress.getByName(null), 0))
+          .serverWithLocalAddress[IO](blockingExecutionContext,
+                                      new InetSocketAddress(InetAddress.getByName(null), 0))
           .flatMap {
             case Left(local) => Stream.eval_(localBindAddress.complete(local))
             case Right(s) =>
@@ -113,18 +121,22 @@ class SocketSpec extends Fs2Spec with BeforeAndAfterAll {
 
       val sizes = Vector(1, 2, 3, 4, 3, 2, 1)
 
-      val klient: Stream[IO, Int] =
+      val klient: ExecutionContext => Stream[IO, Int] = blockingExecutionContext =>
         for {
           addr <- Stream.eval(localBindAddress.get)
-          sock <- Stream.resource(Socket.client[IO](addr))
+          sock <- Stream.resource(Socket.client[IO](blockingExecutionContext, addr))
           size <- Stream.emits(sizes)
           op <- Stream.eval(sock.readN(size, None))
         } yield op.map(_.size).getOrElse(-1)
 
       val result =
-        Stream(junkServer, klient)
-          .parJoin(2)
-          .take(sizes.length)
+        Stream
+          .resource(blockingExecutionContext)
+          .flatMap { blockingExecutionContext =>
+            Stream(junkServer(blockingExecutionContext), klient(blockingExecutionContext))
+              .parJoin(2)
+              .take(sizes.length)
+          }
           .compile
           .toVector
           .unsafeRunTimed(timeout)
