@@ -28,8 +28,8 @@ import fs2.internal.ThreadFactories
   * Resource that provides the ability to open client and server TCP sockets that all share
   * an underlying non-blocking channel group.
   */
-final class SocketGroup(private[fs2] val channelGroup: AsynchronousChannelGroup,
-                        private[fs2] val blockingExecutionContext: ExecutionContext) {
+final class SocketGroup(channelGroup: AsynchronousChannelGroup,
+                        blockingExecutionContext: ExecutionContext) {
 
   /**
     * Stream that connects to the specified server and emits a single socket,
