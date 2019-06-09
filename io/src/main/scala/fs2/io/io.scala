@@ -120,7 +120,7 @@ package object io {
                                              blockingExecutionContext: ExecutionContext)(
       implicit F: Sync[F],
       cs: ContextShift[F]): F[Unit] =
-    cs.evalOn(blockingExecutionContext)(F.delay(blocking(os.write(bytes.toArray))))
+    blockingDelay(blockingExecutionContext)(os.write(bytes.toArray))
 
   //
   // STDIN/STDOUT Helpers
