@@ -31,13 +31,12 @@ private[io] object JavaInputOutputStream {
                          result: Option[Throwable]): F[Unit] =
       upState.set(UpStreamState(done = true, err = result)) >> queue.enqueue1(Left(result))
 
-    /**
-      * Takes source and runs it through queue, interrupting when dnState signals stream is done.
-      * Note when the exception in stream is encountered the exception is emitted on the left to the queue
-      * and that would be the last message enqueued.
-      *
-      * Emits only once, but runs in background until either source is exhausted or `interruptWhenTrue` yields to true
-      */
+    /* Takes source and runs it through queue, interrupting when dnState signals stream is done.
+     * Note when the exception in stream is encountered the exception is emitted on the left to the queue
+     * and that would be the last message enqueued.
+     *
+     * Emits only once, but runs in background until either source is exhausted or `interruptWhenTrue` yields to true
+     */
     def processInput(
         source: Stream[F, Byte],
         queue: Queue[F, Either[Option[Throwable], Bytes]],

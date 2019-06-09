@@ -333,9 +333,20 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup,
 
 object SocketGroup {
 
+  /**
+    * Creates a `SocketGroup`.
+    *
+    * The supplied `blockingExecutionContext` is used for networking calls other than
+    * reads/writes. All reads and writes are performed on a non-blocking thread pool
+    * associated with the `SocketGroup`. The non-blocking thread pool is sized to
+    * the number of available processors but that can be overridden by supplying
+    * a value for `nonBlockingThreadCount`. See
+    * https://openjdk.java.net/projects/nio/resources/AsynchronousIo.html for more
+    * information on NIO thread pooling.
+    */
   def apply[F[_]: Sync: ContextShift](
       blockingExecutionContext: ExecutionContext,
-      nonBlockingThreadCount: Int = 4,
+      nonBlockingThreadCount: Int = Runtime.getRuntime.availableProcessors(),
       nonBlockingThreadFactory: ThreadFactory =
         ThreadFactories.named("fs2-socket-group-blocking", true)): Resource[F, SocketGroup] =
     Resource(blockingDelay(blockingExecutionContext) {
