@@ -73,29 +73,25 @@ libraryDependencies += "co.fs2" %%% "fs2-core" % "1.0.4"
 FS2 is a streaming I/O library. The design goals are compositionality, expressiveness, resource safety, and speed. Here's a simple example of its use:
 
 ```scala
-import cats.effect.{ExitCode, IO, IOApp, Resource}
+import cats.effect.{Blocker, ExitCode, IO, IOApp, Resource}
 import cats.implicits._
 import fs2.{io, text, Stream}
 import java.nio.file.Paths
-import java.util.concurrent.Executors
-import scala.concurrent.ExecutionContext
 
 object Converter extends IOApp {
-  private val blockingExecutionContext =
-    Resource.make(IO(ExecutionContext.fromExecutorService(Executors.newCachedThreadPool())))(ec => IO(ec.shutdown()))
 
-  val converter: Stream[IO, Unit] = Stream.resource(blockingExecutionContext).flatMap { blockingEC =>
+  val converter: Stream[IO, Unit] = Stream.resource(Blocker[IO]).flatMap { blocker =>
     def fahrenheitToCelsius(f: Double): Double =
       (f - 32.0) * (5.0/9.0)
 
-    io.file.readAll[IO](Paths.get("testdata/fahrenheit.txt"), blockingEC, 4096)
+    io.file.readAll[IO](Paths.get("testdata/fahrenheit.txt"), blocker, 4096)
       .through(text.utf8Decode)
       .through(text.lines)
       .filter(s => !s.trim.isEmpty && !s.startsWith("//"))
       .map(line => fahrenheitToCelsius(line.toDouble).toString)
       .intersperse("\n")
       .through(text.utf8Encode)
-      .through(io.file.writeAll(Paths.get("testdata/celsius.txt"), blockingEC))
+      .through(io.file.writeAll(Paths.get("testdata/celsius.txt"), blocker))
   }
   
   def run(args: List[String]): IO[ExitCode] =

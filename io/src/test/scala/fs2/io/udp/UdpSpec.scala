@@ -13,13 +13,13 @@ import java.nio.channels.InterruptedByTimeoutException
 import scala.collection.JavaConverters._
 import scala.concurrent.duration._
 
-import cats.effect.IO
+import cats.effect.{Blocker, IO}
 import cats.implicits._
 
 class UdpSpec extends Fs2Spec {
 
   def mkSocketGroup: Stream[IO, SocketGroup] =
-    Stream.resource(blockingExecutionContext.flatMap(ec => SocketGroup(ec)))
+    Stream.resource(Blocker[IO].flatMap(blocker => SocketGroup(blocker)))
 
   "udp" - {
     "echo one" in {

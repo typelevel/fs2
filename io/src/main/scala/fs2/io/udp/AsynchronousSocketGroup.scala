@@ -4,7 +4,6 @@ package udp
 
 import scala.collection.JavaConverters._
 import scala.collection.mutable.PriorityQueue
-import scala.concurrent.ExecutionContext
 import scala.concurrent.duration.FiniteDuration
 
 import java.io.IOException
@@ -21,7 +20,7 @@ import java.nio.channels.{
 import java.util.ArrayDeque
 import java.util.concurrent.{ConcurrentLinkedQueue, CountDownLatch}
 
-import cats.effect.{ContextShift, Resource, Sync}
+import cats.effect.{Blocker, ContextShift, Resource, Sync}
 
 /**
   * Supports read/write operations on an arbitrary number of UDP sockets using a shared selector thread.
@@ -49,10 +48,8 @@ private[udp] object AsynchronousSocketGroup {
    */
   private class WriterPacket(val remote: InetSocketAddress, val bytes: ByteBuffer)
 
-  def apply[F[_]: Sync: ContextShift](
-      blockingExecutionContext: ExecutionContext): Resource[F, AsynchronousSocketGroup] =
-    Resource.make(blockingDelay(blockingExecutionContext)(unsafe))(g =>
-      blockingDelay(blockingExecutionContext)(g.close()))
+  def apply[F[_]: Sync: ContextShift](blocker: Blocker): Resource[F, AsynchronousSocketGroup] =
+    Resource.make(blocker.delay(unsafe))(g => blocker.delay(g.close()))
 
   private def unsafe: AsynchronousSocketGroup = new AsynchronousSocketGroup {
 

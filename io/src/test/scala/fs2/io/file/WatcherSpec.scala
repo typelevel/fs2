@@ -4,7 +4,7 @@ package file
 
 import scala.concurrent.duration._
 
-import cats.effect.IO
+import cats.effect.{Blocker, IO}
 import cats.implicits._
 import java.nio.file._
 
@@ -14,7 +14,7 @@ class WatcherSpec extends BaseFileSpec {
       "for modifications" in {
         tempFile
           .flatMap { f =>
-            Stream.resource(blockingExecutionContext).flatMap { bec =>
+            Stream.resource(Blocker[IO]).flatMap { bec =>
               file
                 .watch[IO](bec, f, modifiers = modifiers)
                 .takeWhile({
@@ -30,7 +30,7 @@ class WatcherSpec extends BaseFileSpec {
       "for deletions" in {
         tempFile
           .flatMap { f =>
-            Stream.resource(blockingExecutionContext).flatMap { bec =>
+            Stream.resource(Blocker[IO]).flatMap { bec =>
               file
                 .watch[IO](bec, f, modifiers = modifiers)
                 .takeWhile({
@@ -52,7 +52,7 @@ class WatcherSpec extends BaseFileSpec {
             val a = dir.resolve("a")
             val b = a.resolve("b")
             Stream.eval(IO(Files.createDirectory(a)) >> IO(Files.write(b, Array[Byte]()))) >>
-              Stream.resource(blockingExecutionContext).flatMap { bec =>
+              Stream.resource(Blocker[IO]).flatMap { bec =>
                 file
                   .watch[IO](bec, dir, modifiers = modifiers)
                   .takeWhile({
@@ -70,7 +70,7 @@ class WatcherSpec extends BaseFileSpec {
           .flatMap { dir =>
             val a = dir.resolve("a")
             val b = a.resolve("b")
-            Stream.resource(blockingExecutionContext).flatMap { bec =>
+            Stream.resource(Blocker[IO]).flatMap { bec =>
               file
                 .watch[IO](bec, dir, modifiers = modifiers)
                 .takeWhile({
