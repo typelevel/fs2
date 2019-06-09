@@ -346,12 +346,14 @@ object SocketGroup {
     */
   def apply[F[_]: Sync: ContextShift](
       blockingExecutionContext: ExecutionContext,
-      nonBlockingThreadCount: Int = Runtime.getRuntime.availableProcessors(),
+      nonBlockingThreadCount: Int = 0,
       nonBlockingThreadFactory: ThreadFactory =
         ThreadFactories.named("fs2-socket-group-blocking", true)): Resource[F, SocketGroup] =
     Resource(blockingDelay(blockingExecutionContext) {
-      val acg = AsynchronousChannelGroup.withFixedThreadPool(nonBlockingThreadCount,
-                                                             nonBlockingThreadFactory)
+      val threadCount =
+        if (nonBlockingThreadCount <= 0) Runtime.getRuntime.availableProcessors
+        else nonBlockingThreadCount
+      val acg = AsynchronousChannelGroup.withFixedThreadPool(threadCount, nonBlockingThreadFactory)
       val group = new SocketGroup(acg, blockingExecutionContext)
       (group, blockingDelay(blockingExecutionContext)(acg.shutdown()))
     })
