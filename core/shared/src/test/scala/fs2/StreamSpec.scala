@@ -2898,7 +2898,7 @@ class StreamSpec extends Fs2Spec {
       }
 
       "when primary stream fails, inner stream finalizer run before the primary one" in {
-        flickersOnTravis
+        if (isJVM) flickersOnTravis else pending
         Stream
           .eval(Ref[IO].of(false))
           .flatMap { verdict =>
