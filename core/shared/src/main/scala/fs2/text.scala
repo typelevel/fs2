@@ -7,6 +7,7 @@ import scala.annotation.tailrec
 /** Provides utilities for working with streams of text (e.g., encoding byte streams to strings). */
 object text {
   private val utf8Charset = Charset.forName("UTF-8")
+  private val utf8Bom: Chunk[Byte] = Chunk(0xef.toByte, 0xbb.toByte, 0xbf.toByte)
 
   /** Converts UTF-8 encoded byte stream to a stream of `String`. */
   def utf8Decode[F[_]]: Pipe[F, Byte, String] =
@@ -73,8 +74,31 @@ object text {
           Pull.pure(None)
       }
 
+    def processByteOrderMark(
+        buffer: Option[Chunk.Queue[Byte]],
+        s: Stream[Pure, Chunk[Byte]]): Pull[Pure, String, Option[Stream[Pure, Chunk[Byte]]]] =
+      s.pull.uncons1.flatMap {
+        case Some((hd, tl)) =>
+          val newBuffer = buffer.getOrElse(Chunk.Queue.empty[Byte]) :+ hd
+          if (newBuffer.size >= 3) {
+            val rem =
+              if (newBuffer.take(3).toChunk == utf8Bom) newBuffer.drop(3)
+              else newBuffer
+            doPull(Chunk.empty, Stream.emits(rem.chunks) ++ tl)
+          } else {
+            processByteOrderMark(Some(newBuffer), tl)
+          }
+        case None =>
+          buffer match {
+            case Some(b) =>
+              doPull(Chunk.empty, Stream.emits(b.chunks))
+            case None =>
+              Pull.pure(None)
+          }
+      }
+
     (in: Stream[Pure, Chunk[Byte]]) =>
-      doPull(Chunk.empty, in).stream
+      processByteOrderMark(None, in).stream
   }
 
   /** Encodes a stream of `String` in to a stream of bytes using the given charset. */
