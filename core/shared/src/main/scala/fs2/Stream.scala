@@ -968,11 +968,11 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
   }
 
   /**
-    * Like `observe` but observes with a function `O => F[Unit]` instead of a pipe.
-    * Not as powerful as `observe` since not all pipes can be represented by `O => F[Unit]`, but much faster.
+    * Like `observe` but observes with a function `O => F[A]` instead of a pipe.
+    * Not as powerful as `observe` since not all pipes can be represented by `O => F[A]`, but much faster.
     * Alias for `evalMap(o => f(o).as(o))`.
     */
-  def evalTap[F2[x] >: F[x]: Functor](f: O => F2[Unit]): Stream[F2, O] =
+  def evalTap[F2[x] >: F[x]: Functor, A](f: O => F2[A]): Stream[F2, O] =
     evalMap(o => f(o).as(o))
 
   /**
