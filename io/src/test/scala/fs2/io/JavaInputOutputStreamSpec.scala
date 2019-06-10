@@ -12,17 +12,8 @@ class JavaInputOutputStreamSpec extends Fs2Spec with EventuallySupport {
 
     implicit val streamByteGenerator: Generator[Stream[IO, Byte]] =
       for {
-        data <- strings
-        chunkSize <- intsBetween(1.min(data.length), data.length)
-      } yield {
-        def go(rem: String): Stream[IO, Byte] =
-          if (chunkSize >= rem.length) Stream.chunk(Chunk.bytes(rem.getBytes))
-          else {
-            val (out, remainder) = rem.splitAt(chunkSize)
-            Stream.chunk(Chunk.bytes(out.getBytes)) ++ go(remainder)
-          }
-        go(data)
-      }
+        chunks <- pureStreamGenerator[Chunk[Byte]]
+      } yield chunks.flatMap(Stream.chunk).covary[IO]
 
     "arbitrary.streams" in forAll { (stream: Stream[IO, Byte]) =>
       val example = stream.compile.toVector.unsafeRunSync()
