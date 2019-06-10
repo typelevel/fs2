@@ -234,7 +234,7 @@ object AsynchronousSocketGroup {
           if (srcBytes.size == srcBytes.values.size) srcBytes.values
           else {
             val destBytes = new Array[Byte](srcBytes.size)
-            Array.copy(srcBytes.values, 0, destBytes, srcBytes.offset, srcBytes.size)
+            Array.copy(srcBytes.values, srcBytes.offset, destBytes, 0, srcBytes.size)
             destBytes
           }
         }
