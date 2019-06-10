@@ -7,7 +7,7 @@ import scala.annotation.tailrec
 /** Provides utilities for working with streams of text (e.g., encoding byte streams to strings). */
 object text {
   private val utf8Charset = Charset.forName("UTF-8")
-  val Utf8Bom: Chunk[Byte] = Chunk(0xef.toByte, 0xbb.toByte, 0xbf.toByte)
+  private val utf8Bom: Chunk[Byte] = Chunk(0xef.toByte, 0xbb.toByte, 0xbf.toByte)
 
   /** Converts UTF-8 encoded byte stream to a stream of `String`. */
   def utf8Decode[F[_]]: Pipe[F, Byte, String] =
@@ -82,7 +82,7 @@ object text {
           val newBuffer = buffer.getOrElse(Chunk.Queue.empty[Byte]) :+ hd
           if (newBuffer.size >= 3) {
             val rem =
-              if (newBuffer.take(3).toChunk == Utf8Bom) newBuffer.drop(3)
+              if (newBuffer.take(3).toChunk == utf8Bom) newBuffer.drop(3)
               else newBuffer
             doPull(Chunk.empty, Stream.emits(rem.chunks) ++ tl)
           } else {
