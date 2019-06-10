@@ -976,13 +976,6 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     evalMap(o => f(o).as(o))
 
   /**
-    * Like `flatMap` but ignores the result of the function `O => Stream[F2, A]`.
-    * Alias for `flatMap(o => f(o).as(o))`.
-    */
-  def flatTap[F2[x] >: F[x]: Functor, A](f: O => Stream[F2, A]): Stream[F2, O] =
-    flatMap(o => f(o).as(o))
-
-  /**
     * Emits `true` as soon as a matching element is received, else `false` if no input matches.
     * '''Pure''': this operation maps to `List.exists`
     *
