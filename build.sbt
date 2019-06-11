@@ -268,7 +268,7 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
       }
       baseDirectory.value / "../shared/src/main" / dir
     },
-    libraryDependencies += "org.scodec" %%% "scodec-bits" % "1.1.11"
+    libraryDependencies += "org.scodec" %%% "scodec-bits" % "1.1.12"
   )
   .jsSettings(commonJsSettings: _*)
 
