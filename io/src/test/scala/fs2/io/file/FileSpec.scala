@@ -7,6 +7,8 @@ import java.nio.file.StandardOpenOption
 import cats.effect.IO
 import cats.implicits._
 
+import scala.concurrent.duration._
+
 class FileSpec extends BaseFileSpec {
 
   "readAll" - {
@@ -48,6 +50,23 @@ class FileSpec extends BaseFileSpec {
             .flatTap(modify)
             .flatMap(path => file.readRange[IO](path, bec, 4096, 0, 100))
         }
+        .compile
+        .toList
+        .map(_.size)
+        .unsafeRunSync() shouldBe 4
+    }
+  }
+
+  "keepReading" - {
+    "keeps reading a file as it is appended" in {
+      Stream
+        .resource(blockingExecutionContext)
+        .flatMap { bec =>
+          tempFile
+            .flatTap(modifyLater)
+            .flatMap(path => file.keepReading[IO](path, bec, 4096, 250.millis))
+        }
+        .take(4)
         .compile
         .toList
         .map(_.size)
