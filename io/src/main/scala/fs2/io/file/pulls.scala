@@ -3,11 +3,12 @@ package io
 package file
 
 import scala.concurrent.ExecutionContext
-
 import java.nio.channels._
 import java.nio.file._
 
-import cats.effect.{ContextShift, Sync}
+import cats.effect.{ContextShift, Sync, Timer}
+
+import scala.concurrent.duration.FiniteDuration
 
 /** Provides various `Pull`s for working with files. */
 object pulls {
@@ -21,6 +22,22 @@ object pulls {
   def readRangeFromFileHandle[F[_]](chunkSize: Int, start: Long, end: Long)(
       h: FileHandle[F]): Pull[F, Byte, Unit] =
     _readRangeFromFileHandle0(chunkSize, start, end)(h)
+
+  def keepReadingFromFileHandle[F[_]: Timer](chunkSize: Int, delay: FiniteDuration)(
+      h: FileHandle[F]): Pull[F, Byte, Unit] =
+    _keepReadingFromFileHandle0(chunkSize, 0, delay)(h)
+
+  private def _keepReadingFromFileHandle0[F[_]](
+      chunkSize: Int,
+      offset: Long,
+      delay: FiniteDuration)(h: FileHandle[F])(implicit timer: Timer[F]): Pull[F, Byte, Unit] =
+    Pull.eval(h.read(chunkSize, offset)).flatMap {
+      case Some(bytes) =>
+        Pull.output(bytes) >> _keepReadingFromFileHandle0(chunkSize, offset + bytes.size, delay)(h)
+      case None =>
+        timer.sleep(delay)
+        _keepReadingFromFileHandle0(chunkSize, offset, delay)(h)
+    }
 
   private def _readRangeFromFileHandle0[F[_]](chunkSize: Int, offset: Long, end: Long)(
       h: FileHandle[F]): Pull[F, Byte, Unit] = {
