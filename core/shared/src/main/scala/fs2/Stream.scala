@@ -836,7 +836,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * scala> Stream.range(0,10).dropRight(5).toList
     * res0: List[Int] = List(0, 1, 2, 3, 4)
     * }}}
-    **/
+    */
   def dropRight(n: Int): Stream[F, O] =
     if (n <= 0) this
     else {
@@ -968,8 +968,8 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
   }
 
   /**
-    * Like `observe` but observes with a function `O => F[A]` instead of a pipe.
-    * Not as powerful as `observe` since not all pipes can be represented by `O => F[A]`, but much faster.
+    * Like `observe` but observes with a function `O => F[_]` instead of a pipe.
+    * Not as powerful as `observe` since not all pipes can be represented by `O => F[_]`, but much faster.
     * Alias for `evalMap(o => f(o).as(o))`.
     */
   def evalTap[F2[x] >: F[x]: Functor](f: O => F2[_]): Stream[F2, O] =
