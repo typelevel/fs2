@@ -87,20 +87,22 @@ package object file {
     *
     * @return singleton bracketed stream returning a watcher
     */
-  def watcher[F[_]](implicit F: Concurrent[F]): Resource[F, Watcher[F]] =
-    Watcher.default
+  def watcher[F[_]: Concurrent: ContextShift](
+      blockingExecutionContext: ExecutionContext): Resource[F, Watcher[F]] =
+    Watcher.default(blockingExecutionContext)
 
   /**
     * Watches a single path.
     *
     * Alias for creating a watcher and watching the supplied path, releasing the watcher when the resulting stream is finalized.
     */
-  def watch[F[_]](
+  def watch[F[_]: Concurrent: ContextShift](
+      blockingExecutionContext: ExecutionContext,
       path: Path,
       types: Seq[Watcher.EventType] = Nil,
       modifiers: Seq[WatchEvent.Modifier] = Nil,
-      pollTimeout: FiniteDuration = 1.second)(implicit F: Concurrent[F]): Stream[F, Watcher.Event] =
+      pollTimeout: FiniteDuration = 1.second): Stream[F, Watcher.Event] =
     Stream
-      .resource(Watcher.default)
+      .resource(Watcher.default(blockingExecutionContext))
       .flatMap(w => Stream.eval_(w.watch(path, types, modifiers)) ++ w.events(pollTimeout))
 }

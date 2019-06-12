@@ -4,26 +4,14 @@ package tcp
 
 import java.net.InetSocketAddress
 import java.net.InetAddress
-import java.nio.channels.AsynchronousChannelGroup
-import java.nio.channels.spi.AsynchronousChannelProvider
 
 import cats.effect.IO
 import cats.effect.concurrent.Deferred
 
-import fs2.internal.ThreadFactories
+class SocketSpec extends Fs2Spec {
 
-import org.scalatest.BeforeAndAfterAll
-
-class SocketSpec extends Fs2Spec with BeforeAndAfterAll {
-
-  implicit val tcpACG: AsynchronousChannelGroup = AsynchronousChannelProvider
-    .provider()
-    .openAsynchronousChannelGroup(8, ThreadFactories.named("fs2-ag-tcp", true))
-
-  override def afterAll() = {
-    tcpACG.shutdownNow
-    super.afterAll()
-  }
+  def mkSocketGroup: Stream[IO, SocketGroup] =
+    Stream.resource(blockingExecutionContext.flatMap(ec => SocketGroup[IO](ec)))
 
   "tcp" - {
 
@@ -38,8 +26,8 @@ class SocketSpec extends Fs2Spec with BeforeAndAfterAll {
       val localBindAddress =
         Deferred[IO, InetSocketAddress].unsafeRunSync()
 
-      val echoServer: Stream[IO, Unit] = {
-        Socket
+      val echoServer: SocketGroup => Stream[IO, Unit] = socketGroup =>
+        socketGroup
           .serverWithLocalAddress[IO](new InetSocketAddress(InetAddress.getByName(null), 0))
           .flatMap {
             case Left(local) => Stream.eval_(localBindAddress.complete(local))
@@ -53,14 +41,13 @@ class SocketSpec extends Fs2Spec with BeforeAndAfterAll {
               }
           }
           .parJoinUnbounded
-      }
 
-      val clients: Stream[IO, Array[Byte]] = {
+      val clients: SocketGroup => Stream[IO, Array[Byte]] = socketGroup =>
         Stream
           .range(0, clientCount)
           .map { idx =>
             Stream.eval(localBindAddress.get).flatMap { local =>
-              Stream.resource(Socket.client[IO](local)).flatMap { socket =>
+              Stream.resource(socketGroup.client[IO](local)).flatMap { socket =>
                 Stream
                   .chunk(message)
                   .through(socket.writes())
@@ -72,15 +59,18 @@ class SocketSpec extends Fs2Spec with BeforeAndAfterAll {
             }
           }
           .parJoin(10)
-      }
 
-      val result = Stream(echoServer.drain, clients)
-        .parJoin(2)
-        .take(clientCount)
-        .compile
-        .toVector
-        .unsafeRunTimed(timeout)
-        .get
+      val result =
+        mkSocketGroup
+          .flatMap { socketGroup =>
+            Stream(echoServer(socketGroup).drain, clients(socketGroup))
+              .parJoin(2)
+              .take(clientCount)
+          }
+          .compile
+          .toVector
+          .unsafeRunTimed(timeout)
+          .get
       result.size shouldBe clientCount
       result.map { new String(_) }.toSet shouldBe Set("fs2.rocks")
     }
@@ -93,8 +83,8 @@ class SocketSpec extends Fs2Spec with BeforeAndAfterAll {
       val localBindAddress =
         Deferred[IO, InetSocketAddress].unsafeRunSync()
 
-      val junkServer: Stream[IO, Nothing] =
-        Socket
+      val junkServer: SocketGroup => Stream[IO, Nothing] = socketGroup =>
+        socketGroup
           .serverWithLocalAddress[IO](new InetSocketAddress(InetAddress.getByName(null), 0))
           .flatMap {
             case Left(local) => Stream.eval_(localBindAddress.complete(local))
@@ -113,18 +103,21 @@ class SocketSpec extends Fs2Spec with BeforeAndAfterAll {
 
       val sizes = Vector(1, 2, 3, 4, 3, 2, 1)
 
-      val klient: Stream[IO, Int] =
+      val klient: SocketGroup => Stream[IO, Int] = socketGroup =>
         for {
           addr <- Stream.eval(localBindAddress.get)
-          sock <- Stream.resource(Socket.client[IO](addr))
+          sock <- Stream.resource(socketGroup.client[IO](addr))
           size <- Stream.emits(sizes)
           op <- Stream.eval(sock.readN(size, None))
         } yield op.map(_.size).getOrElse(-1)
 
       val result =
-        Stream(junkServer, klient)
-          .parJoin(2)
-          .take(sizes.length)
+        mkSocketGroup
+          .flatMap { socketGroup =>
+            Stream(junkServer(socketGroup), klient(socketGroup))
+              .parJoin(2)
+              .take(sizes.length)
+          }
           .compile
           .toVector
           .unsafeRunTimed(timeout)

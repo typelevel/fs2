@@ -86,7 +86,8 @@ object pulls {
                      flags: Seq[OpenOption])(
       implicit F: Sync[F],
       cs: ContextShift[F]): Pull[F, Nothing, Pull.Cancellable[F, FileHandle[F]]] =
-    fromFileChannel(F.delay(FileChannel.open(path, flags: _*)), blockingExecutionContext)
+    fromFileChannel(blockingDelay(blockingExecutionContext)(FileChannel.open(path, flags: _*)),
+                    blockingExecutionContext)
 
   /**
     * Given a `java.nio.channels.FileChannel`, will create a `Pull` which allows synchronous operations against the underlying file.
@@ -97,6 +98,6 @@ object pulls {
       implicit F: Sync[F],
       cs: ContextShift[F]): Pull[F, Nothing, Pull.Cancellable[F, FileHandle[F]]] =
     Pull
-      .acquireCancellable(channel)(ch => F.delay(ch.close()))
+      .acquireCancellable(channel)(ch => blockingDelay(blockingExecutionContext)(ch.close()))
       .map(_.map(FileHandle.fromFileChannel[F](_, blockingExecutionContext)))
 }

@@ -1,13 +1,13 @@
 package fs2
 
-import cats.effect.{ConcurrentEffect, ContextShift, Resource, Sync}
+import cats.effect.{Async, ConcurrentEffect, ContextShift, Resource, Sync}
 
 import cats._
 import cats.implicits._
 import java.io.{InputStream, OutputStream}
 import java.nio.charset.Charset
 
-import scala.concurrent.{ExecutionContext, blocking}
+import scala.concurrent.ExecutionContext
 
 /**
   * Provides various ways to work with streams that perform IO.
@@ -66,7 +66,7 @@ package object io {
                                              blockingExecutionContext: ExecutionContext)(
       implicit F: Sync[F],
       cs: ContextShift[F]): F[Option[Chunk[Byte]]] =
-    cs.evalOn(blockingExecutionContext)(F.delay(blocking(is.read(buf)))).map { numBytes =>
+    blockingDelay(blockingExecutionContext)(is.read(buf)).map { numBytes =>
       if (numBytes < 0) None
       else if (numBytes == 0) Some(Chunk.empty)
       else if (numBytes < buf.size) Some(Chunk.bytes(buf.slice(0, numBytes)))
@@ -108,7 +108,7 @@ package object io {
         s.chunks.evalMap(c => writeBytesToOutputStream(os, c, blockingExecutionContext))
 
       def close(os: OutputStream): F[Unit] =
-        cs.evalOn(blockingExecutionContext)(F.delay(os.close()))
+        blockingDelay(blockingExecutionContext)(os.close())
 
       val os = if (closeAfterUse) Stream.bracket(fos)(close) else Stream.eval(fos)
       os.flatMap(os =>
@@ -120,7 +120,7 @@ package object io {
                                              blockingExecutionContext: ExecutionContext)(
       implicit F: Sync[F],
       cs: ContextShift[F]): F[Unit] =
-    cs.evalOn(blockingExecutionContext)(F.delay(blocking(os.write(bytes.toArray))))
+    blockingDelay(blockingExecutionContext)(os.write(bytes.toArray))
 
   //
   // STDIN/STDOUT Helpers
@@ -178,4 +178,16 @@ package object io {
   def toInputStreamResource[F[_]](source: Stream[F, Byte])(
       implicit F: ConcurrentEffect[F]): Resource[F, InputStream] =
     JavaInputOutputStream.toInputStream(source)
+
+  /**
+    * Like `Sync#delay` but evaluates the thunk on the supplied execution context
+    * and then shifts back to the default thread pool.
+    */
+  private[io] def blockingDelay[F[_], A](blockingExecutionContext: ExecutionContext)(
+      thunk: => A)(implicit F: Sync[F], cs: ContextShift[F]): F[A] =
+    cs.evalOn(blockingExecutionContext)(F.delay(thunk))
+
+  private[io] def asyncYield[F[_], A](
+      k: (Either[Throwable, A] => Unit) => Unit)(implicit F: Async[F], cs: ContextShift[F]): F[A] =
+    F.guarantee(F.async(k))(cs.shift)
 }

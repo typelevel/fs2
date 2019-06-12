@@ -14,12 +14,14 @@ class WatcherSpec extends BaseFileSpec {
       "for modifications" in {
         tempFile
           .flatMap { f =>
-            file
-              .watch[IO](f, modifiers = modifiers)
-              .takeWhile({
-                case Watcher.Event.Modified(f, _) => false; case _ => true
-              }, true)
-              .concurrently(smallDelay ++ modify(f))
+            Stream.resource(blockingExecutionContext).flatMap { bec =>
+              file
+                .watch[IO](bec, f, modifiers = modifiers)
+                .takeWhile({
+                  case Watcher.Event.Modified(f, _) => false; case _ => true
+                }, true)
+                .concurrently(smallDelay ++ modify(f))
+            }
           }
           .compile
           .drain
@@ -28,12 +30,14 @@ class WatcherSpec extends BaseFileSpec {
       "for deletions" in {
         tempFile
           .flatMap { f =>
-            file
-              .watch[IO](f, modifiers = modifiers)
-              .takeWhile({
-                case Watcher.Event.Deleted(f, _) => false; case _ => true
-              }, true)
-              .concurrently(smallDelay ++ Stream.eval(IO(Files.delete(f))))
+            Stream.resource(blockingExecutionContext).flatMap { bec =>
+              file
+                .watch[IO](bec, f, modifiers = modifiers)
+                .takeWhile({
+                  case Watcher.Event.Deleted(f, _) => false; case _ => true
+                }, true)
+                .concurrently(smallDelay ++ Stream.eval(IO(Files.delete(f))))
+            }
           }
           .compile
           .drain
@@ -48,12 +52,14 @@ class WatcherSpec extends BaseFileSpec {
             val a = dir.resolve("a")
             val b = a.resolve("b")
             Stream.eval(IO(Files.createDirectory(a)) >> IO(Files.write(b, Array[Byte]()))) >>
-              (file
-                .watch[IO](dir, modifiers = modifiers)
-                .takeWhile({
-                  case Watcher.Event.Modified(b, _) => false; case _ => true
-                })
-                .concurrently(smallDelay ++ modify(b)))
+              Stream.resource(blockingExecutionContext).flatMap { bec =>
+                file
+                  .watch[IO](bec, dir, modifiers = modifiers)
+                  .takeWhile({
+                    case Watcher.Event.Modified(b, _) => false; case _ => true
+                  })
+                  .concurrently(smallDelay ++ modify(b))
+              }
           }
           .compile
           .drain
@@ -64,13 +70,15 @@ class WatcherSpec extends BaseFileSpec {
           .flatMap { dir =>
             val a = dir.resolve("a")
             val b = a.resolve("b")
-            file
-              .watch[IO](dir, modifiers = modifiers)
-              .takeWhile({
-                case Watcher.Event.Created(b, _) => false; case _ => true
-              })
-              .concurrently(smallDelay ++ Stream.eval(
-                IO(Files.createDirectory(a)) >> IO(Files.write(b, Array[Byte]()))))
+            Stream.resource(blockingExecutionContext).flatMap { bec =>
+              file
+                .watch[IO](bec, dir, modifiers = modifiers)
+                .takeWhile({
+                  case Watcher.Event.Created(b, _) => false; case _ => true
+                })
+                .concurrently(smallDelay ++ Stream.eval(
+                  IO(Files.createDirectory(a)) >> IO(Files.write(b, Array[Byte]()))))
+            }
           }
           .compile
           .drain
