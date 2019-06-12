@@ -4246,6 +4246,27 @@ object Stream extends StreamLowPriority {
       */
     def toVector: G[Vector[O]] =
       to[Vector]
+
+    /**
+      * Compiles this stream in to a value of the target effect type `F` by logging
+      * the output values to a `Map`.
+      *
+      * When this method has returned, the stream has not begun execution -- this method simply
+      * compiles the stream down to the target effect type.
+      *
+      * @example {{{
+      * scala> import cats.effect.IO
+      * scala> Stream.range(0,100).map(i => i -> i).take(5).covary[IO].compile.toMap.unsafeRunSync
+      * res0: Map[Int, Int] = Map(0 -> 0, 1 -> 1, 2 -> 2, 3 -> 3, 4 -> 4)
+      * }}}
+      */
+    def toMap[K, V](implicit ev: O <:< (K, V)): G[Map[K, V]] = {
+      val _ = ev
+      compiler(self.asInstanceOf[Stream[F, (K, V)]], () => Map.newBuilder[K, V])(
+        _ ++= _.iterator,
+        _.result
+      )
+    }
   }
 
   /**
