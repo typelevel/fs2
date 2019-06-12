@@ -1,12 +1,11 @@
 package fs2
 package io
 
-import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
 
 import java.nio.file.{Path, StandardOpenOption, WatchEvent}
 
-import cats.effect.{Concurrent, ContextShift, Resource, Sync}
+import cats.effect.{Blocker, Concurrent, ContextShift, Resource, Sync}
 
 /** Provides support for working with files. */
 package object file {
@@ -14,12 +13,10 @@ package object file {
   /**
     * Reads all data synchronously from the file at the specified `java.nio.file.Path`.
     */
-  def readAll[F[_]: Sync: ContextShift](path: Path,
-                                        blockingExecutionContext: ExecutionContext,
-                                        chunkSize: Int)(
+  def readAll[F[_]: Sync: ContextShift](path: Path, blocker: Blocker, chunkSize: Int)(
       ): Stream[F, Byte] =
     pulls
-      .fromPath(path, blockingExecutionContext, List(StandardOpenOption.READ))
+      .fromPath(path, blocker, List(StandardOpenOption.READ))
       .flatMap(c => pulls.readAllFromFileHandle(chunkSize)(c.resource))
       .stream
 
@@ -29,13 +26,13 @@ package object file {
     * two bytes are read.
     */
   def readRange[F[_]: Sync: ContextShift](path: Path,
-                                          blockingExecutionContext: ExecutionContext,
+                                          blocker: Blocker,
                                           chunkSize: Int,
                                           start: Long,
                                           end: Long)(
       ): Stream[F, Byte] =
     pulls
-      .fromPath(path, blockingExecutionContext, List(StandardOpenOption.READ))
+      .fromPath(path, blocker, List(StandardOpenOption.READ))
       .flatMap(c => pulls.readRangeFromFileHandle(chunkSize, start, end)(c.resource))
       .stream
 
@@ -46,14 +43,12 @@ package object file {
     */
   def writeAll[F[_]: Sync: ContextShift](
       path: Path,
-      blockingExecutionContext: ExecutionContext,
+      blocker: Blocker,
       flags: Seq[StandardOpenOption] = List(StandardOpenOption.CREATE)
   ): Pipe[F, Byte, Unit] =
     in =>
       (for {
-        out <- pulls.fromPath(path,
-                              blockingExecutionContext,
-                              StandardOpenOption.WRITE :: flags.toList)
+        out <- pulls.fromPath(path, blocker, StandardOpenOption.WRITE :: flags.toList)
         fileHandle = out.resource
         offset <- if (flags.contains(StandardOpenOption.APPEND)) Pull.eval(fileHandle.size)
         else Pull.pure(0L)
@@ -87,9 +82,8 @@ package object file {
     *
     * @return singleton bracketed stream returning a watcher
     */
-  def watcher[F[_]: Concurrent: ContextShift](
-      blockingExecutionContext: ExecutionContext): Resource[F, Watcher[F]] =
-    Watcher.default(blockingExecutionContext)
+  def watcher[F[_]: Concurrent: ContextShift](blocker: Blocker): Resource[F, Watcher[F]] =
+    Watcher.default(blocker)
 
   /**
     * Watches a single path.
@@ -97,12 +91,12 @@ package object file {
     * Alias for creating a watcher and watching the supplied path, releasing the watcher when the resulting stream is finalized.
     */
   def watch[F[_]: Concurrent: ContextShift](
-      blockingExecutionContext: ExecutionContext,
+      blocker: Blocker,
       path: Path,
       types: Seq[Watcher.EventType] = Nil,
       modifiers: Seq[WatchEvent.Modifier] = Nil,
       pollTimeout: FiniteDuration = 1.second): Stream[F, Watcher.Event] =
     Stream
-      .resource(Watcher.default(blockingExecutionContext))
+      .resource(Watcher.default(blocker))
       .flatMap(w => Stream.eval_(w.watch(path, types, modifiers)) ++ w.events(pollTimeout))
 }

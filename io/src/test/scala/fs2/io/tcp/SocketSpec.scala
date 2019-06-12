@@ -5,13 +5,13 @@ package tcp
 import java.net.InetSocketAddress
 import java.net.InetAddress
 
-import cats.effect.IO
+import cats.effect.{Blocker, IO}
 import cats.effect.concurrent.Deferred
 
 class SocketSpec extends Fs2Spec {
 
   def mkSocketGroup: Stream[IO, SocketGroup] =
-    Stream.resource(blockingExecutionContext.flatMap(ec => SocketGroup[IO](ec)))
+    Stream.resource(Blocker[IO].flatMap(blocker => SocketGroup[IO](blocker)))
 
   "tcp" - {
 

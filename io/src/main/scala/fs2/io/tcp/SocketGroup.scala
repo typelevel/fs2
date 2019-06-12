@@ -2,7 +2,6 @@ package fs2
 package io
 package tcp
 
-import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
 
 import java.net.{InetSocketAddress, SocketAddress, StandardSocketOptions}
@@ -19,7 +18,7 @@ import java.nio.channels.spi.AsynchronousChannelProvider
 import java.util.concurrent.{ThreadFactory, TimeUnit}
 
 import cats.implicits._
-import cats.effect.{Concurrent, ContextShift, Resource, Sync}
+import cats.effect.{Blocker, Concurrent, ContextShift, Resource, Sync}
 import cats.effect.concurrent.{Ref, Semaphore}
 
 import fs2.internal.ThreadFactories
@@ -28,8 +27,7 @@ import fs2.internal.ThreadFactories
   * Resource that provides the ability to open client and server TCP sockets that all share
   * an underlying non-blocking channel group.
   */
-final class SocketGroup(channelGroup: AsynchronousChannelGroup,
-                        blockingExecutionContext: ExecutionContext) {
+final class SocketGroup(channelGroup: AsynchronousChannelGroup, blocker: Blocker) {
 
   /**
     * Stream that connects to the specified server and emits a single socket,
@@ -52,7 +50,7 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup,
       noDelay: Boolean = false
   )(implicit F: Concurrent[F], CS: ContextShift[F]): Resource[F, Socket[F]] = {
 
-    def setup: F[AsynchronousSocketChannel] = blockingDelay(blockingExecutionContext) {
+    def setup: F[AsynchronousSocketChannel] = blocker.delay {
       val ch =
         AsynchronousChannelProvider.provider().openAsynchronousSocketChannel(channelGroup)
       ch.setOption[java.lang.Boolean](StandardSocketOptions.SO_REUSEADDR, reuseAddress)
@@ -123,7 +121,7 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup,
       CS: ContextShift[F]
   ): Stream[F, Either[InetSocketAddress, Resource[F, Socket[F]]]] = {
 
-    val setup: F[AsynchronousServerSocketChannel] = blockingDelay(blockingExecutionContext) {
+    val setup: F[AsynchronousServerSocketChannel] = blocker.delay {
       val ch = AsynchronousChannelProvider
         .provider()
         .openAsynchronousServerSocketChannel(channelGroup)
@@ -134,7 +132,7 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup,
     }
 
     def cleanup(sch: AsynchronousServerSocketChannel): F[Unit] =
-      blockingDelay(blockingExecutionContext)(if (sch.isOpen) sch.close())
+      blocker.delay(if (sch.isOpen) sch.close())
 
     def acceptIncoming(sch: AsynchronousServerSocketChannel): Stream[F, Resource[F, Socket[F]]] = {
       def go: Stream[F, Resource[F, Socket[F]]] = {
@@ -159,7 +157,7 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup,
 
       go.handleErrorWith {
         case err: AsynchronousCloseException =>
-          Stream.eval(blockingDelay(blockingExecutionContext)(sch.isOpen)).flatMap { isOpen =>
+          Stream.eval(blocker.delay(sch.isOpen)).flatMap { isOpen =>
             if (isOpen) Stream.raiseError[F](err)
             else Stream.empty
           }
@@ -312,22 +310,21 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup,
             }
 
           def localAddress: F[SocketAddress] =
-            blockingDelay(blockingExecutionContext)(ch.getLocalAddress)
+            blocker.delay(ch.getLocalAddress)
           def remoteAddress: F[SocketAddress] =
-            blockingDelay(blockingExecutionContext)(ch.getRemoteAddress)
-          def isOpen: F[Boolean] = blockingDelay(blockingExecutionContext)(ch.isOpen)
-          def close: F[Unit] = blockingDelay(blockingExecutionContext)(ch.close())
-          def endOfOutput: F[Unit] = blockingDelay(blockingExecutionContext) {
+            blocker.delay(ch.getRemoteAddress)
+          def isOpen: F[Boolean] = blocker.delay(ch.isOpen)
+          def close: F[Unit] = blocker.delay(ch.close())
+          def endOfOutput: F[Unit] = blocker.delay {
             ch.shutdownOutput(); ()
           }
-          def endOfInput: F[Unit] = blockingDelay(blockingExecutionContext) {
+          def endOfInput: F[Unit] = blocker.delay {
             ch.shutdownInput(); ()
           }
         }
       }
     }
-    Resource.make(socket)(_ =>
-      blockingDelay(blockingExecutionContext)(if (ch.isOpen) ch.close else ()).attempt.void)
+    Resource.make(socket)(_ => blocker.delay(if (ch.isOpen) ch.close else ()).attempt.void)
   }
 }
 
@@ -336,7 +333,7 @@ object SocketGroup {
   /**
     * Creates a `SocketGroup`.
     *
-    * The supplied `blockingExecutionContext` is used for networking calls other than
+    * The supplied `blocker` is used for networking calls other than
     * reads/writes. All reads and writes are performed on a non-blocking thread pool
     * associated with the `SocketGroup`. The non-blocking thread pool is sized to
     * the number of available processors but that can be overridden by supplying
@@ -345,16 +342,16 @@ object SocketGroup {
     * information on NIO thread pooling.
     */
   def apply[F[_]: Sync: ContextShift](
-      blockingExecutionContext: ExecutionContext,
+      blocker: Blocker,
       nonBlockingThreadCount: Int = 0,
       nonBlockingThreadFactory: ThreadFactory =
         ThreadFactories.named("fs2-socket-group-blocking", true)): Resource[F, SocketGroup] =
-    Resource(blockingDelay(blockingExecutionContext) {
+    Resource(blocker.delay {
       val threadCount =
         if (nonBlockingThreadCount <= 0) Runtime.getRuntime.availableProcessors
         else nonBlockingThreadCount
       val acg = AsynchronousChannelGroup.withFixedThreadPool(threadCount, nonBlockingThreadFactory)
-      val group = new SocketGroup(acg, blockingExecutionContext)
-      (group, blockingDelay(blockingExecutionContext)(acg.shutdown()))
+      val group = new SocketGroup(acg, blocker)
+      (group, blocker.delay(acg.shutdown()))
     })
 }

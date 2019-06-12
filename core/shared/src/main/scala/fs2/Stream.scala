@@ -13,7 +13,6 @@ import fs2.internal.{Resource => _, _}
 import java.io.PrintStream
 
 import scala.annotation.tailrec
-import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
 
 /**
@@ -1572,7 +1571,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * Writes this stream of strings to the supplied `PrintStream`.
     *
     * Note: printing to the `PrintStream` is performed *synchronously*.
-    * Use `linesAsync(out, blockingEc)` if synchronous writes are a concern.
+    * Use `linesAsync(out, blocker)` if synchronous writes are a concern.
     */
   def lines[F2[x] >: F[x]](out: PrintStream)(implicit F: Sync[F2],
                                              ev: O <:< String): Stream[F2, Unit] = {
@@ -1586,13 +1585,13 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     *
     * Note: printing to the `PrintStream` is performed on the supplied blocking execution context.
     */
-  def linesAsync[F2[x] >: F[x]](out: PrintStream, blockingExecutionContext: ExecutionContext)(
+  def linesAsync[F2[x] >: F[x]](out: PrintStream, blocker: Blocker)(
       implicit F: Sync[F2],
       cs: ContextShift[F2],
       ev: O <:< String): Stream[F2, Unit] = {
     val _ = ev
     val src = this.asInstanceOf[Stream[F2, String]]
-    src.evalMap(str => cs.evalOn(blockingExecutionContext)(F.delay(out.println(str))))
+    src.evalMap(str => blocker.delay(out.println(str)))
   }
 
   /**
@@ -2346,7 +2345,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * Writes this stream to the supplied `PrintStream`, converting each element to a `String` via `Show`.
     *
     * Note: printing to the `PrintStream` is performed *synchronously*.
-    * Use `showLinesAsync(out, blockingEc)` if synchronous writes are a concern.
+    * Use `showLinesAsync(out, blocker)` if synchronous writes are a concern.
     */
   def showLines[F2[x] >: F[x], O2 >: O](out: PrintStream)(implicit F: Sync[F2],
                                                           showO: Show[O2]): Stream[F2, Unit] =
@@ -2357,12 +2356,10 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     *
     * Note: printing to the `PrintStream` is performed on the supplied blocking execution context.
     */
-  def showLinesAsync[F2[x] >: F[x], O2 >: O](out: PrintStream,
-                                             blockingExecutionContext: ExecutionContext)(
-      implicit F: Sync[F2],
-      cs: ContextShift[F2],
-      showO: Show[O2]): Stream[F2, Unit] =
-    covaryAll[F2, O2].map(_.show).linesAsync(out, blockingExecutionContext)
+  def showLinesAsync[F2[x] >: F[x]: Sync: ContextShift, O2 >: O: Show](
+      out: PrintStream,
+      blocker: Blocker): Stream[F2, Unit] =
+    covaryAll[F2, O2].map(_.show).linesAsync(out, blocker)
 
   /**
     * Writes this stream to standard out, converting each element to a `String` via `Show`.
@@ -2379,11 +2376,9 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     *
     * Note: printing to the `PrintStream` is performed on the supplied blocking execution context.
     */
-  def showLinesStdOutAsync[F2[x] >: F[x], O2 >: O](blockingExecutionContext: ExecutionContext)(
-      implicit F: Sync[F2],
-      cs: ContextShift[F2],
-      showO: Show[O2]): Stream[F2, Unit] =
-    showLinesAsync[F2, O2](Console.out, blockingExecutionContext)
+  def showLinesStdOutAsync[F2[x] >: F[x]: Sync: ContextShift, O2 >: O: Show](
+      blocker: Blocker): Stream[F2, Unit] =
+    showLinesAsync[F2, O2](Console.out, blocker)
 
   /**
     * Groups inputs in fixed size chunks by passing a "sliding window"

@@ -2,7 +2,6 @@ package fs2
 package io
 package udp
 
-import scala.concurrent.ExecutionContext
 import scala.concurrent.duration.FiniteDuration
 
 import java.net.{
@@ -14,12 +13,12 @@ import java.net.{
 }
 import java.nio.channels.{ClosedChannelException, DatagramChannel}
 
-import cats.effect.{Concurrent, ContextShift, Resource, Sync}
+import cats.effect.{Blocker, Concurrent, ContextShift, Resource, Sync}
 import cats.implicits._
 
 final class SocketGroup(
     asg: AsynchronousSocketGroup,
-    blockingExecutionContext: ExecutionContext
+    blocker: Blocker
 ) {
 
   /**
@@ -46,7 +45,7 @@ final class SocketGroup(
       multicastTTL: Option[Int] = None,
       multicastLoopback: Boolean = true
   )(implicit F: Concurrent[F], CS: ContextShift[F]): Resource[F, Socket[F]] = {
-    val mkChannel = blockingDelay(blockingExecutionContext) {
+    val mkChannel = blocker.delay {
       val channel = protocolFamily
         .map { pf =>
           DatagramChannel.open(pf)
@@ -76,7 +75,7 @@ final class SocketGroup(
 
   private[udp] def mkSocket[F[_]](channel: DatagramChannel)(implicit F: Concurrent[F],
                                                             cs: ContextShift[F]): F[Socket[F]] =
-    blockingDelay(blockingExecutionContext) {
+    blocker.delay {
       new Socket[F] {
         private val ctx = asg.register(channel)
 
@@ -97,17 +96,17 @@ final class SocketGroup(
         def writes(timeout: Option[FiniteDuration]): Pipe[F, Packet, Unit] =
           _.flatMap(p => Stream.eval(write(p, timeout)))
 
-        def close: F[Unit] = blockingDelay(blockingExecutionContext) { asg.close(ctx) }
+        def close: F[Unit] = blocker.delay { asg.close(ctx) }
 
         def join(group: InetAddress, interface: NetworkInterface): F[AnySourceGroupMembership] =
-          blockingDelay(blockingExecutionContext) {
+          blocker.delay {
             val membership = channel.join(group, interface)
             new AnySourceGroupMembership {
-              def drop = blockingDelay(blockingExecutionContext) { membership.drop }
+              def drop = blocker.delay { membership.drop }
               def block(source: InetAddress) = F.delay {
                 membership.block(source); ()
               }
-              def unblock(source: InetAddress) = blockingDelay(blockingExecutionContext) {
+              def unblock(source: InetAddress) = blocker.delay {
                 membership.unblock(source); ()
               }
               override def toString = "AnySourceGroupMembership"
@@ -119,7 +118,7 @@ final class SocketGroup(
                  source: InetAddress): F[GroupMembership] = F.delay {
           val membership = channel.join(group, interface, source)
           new GroupMembership {
-            def drop = blockingDelay(blockingExecutionContext) { membership.drop }
+            def drop = blocker.delay { membership.drop }
             override def toString = "GroupMembership"
           }
         }
@@ -133,8 +132,6 @@ final class SocketGroup(
 
 object SocketGroup {
 
-  def apply[F[_]: Sync: ContextShift](
-      blockingExecutionContext: ExecutionContext): Resource[F, SocketGroup] =
-    AsynchronousSocketGroup[F](blockingExecutionContext).map(asg =>
-      new SocketGroup(asg, blockingExecutionContext))
+  def apply[F[_]: Sync: ContextShift](blocker: Blocker): Resource[F, SocketGroup] =
+    AsynchronousSocketGroup[F](blocker).map(asg => new SocketGroup(asg, blocker))
 }

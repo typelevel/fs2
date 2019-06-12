@@ -4,7 +4,7 @@ package file
 
 import java.nio.file.StandardOpenOption
 
-import cats.effect.IO
+import cats.effect.{Blocker, IO}
 import cats.implicits._
 
 class FileSpec extends BaseFileSpec {
@@ -12,7 +12,7 @@ class FileSpec extends BaseFileSpec {
   "readAll" - {
     "retrieves whole content of a file" in {
       Stream
-        .resource(blockingExecutionContext)
+        .resource(Blocker[IO])
         .flatMap { bec =>
           tempFile
             .flatTap(modify)
@@ -28,7 +28,7 @@ class FileSpec extends BaseFileSpec {
   "readRange" - {
     "reads half of a file" in {
       Stream
-        .resource(blockingExecutionContext)
+        .resource(Blocker[IO])
         .flatMap { bec =>
           tempFile
             .flatTap(modify)
@@ -42,7 +42,7 @@ class FileSpec extends BaseFileSpec {
 
     "reads full file if end is bigger than file size" in {
       Stream
-        .resource(blockingExecutionContext)
+        .resource(Blocker[IO])
         .flatMap { bec =>
           tempFile
             .flatTap(modify)
@@ -58,7 +58,7 @@ class FileSpec extends BaseFileSpec {
   "writeAll" - {
     "simple write" in {
       Stream
-        .resource(blockingExecutionContext)
+        .resource(Blocker[IO])
         .flatMap { bec =>
           tempFile
             .flatMap(
@@ -76,7 +76,7 @@ class FileSpec extends BaseFileSpec {
 
     "append" in {
       Stream
-        .resource(blockingExecutionContext)
+        .resource(Blocker[IO])
         .flatMap { bec =>
           tempFile
             .flatMap { path =>
