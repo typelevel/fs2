@@ -136,6 +136,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
 
   /**
     * Appends `s2` to the end of this stream.
+    *
     * @example {{{
     * scala> ( Stream(1,2,3)++Stream(4,5,6) ).toList
     * res0: List[Int] = List(1, 2, 3, 4, 5, 6)
@@ -720,7 +721,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * Note: the resulting stream will not emit values, even if the pipes do.
     * If you need to emit `Unit` values, consider using `balanceThrough`.
     *
-    * @param chunkSie max size of chunks taken from the source stream
+    * @param chunkSize max size of chunks taken from the source stream
     * @param pipes pipes that will concurrently process the work
     */
   def balanceTo[F2[x] >: F[x]: Concurrent](chunkSize: Int)(
@@ -967,11 +968,11 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
   }
 
   /**
-    * Like `observe` but observes with a function `O => F[Unit]` instead of a pipe.
-    * Not as powerful as `observe` since not all pipes can be represented by `O => F[Unit]`, but much faster.
+    * Like `observe` but observes with a function `O => F[_]` instead of a pipe.
+    * Not as powerful as `observe` since not all pipes can be represented by `O => F[_]`, but much faster.
     * Alias for `evalMap(o => f(o).as(o))`.
     */
-  def evalTap[F2[x] >: F[x]: Functor](f: O => F2[Unit]): Stream[F2, O] =
+  def evalTap[F2[x] >: F[x]: Functor](f: O => F2[_]): Stream[F2, O] =
     evalMap(o => f(o).as(o))
 
   /**
@@ -984,7 +985,6 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * scala> Stream.range(0,10).exists(_ == 10).toList
     * res1: List[Boolean] = List(false)
     * }}}
-    *
     * @return Either a singleton stream, or a `never` stream.
     *  - If `this` is a finite stream, the result is a singleton stream, with after yielding one single value.
     *    If `this` is empty, that value is the `mempty` of the instance of `Monoid`.
@@ -1172,7 +1172,6 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * scala> Stream(1, 2, 3, 4, 5).forall(_ < 10).toList
     * res0: List[Boolean] = List(true)
     * }}}
-    *
     * @return Either a singleton or a never stream:
     * - '''If''' `this` yields an element `x` for which `¬ p(x)`, '''then'''
     *   a singleton stream with the value `false`. Pulling from the resultg
@@ -1727,7 +1726,6 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     *
     * Note that even when this is equivalent to `Stream(this, that).parJoinUnbounded`,
     * this implementation is little more efficient
-    *
     *
     * @example {{{
     * scala> import scala.concurrent.duration._, cats.effect.{ContextShift, IO, Timer}
@@ -2642,7 +2640,6 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * are reached naturally, padding the left branch with `pad1` and padding the right branch
     * with `pad2` as necessary.
     *
-    *
     * @example {{{
     * scala> Stream(1,2,3).zipAll(Stream(4,5,6,7))(0,0).toList
     * res0: List[(Int,Int)] = List((1,4), (2,5), (3,6), (0,7))
@@ -2833,7 +2830,6 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * scala> Stream("uno", "dos", "tres", "cuatro").zipWithScan(0)(_ + _.length).toList
     * res0: List[(String,Int)] = List((uno,0), (dos,3), (tres,6), (cuatro,10))
     * }}}
-    *
     * @see [[zipWithScan1]]
     */
   def zipWithScan[O2](z: O2)(f: (O2, O) => O2): Stream[F, (O, O2)] =
@@ -2852,7 +2848,6 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * scala> Stream("uno", "dos", "tres", "cuatro").zipWithScan1(0)(_ + _.length).toList
     * res0: List[(String, Int)] = List((uno,3), (dos,6), (tres,10), (cuatro,16))
     * }}}
-    *
     * @see [[zipWithScan]]
     */
   def zipWithScan1[O2](z: O2)(f: (O2, O) => O2): Stream[F, (O, O2)] =
@@ -3277,7 +3272,6 @@ object Stream extends StreamLowPriority {
     * scala> Stream.ranges(0, 20, 5).toList
     * res0: List[(Int,Int)] = List((0,5), (5,10), (10,15), (15,20))
     * }}}
-    *
     * @throws IllegalArgumentException if `size` <= 0
     */
   def ranges[F[x] >: Pure[x]](start: Int, stopExclusive: Int, size: Int): Stream[F, (Int, Int)] = {
@@ -3306,13 +3300,10 @@ object Stream extends StreamLowPriority {
     * result of `fo` as soon as it succeeds.
     *
     * @param delay Duration of delay before the first retry
-    *
     * @param nextDelay Applied to the previous delay to compute the
     *                  next, e.g. to implement exponential backoff
-    *
     * @param maxAttempts Number of attempts before failing with the
     *                   latest error, if `fo` never succeeds
-    *
     * @param retriable Function to determine whether a failure is
     *                  retriable or not, defaults to retry every
     *                  `NonFatal`. A failed stream is immediately
