@@ -721,7 +721,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * Note: the resulting stream will not emit values, even if the pipes do.
     * If you need to emit `Unit` values, consider using `balanceThrough`.
     *
-    * @param chunkSie max size of chunks taken from the source stream
+    * @param chunkSize max size of chunks taken from the source stream
     * @param pipes pipes that will concurrently process the work
     */
   def balanceTo[F2[x] >: F[x]: Concurrent](chunkSize: Int)(
