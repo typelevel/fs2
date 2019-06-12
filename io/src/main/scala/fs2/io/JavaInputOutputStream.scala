@@ -91,7 +91,7 @@ private[io] object JavaInputOutputStream {
         val result = out match {
           case Some(bytes) =>
             F.delay {
-              Array.copy(bytes.values, 0, dest, off, bytes.size)
+              Array.copy(bytes.values, bytes.offset, dest, off, bytes.size)
               bytes.size
             }
           case None =>
@@ -117,7 +117,7 @@ private[io] object JavaInputOutputStream {
                         out.toBytes -> rem.toBytes.some
                       }
                     F.delay {
-                      Array.copy(copy.values, 0, dest, off, copy.size)
+                      Array.copy(copy.values, copy.offset, dest, off, copy.size)
                     } >> (maybeKeep match {
                       case Some(rem) if rem.size > 0 =>
                         dnState.set(Ready(rem.some)).as(copy.size)

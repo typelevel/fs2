@@ -87,6 +87,18 @@ class TextSpec extends Fs2Spec {
           .mkString shouldBe s
       }
 
+      "handles byte order mark" - {
+        val bom = Chunk[Byte](0xef.toByte, 0xbb.toByte, 0xbf.toByte)
+        "single chunk" in forAll { (s: String) =>
+          val c = Chunk.concat(List(bom, utf8Bytes(s)))
+          Stream.chunk(c).through(text.utf8Decode).compile.string shouldBe s
+        }
+        "spanning chunks" in forAll { (s: String) =>
+          val c = Chunk.concat(List(bom, utf8Bytes(s)))
+          Stream.emits(c.toArray[Byte]).through(text.utf8Decode).compile.string shouldBe s
+        }
+    }
+
       // The next tests were taken from:
       // https://www.cl.cam.ac.uk/~mgk25/ucs/examples/UTF-8-test.txt
 
