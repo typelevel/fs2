@@ -59,7 +59,7 @@ implicit val cs: ContextShift[IO] = IO.contextShift(scala.concurrent.ExecutionCo
 // upon finalization, like in the original example.
 // See the whole README example for proper resource management in terms of `Blocker`.
 val blockingPool = ExecutionContext.fromExecutorService(Executors.newCachedThreadPool())
-val blocker: Blocker = Blocker.unsafeFromExecutionContext(blockingPool)
+val blocker: Blocker = Blocker.liftExecutionContext(blockingPool)
 
 def fahrenheitToCelsius(f: Double): Double =
   (f - 32.0) * (5.0/9.0)
