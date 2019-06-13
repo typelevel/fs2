@@ -8,6 +8,7 @@ import java.io.IOException
 import java.nio.file._
 import java.nio.file.attribute.BasicFileAttributes
 
+import scala.concurrent.duration._
 import scala.concurrent.Future
 
 class BaseFileSpec extends Fs2Spec {
@@ -25,7 +26,12 @@ class BaseFileSpec extends Fs2Spec {
     Stream.eval(IO(Files.write(file, Array[Byte](0, 1, 2, 3))).void)
 
   protected def modifyLater(file: Path): Stream[IO, Unit] =
-    Stream.eval(IO(Future(List[Byte](0, 1, 2, 3).foreach(waitAndAppend(file)))).void)
+    Stream
+      .range(0, 4)
+      .map(_.toByte)
+      .covary[IO]
+      .metered(250.millis)
+      .evalMap(b => IO(Files.write(file, Array(b), StandardOpenOption.APPEND)).void)
 
   protected def deleteDirectoryRecursively(dir: Path): IO[Unit] = IO {
     Files.walkFileTree(
@@ -41,12 +47,6 @@ class BaseFileSpec extends Fs2Spec {
         }
       }
     )
-    ()
-  }
-
-  private def waitAndAppend(file: Path)(b: Byte) = {
-    Thread.sleep(500)
-    Files.write(file, Array(b), StandardOpenOption.APPEND)
     ()
   }
 

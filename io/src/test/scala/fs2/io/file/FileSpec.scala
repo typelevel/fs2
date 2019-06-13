@@ -63,9 +63,14 @@ class FileSpec extends BaseFileSpec {
         .resource(blockingExecutionContext)
         .flatMap { bec =>
           tempFile
-            .flatTap(modifyLater)
-            .flatMap(path => file.keepReading[IO](path, bec, 4096, 250.millis))
+            .flatMap { path =>
+              file
+                .keepReading[IO](path, bec, 4096, 25.millis)
+                .map(Right.apply)
+                .merge(modifyLater(path).map(Left.apply))
+            }
         }
+        .collect { case Right(b) => b }
         .take(4)
         .compile
         .toList
