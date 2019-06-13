@@ -4256,8 +4256,8 @@ object Stream extends StreamLowPriority {
       *
       * @example {{{
       * scala> import cats.effect.IO
-      * scala> Stream.range(0,100).map(i => i -> i).take(5).covary[IO].compile.toMap.unsafeRunSync
-      * res0: Map[Int, Int] = Map(0 -> 0, 1 -> 1, 2 -> 2, 3 -> 3, 4 -> 4)
+      * scala> Stream.range(0,100).map(i => i -> i).take(5).covary[IO].compile.toMap.unsafeRunSync.mkString(", ")
+      * res0: String = 0 -> 0, 1 -> 1, 2 -> 2, 3 -> 3, 4 -> 4
       * }}}
       */
     def toMap[K, V](implicit ev: O <:< (K, V)): G[Map[K, V]] = {
