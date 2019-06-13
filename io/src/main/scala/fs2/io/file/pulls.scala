@@ -35,8 +35,7 @@ object pulls {
       case Some(bytes) =>
         Pull.output(bytes) >> _keepReadingFromFileHandle0(chunkSize, offset + bytes.size, delay)(h)
       case None =>
-        timer.sleep(delay)
-        _keepReadingFromFileHandle0(chunkSize, offset, delay)(h)
+        Pull.eval(timer.sleep(delay)) >> _keepReadingFromFileHandle0(chunkSize, offset, delay)(h)
     }
 
   private def _readRangeFromFileHandle0[F[_]](chunkSize: Int, offset: Long, end: Long)(
