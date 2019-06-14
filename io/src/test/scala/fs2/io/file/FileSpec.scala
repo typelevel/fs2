@@ -7,6 +7,8 @@ import java.nio.file.StandardOpenOption
 import cats.effect.{Blocker, IO}
 import cats.implicits._
 
+import scala.concurrent.duration._
+
 class FileSpec extends BaseFileSpec {
 
   "readAll" - {
@@ -92,4 +94,25 @@ class FileSpec extends BaseFileSpec {
         .unsafeRunSync() shouldBe "Hello world!Hello world!"
     }
   }
+
+  "tail" - {
+    "keeps reading a file as it is appended" in {
+      Stream
+        .resource(Blocker[IO])
+        .flatMap { blocker =>
+          tempFile
+            .flatMap { path =>
+              file
+                .tail[IO](path, blocker, 4096, pollDelay = 25.millis)
+                .concurrently(modifyLater(path, blocker))
+            }
+        }
+        .take(4)
+        .compile
+        .toList
+        .map(_.size)
+        .unsafeRunSync() shouldBe 4
+    }
+  }
+
 }

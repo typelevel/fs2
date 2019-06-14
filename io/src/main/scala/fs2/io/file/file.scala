@@ -5,7 +5,7 @@ import scala.concurrent.duration._
 
 import java.nio.file.{Path, StandardOpenOption, WatchEvent}
 
-import cats.effect.{Blocker, Concurrent, ContextShift, Resource, Sync}
+import cats.effect.{Blocker, Concurrent, ContextShift, Resource, Sync, Timer}
 
 /** Provides support for working with files. */
 package object file {
@@ -34,6 +34,23 @@ package object file {
     pulls
       .fromPath(path, blocker, List(StandardOpenOption.READ))
       .flatMap(c => pulls.readRangeFromFileHandle(chunkSize, start, end)(c.resource))
+      .stream
+
+  /**
+    * Reads all data synchronously from the file at the specified `java.nio.file.Path`,
+    * starting at `offset` position.
+    * Then waits for `delay` duration and reads whatever has been added to the file
+    * in the mean time. Repeats from delay.
+    */
+  def tail[F[_]: Sync: ContextShift: Timer](path: Path,
+                                            blocker: Blocker,
+                                            chunkSize: Int,
+                                            offset: Long = 0L,
+                                            pollDelay: FiniteDuration = 1.second)(
+      ): Stream[F, Byte] =
+    pulls
+      .fromPath(path, blocker, StandardOpenOption.READ :: Nil)
+      .flatMap(c => pulls.tailFromFileHandle(chunkSize, offset, pollDelay)(c.resource))
       .stream
 
   /**

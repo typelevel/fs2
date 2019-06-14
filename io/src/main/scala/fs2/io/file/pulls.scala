@@ -5,7 +5,9 @@ package file
 import java.nio.channels._
 import java.nio.file._
 
-import cats.effect.{Blocker, ContextShift, Sync}
+import cats.effect.{Blocker, ContextShift, Sync, Timer}
+
+import scala.concurrent.duration.FiniteDuration
 
 /** Provides various `Pull`s for working with files. */
 object pulls {
@@ -19,6 +21,19 @@ object pulls {
   def readRangeFromFileHandle[F[_]](chunkSize: Int, start: Long, end: Long)(
       h: FileHandle[F]): Pull[F, Byte, Unit] =
     _readRangeFromFileHandle0(chunkSize, start, end)(h)
+
+  def tailFromFileHandle[F[_]: Timer](chunkSize: Int, offset: Long, delay: FiniteDuration)(
+      h: FileHandle[F]): Pull[F, Byte, Unit] =
+    _tailFromFileHandle(chunkSize, offset, delay)(h)
+
+  private def _tailFromFileHandle[F[_]](chunkSize: Int, offset: Long, delay: FiniteDuration)(
+      h: FileHandle[F])(implicit timer: Timer[F]): Pull[F, Byte, Unit] =
+    Pull.eval(h.read(chunkSize, offset)).flatMap {
+      case Some(bytes) =>
+        Pull.output(bytes) >> _tailFromFileHandle(chunkSize, offset + bytes.size, delay)(h)
+      case None =>
+        Pull.eval(timer.sleep(delay)) >> _tailFromFileHandle(chunkSize, offset, delay)(h)
+    }
 
   private def _readRangeFromFileHandle0[F[_]](chunkSize: Int, offset: Long, end: Long)(
       h: FileHandle[F]): Pull[F, Byte, Unit] = {

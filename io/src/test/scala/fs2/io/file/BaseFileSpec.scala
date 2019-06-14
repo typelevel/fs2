@@ -2,12 +2,13 @@ package fs2
 package io
 package file
 
-import cats.effect.IO
+import cats.effect.{Blocker, IO}
 import cats.implicits._
-
 import java.io.IOException
 import java.nio.file._
 import java.nio.file.attribute.BasicFileAttributes
+
+import scala.concurrent.duration._
 
 class BaseFileSpec extends Fs2Spec {
 
@@ -22,6 +23,14 @@ class BaseFileSpec extends Fs2Spec {
 
   protected def modify(file: Path): Stream[IO, Unit] =
     Stream.eval(IO(Files.write(file, Array[Byte](0, 1, 2, 3))).void)
+
+  protected def modifyLater(file: Path, blocker: Blocker): Stream[IO, Unit] =
+    Stream
+      .range(0, 4)
+      .map(_.toByte)
+      .covary[IO]
+      .metered(250.millis)
+      .through(writeAll(file, blocker, StandardOpenOption.APPEND :: Nil))
 
   protected def deleteDirectoryRecursively(dir: Path): IO[Unit] = IO {
     Files.walkFileTree(
