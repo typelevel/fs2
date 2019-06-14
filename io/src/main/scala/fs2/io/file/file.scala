@@ -37,10 +37,14 @@ package object file {
       .stream
 
   /**
-    * Reads all data synchronously from the file at the specified `java.nio.file.Path`,
-    * starting at `offset` position.
-    * Then waits for `delay` duration and reads whatever has been added to the file
-    * in the mean time. Repeats from delay.
+    * Returns an infinite stream of data from the file at the specified path.
+    * Starts reading from the specified offset and upon reaching the end of the file,
+    * polls every `pollDuration` for additional updates to the file.
+    *
+    * Read operations are limited to emitting chunks of the specified chunk size
+    * but smaller chunks may occur.
+    *
+    * If an error occurs while reading from the file, the overall stream fails.
     */
   def tail[F[_]: Sync: ContextShift: Timer](path: Path,
                                             blocker: Blocker,
@@ -49,7 +53,7 @@ package object file {
                                             pollDelay: FiniteDuration = 1.second)(
       ): Stream[F, Byte] =
     pulls
-      .fromPath(path, blocker, StandardOpenOption.READ :: Nil)
+      .fromPath(path, blocker, List(StandardOpenOption.READ))
       .flatMap(c => pulls.tailFromFileHandle(chunkSize, offset, pollDelay)(c.resource))
       .stream
 
