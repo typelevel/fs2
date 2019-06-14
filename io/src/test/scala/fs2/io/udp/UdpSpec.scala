@@ -13,38 +13,38 @@ import java.nio.channels.InterruptedByTimeoutException
 import scala.collection.JavaConverters._
 import scala.concurrent.duration._
 
-import cats.effect.IO
+import cats.effect.{Blocker, IO}
 import cats.implicits._
-import org.scalatest.BeforeAndAfterAll
 
-class UdpSpec extends Fs2Spec with BeforeAndAfterAll {
+class UdpSpec extends Fs2Spec {
 
-  implicit val AG = AsynchronousSocketGroup()
-
-  override def afterAll() =
-    AG.close
+  def mkSocketGroup: Stream[IO, SocketGroup] =
+    Stream.resource(Blocker[IO].flatMap(blocker => SocketGroup(blocker)))
 
   "udp" - {
     "echo one" in {
       val msg = Chunk.bytes("Hello, world!".getBytes)
-      Stream
-        .resource(Socket[IO]())
-        .flatMap { serverSocket =>
-          Stream.eval(serverSocket.localAddress).map { _.getPort }.flatMap { serverPort =>
-            val serverAddress = new InetSocketAddress("localhost", serverPort)
-            val server = serverSocket
-              .reads()
-              .evalMap { packet =>
-                serverSocket.write(packet)
+      mkSocketGroup
+        .flatMap { socketGroup =>
+          Stream
+            .resource(socketGroup.open[IO]())
+            .flatMap { serverSocket =>
+              Stream.eval(serverSocket.localAddress).map { _.getPort }.flatMap { serverPort =>
+                val serverAddress = new InetSocketAddress("localhost", serverPort)
+                val server = serverSocket
+                  .reads()
+                  .evalMap { packet =>
+                    serverSocket.write(packet)
+                  }
+                  .drain
+                val client = Stream.resource(socketGroup.open[IO]()).flatMap { clientSocket =>
+                  Stream(Packet(serverAddress, msg))
+                    .through(clientSocket.writes())
+                    .drain ++ Stream.eval(clientSocket.read())
+                }
+                server.mergeHaltBoth(client)
               }
-              .drain
-            val client = Stream.resource(Socket[IO]()).flatMap { clientSocket =>
-              Stream(Packet(serverAddress, msg))
-                .through(clientSocket.writes())
-                .drain ++ Stream.eval(clientSocket.read())
             }
-            server.mergeHaltBoth(client)
-          }
         }
         .compile
         .toVector
@@ -57,32 +57,35 @@ class UdpSpec extends Fs2Spec with BeforeAndAfterAll {
       }
       val numClients = 50
       val numParallelClients = 10
-      Stream
-        .resource(Socket[IO]())
-        .flatMap { serverSocket =>
-          Stream.eval(serverSocket.localAddress).map { _.getPort }.flatMap { serverPort =>
-            val serverAddress = new InetSocketAddress("localhost", serverPort)
-            val server = serverSocket
-              .reads()
-              .evalMap { packet =>
-                serverSocket.write(packet)
-              }
-              .drain
-            val client = Stream.resource(Socket[IO]()).flatMap { clientSocket =>
-              Stream
-                .emits(msgs.map { msg =>
-                  Packet(serverAddress, msg)
-                })
-                .flatMap { msg =>
-                  Stream.eval_(clientSocket.write(msg)) ++ Stream.eval(clientSocket.read())
+      mkSocketGroup
+        .flatMap { socketGroup =>
+          Stream
+            .resource(socketGroup.open[IO]())
+            .flatMap { serverSocket =>
+              Stream.eval(serverSocket.localAddress).map { _.getPort }.flatMap { serverPort =>
+                val serverAddress = new InetSocketAddress("localhost", serverPort)
+                val server = serverSocket
+                  .reads()
+                  .evalMap { packet =>
+                    serverSocket.write(packet)
+                  }
+                  .drain
+                val client = Stream.resource(socketGroup.open[IO]()).flatMap { clientSocket =>
+                  Stream
+                    .emits(msgs.map { msg =>
+                      Packet(serverAddress, msg)
+                    })
+                    .flatMap { msg =>
+                      Stream.eval_(clientSocket.write(msg)) ++ Stream.eval(clientSocket.read())
+                    }
                 }
+                val clients = Stream
+                  .constant(client)
+                  .take(numClients)
+                  .parJoin(numParallelClients)
+                server.mergeHaltBoth(clients)
+              }
             }
-            val clients = Stream
-              .constant(client)
-              .take(numClients)
-              .parJoin(numParallelClients)
-            server.mergeHaltBoth(clients)
-          }
         }
         .compile
         .toVector
@@ -97,33 +100,36 @@ class UdpSpec extends Fs2Spec with BeforeAndAfterAll {
       pending // Fails often based on routing table of host machine
       val group = InetAddress.getByName("232.10.10.10")
       val msg = Chunk.bytes("Hello, world!".getBytes)
-      Stream
-        .resource(
-          Socket[IO](
-            protocolFamily = Some(StandardProtocolFamily.INET),
-            multicastTTL = Some(1)
-          ))
-        .flatMap { serverSocket =>
-          Stream.eval(serverSocket.localAddress).map { _.getPort }.flatMap { serverPort =>
-            val v4Interfaces =
-              NetworkInterface.getNetworkInterfaces.asScala.toList.filter { interface =>
-                interface.getInetAddresses.asScala.exists(_.isInstanceOf[Inet4Address])
-              }
-            val server = Stream.eval_(
-              v4Interfaces.traverse(interface => serverSocket.join(group, interface))) ++
-              serverSocket
-                .reads()
-                .evalMap { packet =>
-                  serverSocket.write(packet)
+      mkSocketGroup
+        .flatMap { socketGroup =>
+          Stream
+            .resource(
+              socketGroup.open[IO](
+                protocolFamily = Some(StandardProtocolFamily.INET),
+                multicastTTL = Some(1)
+              ))
+            .flatMap { serverSocket =>
+              Stream.eval(serverSocket.localAddress).map { _.getPort }.flatMap { serverPort =>
+                val v4Interfaces =
+                  NetworkInterface.getNetworkInterfaces.asScala.toList.filter { interface =>
+                    interface.getInetAddresses.asScala.exists(_.isInstanceOf[Inet4Address])
+                  }
+                val server = Stream.eval_(
+                  v4Interfaces.traverse(interface => serverSocket.join(group, interface))) ++
+                  serverSocket
+                    .reads()
+                    .evalMap { packet =>
+                      serverSocket.write(packet)
+                    }
+                    .drain
+                val client = Stream.resource(socketGroup.open[IO]()).flatMap { clientSocket =>
+                  Stream(Packet(new InetSocketAddress(group, serverPort), msg))
+                    .through(clientSocket.writes())
+                    .drain ++ Stream.eval(clientSocket.read())
                 }
-                .drain
-            val client = Stream.resource(Socket[IO]()).flatMap { clientSocket =>
-              Stream(Packet(new InetSocketAddress(group, serverPort), msg))
-                .through(clientSocket.writes())
-                .drain ++ Stream.eval(clientSocket.read())
+                server.mergeHaltBoth(client)
+              }
             }
-            server.mergeHaltBoth(client)
-          }
         }
         .compile
         .toVector
@@ -131,10 +137,13 @@ class UdpSpec extends Fs2Spec with BeforeAndAfterAll {
     }
 
     "timeouts supported" in {
-      Stream
-        .resource(Socket[IO]())
-        .flatMap { socket =>
-          socket.reads(timeout = Some(50.millis))
+      mkSocketGroup
+        .flatMap { socketGroup =>
+          Stream
+            .resource(socketGroup.open[IO]())
+            .flatMap { socket =>
+              socket.reads(timeout = Some(50.millis))
+            }
         }
         .compile
         .drain

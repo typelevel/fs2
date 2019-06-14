@@ -2,12 +2,10 @@ package fs2
 package io
 package file
 
-import scala.concurrent.{ExecutionContext, blocking}
-
 import java.nio.ByteBuffer
 import java.nio.channels.{FileChannel, FileLock}
 
-import cats.effect.{ContextShift, Sync}
+import cats.effect.{Blocker, ContextShift, Sync}
 
 /**
   * Provides the ability to read/write/lock/inspect a file in the effect `F`.
@@ -95,27 +93,23 @@ private[file] object FileHandle {
   /**
     * Creates a `FileHandle[F]` from a `java.nio.channels.FileChannel`.
     */
-  private[file] def fromFileChannel[F[_]](chan: FileChannel,
-                                          blockingExecutionContext: ExecutionContext)(
+  private[file] def fromFileChannel[F[_]](chan: FileChannel, blocker: Blocker)(
       implicit F: Sync[F],
       cs: ContextShift[F]): FileHandle[F] =
     new FileHandle[F] {
       type Lock = FileLock
 
-      private def doBlocking[A](a: => A): F[A] =
-        cs.evalOn(blockingExecutionContext)(F.delay(blocking(a)))
-
       override def force(metaData: Boolean): F[Unit] =
-        doBlocking(chan.force(metaData))
+        blocker.delay(chan.force(metaData))
 
       override def lock: F[Lock] =
-        doBlocking(chan.lock)
+        blocker.delay(chan.lock)
 
       override def lock(position: Long, size: Long, shared: Boolean): F[Lock] =
-        doBlocking(chan.lock(position, size, shared))
+        blocker.delay(chan.lock(position, size, shared))
 
       override def read(numBytes: Int, offset: Long): F[Option[Chunk[Byte]]] =
-        doBlocking {
+        blocker.delay {
           val buf = ByteBuffer.allocate(numBytes)
           val len = chan.read(buf, offset)
           if (len < 0) None
@@ -124,21 +118,21 @@ private[file] object FileHandle {
         }
 
       override def size: F[Long] =
-        doBlocking(chan.size)
+        blocker.delay(chan.size)
 
       override def truncate(size: Long): F[Unit] =
-        doBlocking { chan.truncate(size); () }
+        blocker.delay { chan.truncate(size); () }
 
       override def tryLock: F[Option[Lock]] =
-        doBlocking(Option(chan.tryLock()))
+        blocker.delay(Option(chan.tryLock()))
 
       override def tryLock(position: Long, size: Long, shared: Boolean): F[Option[Lock]] =
-        doBlocking(Option(chan.tryLock(position, size, shared)))
+        blocker.delay(Option(chan.tryLock(position, size, shared)))
 
       override def unlock(f: Lock): F[Unit] =
-        doBlocking(f.release())
+        blocker.delay(f.release())
 
       override def write(bytes: Chunk[Byte], offset: Long): F[Int] =
-        doBlocking(chan.write(bytes.toBytes.toByteBuffer, offset))
+        blocker.delay(chan.write(bytes.toBytes.toByteBuffer, offset))
     }
 }

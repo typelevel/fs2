@@ -20,12 +20,14 @@ import java.nio.channels.{
 import java.util.ArrayDeque
 import java.util.concurrent.{ConcurrentLinkedQueue, CountDownLatch}
 
+import cats.effect.{Blocker, ContextShift, Resource, Sync}
+
 /**
   * Supports read/write operations on an arbitrary number of UDP sockets using a shared selector thread.
   *
   * Each `AsynchronousSocketGroup` is assigned a single daemon thread that performs all read/write operations.
   */
-sealed trait AsynchronousSocketGroup {
+private[udp] sealed trait AsynchronousSocketGroup {
   private[udp] type Context
   private[udp] def register(channel: DatagramChannel): Context
   private[udp] def read(ctx: Context,
@@ -36,21 +38,20 @@ sealed trait AsynchronousSocketGroup {
                          timeout: Option[FiniteDuration],
                          cb: Option[Throwable] => Unit): Unit
   private[udp] def close(ctx: Context): Unit
-
-  /**
-    * Shuts down the daemon thread used for selection and rejects all future register/read/write requests.
-    */
-  def close(): Unit
+  protected def close(): Unit
 }
 
-object AsynchronousSocketGroup {
+private[udp] object AsynchronousSocketGroup {
   /*
    * Used to avoid copying between Chunk[Byte] and ByteBuffer during writes within the selector thread,
    * as it can be expensive depending on particular implementation of Chunk.
    */
   private class WriterPacket(val remote: InetSocketAddress, val bytes: ByteBuffer)
 
-  def apply(): AsynchronousSocketGroup = new AsynchronousSocketGroup {
+  def apply[F[_]: Sync: ContextShift](blocker: Blocker): Resource[F, AsynchronousSocketGroup] =
+    Resource.make(blocker.delay(unsafe))(g => blocker.delay(g.close()))
+
+  private def unsafe: AsynchronousSocketGroup = new AsynchronousSocketGroup {
 
     class Timeout(val expiry: Long, onTimeout: () => Unit) {
       private var done: Boolean = false

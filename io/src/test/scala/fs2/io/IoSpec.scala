@@ -1,7 +1,7 @@
 package fs2.io
 
 import java.io.{ByteArrayInputStream, InputStream}
-import cats.effect.IO
+import cats.effect.{Blocker, IO}
 import fs2.Fs2Spec
 
 class IoSpec extends Fs2Spec {
@@ -9,8 +9,8 @@ class IoSpec extends Fs2Spec {
     "non-buffered" in forAll(arrayGenerator[Byte], intsBetween(1, 20)) {
       (bytes: Array[Byte], chunkSize: Int) =>
         val is: InputStream = new ByteArrayInputStream(bytes)
-        blockingExecutionContext.use { ec =>
-          val stream = readInputStream(IO(is), chunkSize, ec)
+        Blocker[IO].use { blocker =>
+          val stream = readInputStream(IO(is), chunkSize, blocker)
           stream.compile.toVector.asserting(_.toArray shouldBe bytes)
         }
     }
@@ -18,8 +18,8 @@ class IoSpec extends Fs2Spec {
     "buffered" in forAll(arrayGenerator[Byte], intsBetween(1, 20)) {
       (bytes: Array[Byte], chunkSize: Int) =>
         val is: InputStream = new ByteArrayInputStream(bytes)
-        blockingExecutionContext.use { ec =>
-          val stream = readInputStream(IO(is), chunkSize, ec)
+        Blocker[IO].use { blocker =>
+          val stream = readInputStream(IO(is), chunkSize, blocker)
           stream.buffer(chunkSize * 2).compile.toVector.asserting(_.toArray shouldBe bytes)
         }
     }
@@ -29,8 +29,8 @@ class IoSpec extends Fs2Spec {
     "non-buffered" in forAll(arrayGenerator[Byte], intsBetween(1, 20)) {
       (bytes: Array[Byte], chunkSize: Int) =>
         val is: InputStream = new ByteArrayInputStream(bytes)
-        blockingExecutionContext.use { ec =>
-          val stream = unsafeReadInputStream(IO(is), chunkSize, ec)
+        Blocker[IO].use { blocker =>
+          val stream = unsafeReadInputStream(IO(is), chunkSize, blocker)
           stream.compile.toVector.asserting(_.toArray shouldBe bytes)
         }
     }
