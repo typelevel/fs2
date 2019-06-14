@@ -95,16 +95,16 @@ class FileSpec extends BaseFileSpec {
     }
   }
 
-  "keepReading" - {
+  "tail" - {
     "keeps reading a file as it is appended" in {
       Stream
-        .resource(blockingExecutionContext)
-        .flatMap { bec =>
+        .resource(Blocker[IO])
+        .flatMap { blocker =>
           tempFile
             .flatMap { path =>
               file
-                .keepReading[IO](path, bec, 4096, 25.millis)
-                .concurrently(modifyLater(path, bec))
+                .tail[IO](path, blocker, 4096, pollDelay = 25.millis)
+                .concurrently(modifyLater(path, blocker))
             }
         }
         .take(4)

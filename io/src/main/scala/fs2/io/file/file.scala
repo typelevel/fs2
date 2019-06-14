@@ -37,18 +37,20 @@ package object file {
       .stream
 
   /**
-    * Reads all data synchronously from the file at the specified `java.nio.file.Path`.
+    * Reads all data synchronously from the file at the specified `java.nio.file.Path`,
+    * starting at `offset` position.
     * Then waits for `delay` duration and reads whatever has been added to the file
     * in the mean time. Repeats from delay.
     */
-  def keepReading[F[_]: Sync: ContextShift: Timer](path: Path,
-                                                   blockingEC: ExecutionContext,
-                                                   chunkSize: Int,
-                                                   delay: FiniteDuration)(
+  def tail[F[_]: Sync: ContextShift: Timer](path: Path,
+                                            blocker: Blocker,
+                                            chunkSize: Int,
+                                            offset: Long = 0L,
+                                            pollDelay: FiniteDuration = 1.second)(
       ): Stream[F, Byte] =
     pulls
-      .fromPath(path, blockingEC, StandardOpenOption.READ :: Nil)
-      .flatMap(c => pulls.keepReadingFromFileHandle(chunkSize, delay)(c.resource))
+      .fromPath(path, blocker, StandardOpenOption.READ :: Nil)
+      .flatMap(c => pulls.tailFromFileHandle(chunkSize, offset, pollDelay)(c.resource))
       .stream
 
   /**
