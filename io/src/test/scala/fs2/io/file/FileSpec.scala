@@ -57,26 +57,6 @@ class FileSpec extends BaseFileSpec {
     }
   }
 
-  "keepReading" - {
-    "keeps reading a file as it is appended" in {
-      Stream
-        .resource(blockingExecutionContext)
-        .flatMap { bec =>
-          tempFile
-            .flatMap { path =>
-              file
-                .keepReading[IO](path, bec, 4096, 25.millis)
-                .concurrently(modifyLater(path))
-            }
-        }
-        .take(4)
-        .compile
-        .toList
-        .map(_.size)
-        .unsafeRunSync() shouldBe 4
-    }
-  }
-
   "writeAll" - {
     "simple write" in {
       Stream
@@ -114,4 +94,25 @@ class FileSpec extends BaseFileSpec {
         .unsafeRunSync() shouldBe "Hello world!Hello world!"
     }
   }
+
+  "keepReading" - {
+    "keeps reading a file as it is appended" in {
+      Stream
+        .resource(blockingExecutionContext)
+        .flatMap { bec =>
+          tempFile
+            .flatMap { path =>
+              file
+                .keepReading[IO](path, bec, 4096, 25.millis)
+                .concurrently(modifyLater(path, bec))
+            }
+        }
+        .take(4)
+        .compile
+        .toList
+        .map(_.size)
+        .unsafeRunSync() shouldBe 4
+    }
+  }
+
 }
