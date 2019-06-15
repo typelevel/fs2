@@ -11,6 +11,7 @@ class PullSpec extends Fs2Spec {
           .onFinalize(ref.set(1))
           .pull
           .echoChunk
+          .void
           .stream
           .compile
           .toList

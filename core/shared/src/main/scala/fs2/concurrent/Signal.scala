@@ -74,7 +74,7 @@ object Signal extends SignalLowPriorityImplicits {
       (y, restOfYs) = firstYAndRestOfYs
       _ <- OptionT.liftF(Pull.output1[F, PullOutput]((x, y, restOfXs, restOfYs)))
     } yield ()
-    firstPull.value.stream
+    firstPull.value.void.stream
       .covaryOutput[PullOutput]
       .flatMap {
         case (x, y, restOfXs, restOfYs) =>

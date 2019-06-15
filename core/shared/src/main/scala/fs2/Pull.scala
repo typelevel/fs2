@@ -35,8 +35,19 @@ final class Pull[+F[_], +O, +R] private (private val free: FreeC[Algebra[Nothing
   def attempt: Pull[F, O, Either[Throwable, R]] =
     Pull.fromFreeC(get[F, O, R].map(r => Right(r)).handleErrorWith(t => FreeC.pure(Left(t))))
 
-  /** Interpret this `Pull` to produce a `Stream`. The result type `R` is discarded. */
-  def stream: Stream[F, O] =
+  /**
+    * Interpret this `Pull` to produce a `Stream`.
+    *
+    * May only be called on pulls which return a `Unit` result type. Use `p.void.stream` to explicitly
+    * ignore the result type of the pull.
+    */
+  def stream(implicit ev: R <:< Unit): Stream[F, O] = {
+    val _ = ev
+    Stream.fromFreeC(this.scope.get[F, O, Unit])
+  }
+
+  // For binary compatibility with 1.0.x
+  private[Pull] def stream: Stream[F, O] =
     Stream.fromFreeC(this.scope.get[F, O, Unit])
 
   /**
@@ -54,7 +65,14 @@ final class Pull[+F[_], +O, +R] private (private val free: FreeC[Algebra[Nothing
     * closing but when using `streamNoScope`, they get promoted to the current stream scope,
     * which may be infinite in the worst case.
     */
-  def streamNoScope: Stream[F, O] = Stream.fromFreeC(get[F, O, R].map(_ => ()))
+  def streamNoScope(implicit ev: R <:< Unit): Stream[F, O] = {
+    val _ = ev
+    Stream.fromFreeC(this.asInstanceOf[Pull[F, O, Unit]].get[F, O, Unit])
+  }
+
+  // For binary compatibility with 1.0.x
+  private[Pull] def streamNoScope: Stream[F, O] =
+    Stream.fromFreeC(this.asInstanceOf[Pull[F, O, Unit]].get[F, O, Unit])
 
   /** Applies the resource of this pull to `f` and returns the result. */
   def flatMap[F2[x] >: F[x], O2 >: O, R2](f: R => Pull[F2, O2, R2]): Pull[F2, O2, R2] =
@@ -93,6 +111,9 @@ final class Pull[+F[_], +O, +R] private (private val free: FreeC[Algebra[Nothing
 
   /** Tracks any resources acquired during this pull and releases them when the pull completes. */
   def scope: Pull[F, O, Unit] = Pull.fromFreeC(Algebra.scope(get[F, O, R].map(_ => ())))
+
+  /** Discards the result type of this pull. */
+  def void: Pull[F, O, Unit] = as(())
 }
 
 object Pull extends PullLowPriority {

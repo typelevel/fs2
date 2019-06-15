@@ -11,8 +11,8 @@ object ThisModuleShouldCompile {
   /* Some checks that `.pull` can be used without annotations */
   Stream(1, 2, 3, 4).through(_.take(2))
   Stream.eval(IO.pure(1)).through(_.take(2))
-  Stream(1, 2, 3).covary[IO].pull.uncons1.stream
-  Stream.eval(IO.pure(1)).pull.uncons1.stream
+  Stream(1, 2, 3).covary[IO].pull.uncons1.void.stream
+  Stream.eval(IO.pure(1)).pull.uncons1.void.stream
 
   /* Also in a polymorphic context. */
   def a[F[_], A](s: Stream[F, A]) = s.through(_.take(2))
@@ -36,20 +36,20 @@ object ThisModuleShouldCompile {
     .pull
     .uncons1
     .flatMap {
-      case Some((hd, _)) => Pull.output1(hd).as(None)
-      case None          => Pull.pure(None)
+      case Some((hd, _)) => Pull.output1(hd)
+      case None          => Pull.done
     }
     .stream
   Stream(1, 2, 3).pull.uncons1
     .flatMap {
-      case Some((hd, _)) => Pull.output1(hd).as(None)
-      case None          => Pull.pure(None)
+      case Some((hd, _)) => Pull.output1(hd)
+      case None          => Pull.done
     }
     .stream
   Stream(1, 2, 3).pull.uncons1
     .flatMap {
-      case Some((hd, _)) => Pull.eval(IO.pure(1)) >> Pull.output1(hd).as(None)
-      case None          => Pull.pure(None)
+      case Some((hd, _)) => Pull.eval(IO.pure(1)) >> Pull.output1(hd)
+      case None          => Pull.done
     }
     .stream
   (Stream(1, 2, 3).evalMap(IO(_))): Stream[IO, Int]

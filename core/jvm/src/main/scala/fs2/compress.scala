@@ -70,7 +70,7 @@ object compress {
   def inflate[F[_]](nowrap: Boolean = false, bufferSize: Int = 1024 * 32)(
       implicit ev: RaiseThrowable[F]): Pipe[F, Byte, Byte] =
     _.pull.uncons.flatMap {
-      case None => Pull.pure(None)
+      case None => Pull.done
       case Some((hd, tl)) =>
         val inflater = new Inflater(nowrap)
         val buffer = new Array[Byte](bufferSize)
