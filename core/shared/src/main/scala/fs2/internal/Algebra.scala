@@ -255,7 +255,7 @@ private[fs2] object Algebra {
                     case Right(Out(head, outScope, tail)) =>
                       // if we originally swapped scopes we want to return the original
                       // scope back to the go as that is the scope that is expected to be here.
-                      val nextScope = u.scope.fold(outScope)(_ => scope)
+                      val nextScope = if (u.scope.isEmpty) outScope else scope
                       interruptGuard(nextScope)(
                         go(nextScope, view.next(Result.pure(Some((head, outScope.id, tail)))))
                       )
