@@ -60,23 +60,20 @@ object text {
          Chunk.bytes(allBytes.drop(splitAt)))
     }
 
-    def doPull(
-        buf: Chunk[Byte],
-        s: Stream[Pure, Chunk[Byte]]): Pull[Pure, String, Option[Stream[Pure, Chunk[Byte]]]] =
+    def doPull(buf: Chunk[Byte], s: Stream[Pure, Chunk[Byte]]): Pull[Pure, String, Unit] =
       s.pull.uncons.flatMap {
         case Some((byteChunks, tail)) =>
           val (output, nextBuffer) =
             byteChunks.toList.foldLeft((Nil: List[String], buf))(processSingleChunk)
           Pull.output(Chunk.seq(output.reverse)) >> doPull(nextBuffer, tail)
         case None if !buf.isEmpty =>
-          Pull.output1(new String(buf.toArray, utf8Charset)) >> Pull.pure(None)
+          Pull.output1(new String(buf.toArray, utf8Charset))
         case None =>
-          Pull.pure(None)
+          Pull.done
       }
 
-    def processByteOrderMark(
-        buffer: Option[Chunk.Queue[Byte]],
-        s: Stream[Pure, Chunk[Byte]]): Pull[Pure, String, Option[Stream[Pure, Chunk[Byte]]]] =
+    def processByteOrderMark(buffer: Option[Chunk.Queue[Byte]],
+                             s: Stream[Pure, Chunk[Byte]]): Pull[Pure, String, Unit] =
       s.pull.uncons1.flatMap {
         case Some((hd, tl)) =>
           val newBuffer = buffer.getOrElse(Chunk.Queue.empty[Byte]) :+ hd
@@ -93,7 +90,7 @@ object text {
             case Some(b) =>
               doPull(Chunk.empty, Stream.emits(b.chunks))
             case None =>
-              Pull.pure(None)
+              Pull.done
           }
       }
 
@@ -179,15 +176,15 @@ object text {
 
     def go(buffer: Vector[String],
            pendingLineFeed: Boolean,
-           s: Stream[F, String]): Pull[F, String, Option[Unit]] =
+           s: Stream[F, String]): Pull[F, String, Unit] =
       s.pull.uncons.flatMap {
         case Some((chunk, s)) =>
           val (toOutput, newBuffer, newPendingLineFeed) =
             extractLines(buffer, chunk, pendingLineFeed)
           Pull.output(toOutput) >> go(newBuffer, newPendingLineFeed, s)
         case None if buffer.nonEmpty =>
-          Pull.output1(buffer.mkString) >> Pull.pure(None)
-        case None => Pull.pure(None)
+          Pull.output1(buffer.mkString)
+        case None => Pull.done
       }
 
     s =>

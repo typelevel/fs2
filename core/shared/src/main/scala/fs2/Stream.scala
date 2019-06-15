@@ -426,7 +426,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
       }
 
     this.pull.uncons.flatMap {
-      case None => Pull.pure(None)
+      case None => Pull.done
       case Some((hd, tl)) =>
         if (hd.size >= n)
           Pull.output1(hd) >> go(Chunk.Queue.empty, tl)
@@ -476,8 +476,8 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     this.pull
       .find(pf.isDefinedAt)
       .flatMap {
-        case None           => Pull.pure(None)
-        case Some((hd, tl)) => Pull.output1(pf(hd)).as(None)
+        case None           => Pull.done
+        case Some((hd, tl)) => Pull.output1(pf(hd))
       }
       .stream
 
@@ -676,7 +676,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     this.pull
       .takeWhile(o => !p(o))
       .flatMap {
-        case None    => Pull.pure(None)
+        case None    => Pull.done
         case Some(s) => s.drop(1).pull.echo
       }
       .stream
@@ -839,9 +839,9 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
   def dropRight(n: Int): Stream[F, O] =
     if (n <= 0) this
     else {
-      def go(acc: Chunk.Queue[O], s: Stream[F, O]): Pull[F, O, Option[Unit]] =
+      def go(acc: Chunk.Queue[O], s: Stream[F, O]): Pull[F, O, Unit] =
         s.pull.uncons.flatMap {
-          case None => Pull.pure(None)
+          case None => Pull.done
           case Some((hd, tl)) =>
             val all = acc :+ hd
             all
@@ -949,20 +949,20 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * }}}
     */
   def evalScan[F2[x] >: F[x], O2](z: O2)(f: (O2, O) => F2[O2]): Stream[F2, O2] = {
-    def go(z: O2, s: Stream[F2, O]): Pull[F2, O2, Option[Stream[F2, O2]]] =
+    def go(z: O2, s: Stream[F2, O]): Pull[F2, O2, Unit] =
       s.pull.uncons1.flatMap {
         case Some((hd, tl)) =>
           Pull.eval(f(z, hd)).flatMap { o =>
             Pull.output1(o) >> go(o, tl)
           }
-        case None => Pull.pure(None)
+        case None => Pull.done
       }
     this.pull.uncons1.flatMap {
       case Some((hd, tl)) =>
         Pull.eval(f(z, hd)).flatMap { o =>
           Pull.output(Chunk.seq(List(z, o))) >> go(o, tl)
         }
-      case None => Pull.output1(z) >> Pull.pure(None)
+      case None => Pull.output1(z)
     }.stream
   }
 
@@ -1016,9 +1016,9 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * }}}
     */
   def filterWithPrevious(f: (O, O) => Boolean): Stream[F, O] = {
-    def go(last: O, s: Stream[F, O]): Pull[F, O, Option[Unit]] =
+    def go(last: O, s: Stream[F, O]): Pull[F, O, Unit] =
       s.pull.uncons.flatMap {
-        case None           => Pull.pure(None)
+        case None           => Pull.done
         case Some((hd, tl)) =>
           // Check if we can emit this chunk unmodified
           val (allPass, newLast) = hd.foldLeft((true, last)) {
@@ -1036,7 +1036,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
           }
       }
     this.pull.uncons1.flatMap {
-      case None           => Pull.pure(None)
+      case None           => Pull.done
       case Some((hd, tl)) => Pull.output1(hd) >> go(hd, tl)
     }.stream
   }
@@ -1518,7 +1518,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     */
   def intersperse[O2 >: O](separator: O2): Stream[F, O2] =
     this.pull.echo1.flatMap {
-      case None => Pull.pure(None)
+      case None => Pull.done
       case Some(s) =>
         s.repeatPull {
             _.uncons.flatMap {
@@ -2303,7 +2303,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     */
   def scanChunksOpt[S, O2 >: O, O3](init: S)(
       f: S => Option[Chunk[O2] => (S, Chunk[O3])]): Stream[F, O3] =
-    this.pull.scanChunksOpt(init)(f).stream
+    this.pull.scanChunksOpt(init)(f).void.stream
 
   /**
     * Alias for `map(f).scanMonoid`.
@@ -2464,7 +2464,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * res0: List[Int] = List(0, 1, 2, 3, 4)
     * }}}
     */
-  def take(n: Long): Stream[F, O] = this.pull.take(n).stream
+  def take(n: Long): Stream[F, O] = this.pull.take(n).void.stream
 
   /**
     * Emits the last `n` elements of the input.
@@ -2490,7 +2490,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * }}}
     */
   def takeThrough(p: O => Boolean): Stream[F, O] =
-    this.pull.takeThrough(p).stream
+    this.pull.takeThrough(p).void.stream
 
   /**
     * Emits the longest prefix of the input for which all elements test true according to `f`.
@@ -2501,7 +2501,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * }}}
     */
   def takeWhile(p: O => Boolean, takeFailure: Boolean = false): Stream[F, O] =
-    this.pull.takeWhile(p, takeFailure).stream
+    this.pull.takeWhile(p, takeFailure).void.stream
 
   /**
     * Transforms this stream using the given `Pipe`.
@@ -2618,16 +2618,19 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
       }
     }
 
-    covaryAll[F2, O2].pull.stepLeg.flatMap {
-      case Some(leg1) =>
-        that.pull.stepLeg
-          .flatMap {
-            case Some(leg2) => go(leg1, leg2)
-            case None       => k1(Left((leg1.head, leg1.stream)))
-          }
+    covaryAll[F2, O2].pull.stepLeg
+      .flatMap {
+        case Some(leg1) =>
+          that.pull.stepLeg
+            .flatMap {
+              case Some(leg2) => go(leg1, leg2)
+              case None       => k1(Left((leg1.head, leg1.stream)))
+            }
 
-      case None => k2(Right(that))
-    }.stream
+        case None => k2(Right(that))
+      }
+      .void
+      .stream
   }
 
   /**
@@ -3523,7 +3526,7 @@ object Stream extends StreamLowPriority {
       */
     def repeatPull[O2](
         using: Stream.ToPull[F, O] => Pull[F, O2, Option[Stream[F, O]]]): Stream[F, O2] =
-      Pull.loop(using.andThen(_.map(_.map(_.pull))))(pull).stream
+      Pull.loop(using.andThen(_.map(_.map(_.pull))))(pull).void.stream
 
   }
 
@@ -4302,6 +4305,7 @@ object Stream extends StreamLowPriority {
         .loop[F, O, StepLeg[F, O]] { leg =>
           Pull.output(leg.head).flatMap(_ => leg.stepLeg)
         }(self.setHead(Chunk.empty))
+        .void
         .stream
 
     /** Replaces head of this leg. Useful when the head was not fully consumed. */
