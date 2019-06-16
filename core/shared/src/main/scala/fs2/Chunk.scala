@@ -4,7 +4,7 @@ import scala.annotation.tailrec
 import scala.collection.immutable.{Queue => SQueue}
 import scala.collection.{IndexedSeq => GIndexedSeq, Seq => GSeq}
 import scala.reflect.ClassTag
-import scodec.bits.ByteVector
+import scodec.bits.{BitVector, ByteVector}
 import java.nio.{
   Buffer => JBuffer,
   ByteBuffer => JByteBuffer,
@@ -396,6 +396,24 @@ abstract class Chunk[+O] extends Serializable { self =>
       }
       buf.result
     }
+
+  /** Converts this chunk to a scodec-bits ByteVector. */
+  def toByteVector[B >: O](implicit ev: B =:= Byte): ByteVector = {
+    val _ = ev // convince scalac that ev is used
+    this match {
+      case c: Chunk.ByteVectorChunk => c.toByteVector
+      case other                    => ByteVector.view(other.asInstanceOf[Chunk[Byte]].toArray)
+    }
+  }
+
+  /** Converts this chunk to a scodec-bits BitVector. */
+  def toBitVector[B >: O](implicit ev: B =:= Byte): BitVector = {
+    val _ = ev // convince scalac that ev is used
+    this match {
+      case c: Chunk.ByteVectorChunk => c.toByteVector.bits
+      case other                    => BitVector.view(other.asInstanceOf[Chunk[Byte]].toArray)
+    }
+  }
 
   /**
     * Returns true if this chunk is known to have elements of type `B`.
