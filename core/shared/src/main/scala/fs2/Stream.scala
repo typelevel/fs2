@@ -3030,7 +3030,7 @@ object Stream extends StreamLowPriority {
     * res0: List[Int] = List(1, 2, 3)
     * }}}
     */
-  def emits[F[x] >: Pure[x], O](os: Seq[O]): Stream[F, O] =
+  def emits[F[x] >: Pure[x], O](os: scala.collection.Seq[O]): Stream[F, O] =
     os match {
       case Nil    => empty
       case Seq(x) => emit(x)
