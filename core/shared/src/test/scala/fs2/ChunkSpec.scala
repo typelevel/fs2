@@ -3,7 +3,7 @@ package fs2
 import cats.Eq
 import cats.kernel.CommutativeMonoid
 import cats.kernel.laws.discipline.EqTests
-import cats.laws.discipline.{FunctorFilterTests, MonadTests, TraverseTests}
+import cats.laws.discipline.{AlternativeTests, MonadTests, TraverseFilterTests, TraverseTests}
 import cats.implicits._
 import org.scalacheck.Cogen
 import org.scalactic.anyvals._
@@ -104,8 +104,9 @@ class ChunkSpec extends Fs2Spec {
       import org.scalacheck.GeneratorCompat._
 
       checkAll(s"Eq[Chunk[$of]]", EqTests[Chunk[A]].eqv)
-      checkAll(s"Monad[Chunk]", MonadTests[Chunk].monad[A, A, A])
-      checkAll(s"FunctorFilter[Chunk]", FunctorFilterTests[Chunk].functorFilter[A, A, A])
+      checkAll("Monad[Chunk]", MonadTests[Chunk].monad[A, A, A])
+      checkAll("Alternative[Chunk]", AlternativeTests[Chunk].alternative[A, A, A])
+      checkAll("TraverseFilter[Chunk]", TraverseFilterTests[Chunk].traverseFilter[A, A, A])
 
       if (testTraverse)
         checkAll(s"Traverse[Chunk]", TraverseTests[Chunk].traverse[A, A, A, A, Option, Option])

@@ -13,8 +13,7 @@ package object file {
   /**
     * Reads all data synchronously from the file at the specified `java.nio.file.Path`.
     */
-  def readAll[F[_]: Sync: ContextShift](path: Path, blocker: Blocker, chunkSize: Int)(
-      ): Stream[F, Byte] =
+  def readAll[F[_]: Sync: ContextShift](path: Path, blocker: Blocker, chunkSize: Int): Stream[F, Byte] =
     pulls
       .fromPath(path, blocker, List(StandardOpenOption.READ))
       .flatMap(c => pulls.readAllFromFileHandle(chunkSize)(c.resource))
@@ -29,8 +28,7 @@ package object file {
                                           blocker: Blocker,
                                           chunkSize: Int,
                                           start: Long,
-                                          end: Long)(
-      ): Stream[F, Byte] =
+                                          end: Long): Stream[F, Byte] =
     pulls
       .fromPath(path, blocker, List(StandardOpenOption.READ))
       .flatMap(c => pulls.readRangeFromFileHandle(chunkSize, start, end)(c.resource))
@@ -50,8 +48,7 @@ package object file {
                                             blocker: Blocker,
                                             chunkSize: Int,
                                             offset: Long = 0L,
-                                            pollDelay: FiniteDuration = 1.second)(
-      ): Stream[F, Byte] =
+                                            pollDelay: FiniteDuration = 1.second): Stream[F, Byte] =
     pulls
       .fromPath(path, blocker, List(StandardOpenOption.READ))
       .flatMap(c => pulls.tailFromFileHandle(chunkSize, offset, pollDelay)(c.resource))
