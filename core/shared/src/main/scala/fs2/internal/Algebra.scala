@@ -2,7 +2,6 @@ package fs2.internal
 
 import cats.~>
 import cats.effect.{Concurrent, ExitCase, Sync}
-import cats.implicits._
 import fs2._
 import fs2.internal.FreeC.{Result, ViewL}
 
@@ -164,7 +163,7 @@ private[fs2] object Algebra {
   /** Left-folds the output of a stream. */
   def compile[F[_], O, B](stream: FreeC[Algebra[F, O, ?], Unit], scope: CompileScope[F], init: B)(
       g: (B, Chunk[O]) => B)(implicit F: Sync[F]): F[B] =
-    compileLoop[F, O](scope, stream).flatMap {
+    F.flatMap(compileLoop[F, O](scope, stream)) {
       case Some((output, scope, tail)) =>
         try {
           val b = g(init, output)
@@ -327,7 +326,7 @@ private[fs2] object Algebra {
               scope.findSelfOrAncestor(close.scopeId) match {
                 case Some(toClose) => closeAndGo(toClose, close.exitCase)
                 case None =>
-                  scope.findSelfOrChild(close.scopeId).flatMap {
+                  F.flatMap(scope.findSelfOrChild(close.scopeId)) {
                     case Some(toClose) =>
                       closeAndGo(toClose, close.exitCase)
                     case None =>
