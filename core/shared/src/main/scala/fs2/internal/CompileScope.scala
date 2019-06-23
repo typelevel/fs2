@@ -1,12 +1,10 @@
 package fs2.internal
 
 import scala.annotation.tailrec
-
 import cats.{Traverse, TraverseFilter}
 import cats.data.Chain
 import cats.effect.{Concurrent, ExitCase, Sync}
 import cats.effect.concurrent.{Deferred, Ref}
-import cats.implicits._
 import fs2.{CompositeFailure, Pure, Scope}
 import fs2.internal.CompileScope.InterruptContext
 
@@ -163,9 +161,10 @@ private[fs2] final class CompileScope[F[_]] private (
     F.flatMap(F.attempt(fr)) {
       case Right(r) =>
         val finalizer = (ec: ExitCase[Throwable]) => F.suspend(release(r, ec))
-        F.flatMap(resource.acquired(finalizer)) { result =>
-          if (result.exists(identity)) F.map(register(resource))(_ => Right((r, resource)))
-          else F.pure(Left(result.swap.getOrElse(AcquireAfterScopeClosed)))
+        F.flatMap(resource.acquired(finalizer)) {
+          case Right(true)  => F.map(register(resource))(_ => Right((r, resource)))
+          case Right(false) => F.pure(Left(AcquireAfterScopeClosed))
+          case Left(err)    => F.pure(Left(err))
         }
       case Left(err) => F.pure(Left(err))
     }
@@ -342,7 +341,7 @@ private[fs2] final class CompileScope[F[_]] private (
           new IllegalStateException("Scope#interrupt called for Scope that cannot be interrupted"))
       case Some(iCtx) =>
         // note that we guard interruption here by Attempt to prevent failure on multiple sets.
-        val interruptCause = cause.map(_ => iCtx.interruptRoot)
+        val interruptCause = if (cause.isRight) Right(iCtx.interruptRoot) else Left(cause.left.get)
         F.guarantee(iCtx.deferred.complete(interruptCause)) {
           iCtx.ref.update { _.orElse(Some(interruptCause)) }
         }
@@ -374,13 +373,17 @@ private[fs2] final class CompileScope[F[_]] private (
     */
   private[internal] def interruptibleEval[A](f: F[A]): F[Either[Either[Throwable, Token], A]] =
     interruptible match {
-      case None => F.map(F.attempt(f)) { _.swap.map(Left(_)).swap }
+      case None =>
+        F.map(F.attempt(f)) {
+          case Left(err) => Left(Left(err))
+          case Right(a)  => Right(a)
+        }
       case Some(iCtx) =>
-        F.map(
-          iCtx.concurrent
-            .race(iCtx.deferred.get, F.attempt(f))) {
-          case Right(result) => result.leftMap(Left(_))
-          case Left(other)   => Left(other)
+        val raced = iCtx.concurrent.race(iCtx.deferred.get, F.attempt(f))
+        F.map(raced) {
+          case Right(Left(err)) => Left(Left(err))
+          case Right(Right(a))  => Right(a)
+          case Left(other)      => Left(other)
         }
     }
 
