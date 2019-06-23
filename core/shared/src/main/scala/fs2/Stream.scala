@@ -60,7 +60,7 @@ import scala.concurrent.duration._
   * that we can applying the stream's method and converting the result to a list gets the same result as
   * first converting the stream to a list, and then applying list methods.
   *
-  * Some methods that project directly to list methods are, are `map`, `filter`, `takeWhile`, etc.
+  * Some methods that project directly to list are `map`, `filter`, `takeWhile`, etc.
   * There are other methods, like `exists` or `find`, that in the `List` class they return a value or an `Option`,
   * but their stream counterparts return an (either empty or singleton) stream.
   * Other methods, like `zipWithPrevious`, have a more complicated but still pure translation to list methods.
