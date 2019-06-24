@@ -1978,7 +1978,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
                   // runs inner stream
                   // each stream is forked.
                   // terminates when killSignal is true
-                  // if fails will enq in queue failure
+                  // failures will be propagated through `done` Signal
                   // note that supplied scope's resources must be leased before the inner stream forks the execution to another thread
                   // and that it must be released once the inner stream terminates or fails.
                   def runInner(inner: Stream[F2, O2], outerScope: Scope[F2]): F2[Unit] =
@@ -1990,7 +1990,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
                             F2.start {
                               inner.chunks
                                 .evalMap(s => outputQ.enqueue1(Some(s)))
-                                .interruptWhen(done.map(_.nonEmpty)) // must be AFTER enqueue to the sync queue, otherwise the process may hang to enq last item while being interrupted
+                                .interruptWhen(done.map(_.nonEmpty)) // must be AFTER enqueue to the sync queue, otherwise the process may hang to enqueue last item while being interrupted
                                 .compile
                                 .drain
                                 .attempt
