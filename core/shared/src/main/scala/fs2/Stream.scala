@@ -1978,7 +1978,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
                   // runs inner stream
                   // each stream is forked.
                   // terminates when killSignal is true
-                  // if fails will enqueue in queue failure
+                  // failures will be propagated through `done` Signal
                   // note that supplied scope's resources must be leased before the inner stream forks the execution to another thread
                   // and that it must be released once the inner stream terminates or fails.
                   def runInner(inner: Stream[F2, O2], outerScope: Scope[F2]): F2[Unit] =
