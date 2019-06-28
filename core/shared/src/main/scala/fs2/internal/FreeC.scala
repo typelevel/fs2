@@ -203,6 +203,12 @@ private[fs2] object FreeC {
     final case class View[F[_], X, R](step: F[X], next: Result[X] => FreeC[F, R])
         extends ViewL[F, R]
 
+    final case class >=>[F[_], X, Y, Z](fst: Result[X] => FreeC[F, Y],
+                                        snd: Result[Y] => FreeC[F, Z])
+        extends (Result[X] => FreeC[F, Z]) {
+      def apply(r: Result[X]): FreeC[F, Z] = Bind[F, Y, Z](fst(r), snd)
+    }
+
     private[fs2] def apply[F[_], R](free: FreeC[F, R]): ViewL[F, R] = mk(free)
 
     @tailrec
@@ -210,10 +216,31 @@ private[fs2] object FreeC {
       free match {
         case Eval(fx) => View(fx, pureContinuation[F, R])
         case b: FreeC.Bind[F, y, R] =>
-          b.fx match {
-            case Result(r)  => mk(b.f(r))
-            case Eval(fr)   => ViewL.View(fr, b.f)
-            case Bind(w, g) => mk(Bind(w, (e: Result[Any]) => Bind(g(e), b.f)))
+          @tailrec
+          def mk2[Y, Z](free: FreeC[F, Y],
+                        cont: Result[Y] => FreeC[F, Z]): Either[FreeC[F, Z], ViewL[F, Z]] =
+            free match {
+              case Eval(fx) => Right(View(fx, cont))
+              case r @ Result.Pure(_) =>
+                cont match {
+                  case kl: >=>[F, Y, w, Z] => mk2[w, Z](kl.fst(r), kl.snd)
+                  case _                   => Left(cont(r))
+                }
+              case r @ Result.Fail(_) =>
+                cont match {
+                  case kl: >=>[F, Y, w, Z] => mk2[w, Z](kl.fst(r), kl.snd)
+                  case _                   => Left(cont(r))
+                }
+              case r @ Result.Interrupted(_, _) =>
+                cont match {
+                  case kl: >=>[F, Y, w, Z] => mk2[w, Z](kl.fst(r), kl.snd)
+                  case _                   => Left(cont(r))
+                }
+              case b: FreeC.Bind[F, x, Y] => mk2[x, Z](b.fx, >=>(b.f, cont))
+            }
+          mk2[y, R](b.fx, b.f) match {
+            case Right(v) => v
+            case Left(b)  => mk(b)
           }
         case r @ Result.Pure(_)           => r
         case r @ Result.Fail(_)           => r
