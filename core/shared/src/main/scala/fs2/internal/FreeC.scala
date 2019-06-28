@@ -25,36 +25,38 @@ import scala.util.control.NonFatal
 private[fs2] sealed abstract class FreeC[F[_], +R] {
 
   def flatMap[R2](f: R => FreeC[F, R2]): FreeC[F, R2] =
-    Bind[F, R, R2](
-      this,
-      e =>
-        e match {
-          case Result.Pure(r) =>
-            try f(r)
-            catch { case NonFatal(e) => FreeC.Result.Fail(e) }
-          case Result.Interrupted(scope, err) => FreeC.Result.Interrupted(scope, err)
-          case Result.Fail(e)                 => FreeC.Result.Fail(e)
+    new Bind[F, R, R2](this) {
+      def cont(e: Result[R]): FreeC[F, R2] = e match {
+        case Result.Pure(r) =>
+          try f(r)
+          catch { case NonFatal(e) => FreeC.Result.Fail(e) }
+        case Result.Interrupted(scope, err) => FreeC.Result.Interrupted(scope, err)
+        case Result.Fail(e)                 => FreeC.Result.Fail(e)
       }
-    )
+    }
 
   def transformWith[R2](f: Result[R] => FreeC[F, R2]): FreeC[F, R2] =
-    Bind[F, R, R2](this,
-                   r =>
-                     try f(r)
-                     catch { case NonFatal(e) => FreeC.Result.Fail(e) })
+    new Bind[F, R, R2](this) {
+      def cont(r: Result[R]): FreeC[F, R2] =
+        try f(r)
+        catch { case NonFatal(e) => FreeC.Result.Fail(e) }
+    }
 
   def map[R2](f: R => R2): FreeC[F, R2] =
-    Bind[F, R, R2](this, Result.map(_)(f).asFreeC[F])
+    new Bind[F, R, R2](this) {
+      def cont(e: Result[R]): FreeC[F, R2] = Result.map(e)(f).asFreeC[F]
+    }
 
   def handleErrorWith[R2 >: R](h: Throwable => FreeC[F, R2]): FreeC[F, R2] =
-    Bind[F, R2, R2](this,
-                    e =>
-                      e match {
-                        case Result.Fail(e) =>
-                          try h(e)
-                          catch { case NonFatal(e) => FreeC.Result.Fail(e) }
-                        case other => other.asFreeC[F]
-                    })
+    new Bind[F, R2, R2](this) {
+      def cont(e: Result[R2]): FreeC[F, R2] = e match {
+        case Result.Fail(e) =>
+          try h(e)
+          catch { case NonFatal(e) => FreeC.Result.Fail(e) }
+        case other => other.asFreeC[F]
+      }
+
+    }
 
   def asHandler(e: Throwable): FreeC[F, R] = ViewL(this) match {
     case Result.Pure(_)  => Result.Fail(e)
@@ -68,8 +70,10 @@ private[fs2] sealed abstract class FreeC[F[_], +R] {
 
   def translate[G[_]](f: F ~> G): FreeC[G, R] = suspend {
     viewL match {
-      case ViewL.View(fx, k) =>
-        Bind(Eval(fx).translate(f), (e: Result[Any]) => k(e).translate(f))
+      case v: ViewL.View[F, x, R] =>
+        new Bind[G, x, R](Eval(v.step).translate(f)) {
+          def cont(e: Result[x]) = v.next(e).translate(f)
+        }
       case r @ Result.Pure(_)           => r.asFreeC[G]
       case r @ Result.Fail(_)           => r.asFreeC[G]
       case r @ Result.Interrupted(_, _) => r.asFreeC[G]
@@ -181,16 +185,20 @@ private[fs2] object FreeC {
       }
     override def toString: String = s"FreeC.Eval($fr)"
   }
-  final case class Bind[F[_], X, R](fx: FreeC[F, X], f: Result[X] => FreeC[F, R])
-      extends FreeC[F, R] {
-    override def toString: String = s"FreeC.Bind($fx, $f)"
+
+  abstract class Bind[F[_], X, R](val step: FreeC[F, X]) extends FreeC[F, R] {
+    def cont(r: Result[X]): FreeC[F, R]
+
+    override def toString: String = s"FreeC.Bind($step)"
   }
 
   def pureContinuation[F[_], R]: Result[R] => FreeC[F, R] =
     _.asFreeC[F]
 
   def suspend[F[_], R](fr: => FreeC[F, R]): FreeC[F, R] =
-    unit.flatMap(_ => fr)
+    new Bind[F, Unit, R](unit[F]) {
+      def cont(r: Result[Unit]): FreeC[F, R] = fr
+    }
 
   /**
     * Unrolled view of a `FreeC` structure. may be `Result` or `EvalBind`
@@ -210,10 +218,19 @@ private[fs2] object FreeC {
       free match {
         case Eval(fx) => View(fx, pureContinuation[F, R])
         case b: FreeC.Bind[F, y, R] =>
-          b.fx match {
-            case Result(r)  => mk(b.f(r))
-            case Eval(fr)   => ViewL.View(fr, b.f)
-            case Bind(w, g) => mk(Bind(w, (e: Result[Any]) => Bind(g(e), b.f)))
+          b.step match {
+            case Result(r) => mk(b.cont(r))
+            case Eval(fr)  => ViewL.View(fr, b.cont)
+            // case Bind(w, g) => mk(Bind(w, (e: Result[Any]) => Bind(g(e), b.f)))
+            case bb: FreeC.Bind[F, z, y] =>
+              mk {
+                new Bind[F, z, R](bb.step) {
+                  def cont(zr: Result[z]): FreeC[F, R] =
+                    new Bind[F, y, R](bb.cont(zr)) {
+                      def cont(yr: Result[y]): FreeC[F, R] = b.cont(yr)
+                    }
+                }
+              }
           }
         case r @ Result.Pure(_)           => r
         case r @ Result.Fail(_)           => r
