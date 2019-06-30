@@ -55,7 +55,6 @@ private[fs2] sealed abstract class FreeC[F[_], +R] {
           catch { case NonFatal(e) => FreeC.Result.Fail(e) }
         case other => other.asFreeC[F]
       }
-
     }
 
   def asHandler(e: Throwable): FreeC[F, R] = ViewL(this) match {
@@ -63,7 +62,7 @@ private[fs2] sealed abstract class FreeC[F[_], +R] {
     case Result.Fail(e2) => Result.Fail(CompositeFailure(e2, e))
     case Result.Interrupted(ctx, err) =>
       Result.Interrupted(ctx, err.map(t => CompositeFailure(e, t)).orElse(Some(e)))
-    case ViewL.View(_, k) => k(Result.Fail(e))
+    case v @ ViewL.View(_) => v.next(Result.Fail(e))
   }
 
   def viewL[R2 >: R]: ViewL[F, R2] = ViewL(this)
@@ -192,9 +191,6 @@ private[fs2] object FreeC {
     override def toString: String = s"FreeC.Bind($step)"
   }
 
-  def pureContinuation[F[_], R]: Result[R] => FreeC[F, R] =
-    _.asFreeC[F]
-
   def suspend[F[_], R](fr: => FreeC[F, R]): FreeC[F, R] =
     new Bind[F, Unit, R](unit[F]) {
       def cont(r: Result[Unit]): FreeC[F, R] = fr
@@ -208,20 +204,27 @@ private[fs2] object FreeC {
   object ViewL {
 
     /** unrolled view of FreeC `bind` structure **/
-    final case class View[F[_], X, R](step: F[X], next: Result[X] => FreeC[F, R])
-        extends ViewL[F, R]
+    sealed abstract case class View[F[_], X, R](step: F[X]) extends ViewL[F, R] {
+      def next(r: Result[X]): FreeC[F, R]
+    }
+
+    private[ViewL] final class EvalView[F[_], R](step: F[R]) extends View[F, R, R](step) {
+      def next(r: Result[R]): FreeC[F, R] = r.asFreeC[F]
+    }
 
     private[fs2] def apply[F[_], R](free: FreeC[F, R]): ViewL[F, R] = mk(free)
 
     @tailrec
     private def mk[F[_], R](free: FreeC[F, R]): ViewL[F, R] =
       free match {
-        case Eval(fx) => View(fx, pureContinuation[F, R])
+        case e: Eval[F, R] => new EvalView[F, R](e.fr)
         case b: FreeC.Bind[F, y, R] =>
           b.step match {
             case Result(r) => mk(b.cont(r))
-            case Eval(fr)  => ViewL.View(fr, b.cont)
-            // case Bind(w, g) => mk(Bind(w, (e: Result[Any]) => Bind(g(e), b.f)))
+            case Eval(fr) =>
+              new ViewL.View[F, y, R](fr) {
+                def next(r: Result[y]): FreeC[F, R] = b.cont(r)
+              }
             case bb: FreeC.Bind[F, z, _] =>
               val nb = new Bind[F, z, R](bb.step) {
                 def cont(zr: Result[z]): FreeC[F, R] =
@@ -246,9 +249,9 @@ private[fs2] object FreeC {
         case Result.Pure(r)             => F.pure(Some(r))
         case Result.Fail(e)             => F.raiseError(e)
         case Result.Interrupted(_, err) => err.fold[F[Option[R]]](F.pure(None)) { F.raiseError }
-        case ViewL.View(step, next) =>
+        case v @ ViewL.View(step) =>
           F.flatMap(F.attempt(step)) { r =>
-            next(Result.fromEither(r)).run
+            v.next(Result.fromEither(r)).run
           }
       }
   }
