@@ -186,9 +186,9 @@ private[fs2] object FreeC {
     override def toString: String = s"FreeC.Eval($fr)"
   }
 
-  abstract class Bind[F[_], X, R](val step: FreeC[F, X]) extends FreeC[F, R] {
+  abstract class Bind[F[_], X, R](val step: FreeC[F, X]) extends FreeC[F, R] { self =>
     def cont(r: Result[X]): FreeC[F, R]
-
+    val delegate: Bind[F, X, R] = self
     override def toString: String = s"FreeC.Bind($step)"
   }
 
@@ -222,15 +222,15 @@ private[fs2] object FreeC {
             case Result(r) => mk(b.cont(r))
             case Eval(fr)  => ViewL.View(fr, b.cont)
             // case Bind(w, g) => mk(Bind(w, (e: Result[Any]) => Bind(g(e), b.f)))
-            case bb: FreeC.Bind[F, z, y] =>
-              mk {
-                new Bind[F, z, R](bb.step) {
-                  def cont(zr: Result[z]): FreeC[F, R] =
-                    new Bind[F, y, R](bb.cont(zr)) {
-                      def cont(yr: Result[y]): FreeC[F, R] = b.cont(yr)
-                    }
-                }
+            case bb: FreeC.Bind[F, z, _] =>
+              val nb = new Bind[F, z, R](bb.step) {
+                def cont(zr: Result[z]): FreeC[F, R] =
+                  new Bind[F, y, R](bb.cont(zr)) { self =>
+                    override val delegate: Bind[F, y, R] = b.delegate
+                    def cont(yr: Result[y]): FreeC[F, R] = delegate.cont(yr)
+                  }
               }
+              mk(nb)
           }
         case r @ Result.Pure(_)           => r
         case r @ Result.Fail(_)           => r
