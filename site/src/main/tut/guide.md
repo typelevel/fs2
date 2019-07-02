@@ -280,8 +280,8 @@ If the current state value is 0 (or less), we're done so we return `None`. This 
 
 ```scala
 else Some(c => c.size match {
-  case m if m <= n => (c, n - m)
-  case m => (c.take(n), 0)
+  case m if m < n => (n - m, c)
+  case m => (0, c.take(n.toInt))
 })
 ```
 
