@@ -281,7 +281,7 @@ private[fs2] object PubSub {
             update { ps =>
               if (strategy.accepts(i, ps.queue)) {
                 val ps1 = publish_(i, ps)
-                (ps1, Applicative[F].pure(Option.empty[O]))
+                (ps1, Applicative[F].pure(None))
               } else {
                 tryGet_(selector, ps) match {
                   case (ps1, None) =>
