@@ -2,8 +2,10 @@ package fs2
 package concurrent
 
 import cats.effect.IO
+import cats.effect.concurrent.Deferred
 import cats.implicits._
 import org.scalactic.anyvals.PosInt
+
 import scala.concurrent.duration._
 
 class QueueSpec extends Fs2Spec {
@@ -219,6 +221,77 @@ class QueueSpec extends Fs2Spec {
         .compile
         .toList
         .asserting(_.flatten shouldBe List(true, 42, 42, 43))
+    }
+
+    "push1 bounded" in {
+      Stream
+        .eval(
+          for {
+            q <- Queue.bounded[IO, Int](4)
+            one <- q.push1(1)
+            two <- q.push1(2)
+            three <- q.push1(3)
+            four <- q.push1(4)
+            five <- q.push1(5)
+          } yield List(one, two, three, four, five)
+        )
+        .compile
+        .toList
+        .asserting(_.flatten shouldBe List(None, None, None, None, Some(1)))
+    }
+
+    "push1 unbounded" in {
+      Stream
+        .eval(
+          for {
+            q <- Queue.unbounded[IO, Int]
+            one <- q.push1(1)
+            two <- q.push1(2)
+            three <- q.push1(3)
+            four <- q.push1(4)
+            five <- q.push1(5)
+          } yield List(one, two, three, four, five)
+        )
+        .compile
+        .toList
+        .asserting(_.flatten shouldBe List(None, None, None, None, None))
+    }
+
+    "push bounded" in {
+      forAll { (s: Stream[Pure, Int]) =>
+        val streamAsList = s.toList
+        val n = streamAsList.size
+        val expectedSize = n - 1
+        val expected = streamAsList.take(expectedSize)
+        Stream
+          .eval(Queue.bounded[IO, Int](1))
+          .flatMap { q =>
+            q.push(s)
+              .take(expectedSize)
+          }
+          .compile
+          .toList
+          .asserting(_ shouldBe expected)
+      }
+    }
+
+    "push unbounded" in {
+      forAll { (s: Stream[Pure, Int]) =>
+        val expected = Nil
+        Stream
+          .eval{
+            for {
+              q <- Queue.unbounded[IO, Int]
+              d <- Deferred[IO, Either[Throwable, Unit]]
+            } yield (q, d)
+          }
+          .flatMap { case (q, d) =>
+            q.push(s.onFinalize(d.complete(Right(())))).interruptWhen(d)
+          }
+          .compile
+          .toList
+          .asserting(_ shouldBe expected)
+      }
     }
   }
 }

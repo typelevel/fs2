@@ -25,6 +25,7 @@ object PubSub {
         def unsubscribe(selector: Selector): F[Unit] = self.unsubscribe(selector)
         def publish(a: I): F[Unit] = self.publish(a)
         def tryPublish(a: I): F[Boolean] = self.tryPublish(a)
+        def push(a: I, selector: Selector) = self.push(a, selector)
       }
     }
 

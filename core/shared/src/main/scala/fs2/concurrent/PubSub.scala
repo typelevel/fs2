@@ -69,7 +69,18 @@ private[fs2] trait Subscribe[F[_], A, Selector] {
   def unsubscribe(selector: Selector): F[Unit]
 }
 
-private[fs2] trait PubSub[F[_], I, O, Selector] extends Publish[F, I] with Subscribe[F, O, Selector]
+private[fs2] trait PubSub[F[_], I, O, Selector]
+    extends Publish[F, I]
+    with Subscribe[F, O, Selector] {
+
+  /**
+    * Forcibly publishes one element by retrieving the element specified by the selector first, if necessary.
+    *
+    * @param i The element to always publish.
+    * @param s The selector for the element to retrieve if the element to publish cannot be accepted yet.
+    */
+  def push(i: I, s: Selector): F[Option[O]]
+}
 
 private[fs2] object PubSub {
 
@@ -263,6 +274,23 @@ private[fs2] object PubSub {
                   (ps.copy(subscribers = ps.subscribers :+ sub), cancellableGet)
                 case (ps, Some(o)) =>
                   (ps, Applicative[F].pure(o))
+              }
+            }
+
+          def push(i: I, selector: Selector): F[Option[O]] =
+            update { ps =>
+              if (strategy.accepts(i, ps.queue)) {
+                val ps1 = publish_(i, ps)
+                (ps1, Applicative[F].pure(Option.empty[O]))
+              } else {
+                tryGet_(selector, ps) match {
+                  case (ps1, None) =>
+                    (ps1, Applicative[F].pure(None))
+                  case (ps1, Some(o)) =>
+                    val ps2 = publish_(i, ps1)
+                    (ps2, Applicative[F].pure(o.some))
+
+                }
               }
             }
 

@@ -78,6 +78,19 @@ trait Dequeue[F[_], A] {
   def dequeueBatch: Pipe[F, Int, A]
 }
 
+trait Push[F[_], A] extends Enqueue[F, A] with Dequeue1[F, A] {
+
+  /** Forcibly enqueues an element by dequeueing an element if the queue is full.
+    * Always returns None on unbounded or circular buffer queues.
+    */
+  def push1(a: A): F[Option[A]]
+
+  /** Forcibly enqueues all incoming elements from the supplied stream.
+    * Returns a stream of all elements "pushed" out of the queue when full. See `push1`.
+    */
+  def push(s: Stream[F, A]): Stream[F, A] = s.evalMap(push1).unNone
+}
+
 /**
   * A queue of elements. Operations are all nonblocking in their
   * implementations, but may be 'semantically' blocking. For instance,
@@ -88,7 +101,8 @@ trait Queue[F[_], A]
     extends Enqueue[F, A]
     with Dequeue1[F, A]
     with DequeueChunk1[F, Id, A]
-    with Dequeue[F, A] { self =>
+    with Dequeue[F, A]
+    with Push[F, A] { self =>
 
   /**
     * Returns an alternate view of this `Queue` where its elements are of type `B`,
@@ -105,6 +119,7 @@ trait Queue[F[_], A]
         self.tryDequeueChunk1(maxSize).map(_.map(_.map(f)))
       def dequeueChunk(maxSize: Int): Stream[F, B] = self.dequeueChunk(maxSize).map(f)
       def dequeueBatch: Pipe[F, Int, B] = self.dequeueBatch.andThen(_.map(f))
+      def push1(a: B): F[Option[B]] = self.push1(g(a)).map(_.map(f))
     }
 }
 
@@ -213,6 +228,11 @@ object Queue {
             _.flatMap { sz =>
               Stream.evalUnChunk(pubSub.get(sz))
             }
+
+          def push1(a: A) = pubSub.push(a, 1).flatMap {
+            case Some(chunk) => headUnsafe[F, A](chunk).map(Some(_))
+            case None        => Applicative[F].pure(None)
+          }
         }
       }
     }
@@ -507,6 +527,15 @@ object InspectableQueue {
                   }
                 )
             }
+
+          def push1(a: A): F[Option[A]] = pubSub.push(a, Right(1)).flatMap {
+            case Some(Left(s)) =>
+              Sync[F].raiseError(new Throwable(
+                s"Inspectable `push1` requires chunk of size 1 with `A` got Left($s)"))
+            case Some(Right(chunk)) =>
+              Queue.headUnsafe[F, A](chunk).map(_.some)
+            case _ => Applicative[F].pure(None)
+          }
 
           def peek1: F[A] =
             Sync[F].bracket(Sync[F].delay(new Token))({ token =>
