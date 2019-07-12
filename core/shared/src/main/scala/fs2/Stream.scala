@@ -3124,7 +3124,9 @@ object Stream extends StreamLowPriority {
     now.flatMap(go)
   }
 
-  final class PartiallyAppliedFromEither[F[_]] {
+  private[fs2] final class PartiallyAppliedFromEither[F[_]](
+      private val dummy: Boolean
+  ) extends AnyVal {
     def apply[A](either: Either[Throwable, A])(implicit ev: RaiseThrowable[F]): Stream[F, A] =
       either.fold(Stream.raiseError[F], Stream.emit)
   }
@@ -3140,17 +3142,27 @@ object Stream extends StreamLowPriority {
     * res1: Try[List[Nothing]] = Failure(java.lang.RuntimeException)
     * }}}
     */
-  def fromEither[F[_]] = new PartiallyAppliedFromEither[F]
+  def fromEither[F[_]]: PartiallyAppliedFromEither[F] =
+    new PartiallyAppliedFromEither(dummy = true)
+
+  private[fs2] final class PartiallyAppliedFromIterator[F[_]](
+      private val dummy: Boolean
+  ) extends AnyVal {
+    def apply[A](iterator: Iterator[A])(implicit F: Sync[F]): Stream[F, A] = {
+      def getNext(i: Iterator[A]): F[Option[(A, Iterator[A])]] =
+        F.delay(i.hasNext).flatMap { b =>
+          if (b) F.delay(i.next()).map(a => (a, i).some) else F.pure(None)
+        }
+
+      Stream.unfoldEval(iterator)(getNext)
+    }
+  }
 
   /**
-    * Lifts an iterator into a Stream
+    * Lifts an iterator into a Stream.
     */
-  def fromIterator[F[_], A](iterator: Iterator[A])(implicit F: Sync[F]): Stream[F, A] = {
-    def getNext(i: Iterator[A]): F[Option[(A, Iterator[A])]] =
-      F.delay(i.hasNext)
-        .flatMap(b => if (b) F.delay(i.next()).map(a => (a, i).some) else F.pure(None))
-    Stream.unfoldEval(iterator)(getNext)
-  }
+  def fromIterator[F[_]]: PartiallyAppliedFromIterator[F] =
+    new PartiallyAppliedFromIterator(dummy = true)
 
   /**
     * Lifts an effect that generates a stream in to a stream. Alias for `eval(f).flatMap(_)`.
