@@ -969,7 +969,7 @@ class StreamSpec extends Fs2Spec {
 
     "fromIterator" in forAll { x: List[Int] =>
       Stream
-        .fromIterator[SyncIO, Int](x.iterator)
+        .fromIterator[SyncIO](x.iterator)
         .compile
         .toList
         .asserting(_ shouldBe x)
