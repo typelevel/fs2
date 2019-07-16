@@ -252,6 +252,7 @@ def previousVersion(currentVersion: String): Option[String] = {
 lazy val root = project
   .in(file("."))
   .settings(commonSettings)
+  .settings(mimaSettings)
   .settings(noPublish)
   .aggregate(coreJVM, coreJS, io, reactiveStreams, benchmark, experimental)
 
@@ -428,6 +429,7 @@ lazy val experimental = project
   .in(file("experimental"))
   .enablePlugins(SbtOsgi)
   .settings(commonSettings)
+  .settings(mimaSettings)
   .settings(
     name := "fs2-experimental",
     OsgiKeys.exportPackage := Seq("fs2.experimental.*"),
