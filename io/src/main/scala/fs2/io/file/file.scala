@@ -13,7 +13,9 @@ package object file {
   /**
     * Reads all data synchronously from the file at the specified `java.nio.file.Path`.
     */
-  def readAll[F[_]: Sync: ContextShift](path: Path, blocker: Blocker, chunkSize: Int): Stream[F, Byte] =
+  def readAll[F[_]: Sync: ContextShift](path: Path,
+                                        blocker: Blocker,
+                                        chunkSize: Int): Stream[F, Byte] =
     pulls
       .fromPath(path, blocker, List(StandardOpenOption.READ))
       .flatMap(c => pulls.readAllFromFileHandle(chunkSize)(c.resource))
