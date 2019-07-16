@@ -9,11 +9,16 @@ import cats.effect.{Blocker, Concurrent, ContextShift, Resource, Sync, Timer}
 
 /** Provides support for working with files. */
 package object file {
+import java.nio.file.CopyOption
+import java.nio.file.LinkOption
+import java.nio.file.Files
 
   /**
     * Reads all data synchronously from the file at the specified `java.nio.file.Path`.
     */
-  def readAll[F[_]: Sync: ContextShift](path: Path, blocker: Blocker, chunkSize: Int): Stream[F, Byte] =
+  def readAll[F[_]: Sync: ContextShift](path: Path,
+                                        blocker: Blocker,
+                                        chunkSize: Int): Stream[F, Byte] =
     pulls
       .fromPath(path, blocker, List(StandardOpenOption.READ))
       .flatMap(c => pulls.readAllFromFileHandle(chunkSize)(c.resource))
@@ -117,4 +122,20 @@ package object file {
     Stream
       .resource(Watcher.default(blocker))
       .flatMap(w => Stream.eval_(w.watch(path, types, modifiers)) ++ w.events(pollTimeout))
+
+  def exists[F[_]: Sync](path: Path, flags: Seq[LinkOption] = Seq.empty): F[Boolean] =
+    Sync[F].delay(Files.exists(path, flags: _*))
+
+  def copy[F[_]: Sync: ContextShift](blocker: Blocker, source: Path, target: Path, flags: Seq[CopyOption] = Seq.empty): F[Path] =
+    blocker.delay(Files.copy(source, target, flags: _*))
+
+  def delete[F[_]: Sync: ContextShift](blocker: Blocker, path: Path): F[Unit] =
+    blocker.delay(Files.delete(path))
+
+  def deleteIfExists[F[_]: Sync: ContextShift](blocker: Blocker, path: Path): F[Boolean] =
+    blocker.delay(Files.deleteIfExists(path))
+
+  def size[F[_]: Sync: ContextShift](blocker: Blocker, path: Path): F[Long] =
+    blocker.delay(Files.size(path))
+  
 }
