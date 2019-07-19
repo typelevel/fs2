@@ -133,8 +133,8 @@ package object file {
       _.asScala.iterator)
 
   /**
-   * Creates a stream of [[Path]]s inside a directory, filtering the results by the given predicate.
-   */
+    * Creates a stream of [[Path]]s inside a directory, filtering the results by the given predicate.
+    */
   def streamDirectory[F[_]: Sync: ContextShift](blocker: Blocker,
                                                 path: Path,
                                                 filter: Path => Boolean): Stream[F, Path] =
@@ -144,8 +144,8 @@ package object file {
       _.asScala.iterator)
 
   /**
-   * Creates a stream of [[Path]]s inside a directory which match the given glob.
-   */
+    * Creates a stream of [[Path]]s inside a directory which match the given glob.
+    */
   def streamDirectory[F[_]: Sync: ContextShift](blocker: Blocker,
                                                 path: Path,
                                                 glob: String): Stream[F, Path] =
@@ -155,22 +155,22 @@ package object file {
       _.asScala.iterator)
 
   /**
-   * Creates a stream of [[Path]]s contained in a given file tree. Depth is unlimited.
-   */
+    * Creates a stream of [[Path]]s contained in a given file tree. Depth is unlimited.
+    */
   def walk[F[_]: Sync: ContextShift](blocker: Blocker, start: Path): Stream[F, Path] =
     walk[F](blocker, start, Seq.empty)
 
   /**
-   * Creates a stream of [[Path]]s contained in a given file tree, respecting the supplied options. Depth is unlimited.
-   */
+    * Creates a stream of [[Path]]s contained in a given file tree, respecting the supplied options. Depth is unlimited.
+    */
   def walk[F[_]: Sync: ContextShift](blocker: Blocker,
                                      start: Path,
                                      options: Seq[FileVisitOption]): Stream[F, Path] =
     walk[F](blocker, start, Int.MaxValue, options)
 
   /**
-   * Creates a stream of [[Path]]s contained in a given file tree down to a given depth.
-   */
+    * Creates a stream of [[Path]]s contained in a given file tree down to a given depth.
+    */
   def walk[F[_]: Sync: ContextShift](blocker: Blocker,
                                      start: Path,
                                      maxDepth: Int,
