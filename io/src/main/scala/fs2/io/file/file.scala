@@ -1,11 +1,14 @@
 package fs2
 package io
 
+import java.nio.file._
+import java.util.stream.{Stream => JStream}
+
+import scala.collection.JavaConverters._
 import scala.concurrent.duration._
 
-import java.nio.file.{Path, StandardOpenOption, WatchEvent}
-
 import cats.effect.{Blocker, Concurrent, ContextShift, Resource, Sync, Timer}
+import cats.implicits._
 
 /** Provides support for working with files. */
 package object file {
@@ -119,4 +122,81 @@ package object file {
     Stream
       .resource(Watcher.default(blocker))
       .flatMap(w => Stream.eval_(w.watch(path, types, modifiers)) ++ w.events(pollTimeout))
+
+  /**
+    * Creates a stream of [[Path]]s inside a directory.
+    */
+  def streamDirectory[F[_]: Sync: ContextShift](blocker: Blocker, path: Path): Stream[F, Path] =
+    _runJavaCollectionResource[F, DirectoryStream[Path]](
+      blocker,
+      blocker.delay(Files.newDirectoryStream(path)),
+      _.asScala.iterator)
+
+  /**
+   * Creates a stream of [[Path]]s inside a directory, filtering the results by the given predicate.
+   */
+  def streamDirectory[F[_]: Sync: ContextShift](blocker: Blocker,
+                                                path: Path,
+                                                filter: Path => Boolean): Stream[F, Path] =
+    _runJavaCollectionResource[F, DirectoryStream[Path]](
+      blocker,
+      blocker.delay(Files.newDirectoryStream(path, (entry: Path) => filter(entry))),
+      _.asScala.iterator)
+
+  /**
+   * Creates a stream of [[Path]]s inside a directory which match the given glob.
+   */
+  def streamDirectory[F[_]: Sync: ContextShift](blocker: Blocker,
+                                                path: Path,
+                                                glob: String): Stream[F, Path] =
+    _runJavaCollectionResource[F, DirectoryStream[Path]](
+      blocker,
+      blocker.delay(Files.newDirectoryStream(path, glob)),
+      _.asScala.iterator)
+
+  /**
+   * Creates a stream of [[Path]]s contained in a given file tree. Depth is unlimited.
+   */
+  def walk[F[_]: Sync: ContextShift](blocker: Blocker, start: Path): Stream[F, Path] =
+    walk[F](blocker, start, Seq.empty)
+
+  /**
+   * Creates a stream of [[Path]]s contained in a given file tree, respecting the supplied options. Depth is unlimited.
+   */
+  def walk[F[_]: Sync: ContextShift](blocker: Blocker,
+                                     start: Path,
+                                     options: Seq[FileVisitOption]): Stream[F, Path] =
+    walk[F](blocker, start, Int.MaxValue, options)
+
+  /**
+   * Creates a stream of [[Path]]s contained in a given file tree down to a given depth.
+   */
+  def walk[F[_]: Sync: ContextShift](blocker: Blocker,
+                                     start: Path,
+                                     maxDepth: Int,
+                                     options: Seq[FileVisitOption] = Seq.empty): Stream[F, Path] =
+    _runJavaCollectionResource[F, JStream[Path]](
+      blocker,
+      blocker.delay(Files.walk(start, maxDepth, options: _*)),
+      _.iterator.asScala)
+
+  private def _runJavaCollectionResource[F[_]: Sync: ContextShift, C <: AutoCloseable](
+      blocker: Blocker,
+      javaCollection: F[C],
+      collectionIterator: C => Iterator[Path]): Stream[F, Path] =
+    Stream
+      .resource(Resource.fromAutoCloseable(javaCollection))
+      .flatMap(ds => _runIteratorOnBlocker[F, Path](blocker, collectionIterator(ds)))
+
+  // Like Stream.fromIterator, but on the given Blocker
+  private def _runIteratorOnBlocker[F[_]: ContextShift, A](blocker: Blocker, iterator: Iterator[A])(
+      implicit F: Sync[F]): Stream[F, A] = {
+    def getNext(i: Iterator[A]): F[Option[(A, Iterator[A])]] =
+      blocker.delay(i.hasNext).flatMap { b =>
+        if (b) blocker.delay(i.next()).map(a => (a, i).some) else F.pure(None)
+      }
+
+    Stream.unfoldEval(iterator)(getNext)
+  }
+
 }
