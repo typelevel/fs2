@@ -975,6 +975,14 @@ class StreamSpec extends Fs2Spec {
         .asserting(_ shouldBe x)
     }
 
+    "fromBlockingIterator" in forAll { x: List[Int] =>
+      Stream
+        .fromBlockingIterator[IO](Blocker.liftExecutionContext(implicitly), x.iterator)
+        .compile
+        .toList
+        .asserting(_ shouldBe x)
+    }
+
     "groupAdjacentBy" in forAll { (s: Stream[Pure, Int], n0: PosInt) =>
       val n = n0 % 20 + 1
       val f = (i: Int) => i % n

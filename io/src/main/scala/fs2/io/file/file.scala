@@ -186,17 +186,6 @@ package object file {
       collectionIterator: C => Iterator[Path]): Stream[F, Path] =
     Stream
       .resource(Resource.fromAutoCloseable(javaCollection))
-      .flatMap(ds => _runIteratorOnBlocker[F, Path](blocker, collectionIterator(ds)))
-
-  // Like Stream.fromIterator, but on the given Blocker
-  private def _runIteratorOnBlocker[F[_]: ContextShift, A](blocker: Blocker, iterator: Iterator[A])(
-      implicit F: Sync[F]): Stream[F, A] = {
-    def getNext(i: Iterator[A]): F[Option[(A, Iterator[A])]] =
-      blocker.delay(i.hasNext).flatMap { b =>
-        if (b) blocker.delay(i.next()).map(a => (a, i).some) else F.pure(None)
-      }
-
-    Stream.unfoldEval(iterator)(getNext)
-  }
+      .flatMap(ds => Stream.fromBlockingIterator[F](blocker, collectionIterator(ds)))
 
 }
