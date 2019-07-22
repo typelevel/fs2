@@ -30,9 +30,8 @@ import fs2.internal.ThreadFactories
 final class SocketGroup(channelGroup: AsynchronousChannelGroup, blocker: Blocker) {
 
   /**
-    * Stream that connects to the specified server and emits a single socket,
-    * allowing reads/writes via operations on the socket. The socket is closed
-    * when the outer stream terminates.
+    * Opens a connection to the specified server represented as a [[Socket]].
+    * The connection is closed when the resource is released.
     *
     * @param to                   address of remote server
     * @param reuseAddress         whether address may be reused (see `java.net.StandardSocketOptions.SO_REUSEADDR`)
