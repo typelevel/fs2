@@ -126,7 +126,7 @@ package object file {
   /**
     * Creates a stream of [[Path]]s inside a directory.
     */
-  def streamDirectory[F[_]: Sync: ContextShift](blocker: Blocker, path: Path): Stream[F, Path] =
+  def directoryStream[F[_]: Sync: ContextShift](blocker: Blocker, path: Path): Stream[F, Path] =
     _runJavaCollectionResource[F, DirectoryStream[Path]](
       blocker,
       blocker.delay(Files.newDirectoryStream(path)),
@@ -135,7 +135,7 @@ package object file {
   /**
     * Creates a stream of [[Path]]s inside a directory, filtering the results by the given predicate.
     */
-  def streamDirectory[F[_]: Sync: ContextShift](blocker: Blocker,
+  def directoryStream[F[_]: Sync: ContextShift](blocker: Blocker,
                                                 path: Path,
                                                 filter: Path => Boolean): Stream[F, Path] =
     _runJavaCollectionResource[F, DirectoryStream[Path]](
@@ -146,7 +146,7 @@ package object file {
   /**
     * Creates a stream of [[Path]]s inside a directory which match the given glob.
     */
-  def streamDirectory[F[_]: Sync: ContextShift](blocker: Blocker,
+  def directoryStream[F[_]: Sync: ContextShift](blocker: Blocker,
                                                 path: Path,
                                                 glob: String): Stream[F, Path] =
     _runJavaCollectionResource[F, DirectoryStream[Path]](

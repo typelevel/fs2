@@ -115,14 +115,14 @@ class FileSpec extends BaseFileSpec {
     }
   }
 
-  "streamDirectory" - {
+  "directoryStream" - {
     "returns an empty Stream on an empty directory" in {
       Stream
         .resource(Blocker[IO])
         .flatMap { blocker =>
           tempDirectory
             .flatMap { path =>
-              file.streamDirectory[IO](blocker, path)
+              file.directoryStream[IO](blocker, path)
             }
         }
         .compile
@@ -138,7 +138,7 @@ class FileSpec extends BaseFileSpec {
           tempFiles(10)
             .flatMap { paths =>
               val parent = paths.head.getParent
-              file.streamDirectory[IO](blocker, parent).tupleRight(paths)
+              file.directoryStream[IO](blocker, parent).tupleRight(paths)
             }
         }
         .map { case (path, paths) => paths.exists(_.normalize === path.normalize) }
