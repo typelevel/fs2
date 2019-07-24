@@ -3164,6 +3164,26 @@ object Stream extends StreamLowPriority {
   def fromIterator[F[_]]: PartiallyAppliedFromIterator[F] =
     new PartiallyAppliedFromIterator(dummy = true)
 
+  private[fs2] final class PartiallyAppliedFromBlockingIterator[F[_]](
+      private val dummy: Boolean
+  ) extends AnyVal {
+    def apply[A](blocker: Blocker, iterator: Iterator[A])(implicit F: Sync[F],
+                                                          cs: ContextShift[F]): Stream[F, A] = {
+      def getNext(i: Iterator[A]): F[Option[(A, Iterator[A])]] =
+        blocker.delay(i.hasNext).flatMap { b =>
+          if (b) blocker.delay(i.next()).map(a => (a, i).some) else F.pure(None)
+        }
+
+      Stream.unfoldEval(iterator)(getNext)
+    }
+  }
+
+  /**
+    * Lifts an iterator into a Stream, shifting any interaction with the iterator to the supplied Blocker.
+    */
+  def fromBlockingIterator[F[_]]: PartiallyAppliedFromBlockingIterator[F] =
+    new PartiallyAppliedFromBlockingIterator(dummy = true)
+
   /**
     * Lifts an effect that generates a stream in to a stream. Alias for `eval(f).flatMap(_)`.
     *

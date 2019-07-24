@@ -18,6 +18,18 @@ class BaseFileSpec extends Fs2Spec {
   protected def tempFile: Stream[IO, Path] =
     tempDirectory.flatMap(dir => aFile(dir))
 
+  protected def tempFiles(count: Int): Stream[IO, List[Path]] =
+    tempDirectory.flatMap(dir => aFile(dir).replicateA(count))
+
+  protected def tempFilesHierarchy: Stream[IO, Path] = tempDirectory.flatMap { topDir =>
+    Stream
+      .eval(IO(Files.createTempDirectory(topDir, "BaseFileSpec")))
+      .repeatN(5)
+      .flatMap(dir =>
+        Stream.eval(IO(Files.createTempFile(dir, "BaseFileSpecSub", ".tmp")).replicateA(5)))
+      .drain ++ Stream.emit(topDir)
+  }
+
   protected def aFile(dir: Path): Stream[IO, Path] =
     Stream.eval(IO(Files.createTempFile(dir, "BaseFileSpec", ".tmp")))
 

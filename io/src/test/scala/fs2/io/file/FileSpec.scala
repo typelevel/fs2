@@ -115,4 +115,85 @@ class FileSpec extends BaseFileSpec {
     }
   }
 
+  "directoryStream" - {
+    "returns an empty Stream on an empty directory" in {
+      Stream
+        .resource(Blocker[IO])
+        .flatMap { blocker =>
+          tempDirectory
+            .flatMap { path =>
+              file.directoryStream[IO](blocker, path)
+            }
+        }
+        .compile
+        .toList
+        .unsafeRunSync()
+        .length shouldBe 0
+    }
+
+    "returns all files in a directory correctly" in {
+      Stream
+        .resource(Blocker[IO])
+        .flatMap { blocker =>
+          tempFiles(10)
+            .flatMap { paths =>
+              val parent = paths.head.getParent
+              file.directoryStream[IO](blocker, parent).tupleRight(paths)
+            }
+        }
+        .map { case (path, paths) => paths.exists(_.normalize === path.normalize) }
+        .compile
+        .fold(true)(_ & _)
+        .unsafeRunSync() shouldBe true
+    }
+  }
+
+  "walk" - {
+    "returns the only file in a directory correctly" in {
+      Stream
+        .resource(Blocker[IO])
+        .flatMap { blocker =>
+          tempFile
+            .flatMap { path =>
+              file.walk[IO](blocker, path.getParent).map(_.normalize === path.normalize)
+            }
+        }
+        .compile
+        .toList
+        .unsafeRunSync()
+        .length shouldBe 2 // the directory and the file
+    }
+
+    "returns all files in a directory correctly" in {
+      Stream
+        .resource(Blocker[IO])
+        .flatMap { blocker =>
+          tempFiles(10)
+            .flatMap { paths =>
+              val parent = paths.head.getParent
+              file.walk[IO](blocker, parent).tupleRight(parent :: paths)
+            }
+        }
+        .map { case (path, paths) => paths.exists(_.normalize === path.normalize) }
+        .compile
+        .fold(true)(_ & _)
+        .unsafeRunSync() shouldBe true // the directory itself and the files
+    }
+
+    "returns all files in a nested tree correctly" in {
+      Stream
+        .resource(Blocker[IO])
+        .flatMap { blocker =>
+          tempFilesHierarchy
+            .flatMap { topDir =>
+              file.walk[IO](blocker, topDir)
+            }
+        }
+        .compile
+        .toList
+        .unsafeRunSync()
+        .length shouldBe 31 // the root + 5 children + 5 files per child directory
+    }
+  }
+
 }
