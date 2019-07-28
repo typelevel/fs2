@@ -92,6 +92,10 @@ class ChunkSpec extends Fs2Spec {
           .concat(List(Chunk.empty, c1, Chunk.empty, c2))
           .toVector shouldBe (c1.toVector ++ c2.toVector)
       }
+      "scanLeft" in forAll { c: Chunk[A] => 
+        def step(acc: List[A], item: A) = acc :+ item
+        c.scanLeft(List[A]())(step).toList shouldBe (c.toList.scanLeft(List[A]())(step))
+      }
       "scanLeftCarry" in forAll { c: Chunk[A] => 
         def step(acc: List[A], item: A) = acc :+ item
         val listScan = c.toList.scanLeft(List[A]())(step)
