@@ -92,6 +92,13 @@ class ChunkSpec extends Fs2Spec {
           .concat(List(Chunk.empty, c1, Chunk.empty, c2))
           .toVector shouldBe (c1.toVector ++ c2.toVector)
       }
+      "scanLeftCarry" in forAll { c: Chunk[A] => 
+        def step(acc: List[A], item: A) = acc :+ item
+        val listScan = c.toList.scanLeft(List[A]())(step)
+        val (chunkScan, chunkCarry) = c.scanLeftCarry(List[A]())(step) 
+        
+        (chunkScan.toList, chunkCarry) shouldBe ((listScan.tail, listScan.last))
+      }
 
       if (implicitly[ClassTag[A]] == ClassTag.Byte)
         "toByteBuffer.byte" in forAll { c: Chunk[A] =>
@@ -134,4 +141,16 @@ class ChunkSpec extends Fs2Spec {
   testChunk[Double](doubleBufferChunkGenerator, "DoubleBuffer", "Double", false)
   testChunk[Float](floatBufferChunkGenerator, "FloatBuffer", "Float", false)
   testChunk[Char](charBufferChunkGenerator, "CharBuffer", "Char")
+
+  "scanLeftCarry" - {
+    "returns empty and zero for empty Chunk" in {
+      Chunk[Int]().scanLeftCarry(0)(_ + _) shouldBe((Chunk.empty, 0))
+    }
+    "returns first result and first result for singleton" in {
+      Chunk(2).scanLeftCarry(1)(_ + _) shouldBe((Chunk(3), 3))
+    }
+    "returns all results and last result for multiple elements" in {
+      Chunk(2, 3).scanLeftCarry(1)(_ + _) shouldBe((Chunk(3, 6), 6))
+    }
+  } 
 }
