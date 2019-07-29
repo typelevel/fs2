@@ -9,7 +9,7 @@ FS2: Functional Streams for Scala
 
 FS2 is a library for purely functional, effectful, and polymorphic stream processing library in the [Scala programming language](https://scala-lang.org). Its design goals are compositionality, expressiveness, resource safety, and speed. The name is a modified acronym for **F**unctional **S**treams for **Scala** (FSS, or FS2).
 
-FS2 is available for Scala 2.11, Scala 2.12, and [Scala.js](http://www.scala-js.org/). FS2 is built upon two major functional libraries for Scala, [Cats](https://typelevel.org/cats/), and [Cats-Effect](https://typelevel.org/cats-effect/). Regardless of those dependencies, FS2 core types (streams and pulls) are polymorphic in the effect type (as long as it is compatible with `cats-effect` typeclasses), and thus FS2 can be used with other IO libraries, such as [Monix](https://monix.io/), or [ZIO](https://scalaz.github.io/scalaz-zio/).
+FS2 is available for Scala 2.11, Scala 2.12, and [Scala.js](http://www.scala-js.org/). FS2 is built upon two major functional libraries for Scala, [Cats](https://typelevel.org/cats/), and [Cats-Effect](https://typelevel.org/cats-effect/). Regardless of those dependencies, FS2 core types (streams and pulls) are polymorphic in the effect type (as long as it is compatible with `cats-effect` typeclasses), and thus FS2 can be used with other effect libraries, such as [Monix](https://monix.io/).
 
 Prior to the 0.9 release in 2016, FS2 was known as `scalaz-stream`, which was based on the [`scalaz`](https://github.com/scalaz/scalaz) library.
 

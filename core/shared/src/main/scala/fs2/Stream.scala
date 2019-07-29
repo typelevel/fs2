@@ -16,13 +16,13 @@ import scala.annotation.tailrec
 import scala.concurrent.duration._
 
 /**
-  * A stream producing output of type `O` and which may evaluate `F`
-  * effects.
+  * A stream producing output of type `O` and which may evaluate `F` effects.
   *
   * - '''Purely functional''' a value of type `Stream[F, O]` _describes_ an effectful computation.
   *    A function that returns a `Stream[F, O]` builds a _description_ of an effectful computation,
   *    but does not perform them. The methods of the `Stream` class derive new descriptions from others.
-  *    This is similar to  `cats.effect.IO`, `monix.Task`, or `scalaz.zio.IO`.
+  *    This is similar to how effect types like `cats.effect.IO` and `monix.Task` build descriptions of
+  *    computations.
   *
   * - '''Pull''': to evaluate a stream, a consumer pulls its values from it, by repeatedly performing one pull step at a time.
   *   Each step is a `F`-effectful computation that may yield some `O` values (or none), and a stream from which to continue pulling.
