@@ -123,8 +123,7 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup, blocker: Blocker
                                    maxQueued: Int = 0,
                                    reuseAddress: Boolean = true,
                                    receiveBufferSize: Int = 256 * 1024,
-                                   additionalSocketOptions: List[SocketMapping[_]] =
-                                     List.empty)(
+                                   additionalSocketOptions: List[SocketMapping[_]] = List.empty)(
       implicit F: Concurrent[F],
       CS: ContextShift[F]
   ): Stream[F, Either[InetSocketAddress, Resource[F, Socket[F]]]] = {
