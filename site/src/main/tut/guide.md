@@ -519,7 +519,7 @@ trait CSVHandle {
 def rows[F[_]](h: CSVHandle)(implicit F: ConcurrentEffect[F], cs: ContextShift[F]): Stream[F,Row] =
   for {
     q <- Stream.eval(Queue.unbounded[F,Either[Throwable,Row]])
-    _ <-  Stream.eval { F.delay(h.withRows(e => F.runAsync(q.enqueue1(e))(_ => IO.unit).unsafeRunSync)) }
+    _ <- Stream.eval { F.delay(h.withRows(e => F.runAsync(q.enqueue1(e))(_ => IO.unit).unsafeRunSync)) }
     row <- q.dequeue.rethrow
   } yield row
 ```
