@@ -47,7 +47,7 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup, blocker: Blocker
       receiveBufferSize: Int = 256 * 1024,
       keepAlive: Boolean = false,
       noDelay: Boolean = false,
-      additionalSocketOptions: List[SocketMapping[_]] = List.empty
+      additionalSocketOptions: List[SocketOptionMapping[_]] = List.empty
   )(implicit F: Concurrent[F], CS: ContextShift[F]): Resource[F, Socket[F]] = {
 
     def setup: F[AsynchronousSocketChannel] = blocker.delay {
@@ -58,7 +58,9 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup, blocker: Blocker
       ch.setOption[Integer](StandardSocketOptions.SO_RCVBUF, receiveBufferSize)
       ch.setOption[java.lang.Boolean](StandardSocketOptions.SO_KEEPALIVE, keepAlive)
       ch.setOption[java.lang.Boolean](StandardSocketOptions.TCP_NODELAY, noDelay)
-      additionalSocketOptions.foreach { case (option, value) => ch.setOption(option, value) }
+      additionalSocketOptions.foreach {
+        case SocketOptionMapping(option, value) => ch.setOption(option, value)
+      }
       ch
     }
 
@@ -103,7 +105,7 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup, blocker: Blocker
                    maxQueued: Int = 0,
                    reuseAddress: Boolean = true,
                    receiveBufferSize: Int = 256 * 1024,
-                   additionalSocketOptions: List[SocketMapping[_]] = List.empty)(
+                   additionalSocketOptions: List[SocketOptionMapping[_]] = List.empty)(
       implicit F: Concurrent[F],
       CS: ContextShift[F]
   ): Stream[F, Resource[F, Socket[F]]] =
@@ -123,7 +125,7 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup, blocker: Blocker
                                    maxQueued: Int = 0,
                                    reuseAddress: Boolean = true,
                                    receiveBufferSize: Int = 256 * 1024,
-                                   additionalSocketOptions: List[SocketMapping[_]] = List.empty)(
+                                   additionalSocketOptions: List[SocketOptionMapping[_]] = List.empty)(
       implicit F: Concurrent[F],
       CS: ContextShift[F]
   ): Stream[F, Either[InetSocketAddress, Resource[F, Socket[F]]]] = {
@@ -134,7 +136,9 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup, blocker: Blocker
         .openAsynchronousServerSocketChannel(channelGroup)
       ch.setOption[java.lang.Boolean](StandardSocketOptions.SO_REUSEADDR, reuseAddress)
       ch.setOption[Integer](StandardSocketOptions.SO_RCVBUF, receiveBufferSize)
-      additionalSocketOptions.foreach { case (option, value) => ch.setOption(option, value) }
+      additionalSocketOptions.foreach {
+        case SocketOptionMapping(option, value) => ch.setOption(option, value)
+      }
       ch.bind(address)
       ch
     }
