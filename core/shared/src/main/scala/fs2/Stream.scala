@@ -16,13 +16,13 @@ import scala.annotation.tailrec
 import scala.concurrent.duration._
 
 /**
-  * A stream producing output of type `O` and which may evaluate `F`
-  * effects.
+  * A stream producing output of type `O` and which may evaluate `F` effects.
   *
   * - '''Purely functional''' a value of type `Stream[F, O]` _describes_ an effectful computation.
   *    A function that returns a `Stream[F, O]` builds a _description_ of an effectful computation,
   *    but does not perform them. The methods of the `Stream` class derive new descriptions from others.
-  *    This is similar to  `cats.effect.IO`, `monix.Task`, or `scalaz.zio.IO`.
+  *    This is similar to how effect types like `cats.effect.IO` and `monix.Task` build descriptions of
+  *    computations.
   *
   * - '''Pull''': to evaluate a stream, a consumer pulls its values from it, by repeatedly performing one pull step at a time.
   *   Each step is a `F`-effectful computation that may yield some `O` values (or none), and a stream from which to continue pulling.
@@ -3124,7 +3124,9 @@ object Stream extends StreamLowPriority {
     now.flatMap(go)
   }
 
-  final class PartiallyAppliedFromEither[F[_]] {
+  private[fs2] final class PartiallyAppliedFromEither[F[_]](
+      private val dummy: Boolean
+  ) extends AnyVal {
     def apply[A](either: Either[Throwable, A])(implicit ev: RaiseThrowable[F]): Stream[F, A] =
       either.fold(Stream.raiseError[F], Stream.emit)
   }
@@ -3140,17 +3142,47 @@ object Stream extends StreamLowPriority {
     * res1: Try[List[Nothing]] = Failure(java.lang.RuntimeException)
     * }}}
     */
-  def fromEither[F[_]] = new PartiallyAppliedFromEither[F]
+  def fromEither[F[_]]: PartiallyAppliedFromEither[F] =
+    new PartiallyAppliedFromEither(dummy = true)
+
+  private[fs2] final class PartiallyAppliedFromIterator[F[_]](
+      private val dummy: Boolean
+  ) extends AnyVal {
+    def apply[A](iterator: Iterator[A])(implicit F: Sync[F]): Stream[F, A] = {
+      def getNext(i: Iterator[A]): F[Option[(A, Iterator[A])]] =
+        F.delay(i.hasNext).flatMap { b =>
+          if (b) F.delay(i.next()).map(a => (a, i).some) else F.pure(None)
+        }
+
+      Stream.unfoldEval(iterator)(getNext)
+    }
+  }
 
   /**
-    * Lifts an iterator into a Stream
+    * Lifts an iterator into a Stream.
     */
-  def fromIterator[F[_], A](iterator: Iterator[A])(implicit F: Sync[F]): Stream[F, A] = {
-    def getNext(i: Iterator[A]): F[Option[(A, Iterator[A])]] =
-      F.delay(i.hasNext)
-        .flatMap(b => if (b) F.delay(i.next()).map(a => (a, i).some) else F.pure(None))
-    Stream.unfoldEval(iterator)(getNext)
+  def fromIterator[F[_]]: PartiallyAppliedFromIterator[F] =
+    new PartiallyAppliedFromIterator(dummy = true)
+
+  private[fs2] final class PartiallyAppliedFromBlockingIterator[F[_]](
+      private val dummy: Boolean
+  ) extends AnyVal {
+    def apply[A](blocker: Blocker, iterator: Iterator[A])(implicit F: Sync[F],
+                                                          cs: ContextShift[F]): Stream[F, A] = {
+      def getNext(i: Iterator[A]): F[Option[(A, Iterator[A])]] =
+        blocker.delay(i.hasNext).flatMap { b =>
+          if (b) blocker.delay(i.next()).map(a => (a, i).some) else F.pure(None)
+        }
+
+      Stream.unfoldEval(iterator)(getNext)
+    }
   }
+
+  /**
+    * Lifts an iterator into a Stream, shifting any interaction with the iterator to the supplied Blocker.
+    */
+  def fromBlockingIterator[F[_]]: PartiallyAppliedFromBlockingIterator[F] =
+    new PartiallyAppliedFromBlockingIterator(dummy = true)
 
   /**
     * Lifts an effect that generates a stream in to a stream. Alias for `eval(f).flatMap(_)`.

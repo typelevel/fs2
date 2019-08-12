@@ -213,17 +213,18 @@ abstract class Chunk[+O] extends Serializable { self =>
   def scanLeftCarry[O2](z: O2)(f: (O2, O) => O2): (Chunk[O2], O2) =
     scanLeft_(z, false)(f)
 
-  protected def scanLeft_[O2](z: O2, emitFinal: Boolean)(f: (O2, O) => O2): (Chunk[O2], O2) = {
+  protected def scanLeft_[O2](z: O2, emitZero: Boolean)(f: (O2, O) => O2): (Chunk[O2], O2) = {
     val b = collection.mutable.Buffer.newBuilder[O2]
-    b.sizeHint(if (emitFinal) size + 1 else size)
+    b.sizeHint(if (emitZero) size + 1 else size)
     var acc = z
+    if (emitZero) b += acc
+
     var i = 0
     while (i < size) {
       acc = f(acc, apply(i))
       b += acc
       i += 1
     }
-    if (emitFinal) b += acc
     Chunk.buffer(b.result) -> acc
   }
 

@@ -39,13 +39,11 @@ position: 4
 
 #### Related Scala Libraries
 
-* FS2 was originally called [Scalaz-Stream](https://github.com/scalaz/scalaz-stream). 
+* FS2 was originally called [Scalaz-Stream](https://github.com/scalaz/scalaz-stream).
 * [Monix](https://monix.io/) defines a special type for lazy, pull-based streaming, called `monix.tail.Iterant`.
-* [ZIO](https://scalaz.github.io/) provides a stream type ([source code](https://github.com/scalaz/scalaz-zio/blob/master/core/shared/src/main/scala/scalaz/zio/stream/Stream.scala).
 * [The FP in Scala stream processing library](https://github.com/fpinscala/fpinscala/blob/master/answers/src/main/scala/fpinscala/streamingio/StreamingIO.scala) developed for the book [FP in Scala](https://www.manning.com/books/functional-programming-in-scala)
 * There are various other iteratee-style libraries for doing compositional, streaming I/O in Scala, notably the [`scalaz/iteratee`](https://github.com/scalaz/scalaz/tree/scalaz-seven/iteratee) package and [iteratees in Play](https://www.playframework.com/documentation/2.0/Iteratees).
 * [Akka-Streams](https://doc.akka.io/docs/akka/2.5/stream/index.html)
-
 
 #### Related Haskell Libraries
 

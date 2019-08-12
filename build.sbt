@@ -54,10 +54,10 @@ lazy val commonSettings = Seq(
   javaOptions in (Test, run) ++= Seq("-Xms64m", "-Xmx64m"),
   libraryDependencies ++= Seq(
     compilerPlugin("org.typelevel" %% "kind-projector" % "0.10.3"),
-    "org.typelevel" %%% "cats-core" % "2.0.0-M4",
-    "org.typelevel" %%% "cats-laws" % "2.0.0-M4" % "test",
-    "org.typelevel" %%% "cats-effect" % "2.0.0-M4",
-    "org.typelevel" %%% "cats-effect-laws" % "2.0.0-M4" % "test",
+    "org.typelevel" %%% "cats-core" % "2.0.0-RC1",
+    "org.typelevel" %%% "cats-laws" % "2.0.0-RC1" % "test",
+    "org.typelevel" %%% "cats-effect" % "2.0.0-RC1",
+    "org.typelevel" %%% "cats-effect-laws" % "2.0.0-RC1" % "test",
     "org.scalacheck" %%% "scalacheck" % "1.14.0" % "test",
     "org.scalatest" %%% "scalatest" % "3.1.0-SNAP13" % "test",
     "org.scalatestplus" %%% "scalatestplus-scalacheck" % "1.0.0-SNAP8" % "test"
@@ -252,6 +252,7 @@ def previousVersion(currentVersion: String): Option[String] = {
 lazy val root = project
   .in(file("."))
   .settings(commonSettings)
+  .settings(mimaSettings)
   .settings(noPublish)
   .aggregate(coreJVM, coreJS, io, reactiveStreams, benchmark, experimental)
 
@@ -428,6 +429,7 @@ lazy val experimental = project
   .in(file("experimental"))
   .enablePlugins(SbtOsgi)
   .settings(commonSettings)
+  .settings(mimaSettings)
   .settings(
     name := "fs2-experimental",
     OsgiKeys.exportPackage := Seq("fs2.experimental.*"),

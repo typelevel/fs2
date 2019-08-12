@@ -27,6 +27,7 @@ If you have a project you'd like to include in this list, either open a PR or le
 * [fs2-columns](https://gitlab.com/lJoublanc/fs2-columns): a `Chunk` that uses [shapeless](https://github.com/milessabin/shapeless) to store `case class` data column-wise.
 * [fs2-cron](https://github.com/fthomas/fs2-cron): FS2 streams based on cron expressions.
 * [fs2-crypto](https://github.com/Spinoco/fs2-crypto): TLS support for fs2.
+* [fs2-data](https://github.com/satabin/fs2-data): A set of data parsers and manipulation libraries for various formats for fs2.
 * [fs2-elastic](https://github.com/amarrella/fs2-elastic): Simple client for Elasticsearch.
 * [fs2-grpc](https://github.com/fiadliel/fs2-grpc): gRPC implementation for FS2 / Cats Effect.
 * [fs2-http](https://github.com/Spinoco/fs2-http): Http server and client library implemented in fs2.
