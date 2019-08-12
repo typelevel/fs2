@@ -128,54 +128,53 @@ package object file {
       .flatMap(w => Stream.eval_(w.watch(path, types, modifiers)) ++ w.events(pollTimeout))
 
   /**
-   * Checks if a file exists
-   * 
-   * Note that the result of this method is immediately outdated. If this
-   * method indicates the file exists then there is no guarantee that a
-   * subsequence access will succeed. Care should be taken when using this
-   * method in security sensitive applications.
-   */
+    * Checks if a file exists
+    *
+    * Note that the result of this method is immediately outdated. If this
+    * method indicates the file exists then there is no guarantee that a
+    * subsequence access will succeed. Care should be taken when using this
+    * method in security sensitive applications.
+    */
   def exists[F[_]: Sync](path: Path, flags: Seq[LinkOption] = Seq.empty): F[Boolean] =
     Sync[F].delay(Files.exists(path, flags: _*))
 
-  /** 
-   * Copies a file from the source to the target path,
-   *
-   * By default, the copy fails if the target file already exists or is a symbolic link.
-   */
+  /**
+    * Copies a file from the source to the target path,
+    *
+    * By default, the copy fails if the target file already exists or is a symbolic link.
+    */
   def copy[F[_]: Sync: ContextShift](blocker: Blocker,
                                      source: Path,
                                      target: Path,
                                      flags: Seq[CopyOption] = Seq.empty): F[Path] =
     blocker.delay(Files.copy(source, target, flags: _*))
 
-
   /**
-   * Deletes a file.
-   *
-   * If the file is a directory then the directory must be empty for this action to succed.
-   * This action will fail if the path doesn't exist.
-   */
+    * Deletes a file.
+    *
+    * If the file is a directory then the directory must be empty for this action to succed.
+    * This action will fail if the path doesn't exist.
+    */
   def delete[F[_]: Sync: ContextShift](blocker: Blocker, path: Path): F[Unit] =
     blocker.delay(Files.delete(path))
 
   /**
-   * Like `delete`, but will not fail when the path doesn't exist.
-   */
+    * Like `delete`, but will not fail when the path doesn't exist.
+    */
   def deleteIfExists[F[_]: Sync: ContextShift](blocker: Blocker, path: Path): F[Boolean] =
     blocker.delay(Files.deleteIfExists(path))
 
   /**
-   * Returns the size of a file (in bytes). 
-   */
+    * Returns the size of a file (in bytes).
+    */
   def size[F[_]: Sync: ContextShift](blocker: Blocker, path: Path): F[Long] =
     blocker.delay(Files.size(path))
 
-  /** 
-   * Moves (or renames) a file from the source to the target path.
-   *
-   * By default, the move fails if the target file already exists or is a symbolic link.
-   */
+  /**
+    * Moves (or renames) a file from the source to the target path.
+    *
+    * By default, the move fails if the target file already exists or is a symbolic link.
+    */
   def move[F[_]: Sync: ContextShift](blocker: Blocker,
                                      source: Path,
                                      target: Path,
@@ -183,14 +182,14 @@ package object file {
     blocker.delay(Files.move(source, target, flags: _*))
 
   /**
-   * Creates a new directory at the given path
-   */
+    * Creates a new directory at the given path
+    */
   def createDirectory[F[_]: Sync](path: Path, flags: Seq[FileAttribute[_]] = Seq.empty): F[Path] =
     Sync[F].delay(Files.createDirectory(path, flags: _*))
 
   /**
-   * Creates a new directory at the given path and creates all nonexistent parent directories beforehand.
-   */
+    * Creates a new directory at the given path and creates all nonexistent parent directories beforehand.
+    */
   def createDirectories[F[_]: Sync](path: Path, flags: Seq[FileAttribute[_]] = Seq.empty): F[Path] =
     Sync[F].delay(Files.createDirectories(path, flags: _*))
 

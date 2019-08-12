@@ -192,13 +192,15 @@ class FileSpec extends BaseFileSpec {
 
   "createDirectory" - {
     "should return in an existing path" in {
-      Stream
-        .resource(Blocker[IO])
-        .evalMap(
-          blocker =>
-            file
-              .createDirectory[IO](Paths.get("temp"))
-              .bracket(file.exists[IO](_))(file.deleteIfExists[IO](blocker, _).void))
+      tempDirectory
+        .flatMap(
+          path =>
+            Stream
+              .resource(Blocker[IO])
+              .evalMap(blocker =>
+                file
+                  .createDirectory[IO](path.resolve("temp"))
+                  .bracket(file.exists[IO](_))(file.deleteIfExists[IO](blocker, _).void)))
         .compile
         .fold(true)(_ && _)
         .unsafeRunSync() shouldBe true
@@ -207,13 +209,15 @@ class FileSpec extends BaseFileSpec {
 
   "createDirectories" - {
     "should return in an existing path" in {
-      Stream
-        .resource(Blocker[IO])
-        .evalMap(
-          blocker =>
-            file
-              .createDirectories[IO](Paths.get("temp/inner"))
-              .bracket(file.exists[IO](_))(file.deleteIfExists[IO](blocker, _).void))
+      tempDirectory
+        .flatMap(
+          path =>
+            Stream
+              .resource(Blocker[IO])
+              .evalMap(blocker =>
+                file
+                  .createDirectories[IO](path.resolve("temp/inner"))
+                  .bracket(file.exists[IO](_))(file.deleteIfExists[IO](blocker, _).void)))
         .compile
         .fold(true)(_ && _)
         .unsafeRunSync() shouldBe true
