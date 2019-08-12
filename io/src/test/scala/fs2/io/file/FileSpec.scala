@@ -8,6 +8,7 @@ import cats.effect.{Blocker, IO}
 import cats.implicits._
 
 import scala.concurrent.duration._
+import java.nio.file.Paths
 
 class FileSpec extends BaseFileSpec {
 
@@ -112,6 +113,110 @@ class FileSpec extends BaseFileSpec {
         .toList
         .map(_.size)
         .unsafeRunSync() shouldBe 4
+    }
+  }
+
+  "exists" - {
+    "returns false on a non existant file" in {
+      file.exists[IO](Paths.get("nothing")).unsafeRunSync shouldBe false
+    }
+    "returns true on an existing file" in {
+      tempFile.evalMap(file.exists[IO](_)).compile.fold(true)(_ && _).unsafeRunSync() shouldBe true
+    }
+  }
+
+  "copy" - {
+    "returns a path to the new file" in {
+      (for {
+        blocker <- Stream.resource(Blocker[IO])
+        filePath <- tempFile
+        tempDir <- tempDirectory
+        result <- Stream.eval(file.copy[IO](blocker, filePath, tempDir.resolve("newfile")))
+        exists <- Stream.eval(file.exists[IO](result))
+      } yield exists).compile.fold(true)(_ && _).unsafeRunSync() shouldBe true
+
+    }
+  }
+
+  "deleteIfExists" - {
+    "should result in non existant file" in {
+      tempFile
+        .flatMap(
+          path =>
+            Stream
+              .resource(Blocker[IO])
+              .evalMap(blocker => file.delete[IO](blocker, path) *> file.exists[IO](path)))
+        .compile
+        .fold(false)(_ || _)
+        .unsafeRunSync() shouldBe false
+    }
+  }
+
+  "delete" - {
+    "should fail on a non existant file" in {
+      Blocker[IO]
+        .use(blocker => file.delete[IO](blocker, Paths.get("nothing")))
+        .attempt
+        .unsafeRunSync()
+        .isLeft shouldBe true
+    }
+  }
+
+  "move" - {
+    "should result in the old path being deleted" in {
+      (for {
+        blocker <- Stream.resource(Blocker[IO])
+        filePath <- tempFile
+        tempDir <- tempDirectory
+        result <- Stream.eval(file.move[IO](blocker, filePath, tempDir.resolve("newfile")))
+        exists <- Stream.eval(file.exists[IO](filePath))
+      } yield exists).compile.fold(false)(_ || _).unsafeRunSync() shouldBe false
+    }
+  }
+
+  "size" - {
+    "should return correct size of ay file" in {
+      tempFile
+        .flatTap(modify)
+        .flatMap(
+          path =>
+            Stream
+              .resource(Blocker[IO])
+              .evalMap(blocker => file.size[IO](blocker, path))
+        )
+        .compile
+        .lastOrError
+        .unsafeRunSync() shouldBe 4L
+    }
+  }
+
+  "createDirectory" - {
+    "should return in an existing path" in {
+      Stream
+        .resource(Blocker[IO])
+        .evalMap(
+          blocker =>
+            file
+              .createDirectory[IO](Paths.get("temp"))
+              .bracket(file.exists[IO](_))(file.deleteIfExists[IO](blocker, _).void))
+        .compile
+        .fold(true)(_ && _)
+        .unsafeRunSync() shouldBe true
+    }
+  }
+
+  "createDirectories" - {
+    "should return in an existing path" in {
+      Stream
+        .resource(Blocker[IO])
+        .evalMap(
+          blocker =>
+            file
+              .createDirectories[IO](Paths.get("temp/inner"))
+              .bracket(file.exists[IO](_))(file.deleteIfExists[IO](blocker, _).void))
+        .compile
+        .fold(true)(_ && _)
+        .unsafeRunSync() shouldBe true
     }
   }
 
