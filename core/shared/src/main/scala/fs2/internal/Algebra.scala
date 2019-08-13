@@ -1,7 +1,7 @@
 package fs2.internal
 
-import cats.~>
-import cats.effect.{Concurrent, ExitCase, Sync}
+import cats.{MonadError, ~>}
+import cats.effect.{Concurrent, ExitCase}
 import cats.implicits._
 import fs2._
 import fs2.internal.FreeC.{Result, ViewL}
@@ -163,7 +163,7 @@ private[fs2] object Algebra {
 
   /** Left-folds the output of a stream. */
   def compile[F[_], O, B](stream: FreeC[Algebra[F, O, ?], Unit], scope: CompileScope[F], init: B)(
-      g: (B, Chunk[O]) => B)(implicit F: Sync[F]): F[B] =
+      g: (B, Chunk[O]) => B)(implicit F: MonadError[F, Throwable]): F[B] =
     compileLoop[F, O](scope, stream).flatMap {
       case Some((output, scope, tail)) =>
         try {
@@ -198,7 +198,8 @@ private[fs2] object Algebra {
   private[this] def compileLoop[F[_], O](
       scope: CompileScope[F],
       stream: FreeC[Algebra[F, O, ?], Unit]
-  )(implicit F: Sync[F]): F[Option[(Chunk[O], CompileScope[F], FreeC[Algebra[F, O, ?], Unit])]] = {
+  )(implicit F: MonadError[F, Throwable])
+    : F[Option[(Chunk[O], CompileScope[F], FreeC[Algebra[F, O, ?], Unit])]] = {
 
     case class Done[X](scope: CompileScope[F]) extends R[X]
     case class Out[X](head: Chunk[X], scope: CompileScope[F], tail: FreeC[Algebra[F, X, ?], Unit])
@@ -288,7 +289,7 @@ private[fs2] object Algebra {
               }
 
             case _: GetScope[F] =>
-              F.suspend(go(scope, view.next(Result.pure(scope.asInstanceOf[y]))))
+              go(scope, view.next(Result.pure(scope.asInstanceOf[y])))
 
             case open: OpenScope[F] =>
               interruptGuard(scope) {
