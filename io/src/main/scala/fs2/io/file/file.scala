@@ -135,8 +135,10 @@ package object file {
     * subsequence access will succeed. Care should be taken when using this
     * method in security sensitive applications.
     */
-  def exists[F[_]: Sync](path: Path, flags: Seq[LinkOption] = Seq.empty): F[Boolean] =
-    Sync[F].delay(Files.exists(path, flags: _*))
+  def exists[F[_]: Sync: ContextShift](blocker: Blocker,
+                                       path: Path,
+                                       flags: Seq[LinkOption] = Seq.empty): F[Boolean] =
+    blocker.delay(Files.exists(path, flags: _*))
 
   /**
     * Copies a file from the source to the target path,
@@ -184,14 +186,19 @@ package object file {
   /**
     * Creates a new directory at the given path
     */
-  def createDirectory[F[_]: Sync](path: Path, flags: Seq[FileAttribute[_]] = Seq.empty): F[Path] =
-    Sync[F].delay(Files.createDirectory(path, flags: _*))
+  def createDirectory[F[_]: Sync: ContextShift](blocker: Blocker,
+                                                path: Path,
+                                                flags: Seq[FileAttribute[_]] = Seq.empty): F[Path] =
+    blocker.delay(Files.createDirectory(path, flags: _*))
 
   /**
     * Creates a new directory at the given path and creates all nonexistent parent directories beforehand.
     */
-  def createDirectories[F[_]: Sync](path: Path, flags: Seq[FileAttribute[_]] = Seq.empty): F[Path] =
-    Sync[F].delay(Files.createDirectories(path, flags: _*))
+  def createDirectories[F[_]: Sync: ContextShift](
+      blocker: Blocker,
+      path: Path,
+      flags: Seq[FileAttribute[_]] = Seq.empty): F[Path] =
+    blocker.delay(Files.createDirectories(path, flags: _*))
 
   /**
     * Creates a stream of [[Path]]s inside a directory.

@@ -118,10 +118,12 @@ class FileSpec extends BaseFileSpec {
 
   "exists" - {
     "returns false on a non existant file" in {
-      file.exists[IO](Paths.get("nothing")).unsafeRunSync shouldBe false
+      Blocker[IO].use(b => file.exists[IO](b, Paths.get("nothing"))).unsafeRunSync shouldBe false
     }
     "returns true on an existing file" in {
-      tempFile.evalMap(file.exists[IO](_)).compile.fold(true)(_ && _).unsafeRunSync() shouldBe true
+      Blocker[IO]
+        .use(b => tempFile.evalMap(file.exists[IO](b, _)).compile.fold(true)(_ && _))
+        .unsafeRunSync() shouldBe true
     }
   }
 
@@ -132,7 +134,7 @@ class FileSpec extends BaseFileSpec {
         filePath <- tempFile
         tempDir <- tempDirectory
         result <- Stream.eval(file.copy[IO](blocker, filePath, tempDir.resolve("newfile")))
-        exists <- Stream.eval(file.exists[IO](result))
+        exists <- Stream.eval(file.exists[IO](blocker, result))
       } yield exists).compile.fold(true)(_ && _).unsafeRunSync() shouldBe true
 
     }
@@ -145,7 +147,7 @@ class FileSpec extends BaseFileSpec {
           path =>
             Stream
               .resource(Blocker[IO])
-              .evalMap(blocker => file.delete[IO](blocker, path) *> file.exists[IO](path)))
+              .evalMap(blocker => file.delete[IO](blocker, path) *> file.exists[IO](blocker, path)))
         .compile
         .fold(false)(_ || _)
         .unsafeRunSync() shouldBe false
@@ -169,7 +171,7 @@ class FileSpec extends BaseFileSpec {
         filePath <- tempFile
         tempDir <- tempDirectory
         result <- Stream.eval(file.move[IO](blocker, filePath, tempDir.resolve("newfile")))
-        exists <- Stream.eval(file.exists[IO](filePath))
+        exists <- Stream.eval(file.exists[IO](blocker, filePath))
       } yield exists).compile.fold(false)(_ || _).unsafeRunSync() shouldBe false
     }
   }
@@ -199,8 +201,8 @@ class FileSpec extends BaseFileSpec {
               .resource(Blocker[IO])
               .evalMap(blocker =>
                 file
-                  .createDirectory[IO](path.resolve("temp"))
-                  .bracket(file.exists[IO](_))(file.deleteIfExists[IO](blocker, _).void)))
+                  .createDirectory[IO](blocker, path.resolve("temp"))
+                  .bracket(file.exists[IO](blocker, _))(file.deleteIfExists[IO](blocker, _).void)))
         .compile
         .fold(true)(_ && _)
         .unsafeRunSync() shouldBe true
@@ -216,8 +218,8 @@ class FileSpec extends BaseFileSpec {
               .resource(Blocker[IO])
               .evalMap(blocker =>
                 file
-                  .createDirectories[IO](path.resolve("temp/inner"))
-                  .bracket(file.exists[IO](_))(file.deleteIfExists[IO](blocker, _).void)))
+                  .createDirectories[IO](blocker, path.resolve("temp/inner"))
+                  .bracket(file.exists[IO](blocker, _))(file.deleteIfExists[IO](blocker, _).void)))
         .compile
         .fold(true)(_ && _)
         .unsafeRunSync() shouldBe true
