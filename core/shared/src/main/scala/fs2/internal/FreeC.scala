@@ -185,9 +185,9 @@ private[fs2] object FreeC {
     override def toString: String = s"FreeC.Eval($fr)"
   }
 
-  abstract class Bind[F[_], X, R](val step: FreeC[F, X]) extends FreeC[F, R] { self =>
+  abstract class Bind[F[_], X, R](val step: FreeC[F, X]) extends FreeC[F, R] {
     def cont(r: Result[X]): FreeC[F, R]
-    val delegate: Bind[F, X, R] = self
+    def delegate: Bind[F, X, R] = this
     override def toString: String = s"FreeC.Bind($step)"
   }
 
@@ -227,9 +227,10 @@ private[fs2] object FreeC {
               }
             case bb: FreeC.Bind[F, z, _] =>
               val nb = new Bind[F, z, R](bb.step) {
+                private[this] val bdel = b.delegate
                 def cont(zr: Result[z]): FreeC[F, R] =
-                  new Bind[F, y, R](bb.cont(zr)) { self =>
-                    override val delegate: Bind[F, y, R] = b.delegate
+                  new Bind[F, y, R](bb.cont(zr)) {
+                    override val delegate: Bind[F, y, R] = bdel
                     def cont(yr: Result[y]): FreeC[F, R] = delegate.cont(yr)
                   }
               }
