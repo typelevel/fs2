@@ -215,23 +215,23 @@ private[fs2] object FreeC {
     private[fs2] def apply[F[_], R](free: FreeC[F, R]): ViewL[F, R] = mk(free)
 
     @tailrec
-    private def mk[F[_], R](free: FreeC[F, R]): ViewL[F, R] =
+    private def mk[F[_], Z](free: FreeC[F, Z]): ViewL[F, Z] =
       free match {
-        case e: Eval[F, R] => new EvalView[F, R](e.fr)
-        case b: FreeC.Bind[F, y, R] =>
+        case e: Eval[F, Z] => new EvalView[F, Z](e.fr)
+        case b: FreeC.Bind[F, y, Z] =>
           b.step match {
             case Result(r) => mk(b.cont(r))
             case Eval(fr) =>
-              new ViewL.View[F, y, R](fr) {
-                def next(r: Result[y]): FreeC[F, R] = b.cont(r)
+              new ViewL.View[F, y, Z](fr) {
+                def next(r: Result[y]): FreeC[F, Z] = b.cont(r)
               }
-            case bb: FreeC.Bind[F, z, _] =>
-              val nb = new Bind[F, z, R](bb.step) {
-                private[this] val bdel = b.delegate
-                def cont(zr: Result[z]): FreeC[F, R] =
-                  new Bind[F, y, R](bb.cont(zr)) {
-                    override val delegate: Bind[F, y, R] = bdel
-                    def cont(yr: Result[y]): FreeC[F, R] = delegate.cont(yr)
+            case bb: FreeC.Bind[F, x, _] =>
+              val nb = new Bind[F, x, Z](bb.step) {
+                private[this] val bdel: Bind[F, y, Z] = b.delegate
+                def cont(zr: Result[x]): FreeC[F, Z] =
+                  new Bind[F, y, Z](bb.cont(zr)) {
+                    override val delegate: Bind[F, y, Z] = bdel
+                    def cont(yr: Result[y]): FreeC[F, Z] = delegate.cont(yr)
                   }
               }
               mk(nb)
