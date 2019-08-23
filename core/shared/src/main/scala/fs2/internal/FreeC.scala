@@ -1,6 +1,6 @@
 package fs2.internal
 
-import cats.{MonadError, ~>}
+import cats.{~>}
 import cats.effect.{ExitCase, Sync}
 import fs2.{CompositeFailure, INothing}
 import FreeC._
@@ -241,20 +241,6 @@ private[fs2] object FreeC {
         case r @ Result.Interrupted(_, _) => r
       }
 
-  }
-
-  implicit final class InvariantOps[F[_], R](private val self: FreeC[F, R]) extends AnyVal {
-    // None indicates the FreeC was interrupted
-    def run(implicit F: MonadError[F, Throwable]): F[Option[R]] =
-      self.viewL match {
-        case Result.Pure(r)             => F.pure(Some(r))
-        case Result.Fail(e)             => F.raiseError(e)
-        case Result.Interrupted(_, err) => err.fold[F[Option[R]]](F.pure(None)) { F.raiseError }
-        case v @ ViewL.View(step) =>
-          F.flatMap(F.attempt(step)) { r =>
-            v.next(Result.fromEither(r)).run
-          }
-      }
   }
 
   implicit def syncInstance[F[_]]: Sync[FreeC[F, ?]] = new Sync[FreeC[F, ?]] {
