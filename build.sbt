@@ -313,8 +313,8 @@ lazy val reactiveStreams = project
   .enablePlugins(SbtOsgi)
   .settings(commonSettings)
   .settings(libraryDependencies ++= Seq(
-    "org.reactivestreams" % "reactive-streams" % "1.0.2",
-    "org.reactivestreams" % "reactive-streams-tck" % "1.0.2" % "test",
+    "org.reactivestreams" % "reactive-streams" % "1.0.3",
+    "org.reactivestreams" % "reactive-streams-tck" % "1.0.3" % "test",
     "org.scalatestplus" %% "scalatestplus-testng" % "1.0.0-SNAP8" % "test"
   ))
   .settings(mimaSettings)
