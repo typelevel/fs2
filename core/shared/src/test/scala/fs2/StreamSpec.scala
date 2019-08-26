@@ -87,11 +87,11 @@ class StreamSpec extends Fs2Spec {
         }
       }
 
-      "bracket.scope ++ bracket" - {
+      "bracket ++ bracket" - {
         def appendBracketTest[F[_]: Sync, A](use1: Stream[F, A], use2: Stream[F, A]): F[Unit] =
           for {
             events <- Ref.of[F, Vector[BracketEvent]](Vector.empty)
-            _ <- recordBracketEvents(events).scope
+            _ <- recordBracketEvents(events)
               .flatMap(_ => use1)
               .append(recordBracketEvents(events).flatMap(_ => use2))
               .compile
@@ -655,7 +655,6 @@ class StreamSpec extends Fs2Spec {
             val bg = Stream.repeatEval(IO(1) *> IO.sleep(50.millis)).onFinalize(semaphore.release)
             val fg = Stream.raiseError[IO](new Err).delayBy(25.millis)
             fg.concurrently(bg)
-              .scope
               .onFinalize(semaphore.acquire)
           }
           .compile
@@ -671,7 +670,6 @@ class StreamSpec extends Fs2Spec {
               val bg = Stream.repeatEval(IO(1) *> IO.sleep(50.millis)).onFinalize(semaphore.release)
               val fg = s.delayBy[IO](25.millis)
               fg.concurrently(bg)
-                .scope
                 .onFinalize(semaphore.acquire)
             }
             .compile
@@ -2726,9 +2724,8 @@ class StreamSpec extends Fs2Spec {
             IO { c.decrementAndGet(); () }
           }
           .flatMap(_ => Stream.emit("b"))
-        (s1.scope ++ s2)
+        (s1.scope.appendNoScope(s2))
           .take(2)
-          .scope
           .repeat
           .take(4)
           .merge(Stream.eval_(IO.unit))
@@ -2744,8 +2741,8 @@ class StreamSpec extends Fs2Spec {
             Stream(1).flatMap { i =>
               Stream
                 .bracket(ref.update(_ + 1))(_ => ref.update(_ - 1))
-                .flatMap(_ => Stream.eval(ref.get)) ++ Stream.eval(ref.get)
-            }.scope ++ Stream.eval(ref.get)
+                .flatMap(_ => Stream.eval(ref.get)).appendNoScope(Stream.eval(ref.get))
+            } ++ Stream.eval(ref.get)
           }
           .compile
           .toList

@@ -37,7 +37,6 @@ class SocketSpec extends Fs2Spec {
                   .reads(1024)
                   .through(socket.writes())
                   .onFinalize(socket.endOfOutput)
-                  .scope
               }
           }
           .parJoinUnbounded
@@ -52,8 +51,7 @@ class SocketSpec extends Fs2Spec {
                   .chunk(message)
                   .through(socket.writes())
                   .drain
-                  .onFinalize(socket.endOfOutput)
-                  .scope ++
+                  .onFinalize(socket.endOfOutput) ++
                   socket.reads(1024, None).chunks.map(_.toArray)
               }
             }
@@ -95,7 +93,6 @@ class SocketSpec extends Fs2Spec {
                   .through(socket.writes())
                   .drain
                   .onFinalize(socket.endOfOutput)
-                  .scope
               })
           }
           .parJoinUnbounded

@@ -137,16 +137,26 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * Appends `s2` to the end of this stream.
     *
     * @example {{{
-    * scala> ( Stream(1,2,3)++Stream(4,5,6) ).toList
+    * scala> (Stream(1,2,3) ++ Stream(4,5,6)).toList
     * res0: List[Int] = List(1, 2, 3, 4, 5, 6)
     * }}}
     *
-    * If `this` stream is not terminating, then the result is equivalent to `this`.
+    * If `this` stream is infinite, then the result is equivalent to `this`.
+    *
+    * Resources acquired in `this` stream are guaranteed to be finalized before `s2` is evaluated.
     */
-  def ++[F2[x] >: F[x], O2 >: O](s2: => Stream[F2, O2]): Stream[F2, O2] = append(s2)
+  def ++[F2[x] >: F[x], O2 >: O](s2: => Stream[F2, O2]): Stream[F2, O2] = scope.appendNoScope(s2)
 
   /** Appends `s2` to the end of this stream. Alias for `s1 ++ s2`. */
   def append[F2[x] >: F[x], O2 >: O](s2: => Stream[F2, O2]): Stream[F2, O2] =
+    this ++ s2
+
+  /**
+    * Like `append`/`++` but without the guarantee that resources acquired in this stream are
+    * finalized before evaluation of `s2`. This is more performant than `append` and can be used
+    * when finalization timeliness is not needed.
+    */
+  def appendNoScope[F2[x] >: F[x], O2 >: O](s2: => Stream[F2, O2]): Stream[F2, O2] =
     Stream.fromFreeC(get[F2, O2].transformWith {
       case Result.Pure(_) => s2.get
       case other          => other.asFreeC[Algebra[F2, O2, ?]]
@@ -1751,8 +1761,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
                     s.chunks
                       .evalMap { chunk =>
                         guard.acquire >>
-                          resultQ.enqueue1(
-                            Some(Stream.chunk(chunk).onFinalize(guard.release).scope))
+                          resultQ.enqueue1(Some(Stream.chunk(chunk).onFinalize(guard.release)))
                       }
                       .interruptWhen(interrupt.get.attempt)
                       .compile
@@ -2044,8 +2053,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
                           .dropWhile(_ > 0)
                           .take(1)
                           .compile
-                          .drain >> signalResult)
-                    .scope >>
+                          .drain >> signalResult) >>
                     outputQ.dequeue
                       .flatMap(Stream.chunk(_).covary[F2])
 
