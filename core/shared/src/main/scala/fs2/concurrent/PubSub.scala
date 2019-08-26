@@ -37,7 +37,7 @@ private[fs2] trait Subscribe[F[_], A, Selector] {
   def get(selector: Selector): F[A]
 
   /**
-    * A variant of `get`, that instead or returning one element will return multiple elements
+    * A variant of `get`, that instead of returning one element will return multiple elements
     * in form of stream.
     *
     * @param selector selector describing which `A` to receive
