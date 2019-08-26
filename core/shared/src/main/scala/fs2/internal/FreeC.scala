@@ -88,9 +88,9 @@ private[fs2] object FreeC {
 
   def eval[F[_], A](f: F[A]): FreeC[F, A] = Eval(f)
 
-  def raiseError[F[_], A](rsn: Throwable): FreeC[F, A] = Result.Fail(rsn)
+  def raiseError[F[_]](rsn: Throwable): FreeC[F, INothing] = Result.Fail(rsn)
 
-  def interrupted[F[_], X, A](interruptContext: X, failure: Option[Throwable]): FreeC[F, A] =
+  def interrupted[F[_], X](interruptContext: X, failure: Option[Throwable]): FreeC[F, INothing] =
     Result.Interrupted(interruptContext, failure)
 
   sealed trait Result[+R] { self =>
