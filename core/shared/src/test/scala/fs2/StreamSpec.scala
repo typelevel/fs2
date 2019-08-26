@@ -144,24 +144,24 @@ class StreamSpec extends Fs2Spec {
 
       "finalizer should not be called until necessary" in {
         IO.suspend {
-          val buffer = collection.mutable.ListBuffer[Symbol]()
+          val buffer = collection.mutable.ListBuffer[String]()
           Stream
-            .bracket(IO(buffer += 'Acquired)) { _ =>
-              buffer += 'ReleaseInvoked
-              IO(buffer += 'Released).void
+            .bracket(IO(buffer += "Acquired")) { _ =>
+              buffer += "ReleaseInvoked"
+              IO(buffer += "Released").void
             }
             .flatMap { _ =>
-              buffer += 'Used
+              buffer += "Used"
               Stream.emit(())
             }
             .flatMap { s =>
-              buffer += 'FlatMapped
+              buffer += "FlatMapped"
               Stream(s)
             }
             .compile
             .toList
             .asserting { _ =>
-              buffer.toList shouldBe List('Acquired, 'Used, 'FlatMapped, 'ReleaseInvoked, 'Released)
+              buffer.toList shouldBe List("Acquired", "Used", "FlatMapped", "ReleaseInvoked", "Released")
             }
         }
       }
