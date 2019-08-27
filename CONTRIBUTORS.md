@@ -11,7 +11,7 @@ Also see the [GitHub contributor stats](https://github.com/functional-streams-fo
 - Paul Chiusano ([@pchiusano](https://github.com/pchiusano)): project founder and maintainer
 - Pavel Chlupáček ([@pchlupacek](https://github.com/pchlupacek)): concurrency, original implementation of `Append` algebra
 - Gary Coady ([@fiadliel](https://github.com/fiadliel)): NIO file implementation, port of compress from scalaz-stream, other minor features
-- Fabio Labella ([@SystemFw](https://github.com/SystemFw)): new concurrency scheme with `Set` + `Promise`, maintenance
+- Fabio Labella ([@SystemFw](https://github.com/SystemFw)): new concurrency scheme with `Ref` + `Deferred`, `compile.resource.`, maintenance
 - Alissa Pajer ([@alissapajer](https://github.com/alissapajer)): concurrency bug hunting, features, maintenance
 - Daniel Spiewak ([@djspiewak](https://github.com/djspiewak)): concurrency plumbing, bug fixes, performance and correctness obsession
   + Public key (for release signing): [3587 7FB3 2BAE 5960](https://keybase.io/djspiewak)
