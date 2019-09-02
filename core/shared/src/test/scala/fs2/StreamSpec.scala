@@ -1615,6 +1615,7 @@ class StreamSpec extends Fs2Spec {
             case Some((hd, tl)) => Pull.eval(IO.never)
           }
           .stream
+          .interruptScope
           .append(Stream(5))
           .compile
           .toList
