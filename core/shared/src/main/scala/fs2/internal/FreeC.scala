@@ -103,12 +103,6 @@ private[fs2] object FreeC {
       case Result.Interrupted(_, _) => ExitCase.Canceled
     }
 
-    def recoverWith[R2 >: R](f: Throwable => Result[R2]): Result[R2] = self match {
-      case Result.Fail(err) =>
-        try { f(err) } catch { case NonFatal(err2) => Result.Fail(CompositeFailure(err, err2)) }
-      case _ => self
-    }
-
   }
 
   object Result {
@@ -252,11 +246,10 @@ private[fs2] object FreeC {
       used.transformWith { result =>
         release(a, result.asExitCase).transformWith {
           case Result.Fail(t2) =>
-            result
-              .recoverWith { t =>
-                Result.Fail(CompositeFailure(t, t2))
-              }
-              .asFreeC[F]
+            result match {
+              case Result.Fail(tres) => Result.Fail(CompositeFailure(tres, t2))
+              case result            => result.asFreeC[F]
+            }
           case _ => result.asFreeC[F]
         }
       }
