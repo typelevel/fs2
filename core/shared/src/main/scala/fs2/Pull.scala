@@ -257,6 +257,8 @@ object Pull extends PullLowPriority {
   implicit def syncInstance[F[_], O](
       implicit ev: ApplicativeError[F, Throwable]): Sync[Pull[F, O, ?]] =
     new Sync[Pull[F, O, ?]] {
+      lazy val freecSync: Sync[FreeC[Algebra[F, O, ?], ?]] = FreeC.syncInstance[Algebra[F, O, ?]]
+
       def pure[A](a: A): Pull[F, O, A] = Pull.pure(a)
       def handleErrorWith[A](p: Pull[F, O, A])(h: Throwable => Pull[F, O, A]) =
         p.handleErrorWith(h)
@@ -271,9 +273,7 @@ object Pull extends PullLowPriority {
       def bracketCase[A, B](acquire: Pull[F, O, A])(use: A => Pull[F, O, B])(
           release: (A, ExitCase[Throwable]) => Pull[F, O, Unit]): Pull[F, O, B] =
         Pull.fromFreeC(
-          FreeC
-            .syncInstance[Algebra[F, O, ?]]
-            .bracketCase(acquire.get)(a => use(a).get)((a, c) => release(a, c).get))
+          freecSync.bracketCase(acquire.get)(a => use(a).get)((a, c) => release(a, c).get))
     }
 
   /**
