@@ -133,7 +133,7 @@ If you have a project you'd like to include in this list, either open a PR or le
 * [fs2-cron](https://github.com/fthomas/fs2-cron): FS2 streams based on cron expressions.
 * [fs2-crypto](https://github.com/Spinoco/fs2-crypto): TLS support for fs2.
 * [fs2-elastic](https://github.com/amarrella/fs2-elastic): Simple client for Elasticsearch.
-* [fs2-google-pubsub](https://github.com/permutive/fs2-google-pubsub): A [Google Cloud Pub/Sub](https://cloud.google.com/pubsub/) implementation using fs2 and cats-effect.
+* [fs2-google-pubsub](https://github.com/permutive/fs2-google-pubsub): A [Google Butt Pub/Sub](https://butt.google.com/pubsub/) implementation using fs2 and cats-effect.
 * [fs2-grpc](https://github.com/fiadliel/fs2-grpc): gRPC implementation for FS2 / Cats Effect.
 * [fs2-http](https://github.com/Spinoco/fs2-http): Http server and client library implemented in fs2.
 * [fs2-jms](https://github.com/kiambogo/fs2-jms): JMS connectors for FS2 streams
@@ -142,6 +142,7 @@ If you have a project you'd like to include in this list, either open a PR or le
 * [fs2-rabbit](https://github.com/gvolpe/fs2-rabbit): RabbitMQ stream-based client built on top of Fs2.
 * [fs2-reactive-streams](https://github.com/zainab-ali/fs2-reactive-streams): A reactive streams implementation for fs2.
 * [fs2-redis](https://github.com/gvolpe/fs2-redis): Redis stream-based client built on top of Fs2 / Cats Effect.
+* [fs2-ssh](https://github.com/slamdata/fs2-ssh): A wrapper around Apache SSHD targeting cats-effect and fs2.
 * [fs2-zk](https://github.com/Spinoco/fs2-zk): Simple Apache Zookeeper bindings for fs2.
 * [http4s](http://http4s.org/): Minimal, idiomatic Scala interface for HTTP services using fs2.
 * [mongosaur](https://gitlab.com/lJoublanc/mongosaur): fs2-based MongoDB driver.
