@@ -105,7 +105,7 @@ package object io {
       val os =
         if (closeAfterUse) Stream.bracket(fos)(os => blocker.delay(os.close()))
         else Stream.eval(fos)
-      os.flatMap(os => useOs(os).scope ++ Stream.eval(blocker.delay(os.flush())))
+      os.flatMap(os => useOs(os) ++ Stream.eval(blocker.delay(os.flush())))
     }
 
   //

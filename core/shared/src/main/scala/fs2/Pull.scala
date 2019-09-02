@@ -110,7 +110,7 @@ final class Pull[+F[_], +O, +R] private (private val free: FreeC[Algebra[Nothing
     Pull.fromFreeC(get[F2, O2, R2].handleErrorWith(e => h(e).get))
 
   /** Tracks any resources acquired during this pull and releases them when the pull completes. */
-  def scope: Pull[F, O, Unit] = Pull.fromFreeC(Algebra.scope(get[F, O, R].map(_ => ())))
+  def scope: Pull[F, O, Unit] = Pull.fromFreeC(Algebra.scope(get[F, O, R].map(_ => ()), true))
 
   /** Discards the result type of this pull. */
   def void: Pull[F, O, Unit] = as(())
