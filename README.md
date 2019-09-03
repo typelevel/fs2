@@ -142,6 +142,7 @@ If you have a project you'd like to include in this list, either open a PR or le
 * [fs2-rabbit](https://github.com/gvolpe/fs2-rabbit): RabbitMQ stream-based client built on top of Fs2.
 * [fs2-reactive-streams](https://github.com/zainab-ali/fs2-reactive-streams): A reactive streams implementation for fs2.
 * [fs2-redis](https://github.com/gvolpe/fs2-redis): Redis stream-based client built on top of Fs2 / Cats Effect.
+* [fs2-ssh](https://github.com/slamdata/fs2-ssh): A wrapper around Apache SSHD targeting cats-effect and fs2.
 * [fs2-zk](https://github.com/Spinoco/fs2-zk): Simple Apache Zookeeper bindings for fs2.
 * [http4s](http://http4s.org/): Minimal, idiomatic Scala interface for HTTP services using fs2.
 * [mongosaur](https://gitlab.com/lJoublanc/mongosaur): fs2-based MongoDB driver.
