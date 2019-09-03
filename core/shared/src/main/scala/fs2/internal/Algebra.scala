@@ -415,7 +415,10 @@ private[fs2] object Algebra {
         view.step match {
           case close: CloseScope[F] =>
             Algebra
-              .closeScope(close.scopeId, Some((interruptedScope, interruptedError)), close.exitCase) // assumes it is impossible so the `close` will be already from interrupted stream
+              .closeScope(
+                close.scopeId,
+                Some((interruptedScope, interruptedError)),
+                ExitCase.Canceled) // Inner scope is getting closed b/c a parent was interrupted
               .transformWith(view.next)
           case _ =>
             // all other cases insert interruption cause

@@ -293,7 +293,6 @@ class StreamSpec extends Fs2Spec {
       }
 
       "interruption" in {
-        pending // Completes with ExitCase.Completed instead of expected Canceled
         forAll { (s0: Stream[Pure, Int]) =>
           Counter[IO].flatMap { counter =>
             var ecs: Chain[ExitCase[Throwable]] = Chain.empty
