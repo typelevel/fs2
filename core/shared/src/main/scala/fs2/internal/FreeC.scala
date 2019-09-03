@@ -1,7 +1,7 @@
 package fs2.internal
 
 import cats.{~>}
-import cats.effect.{ExitCase, Sync}
+import cats.effect.ExitCase
 import fs2.{CompositeFailure, INothing}
 import FreeC._
 
@@ -243,36 +243,22 @@ private[fs2] object FreeC {
 
   }
 
-  implicit def syncInstance[F[_]]: Sync[FreeC[F, ?]] = new Sync[FreeC[F, ?]] {
-    def pure[A](a: A): FreeC[F, A] = FreeC.Result.Pure(a)
-    def handleErrorWith[A](fa: FreeC[F, A])(f: Throwable => FreeC[F, A]): FreeC[F, A] =
-      fa.handleErrorWith(f)
-    def raiseError[A](t: Throwable): FreeC[F, A] = FreeC.Result.Fail(t)
-    def flatMap[A, B](fa: FreeC[F, A])(f: A => FreeC[F, B]): FreeC[F, B] =
-      fa.flatMap(f)
-    def tailRecM[A, B](a: A)(f: A => FreeC[F, Either[A, B]]): FreeC[F, B] =
-      f(a).flatMap {
-        case Left(a)  => tailRecM(a)(f)
-        case Right(b) => pure(b)
-      }
-    def suspend[A](thunk: => FreeC[F, A]): FreeC[F, A] = FreeC.suspend(thunk)
-    def bracketCase[A, B](acquire: FreeC[F, A])(use: A => FreeC[F, B])(
-        release: (A, ExitCase[Throwable]) => FreeC[F, Unit]): FreeC[F, B] =
-      acquire.flatMap { a =>
-        val used =
-          try use(a)
-          catch { case NonFatal(t) => FreeC.Result.Fail[F](t) }
-        used.transformWith { result =>
-          release(a, result.asExitCase).transformWith {
-            case Result.Fail(t2) =>
-              result
-                .recoverWith { t =>
-                  Result.Fail(CompositeFailure(t, t2))
-                }
-                .asFreeC[F]
-            case _ => result.asFreeC[F]
-          }
+  def bracketCase[F[_], A, B](acquire: FreeC[F, A])(use: A => FreeC[F, B])(
+      release: (A, ExitCase[Throwable]) => FreeC[F, Unit]): FreeC[F, B] =
+    acquire.flatMap { a =>
+      val used =
+        try use(a)
+        catch { case NonFatal(t) => FreeC.Result.Fail[F](t) }
+      used.transformWith { result =>
+        release(a, result.asExitCase).transformWith {
+          case Result.Fail(t2) =>
+            result
+              .recoverWith { t =>
+                Result.Fail(CompositeFailure(t, t2))
+              }
+              .asFreeC[F]
+          case _ => result.asFreeC[F]
         }
       }
-  }
+    }
 }
