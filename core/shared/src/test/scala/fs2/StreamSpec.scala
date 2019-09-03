@@ -581,6 +581,37 @@ class StreamSpec extends Fs2Spec {
             .asserting(_ shouldBe expected)
         }
 
+        "last scope extended, not all scopes" - {
+          "1" in {
+            Ref[IO]
+              .of(List.empty[String])
+              .flatMap { st =>
+                def record(s: String): IO[Unit] = st.update(_ :+ s)
+                Stream.emit("start")
+                  .onFinalize(record("first finalize"))
+                  .onFinalize(record("second finalize"))
+                  .compile
+                  .resource
+                  .lastOrError
+                  .use(x => record(x)) *> st.get
+              }.asserting(_ shouldBe List("first finalize", "start", "second finalize"))
+          }
+          "2" in {
+            Ref[IO]
+              .of(List.empty[String])
+              .flatMap { st =>
+                def record(s: String): IO[Unit] = st.update(_ :+ s)
+                (Stream.bracket(IO("a"))(_ => record("first finalize")) ++
+                  Stream.bracket(IO("b"))(_ => record("second finalize")) ++
+                  Stream.bracket(IO("c"))(_ => record("third finalize")))
+                  .compile
+                  .resource
+                  .lastOrError
+                  .use(x => record(x)) *> st.get
+              }.asserting(_ shouldBe List("first finalize", "second finalize", "c", "third finalize"))
+          }
+        }
+
         "allocated" in {
           Ref[IO]
             .of(false)

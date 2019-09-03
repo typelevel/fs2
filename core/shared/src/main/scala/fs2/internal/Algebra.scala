@@ -35,10 +35,7 @@ private[fs2] object Algebra {
   private[this] final case class Acquire[F[_], R](resource: F[R],
                                                   release: (R, ExitCase[Throwable]) => F[Unit])
       extends AlgEffect[F, (R, Resource[F])]
-  // Scope opening can be hard or soft - a hard open always results in a new scope whereas
-  // a soft open may be suppressed under certain circumstances
-  private[this] final case class OpenScope[F[_]](interruptible: Option[Concurrent[F]],
-                                                 hard: Boolean)
+  private[this] final case class OpenScope[F[_]](interruptible: Option[Concurrent[F]])
       extends AlgEffect[F, Token]
 
   // `InterruptedScope` contains id of the scope currently being interrupted
@@ -101,9 +98,8 @@ private[fs2] object Algebra {
     * Wraps supplied pull in new scope, that will be opened before this pull is evaluated
     * and closed once this pull either finishes its evaluation or when it fails.
     */
-  def scope[F[_], O](s: FreeC[Algebra[F, O, ?], Unit],
-                     hard: Boolean): FreeC[Algebra[F, O, ?], Unit] =
-    scope0(s, None, hard)
+  def scope[F[_], O](s: FreeC[Algebra[F, O, ?], Unit]): FreeC[Algebra[F, O, ?], Unit] =
+    scope0(s, None)
 
   /**
     * Like `scope` but allows this scope to be interrupted.
@@ -111,11 +107,11 @@ private[fs2] object Algebra {
     */
   private[fs2] def interruptScope[F[_], O](s: FreeC[Algebra[F, O, ?], Unit])(
       implicit F: Concurrent[F]): FreeC[Algebra[F, O, ?], Unit] =
-    scope0(s, Some(F), true)
+    scope0(s, Some(F))
 
-  private[this] def openScope[F[_], O](interruptible: Option[Concurrent[F]],
-                                       hard: Boolean): FreeC[Algebra[F, O, ?], Token] =
-    FreeC.Eval[Algebra[F, O, ?], Token](OpenScope(interruptible, hard))
+  private[this] def openScope[F[_], O](
+      interruptible: Option[Concurrent[F]]): FreeC[Algebra[F, O, ?], Token] =
+    FreeC.Eval[Algebra[F, O, ?], Token](OpenScope(interruptible))
 
   private[fs2] def closeScope[F[_], O](
       token: Token,
@@ -124,9 +120,8 @@ private[fs2] object Algebra {
     FreeC.Eval[Algebra[F, O, ?], Unit](CloseScope(token, interruptedScope, exitCase))
 
   private def scope0[F[_], O](s: FreeC[Algebra[F, O, ?], Unit],
-                              interruptible: Option[Concurrent[F]],
-                              hard: Boolean): FreeC[Algebra[F, O, ?], Unit] =
-    openScope(interruptible, hard).flatMap { scopeId =>
+                              interruptible: Option[Concurrent[F]]): FreeC[Algebra[F, O, ?], Unit] =
+    openScope(interruptible).flatMap { scopeId =>
       s.transformWith {
         case Result.Pure(_) => closeScope(scopeId, interruptedScope = None, ExitCase.Completed)
         case Result.Interrupted(interruptedScopeId: Token, err) =>
@@ -170,16 +165,16 @@ private[fs2] object Algebra {
   def compile[F[_], O, B](
       stream: FreeC[Algebra[F, O, ?], Unit],
       scope: CompileScope[F],
-      suppressSoftScopesInRoot: Boolean,
+      extendLastTopLevelScope: Boolean,
       init: B)(g: (B, Chunk[O]) => B)(implicit F: MonadError[F, Throwable]): F[B] =
-    compileLoop[F, O](scope, suppressSoftScopesInRoot, stream).flatMap {
+    compileLoop[F, O](scope, extendLastTopLevelScope, stream).flatMap {
       case Some((output, scope, tail)) =>
         try {
           val b = g(init, output)
-          compile(tail, scope, suppressSoftScopesInRoot, b)(g)
+          compile(tail, scope, extendLastTopLevelScope, b)(g)
         } catch {
           case NonFatal(err) =>
-            compile(tail.asHandler(err), scope, suppressSoftScopesInRoot, init)(g)
+            compile(tail.asHandler(err), scope, extendLastTopLevelScope, init)(g)
         }
       case None =>
         F.pure(init)
@@ -206,12 +201,10 @@ private[fs2] object Algebra {
    *
    * Interpreter uses this to find any parents of this scope that has to be interrupted, and guards the
    * interruption so it won't propagate to scope that shall not be anymore interrupted.
-   *
    */
-
   private[this] def compileLoop[F[_], O](
       scope: CompileScope[F],
-      suppressSoftScopesInRoot: Boolean,
+      extendLastTopLevelScope: Boolean,
       stream: FreeC[Algebra[F, O, ?], Unit]
   )(implicit F: MonadError[F, Throwable])
     : F[Option[(Chunk[O], CompileScope[F], FreeC[Algebra[F, O, ?], Unit])]] = {
@@ -219,6 +212,7 @@ private[fs2] object Algebra {
     def go[X, Res](
         scope: CompileScope[F],
         compileCont: CompileCont[F, X, Res],
+        extendedTopLevelScope: Option[CompileScope[F]],
         stream: FreeC[Algebra[F, X, ?], Unit]
     ): F[Res] =
       stream.viewL match {
@@ -236,7 +230,7 @@ private[fs2] object Algebra {
 
         case view: ViewL.View[Algebra[F, X, ?], y, Unit] =>
           def resume(res: Result[y]): F[Res] =
-            go[X, Res](scope, compileCont, view.next(res))
+            go[X, Res](scope, compileCont, extendedTopLevelScope, view.next(res))
 
           def interruptGuard(scope: CompileScope[F])(next: => F[Res]): F[Res] =
             F.flatMap(scope.isInterrupted) {
@@ -260,7 +254,7 @@ private[fs2] object Algebra {
                   val handleStep = new CompileCont[F, y, Res] {
                     def done(scope: CompileScope[F]): F[Res] =
                       interruptGuard(scope)(
-                        go(scope, compileCont, view.next(Result.pure(None)))
+                        go(scope, compileCont, extendedTopLevelScope, view.next(Result.pure(None)))
                       )
                     def out(head: Chunk[y],
                             outScope: CompileScope[F],
@@ -270,14 +264,15 @@ private[fs2] object Algebra {
                       val nextScope = if (u.scope.isEmpty) outScope else scope
                       val result = Result.pure(Some((head, outScope.id, tail)))
                       interruptGuard(nextScope)(
-                        go(nextScope, compileCont, view.next(result))
+                        go(nextScope, compileCont, extendedTopLevelScope, view.next(result))
                       )
                     }
                     def interrupted(scopeId: Token, err: Option[Throwable]): F[Res] =
                       resume(Result.interrupted(scopeId, err))
                   }
 
-                  F.handleErrorWith(go[y, Res](stepScope, handleStep, u.stream)) { err =>
+                  F.handleErrorWith(
+                    go[y, Res](stepScope, handleStep, extendedTopLevelScope, u.stream)) { err =>
                     resume(Result.raiseError(err))
                   }
                 case None =>
@@ -306,15 +301,26 @@ private[fs2] object Algebra {
 
             case open: OpenScope[F] =>
               interruptGuard(scope) {
-                if (suppressSoftScopesInRoot && scope.parent.isEmpty && !open.hard)
-                  go(scope, compileCont, view.next(Result.pure(scope.id)))
-                else
+                val maybeCloseExtendedScope: F[Boolean] =
+                  // If we're opening a new top-level scope (aka, direct descendant of root),
+                  // close the current extended top-level scope if it is defined.
+                  if (scope.parent.isEmpty)
+                    extendedTopLevelScope match {
+                      case None    => false.pure[F]
+                      case Some(s) => s.close(ExitCase.Completed).rethrow.as(true)
+                    } else F.pure(false)
+                maybeCloseExtendedScope.flatMap { closedExtendedScope =>
+                  val newExtendedScope = if (closedExtendedScope) None else extendedTopLevelScope
                   F.flatMap(scope.open(open.interruptible)) {
                     case Left(err) =>
-                      go(scope, compileCont, view.next(Result.raiseError(err)))
+                      go(scope, compileCont, newExtendedScope, view.next(Result.raiseError(err)))
                     case Right(childScope) =>
-                      go(childScope, compileCont, view.next(Result.pure(childScope.id)))
+                      go(childScope,
+                         compileCont,
+                         newExtendedScope,
+                         view.next(Result.pure(childScope.id)))
                   }
+                }
               }
 
             case close: CloseScope[F] =>
@@ -337,29 +343,34 @@ private[fs2] object Algebra {
 
                         }
                     }
-
-                    go(ancestor, compileCont, view.next(res))
+                    go(ancestor, compileCont, extendedTopLevelScope, view.next(res))
                   }
                 }
 
-              scope.findSelfOrAncestor(close.scopeId) match {
+              val scopeToClose = scope
+                .findSelfOrAncestor(close.scopeId)
+                .pure[F]
+                .orElse(scope.findSelfOrChild(close.scopeId))
+              scopeToClose.flatMap {
                 case Some(toClose) =>
-                  if (toClose.parent.nonEmpty) closeAndGo(toClose, close.exitCase)
-                  else go(scope, compileCont, view.next(Result.pure(())))
+                  if (toClose.parent.isEmpty) {
+                    // Impossible - don't close root scope as a result of a `CloseScope` call
+                    go(scope, compileCont, extendedTopLevelScope, view.next(Result.pure(())))
+                  } else if (extendLastTopLevelScope && toClose.parent.flatMap(_.parent).isEmpty) {
+                    // Request to close the current top-level scope - if we're supposed to extend
+                    // it instead, leave the scope open and pass it to the continuation
+                    extendedTopLevelScope.traverse_(_.close(ExitCase.Completed).rethrow) *>
+                      toClose.openAncestor.flatMap(ancestor =>
+                        go(ancestor, compileCont, Some(toClose), view.next(Result.pure(()))))
+                  } else closeAndGo(toClose, close.exitCase)
                 case None =>
-                  scope.findSelfOrChild(close.scopeId).flatMap {
-                    case Some(toClose) =>
-                      closeAndGo(toClose, close.exitCase)
-                    case None =>
-                      // scope already closed, continue with current scope
-                      def result =
-                        close.interruptedScope
-                          .map { Result.interrupted _ tupled }
-                          .getOrElse(Result.unit)
-                      go(scope, compileCont, view.next(result))
-                  }
+                  // scope already closed, continue with current scope
+                  def result =
+                    close.interruptedScope
+                      .map { Result.interrupted _ tupled }
+                      .getOrElse(Result.unit)
+                  go(scope, compileCont, extendedTopLevelScope, view.next(result))
               }
-
           }
       }
 
@@ -380,7 +391,7 @@ private[fs2] object Algebra {
         }
     }
 
-    go(scope, CompileEnd, stream)
+    go(scope, CompileEnd, None, stream)
   }
 
   /**
@@ -497,7 +508,7 @@ private[fs2] object Algebra {
       Acquire[G, r](fK(a.resource), (r, ec) => fK(a.release(r, ec)))
         .asInstanceOf[AlgEffect[G, R]]
     case e: Eval[F, R]    => Eval[G, R](fK(e.value))
-    case o: OpenScope[F]  => OpenScope[G](concurrent, o.hard).asInstanceOf[AlgEffect[G, R]]
+    case o: OpenScope[F]  => OpenScope[G](concurrent).asInstanceOf[AlgEffect[G, R]]
     case c: CloseScope[F] => c.asInstanceOf[AlgEffect[G, R]]
     case g: GetScope[F]   => g.asInstanceOf[AlgEffect[G, R]]
   }

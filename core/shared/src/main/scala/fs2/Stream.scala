@@ -2328,8 +2328,8 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
   def scanMonoid[O2 >: O](implicit O: Monoid[O2]): Stream[F, O2] =
     scan(O.empty)(O.combine)
 
-  private def scope(hard: Boolean): Stream[F, O] =
-    Stream.fromFreeC(Algebra.scope(get, hard))
+  private def scope: Stream[F, O] =
+    Stream.fromFreeC(Algebra.scope(get))
 
   /**
     * Writes this stream to the supplied `PrintStream`, converting each element to a `String` via `Show`.
@@ -2927,7 +2927,7 @@ object Stream extends StreamLowPriority {
       release: (R, ExitCase[Throwable]) => F[Unit]): Stream[F, R] =
     fromFreeC(Algebra.acquire[F, R, R](acquire, release).flatMap {
       case (r, token) => Stream.emit(r).covary[F].get[F, R]
-    }).scope(false)
+    }).scope
 
   /**
     * Like [[bracket]] but the result value consists of a cancellation
@@ -2967,7 +2967,7 @@ object Stream extends StreamLowPriority {
           .covary[F]
           .map(o => (res, o))
           .get[F, (fs2.internal.Resource[F], R)]
-    }).scope(false)
+    }).scope
 
   /**
     * Creates a pure stream that emits the elements of the supplied chunk.
