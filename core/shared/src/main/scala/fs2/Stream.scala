@@ -1019,17 +1019,18 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Nothing, O, Unit]
   def filter(p: O => Boolean): Stream[F, O] = mapChunks(_.filter(p))
 
   /**
-   * Like `filter`, but allows filtering based on an effect.
-   */
+    * Like `filter`, but allows filtering based on an effect.
+    */
   def evalFilter[F2[x] >: F[x]: Functor](f: O => F2[Boolean]): Stream[F2, O] =
     evalMap(o => f(o).map(_.guard[Option].as(o))).unNone
 
   /**
-   * Like `filter`, but allows filtering based on an effect, with up to [[maxConcurrent]] concurrently running effects.
-   * The ordering of emitted elements is unchanged.
-   */
-  def evalFilterAsync[F2[x] >: F[x]: Concurrent](maxConcurrent: Int)(f: O => F2[Boolean]): Stream[F2, O] =
-    parEvalMap(maxConcurrent)(o => f(o).map(_.guard[Option].as(o))).unNone
+    * Like `filter`, but allows filtering based on an effect, with up to [[maxConcurrent]] concurrently running effects.
+    * The ordering of emitted elements is unchanged.
+    */
+  def evalFilterAsync[F2[x] >: F[x]: Concurrent](maxConcurrent: Int)(
+      f: O => F2[Boolean]): Stream[F2, O] =
+    parEvalMap[F2, Option[O]](maxConcurrent)(o => f(o).map(_.guard[Option].as(o))).unNone
 
   /**
     * Like `filter`, but the predicate `f` depends on the previously emitted and
