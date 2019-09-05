@@ -3141,6 +3141,14 @@ object Stream extends StreamLowPriority {
   def evalUnChunk[F[_], O](fo: F[Chunk[O]]): Stream[F, O] =
     fromFreeC(Algebra.eval(fo).flatMap(Algebra.output))
 
+  /** Like `eval`, but lifts a foldable structure. **/
+  def evals[F[_], S[_]: Foldable, O](fo: F[S[O]]): Stream[F, O] =
+    eval(fo).flatMap(_.foldMap(Stream.emit))
+
+  /** Like `evals`, but lifts any Seq in the effect. **/
+  def evalSeq[F[_], S[A] <: Seq[A], O](fo: F[S[O]]): Stream[F, O] =
+    eval(fo).flatMap(Stream.emits)
+
   /**
     * A continuous stream which is true after `d, 2d, 3d...` elapsed duration,
     * and false otherwise.
