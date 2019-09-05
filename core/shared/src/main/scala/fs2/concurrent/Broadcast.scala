@@ -72,7 +72,8 @@ object Broadcast {
   def through[F[_]: Concurrent, O, O2](pipes: Pipe[F, O, O2]*): Pipe[F, O, O2] =
     _.through(apply(pipes.size))
       .take(pipes.size)
-      .zipWith(Stream.emits(pipes)) { case (src, pipe) => src.through(pipe) }
+      .zipWithIndex
+      .map { case (src, idx) => src.through(pipes(idx.toInt)) }
       .parJoinUnbounded
 
   /**
