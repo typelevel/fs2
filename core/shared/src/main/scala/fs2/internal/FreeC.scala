@@ -35,6 +35,15 @@ private[fs2] sealed abstract class FreeC[F[_], +R] {
       }
     }
 
+  def append[R2](post: => FreeC[F, R2]): FreeC[F, R2] =
+    new Bind[F, R, R2](this) {
+      def cont(r: Result[R]): FreeC[F, R2] = r match {
+        case r: Result.Pure[F, _]        => post
+        case r: Result.Interrupted[F, _] => r
+        case r: Result.Fail[F]           => r
+      }
+    }
+
   def transformWith[R2](f: Result[R] => FreeC[F, R2]): FreeC[F, R2] =
     new Bind[F, R, R2](this) {
       def cont(r: Result[R]): FreeC[F, R2] =
