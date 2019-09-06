@@ -63,7 +63,7 @@ import fs2.internal.CompileScope.InterruptContext
   */
 private[fs2] final class CompileScope[F[_]] private (
     val id: Token,
-    private val parent: Option[CompileScope[F]],
+    val parent: Option[CompileScope[F]],
     val interruptible: Option[InterruptContext[F]]
 )(implicit val F: Sync[F])
     extends Scope[F] { self =>
@@ -86,8 +86,7 @@ private[fs2] final class CompileScope[F[_]] private (
     * If this scope is currently closed, then the child scope is opened on the first
     * open ancestor of this scope.
     *
-    * Returns scope that has to be used in next compilation step and the next stream
-    * to be evaluated.
+    * Returns scope that has to be used in next compilation step.
     */
   def open(
       interruptible: Option[Concurrent[F]]
@@ -385,7 +384,7 @@ private[fs2] final class CompileScope[F[_]] private (
     }
 
   override def toString =
-    s"RunFoldScope(id=$id,interruptible=${interruptible.nonEmpty})"
+    s"CompileScope(id=$id,interruptible=${interruptible.nonEmpty})"
 }
 
 private[fs2] object CompileScope {

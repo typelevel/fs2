@@ -137,17 +137,18 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * Appends `s2` to the end of this stream.
     *
     * @example {{{
-    * scala> ( Stream(1,2,3)++Stream(4,5,6) ).toList
+    * scala> (Stream(1,2,3) ++ Stream(4,5,6)).toList
     * res0: List[Int] = List(1, 2, 3, 4, 5, 6)
     * }}}
     *
-    * If `this` stream is not terminating, then the result is equivalent to `this`.
+    * If `this` stream is infinite, then the result is equivalent to `this`.
     */
-  def ++[F2[x] >: F[x], O2 >: O](s2: => Stream[F2, O2]): Stream[F2, O2] = append(s2)
+  def ++[F2[x] >: F[x], O2 >: O](s2: => Stream[F2, O2]): Stream[F2, O2] =
+    Stream.fromFreeC(get[F2, O2].append(s2.get))
 
   /** Appends `s2` to the end of this stream. Alias for `s1 ++ s2`. */
   def append[F2[x] >: F[x], O2 >: O](s2: => Stream[F2, O2]): Stream[F2, O2] =
-    Stream.fromFreeC(get[F2, O2].append(s2.get))
+    this ++ s2
 
   /**
     * Alias for `_.map(_ => o2)`.
@@ -1358,7 +1359,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * }}}
     */
   def handleErrorWith[F2[x] >: F[x], O2 >: O](h: Throwable => Stream[F2, O2]): Stream[F2, O2] =
-    Stream.fromFreeC(Algebra.scope(get[F2, O2]).handleErrorWith(e => h(e).get[F2, O2]))
+    Stream.fromFreeC(get[F2, O2].handleErrorWith(e => h(e).get[F2, O2]))
 
   /**
     * Emits the first element of this stream (if non-empty) and then halts.
@@ -1600,7 +1601,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * }}}
     */
   def map[O2](f: O => O2): Stream[F, O2] =
-    this.pull.echo.mapOutput(f).streamNoScope
+    this.pull.echo.mapOutput(f).stream
 
   /**
     * Maps a running total according to `S` and the input with the function `f`.
@@ -1748,8 +1749,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
                     s.chunks
                       .evalMap { chunk =>
                         guard.acquire >>
-                          resultQ.enqueue1(
-                            Some(Stream.chunk(chunk).onFinalize(guard.release).scope))
+                          resultQ.enqueue1(Some(Stream.chunk(chunk).onFinalize(guard.release)))
                       }
                       .interruptWhen(interrupt.get.attempt)
                       .compile
@@ -2041,8 +2041,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
                           .dropWhile(_ > 0)
                           .take(1)
                           .compile
-                          .drain >> signalResult)
-                    .scope >>
+                          .drain >> signalResult) >>
                     outputQ.dequeue
                       .flatMap(Stream.chunk(_).covary[F2])
 
@@ -2326,17 +2325,8 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
   def scanMonoid[O2 >: O](implicit O: Monoid[O2]): Stream[F, O2] =
     scan(O.empty)(O.combine)
 
-  /**
-    * Scopes are typically inserted automatically, at the boundary of a pull (i.e., when a pull
-    * is converted to a stream). This method allows a scope to be explicitly demarcated so that
-    * resources can be freed earlier than when using automatically inserted scopes. This is
-    * useful when using `streamNoScope` to convert from `Pull` to `Stream` -- i.e., by choosing
-    * to *not* have scopes inserted automatically, you may end up needing to demarcate scopes
-    * manually at a higher level in the stream structure.
-    *
-    * Note: see the disclaimer about the use of `streamNoScope`.
-    */
-  def scope: Stream[F, O] = Stream.fromFreeC(Algebra.scope(get))
+  private def scope: Stream[F, O] =
+    Stream.fromFreeC(Algebra.scope(get))
 
   /**
     * Writes this stream to the supplied `PrintStream`, converting each element to a `String` via `Show`.
@@ -2934,7 +2924,7 @@ object Stream extends StreamLowPriority {
       release: (R, ExitCase[Throwable]) => F[Unit]): Stream[F, R] =
     fromFreeC(Algebra.acquire[F, R, R](acquire, release).flatMap {
       case (r, token) => Stream.emit(r).covary[F].get[F, R]
-    })
+    }).scope
 
   /**
     * Like [[bracket]] but the result value consists of a cancellation
@@ -2956,13 +2946,14 @@ object Stream extends StreamLowPriority {
     */
   def bracketCaseCancellable[F[x] >: Pure[x], R](acquire: F[R])(
       release: (R, ExitCase[Throwable]) => F[Unit]): Stream[F, (Stream[F, Unit], R)] =
-    bracketWithResource(acquire)(release).map {
-      case (res, r) =>
-        (Stream.eval(res.release(ExitCase.Canceled)).flatMap {
-          case Left(t)  => Stream.fromFreeC(Algebra.raiseError[F, Unit](t))
-          case Right(u) => Stream.emit(u)
-        }, r)
-    }
+    bracketWithResource(acquire)(release)
+      .map {
+        case (res, r) =>
+          (Stream.eval(res.release(ExitCase.Canceled)).flatMap {
+            case Left(t)  => Stream.fromFreeC(Algebra.raiseError[F, Unit](t))
+            case Right(u) => Stream.emit(u)
+          }, r)
+      }
 
   private[fs2] def bracketWithResource[F[x] >: Pure[x], R](acquire: F[R])(
       release: (R, ExitCase[Throwable]) => F[Unit]): Stream[F, (fs2.internal.Resource[F], R)] =
@@ -2973,7 +2964,7 @@ object Stream extends StreamLowPriority {
           .covary[F]
           .map(o => (res, o))
           .get[F, (fs2.internal.Resource[F], R)]
-    })
+    }).scope
 
   /**
     * Creates a pure stream that emits the elements of the supplied chunk.
@@ -3963,7 +3954,7 @@ object Stream extends StreamLowPriority {
 
               resourceEval {
                 F.delay(init())
-                  .flatMap(i => Algebra.compile(s.get, scope, i)(foldChunk))
+                  .flatMap(i => Algebra.compile(s.get, scope, true, i)(foldChunk))
                   .map(finalize)
               }
             }
@@ -3975,7 +3966,8 @@ object Stream extends StreamLowPriority {
     private def compile[F[_], O, B](stream: FreeC[Algebra[F, O, ?], Unit], init: B)(
         f: (B, Chunk[O]) => B)(implicit F: Sync[F]): F[B] =
       F.bracketCase(CompileScope.newRoot[F])(scope =>
-        Algebra.compile[F, O, B](stream, scope, init)(f))((scope, ec) => scope.close(ec).rethrow)
+        Algebra.compile[F, O, B](stream, scope, false, init)(f))((scope, ec) =>
+        scope.close(ec).rethrow)
 
     implicit def syncInstance[F[_]](implicit F: Sync[F]): Compiler[F, F] = new Compiler[F, F] {
       def apply[O, B, C](s: Stream[F, O], init: () => B)(foldChunk: (B, Chunk[O]) => B,

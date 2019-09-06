@@ -50,7 +50,6 @@ object Balance {
           .getStream(chunkSize)
           .unNoneTerminate
           .flatMap(Stream.chunk)
-
       def push =
         source.chunks
           .evalMap(chunk => pubSub.publish(Some(chunk)))
@@ -84,7 +83,8 @@ object Balance {
   def through[F[_]: Concurrent, O, O2](chunkSize: Int)(pipes: Pipe[F, O, O2]*): Pipe[F, O, O2] =
     _.balance(chunkSize)
       .take(pipes.size)
-      .zipWith(Stream.emits(pipes)) { case (stream, pipe) => stream.through(pipe) }
+      .zipWithIndex
+      .map { case (stream, idx) => stream.through(pipes(idx.toInt)) }
       .parJoinUnbounded
 
   private def strategy[O]: PubSub.Strategy[Chunk[O], Chunk[O], Option[Chunk[O]], Int] =
