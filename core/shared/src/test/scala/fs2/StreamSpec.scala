@@ -858,6 +858,17 @@ class StreamSpec extends Fs2Spec {
 
     "eval" in { Stream.eval(SyncIO(23)).compile.toList.asserting(_ shouldBe List(23)) }
 
+    "evals" - {
+      "with List" in { Stream.evals(SyncIO(List(1,2,3))).compile.toList.asserting(_ shouldBe List(1,2,3))}
+      "with Chain" in { Stream.evals(SyncIO(Chain(4,5,6))).compile.toList.asserting(_ shouldBe List(4,5,6))}
+      "with Option" in { Stream.evals(SyncIO(Option(42))).compile.toList.asserting(_ shouldBe List(42))}
+    }
+
+    "evalSeq" - {
+      "with List" in { Stream.evalSeq(SyncIO(List(1,2,3))).compile.toList.asserting(_ shouldBe List(1,2,3))}
+      "with Seq" in { Stream.evalSeq(SyncIO(Seq(4,5,6))).compile.toList.asserting(_ shouldBe List(4,5,6))}
+    }
+
     "evalMapAccumulate" in forAll { (s: Stream[Pure, Int], m: Int, n0: PosInt) =>
       val sVector = s.toVector
       val n = n0 % 20 + 1
