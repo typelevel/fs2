@@ -93,7 +93,7 @@ object Converter extends IOApp {
       .through(text.utf8Encode)
       .through(io.file.writeAll(Paths.get("testdata/celsius.txt"), blocker))
   }
-  
+
   def run(args: List[String]): IO[ExitCode] =
     converter.compile.drain.as(ExitCode.Success)
 }
@@ -115,7 +115,7 @@ These features mean that FS2 goes beyond streaming I/O to offer a very general a
 
 * There are Scaladoc API documentations for [the core library][core-api], which defines and implements the core types for streams and pulls, as well as the type aliases for pipes and sinks. [The `io` library][io-api] provides FS2 bindings for NIO-based file I/O and TCP/UDP networking
 * [The official guide](https://functional-streams-for-scala.github.io/fs2/guide.html) is a good starting point for learning more about the library.
-* The [documentation page](https://functional-streams-for-scala.github.io/fs2/faq.html) is intended to serve as a list of all references, including conference presentation recordings, academic papers, and blog posts, on the use and implementation of `fs2`. 
+* The [documentation page](https://functional-streams-for-scala.github.io/fs2/faq.html) is intended to serve as a list of all references, including conference presentation recordings, academic papers, and blog posts, on the use and implementation of `fs2`.
 * [The FAQ](https://functional-streams-for-scala.github.io/fs2/faq.html) has frequently asked questions. Feel free to open issues or PRs with additions to the FAQ!
 * Also feel free to come discuss and ask/answer questions in [the gitter channel](https://gitter.im/functional-streams-for-scala/fs2) and/or on StackOverflow using [the tag FS2](http://stackoverflow.com/tags/fs2). Gitter will generally get you a quicker answer.
 
@@ -151,6 +151,7 @@ If you have a project you'd like to include in this list, either open a PR or le
 * [scodec-stream](https://github.com/scodec/scodec-stream): A library for streaming binary decoding and encoding, built using fs2 and [scodec](https://github.com/scodec/scodec).
 * [streamz](https://github.com/krasserm/streamz): A library that supports the conversion of [Akka Stream](http://doc.akka.io/docs/akka/2.4/scala/stream/index.html) `Source`s, `Flow`s and `Sink`s to and from FS2 `Stream`s, `Pipe`s and `Sink`s, respectively. It also supports the usage of [Apache Camel](http://camel.apache.org/) endpoints in FS2 `Stream`s and Akka Stream `Source`s, `Flow`s and `SubFlow`s.
 * [upperbound](https://github.com/SystemFw/upperbound): A purely functional, interval-based rate limiter with support for backpressure.
+* [vinyldns](https://github.com/vinyldns/vinyldns): A DNS governance system using fs2 for throttling updates to DNS backends.
 
 ### Acknowledgments ###
 
@@ -161,4 +162,3 @@ Special thanks to [YourKit](https://www.yourkit.com/) for supporting this projec
 ### Code of Conduct ###
 
 See the [Code of Conduct](CODE_OF_CONDUCT.md).
-
