@@ -3380,11 +3380,7 @@ class StreamSpec extends Fs2Spec {
       "#1089" in {
         (Stream.chunk(Chunk.bytes(Array.fill(2000)(1.toByte))) ++ Stream.eval(
           IO.async[Byte](_ => ())
-        )).take(2000)
-          .chunks
-          .compile
-          .toVector
-          .assertNoException
+        )).take(2000).chunks.compile.toVector.assertNoException
       }
 
       "#1107 - scope" in {
