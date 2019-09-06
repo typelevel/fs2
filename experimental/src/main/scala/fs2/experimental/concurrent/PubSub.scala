@@ -15,7 +15,8 @@ trait PubSub[F[_], I, O, Selector]
 object PubSub {
 
   def apply[F[_]: Concurrent, I, O, QS, Selector](
-      strategy: Strategy[I, O, QS, Selector]): F[PubSub[F, I, O, Selector]] =
+      strategy: Strategy[I, O, QS, Selector]
+  ): F[PubSub[F, I, O, Selector]] =
     fs2.concurrent.PubSub(strategy).map { self =>
       new PubSub[F, I, O, Selector] {
         def get(selector: Selector): F[O] = self.get(selector)
@@ -33,7 +34,8 @@ object PubSub {
   object Strategy {
 
     private[experimental] def convert[I, O, S, Selector](
-        strategy: fs2.concurrent.PubSub.Strategy[I, O, S, Selector]): Strategy[I, O, S, Selector] =
+        strategy: fs2.concurrent.PubSub.Strategy[I, O, S, Selector]
+    ): Strategy[I, O, S, Selector] =
       new Strategy[I, O, S, Selector] {
         def initial: S = strategy.initial
         def accepts(i: I, queueState: S): Boolean = strategy.accepts(i, queueState)
@@ -47,16 +49,19 @@ object PubSub {
           strategy.unsubscribe(selector, queueState)
       }
 
-    def bounded[A, S](maxSize: Int)(strategy: Strategy[A, Chunk[A], S, Int])(
-        f: S => Int): Strategy[A, Chunk[A], S, Int] =
+    def bounded[A, S](
+        maxSize: Int
+    )(strategy: Strategy[A, Chunk[A], S, Int])(f: S => Int): Strategy[A, Chunk[A], S, Int] =
       convert(fs2.concurrent.PubSub.Strategy.bounded(maxSize)(strategy)(f))
 
     def closeNow[I, O, S, Sel](
-        strategy: Strategy[I, O, S, Sel]): PubSub.Strategy[Option[I], Option[O], Option[S], Sel] =
+        strategy: Strategy[I, O, S, Sel]
+    ): PubSub.Strategy[Option[I], Option[O], Option[S], Sel] =
       convert(fs2.concurrent.PubSub.Strategy.closeNow(strategy))
 
-    def closeDrainFirst[I, O, S, Sel](strategy: PubSub.Strategy[I, O, S, Sel])
-      : PubSub.Strategy[Option[I], Option[O], (Boolean, S), Sel] =
+    def closeDrainFirst[I, O, S, Sel](
+        strategy: PubSub.Strategy[I, O, S, Sel]
+    ): PubSub.Strategy[Option[I], Option[O], (Boolean, S), Sel] =
       convert(fs2.concurrent.PubSub.Strategy.closeDrainFirst(strategy))
 
   }

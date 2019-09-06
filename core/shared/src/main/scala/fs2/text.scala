@@ -45,8 +45,10 @@ object text {
         .getOrElse(0)
     }
 
-    def processSingleChunk(outputAndBuffer: (List[String], Chunk[Byte]),
-                           nextBytes: Chunk[Byte]): (List[String], Chunk[Byte]) = {
+    def processSingleChunk(
+        outputAndBuffer: (List[String], Chunk[Byte]),
+        nextBytes: Chunk[Byte]
+    ): (List[String], Chunk[Byte]) = {
       val (output, buffer) = outputAndBuffer
       val allBytes = Array.concat(buffer.toArray, nextBytes.toArray)
       val splitAt = allBytes.size - lastIncompleteBytes(allBytes)
@@ -56,8 +58,10 @@ object text {
       else if (splitAt == 0)
         (output, Chunk.bytes(allBytes))
       else
-        (new String(allBytes.take(splitAt).toArray, utf8Charset) :: output,
-         Chunk.bytes(allBytes.drop(splitAt)))
+        (
+          new String(allBytes.take(splitAt).toArray, utf8Charset) :: output,
+          Chunk.bytes(allBytes.drop(splitAt))
+        )
     }
 
     def doPull(buf: Chunk[Byte], s: Stream[Pure, Chunk[Byte]]): Pull[Pure, String, Unit] =
@@ -72,8 +76,10 @@ object text {
           Pull.done
       }
 
-    def processByteOrderMark(buffer: Option[Chunk.Queue[Byte]],
-                             s: Stream[Pure, Chunk[Byte]]): Pull[Pure, String, Unit] =
+    def processByteOrderMark(
+        buffer: Option[Chunk.Queue[Byte]],
+        s: Stream[Pure, Chunk[Byte]]
+    ): Pull[Pure, String, Unit] =
       s.pull.uncons1.flatMap {
         case Some((hd, tl)) =>
           val newBuffer = buffer.getOrElse(Chunk.Queue.empty[Byte]) :+ hd
@@ -94,8 +100,7 @@ object text {
           }
       }
 
-    (in: Stream[Pure, Chunk[Byte]]) =>
-      processByteOrderMark(None, in).stream
+    (in: Stream[Pure, Chunk[Byte]]) => processByteOrderMark(None, in).stream
   }
 
   /** Encodes a stream of `String` in to a stream of bytes using the given charset. */
@@ -141,14 +146,18 @@ object text {
       (out, carry)
     }
 
-    def extractLines(buffer: Vector[String],
-                     chunk: Chunk[String],
-                     pendingLineFeed: Boolean): (Chunk[String], Vector[String], Boolean) = {
+    def extractLines(
+        buffer: Vector[String],
+        chunk: Chunk[String],
+        pendingLineFeed: Boolean
+    ): (Chunk[String], Vector[String], Boolean) = {
       @tailrec
-      def go(remainingInput: Vector[String],
-             buffer: Vector[String],
-             output: Vector[String],
-             pendingLineFeed: Boolean): (Chunk[String], Vector[String], Boolean) =
+      def go(
+          remainingInput: Vector[String],
+          buffer: Vector[String],
+          output: Vector[String],
+          pendingLineFeed: Boolean
+      ): (Chunk[String], Vector[String], Boolean) =
         if (remainingInput.isEmpty) {
           (Chunk.indexedSeq(output), buffer, pendingLineFeed)
         } else {
@@ -164,19 +173,23 @@ object text {
             val (out, carry) = linesFromString(next)
             val pendingLF =
               if (carry.nonEmpty) carry.last == '\r' else pendingLineFeed
-            go(remainingInput.tail,
-               if (out.isEmpty) buffer :+ carry else Vector(carry),
-               if (out.isEmpty) output
-               else output ++ ((buffer :+ out.head).mkString +: out.tail),
-               pendingLF)
+            go(
+              remainingInput.tail,
+              if (out.isEmpty) buffer :+ carry else Vector(carry),
+              if (out.isEmpty) output
+              else output ++ ((buffer :+ out.head).mkString +: out.tail),
+              pendingLF
+            )
           }
         }
       go(chunk.toVector, buffer, Vector.empty, pendingLineFeed)
     }
 
-    def go(buffer: Vector[String],
-           pendingLineFeed: Boolean,
-           s: Stream[F, String]): Pull[F, String, Unit] =
+    def go(
+        buffer: Vector[String],
+        pendingLineFeed: Boolean,
+        s: Stream[F, String]
+    ): Pull[F, String, Unit] =
       s.pull.uncons.flatMap {
         case Some((chunk, s)) =>
           val (toOutput, newBuffer, newPendingLineFeed) =
@@ -187,7 +200,6 @@ object text {
         case None => Pull.done
       }
 
-    s =>
-      go(Vector.empty, false, s).stream
+    s => go(Vector.empty, false, s).stream
   }
 }

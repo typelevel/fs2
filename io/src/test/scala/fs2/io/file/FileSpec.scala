@@ -70,7 +70,8 @@ class FileSpec extends BaseFileSpec {
                   .covary[IO]
                   .through(text.utf8Encode)
                   .through(file.writeAll[IO](path, bec))
-                  .drain ++ file.readAll[IO](path, bec, 4096).through(text.utf8Decode))
+                  .drain ++ file.readAll[IO](path, bec, 4096).through(text.utf8Decode)
+            )
         }
         .compile
         .foldMonoid
@@ -147,7 +148,8 @@ class FileSpec extends BaseFileSpec {
           path =>
             Stream
               .resource(Blocker[IO])
-              .evalMap(blocker => file.delete[IO](blocker, path) *> file.exists[IO](blocker, path)))
+              .evalMap(blocker => file.delete[IO](blocker, path) *> file.exists[IO](blocker, path))
+        )
         .compile
         .fold(false)(_ || _)
         .unsafeRunSync() shouldBe false
@@ -199,10 +201,13 @@ class FileSpec extends BaseFileSpec {
           path =>
             Stream
               .resource(Blocker[IO])
-              .evalMap(blocker =>
-                file
-                  .createDirectory[IO](blocker, path.resolve("temp"))
-                  .bracket(file.exists[IO](blocker, _))(file.deleteIfExists[IO](blocker, _).void)))
+              .evalMap(
+                blocker =>
+                  file
+                    .createDirectory[IO](blocker, path.resolve("temp"))
+                    .bracket(file.exists[IO](blocker, _))(file.deleteIfExists[IO](blocker, _).void)
+              )
+        )
         .compile
         .fold(true)(_ && _)
         .unsafeRunSync() shouldBe true
@@ -216,10 +221,13 @@ class FileSpec extends BaseFileSpec {
           path =>
             Stream
               .resource(Blocker[IO])
-              .evalMap(blocker =>
-                file
-                  .createDirectories[IO](blocker, path.resolve("temp/inner"))
-                  .bracket(file.exists[IO](blocker, _))(file.deleteIfExists[IO](blocker, _).void)))
+              .evalMap(
+                blocker =>
+                  file
+                    .createDirectories[IO](blocker, path.resolve("temp/inner"))
+                    .bracket(file.exists[IO](blocker, _))(file.deleteIfExists[IO](blocker, _).void)
+              )
+        )
         .compile
         .fold(true)(_ && _)
         .unsafeRunSync() shouldBe true

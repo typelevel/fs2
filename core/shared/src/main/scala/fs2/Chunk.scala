@@ -789,10 +789,11 @@ object Chunk {
     def apply(values: Array[Byte]): Bytes = Bytes(values, 0, values.length)
   }
 
-  sealed abstract class Buffer[A <: Buffer[A, B, C], B <: JBuffer, C: ClassTag](buf: B,
-                                                                                val offset: Int,
-                                                                                val size: Int)
-      extends Chunk[C]
+  sealed abstract class Buffer[A <: Buffer[A, B, C], B <: JBuffer, C: ClassTag](
+      buf: B,
+      val offset: Int,
+      val size: Int
+  ) extends Chunk[C]
       with KnownElementType[C] {
 
     def elementClassTag: ClassTag[C] = implicitly[ClassTag[C]]
@@ -936,10 +937,11 @@ object Chunk {
       new DoubleBuffer(buf, buf.position, buf.remaining)
   }
 
-  final case class DoubleBuffer(buf: JDoubleBuffer,
-                                override val offset: Int,
-                                override val size: Int)
-      extends Buffer[DoubleBuffer, JDoubleBuffer, Double](buf, offset, size) {
+  final case class DoubleBuffer(
+      buf: JDoubleBuffer,
+      override val offset: Int,
+      override val size: Int
+  ) extends Buffer[DoubleBuffer, JDoubleBuffer, Double](buf, offset, size) {
 
     def readOnly(b: JDoubleBuffer): JDoubleBuffer =
       b.asReadOnlyBuffer()
@@ -949,10 +951,12 @@ object Chunk {
 
     def buffer(b: JDoubleBuffer): DoubleBuffer = DoubleBuffer.view(b)
 
-    override def get(b: JDoubleBuffer,
-                     dest: Array[Double],
-                     offset: Int,
-                     length: Int): JDoubleBuffer =
+    override def get(
+        b: JDoubleBuffer,
+        dest: Array[Double],
+        offset: Int,
+        length: Int
+    ): JDoubleBuffer =
       b.get(dest, offset, length)
 
     def duplicate(b: JDoubleBuffer): JDoubleBuffer = b.duplicate()
@@ -1083,10 +1087,11 @@ object Chunk {
       new ByteBuffer(buf, buf.position, buf.remaining)
   }
 
-  final case class ByteBuffer private (buf: JByteBuffer,
-                                       override val offset: Int,
-                                       override val size: Int)
-      extends Buffer[ByteBuffer, JByteBuffer, Byte](buf, offset, size) {
+  final case class ByteBuffer private (
+      buf: JByteBuffer,
+      override val offset: Int,
+      override val size: Int
+  ) extends Buffer[ByteBuffer, JByteBuffer, Byte](buf, offset, size) {
 
     def readOnly(b: JByteBuffer): JByteBuffer =
       b.asReadOnlyBuffer()
@@ -1499,8 +1504,10 @@ object Chunk {
   /**
     * Creates a chunk consisting of the first `n` elements of `queue` and returns the remainder.
     */
-  def queueFirstN[A](queue: collection.immutable.Queue[A],
-                     n: Int): (Chunk[A], collection.immutable.Queue[A]) =
+  def queueFirstN[A](
+      queue: collection.immutable.Queue[A],
+      n: Int
+  ): (Chunk[A], collection.immutable.Queue[A]) =
     if (n <= 0) (Chunk.empty, queue)
     else if (n == 1) {
       val (hd, tl) = queue.dequeue
@@ -1535,11 +1542,12 @@ object Chunk {
     * }}}
     */
   implicit val instance
-    : Traverse[Chunk] with Monad[Chunk] with Alternative[Chunk] with TraverseFilter[Chunk] =
+      : Traverse[Chunk] with Monad[Chunk] with Alternative[Chunk] with TraverseFilter[Chunk] =
     new Traverse[Chunk] with Monad[Chunk] with Alternative[Chunk] with TraverseFilter[Chunk] {
       override def foldLeft[A, B](fa: Chunk[A], b: B)(f: (B, A) => B): B = fa.foldLeft(b)(f)
       override def foldRight[A, B](fa: Chunk[A], b: Eval[B])(
-          f: (A, Eval[B]) => Eval[B]): Eval[B] = {
+          f: (A, Eval[B]) => Eval[B]
+      ): Eval[B] = {
         def go(i: Int): Eval[B] =
           if (i < fa.size) f(fa(i), Eval.defer(go(i + 1)))
           else b
@@ -1577,13 +1585,15 @@ object Chunk {
       override def combineK[A](x: Chunk[A], y: Chunk[A]): Chunk[A] =
         Chunk.concat(List(x, y))
       override def traverse: Traverse[Chunk] = this
-      override def traverse[F[_], A, B](fa: Chunk[A])(f: A => F[B])(
-          implicit F: Applicative[F]): F[Chunk[B]] =
+      override def traverse[F[_], A, B](
+          fa: Chunk[A]
+      )(f: A => F[B])(implicit F: Applicative[F]): F[Chunk[B]] =
         foldRight[A, F[Vector[B]]](fa, Eval.always(F.pure(Vector.empty))) { (a, efv) =>
           F.map2Eval(f(a), efv)(_ +: _)
         }.value.map(Chunk.vector)
-      override def traverseFilter[F[_], A, B](fa: Chunk[A])(f: A => F[Option[B]])(
-          implicit F: Applicative[F]): F[Chunk[B]] =
+      override def traverseFilter[F[_], A, B](
+          fa: Chunk[A]
+      )(f: A => F[Option[B]])(implicit F: Applicative[F]): F[Chunk[B]] =
         foldRight[A, F[Vector[B]]](fa, Eval.always(F.pure(Vector.empty))) { (a, efv) =>
           F.map2Eval(f(a), efv)((oa, efv) => oa.map(_ +: efv).getOrElse(efv))
         }.value.map(Chunk.vector)

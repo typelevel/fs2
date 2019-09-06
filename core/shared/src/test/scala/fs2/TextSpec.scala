@@ -38,7 +38,8 @@ class TextSpec extends Fs2Spec {
       def checkBytes2(is: Int*): Assertion = {
         val bytes = Chunk.bytes(is.map(_.toByte).toArray)
         Stream(bytes).flatMap(Stream.chunk).through(utf8Decode).toList.mkString shouldBe utf8String(
-          bytes)
+          bytes
+        )
         Succeeded
       }
 
@@ -97,7 +98,7 @@ class TextSpec extends Fs2Spec {
           val c = Chunk.concat(List(bom, utf8Bytes(s)))
           Stream.emits(c.toArray[Byte]).through(text.utf8Decode).compile.string shouldBe s
         }
-    }
+      }
 
       // The next tests were taken from:
       // https://www.cl.cam.ac.uk/~mgk25/ucs/examples/UTF-8-test.txt

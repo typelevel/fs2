@@ -93,9 +93,10 @@ private[file] object FileHandle {
   /**
     * Creates a `FileHandle[F]` from a `java.nio.channels.FileChannel`.
     */
-  private[file] def fromFileChannel[F[_]](chan: FileChannel, blocker: Blocker)(
-      implicit F: Sync[F],
-      cs: ContextShift[F]): FileHandle[F] =
+  private[file] def fromFileChannel[F[_]](
+      chan: FileChannel,
+      blocker: Blocker
+  )(implicit F: Sync[F], cs: ContextShift[F]): FileHandle[F] =
     new FileHandle[F] {
       type Lock = FileLock
 

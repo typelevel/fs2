@@ -40,18 +40,14 @@ object ThisModuleShouldCompile {
       case None          => Pull.done
     }
     .stream
-  Stream(1, 2, 3).pull.uncons1
-    .flatMap {
-      case Some((hd, _)) => Pull.output1(hd)
-      case None          => Pull.done
-    }
-    .stream
-  Stream(1, 2, 3).pull.uncons1
-    .flatMap {
-      case Some((hd, _)) => Pull.eval(IO.pure(1)) >> Pull.output1(hd)
-      case None          => Pull.done
-    }
-    .stream
+  Stream(1, 2, 3).pull.uncons1.flatMap {
+    case Some((hd, _)) => Pull.output1(hd)
+    case None          => Pull.done
+  }.stream
+  Stream(1, 2, 3).pull.uncons1.flatMap {
+    case Some((hd, _)) => Pull.eval(IO.pure(1)) >> Pull.output1(hd)
+    case None          => Pull.done
+  }.stream
   (Stream(1, 2, 3).evalMap(IO(_))): Stream[IO, Int]
   (Stream(1, 2, 3).flatMap(i => Stream.eval(IO(i)))): Stream[IO, Int]
 

@@ -50,7 +50,8 @@ class CompressSpec extends Fs2Spec {
             deflate(
               level = level,
               nowrap = nowrap
-            ))
+            )
+          )
           .toVector
 
         actual should equal(expected)
@@ -65,7 +66,8 @@ class CompressSpec extends Fs2Spec {
             deflate(
               level = level,
               nowrap = nowrap
-            ))
+            )
+          )
           .toVector
 
         def expectEqual(expected: Array[Byte], actual: Array[Byte]) = {

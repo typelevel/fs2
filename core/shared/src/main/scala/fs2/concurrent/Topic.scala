@@ -175,7 +175,8 @@ object Topic {
       * @param initial Initial value of the topic.
       */
     def boundedSubscribers[F[_], A](
-        start: A): PubSub.Strategy[A, SizedQueue[A], State[A], (Token, Int)] =
+        start: A
+    ): PubSub.Strategy[A, SizedQueue[A], State[A], (Token, Int)] =
       new PubSub.Strategy[A, SizedQueue[A], State[A], (Token, Int)] {
         def initial: State[A] = State(start, Map.empty)
 
@@ -205,8 +206,10 @@ object Topic {
           false
 
         def subscribe(selector: (Token, Int), state: State[A]): (State[A], Boolean) =
-          (state.copy(subscribers = state.subscribers + (selector -> SizedQueue.one(state.last))),
-           true)
+          (
+            state.copy(subscribers = state.subscribers + (selector -> SizedQueue.one(state.last))),
+            true
+          )
 
         def unsubscribe(selector: (Token, Int), state: State[A]): State[A] =
           state.copy(subscribers = state.subscribers - selector)

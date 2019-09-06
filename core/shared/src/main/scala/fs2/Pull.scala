@@ -78,7 +78,8 @@ final class Pull[+F[_], +O, +R] private (private val free: FreeC[Algebra[Nothing
 
   /** If `this` terminates with `Pull.raiseError(e)`, invoke `h(e)`. */
   def handleErrorWith[F2[x] >: F[x], O2 >: O, R2 >: R](
-      h: Throwable => Pull[F2, O2, R2]): Pull[F2, O2, R2] =
+      h: Throwable => Pull[F2, O2, R2]
+  ): Pull[F2, O2, R2] =
     Pull.fromFreeC(get[F2, O2, R2].handleErrorWith(e => h(e).get))
 
   /** Discards the result type of this pull. */
@@ -121,16 +122,18 @@ object Pull extends PullLowPriority {
     * Like [[acquire]] but the result value consists of a cancellation
     * pull and the acquired resource. Running the cancellation pull frees the resource.
     */
-  def acquireCancellable[F[_]: RaiseThrowable, R](r: F[R])(
-      cleanup: R => F[Unit]): Pull[F, INothing, Cancellable[F, R]] =
+  def acquireCancellable[F[_]: RaiseThrowable, R](
+      r: F[R]
+  )(cleanup: R => F[Unit]): Pull[F, INothing, Cancellable[F, R]] =
     acquireCancellableCase(r)((r, _) => cleanup(r))
 
   /**
     * Like [[acquireCancellable]] but provides an `ExitCase[Throwable]` to the `cleanup` action,
     * indicating the cause for cleanup execution.
     */
-  def acquireCancellableCase[F[_]: RaiseThrowable, R](r: F[R])(
-      cleanup: (R, ExitCase[Throwable]) => F[Unit]): Pull[F, INothing, Cancellable[F, R]] =
+  def acquireCancellableCase[F[_]: RaiseThrowable, R](
+      r: F[R]
+  )(cleanup: (R, ExitCase[Throwable]) => F[Unit]): Pull[F, INothing, Cancellable[F, R]] =
     Stream
       .bracketWithResource(r)(cleanup)
       .pull
@@ -153,7 +156,8 @@ object Pull extends PullLowPriority {
       Algebra
         .eval[F, INothing, R](fr)
         .map(r => Right(r): Either[Throwable, R])
-        .handleErrorWith(t => Algebra.pure[F, INothing, Either[Throwable, R]](Left(t))))
+        .handleErrorWith(t => Algebra.pure[F, INothing, Either[Throwable, R]](Left(t)))
+    )
 
   /** The completed `Pull`. Reads and outputs nothing. */
   val done: Pull[Pure, INothing, Unit] =
@@ -220,7 +224,8 @@ object Pull extends PullLowPriority {
 
   /** `Sync` instance for `Pull`. */
   implicit def syncInstance[F[_], O](
-      implicit ev: ApplicativeError[F, Throwable]): Sync[Pull[F, O, ?]] =
+      implicit ev: ApplicativeError[F, Throwable]
+  ): Sync[Pull[F, O, ?]] =
     new Sync[Pull[F, O, ?]] {
       def pure[A](a: A): Pull[F, O, A] = Pull.pure(a)
       def handleErrorWith[A](p: Pull[F, O, A])(h: Throwable => Pull[F, O, A]) =
@@ -233,8 +238,9 @@ object Pull extends PullLowPriority {
           case Right(b) => Pull.pure(b)
         }
       def suspend[R](p: => Pull[F, O, R]) = Pull.suspend(p)
-      def bracketCase[A, B](acquire: Pull[F, O, A])(use: A => Pull[F, O, B])(
-          release: (A, ExitCase[Throwable]) => Pull[F, O, Unit]): Pull[F, O, B] =
+      def bracketCase[A, B](acquire: Pull[F, O, A])(
+          use: A => Pull[F, O, B]
+      )(release: (A, ExitCase[Throwable]) => Pull[F, O, Unit]): Pull[F, O, B] =
         Pull.fromFreeC(FreeC.bracketCase(acquire.get)(a => use(a).get)((a, c) => release(a, c).get))
     }
 

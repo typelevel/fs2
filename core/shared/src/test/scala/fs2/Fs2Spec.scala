@@ -98,10 +98,13 @@ abstract class Fs2Spec
         case Left(t) =>
           F.delay(
             fail(
-              s"Expected an exception of type ${ct.runtimeClass.getName} but got an exception: $t"))
+              s"Expected an exception of type ${ct.runtimeClass.getName} but got an exception: $t"
+            )
+          )
         case Right(a) =>
           F.delay(
-            fail(s"Expected an exception of type ${ct.runtimeClass.getName} but got a result: $a"))
+            fail(s"Expected an exception of type ${ct.runtimeClass.getName} but got a result: $a")
+          )
       }
   }
 

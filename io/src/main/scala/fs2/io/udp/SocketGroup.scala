@@ -73,8 +73,9 @@ final class SocketGroup(
     Resource(mkChannel.flatMap(ch => mkSocket(ch).map(s => s -> s.close)))
   }
 
-  private[udp] def mkSocket[F[_]](channel: DatagramChannel)(implicit F: Concurrent[F],
-                                                            cs: ContextShift[F]): F[Socket[F]] =
+  private[udp] def mkSocket[F[_]](
+      channel: DatagramChannel
+  )(implicit F: Concurrent[F], cs: ContextShift[F]): F[Socket[F]] =
     blocker.delay {
       new Socket[F] {
         private val ctx = asg.register(channel)
@@ -82,7 +83,8 @@ final class SocketGroup(
         def localAddress: F[InetSocketAddress] =
           F.delay(
             Option(channel.socket.getLocalSocketAddress.asInstanceOf[InetSocketAddress])
-              .getOrElse(throw new ClosedChannelException))
+              .getOrElse(throw new ClosedChannelException)
+          )
 
         def read(timeout: Option[FiniteDuration]): F[Packet] =
           asyncYield[F, Packet](cb => asg.read(ctx, timeout, result => cb(result)))
@@ -113,9 +115,11 @@ final class SocketGroup(
             }
           }
 
-        def join(group: InetAddress,
-                 interface: NetworkInterface,
-                 source: InetAddress): F[GroupMembership] = F.delay {
+        def join(
+            group: InetAddress,
+            interface: NetworkInterface,
+            source: InetAddress
+        ): F[GroupMembership] = F.delay {
           val membership = channel.join(group, interface, source)
           new GroupMembership {
             def drop = blocker.delay { membership.drop }
@@ -124,8 +128,10 @@ final class SocketGroup(
         }
 
         override def toString =
-          s"Socket(${Option(channel.socket.getLocalSocketAddress
-            .asInstanceOf[InetSocketAddress]).getOrElse("<unbound>")})"
+          s"Socket(${Option(
+            channel.socket.getLocalSocketAddress
+              .asInstanceOf[InetSocketAddress]
+          ).getOrElse("<unbound>")})"
       }
     }
 }

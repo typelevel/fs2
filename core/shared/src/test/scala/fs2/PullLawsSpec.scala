@@ -16,17 +16,20 @@ class PullLawsSpec extends Fs2Spec with StreamArbitrary {
 
   implicit val ec: TestContext = TestContext()
 
-  implicit def arbPull[F[_], O, R](implicit arbR: Arbitrary[R],
-                                   arbFr: Arbitrary[F[R]],
-                                   arbFo: Arbitrary[F[O]],
-                                   arbO: Arbitrary[O],
-                                   arbFu: Arbitrary[F[Unit]]): Arbitrary[Pull[F, O, R]] =
+  implicit def arbPull[F[_], O, R](
+      implicit arbR: Arbitrary[R],
+      arbFr: Arbitrary[F[R]],
+      arbFo: Arbitrary[F[O]],
+      arbO: Arbitrary[O],
+      arbFu: Arbitrary[F[Unit]]
+  ): Arbitrary[Pull[F, O, R]] =
     Arbitrary(
       Gen.oneOf(
         arbitrary[R].map(Pull.pure(_)),
         arbitrary[F[R]].map(Pull.eval(_)),
         arbitrary[Stream[F, O]].flatMap(s => arbitrary[R].map(r => s.pull.echo >> Pull.pure(r)))
-      ))
+      )
+    )
 
   implicit def eqPull[O: Eq, R: Eq]: Eq[Pull[IO, O, R]] = {
     def normalize(p: Pull[IO, O, R]): IO[Vector[Either[O, R]]] =

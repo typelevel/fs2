@@ -43,5 +43,5 @@ object hash {
           .flatMap { d =>
             Stream.chunk(Chunk.bytes(d.digest()))
           }
-    }
+      }
 }
