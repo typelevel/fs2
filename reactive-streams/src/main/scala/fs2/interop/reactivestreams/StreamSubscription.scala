@@ -20,7 +20,8 @@ private[reactivestreams] final class StreamSubscription[F[_], A](
     requests: Queue[F, StreamSubscription.Request],
     cancelled: SignallingRef[F, Boolean],
     sub: Subscriber[A],
-    stream: Stream[F, A])(implicit F: ConcurrentEffect[F])
+    stream: Stream[F, A]
+)(implicit F: ConcurrentEffect[F])
     extends Subscription {
   import StreamSubscription._
 
@@ -87,8 +88,10 @@ private[reactivestreams] object StreamSubscription {
   case object Infinite extends Request
   case class Finite(n: Long) extends Request
 
-  def apply[F[_]: ConcurrentEffect, A](sub: Subscriber[A],
-                                       stream: Stream[F, A]): F[StreamSubscription[F, A]] =
+  def apply[F[_]: ConcurrentEffect, A](
+      sub: Subscriber[A],
+      stream: Stream[F, A]
+  ): F[StreamSubscription[F, A]] =
     SignallingRef(false).flatMap { cancelled =>
       Queue.unbounded[F, Request].map { requests =>
         new StreamSubscription(requests, cancelled, sub, stream)

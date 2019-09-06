@@ -23,12 +23,15 @@ private[io] object JavaInputOutputStream {
   private final case class Done(rslt: Option[Throwable]) extends DownStreamState
   private final case class Ready(rem: Option[Bytes]) extends DownStreamState
 
-  def toInputStream[F[_]](source: Stream[F, Byte])(
-      implicit F: ConcurrentEffect[F]): Resource[F, InputStream] = {
+  def toInputStream[F[_]](
+      source: Stream[F, Byte]
+  )(implicit F: ConcurrentEffect[F]): Resource[F, InputStream] = {
 
-    def markUpstreamDone(queue: Queue[F, Either[Option[Throwable], Bytes]],
-                         upState: SignallingRef[F, UpStreamState],
-                         result: Option[Throwable]): F[Unit] =
+    def markUpstreamDone(
+        queue: Queue[F, Either[Option[Throwable], Bytes]],
+        upState: SignallingRef[F, UpStreamState],
+        result: Option[Throwable]
+    ): F[Unit] =
       upState.set(UpStreamState(done = true, err = result)) >> queue.enqueue1(Left(result))
 
     /* Takes source and runs it through queue, interrupting when dnState signals stream is done.
@@ -108,7 +111,8 @@ private[io] object JavaInputOutputStream {
                       .as(-1) // update we are done, next read won't succeed
                   case Left(Some(err)) => // update we are failed, next read won't succeed
                     dnState.update(setDone(err.some)) >> F.raiseError[Int](
-                      new IOException("UpStream failed", err))
+                      new IOException("UpStream failed", err)
+                    )
                   case Right(bytes) =>
                     val (copy, maybeKeep) =
                       if (bytes.size <= len) bytes -> None
@@ -170,7 +174,8 @@ private[io] object JavaInputOutputStream {
           Queue.synchronous[F, Either[Option[Throwable], Bytes]],
           SignallingRef[F, UpStreamState](UpStreamState(done = false, err = None)),
           SignallingRef[F, DownStreamState](Ready(None))
-        ).tupled)
+        ).tupled
+      )
       .flatMap {
         case (queue, upState, dnState) =>
           val mkInputStream = processInput(source, queue, upState, dnState)

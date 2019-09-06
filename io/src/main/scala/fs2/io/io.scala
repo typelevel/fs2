@@ -26,7 +26,8 @@ package object io {
       fis: F[InputStream],
       chunkSize: Int,
       blocker: Blocker,
-      closeAfterUse: Boolean = true)(implicit F: Sync[F], cs: ContextShift[F]): Stream[F, Byte] =
+      closeAfterUse: Boolean = true
+  )(implicit F: Sync[F], cs: ContextShift[F]): Stream[F, Byte] =
     readInputStreamGeneric(
       fis,
       F.delay(new Array[Byte](chunkSize)),
@@ -50,7 +51,8 @@ package object io {
       fis: F[InputStream],
       chunkSize: Int,
       blocker: Blocker,
-      closeAfterUse: Boolean = true)(implicit F: Sync[F], cs: ContextShift[F]): Stream[F, Byte] =
+      closeAfterUse: Boolean = true
+  )(implicit F: Sync[F], cs: ContextShift[F]): Stream[F, Byte] =
     readInputStreamGeneric(
       fis,
       F.pure(new Array[Byte](chunkSize)),
@@ -60,7 +62,8 @@ package object io {
 
   private def readBytesFromInputStream[F[_]](is: InputStream, buf: Array[Byte], blocker: Blocker)(
       implicit F: Sync[F],
-      cs: ContextShift[F]): F[Option[Chunk[Byte]]] =
+      cs: ContextShift[F]
+  ): F[Option[Chunk[Byte]]] =
     blocker.delay(is.read(buf)).map { numBytes =>
       if (numBytes < 0) None
       else if (numBytes == 0) Some(Chunk.empty)
@@ -72,7 +75,8 @@ package object io {
       fis: F[InputStream],
       buf: F[Array[Byte]],
       blocker: Blocker,
-      closeAfterUse: Boolean)(implicit F: Sync[F], cs: ContextShift[F]): Stream[F, Byte] = {
+      closeAfterUse: Boolean
+  )(implicit F: Sync[F], cs: ContextShift[F]): Stream[F, Byte] = {
     def useIs(is: InputStream) =
       Stream
         .eval(buf.flatMap(b => readBytesFromInputStream(is, b, blocker)))
@@ -93,11 +97,11 @@ package object io {
     * Each write operation is performed on the supplied execution context. Writes are
     * blocking so the execution context should be configured appropriately.
     */
-  def writeOutputStream[F[_]](fos: F[OutputStream],
-                              blocker: Blocker,
-                              closeAfterUse: Boolean = true)(
-      implicit F: Sync[F],
-      cs: ContextShift[F]): Pipe[F, Byte, Unit] =
+  def writeOutputStream[F[_]](
+      fos: F[OutputStream],
+      blocker: Blocker,
+      closeAfterUse: Boolean = true
+  )(implicit F: Sync[F], cs: ContextShift[F]): Pipe[F, Byte, Unit] =
     s => {
       def useOs(os: OutputStream): Stream[F, Unit] =
         s.chunks.evalMap(c => blocker.delay(os.write(c.toArray)))
@@ -128,7 +132,8 @@ package object io {
     */
   def stdoutLines[F[_]: Sync: ContextShift, O: Show](
       blocker: Blocker,
-      charset: Charset = utf8Charset): Pipe[F, O, Unit] =
+      charset: Charset = utf8Charset
+  ): Pipe[F, O, Unit] =
     _.map(_.show).through(text.encode(charset)).through(stdout(blocker))
 
   /** Stream of `String` read asynchronously from standard input decoded in UTF-8. */
@@ -154,11 +159,13 @@ package object io {
   /**
     * Like [[toInputStream]] but returns a `Resource` rather than a single element stream.
     */
-  def toInputStreamResource[F[_]](source: Stream[F, Byte])(
-      implicit F: ConcurrentEffect[F]): Resource[F, InputStream] =
+  def toInputStreamResource[F[_]](
+      source: Stream[F, Byte]
+  )(implicit F: ConcurrentEffect[F]): Resource[F, InputStream] =
     JavaInputOutputStream.toInputStream(source)
 
   private[io] def asyncYield[F[_], A](
-      k: (Either[Throwable, A] => Unit) => Unit)(implicit F: Async[F], cs: ContextShift[F]): F[A] =
+      k: (Either[Throwable, A] => Unit) => Unit
+  )(implicit F: Async[F], cs: ContextShift[F]): F[A] =
     F.guarantee(F.async(k))(cs.shift)
 }

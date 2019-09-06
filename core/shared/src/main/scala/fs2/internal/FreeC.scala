@@ -172,7 +172,9 @@ private[fs2] object FreeC {
 
     private[FreeC] def map[A, B](fa: Result[A])(f: A => B): Result[B] = fa match {
       case Result.Pure(r) =>
-        try { Result.Pure(f(r)) } catch { case NonFatal(err) => Result.Fail(err) }
+        try {
+          Result.Pure(f(r))
+        } catch { case NonFatal(err) => Result.Fail(err) }
       case failure @ Result.Fail(_)               => failure.asInstanceOf[Result[B]]
       case interrupted @ Result.Interrupted(_, _) => interrupted.asInstanceOf[Result[B]]
     }
@@ -246,8 +248,9 @@ private[fs2] object FreeC {
 
   }
 
-  def bracketCase[F[_], A, B](acquire: FreeC[F, A])(use: A => FreeC[F, B])(
-      release: (A, ExitCase[Throwable]) => FreeC[F, Unit]): FreeC[F, B] =
+  def bracketCase[F[_], A, B](
+      acquire: FreeC[F, A]
+  )(use: A => FreeC[F, B])(release: (A, ExitCase[Throwable]) => FreeC[F, Unit]): FreeC[F, B] =
     acquire.flatMap { a =>
       val used =
         try use(a)

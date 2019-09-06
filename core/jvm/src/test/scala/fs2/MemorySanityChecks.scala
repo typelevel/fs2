@@ -67,8 +67,7 @@ object RepeatEvalSanityTest extends App {
       s.pull.uncons1.flatMap {
         case Some((h, t)) => Pull.output1(h) >> go(t); case None => Pull.done
       }
-    in =>
-      go(in).stream
+    in => go(in).stream
   }
   Stream.repeatEval(IO(1)).through(id[Int]).compile.drain.unsafeRunSync()
 }

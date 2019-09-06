@@ -153,8 +153,9 @@ object Queue {
       forStrategy(Strategy.boundedFifo(maxSize))
 
     /** Creates a bounded queue terminated by enqueueing `None`. All elements before `None` are preserved. */
-    def boundedNoneTerminated[F[_], A](maxSize: Int)(
-        implicit F: Concurrent[F]): G[NoneTerminatedQueue[F, A]] =
+    def boundedNoneTerminated[F[_], A](
+        maxSize: Int
+    )(implicit F: Concurrent[F]): G[NoneTerminatedQueue[F, A]] =
       forStrategyNoneTerminated(PubSub.Strategy.closeDrainFirst(Strategy.boundedFifo(maxSize)))
 
     /** Creates a queue which stores the last `maxSize` enqueued elements and which never blocks on enqueue. */
@@ -163,7 +164,8 @@ object Queue {
 
     /** Created a bounded queue that distributed always at max `fairSize` elements to any subscriber. */
     def fairBounded[F[_], A](maxSize: Int, fairSize: Int)(
-        implicit F: Concurrent[F]): G[Queue[F, A]] =
+        implicit F: Concurrent[F]
+    ): G[Queue[F, A]] =
       forStrategy(Strategy.boundedFifo(maxSize).transformSelector[Int]((sz, _) => sz.min(fairSize)))
 
     /** Created an unbounded queue terminated by enqueueing `None`. All elements before `None`. */
@@ -176,12 +178,14 @@ object Queue {
 
     /** Like [[synchronous]], except that any enqueue of `None` will never block and cancels any dequeue operation. */
     def synchronousNoneTerminated[F[_], A](
-        implicit F: Concurrent[F]): G[NoneTerminatedQueue[F, A]] =
+        implicit F: Concurrent[F]
+    ): G[NoneTerminatedQueue[F, A]] =
       forStrategyNoneTerminated(PubSub.Strategy.closeNow(Strategy.synchronous))
 
     /** Creates a queue from the supplied strategy. */
     private[fs2] def forStrategy[F[_]: Concurrent, S, A](
-        strategy: PubSub.Strategy[A, Chunk[A], S, Int]): G[Queue[F, A]] = {
+        strategy: PubSub.Strategy[A, Chunk[A], S, Int]
+    ): G[Queue[F, A]] = {
       implicit val SyncG: Sync[G] = G
       PubSub.in[G].from(strategy).map { pubSub =>
         new Queue[F, A] {
@@ -219,8 +223,8 @@ object Queue {
 
     /** Creates a queue that is terminated by enqueueing `None` from the supplied strategy. */
     private[fs2] def forStrategyNoneTerminated[F[_]: Concurrent, S, A](
-        strategy: PubSub.Strategy[Option[A], Option[Chunk[A]], S, Int])
-      : G[NoneTerminatedQueue[F, A]] = {
+        strategy: PubSub.Strategy[Option[A], Option[Chunk[A]], S, Int]
+    ): G[NoneTerminatedQueue[F, A]] = {
       implicit val SyncG: Sync[G] = G
       PubSub.in[G].from(strategy).map { pubSub =>
         new NoneTerminatedQueue[F, A] {
@@ -288,8 +292,9 @@ object Queue {
     in[F].bounded(maxSize)
 
   /** Creates a bounded queue terminated by enqueueing `None`. All elements before `None` are preserved. */
-  def boundedNoneTerminated[F[_], A](maxSize: Int)(
-      implicit F: Concurrent[F]): F[NoneTerminatedQueue[F, A]] =
+  def boundedNoneTerminated[F[_], A](
+      maxSize: Int
+  )(implicit F: Concurrent[F]): F[NoneTerminatedQueue[F, A]] =
     in[F].boundedNoneTerminated(maxSize)
 
   /** Creates a queue which stores the last `maxSize` enqueued elements and which never blocks on enqueue. */
@@ -353,8 +358,10 @@ object Queue {
         def publish(i: A, queueState: (Boolean, Option[A])): (Boolean, Option[A]) =
           (queueState._1, Some(i))
 
-        def get(selector: Int,
-                queueState: (Boolean, Option[A])): ((Boolean, Option[A]), Option[Chunk[A]]) =
+        def get(
+            selector: Int,
+            queueState: (Boolean, Option[A])
+        ): ((Boolean, Option[A]), Option[Chunk[A]]) =
           queueState._2 match {
             case None    => ((true, None), None)
             case Some(a) => ((false, None), Some(Chunk.singleton(a)))
@@ -363,8 +370,10 @@ object Queue {
         def empty(queueState: (Boolean, Option[A])): Boolean =
           queueState._2.isEmpty
 
-        def subscribe(selector: Int,
-                      queueState: (Boolean, Option[A])): ((Boolean, Option[A]), Boolean) =
+        def subscribe(
+            selector: Int,
+            queueState: (Boolean, Option[A])
+        ): ((Boolean, Option[A]), Boolean) =
           (queueState, false)
 
         def unsubscribe(selector: Int, queueState: (Boolean, Option[A])): (Boolean, Option[A]) =
@@ -376,8 +385,9 @@ object Queue {
       *
       * @param append function used to append new elements to the queue
       */
-    def unbounded[A](append: (SizedQueue[A], A) => SizedQueue[A])
-      : PubSub.Strategy[A, Chunk[A], SizedQueue[A], Int] =
+    def unbounded[A](
+        append: (SizedQueue[A], A) => SizedQueue[A]
+    ): PubSub.Strategy[A, Chunk[A], SizedQueue[A], Int] =
       new PubSub.Strategy[A, Chunk[A], SizedQueue[A], Int] {
 
         val initial: SizedQueue[A] = SizedQueue.empty
@@ -449,8 +459,9 @@ object InspectableQueue {
       forStrategy(Queue.Strategy.boundedFifo[A](maxSize))(_.headOption)(_.size)
 
     /** Creates a queue which stores the last `maxSize` enqueued elements and which never blocks on enqueue. */
-    def circularBuffer[F[_], A](maxSize: Int)(
-        implicit F: Concurrent[F]): G[InspectableQueue[F, A]] =
+    def circularBuffer[F[_], A](
+        maxSize: Int
+    )(implicit F: Concurrent[F]): G[InspectableQueue[F, A]] =
       forStrategy(Queue.Strategy.circularBuffer[A](maxSize))(_.headOption)(_.size)
 
     private[fs2] def forStrategy[F[_]: Concurrent, S, A](
@@ -470,8 +481,11 @@ object InspectableQueue {
 
           def dequeue1: F[A] = pubSub.get(Right(1)).flatMap {
             case Left(s) =>
-              Sync[F].raiseError(new Throwable(
-                s"Inspectable `dequeue1` requires chunk of size 1 with `A` got Left($s)"))
+              Sync[F].raiseError(
+                new Throwable(
+                  s"Inspectable `dequeue1` requires chunk of size 1 with `A` got Left($s)"
+                )
+              )
             case Right(chunk) =>
               Queue.headUnsafe[F, A](chunk)
 
@@ -480,8 +494,11 @@ object InspectableQueue {
           def tryDequeue1: F[Option[A]] = pubSub.tryGet(Right(1)).flatMap {
             case None => Applicative[F].pure(None)
             case Some(Left(s)) =>
-              Sync[F].raiseError(new Throwable(
-                s"Inspectable `dequeue1` requires chunk of size 1 with `A` got Left($s)"))
+              Sync[F].raiseError(
+                new Throwable(
+                  s"Inspectable `dequeue1` requires chunk of size 1 with `A` got Left($s)"
+                )
+              )
             case Some(Right(chunk)) =>
               Queue.headUnsafe[F, A](chunk).map(Some(_))
           }
@@ -519,8 +536,11 @@ object InspectableQueue {
                     }
 
                   case Right(chunk) =>
-                    Sync[F].raiseError(new Throwable(
-                      s"Inspectable `peek1` requires state to be returned, got: $chunk"))
+                    Sync[F].raiseError(
+                      new Throwable(
+                        s"Inspectable `peek1` requires state to be returned, got: $chunk"
+                      )
+                    )
                 }
 
               take

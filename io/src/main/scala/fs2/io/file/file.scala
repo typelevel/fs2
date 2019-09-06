@@ -20,9 +20,11 @@ package object file {
   /**
     * Reads all data synchronously from the file at the specified `java.nio.file.Path`.
     */
-  def readAll[F[_]: Sync: ContextShift](path: Path,
-                                        blocker: Blocker,
-                                        chunkSize: Int): Stream[F, Byte] =
+  def readAll[F[_]: Sync: ContextShift](
+      path: Path,
+      blocker: Blocker,
+      chunkSize: Int
+  ): Stream[F, Byte] =
     pulls
       .fromPath(path, blocker, List(StandardOpenOption.READ))
       .flatMap(c => pulls.readAllFromFileHandle(chunkSize)(c.resource))
@@ -33,11 +35,13 @@ package object file {
     * `start` is inclusive, `end` is exclusive, so when `start` is 0 and `end` is 2,
     * two bytes are read.
     */
-  def readRange[F[_]: Sync: ContextShift](path: Path,
-                                          blocker: Blocker,
-                                          chunkSize: Int,
-                                          start: Long,
-                                          end: Long): Stream[F, Byte] =
+  def readRange[F[_]: Sync: ContextShift](
+      path: Path,
+      blocker: Blocker,
+      chunkSize: Int,
+      start: Long,
+      end: Long
+  ): Stream[F, Byte] =
     pulls
       .fromPath(path, blocker, List(StandardOpenOption.READ))
       .flatMap(c => pulls.readRangeFromFileHandle(chunkSize, start, end)(c.resource))
@@ -53,11 +57,13 @@ package object file {
     *
     * If an error occurs while reading from the file, the overall stream fails.
     */
-  def tail[F[_]: Sync: ContextShift: Timer](path: Path,
-                                            blocker: Blocker,
-                                            chunkSize: Int,
-                                            offset: Long = 0L,
-                                            pollDelay: FiniteDuration = 1.second): Stream[F, Byte] =
+  def tail[F[_]: Sync: ContextShift: Timer](
+      path: Path,
+      blocker: Blocker,
+      chunkSize: Int,
+      offset: Long = 0L,
+      pollDelay: FiniteDuration = 1.second
+  ): Stream[F, Byte] =
     pulls
       .fromPath(path, blocker, List(StandardOpenOption.READ))
       .flatMap(c => pulls.tailFromFileHandle(chunkSize, offset, pollDelay)(c.resource))
@@ -82,18 +88,22 @@ package object file {
         _ <- pulls.writeAllToFileHandleAtOffset(in, fileHandle, offset)
       } yield ()).stream
 
-  private def _writeAll0[F[_]](in: Stream[F, Byte],
-                               out: FileHandle[F],
-                               offset: Long): Pull[F, Nothing, Unit] =
+  private def _writeAll0[F[_]](
+      in: Stream[F, Byte],
+      out: FileHandle[F],
+      offset: Long
+  ): Pull[F, Nothing, Unit] =
     in.pull.uncons.flatMap {
       case None => Pull.done
       case Some((hd, tl)) =>
         _writeAll1(hd, out, offset) >> _writeAll0(tl, out, offset + hd.size)
     }
 
-  private def _writeAll1[F[_]](buf: Chunk[Byte],
-                               out: FileHandle[F],
-                               offset: Long): Pull[F, Nothing, Unit] =
+  private def _writeAll1[F[_]](
+      buf: Chunk[Byte],
+      out: FileHandle[F],
+      offset: Long
+  ): Pull[F, Nothing, Unit] =
     Pull.eval(out.write(buf, offset)).flatMap { (written: Int) =>
       if (written >= buf.size)
         Pull.pure(())
@@ -122,7 +132,8 @@ package object file {
       path: Path,
       types: Seq[Watcher.EventType] = Nil,
       modifiers: Seq[WatchEvent.Modifier] = Nil,
-      pollTimeout: FiniteDuration = 1.second): Stream[F, Watcher.Event] =
+      pollTimeout: FiniteDuration = 1.second
+  ): Stream[F, Watcher.Event] =
     Stream
       .resource(Watcher.default(blocker))
       .flatMap(w => Stream.eval_(w.watch(path, types, modifiers)) ++ w.events(pollTimeout))
@@ -135,9 +146,11 @@ package object file {
     * subsequence access will succeed. Care should be taken when using this
     * method in security sensitive applications.
     */
-  def exists[F[_]: Sync: ContextShift](blocker: Blocker,
-                                       path: Path,
-                                       flags: Seq[LinkOption] = Seq.empty): F[Boolean] =
+  def exists[F[_]: Sync: ContextShift](
+      blocker: Blocker,
+      path: Path,
+      flags: Seq[LinkOption] = Seq.empty
+  ): F[Boolean] =
     blocker.delay(Files.exists(path, flags: _*))
 
   /**
@@ -145,10 +158,12 @@ package object file {
     *
     * By default, the copy fails if the target file already exists or is a symbolic link.
     */
-  def copy[F[_]: Sync: ContextShift](blocker: Blocker,
-                                     source: Path,
-                                     target: Path,
-                                     flags: Seq[CopyOption] = Seq.empty): F[Path] =
+  def copy[F[_]: Sync: ContextShift](
+      blocker: Blocker,
+      source: Path,
+      target: Path,
+      flags: Seq[CopyOption] = Seq.empty
+  ): F[Path] =
     blocker.delay(Files.copy(source, target, flags: _*))
 
   /**
@@ -177,18 +192,22 @@ package object file {
     *
     * By default, the move fails if the target file already exists or is a symbolic link.
     */
-  def move[F[_]: Sync: ContextShift](blocker: Blocker,
-                                     source: Path,
-                                     target: Path,
-                                     flags: Seq[CopyOption] = Seq.empty): F[Path] =
+  def move[F[_]: Sync: ContextShift](
+      blocker: Blocker,
+      source: Path,
+      target: Path,
+      flags: Seq[CopyOption] = Seq.empty
+  ): F[Path] =
     blocker.delay(Files.move(source, target, flags: _*))
 
   /**
     * Creates a new directory at the given path
     */
-  def createDirectory[F[_]: Sync: ContextShift](blocker: Blocker,
-                                                path: Path,
-                                                flags: Seq[FileAttribute[_]] = Seq.empty): F[Path] =
+  def createDirectory[F[_]: Sync: ContextShift](
+      blocker: Blocker,
+      path: Path,
+      flags: Seq[FileAttribute[_]] = Seq.empty
+  ): F[Path] =
     blocker.delay(Files.createDirectory(path, flags: _*))
 
   /**
@@ -197,7 +216,8 @@ package object file {
   def createDirectories[F[_]: Sync: ContextShift](
       blocker: Blocker,
       path: Path,
-      flags: Seq[FileAttribute[_]] = Seq.empty): F[Path] =
+      flags: Seq[FileAttribute[_]] = Seq.empty
+  ): F[Path] =
     blocker.delay(Files.createDirectories(path, flags: _*))
 
   /**
@@ -207,29 +227,36 @@ package object file {
     _runJavaCollectionResource[F, DirectoryStream[Path]](
       blocker,
       blocker.delay(Files.newDirectoryStream(path)),
-      _.asScala.iterator)
+      _.asScala.iterator
+    )
 
   /**
     * Creates a stream of [[Path]]s inside a directory, filtering the results by the given predicate.
     */
-  def directoryStream[F[_]: Sync: ContextShift](blocker: Blocker,
-                                                path: Path,
-                                                filter: Path => Boolean): Stream[F, Path] =
+  def directoryStream[F[_]: Sync: ContextShift](
+      blocker: Blocker,
+      path: Path,
+      filter: Path => Boolean
+  ): Stream[F, Path] =
     _runJavaCollectionResource[F, DirectoryStream[Path]](
       blocker,
       blocker.delay(Files.newDirectoryStream(path, (entry: Path) => filter(entry))),
-      _.asScala.iterator)
+      _.asScala.iterator
+    )
 
   /**
     * Creates a stream of [[Path]]s inside a directory which match the given glob.
     */
-  def directoryStream[F[_]: Sync: ContextShift](blocker: Blocker,
-                                                path: Path,
-                                                glob: String): Stream[F, Path] =
+  def directoryStream[F[_]: Sync: ContextShift](
+      blocker: Blocker,
+      path: Path,
+      glob: String
+  ): Stream[F, Path] =
     _runJavaCollectionResource[F, DirectoryStream[Path]](
       blocker,
       blocker.delay(Files.newDirectoryStream(path, glob)),
-      _.asScala.iterator)
+      _.asScala.iterator
+    )
 
   /**
     * Creates a stream of [[Path]]s contained in a given file tree. Depth is unlimited.
@@ -240,27 +267,33 @@ package object file {
   /**
     * Creates a stream of [[Path]]s contained in a given file tree, respecting the supplied options. Depth is unlimited.
     */
-  def walk[F[_]: Sync: ContextShift](blocker: Blocker,
-                                     start: Path,
-                                     options: Seq[FileVisitOption]): Stream[F, Path] =
+  def walk[F[_]: Sync: ContextShift](
+      blocker: Blocker,
+      start: Path,
+      options: Seq[FileVisitOption]
+  ): Stream[F, Path] =
     walk[F](blocker, start, Int.MaxValue, options)
 
   /**
     * Creates a stream of [[Path]]s contained in a given file tree down to a given depth.
     */
-  def walk[F[_]: Sync: ContextShift](blocker: Blocker,
-                                     start: Path,
-                                     maxDepth: Int,
-                                     options: Seq[FileVisitOption] = Seq.empty): Stream[F, Path] =
+  def walk[F[_]: Sync: ContextShift](
+      blocker: Blocker,
+      start: Path,
+      maxDepth: Int,
+      options: Seq[FileVisitOption] = Seq.empty
+  ): Stream[F, Path] =
     _runJavaCollectionResource[F, JStream[Path]](
       blocker,
       blocker.delay(Files.walk(start, maxDepth, options: _*)),
-      _.iterator.asScala)
+      _.iterator.asScala
+    )
 
   private def _runJavaCollectionResource[F[_]: Sync: ContextShift, C <: AutoCloseable](
       blocker: Blocker,
       javaCollection: F[C],
-      collectionIterator: C => Iterator[Path]): Stream[F, Path] =
+      collectionIterator: C => Iterator[Path]
+  ): Stream[F, Path] =
     Stream
       .resource(Resource.fromAutoCloseable(javaCollection))
       .flatMap(ds => Stream.fromBlockingIterator[F](blocker, collectionIterator(ds)))

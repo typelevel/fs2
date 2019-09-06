@@ -10,9 +10,11 @@ import scala.util.control.NonFatal
 private[fs2] object ThreadFactories {
 
   /** A `ThreadFactory` which names threads according to the pattern ${threadPrefix}-${count}. */
-  def named(threadPrefix: String,
-            daemon: Boolean,
-            exitJvmOnFatalError: Boolean = true): ThreadFactory =
+  def named(
+      threadPrefix: String,
+      daemon: Boolean,
+      exitJvmOnFatalError: Boolean = true
+  ): ThreadFactory =
     new ThreadFactory {
       val defaultThreadFactory = Executors.defaultThreadFactory()
       val idx = new AtomicInteger(0)

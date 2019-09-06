@@ -157,7 +157,8 @@ private[fs2] final class CompileScope[F[_]] private (
     */
   def acquireResource[R](
       fr: F[R],
-      release: (R, ExitCase[Throwable]) => F[Unit]): F[Either[Throwable, (R, Resource[F])]] = {
+      release: (R, ExitCase[Throwable]) => F[Unit]
+  ): F[Either[Throwable, (R, Resource[F])]] = {
     val resource = Resource.create
     F.flatMap(F.attempt(fr)) {
       case Right(r) =>
@@ -187,8 +188,10 @@ private[fs2] final class CompileScope[F[_]] private (
     * Traverses supplied `Chain` with `f` that may produce a failure, and collects these failures.
     * Returns failure with collected failures, or `Unit` on successful traversal.
     */
-  private def traverseError[A](ca: Chain[A],
-                               f: A => F[Either[Throwable, Unit]]): F[Either[Throwable, Unit]] =
+  private def traverseError[A](
+      ca: Chain[A],
+      f: A => F[Either[Throwable, Unit]]
+  ): F[Either[Throwable, Unit]] =
     F.map(Traverse[Chain].traverse(ca)(f)) { results =>
       CompositeFailure
         .fromList(results.collect { case Left(err) => err }.toList)
@@ -217,7 +220,8 @@ private[fs2] final class CompileScope[F[_]] private (
               F.map(self.parent.fold(F.unit)(_.releaseChildScope(self.id))) { _ =>
                 val results = resultChildren.fold(List(_), _ => Nil) ++ resultResources.fold(
                   List(_),
-                  _ => Nil)
+                  _ => Nil
+                )
                 CompositeFailure.fromList(results.toList).toLeft(())
               }
             }
@@ -338,7 +342,8 @@ private[fs2] final class CompileScope[F[_]] private (
     interruptible match {
       case None =>
         F.raiseError(
-          new IllegalStateException("Scope#interrupt called for Scope that cannot be interrupted"))
+          new IllegalStateException("Scope#interrupt called for Scope that cannot be interrupted")
+        )
       case Some(iCtx) =>
         // note that we guard interruption here by Attempt to prevent failure on multiple sets.
         val interruptCause = cause.map(_ => iCtx.interruptRoot)
@@ -377,7 +382,8 @@ private[fs2] final class CompileScope[F[_]] private (
       case Some(iCtx) =>
         F.map(
           iCtx.concurrent
-            .race(iCtx.deferred.get, F.attempt(f))) {
+            .race(iCtx.deferred.get, F.attempt(f))
+        ) {
           case Right(result) => result.leftMap(Left(_))
           case Left(other)   => Left(other)
         }
@@ -479,10 +485,16 @@ private[fs2] object CompileScope {
               cancelParent = fiber.cancel
             )
 
-            F.map(concurrent.start(F.flatMap(fiber.join)(interrupt =>
-              F.flatMap(context.ref.update(_.orElse(Some(interrupt)))) { _ =>
-                F.map(F.attempt(context.deferred.complete(interrupt)))(_ => ())
-            }))) { _ =>
+            F.map(
+              concurrent.start(
+                F.flatMap(fiber.join)(
+                  interrupt =>
+                    F.flatMap(context.ref.update(_.orElse(Some(interrupt)))) { _ =>
+                      F.map(F.attempt(context.deferred.complete(interrupt)))(_ => ())
+                    }
+                )
+              )
+            ) { _ =>
               context
             }
           }

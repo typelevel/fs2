@@ -30,13 +30,17 @@ import cats.effect.{Blocker, ContextShift, Resource, Sync}
 private[udp] sealed trait AsynchronousSocketGroup {
   private[udp] type Context
   private[udp] def register(channel: DatagramChannel): Context
-  private[udp] def read(ctx: Context,
-                        timeout: Option[FiniteDuration],
-                        cb: Either[Throwable, Packet] => Unit): Unit
-  private[udp] def write(ctx: Context,
-                         packet: Packet,
-                         timeout: Option[FiniteDuration],
-                         cb: Option[Throwable] => Unit): Unit
+  private[udp] def read(
+      ctx: Context,
+      timeout: Option[FiniteDuration],
+      cb: Either[Throwable, Packet] => Unit
+  ): Unit
+  private[udp] def write(
+      ctx: Context,
+      packet: Packet,
+      timeout: Option[FiniteDuration],
+      cb: Option[Throwable] => Unit
+  ): Unit
   private[udp] def close(ctx: Context): Unit
   protected def close(): Unit
 }
@@ -90,18 +94,18 @@ private[udp] object AsynchronousSocketGroup {
           Some(reader)
         }
 
-      def queueReader(reader: Either[Throwable, Packet] => Unit,
-                      timeout: Option[Timeout]): () => Unit =
+      def queueReader(
+          reader: Either[Throwable, Packet] => Unit,
+          timeout: Option[Timeout]
+      ): () => Unit =
         if (closed) {
           reader(Left(new ClosedChannelException))
           timeout.foreach(_.cancel)
-          () =>
-            ()
+          () => ()
         } else {
           val r = (reader, timeout)
           readers.add(r)
-          () =>
-            { readers.remove(r); () }
+          () => { readers.remove(r); () }
         }
 
       def hasWriters: Boolean = !writers.isEmpty
@@ -118,18 +122,18 @@ private[udp] object AsynchronousSocketGroup {
           Some(w)
         }
 
-      def queueWriter(writer: (WriterPacket, Option[Throwable] => Unit),
-                      timeout: Option[Timeout]): () => Unit =
+      def queueWriter(
+          writer: (WriterPacket, Option[Throwable] => Unit),
+          timeout: Option[Timeout]
+      ): () => Unit =
         if (closed) {
           writer._2(Some(new ClosedChannelException))
           timeout.foreach(_.cancel)
-          () =>
-            ()
+          () => ()
         } else {
           val w = (writer, timeout)
           writers.add(w)
-          () =>
-            { writers.remove(w); () }
+          () => { writers.remove(w); () }
         }
 
       def close(): Unit = {
@@ -172,9 +176,11 @@ private[udp] object AsynchronousSocketGroup {
       key
     }
 
-    override def read(key: SelectionKey,
-                      timeout: Option[FiniteDuration],
-                      cb: Either[Throwable, Packet] => Unit): Unit =
+    override def read(
+        key: SelectionKey,
+        timeout: Option[FiniteDuration],
+        cb: Either[Throwable, Packet] => Unit
+    ): Unit =
       onSelectorThread {
         val channel = key.channel.asInstanceOf[DatagramChannel]
         val attachment = key.attachment.asInstanceOf[Attachment]
@@ -196,17 +202,21 @@ private[udp] object AsynchronousSocketGroup {
             t.foreach { t =>
               pendingTimeouts += t
             }
-            try { key.interestOps(key.interestOps | SelectionKey.OP_READ); () } catch {
+            try {
+              key.interestOps(key.interestOps | SelectionKey.OP_READ); ()
+            } catch {
               case t: CancelledKeyException => /* Ignore; key was closed */
             }
           }
         }
       } { cb(Left(new ClosedChannelException)) }
 
-    private def read1(key: SelectionKey,
-                      channel: DatagramChannel,
-                      attachment: Attachment,
-                      reader: Either[Throwable, Packet] => Unit): Boolean =
+    private def read1(
+        key: SelectionKey,
+        channel: DatagramChannel,
+        attachment: Attachment,
+        reader: Either[Throwable, Packet] => Unit
+    ): Boolean =
       try {
         val src = channel.receive(readBuffer).asInstanceOf[InetSocketAddress]
         if (src eq null) {
@@ -225,10 +235,12 @@ private[udp] object AsynchronousSocketGroup {
           true
       }
 
-    override def write(key: SelectionKey,
-                       packet: Packet,
-                       timeout: Option[FiniteDuration],
-                       cb: Option[Throwable] => Unit): Unit = {
+    override def write(
+        key: SelectionKey,
+        packet: Packet,
+        timeout: Option[FiniteDuration],
+        cb: Option[Throwable] => Unit
+    ): Unit = {
       val writerPacket = {
         val bytes = {
           val srcBytes = packet.bytes.toBytes
@@ -262,7 +274,9 @@ private[udp] object AsynchronousSocketGroup {
             t.foreach { t =>
               pendingTimeouts += t
             }
-            try { key.interestOps(key.interestOps | SelectionKey.OP_WRITE); () } catch {
+            try {
+              key.interestOps(key.interestOps | SelectionKey.OP_WRITE); ()
+            } catch {
               case t: CancelledKeyException => /* Ignore; key was closed */
             }
           }
@@ -270,11 +284,13 @@ private[udp] object AsynchronousSocketGroup {
       } { cb(Some(new ClosedChannelException)) }
     }
 
-    private def write1(key: SelectionKey,
-                       channel: DatagramChannel,
-                       attachment: Attachment,
-                       packet: WriterPacket,
-                       cb: Option[Throwable] => Unit): Boolean =
+    private def write1(
+        key: SelectionKey,
+        channel: DatagramChannel,
+        attachment: Attachment,
+        packet: WriterPacket,
+        cb: Option[Throwable] => Unit
+    ): Boolean =
       try {
         val sent = channel.send(packet.bytes, packet.remote)
         if (sent > 0) {

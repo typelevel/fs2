@@ -8,16 +8,19 @@ final class CompositeFailure(
     val tail: NonEmptyList[Throwable]
 ) extends Throwable(
       s"Multiple exceptions were thrown (${1 + tail.size}), first ${head.getClass.getName}: ${head.getMessage}",
-      head) {
+      head
+    ) {
 
   /** Gets all causes (guaranteed to have at least 2 elements). */
   def all: NonEmptyList[Throwable] = head :: tail
 }
 
 object CompositeFailure {
-  def apply(first: Throwable,
-            second: Throwable,
-            rest: List[Throwable] = List.empty): CompositeFailure =
+  def apply(
+      first: Throwable,
+      second: Throwable,
+      rest: List[Throwable] = List.empty
+  ): CompositeFailure =
     new CompositeFailure(first, NonEmptyList(second, rest))
 
   def fromList(errors: List[Throwable]): Option[Throwable] = errors match {
@@ -34,8 +37,10 @@ object CompositeFailure {
     * - When both results succeeds then Right(()) is returned
     *
     */
-  def fromResults(first: Either[Throwable, Unit],
-                  second: Either[Throwable, Unit]): Either[Throwable, Unit] =
+  def fromResults(
+      first: Either[Throwable, Unit],
+      second: Either[Throwable, Unit]
+  ): Either[Throwable, Unit] =
     first match {
       case Right(_) => second
       case Left(err) =>

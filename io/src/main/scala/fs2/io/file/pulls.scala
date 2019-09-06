@@ -19,15 +19,18 @@ object pulls {
     _readAllFromFileHandle0(chunkSize, 0)(h)
 
   def readRangeFromFileHandle[F[_]](chunkSize: Int, start: Long, end: Long)(
-      h: FileHandle[F]): Pull[F, Byte, Unit] =
+      h: FileHandle[F]
+  ): Pull[F, Byte, Unit] =
     _readRangeFromFileHandle0(chunkSize, start, end)(h)
 
   def tailFromFileHandle[F[_]: Timer](chunkSize: Int, offset: Long, delay: FiniteDuration)(
-      h: FileHandle[F]): Pull[F, Byte, Unit] =
+      h: FileHandle[F]
+  ): Pull[F, Byte, Unit] =
     _tailFromFileHandle(chunkSize, offset, delay)(h)
 
   private def _tailFromFileHandle[F[_]](chunkSize: Int, offset: Long, delay: FiniteDuration)(
-      h: FileHandle[F])(implicit timer: Timer[F]): Pull[F, Byte, Unit] =
+      h: FileHandle[F]
+  )(implicit timer: Timer[F]): Pull[F, Byte, Unit] =
     Pull.eval(h.read(chunkSize, offset)).flatMap {
       case Some(bytes) =>
         Pull.output(bytes) >> _tailFromFileHandle(chunkSize, offset + bytes.size, delay)(h)
@@ -36,7 +39,8 @@ object pulls {
     }
 
   private def _readRangeFromFileHandle0[F[_]](chunkSize: Int, offset: Long, end: Long)(
-      h: FileHandle[F]): Pull[F, Byte, Unit] = {
+      h: FileHandle[F]
+  ): Pull[F, Byte, Unit] = {
 
     val bytesLeft = end - offset
     if (bytesLeft <= 0L) {
@@ -54,7 +58,8 @@ object pulls {
   }
 
   private def _readAllFromFileHandle0[F[_]](chunkSize: Int, offset: Long)(
-      h: FileHandle[F]): Pull[F, Byte, Unit] =
+      h: FileHandle[F]
+  ): Pull[F, Byte, Unit] =
     Pull.eval(h.read(chunkSize, offset)).flatMap {
       case Some(o) =>
         Pull.output(o) >> _readAllFromFileHandle0(chunkSize, offset + o.size)(h)
@@ -68,20 +73,26 @@ object pulls {
     writeAllToFileHandleAtOffset(in, out, 0)
 
   /** Like `writeAllToFileHandle` but takes an offset in to the file indicating where write should start. */
-  def writeAllToFileHandleAtOffset[F[_]](in: Stream[F, Byte],
-                                         out: FileHandle[F],
-                                         offset: Long): Pull[F, Nothing, Unit] =
+  def writeAllToFileHandleAtOffset[F[_]](
+      in: Stream[F, Byte],
+      out: FileHandle[F],
+      offset: Long
+  ): Pull[F, Nothing, Unit] =
     in.pull.uncons.flatMap {
       case None => Pull.done
       case Some((hd, tl)) =>
-        writeChunkToFileHandle(hd, out, offset) >> writeAllToFileHandleAtOffset(tl,
-                                                                                out,
-                                                                                offset + hd.size)
+        writeChunkToFileHandle(hd, out, offset) >> writeAllToFileHandleAtOffset(
+          tl,
+          out,
+          offset + hd.size
+        )
     }
 
-  private def writeChunkToFileHandle[F[_]](buf: Chunk[Byte],
-                                           out: FileHandle[F],
-                                           offset: Long): Pull[F, Nothing, Unit] =
+  private def writeChunkToFileHandle[F[_]](
+      buf: Chunk[Byte],
+      out: FileHandle[F],
+      offset: Long
+  ): Pull[F, Nothing, Unit] =
     Pull.eval(out.write(buf, offset)).flatMap { (written: Int) =>
       if (written >= buf.size)
         Pull.pure(())
@@ -96,7 +107,8 @@ object pulls {
     */
   def fromPath[F[_]](path: Path, blocker: Blocker, flags: Seq[OpenOption])(
       implicit F: Sync[F],
-      cs: ContextShift[F]): Pull[F, Nothing, Pull.Cancellable[F, FileHandle[F]]] =
+      cs: ContextShift[F]
+  ): Pull[F, Nothing, Pull.Cancellable[F, FileHandle[F]]] =
     fromFileChannel(blocker.delay(FileChannel.open(path, flags: _*)), blocker)
 
   /**
@@ -106,7 +118,8 @@ object pulls {
     */
   def fromFileChannel[F[_]](channel: F[FileChannel], blocker: Blocker)(
       implicit F: Sync[F],
-      cs: ContextShift[F]): Pull[F, Nothing, Pull.Cancellable[F, FileHandle[F]]] =
+      cs: ContextShift[F]
+  ): Pull[F, Nothing, Pull.Cancellable[F, FileHandle[F]]] =
     Pull
       .acquireCancellable(channel)(ch => blocker.delay(ch.close()))
       .map(_.map(FileHandle.fromFileChannel[F](_, blocker)))

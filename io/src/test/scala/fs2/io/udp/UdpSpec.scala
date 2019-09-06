@@ -89,11 +89,13 @@ class UdpSpec extends Fs2Spec {
         }
         .compile
         .toVector
-        .asserting(res =>
-          res.map(p => new String(p.bytes.toArray)).sorted shouldBe Vector
-            .fill(numClients)(msgs.map(b => new String(b.toArray)))
-            .flatten
-            .sorted)
+        .asserting(
+          res =>
+            res.map(p => new String(p.bytes.toArray)).sorted shouldBe Vector
+              .fill(numClients)(msgs.map(b => new String(b.toArray)))
+              .flatten
+              .sorted
+        )
     }
 
     "multicast" in {
@@ -107,15 +109,16 @@ class UdpSpec extends Fs2Spec {
               socketGroup.open[IO](
                 protocolFamily = Some(StandardProtocolFamily.INET),
                 multicastTTL = Some(1)
-              ))
+              )
+            )
             .flatMap { serverSocket =>
               Stream.eval(serverSocket.localAddress).map { _.getPort }.flatMap { serverPort =>
                 val v4Interfaces =
                   NetworkInterface.getNetworkInterfaces.asScala.toList.filter { interface =>
                     interface.getInetAddresses.asScala.exists(_.isInstanceOf[Inet4Address])
                   }
-                val server = Stream.eval_(
-                  v4Interfaces.traverse(interface => serverSocket.join(group, interface))) ++
+                val server = Stream
+                  .eval_(v4Interfaces.traverse(interface => serverSocket.join(group, interface))) ++
                   serverSocket
                     .reads()
                     .evalMap { packet =>

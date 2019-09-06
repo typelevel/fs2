@@ -20,10 +20,12 @@ object compress {
     *                   compressor. Default size is 32 KB.
     * @param strategy compression strategy -- see `java.util.zip.Deflater` for details
     */
-  def deflate[F[_]](level: Int = Deflater.DEFAULT_COMPRESSION,
-                    nowrap: Boolean = false,
-                    bufferSize: Int = 1024 * 32,
-                    strategy: Int = Deflater.DEFAULT_STRATEGY): Pipe[F, Byte, Byte] = { in =>
+  def deflate[F[_]](
+      level: Int = Deflater.DEFAULT_COMPRESSION,
+      nowrap: Boolean = false,
+      bufferSize: Int = 1024 * 32,
+      strategy: Int = Deflater.DEFAULT_STRATEGY
+  ): Pipe[F, Byte, Byte] = { in =>
     Pull.suspend {
       val deflater = new Deflater(level, nowrap)
       deflater.setStrategy(strategy)
@@ -32,8 +34,10 @@ object compress {
     }.stream
   }
 
-  private def _deflate_stream[F[_]](deflater: Deflater,
-                                    buffer: Array[Byte]): Stream[F, Byte] => Pull[F, Byte, Unit] =
+  private def _deflate_stream[F[_]](
+      deflater: Deflater,
+      buffer: Array[Byte]
+  ): Stream[F, Byte] => Pull[F, Byte, Unit] =
     _.pull.uncons.flatMap {
       case Some((hd, tl)) =>
         deflater.setInput(hd.toArray)
@@ -50,10 +54,12 @@ object compress {
     }
 
   @tailrec
-  private def _deflate_collect(deflater: Deflater,
-                               buffer: Array[Byte],
-                               acc: ArrayBuffer[Byte],
-                               fin: Boolean): ArrayBuffer[Byte] =
+  private def _deflate_collect(
+      deflater: Deflater,
+      buffer: Array[Byte],
+      acc: ArrayBuffer[Byte],
+      fin: Boolean
+  ): ArrayBuffer[Byte] =
     if ((fin && deflater.finished) || (!fin && deflater.needsInput)) acc
     else {
       val count = deflater.deflate(buffer)
@@ -68,7 +74,8 @@ object compress {
     *                   decompressor. Default size is 32 KB.
     */
   def inflate[F[_]](nowrap: Boolean = false, bufferSize: Int = 1024 * 32)(
-      implicit ev: RaiseThrowable[F]): Pipe[F, Byte, Byte] =
+      implicit ev: RaiseThrowable[F]
+  ): Pipe[F, Byte, Byte] =
     _.pull.uncons.flatMap {
       case None => Pull.done
       case Some((hd, tl)) =>
@@ -81,7 +88,8 @@ object compress {
     }.stream
 
   private def _inflate_stream[F[_]](inflater: Inflater, buffer: Array[Byte])(
-      implicit ev: RaiseThrowable[F]): Stream[F, Byte] => Pull[F, Byte, Unit] =
+      implicit ev: RaiseThrowable[F]
+  ): Stream[F, Byte] => Pull[F, Byte, Unit] =
     _.pull.uncons.flatMap {
       case Some((hd, tl)) =>
         inflater.setInput(hd.toArray)
@@ -91,13 +99,17 @@ object compress {
       case None =>
         if (!inflater.finished)
           Pull.raiseError[F](new DataFormatException("Insufficient data"))
-        else { inflater.end(); Pull.done }
+        else {
+          inflater.end(); Pull.done
+        }
     }
 
   @tailrec
-  private def _inflate_collect(inflater: Inflater,
-                               buffer: Array[Byte],
-                               acc: ArrayBuffer[Byte]): ArrayBuffer[Byte] =
+  private def _inflate_collect(
+      inflater: Inflater,
+      buffer: Array[Byte],
+      acc: ArrayBuffer[Byte]
+  ): ArrayBuffer[Byte] =
     if (inflater.finished || inflater.needsInput) acc
     else {
       val count = inflater.inflate(buffer)
@@ -159,7 +171,7 @@ object compress {
         }
 
         body ++ trailer
-    }
+      }
 
   /**
     * Returns a pipe that incrementally decompresses input according to the GZIP
@@ -251,7 +263,7 @@ object compress {
 
             stepDecompress ++ mainline
         }
-    }
+      }
 
   final case class NonProgressiveDecompressionException(bufferSize: Int)
       extends RuntimeException(s"buffer size $bufferSize is too small; gunzip cannot make progress")

@@ -76,8 +76,10 @@ class WatcherSpec extends BaseFileSpec {
                 .takeWhile({
                   case Watcher.Event.Created(b, _) => false; case _ => true
                 })
-                .concurrently(smallDelay ++ Stream.eval(
-                  IO(Files.createDirectory(a)) >> IO(Files.write(b, Array[Byte]()))))
+                .concurrently(
+                  smallDelay ++ Stream
+                    .eval(IO(Files.createDirectory(a)) >> IO(Files.write(b, Array[Byte]())))
+                )
             }
           }
           .compile

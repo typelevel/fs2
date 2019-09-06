@@ -20,8 +20,9 @@ import CommonGenerators._
 
 trait ChunkGeneratorsLowPriority1 {
 
-  protected def withShrinker[A](g: Generator[A])(
-      shrinker: (A, Randomizer) => (Iterator[A], Randomizer)): Generator[A] = new Generator[A] {
+  protected def withShrinker[A](
+      g: Generator[A]
+  )(shrinker: (A, Randomizer) => (Iterator[A], Randomizer)): Generator[A] = new Generator[A] {
     override def initEdges(maxLength: PosZInt, rnd: Randomizer): (List[A], Randomizer) =
       g.initEdges(maxLength, rnd)
     override def next(szp: SizeParam, edges: List[A], rnd: Randomizer): (A, List[A], Randomizer) =
@@ -58,7 +59,8 @@ trait ChunkGeneratorsLowPriority1 {
         10 -> lists[A]
           .havingSizesBetween(0, 20)
           .map(as => Chunk.chain(Chain.fromSeq(as))) // TODO Add variety in Chain
-      ))
+      )
+    )
 }
 
 trait ChunkGeneratorsLowPriority extends ChunkGeneratorsLowPriority1 {
@@ -73,14 +75,15 @@ trait ChunkGeneratorsLowPriority extends ChunkGeneratorsLowPriority1 {
           offset <- intsBetween(0, as.size / 2)
           len <- intsBetween(0, as.size - offset)
         } yield Chunk.boxed(as.toArray, offset, len))
-      ))
+      )
+    )
 }
 
 trait ChunkGenerators extends ChunkGeneratorsLowPriority {
 
-  private def arrayChunkGenerator[A](build: (Array[A], Int, Int) => Chunk[A])(
-      implicit A: Generator[A],
-      ct: ClassTag[A]): Generator[Chunk[A]] =
+  private def arrayChunkGenerator[A](
+      build: (Array[A], Int, Int) => Chunk[A]
+  )(implicit A: Generator[A], ct: ClassTag[A]): Generator[Chunk[A]] =
     for {
       values <- lists[A].havingSizesBetween(0, 20).map(_.toArray)
       offset <- intsBetween(0, values.size)
@@ -127,7 +130,8 @@ trait ChunkGenerators extends ChunkGeneratorsLowPriority {
         1 -> byteArrayChunkGenerator,
         1 -> byteBufferChunkGenerator,
         1 -> byteVectorChunkGenerator
-      ))
+      )
+    )
 
   val shortArrayChunkGenerator: Generator[Chunk[Short]] =
     arrayChunkGenerator(Chunk.shorts _)
@@ -145,7 +149,8 @@ trait ChunkGenerators extends ChunkGeneratorsLowPriority {
         8 -> chunkGenerator[Short],
         1 -> shortArrayChunkGenerator,
         1 -> shortBufferChunkGenerator
-      ))
+      )
+    )
 
   val longArrayChunkGenerator: Generator[Chunk[Long]] =
     arrayChunkGenerator(Chunk.longs _)
@@ -163,7 +168,8 @@ trait ChunkGenerators extends ChunkGeneratorsLowPriority {
         8 -> chunkGenerator[Long],
         1 -> longArrayChunkGenerator,
         1 -> longBufferChunkGenerator
-      ))
+      )
+    )
 
   val intArrayChunkGenerator: Generator[Chunk[Int]] =
     arrayChunkGenerator(Chunk.ints _)
@@ -181,7 +187,8 @@ trait ChunkGenerators extends ChunkGeneratorsLowPriority {
         8 -> chunkGenerator[Int],
         1 -> intArrayChunkGenerator,
         1 -> intBufferChunkGenerator
-      ))
+      )
+    )
 
   val doubleArrayChunkGenerator: Generator[Chunk[Double]] =
     arrayChunkGenerator(Chunk.doubles _)
@@ -199,7 +206,8 @@ trait ChunkGenerators extends ChunkGeneratorsLowPriority {
         8 -> chunkGenerator[Double],
         1 -> doubleArrayChunkGenerator,
         1 -> doubleBufferChunkGenerator
-      ))
+      )
+    )
 
   val floatArrayChunkGenerator: Generator[Chunk[Float]] =
     arrayChunkGenerator(Chunk.floats _)
@@ -217,7 +225,8 @@ trait ChunkGenerators extends ChunkGeneratorsLowPriority {
         8 -> chunkGenerator[Float],
         1 -> floatArrayChunkGenerator,
         1 -> floatBufferChunkGenerator
-      ))
+      )
+    )
 
   val charBufferChunkGenerator: Generator[Chunk[Char]] =
     jbufferChunkGenerator[Char, JCharBuffer](
@@ -231,7 +240,8 @@ trait ChunkGenerators extends ChunkGeneratorsLowPriority {
       frequency(
         9 -> chunkGenerator[Char],
         1 -> charBufferChunkGenerator
-      ))
+      )
+    )
 }
 
 object ChunkGenerators extends ChunkGenerators

@@ -101,32 +101,36 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup, blocker: Blocker
     * @param reuseAddress       whether address may be reused (see `java.net.StandardSocketOptions.SO_REUSEADDR`)
     * @param receiveBufferSize  size of receive buffer (see `java.net.StandardSocketOptions.SO_RCVBUF`)
     */
-  def server[F[_]](address: InetSocketAddress,
-                   maxQueued: Int = 0,
-                   reuseAddress: Boolean = true,
-                   receiveBufferSize: Int = 256 * 1024,
-                   additionalSocketOptions: List[SocketOptionMapping[_]] = List.empty)(
+  def server[F[_]](
+      address: InetSocketAddress,
+      maxQueued: Int = 0,
+      reuseAddress: Boolean = true,
+      receiveBufferSize: Int = 256 * 1024,
+      additionalSocketOptions: List[SocketOptionMapping[_]] = List.empty
+  )(
       implicit F: Concurrent[F],
       CS: ContextShift[F]
   ): Stream[F, Resource[F, Socket[F]]] =
-    serverWithLocalAddress(address,
-                           maxQueued,
-                           reuseAddress,
-                           receiveBufferSize,
-                           additionalSocketOptions)
-      .collect { case Right(s) => s }
+    serverWithLocalAddress(
+      address,
+      maxQueued,
+      reuseAddress,
+      receiveBufferSize,
+      additionalSocketOptions
+    ).collect { case Right(s) => s }
 
   /**
     * Like [[server]] but provides the `InetSocketAddress` of the bound server socket before providing accepted sockets.
     *
     * The outer stream first emits a left value specifying the bound address followed by right values -- one per client connection.
     */
-  def serverWithLocalAddress[F[_]](address: InetSocketAddress,
-                                   maxQueued: Int = 0,
-                                   reuseAddress: Boolean = true,
-                                   receiveBufferSize: Int = 256 * 1024,
-                                   additionalSocketOptions: List[SocketOptionMapping[_]] =
-                                     List.empty)(
+  def serverWithLocalAddress[F[_]](
+      address: InetSocketAddress,
+      maxQueued: Int = 0,
+      reuseAddress: Boolean = true,
+      receiveBufferSize: Int = 256 * 1024,
+      additionalSocketOptions: List[SocketOptionMapping[_]] = List.empty
+  )(
       implicit F: Concurrent[F],
       CS: ContextShift[F]
   ): Stream[F, Either[InetSocketAddress, Resource[F, Socket[F]]]] = {
@@ -182,14 +186,14 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup, blocker: Blocker
       .bracket(setup)(cleanup)
       .flatMap { sch =>
         Stream.emit(Left(sch.getLocalAddress.asInstanceOf[InetSocketAddress])) ++ acceptIncoming(
-          sch)
-          .map(Right(_))
+          sch
+        ).map(Right(_))
       }
   }
 
-  private def apply[F[_]](ch: AsynchronousSocketChannel)(
-      implicit F: Concurrent[F],
-      cs: ContextShift[F]): Resource[F, Socket[F]] = {
+  private def apply[F[_]](
+      ch: AsynchronousSocketChannel
+  )(implicit F: Concurrent[F], cs: ContextShift[F]): Resource[F, Socket[F]] = {
     val socket = Semaphore[F](1).flatMap { readSemaphore =>
       Ref.of[F, ByteBuffer](ByteBuffer.allocate(0)).map { bufferRef =>
         // Reads data to remaining capacity of supplied ByteBuffer
@@ -248,7 +252,7 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup, blocker: Blocker
         def read0(max: Int, timeout: Option[FiniteDuration]): F[Option[Chunk[Byte]]] =
           readSemaphore.withPermit {
             getBufferOf(max).flatMap { buff =>
-              readChunk(buff, timeout.map(_.toMillis).getOrElse(0l)).flatMap {
+              readChunk(buff, timeout.map(_.toMillis).getOrElse(0L)).flatMap {
                 case (read, _) =>
                   if (read < 0) F.pure(None)
                   else releaseBuffer(buff).map(Some(_))
@@ -268,7 +272,7 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup, blocker: Blocker
                     } else go((timeoutMs - took).max(0))
                 }
 
-              go(timeout.map(_.toMillis).getOrElse(0l))
+              go(timeout.map(_.toMillis).getOrElse(0L))
             }
           }
 
@@ -287,7 +291,8 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup, blocker: Blocker
                       Right(
                         if (buff.remaining() <= 0) None
                         else Some(System.currentTimeMillis() - start)
-                      ))
+                      )
+                    )
                   def failed(err: Throwable, attachment: Unit): Unit =
                     cb(Left(err))
                 }
@@ -297,7 +302,7 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup, blocker: Blocker
               case Some(took) => go(buff, (remains - took).max(0))
             }
 
-          go(bytes.toBytes.toByteBuffer, timeout.map(_.toMillis).getOrElse(0l))
+          go(bytes.toBytes.toByteBuffer, timeout.map(_.toMillis).getOrElse(0L))
         }
 
         ///////////////////////////////////
@@ -358,7 +363,8 @@ object SocketGroup {
       blocker: Blocker,
       nonBlockingThreadCount: Int = 0,
       nonBlockingThreadFactory: ThreadFactory =
-        ThreadFactories.named("fs2-socket-group-blocking", true)): Resource[F, SocketGroup] =
+        ThreadFactories.named("fs2-socket-group-blocking", true)
+  ): Resource[F, SocketGroup] =
     Resource(blocker.delay {
       val threadCount =
         if (nonBlockingThreadCount <= 0) Runtime.getRuntime.availableProcessors

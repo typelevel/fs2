@@ -98,12 +98,14 @@ private[fs2] object PubSub {
   )
 
   def apply[F[_]: Concurrent, I, O, QS, Selector](
-      strategy: PubSub.Strategy[I, O, QS, Selector]): F[PubSub[F, I, O, Selector]] =
+      strategy: PubSub.Strategy[I, O, QS, Selector]
+  ): F[PubSub[F, I, O, Selector]] =
     in[F].from(strategy)
 
   final class InPartiallyApplied[G[_]](val G: Sync[G]) extends AnyVal {
     def from[F[_]: Concurrent, I, O, QS, Selector](
-        strategy: PubSub.Strategy[I, O, QS, Selector]): G[PubSub[F, I, O, Selector]] = {
+        strategy: PubSub.Strategy[I, O, QS, Selector]
+    ): G[PubSub[F, I, O, Selector]] = {
 
       type PS = PubSubState[F, I, O, QS, Selector]
 
@@ -116,10 +118,12 @@ private[fs2] object PubSub {
       // registered unless strategy signals it is empty.
       def consumeSubscribers(ps: PS): (PS, Option[F[Unit]]) = {
         @tailrec
-        def go(queue: QS,
-               remains: ScalaQueue[Subscriber[F, O, Selector]],
-               keep: ScalaQueue[Subscriber[F, O, Selector]],
-               acc: Option[F[Unit]]): (PS, Option[F[Unit]]) =
+        def go(
+            queue: QS,
+            remains: ScalaQueue[Subscriber[F, O, Selector]],
+            keep: ScalaQueue[Subscriber[F, O, Selector]],
+            acc: Option[F[Unit]]
+        ): (PS, Option[F[Unit]]) =
           remains.headOption match {
             case None =>
               (ps.copy(queue = queue, subscribers = keep), acc)
@@ -143,10 +147,12 @@ private[fs2] object PubSub {
       // always tries to publish all publishers reminaing in single cycle, even when one publisher succeeded
       def publishPublishers(ps: PS): (PS, Option[F[Unit]]) = {
         @tailrec
-        def go(queue: QS,
-               remains: ScalaQueue[Publisher[F, I]],
-               keep: ScalaQueue[Publisher[F, I]],
-               acc: Option[F[Unit]]): (PS, Option[F[Unit]]) =
+        def go(
+            queue: QS,
+            remains: ScalaQueue[Publisher[F, I]],
+            keep: ScalaQueue[Publisher[F, I]],
+            acc: Option[F[Unit]]
+        ): (PS, Option[F[Unit]]) =
           remains.headOption match {
             case None =>
               (ps.copy(queue = queue, publishers = keep), acc)
@@ -411,8 +417,9 @@ private[fs2] object PubSub {
       * @param maxSize maximum size of enqueued `A` before this is full
       * @param f function to extract current size of `S`
       */
-    def bounded[A, S](maxSize: Int)(strategy: PubSub.Strategy[A, Chunk[A], S, Int])(
-        f: S => Int): PubSub.Strategy[A, Chunk[A], S, Int] =
+    def bounded[A, S](maxSize: Int)(
+        strategy: PubSub.Strategy[A, Chunk[A], S, Int]
+    )(f: S => Int): PubSub.Strategy[A, Chunk[A], S, Int] =
       new PubSub.Strategy[A, Chunk[A], S, Int] {
 
         val initial: S = strategy.initial
@@ -446,8 +453,9 @@ private[fs2] object PubSub {
       *  - every `publish` is successful and completes immediately.
       *  - every `get` completes immediately with None instead of `O`.
       */
-    def closeNow[I, O, S, Sel](strategy: PubSub.Strategy[I, O, S, Sel])
-      : PubSub.Strategy[Option[I], Option[O], Option[S], Sel] =
+    def closeNow[I, O, S, Sel](
+        strategy: PubSub.Strategy[I, O, S, Sel]
+    ): PubSub.Strategy[Option[I], Option[O], Option[S], Sel] =
       new PubSub.Strategy[Option[I], Option[O], Option[S], Sel] {
         def initial: Option[S] =
           Some(strategy.initial)
@@ -496,8 +504,9 @@ private[fs2] object PubSub {
       * When the PubSub is closed, but not all elements yet consumed,
       * any publish operation will complete immediately.
       */
-    def closeDrainFirst[I, O, S, Sel](strategy: PubSub.Strategy[I, O, S, Sel])
-      : PubSub.Strategy[Option[I], Option[O], (Boolean, S), Sel] =
+    def closeDrainFirst[I, O, S, Sel](
+        strategy: PubSub.Strategy[I, O, S, Sel]
+    ): PubSub.Strategy[Option[I], Option[O], (Boolean, S), Sel] =
       new PubSub.Strategy[Option[I], Option[O], (Boolean, S), Sel] {
         def initial: (Boolean, S) = (true, strategy.initial)
 
@@ -664,8 +673,10 @@ private[fs2] object PubSub {
             else State(qs1, Set.empty)
           }
 
-          def get(selector: Either[Option[Token], Sel],
-                  state: State[S]): (State[S], Option[Either[S, O]]) =
+          def get(
+              selector: Either[Option[Token], Sel],
+              state: State[S]
+          ): (State[S], Option[Either[S, O]]) =
             selector match {
               case Left(None) =>
                 (state, Some(Left(state.qs)))
@@ -682,8 +693,10 @@ private[fs2] object PubSub {
           def empty(state: State[S]): Boolean =
             strategy.empty(state.qs)
 
-          def subscribe(selector: Either[Option[Token], Sel],
-                        state: State[S]): (State[S], Boolean) =
+          def subscribe(
+              selector: Either[Option[Token], Sel],
+              state: State[S]
+          ): (State[S], Boolean) =
             selector match {
               case Left(None)    => (state, false)
               case Left(Some(_)) => (state, true)
