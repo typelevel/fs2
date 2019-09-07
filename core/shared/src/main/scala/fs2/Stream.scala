@@ -1840,10 +1840,17 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     handleErrorWith(e => s2 ++ Stream.fromFreeC(Algebra.raiseError(e))) ++ s2
 
   /**
-    * Run the supplied effectful action at the end of this stream, regardless of how the stream terminates.
+    * Runs the supplied effectful action at the end of this stream, regardless of how the stream terminates.
     */
   def onFinalize[F2[x] >: F[x]](f: F2[Unit])(implicit F2: Applicative[F2]): Stream[F2, O] =
     Stream.bracket(F2.unit)(_ => f) >> this
+
+  /**
+    * Like [[onFinalize]] but does not introduce a scope, allowing finalization to occur after
+    * subsequent appends or other scope-preserving transformations.
+    */
+  def onFinalizeWeak[F2[x] >: F[x]](f: F2[Unit])(implicit F2: Applicative[F2]): Stream[F2, O] =
+    onFinalizeCaseWeak(_ => f)
 
   /**
     * Like [[onFinalize]] but provides the reason for finalization as an `ExitCase[Throwable]`.
@@ -1851,6 +1858,16 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
   def onFinalizeCase[F2[x] >: F[x]](f: ExitCase[Throwable] => F2[Unit])(
       implicit F2: Applicative[F2]): Stream[F2, O] =
     Stream.bracketCase(F2.unit)((_, ec) => f(ec)) >> this
+
+  /**
+    * Like [[onFinalizeCase]] but does not introduce a scope, allowing finalization to occur after
+    * subsequent appends or other scope-preserving transformations.
+    */
+  def onFinalizeCaseWeak[F2[x] >: F[x]](f: ExitCase[Throwable] => F2[Unit])(
+      implicit F2: Applicative[F2]): Stream[F2, O] =
+    Stream.fromFreeC(Algebra.acquire[F2, O, Unit](().pure[F2], (_, ec) => f(ec)).flatMap {
+      case (_, _) => get[F2, O]
+    })
 
   /**
     * Like [[Stream#evalMap]], but will evaluate effects in parallel, emitting the results

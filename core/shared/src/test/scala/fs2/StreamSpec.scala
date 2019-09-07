@@ -581,6 +581,25 @@ class StreamSpec extends Fs2Spec {
             .asserting(_ shouldBe expected)
         }
 
+        "onFinalizeWeak" in {
+          Ref[IO]
+            .of(List.empty[String])
+            .flatMap { st =>
+              def record(s: String): IO[Unit] = st.update(_ :+ s)
+              Stream
+                .emit("emit")
+                .onFinalize(record("1")) // This gets closed
+                .onFinalize(record("2")) // This gets extended
+                .onFinalizeWeak(record("3")) // This joins extended
+                .onFinalizeWeak(record("4")) // This joins extended
+                .compile
+                .resource
+                .lastOrError
+                .use(x => record(x)) >> st.get
+            }
+            .asserting(_ shouldBe List("1", "emit", "2", "3", "4"))
+        }
+
         "last scope extended, not all scopes" - {
           "1" in {
             Ref[IO]
