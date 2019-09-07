@@ -3140,7 +3140,7 @@ object Stream extends StreamLowPriority {
 
   /** Like `eval`, but lifts a foldable structure. **/
   def evals[F[_], S[_]: Foldable, O](fo: F[S[O]]): Stream[F, O] =
-    eval(fo).flatMap(_.foldMap(Stream.emit))
+    eval(fo).flatMap(so => Stream.emits(so.toList))
 
   /** Like `evals`, but lifts any Seq in the effect. **/
   def evalSeq[F[_], S[A] <: Seq[A], O](fo: F[S[O]]): Stream[F, O] =
