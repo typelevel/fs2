@@ -3520,6 +3520,17 @@ object Stream extends StreamLowPriority {
     suspend(go(s))
   }
 
+  def unfoldLoopEval[F[_], S, O](s: S)(f: S => F[(O, Option[S])]): Stream[F, O] =
+    Pull
+      .loop[F, O, S](
+        s =>
+          Pull.eval(f(s)).flatMap {
+            case (o, sOpt) => Pull.output1(o) >> Pull.pure(sOpt)
+          }
+      )(s)
+      .void
+      .stream
+
   /** Provides syntax for streams that are invariant in `F` and `O`. */
   implicit def InvariantOps[F[_], O](s: Stream[F, O]): InvariantOps[F, O] =
     new InvariantOps(s.get)
