@@ -3469,7 +3469,7 @@ object Stream extends StreamLowPriority {
     * }}}
     */
   def suspend[F[_], O](s: => Stream[F, O]): Stream[F, O] =
-    fromFreeC(Algebra.suspend(s.get))
+    fromFreeC(FreeC.suspend(s.get))
 
   /**
     * Creates a stream by successively applying `f` until a `None` is returned, emitting

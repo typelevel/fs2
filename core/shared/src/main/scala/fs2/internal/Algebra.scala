@@ -158,9 +158,6 @@ private[fs2] object Algebra {
   def raiseError[F[_], O](t: Throwable): FreeC[Algebra[F, O, ?], INothing] =
     FreeC.raiseError[Algebra[F, O, ?]](t)
 
-  def suspend[F[_], O, R](f: => FreeC[Algebra[F, O, ?], R]): FreeC[Algebra[F, O, ?], R] =
-    FreeC.suspend(f)
-
   def translate[F[_], G[_], O](
       s: FreeC[Algebra[F, O, ?], Unit],
       u: F ~> G
