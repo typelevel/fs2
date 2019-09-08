@@ -2768,6 +2768,42 @@ class StreamSpec extends Fs2Spec {
         v.drop(1).scanLeft(h)(f))
     }
 
+    "scope" - {
+      "1" in {
+        val c = new java.util.concurrent.atomic.AtomicLong(0)
+        val s1 = Stream.emit("a").covary[IO]
+        val s2 = Stream
+          .bracket(IO { c.incrementAndGet() shouldBe 1L; () }) { _ =>
+            IO { c.decrementAndGet(); () }
+          }
+          .flatMap(_ => Stream.emit("b"))
+        (s1.scope ++ s2)
+          .take(2)
+          .scope
+          .repeat
+          .take(4)
+          .merge(Stream.eval_(IO.unit))
+          .compile
+          .drain
+          .asserting(_ => c.get shouldBe 0L)
+      }
+
+      "2" in {
+        Stream
+          .eval(Ref.of[IO, Int](0))
+          .flatMap { ref =>
+            Stream(1).flatMap { i =>
+              Stream
+                .bracketWeak(ref.update(_ + 1))(_ => ref.update(_ - 1))
+                .flatMap(_ => Stream.eval(ref.get)) ++ Stream.eval(ref.get)
+            }.scope ++ Stream.eval(ref.get)
+          }
+          .compile
+          .toList
+          .asserting(_ shouldBe List(1, 1, 0))
+      }
+    }
+
     "sleep" in {
       val delay = 200.millis
       // force a sync up in duration, then measure how long sleep takes
@@ -3240,6 +3276,13 @@ class StreamSpec extends Fs2Spec {
         as.zipAll(ones)("Z", "2").take(3).toList shouldBe List("A" -> "1", "A" -> "1", "A" -> "1")
       }
 
+      "zip with scopes" in {
+        // this tests that streams opening resources on each branch will close
+        // scopes independently.
+        val s = Stream(0).scope
+        (s ++ s).zip(s).toList shouldBe List((0, 0))
+      }
+
       "issue #1120 - zip with uncons" in {
         // this tests we can properly look up scopes for the zipped streams
         val rangeStream = Stream.emits((0 to 3).toList)
@@ -3336,7 +3379,7 @@ class StreamSpec extends Fs2Spec {
       "#1107 - scope" in {
         Stream(0)
           .covary[IO]
-          .onFinalize(IO.unit)
+          .scope
           .repeat
           .take(10000)
           .flatMap(_ => Stream.empty) // Never emit an element downstream
