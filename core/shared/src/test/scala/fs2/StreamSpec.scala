@@ -940,13 +940,21 @@ class StreamSpec extends Fs2Spec {
     "evalFilterAsync" - {
       "with effectful const(true)" in forAll { (s: Stream[Pure, Int]) =>
         withClue("takes all elements") {
-          s.covary[IO].evalFilterAsync(5)(_ => IO.pure(true)).compile.toList.asserting(_ shouldBe s.toList)
+          s.covary[IO]
+            .evalFilterAsync(5)(_ => IO.pure(true))
+            .compile
+            .toList
+            .asserting(_ shouldBe s.toList)
         }
       }
 
       "with effectful const(false)" in forAll { (s: Stream[Pure, Int]) =>
         withClue("takes no elements") {
-          s.covary[IO].evalFilterAsync(5)(_ => IO.pure(false)).compile.toList.asserting(_ shouldBe empty)
+          s.covary[IO]
+            .evalFilterAsync(5)(_ => IO.pure(false))
+            .compile
+            .toList
+            .asserting(_ shouldBe empty)
         }
       }
 
@@ -958,8 +966,39 @@ class StreamSpec extends Fs2Spec {
           .toList
           .asserting(_ shouldBe List(2, 4, 6, 8))
       }
-    }
 
+      "filters up to N items in parallel" in {
+        val s = Stream.range(0, 100)
+        val n = 5
+
+        (Semaphore[IO](n), SignallingRef[IO, Int](0)).tupled
+          .flatMap {
+            case (sem, sig) =>
+              val tested = s
+                .covary[IO]
+                .evalFilterAsync(n) { elem =>
+                  val ensureAcquired =
+                    sem.tryAcquire.ifM(
+                      IO.unit,
+                      IO.raiseError(new Throwable("Couldn't acquire permit"))
+                    )
+
+                  ensureAcquired.bracket(
+                    _ => sig.update(_ + 1).bracket(_ => IO.sleep(10.millis))(_ => sig.update(_ - 1))
+                  )(_ => sem.release) *>
+                    IO.pure(true)
+                }
+
+              sig.continuous
+                .interruptWhen(tested.drain)
+                .fold1(_.max(_))
+                .compile
+                .lastOrError
+                .product(sig.get)
+          }
+          .asserting((_ shouldBe ((n, 0))))
+      }
+    }
     "evalMapAccumulate" in forAll { (s: Stream[Pure, Int], m: Int, n0: PosInt) =>
       val sVector = s.toVector
       val n = n0 % 20 + 1
