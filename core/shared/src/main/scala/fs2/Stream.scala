@@ -1034,9 +1034,9 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
   def evalFilterAsync[F2[x] >: F[x]: Concurrent](
       maxConcurrent: Int
   )(f: O => F2[Boolean]): Stream[F2, O] =
-    map { o =>
-      Stream.eval(f(o)).ifM(Stream.emit(o), Stream.empty)
-    }.parJoin(maxConcurrent)
+    parEvalMap[F2, Stream[F2, O]](maxConcurrent) { o =>
+      f(o).map(if (_) Stream.emit(o) else Stream.empty)
+    }.flatten
 
   /**
     * Like `filter`, but the predicate `f` depends on the previously emitted and
