@@ -4614,7 +4614,11 @@ object Stream extends StreamLowPriority {
         λ[ZipStream[M, ?] ~> Stream[M, ?]](_.underlying)
     }
 
-  final case class ZipStream[F[_], O](underlying: Stream[F, O])
+  final case class ZipStream[F[_], O](underlying: Stream[F, O]) {
+    //temporary - for nice output in failed property tests
+    override def toString: String = underlying.asInstanceOf[Stream[IO, O]].compile.toList.map(_.toString).unsafeRunSync()
+  }
+
   object ZipStream {
     implicit def applicativeInstance[F[_]]: CommutativeApplicative[ZipStream[F, ?]] =
       new CommutativeApplicative[ZipStream[F, ?]] {

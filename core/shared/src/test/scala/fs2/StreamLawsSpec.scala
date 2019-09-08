@@ -63,7 +63,7 @@ class StreamLawsSpec extends Fs2Spec with StreamArbitrary {
   )
   checkAll("MonoidK[Stream[F, ?]]", MonoidKTests[Stream[IO, ?]].monoidK[Int])
   checkAll(
-    "NonEmptyParalell[Stream[F, ?]]",
+    "NonEmptyParallel[Stream[F, ?]]",
     NonEmptyParallelTests[Stream[IO, ?], Stream.ZipStream[IO, ?]].nonEmptyParallel[Int, String]
   )
   checkAll(
