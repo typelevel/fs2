@@ -1850,6 +1850,12 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * subsequent appends or other scope-preserving transformations.
     *
     * Scopes can be manually introduced via [[scope]] if desired.
+    * 
+    * Example use case: `a.concurrently(b).onFinalizeWeak(f).compile.resource.use(g)`
+    * In this example, use of `onFinalize` would result in `b` shutting down before
+    * `g` is run, because `onFinalize` creates a scope, whose lifetime is extended
+    * over the compiled resource. By using `onFinalizeWeak` instead, `f` is attached
+    * to the scope governing `concurrently`.
     */
   def onFinalizeWeak[F2[x] >: F[x]](f: F2[Unit])(implicit F2: Applicative[F2]): Stream[F2, O] =
     onFinalizeCaseWeak(_ => f)
@@ -1866,6 +1872,8 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * subsequent appends or other scope-preserving transformations.
     *
     * Scopes can be manually introduced via [[scope]] if desired.
+    * 
+    * See [[onFinalizeWeak]] for more details on semantics.
     */
   def onFinalizeCaseWeak[F2[x] >: F[x]](f: ExitCase[Throwable] => F2[Unit])(
       implicit F2: Applicative[F2]): Stream[F2, O] =
