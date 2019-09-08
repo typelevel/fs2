@@ -220,7 +220,7 @@ object Pull extends PullLowPriority {
     * allowing use of a mutable value in pull computations.
     */
   def suspend[F[x] >: Pure[x], O, R](p: => Pull[F, O, R]): Pull[F, O, R] =
-    fromFreeC(Algebra.suspend(p.get))
+    fromFreeC(FreeC.suspend(p.get))
 
   /** `Sync` instance for `Pull`. */
   implicit def syncInstance[F[_], O](
