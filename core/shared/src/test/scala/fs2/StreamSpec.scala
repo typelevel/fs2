@@ -914,6 +914,52 @@ class StreamSpec extends Fs2Spec {
       }
     }
 
+    "evalFilter" - {
+      "with effectful const(true)" in forAll { (s: Stream[Pure, Int]) =>
+        withClue("takes all elements") {
+          s.evalFilter(_ => IO.pure(true)).compile.toList.asserting(_ shouldBe s.toList)
+        }
+      }
+
+      "with effectful const(false)" in forAll { (s: Stream[Pure, Int]) =>
+        withClue("takes no elements") {
+          s.evalFilter(_ => IO.pure(false)).compile.toList.asserting(_ shouldBe empty)
+        }
+      }
+
+      "with function that filters out odd elements" in {
+        Stream
+          .range(1, 10)
+          .evalFilter(e => IO(e % 2 == 0))
+          .compile
+          .toList
+          .asserting(_ shouldBe List(2, 4, 6, 8))
+      }
+    }
+
+    "evalFilterAsync" - {
+      "with effectful const(true)" in forAll { (s: Stream[Pure, Int]) =>
+        withClue("takes all elements") {
+          s.covary[IO].evalFilterAsync(5)(_ => IO.pure(true)).compile.toList.asserting(_ shouldBe s.toList)
+        }
+      }
+
+      "with effectful const(false)" in forAll { (s: Stream[Pure, Int]) =>
+        withClue("takes no elements") {
+          s.covary[IO].evalFilterAsync(5)(_ => IO.pure(false)).compile.toList.asserting(_ shouldBe empty)
+        }
+      }
+
+      "with function that filters out odd elements" in {
+        Stream
+          .range(1, 10)
+          .evalFilterAsync[IO](5)(e => IO(e % 2 == 0))
+          .compile
+          .toList
+          .asserting(_ shouldBe List(2, 4, 6, 8))
+      }
+    }
+
     "evalMapAccumulate" in forAll { (s: Stream[Pure, Int], m: Int, n0: PosInt) =>
       val sVector = s.toVector
       val n = n0 % 20 + 1
@@ -1333,7 +1379,7 @@ class StreamSpec extends Fs2Spec {
             .range(0, 3)
             .covary[SyncIO] ++ Stream.raiseError[SyncIO](new Err)).unchunk.pull.echo
             .handleErrorWith { t =>
-              i += 1; println(i); Pull.done
+              i += 1; Pull.done
             }
             .stream
             .compile
