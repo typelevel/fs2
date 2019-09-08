@@ -915,13 +915,17 @@ class StreamSpec extends Fs2Spec {
     }
 
     "evalFilter" - {
-      "with effectful const(true)" in forAll { (s: Stream[Pure, Int]) =>
+      "with effectful const(true)" in {
+        val s = pureStreamGenerator[Int].sample
+
         withClue("takes all elements") {
           s.evalFilter(_ => SyncIO.pure(true)).compile.toList.asserting(_ shouldBe s.toList)
         }
       }
 
-      "with effectful const(false)" in forAll { (s: Stream[Pure, Int]) =>
+      "with effectful const(false)" in {
+        val s = pureStreamGenerator[Int].sample
+
         withClue("takes no elements") {
           s.evalFilter(_ => SyncIO.pure(false)).compile.toList.asserting(_ shouldBe empty)
         }
