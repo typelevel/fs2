@@ -35,7 +35,7 @@ private[fs2] object Algebra {
   private[this] final case class Acquire[F[_], R](
       resource: F[R],
       release: (R, ExitCase[Throwable]) => F[Unit]
-  ) extends AlgEffect[F, (R, Resource[F])]
+  ) extends AlgEffect[F, R]
   private[this] final case class OpenScope[F[_]](interruptible: Option[Concurrent[F]])
       extends AlgEffect[F, Token]
 
@@ -61,8 +61,8 @@ private[fs2] object Algebra {
   def acquire[F[_], O, R](
       resource: F[R],
       release: (R, ExitCase[Throwable]) => F[Unit]
-  ): FreeC[Algebra[F, O, ?], (R, Resource[F])] =
-    FreeC.Eval[Algebra[F, O, ?], (R, Resource[F])](Acquire(resource, release))
+  ): FreeC[Algebra[F, O, ?], R] =
+    FreeC.Eval[Algebra[F, O, ?], R](Acquire(resource, release))
 
   def mapOutput[F[_], A, B](fun: A => B): Algebra[F, A, ?] ~> Algebra[F, B, ?] =
     new (Algebra[F, A, ?] ~> Algebra[F, B, ?]) {

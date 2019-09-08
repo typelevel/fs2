@@ -91,62 +91,6 @@ object Pull extends PullLowPriority {
   @inline private[fs2] def fromFreeC[F[_], O, R](free: FreeC[Algebra[F, O, ?], R]): Pull[F, O, R] =
     new Pull(free.asInstanceOf[FreeC[Algebra[Nothing, Nothing, ?], R]])
 
-  /** Result of `acquireCancellable`. */
-  sealed abstract class Cancellable[+F[_], +R] {
-
-    /** Cancels the cleanup of the resource (typically because the resource was manually cleaned up). */
-    val cancel: Pull[F, INothing, Unit]
-
-    /** Acquired resource. */
-    val resource: R
-
-    /** Returns a new cancellable with the same `cancel` pull but with the resource returned from applying `R` to `f`. */
-    def map[R2](f: R => R2): Cancellable[F, R2]
-  }
-  object Cancellable {
-    def apply[F[_], R](cancel0: Pull[F, INothing, Unit], r: R): Cancellable[F, R] =
-      new Cancellable[F, R] {
-        val cancel = cancel0
-        val resource = r
-        def map[R2](f: R => R2): Cancellable[F, R2] = apply(cancel, f(r))
-      }
-  }
-
-  /**
-    * Acquire a resource within a `Pull`. The acquired resource is returned as the result value of the pull.
-    */
-  def acquire[F[_]: RaiseThrowable, R](r: F[R])(cleanup: R => F[Unit]): Pull[F, INothing, R] =
-    acquireCancellable(r)(cleanup).map(_.resource)
-
-  /**
-    * Like [[acquire]] but the result value consists of a cancellation
-    * pull and the acquired resource. Running the cancellation pull frees the resource.
-    */
-  def acquireCancellable[F[_]: RaiseThrowable, R](
-      r: F[R]
-  )(cleanup: R => F[Unit]): Pull[F, INothing, Cancellable[F, R]] =
-    acquireCancellableCase(r)((r, _) => cleanup(r))
-
-  /**
-    * Like [[acquireCancellable]] but provides an `ExitCase[Throwable]` to the `cleanup` action,
-    * indicating the cause for cleanup execution.
-    */
-  def acquireCancellableCase[F[_]: RaiseThrowable, R](
-      r: F[R]
-  )(cleanup: (R, ExitCase[Throwable]) => F[Unit]): Pull[F, INothing, Cancellable[F, R]] =
-    Stream
-      .bracketWithResource(r)(cleanup)
-      .pull
-      .uncons1
-      .flatMap {
-        case None => Pull.raiseError[F](new RuntimeException("impossible"))
-        case Some(((res, r), tl)) =>
-          Pull.pure(Cancellable(Pull.eval(res.release(ExitCase.Canceled)).flatMap {
-            case Left(t)  => Pull.fromFreeC(Algebra.raiseError[F, INothing](t))
-            case Right(r) => Pull.pure(r)
-          }, r))
-      }
-
   /**
     * Like [[eval]] but if the effectful value fails, the exception is returned in a `Left`
     * instead of failing the pull.

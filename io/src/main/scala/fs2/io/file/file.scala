@@ -25,10 +25,12 @@ package object file {
       blocker: Blocker,
       chunkSize: Int
   ): Stream[F, Byte] =
-    pulls
-      .fromPath(path, blocker, List(StandardOpenOption.READ))
-      .flatMap(c => pulls.readAllFromFileHandle(chunkSize)(c.resource))
-      .stream
+    Stream
+      .resource(
+        FileHandle
+          .fromPath(path, blocker, List(StandardOpenOption.READ))
+      )
+      .flatMap(c => pulls.readAllFromFileHandle(chunkSize)(c).stream)
 
   /**
     * Reads a range of data synchronously from the file at the specified `java.nio.file.Path`.
@@ -42,10 +44,9 @@ package object file {
       start: Long,
       end: Long
   ): Stream[F, Byte] =
-    pulls
-      .fromPath(path, blocker, List(StandardOpenOption.READ))
-      .flatMap(c => pulls.readRangeFromFileHandle(chunkSize, start, end)(c.resource))
-      .stream
+    Stream
+      .resource(FileHandle.fromPath(path, blocker, List(StandardOpenOption.READ)))
+      .flatMap(c => pulls.readRangeFromFileHandle(chunkSize, start, end)(c).stream)
 
   /**
     * Returns an infinite stream of data from the file at the specified path.
@@ -64,10 +65,9 @@ package object file {
       offset: Long = 0L,
       pollDelay: FiniteDuration = 1.second
   ): Stream[F, Byte] =
-    pulls
-      .fromPath(path, blocker, List(StandardOpenOption.READ))
-      .flatMap(c => pulls.tailFromFileHandle(chunkSize, offset, pollDelay)(c.resource))
-      .stream
+    Stream
+      .resource(FileHandle.fromPath(path, blocker, List(StandardOpenOption.READ)))
+      .flatMap(c => pulls.tailFromFileHandle(chunkSize, offset, pollDelay)(c).stream)
 
   /**
     * Writes all data synchronously to the file at the specified `java.nio.file.Path`.
@@ -80,13 +80,14 @@ package object file {
       flags: Seq[StandardOpenOption] = List(StandardOpenOption.CREATE)
   ): Pipe[F, Byte, Unit] =
     in =>
-      (for {
-        out <- pulls.fromPath(path, blocker, StandardOpenOption.WRITE :: flags.toList)
-        fileHandle = out.resource
-        offset <- if (flags.contains(StandardOpenOption.APPEND)) Pull.eval(fileHandle.size)
-        else Pull.pure(0L)
-        _ <- pulls.writeAllToFileHandleAtOffset(in, fileHandle, offset)
-      } yield ()).stream
+      for {
+        fileHandle <- Stream.resource(
+          FileHandle.fromPath(path, blocker, StandardOpenOption.WRITE :: flags.toList)
+        )
+        offset <- if (flags.contains(StandardOpenOption.APPEND)) Stream.eval(fileHandle.size)
+        else Stream(0L)
+        _ <- pulls.writeAllToFileHandleAtOffset(in, fileHandle, offset).stream
+      } yield ()
 
   private def _writeAll0[F[_]](
       in: Stream[F, Byte],

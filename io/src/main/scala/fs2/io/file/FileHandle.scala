@@ -4,8 +4,9 @@ package file
 
 import java.nio.ByteBuffer
 import java.nio.channels.{FileChannel, FileLock}
+import java.nio.file.{OpenOption, Path}
 
-import cats.effect.{Blocker, ContextShift, Sync}
+import cats.effect.{Blocker, ContextShift, Resource, Sync}
 
 /**
   * Provides the ability to read/write/lock/inspect a file in the effect `F`.
@@ -88,12 +89,24 @@ trait FileHandle[F[_]] {
   def write(bytes: Chunk[Byte], offset: Long): F[Int]
 }
 
-private[file] object FileHandle {
+object FileHandle {
 
-  /**
-    * Creates a `FileHandle[F]` from a `java.nio.channels.FileChannel`.
-    */
-  private[file] def fromFileChannel[F[_]](
+  /** Creates a `FileHandle` for the file at the supplied `Path`. */
+  def fromPath[F[_]](path: Path, blocker: Blocker, flags: Seq[OpenOption])(
+      implicit F: Sync[F],
+      cs: ContextShift[F]
+  ): Resource[F, FileHandle[F]] =
+    fromFileChannel(blocker.delay(FileChannel.open(path, flags: _*)), blocker)
+
+  /** Creates a `FileHandle` for the supplied `FileChannel`. */
+  def fromFileChannel[F[_]](channel: F[FileChannel], blocker: Blocker)(
+      implicit F: Sync[F],
+      cs: ContextShift[F]
+  ): Resource[F, FileHandle[F]] =
+    Resource.make(channel)(ch => blocker.delay(ch.close())).map(ch => mk(ch, blocker))
+
+  /** Creates a `FileHandle[F]` from a `java.nio.channels.FileChannel`. */
+  private def mk[F[_]](
       chan: FileChannel,
       blocker: Blocker
   )(implicit F: Sync[F], cs: ContextShift[F]): FileHandle[F] =

@@ -1882,7 +1882,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * subsequent appends or other scope-preserving transformations.
     *
     * Scopes can be manually introduced via [[scope]] if desired.
-    * 
+    *
     * Example use case: `a.concurrently(b).onFinalizeWeak(f).compile.resource.use(g)`
     * In this example, use of `onFinalize` would result in `b` shutting down before
     * `g` is run, because `onFinalize` creates a scope, whose lifetime is extended
@@ -1905,14 +1905,15 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * subsequent appends or other scope-preserving transformations.
     *
     * Scopes can be manually introduced via [[scope]] if desired.
-    * 
+    *
     * See [[onFinalizeWeak]] for more details on semantics.
     */
-  def onFinalizeCaseWeak[F2[x] >: F[x]](f: ExitCase[Throwable] => F2[Unit])(
-      implicit F2: Applicative[F2]): Stream[F2, O] =
-    Stream.fromFreeC(Algebra.acquire[F2, O, Unit](().pure[F2], (_, ec) => f(ec)).flatMap {
-      case (_, _) => get[F2, O]
-    })
+  def onFinalizeCaseWeak[F2[x] >: F[x]](
+      f: ExitCase[Throwable] => F2[Unit]
+  )(implicit F2: Applicative[F2]): Stream[F2, O] =
+    Stream.fromFreeC(
+      Algebra.acquire[F2, O, Unit](().pure[F2], (_, ec) => f(ec)).flatMap(_ => get[F2, O])
+    )
 
   /**
     * Like [[Stream#evalMap]], but will evaluate effects in parallel, emitting the results
@@ -3036,62 +3037,16 @@ object Stream extends StreamLowPriority {
   def bracketCase[F[x] >: Pure[x], R](
       acquire: F[R]
   )(release: (R, ExitCase[Throwable]) => F[Unit]): Stream[F, R] =
-    fromFreeC(Algebra.acquire[F, R, R](acquire, release).flatMap {
-      case (r, token) => Stream.emit(r).covary[F].get[F, R]
-    }).scope
+    bracketCaseWeak(acquire)(release).scope
 
   /**
     * Like [[bracketCase]] but no scope is introduced, causing resource finalization to
     * occur at the end of the current scope at the time of acquisition.
     */
-  def bracketCaseWeak[F[x] >: Pure[x], R](acquire: F[R])(
-      release: (R, ExitCase[Throwable]) => F[Unit]): Stream[F, R] =
-    fromFreeC(Algebra.acquire[F, R, R](acquire, release).flatMap {
-      case (r, token) => Stream.emit(r).covary[F].get[F, R]
-    })
-
-  /**
-    * Like [[bracket]] but the result value consists of a cancellation
-    * Stream and the acquired resource. Running the cancellation Stream frees the resource.
-    * This allows the acquired resource to be released earlier than at the end of the
-    * containing Stream scope.
-    * Note that this operation is safe: if the cancellation Stream is not run manually,
-    * the resource is still guaranteed be release at the end of the containing Stream scope.
-    */
-  def bracketCancellable[F[x] >: Pure[x], R](
+  def bracketCaseWeak[F[x] >: Pure[x], R](
       acquire: F[R]
-  )(release: R => F[Unit]): Stream[F, (Stream[F, Unit], R)] =
-    bracketCaseCancellable(acquire)((r, _) => release(r))
-
-  /**
-    * Like [[bracketCancellable]] but the release action is passed an `ExitCase[Throwable]`.
-    *
-    * `ExitCase.Canceled` is passed to the release action in the event of either stream interruption or
-    * overall compiled effect cancelation.
-    */
-  def bracketCaseCancellable[F[x] >: Pure[x], R](
-      acquire: F[R]
-  )(release: (R, ExitCase[Throwable]) => F[Unit]): Stream[F, (Stream[F, Unit], R)] =
-    bracketWithResource(acquire)(release)
-      .map {
-        case (res, r) =>
-          (Stream.eval(res.release(ExitCase.Canceled)).flatMap {
-            case Left(t)  => Stream.fromFreeC(Algebra.raiseError[F, Unit](t))
-            case Right(u) => Stream.emit(u)
-          }, r)
-      }
-
-  private[fs2] def bracketWithResource[F[x] >: Pure[x], R](
-      acquire: F[R]
-  )(release: (R, ExitCase[Throwable]) => F[Unit]): Stream[F, (fs2.internal.Resource[F], R)] =
-    fromFreeC(Algebra.acquire[F, (fs2.internal.Resource[F], R), R](acquire, release).flatMap {
-      case (r, res) =>
-        Stream
-          .emit(r)
-          .covary[F]
-          .map(o => (res, o))
-          .get[F, (fs2.internal.Resource[F], R)]
-    }).scope
+  )(release: (R, ExitCase[Throwable]) => F[Unit]): Stream[F, R] =
+    fromFreeC(Algebra.acquire[F, R, R](acquire, release).flatMap(Algebra.output1(_)))
 
   /**
     * Creates a pure stream that emits the elements of the supplied chunk.
