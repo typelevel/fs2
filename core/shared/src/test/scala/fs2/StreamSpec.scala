@@ -917,20 +917,20 @@ class StreamSpec extends Fs2Spec {
     "evalFilter" - {
       "with effectful const(true)" in forAll { (s: Stream[Pure, Int]) =>
         withClue("takes all elements") {
-          s.evalFilter(_ => IO.pure(true)).compile.toList.asserting(_ shouldBe s.toList)
+          s.evalFilter(_ => SyncIO.pure(true)).compile.toList.asserting(_ shouldBe s.toList)
         }
       }
 
       "with effectful const(false)" in forAll { (s: Stream[Pure, Int]) =>
         withClue("takes no elements") {
-          s.evalFilter(_ => IO.pure(false)).compile.toList.asserting(_ shouldBe empty)
+          s.evalFilter(_ => SyncIO.pure(false)).compile.toList.asserting(_ shouldBe empty)
         }
       }
 
       "with function that filters out odd elements" in {
         Stream
           .range(1, 10)
-          .evalFilter(e => IO(e % 2 == 0))
+          .evalFilter(e => SyncIO(e % 2 == 0))
           .compile
           .toList
           .asserting(_ shouldBe List(2, 4, 6, 8))
@@ -938,7 +938,9 @@ class StreamSpec extends Fs2Spec {
     }
 
     "evalFilterAsync" - {
-      "with effectful const(true)" in forAll { (s: Stream[Pure, Int]) =>
+      "with effectful const(true)" in { 
+        val s: Stream[Pure, Int] = Stream.range(10, 1000)
+
         withClue("takes all elements") {
           s.covary[IO]
             .evalFilterAsync(5)(_ => IO.pure(true))
@@ -948,7 +950,9 @@ class StreamSpec extends Fs2Spec {
         }
       }
 
-      "with effectful const(false)" in forAll { (s: Stream[Pure, Int]) =>
+      "with effectful const(false)" in  {
+        val s: Stream[Pure, Int] = Stream.range(10, 1000)
+
         withClue("takes no elements") {
           s.covary[IO]
             .evalFilterAsync(5)(_ => IO.pure(false))
