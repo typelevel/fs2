@@ -127,8 +127,7 @@ import scala.concurrent.duration._
   * @hideImplicitConversion PureOps
   * @hideImplicitConversion IdOps
   **/
-final class Stream[+F[_], +O] private (private val free: FreeC[Nothing, Nothing, Unit])
-    extends AnyVal {
+final class Stream[+F[_], +O] private (private val free: FreeC[Nothing, O, Unit]) extends AnyVal {
 
   private[fs2] def get[F2[x] >: F[x], O2 >: O]: FreeC[F2, O2, Unit] =
     free.asInstanceOf[FreeC[F2, O2, Unit]]
@@ -2953,7 +2952,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Nothing, Nothing,
 
 object Stream extends StreamLowPriority {
   @inline private[fs2] def fromFreeC[F[_], O](free: FreeC[F, O, Unit]): Stream[F, O] =
-    new Stream(free.asInstanceOf[FreeC[Nothing, Nothing, Unit]])
+    new Stream(free.asInstanceOf[FreeC[Nothing, O, Unit]])
 
   /** Creates a pure stream that emits the supplied values. To convert to an effectful stream, use `covary`. */
   def apply[F[x] >: Pure[x], O](os: O*): Stream[F, O] = emits(os)
@@ -3709,7 +3708,7 @@ object Stream extends StreamLowPriority {
 
     /** Gets a projection of this stream that allows converting it to a `Pull` in a number of ways. */
     def pull: ToPull[F, O] =
-      new ToPull[F, O](free.asInstanceOf[FreeC[Nothing, Nothing, Unit]])
+      new ToPull[F, O](free.asInstanceOf[FreeC[Nothing, O, Unit]])
 
     /**
       * Repeatedly invokes `using`, running the resultant `Pull` each time, halting when a pull
@@ -3796,7 +3795,7 @@ object Stream extends StreamLowPriority {
 
   /** Projection of a `Stream` providing various ways to get a `Pull` from the `Stream`. */
   final class ToPull[F[_], O] private[Stream] (
-      private val free: FreeC[Nothing, Nothing, Unit]
+      private val free: FreeC[Nothing, O, Unit]
   ) extends AnyVal {
 
     private def self: Stream[F, O] =
@@ -4187,7 +4186,7 @@ object Stream extends StreamLowPriority {
 
   /** Projection of a `Stream` providing various ways to compile a `Stream[F,O]` to an `F[...]`. */
   final class CompileOps[F[_], G[_], O] private[Stream] (
-      private val free: FreeC[Nothing, Nothing, Unit]
+      private val free: FreeC[Nothing, O, Unit]
   )(implicit compiler: Compiler[F, G]) {
 
     private def self: Stream[F, O] =
