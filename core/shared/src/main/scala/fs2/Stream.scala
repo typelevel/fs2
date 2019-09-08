@@ -4601,6 +4601,30 @@ object Stream extends StreamLowPriority {
       def empty[A]: Stream[F, A] = Stream.empty
       def combineK[A](x: Stream[F, A], y: Stream[F, A]): Stream[F, A] = x ++ y
     }
+
+  implicit def parallelInstance[M[_]]: Parallel.Aux[Stream[M, ?], ZipStream[M, ?]] =
+    new Parallel[Stream[M, ?]] {
+      type F[A] = ZipStream[M, A]
+      val monad: Monad[Stream[M, ?]] = Stream.monadInstance[M]
+      val applicative: Applicative[ZipStream[M, ?]] = ZipStream.applicativeInstance[M]
+
+      val parallel: Stream[M, ?] ~> ZipStream[M, ?] =
+        λ[Stream[M, ?] ~> ZipStream[M, ?]](ZipStream(_))
+      val sequential: ZipStream[M, ?] ~> Stream[M, ?] =
+        λ[ZipStream[M, ?] ~> Stream[M, ?]](_.underlying)
+    }
+
+  final case class ZipStream[F[_], O](underlying: Stream[F, O])
+  object ZipStream {
+    implicit def applicativeInstance[F[_]]: CommutativeApplicative[ZipStream[F, ?]] =
+      new CommutativeApplicative[ZipStream[F, ?]] {
+        def ap[A, B](ff: ZipStream[F, A => B])(fa: ZipStream[F, A]): ZipStream[F, B] =
+          ZipStream(ff.underlying.zipWith(fa.underlying) { (f, a) =>
+            f(a)
+          })
+        def pure[A](x: A): ZipStream[F, A] = ZipStream(Stream.constant(x))
+      }
+  }
 }
 
 private[fs2] trait StreamLowPriority {

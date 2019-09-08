@@ -30,6 +30,11 @@ trait StreamArbitrary {
       )
     )
 
+  implicit def arbZipStream[F[_], O](
+      implicit arbStream: Arbitrary[Stream[F, O]]
+  ): Arbitrary[Stream.ZipStream[F, O]] =
+    Arbitrary(arbStream.arbitrary.map(Stream.ZipStream(_)))
+
 }
 
 class StreamLawsSpec extends Fs2Spec with StreamArbitrary {
@@ -43,6 +48,11 @@ class StreamLawsSpec extends Fs2Spec with StreamArbitrary {
           .eqv(x.attempt.compile.toVector, y.attempt.compile.toVector)
     )
 
+  implicit def eqZipStream[F[_], O](
+      implicit eqStream: Eq[Stream[F, O]]
+  ): Eq[Stream.ZipStream[F, O]] =
+    Eq.by(_.underlying)
+
   checkAll(
     "MonadError[Stream[F, ?], Throwable]",
     MonadErrorTests[Stream[IO, ?], Throwable].monadError[Int, Int, Int]
@@ -52,4 +62,12 @@ class StreamLawsSpec extends Fs2Spec with StreamArbitrary {
     FunctorFilterTests[Stream[IO, ?]].functorFilter[String, Int, Int]
   )
   checkAll("MonoidK[Stream[F, ?]]", MonoidKTests[Stream[IO, ?]].monoidK[Int])
+  checkAll(
+    "NonEmptyParalell[Stream[F, ?]]",
+    NonEmptyParallelTests[Stream[IO, ?], Stream.ZipStream[IO, ?]].nonEmptyParallel[Int, String]
+  )
+  checkAll(
+    "CommutativeApply[ZipStream[F, ?]]",
+    CommutativeApplyTests[Stream.ZipStream[IO, ?]].commutativeApply[Int, String, Boolean]
+  )
 }
