@@ -5,12 +5,12 @@
 
 set -o pipefail
 
-declare -r sbt_release_version="0.13.16"
-declare -r sbt_unreleased_version="0.13.16"
+declare -r sbt_release_version="1.3.0"
+declare -r sbt_unreleased_version="1.3.0"
 
-declare -r latest_213="2.13.0-M2"
-declare -r latest_212="2.12.4"
-declare -r latest_211="2.11.11"
+declare -r latest_213="2.13.0"
+declare -r latest_212="2.12.9"
+declare -r latest_211="2.11.12"
 declare -r latest_210="2.10.6"
 declare -r latest_29="2.9.3"
 declare -r latest_28="2.8.2"
