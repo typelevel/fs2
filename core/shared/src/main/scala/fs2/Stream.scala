@@ -3044,47 +3044,6 @@ object Stream extends StreamLowPriority {
     * occur at the end of the current scope at the time of acquisition.
     */
   def bracketCaseWeak[F[x] >: Pure[x], R](
-<<<<<<< HEAD
-=======
-      acquire: F[R]
-  )(release: (R, ExitCase[Throwable]) => F[Unit]): Stream[F, R] =
-    fromFreeC(Algebra.acquire[F, R, R](acquire, release).flatMap {
-      case (r, token) => Stream.emit(r).covary[F].get[F, R]
-    })
-
-  /**
-    * Like [[bracket]] but the result value consists of a cancellation
-    * Stream and the acquired resource. Running the cancellation Stream frees the resource.
-    * This allows the acquired resource to be released earlier than at the end of the
-    * containing Stream scope.
-    * Note that this operation is safe: if the cancellation Stream is not run manually,
-    * the resource is still guaranteed be release at the end of the containing Stream scope.
-    */
-  def bracketCancellable[F[x] >: Pure[x], R](
-      acquire: F[R]
-  )(release: R => F[Unit]): Stream[F, (Stream[F, Unit], R)] =
-    bracketCaseCancellable(acquire)((r, _) => release(r))
-
-  /**
-    * Like [[bracketCancellable]] but the release action is passed an `ExitCase[Throwable]`.
-    *
-    * `ExitCase.Canceled` is passed to the release action in the event of either stream interruption or
-    * overall compiled effect cancelation.
-    */
-  def bracketCaseCancellable[F[x] >: Pure[x], R](
-      acquire: F[R]
-  )(release: (R, ExitCase[Throwable]) => F[Unit]): Stream[F, (Stream[F, Unit], R)] =
-    bracketWithResource(acquire)(release)
-      .map {
-        case (res, r) =>
-          (Stream.eval(res.release(ExitCase.Canceled)).flatMap {
-            case Left(t)  => Stream.fromFreeC(Algebra.raiseError[F, Unit](t))
-            case Right(u) => Stream.emit(u)
-          }, r)
-      }
-
-  private[fs2] def bracketWithResource[F[x] >: Pure[x], R](
->>>>>>> series/1.1
       acquire: F[R]
   )(release: (R, ExitCase[Throwable]) => F[Unit]): Stream[F, R] =
     fromFreeC(Algebra.acquire[F, R, R](acquire, release).flatMap(Algebra.output1(_)))
