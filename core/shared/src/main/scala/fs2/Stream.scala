@@ -1912,7 +1912,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
       f: ExitCase[Throwable] => F2[Unit]
   )(implicit F2: Applicative[F2]): Stream[F2, O] =
     Stream.fromFreeC(
-      Algebra.acquire[F2, O, Unit](().pure[F2], (_, ec) => f(ec)).flatMap(get[F2, O])
+      Algebra.acquire[F2, O, Unit](().pure[F2], (_, ec) => f(ec)).flatMap(_ => get[F2, O])
     )
 
   /**
