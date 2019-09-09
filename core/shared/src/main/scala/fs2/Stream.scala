@@ -1911,9 +1911,9 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
   def onFinalizeCaseWeak[F2[x] >: F[x]](
       f: ExitCase[Throwable] => F2[Unit]
   )(implicit F2: Applicative[F2]): Stream[F2, O] =
-    Stream.fromFreeC(Algebra.acquire[F2, O, Unit](().pure[F2], (_, ec) => f(ec)).flatMap {
-      case (_, _) => get[F2, O]
-    })
+    Stream.fromFreeC(
+      Algebra.acquire[F2, O, Unit](().pure[F2], (_, ec) => f(ec)).flatMap(get[F2, O])
+    )
 
   /**
     * Like [[Stream#evalMap]], but will evaluate effects in parallel, emitting the results
@@ -3539,15 +3539,15 @@ object Stream extends StreamLowPriority {
     * res0: List[Int] = List(0, 1, 2, 3, 4, 5)
     * }}}
     */
-  def unfoldLoop[F[x] <: Pure[x], S, O](s: S)(f: S => (O, Option[S])): Stream[F, O] = 
-    Pull.loop[F, O, S]{
-      s => 
-          val (o, sOpt) = f(s)
-          Pull.output1(o) >> Pull.pure(sOpt)
-    }(s)
-    .void
-    .stream
-  
+  def unfoldLoop[F[x] <: Pure[x], S, O](s: S)(f: S => (O, Option[S])): Stream[F, O] =
+    Pull
+      .loop[F, O, S] { s =>
+        val (o, sOpt) = f(s)
+        Pull.output1(o) >> Pull.pure(sOpt)
+      }(s)
+      .void
+      .stream
+
   /** Like [[unfoldLoop]], but takes an effectful function. */
   def unfoldLoopEval[F[_], S, O](s: S)(f: S => F[(O, Option[S])]): Stream[F, O] =
     Pull
