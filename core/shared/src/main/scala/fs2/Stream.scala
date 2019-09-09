@@ -3576,6 +3576,37 @@ object Stream extends StreamLowPriority {
     suspend(go(s))
   }
 
+  /**
+    * Creates a stream by successively applying `f` to a `S`, emitting
+    * each output `O` and using each output `S` as input to the next invocation of `f`
+    * if it is Some, or terminating on None
+    *
+    * @example {{{
+    * scala> Stream.unfoldLoop(0)(i => (i, if (i < 5) Some(i+1) else None)).toList
+    * res0: List[Int] = List(0, 1, 2, 3, 4, 5)
+    * }}}
+    */
+  def unfoldLoop[F[x] <: Pure[x], S, O](s: S)(f: S => (O, Option[S])): Stream[F, O] = 
+    Pull.loop[F, O, S]{
+      s => 
+          val (o, sOpt) = f(s)
+          Pull.output1(o) >> Pull.pure(sOpt)
+    }(s)
+    .void
+    .stream
+  
+  /** Like [[unfoldLoop]], but takes an effectful function. */
+  def unfoldLoopEval[F[_], S, O](s: S)(f: S => F[(O, Option[S])]): Stream[F, O] =
+    Pull
+      .loop[F, O, S](
+        s =>
+          Pull.eval(f(s)).flatMap {
+            case (o, sOpt) => Pull.output1(o) >> Pull.pure(sOpt)
+          }
+      )(s)
+      .void
+      .stream
+
   /** Provides syntax for streams that are invariant in `F` and `O`. */
   implicit def InvariantOps[F[_], O](s: Stream[F, O]): InvariantOps[F, O] =
     new InvariantOps(s.get)
