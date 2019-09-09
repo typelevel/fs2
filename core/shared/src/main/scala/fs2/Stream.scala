@@ -3965,6 +3965,17 @@ object Stream extends StreamLowPriority {
     }
 
     /**
+      * Takes the first value output by this stream and returns it in the result of a pull.
+      * If no value is output before the stream terminates, the pull is failed with a `NoSuchElementException`.
+      * If more than 1 value is output, everything beyond the first is ignored.
+      */
+    def singleton(implicit F: RaiseThrowable[F]): Pull[F, INothing, O] =
+      uncons1.flatMap {
+        case None         => Pull.raiseError(new NoSuchElementException)
+        case Some((o, _)) => Pull.pure(o)
+      }
+
+    /**
       * Like `uncons`, but instead of performing normal `uncons`, this will
       * run the stream up to the first chunk available.
       * Useful when zipping multiple streams (legs) into one stream.
