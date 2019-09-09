@@ -918,17 +918,13 @@ class StreamSpec extends Fs2Spec {
       "with effectful const(true)" in {
         val s = pureStreamGenerator[Int].sample
 
-        withClue("takes all elements") {
-          s.evalFilter(_ => SyncIO.pure(true)).compile.toList.asserting(_ shouldBe s.toList)
-        }
+        s.evalFilter(_ => SyncIO.pure(true)).compile.toList.asserting(_ shouldBe s.toList)
       }
 
       "with effectful const(false)" in {
         val s = pureStreamGenerator[Int].sample
 
-        withClue("takes no elements") {
-          s.evalFilter(_ => SyncIO.pure(false)).compile.toList.asserting(_ shouldBe empty)
-        }
+        s.evalFilter(_ => SyncIO.pure(false)).compile.toList.asserting(_ shouldBe empty)
       }
 
       "with function that filters out odd elements" in {
@@ -945,25 +941,21 @@ class StreamSpec extends Fs2Spec {
       "with effectful const(true)" in { 
         val s: Stream[Pure, Int] = Stream.range(10, 1000)
 
-        withClue("takes all elements") {
-          s.covary[IO]
-            .evalFilterAsync(5)(_ => IO.pure(true))
-            .compile
-            .toList
-            .asserting(_ shouldBe s.toList)
-        }
+        s.covary[IO]
+          .evalFilterAsync(5)(_ => IO.pure(true))
+          .compile
+          .toList
+          .asserting(_ shouldBe s.toList)
       }
 
       "with effectful const(false)" in  {
         val s: Stream[Pure, Int] = Stream.range(10, 1000)
 
-        withClue("takes no elements") {
-          s.covary[IO]
-            .evalFilterAsync(5)(_ => IO.pure(false))
-            .compile
-            .toList
-            .asserting(_ shouldBe empty)
-        }
+        s.covary[IO]
+          .evalFilterAsync(5)(_ => IO.pure(false))
+          .compile
+          .toList
+          .asserting(_ shouldBe empty)
       }
 
       "with function that filters out odd elements" in {
