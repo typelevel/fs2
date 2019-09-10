@@ -3959,6 +3959,13 @@ object Stream extends StreamLowPriority {
       go(None, self)
     }
 
+    /** Returns the last element of the input, if non-empty, otherwise fails the pull with a `NoSuchElementException`. */
+    def lastOrError(implicit F: RaiseThrowable[F]): Pull[F, INothing, O] =
+      last.flatMap {
+        case None    => Pull.raiseError(new NoSuchElementException)
+        case Some(o) => Pull.pure(o)
+      }
+
     /** Like [[uncons]] but does not consume the chunk (i.e., the chunk is pushed back). */
     def peek: Pull[F, INothing, Option[(Chunk[O], Stream[F, O])]] =
       uncons.flatMap {
