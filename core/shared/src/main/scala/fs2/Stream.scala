@@ -1911,9 +1911,9 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
   def onFinalizeCaseWeak[F2[x] >: F[x]](
       f: ExitCase[Throwable] => F2[Unit]
   )(implicit F2: Applicative[F2]): Stream[F2, O] =
-    Stream.fromFreeC(Algebra.acquire[F2, O, Unit](().pure[F2], (_, ec) => f(ec)).flatMap {
-      case (_, _) => get[F2, O]
-    })
+    Stream.fromFreeC(
+      Algebra.acquire[F2, O, Unit](().pure[F2], (_, ec) => f(ec)).flatMap(_ => get[F2, O])
+    )
 
   /**
     * Like [[Stream#evalMap]], but will evaluate effects in parallel, emitting the results
@@ -3037,9 +3037,7 @@ object Stream extends StreamLowPriority {
   def bracketCase[F[x] >: Pure[x], R](
       acquire: F[R]
   )(release: (R, ExitCase[Throwable]) => F[Unit]): Stream[F, R] =
-    fromFreeC(Algebra.acquire[F, R, R](acquire, release).flatMap {
-      case (r, token) => Stream.emit(r).covary[F].get[F, R]
-    }).scope
+    bracketCaseWeak(acquire)(release).scope
 
   /**
     * Like [[bracketCase]] but no scope is introduced, causing resource finalization to
@@ -3048,52 +3046,7 @@ object Stream extends StreamLowPriority {
   def bracketCaseWeak[F[x] >: Pure[x], R](
       acquire: F[R]
   )(release: (R, ExitCase[Throwable]) => F[Unit]): Stream[F, R] =
-    fromFreeC(Algebra.acquire[F, R, R](acquire, release).flatMap {
-      case (r, token) => Stream.emit(r).covary[F].get[F, R]
-    })
-
-  /**
-    * Like [[bracket]] but the result value consists of a cancellation
-    * Stream and the acquired resource. Running the cancellation Stream frees the resource.
-    * This allows the acquired resource to be released earlier than at the end of the
-    * containing Stream scope.
-    * Note that this operation is safe: if the cancellation Stream is not run manually,
-    * the resource is still guaranteed be release at the end of the containing Stream scope.
-    */
-  def bracketCancellable[F[x] >: Pure[x], R](
-      acquire: F[R]
-  )(release: R => F[Unit]): Stream[F, (Stream[F, Unit], R)] =
-    bracketCaseCancellable(acquire)((r, _) => release(r))
-
-  /**
-    * Like [[bracketCancellable]] but the release action is passed an `ExitCase[Throwable]`.
-    *
-    * `ExitCase.Canceled` is passed to the release action in the event of either stream interruption or
-    * overall compiled effect cancelation.
-    */
-  def bracketCaseCancellable[F[x] >: Pure[x], R](
-      acquire: F[R]
-  )(release: (R, ExitCase[Throwable]) => F[Unit]): Stream[F, (Stream[F, Unit], R)] =
-    bracketWithResource(acquire)(release)
-      .map {
-        case (res, r) =>
-          (Stream.eval(res.release(ExitCase.Canceled)).flatMap {
-            case Left(t)  => Stream.fromFreeC(Algebra.raiseError[F, Unit](t))
-            case Right(u) => Stream.emit(u)
-          }, r)
-      }
-
-  private[fs2] def bracketWithResource[F[x] >: Pure[x], R](
-      acquire: F[R]
-  )(release: (R, ExitCase[Throwable]) => F[Unit]): Stream[F, (fs2.internal.Resource[F], R)] =
-    fromFreeC(Algebra.acquire[F, (fs2.internal.Resource[F], R), R](acquire, release).flatMap {
-      case (r, res) =>
-        Stream
-          .emit(r)
-          .covary[F]
-          .map(o => (res, o))
-          .get[F, (fs2.internal.Resource[F], R)]
-    }).scope
+    fromFreeC(Algebra.acquire[F, R, R](acquire, release).flatMap(Algebra.output1(_)))
 
   /**
     * Creates a pure stream that emits the elements of the supplied chunk.
@@ -3586,15 +3539,15 @@ object Stream extends StreamLowPriority {
     * res0: List[Int] = List(0, 1, 2, 3, 4, 5)
     * }}}
     */
-  def unfoldLoop[F[x] <: Pure[x], S, O](s: S)(f: S => (O, Option[S])): Stream[F, O] = 
-    Pull.loop[F, O, S]{
-      s => 
-          val (o, sOpt) = f(s)
-          Pull.output1(o) >> Pull.pure(sOpt)
-    }(s)
-    .void
-    .stream
-  
+  def unfoldLoop[F[x] <: Pure[x], S, O](s: S)(f: S => (O, Option[S])): Stream[F, O] =
+    Pull
+      .loop[F, O, S] { s =>
+        val (o, sOpt) = f(s)
+        Pull.output1(o) >> Pull.pure(sOpt)
+      }(s)
+      .void
+      .stream
+
   /** Like [[unfoldLoop]], but takes an effectful function. */
   def unfoldLoopEval[F[_], S, O](s: S)(f: S => F[(O, Option[S])]): Stream[F, O] =
     Pull
@@ -3915,6 +3868,17 @@ object Stream extends StreamLowPriority {
               val toDrop = if (dropFailure) idx + 1 else idx
               Pull.pure(Some(tl.cons(hd.drop(toDrop))))
           }
+      }
+
+    /**
+      * Takes the first value output by this stream and returns it in the result of a pull.
+      * If no value is output before the stream terminates, the pull is failed with a `NoSuchElementException`.
+      * If more than 1 value is output, everything beyond the first is ignored.
+      */
+    def headOrError(implicit F: RaiseThrowable[F]): Pull[F, INothing, O] =
+      uncons1.flatMap {
+        case None         => Pull.raiseError(new NoSuchElementException)
+        case Some((o, _)) => Pull.pure(o)
       }
 
     /** Writes all inputs to the output of the returned `Pull`. */

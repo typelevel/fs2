@@ -2,10 +2,7 @@ package fs2
 package io
 package file
 
-import java.nio.channels._
-import java.nio.file._
-
-import cats.effect.{Blocker, ContextShift, Sync, Timer}
+import cats.effect.Timer
 
 import scala.concurrent.duration.FiniteDuration
 
@@ -99,28 +96,4 @@ object pulls {
       else
         writeChunkToFileHandle(buf.drop(written), out, offset + written)
     }
-
-  /**
-    * Creates a `Pull` which allows synchronous file operations against the file at the specified `java.nio.file.Path`.
-    *
-    * The `Pull` closes the acquired `java.nio.channels.FileChannel` when it is done.
-    */
-  def fromPath[F[_]](path: Path, blocker: Blocker, flags: Seq[OpenOption])(
-      implicit F: Sync[F],
-      cs: ContextShift[F]
-  ): Pull[F, Nothing, Pull.Cancellable[F, FileHandle[F]]] =
-    fromFileChannel(blocker.delay(FileChannel.open(path, flags: _*)), blocker)
-
-  /**
-    * Given a `java.nio.channels.FileChannel`, will create a `Pull` which allows synchronous operations against the underlying file.
-    *
-    * The `Pull` closes the provided `java.nio.channels.FileChannel` when it is done.
-    */
-  def fromFileChannel[F[_]](channel: F[FileChannel], blocker: Blocker)(
-      implicit F: Sync[F],
-      cs: ContextShift[F]
-  ): Pull[F, Nothing, Pull.Cancellable[F, FileHandle[F]]] =
-    Pull
-      .acquireCancellable(channel)(ch => blocker.delay(ch.close()))
-      .map(_.map(FileHandle.fromFileChannel[F](_, blocker)))
 }

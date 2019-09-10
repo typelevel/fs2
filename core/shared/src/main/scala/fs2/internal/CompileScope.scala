@@ -50,7 +50,7 @@ import fs2.internal.CompileScope.InterruptContext
   * === Resource allocation ===
   *
   * Resources are allocated when the interpreter interprets the `Acquire` element, which is typically constructed
-  * via `Stream.bracket` or `Pull.acquire`. See [[Resource]] docs for more information.
+  * via `Stream.bracket`. See [[Resource]] docs for more information.
   *
   * @param id              Unique identification of the scope
   * @param parent          If empty indicates root scope. If non-empty, indicates parent of this scope.
@@ -158,13 +158,13 @@ private[fs2] final class CompileScope[F[_]] private (
   def acquireResource[R](
       fr: F[R],
       release: (R, ExitCase[Throwable]) => F[Unit]
-  ): F[Either[Throwable, (R, Resource[F])]] = {
+  ): F[Either[Throwable, R]] = {
     val resource = Resource.create
     F.flatMap(F.attempt(fr)) {
       case Right(r) =>
         val finalizer = (ec: ExitCase[Throwable]) => F.suspend(release(r, ec))
         F.flatMap(resource.acquired(finalizer)) { result =>
-          if (result.exists(identity)) F.map(register(resource))(_ => Right((r, resource)))
+          if (result.exists(identity)) F.map(register(resource))(_ => Right(r))
           else F.pure(Left(result.swap.getOrElse(AcquireAfterScopeClosed)))
         }
       case Left(err) => F.pure(Left(err))
