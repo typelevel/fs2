@@ -65,15 +65,16 @@ object Signal extends SignalLowPriorityImplicits {
       implicit F: Concurrent[F]
   ): Stream[F, (A0, A1)] = {
     type PullOutput = (A0, A1, Stream[F, A0], Stream[F, A1])
-    val firstPull = for {
+    val firstPull: OptionT[Pull[F, PullOutput, ?], Unit] = for {
       firstXAndRestOfXs <- OptionT(xs.pull.uncons1.covaryOutput[PullOutput])
       (x, restOfXs) = firstXAndRestOfXs
       firstYAndRestOfYs <- OptionT(ys.pull.uncons1.covaryOutput[PullOutput])
       (y, restOfYs) = firstYAndRestOfYs
-      _ <- OptionT.liftF(Pull.output1[F, PullOutput]((x, y, restOfXs, restOfYs)))
+      _ <- OptionT.liftF {
+        Pull.output1[PullOutput]((x, y, restOfXs, restOfYs)): Pull[F, PullOutput, Unit]
+      }
     } yield ()
     firstPull.value.void.stream
-      .covaryOutput[PullOutput]
       .flatMap {
         case (x, y, restOfXs, restOfYs) =>
           restOfXs.either(restOfYs).scan((x, y)) {

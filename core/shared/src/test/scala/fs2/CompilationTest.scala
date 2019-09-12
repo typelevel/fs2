@@ -57,7 +57,6 @@ object ThisModuleShouldCompile {
 
   val t2p: Pipe[Pure, Int, Int] = _.take(2)
   val t2: Pipe[IO, Int, Int] = _.take(2)
-  t2p.covary[IO]
   val p2: Pipe2[IO, Int, Int, Int] = (s1, s2) => s1.interleave(s2)
   t2.attachL(p2)
   t2.attachR(p2)
@@ -83,7 +82,7 @@ object ThisModuleShouldCompile {
   Stream(s, s).parJoinUnbounded
 
   // Join an effectul stream of pure streams requires type annotation on inner stream
-  Stream[IO, Stream[IO, Nothing]](Stream.empty).parJoinUnbounded
+  Stream[Stream[IO, Nothing]](Stream.empty).parJoinUnbounded
 
   val pure: List[Int] = Stream.range(0, 5).compile.toList
   val io: IO[List[Int]] = Stream.range(0, 5).covary[IO].compile.toList
