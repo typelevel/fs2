@@ -205,6 +205,16 @@ lazy val mimaSettings = Seq(
     }.toSet
   },
   mimaBinaryIssueFilters ++= Seq(
+    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Stream.PurePipeOps"),
+    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Stream.PurePipe2Ops"),
+    ProblemFilters.exclude[MissingClassProblem]("fs2.Stream$PurePipeOps$"),
+    ProblemFilters.exclude[MissingClassProblem]("fs2.Stream$PurePipe2Ops$"),
+    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Stream.PurePipe2Ops"),
+    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Stream.PurePipeOps"),
+    // PurePipeOpe removed
+    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Stream.covaryPurePipe"),
+    ProblemFilters.exclude[MissingClassProblem]("fs2.Stream$PurePipeOps"),
+    ProblemFilters.exclude[MissingClassProblem]("fs2.Stream$PurePipe2Ops"),
     // No bincompat on internal package
     ProblemFilters.exclude[Problem]("fs2.internal.*"),
     // Mima reports all ScalaSignature changes as errors, despite the fact that they don't cause bincompat issues when version swapping (see https://github.com/lightbend/mima/issues/361)
