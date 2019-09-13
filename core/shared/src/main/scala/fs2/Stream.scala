@@ -4342,9 +4342,9 @@ object Stream extends StreamLowPriority {
       * very natural fit with `lastOrError`.
       **/
     def resource(
-        implicit compiler: Stream.Compiler[G, Resource[G, ?]]
-    ): Stream.CompileOps[G, Resource[G, ?], O] =
-      new Stream.CompileOps[G, Resource[G, ?], O](free)
+        implicit compiler: Stream.Compiler[F, Resource[G, ?]]
+    ): Stream.CompileOps[F, Resource[G, ?], O] =
+      new Stream.CompileOps[F, Resource[G, ?], O](free)
 
     /**
       * Compiles this stream of strings in to a single string.
