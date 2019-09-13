@@ -895,42 +895,38 @@ class StreamSpec extends Fs2Spec {
 
     "evals" - {
       "with List" in {
-        Stream.evals(SyncIO(List(1, 2, 3))).compile.toList.asserting(_ shouldBe List(1, 2, 3))
+        Stream.evals(IO(List(1, 2, 3))).compile.toList.asserting(_ shouldBe List(1, 2, 3))
       }
       "with Chain" in {
-        Stream.evals(SyncIO(Chain(4, 5, 6))).compile.toList.asserting(_ shouldBe List(4, 5, 6))
+        Stream.evals(IO(Chain(4, 5, 6))).compile.toList.asserting(_ shouldBe List(4, 5, 6))
       }
       "with Option" in {
-        Stream.evals(SyncIO(Option(42))).compile.toList.asserting(_ shouldBe List(42))
+        Stream.evals(IO(Option(42))).compile.toList.asserting(_ shouldBe List(42))
       }
     }
 
     "evalSeq" - {
       "with List" in {
-        Stream.evalSeq(SyncIO(List(1, 2, 3))).compile.toList.asserting(_ shouldBe List(1, 2, 3))
+        Stream.evalSeq(IO(List(1, 2, 3))).compile.toList.asserting(_ shouldBe List(1, 2, 3))
       }
       "with Seq" in {
-        Stream.evalSeq(SyncIO(Seq(4, 5, 6))).compile.toList.asserting(_ shouldBe List(4, 5, 6))
+        Stream.evalSeq(IO(Seq(4, 5, 6))).compile.toList.asserting(_ shouldBe List(4, 5, 6))
       }
     }
 
     "evalFilter" - {
-      "with effectful const(true)" in {
-        val s = pureStreamGenerator[Int].sample
-
-        s.evalFilter(_ => SyncIO.pure(true)).compile.toList.asserting(_ shouldBe s.toList)
+      "with effectful const(true)" in forAll { s: Stream[Pure, Int] =>
+        s.evalFilter(_ => IO.pure(true)).compile.toList.asserting(_ shouldBe s.toList)
       }
 
-      "with effectful const(false)" in {
-        val s = pureStreamGenerator[Int].sample
-
-        s.evalFilter(_ => SyncIO.pure(false)).compile.toList.asserting(_ shouldBe empty)
+      "with effectful const(false)" in forAll { s: Stream[Pure, Int] =>
+        s.evalFilter(_ => IO.pure(false)).compile.toList.asserting(_ shouldBe empty)
       }
 
       "with function that filters out odd elements" in {
         Stream
           .range(1, 10)
-          .evalFilter(e => SyncIO(e % 2 == 0))
+          .evalFilter(e => IO(e % 2 == 0))
           .compile
           .toList
           .asserting(_ shouldBe List(2, 4, 6, 8))
@@ -938,9 +934,7 @@ class StreamSpec extends Fs2Spec {
     }
 
     "evalFilterAsync" - {
-      "with effectful const(true)" in { 
-        val s: Stream[Pure, Int] = Stream.range(10, 1000)
-
+      "with effectful const(true)" in forAll { s: Stream[Pure, Int] =>
         s.covary[IO]
           .evalFilterAsync(5)(_ => IO.pure(true))
           .compile
@@ -948,9 +942,7 @@ class StreamSpec extends Fs2Spec {
           .asserting(_ shouldBe s.toList)
       }
 
-      "with effectful const(false)" in  {
-        val s: Stream[Pure, Int] = Stream.range(10, 1000)
-
+      "with effectful const(false)" in forAll { s: Stream[Pure, Int] =>
         s.covary[IO]
           .evalFilterAsync(5)(_ => IO.pure(false))
           .compile
