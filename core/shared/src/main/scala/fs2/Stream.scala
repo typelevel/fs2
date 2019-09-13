@@ -1,6 +1,6 @@
 package fs2
 
-import cats._
+import cats.{Eval => _, _}
 import cats.arrow.FunctionK
 import cats.data.{Chain, NonEmptyList}
 import cats.effect._
@@ -8,6 +8,7 @@ import cats.effect.concurrent._
 import cats.effect.implicits._
 import cats.implicits.{catsSyntaxEither => _, _}
 import fs2.concurrent._
+import fs2.internal.Algebra.{Acquire, Eval, GetScope, Output}
 import fs2.internal.FreeC.Result
 import fs2.internal.{Resource => _, _}
 import java.io.PrintStream
@@ -1095,7 +1096,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Nothing, O, Unit]
               else {
                 f(hd(idx)).get.transformWith {
                   case Result.Pure(_)   => go(idx + 1)
-                  case Result.Fail(err) => Algebra.raiseError(err)
+                  case Result.Fail(err) => Result.Fail(err)
                   case Result.Interrupted(scopeId: Token, err) =>
                     Stream.fromFreeC(Algebra.interruptBoundary(tl, scopeId, err)).flatMap(f).get
                   case Result.Interrupted(invalid, err) =>
@@ -1868,7 +1869,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Nothing, O, Unit]
     * }}}
     */
   def onComplete[F2[x] >: F[x], O2 >: O](s2: => Stream[F2, O2]): Stream[F2, O2] =
-    handleErrorWith(e => s2 ++ Stream.fromFreeC(Algebra.raiseError(e))) ++ s2
+    handleErrorWith(e => s2 ++ Stream.fromFreeC(Result.Fail(e))) ++ s2
 
   /**
     * Runs the supplied effectful action at the end of this stream, regardless of how the stream terminates.
@@ -1911,7 +1912,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Nothing, O, Unit]
       f: ExitCase[Throwable] => F2[Unit]
   )(implicit F2: Applicative[F2]): Stream[F2, O] =
     Stream.fromFreeC(
-      Algebra.acquire[F2, O, Unit](().pure[F2], (_, ec) => f(ec)).flatMap(_ => get[F2, O])
+      Acquire[F2, Unit](().pure[F2], (_, ec) => f(ec)).flatMap(_ => get[F2, O])
     )
 
   /**
@@ -3045,7 +3046,7 @@ object Stream extends StreamLowPriority {
   def bracketCaseWeak[F[x] >: Pure[x], R](
       acquire: F[R]
   )(release: (R, ExitCase[Throwable]) => F[Unit]): Stream[F, R] =
-    fromFreeC(Algebra.acquire[F, R, R](acquire, release).flatMap(Algebra.output1(_)))
+    fromFreeC(Acquire[F, R](acquire, release).flatMap(Algebra.output1(_)))
 
   /**
     * Creates a pure stream that emits the elements of the supplied chunk.
@@ -3056,7 +3057,7 @@ object Stream extends StreamLowPriority {
     * }}}
     */
   def chunk[F[x] >: Pure[x], O](os: Chunk[O]): Stream[F, O] =
-    Stream.fromFreeC(Algebra.output[F, O](os))
+    Stream.fromFreeC(Output[F, O](os))
 
   /**
     * Creates an infinite pure stream that always returns the supplied value.
@@ -3103,12 +3104,12 @@ object Stream extends StreamLowPriority {
     os match {
       case Nil    => empty
       case Seq(x) => emit(x)
-      case _      => fromFreeC(Algebra.output[F, O](Chunk.seq(os)))
+      case _      => fromFreeC(Algebra.Output[F, O](Chunk.seq(os)))
     }
 
   /** Empty pure stream. */
   val empty: Stream[Pure, INothing] =
-    fromFreeC[Pure, INothing](Algebra.pure[Pure, Unit](())): Stream[Pure, INothing]
+    fromFreeC[Pure, INothing](Result.Pure[Pure, Unit](())): Stream[Pure, INothing]
 
   /**
     * Creates a single element stream that gets its value by evaluating the supplied effect. If the effect fails,
@@ -3125,7 +3126,7 @@ object Stream extends StreamLowPriority {
     * }}}
     */
   def eval[F[_], O](fo: F[O]): Stream[F, O] =
-    fromFreeC(Algebra.eval(fo).flatMap(Algebra.output1))
+    fromFreeC(Eval(fo).flatMap(Algebra.output1))
 
   /**
     * Creates a stream that evaluates the supplied `fa` for its effect, discarding the output value.
@@ -3140,11 +3141,11 @@ object Stream extends StreamLowPriority {
     * }}}
     */
   def eval_[F[_], A](fa: F[A]): Stream[F, INothing] =
-    fromFreeC(Algebra.eval(fa).map(_ => ()))
+    fromFreeC(Eval(fa).map(_ => ()))
 
   /** like `eval` but resulting chunk is flatten efficiently **/
   def evalUnChunk[F[_], O](fo: F[Chunk[O]]): Stream[F, O] =
-    fromFreeC(Algebra.eval(fo).flatMap(Algebra.output))
+    fromFreeC(Eval(fo).flatMap(Output(_)))
 
   /** Like `eval`, but lifts a foldable structure. **/
   def evals[F[_], S[_]: Foldable, O](fo: F[S[O]]): Stream[F, O] =
@@ -3306,7 +3307,7 @@ object Stream extends StreamLowPriority {
     * This is a low-level method and generally should not be used by user code.
     */
   def getScope[F[x] >: Pure[x]]: Stream[F, Scope[F]] =
-    Stream.fromFreeC(Algebra.getScope[F].flatMap(Algebra.output1(_)))
+    Stream.fromFreeC(GetScope[F]().flatMap(Algebra.output1(_)))
 
   /**
     * A stream that never emits and never terminates.
@@ -3328,7 +3329,7 @@ object Stream extends StreamLowPriority {
     * }}}
     */
   def raiseError[F[_]: RaiseThrowable](e: Throwable): Stream[F, INothing] =
-    fromFreeC(Algebra.raiseError(e))
+    fromFreeC(Result.Fail(e))
 
   /**
     * Creates a random stream of integers using a random seed.
@@ -4020,7 +4021,7 @@ object Stream extends StreamLowPriority {
       */
     def stepLeg: Pull[F, INothing, Option[StepLeg[F, O]]] =
       Pull
-        .fromFreeC(Algebra.getScope[F])
+        .fromFreeC(GetScope[F]())
         .flatMap { scope =>
           new StepLeg[F, O](Chunk.empty, scope.id, self.get).stepLeg
         }

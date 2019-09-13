@@ -80,18 +80,6 @@ private[fs2] abstract class FreeC[F[_], +O, +R] {
 
 private[fs2] object FreeC {
 
-  def unit[F[_]]: FreeC[F, INothing, Unit] = Result.unit.asFreeC
-
-  def pure[F[_], A](a: A): FreeC[F, INothing, A] = Result.Pure(a)
-
-  def raiseError[F[_]](rsn: Throwable): FreeC[F, INothing, INothing] = Result.Fail(rsn)
-
-  def interrupted[F[_], X](
-      interruptContext: X,
-      failure: Option[Throwable]
-  ): FreeC[F, INothing, INothing] =
-    Result.Interrupted(interruptContext, failure)
-
   sealed trait Result[+R] { self =>
 
     def asFreeC[F[_]]: FreeC[F, INothing, R] = self.asInstanceOf[FreeC[F, INothing, R]]
@@ -113,14 +101,7 @@ private[fs2] object FreeC {
 
   object Result {
 
-    val unit: Result[Unit] = pure(())
-
-    def pure[A](a: A): Result[A] = Result.Pure(a)
-
-    def raiseError(rsn: Throwable): Result[INothing] = Result.Fail(rsn)
-
-    def interrupted(scopeId: Token, failure: Option[Throwable]): Result[INothing] =
-      Result.Interrupted(scopeId, failure)
+    val unit: Result[Unit] = Result.Pure(())
 
     def fromEither[R](either: Either[Throwable, R]): Result[R] =
       either.fold(Result.Fail(_), Result.Pure(_))
@@ -188,7 +169,7 @@ private[fs2] object FreeC {
   }
 
   def suspend[F[_], O, R](fr: => FreeC[F, O, R]): FreeC[F, O, R] =
-    new Bind[F, O, Unit, R](unit[F]) {
+    new Bind[F, O, Unit, R](Result.unit.asFreeC[F]) {
       def cont(r: Result[Unit]): FreeC[F, O, R] = fr
     }
 
