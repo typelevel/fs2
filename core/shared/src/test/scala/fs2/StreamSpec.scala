@@ -895,25 +895,104 @@ class StreamSpec extends Fs2Spec {
 
     "evals" - {
       "with List" in {
-        Stream.evals(SyncIO(List(1, 2, 3))).compile.toList.asserting(_ shouldBe List(1, 2, 3))
+        Stream.evals(IO(List(1, 2, 3))).compile.toList.asserting(_ shouldBe List(1, 2, 3))
       }
       "with Chain" in {
-        Stream.evals(SyncIO(Chain(4, 5, 6))).compile.toList.asserting(_ shouldBe List(4, 5, 6))
+        Stream.evals(IO(Chain(4, 5, 6))).compile.toList.asserting(_ shouldBe List(4, 5, 6))
       }
       "with Option" in {
-        Stream.evals(SyncIO(Option(42))).compile.toList.asserting(_ shouldBe List(42))
+        Stream.evals(IO(Option(42))).compile.toList.asserting(_ shouldBe List(42))
       }
     }
 
     "evalSeq" - {
       "with List" in {
-        Stream.evalSeq(SyncIO(List(1, 2, 3))).compile.toList.asserting(_ shouldBe List(1, 2, 3))
+        Stream.evalSeq(IO(List(1, 2, 3))).compile.toList.asserting(_ shouldBe List(1, 2, 3))
       }
       "with Seq" in {
-        Stream.evalSeq(SyncIO(Seq(4, 5, 6))).compile.toList.asserting(_ shouldBe List(4, 5, 6))
+        Stream.evalSeq(IO(Seq(4, 5, 6))).compile.toList.asserting(_ shouldBe List(4, 5, 6))
       }
     }
 
+    "evalFilter" - {
+      "with effectful const(true)" in forAll { s: Stream[Pure, Int] =>
+        val s1 = s.toList
+        s.evalFilter(_ => IO.pure(true)).compile.toList.asserting(_ shouldBe s1)
+      }
+
+      "with effectful const(false)" in forAll { s: Stream[Pure, Int] =>
+        s.evalFilter(_ => IO.pure(false)).compile.toList.asserting(_ shouldBe empty)
+      }
+
+      "with function that filters out odd elements" in {
+        Stream
+          .range(1, 10)
+          .evalFilter(e => IO(e % 2 == 0))
+          .compile
+          .toList
+          .asserting(_ shouldBe List(2, 4, 6, 8))
+      }
+    }
+
+    "evalFilterAsync" - {
+      "with effectful const(true)" in forAll { s: Stream[Pure, Int] =>
+        val s1 = s.toList
+        s.covary[IO]
+          .evalFilterAsync(5)(_ => IO.pure(true))
+          .compile
+          .toList
+          .asserting(_ shouldBe s1)
+      }
+
+      "with effectful const(false)" in forAll { s: Stream[Pure, Int] =>
+        s.covary[IO]
+          .evalFilterAsync(5)(_ => IO.pure(false))
+          .compile
+          .toList
+          .asserting(_ shouldBe empty)
+      }
+
+      "with function that filters out odd elements" in {
+        Stream
+          .range(1, 10)
+          .evalFilterAsync[IO](5)(e => IO(e % 2 == 0))
+          .compile
+          .toList
+          .asserting(_ shouldBe List(2, 4, 6, 8))
+      }
+
+      "filters up to N items in parallel" in {
+        val s = Stream.range(0, 100)
+        val n = 5
+
+        (Semaphore[IO](n), SignallingRef[IO, Int](0)).tupled
+          .flatMap {
+            case (sem, sig) =>
+              val tested = s
+                .covary[IO]
+                .evalFilterAsync(n) { elem =>
+                  val ensureAcquired =
+                    sem.tryAcquire.ifM(
+                      IO.unit,
+                      IO.raiseError(new Throwable("Couldn't acquire permit"))
+                    )
+
+                  ensureAcquired.bracket(
+                    _ => sig.update(_ + 1).bracket(_ => IO.sleep(10.millis))(_ => sig.update(_ - 1))
+                  )(_ => sem.release) *>
+                    IO.pure(true)
+                }
+
+              sig.discrete
+                .interruptWhen(tested.drain)
+                .fold1(_.max(_))
+                .compile
+                .lastOrError
+                .product(sig.get)
+          }
+          .asserting((_ shouldBe ((n, 0))))
+      }
+    }
     "evalMapAccumulate" in forAll { (s: Stream[Pure, Int], m: Int, n0: PosInt) =>
       val sVector = s.toVector
       val n = n0 % 20 + 1
@@ -1333,7 +1412,7 @@ class StreamSpec extends Fs2Spec {
             .range(0, 3)
             .covary[SyncIO] ++ Stream.raiseError[SyncIO](new Err)).unchunk.pull.echo
             .handleErrorWith { t =>
-              i += 1; println(i); Pull.done
+              i += 1; Pull.done
             }
             .stream
             .compile
