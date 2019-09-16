@@ -962,7 +962,7 @@ class StreamSpec extends Fs2Spec {
       }
 
       "filters up to N items in parallel" in {
-        val s = Stream.range(0, if (isJVM) 100 else 10)
+        val s = Stream.range(0, 100)
         val n = 5
 
         (Semaphore[IO](n), SignallingRef[IO, Int](0)).tupled
@@ -983,7 +983,7 @@ class StreamSpec extends Fs2Spec {
                     IO.pure(true)
                 }
 
-              sig.continuous
+              sig.discrete
                 .interruptWhen(tested.drain)
                 .fold1(_.max(_))
                 .compile
