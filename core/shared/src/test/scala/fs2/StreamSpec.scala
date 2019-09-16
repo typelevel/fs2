@@ -916,7 +916,8 @@ class StreamSpec extends Fs2Spec {
 
     "evalFilter" - {
       "with effectful const(true)" in forAll { s: Stream[Pure, Int] =>
-        s.evalFilter(_ => IO.pure(true)).compile.toList.asserting(_ shouldBe s.toList)
+        val s1 = s.toList
+        s.evalFilter(_ => IO.pure(true)).compile.toList.asserting(_ shouldBe s1)
       }
 
       "with effectful const(false)" in forAll { s: Stream[Pure, Int] =>
@@ -935,11 +936,12 @@ class StreamSpec extends Fs2Spec {
 
     "evalFilterAsync" - {
       "with effectful const(true)" in forAll { s: Stream[Pure, Int] =>
+        val s1 = s.toList
         s.covary[IO]
           .evalFilterAsync(5)(_ => IO.pure(true))
           .compile
           .toList
-          .asserting(_ shouldBe s.toList)
+          .asserting(_ shouldBe s1)
       }
 
       "with effectful const(false)" in forAll { s: Stream[Pure, Int] =>
