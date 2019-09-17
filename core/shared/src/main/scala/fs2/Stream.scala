@@ -838,7 +838,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Nothing, O, Unit]
   /**
     * Outputs all but the last `n` elements of the input.
     *
-    * This is a '''pure''' stream operation: if `s a finite pure stream, then `s.dropRight(n).toList`
+    * This is a '''pure''' stream operation: if `s` is a finite pure stream, then `s.dropRight(n).toList`
     * is equal to `this.toList.reverse.drop(n).reverse`.
     *
     * @example {{{
