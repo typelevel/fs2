@@ -205,11 +205,17 @@ lazy val mimaSettings = Seq(
       organization.value % (normalizedName.value + "_" + scalaBinaryVersion.value) % pv
     }.toSet
   },
-  mimaBinaryIssueFilters ++= Seq()
+  mimaBinaryIssueFilters ++= Seq(
+    // No bincompat on internal package
+    ProblemFilters.exclude[Problem]("fs2.internal.*"),
+    // Mima considers https://github.com/functional-streams-for-scala/fs2/pull/1617 incompatible but it's a false alarm
+    ProblemFilters.exclude[IncompatibleSignatureProblem]("fs2.Stream#CompileOps.resource")
+  )
 )
 
 lazy val root = project
   .in(file("."))
+  .disablePlugins(MimaPlugin)
   .settings(commonSettings)
   .settings(mimaSettings)
   .settings(noPublish)

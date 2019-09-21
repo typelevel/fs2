@@ -16,7 +16,7 @@ class FreeCBenchmark {
   @Benchmark
   def nestedMaps = {
     val nestedMapsFreeC =
-      (0 to N).foldLeft(Result.Pure[IO, Int](0): FreeC[IO, INothing, Int]) { (acc, i) =>
+      (0 to N).foldLeft(FreeC.pure[IO, Int](0): FreeC[IO, Int]) { (acc, i) =>
         acc.map(_ + i)
       }
     run(nestedMapsFreeC)
@@ -25,15 +25,13 @@ class FreeCBenchmark {
   @Benchmark
   def nestedFlatMaps = {
     val nestedFlatMapsFreeC =
-      (0 to N).foldLeft(Result.Pure[IO, Int](0): FreeC[IO, INothing, Int]) { (acc, i) =>
-        acc.flatMap(j => Result.Pure(i + j))
+      (0 to N).foldLeft(FreeC.pure[IO, Int](0): FreeC[IO, Int]) { (acc, i) =>
+        acc.flatMap(j => FreeC.pure(i + j))
       }
     run(nestedFlatMapsFreeC)
   }
 
-  private def run[F[_], O, R](
-      self: FreeC[F, O, R]
-  )(implicit F: MonadError[F, Throwable]): F[Option[R]] =
+  private def run[F[_], R](self: FreeC[F, R])(implicit F: MonadError[F, Throwable]): F[Option[R]] =
     self.viewL match {
       case Result.Pure(r)             => F.pure(Some(r))
       case Result.Fail(e)             => F.raiseError(e)
