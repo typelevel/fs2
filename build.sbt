@@ -208,8 +208,8 @@ lazy val mimaSettings = Seq(
   mimaBinaryIssueFilters ++= Seq(
     // No bincompat on internal package
     ProblemFilters.exclude[Problem]("fs2.internal.*"),
-    // Mima considers https://github.com/functional-streams-for-scala/fs2/pull/1617 incompatible but it's a false alarm
-    ProblemFilters.exclude[IncompatibleSignatureProblem]("fs2.Stream#CompileOps.resource")
+    // Mima reports all signature changes as errors, despite the fact that they don't cause bincompat issues when version swapping (see https://github.com/lightbend/mima/issues/361)
+    ProblemFilters.exclude[IncompatibleSignatureProblem]("*")
   )
 )
 
