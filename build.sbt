@@ -205,11 +205,17 @@ lazy val mimaSettings = Seq(
       organization.value % (normalizedName.value + "_" + scalaBinaryVersion.value) % pv
     }.toSet
   },
-  mimaBinaryIssueFilters ++= Seq()
+  mimaBinaryIssueFilters ++= Seq(
+    // No bincompat on internal package
+    ProblemFilters.exclude[Problem]("fs2.internal.*"),
+    // Mima reports all ScalaSignature changes as errors, despite the fact that they don't cause bincompat issues when version swapping (see https://github.com/lightbend/mima/issues/361)
+    ProblemFilters.exclude[IncompatibleSignatureProblem]("*")
+  )
 )
 
 lazy val root = project
   .in(file("."))
+  .disablePlugins(MimaPlugin)
   .settings(commonSettings)
   .settings(mimaSettings)
   .settings(noPublish)
