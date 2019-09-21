@@ -201,56 +201,21 @@ lazy val releaseSettings = Seq(
 
 lazy val mimaSettings = Seq(
   mimaPreviousArtifacts := {
-    CrossVersion.partialVersion(scalaVersion.value) match {
-      case Some((2, v)) if v >= 13 => Set.empty
-      case _ =>
-        previousVersion(version.value).map { pv =>
-          organization.value % (normalizedName.value + "_" + scalaBinaryVersion.value) % pv
-        }.toSet
-    }
+    List("2.0.0").map { pv =>
+      organization.value % (normalizedName.value + "_" + scalaBinaryVersion.value) % pv
+    }.toSet
   },
   mimaBinaryIssueFilters ++= Seq(
-    ProblemFilters.exclude[Problem]("fs2.package*EitherSyntax*"),
+    // No bincompat on internal package
     ProblemFilters.exclude[Problem]("fs2.internal.*"),
-    ProblemFilters.exclude[Problem]("fs2.Stream#StepLeg.this"),
-    ProblemFilters.exclude[Problem]("fs2.concurrent.Publish.*"),
-    ProblemFilters.exclude[Problem]("fs2.concurrent.Subscribe.*"),
-    ProblemFilters.exclude[Problem]("fs2.concurrent.PubSub.*"),
-    // The following changes to the io package were all package private
-    ProblemFilters
-      .exclude[DirectMissingMethodProblem]("fs2.io.package.invokeCallback"),
-    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.tcp.Socket.client"),
-    ProblemFilters.exclude[DirectMissingMethodProblem](
-      "fs2.io.JavaInputOutputStream.toInputStream"),
-    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.tcp.Socket.server"),
-    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.tcp.Socket.mkSocket"),
-    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.udp.Socket.mkSocket"),
-    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Pipe.joinQueued"),
-    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Pipe.joinAsync"),
-    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Stream.bracketFinalizer"),
-    // Compiler#apply is private[fs2]
-    ProblemFilters.exclude[IncompatibleMethTypeProblem]("fs2.Stream#Compiler.apply"),
-    ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.Stream#Compiler.apply"),
-    // bracketWithToken was private[fs2]
-    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Stream.bracketWithToken"),
-    //forStrategy/NoneTerminated were private[fs2]
-    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.concurrent.Queue.forStrategy"),
-    ProblemFilters.exclude[DirectMissingMethodProblem](
-      "fs2.concurrent.Queue.forStrategyNoneTerminated"),
-    ProblemFilters.exclude[DirectMissingMethodProblem](
-      "fs2.concurrent.InspectableQueue.forStrategy")
+    // Mima reports all ScalaSignature changes as errors, despite the fact that they don't cause bincompat issues when version swapping (see https://github.com/lightbend/mima/issues/361)
+    ProblemFilters.exclude[IncompatibleSignatureProblem]("*")
   )
 )
 
-def previousVersion(currentVersion: String): Option[String] = {
-  val Version = """(\d+)\.(\d+)\.(\d+).*""".r
-  val Version(x, y, z) = currentVersion
-  if (z == "0") None
-  else Some(s"$x.$y.${z.toInt - 1}")
-}
-
 lazy val root = project
   .in(file("."))
+  .disablePlugins(MimaPlugin)
   .settings(commonSettings)
   .settings(mimaSettings)
   .settings(noPublish)
@@ -286,6 +251,7 @@ lazy val coreJVM = core.jvm
     osgiSettings
   )
   .settings(mimaSettings)
+
 lazy val coreJS = core.js.disablePlugins(DoctestPlugin, MimaPlugin)
 
 lazy val io = project
