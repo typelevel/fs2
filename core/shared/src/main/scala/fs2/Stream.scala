@@ -3024,6 +3024,39 @@ object Stream extends StreamLowPriority {
         .eval(timer.clock.monotonic(NANOSECONDS).map(now => (now - start).nanos))
     }
 
+  def foldEvery[F[_], A, B](
+      d: FiniteDuration
+  )(init: B)(f: (B, A) => B)(implicit F: Sync[F]): Pipe[F, A, B] = { in =>
+    {
+      val width = d.toMillis
+
+      val signal = Stream.eval(F.delay(System.currentTimeMillis())).repeat.zipWithPrevious.map {
+        case (None, _) => false
+        case (Some(t1), t2) => {
+          val s1 = t1 / width
+          val s2 = t2 / width
+          s1 != s2
+        }
+      }
+
+      def go(state: B)(stream: Stream[F, (A, Boolean)]): Pull[F, B, Unit] =
+        stream.pull.uncons1.flatMap {
+          case Some(((a, b), next)) => {
+            if (b) {
+              Pull.output1(state) >> go(f(init, a))(next)
+            } else {
+              go(f(state, a))(next)
+            }
+          }
+          case None => Pull.output1(state) >> Pull.done
+        }
+
+      go(init)(in.zip(signal)).stream
+
+    }
+
+  }
+
   /**
     * Creates a stream that emits a resource allocated by an effect, ensuring the resource is
     * eventually released regardless of how the stream is used.
