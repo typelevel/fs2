@@ -3847,7 +3847,7 @@ object Stream extends StreamLowPriority {
       else go(Nil, n, self)
     }
 
-    /** Like [[uncons]] but skips over the empty chunk. */
+    /** Like [[uncons]] but skips over empty chunks, pulling until it can emit the first non-empty chunk. */
     def unconsNonEmpty: Pull[F, INothing, Option[(Chunk[O], Stream[F, O])]] =
       uncons.flatMap {
         case None => Pull.pure(None)
