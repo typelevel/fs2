@@ -3794,7 +3794,7 @@ object Stream extends StreamLowPriority {
           hd.size match {
             case 0 => tl.pull.uncons1
             case 1 => Pull.pure(Some(hd(0) -> tl))
-            case n => Pull.pure(Some(hd(0) -> tl.cons(hd.drop(1))))
+            case _ => Pull.pure(Some(hd(0) -> tl.cons(hd.drop(1))))
           }
       }
 
@@ -3846,6 +3846,15 @@ object Stream extends StreamLowPriority {
       if (n <= 0) Pull.pure(Some((Chunk.empty, self)))
       else go(Nil, n, self)
     }
+
+    /** Like [[uncons]] but skips over empty chunks, pulling until it can emit the first non-empty chunk. */
+    def unconsNonEmpty: Pull[F, INothing, Option[(Chunk[O], Stream[F, O])]] =
+      uncons.flatMap {
+        case None => Pull.pure(None)
+        case Some((hd, tl)) =>
+          if (hd.isEmpty) tl.pull.unconsNonEmpty
+          else Pull.pure(Some((hd, tl)))
+      }
 
     /** Drops the first `n` elements of this `Stream`, and returns the new `Stream`. */
     def drop(n: Long): Pull[F, INothing, Option[Stream[F, O]]] =
