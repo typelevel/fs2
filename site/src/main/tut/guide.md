@@ -416,7 +416,7 @@ def mergeHaltBoth[F[_]:Concurrent,O]: Pipe2[F,O,O,O] = (s1, s2) => ???
 ### Interruption
 
 Sometimes some tasks have to run only when some conditions are met or until some other task completes. Luckily for us, `Stream` defines some really useful methods that let us accomplish this.
-In the following example we will see how `interruptWhen` helps us to describe such cases. we will describe a program composed by two concurrent streams: the first will print the current time to the console every second, the second will stop the first.
+In the following example we will see how `interruptWhen` helps us to describe such cases. We will describe a program composed by two concurrent streams: the first will print the current time to the console every second, the second will stop the first.
 
 First of all we will need to set up the environment with some imports and declare some implicit values.
 ```tut:book:reset
@@ -454,7 +454,7 @@ val program =
   Stream.eval(Deferred[IO, Unit]).flatMap { switch =>
 ```
 
-Here we create a `Stream[IO, Deferred[IO, Unit]]`. [`Deferred`](https://typelevel.org/cats-effect/concurrency/deferred.html) is a concurrency primitive that represents an unset promise. we will use the emitted istance of `Deferred[IO, Unit]` as a mechanism to signal the completion of a task. Given this purpose, we call this instance `switch`.
+Here we create a `Stream[IO, Deferred[IO, Unit]]`. [`Deferred`](https://typelevel.org/cats-effect/concurrency/deferred.html) is a concurrency primitive that represents a condition yet to be fulfilled. We will use the emitted istance of `Deferred[IO, Unit]` as a mechanism to signal the completion of a task. Given this purpose, we call this instance `switch`.
 
 ```scala
 val switcher =
