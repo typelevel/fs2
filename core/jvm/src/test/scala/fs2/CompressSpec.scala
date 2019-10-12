@@ -140,7 +140,7 @@ class CompressSpec extends Fs2Spec {
       val bytes = s
         .through(compress.gzip(1024))
         .compile
-        .to[Array]
+        .to(Array)
 
       val bis = new ByteArrayInputStream(bytes)
       val gzis = new GZIPInputStream(bis)

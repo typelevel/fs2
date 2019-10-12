@@ -8,7 +8,18 @@ import scodec.bits.ByteVector
 
 import fs2.internal.{Resource => _, _}
 
-/** Supports building a result of type `Out` from zero or more `Chunk[A]`. */
+/**
+  * Supports building a result of type `Out` from zero or more `Chunk[A]`.
+  *
+  * This is similar to the standard library collection builders but optimized for
+  * building a collection from a stream.
+  * 
+  * The companion object provides implicit conversions (methods starting with `supports`),
+  * which adapts various collections to the `Collector` trait.
+  * 
+  * The output type is a type member instead of a type parameter to avoid overloading
+  * resolution limitations with `s.compile.to[C]` vs `s.compile.to(C)`.
+  */
 trait Collector[A] {
   type Out
   def newBuilder: Collector.Builder[A, Out]
@@ -17,32 +28,30 @@ trait Collector[A] {
 object Collector {
   type Aux[A, X] = Collector[A] { type Out = X }
 
-  implicit def fromArray[A](
-      A: Array.type
-  )(implicit ct: reflect.ClassTag[A]): Collector.Aux[A, Array[A]] =
-    make(ct match {
+  def string: Collector.Aux[String, String] =
+    make(Builder.string)
+
+  implicit def supportsArray[A: ClassTag](a: Array.type): Collector.Aux[A, Array[A]] =
+    make(implicitly[ClassTag[A]] match {
       case ClassTag.Byte =>
         Builder.byteArray.asInstanceOf[Builder[A, Array[A]]]
       case _ => Builder.array[A]
     })
 
-  implicit def fromFactory[A, C[_], B](
+  implicit def supportsFactory[A, C[_], B](
       f: Factory[A, C[B]]
   ): Collector.Aux[A, C[B]] = make(Builder.fromFactory(f))
 
-  implicit def fromIterableFactory[A, C[_]](f: IterableFactory[C]): Collector.Aux[A, C[A]] =
+  implicit def supportsIterableFactory[A, C[_]](f: IterableFactory[C]): Collector.Aux[A, C[A]] =
     make(Builder.fromIterableFactory(f))
 
-  implicit def fromMapFactory[K, V, C[_, _]](f: MapFactory[C]): Collector.Aux[(K, V), C[K, V]] =
+  implicit def supportsMapFactory[K, V, C[_, _]](f: MapFactory[C]): Collector.Aux[(K, V), C[K, V]] =
     make(Builder.fromMapFactory(f))
 
-  implicit def fromChunk[A: ClassTag](c: Chunk.type): Collector.Aux[A, Chunk[A]] =
+  implicit def supportsChunk[A](c: Chunk.type): Collector.Aux[A, Chunk[A]] =
     make(Builder.chunk)
 
-  def string: Collector.Aux[String, String] =
-    make(Builder.string)
-
-  implicit def byteVector(b: ByteVector.type): Collector.Aux[Byte, ByteVector] =
+  implicit def supportsByteVector(b: ByteVector.type): Collector.Aux[Byte, ByteVector] =
     make(Builder.byteVector)
 
   private def make[A, X](nb: => Builder[A, X]): Collector.Aux[A, X] =

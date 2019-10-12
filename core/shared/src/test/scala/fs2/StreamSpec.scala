@@ -177,7 +177,7 @@ class StreamSpec extends Fs2Spec {
       }
 
       val bracketsInSequence = if (isJVM) 1000000 else 10000
-      bracketsInSequence + " brackets in sequence" in {
+      s"$bracketsInSequence brackets in sequence" in {
         Counter[IO].flatMap { counter =>
           Stream
             .range(0, bracketsInSequence)
@@ -445,7 +445,7 @@ class StreamSpec extends Fs2Spec {
 
     "chunk" in {
       forAll { (c: Chunk[Int]) =>
-        Stream.chunk(c).toChunk shouldBe c
+        Stream.chunk(c).to(Chunk) shouldBe c
       }
     }
 
