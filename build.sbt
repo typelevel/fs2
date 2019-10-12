@@ -26,9 +26,14 @@ lazy val commonSettings = Seq(
     "-language:implicitConversions",
     "-language:higherKinds"
   ) ++
-    (if (scalaBinaryVersion.value.startsWith("2.12"))
+    (if (scalaBinaryVersion.value.startsWith("2.13"))
        List(
          "-Xlint",
+         "-Ywarn-unused"
+       )
+     else Nil) ++
+    (if (scalaBinaryVersion.value.startsWith("2.12"))
+       List(
          "-Xfatal-warnings",
          "-Yno-adapted-args",
          "-Ywarn-value-discard",
