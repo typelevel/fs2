@@ -1039,20 +1039,20 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Nothing, O, Unit]
     }.flatten
 
   /**
-   * Like `filterNot`, but allows filtering based on an effect.
-   *
-   * Note: The result Stream will consist of chunks that are empty or 1-element-long.
-   * If you want to operate on chunks after using it, consider buffering, e.g. by using [[buffer]].
-   */
+    * Like `filterNot`, but allows filtering based on an effect.
+    *
+    * Note: The result Stream will consist of chunks that are empty or 1-element-long.
+    * If you want to operate on chunks after using it, consider buffering, e.g. by using [[buffer]].
+    */
   def evalFilterNot[F2[x] >: F[x]: Functor](f: O => F2[Boolean]): Stream[F2, O] =
     flatMap(o => Stream.eval(f(o)).ifM(Stream.empty, Stream.emit(o)))
 
   /**
-   * Like `filterNot`, but allows filtering based on an effect, with up to [[maxConcurrent]] concurrently running effects.
-   * The ordering of emitted elements is unchanged.
-   */
+    * Like `filterNot`, but allows filtering based on an effect, with up to [[maxConcurrent]] concurrently running effects.
+    * The ordering of emitted elements is unchanged.
+    */
   def evalFilterNotAsync[F2[x] >: F[x]: Concurrent](
-    maxConcurrent: Int
+      maxConcurrent: Int
   )(f: O => F2[Boolean]): Stream[F2, O] =
     parEvalMap[F2, Stream[F2, O]](maxConcurrent) { o =>
       f(o).map(if (_) Stream.empty else Stream.emit(o))
@@ -2645,7 +2645,8 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Nothing, O, Unit]
     * Applies the given sink to this stream.
     */
   @deprecated("Use .through instead", "1.0.2")
-  def to[F2[x] >: F[x]](f: Stream[F, O] => Stream[F2, Unit]): Stream[F2, Unit] = f(this)
+  private[fs2] def to[F2[x] >: F[x]](f: Stream[F, O] => Stream[F2, Unit]): Stream[F2, Unit] =
+    f(this)
 
   /**
     * Translates effect type from `F` to `G` using the supplied `FunctionK`.
@@ -3733,6 +3734,9 @@ object Stream extends StreamLowPriority {
     def to[C[_]](implicit f: Factory[O, C[O]]): C[O] =
       self.covary[IO].compile.to[C].unsafeRunSync
 
+    def to(c: Collector[O]): c.Out =
+      self.covary[IO].compile.to(c).unsafeRunSync
+
     /** Runs this pure stream and returns the emitted elements in a chunk. Note: this method is only available on pure streams. */
     def toChunk: Chunk[O] = self.covary[IO].compile.toChunk.unsafeRunSync
 
@@ -3775,6 +3779,9 @@ object Stream extends StreamLowPriority {
     /** Runs this fallible stream and returns the emitted elements in a collection of the specified type. Note: this method is only available on fallible streams. */
     def to[C[_]](implicit f: Factory[O, C[O]]): Either[Throwable, C[O]] =
       lift[IO].compile.to[C].attempt.unsafeRunSync
+
+    def to(c: Collector[O]): Either[Throwable, c.Out] =
+      lift[IO].compile.to(c).attempt.unsafeRunSync
 
     /** Runs this fallible stream and returns the emitted elements in a chunk. Note: this method is only available on fallible streams. */
     def toChunk: Either[Throwable, Chunk[O]] = lift[IO].compile.toChunk.attempt.unsafeRunSync
@@ -4425,12 +4432,15 @@ object Stream extends StreamLowPriority {
       *
       * @example {{{
       * scala> import cats.effect.IO
-      * scala> Stream.range(0,100).take(5).covary[IO].compile.toList.unsafeRunSync
+      * scala> Stream.range(0,100).take(5).covary[IO].compile.to[List].unsafeRunSync
       * res0: List[Int] = List(0, 1, 2, 3, 4)
       * }}}
       */
     def to[C[_]](implicit f: Factory[O, C[O]]): G[C[O]] =
       compiler(self, () => f.newBuilder)(_ ++= _.iterator, _.result)
+
+    def to(cb: Collector[O]): G[cb.Out] =
+      compiler(self, () => cb.newBuilder)((acc, c) => { acc += c; acc }, _.result)
 
     /**
       * Compiles this stream in to a value of the target effect type `F` by logging
