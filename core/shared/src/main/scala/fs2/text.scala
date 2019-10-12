@@ -137,7 +137,7 @@ object text {
               start = i + 2
               i += 1
             }
-          case c =>
+          case _ =>
             ()
         }
         i += 1

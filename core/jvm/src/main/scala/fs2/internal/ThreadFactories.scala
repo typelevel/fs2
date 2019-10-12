@@ -28,7 +28,7 @@ private[fs2] object ThreadFactories {
             if (exitJvmOnFatalError) {
               e match {
                 case NonFatal(_) => ()
-                case fatal       => System.exit(-1)
+                case _           => System.exit(-1)
               }
             }
           }

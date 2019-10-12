@@ -37,7 +37,7 @@ private[fs2] abstract class FreeC[F[_], +O, +R] {
   def append[O2 >: O, R2](post: => FreeC[F, O2, R2]): FreeC[F, O2, R2] =
     new Bind[F, O2, R, R2](this) {
       def cont(r: Result[R]): FreeC[F, O2, R2] = r match {
-        case r: Result.Pure[F, _]        => post
+        case _: Result.Pure[F, _]        => post
         case r: Result.Interrupted[F, _] => r
         case r: Result.Fail[F]           => r
       }

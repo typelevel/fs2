@@ -478,8 +478,8 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Nothing, O, Unit]
     this.pull
       .find(pf.isDefinedAt)
       .flatMap {
-        case None           => Pull.done
-        case Some((hd, tl)) => Pull.output1(pf(hd))
+        case None          => Pull.done
+        case Some((hd, _)) => Pull.output1(pf(hd))
       }
       .stream
 
@@ -1107,7 +1107,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Nothing, O, Unit]
     this.pull
       .find(f)
       .flatMap {
-        _.map { case (hd, tl) => Pull.output1(hd) }.getOrElse(Pull.done)
+        _.map { case (hd, _) => Pull.output1(hd) }.getOrElse(Pull.done)
       }
       .stream
 
@@ -1139,7 +1139,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Nothing, O, Unit]
                   case Result.Fail(err) => Result.Fail(err)
                   case Result.Interrupted(scopeId: Token, err) =>
                     Stream.fromFreeC(Algebra.interruptBoundary(tl, scopeId, err)).flatMap(f).get
-                  case Result.Interrupted(invalid, err) =>
+                  case Result.Interrupted(invalid, _) =>
                     sys.error(s"Invalid interruption context: $invalid (flatMap)")
                 }
               }
@@ -1405,7 +1405,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Nothing, O, Unit]
             }
             .onFinalize {
               currentTimeout.modify {
-                case st @ (cancelInFlightTimeout, streamTerminated) =>
+                case (cancelInFlightTimeout, _) =>
                   (F.unit, true) -> cancelInFlightTimeout
               }.flatten
             }
@@ -1816,7 +1816,6 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Nothing, O, Unit]
             Ref.of[F2, Boolean](false).flatMap { otherSideDone =>
               Queue.unbounded[F2, Option[Stream[F2, O2]]].map { resultQ =>
                 def runStream(
-                    tag: String,
                     s: Stream[F2, O2],
                     whenDone: Deferred[F2, Either[Throwable, Unit]]
                 ): F2[Unit] =
@@ -1854,8 +1853,8 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Nothing, O, Unit]
                     .interruptWhen(interrupt.get.attempt)
 
                 Stream.bracket(
-                  F2.start(runStream("L", this, resultL)) >>
-                    F2.start(runStream("R", that, resultR))
+                  F2.start(runStream(this, resultL)) >>
+                    F2.start(runStream(that, resultR))
                 ) { _ =>
                   interrupt
                     .complete(())
@@ -2132,7 +2131,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Nothing, O, Unit]
                       .attempt
                       .flatMap {
                         case Left(err) => stop(Some(err)) >> decrementRunning
-                        case Right(r)  => F2.unit >> decrementRunning
+                        case Right(_)  => F2.unit >> decrementRunning
                       }
 
                   // awaits when all streams (outer + inner) finished,
@@ -2877,7 +2876,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Nothing, O, Unit]
   def zipWith[F2[x] >: F[x], O2 >: O, O3, O4](
       that: Stream[F2, O3]
   )(f: (O2, O3) => O4): Stream[F2, O4] =
-    zipWith_[F2, O2, O3, O4](that)(sh => Pull.pure(None), h => Pull.pure(None))(f)
+    zipWith_[F2, O2, O3, O4](that)(_ => Pull.pure(None), _ => Pull.pure(None))(f)
 
   /**
     * Zips the elements of the input stream with its indices, and returns the new stream.
@@ -3898,7 +3897,7 @@ object Stream extends StreamLowPriority {
             hd.size.toLong match {
               case m if m < n  => tl.pull.drop(n - m)
               case m if m == n => Pull.pure(Some(tl))
-              case m           => Pull.pure(Some(tl.cons(hd.drop(n.toInt))))
+              case _           => Pull.pure(Some(tl.cons(hd.drop(n.toInt))))
             }
         }
 
@@ -4097,7 +4096,7 @@ object Stream extends StreamLowPriority {
             hd.size.toLong match {
               case m if m < n  => Pull.output(hd) >> tl.pull.take(n - m)
               case m if m == n => Pull.output(hd).as(Some(tl))
-              case m =>
+              case _ =>
                 val (pfx, sfx) = hd.splitAt(n.toInt)
                 Pull.output(pfx).as(Some(tl.cons(sfx)))
             }

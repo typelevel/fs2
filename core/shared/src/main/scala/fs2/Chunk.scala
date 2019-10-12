@@ -260,7 +260,7 @@ abstract class Chunk[+O] extends Serializable { self =>
     val _ = ev // Convince scalac that ev is used
     this match {
       case c: Chunk.Booleans => c
-      case other =>
+      case _ =>
         Chunk.Booleans(this.asInstanceOf[Chunk[Boolean]].toArray, 0, size)
     }
   }
@@ -274,7 +274,7 @@ abstract class Chunk[+O] extends Serializable { self =>
     val _ = ev // Convince scalac that ev is used
     this match {
       case c: Chunk.Bytes => c
-      case other          => Chunk.Bytes(this.asInstanceOf[Chunk[Byte]].toArray, 0, size)
+      case _              => Chunk.Bytes(this.asInstanceOf[Chunk[Byte]].toArray, 0, size)
     }
   }
 
@@ -292,7 +292,7 @@ abstract class Chunk[+O] extends Serializable { self =>
           (b: JBuffer).limit(c.offset.toInt + c.size)
           b
         }
-      case other =>
+      case _ =>
         JByteBuffer.wrap(this.asInstanceOf[Chunk[Byte]].toArray, 0, size)
     }
   }
@@ -306,7 +306,7 @@ abstract class Chunk[+O] extends Serializable { self =>
     val _ = ev // Convince scalac that ev is used
     this match {
       case c: Chunk.Shorts => c
-      case other =>
+      case _ =>
         Chunk.Shorts(this.asInstanceOf[Chunk[Short]].toArray, 0, size)
     }
   }
@@ -320,7 +320,7 @@ abstract class Chunk[+O] extends Serializable { self =>
     val _ = ev // Convince scalac that ev is used
     this match {
       case c: Chunk.Ints => c
-      case other         => Chunk.Ints(this.asInstanceOf[Chunk[Int]].toArray, 0, size)
+      case _             => Chunk.Ints(this.asInstanceOf[Chunk[Int]].toArray, 0, size)
     }
   }
 
@@ -333,7 +333,7 @@ abstract class Chunk[+O] extends Serializable { self =>
     val _ = ev // Convince scalac that ev is used
     this match {
       case c: Chunk.Longs => c
-      case other          => Chunk.Longs(this.asInstanceOf[Chunk[Long]].toArray, 0, size)
+      case _              => Chunk.Longs(this.asInstanceOf[Chunk[Long]].toArray, 0, size)
     }
   }
 
@@ -346,7 +346,7 @@ abstract class Chunk[+O] extends Serializable { self =>
     val _ = ev // Convince scalac that ev is used
     this match {
       case c: Chunk.Floats => c
-      case other =>
+      case _ =>
         Chunk.Floats(this.asInstanceOf[Chunk[Float]].toArray, 0, size)
     }
   }
@@ -360,7 +360,7 @@ abstract class Chunk[+O] extends Serializable { self =>
     val _ = ev // Convince scalac that ev is used
     this match {
       case c: Chunk.Doubles => c
-      case other =>
+      case _ =>
         Chunk.Doubles(this.asInstanceOf[Chunk[Double]].toArray, 0, size)
     }
   }
@@ -649,7 +649,7 @@ object Chunk {
     values.size match {
       case 0 => empty
       case 1 => singleton(values(0))
-      case n =>
+      case _ =>
         values match {
           case a: Array[Boolean] => booleans(a)
           case a: Array[Byte]    => bytes(a)

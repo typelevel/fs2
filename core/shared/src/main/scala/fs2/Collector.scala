@@ -1,22 +1,18 @@
 package fs2
 
-import scala.collection.{Factory, IterableFactory, MapFactory}
-import scala.collection.mutable
 import scala.reflect.ClassTag
 
 import scodec.bits.ByteVector
-
-import fs2.internal.{Resource => _, _}
 
 /**
   * Supports building a result of type `Out` from zero or more `Chunk[A]`.
   *
   * This is similar to the standard library collection builders but optimized for
   * building a collection from a stream.
-  * 
+  *
   * The companion object provides implicit conversions (methods starting with `supports`),
   * which adapts various collections to the `Collector` trait.
-  * 
+  *
   * The output type is a type member instead of a type parameter to avoid overloading
   * resolution limitations with `s.compile.to[C]` vs `s.compile.to(C)`.
   */
@@ -25,36 +21,32 @@ trait Collector[A] {
   def newBuilder: Collector.Builder[A, Out]
 }
 
-object Collector {
+object Collector extends CollectorPlatform {
   type Aux[A, X] = Collector[A] { type Out = X }
 
   def string: Collector.Aux[String, String] =
     make(Builder.string)
 
-  implicit def supportsArray[A: ClassTag](a: Array.type): Collector.Aux[A, Array[A]] =
+  implicit def supportsArray[A: ClassTag](a: Array.type): Collector.Aux[A, Array[A]] = {
+    val _ = a
     make(implicitly[ClassTag[A]] match {
       case ClassTag.Byte =>
         Builder.byteArray.asInstanceOf[Builder[A, Array[A]]]
       case _ => Builder.array[A]
     })
+  }
 
-  implicit def supportsFactory[A, C[_], B](
-      f: Factory[A, C[B]]
-  ): Collector.Aux[A, C[B]] = make(Builder.fromFactory(f))
-
-  implicit def supportsIterableFactory[A, C[_]](f: IterableFactory[C]): Collector.Aux[A, C[A]] =
-    make(Builder.fromIterableFactory(f))
-
-  implicit def supportsMapFactory[K, V, C[_, _]](f: MapFactory[C]): Collector.Aux[(K, V), C[K, V]] =
-    make(Builder.fromMapFactory(f))
-
-  implicit def supportsChunk[A](c: Chunk.type): Collector.Aux[A, Chunk[A]] =
+  implicit def supportsChunk[A](c: Chunk.type): Collector.Aux[A, Chunk[A]] = {
+    val _ = c
     make(Builder.chunk)
+  }
 
-  implicit def supportsByteVector(b: ByteVector.type): Collector.Aux[Byte, ByteVector] =
+  implicit def supportsByteVector(b: ByteVector.type): Collector.Aux[Byte, ByteVector] = {
+    val _ = b
     make(Builder.byteVector)
+  }
 
-  private def make[A, X](nb: => Builder[A, X]): Collector.Aux[A, X] =
+  protected def make[A, X](nb: => Builder[A, X]): Collector.Aux[A, X] =
     new Collector[A] {
       type Out = X
       def newBuilder = nb
@@ -71,16 +63,9 @@ object Collector {
     }
   }
 
-  object Builder {
+  object Builder extends BuilderPlatform {
     def byteArray: Builder[Byte, Array[Byte]] =
       byteVector.mapResult(_.toArray)
-
-    def array[A: ClassTag]: Builder[A, Array[A]] =
-      new Builder[A, Array[A]] {
-        private[this] val builder = mutable.ArrayBuilder.make[A]
-        def +=(c: Chunk[A]): Unit = builder.addAll(c.toArrayUnsafe)
-        def result: Array[A] = builder.result
-      }
 
     def chunk[A]: Builder[A, Chunk[A]] =
       new Builder[A, Chunk[A]] {
@@ -89,16 +74,12 @@ object Collector {
         def result: Chunk[A] = queue.toChunk
       }
 
-    def fromFactory[A, C[_], B](f: Factory[A, C[B]]): Builder[A, C[B]] =
-      fromBuilder(f.newBuilder)
+    def array[A: ClassTag]: Builder[A, Array[A]] =
+      chunk.mapResult(_.toArray)
 
-    def fromIterableFactory[A, C[_]](f: IterableFactory[C]): Builder[A, C[A]] =
-      fromBuilder(f.newBuilder)
-
-    def fromMapFactory[K, V, C[_, _]](f: MapFactory[C]): Builder[(K, V), C[K, V]] =
-      fromBuilder(f.newBuilder)
-
-    private def fromBuilder[A, C[_], B](builder: mutable.Builder[A, C[B]]): Builder[A, C[B]] =
+    protected def fromBuilder[A, C[_], B](
+        builder: collection.mutable.Builder[A, C[B]]
+    ): Builder[A, C[B]] =
       new Builder[A, C[B]] {
         def +=(c: Chunk[A]): Unit = builder ++= c.iterator
         def result: C[B] = builder.result
