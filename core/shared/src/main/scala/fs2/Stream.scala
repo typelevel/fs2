@@ -905,7 +905,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Nothing, O, Unit]
     * scala> import scala.concurrent.duration._, cats.effect.{ContextShift, IO, Timer}
     * scala> implicit val cs: ContextShift[IO] = IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
     * scala> implicit val timer: Timer[IO] = IO.timer(scala.concurrent.ExecutionContext.Implicits.global)
-    * scala> val s1 = Stream.awakeEvery[IO](1000.millis).scan(0)((acc, i) => acc + 1)
+    * scala> val s1 = Stream.awakeEvery[IO](1000.millis).scan(0)((acc, _) => acc + 1)
     * scala> val s = s1.either(Stream.sleep_[IO](500.millis) ++ s1).take(10)
     * scala> s.take(10).compile.toVector.unsafeRunSync
     * res0: Vector[Either[Int,Int]] = Vector(Left(0), Right(0), Left(1), Right(1), Left(2), Right(2), Left(3), Right(3), Left(4), Right(4))
@@ -1415,7 +1415,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Nothing, O, Unit]
     * If `this` terminates with `Stream.raiseError(e)`, invoke `h(e)`.
     *
     * @example {{{
-    * scala> Stream(1, 2, 3).append(Stream.raiseError[cats.effect.IO](new RuntimeException)).handleErrorWith(t => Stream(0)).compile.toList.unsafeRunSync()
+    * scala> Stream(1, 2, 3).append(Stream.raiseError[cats.effect.IO](new RuntimeException)).handleErrorWith(_ => Stream(0)).compile.toList.unsafeRunSync()
     * res0: List[Int] = List(1, 2, 3, 0)
     * }}}
     */
@@ -1800,7 +1800,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Nothing, O, Unit]
     * scala> import scala.concurrent.duration._, cats.effect.{ContextShift, IO, Timer}
     * scala> implicit val cs: ContextShift[IO] = IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
     * scala> implicit val timer: Timer[IO] = IO.timer(scala.concurrent.ExecutionContext.Implicits.global)
-    * scala> val s1 = Stream.awakeEvery[IO](500.millis).scan(0)((acc, i) => acc + 1)
+    * scala> val s1 = Stream.awakeEvery[IO](500.millis).scan(0)((acc, _) => acc + 1)
     * scala> val s = s1.merge(Stream.sleep_[IO](250.millis) ++ s1)
     * scala> s.take(6).compile.toVector.unsafeRunSync
     * res0: Vector[Int] = Vector(0, 0, 1, 1, 2, 2)
@@ -2334,7 +2334,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Nothing, O, Unit]
     * Preserves chunkiness.
     *
     * @example {{{
-    * scala> Stream(Right(1), Right(2), Left(new RuntimeException), Right(3)).rethrow[cats.effect.IO, Int].handleErrorWith(t => Stream(-1)).compile.toList.unsafeRunSync
+    * scala> Stream(Right(1), Right(2), Left(new RuntimeException), Right(3)).rethrow[cats.effect.IO, Int].handleErrorWith(_ => Stream(-1)).compile.toList.unsafeRunSync
     * res0: List[Int] = List(-1)
     * }}}
     */
@@ -2644,7 +2644,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Nothing, O, Unit]
     * Applies the given sink to this stream.
     */
   @deprecated("Use .through instead", "1.0.2")
-  private[Stream] def to[F2[x] >: F[x]](f: Stream[F, O] => Stream[F2, Unit]): Stream[F2, Unit] =
+  private[fs2] def to[F2[x] >: F[x]](f: Stream[F, O] => Stream[F2, Unit]): Stream[F2, Unit] =
     f(this)
 
   /**

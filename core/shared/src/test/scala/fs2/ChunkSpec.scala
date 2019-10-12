@@ -52,7 +52,7 @@ class ChunkSpec extends Fs2Spec {
       val c = Chunk.seq(as)
       try c shouldBe a[Chunk.Boxed[_]] // 2.11/2.12
       catch {
-        case NonFatal(t) => c shouldBe a[Chunk.Ints] // 2.13+
+        case NonFatal(_) => c shouldBe a[Chunk.Ints] // 2.13+
       }
     }
   }
