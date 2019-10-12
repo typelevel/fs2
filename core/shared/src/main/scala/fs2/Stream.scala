@@ -3729,11 +3729,8 @@ object Stream extends StreamLowPriority {
     /** Lifts this stream to the specified effect type. */
     def covary[F[_]]: Stream[F, O] = self
 
-    /** Runs this pure stream and returns the emitted elements in a collection of the specified type. Note: this method is only available on pure streams. */
-    def to(c: Collector[O]): c.Out = to_(c)
-
     @inline private def to_(c: Collector[O]): c.Out =
-      self.covary[IO].compile.to(c).unsafeRunSync
+      self.covary[SyncIO].compile.to(c).unsafeRunSync
 
     /** Runs this pure stream and returns the emitted elements in a collection of the specified type. Note: this method is only available on pure streams. */
     def to[C[_]](implicit f: Factory[O, C[O]]): C[O] = to_(f)
@@ -3747,6 +3744,19 @@ object Stream extends StreamLowPriority {
 
     /** Runs this pure stream and returns the emitted elements in a vector. Note: this method is only available on pure streams. */
     def toVector: Vector[O] = to_(Vector)
+  }
+
+  /** Provides `to` syntax for pure streams. */
+  implicit def PureTo[O](s: Stream[Pure, O]): PureTo[O] =
+    new PureTo(s.get[Pure, O])
+
+  /** Provides `to` syntax for pure streams. */
+  final class PureTo[O] private[Stream] (private val free: FreeC[Pure, O, Unit]) extends AnyVal {
+    private def self: Stream[Pure, O] = Stream.fromFreeC[Pure, O](free)
+
+    /** Runs this pure stream and returns the emitted elements in a collection of the specified type. Note: this method is only available on pure streams. */
+    def to(c: Collector[O]): c.Out =
+      self.covary[SyncIO].compile.to(c).unsafeRunSync
   }
 
   /** Provides syntax for streams with effect type `cats.Id`. */
@@ -3778,11 +3788,8 @@ object Stream extends StreamLowPriority {
       self.asInstanceOf[Stream[F, O]]
     }
 
-    /** Runs this fallible stream and returns the emitted elements in a collection of the specified type. Note: this method is only available on fallible streams. */
-    def to(c: Collector[O]): Either[Throwable, c.Out] = to_(c)
-
     @inline private def to_(c: Collector[O]): Either[Throwable, c.Out] =
-      lift[IO].compile.to(c).attempt.unsafeRunSync
+      lift[SyncIO].compile.to(c).attempt.unsafeRunSync
 
     /** Runs this fallible stream and returns the emitted elements in a collection of the specified type. Note: this method is only available on fallible streams. */
     def to[C[_]](implicit f: Factory[O, C[O]]): Either[Throwable, C[O]] = to_(f)
@@ -3796,6 +3803,20 @@ object Stream extends StreamLowPriority {
 
     /** Runs this fallible stream and returns the emitted elements in a vector. Note: this method is only available on fallible streams. */
     def toVector: Either[Throwable, Vector[O]] = to_(Vector)
+  }
+
+  /** Provides `to` syntax for streams with effect type `Fallible`. */
+  implicit def FallibleTo[O](s: Stream[Fallible, O]): FallibleTo[O] =
+    new FallibleTo(s.get[Fallible, O])
+
+  /** Provides `to` syntax for fallible streams. */
+  final class FallibleTo[O] private[Stream] (private val free: FreeC[Fallible, O, Unit])
+      extends AnyVal {
+    private def self: Stream[Fallible, O] = Stream.fromFreeC[Fallible, O](free)
+
+    /** Runs this fallible stream and returns the emitted elements in a collection of the specified type. Note: this method is only available on fallible streams. */
+    def to(c: Collector[O]): Either[Throwable, c.Out] =
+      self.lift[SyncIO].compile.to(c).attempt.unsafeRunSync
   }
 
   /** Projection of a `Stream` providing various ways to get a `Pull` from the `Stream`. */
