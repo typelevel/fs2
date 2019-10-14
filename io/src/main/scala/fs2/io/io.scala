@@ -1,9 +1,18 @@
 package fs2
 
-import cats.effect.{Async, Blocker, Concurrent, ConcurrentEffect, ContextShift, Resource, Sync}
-
 import cats._
+import cats.effect.{
+  Async,
+  Blocker,
+  Concurrent,
+  ConcurrentEffect,
+  ContextShift,
+  ExitCase,
+  Resource,
+  Sync
+}
 import cats.effect.implicits._
+import cats.effect.concurrent.Ref
 import cats.implicits._
 import java.io.{InputStream, OutputStream, PipedInputStream, PipedOutputStream}
 import java.nio.charset.Charset
@@ -17,8 +26,6 @@ import java.nio.charset.Charset
   * @see [[https://typelevel.org/cats-effect/concurrency/basics.html#blocking-threads]]
   */
 package object io {
-  import cats.effect.ExitCase
-  import cats.effect.concurrent.Ref
   private val utf8Charset = Charset.forName("UTF-8")
 
   /**
