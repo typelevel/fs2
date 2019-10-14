@@ -1,10 +1,10 @@
 package fs2
 
-import cats.effect.{Async, Blocker, ConcurrentEffect, ContextShift, Resource, Sync}
+import cats.effect.{Async, Blocker, Concurrent, ConcurrentEffect, ContextShift, Resource, Sync}
 
 import cats._
 import cats.implicits._
-import java.io.{InputStream, OutputStream}
+import java.io.{InputStream, OutputStream, PipedInputStream, PipedOutputStream}
 import java.nio.charset.Charset
 
 /**
@@ -111,6 +111,47 @@ package object io {
         else Stream.eval(fos)
       os.flatMap(os => useOs(os) ++ Stream.eval(blocker.delay(os.flush())))
     }
+
+  /**
+    * Take a function that emits to an [[java.io.OutputStream OutputStream]] effectfully,
+    * and return a stream which, when run, will perform that function and emit
+    * the bytes recorded in the OutputStream as an fs2.Stream
+    *
+    * The stream produced by this will terminate if:
+    *   - `f` returns
+    *   - `f` calls `OutputStream#close`
+    *
+    * If none of those happens, the stream will run forever.
+    */
+  def readOutputStream[F[_]: Concurrent: ContextShift](
+      blocker: Blocker,
+      chunkSize: Int
+  )(
+      f: OutputStream => F[Unit]
+  ): Stream[F, Byte] = {
+
+    val mkOutput: Resource[F, (OutputStream, InputStream)] =
+      Resource.make(Sync[F].delay {
+        val os = new PipedOutputStream()
+        val is = new PipedInputStream(os)
+        (os: OutputStream, is: InputStream)
+      })(
+        ois =>
+          Sync[F].delay {
+            // Piped(I/O)Stream implementations cant't throw on close, no need to nest the handling here.
+            ois._2.close()
+            ois._1.close()
+          }
+      )
+
+    Stream.resource(mkOutput).flatMap {
+      case (os, is) =>
+        val write = f(os) *> Sync[F].delay(os.close())
+        val read = readInputStream(is.pure[F], chunkSize, blocker, closeAfterUse = false)
+        read.concurrently(Stream.eval(write))
+    }
+
+  }
 
   //
   // STDIN/STDOUT Helpers
