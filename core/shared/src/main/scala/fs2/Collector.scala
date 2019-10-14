@@ -16,7 +16,7 @@ import scodec.bits.ByteVector
   * The output type is a type member instead of a type parameter to avoid overloading
   * resolution limitations with `s.compile.to[C]` vs `s.compile.to(C)`.
   */
-trait Collector[A] {
+trait Collector[-A] {
   type Out
   def newBuilder: Collector.Builder[A, Out]
 }
@@ -36,11 +36,6 @@ object Collector extends CollectorPlatform {
     })
   }
 
-  implicit def supportsChunk[A](c: Chunk.type): Collector.Aux[A, Chunk[A]] = {
-    val _ = c
-    make(Builder.chunk)
-  }
-
   implicit def supportsByteVector(b: ByteVector.type): Collector.Aux[Byte, ByteVector] = {
     val _ = b
     make(Builder.byteVector)
@@ -53,7 +48,7 @@ object Collector extends CollectorPlatform {
     }
 
   /** Builds a value of type `X` from zero or more `Chunk[A]`. */
-  trait Builder[A, X] { self =>
+  trait Builder[-A, +X] { self =>
     def +=(c: Chunk[A]): Unit
     def result: X
 
@@ -67,15 +62,8 @@ object Collector extends CollectorPlatform {
     def byteArray: Builder[Byte, Array[Byte]] =
       byteVector.mapResult(_.toArray)
 
-    def chunk[A]: Builder[A, Chunk[A]] =
-      new Builder[A, Chunk[A]] {
-        private[this] var queue = Chunk.Queue.empty[A]
-        def +=(c: Chunk[A]): Unit = queue = queue :+ c
-        def result: Chunk[A] = queue.toChunk
-      }
-
     def array[A: ClassTag]: Builder[A, Array[A]] =
-      chunk.mapResult(_.toArray)
+      Chunk.newBuilder.mapResult(_.toArray)
 
     protected def fromBuilder[A, C[_], B](
         builder: collection.mutable.Builder[A, C[B]]
@@ -98,5 +86,17 @@ object Collector extends CollectorPlatform {
         def +=(c: Chunk[Byte]): Unit = acc = acc ++ c.toByteVector
         def result: ByteVector = acc
       }
+  }
+}
+
+/** Mixin trait for companions of collections that can build a `C[A]` for all `A`. */
+trait CollectorK[+C[_]] {
+  def newBuilder[A]: Collector.Builder[A, C[A]]
+}
+
+object CollectorK {
+  implicit def toCollector[A, C[_]](c: CollectorK[C]): Collector.Aux[A, C[A]] = new Collector[A] {
+    type Out = C[A]
+    def newBuilder: Collector.Builder[A, C[A]] = c.newBuilder[A]
   }
 }

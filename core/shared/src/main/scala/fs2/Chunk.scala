@@ -478,7 +478,7 @@ abstract class Chunk[+O] extends Serializable { self =>
     iterator.mkString("Chunk(", ", ", ")")
 }
 
-object Chunk {
+object Chunk extends CollectorK[Chunk] {
 
   /** Optional mix-in that provides the class tag of the element type in a chunk. */
   trait KnownElementType[A] { self: Chunk[A] =>
@@ -1722,4 +1722,11 @@ object Chunk {
     def empty[A]: Queue[A] = empty_.asInstanceOf[Queue[A]]
     def apply[A](chunks: Chunk[A]*): Queue[A] = chunks.foldLeft(empty[A])(_ :+ _)
   }
+
+  def newBuilder[A]: Collector.Builder[A, Chunk[A]] =
+    new Collector.Builder[A, Chunk[A]] {
+      private[this] var queue = Chunk.Queue.empty[A]
+      def +=(c: Chunk[A]): Unit = queue = queue :+ c
+      def result: Chunk[A] = queue.toChunk
+    }
 }
