@@ -38,7 +38,7 @@ class FreeCBenchmark {
       case Result.Pure(r)             => F.pure(Some(r))
       case Result.Fail(e)             => F.raiseError(e)
       case Result.Interrupted(_, err) => err.fold[F[Option[R]]](F.pure(None)) { F.raiseError }
-      case v @ ViewL.View(_)          => F.raiseError(new RuntimeException("Never get here)"))
+      case _ @ViewL.View(_)           => F.raiseError(new RuntimeException("Never get here)"))
     }
 
 }

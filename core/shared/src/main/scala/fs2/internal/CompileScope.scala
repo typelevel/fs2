@@ -475,7 +475,7 @@ private[fs2] object CompileScope {
         newScopeId: Token
     )(implicit F: Sync[F]): F[InterruptContext[F]] =
       interruptible
-        .map { concurent =>
+        .map { concurrent =>
           F.flatMap(concurrent.start(self.deferred.get)) { fiber =>
             val context = InterruptContext[F](
               concurrent = concurrent,

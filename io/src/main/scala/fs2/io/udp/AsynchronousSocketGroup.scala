@@ -197,7 +197,7 @@ private[udp] object AsynchronousSocketGroup {
             pendingTimeouts += t
           }
         } else {
-          if (!read1(key, channel, attachment, cb)) {
+          if (!read1(channel, cb)) {
             cancelReader = attachment.queueReader(cb, t)
             t.foreach { t =>
               pendingTimeouts += t
@@ -205,16 +205,14 @@ private[udp] object AsynchronousSocketGroup {
             try {
               key.interestOps(key.interestOps | SelectionKey.OP_READ); ()
             } catch {
-              case t: CancelledKeyException => /* Ignore; key was closed */
+              case _: CancelledKeyException => /* Ignore; key was closed */
             }
           }
         }
       } { cb(Left(new ClosedChannelException)) }
 
     private def read1(
-        key: SelectionKey,
         channel: DatagramChannel,
-        attachment: Attachment,
         reader: Either[Throwable, Packet] => Unit
     ): Boolean =
       try {
@@ -269,7 +267,7 @@ private[udp] object AsynchronousSocketGroup {
             pendingTimeouts += t
           }
         } else {
-          if (!write1(key, channel, attachment, writerPacket, cb)) {
+          if (!write1(channel, writerPacket, cb)) {
             cancelWriter = attachment.queueWriter((writerPacket, cb), t)
             t.foreach { t =>
               pendingTimeouts += t
@@ -277,7 +275,7 @@ private[udp] object AsynchronousSocketGroup {
             try {
               key.interestOps(key.interestOps | SelectionKey.OP_WRITE); ()
             } catch {
-              case t: CancelledKeyException => /* Ignore; key was closed */
+              case _: CancelledKeyException => /* Ignore; key was closed */
             }
           }
         }
@@ -285,9 +283,7 @@ private[udp] object AsynchronousSocketGroup {
     }
 
     private def write1(
-        key: SelectionKey,
         channel: DatagramChannel,
-        attachment: Attachment,
         packet: WriterPacket,
         cb: Option[Throwable] => Unit
     ): Boolean =
@@ -358,7 +354,7 @@ private[udp] object AsynchronousSocketGroup {
                     var success = true
                     while (success && attachment.hasReaders) {
                       val reader = attachment.peekReader.get
-                      success = read1(key, channel, attachment, reader)
+                      success = read1(channel, reader)
                       if (success) attachment.dequeueReader
                     }
                   }
@@ -366,7 +362,7 @@ private[udp] object AsynchronousSocketGroup {
                     var success = true
                     while (success && attachment.hasWriters) {
                       val (p, writer) = attachment.peekWriter.get
-                      success = write1(key, channel, attachment, p, writer)
+                      success = write1(channel, p, writer)
                       if (success) attachment.dequeueWriter
                     }
                   }
@@ -376,7 +372,7 @@ private[udp] object AsynchronousSocketGroup {
                   )
                 }
               } catch {
-                case t: CancelledKeyException => // Ignore; key was closed
+                case _: CancelledKeyException => // Ignore; key was closed
               }
             }
             val now = System.currentTimeMillis

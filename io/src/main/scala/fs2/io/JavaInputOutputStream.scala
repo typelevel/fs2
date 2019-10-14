@@ -71,9 +71,9 @@ private[io] object JavaInputOutputStream {
       // won't modify state if the data cannot be acquired
       def tryGetChunk(s: DownStreamState): (DownStreamState, Option[Bytes]) =
         s match {
-          case Done(None)      => s -> None
-          case Done(Some(err)) => s -> None
-          case Ready(None)     => s -> None
+          case Done(None)    => s -> None
+          case Done(Some(_)) => s -> None
+          case Ready(None)   => s -> None
           case Ready(Some(bytes)) =>
             val cloned = Chunk.Bytes(bytes.toArray)
             if (bytes.size <= len) Ready(None) -> Some(cloned)
@@ -141,7 +141,7 @@ private[io] object JavaInputOutputStream {
     ): F[Unit] =
       dnState.update {
         case s @ Done(_) => s
-        case other       => Done(None)
+        case _           => Done(None)
       } >>
         upState.discrete
           .collectFirst {

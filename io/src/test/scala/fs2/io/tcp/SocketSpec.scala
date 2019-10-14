@@ -44,7 +44,7 @@ class SocketSpec extends Fs2Spec {
       val clients: SocketGroup => Stream[IO, Array[Byte]] = socketGroup =>
         Stream
           .range(0, clientCount)
-          .map { idx =>
+          .map { _ =>
             Stream.eval(localBindAddress.get).flatMap { local =>
               Stream.resource(socketGroup.client[IO](local)).flatMap { socket =>
                 Stream

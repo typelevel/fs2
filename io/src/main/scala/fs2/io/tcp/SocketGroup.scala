@@ -135,6 +135,8 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup, blocker: Blocker
       CS: ContextShift[F]
   ): Stream[F, Either[InetSocketAddress, Resource[F, Socket[F]]]] = {
 
+    val _ = maxQueued // TODO: maxQueued param has never been used; remove in 3.0
+
     val setup: F[AsynchronousServerSocketChannel] = blocker.delay {
       val ch = AsynchronousChannelProvider
         .provider()
@@ -167,7 +169,7 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup, blocker: Blocker
           }
 
         Stream.eval(acceptChannel.attempt).flatMap {
-          case Left(err)       => Stream.empty[F]
+          case Left(_)         => Stream.empty[F]
           case Right(accepted) => Stream.emit(apply(accepted))
         } ++ go
       }

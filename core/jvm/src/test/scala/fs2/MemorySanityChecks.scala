@@ -45,7 +45,7 @@ object TopicContinuousPublishSanityTest extends App {
 }
 
 object ResourceTrackerSanityTest extends App {
-  val big = Stream.constant(1).flatMap { n =>
+  val big = Stream.constant(1).flatMap { _ =>
     Stream.bracket(IO(()))(_ => IO(())).flatMap(_ => Stream.emits(List(1, 2, 3)))
   }
   big.compile.drain.unsafeRunSync()
