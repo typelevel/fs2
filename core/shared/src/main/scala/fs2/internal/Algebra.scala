@@ -263,7 +263,8 @@ private[fs2] object Algebra {
                     extendedTopLevelScope match {
                       case None    => false.pure[F]
                       case Some(s) => s.close(ExitCase.Completed).rethrow.as(true)
-                    } else F.pure(false)
+                    }
+                  else F.pure(false)
                 maybeCloseExtendedScope.flatMap { closedExtendedScope =>
                   val newExtendedScope = if (closedExtendedScope) None else extendedTopLevelScope
                   F.flatMap(scope.open(open.interruptible)) {
