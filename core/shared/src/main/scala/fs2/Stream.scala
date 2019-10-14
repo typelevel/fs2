@@ -1039,20 +1039,20 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Nothing, O, Unit]
     }.flatten
 
   /**
-   * Like `filterNot`, but allows filtering based on an effect.
-   *
-   * Note: The result Stream will consist of chunks that are empty or 1-element-long.
-   * If you want to operate on chunks after using it, consider buffering, e.g. by using [[buffer]].
-   */
+    * Like `filterNot`, but allows filtering based on an effect.
+    *
+    * Note: The result Stream will consist of chunks that are empty or 1-element-long.
+    * If you want to operate on chunks after using it, consider buffering, e.g. by using [[buffer]].
+    */
   def evalFilterNot[F2[x] >: F[x]: Functor](f: O => F2[Boolean]): Stream[F2, O] =
     flatMap(o => Stream.eval(f(o)).ifM(Stream.empty, Stream.emit(o)))
 
   /**
-   * Like `filterNot`, but allows filtering based on an effect, with up to [[maxConcurrent]] concurrently running effects.
-   * The ordering of emitted elements is unchanged.
-   */
+    * Like `filterNot`, but allows filtering based on an effect, with up to [[maxConcurrent]] concurrently running effects.
+    * The ordering of emitted elements is unchanged.
+    */
   def evalFilterNotAsync[F2[x] >: F[x]: Concurrent](
-    maxConcurrent: Int
+      maxConcurrent: Int
   )(f: O => F2[Boolean]): Stream[F2, O] =
     parEvalMap[F2, Stream[F2, O]](maxConcurrent) { o =>
       f(o).map(if (_) Stream.empty else Stream.emit(o))

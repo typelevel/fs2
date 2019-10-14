@@ -3,6 +3,7 @@ package fs2
 import cats.effect.{Async, Blocker, Concurrent, ConcurrentEffect, ContextShift, Resource, Sync}
 
 import cats._
+import cats.effect.implicits._
 import cats.implicits._
 import java.io.{InputStream, OutputStream, PipedInputStream, PipedOutputStream}
 import java.nio.charset.Charset
@@ -16,6 +17,8 @@ import java.nio.charset.Charset
   * @see [[https://typelevel.org/cats-effect/concurrency/basics.html#blocking-threads]]
   */
 package object io {
+  import cats.effect.ExitCase
+  import cats.effect.concurrent.Ref
   private val utf8Charset = Charset.forName("UTF-8")
 
   /**
@@ -137,7 +140,7 @@ package object io {
         (os: OutputStream, is: InputStream)
       })(
         ois =>
-          Sync[F].delay {
+          blocker.delay {
             // Piped(I/O)Stream implementations cant't throw on close, no need to nest the handling here.
             ois._2.close()
             ois._1.close()
@@ -146,9 +149,24 @@ package object io {
 
     Stream.resource(mkOutput).flatMap {
       case (os, is) =>
-        val write = f(os) *> Sync[F].delay(os.close())
-        val read = readInputStream(is.pure[F], chunkSize, blocker, closeAfterUse = false)
-        read.concurrently(Stream.eval(write))
+        Stream.eval(Ref.of[F, Option[Throwable]](None)).flatMap { ref =>
+          // We need to close the output stream regardless of how `f` finishes
+          // to ensure an outstanding blocking read on the input stream completes.
+          // In such a case, there's a race between completion of the read
+          // stream and finalization of the write stream, so we capture the error
+          // that occurs when writing and rethrow it.
+          val write = f(os).guaranteeCase(
+            ec =>
+              blocker.delay(os.close()) *> ref.set(ec match {
+                case ExitCase.Error(t) => Some(t); case _ => None
+              })
+          )
+          val read = readInputStream(is.pure[F], chunkSize, blocker, closeAfterUse = false)
+          read.concurrently(Stream.eval(write)) ++ Stream.eval(ref.get).flatMap {
+            case None    => Stream.empty
+            case Some(t) => Stream.raiseError[F](t)
+          }
+        }
     }
 
   }

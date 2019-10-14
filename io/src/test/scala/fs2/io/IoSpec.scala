@@ -35,28 +35,28 @@ class IoSpec extends Fs2Spec {
     ) { (bytes: Array[Byte], chunkSize: Int) =>
       Blocker[IO].use { blocker =>
         readOutputStream[IO](blocker, chunkSize)(
-          (os: OutputStream) => IO(os.write(bytes))
-        ).compile.to[Array]
+          (os: OutputStream) => blocker.delay[IO, Unit](os.write(bytes))
+        ).compile
+          .to[Array]
           .asserting(_ shouldEqual bytes)
       }
     }
 
-    "can be manually closed from inside `f`" in forAll(intsBetween(1, 20)) {
-      chunkSize: Int =>
-        Blocker[IO].use { blocker =>
-          readOutputStream[IO](blocker, chunkSize)(
-            (os: OutputStream) => IO(os.close()) *> IO.never
-          ).compile.toVector
-            .asserting(_ shouldBe Vector.empty)
-        }
+    "can be manually closed from inside `f`" in forAll(intsBetween(1, 20)) { chunkSize: Int =>
+      Blocker[IO].use { blocker =>
+        readOutputStream[IO](blocker, chunkSize)(
+          (os: OutputStream) => IO(os.close()) *> IO.never
+        ).compile.toVector
+          .asserting(_ shouldBe Vector.empty)
+      }
     }
 
     "fails when `f` fails" in forAll(intsBetween(1, 20)) { chunkSize: Int =>
-        val e = new Exception("boom")
-        Blocker[IO].use { blocker =>
-          readOutputStream[IO](blocker, chunkSize)((_: OutputStream) => IO.raiseError(e)).compile.toVector.attempt
-            .asserting(_ shouldBe Left(e))
-        }
+      val e = new Exception("boom")
+      Blocker[IO].use { blocker =>
+        readOutputStream[IO](blocker, chunkSize)((_: OutputStream) => IO.raiseError(e)).compile.toVector.attempt
+          .asserting(_ shouldBe Left(e))
+      }
     }
 
     "Doesn't deadlock with size-1 ContextShift thread pool" in {
