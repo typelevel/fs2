@@ -12,7 +12,7 @@ import cats.effect.{
   Sync
 }
 import cats.effect.implicits._
-import cats.effect.concurrent.Ref
+import cats.effect.concurrent.Deferred
 import cats.implicits._
 import java.io.{InputStream, OutputStream, PipedInputStream, PipedOutputStream}
 import java.nio.charset.Charset
@@ -156,7 +156,7 @@ package object io {
 
     Stream.resource(mkOutput).flatMap {
       case (os, is) =>
-        Stream.eval(Ref.of[F, Option[Throwable]](None)).flatMap { ref =>
+        Stream.eval(Deferred[F, Option[Throwable]]).flatMap { err =>
           // We need to close the output stream regardless of how `f` finishes
           // to ensure an outstanding blocking read on the input stream completes.
           // In such a case, there's a race between completion of the read
@@ -164,12 +164,13 @@ package object io {
           // that occurs when writing and rethrow it.
           val write = f(os).guaranteeCase(
             ec =>
-              blocker.delay(os.close()) *> ref.set(ec match {
-                case ExitCase.Error(t) => Some(t); case _ => None
+              blocker.delay(os.close()) *> err.complete(ec match {
+                case ExitCase.Error(t) => Some(t)
+                case _                 => None
               })
           )
           val read = readInputStream(is.pure[F], chunkSize, blocker, closeAfterUse = false)
-          read.concurrently(Stream.eval(write)) ++ Stream.eval(ref.get).flatMap {
+          read.concurrently(Stream.eval(write)) ++ Stream.eval(err.get).flatMap {
             case None    => Stream.empty
             case Some(t) => Stream.raiseError[F](t)
           }
