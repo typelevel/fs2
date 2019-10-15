@@ -1,17 +1,7 @@
 package fs2
 
 import cats._
-import cats.effect.{
-  Async,
-  Blocker,
-  Concurrent,
-  ConcurrentEffect,
-  ContextShift,
-  ExitCase,
-  Resource,
-  Sync
-}
-import cats.effect.implicits._
+import cats.effect.{Async, Blocker, Concurrent, ConcurrentEffect, ContextShift, Resource, Sync}
 import cats.effect.concurrent.Deferred
 import cats.implicits._
 import java.io.{InputStream, OutputStream, PipedInputStream, PipedOutputStream}
@@ -139,44 +129,26 @@ package object io {
   )(
       f: OutputStream => F[Unit]
   ): Stream[F, Byte] = {
+    val mkIn = Resource.fromAutoCloseable(Sync[F].delay { new PipedInputStream })
+    def mkOut(is: PipedInputStream) =
+      Resource.fromAutoCloseable(Sync[F].delay { new PipedOutputStream(is) })
 
-    val mkOutput: Resource[F, (OutputStream, InputStream)] =
-      Resource.make(Sync[F].delay {
-        val os = new PipedOutputStream()
-        val is = new PipedInputStream(os)
-        (os: OutputStream, is: InputStream)
-      })(
-        ois =>
-          blocker.delay {
-            // Piped(I/O)Stream implementations cant't throw on close, no need to nest the handling here.
-            ois._2.close()
-            ois._1.close()
-          }
-      )
-
-    Stream.resource(mkOutput).flatMap {
-      case (os, is) =>
-        Stream.eval(Deferred[F, Option[Throwable]]).flatMap { err =>
-          // We need to close the output stream regardless of how `f` finishes
-          // to ensure an outstanding blocking read on the input stream completes.
-          // In such a case, there's a race between completion of the read
-          // stream and finalization of the write stream, so we capture the error
-          // that occurs when writing and rethrow it.
-          val write = f(os).guaranteeCase(
-            ec =>
-              blocker.delay(os.close()) *> err.complete(ec match {
-                case ExitCase.Error(t) => Some(t)
-                case _                 => None
-              })
-          )
-          val read = readInputStream(is.pure[F], chunkSize, blocker, closeAfterUse = false)
-          read.concurrently(Stream.eval(write)) ++ Stream.eval(err.get).flatMap {
-            case None    => Stream.empty
-            case Some(t) => Stream.raiseError[F](t)
-          }
-        }
+    Stream.resource(mkIn).flatMap { is =>
+      Stream.eval(Deferred[F, Unit]).flatMap { connected =>
+        val write = Stream.eval_(mkOut(is).evalTap(_ => connected.complete(())).use(f))
+        // We can't read from the pipe until we are sure it will definitely get closed.
+        val read = Stream.eval_(connected.get) ++ readInputStream(
+          (is: InputStream).pure[F],
+          chunkSize,
+          blocker,
+          closeAfterUse = false
+        )
+        // We need to halt once `read` is done (to cancel `write` once it has called `close`),
+        // but we want to continue reading after `write` is done (to make sure everything
+        // gets read).
+        read.mergeHaltL(write)
+      }
     }
-
   }
 
   //
