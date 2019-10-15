@@ -238,6 +238,20 @@ class StreamSpec extends Fs2Spec {
         "fail left" in s1.zip(s2).compile.drain.assertThrows[Err]
         "fail right" in s2.zip(s1).compile.drain.assertThrows[Err]
       }
+
+      "handleErrorWith closes scopes" in {
+        Ref
+          .of[SyncIO, Vector[BracketEvent]](Vector.empty)
+          .flatMap { events =>
+            recordBracketEvents[SyncIO](events)
+              .flatMap(_ => Stream.raiseError[SyncIO](new Err))
+              .handleErrorWith(t => Stream.empty)
+              .append(recordBracketEvents[SyncIO](events))
+              .compile
+              .drain *> events.get
+          }
+          .asserting(_ shouldBe List(Acquired, Released, Acquired, Released))
+      }
     }
 
     "bracketCase" - {

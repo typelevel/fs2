@@ -1420,7 +1420,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Nothing, O, Unit]
     * }}}
     */
   def handleErrorWith[F2[x] >: F[x], O2 >: O](h: Throwable => Stream[F2, O2]): Stream[F2, O2] =
-    Stream.fromFreeC(get[F2, O2].handleErrorWith(e => h(e).get[F2, O2]))
+    Stream.fromFreeC(scope.get[F2, O2].handleErrorWith(e => h(e).get[F2, O2]))
 
   /**
     * Emits the first element of this stream (if non-empty) and then halts.
