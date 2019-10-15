@@ -7,14 +7,14 @@ import org.reactivestreams._
 import org.reactivestreams.tck.{PublisherVerification, TestEnvironment}
 import org.scalatestplus.testng._
 
-final class FailedSubscription(sub: Subscriber[_]) extends Subscription {
+final class FailedSubscription extends Subscription {
   def cancel(): Unit = {}
   def request(n: Long): Unit = {}
 }
 
 final class FailedPublisher extends Publisher[Int] {
   def subscribe(subscriber: Subscriber[_ >: Int]): Unit = {
-    subscriber.onSubscribe(new FailedSubscription(subscriber))
+    subscriber.onSubscribe(new FailedSubscription)
     subscriber.onError(new Error("BOOM"))
   }
 }

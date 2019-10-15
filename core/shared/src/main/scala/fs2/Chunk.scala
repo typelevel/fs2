@@ -248,6 +248,9 @@ abstract class Chunk[+O] extends Serializable { self =>
     arr
   }
 
+  /** Returns the elements of this chunk as an array, avoiding a copy if possible. */
+  protected[fs2] def toArrayUnsafe[O2 >: O: ClassTag]: Array[O2] = toArray
+
   /**
     * Converts this chunk to a `Chunk.Booleans`, allowing access to the underlying array of elements.
     * If this chunk is already backed by an unboxed array of booleans, this method runs in constant time.
@@ -257,7 +260,7 @@ abstract class Chunk[+O] extends Serializable { self =>
     val _ = ev // Convince scalac that ev is used
     this match {
       case c: Chunk.Booleans => c
-      case other =>
+      case _ =>
         Chunk.Booleans(this.asInstanceOf[Chunk[Boolean]].toArray, 0, size)
     }
   }
@@ -271,7 +274,7 @@ abstract class Chunk[+O] extends Serializable { self =>
     val _ = ev // Convince scalac that ev is used
     this match {
       case c: Chunk.Bytes => c
-      case other          => Chunk.Bytes(this.asInstanceOf[Chunk[Byte]].toArray, 0, size)
+      case _              => Chunk.Bytes(this.asInstanceOf[Chunk[Byte]].toArray, 0, size)
     }
   }
 
@@ -289,7 +292,7 @@ abstract class Chunk[+O] extends Serializable { self =>
           (b: JBuffer).limit(c.offset.toInt + c.size)
           b
         }
-      case other =>
+      case _ =>
         JByteBuffer.wrap(this.asInstanceOf[Chunk[Byte]].toArray, 0, size)
     }
   }
@@ -303,7 +306,7 @@ abstract class Chunk[+O] extends Serializable { self =>
     val _ = ev // Convince scalac that ev is used
     this match {
       case c: Chunk.Shorts => c
-      case other =>
+      case _ =>
         Chunk.Shorts(this.asInstanceOf[Chunk[Short]].toArray, 0, size)
     }
   }
@@ -317,7 +320,7 @@ abstract class Chunk[+O] extends Serializable { self =>
     val _ = ev // Convince scalac that ev is used
     this match {
       case c: Chunk.Ints => c
-      case other         => Chunk.Ints(this.asInstanceOf[Chunk[Int]].toArray, 0, size)
+      case _             => Chunk.Ints(this.asInstanceOf[Chunk[Int]].toArray, 0, size)
     }
   }
 
@@ -330,7 +333,7 @@ abstract class Chunk[+O] extends Serializable { self =>
     val _ = ev // Convince scalac that ev is used
     this match {
       case c: Chunk.Longs => c
-      case other          => Chunk.Longs(this.asInstanceOf[Chunk[Long]].toArray, 0, size)
+      case _              => Chunk.Longs(this.asInstanceOf[Chunk[Long]].toArray, 0, size)
     }
   }
 
@@ -343,7 +346,7 @@ abstract class Chunk[+O] extends Serializable { self =>
     val _ = ev // Convince scalac that ev is used
     this match {
       case c: Chunk.Floats => c
-      case other =>
+      case _ =>
         Chunk.Floats(this.asInstanceOf[Chunk[Float]].toArray, 0, size)
     }
   }
@@ -357,7 +360,7 @@ abstract class Chunk[+O] extends Serializable { self =>
     val _ = ev // Convince scalac that ev is used
     this match {
       case c: Chunk.Doubles => c
-      case other =>
+      case _ =>
         Chunk.Doubles(this.asInstanceOf[Chunk[Double]].toArray, 0, size)
     }
   }
@@ -475,7 +478,7 @@ abstract class Chunk[+O] extends Serializable { self =>
     iterator.mkString("Chunk(", ", ", ")")
 }
 
-object Chunk {
+object Chunk extends CollectorK[Chunk] {
 
   /** Optional mix-in that provides the class tag of the element type in a chunk. */
   trait KnownElementType[A] { self: Chunk[A] =>
@@ -646,7 +649,7 @@ object Chunk {
     values.size match {
       case 0 => empty
       case 1 => singleton(values(0))
-      case n =>
+      case _ =>
         values match {
           case a: Array[Boolean] => booleans(a)
           case a: Array[Byte]    => bytes(a)
@@ -677,6 +680,10 @@ object Chunk {
     checkBounds(values, offset, length)
     def size = length
     def apply(i: Int) = values(offset + i)
+
+    protected[fs2] override def toArrayUnsafe[O2 >: O: ClassTag]: Array[O2] =
+      if (offset == 0 && length == values.length) values.asInstanceOf[Array[O2]]
+      else values.slice(offset, length).asInstanceOf[Array[O2]]
 
     def copyToArray[O2 >: O](xs: Array[O2], start: Int): Unit =
       if (xs.isInstanceOf[Array[AnyRef]])
@@ -721,6 +728,10 @@ object Chunk {
     def apply(i: Int) = values(offset + i)
     def at(i: Int) = values(offset + i)
 
+    protected[fs2] override def toArrayUnsafe[O2 >: Boolean: ClassTag]: Array[O2] =
+      if (offset == 0 && length == values.length) values.asInstanceOf[Array[O2]]
+      else values.slice(offset, length).asInstanceOf[Array[O2]]
+
     def copyToArray[O2 >: Boolean](xs: Array[O2], start: Int): Unit =
       if (xs.isInstanceOf[Array[Boolean]])
         System.arraycopy(values, offset, xs, start, length)
@@ -762,6 +773,10 @@ object Chunk {
     def size = length
     def apply(i: Int) = values(offset + i)
     def at(i: Int) = values(offset + i)
+
+    protected[fs2] override def toArrayUnsafe[O2 >: Byte: ClassTag]: Array[O2] =
+      if (offset == 0 && length == values.length) values.asInstanceOf[Array[O2]]
+      else values.slice(offset, length).asInstanceOf[Array[O2]]
 
     def copyToArray[O2 >: Byte](xs: Array[O2], start: Int): Unit =
       if (xs.isInstanceOf[Array[Byte]])
@@ -1127,6 +1142,10 @@ object Chunk {
     def apply(i: Int) = values(offset + i)
     def at(i: Int) = values(offset + i)
 
+    protected[fs2] override def toArrayUnsafe[O2 >: Short: ClassTag]: Array[O2] =
+      if (offset == 0 && length == values.length) values.asInstanceOf[Array[O2]]
+      else values.slice(offset, length).asInstanceOf[Array[O2]]
+
     def copyToArray[O2 >: Short](xs: Array[O2], start: Int): Unit =
       if (xs.isInstanceOf[Array[Short]])
         System.arraycopy(values, offset, xs, start, length)
@@ -1168,6 +1187,10 @@ object Chunk {
     def apply(i: Int) = values(offset + i)
     def at(i: Int) = values(offset + i)
 
+    protected[fs2] override def toArrayUnsafe[O2 >: Int: ClassTag]: Array[O2] =
+      if (offset == 0 && length == values.length) values.asInstanceOf[Array[O2]]
+      else values.slice(offset, length).asInstanceOf[Array[O2]]
+
     def copyToArray[O2 >: Int](xs: Array[O2], start: Int): Unit =
       if (xs.isInstanceOf[Array[Int]])
         System.arraycopy(values, offset, xs, start, length)
@@ -1208,6 +1231,10 @@ object Chunk {
     def size = length
     def apply(i: Int) = values(offset + i)
     def at(i: Int) = values(offset + i)
+
+    protected[fs2] override def toArrayUnsafe[O2 >: Long: ClassTag]: Array[O2] =
+      if (offset == 0 && length == values.length) values.asInstanceOf[Array[O2]]
+      else values.slice(offset, length).asInstanceOf[Array[O2]]
 
     def copyToArray[O2 >: Long](xs: Array[O2], start: Int): Unit =
       if (xs.isInstanceOf[Array[Long]])
@@ -1251,6 +1278,10 @@ object Chunk {
     def apply(i: Int) = values(offset + i)
     def at(i: Int) = values(offset + i)
 
+    protected[fs2] override def toArrayUnsafe[O2 >: Float: ClassTag]: Array[O2] =
+      if (offset == 0 && length == values.length) values.asInstanceOf[Array[O2]]
+      else values.slice(offset, length).asInstanceOf[Array[O2]]
+
     def copyToArray[O2 >: Float](xs: Array[O2], start: Int): Unit =
       if (xs.isInstanceOf[Array[Float]])
         System.arraycopy(values, offset, xs, start, length)
@@ -1292,6 +1323,10 @@ object Chunk {
     def size = length
     def apply(i: Int) = values(offset + i)
     def at(i: Int) = values(offset + i)
+
+    protected[fs2] override def toArrayUnsafe[O2 >: Double: ClassTag]: Array[O2] =
+      if (offset == 0 && length == values.length) values.asInstanceOf[Array[O2]]
+      else values.slice(offset, length).asInstanceOf[Array[O2]]
 
     def copyToArray[O2 >: Double](xs: Array[O2], start: Int): Unit =
       if (xs.isInstanceOf[Array[Double]])
@@ -1687,4 +1722,11 @@ object Chunk {
     def empty[A]: Queue[A] = empty_.asInstanceOf[Queue[A]]
     def apply[A](chunks: Chunk[A]*): Queue[A] = chunks.foldLeft(empty[A])(_ :+ _)
   }
+
+  def newBuilder[A]: Collector.Builder[A, Chunk[A]] =
+    new Collector.Builder[A, Chunk[A]] {
+      private[this] var queue = Chunk.Queue.empty[A]
+      def +=(c: Chunk[A]): Unit = queue = queue :+ c
+      def result: Chunk[A] = queue.toChunk
+    }
 }

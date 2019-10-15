@@ -172,7 +172,7 @@ class FileSpec extends BaseFileSpec {
         blocker <- Stream.resource(Blocker[IO])
         filePath <- tempFile
         tempDir <- tempDirectory
-        result <- Stream.eval(file.move[IO](blocker, filePath, tempDir.resolve("newfile")))
+        _ <- Stream.eval(file.move[IO](blocker, filePath, tempDir.resolve("newfile")))
         exists <- Stream.eval(file.exists[IO](blocker, filePath))
       } yield exists).compile.fold(false)(_ || _).unsafeRunSync() shouldBe false
     }

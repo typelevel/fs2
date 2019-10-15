@@ -105,7 +105,7 @@ private[fs2] object Algebra {
               )
           }
 
-        case Result.Interrupted(ctx, err) => sys.error(s"Impossible context: $ctx")
+        case Result.Interrupted(ctx, _) => sys.error(s"Impossible context: $ctx")
       }
     }
 
@@ -406,16 +406,16 @@ private[fs2] object Algebra {
           view.step match {
             case output: Output[F, X] =>
               Output[G, X](output.values).transformWith {
-                case r @ Result.Pure(v) if isMainLevel =>
+                case r @ Result.Pure(_) if isMainLevel =>
                   translateStep(view.next(r), isMainLevel)
 
-                case r @ Result.Pure(v) if !isMainLevel =>
+                case r @ Result.Pure(_) if !isMainLevel =>
                   // Cast is safe here, as at this point the evaluation of this Step will end
                   // and the remainder of the free will be passed as a result in Bind. As such
                   // next Step will have this to evaluate, and will try to translate again.
                   view.next(r).asInstanceOf[FreeC[G, X, Unit]]
 
-                case r @ Result.Fail(err) => translateStep(view.next(r), isMainLevel)
+                case r @ Result.Fail(_) => translateStep(view.next(r), isMainLevel)
 
                 case r @ Result.Interrupted(_, _) => translateStep(view.next(r), isMainLevel)
               }
@@ -449,7 +449,7 @@ private[fs2] object Algebra {
       Acquire[G, r](fK(a.resource), (r, ec) => fK(a.release(r, ec)))
         .asInstanceOf[AlgEffect[G, R]]
     case e: Eval[F, R]    => Eval[G, R](fK(e.value))
-    case o: OpenScope[F]  => OpenScope[G](concurrent).asInstanceOf[AlgEffect[G, R]]
+    case _: OpenScope[F]  => OpenScope[G](concurrent).asInstanceOf[AlgEffect[G, R]]
     case c: CloseScope[F] => c.asInstanceOf[AlgEffect[G, R]]
     case g: GetScope[F]   => g.asInstanceOf[AlgEffect[G, R]]
   }

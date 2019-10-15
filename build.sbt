@@ -26,21 +26,17 @@ lazy val commonSettings = Seq(
     "-language:implicitConversions",
     "-language:higherKinds"
   ) ++
-    (if (scalaBinaryVersion.value.startsWith("2.12"))
-       List(
-         "-Xlint",
-         "-Xfatal-warnings",
-         "-Yno-adapted-args",
-         "-Ywarn-value-discard",
-         "-Ywarn-unused-import",
-         "-Ypartial-unification"
-       )
-     else Nil) ++ (if (scalaBinaryVersion.value.startsWith("2.11"))
-                     List("-Xexperimental", "-Ypartial-unification")
-                   else
-                     Nil), // 2.11 needs -Xexperimental to enable SAM conversion
+    (scalaBinaryVersion.value match {
+      case v if v.startsWith("2.13") =>
+        List("-Xlint", "-Ywarn-unused")
+      case v if v.startsWith("2.12") =>
+        List("-Ypartial-unification")
+      case v if v.startsWith("2.11") =>
+        List("-Xexperimental", "-Ypartial-unification")
+      case other => sys.error(s"Unsupported scala version: $other")
+    }),
   scalacOptions in (Compile, console) ~= {
-    _.filterNot("-Ywarn-unused-import" == _)
+    _.filterNot("-Ywarn-unused" == _)
       .filterNot("-Xlint" == _)
       .filterNot("-Xfatal-warnings" == _)
   },

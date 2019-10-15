@@ -47,7 +47,7 @@ class StreamSpec extends Fs2Spec {
       "liveness" in {
         val s = Stream
           .awakeEvery[IO](1.milli)
-          .evalMap { i =>
+          .evalMap { _ =>
             IO.async[Unit](cb => executionContext.execute(() => cb(Right(()))))
           }
           .take(200)
@@ -79,7 +79,7 @@ class StreamSpec extends Fs2Spec {
               .flatMap(_ => use)
               .compile
               .drain
-              .handleErrorWith { case t: Err => Sync[F].pure(()) }
+              .handleErrorWith { case _: Err => Sync[F].pure(()) }
             _ <- events.get.asserting { _ shouldBe Vector(Acquired, Released) }
           } yield ()
 
@@ -99,7 +99,7 @@ class StreamSpec extends Fs2Spec {
               .append(recordBracketEvents(events).flatMap(_ => use2))
               .compile
               .drain
-              .handleErrorWith { case t: Err => Sync[F].pure(()) }
+              .handleErrorWith { case _: Err => Sync[F].pure(()) }
             _ <- events.get.asserting { _ shouldBe Vector(Acquired, Released, Acquired, Released) }
           } yield ()
 
@@ -177,7 +177,7 @@ class StreamSpec extends Fs2Spec {
       }
 
       val bracketsInSequence = if (isJVM) 1000000 else 10000
-      bracketsInSequence + " brackets in sequence" in {
+      s"$bracketsInSequence brackets in sequence" in {
         Counter[IO].flatMap { counter =>
           Stream
             .range(0, bracketsInSequence)
@@ -208,7 +208,7 @@ class StreamSpec extends Fs2Spec {
             var o: Vector[Int] = Vector.empty
             (0 until 10)
               .foldLeft(Stream.eval(IO(0))) { (acc, i) =>
-                Stream.bracket(IO(i))(i => IO { o = o :+ i }).flatMap(i => acc)
+                Stream.bracket(IO(i))(i => IO { o = o :+ i }).flatMap(_ => acc)
               }
               .compile
               .drain
@@ -221,7 +221,7 @@ class StreamSpec extends Fs2Spec {
             var o: Vector[Int] = Vector.empty
             (0 until 10)
               .foldLeft(Stream.emit(1).map(_ => throw new Err).covaryAll[IO, Int]) { (acc, i) =>
-                Stream.emit(i) ++ Stream.bracket(IO(i))(i => IO { o = o :+ i }).flatMap(i => acc)
+                Stream.emit(i) ++ Stream.bracket(IO(i))(i => IO { o = o :+ i }).flatMap(_ => acc)
               }
               .attempt
               .compile
@@ -459,7 +459,7 @@ class StreamSpec extends Fs2Spec {
 
     "chunk" in {
       forAll { (c: Chunk[Int]) =>
-        Stream.chunk(c).toChunk shouldBe c
+        Stream.chunk(c).compile.to(Chunk) shouldBe c
       }
     }
 
@@ -767,7 +767,7 @@ class StreamSpec extends Fs2Spec {
                 .delayBy[IO](25.millis)
                 .append(s)
                 .concurrently(Stream.raiseError[IO](new Err))
-                .evalTap(i => gate.get)
+                .evalTap(_ => gate.get)
             }
             .compile
             .drain
@@ -793,7 +793,7 @@ class StreamSpec extends Fs2Spec {
 
                   Stream
                     .bracket(IO.unit)(_ => finRef.update(_ :+ "Outer"))
-                    .flatMap { b =>
+                    .flatMap { _ =>
                       s.covary[IO].concurrently(runner)
                     }
                     .interruptWhen(halt.get.attempt)
@@ -984,7 +984,7 @@ class StreamSpec extends Fs2Spec {
             case (sem, sig) =>
               val tested = s
                 .covary[IO]
-                .evalFilterAsync(n) { elem =>
+                .evalFilterAsync(n) { _ =>
                   val ensureAcquired =
                     sem.tryAcquire.ifM(
                       IO.unit,
@@ -1064,7 +1064,7 @@ class StreamSpec extends Fs2Spec {
             case (sem, sig) =>
               val tested = s
                 .covary[IO]
-                .evalFilterNotAsync(n) { elem =>
+                .evalFilterNotAsync(n) { _ =>
                   val ensureAcquired =
                     sem.tryAcquire.ifM(
                       IO.unit,
@@ -1132,13 +1132,13 @@ class StreamSpec extends Fs2Spec {
         .through(durationSinceLastTrue)
 
       (IO.shift >> durationsSinceSpike.compile.toVector).unsafeToFuture().map { result =>
-        val (head :: tail) = result.toList
-        withClue("every always emits true first") { assert(head._1) }
-        withClue("true means the delay has passed: " + tail) {
-          assert(tail.filter(_._1).map(_._2).forall { _ >= delay })
+        val list = result.toList
+        withClue("every always emits true first") { assert(list.head._1) }
+        withClue(s"true means the delay has passed: ${list.tail}") {
+          assert(list.tail.filter(_._1).map(_._2).forall { _ >= delay })
         }
-        withClue("false means the delay has not passed: " + tail) {
-          assert(tail.filterNot(_._1).map(_._2).forall { _ <= delay })
+        withClue(s"false means the delay has not passed: ${list.tail}") {
+          assert(list.tail.filterNot(_._1).map(_._2).forall { _ <= delay })
         }
       }
     }
@@ -1477,7 +1477,7 @@ class StreamSpec extends Fs2Spec {
             .range(0, 10)
             .covary[SyncIO]
             .append(Stream.raiseError[SyncIO](new Err))
-            .handleErrorWith { t =>
+            .handleErrorWith { _ =>
               i += 1; Stream.empty
             }
             .compile
@@ -1506,7 +1506,7 @@ class StreamSpec extends Fs2Spec {
           (Stream
             .range(0, 3)
             .covary[SyncIO] ++ Stream.raiseError[SyncIO](new Err)).unchunk.pull.echo
-            .handleErrorWith { t =>
+            .handleErrorWith { _ =>
               i += 1; Pull.done
             }
             .stream
@@ -1835,7 +1835,7 @@ class StreamSpec extends Fs2Spec {
           s.covary[IO]
             .append(Stream(1))
             .interruptWhen(interrupt)
-            .map(i => None)
+            .map(_ => None)
             .append(s.map(Some(_)))
             .flatMap {
               case None    => Stream.eval(IO.never)
@@ -1878,8 +1878,8 @@ class StreamSpec extends Fs2Spec {
           .pull
           .uncons
           .flatMap {
-            case None           => Pull.done
-            case Some((hd, tl)) => Pull.eval(IO.never)
+            case None         => Pull.done
+            case Some((_, _)) => Pull.eval(IO.never)
           }
           .stream
           .interruptScope
@@ -2120,7 +2120,7 @@ class StreamSpec extends Fs2Spec {
 
                 val prg0 =
                   bracketed
-                    .flatMap { b =>
+                    .flatMap { _ =>
                       (Stream.bracket(register("L"))(_ => finalizer("L")) >> s)
                         .merge(
                           Stream.bracket(register("R"))(_ => finalizer("R")) >>
@@ -2162,7 +2162,7 @@ class StreamSpec extends Fs2Spec {
 
       "hangs" - {
         val full = if (isJVM) Stream.constant(42) else Stream.constant(42).evalTap(_ => IO.shift)
-        val hang = Stream.repeatEval(IO.async[Unit](cb => ()))
+        val hang = Stream.repeatEval(IO.async[Unit](_ => ()))
         val hang2: Stream[IO, Nothing] = full.drain
         val hang3: Stream[IO, Nothing] =
           Stream
@@ -2260,7 +2260,7 @@ class StreamSpec extends Fs2Spec {
           "handle multiple consecutive observations" in {
             forAll { (s: Stream[Pure, Int]) =>
               val expected = s.toList
-              val sink: Pipe[IO, Int, Unit] = _.evalMap(i => IO.unit)
+              val sink: Pipe[IO, Int, Unit] = _.evalMap(_ => IO.unit)
               observer(observer(s.covary[IO])(sink))(sink).compile.toList
                 .asserting(_ shouldBe expected)
             }
@@ -2477,7 +2477,7 @@ class StreamSpec extends Fs2Spec {
 
       "hangs" - {
         val full = if (isJVM) Stream.constant(42) else Stream.constant(42).evalTap(_ => IO.shift)
-        val hang = Stream.repeatEval(IO.async[Unit](cb => ()))
+        val hang = Stream.repeatEval(IO.async[Unit](_ => ()))
         val hang2: Stream[IO, Nothing] = full.drain
         val hang3: Stream[IO, Nothing] =
           Stream
@@ -2520,7 +2520,7 @@ class StreamSpec extends Fs2Spec {
       }
     }
 
-    "pause" in forAll { (s1: Stream[Pure, Int]) =>
+    "pause" in {
       Stream
         .eval(SignallingRef[IO, Boolean](false))
         .flatMap { pause =>
@@ -2700,7 +2700,7 @@ class StreamSpec extends Fs2Spec {
       Stream(1, 2, 3, 4, 5).repartition(i => Chunk(i, i)).toList shouldBe List(1, 3, 6, 10, 15, 15)
 
       Stream(1, 10, 100)
-        .repartition(i => Chunk.seq(1 to 1000))
+        .repartition(_ => Chunk.seq(1 to 1000))
         .take(4)
         .toList shouldBe List(1, 2, 3, 4)
     }
@@ -2781,7 +2781,7 @@ class StreamSpec extends Fs2Spec {
           val n = n0 % 10 + 1
           Counter[IO].flatMap { outer =>
             Counter[IO].flatMap { inner =>
-              val s2 = Stream.bracket(outer.increment)(_ => outer.decrement) >> s.map { i =>
+              val s2 = Stream.bracket(outer.increment)(_ => outer.decrement) >> s.map { _ =>
                 spuriousFail(Stream.bracket(inner.increment)(_ => inner.decrement) >> s)
               }
               val one = s2.parJoin(n).take(10).attempt
@@ -2825,7 +2825,7 @@ class StreamSpec extends Fs2Spec {
               val sleepAndSet = IO.sleep(20.millis) >> signal.set(true)
               Stream
                 .eval_(sleepAndSet.start)
-                .append(s.map { inner =>
+                .append(s.map { _ =>
                   Stream
                     .bracket(counter.increment)(_ => counter.decrement)
                     .evalMap(_ => IO.never)
@@ -2913,7 +2913,7 @@ class StreamSpec extends Fs2Spec {
             case Left(RetryErr(msg)) =>
               failures shouldBe 5
               msg shouldBe "5"
-            case other => fail("Expected a RetryErr")
+            case _ => fail("Expected a RetryErr")
           }
         }
       }
@@ -2936,7 +2936,7 @@ class StreamSpec extends Fs2Spec {
               failures shouldBe 6
               successes shouldBe 0
               msg shouldBe "fatal"
-            case other => fail("Expected a RetryErr")
+            case _ => fail("Expected a RetryErr")
           }
         }
       }
@@ -2964,7 +2964,7 @@ class StreamSpec extends Fs2Spec {
         Stream.retry(job, unit.millis, _ + unit.millis, maxTries).compile.drain.attempt.asserting {
           case Left(RetryErr(_)) =>
             getDelays shouldBe List.range(1, maxTries)
-          case other => fail("Expected a RetryErr")
+          case _ => fail("Expected a RetryErr")
         }
       }
     }
@@ -3022,7 +3022,7 @@ class StreamSpec extends Fs2Spec {
         Stream
           .eval(Ref.of[IO, Int](0))
           .flatMap { ref =>
-            Stream(1).flatMap { i =>
+            Stream(1).flatMap { _ =>
               Stream
                 .bracketWeak(ref.update(_ + 1))(_ => ref.update(_ - 1))
                 .flatMap(_ => Stream.eval(ref.get)) ++ Stream.eval(ref.get)
@@ -3116,7 +3116,7 @@ class StreamSpec extends Fs2Spec {
           Stream
             .eval(Ref[IO].of(true))
             .flatMap { ref =>
-              s.covary[IO].switchMap { i =>
+              s.covary[IO].switchMap { _ =>
                 Stream.eval(ref.get).flatMap { released =>
                   if (!released) Stream.raiseError[IO](new Err)
                   else
@@ -3601,14 +3601,14 @@ class StreamSpec extends Fs2Spec {
       Stream("uno", "dos", "tres", "cuatro")
         .zipWithScan(0)(_ + _.length)
         .toList shouldBe List("uno" -> 0, "dos" -> 3, "tres" -> 6, "cuatro" -> 10)
-      Stream().zipWithScan(())((acc, i) => ???).toList shouldBe Nil
+      Stream().zipWithScan(())((_, _) => ???).toList shouldBe Nil
     }
 
     "zipWithScan1" in {
       Stream("uno", "dos", "tres", "cuatro")
         .zipWithScan1(0)(_ + _.length)
         .toList shouldBe List("uno" -> 3, "dos" -> 6, "tres" -> 10, "cuatro" -> 16)
-      Stream().zipWithScan1(())((acc, i) => ???).toList shouldBe Nil
+      Stream().zipWithScan1(())((_, _) => ???).toList shouldBe Nil
     }
 
     "regressions" - {

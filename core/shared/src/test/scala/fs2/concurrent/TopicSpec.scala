@@ -73,7 +73,7 @@ class TopicSpec extends Fs2Spec {
               result.toMap.size shouldBe subs
 
               result.foreach {
-                case (idx, subResults) =>
+                case (_, subResults) =>
                   val diff: Set[Int] = subResults.map {
                     case (read, state) => Math.abs(state - read)
                   }.toSet

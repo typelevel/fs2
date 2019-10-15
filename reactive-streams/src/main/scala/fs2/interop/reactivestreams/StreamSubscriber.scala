@@ -110,12 +110,12 @@ object StreamSubscriber {
         case o                       => o -> F.raiseError(new Error(s"received record [$a] in invalid state [$o]"))
       }
       case OnComplete => {
-        case WaitingOnUpstream(sub, r) => UpstreamCompletion -> r.complete(None.asRight)
-        case o                         => UpstreamCompletion -> F.unit
+        case WaitingOnUpstream(_, r) => UpstreamCompletion -> r.complete(None.asRight)
+        case _                       => UpstreamCompletion -> F.unit
       }
       case OnError(e) => {
         case WaitingOnUpstream(_, r) => UpstreamError(e) -> r.complete(e.asLeft)
-        case o                       => UpstreamError(e) -> F.unit
+        case _                       => UpstreamError(e) -> F.unit
       }
       case OnFinalize => {
         case WaitingOnUpstream(sub, r) =>

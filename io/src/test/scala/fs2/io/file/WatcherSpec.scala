@@ -18,7 +18,7 @@ class WatcherSpec extends BaseFileSpec {
               file
                 .watch[IO](bec, f, modifiers = modifiers)
                 .takeWhile({
-                  case Watcher.Event.Modified(f, _) => false; case _ => true
+                  case Watcher.Event.Modified(_, _) => false; case _ => true
                 }, true)
                 .concurrently(smallDelay ++ modify(f))
             }
@@ -34,7 +34,7 @@ class WatcherSpec extends BaseFileSpec {
               file
                 .watch[IO](bec, f, modifiers = modifiers)
                 .takeWhile({
-                  case Watcher.Event.Deleted(f, _) => false; case _ => true
+                  case Watcher.Event.Deleted(_, _) => false; case _ => true
                 }, true)
                 .concurrently(smallDelay ++ Stream.eval(IO(Files.delete(f))))
             }
@@ -56,7 +56,7 @@ class WatcherSpec extends BaseFileSpec {
                 file
                   .watch[IO](bec, dir, modifiers = modifiers)
                   .takeWhile({
-                    case Watcher.Event.Modified(b, _) => false; case _ => true
+                    case Watcher.Event.Modified(_, _) => false; case _ => true
                   })
                   .concurrently(smallDelay ++ modify(b))
               }
@@ -74,7 +74,7 @@ class WatcherSpec extends BaseFileSpec {
               file
                 .watch[IO](bec, dir, modifiers = modifiers)
                 .takeWhile({
-                  case Watcher.Event.Created(b, _) => false; case _ => true
+                  case Watcher.Event.Created(_, _) => false; case _ => true
                 })
                 .concurrently(
                   smallDelay ++ Stream
@@ -98,7 +98,7 @@ class WatcherSpec extends BaseFileSpec {
       val c = Class.forName("com.sun.nio.file.SensitivityWatchEventModifier")
       Seq(c.getField("HIGH").get(c).asInstanceOf[WatchEvent.Modifier])
     } catch {
-      case t: Throwable => Nil
+      case _: Throwable => Nil
     }
   }
 }

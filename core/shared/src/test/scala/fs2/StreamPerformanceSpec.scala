@@ -46,7 +46,7 @@ class StreamPerformanceSpec extends Fs2Spec {
           pending
           (1 until N)
             .map(Stream.emit)
-            .foldLeft(Stream.emit(0))((acc, a) => acc.map(_ + 1))
+            .foldLeft(Stream.emit(0))((acc, _) => acc.map(_ + 1))
             .toVector shouldBe Vector(N - 1)
         }
       }

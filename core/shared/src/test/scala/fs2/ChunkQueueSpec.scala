@@ -37,7 +37,7 @@ class ChunkQueueSpec extends Fs2Spec {
     }
 
     "equals" in {
-      forAll { (chunks: List[Chunk[Int]], n: Int) =>
+      forAll { (chunks: List[Chunk[Int]]) =>
         val cq = Chunk.Queue(chunks: _*)
         cq shouldBe cq
         cq shouldBe Chunk.Queue(chunks: _*)
@@ -47,7 +47,7 @@ class ChunkQueueSpec extends Fs2Spec {
     }
 
     "hashCode" in {
-      forAll { (chunks: List[Chunk[Int]], n: Int) =>
+      forAll { (chunks: List[Chunk[Int]]) =>
         val cq = Chunk.Queue(chunks: _*)
         cq.hashCode shouldBe cq.hashCode
         cq.hashCode shouldBe Chunk.Queue(chunks: _*).hashCode

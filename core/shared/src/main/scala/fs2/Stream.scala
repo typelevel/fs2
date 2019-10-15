@@ -478,8 +478,8 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Nothing, O, Unit]
     this.pull
       .find(pf.isDefinedAt)
       .flatMap {
-        case None           => Pull.done
-        case Some((hd, tl)) => Pull.output1(pf(hd))
+        case None          => Pull.done
+        case Some((hd, _)) => Pull.output1(pf(hd))
       }
       .stream
 
@@ -905,7 +905,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Nothing, O, Unit]
     * scala> import scala.concurrent.duration._, cats.effect.{ContextShift, IO, Timer}
     * scala> implicit val cs: ContextShift[IO] = IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
     * scala> implicit val timer: Timer[IO] = IO.timer(scala.concurrent.ExecutionContext.Implicits.global)
-    * scala> val s1 = Stream.awakeEvery[IO](1000.millis).scan(0)((acc, i) => acc + 1)
+    * scala> val s1 = Stream.awakeEvery[IO](1000.millis).scan(0)((acc, _) => acc + 1)
     * scala> val s = s1.either(Stream.sleep_[IO](500.millis) ++ s1).take(10)
     * scala> s.take(10).compile.toVector.unsafeRunSync
     * res0: Vector[Either[Int,Int]] = Vector(Left(0), Right(0), Left(1), Right(1), Left(2), Right(2), Left(3), Right(3), Left(4), Right(4))
@@ -1107,7 +1107,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Nothing, O, Unit]
     this.pull
       .find(f)
       .flatMap {
-        _.map { case (hd, tl) => Pull.output1(hd) }.getOrElse(Pull.done)
+        _.map { case (hd, _) => Pull.output1(hd) }.getOrElse(Pull.done)
       }
       .stream
 
@@ -1139,7 +1139,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Nothing, O, Unit]
                   case Result.Fail(err) => Result.Fail(err)
                   case Result.Interrupted(scopeId: Token, err) =>
                     Stream.fromFreeC(Algebra.interruptBoundary(tl, scopeId, err)).flatMap(f).get
-                  case Result.Interrupted(invalid, err) =>
+                  case Result.Interrupted(invalid, _) =>
                     sys.error(s"Invalid interruption context: $invalid (flatMap)")
                 }
               }
@@ -1405,7 +1405,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Nothing, O, Unit]
             }
             .onFinalize {
               currentTimeout.modify {
-                case st @ (cancelInFlightTimeout, streamTerminated) =>
+                case (cancelInFlightTimeout, _) =>
                   (F.unit, true) -> cancelInFlightTimeout
               }.flatten
             }
@@ -1415,7 +1415,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Nothing, O, Unit]
     * If `this` terminates with `Stream.raiseError(e)`, invoke `h(e)`.
     *
     * @example {{{
-    * scala> Stream(1, 2, 3).append(Stream.raiseError[cats.effect.IO](new RuntimeException)).handleErrorWith(t => Stream(0)).compile.toList.unsafeRunSync()
+    * scala> Stream(1, 2, 3).append(Stream.raiseError[cats.effect.IO](new RuntimeException)).handleErrorWith(_ => Stream(0)).compile.toList.unsafeRunSync()
     * res0: List[Int] = List(1, 2, 3, 0)
     * }}}
     */
@@ -1800,7 +1800,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Nothing, O, Unit]
     * scala> import scala.concurrent.duration._, cats.effect.{ContextShift, IO, Timer}
     * scala> implicit val cs: ContextShift[IO] = IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
     * scala> implicit val timer: Timer[IO] = IO.timer(scala.concurrent.ExecutionContext.Implicits.global)
-    * scala> val s1 = Stream.awakeEvery[IO](500.millis).scan(0)((acc, i) => acc + 1)
+    * scala> val s1 = Stream.awakeEvery[IO](500.millis).scan(0)((acc, _) => acc + 1)
     * scala> val s = s1.merge(Stream.sleep_[IO](250.millis) ++ s1)
     * scala> s.take(6).compile.toVector.unsafeRunSync
     * res0: Vector[Int] = Vector(0, 0, 1, 1, 2, 2)
@@ -1816,7 +1816,6 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Nothing, O, Unit]
             Ref.of[F2, Boolean](false).flatMap { otherSideDone =>
               Queue.unbounded[F2, Option[Stream[F2, O2]]].map { resultQ =>
                 def runStream(
-                    tag: String,
                     s: Stream[F2, O2],
                     whenDone: Deferred[F2, Either[Throwable, Unit]]
                 ): F2[Unit] =
@@ -1854,8 +1853,8 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Nothing, O, Unit]
                     .interruptWhen(interrupt.get.attempt)
 
                 Stream.bracket(
-                  F2.start(runStream("L", this, resultL)) >>
-                    F2.start(runStream("R", that, resultR))
+                  F2.start(runStream(this, resultL)) >>
+                    F2.start(runStream(that, resultR))
                 ) { _ =>
                   interrupt
                     .complete(())
@@ -2132,7 +2131,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Nothing, O, Unit]
                       .attempt
                       .flatMap {
                         case Left(err) => stop(Some(err)) >> decrementRunning
-                        case Right(r)  => F2.unit >> decrementRunning
+                        case Right(_)  => F2.unit >> decrementRunning
                       }
 
                   // awaits when all streams (outer + inner) finished,
@@ -2335,7 +2334,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Nothing, O, Unit]
     * Preserves chunkiness.
     *
     * @example {{{
-    * scala> Stream(Right(1), Right(2), Left(new RuntimeException), Right(3)).rethrow[cats.effect.IO, Int].handleErrorWith(t => Stream(-1)).compile.toList.unsafeRunSync
+    * scala> Stream(Right(1), Right(2), Left(new RuntimeException), Right(3)).rethrow[cats.effect.IO, Int].handleErrorWith(_ => Stream(-1)).compile.toList.unsafeRunSync
     * res0: List[Int] = List(-1)
     * }}}
     */
@@ -2645,7 +2644,8 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Nothing, O, Unit]
     * Applies the given sink to this stream.
     */
   @deprecated("Use .through instead", "1.0.2")
-  def to[F2[x] >: F[x]](f: Stream[F, O] => Stream[F2, Unit]): Stream[F2, Unit] = f(this)
+  private[fs2] def to[F2[x] >: F[x]](f: Stream[F, O] => Stream[F2, Unit]): Stream[F2, Unit] =
+    f(this)
 
   /**
     * Translates effect type from `F` to `G` using the supplied `FunctionK`.
@@ -2876,7 +2876,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Nothing, O, Unit]
   def zipWith[F2[x] >: F[x], O2 >: O, O3, O4](
       that: Stream[F2, O3]
   )(f: (O2, O3) => O4): Stream[F2, O4] =
-    zipWith_[F2, O2, O3, O4](that)(sh => Pull.pure(None), h => Pull.pure(None))(f)
+    zipWith_[F2, O2, O3, O4](that)(_ => Pull.pure(None), _ => Pull.pure(None))(f)
 
   /**
     * Zips the elements of the input stream with its indices, and returns the new stream.
@@ -3729,18 +3729,34 @@ object Stream extends StreamLowPriority {
     /** Lifts this stream to the specified effect type. */
     def covary[F[_]]: Stream[F, O] = self
 
+    @inline private def to_(c: Collector[O]): c.Out =
+      self.covary[SyncIO].compile.to(c).unsafeRunSync
+
     /** Runs this pure stream and returns the emitted elements in a collection of the specified type. Note: this method is only available on pure streams. */
-    def to[C[_]](implicit f: Factory[O, C[O]]): C[O] =
-      self.covary[IO].compile.to[C].unsafeRunSync
+    def to[C[_]](implicit f: Factory[O, C[O]]): C[O] = to_(f)
 
     /** Runs this pure stream and returns the emitted elements in a chunk. Note: this method is only available on pure streams. */
-    def toChunk: Chunk[O] = self.covary[IO].compile.toChunk.unsafeRunSync
+    @deprecated("2.0.2", "Use .to(Chunk) instead")
+    def toChunk: Chunk[O] = to_(Chunk)
 
     /** Runs this pure stream and returns the emitted elements in a list. Note: this method is only available on pure streams. */
-    def toList: List[O] = self.covary[IO].compile.toList.unsafeRunSync
+    def toList: List[O] = to_(List)
 
     /** Runs this pure stream and returns the emitted elements in a vector. Note: this method is only available on pure streams. */
-    def toVector: Vector[O] = self.covary[IO].compile.toVector.unsafeRunSync
+    def toVector: Vector[O] = to_(Vector)
+  }
+
+  /** Provides `to` syntax for pure streams. */
+  implicit def PureTo[O](s: Stream[Pure, O]): PureTo[O] =
+    new PureTo(s.get[Pure, O])
+
+  /** Provides `to` syntax for pure streams. */
+  final class PureTo[O] private[Stream] (private val free: FreeC[Pure, O, Unit]) extends AnyVal {
+    private def self: Stream[Pure, O] = Stream.fromFreeC[Pure, O](free)
+
+    /** Runs this pure stream and returns the emitted elements in a collection of the specified type. Note: this method is only available on pure streams. */
+    def to(c: Collector[O]): c.Out =
+      self.covary[SyncIO].compile.to(c).unsafeRunSync
   }
 
   /** Provides syntax for streams with effect type `cats.Id`. */
@@ -3772,19 +3788,35 @@ object Stream extends StreamLowPriority {
       self.asInstanceOf[Stream[F, O]]
     }
 
+    @inline private def to_(c: Collector[O]): Either[Throwable, c.Out] =
+      lift[SyncIO].compile.to(c).attempt.unsafeRunSync
+
     /** Runs this fallible stream and returns the emitted elements in a collection of the specified type. Note: this method is only available on fallible streams. */
-    def to[C[_]](implicit f: Factory[O, C[O]]): Either[Throwable, C[O]] =
-      lift[IO].compile.to[C].attempt.unsafeRunSync
+    def to[C[_]](implicit f: Factory[O, C[O]]): Either[Throwable, C[O]] = to_(f)
 
     /** Runs this fallible stream and returns the emitted elements in a chunk. Note: this method is only available on fallible streams. */
-    def toChunk: Either[Throwable, Chunk[O]] = lift[IO].compile.toChunk.attempt.unsafeRunSync
+    @deprecated("2.0.2", "Use .to(Chunk) instead")
+    def toChunk: Either[Throwable, Chunk[O]] = to_(Chunk)
 
     /** Runs this fallible stream and returns the emitted elements in a list. Note: this method is only available on fallible streams. */
-    def toList: Either[Throwable, List[O]] = lift[IO].compile.toList.attempt.unsafeRunSync
+    def toList: Either[Throwable, List[O]] = to_(List)
 
     /** Runs this fallible stream and returns the emitted elements in a vector. Note: this method is only available on fallible streams. */
-    def toVector: Either[Throwable, Vector[O]] =
-      lift[IO].compile.toVector.attempt.unsafeRunSync
+    def toVector: Either[Throwable, Vector[O]] = to_(Vector)
+  }
+
+  /** Provides `to` syntax for streams with effect type `Fallible`. */
+  implicit def FallibleTo[O](s: Stream[Fallible, O]): FallibleTo[O] =
+    new FallibleTo(s.get[Fallible, O])
+
+  /** Provides `to` syntax for fallible streams. */
+  final class FallibleTo[O] private[Stream] (private val free: FreeC[Fallible, O, Unit])
+      extends AnyVal {
+    private def self: Stream[Fallible, O] = Stream.fromFreeC[Fallible, O](free)
+
+    /** Runs this fallible stream and returns the emitted elements in a collection of the specified type. Note: this method is only available on fallible streams. */
+    def to(c: Collector[O]): Either[Throwable, c.Out] =
+      self.lift[SyncIO].compile.to(c).attempt.unsafeRunSync
   }
 
   /** Projection of a `Stream` providing various ways to get a `Pull` from the `Stream`. */
@@ -3886,7 +3918,7 @@ object Stream extends StreamLowPriority {
             hd.size.toLong match {
               case m if m < n  => tl.pull.drop(n - m)
               case m if m == n => Pull.pure(Some(tl))
-              case m           => Pull.pure(Some(tl.cons(hd.drop(n.toInt))))
+              case _           => Pull.pure(Some(tl.cons(hd.drop(n.toInt))))
             }
         }
 
@@ -4085,7 +4117,7 @@ object Stream extends StreamLowPriority {
             hd.size.toLong match {
               case m if m < n  => Pull.output(hd) >> tl.pull.take(n - m)
               case m if m == n => Pull.output(hd).as(Some(tl))
-              case m =>
+              case _ =>
                 val (pfx, sfx) = hd.splitAt(n.toInt)
                 Pull.output(pfx).as(Some(tl.cons(sfx)))
             }
@@ -4399,7 +4431,7 @@ object Stream extends StreamLowPriority {
     /**
       * Compiles this stream of strings in to a single string.
       * This is more efficient than `foldMonoid` because it uses a `StringBuilder`
-      * internally, minimizing string creation.
+      * internally, avoiding intermediate string creation.
       *
       * @example {{{
       * scala> Stream("Hello ", "world!").compile.string
@@ -4408,13 +4440,40 @@ object Stream extends StreamLowPriority {
       */
     def string(implicit ev: O <:< String): G[String] = {
       val _ = ev
-      compiler(self.asInstanceOf[Stream[F, String]], () => new StringBuilder)((b, c) => {
-        c.foreach { s =>
-          b.append(s); ()
-        }
-        b
-      }, _.result)
+      self.asInstanceOf[Stream[F, String]].compile.to(Collector.string)
     }
+
+    /**
+      * Compiles this stream into a value of the target effect type `F` by collecting
+      * all of the output values in a collection.
+      *
+      * Collection building is done via an explicitly passed `Collector`.
+      * Standard library collections have collector instances, allowing syntax like:
+      * `s.compile.to(List)` or `s.compile.to(Array)` or `s.compile.to(Map)`.
+      *
+      * A collector is provided for `scodec.bits.ByteVector`, providing efficient byte
+      * vector construction from a stream of bytes: `s.compile.to(ByteVector)`.
+      *
+      * When this method has returned, the stream has not begun execution -- this method simply
+      * compiles the stream down to the target effect type.
+      *
+      * @example {{{
+      * scala> import cats.effect.IO
+      * scala> val s = Stream.range(0,100).take(5).covary[IO]
+      * scala> s.compile.to(List).unsafeRunSync
+      * res0: List[Int] = List(0, 1, 2, 3, 4)
+      * scala> s.compile.to(Chunk).unsafeRunSync
+      * res1: Chunk[Int] = Chunk(0, 1, 2, 3, 4)
+      * scala> s.map(i => (i % 2, i)).compile.to(Map).unsafeRunSync
+      * res2: Map[Int, Int] = Map(0 -> 4, 1 -> 3)
+      * scala> s.map(_.toByte).compile.to(scodec.bits.ByteVector).unsafeRunSync
+      * res3: scodec.bits.ByteVector = ByteVector(5 bytes, 0x0001020304)
+      * }}}
+      */
+    def to(collector: Collector[O]): G[collector.Out] = to_(collector)
+
+    @inline private def to_(collector: Collector[O]): G[collector.Out] =
+      compiler(self, () => collector.newBuilder)((acc, c) => { acc += c; acc }, _.result)
 
     /**
       * Compiles this stream into a value of the target effect type `F` by logging
@@ -4422,15 +4481,8 @@ object Stream extends StreamLowPriority {
       *
       * When this method has returned, the stream has not begun execution -- this method simply
       * compiles the stream down to the target effect type.
-      *
-      * @example {{{
-      * scala> import cats.effect.IO
-      * scala> Stream.range(0,100).take(5).covary[IO].compile.toList.unsafeRunSync
-      * res0: List[Int] = List(0, 1, 2, 3, 4)
-      * }}}
       */
-    def to[C[_]](implicit f: Factory[O, C[O]]): G[C[O]] =
-      compiler(self, () => f.newBuilder)(_ ++= _.iterator, _.result)
+    def to[C[_]](implicit f: Factory[O, C[O]]): G[C[O]] = to_(f)
 
     /**
       * Compiles this stream in to a value of the target effect type `F` by logging
@@ -4438,15 +4490,9 @@ object Stream extends StreamLowPriority {
       *
       * When this method has returned, the stream has not begun execution -- this method simply
       * compiles the stream down to the target effect type.
-      *
-      * @example {{{
-      * scala> import cats.effect.IO
-      * scala> Stream.range(0,100).take(5).covary[IO].compile.toChunk.unsafeRunSync
-      * res0: Chunk[Int] = Chunk(0, 1, 2, 3, 4)
-      * }}}
       */
-    def toChunk: G[Chunk[O]] =
-      compiler(self, () => List.newBuilder[Chunk[O]])(_ += _, bldr => Chunk.concat(bldr.result))
+    @deprecated("2.0.2", "Use .compile.to(Chunk) instead")
+    def toChunk: G[Chunk[O]] = to_(Chunk)
 
     /**
       * Compiles this stream in to a value of the target effect type `F` by logging
@@ -4461,8 +4507,7 @@ object Stream extends StreamLowPriority {
       * res0: List[Int] = List(0, 1, 2, 3, 4)
       * }}}
       */
-    def toList: G[List[O]] =
-      to[List]
+    def toList: G[List[O]] = to_(List)
 
     /**
       * Compiles this stream in to a value of the target effect type `F` by logging
@@ -4477,8 +4522,7 @@ object Stream extends StreamLowPriority {
       * res0: Vector[Int] = Vector(0, 1, 2, 3, 4)
       * }}}
       */
-    def toVector: G[Vector[O]] =
-      to[Vector]
+    def toVector: G[Vector[O]] = to_(Vector)
 
     /**
       * Compiles this stream in to a value of the target effect type `F` by logging
@@ -4486,19 +4530,11 @@ object Stream extends StreamLowPriority {
       *
       * When this method has returned, the stream has not begun execution -- this method simply
       * compiles the stream down to the target effect type.
-      *
-      * @example {{{
-      * scala> import cats.effect.IO
-      * scala> Stream.range(0,100).map(i => i -> i).take(5).covary[IO].compile.toMap.unsafeRunSync.mkString(", ")
-      * res0: String = 0 -> 0, 1 -> 1, 2 -> 2, 3 -> 3, 4 -> 4
-      * }}}
       */
+    @deprecated("2.0.2", "Use .compile.to(Map) instead")
     def toMap[K, V](implicit ev: O <:< (K, V)): G[Map[K, V]] = {
       val _ = ev
-      compiler(self.asInstanceOf[Stream[F, (K, V)]], () => Map.newBuilder[K, V])(
-        _ ++= _.iterator,
-        _.result
-      )
+      self.asInstanceOf[Stream[F, (K, V)]].compile.to_(Map)
     }
   }
 
