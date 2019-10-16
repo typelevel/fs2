@@ -5,6 +5,7 @@ package file
 import java.nio.file.StandardOpenOption
 
 import cats.effect.{Blocker, IO}
+import cats.effect.concurrent.Ref
 import cats.implicits._
 
 import scala.concurrent.duration._
@@ -315,4 +316,42 @@ class FileSpec extends BaseFileSpec {
     }
   }
 
+  "writeRotate" in {
+    val bufferSize = 100
+    val totalBytes = 1000
+    val rotateLimit = 150
+    Stream
+      .resource(Blocker[IO])
+      .flatMap { bec =>
+        tempDirectory.flatMap { dir =>
+          Stream.eval(Ref.of[IO, Int](0)).flatMap { counter =>
+            val path = counter.modify(i => (i + 1, i)).map(i => dir.resolve(i.toString))
+            val write = Stream(0x42.toByte).repeat
+              .buffer(bufferSize)
+              .take(totalBytes)
+              .through(file.writeRotate[IO](path, rotateLimit, bec))
+              .compile
+              .drain
+            val verify = file
+              .directoryStream[IO](bec, dir)
+              .compile
+              .toList
+              .flatMap { paths =>
+                paths
+                  .sortBy(_.toString)
+                  .traverse(p => IO(println(p.toString)) *> file.size[IO](bec, p))
+              }
+              .asserting { sizes =>
+                assert(sizes.size == ((totalBytes + rotateLimit - 1) / rotateLimit))
+                assert(
+                  sizes.init.forall(_ == rotateLimit) && sizes.last == (totalBytes % rotateLimit)
+                )
+              }
+            Stream.eval(write *> verify)
+          }
+        }
+      }
+      .compile
+      .lastOrError
+  }
 }

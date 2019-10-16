@@ -112,6 +112,44 @@ package object file {
         _writeAll1(buf.drop(written), out, offset + written)
     }
 
+  def writeRotate[F[_]: Sync: ContextShift](
+      path: F[Path],
+      limit: Long,
+      blocker: Blocker,
+      flags: Seq[StandardOpenOption] = List(StandardOpenOption.CREATE)
+  ): Pipe[F, Byte, Unit] = {
+    def openNewFile: Resource[F, FileHandle[F]] =
+      Resource
+        .liftF(path)
+        .flatMap(p => FileHandle.fromPath(p, blocker, StandardOpenOption.WRITE :: flags.toList))
+
+    def go(
+        fileHandleProxy: ResourceProxy[F, FileHandle[F]],
+        offset: Long,
+        acc: Long,
+        s: Stream[F, Byte]
+    ): Pull[F, Unit, Unit] =
+      s.pull.unconsLimit((limit - acc).min(Int.MaxValue.toLong).toInt).flatMap {
+        case Some((hd, tl)) =>
+          println(s"limit $limit, acc $acc, offset $offset, hd ${hd.size}")
+          val write = Pull.eval(fileHandleProxy.get.flatMap(_.write(hd, offset)))
+          val sz = hd.size
+          val newAcc = acc + sz
+          val next = if (newAcc >= limit) {
+            Pull.eval(fileHandleProxy.swap(openNewFile)) >> go(fileHandleProxy, 0L, 0L, tl)
+          } else {
+            go(fileHandleProxy, offset + sz, newAcc, tl)
+          }
+          write >> next
+        case None => Pull.done
+      }
+
+    in =>
+      Stream
+        .resource(ResourceProxy(openNewFile))
+        .flatMap(fileHandleProxy => go(fileHandleProxy, 0L, 0L, in).stream)
+  }
+
   /**
     * Creates a [[Watcher]] for the default file system.
     *
