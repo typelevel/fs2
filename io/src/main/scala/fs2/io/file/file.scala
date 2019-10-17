@@ -2,6 +2,7 @@ package fs2
 package io
 
 import java.nio.file._
+import java.nio.file.attribute.FileAttribute
 import java.util.stream.{Stream => JStream}
 
 import scala.collection.JavaConverters._
@@ -12,10 +13,6 @@ import cats.implicits._
 
 /** Provides support for working with files. */
 package object file {
-  import java.nio.file.attribute.FileAttribute
-  import java.nio.file.CopyOption
-  import java.nio.file.LinkOption
-  import java.nio.file.Files
 
   /**
     * Reads all data synchronously from the file at the specified `java.nio.file.Path`.
@@ -80,37 +77,9 @@ package object file {
       flags: Seq[StandardOpenOption] = List(StandardOpenOption.CREATE)
   ): Pipe[F, Byte, Unit] =
     in =>
-      for {
-        fileHandle <- Stream.resource(
-          FileHandle.fromPath(path, blocker, StandardOpenOption.WRITE :: flags.toList)
-        )
-        offset <- if (flags.contains(StandardOpenOption.APPEND)) Stream.eval(fileHandle.size)
-        else Stream(0L)
-        _ <- pulls.writeAllToFileHandleAtOffset(in, fileHandle, offset).stream
-      } yield ()
-
-  private def _writeAll0[F[_]](
-      in: Stream[F, Byte],
-      out: FileHandle[F],
-      offset: Long
-  ): Pull[F, Nothing, Unit] =
-    in.pull.uncons.flatMap {
-      case None => Pull.done
-      case Some((hd, tl)) =>
-        _writeAll1(hd, out, offset) >> _writeAll0(tl, out, offset + hd.size)
-    }
-
-  private def _writeAll1[F[_]](
-      buf: Chunk[Byte],
-      out: FileHandle[F],
-      offset: Long
-  ): Pull[F, Nothing, Unit] =
-    Pull.eval(out.write(buf, offset)).flatMap { (written: Int) =>
-      if (written >= buf.size)
-        Pull.pure(())
-      else
-        _writeAll1(buf.drop(written), out, offset + written)
-    }
+      Stream
+        .resource(WriteCursor.fromPath(path, blocker, flags))
+        .flatMap(_.writeAll(in).void.stream)
 
   def writeRotate[F[_]: Sync: ContextShift](
       path: F[Path],
@@ -118,27 +87,25 @@ package object file {
       blocker: Blocker,
       flags: Seq[StandardOpenOption] = List(StandardOpenOption.CREATE)
   ): Pipe[F, Byte, Unit] = {
-    def openNewFile: Resource[F, FileHandle[F]] =
+    def openNewFile: Resource[F, WriteCursor[F]] =
       Resource
         .liftF(path)
-        .flatMap(p => FileHandle.fromPath(p, blocker, StandardOpenOption.WRITE :: flags.toList))
+        .flatMap(p => WriteCursor.fromPath(p, blocker, flags))
 
     def go(
-        fileHandleProxy: ResourceProxy[F, FileHandle[F]],
-        offset: Long,
+        cursorProxy: ResourceProxy[F, WriteCursor[F]],
         acc: Long,
         s: Stream[F, Byte]
     ): Pull[F, Unit, Unit] =
       s.pull.unconsLimit((limit - acc).min(Int.MaxValue.toLong).toInt).flatMap {
         case Some((hd, tl)) =>
-          println(s"limit $limit, acc $acc, offset $offset, hd ${hd.size}")
-          val write = Pull.eval(fileHandleProxy.get.flatMap(_.write(hd, offset)))
+          val write = Pull.eval(cursorProxy.get.flatMap(_.write(hd)))
           val sz = hd.size
           val newAcc = acc + sz
           val next = if (newAcc >= limit) {
-            Pull.eval(fileHandleProxy.swap(openNewFile)) >> go(fileHandleProxy, 0L, 0L, tl)
+            Pull.eval(cursorProxy.swap(openNewFile)) >> go(cursorProxy, 0L, tl)
           } else {
-            go(fileHandleProxy, offset + sz, newAcc, tl)
+            go(cursorProxy, newAcc, tl)
           }
           write >> next
         case None => Pull.done
@@ -147,7 +114,7 @@ package object file {
     in =>
       Stream
         .resource(ResourceProxy(openNewFile))
-        .flatMap(fileHandleProxy => go(fileHandleProxy, 0L, 0L, in).stream)
+        .flatMap(cursor => go(cursor, 0L, in).stream)
   }
 
   /**

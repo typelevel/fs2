@@ -78,22 +78,8 @@ object pulls {
     in.pull.uncons.flatMap {
       case None => Pull.done
       case Some((hd, tl)) =>
-        writeChunkToFileHandle(hd, out, offset) >> writeAllToFileHandleAtOffset(
-          tl,
-          out,
-          offset + hd.size
-        )
-    }
-
-  private def writeChunkToFileHandle[F[_]](
-      buf: Chunk[Byte],
-      out: FileHandle[F],
-      offset: Long
-  ): Pull[F, Nothing, Unit] =
-    Pull.eval(out.write(buf, offset)).flatMap { (written: Int) =>
-      if (written >= buf.size)
-        Pull.pure(())
-      else
-        writeChunkToFileHandle(buf.drop(written), out, offset + written)
+        WriteCursor(out, offset)
+          .writePull(hd)
+          .flatMap(cursor => writeAllToFileHandleAtOffset(tl, cursor.file, cursor.offset))
     }
 }
