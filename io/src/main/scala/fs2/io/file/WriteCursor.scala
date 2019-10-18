@@ -16,7 +16,10 @@ import cats.arrow.FunctionK
   * a chunk at a time. Additionally, convenience methods are provided for
   * working with pulls.
   */
-final case class WriteCursor[F[_]](val file: FileHandle[F], val offset: Long) {
+final case class WriteCursor[F[_]](file: FileHandle[F], offset: Long) {
+
+  /** Returns a new cursor with the offset adjusted to the specified position. */
+  def seek(position: Long): WriteCursor[F] = WriteCursor(file, position)
 
   /**
     * Writes a single chunk to the underlying file handle, returning a new cursor
@@ -63,4 +66,9 @@ object WriteCursor {
         Resource.liftF(cursor)
     }
 
+  def fromFileHandle[F[_]: Sync: ContextShift](
+      file: FileHandle[F],
+      append: Boolean
+  ): F[WriteCursor[F]] =
+    if (append) file.size.map(s => WriteCursor(file, s)) else WriteCursor(file, 0L).pure[F]
 }

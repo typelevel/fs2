@@ -22,12 +22,9 @@ package object file {
       blocker: Blocker,
       chunkSize: Int
   ): Stream[F, Byte] =
-    Stream
-      .resource(
-        FileHandle
-          .fromPath(path, blocker, List(StandardOpenOption.READ))
-      )
-      .flatMap(c => pulls.readAllFromFileHandle(chunkSize)(c).stream)
+    Stream.resource(ReadCursor.fromPath(path, blocker)).flatMap { cursor =>
+      cursor.readAll(chunkSize).void.stream
+    }
 
   /**
     * Reads a range of data synchronously from the file at the specified `java.nio.file.Path`.
@@ -41,9 +38,9 @@ package object file {
       start: Long,
       end: Long
   ): Stream[F, Byte] =
-    Stream
-      .resource(FileHandle.fromPath(path, blocker, List(StandardOpenOption.READ)))
-      .flatMap(c => pulls.readRangeFromFileHandle(chunkSize, start, end)(c).stream)
+    Stream.resource(ReadCursor.fromPath(path, blocker)).flatMap { cursor =>
+      cursor.seek(start).readUntil(chunkSize, end).void.stream
+    }
 
   /**
     * Returns an infinite stream of data from the file at the specified path.
@@ -62,9 +59,9 @@ package object file {
       offset: Long = 0L,
       pollDelay: FiniteDuration = 1.second
   ): Stream[F, Byte] =
-    Stream
-      .resource(FileHandle.fromPath(path, blocker, List(StandardOpenOption.READ)))
-      .flatMap(c => pulls.tailFromFileHandle(chunkSize, offset, pollDelay)(c).stream)
+    Stream.resource(ReadCursor.fromPath(path, blocker)).flatMap { cursor =>
+      cursor.seek(offset).tail(chunkSize, pollDelay).void.stream
+    }
 
   /**
     * Writes all data synchronously to the file at the specified `java.nio.file.Path`.
@@ -87,34 +84,46 @@ package object file {
       blocker: Blocker,
       flags: Seq[StandardOpenOption] = List(StandardOpenOption.CREATE)
   ): Pipe[F, Byte, Unit] = {
-    def openNewFile: Resource[F, WriteCursor[F]] =
+    def openNewFile: Resource[F, FileHandle[F]] =
       Resource
         .liftF(path)
-        .flatMap(p => WriteCursor.fromPath(p, blocker, flags))
+        .flatMap(p => FileHandle.fromPath(p, blocker, StandardOpenOption.WRITE :: flags.toList))
+
+    def newCursor(fileProxy: ResourceProxy[F, FileHandle[F]]): F[WriteCursor[F]] =
+      fileProxy.get.flatMap(
+        WriteCursor.fromFileHandle[F](_, flags.contains(StandardOpenOption.APPEND))
+      )
 
     def go(
-        cursorProxy: ResourceProxy[F, WriteCursor[F]],
+        fileProxy: ResourceProxy[F, FileHandle[F]],
+        cursor: WriteCursor[F],
         acc: Long,
         s: Stream[F, Byte]
-    ): Pull[F, Unit, Unit] =
-      s.pull.unconsLimit((limit - acc).min(Int.MaxValue.toLong).toInt).flatMap {
+    ): Pull[F, Unit, Unit] = {
+      val toWrite = (limit - acc).min(Int.MaxValue.toLong).toInt
+      s.pull.unconsLimit(toWrite).flatMap {
         case Some((hd, tl)) =>
-          val write = Pull.eval(cursorProxy.get.flatMap(_.write(hd)))
-          val sz = hd.size
-          val newAcc = acc + sz
-          val next = if (newAcc >= limit) {
-            Pull.eval(cursorProxy.swap(openNewFile)) >> go(cursorProxy, 0L, tl)
-          } else {
-            go(cursorProxy, newAcc, tl)
+          val newAcc = acc + hd.size
+          cursor.writePull(hd).flatMap { nc =>
+            if (newAcc >= limit) {
+              Pull.eval(fileProxy.swap(openNewFile)) >>
+                Pull.eval(newCursor(fileProxy)).flatMap(nc => go(fileProxy, nc, 0L, tl))
+            } else {
+              go(fileProxy, nc, newAcc, tl)
+            }
           }
-          write >> next
         case None => Pull.done
       }
+    }
 
     in =>
       Stream
         .resource(ResourceProxy(openNewFile))
-        .flatMap(cursor => go(cursor, 0L, in).stream)
+        .flatMap { fileProxy =>
+          Stream.eval(newCursor(fileProxy)).flatMap { cursor =>
+            go(fileProxy, cursor, 0L, in).stream
+          }
+        }
   }
 
   /**

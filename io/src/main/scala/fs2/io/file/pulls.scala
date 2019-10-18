@@ -28,40 +28,17 @@ object pulls {
   private def _tailFromFileHandle[F[_]](chunkSize: Int, offset: Long, delay: FiniteDuration)(
       h: FileHandle[F]
   )(implicit timer: Timer[F]): Pull[F, Byte, Unit] =
-    Pull.eval(h.read(chunkSize, offset)).flatMap {
-      case Some(bytes) =>
-        Pull.output(bytes) >> _tailFromFileHandle(chunkSize, offset + bytes.size, delay)(h)
-      case None =>
-        Pull.eval(timer.sleep(delay)) >> _tailFromFileHandle(chunkSize, offset, delay)(h)
-    }
+    ReadCursor(h, offset).tail(chunkSize, delay).void
 
   private def _readRangeFromFileHandle0[F[_]](chunkSize: Int, offset: Long, end: Long)(
       h: FileHandle[F]
-  ): Pull[F, Byte, Unit] = {
-
-    val bytesLeft = end - offset
-    if (bytesLeft <= 0L) {
-      Pull.done
-    } else {
-      val actualChunkSize =
-        if (bytesLeft > Int.MaxValue) chunkSize else math.min(chunkSize, bytesLeft.toInt)
-
-      Pull.eval(h.read(actualChunkSize, offset)).flatMap {
-        case Some(o) =>
-          Pull.output(o) >> _readRangeFromFileHandle0(chunkSize, offset + o.size, end)(h)
-        case None => Pull.done
-      }
-    }
-  }
+  ): Pull[F, Byte, Unit] =
+    ReadCursor(h, offset).readUntil(chunkSize, end).void
 
   private def _readAllFromFileHandle0[F[_]](chunkSize: Int, offset: Long)(
       h: FileHandle[F]
   ): Pull[F, Byte, Unit] =
-    Pull.eval(h.read(chunkSize, offset)).flatMap {
-      case Some(o) =>
-        Pull.output(o) >> _readAllFromFileHandle0(chunkSize, offset + o.size)(h)
-      case None => Pull.done
-    }
+    ReadCursor(h, offset).readAll(chunkSize).void
 
   /**
     * Given a `Stream[F, Byte]` and `FileHandle[F]`, writes all data from the stream to the file.
@@ -75,11 +52,5 @@ object pulls {
       out: FileHandle[F],
       offset: Long
   ): Pull[F, Nothing, Unit] =
-    in.pull.uncons.flatMap {
-      case None => Pull.done
-      case Some((hd, tl)) =>
-        WriteCursor(out, offset)
-          .writePull(hd)
-          .flatMap(cursor => writeAllToFileHandleAtOffset(tl, cursor.file, cursor.offset))
-    }
+    WriteCursor(out, offset).writeAll(in).void
 }

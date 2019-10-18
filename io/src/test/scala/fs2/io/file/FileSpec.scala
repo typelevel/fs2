@@ -339,7 +339,7 @@ class FileSpec extends BaseFileSpec {
               .flatMap { paths =>
                 paths
                   .sortBy(_.toString)
-                  .traverse(p => IO(println(p.toString)) *> file.size[IO](bec, p))
+                  .traverse(p => file.size[IO](bec, p))
               }
               .asserting { sizes =>
                 assert(sizes.size == ((totalBytes + rotateLimit - 1) / rotateLimit))
