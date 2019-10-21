@@ -3401,13 +3401,14 @@ object Stream extends StreamLowPriority {
     * res0: List[Int] = List(10, 12, 14, 16, 18)
     * }}}
     */
-  def range[F[x] >: Pure[x]](start: Int, stopExclusive: Int, by: Int = 1): Stream[F, Int] =
-    unfold(start) { i =>
+  def range[F[x] >: Pure[x]](start: Int, stopExclusive: Int, by: Int = 1): Stream[F, Int] = {
+    def go(i: Int): Stream[F, Int] =
       if ((by > 0 && i < stopExclusive && start < stopExclusive) ||
           (by < 0 && i > stopExclusive && start > stopExclusive))
-        Some((i, i + by))
-      else None
-    }
+        emit(i) ++ go(i + by)
+      else empty
+    go(start)
+  }
 
   /**
     * Lazily produce a sequence of nonoverlapping ranges, where each range

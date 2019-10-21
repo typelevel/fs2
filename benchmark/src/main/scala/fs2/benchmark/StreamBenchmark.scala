@@ -8,6 +8,11 @@ import java.util.concurrent.TimeUnit
 @State(Scope.Thread)
 class StreamBenchmark {
 
+  @GenerateN(1, 4096, 665536, 67108863)
+  @Benchmark
+  def rangeFold(N: Int): Option[Long] =
+    Stream.range(0, N).fold(0L)(_ + _.toLong).compile.last
+
   @GenerateN(1, 10, 100, 1000, 10000, 100000)
   @Benchmark
   def leftAssocConcat(N: Int): Int =
