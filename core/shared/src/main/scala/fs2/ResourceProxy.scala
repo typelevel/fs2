@@ -40,26 +40,18 @@ object ResourceProxy {
     def swap(next: Resource[F, R]): F[R] =
       next.allocated.flatMap {
         case next @ (newValue, newFinalizer) =>
-          def doSwap: F[R] =
-            state.access.flatMap {
-              case (current, setter) =>
-                current match {
-                  case None =>
-                    newFinalizer *> raise("Cannot swap after proxy has been finalized")
-                  case Some((_, oldFinalizer)) =>
-                    setter(next.some).ifM(oldFinalizer.as(newValue), doSwap)
-                }
-            }
-          doSwap
+          state.modify {
+            case Some((_, oldFinalizer)) =>
+              next.some -> oldFinalizer.as(newValue)
+            case None =>
+              None -> (newFinalizer *> raise[R]("Cannot swap after proxy has been finalized"))
+          }.flatten
       }.uncancelable
 
     def runFinalizer: F[Unit] =
-      state.access.flatMap {
-        case (current, setter) =>
-          current match {
-            case None                 => raise("Finalizer already run")
-            case Some((_, finalizer)) => setter(None).ifM(finalizer, runFinalizer)
-          }
-      }
+      state.modify {
+        case None                 => None -> raise[Unit]("Finalizer already run")
+        case Some((_, finalizer)) => None -> finalizer
+      }.flatten
   }
 }
