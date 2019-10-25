@@ -89,10 +89,8 @@ package object file {
         .liftF(path)
         .flatMap(p => FileHandle.fromPath(p, blocker, StandardOpenOption.WRITE :: flags.toList))
 
-    def newCursor(fileProxy: ResourceProxy[F, FileHandle[F]]): F[WriteCursor[F]] =
-      fileProxy.get.flatMap(
-        WriteCursor.fromFileHandle[F](_, flags.contains(StandardOpenOption.APPEND))
-      )
+    def newCursor(file: FileHandle[F]): F[WriteCursor[F]] =
+      WriteCursor.fromFileHandle[F](file, flags.contains(StandardOpenOption.APPEND))
 
     def go(
         fileProxy: ResourceProxy[F, FileHandle[F]],
@@ -106,8 +104,13 @@ package object file {
           val newAcc = acc + hd.size
           cursor.writePull(hd).flatMap { nc =>
             if (newAcc >= limit) {
-              Pull.eval(fileProxy.swap(openNewFile)) >>
-                Pull.eval(newCursor(fileProxy)).flatMap(nc => go(fileProxy, nc, 0L, tl))
+              Pull
+                .eval {
+                  fileProxy
+                    .swap(openNewFile)
+                    .flatMap(newCursor)
+                }
+                .flatMap(nc => go(fileProxy, nc, 0L, tl))
             } else {
               go(fileProxy, nc, newAcc, tl)
             }
@@ -120,9 +123,15 @@ package object file {
       Stream
         .resource(ResourceProxy(openNewFile))
         .flatMap { fileProxy =>
-          Stream.eval(newCursor(fileProxy)).flatMap { cursor =>
-            go(fileProxy, cursor, 0L, in).stream
-          }
+          Stream
+            .eval {
+              fileProxy
+                .swap(openNewFile)
+                .flatMap(newCursor)
+            }
+            .flatMap { cursor =>
+              go(fileProxy, cursor, 0L, in).stream
+            }
         }
   }
 
