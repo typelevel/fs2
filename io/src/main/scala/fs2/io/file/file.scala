@@ -78,7 +78,7 @@ package object file {
         .resource(WriteCursor.fromPath(path, blocker, flags))
         .flatMap(_.writeAll(in).void.stream)
 
-  def writeRotate[F[_]: Sync: ContextShift](
+  def writeRotate[F[_]: Concurrent: ContextShift](
       path: F[Path],
       limit: Long,
       blocker: Blocker,
