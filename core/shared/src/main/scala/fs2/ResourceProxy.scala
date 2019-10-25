@@ -6,23 +6,34 @@ import cats.effect.concurrent.Ref
 import cats.effect.implicits._
 
 trait ResourceProxy[F[_], R] {
+
+  /**
+    * Allocates a new resource, closes the last one if present, and
+    * returns the newly allocated `R`.
+    *
+    * If there are no further calls to `swap`, the resource created by
+    * the last call will be finalized when the lifetime of
+    * `ResourceProxy` (which is itself tracked by `Resource`) is over.
+    *
+    * Since `swap` closes the old resource immediately, you need to
+    * ensure that no code is using the old `R` when `swap` is called.
+    * Failing to do so is likely to result in an error on the
+    * _consumer_ side.
+    *
+    * If you try to call swap after the lifetime of `ResourceProxy` is
+    * over, `swap` will fail, but it will ensure all resources are
+    * closed, and never leak any.
+    */
   def swap(next: Resource[F, R]): F[R]
 }
 
-/*
-Notes:
-1)it's not possible to safely guard swap
-one can swap (i.e. close) a resource used by something else (e.g. in
-another fiber) from under the consumer's fit. Problem is that the
-whole point of this PR is avoiding `Pull.bracket`, which means `swap`
-cannot return a resource.
-
-2) Is it worth guarding against the case where someone tries to swap
-in another fiber after the resourceProxy's lifetime is over: probably
-yes, because the cost is not an error like in 1), but a resource leak
- */
-
 object ResourceProxy {
+
+  /**
+    * Creates a new `ResourceProxy`, which represents a `Resource`
+    * that can be swapped during the lifetime of this `ResourceProxy`.
+    * See `io.file.writeRotate` for an example of usage.
+    */
   def create[F[_]: Concurrent, R]: Resource[F, ResourceProxy[F, R]] = {
     def raise[A](msg: String): F[A] =
       Sync[F].raiseError(new RuntimeException(msg))
