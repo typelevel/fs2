@@ -18,7 +18,8 @@ trait ResourceProxy[F[_], R] {
     * Since `swap` closes the old resource immediately, you need to
     * ensure that no code is using the old `R` when `swap` is called.
     * Failing to do so is likely to result in an error on the
-    * _consumer_ side.
+    * _consumer_ side. In any case, no resources will be leaked by
+    * `swap`
     *
     * If you try to call swap after the lifetime of `ResourceProxy` is
     * over, `swap` will fail, but it will ensure all resources are
