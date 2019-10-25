@@ -121,7 +121,7 @@ package object file {
 
     in =>
       Stream
-        .resource(ResourceProxy(openNewFile))
+        .resource(ResourceProxy.create[F, FileHandle[F]])
         .flatMap { fileProxy =>
           Stream
             .eval {
