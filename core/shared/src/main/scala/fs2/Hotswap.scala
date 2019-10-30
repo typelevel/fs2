@@ -34,7 +34,7 @@ import cats.effect.implicits._
   * or at least an internal resource reference accumulates. With `Hotswap`, the `Hotswap`
   * instance is the only registered resource and each file is swapped in to the `Hotswap`.
   *
-  * Utilization typically looks something like:
+  * Usage typically looks something like:
   *
   * {{{
   * Stream.resource(Hotswap(mkResource)).flatMap { case (hotswap, r) =>

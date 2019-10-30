@@ -64,7 +64,7 @@ package object file {
     }
 
   /**
-    * Writes all data synchronously to the file at the specified `java.nio.file.Path`.
+    * Writes all data to the file at the specified `java.nio.file.Path`.
     *
     * Adds the WRITE flag to any other `OpenOption` flags specified. By default, also adds the CREATE flag.
     */
@@ -78,15 +78,23 @@ package object file {
         .resource(WriteCursor.fromPath(path, blocker, flags))
         .flatMap(_.writeAll(in).void.stream)
 
+  /**
+   * Writes all data to a sequence of files, each limited in size to `limit`.
+   * 
+   * The `computePath` operation is used to compute the path of the first file
+   * and every subsequent file. Typically, the next file should be determined
+   * by analyzing the current state of the filesystem -- e.g., by looking at all
+   * files in a directory and generating a unique name. 
+   */
   def writeRotate[F[_]: Concurrent: ContextShift](
-      path: F[Path],
+      computePath: F[Path],
       limit: Long,
       blocker: Blocker,
       flags: Seq[StandardOpenOption] = List(StandardOpenOption.CREATE)
   ): Pipe[F, Byte, Unit] = {
     def openNewFile: Resource[F, FileHandle[F]] =
       Resource
-        .liftF(path)
+        .liftF(computePath)
         .flatMap(p => FileHandle.fromPath(p, blocker, StandardOpenOption.WRITE :: flags.toList))
 
     def newCursor(file: FileHandle[F]): F[WriteCursor[F]] =
@@ -133,10 +141,8 @@ package object file {
   /**
     * Creates a [[Watcher]] for the default file system.
     *
-    * A singleton bracketed stream is returned consisting of the single watcher. To use the watcher,
-    * `flatMap` the returned stream, watch or register 1 or more paths, and then return `watcher.events()`.
-    *
-    * @return singleton bracketed stream returning a watcher
+    * The watcher is returned as a resource. To use the watcher, lift the resource to a stream,
+    * watch or register 1 or more paths, and then return `watcher.events()`.
     */
   def watcher[F[_]: Concurrent: ContextShift](blocker: Blocker): Resource[F, Watcher[F]] =
     Watcher.default(blocker)
