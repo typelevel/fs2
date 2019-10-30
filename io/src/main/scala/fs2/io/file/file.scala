@@ -93,7 +93,7 @@ package object file {
       WriteCursor.fromFileHandle[F](file, flags.contains(StandardOpenOption.APPEND))
 
     def go(
-        fileProxy: ResourceProxy[F, FileHandle[F]],
+        fileHotswap: Hotswap[F, FileHandle[F]],
         cursor: WriteCursor[F],
         acc: Long,
         s: Stream[F, Byte]
@@ -106,13 +106,13 @@ package object file {
             if (newAcc >= limit) {
               Pull
                 .eval {
-                  fileProxy
+                  fileHotswap
                     .swap(openNewFile)
                     .flatMap(newCursor)
                 }
-                .flatMap(nc => go(fileProxy, nc, 0L, tl))
+                .flatMap(nc => go(fileHotswap, nc, 0L, tl))
             } else {
-              go(fileProxy, nc, newAcc, tl)
+              go(fileHotswap, nc, newAcc, tl)
             }
           }
         case None => Pull.done
@@ -121,16 +121,11 @@ package object file {
 
     in =>
       Stream
-        .resource(ResourceProxy.create[F, FileHandle[F]])
-        .flatMap { fileProxy =>
-          Stream
-            .eval {
-              fileProxy
-                .swap(openNewFile)
-                .flatMap(newCursor)
-            }
-            .flatMap { cursor =>
-              go(fileProxy, cursor, 0L, in).stream
+        .resource(Hotswap(openNewFile))
+        .flatMap {
+          case (fileHotswap, fileHandle) =>
+            Stream.eval(newCursor(fileHandle)).flatMap { cursor =>
+              go(fileHotswap, cursor, 0L, in).stream
             }
         }
   }
