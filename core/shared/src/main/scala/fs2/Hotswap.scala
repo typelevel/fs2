@@ -16,7 +16,7 @@ import cats.effect.implicits._
   *
   * For example, the sequence of three resources `r1, r2, r3` are shown in the
   * following diagram:
-  * 
+  *
   * {{{
   * >----- swap(r1) ---- swap(r2) ---- swap(r3) ----X
   * |        |             |             |          |
