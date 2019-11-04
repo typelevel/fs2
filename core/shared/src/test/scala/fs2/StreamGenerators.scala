@@ -4,7 +4,6 @@ import org.scalatest.prop._
 import CommonGenerators._
 
 trait StreamGenerators {
-
   private def smallLists[A: Generator]: Generator[List[A]] =
     lists[A].havingSizesBetween(0, 20)
 

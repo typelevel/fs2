@@ -19,7 +19,6 @@ import org.scalatest.prop.{CommonGenerators, Generator, Randomizer, SizeParam}
 import CommonGenerators._
 
 trait ChunkGeneratorsLowPriority1 {
-
   protected def withShrinker[A](
       g: Generator[A]
   )(shrinker: (A, Randomizer) => (Iterator[A], Randomizer)): Generator[A] = new Generator[A] {
@@ -64,7 +63,6 @@ trait ChunkGeneratorsLowPriority1 {
 }
 
 trait ChunkGeneratorsLowPriority extends ChunkGeneratorsLowPriority1 {
-
   implicit def chunkGenerator[A](implicit A: Generator[A], ct: ClassTag[A]): Generator[Chunk[A]] =
     withChunkShrinker(
       frequency(
@@ -80,7 +78,6 @@ trait ChunkGeneratorsLowPriority extends ChunkGeneratorsLowPriority1 {
 }
 
 trait ChunkGenerators extends ChunkGeneratorsLowPriority {
-
   private def arrayChunkGenerator[A](
       build: (Array[A], Int, Int) => Chunk[A]
   )(implicit A: Generator[A], ct: ClassTag[A]): Generator[Chunk[A]] =

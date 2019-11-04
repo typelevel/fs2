@@ -27,7 +27,6 @@ import org.reactivestreams._
   * @see [[http://www.reactive-streams.org/]]
   */
 package object reactivestreams {
-
   /**
     * Creates a lazy stream from an `org.reactivestreams.Publisher`.
     *
@@ -42,14 +41,12 @@ package object reactivestreams {
       .flatMap(_.sub.stream)
 
   implicit final class PublisherOps[A](val publisher: Publisher[A]) extends AnyVal {
-
     /** Creates a lazy stream from an `org.reactivestreams.Publisher` */
     def toStream[F[_]: ConcurrentEffect](): Stream[F, A] =
       fromPublisher(publisher)
   }
 
   implicit final class StreamOps[F[_], A](val stream: Stream[F, A]) {
-
     /**
       * Creates a [[StreamUnicastPublisher]] from a stream.
       *

@@ -13,7 +13,6 @@ import org.scalacheck.{Arbitrary, Gen}
 import Arbitrary.arbitrary
 
 class PullLawsSpec extends Fs2Spec with StreamArbitrary {
-
   implicit val ec: TestContext = TestContext()
 
   implicit def arbPull[F[_], O, R](

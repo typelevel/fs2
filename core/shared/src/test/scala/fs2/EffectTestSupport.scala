@@ -12,7 +12,7 @@ trait EffectTestSupportLowPriority {
   implicit def propCheckerAssertingSyncIO: ToFuturePropCheckerAsserting[SyncIO] =
     new ToFuturePropCheckerAsserting(new (SyncIO ~> Future) {
       def apply[X](io: SyncIO[X]): Future[X] = Future(io.unsafeRunSync)(executionContext)
-    }) (executionContext)
+    })(executionContext)
 }
 
 trait EffectTestSupport extends EffectTestSupportLowPriority {
@@ -28,5 +28,5 @@ trait EffectTestSupport extends EffectTestSupportLowPriority {
   implicit def propCheckerAssertingIO: ToFuturePropCheckerAsserting[IO] =
     new ToFuturePropCheckerAsserting(new (IO ~> Future) {
       def apply[X](io: IO[X]): Future[X] = io.unsafeToFuture
-    }) (executionContext)
+    })(executionContext)
 }

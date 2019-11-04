@@ -82,7 +82,6 @@ private[reactivestreams] final class StreamSubscription[F[_], A](
 }
 
 private[reactivestreams] object StreamSubscription {
-
   /** Represents a downstream subscriber's request to publish elements */
   sealed trait Request
   case object Infinite extends Request

@@ -10,7 +10,6 @@ import fs2.internal.FreeC.{Result, ViewL}
 
 @State(Scope.Thread)
 class FreeCBenchmark {
-
   val N = 1000000
 
   @Benchmark
@@ -40,5 +39,4 @@ class FreeCBenchmark {
       case Result.Interrupted(_, err) => err.fold[F[Option[R]]](F.pure(None)) { F.raiseError }
       case _ @ViewL.View(_)           => F.raiseError(new RuntimeException("Never get here)"))
     }
-
 }

@@ -20,7 +20,6 @@ final class SocketGroup(
     asg: AsynchronousSocketGroup,
     blocker: Blocker
 ) {
-
   /**
     * Provides a UDP Socket that, when run, will bind to the specified address.
     *
@@ -137,7 +136,6 @@ final class SocketGroup(
 }
 
 object SocketGroup {
-
   def apply[F[_]: Sync: ContextShift](blocker: Blocker): Resource[F, SocketGroup] =
     AsynchronousSocketGroup[F](blocker).map(asg => new SocketGroup(asg, blocker))
 }

@@ -36,5 +36,4 @@ class QueueBenchmark {
           q.dequeue.flatMap(Stream.chunk).take(size).compile.drain
       }
       .unsafeRunSync()
-
 }

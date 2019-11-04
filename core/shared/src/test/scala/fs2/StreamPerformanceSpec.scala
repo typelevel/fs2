@@ -4,9 +4,7 @@ import cats.effect.IO
 import cats.implicits._
 
 class StreamPerformanceSpec extends Fs2Spec {
-
   "Stream Performance" - {
-
     val Ns = List(2, 3, 100, 200, 400, 800, 1600, 3200, 6400, 12800, 25600, 51200, 102400)
 
     "left-associated ++" - {

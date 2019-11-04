@@ -9,17 +9,14 @@ import cats.effect.{Blocker, IO}
 import cats.effect.concurrent.Deferred
 
 class SocketSpec extends Fs2Spec {
-
   def mkSocketGroup: Stream[IO, SocketGroup] =
     Stream.resource(Blocker[IO].flatMap(blocker => SocketGroup[IO](blocker)))
 
   "tcp" - {
-
     // spawns echo server, takes whatever client sends and echoes it back
     // up to 10 clients concurrently (5k total) send message and awaits echo of it
     // success is that all clients got what they have sent
     "echo.requests" in {
-
       val message = Chunk.bytes("fs2.rocks".getBytes)
       val clientCount = 20
 
@@ -75,7 +72,6 @@ class SocketSpec extends Fs2Spec {
 
     // Ensure that readN yields chunks of the requested size
     "readN" in {
-
       val message = Chunk.bytes("123456789012345678901234567890".getBytes)
 
       val localBindAddress =
@@ -120,9 +116,6 @@ class SocketSpec extends Fs2Spec {
           .unsafeRunTimed(timeout)
           .get
       result shouldBe sizes
-
     }
-
   }
-
 }

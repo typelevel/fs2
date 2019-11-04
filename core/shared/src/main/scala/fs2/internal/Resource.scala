@@ -36,7 +36,6 @@ import fs2.Scope
   * instead of `F[Unit]`` to make sure any errors that occur when releasing the resource are properly handled.
   */
 private[fs2] sealed abstract class Resource[F[_]] {
-
   /**
     * Id of the resource
     */
@@ -80,7 +79,6 @@ private[fs2] sealed abstract class Resource[F[_]] {
 }
 
 private[internal] object Resource {
-
   /**
     * State of the resource
     *
@@ -104,7 +102,6 @@ private[internal] object Resource {
 
   def create[F[_]](implicit F: Sync[F]): Resource[F] =
     new Resource[F] {
-
       private[this] val state: Ref[F, State[F]] = Ref.unsafe(initial)
 
       override val id: Token = new Token
@@ -158,6 +155,5 @@ private[internal] object Resource {
               pru
           }
       }
-
     }
 }

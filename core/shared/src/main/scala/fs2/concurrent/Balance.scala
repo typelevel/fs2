@@ -5,7 +5,6 @@ import fs2._
 
 /** Provides mechanisms for balancing the distribution of chunks across multiple streams. */
 object Balance {
-
   /**
     * Allows balanced processing of this stream via multiple concurrent streams.
     *
@@ -109,7 +108,6 @@ object Balance {
               if (keep.isEmpty) (None, Some(head))
               else (Some(keep), Some(head))
             }
-
         }
 
       def empty(state: Option[Chunk[O]]): Boolean =

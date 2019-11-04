@@ -15,7 +15,6 @@ import org.reactivestreams._
   */
 final class StreamUnicastPublisher[F[_]: ConcurrentEffect, A](val stream: Stream[F, A])
     extends Publisher[A] {
-
   def subscribe(subscriber: Subscriber[_ >: A]): Unit = {
     nonNull(subscriber)
     StreamSubscription(subscriber, stream).flatMap { subscription =>

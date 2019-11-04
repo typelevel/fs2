@@ -479,7 +479,6 @@ abstract class Chunk[+O] extends Serializable { self =>
 }
 
 object Chunk extends CollectorK[Chunk] {
-
   /** Optional mix-in that provides the class tag of the element type in a chunk. */
   trait KnownElementType[A] { self: Chunk[A] =>
     def elementClassTag: ClassTag[A]
@@ -810,7 +809,6 @@ object Chunk extends CollectorK[Chunk] {
       val size: Int
   ) extends Chunk[C]
       with KnownElementType[C] {
-
     def elementClassTag: ClassTag[C] = implicitly[ClassTag[C]]
     def readOnly(b: B): B
     def buffer(b: B): A
@@ -868,22 +866,18 @@ object Chunk extends CollectorK[Chunk] {
       get(b, bs, 0, size)
       bs.asInstanceOf[Array[O2]]
     }
-
   }
 
   object ShortBuffer {
-
     def apply(buf: JShortBuffer): ShortBuffer =
       view(buf.duplicate().asReadOnlyBuffer)
 
     def view(buf: JShortBuffer): ShortBuffer =
       new ShortBuffer(buf, buf.position, buf.remaining)
-
   }
 
   final case class ShortBuffer(buf: JShortBuffer, override val offset: Int, override val size: Int)
       extends Buffer[ShortBuffer, JShortBuffer, Short](buf, offset, size) {
-
     def readOnly(b: JShortBuffer): JShortBuffer =
       b.asReadOnlyBuffer()
 
@@ -926,7 +920,6 @@ object Chunk extends CollectorK[Chunk] {
 
   final case class LongBuffer(buf: JLongBuffer, override val offset: Int, override val size: Int)
       extends Buffer[LongBuffer, JLongBuffer, Long](buf, offset, size) {
-
     def readOnly(b: JLongBuffer): JLongBuffer =
       b.asReadOnlyBuffer()
 
@@ -957,7 +950,6 @@ object Chunk extends CollectorK[Chunk] {
       override val offset: Int,
       override val size: Int
   ) extends Buffer[DoubleBuffer, JDoubleBuffer, Double](buf, offset, size) {
-
     def readOnly(b: JDoubleBuffer): JDoubleBuffer =
       b.asReadOnlyBuffer()
 
@@ -1005,7 +997,6 @@ object Chunk extends CollectorK[Chunk] {
 
   final case class FloatBuffer(buf: JFloatBuffer, override val offset: Int, override val size: Int)
       extends Buffer[FloatBuffer, JFloatBuffer, Float](buf, offset, size) {
-
     def readOnly(b: JFloatBuffer): JFloatBuffer =
       b.asReadOnlyBuffer()
 
@@ -1033,7 +1024,6 @@ object Chunk extends CollectorK[Chunk] {
 
   final case class IntBuffer(buf: JIntBuffer, override val offset: Int, override val size: Int)
       extends Buffer[IntBuffer, JIntBuffer, Int](buf, offset, size) {
-
     def readOnly(b: JIntBuffer): JIntBuffer =
       b.asReadOnlyBuffer()
 
@@ -1076,7 +1066,6 @@ object Chunk extends CollectorK[Chunk] {
 
   final case class CharBuffer(buf: JCharBuffer, override val offset: Int, override val size: Int)
       extends Buffer[CharBuffer, JCharBuffer, Char](buf, offset, size) {
-
     def readOnly(b: JCharBuffer): JCharBuffer =
       b.asReadOnlyBuffer()
 
@@ -1107,7 +1096,6 @@ object Chunk extends CollectorK[Chunk] {
       override val offset: Int,
       override val size: Int
   ) extends Buffer[ByteBuffer, JByteBuffer, Byte](buf, offset, size) {
-
     def readOnly(b: JByteBuffer): JByteBuffer =
       b.asReadOnlyBuffer()
 

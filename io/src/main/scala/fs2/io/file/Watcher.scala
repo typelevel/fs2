@@ -15,7 +15,6 @@ import fs2.concurrent.SignallingRef
   * Allows watching the file system for changes to directories and files by using the platform's `WatchService`.
   */
 sealed abstract class Watcher[F[_]] {
-
   /**
     * Registers for events on the specified path.
     *
@@ -69,7 +68,6 @@ sealed abstract class Watcher[F[_]] {
 }
 
 object Watcher {
-
   /** Type of event raised by `Watcher`. Supports the standard events types as well as arbitrary non-standard types (via `NonStandard`). */
   sealed abstract class EventType
   object EventType {
@@ -169,7 +167,6 @@ object Watcher {
       registrations: SignallingRef[F, Map[WatchKey, Registration[F]]]
   )(implicit F: Concurrent[F], cs: ContextShift[F])
       extends Watcher[F] {
-
     private def isDir(p: Path): F[Boolean] =
       blocker.delay(Files.isDirectory(p))
 

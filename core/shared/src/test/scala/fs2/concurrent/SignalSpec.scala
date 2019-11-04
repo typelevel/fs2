@@ -8,7 +8,6 @@ import cats.implicits._
 import scala.concurrent.duration._
 
 class SignalSpec extends Fs2Spec {
-
   implicit override val generatorDrivenConfig: PropertyCheckConfiguration =
     PropertyCheckConfiguration(minSuccessful = 10, workers = 1)
 

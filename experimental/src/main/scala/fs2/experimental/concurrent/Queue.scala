@@ -5,7 +5,6 @@ import fs2.Chunk
 import fs2.internal.SizedQueue
 
 object Queue {
-
   def forStrategy[F[_]: Concurrent, S, A](
       strategy: PubSub.Strategy[A, Chunk[A], S, Int]
   ): F[fs2.concurrent.Queue[F, A]] =
@@ -17,7 +16,6 @@ object Queue {
     fs2.concurrent.Queue.in[F].forStrategyNoneTerminated(strategy)
 
   object Strategy {
-
     def boundedFifo[A](maxSize: Int): PubSub.Strategy[A, Chunk[A], SizedQueue[A], Int] =
       PubSub.Strategy.convert(fs2.concurrent.Queue.Strategy.boundedFifo(maxSize))
 
@@ -40,7 +38,5 @@ object Queue {
         append: (SizedQueue[A], A) => SizedQueue[A]
     ): PubSub.Strategy[A, Chunk[A], SizedQueue[A], Int] =
       PubSub.Strategy.convert(fs2.concurrent.Queue.Strategy.unbounded(append))
-
   }
-
 }

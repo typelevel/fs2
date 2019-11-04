@@ -13,7 +13,6 @@ trait PubSub[F[_], I, O, Selector]
     with concurrent.PubSub[F, I, O, Selector]
 
 object PubSub {
-
   def apply[F[_]: Concurrent, I, O, QS, Selector](
       strategy: Strategy[I, O, QS, Selector]
   ): F[PubSub[F, I, O, Selector]] =
@@ -32,7 +31,6 @@ object PubSub {
   trait Strategy[I, O, S, Selector] extends fs2.concurrent.PubSub.Strategy[I, O, S, Selector]
 
   object Strategy {
-
     private[experimental] def convert[I, O, S, Selector](
         strategy: fs2.concurrent.PubSub.Strategy[I, O, S, Selector]
     ): Strategy[I, O, S, Selector] =
@@ -63,7 +61,5 @@ object PubSub {
         strategy: PubSub.Strategy[I, O, S, Sel]
     ): PubSub.Strategy[Option[I], Option[O], (Boolean, S), Sel] =
       convert(fs2.concurrent.PubSub.Strategy.closeDrainFirst(strategy))
-
   }
-
 }

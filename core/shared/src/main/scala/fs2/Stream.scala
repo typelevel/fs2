@@ -129,7 +129,6 @@ import scala.concurrent.duration._
   * @hideImplicitConversion IdOps
   **/
 final class Stream[+F[_], +O] private (private val free: FreeC[Nothing, O, Unit]) extends AnyVal {
-
   private[fs2] def get[F2[x] >: F[x], O2 >: O]: FreeC[F2, O2, Unit] =
     free.asInstanceOf[FreeC[F2, O2, Unit]]
 
@@ -543,11 +542,8 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Nothing, O, Unit]
               interrupt.complete(()).attempt >> // always interrupt `that`
                 doneR.get.flatMap(F.fromEither) // always await `that` result
           ) >> this.interruptWhen(interrupt.get.attempt)
-
         }
-
       }
-
     }.flatten
 
   /**
@@ -1541,7 +1537,6 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Nothing, O, Unit]
               interruptR.complete(()) >>
                 doneR.get.flatMap { F2.fromEither }
           ) >> this.interruptWhen(interruptL.get.attempt)
-
         }
       }
     }
@@ -1865,7 +1860,6 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Nothing, O, Unit]
                       }
                     }
                 } >> resultStream
-
               }
             }
           }
@@ -2153,7 +2147,6 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Nothing, O, Unit]
                     ) >>
                     outputQ.dequeue
                       .flatMap(Stream.chunk(_).covary[F2])
-
                 }
             }
         }
@@ -3713,7 +3706,6 @@ object Stream extends StreamLowPriority {
         using: Stream.ToPull[F, O] => Pull[F, O2, Option[Stream[F, O]]]
     ): Stream[F, O2] =
       Pull.loop(using.andThen(_.map(_.map(_.pull))))(pull).void.stream
-
   }
 
   /** Provides syntax for pure streams. */
@@ -3824,7 +3816,6 @@ object Stream extends StreamLowPriority {
   final class ToPull[F[_], O] private[Stream] (
       private val free: FreeC[Nothing, O, Unit]
   ) extends AnyVal {
-
     private def self: Stream[F, O] =
       Stream.fromFreeC(free.asInstanceOf[FreeC[F, O, Unit]])
 
@@ -4192,7 +4183,6 @@ object Stream extends StreamLowPriority {
                   .map(finalize)
               }
             }
-
       }
   }
 
@@ -4242,7 +4232,6 @@ object Stream extends StreamLowPriority {
   final class CompileOps[F[_], G[_], O] private[Stream] (
       private val free: FreeC[Nothing, O, Unit]
   )(implicit compiler: Compiler[F, G]) {
-
     private def self: Stream[F, O] =
       Stream.fromFreeC(free.asInstanceOf[FreeC[F, O, Unit]])
 
@@ -4587,7 +4576,6 @@ object Stream extends StreamLowPriority {
 
   /** Provides operations on effectful pipes for syntactic convenience. */
   implicit class PipeOps[F[_], I, O](private val self: Pipe[F, I, O]) extends AnyVal {
-
     /** Transforms the left input of the given `Pipe2` using a `Pipe`. */
     def attachL[I1, O2](p: Pipe2[F, O, I1, O2]): Pipe2[F, I, I1, O2] =
       (l, r) => p(self(l), r)
@@ -4599,7 +4587,6 @@ object Stream extends StreamLowPriority {
 
   /** Provides operations on pure pipes for syntactic convenience. */
   implicit final class PurePipeOps[I, O](private val self: Pipe[Pure, I, O]) extends AnyVal {
-
     /** Lifts this pipe to the specified effect type. */
     def covary[F[_]]: Pipe[F, I, O] = self.asInstanceOf[Pipe[F, I, O]]
   }
@@ -4607,7 +4594,6 @@ object Stream extends StreamLowPriority {
   /** Provides operations on pure pipes for syntactic convenience. */
   implicit final class PurePipe2Ops[I, I2, O](private val self: Pipe2[Pure, I, I2, O])
       extends AnyVal {
-
     /** Lifts this pipe to the specified effect type. */
     def covary[F[_]]: Pipe2[F, I, I2, O] = self.asInstanceOf[Pipe2[F, I, I2, O]]
   }
@@ -4704,5 +4690,4 @@ private[fs2] trait StreamLowPriority {
           case Right(b) => Stream(b)
         }
     }
-
 }

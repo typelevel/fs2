@@ -24,7 +24,6 @@ import scala.concurrent.duration._
 final class SubscriberWhiteboxSpec
     extends SubscriberWhiteboxVerification[Int](new TestEnvironment(1000L))
     with TestNGSuiteLike {
-
   implicit val ctx: ContextShift[IO] =
     IO.contextShift(ExecutionContext.global)
 
@@ -44,7 +43,6 @@ final class SubscriberWhiteboxSpec
 
 final class WhiteboxSubscriber[A](sub: StreamSubscriber[IO, A], probe: WhiteboxSubscriberProbe[A])
     extends Subscriber[A] {
-
   def onError(t: Throwable): Unit = {
     sub.onError(t)
     probe.registerOnError(t)
@@ -77,7 +75,6 @@ final class WhiteboxSubscriber[A](sub: StreamSubscriber[IO, A], probe: WhiteboxS
 final class SubscriberBlackboxSpec
     extends SubscriberBlackboxVerification[Int](new TestEnvironment(1000L))
     with TestNGSuiteLike {
-
   val timer = IO.timer(ExecutionContext.global)
   implicit val ctx: ContextShift[IO] = IO.contextShift(ExecutionContext.global)
 

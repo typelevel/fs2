@@ -7,9 +7,7 @@ import org.scalatest.prop.Generator
 import scala.annotation.tailrec
 
 class JavaInputOutputStreamSpec extends Fs2Spec with EventuallySupport {
-
   "ToInputStream" - {
-
     implicit val streamByteGenerator: Generator[Stream[IO, Byte]] =
       for {
         chunks <- pureStreamGenerator[Chunk[Byte]]

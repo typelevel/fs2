@@ -16,7 +16,6 @@ import scala.util.control.NonFatal
  * as control information for the rest of the interpretation or compilation.
  */
 private[fs2] object Algebra {
-
   final case class Output[F[_], O](values: Chunk[O]) extends FreeC.Eval[F, O, Unit] {
     override def mapOutput[P](f: O => P): FreeC[F, P, Unit] =
       FreeC.suspend {
@@ -160,7 +159,6 @@ private[fs2] object Algebra {
   )(
       implicit F: MonadError[F, Throwable]
   ): F[Option[(Chunk[O], CompileScope[F], FreeC[F, O, Unit])]] = {
-
     case class Done[X](scope: CompileScope[F]) extends R[X]
     case class Out[X](head: Chunk[X], scope: CompileScope[F], tail: FreeC[F, X, Unit]) extends R[X]
     case class Interrupted[X](scopeId: Token, err: Option[Throwable]) extends R[X]
@@ -293,7 +291,6 @@ private[fs2] object Algebra {
                             case None      => Result.unit
                             case Some(err) => Result.Fail(err)
                           }
-
                         }
                     }
                     go(ancestor, extendedTopLevelScope, view.next(res))
@@ -380,9 +377,7 @@ private[fs2] object Algebra {
           case _ =>
             // all other cases insert interruption cause
             view.next(Result.Interrupted(interruptedScope, interruptedError))
-
         }
-
     }
 
   private def translate0[F[_], G[_], O](
@@ -390,7 +385,6 @@ private[fs2] object Algebra {
       stream: FreeC[F, O, Unit],
       concurrent: Option[Concurrent[G]]
   ): FreeC[G, O, Unit] = {
-
     def translateStep[X](next: FreeC[F, X, Unit], isMainLevel: Boolean): FreeC[G, X, Unit] =
       next.viewL match {
         case _: FreeC.Result.Pure[F, Unit] =>
@@ -431,7 +425,6 @@ private[fs2] object Algebra {
             case alg: AlgEffect[F, r] =>
               translateAlgEffect(alg, concurrent, fK)
                 .transformWith(r => translateStep(view.next(r), isMainLevel))
-
           }
       }
 
@@ -453,5 +446,4 @@ private[fs2] object Algebra {
     case c: CloseScope[F] => c.asInstanceOf[AlgEffect[G, R]]
     case g: GetScope[F]   => g.asInstanceOf[AlgEffect[G, R]]
   }
-
 }

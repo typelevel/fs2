@@ -12,7 +12,6 @@ import scala.concurrent.duration._
 import java.nio.file.Paths
 
 class FileSpec extends BaseFileSpec {
-
   "readAll" - {
     "retrieves whole content of a file" in {
       Stream
@@ -138,7 +137,6 @@ class FileSpec extends BaseFileSpec {
         result <- Stream.eval(file.copy[IO](blocker, filePath, tempDir.resolve("newfile")))
         exists <- Stream.eval(file.exists[IO](blocker, result))
       } yield exists).compile.fold(true)(_ && _).unsafeRunSync() shouldBe true
-
     }
   }
 

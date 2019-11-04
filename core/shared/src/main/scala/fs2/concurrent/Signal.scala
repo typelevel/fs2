@@ -10,7 +10,6 @@ import fs2.internal.Token
 
 /** Pure holder of a single value of type `A` that can be read in the effect `F`. */
 trait Signal[F[_], A] {
-
   /**
     * Returns a stream of the updates to this signal.
     *
@@ -33,7 +32,6 @@ trait Signal[F[_], A] {
 }
 
 object Signal extends SignalLowPriorityImplicits {
-
   def constant[F[_], A](a: A)(implicit F: Async[F]): Signal[F, A] =
     new Signal[F, A] {
       def get = F.pure(a)
@@ -53,7 +51,6 @@ object Signal extends SignalLowPriorityImplicits {
 
       override def ap[A, B](ff: Signal[F, A => B])(fa: Signal[F, A]): Signal[F, B] =
         new Signal[F, B] {
-
           override def discrete: Stream[F, B] =
             nondeterministicZip(ff.discrete, fa.discrete).map { case (f, a) => f(a) }
 
@@ -93,7 +90,6 @@ object Signal extends SignalLowPriorityImplicits {
     }
 
   implicit class SignalOps[F[_], A](val self: Signal[F, A]) extends AnyVal {
-
     /**
       * Converts this signal to signal of `B` by applying `f`.
       */
@@ -108,7 +104,6 @@ object Signal extends SignalLowPriorityImplicits {
 }
 
 private[concurrent] trait SignalLowPriorityImplicits {
-
   /**
     * Note that this is not subsumed by [[Signal.applicativeInstance]] because
     * [[Signal.applicativeInstance]] requires a `Concurrent[F]`
@@ -133,7 +128,6 @@ private[concurrent] trait SignalLowPriorityImplicits {
 abstract class SignallingRef[F[_], A] extends Ref[F, A] with Signal[F, A]
 
 object SignallingRef {
-
   /**
     * Builds a `SignallingRef` for a `Concurrent` datatype, initialized
     * to a supplied value.
@@ -210,7 +204,6 @@ object SignallingRef {
             Stream.bracket(Sync[F].delay(Some(new Token)))(pubSub.unsubscribe).flatMap { selector =>
               pubSub.getStream(selector)
             }
-
         }
       }
     }

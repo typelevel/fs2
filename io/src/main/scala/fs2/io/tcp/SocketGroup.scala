@@ -28,7 +28,6 @@ import fs2.internal.ThreadFactories
   * an underlying non-blocking channel group.
   */
 final class SocketGroup(channelGroup: AsynchronousChannelGroup, blocker: Blocker) {
-
   /**
     * Opens a connection to the specified server represented as a [[Socket]].
     * The connection is closed when the resource is released.
@@ -49,7 +48,6 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup, blocker: Blocker
       noDelay: Boolean = false,
       additionalSocketOptions: List[SocketOptionMapping[_]] = List.empty
   )(implicit F: Concurrent[F], CS: ContextShift[F]): Resource[F, Socket[F]] = {
-
     def setup: F[AsynchronousSocketChannel] = blocker.delay {
       val ch =
         AsynchronousChannelProvider.provider().openAsynchronousSocketChannel(channelGroup)
@@ -134,7 +132,6 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup, blocker: Blocker
       implicit F: Concurrent[F],
       CS: ContextShift[F]
   ): Stream[F, Either[InetSocketAddress, Resource[F, Socket[F]]]] = {
-
     val _ = maxQueued // TODO: maxQueued param has never been used; remove in 3.0
 
     val setup: F[AsynchronousServerSocketChannel] = blocker.delay {
@@ -349,7 +346,6 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup, blocker: Blocker
 }
 
 object SocketGroup {
-
   /**
     * Creates a `SocketGroup`.
     *

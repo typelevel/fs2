@@ -13,7 +13,6 @@ import cats.implicits._
 
 /** Provides support for working with files. */
 package object file {
-
   /**
     * Reads all data synchronously from the file at the specified `java.nio.file.Path`.
     */
@@ -322,5 +321,4 @@ package object file {
     Stream
       .resource(Resource.fromAutoCloseable(javaCollection))
       .flatMap(ds => Stream.fromBlockingIterator[F](blocker, collectionIterator(ds)))
-
 }

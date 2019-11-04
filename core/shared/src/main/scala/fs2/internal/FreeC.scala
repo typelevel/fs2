@@ -22,7 +22,6 @@ import scala.util.control.NonFatal
   * FreeC via series of Results ([[Result.Pure]], [[Result.Fail]] and [[Result.Interrupted]]) and FreeC step ([[ViewL.View]])
   */
 private[fs2] abstract class FreeC[F[_], +O, +R] {
-
   def flatMap[O2 >: O, R2](f: R => FreeC[F, O2, R2]): FreeC[F, O2, R2] =
     new Bind[F, O2, R, R2](this) {
       def cont(e: Result[R]): FreeC[F, O2, R2] = e match {
@@ -79,7 +78,6 @@ private[fs2] abstract class FreeC[F[_], +O, +R] {
 }
 
 private[fs2] object FreeC {
-
   sealed trait Result[+R] { self =>
 
     def asFreeC[F[_]]: FreeC[F, INothing, R] = self.asInstanceOf[FreeC[F, INothing, R]]
@@ -89,7 +87,6 @@ private[fs2] object FreeC {
       case Result.Fail(err)         => ExitCase.Error(err)
       case Result.Interrupted(_, _) => ExitCase.Canceled
     }
-
   }
 
   sealed abstract class ResultC[F[_], +R]
@@ -100,7 +97,6 @@ private[fs2] object FreeC {
   }
 
   object Result {
-
     val unit: Result[Unit] = Result.Pure(())
 
     def fromEither[R](either: Either[Throwable, R]): Result[R] =
@@ -144,7 +140,6 @@ private[fs2] object FreeC {
       case failure @ Result.Fail(_)               => failure.asInstanceOf[Result[B]]
       case interrupted @ Result.Interrupted(_, _) => interrupted.asInstanceOf[Result[B]]
     }
-
   }
 
   abstract class Eval[F[_], +O, +R] extends FreeC[F, O, R]
@@ -179,7 +174,6 @@ private[fs2] object FreeC {
   sealed trait ViewL[F[_], +O, +R]
 
   object ViewL {
-
     /** unrolled view of FreeC `bind` structure **/
     sealed abstract case class View[F[_], O, X, R](step: Eval[F, O, X]) extends ViewL[F, O, R] {
       def next(r: Result[X]): FreeC[F, O, R]
@@ -218,7 +212,6 @@ private[fs2] object FreeC {
         case r @ Result.Fail(_)           => r
         case r @ Result.Interrupted(_, _) => r
       }
-
   }
 
   def bracketCase[F[_], O, A, B](

@@ -1,5 +1,4 @@
 package object fs2 {
-
   /**
     * A stream transformation represented as a function from stream to stream.
     *

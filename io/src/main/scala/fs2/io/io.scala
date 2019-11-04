@@ -139,7 +139,6 @@ package object io {
   )(
       f: OutputStream => F[Unit]
   ): Stream[F, Byte] = {
-
     val mkOutput: Resource[F, (OutputStream, InputStream)] =
       Resource.make(Sync[F].delay {
         val os = new PipedOutputStream()
@@ -176,7 +175,6 @@ package object io {
           }
         }
     }
-
   }
 
   //

@@ -9,7 +9,6 @@ import cats.implicits._
 /** Companion for [[Sink]]. */
 @deprecated("Use Pipe instead", "1.0.2")
 object Sink {
-
   /** Lifts a function `I => F[Unit]` to `Sink[F,I]`. */
   @deprecated("Use stream.evalMap(f) instead", "1.0.2")
   def apply[F[_], I](f: I => F[Unit]): Sink[F, I] = _.evalMap(f)

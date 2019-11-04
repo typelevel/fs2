@@ -6,7 +6,6 @@ import fs2._
 
 /** Provides mechanisms for broadcast distribution of elements to multiple streams. */
 object Broadcast {
-
   /**
     * Allows elements of a stream to be broadcast to multiple workers.
     *
@@ -108,7 +107,6 @@ object Broadcast {
       def awaitSub = false
       def isEmpty = false
     }
-
   }
 
   private def strategy[O](minReady: Int): PubSub.Strategy[O, O, State[O], Token] =
@@ -144,7 +142,6 @@ object Broadcast {
             }
           } else
             (State.Processing(subscribers + selector, processing, remains + selector, o), Some(o))
-
       }
 
       def empty(queueState: State[O]): Boolean = queueState.isEmpty
@@ -161,6 +158,5 @@ object Broadcast {
             State.Processing(subscribers - selector, processing - selector, remains1, o)
           else State.Empty(subscribers - selector)
       }
-
     }
 }

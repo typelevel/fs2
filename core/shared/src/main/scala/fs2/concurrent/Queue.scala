@@ -8,7 +8,6 @@ import fs2.internal.{SizedQueue, Token}
 
 /** Provides the ability to enqueue elements to a `Queue`. */
 trait Enqueue[F[_], A] {
-
   /**
     * Enqueues one element to this `Queue`.
     * If the queue is `full` this waits until queue has space.
@@ -36,7 +35,6 @@ trait Enqueue[F[_], A] {
 
 /** Provides the ability to dequeue individual elements from a `Queue`. */
 trait Dequeue1[F[_], A] {
-
   /** Dequeues one `A` from this queue. Completes once one is ready. */
   def dequeue1: F[A]
 
@@ -49,7 +47,6 @@ trait Dequeue1[F[_], A] {
 
 /** Provides the ability to dequeue individual chunks from a `Queue`. */
 trait DequeueChunk1[F[_], G[_], A] {
-
   /** Dequeues one `Chunk[A]` with no more than `maxSize` elements. Completes once one is ready. */
   def dequeueChunk1(maxSize: Int): F[G[Chunk[A]]]
 
@@ -63,7 +60,6 @@ trait DequeueChunk1[F[_], G[_], A] {
 
 /** Provides the ability to dequeue chunks of elements from a `Queue` as streams. */
 trait Dequeue[F[_], A] {
-
   /** Dequeues elements from the queue. */
   def dequeue: Stream[F, A] =
     dequeueChunk(Int.MaxValue)
@@ -139,7 +135,6 @@ trait NoneTerminatedQueue[F[_], A]
 
 object Queue {
   final class InPartiallyApplied[G[_]](val G: Sync[G]) extends AnyVal {
-
     /** Creates a queue with no size bound. */
     def unbounded[F[_], A](implicit F: Concurrent[F]): G[Queue[F, A]] =
       forStrategy(Strategy.fifo[A])
@@ -189,7 +184,6 @@ object Queue {
       implicit val SyncG: Sync[G] = G
       PubSub.in[G].from(strategy).map { pubSub =>
         new Queue[F, A] {
-
           def enqueue1(a: A): F[Unit] =
             pubSub.publish(a)
 
@@ -322,7 +316,6 @@ object Queue {
     else Sync[F].raiseError(new Throwable(s"Expected chunk of size 1. got $chunk"))
 
   private[fs2] object Strategy {
-
     /** Unbounded fifo strategy. */
     def boundedFifo[A](maxSize: Int): PubSub.Strategy[A, Chunk[A], SizedQueue[A], Int] =
       PubSub.Strategy.bounded(maxSize)(fifo[A])(_.size)
@@ -389,7 +382,6 @@ object Queue {
         append: (SizedQueue[A], A) => SizedQueue[A]
     ): PubSub.Strategy[A, Chunk[A], SizedQueue[A], Int] =
       new PubSub.Strategy[A, Chunk[A], SizedQueue[A], Int] {
-
         val initial: SizedQueue[A] = SizedQueue.empty
 
         def publish(a: A, queueState: SizedQueue[A]): SizedQueue[A] =
@@ -414,13 +406,11 @@ object Queue {
         def unsubscribe(selector: Int, queueState: SizedQueue[A]): SizedQueue[A] =
           queueState
       }
-
   }
 }
 
 /** Extension of [[Queue]] that allows peeking and inspection of the current size. */
 trait InspectableQueue[F[_], A] extends Queue[F, A] {
-
   /**
     * Returns the element which would be dequeued next,
     * but without removing it. Completes when such an
@@ -447,9 +437,7 @@ trait InspectableQueue[F[_], A] extends Queue[F, A] {
 }
 
 object InspectableQueue {
-
   final class InPartiallyApplied[G[_]](val G: Sync[G]) extends AnyVal {
-
     /** Creates a queue with no size bound. */
     def unbounded[F[_], A](implicit F: Concurrent[F]): G[InspectableQueue[F, A]] =
       forStrategy(Queue.Strategy.fifo[A])(_.headOption)(_.size)
@@ -488,7 +476,6 @@ object InspectableQueue {
               )
             case Right(chunk) =>
               Queue.headUnsafe[F, A](chunk)
-
           }
 
           def tryDequeue1: F[Option[A]] = pubSub.tryGet(Right(1)).flatMap {

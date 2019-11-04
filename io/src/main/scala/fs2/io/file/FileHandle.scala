@@ -14,7 +14,6 @@ import cats.effect.{Blocker, ContextShift, Resource, Sync}
   * To construct a `FileHandle`, use the methods in the [[fs2.io.file.pulls]] object.
   */
 trait FileHandle[F[_]] {
-
   /** Opaque type representing an exclusive lock on a file. */
   type Lock
 
@@ -90,7 +89,6 @@ trait FileHandle[F[_]] {
 }
 
 object FileHandle {
-
   /** Creates a `FileHandle` for the file at the supplied `Path`. */
   def fromPath[F[_]](path: Path, blocker: Blocker, flags: Seq[OpenOption])(
       implicit F: Sync[F],

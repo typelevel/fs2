@@ -82,7 +82,6 @@ abstract class Topic[F[_], A] { self =>
 }
 
 object Topic {
-
   /**
     * Constructs a `Topic` for a provided `Concurrent` datatype. The
     * `initial` value is immediately published.
@@ -103,7 +102,6 @@ object Topic {
       .from(PubSub.Strategy.Inspectable.strategy(Strategy.boundedSubscribers(initial)))
       .map { pubSub =>
         new Topic[F, A] {
-
           def subscriber(size: Int): Stream[F, ((Token, Int), Stream[F, SizedQueue[A]])] =
             Stream
               .bracket(
@@ -117,7 +115,6 @@ object Topic {
                     case Right(q) => Stream.emit(q)
                     case Left(_)  => Stream.empty // impossible
                   }
-
               }
 
           def publish: Pipe[F, A, Unit] =
@@ -153,7 +150,6 @@ object Topic {
                 pubSub.getStream(Left(Some(token))).flatMap {
                   case Left(s)  => Stream.emit(s.subscribers.size)
                   case Right(_) => Stream.empty //impossible
-
                 }
               }
         }
@@ -161,7 +157,6 @@ object Topic {
   }
 
   private[fs2] object Strategy {
-
     final case class State[A](
         last: A,
         subscribers: Map[(Token, Int), SizedQueue[A]]

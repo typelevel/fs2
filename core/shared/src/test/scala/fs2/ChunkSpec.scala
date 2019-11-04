@@ -13,7 +13,6 @@ import scala.reflect.ClassTag
 import scala.util.control.NonFatal
 
 class ChunkSpec extends Fs2Spec {
-
   implicit override val generatorDrivenConfig: PropertyCheckConfiguration =
     PropertyCheckConfiguration(minSuccessful = if (isJVM) 300 else 50, workers = 1)
 

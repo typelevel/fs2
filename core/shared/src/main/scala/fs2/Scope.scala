@@ -7,7 +7,6 @@ package fs2
   * resource lifetimes and hence, isn't generally used by user-level code.
   */
 abstract class Scope[F[_]] {
-
   /**
     * Leases the resources of this scope until the returned lease is cancelled.
     *
@@ -41,17 +40,14 @@ abstract class Scope[F[_]] {
     *
     */
   def interrupt(cause: Either[Throwable, Unit]): F[Unit]
-
 }
 
 object Scope {
-
   /**
     * Represents one or more resources that were leased from a scope, causing their
     * lifetimes to be extended until `cancel` is invoked on this lease.
     */
   abstract class Lease[F[_]] {
-
     /**
       * Cancels the lease of all resources tracked by this lease.
       *

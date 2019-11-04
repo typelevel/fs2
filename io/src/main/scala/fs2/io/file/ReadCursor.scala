@@ -18,7 +18,6 @@ import java.nio.file._
   * a chunk at a time. Convenience methods are provided for working with pulls.
   */
 final case class ReadCursor[F[_]](file: FileHandle[F], offset: Long) {
-
   /**
     * Reads a single chunk from the underlying file handle, returning the
     * read chunk and a new cursor with an offset incremented by the chunk size.
@@ -87,7 +86,6 @@ final case class ReadCursor[F[_]](file: FileHandle[F], offset: Long) {
 }
 
 object ReadCursor {
-
   /**
     * Returns a `ReadCursor` for the specified path. The `READ` option is added to the supplied flags.
     */
@@ -99,5 +97,4 @@ object ReadCursor {
     FileHandle.fromPath(path, blocker, StandardOpenOption.READ :: flags.toList).map { fileHandle =>
       ReadCursor(fileHandle, 0L)
     }
-
 }

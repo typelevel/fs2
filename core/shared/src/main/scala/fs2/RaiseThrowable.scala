@@ -16,12 +16,10 @@ import scala.annotation.implicitNotFound
 trait RaiseThrowable[F[_]]
 
 object RaiseThrowable {
-
   implicit def fromApplicativeError[F[_]](
       implicit F: ApplicativeError[F, Throwable]
   ): RaiseThrowable[F] = {
     val _ = F
     new RaiseThrowable[F] {}
   }
-
 }

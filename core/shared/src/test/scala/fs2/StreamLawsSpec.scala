@@ -29,11 +29,9 @@ trait StreamArbitrary {
         } yield Stream.bracket(acquire)(_ => release).flatMap(_ => use))
       )
     )
-
 }
 
 class StreamLawsSpec extends Fs2Spec with StreamArbitrary {
-
   implicit val ec: TestContext = TestContext()
 
   implicit def eqStream[O: Eq]: Eq[Stream[IO, O]] =

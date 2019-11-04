@@ -11,7 +11,6 @@ import java.nio.file.attribute.BasicFileAttributes
 import scala.concurrent.duration._
 
 class BaseFileSpec extends Fs2Spec {
-
   protected def tempDirectory: Stream[IO, Path] =
     Stream.bracket(IO(Files.createTempDirectory("BaseFileSpec")))(deleteDirectoryRecursively(_))
 
@@ -61,5 +60,4 @@ class BaseFileSpec extends Fs2Spec {
     )
     ()
   }
-
 }

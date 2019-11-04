@@ -6,7 +6,6 @@ import fs2.text._
 class TextSpec extends Fs2Spec {
   "text" - {
     "utf8Decoder" - {
-
       def utf8Bytes(s: String): Chunk[Byte] = Chunk.bytes(s.getBytes("UTF-8"))
       def utf8String(bs: Chunk[Byte]): String = new String(bs.toArray, "UTF-8")
 

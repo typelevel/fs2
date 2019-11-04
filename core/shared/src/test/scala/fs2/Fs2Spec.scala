@@ -27,7 +27,6 @@ abstract class Fs2Spec
     with StreamGenerators
     with EffectTestSupport
     with TestPlatform {
-
   implicit val timeout: FiniteDuration = 60.seconds
   val timeLimit: Span = timeout
 
@@ -72,7 +71,6 @@ abstract class Fs2Spec
 
   /** Provides various ways to make test assertions on an `F[A]`. */
   implicit class Asserting[F[_], A](private val self: F[A]) {
-
     /**
       * Asserts that the `F[A]` completes with an `A` which passes the supplied function.
       *
@@ -116,7 +114,6 @@ abstract class Fs2Spec
           case Succeeded => repeatTest(n - 1)
           case other     => F.pure(other)
         }
-
   }
 
   protected def checkAll(name: String, ruleSet: Laws#RuleSet): Unit =

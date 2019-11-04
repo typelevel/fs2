@@ -7,11 +7,8 @@ import scala.concurrent.duration._
 import org.scalatest.Succeeded
 
 class TopicSpec extends Fs2Spec {
-
   "Topic" - {
-
     "subscribers see all elements published" in {
-
       Topic[IO, Int](-1).flatMap { topic =>
         val count = 100
         val subs = 10
@@ -87,7 +84,6 @@ class TopicSpec extends Fs2Spec {
     }
 
     "discrete-size-signal-is-discrete" in {
-
       def p =
         Stream
           .eval(Topic[IO, Int](0))

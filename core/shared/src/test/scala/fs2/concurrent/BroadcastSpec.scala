@@ -5,9 +5,7 @@ import cats.effect.IO
 import org.scalactic.anyvals.PosInt
 
 class BroadcastSpec extends Fs2Spec {
-
   "Broadcast" - {
-
     "all subscribers see all elements" in {
       forAll { (source: Stream[Pure, Int], concurrent0: PosInt) =>
         val concurrent = concurrent0 % 20

@@ -11,7 +11,6 @@ import org.scalatest.{Assertion, Succeeded}
 import fs2.concurrent.{Queue, SignallingRef}
 
 class StreamSpec extends Fs2Spec {
-
   "Stream" - {
     "++" in forAll { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
       (s1 ++ s2).toList shouldBe (s1.toList ++ s2.toList)
@@ -714,7 +713,6 @@ class StreamSpec extends Fs2Spec {
     }
 
     "concurrently" - {
-
       "when background stream terminates, overall stream continues" in forAll {
         (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
           val expected = s1.toList
@@ -817,7 +815,6 @@ class StreamSpec extends Fs2Spec {
                         }
                       }
                     }
-
                 }
               }
             }
@@ -1315,7 +1312,6 @@ class StreamSpec extends Fs2Spec {
     }
 
     "handleErrorWith" - {
-
       "1" in forAll { (s: Stream[Pure, Int]) =>
         val s2 = s.covary[Fallible] ++ Stream.raiseError[Fallible](new Err)
         s2.handleErrorWith(_ => Stream.empty).toList shouldBe Right(s.toList)
@@ -1994,7 +1990,6 @@ class StreamSpec extends Fs2Spec {
       }
 
       "regression #1335 - stack safety of map" in {
-
         case class Tree[A](label: A, subForest: Stream[Pure, Tree[A]]) {
           def flatten: Stream[Pure, A] =
             Stream(this.label) ++ this.subForest.flatMap(_.flatten)
@@ -2151,7 +2146,6 @@ class StreamSpec extends Fs2Spec {
                             finalizers shouldBe List("Outer")
                             r shouldBe Right(())
                           }
-
                     }
                   }
                 }
@@ -2343,7 +2337,6 @@ class StreamSpec extends Fs2Spec {
       }
 
       "termination" - {
-
         "left" in {
           s.observeEither[Int, String](_.take(0).void, _.void)
             .compile
@@ -2361,7 +2354,6 @@ class StreamSpec extends Fs2Spec {
     }
 
     "parJoin" - {
-
       "no concurrency" in forAll { (s: Stream[Pure, Int]) =>
         val expected = s.toList.toSet
         s.covary[IO]
@@ -2467,7 +2459,6 @@ class StreamSpec extends Fs2Spec {
                       }
                     }
                   }
-
                 }
               }
             }
@@ -2509,14 +2500,12 @@ class StreamSpec extends Fs2Spec {
       }
 
       "propagate error from inner stream before ++" in {
-
         val err = new Err
 
         (Stream
           .emit(Stream.raiseError[IO](err))
           .parJoinUnbounded ++ Stream.emit(1)).compile.toList.attempt
           .asserting(_ shouldBe Left(err))
-
       }
     }
 
@@ -2627,7 +2616,6 @@ class StreamSpec extends Fs2Spec {
     }
 
     "rechunkRandomlyWithSeed" - {
-
       "is deterministic" in forAll { (s0: Stream[Pure, Int], seed: Long) =>
         def s = s0.rechunkRandomlyWithSeed(minFactor = 0.1, maxFactor = 2.0)(seed)
         s.toList shouldBe s.toList
@@ -3095,7 +3083,6 @@ class StreamSpec extends Fs2Spec {
     }
 
     "switchMap" - {
-
       "flatMap equivalence when switching never occurs" in forAll { s: Stream[Pure, Int] =>
         val expected = s.toList
         Stream
@@ -3612,7 +3599,6 @@ class StreamSpec extends Fs2Spec {
     }
 
     "regressions" - {
-
       "#1089" in {
         (Stream.chunk(Chunk.bytes(Array.fill(2000)(1.toByte))) ++ Stream.eval(
           IO.async[Byte](_ => ())

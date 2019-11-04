@@ -56,7 +56,6 @@ private[udp] object AsynchronousSocketGroup {
     Resource.make(blocker.delay(unsafe))(g => blocker.delay(g.close()))
 
   private def unsafe: AsynchronousSocketGroup = new AsynchronousSocketGroup {
-
     class Timeout(val expiry: Long, onTimeout: () => Unit) {
       private var done: Boolean = false
       def cancel(): Unit = done = true
@@ -79,7 +78,6 @@ private[udp] object AsynchronousSocketGroup {
         writers: ArrayDeque[((WriterPacket, Option[Throwable] => Unit), Option[Timeout])] =
           new ArrayDeque()
     ) {
-
       def hasReaders: Boolean = !readers.isEmpty
 
       def peekReader: Option[Either[Throwable, Packet] => Unit] =

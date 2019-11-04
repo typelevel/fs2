@@ -91,7 +91,6 @@ private[fs2] final class CompileScope[F[_]] private (
   def open(
       interruptible: Option[Concurrent[F]]
   ): F[Either[Throwable, CompileScope[F]]] = {
-
     /*
      * Creates a context for a new scope.
      *
@@ -394,7 +393,6 @@ private[fs2] final class CompileScope[F[_]] private (
 }
 
 private[fs2] object CompileScope {
-
   /** Creates a new root scope. */
   def newRoot[F[_]: Sync]: F[CompileScope[F]] =
     Sync[F].delay(new CompileScope[F](new Token(), None, None))
@@ -500,11 +498,9 @@ private[fs2] object CompileScope {
           }
         }
         .getOrElse(F.pure(copy(cancelParent = F.unit)))
-
   }
 
   private object InterruptContext {
-
     /**
       * Creates a new interrupt context for a new scope if the scope is interruptible.
       *
@@ -527,6 +523,5 @@ private[fs2] object CompileScope {
           cancelParent = F.unit
         )
       }
-
   }
 }

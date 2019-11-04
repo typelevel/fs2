@@ -22,7 +22,6 @@ final class FailedPublisher extends Publisher[Int] {
 final class StreamUnicastPublisherSpec
     extends PublisherVerification[Int](new TestEnvironment(1000L))
     with TestNGSuiteLike {
-
   implicit val ctx: ContextShift[IO] =
     IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
 

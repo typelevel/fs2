@@ -17,7 +17,6 @@ import org.reactivestreams._
   */
 final class StreamSubscriber[F[_]: ConcurrentEffect, A](val sub: StreamSubscriber.FSM[F, A])
     extends Subscriber[A] {
-
   /** Called by an upstream reactivestreams system */
   def onSubscribe(s: Subscription): Unit = {
     nonNull(s)
@@ -51,7 +50,6 @@ object StreamSubscriber {
 
   /** A finite state machine describing the subscriber */
   private[reactivestreams] trait FSM[F[_], A] {
-
     /** receives a subscription from upstream */
     def onSubscribe(s: Subscription): F[Unit]
 
@@ -76,7 +74,6 @@ object StreamSubscriber {
   }
 
   private[reactivestreams] def fsm[F[_], A](implicit F: Concurrent[F]): F[FSM[F, A]] = {
-
     type Out = Either[Throwable, Option[A]]
 
     sealed trait Input
@@ -147,5 +144,4 @@ object StreamSubscriber {
       }
     }
   }
-
 }

@@ -7,7 +7,6 @@ import java.util.concurrent.TimeUnit
 
 @State(Scope.Thread)
 class StreamBenchmark {
-
   @GenerateN(1, 4096, 665536, 67108863)
   @Benchmark
   def rangeFold(N: Int): Option[Long] =

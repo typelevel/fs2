@@ -11,7 +11,6 @@ final class PublisherToSubscriberSpec
     extends AnyFlatSpec
     with Matchers
     with ScalaCheckPropertyChecks {
-
   implicit val ctx: ContextShift[IO] =
     IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
 

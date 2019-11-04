@@ -11,7 +11,6 @@ import fs2.Chunk.Bytes
 import fs2.concurrent.{Queue, SignallingRef}
 
 private[io] object JavaInputOutputStream {
-
   /** state of the upstream, we only indicate whether upstream is done and if it failed **/
   private final case class UpStreamState(done: Boolean, err: Option[Throwable])
   private sealed trait DownStreamState { self =>
@@ -26,7 +25,6 @@ private[io] object JavaInputOutputStream {
   def toInputStream[F[_]](
       source: Stream[F, Byte]
   )(implicit F: ConcurrentEffect[F]): Resource[F, InputStream] = {
-
     def markUpstreamDone(
         queue: Queue[F, Either[Option[Throwable], Bytes]],
         upState: SignallingRef[F, UpStreamState],

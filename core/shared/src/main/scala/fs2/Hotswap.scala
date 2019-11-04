@@ -45,7 +45,6 @@ import cats.effect.implicits._
   * See `fs2.io.file.writeRotate` for an example of usage.
   */
 sealed trait Hotswap[F[_], R] {
-
   /**
     * Allocates a new resource, closes the last one if present, and
     * returns the newly allocated `R`.
@@ -78,7 +77,6 @@ sealed trait Hotswap[F[_], R] {
 }
 
 object Hotswap {
-
   /**
     * Creates a new `Hotswap` initialized with the specified resource.
     * The `Hotswap` instance and the initial resource are returned.

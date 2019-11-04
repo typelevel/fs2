@@ -121,7 +121,6 @@ object text {
 
   /** Transforms a stream of `String` such that each emitted `String` is a line from the input. */
   def lines[F[_]]: Pipe[F, String, String] = {
-
     def linesFromString(string: String): (Vector[String], String) = {
       var i = 0
       var start = 0

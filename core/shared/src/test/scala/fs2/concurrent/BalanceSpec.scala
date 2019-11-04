@@ -5,9 +5,7 @@ import cats.effect.IO
 import org.scalactic.anyvals.PosInt
 
 class BalanceSpec extends Fs2Spec {
-
   "Balance" - {
-
     "all elements are processed" in {
       forAll { (source: Stream[Pure, Int], concurrent0: PosInt, chunkSize0: PosInt) =>
         val concurrent = concurrent0 % 20 + 1

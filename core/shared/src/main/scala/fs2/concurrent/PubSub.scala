@@ -11,7 +11,6 @@ import scala.annotation.tailrec
 import scala.collection.immutable.{Queue => ScalaQueue}
 
 private[fs2] trait Publish[F[_], A] {
-
   /**
     * Publishes one element.
     * This completes after element was successfully published.
@@ -28,7 +27,6 @@ private[fs2] trait Publish[F[_], A] {
 }
 
 private[fs2] trait Subscribe[F[_], A, Selector] {
-
   /**
     * Gets elements satisfying the `selector`, yielding when such an element is available.
     *
@@ -72,7 +70,6 @@ private[fs2] trait Subscribe[F[_], A, Selector] {
 private[fs2] trait PubSub[F[_], I, O, Selector] extends Publish[F, I] with Subscribe[F, O, Selector]
 
 private[fs2] object PubSub {
-
   private final case class Publisher[F[_], A](
       token: Token,
       i: A,
@@ -106,7 +103,6 @@ private[fs2] object PubSub {
     def from[F[_]: Concurrent, I, O, QS, Selector](
         strategy: PubSub.Strategy[I, O, QS, Selector]
     ): G[PubSub[F, I, O, Selector]] = {
-
       type PS = PubSubState[F, I, O, QS, Selector]
 
       def initial: PS = PubSubState(strategy.initial, ScalaQueue.empty, ScalaQueue.empty)
@@ -232,7 +228,6 @@ private[fs2] object PubSub {
           def publish(i: I): F[Unit] =
             update { ps =>
               if (strategy.accepts(i, ps.queue)) {
-
                 val ps1 = publish_(i, ps)
                 (ps1, Applicative[F].unit)
               } else {
@@ -308,7 +303,6 @@ private[fs2] object PubSub {
               (ps.copy(queue = strategy.unsubscribe(selector, ps.queue)), Applicative[F].unit)
             }
         }
-
       }
     }
   }
@@ -410,7 +404,6 @@ private[fs2] object PubSub {
   }
 
   object Strategy {
-
     /**
       * Creates bounded strategy, that won't accept elements if size produced by `f` is >= `maxSize`.
       *
@@ -421,7 +414,6 @@ private[fs2] object PubSub {
         strategy: PubSub.Strategy[A, Chunk[A], S, Int]
     )(f: S => Int): PubSub.Strategy[A, Chunk[A], S, Int] =
       new PubSub.Strategy[A, Chunk[A], S, Int] {
-
         val initial: S = strategy.initial
 
         def publish(a: A, state: S): S =
@@ -549,11 +541,9 @@ private[fs2] object PubSub {
 
         def unsubscribe(selector: Sel, state: (Boolean, S)): (Boolean, S) =
           (state._1, strategy.unsubscribe(selector, state._2))
-
       }
 
     object Discrete {
-
       /**
         * State of the discrete strategy.
         *
@@ -631,11 +621,9 @@ private[fs2] object PubSub {
               case Some(token) => state.copy(seen = state.seen - token)
             }
         }
-
     }
 
     object Inspectable {
-
       /**
         * State representation for inspectable strategy that
         * keeps track of strategy state and keeps track of all subscribers that have seen the last known state.
@@ -660,7 +648,6 @@ private[fs2] object PubSub {
           strategy: PubSub.Strategy[I, O, S, Sel]
       ): PubSub.Strategy[I, Either[S, O], State[S], Either[Option[Token], Sel]] =
         new PubSub.Strategy[I, Either[S, O], State[S], Either[Option[Token], Sel]] {
-
           def initial: State[S] =
             State(strategy.initial, Set.empty)
 

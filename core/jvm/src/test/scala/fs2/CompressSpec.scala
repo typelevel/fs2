@@ -17,7 +17,6 @@ import scala.collection.mutable
 import compress._
 
 class CompressSpec extends Fs2Spec {
-
   def getBytes(s: String): Array[Byte] =
     s.getBytes
 
@@ -40,7 +39,6 @@ class CompressSpec extends Fs2Spec {
   }
 
   "Compress" - {
-
     "deflate input" in forAll(strings, intsBetween(0, 9), booleans) {
       (s: String, level: Int, nowrap: Boolean) =>
         val expected = deflateStream(getBytes(s), level, nowrap).toVector

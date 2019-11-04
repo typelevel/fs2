@@ -25,7 +25,6 @@ import fs2.internal.Algebra.Eval
   *   - `handleErrorWith(raiseError(e))(f) == f(e)`
   */
 final class Pull[+F[_], +O, +R] private (private val free: FreeC[Nothing, O, R]) extends AnyVal {
-
   private[fs2] def get[F2[x] >: F[x], O2 >: O, R2 >: R]: FreeC[F2, O2, R2] =
     free.asInstanceOf[FreeC[F2, O2, R2]]
 
@@ -88,7 +87,6 @@ final class Pull[+F[_], +O, +R] private (private val free: FreeC[Nothing, O, R])
 }
 
 object Pull extends PullLowPriority {
-
   @inline private[fs2] def fromFreeC[F[_], O, R](free: FreeC[F, O, R]): Pull[F, O, R] =
     new Pull(free.asInstanceOf[FreeC[Nothing, O, R]])
 

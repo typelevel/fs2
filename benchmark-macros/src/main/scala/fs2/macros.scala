@@ -13,7 +13,6 @@ final class GenerateN(val ns: Int*) extends StaticAnnotation {
 import scala.reflect.macros.whitebox
 
 final class GenerateNMacro(val c: whitebox.Context) {
-
   import c.universe._
 
   def transform_impl(annottees: c.Expr[Any]*): c.Tree = {

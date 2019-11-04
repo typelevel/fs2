@@ -76,6 +76,5 @@ private[fs2] final class AsyncByteArrayInputStream(val bound: Int) extends Input
 }
 
 private[fs2] object AsyncByteArrayInputStream {
-
   final case object AsyncError extends Error with NoStackTrace
 }
