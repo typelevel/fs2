@@ -6,94 +6,42 @@ import cats.effect.Timer
 
 import scala.concurrent.duration.FiniteDuration
 
-/** Provides various `Pull`s for working with files. */
+/**Provides various `Pull`s for working with files. */
+@deprecated("Use ReadCursor/WriteCursor instead", "2.1.0")
 object pulls {
 
   /**
     * Given a `FileHandle[F]`, creates a `Pull` which reads all data from the associated file.
     */
+  @deprecated("Use ReadCursor(h, 0L).readAll(chunkSize).void", "2.1.0")
   def readAllFromFileHandle[F[_]](chunkSize: Int)(h: FileHandle[F]): Pull[F, Byte, Unit] =
-    _readAllFromFileHandle0(chunkSize, 0)(h)
+    ReadCursor(h, 0L).readAll(chunkSize).void
 
+  @deprecated("Use ReadCursor(h, start).readUntil(chunkSize, end).void", "2.1.0")
   def readRangeFromFileHandle[F[_]](chunkSize: Int, start: Long, end: Long)(
       h: FileHandle[F]
   ): Pull[F, Byte, Unit] =
-    _readRangeFromFileHandle0(chunkSize, start, end)(h)
+    ReadCursor(h, start).readUntil(chunkSize, end).void
 
+  @deprecated("Use ReadCursor(h, offset).tail(chunkSize, delay).void", "2.1.0")
   def tailFromFileHandle[F[_]: Timer](chunkSize: Int, offset: Long, delay: FiniteDuration)(
       h: FileHandle[F]
   ): Pull[F, Byte, Unit] =
-    _tailFromFileHandle(chunkSize, offset, delay)(h)
-
-  private def _tailFromFileHandle[F[_]](chunkSize: Int, offset: Long, delay: FiniteDuration)(
-      h: FileHandle[F]
-  )(implicit timer: Timer[F]): Pull[F, Byte, Unit] =
-    Pull.eval(h.read(chunkSize, offset)).flatMap {
-      case Some(bytes) =>
-        Pull.output(bytes) >> _tailFromFileHandle(chunkSize, offset + bytes.size, delay)(h)
-      case None =>
-        Pull.eval(timer.sleep(delay)) >> _tailFromFileHandle(chunkSize, offset, delay)(h)
-    }
-
-  private def _readRangeFromFileHandle0[F[_]](chunkSize: Int, offset: Long, end: Long)(
-      h: FileHandle[F]
-  ): Pull[F, Byte, Unit] = {
-
-    val bytesLeft = end - offset
-    if (bytesLeft <= 0L) {
-      Pull.done
-    } else {
-      val actualChunkSize =
-        if (bytesLeft > Int.MaxValue) chunkSize else math.min(chunkSize, bytesLeft.toInt)
-
-      Pull.eval(h.read(actualChunkSize, offset)).flatMap {
-        case Some(o) =>
-          Pull.output(o) >> _readRangeFromFileHandle0(chunkSize, offset + o.size, end)(h)
-        case None => Pull.done
-      }
-    }
-  }
-
-  private def _readAllFromFileHandle0[F[_]](chunkSize: Int, offset: Long)(
-      h: FileHandle[F]
-  ): Pull[F, Byte, Unit] =
-    Pull.eval(h.read(chunkSize, offset)).flatMap {
-      case Some(o) =>
-        Pull.output(o) >> _readAllFromFileHandle0(chunkSize, offset + o.size)(h)
-      case None => Pull.done
-    }
+    ReadCursor(h, offset).tail(chunkSize, delay).void
 
   /**
     * Given a `Stream[F, Byte]` and `FileHandle[F]`, writes all data from the stream to the file.
     */
+  @deprecated("Use WriteCursor(out, 0).writeAll(in).void", "2.1.0")
   def writeAllToFileHandle[F[_]](in: Stream[F, Byte], out: FileHandle[F]): Pull[F, Nothing, Unit] =
     writeAllToFileHandleAtOffset(in, out, 0)
 
   /** Like `writeAllToFileHandle` but takes an offset in to the file indicating where write should start. */
+  @deprecated("Use WriteCursor(out, offset).writeAll(in).void", "2.1.0")
   def writeAllToFileHandleAtOffset[F[_]](
       in: Stream[F, Byte],
       out: FileHandle[F],
       offset: Long
   ): Pull[F, Nothing, Unit] =
-    in.pull.uncons.flatMap {
-      case None => Pull.done
-      case Some((hd, tl)) =>
-        writeChunkToFileHandle(hd, out, offset) >> writeAllToFileHandleAtOffset(
-          tl,
-          out,
-          offset + hd.size
-        )
-    }
-
-  private def writeChunkToFileHandle[F[_]](
-      buf: Chunk[Byte],
-      out: FileHandle[F],
-      offset: Long
-  ): Pull[F, Nothing, Unit] =
-    Pull.eval(out.write(buf, offset)).flatMap { (written: Int) =>
-      if (written >= buf.size)
-        Pull.pure(())
-      else
-        writeChunkToFileHandle(buf.drop(written), out, offset + written)
-    }
+    WriteCursor(out, offset).writeAll(in).void
 }

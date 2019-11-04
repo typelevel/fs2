@@ -2,6 +2,7 @@ package fs2
 package io
 
 import java.nio.file._
+import java.nio.file.attribute.FileAttribute
 import java.util.stream.{Stream => JStream}
 
 import scala.collection.JavaConverters._
@@ -12,10 +13,6 @@ import cats.implicits._
 
 /** Provides support for working with files. */
 package object file {
-  import java.nio.file.attribute.FileAttribute
-  import java.nio.file.CopyOption
-  import java.nio.file.LinkOption
-  import java.nio.file.Files
 
   /**
     * Reads all data synchronously from the file at the specified `java.nio.file.Path`.
@@ -25,12 +22,9 @@ package object file {
       blocker: Blocker,
       chunkSize: Int
   ): Stream[F, Byte] =
-    Stream
-      .resource(
-        FileHandle
-          .fromPath(path, blocker, List(StandardOpenOption.READ))
-      )
-      .flatMap(c => pulls.readAllFromFileHandle(chunkSize)(c).stream)
+    Stream.resource(ReadCursor.fromPath(path, blocker)).flatMap { cursor =>
+      cursor.readAll(chunkSize).void.stream
+    }
 
   /**
     * Reads a range of data synchronously from the file at the specified `java.nio.file.Path`.
@@ -44,9 +38,9 @@ package object file {
       start: Long,
       end: Long
   ): Stream[F, Byte] =
-    Stream
-      .resource(FileHandle.fromPath(path, blocker, List(StandardOpenOption.READ)))
-      .flatMap(c => pulls.readRangeFromFileHandle(chunkSize, start, end)(c).stream)
+    Stream.resource(ReadCursor.fromPath(path, blocker)).flatMap { cursor =>
+      cursor.seek(start).readUntil(chunkSize, end).void.stream
+    }
 
   /**
     * Returns an infinite stream of data from the file at the specified path.
@@ -65,12 +59,12 @@ package object file {
       offset: Long = 0L,
       pollDelay: FiniteDuration = 1.second
   ): Stream[F, Byte] =
-    Stream
-      .resource(FileHandle.fromPath(path, blocker, List(StandardOpenOption.READ)))
-      .flatMap(c => pulls.tailFromFileHandle(chunkSize, offset, pollDelay)(c).stream)
+    Stream.resource(ReadCursor.fromPath(path, blocker)).flatMap { cursor =>
+      cursor.seek(offset).tail(chunkSize, pollDelay).void.stream
+    }
 
   /**
-    * Writes all data synchronously to the file at the specified `java.nio.file.Path`.
+    * Writes all data to the file at the specified `java.nio.file.Path`.
     *
     * Adds the WRITE flag to any other `OpenOption` flags specified. By default, also adds the CREATE flag.
     */
@@ -80,45 +74,75 @@ package object file {
       flags: Seq[StandardOpenOption] = List(StandardOpenOption.CREATE)
   ): Pipe[F, Byte, Unit] =
     in =>
-      for {
-        fileHandle <- Stream.resource(
-          FileHandle.fromPath(path, blocker, StandardOpenOption.WRITE :: flags.toList)
-        )
-        offset <- if (flags.contains(StandardOpenOption.APPEND)) Stream.eval(fileHandle.size)
-        else Stream(0L)
-        _ <- pulls.writeAllToFileHandleAtOffset(in, fileHandle, offset).stream
-      } yield ()
+      Stream
+        .resource(WriteCursor.fromPath(path, blocker, flags))
+        .flatMap(_.writeAll(in).void.stream)
 
-  private def _writeAll0[F[_]](
-      in: Stream[F, Byte],
-      out: FileHandle[F],
-      offset: Long
-  ): Pull[F, Nothing, Unit] =
-    in.pull.uncons.flatMap {
-      case None => Pull.done
-      case Some((hd, tl)) =>
-        _writeAll1(hd, out, offset) >> _writeAll0(tl, out, offset + hd.size)
+  /**
+    * Writes all data to a sequence of files, each limited in size to `limit`.
+    *
+    * The `computePath` operation is used to compute the path of the first file
+    * and every subsequent file. Typically, the next file should be determined
+    * by analyzing the current state of the filesystem -- e.g., by looking at all
+    * files in a directory and generating a unique name.
+    */
+  def writeRotate[F[_]: Concurrent: ContextShift](
+      computePath: F[Path],
+      limit: Long,
+      blocker: Blocker,
+      flags: Seq[StandardOpenOption] = List(StandardOpenOption.CREATE)
+  ): Pipe[F, Byte, Unit] = {
+    def openNewFile: Resource[F, FileHandle[F]] =
+      Resource
+        .liftF(computePath)
+        .flatMap(p => FileHandle.fromPath(p, blocker, StandardOpenOption.WRITE :: flags.toList))
+
+    def newCursor(file: FileHandle[F]): F[WriteCursor[F]] =
+      WriteCursor.fromFileHandle[F](file, flags.contains(StandardOpenOption.APPEND))
+
+    def go(
+        fileHotswap: Hotswap[F, FileHandle[F]],
+        cursor: WriteCursor[F],
+        acc: Long,
+        s: Stream[F, Byte]
+    ): Pull[F, Unit, Unit] = {
+      val toWrite = (limit - acc).min(Int.MaxValue.toLong).toInt
+      s.pull.unconsLimit(toWrite).flatMap {
+        case Some((hd, tl)) =>
+          val newAcc = acc + hd.size
+          cursor.writePull(hd).flatMap { nc =>
+            if (newAcc >= limit) {
+              Pull
+                .eval {
+                  fileHotswap
+                    .swap(openNewFile)
+                    .flatMap(newCursor)
+                }
+                .flatMap(nc => go(fileHotswap, nc, 0L, tl))
+            } else {
+              go(fileHotswap, nc, newAcc, tl)
+            }
+          }
+        case None => Pull.done
+      }
     }
 
-  private def _writeAll1[F[_]](
-      buf: Chunk[Byte],
-      out: FileHandle[F],
-      offset: Long
-  ): Pull[F, Nothing, Unit] =
-    Pull.eval(out.write(buf, offset)).flatMap { (written: Int) =>
-      if (written >= buf.size)
-        Pull.pure(())
-      else
-        _writeAll1(buf.drop(written), out, offset + written)
-    }
+    in =>
+      Stream
+        .resource(Hotswap(openNewFile))
+        .flatMap {
+          case (fileHotswap, fileHandle) =>
+            Stream.eval(newCursor(fileHandle)).flatMap { cursor =>
+              go(fileHotswap, cursor, 0L, in).stream
+            }
+        }
+  }
 
   /**
     * Creates a [[Watcher]] for the default file system.
     *
-    * A singleton bracketed stream is returned consisting of the single watcher. To use the watcher,
-    * `flatMap` the returned stream, watch or register 1 or more paths, and then return `watcher.events()`.
-    *
-    * @return singleton bracketed stream returning a watcher
+    * The watcher is returned as a resource. To use the watcher, lift the resource to a stream,
+    * watch or register 1 or more paths, and then return `watcher.events()`.
     */
   def watcher[F[_]: Concurrent: ContextShift](blocker: Blocker): Resource[F, Watcher[F]] =
     Watcher.default(blocker)
