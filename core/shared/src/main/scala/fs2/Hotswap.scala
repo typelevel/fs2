@@ -117,7 +117,7 @@ object Hotswap {
             }
 
         override def clear: F[Unit] =
-          swapFinalizer(().pure[F])
+          swapFinalizer(().pure[F]).uncancelable
 
         private def swapFinalizer(newFinalizer: F[Unit]): F[Unit] =
           state.modify {
