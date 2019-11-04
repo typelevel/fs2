@@ -15,10 +15,9 @@ import java.nio.file._
   * Associates a `FileHandle` with an offset in to the file.
   *
   * This encapsulates the pattern of incrementally reading bytes in from a file,
-  * a chunk at a time. Additionally, convenience methods are provided for
-  * working with pulls.
+  * a chunk at a time. Convenience methods are provided for working with pulls.
   */
-final case class ReadCursor[F[_]](val file: FileHandle[F], val offset: Long) {
+final case class ReadCursor[F[_]](file: FileHandle[F], offset: Long) {
 
   /**
     * Reads a single chunk from the underlying file handle, returning the
@@ -71,6 +70,13 @@ final case class ReadCursor[F[_]](val file: FileHandle[F], val offset: Long) {
   /** Returns a new cursor with the offset adjusted to the specified position. */
   def seek(position: Long): ReadCursor[F] = ReadCursor(file, position)
 
+  /**
+    * Returns an infinite stream that reads until the end of the file and then starts
+    * polling the file for additional writes. Similar to the `tail` command line utility.
+    *
+    * @param pollDelay amount of time to wait upon reaching the end of the file before
+    * polling for updates
+    */
   def tail(chunkSize: Int, pollDelay: FiniteDuration)(
       implicit timer: Timer[F]
   ): Pull[F, Byte, ReadCursor[F]] =
@@ -82,6 +88,9 @@ final case class ReadCursor[F[_]](val file: FileHandle[F], val offset: Long) {
 
 object ReadCursor {
 
+  /**
+    * Returns a `ReadCursor` for the specified path. The `READ` option is added to the supplied flags.
+    */
   def fromPath[F[_]: Sync: ContextShift](
       path: Path,
       blocker: Blocker,

@@ -79,13 +79,13 @@ package object file {
         .flatMap(_.writeAll(in).void.stream)
 
   /**
-   * Writes all data to a sequence of files, each limited in size to `limit`.
-   * 
-   * The `computePath` operation is used to compute the path of the first file
-   * and every subsequent file. Typically, the next file should be determined
-   * by analyzing the current state of the filesystem -- e.g., by looking at all
-   * files in a directory and generating a unique name. 
-   */
+    * Writes all data to a sequence of files, each limited in size to `limit`.
+    *
+    * The `computePath` operation is used to compute the path of the first file
+    * and every subsequent file. Typically, the next file should be determined
+    * by analyzing the current state of the filesystem -- e.g., by looking at all
+    * files in a directory and generating a unique name.
+    */
   def writeRotate[F[_]: Concurrent: ContextShift](
       computePath: F[Path],
       limit: Long,

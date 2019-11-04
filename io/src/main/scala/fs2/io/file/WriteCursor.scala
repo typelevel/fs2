@@ -13,8 +13,7 @@ import cats.arrow.FunctionK
   * Associates a `FileHandle` with an offset in to the file.
   *
   * This encapsulates the pattern of incrementally writing bytes in to a file,
-  * a chunk at a time. Additionally, convenience methods are provided for
-  * working with pulls.
+  * a chunk at a time. Convenience methods are provided for working with pulls.
   */
 final case class WriteCursor[F[_]](file: FileHandle[F], offset: Long) {
 
@@ -54,6 +53,12 @@ final case class WriteCursor[F[_]](file: FileHandle[F], offset: Long) {
 
 object WriteCursor {
 
+  /**
+    * Returns a `WriteCursor` for the specified path.
+    *
+    * The `WRITE` option is added to the supplied flags. If the `APPEND` option is present in `flags`,
+    * the offset is initialized to the current size of the file.
+    */
   def fromPath[F[_]: Sync: ContextShift](
       path: Path,
       blocker: Blocker,
@@ -66,6 +71,11 @@ object WriteCursor {
         Resource.liftF(cursor)
     }
 
+  /**
+    * Returns a `WriteCursor` for the specified file handle.
+    *
+    * If `append` is true, the offset is initialized to the current size of the file.
+    */
   def fromFileHandle[F[_]: Sync: ContextShift](
       file: FileHandle[F],
       append: Boolean
