@@ -26,6 +26,7 @@ class HotswapSpec extends Fs2Spec {
         )
       }
     }
+
     "swap acquires new resource and then finalizes old resource" in {
       mkEventLogger.flatMap { logger =>
         Stream
@@ -50,6 +51,28 @@ class HotswapSpec extends Fs2Spec {
             Released("b"),
             Info("using c"),
             Released("c")
+          )
+        )
+      }
+    }
+
+    "clear finalizes old resource" in {
+      mkEventLogger.flatMap { logger =>
+        Stream
+          .resource(Hotswap(logLifecycle(logger, "a")))
+          .flatMap {
+            case (hotswap, _) =>
+              Stream.eval_(logger.log(Info("using a"))) ++
+                Stream.eval_(hotswap.clear) ++
+                Stream.eval_(logger.log(Info("after clear")))
+          }
+          .compile
+          .drain *> logger.get.asserting(
+          _ shouldBe List(
+            Acquired("a"),
+            Info("using a"),
+            Released("a"),
+            Info("after clear")
           )
         )
       }

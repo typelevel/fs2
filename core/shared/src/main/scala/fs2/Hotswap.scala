@@ -65,6 +65,16 @@ sealed trait Hotswap[F[_], R] {
     * closed, and never leak any.
     */
   def swap(next: Resource[F, R]): F[R]
+
+  /**
+    * Runs the finalizer of the current resource, if any, and restores
+    * this `Hotswap` to its initial state.
+    *
+    * Like `swap`, you need to ensure that no code is using the old `R` when
+    * `clear is called`. Similarly, calling `clear` after the lifetime of this
+    * `Hotswap` results in an error.
+    */
+  def clear: F[Unit]
 }
 
 object Hotswap {
@@ -102,16 +112,20 @@ object Hotswap {
             .continual { r => // this whole block is inside continual and cannot be canceled
               Sync[F].fromEither(r).flatMap {
                 case (newValue, newFinalizer) =>
-                  state.modify {
-                    case Some(oldFinalizer) =>
-                      newFinalizer.some -> oldFinalizer.as(newValue)
-                    case None =>
-                      None -> (newFinalizer *> raise[R](
-                        "Cannot swap after proxy has been finalized"
-                      ))
-                  }.flatten
+                  swapFinalizer(newFinalizer).as(newValue)
               }
             }
+
+        override def clear: F[Unit] =
+          swapFinalizer(().pure[F])
+
+        private def swapFinalizer(newFinalizer: F[Unit]): F[Unit] =
+          state.modify {
+            case Some(oldFinalizer) =>
+              newFinalizer.some -> oldFinalizer
+            case None =>
+              None -> (newFinalizer *> raise[Unit]("Cannot swap after proxy has been finalized"))
+          }.flatten
       }
     }
   }
