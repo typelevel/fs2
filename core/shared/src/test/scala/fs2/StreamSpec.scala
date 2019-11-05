@@ -3508,11 +3508,55 @@ class StreamSpec extends Fs2Spec {
         as.zipAll(ones)("Z", "2").take(3).toList shouldBe List("A" -> "1", "A" -> "1", "A" -> "1")
       }
 
-      "zip with scopes" in {
-        // this tests that streams opening resources on each branch will close
-        // scopes independently.
-        val s = Stream(0).scope
-        (s ++ s).zip(s).toList shouldBe List((0, 0))
+      "zip with scopes" - {
+        "1" in {
+          // this tests that streams opening resources on each branch will close
+          // scopes independently.
+          val s = Stream(0).scope
+          (s ++ s).zip(s).toList shouldBe List((0, 0))
+        }
+        def brokenZip[F[_], A, B](s1: Stream[F, A], s2: Stream[F, B]): Stream[F, (A, B)] = {
+          def go(s1: Stream[F, A], s2: Stream[F, B]): Pull[F, (A, B), Unit] =
+            s1.pull.uncons1.flatMap {
+              case Some((hd1, tl1)) =>
+                s2.pull.uncons1.flatMap {
+                  case Some((hd2, tl2)) =>
+                    Pull.output1((hd1, hd2)) >> go(tl1, tl2)
+                  case None => Pull.done
+                }
+              case None => Pull.done
+            }
+          go(s1, s2).stream
+        }
+        "2" in {
+          val s = Stream(0).scope
+          assertThrows[Throwable] { brokenZip(s ++ s, s.zip(s)).compile.toList }
+        }
+        "3" in {
+          Logger[IO]
+            .flatMap { logger =>
+              def s(tag: String) =
+                logger.logLifecycle(tag) >> (logger.logLifecycle(s"$tag - 1") ++ logger
+                  .logLifecycle(s"$tag - 2"))
+              s("a").zip(s("b")).compile.drain *> logger.get
+            }
+            .asserting {
+              _ shouldBe List(
+                LogEvent.Acquired("a"),
+                LogEvent.Acquired("a - 1"),
+                LogEvent.Acquired("b"),
+                LogEvent.Acquired("b - 1"),
+                LogEvent.Released("a - 1"),
+                LogEvent.Acquired("a - 2"),
+                LogEvent.Released("b - 1"),
+                LogEvent.Acquired("b - 2"),
+                LogEvent.Released("a - 2"),
+                LogEvent.Released("a"),
+                LogEvent.Released("b - 2"),
+                LogEvent.Released("b")
+              )
+            }
+        }
       }
 
       "issue #1120 - zip with uncons" in {

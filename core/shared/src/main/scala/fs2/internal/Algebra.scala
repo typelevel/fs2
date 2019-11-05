@@ -229,8 +229,15 @@ private[fs2] object Algebra {
 
                 case None =>
                   F.raiseError(
-                    new Throwable(
-                      s"Fail to find scope for next step: current: ${scope.id}, step: $u"
+                    new RuntimeException(
+                      s"""|Scope lookup failure!
+                          |
+                          |This is typically caused by uncons-ing from two or more streams in the same Pull.
+                          |To do this safely, use `s.pull.stepLeg` instead of `s.pull.uncons` or a variant
+                          |thereof. See the implementation of `Stream#zipWith_` for an example.
+                          |
+                          |Scope id: ${scope.id}
+                          |Step: ${u}""".stripMargin
                     )
                   )
               }
