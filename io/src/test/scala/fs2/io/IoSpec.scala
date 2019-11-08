@@ -4,6 +4,7 @@ import java.io.{ByteArrayInputStream, InputStream, OutputStream}
 import java.util.concurrent.Executors
 import cats.effect.{Blocker, ContextShift, IO, Resource}
 import cats.implicits._
+import fs2.Stream
 import fs2.Fs2Spec
 import scala.concurrent.ExecutionContext
 
@@ -35,7 +36,7 @@ class IoSpec extends Fs2Spec {
     ) { (bytes: Array[Byte], chunkSize: Int) =>
       Blocker[IO].use { blocker =>
         readOutputStream[IO](blocker, chunkSize)(
-          (os: OutputStream) => blocker.delay[IO, Unit](os.write(bytes))
+          (os: OutputStream) => Stream.eval(blocker.delay[IO, Unit](os.write(bytes)))
         ).compile
           .to[Array]
           .asserting(_ shouldEqual bytes)
@@ -45,7 +46,7 @@ class IoSpec extends Fs2Spec {
     "can be manually closed from inside `f`" in forAll(intsBetween(1, 20)) { chunkSize: Int =>
       Blocker[IO].use { blocker =>
         readOutputStream[IO](blocker, chunkSize)(
-          (os: OutputStream) => IO(os.close()) *> IO.never
+          (os: OutputStream) => Stream.eval(IO(os.close()) *> IO.never)
         ).compile.toVector
           .asserting(_ shouldBe Vector.empty)
       }
@@ -54,7 +55,7 @@ class IoSpec extends Fs2Spec {
     "fails when `f` fails" in forAll(intsBetween(1, 20)) { chunkSize: Int =>
       val e = new Exception("boom")
       Blocker[IO].use { blocker =>
-        readOutputStream[IO](blocker, chunkSize)((_: OutputStream) => IO.raiseError(e)).compile.toVector.attempt
+        readOutputStream[IO](blocker, chunkSize)((_: OutputStream) => Stream.eval(IO.raiseError(e))).compile.toVector.attempt
           .asserting(_ shouldBe Left(e))
       }
     }
@@ -64,14 +65,15 @@ class IoSpec extends Fs2Spec {
         .make(IO(Executors.newFixedThreadPool(1)))(ec => IO(ec.shutdown()))
         .map(ExecutionContext.fromExecutor)
         .map(IO.contextShift)
-      def write(os: OutputStream): IO[Unit] = IO {
-        os.write(1)
-        os.write(1)
-        os.write(1)
-        os.write(1)
-        os.write(1)
-        os.write(1)
-      }
+      def write(os: OutputStream): Stream[IO, Unit] =
+        Stream.eval(IO {
+          os.write(1)
+          os.write(1)
+          os.write(1)
+          os.write(1)
+          os.write(1)
+          os.write(1)
+        })
       Blocker[IO].use { blocker =>
         // Note: name `contextShiftIO` is important because it shadows the outer implicit, preventing ambiguity
         pool

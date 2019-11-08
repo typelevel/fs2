@@ -137,7 +137,7 @@ package object io {
       blocker: Blocker,
       chunkSize: Int
   )(
-      f: OutputStream => F[Unit]
+      f: OutputStream => Stream[F, Unit]
   ): Stream[F, Byte] = {
     val mkOutput: Resource[F, (OutputStream, InputStream)] =
       Resource.make(Sync[F].delay {
@@ -161,7 +161,7 @@ package object io {
           // In such a case, there's a race between completion of the read
           // stream and finalization of the write stream, so we capture the error
           // that occurs when writing and rethrow it.
-          val write = f(os).guaranteeCase(
+          val write = f(os).onFinalizeCase(
             ec =>
               blocker.delay(os.close()) *> err.complete(ec match {
                 case ExitCase.Error(t) => Some(t)
@@ -169,7 +169,7 @@ package object io {
               })
           )
           val read = readInputStream(is.pure[F], chunkSize, blocker, closeAfterUse = false)
-          read.concurrently(Stream.eval(write)) ++ Stream.eval(err.get).flatMap {
+          read.concurrently(write) ++ Stream.eval(err.get).flatMap {
             case None    => Stream.empty
             case Some(t) => Stream.raiseError[F](t)
           }
