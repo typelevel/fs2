@@ -3432,11 +3432,20 @@ object Stream extends StreamLowPriority {
   def repeatEval[F[_], O](fo: F[O]): Stream[F, O] = eval(fo).repeat
 
   /** Converts the supplied resource in to a singleton stream. */
-  def resource[F[_], O](r: Resource[F, O]): Stream[F, O] = r match {
+  def resource[F[_], O](r: Resource[F, O]): Stream[F, O] =
+    resourceWeak(r).scope
+
+  /**
+    * Like [[resource]] but does not introduce a scope, allowing finalization to occur after
+    * subsequent appends or other scope-preserving transformations.
+    *
+    * Scopes can be manually introduced via [[scope]] if desired.
+    */
+  def resourceWeak[F[_], O](r: Resource[F, O]): Stream[F, O] = r match {
     case Resource.Allocate(a) =>
-      Stream.bracketCase(a) { case ((_, release), e) => release(e) }.map(_._1)
-    case Resource.Bind(r, f) => resource(r).flatMap(o => resource(f(o)))
-    case Resource.Suspend(r) => Stream.eval(r).flatMap(resource)
+      Stream.bracketCaseWeak(a) { case ((_, release), e) => release(e) }.map(_._1)
+    case Resource.Bind(r, f) => resourceWeak(r).flatMap(o => resourceWeak(f(o)))
+    case Resource.Suspend(r) => Stream.eval(r).flatMap(resourceWeak)
   }
 
   /**
