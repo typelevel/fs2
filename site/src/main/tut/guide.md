@@ -241,7 +241,7 @@ Implement `repeat`, which repeats a stream indefinitely, `drain`, which strips a
 Stream(1,0).repeat.take(6).toList
 Stream(1,2,3).drain.toList
 Stream.eval_(IO(println("!!"))).compile.toVector.unsafeRunSync()
-(Stream(1,2) ++ (throw new Exception("nooo!!!"))).attempt.toList
+(Stream(1,2) ++ Stream(3).map(_ => throw new Exception("nooo!!!"))).attempt.toList
 ```
 
 ### Statefully transforming streams
@@ -380,7 +380,6 @@ Oops, we need a `cats.effect.ContextShift[IO]` in implicit scope. Let's add that
 ```tut
 import cats.effect.ContextShift
 
-// This normally comes from IOApp
 implicit val ioContextShift: ContextShift[IO] = IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
 
 Stream(1,2,3).merge(Stream.eval(IO { Thread.sleep(200); 4 })).compile.toVector.unsafeRunSync()
@@ -681,7 +680,7 @@ import fs2._
 import cats.effect.IO
 case object Err extends Throwable
 
-(Stream(1) ++ (throw Err)).take(1).toList
+(Stream(1) ++ Stream(2).map(_ => throw Err)).take(1).toList
 (Stream(1) ++ Stream.raiseError[IO](Err)).take(1).compile.toList.unsafeRunSync()
 ```
 
