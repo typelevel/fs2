@@ -2710,6 +2710,98 @@ class StreamSpec extends Fs2Spec {
       }
     }
 
+    "resource" in {
+      Ref[IO]
+        .of(List.empty[String])
+        .flatMap { st =>
+          def record(s: String): IO[Unit] = st.update(_ :+ s)
+          def mkRes(s: String): Resource[IO, Unit] =
+            Resource.make(record(s"acquire $s"))(_ => record(s"release $s"))
+
+          // We aim to trigger all the possible cases, and make sure all of them
+          // introduce scopes.
+
+          // Allocate
+          val res1 = mkRes("1")
+          // Bind
+          val res2 = mkRes("21") *> mkRes("22")
+          // Suspend
+          val res3 = Resource.suspend(
+            record("suspend").as(mkRes("3"))
+          )
+
+          List(res1, res2, res3)
+            .foldMap(Stream.resource)
+            .evalTap(_ => record("use"))
+            .append(Stream.eval_(record("done")))
+            .compile
+            .drain *> st.get
+        }
+        .asserting(
+          _ shouldBe List(
+            "acquire 1",
+            "use",
+            "release 1",
+            "acquire 21",
+            "acquire 22",
+            "use",
+            "release 22",
+            "release 21",
+            "suspend",
+            "acquire 3",
+            "use",
+            "release 3",
+            "done"
+          )
+        )
+    }
+
+    "resourceWeak" in {
+      Ref[IO]
+        .of(List.empty[String])
+        .flatMap { st =>
+          def record(s: String): IO[Unit] = st.update(_ :+ s)
+          def mkRes(s: String): Resource[IO, Unit] =
+            Resource.make(record(s"acquire $s"))(_ => record(s"release $s"))
+
+          // We aim to trigger all the possible cases, and make sure none of them
+          // introduce scopes.
+
+          // Allocate
+          val res1 = mkRes("1")
+          // Bind
+          val res2 = mkRes("21") *> mkRes("22")
+          // Suspend
+          val res3 = Resource.suspend(
+            record("suspend").as(mkRes("3"))
+          )
+
+          List(res1, res2, res3)
+            .foldMap(Stream.resourceWeak)
+            .evalTap(_ => record("use"))
+            .append(Stream.eval_(record("done")))
+            .compile
+            .drain *> st.get
+        }
+        .asserting(
+          _ shouldBe List(
+            "acquire 1",
+            "use",
+            "acquire 21",
+            "acquire 22",
+            "use",
+            "suspend",
+            "acquire 3",
+            "use",
+            "done",
+            "release 3",
+            "release 22",
+            "release 21",
+            "release 1"
+          )
+        )
+    }
+
     "resource safety" - {
       "1" in {
         forAll { (s1: Stream[Pure, Int]) =>
