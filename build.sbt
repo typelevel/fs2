@@ -91,6 +91,7 @@ lazy val testSettings = Seq(
 lazy val tutSettings = Seq(
   scalacOptions in Tut ~= {
     _.filterNot("-Ywarn-unused-import" == _)
+      .filterNot("-Ywarn-unused" == _)
       .filterNot("-Xlint" == _)
       .filterNot("-Xfatal-warnings" == _)
   },
