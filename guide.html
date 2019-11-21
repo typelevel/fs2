@@ -641,7 +641,7 @@ In FS2 0.10.x, <code class="highlighter-rouge">Segment</code> played a large rol
 <span class="o">&lt;</span><span class="n">synthetic</span><span class="k">&gt;:</span><span class="mi">4</span><span class="k">:</span> <span class="kt">warning:</span> <span class="kt">Unused</span> <span class="kt">import</span>
 
 <span class="o">(</span><span class="nc">To</span> <span class="n">diagnose</span> <span class="n">errors</span> <span class="n">in</span> <span class="n">synthetic</span> <span class="n">code</span><span class="o">,</span> <span class="k">try</span> <span class="n">adding</span> <span class="n">`// show`</span> <span class="n">to</span> <span class="n">the</span> <span class="n">end</span> <span class="n">of</span> <span class="n">your</span> <span class="n">input</span><span class="o">.)</span>
-<span class="n">acquire</span><span class="k">:</span> <span class="kt">cats.effect.IO</span><span class="o">[</span><span class="kt">Unit</span><span class="o">]</span> <span class="k">=</span> <span class="nc">IO$666271895</span>
+<span class="n">acquire</span><span class="k">:</span> <span class="kt">cats.effect.IO</span><span class="o">[</span><span class="kt">Unit</span><span class="o">]</span> <span class="k">=</span> <span class="nc">IO$903447469</span>
 
 <span class="n">scala</span><span class="o">&gt;</span> <span class="k">val</span> <span class="nv">release</span> <span class="k">=</span> <span class="nc">IO</span> <span class="o">{</span> <span class="nf">println</span><span class="o">(</span><span class="s">"decremented: "</span> <span class="o">+</span> <span class="nv">count</span><span class="o">.</span><span class="py">decrementAndGet</span><span class="o">);</span> <span class="o">()</span> <span class="o">}</span>
 
@@ -656,7 +656,7 @@ In FS2 0.10.x, <code class="highlighter-rouge">Segment</code> played a large rol
 <span class="o">&lt;</span><span class="n">synthetic</span><span class="k">&gt;:</span><span class="mi">4</span><span class="k">:</span> <span class="kt">warning:</span> <span class="kt">Unused</span> <span class="kt">import</span>
 
 <span class="o">(</span><span class="nc">To</span> <span class="n">diagnose</span> <span class="n">errors</span> <span class="n">in</span> <span class="n">synthetic</span> <span class="n">code</span><span class="o">,</span> <span class="k">try</span> <span class="n">adding</span> <span class="n">`// show`</span> <span class="n">to</span> <span class="n">the</span> <span class="n">end</span> <span class="n">of</span> <span class="n">your</span> <span class="n">input</span><span class="o">.)</span>
-<span class="n">release</span><span class="k">:</span> <span class="kt">cats.effect.IO</span><span class="o">[</span><span class="kt">Unit</span><span class="o">]</span> <span class="k">=</span> <span class="nc">IO$1393504637</span>
+<span class="n">release</span><span class="k">:</span> <span class="kt">cats.effect.IO</span><span class="o">[</span><span class="kt">Unit</span><span class="o">]</span> <span class="k">=</span> <span class="nc">IO$820505244</span>
 </code></pre></div></div>
 
 <div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">scala</span><span class="o">&gt;</span> <span class="nv">Stream</span><span class="o">.</span><span class="py">bracket</span><span class="o">(</span><span class="n">acquire</span><span class="o">)(</span><span class="k">_</span> <span class="k">=&gt;</span> <span class="n">release</span><span class="o">).</span><span class="py">flatMap</span><span class="o">(</span><span class="k">_</span> <span class="k">=&gt;</span> <span class="nc">Stream</span><span class="o">(</span><span class="mi">1</span><span class="o">,</span><span class="mi">2</span><span class="o">,</span><span class="mi">3</span><span class="o">)</span> <span class="o">++</span> <span class="n">err</span><span class="o">).</span><span class="py">compile</span><span class="o">.</span><span class="py">drain</span><span class="o">.</span><span class="py">unsafeRunSync</span><span class="o">()</span>
@@ -1223,7 +1223,7 @@ built using the <code class="highlighter-rouge">Pull</code> type.</p>
 <span class="o">&lt;</span><span class="n">synthetic</span><span class="k">&gt;:</span><span class="mi">9</span><span class="k">:</span> <span class="kt">warning:</span> <span class="kt">Unused</span> <span class="kt">import</span>
 
 <span class="o">(</span><span class="nc">To</span> <span class="n">diagnose</span> <span class="n">errors</span> <span class="n">in</span> <span class="n">synthetic</span> <span class="n">code</span><span class="o">,</span> <span class="k">try</span> <span class="n">adding</span> <span class="n">`// show`</span> <span class="n">to</span> <span class="n">the</span> <span class="n">end</span> <span class="n">of</span> <span class="n">your</span> <span class="n">input</span><span class="o">.)</span>
-<span class="n">ioContextShift</span><span class="k">:</span> <span class="kt">cats.effect.ContextShift</span><span class="o">[</span><span class="kt">cats.effect.IO</span><span class="o">]</span> <span class="k">=</span> <span class="nv">cats</span><span class="o">.</span><span class="py">effect</span><span class="o">.</span><span class="py">internals</span><span class="o">.</span><span class="py">IOContextShift</span><span class="k">@</span><span class="mi">9833</span><span class="n">ab5</span>
+<span class="n">ioContextShift</span><span class="k">:</span> <span class="kt">cats.effect.ContextShift</span><span class="o">[</span><span class="kt">cats.effect.IO</span><span class="o">]</span> <span class="k">=</span> <span class="nv">cats</span><span class="o">.</span><span class="py">effect</span><span class="o">.</span><span class="py">internals</span><span class="o">.</span><span class="py">IOContextShift</span><span class="k">@</span><span class="mi">46621</span><span class="n">b1b</span>
 
 <span class="n">scala</span><span class="o">&gt;</span> <span class="nc">Stream</span><span class="o">(</span><span class="mi">1</span><span class="o">,</span><span class="mi">2</span><span class="o">,</span><span class="mi">3</span><span class="o">).</span><span class="py">merge</span><span class="o">(</span><span class="nv">Stream</span><span class="o">.</span><span class="py">eval</span><span class="o">(</span><span class="nc">IO</span> <span class="o">{</span> <span class="nv">Thread</span><span class="o">.</span><span class="py">sleep</span><span class="o">(</span><span class="mi">200</span><span class="o">);</span> <span class="mi">4</span> <span class="o">})).</span><span class="py">compile</span><span class="o">.</span><span class="py">toVector</span><span class="o">.</span><span class="py">unsafeRunSync</span><span class="o">()</span>
 
@@ -1387,7 +1387,7 @@ In the following example we will see how <code class="highlighter-rouge">interru
 // &lt;synthetic&gt;:7: warning: Unused import
 // 
 // (To diagnose errors in synthetic code, try adding `// show` to the end of your input.)
-// contextShift: cats.effect.ContextShift[cats.effect.IO] = cats.effect.internals.IOContextShift@589e5f69
+// contextShift: cats.effect.ContextShift[cats.effect.IO] = cats.effect.internals.IOContextShift@4b18c750
 </span>
 <span class="k">implicit</span> <span class="k">val</span> <span class="nv">timer</span> <span class="k">=</span> <span class="nv">IO</span><span class="o">.</span><span class="py">timer</span><span class="o">(</span><span class="nv">ExecutionContext</span><span class="o">.</span><span class="py">global</span><span class="o">)</span>
 <span class="c1">// 
@@ -1414,7 +1414,7 @@ In the following example we will see how <code class="highlighter-rouge">interru
 // &lt;synthetic&gt;:9: warning: Unused import
 // 
 // (To diagnose errors in synthetic code, try adding `// show` to the end of your input.)
-// timer: cats.effect.Timer[cats.effect.IO] = cats.effect.internals.IOTimer@39b7f04a
+// timer: cats.effect.Timer[cats.effect.IO] = cats.effect.internals.IOTimer@30db66fc
 </span></code></pre></div></div>
 
 <p>The example looks like this:</p>
@@ -1475,10 +1475,7 @@ In the following example we will see how <code class="highlighter-rouge">interru
 // &lt;synthetic&gt;:10: warning: Unused import
 // 
 // (To diagnose errors in synthetic code, try adding `// show` to the end of your input.)
-// 10:59:20.594620
-// 10:59:21.598771
-// 10:59:22.604687
-// 10:59:23.608118
+// 14:41:56.187448
 </span></code></pre></div></div>
 
 <p>Let’s take this line by line now, so we can understand what’s going on.</p>
@@ -1563,10 +1560,6 @@ In the following example we will see how <code class="highlighter-rouge">interru
 // &lt;synthetic&gt;:10: warning: Unused import
 // 
 // (To diagnose errors in synthetic code, try adding `// show` to the end of your input.)
-// 10:59:26.031592
-// 10:59:27.036207
-// 10:59:28.038058
-// 10:59:29.049451
 </span></code></pre></div></div>
 
 <h3 id="talking-to-the-external-world">Talking to the external world</h3>
@@ -1785,7 +1778,7 @@ In the following example we will see how <code class="highlighter-rouge">interru
 // &lt;synthetic&gt;:10: warning: Unused import
 // 
 // (To diagnose errors in synthetic code, try adding `// show` to the end of your input.)
-// T: cats.effect.Sync[cats.effect.IO] = cats.effect.IOInstances$$anon$2@4634f701
+// T: cats.effect.Sync[cats.effect.IO] = cats.effect.IOInstances$$anon$2@5b854a82
 </span>
 <span class="k">val</span> <span class="nv">s</span> <span class="k">=</span> <span class="nv">Stream</span><span class="o">.</span><span class="py">eval_</span><span class="o">(</span><span class="nv">T</span><span class="o">.</span><span class="py">delay</span> <span class="o">{</span> <span class="nf">destroyUniverse</span><span class="o">()</span> <span class="o">})</span> <span class="o">++</span> <span class="nc">Stream</span><span class="o">(</span><span class="s">"...moving on"</span><span class="o">)</span>
 <span class="c1">// 
@@ -2056,7 +2049,7 @@ In the following example we will see how <code class="highlighter-rouge">interru
 // &lt;synthetic&gt;:11: warning: Unused import
 // 
 // (To diagnose errors in synthetic code, try adding `// show` to the end of your input.)
-// bytes: cats.effect.IO[Array[Byte]] = IO$1428823954
+// bytes: cats.effect.IO[Array[Byte]] = IO$55592448
 </span>
 <span class="nv">Stream</span><span class="o">.</span><span class="py">eval</span><span class="o">(</span><span class="n">bytes</span><span class="o">).</span><span class="py">map</span><span class="o">(</span><span class="nv">_</span><span class="o">.</span><span class="py">toList</span><span class="o">).</span><span class="py">compile</span><span class="o">.</span><span class="py">toVector</span><span class="o">.</span><span class="py">unsafeRunSync</span><span class="o">()</span>
 <span class="c1">// 
@@ -2333,7 +2326,7 @@ But there are times when we need use fs2 in conjunction with a different streami
 // &lt;synthetic&gt;:6: warning: Unused import
 // 
 // (To diagnose errors in synthetic code, try adding `// show` to the end of your input.)
-// contextShift: cats.effect.ContextShift[cats.effect.IO] = cats.effect.internals.IOContextShift@1fc30f93
+// contextShift: cats.effect.ContextShift[cats.effect.IO] = cats.effect.internals.IOContextShift@46d048b6
 </span></code></pre></div></div>
 
 <p>To convert a <code class="highlighter-rouge">Stream</code> into a downstream unicast <code class="highlighter-rouge">org.reactivestreams.Publisher</code>:</p>
@@ -2390,7 +2383,7 @@ But there are times when we need use fs2 in conjunction with a different streami
 // &lt;synthetic&gt;:9: warning: Unused import
 // 
 // (To diagnose errors in synthetic code, try adding `// show` to the end of your input.)
-// res0: fs2.interop.reactivestreams.StreamUnicastPublisher[[+A]cats.effect.IO[A],Int] = fs2.interop.reactivestreams.StreamUnicastPublisher@32b43e92
+// res0: fs2.interop.reactivestreams.StreamUnicastPublisher[[+A]cats.effect.IO[A],Int] = fs2.interop.reactivestreams.StreamUnicastPublisher@449d9299
 </span></code></pre></div></div>
 
 <p>To convert an upstream <code class="highlighter-rouge">org.reactivestreams.Publisher</code> into a <code class="highlighter-rouge">Stream</code>:</p>
@@ -2408,7 +2401,7 @@ But there are times when we need use fs2 in conjunction with a different streami
 // &lt;synthetic&gt;:9: warning: Unused import
 // 
 // (To diagnose errors in synthetic code, try adding `// show` to the end of your input.)
-// publisher: fs2.interop.reactivestreams.StreamUnicastPublisher[cats.effect.IO,Int] = fs2.interop.reactivestreams.StreamUnicastPublisher@2e125d52
+// publisher: fs2.interop.reactivestreams.StreamUnicastPublisher[cats.effect.IO,Int] = fs2.interop.reactivestreams.StreamUnicastPublisher@5a3996c8
 </span>
 <span class="nv">publisher</span><span class="o">.</span><span class="py">toStream</span><span class="o">[</span><span class="kt">IO</span><span class="o">]</span>
 <span class="c1">// 
@@ -2568,7 +2561,7 @@ But there are times when we need use fs2 in conjunction with a different streami
 <span class="o">&lt;</span><span class="n">synthetic</span><span class="k">&gt;:</span><span class="mi">3</span><span class="k">:</span> <span class="kt">warning:</span> <span class="kt">Unused</span> <span class="kt">import</span>
 
 <span class="o">(</span><span class="nc">To</span> <span class="n">diagnose</span> <span class="n">errors</span> <span class="n">in</span> <span class="n">synthetic</span> <span class="n">code</span><span class="o">,</span> <span class="k">try</span> <span class="n">adding</span> <span class="n">`// show`</span> <span class="n">to</span> <span class="n">the</span> <span class="n">end</span> <span class="n">of</span> <span class="n">your</span> <span class="n">input</span><span class="o">.)</span>
-<span class="n">ioContextShift</span><span class="k">:</span> <span class="kt">cats.effect.ContextShift</span><span class="o">[</span><span class="kt">cats.effect.IO</span><span class="o">]</span> <span class="k">=</span> <span class="nv">cats</span><span class="o">.</span><span class="py">effect</span><span class="o">.</span><span class="py">internals</span><span class="o">.</span><span class="py">IOContextShift</span><span class="k">@</span><span class="mf">2d</span><span class="n">f83d43</span>
+<span class="n">ioContextShift</span><span class="k">:</span> <span class="kt">cats.effect.ContextShift</span><span class="o">[</span><span class="kt">cats.effect.IO</span><span class="o">]</span> <span class="k">=</span> <span class="nv">cats</span><span class="o">.</span><span class="py">effect</span><span class="o">.</span><span class="py">internals</span><span class="o">.</span><span class="py">IOContextShift</span><span class="k">@</span><span class="mi">3</span><span class="n">e1320bc</span>
 
 <span class="n">scala</span><span class="o">&gt;</span> <span class="k">val</span> <span class="nv">s1</span> <span class="k">=</span> <span class="o">(</span><span class="nc">Stream</span><span class="o">(</span><span class="mi">1</span><span class="o">)</span> <span class="o">++</span> <span class="nc">Stream</span><span class="o">(</span><span class="mi">2</span><span class="o">)).</span><span class="py">covary</span><span class="o">[</span><span class="kt">IO</span><span class="o">]</span>
 
