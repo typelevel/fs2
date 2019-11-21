@@ -8,7 +8,7 @@
 
 <p>FS2 is a library for purely functional, effectful, and polymorphic stream processing library in the <a href="https://scala-lang.org">Scala programming language</a>. Its design goals are compositionality, expressiveness, resource safety, and speed. The name is a modified acronym for <strong>F</strong>unctional <strong>S</strong>treams for <strong>Scala</strong> (FSS, or FS2).</p>
 
-<p>FS2 is available for Scala 2.11, Scala 2.12, and <a href="http://www.scala-js.org/">Scala.js</a>. FS2 is built upon two major functional libraries for Scala, <a href="https://typelevel.org/cats/">Cats</a>, and <a href="https://typelevel.org/cats-effect/">Cats-Effect</a>. Regardless of those dependencies, FS2 core types (streams and pulls) are polymorphic in the effect type (as long as it is compatible with <code class="highlighter-rouge">cats-effect</code> typeclasses), and thus FS2 can be used with other IO libraries, such as <a href="https://monix.io/">Monix</a>, or <a href="https://scalaz.github.io/scalaz-zio/">ZIO</a>.</p>
+<p>FS2 is available for Scala 2.11, Scala 2.12, Scala 2.13, and <a href="http://www.scala-js.org/">Scala.js</a>. FS2 is built upon two major functional libraries for Scala, <a href="https://typelevel.org/cats/">Cats</a>, and <a href="https://typelevel.org/cats-effect/">Cats-Effect</a>. Regardless of those dependencies, FS2 core types (streams and pulls) are polymorphic in the effect type (as long as it is compatible with <code class="highlighter-rouge">cats-effect</code> typeclasses), and thus FS2 can be used with other effect libraries, such as <a href="https://monix.io/">Monix</a>.</p>
 
 <p>Prior to the 0.9 release in 2016, FS2 was known as <code class="highlighter-rouge">scalaz-stream</code>, which was based on the <a href="https://github.com/scalaz/scalaz"><code class="highlighter-rouge">scalaz</code></a> library.</p>
 
@@ -20,7 +20,7 @@
   <li><a href="http://fs2.io/index.html">Microsite</a></li>
   <li><a href="#about">About the library</a></li>
   <li><a href="#getit">How to get latest version</a></li>
-  <li>API docs: <a href="https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-core_2.12/1.0.4/fs2-core_2.12-1.0.4-javadoc.jar/!/fs2/index.html">fs2-core</a>, <a href="https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-io_2.12/1.0.4/fs2-io_2.12-1.0.4-javadoc.jar/!/fs2/io/index.html">fs2-io</a>, <a href="https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-reactive-streams_2.12/1.0.4/fs2-reactive-streams_2.12-1.0.4-javadoc.jar/!/fs2/interop/reactivestreams/index.html">fs2-reactive-streams</a>, <a href="https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-experimental_2.12/1.0.4/fs2-experimental_2.12-1.0.4-javadoc.jar/!/fs2/experimental/index.html">fs2-experimental</a></li>
+  <li>API docs: <a href="https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-core_2.12/2.0.0/fs2-core_2.12-2.0.0-javadoc.jar/!/fs2/index.html">fs2-core</a>, <a href="https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-io_2.12/2.0.0/fs2-io_2.12-2.0.0-javadoc.jar/!/fs2/io/index.html">fs2-io</a>, <a href="https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-reactive-streams_2.12/2.0.0/fs2-reactive-streams_2.12-2.0.0-javadoc.jar/!/fs2/interop/reactivestreams/index.html">fs2-reactive-streams</a>, <a href="https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-experimental_2.12/2.0.0/fs2-experimental_2.12-2.0.0-javadoc.jar/!/fs2/experimental/index.html">fs2-experimental</a></li>
   <li><a href="#docs">Docs and getting help</a></li>
 </ul>
 
@@ -31,17 +31,17 @@
 <p>The <a href="https://github.com/functional-streams-for-scala/fs2/blob/series/1.0/docs/migration-guide-1.0.md">1.0 migration guide</a>
 summarizes the differences between 1.0 and 0.10. To get 1.0.x, add the following to your SBT build:</p>
 
-<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>// available for Scala 2.11, 2.12
-libraryDependencies += "co.fs2" %% "fs2-core" % "1.0.4" // For cats 1.5.0 and cats-effect 1.2.0
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>// available for Scala 2.11, 2.12, 2.13
+libraryDependencies += "co.fs2" %% "fs2-core" % "2.0.0" // For cats 1.5.0 and cats-effect 1.2.0
 
 // optional I/O library
-libraryDependencies += "co.fs2" %% "fs2-io" % "1.0.4"
+libraryDependencies += "co.fs2" %% "fs2-io" % "2.0.0"
 
 // optional reactive streams interop
-libraryDependencies += "co.fs2" %% "fs2-reactive-streams" % "1.0.4"
+libraryDependencies += "co.fs2" %% "fs2-reactive-streams" % "2.0.0"
 
 // optional experimental library
-libraryDependencies += "co.fs2" %% "fs2-experimental" % "1.0.4"
+libraryDependencies += "co.fs2" %% "fs2-experimental" % "2.0.0"
 </code></pre></div></div>
 
 <p>The previous stable release is 0.10.7. You may want to first
@@ -57,7 +57,7 @@ libraryDependencies += "co.fs2" %% "fs2-io" % "0.10.7"
 
 <p>The fs2-core library is also supported on Scala.js:</p>
 
-<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>libraryDependencies += "co.fs2" %%% "fs2-core" % "1.0.4"
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>libraryDependencies += "co.fs2" %%% "fs2-core" % "2.0.0"
 </code></pre></div></div>
 
 <h3 id="example"><a id="about"></a>Example</h3>
@@ -71,22 +71,22 @@ libraryDependencies += "co.fs2" %% "fs2-io" % "0.10.7"
 
 <span class="k">object</span> <span class="nc">Converter</span> <span class="k">extends</span> <span class="nc">IOApp</span> <span class="o">{</span>
 
-  <span class="k">val</span> <span class="n">converter</span><span class="k">:</span> <span class="kt">Stream</span><span class="o">[</span><span class="kt">IO</span>, <span class="kt">Unit</span><span class="o">]</span> <span class="k">=</span> <span class="nc">Stream</span><span class="o">.</span><span class="n">resource</span><span class="o">(</span><span class="nc">Blocker</span><span class="o">[</span><span class="kt">IO</span><span class="o">]).</span><span class="n">flatMap</span> <span class="o">{</span> <span class="n">blocker</span> <span class="k">=&gt;</span>
-    <span class="k">def</span> <span class="n">fahrenheitToCelsius</span><span class="o">(</span><span class="n">f</span><span class="k">:</span> <span class="kt">Double</span><span class="o">)</span><span class="k">:</span> <span class="kt">Double</span> <span class="o">=</span>
+  <span class="k">val</span> <span class="nv">converter</span><span class="k">:</span> <span class="kt">Stream</span><span class="o">[</span><span class="kt">IO</span>, <span class="kt">Unit</span><span class="o">]</span> <span class="k">=</span> <span class="nv">Stream</span><span class="o">.</span><span class="py">resource</span><span class="o">(</span><span class="nc">Blocker</span><span class="o">[</span><span class="kt">IO</span><span class="o">]).</span><span class="py">flatMap</span> <span class="o">{</span> <span class="n">blocker</span> <span class="k">=&gt;</span>
+    <span class="k">def</span> <span class="nf">fahrenheitToCelsius</span><span class="o">(</span><span class="n">f</span><span class="k">:</span> <span class="kt">Double</span><span class="o">)</span><span class="k">:</span> <span class="kt">Double</span> <span class="o">=</span>
       <span class="o">(</span><span class="n">f</span> <span class="o">-</span> <span class="mf">32.0</span><span class="o">)</span> <span class="o">*</span> <span class="o">(</span><span class="mf">5.0</span><span class="o">/</span><span class="mf">9.0</span><span class="o">)</span>
 
-    <span class="n">io</span><span class="o">.</span><span class="n">file</span><span class="o">.</span><span class="n">readAll</span><span class="o">[</span><span class="kt">IO</span><span class="o">](</span><span class="nc">Paths</span><span class="o">.</span><span class="n">get</span><span class="o">(</span><span class="s">"testdata/fahrenheit.txt"</span><span class="o">),</span> <span class="n">blocker</span><span class="o">,</span> <span class="mi">4096</span><span class="o">)</span>
-      <span class="o">.</span><span class="n">through</span><span class="o">(</span><span class="n">text</span><span class="o">.</span><span class="n">utf8Decode</span><span class="o">)</span>
-      <span class="o">.</span><span class="n">through</span><span class="o">(</span><span class="n">text</span><span class="o">.</span><span class="n">lines</span><span class="o">)</span>
-      <span class="o">.</span><span class="n">filter</span><span class="o">(</span><span class="n">s</span> <span class="k">=&gt;</span> <span class="o">!</span><span class="n">s</span><span class="o">.</span><span class="n">trim</span><span class="o">.</span><span class="n">isEmpty</span> <span class="o">&amp;&amp;</span> <span class="o">!</span><span class="n">s</span><span class="o">.</span><span class="n">startsWith</span><span class="o">(</span><span class="s">"//"</span><span class="o">))</span>
-      <span class="o">.</span><span class="n">map</span><span class="o">(</span><span class="n">line</span> <span class="k">=&gt;</span> <span class="n">fahrenheitToCelsius</span><span class="o">(</span><span class="n">line</span><span class="o">.</span><span class="n">toDouble</span><span class="o">).</span><span class="n">toString</span><span class="o">)</span>
-      <span class="o">.</span><span class="n">intersperse</span><span class="o">(</span><span class="s">"\n"</span><span class="o">)</span>
-      <span class="o">.</span><span class="n">through</span><span class="o">(</span><span class="n">text</span><span class="o">.</span><span class="n">utf8Encode</span><span class="o">)</span>
-      <span class="o">.</span><span class="n">through</span><span class="o">(</span><span class="n">io</span><span class="o">.</span><span class="n">file</span><span class="o">.</span><span class="n">writeAll</span><span class="o">(</span><span class="nc">Paths</span><span class="o">.</span><span class="n">get</span><span class="o">(</span><span class="s">"testdata/celsius.txt"</span><span class="o">),</span> <span class="n">blocker</span><span class="o">))</span>
+    <span class="nv">io</span><span class="o">.</span><span class="py">file</span><span class="o">.</span><span class="py">readAll</span><span class="o">[</span><span class="kt">IO</span><span class="o">](</span><span class="nv">Paths</span><span class="o">.</span><span class="py">get</span><span class="o">(</span><span class="s">"testdata/fahrenheit.txt"</span><span class="o">),</span> <span class="n">blocker</span><span class="o">,</span> <span class="mi">4096</span><span class="o">)</span>
+      <span class="o">.</span><span class="py">through</span><span class="o">(</span><span class="nv">text</span><span class="o">.</span><span class="py">utf8Decode</span><span class="o">)</span>
+      <span class="o">.</span><span class="py">through</span><span class="o">(</span><span class="nv">text</span><span class="o">.</span><span class="py">lines</span><span class="o">)</span>
+      <span class="o">.</span><span class="py">filter</span><span class="o">(</span><span class="n">s</span> <span class="k">=&gt;</span> <span class="o">!</span><span class="nv">s</span><span class="o">.</span><span class="py">trim</span><span class="o">.</span><span class="py">isEmpty</span> <span class="o">&amp;&amp;</span> <span class="o">!</span><span class="nv">s</span><span class="o">.</span><span class="py">startsWith</span><span class="o">(</span><span class="s">"//"</span><span class="o">))</span>
+      <span class="o">.</span><span class="py">map</span><span class="o">(</span><span class="n">line</span> <span class="k">=&gt;</span> <span class="nf">fahrenheitToCelsius</span><span class="o">(</span><span class="nv">line</span><span class="o">.</span><span class="py">toDouble</span><span class="o">).</span><span class="py">toString</span><span class="o">)</span>
+      <span class="o">.</span><span class="py">intersperse</span><span class="o">(</span><span class="s">"\n"</span><span class="o">)</span>
+      <span class="o">.</span><span class="py">through</span><span class="o">(</span><span class="nv">text</span><span class="o">.</span><span class="py">utf8Encode</span><span class="o">)</span>
+      <span class="o">.</span><span class="py">through</span><span class="o">(</span><span class="nv">io</span><span class="o">.</span><span class="py">file</span><span class="o">.</span><span class="py">writeAll</span><span class="o">(</span><span class="nv">Paths</span><span class="o">.</span><span class="py">get</span><span class="o">(</span><span class="s">"testdata/celsius.txt"</span><span class="o">),</span> <span class="n">blocker</span><span class="o">))</span>
   <span class="o">}</span>
-  
-  <span class="k">def</span> <span class="n">run</span><span class="o">(</span><span class="n">args</span><span class="k">:</span> <span class="kt">List</span><span class="o">[</span><span class="kt">String</span><span class="o">])</span><span class="k">:</span> <span class="kt">IO</span><span class="o">[</span><span class="kt">ExitCode</span><span class="o">]</span> <span class="k">=</span>
-    <span class="n">converter</span><span class="o">.</span><span class="n">compile</span><span class="o">.</span><span class="n">drain</span><span class="o">.</span><span class="n">as</span><span class="o">(</span><span class="nc">ExitCode</span><span class="o">.</span><span class="nc">Success</span><span class="o">)</span>
+
+  <span class="k">def</span> <span class="nf">run</span><span class="o">(</span><span class="n">args</span><span class="k">:</span> <span class="kt">List</span><span class="o">[</span><span class="kt">String</span><span class="o">])</span><span class="k">:</span> <span class="kt">IO</span><span class="o">[</span><span class="kt">ExitCode</span><span class="o">]</span> <span class="k">=</span>
+    <span class="nv">converter</span><span class="o">.</span><span class="py">compile</span><span class="o">.</span><span class="py">drain</span><span class="o">.</span><span class="py">as</span><span class="o">(</span><span class="nv">ExitCode</span><span class="o">.</span><span class="py">Success</span><span class="o">)</span>
 <span class="o">}</span>
 </code></pre></div></div>
 
@@ -107,7 +107,7 @@ libraryDependencies += "co.fs2" %% "fs2-io" % "0.10.7"
 <h3 id="documentation-and-getting-help"><a id="docs"></a>Documentation and getting help</h3>
 
 <ul>
-  <li>There are Scaladoc API documentations for <a href="https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-core_2.12/1.0.4/fs2-core_2.12-1.0.4-javadoc.jar/!/fs2/index.html">the core library</a>, which defines and implements the core types for streams and pulls, as well as the type aliases for pipes and sinks. <a href="https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-io_2.12/1.0.4/fs2-io_2.12-1.0.4-javadoc.jar/!/fs2/io/index.html">The <code class="highlighter-rouge">io</code> library</a> provides FS2 bindings for NIO-based file I/O and TCP/UDP networking</li>
+  <li>There are Scaladoc API documentations for <a href="https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-core_2.12/2.0.0/fs2-core_2.12-2.0.0-javadoc.jar/!/fs2/index.html">the core library</a>, which defines and implements the core types for streams and pulls, as well as the type aliases for pipes and sinks. <a href="https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-io_2.12/2.0.0/fs2-io_2.12-2.0.0-javadoc.jar/!/fs2/io/index.html">The <code class="highlighter-rouge">io</code> library</a> provides FS2 bindings for NIO-based file I/O and TCP/UDP networking</li>
   <li><a href="https://functional-streams-for-scala.github.io/fs2/guide.html">The official guide</a> is a good starting point for learning more about the library.</li>
   <li>The <a href="https://functional-streams-for-scala.github.io/fs2/faq.html">documentation page</a> is intended to serve as a list of all references, including conference presentation recordings, academic papers, and blog posts, on the use and implementation of <code class="highlighter-rouge">fs2</code>.</li>
   <li><a href="https://functional-streams-for-scala.github.io/fs2/faq.html">The FAQ</a> has frequently asked questions. Feel free to open issues or PRs with additions to the FAQ!</li>
@@ -119,6 +119,7 @@ libraryDependencies += "co.fs2" %% "fs2-io" % "0.10.7"
 <p>If you have a project you’d like to include in this list, either open a PR or let us know in <a href="https://gitter.im/functional-streams-for-scala/fs2">the gitter channel</a> and we’ll add a link to it here.</p>
 
 <ul>
+  <li><a href="https://github.com/augustjune/canoe">canoe</a>: A purely functional library for building Telegram chatbots.</li>
   <li><a href="https://github.com/mgdigital/Chromaprint.scala">chromaprint</a>: A Scala implementation of the Chromaprint/AcoustID audio fingerprinting algorithm, built with fs2 streams / Cats Effect.</li>
   <li><a href="https://github.com/circe/circe-fs2">circe-fs2</a>: Streaming JSON manipulation with <a href="https://github.com/circe/circe">circe</a>.</li>
   <li><a href="https://github.com/tpolecat/doobie">doobie</a>: Pure functional JDBC built on fs2.</li>
@@ -138,7 +139,9 @@ libraryDependencies += "co.fs2" %% "fs2-io" % "0.10.7"
   <li><a href="https://github.com/gvolpe/fs2-rabbit">fs2-rabbit</a>: RabbitMQ stream-based client built on top of Fs2.</li>
   <li><a href="https://github.com/zainab-ali/fs2-reactive-streams">fs2-reactive-streams</a>: A reactive streams implementation for fs2.</li>
   <li><a href="https://github.com/gvolpe/fs2-redis">fs2-redis</a>: Redis stream-based client built on top of Fs2 / Cats Effect.</li>
+  <li><a href="https://github.com/slamdata/fs2-ssh">fs2-ssh</a>: A wrapper around Apache SSHD targeting cats-effect and fs2.</li>
   <li><a href="https://github.com/Spinoco/fs2-zk">fs2-zk</a>: Simple Apache Zookeeper bindings for fs2.</li>
+  <li><a href="https://github.com/regis-leray/fs2-ftp">fs2-ftp</a>: Simple client for Ftp/Ftps/Sftp using fs2 and cats-effect.</li>
   <li><a href="http://http4s.org/">http4s</a>: Minimal, idiomatic Scala interface for HTTP services using fs2.</li>
   <li><a href="https://gitlab.com/lJoublanc/mongosaur">mongosaur</a>: fs2-based MongoDB driver.</li>
   <li><a href="https://gitlab.com/lJoublanc/scarctic">scarctic</a>: fs2-based driver for <a href="https://github.com/manahl/arctic">MAN/AHL’s Arctic</a> data store.</li>
@@ -146,6 +149,7 @@ libraryDependencies += "co.fs2" %% "fs2-io" % "0.10.7"
   <li><a href="https://github.com/scodec/scodec-stream">scodec-stream</a>: A library for streaming binary decoding and encoding, built using fs2 and <a href="https://github.com/scodec/scodec">scodec</a>.</li>
   <li><a href="https://github.com/krasserm/streamz">streamz</a>: A library that supports the conversion of <a href="http://doc.akka.io/docs/akka/2.4/scala/stream/index.html">Akka Stream</a> <code class="highlighter-rouge">Source</code>s, <code class="highlighter-rouge">Flow</code>s and <code class="highlighter-rouge">Sink</code>s to and from FS2 <code class="highlighter-rouge">Stream</code>s, <code class="highlighter-rouge">Pipe</code>s and <code class="highlighter-rouge">Sink</code>s, respectively. It also supports the usage of <a href="http://camel.apache.org/">Apache Camel</a> endpoints in FS2 <code class="highlighter-rouge">Stream</code>s and Akka Stream <code class="highlighter-rouge">Source</code>s, <code class="highlighter-rouge">Flow</code>s and <code class="highlighter-rouge">SubFlow</code>s.</li>
   <li><a href="https://github.com/SystemFw/upperbound">upperbound</a>: A purely functional, interval-based rate limiter with support for backpressure.</li>
+  <li><a href="https://github.com/vinyldns/vinyldns">vinyldns</a>: A DNS governance system using fs2 for throttling updates to DNS backends.</li>
 </ul>
 
 <h3 id="acknowledgments">Acknowledgments</h3>
@@ -158,5 +162,5 @@ libraryDependencies += "co.fs2" %% "fs2-io" % "0.10.7"
 
 <p>See the <a href="CODE_OF_CONDUCT.md">Code of Conduct</a>.</p>
 
-</div></div></section><section class="technologies"><div class="container"><div class="row"></div></div></section></main><footer id="site-footer"><div class="container"><div class="row"><div class="col-xs-6"><p>fs2 is designed and developed by <a href="https://github.com/functional-streams-for-scala/fs2" target="_blank">co.fs2</a></p></div><div class="col-xs-6"><p class="text-right"><a href="https://github.com/functional-streams-for-scala/fs2"><span class="fa fa-github"></span>View on GitHub</a></p></div></div><div class="row"><div class="col-xs-6"><p>Website built with <a href="https://47deg.github.io/sbt-microsites/" target="_blank">Sbt-microsites</a> - © 2016 <a href="https://www.47deg.com/" target="_blank">47 Degrees</a></p></div></div><script src="/highlight/highlight.pack.js"></script><script>hljs.initHighlighting();
+</div></div></section><section class="technologies"><div class="container"><div class="row"></div></div></section></main><footer id="site-footer"><div class="container"><div class="row"><div class="col-xs-6"><p>fs2 is designed and developed by <a href="https://github.com/functional-streams-for-scala/fs2" target="_blank" rel="noopener noreferrer">co.fs2</a></p></div><div class="col-xs-6"><p class="text-right"><a href="https://github.com/functional-streams-for-scala/fs2"><span class="fa fa-github"></span>View on GitHub</a></p></div></div><div class="row"><div class="col-xs-6"><p>Website built with <a href="https://47deg.github.io/sbt-microsites/" target="_blank" rel="noopener noreferrer">sbt-microsites</a> - © 2019 <a href="https://www.47deg.com/" target="_blank" rel="noopener noreferrer">47 Degrees</a></p></div></div><script src="/highlight/highlight.pack.js"></script><script>hljs.initHighlighting();
               </script></div></footer></body></html>
