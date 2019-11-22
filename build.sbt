@@ -5,6 +5,9 @@ import sbtcrossproject.crossProject
 
 val ReleaseTag = """^release/([\d\.]+a?)$""".r
 
+addCommandAlias("fmt", "; compile:scalafmt; test:scalafmt; scalafmtSbt")
+addCommandAlias("fmtCheck", "; compile:scalafmtCheck; test:scalafmtCheck; scalafmtSbtCheck")
+
 lazy val contributors = Seq(
   "pchiusano" -> "Paul Chiusano",
   "pchlupacek" -> "Pavel Chlupáček",
@@ -58,8 +61,12 @@ lazy val commonSettings = Seq(
     "org.scalatest" %%% "scalatest" % "3.1.0-SNAP13" % "test",
     "org.scalatestplus" %%% "scalatestplus-scalacheck" % "1.0.0-M2" % "test"
   ),
-  scmInfo := Some(ScmInfo(url("https://github.com/functional-streams-for-scala/fs2"),
-                          "git@github.com:functional-streams-for-scala/fs2.git")),
+  scmInfo := Some(
+    ScmInfo(
+      url("https://github.com/functional-streams-for-scala/fs2"),
+      "git@github.com:functional-streams-for-scala/fs2.git"
+    )
+  ),
   homepage := Some(url("https://github.com/functional-streams-for-scala/fs2")),
   licenses += ("MIT", url("http://opensource.org/licenses/MIT")),
   initialCommands := s"""
@@ -68,8 +75,7 @@ lazy val commonSettings = Seq(
     implicit val contextShiftIO: ContextShift[IO] = IO.contextShift(global)
     implicit val timerIO: Timer[IO] = IO.timer(global)
   """,
-  doctestTestFramework := DoctestTestFramework.ScalaTest,
-  scalafmtOnCompile := true
+  doctestTestFramework := DoctestTestFramework.ScalaTest
 ) ++ testSettings ++ scaladocSettings ++ publishingSettings ++ releaseSettings
 
 lazy val testSettings = Seq(
@@ -133,21 +139,18 @@ lazy val publishingSettings = Seq(
   credentials ++= (for {
     username <- Option(System.getenv().get("SONATYPE_USERNAME"))
     password <- Option(System.getenv().get("SONATYPE_PASSWORD"))
-  } yield
-    Credentials("Sonatype Nexus Repository Manager", "oss.sonatype.org", username, password)).toSeq,
+  } yield Credentials("Sonatype Nexus Repository Manager", "oss.sonatype.org", username, password)).toSeq,
   publishMavenStyle := true,
   pomIncludeRepository := { _ =>
     false
   },
   pomExtra := {
     <developers>
-      {for ((username, name) <- contributors) yield
-      <developer>
+      {for ((username, name) <- contributors) yield <developer>
         <id>{username}</id>
         <name>{name}</name>
         <url>http://github.com/{username}</url>
-      </developer>
-      }
+      </developer>}
     </developers>
   },
   pomPostProcess := { node =>
@@ -262,9 +265,11 @@ lazy val io = project
     OsgiKeys.privatePackage := Seq(),
     OsgiKeys.importPackage := {
       val Some((major, minor)) = CrossVersion.partialVersion(scalaVersion.value)
-      Seq(s"""scala.*;version="[$major.$minor,$major.${minor + 1})"""",
-          """fs2.*;version="${Bundle-Version}"""",
-          "*")
+      Seq(
+        s"""scala.*;version="[$major.$minor,$major.${minor + 1})"""",
+        """fs2.*;version="${Bundle-Version}"""",
+        "*"
+      )
     },
     OsgiKeys.additionalHeaders := Map("-removeheaders" -> "Include-Resource,Private-Package"),
     osgiSettings
@@ -275,11 +280,13 @@ lazy val reactiveStreams = project
   .in(file("reactive-streams"))
   .enablePlugins(SbtOsgi)
   .settings(commonSettings)
-  .settings(libraryDependencies ++= Seq(
-    "org.reactivestreams" % "reactive-streams" % "1.0.3",
-    "org.reactivestreams" % "reactive-streams-tck" % "1.0.3" % "test",
-    "org.scalatestplus" %% "scalatestplus-testng" % "1.0.0-M2" % "test"
-  ))
+  .settings(
+    libraryDependencies ++= Seq(
+      "org.reactivestreams" % "reactive-streams" % "1.0.3",
+      "org.reactivestreams" % "reactive-streams-tck" % "1.0.3" % "test",
+      "org.scalatestplus" %% "scalatestplus-testng" % "1.0.0-M2" % "test"
+    )
+  )
   .settings(mimaSettings)
   .settings(
     name := "fs2-reactive-streams",
@@ -287,9 +294,11 @@ lazy val reactiveStreams = project
     OsgiKeys.privatePackage := Seq(),
     OsgiKeys.importPackage := {
       val Some((major, minor)) = CrossVersion.partialVersion(scalaVersion.value)
-      Seq(s"""scala.*;version="[$major.$minor,$major.${minor + 1})"""",
-          """fs2.*;version="${Bundle-Version}"""",
-          "*")
+      Seq(
+        s"""scala.*;version="[$major.$minor,$major.${minor + 1})"""",
+        """fs2.*;version="${Bundle-Version}"""",
+        "*"
+      )
     },
     OsgiKeys.additionalHeaders := Map("-removeheaders" -> "Include-Resource,Private-Package"),
     osgiSettings
@@ -331,8 +340,8 @@ lazy val benchmark = project
   .settings(noPublish)
   .settings(
     name := "fs2-benchmark",
-    javaOptions in (Test, run) := (javaOptions in (Test, run)).value.filterNot(o =>
-      o.startsWith("-Xmx") || o.startsWith("-Xms")) ++ Seq("-Xms256m", "-Xmx256m"),
+    javaOptions in (Test, run) := (javaOptions in (Test, run)).value
+      .filterNot(o => o.startsWith("-Xmx") || o.startsWith("-Xms")) ++ Seq("-Xms256m", "-Xmx256m"),
     scalacOptions ++= {
       CrossVersion.partialVersion(scalaVersion.value) match {
         case Some((2, v)) if v >= 13 =>
@@ -399,9 +408,11 @@ lazy val experimental = project
     OsgiKeys.privatePackage := Seq(),
     OsgiKeys.importPackage := {
       val Some((major, minor)) = CrossVersion.partialVersion(scalaVersion.value)
-      Seq(s"""scala.*;version="[$major.$minor,$major.${minor + 1})"""",
-          """fs2.*;version="${Bundle-Version}"""",
-          "*")
+      Seq(
+        s"""scala.*;version="[$major.$minor,$major.${minor + 1})"""",
+        """fs2.*;version="${Bundle-Version}"""",
+        "*"
+      )
     },
     OsgiKeys.additionalHeaders := Map("-removeheaders" -> "Include-Resource,Private-Package"),
     osgiSettings
