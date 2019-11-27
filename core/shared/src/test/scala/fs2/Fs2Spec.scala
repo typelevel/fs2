@@ -4,7 +4,7 @@ import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
 
 import cats.{Functor, Monad}
-import cats.effect.{ContextShift, IO, Sync, Timer}
+import cats.effect.{ContextShift, Fiber, IO, Sync, Timer}
 import cats.implicits._
 
 import org.scalatest.{Args, Assertion, Matchers, Status, Succeeded}
@@ -44,19 +44,35 @@ abstract class Fs2Spec
   override val executionContext: ExecutionContext =
     if (isJVM) super.executionContext else realExecutionContext
 
-  lazy val verbose: Boolean = sys.props.get("fs2.test.verbose").isDefined
+  lazy val isRunningOnTravis: Boolean = sys.props.get("fs2.test.travis").isDefined
 
   protected def flickersOnTravis: Assertion =
-    if (verbose) pending else Succeeded
+    if (isRunningOnTravis) pending else Succeeded
 
   implicit override val generatorDrivenConfig: PropertyCheckConfiguration =
     PropertyCheckConfiguration(minSuccessful = if (isJVM) 25 else 5, workers = 1)
 
   override def runTest(testName: String, args: Args): Status = {
-    if (verbose) println("Starting " + testName)
+    // Start a fiber that logs execution of long running tests in order to differentiate
+    // hung tests from long tests. Note: on Scala.js, logging can only occur if the test
+    // yields execution periodically.
+    val loggingFiber: Fiber[IO, Unit] = logEverySoOften(testName, 5.seconds).unsafeRunSync
     try super.runTest(testName, args)
-    finally if (verbose) println("Finished " + testName)
+    finally loggingFiber.cancel.unsafeRunSync
   }
+
+  private def logEverySoOften(testName: String, period: FiniteDuration): IO[Fiber[IO, Unit]] =
+    IO(System.currentTimeMillis).flatMap { start =>
+      def go: IO[Unit] =
+        IO.sleep(period) >>
+          IO(
+            println(
+              s"""Waiting for test "$testName" (${System.currentTimeMillis - start} milliseconds)"""
+            )
+          ) >>
+          go
+      go.start
+    }
 
   /** Returns a stream that has a 10% chance of failing with an error on each output value. */
   protected def spuriousFail[F[_]: RaiseThrowable, O](s: Stream[F, O]): Stream[F, O] =

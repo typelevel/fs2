@@ -84,9 +84,9 @@ lazy val testSettings = Seq(
     "-Dscala.concurrent.context.minThreads=8",
     "-Dscala.concurrent.context.numThreads=8",
     "-Dscala.concurrent.context.maxThreads=8"
-  ) ++ (sys.props.get("fs2.test.verbose") match {
+  ) ++ (sys.props.get("fs2.test.travis") match {
     case Some(value) =>
-      Seq(s"-Dfs2.test.verbose=true")
+      Seq(s"-Dfs2.test.travis=true")
     case None => Seq()
   })),
   parallelExecution in Test := false,
