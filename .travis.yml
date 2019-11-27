@@ -25,6 +25,7 @@ env:
     - PUBLISH=true
 
 script:
+  - sbt ++$TRAVIS_SCALA_VERSION -Dfile.encoding=UTF8 fmtCheck
   - sbt ++$TRAVIS_SCALA_VERSION -Dfile.encoding=UTF8 -Dfs2.test.verbose testJVM
   - sbt ++$TRAVIS_SCALA_VERSION -Dfile.encoding=UTF8 -Dfs2.test.verbose testJS
   - sbt ++$TRAVIS_SCALA_VERSION -Dfile.encoding=UTF8 doc mimaReportBinaryIssues

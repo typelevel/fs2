@@ -1,9 +1,8 @@
 case class LibraryVersion(major: Int, minor: Int, patch: Option[Int], suffix: Option[String]) {
-  override def toString = {
+  override def toString =
     s"$major.$minor" +
       patch.fold("")("." + _) +
       suffix.fold("")("-" + _)
-  }
 }
 
 object MiMa {
@@ -19,14 +18,13 @@ object MiMa {
 
   // RC and SNAPSHOT suffixes represent pre-release builds,
   // cannot check compatibility against unreleased software.
-  def suffixAfterRelease(version: LibraryVersion): Boolean = {
+  def suffixAfterRelease(version: LibraryVersion): Boolean =
     version.suffix match {
       case Some(s) if s.startsWith("RC") => false
-      case Some(s) if s == "SNAPSHOT" => false
-      case None => false
-      case _ => true
+      case Some(s) if s == "SNAPSHOT"    => false
+      case None                          => false
+      case _                             => true
     }
-  }
 
   // Return version of library to check for compatibility
   def targetLibraryVersion(currentVersion: LibraryVersion): Option[LibraryVersion] = {
@@ -36,10 +34,10 @@ object MiMa {
 
     val shouldCheck: Boolean =
       (currentVersion.patch, targetVersion.patch, suffixAfterRelease(currentVersion)) match {
-        case (Some(current), Some(target), _) if current > target => true
+        case (Some(current), Some(target), _) if current > target       => true
         case (Some(current), Some(target), suffix) if current == target => suffix
-        case (Some(current), None, _) => true
-        case _ => false
+        case (Some(current), None, _)                                   => true
+        case _                                                          => false
       }
 
     if (shouldCheck)
@@ -48,10 +46,9 @@ object MiMa {
       None
   }
 
-  def targetVersion(currentVersion: String): Option[String] = {
+  def targetVersion(currentVersion: String): Option[String] =
     for {
       version <- extractVersion(currentVersion)
       target <- targetLibraryVersion(version)
     } yield target.toString
-  }
 }
