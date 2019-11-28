@@ -20,7 +20,21 @@ object CompositeFailure {
       second: Throwable,
       rest: List[Throwable] = List.empty
   ): CompositeFailure =
-    new CompositeFailure(first, NonEmptyList(second, rest))
+    apply(first, NonEmptyList(second, rest))
+
+  def apply(first: Throwable, rest: NonEmptyList[Throwable]): CompositeFailure = {
+    def flattenExceptions(throwable: Throwable): NonEmptyList[Throwable] = throwable match {
+      case cf: CompositeFailure => cf.all
+      case throwable            => NonEmptyList.one(throwable)
+    }
+    first match {
+      case cf: CompositeFailure =>
+        val tail = cf.tail ::: rest.flatMap(flattenExceptions)
+        new CompositeFailure(cf.head, tail)
+      case _ =>
+        new CompositeFailure(first, rest.flatMap(flattenExceptions))
+    }
+  }
 
   def fromList(errors: List[Throwable]): Option[Throwable] = errors match {
     case Nil                     => None
@@ -43,6 +57,6 @@ object CompositeFailure {
     first match {
       case Right(_) => second
       case Left(err) =>
-        Left(second.fold(err1 => CompositeFailure(err, err1, Nil), _ => err))
+        Left(second.fold(err1 => apply(err, err1, Nil), _ => err))
     }
 }

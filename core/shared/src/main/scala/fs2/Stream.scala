@@ -2061,7 +2061,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Nothing, O, Unit]
                     done.update {
                       case rslt0 @ Some(Some(err0)) =>
                         rslt.fold[Option[Option[Throwable]]](rslt0) { err =>
-                          Some(Some(new CompositeFailure(err0, NonEmptyList.of(err))))
+                          Some(Some(CompositeFailure(err0, err)))
                         }
                       case _ => Some(rslt)
                     } >> outputQ.enqueue1(None)

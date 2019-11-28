@@ -1511,6 +1511,25 @@ class StreamSpec extends Fs2Spec {
             .asserting(_ => i shouldBe 1)
         }
       }
+
+      "16 - parJoin CompositeFailure" in {
+        Stream(
+          Stream.emit(1).covary[IO],
+          Stream.raiseError[IO](new Err),
+          Stream.raiseError[IO](new Err),
+          Stream.raiseError[IO](new Err),
+          Stream.emit(2).covary[IO]
+        ).covary[IO]
+          .parJoin(10)
+          .compile
+          .toVector
+          .attempt
+          .asserting({
+            case Left(err: CompositeFailure) => err.all.toList.count(_.isInstanceOf[Err]) shouldBe 3
+            case Left(err)                   => fail("Expected Left[CompositeFailure]", err)
+            case Right(value)                => fail(s"Expected Left[CompositeFailure] got Right($value)")
+          })
+      }
     }
 
     "head" in forAll { (s: Stream[Pure, Int]) =>
