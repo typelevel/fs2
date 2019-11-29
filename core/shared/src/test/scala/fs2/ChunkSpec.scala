@@ -133,7 +133,12 @@ class ChunkSpec extends Fs2Spec {
   testChunk[Int](intChunkGenerator, "Ints", "Int")
   testChunk[Long](longChunkGenerator, "Longs", "Long")
   // Don't test traverse on Double or Float. They have naughty monoids.
+  // Also, occasionally, a NaN value will show up in the generated functions, which then causes
+  // laws tests to fail when comparing `Chunk(NaN)` to `Chunk(NaN)` -- for purposes of these tests
+  // only, we redefine equality to consider two `NaN` values as equal.
+  implicit val doubleEq: Eq[Double] = Eq.instance[Double]((x, y) => (x.isNaN && y.isNaN) || x == y)
   testChunk[Double](doubleChunkGenerator, "Doubles", "Double", false)
+  implicit val floatEq: Eq[Float] = Eq.instance[Float]((x, y) => (x.isNaN && y.isNaN) || x == y)
   testChunk[Float](floatChunkGenerator, "Floats", "Float", false)
   testChunk[Char](charChunkGenerator, "Unspecialized", "Char")
 
