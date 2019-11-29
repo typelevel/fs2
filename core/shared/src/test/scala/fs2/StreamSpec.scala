@@ -244,7 +244,7 @@ class StreamSpec extends Fs2Spec {
           .flatMap { events =>
             recordBracketEvents[SyncIO](events)
               .flatMap(_ => Stream.raiseError[SyncIO](new Err))
-              .handleErrorWith(t => Stream.empty)
+              .handleErrorWith(_ => Stream.empty)
               .append(recordBracketEvents[SyncIO](events))
               .compile
               .drain *> events.get
