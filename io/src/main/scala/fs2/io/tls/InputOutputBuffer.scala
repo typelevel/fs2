@@ -1,31 +1,29 @@
-package spinoco.fs2.crypto.internal
+package fs2
+package io
+package tls
 
 import java.nio.ByteBuffer
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicReference}
+import javax.net.ssl.SSLEngineResult
 
 import cats.Applicative
-import javax.net.ssl.SSLEngineResult
 import cats.effect.Sync
-import cats.syntax.all._
-import fs2.Chunk
+import cats.implicits._
 
 /**
   * Buffer that wraps two Input/Output buffers together and guards
   * for input/output operations to be performed sequentially
   */
-private[crypto] trait InputOutputBuffer[F[_]] {
-
+private[tls] trait InputOutputBuffer[F[_]] {
   /**
     * Feeds the `data`. I/O Buffer must be awaiting input
     */
   def input(data: Chunk[Byte]): F[Unit]
 
-
   /**
     * Gets result from any operation. must bnot be awaiting input
     */
   def output: F[Chunk[Byte]]
-
 
   /**
     * Performs given operation. Buffer must not be awaiting input
@@ -40,45 +38,45 @@ private[crypto] trait InputOutputBuffer[F[_]] {
 
   /** return remaining data in input during consume **/
   def inputRemains: F[Int]
-
 }
 
-
-private[crypto] object InputOutputBuffer {
-
-
-  def mk[F[_] : Sync](inputSize: Int, outputSize: Int): F[InputOutputBuffer[F]] = Sync[F].delay {
+private[tls] object InputOutputBuffer {
+  def apply[F[_]: Sync](inputSize: Int, outputSize: Int): F[InputOutputBuffer[F]] = Sync[F].delay {
     val inBuff = new AtomicReference[ByteBuffer](ByteBuffer.allocate(inputSize))
     val outBuff = new AtomicReference[ByteBuffer](ByteBuffer.allocate(outputSize))
     val awaitInput = new AtomicBoolean(true)
 
     new InputOutputBuffer[F] {
-
       def input(data: Chunk[Byte]): F[Unit] = Sync[F].suspend {
         if (awaitInput.compareAndSet(true, false)) {
           val in = inBuff.get
           val expanded =
             if (in.remaining() >= data.size) Applicative[F].pure(in)
-            else expandBuffer(in, capacity => (capacity + data.size) max (capacity * 2))
+            else expandBuffer(in, capacity => (capacity + data.size).max(capacity * 2))
 
-          expanded.map { buff =>
-            inBuff.set(buff)
-            val bs = data.toBytes
-            buff.put(bs.values, bs.offset, bs.size)
-            buff.flip()
-            outBuff.get().clear()
-          } void
+          expanded.flatMap { buff =>
+            Sync[F].delay {
+              inBuff.set(buff)
+              val bs = data.toBytes
+              buff.put(bs.values, bs.offset, bs.size)
+              buff.flip()
+              outBuff.get().clear()
+            }
+          }
         } else {
-          Sync[F].raiseError(new Throwable("input bytes allowed only when awaiting input"))
+          Sync[F].raiseError(new RuntimeException("input bytes allowed only when awaiting input"))
         }
       }
 
-      def perform(f: (ByteBuffer, ByteBuffer) => Either[Throwable, SSLEngineResult]): F[SSLEngineResult] = Sync[F].suspend {
-        if (awaitInput.get) Sync[F].raiseError(new Throwable("Perform cannot be invoked when awaiting input"))
+      def perform(
+          f: (ByteBuffer, ByteBuffer) => Either[Throwable, SSLEngineResult]
+      ): F[SSLEngineResult] = Sync[F].suspend {
+        if (awaitInput.get)
+          Sync[F].raiseError(new RuntimeException("Perform cannot be invoked when awaiting input"))
         else {
           awaitInput.set(false)
           f(inBuff.get, outBuff.get) match {
-            case Left(err) => Sync[F].raiseError(err)
+            case Left(err)     => Sync[F].raiseError(err)
             case Right(result) => Applicative[F].pure(result)
           }
         }
@@ -99,33 +97,25 @@ private[crypto] object InputOutputBuffer {
             out.clear()
             Applicative[F].pure(Chunk.bytes(dest))
           }
-
         } else {
-          Sync[F].raiseError(new Throwable("output bytes allowed only when not awaiting INput"))
+          Sync[F].raiseError(
+            new RuntimeException("output bytes allowed only when not awaiting INput")
+          )
         }
       }
 
-      def expandBuffer(buffer: ByteBuffer, resizeTo: Int => Int): F[ByteBuffer] = Sync[F].suspend {
-        val copy = Array.ofDim[Byte](buffer.position())
-        val next = ByteBuffer.allocate(resizeTo(buffer.capacity()))
-        buffer.flip()
-        buffer.get(copy)
-        Applicative[F].pure(next.put(copy))
-      }
+      private def expandBuffer(buffer: ByteBuffer, resizeTo: Int => Int): F[ByteBuffer] =
+        Sync[F].suspend {
+          val copy = Array.ofDim[Byte](buffer.position())
+          val next = ByteBuffer.allocate(resizeTo(buffer.capacity()))
+          buffer.flip()
+          buffer.get(copy)
+          Applicative[F].pure(next.put(copy))
+        }
 
-      def expandOutput: F[Unit] = {
-        expandBuffer(outBuff.get, _ * 2).map(outBuff.set(_))
-      }
+      def expandOutput: F[Unit] = expandBuffer(outBuff.get, _ * 2).map(outBuff.set(_))
 
-      def inputRemains =
-        Sync[F].delay {  inBuff.get().remaining() }
-
+      def inputRemains = Sync[F].delay { inBuff.get().remaining() }
     }
   }
-
-
-
 }
-
-
-
