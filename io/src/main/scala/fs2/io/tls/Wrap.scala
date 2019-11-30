@@ -88,7 +88,7 @@ private[tls] object Wrap {
                 // also if nothing was produced, this will fail
                 if (result.bytesProduced() == 0)
                   Sync[F].raiseError(
-                    new Throwable("Request to WRAP again, but no bytes were produced")
+                    new RuntimeException("Request to WRAP again, but no bytes were produced")
                   )
                 else wrap(ioBuff, handshakeDoneRef, sslEngine, sslEngineTaskRunner)
 
@@ -123,7 +123,7 @@ private[tls] object Wrap {
                 // wrap (wrap0) is consulted only when application is about to send data
                 // it is impossible that we will write data and at the same time yield handshake to be finished.
                 // so we rather fail
-                Sync[F].raiseError(new Throwable("bug: FINISHED after WRAP from App"))
+                Sync[F].raiseError(new RuntimeException("bug: FINISHED after WRAP from App"))
             }
 
           case Status.BUFFER_OVERFLOW =>

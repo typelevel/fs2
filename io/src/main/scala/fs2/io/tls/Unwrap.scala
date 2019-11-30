@@ -192,7 +192,7 @@ private[tls] object Unwrap {
               case HandshakeStatus.NOT_HANDSHAKING =>
                 // impossible during handshake
                 Sync[F].raiseError(
-                  new Throwable(
+                  new RuntimeException(
                     "bug: NOT_HANDSHAKING in HANDSHAKE. Handshake must be terminated with FINISHED"
                   )
                 )
@@ -238,7 +238,7 @@ private[tls] object Unwrap {
           case Status.BUFFER_UNDERFLOW =>
             // impossible during handshake at wrap state
             Sync[F].raiseError(
-              new Throwable(
+              new RuntimeException(
                 "bug: UNDERFLOW in HANDSHAKE: WRAP. Wrap is always supplied with empty data"
               )
             )

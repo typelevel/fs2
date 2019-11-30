@@ -2,15 +2,13 @@ package fs2
 package io
 package tcp
 
-import cats.effect.concurrent.Semaphore
-
 import scala.annotation.tailrec
+import scala.collection.immutable.Queue
 import scala.concurrent.duration._
 
 import java.net.SocketAddress
 
 import cats.Applicative
-import cats.data.Chain
 import cats.effect.concurrent.{Ref, Semaphore}
 import cats.effect._
 import cats.syntax.all._
@@ -53,7 +51,7 @@ object TLSSocket {
       tlsEngine: TLSEngine[F]
   ): F[TLSSocket[F]] =
     for {
-      readBuffRef <- Ref.of[F, Chain[Chunk[Byte]]](Chain.empty)
+      readBuffRef <- Ref.of[F, Queue[Chunk[Byte]]](Queue.empty)
       readSem <- Semaphore(1)
     } yield new TLSSocket[F] { self =>
 
@@ -66,7 +64,7 @@ object TLSSocket {
       // Started only on `write` thread, during handshake
       // this resolves situation, when user wants just to write data to socket
       // before actually reading them
-      def readHandShake(timeout: Option[FiniteDuration]): F[Unit] =
+      def readHandshake(timeout: Option[FiniteDuration]): F[Unit] =
         readSem.withPermit {
           read0(10240, timeout).flatMap {
             case Some(data) if data.nonEmpty => readBuffRef.update { _ :+ data }
@@ -138,12 +136,12 @@ object TLSSocket {
             case EncryptResult.Encrypted(data) => socket.write(data, timeout)
 
             case EncryptResult.Handshake(data, next) =>
-              // TODO: when readHandShake fails with an exception, the error doesn't propogate
-              socket.write(data, timeout) >> ((Concurrent[F].start(readHandShake(timeout)) *> next)
+              // TODO: when readHandshake fails with an exception, the error doesn't propogate
+              socket.write(data, timeout) >> ((Concurrent[F].start(readHandshake(timeout)) *> next)
                 .flatMap(go))
 
             case EncryptResult.Closed() =>
-              Sync[F].raiseError(new Throwable("TLS Engine is closed"))
+              Sync[F].raiseError(new RuntimeException("TLS Engine is closed"))
           }
 
         tlsEngine.encrypt(bytes).flatMap(go)
@@ -177,18 +175,18 @@ object TLSSocket {
     }
 
   private def takeFromBuff(
-      buff: Chain[Chunk[Byte]],
+      buff: Queue[Chunk[Byte]],
       max: Int
-  ): (Chain[Chunk[Byte]], Chunk[Byte]) = {
+  ): (Queue[Chunk[Byte]], Chunk[Byte]) = {
     @tailrec
     def go(
-        rem: Chain[Chunk[Byte]],
+        rem: Queue[Chunk[Byte]],
         acc: Chunk.Queue[Byte],
         toGo: Int
-    ): (Chain[Chunk[Byte]], Chunk[Byte]) =
+    ): (Queue[Chunk[Byte]], Chunk[Byte]) =
       if (toGo <= 0) (rem, acc.toChunk)
       else {
-        rem.uncons match {
+        rem.dequeueOption match {
           case Some((head, tail)) =>
             val add = head.take(toGo)
             val leave = head.drop(toGo)
@@ -200,7 +198,7 @@ object TLSSocket {
         }
       }
 
-    if (buff.isEmpty) (Chain.empty, Chunk.empty)
+    if (buff.isEmpty) (Queue.empty, Chunk.empty)
     else go(buff, Chunk.Queue.empty, max)
   }
 }
