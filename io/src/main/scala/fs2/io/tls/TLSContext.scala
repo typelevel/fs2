@@ -56,4 +56,7 @@ object TLSContext {
     ctx.init(null, Array(tm), null)
     fromSSLContext(ctx, blocker)
   }
+
+  def system[F[_]: Concurrent: ContextShift](blocker: Blocker): TLSContext[F] =
+    fromSSLContext(SSLContext.getDefault, blocker)
 }

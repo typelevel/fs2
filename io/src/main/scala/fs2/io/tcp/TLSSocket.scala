@@ -22,17 +22,6 @@ trait TLSSocket[F[_]] extends Socket[F] {
 }
 
 object TLSSocket {
-//   /**
-//     * Cretes an TLS Socket
-//     * @param socket   TCP Socket that will be used as transport for TLS
-//     * @param engine   SSL engine from jdk
-//     * @param sslEc    An Execution context, that will be used to run SSL Engine's tasks.
-//     */
-//   def instance[F[_] : Concurrent : ContextShift](socket: Socket[F], engine: SSLEngine, sslEc: ExecutionContext): F[TLSSocket[F]] = {
-//     TLSEngine.instance(engine, sslEc) flatMap { tlsEngine =>
-//       TLSSocket.instance(socket, tlsEngine)
-//     }
-//   }
 
   /**
     * Wraps raw tcp socket with supplied SSLEngine to form SSL Socket
@@ -46,7 +35,7 @@ object TLSSocket {
     * @param socket               Raw TCP Socket
     * @param tlsEngine            An TSLEngine to use
     */
-  def instance[F[_]: Concurrent: ContextShift](
+  def apply[F[_]: Concurrent: ContextShift](
       socket: Socket[F],
       tlsEngine: TLSEngine[F]
   ): F[TLSSocket[F]] =
@@ -136,9 +125,7 @@ object TLSSocket {
             case EncryptResult.Encrypted(data) => socket.write(data, timeout)
 
             case EncryptResult.Handshake(data, next) =>
-              // TODO: when readHandshake fails with an exception, the error doesn't propogate
-              socket.write(data, timeout) >> ((Concurrent[F].start(readHandshake(timeout)) *> next)
-                .flatMap(go))
+              socket.write(data, timeout) >> readHandshake(timeout) >> next.flatMap(go)
 
             case EncryptResult.Closed() =>
               Sync[F].raiseError(new RuntimeException("TLS Engine is closed"))
