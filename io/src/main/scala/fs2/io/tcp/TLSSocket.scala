@@ -100,8 +100,8 @@ object TLSSocket {
                             case Some(next) => next.flatMap(go)
                           })
                         }
-                      case DecryptResult.Closed() =>
-                        Applicative[F].pure(None)
+                      case DecryptResult.Closed(out) =>
+                        Applicative[F].pure(Some(out))
                     }
 
                   tlsEngine.decrypt(data).flatMap(go)

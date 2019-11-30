@@ -72,8 +72,16 @@ object TLSEngine {
   sealed trait DecryptResult[F[_]]
 
   object DecryptResult {
-    /** SSL engine is closed **/
-    case class Closed[F[_]]() extends DecryptResult[F]
+    /**
+      * SSL engine is closed.
+      *
+      * The close frame can come together with some remaining user data.
+      *
+      * @param data The remaining data from the socket.
+      */
+    case class Closed[F[_]](
+        data: Chunk[Byte]
+    ) extends DecryptResult[F]
 
     /** gives decrypted data from the network **/
     case class Decrypted[F[_]](data: Chunk[Byte]) extends DecryptResult[F]
@@ -170,7 +178,7 @@ object TLSEngine {
       }
 
     unwrapEngine.unwrap(data).flatMap { result =>
-      if (result.closed) Applicative[F].pure(DecryptResult.Closed())
+      if (result.closed) Applicative[F].pure(DecryptResult.Closed(result.out))
       else if (result.needWrap) {
         // During handshaking we need to acquire wrap lock
         // The wrap lock may be acquired by either of
@@ -202,7 +210,7 @@ object TLSEngine {
                 Some(releaseWrapLock.flatMap { _ =>
                   unwrap(Chunk.empty, wrapEngine, unwrapEngine, wrapSem, hasWrapLock)
                 })
-            if (result.closed) releaseWrapLock.as(DecryptResult.Closed())
+            if (result.closed) releaseWrapLock.as(DecryptResult.Closed(Chunk.empty))
             else Applicative[F].pure(DecryptResult.Handshake(result.send, finishHandshake))
           }
         }
