@@ -2,8 +2,6 @@ package fs2
 package io
 package tls
 
-import scala.util.control.NonFatal
-
 import javax.net.ssl.SSLEngine
 import javax.net.ssl.SSLEngineResult.{HandshakeStatus, Status}
 
@@ -55,12 +53,7 @@ private[tls] object Unwrap {
       sslEngineTaskRunner: SSLEngineTaskRunner[F]
   ): F[Result] =
     ioBuff
-      .perform {
-        case (inBuffer, outBuffer) =>
-          try {
-            Right(sslEngine.unwrap(inBuffer, outBuffer))
-          } catch { case NonFatal(err) => Left(err) }
-      }
+      .perform { (inBuffer, outBuffer) => sslEngine.unwrap(inBuffer, outBuffer) }
       .flatMap { result =>
         result.getStatus match {
           case Status.OK =>
@@ -177,14 +170,7 @@ private[tls] object Unwrap {
       sslEngineTaskRunner: SSLEngineTaskRunner[F]
   ): F[HandshakeResult] =
     ioBuff
-      .perform {
-        case (inBuffer, outBuffer) =>
-          try {
-            Right(sslEngine.wrap(inBuffer, outBuffer))
-          } catch {
-            case NonFatal(err) => Left(err)
-          }
-      }
+      .perform { (inBuffer, outBuffer) => sslEngine.wrap(inBuffer, outBuffer) }
       .flatMap { result =>
         result.getStatus match {
           case Status.OK =>

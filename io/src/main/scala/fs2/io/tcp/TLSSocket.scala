@@ -22,7 +22,6 @@ trait TLSSocket[F[_]] extends Socket[F] {
 }
 
 object TLSSocket {
-
   /**
     * Wraps raw tcp socket with supplied SSLEngine to form SSL Socket
     *

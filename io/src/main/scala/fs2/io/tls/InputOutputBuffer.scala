@@ -2,7 +2,7 @@ package fs2
 package io
 package tls
 
-import java.nio.ByteBuffer
+import java.nio.{Buffer, ByteBuffer}
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicReference}
 import javax.net.ssl.SSLEngineResult
 
@@ -28,7 +28,7 @@ private[tls] trait InputOutputBuffer[F[_]] {
   /**
     * Performs given operation. Buffer must not be awaiting input
     */
-  def perform(f: (ByteBuffer, ByteBuffer) => Either[Throwable, SSLEngineResult]): F[SSLEngineResult]
+  def perform(f: (ByteBuffer, ByteBuffer) => SSLEngineResult): F[SSLEngineResult]
 
   /**
     * Expands output buffer operation while copying all data eventually present in the buffer already
@@ -59,7 +59,7 @@ private[tls] object InputOutputBuffer {
               inBuff.set(buff)
               val bs = data.toBytes
               buff.put(bs.values, bs.offset, bs.size)
-              buff.flip()
+              (buff: Buffer).flip()
               outBuff.get().clear()
             }
           }
@@ -69,18 +69,16 @@ private[tls] object InputOutputBuffer {
       }
 
       def perform(
-          f: (ByteBuffer, ByteBuffer) => Either[Throwable, SSLEngineResult]
+          f: (ByteBuffer, ByteBuffer) => SSLEngineResult
       ): F[SSLEngineResult] = Sync[F].suspend {
         if (awaitInput.get)
           Sync[F].raiseError(new RuntimeException("Perform cannot be invoked when awaiting input"))
         else {
           awaitInput.set(false)
-          f(inBuff.get, outBuff.get) match {
-            case Left(err)     => Sync[F].raiseError(err)
-            case Right(result) => Applicative[F].pure(result)
-          }
+          Sync[F].delay(f(inBuff.get, outBuff.get))
         }
       }
+
 
       def output: F[Chunk[Byte]] = Sync[F].suspend {
         if (awaitInput.compareAndSet(false, true)) {
@@ -90,7 +88,7 @@ private[tls] object InputOutputBuffer {
           val out = outBuff.get()
           if (out.position() == 0) Applicative[F].pure(Chunk.empty)
           else {
-            out.flip()
+            (out: Buffer).flip()
             val cap = out.limit()
             val dest = Array.ofDim[Byte](cap)
             out.get(dest)
@@ -99,7 +97,7 @@ private[tls] object InputOutputBuffer {
           }
         } else {
           Sync[F].raiseError(
-            new RuntimeException("output bytes allowed only when not awaiting INput")
+            new RuntimeException("output bytes allowed only when not awaiting input")
           )
         }
       }
@@ -108,7 +106,7 @@ private[tls] object InputOutputBuffer {
         Sync[F].suspend {
           val copy = Array.ofDim[Byte](buffer.position())
           val next = ByteBuffer.allocate(resizeTo(buffer.capacity()))
-          buffer.flip()
+          (buffer: Buffer).flip()
           buffer.get(copy)
           Applicative[F].pure(next.put(copy))
         }
