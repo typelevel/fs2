@@ -121,9 +121,11 @@ object TLSSocket {
       def write(bytes: Chunk[Byte], timeout: Option[FiniteDuration]): F[Unit] = {
         def go(result: EncryptResult[F]): F[Unit] =
           result match {
-            case EncryptResult.Encrypted(data) => socket.write(data, timeout)
+            case EncryptResult.Encrypted(data) => 
+              Sync[F].delay(println("TLSSocket.write Encrypted")) >> socket.write(data, timeout)
 
             case EncryptResult.Handshake(data, next) =>
+              Sync[F].delay(println("TLSSocket.write Handshake")) >>
               socket.write(data, timeout) >> readHandshake(timeout) >> next.flatMap(go)
 
             case EncryptResult.Closed() =>

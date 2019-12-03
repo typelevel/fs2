@@ -141,41 +141,48 @@ object TLSEngine {
         Sync[F].delay { sslEngine.closeInbound() }
 
       def encrypt(data: Chunk[Byte]): F[EncryptResult[F]] =
-        wrapBuffer.input(data) >> doWrap
+        wrapBuffer.input(data) >> doWrap(false)
         
-      private def doWrap: F[EncryptResult[F]] = 
+      private def doWrap(handshaking: Boolean): F[EncryptResult[F]] = 
         wrapBuffer.perform((appBuffer, netBuffer) =>
           sslEngine.wrap(appBuffer, netBuffer)
-        ).flatMap { result =>
+        ).flatTap(result => log(s"doWrap result: $result")).flatMap { result =>
           result.getStatus match {
             case SSLEngineResult.Status.OK =>
               result.getHandshakeStatus match {
                 case SSLEngineResult.HandshakeStatus.NOT_HANDSHAKING =>
                   wrapBuffer.inputRemains.flatMap { remaining =>
-                    if (remaining <= 0) wrapBuffer.output.map(chunk => EncryptResult.Encrypted(chunk))
-                    else doWrap
+                    if (remaining <= 0) {
+                      if (handshaking) Applicative[F].pure(EncryptResult.Handshake(Chunk.empty, doWrap(handshaking)))
+                      else wrapBuffer.output.map(chunk => EncryptResult.Encrypted(chunk))
+                    } else doWrap(handshaking)
                   }
                 case SSLEngineResult.HandshakeStatus.FINISHED =>
-                  log("doWrap handshake finished") >>
-                  handshakeFinishedRef.get.flatten >>
-                  wrapBuffer.output.map { out =>
-                    EncryptResult.Handshake(out, encrypt(Chunk.empty))
+                  wrapBuffer.inputRemains.flatMap { remaining =>
+                    if (remaining <= 0)
+                      log("doWrap handshake finished") >>
+                      handshakeFinishedRef.get.flatten >>
+                      wrapBuffer.output.map { out =>
+                        EncryptResult.Handshake(out, encrypt(Chunk.empty))
+                      }
+                    else log("doWrap handshake finished but more in buffer") >> doWrap(handshaking)
                   }
                 case SSLEngineResult.HandshakeStatus.NEED_TASK =>
-                  sslEngineTaskRunner.runDelegatedTasks >> doWrap
+                  sslEngineTaskRunner.runDelegatedTasks >> doWrap(handshaking)
                 case SSLEngineResult.HandshakeStatus.NEED_UNWRAP =>
                   log("Wrapping and need to unwrap") >>
                   wrapBuffer.output.flatMap { out =>
                     Deferred[F, Unit].flatMap { gate =>
-                      handshakeFinishedRef.set(gate.complete(())).as(
-                        EncryptResult.Handshake(out, gate.get >> doWrap)
+                      handshakeFinishedRef.update(old => old >> gate.complete(())).as(
+                        EncryptResult.Handshake(out, gate.get >> log("resuming original wrap") >> wrapBuffer.input(Chunk.empty) >> doWrap(handshaking))
                       )
                     }
                   }
                 case SSLEngineResult.HandshakeStatus.NEED_WRAP => ???
               }
 
-            case SSLEngineResult.Status.BUFFER_OVERFLOW => ???
+            case SSLEngineResult.Status.BUFFER_OVERFLOW =>
+              wrapBuffer.expandOutput >> doWrap(handshaking)
             case SSLEngineResult.Status.BUFFER_UNDERFLOW => ???
             case SSLEngineResult.Status.CLOSED => ???
           }
@@ -185,23 +192,25 @@ object TLSEngine {
         unwrapBuffer.input(data) >> doUnwrap
 
       private def doUnwrap: F[DecryptResult[F]] =
-        log("doing an unwrap") >>
-        unwrapBuffer.perform(sslEngine.unwrap(_, _)).flatMap { result =>
+        unwrapBuffer.perform(sslEngine.unwrap(_, _)).
+        flatTap(result => log(s"doUnwrap result: $result")).flatMap { result =>
           result.getStatus match {
             case SSLEngineResult.Status.OK =>
               result.getHandshakeStatus match {
                 case SSLEngineResult.HandshakeStatus.NOT_HANDSHAKING => ???
                 case SSLEngineResult.HandshakeStatus.FINISHED =>
-                  unwrapBuffer.output.map { appData =>
-                    DecryptResult.Handshake(appData, Some(decrypt(Chunk.empty)))
+                  unwrapBuffer.inputRemains.flatMap { remaining =>
+                    if (remaining <= 0)
+                      log("doUnwrap handshake finished") >> unwrapBuffer.output.map { appData =>
+                        DecryptResult.Handshake(appData, Some(decrypt(Chunk.empty)))
+                      }
+                    else log("doUnwrap handshake finished but there's more to unwrap") >> doUnwrap
                   }
                 case SSLEngineResult.HandshakeStatus.NEED_TASK =>
                   sslEngineTaskRunner.runDelegatedTasks >> doUnwrap
                 case SSLEngineResult.HandshakeStatus.NEED_UNWRAP =>
-                  log("need to unwrap again from unwrap") >>
                   doUnwrap
                 case SSLEngineResult.HandshakeStatus.NEED_WRAP =>
-                  log("need to wrap from an unwrap") >>
                   encrypt(Chunk.empty).flatMap {
                     case EncryptResult.Handshake(data, _) =>
                       unwrapBuffer.inputRemains.flatMap { rem =>
@@ -213,12 +222,13 @@ object TLSEngine {
 
             case SSLEngineResult.Status.BUFFER_OVERFLOW => ???
             case SSLEngineResult.Status.BUFFER_UNDERFLOW =>
-              // This doesn't really belong here but it makes the handshake finish
-              encrypt(Chunk.empty).flatMap {
-                case Handshake(data, next) => 
-                  Applicative[F].pure(DecryptResult.Handshake(data, None))
-              }
-              // Applicative[F].pure(DecryptResult.Handshake(Chunk.empty, None))
+              if (result.getHandshakeStatus == SSLEngineResult.HandshakeStatus.NEED_WRAP) {
+                // This doesn't really belong here but it makes the handshake finish
+                wrapBuffer.input(Chunk.empty) >> doWrap(true).flatMap {
+                  case Handshake(data, _) => 
+                    Applicative[F].pure(DecryptResult.Handshake(data, None))
+                }
+              } else Applicative[F].pure(DecryptResult.Handshake(Chunk.empty, None))
             case SSLEngineResult.Status.CLOSED => ???
           }
         }
