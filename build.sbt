@@ -34,8 +34,6 @@ lazy val commonSettings = Seq(
         List("-Xlint", "-Ywarn-unused")
       case v if v.startsWith("2.12") =>
         List("-Ypartial-unification")
-      case v if v.startsWith("2.11") =>
-        List("-Xexperimental", "-Ypartial-unification")
       case other => sys.error(s"Unsupported scala version: $other")
     }),
   scalacOptions in (Compile, console) ~= {
