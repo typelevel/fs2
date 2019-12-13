@@ -1,18 +1,7 @@
 package fs2
 package benchmark
 
-import cats.effect.IO
-import org.openjdk.jmh.annotations.{
-  Benchmark,
-  BenchmarkMode,
-  Mode,
-  OutputTimeUnit,
-  Param,
-  Scope,
-  Setup,
-  State
-}
-import java.util.concurrent.TimeUnit
+import org.openjdk.jmh.annotations.{Benchmark, Param, Scope, Setup, State}
 
 @State(Scope.Thread)
 class ChunkBenchmark {
