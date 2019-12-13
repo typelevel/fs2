@@ -35,7 +35,7 @@ class ChunkBenchmark {
     chunkSeq = Seq.range(0, chunkCount).map(_ => Chunk.seq(Seq.fill(chunkSize)(Obj.create)))
     sizeHint = chunkSeq.foldLeft(0)(_ + _.size)
   }
-    
+
   @Benchmark
   def concat(): Unit =
     Chunk.concat(chunkSeq, sizeHint)

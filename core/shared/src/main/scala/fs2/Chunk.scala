@@ -1383,11 +1383,10 @@ object Chunk extends CollectorK[Chunk] {
   }
 
   /** Concatenates the specified sequence of chunks in to a single chunk, avoiding boxing. */
-  def concat[A](chunks: GSeq[Chunk[A]]): Chunk[A] = {
+  def concat[A](chunks: GSeq[Chunk[A]]): Chunk[A] =
     concat(chunks, chunks.foldLeft(0)(_ + _.size))
-  }
 
-  def concat[A](chunks: GSeq[Chunk[A]], totalSize: Int): Chunk[A] = 
+  def concat[A](chunks: GSeq[Chunk[A]], totalSize: Int): Chunk[A] =
     if (chunks.isEmpty) {
       Chunk.empty
     } else if (chunks.forall(c => c.knownElementType[Boolean] || c.forall(_.isInstanceOf[Boolean]))) {
@@ -1418,7 +1417,7 @@ object Chunk extends CollectorK[Chunk] {
 
   /** Concatenates the specified sequence of boolean chunks in to a single chunk. */
   def concatBooleans(chunks: GSeq[Chunk[Boolean]]): Chunk[Boolean] =
-    concatBooleans(chunks, chunks.foldLeft(0)(_ + _.size))    
+    concatBooleans(chunks, chunks.foldLeft(0)(_ + _.size))
 
   def concatBooleans(chunks: GSeq[Chunk[Boolean]], totalSize: Int): Chunk[Boolean] =
     if (chunks.isEmpty) Chunk.empty
