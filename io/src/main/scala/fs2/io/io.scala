@@ -206,7 +206,7 @@ package object io {
     stdin(bufSize, blocker).through(text.utf8Decode)
 
   /**
-    * Pipe that converts a stream of bytes to a stream that will emits a single `java.io.InputStream`,
+    * Pipe that converts a stream of bytes to a stream that will emit a single `java.io.InputStream`,
     * that is closed whenever the resulting stream terminates.
     *
     * If the `close` of resulting input stream is invoked manually, then this will await until the
