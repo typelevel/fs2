@@ -1360,7 +1360,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Nothing, O, Unit]
           def producer =
             this.chunks.map(_.asRight.some).through(q.enqueue).onFinalize(q.enqueue1(None))
 
-          def emitNonEmpty(c: Chunk.Queue[O]): Stream[F2, Chunk[O]] = 
+          def emitNonEmpty(c: Chunk.Queue[O]): Stream[F2, Chunk[O]] =
             if (c.size > 0) Stream.emit(c.toChunk)
             else Stream.empty
 
