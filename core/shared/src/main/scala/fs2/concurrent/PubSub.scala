@@ -11,6 +11,7 @@ import scala.annotation.tailrec
 import scala.collection.immutable.{Queue => ScalaQueue}
 
 private[fs2] trait Publish[F[_], A] {
+
   /**
     * Publishes one element.
     * This completes after element was successfully published.
@@ -27,6 +28,7 @@ private[fs2] trait Publish[F[_], A] {
 }
 
 private[fs2] trait Subscribe[F[_], A, Selector] {
+
   /**
     * Gets elements satisfying the `selector`, yielding when such an element is available.
     *
@@ -404,6 +406,7 @@ private[fs2] object PubSub {
   }
 
   object Strategy {
+
     /**
       * Creates bounded strategy, that won't accept elements if size produced by `f` is >= `maxSize`.
       *
@@ -544,6 +547,7 @@ private[fs2] object PubSub {
       }
 
     object Discrete {
+
       /**
         * State of the discrete strategy.
         *
@@ -624,6 +628,7 @@ private[fs2] object PubSub {
     }
 
     object Inspectable {
+
       /**
         * State representation for inspectable strategy that
         * keeps track of strategy state and keeps track of all subscribers that have seen the last known state.

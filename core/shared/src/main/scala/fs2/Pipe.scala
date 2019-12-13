@@ -3,6 +3,7 @@ package fs2
 import cats.effect.Concurrent
 
 object Pipe {
+
   /**
     * Joins a stream of pipes in to a single pipe.
     * Input is fed to the first pipe until it terminates, at which point input is

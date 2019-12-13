@@ -4,6 +4,7 @@ import java.security.MessageDigest
 
 /** Provides various cryptographic hashes as pipes. */
 object hash {
+
   /** Computes an MD2 digest. */
   def md2[F[_]]: Pipe[F, Byte, Byte] = digest(MessageDigest.getInstance("MD2"))
 

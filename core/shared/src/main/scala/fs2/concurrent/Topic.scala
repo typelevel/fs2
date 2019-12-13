@@ -82,6 +82,7 @@ abstract class Topic[F[_], A] { self =>
 }
 
 object Topic {
+
   /**
     * Constructs a `Topic` for a provided `Concurrent` datatype. The
     * `initial` value is immediately published.

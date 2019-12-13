@@ -321,8 +321,8 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Nothing, O, Unit]
             go(Chunk.vector(buf) :: buffer, newLast, tl)
           } else {
             val outBuffer =
-              buffer.reverse.foldLeft(Pull.pure(()).covaryOutput[O])(
-                (acc, c) => acc >> Pull.output(c)
+              buffer.reverse.foldLeft(Pull.pure(()).covaryOutput[O])((acc, c) =>
+                acc >> Pull.output(c)
               )
             val outAll = out.reverse.foldLeft(outBuffer)((acc, c) => acc >> Pull.output(c))
             outAll >> go(List(Chunk.vector(buf)), newLast, tl)
@@ -537,10 +537,9 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Nothing, O, Unit]
               }
             }
 
-          Stream.bracket(F.start(runR))(
-            _ =>
-              interrupt.complete(()).attempt >> // always interrupt `that`
-                doneR.get.flatMap(F.fromEither) // always await `that` result
+          Stream.bracket(F.start(runR))(_ =>
+            interrupt.complete(()).attempt >> // always interrupt `that`
+              doneR.get.flatMap(F.fromEither) // always await `that` result
           ) >> this.interruptWhen(interrupt.get.attempt)
         }
       }
@@ -1532,10 +1531,9 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Nothing, O, Unit]
                 interruptL.complete(())
             }
 
-          Stream.bracket(F2.start(runR))(
-            _ =>
-              interruptR.complete(()) >>
-                doneR.get.flatMap { F2.fromEither }
+          Stream.bracket(F2.start(runR))(_ =>
+            interruptR.complete(()) >>
+              doneR.get.flatMap { F2.fromEither }
           ) >> this.interruptWhen(interruptL.get.attempt)
         }
       }
@@ -2137,13 +2135,12 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Nothing, O, Unit]
                     }
 
                   Stream
-                    .bracket(F2.start(runOuter))(
-                      _ =>
-                        stop(None) >> running.discrete
-                          .dropWhile(_ > 0)
-                          .take(1)
-                          .compile
-                          .drain >> signalResult
+                    .bracket(F2.start(runOuter))(_ =>
+                      stop(None) >> running.discrete
+                        .dropWhile(_ > 0)
+                        .take(1)
+                        .compile
+                        .drain >> signalResult
                     ) >>
                     outputQ.dequeue
                       .flatMap(Stream.chunk(_).covary[F2])
@@ -2590,8 +2587,8 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Nothing, O, Unit]
   def takeRight(n: Int): Stream[F, O] =
     this.pull
       .takeRight(n)
-      .flatMap(
-        cq => cq.chunks.foldLeft(Pull.done.covaryAll[F, O, Unit])((acc, c) => acc >> Pull.output(c))
+      .flatMap(cq =>
+        cq.chunks.foldLeft(Pull.done.covaryAll[F, O, Unit])((acc, c) => acc >> Pull.output(c))
       )
       .stream
 
@@ -3594,11 +3591,10 @@ object Stream extends StreamLowPriority {
   /** Like [[unfoldLoop]], but takes an effectful function. */
   def unfoldLoopEval[F[_], S, O](s: S)(f: S => F[(O, Option[S])]): Stream[F, O] =
     Pull
-      .loop[F, O, S](
-        s =>
-          Pull.eval(f(s)).flatMap {
-            case (o, sOpt) => Pull.output1(o) >> Pull.pure(sOpt)
-          }
+      .loop[F, O, S](s =>
+        Pull.eval(f(s)).flatMap {
+          case (o, sOpt) => Pull.output1(o) >> Pull.pure(sOpt)
+        }
       )(s)
       .void
       .stream
@@ -4199,8 +4195,8 @@ object Stream extends StreamLowPriority {
     private def compile[F[_], O, B](stream: FreeC[F, O, Unit], init: B)(
         f: (B, Chunk[O]) => B
     )(implicit F: Sync[F]): F[B] =
-      F.bracketCase(CompileScope.newRoot[F])(
-        scope => Algebra.compile[F, O, B](stream, scope, false, init)(f)
+      F.bracketCase(CompileScope.newRoot[F])(scope =>
+        Algebra.compile[F, O, B](stream, scope, false, init)(f)
       )((scope, ec) => scope.close(ec).rethrow)
 
     implicit def syncInstance[F[_]](implicit F: Sync[F]): Compiler[F, F] = new Compiler[F, F] {
@@ -4585,6 +4581,7 @@ object Stream extends StreamLowPriority {
 
   /** Provides operations on effectful pipes for syntactic convenience. */
   implicit class PipeOps[F[_], I, O](private val self: Pipe[F, I, O]) extends AnyVal {
+
     /** Transforms the left input of the given `Pipe2` using a `Pipe`. */
     def attachL[I1, O2](p: Pipe2[F, O, I1, O2]): Pipe2[F, I, I1, O2] =
       (l, r) => p(self(l), r)
@@ -4596,6 +4593,7 @@ object Stream extends StreamLowPriority {
 
   /** Provides operations on pure pipes for syntactic convenience. */
   implicit final class PurePipeOps[I, O](private val self: Pipe[Pure, I, O]) extends AnyVal {
+
     /** Lifts this pipe to the specified effect type. */
     def covary[F[_]]: Pipe[F, I, O] = self.asInstanceOf[Pipe[F, I, O]]
   }
@@ -4603,6 +4601,7 @@ object Stream extends StreamLowPriority {
   /** Provides operations on pure pipes for syntactic convenience. */
   implicit final class PurePipe2Ops[I, I2, O](private val self: Pipe2[Pure, I, I2, O])
       extends AnyVal {
+
     /** Lifts this pipe to the specified effect type. */
     def covary[F[_]]: Pipe2[F, I, I2, O] = self.asInstanceOf[Pipe2[F, I, I2, O]]
   }

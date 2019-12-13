@@ -479,6 +479,7 @@ abstract class Chunk[+O] extends Serializable { self =>
 }
 
 object Chunk extends CollectorK[Chunk] {
+
   /** Optional mix-in that provides the class tag of the element type in a chunk. */
   trait KnownElementType[A] { self: Chunk[A] =>
     def elementClassTag: ClassTag[A]

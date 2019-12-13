@@ -25,10 +25,9 @@ class SignalSpec extends Fs2Spec {
             val publisher = s.discrete.evalMap(r.set)
             val consumer = vs.traverse { v =>
               s.set(v) >> waitFor(s.get.map(_ == v)) >> waitFor(
-                r.get.flatMap(
-                  rval =>
-                    if (rval == 0) IO.pure(true)
-                    else waitFor(r.get.map(_ == v)).as(true)
+                r.get.flatMap(rval =>
+                  if (rval == 0) IO.pure(true)
+                  else waitFor(r.get.map(_ == v)).as(true)
                 )
               )
             }

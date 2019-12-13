@@ -16,6 +16,7 @@ import cats.arrow.FunctionK
   * a chunk at a time. Convenience methods are provided for working with pulls.
   */
 final case class WriteCursor[F[_]](file: FileHandle[F], offset: Long) {
+
   /** Returns a new cursor with the offset adjusted to the specified position. */
   def seek(position: Long): WriteCursor[F] = WriteCursor(file, position)
 
@@ -51,6 +52,7 @@ final case class WriteCursor[F[_]](file: FileHandle[F], offset: Long) {
 }
 
 object WriteCursor {
+
   /**
     * Returns a `WriteCursor` for the specified path.
     *

@@ -12,6 +12,7 @@ import java.net.SocketAddress
   * To construct a `Socket`, use the methods in the [[fs2.io.tcp]] package object.
   */
 trait Socket[F[_]] {
+
   /**
     * Reads up to `maxBytes` from the peer.
     *

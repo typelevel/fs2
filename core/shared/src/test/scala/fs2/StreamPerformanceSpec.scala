@@ -55,8 +55,8 @@ class StreamPerformanceSpec extends Fs2Spec {
         N.toString in {
           (1 until N)
             .map(Stream.emit)
-            .foldLeft(Stream.emit(0).covary[IO])(
-              (acc, a) => acc.flatMap(_ => Stream.eval(IO.unit).flatMap(_ => a))
+            .foldLeft(Stream.emit(0).covary[IO])((acc, a) =>
+              acc.flatMap(_ => Stream.eval(IO.unit).flatMap(_ => a))
             )
             .compile
             .toVector
@@ -83,8 +83,8 @@ class StreamPerformanceSpec extends Fs2Spec {
           (1 until N)
             .map(Stream.emit)
             .reverse
-            .foldLeft(Stream.emit(0).covary[IO])(
-              (acc, a) => a.flatMap(_ => Stream.eval(IO.unit).flatMap(_ => acc))
+            .foldLeft(Stream.emit(0).covary[IO])((acc, a) =>
+              a.flatMap(_ => Stream.eval(IO.unit).flatMap(_ => acc))
             )
             .compile
             .toVector
@@ -98,8 +98,8 @@ class StreamPerformanceSpec extends Fs2Spec {
         N.toString in {
           (1 until N)
             .map(Stream.emit)
-            .foldLeft(Stream.emit(0) ++ Stream.emit(1) ++ Stream.emit(2))(
-              (acc, a) => acc.flatMap(_ => a)
+            .foldLeft(Stream.emit(0) ++ Stream.emit(1) ++ Stream.emit(2))((acc, a) =>
+              acc.flatMap(_ => a)
             )
             .toVector shouldBe Vector(N - 1, N - 1, N - 1)
         }
@@ -112,8 +112,8 @@ class StreamPerformanceSpec extends Fs2Spec {
           (1 until N)
             .map(Stream.emit)
             .reverse
-            .foldLeft(Stream.emit(0) ++ Stream.emit(1) ++ Stream.emit(2))(
-              (acc, a) => a.flatMap(_ => acc)
+            .foldLeft(Stream.emit(0) ++ Stream.emit(1) ++ Stream.emit(2))((acc, a) =>
+              a.flatMap(_ => acc)
             )
             .toVector shouldBe Vector(0, 1, 2)
         }

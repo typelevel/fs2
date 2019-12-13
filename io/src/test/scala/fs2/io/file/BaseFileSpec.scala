@@ -24,8 +24,8 @@ class BaseFileSpec extends Fs2Spec {
     Stream
       .eval(IO(Files.createTempDirectory(topDir, "BaseFileSpec")))
       .repeatN(5)
-      .flatMap(
-        dir => Stream.eval(IO(Files.createTempFile(dir, "BaseFileSpecSub", ".tmp")).replicateA(5))
+      .flatMap(dir =>
+        Stream.eval(IO(Files.createTempFile(dir, "BaseFileSpecSub", ".tmp")).replicateA(5))
       )
       .drain ++ Stream.emit(topDir)
   }

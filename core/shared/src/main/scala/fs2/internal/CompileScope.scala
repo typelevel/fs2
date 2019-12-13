@@ -393,6 +393,7 @@ private[fs2] final class CompileScope[F[_]] private (
 }
 
 private[fs2] object CompileScope {
+
   /** Creates a new root scope. */
   def newRoot[F[_]: Sync]: F[CompileScope[F]] =
     Sync[F].delay(new CompileScope[F](new Token(), None, None))
@@ -485,11 +486,10 @@ private[fs2] object CompileScope {
 
             F.map(
               concurrent.start(
-                F.flatMap(fiber.join)(
-                  interrupt =>
-                    F.flatMap(context.ref.update(_.orElse(Some(interrupt)))) { _ =>
-                      F.map(F.attempt(context.deferred.complete(interrupt)))(_ => ())
-                    }
+                F.flatMap(fiber.join)(interrupt =>
+                  F.flatMap(context.ref.update(_.orElse(Some(interrupt)))) { _ =>
+                    F.map(F.attempt(context.deferred.complete(interrupt)))(_ => ())
+                  }
                 )
               )
             ) { _ =>
@@ -501,6 +501,7 @@ private[fs2] object CompileScope {
   }
 
   private object InterruptContext {
+
     /**
       * Creates a new interrupt context for a new scope if the scope is interruptible.
       *

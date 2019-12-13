@@ -19,8 +19,7 @@ class HashSpec extends Fs2Spec {
       else
         str.getBytes
           .grouped(n)
-          .foldLeft(Stream.empty.covaryOutput[Byte])(
-            (acc, c) => acc ++ Stream.chunk(Chunk.bytes(c))
+          .foldLeft(Stream.empty.covaryOutput[Byte])((acc, c) => acc ++ Stream.chunk(Chunk.bytes(c))
           )
 
     s.through(h).toList shouldBe digest(algo, str)

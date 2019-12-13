@@ -6,6 +6,7 @@ import fs2._
 
 /** Provides mechanisms for broadcast distribution of elements to multiple streams. */
 object Broadcast {
+
   /**
     * Allows elements of a stream to be broadcast to multiple workers.
     *

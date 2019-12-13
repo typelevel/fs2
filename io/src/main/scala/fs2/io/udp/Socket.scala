@@ -12,6 +12,7 @@ import java.net.{InetAddress, InetSocketAddress, NetworkInterface}
   * To construct a `Socket`, use the methods in the [[fs2.io.udp]] package object.
   */
 trait Socket[F[_]] {
+
   /**
     * Reads a single packet from this udp socket.
     *
@@ -76,12 +77,14 @@ trait Socket[F[_]] {
 
   /** Result of joining a multicast group on a UDP socket. */
   trait GroupMembership {
+
     /** Leaves the multicast group, resulting in no further packets from this group being read. */
     def drop: F[Unit]
   }
 
   /** Result of joining an any-source multicast group on a UDP socket. */
   trait AnySourceGroupMembership extends GroupMembership {
+
     /** Blocks packets from the specified source address. */
     def block(source: InetAddress): F[Unit]
 

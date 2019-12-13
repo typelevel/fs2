@@ -60,8 +60,8 @@ class StreamSpec extends Fs2Spec {
       final case object Released extends BracketEvent
 
       def recordBracketEvents[F[_]](events: Ref[F, Vector[BracketEvent]]): Stream[F, Unit] =
-        Stream.bracket(events.update(evts => evts :+ Acquired))(
-          _ => events.update(evts => evts :+ Released)
+        Stream.bracket(events.update(evts => evts :+ Acquired))(_ =>
+          events.update(evts => evts :+ Released)
         )
 
       "single bracket" - {
@@ -69,11 +69,10 @@ class StreamSpec extends Fs2Spec {
           for {
             events <- Ref.of[F, Vector[BracketEvent]](Vector.empty)
             _ <- recordBracketEvents(events)
-              .evalMap(
-                _ =>
-                  events.get.asserting { events =>
-                    events shouldBe Vector(Acquired)
-                  }
+              .evalMap(_ =>
+                events.get.asserting { events =>
+                  events shouldBe Vector(Acquired)
+                }
               )
               .flatMap(_ => use)
               .compile
@@ -119,11 +118,10 @@ class StreamSpec extends Fs2Spec {
                 .bracket(counter.increment)(_ => counter.decrement >> IO.raiseError(new Err))
                 .drain
             else Stream.raiseError[IO](new Err)
-          val nested = s0.foldRight(innermost)(
-            (i, inner) =>
-              Stream
-                .bracket(counter.increment)(_ => counter.decrement)
-                .flatMap(_ => Stream(i) ++ inner)
+          val nested = s0.foldRight(innermost)((i, inner) =>
+            Stream
+              .bracket(counter.increment)(_ => counter.decrement)
+              .flatMap(_ => Stream(i) ++ inner)
           )
           nested.compile.drain.assertThrows[Err].flatMap(_ => counter.get).asserting(_ shouldBe 0L)
         }
@@ -781,11 +779,10 @@ class StreamSpec extends Fs2Spec {
                 Deferred[IO, Unit].flatMap { halt =>
                   def runner: Stream[IO, Unit] =
                     Stream
-                      .bracket(runnerRun.set(true))(
-                        _ =>
-                          IO.sleep(100.millis) >> // assure this inner finalizer always take longer run than `outer`
-                            finRef.update(_ :+ "Inner") >> // signal finalizer invoked
-                            IO.raiseError[Unit](new Err) // signal a failure
+                      .bracket(runnerRun.set(true))(_ =>
+                        IO.sleep(100.millis) >> // assure this inner finalizer always take longer run than `outer`
+                          finRef.update(_ :+ "Inner") >> // signal finalizer invoked
+                          IO.raiseError[Unit](new Err) // signal a failure
                       ) >> // flag the concurrently had chance to start, as if the `s` will be empty `runner` may not be evaluated at all.
                       Stream.eval_(halt.complete(())) // immediately interrupt the outer stream
 
@@ -988,8 +985,8 @@ class StreamSpec extends Fs2Spec {
                       IO.raiseError(new Throwable("Couldn't acquire permit"))
                     )
 
-                  ensureAcquired.bracket(
-                    _ => sig.update(_ + 1).bracket(_ => IO.sleep(10.millis))(_ => sig.update(_ - 1))
+                  ensureAcquired.bracket(_ =>
+                    sig.update(_ + 1).bracket(_ => IO.sleep(10.millis))(_ => sig.update(_ - 1))
                   )(_ => sem.release) *>
                     IO.pure(true)
                 }
@@ -1068,8 +1065,8 @@ class StreamSpec extends Fs2Spec {
                       IO.raiseError(new Throwable("Couldn't acquire permit"))
                     )
 
-                  ensureAcquired.bracket(
-                    _ => sig.update(_ + 1).bracket(_ => IO.sleep(10.millis))(_ => sig.update(_ - 1))
+                  ensureAcquired.bracket(_ =>
+                    sig.update(_ + 1).bracket(_ => IO.sleep(10.millis))(_ => sig.update(_ - 1))
                   )(_ => sem.release) *>
                     IO.pure(false)
                 }
@@ -1206,8 +1203,8 @@ class StreamSpec extends Fs2Spec {
     "fold1" in forAll { (s: Stream[Pure, Int]) =>
       val v = s.toVector
       val f = (a: Int, b: Int) => a + b
-      s.fold1(f).toVector shouldBe v.headOption.fold(Vector.empty[Int])(
-        h => Vector(v.drop(1).foldLeft(h)(f))
+      s.fold1(f).toVector shouldBe v.headOption.fold(Vector.empty[Int])(h =>
+        Vector(v.drop(1).foldLeft(h)(f))
       )
     }
 
@@ -1879,8 +1876,8 @@ class StreamSpec extends Fs2Spec {
           .through(p)
           .compile
           .toList
-          .asserting(
-            result => result shouldBe (result.headOption.toList ++ result.tail.filter(_ != 0))
+          .asserting(result =>
+            result shouldBe (result.headOption.toList ++ result.tail.filter(_ != 0))
           )
       }
 
@@ -2111,9 +2108,7 @@ class StreamSpec extends Fs2Spec {
             Ref.of[IO, (Boolean, Boolean)]((false, false)).flatMap { sideRunRef =>
               Deferred[IO, Unit].flatMap { halt =>
                 def bracketed =
-                  Stream.bracket(IO.unit)(
-                    _ => finalizerRef.update(_ :+ "Outer")
-                  )
+                  Stream.bracket(IO.unit)(_ => finalizerRef.update(_ :+ "Outer"))
 
                 def register(side: String): IO[Unit] =
                   sideRunRef.update {
@@ -2413,8 +2408,8 @@ class StreamSpec extends Fs2Spec {
 
       "resources acquired in outer stream are released after inner streams complete" in {
         val bracketed =
-          Stream.bracket(IO(new java.util.concurrent.atomic.AtomicBoolean(true)))(
-            b => IO(b.set(false))
+          Stream.bracket(IO(new java.util.concurrent.atomic.AtomicBoolean(true)))(b =>
+            IO(b.set(false))
           )
         // Starts an inner stream which fails if the resource b is finalized
         val s: Stream[IO, Stream[IO, Unit]] = bracketed.map { b =>
@@ -2437,9 +2432,7 @@ class StreamSpec extends Fs2Spec {
               Ref.of[IO, List[Int]](Nil).flatMap { runEvidenceRef =>
                 Deferred[IO, Unit].flatMap { halt =>
                   def bracketed =
-                    Stream.bracket(IO.unit)(
-                      _ => finalizerRef.update(_ :+ "Outer")
-                    )
+                    Stream.bracket(IO.unit)(_ => finalizerRef.update(_ :+ "Outer"))
 
                   def registerRun(idx: Int): IO[Unit] =
                     runEvidenceRef.update(_ :+ idx)
@@ -3092,8 +3085,8 @@ class StreamSpec extends Fs2Spec {
     "scan1" in forAll { (s: Stream[Pure, Int]) =>
       val v = s.toVector
       val f = (a: Int, b: Int) => a + b
-      s.scan1(f).toVector shouldBe v.headOption.fold(Vector.empty[Int])(
-        h => v.drop(1).scanLeft(h)(f)
+      s.scan1(f).toVector shouldBe v.headOption.fold(Vector.empty[Int])(h =>
+        v.drop(1).scanLeft(h)(f)
       )
     }
 
@@ -3255,8 +3248,8 @@ class StreamSpec extends Fs2Spec {
           .flatMap { semaphore =>
             Stream(0)
               .append(Stream.raiseError[IO](new Err).delayBy(10.millis))
-              .switchMap(
-                _ => Stream.repeatEval(IO(1) *> IO.sleep(10.millis)).onFinalize(semaphore.release)
+              .switchMap(_ =>
+                Stream.repeatEval(IO(1) *> IO.sleep(10.millis)).onFinalize(semaphore.release)
               )
               .onFinalize(semaphore.acquire)
           }
@@ -3274,8 +3267,7 @@ class StreamSpec extends Fs2Spec {
               Stream.eval(Ref[IO].of(false)).flatMap { innerReleased =>
                 s.delayBy[IO](25.millis)
                   .onFinalize(innerReleased.get.flatMap(inner => verdict.complete(inner)))
-                  .switchMap(
-                    _ => Stream.raiseError[IO](new Err).onFinalize(innerReleased.set(true))
+                  .switchMap(_ => Stream.raiseError[IO](new Err).onFinalize(innerReleased.set(true))
                   )
                   .attempt
                   .drain ++
@@ -3511,12 +3503,11 @@ class StreamSpec extends Fs2Spec {
 
     "unfoldChunkEval" in {
       Stream
-        .unfoldChunkEval(true)(
-          s =>
-            SyncIO.pure(
-              if (s) Some((Chunk.booleans(Array[Boolean](s)), false))
-              else None
-            )
+        .unfoldChunkEval(true)(s =>
+          SyncIO.pure(
+            if (s) Some((Chunk.booleans(Array[Boolean](s)), false))
+            else None
+          )
         )
         .compile
         .toList

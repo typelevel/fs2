@@ -10,6 +10,7 @@ import fs2.internal.Token
 
 /** Pure holder of a single value of type `A` that can be read in the effect `F`. */
 trait Signal[F[_], A] {
+
   /**
     * Returns a stream of the updates to this signal.
     *
@@ -90,6 +91,7 @@ object Signal extends SignalLowPriorityImplicits {
     }
 
   implicit class SignalOps[F[_], A](val self: Signal[F, A]) extends AnyVal {
+
     /**
       * Converts this signal to signal of `B` by applying `f`.
       */
@@ -104,6 +106,7 @@ object Signal extends SignalLowPriorityImplicits {
 }
 
 private[concurrent] trait SignalLowPriorityImplicits {
+
   /**
     * Note that this is not subsumed by [[Signal.applicativeInstance]] because
     * [[Signal.applicativeInstance]] requires a `Concurrent[F]`
@@ -128,6 +131,7 @@ private[concurrent] trait SignalLowPriorityImplicits {
 abstract class SignallingRef[F[_], A] extends Ref[F, A] with Signal[F, A]
 
 object SignallingRef {
+
   /**
     * Builds a `SignallingRef` for a `Concurrent` datatype, initialized
     * to a supplied value.

@@ -35,10 +35,9 @@ class StreamLawsSpec extends Fs2Spec with StreamArbitrary {
   implicit val ec: TestContext = TestContext()
 
   implicit def eqStream[O: Eq]: Eq[Stream[IO, O]] =
-    Eq.instance(
-      (x, y) =>
-        Eq[IO[Vector[Either[Throwable, O]]]]
-          .eqv(x.attempt.compile.toVector, y.attempt.compile.toVector)
+    Eq.instance((x, y) =>
+      Eq[IO[Vector[Either[Throwable, O]]]]
+        .eqv(x.attempt.compile.toVector, y.attempt.compile.toVector)
     )
 
   checkAll(
