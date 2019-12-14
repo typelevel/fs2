@@ -1347,7 +1347,7 @@ object Chunk extends CollectorK[Chunk] {
   def chars(values: Array[Char]): Chunk[Char] =
     Chars(values, 0, values.length)
 
-  /** Creates a chunk backed by a subsequence of an array of doubles. */
+  /** Creates a chunk backed by a subsequence of an array of chars. */
   def chars(values: Array[Char], offset: Int, length: Int): Chunk[Char] =
     Chars(values, offset, length)
 
