@@ -1343,7 +1343,7 @@ object Chunk extends CollectorK[Chunk] {
       Doubles(values, 0, values.length)
   }
 
-  /** Creates a chunk backed by an array of doubles. */
+  /** Creates a chunk backed by an array of chars. */
   def chars(values: Array[Char]): Chunk[Char] =
     Chars(values, 0, values.length)
 
@@ -1387,7 +1387,7 @@ object Chunk extends CollectorK[Chunk] {
   }
   object Chars {
     def apply(values: Array[Char]): Chars =
-    Chars(values, 0, values.length)
+      Chars(values, 0, values.length)
   }
 
   /** Creates a chunk backed by a byte vector. */
