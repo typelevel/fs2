@@ -1343,6 +1343,53 @@ object Chunk extends CollectorK[Chunk] {
       Doubles(values, 0, values.length)
   }
 
+  /** Creates a chunk backed by an array of doubles. */
+  def chars(values: Array[Char]): Chunk[Char] =
+    Chars(values, 0, values.length)
+
+  /** Creates a chunk backed by a subsequence of an array of doubles. */
+  def chars(values: Array[Char], offset: Int, length: Int): Chunk[Char] =
+    Chars(values, offset, length)
+
+  final case class Chars(values: Array[Char], offset: Int, length: Int)
+      extends Chunk[Char]
+      with KnownElementType[Char] {
+    checkBounds(values, offset, length)
+    def elementClassTag = ClassTag.Char
+    def size = length
+    def apply(i: Int) = values(offset + i)
+    def at(i: Int) = values(offset + i)
+
+    protected[fs2] override def toArrayUnsafe[O2 >: Char: ClassTag]: Array[O2] =
+      if (offset == 0 && length == values.length) values.asInstanceOf[Array[O2]]
+      else values.slice(offset, length).asInstanceOf[Array[O2]]
+
+    def copyToArray[O2 >: Char](xs: Array[O2], start: Int): Unit =
+      if (xs.isInstanceOf[Array[Char]])
+        System.arraycopy(values, offset, xs, start, length)
+      else
+        values.iterator.slice(offset, offset + length).copyToArray(xs, start)
+
+    override def drop(n: Int): Chunk[Char] =
+      if (n <= 0) this
+      else if (n >= size) Chunk.empty
+      else Chars(values, offset + n, length - n)
+
+    override def take(n: Int): Chunk[Char] =
+      if (n <= 0) Chunk.empty
+      else if (n >= size) this
+      else Chars(values, offset, n)
+
+    protected def splitAtChunk_(n: Int): (Chunk[Char], Chunk[Char]) =
+      Chars(values, offset, n) -> Chars(values, offset + n, length - n)
+    override def toArray[O2 >: Char: ClassTag]: Array[O2] =
+      values.slice(offset, offset + length).asInstanceOf[Array[O2]]
+  }
+  object Chars {
+    def apply(values: Array[Char]): Chars =
+    Chars(values, 0, values.length)
+  }
+
   /** Creates a chunk backed by a byte vector. */
   def byteVector(bv: ByteVector): Chunk[Byte] =
     ByteVectorChunk(bv)
@@ -1403,6 +1450,8 @@ object Chunk extends CollectorK[Chunk] {
       concatInts(chunks.asInstanceOf[GSeq[Chunk[Int]]], totalSize).asInstanceOf[Chunk[A]]
     } else if (chunks.forall(c => c.knownElementType[Long] || c.forall(_.isInstanceOf[Long]))) {
       concatLongs(chunks.asInstanceOf[GSeq[Chunk[Long]]], totalSize).asInstanceOf[Chunk[A]]
+    } else if (chunks.forall(c => c.knownElementType[Char] || c.forall(_.isInstanceOf[Char]))) {
+      concatChars(chunks.asInstanceOf[GSeq[Chunk[Char]]], totalSize).asInstanceOf[Chunk[A]]
     } else {
       val arr = new Array[Any](totalSize)
       var offset = 0
@@ -1539,6 +1588,24 @@ object Chunk extends CollectorK[Chunk] {
         }
       }
       Chunk.longs(arr)
+    }
+
+  /** Concatenates the specified sequence of char chunks in to a single chunk. */
+  def concatChars(chunks: GSeq[Chunk[Char]]): Chunk[Char] =
+    concatChars(chunks, chunks.foldLeft(0)(_ + _.size))
+
+  def concatChars(chunks: GSeq[Chunk[Char]], totalSize: Int): Chunk[Char] =
+    if (chunks.isEmpty) Chunk.empty
+    else {
+      val arr = new Array[Char](totalSize)
+      var offset = 0
+      chunks.foreach { c =>
+        if (!c.isEmpty) {
+          c.copyToArray(arr, offset)
+          offset += c.size
+        }
+      }
+      Chunk.chars(arr)
     }
 
   /**

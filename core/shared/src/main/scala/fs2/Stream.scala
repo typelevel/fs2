@@ -2,7 +2,7 @@ package fs2
 
 import cats.{Eval => _, _}
 import cats.arrow.FunctionK
-import cats.data.{Chain, NonEmptyList}
+import cats.data.Chain
 import cats.effect._
 import cats.effect.concurrent._
 import cats.effect.implicits._
