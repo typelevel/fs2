@@ -2,7 +2,6 @@ package fs2
 
 import cats.{Eval => _, _}
 import cats.arrow.FunctionK
-import cats.data.{Chain, NonEmptyList}
 import cats.effect._
 import cats.effect.concurrent._
 import cats.effect.implicits._
@@ -1361,8 +1360,8 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Nothing, O, Unit]
           def producer =
             this.chunks.map(_.asRight.some).through(q.enqueue).onFinalize(q.enqueue1(None))
 
-          def emitNonEmpty(c: Chain[Chunk[O]]): Stream[F2, Chunk[O]] =
-            if (c.nonEmpty && !c.forall(_.isEmpty)) Stream.emit(Chunk.concat(c.toList))
+          def emitNonEmpty(c: Chunk.Queue[O]): Stream[F2, Chunk[O]] =
+            if (c.size > 0) Stream.emit(c.toChunk)
             else Stream.empty
 
           def resize(c: Chunk[O], s: Stream[F2, Chunk[O]]): (Stream[F2, Chunk[O]], Chunk[O]) =
@@ -1372,31 +1371,38 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Nothing, O, Unit]
               resize(rest, s ++ Stream.emit(unit))
             }
 
-          def go(acc: Chain[Chunk[O]], elems: Int, currentTimeout: Token): Stream[F2, Chunk[O]] =
+          def go(acc: Chunk.Queue[O], currentTimeout: Token): Stream[F2, Chunk[O]] =
             Stream.eval(q.dequeue1).flatMap {
               case None => emitNonEmpty(acc)
               case Some(e) =>
                 e match {
                   case Left(t) if t == currentTimeout =>
                     emitNonEmpty(acc) ++ startTimeout.flatMap { newTimeout =>
-                      go(Chain.empty, 0, newTimeout)
+                      go(Chunk.Queue.empty, newTimeout)
                     }
-                  case Left(t) if t != currentTimeout => go(acc, elems, currentTimeout)
-                  case Right(c) if elems + c.size >= n =>
-                    val totalChunk = Chunk.concat((acc :+ c).toList)
-                    val (toEmit, rest) = resize(totalChunk, Stream.empty)
-
-                    toEmit ++ startTimeout.flatMap { newTimeout =>
-                      go(Chain.one(rest), rest.size, newTimeout)
+                  case Left(t) if t != currentTimeout => go(acc, currentTimeout)
+                  case Right(c) if acc.size + c.size >= n =>
+                    val newAcc = acc :+ c
+                    // this is the same if in the resize function,
+                    // short circuited to avoid needlessly converting newAcc.toChunk
+                    if (newAcc.size < n) {
+                      Stream.empty ++ startTimeout.flatMap { newTimeout =>
+                        go(newAcc, newTimeout)
+                      }
+                    } else {
+                      val (toEmit, rest) = resize(newAcc.toChunk, Stream.empty)
+                      toEmit ++ startTimeout.flatMap { newTimeout =>
+                        go(Chunk.Queue(rest), newTimeout)
+                      }
                     }
-                  case Right(c) if elems + c.size < n =>
-                    go(acc :+ c, elems + c.size, currentTimeout)
+                  case Right(c) if acc.size + c.size < n =>
+                    go(acc :+ c, currentTimeout)
                 }
             }
 
           startTimeout
             .flatMap { t =>
-              go(Chain.empty, 0, t).concurrently(producer)
+              go(Chunk.Queue.empty, t).concurrently(producer)
             }
             .onFinalize {
               currentTimeout.modify {
