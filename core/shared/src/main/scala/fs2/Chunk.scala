@@ -1343,6 +1343,53 @@ object Chunk extends CollectorK[Chunk] {
       Doubles(values, 0, values.length)
   }
 
+  /** Creates a chunk backed by an array of chars. */
+  def chars(values: Array[Char]): Chunk[Char] =
+    Chars(values, 0, values.length)
+
+  /** Creates a chunk backed by a subsequence of an array of chars. */
+  def chars(values: Array[Char], offset: Int, length: Int): Chunk[Char] =
+    Chars(values, offset, length)
+
+  final case class Chars(values: Array[Char], offset: Int, length: Int)
+      extends Chunk[Char]
+      with KnownElementType[Char] {
+    checkBounds(values, offset, length)
+    def elementClassTag = ClassTag.Char
+    def size = length
+    def apply(i: Int) = values(offset + i)
+    def at(i: Int) = values(offset + i)
+
+    protected[fs2] override def toArrayUnsafe[O2 >: Char: ClassTag]: Array[O2] =
+      if (offset == 0 && length == values.length) values.asInstanceOf[Array[O2]]
+      else values.slice(offset, length).asInstanceOf[Array[O2]]
+
+    def copyToArray[O2 >: Char](xs: Array[O2], start: Int): Unit =
+      if (xs.isInstanceOf[Array[Char]])
+        System.arraycopy(values, offset, xs, start, length)
+      else
+        values.iterator.slice(offset, offset + length).copyToArray(xs, start)
+
+    override def drop(n: Int): Chunk[Char] =
+      if (n <= 0) this
+      else if (n >= size) Chunk.empty
+      else Chars(values, offset + n, length - n)
+
+    override def take(n: Int): Chunk[Char] =
+      if (n <= 0) Chunk.empty
+      else if (n >= size) this
+      else Chars(values, offset, n)
+
+    protected def splitAtChunk_(n: Int): (Chunk[Char], Chunk[Char]) =
+      Chars(values, offset, n) -> Chars(values, offset + n, length - n)
+    override def toArray[O2 >: Char: ClassTag]: Array[O2] =
+      values.slice(offset, offset + length).asInstanceOf[Array[O2]]
+  }
+  object Chars {
+    def apply(values: Array[Char]): Chars =
+      Chars(values, 0, values.length)
+  }
+
   /** Creates a chunk backed by a byte vector. */
   def byteVector(bv: ByteVector): Chunk[Byte] =
     ByteVectorChunk(bv)
@@ -1384,36 +1431,47 @@ object Chunk extends CollectorK[Chunk] {
 
   /** Concatenates the specified sequence of chunks in to a single chunk, avoiding boxing. */
   def concat[A](chunks: GSeq[Chunk[A]]): Chunk[A] =
+    concat(chunks, chunks.foldLeft(0)(_ + _.size))
+
+  def concat[A](chunks: GSeq[Chunk[A]], totalSize: Int): Chunk[A] =
     if (chunks.isEmpty) {
       Chunk.empty
     } else if (chunks.forall(c => c.knownElementType[Boolean] || c.forall(_.isInstanceOf[Boolean]))) {
-      concatBooleans(chunks.asInstanceOf[GSeq[Chunk[Boolean]]]).asInstanceOf[Chunk[A]]
+      concatBooleans(chunks.asInstanceOf[GSeq[Chunk[Boolean]]], totalSize).asInstanceOf[Chunk[A]]
     } else if (chunks.forall(c => c.knownElementType[Byte] || c.forall(_.isInstanceOf[Byte]))) {
-      concatBytes(chunks.asInstanceOf[GSeq[Chunk[Byte]]]).asInstanceOf[Chunk[A]]
+      concatBytes(chunks.asInstanceOf[GSeq[Chunk[Byte]]], totalSize).asInstanceOf[Chunk[A]]
     } else if (chunks.forall(c => c.knownElementType[Float] || c.forall(_.isInstanceOf[Float]))) {
-      concatFloats(chunks.asInstanceOf[GSeq[Chunk[Float]]]).asInstanceOf[Chunk[A]]
+      concatFloats(chunks.asInstanceOf[GSeq[Chunk[Float]]], totalSize).asInstanceOf[Chunk[A]]
     } else if (chunks.forall(c => c.knownElementType[Double] || c.forall(_.isInstanceOf[Double]))) {
-      concatDoubles(chunks.asInstanceOf[GSeq[Chunk[Double]]]).asInstanceOf[Chunk[A]]
+      concatDoubles(chunks.asInstanceOf[GSeq[Chunk[Double]]], totalSize).asInstanceOf[Chunk[A]]
     } else if (chunks.forall(c => c.knownElementType[Short] || c.forall(_.isInstanceOf[Short]))) {
-      concatShorts(chunks.asInstanceOf[GSeq[Chunk[Short]]]).asInstanceOf[Chunk[A]]
+      concatShorts(chunks.asInstanceOf[GSeq[Chunk[Short]]], totalSize).asInstanceOf[Chunk[A]]
     } else if (chunks.forall(c => c.knownElementType[Int] || c.forall(_.isInstanceOf[Int]))) {
-      concatInts(chunks.asInstanceOf[GSeq[Chunk[Int]]]).asInstanceOf[Chunk[A]]
+      concatInts(chunks.asInstanceOf[GSeq[Chunk[Int]]], totalSize).asInstanceOf[Chunk[A]]
     } else if (chunks.forall(c => c.knownElementType[Long] || c.forall(_.isInstanceOf[Long]))) {
-      concatLongs(chunks.asInstanceOf[GSeq[Chunk[Long]]]).asInstanceOf[Chunk[A]]
+      concatLongs(chunks.asInstanceOf[GSeq[Chunk[Long]]], totalSize).asInstanceOf[Chunk[A]]
+    } else if (chunks.forall(c => c.knownElementType[Char] || c.forall(_.isInstanceOf[Char]))) {
+      concatChars(chunks.asInstanceOf[GSeq[Chunk[Char]]], totalSize).asInstanceOf[Chunk[A]]
     } else {
-      val size = chunks.foldLeft(0)(_ + _.size)
-      val b = collection.mutable.Buffer.newBuilder[A]
-      b.sizeHint(size)
-      chunks.foreach(c => c.foreach(a => b += a))
-      Chunk.buffer(b.result)
+      val arr = new Array[Any](totalSize)
+      var offset = 0
+      chunks.foreach { c =>
+        if (!c.isEmpty) {
+          c.copyToArray(arr, offset)
+          offset += c.size
+        }
+      }
+      Chunk.boxed(arr.asInstanceOf[Array[A]])
     }
 
   /** Concatenates the specified sequence of boolean chunks in to a single chunk. */
   def concatBooleans(chunks: GSeq[Chunk[Boolean]]): Chunk[Boolean] =
+    concatBooleans(chunks, chunks.foldLeft(0)(_ + _.size))
+
+  def concatBooleans(chunks: GSeq[Chunk[Boolean]], totalSize: Int): Chunk[Boolean] =
     if (chunks.isEmpty) Chunk.empty
     else {
-      val size = chunks.foldLeft(0)(_ + _.size)
-      val arr = new Array[Boolean](size)
+      val arr = new Array[Boolean](totalSize)
       var offset = 0
       chunks.foreach { c =>
         if (!c.isEmpty) {
@@ -1426,10 +1484,12 @@ object Chunk extends CollectorK[Chunk] {
 
   /** Concatenates the specified sequence of byte chunks in to a single chunk. */
   def concatBytes(chunks: GSeq[Chunk[Byte]]): Chunk[Byte] =
+    concatBytes(chunks, chunks.foldLeft(0)(_ + _.size))
+
+  def concatBytes(chunks: GSeq[Chunk[Byte]], totalSize: Int): Chunk[Byte] =
     if (chunks.isEmpty) Chunk.empty
     else {
-      val size = chunks.foldLeft(0)(_ + _.size)
-      val arr = new Array[Byte](size)
+      val arr = new Array[Byte](totalSize)
       var offset = 0
       chunks.foreach { c =>
         if (!c.isEmpty) {
@@ -1442,10 +1502,12 @@ object Chunk extends CollectorK[Chunk] {
 
   /** Concatenates the specified sequence of float chunks in to a single chunk. */
   def concatFloats(chunks: GSeq[Chunk[Float]]): Chunk[Float] =
+    concatFloats(chunks, chunks.foldLeft(0)(_ + _.size))
+
+  def concatFloats(chunks: GSeq[Chunk[Float]], totalSize: Int): Chunk[Float] =
     if (chunks.isEmpty) Chunk.empty
     else {
-      val size = chunks.foldLeft(0)(_ + _.size)
-      val arr = new Array[Float](size)
+      val arr = new Array[Float](totalSize)
       var offset = 0
       chunks.foreach { c =>
         if (!c.isEmpty) {
@@ -1458,10 +1520,12 @@ object Chunk extends CollectorK[Chunk] {
 
   /** Concatenates the specified sequence of double chunks in to a single chunk. */
   def concatDoubles(chunks: GSeq[Chunk[Double]]): Chunk[Double] =
+    concatDoubles(chunks, chunks.foldLeft(0)(_ + _.size))
+
+  def concatDoubles(chunks: GSeq[Chunk[Double]], totalSize: Int): Chunk[Double] =
     if (chunks.isEmpty) Chunk.empty
     else {
-      val size = chunks.foldLeft(0)(_ + _.size)
-      val arr = new Array[Double](size)
+      val arr = new Array[Double](totalSize)
       var offset = 0
       chunks.foreach { c =>
         if (!c.isEmpty) {
@@ -1474,10 +1538,12 @@ object Chunk extends CollectorK[Chunk] {
 
   /** Concatenates the specified sequence of short chunks in to a single chunk. */
   def concatShorts(chunks: GSeq[Chunk[Short]]): Chunk[Short] =
+    concatShorts(chunks, chunks.foldLeft(0)(_ + _.size))
+
+  def concatShorts(chunks: GSeq[Chunk[Short]], totalSize: Int): Chunk[Short] =
     if (chunks.isEmpty) Chunk.empty
     else {
-      val size = chunks.foldLeft(0)(_ + _.size)
-      val arr = new Array[Short](size)
+      val arr = new Array[Short](totalSize)
       var offset = 0
       chunks.foreach { c =>
         if (!c.isEmpty) {
@@ -1490,10 +1556,12 @@ object Chunk extends CollectorK[Chunk] {
 
   /** Concatenates the specified sequence of int chunks in to a single chunk. */
   def concatInts(chunks: GSeq[Chunk[Int]]): Chunk[Int] =
+    concatInts(chunks, chunks.foldLeft(0)(_ + _.size))
+
+  def concatInts(chunks: GSeq[Chunk[Int]], totalSize: Int): Chunk[Int] =
     if (chunks.isEmpty) Chunk.empty
     else {
-      val size = chunks.foldLeft(0)(_ + _.size)
-      val arr = new Array[Int](size)
+      val arr = new Array[Int](totalSize)
       var offset = 0
       chunks.foreach { c =>
         if (!c.isEmpty) {
@@ -1506,10 +1574,12 @@ object Chunk extends CollectorK[Chunk] {
 
   /** Concatenates the specified sequence of long chunks in to a single chunk. */
   def concatLongs(chunks: GSeq[Chunk[Long]]): Chunk[Long] =
+    concatLongs(chunks, chunks.foldLeft(0)(_ + _.size))
+
+  def concatLongs(chunks: GSeq[Chunk[Long]], totalSize: Int): Chunk[Long] =
     if (chunks.isEmpty) Chunk.empty
     else {
-      val size = chunks.foldLeft(0)(_ + _.size)
-      val arr = new Array[Long](size)
+      val arr = new Array[Long](totalSize)
       var offset = 0
       chunks.foreach { c =>
         if (!c.isEmpty) {
@@ -1518,6 +1588,24 @@ object Chunk extends CollectorK[Chunk] {
         }
       }
       Chunk.longs(arr)
+    }
+
+  /** Concatenates the specified sequence of char chunks in to a single chunk. */
+  def concatChars(chunks: GSeq[Chunk[Char]]): Chunk[Char] =
+    concatChars(chunks, chunks.foldLeft(0)(_ + _.size))
+
+  def concatChars(chunks: GSeq[Chunk[Char]], totalSize: Int): Chunk[Char] =
+    if (chunks.isEmpty) Chunk.empty
+    else {
+      val arr = new Array[Char](totalSize)
+      var offset = 0
+      chunks.foreach { c =>
+        if (!c.isEmpty) {
+          c.copyToArray(arr, offset)
+          offset += c.size
+        }
+      }
+      Chunk.chars(arr)
     }
 
   /**
@@ -1694,7 +1782,7 @@ object Chunk extends CollectorK[Chunk] {
     def dropRight(n: Int): Queue[A] = if (n <= 0) this else take(size - n)
 
     /** Converts this chunk queue to a single chunk, copying all chunks to a single chunk. */
-    def toChunk: Chunk[A] = Chunk.concat(chunks)
+    def toChunk: Chunk[A] = Chunk.concat(chunks, size)
 
     override def equals(that: Any): Boolean = that match {
       case that: Queue[A] => size == that.size && chunks == that.chunks
