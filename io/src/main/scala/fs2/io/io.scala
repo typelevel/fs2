@@ -144,13 +144,12 @@ package object io {
         val os = new PipedOutputStream()
         val is = new PipedInputStream(os)
         (os: OutputStream, is: InputStream)
-      })(
-        ois =>
-          blocker.delay {
-            // Piped(I/O)Stream implementations cant't throw on close, no need to nest the handling here.
-            ois._2.close()
-            ois._1.close()
-          }
+      })(ois =>
+        blocker.delay {
+          // Piped(I/O)Stream implementations cant't throw on close, no need to nest the handling here.
+          ois._2.close()
+          ois._1.close()
+        }
       )
 
     Stream.resource(mkOutput).flatMap {
@@ -161,12 +160,11 @@ package object io {
           // In such a case, there's a race between completion of the read
           // stream and finalization of the write stream, so we capture the error
           // that occurs when writing and rethrow it.
-          val write = f(os).guaranteeCase(
-            ec =>
-              blocker.delay(os.close()) *> err.complete(ec match {
-                case ExitCase.Error(t) => Some(t)
-                case _                 => None
-              })
+          val write = f(os).guaranteeCase(ec =>
+            blocker.delay(os.close()) *> err.complete(ec match {
+              case ExitCase.Error(t) => Some(t)
+              case _                 => None
+            })
           )
           val read = readInputStream(is.pure[F], chunkSize, blocker, closeAfterUse = false)
           read.concurrently(Stream.eval(write)) ++ Stream.eval(err.get).flatMap {
@@ -206,7 +204,7 @@ package object io {
     stdin(bufSize, blocker).through(text.utf8Decode)
 
   /**
-    * Pipe that converts a stream of bytes to a stream that will emits a single `java.io.InputStream`,
+    * Pipe that converts a stream of bytes to a stream that will emit a single `java.io.InputStream`,
     * that is closed whenever the resulting stream terminates.
     *
     * If the `close` of resulting input stream is invoked manually, then this will await until the

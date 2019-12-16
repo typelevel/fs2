@@ -10,6 +10,7 @@ import scala.collection.mutable.ArrayBuffer
 
 /** Provides utilities for compressing/decompressing byte streams. */
 object compress {
+
   /**
     * Returns a `Pipe` that deflates (compresses) its input elements using
     * a `java.util.zip.Deflater` with the parameters `level`, `nowrap` and `strategy`.
@@ -241,11 +242,12 @@ object compress {
             lazy val stepDecompress: Stream[F, Byte] = Stream.suspend {
               val inner = new Array[Byte](bufferSize * 2) // double the input buffer size since we're decompressing
 
-              val len = try {
-                gzis.read(inner)
-              } catch {
-                case AsyncByteArrayInputStream.AsyncError => 0
-              }
+              val len =
+                try {
+                  gzis.read(inner)
+                } catch {
+                  case AsyncByteArrayInputStream.AsyncError => 0
+                }
 
               if (len > 0)
                 Stream.chunk(Chunk.bytes(inner, 0, len)).covary[F] ++ stepDecompress

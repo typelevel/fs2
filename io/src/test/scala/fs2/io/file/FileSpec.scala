@@ -64,13 +64,12 @@ class FileSpec extends BaseFileSpec {
         .resource(Blocker[IO])
         .flatMap { bec =>
           tempFile
-            .flatMap(
-              path =>
-                Stream("Hello", " world!")
-                  .covary[IO]
-                  .through(text.utf8Encode)
-                  .through(file.writeAll[IO](path, bec))
-                  .drain ++ file.readAll[IO](path, bec, 4096).through(text.utf8Decode)
+            .flatMap(path =>
+              Stream("Hello", " world!")
+                .covary[IO]
+                .through(text.utf8Encode)
+                .through(file.writeAll[IO](path, bec))
+                .drain ++ file.readAll[IO](path, bec, 4096).through(text.utf8Decode)
             )
         }
         .compile
@@ -143,11 +142,10 @@ class FileSpec extends BaseFileSpec {
   "deleteIfExists" - {
     "should result in non existant file" in {
       tempFile
-        .flatMap(
-          path =>
-            Stream
-              .resource(Blocker[IO])
-              .evalMap(blocker => file.delete[IO](blocker, path) *> file.exists[IO](blocker, path))
+        .flatMap(path =>
+          Stream
+            .resource(Blocker[IO])
+            .evalMap(blocker => file.delete[IO](blocker, path) *> file.exists[IO](blocker, path))
         )
         .compile
         .fold(false)(_ || _)
@@ -181,11 +179,10 @@ class FileSpec extends BaseFileSpec {
     "should return correct size of ay file" in {
       tempFile
         .flatTap(modify)
-        .flatMap(
-          path =>
-            Stream
-              .resource(Blocker[IO])
-              .evalMap(blocker => file.size[IO](blocker, path))
+        .flatMap(path =>
+          Stream
+            .resource(Blocker[IO])
+            .evalMap(blocker => file.size[IO](blocker, path))
         )
         .compile
         .lastOrError
@@ -196,16 +193,14 @@ class FileSpec extends BaseFileSpec {
   "createDirectory" - {
     "should return in an existing path" in {
       tempDirectory
-        .flatMap(
-          path =>
-            Stream
-              .resource(Blocker[IO])
-              .evalMap(
-                blocker =>
-                  file
-                    .createDirectory[IO](blocker, path.resolve("temp"))
-                    .bracket(file.exists[IO](blocker, _))(file.deleteIfExists[IO](blocker, _).void)
-              )
+        .flatMap(path =>
+          Stream
+            .resource(Blocker[IO])
+            .evalMap(blocker =>
+              file
+                .createDirectory[IO](blocker, path.resolve("temp"))
+                .bracket(file.exists[IO](blocker, _))(file.deleteIfExists[IO](blocker, _).void)
+            )
         )
         .compile
         .fold(true)(_ && _)
@@ -216,16 +211,14 @@ class FileSpec extends BaseFileSpec {
   "createDirectories" - {
     "should return in an existing path" in {
       tempDirectory
-        .flatMap(
-          path =>
-            Stream
-              .resource(Blocker[IO])
-              .evalMap(
-                blocker =>
-                  file
-                    .createDirectories[IO](blocker, path.resolve("temp/inner"))
-                    .bracket(file.exists[IO](blocker, _))(file.deleteIfExists[IO](blocker, _).void)
-              )
+        .flatMap(path =>
+          Stream
+            .resource(Blocker[IO])
+            .evalMap(blocker =>
+              file
+                .createDirectories[IO](blocker, path.resolve("temp/inner"))
+                .bracket(file.exists[IO](blocker, _))(file.deleteIfExists[IO](blocker, _).void)
+            )
         )
         .compile
         .fold(true)(_ && _)

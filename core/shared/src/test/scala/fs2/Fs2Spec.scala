@@ -87,6 +87,7 @@ abstract class Fs2Spec
 
   /** Provides various ways to make test assertions on an `F[A]`. */
   implicit class Asserting[F[_], A](private val self: F[A]) {
+
     /**
       * Asserts that the `F[A]` completes with an `A` which passes the supplied function.
       *

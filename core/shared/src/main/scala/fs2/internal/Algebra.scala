@@ -317,8 +317,8 @@ private[fs2] object Algebra {
                     // Request to close the current top-level scope - if we're supposed to extend
                     // it instead, leave the scope open and pass it to the continuation
                     extendedTopLevelScope.traverse_(_.close(ExitCase.Completed).rethrow) *>
-                      toClose.openAncestor.flatMap(
-                        ancestor => go(ancestor, Some(toClose), view.next(Result.unit))
+                      toClose.openAncestor.flatMap(ancestor =>
+                        go(ancestor, Some(toClose), view.next(Result.unit))
                       )
                   } else closeAndGo(toClose, close.exitCase)
                 case None =>

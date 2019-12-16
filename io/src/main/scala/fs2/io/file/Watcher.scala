@@ -15,6 +15,7 @@ import fs2.concurrent.SignallingRef
   * Allows watching the file system for changes to directories and files by using the platform's `WatchService`.
   */
 sealed abstract class Watcher[F[_]] {
+
   /**
     * Registers for events on the specified path.
     *
@@ -68,6 +69,7 @@ sealed abstract class Watcher[F[_]] {
 }
 
 object Watcher {
+
   /** Type of event raised by `Watcher`. Supports the standard events types as well as arbitrary non-standard types (via `NonStandard`). */
   sealed abstract class EventType
   object EventType {
@@ -214,12 +216,11 @@ object Watcher {
       }
       dirs.flatMap(
         _.traverse(
-          registerUntracked(_, supplementedTypes, modifiers).flatMap(
-            key =>
-              track(
-                key,
-                Registration(supplementedTypes, modifiers, _ => true, true, suppressCreated, F.unit)
-              )
+          registerUntracked(_, supplementedTypes, modifiers).flatMap(key =>
+            track(
+              key,
+              Registration(supplementedTypes, modifiers, _ => true, true, suppressCreated, F.unit)
+            )
           )
         ).map(_.sequence.void)
       )
@@ -230,19 +231,18 @@ object Watcher {
         types: Seq[Watcher.EventType],
         modifiers: Seq[WatchEvent.Modifier]
     ): F[F[Unit]] =
-      registerUntracked(path.getParent, types, modifiers).flatMap(
-        key =>
-          track(
-            key,
-            Registration(
-              types,
-              modifiers,
-              e => Event.pathOf(e).map(ep => path == ep).getOrElse(true),
-              false,
-              false,
-              F.unit
-            )
+      registerUntracked(path.getParent, types, modifiers).flatMap(key =>
+        track(
+          key,
+          Registration(
+            types,
+            modifiers,
+            e => Event.pathOf(e).map(ep => path == ep).getOrElse(true),
+            false,
+            false,
+            F.unit
           )
+        )
       )
 
     override def register(
@@ -250,8 +250,8 @@ object Watcher {
         types: Seq[Watcher.EventType],
         modifiers: Seq[WatchEvent.Modifier]
     ): F[F[Unit]] =
-      registerUntracked(path, types, modifiers).flatMap(
-        key => track(key, Registration(types, modifiers, _ => true, false, false, F.unit))
+      registerUntracked(path, types, modifiers).flatMap(key =>
+        track(key, Registration(types, modifiers, _ => true, false, false, F.unit))
       )
 
     private def registerUntracked(
@@ -273,13 +273,11 @@ object Watcher {
         case ((key, events), registrations) =>
           val reg = registrations.get(key)
           val filteredEvents = reg
-            .map(
-              reg =>
-                events.filter(
-                  e =>
-                    reg.eventPredicate(e) && !(e
-                      .isInstanceOf[Event.Created] && reg.suppressCreated)
-                )
+            .map(reg =>
+              events.filter(e =>
+                reg.eventPredicate(e) && !(e
+                  .isInstanceOf[Event.Created] && reg.suppressCreated)
+              )
             )
             .getOrElse(Nil)
           val recurse: Stream[F, Event] =
@@ -305,11 +303,10 @@ object Watcher {
                   val (cancels, events) = x.separate
                   val cancelAll: F[Unit] = cancels.sequence.void
                   val updateRegistration: F[Unit] = this.registrations
-                    .update(
-                      m =>
-                        m.get(key)
-                          .map(r => m.updated(key, r.copy(cleanup = r.cleanup >> cancelAll)))
-                          .getOrElse(m)
+                    .update(m =>
+                      m.get(key)
+                        .map(r => m.updated(key, r.copy(cleanup = r.cleanup >> cancelAll)))
+                        .getOrElse(m)
                     )
                     .void
                   updateRegistration.as(events.flatten)

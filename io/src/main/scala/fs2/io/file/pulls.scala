@@ -9,6 +9,7 @@ import scala.concurrent.duration.FiniteDuration
 /**Provides various `Pull`s for working with files. */
 @deprecated("Use ReadCursor/WriteCursor instead", "2.1.0")
 object pulls {
+
   /**
     * Given a `FileHandle[F]`, creates a `Pull` which reads all data from the associated file.
     */

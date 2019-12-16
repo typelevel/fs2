@@ -10,6 +10,7 @@ final class CompositeFailure(
       s"Multiple exceptions were thrown (${1 + tail.size}), first ${head.getClass.getName}: ${head.getMessage}",
       head
     ) {
+
   /** Gets all causes (guaranteed to have at least 2 elements). */
   def all: NonEmptyList[Throwable] = head :: tail
 }

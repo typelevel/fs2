@@ -28,6 +28,7 @@ import fs2.internal.ThreadFactories
   * an underlying non-blocking channel group.
   */
 final class SocketGroup(channelGroup: AsynchronousChannelGroup, blocker: Blocker) {
+
   /**
     * Opens a connection to the specified server represented as a [[Socket]].
     * The connection is closed when the resource is released.
@@ -346,6 +347,7 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup, blocker: Blocker
 }
 
 object SocketGroup {
+
   /**
     * Creates a `SocketGroup`.
     *

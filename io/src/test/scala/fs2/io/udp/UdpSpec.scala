@@ -88,12 +88,11 @@ class UdpSpec extends Fs2Spec {
         }
         .compile
         .toVector
-        .asserting(
-          res =>
-            res.map(p => new String(p.bytes.toArray)).sorted shouldBe Vector
-              .fill(numClients)(msgs.map(b => new String(b.toArray)))
-              .flatten
-              .sorted
+        .asserting(res =>
+          res.map(p => new String(p.bytes.toArray)).sorted shouldBe Vector
+            .fill(numClients)(msgs.map(b => new String(b.toArray)))
+            .flatten
+            .sorted
         )
     }
 

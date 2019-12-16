@@ -8,6 +8,7 @@ import scala.concurrent.ExecutionContext
 import scala.util.control.NonFatal
 
 private[fs2] object ThreadFactories {
+
   /** A `ThreadFactory` which names threads according to the pattern ${threadPrefix}-${count}. */
   def named(
       threadPrefix: String,

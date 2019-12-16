@@ -34,8 +34,8 @@ class IoSpec extends Fs2Spec {
       intsBetween(1, 20)
     ) { (bytes: Array[Byte], chunkSize: Int) =>
       Blocker[IO].use { blocker =>
-        readOutputStream[IO](blocker, chunkSize)(
-          (os: OutputStream) => blocker.delay[IO, Unit](os.write(bytes))
+        readOutputStream[IO](blocker, chunkSize)((os: OutputStream) =>
+          blocker.delay[IO, Unit](os.write(bytes))
         ).compile
           .to[Array]
           .asserting(_ shouldEqual bytes)
@@ -44,9 +44,7 @@ class IoSpec extends Fs2Spec {
 
     "can be manually closed from inside `f`" in forAll(intsBetween(1, 20)) { chunkSize: Int =>
       Blocker[IO].use { blocker =>
-        readOutputStream[IO](blocker, chunkSize)(
-          (os: OutputStream) => IO(os.close()) *> IO.never
-        ).compile.toVector
+        readOutputStream[IO](blocker, chunkSize)((os: OutputStream) => IO(os.close()) *> IO.never).compile.toVector
           .asserting(_ shouldBe Vector.empty)
       }
     }
