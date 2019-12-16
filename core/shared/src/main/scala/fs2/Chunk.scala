@@ -162,14 +162,13 @@ abstract class Chunk[+O] extends Serializable { self =>
 
   /** Creates a new chunk by applying `f` to each element in this chunk. */
   def map[O2](f: O => O2): Chunk[O2] = {
-    val b = collection.mutable.Buffer.newBuilder[O2]
-    b.sizeHint(size)
+    val arr = new Array[Any](size)
     var i = 0
     while (i < size) {
-      b += f(apply(i))
+      arr(i) = f(apply(i))
       i += 1
     }
-    Chunk.buffer(b.result)
+    Chunk.array(arr.asInstanceOf[Array[O2]])
   }
 
   /**
@@ -178,17 +177,16 @@ abstract class Chunk[+O] extends Serializable { self =>
     * the output state of the previous invocation.
     */
   def mapAccumulate[S, O2](init: S)(f: (S, O) => (S, O2)): (S, Chunk[O2]) = {
-    val b = collection.mutable.Buffer.newBuilder[O2]
-    b.sizeHint(size)
+    val arr = new Array[Any](size)
     var i = 0
     var s = init
     while (i < size) {
       val (s2, o2) = f(s, apply(i))
-      b += o2
+      arr(i) = o2
       s = s2
       i += 1
     }
-    s -> Chunk.buffer(b.result)
+    s -> Chunk.array(arr.asInstanceOf[Array[O2]])
   }
 
   /** False if size is zero, true otherwise. */
@@ -214,18 +212,19 @@ abstract class Chunk[+O] extends Serializable { self =>
     scanLeft_(z, false)(f)
 
   protected def scanLeft_[O2](z: O2, emitZero: Boolean)(f: (O2, O) => O2): (Chunk[O2], O2) = {
-    val b = collection.mutable.Buffer.newBuilder[O2]
-    b.sizeHint(if (emitZero) size + 1 else size)
+    val arr = new Array[Any](if (emitZero) size + 1 else size)
     var acc = z
-    if (emitZero) b += acc
-
-    var i = 0
-    while (i < size) {
-      acc = f(acc, apply(i))
-      b += acc
+    if (emitZero) arr(0) = acc
+    var i = if (emitZero) 1 else 0
+    var j = 0
+    while (j < size) {
+      acc = f(acc, apply(j))
+      arr(i) = acc
       i += 1
+      j += 1
     }
-    Chunk.buffer(b.result) -> acc
+
+    Chunk.array(arr.asInstanceOf[Array[O2]]) -> acc
   }
 
   /** Splits this chunk in to two chunks at the specified index. */
@@ -439,14 +438,13 @@ abstract class Chunk[+O] extends Serializable { self =>
     */
   def zipWith[O2, O3](that: Chunk[O2])(f: (O, O2) => O3): Chunk[O3] = {
     val sz = size.min(that.size)
-    val b = collection.mutable.Buffer.newBuilder[O3]
-    b.sizeHint(sz)
+    val arr = new Array[Any](sz)
     var i = 0
     while (i < sz) {
-      b += f(apply(i), that.apply(i))
+      arr(i) = f(apply(i), that.apply(i))
       i += 1
     }
-    Chunk.buffer(b.result)
+    Chunk.array(arr.asInstanceOf[Array[O3]])
   }
 
   override def hashCode: Int = {

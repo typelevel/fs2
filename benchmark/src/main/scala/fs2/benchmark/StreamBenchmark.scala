@@ -92,4 +92,24 @@ class StreamBenchmark {
   @Benchmark @BenchmarkMode(Array(Mode.AverageTime)) @OutputTimeUnit(TimeUnit.NANOSECONDS)
   def emitsThenFlatMap(N: Int): Vector[Int] =
     Stream.emits(0 until N).flatMap(Stream(_)).toVector
+
+  @GenerateN(1, 10, 100, 1000, 10000)
+  @Benchmark
+  def sliding(N: Int) =
+    Stream.emits(0 until 16384).sliding(N).covary[IO].compile.drain.unsafeRunSync
+
+  @GenerateN(1, 10, 100, 1000, 10000)
+  @Benchmark
+  def mapAccumulate(N: Int) =
+    Stream
+      .emits(0 until N)
+      .mapAccumulate(0) {
+        case (acc, i) =>
+          val added = acc + i
+          (added, added)
+      }
+      .covary[IO]
+      .compile
+      .drain
+      .unsafeRunSync
 }
