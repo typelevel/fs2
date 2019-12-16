@@ -13,6 +13,7 @@ import cats.implicits._
   * Simple interface for `UNWRAP` operations.
   */
 private[tls] trait Unwrap[F[_]] {
+
   /**
     * Performs unwrapping of the data received from the network.
     * @param data Data to be unwrapped
@@ -53,7 +54,9 @@ private[tls] object Unwrap {
       sslEngineTaskRunner: SSLEngineTaskRunner[F]
   ): F[Result] =
     ioBuff
-      .perform { (inBuffer, outBuffer) => sslEngine.unwrap(inBuffer, outBuffer) }
+      .perform { (inBuffer, outBuffer) =>
+        sslEngine.unwrap(inBuffer, outBuffer)
+      }
       .flatMap { result =>
         result.getStatus match {
           case Status.OK =>
@@ -170,7 +173,9 @@ private[tls] object Unwrap {
       sslEngineTaskRunner: SSLEngineTaskRunner[F]
   ): F[HandshakeResult] =
     ioBuff
-      .perform { (inBuffer, outBuffer) => sslEngine.wrap(inBuffer, outBuffer) }
+      .perform { (inBuffer, outBuffer) =>
+        sslEngine.wrap(inBuffer, outBuffer)
+      }
       .flatMap { result =>
         result.getStatus match {
           case Status.OK =>

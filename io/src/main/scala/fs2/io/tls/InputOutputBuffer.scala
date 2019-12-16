@@ -15,6 +15,7 @@ import cats.implicits._
   * for input/output operations to be performed sequentially
   */
 private[tls] trait InputOutputBuffer[F[_]] {
+
   /**
     * Feeds the `data`. I/O Buffer must be awaiting input
     */
@@ -78,7 +79,6 @@ private[tls] object InputOutputBuffer {
           Sync[F].delay(f(inBuff.get, outBuff.get))
         }
       }
-
 
       def output: F[Chunk[Byte]] = Sync[F].suspend {
         if (awaitInput.compareAndSet(false, true)) {

@@ -16,6 +16,7 @@ import cats.implicits._
   * Note that this must be not accessed from the multiple threads cocnurrently.
   */
 private[tls] trait Wrap[F[_]] {
+
   /** wraps supplied data producing an result **/
   def wrap(data: Chunk[Byte]): F[Wrap.Result[F]]
 
@@ -59,7 +60,9 @@ private[tls] object Wrap {
       sslEngineTaskRunner: SSLEngineTaskRunner[F]
   ): F[Wrap.Result[F]] =
     ioBuff
-      .perform { (inBuffer, outBuffer) => sslEngine.wrap(inBuffer, outBuffer) }
+      .perform { (inBuffer, outBuffer) =>
+        sslEngine.wrap(inBuffer, outBuffer)
+      }
       .flatMap { result =>
         result.getStatus match {
           case Status.OK =>

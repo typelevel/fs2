@@ -17,11 +17,13 @@ import fs2.io.tls.TLSEngine
 import fs2.io.tls.TLSEngine.{DecryptResult, EncryptResult}
 
 trait TLSSocket[F[_]] extends Socket[F] {
+
   /** Initiates a new TLS handshake. */
   def startHandshake: F[Unit]
 }
 
 object TLSSocket {
+
   /**
     * Wraps raw tcp socket with supplied SSLEngine to form SSL Socket
     *
@@ -121,12 +123,12 @@ object TLSSocket {
       def write(bytes: Chunk[Byte], timeout: Option[FiniteDuration]): F[Unit] = {
         def go(result: EncryptResult[F]): F[Unit] =
           result match {
-            case EncryptResult.Encrypted(data) => 
+            case EncryptResult.Encrypted(data) =>
               Sync[F].delay(println("TLSSocket.write Encrypted")) >> socket.write(data, timeout)
 
             case EncryptResult.Handshake(data, next) =>
               Sync[F].delay(println("TLSSocket.write Handshake")) >>
-              socket.write(data, timeout) >> readHandshake(timeout) >> next.flatMap(go)
+                socket.write(data, timeout) >> readHandshake(timeout) >> next.flatMap(go)
 
             case EncryptResult.Closed() =>
               Sync[F].raiseError(new RuntimeException("TLS Engine is closed"))
