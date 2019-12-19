@@ -234,7 +234,7 @@ object TLSSocket {
                     log("sending output chunk") >> wrapBuffer.output.flatMap { c =>
                       socket.write(c, timeout)
                     } >>
-                      doHandshake(other, true) >> wrapBuffer.input(Chunk.empty) >> doWrap(timeout)
+                      doHandshake(other, true) >> doWrap(timeout)
                 }
               case SSLEngineResult.Status.BUFFER_UNDERFLOW =>
                 ???
@@ -259,12 +259,12 @@ object TLSSocket {
                     unwrapBuffer.output.map(Some(_))
                   case SSLEngineResult.HandshakeStatus.FINISHED =>
                     unwrapBuffer.output.flatMap { out =>
-                      unwrapBuffer.input(Chunk.empty) >> doUnwrap.map(out2 =>
+                      doUnwrap.map(out2 =>
                         Some(Chunk.concat(List(out, out2.getOrElse(Chunk.empty))))
                       )
                     }
                   case other =>
-                    doHandshake(other, false) >> unwrapBuffer.input(Chunk.empty) >> doUnwrap
+                    doHandshake(other, false) >> doUnwrap
                 }
               case SSLEngineResult.Status.BUFFER_UNDERFLOW =>
                 unwrapBuffer.output.map(Some(_))
@@ -283,7 +283,7 @@ object TLSSocket {
           case SSLEngineResult.HandshakeStatus.NOT_HANDSHAKING => ???
           case SSLEngineResult.HandshakeStatus.FINISHED =>
             unwrapBuffer.inputRemains.flatMap { remaining =>
-              if (remaining > 0) unwrapBuffer.input(Chunk.empty) >> doHsUnwrap
+              if (remaining > 0) doHsUnwrap
               else Applicative[F].unit
             }
           case SSLEngineResult.HandshakeStatus.NEED_TASK =>
@@ -294,7 +294,7 @@ object TLSSocket {
           case SSLEngineResult.HandshakeStatus.NEED_UNWRAP =>
             unwrapBuffer.inputRemains.flatMap { remaining =>
               log(s"remaining: $remaining") >> {
-                if (remaining > 0) unwrapBuffer.input(Chunk.empty, true) >> doHsUnwrap
+                if (remaining > 0) doHsUnwrap
                 else
                   socket.read(10240).flatMap {
                     case Some(c) => unwrapBuffer.input(c) >> doHsUnwrap
@@ -305,7 +305,7 @@ object TLSSocket {
         }
 
       def doHsWrap: F[Unit] =
-        wrapBuffer.input(Chunk.empty) >> wrapBuffer
+        wrapBuffer
           .perform(engine.wrap(_, _))
           .flatTap { result =>
             log(s"doHsWrap result: $result")
@@ -338,22 +338,20 @@ object TLSSocket {
                 doHandshake(result.getHandshakeStatus, false)
               case SSLEngineResult.Status.BUFFER_UNDERFLOW =>
                 if (result.getHandshakeStatus == SSLEngineResult.HandshakeStatus.NOT_HANDSHAKING) {
-                  unwrapBuffer.output >>
-                    Applicative[F].unit
+                  Applicative[F].unit
                 } else if (result.getHandshakeStatus == SSLEngineResult.HandshakeStatus.NEED_UNWRAP) {
                   socket.read(10240).flatMap {
                     case Some(c) =>
-                      // TODO don't discard output here
-                      unwrapBuffer.output >> unwrapBuffer.input(c) >> doHsUnwrap
+                      unwrapBuffer.input(c) >> doHsUnwrap
                     case None => ???
                   }
                 } else if (result.getHandshakeStatus == SSLEngineResult.HandshakeStatus.NEED_WRAP) {
-                  unwrapBuffer.output >> doHsWrap
+                  doHsWrap
                 } else {
                   sys.error("What to do here?")
                 }
               case SSLEngineResult.Status.BUFFER_OVERFLOW =>
-                unwrapBuffer.expandOutput >> unwrapBuffer.input(Chunk.empty) >> doHsUnwrap
+                unwrapBuffer.expandOutput >> doHsUnwrap
               case SSLEngineResult.Status.CLOSED =>
                 ???
             }
