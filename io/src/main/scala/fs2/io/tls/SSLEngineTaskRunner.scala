@@ -8,11 +8,11 @@ import cats.Applicative
 import cats.effect.{Blocker, Concurrent, ContextShift}
 import cats.implicits._
 
-private[tls] trait SSLEngineTaskRunner[F[_]] {
+private[io] trait SSLEngineTaskRunner[F[_]] {
   def runDelegatedTasks: F[Unit]
 }
 
-private[tls] object SSLEngineTaskRunner {
+private[io] object SSLEngineTaskRunner {
   def apply[F[_]: Concurrent: ContextShift](
       engine: SSLEngine,
       blocker: Blocker

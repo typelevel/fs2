@@ -24,20 +24,21 @@ class TLSSocketSpec extends Fs2Spec {
               socketGroup.client[IO](new InetSocketAddress("google.com", 443)).use { socket =>
                 TLSContext
                   .insecure[IO](blocker)
-                  .engine(enabledProtocols = Some(List(protocol)))
+                  .engine2(enabledProtocols = Some(List(protocol)))
                   .flatMap { tlsEngine =>
-                    TLSSocket(loggingSocket("raw", socket), tlsEngine).flatMap { tlsSocket =>
-                      (Stream("GET /\r\n\r\n")
-                        .covary[IO]
-                        .through(text.utf8Encode)
-                        .through(tlsSocket.writes())
-                        .drain ++
-                        tlsSocket.reads(8192).through(text.utf8Decode))
-                        .through(text.lines)
-                        .head
-                        .compile
-                        .string
-                        .asserting(_ shouldBe "HTTP/1.0 200 OK")
+                    TLSSocket.two(loggingSocket("raw", socket), tlsEngine, blocker).flatMap {
+                      tlsSocket =>
+                        (Stream("GET /\r\n\r\n")
+                          .covary[IO]
+                          .through(text.utf8Encode)
+                          .through(tlsSocket.writes())
+                          .drain ++
+                          tlsSocket.reads(8192).through(text.utf8Decode))
+                          .through(text.lines)
+                          .head
+                          .compile
+                          .string
+                          .asserting(_ shouldBe "HTTP/1.0 200 OK")
                     }
                   }
               }
@@ -49,7 +50,8 @@ class TLSSocketSpec extends Fs2Spec {
   }
 
   def loggingSocket[F[_]: Sync](tag: String, socket: Socket[F]): Socket[F] = new Socket[F] {
-    private def log(msg: String): F[Unit] = Sync[F].delay(println(s"\u001b[31m${tag}: ${msg}\u001b[0m"))
+    private def log(msg: String): F[Unit] =
+      Sync[F].delay(println(s"\u001b[31m${tag}: ${msg}\u001b[0m"))
 
     override def readN(numBytes: Int, timeout: Option[FiniteDuration]): F[Option[Chunk[Byte]]] =
       log(s"readN $numBytes") *> socket

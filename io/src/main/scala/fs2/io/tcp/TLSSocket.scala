@@ -7,13 +7,14 @@ import scala.collection.immutable.Queue
 import scala.concurrent.duration._
 
 import java.net.SocketAddress
+import javax.net.ssl.{SSLEngine, SSLEngineResult}
 
 import cats.Applicative
 import cats.effect.concurrent.{Ref, Semaphore}
 import cats.effect._
 import cats.syntax.all._
 
-import fs2.io.tls.TLSEngine
+import fs2.io.tls._
 import fs2.io.tls.TLSEngine.{DecryptResult, EncryptResult}
 
 trait TLSSocket[F[_]] extends Socket[F] {
@@ -191,4 +192,222 @@ object TLSSocket {
     if (buff.isEmpty) (Queue.empty, Chunk.empty)
     else go(buff, Chunk.Queue.empty, max)
   }
+
+  def two[F[_]: Concurrent: ContextShift](
+      socket: Socket[F],
+      engine: SSLEngine,
+      blocker: Blocker
+  ): F[TLSSocket[F]] =
+    for {
+      readSem <- Semaphore(1)
+      wrapBuffer <- InputOutputBuffer[F](
+        engine.getSession.getApplicationBufferSize,
+        engine.getSession.getPacketBufferSize
+      )
+      unwrapBuffer <- InputOutputBuffer[F](
+        engine.getSession.getPacketBufferSize,
+        engine.getSession.getApplicationBufferSize
+      )
+      sslEngineTaskRunner = SSLEngineTaskRunner[F](engine, blocker)
+    } yield new TLSSocket[F] {
+      private def log(msg: String): F[Unit] =
+        Sync[F].delay(println(s"\u001b[33m${msg}\u001b[0m"))
+
+      def write(bytes: Chunk[Byte], timeout: Option[FiniteDuration]): F[Unit] =
+        log(s"write($bytes)") >> wrapBuffer.input(bytes) >> doWrap(timeout)
+
+      def doWrap(timeout: Option[FiniteDuration]): F[Unit] =
+        wrapBuffer
+          .perform(engine.wrap(_, _))
+          .flatTap { result =>
+            log(s"doWrap result: $result")
+          }
+          .flatMap { result =>
+            result.getStatus match {
+              case SSLEngineResult.Status.OK =>
+                result.getHandshakeStatus match {
+                  case SSLEngineResult.HandshakeStatus.NOT_HANDSHAKING =>
+                    log("sending output chunk") >> wrapBuffer.output.flatMap { c =>
+                      socket.write(c, timeout)
+                    }
+                  case other =>
+                    log("sending output chunk") >> wrapBuffer.output.flatMap { c =>
+                      socket.write(c, timeout)
+                    } >>
+                      doHandshake(other, true) >> wrapBuffer.input(Chunk.empty) >> doWrap(timeout)
+                }
+              case SSLEngineResult.Status.BUFFER_UNDERFLOW =>
+                ???
+              case SSLEngineResult.Status.BUFFER_OVERFLOW =>
+                wrapBuffer.expandOutput >> doWrap(timeout)
+              case SSLEngineResult.Status.CLOSED =>
+                ???
+            }
+          }
+
+      def doUnwrap: F[Option[Chunk[Byte]]] =
+        unwrapBuffer
+          .perform(engine.unwrap(_, _))
+          .flatTap { result =>
+            log(s"doUnwrap result: $result")
+          }
+          .flatMap { result =>
+            result.getStatus match {
+              case SSLEngineResult.Status.OK =>
+                result.getHandshakeStatus match {
+                  case SSLEngineResult.HandshakeStatus.NOT_HANDSHAKING =>
+                    unwrapBuffer.output.map(Some(_))
+                  case SSLEngineResult.HandshakeStatus.FINISHED =>
+                    unwrapBuffer.output.flatMap { out =>
+                      unwrapBuffer.input(Chunk.empty) >> doUnwrap.map(out2 =>
+                        Some(Chunk.concat(List(out, out2.getOrElse(Chunk.empty))))
+                      )
+                    }
+                  case other =>
+                    doHandshake(other, false) >> unwrapBuffer.input(Chunk.empty) >> doUnwrap
+                }
+              case SSLEngineResult.Status.BUFFER_UNDERFLOW =>
+                unwrapBuffer.output.map(Some(_))
+              case SSLEngineResult.Status.BUFFER_OVERFLOW =>
+                unwrapBuffer.expandOutput >> doUnwrap
+              case SSLEngineResult.Status.CLOSED =>
+                ???
+            }
+          }
+
+      def doHandshake(
+          handshakeStatus: SSLEngineResult.HandshakeStatus,
+          lastOperationWrap: Boolean
+      ): F[Unit] =
+        handshakeStatus match {
+          case SSLEngineResult.HandshakeStatus.NOT_HANDSHAKING => ???
+          case SSLEngineResult.HandshakeStatus.FINISHED =>
+            unwrapBuffer.inputRemains.flatMap { remaining =>
+              if (remaining > 0) unwrapBuffer.input(Chunk.empty) >> doHsUnwrap
+              else Applicative[F].unit
+            }
+          case SSLEngineResult.HandshakeStatus.NEED_TASK =>
+            sslEngineTaskRunner.runDelegatedTasks >> (if (lastOperationWrap) doHsWrap
+                                                      else doHsUnwrap)
+          case SSLEngineResult.HandshakeStatus.NEED_WRAP =>
+            doHsWrap
+          case SSLEngineResult.HandshakeStatus.NEED_UNWRAP =>
+            unwrapBuffer.inputRemains.flatMap { remaining =>
+              log(s"remaining: $remaining") >> {
+                if (remaining > 0) unwrapBuffer.input(Chunk.empty, true) >> doHsUnwrap
+                else
+                  socket.read(10240).flatMap {
+                    case Some(c) => unwrapBuffer.input(c) >> doHsUnwrap
+                    case None    => ???
+                  }
+              }
+            }
+        }
+
+      def doHsWrap: F[Unit] =
+        wrapBuffer.input(Chunk.empty) >> wrapBuffer
+          .perform(engine.wrap(_, _))
+          .flatTap { result =>
+            log(s"doHsWrap result: $result")
+          }
+          .flatMap { result =>
+            result.getStatus match {
+              case SSLEngineResult.Status.OK =>
+                wrapBuffer.output.flatMap(socket.write(_)) >> doHandshake(
+                  result.getHandshakeStatus,
+                  true
+                )
+              case SSLEngineResult.Status.BUFFER_UNDERFLOW =>
+                ???
+              case SSLEngineResult.Status.BUFFER_OVERFLOW =>
+                wrapBuffer.expandOutput >> doHsWrap
+              case SSLEngineResult.Status.CLOSED =>
+                ???
+            }
+          }
+
+      def doHsUnwrap: F[Unit] =
+        unwrapBuffer
+          .perform(engine.unwrap(_, _))
+          .flatTap { result =>
+            log(s"doHsUnwrap result: $result")
+          }
+          .flatMap { result =>
+            result.getStatus match {
+              case SSLEngineResult.Status.OK =>
+                doHandshake(result.getHandshakeStatus, false)
+              case SSLEngineResult.Status.BUFFER_UNDERFLOW =>
+                if (result.getHandshakeStatus == SSLEngineResult.HandshakeStatus.NOT_HANDSHAKING) {
+                  unwrapBuffer.output >>
+                    Applicative[F].unit
+                } else if (result.getHandshakeStatus == SSLEngineResult.HandshakeStatus.NEED_UNWRAP) {
+                  socket.read(10240).flatMap {
+                    case Some(c) =>
+                      // TODO don't discard output here
+                      unwrapBuffer.output >> unwrapBuffer.input(c) >> doHsUnwrap
+                    case None => ???
+                  }
+                } else if (result.getHandshakeStatus == SSLEngineResult.HandshakeStatus.NEED_WRAP) {
+                  unwrapBuffer.output >> doHsWrap
+                } else {
+                  sys.error("What to do here?")
+                }
+              case SSLEngineResult.Status.BUFFER_OVERFLOW =>
+                unwrapBuffer.expandOutput >> unwrapBuffer.input(Chunk.empty) >> doHsUnwrap
+              case SSLEngineResult.Status.CLOSED =>
+                ???
+            }
+          }
+
+      private def read0(maxBytes: Int, timeout: Option[FiniteDuration]): F[Option[Chunk[Byte]]] =
+        socket.read(maxBytes, timeout).flatMap {
+          case Some(c) =>
+            unwrapBuffer.input(c) >> doUnwrap
+          case None => ???
+        }
+
+      def readN(numBytes: Int, timeout: Option[FiniteDuration]): F[Option[Chunk[Byte]]] =
+        readSem.withPermit {
+          def go(acc: Chunk.Queue[Byte]): F[Option[Chunk[Byte]]] = {
+            val toRead = numBytes - acc.size
+            if (toRead <= 0) Applicative[F].pure(Some(acc.toChunk))
+            else {
+              read(numBytes, timeout).flatMap {
+                case Some(chunk) => go(acc :+ chunk): F[Option[Chunk[Byte]]]
+                case None        => Applicative[F].pure(Some(acc.toChunk)): F[Option[Chunk[Byte]]]
+              }
+            }
+          }
+          go(Chunk.Queue.empty)
+        }
+
+      def read(maxBytes: Int, timeout: Option[FiniteDuration]): F[Option[Chunk[Byte]]] =
+        readSem.withPermit(read0(maxBytes, timeout))
+
+      def reads(maxBytes: Int, timeout: Option[FiniteDuration]): Stream[F, Byte] =
+        Stream.repeatEval(read(maxBytes, timeout)).unNoneTerminate.flatMap(Stream.chunk)
+
+      def writes(timeout: Option[FiniteDuration]): Pipe[F, Byte, Unit] =
+        _.chunks.evalMap(write(_, timeout))
+
+      def endOfOutput: F[Unit] =
+        Sync[F].delay(engine.closeOutbound) >> socket.endOfOutput
+
+      def endOfInput: F[Unit] =
+        Sync[F].delay(engine.closeInbound) >> socket.endOfInput
+
+      def localAddress: F[SocketAddress] =
+        socket.localAddress
+
+      def remoteAddress: F[SocketAddress] =
+        socket.remoteAddress
+
+      def startHandshake: F[Unit] =
+        Sync[F].delay(engine.beginHandshake)
+
+      def close: F[Unit] =
+        Sync[F].delay(engine.closeOutbound) >> Sync[F].delay(engine.closeInbound) >> socket.close
+
+      def isOpen: F[Boolean] = socket.isOpen
+    }
 }

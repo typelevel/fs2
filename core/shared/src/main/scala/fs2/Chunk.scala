@@ -1432,7 +1432,7 @@ object Chunk extends CollectorK[Chunk] {
     concat(chunks, chunks.foldLeft(0)(_ + _.size))
 
   def concat[A](chunks: GSeq[Chunk[A]], totalSize: Int): Chunk[A] =
-    if (chunks.isEmpty) {
+    if (totalSize == 0) {
       Chunk.empty
     } else if (chunks.forall(c => c.knownElementType[Boolean] || c.forall(_.isInstanceOf[Boolean]))) {
       concatBooleans(chunks.asInstanceOf[GSeq[Chunk[Boolean]]], totalSize).asInstanceOf[Chunk[A]]
