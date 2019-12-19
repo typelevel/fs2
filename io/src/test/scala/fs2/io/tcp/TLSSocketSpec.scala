@@ -16,8 +16,8 @@ import scodec.bits.ByteVector
 class TLSSocketSpec extends Fs2Spec {
   "TLSSocket" - {
     "google" - {
-      List("TLSv1.3").foreach { protocol =>
-        // List("TLSv1", "TLSv1.1", "TLSv1.2", "TLSv1.3").foreach { protocol =>
+      // List("TLSv1.3").foreach { protocol =>
+        List("TLSv1", "TLSv1.1", "TLSv1.2", "TLSv1.3").foreach { protocol =>
         protocol in {
           Blocker[IO].use { blocker =>
             SocketGroup[IO](blocker).use { socketGroup =>
@@ -26,7 +26,7 @@ class TLSSocketSpec extends Fs2Spec {
                   .insecure[IO](blocker)
                   .engine(enabledProtocols = Some(List(protocol)))
                   .flatMap { tlsEngine =>
-                    TLSSocket(loggingSocket("raw", socket), tlsEngine).flatMap { tlsSocket =>
+                    TLSSocket(loggingSocket("raw", socket), tlsEngine).use { tlsSocket =>
                       (Stream("GET /\r\n\r\n")
                         .covary[IO]
                         .through(text.utf8Encode)
@@ -37,8 +37,7 @@ class TLSSocketSpec extends Fs2Spec {
                         .head
                         .compile
                         .string
-                        .asserting(_ shouldBe "HTTP/1.0 200 OK")
-                    }
+                    }.asserting(_ shouldBe "HTTP/1.0 200 OK")
                   }
               }
             }

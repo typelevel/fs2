@@ -42,7 +42,7 @@ object TLSEngine {
 
       def beginHandshake = Sync[F].delay(engine.beginHandshake())
       def stopWrap = Sync[F].delay(engine.closeOutbound())
-      def stopUnwrap = Sync[F].delay(engine.closeInbound())
+      def stopUnwrap = Sync[F].delay(engine.closeInbound()).attempt.void
 
       def wrap(data: Chunk[Byte], binding: Binding[F]): F[Unit] =
         wrapBuffer.input(data) >> doWrap(binding)
@@ -69,7 +69,7 @@ object TLSEngine {
               case SSLEngineResult.Status.BUFFER_OVERFLOW =>
                 wrapBuffer.expandOutput >> doWrap(binding)
               case SSLEngineResult.Status.CLOSED =>
-                ???
+                stopWrap >> stopUnwrap
             }
           }
 
@@ -98,7 +98,7 @@ object TLSEngine {
               case SSLEngineResult.Status.BUFFER_OVERFLOW =>
                 unwrapBuffer.expandOutput >> doUnwrap(binding)
               case SSLEngineResult.Status.CLOSED =>
-                ???
+                stopWrap >> stopUnwrap >> unwrapBuffer.output.map(Some(_))
             }
           }
 
@@ -120,13 +120,13 @@ object TLSEngine {
                                                       else doHsUnwrap(binding))
           case SSLEngineResult.HandshakeStatus.NEED_WRAP =>
             doHsWrap(binding)
-          case SSLEngineResult.HandshakeStatus.NEED_UNWRAP =>
+          case SSLEngineResult.HandshakeStatus.NEED_UNWRAP | SSLEngineResult.HandshakeStatus.NEED_UNWRAP_AGAIN =>
             unwrapBuffer.inputRemains.flatMap { remaining =>
               if (remaining > 0) doHsUnwrap(binding)
               else
                 binding.read.flatMap {
                   case Some(c) => unwrapBuffer.input(c) >> doHsUnwrap(binding)
-                  case None    => stopUnwrap >> stopWrap
+                  case None    => stopWrap >> stopUnwrap
                 }
             }
         }
@@ -148,7 +148,7 @@ object TLSEngine {
               case SSLEngineResult.Status.BUFFER_OVERFLOW =>
                 wrapBuffer.expandOutput >> doHsWrap(binding)
               case SSLEngineResult.Status.CLOSED =>
-                ???
+                stopWrap >> stopUnwrap
             }
           }
 
@@ -167,7 +167,7 @@ object TLSEngine {
               case SSLEngineResult.Status.BUFFER_OVERFLOW =>
                 unwrapBuffer.expandOutput >> doHsUnwrap(binding)
               case SSLEngineResult.Status.CLOSED =>
-                ???
+                stopWrap >> stopUnwrap
             }
           }
 

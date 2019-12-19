@@ -7,7 +7,7 @@ import scala.concurrent.duration._
 import java.net.SocketAddress
 
 import cats.Applicative
-import cats.effect.concurrent.{Ref, Semaphore}
+import cats.effect.concurrent.Semaphore
 import cats.effect._
 import cats.syntax.all._
 
@@ -33,6 +33,12 @@ object TLSSocket {
     }
 
   def apply[F[_]: Concurrent: ContextShift](
+      socket: Socket[F],
+      engine: TLSEngine[F]
+  ): Resource[F, TLSSocket[F]] =
+    Resource.make(mk(socket, engine))(_.close)
+
+  def mk[F[_]: Concurrent: ContextShift](
       socket: Socket[F],
       engine: TLSEngine[F]
   ): F[TLSSocket[F]] =
