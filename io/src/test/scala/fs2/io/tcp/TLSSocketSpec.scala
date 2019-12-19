@@ -24,9 +24,9 @@ class TLSSocketSpec extends Fs2Spec {
               socketGroup.client[IO](new InetSocketAddress("google.com", 443)).use { socket =>
                 TLSContext
                   .insecure[IO](blocker)
-                  .engine2(enabledProtocols = Some(List(protocol)))
+                  .engine(enabledProtocols = Some(List(protocol)))
                   .flatMap { tlsEngine =>
-                    TLSSocket.two(loggingSocket("raw", socket), tlsEngine, blocker).flatMap {
+                    TLSSocket(loggingSocket("raw", socket), tlsEngine).flatMap {
                       tlsSocket =>
                         (Stream("GET /\r\n\r\n")
                           .covary[IO]
