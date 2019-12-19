@@ -21,7 +21,12 @@ trait TLSSocket[F[_]] extends Socket[F] {
 
 object TLSSocket {
 
-  private def binding[F[_]](socket: Socket[F], writeTimeout: Option[FiniteDuration] = None, readMaxBytes: Int = 16 * 1024, readTimeout: Option[FiniteDuration] = None): TLSEngine.Binding[F] =
+  private def binding[F[_]](
+      socket: Socket[F],
+      writeTimeout: Option[FiniteDuration] = None,
+      readMaxBytes: Int = 16 * 1024,
+      readTimeout: Option[FiniteDuration] = None
+  ): TLSEngine.Binding[F] =
     new TLSEngine.Binding[F] {
       def write(data: Chunk[Byte]) = socket.write(data, writeTimeout)
       def read = socket.read(readMaxBytes, readTimeout)
@@ -30,9 +35,10 @@ object TLSSocket {
   def apply[F[_]: Concurrent: ContextShift](
       socket: Socket[F],
       engine: TLSEngine[F]
-  ): F[TLSSocket[F]] = for {
-    readSem <- Semaphore(1)
-  } yield new TLSSocket[F] {
+  ): F[TLSSocket[F]] =
+    for {
+      readSem <- Semaphore(1)
+    } yield new TLSSocket[F] {
       def write(bytes: Chunk[Byte], timeout: Option[FiniteDuration]): F[Unit] =
         engine.wrap(bytes, binding(socket, writeTimeout = timeout))
 

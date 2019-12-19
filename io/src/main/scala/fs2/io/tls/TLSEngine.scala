@@ -56,19 +56,16 @@ object TLSEngine {
           .flatMap { result =>
             result.getStatus match {
               case SSLEngineResult.Status.OK =>
-                result.getHandshakeStatus match {
-                  case SSLEngineResult.HandshakeStatus.NOT_HANDSHAKING =>
-                    log("sending output chunk") >> wrapBuffer.output.flatMap { c =>
-                      binding.write(c)
-                    }
-                  case other =>
-                    log("sending output chunk") >> wrapBuffer.output.flatMap { c =>
-                      binding.write(c)
-                    } >>
+                wrapBuffer.output.flatMap(binding.write) >> {
+                  result.getHandshakeStatus match {
+                    case SSLEngineResult.HandshakeStatus.NOT_HANDSHAKING =>
+                      Applicative[F].unit
+                    case other =>
                       doHandshake(other, true, binding) >> doWrap(binding)
+                  }
                 }
               case SSLEngineResult.Status.BUFFER_UNDERFLOW =>
-                ???
+                wrapBuffer.output.flatMap(binding.write)
               case SSLEngineResult.Status.BUFFER_OVERFLOW =>
                 wrapBuffer.expandOutput >> doWrap(binding)
               case SSLEngineResult.Status.CLOSED =>
@@ -111,7 +108,8 @@ object TLSEngine {
           binding: Binding[F]
       ): F[Unit] =
         handshakeStatus match {
-          case SSLEngineResult.HandshakeStatus.NOT_HANDSHAKING => ???
+          case SSLEngineResult.HandshakeStatus.NOT_HANDSHAKING =>
+            Applicative[F].unit
           case SSLEngineResult.HandshakeStatus.FINISHED =>
             unwrapBuffer.inputRemains.flatMap { remaining =>
               if (remaining > 0) doHsUnwrap(binding)
@@ -124,14 +122,12 @@ object TLSEngine {
             doHsWrap(binding)
           case SSLEngineResult.HandshakeStatus.NEED_UNWRAP =>
             unwrapBuffer.inputRemains.flatMap { remaining =>
-              log(s"remaining: $remaining") >> {
-                if (remaining > 0) doHsUnwrap(binding)
-                else
-                  binding.read.flatMap {
-                    case Some(c) => unwrapBuffer.input(c) >> doHsUnwrap(binding)
-                    case None    => ???
-                  }
-              }
+              if (remaining > 0) doHsUnwrap(binding)
+              else
+                binding.read.flatMap {
+                  case Some(c) => unwrapBuffer.input(c) >> doHsUnwrap(binding)
+                  case None    => stopUnwrap >> stopWrap
+                }
             }
         }
 
@@ -143,14 +139,12 @@ object TLSEngine {
           }
           .flatMap { result =>
             result.getStatus match {
-              case SSLEngineResult.Status.OK =>
+              case SSLEngineResult.Status.OK | SSLEngineResult.Status.BUFFER_UNDERFLOW =>
                 wrapBuffer.output.flatMap(binding.write(_)) >> doHandshake(
                   result.getHandshakeStatus,
                   true,
                   binding
                 )
-              case SSLEngineResult.Status.BUFFER_UNDERFLOW =>
-                ???
               case SSLEngineResult.Status.BUFFER_OVERFLOW =>
                 wrapBuffer.expandOutput >> doHsWrap(binding)
               case SSLEngineResult.Status.CLOSED =>
@@ -169,20 +163,7 @@ object TLSEngine {
               case SSLEngineResult.Status.OK =>
                 doHandshake(result.getHandshakeStatus, false, binding)
               case SSLEngineResult.Status.BUFFER_UNDERFLOW =>
-                result.getHandshakeStatus match {
-                  case SSLEngineResult.HandshakeStatus.NOT_HANDSHAKING =>
-                    Applicative[F].unit
-                  case SSLEngineResult.HandshakeStatus.NEED_UNWRAP =>
-                    binding.read.flatMap {
-                        case Some(c) =>
-                        unwrapBuffer.input(c) >> doHsUnwrap(binding)
-                        case None => ???
-                    }
-                  case SSLEngineResult.HandshakeStatus.NEED_WRAP =>
-                    doHsWrap(binding)
-                  case _ =>
-                    sys.error("What to do here?")
-                }
+                doHandshake(result.getHandshakeStatus, false, binding)
               case SSLEngineResult.Status.BUFFER_OVERFLOW =>
                 unwrapBuffer.expandOutput >> doHsUnwrap(binding)
               case SSLEngineResult.Status.CLOSED =>
@@ -190,6 +171,6 @@ object TLSEngine {
             }
           }
 
-        }
+    }
 
 }

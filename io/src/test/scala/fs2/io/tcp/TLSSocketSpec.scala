@@ -26,19 +26,18 @@ class TLSSocketSpec extends Fs2Spec {
                   .insecure[IO](blocker)
                   .engine(enabledProtocols = Some(List(protocol)))
                   .flatMap { tlsEngine =>
-                    TLSSocket(loggingSocket("raw", socket), tlsEngine).flatMap {
-                      tlsSocket =>
-                        (Stream("GET /\r\n\r\n")
-                          .covary[IO]
-                          .through(text.utf8Encode)
-                          .through(tlsSocket.writes())
-                          .drain ++
-                          tlsSocket.reads(8192).through(text.utf8Decode))
-                          .through(text.lines)
-                          .head
-                          .compile
-                          .string
-                          .asserting(_ shouldBe "HTTP/1.0 200 OK")
+                    TLSSocket(loggingSocket("raw", socket), tlsEngine).flatMap { tlsSocket =>
+                      (Stream("GET /\r\n\r\n")
+                        .covary[IO]
+                        .through(text.utf8Encode)
+                        .through(tlsSocket.writes())
+                        .drain ++
+                        tlsSocket.reads(8192).through(text.utf8Decode))
+                        .through(text.lines)
+                        .head
+                        .compile
+                        .string
+                        .asserting(_ shouldBe "HTTP/1.0 200 OK")
                     }
                   }
               }
