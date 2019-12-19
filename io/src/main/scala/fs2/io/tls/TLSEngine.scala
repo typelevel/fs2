@@ -169,18 +169,19 @@ object TLSEngine {
               case SSLEngineResult.Status.OK =>
                 doHandshake(result.getHandshakeStatus, false, binding)
               case SSLEngineResult.Status.BUFFER_UNDERFLOW =>
-                if (result.getHandshakeStatus == SSLEngineResult.HandshakeStatus.NOT_HANDSHAKING) {
-                  Applicative[F].unit
-                } else if (result.getHandshakeStatus == SSLEngineResult.HandshakeStatus.NEED_UNWRAP) {
-                  binding.read.flatMap {
-                    case Some(c) =>
-                      unwrapBuffer.input(c) >> doHsUnwrap(binding)
-                    case None => ???
-                  }
-                } else if (result.getHandshakeStatus == SSLEngineResult.HandshakeStatus.NEED_WRAP) {
-                  doHsWrap(binding)
-                } else {
-                  sys.error("What to do here?")
+                result.getHandshakeStatus match {
+                  case SSLEngineResult.HandshakeStatus.NOT_HANDSHAKING =>
+                    Applicative[F].unit
+                  case SSLEngineResult.HandshakeStatus.NEED_UNWRAP =>
+                    binding.read.flatMap {
+                        case Some(c) =>
+                        unwrapBuffer.input(c) >> doHsUnwrap(binding)
+                        case None => ???
+                    }
+                  case SSLEngineResult.HandshakeStatus.NEED_WRAP =>
+                    doHsWrap(binding)
+                  case _ =>
+                    sys.error("What to do here?")
                 }
               case SSLEngineResult.Status.BUFFER_OVERFLOW =>
                 unwrapBuffer.expandOutput >> doHsUnwrap(binding)
