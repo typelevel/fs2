@@ -3,7 +3,7 @@ package io
 package tls
 
 import java.security.cert.X509Certificate
-import javax.net.ssl.{SSLContext, SSLEngine, X509TrustManager}
+import javax.net.ssl.{SSLContext, X509TrustManager}
 
 import cats.effect.{Blocker, Concurrent, ContextShift, Sync}
 import cats.implicits._
@@ -17,14 +17,6 @@ sealed trait TLSContext[F[_]] {
       enabledCipherSuites: Option[List[String]] = None,
       enabledProtocols: Option[List[String]] = None
   ): F[TLSEngine[F]]
-  def engine2(
-      clientMode: Boolean = true,
-      needClientAuth: Boolean = false,
-      wantClientAuth: Boolean = false,
-      enableSessionCreation: Boolean = true,
-      enabledCipherSuites: Option[List[String]] = None,
-      enabledProtocols: Option[List[String]] = None
-  ): F[SSLEngine]
 }
 
 object TLSContext {
@@ -51,26 +43,6 @@ object TLSContext {
         engine
       }
       sslEngine.flatMap(TLSEngine[F](_, blocker))
-    }
-    def engine2(
-        clientMode: Boolean,
-        needClientAuth: Boolean,
-        wantClientAuth: Boolean,
-        enableSessionCreation: Boolean,
-        enabledCipherSuites: Option[List[String]],
-        enabledProtocols: Option[List[String]]
-    ): F[SSLEngine] = {
-      val sslEngine = Sync[F].delay {
-        val engine = ctx.createSSLEngine()
-        engine.setUseClientMode(clientMode)
-        engine.setNeedClientAuth(needClientAuth)
-        engine.setWantClientAuth(wantClientAuth)
-        engine.setEnableSessionCreation(enableSessionCreation)
-        enabledCipherSuites.foreach(ecs => engine.setEnabledCipherSuites(ecs.toArray))
-        enabledProtocols.foreach(ep => engine.setEnabledProtocols(ep.toArray))
-        engine
-      }
-      sslEngine
     }
   }
 

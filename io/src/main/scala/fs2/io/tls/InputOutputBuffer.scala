@@ -16,7 +16,7 @@ import cats.implicits._
   * data has been added, calling [[perform]] allows read access to the input and write access to the
   * output. After [[perform]], produced output can be read via the [[output]] method.
   */
-private[io] trait InputOutputBuffer[F[_]] {
+private[tls] trait InputOutputBuffer[F[_]] {
 
   /** Adds the specified chunk to the input buffer. */
   def input(data: Chunk[Byte]): F[Unit]
@@ -38,7 +38,7 @@ private[io] trait InputOutputBuffer[F[_]] {
   def inputRemains: F[Int]
 }
 
-private[io] object InputOutputBuffer {
+private[tls] object InputOutputBuffer {
   def apply[F[_]: Sync](inputSize: Int, outputSize: Int): F[InputOutputBuffer[F]] =
     for {
       inBuff <- Ref.of[F, ByteBuffer](ByteBuffer.allocate(inputSize))
