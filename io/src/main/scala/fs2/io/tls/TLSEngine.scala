@@ -6,14 +6,14 @@ import javax.net.ssl.{SSLEngine, SSLEngineResult, SSLSession}
 
 import cats.Applicative
 import cats.effect.{Blocker, Concurrent, ContextShift, Sync}
-import cats.effect.concurrent.{Ref, Semaphore}
+import cats.effect.concurrent.Semaphore
 import cats.implicits._
 
 /**
- * Provides the ability to establish and communicate over a TLS session.
- * 
- * This is a functional wrapper of the JDK `SSLEngine`.
- */
+  * Provides the ability to establish and communicate over a TLS session.
+  *
+  * This is a functional wrapper of the JDK `SSLEngine`.
+  */
 trait TLSEngine[F[_]] {
   def beginHandshake: F[Unit]
   def session: F[SSLSession]
@@ -21,9 +21,6 @@ trait TLSEngine[F[_]] {
   def stopUnwrap: F[Unit]
   def wrap(data: Chunk[Byte], binding: TLSEngine.Binding[F]): F[Unit]
   def unwrap(data: Chunk[Byte], binding: TLSEngine.Binding[F]): F[Option[Chunk[Byte]]]
-
-  /** Enables debugging output. */
-  def debug(log: String => F[Unit]): F[Unit]
 }
 
 object TLSEngine {
@@ -34,7 +31,8 @@ object TLSEngine {
 
   def apply[F[_]: Concurrent: ContextShift](
       engine: SSLEngine,
-      blocker: Blocker
+      blocker: Blocker,
+      logger: Option[String => F[Unit]] = None
   ): F[TLSEngine[F]] =
     for {
       wrapBuffer <- InputOutputBuffer[F](
@@ -49,25 +47,22 @@ object TLSEngine {
       unwrapSem <- Semaphore[F](1)
       handshakeSem <- Semaphore[F](1)
       sslEngineTaskRunner = SSLEngineTaskRunner[F](engine, blocker)
-      logger <- Ref.of[F, String => F[Unit]](_ => Applicative[F].unit)
     } yield new TLSEngine[F] {
       private def log(msg: String): F[Unit] =
-        logger.get.flatMap(_(msg))
+        logger.map(_(msg)).getOrElse(Applicative[F].unit)
 
       def beginHandshake = Sync[F].delay(engine.beginHandshake())
       def session = Sync[F].delay(engine.getSession())
       def stopWrap = Sync[F].delay(engine.closeOutbound())
       def stopUnwrap = Sync[F].delay(engine.closeInbound()).attempt.void
 
-      def debug(log: String => F[Unit]) = logger.set(log)
-
       def wrap(data: Chunk[Byte], binding: Binding[F]): F[Unit] =
         wrapSem.withPermit(wrapBuffer.input(data) >> doWrap(binding))
 
       /**
-       * Performs a wrap operation on the underlying engine.
-       * Must be called with either the `wrapSem` and/or `handshakeSem`.
-       */
+        * Performs a wrap operation on the underlying engine.
+        * Must be called with either the `wrapSem` and/or `handshakeSem`.
+        */
       private def doWrap(binding: Binding[F]): F[Unit] =
         wrapBuffer
           .perform(engine.wrap(_, _))
@@ -98,9 +93,9 @@ object TLSEngine {
         unwrapSem.withPermit(unwrapBuffer.input(data) >> doUnwrap(binding))
 
       /**
-       * Performs an unwrap operation on the underlying engine.
-       * Must be called with either the `unwrapSem` and/or `handshakeSem`.
-       */
+        * Performs an unwrap operation on the underlying engine.
+        * Must be called with either the `unwrapSem` and/or `handshakeSem`.
+        */
       private def doUnwrap(binding: Binding[F]): F[Option[Chunk[Byte]]] =
         unwrapBuffer
           .perform(engine.unwrap(_, _))
@@ -132,15 +127,15 @@ object TLSEngine {
           handshakeStatus: SSLEngineResult.HandshakeStatus,
           lastOperationWrap: Boolean,
           binding: Binding[F]
-      ): F[Unit] = 
+      ): F[Unit] =
         handshakeSem.withPermit {
           stepHandshake(handshakeStatus, lastOperationWrap, binding)
         }
 
       /**
-       * Determines what to do next given the result of a handshake operation.
-       * Must be called with `handshakeSem`.
-       */
+        * Determines what to do next given the result of a handshake operation.
+        * Must be called with `handshakeSem`.
+        */
       private def stepHandshake(
           handshakeStatus: SSLEngineResult.HandshakeStatus,
           lastOperationWrap: Boolean,
@@ -172,9 +167,9 @@ object TLSEngine {
         }
 
       /**
-       * Performs a wrap operation as part of handshaking.
-       * Must be called with `handshakeSem`.
-       */
+        * Performs a wrap operation as part of handshaking.
+        * Must be called with `handshakeSem`.
+        */
       private def doHsWrap(binding: Binding[F]): F[Unit] =
         wrapBuffer
           .perform(engine.wrap(_, _))
@@ -197,9 +192,9 @@ object TLSEngine {
           }
 
       /**
-       * Performs an unwrap operation as part of handshaking.
-       * Must be called with `handshakeSem`.
-       */
+        * Performs an unwrap operation as part of handshaking.
+        * Must be called with `handshakeSem`.
+        */
       private def doHsUnwrap(binding: Binding[F]): F[Unit] =
         unwrapBuffer
           .perform(engine.unwrap(_, _))

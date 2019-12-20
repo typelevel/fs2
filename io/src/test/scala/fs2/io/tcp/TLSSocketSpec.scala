@@ -18,9 +18,11 @@ class TLSSocketSpec extends Fs2Spec {
               socketGroup.client[IO](new InetSocketAddress("google.com", 443)).use { socket =>
                 TLSContext
                   .insecure[IO](blocker)
-                  .engine(enabledProtocols = Some(List(protocol)))
+                  .engine(
+                    enabledProtocols = Some(List(protocol))
+                    // logger = Some(msg => IO(println(s"\u001b[33m${msg}\u001b[0m")))
+                  )
                   .flatMap { tlsEngine =>
-                    // tlsEngine.debug(msg => IO(println(s"\u001b[33m${msg}\u001b[0m"))) >>
                     TLSSocket(socket, tlsEngine)
                       .use { tlsSocket =>
                         (Stream("GET /\r\n\r\n")
@@ -28,11 +30,10 @@ class TLSSocketSpec extends Fs2Spec {
                           .through(text.utf8Encode)
                           .through(tlsSocket.writes())
                           .drain ++
-                          tlsSocket.reads(8192).through(text.utf8Decode)
-                          .through(text.lines))
-                          .head
-                          .compile
-                          .string
+                          tlsSocket
+                            .reads(8192)
+                            .through(text.utf8Decode)
+                            .through(text.lines)).head.compile.string
                       }
                       .asserting(_ shouldBe "HTTP/1.0 200 OK")
                   }

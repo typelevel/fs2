@@ -15,7 +15,8 @@ sealed trait TLSContext[F[_]] {
       wantClientAuth: Boolean = false,
       enableSessionCreation: Boolean = true,
       enabledCipherSuites: Option[List[String]] = None,
-      enabledProtocols: Option[List[String]] = None
+      enabledProtocols: Option[List[String]] = None,
+      logger: Option[String => F[Unit]] = None
   ): F[TLSEngine[F]]
 }
 
@@ -30,7 +31,8 @@ object TLSContext {
         wantClientAuth: Boolean,
         enableSessionCreation: Boolean,
         enabledCipherSuites: Option[List[String]],
-        enabledProtocols: Option[List[String]]
+        enabledProtocols: Option[List[String]],
+        logger: Option[String => F[Unit]]
     ): F[TLSEngine[F]] = {
       val sslEngine = Sync[F].delay {
         val engine = ctx.createSSLEngine()
@@ -42,7 +44,7 @@ object TLSContext {
         enabledProtocols.foreach(ep => engine.setEnabledProtocols(ep.toArray))
         engine
       }
-      sslEngine.flatMap(TLSEngine[F](_, blocker))
+      sslEngine.flatMap(TLSEngine[F](_, blocker, logger))
     }
   }
 
