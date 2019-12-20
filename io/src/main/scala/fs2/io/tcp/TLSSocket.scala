@@ -5,6 +5,7 @@ package tcp
 import scala.concurrent.duration._
 
 import java.net.SocketAddress
+import javax.net.ssl.SSLSession
 
 import cats.Applicative
 import cats.effect.concurrent.Semaphore
@@ -15,8 +16,14 @@ import fs2.io.tls._
 
 trait TLSSocket[F[_]] extends Socket[F] {
 
-  /** Initiates a new TLS handshake. */
-  def startHandshake: F[Unit]
+  /** Initiates handshaking -- either the initial or a renegotiation. */
+  def beginHandshake: F[Unit]
+
+  /**
+    * Provides access to the current `SSLSession` for purposes of querying
+    * session info such as the negotiated cipher suite or the peer certificate.
+    */
+  def session: F[SSLSession]
 }
 
 object TLSSocket {
@@ -92,8 +99,11 @@ object TLSSocket {
       def remoteAddress: F[SocketAddress] =
         socket.remoteAddress
 
-      def startHandshake: F[Unit] =
-        Sync[F].delay(engine.beginHandshake)
+      def beginHandshake: F[Unit] =
+        engine.beginHandshake
+
+      def session: F[SSLSession] =
+        engine.session
 
       def close: F[Unit] =
         engine.stopWrap >> engine.stopUnwrap >> socket.close

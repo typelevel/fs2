@@ -2,7 +2,7 @@ package fs2
 package io
 package tls
 
-import javax.net.ssl.{SSLEngine, SSLEngineResult}
+import javax.net.ssl.{SSLEngine, SSLEngineResult, SSLSession}
 
 import cats.Applicative
 import cats.effect.{Blocker, Concurrent, ContextShift, Sync}
@@ -10,6 +10,7 @@ import cats.implicits._
 
 trait TLSEngine[F[_]] {
   def beginHandshake: F[Unit]
+  def session: F[SSLSession]
   def stopWrap: F[Unit]
   def stopUnwrap: F[Unit]
   def wrap(data: Chunk[Byte], binding: TLSEngine.Binding[F]): F[Unit]
@@ -41,6 +42,7 @@ object TLSEngine {
         Sync[F].delay(println(s"\u001b[33m${msg}\u001b[0m"))
 
       def beginHandshake = Sync[F].delay(engine.beginHandshake())
+      def session = Sync[F].delay(engine.getSession())
       def stopWrap = Sync[F].delay(engine.closeOutbound())
       def stopUnwrap = Sync[F].delay(engine.closeInbound()).attempt.void
 
@@ -120,7 +122,8 @@ object TLSEngine {
                                                       else doHsUnwrap(binding))
           case SSLEngineResult.HandshakeStatus.NEED_WRAP =>
             doHsWrap(binding)
-          case SSLEngineResult.HandshakeStatus.NEED_UNWRAP | SSLEngineResult.HandshakeStatus.NEED_UNWRAP_AGAIN =>
+          case SSLEngineResult.HandshakeStatus.NEED_UNWRAP |
+              SSLEngineResult.HandshakeStatus.NEED_UNWRAP_AGAIN =>
             unwrapBuffer.inputRemains.flatMap { remaining =>
               if (remaining > 0) doHsUnwrap(binding)
               else
