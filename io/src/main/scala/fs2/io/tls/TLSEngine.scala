@@ -14,7 +14,7 @@ import cats.implicits._
   *
   * This is a functional wrapper of the JDK `SSLEngine`.
   */
-trait TLSEngine[F[_]] {
+private[tls] trait TLSEngine[F[_]] {
   def beginHandshake: F[Unit]
   def session: F[SSLSession]
   def stopWrap: F[Unit]
@@ -23,7 +23,7 @@ trait TLSEngine[F[_]] {
   def unwrap(data: Chunk[Byte], binding: TLSEngine.Binding[F]): F[Option[Chunk[Byte]]]
 }
 
-object TLSEngine {
+private[tls] object TLSEngine {
   trait Binding[F[_]] {
     def write(data: Chunk[Byte]): F[Unit]
     def read: F[Option[Chunk[Byte]]]

@@ -1,6 +1,6 @@
 package fs2
 package io
-package tcp
+package tls
 
 import scala.util.control.NonFatal
 
@@ -9,7 +9,7 @@ import javax.net.ssl.SSLContext
 
 import cats.effect.{Blocker, IO}
 
-import fs2.io.tls.TLSContext
+import fs2.io.tcp.SocketGroup
 
 class TLSSocketSpec extends Fs2Spec {
   "TLSSocket" - {
@@ -24,25 +24,20 @@ class TLSSocketSpec extends Fs2Spec {
                 socketGroup.client[IO](new InetSocketAddress("google.com", 443)).use { socket =>
                   TLSContext
                     .insecure[IO](blocker)
-                    .engine(
-                      enabledProtocols = Some(List(protocol))
-                      // logger = Some(msg => IO(println(s"\u001b[33m${msg}\u001b[0m")))
-                    )
-                    .flatMap { tlsEngine =>
-                      TLSSocket(socket, tlsEngine)
-                        .use { tlsSocket =>
-                          (Stream("GET /\r\n\r\n")
-                            .covary[IO]
-                            .through(text.utf8Encode)
-                            .through(tlsSocket.writes())
-                            .drain ++
-                            tlsSocket
-                              .reads(8192)
-                              .through(text.utf8Decode)
-                              .through(text.lines)).head.compile.string
-                        }
-                        .asserting(_ shouldBe "HTTP/1.0 200 OK")
+                    .client(socket, TLSSessionConfig(enabledProtocols = Some(List(protocol))))
+                    // logger = Some(msg => IO(println(s"\u001b[33m${msg}\u001b[0m")))
+                    .use { tlsSocket =>
+                      (Stream("GET /\r\n\r\n")
+                        .covary[IO]
+                        .through(text.utf8Encode)
+                        .through(tlsSocket.writes())
+                        .drain ++
+                        tlsSocket
+                          .reads(8192)
+                          .through(text.utf8Decode)
+                          .through(text.lines)).head.compile.string
                     }
+                    .asserting(_ shouldBe "HTTP/1.0 200 OK")
                 }
               }
             }

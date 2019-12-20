@@ -1,6 +1,6 @@
 package fs2
 package io
-package tcp
+package tls
 
 import scala.concurrent.duration._
 
@@ -12,7 +12,7 @@ import cats.effect.concurrent.Semaphore
 import cats.effect._
 import cats.syntax.all._
 
-import fs2.io.tls._
+import fs2.io.tcp.Socket
 
 trait TLSSocket[F[_]] extends Socket[F] {
 
@@ -38,13 +38,13 @@ object TLSSocket {
       def read = socket.read(readMaxBytes, None)
     }
 
-  def apply[F[_]: Concurrent: ContextShift](
+  private[tls] def apply[F[_]: Concurrent: ContextShift](
       socket: Socket[F],
       engine: TLSEngine[F]
   ): Resource[F, TLSSocket[F]] =
     Resource.make(mk(socket, engine))(_.close)
 
-  def mk[F[_]: Concurrent: ContextShift](
+  private[tls] def mk[F[_]: Concurrent: ContextShift](
       socket: Socket[F],
       engine: TLSEngine[F]
   ): F[TLSSocket[F]] =
