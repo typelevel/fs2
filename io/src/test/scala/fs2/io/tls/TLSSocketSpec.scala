@@ -24,7 +24,7 @@ class TLSSocketSpec extends Fs2Spec {
                 socketGroup.client[IO](new InetSocketAddress("google.com", 443)).use { socket =>
                   TLSContext
                     .insecure[IO](blocker)
-                    .client(socket, TLSSessionConfig(enabledProtocols = Some(List(protocol))))
+                    .client(socket, enabledProtocols = Some(List(protocol)))
                     // logger = Some(msg => IO(println(s"\u001b[33m${msg}\u001b[0m")))
                     .use { tlsSocket =>
                       (Stream("GET /\r\n\r\n")
