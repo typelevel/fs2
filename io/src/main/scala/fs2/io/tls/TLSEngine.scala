@@ -72,7 +72,7 @@ private[tls] object TLSEngine {
           .flatMap { result =>
             result.getStatus match {
               case SSLEngineResult.Status.OK =>
-                wrapBuffer.output.flatMap(binding.write) >> {
+                doWrite(binding) >> {
                   result.getHandshakeStatus match {
                     case SSLEngineResult.HandshakeStatus.NOT_HANDSHAKING =>
                       Applicative[F].unit
@@ -81,13 +81,18 @@ private[tls] object TLSEngine {
                   }
                 }
               case SSLEngineResult.Status.BUFFER_UNDERFLOW =>
-                wrapBuffer.output.flatMap(binding.write)
+                doWrite(binding)
               case SSLEngineResult.Status.BUFFER_OVERFLOW =>
                 wrapBuffer.expandOutput >> doWrap(binding)
               case SSLEngineResult.Status.CLOSED =>
                 stopWrap >> stopUnwrap
             }
           }
+
+      private def doWrite(binding: Binding[F]): F[Unit] = wrapBuffer.output.flatMap { out =>
+        if (out.isEmpty) Applicative[F].unit
+        else binding.write(out)
+      }
 
       def unwrap(data: Chunk[Byte], binding: Binding[F]): F[Option[Chunk[Byte]]] =
         unwrapSem.withPermit(unwrapBuffer.input(data) >> doUnwrap(binding))
@@ -107,20 +112,23 @@ private[tls] object TLSEngine {
               case SSLEngineResult.Status.OK =>
                 result.getHandshakeStatus match {
                   case SSLEngineResult.HandshakeStatus.NOT_HANDSHAKING =>
-                    unwrapBuffer.output.map(Some(_))
+                    dequeueUnwrap
                   case SSLEngineResult.HandshakeStatus.FINISHED =>
                     doUnwrap(binding)
                   case _ =>
                     handshake(result, false, binding) >> doUnwrap(binding)
                 }
               case SSLEngineResult.Status.BUFFER_UNDERFLOW =>
-                unwrapBuffer.output.map(Some(_))
+                dequeueUnwrap
               case SSLEngineResult.Status.BUFFER_OVERFLOW =>
                 unwrapBuffer.expandOutput >> doUnwrap(binding)
               case SSLEngineResult.Status.CLOSED =>
-                stopWrap >> stopUnwrap >> unwrapBuffer.output.map(Some(_))
+                stopWrap >> stopUnwrap >> dequeueUnwrap
             }
           }
+
+      private def dequeueUnwrap: F[Option[Chunk[Byte]]] =
+        unwrapBuffer.output.map(out => if (out.isEmpty) None else Some(out))
 
       /** Performs a TLS handshake sequence, returning when the session has been esablished. */
       private def handshake(
@@ -179,7 +187,7 @@ private[tls] object TLSEngine {
           .flatMap { result =>
             result.getStatus match {
               case SSLEngineResult.Status.OK | SSLEngineResult.Status.BUFFER_UNDERFLOW =>
-                wrapBuffer.output.flatMap(binding.write(_)) >> stepHandshake(
+                doWrite(binding) >> stepHandshake(
                   result,
                   true,
                   binding

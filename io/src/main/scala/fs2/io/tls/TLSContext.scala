@@ -2,6 +2,7 @@ package fs2
 package io
 package tls
 
+import java.net.InetSocketAddress
 import java.security.cert.X509Certificate
 import javax.net.ssl.{SSLContext, X509TrustManager}
 
@@ -42,6 +43,28 @@ sealed trait TLSContext[F[_]] {
       enabledProtocols: Option[List[String]] = None,
       logger: Option[String => F[Unit]] = None
   ): Resource[F, TLSSocket[F]]
+
+  def dtlsClient(
+      socket: udp.Socket[F],
+      remoteAddress: InetSocketAddress,
+      needClientAuth: Boolean = false,
+      wantClientAuth: Boolean = false,
+      enableSessionCreation: Boolean = true,
+      enabledCipherSuites: Option[List[String]] = None,
+      enabledProtocols: Option[List[String]] = None,
+      logger: Option[String => F[Unit]] = None
+  ): Resource[F, DTLSSocket[F]]
+
+  def dtlsServer(
+      socket: udp.Socket[F],
+      remoteAddress: InetSocketAddress,
+      needClientAuth: Boolean = false,
+      wantClientAuth: Boolean = false,
+      enableSessionCreation: Boolean = true,
+      enabledCipherSuites: Option[List[String]] = None,
+      enabledProtocols: Option[List[String]] = None,
+      logger: Option[String => F[Unit]] = None
+  ): Resource[F, DTLSSocket[F]]
 }
 
 object TLSContext {
@@ -116,6 +139,78 @@ object TLSContext {
         )
         .flatMap { engine =>
           TLSSocket(socket, engine)
+        }
+
+    def dtlsClient(
+        socket: udp.Socket[F],
+        remoteAddress: InetSocketAddress,
+        needClientAuth: Boolean,
+        wantClientAuth: Boolean,
+        enableSessionCreation: Boolean,
+        enabledCipherSuites: Option[List[String]],
+        enabledProtocols: Option[List[String]],
+        logger: Option[String => F[Unit]]
+    ): Resource[F, DTLSSocket[F]] =
+      mkDtlsSocket(
+        socket,
+        remoteAddress,
+        true,
+        needClientAuth,
+        wantClientAuth,
+        enableSessionCreation,
+        enabledCipherSuites,
+        enabledProtocols,
+        logger
+      )
+
+    def dtlsServer(
+        socket: udp.Socket[F],
+        remoteAddress: InetSocketAddress,
+        needClientAuth: Boolean,
+        wantClientAuth: Boolean,
+        enableSessionCreation: Boolean,
+        enabledCipherSuites: Option[List[String]],
+        enabledProtocols: Option[List[String]],
+        logger: Option[String => F[Unit]]
+    ): Resource[F, DTLSSocket[F]] =
+      mkDtlsSocket(
+        socket,
+        remoteAddress,
+        false,
+        needClientAuth,
+        wantClientAuth,
+        enableSessionCreation,
+        enabledCipherSuites,
+        enabledProtocols,
+        logger
+      )
+
+    private def mkDtlsSocket(
+        socket: udp.Socket[F],
+        remoteAddress: InetSocketAddress,
+        clientMode: Boolean,
+        needClientAuth: Boolean,
+        wantClientAuth: Boolean,
+        enableSessionCreation: Boolean,
+        enabledCipherSuites: Option[List[String]],
+        enabledProtocols: Option[List[String]],
+        logger: Option[String => F[Unit]]
+    ): Resource[F, DTLSSocket[F]] =
+      Resource
+        .liftF(
+          engine(
+            blocker,
+            clientMode,
+            needClientAuth,
+            wantClientAuth,
+            enableSessionCreation,
+            enabledCipherSuites,
+            enabledProtocols,
+            logger
+          )
+        )
+        .flatMap { engine =>
+          DTLSSocket(socket, remoteAddress, engine)
         }
 
     private def engine(

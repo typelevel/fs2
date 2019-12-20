@@ -57,7 +57,10 @@ object TLSSocket {
       private def read0(maxBytes: Int, timeout: Option[FiniteDuration]): F[Option[Chunk[Byte]]] =
         socket.read(maxBytes, timeout).flatMap {
           case Some(c) =>
-            engine.unwrap(c, binding(socket))
+            engine.unwrap(c, binding(socket)).flatMap {
+              case Some(c) => Applicative[F].pure(Some(c))
+              case None    => read0(maxBytes, timeout)
+            }
           case None =>
             Applicative[F].pure(None)
         }
