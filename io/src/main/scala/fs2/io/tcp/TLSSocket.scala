@@ -31,12 +31,11 @@ object TLSSocket {
   private def binding[F[_]](
       socket: Socket[F],
       writeTimeout: Option[FiniteDuration] = None,
-      readMaxBytes: Int = 16 * 1024,
-      readTimeout: Option[FiniteDuration] = None
+      readMaxBytes: Int = 16 * 1024
   ): TLSEngine.Binding[F] =
     new TLSEngine.Binding[F] {
       def write(data: Chunk[Byte]) = socket.write(data, writeTimeout)
-      def read = socket.read(readMaxBytes, readTimeout)
+      def read = socket.read(readMaxBytes, None)
     }
 
   def apply[F[_]: Concurrent: ContextShift](
@@ -58,7 +57,7 @@ object TLSSocket {
       private def read0(maxBytes: Int, timeout: Option[FiniteDuration]): F[Option[Chunk[Byte]]] =
         socket.read(maxBytes, timeout).flatMap {
           case Some(c) =>
-            engine.unwrap(c, binding(socket, readTimeout = timeout))
+            engine.unwrap(c, binding(socket))
           case None =>
             Applicative[F].pure(None)
         }
