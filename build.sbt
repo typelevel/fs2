@@ -81,8 +81,7 @@ lazy val testSettings = Seq(
   javaOptions in Test ++= (Seq(
     "-Dscala.concurrent.context.minThreads=8",
     "-Dscala.concurrent.context.numThreads=8",
-    "-Dscala.concurrent.context.maxThreads=8",
-    "-Djavax.net.debug=all"
+    "-Dscala.concurrent.context.maxThreads=8"
   ) ++ (sys.props.get("fs2.test.travis") match {
     case Some(value) =>
       Seq(s"-Dfs2.test.travis=true")

@@ -6,8 +6,14 @@ import javax.net.ssl.{SSLEngine, SSLEngineResult, SSLSession}
 
 import cats.Applicative
 import cats.effect.{Blocker, Concurrent, ContextShift, Sync}
+import cats.effect.concurrent.{Ref, Semaphore}
 import cats.implicits._
 
+/**
+ * Provides the ability to establish and communicate over a TLS session.
+ * 
+ * This is a functional wrapper of the JDK `SSLEngine`.
+ */
 trait TLSEngine[F[_]] {
   def beginHandshake: F[Unit]
   def session: F[SSLSession]
@@ -15,6 +21,9 @@ trait TLSEngine[F[_]] {
   def stopUnwrap: F[Unit]
   def wrap(data: Chunk[Byte], binding: TLSEngine.Binding[F]): F[Unit]
   def unwrap(data: Chunk[Byte], binding: TLSEngine.Binding[F]): F[Option[Chunk[Byte]]]
+
+  /** Enables debugging output. */
+  def debug(log: String => F[Unit]): F[Unit]
 }
 
 object TLSEngine {
@@ -36,20 +45,30 @@ object TLSEngine {
         engine.getSession.getPacketBufferSize,
         engine.getSession.getApplicationBufferSize
       )
+      wrapSem <- Semaphore[F](1)
+      unwrapSem <- Semaphore[F](1)
+      handshakeSem <- Semaphore[F](1)
       sslEngineTaskRunner = SSLEngineTaskRunner[F](engine, blocker)
+      logger <- Ref.of[F, String => F[Unit]](_ => Applicative[F].unit)
     } yield new TLSEngine[F] {
       private def log(msg: String): F[Unit] =
-        Sync[F].delay(println(s"\u001b[33m${msg}\u001b[0m"))
+        logger.get.flatMap(_(msg))
 
       def beginHandshake = Sync[F].delay(engine.beginHandshake())
       def session = Sync[F].delay(engine.getSession())
       def stopWrap = Sync[F].delay(engine.closeOutbound())
       def stopUnwrap = Sync[F].delay(engine.closeInbound()).attempt.void
 
-      def wrap(data: Chunk[Byte], binding: Binding[F]): F[Unit] =
-        wrapBuffer.input(data) >> doWrap(binding)
+      def debug(log: String => F[Unit]) = logger.set(log)
 
-      def doWrap(binding: Binding[F]): F[Unit] =
+      def wrap(data: Chunk[Byte], binding: Binding[F]): F[Unit] =
+        wrapSem.withPermit(wrapBuffer.input(data) >> doWrap(binding))
+
+      /**
+       * Performs a wrap operation on the underlying engine.
+       * Must be called with either the `wrapSem` and/or `handshakeSem`.
+       */
+      private def doWrap(binding: Binding[F]): F[Unit] =
         wrapBuffer
           .perform(engine.wrap(_, _))
           .flatTap { result =>
@@ -63,7 +82,7 @@ object TLSEngine {
                     case SSLEngineResult.HandshakeStatus.NOT_HANDSHAKING =>
                       Applicative[F].unit
                     case other =>
-                      doHandshake(other, true, binding) >> doWrap(binding)
+                      handshake(other, true, binding) >> doWrap(binding)
                   }
                 }
               case SSLEngineResult.Status.BUFFER_UNDERFLOW =>
@@ -76,9 +95,13 @@ object TLSEngine {
           }
 
       def unwrap(data: Chunk[Byte], binding: Binding[F]): F[Option[Chunk[Byte]]] =
-        unwrapBuffer.input(data) >> doUnwrap(binding)
+        unwrapSem.withPermit(unwrapBuffer.input(data) >> doUnwrap(binding))
 
-      def doUnwrap(binding: Binding[F]): F[Option[Chunk[Byte]]] =
+      /**
+       * Performs an unwrap operation on the underlying engine.
+       * Must be called with either the `unwrapSem` and/or `handshakeSem`.
+       */
+      private def doUnwrap(binding: Binding[F]): F[Option[Chunk[Byte]]] =
         unwrapBuffer
           .perform(engine.unwrap(_, _))
           .flatTap { result =>
@@ -93,7 +116,7 @@ object TLSEngine {
                   case SSLEngineResult.HandshakeStatus.FINISHED =>
                     doUnwrap(binding)
                   case other =>
-                    doHandshake(other, false, binding) >> doUnwrap(binding)
+                    handshake(other, false, binding) >> doUnwrap(binding)
                 }
               case SSLEngineResult.Status.BUFFER_UNDERFLOW =>
                 unwrapBuffer.output.map(Some(_))
@@ -104,7 +127,21 @@ object TLSEngine {
             }
           }
 
-      def doHandshake(
+      /** Performs a TLS handshake sequence, returning when the session has been esablished. */
+      private def handshake(
+          handshakeStatus: SSLEngineResult.HandshakeStatus,
+          lastOperationWrap: Boolean,
+          binding: Binding[F]
+      ): F[Unit] = 
+        handshakeSem.withPermit {
+          stepHandshake(handshakeStatus, lastOperationWrap, binding)
+        }
+
+      /**
+       * Determines what to do next given the result of a handshake operation.
+       * Must be called with `handshakeSem`.
+       */
+      private def stepHandshake(
           handshakeStatus: SSLEngineResult.HandshakeStatus,
           lastOperationWrap: Boolean,
           binding: Binding[F]
@@ -134,7 +171,11 @@ object TLSEngine {
             }
         }
 
-      def doHsWrap(binding: Binding[F]): F[Unit] =
+      /**
+       * Performs a wrap operation as part of handshaking.
+       * Must be called with `handshakeSem`.
+       */
+      private def doHsWrap(binding: Binding[F]): F[Unit] =
         wrapBuffer
           .perform(engine.wrap(_, _))
           .flatTap { result =>
@@ -143,7 +184,7 @@ object TLSEngine {
           .flatMap { result =>
             result.getStatus match {
               case SSLEngineResult.Status.OK | SSLEngineResult.Status.BUFFER_UNDERFLOW =>
-                wrapBuffer.output.flatMap(binding.write(_)) >> doHandshake(
+                wrapBuffer.output.flatMap(binding.write(_)) >> stepHandshake(
                   result.getHandshakeStatus,
                   true,
                   binding
@@ -155,7 +196,11 @@ object TLSEngine {
             }
           }
 
-      def doHsUnwrap(binding: Binding[F]): F[Unit] =
+      /**
+       * Performs an unwrap operation as part of handshaking.
+       * Must be called with `handshakeSem`.
+       */
+      private def doHsUnwrap(binding: Binding[F]): F[Unit] =
         unwrapBuffer
           .perform(engine.unwrap(_, _))
           .flatTap { result =>
@@ -164,16 +209,14 @@ object TLSEngine {
           .flatMap { result =>
             result.getStatus match {
               case SSLEngineResult.Status.OK =>
-                doHandshake(result.getHandshakeStatus, false, binding)
+                stepHandshake(result.getHandshakeStatus, false, binding)
               case SSLEngineResult.Status.BUFFER_UNDERFLOW =>
-                doHandshake(result.getHandshakeStatus, false, binding)
+                stepHandshake(result.getHandshakeStatus, false, binding)
               case SSLEngineResult.Status.BUFFER_OVERFLOW =>
                 unwrapBuffer.expandOutput >> doHsUnwrap(binding)
               case SSLEngineResult.Status.CLOSED =>
                 stopWrap >> stopUnwrap
             }
           }
-
     }
-
 }
