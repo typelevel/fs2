@@ -84,7 +84,7 @@ private[tls] object InputOutputBuffer {
               val cap = out.limit()
               val dest = Array.ofDim[Byte](cap)
               out.get(dest)
-              out.clear()
+              (out: Buffer).clear()
               Chunk.bytes(dest)
             }
         }
