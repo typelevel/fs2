@@ -25,8 +25,11 @@ class TLSSocketSpec extends TLSSpec {
                 socketGroup.client[IO](new InetSocketAddress("google.com", 443)).use { socket =>
                   TLSContext
                     .insecure[IO](blocker)
-                    .client(socket, enabledProtocols = Some(List(protocol)))
-                    // logger = Some(msg => IO(println(s"\u001b[33m${msg}\u001b[0m")))
+                    .client(
+                      socket,
+                      enabledProtocols = Some(List(protocol)),
+                      logger = Some(msg => IO(println(s"\u001b[33m${msg}\u001b[0m")))
+                    )
                     .use { tlsSocket =>
                       (Stream("GET / HTTP/1.1\r\nHost: www.google.com\r\n\r\n")
                         .covary[IO]
