@@ -10,8 +10,9 @@ import javax.net.ssl.SSLContext
 import cats.effect.{Blocker, IO}
 
 import fs2.io.tcp.SocketGroup
+import java.net.InetAddress
 
-class TLSSocketSpec extends Fs2Spec {
+class TLSSocketSpec extends TLSSpec {
   "TLSSocket" - {
     "google" - {
       List("TLSv1", "TLSv1.1", "TLSv1.2", "TLSv1.3").foreach { protocol =>
@@ -45,9 +46,43 @@ class TLSSocketSpec extends Fs2Spec {
         }
       }
     }
+
+    "echo" in {
+      Blocker[IO].use { blocker =>
+        SocketGroup[IO](blocker).use { socketGroup =>
+          testTlsContext(blocker).flatMap { tlsContext =>
+            socketGroup
+              .serverResource[IO](new InetSocketAddress(InetAddress.getByName(null), 0))
+              .use {
+                case (serverAddress, clients) =>
+                  val server = clients.map { client =>
+                    Stream.resource(client).flatMap { clientSocket =>
+                      Stream.resource(tlsContext.server(clientSocket)).flatMap { clientSocketTls =>
+                        clientSocketTls.reads(8192).chunks.flatMap { c =>
+                          Stream.eval(clientSocketTls.write(c))
+                        }
+                      }
+                    }
+                  }.parJoinUnbounded
+
+                  val msg = Chunk.bytes("Hello, world!".getBytes)
+                  val client = Stream.resource(socketGroup.client[IO](serverAddress)).flatMap {
+                    clientSocket =>
+                      Stream.resource(tlsContext.client(clientSocket)).flatMap { clientSocketTls =>
+                        Stream.eval_(clientSocketTls.write(msg)) ++
+                          clientSocketTls.reads(8192).take(msg.size)
+                      }
+                  }
+
+                  client.concurrently(server).compile.to(Chunk).asserting(_ shouldBe msg)
+              }
+          }
+        }
+      }
+    }
   }
 
-  def supportedByPlatform(protocol: String): Boolean =
+  private def supportedByPlatform(protocol: String): Boolean =
     try {
       SSLContext.getInstance(protocol)
       true

@@ -3,13 +3,17 @@ package io
 package tls
 
 import java.net.InetSocketAddress
+import java.security.KeyStore
 import java.security.cert.X509Certificate
-import javax.net.ssl.{SSLContext, X509TrustManager}
+import javax.net.ssl.{KeyManagerFactory, SSLContext, TrustManagerFactory, X509TrustManager}
 
 import cats.effect.{Blocker, Concurrent, ContextShift, Resource, Sync}
 import cats.implicits._
 
 import fs2.io.tcp.Socket
+import java.io.InputStream
+import java.nio.file.Path
+import java.io.FileInputStream
 
 /**
   * Allows creation of [[TLSSocket]]s.
@@ -252,4 +256,62 @@ object TLSContext {
   /** Creates a `TLSContext` from the system default `SSLContext`. */
   def system[F[_]: Concurrent: ContextShift](blocker: Blocker): TLSContext[F] =
     fromSSLContext(SSLContext.getDefault, blocker)
+
+  /** Creates a `TLSContext` from the specified key store file. */
+  def fromKeyStoreFile[F[_]: Concurrent: ContextShift](
+      file: Path,
+      storePassword: Array[Char],
+      keyPassword: Array[Char],
+      blocker: Blocker
+  ): F[TLSContext[F]] = {
+    val load = blocker.delay(new FileInputStream(file.toFile): InputStream)
+    val stream = Resource.make(load)(s => blocker.delay(s.close))
+    fromKeyStoreStream(stream, storePassword, keyPassword, blocker)
+  }
+
+  /** Creates a `TLSContext` from the specified class path resource. */
+  def fromKeyStoreResource[F[_]: Concurrent: ContextShift](
+      resource: String,
+      storePassword: Array[Char],
+      keyPassword: Array[Char],
+      blocker: Blocker
+  ): F[TLSContext[F]] = {
+    val load = blocker.delay(getClass.getClassLoader.getResourceAsStream(resource))
+    val stream = Resource.make(load)(s => blocker.delay(s.close))
+    fromKeyStoreStream(stream, storePassword, keyPassword, blocker)
+  }
+
+  private def fromKeyStoreStream[F[_]: Concurrent: ContextShift](
+      stream: Resource[F, InputStream],
+      storePassword: Array[Char],
+      keyPassword: Array[Char],
+      blocker: Blocker
+  ): F[TLSContext[F]] =
+    stream.use { s =>
+      blocker
+        .delay {
+          val keyStore = KeyStore.getInstance(KeyStore.getDefaultType)
+          keyStore.load(s, storePassword)
+          keyStore
+        }
+        .flatMap(fromKeyStore(_, keyPassword, blocker))
+    }
+
+  /** Creates a `TLSContext` from the specified key store. */
+  def fromKeyStore[F[_]: Concurrent: ContextShift](
+      keyStore: KeyStore,
+      keyPassword: Array[Char],
+      blocker: Blocker
+  ): F[TLSContext[F]] =
+    blocker
+      .delay {
+        val kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm)
+        kmf.init(keyStore, keyPassword)
+        val tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm)
+        tmf.init(keyStore)
+        val sslContext = SSLContext.getInstance("TLS")
+        sslContext.init(kmf.getKeyManagers, tmf.getTrustManagers, null)
+        sslContext
+      }
+      .map(fromSSLContext(_, blocker))
 }

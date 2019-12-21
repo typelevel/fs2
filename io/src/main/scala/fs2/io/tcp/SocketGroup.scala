@@ -109,20 +109,21 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup, blocker: Blocker
   )(
       implicit F: Concurrent[F],
       CS: ContextShift[F]
-  ): Stream[F, Resource[F, Socket[F]]] =
-    serverWithLocalAddress(
-      address,
-      maxQueued,
-      reuseAddress,
-      receiveBufferSize,
-      additionalSocketOptions
-    ).collect { case Right(s) => s }
+  ): Stream[F, Resource[F, Socket[F]]] = {
+    val _ = maxQueued // TODO delete maxQueued in 3.0
+    Stream
+      .resource(
+        serverResource(
+          address,
+          reuseAddress,
+          receiveBufferSize,
+          additionalSocketOptions
+        )
+      )
+      .flatMap { case (_, clients) => clients }
+  }
 
-  /**
-    * Like [[server]] but provides the `InetSocketAddress` of the bound server socket before providing accepted sockets.
-    *
-    * The outer stream first emits a left value specifying the bound address followed by right values -- one per client connection.
-    */
+  @deprecated("Use serverResource instead", "2.2.0")
   def serverWithLocalAddress[F[_]](
       address: InetSocketAddress,
       maxQueued: Int = 0,
@@ -133,7 +134,27 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup, blocker: Blocker
       implicit F: Concurrent[F],
       CS: ContextShift[F]
   ): Stream[F, Either[InetSocketAddress, Resource[F, Socket[F]]]] = {
-    val _ = maxQueued // TODO: maxQueued param has never been used; remove in 3.0
+    val _ = maxQueued
+    Stream
+      .resource(serverResource(address, reuseAddress, receiveBufferSize, additionalSocketOptions))
+      .flatMap {
+        case (localAddress, clients) => Stream(Left(localAddress)) ++ clients.map(Right(_))
+      }
+  }
+
+  /**
+    * Like [[server]] but provides the `InetSocketAddress` of the bound server socket before providing accepted sockets.
+    * The inner stream emits one socket for each client that connects to the server.
+    */
+  def serverResource[F[_]](
+      address: InetSocketAddress,
+      reuseAddress: Boolean = true,
+      receiveBufferSize: Int = 256 * 1024,
+      additionalSocketOptions: List[SocketOptionMapping[_]] = List.empty
+  )(
+      implicit F: Concurrent[F],
+      CS: ContextShift[F]
+  ): Resource[F, (InetSocketAddress, Stream[F, Resource[F, Socket[F]]])] = {
 
     val setup: F[AsynchronousServerSocketChannel] = blocker.delay {
       val ch = AsynchronousChannelProvider
@@ -182,13 +203,10 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup, blocker: Blocker
       }
     }
 
-    Stream
-      .bracket(setup)(cleanup)
-      .flatMap { sch =>
-        Stream.emit(Left(sch.getLocalAddress.asInstanceOf[InetSocketAddress])) ++ acceptIncoming(
-          sch
-        ).map(Right(_))
-      }
+    Resource.make(setup)(cleanup).map { sch =>
+      val localAddress = sch.getLocalAddress.asInstanceOf[InetSocketAddress]
+      (localAddress, acceptIncoming(sch))
+    }
   }
 
   private def apply[F[_]](

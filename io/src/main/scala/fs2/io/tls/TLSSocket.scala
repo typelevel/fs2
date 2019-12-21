@@ -38,13 +38,13 @@ object TLSSocket {
       def read = socket.read(readMaxBytes, None)
     }
 
-  private[tls] def apply[F[_]: Concurrent: ContextShift](
+  private[tls] def apply[F[_]: Concurrent](
       socket: Socket[F],
       engine: TLSEngine[F]
   ): Resource[F, TLSSocket[F]] =
     Resource.make(mk(socket, engine))(_.close)
 
-  private[tls] def mk[F[_]: Concurrent: ContextShift](
+  private[tls] def mk[F[_]: Concurrent](
       socket: Socket[F],
       engine: TLSEngine[F]
   ): F[TLSSocket[F]] =

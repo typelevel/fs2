@@ -24,17 +24,22 @@ class SocketSpec extends Fs2Spec {
         Deferred[IO, InetSocketAddress].unsafeRunSync()
 
       val echoServer: SocketGroup => Stream[IO, Unit] = socketGroup =>
-        socketGroup
-          .serverWithLocalAddress[IO](new InetSocketAddress(InetAddress.getByName(null), 0))
+        Stream
+          .resource(
+            socketGroup
+              .serverResource[IO](new InetSocketAddress(InetAddress.getByName(null), 0))
+          )
           .flatMap {
-            case Left(local) => Stream.eval_(localBindAddress.complete(local))
-            case Right(s) =>
-              Stream.resource(s).map { socket =>
-                socket
-                  .reads(1024)
-                  .through(socket.writes())
-                  .onFinalize(socket.endOfOutput)
-              }
+            case (local, clients) =>
+              Stream.eval_(localBindAddress.complete(local)) ++
+                clients.flatMap { s =>
+                  Stream.resource(s).map { socket =>
+                    socket
+                      .reads(1024)
+                      .through(socket.writes())
+                      .onFinalize(socket.endOfOutput)
+                  }
+                }
           }
           .parJoinUnbounded
 
@@ -78,18 +83,23 @@ class SocketSpec extends Fs2Spec {
         Deferred[IO, InetSocketAddress].unsafeRunSync()
 
       val junkServer: SocketGroup => Stream[IO, Nothing] = socketGroup =>
-        socketGroup
-          .serverWithLocalAddress[IO](new InetSocketAddress(InetAddress.getByName(null), 0))
+        Stream
+          .resource(
+            socketGroup
+              .serverResource[IO](new InetSocketAddress(InetAddress.getByName(null), 0))
+          )
           .flatMap {
-            case Left(local) => Stream.eval_(localBindAddress.complete(local))
-            case Right(s) =>
-              Stream.emit(Stream.resource(s).flatMap { socket =>
-                Stream
-                  .chunk(message)
-                  .through(socket.writes())
-                  .drain
-                  .onFinalize(socket.endOfOutput)
-              })
+            case (local, clients) =>
+              Stream.eval_(localBindAddress.complete(local)) ++
+                clients.flatMap { s =>
+                  Stream.emit(Stream.resource(s).flatMap { socket =>
+                    Stream
+                      .chunk(message)
+                      .through(socket.writes())
+                      .drain
+                      .onFinalize(socket.endOfOutput)
+                  })
+                }
           }
           .parJoinUnbounded
           .drain

@@ -5,15 +5,13 @@ package tls
 import scala.concurrent.duration._
 
 import java.net.InetSocketAddress
-import java.security.KeyStore
-import javax.net.ssl.{KeyManagerFactory, SSLContext, TrustManagerFactory}
 
 import cats.effect.{Blocker, IO}
 import cats.implicits._
 
 import fs2.io.udp.{Packet, SocketGroup}
 
-class DTLSSocketSpec extends Fs2Spec {
+class DTLSSocketSpec extends TLSSpec {
   "DTLSSocket" - {
     "echo" in {
       Blocker[IO].use { blocker =>
@@ -58,18 +56,4 @@ class DTLSSocketSpec extends Fs2Spec {
       }
     }
   }
-
-  def testTlsContext(blocker: Blocker): IO[TLSContext[IO]] = IO {
-    val password = "password".toCharArray
-    val ks = KeyStore.getInstance(KeyStore.getDefaultType)
-    ks.load(getClass.getResourceAsStream("/keystore.jks"), password)
-    val kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm)
-    kmf.init(ks, password)
-    val tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm)
-    tmf.init(ks)
-    val sslContext = SSLContext.getInstance("TLS")
-    sslContext.init(kmf.getKeyManagers, tmf.getTrustManagers, null)
-    TLSContext.fromSSLContext(sslContext, blocker)
-  }
-
 }
