@@ -28,7 +28,7 @@ class TLSSocketSpec extends TLSSpec {
                     .client(socket, enabledProtocols = Some(List(protocol)))
                     // logger = Some(msg => IO(println(s"\u001b[33m${msg}\u001b[0m")))
                     .use { tlsSocket =>
-                      (Stream("GET /\r\n\r\n")
+                      (Stream("GET / HTTP/1.1\r\nHost: www.google.com\r\n\r\n")
                         .covary[IO]
                         .through(text.utf8Encode)
                         .through(tlsSocket.writes())
@@ -38,7 +38,7 @@ class TLSSocketSpec extends TLSSpec {
                           .through(text.utf8Decode)
                           .through(text.lines)).head.compile.string
                     }
-                    .asserting(_ shouldBe "HTTP/1.0 200 OK")
+                    .asserting(_ shouldBe "HTTP/1.1 200 OK")
                 }
               }
             }
