@@ -162,7 +162,8 @@ private[tls] object TLSEngine {
                                                       else doHsUnwrap(binding))
           case SSLEngineResult.HandshakeStatus.NEED_WRAP =>
             doHsWrap(binding)
-          case SSLEngineResult.HandshakeStatus.NEED_UNWRAP | SSLEngineResult.HandshakeStatus.NEED_UNWRAP_AGAIN =>
+          case SSLEngineResult.HandshakeStatus.NEED_UNWRAP |
+              SSLEngineResult.HandshakeStatus.NEED_UNWRAP_AGAIN =>
             unwrapBuffer.inputRemains.flatMap { remaining =>
               if (remaining > 0 && result.getStatus != SSLEngineResult.Status.BUFFER_UNDERFLOW)
                 doHsUnwrap(binding)
