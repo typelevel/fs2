@@ -48,6 +48,10 @@ sealed trait TLSContext[F[_]] {
       logger: Option[String => F[Unit]] = None
   ): Resource[F, TLSSocket[F]]
 
+  /**
+    * Creates a `DTLSSocket` in client mode, using the supplied configuration.
+    * Internal debug logging of the session can be enabled by passing a logger.
+    */
   def dtlsClient(
       socket: udp.Socket[F],
       remoteAddress: InetSocketAddress,
@@ -59,6 +63,10 @@ sealed trait TLSContext[F[_]] {
       logger: Option[String => F[Unit]] = None
   ): Resource[F, DTLSSocket[F]]
 
+  /**
+    * Creates a `DTLSSocket` in server mode, using the supplied configuration.
+    * Internal debug logging of the session can be enabled by passing a logger.
+    */
   def dtlsServer(
       socket: udp.Socket[F],
       remoteAddress: InetSocketAddress,

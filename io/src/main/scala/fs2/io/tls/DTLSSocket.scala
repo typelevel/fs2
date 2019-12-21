@@ -39,7 +39,7 @@ object DTLSSocket {
   ): Resource[F, DTLSSocket[F]] =
     Resource.make(mk(socket, remoteAddress, engine))(_.close)
 
-  private[tls] def mk[F[_]: Concurrent](
+  private def mk[F[_]: Concurrent](
       socket: Socket[F],
       remoteAddress: InetSocketAddress,
       engine: TLSEngine[F]

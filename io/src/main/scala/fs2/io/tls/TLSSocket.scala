@@ -49,7 +49,7 @@ object TLSSocket {
   ): Resource[F, TLSSocket[F]] =
     Resource.make(mk(socket, engine))(_.close)
 
-  private[tls] def mk[F[_]: Concurrent](
+  private def mk[F[_]: Concurrent](
       socket: Socket[F],
       engine: TLSEngine[F]
   ): F[TLSSocket[F]] =

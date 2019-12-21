@@ -217,10 +217,6 @@ private[tls] object TLSEngine {
                 stepHandshake(result, false, binding)
               case SSLEngineResult.Status.BUFFER_UNDERFLOW =>
                 stepHandshake(result, false, binding)
-              // binding.read.flatMap {
-              //   case Some(c) => unwrapBuffer.input(c) >> doHsUnwrap(binding)
-              //   case None    => stopWrap >> stopUnwrap
-              // }
               case SSLEngineResult.Status.BUFFER_OVERFLOW =>
                 unwrapBuffer.expandOutput >> doHsUnwrap(binding)
               case SSLEngineResult.Status.CLOSED =>
