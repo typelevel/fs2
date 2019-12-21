@@ -5,6 +5,7 @@ package tls
 import scala.concurrent.duration._
 
 import java.net.{InetAddress, InetSocketAddress, NetworkInterface}
+import javax.net.ssl.SSLSession
 
 import cats.Applicative
 import cats.effect.{Concurrent, Resource, Sync}
@@ -12,7 +13,22 @@ import cats.implicits._
 
 import fs2.io.udp.{Packet, Socket}
 
-trait DTLSSocket[F[_]] extends Socket[F] {}
+/**
+  * UDP socket that supports encryption via DTLS.
+  *
+  * To construct a `DTLSSocket`, use the `dtlsClient` and `dtlsServer` methods on `TLSContext`.
+  */
+sealed trait DTLSSocket[F[_]] extends Socket[F] {
+
+  /** Initiates handshaking -- either the initial or a renegotiation. */
+  def beginHandshake: F[Unit]
+
+  /**
+    * Provides access to the current `SSLSession` for purposes of querying
+    * session info such as the negotiated cipher suite or the peer certificate.
+    */
+  def session: F[SSLSession]
+}
 
 object DTLSSocket {
 
@@ -30,6 +46,7 @@ object DTLSSocket {
   ): F[DTLSSocket[F]] =
     Applicative[F].pure {
       new DTLSSocket[F] {
+
         private def binding(
             writeTimeout: Option[FiniteDuration]
         ): TLSEngine.Binding[F] = new TLSEngine.Binding[F] {
@@ -62,6 +79,8 @@ object DTLSSocket {
             source: InetAddress
         ): F[GroupMembership] =
           Sync[F].raiseError(new RuntimeException("DTLSSocket does not support multicast"))
+        def beginHandshake: F[Unit] = engine.beginHandshake
+        def session: F[SSLSession] = engine.session
       }
     }
 }

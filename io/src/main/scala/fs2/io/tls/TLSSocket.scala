@@ -14,7 +14,12 @@ import cats.syntax.all._
 
 import fs2.io.tcp.Socket
 
-trait TLSSocket[F[_]] extends Socket[F] {
+/**
+  * TCP socket that supports encryption via TLS.
+  *
+  * To construct a `TLSSocket`, use the `client` and `server` methods on `TLSContext`.
+  */
+sealed trait TLSSocket[F[_]] extends Socket[F] {
 
   /** Initiates handshaking -- either the initial or a renegotiation. */
   def beginHandshake: F[Unit]
