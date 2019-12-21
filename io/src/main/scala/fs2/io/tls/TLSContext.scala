@@ -5,7 +5,12 @@ package tls
 import java.net.InetSocketAddress
 import java.security.KeyStore
 import java.security.cert.X509Certificate
-import javax.net.ssl.{KeyManagerFactory, SSLContext, TrustManagerFactory, X509TrustManager}
+import javax.net.ssl.{
+  KeyManagerFactory,
+  SSLContext,
+  TrustManagerFactory,
+  X509TrustManager
+}
 
 import cats.effect.{Blocker, Concurrent, ContextShift, Resource, Sync}
 import cats.implicits._
@@ -21,60 +26,44 @@ import java.io.FileInputStream
 sealed trait TLSContext[F[_]] {
 
   /**
-    * Creates a `TLSSocket` in client mode, using the supplied configuration.
+    * Creates a `TLSSocket` in client mode, using the supplied parameters.
     * Internal debug logging of the session can be enabled by passing a logger.
     */
   def client(
       socket: Socket[F],
-      needClientAuth: Boolean = false,
-      wantClientAuth: Boolean = false,
-      enableSessionCreation: Boolean = true,
-      enabledCipherSuites: Option[List[String]] = None,
-      enabledProtocols: Option[List[String]] = None,
+      params: TLSParameters = TLSParameters.Default,
       logger: Option[String => F[Unit]] = None
   ): Resource[F, TLSSocket[F]]
 
   /**
-    * Creates a `TLSSocket` in server mode, using the supplied configuration.
+    * Creates a `TLSSocket` in server mode, using the supplied parameters.
     * Internal debug logging of the session can be enabled by passing a logger.
     */
   def server(
       socket: Socket[F],
-      needClientAuth: Boolean = false,
-      wantClientAuth: Boolean = false,
-      enableSessionCreation: Boolean = true,
-      enabledCipherSuites: Option[List[String]] = None,
-      enabledProtocols: Option[List[String]] = None,
+      params: TLSParameters = TLSParameters.Default,
       logger: Option[String => F[Unit]] = None
   ): Resource[F, TLSSocket[F]]
 
   /**
-    * Creates a `DTLSSocket` in client mode, using the supplied configuration.
+    * Creates a `DTLSSocket` in client mode, using the supplied parameters.
     * Internal debug logging of the session can be enabled by passing a logger.
     */
   def dtlsClient(
       socket: udp.Socket[F],
       remoteAddress: InetSocketAddress,
-      needClientAuth: Boolean = false,
-      wantClientAuth: Boolean = false,
-      enableSessionCreation: Boolean = true,
-      enabledCipherSuites: Option[List[String]] = None,
-      enabledProtocols: Option[List[String]] = None,
+      params: TLSParameters = TLSParameters.Default,
       logger: Option[String => F[Unit]] = None
   ): Resource[F, DTLSSocket[F]]
 
   /**
-    * Creates a `DTLSSocket` in server mode, using the supplied configuration.
+    * Creates a `DTLSSocket` in server mode, using the supplied parameters.
     * Internal debug logging of the session can be enabled by passing a logger.
     */
   def dtlsServer(
       socket: udp.Socket[F],
       remoteAddress: InetSocketAddress,
-      needClientAuth: Boolean = false,
-      wantClientAuth: Boolean = false,
-      enableSessionCreation: Boolean = true,
-      enabledCipherSuites: Option[List[String]] = None,
-      enabledProtocols: Option[List[String]] = None,
+      params: TLSParameters = TLSParameters.Default,
       logger: Option[String => F[Unit]] = None
   ): Resource[F, DTLSSocket[F]]
 }
@@ -88,52 +77,32 @@ object TLSContext {
   ): TLSContext[F] = new TLSContext[F] {
     def client(
         socket: Socket[F],
-        needClientAuth: Boolean,
-        wantClientAuth: Boolean,
-        enableSessionCreation: Boolean,
-        enabledCipherSuites: Option[List[String]],
-        enabledProtocols: Option[List[String]],
+        params: TLSParameters,
         logger: Option[String => F[Unit]]
     ): Resource[F, TLSSocket[F]] =
       mkSocket(
         socket,
         true,
-        needClientAuth,
-        wantClientAuth,
-        enableSessionCreation,
-        enabledCipherSuites,
-        enabledProtocols,
+        params,
         logger
       )
 
     def server(
         socket: Socket[F],
-        needClientAuth: Boolean,
-        wantClientAuth: Boolean,
-        enableSessionCreation: Boolean,
-        enabledCipherSuites: Option[List[String]],
-        enabledProtocols: Option[List[String]],
+        params: TLSParameters,
         logger: Option[String => F[Unit]]
     ): Resource[F, TLSSocket[F]] =
       mkSocket(
         socket,
         false,
-        needClientAuth,
-        wantClientAuth,
-        enableSessionCreation,
-        enabledCipherSuites,
-        enabledProtocols,
+        params,
         logger
       )
 
     private def mkSocket(
         socket: Socket[F],
         clientMode: Boolean,
-        needClientAuth: Boolean,
-        wantClientAuth: Boolean,
-        enableSessionCreation: Boolean,
-        enabledCipherSuites: Option[List[String]],
-        enabledProtocols: Option[List[String]],
+        params: TLSParameters,
         logger: Option[String => F[Unit]]
     ): Resource[F, TLSSocket[F]] =
       Resource
@@ -141,11 +110,7 @@ object TLSContext {
           engine(
             blocker,
             clientMode,
-            needClientAuth,
-            wantClientAuth,
-            enableSessionCreation,
-            enabledCipherSuites,
-            enabledProtocols,
+            params,
             logger
           )
         )
@@ -156,44 +121,28 @@ object TLSContext {
     def dtlsClient(
         socket: udp.Socket[F],
         remoteAddress: InetSocketAddress,
-        needClientAuth: Boolean,
-        wantClientAuth: Boolean,
-        enableSessionCreation: Boolean,
-        enabledCipherSuites: Option[List[String]],
-        enabledProtocols: Option[List[String]],
+        params: TLSParameters,
         logger: Option[String => F[Unit]]
     ): Resource[F, DTLSSocket[F]] =
       mkDtlsSocket(
         socket,
         remoteAddress,
         true,
-        needClientAuth,
-        wantClientAuth,
-        enableSessionCreation,
-        enabledCipherSuites,
-        enabledProtocols,
+        params,
         logger
       )
 
     def dtlsServer(
         socket: udp.Socket[F],
         remoteAddress: InetSocketAddress,
-        needClientAuth: Boolean,
-        wantClientAuth: Boolean,
-        enableSessionCreation: Boolean,
-        enabledCipherSuites: Option[List[String]],
-        enabledProtocols: Option[List[String]],
+        params: TLSParameters,
         logger: Option[String => F[Unit]]
     ): Resource[F, DTLSSocket[F]] =
       mkDtlsSocket(
         socket,
         remoteAddress,
         false,
-        needClientAuth,
-        wantClientAuth,
-        enableSessionCreation,
-        enabledCipherSuites,
-        enabledProtocols,
+        params,
         logger
       )
 
@@ -201,11 +150,7 @@ object TLSContext {
         socket: udp.Socket[F],
         remoteAddress: InetSocketAddress,
         clientMode: Boolean,
-        needClientAuth: Boolean,
-        wantClientAuth: Boolean,
-        enableSessionCreation: Boolean,
-        enabledCipherSuites: Option[List[String]],
-        enabledProtocols: Option[List[String]],
+        params: TLSParameters,
         logger: Option[String => F[Unit]]
     ): Resource[F, DTLSSocket[F]] =
       Resource
@@ -213,11 +158,7 @@ object TLSContext {
           engine(
             blocker,
             clientMode,
-            needClientAuth,
-            wantClientAuth,
-            enableSessionCreation,
-            enabledCipherSuites,
-            enabledProtocols,
+            params,
             logger
           )
         )
@@ -228,21 +169,13 @@ object TLSContext {
     private def engine(
         blocker: Blocker,
         clientMode: Boolean,
-        needClientAuth: Boolean,
-        wantClientAuth: Boolean,
-        enableSessionCreation: Boolean,
-        enabledCipherSuites: Option[List[String]],
-        enabledProtocols: Option[List[String]],
+        params: TLSParameters,
         logger: Option[String => F[Unit]]
     ): F[TLSEngine[F]] = {
       val sslEngine = Sync[F].delay {
         val engine = ctx.createSSLEngine()
         engine.setUseClientMode(clientMode)
-        engine.setNeedClientAuth(needClientAuth)
-        engine.setWantClientAuth(wantClientAuth)
-        engine.setEnableSessionCreation(enableSessionCreation)
-        enabledCipherSuites.foreach(ecs => engine.setEnabledCipherSuites(ecs.toArray))
-        enabledProtocols.foreach(ep => engine.setEnabledProtocols(ep.toArray))
+        engine.setSSLParameters(params.toSSLParameters)
         engine
       }
       sslEngine.flatMap(TLSEngine[F](_, blocker, logger))

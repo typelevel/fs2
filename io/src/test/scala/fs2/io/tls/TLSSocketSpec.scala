@@ -5,7 +5,7 @@ package tls
 import scala.util.control.NonFatal
 
 import java.net.InetSocketAddress
-import javax.net.ssl.SSLContext
+import javax.net.ssl.{SSLContext, SNIHostName}
 
 import cats.effect.{Blocker, IO}
 
@@ -22,12 +22,15 @@ class TLSSocketSpec extends TLSSpec {
           } else {
             Blocker[IO].use { blocker =>
               SocketGroup[IO](blocker).use { socketGroup =>
-                socketGroup.client[IO](new InetSocketAddress("google.com", 443)).use { socket =>
+                socketGroup.client[IO](new InetSocketAddress("www.google.com", 443)).use { socket =>
                   TLSContext
-                    .insecure[IO](blocker)
+                    .system[IO](blocker)
                     .client(
                       socket,
-                      enabledProtocols = Some(List(protocol)),
+                      TLSParameters(
+                        protocols = Some(List(protocol)),
+                        serverNames = Some(List(new SNIHostName("www.google.com")))
+                      ),
                       logger = None // Some(msg => IO(println(s"\u001b[33m${msg}\u001b[0m")))
                     )
                     .use { tlsSocket =>
