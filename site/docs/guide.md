@@ -6,7 +6,7 @@ position: 1
 ---
 
 <!--
-This markdown file contains code examples which can be compiled using tut. Switch to `project docs`, then do `tut`. Output is produced in `docs/`.
+This markdown file contains code examples which can be compiled using mdoc. Switch to `project docs`, then do `mdoc`. Output is produced in `docs/`.
 -->
 
 # FS2: The Official Guide
@@ -21,11 +21,11 @@ This is the official FS2 guide. It gives an overview of the library and its feat
 * [Basic stream operations](#basic-stream-operations)
 * [Error handling](#error-handling)
 * [Resource acquisition](#resource-acquisition)
-* [Exercises (stream building)](#exercises)
+* [Exercises (stream building)](#exercises-stream-building)
 * [Statefully transforming streams](#statefully-transforming-streams)
-* [Exercises (stream transforming)](#exercises-1)
+* [Exercises (stream transforming)](#exercises-stream-transforming)
 * [Concurrency](#concurrency)
-* [Exercises (concurrency)](#exercises-2)
+* [Exercises (concurrency)](#exercises-concurrency)
 * [Interruption](#interruption)
 * [Talking to the external world](#talking-to-the-external-world)
 * [Reactive streams](#reactive-streams)
@@ -47,7 +47,7 @@ We'll consider each of these in this guide.
 
 A `Stream[F,O]` (formerly `Process`) represents a discrete stream of `O` values which may request evaluation of `F` effects. We'll call `F` the _effect type_ and `O` the _output type_. Let's look at some examples:
 
-```tut
+```scala mdoc
 import fs2.Stream
 
 val s0 = Stream.empty
@@ -58,14 +58,14 @@ val s1b = Stream.emits(List(1,2,3)) // accepts any Seq
 
 The `s1` stream has the type `Stream[Pure,Int]`. Its output type is of course `Int`, and its effect type is `Pure`, which means it does not require evaluation of any effects to produce its output. Streams that don't use any effects are called _pure_ streams. You can convert a pure stream to a `List` or `Vector` using:
 
-```tut
+```scala mdoc
 s1.toList
 s1.toVector
 ```
 
 Streams have lots of handy 'list-like' functions. Here's a very small sample:
 
-```tut
+```scala mdoc
 (Stream(1,2,3) ++ Stream(4,5)).toList
 Stream(1,2,3).map(_ + 1).toList
 Stream(1,2,3).filter(_ % 2 != 0).toList
@@ -81,7 +81,7 @@ Of these, only `flatMap` is primitive, the rest are built using combinations of 
 
 So far, we've just looked at pure streams. FS2 streams can also include evaluation of effects:
 
-```tut:book
+```scala mdoc
 import cats.effect.IO
 
 val eff = Stream.eval(IO { println("BEING RUN!!"); 1 + 1 })
@@ -97,21 +97,19 @@ def eval[F[_],A](f: F[A]): Stream[F,A]
 
 `eval` produces a stream that evaluates the given effect, then emits the result (notice that `F` is unconstrained). Any `Stream` formed using `eval` is called 'effectful' and can't be run using `toList` or `toVector`. If we try we'll get a compile error:
 
-```tut:fail
+```scala mdoc:fail
 eff.toList
 ```
 
 Here's a complete example of running an effectful stream. We'll explain this in a minute:
 
-```tut
+```scala mdoc
 eff.compile.toVector.unsafeRunSync()
 ```
 
 The first `.compile.toVector` is one of several methods available to 'compile' the stream to a single effect:
 
-```tut:book
-val eff = Stream.eval(IO { println("TASK BEING RUN!!"); 1 + 1 })
-
+```scala mdoc
 val ra = eff.compile.toVector // gather all output into a Vector
 val rb = eff.compile.drain // purely for effects
 val rc = eff.compile.fold(0)(_ + _) // run and accumulate some result
@@ -121,7 +119,7 @@ Notice these all return a `IO` of some sort, but this process of compilation doe
 
 If we want to run these for their effects 'at the end of the universe', we can use one of the `unsafe*` methods on `IO` (if you are bringing your own effect type, how you run your effects may of course differ):
 
-```tut
+```scala mdoc
 ra.unsafeRunSync()
 rb.unsafeRunSync()
 rc.unsafeRunSync()
@@ -136,7 +134,7 @@ _Note:_ The various `run*` functions aren't specialized to `IO` and work for any
 
 FS2 streams are chunked internally for performance. You can construct an individual stream chunk using `Stream.chunk`, which accepts an `fs2.Chunk` and lots of functions in the library are chunk-aware and/or try to preserve chunks when possible. A `Chunk` is a strict, finite sequence of values that supports efficient indexed based lookup of elements.
 
-```tut
+```scala mdoc
 import fs2.Chunk
 
 val s1c = Stream.chunk(Chunk.doubles(Array(1.0, 2.0, 3.0)))
@@ -155,7 +153,7 @@ In FS2 0.10.x, `Segment` played a large role in the core design. In FS2 1.0, `Se
 
 Streams have a small but powerful set of operations, some of which we've seen already. The key operations are `++`, `map`, `flatMap`, `handleErrorWith`, and `bracket`:
 
-```tut
+```scala mdoc
 val appendEx1 = Stream(1,2,3) ++ Stream.emit(42)
 val appendEx2 = Stream(1,2,3) ++ Stream.eval(IO.pure(4))
 
@@ -167,7 +165,7 @@ appendEx1.map(_ + 1).toList
 
 The `flatMap` operation is the same idea as lists - it maps, then concatenates:
 
-```tut
+```scala mdoc
 appendEx1.flatMap(i => Stream.emits(List(i,i))).toList
 ```
 
@@ -177,7 +175,7 @@ Regardless of how a `Stream` is built up, each operation takes constant time. So
 
 A stream can raise errors, either explicitly, using `Stream.raiseError`, or implicitly via an exception in pure code or inside an effect passed to `eval`:
 
-```tut
+```scala mdoc
 val err = Stream.raiseError[IO](new Exception("oh noes!"))
 val err2 = Stream(1,2,3) ++ (throw new Exception("!@#$"))
 val err3 = Stream.eval(IO(throw new Exception("error in effect!!!")))
@@ -185,21 +183,21 @@ val err3 = Stream.eval(IO(throw new Exception("error in effect!!!")))
 
 All these fail when running:
 
-```tut
+```scala mdoc
 try err.compile.toList.unsafeRunSync catch { case e: Exception => println(e) }
 ```
 
-```tut
+```scala mdoc
 try err2.toList catch { case e: Exception => println(e) }
 ```
 
-```tut
+```scala mdoc
 try err3.compile.drain.unsafeRunSync() catch { case e: Exception => println(e) }
 ```
 
 The `handleErrorWith` method lets us catch any of these errors:
 
-```tut
+```scala mdoc
 err.handleErrorWith { e => Stream.emit(e.getMessage) }.compile.toList.unsafeRunSync()
 ```
 
@@ -209,19 +207,19 @@ _Note: Don't use `handleErrorWith` for doing resource cleanup; use `bracket` as 
 
 If you have to acquire a resource and want to guarantee that some cleanup action is run if the resource is acquired, use the `bracket` function:
 
-```tut
+```scala mdoc
 val count = new java.util.concurrent.atomic.AtomicLong(0)
 val acquire = IO { println("incremented: " + count.incrementAndGet); () }
 val release = IO { println("decremented: " + count.decrementAndGet); () }
 ```
 
-```tut:fail
+```scala mdoc:crash
 Stream.bracket(acquire)(_ => release).flatMap(_ => Stream(1,2,3) ++ err).compile.drain.unsafeRunSync()
 ```
 
 The inner stream fails, but notice the `release` action is still run:
 
-```tut
+```scala mdoc
 count.get
 ```
 
@@ -233,11 +231,11 @@ def bracket[F[_], R](acquire: F[R])(release: R => F[Unit]): Stream[F, R]
 
 FS2 guarantees _once and only once_ semantics for resource cleanup actions introduced by the `Stream.bracket` function.
 
-### Exercises
+### Exercises Stream Building
 
 Implement `repeat`, which repeats a stream indefinitely, `drain`, which strips all output from a stream, `eval_`, which runs an effect and ignores its output, and `attempt`, which catches any errors produced by a stream:
 
-```tut
+```scala mdoc
 Stream(1,0).repeat.take(6).toList
 Stream(1,2,3).drain.toList
 Stream.eval_(IO(println("!!"))).compile.toVector.unsafeRunSync()
@@ -250,7 +248,7 @@ We often wish to statefully transform one or more streams in some way, possibly 
 
 Let's look at an implementation of `take` using the `scanChunksOpt` combinator:
 
-```tut:book
+```scala mdoc:reset-object
 import fs2._
 
 def tk[F[_],O](n: Long): Pipe[F,O,O] =
@@ -296,7 +294,7 @@ for the full set of operations on `Pull`.
 
 Let's look at an implementation of `take` using `Pull`:
 
-```tut:book
+```scala mdoc:reset
 import fs2._
 
 def tk[F[_],O](n: Long): Pipe[F,O,O] = {
@@ -346,7 +344,7 @@ in => go(in,n).stream
 
 Finally, we create an anonymous function from `Stream[F,O]` to `Stream[F,O]` and call `go` with the initial `n` value. We're returned a `Pull[F,O,Unit]`, which we convert back to a `Stream[F,O]` via the `.stream` method.
 
-```tut
+```scala mdoc
 val s2 = Stream(1,2,3,4).through(tk(2))
 s2.toList
 ```
@@ -357,11 +355,11 @@ There are lots of useful transformation functions in
 [`Stream`](https://github.com/functional-streams-for-scala/fs2/blob/series/1.0/core/shared/src/main/scala/fs2/Stream.scala)
 built using the `Pull` type.
 
-### Exercises
+### Exercises Stream Transforming
 
 Try implementing `takeWhile`, `intersperse`, and `scan`:
 
-```tut
+```scala mdoc
 Stream.range(0,100).takeWhile(_ < 7).toList
 Stream("Alice","Bob","Carol").intersperse("|").toList
 Stream.range(1,10).scan(0)(_ + _).toList // running sum
@@ -371,14 +369,16 @@ Stream.range(1,10).scan(0)(_ + _).toList // running sum
 
 FS2 comes with lots of concurrent operations. The `merge` function runs two streams concurrently, combining their outputs. It halts when both inputs have halted:
 
-```tut:fail
+```scala mdoc:fail
+import cats.effect.IO
+
 Stream(1,2,3).merge(Stream.eval(IO { Thread.sleep(200); 4 })).compile.toVector.unsafeRunSync()
 ```
 
 Oops, we need a `cats.effect.ContextShift[IO]` in implicit scope. Let's add that:
 
-```tut
-import cats.effect.ContextShift
+```scala mdoc
+import cats.effect.{ContextShift, IO}
 
 implicit val ioContextShift: ContextShift[IO] = IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
 
@@ -399,9 +399,9 @@ It flattens the nested stream, letting up to `maxOpen` inner streams run at a ti
 
 The `Concurrent` bound on `F` is required anywhere concurrency is used in the library. As mentioned earlier, users can bring their own effect types provided they also supply an `Concurrent` instance in implicit scope.
 
-In addition, there are a number of other concurrency primitives---asynchronous queues, signals, and semaphores. See the [Concurrency Primitives section](concurrency-primitives) for more examples. We'll make use of some of these in the next section when discussing how to talk to the external world.
+In addition, there are a number of other concurrency primitives---asynchronous queues, signals, and semaphores. See the [Concurrency Primitives section](concurrency-primitives.md) for more examples. We'll make use of some of these in the next section when discussing how to talk to the external world.
 
-### Exercises
+### Exercises Concurrency
 
 Without looking at the implementations, try implementing `mergeHaltBoth`:
 
@@ -418,7 +418,7 @@ Sometimes some tasks have to run only when some conditions are met or until some
 In the following example we will see how `interruptWhen` helps us to describe such cases. We will describe a program composed by two concurrent streams: the first will print the current time to the console every second, the second will stop the first.
 
 First of all we will need to set up the environment with some imports and declare some implicit values.
-```tut:book:reset
+```scala mdoc:reset
 import fs2.Stream
 import cats.effect.IO
 import cats.effect.concurrent.Deferred
@@ -430,7 +430,7 @@ implicit val timer = IO.timer(ExecutionContext.global)
 ```
 
 The example looks like this:
-```tut:book
+```scala mdoc
 val program =
   Stream.eval(Deferred[IO, Unit]).flatMap { switch =>
     val switcher =
@@ -477,7 +477,7 @@ program
 In this line we call `interruptWhen` on the stream, obtaining a stream that will stop evaluation as soon as "the `switch` gets flipped"; then, thanks to `concurrently`, we tell that we want the `switcher` to run in the _background_ ignoring his output. This gives us back the program we described back at the start of this chapter.
 
 This is a way to create a program that runs for a given time, in this example 5 seconds. Timed interruption is such a common use case that FS2 defines the `interruptAfter` method. Armed with this knowledge we can rewrite our example as:
-```tut:book
+```scala mdoc
 val program1 = 
   Stream.
     repeatEval(IO(println(java.time.LocalTime.now))).
@@ -501,7 +501,7 @@ We'll consider each of these in turn.
 
 These are easy to deal with. Just wrap these effects in a `Stream.eval`:
 
-```tut:book
+```scala mdoc
 def destroyUniverse(): Unit = { println("BOOOOM!!!"); } // stub implementation
 
 val s = Stream.eval_(IO { destroyUniverse() }) ++ Stream("...moving on")
@@ -510,12 +510,12 @@ s.compile.toVector.unsafeRunSync()
 
 The way you bring synchronous effects into your effect type may differ. `Sync.delay` can be used for this generally, without committing to a particular effect:
 
-```tut:book
+```scala mdoc
 import cats.effect.Sync
 
 val T = Sync[IO]
-val s = Stream.eval_(T.delay { destroyUniverse() }) ++ Stream("...moving on")
-s.compile.toVector.unsafeRunSync()
+val s2 = Stream.eval_(T.delay { destroyUniverse() }) ++ Stream("...moving on")
+s2.compile.toVector.unsafeRunSync()
 ```
 
 When using this approach, be sure the expression you pass to delay doesn't throw exceptions.
@@ -524,7 +524,7 @@ When using this approach, be sure the expression you pass to delay doesn't throw
 
 Very often, you'll be dealing with an API like this:
 
-```tut:book
+```scala mdoc
 trait Connection {
   def readBytes(onSuccess: Array[Byte] => Unit, onFailure: Throwable => Unit): Unit
 
@@ -553,7 +553,7 @@ trait Async[F[_]] extends MonadError[F, Throwable] {
 
 Here's a complete example:
 
-```tut:book
+```scala mdoc
 val c = new Connection {
   def readBytes(onSuccess: Array[Byte] => Unit, onFailure: Throwable => Unit): Unit = {
     Thread.sleep(200)
@@ -580,7 +580,7 @@ _Note:_ Some of these APIs don't provide any means of throttling the producer, i
 
 Let's look at a complete example:
 
-```tut:book:reset
+```scala mdoc:reset
 import fs2._
 import fs2.concurrent._
 import cats.effect.{ConcurrentEffect, ContextShift, IO}
@@ -615,7 +615,7 @@ The `reactive-streams` library provides instances of reactive streams compliant 
 
 You may require the following imports:
 
-```tut:book:reset
+```scala mdoc:reset
 import fs2._
 import fs2.interop.reactivestreams._
 import cats.effect.{ContextShift, IO}
@@ -624,20 +624,20 @@ import scala.concurrent.ExecutionContext
 
 A `ContextShift` instance is necessary when working with `IO`
 
-```tut:book
+```scala mdoc
 implicit val contextShift: ContextShift[IO] = IO.contextShift(ExecutionContext.global)
 ```
 
 To convert a `Stream` into a downstream unicast `org.reactivestreams.Publisher`:
 
-```tut:book
+```scala mdoc
 val stream = Stream(1, 2, 3).covary[IO]
 stream.toUnicastPublisher
 ```
 
 To convert an upstream `org.reactivestreams.Publisher` into a `Stream`:
 
-```tut:book
+```scala mdoc
 val publisher: StreamUnicastPublisher[IO, Int] = Stream(1, 2, 3).covary[IO].toUnicastPublisher
 publisher.toStream[IO]
 ```
@@ -675,7 +675,7 @@ Regarding 3:
 
 Let's look at some examples of how this plays out, starting with the synchronous interruption case:
 
-```tut:reset
+```scala mdoc:reset
 import fs2._
 import cats.effect.IO
 case object Err extends Throwable
@@ -686,7 +686,7 @@ case object Err extends Throwable
 
 The `take 1` uses `Pull` but doesn't examine the entire stream, and neither of these examples will ever throw an error. This makes sense. A bit more subtle is that this code will _also_ never throw an error:
 
-```tut
+```scala mdoc
 (Stream(1) ++ Stream.raiseError[IO](Err)).take(1).compile.toList.unsafeRunSync()
 ```
 
@@ -694,7 +694,7 @@ The reason is simple: the consumer (the `take(1)`) terminates as soon as it has 
 
 If instead we use `onFinalize`, the code is guaranteed to run, regardless of whether `take` interrupts:
 
-```tut:book
+```scala mdoc
 Stream(1).covary[IO].
           onFinalize(IO { println("finalized!") }).
           take(1).
@@ -703,10 +703,10 @@ Stream(1).covary[IO].
 
 That covers synchronous interrupts. Let's look at asynchronous interrupts. Ponder what the result of `merged` will be in this example:
 
-```tut
+```scala mdoc
 import cats.effect.ContextShift
 
-implicit val ioContextShift: ContextShift[IO] = IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
+implicit lazy val ioContextShift: ContextShift[IO] = IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
 val s1 = (Stream(1) ++ Stream(2)).covary[IO]
 val s2 = (Stream.empty ++ Stream.raiseError[IO](Err)).handleErrorWith { e => println(e); Stream.raiseError[IO](e) }
 val merged = s1 merge s2 take 1
