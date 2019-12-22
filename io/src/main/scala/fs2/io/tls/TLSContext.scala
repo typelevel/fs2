@@ -5,12 +5,7 @@ package tls
 import java.net.InetSocketAddress
 import java.security.KeyStore
 import java.security.cert.X509Certificate
-import javax.net.ssl.{
-  KeyManagerFactory,
-  SSLContext,
-  TrustManagerFactory,
-  X509TrustManager
-}
+import javax.net.ssl.{KeyManagerFactory, SSLContext, TrustManagerFactory, X509TrustManager}
 
 import cats.effect.{Blocker, Concurrent, ContextShift, Resource, Sync}
 import cats.implicits._

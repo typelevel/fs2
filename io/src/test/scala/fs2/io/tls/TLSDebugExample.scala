@@ -18,15 +18,20 @@ object TLSDebug {
   ): F[String] =
     SocketGroup[F](blocker).use { socketGroup =>
       socketGroup.client[F](address).use { rawSocket =>
-        tlsContext.client(rawSocket, TLSParameters(serverNames = Some(List(new SNIHostName(address.getHostName))))).use { tlsSocket =>
-          tlsSocket.write(Chunk.empty) >>
-            tlsSocket.session.map { session =>
-              s"Cipher suite: ${session.getCipherSuite}\r\n" +
-                "Peer certificate chain:\r\n" + session.getPeerCertificates.zipWithIndex
-                .map { case (cert, idx) => s"Certificate $idx: $cert" }
-                .mkString("\r\n")
-            }
-        }
+        tlsContext
+          .client(
+            rawSocket,
+            TLSParameters(serverNames = Some(List(new SNIHostName(address.getHostName))))
+          )
+          .use { tlsSocket =>
+            tlsSocket.write(Chunk.empty) >>
+              tlsSocket.session.map { session =>
+                s"Cipher suite: ${session.getCipherSuite}\r\n" +
+                  "Peer certificate chain:\r\n" + session.getPeerCertificates.zipWithIndex
+                  .map { case (cert, idx) => s"Certificate $idx: $cert" }
+                  .mkString("\r\n")
+              }
+          }
       }
     }
 }

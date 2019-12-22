@@ -5,7 +5,7 @@ package tls
 import scala.util.control.NonFatal
 
 import java.net.InetSocketAddress
-import javax.net.ssl.{SSLContext, SNIHostName}
+import javax.net.ssl.{SNIHostName, SSLContext}
 
 import cats.effect.{Blocker, IO}
 

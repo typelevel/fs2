@@ -8,11 +8,11 @@ import java.security.AlgorithmConstraints
 import javax.net.ssl.{SNIMatcher, SNIServerName, SSLParameters}
 
 /**
- * Parameters used in creation of a TLS/DTLS session.
- * See `javax.net.ssl.SSLParameters` for detailed documentation on each parameter.
- * 
- * Note: `applicationProtocols`, `enableRetransmissions`, and `maximumPacketSize` require Java 9+.
- */
+  * Parameters used in creation of a TLS/DTLS session.
+  * See `javax.net.ssl.SSLParameters` for detailed documentation on each parameter.
+  *
+  * Note: `applicationProtocols`, `enableRetransmissions`, and `maximumPacketSize` require Java 9+.
+  */
 sealed trait TLSParameters {
   val algorithmConstraints: Option[AlgorithmConstraints]
   val applicationProtocols: Option[List[String]]
