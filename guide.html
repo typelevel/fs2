@@ -1,4 +1,4 @@
-<html><head><title>fs2: Guide</title><meta charset="utf-8" /><meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="author" content="co.fs2" /><meta name="description" content="Purely functional, effectful, resource-safe, concurrent streams for Scala" /><meta name="og:image" content="/img/poster.png" /><meta name="image" property="og:image" content="/img/poster.png" /><meta name="og:title" content="fs2: Guide" /><meta name="title" property="og:title" content="fs2: Guide" /><meta name="og:site_name" content="fs2" /><meta name="og:url" content="https://github.com/functional-streams-for-scala/fs2" /><meta name="og:type" content="website" /><meta name="og:description" content="Purely functional, effectful, resource-safe, concurrent streams for Scala" /><link rel="icon" type="image/png" href="/img/favicon.png" /><meta name="twitter:title" content="fs2: Guide" /><meta name="twitter:image" content="/img/poster.png" /><meta name="twitter:description" content="Purely functional, effectful, resource-safe, concurrent streams for Scala" /><meta name="twitter:card" content="summary_large_image" /><link rel="icon" type="image/png" sizes="16x16" href="/img/favicon16x16.png" /><link rel="icon" type="image/png" sizes="24x24" href="/img/favicon24x24.png" /><link rel="icon" type="image/png" sizes="32x32" href="/img/favicon32x32.png" /><link rel="icon" type="image/png" sizes="48x48" href="/img/favicon48x48.png" /><link rel="icon" type="image/png" sizes="57x57" href="/img/favicon57x57.png" /><link rel="icon" type="image/png" sizes="60x60" href="/img/favicon60x60.png" /><link rel="icon" type="image/png" sizes="64x64" href="/img/favicon64x64.png" /><link rel="icon" type="image/png" sizes="70x70" href="/img/favicon70x70.png" /><link rel="icon" type="image/png" sizes="72x72" href="/img/favicon72x72.png" /><link rel="icon" type="image/png" sizes="76x76" href="/img/favicon76x76.png" /><link rel="icon" type="image/png" sizes="96x96" href="/img/favicon96x96.png" /><link rel="icon" type="image/png" sizes="114x114" href="/img/favicon114x114.png" /><link rel="icon" type="image/png" sizes="120x120" href="/img/favicon120x120.png" /><link rel="icon" type="image/png" sizes="128x128" href="/img/favicon128x128.png" /><link rel="icon" type="image/png" sizes="144x144" href="/img/favicon144x144.png" /><link rel="icon" type="image/png" sizes="150x150" href="/img/favicon150x150.png" /><link rel="icon" type="image/png" sizes="152x152" href="/img/favicon152x152.png" /><link rel="icon" type="image/png" sizes="196x196" href="/img/favicon196x196.png" /><link rel="icon" type="image/png" sizes="310x310" href="/img/favicon310x310.png" /><link rel="icon" type="image/png" sizes="310x150" href="/img/favicon310x150.png" /><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css" /><link rel="stylesheet" href="/highlight/styles/vs.css" /><link rel="stylesheet" href="/css/light-style.css" /></head><body class="page"><nav id="navigation" aria-labelledby="main-navigation"><div class="navbar-wrapper container"><div class="navigation-brand"><a href="/" class="brand background-mask"><div class="page-icon-wrapper"></div><span class="brand-title">fs2</span></a></div><div class="navigation-menu"><ul><li><a href="https://github.com/functional-streams-for-scala/fs2" target="_blank" rel="noopener noreferrer"><i class="nav-item-icon fa fa-lg fa-github" hidden="true"></i><span class="nav-item-text">GitHub</span></a></li></ul></div></div></nav><nav class="menu-container" aria-labelledby="section-navigation"><div id="horizontal-menu"><ul class="horizontal-nav"><li><a class="" href="/">Home</a></li><li><a class=" active " href="/guide.html">Guide</a></li><li><a class="" href="/concurrency-primitives.html">Concurrency Primitives</a></li><li><a class="" href="/faq.html">FAQ</a></li><li><a class="" href="/documentation.html">Documentation and References</a></li><li><a class="" href="/ecosystem.html">Library Ecosystem and Community</a></li></ul></div></nav><main id="site-main" class="page-site-main"><section class="use"><div class="container"><div id="content"><!--
+<html><head><title>fs2: Guide</title><meta charset="utf-8" /><meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="author" content="co.fs2" /><meta name="description" content="Purely functional, effectful, resource-safe, concurrent streams for Scala" /><meta name="og:image" content="/img/poster.png" /><meta name="image" property="og:image" content="/img/poster.png" /><meta name="og:title" content="fs2: Guide" /><meta name="title" property="og:title" content="fs2: Guide" /><meta name="og:site_name" content="fs2" /><meta name="og:url" content="https://github.com/functional-streams-for-scala/fs2" /><meta name="og:type" content="website" /><meta name="og:description" content="Purely functional, effectful, resource-safe, concurrent streams for Scala" /><link rel="icon" type="image/png" href="/img/favicon.png" /><meta name="twitter:title" content="fs2: Guide" /><meta name="twitter:image" content="/img/poster.png" /><meta name="twitter:description" content="Purely functional, effectful, resource-safe, concurrent streams for Scala" /><meta name="twitter:card" content="summary_large_image" /><link rel="icon" type="image/png" sizes="16x16" href="/img/favicon16x16.png" /><link rel="icon" type="image/png" sizes="24x24" href="/img/favicon24x24.png" /><link rel="icon" type="image/png" sizes="32x32" href="/img/favicon32x32.png" /><link rel="icon" type="image/png" sizes="48x48" href="/img/favicon48x48.png" /><link rel="icon" type="image/png" sizes="57x57" href="/img/favicon57x57.png" /><link rel="icon" type="image/png" sizes="60x60" href="/img/favicon60x60.png" /><link rel="icon" type="image/png" sizes="64x64" href="/img/favicon64x64.png" /><link rel="icon" type="image/png" sizes="70x70" href="/img/favicon70x70.png" /><link rel="icon" type="image/png" sizes="72x72" href="/img/favicon72x72.png" /><link rel="icon" type="image/png" sizes="76x76" href="/img/favicon76x76.png" /><link rel="icon" type="image/png" sizes="96x96" href="/img/favicon96x96.png" /><link rel="icon" type="image/png" sizes="114x114" href="/img/favicon114x114.png" /><link rel="icon" type="image/png" sizes="120x120" href="/img/favicon120x120.png" /><link rel="icon" type="image/png" sizes="128x128" href="/img/favicon128x128.png" /><link rel="icon" type="image/png" sizes="144x144" href="/img/favicon144x144.png" /><link rel="icon" type="image/png" sizes="150x150" href="/img/favicon150x150.png" /><link rel="icon" type="image/png" sizes="152x152" href="/img/favicon152x152.png" /><link rel="icon" type="image/png" sizes="196x196" href="/img/favicon196x196.png" /><link rel="icon" type="image/png" sizes="310x310" href="/img/favicon310x310.png" /><link rel="icon" type="image/png" sizes="310x150" href="/img/favicon310x150.png" /><link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" /><link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css" /><link rel="stylesheet" href="/highlight/styles/vs.css" /><link rel="stylesheet" href="/css/pattern-style.css" /></head><body><header id="site-header"><div class="navbar-wrapper navbar-inverse"><div class="container"><div class="navbar-header"><button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#bs-example-navbar-collapse-1" aria-expanded="false"><span class="sr-only">Toggle navigation</span><span class="icon-bar"></span><span class="icon-bar"></span><span class="icon-bar"></span></button><a href="/" class="brand"><div class="icon-wrapper"><span>fs2</span></div></a></div><nav class="text-right"><ul class=""><li><a href="https://github.com/functional-streams-for-scala/fs2" target="_blank" rel="noopener noreferrer"><i class="fa fa-github"></i><span class="hidden-xs">GitHub</span></a></li></ul></nav></div></div><div class="jumbotron" style="background-image:url('/img/jumbotron_pattern.png')"></div><div id="horizontal-menu"><ul class="horizontal-nav"><li><a class="" href="/">Home</a></li><li><a class=" active " href="/guide.html">Guide</a></li><li><a class="" href="/concurrency-primitives.html">Concurrency Primitives</a></li><li><a class="" href="/faq.html">FAQ</a></li><li><a class="" href="/documentation.html">Documentation and References</a></li><li><a class="" href="/ecosystem.html">Library Ecosystem and Community</a></li></ul></div></header><main id="site-main" class="page-site-main"><section class="use"><div class="container"><div id="content"><!--
 This markdown file contains code examples which can be compiled using mdoc. Switch to `project docs`, then do `mdoc`. Output is produced in `docs/`.
 -->
 
@@ -123,28 +123,28 @@ This markdown file contains code examples which can be compiled using mdoc. Swit
 <div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">val</span> <span class="nv">ra</span> <span class="k">=</span> <span class="nv">eff</span><span class="o">.</span><span class="py">compile</span><span class="o">.</span><span class="py">toVector</span> <span class="c1">// gather all output into a Vector</span>
 <span class="c1">// ra: IO[Vector[Int]] = Map(</span>
 <span class="c1">//   Bind(</span>
-<span class="c1">//     Delay(fs2.Stream$CompileOps$$Lambda$13738/0x0000000803a15440@29a9521e),</span>
-<span class="c1">//     fs2.Stream$Compiler$$anon$3$$Lambda$13741/0x0000000803a12040@53a070f3</span>
+<span class="c1">//     Delay(fs2.Stream$CompileOps$$Lambda$17792/0x000000080494c840@771288bb),</span>
+<span class="c1">//     fs2.Stream$Compiler$$anon$3$$Lambda$17795/0x000000080494a840@7712dce</span>
 <span class="c1">//   ),</span>
-<span class="c1">//   fs2.Stream$CompileOps$$Lambda$13740/0x0000000803a13040@1e38a3e5,</span>
+<span class="c1">//   fs2.Stream$CompileOps$$Lambda$17794/0x000000080494b040@3d368ac7,</span>
 <span class="c1">//   0</span>
 <span class="c1">// ) // gather all output into a Vector</span>
 <span class="k">val</span> <span class="nv">rb</span> <span class="k">=</span> <span class="nv">eff</span><span class="o">.</span><span class="py">compile</span><span class="o">.</span><span class="py">drain</span> <span class="c1">// purely for effects</span>
 <span class="c1">// rb: IO[Unit] = Map(</span>
 <span class="c1">//   Bind(</span>
-<span class="c1">//     Delay(fs2.Stream$CompileOps$$Lambda$13841/0x0000000803ade040@166a5835),</span>
-<span class="c1">//     fs2.Stream$Compiler$$anon$3$$Lambda$13741/0x0000000803a12040@46b9077</span>
+<span class="c1">//     Delay(fs2.Stream$CompileOps$$Lambda$17895/0x0000000804a0bc40@48732089),</span>
+<span class="c1">//     fs2.Stream$Compiler$$anon$3$$Lambda$17795/0x000000080494a840@156519e8</span>
 <span class="c1">//   ),</span>
-<span class="c1">//   fs2.Stream$CompileOps$$Lambda$13842/0x0000000803ade840@5f972c94,</span>
+<span class="c1">//   fs2.Stream$CompileOps$$Lambda$17896/0x0000000804a0d040@1c0cc931,</span>
 <span class="c1">//   0</span>
 <span class="c1">// ) // purely for effects</span>
 <span class="k">val</span> <span class="nv">rc</span> <span class="k">=</span> <span class="nv">eff</span><span class="o">.</span><span class="py">compile</span><span class="o">.</span><span class="py">fold</span><span class="o">(</span><span class="mi">0</span><span class="o">)(</span><span class="k">_</span> <span class="o">+</span> <span class="k">_</span><span class="o">)</span> <span class="c1">// run and accumulate some result</span>
 <span class="c1">// rc: IO[Int] = Map(</span>
 <span class="c1">//   Bind(</span>
-<span class="c1">//     Delay(fs2.Stream$CompileOps$$Lambda$13841/0x0000000803ade040@958f8d8),</span>
-<span class="c1">//     fs2.Stream$Compiler$$anon$3$$Lambda$13741/0x0000000803a12040@516839ac</span>
+<span class="c1">//     Delay(fs2.Stream$CompileOps$$Lambda$17895/0x0000000804a0bc40@6e5eb8d1),</span>
+<span class="c1">//     fs2.Stream$Compiler$$anon$3$$Lambda$17795/0x000000080494a840@53c946ab</span>
 <span class="c1">//   ),</span>
-<span class="c1">//   fs2.Stream$CompileOps$$Lambda$13842/0x0000000803ade840@5f972c94,</span>
+<span class="c1">//   fs2.Stream$CompileOps$$Lambda$17896/0x0000000804a0d040@1c0cc931,</span>
 <span class="c1">//   0</span>
 <span class="c1">// )</span>
 </code></pre></div></div>
@@ -441,7 +441,7 @@ built using the <code class="highlighter-rouge">Pull</code> type.</p>
 <div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">import</span> <span class="nn">cats.effect.</span><span class="o">{</span><span class="nc">ContextShift</span><span class="o">,</span> <span class="nc">IO</span><span class="o">}</span>
 
 <span class="k">implicit</span> <span class="k">val</span> <span class="nv">ioContextShift</span><span class="k">:</span> <span class="kt">ContextShift</span><span class="o">[</span><span class="kt">IO</span><span class="o">]</span> <span class="k">=</span> <span class="nv">IO</span><span class="o">.</span><span class="py">contextShift</span><span class="o">(</span><span class="nv">scala</span><span class="o">.</span><span class="py">concurrent</span><span class="o">.</span><span class="py">ExecutionContext</span><span class="o">.</span><span class="py">Implicits</span><span class="o">.</span><span class="py">global</span><span class="o">)</span>
-<span class="c1">// ioContextShift: ContextShift[IO] = cats.effect.internals.IOContextShift@76eda6ce</span>
+<span class="c1">// ioContextShift: ContextShift[IO] = cats.effect.internals.IOContextShift@59545b15</span>
 
 <span class="nc">Stream</span><span class="o">(</span><span class="mi">1</span><span class="o">,</span><span class="mi">2</span><span class="o">,</span><span class="mi">3</span><span class="o">).</span><span class="py">merge</span><span class="o">(</span><span class="nv">Stream</span><span class="o">.</span><span class="py">eval</span><span class="o">(</span><span class="nc">IO</span> <span class="o">{</span> <span class="nv">Thread</span><span class="o">.</span><span class="py">sleep</span><span class="o">(</span><span class="mi">200</span><span class="o">);</span> <span class="mi">4</span> <span class="o">})).</span><span class="py">compile</span><span class="o">.</span><span class="py">toVector</span><span class="o">.</span><span class="py">unsafeRunSync</span><span class="o">()</span>
 <span class="c1">// res40: Vector[Int] = Vector(1, 2, 3, 4)</span>
@@ -485,9 +485,9 @@ In the following example we will see how <code class="highlighter-rouge">interru
 <span class="k">import</span> <span class="nn">scala.concurrent.duration._</span>
 
 <span class="k">implicit</span> <span class="k">val</span> <span class="nv">contextShift</span> <span class="k">=</span> <span class="nv">IO</span><span class="o">.</span><span class="py">contextShift</span><span class="o">(</span><span class="nv">ExecutionContext</span><span class="o">.</span><span class="py">global</span><span class="o">)</span>
-<span class="c1">// contextShift: cats.effect.ContextShift[IO] = cats.effect.internals.IOContextShift@29fc56db</span>
+<span class="c1">// contextShift: cats.effect.ContextShift[IO] = cats.effect.internals.IOContextShift@7f27d6ee</span>
 <span class="k">implicit</span> <span class="k">val</span> <span class="nv">timer</span> <span class="k">=</span> <span class="nv">IO</span><span class="o">.</span><span class="py">timer</span><span class="o">(</span><span class="nv">ExecutionContext</span><span class="o">.</span><span class="py">global</span><span class="o">)</span>
-<span class="c1">// timer: cats.effect.Timer[IO] = cats.effect.internals.IOTimer@1867a9fa</span>
+<span class="c1">// timer: cats.effect.Timer[IO] = cats.effect.internals.IOTimer@1a47a178</span>
 </code></pre></div></div>
 
 <p>The example looks like this:</p>
@@ -506,10 +506,10 @@ In the following example we will see how <code class="highlighter-rouge">interru
 <span class="c1">// program: Stream[IO[x], Unit] = Stream(..)</span>
 
 <span class="nv">program</span><span class="o">.</span><span class="py">compile</span><span class="o">.</span><span class="py">drain</span><span class="o">.</span><span class="py">unsafeRunSync</span>
-<span class="c1">// 17:01:38.951546</span>
-<span class="c1">// 17:01:39.956007</span>
-<span class="c1">// 17:01:40.961605</span>
-<span class="c1">// 17:01:41.964061</span>
+<span class="c1">// 17:13:05.688308</span>
+<span class="c1">// 17:13:06.692033</span>
+<span class="c1">// 17:13:07.693998</span>
+<span class="c1">// 17:13:08.699621</span>
 </code></pre></div></div>
 
 <p>Let’s take this line by line now, so we can understand what’s going on.</p>
@@ -546,10 +546,10 @@ In the following example we will see how <code class="highlighter-rouge">interru
 <span class="c1">// program1: Stream[IO[x], Unit] = Stream(..)</span>
 
 <span class="nv">program1</span><span class="o">.</span><span class="py">compile</span><span class="o">.</span><span class="py">drain</span><span class="o">.</span><span class="py">unsafeRunSync</span>
-<span class="c1">// 17:01:43.970949</span>
-<span class="c1">// 17:01:44.972542</span>
-<span class="c1">// 17:01:45.975168</span>
-<span class="c1">// 17:01:46.979899</span>
+<span class="c1">// 17:13:10.698952</span>
+<span class="c1">// 17:13:11.701308</span>
+<span class="c1">// 17:13:12.705998</span>
+<span class="c1">// 17:13:13.709446</span>
 </code></pre></div></div>
 
 <h3 id="talking-to-the-external-world">Talking to the external world</h3>
@@ -582,7 +582,7 @@ In the following example we will see how <code class="highlighter-rouge">interru
 <div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">import</span> <span class="nn">cats.effect.Sync</span>
 
 <span class="k">val</span> <span class="nv">T</span> <span class="k">=</span> <span class="nc">Sync</span><span class="o">[</span><span class="kt">IO</span><span class="o">]</span>
-<span class="c1">// T: Sync[IO] = cats.effect.IOInstances$$anon$2@5fb39f37</span>
+<span class="c1">// T: Sync[IO] = cats.effect.IOInstances$$anon$2@4397354a</span>
 <span class="k">val</span> <span class="nv">s2</span> <span class="k">=</span> <span class="nv">Stream</span><span class="o">.</span><span class="py">eval_</span><span class="o">(</span><span class="nv">T</span><span class="o">.</span><span class="py">delay</span> <span class="o">{</span> <span class="nf">destroyUniverse</span><span class="o">()</span> <span class="o">})</span> <span class="o">++</span> <span class="nc">Stream</span><span class="o">(</span><span class="s">"...moving on"</span><span class="o">)</span>
 <span class="c1">// s2: Stream[IO[x], String] = Stream(..)</span>
 <span class="nv">s2</span><span class="o">.</span><span class="py">compile</span><span class="o">.</span><span class="py">toVector</span><span class="o">.</span><span class="py">unsafeRunSync</span><span class="o">()</span>
@@ -635,7 +635,7 @@ In the following example we will see how <code class="highlighter-rouge">interru
   <span class="nv">c</span><span class="o">.</span><span class="py">readBytesE</span><span class="o">(</span><span class="n">cb</span><span class="o">)</span>
 <span class="o">}</span>
 <span class="c1">// bytes: IO[Array[Byte]] = Async(</span>
-<span class="c1">//   cats.effect.IO$$$Lambda$13736/0x0000000803a15840@42f88b02,</span>
+<span class="c1">//   cats.effect.IO$$$Lambda$17790/0x000000080494d840@17a7a66b,</span>
 <span class="c1">//   false</span>
 <span class="c1">// )</span>
 
@@ -698,7 +698,7 @@ But there are times when we need use fs2 in conjunction with a different streami
 <p>A <code class="highlighter-rouge">ContextShift</code> instance is necessary when working with <code class="highlighter-rouge">IO</code></p>
 
 <div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">implicit</span> <span class="k">val</span> <span class="nv">contextShift</span><span class="k">:</span> <span class="kt">ContextShift</span><span class="o">[</span><span class="kt">IO</span><span class="o">]</span> <span class="k">=</span> <span class="nv">IO</span><span class="o">.</span><span class="py">contextShift</span><span class="o">(</span><span class="nv">ExecutionContext</span><span class="o">.</span><span class="py">global</span><span class="o">)</span>
-<span class="c1">// contextShift: ContextShift[IO] = cats.effect.internals.IOContextShift@2a249b91</span>
+<span class="c1">// contextShift: ContextShift[IO] = cats.effect.internals.IOContextShift@72a366e9</span>
 </code></pre></div></div>
 
 <p>To convert a <code class="highlighter-rouge">Stream</code> into a downstream unicast <code class="highlighter-rouge">org.reactivestreams.Publisher</code>:</p>
@@ -706,13 +706,13 @@ But there are times when we need use fs2 in conjunction with a different streami
 <div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">val</span> <span class="nv">stream</span> <span class="k">=</span> <span class="nc">Stream</span><span class="o">(</span><span class="mi">1</span><span class="o">,</span> <span class="mi">2</span><span class="o">,</span> <span class="mi">3</span><span class="o">).</span><span class="py">covary</span><span class="o">[</span><span class="kt">IO</span><span class="o">]</span>
 <span class="c1">// stream: Stream[IO, Int] = Stream(..)</span>
 <span class="nv">stream</span><span class="o">.</span><span class="py">toUnicastPublisher</span>
-<span class="c1">// res49: StreamUnicastPublisher[IO[A], Int] = fs2.interop.reactivestreams.StreamUnicastPublisher@4978abfa</span>
+<span class="c1">// res49: StreamUnicastPublisher[IO[A], Int] = fs2.interop.reactivestreams.StreamUnicastPublisher@4087fc50</span>
 </code></pre></div></div>
 
 <p>To convert an upstream <code class="highlighter-rouge">org.reactivestreams.Publisher</code> into a <code class="highlighter-rouge">Stream</code>:</p>
 
 <div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">val</span> <span class="nv">publisher</span><span class="k">:</span> <span class="kt">StreamUnicastPublisher</span><span class="o">[</span><span class="kt">IO</span>, <span class="kt">Int</span><span class="o">]</span> <span class="k">=</span> <span class="nc">Stream</span><span class="o">(</span><span class="mi">1</span><span class="o">,</span> <span class="mi">2</span><span class="o">,</span> <span class="mi">3</span><span class="o">).</span><span class="py">covary</span><span class="o">[</span><span class="kt">IO</span><span class="o">].</span><span class="py">toUnicastPublisher</span>
-<span class="c1">// publisher: StreamUnicastPublisher[IO, Int] = fs2.interop.reactivestreams.StreamUnicastPublisher@1952ab19</span>
+<span class="c1">// publisher: StreamUnicastPublisher[IO, Int] = fs2.interop.reactivestreams.StreamUnicastPublisher@2825b330</span>
 <span class="nv">publisher</span><span class="o">.</span><span class="py">toStream</span><span class="o">[</span><span class="kt">IO</span><span class="o">]</span>
 <span class="c1">// res50: Stream[IO, Int] = Stream(..)</span>
 </code></pre></div></div>
@@ -812,7 +812,7 @@ But there are times when we need use fs2 in conjunction with a different streami
 </ul>
 
 <p>The correctness of your program should not depend on how different streams interleave, and once again, you should not use <code class="highlighter-rouge">handleErrorWith</code> or other interruptible functions for resource cleanup. Use <code class="highlighter-rouge">bracket</code> or <code class="highlighter-rouge">onFinalize</code> for this purpose.</p>
-</div></div></section></main><footer id="site-footer"><div class="container"><div class="row"><p>fs2 is designed and developed by <a href="https://github.com/functional-streams-for-scala/fs2" target="_blank" rel="noopener noreferrer">co.fs2</a></p></div><div class="row"><div><p>Website built with <a href="https://47deg.github.io/sbt-microsites/" target="_blank" rel="noopener noreferrer">sbt-microsites</a> - © 2019 <a href="https://www.47deg.com/" target="_blank" rel="noopener noreferrer">47 Degrees</a></p></div></div></div></footer><script src="/highlight/highlight.pack.js"></script><script>hljs.configure({languages:['scala','java','bash']});
+</div></div></section></main><footer id="site-footer"><div class="container"><div class="row"><div class="col-xs-6"><p>fs2 is designed and developed by <a href="https://github.com/functional-streams-for-scala/fs2" target="_blank" rel="noopener noreferrer">co.fs2</a></p></div><div class="col-xs-6"><p class="text-right"><a href="https://github.com/functional-streams-for-scala/fs2" target="_blank" rel="noopener noreferrer"><span class="fa fa-github"></span>View on GitHub</a></p></div></div><div class="row"><div class="col-xs-6"><p>Website built with <a href="https://47deg.github.io/sbt-microsites/" target="_blank" rel="noopener noreferrer">sbt-microsites</a> - © 2019 <a href="https://www.47deg.com/" target="_blank" rel="noopener noreferrer">47 Degrees</a></p></div></div></div></footer><script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/3.3.7/js/bootstrap.min.js"></script><script src="/highlight/highlight.pack.js"></script><script>hljs.configure({languages:['scala','java','bash']});
 hljs.initHighlightingOnLoad();
               </script><script>console.info('\x57\x65\x62\x73\x69\x74\x65\x20\x62\x75\x69\x6c\x74\x20\x77\x69\x74\x68\x3a\x0a\x20\x20\x20\x20\x20\x20\x20\x20\x20\x5f\x5f\x20\x20\x20\x20\x5f\x5f\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x5f\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x5f\x20\x5f\x5f\x0a\x20\x20\x20\x5f\x5f\x5f\x5f\x5f\x2f\x20\x2f\x5f\x20\x20\x2f\x20\x2f\x5f\x20\x20\x20\x20\x20\x20\x5f\x5f\x5f\x5f\x20\x5f\x5f\x5f\x20\x20\x28\x5f\x29\x5f\x5f\x5f\x5f\x5f\x5f\x5f\x5f\x5f\x5f\x5f\x5f\x5f\x20\x20\x5f\x5f\x5f\x5f\x5f\x28\x5f\x29\x20\x2f\x5f\x5f\x5f\x5f\x20\x20\x5f\x5f\x5f\x5f\x5f\x0a\x20\x20\x2f\x20\x5f\x5f\x5f\x2f\x20\x5f\x5f\x20\x5c\x2f\x20\x5f\x5f\x2f\x5f\x5f\x5f\x5f\x5f\x2f\x20\x5f\x5f\x20\x60\x5f\x5f\x20\x5c\x2f\x20\x2f\x20\x5f\x5f\x5f\x2f\x20\x5f\x5f\x5f\x2f\x20\x5f\x5f\x20\x5c\x2f\x20\x5f\x5f\x5f\x2f\x20\x2f\x20\x5f\x5f\x2f\x20\x5f\x20\x5c\x2f\x20\x5f\x5f\x5f\x2f\x0a\x20\x28\x5f\x5f\x20\x20\x29\x20\x2f\x5f\x2f\x20\x2f\x20\x2f\x5f\x2f\x5f\x5f\x5f\x5f\x5f\x2f\x20\x2f\x20\x2f\x20\x2f\x20\x2f\x20\x2f\x20\x2f\x20\x2f\x5f\x5f\x2f\x20\x2f\x20\x20\x2f\x20\x2f\x5f\x2f\x20\x28\x5f\x5f\x20\x20\x29\x20\x2f\x20\x2f\x5f\x2f\x20\x20\x5f\x5f\x28\x5f\x5f\x20\x20\x29\x0a\x2f\x5f\x5f\x5f\x5f\x2f\x5f\x2e\x5f\x5f\x5f\x2f\x5c\x5f\x5f\x2f\x20\x20\x20\x20\x20\x2f\x5f\x2f\x20\x2f\x5f\x2f\x20\x2f\x5f\x2f\x5f\x2f\x5c\x5f\x5f\x5f\x2f\x5f\x2f\x20\x20\x20\x5c\x5f\x5f\x5f\x5f\x2f\x5f\x5f\x5f\x5f\x2f\x5f\x2f\x5c\x5f\x5f\x2f\x5c\x5f\x5f\x5f\x2f\x5f\x5f\x5f\x5f\x2f\x0a\x0a\x68\x74\x74\x70\x73\x3a\x2f\x2f\x34\x37\x64\x65\x67\x2e\x67\x69\x74\x68\x75\x62\x2e\x69\x6f\x2f\x73\x62\x74\x2d\x6d\x69\x63\x72\x6f\x73\x69\x74\x65\x73')</script><script>((window.gitter = {}).chat = {}).options = {
 room: 'functional-streams-for-scala/fs2'};</script><script src="https://sidecar.gitter.im/dist/sidecar.v1.js"></script><script src="/js/version-selector.js"></script></body></html>
