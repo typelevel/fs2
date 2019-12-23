@@ -28,7 +28,7 @@ script:
   - sbt ++$TRAVIS_SCALA_VERSION -Dfile.encoding=UTF8 -Dfs2.test.travis testJVM
   - sbt ++$TRAVIS_SCALA_VERSION -Dfile.encoding=UTF8 -Dfs2.test.travis testJS
   - sbt ++$TRAVIS_SCALA_VERSION -Dfile.encoding=UTF8 doc mimaReportBinaryIssues
-  - (test $TRAVIS_SCALA_VERSION == "2.12.9" && sbt ++$TRAVIS_SCALA_VERSION -Dfile.encoding=UTF8 -J-Xms2g -J-Xmx2g docs/mdoc) || test $TRAVIS_SCALA_VERSION == "2.13.0"
+  - (test $TRAVIS_SCALA_VERSION == "2.12.9" && sbt ++$TRAVIS_SCALA_VERSION -Dfile.encoding=UTF8 -J-Xms2g -J-Xmx2g docs/mdoc) || test $TRAVIS_SCALA_VERSION == "2.13.1"
 
 after_success:
   - test $PUBLISH == "true" && test $TRAVIS_PULL_REQUEST == "false" && test $TRAVIS_BRANCH == "series/2.0" && GPG_WARN_ON_FAILURE=true sbt +publish
