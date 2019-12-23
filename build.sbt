@@ -385,6 +385,7 @@ lazy val microsite = project
     micrositeGithubRepo := "fs2",
     micrositeBaseUrl := "",
     micrositeTheme := "pattern",
+    micrositeHighlightTheme := "solarized-light",
     micrositeExtraMdFilesOutput := resourceManaged.value / "main" / "jekyll",
     micrositeExtraMdFiles := Map(
       file("README.md") -> ExtraMdFileConfig(
