@@ -121,32 +121,11 @@ This markdown file contains code examples which can be compiled using mdoc. Swit
 <p>The first <code class="highlighter-rouge">.compile.toVector</code> is one of several methods available to ‘compile’ the stream to a single effect:</p>
 
 <div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">val</span> <span class="nv">ra</span> <span class="k">=</span> <span class="nv">eff</span><span class="o">.</span><span class="py">compile</span><span class="o">.</span><span class="py">toVector</span> <span class="c1">// gather all output into a Vector</span>
-<span class="c1">// ra: IO[Vector[Int]] = Map(</span>
-<span class="c1">//   Bind(</span>
-<span class="c1">//     Delay(fs2.Stream$CompileOps$$Lambda$8069/0x00000008022d6440@39ffdfd0),</span>
-<span class="c1">//     fs2.Stream$Compiler$$anon$3$$Lambda$8072/0x00000008022d3040@58bd5a</span>
-<span class="c1">//   ),</span>
-<span class="c1">//   fs2.Stream$CompileOps$$Lambda$8071/0x00000008022d4040@555dc454,</span>
-<span class="c1">//   0</span>
-<span class="c1">// ) // gather all output into a Vector</span>
+<span class="c1">// ra: IO[Vector[Int]] = &lt;function1&gt; // gather all output into a Vector</span>
 <span class="k">val</span> <span class="nv">rb</span> <span class="k">=</span> <span class="nv">eff</span><span class="o">.</span><span class="py">compile</span><span class="o">.</span><span class="py">drain</span> <span class="c1">// purely for effects</span>
-<span class="c1">// rb: IO[Unit] = Map(</span>
-<span class="c1">//   Bind(</span>
-<span class="c1">//     Delay(fs2.Stream$CompileOps$$Lambda$8174/0x0000000802398040@3d1b5bd4),</span>
-<span class="c1">//     fs2.Stream$Compiler$$anon$3$$Lambda$8072/0x00000008022d3040@6de4f59e</span>
-<span class="c1">//   ),</span>
-<span class="c1">//   fs2.Stream$CompileOps$$Lambda$8175/0x0000000802398840@56a0e312,</span>
-<span class="c1">//   0</span>
-<span class="c1">// ) // purely for effects</span>
+<span class="c1">// rb: IO[Unit] = &lt;function1&gt; // purely for effects</span>
 <span class="k">val</span> <span class="nv">rc</span> <span class="k">=</span> <span class="nv">eff</span><span class="o">.</span><span class="py">compile</span><span class="o">.</span><span class="py">fold</span><span class="o">(</span><span class="mi">0</span><span class="o">)(</span><span class="k">_</span> <span class="o">+</span> <span class="k">_</span><span class="o">)</span> <span class="c1">// run and accumulate some result</span>
-<span class="c1">// rc: IO[Int] = Map(</span>
-<span class="c1">//   Bind(</span>
-<span class="c1">//     Delay(fs2.Stream$CompileOps$$Lambda$8174/0x0000000802398040@4ca340db),</span>
-<span class="c1">//     fs2.Stream$Compiler$$anon$3$$Lambda$8072/0x00000008022d3040@6a104d4</span>
-<span class="c1">//   ),</span>
-<span class="c1">//   fs2.Stream$CompileOps$$Lambda$8175/0x0000000802398840@56a0e312,</span>
-<span class="c1">//   0</span>
-<span class="c1">// )</span>
+<span class="c1">// rc: IO[Int] = &lt;function1&gt;</span>
 </code></pre></div></div>
 
 <p>Notice these all return a <code class="highlighter-rouge">IO</code> of some sort, but this process of compilation doesn’t actually <em>perform</em> any of the effects (nothing gets printed).</p>
@@ -259,9 +238,9 @@ In FS2 0.10.x, <code class="highlighter-rouge">Segment</code> played a large rol
 <div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">val</span> <span class="nv">count</span> <span class="k">=</span> <span class="k">new</span> <span class="nv">java</span><span class="o">.</span><span class="py">util</span><span class="o">.</span><span class="py">concurrent</span><span class="o">.</span><span class="py">atomic</span><span class="o">.</span><span class="py">AtomicLong</span><span class="o">(</span><span class="mi">0</span><span class="o">)</span>
 <span class="c1">// count: java.util.concurrent.atomic.AtomicLong = 0</span>
 <span class="k">val</span> <span class="nv">acquire</span> <span class="k">=</span> <span class="nc">IO</span> <span class="o">{</span> <span class="nf">println</span><span class="o">(</span><span class="s">"incremented: "</span> <span class="o">+</span> <span class="nv">count</span><span class="o">.</span><span class="py">incrementAndGet</span><span class="o">);</span> <span class="o">()</span> <span class="o">}</span>
-<span class="c1">// acquire: IO[Unit] = Delay(&lt;function0&gt;)</span>
+<span class="c1">// acquire: IO[Unit] = IO$138913971</span>
 <span class="k">val</span> <span class="nv">release</span> <span class="k">=</span> <span class="nc">IO</span> <span class="o">{</span> <span class="nf">println</span><span class="o">(</span><span class="s">"decremented: "</span> <span class="o">+</span> <span class="nv">count</span><span class="o">.</span><span class="py">decrementAndGet</span><span class="o">);</span> <span class="o">()</span> <span class="o">}</span>
-<span class="c1">// release: IO[Unit] = Delay(&lt;function0&gt;)</span>
+<span class="c1">// release: IO[Unit] = IO$1541858741</span>
 </code></pre></div></div>
 
 <div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nv">Stream</span><span class="o">.</span><span class="py">bracket</span><span class="o">(</span><span class="n">acquire</span><span class="o">)(</span><span class="k">_</span> <span class="k">=&gt;</span> <span class="n">release</span><span class="o">).</span><span class="py">flatMap</span><span class="o">(</span><span class="k">_</span> <span class="k">=&gt;</span> <span class="nc">Stream</span><span class="o">(</span><span class="mi">1</span><span class="o">,</span><span class="mi">2</span><span class="o">,</span><span class="mi">3</span><span class="o">)</span> <span class="o">++</span> <span class="n">err</span><span class="o">).</span><span class="py">compile</span><span class="o">.</span><span class="py">drain</span><span class="o">.</span><span class="py">unsafeRunSync</span><span class="o">()</span>
@@ -441,7 +420,7 @@ built using the <code class="highlighter-rouge">Pull</code> type.</p>
 <div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">import</span> <span class="nn">cats.effect.</span><span class="o">{</span><span class="nc">ContextShift</span><span class="o">,</span> <span class="nc">IO</span><span class="o">}</span>
 
 <span class="k">implicit</span> <span class="k">val</span> <span class="nv">ioContextShift</span><span class="k">:</span> <span class="kt">ContextShift</span><span class="o">[</span><span class="kt">IO</span><span class="o">]</span> <span class="k">=</span> <span class="nv">IO</span><span class="o">.</span><span class="py">contextShift</span><span class="o">(</span><span class="nv">scala</span><span class="o">.</span><span class="py">concurrent</span><span class="o">.</span><span class="py">ExecutionContext</span><span class="o">.</span><span class="py">Implicits</span><span class="o">.</span><span class="py">global</span><span class="o">)</span>
-<span class="c1">// ioContextShift: ContextShift[IO] = cats.effect.internals.IOContextShift@7186033e</span>
+<span class="c1">// ioContextShift: ContextShift[IO] = cats.effect.internals.IOContextShift@3472a9cf</span>
 
 <span class="nc">Stream</span><span class="o">(</span><span class="mi">1</span><span class="o">,</span><span class="mi">2</span><span class="o">,</span><span class="mi">3</span><span class="o">).</span><span class="py">merge</span><span class="o">(</span><span class="nv">Stream</span><span class="o">.</span><span class="py">eval</span><span class="o">(</span><span class="nc">IO</span> <span class="o">{</span> <span class="nv">Thread</span><span class="o">.</span><span class="py">sleep</span><span class="o">(</span><span class="mi">200</span><span class="o">);</span> <span class="mi">4</span> <span class="o">})).</span><span class="py">compile</span><span class="o">.</span><span class="py">toVector</span><span class="o">.</span><span class="py">unsafeRunSync</span><span class="o">()</span>
 <span class="c1">// res40: Vector[Int] = Vector(1, 2, 3, 4)</span>
@@ -485,9 +464,9 @@ In the following example we will see how <code class="highlighter-rouge">interru
 <span class="k">import</span> <span class="nn">scala.concurrent.duration._</span>
 
 <span class="k">implicit</span> <span class="k">val</span> <span class="nv">contextShift</span> <span class="k">=</span> <span class="nv">IO</span><span class="o">.</span><span class="py">contextShift</span><span class="o">(</span><span class="nv">ExecutionContext</span><span class="o">.</span><span class="py">global</span><span class="o">)</span>
-<span class="c1">// contextShift: cats.effect.ContextShift[IO] = cats.effect.internals.IOContextShift@72ab49f6</span>
+<span class="c1">// contextShift: cats.effect.ContextShift[IO] = cats.effect.internals.IOContextShift@39f32dec</span>
 <span class="k">implicit</span> <span class="k">val</span> <span class="nv">timer</span> <span class="k">=</span> <span class="nv">IO</span><span class="o">.</span><span class="py">timer</span><span class="o">(</span><span class="nv">ExecutionContext</span><span class="o">.</span><span class="py">global</span><span class="o">)</span>
-<span class="c1">// timer: cats.effect.Timer[IO] = cats.effect.internals.IOTimer@ff1d0e7</span>
+<span class="c1">// timer: cats.effect.Timer[IO] = cats.effect.internals.IOTimer@5e81d49b</span>
 </code></pre></div></div>
 
 <p>The example looks like this:</p>
@@ -506,10 +485,10 @@ In the following example we will see how <code class="highlighter-rouge">interru
 <span class="c1">// program: Stream[IO[x], Unit] = Stream(..)</span>
 
 <span class="nv">program</span><span class="o">.</span><span class="py">compile</span><span class="o">.</span><span class="py">drain</span><span class="o">.</span><span class="py">unsafeRunSync</span>
-<span class="c1">// 21:57:35.832888</span>
-<span class="c1">// 21:57:36.838559</span>
-<span class="c1">// 21:57:37.843051</span>
-<span class="c1">// 21:57:38.844453</span>
+<span class="c1">// 15:32:44.618809</span>
+<span class="c1">// 15:32:45.627414</span>
+<span class="c1">// 15:32:46.631498</span>
+<span class="c1">// 15:32:47.637727</span>
 </code></pre></div></div>
 
 <p>Let’s take this line by line now, so we can understand what’s going on.</p>
@@ -546,10 +525,10 @@ In the following example we will see how <code class="highlighter-rouge">interru
 <span class="c1">// program1: Stream[IO[x], Unit] = Stream(..)</span>
 
 <span class="nv">program1</span><span class="o">.</span><span class="py">compile</span><span class="o">.</span><span class="py">drain</span><span class="o">.</span><span class="py">unsafeRunSync</span>
-<span class="c1">// 21:57:40.854286</span>
-<span class="c1">// 21:57:41.858740</span>
-<span class="c1">// 21:57:42.860912</span>
-<span class="c1">// 21:57:43.867382</span>
+<span class="c1">// 15:32:49.633354</span>
+<span class="c1">// 15:32:50.638452</span>
+<span class="c1">// 15:32:51.651887</span>
+<span class="c1">// 15:32:52.656550</span>
 </code></pre></div></div>
 
 <h3 id="talking-to-the-external-world">Talking to the external world</h3>
@@ -582,7 +561,7 @@ In the following example we will see how <code class="highlighter-rouge">interru
 <div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">import</span> <span class="nn">cats.effect.Sync</span>
 
 <span class="k">val</span> <span class="nv">T</span> <span class="k">=</span> <span class="nc">Sync</span><span class="o">[</span><span class="kt">IO</span><span class="o">]</span>
-<span class="c1">// T: Sync[IO] = cats.effect.IOInstances$$anon$2@5da0a743</span>
+<span class="c1">// T: Sync[IO] = cats.effect.IOInstances$$anon$2@7211540c</span>
 <span class="k">val</span> <span class="nv">s2</span> <span class="k">=</span> <span class="nv">Stream</span><span class="o">.</span><span class="py">eval_</span><span class="o">(</span><span class="nv">T</span><span class="o">.</span><span class="py">delay</span> <span class="o">{</span> <span class="nf">destroyUniverse</span><span class="o">()</span> <span class="o">})</span> <span class="o">++</span> <span class="nc">Stream</span><span class="o">(</span><span class="s">"...moving on"</span><span class="o">)</span>
 <span class="c1">// s2: Stream[IO[x], String] = Stream(..)</span>
 <span class="nv">s2</span><span class="o">.</span><span class="py">compile</span><span class="o">.</span><span class="py">toVector</span><span class="o">.</span><span class="py">unsafeRunSync</span><span class="o">()</span>
@@ -634,10 +613,7 @@ In the following example we will see how <code class="highlighter-rouge">interru
 <span class="k">val</span> <span class="nv">bytes</span> <span class="k">=</span> <span class="nv">cats</span><span class="o">.</span><span class="py">effect</span><span class="o">.</span><span class="py">Async</span><span class="o">[</span><span class="kt">IO</span><span class="o">].</span><span class="py">async</span><span class="o">[</span><span class="kt">Array</span><span class="o">[</span><span class="kt">Byte</span><span class="o">]]</span> <span class="o">{</span> <span class="o">(</span><span class="n">cb</span><span class="k">:</span> <span class="kt">Either</span><span class="o">[</span><span class="kt">Throwable</span>,<span class="kt">Array</span><span class="o">[</span><span class="kt">Byte</span><span class="o">]]</span> <span class="k">=&gt;</span> <span class="nc">Unit</span><span class="o">)</span> <span class="k">=&gt;</span>
   <span class="nv">c</span><span class="o">.</span><span class="py">readBytesE</span><span class="o">(</span><span class="n">cb</span><span class="o">)</span>
 <span class="o">}</span>
-<span class="c1">// bytes: IO[Array[Byte]] = Async(</span>
-<span class="c1">//   cats.effect.IO$$$Lambda$8067/0x00000008022d6840@5edaaac6,</span>
-<span class="c1">//   false</span>
-<span class="c1">// )</span>
+<span class="c1">// bytes: IO[Array[Byte]] = IO$1808189192</span>
 
 <span class="nv">Stream</span><span class="o">.</span><span class="py">eval</span><span class="o">(</span><span class="n">bytes</span><span class="o">).</span><span class="py">map</span><span class="o">(</span><span class="nv">_</span><span class="o">.</span><span class="py">toList</span><span class="o">).</span><span class="py">compile</span><span class="o">.</span><span class="py">toVector</span><span class="o">.</span><span class="py">unsafeRunSync</span><span class="o">()</span>
 <span class="c1">// res46: Vector[List[Byte]] = Vector(List(0, 1, 2))</span>
@@ -698,7 +674,7 @@ But there are times when we need use fs2 in conjunction with a different streami
 <p>A <code class="highlighter-rouge">ContextShift</code> instance is necessary when working with <code class="highlighter-rouge">IO</code></p>
 
 <div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">implicit</span> <span class="k">val</span> <span class="nv">contextShift</span><span class="k">:</span> <span class="kt">ContextShift</span><span class="o">[</span><span class="kt">IO</span><span class="o">]</span> <span class="k">=</span> <span class="nv">IO</span><span class="o">.</span><span class="py">contextShift</span><span class="o">(</span><span class="nv">ExecutionContext</span><span class="o">.</span><span class="py">global</span><span class="o">)</span>
-<span class="c1">// contextShift: ContextShift[IO] = cats.effect.internals.IOContextShift@1d7a5eec</span>
+<span class="c1">// contextShift: ContextShift[IO] = cats.effect.internals.IOContextShift@4296cbb7</span>
 </code></pre></div></div>
 
 <p>To convert a <code class="highlighter-rouge">Stream</code> into a downstream unicast <code class="highlighter-rouge">org.reactivestreams.Publisher</code>:</p>
@@ -706,13 +682,13 @@ But there are times when we need use fs2 in conjunction with a different streami
 <div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">val</span> <span class="nv">stream</span> <span class="k">=</span> <span class="nc">Stream</span><span class="o">(</span><span class="mi">1</span><span class="o">,</span> <span class="mi">2</span><span class="o">,</span> <span class="mi">3</span><span class="o">).</span><span class="py">covary</span><span class="o">[</span><span class="kt">IO</span><span class="o">]</span>
 <span class="c1">// stream: Stream[IO, Int] = Stream(..)</span>
 <span class="nv">stream</span><span class="o">.</span><span class="py">toUnicastPublisher</span>
-<span class="c1">// res49: StreamUnicastPublisher[IO[A], Int] = fs2.interop.reactivestreams.StreamUnicastPublisher@57cfcb33</span>
+<span class="c1">// res49: StreamUnicastPublisher[IO[A], Int] = fs2.interop.reactivestreams.StreamUnicastPublisher@403409ec</span>
 </code></pre></div></div>
 
 <p>To convert an upstream <code class="highlighter-rouge">org.reactivestreams.Publisher</code> into a <code class="highlighter-rouge">Stream</code>:</p>
 
 <div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">val</span> <span class="nv">publisher</span><span class="k">:</span> <span class="kt">StreamUnicastPublisher</span><span class="o">[</span><span class="kt">IO</span>, <span class="kt">Int</span><span class="o">]</span> <span class="k">=</span> <span class="nc">Stream</span><span class="o">(</span><span class="mi">1</span><span class="o">,</span> <span class="mi">2</span><span class="o">,</span> <span class="mi">3</span><span class="o">).</span><span class="py">covary</span><span class="o">[</span><span class="kt">IO</span><span class="o">].</span><span class="py">toUnicastPublisher</span>
-<span class="c1">// publisher: StreamUnicastPublisher[IO, Int] = fs2.interop.reactivestreams.StreamUnicastPublisher@446d157c</span>
+<span class="c1">// publisher: StreamUnicastPublisher[IO, Int] = fs2.interop.reactivestreams.StreamUnicastPublisher@3d3fc0de</span>
 <span class="nv">publisher</span><span class="o">.</span><span class="py">toStream</span><span class="o">[</span><span class="kt">IO</span><span class="o">]</span>
 <span class="c1">// res50: Stream[IO, Int] = Stream(..)</span>
 </code></pre></div></div>
