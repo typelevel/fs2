@@ -7,6 +7,7 @@ position: 4
 
 #### Talks and Presentations
 
+* [A sky full of streams](https://www.youtube.com/watch?v=oluPEFlXumw), a talk by [Jakub Kozłowski][3] at [Scala World](https://scala.world), a conference in the Lake District in the UK, in September 2019. Slides are available [on Speakerdeck](https://speakerdeck.com/kubukoz/a-sky-full-of-streams).
 * [Declarative Control Flow with fs2 Stream](https://www.youtube.com/watch?v=YSN__0VEsaw), a talk by [Fabio Labella][1] at the [Typelevel Summit](https://typelevel.org/event/2018-03-summit-boston/), celebrated in Boston in March 2018. Slides available at the author's [Github](https://github.com/SystemFw/TL-Summit-Boston-2018).
 * [Compose your program flow with Stream](https://www.youtube.com/watch?v=x3GLwl1FxcA), a talk by [Fabio Labella][1] at a Klarna tech talk, sometime before March 2018. 
 * 2018-03-20: [Compose your program flow with Stream](https://www.youtube.com/watch?v=x3GLwl1FxcA) by [Fabio Labella][1]
@@ -58,6 +59,7 @@ Since Haskell is the purely functional lazily-evaluated programming language _pa
 
 [1]: https://github.com/SystemFw
 [2]: https://github.com/mpilquist
+[3]: https://github.com/kubukoz
 
 
 ### Older References ###
