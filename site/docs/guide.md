@@ -109,7 +109,7 @@ eff.compile.toVector.unsafeRunSync()
 
 The first `.compile.toVector` is one of several methods available to 'compile' the stream to a single effect:
 
-```scala mdoc
+```scala mdoc:to-string
 val ra = eff.compile.toVector // gather all output into a Vector
 val rb = eff.compile.drain // purely for effects
 val rc = eff.compile.fold(0)(_ + _) // run and accumulate some result
@@ -207,7 +207,7 @@ _Note: Don't use `handleErrorWith` for doing resource cleanup; use `bracket` as 
 
 If you have to acquire a resource and want to guarantee that some cleanup action is run if the resource is acquired, use the `bracket` function:
 
-```scala mdoc
+```scala mdoc:to-string
 val count = new java.util.concurrent.atomic.AtomicLong(0)
 val acquire = IO { println("incremented: " + count.incrementAndGet); () }
 val release = IO { println("decremented: " + count.decrementAndGet); () }
@@ -553,7 +553,7 @@ trait Async[F[_]] extends MonadError[F, Throwable] {
 
 Here's a complete example:
 
-```scala mdoc
+```scala mdoc:to-string
 val c = new Connection {
   def readBytes(onSuccess: Array[Byte] => Unit, onFailure: Throwable => Unit): Unit = {
     Thread.sleep(200)

@@ -101,7 +101,7 @@ val written: Stream[IO, Unit] = encodedBytes.through(io.file.writeAll(Paths.get(
 
 There are a number of ways of interpreting the stream. In this case, we call `compile.drain`, which returns a val value of the effect type, `IO`. The output of the stream is ignored - we compile it solely for its effect.
 
-```scala mdoc
+```scala mdoc:to-string
 val task: IO[Unit] = written.compile.drain
 ```
 
