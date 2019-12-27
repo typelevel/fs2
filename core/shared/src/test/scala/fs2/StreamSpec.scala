@@ -3136,7 +3136,7 @@ class StreamSpec extends Fs2Spec {
         .map(_._2)
         .compile
         .toList
-        .asserting(result => result.head should be >= delay)
+        .asserting(result => result.head should be >= (delay * 0.95)) // Allow for sleep starting just before duration measurement
     }
 
     "sliding" in forAll { (s: Stream[Pure, Int], n0: PosInt) =>
