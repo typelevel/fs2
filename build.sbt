@@ -51,8 +51,8 @@ lazy val commonSettings = Seq(
   javaOptions in (Test, run) ++= Seq("-Xms64m", "-Xmx64m"),
   libraryDependencies ++= Seq(
     compilerPlugin("org.typelevel" %% "kind-projector" % "0.10.3"),
-    "org.typelevel" %%% "cats-core" % "2.0.0",
-    "org.typelevel" %%% "cats-laws" % "2.0.0" % "test",
+    "org.typelevel" %%% "cats-core" % "2.1.0",
+    "org.typelevel" %%% "cats-laws" % "2.1.0" % "test",
     "org.typelevel" %%% "cats-effect" % "2.0.0",
     "org.typelevel" %%% "cats-effect-laws" % "2.0.0" % "test",
     "org.scalacheck" %%% "scalacheck" % "1.14.3" % "test",
@@ -92,14 +92,14 @@ lazy val testSettings = Seq(
   publishArtifact in Test := true
 )
 
-lazy val tutSettings = Seq(
-  scalacOptions in Tut ~= {
+lazy val mdocSettings = Seq(
+  scalacOptions in Compile ~= {
     _.filterNot("-Ywarn-unused-import" == _)
       .filterNot("-Ywarn-unused" == _)
       .filterNot("-Xlint" == _)
       .filterNot("-Xfatal-warnings" == _)
   },
-  scalacOptions in Tut += "-Ydelambdafy:inline"
+  scalacOptions in Compile += "-Ydelambdafy:inline"
 )
 
 def scmBranch(v: String): String = {
@@ -364,14 +364,14 @@ lazy val benchmark = project
 
 lazy val docs = project
   .in(file("docs"))
-  .enablePlugins(TutPlugin)
+  .enablePlugins(MdocPlugin)
   .settings(commonSettings)
   .settings(
     name := "fs2-docs",
-    tutSourceDirectory := file("docs") / "src",
-    tutTargetDirectory := file("docs")
+    mdocIn := file("docs") / "src",
+    mdocOut := file("docs")
   )
-  .settings(tutSettings)
+  .settings(mdocSettings)
   .dependsOn(coreJVM, io, reactiveStreams)
 
 lazy val microsite = project
@@ -384,6 +384,9 @@ lazy val microsite = project
     micrositeGithubOwner := "functional-streams-for-scala",
     micrositeGithubRepo := "fs2",
     micrositeBaseUrl := "",
+    micrositeTheme := "pattern",
+    micrositeHighlightTheme := "solarized-light",
+    micrositeExtraMdFilesOutput := resourceManaged.value / "main" / "jekyll",
     micrositeExtraMdFiles := Map(
       file("README.md") -> ExtraMdFileConfig(
         "index.md",
@@ -392,7 +395,7 @@ lazy val microsite = project
       )
     )
   )
-  .settings(tutSettings)
+  .settings(mdocSettings)
   .dependsOn(coreJVM, io, reactiveStreams)
 
 lazy val experimental = project

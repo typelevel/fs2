@@ -2,7 +2,7 @@
 
 This walks through the implementation of the example given in [the README](../README.md). This program opens a file, `fahrenheit.txt`, containing temperatures in degrees fahrenheit, one per line, and converts each temperature to celsius, incrementally writing to the file `celsius.txt`. Both files will be closed, regardless of whether any errors occur.
 
-```tut:book
+```scala mdoc
 import cats.effect.{Blocker, ExitCode, IO, IOApp, Resource}
 import cats.implicits._
 import fs2.{io, text, Stream}
@@ -37,7 +37,7 @@ Operations on `Stream` are defined for any choice of type constructor, not just 
 
 `fs2.io` has a number of helper functions for constructing or working with streams that talk to the outside world. `readAll` creates a stream of bytes from a file name (specified via a `java.nio.file.Path`). It encapsulates the logic for opening and closing the file, so that users of this stream do not need to remember to close the file when they are done or in the event of exceptions during processing of the stream.
 
-```tut:silent
+```scala mdoc:reset-object:silent
 import cats.effect.{Blocker, ContextShift, IO}
 import fs2.{io, text}
 import java.nio.file.Paths
@@ -57,7 +57,7 @@ def fahrenheitToCelsius(f: Double): Double =
   (f - 32.0) * (5.0/9.0)
 ```
 
-```tut
+```scala mdoc
 import fs2.Stream
 
 val src: Stream[IO, Byte] =
@@ -66,14 +66,14 @@ val src: Stream[IO, Byte] =
 
 A stream can be attached to a pipe, allowing for stateful transformations of the input values. Here, we attach the source stream to the `text.utf8Decode` pipe, which converts the stream of bytes to a stream of strings. We then attach the result to the `text.lines` pipe, which buffers strings and emits full lines. Pipes are expressed using the type `Pipe[F,I,O]`, which describes a pipe that can accept input values of type `I` and can output values of type `O`, potentially evaluating an effect periodically.
 
-```tut
+```scala mdoc
 val decoded: Stream[IO, String] = src.through(text.utf8Decode)
 val lines: Stream[IO, String] = decoded.through(text.lines)
 ```
 
 Many of the functions defined for `List` are defined for `Stream` as well, for instance `filter` and `map`. Note that no side effects occur when we call `filter` or `map`. `Stream` is a purely functional value which can _describe_ a streaming computation that interacts with the outside world. Nothing will occur until we interpret this description, and `Stream` values are thread-safe and can be shared freely.
 
-```tut
+```scala mdoc
 val filtered: Stream[IO, String] =
   lines.filter(s => !s.trim.isEmpty && !s.startsWith("//"))
 
@@ -83,25 +83,25 @@ val mapped: Stream[IO, String] =
 
 Adds a newline between emitted strings of `mapped`.
 
-```tut
+```scala mdoc
 val withNewlines: Stream[IO, String] = mapped.intersperse("\n")
 ```
 
 We use another pipe, `text.utf8Encode`, to convert the stream of strings back to a stream of bytes.
 
-```tut
+```scala mdoc
 val encodedBytes: Stream[IO, Byte] = withNewlines.through(text.utf8Encode)
 ```
 
 We then write the encoded bytes to a file. Note that nothing has happened at this point -- we are just constructing a description of a computation that, when interpreted, will incrementally consume the stream, sending converted values to the specified file.
 
-```tut
+```scala mdoc
 val written: Stream[IO, Unit] = encodedBytes.through(io.file.writeAll(Paths.get("testdata/celsius.txt"), blocker))
 ```
 
 There are a number of ways of interpreting the stream. In this case, we call `compile.drain`, which returns a val value of the effect type, `IO`. The output of the stream is ignored - we compile it solely for its effect.
 
-```tut
+```scala mdoc:to-string
 val task: IO[Unit] = written.compile.drain
 ```
 
@@ -109,6 +109,6 @@ We still haven't *done* anything yet. Effects only occur when we run the resulti
 
 Let's shut down the thread pool that we allocated earlier -- reminder: in real code, we would not manually control the lifecycle of the blocking thread pool -- we'd use the resource returned from `Blocker[IO]` to manage it automatically, like in the full example we started with.
 
-```tut
+```scala mdoc
 blockingPool.shutdown()
 ```

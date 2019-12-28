@@ -17,11 +17,11 @@ These data structures could be very handy in a few cases. See below examples of 
 
 ### FIFO (First IN / First OUT)
 
-A typical use case of a `fs2.concurrent.Queue[F, A]`, also quite useful to communicate with the external world as shown in the [guide](guide#talking-to-the-external-world).
+A typical use case of a `fs2.concurrent.Queue[F, A]`, also quite useful to communicate with the external world as shown in the [guide](guide.md#talking-to-the-external-world).
 
 q1 has a buffer size of 1 while q2 has a buffer size of 100 so you will notice the buffering when  pulling elements out of the q2.
 
-```tut:silent
+```scala mdoc:silent
 import cats.implicits._
 import cats.effect.{Concurrent, ExitCode, IO, IOApp, Timer}
 import fs2.concurrent.Queue
@@ -162,10 +162,10 @@ Once R2 was done R1 started processing immediately showing no availability.
 Once R1 was done R3 started processing immediately showing no availability.
 Finally, R3 was done showing an availability of one once again.
 
-```tut:silent
+```scala mdoc:silent
 import cats.effect.{Concurrent, ExitCode, IO, IOApp}
 import cats.effect.concurrent.Semaphore
-import cats.syntax.functor._
+import cats.implicits._
 import fs2.Stream
 
 import scala.concurrent.ExecutionContext.Implicits.global

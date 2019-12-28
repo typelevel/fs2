@@ -31,7 +31,7 @@ If you have a project you'd like to include in this list, either open a PR or le
 * [fs2-elastic](https://github.com/amarrella/fs2-elastic): Simple client for Elasticsearch.
 * [fs2-grpc](https://github.com/fiadliel/fs2-grpc): gRPC implementation for FS2 / Cats Effect.
 * [fs2-http](https://github.com/Spinoco/fs2-http): Http server and client library implemented in fs2.
-* [fs2-jms](https://github.com/kiambogo/fs2-jms): Connectors of the [Java Messaging Service (JMS)]() connectors for FS2 streams
+* [fs2-jms](https://github.com/kiambogo/fs2-jms): Java Messaging Service (JMS) connectors for FS2 streams
 * [fs2-kafka](https://github.com/Spinoco/fs2-kafka): Simple client for Apache Kafka.
 * [fs2-mail](https://github.com/Spinoco/fs2-mail): Fully asynchronous java non-blocking email client using fs2.
 * [fs2-rabbit](https://fs2-rabbit.profunktor.dev/): RabbitMQ stream-based client built on top of fs2 and cats effect.
