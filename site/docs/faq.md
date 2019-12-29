@@ -2,7 +2,7 @@
 layout: page
 title:  "FAQ"
 section: "faq"
-position: 3
+position: 4
 ---
 
 # Frequently Asked questions

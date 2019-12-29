@@ -2,7 +2,7 @@
 layout: page
 title:  "Library Ecosystem and Community"
 section: "ecosystem"
-position: 5
+position: 6
 ---
 
 ### Typelevel Dependencies

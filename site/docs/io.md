@@ -1,0 +1,173 @@
+---
+layout: page
+title:  "I/O"
+section: "io"
+position: 3
+---
+
+The `fs2-io` library provides support for performing input and output on the JVM (not Scala.js). This includes:
+- [working with files](#files)
+- [networking](#networking)
+- [support for console operations](#console-operations)
+- [interop with `java.io.{InputStream, OutputStream}`](#java-stream-interop)
+
+In this section, we'll look at each of these features.
+
+# Files
+
+TODO
+
+# Networking
+
+The `fs2-io` library supports both TCP, via the `fs2.io.tcp` package, and UDP, via the `fs2.io.udp` package. Both packages provide purely functional abstractions on top of the Java NIO networking support. Furthermore, both packages take full advantage of the resource safety guarantees of cats-effect and `fs2.Stream`.
+
+## TCP
+
+The `fs2.io.tcp.Socket` trait provides mechanisms for reading and writing data -- both as individual actions and as part of stream programs.
+
+### Clients
+
+To get started, let's write a client program that connects to a server, sends a message, and reads a response.
+
+```scala mdoc
+import fs2.{Chunk, Stream}
+import fs2.io.tcp.{Socket, SocketGroup}
+import cats.effect.{Blocker, Concurrent, ContextShift, Sync}
+import cats.implicits._
+import java.net.InetSocketAddress
+
+def client[F[_]: Concurrent: ContextShift]: F[Unit] =
+  Blocker[F].use { blocker =>
+    SocketGroup[F](blocker).use { socketGroup =>
+      socketGroup.client(new InetSocketAddress("localhost", 5555)).use { socket =>
+        socket.write(Chunk.bytes("Hello, world!".getBytes)) >>
+          socket.read(8192).flatMap { response =>
+            Sync[F].delay(println(s"Response: $response"))
+          }
+      }
+    }
+  }
+```
+
+To open a socket that's connected to `localhost:5555`, we need to use the `client` method on `SocketGroup`. Besides providing ways to create sockets, a `SocketGroup` provides a runtime environment for processing network events for the sockets it creates. Hence, the `apply` method of `SocketGroup` returns a `Resource[F, SocketGroup]`, which ensures the runtime environment is shutdown safely after usage of the group and all sockets created from it has finished. To create a `SocketGroup`, we needed a `Blocker`, which is also created inline here. Normally, a single `Blocker` and a single `SocketGroup` is created at startup and used for the lifetime of the application. To stress this, we can rewrite our TCP client example in this way:
+
+```scala mdoc
+import cats.effect.{ExitCode, IO, IOApp}
+
+object ClientApp extends IOApp {
+
+  def run(args: List[String]): IO[ExitCode] =
+    Blocker[IO].use { blocker =>
+      SocketGroup[IO](blocker).use { socketGroup =>
+        client[IO](socketGroup)
+      }
+    }.as(ExitCode.Success)
+
+  def client[F[_]: Concurrent: ContextShift](socketGroup: SocketGroup): F[Unit] =
+    socketGroup.client(new InetSocketAddress("localhost", 5555)).use { socket =>
+      socket.write(Chunk.bytes("Hello, world!".getBytes)) >>
+        socket.read(8192).flatMap { response =>
+          Sync[F].delay(println(s"Response: $response"))
+        }
+    }
+}
+```
+
+The `socketGroup.client` method returns a `Resource[F, Socket[F]]` which automatically closes the socket after the resource has been used. To write data to the socket, we call `socket.write`, which takes a `Chunk[Byte]` and returns an `F[Unit]`. Once the write completes, we do a single read from the socket via `socket.read`, passing the maximum amount of bytes we want to read. The returns an `F[Option[Chunk[Byte]]]` -- `None` if the socket reaches end of input and `Some` if the read produced a chunk. Finally, we print the response to the console.
+
+Note we aren't doing any binary message framing or packetization in this example. Hence, it's very possible for the single read to only receive a portion of the original message -- perhaps just the bytes for `"Hello, w"`. We can use FS2 streams to simplify this. The `Socket` trait defines `Stream` operations  -- `writes` and `reads`. We could rewrite this example using the stream operations like so:
+
+```scala mdoc
+import fs2.text
+
+def client[F[_]: Concurrent: ContextShift](socketGroup: SocketGroup): Stream[F, Unit] =
+  Stream.resource(socketGroup.client(new InetSocketAddress("localhost", 5555))).flatMap { socket =>
+    Stream("Hello, world!")
+      .through(text.utf8Encode)
+      .through(socket.writes())
+      .drain ++
+        socket.reads(8192)
+          .through(text.utf8Decode)
+          .evalMap { response =>
+            Sync[F].delay(println(s"Response: $response"))
+          }
+  }
+```
+
+The structure changes a bit. First, the socket resource is immediately lifted in to a stream via `Stream.resource`. Second, we create a single `Stream[Pure, String]`, transform it with `text.utf8Encode` to turn it in to a `Stream[Pure, Byte]`, and then transform it again with `socket.writes()` which turns it in to a `Stream[F, Unit]`. The `socket.writes` method returns a pipe that writes each underlying chunk of the input stream to the socket. The resulting stream is drained since we don't use the unit values, giving us a `Stream[F, Nothing]`.
+
+We then append a stream that reads a respnose -- we do this via `socket.reads(8192)`, which gives us a `Stream[F, Byte]` that terminates when the socket is closed or it receives an end of input indication. We transform that stream with `text.utf8Decode`, which gives us a `Stream[F, String]`. We then print each received response to the console.
+
+This program won't end until the server side closes the socket or indicates there's no more data to be read. To fix this, we need a protocol that both the client and server agree on. Since we are working with text, let's use a simple protocol where each frame (or "packet" or "message") is terminated with a `\n`. We'll have to update both the write side and the read side of our client.
+
+```scala mdoc:nest
+def client[F[_]: Concurrent: ContextShift](socketGroup: SocketGroup): Stream[F, Unit] =
+  Stream.resource(socketGroup.client(new InetSocketAddress("localhost", 5555))).flatMap { socket =>
+    Stream("Hello, world!")
+      .interleave(Stream.constant("\n"))
+      .through(text.utf8Encode)
+      .through(socket.writes())
+      .drain ++
+        socket.reads(8192)
+          .through(text.utf8Decode)
+          .through(text.lines)
+          .head
+          .evalMap { response =>
+            Sync[F].delay(println(s"Response: $response"))
+          }
+  }
+```
+
+To update the write side, we added `.interleave(Stream.constant("\n"))` before doing UTF8 encoding. This results in every input string being followed by a `"\n"`. On the read side, we transformed the output of `utf8Decode` with `text.lines`, which emits the strings between newlines. Finally, we call `head` to take the first full line of output. Note that we discard the rest of the `reads` stream after processing the first full line. This results in the socket getting closed and cleaned up correctly.
+
+### Servers
+
+Now let's implement a server application that communicates with the client app we just built. The server app will be a simple echo server -- for each line of text it receives, it will reply with the same line.
+
+```scala mdoc
+def echoServer[F[_]: Concurrent: ContextShift](socketGroup: SocketGroup): F[Unit] =
+  socketGroup.server(new InetSocketAddress(5555)).map { clientResource =>
+    Stream.resource(clientResource).flatMap { client =>
+      client.reads(8192)
+        .through(text.utf8Decode)
+        .through(text.lines)
+        .interleave(Stream.constant("\n"))
+        .through(text.utf8Encode)
+        .through(client.writes())
+    }
+  }.parJoin(100).compile.drain
+```
+
+We start with a call to `socketGroup.server` which returns a value of an interesting type -- `Stream[F, Resource[F, Socket[F]]]`. This is an infinite stream of client connections -- each time a client connects to the server, a `Resource[F, Socket[F]]` is emitted, allowing interaction with that client. The client socket is provided as a resource, allowing us to use the resource and then release it, closing the underlying socket and returning any acquired resources to the runtime environment.
+
+We map over this infinite stream of clients and provide the logic for handling an individual client. In this case,
+we read from the client socket, UTF-8 decode the received bytes, extract individual lines, and then write each line back to the client. This logic is implemented as a single `Stream[F, Unit]`.
+
+Since we mapped over the infinite client stream, we end up with a `Stream[F, Stream[F, Unit]]`. We flatten this to a single `Stream[F, Unit]` via `parJoin(100)`, which runs up to 100 of the inner streams concurrently. As inner streams finish, new inner streams are pulled from the source. Hence, `parJoin` is controlling the maximum number of concurrent client requests our server processes.
+
+The pattern of `socketGroup.server(address).map(handleClient).parJoin(maxConcurrentClients)` is very common when working with server sockets.
+
+A simpler echo server could be implemented with this core logic:
+
+```scala
+client.reads(8192).through(client.writes())
+```
+
+However, such an implementation would echo bytes back to the client as they are received instead of only echoing back full lines of text.
+
+## UDP
+
+TODO
+
+## TLS
+
+TODO
+
+# Console Operations
+
+TODO
+
+# Java Stream Interop
+
+TODO
+
