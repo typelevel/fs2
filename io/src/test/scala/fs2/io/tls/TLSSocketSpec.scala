@@ -24,7 +24,7 @@ class TLSSocketSpec extends TLSSpec {
               SocketGroup[IO](blocker).use { socketGroup =>
                 socketGroup.client[IO](new InetSocketAddress("www.google.com", 443)).use { socket =>
                   TLSContext
-                    .system[IO](blocker)
+                    .system(blocker)
                     .client(
                       socket,
                       TLSParameters(

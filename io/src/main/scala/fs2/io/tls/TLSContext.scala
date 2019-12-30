@@ -18,13 +18,13 @@ import java.io.FileInputStream
 /**
   * Allows creation of [[TLSSocket]]s.
   */
-sealed trait TLSContext[F[_]] {
+sealed trait TLSContext {
 
   /**
     * Creates a `TLSSocket` in client mode, using the supplied parameters.
     * Internal debug logging of the session can be enabled by passing a logger.
     */
-  def client(
+  def client[F[_]: Concurrent: ContextShift](
       socket: Socket[F],
       params: TLSParameters = TLSParameters.Default,
       logger: Option[String => F[Unit]] = None
@@ -34,7 +34,7 @@ sealed trait TLSContext[F[_]] {
     * Creates a `TLSSocket` in server mode, using the supplied parameters.
     * Internal debug logging of the session can be enabled by passing a logger.
     */
-  def server(
+  def server[F[_]: Concurrent: ContextShift](
       socket: Socket[F],
       params: TLSParameters = TLSParameters.Default,
       logger: Option[String => F[Unit]] = None
@@ -44,7 +44,7 @@ sealed trait TLSContext[F[_]] {
     * Creates a `DTLSSocket` in client mode, using the supplied parameters.
     * Internal debug logging of the session can be enabled by passing a logger.
     */
-  def dtlsClient(
+  def dtlsClient[F[_]: Concurrent: ContextShift](
       socket: udp.Socket[F],
       remoteAddress: InetSocketAddress,
       params: TLSParameters = TLSParameters.Default,
@@ -55,7 +55,7 @@ sealed trait TLSContext[F[_]] {
     * Creates a `DTLSSocket` in server mode, using the supplied parameters.
     * Internal debug logging of the session can be enabled by passing a logger.
     */
-  def dtlsServer(
+  def dtlsServer[F[_]: Concurrent: ContextShift](
       socket: udp.Socket[F],
       remoteAddress: InetSocketAddress,
       params: TLSParameters = TLSParameters.Default,
@@ -66,11 +66,11 @@ sealed trait TLSContext[F[_]] {
 object TLSContext {
 
   /** Creates a `TLSContext` from an `SSLContext`. */
-  def fromSSLContext[F[_]: Concurrent: ContextShift](
+  def fromSSLContext(
       ctx: SSLContext,
       blocker: Blocker
-  ): TLSContext[F] = new TLSContext[F] {
-    def client(
+  ): TLSContext = new TLSContext {
+    def client[F[_]: Concurrent: ContextShift](
         socket: Socket[F],
         params: TLSParameters,
         logger: Option[String => F[Unit]]
@@ -82,7 +82,7 @@ object TLSContext {
         logger
       )
 
-    def server(
+    def server[F[_]: Concurrent: ContextShift](
         socket: Socket[F],
         params: TLSParameters,
         logger: Option[String => F[Unit]]
@@ -94,7 +94,7 @@ object TLSContext {
         logger
       )
 
-    private def mkSocket(
+    private def mkSocket[F[_]: Concurrent: ContextShift](
         socket: Socket[F],
         clientMode: Boolean,
         params: TLSParameters,
@@ -113,7 +113,7 @@ object TLSContext {
           TLSSocket(socket, engine)
         }
 
-    def dtlsClient(
+    def dtlsClient[F[_]: Concurrent: ContextShift](
         socket: udp.Socket[F],
         remoteAddress: InetSocketAddress,
         params: TLSParameters,
@@ -127,7 +127,7 @@ object TLSContext {
         logger
       )
 
-    def dtlsServer(
+    def dtlsServer[F[_]: Concurrent: ContextShift](
         socket: udp.Socket[F],
         remoteAddress: InetSocketAddress,
         params: TLSParameters,
@@ -141,7 +141,7 @@ object TLSContext {
         logger
       )
 
-    private def mkDtlsSocket(
+    private def mkDtlsSocket[F[_]: Concurrent: ContextShift](
         socket: udp.Socket[F],
         remoteAddress: InetSocketAddress,
         clientMode: Boolean,
@@ -161,7 +161,7 @@ object TLSContext {
           DTLSSocket(socket, remoteAddress, engine)
         }
 
-    private def engine(
+    private def engine[F[_]: Concurrent: ContextShift](
         blocker: Blocker,
         clientMode: Boolean,
         params: TLSParameters,
@@ -178,7 +178,7 @@ object TLSContext {
   }
 
   /** Creates a `TLSContext` which trusts all certificates. */
-  def insecure[F[_]: Concurrent: ContextShift](blocker: Blocker): TLSContext[F] = {
+  def insecure(blocker: Blocker): TLSContext = {
     val ctx = SSLContext.getInstance("TLS")
     val tm = new X509TrustManager {
       def checkClientTrusted(x: Array[X509Certificate], y: String): Unit = {}
@@ -190,39 +190,39 @@ object TLSContext {
   }
 
   /** Creates a `TLSContext` from the system default `SSLContext`. */
-  def system[F[_]: Concurrent: ContextShift](blocker: Blocker): TLSContext[F] =
+  def system(blocker: Blocker): TLSContext =
     fromSSLContext(SSLContext.getDefault, blocker)
 
   /** Creates a `TLSContext` from the specified key store file. */
-  def fromKeyStoreFile[F[_]: Concurrent: ContextShift](
+  def fromKeyStoreFile[F[_]: Sync: ContextShift](
       file: Path,
       storePassword: Array[Char],
       keyPassword: Array[Char],
       blocker: Blocker
-  ): F[TLSContext[F]] = {
+  ): F[TLSContext] = {
     val load = blocker.delay(new FileInputStream(file.toFile): InputStream)
     val stream = Resource.make(load)(s => blocker.delay(s.close))
     fromKeyStoreStream(stream, storePassword, keyPassword, blocker)
   }
 
   /** Creates a `TLSContext` from the specified class path resource. */
-  def fromKeyStoreResource[F[_]: Concurrent: ContextShift](
+  def fromKeyStoreResource[F[_]: Sync: ContextShift](
       resource: String,
       storePassword: Array[Char],
       keyPassword: Array[Char],
       blocker: Blocker
-  ): F[TLSContext[F]] = {
+  ): F[TLSContext] = {
     val load = blocker.delay(getClass.getClassLoader.getResourceAsStream(resource))
     val stream = Resource.make(load)(s => blocker.delay(s.close))
     fromKeyStoreStream(stream, storePassword, keyPassword, blocker)
   }
 
-  private def fromKeyStoreStream[F[_]: Concurrent: ContextShift](
+  private def fromKeyStoreStream[F[_]: Sync: ContextShift](
       stream: Resource[F, InputStream],
       storePassword: Array[Char],
       keyPassword: Array[Char],
       blocker: Blocker
-  ): F[TLSContext[F]] =
+  ): F[TLSContext] =
     stream.use { s =>
       blocker
         .delay {
@@ -234,11 +234,11 @@ object TLSContext {
     }
 
   /** Creates a `TLSContext` from the specified key store. */
-  def fromKeyStore[F[_]: Concurrent: ContextShift](
+  def fromKeyStore[F[_]: Sync: ContextShift](
       keyStore: KeyStore,
       keyPassword: Array[Char],
       blocker: Blocker
-  ): F[TLSContext[F]] =
+  ): F[TLSContext] =
     blocker
       .delay {
         val kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm)

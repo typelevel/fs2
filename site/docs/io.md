@@ -217,7 +217,7 @@ import cats.effect.{Concurrent, ContextShift, Sync}
 import cats.implicits._
 import java.net.InetSocketAddress
 
-def client[F[_]: Concurrent: ContextShift](socketGroup: SocketGroup, tlsContext: TLSContext[F]): Stream[F, Unit] =
+def client[F[_]: Concurrent: ContextShift](socketGroup: SocketGroup, tlsContext: TLSContext): Stream[F, Unit] =
   Stream.resource(socketGroup.client(new InetSocketAddress("localhost", 5555))).flatMap { underlyingSocket =>
     Stream.resource(tlsContext.client(underlyingSocket)).flatMap { socket =>
       Stream("Hello, world!")

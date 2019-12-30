@@ -13,7 +13,7 @@ import cats.implicits._
 object TLSDebug {
   def debug[F[_]: Concurrent: ContextShift](
       blocker: Blocker,
-      tlsContext: TLSContext[F],
+      tlsContext: TLSContext,
       address: InetSocketAddress
   ): F[String] =
     SocketGroup[F](blocker).use { socketGroup =>
@@ -41,7 +41,7 @@ class TLSDebugTest extends Fs2Spec {
   def run(address: InetSocketAddress): IO[Unit] =
     Blocker[IO].use { blocker =>
       TLSDebug
-        .debug[IO](blocker, TLSContext.system[IO](blocker), address)
+        .debug[IO](blocker, TLSContext.system(blocker), address)
         .flatMap(l => IO(println(l)))
     }
 
