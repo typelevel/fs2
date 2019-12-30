@@ -157,7 +157,46 @@ However, such an implementation would echo bytes back to the client as they are 
 
 ## UDP
 
-TODO
+UDP support works much the same way as TCP. The `fs2.io.udp.Socket` trait provides mechanisms for reading and writing UDP datagrams. UDP sockets are created via the `open` method on `fs2.io.udp.SocketGroup`. Unlike TCP, there's no differentiation between client and server sockets. Additionally, since UDP is a packet based protocol, read and write operations use `fs2.io.udp.Packet` values, which consist of a `Chunk[Byte]` and an `InetSocketAddress`. A packet is equivalent to a UDP datagram.
+
+Adapting the TCP client example for UDP gives us the following:
+
+```scala mdoc:reset
+import fs2.{Chunk, text, Stream}
+import fs2.io.udp.{Packet, Socket, SocketGroup}
+import cats.effect.{Concurrent, ContextShift, Sync}
+import cats.implicits._
+import java.net.InetSocketAddress
+
+def client[F[_]: Concurrent: ContextShift](socketGroup: SocketGroup): F[Unit] = {
+  val address = new InetSocketAddress("localhost", 5555)
+  Stream.resource(socketGroup.open()).flatMap { socket =>
+    Stream("Hello, world!")
+      .through(text.utf8Encode)
+      .chunks
+      .map(data => Packet(address, data))
+      .through(socket.writes())
+      .drain ++
+        socket.reads()
+          .flatMap(packet => Stream.chunk(packet.bytes))
+          .through(text.utf8Decode)
+          .evalMap { response =>
+            Sync[F].delay(println(s"Response: $response"))
+          }
+  }.compile.drain
+}
+```
+
+When writing, we map each chunk of bytes to a `Packet`, which includes the destination address of the packet. When reading, we convert the `Stream[F, Packet]` to a `Stream[F, Byte]` via `flatMap(packet => Stream.chunk(packet.bytes))`. Otherwise, the example is unchanged.
+
+```scala mdoc
+def echoServer[F[_]: Concurrent: ContextShift](socketGroup: SocketGroup): F[Unit] =
+  Stream.resource(socketGroup.open(new InetSocketAddress(5555))).flatMap { socket =>
+    socket.reads().through(socket.writes())
+  }.compile.drain
+```
+
+The UDP server implementation is much different than the TCP server implementation. We open a socket that's bound to port `5555`. We then read packets from that socket, writing each packet back out. Since each received packet has the remote address of the sender, we can reuse the same packet for writing.
 
 ## TLS
 
