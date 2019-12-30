@@ -200,7 +200,43 @@ The UDP server implementation is much different than the TCP server implementati
 
 ## TLS
 
-TODO
+The `fs2.io.tls` package provides support for TLS over TCP and DTLS over UDP, built on top of `javax.net.ssl`. TLS over TCP is provided by the `TLSSocket` trait, which is instantiated by methods on `TLSContext`. A `TLSContext` provides cryptographic material used in TLS session establishment -- e.g., the set of certificates that are trusted (sometimes referred to as a trust store) and optionally, the set of certificates identifying this application (sometimes referred to as a key store). The `TLSContext` companion provides many ways to construct a `TLSContext` -- for example:
+- `TLSContext.system(blocker)` - delegates to `javax.net.ssl.SSLContext.getDefault`, which uses the JDK default set of trusted certificates
+- `TLSContext.fromKeyStoreFile(pathToFile, storePassword, keyPassword, blocker)` - loads a Java Key Store file
+- `TLSContext.insecure(blocker)` - trusts all certificates - note: this is dangerously insecure - only use for quick tests
+
+A `TLSContext` is typically created at application startup and used for all sockets for the lifetime of the application. Once a `TLSContext` has been created, the `client` and `server` methods are used to create `TLSSocket` instances (and `dtlsClient` / `dtlsServer` methods for `DTLSSocket`). In each case, a regular socket must be provided, which the `TLSSocket` will use for performing the TLS handshake as well as transmitting and receiving encrypted data. `TLSSocket` extends `fs2.io.tcp.Socket`, making the addition of TLS support a drop in replacement for a program using `fs2-io`.
+
+Adapting the TCP echo client for TLS looks like this:
+
+```scala mdoc:reset
+import fs2.{Chunk, Stream, text}
+import fs2.io.tcp.SocketGroup
+import fs2.io.tls.TLSContext
+import cats.effect.{Concurrent, ContextShift, Sync}
+import cats.implicits._
+import java.net.InetSocketAddress
+
+def client[F[_]: Concurrent: ContextShift](socketGroup: SocketGroup, tlsContext: TLSContext[F]): Stream[F, Unit] =
+  Stream.resource(socketGroup.client(new InetSocketAddress("localhost", 5555))).flatMap { underlyingSocket =>
+    Stream.resource(tlsContext.client(underlyingSocket)).flatMap { socket =>
+      Stream("Hello, world!")
+        .interleave(Stream.constant("\n"))
+        .through(text.utf8Encode)
+        .through(socket.writes())
+        .drain ++
+          socket.reads(8192)
+            .through(text.utf8Decode)
+            .through(text.lines)
+            .head
+            .evalMap { response =>
+              Sync[F].delay(println(s"Response: $response"))
+            }
+    }
+  }
+```
+
+The only difference is that we wrap the underlying socket with a `TLSSocket`.
 
 # Console Operations
 
