@@ -6,10 +6,13 @@ position: 3
 ---
 
 The `fs2-io` library provides support for performing input and output on the JVM (not Scala.js). This includes:
-- [working with files](#files)
-- [networking](#networking)
-- [support for console operations](#console-operations)
-- [interop with `java.io.{InputStream, OutputStream}`](#java-stream-interop)
+- [Files](#files)
+- [Networking](#networking)
+  - [TCP](#tcp)
+  - [UDP](#udp)
+  - [TLS](#tls)
+- [Console operations](#console-operations)
+- [Interop with `java.io.{InputStream, OutputStream}`](#java-stream-interop)
 
 In this section, we'll look at each of these features.
 
@@ -217,8 +220,11 @@ import cats.effect.{Concurrent, ContextShift, Sync}
 import cats.implicits._
 import java.net.InetSocketAddress
 
-def client[F[_]: Concurrent: ContextShift](socketGroup: SocketGroup, tlsContext: TLSContext): Stream[F, Unit] =
-  Stream.resource(socketGroup.client(new InetSocketAddress("localhost", 5555))).flatMap { underlyingSocket =>
+def client[F[_]: Concurrent: ContextShift](
+  socketGroup: SocketGroup,
+  tlsContext: TLSContext): Stream[F, Unit] = {
+  val address = new InetSocketAddress("localhost", 5555)
+  Stream.resource(socketGroup.client(address)).flatMap { underlyingSocket =>
     Stream.resource(tlsContext.client(underlyingSocket)).flatMap { socket =>
       Stream("Hello, world!")
         .interleave(Stream.constant("\n"))
@@ -234,9 +240,66 @@ def client[F[_]: Concurrent: ContextShift](socketGroup: SocketGroup, tlsContext:
             }
     }
   }
+}
 ```
 
 The only difference is that we wrap the underlying socket with a `TLSSocket`.
+
+### Configuring TLS Session Parameters
+
+The various methods on `TLSContext` that create `TLSSocket`s and `DTLSSocket`s all take a `TLSParameters` argument, allowing session level configuration. This allows configuration of things like client authentication, supported protocols and cipher suites, and SNI extensions. For example:
+
+```scala mdoc
+import fs2.io.tls.{TLSParameters, TLSSocket}
+import cats.effect.Resource
+import javax.net.ssl.SNIHostName
+
+def tlsClientWithSni[F[_]: Concurrent: ContextShift](
+  socketGroup: SocketGroup,
+  tlsContext: TLSContext,
+  address: InetSocketAddress): Resource[F, TLSSocket[F]] =
+  socketGroup.client[F](address).flatMap { underlyingSocket =>
+    tlsContext.client(
+      underlyingSocket,
+      TLSParameters(
+        protocols = Some(List("TLSv1.3")),
+        serverNames = Some(List(new SNIHostName(address.getHostName)))
+      )
+    )
+  }
+```
+
+In this example, we've configured the TLS session to require TLS 1.3 and we've added an SNI extension with the hostname of the target server.
+
+### Accessing TLS Session Information
+
+`TLSSocket` extends `Socket` and provides a few additional methods. One particularly interesting method is `session`, which returns a `F[javax.net.ssl.SSLSession]`, containing information about the established TLS session. This allows us to query for things like the peer certificate or the cipher suite that was negotiated.
+
+In the following example, we extract various information about the session, in order to help debug TLS connections.
+
+```scala mdoc
+def debug[F[_]: Concurrent: ContextShift](
+    socketGroup: SocketGroup,
+    tlsContext: TLSContext,
+    address: InetSocketAddress
+): F[String] =
+  socketGroup.client[F](address).use { underlyingSocket =>
+    tlsContext
+      .client(
+        underlyingSocket,
+        TLSParameters(serverNames = Some(List(new SNIHostName(address.getHostName))))
+      )
+      .use { tlsSocket =>
+        tlsSocket.write(Chunk.empty) >>
+          tlsSocket.session.map { session =>
+            s"Cipher suite: ${session.getCipherSuite}\r\n" +
+              "Peer certificate chain:\r\n" + session.getPeerCertificates.zipWithIndex
+              .map { case (cert, idx) => s"Certificate $idx: $cert" }
+              .mkString("\r\n")
+          }
+      }
+  }
+```
 
 # Console Operations
 

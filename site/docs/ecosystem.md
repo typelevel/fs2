@@ -1,6 +1,6 @@
 ---
 layout: page
-title:  "Library Ecosystem and Community"
+title:  "Community"
 section: "ecosystem"
 position: 6
 ---

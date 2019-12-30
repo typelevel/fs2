@@ -1,6 +1,6 @@
 ---
 layout: page
-title:  "Documentation and References"
+title:  "Documentation"
 section: "documentation"
 position: 5
 ---
