@@ -18,7 +18,7 @@ In this section, we'll look at each of these features.
 
 # Files
 
-TODO
+Coming soon!
 
 # Networking
 
@@ -303,9 +303,30 @@ def debug[F[_]: Concurrent: ContextShift](
 
 # Console Operations
 
-TODO
+Writing to the console is often as simple as `s.evalMap(o => IO(println(o)))`. This works fine for quick tests but can be problematic in large applications. The call to `println` blocks until data can be written to the output stream for standard out. This can cause fairness issues with other, non-blocking, operations running on the main thread pool. For such situations, `fs2-io` provides a couple of utilities:
+
+```scala
+def stdoutLines[F[_]: Sync: ContextShift, O: Show](
+    blocker: Blocker,
+    charset: Charset = utf8Charset
+): Pipe[F, O, Unit]
+
+def stdout[F[_]: Sync: ContextShift](blocker: Blocker): Pipe[F, Byte, Unit]
+```
+
+Both of these pipes are provided in the `fs2.io` package object. Both wrap calls to the console with a `blocker.delay` to avoid fairness issues. The `stdoutLines` method uses a `Show[O]` instance to convert the stream elements to strings. Note these pipes may be more expensive than simplying doing a blocking println, depending on the application. We're trading fairness for the overhead of shifting execution to a blocking thread pool.
+
+The `fs2.io` package object also provides a couple of utilities for reading values from the console:
+
+```scala
+def stdin[F[_]: Sync: ContextShift](bufSize: Int, blocker: Blocker): Stream[F, Byte]
+
+def stdinUtf8[F[_]: Sync: ContextShift](bufSize: Int, blocker: Blocker): Stream[F, String]
+```
+
+Like the output variants, these operations perform blocking reads on a blocking pool.
 
 # Java Stream Interop
 
-TODO
+Coming soon!
 
