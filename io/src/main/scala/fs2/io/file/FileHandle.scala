@@ -10,8 +10,6 @@ import cats.effect.{Blocker, ContextShift, Resource, Sync}
 
 /**
   * Provides the ability to read/write/lock/inspect a file in the effect `F`.
-  *
-  * To construct a `FileHandle`, use the methods in the [[fs2.io.file.pulls]] object.
   */
 trait FileHandle[F[_]] {
 

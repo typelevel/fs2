@@ -6,19 +6,15 @@ position: 3
 ---
 
 The `fs2-io` library provides support for performing input and output on the JVM (not Scala.js). This includes:
-- [Files](#files)
 - [Networking](#networking)
   - [TCP](#tcp)
   - [UDP](#udp)
   - [TLS](#tls)
+- [Files](#files)
 - [Console operations](#console-operations)
 - [Interop with `java.io.{InputStream, OutputStream}`](#java-stream-interop)
 
 In this section, we'll look at each of these features.
-
-# Files
-
-Coming soon!
 
 # Networking
 
@@ -301,6 +297,18 @@ def debug[F[_]: Concurrent: ContextShift](
   }
 ```
 
+# Files
+
+The `fs2.io.file` package provides support for working with files. The README example demonstrates the two simplest use cases -- incrementally reading from a file with `fs2.io.file.readAll` and incrementally writing to a file with `fs2.io.file.writeAll`.
+
+For more complex use cases, there are a few types available -- `FileHandle`, `ReadCursor`, and `WriteCursor`. A `FileHandle[F]` represents an open file and provides various methods for interacting with the file -- reading data, writing data, querying the size, etc. -- all in the effect `F`. Constructing a `FileHandle[F]` is accomplished by calling `FileHandle.fromPath(path, blocker)`, passing a `java.nio.file.Path` value indicating which file to open.
+
+The `ReadCursor` type pairs a `FileHandle[F]` with a byte offset in to the file. The methods on `ReadCursor` provide read operations that start at the current offset and return an updated cursor along with whatever data was read.
+
+Similarly, `WriteCursor` pairs a `FileHandle[F]` with a byte offset. The methods on `WriteCursor` use the offset as the position to write the next chunk of bytes, returning an updated cursor.
+
+The `fs2.io.file` package object also provides many ways to interact with the file system -- moving files, creating directories, walking all paths in a diretory tree, watching directories for changes, etc.
+
 # Console Operations
 
 Writing to the console is often as simple as `s.evalMap(o => IO(println(o)))`. This works fine for quick tests but can be problematic in large applications. The call to `println` blocks until data can be written to the output stream for standard out. This can cause fairness issues with other, non-blocking, operations running on the main thread pool. For such situations, `fs2-io` provides a couple of utilities:
@@ -328,5 +336,10 @@ Like the output variants, these operations perform blocking reads on a blocking 
 
 # Java Stream Interop
 
-Coming soon!
+The `fs2.io` package object provides interop with `java.io.InputStream` and `java.io.OutputStream`.
 
+The `fs2.io.readInputStream` method (and `unsafeReadInputStream` method, see ScalaDoc for differences) creates a `Stream[F, Byte]` from an `InputStream`.
+
+The `fs2.io.writeOutputStream` method provides a pipe that writes the bytes emitted from a `Stream[F, Byte]` to an `OutputStream`.
+
+The `fs2.io.readOutputStream` method creates a `Stream[F, Byte]` from a function which writes to an `OutputStream`.
