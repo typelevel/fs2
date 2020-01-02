@@ -49,8 +49,7 @@ package object io {
     * Reads all bytes from the specified `InputStream` with a buffer size of `chunkSize`.
     * Set `closeAfterUse` to false if the `InputStream` should not be closed after use.
     *
-    * Each read operation is performed on the supplied execution context. Reads are
-    * blocking so the execution context should be configured appropriately.
+    * Each read operation is performed on the supplied blocker.
     *
     * Recycles an underlying input buffer for performance. It is safe to call
     * this as long as whatever consumes this `Stream` does not store the `Chunk`

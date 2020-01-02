@@ -1,8 +1,8 @@
 ---
 layout: page
-title:  "Documentation and References"
+title:  "Documentation"
 section: "documentation"
-position: 4
+position: 5
 ---
 
 #### Talks and Presentations
