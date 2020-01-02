@@ -154,6 +154,8 @@ client.reads(8192).through(client.writes())
 
 However, such an implementation would echo bytes back to the client as they are received instead of only echoing back full lines of text.
 
+The [fs2-chat](https://github.com/functional-streams-for-scala/fs2-chat) sample application implements a multiuser chat server and a single user chat client using the FS2 TCP support and [scodec](https://scodec.org) for binary processing.
+
 ## UDP
 
 UDP support works much the same way as TCP. The `fs2.io.udp.Socket` trait provides mechanisms for reading and writing UDP datagrams. UDP sockets are created via the `open` method on `fs2.io.udp.SocketGroup`. Unlike TCP, there's no differentiation between client and server sockets. Additionally, since UDP is a packet based protocol, read and write operations use `fs2.io.udp.Packet` values, which consist of a `Chunk[Byte]` and an `InetSocketAddress`. A packet is equivalent to a UDP datagram.
