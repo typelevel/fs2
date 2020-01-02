@@ -119,6 +119,43 @@ def client[F[_]: Concurrent: ContextShift](socketGroup: SocketGroup): Stream[F, 
 
 To update the write side, we added `.interleave(Stream.constant("\n"))` before doing UTF8 encoding. This results in every input string being followed by a `"\n"`. On the read side, we transformed the output of `utf8Decode` with `text.lines`, which emits the strings between newlines. Finally, we call `head` to take the first full line of output. Note that we discard the rest of the `reads` stream after processing the first full line. This results in the socket getting closed and cleaned up correctly.
 
+#### Handling Connection Errors
+
+If a TCP connection cannot be established, `socketGroup.client` fails with a `java.net.ConnectException`. To automatically attempt a reconnection, we can handle the `ConnectException` and try connecting again.
+
+```scala mdoc:nest
+import scala.concurrent.duration._
+import cats.effect.Timer
+import java.net.ConnectException
+
+def connect[F[_]: Concurrent: ContextShift: Timer](
+    socketGroup: SocketGroup, 
+    address: InetSocketAddress): Stream[F, Socket[F]] =
+  Stream.resource(socketGroup.client(address))
+    .handleErrorWith {
+      case _: ConnectException =>
+        connect(socketGroup, address).delayBy(5.seconds)
+    }
+
+def client[F[_]: Concurrent: ContextShift: Timer](socketGroup: SocketGroup): Stream[F, Unit] =
+  connect(socketGroup, new InetSocketAddress("localhost", 5555)).flatMap { socket =>
+    Stream("Hello, world!")
+      .interleave(Stream.constant("\n"))
+      .through(text.utf8Encode)
+      .through(socket.writes())
+      .drain ++
+        socket.reads(8192)
+          .through(text.utf8Decode)
+          .through(text.lines)
+          .head
+          .evalMap { response =>
+            Sync[F].delay(println(s"Response: $response"))
+          }
+  }
+```
+
+We've extract the `socketGroup.client` call in to a new method called `connect`. The connect method attempts to create a client and handles the `ConnectException`. Upon encountering the exception, we call `connect` recursively after a 5 second delay. Because we are using `delayBy`, we needed to add a `Timer` constraint to `F`. This same pattern could be used for more advanced retry strategies -- e.g., exponential delays and failing after a fixed number of attempts. Streams that call methods on `Socket` can fail with exceptions due to loss of the underlying TCP connection. Such exceptions can be handled in a similar manner.
+
 ### Servers
 
 Now let's implement a server application that communicates with the client app we just built. The server app will be a simple echo server -- for each line of text it receives, it will reply with the same line.
