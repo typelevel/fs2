@@ -113,6 +113,42 @@
 
 <p>To update the write side, we added <code class="highlighter-rouge">.interleave(Stream.constant("\n"))</code> before doing UTF8 encoding. This results in every input string being followed by a <code class="highlighter-rouge">"\n"</code>. On the read side, we transformed the output of <code class="highlighter-rouge">utf8Decode</code> with <code class="highlighter-rouge">text.lines</code>, which emits the strings between newlines. Finally, we call <code class="highlighter-rouge">head</code> to take the first full line of output. Note that we discard the rest of the <code class="highlighter-rouge">reads</code> stream after processing the first full line. This results in the socket getting closed and cleaned up correctly.</p>
 
+<h4 id="handling-connection-errors">Handling Connection Errors</h4>
+
+<p>If a TCP connection cannot be established, <code class="highlighter-rouge">socketGroup.client</code> fails with a <code class="highlighter-rouge">java.net.ConnectException</code>. To automatically attempt a reconnection, we can handle the <code class="highlighter-rouge">ConnectException</code> and try connecting again.</p>
+
+<div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">import</span> <span class="nn">scala.concurrent.duration._</span>
+<span class="k">import</span> <span class="nn">cats.effect.Timer</span>
+<span class="k">import</span> <span class="nn">java.net.ConnectException</span>
+
+<span class="k">def</span> <span class="nf">connect</span><span class="o">[</span><span class="kt">F</span><span class="o">[</span><span class="k">_</span><span class="o">]</span><span class="kt">:</span> <span class="kt">Concurrent:</span> <span class="kt">ContextShift:</span> <span class="kt">Timer</span><span class="o">](</span>
+    <span class="n">socketGroup</span><span class="k">:</span> <span class="kt">SocketGroup</span><span class="o">,</span> 
+    <span class="n">address</span><span class="k">:</span> <span class="kt">InetSocketAddress</span><span class="o">)</span><span class="k">:</span> <span class="kt">Stream</span><span class="o">[</span><span class="kt">F</span>, <span class="kt">Socket</span><span class="o">[</span><span class="kt">F</span><span class="o">]]</span> <span class="k">=</span>
+  <span class="nv">Stream</span><span class="o">.</span><span class="py">resource</span><span class="o">(</span><span class="nv">socketGroup</span><span class="o">.</span><span class="py">client</span><span class="o">(</span><span class="n">address</span><span class="o">))</span>
+    <span class="o">.</span><span class="py">handleErrorWith</span> <span class="o">{</span>
+      <span class="k">case</span> <span class="k">_:</span> <span class="kt">ConnectException</span> <span class="o">=&gt;</span>
+        <span class="nf">connect</span><span class="o">(</span><span class="n">socketGroup</span><span class="o">,</span> <span class="n">address</span><span class="o">).</span><span class="py">delayBy</span><span class="o">(</span><span class="mf">5.</span><span class="n">seconds</span><span class="o">)</span>
+    <span class="o">}</span>
+
+<span class="k">def</span> <span class="nf">client</span><span class="o">[</span><span class="kt">F</span><span class="o">[</span><span class="k">_</span><span class="o">]</span><span class="kt">:</span> <span class="kt">Concurrent:</span> <span class="kt">ContextShift:</span> <span class="kt">Timer</span><span class="o">](</span><span class="n">socketGroup</span><span class="k">:</span> <span class="kt">SocketGroup</span><span class="o">)</span><span class="k">:</span> <span class="kt">Stream</span><span class="o">[</span><span class="kt">F</span>, <span class="kt">Unit</span><span class="o">]</span> <span class="k">=</span>
+  <span class="nf">connect</span><span class="o">(</span><span class="n">socketGroup</span><span class="o">,</span> <span class="k">new</span> <span class="nc">InetSocketAddress</span><span class="o">(</span><span class="s">"localhost"</span><span class="o">,</span> <span class="mi">5555</span><span class="o">)).</span><span class="py">flatMap</span> <span class="o">{</span> <span class="n">socket</span> <span class="k">=&gt;</span>
+    <span class="nc">Stream</span><span class="o">(</span><span class="s">"Hello, world!"</span><span class="o">)</span>
+      <span class="o">.</span><span class="py">interleave</span><span class="o">(</span><span class="nv">Stream</span><span class="o">.</span><span class="py">constant</span><span class="o">(</span><span class="s">"\n"</span><span class="o">))</span>
+      <span class="o">.</span><span class="py">through</span><span class="o">(</span><span class="nv">text</span><span class="o">.</span><span class="py">utf8Encode</span><span class="o">)</span>
+      <span class="o">.</span><span class="py">through</span><span class="o">(</span><span class="nv">socket</span><span class="o">.</span><span class="py">writes</span><span class="o">())</span>
+      <span class="o">.</span><span class="py">drain</span> <span class="o">++</span>
+        <span class="nv">socket</span><span class="o">.</span><span class="py">reads</span><span class="o">(</span><span class="mi">8192</span><span class="o">)</span>
+          <span class="o">.</span><span class="py">through</span><span class="o">(</span><span class="nv">text</span><span class="o">.</span><span class="py">utf8Decode</span><span class="o">)</span>
+          <span class="o">.</span><span class="py">through</span><span class="o">(</span><span class="nv">text</span><span class="o">.</span><span class="py">lines</span><span class="o">)</span>
+          <span class="o">.</span><span class="py">head</span>
+          <span class="o">.</span><span class="py">evalMap</span> <span class="o">{</span> <span class="n">response</span> <span class="k">=&gt;</span>
+            <span class="nc">Sync</span><span class="o">[</span><span class="kt">F</span><span class="o">].</span><span class="py">delay</span><span class="o">(</span><span class="nf">println</span><span class="o">(</span><span class="n">s</span><span class="s">"Response: $response"</span><span class="o">))</span>
+          <span class="o">}</span>
+  <span class="o">}</span>
+</code></pre></div></div>
+
+<p>We’ve extract the <code class="highlighter-rouge">socketGroup.client</code> call in to a new method called <code class="highlighter-rouge">connect</code>. The connect method attempts to create a client and handles the <code class="highlighter-rouge">ConnectException</code>. Upon encountering the exception, we call <code class="highlighter-rouge">connect</code> recursively after a 5 second delay. Because we are using <code class="highlighter-rouge">delayBy</code>, we needed to add a <code class="highlighter-rouge">Timer</code> constraint to <code class="highlighter-rouge">F</code>. This same pattern could be used for more advanced retry strategies – e.g., exponential delays and failing after a fixed number of attempts. Streams that call methods on <code class="highlighter-rouge">Socket</code> can fail with exceptions due to loss of the underlying TCP connection. Such exceptions can be handled in a similar manner.</p>
+
 <h3 id="servers">Servers</h3>
 
 <p>Now let’s implement a server application that communicates with the client app we just built. The server app will be a simple echo server – for each line of text it receives, it will reply with the same line.</p>
