@@ -146,6 +146,8 @@ we read from the client socket, UTF-8 decode the received bytes, extract individ
 
 <p>However, such an implementation would echo bytes back to the client as they are received instead of only echoing back full lines of text.</p>
 
+<p>The <a href="https://github.com/functional-streams-for-scala/fs2-chat">fs2-chat</a> sample application implements a multiuser chat server and a single user chat client using the FS2 TCP support and <a href="https://scodec.org">scodec</a> for binary processing.</p>
+
 <h2 id="udp">UDP</h2>
 
 <p>UDP support works much the same way as TCP. The <code class="highlighter-rouge">fs2.io.udp.Socket</code> trait provides mechanisms for reading and writing UDP datagrams. UDP sockets are created via the <code class="highlighter-rouge">open</code> method on <code class="highlighter-rouge">fs2.io.udp.SocketGroup</code>. Unlike TCP, there’s no differentiation between client and server sockets. Additionally, since UDP is a packet based protocol, read and write operations use <code class="highlighter-rouge">fs2.io.udp.Packet</code> values, which consist of a <code class="highlighter-rouge">Chunk[Byte]</code> and an <code class="highlighter-rouge">InetSocketAddress</code>. A packet is equivalent to a UDP datagram.</p>
