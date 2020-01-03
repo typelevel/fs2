@@ -52,7 +52,7 @@ class StreamBenchmark {
       .get
 
   @Benchmark
-  def rightAssocFlatMap(n: Int): Int =
+  def rightAssocFlatMap(): Int =
     (0 until n)
       .map(Stream.emit)
       .reverse
@@ -76,11 +76,11 @@ class StreamBenchmark {
     Stream.emits(0 until n).flatMap(Stream(_)).toVector
 
   @Benchmark
-  def sliding(n: Int) =
+  def sliding() =
     Stream.emits(0 until 16384).sliding(n).covary[IO].compile.drain.unsafeRunSync
 
   @Benchmark
-  def mapAccumulate(n: Int) =
+  def mapAccumulate() =
     Stream
       .emits(0 until n)
       .mapAccumulate(0) {
