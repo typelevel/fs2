@@ -2637,13 +2637,6 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Nothing, O, Unit]
     f(this, s2)
 
   /**
-    * Applies the given sink to this stream.
-    */
-  @deprecated("Use .through instead", "1.0.2")
-  private[fs2] def to[F2[x] >: F[x]](f: Stream[F, O] => Stream[F2, Unit]): Stream[F2, Unit] =
-    f(this)
-
-  /**
     * Translates effect type from `F` to `G` using the supplied `FunctionK`.
     *
     * Note: the resulting stream is *not* interruptible in all cases. To get an interruptible
@@ -3737,7 +3730,7 @@ object Stream extends StreamLowPriority {
       self.covary[SyncIO].compile.to(c).unsafeRunSync
 
     /** Runs this pure stream and returns the emitted elements in a collection of the specified type. Note: this method is only available on pure streams. */
-    def to[C[_]](implicit f: Factory[O, C[O]]): C[O] = to_(f)
+    private[Stream] def to[C[_]](implicit f: Factory[O, C[O]]): C[O] = to_(f)
 
     /** Runs this pure stream and returns the emitted elements in a chunk. Note: this method is only available on pure streams. */
     @deprecated("2.0.2", "Use .to(Chunk) instead")
@@ -3796,7 +3789,7 @@ object Stream extends StreamLowPriority {
       lift[SyncIO].compile.to(c).attempt.unsafeRunSync
 
     /** Runs this fallible stream and returns the emitted elements in a collection of the specified type. Note: this method is only available on fallible streams. */
-    def to[C[_]](implicit f: Factory[O, C[O]]): Either[Throwable, C[O]] = to_(f)
+    private[Stream] def to[C[_]](implicit f: Factory[O, C[O]]): Either[Throwable, C[O]] = to_(f)
 
     /** Runs this fallible stream and returns the emitted elements in a chunk. Note: this method is only available on fallible streams. */
     @deprecated("2.0.2", "Use .to(Chunk) instead")
@@ -4483,7 +4476,7 @@ object Stream extends StreamLowPriority {
       * When this method has returned, the stream has not begun execution -- this method simply
       * compiles the stream down to the target effect type.
       */
-    def to[C[_]](implicit f: Factory[O, C[O]]): G[C[O]] = to_(f)
+    private[Stream] def to[C[_]](implicit f: Factory[O, C[O]]): G[C[O]] = to_(f)
 
     /**
       * Compiles this stream in to a value of the target effect type `F` by logging

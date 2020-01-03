@@ -207,7 +207,10 @@ lazy val mimaSettings = Seq(
     // No bincompat on internal package
     ProblemFilters.exclude[Problem]("fs2.internal.*"),
     // Mima reports all ScalaSignature changes as errors, despite the fact that they don't cause bincompat issues when version swapping (see https://github.com/lightbend/mima/issues/361)
-    ProblemFilters.exclude[IncompatibleSignatureProblem]("*")
+    ProblemFilters.exclude[IncompatibleSignatureProblem]("*"),
+    // .to(sink) syntax was removed in 1.0.2 and has been hidden in all 2.x releases behind private[fs2], hence it's safe to remove
+    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Stream.to"),
+    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Stream.to$extension")
   )
 )
 
