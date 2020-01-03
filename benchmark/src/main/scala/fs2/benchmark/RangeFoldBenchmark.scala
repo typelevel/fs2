@@ -1,12 +1,7 @@
 package fs2
 package benchmark
 
-import org.openjdk.jmh.annotations.{
-  Benchmark,
-  Param,
-  Scope,
-  State
-}
+import org.openjdk.jmh.annotations.{Benchmark, Param, Scope, State}
 
 @State(Scope.Thread)
 class RangeFoldBenchmark {

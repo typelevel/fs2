@@ -1472,7 +1472,11 @@ object Chunk extends CollectorK[Chunk] {
     * The `totalSize` parameter must be equal to the sum of the size of each chunk or
     * otherwise an exception may be thrown.
     */
-  private def concatUnboxed[A: reflect.ClassTag](chunks: GSeq[Chunk[A]], totalSize: Int, mkChunk: Array[A] => Chunk[A]): Chunk[A] =
+  private def concatUnboxed[A: reflect.ClassTag](
+      chunks: GSeq[Chunk[A]],
+      totalSize: Int,
+      mkChunk: Array[A] => Chunk[A]
+  ): Chunk[A] =
     if (totalSize == 0) Chunk.empty
     else {
       val arr = new Array[A](totalSize)
