@@ -27,7 +27,8 @@ lazy val commonSettings = Seq(
     "-feature",
     "-deprecation",
     "-language:implicitConversions",
-    "-language:higherKinds"
+    "-language:higherKinds",
+    "-Xfatal-warnings"
   ) ++
     (scalaBinaryVersion.value match {
       case v if v.startsWith("2.13") =>
@@ -225,13 +226,6 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
   .settings(
     name := "fs2-core",
     sourceDirectories in (Compile, scalafmt) += baseDirectory.value / "../shared/src/main/scala",
-    unmanagedSourceDirectories in Compile += {
-      val dir = CrossVersion.partialVersion(scalaVersion.value) match {
-        case Some((2, v)) if v >= 13 => "scala-2.13+"
-        case _                       => "scala-2.12-"
-      }
-      baseDirectory.value / "../shared/src/main" / dir
-    },
     libraryDependencies += "org.scodec" %%% "scodec-bits" % "1.1.12"
   )
   .jsSettings(commonJsSettings: _*)
@@ -303,34 +297,6 @@ lazy val reactiveStreams = project
   )
   .dependsOn(coreJVM % "compile->compile;test->test")
 
-lazy val benchmarkMacros = project
-  .in(file("benchmark-macros"))
-  .disablePlugins(MimaPlugin)
-  .settings(commonSettings)
-  .settings(noPublish)
-  .settings(
-    name := "fs2-benchmark-macros",
-    scalacOptions ++= {
-      CrossVersion.partialVersion(scalaVersion.value) match {
-        case Some((2, v)) if v >= 13 =>
-          List("-Ymacro-annotations")
-        case _ =>
-          Nil
-      }
-    },
-    libraryDependencies ++= {
-      CrossVersion.partialVersion(scalaVersion.value) match {
-        case Some((2, v)) if v <= 12 =>
-          Seq(
-            compilerPlugin(("org.scalamacros" % "paradise" % "2.1.1").cross(CrossVersion.full))
-          )
-        case _ =>
-          Nil
-      }
-    },
-    libraryDependencies += scalaOrganization.value % "scala-reflect" % scalaVersion.value
-  )
-
 lazy val benchmark = project
   .in(file("benchmark"))
   .disablePlugins(MimaPlugin)
@@ -339,28 +305,10 @@ lazy val benchmark = project
   .settings(
     name := "fs2-benchmark",
     javaOptions in (Test, run) := (javaOptions in (Test, run)).value
-      .filterNot(o => o.startsWith("-Xmx") || o.startsWith("-Xms")) ++ Seq("-Xms256m", "-Xmx256m"),
-    scalacOptions ++= {
-      CrossVersion.partialVersion(scalaVersion.value) match {
-        case Some((2, v)) if v >= 13 =>
-          List("-Ymacro-annotations")
-        case _ =>
-          Nil
-      }
-    },
-    libraryDependencies ++= {
-      CrossVersion.partialVersion(scalaVersion.value) match {
-        case Some((2, v)) if v <= 12 =>
-          Seq(
-            compilerPlugin(("org.scalamacros" % "paradise" % "2.1.1").cross(CrossVersion.full))
-          )
-        case _ =>
-          Nil
-      }
-    }
+      .filterNot(o => o.startsWith("-Xmx") || o.startsWith("-Xms")) ++ Seq("-Xms256m", "-Xmx256m")
   )
   .enablePlugins(JmhPlugin)
-  .dependsOn(io, benchmarkMacros)
+  .dependsOn(io)
 
 lazy val docs = project
   .in(file("docs"))

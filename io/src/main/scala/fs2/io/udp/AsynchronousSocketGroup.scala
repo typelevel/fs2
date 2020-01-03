@@ -2,7 +2,6 @@ package fs2
 package io
 package udp
 
-import scala.collection.JavaConverters._
 import scala.collection.mutable.PriorityQueue
 import scala.concurrent.duration.FiniteDuration
 
@@ -21,6 +20,8 @@ import java.util.ArrayDeque
 import java.util.concurrent.{ConcurrentLinkedQueue, CountDownLatch}
 
 import cats.effect.{Blocker, ContextShift, Resource, Sync}
+
+import CollectionCompat._
 
 /**
   * Supports read/write operations on an arbitrary number of UDP sockets using a shared selector thread.

@@ -1431,6 +1431,11 @@ object Chunk extends CollectorK[Chunk] {
   def concat[A](chunks: GSeq[Chunk[A]]): Chunk[A] =
     concat(chunks, chunks.foldLeft(0)(_ + _.size))
 
+  /**
+    * Concatenates the specified sequence of chunks in to a single chunk, avoiding boxing.
+    * The `totalSize` parameter must be equal to the sum of the size of each chunk or
+    * otherwise an exception may be thrown.
+    */
   def concat[A](chunks: GSeq[Chunk[A]], totalSize: Int): Chunk[A] =
     if (totalSize == 0) {
       Chunk.empty
@@ -1466,8 +1471,13 @@ object Chunk extends CollectorK[Chunk] {
   def concatBooleans(chunks: GSeq[Chunk[Boolean]]): Chunk[Boolean] =
     concatBooleans(chunks, chunks.foldLeft(0)(_ + _.size))
 
+  /**
+    * Concatenates the specified sequence of boolean chunks in to a single chunk.
+    * The `totalSize` parameter must be equal to the sum of the size of each chunk or
+    * otherwise an exception may be thrown.
+    */
   def concatBooleans(chunks: GSeq[Chunk[Boolean]], totalSize: Int): Chunk[Boolean] =
-    if (chunks.isEmpty) Chunk.empty
+    if (totalSize == 0) Chunk.empty
     else {
       val arr = new Array[Boolean](totalSize)
       var offset = 0
@@ -1484,8 +1494,13 @@ object Chunk extends CollectorK[Chunk] {
   def concatBytes(chunks: GSeq[Chunk[Byte]]): Chunk[Byte] =
     concatBytes(chunks, chunks.foldLeft(0)(_ + _.size))
 
+  /**
+    * Concatenates the specified sequence of byte chunks in to a single chunk.
+    * The `totalSize` parameter must be equal to the sum of the size of each chunk or
+    * otherwise an exception may be thrown.
+    */
   def concatBytes(chunks: GSeq[Chunk[Byte]], totalSize: Int): Chunk[Byte] =
-    if (chunks.isEmpty) Chunk.empty
+    if (totalSize == 0) Chunk.empty
     else {
       val arr = new Array[Byte](totalSize)
       var offset = 0
@@ -1502,8 +1517,13 @@ object Chunk extends CollectorK[Chunk] {
   def concatFloats(chunks: GSeq[Chunk[Float]]): Chunk[Float] =
     concatFloats(chunks, chunks.foldLeft(0)(_ + _.size))
 
+  /**
+    * Concatenates the specified sequence of float chunks in to a single chunk.
+    * The `totalSize` parameter must be equal to the sum of the size of each chunk or
+    * otherwise an exception may be thrown.
+    */
   def concatFloats(chunks: GSeq[Chunk[Float]], totalSize: Int): Chunk[Float] =
-    if (chunks.isEmpty) Chunk.empty
+    if (totalSize == 0) Chunk.empty
     else {
       val arr = new Array[Float](totalSize)
       var offset = 0
@@ -1520,8 +1540,13 @@ object Chunk extends CollectorK[Chunk] {
   def concatDoubles(chunks: GSeq[Chunk[Double]]): Chunk[Double] =
     concatDoubles(chunks, chunks.foldLeft(0)(_ + _.size))
 
+  /**
+    * Concatenates the specified sequence of double chunks in to a single chunk.
+    * The `totalSize` parameter must be equal to the sum of the size of each chunk or
+    * otherwise an exception may be thrown.
+    */
   def concatDoubles(chunks: GSeq[Chunk[Double]], totalSize: Int): Chunk[Double] =
-    if (chunks.isEmpty) Chunk.empty
+    if (totalSize == 0) Chunk.empty
     else {
       val arr = new Array[Double](totalSize)
       var offset = 0
@@ -1538,8 +1563,13 @@ object Chunk extends CollectorK[Chunk] {
   def concatShorts(chunks: GSeq[Chunk[Short]]): Chunk[Short] =
     concatShorts(chunks, chunks.foldLeft(0)(_ + _.size))
 
+  /**
+    * Concatenates the specified sequence of short chunks in to a single chunk.
+    * The `totalSize` parameter must be equal to the sum of the size of each chunk or
+    * otherwise an exception may be thrown.
+    */
   def concatShorts(chunks: GSeq[Chunk[Short]], totalSize: Int): Chunk[Short] =
-    if (chunks.isEmpty) Chunk.empty
+    if (totalSize == 0) Chunk.empty
     else {
       val arr = new Array[Short](totalSize)
       var offset = 0
@@ -1556,8 +1586,13 @@ object Chunk extends CollectorK[Chunk] {
   def concatInts(chunks: GSeq[Chunk[Int]]): Chunk[Int] =
     concatInts(chunks, chunks.foldLeft(0)(_ + _.size))
 
+  /**
+    * Concatenates the specified sequence of int chunks in to a single chunk.
+    * The `totalSize` parameter must be equal to the sum of the size of each chunk or
+    * otherwise an exception may be thrown.
+    */
   def concatInts(chunks: GSeq[Chunk[Int]], totalSize: Int): Chunk[Int] =
-    if (chunks.isEmpty) Chunk.empty
+    if (totalSize == 0) Chunk.empty
     else {
       val arr = new Array[Int](totalSize)
       var offset = 0
@@ -1574,8 +1609,13 @@ object Chunk extends CollectorK[Chunk] {
   def concatLongs(chunks: GSeq[Chunk[Long]]): Chunk[Long] =
     concatLongs(chunks, chunks.foldLeft(0)(_ + _.size))
 
+  /**
+    * Concatenates the specified sequence of long chunks in to a single chunk.
+    * The `totalSize` parameter must be equal to the sum of the size of each chunk or
+    * otherwise an exception may be thrown.
+    */
   def concatLongs(chunks: GSeq[Chunk[Long]], totalSize: Int): Chunk[Long] =
-    if (chunks.isEmpty) Chunk.empty
+    if (totalSize == 0) Chunk.empty
     else {
       val arr = new Array[Long](totalSize)
       var offset = 0
@@ -1592,8 +1632,13 @@ object Chunk extends CollectorK[Chunk] {
   def concatChars(chunks: GSeq[Chunk[Char]]): Chunk[Char] =
     concatChars(chunks, chunks.foldLeft(0)(_ + _.size))
 
+  /**
+    * Concatenates the specified sequence of char chunks in to a single chunk.
+    * The `totalSize` parameter must be equal to the sum of the size of each chunk or
+    * otherwise an exception may be thrown.
+    */
   def concatChars(chunks: GSeq[Chunk[Char]], totalSize: Int): Chunk[Char] =
-    if (chunks.isEmpty) Chunk.empty
+    if (totalSize == 0) Chunk.empty
     else {
       val arr = new Array[Char](totalSize)
       var offset = 0

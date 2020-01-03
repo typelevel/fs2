@@ -2,20 +2,22 @@ package fs2
 package benchmark
 
 import cats.effect.{ContextShift, IO}
-import org.openjdk.jmh.annotations.{Benchmark, Scope, State}
+import org.openjdk.jmh.annotations.{Benchmark, Param, Scope, State}
 
 @State(Scope.Thread)
 class ConcurrentBenchmark {
   implicit val cs: ContextShift[IO] =
     IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
 
-  @GenerateN(1, 2, 4, 7, 16, 32, 64, 128, 256)
+  @Param(Array("1", "16", "256"))
+  var concurrent: Int = _
+
   @Benchmark
-  def parJoin(N: Int): Int = {
+  def parJoin(): Int = {
     val each = Stream
       .range(0, 1000)
       .map(i => Stream.eval(IO.pure(i)))
       .covary[IO]
-    each.parJoin(N).compile.last.unsafeRunSync.get
+    each.parJoin(concurrent).compile.last.unsafeRunSync.get
   }
 }

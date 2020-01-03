@@ -2,10 +2,10 @@ package fs2
 package io
 package tls
 
-import scala.collection.JavaConverters._
-
 import java.security.AlgorithmConstraints
 import javax.net.ssl.{SNIMatcher, SNIServerName, SSLParameters}
+
+import CollectionCompat._
 
 /**
   * Parameters used in creation of a TLS/DTLS session.
