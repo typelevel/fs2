@@ -3729,7 +3729,7 @@ object Stream extends StreamLowPriority {
     @inline private def to_(c: Collector[O]): c.Out =
       self.covary[SyncIO].compile.to(c).unsafeRunSync
 
-    /** Runs this pure stream and returns the emitted elements in a collection of the specified type. Note: this method is only available on pure streams. */
+    // TODO Delete this in 3.0
     private[Stream] def to[C[_]](implicit f: Factory[O, C[O]]): C[O] = to_(f)
 
     /** Runs this pure stream and returns the emitted elements in a chunk. Note: this method is only available on pure streams. */
@@ -3788,7 +3788,7 @@ object Stream extends StreamLowPriority {
     @inline private def to_(c: Collector[O]): Either[Throwable, c.Out] =
       lift[SyncIO].compile.to(c).attempt.unsafeRunSync
 
-    /** Runs this fallible stream and returns the emitted elements in a collection of the specified type. Note: this method is only available on fallible streams. */
+    // TODO Delete this in 3.0
     private[Stream] def to[C[_]](implicit f: Factory[O, C[O]]): Either[Throwable, C[O]] = to_(f)
 
     /** Runs this fallible stream and returns the emitted elements in a chunk. Note: this method is only available on fallible streams. */
@@ -4469,13 +4469,7 @@ object Stream extends StreamLowPriority {
     @inline private def to_(collector: Collector[O]): G[collector.Out] =
       compiler(self, () => collector.newBuilder)((acc, c) => { acc += c; acc }, _.result)
 
-    /**
-      * Compiles this stream into a value of the target effect type `F` by logging
-      * the output values to a `C`, given a `Factory`.
-      *
-      * When this method has returned, the stream has not begun execution -- this method simply
-      * compiles the stream down to the target effect type.
-      */
+    // TODO Delete this in 3.0
     private[Stream] def to[C[_]](implicit f: Factory[O, C[O]]): G[C[O]] = to_(f)
 
     /**
