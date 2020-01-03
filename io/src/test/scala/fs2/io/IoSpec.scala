@@ -37,7 +37,7 @@ class IoSpec extends Fs2Spec {
         readOutputStream[IO](blocker, chunkSize)((os: OutputStream) =>
           blocker.delay[IO, Unit](os.write(bytes))
         ).compile
-          .to[Array]
+          .to(Array)
           .asserting(_ shouldEqual bytes)
       }
     }
