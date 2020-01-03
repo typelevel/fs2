@@ -92,6 +92,9 @@ class ChunkSpec extends Fs2Spec {
           .concat(List(Chunk.empty, c1, Chunk.empty, c2))
           .toVector shouldBe (c1.toVector ++ c2.toVector)
       }
+      "concat empty" in {
+        Chunk.concat[A](List(Chunk.empty, Chunk.empty)) shouldEqual Chunk.empty
+      }
       "scanLeft" in forAll { c: Chunk[A] =>
         def step(acc: List[A], item: A) = acc :+ item
         c.scanLeft(List[A]())(step).toList shouldBe (c.toList.scanLeft(List[A]())(step))
@@ -161,5 +164,19 @@ class ChunkSpec extends Fs2Spec {
     "returns all results and last result for multiple elements" in {
       Chunk(2, 3).scanLeftCarry(1)(_ + _) shouldBe ((Chunk(3, 6), 6))
     }
+  }
+
+  "concat primitives" - {
+    def testEmptyConcat[A](mkChunk: List[Chunk[A]] => Chunk[A]) =
+      mkChunk(List(Chunk.empty, Chunk.empty)) shouldEqual Chunk.empty
+
+    "booleans" in testEmptyConcat(Chunk.concatBooleans)
+    "bytes" in testEmptyConcat(Chunk.concatBytes)
+    "floats" in testEmptyConcat(Chunk.concatFloats)
+    "doubles" in testEmptyConcat(Chunk.concatDoubles)
+    "shorts" in testEmptyConcat(Chunk.concatShorts)
+    "ints" in testEmptyConcat(Chunk.concatInts)
+    "longs" in testEmptyConcat(Chunk.concatLongs)
+    "chars" in testEmptyConcat(Chunk.concatChars)
   }
 }

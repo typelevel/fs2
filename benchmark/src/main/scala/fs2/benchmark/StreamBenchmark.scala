@@ -19,10 +19,6 @@ class StreamBenchmark {
   var n: Int = _
 
   @Benchmark
-  def rangeFold(): Option[Long] =
-    Stream.range(0, n).fold(0L)(_ + _.toLong).compile.last
-
-  @Benchmark
   def leftAssocConcat(): Int =
     (0 until n)
       .map(Stream.emit)
