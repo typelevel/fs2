@@ -33,7 +33,7 @@ object Balance {
     * {{{
     *   Stream(1,2,3,4).balance.map { worker =>
     *     worker.map(_.toString)
-    *   }.take(3).parJoinUnbounded.compile.to[Set].unsafeRunSync
+    *   }.take(3).parJoinUnbounded.compile.to(Set).unsafeRunSync
     * }}}
     *
     *

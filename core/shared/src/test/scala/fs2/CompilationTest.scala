@@ -1,4 +1,6 @@
-package fs2
+package notfs2
+
+import fs2._
 
 import cats.{Applicative, Id}
 import cats.effect.{ContextShift, IO, Resource, Timer}
@@ -86,4 +88,8 @@ object ThisModuleShouldCompile {
   val pure: List[Int] = Stream.range(0, 5).compile.toList
   val io: IO[List[Int]] = Stream.range(0, 5).covary[IO].compile.toList
   val resource: Resource[IO, List[Int]] = Stream.range(0, 5).covary[IO].compile.resource.toList
+
+  // Ensure that .to(Collector) syntax works even when target type is known (regression #1709)
+  val z: List[Int] = Stream.range(0, 5).compile.to(List)
+  Stream.empty[Id].covaryOutput[Byte].compile.to(Chunk): Chunk[Byte]
 }

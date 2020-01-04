@@ -12,9 +12,6 @@ import scodec.bits.ByteVector
   *
   * The companion object provides implicit conversions (methods starting with `supports`),
   * which adapts various collections to the `Collector` trait.
-  *
-  * The output type is a type member instead of a type parameter to avoid overloading
-  * resolution limitations with `s.compile.to[C]` vs `s.compile.to(C)`.
   */
 trait Collector[-A] {
   type Out
