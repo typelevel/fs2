@@ -33,9 +33,7 @@ private[fs2] object Algebra {
     */
   final case class Step[F[_], X](stream: FreeC[F, X, Unit], scope: Option[Token])
       extends FreeC.Eval[F, INothing, Option[(Chunk[X], Token, FreeC[F, X, Unit])]] {
-    override def mapOutput[P](
-        f: INothing => P
-    ): FreeC[F, INothing, Option[(Chunk[X], Token, FreeC[F, X, Unit])]] = this
+    override def mapOutput[P](f: INothing => P): Step[F, X] = this
   }
 
   /* The `AlgEffect` trait is for operations on the `F` effect that create no `O` output.
