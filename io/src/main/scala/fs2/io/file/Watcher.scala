@@ -1,7 +1,6 @@
 package fs2
 package io
 
-import scala.collection.JavaConverters._
 import scala.concurrent.duration._
 
 import cats.effect._
@@ -10,6 +9,8 @@ import java.nio.file._
 import java.nio.file.attribute.BasicFileAttributes
 import java.util.concurrent.TimeUnit
 import fs2.concurrent.SignallingRef
+
+import CollectionCompat._
 
 /**
   * Allows watching the file system for changes to directories and files by using the platform's `WatchService`.

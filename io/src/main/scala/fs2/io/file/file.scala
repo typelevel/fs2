@@ -5,11 +5,12 @@ import java.nio.file._
 import java.nio.file.attribute.FileAttribute
 import java.util.stream.{Stream => JStream}
 
-import scala.collection.JavaConverters._
 import scala.concurrent.duration._
 
 import cats.effect.{Blocker, Concurrent, ContextShift, Resource, Sync, Timer}
 import cats.implicits._
+
+import CollectionCompat._
 
 /** Provides support for working with files. */
 package object file {

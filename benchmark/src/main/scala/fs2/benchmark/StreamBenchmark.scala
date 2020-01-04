@@ -2,20 +2,25 @@ package fs2
 package benchmark
 
 import cats.effect.IO
-import org.openjdk.jmh.annotations.{Benchmark, BenchmarkMode, Mode, OutputTimeUnit, Scope, State}
+import org.openjdk.jmh.annotations.{
+  Benchmark,
+  BenchmarkMode,
+  Mode,
+  OutputTimeUnit,
+  Param,
+  Scope,
+  State
+}
 import java.util.concurrent.TimeUnit
 
 @State(Scope.Thread)
 class StreamBenchmark {
-  @GenerateN(1, 4096, 665536, 67108863)
-  @Benchmark
-  def rangeFold(N: Int): Option[Long] =
-    Stream.range(0, N).fold(0L)(_ + _.toLong).compile.last
+  @Param(Array("10", "100", "1000", "10000"))
+  var n: Int = _
 
-  @GenerateN(1, 10, 100, 1000, 10000, 100000)
   @Benchmark
-  def leftAssocConcat(N: Int): Int =
-    (0 until N)
+  def leftAssocConcat(): Int =
+    (0 until n)
       .map(Stream.emit)
       .foldRight(Stream.empty.covaryOutput[Int])(_ ++ _)
       .covary[IO]
@@ -24,10 +29,9 @@ class StreamBenchmark {
       .unsafeRunSync
       .get
 
-  @GenerateN(1, 10, 100, 1000, 10000, 100000)
   @Benchmark
-  def rightAssocConcat(N: Int): Int =
-    (0 until N)
+  def rightAssocConcat(): Int =
+    (0 until n)
       .map(Stream.emit)
       .foldRight(Stream.empty.covaryOutput[Int])(_ ++ _)
       .covary[IO]
@@ -36,10 +40,9 @@ class StreamBenchmark {
       .unsafeRunSync
       .get
 
-  @GenerateN(1, 10, 100, 1000, 10000, 100000)
   @Benchmark
-  def leftAssocFlatMap(N: Int): Int =
-    (0 until N)
+  def leftAssocFlatMap(): Int =
+    (0 until n)
       .map(Stream.emit)
       .foldLeft(Stream.emit(0))((acc, a) => acc.flatMap(_ => a))
       .covary[IO]
@@ -48,10 +51,9 @@ class StreamBenchmark {
       .unsafeRunSync
       .get
 
-  @GenerateN(1, 10, 100, 1000, 10000, 100000)
   @Benchmark
-  def rightAssocFlatMap(N: Int): Int =
-    (0 until N)
+  def rightAssocFlatMap(): Int =
+    (0 until n)
       .map(Stream.emit)
       .reverse
       .foldLeft(Stream.emit(0))((acc, a) => a.flatMap(_ => acc))
@@ -61,48 +63,26 @@ class StreamBenchmark {
       .unsafeRunSync
       .get
 
-  @GenerateN(1, 10, 100, 1000, 10000, 100000)
   @Benchmark
-  def eval(N: Int): Unit =
-    Stream.repeatEval(IO(())).take(N).compile.last.unsafeRunSync.get
+  def eval(): Unit =
+    Stream.repeatEval(IO(())).take(n).compile.last.unsafeRunSync.get
 
-  @GenerateN(1, 10, 100, 1000, 10000, 100000)
   @Benchmark
-  def toVector(N: Int): Vector[Int] =
-    Stream.emits(0 until N).covary[IO].compile.toVector.unsafeRunSync
+  def toVector(): Vector[Int] =
+    Stream.emits(0 until n).covary[IO].compile.toVector.unsafeRunSync
 
-  @GenerateN(8, 256)
-  @Benchmark
-  def unconsPull(N: Int): Int =
-    (Stream
-      .chunk(Chunk.seq(0 to 2560)))
-      .repeatPull { s =>
-        s.unconsN(N).flatMap {
-          case Some((h, t)) => Pull.output(h).as(Some(t))
-          case None         => Pull.pure(None)
-        }
-      }
-      .covary[IO]
-      .compile
-      .last
-      .unsafeRunSync
-      .get
-
-  @GenerateN(1, 10, 100, 1000, 10000)
   @Benchmark @BenchmarkMode(Array(Mode.AverageTime)) @OutputTimeUnit(TimeUnit.NANOSECONDS)
-  def emitsThenFlatMap(N: Int): Vector[Int] =
-    Stream.emits(0 until N).flatMap(Stream(_)).toVector
+  def emitsThenFlatMap(): Vector[Int] =
+    Stream.emits(0 until n).flatMap(Stream(_)).toVector
 
-  @GenerateN(1, 10, 100, 1000, 10000)
   @Benchmark
-  def sliding(N: Int) =
-    Stream.emits(0 until 16384).sliding(N).covary[IO].compile.drain.unsafeRunSync
+  def sliding() =
+    Stream.emits(0 until 16384).sliding(n).covary[IO].compile.drain.unsafeRunSync
 
-  @GenerateN(1, 10, 100, 1000, 10000)
   @Benchmark
-  def mapAccumulate(N: Int) =
+  def mapAccumulate() =
     Stream
-      .emits(0 until N)
+      .emits(0 until n)
       .mapAccumulate(0) {
         case (acc, i) =>
           val added = acc + i

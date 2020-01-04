@@ -1431,6 +1431,11 @@ object Chunk extends CollectorK[Chunk] {
   def concat[A](chunks: GSeq[Chunk[A]]): Chunk[A] =
     concat(chunks, chunks.foldLeft(0)(_ + _.size))
 
+  /**
+    * Concatenates the specified sequence of chunks in to a single chunk, avoiding boxing.
+    * The `totalSize` parameter must be equal to the sum of the size of each chunk or
+    * otherwise an exception may be thrown.
+    */
   def concat[A](chunks: GSeq[Chunk[A]], totalSize: Int): Chunk[A] =
     if (totalSize == 0) {
       Chunk.empty
@@ -1462,14 +1467,19 @@ object Chunk extends CollectorK[Chunk] {
       Chunk.boxed(arr.asInstanceOf[Array[A]])
     }
 
-  /** Concatenates the specified sequence of boolean chunks in to a single chunk. */
-  def concatBooleans(chunks: GSeq[Chunk[Boolean]]): Chunk[Boolean] =
-    concatBooleans(chunks, chunks.foldLeft(0)(_ + _.size))
-
-  def concatBooleans(chunks: GSeq[Chunk[Boolean]], totalSize: Int): Chunk[Boolean] =
-    if (chunks.isEmpty) Chunk.empty
+  /**
+    * Concatenates the specified sequence of chunks in to a single unboxed chunk.
+    * The `totalSize` parameter must be equal to the sum of the size of each chunk or
+    * otherwise an exception may be thrown.
+    */
+  private def concatUnboxed[A: reflect.ClassTag](
+      chunks: GSeq[Chunk[A]],
+      totalSize: Int,
+      mkChunk: Array[A] => Chunk[A]
+  ): Chunk[A] =
+    if (totalSize == 0) Chunk.empty
     else {
-      val arr = new Array[Boolean](totalSize)
+      val arr = new Array[A](totalSize)
       var offset = 0
       chunks.foreach { c =>
         if (!c.isEmpty) {
@@ -1477,134 +1487,104 @@ object Chunk extends CollectorK[Chunk] {
           offset += c.size
         }
       }
-      Chunk.booleans(arr)
+      mkChunk(arr)
     }
+
+  /** Concatenates the specified sequence of boolean chunks in to a single chunk. */
+  def concatBooleans(chunks: GSeq[Chunk[Boolean]]): Chunk[Boolean] =
+    concatBooleans(chunks, chunks.foldLeft(0)(_ + _.size))
+
+  /**
+    * Concatenates the specified sequence of boolean chunks in to a single chunk.
+    * The `totalSize` parameter must be equal to the sum of the size of each chunk or
+    * otherwise an exception may be thrown.
+    */
+  def concatBooleans(chunks: GSeq[Chunk[Boolean]], totalSize: Int): Chunk[Boolean] =
+    concatUnboxed(chunks, totalSize, Chunk.booleans)
 
   /** Concatenates the specified sequence of byte chunks in to a single chunk. */
   def concatBytes(chunks: GSeq[Chunk[Byte]]): Chunk[Byte] =
     concatBytes(chunks, chunks.foldLeft(0)(_ + _.size))
 
+  /**
+    * Concatenates the specified sequence of byte chunks in to a single chunk.
+    * The `totalSize` parameter must be equal to the sum of the size of each chunk or
+    * otherwise an exception may be thrown.
+    */
   def concatBytes(chunks: GSeq[Chunk[Byte]], totalSize: Int): Chunk[Byte] =
-    if (chunks.isEmpty) Chunk.empty
-    else {
-      val arr = new Array[Byte](totalSize)
-      var offset = 0
-      chunks.foreach { c =>
-        if (!c.isEmpty) {
-          c.copyToArray(arr, offset)
-          offset += c.size
-        }
-      }
-      Chunk.bytes(arr)
-    }
+    concatUnboxed(chunks, totalSize, Chunk.bytes)
 
   /** Concatenates the specified sequence of float chunks in to a single chunk. */
   def concatFloats(chunks: GSeq[Chunk[Float]]): Chunk[Float] =
     concatFloats(chunks, chunks.foldLeft(0)(_ + _.size))
 
+  /**
+    * Concatenates the specified sequence of float chunks in to a single chunk.
+    * The `totalSize` parameter must be equal to the sum of the size of each chunk or
+    * otherwise an exception may be thrown.
+    */
   def concatFloats(chunks: GSeq[Chunk[Float]], totalSize: Int): Chunk[Float] =
-    if (chunks.isEmpty) Chunk.empty
-    else {
-      val arr = new Array[Float](totalSize)
-      var offset = 0
-      chunks.foreach { c =>
-        if (!c.isEmpty) {
-          c.copyToArray(arr, offset)
-          offset += c.size
-        }
-      }
-      Chunk.floats(arr)
-    }
+    concatUnboxed(chunks, totalSize, Chunk.floats)
 
   /** Concatenates the specified sequence of double chunks in to a single chunk. */
   def concatDoubles(chunks: GSeq[Chunk[Double]]): Chunk[Double] =
     concatDoubles(chunks, chunks.foldLeft(0)(_ + _.size))
 
+  /**
+    * Concatenates the specified sequence of double chunks in to a single chunk.
+    * The `totalSize` parameter must be equal to the sum of the size of each chunk or
+    * otherwise an exception may be thrown.
+    */
   def concatDoubles(chunks: GSeq[Chunk[Double]], totalSize: Int): Chunk[Double] =
-    if (chunks.isEmpty) Chunk.empty
-    else {
-      val arr = new Array[Double](totalSize)
-      var offset = 0
-      chunks.foreach { c =>
-        if (!c.isEmpty) {
-          c.copyToArray(arr, offset)
-          offset += c.size
-        }
-      }
-      Chunk.doubles(arr)
-    }
+    concatUnboxed(chunks, totalSize, Chunk.doubles)
 
   /** Concatenates the specified sequence of short chunks in to a single chunk. */
   def concatShorts(chunks: GSeq[Chunk[Short]]): Chunk[Short] =
     concatShorts(chunks, chunks.foldLeft(0)(_ + _.size))
 
+  /**
+    * Concatenates the specified sequence of short chunks in to a single chunk.
+    * The `totalSize` parameter must be equal to the sum of the size of each chunk or
+    * otherwise an exception may be thrown.
+    */
   def concatShorts(chunks: GSeq[Chunk[Short]], totalSize: Int): Chunk[Short] =
-    if (chunks.isEmpty) Chunk.empty
-    else {
-      val arr = new Array[Short](totalSize)
-      var offset = 0
-      chunks.foreach { c =>
-        if (!c.isEmpty) {
-          c.copyToArray(arr, offset)
-          offset += c.size
-        }
-      }
-      Chunk.shorts(arr)
-    }
+    concatUnboxed(chunks, totalSize, Chunk.shorts)
 
   /** Concatenates the specified sequence of int chunks in to a single chunk. */
   def concatInts(chunks: GSeq[Chunk[Int]]): Chunk[Int] =
     concatInts(chunks, chunks.foldLeft(0)(_ + _.size))
 
+  /**
+    * Concatenates the specified sequence of int chunks in to a single chunk.
+    * The `totalSize` parameter must be equal to the sum of the size of each chunk or
+    * otherwise an exception may be thrown.
+    */
   def concatInts(chunks: GSeq[Chunk[Int]], totalSize: Int): Chunk[Int] =
-    if (chunks.isEmpty) Chunk.empty
-    else {
-      val arr = new Array[Int](totalSize)
-      var offset = 0
-      chunks.foreach { c =>
-        if (!c.isEmpty) {
-          c.copyToArray(arr, offset)
-          offset += c.size
-        }
-      }
-      Chunk.ints(arr)
-    }
+    concatUnboxed(chunks, totalSize, Chunk.ints)
 
   /** Concatenates the specified sequence of long chunks in to a single chunk. */
   def concatLongs(chunks: GSeq[Chunk[Long]]): Chunk[Long] =
     concatLongs(chunks, chunks.foldLeft(0)(_ + _.size))
 
+  /**
+    * Concatenates the specified sequence of long chunks in to a single chunk.
+    * The `totalSize` parameter must be equal to the sum of the size of each chunk or
+    * otherwise an exception may be thrown.
+    */
   def concatLongs(chunks: GSeq[Chunk[Long]], totalSize: Int): Chunk[Long] =
-    if (chunks.isEmpty) Chunk.empty
-    else {
-      val arr = new Array[Long](totalSize)
-      var offset = 0
-      chunks.foreach { c =>
-        if (!c.isEmpty) {
-          c.copyToArray(arr, offset)
-          offset += c.size
-        }
-      }
-      Chunk.longs(arr)
-    }
+    concatUnboxed(chunks, totalSize, Chunk.longs)
 
   /** Concatenates the specified sequence of char chunks in to a single chunk. */
   def concatChars(chunks: GSeq[Chunk[Char]]): Chunk[Char] =
     concatChars(chunks, chunks.foldLeft(0)(_ + _.size))
 
+  /**
+    * Concatenates the specified sequence of char chunks in to a single chunk.
+    * The `totalSize` parameter must be equal to the sum of the size of each chunk or
+    * otherwise an exception may be thrown.
+    */
   def concatChars(chunks: GSeq[Chunk[Char]], totalSize: Int): Chunk[Char] =
-    if (chunks.isEmpty) Chunk.empty
-    else {
-      val arr = new Array[Char](totalSize)
-      var offset = 0
-      chunks.foreach { c =>
-        if (!c.isEmpty) {
-          c.copyToArray(arr, offset)
-          offset += c.size
-        }
-      }
-      Chunk.chars(arr)
-    }
+    concatUnboxed(chunks, totalSize, Chunk.chars)
 
   /**
     * Creates a chunk consisting of the elements of `queue`.
