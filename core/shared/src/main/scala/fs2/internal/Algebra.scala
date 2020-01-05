@@ -31,9 +31,12 @@ private[fs2] object Algebra {
     * @param stream             Stream to step
     * @param scopeId            If scope has to be changed before this step is evaluated, id of the scope must be supplied
     */
-  final case class Step[+F[_], X](stream: FreeC[F, X, Unit], scope: Option[Token])
-      extends FreeC.Eval[F, INothing, Option[(Chunk[X], Token, FreeC[F, X, Unit])]] {
-    override def mapOutput[P](f: INothing => P): Step[F, X] = this
+  final case class Step[X](stream: FreeC[Any, X, Unit], scope: Option[Token])
+      extends FreeC.Eval[PureK, INothing, Option[(Chunk[X], Token, FreeC[Any, X, Unit])]] {
+    /* NOTE: The use of `Any` and `PureK` done to by-pass an error in Scala 2.12 type-checker,
+     * that produces a crash when dealing with Higher-Kinded GADTs in which the F parameter appears
+     * Inside one of the values of the case class.      */
+    override def mapOutput[P](f: INothing => P): Step[X] = this
   }
 
   /* The `AlgEffect` trait is for operations on the `F` effect that create no `O` output.
@@ -48,7 +51,10 @@ private[fs2] object Algebra {
       resource: F[R],
       release: (R, ExitCase[Throwable]) => F[Unit]
   ) extends AlgEffect[F, R]
-  final case class OpenScope[F[_]](interruptible: Option[Concurrent[F]]) extends AlgEffect[F, Token]
+  // NOTE: The use of a separate `G` and `PureK` is done o by-pass a compiler-crash in Scala 2.12,
+  // involving GADTs with a covariant Higher-Kinded parameter. */
+  final case class OpenScope[G[_]](interruptible: Option[Concurrent[G]])
+      extends AlgEffect[PureK, Token]
 
   // `InterruptedScope` contains id of the scope currently being interrupted
   // together with any errors accumulated during interruption process
@@ -63,8 +69,10 @@ private[fs2] object Algebra {
   def output1[O](value: O): FreeC[PureK, O, Unit] = Output(Chunk.singleton(value))
 
   def stepLeg[F[_], O](leg: Stream.StepLeg[F, O]): FreeC[F, Nothing, Option[Stream.StepLeg[F, O]]] =
-    Step[F, O](leg.next, Some(leg.scopeId)).map {
-      _.map { case (h, id, t) => new Stream.StepLeg[F, O](h, id, t) }
+    Step[O](leg.next, Some(leg.scopeId)).map {
+      _.map {
+        case (h, id, t) => new Stream.StepLeg[F, O](h, id, t.asInstanceOf[FreeC[F, O, Unit]])
+      }
     }
 
   /**
@@ -113,7 +121,7 @@ private[fs2] object Algebra {
     translate0[F, G, O](u, s, G.concurrentInstance)
 
   def uncons[F[_], X, O](s: FreeC[F, O, Unit]): FreeC[F, X, Option[(Chunk[O], FreeC[F, O, Unit])]] =
-    Step(s, None).map { _.map { case (h, _, t) => (h, t) } }
+    Step(s, None).map { _.map { case (h, _, t) => (h, t.asInstanceOf[FreeC[F, O, Unit]]) } }
 
   /** Left-folds the output of a stream. */
   def compile[F[_], O, B](
@@ -198,13 +206,14 @@ private[fs2] object Algebra {
                 F.pure(Out(output.values, scope, view.next(FreeC.Result.unit)))
               )
 
-            case u: Step[F, y] =>
+            case u: Step[y] =>
               // if scope was specified in step, try to find it, otherwise use the current scope.
               F.flatMap(u.scope.fold[F[Option[CompileScope[F]]]](F.pure(Some(scope))) { scopeId =>
                 scope.findStepScope(scopeId)
               }) {
                 case Some(stepScope) =>
-                  F.flatMap(F.attempt(go[y](stepScope, extendedTopLevelScope, u.stream))) {
+                  val stepStream = u.stream.asInstanceOf[FreeC[F, y, Unit]]
+                  F.flatMap(F.attempt(go[y](stepScope, extendedTopLevelScope, stepStream))) {
                     case Right(Done(scope)) =>
                       interruptGuard(scope)(
                         go(scope, extendedTopLevelScope, view.next(Result.Pure(None)))
@@ -257,7 +266,8 @@ private[fs2] object Algebra {
             case _: GetScope[_] =>
               resume(Result.Pure(scope.asInstanceOf[y]))
 
-            case open: OpenScope[F] =>
+            case OpenScope(interruptibleX) =>
+              val interruptible = interruptibleX.asInstanceOf[Option[Concurrent[F]]]
               interruptGuard(scope) {
                 val maybeCloseExtendedScope: F[Boolean] =
                   // If we're opening a new top-level scope (aka, direct descendant of root),
@@ -270,7 +280,7 @@ private[fs2] object Algebra {
                   else F.pure(false)
                 maybeCloseExtendedScope.flatMap { closedExtendedScope =>
                   val newExtendedScope = if (closedExtendedScope) None else extendedTopLevelScope
-                  F.flatMap(scope.open(open.interruptible)) {
+                  F.flatMap(scope.open(interruptible)) {
                     case Left(err) =>
                       go(scope, newExtendedScope, view.next(Result.Fail(err)))
                     case Right(childScope) =>
@@ -396,7 +406,7 @@ private[fs2] object Algebra {
       case a: Acquire[F, r] =>
         Acquire[G, r](fK(a.resource), (r, ec) => fK(a.release(r, ec)))
       case e: Eval[F, R]    => Eval[G, R](fK(e.value))
-      case _: OpenScope[F] => OpenScope[G](concurrent)
+      case OpenScope(_)   => OpenScope[G](concurrent)
       case c: CloseScope   => c
       case g: GetScope[_]  => g
     }
@@ -423,9 +433,11 @@ private[fs2] object Algebra {
                 case r @ Result.Interrupted(_, _) => translateStep(view.next(r), isMainLevel)
               }
 
-            case step: Step[F, x] =>
-              Step[G, x](
-                stream = translateStep[x](step.stream, false),
+            case step: Step[x] =>
+              // NOTE: The use of the `asInstanceOf` is to by-pass a compiler-crash in Scala 2.12,
+              // involving GADTs with a covariant Higher-Kinded parameter.
+              Step[x](
+                stream = translateStep[x](step.stream.asInstanceOf[FreeC[F, x, Unit]], false),
                 scope = step.scope
               ).transformWith { r =>
                 translateStep[X](view.next(r.asInstanceOf[Result[y]]), isMainLevel)
