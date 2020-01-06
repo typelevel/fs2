@@ -52,13 +52,13 @@ object ResourceTrackerSanityTest extends App {
 }
 
 object RepeatPullSanityTest extends App {
-  def id[F[_], A]: Pipe[F, A, A] = _.repeatPull {
+  def id[A]: Pipe[Pure, A, A] = _.repeatPull {
     _.uncons1.flatMap {
       case Some((h, t)) => Pull.output1(h).as(Some(t));
       case None         => Pull.pure(None)
     }
   }
-  Stream.constant(1).covary[IO].through(id[IO, Int]).compile.drain.unsafeRunSync()
+  Stream.constant(1).covary[IO].through(id[Int]).compile.drain.unsafeRunSync()
 }
 
 object RepeatEvalSanityTest extends App {

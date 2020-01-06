@@ -3086,7 +3086,7 @@ object Stream extends StreamLowPriority {
     * }}}
     */
   def chunk[F[x] >: Pure[x], O](os: Chunk[O]): Stream[F, O] =
-    Stream.fromFreeC(Output[O](os))
+    new Stream(Output[O](os))
 
   /**
     * Creates an infinite pure stream that always returns the supplied value.
@@ -3119,7 +3119,7 @@ object Stream extends StreamLowPriority {
     * res0: List[Int] = List(0)
     * }}}
     */
-  def emit[F[x] >: Pure[x], O](o: O): Stream[F, O] = fromFreeC(Algebra.output1[O](o))
+  def emit[F[x] >: Pure[x], O](o: O): Stream[F, O] = new Stream(Algebra.output1[O](o))
 
   /**
     * Creates a pure stream that emits the supplied values.
@@ -3820,7 +3820,7 @@ object Stream extends StreamLowPriority {
   final class ToPull[F[_], O] private[Stream] (
       private val free: FreeC[F, O, Unit]
   ) extends AnyVal {
-    private def self: Stream[F, O] = Stream.fromFreeC(free)
+    private def self: Stream[F, O] = new Stream(free)
 
     /**
       * Waits for a chunk of elements to be available in the source stream.
@@ -3829,8 +3829,8 @@ object Stream extends StreamLowPriority {
       * A `None` is returned as the resource of the pull upon reaching the end of the stream.
       */
     def uncons: Pull[F, INothing, Option[(Chunk[O], Stream[F, O])]] =
-      Pull.fromFreeC(Algebra.uncons(self.get)).map {
-        _.map { case (hd, tl) => (hd, Stream.fromFreeC(tl)) }
+      new Pull(Algebra.uncons(free)).map {
+        _.map { case (hd, tl) => (hd, new Stream(tl)) }
       }
 
     /** Like [[uncons]] but waits for a single element instead of an entire chunk. */
@@ -3955,7 +3955,7 @@ object Stream extends StreamLowPriority {
       }
 
     /** Writes all inputs to the output of the returned `Pull`. */
-    def echo: Pull[F, O, Unit] = Pull.fromFreeC(self.get)
+    def echo: Pull[F, O, Unit] = new Pull(free)
 
     /** Reads a single element from the input and emits it to the output. */
     def echo1: Pull[F, O, Option[Stream[F, O]]] =
@@ -4096,8 +4096,7 @@ object Stream extends StreamLowPriority {
       * If you are not pulling from multiple streams, consider using `uncons`.
       */
     def stepLeg: Pull[F, INothing, Option[StepLeg[F, O]]] =
-      Pull
-        .fromFreeC(GetScope[F]())
+      new Pull(GetScope[F]())
         .flatMap { scope =>
           new StepLeg[F, O](Chunk.empty, scope.id, self.get).stepLeg
         }
@@ -4567,7 +4566,7 @@ object Stream extends StreamLowPriority {
 
     /** Provides an `uncons`-like operation on this leg of the stream. */
     def stepLeg: Pull[F, INothing, Option[StepLeg[F, O]]] =
-      Pull.fromFreeC(Algebra.stepLeg(self))
+      new Pull(Algebra.stepLeg(self))
   }
 
   /** Provides operations on effectful pipes for syntactic convenience. */
