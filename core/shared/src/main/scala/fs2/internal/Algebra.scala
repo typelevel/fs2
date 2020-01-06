@@ -390,6 +390,18 @@ private[fs2] object Algebra {
       stream: FreeC[F, O, Unit],
       concurrent: Option[Concurrent[G]]
   ): FreeC[G, O, Unit] = {
+    def translateAlgEffect[R](self: AlgEffect[F, R]): AlgEffect[G, R] = self match {
+      // safe to cast, used in translate only
+      // if interruption has to be supported concurrent for G has to be passed
+      case a: Acquire[F, r] =>
+        Acquire[G, r](fK(a.resource), (r, ec) => fK(a.release(r, ec)))
+          .asInstanceOf[AlgEffect[G, R]]
+      case e: Eval[F, R]    => Eval[G, R](fK(e.value))
+      case _: OpenScope[F]  => OpenScope[G](concurrent).asInstanceOf[AlgEffect[G, R]]
+      case c: CloseScope[F] => c.asInstanceOf[AlgEffect[G, R]]
+      case g: GetScope[F]   => g.asInstanceOf[AlgEffect[G, R]]
+    }
+
     def translateStep[X](next: FreeC[F, X, Unit], isMainLevel: Boolean): FreeC[G, X, Unit] =
       next.viewL match {
         case _: FreeC.Result.Pure[F, Unit] =>
@@ -428,7 +440,7 @@ private[fs2] object Algebra {
               }
 
             case alg: AlgEffect[F, r] =>
-              translateAlgEffect(alg, concurrent, fK)
+              translateAlgEffect(alg)
                 .transformWith(r => translateStep(view.next(r), isMainLevel))
           }
       }
@@ -436,19 +448,4 @@ private[fs2] object Algebra {
     translateStep[O](stream, true)
   }
 
-  private[this] def translateAlgEffect[F[_], G[_], R](
-      self: AlgEffect[F, R],
-      concurrent: Option[Concurrent[G]],
-      fK: F ~> G
-  ): AlgEffect[G, R] = self match {
-    // safe to cast, used in translate only
-    // if interruption has to be supported concurrent for G has to be passed
-    case a: Acquire[F, r] =>
-      Acquire[G, r](fK(a.resource), (r, ec) => fK(a.release(r, ec)))
-        .asInstanceOf[AlgEffect[G, R]]
-    case e: Eval[F, R]    => Eval[G, R](fK(e.value))
-    case _: OpenScope[F]  => OpenScope[G](concurrent).asInstanceOf[AlgEffect[G, R]]
-    case c: CloseScope[F] => c.asInstanceOf[AlgEffect[G, R]]
-    case g: GetScope[F]   => g.asInstanceOf[AlgEffect[G, R]]
-  }
 }
