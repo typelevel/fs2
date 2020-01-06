@@ -405,10 +405,10 @@ private[fs2] object Algebra {
       // if interruption has to be supported concurrent for G has to be passed
       case a: Acquire[F, r] =>
         Acquire[G, r](fK(a.resource), (r, ec) => fK(a.release(r, ec)))
-      case e: Eval[F, R]    => Eval[G, R](fK(e.value))
+      case e: Eval[F, R]  => Eval[G, R](fK(e.value))
       case OpenScope(_)   => OpenScope[G](concurrent)
-      case c: CloseScope   => c
-      case g: GetScope[_]  => g
+      case c: CloseScope  => c
+      case g: GetScope[_] => g
     }
 
     def translateStep[X](next: FreeC[F, X, Unit], isMainLevel: Boolean): FreeC[G, X, Unit] =

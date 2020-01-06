@@ -127,7 +127,8 @@ import scala.concurrent.duration._
   * @hideImplicitConversion PureOps
   * @hideImplicitConversion IdOps
   **/
-final class Stream[+F[_], +O] private (private[fs2] val free: FreeC[F, O, Unit]) extends AnyVal {
+final class Stream[+F[_], +O] private[fs2] (private[fs2] val free: FreeC[F, O, Unit])
+    extends AnyVal {
   private[fs2] def get[F2[x] >: F[x], O2 >: O]: FreeC[F2, O2, Unit] = free
 
   /**
@@ -2984,7 +2985,7 @@ object Stream extends StreamLowPriority {
     new Stream(free)
 
   /** Creates a pure stream that emits the supplied values. To convert to an effectful stream, use `covary`. */
-  def apply[O](os: O*): Stream[Pure, O] = emits(os)
+  def apply[F[x] >: Pure[x], O](os: O*): Stream[F, O] = emits(os)
 
   /**
     * Creates a single element stream that gets its value by evaluating the supplied effect. If the effect fails, a `Left`
@@ -4580,6 +4581,26 @@ object Stream extends StreamLowPriority {
     def attachR[I0, O2](p: Pipe2[F, I0, O, O2]): Pipe2[F, I0, I, O2] =
       (l, r) => p(l, self(r))
   }
+
+  /** Provides operations on pure pipes for syntactic convenience. */
+  implicit final class PurePipeOps[I, O](private val self: (Stream[Pure, I] => Stream[Pure, O]))
+      extends AnyVal {
+
+    /** Lifts this pipe to the specified effect type. */
+    def covary[F[_]]: Pipe[F, I, O] = self.asInstanceOf[Pipe[F, I, O]]
+  }
+
+  /** Provides operations on pure pipes for syntactic convenience. */
+  implicit final class PurePipe2Ops[I, I2, O](private val self: Pipe2[Pure, I, I2, O])
+      extends AnyVal {
+
+    /** Lifts this pipe to the specified effect type. */
+    def covary[F[_]]: Pipe2[F, I, I2, O] = self.asInstanceOf[Pipe2[F, I, I2, O]]
+  }
+
+  /** Implicitly covaries a pipe. */
+  implicit def covaryPurePipe[F[_], I, O](p: Pipe[Pure, I, O]): Pipe[F, I, O] =
+    p.covary[F]
 
   /**
     * `MonadError` instance for `Stream`.

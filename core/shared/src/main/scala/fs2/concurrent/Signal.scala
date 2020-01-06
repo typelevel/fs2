@@ -71,7 +71,7 @@ object Signal extends SignalLowPriorityImplicits {
       firstYAndRestOfYs <- OptionT(ys.pull.uncons1.covaryOutput[PullOutput])
       (y, restOfYs) = firstYAndRestOfYs
       _ <- OptionT.liftF {
-        Pull.output1[PullOutput]((x, y, restOfXs, restOfYs)): Pull[F, PullOutput, Unit]
+        Pull.output1[F, PullOutput]((x, y, restOfXs, restOfYs)): Pull[F, PullOutput, Unit]
       }
     } yield ()
     firstPull.value.void.stream

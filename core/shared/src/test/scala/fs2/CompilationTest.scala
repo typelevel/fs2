@@ -82,7 +82,7 @@ object ThisModuleShouldCompile {
   Stream(s, s).parJoinUnbounded
 
   // Join an effectul stream of pure streams requires type annotation on inner stream
-  Stream[Stream[IO, Nothing]](Stream.empty).parJoinUnbounded
+  Stream[IO, Stream[IO, Nothing]](Stream.empty).parJoinUnbounded
 
   val pure: List[Int] = Stream.range(0, 5).compile.toList
   val io: IO[List[Int]] = Stream.range(0, 5).covary[IO].compile.toList

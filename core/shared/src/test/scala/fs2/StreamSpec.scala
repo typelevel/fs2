@@ -1864,8 +1864,8 @@ class StreamSpec extends Fs2Spec {
         def p: Pipe[IO, Int, Int] = {
           def loop(acc: Int, s: Stream[IO, Int]): Pull[IO, Int, Unit] =
             s.pull.uncons1.flatMap {
-              case None           => Pull.output1[Int](acc)
-              case Some((hd, tl)) => Pull.output1[Int](hd) >> loop(acc + hd, tl)
+              case None           => Pull.output1[IO, Int](acc)
+              case Some((hd, tl)) => Pull.output1[IO, Int](hd) >> loop(acc + hd, tl)
             }
           in => loop(0, in).stream
         }
