@@ -127,9 +127,9 @@ import scala.concurrent.duration._
   * @hideImplicitConversion PureOps
   * @hideImplicitConversion IdOps
   **/
-final class Stream[+F[_], +O] private[fs2] (private[fs2] val free: FreeC[F, O, Unit])
-    extends AnyVal {
-  private[fs2] def get[F2[x] >: F[x], O2 >: O]: FreeC[F2, O2, Unit] = free
+final class Stream[+F[_], +O] private (private[fs2] val free: FreeC[F, O, Unit]) extends AnyVal {
+  private[fs2] def get[F2[x] >: F[x], O2 >: O]: FreeC[F2, O2, Unit] =
+    free
 
   /**
     * Appends `s2` to the end of this stream.
@@ -2982,7 +2982,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val free: FreeC[F, O, U
 
 object Stream extends StreamLowPriority {
   @inline private[fs2] def fromFreeC[F[_], O](free: FreeC[F, O, Unit]): Stream[F, O] =
-    new Stream(free)
+    new Stream(free.asInstanceOf[FreeC[Nothing, O, Unit]])
 
   /** Creates a pure stream that emits the supplied values. To convert to an effectful stream, use `covary`. */
   def apply[F[x] >: Pure[x], O](os: O*): Stream[F, O] = emits(os)
@@ -3820,7 +3820,8 @@ object Stream extends StreamLowPriority {
   final class ToPull[F[_], O] private[Stream] (
       private val free: FreeC[F, O, Unit]
   ) extends AnyVal {
-    private def self: Stream[F, O] = new Stream(free)
+    private def self: Stream[F, O] =
+      new Stream(free)
 
     /**
       * Waits for a chunk of elements to be available in the source stream.
@@ -3829,8 +3830,8 @@ object Stream extends StreamLowPriority {
       * A `None` is returned as the resource of the pull upon reaching the end of the stream.
       */
     def uncons: Pull[F, INothing, Option[(Chunk[O], Stream[F, O])]] =
-      new Pull(Algebra.uncons(free)).map {
-        _.map { case (hd, tl) => (hd, new Stream(tl)) }
+      Pull.fromFreeC(Algebra.uncons(self.get)).map {
+        _.map { case (hd, tl) => (hd, Stream.fromFreeC(tl)) }
       }
 
     /** Like [[uncons]] but waits for a single element instead of an entire chunk. */
@@ -3955,7 +3956,7 @@ object Stream extends StreamLowPriority {
       }
 
     /** Writes all inputs to the output of the returned `Pull`. */
-    def echo: Pull[F, O, Unit] = new Pull(free)
+    def echo: Pull[F, O, Unit] = Pull.fromFreeC(self.get)
 
     /** Reads a single element from the input and emits it to the output. */
     def echo1: Pull[F, O, Option[Stream[F, O]]] =
@@ -4096,7 +4097,8 @@ object Stream extends StreamLowPriority {
       * If you are not pulling from multiple streams, consider using `uncons`.
       */
     def stepLeg: Pull[F, INothing, Option[StepLeg[F, O]]] =
-      new Pull(GetScope[F]())
+      Pull
+        .fromFreeC(GetScope[F]())
         .flatMap { scope =>
           new StepLeg[F, O](Chunk.empty, scope.id, self.get).stepLeg
         }
@@ -4234,7 +4236,8 @@ object Stream extends StreamLowPriority {
   final class CompileOps[F[_], G[_], O] private[Stream] (
       private val free: FreeC[F, O, Unit]
   )(implicit compiler: Compiler[F, G]) {
-    private def self: Stream[F, O] = new Stream(free)
+    private def self: Stream[F, O] =
+      new Stream(free)
 
     /**
       * Compiles this stream in to a value of the target effect type `F` and
@@ -4566,7 +4569,7 @@ object Stream extends StreamLowPriority {
 
     /** Provides an `uncons`-like operation on this leg of the stream. */
     def stepLeg: Pull[F, INothing, Option[StepLeg[F, O]]] =
-      new Pull(Algebra.stepLeg(self))
+      Pull.fromFreeC(Algebra.stepLeg(self))
   }
 
   /** Provides operations on effectful pipes for syntactic convenience. */
@@ -4582,8 +4585,7 @@ object Stream extends StreamLowPriority {
   }
 
   /** Provides operations on pure pipes for syntactic convenience. */
-  implicit final class PurePipeOps[I, O](private val self: (Stream[Pure, I] => Stream[Pure, O]))
-      extends AnyVal {
+  implicit final class PurePipeOps[I, O](private val self: Pipe[Pure, I, O]) extends AnyVal {
 
     /** Lifts this pipe to the specified effect type. */
     def covary[F[_]]: Pipe[F, I, O] = self.asInstanceOf[Pipe[F, I, O]]

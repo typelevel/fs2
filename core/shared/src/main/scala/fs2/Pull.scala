@@ -24,16 +24,16 @@ import fs2.internal.Algebra.Eval
   * `raiseError` is caught by `handleErrorWith`:
   *   - `handleErrorWith(raiseError(e))(f) == f(e)`
   */
-final class Pull[+F[_], +O, +R] private[fs2] (private[fs2] val free: FreeC[F, O, R])
-    extends AnyVal {
-  private[fs2] def get[F2[x] >: F[x], O2 >: O, R2 >: R]: FreeC[F2, O2, R2] = free
+final class Pull[+F[_], +O, +R] private (private[fs2] val free: FreeC[F, O, R]) extends AnyVal {
+  private[fs2] def get[F2[x] >: F[x], O2 >: O, R2 >: R]: FreeC[F2, O2, R2] =
+    free
 
   /** Alias for `_.map(_ => o2)`. */
   def as[R2](r2: R2): Pull[F, O, R2] = map(_ => r2)
 
   /** Returns a pull with the result wrapped in `Right`, or an error wrapped in `Left` if the pull has failed. */
   def attempt: Pull[F, O, Either[Throwable, R]] =
-    new Pull(free.map(r => Right(r)).handleErrorWith(t => Result.Pure(Left(t))))
+    Pull.fromFreeC(get[F, O, R].map(r => Right(r)).handleErrorWith(t => Result.Pure(Left(t))))
 
   /**
     * Interpret this `Pull` to produce a `Stream`.
@@ -43,12 +43,12 @@ final class Pull[+F[_], +O, +R] private[fs2] (private[fs2] val free: FreeC[F, O,
     */
   def stream(implicit ev: R <:< Unit): Stream[F, O] = {
     val _ = ev
-    Stream.fromFreeC(free.asInstanceOf[FreeC[F, O, Unit]])
+    Stream.fromFreeC(this.asInstanceOf[Pull[F, O, Unit]].get)
   }
 
   /** Applies the resource of this pull to `f` and returns the result. */
   def flatMap[F2[x] >: F[x], O2 >: O, R2](f: R => Pull[F2, O2, R2]): Pull[F2, O2, R2] =
-    new Pull(free.flatMap(r => f(r).free))
+    Pull.fromFreeC(get[F2, O2, R].flatMap(r => f(r).get))
 
   /** Alias for `flatMap(_ => p2)`. */
   def >>[F2[x] >: F[x], O2 >: O, R2](p2: => Pull[F2, O2, R2]): Pull[F2, O2, R2] =
@@ -67,10 +67,10 @@ final class Pull[+F[_], +O, +R] private[fs2] (private[fs2] val free: FreeC[F, O,
   def covaryResource[R2 >: R]: Pull[F, O, R2] = this
 
   /** Applies the resource of this pull to `f` and returns the result in a new `Pull`. */
-  def map[R2](f: R => R2): Pull[F, O, R2] = new Pull(free.map(f))
+  def map[R2](f: R => R2): Pull[F, O, R2] = Pull.fromFreeC(get.map(f))
 
   /** Applies the outputs of this pull to `f` and returns the result in a new `Pull`. */
-  def mapOutput[O2](f: O => O2): Pull[F, O2, R] = new Pull(free.mapOutput(f))
+  def mapOutput[O2](f: O => O2): Pull[F, O2, R] = Pull.mapOutput(this)(f)
 
   /** Run `p2` after `this`, regardless of errors during `this`, then reraise any errors encountered during `this`. */
   def onComplete[F2[x] >: F[x], O2 >: O, R2 >: R](p2: => Pull[F2, O2, R2]): Pull[F2, O2, R2] =
@@ -80,7 +80,7 @@ final class Pull[+F[_], +O, +R] private[fs2] (private[fs2] val free: FreeC[F, O,
   def handleErrorWith[F2[x] >: F[x], O2 >: O, R2 >: R](
       h: Throwable => Pull[F2, O2, R2]
   ): Pull[F2, O2, R2] =
-    new Pull(free.handleErrorWith(e => h(e).get))
+    Pull.fromFreeC(get[F2, O2, R2].handleErrorWith(e => h(e).get))
 
   /** Discards the result type of this pull. */
   def void: Pull[F, O, Unit] = as(())
@@ -88,14 +88,14 @@ final class Pull[+F[_], +O, +R] private[fs2] (private[fs2] val free: FreeC[F, O,
 
 object Pull extends PullLowPriority {
   @inline private[fs2] def fromFreeC[F[_], O, R](free: FreeC[F, O, R]): Pull[F, O, R] =
-    new Pull(free)
+    new Pull(free.asInstanceOf[FreeC[Nothing, O, R]])
 
   /**
     * Like [[eval]] but if the effectful value fails, the exception is returned in a `Left`
     * instead of failing the pull.
     */
   def attemptEval[F[_], R](fr: F[R]): Pull[F, INothing, Either[Throwable, R]] =
-    new Pull(
+    fromFreeC(
       Eval[F, R](fr)
         .map(r => Right(r): Either[Throwable, R])
         .handleErrorWith(t => Result.Pure[Either[Throwable, R]](Left(t)))
@@ -107,7 +107,7 @@ object Pull extends PullLowPriority {
 
   /** Evaluates the supplied effectful value and returns the result as the resource of the returned pull. */
   def eval[F[_], R](fr: F[R]): Pull[F, INothing, R] =
-    new Pull(Eval[F, R](fr))
+    fromFreeC(Eval[F, R](fr))
 
   /**
     * Repeatedly uses the output of the pull as input for the next step of the pull.
@@ -116,17 +116,20 @@ object Pull extends PullLowPriority {
   def loop[F[_], O, R](using: R => Pull[F, O, Option[R]]): R => Pull[F, O, Option[R]] =
     r => using(r).flatMap { _.map(loop(using)).getOrElse(Pull.pure(None)) }
 
+  private def mapOutput[F[_], O, O2, R](p: Pull[F, O, R])(f: O => O2): Pull[F, O2, R] =
+    Pull.fromFreeC(p.get[F, O, R].mapOutput(f))
+
   /** Outputs a single value. */
   def output1[F[x] >: Pure[x], O](o: O): Pull[F, O, Unit] =
     new Pull(Algebra.output1[O](o))
 
   /** Outputs a chunk of values. */
   def output[F[x] >: Pure[x], O](os: Chunk[O]): Pull[F, O, Unit] =
-    new Pull(if (os.isEmpty) Result.unit else Algebra.Output[O](os))
+    if (os.isEmpty) Pull.done else fromFreeC(Algebra.Output[O](os))
 
   /** Pull that outputs nothing and has result of `r`. */
   def pure[F[x] >: Pure[x], R](r: R): Pull[F, INothing, R] =
-    new Pull(Result.Pure(r))
+    fromFreeC[F, INothing, R](Result.Pure(r))
 
   /**
     * Reads and outputs nothing, and fails with the given error.
@@ -159,7 +162,7 @@ object Pull extends PullLowPriority {
     * allowing use of a mutable value in pull computations.
     */
   def suspend[F[x] >: Pure[x], O, R](p: => Pull[F, O, R]): Pull[F, O, R] =
-    new Pull(FreeC.suspend(p.free))
+    fromFreeC(FreeC.suspend(p.get))
 
   /** `Sync` instance for `Pull`. */
   implicit def syncInstance[F[_], O](
@@ -180,8 +183,8 @@ object Pull extends PullLowPriority {
       def bracketCase[A, B](acquire: Pull[F, O, A])(
           use: A => Pull[F, O, B]
       )(release: (A, ExitCase[Throwable]) => Pull[F, O, Unit]): Pull[F, O, B] =
-        new Pull(
-          FreeC.bracketCase(acquire.free, (a: A) => use(a).free, (a: A, c) => release(a, c).free)
+        Pull.fromFreeC(
+          FreeC.bracketCase(acquire.get, (a: A) => use(a).get, (a: A, c) => release(a, c).get)
         )
     }
 
