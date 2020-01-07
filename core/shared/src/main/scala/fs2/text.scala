@@ -14,7 +14,7 @@ object text {
     _.chunks.through(utf8DecodeC)
 
   /** Converts UTF-8 encoded `Chunk[Byte]` inputs to `String`. */
-  def utf8DecodeC[F[_]]: Stream[F, Chunk[Byte]] => Stream[F, String] = {
+  def utf8DecodeC[F[_]]: Pipe[F, Chunk[Byte], String] = {
     /*
      * Returns the number of continuation bytes if `b` is an ASCII byte or a
      * leading byte of a multi-byte sequence, and -1 otherwise.
@@ -64,7 +64,7 @@ object text {
         )
     }
 
-    def doPull(buf: Chunk[Byte], s: Stream[F, Chunk[Byte]]): Pull[F, String, Unit] =
+    def doPull(buf: Chunk[Byte], s: Stream[Pure, Chunk[Byte]]): Pull[Pure, String, Unit] =
       s.pull.uncons.flatMap {
         case Some((byteChunks, tail)) =>
           val (output, nextBuffer) =
@@ -78,8 +78,8 @@ object text {
 
     def processByteOrderMark(
         buffer: Option[Chunk.Queue[Byte]],
-        s: Stream[F, Chunk[Byte]]
-    ): Pull[F, String, Unit] =
+        s: Stream[Pure, Chunk[Byte]]
+    ): Pull[Pure, String, Unit] =
       s.pull.uncons1.flatMap {
         case Some((hd, tl)) =>
           val newBuffer = buffer.getOrElse(Chunk.Queue.empty[Byte]) :+ hd
@@ -100,7 +100,7 @@ object text {
           }
       }
 
-    (in: Stream[F, Chunk[Byte]]) => processByteOrderMark(None, in).stream
+    (in: Stream[Pure, Chunk[Byte]]) => processByteOrderMark(None, in).stream
   }
 
   /** Encodes a stream of `String` in to a stream of bytes using the given charset. */
