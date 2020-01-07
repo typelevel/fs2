@@ -217,7 +217,7 @@ class StreamSpec extends Fs2Spec {
           IO.suspend {
             var o: Vector[Int] = Vector.empty
             (0 until 10)
-              .foldLeft(Stream.emit(1).map(_ => throw new Err).covaryAll[IO, Int]) { (acc, i) =>
+              .foldLeft(Stream.emit(1).map(_ => throw new Err): Stream[IO, Int]) { (acc, i) =>
                 Stream.emit(i) ++ Stream.bracket(IO(i))(i => IO { o = o :+ i }).flatMap(_ => acc)
               }
               .attempt

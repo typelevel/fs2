@@ -250,9 +250,9 @@ object compress {
                 }
 
               if (len > 0)
-                Stream.chunk(Chunk.bytes(inner, 0, len)).covary[F] ++ stepDecompress
+                Stream.chunk(Chunk.bytes(inner, 0, len)) ++ stepDecompress
               else
-                Stream.empty[F]
+                Stream.empty
             }
 
             // Note: It is possible for this to fail with a non-progressive error
