@@ -56,8 +56,8 @@ object ThisModuleShouldCompile {
   val s: Stream[IO, Int] = if (true) Stream(1, 2, 3) else Stream.eval(IO(10))
 
   val t2p: Pipe[Pure, Int, Int] = _.take(2)
-  val t2: Pipe[IO, Int, Int] = _.take(2)
   t2p.covary[IO]
+  val t2: Pipe[IO, Int, Int] = _.take(2)
   val p2: Pipe2[IO, Int, Int, Int] = (s1, s2) => s1.interleave(s2)
   t2.attachL(p2)
   t2.attachR(p2)

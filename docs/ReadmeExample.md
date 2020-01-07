@@ -111,14 +111,7 @@ There are a number of ways of interpreting the stream. In this case, we call `co
 
 ```scala
 val task: IO[Unit] = written.compile.drain
-// task: IO[Unit] = Map(
-//   Bind(
-//     Delay(fs2.Stream$CompileOps$$Lambda$16207/0x0000000804032840@4cfbd166),
-//     fs2.Stream$Compiler$$anon$3$$Lambda$16209/0x0000000804034040@5a887c3d
-//   ),
-//   fs2.Stream$CompileOps$$Lambda$16208/0x0000000804033040@5b1a324b,
-//   0
-// )
+// task: IO[Unit] = <function1>
 ```
 
 We still haven't *done* anything yet. Effects only occur when we run the resulting task. We can run a `IO` by calling `unsafeRunSync()` -- the name is telling us that calling it performs effects and hence, it is not referentially transparent. In this example, we extended `IOApp`, which lets us express our overall program as an `IO[ExitCase]`. The `IOApp` class handles running the task and hooking it up to the application entry point.
