@@ -1101,8 +1101,8 @@ class StreamSpec extends Fs2Spec {
     "every" in {
       flickersOnTravis
       type BD = (Boolean, FiniteDuration)
-      def durationSinceLastTrue[F[_]]: Pipe[F, BD, BD] = {
-        def go(lastTrue: FiniteDuration, s: Stream[F, BD]): Pull[F, BD, Unit] =
+      val durationSinceLastTrue: Pipe[Pure, BD, BD] = {
+        def go(lastTrue: FiniteDuration, s: Stream[Pure, BD]): Pull[Pure, BD, Unit] =
           s.pull.uncons1.flatMap {
             case None => Pull.done
             case Some((pair, tl)) =>

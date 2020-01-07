@@ -46,6 +46,10 @@ import scala.concurrent.ExecutionContext
 
 implicit val cs: ContextShift[IO] = IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
 
+// Note: to make these examples work in docs, we create a `Blocker` manually here but in real code,
+// we should always use `Blocker[IO]`, which returns the blocker as a resource that shuts down the pool
+// upon finalization, like in the original example.
+// See the whole README example for proper resource management in terms of `Blocker`.
 val blockingPool = ExecutionContext.fromExecutorService(Executors.newCachedThreadPool())
 val blocker: Blocker = Blocker.liftExecutionContext(blockingPool)
 
