@@ -127,9 +127,9 @@ import scala.concurrent.duration._
   * @hideImplicitConversion PureOps
   * @hideImplicitConversion IdOps
   **/
-final class Stream[+F[_], +O] private (private val free: FreeC[Nothing, O, Unit]) extends AnyVal {
+final class Stream[+F[_], +O] private (private[fs2] val free: FreeC[F, O, Unit]) extends AnyVal {
   private[fs2] def get[F2[x] >: F[x], O2 >: O]: FreeC[F2, O2, Unit] =
-    free.asInstanceOf[FreeC[F2, O2, Unit]]
+    free
 
   /**
     * Appends `s2` to the end of this stream.
@@ -1128,7 +1128,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Nothing, O, Unit]
             def go(idx: Int): FreeC[F2, O2, Unit] =
               if (idx == hd.size) Stream.fromFreeC(tl).flatMap(f).get
               else {
-                f(hd(idx)).get.transformWith {
+                f(hd(idx)).free.transformWith {
                   case Result.Pure(_)   => go(idx + 1)
                   case Result.Fail(err) => Result.Fail(err)
                   case Result.Interrupted(scopeId: Token, err) =>
@@ -3086,7 +3086,7 @@ object Stream extends StreamLowPriority {
     * }}}
     */
   def chunk[F[x] >: Pure[x], O](os: Chunk[O]): Stream[F, O] =
-    Stream.fromFreeC(Output[F, O](os))
+    new Stream(Output[O](os))
 
   /**
     * Creates an infinite pure stream that always returns the supplied value.
@@ -3119,7 +3119,7 @@ object Stream extends StreamLowPriority {
     * res0: List[Int] = List(0)
     * }}}
     */
-  def emit[F[x] >: Pure[x], O](o: O): Stream[F, O] = fromFreeC(Algebra.output1[F, O](o))
+  def emit[F[x] >: Pure[x], O](o: O): Stream[F, O] = new Stream(Algebra.output1[O](o))
 
   /**
     * Creates a pure stream that emits the supplied values.
@@ -3133,12 +3133,12 @@ object Stream extends StreamLowPriority {
     os match {
       case Nil    => empty
       case Seq(x) => emit(x)
-      case _      => fromFreeC(Algebra.Output[F, O](Chunk.seq(os)))
+      case _      => new Stream(Algebra.Output[O](Chunk.seq(os)))
     }
 
   /** Empty pure stream. */
   val empty: Stream[Pure, INothing] =
-    fromFreeC[Pure, INothing](Result.Pure[Pure, Unit](())): Stream[Pure, INothing]
+    new Stream(Result.unit)
 
   /**
     * Creates a single element stream that gets its value by evaluating the supplied effect. If the effect fails,
@@ -3700,7 +3700,7 @@ object Stream extends StreamLowPriority {
 
     /** Gets a projection of this stream that allows converting it to a `Pull` in a number of ways. */
     def pull: ToPull[F, O] =
-      new ToPull[F, O](free.asInstanceOf[FreeC[Nothing, O, Unit]])
+      new ToPull[F, O](free)
 
     /**
       * Repeatedly invokes `using`, running the resultant `Pull` each time, halting when a pull
@@ -3818,10 +3818,10 @@ object Stream extends StreamLowPriority {
 
   /** Projection of a `Stream` providing various ways to get a `Pull` from the `Stream`. */
   final class ToPull[F[_], O] private[Stream] (
-      private val free: FreeC[Nothing, O, Unit]
+      private val free: FreeC[F, O, Unit]
   ) extends AnyVal {
     private def self: Stream[F, O] =
-      Stream.fromFreeC(free.asInstanceOf[FreeC[F, O, Unit]])
+      new Stream(free)
 
     /**
       * Waits for a chunk of elements to be available in the source stream.
@@ -4234,10 +4234,10 @@ object Stream extends StreamLowPriority {
 
   /** Projection of a `Stream` providing various ways to compile a `Stream[F,O]` to an `F[...]`. */
   final class CompileOps[F[_], G[_], O] private[Stream] (
-      private val free: FreeC[Nothing, O, Unit]
+      private val free: FreeC[F, O, Unit]
   )(implicit compiler: Compiler[F, G]) {
     private def self: Stream[F, O] =
-      Stream.fromFreeC(free.asInstanceOf[FreeC[F, O, Unit]])
+      new Stream(free)
 
     /**
       * Compiles this stream in to a value of the target effect type `F` and

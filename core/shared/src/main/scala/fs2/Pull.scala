@@ -24,9 +24,9 @@ import fs2.internal.Algebra.Eval
   * `raiseError` is caught by `handleErrorWith`:
   *   - `handleErrorWith(raiseError(e))(f) == f(e)`
   */
-final class Pull[+F[_], +O, +R] private (private val free: FreeC[Nothing, O, R]) extends AnyVal {
+final class Pull[+F[_], +O, +R] private (private[fs2] val free: FreeC[F, O, R]) extends AnyVal {
   private[fs2] def get[F2[x] >: F[x], O2 >: O, R2 >: R]: FreeC[F2, O2, R2] =
-    free.asInstanceOf[FreeC[F2, O2, R2]]
+    free
 
   /** Alias for `_.map(_ => o2)`. */
   def as[R2](r2: R2): Pull[F, O, R2] = map(_ => r2)
@@ -55,7 +55,7 @@ final class Pull[+F[_], +O, +R] private (private val free: FreeC[Nothing, O, R])
     flatMap(_ => p2)
 
   /** Lifts this pull to the specified effect type. */
-  def covary[F2[x] >: F[x]]: Pull[F2, O, R] = this.asInstanceOf[Pull[F2, O, R]]
+  def covary[F2[x] >: F[x]]: Pull[F2, O, R] = this
 
   /** Lifts this pull to the specified effect type, output type, and resource type. */
   def covaryAll[F2[x] >: F[x], O2 >: O, R2 >: R]: Pull[F2, O2, R2] = this
@@ -74,7 +74,7 @@ final class Pull[+F[_], +O, +R] private (private val free: FreeC[Nothing, O, R])
 
   /** Run `p2` after `this`, regardless of errors during `this`, then reraise any errors encountered during `this`. */
   def onComplete[F2[x] >: F[x], O2 >: O, R2 >: R](p2: => Pull[F2, O2, R2]): Pull[F2, O2, R2] =
-    handleErrorWith(e => p2 >> new Pull(Result.Fail[Nothing](e))) >> p2
+    handleErrorWith(e => p2 >> new Pull(Result.Fail(e))) >> p2
 
   /** If `this` terminates with `Pull.raiseError(e)`, invoke `h(e)`. */
   def handleErrorWith[F2[x] >: F[x], O2 >: O, R2 >: R](
@@ -98,12 +98,12 @@ object Pull extends PullLowPriority {
     fromFreeC(
       Eval[F, R](fr)
         .map(r => Right(r): Either[Throwable, R])
-        .handleErrorWith(t => Result.Pure[F, Either[Throwable, R]](Left(t)))
+        .handleErrorWith(t => Result.Pure[Either[Throwable, R]](Left(t)))
     )
 
   /** The completed `Pull`. Reads and outputs nothing. */
   val done: Pull[Pure, INothing, Unit] =
-    fromFreeC[Pure, INothing, Unit](Result.Pure[Pure, Unit](()))
+    new Pull(Result.unit)
 
   /** Evaluates the supplied effectful value and returns the result as the resource of the returned pull. */
   def eval[F[_], R](fr: F[R]): Pull[F, INothing, R] =
@@ -121,11 +121,11 @@ object Pull extends PullLowPriority {
 
   /** Outputs a single value. */
   def output1[F[x] >: Pure[x], O](o: O): Pull[F, O, Unit] =
-    fromFreeC(Algebra.output1[F, O](o))
+    new Pull(Algebra.output1[O](o))
 
   /** Outputs a chunk of values. */
   def output[F[x] >: Pure[x], O](os: Chunk[O]): Pull[F, O, Unit] =
-    if (os.isEmpty) Pull.done else fromFreeC(Algebra.Output[F, O](os))
+    if (os.isEmpty) Pull.done else fromFreeC(Algebra.Output[O](os))
 
   /** Pull that outputs nothing and has result of `r`. */
   def pure[F[x] >: Pure[x], R](r: R): Pull[F, INothing, R] =
@@ -137,7 +137,7 @@ object Pull extends PullLowPriority {
     * The `F` type must be explicitly provided (e.g., via `raiseError[IO]` or `raiseError[Fallible]`).
     */
   def raiseError[F[_]: RaiseThrowable](err: Throwable): Pull[F, INothing, INothing] =
-    new Pull(Result.Fail[Nothing](err))
+    new Pull(Result.Fail(err))
 
   final class PartiallyAppliedFromEither[F[_]] {
     def apply[A](either: Either[Throwable, A])(implicit ev: RaiseThrowable[F]): Pull[F, A, Unit] =
