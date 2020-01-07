@@ -659,9 +659,9 @@ final class Stream[+F[_], +O] private (private[fs2] val free: FreeC[F, O, Unit])
   /**
     * Logs the elements of this stream as they are pulled.
     *
-    * If a tag is specified, it prefixes each element using the format `$tag: $o`.
-    * By default, log output is sent to standard out. Supply a different logger param
-    * to change this.
+    * By default, `toString` is called on each element and the result is printed
+    * to standard out. To change formatting, supply a value for the `formatter`
+    * param. To change the destination, supply a value for the `logger` param.
     *
     * This method does not change the chunk structure of the stream. To debug the
     * chunk structure, see [[debugChunks]].
@@ -670,7 +670,7 @@ final class Stream[+F[_], +O] private (private[fs2] val free: FreeC[F, O, Unit])
     * including pure streams.
     *
     * @example {{{
-    * scala> Stream(1, 2).append(Stream(3, 4)).debug("a").toList
+    * scala> Stream(1, 2).append(Stream(3, 4)).debug(o => s"a: $o").toList
     * a: 1
     * a: 2
     * a: 3
@@ -678,13 +678,7 @@ final class Stream[+F[_], +O] private (private[fs2] val free: FreeC[F, O, Unit])
     * res0: List[Int] = List(1, 2, 3, 4)
     * }}}
     */
-  def debug(tag: String = "", logger: String => Unit = println(_)): Stream[F, O] =
-    if (tag.isEmpty) debugFormat(_.toString, logger) else debugFormat(o => s"$tag: $o", logger)
-
-  /**
-    * Like [[debug]] but allows custom formatting of each element.
-    */
-  def debugFormat(formatter: O => String, logger: String => Unit = println(_)): Stream[F, O] =
+  def debug(formatter: O => String = _.toString, logger: String => Unit = println(_)): Stream[F, O] =
     map { o =>
       logger(formatter(o))
       o
@@ -694,7 +688,7 @@ final class Stream[+F[_], +O] private (private[fs2] val free: FreeC[F, O, Unit])
     * Like [[debug]] but logs chunks as they are pulled instead of individual elements.
     *
     * @example {{{
-    * scala> Stream(1, 2, 3).append(Stream(4, 5, 6)).debugChunks("a").buffer(2).debugChunks("b").toList
+    * scala> Stream(1, 2, 3).append(Stream(4, 5, 6)).debugChunks(c => s"a: $c").buffer(2).debugChunks(c => s"b: $c").toList
     * a: Chunk(1, 2, 3)
     * b: Chunk(1, 2)
     * a: Chunk(4, 5, 6)
@@ -703,15 +697,8 @@ final class Stream[+F[_], +O] private (private[fs2] val free: FreeC[F, O, Unit])
     * res0: List[Int] = List(1, 2, 3, 4, 5, 6)
     * }}}
     */
-  def debugChunks(tag: String = "", logger: String => Unit = println(_)): Stream[F, O] =
-    if (tag.isEmpty) debugChunksFormat(_.toString, logger)
-    else debugChunksFormat(o => s"$tag: $o", logger)
-
-  /**
-    * Like [[debugChunks]] but allows custom formatting of each chunk.
-    */
-  def debugChunksFormat(
-      formatter: Chunk[O] => String,
+  def debugChunks(
+      formatter: Chunk[O] => String = _.toString,
       logger: String => Unit = println(_)
   ): Stream[F, O] =
     chunks.flatMap { os =>
