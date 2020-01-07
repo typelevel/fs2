@@ -678,7 +678,10 @@ final class Stream[+F[_], +O] private (private[fs2] val free: FreeC[F, O, Unit])
     * res0: List[Int] = List(1, 2, 3, 4)
     * }}}
     */
-  def debug(formatter: O => String = _.toString, logger: String => Unit = println(_)): Stream[F, O] =
+  def debug(
+      formatter: O => String = _.toString,
+      logger: String => Unit = println(_)
+  ): Stream[F, O] =
     map { o =>
       logger(formatter(o))
       o
