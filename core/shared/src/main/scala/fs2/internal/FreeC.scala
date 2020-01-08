@@ -99,13 +99,6 @@ private[fs2] object FreeC {
     def fromEither[R](either: Either[Throwable, R]): Result[R] =
       either.fold(Result.Fail(_), Result.Pure(_))
 
-    def unapply[F[_], R](freeC: FreeC[F, _, R]): Option[Result[R]] = freeC match {
-      case r @ Result.Pure(_)           => Some(r)
-      case r @ Result.Fail(_)           => Some(r)
-      case r @ Result.Interrupted(_, _) => Some(r)
-      case _                            => None
-    }
-
     final case class Pure[+R](r: R) extends Result[R] {
       override def toString: String = s"FreeC.Pure($r)"
     }
@@ -151,9 +144,7 @@ private[fs2] object FreeC {
           new Bind[F, P, x, R](v.step.mapOutput(f)) {
             def cont(e: Result[x]) = v.next(e).mapOutput(f)
           }
-        case r @ Result.Pure(_)           => r
-        case r @ Result.Fail(_)           => r
-        case r @ Result.Interrupted(_, _) => r
+        case r: Result[_] => r
       }
     }
 
@@ -187,10 +178,11 @@ private[fs2] object FreeC {
     @tailrec
     private def mk[F[_], O, Z](free: FreeC[F, O, Z]): ViewL[F, O, Z] =
       free match {
+        case r: Result[Z]     => r
         case e: Eval[F, O, Z] => new EvalView[F, O, Z](e)
         case b: FreeC.Bind[F, O, y, Z] =>
           b.step match {
-            case Result(r) => mk(b.cont(r))
+            case r: Result[_] => mk(b.cont(r))
             case e: FreeC.Eval[F, O, y] =>
               new ViewL.View[F, O, y, Z](e) {
                 def next(r: Result[y]): FreeC[F, O, Z] = b.cont(r)
@@ -206,9 +198,6 @@ private[fs2] object FreeC {
               }
               mk(nb)
           }
-        case r @ Result.Pure(_)           => r
-        case r @ Result.Fail(_)           => r
-        case r @ Result.Interrupted(_, _) => r
       }
   }
 
