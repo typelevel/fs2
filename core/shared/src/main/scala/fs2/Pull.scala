@@ -32,7 +32,7 @@ final class Pull[+F[_], +O, +R] private[fs2] (private[fs2] val free: FreeC[F, O,
 
   /** Returns a pull with the result wrapped in `Right`, or an error wrapped in `Left` if the pull has failed. */
   def attempt: Pull[F, O, Either[Throwable, R]] =
-    new Pull(free.map(r => Right(r)).handleErrorWith(t => Result.Pure(Left(t))))
+    new Pull(free.map(r => Right(r)).handleErrorWith(t => Result.Value(Left(t))))
 
   /**
     * Interpret this `Pull` to produce a `Stream`.
@@ -95,7 +95,7 @@ object Pull extends PullLowPriority {
     new Pull(
       Eval[F, R](fr)
         .map(r => Right(r): Either[Throwable, R])
-        .handleErrorWith(t => Result.Pure[Either[Throwable, R]](Left(t)))
+        .handleErrorWith(t => Result.Value[Either[Throwable, R]](Left(t)))
     )
 
   /** The completed `Pull`. Reads and outputs nothing. */
@@ -123,7 +123,7 @@ object Pull extends PullLowPriority {
 
   /** Pull that outputs nothing and has result of `r`. */
   def pure[F[x] >: Pure[x], R](r: R): Pull[F, INothing, R] =
-    new Pull(Result.Pure(r))
+    new Pull(Result.Value(r))
 
   /**
     * Reads and outputs nothing, and fails with the given error.
