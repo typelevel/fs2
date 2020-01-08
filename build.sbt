@@ -205,6 +205,16 @@ lazy val mimaSettings = Seq(
     }.toSet
   },
   mimaBinaryIssueFilters ++= Seq(
+    // These methods were only used internally between Stream and Pull: they were private to fs2.
+    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Stream.fromFreeC"),
+    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Stream.get$extension"),
+    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Stream#IdOps.self$extension"),
+    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Pull.get$extension"),
+    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Pull.get"),
+    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Stream.get$extension"),
+    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Stream.get"),
+    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Pull.fromFreeC"),
+    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Pull.get$extension"),
     // No bincompat on internal package
     ProblemFilters.exclude[Problem]("fs2.internal.*"),
     // Mima reports all ScalaSignature changes as errors, despite the fact that they don't cause bincompat issues when version swapping (see https://github.com/lightbend/mima/issues/361)
