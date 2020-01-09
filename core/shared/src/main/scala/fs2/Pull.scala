@@ -24,15 +24,29 @@ import fs2.internal.Algebra.Eval
   * `raiseError` is caught by `handleErrorWith`:
   *   - `handleErrorWith(raiseError(e))(f) == f(e)`
   */
-final class Pull[+F[_], +O, +R] private[fs2] (private[fs2] val free: FreeC[F, O, R])
-    extends AnyVal {
+abstract class Pull[+F[_], +O, +R] private[fs2] () {
+  private[fs2] def asFreeC: FreeC[F, O, R] = this.asInstanceOf[FreeC[F, O, R]]
+
+  /** Applies the resource of this pull to `f` and returns the result. */
+  def flatMap[F2[x] >: F[x], O2 >: O, R2](f: R => Pull[F2, O2, R2]): Pull[F2, O2, R2]
+
+  /** Applies the resource of this pull to `f` and returns the result in a new `Pull`. */
+  def map[R2](f: R => R2): Pull[F, O, R2]
+
+  /** Applies the outputs of this pull to `f` and returns the result in a new `Pull`. */
+  def mapOutput[O2](f: O => O2): Pull[F, O2, R]
+
+  /** If `this` terminates with `Pull.raiseError(e)`, invoke `h(e)`. */
+  def handleErrorWith[F2[x] >: F[x], O2 >: O, R2 >: R](
+      h: Throwable => Pull[F2, O2, R2]
+  ): Pull[F2, O2, R2]
 
   /** Alias for `_.map(_ => o2)`. */
   def as[R2](r2: R2): Pull[F, O, R2] = map(_ => r2)
 
   /** Returns a pull with the result wrapped in `Right`, or an error wrapped in `Left` if the pull has failed. */
   def attempt: Pull[F, O, Either[Throwable, R]] =
-    new Pull(free.map(r => Right(r)).handleErrorWith(t => Result.Pure(Left(t))))
+    map(r => Right(r)).handleErrorWith(t => Result.Pure(Left(t)))
 
   /**
     * Interpret this `Pull` to produce a `Stream`.
@@ -42,12 +56,8 @@ final class Pull[+F[_], +O, +R] private[fs2] (private[fs2] val free: FreeC[F, O,
     */
   def stream(implicit ev: R <:< Unit): Stream[F, O] = {
     val _ = ev
-    new Stream(free.asInstanceOf[FreeC[F, O, Unit]])
+    new Stream(this.asInstanceOf[Pull[F, O, Unit]].asFreeC)
   }
-
-  /** Applies the resource of this pull to `f` and returns the result. */
-  def flatMap[F2[x] >: F[x], O2 >: O, R2](f: R => Pull[F2, O2, R2]): Pull[F2, O2, R2] =
-    new Pull(free.flatMap(r => f(r).free))
 
   /** Alias for `flatMap(_ => p2)`. */
   def >>[F2[x] >: F[x], O2 >: O, R2](p2: => Pull[F2, O2, R2]): Pull[F2, O2, R2] =
@@ -65,21 +75,9 @@ final class Pull[+F[_], +O, +R] private[fs2] (private[fs2] val free: FreeC[F, O,
   /** Lifts this pull to the specified resource type. */
   def covaryResource[R2 >: R]: Pull[F, O, R2] = this
 
-  /** Applies the resource of this pull to `f` and returns the result in a new `Pull`. */
-  def map[R2](f: R => R2): Pull[F, O, R2] = new Pull(free.map(f))
-
-  /** Applies the outputs of this pull to `f` and returns the result in a new `Pull`. */
-  def mapOutput[O2](f: O => O2): Pull[F, O2, R] = new Pull(free.mapOutput(f))
-
   /** Run `p2` after `this`, regardless of errors during `this`, then reraise any errors encountered during `this`. */
   def onComplete[F2[x] >: F[x], O2 >: O, R2 >: R](p2: => Pull[F2, O2, R2]): Pull[F2, O2, R2] =
-    handleErrorWith(e => p2 >> new Pull(Result.Fail(e))) >> p2
-
-  /** If `this` terminates with `Pull.raiseError(e)`, invoke `h(e)`. */
-  def handleErrorWith[F2[x] >: F[x], O2 >: O, R2 >: R](
-      h: Throwable => Pull[F2, O2, R2]
-  ): Pull[F2, O2, R2] =
-    new Pull(free.handleErrorWith(e => h(e).free))
+    handleErrorWith(e => p2 >> Result.Fail(e)) >> p2
 
   /** Discards the result type of this pull. */
   def void: Pull[F, O, Unit] = as(())
@@ -92,19 +90,17 @@ object Pull extends PullLowPriority {
     * instead of failing the pull.
     */
   def attemptEval[F[_], R](fr: F[R]): Pull[F, INothing, Either[Throwable, R]] =
-    new Pull(
-      Eval[F, R](fr)
-        .map(r => Right(r): Either[Throwable, R])
-        .handleErrorWith(t => Result.Pure[Either[Throwable, R]](Left(t)))
-    )
+    Eval[F, R](fr)
+      .map(r => Right(r): Either[Throwable, R])
+      .handleErrorWith(t => Result.Pure[Either[Throwable, R]](Left(t)))
 
   /** The completed `Pull`. Reads and outputs nothing. */
   val done: Pull[Pure, INothing, Unit] =
-    new Pull(Result.unit)
+    Result.unit
 
   /** Evaluates the supplied effectful value and returns the result as the resource of the returned pull. */
   def eval[F[_], R](fr: F[R]): Pull[F, INothing, R] =
-    new Pull(Eval[F, R](fr))
+    Eval[F, R](fr)
 
   /**
     * Repeatedly uses the output of the pull as input for the next step of the pull.
@@ -115,15 +111,14 @@ object Pull extends PullLowPriority {
 
   /** Outputs a single value. */
   def output1[F[x] >: Pure[x], O](o: O): Pull[F, O, Unit] =
-    new Pull(Algebra.output1[O](o))
+    Algebra.output1[O](o)
 
   /** Outputs a chunk of values. */
   def output[F[x] >: Pure[x], O](os: Chunk[O]): Pull[F, O, Unit] =
-    if (os.isEmpty) Pull.done else new Pull(Algebra.Output[O](os))
+    if (os.isEmpty) done else Algebra.Output[O](os)
 
   /** Pull that outputs nothing and has result of `r`. */
-  def pure[F[x] >: Pure[x], R](r: R): Pull[F, INothing, R] =
-    new Pull(Result.Pure(r))
+  def pure[F[x] >: Pure[x], R](r: R): Pull[F, INothing, R] = Result.Pure(r)
 
   /**
     * Reads and outputs nothing, and fails with the given error.
@@ -131,7 +126,7 @@ object Pull extends PullLowPriority {
     * The `F` type must be explicitly provided (e.g., via `raiseError[IO]` or `raiseError[Fallible]`).
     */
   def raiseError[F[_]: RaiseThrowable](err: Throwable): Pull[F, INothing, INothing] =
-    new Pull(Result.Fail(err))
+    Result.Fail(err)
 
   final class PartiallyAppliedFromEither[F[_]] {
     def apply[A](either: Either[Throwable, A])(implicit ev: RaiseThrowable[F]): Pull[F, A, Unit] =
@@ -156,7 +151,7 @@ object Pull extends PullLowPriority {
     * allowing use of a mutable value in pull computations.
     */
   def suspend[F[x] >: Pure[x], O, R](p: => Pull[F, O, R]): Pull[F, O, R] =
-    new Pull(FreeC.suspend(p.free))
+    FreeC.suspend(p.asFreeC)
 
   /** `Sync` instance for `Pull`. */
   implicit def syncInstance[F[_], O](
@@ -177,8 +172,10 @@ object Pull extends PullLowPriority {
       def bracketCase[A, B](acquire: Pull[F, O, A])(
           use: A => Pull[F, O, B]
       )(release: (A, ExitCase[Throwable]) => Pull[F, O, Unit]): Pull[F, O, B] =
-        new Pull(
-          FreeC.bracketCase(acquire.free, (a: A) => use(a).free, (a: A, c) => release(a, c).free)
+        FreeC.bracketCase(
+          acquire.asFreeC,
+          (a: A) => use(a).asFreeC,
+          (a: A, c) => release(a, c).asFreeC
         )
     }
 

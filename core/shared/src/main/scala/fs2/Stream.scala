@@ -3050,7 +3050,7 @@ object Stream extends StreamLowPriority {
     * }}}
     */
   def attemptEval[F[x] >: Pure[x], O](fo: F[O]): Stream[F, Either[Throwable, O]] =
-    new Stream(Pull.attemptEval(fo).flatMap(Pull.output1).free)
+    new Stream(Pull.attemptEval(fo).flatMap(Pull.output1).asFreeC)
 
   /**
     * Light weight alternative to `awakeEvery` that sleeps for duration `d` before each pulled element.
@@ -3876,7 +3876,7 @@ object Stream extends StreamLowPriority {
       * A `None` is returned as the resource of the pull upon reaching the end of the stream.
       */
     def uncons: Pull[F, INothing, Option[(Chunk[O], Stream[F, O])]] =
-      new Pull(Algebra.uncons(free)).map {
+      Algebra.uncons(free).map {
         _.map { case (hd, tl) => (hd, new Stream(tl)) }
       }
 
@@ -4002,7 +4002,7 @@ object Stream extends StreamLowPriority {
       }
 
     /** Writes all inputs to the output of the returned `Pull`. */
-    def echo: Pull[F, O, Unit] = new Pull(free)
+    def echo: Pull[F, O, Unit] = free
 
     /** Reads a single element from the input and emits it to the output. */
     def echo1: Pull[F, O, Option[Stream[F, O]]] =
@@ -4143,7 +4143,7 @@ object Stream extends StreamLowPriority {
       * If you are not pulling from multiple streams, consider using `uncons`.
       */
     def stepLeg: Pull[F, INothing, Option[StepLeg[F, O]]] =
-      new Pull(GetScope[F]()).flatMap { scope =>
+      GetScope[F]().flatMap { scope =>
         new StepLeg[F, O](Chunk.empty, scope.id, free).stepLeg
       }
 
@@ -4613,7 +4613,7 @@ object Stream extends StreamLowPriority {
 
     /** Provides an `uncons`-like operation on this leg of the stream. */
     def stepLeg: Pull[F, INothing, Option[StepLeg[F, O]]] =
-      new Pull(Algebra.stepLeg(self))
+      Algebra.stepLeg(self)
   }
 
   /** Provides operations on effectful pipes for syntactic convenience. */

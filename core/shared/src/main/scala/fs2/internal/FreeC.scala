@@ -1,7 +1,7 @@
 package fs2.internal
 
 import cats.effect.ExitCase
-import fs2.{CompositeFailure, INothing, Pure => PureK}
+import fs2.{CompositeFailure, INothing, Pull, Pure => PureK}
 import FreeC._
 
 import scala.annotation.tailrec
@@ -21,12 +21,13 @@ import scala.util.control.NonFatal
   * Typically the [[FreeC]] user provides interpretation of FreeC in form of [[ViewL]] structure, that allows to step
   * FreeC via series of Results ([[Result.Pure]], [[Result.Fail]] and [[Result.Interrupted]]) and FreeC step ([[ViewL.View]])
   */
-private[fs2] abstract class FreeC[+F[_], +O, +R] {
-  def flatMap[F2[x] >: F[x], O2 >: O, R2](f: R => FreeC[F2, O2, R2]): FreeC[F2, O2, R2] =
+private[fs2] abstract class FreeC[+F[_], +O, +R] extends fs2.Pull[F, O, R] {
+
+  override def flatMap[F2[x] >: F[x], O2 >: O, R2](f: R => Pull[F2, O2, R2]): FreeC[F2, O2, R2] =
     new Bind[F2, O2, R, R2](this) {
       def cont(e: Result[R]): FreeC[F2, O2, R2] = e match {
         case Result.Pure(r) =>
-          try f(r)
+          try f(r).asFreeC
           catch { case NonFatal(e) => FreeC.Result.Fail(e) }
         case res @ Result.Interrupted(_, _) => res
         case res @ Result.Fail(_)           => res
@@ -51,18 +52,18 @@ private[fs2] abstract class FreeC[+F[_], +O, +R] {
         catch { case NonFatal(e) => FreeC.Result.Fail(e) }
     }
 
-  def map[O2 >: O, R2](f: R => R2): FreeC[F, O2, R2] =
-    new Bind[F, O2, R, R2](this) {
-      def cont(e: Result[R]): FreeC[F, O2, R2] = Result.map(e)(f)
+  override def map[R2](f: R => R2): FreeC[F, O, R2] =
+    new Bind[F, O, R, R2](this) {
+      def cont(e: Result[R]): FreeC[F, O, R2] = Result.map(e)(f)
     }
 
-  def handleErrorWith[F2[x] >: F[x], O2 >: O, R2 >: R](
-      h: Throwable => FreeC[F2, O2, R2]
+  override def handleErrorWith[F2[x] >: F[x], O2 >: O, R2 >: R](
+      h: Throwable => Pull[F2, O2, R2]
   ): FreeC[F2, O2, R2] =
     new Bind[F2, O2, R2, R2](this) {
       def cont(e: Result[R2]): FreeC[F2, O2, R2] = e match {
         case Result.Fail(e) =>
-          try h(e)
+          try h(e).asFreeC
           catch { case NonFatal(e) => FreeC.Result.Fail(e) }
         case other => other
       }
@@ -78,7 +79,7 @@ private[fs2] abstract class FreeC[+F[_], +O, +R] {
 
   def viewL[F2[x] >: F[x], O2 >: O, R2 >: R]: ViewL[F2, O2, R2] = ViewL(this)
 
-  def mapOutput[P](f: O => P): FreeC[F, P, R]
+  override def mapOutput[P](f: O => P): FreeC[F, P, R]
 }
 
 private[fs2] object FreeC {
