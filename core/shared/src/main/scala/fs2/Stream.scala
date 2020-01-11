@@ -7,10 +7,9 @@ import cats.effect.concurrent._
 import cats.effect.implicits._
 import cats.implicits.{catsSyntaxEither => _, _}
 import fs2.concurrent._
-import fs2.internal.Algebra.{Acquire, Eval, GetScope, Output}
-import fs2.internal.FreeC.Result
 import fs2.internal.{Resource => _, _}
 import java.io.PrintStream
+import PullImpl.{Acquire, Eval, Fail, GetScope, Interrupted, Output, Value}
 
 import scala.annotation.tailrec
 import scala.concurrent.TimeoutException
@@ -130,7 +129,7 @@ import cats.data.Ior.Both
   * @hideImplicitConversion PureOps
   * @hideImplicitConversion IdOps
   **/
-final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit]) extends AnyVal {
+final class Stream[+F[_], +O] private[fs2] (private[fs2] val free: Pull[F, O, Unit]) extends AnyVal {
 
   /**
     * Appends `s2` to the end of this stream.
@@ -1222,32 +1221,32 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
     * }}}
     */
   def flatMap[F2[x] >: F[x], O2](f: O => Stream[F2, O2]): Stream[F2, O2] =
-    new Stream(Algebra.uncons(free).flatMap {
+    new Stream(PullImpl.uncons(free).flatMap {
       case Some((hd, tl)) =>
         tl match {
-          case FreeC.Result.Pure(_) if hd.size == 1 =>
+          case Value(_) if hd.size == 1 =>
             // nb: If tl is Pure, there's no need to propagate flatMap through the tail. Hence, we
             // check if hd has only a single element, and if so, process it directly instead of folding.
             // This allows recursive infinite streams of the form `def s: Stream[Pure,O] = Stream(o).flatMap { _ => s }`
             f(hd(0)).free
 
           case _ =>
-            def go(idx: Int): FreeC[F2, O2, Unit] =
+            def go(idx: Int): Pull[F2, O2, Unit] =
               if (idx == hd.size) new Stream(tl).flatMap(f).free
               else
                 f(hd(idx)).free.transformWith {
-                  case Result.Pure(_)   => go(idx + 1)
-                  case Result.Fail(err) => Result.Fail(err)
-                  case Result.Interrupted(scopeId: Token, err) =>
-                    new Stream(Algebra.interruptBoundary(tl, scopeId, err)).flatMap(f).free
-                  case Result.Interrupted(invalid, _) =>
+                  case Value(_)  => go(idx + 1)
+                  case Fail(err) => Fail(err)
+                  case Interrupted(scopeId: Token, err) =>
+                    new Stream(PullImpl.interruptBoundary(tl, scopeId, err)).flatMap(f).free
+                  case Interrupted(invalid, _) =>
                     sys.error(s"Invalid interruption context: $invalid (flatMap)")
                 }
 
             go(0)
         }
 
-      case None => FreeC.Result.unit
+      case None => Pull.unit
     })
 
   /** Alias for `flatMap(_ => s2)`. */
@@ -1548,7 +1547,7 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
     * }}}
     */
   def handleErrorWith[F2[x] >: F[x], O2 >: O](h: Throwable => Stream[F2, O2]): Stream[F2, O2] =
-    new Stream(Algebra.scope(free).handleErrorWith(e => h(e).free))
+    new Stream(PullImpl.scoped(free, None).handleErrorWith(e => h(e).free))
 
   /**
     * Emits the first element of this stream (if non-empty) and then halts.
@@ -1695,7 +1694,7 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
     * Creates a scope that may be interrupted by calling scope#interrupt.
     */
   def interruptScope[F2[x] >: F[x]: Concurrent]: Stream[F2, O] =
-    new Stream(Algebra.interruptScope(free: FreeC[F2, O, Unit]))
+    new Stream(PullImpl.scoped(free, Some(Concurrent[F2])))
 
   /**
     * Emits the specified separator between every pair of elements in the source stream.
@@ -2034,7 +2033,7 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
     * }}}
     */
   def onComplete[F2[x] >: F[x], O2 >: O](s2: => Stream[F2, O2]): Stream[F2, O2] =
-    handleErrorWith(e => s2 ++ new Stream(Result.Fail(e))) ++ s2
+    handleErrorWith(e => s2 ++ new Stream(Fail(e))) ++ s2
 
   /**
     * Runs the supplied effectful action at the end of this stream, regardless of how the stream terminates.
@@ -2609,7 +2608,7 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
     * is introduced.
     */
   def scope: Stream[F, O] =
-    new Stream(Algebra.scope(free))
+    new Stream(PullImpl.scoped(free, None))
 
   /**
     * Writes this stream to the supplied `PrintStream`, converting each element to a `String` via `Show`.
@@ -2815,14 +2814,14 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
     * stream, `translateInterruptible` instead, which requires a `Concurrent[G]` instance.
     */
   def translate[F2[x] >: F[x], G[_]](u: F2 ~> G): Stream[G, O] =
-    new Stream(Algebra.translate[F2, G, O](free, u))
+    new Stream(PullImpl.translate[F2, G, O](free, u))
 
   /**
     * Translates effect type from `F` to `G` using the supplied `FunctionK`.
     */
   def translateInterruptible[F2[x] >: F[x], G[_]: Concurrent](u: F2 ~> G): Stream[G, O] =
     new Stream(
-      Algebra.translate[F2, G, O](free, u)(TranslateInterrupt.interruptibleInstance[G])
+      PullImpl.translate[F2, G, O](free, u)(TranslateInterrupt.interruptibleInstance[G])
     )
 
   /**
@@ -3172,7 +3171,7 @@ object Stream extends StreamLowPriority {
     * }}}
     */
   def attemptEval[F[x] >: Pure[x], O](fo: F[O]): Stream[F, Either[Throwable, O]] =
-    new Stream(Pull.attemptEval(fo).flatMap(Pull.output1).get)
+    new Stream(Pull.attemptEval(fo).flatMap(Pull.output1))
 
   /**
     * Light weight alternative to `awakeEvery` that sleeps for duration `d` before each pulled element.
@@ -3245,7 +3244,7 @@ object Stream extends StreamLowPriority {
   def bracketCaseWeak[F[x] >: Pure[x], R](
       acquire: F[R]
   )(release: (R, ExitCase[Throwable]) => F[Unit]): Stream[F, R] =
-    new Stream(Acquire[F, R](acquire, release).flatMap(Algebra.output1(_)))
+    new Stream(Acquire[F, R](acquire, release).flatMap(Pull.output1(_)))
 
   /**
     * Creates a pure stream that emits the elements of the supplied chunk.
@@ -3289,7 +3288,7 @@ object Stream extends StreamLowPriority {
     * res0: List[Int] = List(0)
     * }}}
     */
-  def emit[F[x] >: Pure[x], O](o: O): Stream[F, O] = new Stream(Algebra.output1[O](o))
+  def emit[F[x] >: Pure[x], O](o: O): Stream[F, O] = new Stream(Pull.output1(o))
 
   /**
     * Creates a pure stream that emits the supplied values.
@@ -3303,12 +3302,12 @@ object Stream extends StreamLowPriority {
     os match {
       case Nil    => empty
       case Seq(x) => emit(x)
-      case _      => new Stream(Algebra.Output[O](Chunk.seq(os)))
+      case _      => new Stream(PullImpl.Output[O](Chunk.seq(os)))
     }
 
   /** Empty pure stream. */
   val empty: Stream[Pure, INothing] =
-    new Stream(Result.unit)
+    new Stream(Pull.unit)
 
   /**
     * Creates a single element stream that gets its value by evaluating the supplied effect. If the effect fails,
@@ -3325,7 +3324,7 @@ object Stream extends StreamLowPriority {
     * }}}
     */
   def eval[F[_], O](fo: F[O]): Stream[F, O] =
-    new Stream(Eval(fo).flatMap(Algebra.output1))
+    new Stream(Eval(fo).flatMap(Pull.output1))
 
   /**
     * Creates a stream that evaluates the supplied `fa` for its effect, discarding the output value.
@@ -3518,7 +3517,7 @@ object Stream extends StreamLowPriority {
     * This is a low-level method and generally should not be used by user code.
     */
   def getScope[F[x] >: Pure[x]]: Stream[F, Scope[F]] =
-    new Stream(GetScope[F]().flatMap(Algebra.output1(_)))
+    new Stream(GetScope[F]().flatMap(Pull.output1(_)))
 
   /**
     * A stream that never emits and never terminates.
@@ -3540,7 +3539,7 @@ object Stream extends StreamLowPriority {
     * }}}
     */
   def raiseError[F[_]: RaiseThrowable](e: Throwable): Stream[F, INothing] =
-    new Stream(Result.Fail(e))
+    new Stream(Fail(e))
 
   /**
     * Creates a random stream of integers using a random seed.
@@ -3703,7 +3702,7 @@ object Stream extends StreamLowPriority {
     * }}}
     */
   def suspend[F[_], O](s: => Stream[F, O]): Stream[F, O] =
-    new Stream(FreeC.suspend(s.free))
+    new Stream(Pull.suspend(s.free))
 
   /**
     * Creates a stream by successively applying `f` until a `None` is returned, emitting
@@ -3790,7 +3789,7 @@ object Stream extends StreamLowPriority {
 
   /** Provides syntax for streams that are invariant in `F` and `O`. */
   final class InvariantOps[F[_], O] private[Stream] (
-      private val free: FreeC[F, O, Unit]
+      private val free: Pull[F, O, Unit]
   ) extends AnyVal {
     private def self: Stream[F, O] = new Stream(free)
 
@@ -3903,7 +3902,7 @@ object Stream extends StreamLowPriority {
     new PureOps(s.free)
 
   /** Provides syntax for pure streams. */
-  final class PureOps[O] private[Stream] (private val free: FreeC[Pure, O, Unit]) extends AnyVal {
+  final class PureOps[O] private[Stream] (private val free: Pull[Pure, O, Unit]) extends AnyVal {
     private def self: Stream[Pure, O] = new Stream[Pure, O](free)
 
     /** Alias for covary, to be able to write `Stream.empty[X]`. */
@@ -3934,7 +3933,7 @@ object Stream extends StreamLowPriority {
     new PureTo(s.free)
 
   /** Provides `to` syntax for pure streams. */
-  final class PureTo[O] private[Stream] (private val free: FreeC[Pure, O, Unit]) extends AnyVal {
+  final class PureTo[O] private[Stream] (private val free: Pull[Pure, O, Unit]) extends AnyVal {
     private def self: Stream[Pure, O] = new Stream[Pure, O](free)
 
     /** Runs this pure stream and returns the emitted elements in a collection of the specified type. Note: this method is only available on pure streams. */
@@ -3947,7 +3946,7 @@ object Stream extends StreamLowPriority {
     new IdOps(s.free)
 
   /** Provides syntax for pure pipes based on `cats.Id`. */
-  final class IdOps[O] private[Stream] (private val free: FreeC[Id, O, Unit]) extends AnyVal {
+  final class IdOps[O] private[Stream] (private val free: Pull[Id, O, Unit]) extends AnyVal {
     private def idToApplicative[F[_]: Applicative]: Id ~> F =
       new (Id ~> F) { def apply[A](a: Id[A]) = a.pure[F] }
 
@@ -3959,7 +3958,7 @@ object Stream extends StreamLowPriority {
     new FallibleOps(s.free)
 
   /** Provides syntax for fallible streams. */
-  final class FallibleOps[O] private[Stream] (private val free: FreeC[Fallible, O, Unit])
+  final class FallibleOps[O] private[Stream] (private val free: Pull[Fallible, O, Unit])
       extends AnyVal {
     private def self: Stream[Fallible, O] = new Stream(free)
 
@@ -3991,7 +3990,7 @@ object Stream extends StreamLowPriority {
     new FallibleTo(s.free)
 
   /** Provides `to` syntax for fallible streams. */
-  final class FallibleTo[O] private[Stream] (private val free: FreeC[Fallible, O, Unit])
+  final class FallibleTo[O] private[Stream] (private val free: Pull[Fallible, O, Unit])
       extends AnyVal {
     private def self: Stream[Fallible, O] = new Stream(free)
 
@@ -4002,7 +4001,7 @@ object Stream extends StreamLowPriority {
 
   /** Projection of a `Stream` providing various ways to get a `Pull` from the `Stream`. */
   final class ToPull[F[_], O] private[Stream] (
-      private val free: FreeC[F, O, Unit]
+      private val free: Pull[F, O, Unit]
   ) extends AnyVal {
     private def self: Stream[F, O] =
       new Stream(free)
@@ -4014,7 +4013,7 @@ object Stream extends StreamLowPriority {
       * A `None` is returned as the resource of the pull upon reaching the end of the stream.
       */
     def uncons: Pull[F, INothing, Option[(Chunk[O], Stream[F, O])]] =
-      new Pull(Algebra.uncons(free)).map {
+      PullImpl.uncons(free).map {
         _.map { case (hd, tl) => (hd, new Stream(tl)) }
       }
 
@@ -4140,7 +4139,7 @@ object Stream extends StreamLowPriority {
       }
 
     /** Writes all inputs to the output of the returned `Pull`. */
-    def echo: Pull[F, O, Unit] = new Pull(free)
+    def echo: Pull[F, O, Unit] = free
 
     /** Reads a single element from the input and emits it to the output. */
     def echo1: Pull[F, O, Option[Stream[F, O]]] =
@@ -4281,7 +4280,7 @@ object Stream extends StreamLowPriority {
       * If you are not pulling from multiple streams, consider using `uncons`.
       */
     def stepLeg: Pull[F, INothing, Option[StepLeg[F, O]]] =
-      new Pull(GetScope[F]()).flatMap { scope =>
+      GetScope[F]().flatMap { scope =>
         new StepLeg[F, O](Chunk.empty, scope.id, free).stepLeg
       }
 
@@ -4365,7 +4364,7 @@ object Stream extends StreamLowPriority {
 
               resourceEval {
                 F.delay(init())
-                  .flatMap(i => Algebra.compile(s.free, scope, true, i)(foldChunk))
+                  .flatMap(i => PullImpl.compile(s.free, scope, true, i)(foldChunk))
                   .map(finalize)
               }
             }
@@ -4373,11 +4372,11 @@ object Stream extends StreamLowPriority {
   }
 
   object Compiler extends LowPrioCompiler {
-    private def compile[F[_], O, B](stream: FreeC[F, O, Unit], init: B)(
+    private def compile[F[_], O, B](stream: Pull[F, O, Unit], init: B)(
         f: (B, Chunk[O]) => B
     )(implicit F: Sync[F]): F[B] =
       F.bracketCase(CompileScope.newRoot[F])(scope =>
-        Algebra.compile[F, O, B](stream, scope, false, init)(f)
+        PullImpl.compile[F, O, B](stream, scope, false, init)(f)
       )((scope, ec) => scope.close(ec).rethrow)
 
     implicit def syncInstance[F[_]](implicit F: Sync[F]): Compiler[F, F] =
@@ -4417,7 +4416,7 @@ object Stream extends StreamLowPriority {
 
   /** Projection of a `Stream` providing various ways to compile a `Stream[F,O]` to a `G[...]`. */
   final class CompileOps[F[_], G[_], O] private[Stream] (
-      private val free: FreeC[F, O, Unit]
+      private val free: Pull[F, O, Unit]
   )(implicit compiler: Compiler[F, G]) {
     private def self: Stream[F, O] =
       new Stream(free)
@@ -4728,7 +4727,7 @@ object Stream extends StreamLowPriority {
   final class StepLeg[F[_], O](
       val head: Chunk[O],
       private[fs2] val scopeId: Token,
-      private[fs2] val next: FreeC[F, O, Unit]
+      private[fs2] val next: Pull[F, O, Unit]
   ) { self =>
 
     /**
@@ -4752,7 +4751,7 @@ object Stream extends StreamLowPriority {
 
     /** Provides an `uncons`-like operation on this leg of the stream. */
     def stepLeg: Pull[F, INothing, Option[StepLeg[F, O]]] =
-      new Pull(Algebra.stepLeg(self))
+      PullImpl.stepLeg(self)
   }
 
   /**

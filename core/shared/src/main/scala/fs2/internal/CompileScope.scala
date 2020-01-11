@@ -367,7 +367,7 @@ private[fs2] final class CompileScope[F[_]] private (
     * Or if the evaluation is interrupted by a failure this evaluates on `Left` - `Left` where the exception
     * that caused the interruption is returned so that it can be handled.
     */
-  private[internal] def interruptibleEval[A](f: F[A]): F[Either[Either[Throwable, Token], A]] =
+  private[fs2] def interruptibleEval[A](f: F[A]): F[Either[Either[Throwable, Token], A]] =
     interruptible match {
       case None => F.map(F.attempt(f))(_.swap.map(Left(_)).swap)
       case Some(iCtx) =>
