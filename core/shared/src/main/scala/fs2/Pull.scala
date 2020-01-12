@@ -161,26 +161,10 @@ object Pull extends PullLowPriority {
   /** `Sync` instance for `Pull`. */
   implicit def syncInstance[F[_], O](
       implicit ev: ApplicativeError[F, Throwable]
-  ): Sync[Pull[F, O, ?]] =
-    new Sync[Pull[F, O, ?]] {
-      def pure[A](a: A): Pull[F, O, A] = Pull.pure(a)
-      def handleErrorWith[A](p: Pull[F, O, A])(h: Throwable => Pull[F, O, A]) =
-        p.handleErrorWith(h)
-      def raiseError[A](t: Throwable) = Pull.raiseError[F](t)
-      def flatMap[A, B](p: Pull[F, O, A])(f: A => Pull[F, O, B]) = p.flatMap(f)
-      def tailRecM[A, B](a: A)(f: A => Pull[F, O, Either[A, B]]) =
-        f(a).flatMap {
-          case Left(a)  => tailRecM(a)(f)
-          case Right(b) => Pull.pure(b)
-        }
-      def suspend[R](p: => Pull[F, O, R]) = Pull.suspend(p)
-      def bracketCase[A, B](acquire: Pull[F, O, A])(
-          use: A => Pull[F, O, B]
-      )(release: (A, ExitCase[Throwable]) => Pull[F, O, Unit]): Pull[F, O, B] =
-        new Pull(
-          FreeC.bracketCase(acquire.free, (a: A) => use(a).free, (a: A, c) => release(a, c).free)
-        )
-    }
+  ): Sync[Pull[F, O, ?]] = {
+    val _ = ev
+    new PullSyncInstance[F, O]
+  }
 
   /**
     * `FunctionK` instance for `F ~> Pull[F, INothing, ?]`
@@ -197,14 +181,26 @@ object Pull extends PullLowPriority {
 
 private[fs2] trait PullLowPriority {
   implicit def monadInstance[F[_], O]: Monad[Pull[F, O, ?]] =
-    new Monad[Pull[F, O, ?]] {
-      override def pure[A](a: A): Pull[F, O, A] = Pull.pure(a)
-      override def flatMap[A, B](p: Pull[F, O, A])(f: A => Pull[F, O, B]): Pull[F, O, B] =
-        p.flatMap(f)
-      override def tailRecM[A, B](a: A)(f: A => Pull[F, O, Either[A, B]]): Pull[F, O, B] =
-        f(a).flatMap {
-          case Left(a)  => tailRecM(a)(f)
-          case Right(b) => Pull.pure(b)
-        }
+    new PullSyncInstance[F, O]
+}
+
+private[fs2] class PullSyncInstance[F[_], O] extends Sync[Pull[F, O, ?]] {
+  def pure[A](a: A): Pull[F, O, A] = Pull.pure(a)
+  def flatMap[A, B](p: Pull[F, O, A])(f: A => Pull[F, O, B]): Pull[F, O, B] =
+    p.flatMap(f)
+  override def tailRecM[A, B](a: A)(f: A => Pull[F, O, Either[A, B]]): Pull[F, O, B] =
+    f(a).flatMap {
+      case Left(a)  => tailRecM(a)(f)
+      case Right(b) => Pull.pure(b)
     }
+  def raiseError[A](e: Throwable) = new Pull(Result.Fail(e))
+  def handleErrorWith[A](fa: Pull[F, O, A])(h: Throwable => Pull[F, O, A]) =
+    fa.handleErrorWith(h)
+  def suspend[R](p: => Pull[F, O, R]) = Pull.suspend(p)
+  def bracketCase[A, B](acquire: Pull[F, O, A])(
+      use: A => Pull[F, O, B]
+  )(release: (A, ExitCase[Throwable]) => Pull[F, O, Unit]): Pull[F, O, B] =
+    new Pull(
+      FreeC.bracketCase(acquire.free, (a: A) => use(a).free, (a: A, c) => release(a, c).free)
+    )
 }
