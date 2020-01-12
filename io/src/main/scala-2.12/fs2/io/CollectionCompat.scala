@@ -12,4 +12,7 @@ private[fs2] object CollectionCompat {
   implicit class ListOps[A](private val self: List[A]) extends AnyVal {
     def asJava: java.util.List[A] = seqAsJavaList(self)
   }
+  implicit class EnumerationOps[A](private val self: java.util.Enumeration[A]) extends AnyVal {
+    def asScala: Iterator[A] = enumerationAsScalaIterator(self)
+  }
 }

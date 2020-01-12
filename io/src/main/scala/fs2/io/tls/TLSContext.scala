@@ -178,20 +178,22 @@ object TLSContext {
   }
 
   /** Creates a `TLSContext` which trusts all certificates. */
-  def insecure(blocker: Blocker): TLSContext = {
-    val ctx = SSLContext.getInstance("TLS")
-    val tm = new X509TrustManager {
-      def checkClientTrusted(x: Array[X509Certificate], y: String): Unit = {}
-      def checkServerTrusted(x: Array[X509Certificate], y: String): Unit = {}
-      def getAcceptedIssuers(): Array[X509Certificate] = Array()
-    }
-    ctx.init(null, Array(tm), null)
-    fromSSLContext(ctx, blocker)
+  def insecure[F[_]: Sync: ContextShift](blocker: Blocker): F[TLSContext] = {
+    blocker.delay {
+      val ctx = SSLContext.getInstance("TLS")
+      val tm = new X509TrustManager {
+        def checkClientTrusted(x: Array[X509Certificate], y: String): Unit = {}
+        def checkServerTrusted(x: Array[X509Certificate], y: String): Unit = {}
+        def getAcceptedIssuers(): Array[X509Certificate] = Array()
+      }
+      ctx.init(null, Array(tm), null)
+      ctx
+    }.map(fromSSLContext(_, blocker))
   }
 
   /** Creates a `TLSContext` from the system default `SSLContext`. */
-  def system(blocker: Blocker): TLSContext =
-    fromSSLContext(SSLContext.getDefault, blocker)
+  def system[F[_]: Sync: ContextShift](blocker: Blocker): F[TLSContext] =
+    blocker.delay(SSLContext.getDefault).map(fromSSLContext(_, blocker))
 
   /** Creates a `TLSContext` from the specified key store file. */
   def fromKeyStoreFile[F[_]: Sync: ContextShift](

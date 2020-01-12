@@ -24,8 +24,8 @@ class TLSSocketSpec extends TLSSpec {
               SocketGroup[IO](blocker).use { socketGroup =>
                 socketGroup.client[IO](new InetSocketAddress("www.google.com", 443)).use { socket =>
                   TLSContext
-                    .system(blocker)
-                    .client(
+                    .system[IO](blocker).flatMap { ctx =>
+                    ctx.client(
                       socket,
                       TLSParameters(
                         protocols = Some(List(protocol)),
@@ -45,6 +45,7 @@ class TLSSocketSpec extends TLSSpec {
                           .through(text.lines)).head.compile.string
                     }
                     .asserting(_ shouldBe "HTTP/1.1 200 OK")
+                  }
                 }
               }
             }
