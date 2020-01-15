@@ -449,7 +449,7 @@ program.compile.drain.unsafeRunSync
 
 Let's take this line by line now, so we can understand what's going on.
 ```scala
-val program = 
+val program =
   Stream.eval(Deferred[IO, Unit]).flatMap { switch =>
 ```
 
@@ -462,7 +462,7 @@ val switcher =
 
 The `switcher` will be the stream that, after 5 seconds, will "flip" the `switch` calling `complete` on it. `delayBy` concatenates the stream after another that sleeps for the specified duration, effectively delaying the evaluation of our stream.
 ```scala
-val program = 
+val program =
   Stream.repeatEval(IO(println(java.time.LocalTime.now))).metered(1.second)
 ```
 
@@ -478,7 +478,7 @@ In this line we call `interruptWhen` on the stream, obtaining a stream that will
 
 This is a way to create a program that runs for a given time, in this example 5 seconds. Timed interruption is such a common use case that FS2 defines the `interruptAfter` method. Armed with this knowledge we can rewrite our example as:
 ```scala mdoc
-val program1 = 
+val program1 =
   Stream.
     repeatEval(IO(println(java.time.LocalTime.now))).
     metered(1.second).
@@ -670,7 +670,7 @@ In FS2, a stream can terminate in one of three ways:
 Regarding 3:
 
 * A stream will never be interrupted while it is acquiring a resource (via `bracket`) or while it is releasing a resource. The `bracket` function guarantees that if FS2 starts acquiring the resource, the corresponding release action will be run.
-* Other than that, Streams can be interrupted in between any two 'steps' of the stream. The steps themselves are atomic from the perspective of FS2. `Stream.eval(eff)` is a single step, `Stream.emit(1)` is a single step, `Stream(1,2,3)` is a single step (emitting a chunk), and all other operations (like `handleErrorWith`, `++`, and `flatMap`) are multiple steps and can be interrupted. But importantly, user-provided effects that are passed to `eval` are never interrupted once they are started (and FS2 does not have enough knowledge of user-provided effects to know how to interrupt them anyway).
+* Other than that, Streams can be interrupted in between any two 'steps' of the stream. The steps themselves are atomic from the perspective of FS2. `Stream.eval(eff)` is a single step, `Stream.emit(1)` is a single step, `Stream(1,2,3)` is a single step (emitting a chunk), and all other operations (like `handleErrorWith`, `++`, and `flatMap`) are multiple steps and can be interrupted.
 * _Always use `bracket` or a `bracket`-based function like `onFinalize` for supplying resource cleanup logic or any other logic you want to be run regardless of how the stream terminates. Don't use `handleErrorWith` or `++` for this purpose._
 
 Let's look at some examples of how this plays out, starting with the synchronous interruption case:
