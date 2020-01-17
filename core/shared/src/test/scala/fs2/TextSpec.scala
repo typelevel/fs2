@@ -3,7 +3,7 @@ package fs2
 import org.scalatest.{Assertion, Succeeded}
 
 import cats.implicits._
-import scodec.bits.ByteVector
+import scodec.bits._
 
 import fs2.text._
 
@@ -242,26 +242,60 @@ class TextSpec extends Fs2Spec {
       }
     }
 
-    "base64Encode andThen base64Decode" in {
-      forAll { (bs: List[Array[Byte]], unchunked: Boolean, rechunkSeed: Long) =>
-        bs.map(Chunk.bytes)
-          .foldMap(Stream.chunk)
-          .through(text.base64Encode)
-          .through {
-            // Change chunk structure to validate carries
-            if (unchunked) _.unchunk
-            else _.rechunkRandomlyWithSeed(0.1, 2.0)(rechunkSeed)
-          }
-          .through {
-            // Add some whitespace
-            _.chunks
-              .interleave(Stream(" ", "\r\n", "\n", "  \r\n  ").map(Chunk.singleton).repeat)
-              .flatMap(Stream.chunk)
-          }
+    "base64Decode" - {
+
+      "base64Encode andThen base64Decode" in {
+        forAll { (bs: List[Array[Byte]], unchunked: Boolean, rechunkSeed: Long) =>
+          bs.map(Chunk.bytes)
+            .foldMap(Stream.chunk)
+            .through(text.base64Encode)
+            .through {
+              // Change chunk structure to validate carries
+              if (unchunked) _.unchunk
+              else _.rechunkRandomlyWithSeed(0.1, 2.0)(rechunkSeed)
+            }
+            .through {
+              // Add some whitespace
+              _.chunks
+                .interleave(Stream(" ", "\r\n", "\n", "  \r\n  ").map(Chunk.singleton).repeat)
+                .flatMap(Stream.chunk)
+            }
+            .through(text.base64Decode[Fallible])
+            .compile
+            .to(ByteVector) shouldBe
+            Right(bs.map(ByteVector.view(_)).foldLeft(ByteVector.empty)(_ ++ _))
+        }
+      }
+
+      "invalid padding" in {
+        Stream(hex"00deadbeef00".toBase64, "=====", hex"00deadbeef00".toBase64)
           .through(text.base64Decode[Fallible])
+          .chunks
+          .attempt
+          .map(_.leftMap(_.getMessage))
           .compile
-          .to(ByteVector) shouldBe
-          Right(bs.map(ByteVector.view(_)).foldLeft(ByteVector.empty)(_ ++ _))
+          .to(List) shouldBe
+          Right(
+            List(
+              Right(Chunk.byteVector(hex"00deadbeef00")),
+              Left(
+                "Malformed padding - final quantum may optionally be padded with one or two padding characters such that the quantum is completed"
+              )
+            )
+          )
+      }
+
+      "optional padding" in {
+        forAll { (bs: List[Array[Byte]]) =>
+          bs.map(Chunk.bytes)
+            .foldMap(Stream.chunk)
+            .through(text.base64Encode)
+            .takeWhile(_ != '=')
+            .through(text.base64Decode[Fallible])
+            .compile
+            .to(ByteVector) shouldBe
+            Right(bs.map(ByteVector.view(_)).foldLeft(ByteVector.empty)(_ ++ _))
+        }
       }
     }
   }
