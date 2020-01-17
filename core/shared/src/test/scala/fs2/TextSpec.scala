@@ -1,6 +1,10 @@
 package fs2
 
 import org.scalatest.{Assertion, Succeeded}
+
+import cats.implicits._
+import scodec.bits.ByteVector
+
 import fs2.text._
 
 class TextSpec extends Fs2Spec {
@@ -228,6 +232,29 @@ class TextSpec extends Fs2Spec {
           Stream.emits(s).through(text.lines).toList shouldBe lines.toList
           Stream.emits(s).unchunk.through(text.lines).toList shouldBe lines.toList
         }
+      }
+    }
+
+    "base64Encode" in {
+      forAll { (bs: List[Array[Byte]]) =>
+        bs.map(Chunk.bytes).foldMap(Stream.chunk).through(text.base64Encode).compile.string shouldBe
+          bs.map(ByteVector.view(_)).foldLeft(ByteVector.empty)(_ ++ _).toBase64
+      }
+    }
+
+    "base64Encode andThen base64Decode" in {
+      forAll { (bs: List[Array[Byte]], unchunked: Boolean, rechunkSeed: Long) =>
+        bs.map(Chunk.bytes)
+          .foldMap(Stream.chunk)
+          .through(text.base64Encode)
+          .through {
+            if (unchunked) _.unchunk
+            else _.rechunkRandomlyWithSeed(0.1, 2.0)(rechunkSeed)
+          }
+          .through(text.base64Decode[Fallible])
+          .compile
+          .to(ByteVector) shouldBe
+          Right(bs.map(ByteVector.view(_)).foldLeft(ByteVector.empty)(_ ++ _))
       }
     }
   }
