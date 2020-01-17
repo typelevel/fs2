@@ -40,9 +40,11 @@ class TLSDebugTest extends Fs2Spec {
 
   def run(address: InetSocketAddress): IO[Unit] =
     Blocker[IO].use { blocker =>
-      TLSDebug
-        .debug[IO](blocker, TLSContext.system(blocker), address)
-        .flatMap(l => IO(println(l)))
+      TLSContext.system[IO](blocker).flatMap { ctx =>
+        TLSDebug
+          .debug[IO](blocker, ctx, address)
+          .flatMap(l => IO(println(l)))
+      }
     }
 
   "google" in run(new InetSocketAddress("google.com", 443))

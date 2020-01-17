@@ -24,27 +24,30 @@ class TLSSocketSpec extends TLSSpec {
               SocketGroup[IO](blocker).use { socketGroup =>
                 socketGroup.client[IO](new InetSocketAddress("www.google.com", 443)).use { socket =>
                   TLSContext
-                    .system(blocker)
-                    .client(
-                      socket,
-                      TLSParameters(
-                        protocols = Some(List(protocol)),
-                        serverNames = Some(List(new SNIHostName("www.google.com")))
-                      ),
-                      logger = None // Some(msg => IO(println(s"\u001b[33m${msg}\u001b[0m")))
-                    )
-                    .use { tlsSocket =>
-                      (Stream("GET / HTTP/1.1\r\nHost: www.google.com\r\n\r\n")
-                        .covary[IO]
-                        .through(text.utf8Encode)
-                        .through(tlsSocket.writes())
-                        .drain ++
-                        tlsSocket
-                          .reads(8192)
-                          .through(text.utf8Decode)
-                          .through(text.lines)).head.compile.string
+                    .system[IO](blocker)
+                    .flatMap { ctx =>
+                      ctx
+                        .client(
+                          socket,
+                          TLSParameters(
+                            protocols = Some(List(protocol)),
+                            serverNames = Some(List(new SNIHostName("www.google.com")))
+                          ),
+                          logger = None // Some(msg => IO(println(s"\u001b[33m${msg}\u001b[0m")))
+                        )
+                        .use { tlsSocket =>
+                          (Stream("GET / HTTP/1.1\r\nHost: www.google.com\r\n\r\n")
+                            .covary[IO]
+                            .through(text.utf8Encode)
+                            .through(tlsSocket.writes())
+                            .drain ++
+                            tlsSocket
+                              .reads(8192)
+                              .through(text.utf8Decode)
+                              .through(text.lines)).head.compile.string
+                        }
+                        .asserting(_ shouldBe "HTTP/1.1 200 OK")
                     }
-                    .asserting(_ shouldBe "HTTP/1.1 200 OK")
                 }
               }
             }

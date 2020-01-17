@@ -10,11 +10,12 @@ import java.net.{
   StandardProtocolFamily
 }
 import java.nio.channels.InterruptedByTimeoutException
-import scala.collection.JavaConverters._
 import scala.concurrent.duration._
 
 import cats.effect.{Blocker, IO}
 import cats.implicits._
+
+import CollectionCompat._
 
 class UdpSpec extends Fs2Spec {
   def mkSocketGroup: Stream[IO, SocketGroup] =
