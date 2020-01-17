@@ -1250,6 +1250,14 @@ class StreamSpec extends Fs2Spec {
         .toList
     }
 
+    "groupAdjacentByLimit" - {
+      "limiting" in forAll { (s: Stream[Pure, Int], n0: PosInt) =>
+        val n = n0 % 20 + 1
+        val s1 = s.groupAdjacentByLimit(n)(_ => true)
+        s1.map(_._2).toList.map(_.toList) shouldBe s.toList.grouped(n).toList
+      }
+    }
+
     "groupWithin" - {
       "should never lose any elements" in forAll {
         (s0: Stream[Pure, PosInt], d0: PosInt, maxGroupSize0: PosZInt) =>
