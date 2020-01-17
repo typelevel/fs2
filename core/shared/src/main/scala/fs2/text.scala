@@ -275,21 +275,15 @@ object text {
               case 0 =>
                 buffer = (cidx & 0x3f)
                 mod += 1
-              case 1 =>
-                buffer = (buffer << 6) | (cidx & 0x3f)
-                mod += 1
-              case 2 =>
+              case 1 | 2 =>
                 buffer = (buffer << 6) | (cidx & 0x3f)
                 mod += 1
               case 3 =>
                 buffer = (buffer << 6) | (cidx & 0x3f)
                 mod = 0
-                val c = buffer & 0x0ff
-                val b = (buffer >> 8) & 0x0ff
-                val a = (buffer >> 16) & 0x0ff
-                acc(bidx) = a.toByte
-                acc(bidx + 1) = b.toByte
-                acc(bidx + 2) = c.toByte
+                acc(bidx) = (buffer >> 16).toByte
+                acc(bidx + 1) = (buffer >> 8).toByte
+                acc(bidx + 2) = buffer.toByte
                 bidx += 3
             }
         }
@@ -307,13 +301,13 @@ object text {
           case 0 => Right(Chunk.empty)
           case 1 => Left("Final base 64 quantum had only 1 digit - must have at least 2 digits")
           case 2 =>
-            Right(Chunk(((state.buffer >> 4) & 0x0ff).toByte))
+            Right(Chunk((state.buffer >> 4).toByte))
           case 3 =>
             val buffer = state.buffer
             Right(
               Chunk(
-                ((buffer >> 10) & 0x0ff).toByte,
-                ((buffer >> 2) & 0x0ff).toByte
+                (buffer >> 10).toByte,
+                (buffer >> 2).toByte
               )
             )
         }
@@ -354,9 +348,9 @@ object text {
       var idx = 0
       val mod = bytes.length % 3
       while (idx < bytes.length - mod) {
-        var buffer = ((bytes(idx) & 0x0ff) << 16) | ((bytes(idx + 1) & 0x0ff) << 8) | (bytes(
+        var buffer = ((bytes(idx) & 0xff) << 16) | ((bytes(idx + 1) & 0xff) << 8) | (bytes(
           idx + 2
-        ) & 0x0ff)
+        ) & 0xff)
         val fourth = buffer & 0x3f
         buffer = buffer >> 6
         val third = buffer & 0x3f
@@ -389,7 +383,7 @@ object text {
           carry.size match {
             case 0 => Pull.done
             case 1 =>
-              var buffer = (carry(0) & 0x0ff) << 4
+              var buffer = (carry(0) & 0xff) << 4
               val second = buffer & 0x3f
               buffer = buffer >> 6
               val first = buffer
@@ -398,7 +392,7 @@ object text {
               )
               Pull.output1(out)
             case 2 =>
-              var buffer = ((carry(0) & 0x0ff) << 10) | ((carry(1) & 0x0ff) << 2)
+              var buffer = ((carry(0) & 0xff) << 10) | ((carry(1) & 0xff) << 2)
               val third = buffer & 0x3f
               buffer = buffer >> 6
               val second = buffer & 0x3f
@@ -413,7 +407,7 @@ object text {
                 )
               )
               Pull.output1(out)
-            case _ => sys.error("carry must be size 0, 1, or 2")
+            case other => sys.error(s"carry must be size 0, 1, or 2 but was $other")
           }
       }
 

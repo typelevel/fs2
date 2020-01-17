@@ -248,8 +248,13 @@ class TextSpec extends Fs2Spec {
           .foldMap(Stream.chunk)
           .through(text.base64Encode)
           .through {
+            // Change chunk structure to validate carries
             if (unchunked) _.unchunk
             else _.rechunkRandomlyWithSeed(0.1, 2.0)(rechunkSeed)
+          }
+          .through {
+            // Add some whitespace
+            _.chunks.interleave(Stream(" ", "\r\n", "\n", "  \r\n  ").map(Chunk.singleton).repeat).flatMap(Stream.chunk)
           }
           .through(text.base64Decode[Fallible])
           .compile
