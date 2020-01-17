@@ -254,7 +254,9 @@ class TextSpec extends Fs2Spec {
           }
           .through {
             // Add some whitespace
-            _.chunks.interleave(Stream(" ", "\r\n", "\n", "  \r\n  ").map(Chunk.singleton).repeat).flatMap(Stream.chunk)
+            _.chunks
+              .interleave(Stream(" ", "\r\n", "\n", "  \r\n  ").map(Chunk.singleton).repeat)
+              .flatMap(Stream.chunk)
           }
           .through(text.base64Decode[Fallible])
           .compile
