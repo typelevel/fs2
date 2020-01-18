@@ -1288,30 +1288,45 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val free: FreeC[F, O, U
     * and the results of the grouping are emitted each time the discriminator function changes
     * values.
     *
+    * Note: there is no limit to how large a group can become. To limit the group size, use
+    * [[groupAdjacentByLimit]].
+    *
     * @example {{{
     * scala> import cats.implicits._
     * scala> Stream("Hello", "Hi", "Greetings", "Hey").groupAdjacentBy(_.head).toList.map { case (k,vs) => k -> vs.toList }
     * res0: List[(Char,List[String])] = List((H,List(Hello, Hi)), (G,List(Greetings)), (H,List(Hey)))
     * }}}
     */
-  def groupAdjacentBy[O2](f: O => O2)(implicit eq: Eq[O2]): Stream[F, (O2, Chunk[O])] = {
-    def go(current: Option[(O2, Chunk[O])], s: Stream[F, O]): Pull[F, (O2, Chunk[O]), Unit] =
-      s.pull.uncons.flatMap {
+  def groupAdjacentBy[O2](f: O => O2)(implicit eq: Eq[O2]): Stream[F, (O2, Chunk[O])] =
+    groupAdjacentByLimit(Int.MaxValue)(f)
+
+  /**
+    * Like [[groupAdjacentBy]] but limits the size of emitted chunks.
+    *
+    * @example {{{
+    * scala> import cats.implicits._
+    * scala> Stream.range(0, 12).groupAdjacentByLimit(3)(_ / 4).toList
+    * res0: List[(Int,Chunk[Int])] = List((0,Chunk(0, 1, 2)), (0,Chunk(3)), (1,Chunk(4, 5, 6)), (1,Chunk(7)), (2,Chunk(8, 9, 10)), (2,Chunk(11)))
+    * }}}
+    */
+  def groupAdjacentByLimit[O2](
+      limit: Int
+  )(f: O => O2)(implicit eq: Eq[O2]): Stream[F, (O2, Chunk[O])] = {
+    def go(current: Option[(O2, Chunk.Queue[O])], s: Stream[F, O]): Pull[F, (O2, Chunk[O]), Unit] =
+      s.pull.unconsLimit(limit).flatMap {
         case Some((hd, tl)) =>
           if (hd.nonEmpty) {
-            val (k1, out) = current.getOrElse((f(hd(0)), Chunk.empty[O]))
-            doChunk(hd, tl, k1, List(out), None)
+            val (k1, out) = current.getOrElse((f(hd(0)), Chunk.Queue.empty[O]))
+            doChunk(hd, tl, k1, out, collection.immutable.Queue.empty)
           } else {
             go(current, tl)
           }
         case None =>
-          val l = current
-            .map { case (k1, out) => Pull.output1((k1, out)) }
-            .getOrElse(
-              Pull
-                .pure(())
-            )
-          l >> Pull.done
+          current
+            .map {
+              case (k1, out) => if (out.size == 0) Pull.done else Pull.output1((k1, out.toChunk))
+            }
+            .getOrElse(Pull.done)
       }
 
     @tailrec
@@ -1319,24 +1334,37 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val free: FreeC[F, O, U
         chunk: Chunk[O],
         s: Stream[F, O],
         k1: O2,
-        out: List[Chunk[O]],
-        acc: Option[Chunk[(O2, Chunk[O])]]
+        out: Chunk.Queue[O],
+        acc: collection.immutable.Queue[(O2, Chunk[O])]
     ): Pull[F, (O2, Chunk[O]), Unit] = {
       val differsAt = chunk.indexWhere(v => eq.neqv(f(v), k1)).getOrElse(-1)
       if (differsAt == -1) {
         // whole chunk matches the current key, add this chunk to the accumulated output
-        val newOut: List[Chunk[O]] = chunk :: out
-        acc match {
-          case None      => go(Some((k1, Chunk.concat(newOut.reverse))), s)
-          case Some(acc) =>
-            // potentially outputs one additional chunk (by splitting the last one in two)
-            Pull.output(acc) >> go(Some((k1, Chunk.concat(newOut.reverse))), s)
+        val newOut: Chunk.Queue[O] = out :+ chunk
+        if (newOut.size < limit) {
+          Pull.output(Chunk.seq(acc)) >> go(Some((k1, newOut)), s)
+        } else {
+          val (prefix, suffix) = chunk.splitAt(limit - out.size)
+          Pull.output(Chunk.seq(acc :+ ((k1, (out :+ prefix).toChunk)))) >> go(
+            Some((k1, Chunk.Queue(suffix))),
+            s
+          )
         }
       } else {
         // at least part of this chunk does not match the current key, need to group and retain chunkiness
         // split the chunk into the bit where the keys match and the bit where they don't
         val matching = chunk.take(differsAt)
-        val newOut: List[Chunk[O]] = matching :: out
+        val newAcc = {
+          val newOut = out :+ matching
+          if (newOut.size == 0) {
+            acc
+          } else if (newOut.size > limit) {
+            val (prefix, suffix) = matching.splitAt(limit - out.size)
+            acc :+ ((k1, (out :+ prefix).toChunk)) :+ ((k1, suffix))
+          } else {
+            acc :+ ((k1, (out :+ matching).toChunk))
+          }
+        }
         val nonMatching = chunk.drop(differsAt)
         // nonMatching is guaranteed to be non-empty here, because we know the last element of the chunk doesn't have
         // the same key as the first
@@ -1345,8 +1373,8 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val free: FreeC[F, O, U
           nonMatching,
           s,
           k2,
-          Nil,
-          Some(Chunk.concat(acc.toList ::: List(Chunk((k1, Chunk.concat(newOut.reverse))))))
+          Chunk.Queue.empty,
+          newAcc
         )
       }
     }
