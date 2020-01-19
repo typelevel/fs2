@@ -127,8 +127,7 @@ import scala.concurrent.duration._
   * @hideImplicitConversion PureOps
   * @hideImplicitConversion IdOps
   **/
-final class Stream[+F[_], +O] private (private val free: FreeC[F, O, Unit])
-    extends AnyVal {
+final class Stream[+F[_], +O] private (private val free: FreeC[F, O, Unit]) extends AnyVal {
 
   /**
     * Appends `s2` to the end of this stream.
