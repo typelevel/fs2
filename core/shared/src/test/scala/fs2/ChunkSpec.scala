@@ -181,17 +181,17 @@ class ChunkSpec extends Fs2Spec {
   }
 
   "map andThen toArray" in {
-    val arr: Array[Int] = Chunk(0, 0).map(identity).toArray 
+    val arr: Array[Int] = Chunk(0, 0).map(identity).toArray
     arr shouldBe Array(0, 0)
   }
 
   "mapAccumulate andThen toArray" in {
-    val arr: Array[Int] = Chunk(0, 0).mapAccumulate(0)((s, o) => (s, o))._2.toArray 
+    val arr: Array[Int] = Chunk(0, 0).mapAccumulate(0)((s, o) => (s, o))._2.toArray
     arr shouldBe Array(0, 0)
   }
 
   "scanLeft andThen toArray" in {
-    val arr: Array[Int] = Chunk(0, 0).scanLeft(0)((_, o) => o).toArray 
+    val arr: Array[Int] = Chunk(0, 0).scanLeft(0)((_, o) => o).toArray
     arr shouldBe Array(0, 0, 0)
   }
 
