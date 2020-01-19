@@ -168,7 +168,7 @@ abstract class Chunk[+O] extends Serializable { self =>
       arr(i) = f(apply(i))
       i += 1
     }
-    Chunk.array(arr.asInstanceOf[Array[O2]])
+    Chunk.boxed(arr.asInstanceOf[Array[O2]])
   }
 
   /**
@@ -701,9 +701,6 @@ object Chunk extends CollectorK[Chunk] {
       if (n <= 0) Chunk.empty
       else if (n >= size) this
       else Boxed(values, offset, n)
-
-    override def toArray[O2 >: O: ClassTag]: Array[O2] =
-      values.slice(offset, offset + length).asInstanceOf[Array[O2]]
   }
   object Boxed {
     def apply[O](values: Array[O]): Boxed[O] = Boxed(values, 0, values.length)
