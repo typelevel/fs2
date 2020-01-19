@@ -201,4 +201,10 @@ class ChunkSpec extends Fs2Spec {
     val arr2: Array[Int] = Chunk(0, 0).zip(Chunk(0, 0)).map(_._1).toArray
     arr2 shouldBe Array(0, 0)
   }
+
+  "Boxed toArray - regression #1745" in {
+    Chunk.Boxed(Array[Any](0)).asInstanceOf[Chunk[Int]].toArray[Any]
+    Chunk.Boxed(Array[Any](0)).asInstanceOf[Chunk[Int]].toArray[Int]
+    Succeeded
+  }
 }
