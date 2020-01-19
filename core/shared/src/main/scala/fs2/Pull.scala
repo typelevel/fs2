@@ -42,7 +42,7 @@ final class Pull[+F[_], +O, +R] private[fs2] (private[fs2] val free: FreeC[F, O,
     */
   def stream(implicit ev: R <:< Unit): Stream[F, O] = {
     val _ = ev
-    new Stream(free.asInstanceOf[FreeC[F, O, Unit]])
+    Stream.fromFreeC(free.asInstanceOf[FreeC[F, O, Unit]])
   }
 
   /** Applies the resource of this pull to `f` and returns the result. */
