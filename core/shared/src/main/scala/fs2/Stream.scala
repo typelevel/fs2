@@ -127,8 +127,7 @@ import scala.concurrent.duration._
   * @hideImplicitConversion PureOps
   * @hideImplicitConversion IdOps
   **/
-final class Stream[+F[_], +O] private[fs2] (private[fs2] val free: FreeC[F, O, Unit])
-    extends AnyVal {
+final class Stream[+F[_], +O] private (private val free: FreeC[F, O, Unit]) extends AnyVal {
 
   /**
     * Appends `s2` to the end of this stream.
@@ -3059,6 +3058,8 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val free: FreeC[F, O, U
 }
 
 object Stream extends StreamLowPriority {
+
+  private[fs2] def fromFreeC[F[_], O](free: FreeC[F, O, Unit]): Stream[F, O] = new Stream(free)
 
   /** Creates a pure stream that emits the supplied values. To convert to an effectful stream, use `covary`. */
   def apply[F[x] >: Pure[x], O](os: O*): Stream[F, O] = emits(os)
