@@ -168,7 +168,7 @@ abstract class Chunk[+O] extends Serializable { self =>
       arr(i) = f(apply(i))
       i += 1
     }
-    Chunk.array(arr.asInstanceOf[Array[O2]])
+    Chunk.boxed(arr.asInstanceOf[Array[O2]])
   }
 
   /**
@@ -246,9 +246,6 @@ abstract class Chunk[+O] extends Serializable { self =>
     while (i < size) { arr(i) = apply(i); i += 1 }
     arr
   }
-
-  /** Returns the elements of this chunk as an array, avoiding a copy if possible. */
-  protected[fs2] def toArrayUnsafe[O2 >: O: ClassTag]: Array[O2] = toArray
 
   /**
     * Converts this chunk to a `Chunk.Booleans`, allowing access to the underlying array of elements.
@@ -679,10 +676,6 @@ object Chunk extends CollectorK[Chunk] {
     def size = length
     def apply(i: Int) = values(offset + i)
 
-    protected[fs2] override def toArrayUnsafe[O2 >: O: ClassTag]: Array[O2] =
-      if (offset == 0 && length == values.length) values.asInstanceOf[Array[O2]]
-      else values.slice(offset, length).asInstanceOf[Array[O2]]
-
     def copyToArray[O2 >: O](xs: Array[O2], start: Int): Unit =
       if (xs.isInstanceOf[Array[AnyRef]])
         System.arraycopy(values, offset, xs, start, length)
@@ -701,9 +694,6 @@ object Chunk extends CollectorK[Chunk] {
       if (n <= 0) Chunk.empty
       else if (n >= size) this
       else Boxed(values, offset, n)
-
-    override def toArray[O2 >: O: ClassTag]: Array[O2] =
-      values.slice(offset, offset + length).asInstanceOf[Array[O2]]
   }
   object Boxed {
     def apply[O](values: Array[O]): Boxed[O] = Boxed(values, 0, values.length)
@@ -725,10 +715,6 @@ object Chunk extends CollectorK[Chunk] {
     def size = length
     def apply(i: Int) = values(offset + i)
     def at(i: Int) = values(offset + i)
-
-    protected[fs2] override def toArrayUnsafe[O2 >: Boolean: ClassTag]: Array[O2] =
-      if (offset == 0 && length == values.length) values.asInstanceOf[Array[O2]]
-      else values.slice(offset, length).asInstanceOf[Array[O2]]
 
     def copyToArray[O2 >: Boolean](xs: Array[O2], start: Int): Unit =
       if (xs.isInstanceOf[Array[Boolean]])
@@ -771,10 +757,6 @@ object Chunk extends CollectorK[Chunk] {
     def size = length
     def apply(i: Int) = values(offset + i)
     def at(i: Int) = values(offset + i)
-
-    protected[fs2] override def toArrayUnsafe[O2 >: Byte: ClassTag]: Array[O2] =
-      if (offset == 0 && length == values.length) values.asInstanceOf[Array[O2]]
-      else values.slice(offset, length).asInstanceOf[Array[O2]]
 
     def copyToArray[O2 >: Byte](xs: Array[O2], start: Int): Unit =
       if (xs.isInstanceOf[Array[Byte]])
@@ -1129,10 +1111,6 @@ object Chunk extends CollectorK[Chunk] {
     def apply(i: Int) = values(offset + i)
     def at(i: Int) = values(offset + i)
 
-    protected[fs2] override def toArrayUnsafe[O2 >: Short: ClassTag]: Array[O2] =
-      if (offset == 0 && length == values.length) values.asInstanceOf[Array[O2]]
-      else values.slice(offset, length).asInstanceOf[Array[O2]]
-
     def copyToArray[O2 >: Short](xs: Array[O2], start: Int): Unit =
       if (xs.isInstanceOf[Array[Short]])
         System.arraycopy(values, offset, xs, start, length)
@@ -1174,10 +1152,6 @@ object Chunk extends CollectorK[Chunk] {
     def apply(i: Int) = values(offset + i)
     def at(i: Int) = values(offset + i)
 
-    protected[fs2] override def toArrayUnsafe[O2 >: Int: ClassTag]: Array[O2] =
-      if (offset == 0 && length == values.length) values.asInstanceOf[Array[O2]]
-      else values.slice(offset, length).asInstanceOf[Array[O2]]
-
     def copyToArray[O2 >: Int](xs: Array[O2], start: Int): Unit =
       if (xs.isInstanceOf[Array[Int]])
         System.arraycopy(values, offset, xs, start, length)
@@ -1218,10 +1192,6 @@ object Chunk extends CollectorK[Chunk] {
     def size = length
     def apply(i: Int) = values(offset + i)
     def at(i: Int) = values(offset + i)
-
-    protected[fs2] override def toArrayUnsafe[O2 >: Long: ClassTag]: Array[O2] =
-      if (offset == 0 && length == values.length) values.asInstanceOf[Array[O2]]
-      else values.slice(offset, length).asInstanceOf[Array[O2]]
 
     def copyToArray[O2 >: Long](xs: Array[O2], start: Int): Unit =
       if (xs.isInstanceOf[Array[Long]])
@@ -1265,10 +1235,6 @@ object Chunk extends CollectorK[Chunk] {
     def apply(i: Int) = values(offset + i)
     def at(i: Int) = values(offset + i)
 
-    protected[fs2] override def toArrayUnsafe[O2 >: Float: ClassTag]: Array[O2] =
-      if (offset == 0 && length == values.length) values.asInstanceOf[Array[O2]]
-      else values.slice(offset, length).asInstanceOf[Array[O2]]
-
     def copyToArray[O2 >: Float](xs: Array[O2], start: Int): Unit =
       if (xs.isInstanceOf[Array[Float]])
         System.arraycopy(values, offset, xs, start, length)
@@ -1310,10 +1276,6 @@ object Chunk extends CollectorK[Chunk] {
     def size = length
     def apply(i: Int) = values(offset + i)
     def at(i: Int) = values(offset + i)
-
-    protected[fs2] override def toArrayUnsafe[O2 >: Double: ClassTag]: Array[O2] =
-      if (offset == 0 && length == values.length) values.asInstanceOf[Array[O2]]
-      else values.slice(offset, length).asInstanceOf[Array[O2]]
 
     def copyToArray[O2 >: Double](xs: Array[O2], start: Int): Unit =
       if (xs.isInstanceOf[Array[Double]])
@@ -1357,10 +1319,6 @@ object Chunk extends CollectorK[Chunk] {
     def size = length
     def apply(i: Int) = values(offset + i)
     def at(i: Int) = values(offset + i)
-
-    protected[fs2] override def toArrayUnsafe[O2 >: Char: ClassTag]: Array[O2] =
-      if (offset == 0 && length == values.length) values.asInstanceOf[Array[O2]]
-      else values.slice(offset, length).asInstanceOf[Array[O2]]
 
     def copyToArray[O2 >: Char](xs: Array[O2], start: Int): Unit =
       if (xs.isInstanceOf[Array[Char]])
