@@ -24,8 +24,9 @@ import fs2.internal.Algebra.Eval
   * `raiseError` is caught by `handleErrorWith`:
   *   - `handleErrorWith(raiseError(e))(f) == f(e)`
   */
-final class Pull[+F[_], +O, +R] private[fs2] (private[fs2] val free: FreeC[F, O, R])
-    extends AnyVal {
+final class Pull[+F[_], +O, +R] private[fs2] (private val free: FreeC[F, O, R]) extends AnyVal {
+
+  private[fs2] def get: FreeC[F, O, R] = free
 
   /** Alias for `_.map(_ => o2)`. */
   def as[R2](r2: R2): Pull[F, O, R2] = map(_ => r2)
@@ -42,7 +43,7 @@ final class Pull[+F[_], +O, +R] private[fs2] (private[fs2] val free: FreeC[F, O,
     */
   def stream(implicit ev: R <:< Unit): Stream[F, O] = {
     val _ = ev
-    Stream.fromFreeC(free.asInstanceOf[FreeC[F, O, Unit]])
+    new Stream(free.asInstanceOf[FreeC[F, O, Unit]])
   }
 
   /** Applies the resource of this pull to `f` and returns the result. */
@@ -201,6 +202,6 @@ private[fs2] class PullSyncInstance[F[_], O] extends Sync[Pull[F, O, ?]] {
       use: A => Pull[F, O, B]
   )(release: (A, ExitCase[Throwable]) => Pull[F, O, Unit]): Pull[F, O, B] =
     new Pull(
-      FreeC.bracketCase(acquire.free, (a: A) => use(a).free, (a: A, c) => release(a, c).free)
+      FreeC.bracketCase(acquire.get, (a: A) => use(a).get, (a: A, c) => release(a, c).get)
     )
 }
