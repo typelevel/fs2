@@ -2,17 +2,15 @@ package fs2
 package io
 package file
 
-import java.nio.file.StandardOpenOption
-
-import cats.effect.{Blocker, IO}
-import cats.effect.concurrent.Ref
-import cats.implicits._
-
-import scala.concurrent.duration._
-import java.nio.file.{Files, Paths}
+import java.nio.file.{Paths, StandardOpenOption}
 import java.nio.file.attribute.PosixFilePermissions
 
-import CollectionCompat._
+import cats.effect.concurrent.Ref
+import cats.effect.{Blocker, IO}
+import cats.implicits._
+import fs2.io.CollectionCompat._
+
+import scala.concurrent.duration._
 
 class FileSpec extends BaseFileSpec {
   "readAll" - {
@@ -139,17 +137,15 @@ class FileSpec extends BaseFileSpec {
         .isLeft shouldBe true
     }
     "should return permissions for existing file" in {
-      val permissions = PosixFilePermissions.fromString("rwxrwxr-x")
+      val permissions = PosixFilePermissions.fromString("rwxrwxr-x").asScala
       Blocker[IO]
         .use { b =>
           tempFile
-            .evalMap { p =>
-              IO.delay(Files.setPosixFilePermissions(p, permissions)) >> file.permissions[IO](b, p)
-            }
+            .evalMap(p => file.setPermissions[IO](b, p, permissions) >> file.permissions[IO](b, p))
             .compile
             .lastOrError
         }
-        .unsafeRunSync() shouldBe permissions.asScala
+        .unsafeRunSync() shouldBe permissions
     }
   }
 
@@ -168,10 +164,10 @@ class FileSpec extends BaseFileSpec {
           tempFile
             .evalMap { p =>
               for {
-                initialPermissions <- IO(Files.getPosixFilePermissions(p))
+                initialPermissions <- file.permissions[IO](b, p)
                 _ <- file.setPermissions[IO](b, p, permissions)
-                updatedPermissions <- IO(Files.getPosixFilePermissions(p))
-              } yield (initialPermissions.asScala -> updatedPermissions.asScala)
+                updatedPermissions <- file.permissions[IO](b, p)
+              } yield (initialPermissions -> updatedPermissions)
             }
             .compile
             .lastOrError
