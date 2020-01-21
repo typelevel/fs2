@@ -69,8 +69,9 @@ class FileSpec extends BaseFileSpec {
               Stream("Hello", " world!")
                 .covary[IO]
                 .through(text.utf8Encode)
-                .through(file.writeAll[IO](path, bec))
-                .drain ++ file.readAll[IO](path, bec, 4096).through(text.utf8Decode)
+                .through(file.writeAll[IO](path, bec)) ++ file
+                .readAll[IO](path, bec, 4096)
+                .through(text.utf8Decode)
             )
         }
         .compile
@@ -86,8 +87,8 @@ class FileSpec extends BaseFileSpec {
             .flatMap { path =>
               val src = Stream("Hello", " world!").covary[IO].through(text.utf8Encode)
 
-              src.through(file.writeAll[IO](path, bec)).drain ++
-                src.through(file.writeAll[IO](path, bec, List(StandardOpenOption.APPEND))).drain ++
+              src.through(file.writeAll[IO](path, bec)) ++
+                src.through(file.writeAll[IO](path, bec, List(StandardOpenOption.APPEND))) ++
                 file.readAll[IO](path, bec, 4096).through(text.utf8Decode)
             }
         }

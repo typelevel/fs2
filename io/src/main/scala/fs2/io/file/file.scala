@@ -68,12 +68,14 @@ package object file {
     * Writes all data to the file at the specified `java.nio.file.Path`.
     *
     * Adds the WRITE flag to any other `OpenOption` flags specified. By default, also adds the CREATE flag.
+    *
+    * The returned stream contains no elements.
     */
   def writeAll[F[_]: Sync: ContextShift](
       path: Path,
       blocker: Blocker,
       flags: Seq[StandardOpenOption] = List(StandardOpenOption.CREATE)
-  ): Pipe[F, Byte, Unit] =
+  ): Pipe[F, Byte, Nothing] =
     in =>
       Stream
         .resource(WriteCursor.fromPath(path, blocker, flags))

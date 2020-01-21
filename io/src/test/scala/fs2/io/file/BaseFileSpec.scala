@@ -36,7 +36,7 @@ class BaseFileSpec extends Fs2Spec {
   protected def modify(file: Path): Stream[IO, Unit] =
     Stream.eval(IO(Files.write(file, Array[Byte](0, 1, 2, 3))).void)
 
-  protected def modifyLater(file: Path, blocker: Blocker): Stream[IO, Unit] =
+  protected def modifyLater(file: Path, blocker: Blocker): Stream[IO, Nothing] =
     Stream
       .range(0, 4)
       .map(_.toByte)
