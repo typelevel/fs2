@@ -2,14 +2,15 @@ package fs2
 package io
 package file
 
-import java.nio.file.StandardOpenOption
+import java.nio.file.{Paths, StandardOpenOption}
+import java.nio.file.attribute.PosixFilePermissions
 
-import cats.effect.{Blocker, IO}
 import cats.effect.concurrent.Ref
+import cats.effect.{Blocker, IO}
 import cats.implicits._
+import fs2.io.CollectionCompat._
 
 import scala.concurrent.duration._
-import java.nio.file.Paths
 
 class FileSpec extends BaseFileSpec {
   "readAll" - {
@@ -117,13 +118,64 @@ class FileSpec extends BaseFileSpec {
   }
 
   "exists" - {
-    "returns false on a non existant file" in {
+    "returns false on a non existent file" in {
       Blocker[IO].use(b => file.exists[IO](b, Paths.get("nothing"))).unsafeRunSync shouldBe false
     }
     "returns true on an existing file" in {
       Blocker[IO]
         .use(b => tempFile.evalMap(file.exists[IO](b, _)).compile.fold(true)(_ && _))
         .unsafeRunSync() shouldBe true
+    }
+  }
+
+  "permissions" - {
+    "should fail for a non existent file" in {
+      Blocker[IO]
+        .use(b => file.permissions[IO](b, Paths.get("nothing")))
+        .attempt
+        .unsafeRunSync()
+        .isLeft shouldBe true
+    }
+    "should return permissions for existing file" in {
+      val permissions = PosixFilePermissions.fromString("rwxrwxr-x").asScala
+      Blocker[IO]
+        .use { b =>
+          tempFile
+            .evalMap(p => file.setPermissions[IO](b, p, permissions) >> file.permissions[IO](b, p))
+            .compile
+            .lastOrError
+        }
+        .unsafeRunSync() shouldBe permissions
+    }
+  }
+
+  "setPermissions" - {
+    "should fail for a non existent file" in {
+      Blocker[IO]
+        .use(b => file.setPermissions[IO](b, Paths.get("nothing"), Set.empty))
+        .attempt
+        .unsafeRunSync()
+        .isLeft shouldBe true
+    }
+    "should correctly change file permissions for existing file" in {
+      val permissions = PosixFilePermissions.fromString("rwxrwxr-x").asScala
+      val (initial, updated) = Blocker[IO]
+        .use { b =>
+          tempFile
+            .evalMap { p =>
+              for {
+                initialPermissions <- file.permissions[IO](b, p)
+                _ <- file.setPermissions[IO](b, p, permissions)
+                updatedPermissions <- file.permissions[IO](b, p)
+              } yield (initialPermissions -> updatedPermissions)
+            }
+            .compile
+            .lastOrError
+        }
+        .unsafeRunSync()
+
+      initial should not be updated
+      updated shouldBe permissions
     }
   }
 
@@ -140,7 +192,7 @@ class FileSpec extends BaseFileSpec {
   }
 
   "deleteIfExists" - {
-    "should result in non existant file" in {
+    "should result in non existent file" in {
       tempFile
         .flatMap(path =>
           Stream
@@ -154,7 +206,7 @@ class FileSpec extends BaseFileSpec {
   }
 
   "delete" - {
-    "should fail on a non existant file" in {
+    "should fail on a non existent file" in {
       Blocker[IO]
         .use(blocker => file.delete[IO](blocker, Paths.get("nothing")))
         .attempt

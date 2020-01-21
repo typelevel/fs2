@@ -2,7 +2,7 @@ package fs2
 package io
 
 import java.nio.file._
-import java.nio.file.attribute.FileAttribute
+import java.nio.file.attribute.{FileAttribute, PosixFilePermission}
 import java.util.stream.{Stream => JStream}
 
 import scala.concurrent.duration._
@@ -180,6 +180,26 @@ package object file {
     blocker.delay(Files.exists(path, flags: _*))
 
   /**
+    * Get file permissions as set of [[PosixFilePermission]]
+    */
+  def permissions[F[_]: Sync: ContextShift](
+      blocker: Blocker,
+      path: Path,
+      flags: Seq[LinkOption] = Seq.empty
+  ): F[Set[PosixFilePermission]] =
+    blocker.delay(Files.getPosixFilePermissions(path, flags: _*).asScala)
+
+  /**
+    * Set file permissions from set of [[PosixFilePermission]]
+    */
+  def setPermissions[F[_]: Sync: ContextShift](
+      blocker: Blocker,
+      path: Path,
+      permissions: Set[PosixFilePermission]
+  ): F[Path] =
+    blocker.delay(Files.setPosixFilePermissions(path, permissions.asJava))
+
+  /**
     * Copies a file from the source to the target path,
     *
     * By default, the copy fails if the target file already exists or is a symbolic link.
@@ -195,7 +215,7 @@ package object file {
   /**
     * Deletes a file.
     *
-    * If the file is a directory then the directory must be empty for this action to succed.
+    * If the file is a directory then the directory must be empty for this action to succeed.
     * This action will fail if the path doesn't exist.
     */
   def delete[F[_]: Sync: ContextShift](blocker: Blocker, path: Path): F[Unit] =
