@@ -7,9 +7,14 @@ FS2: Functional Streams for Scala
 
 ### Overview
 
-FS2 is a library for purely functional, effectful, and polymorphic stream processing library in the [Scala programming language](https://scala-lang.org). Its design goals are compositionality, expressiveness, resource safety, and speed. The name is a modified acronym for **F**unctional **S**treams for **Scala** (FSS, or FS2).
+FS2 is a library for purely functional, effectful, and polymorphic stream processing library in the [Scala programming language](https://scala-lang.org).
+Its design goals are compositionality, expressiveness, resource safety, and speed.
+The name is a modified acronym for **F**unctional **S**treams for **Scala** (FSS, or FS2).
 
-FS2 is available for Scala 2.11, Scala 2.12, Scala 2.13, and [Scala.js](http://www.scala-js.org/). FS2 is built upon two major functional libraries for Scala, [Cats](https://typelevel.org/cats/), and [Cats-Effect](https://typelevel.org/cats-effect/). Regardless of those dependencies, FS2 core types (streams and pulls) are polymorphic in the effect type (as long as it is compatible with `cats-effect` typeclasses), and thus FS2 can be used with other effect libraries, such as [Monix](https://monix.io/).
+FS2 is available for Scala 2.12, Scala 2.13, and [Scala.js](http://www.scala-js.org/).
+FS2 is built upon two major functional libraries for Scala, [Cats](https://typelevel.org/cats/), and [Cats-Effect](https://typelevel.org/cats-effect/).
+Regardless of those dependencies, FS2 core types (streams and pulls) are polymorphic in the effect type (as long as it is compatible with `cats-effect` typeclasses),
+and thus FS2 can be used with other effect libraries, such as [Monix](https://monix.io/).
 
 Prior to the 0.9 release in 2016, FS2 was known as `scalaz-stream`, which was based on the [`scalaz`](https://github.com/scalaz/scalaz) library.
 
@@ -24,36 +29,36 @@ Quick links:
 * [Docs and getting help](#docs)
 
 [microsite]: http://fs2.io/index.html
-[core-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-core_2.12/2.1.0/fs2-core_2.12-2.1.0-javadoc.jar/!/fs2/index.html
-[io-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-io_2.12/2.1.0/fs2-io_2.12-2.1.0-javadoc.jar/!/fs2/io/index.html
-[rx-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-reactive-streams_2.12/2.1.0/fs2-reactive-streams_2.12-2.1.0-javadoc.jar/!/fs2/interop/reactivestreams/index.html
-[experimental-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-experimental_2.12/2.1.0/fs2-experimental_2.12-2.1.0-javadoc.jar/!/fs2/experimental/index.html
+[core-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-core_2.12/2.2.1/fs2-core_2.12-2.2.1-javadoc.jar/!/fs2/index.html
+[io-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-io_2.12/2.2.1/fs2-io_2.12-2.2.1-javadoc.jar/!/fs2/io/index.html
+[rx-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-reactive-streams_2.12/2.2.1/fs2-reactive-streams_2.12-2.2.1-javadoc.jar/!/fs2/interop/reactivestreams/index.html
+[experimental-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-experimental_2.12/2.2.1/fs2-experimental_2.12-2.2.1-javadoc.jar/!/fs2/experimental/index.html
 
 ### <a id="getit"></a> Where to get the latest version ###
 
-The latest version is 2.1.x. See the badge at the top of the README for the exact version number.
+The latest version is 2.2.x. See the badge at the top of the README for the exact version number.
 
 If upgrading from the 1.0 series, see the [release notes for 2.0.0](https://github.com/functional-streams-for-scala/fs2/releases/tag/v2.0.0) for help with upgrading.
 
 
 ```
-// available for Scala 2.11, 2.12, 2.13
-libraryDependencies += "co.fs2" %% "fs2-core" % "2.1.0" // For cats 2 and cats-effect 2
+// available for 2.12, 2.13
+libraryDependencies += "co.fs2" %% "fs2-core" % "2.2.1" // For cats 2 and cats-effect 2
 
 // optional I/O library
-libraryDependencies += "co.fs2" %% "fs2-io" % "2.1.0"
+libraryDependencies += "co.fs2" %% "fs2-io" % "2.2.1"
 
 // optional reactive streams interop
-libraryDependencies += "co.fs2" %% "fs2-reactive-streams" % "2.1.0"
+libraryDependencies += "co.fs2" %% "fs2-reactive-streams" % "2.2.1"
 
 // optional experimental library
-libraryDependencies += "co.fs2" %% "fs2-experimental" % "2.1.0"
+libraryDependencies += "co.fs2" %% "fs2-experimental" % "2.2.1"
 ```
 
 The fs2-core library is also supported on Scala.js:
 
 ```
-libraryDependencies += "co.fs2" %%% "fs2-core" % "2.0.0"
+libraryDependencies += "co.fs2" %%% "fs2-core" % "2.2.1"
 ```
 
 There are [detailed migration guides](https://github.com/functional-streams-for-scala/fs2/blob/master/docs/) for migrating from older versions.
@@ -104,7 +109,7 @@ These features mean that FS2 goes beyond streaming I/O to offer a very general a
 
 ### <a id="docs"></a>Documentation and getting help ###
 
-* There are Scaladoc API documentations for [the core library][core-api], which defines and implements the core types for streams and pulls, as well as the type aliases for pipes and sinks. [The `io` library][io-api] provides FS2 bindings for NIO-based file I/O and TCP/UDP networking
+* There are Scaladoc API documentations for [the core library][core-api], which defines and implements the core types for streams and pulls, as well as the type aliases for pipes and sinks. [The `io` library][io-api] provides FS2 bindings for NIO-based file I/O and TCP/UDP networking.
 * [The official guide](https://functional-streams-for-scala.github.io/fs2/guide.html) is a good starting point for learning more about the library.
 * The [documentation page](https://functional-streams-for-scala.github.io/fs2/documentation.html) is intended to serve as a list of all references, including conference presentation recordings, academic papers, and blog posts, on the use and implementation of `fs2`.
 * [The FAQ](https://functional-streams-for-scala.github.io/fs2/faq.html) has frequently asked questions. Feel free to open issues or PRs with additions to the FAQ!
