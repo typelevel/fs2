@@ -2266,21 +2266,24 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
     pauseWhen(pauseWhenTrue.discrete)
 
   /** Returns a stream of zero or one elements. When the first element of this stream becomes
-   * available, the resulting stream emits a tuple consisting of that element and a new stream
-   * that emits the same elements as this stream, with the peeked element memoized.
-   *
-   * @example {{{
-   * scala> Stream(1, 2, 3).peek.toList.head
-   * res0: (Int, Stream[Pure, Int]) = (1, Stream(..))
-   * scala> res0._2.toList
-   * res1: List[Int] = List(1, 2, 3)
-   * }}}
-   */
+    * available, the resulting stream emits a tuple consisting of that element and a new stream
+    * that emits the same elements as this stream, with the peeked element memoized.
+    *
+    * @example {{{
+    * scala> Stream(1, 2, 3).peek.toList.head
+    * res0: (Int, Stream[Pure, Int]) = (1, Stream(..))
+    * scala> res0._2.toList
+    * res1: List[Int] = List(1, 2, 3)
+    * }}}
+    */
   def peek: Stream[F, (O, Stream[F, O])] =
-    this.pull.peek1.flatMap {
-      case Some(value) => Pull.output1(value)
-      case None => Pull.done
-    }.void.stream
+    this.pull.peek1
+      .flatMap {
+        case Some(value) => Pull.output1(value)
+        case None        => Pull.done
+      }
+      .void
+      .stream
 
   /** Alias for `prefetchN(1)`. */
   def prefetch[F2[x] >: F[x]: Concurrent]: Stream[F2, O] = prefetchN[F2](1)
