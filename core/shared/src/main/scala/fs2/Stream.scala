@@ -2270,9 +2270,9 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
     * that emits the same elements as this stream, with the peeked element memoized.
     *
     * @example {{{
-    * scala> Stream(1, 2, 3).peek.toList.head
-    * res0: (Int, Stream[Pure, Int]) = (1, Stream(..))
-    * scala> res0._2.toList
+    * scala> val outer =  Stream(1, 2, 3).peek.toList.head
+    * outer: (Int, Stream[Pure, Int]) = (1, Stream(..))
+    * scala> outer._2.toList
     * res1: List[Int] = List(1, 2, 3)
     * }}}
     */
