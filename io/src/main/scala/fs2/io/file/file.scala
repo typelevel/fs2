@@ -24,7 +24,7 @@ package object file {
       chunkSize: Int
   ): Stream[F, Byte] =
     Stream.resource(ReadCursor.fromPath(path, blocker)).flatMap { cursor =>
-      cursor.readAll(chunkSize).void.stream
+      cursor.readAll(chunkSize).stream
     }
 
   /**
@@ -40,7 +40,7 @@ package object file {
       end: Long
   ): Stream[F, Byte] =
     Stream.resource(ReadCursor.fromPath(path, blocker)).flatMap { cursor =>
-      cursor.seek(start).readUntil(chunkSize, end).void.stream
+      cursor.seek(start).readUntil(chunkSize, end).stream
     }
 
   /**
@@ -61,7 +61,7 @@ package object file {
       pollDelay: FiniteDuration = 1.second
   ): Stream[F, Byte] =
     Stream.resource(ReadCursor.fromPath(path, blocker)).flatMap { cursor =>
-      cursor.seek(offset).tail(chunkSize, pollDelay).void.stream
+      cursor.seek(offset).tail(chunkSize, pollDelay).stream
     }
 
   /**
@@ -77,7 +77,7 @@ package object file {
     in =>
       Stream
         .resource(WriteCursor.fromPath(path, blocker, flags))
-        .flatMap(_.writeAll(in).void.stream)
+        .flatMap(_.writeAll(in).stream)
 
   /**
     * Writes all data to a sequence of files, each limited in size to `limit`.

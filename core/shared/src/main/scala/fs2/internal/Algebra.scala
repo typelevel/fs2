@@ -31,7 +31,7 @@ private[fs2] object Algebra {
     * @param stream             Stream to step
     * @param scopeId            If scope has to be changed before this step is evaluated, id of the scope must be supplied
     */
-  final case class Step[X](stream: FreeC[Any, X, Unit], scope: Option[Token])
+  final case class Step[X](stream: FreeC[Any, X, IAny], scope: Option[Token])
       extends FreeC.Eval[PureK, INothing, Option[(Chunk[X], Token, FreeC[Any, X, Unit])]] {
     /* NOTE: The use of `Any` and `PureK` done to by-pass an error in Scala 2.12 type-checker,
      * that produces a crash when dealing with Higher-Kinded GADTs in which the F parameter appears
@@ -71,7 +71,7 @@ private[fs2] object Algebra {
   def stepLeg[F[_], O](leg: Stream.StepLeg[F, O]): FreeC[F, Nothing, Option[Stream.StepLeg[F, O]]] =
     Step[O](leg.next, Some(leg.scopeId)).map {
       _.map {
-        case (h, id, t) => new Stream.StepLeg[F, O](h, id, t.asInstanceOf[FreeC[F, O, Unit]])
+        case (h, id, t) => new Stream.StepLeg[F, O](h, id, t.asInstanceOf[FreeC[F, O, IAny]])
       }
     }
 
@@ -79,7 +79,7 @@ private[fs2] object Algebra {
     * Wraps supplied pull in new scope, that will be opened before this pull is evaluated
     * and closed once this pull either finishes its evaluation or when it fails.
     */
-  def scope[F[_], O](s: FreeC[F, O, Unit]): FreeC[F, O, Unit] =
+  def scope[F[_], O](s: FreeC[F, O, IAny]): FreeC[F, O, IAny] =
     scope0(s, None)
 
   /**
@@ -87,14 +87,14 @@ private[fs2] object Algebra {
     * Note that this may fail with `Interrupted` when interruption occurred
     */
   private[fs2] def interruptScope[F[_], O](
-      s: FreeC[F, O, Unit]
-  )(implicit F: Concurrent[F]): FreeC[F, O, Unit] =
+      s: FreeC[F, O, IAny]
+  )(implicit F: Concurrent[F]): FreeC[F, O, IAny] =
     scope0(s, Some(F))
 
   private def scope0[F[_], O](
-      s: FreeC[F, O, Unit],
+      s: FreeC[F, O, IAny],
       interruptible: Option[Concurrent[F]]
-  ): FreeC[F, O, Unit] =
+  ): FreeC[F, O, IAny] =
     OpenScope(interruptible).flatMap { scopeId =>
       s.transformWith {
         case Result.Pure(_) => CloseScope(scopeId, interruptedScope = None, ExitCase.Completed)
@@ -115,17 +115,17 @@ private[fs2] object Algebra {
     }
 
   def translate[F[_], G[_], O](
-      s: FreeC[F, O, Unit],
+      s: FreeC[F, O, IAny],
       u: F ~> G
-  )(implicit G: TranslateInterrupt[G]): FreeC[G, O, Unit] =
+  )(implicit G: TranslateInterrupt[G]): FreeC[G, O, IAny] =
     translate0[F, G, O](u, s, G.concurrentInstance)
 
-  def uncons[F[_], X, O](s: FreeC[F, O, Unit]): FreeC[F, X, Option[(Chunk[O], FreeC[F, O, Unit])]] =
-    Step(s, None).map { _.map { case (h, _, t) => (h, t.asInstanceOf[FreeC[F, O, Unit]]) } }
+  def uncons[F[_], X, O](s: FreeC[F, O, IAny]): FreeC[F, X, Option[(Chunk[O], FreeC[F, O, IAny])]] =
+    Step(s, None).map { _.map { case (h, _, t) => (h, t.asInstanceOf[FreeC[F, O, IAny]]) } }
 
   /** Left-folds the output of a stream. */
   def compile[F[_], O, B](
-      stream: FreeC[F, O, Unit],
+      stream: FreeC[F, O, IAny],
       scope: CompileScope[F],
       extendLastTopLevelScope: Boolean,
       init: B
@@ -161,22 +161,22 @@ private[fs2] object Algebra {
   private[this] def compileLoop[F[_], O](
       scope: CompileScope[F],
       extendLastTopLevelScope: Boolean,
-      stream: FreeC[F, O, Unit]
+      stream: FreeC[F, O, IAny]
   )(
       implicit F: MonadError[F, Throwable]
-  ): F[Option[(Chunk[O], CompileScope[F], FreeC[F, O, Unit])]] = {
+  ): F[Option[(Chunk[O], CompileScope[F], FreeC[F, O, IAny])]] = {
     case class Done[X](scope: CompileScope[F]) extends R[X]
-    case class Out[X](head: Chunk[X], scope: CompileScope[F], tail: FreeC[F, X, Unit]) extends R[X]
+    case class Out[X](head: Chunk[X], scope: CompileScope[F], tail: FreeC[F, X, IAny]) extends R[X]
     case class Interrupted[X](scopeId: Token, err: Option[Throwable]) extends R[X]
     sealed trait R[X]
 
     def go[X](
         scope: CompileScope[F],
         extendedTopLevelScope: Option[CompileScope[F]],
-        stream: FreeC[F, X, Unit]
+        stream: FreeC[F, X, IAny]
     ): F[R[X]] =
       stream.viewL match {
-        case _: FreeC.Result.Pure[Unit] =>
+        case _: FreeC.Result.Pure[_] =>
           F.pure(Done(scope))
 
         case failed: FreeC.Result.Fail =>
@@ -188,7 +188,7 @@ private[fs2] object Algebra {
             case other          => sys.error(s"Unexpected interruption context: $other (compileLoop)")
           }
 
-        case view: ViewL.View[F, X, y, Unit] =>
+        case view: ViewL.View[F, X, y, _] =>
           def resume(res: Result[y]): F[R[X]] =
             go[X](scope, extendedTopLevelScope, view.next(res))
 
@@ -206,13 +206,13 @@ private[fs2] object Algebra {
                 F.pure(Out(output.values, scope, view.next(FreeC.Result.unit)))
               )
 
-            case u: Step[y] =>
+            case u: Step[_] =>
               // if scope was specified in step, try to find it, otherwise use the current scope.
               F.flatMap(u.scope.fold[F[Option[CompileScope[F]]]](F.pure(Some(scope))) { scopeId =>
                 scope.findStepScope(scopeId)
               }) {
                 case Some(stepScope) =>
-                  val stepStream = u.stream.asInstanceOf[FreeC[F, y, Unit]]
+                  val stepStream = u.stream.asInstanceOf[FreeC[F, y, IAny]]
                   F.flatMap(F.attempt(go[y](stepScope, extendedTopLevelScope, stepStream))) {
                     case Right(Done(scope)) =>
                       interruptGuard(scope)(
@@ -224,7 +224,7 @@ private[fs2] object Algebra {
                       val nextScope = if (u.scope.isEmpty) outScope else scope
                       val result = Result.Pure(Some((head, outScope.id, tail)))
                       interruptGuard(nextScope)(
-                        go(nextScope, extendedTopLevelScope, view.next(result))
+                        go(nextScope, extendedTopLevelScope, view.next(result.asInstanceOf[Result[y]]))
                       )
 
                     case Right(Interrupted(scopeId, err)) =>
@@ -363,12 +363,12 @@ private[fs2] object Algebra {
     * @return
     */
   def interruptBoundary[F[_], O](
-      stream: FreeC[F, O, Unit],
+      stream: FreeC[F, O, IAny],
       interruptedScope: Token,
       interruptedError: Option[Throwable]
-  ): FreeC[F, O, Unit] =
+  ): FreeC[F, O, IAny] =
     stream.viewL match {
-      case _: FreeC.Result.Pure[Unit] =>
+      case _: FreeC.Result.Pure[_] =>
         Result.Interrupted(interruptedScope, interruptedError)
       case failed: FreeC.Result.Fail =>
         Result.Fail(
@@ -380,7 +380,7 @@ private[fs2] object Algebra {
         // impossible
         Result.Interrupted(interrupted.context, interrupted.deferredError)
 
-      case view: ViewL.View[F, O, _, Unit] =>
+      case view: ViewL.View[F, O, _, IAny] =>
         view.step match {
           case close: CloseScope =>
             CloseScope(
@@ -397,9 +397,9 @@ private[fs2] object Algebra {
 
   private def translate0[F[_], G[_], O](
       fK: F ~> G,
-      stream: FreeC[F, O, Unit],
+      stream: FreeC[F, O, IAny],
       concurrent: Option[Concurrent[G]]
-  ): FreeC[G, O, Unit] = {
+  ): FreeC[G, O, IAny] = {
     def translateAlgEffect[R](self: AlgEffect[F, R]): AlgEffect[G, R] = self match {
       // safe to cast, used in translate only
       // if interruption has to be supported concurrent for G has to be passed
@@ -411,11 +411,11 @@ private[fs2] object Algebra {
       case g: GetScope[_] => g
     }
 
-    def translateStep[X](next: FreeC[F, X, Unit], isMainLevel: Boolean): FreeC[G, X, Unit] =
+    def translateStep[X](next: FreeC[F, X, IAny], isMainLevel: Boolean): FreeC[G, X, IAny] =
       next.viewL match {
-        case result: Result[Unit] => result
+        case result: Result[_] => result
 
-        case view: ViewL.View[F, X, y, Unit] =>
+        case view: ViewL.View[F, X, y, _] =>
           view.step match {
             case output: Output[X] =>
               output.transformWith {
@@ -426,7 +426,7 @@ private[fs2] object Algebra {
                   // Cast is safe here, as at this point the evaluation of this Step will end
                   // and the remainder of the free will be passed as a result in Bind. As such
                   // next Step will have this to evaluate, and will try to translate again.
-                  view.next(r).asInstanceOf[FreeC[G, X, Unit]]
+                  view.next(r).asInstanceOf[FreeC[G, X, IAny]]
 
                 case r @ Result.Fail(_) => translateStep(view.next(r), isMainLevel)
 
@@ -437,7 +437,7 @@ private[fs2] object Algebra {
               // NOTE: The use of the `asInstanceOf` is to by-pass a compiler-crash in Scala 2.12,
               // involving GADTs with a covariant Higher-Kinded parameter.
               Step[x](
-                stream = translateStep[x](step.stream.asInstanceOf[FreeC[F, x, Unit]], false),
+                stream = translateStep[x](step.stream.asInstanceOf[FreeC[F, x, IAny]], false),
                 scope = step.scope
               ).transformWith { r =>
                 translateStep[X](view.next(r.asInstanceOf[Result[y]]), isMainLevel)

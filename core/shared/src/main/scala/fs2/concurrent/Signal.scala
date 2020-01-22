@@ -74,7 +74,7 @@ object Signal extends SignalLowPriorityImplicits {
         Pull.output1[F, PullOutput]((x, y, restOfXs, restOfYs)): Pull[F, PullOutput, Unit]
       }
     } yield ()
-    firstPull.value.void.stream
+    firstPull.value.stream
       .flatMap {
         case (x, y, restOfXs, restOfYs) =>
           restOfXs.either(restOfYs).scan((x, y)) {

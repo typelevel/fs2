@@ -13,8 +13,8 @@ object ThisModuleShouldCompile {
   /* Some checks that `.pull` can be used without annotations */
   Stream(1, 2, 3, 4).through(_.take(2))
   Stream.eval(IO.pure(1)).through(_.take(2))
-  Stream(1, 2, 3).covary[IO].pull.uncons1.void.stream
-  Stream.eval(IO.pure(1)).pull.uncons1.void.stream
+  Stream(1, 2, 3).covary[IO].pull.uncons1.stream
+  Stream.eval(IO.pure(1)).pull.uncons1.stream
 
   /* Also in a polymorphic context. */
   def a[F[_], A](s: Stream[F, A]) = s.through(_.take(2))

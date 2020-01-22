@@ -38,13 +38,10 @@ final class Pull[+F[_], +O, +R] private[fs2] (private val free: FreeC[F, O, R]) 
   /**
     * Interpret this `Pull` to produce a `Stream`.
     *
-    * May only be called on pulls which return a `Unit` result type. Use `p.void.stream` to explicitly
+    * May only be called on pulls which return a `Unit` result type. Use `p.stream` to explicitly
     * ignore the result type of the pull.
     */
-  def stream(implicit ev: R <:< Unit): Stream[F, O] = {
-    val _ = ev
-    new Stream(free.asInstanceOf[FreeC[F, O, Unit]])
-  }
+  def stream: Stream[F, O] = new Stream(free)
 
   /** Applies the resource of this pull to `f` and returns the result. */
   def flatMap[F2[x] >: F[x], O2 >: O, R2](f: R => Pull[F2, O2, R2]): Pull[F2, O2, R2] =

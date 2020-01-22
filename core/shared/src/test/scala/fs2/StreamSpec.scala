@@ -3443,7 +3443,7 @@ class StreamSpec extends Fs2Spec {
       }
 
       "7 - ok to translate step leg that is forced back in to a stream" in {
-        def goStep(step: Option[Stream.StepLeg[Function0, Int]]): Pull[Function0, Int, Unit] =
+        def goStep(step: Option[Stream.StepLeg[Function0, Int]]): Pull[Function0, Int, IAny] =
           step match {
             case None => Pull.done
             case Some(step) =>

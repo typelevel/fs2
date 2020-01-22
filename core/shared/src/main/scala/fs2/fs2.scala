@@ -34,4 +34,10 @@ package object fs2 {
     * Alias for `Nothing` which works better with type inference.
     */
   type INothing <: Nothing
+
+  /**
+    * Alias for `Any` which may work better with type inference.
+    */
+  type IAny >: Any
+
 }

@@ -32,7 +32,7 @@ private[reactivestreams] final class StreamSubscription[F[_], A](
   def unsafeStart(): Unit = {
     def subscriptionPipe: Pipe[F, A, A] =
       in => {
-        def go(s: Stream[F, A]): Pull[F, A, Unit] =
+        def go(s: Stream[F, A]): Pull[F, A, IAny] =
           Pull.eval(requests.dequeue1).flatMap {
             case Infinite => s.pull.echo
             case Finite(n) =>
