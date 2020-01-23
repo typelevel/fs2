@@ -181,6 +181,8 @@ package object file {
 
   /**
     * Get file permissions as set of [[PosixFilePermission]]
+    *
+    * This will only work for POSIX supporting file systems i.e. not Windows
     */
   def permissions[F[_]: Sync: ContextShift](
       blocker: Blocker,
@@ -191,6 +193,8 @@ package object file {
 
   /**
     * Set file permissions from set of [[PosixFilePermission]]
+    *
+    * This will only work for POSIX supporting file systems i.e. not Windows
     */
   def setPermissions[F[_]: Sync: ContextShift](
       blocker: Blocker,
