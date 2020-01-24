@@ -62,7 +62,7 @@ Before submitting a change for review, it's worth running some extra checks that
 sbt:root> fmtCheck; testJVM; testJS; doc; mimaReportBinaryIssues; docs/mdoc; microsite/makeMicrosite
 ```
 
-That will check the formatting, run all tests on the JVM and JS platforms, report detected binary compatibility issues (as detected by [MiMa][mima]) and build the site.
+That will check the formatting, run all tests on the JVM and JS platforms, report any binary compatibility issues (as detected by [MiMa][mima]) and build the site.
 
 If you run into any problems with tests, binary compatibility or other issues, feel free to ask questions on [the Gitter channel][fs2-dev].
 
