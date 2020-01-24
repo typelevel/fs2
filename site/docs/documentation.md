@@ -7,18 +7,18 @@ position: 5
 
 #### Talks and Presentations
 
-* [A sky full of streams](https://www.youtube.com/watch?v=oluPEFlXumw), a talk by [Jakub Kozłowski][3] at [Scala World](https://scala.world), a conference in the Lake District in the UK, in September 2019. Slides are available [on Speakerdeck](https://speakerdeck.com/kubukoz/a-sky-full-of-streams).
-* [Declarative Control Flow with fs2 Stream](https://www.youtube.com/watch?v=YSN__0VEsaw), a talk by [Fabio Labella][1] at the [Typelevel Summit](https://typelevel.org/event/2018-03-summit-boston/), celebrated in Boston in March 2018. Slides available at the author's [Github](https://github.com/SystemFw/TL-Summit-Boston-2018).
-* [Compose your program flow with Stream](https://www.youtube.com/watch?v=x3GLwl1FxcA), a talk by [Fabio Labella][1] at a Klarna tech talk, sometime before March 2018. 
-* 2018-03-20: [Compose your program flow with Stream](https://www.youtube.com/watch?v=x3GLwl1FxcA) by [Fabio Labella][1]
-* [FS2 Internals: Performance](https://www.youtube.com/watch?v=TXxzMF14pxU), a talk by [Michael Pilquist][2] at [Scale by the Bay](http://2017.scale.bythebay.io/), in November 2017. [Slides](https://speakerdeck.com/mpilquist/fs2-internals).
-* [Compositional Streaming with FS2](https://www.youtube.com/watch?v=oFk8-a1FSP0), a talk by [Michael Pilquist][2] at [Scale by the Bay](http://scala.bythebay.io/), November 2016. [Slides](https://speakerdeck.com/mpilquist/compositional-streaming-with-fs2).
+* [A sky full of streams](https://www.youtube.com/watch?v=oluPEFlXumw), a talk by [Jakub Kozłowski][kubukoz] at [Scala World](https://scala.world), a conference in the Lake District in the UK, in September 2019. Slides are available [on Speakerdeck](https://speakerdeck.com/kubukoz/a-sky-full-of-streams).
+* [Declarative Control Flow with fs2 Stream](https://www.youtube.com/watch?v=YSN__0VEsaw), a talk by [Fabio Labella][systemw] at the [Typelevel Summit](https://typelevel.org/event/2018-03-summit-boston/), celebrated in Boston in March 2018. Slides available at the author's [Github](https://github.com/SystemFw/TL-Summit-Boston-2018).
+* [Compose your program flow with Stream](https://www.youtube.com/watch?v=x3GLwl1FxcA), a talk by [Fabio Labella][systemfw] at a Klarna tech talk, sometime before March 2018.
+* 2018-03-20: [Compose your program flow with Stream](https://www.youtube.com/watch?v=x3GLwl1FxcA) by [Fabio Labella][systemfw]
+* [FS2 Internals: Performance](https://www.youtube.com/watch?v=TXxzMF14pxU), a talk by [Michael Pilquist][mpilquist] at [Scale by the Bay](http://2017.scale.bythebay.io/), in November 2017. [Slides](https://speakerdeck.com/mpilquist/fs2-internals).
+* [Compositional Streaming with FS2](https://www.youtube.com/watch?v=oFk8-a1FSP0), a talk by [Michael Pilquist][mpilquist] at [Scale by the Bay](http://scala.bythebay.io/), November 2016. [Slides](https://speakerdeck.com/mpilquist/compositional-streaming-with-fs2).
 
 
 #### Tutorials
 
-* [An introduction to FS2 Streams](https://www.youtube.com/watch?v=B1wb4fIdtn4&t=3094s), a REPL-demo tutorial given by [Michael Pilquist][2] for the [Scala Toronto](https://www.meetup.com/scalator/events/254059603/) Meetup group, on September 2018.
-* Introduction to Functional Streams for Scala (FS2), a REPL-demo tutorial on FS2 (version 0.9), given by [Michael Pilquist][2] in May of 2016. The tutorial is split in three parts:
+* [An introduction to FS2 Streams](https://www.youtube.com/watch?v=B1wb4fIdtn4&t=3094s), a REPL-demo tutorial given by [Michael Pilquist][mpilquist] for the [Scala Toronto](https://www.meetup.com/scalator/events/254059603/) Meetup group, on September 2018.
+* Introduction to Functional Streams for Scala (FS2), a REPL-demo tutorial on FS2 (version 0.9), given by [Michael Pilquist][mpilquist] in May of 2016. The tutorial is split in three parts:
   * [Part 1](https://www.youtube.com/watch?v=cahvyadYfX8).
   * [Part 2: Chunks & Pipes](https://www.youtube.com/watch?v=HM0mOu5o2uA).
   * [Part 3: Concurrency](https://www.youtube.com/watch?v=8YxcB6PIUDg).
@@ -26,10 +26,13 @@ position: 5
 
 #### Blog Posts and Short Articles
 
-* [Inference Driven Design](https://mpilquist.github.io/blog/2018/07/04/fs2/), by [Muchael Pilquist][2], describes some of the tradeoffs in designing the API and the code of FS2, used to work around some of the problems in the Scala compiler. 
+* [Inference Driven Design](https://mpilquist.github.io/blog/2018/07/04/fs2/), by [Michael Pilquist][mpilquist], describes some of the tradeoffs in designing the API and the code of FS2, used to work around some of the problems in the Scala compiler.
 * [Tips for working with FS2](https://underscore.io/blog/posts/2018/03/20/fs2.html), by [Pere Villega](https://github.com/pvillega),
-* [A streaming library with a superpower: FS2 and functional programming](https://medium.freecodecamp.org/a-streaming-library-with-a-superpower-fs2-and-functional-programming-6f602079f70a). 
+* [A streaming library with a superpower: FS2 and functional programming](https://medium.freecodecamp.org/a-streaming-library-with-a-superpower-fs2-and-functional-programming-6f602079f70a).
 
+#### Books
+
+* [Practical FP in Scala: A hands-on approach](https://leanpub.com/pfp-scala) by [Gabriel Volpe][gvolpe] contains a section on effectful, concurrent streaming with FS2.
 
 #### Related Academic Research
 
@@ -57,9 +60,10 @@ Since Haskell is the purely functional lazily-evaluated programming language _pa
 * [Streaming](http://hackage.haskell.org/package/streaming) is a recent addition to Haskell streaming libraries. It represents a Stream using a `FreeT` monad transformer.
 
 
-[1]: https://github.com/SystemFw
-[2]: https://github.com/mpilquist
-[3]: https://github.com/kubukoz
+[systemfw]: https://github.com/SystemFw
+[mpilquist]: https://github.com/mpilquist
+[kubukoz]: https://github.com/kubukoz
+[gvolpe]: https://github.com/gvolpe
 
 
 ### Older References ###
