@@ -26,6 +26,7 @@ position: 5
 
 #### Blog Posts and Short Articles
 
+* [Writing a simple Telegram bot with tagless final, http4s and fs2](https://pavkin.ru/writing-a-simple-telegram-bot-with-tagless-final-http4s-and-fs2/) by [Vladimir Pavkin][vpavkin] describes a process of writing a purely functional client for the Telegram messenger.
 * [Inference Driven Design](https://mpilquist.github.io/blog/2018/07/04/fs2/), by [Michael Pilquist][mpilquist], describes some of the tradeoffs in designing the API and the code of FS2, used to work around some of the problems in the Scala compiler.
 * [Tips for working with FS2](https://underscore.io/blog/posts/2018/03/20/fs2.html), by [Pere Villega](https://github.com/pvillega),
 * [A streaming library with a superpower: FS2 and functional programming](https://medium.freecodecamp.org/a-streaming-library-with-a-superpower-fs2-and-functional-programming-6f602079f70a).
@@ -64,7 +65,7 @@ Since Haskell is the purely functional lazily-evaluated programming language _pa
 [mpilquist]: https://github.com/mpilquist
 [kubukoz]: https://github.com/kubukoz
 [gvolpe]: https://github.com/gvolpe
-
+[vpavkin]: https://pavkin.ru
 
 ### Older References ###
 
