@@ -2,6 +2,7 @@
 
 <ul>
   <li><a href="https://www.youtube.com/watch?v=oluPEFlXumw">A sky full of streams</a>, a talk by <a href="https://github.com/kubukoz">Jakub Kozłowski</a> at <a href="https://scala.world">Scala World</a>, a conference in the Lake District in the UK, in September 2019. Slides are available <a href="https://speakerdeck.com/kubukoz/a-sky-full-of-streams">on Speakerdeck</a>.</li>
+  <li><a href="https://www.youtube.com/watch?v=tbShO8eIXbI">FS2 - Crash course</a>, a talk by <a href="lukasz-byczynski">Łukasz Byczyński</a> from <a href="https://scalar-conf.com">Scalar</a> in Warsaw, in April 2019. <a href="https://github.com/lukaszbyczynski/scalar-fs2-cc">Examples are available on the author’s GitHub</a>.</li>
   <li><a href="https://www.youtube.com/watch?v=YSN__0VEsaw">Declarative Control Flow with fs2 Stream</a>, a talk by <a href="https://github.com/SystemFw">Fabio Labella</a> at the <a href="https://typelevel.org/event/2018-03-summit-boston/">Typelevel Summit</a>, celebrated in Boston in March 2018. Slides available at the author’s <a href="https://github.com/SystemFw/TL-Summit-Boston-2018">Github</a>.</li>
   <li><a href="https://www.youtube.com/watch?v=x3GLwl1FxcA">Compose your program flow with Stream</a>, a talk by <a href="https://github.com/SystemFw">Fabio Labella</a> at a Klarna tech talk, sometime before March 2018.</li>
   <li>2018-03-20: <a href="https://www.youtube.com/watch?v=x3GLwl1FxcA">Compose your program flow with Stream</a> by <a href="https://github.com/SystemFw">Fabio Labella</a></li>
@@ -12,7 +13,8 @@
 <h4 id="tutorials">Tutorials</h4>
 
 <ul>
-  <li><a href="https://www.youtube.com/watch?v=B1wb4fIdtn4&amp;t=3094s">An introduction to FS2 Streams</a>, a REPL-demo tutorial given by <a href="https://github.com/mpilquist">Michael Pilquist</a> for the <a href="https://www.meetup.com/scalator/events/254059603/">Scala Toronto</a> Meetup group, on September 2018.</li>
+  <li><a href="https://www.youtube.com/watch?v=FWYXqYQWAc0">Sharding a stream of values using Fs2</a>, a tutorial by <a href="gvolpe">Gabriel Volpe</a> showcasing a specific use-case of fs2 streams.</li>
+  <li><a href="https://www.youtube.com/watch?v=B1wb4fIdtn4">An introduction to FS2 Streams</a>, a REPL-demo tutorial given by <a href="https://github.com/mpilquist">Michael Pilquist</a> for the <a href="https://www.meetup.com/scalator/events/254059603/">Scala Toronto</a> Meetup group, on September 2018.</li>
   <li>Introduction to Functional Streams for Scala (FS2), a REPL-demo tutorial on FS2 (version 0.9), given by <a href="https://github.com/mpilquist">Michael Pilquist</a> in May of 2016. The tutorial is split in three parts:
     <ul>
       <li><a href="https://www.youtube.com/watch?v=cahvyadYfX8">Part 1</a>.</li>
@@ -25,9 +27,16 @@
 <h4 id="blog-posts-and-short-articles">Blog Posts and Short Articles</h4>
 
 <ul>
-  <li><a href="https://mpilquist.github.io/blog/2018/07/04/fs2/">Inference Driven Design</a>, by <a href="https://github.com/mpilquist">Muchael Pilquist</a>, describes some of the tradeoffs in designing the API and the code of FS2, used to work around some of the problems in the Scala compiler.</li>
+  <li><a href="https://pavkin.ru/writing-a-simple-telegram-bot-with-tagless-final-http4s-and-fs2/">Writing a simple Telegram bot with tagless final, http4s and fs2</a> by <a href="https://github.com/vpavkin">Vladimir Pavkin</a> describes a process of writing a purely functional client for the Telegram messenger.</li>
+  <li><a href="https://mpilquist.github.io/blog/2018/07/04/fs2/">Inference Driven Design</a>, by <a href="https://github.com/mpilquist">Michael Pilquist</a>, describes some of the tradeoffs in designing the API and the code of FS2, used to work around some of the problems in the Scala compiler.</li>
   <li><a href="https://underscore.io/blog/posts/2018/03/20/fs2.html">Tips for working with FS2</a>, by <a href="https://github.com/pvillega">Pere Villega</a>,</li>
   <li><a href="https://medium.freecodecamp.org/a-streaming-library-with-a-superpower-fs2-and-functional-programming-6f602079f70a">A streaming library with a superpower: FS2 and functional programming</a>.</li>
+</ul>
+
+<h4 id="books">Books</h4>
+
+<ul>
+  <li><a href="https://leanpub.com/pfp-scala">Practical FP in Scala: A hands-on approach</a> by <a href="https://github.com/gvolpe">Gabriel Volpe</a> contains a section on effectful, concurrent streaming with FS2.</li>
 </ul>
 
 <h4 id="related-academic-research">Related Academic Research</h4>
@@ -67,7 +76,22 @@
 
 <p>The Github page for <a href="https://github.com/functional-streams-for-scala/fs2/wiki/Additional-Resources">Additional resources</a> lists some of the references above and several older ones, mostly from the <code class="highlighter-rouge">scalaz-stream</code> days.</p>
 
-</div></div></section></main><footer id="site-footer"><div class="container"><div class="row"><p>fs2 is designed and developed by <a href="https://github.com/functional-streams-for-scala/fs2" target="_blank" rel="noopener noreferrer">co.fs2</a></p></div><div class="row"><div><p>Website built with <a href="https://47deg.github.io/sbt-microsites/" target="_blank" rel="noopener noreferrer">sbt-microsites</a> - © 2019 <a href="https://www.47deg.com/" target="_blank" rel="noopener noreferrer">47 Degrees</a></p></div></div></div></footer><script src="/highlight/highlight.pack.js"></script><script>hljs.configure({languages:['scala','java','bash']});
+</div></div></section></main><footer id="site-footer"><div class="container"><div class="row"><p>fs2 is designed and developed by <a href="https://github.com/functional-streams-for-scala/fs2" target="_blank" rel="noopener noreferrer">co.fs2</a></p></div><div class="row"><div><p>Website built with <a href="https://47deg.github.io/sbt-microsites/" target="_blank" rel="noopener noreferrer">sbt-microsites</a> - © 2019 <a href="https://www.47deg.com/" target="_blank" rel="noopener noreferrer">47 Degrees</a></p></div></div></div></footer><script src="/highlight/highlight.pack.js"></script><script>
+// For all code blocks, copy the language from the containing div
+// to the inner code tag (where hljs expects it to be)
+const langPrefix = 'language-';
+document.querySelectorAll(`div[class^='${langPrefix}']`).forEach(function(div) {
+  div.classList.forEach(function(cssClass) {
+    if (cssClass.startsWith(langPrefix)) {
+      const lang = cssClass.substring(langPrefix.length);
+      div.querySelectorAll('pre code').forEach(function(code) {
+        code.classList.add(lang);
+      });
+    }
+  });
+});
+
+hljs.configure({languages:['scala','java','bash']});
 hljs.initHighlightingOnLoad();
-              </script><script>console.info('\x57\x65\x62\x73\x69\x74\x65\x20\x62\x75\x69\x6c\x74\x20\x77\x69\x74\x68\x3a\x0a\x20\x20\x20\x20\x20\x20\x20\x20\x20\x5f\x5f\x20\x20\x20\x20\x5f\x5f\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x5f\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x5f\x20\x5f\x5f\x0a\x20\x20\x20\x5f\x5f\x5f\x5f\x5f\x2f\x20\x2f\x5f\x20\x20\x2f\x20\x2f\x5f\x20\x20\x20\x20\x20\x20\x5f\x5f\x5f\x5f\x20\x5f\x5f\x5f\x20\x20\x28\x5f\x29\x5f\x5f\x5f\x5f\x5f\x5f\x5f\x5f\x5f\x5f\x5f\x5f\x5f\x20\x20\x5f\x5f\x5f\x5f\x5f\x28\x5f\x29\x20\x2f\x5f\x5f\x5f\x5f\x20\x20\x5f\x5f\x5f\x5f\x5f\x0a\x20\x20\x2f\x20\x5f\x5f\x5f\x2f\x20\x5f\x5f\x20\x5c\x2f\x20\x5f\x5f\x2f\x5f\x5f\x5f\x5f\x5f\x2f\x20\x5f\x5f\x20\x60\x5f\x5f\x20\x5c\x2f\x20\x2f\x20\x5f\x5f\x5f\x2f\x20\x5f\x5f\x5f\x2f\x20\x5f\x5f\x20\x5c\x2f\x20\x5f\x5f\x5f\x2f\x20\x2f\x20\x5f\x5f\x2f\x20\x5f\x20\x5c\x2f\x20\x5f\x5f\x5f\x2f\x0a\x20\x28\x5f\x5f\x20\x20\x29\x20\x2f\x5f\x2f\x20\x2f\x20\x2f\x5f\x2f\x5f\x5f\x5f\x5f\x5f\x2f\x20\x2f\x20\x2f\x20\x2f\x20\x2f\x20\x2f\x20\x2f\x20\x2f\x5f\x5f\x2f\x20\x2f\x20\x20\x2f\x20\x2f\x5f\x2f\x20\x28\x5f\x5f\x20\x20\x29\x20\x2f\x20\x2f\x5f\x2f\x20\x20\x5f\x5f\x28\x5f\x5f\x20\x20\x29\x0a\x2f\x5f\x5f\x5f\x5f\x2f\x5f\x2e\x5f\x5f\x5f\x2f\x5c\x5f\x5f\x2f\x20\x20\x20\x20\x20\x2f\x5f\x2f\x20\x2f\x5f\x2f\x20\x2f\x5f\x2f\x5f\x2f\x5c\x5f\x5f\x5f\x2f\x5f\x2f\x20\x20\x20\x5c\x5f\x5f\x5f\x5f\x2f\x5f\x5f\x5f\x5f\x2f\x5f\x2f\x5c\x5f\x5f\x2f\x5c\x5f\x5f\x5f\x2f\x5f\x5f\x5f\x5f\x2f\x0a\x0a\x68\x74\x74\x70\x73\x3a\x2f\x2f\x34\x37\x64\x65\x67\x2e\x67\x69\x74\x68\x75\x62\x2e\x69\x6f\x2f\x73\x62\x74\x2d\x6d\x69\x63\x72\x6f\x73\x69\x74\x65\x73')</script><script>((window.gitter = {}).chat = {}).options = {
+      </script><script>console.info('\x57\x65\x62\x73\x69\x74\x65\x20\x62\x75\x69\x6c\x74\x20\x77\x69\x74\x68\x3a\x0a\x20\x20\x20\x20\x20\x20\x20\x20\x20\x5f\x5f\x20\x20\x20\x20\x5f\x5f\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x5f\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x5f\x20\x5f\x5f\x0a\x20\x20\x20\x5f\x5f\x5f\x5f\x5f\x2f\x20\x2f\x5f\x20\x20\x2f\x20\x2f\x5f\x20\x20\x20\x20\x20\x20\x5f\x5f\x5f\x5f\x20\x5f\x5f\x5f\x20\x20\x28\x5f\x29\x5f\x5f\x5f\x5f\x5f\x5f\x5f\x5f\x5f\x5f\x5f\x5f\x5f\x20\x20\x5f\x5f\x5f\x5f\x5f\x28\x5f\x29\x20\x2f\x5f\x5f\x5f\x5f\x20\x20\x5f\x5f\x5f\x5f\x5f\x0a\x20\x20\x2f\x20\x5f\x5f\x5f\x2f\x20\x5f\x5f\x20\x5c\x2f\x20\x5f\x5f\x2f\x5f\x5f\x5f\x5f\x5f\x2f\x20\x5f\x5f\x20\x60\x5f\x5f\x20\x5c\x2f\x20\x2f\x20\x5f\x5f\x5f\x2f\x20\x5f\x5f\x5f\x2f\x20\x5f\x5f\x20\x5c\x2f\x20\x5f\x5f\x5f\x2f\x20\x2f\x20\x5f\x5f\x2f\x20\x5f\x20\x5c\x2f\x20\x5f\x5f\x5f\x2f\x0a\x20\x28\x5f\x5f\x20\x20\x29\x20\x2f\x5f\x2f\x20\x2f\x20\x2f\x5f\x2f\x5f\x5f\x5f\x5f\x5f\x2f\x20\x2f\x20\x2f\x20\x2f\x20\x2f\x20\x2f\x20\x2f\x20\x2f\x5f\x5f\x2f\x20\x2f\x20\x20\x2f\x20\x2f\x5f\x2f\x20\x28\x5f\x5f\x20\x20\x29\x20\x2f\x20\x2f\x5f\x2f\x20\x20\x5f\x5f\x28\x5f\x5f\x20\x20\x29\x0a\x2f\x5f\x5f\x5f\x5f\x2f\x5f\x2e\x5f\x5f\x5f\x2f\x5c\x5f\x5f\x2f\x20\x20\x20\x20\x20\x2f\x5f\x2f\x20\x2f\x5f\x2f\x20\x2f\x5f\x2f\x5f\x2f\x5c\x5f\x5f\x5f\x2f\x5f\x2f\x20\x20\x20\x5c\x5f\x5f\x5f\x5f\x2f\x5f\x5f\x5f\x5f\x2f\x5f\x2f\x5c\x5f\x5f\x2f\x5c\x5f\x5f\x5f\x2f\x5f\x5f\x5f\x5f\x2f\x0a\x0a\x68\x74\x74\x70\x73\x3a\x2f\x2f\x34\x37\x64\x65\x67\x2e\x67\x69\x74\x68\x75\x62\x2e\x69\x6f\x2f\x73\x62\x74\x2d\x6d\x69\x63\x72\x6f\x73\x69\x74\x65\x73')</script><script>((window.gitter = {}).chat = {}).options = {
 room: 'functional-streams-for-scala/fs2'};</script><script src="https://sidecar.gitter.im/dist/sidecar.v1.js"></script><script src="/js/version-selector.js"></script></body></html>

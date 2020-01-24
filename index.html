@@ -6,9 +6,14 @@
 
 <h3 id="overview">Overview</h3>
 
-<p>FS2 is a library for purely functional, effectful, and polymorphic stream processing library in the <a href="https://scala-lang.org">Scala programming language</a>. Its design goals are compositionality, expressiveness, resource safety, and speed. The name is a modified acronym for <strong>F</strong>unctional <strong>S</strong>treams for <strong>Scala</strong> (FSS, or FS2).</p>
+<p>FS2 is a library for purely functional, effectful, and polymorphic stream processing library in the <a href="https://scala-lang.org">Scala programming language</a>.
+Its design goals are compositionality, expressiveness, resource safety, and speed.
+The name is a modified acronym for <strong>F</strong>unctional <strong>S</strong>treams for <strong>Scala</strong> (FSS, or FS2).</p>
 
-<p>FS2 is available for Scala 2.11, Scala 2.12, Scala 2.13, and <a href="http://www.scala-js.org/">Scala.js</a>. FS2 is built upon two major functional libraries for Scala, <a href="https://typelevel.org/cats/">Cats</a>, and <a href="https://typelevel.org/cats-effect/">Cats-Effect</a>. Regardless of those dependencies, FS2 core types (streams and pulls) are polymorphic in the effect type (as long as it is compatible with <code class="highlighter-rouge">cats-effect</code> typeclasses), and thus FS2 can be used with other effect libraries, such as <a href="https://monix.io/">Monix</a>.</p>
+<p>FS2 is available for Scala 2.12, Scala 2.13, and <a href="http://www.scala-js.org/">Scala.js</a>.
+FS2 is built upon two major functional libraries for Scala, <a href="https://typelevel.org/cats/">Cats</a>, and <a href="https://typelevel.org/cats-effect/">Cats-Effect</a>.
+Regardless of those dependencies, FS2 core types (streams and pulls) are polymorphic in the effect type (as long as it is compatible with <code class="highlighter-rouge">cats-effect</code> typeclasses),
+and thus FS2 can be used with other effect libraries, such as <a href="https://monix.io/">Monix</a>.</p>
 
 <p>Prior to the 0.9 release in 2016, FS2 was known as <code class="highlighter-rouge">scalaz-stream</code>, which was based on the <a href="https://github.com/scalaz/scalaz"><code class="highlighter-rouge">scalaz</code></a> library.</p>
 
@@ -20,32 +25,32 @@
   <li><a href="http://fs2.io/index.html">Microsite</a></li>
   <li><a href="#about">About the library</a></li>
   <li><a href="#getit">How to get latest version</a></li>
-  <li>API docs: <a href="https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-core_2.12/2.1.0/fs2-core_2.12-2.1.0-javadoc.jar/!/fs2/index.html">fs2-core</a>, <a href="https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-io_2.12/2.1.0/fs2-io_2.12-2.1.0-javadoc.jar/!/fs2/io/index.html">fs2-io</a>, <a href="https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-reactive-streams_2.12/2.1.0/fs2-reactive-streams_2.12-2.1.0-javadoc.jar/!/fs2/interop/reactivestreams/index.html">fs2-reactive-streams</a>, <a href="https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-experimental_2.12/2.1.0/fs2-experimental_2.12-2.1.0-javadoc.jar/!/fs2/experimental/index.html">fs2-experimental</a></li>
+  <li>API docs: <a href="https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-core_2.12/2.2.1/fs2-core_2.12-2.2.1-javadoc.jar/!/fs2/index.html">fs2-core</a>, <a href="https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-io_2.12/2.2.1/fs2-io_2.12-2.2.1-javadoc.jar/!/fs2/io/index.html">fs2-io</a>, <a href="https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-reactive-streams_2.12/2.2.1/fs2-reactive-streams_2.12-2.2.1-javadoc.jar/!/fs2/interop/reactivestreams/index.html">fs2-reactive-streams</a>, <a href="https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-experimental_2.12/2.2.1/fs2-experimental_2.12-2.2.1-javadoc.jar/!/fs2/experimental/index.html">fs2-experimental</a></li>
   <li><a href="#docs">Docs and getting help</a></li>
 </ul>
 
 <h3 id="-where-to-get-the-latest-version"><a id="getit"></a> Where to get the latest version</h3>
 
-<p>The latest version is 2.1.x. See the badge at the top of the README for the exact version number.</p>
+<p>The latest version is 2.2.x. See the badge at the top of the README for the exact version number.</p>
 
 <p>If upgrading from the 1.0 series, see the <a href="https://github.com/functional-streams-for-scala/fs2/releases/tag/v2.0.0">release notes for 2.0.0</a> for help with upgrading.</p>
 
-<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>// available for Scala 2.11, 2.12, 2.13
-libraryDependencies += "co.fs2" %% "fs2-core" % "2.1.0" // For cats 2 and cats-effect 2
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>// available for 2.12, 2.13
+libraryDependencies += "co.fs2" %% "fs2-core" % "2.2.1" // For cats 2 and cats-effect 2
 
 // optional I/O library
-libraryDependencies += "co.fs2" %% "fs2-io" % "2.1.0"
+libraryDependencies += "co.fs2" %% "fs2-io" % "2.2.1"
 
 // optional reactive streams interop
-libraryDependencies += "co.fs2" %% "fs2-reactive-streams" % "2.1.0"
+libraryDependencies += "co.fs2" %% "fs2-reactive-streams" % "2.2.1"
 
 // optional experimental library
-libraryDependencies += "co.fs2" %% "fs2-experimental" % "2.1.0"
+libraryDependencies += "co.fs2" %% "fs2-experimental" % "2.2.1"
 </code></pre></div></div>
 
 <p>The fs2-core library is also supported on Scala.js:</p>
 
-<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>libraryDependencies += "co.fs2" %%% "fs2-core" % "2.0.0"
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>libraryDependencies += "co.fs2" %%% "fs2-core" % "2.2.1"
 </code></pre></div></div>
 
 <p>There are <a href="https://github.com/functional-streams-for-scala/fs2/blob/master/docs/">detailed migration guides</a> for migrating from older versions.</p>
@@ -97,7 +102,7 @@ libraryDependencies += "co.fs2" %% "fs2-experimental" % "2.1.0"
 <h3 id="documentation-and-getting-help"><a id="docs"></a>Documentation and getting help</h3>
 
 <ul>
-  <li>There are Scaladoc API documentations for <a href="https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-core_2.12/2.1.0/fs2-core_2.12-2.1.0-javadoc.jar/!/fs2/index.html">the core library</a>, which defines and implements the core types for streams and pulls, as well as the type aliases for pipes and sinks. <a href="https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-io_2.12/2.1.0/fs2-io_2.12-2.1.0-javadoc.jar/!/fs2/io/index.html">The <code class="highlighter-rouge">io</code> library</a> provides FS2 bindings for NIO-based file I/O and TCP/UDP networking</li>
+  <li>There are Scaladoc API documentations for <a href="https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-core_2.12/2.2.1/fs2-core_2.12-2.2.1-javadoc.jar/!/fs2/index.html">the core library</a>, which defines and implements the core types for streams and pulls, as well as the type aliases for pipes and sinks. <a href="https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-io_2.12/2.2.1/fs2-io_2.12-2.2.1-javadoc.jar/!/fs2/io/index.html">The <code class="highlighter-rouge">io</code> library</a> provides FS2 bindings for NIO-based file I/O and TCP/UDP networking.</li>
   <li><a href="https://functional-streams-for-scala.github.io/fs2/guide.html">The official guide</a> is a good starting point for learning more about the library.</li>
   <li>The <a href="https://functional-streams-for-scala.github.io/fs2/documentation.html">documentation page</a> is intended to serve as a list of all references, including conference presentation recordings, academic papers, and blog posts, on the use and implementation of <code class="highlighter-rouge">fs2</code>.</li>
   <li><a href="https://functional-streams-for-scala.github.io/fs2/faq.html">The FAQ</a> has frequently asked questions. Feel free to open issues or PRs with additions to the FAQ!</li>
@@ -152,7 +157,22 @@ libraryDependencies += "co.fs2" %% "fs2-experimental" % "2.1.0"
 
 <p>See the <a href="CODE_OF_CONDUCT.md">Code of Conduct</a>.</p>
 
-</div></div></section></main><footer id="site-footer"><div class="container"><div class="row"><p>fs2 is designed and developed by <a href="https://github.com/functional-streams-for-scala/fs2" target="_blank" rel="noopener noreferrer">co.fs2</a></p></div><div class="row"><div><p>Website built with <a href="https://47deg.github.io/sbt-microsites/" target="_blank" rel="noopener noreferrer">sbt-microsites</a> - © 2019 <a href="https://www.47deg.com/" target="_blank" rel="noopener noreferrer">47 Degrees</a></p></div></div></div></footer><script src="/highlight/highlight.pack.js"></script><script>hljs.configure({languages:['scala','java','bash']});
+</div></div></section></main><footer id="site-footer"><div class="container"><div class="row"><p>fs2 is designed and developed by <a href="https://github.com/functional-streams-for-scala/fs2" target="_blank" rel="noopener noreferrer">co.fs2</a></p></div><div class="row"><div><p>Website built with <a href="https://47deg.github.io/sbt-microsites/" target="_blank" rel="noopener noreferrer">sbt-microsites</a> - © 2019 <a href="https://www.47deg.com/" target="_blank" rel="noopener noreferrer">47 Degrees</a></p></div></div></div></footer><script src="/highlight/highlight.pack.js"></script><script>
+// For all code blocks, copy the language from the containing div
+// to the inner code tag (where hljs expects it to be)
+const langPrefix = 'language-';
+document.querySelectorAll(`div[class^='${langPrefix}']`).forEach(function(div) {
+  div.classList.forEach(function(cssClass) {
+    if (cssClass.startsWith(langPrefix)) {
+      const lang = cssClass.substring(langPrefix.length);
+      div.querySelectorAll('pre code').forEach(function(code) {
+        code.classList.add(lang);
+      });
+    }
+  });
+});
+
+hljs.configure({languages:['scala','java','bash']});
 hljs.initHighlightingOnLoad();
-              </script><script>console.info('\x57\x65\x62\x73\x69\x74\x65\x20\x62\x75\x69\x6c\x74\x20\x77\x69\x74\x68\x3a\x0a\x20\x20\x20\x20\x20\x20\x20\x20\x20\x5f\x5f\x20\x20\x20\x20\x5f\x5f\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x5f\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x5f\x20\x5f\x5f\x0a\x20\x20\x20\x5f\x5f\x5f\x5f\x5f\x2f\x20\x2f\x5f\x20\x20\x2f\x20\x2f\x5f\x20\x20\x20\x20\x20\x20\x5f\x5f\x5f\x5f\x20\x5f\x5f\x5f\x20\x20\x28\x5f\x29\x5f\x5f\x5f\x5f\x5f\x5f\x5f\x5f\x5f\x5f\x5f\x5f\x5f\x20\x20\x5f\x5f\x5f\x5f\x5f\x28\x5f\x29\x20\x2f\x5f\x5f\x5f\x5f\x20\x20\x5f\x5f\x5f\x5f\x5f\x0a\x20\x20\x2f\x20\x5f\x5f\x5f\x2f\x20\x5f\x5f\x20\x5c\x2f\x20\x5f\x5f\x2f\x5f\x5f\x5f\x5f\x5f\x2f\x20\x5f\x5f\x20\x60\x5f\x5f\x20\x5c\x2f\x20\x2f\x20\x5f\x5f\x5f\x2f\x20\x5f\x5f\x5f\x2f\x20\x5f\x5f\x20\x5c\x2f\x20\x5f\x5f\x5f\x2f\x20\x2f\x20\x5f\x5f\x2f\x20\x5f\x20\x5c\x2f\x20\x5f\x5f\x5f\x2f\x0a\x20\x28\x5f\x5f\x20\x20\x29\x20\x2f\x5f\x2f\x20\x2f\x20\x2f\x5f\x2f\x5f\x5f\x5f\x5f\x5f\x2f\x20\x2f\x20\x2f\x20\x2f\x20\x2f\x20\x2f\x20\x2f\x20\x2f\x5f\x5f\x2f\x20\x2f\x20\x20\x2f\x20\x2f\x5f\x2f\x20\x28\x5f\x5f\x20\x20\x29\x20\x2f\x20\x2f\x5f\x2f\x20\x20\x5f\x5f\x28\x5f\x5f\x20\x20\x29\x0a\x2f\x5f\x5f\x5f\x5f\x2f\x5f\x2e\x5f\x5f\x5f\x2f\x5c\x5f\x5f\x2f\x20\x20\x20\x20\x20\x2f\x5f\x2f\x20\x2f\x5f\x2f\x20\x2f\x5f\x2f\x5f\x2f\x5c\x5f\x5f\x5f\x2f\x5f\x2f\x20\x20\x20\x5c\x5f\x5f\x5f\x5f\x2f\x5f\x5f\x5f\x5f\x2f\x5f\x2f\x5c\x5f\x5f\x2f\x5c\x5f\x5f\x5f\x2f\x5f\x5f\x5f\x5f\x2f\x0a\x0a\x68\x74\x74\x70\x73\x3a\x2f\x2f\x34\x37\x64\x65\x67\x2e\x67\x69\x74\x68\x75\x62\x2e\x69\x6f\x2f\x73\x62\x74\x2d\x6d\x69\x63\x72\x6f\x73\x69\x74\x65\x73')</script><script>((window.gitter = {}).chat = {}).options = {
+      </script><script>console.info('\x57\x65\x62\x73\x69\x74\x65\x20\x62\x75\x69\x6c\x74\x20\x77\x69\x74\x68\x3a\x0a\x20\x20\x20\x20\x20\x20\x20\x20\x20\x5f\x5f\x20\x20\x20\x20\x5f\x5f\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x5f\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x5f\x20\x5f\x5f\x0a\x20\x20\x20\x5f\x5f\x5f\x5f\x5f\x2f\x20\x2f\x5f\x20\x20\x2f\x20\x2f\x5f\x20\x20\x20\x20\x20\x20\x5f\x5f\x5f\x5f\x20\x5f\x5f\x5f\x20\x20\x28\x5f\x29\x5f\x5f\x5f\x5f\x5f\x5f\x5f\x5f\x5f\x5f\x5f\x5f\x5f\x20\x20\x5f\x5f\x5f\x5f\x5f\x28\x5f\x29\x20\x2f\x5f\x5f\x5f\x5f\x20\x20\x5f\x5f\x5f\x5f\x5f\x0a\x20\x20\x2f\x20\x5f\x5f\x5f\x2f\x20\x5f\x5f\x20\x5c\x2f\x20\x5f\x5f\x2f\x5f\x5f\x5f\x5f\x5f\x2f\x20\x5f\x5f\x20\x60\x5f\x5f\x20\x5c\x2f\x20\x2f\x20\x5f\x5f\x5f\x2f\x20\x5f\x5f\x5f\x2f\x20\x5f\x5f\x20\x5c\x2f\x20\x5f\x5f\x5f\x2f\x20\x2f\x20\x5f\x5f\x2f\x20\x5f\x20\x5c\x2f\x20\x5f\x5f\x5f\x2f\x0a\x20\x28\x5f\x5f\x20\x20\x29\x20\x2f\x5f\x2f\x20\x2f\x20\x2f\x5f\x2f\x5f\x5f\x5f\x5f\x5f\x2f\x20\x2f\x20\x2f\x20\x2f\x20\x2f\x20\x2f\x20\x2f\x20\x2f\x5f\x5f\x2f\x20\x2f\x20\x20\x2f\x20\x2f\x5f\x2f\x20\x28\x5f\x5f\x20\x20\x29\x20\x2f\x20\x2f\x5f\x2f\x20\x20\x5f\x5f\x28\x5f\x5f\x20\x20\x29\x0a\x2f\x5f\x5f\x5f\x5f\x2f\x5f\x2e\x5f\x5f\x5f\x2f\x5c\x5f\x5f\x2f\x20\x20\x20\x20\x20\x2f\x5f\x2f\x20\x2f\x5f\x2f\x20\x2f\x5f\x2f\x5f\x2f\x5c\x5f\x5f\x5f\x2f\x5f\x2f\x20\x20\x20\x5c\x5f\x5f\x5f\x5f\x2f\x5f\x5f\x5f\x5f\x2f\x5f\x2f\x5c\x5f\x5f\x2f\x5c\x5f\x5f\x5f\x2f\x5f\x5f\x5f\x5f\x2f\x0a\x0a\x68\x74\x74\x70\x73\x3a\x2f\x2f\x34\x37\x64\x65\x67\x2e\x67\x69\x74\x68\x75\x62\x2e\x69\x6f\x2f\x73\x62\x74\x2d\x6d\x69\x63\x72\x6f\x73\x69\x74\x65\x73')</script><script>((window.gitter = {}).chat = {}).options = {
 room: 'functional-streams-for-scala/fs2'};</script><script src="https://sidecar.gitter.im/dist/sidecar.v1.js"></script><script src="/js/version-selector.js"></script></body></html>
