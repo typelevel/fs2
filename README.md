@@ -159,4 +159,4 @@ Special thanks to [YourKit](https://www.yourkit.com/) for supporting this projec
 
 ### Code of Conduct ###
 
-See the [Code of Conduct](CODE_OF_CONDUCT.md).
+See the [Code of Conduct](https://github.com/functional-streams-for-scala/fs2/blob/master/CODE_OF_CONDUCT.md).
