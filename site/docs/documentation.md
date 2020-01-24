@@ -17,7 +17,8 @@ position: 5
 
 #### Tutorials
 
-* [An introduction to FS2 Streams](https://www.youtube.com/watch?v=B1wb4fIdtn4&t=3094s), a REPL-demo tutorial given by [Michael Pilquist][mpilquist] for the [Scala Toronto](https://www.meetup.com/scalator/events/254059603/) Meetup group, on September 2018.
+* [Sharding a stream of values using Fs2](https://www.youtube.com/watch?v=FWYXqYQWAc0), a tutorial by [Gabriel Volpe](gvolpe) showcasing a specific use-case of fs2 streams.
+* [An introduction to FS2 Streams](https://www.youtube.com/watch?v=B1wb4fIdtn4), a REPL-demo tutorial given by [Michael Pilquist][mpilquist] for the [Scala Toronto](https://www.meetup.com/scalator/events/254059603/) Meetup group, on September 2018.
 * Introduction to Functional Streams for Scala (FS2), a REPL-demo tutorial on FS2 (version 0.9), given by [Michael Pilquist][mpilquist] in May of 2016. The tutorial is split in three parts:
   * [Part 1](https://www.youtube.com/watch?v=cahvyadYfX8).
   * [Part 2: Chunks & Pipes](https://www.youtube.com/watch?v=HM0mOu5o2uA).
