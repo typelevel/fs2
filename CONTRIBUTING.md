@@ -54,7 +54,26 @@ To compile the code for all Scala versions enabled in the build, use `+compile`.
 
 ### Testing
 
-To test the code, you can run the `testJVM` or `testJS` command, depending on the platform you want to run the tests on.
+To test the code, you can run the `test` command in sbt.
+If you want the tests on a single plaform, you can use `testJVM` or `testJS` instead (these are defined as aliases in the `build.sbt` file).
+
+It is possible to run a single test suite from a project on a single platform by [executing a more specific task](https://www.scala-sbt.org/1.x/docs/Testing.html#testOnly), like `coreJVM/testOnly fs2.PullSpec`.
+
+You can list all available projects by executing the `projects` task:
+
+```sbt
+sbt:root> projects
+[info] In file:/Users/kubukoz/IdeaProjects/fs2/
+[info] 	   benchmark
+[info] 	   coreJS
+[info] 	   coreJVM
+[info] 	   docs
+[info] 	   experimental
+[info] 	   io
+[info] 	   microsite
+[info] 	   reactiveStreams
+[info] 	 * root
+```
 
 Before submitting a change for review, it's worth running some extra checks that will be triggered in Continuous Integration:
 
