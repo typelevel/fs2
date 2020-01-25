@@ -30,7 +30,7 @@ Remember to follow the [code of conduct][coc] in online and offline discourse.
 
 ### Prerequisites
 
-You'll need JDK 11 and [sbt][sbt].
+You'll need JDK 11, [sbt][sbt], [Node.JS][node] (for running ScalaJS tests) and [Jekyll][jekyll] (for building the microsite).
 
 We use several sbt plugins to build and check the project, including [MiMa (Migration Manager)][mima], [scalafmt][scalafmt] and [sbt-microsites][sbt-microsites].
 
@@ -118,3 +118,5 @@ Serving HTTP on 0.0.0.0 port 8080 ...
 [scalafmt]: https://scalameta.org/scalafmt
 [sbt-microsites]: https://47deg.github.io/sbt-microsites
 [low-hanging-fruit]: https://github.com/functional-streams-for-scala/fs2/issues?q=is%3Aissue+is%3Aopen+sort%3Aupdated-desc+label%3A%22help+wanted%22
+[node]: https://nodejs.org/en/
+[jekyll]: https://jekyllrb.com/
