@@ -215,6 +215,22 @@ class FileSpec extends BaseFileSpec {
     }
   }
 
+  "deleteDirectoryRecursively" - {
+    "should remove a non-empty directory" in {
+      val testPath = Paths.get("a")
+      Stream
+        .resource(Blocker[IO])
+        .evalMap { b =>
+          file.createDirectories[IO](b, testPath.resolve("b/c")) >>
+            file.deleteDirectoryRecursively[IO](b, testPath) >>
+            file.exists[IO](b, testPath)
+        }
+        .compile
+        .lastOrError
+        .unsafeRunSync() shouldBe false
+    }
+  }
+
   "move" - {
     "should result in the old path being deleted" in {
       (for {
@@ -239,6 +255,70 @@ class FileSpec extends BaseFileSpec {
         .compile
         .lastOrError
         .unsafeRunSync() shouldBe 4L
+    }
+  }
+
+  "tempFileStream" - {
+    "should remove the file following stream closure" in {
+      Blocker[IO]
+        .use { b =>
+          file
+            .tempFileStream[IO](b, Paths.get(""))
+            .evalMap(path => file.exists[IO](b, path).map(_ -> path))
+            .compile
+            .lastOrError
+            .flatMap {
+              case (existsBefore, path) => file.exists[IO](b, path).map(existsBefore -> _)
+            }
+        }
+        .unsafeRunSync() shouldBe true -> false
+    }
+
+    "should not fail if the file is deleted before the stream completes" in {
+      Stream
+        .resource(Blocker[IO])
+        .flatMap { b =>
+          file
+            .tempFileStream[IO](b, Paths.get(""))
+            .evalMap(path => file.delete[IO](b, path))
+        }
+        .compile
+        .lastOrError
+        .attempt
+        .unsafeRunSync()
+        .isRight shouldBe true
+    }
+  }
+
+  "tempDirectoryStream" - {
+    "should remove the directory following stream closure" in {
+      Blocker[IO]
+        .use { b =>
+          file
+            .tempDirectoryStream[IO](b, Paths.get(""))
+            .evalMap(path => file.exists[IO](b, path).map(_ -> path))
+            .compile
+            .lastOrError
+            .flatMap {
+              case (existsBefore, path) => file.exists[IO](b, path).map(existsBefore -> _)
+            }
+        }
+        .unsafeRunSync() shouldBe true -> false
+    }
+
+    "should not fail if the directory is deleted before the stream completes" in {
+      Stream
+        .resource(Blocker[IO])
+        .flatMap { b =>
+          file
+            .tempDirectoryStream[IO](b, Paths.get(""))
+            .evalMap(path => file.delete[IO](b, path))
+        }
+        .compile
+        .lastOrError
+        .attempt
+        .unsafeRunSync()
+        .isRight shouldBe true
     }
   }
 
