@@ -7,6 +7,7 @@ import cats.{Functor, Monad}
 import cats.effect.{ContextShift, Fiber, IO, Sync, Timer}
 import cats.implicits._
 
+import org.scalactic.{Prettifier, source}
 import org.scalatest.{Args, Assertion, Matchers, Status, Succeeded}
 import org.scalatest.concurrent.AsyncTimeLimitedTests
 import org.scalatest.freespec.AsyncFreeSpec
@@ -97,6 +98,18 @@ abstract class Fs2Spec
       */
     def asserting(f: A => Assertion)(implicit F: Sync[F]): F[Assertion] =
       self.flatMap(a => F.delay(f(a)))
+
+    /**
+      * Asserts that the `F[A]` completes with an `A` which passes the supplied function.
+      *
+      * @example {{{
+      * IO(1).asserting(_ == 1)
+      * }}}
+      */
+    def asserting(
+        f: A => Boolean
+    )(implicit prettifier: Prettifier, pos: source.Position, F: Sync[F]): F[Assertion] =
+      self.flatMap(a => F.delay(assert(f(a))))
 
     /**
       * Asserts that the `F[A]` completes with an `A` and no exception is thrown.
