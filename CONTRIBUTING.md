@@ -78,10 +78,10 @@ sbt:root> projects
 Before submitting a change for review, it's worth running some extra checks that will be triggered in Continuous Integration:
 
 ```sbt
-sbt:root> fmtCheck; testJVM; testJS; doc; mimaReportBinaryIssues; docs/mdoc; microsite/makeMicrosite
+sbt:root> fmtCheck; test; doc; mimaReportBinaryIssues; docs/mdoc; microsite/makeMicrosite
 ```
 
-That will check the formatting, run all tests on the JVM and JS platforms, report any binary compatibility issues (as detected by [MiMa][mima]) and build the site.
+That will check the formatting, run all tests on the supported platforms, report any binary compatibility issues (as detected by [MiMa][mima]) and build the site.
 
 If you run into any problems with tests, binary compatibility or other issues, feel free to ask questions on [the Gitter channel][fs2-dev].
 
@@ -105,7 +105,7 @@ sbt:root> exit
 
 $ cd site/target/site
 $ python -m SimpleHTTPServer 4000 . # Any other server would do
-Serving HTTP on 0.0.0.0 port 8080 ...
+Serving HTTP on 0.0.0.0 port 4000 ...
 ```
 
 
