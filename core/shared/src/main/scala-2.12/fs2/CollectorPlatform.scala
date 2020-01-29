@@ -1,10 +1,15 @@
 package fs2
 
-import scala.collection.generic.{GenericTraversableTemplate, MapFactory, SetFactory, TraversableFactory}
+import scala.collection.generic.{
+  GenericSetTemplate,
+  GenericTraversableTemplate,
+  MapFactory,
+  SetFactory,
+  TraversableFactory
+}
 import scala.collection.{MapLike, SetLike, Traversable}
 
 import fs2.internal._
-import scala.collection.generic.GenericSetTemplate
 
 private[fs2] trait CollectorPlatform { self: Collector.type =>
   implicit def supportsFactory[A, C[_], B](
@@ -27,7 +32,9 @@ private[fs2] trait CollectorPlatform { self: Collector.type =>
   ): Collector.Aux[(K, V), C[K, V]] =
     make(Builder.fromMapFactory(f))
 
-  implicit def supportsSetFactory[A, C[x] <: Set[x] with SetLike[x, C[x]]](f: SetFactory[C]): Collector.Aux[A, C[A]] =
+  implicit def supportsSetFactory[A, C[x] <: Set[x] with SetLike[x, C[x]]](
+      f: SetFactory[C]
+  ): Collector.Aux[A, C[A]] =
     make(Builder.fromSetFactory(f))
 
   private[fs2] trait BuilderPlatform { self: Collector.Builder.type =>
