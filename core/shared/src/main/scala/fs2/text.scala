@@ -1,6 +1,6 @@
 package fs2
 
-import java.nio.CharBuffer
+import java.nio.{Buffer, CharBuffer}
 import java.nio.charset.Charset
 
 import scala.annotation.tailrec
@@ -365,12 +365,14 @@ object text {
           .append(alphabet.toChar(fourth))
         idx = idx + 3
       }
+      (bldr: Buffer).flip
+      val out = bldr.toString
       if (mod == 0) {
-        (bldr.flip.toString, ByteVector.empty)
+        (out, ByteVector.empty)
       } else if (mod == 1) {
-        (bldr.flip.toString, ByteVector(bytes(idx)))
+        (out, ByteVector(bytes(idx)))
       } else {
-        (bldr.flip.toString, ByteVector(bytes(idx), bytes(idx + 1)))
+        (out, ByteVector(bytes(idx), bytes(idx + 1)))
       }
     }
 
