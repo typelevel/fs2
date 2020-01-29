@@ -27,7 +27,7 @@ sealed trait TLSParameters {
   val needClientAuth: Boolean
   val wantClientAuth: Boolean
 
-  private[tls] def toSSLParameters: SSLParameters = {
+  def toSSLParameters: SSLParameters = {
     val p = new SSLParameters()
     algorithmConstraints.foreach(p.setAlgorithmConstraints)
     applicationProtocols.foreach(ap => p.setApplicationProtocols(ap.toArray))
