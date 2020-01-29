@@ -92,4 +92,6 @@ object ThisModuleShouldCompile {
   // Ensure that .to(Collector) syntax works even when target type is known (regression #1709)
   val z: List[Int] = Stream.range(0, 5).compile.to(List)
   Stream.empty[Id].covaryOutput[Byte].compile.to(Chunk): Chunk[Byte]
+
+  Stream(1, 2, 3).compile.to(Set)
 }
