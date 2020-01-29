@@ -27,6 +27,11 @@ sealed trait TLSParameters {
   val needClientAuth: Boolean
   val wantClientAuth: Boolean
 
+  /**
+    *  Converts to a `javax.net.ssl.SSLParameters` instance.
+    *
+    * `needClientAuth` and `wantClientAuth` are mutually exclusive on `SSLParameters`. If both set on this `TLSParameters`, then `needClientAuth` takes precedence.
+    */
   def toSSLParameters: SSLParameters = {
     val p = new SSLParameters()
     algorithmConstraints.foreach(p.setAlgorithmConstraints)
