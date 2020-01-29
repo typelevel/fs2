@@ -8,7 +8,7 @@ import cats.effect.{ContextShift, Fiber, IO, Sync, Timer}
 import cats.implicits._
 
 import org.scalactic.{Prettifier, source}
-import org.scalatest.{Args, Assertion, Matchers, Status, Succeeded}
+import org.scalatest.{Args, Assertion, Assertions, Matchers, Status, Succeeded}
 import org.scalatest.concurrent.AsyncTimeLimitedTests
 import org.scalatest.freespec.AsyncFreeSpec
 import org.scalatest.prop.GeneratorDrivenPropertyChecks
@@ -106,10 +106,10 @@ abstract class Fs2Spec
       * IO(1).asserting(_ == 1)
       * }}}
       */
-    def asserting(
+    def assert(
         f: A => Boolean
     )(implicit prettifier: Prettifier, pos: source.Position, F: Sync[F]): F[Assertion] =
-      self.flatMap(a => F.delay(assert(f(a))))
+      self.flatMap(a => F.delay(Assertions.assert(f(a))))
 
     /**
       * Asserts that the `F[A]` completes with an `A` and no exception is thrown.

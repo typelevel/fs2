@@ -89,7 +89,7 @@ class CompressSpec extends Fs2Spec {
         .through(compress.inflate())
         .compile
         .toVector
-        .asserting(_ == s.toVector)
+        .assert(_ == s.toVector)
     }
 
     "deflate.compresses input" in {
@@ -111,7 +111,7 @@ class CompressSpec extends Fs2Spec {
         .through(compress.gunzip[IO](8192))
         .compile
         .toVector
-        .asserting(_ == s.toVector)
+        .assert(_ == s.toVector)
     }
 
     "gzip |> gunzip ~= id (mutually prime chunk sizes, compression larger)" in forAll {
@@ -121,7 +121,7 @@ class CompressSpec extends Fs2Spec {
           .through(compress.gunzip[IO](509))
           .compile
           .toVector
-          .asserting(_ == s.toVector)
+          .assert(_ == s.toVector)
     }
 
     "gzip |> gunzip ~= id (mutually prime chunk sizes, decompression larger)" in forAll {
@@ -131,7 +131,7 @@ class CompressSpec extends Fs2Spec {
           .through(compress.gunzip[IO](1031))
           .compile
           .toVector
-          .asserting(_ == s.toVector)
+          .assert(_ == s.toVector)
     }
 
     "gzip |> GZIPInputStream ~= id" in forAll { s: Stream[Pure, Byte] =>

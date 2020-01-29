@@ -68,7 +68,7 @@ class HashSpec extends Fs2Spec {
     (for {
       once <- s.compile.toVector
       oneHundred <- Vector.fill(100)(s.compile.toVector).parSequence
-    } yield (once, oneHundred)).asserting {
+    } yield (once, oneHundred)).assert {
       case (once, oneHundred) => oneHundred == Vector.fill(100)(once)
     }
   }
