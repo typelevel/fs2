@@ -44,8 +44,10 @@ sealed trait TLSParameters {
     serverNames.foreach(sn => p.setServerNames(sn.asJava))
     sniMatchers.foreach(sm => p.setSNIMatchers(sm.asJava))
     p.setUseCipherSuitesOrder(useCipherSuitesOrder)
-    p.setNeedClientAuth(needClientAuth)
-    p.setWantClientAuth(wantClientAuth)
+    if (needClientAuth)
+      p.setNeedClientAuth(needClientAuth)
+    else if (wantClientAuth)
+      p.setWantClientAuth(wantClientAuth)
     p
   }
 }
