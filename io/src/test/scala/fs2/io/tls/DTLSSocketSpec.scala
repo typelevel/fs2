@@ -45,7 +45,7 @@ class DTLSSocketSpec extends TLSSpec {
                           .concurrently(echoServer)
                           .compile
                           .toList
-                          .asserting(_.map(_.bytes) shouldBe List(msg))
+                          .asserting(it => assert(it.map(_.bytes) == List(msg)))
                     }
                   }
                 }

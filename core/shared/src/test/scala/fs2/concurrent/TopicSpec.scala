@@ -33,8 +33,8 @@ class TopicSpec extends Fs2Spec {
               idx -> (for { i <- -1 until count } yield i).toVector
             }.toMap
 
-            result.toMap.size shouldBe subs
-            result.toMap shouldBe expected
+            assert(result.toMap.size == subs)
+            assert(result.toMap == expected)
           }
       }
     }
@@ -67,7 +67,7 @@ class TopicSpec extends Fs2Spec {
             .compile
             .toVector
             .asserting { result =>
-              result.toMap.size shouldBe subs
+              assert(result.toMap.size == subs)
 
               result.foreach {
                 case (_, subResults) =>
@@ -97,7 +97,7 @@ class TopicSpec extends Fs2Spec {
           .interruptWhen(Stream.sleep[IO](2.seconds).as(true))
 
       p.compile.toList
-        .asserting(_.size shouldBe <=(11)) // if the stream won't be discrete we will get much more size notifications
+        .asserting(it => assert(it.size <= 11)) // if the stream won't be discrete we will get much more size notifications
     }
 
     "unregister subscribers under concurrent load" in {
@@ -110,7 +110,7 @@ class TopicSpec extends Fs2Spec {
             .compile
             .drain >> topic.subscribers.take(1).compile.lastOrError
         }
-        .asserting(_ shouldBe 0)
+        .asserting(it => assert(it == 0))
     }
   }
 }

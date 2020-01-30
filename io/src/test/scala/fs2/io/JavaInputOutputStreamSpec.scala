@@ -77,7 +77,7 @@ class JavaInputOutputStreamSpec extends Fs2Spec with EventuallySupport {
         .compile
         .toVector
         .map(_.flatten)
-        .asserting(_ shouldBe (Stream.range(0, 256, 1) ++ Stream(-1)).toVector)
+        .asserting(it => assert(it == (Stream.range(0, 256, 1) ++ Stream(-1)).toVector))
     }
   }
 }

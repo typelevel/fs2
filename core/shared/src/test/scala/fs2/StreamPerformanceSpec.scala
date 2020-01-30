@@ -156,8 +156,8 @@ class StreamPerformanceSpec extends Fs2Spec {
                   .flatMap(_ => (ok.get, open.get).tupled)
                   .asserting {
                     case (ok, open) =>
-                      ok shouldBe N
-                      open shouldBe 0
+                      assert(ok == N)
+                      assert(open == 0)
                   }
               }
             }

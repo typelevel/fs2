@@ -14,7 +14,7 @@ class IoSpec extends Fs2Spec {
         val is: InputStream = new ByteArrayInputStream(bytes)
         Blocker[IO].use { blocker =>
           val stream = readInputStream(IO(is), chunkSize, blocker)
-          stream.compile.toVector.asserting(_.toArray shouldBe bytes)
+          stream.compile.toVector.asserting(it => assert(it.toArray === bytes))
         }
     }
 
@@ -23,7 +23,7 @@ class IoSpec extends Fs2Spec {
         val is: InputStream = new ByteArrayInputStream(bytes)
         Blocker[IO].use { blocker =>
           val stream = readInputStream(IO(is), chunkSize, blocker)
-          stream.buffer(chunkSize * 2).compile.toVector.asserting(_.toArray shouldBe bytes)
+          stream.buffer(chunkSize * 2).compile.toVector.asserting(it => assert(it.toArray === bytes))
         }
     }
   }
@@ -38,14 +38,14 @@ class IoSpec extends Fs2Spec {
           blocker.delay[IO, Unit](os.write(bytes))
         ).compile
           .to(Array)
-          .asserting(_ shouldEqual bytes)
+          .asserting(it => assert(it === bytes))
       }
     }
 
     "can be manually closed from inside `f`" in forAll(intsBetween(1, 20)) { chunkSize: Int =>
       Blocker[IO].use { blocker =>
         readOutputStream[IO](blocker, chunkSize)((os: OutputStream) => IO(os.close()) *> IO.never).compile.toVector
-          .asserting(_ shouldBe Vector.empty)
+          .asserting(it => assert(it == Vector.empty))
       }
     }
 
@@ -53,7 +53,7 @@ class IoSpec extends Fs2Spec {
       val e = new Exception("boom")
       Blocker[IO].use { blocker =>
         readOutputStream[IO](blocker, chunkSize)((_: OutputStream) => IO.raiseError(e)).compile.toVector.attempt
-          .asserting(_ shouldBe Left(e))
+          .asserting(it => assert(it == Left(e)))
       }
     }
 
@@ -79,7 +79,7 @@ class IoSpec extends Fs2Spec {
               .compile
               .toVector
           }
-          .asserting(_ should have size 5)
+          .asserting(it => assert(it.size == 5))
       }
     }
   }
@@ -90,7 +90,7 @@ class IoSpec extends Fs2Spec {
         val is: InputStream = new ByteArrayInputStream(bytes)
         Blocker[IO].use { blocker =>
           val stream = unsafeReadInputStream(IO(is), chunkSize, blocker)
-          stream.compile.toVector.asserting(_.toArray shouldBe bytes)
+          stream.compile.toVector.asserting(it => assert(it.toArray === bytes))
         }
     }
   }

@@ -23,10 +23,10 @@ class BroadcastSpec extends Fs2Spec {
           .map(_.groupBy(_._1).map { case (k, v) => (k, v.map(_._2).toVector) })
           .asserting { result =>
             if (expect.nonEmpty) {
-              result.size shouldBe (concurrent)
+              assert(result.size == concurrent)
               all(result.values) shouldBe expect
             } else {
-              result.values.size shouldBe 0
+              assert(result.values.isEmpty)
             }
           }
       }

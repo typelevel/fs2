@@ -46,7 +46,7 @@ class TLSSocketSpec extends TLSSpec {
                               .through(text.utf8Decode)
                               .through(text.lines)).head.compile.string
                         }
-                        .asserting(_ shouldBe "HTTP/1.1 200 OK")
+                        .asserting(it => assert(it == "HTTP/1.1 200 OK"))
                     }
                 }
               }
@@ -83,7 +83,7 @@ class TLSSocketSpec extends TLSSpec {
                       }
                   }
 
-                  client.concurrently(server).compile.to(Chunk).asserting(_ shouldBe msg)
+                  client.concurrently(server).compile.to(Chunk).asserting(it => assert(it == msg))
               }
           }
         }

@@ -16,7 +16,7 @@ class PullSpec extends Fs2Spec {
           .compile
           .toList
           .flatMap(_ => ref.get)
-          .asserting(_ shouldBe 1)
+          .asserting(it => assert(it == 1))
       }
     }
 

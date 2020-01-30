@@ -53,8 +53,8 @@ class QueueSpec extends Fs2Spec {
           .compile
           .toList
           .asserting { result =>
-            result.size should be < 2
-            result.flatMap(_.toList) shouldBe expected
+            assert(result.size < 2)
+            assert(result.flatMap(_.toList) == expected)
           }
       }
     }
