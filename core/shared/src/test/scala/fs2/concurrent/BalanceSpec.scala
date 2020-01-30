@@ -16,7 +16,7 @@ class BalanceSpec extends Fs2Spec {
           .balanceThrough(chunkSize = chunkSize, maxConcurrent = concurrent)(_.map(_.toLong))
           .compile
           .toVector
-          .assert(_.sorted == expected)
+          .asserting(it => assert(it.sorted == expected))
       }
     }
   }
