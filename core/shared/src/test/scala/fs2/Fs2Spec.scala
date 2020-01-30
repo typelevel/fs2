@@ -136,4 +136,11 @@ abstract class Fs2Spec
   protected def checkAll(name: String, ruleSet: Laws#RuleSet): Unit =
     for ((id, prop) <- ruleSet.all.properties)
       s"${name}.${id}" in check(prop)
+
+  protected def containSameElements(s1: Seq[_], s2: Seq[_]): Boolean =
+    s1.length == s2.length && s1.diff(s2).isEmpty
+
+  protected def leftContainsAllOfRight(s1: Seq[_], s2: Seq[_]): Boolean =
+    s2.forall(s1.contains)
+
 }
