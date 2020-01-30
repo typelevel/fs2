@@ -4303,7 +4303,7 @@ object Stream extends StreamLowPriority {
       }
   }
 
-  /** Projection of a `Stream` providing various ways to compile a `Stream[F,O]` to an `F[...]`. */
+  /** Projection of a `Stream` providing various ways to compile a `Stream[F,O]` to a `G[...]`. */
   final class CompileOps[F[_], G[_], O] private[Stream] (
       private val free: FreeC[F, O, Unit]
   )(implicit compiler: Compiler[F, G]) {
