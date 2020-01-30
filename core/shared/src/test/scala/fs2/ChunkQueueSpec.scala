@@ -7,7 +7,7 @@ class ChunkQueueSpec extends Fs2Spec {
     "take" in {
       forAll { (chunks: List[Chunk[Int]], n: Int) =>
         val result = Chunk.Queue(chunks: _*).take(n)
-        result.toChunk.toList shouldBe chunks.flatMap(_.toList).take(n)
+        assert(result.toChunk.toList == chunks.flatMap(_.toList).take(n))
         result.chunks.size should be <= chunks.size
       }
     }
@@ -15,7 +15,7 @@ class ChunkQueueSpec extends Fs2Spec {
     "drop" in {
       forAll { (chunks: List[Chunk[Int]], n: Int) =>
         val result = Chunk.Queue(chunks: _*).drop(n)
-        result.toChunk.toList shouldBe chunks.flatMap(_.toList).drop(n)
+        assert(result.toChunk.toList == chunks.flatMap(_.toList).drop(n))
         result.chunks.size should be <= chunks.size
       }
     }
@@ -23,7 +23,7 @@ class ChunkQueueSpec extends Fs2Spec {
     "takeRight" in {
       forAll { (chunks: List[Chunk[Int]], n: Int) =>
         val result = Chunk.Queue(chunks: _*).takeRight(n)
-        result.toChunk.toList shouldBe chunks.flatMap(_.toList).takeRight(n)
+        assert(result.toChunk.toList == chunks.flatMap(_.toList).takeRight(n))
         result.chunks.size should be <= chunks.size
       }
     }
@@ -31,7 +31,7 @@ class ChunkQueueSpec extends Fs2Spec {
     "dropRight" in {
       forAll { (chunks: List[Chunk[Int]], n: Int) =>
         val result = Chunk.Queue(chunks: _*).dropRight(n)
-        result.toChunk.toList shouldBe chunks.flatMap(_.toList).dropRight(n)
+        assert(result.toChunk.toList == chunks.flatMap(_.toList).dropRight(n))
         result.chunks.size should be <= chunks.size
       }
     }
@@ -39,8 +39,8 @@ class ChunkQueueSpec extends Fs2Spec {
     "equals" in {
       forAll { (chunks: List[Chunk[Int]]) =>
         val cq = Chunk.Queue(chunks: _*)
-        cq shouldBe cq
-        cq shouldBe Chunk.Queue(chunks: _*)
+        assert(cq == cq)
+        assert(cq == Chunk.Queue(chunks: _*))
         if (cq.size > 1) cq.drop(1) should not be cq
         else Succeeded
       }
@@ -49,8 +49,8 @@ class ChunkQueueSpec extends Fs2Spec {
     "hashCode" in {
       forAll { (chunks: List[Chunk[Int]]) =>
         val cq = Chunk.Queue(chunks: _*)
-        cq.hashCode shouldBe cq.hashCode
-        cq.hashCode shouldBe Chunk.Queue(chunks: _*).hashCode
+        assert(cq.hashCode == cq.hashCode)
+        assert(cq.hashCode == Chunk.Queue(chunks: _*).hashCode)
         if (cq.size > 1) cq.drop(1).hashCode should not be cq.hashCode
         else Succeeded
       }

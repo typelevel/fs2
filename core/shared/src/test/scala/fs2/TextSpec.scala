@@ -66,8 +66,8 @@ class TextSpec extends Fs2Spec {
       }
 
       "utf8Encode |> utf8Decode = id" in forAll { (s: String) =>
-        Stream(s).through(utf8EncodeC).through(utf8DecodeC).toList shouldBe List(s)
-        if (s.nonEmpty) Stream(s).through(utf8Encode).through(utf8Decode).toList shouldBe List(s)
+        assert(Stream(s).through(utf8EncodeC).through(utf8DecodeC).toList == List(s))
+        if (s.nonEmpty) assert(Stream(s).through(utf8Encode).through(utf8Decode).toList == List(s))
         else Succeeded
       }
 
@@ -95,11 +95,11 @@ class TextSpec extends Fs2Spec {
         val bom = Chunk[Byte](0xef.toByte, 0xbb.toByte, 0xbf.toByte)
         "single chunk" in forAll { (s: String) =>
           val c = Chunk.concat(List(bom, utf8Bytes(s)))
-          Stream.chunk(c).through(text.utf8Decode).compile.string shouldBe s
+          assert(Stream.chunk(c).through(text.utf8Decode).compile.string == s)
         }
         "spanning chunks" in forAll { (s: String) =>
           val c = Chunk.concat(List(bom, utf8Bytes(s)))
-          Stream.emits(c.toArray[Byte]).through(text.utf8Decode).compile.string shouldBe s
+          assert(Stream.emits(c.toArray[Byte]).through(text.utf8Decode).compile.string == s)
         }
       }
 
@@ -219,7 +219,7 @@ class TextSpec extends Fs2Spec {
         val lines = lines0.map(escapeCrLf)
         if (lines.toList.nonEmpty) {
           val s = lines.intersperse("\r\n").toList.mkString
-          Stream.emit(s).through(text.lines).toList shouldBe lines.toList
+          assert(Stream.emit(s).through(text.lines).toList == lines.toList)
         } else Succeeded
       }
 
@@ -227,10 +227,10 @@ class TextSpec extends Fs2Spec {
         val lines = lines0.map(escapeCrLf)
         val s = lines.intersperse("\r\n").toList.mkString.grouped(3).toList
         if (s.isEmpty) {
-          Stream.emits(s).through(text.lines).toList shouldBe Nil
+          assert(Stream.emits(s).through(text.lines).toList == Nil)
         } else {
-          Stream.emits(s).through(text.lines).toList shouldBe lines.toList
-          Stream.emits(s).unchunk.through(text.lines).toList shouldBe lines.toList
+          assert(Stream.emits(s).through(text.lines).toList == lines.toList)
+          assert(Stream.emits(s).unchunk.through(text.lines).toList == lines.toList)
         }
       }
     }

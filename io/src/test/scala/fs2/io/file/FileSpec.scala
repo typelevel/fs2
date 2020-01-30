@@ -175,7 +175,7 @@ class FileSpec extends BaseFileSpec {
         .unsafeRunSync()
 
       initial should not be updated
-      updated shouldBe permissions
+      assert(updated == permissions)
     }
   }
 

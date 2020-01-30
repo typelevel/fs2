@@ -71,7 +71,7 @@ class SocketSpec extends Fs2Spec {
           .toVector
           .unsafeRunTimed(timeout)
           .get
-      result.size shouldBe clientCount
+      assert(result.size == clientCount)
       result.map { new String(_) }.toSet shouldBe Set("fs2.rocks")
     }
 
@@ -125,7 +125,7 @@ class SocketSpec extends Fs2Spec {
           .toVector
           .unsafeRunTimed(timeout)
           .get
-      result shouldBe sizes
+      assert(result == sizes)
     }
   }
 }

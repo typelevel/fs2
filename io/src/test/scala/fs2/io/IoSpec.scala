@@ -23,7 +23,11 @@ class IoSpec extends Fs2Spec {
         val is: InputStream = new ByteArrayInputStream(bytes)
         Blocker[IO].use { blocker =>
           val stream = readInputStream(IO(is), chunkSize, blocker)
-          stream.buffer(chunkSize * 2).compile.toVector.asserting(it => assert(it.toArray === bytes))
+          stream
+            .buffer(chunkSize * 2)
+            .compile
+            .toVector
+            .asserting(it => assert(it.toArray === bytes))
         }
     }
   }

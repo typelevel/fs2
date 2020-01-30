@@ -18,15 +18,15 @@ class ChunkSpec extends Fs2Spec {
 
   "Chunk" - {
     "chunk-formation (1)" in {
-      Chunk.empty.toList shouldBe List()
-      Chunk.singleton(23).toList shouldBe List(23)
+      assert(Chunk.empty.toList == List())
+      assert(Chunk.singleton(23).toList == List(23))
     }
 
     "chunk-formation (2)" in forAll { (c: Vector[Int]) =>
-      Chunk.seq(c).toVector shouldBe c
-      Chunk.seq(c).toList shouldBe c.toList
-      Chunk.indexedSeq(c).toVector shouldBe c
-      Chunk.indexedSeq(c).toList shouldBe c.toList
+      assert(Chunk.seq(c).toVector == c)
+      assert(Chunk.seq(c).toList == c.toList)
+      assert(Chunk.indexedSeq(c).toVector == c)
+      assert(Chunk.indexedSeq(c).toList == c.toList)
     }
 
     "Chunk.apply is optimized" in {
@@ -65,21 +65,21 @@ class ChunkSpec extends Fs2Spec {
     s"$name" - {
       implicit val implicitChunkGenerator: Generator[Chunk[A]] = genChunk
       "size" in forAll { (c: Chunk[A]) =>
-        c.size shouldBe c.toList.size
+        assert(c.size == c.toList.size)
       }
       "take" in forAll { (c: Chunk[A], n: PosZInt) =>
-        c.take(n).toVector shouldBe c.toVector.take(n)
+        assert(c.take(n).toVector == c.toVector.take(n))
       }
       "drop" in forAll { (c: Chunk[A], n: PosZInt) =>
-        c.drop(n).toVector shouldBe c.toVector.drop(n)
+        assert(c.drop(n).toVector == c.toVector.drop(n))
       }
       "isEmpty" in forAll { (c: Chunk[A]) =>
-        c.isEmpty shouldBe c.toList.isEmpty
+        assert(c.isEmpty == c.toList.isEmpty)
       }
       "toArray" in forAll { c: Chunk[A] =>
-        c.toArray.toVector shouldBe c.toVector
+        assert(c.toArray.toVector == c.toVector)
         // Do it twice to make sure the first time didn't mutate state
-        c.toArray.toVector shouldBe c.toVector
+        assert(c.toArray.toVector == c.toVector)
       }
       "copyToArray" in forAll { c: Chunk[A] =>
         val arr = new Array[A](c.size * 2)
@@ -97,7 +97,7 @@ class ChunkSpec extends Fs2Spec {
       }
       "scanLeft" in forAll { c: Chunk[A] =>
         def step(acc: List[A], item: A) = acc :+ item
-        c.scanLeft(List[A]())(step).toList shouldBe (c.toList.scanLeft(List[A]())(step))
+        assert(c.scanLeft(List[A]())(step).toList == (c.toList.scanLeft(List[A]())(step)))
       }
       "scanLeftCarry" in forAll { c: Chunk[A] =>
         def step(acc: List[A], item: A) = acc :+ item
@@ -112,7 +112,7 @@ class ChunkSpec extends Fs2Spec {
           implicit val ev: A =:= Byte = null
           val arr = new Array[Byte](c.size)
           c.toByteBuffer.get(arr, 0, c.size)
-          arr.toVector shouldBe c.toArray.toVector
+          assert(arr.toVector == c.toArray.toVector)
         }
 
       import org.scalacheck.GeneratorCompat._

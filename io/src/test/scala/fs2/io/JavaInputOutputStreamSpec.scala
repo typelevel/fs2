@@ -32,7 +32,7 @@ class JavaInputOutputStreamSpec extends Fs2Spec with EventuallySupport {
           }
           .unsafeRunSync()
 
-      example shouldBe fromInputStream
+      assert(example == fromInputStream)
     }
 
     "upstream.is.closed" in {
@@ -62,7 +62,7 @@ class JavaInputOutputStreamSpec extends Fs2Spec with EventuallySupport {
           }
           .unsafeRunSync()
 
-      result shouldBe Vector(true)
+      assert(result == Vector(true))
     }
 
     "converts to 0..255 int values except EOF mark" in {
