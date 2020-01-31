@@ -13,8 +13,8 @@ class CompositeFailureTest extends Fs2Spec {
         err(3),
         List(CompositeFailure(err(4), err(5)))
       )
-      compositeFailure.all.map(_.getMessage) shouldBe NonEmptyList.of("1", "2", "3", "4", "5")
-      compositeFailure.all.collect { case cf: CompositeFailure => cf } shouldBe empty
+      assert(compositeFailure.all.map(_.getMessage) == NonEmptyList.of("1", "2", "3", "4", "5"))
+      assert(compositeFailure.all.collect { case cf: CompositeFailure => cf }.isEmpty)
     }
   }
 }

@@ -92,7 +92,7 @@ abstract class Fs2Spec
       * Asserts that the `F[A]` completes with an `A` which passes the supplied function.
       *
       * @example {{{
-      * IO(1).asserting(_ shouldBe 1)
+      * IO(1).asserting(it => assert(it == 1))
       * }}}
       */
     def asserting(f: A => Assertion)(implicit F: Sync[F]): F[Assertion] =

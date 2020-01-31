@@ -8,7 +8,7 @@ class ChunkQueueSpec extends Fs2Spec {
       forAll { (chunks: List[Chunk[Int]], n: Int) =>
         val result = Chunk.Queue(chunks: _*).take(n)
         assert(result.toChunk.toList == chunks.flatMap(_.toList).take(n))
-        result.chunks.size should be <= chunks.size
+        assert(result.chunks.size <= chunks.size)
       }
     }
 
@@ -16,7 +16,7 @@ class ChunkQueueSpec extends Fs2Spec {
       forAll { (chunks: List[Chunk[Int]], n: Int) =>
         val result = Chunk.Queue(chunks: _*).drop(n)
         assert(result.toChunk.toList == chunks.flatMap(_.toList).drop(n))
-        result.chunks.size should be <= chunks.size
+        assert(result.chunks.size <= chunks.size)
       }
     }
 
@@ -24,7 +24,7 @@ class ChunkQueueSpec extends Fs2Spec {
       forAll { (chunks: List[Chunk[Int]], n: Int) =>
         val result = Chunk.Queue(chunks: _*).takeRight(n)
         assert(result.toChunk.toList == chunks.flatMap(_.toList).takeRight(n))
-        result.chunks.size should be <= chunks.size
+        assert(result.chunks.size <= chunks.size)
       }
     }
 
@@ -32,7 +32,7 @@ class ChunkQueueSpec extends Fs2Spec {
       forAll { (chunks: List[Chunk[Int]], n: Int) =>
         val result = Chunk.Queue(chunks: _*).dropRight(n)
         assert(result.toChunk.toList == chunks.flatMap(_.toList).dropRight(n))
-        result.chunks.size should be <= chunks.size
+        assert(result.chunks.size <= chunks.size)
       }
     }
 
@@ -41,7 +41,7 @@ class ChunkQueueSpec extends Fs2Spec {
         val cq = Chunk.Queue(chunks: _*)
         assert(cq == cq)
         assert(cq == Chunk.Queue(chunks: _*))
-        if (cq.size > 1) cq.drop(1) should not be cq
+        if (cq.size > 1) assert(cq.drop(1) != cq)
         else Succeeded
       }
     }
@@ -51,7 +51,7 @@ class ChunkQueueSpec extends Fs2Spec {
         val cq = Chunk.Queue(chunks: _*)
         assert(cq.hashCode == cq.hashCode)
         assert(cq.hashCode == Chunk.Queue(chunks: _*).hashCode)
-        if (cq.size > 1) cq.drop(1).hashCode should not be cq.hashCode
+        if (cq.size > 1) assert(cq.drop(1).hashCode != cq.hashCode)
         else Succeeded
       }
     }

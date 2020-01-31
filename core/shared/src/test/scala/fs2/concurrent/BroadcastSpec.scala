@@ -3,6 +3,7 @@ package concurrent
 
 import cats.effect.IO
 import org.scalactic.anyvals.PosInt
+import org.scalatest.Succeeded
 
 class BroadcastSpec extends Fs2Spec {
   "Broadcast" - {
@@ -24,7 +25,8 @@ class BroadcastSpec extends Fs2Spec {
           .asserting { result =>
             if (expect.nonEmpty) {
               assert(result.size == concurrent)
-              all(result.values) shouldBe expect
+              result.values.foreach(it => assert(it == expect))
+              Succeeded
             } else {
               assert(result.values.isEmpty)
             }

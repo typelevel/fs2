@@ -43,7 +43,7 @@ class JavaInputOutputStreamSpec extends Fs2Spec with EventuallySupport {
 
       toInputStreamResource(s).use(_ => IO.unit).unsafeRunSync()
 
-      eventually { closed shouldBe true }
+      eventually { assert(closed) }
     }
 
     "upstream.is.force-closed" in {
