@@ -7,10 +7,10 @@ import cats.effect.concurrent.{Deferred, Ref, Semaphore}
 import cats.implicits._
 import scala.concurrent.duration._
 import org.scalactic.anyvals._
-import org.scalatest.{Assertion, Succeeded}
+import org.scalatest.{Assertion, Matchers, Succeeded}
 import fs2.concurrent.{Queue, SignallingRef}
 
-class StreamSpec extends Fs2Spec {
+class StreamSpec extends Fs2Spec with Matchers {
   "Stream" - {
     "++" in forAll { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
       assert((s1 ++ s2).toList == (s1.toList ++ s2.toList))

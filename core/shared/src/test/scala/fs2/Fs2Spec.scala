@@ -7,7 +7,7 @@ import cats.{Functor, Monad}
 import cats.effect.{ContextShift, Fiber, IO, Sync, Timer}
 import cats.implicits._
 
-import org.scalatest.{Args, Assertion, Matchers, Status, Succeeded}
+import org.scalatest.{Args, Assertion, Status, Succeeded}
 import org.scalatest.concurrent.AsyncTimeLimitedTests
 import org.scalatest.freespec.AsyncFreeSpec
 import org.scalatest.prop.GeneratorDrivenPropertyChecks
@@ -19,7 +19,6 @@ import org.typelevel.discipline.Laws
 abstract class Fs2Spec
     extends AsyncFreeSpec
     with AsyncTimeLimitedTests
-    with Matchers
     with GeneratorDrivenPropertyChecks
     with Checkers
     with MiscellaneousGenerators
