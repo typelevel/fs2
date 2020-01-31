@@ -19,7 +19,7 @@ import CollectionCompat._
 
 class UdpSpec extends Fs2Spec {
   def mkSocketGroup: Stream[IO, SocketGroup] =
-    Stream.resource(Blocker[IO].flatMap(blocker => SocketGroup(blocker)))
+    Stream.resource(Blocker[IO].flatMap(blocker => SocketGroup[IO](blocker)))
 
   "udp" - {
     "echo one" in {
