@@ -128,8 +128,6 @@ rc.unsafeRunSync()
 
 Here we finally see the tasks being executed. As is shown with `rc`, rerunning a task executes the entire computation again; nothing is cached for you automatically.
 
-_Note:_ The various `run*` functions aren't specialized to `IO` and work for any `F[_]` with an implicit `Sync[F]` --- FS2 needs to know how to catch errors that occur during evaluation of `F` effects, how to suspend computations.
-
 ### Chunks
 
 FS2 streams are chunked internally for performance. You can construct an individual stream chunk using `Stream.chunk`, which accepts an `fs2.Chunk` and lots of functions in the library are chunk-aware and/or try to preserve chunks when possible. A `Chunk` is a strict, finite sequence of values that supports efficient indexed based lookup of elements.
