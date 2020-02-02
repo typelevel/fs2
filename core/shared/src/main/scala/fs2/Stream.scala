@@ -13,6 +13,7 @@ import fs2.internal.{Resource => _, _}
 import java.io.PrintStream
 
 import scala.annotation.tailrec
+import scala.concurrent.TimeoutException
 import scala.concurrent.duration._
 
 /**
@@ -2712,6 +2713,29 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
       s2: Stream[F2, O2]
   )(f: (Stream[F, O], Stream[F2, O2]) => Stream[F2, O3]): Stream[F2, O3] =
     f(this, s2)
+
+  /** Fails this stream with a [[TimeoutException]] if it does not complete within given `timeout`. */
+  def withTimeout[F2[x] >: F[x]](
+      timeout: FiniteDuration
+  )(implicit F2: Concurrent[F2], timer: Timer[F2]): Stream[F2, O] =
+    Stream.eval(Deferred.tryable[F2, Unit]).flatMap { complete =>
+      Stream.eval(Deferred[F2, Either[Throwable, Unit]]).flatMap { interrupt =>
+        val newStream = this.onFinalize(complete.complete(())).interruptWhen(interrupt)
+        val sleepAndInterrupt =
+          timer
+            .sleep(timeout)
+            .flatMap { _ =>
+              complete.tryGet.flatMap {
+                case Some(_) =>
+                  F2.unit
+                case None =>
+                  interrupt.complete(Left(new TimeoutException(s"Timeout after $timeout")))
+              }
+            }
+
+        Stream.eval(sleepAndInterrupt.start).flatMap(_ => newStream)
+      }
+    }
 
   /**
     * Translates effect type from `F` to `G` using the supplied `FunctionK`.

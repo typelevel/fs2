@@ -6,6 +6,7 @@ import cats.effect._
 import cats.effect.concurrent.{Deferred, Ref, Semaphore}
 import cats.implicits._
 import scala.concurrent.duration._
+import scala.concurrent.TimeoutException
 import org.scalactic.anyvals._
 import org.scalatest.{Assertion, Succeeded}
 import fs2.concurrent.{Queue, SignallingRef}
@@ -3784,6 +3785,16 @@ class StreamSpec extends Fs2Spec {
           .drain
           .assertNoException
       }
+    }
+  }
+
+  "withTimeout" - {
+    "timeout never-ending stream" in {
+      Stream.never[IO].withTimeout(100.millis).compile.drain.assertThrows[TimeoutException]
+    }
+
+    "not trigger timeout on successfully completed stream" in {
+      Stream.sleep(10.millis).withTimeout(1.second).compile.drain.assertNoException
     }
   }
 }
