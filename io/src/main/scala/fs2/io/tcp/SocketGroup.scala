@@ -212,7 +212,7 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup, blocker: Blocker
   private def apply[F[_]](
       ch: AsynchronousSocketChannel
   )(implicit F: Concurrent[F], cs: ContextShift[F]): Resource[F, Socket[F]] = {
-    val socket = (Semaphore[F](1), Semaphore[F](1)).flatMap { semaphores =>
+    val socket = (Semaphore[F](1), Semaphore[F](1)).tupled.flatMap { semaphores =>
       val (readSemaphore, writeSemaphore) = semaphores
       Ref.of[F, ByteBuffer](ByteBuffer.allocate(0)).map { bufferRef =>
         // Reads data to remaining capacity of supplied ByteBuffer
