@@ -7,6 +7,7 @@ import java.net.InetAddress
 
 import cats.effect.{Blocker, IO}
 import cats.effect.concurrent.Deferred
+import cats.effect.Resource
 
 class SocketSpec extends Fs2Spec {
   def mkSocketGroup: Stream[IO, SocketGroup] =
@@ -126,6 +127,44 @@ class SocketSpec extends Fs2Spec {
           .unsafeRunTimed(timeout)
           .get
       result shouldBe sizes
+    }
+
+    "write - concurrent calls do not cause WritePendingException" in {
+      val message = Chunk.bytes(("123456789012345678901234567890" * 10000).getBytes)
+
+      val localBindAddress =
+        Deferred[IO, InetSocketAddress].unsafeRunSync()
+
+      def doNothingServer(socketGroup: SocketGroup) =
+        socketGroup
+          .serverResource[IO](new InetSocketAddress(InetAddress.getByName(null), 0))
+          .flatMap {
+            case (address, _) => Resource.liftF(localBindAddress.complete(address))
+          }
+
+      val result =
+        mkSocketGroup
+          .flatMap { socketGroup =>
+            Stream.resource(doNothingServer(socketGroup)) >>
+              Stream.eval(localBindAddress.get).flatMap { address =>
+                Stream
+                  .resource(
+                    socketGroup.client[IO](address, sendBufferSize = 1)
+                  )
+                  .flatMap(sock =>
+                    Stream(Stream.eval(sock.write(message))).repeat
+                      .take(10)
+                  )
+                  .parJoinUnbounded
+              }
+          }
+          .compile
+          .drain
+          .attempt
+          .unsafeRunTimed(timeout)
+          .get
+
+      result shouldBe a[Right[_, _]]
     }
   }
 }
