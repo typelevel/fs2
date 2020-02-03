@@ -3790,11 +3790,11 @@ class StreamSpec extends Fs2Spec {
 
   "withTimeout" - {
     "timeout never-ending stream" in {
-      Stream.never[IO].withTimeout(100.millis).compile.drain.assertThrows[TimeoutException]
+      Stream.never[IO].timeout(100.millis).compile.drain.assertThrows[TimeoutException]
     }
 
     "not trigger timeout on successfully completed stream" in {
-      Stream.sleep(10.millis).withTimeout(1.second).compile.drain.assertNoException
+      Stream.sleep(10.millis).timeout(1.second).compile.drain.assertNoException
     }
   }
 }
