@@ -3796,5 +3796,17 @@ class StreamSpec extends Fs2Spec {
     "not trigger timeout on successfully completed stream" in {
       Stream.sleep(10.millis).timeout(1.second).compile.drain.assertNoException
     }
+
+    "compose timeouts d1 and d2 when d1 < d2" in {
+      val d1 = 20.millis
+      val d2 = 30.millis
+      (Stream.sleep(10.millis).timeout(d1) ++ Stream.sleep(30.millis)).timeout(d2).compile.drain.assertThrows[TimeoutException]
+    }
+
+    "compose timeouts d1 and d2 when d1 > d2" in {
+      val d1 = 40.millis
+      val d2 = 30.millis
+      (Stream.sleep(10.millis).timeout(d1) ++ Stream.sleep(25.millis)).timeout(d2).compile.drain.assertThrows[TimeoutException]
+    }
   }
 }

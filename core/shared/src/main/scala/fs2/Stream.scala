@@ -2715,11 +2715,11 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
     f(this, s2)
 
   /** Fails this stream with a [[TimeoutException]] if it does not complete within given `timeout`. */
-  def timeout[F2[x] >: F[x]](
+  def timeout[F2[x] >: F[x]: Concurrent: Timer](
       timeout: FiniteDuration
-  )(implicit F2: Concurrent[F2], timer: Timer[F2]): Stream[F2, O] =
+  ): Stream[F2, O] =
     this.interruptWhen(
-      timer
+      Timer[F2]
         .sleep(timeout)
         .as(Left(new TimeoutException(s"Timed out after $timeout")))
         .widen[Either[Throwable, Unit]]
