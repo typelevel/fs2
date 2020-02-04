@@ -130,7 +130,7 @@ class SocketSpec extends Fs2Spec {
     }
 
     "write - concurrent calls do not cause WritePendingException" in {
-      val message = Chunk.bytes(("123456789012345678901234567890" * 100000).getBytes)
+      val message = Chunk.bytes(("123456789012345678901234567890" * 10000).getBytes)
 
       val localBindAddress =
         Deferred[IO, InetSocketAddress].unsafeRunSync()
@@ -153,7 +153,7 @@ class SocketSpec extends Fs2Spec {
                   )
                   .flatMap(sock =>
                     Stream(
-                      Stream.eval(sock.write(message)).repeatN(1000L)
+                      Stream.eval(sock.write(message)).repeatN(10L)
                     ).repeatN(2L)
                   )
                   .parJoinUnbounded
