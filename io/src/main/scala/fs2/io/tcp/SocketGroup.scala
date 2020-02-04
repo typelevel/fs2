@@ -212,9 +212,8 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup, blocker: Blocker
   private def apply[F[_]](
       ch: AsynchronousSocketChannel
   )(implicit F: Concurrent[F], cs: ContextShift[F]): Resource[F, Socket[F]] = {
-    val socket = (Semaphore[F](1), Semaphore[F](1)).tupled.flatMap { semaphores =>
-      val (readSemaphore, writeSemaphore) = semaphores
-      Ref.of[F, ByteBuffer](ByteBuffer.allocate(0)).map { bufferRef =>
+    val socket = (Semaphore[F](1), Semaphore[F](1), Ref[F].of(ByteBuffer.allocate(0))).mapN {
+      (readSemaphore, writeSemaphore, bufferRef) =>
         // Reads data to remaining capacity of supplied ByteBuffer
         // Also measures time the read took returning this as tuple
         // of (bytes_read, read_duration)
@@ -360,7 +359,6 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup, blocker: Blocker
             ch.shutdownInput(); ()
           }
         }
-      }
     }
     Resource.make(socket)(_ => blocker.delay(if (ch.isOpen) ch.close else ()).attempt.void)
   }
