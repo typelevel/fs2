@@ -624,6 +624,10 @@ object Chunk extends CollectorK[Chunk] {
       else if (n >= size) Chunk.empty
       else buffer(b.drop(n))
 
+    /** Creates an iterator that iterates the elements of this chunk. The returned iterator is not thread safe. */
+    override def iterator: Iterator[O] =
+      b.iterator
+
     override def take(n: Int): Chunk[O] =
       if (n <= 0) Chunk.empty
       else if (n >= size) this
