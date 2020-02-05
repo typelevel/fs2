@@ -1,16 +1,16 @@
 package fs2
 package io
 
+import java.io.IOException
 import java.nio.file._
-import java.nio.file.attribute.{FileAttribute, PosixFilePermission}
+import java.nio.file.attribute.{BasicFileAttributes, FileAttribute, PosixFilePermission}
 import java.util.stream.{Stream => JStream}
-
-import scala.concurrent.duration._
 
 import cats.effect.{Blocker, Concurrent, ContextShift, Resource, Sync, Timer}
 import cats.implicits._
+import fs2.io.CollectionCompat._
 
-import CollectionCompat._
+import scala.concurrent.duration._
 
 /** Provides support for working with files. */
 package object file {
@@ -181,6 +181,8 @@ package object file {
 
   /**
     * Get file permissions as set of [[PosixFilePermission]]
+    *
+    * This will only work for POSIX supporting file systems
     */
   def permissions[F[_]: Sync: ContextShift](
       blocker: Blocker,
@@ -191,6 +193,8 @@ package object file {
 
   /**
     * Set file permissions from set of [[PosixFilePermission]]
+    *
+    * This will only work for POSIX supporting file systems
     */
   def setPermissions[F[_]: Sync: ContextShift](
       blocker: Blocker,
@@ -228,6 +232,32 @@ package object file {
     blocker.delay(Files.deleteIfExists(path))
 
   /**
+    * Recursively delete a directory
+    */
+  def deleteDirectoryRecursively[F[_]: Sync: ContextShift](
+      blocker: Blocker,
+      path: Path,
+      options: Set[FileVisitOption] = Set.empty
+  ): F[Unit] =
+    blocker.delay {
+      Files.walkFileTree(
+        path,
+        options.asJava,
+        Int.MaxValue,
+        new SimpleFileVisitor[Path] {
+          override def visitFile(path: Path, attrs: BasicFileAttributes): FileVisitResult = {
+            Files.deleteIfExists(path)
+            FileVisitResult.CONTINUE
+          }
+          override def postVisitDirectory(path: Path, e: IOException): FileVisitResult = {
+            Files.deleteIfExists(path)
+            FileVisitResult.CONTINUE
+          }
+        }
+      )
+    }
+
+  /**
     * Returns the size of a file (in bytes).
     */
   def size[F[_]: Sync: ContextShift](blocker: Blocker, path: Path): F[Long] =
@@ -245,6 +275,67 @@ package object file {
       flags: Seq[CopyOption] = Seq.empty
   ): F[Path] =
     blocker.delay(Files.move(source, target, flags: _*))
+
+  /**
+    * Creates a stream containing the path of a temporary file.
+    *
+    * The temporary file is removed when the stream completes.
+    */
+  def tempFileStream[F[_]: Sync: ContextShift](
+      blocker: Blocker,
+      dir: Path,
+      prefix: String = "",
+      suffix: String = ".tmp",
+      attributes: Seq[FileAttribute[_]] = Seq.empty
+  ): Stream[F, Path] =
+    Stream.resource(tempFileResource[F](blocker, dir, prefix, suffix, attributes))
+
+  /**
+    * Creates a resource containing the path of a temporary file.
+    *
+    * The temporary file is removed during the resource release.
+    */
+  def tempFileResource[F[_]: Sync: ContextShift](
+      blocker: Blocker,
+      dir: Path,
+      prefix: String = "",
+      suffix: String = ".tmp",
+      attributes: Seq[FileAttribute[_]] = Seq.empty
+  ): Resource[F, Path] =
+    Resource.make {
+      blocker.delay(Files.createTempFile(dir, prefix, suffix, attributes: _*))
+    }(deleteIfExists[F](blocker, _).void)
+
+  /**
+    * Creates a stream containing the path of a temporary directory.
+    *
+    * The temporary directory is removed when the stream completes.
+    */
+  def tempDirectoryStream[F[_]: Sync: ContextShift](
+      blocker: Blocker,
+      dir: Path,
+      prefix: String = "",
+      attributes: Seq[FileAttribute[_]] = Seq.empty
+  ): Stream[F, Path] =
+    Stream.resource(tempDirectoryResource[F](blocker, dir, prefix, attributes))
+
+  /**
+    * Creates a resource containing the path of a temporary directory.
+    *
+    * The temporary directory is removed during the resource release.
+    */
+  def tempDirectoryResource[F[_]: Sync: ContextShift](
+      blocker: Blocker,
+      dir: Path,
+      prefix: String = "",
+      attributes: Seq[FileAttribute[_]] = Seq.empty
+  ): Resource[F, Path] =
+    Resource.make {
+      blocker.delay(Files.createTempDirectory(dir, prefix, attributes: _*))
+    } { p =>
+      deleteDirectoryRecursively[F](blocker, p)
+        .recover { case _: NoSuchFileException => () }
+    }
 
   /**
     * Creates a new directory at the given path
