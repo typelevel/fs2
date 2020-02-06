@@ -159,6 +159,34 @@ object Pull extends PullLowPriority {
   def suspend[F[x] >: Pure[x], O, R](p: => Pull[F, O, R]): Pull[F, O, R] =
     new Pull(FreeC.suspend(p.free))
 
+  implicit def OptionOps[F[_], O, R](p: Pull[F, O, Option[R]]): OptionOps[F, O, R] =
+    new OptionOps(p.free)
+  class OptionOps[F[_], O, R](private val free: FreeC[F, O, Option[R]]) extends AnyVal {
+    private[this] def self: Pull[F, O, Option[R]] = new Pull(free)
+
+    /**
+      * If the pull results is a `Some(r)`, the supplied function is called with `r` to determine
+      * the next pull. Otherwise, the returned pull completes with a unit.
+      */
+    def flatMapOrDone[F2[x] >: F[x], O2 >: O](f: R => Pull[F2, O2, Unit]): Pull[F2, O2, Unit] =
+      self.flatMap {
+        case Some(r) => f(r)
+        case None    => Pull.done
+      }
+
+    /**
+      * If the pull results is a `Some(r)`, the supplied function is called with `r` to determine
+      * the next pull. Otherwise, the returned pull completes with a `None`.
+      */
+    def flatMapOrNone[F2[x] >: F[x], O2 >: O, R2](
+        f: R => Pull[F2, O2, Option[R2]]
+    ): Pull[F2, O2, Option[R2]] =
+      self.flatMap {
+        case Some(r) => f(r)
+        case None    => Pull.pure(None)
+      }
+  }
+
   /** `Sync` instance for `Pull`. */
   implicit def syncInstance[F[_], O](
       implicit ev: ApplicativeError[F, Throwable]

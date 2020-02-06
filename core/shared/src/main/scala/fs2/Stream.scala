@@ -119,7 +119,7 @@ import scala.concurrent.duration._
   *
   * ''Note:'' For efficiency `[[Stream.map]]` function operates on an entire
   * chunk at a time and preserves chunk structure, which differs from
-  * the `map` derived from the monad (`s map f == s flatMap (f andThen Stream.emit)`)
+  * the `map` derived from the monad (`s map f == s flatMap (f flatMapOrDone Stream.emit)`)
   * which would produce singleton chunk. In particular, if `f` throws errors, the
   * chunked version will fail on the first ''chunk'' with an error, while
   * the unchunked version will fail on the first ''element'' with an error.
@@ -371,9 +371,8 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
     * }}}
     */
   def chunks: Stream[F, Chunk[O]] =
-    this.repeatPull(_.uncons.flatMap {
-      case None           => Pull.pure(None)
-      case Some((hd, tl)) => Pull.output1(hd).as(Some(tl))
+    this.repeatPull(_.uncons.flatMapOrNone {
+      case (hd, tl) => Pull.output1(hd).as(Some(tl))
     })
 
   /**
@@ -424,9 +423,8 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
           }
       }
 
-    this.pull.uncons.flatMap {
-      case None => Pull.done
-      case Some((hd, tl)) =>
+    this.pull.uncons.flatMapOrDone {
+      case (hd, tl) =>
         if (hd.size >= n)
           Pull.output1(hd) >> go(Chunk.Queue.empty, tl)
         else go(Chunk.Queue(hd), tl)
@@ -869,15 +867,13 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
           } else Pull.output(last)
       }
     def unconsNonEmptyChunk(s: Stream[F, O]): Pull[F, INothing, Option[(Chunk[O], Stream[F, O])]] =
-      s.pull.uncons.flatMap {
-        case Some((hd, tl)) =>
+      s.pull.uncons.flatMapOrNone {
+        case (hd, tl) =>
           if (hd.nonEmpty) Pull.pure(Some((hd, tl)))
           else unconsNonEmptyChunk(tl)
-        case None => Pull.pure(None)
       }
-    unconsNonEmptyChunk(this).flatMap {
-      case Some((hd, tl)) => go(hd, tl)
-      case None           => Pull.done
+    unconsNonEmptyChunk(this).flatMapOrDone {
+      case (hd, tl) => go(hd, tl)
     }.stream
   }
 
@@ -896,9 +892,8 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
     if (n <= 0) this
     else {
       def go(acc: Chunk.Queue[O], s: Stream[F, O]): Pull[F, O, Unit] =
-        s.pull.uncons.flatMap {
-          case None => Pull.done
-          case Some((hd, tl)) =>
+        s.pull.uncons.flatMapOrDone {
+          case (hd, tl) =>
             val all = acc :+ hd
             all
               .dropRight(n)
@@ -1115,9 +1110,8 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
     */
   def filterWithPrevious(f: (O, O) => Boolean): Stream[F, O] = {
     def go(last: O, s: Stream[F, O]): Pull[F, O, Unit] =
-      s.pull.uncons.flatMap {
-        case None           => Pull.done
-        case Some((hd, tl)) =>
+      s.pull.uncons.flatMapOrDone {
+        case (hd, tl) =>
           // Check if we can emit this chunk unmodified
           val (allPass, newLast) = hd.foldLeft((true, last)) {
             case ((acc, last), o) => (acc && f(last, o), o)
@@ -1667,9 +1661,8 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
       case None => Pull.done
       case Some(s) =>
         s.repeatPull {
-            _.uncons.flatMap {
-              case None => Pull.pure(None)
-              case Some((hd, tl)) =>
+            _.uncons.flatMapOrNone {
+              case (hd, tl) =>
                 val interspersed = {
                   val bldr = Vector.newBuilder[O2]
                   bldr.sizeHint(hd.size * 2)
@@ -1792,9 +1785,8 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
     */
   def mapChunks[O2](f: Chunk[O] => Chunk[O2]): Stream[F, O2] =
     this.repeatPull {
-      _.uncons.flatMap {
-        case None           => Pull.pure(None)
-        case Some((hd, tl)) => Pull.output(f(hd)).as(Some(tl))
+      _.uncons.flatMapOrNone {
+        case (hd, tl) => Pull.output(f(hd)).as(Some(tl))
       }
     }
 
@@ -2444,9 +2436,8 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
     (Pull.output1(z) >> scan_(z)(f)).stream
 
   private def scan_[O2](z: O2)(f: (O2, O) => O2): Pull[F, O2, Unit] =
-    this.pull.uncons.flatMap {
-      case None => Pull.done
-      case Some((hd, tl)) =>
+    this.pull.uncons.flatMapOrDone {
+      case (hd, tl) =>
         val (out, carry) = hd.scanLeftCarry(z)(f)
         Pull.output(out) >> tl.scan_(carry)(f)
     }
@@ -2589,9 +2580,8 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
         window: collection.immutable.Queue[O],
         s: Stream[F, O]
     ): Pull[F, collection.immutable.Queue[O], Unit] =
-      s.pull.uncons.flatMap {
-        case None => Pull.done
-        case Some((hd, tl)) =>
+      s.pull.uncons.flatMapOrDone {
+        case (hd, tl) =>
           val (out, carry) = hd.scanLeftCarry(window)((w, i) => w.dequeue._2.enqueue(i))
           Pull.output(out) >> go(carry, tl)
       }
@@ -2781,9 +2771,8 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
     */
   def unNoneTerminate[O2](implicit ev: O <:< Option[O2]): Stream[F, O2] =
     this.repeatPull {
-      _.uncons.flatMap {
-        case None => Pull.pure(None)
-        case Some((hd, tl)) =>
+      _.uncons.flatMapOrNone {
+        case (hd, tl) =>
           hd.indexWhere(_.isEmpty) match {
             case Some(0)   => Pull.pure(None)
             case Some(idx) => Pull.output(hd.take(idx).map(_.get)).as(None)
@@ -2870,9 +2859,8 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
         z: Either[(Chunk[O2], Stream[F2, O2]), Stream[F2, O2]]
     ): Pull[F2, O4, Option[INothing]] = {
       def contLeft(s: Stream[F2, O2]): Pull[F2, O4, Option[INothing]] =
-        s.pull.uncons.flatMap {
-          case None => Pull.pure(None)
-          case Some((hd, tl)) =>
+        s.pull.uncons.flatMapOrNone {
+          case (hd, tl) =>
             Pull.output(hd.map(o => f(o, pad2))) >> contLeft(tl)
         }
       z match {
@@ -2885,9 +2873,8 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
         z: Either[(Chunk[O3], Stream[F2, O3]), Stream[F2, O3]]
     ): Pull[F2, O4, Option[INothing]] = {
       def contRight(s: Stream[F2, O3]): Pull[F2, O4, Option[INothing]] =
-        s.pull.uncons.flatMap {
-          case None => Pull.pure(None)
-          case Some((hd, tl)) =>
+        s.pull.uncons.flatMapOrNone {
+          case (hd, tl) =>
             Pull.output(hd.map(o2 => f(pad1, o2))) >> contRight(tl)
         }
       z match {
@@ -2994,9 +2981,8 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
           }
           Pull.output(out) >> go(newLast, tl)
       }
-    this.pull.uncons1.flatMap {
-      case Some((hd, tl)) => go(hd, tl)
-      case None           => Pull.done
+    this.pull.uncons1.flatMapOrDone {
+      case (hd, tl) => go(hd, tl)
     }.stream
   }
 
