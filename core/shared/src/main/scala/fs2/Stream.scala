@@ -3525,10 +3525,10 @@ object Stream extends StreamLowPriority {
     * Scopes can be manually introduced via [[scope]] if desired.
     */
   def resourceWeak[F[_], O](r: Resource[F, O]): Stream[F, O] = r match {
-    case Resource.Allocate(a) =>
-      Stream.bracketCaseWeak(a) { case ((_, release), e) => release(e) }.map(_._1)
-    case Resource.Bind(r, f) => resourceWeak(r).flatMap(o => resourceWeak(f(o)))
-    case Resource.Suspend(r) => Stream.eval(r).flatMap(resourceWeak)
+    case r: Resource.Allocate[F, O] =>
+      Stream.bracketCaseWeak(r.resource) { case ((_, release), e) => release(e) }.map(_._1)
+    case r: Resource.Bind[F, x, O] => resourceWeak(r.source).flatMap(o => resourceWeak(r.fs(o)))
+    case r: Resource.Suspend[F, O] => Stream.eval(r.resource).flatMap(resourceWeak)
   }
 
   /**
