@@ -784,6 +784,268 @@ object Chunk extends CollectorK[Chunk] {
     def apply(values: Array[Byte]): Bytes = Bytes(values, 0, values.length)
   }
 
+  final case class BytesVector private (chunks: Vector[Chunk.Bytes], length: Int)
+      extends Chunk[Byte]
+      with KnownElementType[Byte] {
+
+    def elementClassTag: ClassTag[Byte] = ClassTag.Byte
+
+    def size: Int = length
+
+    def apply(i: Int): Byte = at(i)
+
+    val at: Int => Byte =
+      chunks.length match {
+        case 0 => _ => throw new IndexOutOfBoundsException()
+        case 1 => i => chunks(0).at(i)
+        case _ => i => at(i, chunks)
+      }
+
+    @tailrec
+    private def at(i: Int, chunks: Vector[Chunk.Bytes], chunksOffset: Int = 0): Byte = {
+      val chunk = chunks(chunksOffset)
+      if (i < chunk.length) chunk.at(i)
+      else at(i - chunk.length, chunks, chunksOffset + 1)
+    }
+
+    override def drop(n: Int): Chunk[Byte] =
+      if (n <= 0) this
+      else if (n >= length) Chunk.empty
+      else BytesVector(chunks, n, length - n)
+
+    override def take(n: Int): Chunk[Byte] =
+      if (n <= 0) Chunk.empty
+      else if (n >= length) this
+      else BytesVector(chunks, 0, n)
+
+    protected def splitAtChunk_(n: Int): (Chunk[Byte], Chunk[Byte]) =
+      take(n) -> drop(n)
+
+    private lazy val array: Array[Byte] =
+      chunks.length match {
+        case 0 => Array.empty[Byte]
+        case 1 =>
+          val chunk = chunks(0)
+          val buffer = new Array[Byte](length)
+          System.arraycopy(chunk.values, chunk.offset, buffer, 0, length)
+          buffer
+        case _ =>
+          val buffer = new Array[Byte](length)
+          _copyToArray(
+            chunks = chunks,
+            srcOffset = 0,
+            dest = buffer,
+            destOffset = 0,
+            length = length
+          )
+          buffer
+      }
+
+    override def toArray[O2 >: Byte: ClassTag]: Array[O2] =
+      array.asInstanceOf[Array[O2]]
+
+    def copyToArray[O2 >: Byte](dest: Array[O2], destOffset: Int): Unit =
+      _copyToArray(
+        chunks = chunks,
+        srcOffset = 0,
+        dest = dest,
+        destOffset = destOffset,
+        length.min(dest.length - destOffset)
+      )
+
+    def copyToArray[O2 >: Byte](
+        srcOffset: Int,
+        dest: Array[O2],
+        destOffset: Int,
+        length: Int
+    ): Unit =
+      _copyToArray(
+        chunks = chunks,
+        srcOffset = srcOffset,
+        dest = dest,
+        destOffset = destOffset,
+        length
+      )
+
+    @tailrec
+    private def _copyToArray[O2 >: Byte](
+        chunks: Vector[Chunk.Bytes],
+        srcOffset: Int,
+        dest: Array[O2],
+        destOffset: Int,
+        length: Int,
+        chunksOffset: Int = 0
+    ): Unit = {
+
+      def copyToDest(chunk: Chunk.Bytes): Int = {
+        val bytesToCopy = length.min(chunk.length - srcOffset)
+        if (dest.isInstanceOf[Array[Byte]]) {
+          System.arraycopy(chunk.values, chunk.offset + srcOffset, dest, destOffset, bytesToCopy)
+        } else {
+          val headOffset = chunk.offset + srcOffset
+          chunk.values.iterator
+            .slice(headOffset, headOffset + bytesToCopy)
+            .copyToArray(dest, destOffset)
+        }
+        bytesToCopy
+      }
+
+      chunks.length match {
+        case length if length == chunksOffset => ()
+        case length if length == chunksOffset + 1 =>
+          val chunk = chunks(chunksOffset)
+          if (srcOffset < chunk.length) copyToDest(chunk)
+        case _ =>
+          val chunk = chunks(chunksOffset)
+          if (srcOffset < chunk.length) {
+            val bytesToCopy = copyToDest(chunk)
+            val bytesRemaining = length - bytesToCopy
+            if (bytesRemaining > 0)
+              _copyToArray(
+                chunks,
+                0,
+                dest,
+                destOffset + bytesToCopy,
+                bytesRemaining,
+                chunksOffset + 1
+              )
+          } else {
+            _copyToArray(
+              chunks,
+              srcOffset - chunk.length,
+              dest,
+              destOffset,
+              length,
+              chunksOffset + 1
+            )
+          }
+      }
+    }
+
+    @tailrec
+    def append(chunk: Chunk[Byte]): BytesVector =
+      chunk match {
+        case c @ BytesVector(_, _) =>
+          if (c.length <= 0) {
+            this
+          } else if (length > 0) {
+            BytesVector(chunks = chunks ++ c.chunks, length = length + c.length)
+          } else c
+        case c @ Chunk.Bytes(_, _, _) =>
+          if (c.length <= 0) {
+            this
+          } else if (length > 0) {
+            BytesVector(chunks = chunks :+ c, length = length + c.length)
+          } else BytesVector(c)
+        case c =>
+          if (c.size <= 0) this else append(chunk.toBytes)
+      }
+
+    override def toBytes[B >: Byte](implicit ev: B =:= Byte): Bytes = {
+      val _ = ev
+      this match {
+        case c @ BytesVector(_, _) => Chunk.Bytes(c.toArray, 0, c.length)
+        case _                     => super.toBytes
+      }
+    }
+
+  }
+
+  case object BytesVector {
+
+    val empty: BytesVector = new BytesVector(Vector.empty, length = 0)
+
+    def apply(chunk: Chunk[Byte]): BytesVector =
+      chunk match {
+        case c @ BytesVector(_, _) =>
+          c
+        case c @ Chunk.Bytes(_, _, _) =>
+          if (c.length > 0) new BytesVector(Vector(c), c.length) else empty
+        case c =>
+          if (c.size <= 0) empty else apply(c.toBytes)
+      }
+
+    def apply(chunks: Vector[Chunk.Bytes], offset: Int, length: Int): BytesVector =
+      if (length <= 0 || chunks.isEmpty) {
+        empty
+      } else if (chunks.length == 1) {
+        val chunk = chunks(0)
+        val requiredChunkLength = offset + length
+        new BytesVector(
+          chunks =
+            if (offset == 0 && chunk.length == requiredChunkLength) chunks
+            else Vector(chunk.copy(offset = chunk.offset + offset, length = length)),
+          length = length
+        )
+      } else {
+        var reducedOffset = offset
+        var sliceFrom = 0
+        var sliceUntil = 0
+        var lengthTaken = effectiveLength(chunks)
+        def dropChunksBeforeOffset: Boolean = offset > 0 && chunks(0).length <= offset
+        def dropChunksAfterLength: Boolean =
+          lengthTaken - length >= chunks(chunks.length - 1).length
+        if (dropChunksBeforeOffset || dropChunksAfterLength) {
+          lengthTaken = 0
+          var droppingOffset = true
+          chunks.foreach { chunk =>
+            if (droppingOffset && reducedOffset >= chunk.length) {
+              reducedOffset -= chunk.length
+              sliceFrom += 1
+              sliceUntil += 1
+            } else droppingOffset = false
+            if (!droppingOffset && lengthTaken - reducedOffset < length) {
+              lengthTaken += chunk.length
+              sliceUntil += 1
+            }
+          }
+        } else sliceUntil = chunks.length
+        val slicedChunks = chunks.slice(sliceFrom, sliceUntil)
+
+        val requiredChunksLength = reducedOffset + length
+        new BytesVector(
+          chunks = if (reducedOffset == 0 && lengthTaken == requiredChunksLength) slicedChunks
+          else {
+            val lastChunkIndex = slicedChunks.length - 1
+            val firstChunk = slicedChunks(0)
+            if (lastChunkIndex == 0) {
+              slicedChunks.updated(
+                0,
+                firstChunk.copy(
+                  offset = firstChunk.offset + reducedOffset,
+                  length = firstChunk.length - reducedOffset - (lengthTaken - requiredChunksLength)
+                )
+              )
+            } else {
+              val slicedChunksZeroOffset =
+                if (reducedOffset > 0)
+                  slicedChunks.updated(
+                    0,
+                    firstChunk.copy(
+                      offset = firstChunk.offset + reducedOffset,
+                      length = firstChunk.length - reducedOffset
+                    )
+                  )
+                else slicedChunks
+              val lengthReduction = lengthTaken - requiredChunksLength
+              if (lengthReduction > 0) {
+                val lastChunk = slicedChunksZeroOffset(lastChunkIndex)
+                slicedChunksZeroOffset.updated(
+                  lastChunkIndex,
+                  lastChunk.copy(length = lastChunk.length - lengthReduction)
+                )
+              } else slicedChunksZeroOffset
+            }
+          },
+          length = length
+        )
+      }
+
+    private def effectiveLength(chunks: Vector[Chunk.Bytes]): Int =
+      chunks.foldLeft(0)(_ + _.length)
+
+  }
+
   sealed abstract class Buffer[A <: Buffer[A, B, C], B <: JBuffer, C: ClassTag](
       buf: B,
       val offset: Int,
