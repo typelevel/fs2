@@ -72,8 +72,8 @@ class SocketSpec extends Fs2Spec {
           .toVector
           .unsafeRunTimed(timeout)
           .get
-      result.size shouldBe clientCount
-      result.map { new String(_) }.toSet shouldBe Set("fs2.rocks")
+      assert(result.size == clientCount)
+      assert(result.map { new String(_) }.toSet == Set("fs2.rocks"))
     }
 
     // Ensure that readN yields chunks of the requested size
@@ -126,7 +126,7 @@ class SocketSpec extends Fs2Spec {
           .toVector
           .unsafeRunTimed(timeout)
           .get
-      result shouldBe sizes
+      assert(result == sizes)
     }
 
     "write - concurrent calls do not cause WritePendingException" in {

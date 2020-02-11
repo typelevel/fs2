@@ -52,7 +52,7 @@ class CompressSpec extends Fs2Spec {
           )
           .toVector
 
-        actual should equal(expected)
+        assert(actual == expected)
     }
 
     "inflate input" in forAll(strings, intsBetween(0, 9), booleans) {
@@ -76,7 +76,7 @@ class CompressSpec extends Fs2Spec {
             .through(inflate(nowrap = nowrap))
             .compile
             .toVector
-          actualInflated should equal(Right(expectedInflated))
+          assert(actualInflated == Right(expectedInflated))
         }
 
         expectEqual(actualDeflated.toArray, expectedDeflated.toArray)
@@ -89,7 +89,7 @@ class CompressSpec extends Fs2Spec {
         .through(compress.inflate())
         .compile
         .toVector
-        .asserting(_ shouldBe s.toVector)
+        .asserting(it => assert(it == s.toVector))
     }
 
     "deflate.compresses input" in {
@@ -102,7 +102,7 @@ class CompressSpec extends Fs2Spec {
       val compressed =
         Stream.chunk(Chunk.bytes(uncompressed)).through(deflate(9)).toVector
 
-      compressed.length should be < uncompressed.length
+      assert(compressed.length < uncompressed.length)
     }
 
     "gzip |> gunzip ~= id" in forAll { s: Stream[Pure, Byte] =>
@@ -111,7 +111,7 @@ class CompressSpec extends Fs2Spec {
         .through(compress.gunzip[IO](8192))
         .compile
         .toVector
-        .asserting(_ shouldBe s.toVector)
+        .asserting(it => assert(it == s.toVector))
     }
 
     "gzip |> gunzip ~= id (mutually prime chunk sizes, compression larger)" in forAll {
@@ -121,7 +121,7 @@ class CompressSpec extends Fs2Spec {
           .through(compress.gunzip[IO](509))
           .compile
           .toVector
-          .asserting(_ shouldBe s.toVector)
+          .asserting(it => assert(it == s.toVector))
     }
 
     "gzip |> gunzip ~= id (mutually prime chunk sizes, decompression larger)" in forAll {
@@ -131,7 +131,7 @@ class CompressSpec extends Fs2Spec {
           .through(compress.gunzip[IO](1031))
           .compile
           .toVector
-          .asserting(_ shouldBe s.toVector)
+          .asserting(it => assert(it == s.toVector))
     }
 
     "gzip |> GZIPInputStream ~= id" in forAll { s: Stream[Pure, Byte] =>
@@ -150,7 +150,7 @@ class CompressSpec extends Fs2Spec {
         read = gzis.read()
       }
 
-      buffer.toVector shouldBe s.toVector
+      assert(buffer.toVector == s.toVector)
     }
 
     "gzip.compresses input" in {
@@ -166,7 +166,7 @@ class CompressSpec extends Fs2Spec {
         .compile
         .toVector
 
-      compressed.length should be < uncompressed.length
+      assert(compressed.length < uncompressed.length)
     }
   }
 }

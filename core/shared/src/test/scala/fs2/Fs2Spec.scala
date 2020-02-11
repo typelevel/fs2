@@ -7,7 +7,7 @@ import cats.{Functor, Monad}
 import cats.effect.{ContextShift, Fiber, IO, Sync, Timer}
 import cats.implicits._
 
-import org.scalatest.{Args, Assertion, Matchers, Status, Succeeded}
+import org.scalatest.{Args, Assertion, Status, Succeeded}
 import org.scalatest.concurrent.AsyncTimeLimitedTests
 import org.scalatest.freespec.AsyncFreeSpec
 import org.scalatest.prop.GeneratorDrivenPropertyChecks
@@ -19,7 +19,6 @@ import org.typelevel.discipline.Laws
 abstract class Fs2Spec
     extends AsyncFreeSpec
     with AsyncTimeLimitedTests
-    with Matchers
     with GeneratorDrivenPropertyChecks
     with Checkers
     with MiscellaneousGenerators
@@ -92,7 +91,7 @@ abstract class Fs2Spec
       * Asserts that the `F[A]` completes with an `A` which passes the supplied function.
       *
       * @example {{{
-      * IO(1).asserting(_ shouldBe 1)
+      * IO(1).asserting(it => assert(it == 1))
       * }}}
       */
     def asserting(f: A => Assertion)(implicit F: Sync[F]): F[Assertion] =
@@ -136,4 +135,11 @@ abstract class Fs2Spec
   protected def checkAll(name: String, ruleSet: Laws#RuleSet): Unit =
     for ((id, prop) <- ruleSet.all.properties)
       s"${name}.${id}" in check(prop)
+
+  protected def containSameElements(s1: Seq[_], s2: Seq[_]): Boolean =
+    s1.length == s2.length && s1.diff(s2).isEmpty
+
+  protected def leftContainsAllOfRight(s1: Seq[_], s2: Seq[_]): Boolean =
+    s2.forall(s1.contains)
+
 }

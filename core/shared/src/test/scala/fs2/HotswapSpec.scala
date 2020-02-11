@@ -13,11 +13,13 @@ class HotswapSpec extends Fs2Spec {
             logger.logInfo("using")
           }
           .compile
-          .drain *> logger.get.asserting(
-          _ shouldBe List(
-            LogEvent.Acquired("a"),
-            LogEvent.Info("using"),
-            LogEvent.Released("a")
+          .drain *> logger.get.asserting(it =>
+          assert(
+            it == List(
+              LogEvent.Acquired("a"),
+              LogEvent.Info("using"),
+              LogEvent.Released("a")
+            )
           )
         )
       }
@@ -36,17 +38,19 @@ class HotswapSpec extends Fs2Spec {
                 logger.logInfo("using c")
           }
           .compile
-          .drain *> logger.get.asserting(
-          _ shouldBe List(
-            LogEvent.Acquired("a"),
-            LogEvent.Info("using a"),
-            LogEvent.Acquired("b"),
-            LogEvent.Released("a"),
-            LogEvent.Info("using b"),
-            LogEvent.Acquired("c"),
-            LogEvent.Released("b"),
-            LogEvent.Info("using c"),
-            LogEvent.Released("c")
+          .drain *> logger.get.asserting(it =>
+          assert(
+            it == List(
+              LogEvent.Acquired("a"),
+              LogEvent.Info("using a"),
+              LogEvent.Acquired("b"),
+              LogEvent.Released("a"),
+              LogEvent.Info("using b"),
+              LogEvent.Acquired("c"),
+              LogEvent.Released("b"),
+              LogEvent.Info("using c"),
+              LogEvent.Released("c")
+            )
           )
         )
       }
@@ -63,12 +67,14 @@ class HotswapSpec extends Fs2Spec {
                 logger.logInfo("after clear")
           }
           .compile
-          .drain *> logger.get.asserting(
-          _ shouldBe List(
-            LogEvent.Acquired("a"),
-            LogEvent.Info("using a"),
-            LogEvent.Released("a"),
-            LogEvent.Info("after clear")
+          .drain *> logger.get.asserting(it =>
+          assert(
+            it == List(
+              LogEvent.Acquired("a"),
+              LogEvent.Info("using a"),
+              LogEvent.Released("a"),
+              LogEvent.Info("after clear")
+            )
           )
         )
       }

@@ -48,7 +48,7 @@ class UdpSpec extends Fs2Spec {
         }
         .compile
         .toVector
-        .asserting(_.map(_.bytes) shouldBe Vector(msg))
+        .asserting(it => assert(it.map(_.bytes) == Vector(msg)))
     }
 
     "echo lots" in {
@@ -90,10 +90,12 @@ class UdpSpec extends Fs2Spec {
         .compile
         .toVector
         .asserting(res =>
-          res.map(p => new String(p.bytes.toArray)).sorted shouldBe Vector
-            .fill(numClients)(msgs.map(b => new String(b.toArray)))
-            .flatten
-            .sorted
+          assert(
+            res.map(p => new String(p.bytes.toArray)).sorted == Vector
+              .fill(numClients)(msgs.map(b => new String(b.toArray)))
+              .flatten
+              .sorted
+          )
         )
     }
 
@@ -135,7 +137,7 @@ class UdpSpec extends Fs2Spec {
         }
         .compile
         .toVector
-        .asserting(_.map(_.bytes) shouldBe Vector(msg))
+        .asserting(it => assert(it.map(_.bytes) == Vector(msg)))
     }
 
     "timeouts supported" in {

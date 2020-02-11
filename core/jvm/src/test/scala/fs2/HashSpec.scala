@@ -22,7 +22,7 @@ class HashSpec extends Fs2Spec {
           .foldLeft(Stream.empty.covaryOutput[Byte])((acc, c) => acc ++ Stream.chunk(Chunk.bytes(c))
           )
 
-    s.through(h).toList shouldBe digest(algo, str)
+    assert(s.through(h).toList == digest(algo, str))
   }
 
   "digests" - {
@@ -47,13 +47,16 @@ class HashSpec extends Fs2Spec {
   }
 
   "empty input" in {
-    Stream.empty.through(sha1).toList should have size (20)
+    assert(Stream.empty.through(sha1).toList.size == 20)
   }
 
   "zero or one output" in forAll { (lb: List[Array[Byte]]) =>
-    lb.foldLeft(Stream.empty.covaryOutput[Byte])((acc, b) => acc ++ Stream.chunk(Chunk.bytes(b)))
+    val size = lb
+      .foldLeft(Stream.empty.covaryOutput[Byte])((acc, b) => acc ++ Stream.chunk(Chunk.bytes(b)))
       .through(sha1)
-      .toList should have size (20)
+      .toList
+      .size
+    assert(size == 20)
   }
 
   "thread-safety" in {
@@ -66,7 +69,7 @@ class HashSpec extends Fs2Spec {
       once <- s.compile.toVector
       oneHundred <- Vector.fill(100)(s.compile.toVector).parSequence
     } yield (once, oneHundred)).asserting {
-      case (once, oneHundred) => oneHundred shouldBe Vector.fill(100)(once)
+      case (once, oneHundred) => assert(oneHundred == Vector.fill(100)(once))
     }
   }
 }
