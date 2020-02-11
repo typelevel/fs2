@@ -15,6 +15,8 @@ import java.io.PrintStream
 import scala.annotation.tailrec
 import scala.concurrent.TimeoutException
 import scala.concurrent.duration._
+import cats.data.Ior
+import cats.data.Ior.Both
 
 /**
   * A stream producing output of type `O` and which may evaluate `F` effects.
@@ -4715,6 +4717,81 @@ object Stream extends StreamLowPriority {
     new Monoid[Stream[F, O]] {
       def empty = Stream.empty
       def combine(x: Stream[F, O], y: Stream[F, O]) = x ++ y
+    }
+
+  /** `Align` instance for `Stream`.
+    * * @example {{{
+    * scala> import cats.implicits._
+    * scala> Stream(1,2,3).align(Stream("A","B","C","D","E")).toList
+    * res0: List[cats.data.Ior[Int,String]] = List(Both(1,A), Both(2,B), Both(3,C), Right(D), Right(E))
+    * }}}
+    *
+    */
+  implicit def alignInstance[F[_]](implicit F: Functor[Stream[F, ?]]): Align[Stream[F, ?]] =
+    new Align[Stream[F, ?]] {
+
+      private type ZipWithCont[G[_], O2, L, R] =
+        Either[(Chunk[O2], Stream[G, O2]), Stream[G, O2]] => Pull[G, Ior[L, R], Unit]
+
+      private def alignWith_[F2[x] >: F[x], O2, O3](
+          fa: Stream[F2, O2],
+          fb: Stream[F2, O3]
+      )(k1: ZipWithCont[F2, O2, O2, O3], k2: ZipWithCont[F2, O3, O2, O3])(
+          f: (O2, O3) => Ior[O2, O3]
+      ): Stream[F2, Ior[O2, O3]] = {
+        def go(
+            leg1: Stream.StepLeg[F2, O2],
+            leg2: Stream.StepLeg[F2, O3]
+        ): Pull[F2, Ior[O2, O3], Unit] = {
+          val l1h = leg1.head
+          val l2h = leg2.head
+          val out = l1h.zipWith(l2h)(f)
+          Pull.output(out) >> {
+            if (l1h.size > l2h.size) {
+              val extra1 = l1h.drop(l2h.size)
+              leg2.stepLeg.flatMap {
+                case None => k1(Left((extra1, leg1.stream)))
+                case Some(tl2) => go(leg1.setHead(extra1), tl2)
+              }
+            } else {
+              val extra2 = l2h.drop(l1h.size)
+              leg1.stepLeg.flatMap {
+                case None => k2(Left((extra2, leg2.stream)))
+                case Some(tl1) => go(tl1, leg2.setHead(extra2))
+              }
+            }
+          }
+        }
+        fa.pull.stepLeg
+          .flatMap {
+            case Some(leg1) =>
+              fb.pull.stepLeg
+                .flatMap {
+                  case Some(leg2) => go(leg1, leg2)
+                  case None => k1(Left((leg1.head, leg1.stream)))
+                }
+
+            case None => k2(Right(fb))
+          }
+          .void
+          .stream
+      }
+
+      override def functor: Functor[Stream[F, ?]] = F
+
+      override def align[A, B](fa: Stream[F, A], fb: Stream[F, B]): Stream[F, Ior[A, B]] = {
+
+        def echoIor[T, U](s: Stream[F, T], f: T => U) = s.map(f).pull.echo
+        def contFor[T, U](cs: (Chunk[T], Stream[F, T]), f: T => U) = {
+          val (chunk, stream) = cs
+          Pull.output(chunk.map(f)) >> echoIor(stream, f)
+        }
+
+        alignWith_(fa, fb)(
+          _.fold(contFor(_, Ior.left[A, B]), echoIor(_, Ior.left[A, B])),
+          _.fold(contFor(_, Ior.right[A, B]), echoIor(_, Ior.right[A, B]))
+        )(Both[A, B](_, _))
+      }
     }
 
   /**
