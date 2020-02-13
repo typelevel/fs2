@@ -4727,7 +4727,7 @@ object Stream extends StreamLowPriority {
     * }}}
     *
     */
-  implicit def alignInstance[F[_]](implicit F: Functor[Stream[F, ?]]): Align[Stream[F, ?]] =
+  implicit def alignInstance[F[_]]: Align[Stream[F, ?]] =
     new Align[Stream[F, ?]] {
 
       private type ZipWithCont[G[_], O2, L, R] =
@@ -4750,13 +4750,13 @@ object Stream extends StreamLowPriority {
             if (l1h.size > l2h.size) {
               val extra1 = l1h.drop(l2h.size)
               leg2.stepLeg.flatMap {
-                case None => k1(Left((extra1, leg1.stream)))
+                case None      => k1(Left((extra1, leg1.stream)))
                 case Some(tl2) => go(leg1.setHead(extra1), tl2)
               }
             } else {
               val extra2 = l2h.drop(l1h.size)
               leg1.stepLeg.flatMap {
-                case None => k2(Left((extra2, leg2.stream)))
+                case None      => k2(Left((extra2, leg2.stream)))
                 case Some(tl1) => go(tl1, leg2.setHead(extra2))
               }
             }
@@ -4768,7 +4768,7 @@ object Stream extends StreamLowPriority {
               fb.pull.stepLeg
                 .flatMap {
                   case Some(leg2) => go(leg1, leg2)
-                  case None => k1(Left((leg1.head, leg1.stream)))
+                  case None       => k1(Left((leg1.head, leg1.stream)))
                 }
 
             case None => k2(Right(fb))
@@ -4777,7 +4777,7 @@ object Stream extends StreamLowPriority {
           .stream
       }
 
-      override def functor: Functor[Stream[F, ?]] = F
+      override def functor: Functor[Stream[F, ?]] = Functor[Stream[F, ?]]
 
       override def align[A, B](fa: Stream[F, A], fb: Stream[F, B]): Stream[F, Ior[A, B]] = {
 

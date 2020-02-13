@@ -11,7 +11,6 @@ import scala.concurrent.TimeoutException
 import org.scalactic.anyvals._
 import org.scalatest.{Assertion, Matchers, Succeeded}
 import fs2.concurrent.{Queue, SignallingRef}
-import cats.Align
 
 class StreamSpec extends Fs2Spec with Matchers {
   "Stream" - {
@@ -3656,10 +3655,11 @@ class StreamSpec extends Fs2Spec with Matchers {
         val ones = Stream.constant("1")
         val s = Stream("A", "B", "C")
         assert(
-          s.align(ones).take(3).toList == List(
+          s.align(ones).take(4).toList == List(
             Ior.Both("A", "1"),
             Ior.Both("B", "1"),
-            Ior.Both("C", "1")
+            Ior.Both("C", "1"),
+            Ior.Right("1")
           )
         )
       }
