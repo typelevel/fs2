@@ -92,4 +92,12 @@ class StreamBenchmark {
       .compile
       .drain
       .unsafeRunSync
+
+  @Benchmark
+  def evalMap() =
+    Stream.emits(0 until n).evalMap(x => IO(x * 5)).compile.drain.unsafeRunSync
+
+  @Benchmark
+  def evalMaps() =
+    Stream.emits(0 until n).evalMapChunk(x => IO(x * 5)).compile.drain.unsafeRunSync
 }
