@@ -142,30 +142,26 @@ class SocketSpec extends Fs2Spec {
             case (address, _) => Resource.liftF(localBindAddress.complete(address))
           }
 
-      val result =
-        mkSocketGroup
-          .flatMap { socketGroup =>
-            Stream.resource(doNothingServer(socketGroup)) >>
-              Stream.eval(localBindAddress.get).flatMap { address =>
-                Stream
-                  .resource(
-                    socketGroup.client[IO](address)
-                  )
-                  .flatMap(sock =>
-                    Stream(
-                      Stream.eval(sock.write(message)).repeatN(10L)
-                    ).repeatN(2L)
-                  )
-                  .parJoinUnbounded
-              }
-          }
-          .compile
-          .drain
-          .attempt
-          .unsafeRunTimed(timeout)
-          .get
-
-      result shouldBe a[Right[_, _]]
+      mkSocketGroup
+        .flatMap { socketGroup =>
+          Stream.resource(doNothingServer(socketGroup)) >>
+            Stream.eval(localBindAddress.get).flatMap { address =>
+              Stream
+                .resource(
+                  socketGroup.client[IO](address)
+                )
+                .flatMap(sock =>
+                  Stream(
+                    Stream.eval(sock.write(message)).repeatN(10L)
+                  ).repeatN(2L)
+                )
+                .parJoinUnbounded
+            }
+        }
+        .compile
+        .drain
+        .attempt
+        .asserting(it => assert(it.isRight))
     }
   }
 }

@@ -156,17 +156,14 @@ class FileSpec extends BaseFileSpec {
     }
     "should return permissions for existing file" in {
       val permissions = PosixFilePermissions.fromString("rwxrwxr-x").asScala
-      assert(
-        Blocker[IO]
-          .use { b =>
-            tempFile
-              .evalMap(p => file.setPermissions[IO](b, p, permissions) >> file.permissions[IO](b, p)
-              )
-              .compile
-              .lastOrError
-          }
-          .unsafeRunSync() == permissions
-      )
+      Blocker[IO]
+        .use { b =>
+          tempFile
+            .evalMap(p => file.setPermissions[IO](b, p, permissions) >> file.permissions[IO](b, p))
+            .compile
+            .lastOrError
+        }
+        .asserting(it => assert(it == permissions))
     }
   }
 
@@ -256,7 +253,7 @@ class FileSpec extends BaseFileSpec {
         }
         .compile
         .lastOrError
-        .unsafeRunSync() shouldBe false
+        .asserting(it => assert(!it))
     }
   }
 
@@ -304,7 +301,7 @@ class FileSpec extends BaseFileSpec {
               case (existsBefore, path) => file.exists[IO](b, path).map(existsBefore -> _)
             }
         }
-        .unsafeRunSync() shouldBe true -> false
+        .asserting(it => assert(it == true -> false))
     }
 
     "should not fail if the file is deleted before the stream completes" in {
@@ -318,8 +315,7 @@ class FileSpec extends BaseFileSpec {
         .compile
         .lastOrError
         .attempt
-        .unsafeRunSync()
-        .isRight shouldBe true
+        .asserting(it => assert(it.isRight))
     }
   }
 
@@ -336,7 +332,7 @@ class FileSpec extends BaseFileSpec {
               case (existsBefore, path) => file.exists[IO](b, path).map(existsBefore -> _)
             }
         }
-        .unsafeRunSync() shouldBe true -> false
+        .asserting(it => assert(it == true -> false))
     }
 
     "should not fail if the directory is deleted before the stream completes" in {
@@ -350,8 +346,7 @@ class FileSpec extends BaseFileSpec {
         .compile
         .lastOrError
         .attempt
-        .unsafeRunSync()
-        .isRight shouldBe true
+        .asserting(it => assert(it.isRight))
     }
   }
 
