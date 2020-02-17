@@ -112,7 +112,7 @@ object Pull extends PullLowPriority {
     * Halts when a step terminates with `None` or `Pull.raiseError`.
     */
   def loop[F[_], O, R](using: R => Pull[F, O, Option[R]]): R => Pull[F, O, Option[R]] =
-    r => using(r).flatMap { _.map(loop(using)).getOrElse(Pull.pure(None)) }
+    r => using(r).flatMap(_.map(loop(using)).getOrElse(Pull.pure(None)))
 
   /** Outputs a single value. */
   def output1[F[x] >: Pure[x], O](o: O): Pull[F, O, Unit] =

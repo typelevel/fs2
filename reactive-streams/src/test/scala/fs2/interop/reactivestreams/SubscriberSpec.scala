@@ -33,9 +33,7 @@ final class SubscriberWhiteboxSpec
       p: SubscriberWhiteboxVerification.WhiteboxSubscriberProbe[Int]
   ): Subscriber[Int] =
     StreamSubscriber[IO, Int]
-      .map { s =>
-        new WhiteboxSubscriber(s, p)
-      }
+      .map(s => new WhiteboxSubscriber(s, p))
       .unsafeRunSync()
 
   def createElement(i: Int): Int = counter.getAndIncrement

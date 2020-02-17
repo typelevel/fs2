@@ -101,8 +101,12 @@ object Broadcast {
 
     case class Processing[O](
         subscribers: Set[Token],
-        processing: Set[Token], // added when we enter to Processing state, and removed whenever sub takes current `O`
-        remains: Set[Token], // removed when subscriber requests another `O` but already seen `current`
+        processing: Set[
+          Token
+        ], // added when we enter to Processing state, and removed whenever sub takes current `O`
+        remains: Set[
+          Token
+        ], // removed when subscriber requests another `O` but already seen `current`
         current: O
     ) extends State[O] {
       def awaitSub = false

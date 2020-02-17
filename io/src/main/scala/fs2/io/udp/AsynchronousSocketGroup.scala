@@ -75,7 +75,8 @@ private[udp] object AsynchronousSocketGroup {
     }
 
     private class Attachment(
-        readers: ArrayDeque[(Either[Throwable, Packet] => Unit, Option[Timeout])] = new ArrayDeque(),
+        readers: ArrayDeque[(Either[Throwable, Packet] => Unit, Option[Timeout])] =
+          new ArrayDeque(),
         writers: ArrayDeque[((WriterPacket, Option[Throwable] => Unit), Option[Timeout])] =
           new ArrayDeque()
     ) {
@@ -169,7 +170,7 @@ private[udp] object AsynchronousSocketGroup {
         val attachment = new Attachment()
         key = channel.register(selector, 0, attachment)
         latch.countDown
-      } { latch.countDown }
+      }(latch.countDown)
       latch.await
       if (key eq null) throw new ClosedChannelException()
       key
@@ -192,15 +193,11 @@ private[udp] object AsynchronousSocketGroup {
         }
         if (attachment.hasReaders) {
           cancelReader = attachment.queueReader(cb, t)
-          t.foreach { t =>
-            pendingTimeouts += t
-          }
+          t.foreach(t => pendingTimeouts += t)
         } else {
           if (!read1(channel, cb)) {
             cancelReader = attachment.queueReader(cb, t)
-            t.foreach { t =>
-              pendingTimeouts += t
-            }
+            t.foreach(t => pendingTimeouts += t)
             try {
               key.interestOps(key.interestOps | SelectionKey.OP_READ); ()
             } catch {
@@ -208,7 +205,7 @@ private[udp] object AsynchronousSocketGroup {
             }
           }
         }
-      } { cb(Left(new ClosedChannelException)) }
+      }(cb(Left(new ClosedChannelException)))
 
     private def read1(
         channel: DatagramChannel,
@@ -262,15 +259,11 @@ private[udp] object AsynchronousSocketGroup {
         }
         if (attachment.hasWriters) {
           cancelWriter = attachment.queueWriter((writerPacket, cb), t)
-          t.foreach { t =>
-            pendingTimeouts += t
-          }
+          t.foreach(t => pendingTimeouts += t)
         } else {
           if (!write1(channel, writerPacket, cb)) {
             cancelWriter = attachment.queueWriter((writerPacket, cb), t)
-            t.foreach { t =>
-              pendingTimeouts += t
-            }
+            t.foreach(t => pendingTimeouts += t)
             try {
               key.interestOps(key.interestOps | SelectionKey.OP_WRITE); ()
             } catch {
@@ -278,7 +271,7 @@ private[udp] object AsynchronousSocketGroup {
             }
           }
         }
-      } { cb(Some(new ClosedChannelException)) }
+      }(cb(Some(new ClosedChannelException)))
     }
 
     private def write1(
@@ -307,10 +300,10 @@ private[udp] object AsynchronousSocketGroup {
         key.cancel
         channel.close
         attachment.close
-      } { () }
+      }(())
 
     override def close(): Unit =
-      closeLock.synchronized { closed = true }
+      closeLock.synchronized(closed = true)
 
     private def onSelectorThread(f: => Unit)(ifClosed: => Unit): Unit =
       closeLock.synchronized {

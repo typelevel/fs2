@@ -397,9 +397,7 @@ class FileSpec extends BaseFileSpec {
           .resource(Blocker[IO])
           .flatMap { blocker =>
             tempDirectory
-              .flatMap { path =>
-                file.directoryStream[IO](blocker, path)
-              }
+              .flatMap(path => file.directoryStream[IO](blocker, path))
           }
           .compile
           .toList
@@ -469,9 +467,7 @@ class FileSpec extends BaseFileSpec {
           .resource(Blocker[IO])
           .flatMap { blocker =>
             tempFilesHierarchy
-              .flatMap { topDir =>
-                file.walk[IO](blocker, topDir)
-              }
+              .flatMap(topDir => file.walk[IO](blocker, topDir))
           }
           .compile
           .toList

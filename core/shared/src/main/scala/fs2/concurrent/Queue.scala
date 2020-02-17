@@ -213,9 +213,7 @@ object Queue {
             pubSub.getStream(maxSize).flatMap(Stream.chunk)
 
           def dequeueBatch: Pipe[F, Int, A] =
-            _.flatMap { sz =>
-              Stream.evalUnChunk(pubSub.get(sz))
-            }
+            _.flatMap(sz => Stream.evalUnChunk(pubSub.get(sz)))
         }
       }
     }
@@ -521,7 +519,7 @@ object InspectableQueue {
             }
 
           def peek1: F[A] =
-            Sync[F].bracket(Sync[F].delay(new Token))({ token =>
+            Sync[F].bracket(Sync[F].delay(new Token)) { token =>
               def take: F[A] =
                 pubSub.get(Left(Some(token))).flatMap {
                   case Left(s) =>
@@ -539,7 +537,7 @@ object InspectableQueue {
                 }
 
               take
-            })(token => pubSub.unsubscribe(Left(Some(token))))
+            }(token => pubSub.unsubscribe(Left(Some(token))))
 
           def size: Stream[F, Int] =
             Stream

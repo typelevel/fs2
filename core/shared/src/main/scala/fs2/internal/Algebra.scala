@@ -121,7 +121,7 @@ private[fs2] object Algebra {
     translate0[F, G, O](u, s, G.concurrentInstance)
 
   def uncons[F[_], X, O](s: FreeC[F, O, Unit]): FreeC[F, X, Option[(Chunk[O], FreeC[F, O, Unit])]] =
-    Step(s, None).map { _.map { case (h, _, t) => (h, t.asInstanceOf[FreeC[F, O, Unit]]) } }
+    Step(s, None).map(_.map { case (h, _, t) => (h, t.asInstanceOf[FreeC[F, O, Unit]]) })
 
   /** Left-folds the output of a stream. */
   def compile[F[_], O, B](
