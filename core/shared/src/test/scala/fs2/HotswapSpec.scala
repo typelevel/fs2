@@ -9,9 +9,7 @@ class HotswapSpec extends Fs2Spec {
       Logger[IO].flatMap { logger =>
         Stream
           .resource(Hotswap(logger.logLifecycleR("a")))
-          .flatMap { _ =>
-            logger.logInfo("using")
-          }
+          .flatMap(_ => logger.logInfo("using"))
           .compile
           .drain *> logger.get.asserting(it =>
           assert(

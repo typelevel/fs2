@@ -54,10 +54,8 @@ class TopicSpec extends Fs2Spec {
           val subscriber = topic
             .subscribe(1)
             .take(count + 1)
-            .flatMap { is =>
-              Stream.eval(signal.get).map(is -> _)
-            }
-            .fold(Vector.empty[(Int, Int)]) { _ :+ _ }
+            .flatMap(is => Stream.eval(signal.get).map(is -> _))
+            .fold(Vector.empty[(Int, Int)])(_ :+ _)
 
           Stream
             .range(0, subs)

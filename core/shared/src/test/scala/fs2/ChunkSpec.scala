@@ -64,18 +64,14 @@ class ChunkSpec extends Fs2Spec {
   ): Unit =
     s"$name" - {
       implicit val implicitChunkGenerator: Generator[Chunk[A]] = genChunk
-      "size" in forAll { (c: Chunk[A]) =>
-        assert(c.size == c.toList.size)
-      }
+      "size" in forAll((c: Chunk[A]) => assert(c.size == c.toList.size))
       "take" in forAll { (c: Chunk[A], n: PosZInt) =>
         assert(c.take(n).toVector == c.toVector.take(n))
       }
       "drop" in forAll { (c: Chunk[A], n: PosZInt) =>
         assert(c.drop(n).toVector == c.toVector.drop(n))
       }
-      "isEmpty" in forAll { (c: Chunk[A]) =>
-        assert(c.isEmpty == c.toList.isEmpty)
-      }
+      "isEmpty" in forAll((c: Chunk[A]) => assert(c.isEmpty == c.toList.isEmpty))
       "toArray" in forAll { c: Chunk[A] =>
         assert(c.toArray.toVector == c.toVector)
         // Do it twice to make sure the first time didn't mutate state
