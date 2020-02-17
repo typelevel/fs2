@@ -39,7 +39,7 @@ class JavaInputOutputStreamSpec extends Fs2Spec with EventuallySupport {
       pending // https://github.com/functional-streams-for-scala/fs2/issues/1063
       var closed: Boolean = false
       val s: Stream[IO, Byte] =
-        Stream(1.toByte).onFinalize(IO(closed = true))
+        Stream(1.toByte).onFinalize(IO { closed = true; () })
 
       toInputStreamResource(s).use(_ => IO.unit).unsafeRunSync()
 
@@ -50,7 +50,7 @@ class JavaInputOutputStreamSpec extends Fs2Spec with EventuallySupport {
       pending // https://github.com/functional-streams-for-scala/fs2/issues/1063
       var closed: Boolean = false
       val s: Stream[IO, Byte] =
-        Stream(1.toByte).onFinalize(IO(closed = true))
+        Stream(1.toByte).onFinalize(IO { closed = true; () })
 
       val result =
         toInputStreamResource(s)

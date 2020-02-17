@@ -303,7 +303,7 @@ private[udp] object AsynchronousSocketGroup {
       }(())
 
     override def close(): Unit =
-      closeLock.synchronized(closed = true)
+      closeLock.synchronized { closed = true; () }
 
     private def onSelectorThread(f: => Unit)(ifClosed: => Unit): Unit =
       closeLock.synchronized {
