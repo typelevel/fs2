@@ -2040,7 +2040,7 @@ class StreamSpec extends Fs2Spec with Matchers {
     }
 
     "map" - {
-      "map.toList == toList.map" in forAll { (s: Stream[Pure, Int], f: Int => Int) =>
+      "map.toList == toList.map" in forAll { (s: Stream[Pure, Int], f: Function1[Int, Int]) =>
         assert(s.map(f).toList == s.toList.map(f))
       }
 
