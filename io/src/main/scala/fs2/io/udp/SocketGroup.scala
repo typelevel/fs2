@@ -47,9 +47,7 @@ final class SocketGroup(
   )(implicit F: Concurrent[F], CS: ContextShift[F]): Resource[F, Socket[F]] = {
     val mkChannel = blocker.delay {
       val channel = protocolFamily
-        .map { pf =>
-          DatagramChannel.open(pf)
-        }
+        .map(pf => DatagramChannel.open(pf))
         .getOrElse(DatagramChannel.open())
       channel.setOption[java.lang.Boolean](StandardSocketOptions.SO_REUSEADDR, reuseAddress)
       sendBufferSize.foreach { sz =>
@@ -98,13 +96,13 @@ final class SocketGroup(
         def writes(timeout: Option[FiniteDuration]): Pipe[F, Packet, Unit] =
           _.flatMap(p => Stream.eval(write(p, timeout)))
 
-        def close: F[Unit] = blocker.delay { asg.close(ctx) }
+        def close: F[Unit] = blocker.delay(asg.close(ctx))
 
         def join(group: InetAddress, interface: NetworkInterface): F[AnySourceGroupMembership] =
           blocker.delay {
             val membership = channel.join(group, interface)
             new AnySourceGroupMembership {
-              def drop = blocker.delay { membership.drop }
+              def drop = blocker.delay(membership.drop)
               def block(source: InetAddress) = F.delay {
                 membership.block(source); ()
               }
@@ -122,7 +120,7 @@ final class SocketGroup(
         ): F[GroupMembership] = F.delay {
           val membership = channel.join(group, interface, source)
           new GroupMembership {
-            def drop = blocker.delay { membership.drop }
+            def drop = blocker.delay(membership.drop)
             override def toString = "GroupMembership"
           }
         }

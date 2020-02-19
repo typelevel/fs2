@@ -51,9 +51,7 @@ class TextSpec extends Fs2Spec {
         )
       }
 
-      "all chars" in forAll { (c: Char) =>
-        checkChar(c)
-      }
+      "all chars" in forAll((c: Char) => checkChar(c))
 
       "1 byte char" in checkBytes(0x24) // $
       "2 byte char" in checkBytes(0xC2, 0xA2) // ¢
@@ -65,7 +63,7 @@ class TextSpec extends Fs2Spec {
       "incomplete 4 byte char" in checkBytes(0xF0, 0xA4, 0xAD)
 
       "preserve complete inputs" in forAll { (l0: List[String]) =>
-        val l = l0.filter { _.nonEmpty }
+        val l = l0.filter(_.nonEmpty)
         assert(Stream(l: _*).map(utf8Bytes).flatMap(Stream.chunk).through(utf8Decode).toList == l)
         assert(Stream(l0: _*).map(utf8Bytes).through(utf8DecodeC).toList == l0)
       }

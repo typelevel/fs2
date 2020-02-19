@@ -13,9 +13,7 @@ class BroadcastSpec extends Fs2Spec {
         val expect = source.compile.toVector.map(_.toString)
 
         def pipe(idx: Int): Pipe[IO, Int, (Int, String)] =
-          _.map { i =>
-            (idx, i.toString)
-          }
+          _.map(i => (idx, i.toString))
 
         source
           .broadcastThrough((0 until concurrent).map(idx => pipe(idx)): _*)

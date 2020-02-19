@@ -140,9 +140,7 @@ object StreamSubscriber {
         def onComplete: F[Unit] = nextState(OnComplete)
         def onFinalize: F[Unit] = nextState(OnFinalize)
         def dequeue1: F[Either[Throwable, Option[A]]] =
-          Deferred[F, Out].flatMap { p =>
-            ref.modify(step(OnDequeue(p))).flatten >> p.get
-          }
+          Deferred[F, Out].flatMap(p => ref.modify(step(OnDequeue(p))).flatten >> p.get)
       }
     }
   }

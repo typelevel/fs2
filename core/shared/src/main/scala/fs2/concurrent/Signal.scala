@@ -178,9 +178,7 @@ object SignallingRef {
           }
 
           def tryUpdate(f: A => A): F[Boolean] =
-            tryModify { a =>
-              (f(a), ())
-            }.map(_.nonEmpty)
+            tryModify(a => (f(a), ())).map(_.nonEmpty)
 
           def tryModify[B](f: A => (A, B)): F[Option[B]] =
             ref.tryModify(modify_(f)).flatMap {
@@ -189,9 +187,7 @@ object SignallingRef {
             }
 
           def update(f: A => A): F[Unit] =
-            modify { a =>
-              (f(a), ())
-            }
+            modify(a => (f(a), ()))
 
           def modify[B](f: A => (A, B)): F[B] =
             ref.modify(modify_(f)).flatMap {

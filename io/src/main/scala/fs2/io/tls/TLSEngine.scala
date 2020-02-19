@@ -66,9 +66,7 @@ private[tls] object TLSEngine {
       private def doWrap(binding: Binding[F]): F[Unit] =
         wrapBuffer
           .perform(engine.wrap(_, _))
-          .flatTap { result =>
-            log(s"doWrap result: $result")
-          }
+          .flatTap(result => log(s"doWrap result: $result"))
           .flatMap { result =>
             result.getStatus match {
               case SSLEngineResult.Status.OK =>
@@ -104,9 +102,7 @@ private[tls] object TLSEngine {
       private def doUnwrap(binding: Binding[F]): F[Option[Chunk[Byte]]] =
         unwrapBuffer
           .perform(engine.unwrap(_, _))
-          .flatTap { result =>
-            log(s"unwrap result: $result")
-          }
+          .flatTap(result => log(s"unwrap result: $result"))
           .flatMap { result =>
             result.getStatus match {
               case SSLEngineResult.Status.OK =>
@@ -183,9 +179,7 @@ private[tls] object TLSEngine {
       private def doHsWrap(binding: Binding[F]): F[Unit] =
         wrapBuffer
           .perform(engine.wrap(_, _))
-          .flatTap { result =>
-            log(s"doHsWrap result: $result")
-          }
+          .flatTap(result => log(s"doHsWrap result: $result"))
           .flatMap { result =>
             result.getStatus match {
               case SSLEngineResult.Status.OK | SSLEngineResult.Status.BUFFER_UNDERFLOW =>
@@ -208,9 +202,7 @@ private[tls] object TLSEngine {
       private def doHsUnwrap(binding: Binding[F]): F[Unit] =
         unwrapBuffer
           .perform(engine.unwrap(_, _))
-          .flatTap { result =>
-            log(s"doHsUnwrap result: $result")
-          }
+          .flatTap(result => log(s"doHsUnwrap result: $result"))
           .flatMap { result =>
             result.getStatus match {
               case SSLEngineResult.Status.OK =>

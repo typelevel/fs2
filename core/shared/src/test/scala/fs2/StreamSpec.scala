@@ -33,13 +33,9 @@ class StreamSpec extends Fs2Spec with Matchers {
           .toVector
           .asserting { r =>
             r.sliding(2)
-              .map { s =>
-                (s.head, s.tail.head)
-              }
+              .map(s => (s.head, s.tail.head))
               .map { case (prev, next) => next - prev }
-              .foreach { delta =>
-                assert(delta +- 150 === 500L)
-              }
+              .foreach(delta => assert(delta +- 150 === 500L))
             Succeeded
           }
       }
@@ -47,9 +43,7 @@ class StreamSpec extends Fs2Spec with Matchers {
       "liveness" in {
         val s = Stream
           .awakeEvery[IO](1.milli)
-          .evalMap { _ =>
-            IO.async[Unit](cb => executionContext.execute(() => cb(Right(()))))
-          }
+          .evalMap(_ => IO.async[Unit](cb => executionContext.execute(() => cb(Right(())))))
           .take(200)
         Stream(s, s, s, s, s).parJoin(5).compile.drain.assertNoException
       }
@@ -70,18 +64,12 @@ class StreamSpec extends Fs2Spec with Matchers {
           for {
             events <- Ref.of[F, Vector[BracketEvent]](Vector.empty)
             _ <- recordBracketEvents(events)
-              .evalMap(_ =>
-                events.get.asserting { events =>
-                  assert(events == Vector(Acquired))
-                }
-              )
+              .evalMap(_ => events.get.asserting(events => assert(events == Vector(Acquired))))
               .flatMap(_ => use)
               .compile
               .drain
               .handleErrorWith { case _: Err => Sync[F].pure(()) }
-            _ <- events.get.asserting { it =>
-              assert(it == Vector(Acquired, Released))
-            }
+            _ <- events.get.asserting(it => assert(it == Vector(Acquired, Released)))
           } yield ()
 
         "normal termination" in { singleBracketTest[SyncIO, Unit](Stream.empty) }
@@ -215,7 +203,7 @@ class StreamSpec extends Fs2Spec with Matchers {
             var o: Vector[Int] = Vector.empty
             (0 until 10)
               .foldLeft(Stream.eval(IO(0))) { (acc, i) =>
-                Stream.bracket(IO(i))(i => IO { o = o :+ i }).flatMap(_ => acc)
+                Stream.bracket(IO(i))(i => IO { o = o :+ i; () }).flatMap(_ => acc)
               }
               .compile
               .drain
@@ -228,7 +216,9 @@ class StreamSpec extends Fs2Spec with Matchers {
             var o: Vector[Int] = Vector.empty
             (0 until 10)
               .foldLeft(Stream.emit(1).map(_ => throw new Err): Stream[IO, Int]) { (acc, i) =>
-                Stream.emit(i) ++ Stream.bracket(IO(i))(i => IO { o = o :+ i }).flatMap(_ => acc)
+                Stream.emit(i) ++ Stream
+                  .bracket(IO(i))(i => IO { o = o :+ i; () })
+                  .flatMap(_ => acc)
               }
               .attempt
               .compile
@@ -268,7 +258,7 @@ class StreamSpec extends Fs2Spec with Matchers {
           val s = s0.map { s =>
             Stream
               .bracketCase(counter.increment) { (_, ec) =>
-                counter.decrement >> IO { ecs = ecs :+ ec }
+                counter.decrement >> IO { ecs = ecs :+ ec; () }
               }
               .flatMap(_ => s)
           }
@@ -288,7 +278,7 @@ class StreamSpec extends Fs2Spec with Matchers {
           val s = s0.map { s =>
             Stream
               .bracketCase(counter.increment) { (_, ec) =>
-                counter.decrement >> IO { ecs = ecs :+ ec }
+                counter.decrement >> IO { ecs = ecs :+ ec; () }
               }
               .flatMap(_ => s ++ Stream.raiseError[IO](new Err))
           }
@@ -308,7 +298,7 @@ class StreamSpec extends Fs2Spec with Matchers {
             val s =
               Stream
                 .bracketCase(counter.increment) { (_, ec) =>
-                  counter.decrement >> IO { ecs = ecs :+ ec }
+                  counter.decrement >> IO { ecs = ecs :+ ec; () }
                 }
                 .flatMap(_ => s0 ++ Stream.never[IO])
             s.compile.drain.start
@@ -330,7 +320,7 @@ class StreamSpec extends Fs2Spec with Matchers {
             val s =
               Stream
                 .bracketCase(counter.increment) { (_, ec) =>
-                  counter.decrement >> IO { ecs = ecs :+ ec }
+                  counter.decrement >> IO { ecs = ecs :+ ec; () }
                 }
                 .flatMap(_ => s0 ++ Stream.never[IO])
             s.interruptAfter(50.millis).compile.drain.flatMap(_ => counter.get).asserting { count =>
@@ -353,9 +343,7 @@ class StreamSpec extends Fs2Spec with Matchers {
         IO.suspend {
           var counter = 0
           val s2 = s.append(Stream.emits(List.fill(n + 1)(0))).repeat
-          s2.evalMap { i =>
-              IO { counter += 1; i }
-            }
+          s2.evalMap(i => IO { counter += 1; i })
             .buffer(n)
             .take(n + 1)
             .compile
@@ -366,18 +354,14 @@ class StreamSpec extends Fs2Spec with Matchers {
     }
 
     "bufferAll" - {
-      "identity" in forAll { (s: Stream[Pure, Int]) =>
-        assert(s.bufferAll.toVector == s.toVector)
-      }
+      "identity" in forAll((s: Stream[Pure, Int]) => assert(s.bufferAll.toVector == s.toVector))
 
       "buffer results of evalMap" in forAll { (s: Stream[Pure, Int]) =>
         val expected = s.toList.size * 2
         IO.suspend {
           var counter = 0
           s.append(s)
-            .evalMap { i =>
-              IO { counter += 1; i }
-            }
+            .evalMap(i => IO { counter += 1; i })
             .bufferAll
             .take(s.toList.size + 1)
             .compile
@@ -397,9 +381,7 @@ class StreamSpec extends Fs2Spec with Matchers {
         IO.suspend {
           var counter = 0
           val s2 = s.map(x => if (x == Int.MinValue) x + 1 else x).map(_.abs)
-          val s3 = s2.append(Stream.emit(-1)).append(s2).evalMap { i =>
-            IO { counter += 1; i }
-          }
+          val s3 = s2.append(Stream.emit(-1)).append(s2).evalMap(i => IO { counter += 1; i })
           s3.bufferBy(_ >= 0)
             .take(s.toList.size + 2)
             .compile
@@ -444,9 +426,7 @@ class StreamSpec extends Fs2Spec with Matchers {
             Stream(
               Stream
                 .unfold(0)(i => (i + 1, i + 1).some)
-                .flatMap { i =>
-                  Stream.sleep_(50.milliseconds) ++ Stream.emit(i)
-                }
+                .flatMap(i => Stream.sleep_(50.milliseconds) ++ Stream.emit(i))
                 .through(q.enqueue),
               q.dequeue.drain
             ).parJoin(2)
@@ -465,9 +445,7 @@ class StreamSpec extends Fs2Spec with Matchers {
     }
 
     "chunk" in {
-      forAll { (c: Chunk[Int]) =>
-        assert(Stream.chunk(c).compile.to(Chunk) == c)
-      }
+      forAll((c: Chunk[Int]) => assert(Stream.chunk(c).compile.to(Chunk) == c))
     }
 
     "chunkLimit" in forAll { (s: Stream[Pure, Int], n0: PosInt) =>
@@ -704,14 +682,10 @@ class StreamSpec extends Fs2Spec with Matchers {
                 .compile
                 .resource
                 .drain
-                .use { _ =>
-                  IO.unit
-                }
+                .use(_ => IO.unit)
                 .guaranteeCase(stop.complete)
 
-              r.start.flatMap { fiber =>
-                IO.sleep(200.millis) >> fiber.cancel >> stop.get
-              }
+              r.start.flatMap(fiber => IO.sleep(200.millis) >> fiber.cancel >> stop.get)
             }
             p.timeout(2.seconds)
               .asserting(it => assert(it == ExitCase.Canceled))
@@ -802,9 +776,7 @@ class StreamSpec extends Fs2Spec with Matchers {
 
                   Stream
                     .bracket(IO.unit)(_ => finRef.update(_ :+ "Outer"))
-                    .flatMap { _ =>
-                      s.covary[IO].concurrently(runner)
-                    }
+                    .flatMap(_ => s.covary[IO].concurrently(runner))
                     .interruptWhen(halt.get.attempt)
                     .compile
                     .drain
@@ -817,7 +789,8 @@ class StreamSpec extends Fs2Spec with Matchers {
                             // exception shall be thrown
                             assert(finalizers == List("Inner", "Outer"))
                             assert(r.swap.toOption.get.isInstanceOf[Err])
-                          } else
+                          }
+                          else
                             IO {
                               // still the outer finalizer shall be run, but there is no failure in `s`
                               assert(finalizers == List("Outer"))
@@ -1150,12 +1123,12 @@ class StreamSpec extends Fs2Spec with Matchers {
 
       (IO.shift >> durationsSinceSpike.compile.toVector).unsafeToFuture().map { result =>
         val list = result.toList
-        withClue("every always emits true first") { assert(list.head._1) }
+        withClue("every always emits true first")(assert(list.head._1))
         withClue(s"true means the delay has passed: ${list.tail}") {
-          assert(list.tail.filter(_._1).map(_._2).forall { _ >= delay })
+          assert(list.tail.filter(_._1).map(_._2).forall(_ >= delay))
         }
         withClue(s"false means the delay has not passed: ${list.tail}") {
-          assert(list.tail.filterNot(_._1).map(_._2).forall { _ <= delay })
+          assert(list.tail.filterNot(_._1).map(_._2).forall(_ <= delay))
         }
       }
     }
@@ -1416,10 +1389,8 @@ class StreamSpec extends Fs2Spec with Matchers {
           Pull
             .pure(1)
             .covary[SyncIO]
-            .handleErrorWith(_ => { i += 1; Pull.pure(2) })
-            .flatMap { _ =>
-              Pull.output1(i) >> Pull.raiseError[SyncIO](new Err)
-            }
+            .handleErrorWith { _ => i += 1; Pull.pure(2) }
+            .flatMap(_ => Pull.output1(i) >> Pull.raiseError[SyncIO](new Err))
             .stream
             .compile
             .drain
@@ -1433,10 +1404,8 @@ class StreamSpec extends Fs2Spec with Matchers {
           var i = 0
           Pull
             .eval(SyncIO(1))
-            .handleErrorWith(_ => { i += 1; Pull.pure(2) })
-            .flatMap { _ =>
-              Pull.output1(i) >> Pull.raiseError[SyncIO](new Err)
-            }
+            .handleErrorWith { _ => i += 1; Pull.pure(2) }
+            .flatMap(_ => Pull.output1(i) >> Pull.raiseError[SyncIO](new Err))
             .stream
             .compile
             .drain
@@ -1453,10 +1422,8 @@ class StreamSpec extends Fs2Spec with Matchers {
             .flatMap { x =>
               Pull
                 .pure(x)
-                .handleErrorWith(_ => { i += 1; Pull.pure(2) })
-                .flatMap { _ =>
-                  Pull.output1(i) >> Pull.raiseError[SyncIO](new Err)
-                }
+                .handleErrorWith { _ => i += 1; Pull.pure(2) }
+                .flatMap(_ => Pull.output1(i) >> Pull.raiseError[SyncIO](new Err))
             }
             .stream
             .compile
@@ -1472,9 +1439,7 @@ class StreamSpec extends Fs2Spec with Matchers {
           Pull
             .eval(SyncIO(???))
             .handleErrorWith(_ => Pull.pure(i += 1))
-            .flatMap { _ =>
-              Pull.output1(i)
-            }
+            .flatMap(_ => Pull.output1(i))
             .stream
             .compile
             .drain
@@ -1502,9 +1467,7 @@ class StreamSpec extends Fs2Spec with Matchers {
             .range(0, 10)
             .covary[SyncIO]
             .append(Stream.raiseError[SyncIO](new Err))
-            .handleErrorWith { _ =>
-              i += 1; Stream.empty
-            }
+            .handleErrorWith { _ => i += 1; Stream.empty }
             .compile
             .drain
             .asserting(_ => assert(i == 1))
@@ -1531,9 +1494,7 @@ class StreamSpec extends Fs2Spec with Matchers {
           (Stream
             .range(0, 3)
             .covary[SyncIO] ++ Stream.raiseError[SyncIO](new Err)).unchunk.pull.echo
-            .handleErrorWith { _ =>
-              i += 1; Pull.done
-            }
+            .handleErrorWith { _ => i += 1; Pull.done }
             .stream
             .compile
             .drain
@@ -1562,9 +1523,7 @@ class StreamSpec extends Fs2Spec with Matchers {
       }
     }
 
-    "head" in forAll { (s: Stream[Pure, Int]) =>
-      assert(s.head.toList == s.toList.take(1))
-    }
+    "head" in forAll((s: Stream[Pure, Int]) => assert(s.head.toList == s.toList.take(1)))
 
     "interleave" - {
       "interleave left/right side infinite" in {
@@ -1697,9 +1656,8 @@ class StreamSpec extends Fs2Spec with Matchers {
           val interrupt =
             Stream.sleep_[IO](20.millis).compile.drain.attempt
 
-          def loop(i: Int): Stream[IO, Int] = Stream.emit(i).covary[IO].flatMap { i =>
-            Stream.emit(i) ++ loop(i + 1)
-          }
+          def loop(i: Int): Stream[IO, Int] =
+            Stream.emit(i).covary[IO].flatMap(i => Stream.emit(i) ++ loop(i + 1))
 
           loop(0)
             .interruptWhen(interrupt)
@@ -1780,9 +1738,8 @@ class StreamSpec extends Fs2Spec with Matchers {
               s.covary[IO]
                 .evalMap { i =>
                   // enable interruption and hang when hitting a value divisible by 7
-                  if (i % 7 == 0) enableInterrupt.release.flatMap { _ =>
-                    barrier.acquire.as(i)
-                  } else IO.pure(i)
+                  if (i % 7 == 0) enableInterrupt.release.flatMap(_ => barrier.acquire.as(i))
+                  else IO.pure(i)
                 }
                 .interruptWhen(interrupt)
             }
@@ -2040,7 +1997,7 @@ class StreamSpec extends Fs2Spec with Matchers {
     }
 
     "map" - {
-      "map.toList == toList.map" in forAll { (s: Stream[Pure, Int], f: Int => Int) =>
+      "map.toList == toList.map" in forAll { (s: Stream[Pure, Int], f: Function1[Int, Int]) =>
         assert(s.map(f).toList == s.toList.map(f))
       }
 
@@ -2188,15 +2145,18 @@ class StreamSpec extends Fs2Spec with Matchers {
                           )
                           assert(finalizers.lastOption == Some("Outer"))
                           assert(r == Left(err))
-                        } else if (left) IO {
+                        }
+                        else if (left) IO {
                           assert(finalizers == List("Inner L", "Outer"))
                           if (leftBiased) assert(r == Left(err))
                           else assert(r == Right(()))
-                        } else if (right) IO {
+                        }
+                        else if (right) IO {
                           assert(finalizers == List("Inner R", "Outer"))
                           if (!leftBiased) assert(r == Left(err))
                           else assert(r == Right(()))
-                        } else
+                        }
+                        else
                           IO {
                             assert(finalizers == List("Outer"))
                             assert(r == Right(()))
@@ -2358,7 +2318,9 @@ class StreamSpec extends Fs2Spec with Matchers {
             Stream
               .eval(IO(1))
               .append(Stream.eval(IO.raiseError(new Err)))
-              .observe(_.evalMap(_ => IO.sleep(100.millis))) //Have to do some work here, so that we give time for the underlying stream to try pull more
+              .observe(
+                _.evalMap(_ => IO.sleep(100.millis))
+              ) //Have to do some work here, so that we give time for the underlying stream to try pull more
               .take(1)
               .compile
               .toList
@@ -2511,9 +2473,9 @@ class StreamSpec extends Fs2Spec with Matchers {
                     finalizerRef.get.flatMap { finalizers =>
                       runEvidenceRef.get.flatMap { streamRunned =>
                         IO {
-                          val expectedFinalizers = (streamRunned.map { idx =>
+                          val expectedFinalizers = streamRunned.map { idx =>
                             s"Inner $idx"
-                          }) :+ "Outer"
+                          } :+ "Outer"
                           assert(containSameElements(finalizers, expectedFinalizers))
                           assert(finalizers.lastOption == Some("Outer"))
                           if (streamRunned.contains(biasIdx)) assert(r == Left(err))
@@ -2621,9 +2583,7 @@ class StreamSpec extends Fs2Spec with Matchers {
           Stream(1, 2, 3)
             .evalMap(i => IO.sleep(1.second).as(i))
             .prefetch
-            .flatMap { i =>
-              Stream.eval(IO.sleep(1.second).as(i))
-            }
+            .flatMap(i => Stream.eval(IO.sleep(1.second).as(i)))
             .compile
             .toList
             .asserting { _ =>
@@ -3139,7 +3099,7 @@ class StreamSpec extends Fs2Spec with Matchers {
         val job = {
           val start = System.currentTimeMillis()
           IO {
-            delays.synchronized { delays += System.currentTimeMillis() - start }
+            delays.synchronized(delays += System.currentTimeMillis() - start)
             throw RetryErr()
           }
         }
@@ -3373,7 +3333,8 @@ class StreamSpec extends Fs2Spec with Matchers {
               Stream.eval(Ref[IO].of(false)).flatMap { innerReleased =>
                 s.delayBy[IO](25.millis)
                   .onFinalize(innerReleased.get.flatMap(inner => verdict.complete(inner)))
-                  .switchMap(_ => Stream.raiseError[IO](new Err).onFinalize(innerReleased.set(true))
+                  .switchMap(_ =>
+                    Stream.raiseError[IO](new Err).onFinalize(innerReleased.set(true))
                   )
                   .attempt
                   .drain ++
@@ -3407,9 +3368,7 @@ class StreamSpec extends Fs2Spec with Matchers {
       }
     }
 
-    "tail" in forAll { (s: Stream[Pure, Int]) =>
-      assert(s.tail.toList == s.toList.drop(1))
-    }
+    "tail" in forAll((s: Stream[Pure, Int]) => assert(s.tail.toList == s.toList.drop(1)))
 
     "take" - {
       "identity" in forAll { (s: Stream[Pure, Int], negate: Boolean, n0: PosInt) =>
@@ -3522,12 +3481,8 @@ class StreamSpec extends Fs2Spec with Matchers {
             case Some(step) => Pull.output(step.head) >> step.stepLeg.flatMap(goStep)
           }
         (Stream.eval(() => 1) ++ Stream.eval(() => 2))
-          .flatMap { a =>
-            Stream.emit(a)
-          }
-          .flatMap { a =>
-            Stream.eval(() => a + 1) ++ Stream.eval(() => a + 2)
-          }
+          .flatMap(a => Stream.emit(a))
+          .flatMap(a => Stream.eval(() => a + 1) ++ Stream.eval(() => a + 2))
           .pull
           .stepLeg
           .flatMap(goStep)
@@ -3756,7 +3711,7 @@ class StreamSpec extends Fs2Spec with Matchers {
         }
         "2" in {
           val s = Stream(0).scope
-          assertThrows[Throwable] { brokenZip(s ++ s, s.zip(s)).compile.toList }
+          assertThrows[Throwable](brokenZip(s ++ s, s.zip(s)).compile.toList)
         }
         "3" in {
           Logger[IO]

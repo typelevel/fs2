@@ -208,7 +208,8 @@ object compress {
         def push(chunk: Chunk[Byte]): Unit = {
           val arr: Array[Byte] = {
             val buf = new Array[Byte](chunk.size)
-            chunk.copyToArray(buf) // Note: we can be slightly better than this for Chunk.Bytes if we track incoming offsets in abis
+            // Note: we can be slightly better than this for Chunk.Bytes if we track incoming offsets in abis
+            chunk.copyToArray(buf)
             buf
           }
           val pushed = abis.push(arr)

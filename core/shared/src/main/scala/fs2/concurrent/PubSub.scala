@@ -210,15 +210,11 @@ private[fs2] object PubSub {
         def clearPublisher(token: Token)(exitCase: ExitCase[Throwable]): F[Unit] = exitCase match {
           case ExitCase.Completed => Applicative[F].unit
           case ExitCase.Error(_) | ExitCase.Canceled =>
-            state.update { ps =>
-              ps.copy(publishers = ps.publishers.filterNot(_.token == token))
-            }
+            state.update(ps => ps.copy(publishers = ps.publishers.filterNot(_.token == token)))
         }
 
         def clearSubscriber(token: Token): F[Unit] =
-          state.update { ps =>
-            ps.copy(subscribers = ps.subscribers.filterNot(_.token == token))
-          }
+          state.update(ps => ps.copy(subscribers = ps.subscribers.filterNot(_.token == token)))
 
         def clearSubscriberOnCancel(token: Token)(exitCase: ExitCase[Throwable]): F[Unit] =
           exitCase match {
@@ -456,11 +452,7 @@ private[fs2] object PubSub {
           Some(strategy.initial)
 
         def accepts(i: Option[I], state: Option[S]): Boolean =
-          i.forall { el =>
-            state.exists { s =>
-              strategy.accepts(el, s)
-            }
-          }
+          i.forall(el => state.exists(s => strategy.accepts(el, s)))
 
         def publish(i: Option[I], state: Option[S]): Option[S] =
           i match {
@@ -487,9 +479,7 @@ private[fs2] object PubSub {
               (Some(s1), success)
           }
         def unsubscribe(selector: Sel, state: Option[S]): Option[S] =
-          state.map { s =>
-            strategy.unsubscribe(selector, s)
-          }
+          state.map(s => strategy.unsubscribe(selector, s))
       }
 
     /**

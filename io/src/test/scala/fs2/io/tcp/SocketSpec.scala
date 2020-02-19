@@ -73,7 +73,7 @@ class SocketSpec extends Fs2Spec {
           .unsafeRunTimed(timeout)
           .get
       assert(result.size == clientCount)
-      assert(result.map { new String(_) }.toSet == Set("fs2.rocks"))
+      assert(result.map(new String(_)).toSet == Set("fs2.rocks"))
     }
 
     // Ensure that readN yields chunks of the requested size

@@ -19,31 +19,20 @@ class HashSpec extends Fs2Spec {
       else
         str.getBytes
           .grouped(n)
-          .foldLeft(Stream.empty.covaryOutput[Byte])((acc, c) => acc ++ Stream.chunk(Chunk.bytes(c))
+          .foldLeft(Stream.empty.covaryOutput[Byte])((acc, c) =>
+            acc ++ Stream.chunk(Chunk.bytes(c))
           )
 
     assert(s.through(h).toList == digest(algo, str))
   }
 
   "digests" - {
-    "md2" in forAll { (s: String) =>
-      checkDigest(md2, "MD2", s)
-    }
-    "md5" in forAll { (s: String) =>
-      checkDigest(md5, "MD5", s)
-    }
-    "sha1" in forAll { (s: String) =>
-      checkDigest(sha1, "SHA-1", s)
-    }
-    "sha256" in forAll { (s: String) =>
-      checkDigest(sha256, "SHA-256", s)
-    }
-    "sha384" in forAll { (s: String) =>
-      checkDigest(sha384, "SHA-384", s)
-    }
-    "sha512" in forAll { (s: String) =>
-      checkDigest(sha512, "SHA-512", s)
-    }
+    "md2" in forAll((s: String) => checkDigest(md2, "MD2", s))
+    "md5" in forAll((s: String) => checkDigest(md5, "MD5", s))
+    "sha1" in forAll((s: String) => checkDigest(sha1, "SHA-1", s))
+    "sha256" in forAll((s: String) => checkDigest(sha256, "SHA-256", s))
+    "sha384" in forAll((s: String) => checkDigest(sha384, "SHA-384", s))
+    "sha512" in forAll((s: String) => checkDigest(sha512, "SHA-512", s))
   }
 
   "empty input" in {

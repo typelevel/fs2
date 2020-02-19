@@ -97,11 +97,7 @@ object DanglingDequeueSanityTest extends App {
   implicit val cs: ContextShift[IO] = IO.contextShift(ExecutionContext.Implicits.global)
   Stream
     .eval(Queue.unbounded[IO, Int])
-    .flatMap { q =>
-      Stream.constant(1).flatMap { _ =>
-        Stream.empty.mergeHaltBoth(q.dequeue)
-      }
-    }
+    .flatMap(q => Stream.constant(1).flatMap(_ => Stream.empty.mergeHaltBoth(q.dequeue)))
     .compile
     .drain
     .unsafeRunSync
@@ -113,9 +109,7 @@ object AwakeEverySanityTest extends App {
   implicit val timer: Timer[IO] = IO.timer(ExecutionContext.Implicits.global)
   Stream
     .awakeEvery[IO](1.millis)
-    .flatMap { _ =>
-      Stream.eval(IO(()))
-    }
+    .flatMap(_ => Stream.eval(IO(())))
     .compile
     .drain
     .unsafeRunSync
@@ -125,9 +119,7 @@ object SignalDiscreteSanityTest extends App {
   implicit val cs: ContextShift[IO] = IO.contextShift(ExecutionContext.Implicits.global)
   Stream
     .eval(SignallingRef[IO, Unit](()))
-    .flatMap { signal =>
-      signal.discrete.evalMap(a => signal.set(a))
-    }
+    .flatMap(signal => signal.discrete.evalMap(a => signal.set(a)))
     .compile
     .drain
     .unsafeRunSync
@@ -137,9 +129,7 @@ object SignalContinuousSanityTest extends App {
   implicit val cs: ContextShift[IO] = IO.contextShift(ExecutionContext.Implicits.global)
   Stream
     .eval(SignallingRef[IO, Unit](()))
-    .flatMap { signal =>
-      signal.continuous.evalMap(a => signal.set(a))
-    }
+    .flatMap(signal => signal.continuous.evalMap(a => signal.set(a)))
     .compile
     .drain
     .unsafeRunSync
