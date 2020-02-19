@@ -204,7 +204,7 @@ class StreamSpec extends Fs2Spec with Matchers {
             var o: Vector[Int] = Vector.empty
             (0 until 10)
               .foldLeft(Stream.eval(IO(0))) { (acc, i) =>
-                Stream.bracket(IO(i))(i => IO(o = o :+ i)).flatMap(_ => acc)
+                Stream.bracket(IO(i))(i => IO { o = o :+ i; () }).flatMap(_ => acc)
               }
               .compile
               .drain
@@ -217,7 +217,9 @@ class StreamSpec extends Fs2Spec with Matchers {
             var o: Vector[Int] = Vector.empty
             (0 until 10)
               .foldLeft(Stream.emit(1).map(_ => throw new Err): Stream[IO, Int]) { (acc, i) =>
-                Stream.emit(i) ++ Stream.bracket(IO(i))(i => IO(o = o :+ i)).flatMap(_ => acc)
+                Stream.emit(i) ++ Stream
+                  .bracket(IO(i))(i => IO { o = o :+ i; () })
+                  .flatMap(_ => acc)
               }
               .attempt
               .compile
@@ -257,7 +259,7 @@ class StreamSpec extends Fs2Spec with Matchers {
           val s = s0.map { s =>
             Stream
               .bracketCase(counter.increment) { (_, ec) =>
-                counter.decrement >> IO(ecs = ecs :+ ec)
+                counter.decrement >> IO { ecs = ecs :+ ec; () }
               }
               .flatMap(_ => s)
           }
@@ -277,7 +279,7 @@ class StreamSpec extends Fs2Spec with Matchers {
           val s = s0.map { s =>
             Stream
               .bracketCase(counter.increment) { (_, ec) =>
-                counter.decrement >> IO(ecs = ecs :+ ec)
+                counter.decrement >> IO { ecs = ecs :+ ec; () }
               }
               .flatMap(_ => s ++ Stream.raiseError[IO](new Err))
           }
@@ -297,7 +299,7 @@ class StreamSpec extends Fs2Spec with Matchers {
             val s =
               Stream
                 .bracketCase(counter.increment) { (_, ec) =>
-                  counter.decrement >> IO(ecs = ecs :+ ec)
+                  counter.decrement >> IO { ecs = ecs :+ ec; () }
                 }
                 .flatMap(_ => s0 ++ Stream.never[IO])
             s.compile.drain.start
@@ -319,7 +321,7 @@ class StreamSpec extends Fs2Spec with Matchers {
             val s =
               Stream
                 .bracketCase(counter.increment) { (_, ec) =>
-                  counter.decrement >> IO(ecs = ecs :+ ec)
+                  counter.decrement >> IO { ecs = ecs :+ ec; () }
                 }
                 .flatMap(_ => s0 ++ Stream.never[IO])
             s.interruptAfter(50.millis).compile.drain.flatMap(_ => counter.get).asserting { count =>

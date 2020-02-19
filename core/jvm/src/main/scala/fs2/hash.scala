@@ -40,8 +40,6 @@ object hash {
             d.update(bytes.values, bytes.offset, bytes.size)
             d
           }
-          .flatMap { d =>
-            Stream.chunk(Chunk.bytes(d.digest()))
-          }
+          .flatMap(d => Stream.chunk(Chunk.bytes(d.digest())))
       }
 }

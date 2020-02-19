@@ -107,8 +107,8 @@ object Hotswap {
     Resource.make(initialize)(finalize).map { state =>
       new Hotswap[F, R] {
         override def swap(next: Resource[F, R]): F[R] =
-          (next <* ().pure[Resource[F, ?]]) // workaround for https://github.com/typelevel/cats-effect/issues/579
-          .allocated
+          // workaround for https://github.com/typelevel/cats-effect/issues/579
+          (next <* ().pure[Resource[F, ?]]).allocated
             .continual { r => // this whole block is inside continual and cannot be canceled
               Sync[F].fromEither(r).flatMap {
                 case (newValue, newFinalizer) =>

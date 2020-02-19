@@ -76,9 +76,7 @@ private[fs2] final class CompileScope[F[_]] private (
     * This is always invoked before state can be marked as closed.
     */
   private def register(resource: Resource[F]): F[Unit] =
-    state.update { s =>
-      s.copy(resources = resource +: s.resources)
-    }
+    state.update(s => s.copy(resources = resource +: s.resources))
 
   /**
     * Opens a child scope.
@@ -177,11 +175,11 @@ private[fs2] final class CompileScope[F[_]] private (
     * reachable from its parent.
     */
   private def releaseChildScope(id: Token): F[Unit] =
-    state.update { _.unregisterChild(id) }
+    state.update(_.unregisterChild(id))
 
   /** Returns all direct resources of this scope (does not return resources in ancestor scopes or child scopes). **/
   private def resources: F[Chain[Resource[F]]] =
-    F.map(state.get) { _.resources }
+    F.map(state.get)(_.resources)
 
   /**
     * Traverses supplied `Chain` with `f` that may produce a failure, and collects these failures.
@@ -281,9 +279,7 @@ private[fs2] final class CompileScope[F[_]] private (
       }
     if (self.id == scopeId) F.pure(Some(self))
     else
-      F.flatMap(state.get) { s =>
-        go(s.children)
-      }
+      F.flatMap(state.get)(s => go(s.children))
   }
 
   /**
@@ -323,9 +319,7 @@ private[fs2] final class CompileScope[F[_]] private (
       else {
         val allScopes = (s.children :+ self) ++ ancestors
         F.flatMap(Traverse[Chain].flatTraverse(allScopes)(_.resources)) { allResources =>
-          F.map(TraverseFilter[Chain].traverseFilter(allResources) { r =>
-            r.lease
-          }) { allLeases =>
+          F.map(TraverseFilter[Chain].traverseFilter(allResources)(r => r.lease)) { allLeases =>
             val lease = new Scope.Lease[F] {
               def cancel: F[Either[Throwable, Unit]] =
                 traverseError[Scope.Lease[F]](allLeases, _.cancel)
@@ -347,7 +341,7 @@ private[fs2] final class CompileScope[F[_]] private (
         // note that we guard interruption here by Attempt to prevent failure on multiple sets.
         val interruptCause = cause.map(_ => iCtx.interruptRoot)
         F.guarantee(iCtx.deferred.complete(interruptCause)) {
-          iCtx.ref.update { _.orElse(Some(interruptCause)) }
+          iCtx.ref.update(_.orElse(Some(interruptCause)))
         }
     }
 
@@ -377,7 +371,7 @@ private[fs2] final class CompileScope[F[_]] private (
     */
   private[internal] def interruptibleEval[A](f: F[A]): F[Either[Either[Throwable, Token], A]] =
     interruptible match {
-      case None => F.map(F.attempt(f)) { _.swap.map(Left(_)).swap }
+      case None => F.map(F.attempt(f))(_.swap.map(Left(_)).swap)
       case Some(iCtx) =>
         F.map(
           iCtx.concurrent
@@ -492,9 +486,7 @@ private[fs2] object CompileScope {
                   }
                 )
               )
-            ) { _ =>
-              context
-            }
+            )(_ => context)
           }
         }
         .getOrElse(F.pure(copy(cancelParent = F.unit)))

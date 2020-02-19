@@ -39,18 +39,18 @@ class JavaInputOutputStreamSpec extends Fs2Spec with EventuallySupport {
       pending // https://github.com/functional-streams-for-scala/fs2/issues/1063
       var closed: Boolean = false
       val s: Stream[IO, Byte] =
-        Stream(1.toByte).onFinalize(IO { closed = true })
+        Stream(1.toByte).onFinalize(IO { closed = true; () })
 
       toInputStreamResource(s).use(_ => IO.unit).unsafeRunSync()
 
-      eventually { assert(closed) }
+      eventually(assert(closed))
     }
 
     "upstream.is.force-closed" in {
       pending // https://github.com/functional-streams-for-scala/fs2/issues/1063
       var closed: Boolean = false
       val s: Stream[IO, Byte] =
-        Stream(1.toByte).onFinalize(IO { closed = true })
+        Stream(1.toByte).onFinalize(IO { closed = true; () })
 
       val result =
         toInputStreamResource(s)
@@ -71,9 +71,7 @@ class JavaInputOutputStreamSpec extends Fs2Spec with EventuallySupport {
         .map(_.toByte)
         .covary[IO]
         .through(toInputStream)
-        .map { is =>
-          Vector.fill(257)(is.read())
-        }
+        .map(is => Vector.fill(257)(is.read()))
         .compile
         .toVector
         .map(_.flatten)

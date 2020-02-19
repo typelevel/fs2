@@ -123,7 +123,7 @@ lazy val scaladocSettings = Seq(
     "-implicits-sound-shadowing",
     "-implicits-show-all"
   ),
-  scalacOptions in (Compile, doc) ~= { _.filterNot { _ == "-Xfatal-warnings" } },
+  scalacOptions in (Compile, doc) ~= { _.filterNot(_ == "-Xfatal-warnings") },
   autoAPIMappings := true
 )
 
@@ -140,16 +140,16 @@ lazy val publishingSettings = Seq(
     password <- Option(System.getenv().get("SONATYPE_PASSWORD"))
   } yield Credentials("Sonatype Nexus Repository Manager", "oss.sonatype.org", username, password)).toSeq,
   publishMavenStyle := true,
-  pomIncludeRepository := { _ =>
-    false
-  },
+  pomIncludeRepository := { _ => false },
   pomExtra := {
     <developers>
-      {for ((username, name) <- contributors) yield <developer>
+      {
+      for ((username, name) <- contributors) yield <developer>
         <id>{username}</id>
         <name>{name}</name>
         <url>http://github.com/{username}</url>
-      </developer>}
+      </developer>
+    }
     </developers>
   },
   pomPostProcess := { node =>
@@ -159,9 +159,7 @@ lazy val publishingSettings = Seq(
       override def transform(n: Node) =
         if (f(n)) NodeSeq.Empty else n
     }
-    val stripTestScope = stripIf { n =>
-      n.label == "dependency" && (n \ "scope").text == "test"
-    }
+    val stripTestScope = stripIf(n => n.label == "dependency" && (n \ "scope").text == "test")
     new RuleTransformer(stripTestScope).transform(node)(0)
   },
   gpgWarnOnFailure := Option(System.getenv().get("GPG_WARN_ON_FAILURE")).isDefined
