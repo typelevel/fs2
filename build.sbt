@@ -57,7 +57,7 @@ lazy val commonSettings = Seq(
     "org.typelevel" %%% "cats-effect" % "2.1.1",
     "org.typelevel" %%% "cats-effect-laws" % "2.1.1" % "test",
     "org.scalacheck" %%% "scalacheck" % "1.14.3" % "test",
-    "org.scalatest" %%% "scalatest" % "3.1.0-SNAP13" % "test",
+    "org.scalatest" %%% "scalatest" % "3.1.1" % "test",
     "org.scalatestplus" %%% "scalatestplus-scalacheck" % "1.0.0-M2" % "test"
   ),
   scmInfo := Some(
