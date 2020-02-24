@@ -970,7 +970,7 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
     * }}}
     *
     * Note this operator will de-chunk the stream back into chunks of size 1, which has performance
-    * implications. For maximum performance, `evalMaps` is available, however, with caveats.
+    * implications. For maximum performance, `evalMapChunk` is available, however, with caveats.
     */
   def evalMap[F2[x] >: F[x], O2](f: O => F2[O2]): Stream[F2, O2] =
     flatMap(o => Stream.eval(f(o)))
@@ -1061,7 +1061,7 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
     evalMap(o => f(o).as(o))
 
   /**
-    * Alias for `evalMaps(o => f(o).as(o))`.
+    * Alias for `evalMapChunk(o => f(o).as(o))`.
     */
   def evalTapChunk[F2[x] >: F[x]: Functor: Applicative](f: O => F2[_]): Stream[F2, O] =
     evalMapChunk(o => f(o).as(o))
