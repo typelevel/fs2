@@ -968,9 +968,37 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
     * scala> Stream(1,2,3,4).evalMap(i => IO(println(i))).compile.drain.unsafeRunSync
     * res0: Unit = ()
     * }}}
+    *
+    * Note this operator will de-chunk the stream back into chunks of size 1, which has performance
+    * implications. For maximum performance, `evalMapChunk` is available, however, with caveats.
     */
   def evalMap[F2[x] >: F[x], O2](f: O => F2[O2]): Stream[F2, O2] =
     flatMap(o => Stream.eval(f(o)))
+
+  /**
+    * Like `evalMap`, but operates on chunks for performance. This means this operator
+    * is not lazy on every single element, rather on the chunks.
+    *
+    * For instance, `evalMap` would only print twice in the follow example (note the `take(2)`):
+    * @example {{{
+    * scala> import cats.effect.IO
+    * scala> Stream(1,2,3,4).evalMap(i => IO(println(i))).take(2).compile.drain.unsafeRunSync
+    * 1
+    * 2
+    * }}}
+    *
+    * But with `evalMaps`, it will print 4 times:
+    * @example {{{
+    * scala> import cats.effect.IO
+    * scala> Stream(1,2,3,4).evalMaps(i => IO(println(i))).take(2).compile.drain.unsafeRunSync
+    * 1
+    * 2
+    * 3
+    * 4
+    * }}}
+    */
+  def evalMapChunk[F2[x] >: F[x]: Applicative, O2](f: O => F2[O2]): Stream[F2, O2] =
+    chunks.flatMap(o => Stream.evalUnChunk(o.traverse(f)))
 
   /**
     * Like `[[Stream#mapAccumulate]]`, but accepts a function returning an `F[_]`.
@@ -1027,6 +1055,12 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
     */
   def evalTap[F2[x] >: F[x]: Functor](f: O => F2[_]): Stream[F2, O] =
     evalMap(o => f(o).as(o))
+
+  /**
+    * Alias for `evalMapChunk(o => f(o).as(o))`.
+    */
+  def evalTapChunk[F2[x] >: F[x]: Functor: Applicative](f: O => F2[_]): Stream[F2, O] =
+    evalMapChunk(o => f(o).as(o))
 
   /**
     * Emits `true` as soon as a matching element is received, else `false` if no input matches.
