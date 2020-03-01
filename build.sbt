@@ -54,8 +54,8 @@ lazy val commonSettings = Seq(
     compilerPlugin("org.typelevel" %% "kind-projector" % "0.10.3"),
     "org.typelevel" %%% "cats-core" % "2.1.1",
     "org.typelevel" %%% "cats-laws" % "2.1.1" % "test",
-    "org.typelevel" %%% "cats-effect" % "2.1.1",
-    "org.typelevel" %%% "cats-effect-laws" % "2.1.1" % "test",
+    "org.typelevel" %%% "cats-effect" % "2.1.2",
+    "org.typelevel" %%% "cats-effect-laws" % "2.1.2" % "test",
     "org.scalacheck" %%% "scalacheck" % "1.14.3" % "test",
     "org.scalatest" %%% "scalatest" % "3.1.0-SNAP13" % "test",
     "org.scalatestplus" %%% "scalatestplus-scalacheck" % "1.0.0-M2" % "test"
