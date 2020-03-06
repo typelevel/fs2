@@ -4380,7 +4380,7 @@ object Stream extends StreamLowPriority {
       * }}}
       */
     def foldMonoid(implicit O: Monoid[O]): G[O] =
-      fold(O.empty)(O.combine)
+      foldChunks(O.empty)(_ |+| _.combineAll)
 
     /**
       * Like [[fold]] but uses the implicitly available `Semigroup[O]` to combine elements.
