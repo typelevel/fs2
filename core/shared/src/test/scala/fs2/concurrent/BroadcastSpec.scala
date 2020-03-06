@@ -3,6 +3,7 @@ package concurrent
 
 import cats.effect.IO
 import org.scalactic.anyvals.PosInt
+import org.scalatest.Succeeded
 
 class BroadcastSpec extends Fs2Spec {
   "Broadcast" - {
@@ -12,9 +13,7 @@ class BroadcastSpec extends Fs2Spec {
         val expect = source.compile.toVector.map(_.toString)
 
         def pipe(idx: Int): Pipe[IO, Int, (Int, String)] =
-          _.map { i =>
-            (idx, i.toString)
-          }
+          _.map(i => (idx, i.toString))
 
         source
           .broadcastThrough((0 until concurrent).map(idx => pipe(idx)): _*)
@@ -23,10 +22,11 @@ class BroadcastSpec extends Fs2Spec {
           .map(_.groupBy(_._1).map { case (k, v) => (k, v.map(_._2).toVector) })
           .asserting { result =>
             if (expect.nonEmpty) {
-              result.size shouldBe (concurrent)
-              all(result.values) shouldBe expect
+              assert(result.size == concurrent)
+              result.values.foreach(it => assert(it == expect))
+              Succeeded
             } else {
-              result.values.size shouldBe 0
+              assert(result.values.isEmpty)
             }
           }
       }

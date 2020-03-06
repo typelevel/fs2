@@ -21,7 +21,7 @@ class QueueSpec extends Fs2Spec {
           }
           .compile
           .toList
-          .asserting(_ shouldBe expected)
+          .asserting(it => assert(it == expected))
       }
     }
     "circularBuffer" in {
@@ -37,7 +37,7 @@ class QueueSpec extends Fs2Spec {
           }
           .compile
           .toList
-          .asserting(_ shouldBe expected)
+          .asserting(it => assert(it == expected))
       }
     }
     "dequeueAvailable" in {
@@ -53,8 +53,8 @@ class QueueSpec extends Fs2Spec {
           .compile
           .toList
           .asserting { result =>
-            result.size should be < 2
-            result.flatMap(_.toList) shouldBe expected
+            assert(result.size < 2)
+            assert(result.flatMap(_.toList) == expected)
           }
       }
     }
@@ -72,7 +72,7 @@ class QueueSpec extends Fs2Spec {
           }
           .compile
           .toList
-          .asserting(_ shouldBe expected)
+          .asserting(it => assert(it == expected))
       }
     }
     "dequeueBatch circularBuffer" in {
@@ -90,7 +90,7 @@ class QueueSpec extends Fs2Spec {
           }
           .compile
           .toList
-          .asserting(_ shouldBe expected)
+          .asserting(it => assert(it == expected))
       }
     }
 
@@ -104,7 +104,7 @@ class QueueSpec extends Fs2Spec {
               q.enqueue1(2) >>
               q.dequeue1
           }
-          .asserting(_ shouldBe 1)
+          .asserting(it => assert(it == 1))
       }
 
       "cancel" in {
@@ -116,7 +116,7 @@ class QueueSpec extends Fs2Spec {
               q.enqueue1(2) >>
               q.dequeue1
           }
-          .asserting(_ shouldBe 1)
+          .asserting(it => assert(it == 1))
       }
     }
 
@@ -127,7 +127,7 @@ class QueueSpec extends Fs2Spec {
         .take(1)
         .compile
         .toList
-        .asserting(_ shouldBe List(0))
+        .asserting(it => assert(it == List(0)))
     }
 
     "size stream is discrete" in {
@@ -143,7 +143,7 @@ class QueueSpec extends Fs2Spec {
         .interruptWhen(Stream.sleep[IO](2.seconds).as(true))
         .compile
         .toList
-        .asserting(_.size shouldBe <=(11)) // if the stream won't be discrete we will get much more size notifications
+        .asserting(it => assert(it.size <= 11)) // if the stream won't be discrete we will get much more size notifications
     }
 
     "peek1" in {
@@ -160,7 +160,7 @@ class QueueSpec extends Fs2Spec {
         )
         .compile
         .toList
-        .asserting(_.flatten shouldBe List(42, 42))
+        .asserting(it => assert(it.flatten == List(42, 42)))
     }
 
     "peek1 with dequeue1" in {
@@ -180,7 +180,7 @@ class QueueSpec extends Fs2Spec {
         )
         .compile
         .toList
-        .asserting(_.flatten shouldBe List((42, 42), (43, 43), (44, 44)))
+        .asserting(it => assert(it.flatten == List((42, 42), (43, 43), (44, 44))))
     }
 
     "peek1 bounded queue" in {
@@ -199,7 +199,7 @@ class QueueSpec extends Fs2Spec {
         )
         .compile
         .toList
-        .asserting(_.flatten shouldBe List(false, 42, 42, 42))
+        .asserting(it => assert(it.flatten == List(false, 42, 42, 42)))
     }
 
     "peek1 circular buffer" in {
@@ -218,7 +218,7 @@ class QueueSpec extends Fs2Spec {
         )
         .compile
         .toList
-        .asserting(_.flatten shouldBe List(true, 42, 42, 43))
+        .asserting(it => assert(it.flatten == List(true, 42, 42, 43)))
     }
   }
 }

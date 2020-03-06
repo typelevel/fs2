@@ -968,9 +968,37 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
     * scala> Stream(1,2,3,4).evalMap(i => IO(println(i))).compile.drain.unsafeRunSync
     * res0: Unit = ()
     * }}}
+    *
+    * Note this operator will de-chunk the stream back into chunks of size 1, which has performance
+    * implications. For maximum performance, `evalMapChunk` is available, however, with caveats.
     */
   def evalMap[F2[x] >: F[x], O2](f: O => F2[O2]): Stream[F2, O2] =
     flatMap(o => Stream.eval(f(o)))
+
+  /**
+    * Like `evalMap`, but operates on chunks for performance. This means this operator
+    * is not lazy on every single element, rather on the chunks.
+    *
+    * For instance, `evalMap` would only print twice in the follow example (note the `take(2)`):
+    * @example {{{
+    * scala> import cats.effect.IO
+    * scala> Stream(1,2,3,4).evalMap(i => IO(println(i))).take(2).compile.drain.unsafeRunSync
+    * 1
+    * 2
+    * }}}
+    *
+    * But with `evalMaps`, it will print 4 times:
+    * @example {{{
+    * scala> import cats.effect.IO
+    * scala> Stream(1,2,3,4).evalMaps(i => IO(println(i))).take(2).compile.drain.unsafeRunSync
+    * 1
+    * 2
+    * 3
+    * 4
+    * }}}
+    */
+  def evalMapChunk[F2[x] >: F[x]: Applicative, O2](f: O => F2[O2]): Stream[F2, O2] =
+    chunks.flatMap(o => Stream.evalUnChunk(o.traverse(f)))
 
   /**
     * Like `[[Stream#mapAccumulate]]`, but accepts a function returning an `F[_]`.
@@ -1010,16 +1038,12 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
     def go(z: O2, s: Stream[F2, O]): Pull[F2, O2, Unit] =
       s.pull.uncons1.flatMap {
         case Some((hd, tl)) =>
-          Pull.eval(f(z, hd)).flatMap { o =>
-            Pull.output1(o) >> go(o, tl)
-          }
+          Pull.eval(f(z, hd)).flatMap(o => Pull.output1(o) >> go(o, tl))
         case None => Pull.done
       }
     this.pull.uncons1.flatMap {
       case Some((hd, tl)) =>
-        Pull.eval(f(z, hd)).flatMap { o =>
-          Pull.output(Chunk.seq(List(z, o))) >> go(o, tl)
-        }
+        Pull.eval(f(z, hd)).flatMap(o => Pull.output(Chunk.seq(List(z, o))) >> go(o, tl))
       case None => Pull.output1(z)
     }.stream
   }
@@ -1031,6 +1055,12 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
     */
   def evalTap[F2[x] >: F[x]: Functor](f: O => F2[_]): Stream[F2, O] =
     evalMap(o => f(o).as(o))
+
+  /**
+    * Alias for `evalMapChunk(o => f(o).as(o))`.
+    */
+  def evalTapChunk[F2[x] >: F[x]: Functor: Applicative](f: O => F2[_]): Stream[F2, O] =
+    evalMapChunk(o => f(o).as(o))
 
   /**
     * Emits `true` as soon as a matching element is received, else `false` if no input matches.
@@ -1466,9 +1496,7 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
                     // this is the same if in the resize function,
                     // short circuited to avoid needlessly converting newAcc.toChunk
                     if (newAcc.size < n) {
-                      Stream.empty ++ startTimeout.flatMap { newTimeout =>
-                        go(newAcc, newTimeout)
-                      }
+                      Stream.empty ++ startTimeout.flatMap(newTimeout => go(newAcc, newTimeout))
                     } else {
                       val (toEmit, rest) = resize(newAcc.toChunk, Stream.empty)
                       toEmit ++ startTimeout.flatMap { newTimeout =>
@@ -1481,9 +1509,7 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
             }
 
           startTimeout
-            .flatMap { t =>
-              go(Chunk.Queue.empty, t).concurrently(producer)
-            }
+            .flatMap(t => go(Chunk.Queue.empty, t).concurrently(producer))
             .onFinalize {
               currentTimeout.modify {
                 case (cancelInFlightTimeout, _) =>
@@ -1539,9 +1565,7 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
   )(implicit F: Concurrent[F2]): Resource[F2, Signal[F2, O2]] =
     Stream
       .eval(SignallingRef[F2, O2](initial))
-      .flatMap { sig =>
-        Stream(sig).concurrently(evalMap(sig.set))
-      }
+      .flatMap(sig => Stream(sig).concurrently(evalMap(sig.set)))
       .compile
       .resource
       .lastOrError
@@ -1619,7 +1643,7 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
 
           Stream.bracket(F2.start(runR))(_ =>
             interruptR.complete(()) >>
-              doneR.get.flatMap { F2.fromEither }
+              doneR.get.flatMap(F2.fromEither)
           ) >> this.interruptWhen(interruptL.get.attempt)
         }
       }
@@ -1643,9 +1667,7 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
   )(implicit F2: Concurrent[F2]): Stream[F2, O] =
     Stream
       .getScope[F2]
-      .flatMap { scope =>
-        Stream.supervise(haltOnSignal.flatMap(scope.interrupt)) >> this
-      }
+      .flatMap(scope => Stream.supervise(haltOnSignal.flatMap(scope.interrupt)) >> this)
       .interruptScope
 
   /**
@@ -1914,9 +1936,7 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
                             interrupt.complete(()).attempt.void // we need to attempt interruption in case the interrupt was already completed.
                           else
                             otherSideDone
-                              .modify { prev =>
-                                (true, prev)
-                              }
+                              .modify(prev => (true, prev))
                               .flatMap { otherDone =>
                                 if (otherDone)
                                   resultQ
@@ -2170,7 +2190,9 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
                             F2.start {
                               inner.chunks
                                 .evalMap(s => outputQ.enqueue1(Some(s)))
-                                .interruptWhen(done.map(_.nonEmpty)) // must be AFTER enqueue to the sync queue, otherwise the process may hang to enqueue last item while being interrupted
+                                .interruptWhen(
+                                  done.map(_.nonEmpty)
+                                ) // must be AFTER enqueue to the sync queue, otherwise the process may hang to enqueue last item while being interrupted
                                 .compile
                                 .drain
                                 .attempt
@@ -2197,9 +2219,7 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
                   def runOuter: F2[Unit] =
                     outer
                       .flatMap { inner =>
-                        Stream.getScope[F2].evalMap { outerScope =>
-                          runInner(inner, outerScope)
-                        }
+                        Stream.getScope[F2].evalMap(outerScope => runInner(inner, outerScope))
                       }
                       .interruptWhen(done.map(_.nonEmpty))
                       .compile
@@ -4059,7 +4079,7 @@ object Stream extends StreamLowPriority {
 
     /** Like `[[unconsN]]`, but leaves the buffered input unconsumed. */
     def fetchN(n: Int): Pull[F, INothing, Option[Stream[F, O]]] =
-      unconsN(n).map { _.map { case (hd, tl) => tl.cons(hd) } }
+      unconsN(n).map(_.map { case (hd, tl) => tl.cons(hd) })
 
     /** Awaits the next available element where the predicate returns true. */
     def find(f: O => Boolean): Pull[F, INothing, Option[(O, Stream[F, O])]] =
@@ -4640,9 +4660,9 @@ object Stream extends StreamLowPriority {
       */
     def stream: Stream[F, O] =
       Pull
-        .loop[F, O, StepLeg[F, O]] { leg =>
-          Pull.output(leg.head).flatMap(_ => leg.stepLeg)
-        }(self.setHead(Chunk.empty))
+        .loop[F, O, StepLeg[F, O]](leg => Pull.output(leg.head).flatMap(_ => leg.stepLeg))(
+          self.setHead(Chunk.empty)
+        )
         .void
         .stream
 

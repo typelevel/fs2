@@ -10,8 +10,10 @@ class StreamPerformanceSpec extends Fs2Spec {
     "left-associated ++" - {
       Ns.foreach { N =>
         N.toString in {
-          (1 until N).map(Stream.emit).foldLeft(Stream.emit(0))(_ ++ _).toVector shouldBe Vector
-            .range(0, N)
+          assert(
+            (1 until N).map(Stream.emit).foldLeft(Stream.emit(0))(_ ++ _).toVector == Vector
+              .range(0, N)
+          )
         }
       }
     }
@@ -19,10 +21,12 @@ class StreamPerformanceSpec extends Fs2Spec {
     "right-associated ++" - {
       Ns.foreach { N =>
         N.toString in {
-          (0 until N)
-            .map(Stream.emit)
-            .foldRight(Stream.empty: Stream[Pure, Int])(_ ++ _)
-            .toVector shouldBe Vector.range(0, N)
+          assert(
+            (0 until N)
+              .map(Stream.emit)
+              .foldRight(Stream.empty: Stream[Pure, Int])(_ ++ _)
+              .toVector == Vector.range(0, N)
+          )
         }
       }
     }
@@ -30,10 +34,12 @@ class StreamPerformanceSpec extends Fs2Spec {
     "left-associated flatMap 1" - {
       Ns.foreach { N =>
         N.toString in {
-          (1 until N)
-            .map(Stream.emit)
-            .foldLeft(Stream.emit(0))((acc, a) => acc.flatMap(_ => a))
-            .toVector shouldBe Vector(N - 1)
+          assert(
+            (1 until N)
+              .map(Stream.emit)
+              .foldLeft(Stream.emit(0))((acc, a) => acc.flatMap(_ => a))
+              .toVector == Vector(N - 1)
+          )
         }
       }
     }
@@ -42,10 +48,12 @@ class StreamPerformanceSpec extends Fs2Spec {
       Ns.foreach { N =>
         N.toString in {
           pending
-          (1 until N)
-            .map(Stream.emit)
-            .foldLeft(Stream.emit(0))((acc, _) => acc.map(_ + 1))
-            .toVector shouldBe Vector(N - 1)
+          assert(
+            (1 until N)
+              .map(Stream.emit)
+              .foldLeft(Stream.emit(0))((acc, _) => acc.map(_ + 1))
+              .toVector == Vector(N - 1)
+          )
         }
       }
     }
@@ -53,14 +61,16 @@ class StreamPerformanceSpec extends Fs2Spec {
     "left-associated eval() ++ flatMap 1" - {
       Ns.foreach { N =>
         N.toString in {
-          (1 until N)
-            .map(Stream.emit)
-            .foldLeft(Stream.emit(0).covary[IO])((acc, a) =>
-              acc.flatMap(_ => Stream.eval(IO.unit).flatMap(_ => a))
-            )
-            .compile
-            .toVector
-            .unsafeRunSync shouldBe Vector(N - 1)
+          assert(
+            (1 until N)
+              .map(Stream.emit)
+              .foldLeft(Stream.emit(0).covary[IO])((acc, a) =>
+                acc.flatMap(_ => Stream.eval(IO.unit).flatMap(_ => a))
+              )
+              .compile
+              .toVector
+              .unsafeRunSync == Vector(N - 1)
+          )
         }
       }
     }
@@ -68,11 +78,13 @@ class StreamPerformanceSpec extends Fs2Spec {
     "right-associated flatMap 1" - {
       Ns.foreach { N =>
         N.toString in {
-          (1 until N)
-            .map(Stream.emit)
-            .reverse
-            .foldLeft(Stream.emit(0))((acc, a) => a.flatMap(_ => acc))
-            .toVector shouldBe Vector(0)
+          assert(
+            (1 until N)
+              .map(Stream.emit)
+              .reverse
+              .foldLeft(Stream.emit(0))((acc, a) => a.flatMap(_ => acc))
+              .toVector == Vector(0)
+          )
         }
       }
     }
@@ -80,15 +92,17 @@ class StreamPerformanceSpec extends Fs2Spec {
     "right-associated eval() ++ flatMap 1" - {
       Ns.foreach { N =>
         N.toString in {
-          (1 until N)
-            .map(Stream.emit)
-            .reverse
-            .foldLeft(Stream.emit(0).covary[IO])((acc, a) =>
-              a.flatMap(_ => Stream.eval(IO.unit).flatMap(_ => acc))
-            )
-            .compile
-            .toVector
-            .unsafeRunSync shouldBe Vector(0)
+          assert(
+            (1 until N)
+              .map(Stream.emit)
+              .reverse
+              .foldLeft(Stream.emit(0).covary[IO])((acc, a) =>
+                a.flatMap(_ => Stream.eval(IO.unit).flatMap(_ => acc))
+              )
+              .compile
+              .toVector
+              .unsafeRunSync == Vector(0)
+          )
         }
       }
     }
@@ -96,12 +110,14 @@ class StreamPerformanceSpec extends Fs2Spec {
     "left-associated flatMap 2" - {
       Ns.foreach { N =>
         N.toString in {
-          (1 until N)
-            .map(Stream.emit)
-            .foldLeft(Stream.emit(0) ++ Stream.emit(1) ++ Stream.emit(2))((acc, a) =>
-              acc.flatMap(_ => a)
-            )
-            .toVector shouldBe Vector(N - 1, N - 1, N - 1)
+          assert(
+            (1 until N)
+              .map(Stream.emit)
+              .foldLeft(Stream.emit(0) ++ Stream.emit(1) ++ Stream.emit(2))((acc, a) =>
+                acc.flatMap(_ => a)
+              )
+              .toVector == Vector(N - 1, N - 1, N - 1)
+          )
         }
       }
     }
@@ -109,13 +125,15 @@ class StreamPerformanceSpec extends Fs2Spec {
     "right-associated flatMap 2" - {
       Ns.foreach { N =>
         N.toString in {
-          (1 until N)
-            .map(Stream.emit)
-            .reverse
-            .foldLeft(Stream.emit(0) ++ Stream.emit(1) ++ Stream.emit(2))((acc, a) =>
-              a.flatMap(_ => acc)
-            )
-            .toVector shouldBe Vector(0, 1, 2)
+          assert(
+            (1 until N)
+              .map(Stream.emit)
+              .reverse
+              .foldLeft(Stream.emit(0) ++ Stream.emit(1) ++ Stream.emit(2))((acc, a) =>
+                a.flatMap(_ => acc)
+              )
+              .toVector == Vector(0, 1, 2)
+          )
         }
       }
     }
@@ -123,15 +141,17 @@ class StreamPerformanceSpec extends Fs2Spec {
     "transduce (id)" - {
       Ns.foreach { N =>
         N.toString in {
-          (Stream
-            .chunk(Chunk.seq(0 until N)))
-            .repeatPull {
-              _.uncons1.flatMap {
-                case None           => Pull.pure(None)
-                case Some((hd, tl)) => Pull.output1(hd).as(Some(tl))
+          assert(
+            (Stream
+              .chunk(Chunk.seq(0 until N)))
+              .repeatPull {
+                _.uncons1.flatMap {
+                  case None           => Pull.pure(None)
+                  case Some((hd, tl)) => Pull.output1(hd).as(Some(tl))
+                }
               }
-            }
-            .toVector shouldBe Vector.range(0, N)
+              .toVector == Vector.range(0, N)
+          )
         }
       }
     }
@@ -156,8 +176,8 @@ class StreamPerformanceSpec extends Fs2Spec {
                   .flatMap(_ => (ok.get, open.get).tupled)
                   .asserting {
                     case (ok, open) =>
-                      ok shouldBe N
-                      open shouldBe 0
+                      assert(ok == N)
+                      assert(open == 0)
                   }
               }
             }
@@ -183,8 +203,8 @@ class StreamPerformanceSpec extends Fs2Spec {
                   .flatMap(_ => (ok.get, open.get).tupled)
                   .asserting {
                     case (ok, open) =>
-                      ok shouldBe N
-                      open shouldBe 0
+                      assert(ok == N)
+                      assert(open == 0)
                   }
               }
             }
@@ -196,8 +216,10 @@ class StreamPerformanceSpec extends Fs2Spec {
     "chunky flatMap" - {
       Ns.foreach { N =>
         N.toString in {
-          Stream.emits(Vector.range(0, N)).flatMap(i => Stream.emit(i)).toVector shouldBe Vector
-            .range(0, N)
+          assert(
+            Stream.emits(Vector.range(0, N)).flatMap(i => Stream.emit(i)).toVector == Vector
+              .range(0, N)
+          )
         }
       }
     }
@@ -205,12 +227,14 @@ class StreamPerformanceSpec extends Fs2Spec {
     "chunky map with uncons" - {
       Ns.foreach { N =>
         N.toString in {
-          Stream
-            .emits(Vector.range(0, N))
-            .map(i => i)
-            .chunks
-            .flatMap(Stream.chunk(_))
-            .toVector shouldBe Vector.range(0, N)
+          assert(
+            Stream
+              .emits(Vector.range(0, N))
+              .map(i => i)
+              .chunks
+              .flatMap(Stream.chunk(_))
+              .toVector == Vector.range(0, N)
+          )
         }
       }
     }

@@ -29,13 +29,11 @@ class UdpSpec extends Fs2Spec {
           Stream
             .resource(socketGroup.open[IO]())
             .flatMap { serverSocket =>
-              Stream.eval(serverSocket.localAddress).map { _.getPort }.flatMap { serverPort =>
+              Stream.eval(serverSocket.localAddress).map(_.getPort).flatMap { serverPort =>
                 val serverAddress = new InetSocketAddress("localhost", serverPort)
                 val server = serverSocket
                   .reads()
-                  .evalMap { packet =>
-                    serverSocket.write(packet)
-                  }
+                  .evalMap(packet => serverSocket.write(packet))
                   .drain
                 val client = Stream.resource(socketGroup.open[IO]()).flatMap { clientSocket =>
                   Stream(Packet(serverAddress, msg))
@@ -48,13 +46,11 @@ class UdpSpec extends Fs2Spec {
         }
         .compile
         .toVector
-        .asserting(_.map(_.bytes) shouldBe Vector(msg))
+        .asserting(it => assert(it.map(_.bytes) == Vector(msg)))
     }
 
     "echo lots" in {
-      val msgs = (1 to 20).toVector.map { n =>
-        Chunk.bytes(("Hello, world! " + n).getBytes)
-      }
+      val msgs = (1 to 20).toVector.map(n => Chunk.bytes(("Hello, world! " + n).getBytes))
       val numClients = 50
       val numParallelClients = 10
       mkSocketGroup
@@ -62,19 +58,15 @@ class UdpSpec extends Fs2Spec {
           Stream
             .resource(socketGroup.open[IO]())
             .flatMap { serverSocket =>
-              Stream.eval(serverSocket.localAddress).map { _.getPort }.flatMap { serverPort =>
+              Stream.eval(serverSocket.localAddress).map(_.getPort).flatMap { serverPort =>
                 val serverAddress = new InetSocketAddress("localhost", serverPort)
                 val server = serverSocket
                   .reads()
-                  .evalMap { packet =>
-                    serverSocket.write(packet)
-                  }
+                  .evalMap(packet => serverSocket.write(packet))
                   .drain
                 val client = Stream.resource(socketGroup.open[IO]()).flatMap { clientSocket =>
                   Stream
-                    .emits(msgs.map { msg =>
-                      Packet(serverAddress, msg)
-                    })
+                    .emits(msgs.map(msg => Packet(serverAddress, msg)))
                     .flatMap { msg =>
                       Stream.eval_(clientSocket.write(msg)) ++ Stream.eval(clientSocket.read())
                     }
@@ -90,10 +82,12 @@ class UdpSpec extends Fs2Spec {
         .compile
         .toVector
         .asserting(res =>
-          res.map(p => new String(p.bytes.toArray)).sorted shouldBe Vector
-            .fill(numClients)(msgs.map(b => new String(b.toArray)))
-            .flatten
-            .sorted
+          assert(
+            res.map(p => new String(p.bytes.toArray)).sorted == Vector
+              .fill(numClients)(msgs.map(b => new String(b.toArray)))
+              .flatten
+              .sorted
+          )
         )
     }
 
@@ -111,7 +105,7 @@ class UdpSpec extends Fs2Spec {
               )
             )
             .flatMap { serverSocket =>
-              Stream.eval(serverSocket.localAddress).map { _.getPort }.flatMap { serverPort =>
+              Stream.eval(serverSocket.localAddress).map(_.getPort).flatMap { serverPort =>
                 val v4Interfaces =
                   NetworkInterface.getNetworkInterfaces.asScala.toList.filter { interface =>
                     interface.getInetAddresses.asScala.exists(_.isInstanceOf[Inet4Address])
@@ -120,9 +114,7 @@ class UdpSpec extends Fs2Spec {
                   .eval_(v4Interfaces.traverse(interface => serverSocket.join(group, interface))) ++
                   serverSocket
                     .reads()
-                    .evalMap { packet =>
-                      serverSocket.write(packet)
-                    }
+                    .evalMap(packet => serverSocket.write(packet))
                     .drain
                 val client = Stream.resource(socketGroup.open[IO]()).flatMap { clientSocket =>
                   Stream(Packet(new InetSocketAddress(group, serverPort), msg))
@@ -135,7 +127,7 @@ class UdpSpec extends Fs2Spec {
         }
         .compile
         .toVector
-        .asserting(_.map(_.bytes) shouldBe Vector(msg))
+        .asserting(it => assert(it.map(_.bytes) == Vector(msg)))
     }
 
     "timeouts supported" in {
@@ -143,9 +135,7 @@ class UdpSpec extends Fs2Spec {
         .flatMap { socketGroup =>
           Stream
             .resource(socketGroup.open[IO]())
-            .flatMap { socket =>
-              socket.reads(timeout = Some(50.millis))
-            }
+            .flatMap(socket => socket.reads(timeout = Some(50.millis)))
         }
         .compile
         .drain

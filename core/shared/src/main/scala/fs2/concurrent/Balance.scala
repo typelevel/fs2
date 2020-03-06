@@ -90,7 +90,8 @@ object Balance {
   private def strategy[O]: PubSub.Strategy[Chunk[O], Chunk[O], Option[Chunk[O]], Int] =
     new PubSub.Strategy[Chunk[O], Chunk[O], Option[Chunk[O]], Int] {
       def initial: Option[Chunk[O]] =
-        Some(Chunk.empty) // causes to block first push, hence all the other chunks must be non-empty.
+        // causes to block first push, hence all the other chunks must be non-empty.
+        Some(Chunk.empty)
 
       def accepts(i: Chunk[O], state: Option[Chunk[O]]): Boolean =
         state.isEmpty

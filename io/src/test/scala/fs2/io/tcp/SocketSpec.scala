@@ -72,8 +72,8 @@ class SocketSpec extends Fs2Spec {
           .toVector
           .unsafeRunTimed(timeout)
           .get
-      result.size shouldBe clientCount
-      result.map { new String(_) }.toSet shouldBe Set("fs2.rocks")
+      assert(result.size == clientCount)
+      assert(result.map(new String(_)).toSet == Set("fs2.rocks"))
     }
 
     // Ensure that readN yields chunks of the requested size
@@ -126,7 +126,7 @@ class SocketSpec extends Fs2Spec {
           .toVector
           .unsafeRunTimed(timeout)
           .get
-      result shouldBe sizes
+      assert(result == sizes)
     }
 
     "write - concurrent calls do not cause WritePendingException" in {
@@ -142,30 +142,26 @@ class SocketSpec extends Fs2Spec {
             case (address, _) => Resource.liftF(localBindAddress.complete(address))
           }
 
-      val result =
-        mkSocketGroup
-          .flatMap { socketGroup =>
-            Stream.resource(doNothingServer(socketGroup)) >>
-              Stream.eval(localBindAddress.get).flatMap { address =>
-                Stream
-                  .resource(
-                    socketGroup.client[IO](address)
-                  )
-                  .flatMap(sock =>
-                    Stream(
-                      Stream.eval(sock.write(message)).repeatN(10L)
-                    ).repeatN(2L)
-                  )
-                  .parJoinUnbounded
-              }
-          }
-          .compile
-          .drain
-          .attempt
-          .unsafeRunTimed(timeout)
-          .get
-
-      result shouldBe a[Right[_, _]]
+      mkSocketGroup
+        .flatMap { socketGroup =>
+          Stream.resource(doNothingServer(socketGroup)) >>
+            Stream.eval(localBindAddress.get).flatMap { address =>
+              Stream
+                .resource(
+                  socketGroup.client[IO](address)
+                )
+                .flatMap(sock =>
+                  Stream(
+                    Stream.eval(sock.write(message)).repeatN(10L)
+                  ).repeatN(2L)
+                )
+                .parJoinUnbounded
+            }
+        }
+        .compile
+        .drain
+        .attempt
+        .asserting(it => assert(it.isRight))
     }
   }
 }

@@ -33,9 +33,7 @@ class DTLSSocketSpec extends TLSSpec {
                         val echoServer =
                           dtlsServerSocket
                             .reads(None)
-                            .evalMap { p =>
-                              dtlsServerSocket.write(p, None)
-                            }
+                            .evalMap(p => dtlsServerSocket.write(p, None))
                             .drain
                         val msg = Chunk.bytes("Hello, world!".getBytes)
                         val echoClient = Stream.sleep_(500.milliseconds) ++ Stream.eval_(
@@ -45,7 +43,7 @@ class DTLSSocketSpec extends TLSSpec {
                           .concurrently(echoServer)
                           .compile
                           .toList
-                          .asserting(_.map(_.bytes) shouldBe List(msg))
+                          .asserting(it => assert(it.map(_.bytes) == List(msg)))
                     }
                   }
                 }

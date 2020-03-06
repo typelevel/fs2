@@ -16,7 +16,7 @@ class PullSpec extends Fs2Spec {
           .compile
           .toList
           .flatMap(_ => ref.get)
-          .asserting(_ shouldBe 1)
+          .asserting(it => assert(it == 1))
       }
     }
 
@@ -24,9 +24,9 @@ class PullSpec extends Fs2Spec {
       val pull: Pull[Fallible, Int, Unit] = Pull.fromEither[Fallible](either)
 
       either match {
-        case Left(l) => pull.stream.compile.toList shouldBe Left(l)
+        case Left(l) => assert(pull.stream.compile.toList == Left(l))
         case Right(r) =>
-          pull.stream.compile.toList shouldBe Right(List(r))
+          assert(pull.stream.compile.toList == Right(List(r)))
       }
     }
   }

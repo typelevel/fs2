@@ -32,25 +32,25 @@ class JavaInputOutputStreamSpec extends Fs2Spec with EventuallySupport {
           }
           .unsafeRunSync()
 
-      example shouldBe fromInputStream
+      assert(example == fromInputStream)
     }
 
     "upstream.is.closed" in {
       pending // https://github.com/functional-streams-for-scala/fs2/issues/1063
       var closed: Boolean = false
       val s: Stream[IO, Byte] =
-        Stream(1.toByte).onFinalize(IO { closed = true })
+        Stream(1.toByte).onFinalize(IO { closed = true; () })
 
       toInputStreamResource(s).use(_ => IO.unit).unsafeRunSync()
 
-      eventually { closed shouldBe true }
+      eventually(assert(closed))
     }
 
     "upstream.is.force-closed" in {
       pending // https://github.com/functional-streams-for-scala/fs2/issues/1063
       var closed: Boolean = false
       val s: Stream[IO, Byte] =
-        Stream(1.toByte).onFinalize(IO { closed = true })
+        Stream(1.toByte).onFinalize(IO { closed = true; () })
 
       val result =
         toInputStreamResource(s)
@@ -62,7 +62,7 @@ class JavaInputOutputStreamSpec extends Fs2Spec with EventuallySupport {
           }
           .unsafeRunSync()
 
-      result shouldBe Vector(true)
+      assert(result)
     }
 
     "converts to 0..255 int values except EOF mark" in {
@@ -71,13 +71,11 @@ class JavaInputOutputStreamSpec extends Fs2Spec with EventuallySupport {
         .map(_.toByte)
         .covary[IO]
         .through(toInputStream)
-        .map { is =>
-          Vector.fill(257)(is.read())
-        }
+        .map(is => Vector.fill(257)(is.read()))
         .compile
         .toVector
         .map(_.flatten)
-        .asserting(_ shouldBe (Stream.range(0, 256, 1) ++ Stream(-1)).toVector)
+        .asserting(it => assert(it == (Stream.range(0, 256, 1) ++ Stream(-1)).toVector))
     }
   }
 }

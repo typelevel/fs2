@@ -15,12 +15,14 @@ class TextSpec extends Fs2Spec {
 
       def checkChar(c: Char): Assertion = {
         (1 to 6).foreach { n =>
-          Stream
-            .chunk(utf8Bytes(c.toString))
-            .chunkLimit(n)
-            .flatMap(Stream.chunk)
-            .through(utf8Decode)
-            .toList shouldBe List(c.toString)
+          assert(
+            Stream
+              .chunk(utf8Bytes(c.toString))
+              .chunkLimit(n)
+              .flatMap(Stream.chunk)
+              .through(utf8Decode)
+              .toList == List(c.toString)
+          )
         }
         Succeeded
       }
@@ -28,27 +30,28 @@ class TextSpec extends Fs2Spec {
       def checkBytes(is: Int*): Assertion = {
         (1 to 6).foreach { n =>
           val bytes = Chunk.bytes(is.map(_.toByte).toArray)
-          Stream
-            .chunk(bytes)
-            .chunkLimit(n)
-            .flatMap(Stream.chunk)
-            .through(utf8Decode)
-            .toList shouldBe List(utf8String(bytes))
+          assert(
+            Stream
+              .chunk(bytes)
+              .chunkLimit(n)
+              .flatMap(Stream.chunk)
+              .through(utf8Decode)
+              .toList == List(utf8String(bytes))
+          )
         }
         Succeeded
       }
 
       def checkBytes2(is: Int*): Assertion = {
         val bytes = Chunk.bytes(is.map(_.toByte).toArray)
-        Stream(bytes).flatMap(Stream.chunk).through(utf8Decode).toList.mkString shouldBe utf8String(
-          bytes
+        assert(
+          Stream(bytes).flatMap(Stream.chunk).through(utf8Decode).toList.mkString == utf8String(
+            bytes
+          )
         )
-        Succeeded
       }
 
-      "all chars" in forAll { (c: Char) =>
-        checkChar(c)
-      }
+      "all chars" in forAll((c: Char) => checkChar(c))
 
       "1 byte char" in checkBytes(0x24) // $
       "2 byte char" in checkBytes(0xC2, 0xA2) // ¢
@@ -60,46 +63,50 @@ class TextSpec extends Fs2Spec {
       "incomplete 4 byte char" in checkBytes(0xF0, 0xA4, 0xAD)
 
       "preserve complete inputs" in forAll { (l0: List[String]) =>
-        val l = l0.filter { _.nonEmpty }
-        Stream(l: _*).map(utf8Bytes).flatMap(Stream.chunk).through(utf8Decode).toList shouldBe l
-        Stream(l0: _*).map(utf8Bytes).through(utf8DecodeC).toList shouldBe l0
+        val l = l0.filter(_.nonEmpty)
+        assert(Stream(l: _*).map(utf8Bytes).flatMap(Stream.chunk).through(utf8Decode).toList == l)
+        assert(Stream(l0: _*).map(utf8Bytes).through(utf8DecodeC).toList == l0)
       }
 
       "utf8Encode |> utf8Decode = id" in forAll { (s: String) =>
-        Stream(s).through(utf8EncodeC).through(utf8DecodeC).toList shouldBe List(s)
-        if (s.nonEmpty) Stream(s).through(utf8Encode).through(utf8Decode).toList shouldBe List(s)
+        assert(Stream(s).through(utf8EncodeC).through(utf8DecodeC).toList == List(s))
+        if (s.nonEmpty) assert(Stream(s).through(utf8Encode).through(utf8Decode).toList == List(s))
         else Succeeded
       }
 
       "1 byte sequences" in forAll { (s: String) =>
-        Stream
-          .chunk(utf8Bytes(s))
-          .chunkLimit(1)
-          .flatMap(Stream.chunk)
-          .through(utf8Decode)
-          .filter(_.nonEmpty)
-          .toList shouldBe s.grouped(1).toList
+        assert(
+          Stream
+            .chunk(utf8Bytes(s))
+            .chunkLimit(1)
+            .flatMap(Stream.chunk)
+            .through(utf8Decode)
+            .filter(_.nonEmpty)
+            .toList == s.grouped(1).toList
+        )
       }
 
       "n byte sequences" in forAll(strings, intsBetween(1, 9)) { (s: String, n: Int) =>
-        Stream
-          .chunk(utf8Bytes(s))
-          .chunkLimit(n)
-          .flatMap(Stream.chunk)
-          .through(utf8Decode)
-          .toList
-          .mkString shouldBe s
+        assert(
+          Stream
+            .chunk(utf8Bytes(s))
+            .chunkLimit(n)
+            .flatMap(Stream.chunk)
+            .through(utf8Decode)
+            .toList
+            .mkString == s
+        )
       }
 
       "handles byte order mark" - {
         val bom = Chunk[Byte](0xef.toByte, 0xbb.toByte, 0xbf.toByte)
         "single chunk" in forAll { (s: String) =>
           val c = Chunk.concat(List(bom, utf8Bytes(s)))
-          Stream.chunk(c).through(text.utf8Decode).compile.string shouldBe s
+          assert(Stream.chunk(c).through(text.utf8Decode).compile.string == s)
         }
         "spanning chunks" in forAll { (s: String) =>
           val c = Chunk.concat(List(bom, utf8Bytes(s)))
-          Stream.emits(c.toArray[Byte]).through(text.utf8Decode).compile.string shouldBe s
+          assert(Stream.emits(c.toArray[Byte]).through(text.utf8Decode).compile.string == s)
         }
       }
 
@@ -211,15 +218,15 @@ class TextSpec extends Fs2Spec {
 
       "newlines appear in between chunks" in forAll { (lines0: Stream[Pure, String]) =>
         val lines = lines0.map(escapeCrLf)
-        lines.intersperse("\n").through(text.lines).toList shouldBe lines.toList
-        lines.intersperse("\r\n").through(text.lines).toList shouldBe lines.toList
+        assert(lines.intersperse("\n").through(text.lines).toList == lines.toList)
+        assert(lines.intersperse("\r\n").through(text.lines).toList == lines.toList)
       }
 
       "single string" in forAll { (lines0: Stream[Pure, String]) =>
         val lines = lines0.map(escapeCrLf)
         if (lines.toList.nonEmpty) {
           val s = lines.intersperse("\r\n").toList.mkString
-          Stream.emit(s).through(text.lines).toList shouldBe lines.toList
+          assert(Stream.emit(s).through(text.lines).toList == lines.toList)
         } else Succeeded
       }
 
@@ -227,18 +234,20 @@ class TextSpec extends Fs2Spec {
         val lines = lines0.map(escapeCrLf)
         val s = lines.intersperse("\r\n").toList.mkString.grouped(3).toList
         if (s.isEmpty) {
-          Stream.emits(s).through(text.lines).toList shouldBe Nil
+          assert(Stream.emits(s).through(text.lines).toList == Nil)
         } else {
-          Stream.emits(s).through(text.lines).toList shouldBe lines.toList
-          Stream.emits(s).unchunk.through(text.lines).toList shouldBe lines.toList
+          assert(Stream.emits(s).through(text.lines).toList == lines.toList)
+          assert(Stream.emits(s).unchunk.through(text.lines).toList == lines.toList)
         }
       }
     }
 
     "base64Encode" in {
       forAll { (bs: List[Array[Byte]]) =>
-        bs.map(Chunk.bytes).foldMap(Stream.chunk).through(text.base64Encode).compile.string shouldBe
-          bs.map(ByteVector.view(_)).foldLeft(ByteVector.empty)(_ ++ _).toBase64
+        assert(
+          bs.map(Chunk.bytes).foldMap(Stream.chunk).through(text.base64Encode).compile.string ==
+            bs.map(ByteVector.view(_)).foldLeft(ByteVector.empty)(_ ++ _).toBase64
+        )
       }
     }
 
@@ -246,55 +255,64 @@ class TextSpec extends Fs2Spec {
 
       "base64Encode andThen base64Decode" in {
         forAll { (bs: List[Array[Byte]], unchunked: Boolean, rechunkSeed: Long) =>
-          bs.map(Chunk.bytes)
-            .foldMap(Stream.chunk)
-            .through(text.base64Encode)
-            .through {
-              // Change chunk structure to validate carries
-              if (unchunked) _.unchunk
-              else _.rechunkRandomlyWithSeed(0.1, 2.0)(rechunkSeed)
-            }
-            .through {
-              // Add some whitespace
-              _.chunks
-                .interleave(Stream(" ", "\r\n", "\n", "  \r\n  ").map(Chunk.singleton).repeat)
-                .flatMap(Stream.chunk)
-            }
-            .through(text.base64Decode[Fallible])
-            .compile
-            .to(ByteVector) shouldBe
-            Right(bs.map(ByteVector.view(_)).foldLeft(ByteVector.empty)(_ ++ _))
+          assert(
+            bs.map(Chunk.bytes)
+              .foldMap(Stream.chunk)
+              .through(text.base64Encode)
+              .through {
+                // Change chunk structure to validate carries
+                if (unchunked) _.unchunk
+                else _.rechunkRandomlyWithSeed(0.1, 2.0)(rechunkSeed)
+              }
+              .through {
+                // Add some whitespace
+                _.chunks
+                  .interleave(Stream(" ", "\r\n", "\n", "  \r\n  ").map(Chunk.singleton).repeat)
+                  .flatMap(Stream.chunk)
+              }
+              .through(text.base64Decode[Fallible])
+              .compile
+              .to(ByteVector)
+              ==
+                Right(bs.map(ByteVector.view(_)).foldLeft(ByteVector.empty)(_ ++ _))
+          )
         }
       }
 
       "invalid padding" in {
-        Stream(hex"00deadbeef00".toBase64, "=====", hex"00deadbeef00".toBase64)
-          .through(text.base64Decode[Fallible])
-          .chunks
-          .attempt
-          .map(_.leftMap(_.getMessage))
-          .compile
-          .to(List) shouldBe
-          Right(
-            List(
-              Right(Chunk.byteVector(hex"00deadbeef00")),
-              Left(
-                "Malformed padding - final quantum may optionally be padded with one or two padding characters such that the quantum is completed"
+        assert(
+          Stream(hex"00deadbeef00".toBase64, "=====", hex"00deadbeef00".toBase64)
+            .through(text.base64Decode[Fallible])
+            .chunks
+            .attempt
+            .map(_.leftMap(_.getMessage))
+            .compile
+            .to(List)
+            ==
+              Right(
+                List(
+                  Right(Chunk.byteVector(hex"00deadbeef00")),
+                  Left(
+                    "Malformed padding - final quantum may optionally be padded with one or two padding characters such that the quantum is completed"
+                  )
+                )
               )
-            )
-          )
+        )
       }
 
       "optional padding" in {
         forAll { (bs: List[Array[Byte]]) =>
-          bs.map(Chunk.bytes)
-            .foldMap(Stream.chunk)
-            .through(text.base64Encode)
-            .takeWhile(_ != '=')
-            .through(text.base64Decode[Fallible])
-            .compile
-            .to(ByteVector) shouldBe
-            Right(bs.map(ByteVector.view(_)).foldLeft(ByteVector.empty)(_ ++ _))
+          assert(
+            bs.map(Chunk.bytes)
+              .foldMap(Stream.chunk)
+              .through(text.base64Encode)
+              .takeWhile(_ != '=')
+              .through(text.base64Decode[Fallible])
+              .compile
+              .to(ByteVector)
+              ==
+                Right(bs.map(ByteVector.view(_)).foldLeft(ByteVector.empty)(_ ++ _))
+          )
         }
       }
     }

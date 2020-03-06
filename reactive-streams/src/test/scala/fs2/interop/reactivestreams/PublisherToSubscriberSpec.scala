@@ -3,14 +3,10 @@ package interop
 package reactivestreams
 
 import cats.effect._
-import org.scalatest._
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatestplus.scalacheck.ScalaCheckPropertyChecks
 
-final class PublisherToSubscriberSpec
-    extends AnyFlatSpec
-    with Matchers
-    with ScalaCheckPropertyChecks {
+final class PublisherToSubscriberSpec extends AnyFlatSpec with ScalaCheckPropertyChecks {
   implicit val ctx: ContextShift[IO] =
     IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
 
@@ -18,7 +14,7 @@ final class PublisherToSubscriberSpec
     forAll { (ints: Seq[Int]) =>
       val subscriberStream = Stream.emits(ints).covary[IO].toUnicastPublisher.toStream[IO]
 
-      subscriberStream.compile.toVector.unsafeRunSync() should ===(ints.toVector)
+      assert(subscriberStream.compile.toVector.unsafeRunSync() === (ints.toVector))
     }
   }
 
@@ -28,7 +24,7 @@ final class PublisherToSubscriberSpec
     val input: Stream[IO, Int] = Stream(1, 2, 3) ++ Stream.raiseError[IO](TestError)
     val output: Stream[IO, Int] = input.toUnicastPublisher.toStream[IO]
 
-    output.compile.drain.attempt.unsafeRunSync() should ===(Left(TestError))
+    assert(output.compile.drain.attempt.unsafeRunSync() === (Left(TestError)))
   }
 
   it should "cancel upstream if downstream completes" in {
@@ -36,7 +32,7 @@ final class PublisherToSubscriberSpec
       val subscriberStream =
         Stream.emits(as ++ bs).covary[IO].toUnicastPublisher.toStream[IO].take(as.size)
 
-      subscriberStream.compile.toVector.unsafeRunSync() should ===(as.toVector)
+      assert(subscriberStream.compile.toVector.unsafeRunSync() === (as.toVector))
     }
   }
 }

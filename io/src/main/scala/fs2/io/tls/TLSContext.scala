@@ -109,9 +109,7 @@ object TLSContext {
             logger
           )
         )
-        .flatMap { engine =>
-          TLSSocket(socket, engine)
-        }
+        .flatMap(engine => TLSSocket(socket, engine))
 
     def dtlsClient[F[_]: Concurrent: ContextShift](
         socket: udp.Socket[F],
@@ -157,9 +155,7 @@ object TLSContext {
             logger
           )
         )
-        .flatMap { engine =>
-          DTLSSocket(socket, remoteAddress, engine)
-        }
+        .flatMap(engine => DTLSSocket(socket, remoteAddress, engine))
 
     private def engine[F[_]: Concurrent: ContextShift](
         blocker: Blocker,

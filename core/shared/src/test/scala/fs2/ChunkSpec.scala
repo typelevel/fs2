@@ -18,40 +18,40 @@ class ChunkSpec extends Fs2Spec {
 
   "Chunk" - {
     "chunk-formation (1)" in {
-      Chunk.empty.toList shouldBe List()
-      Chunk.singleton(23).toList shouldBe List(23)
+      assert(Chunk.empty.toList == List())
+      assert(Chunk.singleton(23).toList == List(23))
     }
 
     "chunk-formation (2)" in forAll { (c: Vector[Int]) =>
-      Chunk.seq(c).toVector shouldBe c
-      Chunk.seq(c).toList shouldBe c.toList
-      Chunk.indexedSeq(c).toVector shouldBe c
-      Chunk.indexedSeq(c).toList shouldBe c.toList
+      assert(Chunk.seq(c).toVector == c)
+      assert(Chunk.seq(c).toList == c.toList)
+      assert(Chunk.indexedSeq(c).toVector == c)
+      assert(Chunk.indexedSeq(c).toList == c.toList)
     }
 
     "Chunk.apply is optimized" in {
-      Chunk(1) shouldBe a[Chunk.Singleton[_]]
-      Chunk("Hello") shouldBe a[Chunk.Singleton[_]]
+      assert(Chunk(1).isInstanceOf[Chunk.Singleton[_]])
+      assert(Chunk("Hello").isInstanceOf[Chunk.Singleton[_]])
       // Varargs on Scala.js use a scala.scalajs.js.WrappedArray, which
       // ends up falling through to the Chunk.indexedSeq constructor
       if (isJVM) {
-        Chunk(1, 2, 3) shouldBe a[Chunk.Ints]
-        Chunk("Hello", "world") shouldBe a[Chunk.Boxed[_]]
+        assert(Chunk(1, 2, 3).isInstanceOf[Chunk.Ints])
+        assert(Chunk("Hello", "world").isInstanceOf[Chunk.Boxed[_]])
       } else {
         Succeeded
       }
     }
 
     "Chunk.seq is optimized" in {
-      Chunk.seq(List(1)) shouldBe a[Chunk.Singleton[_]]
+      assert(Chunk.seq(List(1)).isInstanceOf[Chunk.Singleton[_]])
     }
 
     "Array casts in Chunk.seq are safe" in {
       val as = collection.mutable.ArraySeq[Int](0, 1, 2)
       val c = Chunk.seq(as)
-      try c shouldBe a[Chunk.Boxed[_]] // 2.11/2.12
+      try assert(c.isInstanceOf[Chunk.Boxed[_]]) // 2.11/2.12
       catch {
-        case NonFatal(_) => c shouldBe a[Chunk.Ints] // 2.13+
+        case NonFatal(_) => assert(c.isInstanceOf[Chunk.Ints]) // 2.13+
       }
     }
   }
@@ -64,47 +64,44 @@ class ChunkSpec extends Fs2Spec {
   ): Unit =
     s"$name" - {
       implicit val implicitChunkGenerator: Generator[Chunk[A]] = genChunk
-      "size" in forAll { (c: Chunk[A]) =>
-        c.size shouldBe c.toList.size
-      }
+      "size" in forAll((c: Chunk[A]) => assert(c.size == c.toList.size))
       "take" in forAll { (c: Chunk[A], n: PosZInt) =>
-        c.take(n).toVector shouldBe c.toVector.take(n)
+        assert(c.take(n).toVector == c.toVector.take(n))
       }
       "drop" in forAll { (c: Chunk[A], n: PosZInt) =>
-        c.drop(n).toVector shouldBe c.toVector.drop(n)
+        assert(c.drop(n).toVector == c.toVector.drop(n))
       }
-      "isEmpty" in forAll { (c: Chunk[A]) =>
-        c.isEmpty shouldBe c.toList.isEmpty
-      }
+      "isEmpty" in forAll((c: Chunk[A]) => assert(c.isEmpty == c.toList.isEmpty))
       "toArray" in forAll { c: Chunk[A] =>
-        c.toArray.toVector shouldBe c.toVector
+        assert(c.toArray.toVector == c.toVector)
         // Do it twice to make sure the first time didn't mutate state
-        c.toArray.toVector shouldBe c.toVector
+        assert(c.toArray.toVector == c.toVector)
       }
       "copyToArray" in forAll { c: Chunk[A] =>
         val arr = new Array[A](c.size * 2)
         c.copyToArray(arr, 0)
         c.copyToArray(arr, c.size)
-        arr.toVector shouldBe (c.toVector ++ c.toVector)
+        assert(arr.toVector == (c.toVector ++ c.toVector))
       }
       "concat" in forAll { (c1: Chunk[A], c2: Chunk[A]) =>
-        Chunk
+        val result = Chunk
           .concat(List(Chunk.empty, c1, Chunk.empty, c2))
-          .toVector shouldBe (c1.toVector ++ c2.toVector)
+          .toVector
+        assert(result == (c1.toVector ++ c2.toVector))
       }
       "concat empty" in {
-        Chunk.concat[A](List(Chunk.empty, Chunk.empty)) shouldEqual Chunk.empty
+        assert(Chunk.concat[A](List(Chunk.empty, Chunk.empty)) == Chunk.empty)
       }
       "scanLeft" in forAll { c: Chunk[A] =>
         def step(acc: List[A], item: A) = acc :+ item
-        c.scanLeft(List[A]())(step).toList shouldBe (c.toList.scanLeft(List[A]())(step))
+        assert(c.scanLeft(List[A]())(step).toList == (c.toList.scanLeft(List[A]())(step)))
       }
       "scanLeftCarry" in forAll { c: Chunk[A] =>
         def step(acc: List[A], item: A) = acc :+ item
         val listScan = c.toList.scanLeft(List[A]())(step)
         val (chunkScan, chunkCarry) = c.scanLeftCarry(List[A]())(step)
 
-        (chunkScan.toList, chunkCarry) shouldBe ((listScan.tail, listScan.last))
+        assert((chunkScan.toList, chunkCarry) == ((listScan.tail, listScan.last)))
       }
 
       if (implicitly[ClassTag[A]] == ClassTag.Byte)
@@ -112,7 +109,7 @@ class ChunkSpec extends Fs2Spec {
           implicit val ev: A =:= Byte = null
           val arr = new Array[Byte](c.size)
           c.toByteBuffer.get(arr, 0, c.size)
-          arr.toVector shouldBe c.toArray.toVector
+          assert(arr.toVector == c.toArray.toVector)
         }
 
       import org.scalacheck.GeneratorCompat._
@@ -156,19 +153,19 @@ class ChunkSpec extends Fs2Spec {
 
   "scanLeftCarry" - {
     "returns empty and zero for empty Chunk" in {
-      Chunk[Int]().scanLeftCarry(0)(_ + _) shouldBe ((Chunk.empty, 0))
+      assert(Chunk[Int]().scanLeftCarry(0)(_ + _) == ((Chunk.empty, 0)))
     }
     "returns first result and first result for singleton" in {
-      Chunk(2).scanLeftCarry(1)(_ + _) shouldBe ((Chunk(3), 3))
+      assert(Chunk(2).scanLeftCarry(1)(_ + _) == ((Chunk(3), 3)))
     }
     "returns all results and last result for multiple elements" in {
-      Chunk(2, 3).scanLeftCarry(1)(_ + _) shouldBe ((Chunk(3, 6), 6))
+      assert(Chunk(2, 3).scanLeftCarry(1)(_ + _) == ((Chunk(3, 6), 6)))
     }
   }
 
   "concat primitives" - {
     def testEmptyConcat[A](mkChunk: List[Chunk[A]] => Chunk[A]) =
-      mkChunk(List(Chunk.empty, Chunk.empty)) shouldEqual Chunk.empty
+      assert(mkChunk(List(Chunk.empty, Chunk.empty)) === Chunk.empty)
 
     "booleans" in testEmptyConcat(Chunk.concatBooleans)
     "bytes" in testEmptyConcat(Chunk.concatBytes)
@@ -182,24 +179,24 @@ class ChunkSpec extends Fs2Spec {
 
   "map andThen toArray" in {
     val arr: Array[Int] = Chunk(0, 0).map(identity).toArray
-    arr shouldBe Array(0, 0)
+    assert(arr === Array(0, 0))
   }
 
   "mapAccumulate andThen toArray" in {
     val arr: Array[Int] = Chunk(0, 0).mapAccumulate(0)((s, o) => (s, o))._2.toArray
-    arr shouldBe Array(0, 0)
+    assert(arr === Array(0, 0))
   }
 
   "scanLeft andThen toArray" in {
     val arr: Array[Int] = Chunk(0, 0).scanLeft(0)((_, o) => o).toArray
-    arr shouldBe Array(0, 0, 0)
+    assert(arr === Array(0, 0, 0))
   }
 
   "zip andThen toArray" in {
     val arr: Array[(Int, Int)] = Chunk(0, 0).zip(Chunk(0, 0)).toArray
-    arr shouldBe Array((0, 0), (0, 0))
+    assert(arr === Array((0, 0), (0, 0)))
     val arr2: Array[Int] = Chunk(0, 0).zip(Chunk(0, 0)).map(_._1).toArray
-    arr2 shouldBe Array(0, 0)
+    assert(arr2 === Array(0, 0))
   }
 
   "Boxed toArray - regression #1745" in {

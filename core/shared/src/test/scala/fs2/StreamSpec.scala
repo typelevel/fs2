@@ -8,20 +8,20 @@ import cats.implicits._
 import scala.concurrent.duration._
 import scala.concurrent.TimeoutException
 import org.scalactic.anyvals._
-import org.scalatest.{Assertion, Succeeded}
+import org.scalatest.{Assertion, Matchers, Succeeded}
 import fs2.concurrent.{Queue, SignallingRef}
 
-class StreamSpec extends Fs2Spec {
+class StreamSpec extends Fs2Spec with Matchers {
   "Stream" - {
     "++" in forAll { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
-      (s1 ++ s2).toList shouldBe (s1.toList ++ s2.toList)
+      assert((s1 ++ s2).toList == (s1.toList ++ s2.toList))
     }
 
     ">>" in forAll { (s: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
-      (s >> s2).toList shouldBe s.flatMap(_ => s2).toList
+      assert((s >> s2).toList == s.flatMap(_ => s2).toList)
     }
 
-    "apply" in { Stream(1, 2, 3).toList shouldBe List(1, 2, 3) }
+    "apply" in { assert(Stream(1, 2, 3).toList == List(1, 2, 3)) }
 
     "awakeEvery" - {
       "basic" in {
@@ -33,13 +33,9 @@ class StreamSpec extends Fs2Spec {
           .toVector
           .asserting { r =>
             r.sliding(2)
-              .map { s =>
-                (s.head, s.tail.head)
-              }
+              .map(s => (s.head, s.tail.head))
               .map { case (prev, next) => next - prev }
-              .foreach { delta =>
-                delta shouldBe 500L +- 150
-              }
+              .foreach(delta => assert(delta +- 150 === 500L))
             Succeeded
           }
       }
@@ -47,9 +43,7 @@ class StreamSpec extends Fs2Spec {
       "liveness" in {
         val s = Stream
           .awakeEvery[IO](1.milli)
-          .evalMap { _ =>
-            IO.async[Unit](cb => executionContext.execute(() => cb(Right(()))))
-          }
+          .evalMap(_ => IO.async[Unit](cb => executionContext.execute(() => cb(Right(())))))
           .take(200)
         Stream(s, s, s, s, s).parJoin(5).compile.drain.assertNoException
       }
@@ -70,16 +64,12 @@ class StreamSpec extends Fs2Spec {
           for {
             events <- Ref.of[F, Vector[BracketEvent]](Vector.empty)
             _ <- recordBracketEvents(events)
-              .evalMap(_ =>
-                events.get.asserting { events =>
-                  events shouldBe Vector(Acquired)
-                }
-              )
+              .evalMap(_ => events.get.asserting(events => assert(events == Vector(Acquired))))
               .flatMap(_ => use)
               .compile
               .drain
               .handleErrorWith { case _: Err => Sync[F].pure(()) }
-            _ <- events.get.asserting { _ shouldBe Vector(Acquired, Released) }
+            _ <- events.get.asserting(it => assert(it == Vector(Acquired, Released)))
           } yield ()
 
         "normal termination" in { singleBracketTest[SyncIO, Unit](Stream.empty) }
@@ -99,7 +89,9 @@ class StreamSpec extends Fs2Spec {
               .compile
               .drain
               .handleErrorWith { case _: Err => Sync[F].pure(()) }
-            _ <- events.get.asserting { _ shouldBe Vector(Acquired, Released, Acquired, Released) }
+            _ <- events.get.asserting { it =>
+              assert(it == Vector(Acquired, Released, Acquired, Released))
+            }
           } yield ()
 
         "normal termination" in { appendBracketTest[SyncIO, Unit](Stream.empty, Stream.empty) }
@@ -124,7 +116,10 @@ class StreamSpec extends Fs2Spec {
               .bracket(counter.increment)(_ => counter.decrement)
               .flatMap(_ => Stream(i) ++ inner)
           )
-          nested.compile.drain.assertThrows[Err].flatMap(_ => counter.get).asserting(_ shouldBe 0L)
+          nested.compile.drain
+            .assertThrows[Err]
+            .flatMap(_ => counter.get)
+            .asserting(it => assert(it == 0L))
         }
       }
 
@@ -140,7 +135,7 @@ class StreamSpec extends Fs2Spec {
           val threeLevels = bracketed.take(i).take(j).take(k)
           val fiveLevels = bracketed.take(i).take(j).take(k).take(j).take(i)
           val all = earlyTermination ++ twoLevels ++ twoLevels2 ++ threeLevels ++ fiveLevels
-          all.compile.drain.flatMap(_ => counter.get).asserting(_ shouldBe 0L)
+          all.compile.drain.flatMap(_ => counter.get).asserting(it => assert(it == 0L))
         }
       }
 
@@ -163,12 +158,14 @@ class StreamSpec extends Fs2Spec {
             .compile
             .toList
             .asserting { _ =>
-              buffer.toList shouldBe List(
-                "Acquired",
-                "Used",
-                "FlatMapped",
-                "ReleaseInvoked",
-                "Released"
+              assert(
+                buffer.toList == List(
+                  "Acquired",
+                  "Used",
+                  "FlatMapped",
+                  "ReleaseInvoked",
+                  "Released"
+                )
               )
             }
         }
@@ -188,7 +185,7 @@ class StreamSpec extends Fs2Spec {
             .compile
             .drain
             .flatMap(_ => counter.get)
-            .asserting(_ shouldBe 0)
+            .asserting(it => assert(it == 0))
         }
       }
 
@@ -206,11 +203,11 @@ class StreamSpec extends Fs2Spec {
             var o: Vector[Int] = Vector.empty
             (0 until 10)
               .foldLeft(Stream.eval(IO(0))) { (acc, i) =>
-                Stream.bracket(IO(i))(i => IO { o = o :+ i }).flatMap(_ => acc)
+                Stream.bracket(IO(i))(i => IO { o = o :+ i; () }).flatMap(_ => acc)
               }
               .compile
               .drain
-              .asserting(_ => o shouldBe Vector(0, 1, 2, 3, 4, 5, 6, 7, 8, 9))
+              .asserting(_ => assert(o == Vector(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)))
           }
         }
 
@@ -219,12 +216,14 @@ class StreamSpec extends Fs2Spec {
             var o: Vector[Int] = Vector.empty
             (0 until 10)
               .foldLeft(Stream.emit(1).map(_ => throw new Err): Stream[IO, Int]) { (acc, i) =>
-                Stream.emit(i) ++ Stream.bracket(IO(i))(i => IO { o = o :+ i }).flatMap(_ => acc)
+                Stream.emit(i) ++ Stream
+                  .bracket(IO(i))(i => IO { o = o :+ i; () })
+                  .flatMap(_ => acc)
               }
               .attempt
               .compile
               .drain
-              .asserting(_ => o shouldBe Vector(0, 1, 2, 3, 4, 5, 6, 7, 8, 9))
+              .asserting(_ => assert(o == Vector(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)))
           }
         }
       }
@@ -248,7 +247,7 @@ class StreamSpec extends Fs2Spec {
               .compile
               .drain *> events.get
           }
-          .asserting(_ shouldBe List(Acquired, Released, Acquired, Released))
+          .asserting(it => assert(it == List(Acquired, Released, Acquired, Released)))
       }
     }
 
@@ -259,15 +258,15 @@ class StreamSpec extends Fs2Spec {
           val s = s0.map { s =>
             Stream
               .bracketCase(counter.increment) { (_, ec) =>
-                counter.decrement >> IO { ecs = ecs :+ ec }
+                counter.decrement >> IO { ecs = ecs :+ ec; () }
               }
               .flatMap(_ => s)
           }
           val s2 = s.foldLeft(Stream.empty: Stream[IO, Int])(_ ++ _)
           s2.append(s2.take(10)).take(10).compile.drain.flatMap(_ => counter.get).asserting {
             count =>
-              count shouldBe 0L
-              ecs.toList.foreach(_ shouldBe ExitCase.Completed)
+              assert(count == 0L)
+              ecs.toList.foreach(it => assert(it == ExitCase.Completed))
               Succeeded
           }
         }
@@ -279,14 +278,14 @@ class StreamSpec extends Fs2Spec {
           val s = s0.map { s =>
             Stream
               .bracketCase(counter.increment) { (_, ec) =>
-                counter.decrement >> IO { ecs = ecs :+ ec }
+                counter.decrement >> IO { ecs = ecs :+ ec; () }
               }
               .flatMap(_ => s ++ Stream.raiseError[IO](new Err))
           }
           val s2 = s.foldLeft(Stream.empty: Stream[IO, Int])(_ ++ _)
           s2.compile.drain.attempt.flatMap(_ => counter.get).asserting { count =>
-            count shouldBe 0L
-            ecs.toList.foreach(_ shouldBe an[ExitCase.Error[Throwable]])
+            assert(count == 0L)
+            ecs.toList.foreach(it => assert(it.isInstanceOf[ExitCase.Error[Throwable]]))
             Succeeded
           }
         }
@@ -299,15 +298,15 @@ class StreamSpec extends Fs2Spec {
             val s =
               Stream
                 .bracketCase(counter.increment) { (_, ec) =>
-                  counter.decrement >> IO { ecs = ecs :+ ec }
+                  counter.decrement >> IO { ecs = ecs :+ ec; () }
                 }
                 .flatMap(_ => s0 ++ Stream.never[IO])
             s.compile.drain.start
               .flatMap(f => IO.sleep(50.millis) >> f.cancel)
               .flatMap(_ => counter.get)
               .asserting { count =>
-                count shouldBe 0L
-                ecs.toList.foreach(_ shouldBe ExitCase.Canceled)
+                assert(count == 0L)
+                ecs.toList.foreach(it => assert(it == ExitCase.Canceled))
                 Succeeded
               }
           }
@@ -321,12 +320,12 @@ class StreamSpec extends Fs2Spec {
             val s =
               Stream
                 .bracketCase(counter.increment) { (_, ec) =>
-                  counter.decrement >> IO { ecs = ecs :+ ec }
+                  counter.decrement >> IO { ecs = ecs :+ ec; () }
                 }
                 .flatMap(_ => s0 ++ Stream.never[IO])
             s.interruptAfter(50.millis).compile.drain.flatMap(_ => counter.get).asserting { count =>
-              count shouldBe 0L
-              ecs.toList.foreach(_ shouldBe ExitCase.Canceled)
+              assert(count == 0L)
+              ecs.toList.foreach(it => assert(it == ExitCase.Canceled))
               Succeeded
             }
           }
@@ -336,7 +335,7 @@ class StreamSpec extends Fs2Spec {
 
     "buffer" - {
       "identity" in forAll { (s: Stream[Pure, Int], n: PosInt) =>
-        s.buffer(n).toVector shouldBe s.toVector
+        assert(s.buffer(n).toVector == s.toVector)
       }
 
       "buffer results of evalMap" in forAll { (s: Stream[Pure, Int], n0: PosInt) =>
@@ -344,43 +343,37 @@ class StreamSpec extends Fs2Spec {
         IO.suspend {
           var counter = 0
           val s2 = s.append(Stream.emits(List.fill(n + 1)(0))).repeat
-          s2.evalMap { i =>
-              IO { counter += 1; i }
-            }
+          s2.evalMap(i => IO { counter += 1; i })
             .buffer(n)
             .take(n + 1)
             .compile
             .drain
-            .asserting(_ => counter shouldBe (n * 2))
+            .asserting(_ => assert(counter == (n * 2)))
         }
       }
     }
 
     "bufferAll" - {
-      "identity" in forAll { (s: Stream[Pure, Int]) =>
-        s.bufferAll.toVector shouldBe s.toVector
-      }
+      "identity" in forAll((s: Stream[Pure, Int]) => assert(s.bufferAll.toVector == s.toVector))
 
       "buffer results of evalMap" in forAll { (s: Stream[Pure, Int]) =>
         val expected = s.toList.size * 2
         IO.suspend {
           var counter = 0
           s.append(s)
-            .evalMap { i =>
-              IO { counter += 1; i }
-            }
+            .evalMap(i => IO { counter += 1; i })
             .bufferAll
             .take(s.toList.size + 1)
             .compile
             .drain
-            .asserting(_ => counter shouldBe expected)
+            .asserting(_ => assert(counter == expected))
         }
       }
     }
 
     "bufferBy" - {
       "identity" in forAll { (s: Stream[Pure, Int]) =>
-        s.bufferBy(_ >= 0).toVector shouldBe s.toVector
+        assert(s.bufferBy(_ >= 0).toVector == s.toVector)
       }
 
       "buffer results of evalMap" in forAll { (s: Stream[Pure, Int]) =>
@@ -388,14 +381,12 @@ class StreamSpec extends Fs2Spec {
         IO.suspend {
           var counter = 0
           val s2 = s.map(x => if (x == Int.MinValue) x + 1 else x).map(_.abs)
-          val s3 = s2.append(Stream.emit(-1)).append(s2).evalMap { i =>
-            IO { counter += 1; i }
-          }
+          val s3 = s2.append(Stream.emit(-1)).append(s2).evalMap(i => IO { counter += 1; i })
           s3.bufferBy(_ >= 0)
             .take(s.toList.size + 2)
             .compile
             .drain
-            .asserting(_ => counter shouldBe expected)
+            .asserting(_ => assert(counter == expected))
         }
       }
     }
@@ -435,9 +426,7 @@ class StreamSpec extends Fs2Spec {
             Stream(
               Stream
                 .unfold(0)(i => (i + 1, i + 1).some)
-                .flatMap { i =>
-                  Stream.sleep_(50.milliseconds) ++ Stream.emit(i)
-                }
+                .flatMap(i => Stream.sleep_(50.milliseconds) ++ Stream.emit(i))
                 .through(q.enqueue),
               q.dequeue.drain
             ).parJoin(2)
@@ -446,26 +435,24 @@ class StreamSpec extends Fs2Spec {
     }
 
     "changes" in {
-      Stream.empty.covaryOutput[Int].changes.toList shouldBe Nil
-      Stream(1, 2, 3, 4).changes.toList shouldBe List(1, 2, 3, 4)
-      Stream(1, 1, 2, 2, 3, 3, 4, 3).changes.toList shouldBe List(1, 2, 3, 4, 3)
-      Stream("1", "2", "33", "44", "5", "66")
+      assert(Stream.empty.covaryOutput[Int].changes.toList == Nil)
+      assert(Stream(1, 2, 3, 4).changes.toList == List(1, 2, 3, 4))
+      assert(Stream(1, 1, 2, 2, 3, 3, 4, 3).changes.toList == List(1, 2, 3, 4, 3))
+      val result = Stream("1", "2", "33", "44", "5", "66")
         .changesBy(_.length)
-        .toList shouldBe
-        List("1", "33", "5", "66")
+        .toList
+      assert(result == List("1", "33", "5", "66"))
     }
 
     "chunk" in {
-      forAll { (c: Chunk[Int]) =>
-        Stream.chunk(c).compile.to(Chunk) shouldBe c
-      }
+      forAll((c: Chunk[Int]) => assert(Stream.chunk(c).compile.to(Chunk) == c))
     }
 
     "chunkLimit" in forAll { (s: Stream[Pure, Int], n0: PosInt) =>
       val n = n0 % 20 + 1
       val sizeV = s.chunkLimit(n).toVector.map(_.size)
-      sizeV.forall(_ <= n) shouldBe true
-      sizeV.combineAll shouldBe s.toVector.size
+      assert(sizeV.forall(_ <= n))
+      assert(sizeV.combineAll == s.toVector.size)
     }
 
     "chunkMin" in forAll { (s: Stream[Pure, Int], n0: PosInt) =>
@@ -477,18 +464,18 @@ class StreamSpec extends Fs2Spec {
       val smallerN = s.take(n - 1).chunkMin(n, false).toVector
       val smallerY = s.take(n - 1).chunkMin(n, true).toVector
       // All but last list have n values
-      chunkedV.dropRight(1).forall(_.size >= n) shouldBe true
+      assert(chunkedV.dropRight(1).forall(_.size >= n))
       // Equivalent to last chunk with allowFewerTotal
       if (chunkedV.nonEmpty && chunkedV.last.size < n)
-        chunkedV.dropRight(1) shouldBe withIfSmallerV
+        assert(chunkedV.dropRight(1) == withIfSmallerV)
       // Flattened sequence with allowFewerTotal true is equal to vector without chunking
-      chunkedV.foldLeft(Vector.empty[Int])((v, l) => v ++ l.toVector) shouldBe unchunkedV
+      assert(chunkedV.foldLeft(Vector.empty[Int])((v, l) => v ++ l.toVector) == unchunkedV)
       // If smaller than Chunk Size and allowFewerTotal false is empty then
       // no elements should be emitted
-      smallerN shouldBe Vector.empty
+      assert(smallerN == Vector.empty)
       // If smaller than Chunk Size and allowFewerTotal true is equal to the size
       // of the taken chunk initially
-      smallerY.foldLeft(Vector.empty[Int])((v, l) => v ++ l.toVector) shouldBe smallerSet
+      assert(smallerY.foldLeft(Vector.empty[Int])((v, l) => v ++ l.toVector) == smallerSet)
     }
 
     "chunkN" - {
@@ -497,11 +484,11 @@ class StreamSpec extends Fs2Spec {
         val chunkedV = s.chunkN(n, true).toVector
         val unchunkedV = s.toVector
         // All but last list have n0 values
-        chunkedV.dropRight(1).forall(_.size == n) shouldBe true
+        assert(chunkedV.dropRight(1).forall(_.size == n))
         // Last list has at most n0 values
-        chunkedV.lastOption.fold(true)(_.size <= n) shouldBe true
+        assert(chunkedV.lastOption.fold(true)(_.size <= n))
         // Flattened sequence is equal to vector without chunking
-        chunkedV.foldLeft(Vector.empty[Int])((v, l) => v ++ l.toVector) shouldBe unchunkedV
+        assert(chunkedV.foldLeft(Vector.empty[Int])((v, l) => v ++ l.toVector) == unchunkedV)
       }
 
       "no-fewer" in forAll { (s: Stream[Pure, Int], n0: PosInt) =>
@@ -510,34 +497,34 @@ class StreamSpec extends Fs2Spec {
         val unchunkedV = s.toVector
         val expectedSize = unchunkedV.size - (unchunkedV.size % n)
         // All lists have n0 values
-        chunkedV.forall(_.size == n) shouldBe true
+        assert(chunkedV.forall(_.size == n))
         // Flattened sequence is equal to vector without chunking, minus "left over" values that could not fit in a chunk
-        chunkedV.foldLeft(Vector.empty[Int])((v, l) => v ++ l.toVector) shouldBe unchunkedV.take(
-          expectedSize
-        )
+        val left = chunkedV.foldLeft(Vector.empty[Int])((v, l) => v ++ l.toVector)
+        val right = unchunkedV.take(expectedSize)
+        assert(left == right)
       }
     }
 
     "chunks" - {
       "chunks.map identity" in forAll { (v: Vector[Vector[Int]]) =>
         val s = if (v.isEmpty) Stream.empty else v.map(Stream.emits).reduce(_ ++ _)
-        s.chunks.map(_.toVector).toVector shouldBe v.filter(_.nonEmpty)
+        assert(s.chunks.map(_.toVector).toVector == v.filter(_.nonEmpty))
       }
 
       "chunks.flatMap(chunk) identity" in forAll { (v: Vector[Vector[Int]]) =>
         val s = if (v.isEmpty) Stream.empty else v.map(Stream.emits).reduce(_ ++ _)
-        s.chunks.flatMap(Stream.chunk).toVector shouldBe v.flatten
+        assert(s.chunks.flatMap(Stream.chunk).toVector == v.flatten)
       }
     }
 
     "collect" in forAll { (s: Stream[Pure, Int]) =>
       val pf: PartialFunction[Int, Int] = { case x if x % 2 == 0 => x }
-      s.collect(pf).toVector shouldBe s.toVector.collect(pf)
+      assert(s.collect(pf).toVector == s.toVector.collect(pf))
     }
 
     "collectFirst" in forAll { (s: Stream[Pure, Int]) =>
       val pf: PartialFunction[Int, Int] = { case x if x % 2 == 0 => x }
-      s.collectFirst(pf).toVector shouldBe s.collectFirst(pf).toVector
+      assert(s.collectFirst(pf).toVector == s.collectFirst(pf).toVector)
     }
 
     "compile" - {
@@ -603,7 +590,7 @@ class StreamSpec extends Fs2Spec {
 
               stream >> io >> resource >> st.get
             }
-            .asserting(_ shouldBe expected)
+            .asserting(it => assert(it == expected))
         }
 
         "onFinalizeWeak" in {
@@ -622,7 +609,7 @@ class StreamSpec extends Fs2Spec {
                 .lastOrError
                 .use(x => record(x)) >> st.get
             }
-            .asserting(_ shouldBe List("1", "emit", "2", "3", "4"))
+            .asserting(it => assert(it == List("1", "emit", "2", "3", "4")))
         }
 
         "last scope extended, not all scopes" - {
@@ -640,7 +627,7 @@ class StreamSpec extends Fs2Spec {
                   .lastOrError
                   .use(x => record(x)) *> st.get
               }
-              .asserting(_ shouldBe List("first finalize", "start", "second finalize"))
+              .asserting(it => assert(it == List("first finalize", "start", "second finalize")))
           }
           "2" in {
             Ref[IO]
@@ -652,8 +639,8 @@ class StreamSpec extends Fs2Spec {
                   Stream.bracket(IO("c"))(_ => record("third finalize"))).compile.resource.lastOrError
                   .use(x => record(x)) *> st.get
               }
-              .asserting(
-                _ shouldBe List("first finalize", "second finalize", "c", "third finalize")
+              .asserting(it =>
+                assert(it == List("first finalize", "second finalize", "c", "third finalize"))
               )
           }
         }
@@ -670,7 +657,7 @@ class StreamSpec extends Fs2Spec {
                 .lastOrError
                 .allocated >> written.get
             }
-            .asserting(_ shouldBe false)
+            .asserting(it => assert(it == false))
         }
 
         "interruption" - {
@@ -685,7 +672,7 @@ class StreamSpec extends Fs2Spec {
               .compile
               .lastOrError
               .timeout(2.seconds)
-              .asserting(_ shouldBe true)
+              .asserting(it => assert(it == true))
           }
 
           "2" in {
@@ -695,17 +682,13 @@ class StreamSpec extends Fs2Spec {
                 .compile
                 .resource
                 .drain
-                .use { _ =>
-                  IO.unit
-                }
+                .use(_ => IO.unit)
                 .guaranteeCase(stop.complete)
 
-              r.start.flatMap { fiber =>
-                IO.sleep(200.millis) >> fiber.cancel >> stop.get
-              }
+              r.start.flatMap(fiber => IO.sleep(200.millis) >> fiber.cancel >> stop.get)
             }
             p.timeout(2.seconds)
-              .asserting(_ shouldBe ExitCase.Canceled)
+              .asserting(it => assert(it == ExitCase.Canceled))
           }
         }
       }
@@ -715,7 +698,11 @@ class StreamSpec extends Fs2Spec {
       "when background stream terminates, overall stream continues" in forAll {
         (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
           val expected = s1.toList
-          s1.delayBy[IO](25.millis).concurrently(s2).compile.toList.asserting(_ shouldBe expected)
+          s1.delayBy[IO](25.millis)
+            .concurrently(s2)
+            .compile
+            .toList
+            .asserting(it => assert(it == expected))
       }
 
       "when background stream fails, overall stream fails" in forAll { (s: Stream[Pure, Int]) =>
@@ -789,9 +776,7 @@ class StreamSpec extends Fs2Spec {
 
                   Stream
                     .bracket(IO.unit)(_ => finRef.update(_ :+ "Outer"))
-                    .flatMap { _ =>
-                      s.covary[IO].concurrently(runner)
-                    }
+                    .flatMap(_ => s.covary[IO].concurrently(runner))
                     .interruptWhen(halt.get.attempt)
                     .compile
                     .drain
@@ -802,13 +787,14 @@ class StreamSpec extends Fs2Spec {
                           if (runnerStarted) IO {
                             // finalizers shall be called in correct order and
                             // exception shall be thrown
-                            finalizers shouldBe List("Inner", "Outer")
-                            r.swap.toOption.get shouldBe an[Err]
-                          } else
+                            assert(finalizers == List("Inner", "Outer"))
+                            assert(r.swap.toOption.get.isInstanceOf[Err])
+                          }
+                          else
                             IO {
                               // still the outer finalizer shall be run, but there is no failure in `s`
-                              finalizers shouldBe List("Outer")
-                              r shouldBe Right(())
+                              assert(finalizers == List("Outer"))
+                              assert(r == Right(()))
                             }
                         }
                       }
@@ -827,51 +813,52 @@ class StreamSpec extends Fs2Spec {
         .debounce(delay)
         .compile
         .toList
-        .asserting(_ shouldBe List(3, 6))
+        .asserting(it => assert(it == List(3, 6)))
     }
 
     "delete" in forAll { (s: Stream[Pure, Int], idx0: PosZInt) =>
       val v = s.toVector
       val i = if (v.isEmpty) 0 else v(idx0 % v.size)
-      s.delete(_ == i).toVector shouldBe v.diff(Vector(i))
+      assert(s.delete(_ == i).toVector == v.diff(Vector(i)))
     }
 
     "drop" in forAll { (s: Stream[Pure, Int], negate: Boolean, n0: PosZInt) =>
       val v = s.toVector
       val n1 = if (v.isEmpty) 0 else n0 % v.size
       val n = if (negate) -n1 else n1
-      s.drop(n).toVector shouldBe s.toVector.drop(n)
+      assert(s.drop(n).toVector == s.toVector.drop(n))
     }
 
     "dropLast" in forAll { (s: Stream[Pure, Int]) =>
-      s.dropLast.toVector shouldBe s.toVector.dropRight(1)
+      assert(s.dropLast.toVector == s.toVector.dropRight(1))
     }
 
     "dropLastIf" in forAll { (s: Stream[Pure, Int]) =>
-      s.dropLastIf(_ => false).toVector shouldBe s.toVector
-      s.dropLastIf(_ => true).toVector shouldBe s.toVector.dropRight(1)
+      assert(s.dropLastIf(_ => false).toVector == s.toVector)
+      assert(s.dropLastIf(_ => true).toVector == s.toVector.dropRight(1))
     }
 
     "dropRight" in forAll { (s: Stream[Pure, Int], negate: Boolean, n0: PosZInt) =>
       val v = s.toVector
       val n1 = if (v.isEmpty) 0 else n0 % v.size
       val n = if (negate) -n1 else n1
-      s.dropRight(n).toVector shouldBe v.dropRight(n)
+      assert(s.dropRight(n).toVector == v.dropRight(n))
     }
 
     "dropWhile" in forAll { (s: Stream[Pure, Int], n0: PosZInt) =>
       val n = n0 % 20
       val set = s.toVector.take(n).toSet
-      s.dropWhile(set).toVector shouldBe s.toVector.dropWhile(set)
+      assert(s.dropWhile(set).toVector == s.toVector.dropWhile(set))
     }
 
     "dropThrough" in forAll { (s: Stream[Pure, Int], n0: PosZInt) =>
       val n = n0 % 20
       val set = s.toVector.take(n).toSet
-      s.dropThrough(set).toVector shouldBe {
+      val expected = {
         val vec = s.toVector.dropWhile(set)
         if (vec.isEmpty) vec else vec.tail
       }
+      assert(s.dropThrough(set).toVector == expected)
     }
 
     "duration" in {
@@ -885,9 +872,9 @@ class StreamSpec extends Fs2Spec {
         .compile
         .toVector
         .asserting { result =>
-          result should have size (1)
+          assert(result.size == 1)
           val head = result.head
-          head.toMillis should be >= (delay.toMillis - 5)
+          assert(head.toMillis >= (delay.toMillis - 5))
         }
     }
 
@@ -895,42 +882,46 @@ class StreamSpec extends Fs2Spec {
       val s1List = s1.toList
       val s2List = s2.toList
       s1.covary[IO].either(s2).compile.toList.asserting { result =>
-        result.collect { case Left(i)  => i } shouldBe s1List
-        result.collect { case Right(i) => i } shouldBe s2List
+        assert(result.collect { case Left(i)  => i } == s1List)
+        assert(result.collect { case Right(i) => i } == s2List)
       }
     }
 
-    "eval" in { Stream.eval(SyncIO(23)).compile.toList.asserting(_ shouldBe List(23)) }
+    "eval" in { Stream.eval(SyncIO(23)).compile.toList.asserting(it => assert(it == List(23))) }
 
     "evals" - {
       "with List" in {
-        Stream.evals(IO(List(1, 2, 3))).compile.toList.asserting(_ shouldBe List(1, 2, 3))
+        Stream.evals(IO(List(1, 2, 3))).compile.toList.asserting(it => assert(it == List(1, 2, 3)))
       }
       "with Chain" in {
-        Stream.evals(IO(Chain(4, 5, 6))).compile.toList.asserting(_ shouldBe List(4, 5, 6))
+        Stream.evals(IO(Chain(4, 5, 6))).compile.toList.asserting(it => assert(it == List(4, 5, 6)))
       }
       "with Option" in {
-        Stream.evals(IO(Option(42))).compile.toList.asserting(_ shouldBe List(42))
+        Stream.evals(IO(Option(42))).compile.toList.asserting(it => assert(it == List(42)))
       }
     }
 
     "evalSeq" - {
       "with List" in {
-        Stream.evalSeq(IO(List(1, 2, 3))).compile.toList.asserting(_ shouldBe List(1, 2, 3))
+        Stream
+          .evalSeq(IO(List(1, 2, 3)))
+          .compile
+          .toList
+          .asserting(it => assert(it == List(1, 2, 3)))
       }
       "with Seq" in {
-        Stream.evalSeq(IO(Seq(4, 5, 6))).compile.toList.asserting(_ shouldBe List(4, 5, 6))
+        Stream.evalSeq(IO(Seq(4, 5, 6))).compile.toList.asserting(it => assert(it == List(4, 5, 6)))
       }
     }
 
     "evalFilter" - {
       "with effectful const(true)" in forAll { s: Stream[Pure, Int] =>
         val s1 = s.toList
-        s.evalFilter(_ => IO.pure(true)).compile.toList.asserting(_ shouldBe s1)
+        s.evalFilter(_ => IO.pure(true)).compile.toList.asserting(it => assert(it == s1))
       }
 
       "with effectful const(false)" in forAll { s: Stream[Pure, Int] =>
-        s.evalFilter(_ => IO.pure(false)).compile.toList.asserting(_ shouldBe empty)
+        s.evalFilter(_ => IO.pure(false)).compile.toList.asserting(it => assert(it.isEmpty))
       }
 
       "with function that filters out odd elements" in {
@@ -939,7 +930,7 @@ class StreamSpec extends Fs2Spec {
           .evalFilter(e => IO(e % 2 == 0))
           .compile
           .toList
-          .asserting(_ shouldBe List(2, 4, 6, 8))
+          .asserting(it => assert(it == List(2, 4, 6, 8)))
       }
     }
 
@@ -950,7 +941,7 @@ class StreamSpec extends Fs2Spec {
           .evalFilterAsync(5)(_ => IO.pure(true))
           .compile
           .toList
-          .asserting(_ shouldBe s1)
+          .asserting(it => assert(it == s1))
       }
 
       "with effectful const(false)" in forAll { s: Stream[Pure, Int] =>
@@ -958,7 +949,7 @@ class StreamSpec extends Fs2Spec {
           .evalFilterAsync(5)(_ => IO.pure(false))
           .compile
           .toList
-          .asserting(_ shouldBe empty)
+          .asserting(it => assert(it.isEmpty))
       }
 
       "with function that filters out odd elements" in {
@@ -967,7 +958,7 @@ class StreamSpec extends Fs2Spec {
           .evalFilterAsync[IO](5)(e => IO(e % 2 == 0))
           .compile
           .toList
-          .asserting(_ shouldBe List(2, 4, 6, 8))
+          .asserting(it => assert(it == List(2, 4, 6, 8)))
       }
 
       "filters up to N items in parallel" in {
@@ -999,18 +990,18 @@ class StreamSpec extends Fs2Spec {
                 .lastOrError
                 .product(sig.get)
           }
-          .asserting((_ shouldBe ((n, 0))))
+          .asserting(it => assert(it == ((n, 0))))
       }
     }
 
     "evalFilterNot" - {
       "with effectful const(true)" in forAll { s: Stream[Pure, Int] =>
         val s1 = s.toList
-        s.evalFilterNot(_ => IO.pure(false)).compile.toList.asserting(_ shouldBe s1)
+        s.evalFilterNot(_ => IO.pure(false)).compile.toList.asserting(it => assert(it == s1))
       }
 
       "with effectful const(false)" in forAll { s: Stream[Pure, Int] =>
-        s.evalFilterNot(_ => IO.pure(true)).compile.toList.asserting(_ shouldBe empty)
+        s.evalFilterNot(_ => IO.pure(true)).compile.toList.asserting(it => assert(it.isEmpty))
       }
 
       "with function that filters out odd elements" in {
@@ -1019,7 +1010,7 @@ class StreamSpec extends Fs2Spec {
           .evalFilterNot(e => IO(e % 2 == 0))
           .compile
           .toList
-          .asserting(_ shouldBe List(1, 3, 5, 7, 9))
+          .asserting(it => assert(it == List(1, 3, 5, 7, 9)))
       }
     }
 
@@ -1029,7 +1020,7 @@ class StreamSpec extends Fs2Spec {
           .evalFilterNotAsync(5)(_ => IO.pure(true))
           .compile
           .toList
-          .asserting(_ shouldBe empty)
+          .asserting(it => assert(it.isEmpty))
       }
 
       "with effectful const(false)" in forAll { s: Stream[Pure, Int] =>
@@ -1038,7 +1029,7 @@ class StreamSpec extends Fs2Spec {
           .evalFilterNotAsync(5)(_ => IO.pure(false))
           .compile
           .toList
-          .asserting(_ shouldBe s1)
+          .asserting(it => assert(it == s1))
       }
 
       "with function that filters out odd elements" in {
@@ -1047,7 +1038,7 @@ class StreamSpec extends Fs2Spec {
           .evalFilterNotAsync[IO](5)(e => IO(e % 2 == 0))
           .compile
           .toList
-          .asserting(_ shouldBe List(1, 3, 5, 7, 9))
+          .asserting(it => assert(it == List(1, 3, 5, 7, 9)))
       }
 
       "filters up to N items in parallel" in {
@@ -1079,7 +1070,7 @@ class StreamSpec extends Fs2Spec {
                 .lastOrError
                 .product(sig.get)
           }
-          .asserting((_ shouldBe ((n, 0))))
+          .asserting(it => assert(it == ((n, 0))))
       }
     }
 
@@ -1088,15 +1079,19 @@ class StreamSpec extends Fs2Spec {
       val n = n0 % 20 + 1
       val f = (_: Int) % n == 0
       val r = s.covary[IO].evalMapAccumulate(m)((s, i) => IO.pure((s + i, f(i))))
-      r.map(_._1).compile.toVector.asserting(_ shouldBe sVector.scanLeft(m)(_ + _).tail)
-      r.map(_._2).compile.toVector.asserting(_ shouldBe sVector.map(f))
+      r.map(_._1).compile.toVector.asserting(it => assert(it == sVector.scanLeft(m)(_ + _).tail))
+      r.map(_._2).compile.toVector.asserting(it => assert(it == sVector.map(f)))
     }
 
     "evalScan" in forAll { (s: Stream[Pure, Int], n: String) =>
       val sVector = s.toVector
       val f: (String, Int) => IO[String] = (a: String, b: Int) => IO.pure(a + b)
       val g = (a: String, b: Int) => a + b
-      s.covary[IO].evalScan(n)(f).compile.toVector.asserting(_ shouldBe sVector.scanLeft(n)(g))
+      s.covary[IO]
+        .evalScan(n)(f)
+        .compile
+        .toVector
+        .asserting(it => assert(it == sVector.scanLeft(n)(g)))
     }
 
     "every" in {
@@ -1128,12 +1123,12 @@ class StreamSpec extends Fs2Spec {
 
       (IO.shift >> durationsSinceSpike.compile.toVector).unsafeToFuture().map { result =>
         val list = result.toList
-        withClue("every always emits true first") { assert(list.head._1) }
+        withClue("every always emits true first")(assert(list.head._1))
         withClue(s"true means the delay has passed: ${list.tail}") {
-          assert(list.tail.filter(_._1).map(_._2).forall { _ >= delay })
+          assert(list.tail.filter(_._1).map(_._2).forall(_ >= delay))
         }
         withClue(s"false means the delay has not passed: ${list.tail}") {
-          assert(list.tail.filterNot(_._1).map(_._2).forall { _ <= delay })
+          assert(list.tail.filterNot(_._1).map(_._2).forall(_ <= delay))
         }
       }
     }
@@ -1141,85 +1136,84 @@ class StreamSpec extends Fs2Spec {
     "exists" in forAll { (s: Stream[Pure, Int], n0: PosInt) =>
       val n = n0 % 20 + 1
       val f = (i: Int) => i % n == 0
-      s.exists(f).toList shouldBe List(s.toList.exists(f))
+      assert(s.exists(f).toList == List(s.toList.exists(f)))
     }
 
     "filter" - {
       "1" in forAll { (s: Stream[Pure, Int], n0: PosInt) =>
         val n = n0 % 20 + 1
         val predicate = (i: Int) => i % n == 0
-        s.filter(predicate).toList shouldBe s.toList.filter(predicate)
+        assert(s.filter(predicate).toList == s.toList.filter(predicate))
       }
 
       "2" in forAll { (s: Stream[Pure, Double]) =>
         val predicate = (i: Double) => i - i.floor < 0.5
         val s2 = s.mapChunks(c => Chunk.doubles(c.toArray))
-        s2.filter(predicate).toList shouldBe s2.toList.filter(predicate)
+        assert(s2.filter(predicate).toList == s2.toList.filter(predicate))
       }
 
       "3" in forAll { (s: Stream[Pure, Byte]) =>
         val predicate = (b: Byte) => b < 0
         val s2 = s.mapChunks(c => Chunk.bytes(c.toArray))
-        s2.filter(predicate).toList shouldBe s2.toList.filter(predicate)
+        assert(s2.filter(predicate).toList == s2.toList.filter(predicate))
       }
 
       "4" in forAll { (s: Stream[Pure, Boolean]) =>
         val predicate = (b: Boolean) => !b
         val s2 = s.mapChunks(c => Chunk.booleans(c.toArray))
-        s2.filter(predicate).toList shouldBe s2.toList.filter(predicate)
+        assert(s2.filter(predicate).toList == s2.toList.filter(predicate))
       }
     }
 
     "find" in forAll { (s: Stream[Pure, Int], i: Int) =>
       val predicate = (item: Int) => item < i
-      s.find(predicate).toList shouldBe s.toList.find(predicate).toList
+      assert(s.find(predicate).toList == s.toList.find(predicate).toList)
     }
 
     "flatMap" in forAll { (s: Stream[Pure, Stream[Pure, Int]]) =>
-      s.flatMap(inner => inner).toList shouldBe s.toList.flatMap(inner => inner.toList)
+      assert(s.flatMap(inner => inner).toList == s.toList.flatMap(inner => inner.toList))
     }
 
     "fold" - {
       "1" in forAll { (s: Stream[Pure, Int], n: Int) =>
         val f = (a: Int, b: Int) => a + b
-        s.fold(n)(f).toList shouldBe List(s.toList.foldLeft(n)(f))
+        assert(s.fold(n)(f).toList == List(s.toList.foldLeft(n)(f)))
       }
 
       "2" in forAll { (s: Stream[Pure, Int], n: String) =>
         val f = (a: String, b: Int) => a + b
-        s.fold(n)(f).toList shouldBe List(s.toList.foldLeft(n)(f))
+        assert(s.fold(n)(f).toList == List(s.toList.foldLeft(n)(f)))
       }
     }
 
     "foldMonoid" - {
       "1" in forAll { (s: Stream[Pure, Int]) =>
-        s.foldMonoid.toVector shouldBe Vector(s.toVector.combineAll)
+        assert(s.foldMonoid.toVector == Vector(s.toVector.combineAll))
       }
 
       "2" in forAll { (s: Stream[Pure, Double]) =>
-        s.foldMonoid.toVector shouldBe Vector(s.toVector.combineAll)
+        assert(s.foldMonoid.toVector == Vector(s.toVector.combineAll))
       }
     }
 
     "fold1" in forAll { (s: Stream[Pure, Int]) =>
       val v = s.toVector
       val f = (a: Int, b: Int) => a + b
-      s.fold1(f).toVector shouldBe v.headOption.fold(Vector.empty[Int])(h =>
-        Vector(v.drop(1).foldLeft(h)(f))
-      )
+      val expected = v.headOption.fold(Vector.empty[Int])(h => Vector(v.drop(1).foldLeft(h)(f)))
+      assert(s.fold1(f).toVector == expected)
     }
 
     "forall" in forAll { (s: Stream[Pure, Int], n0: PosInt) =>
       val n = n0 % 20 + 1
       val f = (i: Int) => i % n == 0
-      s.forall(f).toList shouldBe List(s.toList.forall(f))
+      assert(s.forall(f).toList == List(s.toList.forall(f)))
     }
 
     "fromEither" in forAll { either: Either[Throwable, Int] =>
       val stream: Stream[Fallible, Int] = Stream.fromEither[Fallible](either)
       either match {
-        case Left(t)  => stream.toList shouldBe Left(t)
-        case Right(i) => stream.toList shouldBe Right(List(i))
+        case Left(t)  => assert(stream.toList == Left(t))
+        case Right(i) => assert(stream.toList == Right(List(i)))
       }
     }
 
@@ -1228,7 +1222,7 @@ class StreamSpec extends Fs2Spec {
         .fromIterator[SyncIO](x.iterator)
         .compile
         .toList
-        .asserting(_ shouldBe x)
+        .asserting(it => assert(it == x))
     }
 
     "fromBlockingIterator" in forAll { x: List[Int] =>
@@ -1236,7 +1230,7 @@ class StreamSpec extends Fs2Spec {
         .fromBlockingIterator[IO](Blocker.liftExecutionContext(implicitly), x.iterator)
         .compile
         .toList
-        .asserting(_ shouldBe x)
+        .asserting(it => assert(it == x))
     }
 
     "groupAdjacentBy" in forAll { (s: Stream[Pure, Int], n0: PosInt) =>
@@ -1244,18 +1238,19 @@ class StreamSpec extends Fs2Spec {
       val f = (i: Int) => i % n
       val s1 = s.groupAdjacentBy(f)
       val s2 = s.map(f).changes
-      s1.map(_._2).toList.flatMap(_.toList) shouldBe s.toList
-      s1.map(_._1).toList shouldBe s2.toList
-      s1.map { case (k, vs) => vs.toVector.forall(f(_) == k) }.toList shouldBe s2
-        .map(_ => true)
-        .toList
+      assert(s1.map(_._2).toList.flatMap(_.toList) == s.toList)
+      assert(s1.map(_._1).toList == s2.toList)
+      assert(
+        s1.map { case (k, vs) => vs.toVector.forall(f(_) == k) }.toList ==
+          s2.map(_ => true).toList
+      )
     }
 
     "groupAdjacentByLimit" - {
       "limiting" in forAll { (s: Stream[Pure, Int], n0: PosInt) =>
         val n = n0 % 20 + 1
         val s1 = s.groupAdjacentByLimit(n)(_ => true)
-        s1.map(_._2).toList.map(_.toList) shouldBe s.toList.grouped(n).toList
+        assert(s1.map(_._2).toList.map(_.toList) == s.toList.grouped(n).toList)
       }
     }
 
@@ -1272,7 +1267,7 @@ class StreamSpec extends Fs2Spec {
             .flatMap(s => Stream.emits(s.toList))
             .compile
             .toList
-            .asserting(_ shouldBe sList)
+            .asserting(it => assert(it == sList))
       }
 
       "should never emit empty groups" in forAll {
@@ -1288,7 +1283,7 @@ class StreamSpec extends Fs2Spec {
             .map(_.toList)
             .compile
             .toList
-            .asserting(_.forall(_.nonEmpty) shouldBe true)
+            .asserting(it => assert(it.forall(_.nonEmpty)))
       }
 
       "should never have more elements than in its specified limit" in forAll {
@@ -1301,7 +1296,7 @@ class StreamSpec extends Fs2Spec {
             .map(_.toList.size)
             .compile
             .toList
-            .asserting(_.forall(_ <= maxGroupSize) shouldBe true)
+            .asserting(it => assert(it.forall(_ <= maxGroupSize)))
       }
 
       "should return a finite stream back in a single chunk given a group size equal to the stream size and an absurdly high duration" in forAll {
@@ -1313,27 +1308,27 @@ class StreamSpec extends Fs2Spec {
             .groupWithin(streamAsList.size, (Int.MaxValue - 1L).nanoseconds)
             .compile
             .toList
-            .asserting(_.head.toList shouldBe streamAsList)
+            .asserting(it => assert(it.head.toList == streamAsList))
       }
     }
 
     "handleErrorWith" - {
       "1" in forAll { (s: Stream[Pure, Int]) =>
         val s2 = s.covary[Fallible] ++ Stream.raiseError[Fallible](new Err)
-        s2.handleErrorWith(_ => Stream.empty).toList shouldBe Right(s.toList)
+        assert(s2.handleErrorWith(_ => Stream.empty).toList == Right(s.toList))
       }
 
       "2" in {
-        Stream.raiseError[Fallible](new Err).handleErrorWith(_ => Stream(1)).toList shouldBe Right(
-          List(1)
-        )
+        val result = Stream.raiseError[Fallible](new Err).handleErrorWith(_ => Stream(1)).toList
+        assert(result == Right(List(1)))
       }
 
       "3" in {
-        Stream(1)
+        val result = Stream(1)
           .append(Stream.raiseError[Fallible](new Err))
           .handleErrorWith(_ => Stream(1))
-          .toList shouldBe Right(List(1, 1))
+          .toList
+        assert(result == Right(List(1, 1)))
       }
 
       "4 - error in eval" in {
@@ -1344,7 +1339,7 @@ class StreamSpec extends Fs2Spec {
           .take(1)
           .compile
           .toVector
-          .asserting(_.head.swap.toOption.get shouldBe an[Err])
+          .asserting(it => assert(it.head.swap.toOption.get.isInstanceOf[Err]))
       }
 
       "5" in {
@@ -1355,8 +1350,8 @@ class StreamSpec extends Fs2Spec {
           .compile
           .toVector
           .asserting { v =>
-            v should have size (1)
-            v.head shouldBe an[Err]
+            assert(v.size == 1)
+            assert(v.head.isInstanceOf[Err])
           }
       }
 
@@ -1368,8 +1363,8 @@ class StreamSpec extends Fs2Spec {
           .compile
           .toVector
           .asserting { v =>
-            v should have size (1)
-            v.head shouldBe an[Err]
+            assert(v.size == 1)
+            assert(v.head.isInstanceOf[Err])
           }
       }
 
@@ -1380,10 +1375,11 @@ class StreamSpec extends Fs2Spec {
           .attempt
           .compile
           .toVector
-          .asserting(
-            _.collect { case Left(t) => t }
-              .find(_.isInstanceOf[Err])
-              .isDefined shouldBe true
+          .asserting(it =>
+            assert(
+              it.collect { case Left(t) => t }
+                .exists(_.isInstanceOf[Err])
+            )
           )
       }
 
@@ -1393,15 +1389,13 @@ class StreamSpec extends Fs2Spec {
           Pull
             .pure(1)
             .covary[SyncIO]
-            .handleErrorWith(_ => { i += 1; Pull.pure(2) })
-            .flatMap { _ =>
-              Pull.output1(i) >> Pull.raiseError[SyncIO](new Err)
-            }
+            .handleErrorWith { _ => i += 1; Pull.pure(2) }
+            .flatMap(_ => Pull.output1(i) >> Pull.raiseError[SyncIO](new Err))
             .stream
             .compile
             .drain
             .assertThrows[Err]
-            .asserting(_ => i shouldBe 0)
+            .asserting(_ => assert(i == 0))
         }
       }
 
@@ -1410,15 +1404,13 @@ class StreamSpec extends Fs2Spec {
           var i = 0
           Pull
             .eval(SyncIO(1))
-            .handleErrorWith(_ => { i += 1; Pull.pure(2) })
-            .flatMap { _ =>
-              Pull.output1(i) >> Pull.raiseError[SyncIO](new Err)
-            }
+            .handleErrorWith { _ => i += 1; Pull.pure(2) }
+            .flatMap(_ => Pull.output1(i) >> Pull.raiseError[SyncIO](new Err))
             .stream
             .compile
             .drain
             .assertThrows[Err]
-            .asserting(_ => i shouldBe 0)
+            .asserting(_ => assert(i == 0))
         }
       }
 
@@ -1430,16 +1422,14 @@ class StreamSpec extends Fs2Spec {
             .flatMap { x =>
               Pull
                 .pure(x)
-                .handleErrorWith(_ => { i += 1; Pull.pure(2) })
-                .flatMap { _ =>
-                  Pull.output1(i) >> Pull.raiseError[SyncIO](new Err)
-                }
+                .handleErrorWith { _ => i += 1; Pull.pure(2) }
+                .flatMap(_ => Pull.output1(i) >> Pull.raiseError[SyncIO](new Err))
             }
             .stream
             .compile
             .drain
             .assertThrows[Err]
-            .asserting(_ => i shouldBe 0)
+            .asserting(_ => assert(i == 0))
         }
       }
 
@@ -1449,13 +1439,11 @@ class StreamSpec extends Fs2Spec {
           Pull
             .eval(SyncIO(???))
             .handleErrorWith(_ => Pull.pure(i += 1))
-            .flatMap { _ =>
-              Pull.output1(i)
-            }
+            .flatMap(_ => Pull.output1(i))
             .stream
             .compile
             .drain
-            .asserting(_ => i shouldBe 1)
+            .asserting(_ => assert(i == 1))
         }
       }
 
@@ -1468,7 +1456,7 @@ class StreamSpec extends Fs2Spec {
             .compile
             .drain
             .assertThrows[NotImplementedError]
-            .asserting(_ => i shouldBe 1)
+            .asserting(_ => assert(i == 1))
         }
       }
 
@@ -1479,12 +1467,10 @@ class StreamSpec extends Fs2Spec {
             .range(0, 10)
             .covary[SyncIO]
             .append(Stream.raiseError[SyncIO](new Err))
-            .handleErrorWith { _ =>
-              i += 1; Stream.empty
-            }
+            .handleErrorWith { _ => i += 1; Stream.empty }
             .compile
             .drain
-            .asserting(_ => i shouldBe 1)
+            .asserting(_ => assert(i == 1))
         }
       }
 
@@ -1508,13 +1494,11 @@ class StreamSpec extends Fs2Spec {
           (Stream
             .range(0, 3)
             .covary[SyncIO] ++ Stream.raiseError[SyncIO](new Err)).unchunk.pull.echo
-            .handleErrorWith { _ =>
-              i += 1; Pull.done
-            }
+            .handleErrorWith { _ => i += 1; Pull.done }
             .stream
             .compile
             .drain
-            .asserting(_ => i shouldBe 1)
+            .asserting(_ => assert(i == 1))
         }
       }
 
@@ -1531,64 +1515,67 @@ class StreamSpec extends Fs2Spec {
           .toVector
           .attempt
           .asserting({
-            case Left(err: CompositeFailure) => err.all.toList.count(_.isInstanceOf[Err]) shouldBe 3
-            case Left(err)                   => fail("Expected Left[CompositeFailure]", err)
-            case Right(value)                => fail(s"Expected Left[CompositeFailure] got Right($value)")
+            case Left(err: CompositeFailure) =>
+              assert(err.all.toList.count(_.isInstanceOf[Err]) == 3)
+            case Left(err)    => fail("Expected Left[CompositeFailure]", err)
+            case Right(value) => fail(s"Expected Left[CompositeFailure] got Right($value)")
           })
       }
     }
 
-    "head" in forAll { (s: Stream[Pure, Int]) =>
-      s.head.toList shouldBe s.toList.take(1)
-    }
+    "head" in forAll((s: Stream[Pure, Int]) => assert(s.head.toList == s.toList.take(1)))
 
     "interleave" - {
       "interleave left/right side infinite" in {
         val ones = Stream.constant("1")
         val s = Stream("A", "B", "C")
-        ones.interleave(s).toList shouldBe List("1", "A", "1", "B", "1", "C")
-        s.interleave(ones).toList shouldBe List("A", "1", "B", "1", "C", "1")
+        assert(ones.interleave(s).toList == List("1", "A", "1", "B", "1", "C"))
+        assert(s.interleave(ones).toList == List("A", "1", "B", "1", "C", "1"))
       }
 
       "interleave both side infinite" in {
         val ones = Stream.constant("1")
         val as = Stream.constant("A")
-        ones.interleave(as).take(3).toList shouldBe List("1", "A", "1")
-        as.interleave(ones).take(3).toList shouldBe List("A", "1", "A")
+        assert(ones.interleave(as).take(3).toList == List("1", "A", "1"))
+        assert(as.interleave(ones).take(3).toList == List("A", "1", "A"))
       }
 
       "interleaveAll left/right side infinite" in {
         val ones = Stream.constant("1")
         val s = Stream("A", "B", "C")
-        ones.interleaveAll(s).take(9).toList shouldBe List(
-          "1",
-          "A",
-          "1",
-          "B",
-          "1",
-          "C",
-          "1",
-          "1",
-          "1"
+        assert(
+          ones.interleaveAll(s).take(9).toList == List(
+            "1",
+            "A",
+            "1",
+            "B",
+            "1",
+            "C",
+            "1",
+            "1",
+            "1"
+          )
         )
-        s.interleaveAll(ones).take(9).toList shouldBe List(
-          "A",
-          "1",
-          "B",
-          "1",
-          "C",
-          "1",
-          "1",
-          "1",
-          "1"
+        assert(
+          s.interleaveAll(ones).take(9).toList == List(
+            "A",
+            "1",
+            "B",
+            "1",
+            "C",
+            "1",
+            "1",
+            "1",
+            "1"
+          )
         )
       }
 
       "interleaveAll both side infinite" in {
         val ones = Stream.constant("1")
         val as = Stream.constant("A")
-        ones.interleaveAll(as).take(3).toList shouldBe List("1", "A", "1")
-        as.interleaveAll(ones).take(3).toList shouldBe List("A", "1", "A")
+        assert(ones.interleaveAll(as).take(3).toList == List("1", "A", "1"))
+        assert(as.interleaveAll(ones).take(3).toList == List("A", "1", "A"))
       }
 
       // Uses a small scope to avoid using time to generate too large streams and not finishing
@@ -1596,10 +1583,12 @@ class StreamSpec extends Fs2Spec {
         forAll(intsBetween(0, 100)) { (n: Int) =>
           val ones = Stream.constant("1")
           val as = Stream.constant("A")
-          ones.interleaveAll(as).take(n).toVector shouldBe ones
-            .interleave(as)
-            .take(n)
-            .toVector
+          assert(
+            ones.interleaveAll(as).take(n).toVector == ones
+              .interleave(as)
+              .take(n)
+              .toVector
+          )
         }
       }
     }
@@ -1617,7 +1606,7 @@ class StreamSpec extends Fs2Spec {
             }
             .compile
             .toList
-            .asserting(_ shouldBe Nil)
+            .asserting(it => assert(it == Nil))
         }
       }
 
@@ -1631,7 +1620,7 @@ class StreamSpec extends Fs2Spec {
             }
             .compile
             .toList
-            .asserting(_ shouldBe Nil)
+            .asserting(it => assert(it == Nil))
         }
       }
 
@@ -1667,9 +1656,8 @@ class StreamSpec extends Fs2Spec {
           val interrupt =
             Stream.sleep_[IO](20.millis).compile.drain.attempt
 
-          def loop(i: Int): Stream[IO, Int] = Stream.emit(i).covary[IO].flatMap { i =>
-            Stream.emit(i) ++ loop(i + 1)
-          }
+          def loop(i: Int): Stream[IO, Int] =
+            Stream.emit(i).covary[IO].flatMap(i => Stream.emit(i) ++ loop(i + 1))
 
           loop(0)
             .interruptWhen(interrupt)
@@ -1737,7 +1725,7 @@ class StreamSpec extends Fs2Spec {
               .interruptWhen(Stream.constant(false))
               .compile
               .toList
-              .asserting(_ shouldBe s.toList)
+              .asserting(it => assert(it == s.toList))
         }
       }
 
@@ -1750,9 +1738,8 @@ class StreamSpec extends Fs2Spec {
               s.covary[IO]
                 .evalMap { i =>
                   // enable interruption and hang when hitting a value divisible by 7
-                  if (i % 7 == 0) enableInterrupt.release.flatMap { _ =>
-                    barrier.acquire.as(i)
-                  } else IO.pure(i)
+                  if (i % 7 == 0) enableInterrupt.release.flatMap(_ => barrier.acquire.as(i))
+                  else IO.pure(i)
                 }
                 .interruptWhen(interrupt)
             }
@@ -1763,7 +1750,7 @@ class StreamSpec extends Fs2Spec {
             // as soon as we hit a value divisible by 7, we enable interruption then hang before emitting it,
             // so there should be no elements in the output that are divisible by 7
             // this also checks that interruption works fine even if one or both streams are in a hung state
-            result.forall(i => i % 7 != 0) shouldBe true
+            assert(result.forall(i => i % 7 != 0))
           }
       }
 
@@ -1777,7 +1764,7 @@ class StreamSpec extends Fs2Spec {
             }
             .compile
             .toList
-            .asserting(_ shouldBe Nil)
+            .asserting(it => assert(it == Nil))
         }
       }
 
@@ -1816,7 +1803,7 @@ class StreamSpec extends Fs2Spec {
           .append(Stream(5))
           .compile
           .toList
-          .asserting(_ shouldBe List(5))
+          .asserting(it => assert(it == List(5)))
       }
 
       "14a - interrupt evalMap and then resume on append" in {
@@ -1830,7 +1817,7 @@ class StreamSpec extends Fs2Spec {
             .append(s)
             .compile
             .toList
-            .asserting(_ shouldBe expected)
+            .asserting(it => assert(it == expected))
         }
       }
 
@@ -1845,7 +1832,7 @@ class StreamSpec extends Fs2Spec {
             .collect { case Some(v) => v }
             .compile
             .toList
-            .asserting(_ shouldBe expected)
+            .asserting(it => assert(it == expected))
         }
       }
 
@@ -1865,7 +1852,7 @@ class StreamSpec extends Fs2Spec {
             .collect { case Some(i) => i }
             .compile
             .toList
-            .asserting(_ shouldBe expected)
+            .asserting(it => assert(it == expected))
         }
       }
 
@@ -1886,7 +1873,7 @@ class StreamSpec extends Fs2Spec {
           .compile
           .toList
           .asserting(result =>
-            result shouldBe (result.headOption.toList ++ result.tail.filter(_ != 0))
+            assert(result == (result.headOption.toList ++ result.tail.filter(_ != 0)))
           )
       }
 
@@ -1907,7 +1894,7 @@ class StreamSpec extends Fs2Spec {
           .append(Stream(5))
           .compile
           .toList
-          .asserting(_ shouldBe List(5))
+          .asserting(it => assert(it == List(5)))
       }
 
       "18 - resume with append after evalMap interruption" in {
@@ -1918,7 +1905,7 @@ class StreamSpec extends Fs2Spec {
           .append(Stream(5))
           .compile
           .toList
-          .asserting(_ shouldBe List(5))
+          .asserting(it => assert(it == List(5)))
       }
 
       "19 - interrupted eval is cancelled" in {
@@ -1955,7 +1942,7 @@ class StreamSpec extends Fs2Spec {
             }
             .compile
             .toList
-            .asserting(_ shouldBe expected)
+            .asserting(it => assert(it == expected))
         }
       }
 
@@ -1966,7 +1953,7 @@ class StreamSpec extends Fs2Spec {
           .interruptWhen(IO(Right(()): Either[Throwable, Unit]))
           .compile
           .toList
-          .asserting(_ shouldBe Nil)
+          .asserting(it => assert(it == Nil))
       }
 
       "22 - nested-interrupt - interrupt in enclosing scope recovers" in {
@@ -1978,16 +1965,16 @@ class StreamSpec extends Fs2Spec {
           .append(Stream(2))
           .compile
           .toList
-          .asserting(_ shouldBe List(2))
+          .asserting(it => assert(it == List(2)))
       }
     }
 
     "intersperse" in forAll { (s: Stream[Pure, Int], n: Int) =>
-      s.intersperse(n).toList shouldBe s.toList.flatMap(i => List(i, n)).dropRight(1)
+      assert(s.intersperse(n).toList == s.toList.flatMap(i => List(i, n)).dropRight(1))
     }
 
     "iterate" in {
-      Stream.iterate(0)(_ + 1).take(100).toList shouldBe List.iterate(0, 100)(_ + 1)
+      assert(Stream.iterate(0)(_ + 1).take(100).toList == List.iterate(0, 100)(_ + 1))
     }
 
     "iterateEval" in {
@@ -1996,22 +1983,22 @@ class StreamSpec extends Fs2Spec {
         .take(100)
         .compile
         .toVector
-        .asserting(_ shouldBe List.iterate(0, 100)(_ + 1))
+        .asserting(it => assert(it == List.iterate(0, 100)(_ + 1)))
     }
 
     "last" in forAll { (s: Stream[Pure, Int]) =>
       val _ = s.last
-      s.last.toList shouldBe List(s.toList.lastOption)
+      assert(s.last.toList == List(s.toList.lastOption))
     }
 
     "lastOr" in forAll { (s: Stream[Pure, Int], n0: PosInt) =>
       val n = n0 % 20 + 1
-      s.lastOr(n).toList shouldBe List(s.toList.lastOption.getOrElse(n))
+      assert(s.lastOr(n).toList == List(s.toList.lastOption.getOrElse(n)))
     }
 
     "map" - {
-      "map.toList == toList.map" in forAll { (s: Stream[Pure, Int], f: Int => Int) =>
-        s.map(f).toList shouldBe s.toList.map(f)
+      "map.toList == toList.map" in forAll { (s: Stream[Pure, Int], f: Function1[Int, Int]) =>
+        assert(s.map(f).toList == s.toList.map(f))
       }
 
       "regression #1335 - stack safety of map" in {
@@ -2023,7 +2010,7 @@ class StreamSpec extends Fs2Spec {
         def unfoldTree(seed: Int): Tree[Int] =
           Tree(seed, Stream(seed + 1).map(unfoldTree))
 
-        unfoldTree(1).flatten.take(10).toList shouldBe List.tabulate(10)(_ + 1)
+        assert(unfoldTree(1).flatten.take(10).toList == List.tabulate(10)(_ + 1))
       }
     }
 
@@ -2032,8 +2019,8 @@ class StreamSpec extends Fs2Spec {
       val f = (_: Int) % n == 0
       val r = s.mapAccumulate(m)((s, i) => (s + i, f(i)))
 
-      r.map(_._1).toList shouldBe s.toList.scanLeft(m)(_ + _).tail
-      r.map(_._2).toList shouldBe s.toList.map(f)
+      assert(r.map(_._1).toList == s.toList.scanLeft(m)(_ + _).tail)
+      assert(r.map(_._2).toList == s.toList.map(f))
     }
 
     "mapAsync" - {
@@ -2041,13 +2028,13 @@ class StreamSpec extends Fs2Spec {
         val f = (_: Int) + 1
         val r = s.covary[IO].mapAsync(16)(i => IO(f(i)))
         val sVector = s.toVector
-        r.compile.toVector.asserting(_ shouldBe sVector.map(f))
+        r.compile.toVector.asserting(it => assert(it == sVector.map(f)))
       }
 
       "exception" in forAll { s: Stream[Pure, Int] =>
         val f = (_: Int) => IO.raiseError[Int](new RuntimeException)
         val r = (s ++ Stream(1)).covary[IO].mapAsync(1)(f).attempt
-        r.compile.toVector.asserting(_.size shouldBe 1)
+        r.compile.toVector.asserting(it => assert(it.size == 1))
       }
     }
 
@@ -2055,11 +2042,11 @@ class StreamSpec extends Fs2Spec {
       val f = (_: Int) + 1
       val r = s.covary[IO].mapAsyncUnordered(16)(i => IO(f(i)))
       val sVector = s.toVector
-      r.compile.toVector.asserting(_ should contain theSameElementsAs sVector.map(f))
+      r.compile.toVector.asserting(it => assert(containSameElements(it, sVector.map(f))))
     }
 
     "mapChunks" in forAll { (s: Stream[Pure, Int]) =>
-      s.mapChunks(identity).chunks.toList shouldBe s.chunks.toList
+      assert(s.mapChunks(identity).chunks.toList == s.chunks.toList)
     }
 
     "merge" - {
@@ -2068,17 +2055,17 @@ class StreamSpec extends Fs2Spec {
         s1.merge(s2.covary[IO])
           .compile
           .toList
-          .asserting(result => result.toSet shouldBe expected)
+          .asserting(result => assert(result.toSet == expected))
       }
 
       "left/right identity" - {
         "1" in forAll { (s1: Stream[Pure, Int]) =>
           val expected = s1.toList
-          s1.covary[IO].merge(Stream.empty).compile.toList.asserting(_ shouldBe expected)
+          s1.covary[IO].merge(Stream.empty).compile.toList.asserting(it => assert(it == expected))
         }
         "2" in forAll { (s1: Stream[Pure, Int]) =>
           val expected = s1.toList
-          Stream.empty.merge(s1.covary[IO]).compile.toList.asserting(_ shouldBe expected)
+          Stream.empty.merge(s1.covary[IO]).compile.toList.asserting(it => assert(it == expected))
         }
       }
 
@@ -2153,21 +2140,26 @@ class StreamSpec extends Fs2Spec {
                     sideRunRef.get.flatMap {
                       case (left, right) =>
                         if (left && right) IO {
-                          (finalizers should contain).allOf("Inner L", "Inner R", "Outer")
-                          finalizers.lastOption shouldBe Some("Outer")
-                          r shouldBe Left(err)
-                        } else if (left) IO {
-                          finalizers shouldBe List("Inner L", "Outer")
-                          if (leftBiased) r shouldBe Left(err)
-                          else r shouldBe Right(())
-                        } else if (right) IO {
-                          finalizers shouldBe List("Inner R", "Outer")
-                          if (!leftBiased) r shouldBe Left(err)
-                          else r shouldBe Right(())
-                        } else
+                          assert(
+                            leftContainsAllOfRight(finalizers, List("Inner L", "Inner R", "Outer"))
+                          )
+                          assert(finalizers.lastOption == Some("Outer"))
+                          assert(r == Left(err))
+                        }
+                        else if (left) IO {
+                          assert(finalizers == List("Inner L", "Outer"))
+                          if (leftBiased) assert(r == Left(err))
+                          else assert(r == Right(()))
+                        }
+                        else if (right) IO {
+                          assert(finalizers == List("Inner R", "Outer"))
+                          if (!leftBiased) assert(r == Left(err))
+                          else assert(r == Right(()))
+                        }
+                        else
                           IO {
-                            finalizers shouldBe List("Outer")
-                            r shouldBe Right(())
+                            assert(finalizers == List("Outer"))
+                            assert(r == Right(()))
                           }
                     }
                   }
@@ -2186,12 +2178,12 @@ class StreamSpec extends Fs2Spec {
             .repeatEval[IO, Unit](IO.async[Unit](cb => cb(Right(()))) >> IO.shift)
             .drain
 
-        "1" in { full.merge(hang).take(1).compile.toList.asserting(_ shouldBe List(42)) }
-        "2" in { full.merge(hang2).take(1).compile.toList.asserting(_ shouldBe List(42)) }
-        "3" in { full.merge(hang3).take(1).compile.toList.asserting(_ shouldBe List(42)) }
-        "4" in { hang.merge(full).take(1).compile.toList.asserting(_ shouldBe List(42)) }
-        "5" in { hang2.merge(full).take(1).compile.toList.asserting(_ shouldBe List(42)) }
-        "6" in { hang3.merge(full).take(1).compile.toList.asserting(_ shouldBe List(42)) }
+        "1" in { full.merge(hang).take(1).compile.toList.asserting(it => assert(it == List(42))) }
+        "2" in { full.merge(hang2).take(1).compile.toList.asserting(it => assert(it == List(42))) }
+        "3" in { full.merge(hang3).take(1).compile.toList.asserting(it => assert(it == List(42))) }
+        "4" in { hang.merge(full).take(1).compile.toList.asserting(it => assert(it == List(42))) }
+        "5" in { hang2.merge(full).take(1).compile.toList.asserting(it => assert(it == List(42))) }
+        "6" in { hang3.merge(full).take(1).compile.toList.asserting(it => assert(it == List(42))) }
       }
     }
 
@@ -2200,22 +2192,24 @@ class StreamSpec extends Fs2Spec {
       val s2List = s2.toList
       s1.covary[IO].map(Left(_)).mergeHaltBoth(s2.map(Right(_))).compile.toList.asserting {
         result =>
-          (result.collect { case Left(a)  => a } == s1List) ||
-          (result.collect { case Right(a) => a } == s2List) shouldBe true
+          assert(
+            (result.collect { case Left(a)    => a } == s1List) ||
+              (result.collect { case Right(a) => a } == s2List)
+          )
       }
     }
 
     "mergeHaltL" in forAll { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
       val s1List = s1.toList
       s1.covary[IO].map(Left(_)).mergeHaltL(s2.map(Right(_))).compile.toList.asserting { result =>
-        result.collect { case Left(a) => a } shouldBe s1List
+        assert(result.collect { case Left(a) => a } == s1List)
       }
     }
 
     "mergeHaltR" in forAll { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
       val s2List = s2.toList
       s1.covary[IO].map(Left(_)).mergeHaltR(s2.map(Right(_))).compile.toList.asserting { result =>
-        result.collect { case Right(a) => a } shouldBe s2List
+        assert(result.collect { case Right(a) => a } == s2List)
       }
     }
 
@@ -2237,7 +2231,7 @@ class StreamSpec extends Fs2Spec {
                 }
                 .asserting {
                   case (out, sum) =>
-                    out.sum shouldBe sum
+                    assert(out.sum == sum)
                 }
             }
           }
@@ -2246,9 +2240,12 @@ class StreamSpec extends Fs2Spec {
             forAll { (s: Stream[Pure, Int]) =>
               observer(s.covary[IO])(_ => Stream.raiseError[IO](new Err)).attempt.compile.toList
                 .asserting { result =>
-                  result should have size (1)
-                  result.head
-                    .fold(identity, r => fail(s"expected left but got Right($r)")) shouldBe an[Err]
+                  assert(result.size == 1)
+                  assert(
+                    result.head
+                      .fold(identity, r => fail(s"expected left but got Right($r)"))
+                      .isInstanceOf[Err]
+                  )
                 }
             }
           }
@@ -2257,20 +2254,25 @@ class StreamSpec extends Fs2Spec {
             forAll { (s: Stream[Pure, Int]) =>
               observer(s.drain ++ Stream.raiseError[IO](new Err))(_.drain).attempt.compile.toList
                 .asserting { result =>
-                  result should have size (1)
-                  result.head
-                    .fold(identity, r => fail(s"expected left but got Right($r)")) shouldBe an[Err]
+                  assert(result.size == 1)
+                  assert(
+                    result.head
+                      .fold(identity, r => fail(s"expected left but got Right($r)"))
+                      .isInstanceOf[Err]
+                  )
                 }
             }
           }
 
           "handle finite observing sink" - {
             "1" in forAll { (s: Stream[Pure, Int]) =>
-              observer(s.covary[IO])(_ => Stream.empty).compile.toList.asserting(_ shouldBe Nil)
+              observer(s.covary[IO])(_ => Stream.empty).compile.toList.asserting(it =>
+                assert(it == Nil)
+              )
             }
             "2" in forAll { (s: Stream[Pure, Int]) =>
               observer(Stream(1, 2) ++ s.covary[IO])(_.take(1).drain).compile.toList
-                .asserting(_ shouldBe Nil)
+                .asserting(it => assert(it == Nil))
             }
           }
 
@@ -2279,7 +2281,7 @@ class StreamSpec extends Fs2Spec {
               val expected = s.toList
               val sink: Pipe[IO, Int, Unit] = _.evalMap(_ => IO.unit)
               observer(observer(s.covary[IO])(sink))(sink).compile.toList
-                .asserting(_ shouldBe expected)
+                .asserting(it => assert(it == expected))
             }
           }
 
@@ -2316,11 +2318,13 @@ class StreamSpec extends Fs2Spec {
             Stream
               .eval(IO(1))
               .append(Stream.eval(IO.raiseError(new Err)))
-              .observe(_.evalMap(_ => IO.sleep(100.millis))) //Have to do some work here, so that we give time for the underlying stream to try pull more
+              .observe(
+                _.evalMap(_ => IO.sleep(100.millis))
+              ) //Have to do some work here, so that we give time for the underlying stream to try pull more
               .take(1)
               .compile
               .toList
-              .asserting(_ shouldBe List(1))
+              .asserting(it => assert(it == List(1)))
           }
 
           "2 - do not pull another element before downstream asks" in {
@@ -2332,7 +2336,7 @@ class StreamSpec extends Fs2Spec {
               .take(2)
               .compile
               .toList
-              .asserting(_ shouldBe List(1, 2))
+              .asserting(it => assert(it == List(1, 2)))
           }
         }
       }
@@ -2364,14 +2368,14 @@ class StreamSpec extends Fs2Spec {
           s.observeEither[Int, String](_.take(0).void, _.void)
             .compile
             .toList
-            .asserting(r => (r should have).length(0))
+            .asserting(r => assert(r.isEmpty))
         }
 
         "right" in {
           s.observeEither[Int, String](_.void, _.take(0).void)
             .compile
             .toList
-            .asserting(r => (r should have).length(0))
+            .asserting(r => assert(r.isEmpty))
         }
       }
     }
@@ -2384,7 +2388,7 @@ class StreamSpec extends Fs2Spec {
           .parJoin(1)
           .compile
           .toList
-          .asserting(_.toSet shouldBe expected)
+          .asserting(it => assert(it.toSet == expected))
       }
 
       "concurrency" in forAll { (s: Stream[Pure, Int], n0: PosInt) =>
@@ -2395,7 +2399,7 @@ class StreamSpec extends Fs2Spec {
           .parJoin(n)
           .compile
           .toList
-          .asserting(_.toSet shouldBe expected)
+          .asserting(it => assert(it.toSet == expected))
       }
 
       "concurrent flattening" in forAll { (s: Stream[Pure, Stream[Pure, Int]], n0: PosInt) =>
@@ -2406,13 +2410,13 @@ class StreamSpec extends Fs2Spec {
           .parJoin(n)
           .compile
           .toList
-          .asserting(_.toSet shouldBe expected)
+          .asserting(it => assert(it.toSet == expected))
       }
 
       "merge consistency" in forAll { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
         val parJoined = Stream(s1.covary[IO], s2).parJoin(2).compile.toList.map(_.toSet)
         val merged = s1.covary[IO].merge(s2).compile.toList.map(_.toSet)
-        (parJoined, merged).tupled.asserting { case (pj, m) => pj shouldBe m }
+        (parJoined, merged).tupled.asserting { case (pj, m) => assert(pj == m) }
       }
 
       "resources acquired in outer stream are released after inner streams complete" in {
@@ -2469,13 +2473,13 @@ class StreamSpec extends Fs2Spec {
                     finalizerRef.get.flatMap { finalizers =>
                       runEvidenceRef.get.flatMap { streamRunned =>
                         IO {
-                          val expectedFinalizers = (streamRunned.map { idx =>
+                          val expectedFinalizers = streamRunned.map { idx =>
                             s"Inner $idx"
-                          }) :+ "Outer"
-                          (finalizers should contain).theSameElementsAs(expectedFinalizers)
-                          finalizers.lastOption shouldBe Some("Outer")
-                          if (streamRunned.contains(biasIdx)) r shouldBe Left(err)
-                          else r shouldBe Right(())
+                          } :+ "Outer"
+                          assert(containSameElements(finalizers, expectedFinalizers))
+                          assert(finalizers.lastOption == Some("Outer"))
+                          if (streamRunned.contains(biasIdx)) assert(r == Left(err))
+                          else assert(r == Right(()))
                         }
                       }
                     }
@@ -2497,13 +2501,28 @@ class StreamSpec extends Fs2Spec {
             .drain
 
         "1" in {
-          Stream(full, hang).parJoin(10).take(1).compile.toList.asserting(_ shouldBe List(42))
+          Stream(full, hang)
+            .parJoin(10)
+            .take(1)
+            .compile
+            .toList
+            .asserting(it => assert(it == List(42)))
         }
         "2" in {
-          Stream(full, hang2).parJoin(10).take(1).compile.toList.asserting(_ shouldBe List(42))
+          Stream(full, hang2)
+            .parJoin(10)
+            .take(1)
+            .compile
+            .toList
+            .asserting(it => assert(it == List(42)))
         }
         "3" in {
-          Stream(full, hang3).parJoin(10).take(1).compile.toList.asserting(_ shouldBe List(42))
+          Stream(full, hang3)
+            .parJoin(10)
+            .take(1)
+            .compile
+            .toList
+            .asserting(it => assert(it == List(42)))
         }
         "4" in {
           Stream(hang3, hang2, full)
@@ -2511,7 +2530,7 @@ class StreamSpec extends Fs2Spec {
             .take(1)
             .compile
             .toList
-            .asserting(_ shouldBe List(42))
+            .asserting(it => assert(it == List(42)))
         }
       }
 
@@ -2526,7 +2545,7 @@ class StreamSpec extends Fs2Spec {
         (Stream
           .emit(Stream.raiseError[IO](err))
           .parJoinUnbounded ++ Stream.emit(1)).compile.toList.attempt
-          .asserting(_ shouldBe Left(err))
+          .asserting(it => assert(it == Left(err)))
       }
     }
 
@@ -2548,13 +2567,13 @@ class StreamSpec extends Fs2Spec {
         }
         .compile
         .toList
-        .asserting(_ shouldBe List(0, 1, 2, 3, 4))
+        .asserting(it => assert(it == List(0, 1, 2, 3, 4)))
     }
 
     "prefetch" - {
       "identity" in forAll { (s: Stream[Pure, Int]) =>
         val expected = s.toList
-        s.covary[IO].prefetch.compile.toList.asserting(_ shouldBe expected)
+        s.covary[IO].prefetch.compile.toList.asserting(it => assert(it == expected))
       }
 
       "timing" in {
@@ -2564,15 +2583,13 @@ class StreamSpec extends Fs2Spec {
           Stream(1, 2, 3)
             .evalMap(i => IO.sleep(1.second).as(i))
             .prefetch
-            .flatMap { i =>
-              Stream.eval(IO.sleep(1.second).as(i))
-            }
+            .flatMap(i => Stream.eval(IO.sleep(1.second).as(i)))
             .compile
             .toList
             .asserting { _ =>
               val stop = System.currentTimeMillis
               val elapsed = stop - start
-              elapsed should be < 6000L
+              assert(elapsed < 6000L)
             }
         }
       }
@@ -2609,41 +2626,42 @@ class StreamSpec extends Fs2Spec {
       val x = Stream.random[SyncIO].take(100).compile.toList
       (x, x).tupled.asserting {
         case (first, second) =>
-          first should not be second
+          assert(first != second)
       }
     }
 
     "randomSeeded" in {
       val x = Stream.randomSeeded(1L).take(100).toList
       val y = Stream.randomSeeded(1L).take(100).toList
-      x shouldBe y
+      assert(x == y)
     }
 
     "range" in {
-      Stream.range(0, 100).toList shouldBe List.range(0, 100)
-      Stream.range(0, 1).toList shouldBe List.range(0, 1)
-      Stream.range(0, 0).toList shouldBe List.range(0, 0)
-      Stream.range(0, 101, 2).toList shouldBe List.range(0, 101, 2)
-      Stream.range(5, 0, -1).toList shouldBe List.range(5, 0, -1)
-      Stream.range(5, 0, 1).toList shouldBe Nil
-      Stream.range(10, 50, 0).toList shouldBe Nil
+      assert(Stream.range(0, 100).toList == List.range(0, 100))
+      assert(Stream.range(0, 1).toList == List.range(0, 1))
+      assert(Stream.range(0, 0).toList == List.range(0, 0))
+      assert(Stream.range(0, 101, 2).toList == List.range(0, 101, 2))
+      assert(Stream.range(5, 0, -1).toList == List.range(5, 0, -1))
+      assert(Stream.range(5, 0, 1).toList == Nil)
+      assert(Stream.range(10, 50, 0).toList == Nil)
     }
 
     "ranges" in forAll(intsBetween(1, 101)) { size =>
-      Stream
+      val result = Stream
         .ranges(0, 100, size)
         .flatMap { case (i, j) => Stream.emits(i until j) }
-        .toVector shouldBe IndexedSeq.range(0, 100)
+        .toVector
+      assert(result == IndexedSeq.range(0, 100))
     }
 
     "rechunkRandomlyWithSeed" - {
       "is deterministic" in forAll { (s0: Stream[Pure, Int], seed: Long) =>
         def s = s0.rechunkRandomlyWithSeed(minFactor = 0.1, maxFactor = 2.0)(seed)
-        s.toList shouldBe s.toList
+        assert(s.toList == s.toList)
       }
 
       "does not drop elements" in forAll { (s: Stream[Pure, Int], seed: Long) =>
-        s.rechunkRandomlyWithSeed(minFactor = 0.1, maxFactor = 2.0)(seed).toList shouldBe s.toList
+        assert(s.rechunkRandomlyWithSeed(minFactor = 0.1, maxFactor = 2.0)(seed).toList == s.toList)
       }
 
       "chunk size in interval [inputChunk.size * minFactor, inputChunk.size * maxFactor]" in forAll {
@@ -2654,80 +2672,100 @@ class StreamSpec extends Fs2Spec {
               case ((min, max), c) => Math.min(min, c.size) -> Math.max(max, c.size)
             }
             val (minChunkSize, maxChunkSize) = (min * 0.1, max * 2.0)
-            // Last element is drop as it may not fulfill size constraint
-            all(
-              s.rechunkRandomlyWithSeed(minFactor = 0.1, maxFactor = 2.0)(seed)
-                .chunks
-                .map(_.size)
-                .toVector
-                .dropRight(1)
-            ) should ((be >= minChunkSize.toInt).and(be <= maxChunkSize.toInt))
+            // Last element is dropped as it may not fulfill size constraint
+            val isChunkSizeCorrect = s
+              .rechunkRandomlyWithSeed(minFactor = 0.1, maxFactor = 2.0)(seed)
+              .chunks
+              .map(_.size)
+              .toVector
+              .dropRight(1)
+              .forall { it =>
+                it >= minChunkSize.toInt &&
+                it <= maxChunkSize.toInt
+              }
+            assert(isChunkSizeCorrect)
           } else Succeeded
       }
     }
 
     "rechunkRandomly" in forAll { (s: Stream[Pure, Int]) =>
       val expected = s.toList
-      s.rechunkRandomly[IO]().compile.toList.asserting(_ shouldBe expected)
+      s.rechunkRandomly[IO]().compile.toList.asserting(it => assert(it == expected))
     }
 
     "repartition" in {
-      Stream("Lore", "m ip", "sum dolo", "r sit amet")
-        .repartition(s => Chunk.array(s.split(" ")))
-        .toList shouldBe
-        List("Lorem", "ipsum", "dolor", "sit", "amet")
-      Stream("hel", "l", "o Wor", "ld")
-        .repartition(s => Chunk.indexedSeq(s.grouped(2).toVector))
-        .toList shouldBe
-        List("he", "ll", "o ", "Wo", "rl", "d")
-      Stream.empty
-        .covaryOutput[String]
-        .repartition(_ => Chunk.empty)
-        .toList shouldBe List()
-      Stream("hello").repartition(_ => Chunk.empty).toList shouldBe List()
+      assert(
+        Stream("Lore", "m ip", "sum dolo", "r sit amet")
+          .repartition(s => Chunk.array(s.split(" ")))
+          .toList ==
+          List("Lorem", "ipsum", "dolor", "sit", "amet")
+      )
+      assert(
+        Stream("hel", "l", "o Wor", "ld")
+          .repartition(s => Chunk.indexedSeq(s.grouped(2).toVector))
+          .toList ==
+          List("he", "ll", "o ", "Wo", "rl", "d")
+      )
+      assert(
+        Stream.empty
+          .covaryOutput[String]
+          .repartition(_ => Chunk.empty)
+          .toList == List()
+      )
+      assert(Stream("hello").repartition(_ => Chunk.empty).toList == List())
 
       def input = Stream("ab").repeat
       def ones(s: String) = Chunk.vector(s.grouped(1).toVector)
-      input.take(2).repartition(ones).toVector shouldBe Vector("a", "b", "a", "b")
-      input.take(4).repartition(ones).toVector shouldBe Vector(
-        "a",
-        "b",
-        "a",
-        "b",
-        "a",
-        "b",
-        "a",
-        "b"
+      assert(input.take(2).repartition(ones).toVector == Vector("a", "b", "a", "b"))
+      assert(
+        input.take(4).repartition(ones).toVector == Vector(
+          "a",
+          "b",
+          "a",
+          "b",
+          "a",
+          "b",
+          "a",
+          "b"
+        )
       )
-      input.repartition(ones).take(2).toVector shouldBe Vector("a", "b")
-      input.repartition(ones).take(4).toVector shouldBe Vector("a", "b", "a", "b")
-      Stream
-        .emits(input.take(4).toVector)
-        .repartition(ones)
-        .toVector shouldBe Vector("a", "b", "a", "b", "a", "b", "a", "b")
+      assert(input.repartition(ones).take(2).toVector == Vector("a", "b"))
+      assert(input.repartition(ones).take(4).toVector == Vector("a", "b", "a", "b"))
+      assert(
+        Stream
+          .emits(input.take(4).toVector)
+          .repartition(ones)
+          .toVector == Vector("a", "b", "a", "b", "a", "b", "a", "b")
+      )
 
-      Stream(1, 2, 3, 4, 5).repartition(i => Chunk(i, i)).toList shouldBe List(1, 3, 6, 10, 15, 15)
+      assert(
+        Stream(1, 2, 3, 4, 5).repartition(i => Chunk(i, i)).toList == List(1, 3, 6, 10, 15, 15)
+      )
 
-      Stream(1, 10, 100)
-        .repartition(_ => Chunk.seq(1 to 1000))
-        .take(4)
-        .toList shouldBe List(1, 2, 3, 4)
+      assert(
+        Stream(1, 10, 100)
+          .repartition(_ => Chunk.seq(1 to 1000))
+          .take(4)
+          .toList == List(1, 2, 3, 4)
+      )
     }
 
     "repeat" in {
       forAll(intsBetween(1, 200), lists[Int].havingSizesBetween(1, 200)) {
         (n: Int, testValues: List[Int]) =>
-          Stream.emits(testValues).repeat.take(n).toList shouldBe List
-            .fill(n / testValues.size + 1)(testValues)
-            .flatten
-            .take(n)
+          assert(
+            Stream.emits(testValues).repeat.take(n).toList == List
+              .fill(n / testValues.size + 1)(testValues)
+              .flatten
+              .take(n)
+          )
       }
     }
 
     "repeatN" in {
       forAll(intsBetween(1, 200), lists[Int].havingSizesBetween(1, 200)) {
         (n: Int, testValues: List[Int]) =>
-          Stream.emits(testValues).repeatN(n).toList shouldBe List.fill(n)(testValues).flatten
+          assert(Stream.emits(testValues).repeatN(n).toList == List.fill(n)(testValues).flatten)
       }
     }
 
@@ -2758,21 +2796,23 @@ class StreamSpec extends Fs2Spec {
             .compile
             .drain *> st.get
         }
-        .asserting(
-          _ shouldBe List(
-            "acquire 1",
-            "use",
-            "release 1",
-            "acquire 21",
-            "acquire 22",
-            "use",
-            "release 22",
-            "release 21",
-            "suspend",
-            "acquire 3",
-            "use",
-            "release 3",
-            "done"
+        .asserting(it =>
+          assert(
+            it == List(
+              "acquire 1",
+              "use",
+              "release 1",
+              "acquire 21",
+              "acquire 22",
+              "use",
+              "release 22",
+              "release 21",
+              "suspend",
+              "acquire 3",
+              "use",
+              "release 3",
+              "done"
+            )
           )
         )
     }
@@ -2804,21 +2844,23 @@ class StreamSpec extends Fs2Spec {
             .compile
             .drain *> st.get
         }
-        .asserting(
-          _ shouldBe List(
-            "acquire 1",
-            "use",
-            "acquire 21",
-            "acquire 22",
-            "use",
-            "suspend",
-            "acquire 3",
-            "use",
-            "done",
-            "release 3",
-            "release 22",
-            "release 21",
-            "release 1"
+        .asserting(it =>
+          assert(
+            it == List(
+              "acquire 1",
+              "use",
+              "acquire 21",
+              "acquire 22",
+              "use",
+              "suspend",
+              "acquire 3",
+              "use",
+              "done",
+              "release 3",
+              "release 22",
+              "release 21",
+              "release 1"
+            )
           )
         )
     }
@@ -2835,7 +2877,7 @@ class StreamSpec extends Fs2Spec {
               .compile
               .drain
               .flatMap(_ => counter.get)
-              .asserting(_ shouldBe 0L)
+              .asserting(it => assert(it == 0L))
           }
         }
       }
@@ -2853,7 +2895,7 @@ class StreamSpec extends Fs2Spec {
             .drain
             .attempt
             .flatMap(_ => counter.get)
-            .asserting(_ shouldBe 0L)
+            .asserting(it => assert(it == 0L))
             .repeatTest(25)
         }
       }
@@ -2871,7 +2913,7 @@ class StreamSpec extends Fs2Spec {
               .compile
               .drain
               .flatMap(_ => counter.get)
-              .asserting(_ shouldBe 0L)
+              .asserting(it => assert(it == 0L))
           }
         }
       }
@@ -2892,10 +2934,10 @@ class StreamSpec extends Fs2Spec {
                 .compile
                 .drain
                 .flatMap(_ => outer.get)
-                .asserting(_ shouldBe 0L)
+                .asserting(it => assert(it == 0L))
                 .flatMap(_ => IO.sleep(50.millis)) // Allow time for inner stream to terminate
                 .flatMap(_ => inner.get)
-                .asserting(_ shouldBe 0L)
+                .asserting(it => assert(it == 0L))
             }
           }
         }
@@ -2915,7 +2957,7 @@ class StreamSpec extends Fs2Spec {
             .compile
             .drain
             .flatMap(_ => counter.get)
-            .asserting(_ shouldBe 0L)
+            .asserting(it => assert(it == 0L))
         }
       }
 
@@ -2936,7 +2978,7 @@ class StreamSpec extends Fs2Spec {
                 .compile
                 .drain
                 .flatMap(_ => counter.get)
-                .asserting(_ shouldBe 0L)
+                .asserting(it => assert(it == 0L))
             }
           }
         }
@@ -2962,7 +3004,7 @@ class StreamSpec extends Fs2Spec {
               .compile
               .drain
               .flatMap(_ => counter.get)
-              .asserting(_ shouldBe 0L)
+              .asserting(it => assert(it == 0L))
           }
         }
       }
@@ -2979,8 +3021,8 @@ class StreamSpec extends Fs2Spec {
             "success"
           }
           Stream.retry(job, 1.seconds, x => x, 100).compile.toList.asserting { r =>
-            attempts shouldBe 1
-            r shouldBe List("success")
+            assert(attempts == 1)
+            assert(r == List("success"))
           }
         }
       }
@@ -2996,9 +3038,9 @@ class StreamSpec extends Fs2Spec {
             }
           }
           Stream.retry(job, 100.millis, x => x, 100).compile.toList.asserting { r =>
-            failures shouldBe 5
-            successes shouldBe 1
-            r shouldBe List("success")
+            assert(failures == 5)
+            assert(successes == 1)
+            assert(r == List("success"))
           }
         }
       }
@@ -3012,8 +3054,8 @@ class StreamSpec extends Fs2Spec {
           }
           Stream.retry(job, 100.millis, x => x, 5).compile.drain.attempt.asserting {
             case Left(RetryErr(msg)) =>
-              failures shouldBe 5
-              msg shouldBe "5"
+              assert(failures == 5)
+              assert(msg == "5")
             case _ => fail("Expected a RetryErr")
           }
         }
@@ -3034,9 +3076,9 @@ class StreamSpec extends Fs2Spec {
           val f: Throwable => Boolean = _.getMessage != "fatal"
           Stream.retry(job, 100.millis, x => x, 100, f).compile.drain.attempt.asserting {
             case Left(RetryErr(msg)) =>
-              failures shouldBe 6
-              successes shouldBe 0
-              msg shouldBe "fatal"
+              assert(failures == 6)
+              assert(successes == 0)
+              assert(msg == "fatal")
             case _ => fail("Expected a RetryErr")
           }
         }
@@ -3057,14 +3099,14 @@ class StreamSpec extends Fs2Spec {
         val job = {
           val start = System.currentTimeMillis()
           IO {
-            delays.synchronized { delays += System.currentTimeMillis() - start }
+            delays.synchronized(delays += System.currentTimeMillis() - start)
             throw RetryErr()
           }
         }
 
         Stream.retry(job, unit.millis, _ + unit.millis, maxTries).compile.drain.attempt.asserting {
           case Left(RetryErr(_)) =>
-            getDelays shouldBe List.range(1, maxTries)
+            assert(getDelays == List.range(1, maxTries))
           case _ => fail("Expected a RetryErr")
         }
       }
@@ -3073,13 +3115,13 @@ class StreamSpec extends Fs2Spec {
     "scan" - {
       "1" in forAll { (s: Stream[Pure, Int], n: Int) =>
         val f = (a: Int, b: Int) => a + b
-        s.scan(n)(f).toList shouldBe s.toList.scanLeft(n)(f)
+        assert(s.scan(n)(f).toList == s.toList.scanLeft(n)(f))
       }
 
       "2" in {
         val s = Stream(1).map(x => x)
         val f = (a: Int, b: Int) => a + b
-        s.scan(0)(f).toList shouldBe s.toList.scanLeft(0)(f)
+        assert(s.scan(0)(f).toList == s.toList.scanLeft(0)(f))
       }
 
       "temporal" in {
@@ -3087,15 +3129,20 @@ class StreamSpec extends Fs2Spec {
         val s = Stream(1)
         val f = (a: Int, b: Int) => a + b
         val result = s.toList.scanLeft(0)(f)
-        s.append(never).scan(0)(f).take(result.size).compile.toList.asserting(_ shouldBe result)
+        s.append(never)
+          .scan(0)(f)
+          .take(result.size)
+          .compile
+          .toList
+          .asserting(it => assert(it == result))
       }
     }
 
     "scan1" in forAll { (s: Stream[Pure, Int]) =>
       val v = s.toVector
       val f = (a: Int, b: Int) => a + b
-      s.scan1(f).toVector shouldBe v.headOption.fold(Vector.empty[Int])(h =>
-        v.drop(1).scanLeft(h)(f)
+      assert(
+        s.scan1(f).toVector == v.headOption.fold(Vector.empty[Int])(h => v.drop(1).scanLeft(h)(f))
       )
     }
 
@@ -3104,7 +3151,7 @@ class StreamSpec extends Fs2Spec {
         val c = new java.util.concurrent.atomic.AtomicLong(0)
         val s1 = Stream.emit("a").covary[IO]
         val s2 = Stream
-          .bracket(IO { c.incrementAndGet() shouldBe 1L; () }) { _ =>
+          .bracket(IO { assert(c.incrementAndGet() == 1L); () }) { _ =>
             IO { c.decrementAndGet(); () }
           }
           .flatMap(_ => Stream.emit("b"))
@@ -3116,7 +3163,7 @@ class StreamSpec extends Fs2Spec {
           .merge(Stream.eval_(IO.unit))
           .compile
           .drain
-          .asserting(_ => c.get shouldBe 0L)
+          .asserting(_ => assert(c.get == 0L))
       }
 
       "2" in {
@@ -3131,7 +3178,7 @@ class StreamSpec extends Fs2Spec {
           }
           .compile
           .toList
-          .asserting(_ shouldBe List(1, 1, 0))
+          .asserting(it => assert(it == List(1, 1, 0)))
       }
     }
 
@@ -3145,15 +3192,17 @@ class StreamSpec extends Fs2Spec {
         .map(_._2)
         .compile
         .toList
-        .asserting(result => result.head should be >= (delay * 0.95)) // Allow for sleep starting just before duration measurement
+        .asserting(result => assert(result.head >= (delay * 0.95))) // Allow for sleep starting just before duration measurement
     }
 
     "sliding" in forAll { (s: Stream[Pure, Int], n0: PosInt) =>
       val n = n0 % 20 + 1
-      s.sliding(n).toList.map(_.toList) shouldBe s.toList
-        .sliding(n)
-        .map(_.toList)
-        .toList
+      assert(
+        s.sliding(n).toList.map(_.toList) == s.toList
+          .sliding(n)
+          .map(_.toList)
+          .toList
+      )
     }
 
     "split" - {
@@ -3164,33 +3213,41 @@ class StreamSpec extends Fs2Spec {
           .map(_.abs)
           .filter(_ != 0)
         withClue(s"n = $n, s = ${s.toList}, s2 = " + s2.toList) {
-          s2.chunkLimit(n)
-            .intersperse(Chunk.singleton(0))
-            .flatMap(Stream.chunk)
-            .split(_ == 0)
-            .map(_.toVector)
-            .filter(_.nonEmpty)
-            .toVector shouldBe s2.chunkLimit(n).filter(_.nonEmpty).map(_.toVector).toVector
+          assert(
+            s2.chunkLimit(n)
+              .intersperse(Chunk.singleton(0))
+              .flatMap(Stream.chunk)
+              .split(_ == 0)
+              .map(_.toVector)
+              .filter(_.nonEmpty)
+              .toVector == s2.chunkLimit(n).filter(_.nonEmpty).map(_.toVector).toVector
+          )
         }
       }
 
       "2" in {
-        Stream(1, 2, 0, 0, 3, 0, 4).split(_ == 0).toVector.map(_.toVector) shouldBe Vector(
-          Vector(1, 2),
-          Vector(),
-          Vector(3),
-          Vector(4)
+        assert(
+          Stream(1, 2, 0, 0, 3, 0, 4).split(_ == 0).toVector.map(_.toVector) == Vector(
+            Vector(1, 2),
+            Vector(),
+            Vector(3),
+            Vector(4)
+          )
         )
-        Stream(1, 2, 0, 0, 3, 0).split(_ == 0).toVector.map(_.toVector) shouldBe Vector(
-          Vector(1, 2),
-          Vector(),
-          Vector(3)
+        assert(
+          Stream(1, 2, 0, 0, 3, 0).split(_ == 0).toVector.map(_.toVector) == Vector(
+            Vector(1, 2),
+            Vector(),
+            Vector(3)
+          )
         )
-        Stream(1, 2, 0, 0, 3, 0, 0).split(_ == 0).toVector.map(_.toVector) shouldBe Vector(
-          Vector(1, 2),
-          Vector(),
-          Vector(3),
-          Vector()
+        assert(
+          Stream(1, 2, 0, 0, 3, 0, 0).split(_ == 0).toVector.map(_.toVector) == Vector(
+            Vector(1, 2),
+            Vector(),
+            Vector(3),
+            Vector()
+          )
         )
       }
     }
@@ -3208,7 +3265,7 @@ class StreamSpec extends Fs2Spec {
           }
           .compile
           .toList
-          .asserting(_ shouldBe expected)
+          .asserting(it => assert(it == expected))
       }
 
       "inner stream finalizer always runs before switching" in {
@@ -3239,7 +3296,7 @@ class StreamSpec extends Fs2Spec {
             .switchMap(s => Stream.sleep_[IO](25.millis) ++ s2 ++ Stream.emit(s))
             .compile
             .toList
-            .asserting(_ shouldBe expected)
+            .asserting(it => assert(it == expected))
       }
 
       "when inner stream fails, overall stream fails" in forAll { (s0: Stream[Pure, Int]) =>
@@ -3276,7 +3333,8 @@ class StreamSpec extends Fs2Spec {
               Stream.eval(Ref[IO].of(false)).flatMap { innerReleased =>
                 s.delayBy[IO](25.millis)
                   .onFinalize(innerReleased.get.flatMap(inner => verdict.complete(inner)))
-                  .switchMap(_ => Stream.raiseError[IO](new Err).onFinalize(innerReleased.set(true))
+                  .switchMap(_ =>
+                    Stream.raiseError[IO](new Err).onFinalize(innerReleased.set(true))
                   )
                   .attempt
                   .drain ++
@@ -3310,32 +3368,30 @@ class StreamSpec extends Fs2Spec {
       }
     }
 
-    "tail" in forAll { (s: Stream[Pure, Int]) =>
-      s.tail.toList shouldBe s.toList.drop(1)
-    }
+    "tail" in forAll((s: Stream[Pure, Int]) => assert(s.tail.toList == s.toList.drop(1)))
 
     "take" - {
       "identity" in forAll { (s: Stream[Pure, Int], negate: Boolean, n0: PosInt) =>
         val n1 = n0 % 20 + 1
         val n = if (negate) -n1 else n1
-        s.take(n).toList shouldBe s.toList.take(n)
+        assert(s.take(n).toList == s.toList.take(n))
       }
       "chunks" in {
         val s = Stream(1, 2) ++ Stream(3, 4)
-        s.take(3).chunks.map(_.toList).toList shouldBe List(List(1, 2), List(3))
+        assert(s.take(3).chunks.map(_.toList).toList == List(List(1, 2), List(3)))
       }
     }
 
     "takeRight" in forAll { (s: Stream[Pure, Int], negate: Boolean, n0: PosInt) =>
       val n1 = n0 % 20 + 1
       val n = if (negate) -n1 else n1
-      s.takeRight(n).toList shouldBe s.toList.takeRight(n)
+      assert(s.takeRight(n).toList == s.toList.takeRight(n))
     }
 
     "takeWhile" in forAll { (s: Stream[Pure, Int], n0: PosInt) =>
       val n = n0 % 20 + 1
       val set = s.toList.take(n).toSet
-      s.takeWhile(set).toList shouldBe s.toList.takeWhile(set)
+      assert(s.takeWhile(set).toList == s.toList.takeWhile(set))
     }
 
     "takeThrough" in forAll { (s: Stream[Pure, Int], n0: PosInt) =>
@@ -3343,7 +3399,7 @@ class StreamSpec extends Fs2Spec {
       val f = (i: Int) => i % n == 0
       val vec = s.toVector
       val result = vec.takeWhile(f) ++ vec.dropWhile(f).headOption
-      withClue(vec)(s.takeThrough(f).toVector shouldBe result)
+      assert(withClue(vec)(s.takeThrough(f).toVector == result))
     }
 
     "translate" - {
@@ -3354,7 +3410,7 @@ class StreamSpec extends Fs2Spec {
           .translate(cats.arrow.FunctionK.id[SyncIO])
           .compile
           .toList
-          .asserting(_ shouldBe expected)
+          .asserting(it => assert(it == expected))
       }
 
       "2" in forAll { (s: Stream[Pure, Int]) =>
@@ -3367,7 +3423,7 @@ class StreamSpec extends Fs2Spec {
           })
           .compile
           .toList
-          .asserting(_ shouldBe expected)
+          .asserting(it => assert(it == expected))
       }
 
       "3 - ok to have multiple translates" in forAll { (s: Stream[Pure, Int]) =>
@@ -3385,7 +3441,7 @@ class StreamSpec extends Fs2Spec {
           })
           .compile
           .toList
-          .asserting(_ shouldBe expected)
+          .asserting(it => assert(it == expected))
       }
 
       "4 - ok to translate after zip with effects" in {
@@ -3398,7 +3454,7 @@ class StreamSpec extends Fs2Spec {
           })
           .compile
           .toList
-          .asserting(_ shouldBe List((1, 1)))
+          .asserting(it => assert(it == List((1, 1))))
       }
 
       "5 - ok to translate a step leg that emits multiple chunks" in {
@@ -3415,7 +3471,7 @@ class StreamSpec extends Fs2Spec {
           })
           .compile
           .toList
-          .asserting(_ shouldBe List(1, 2))
+          .asserting(it => assert(it == List(1, 2)))
       }
 
       "6 - ok to translate step leg that has uncons in its structure" in {
@@ -3425,12 +3481,8 @@ class StreamSpec extends Fs2Spec {
             case Some(step) => Pull.output(step.head) >> step.stepLeg.flatMap(goStep)
           }
         (Stream.eval(() => 1) ++ Stream.eval(() => 2))
-          .flatMap { a =>
-            Stream.emit(a)
-          }
-          .flatMap { a =>
-            Stream.eval(() => a + 1) ++ Stream.eval(() => a + 2)
-          }
+          .flatMap(a => Stream.emit(a))
+          .flatMap(a => Stream.eval(() => a + 1) ++ Stream.eval(() => a + 2))
           .pull
           .stepLeg
           .flatMap(goStep)
@@ -3440,7 +3492,7 @@ class StreamSpec extends Fs2Spec {
           })
           .compile
           .toList
-          .asserting(_ shouldBe List(2, 3, 3, 4))
+          .asserting(it => assert(it == List(2, 3, 3, 4)))
       }
 
       "7 - ok to translate step leg that is forced back in to a stream" in {
@@ -3458,7 +3510,7 @@ class StreamSpec extends Fs2Spec {
           })
           .compile
           .toList
-          .asserting(_ shouldBe List(1, 2))
+          .asserting(it => assert(it == List(1, 2)))
       }
 
       "stack safety" in {
@@ -3484,22 +3536,26 @@ class StreamSpec extends Fs2Spec {
     }
 
     "unfold" in {
-      Stream
-        .unfold((0, 1)) {
-          case (f1, f2) =>
-            if (f1 <= 13) Some(((f1, f2), (f2, f1 + f2))) else None
-        }
-        .map(_._1)
-        .toList shouldBe List(0, 1, 1, 2, 3, 5, 8, 13)
+      assert(
+        Stream
+          .unfold((0, 1)) {
+            case (f1, f2) =>
+              if (f1 <= 13) Some(((f1, f2), (f2, f1 + f2))) else None
+          }
+          .map(_._1)
+          .toList == List(0, 1, 1, 2, 3, 5, 8, 13)
+      )
     }
 
     "unfoldChunk" in {
-      Stream
-        .unfoldChunk(4L) { s =>
-          if (s > 0) Some((Chunk.longs(Array[Long](s, s)), s - 1))
-          else None
-        }
-        .toList shouldBe List[Long](4, 4, 3, 3, 2, 2, 1, 1)
+      assert(
+        Stream
+          .unfoldChunk(4L) { s =>
+            if (s > 0) Some((Chunk.longs(Array[Long](s, s)), s - 1))
+            else None
+          }
+          .toList == List[Long](4, 4, 3, 3, 2, 2, 1, 1)
+      )
     }
 
     "unfoldEval" in {
@@ -3507,7 +3563,7 @@ class StreamSpec extends Fs2Spec {
         .unfoldEval(10)(s => IO.pure(if (s > 0) Some((s, s - 1)) else None))
         .compile
         .toList
-        .asserting(_ shouldBe List.range(10, 0, -1))
+        .asserting(it => assert(it == List.range(10, 0, -1)))
     }
 
     "unfoldChunkEval" in {
@@ -3520,11 +3576,11 @@ class StreamSpec extends Fs2Spec {
         )
         .compile
         .toList
-        .asserting(_ shouldBe List(true))
+        .asserting(it => assert(it == List(true)))
     }
 
     "unNone" in forAll { (s: Stream[Pure, Option[Int]]) =>
-      s.unNone.chunks.toList shouldBe s.filter(_.isDefined).map(_.get).chunks.toList
+      assert(s.unNone.chunks.toList == s.filter(_.isDefined).map(_.get).chunks.toList)
     }
 
     "zip" - {
@@ -3533,90 +3589,104 @@ class StreamSpec extends Fs2Spec {
         val s2 = Stream.bracket(IO("a"))(_ => IO.raiseError(new Err))
 
         val r1 = s1.zip(s2).compile.drain.attempt.unsafeRunSync()
-        r1.fold(identity, r => fail(s"expected left but got Right($r)")) shouldBe an[Err]
+        assert(r1.fold(identity, r => fail(s"expected left but got Right($r)")).isInstanceOf[Err])
         val r2 = s2.zip(s1).compile.drain.attempt.unsafeRunSync()
-        r2.fold(identity, r => fail(s"expected left but got Right($r)")) shouldBe an[Err]
+        assert(r2.fold(identity, r => fail(s"expected left but got Right($r)")).isInstanceOf[Err])
       }
 
       "issue #941 - scope closure issue" in {
-        Stream(1, 2, 3)
-          .map(_ + 1)
-          .repeat
-          .zip(Stream(4, 5, 6).map(_ + 1).repeat)
-          .take(4)
-          .toList shouldBe List((2, 5), (3, 6), (4, 7), (2, 5))
+        assert(
+          Stream(1, 2, 3)
+            .map(_ + 1)
+            .repeat
+            .zip(Stream(4, 5, 6).map(_ + 1).repeat)
+            .take(4)
+            .toList == List((2, 5), (3, 6), (4, 7), (2, 5))
+        )
       }
 
       "zipWith left/right side infinite" in {
         val ones = Stream.constant("1")
         val s = Stream("A", "B", "C")
-        ones.zipWith(s)(_ + _).toList shouldBe List("1A", "1B", "1C")
-        s.zipWith(ones)(_ + _).toList shouldBe List("A1", "B1", "C1")
+        assert(ones.zipWith(s)(_ + _).toList == List("1A", "1B", "1C"))
+        assert(s.zipWith(ones)(_ + _).toList == List("A1", "B1", "C1"))
       }
 
       "zipWith both side infinite" in {
         val ones = Stream.constant("1")
         val as = Stream.constant("A")
-        ones.zipWith(as)(_ + _).take(3).toList shouldBe List("1A", "1A", "1A")
-        as.zipWith(ones)(_ + _).take(3).toList shouldBe List("A1", "A1", "A1")
+        assert(ones.zipWith(as)(_ + _).take(3).toList == List("1A", "1A", "1A"))
+        assert(as.zipWith(ones)(_ + _).take(3).toList == List("A1", "A1", "A1"))
       }
 
       "zipAllWith left/right side infinite" in {
         val ones = Stream.constant("1")
         val s = Stream("A", "B", "C")
-        ones.zipAllWith(s)("2", "Z")(_ + _).take(5).toList shouldBe
-          List("1A", "1B", "1C", "1Z", "1Z")
-        s.zipAllWith(ones)("Z", "2")(_ + _).take(5).toList shouldBe
-          List("A1", "B1", "C1", "Z1", "Z1")
+        assert(
+          ones.zipAllWith(s)("2", "Z")(_ + _).take(5).toList ==
+            List("1A", "1B", "1C", "1Z", "1Z")
+        )
+        assert(
+          s.zipAllWith(ones)("Z", "2")(_ + _).take(5).toList ==
+            List("A1", "B1", "C1", "Z1", "Z1")
+        )
       }
 
       "zipAllWith both side infinite" in {
         val ones = Stream.constant("1")
         val as = Stream.constant("A")
-        ones.zipAllWith(as)("2", "Z")(_ + _).take(3).toList shouldBe
-          List("1A", "1A", "1A")
-        as.zipAllWith(ones)("Z", "2")(_ + _).take(3).toList shouldBe
-          List("A1", "A1", "A1")
+        assert(
+          ones.zipAllWith(as)("2", "Z")(_ + _).take(3).toList ==
+            List("1A", "1A", "1A")
+        )
+        assert(
+          as.zipAllWith(ones)("Z", "2")(_ + _).take(3).toList ==
+            List("A1", "A1", "A1")
+        )
       }
 
       "zip left/right side infinite" in {
         val ones = Stream.constant("1")
         val s = Stream("A", "B", "C")
-        ones.zip(s).toList shouldBe List("1" -> "A", "1" -> "B", "1" -> "C")
-        s.zip(ones).toList shouldBe List("A" -> "1", "B" -> "1", "C" -> "1")
+        assert(ones.zip(s).toList == List("1" -> "A", "1" -> "B", "1" -> "C"))
+        assert(s.zip(ones).toList == List("A" -> "1", "B" -> "1", "C" -> "1"))
       }
 
       "zip both side infinite" in {
         val ones = Stream.constant("1")
         val as = Stream.constant("A")
-        ones.zip(as).take(3).toList shouldBe List("1" -> "A", "1" -> "A", "1" -> "A")
-        as.zip(ones).take(3).toList shouldBe List("A" -> "1", "A" -> "1", "A" -> "1")
+        assert(ones.zip(as).take(3).toList == List("1" -> "A", "1" -> "A", "1" -> "A"))
+        assert(as.zip(ones).take(3).toList == List("A" -> "1", "A" -> "1", "A" -> "1"))
       }
 
       "zipAll left/right side infinite" in {
         val ones = Stream.constant("1")
         val s = Stream("A", "B", "C")
-        ones.zipAll(s)("2", "Z").take(5).toList shouldBe List(
-          "1" -> "A",
-          "1" -> "B",
-          "1" -> "C",
-          "1" -> "Z",
-          "1" -> "Z"
+        assert(
+          ones.zipAll(s)("2", "Z").take(5).toList == List(
+            "1" -> "A",
+            "1" -> "B",
+            "1" -> "C",
+            "1" -> "Z",
+            "1" -> "Z"
+          )
         )
-        s.zipAll(ones)("Z", "2").take(5).toList shouldBe List(
-          "A" -> "1",
-          "B" -> "1",
-          "C" -> "1",
-          "Z" -> "1",
-          "Z" -> "1"
+        assert(
+          s.zipAll(ones)("Z", "2").take(5).toList == List(
+            "A" -> "1",
+            "B" -> "1",
+            "C" -> "1",
+            "Z" -> "1",
+            "Z" -> "1"
+          )
         )
       }
 
       "zipAll both side infinite" in {
         val ones = Stream.constant("1")
         val as = Stream.constant("A")
-        ones.zipAll(as)("2", "Z").take(3).toList shouldBe List("1" -> "A", "1" -> "A", "1" -> "A")
-        as.zipAll(ones)("Z", "2").take(3).toList shouldBe List("A" -> "1", "A" -> "1", "A" -> "1")
+        assert(ones.zipAll(as)("2", "Z").take(3).toList == List("1" -> "A", "1" -> "A", "1" -> "A"))
+        assert(as.zipAll(ones)("Z", "2").take(3).toList == List("A" -> "1", "A" -> "1", "A" -> "1"))
       }
 
       "zip with scopes" - {
@@ -3624,7 +3694,7 @@ class StreamSpec extends Fs2Spec {
           // this tests that streams opening resources on each branch will close
           // scopes independently.
           val s = Stream(0).scope
-          (s ++ s).zip(s).toList shouldBe List((0, 0))
+          assert((s ++ s).zip(s).toList == List((0, 0)))
         }
         def brokenZip[F[_], A, B](s1: Stream[F, A], s2: Stream[F, B]): Stream[F, (A, B)] = {
           def go(s1: Stream[F, A], s2: Stream[F, B]): Pull[F, (A, B), Unit] =
@@ -3641,7 +3711,7 @@ class StreamSpec extends Fs2Spec {
         }
         "2" in {
           val s = Stream(0).scope
-          assertThrows[Throwable] { brokenZip(s ++ s, s.zip(s)).compile.toList }
+          assertThrows[Throwable](brokenZip(s ++ s, s.zip(s)).compile.toList)
         }
         "3" in {
           Logger[IO]
@@ -3651,20 +3721,22 @@ class StreamSpec extends Fs2Spec {
                   .logLifecycle(s"$tag - 2"))
               s("a").zip(s("b")).compile.drain *> logger.get
             }
-            .asserting {
-              _ shouldBe List(
-                LogEvent.Acquired("a"),
-                LogEvent.Acquired("a - 1"),
-                LogEvent.Acquired("b"),
-                LogEvent.Acquired("b - 1"),
-                LogEvent.Released("a - 1"),
-                LogEvent.Acquired("a - 2"),
-                LogEvent.Released("b - 1"),
-                LogEvent.Acquired("b - 2"),
-                LogEvent.Released("a - 2"),
-                LogEvent.Released("a"),
-                LogEvent.Released("b - 2"),
-                LogEvent.Released("b")
+            .asserting { it =>
+              assert(
+                it == List(
+                  LogEvent.Acquired("a"),
+                  LogEvent.Acquired("a - 1"),
+                  LogEvent.Acquired("b"),
+                  LogEvent.Acquired("b - 1"),
+                  LogEvent.Released("a - 1"),
+                  LogEvent.Acquired("a - 2"),
+                  LogEvent.Released("b - 1"),
+                  LogEvent.Acquired("b - 2"),
+                  LogEvent.Released("a - 2"),
+                  LogEvent.Released("a"),
+                  LogEvent.Released("b - 2"),
+                  LogEvent.Released("b")
+                )
               )
             }
         }
@@ -3673,84 +3745,94 @@ class StreamSpec extends Fs2Spec {
       "issue #1120 - zip with uncons" in {
         // this tests we can properly look up scopes for the zipped streams
         val rangeStream = Stream.emits((0 to 3).toList)
-        rangeStream.zip(rangeStream).attempt.map(identity).toVector shouldBe Vector(
-          Right((0, 0)),
-          Right((1, 1)),
-          Right((2, 2)),
-          Right((3, 3))
+        assert(
+          rangeStream.zip(rangeStream).attempt.map(identity).toVector == Vector(
+            Right((0, 0)),
+            Right((1, 1)),
+            Right((2, 2)),
+            Right((3, 3))
+          )
         )
       }
     }
 
     "zipWithIndex" in forAll { (s: Stream[Pure, Int]) =>
-      s.zipWithIndex.toList shouldBe s.toList.zipWithIndex
+      assert(s.zipWithIndex.toList == s.toList.zipWithIndex)
     }
 
     "zipWithNext" - {
       "1" in forAll { (s: Stream[Pure, Int]) =>
-        s.zipWithNext.toList shouldBe {
+        assert(s.zipWithNext.toList == {
           val xs = s.toList
           xs.zipAll(xs.map(Some(_)).drop(1), -1, None)
-        }
+        })
       }
 
       "2" in {
-        Stream().zipWithNext.toList shouldBe Nil
-        Stream(0).zipWithNext.toList shouldBe List((0, None))
-        Stream(0, 1, 2).zipWithNext.toList shouldBe List((0, Some(1)), (1, Some(2)), (2, None))
+        assert(Stream().zipWithNext.toList == Nil)
+        assert(Stream(0).zipWithNext.toList == List((0, None)))
+        assert(Stream(0, 1, 2).zipWithNext.toList == List((0, Some(1)), (1, Some(2)), (2, None)))
       }
     }
 
     "zipWithPrevious" - {
       "1" in forAll { (s: Stream[Pure, Int]) =>
-        s.zipWithPrevious.toList shouldBe {
+        assert(s.zipWithPrevious.toList == {
           val xs = s.toList
           (None +: xs.map(Some(_))).zip(xs)
-        }
+        })
       }
 
       "2" in {
-        Stream().zipWithPrevious.toList shouldBe Nil
-        Stream(0).zipWithPrevious.toList shouldBe List((None, 0))
-        Stream(0, 1, 2).zipWithPrevious.toList shouldBe List((None, 0), (Some(0), 1), (Some(1), 2))
+        assert(Stream().zipWithPrevious.toList == Nil)
+        assert(Stream(0).zipWithPrevious.toList == List((None, 0)))
+        assert(
+          Stream(0, 1, 2).zipWithPrevious.toList == List((None, 0), (Some(0), 1), (Some(1), 2))
+        )
       }
     }
 
     "zipWithPreviousAndNext" - {
       "1" in forAll { (s: Stream[Pure, Int]) =>
-        s.zipWithPreviousAndNext.toList shouldBe {
+        assert(s.zipWithPreviousAndNext.toList == {
           val xs = s.toList
           val zipWithPrevious = (None +: xs.map(Some(_))).zip(xs)
           val zipWithPreviousAndNext = zipWithPrevious
             .zipAll(xs.map(Some(_)).drop(1), (None, -1), None)
             .map { case ((prev, that), next) => (prev, that, next) }
           zipWithPreviousAndNext
-        }
+        })
       }
 
       "2" in {
-        Stream().zipWithPreviousAndNext.toList shouldBe Nil
-        Stream(0).zipWithPreviousAndNext.toList shouldBe List((None, 0, None))
-        Stream(0, 1, 2).zipWithPreviousAndNext.toList shouldBe List(
-          (None, 0, Some(1)),
-          (Some(0), 1, Some(2)),
-          (Some(1), 2, None)
+        assert(Stream().zipWithPreviousAndNext.toList == Nil)
+        assert(Stream(0).zipWithPreviousAndNext.toList == List((None, 0, None)))
+        assert(
+          Stream(0, 1, 2).zipWithPreviousAndNext.toList == List(
+            (None, 0, Some(1)),
+            (Some(0), 1, Some(2)),
+            (Some(1), 2, None)
+          )
         )
       }
     }
 
     "zipWithScan" in {
-      Stream("uno", "dos", "tres", "cuatro")
-        .zipWithScan(0)(_ + _.length)
-        .toList shouldBe List("uno" -> 0, "dos" -> 3, "tres" -> 6, "cuatro" -> 10)
-      Stream().zipWithScan(())((_, _) => ???).toList shouldBe Nil
+      assert(
+        Stream("uno", "dos", "tres", "cuatro")
+          .zipWithScan(0)(_ + _.length)
+          .toList == List("uno" -> 0, "dos" -> 3, "tres" -> 6, "cuatro" -> 10)
+      )
+      assert(Stream().zipWithScan(())((_, _) => ???).toList == Nil)
     }
 
     "zipWithScan1" in {
-      Stream("uno", "dos", "tres", "cuatro")
-        .zipWithScan1(0)(_ + _.length)
-        .toList shouldBe List("uno" -> 3, "dos" -> 6, "tres" -> 10, "cuatro" -> 16)
-      Stream().zipWithScan1(())((_, _) => ???).toList shouldBe Nil
+      assert(
+        Stream("uno", "dos", "tres", "cuatro")
+          .zipWithScan1(0)(_ + _.length)
+          .toList == List("uno" -> 3, "dos" -> 6, "tres" -> 10, "cuatro" -> 16)
+      )
+      assert(Stream().zipWithScan1(())((_, _) => ???).toList == Nil)
     }
 
     "regressions" - {

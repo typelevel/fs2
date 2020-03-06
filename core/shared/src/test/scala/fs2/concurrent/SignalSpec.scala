@@ -17,9 +17,7 @@ class SignalSpec extends Fs2Spec {
   "SignallingRef" - {
     "get/set/discrete" in {
       forAll { (vs0: List[Long]) =>
-        val vs = vs0.map { n =>
-          if (n == 0) 1 else n
-        }
+        val vs = vs0.map(n => if (n == 0) 1 else n)
         SignallingRef[IO, Long](0L).flatMap { s =>
           Ref.of[IO, Long](0).flatMap { r =>
             val publisher = s.discrete.evalMap(r.set)
