@@ -4395,7 +4395,7 @@ object Stream extends StreamLowPriority {
       * }}}
       */
     def foldSemigroup(implicit O: Semigroup[O]): G[Option[O]] =
-      fold(Option.empty[O])((acc, o) => acc.map(O.combine(_, o)).orElse(Some(o)))
+      foldChunks(Option.empty[O])(_ |+| _.combineAllOption)
 
     /**
       * Compiles this stream in to a value of the target effect type `F`,
