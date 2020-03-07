@@ -94,13 +94,13 @@ lazy val commonTestSettings = Seq(
   testOptions in Test += Tests.Argument(TestFrameworks.ScalaTest, "-oDF"),
   publishArtifact in Test := true
 )
-lazy val testSettings = 
-  (fork in Test := true) +: 
-  commonTestSettings
+lazy val testSettings =
+  (fork in Test := true) +:
+    commonTestSettings
 
-lazy val crossTestSettings = 
-  (fork in Test := crossProjectPlatform.value != JSPlatform) +: 
-  commonTestSettings
+lazy val crossTestSettings =
+  (fork in Test := crossProjectPlatform.value != JSPlatform) +:
+    commonTestSettings
 
 lazy val mdocSettings = Seq(
   scalacOptions in Compile ~= {
