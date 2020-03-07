@@ -21,7 +21,7 @@ lazy val contributors = Seq(
   "durban" -> "Daniel Urban"
 )
 
-lazy val commonSettings = Seq(
+lazy val commonSettingsBase = Seq(
   organization := "co.fs2",
   scalacOptions ++= Seq(
     "-feature",
@@ -54,11 +54,11 @@ lazy val commonSettings = Seq(
     compilerPlugin("org.typelevel" %% "kind-projector" % "0.10.3"),
     "org.typelevel" %%% "cats-core" % "2.1.1",
     "org.typelevel" %%% "cats-laws" % "2.1.1" % "test",
-    "org.typelevel" %%% "cats-effect" % "2.1.1",
-    "org.typelevel" %%% "cats-effect-laws" % "2.1.1" % "test",
+    "org.typelevel" %%% "cats-effect" % "2.1.2",
+    "org.typelevel" %%% "cats-effect-laws" % "2.1.2" % "test",
     "org.scalacheck" %%% "scalacheck" % "1.14.3" % "test",
-    "org.scalatest" %%% "scalatest" % "3.1.0-SNAP13" % "test",
-    "org.scalatestplus" %%% "scalatestplus-scalacheck" % "1.0.0-M2" % "test"
+    "org.scalatest" %%% "scalatest" % "3.3.0-SNAP2" % "test",
+    "org.scalatestplus" %%% "scalacheck-1-14" % "3.1.1.1" % "test"
   ),
   scmInfo := Some(
     ScmInfo(
@@ -75,10 +75,12 @@ lazy val commonSettings = Seq(
     implicit val timerIO: Timer[IO] = IO.timer(global)
   """,
   doctestTestFramework := DoctestTestFramework.ScalaTest
-) ++ testSettings ++ scaladocSettings ++ publishingSettings ++ releaseSettings
+) ++ scaladocSettings ++ publishingSettings ++ releaseSettings
 
-lazy val testSettings = Seq(
-  fork in Test := !isScalaJSProject.value,
+lazy val commonSettings = commonSettingsBase ++ testSettings
+lazy val crossCommonSettings = commonSettingsBase ++ crossTestSettings
+
+lazy val commonTestSettings = Seq(
   javaOptions in Test ++= (Seq(
     "-Dscala.concurrent.context.minThreads=8",
     "-Dscala.concurrent.context.numThreads=8",
@@ -92,6 +94,13 @@ lazy val testSettings = Seq(
   testOptions in Test += Tests.Argument(TestFrameworks.ScalaTest, "-oDF"),
   publishArtifact in Test := true
 )
+lazy val testSettings =
+  (fork in Test := true) +:
+    commonTestSettings
+
+lazy val crossTestSettings =
+  (fork in Test := crossProjectPlatform.value != JSPlatform) +:
+    commonTestSettings
 
 lazy val mdocSettings = Seq(
   scalacOptions in Compile ~= {
@@ -166,14 +175,14 @@ lazy val publishingSettings = Seq(
 )
 
 lazy val commonJsSettings = Seq(
-  scalaJSOptimizerOptions ~= { options =>
+  scalaJSLinkerConfig ~= { config =>
     // https://github.com/scala-js/scala-js/issues/2798
     try {
       scala.util.Properties.isJavaAtLeast("1.8")
-      options
+      config
     } catch {
       case _: NumberFormatException =>
-        options.withParallel(false)
+        config.withParallel(false)
     }
   },
   scalaJSStage in Test := FastOptStage,
@@ -233,7 +242,7 @@ lazy val root = project
 
 lazy val core = crossProject(JVMPlatform, JSPlatform)
   .in(file("core"))
-  .settings(commonSettings: _*)
+  .settings(crossCommonSettings: _*)
   .settings(
     name := "fs2-core",
     sourceDirectories in (Compile, scalafmt) += baseDirectory.value / "../shared/src/main/scala",
