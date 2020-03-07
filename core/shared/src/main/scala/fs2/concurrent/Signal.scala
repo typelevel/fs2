@@ -163,7 +163,7 @@ object SignallingRef {
           def set(a: A): F[Unit] =
             update(_ => a)
 
-          def getAndSet(a: A): F[A] =
+          override def getAndSet(a: A): F[A] =
             modify(old => (a, old))
 
           def access: F[(A, A => F[Boolean])] = ref.access.map {

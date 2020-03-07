@@ -8,10 +8,10 @@ import cats.implicits._
 import scala.concurrent.duration._
 import scala.concurrent.TimeoutException
 import org.scalactic.anyvals._
-import org.scalatest.{Assertion, Matchers, Succeeded}
+import org.scalatest.{Assertion, Succeeded}
 import fs2.concurrent.{Queue, SignallingRef}
 
-class StreamSpec extends Fs2Spec with Matchers {
+class StreamSpec extends Fs2Spec {
   "Stream" - {
     "++" in forAll { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
       assert((s1 ++ s2).toList == (s1.toList ++ s2.toList))
@@ -35,7 +35,7 @@ class StreamSpec extends Fs2Spec with Matchers {
             r.sliding(2)
               .map(s => (s.head, s.tail.head))
               .map { case (prev, next) => next - prev }
-              .foreach(delta => assert(delta +- 150 === 500L))
+              .foreach(delta => assert(delta >= 350L && delta <= 650L))
             Succeeded
           }
       }
