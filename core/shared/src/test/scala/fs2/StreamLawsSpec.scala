@@ -7,6 +7,7 @@ import cats.effect.laws.util.TestContext
 import cats.effect.laws.util.TestInstances._
 import cats.implicits._
 import cats.laws.discipline._
+import cats.laws.discipline.arbitrary._
 
 import org.scalacheck.{Arbitrary, Gen}
 import Arbitrary.arbitrary
@@ -49,4 +50,8 @@ class StreamLawsSpec extends Fs2Spec with StreamArbitrary {
     FunctorFilterTests[Stream[IO, ?]].functorFilter[String, Int, Int]
   )
   checkAll("MonoidK[Stream[F, ?]]", MonoidKTests[Stream[IO, ?]].monoidK[Int])
+  checkAll(
+    "Align[Stream[F, ?]]",
+    AlignTests[Stream[IO, ?]].align[Int, Int, Int, Int]
+  )
 }

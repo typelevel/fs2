@@ -1,6 +1,7 @@
 package fs2
 
 import cats.~>
+import cats.data._
 import cats.data.Chain
 import cats.effect._
 import cats.effect.concurrent.{Deferred, Ref, Semaphore}
@@ -3581,6 +3582,71 @@ class StreamSpec extends Fs2Spec {
 
     "unNone" in forAll { (s: Stream[Pure, Option[Int]]) =>
       assert(s.unNone.chunks.toList == s.filter(_.isDefined).map(_.get).chunks.toList)
+    }
+
+    "align" - {
+
+      "align" in forAll { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
+        assert(s1.align(s2).toList == s1.toList.align(s2.toList))
+      }
+
+      "left side empty and right side populated" in {
+        val empty = Stream.empty
+        val s = Stream("A", "B", "C")
+        assert(
+          empty.align(s).take(3).toList == List(Ior.Right("A"), Ior.Right("B"), Ior.Right("C"))
+        )
+      }
+
+      "right side empty and left side populated" in {
+        val empty = Stream.empty
+        val s = Stream("A", "B", "C")
+        assert(
+          s.align(empty).take(3).toList == List(Ior.Left("A"), Ior.Left("B"), Ior.Left("C"))
+        )
+      }
+
+      "values in both sides" in {
+        val ones = Stream.constant("1")
+        val s = Stream("A", "B", "C")
+        assert(
+          s.align(ones).take(4).toList == List(
+            Ior.Both("A", "1"),
+            Ior.Both("B", "1"),
+            Ior.Both("C", "1"),
+            Ior.Right("1")
+          )
+        )
+      }
+
+      "extra values in right" in {
+        val nums = Stream("1", "2", "3", "4", "5")
+        val s = Stream("A", "B", "C")
+        assert(
+          s.align(nums).take(5).toList == List(
+            Ior.Both("A", "1"),
+            Ior.Both("B", "2"),
+            Ior.Both("C", "3"),
+            Ior.Right("4"),
+            Ior.Right("5")
+          )
+        )
+      }
+
+      "extra values in left" in {
+        val nums = Stream("1", "2", "3", "4", "5")
+        val s = Stream("A", "B", "C")
+        assert(
+          nums.align(s).take(5).toList == List(
+            Ior.Both("1", "A"),
+            Ior.Both("2", "B"),
+            Ior.Both("3", "C"),
+            Ior.Left("4"),
+            Ior.Left("5")
+          )
+        )
+      }
+
     }
 
     "zip" - {
