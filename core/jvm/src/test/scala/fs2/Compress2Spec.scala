@@ -51,9 +51,7 @@ class Compress2Spec extends Fs2Spec {
           )
           .compile
           .toVector
-          .asserting { actual =>
-            assert(actual == expected)
-          }
+          .asserting(actual => assert(actual == expected))
     }
 
     "inflate input" in forAll(strings, intsBetween(0, 9), intsBetween(0, 2), booleans) {
@@ -78,9 +76,7 @@ class Compress2Spec extends Fs2Spec {
               .through(inflate(nowrap = nowrap))
               .compile
               .toVector
-              .asserting { actual =>
-                assert(actual == expected)
-              }
+              .asserting(actual => assert(actual == expected))
           }
     }
 
@@ -108,9 +104,7 @@ class Compress2Spec extends Fs2Spec {
         .through(deflate(9))
         .compile
         .toVector
-        .asserting { compressed =>
-          assert(compressed.length < uncompressed.length)
-        }
+        .asserting(compressed => assert(compressed.length < uncompressed.length))
     }
 
     "deflate and inflate are reusable" in {
@@ -180,9 +174,7 @@ class Compress2Spec extends Fs2Spec {
           }
           .compile
           .toVector
-          .asserting { bytes =>
-            assert(bytes == s.getBytes.toSeq)
-          }
+          .asserting(bytes => assert(bytes == s.getBytes.toSeq))
     }
 
     "gzip |> gunzip ~= id (mutually prime chunk sizes, compression larger)" in forAll(
@@ -229,9 +221,7 @@ class Compress2Spec extends Fs2Spec {
           }
           .compile
           .toVector
-          .asserting { bytes =>
-            assert(bytes == s.getBytes.toSeq)
-          }
+          .asserting(bytes => assert(bytes == s.getBytes.toSeq))
     }
 
     "gzip |> gunzip ~= id (mutually prime chunk sizes, decompression larger)" in forAll(
@@ -278,9 +268,7 @@ class Compress2Spec extends Fs2Spec {
           }
           .compile
           .toVector
-          .asserting { bytes =>
-            assert(bytes == s.getBytes.toSeq)
-          }
+          .asserting(bytes => assert(bytes == s.getBytes.toSeq))
     }
 
     "gzip |> GZIPInputStream ~= id" in forAll(
@@ -341,9 +329,7 @@ class Compress2Spec extends Fs2Spec {
         .through(gzip(2048))
         .compile
         .toVector
-        .asserting { compressed =>
-          assert(compressed.length < uncompressed.length)
-        }
+        .asserting(compressed => assert(compressed.length < uncompressed.length))
     }
 
     "gunzip limit fileName and comment length" in {
@@ -357,19 +343,21 @@ class Compress2Spec extends Fs2Spec {
         .unchunk // ensure chunk sizes are less than file name and comment size soft limits
         .through(gunzip[IO](8192))
         .flatMap { gunzipResult =>
-          assert(gunzipResult.fileName
-            .map(_.length)
-            .getOrElse(0) < expectedFileName.map(_.length).getOrElse(0))
-          assert(gunzipResult.comment
-            .map(_.length)
-            .getOrElse(0) < expectedComment.map(_.length).getOrElse(0))
+          assert(
+            gunzipResult.fileName
+              .map(_.length)
+              .getOrElse(0) < expectedFileName.map(_.length).getOrElse(0)
+          )
+          assert(
+            gunzipResult.comment
+              .map(_.length)
+              .getOrElse(0) < expectedComment.map(_.length).getOrElse(0)
+          )
           gunzipResult.content
         }
         .compile
         .toVector
-        .asserting { vector =>
-          assert(vector.isEmpty)
-        }
+        .asserting(vector => assert(vector.isEmpty))
     }
 
     "unix.gzip |> gunzip" in {
