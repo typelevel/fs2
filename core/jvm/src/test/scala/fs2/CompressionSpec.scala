@@ -8,11 +8,11 @@ import java.util.zip._
 import cats.effect._
 import fs2.Stream._
 
-import fs2.compress2._
+import fs2.compression._
 
 import scala.collection.mutable
 
-class Compress2Spec extends Fs2Spec {
+class CompressionSpec extends Fs2Spec {
   def getBytes(s: String): Array[Byte] =
     s.getBytes
 

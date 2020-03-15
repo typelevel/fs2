@@ -8,7 +8,7 @@ import java.util.zip._
 import cats.effect.Sync
 
 /** Provides utilities for compressing/decompressing byte streams. */
-object compress2 {
+object compression {
 
   /**
     * Returns a `Pipe` that deflates (compresses) its input elements using

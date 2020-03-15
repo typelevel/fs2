@@ -9,7 +9,7 @@ import scala.annotation.tailrec
 import scala.collection.mutable.ArrayBuffer
 
 /** Provides utilities for compressing/decompressing byte streams. */
-@deprecated("Use fs2.compress2 instead", "2.3.0")
+@deprecated("Use fs2.compression instead", "2.3.0")
 object compress {
 
   /**

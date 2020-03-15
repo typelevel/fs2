@@ -1,36 +1,38 @@
 package fs2.benchmark
 
 import cats.effect.IO
-import fs2.{Chunk, Pipe, Stream, compress2}
 import org.openjdk.jmh.annotations.{Benchmark, Param, Scope, State}
 
 import scala.util.Random
-import Compress2Benchmark._
-import fs2.compress2.GunzipResult
+
+import fs2.{Chunk, Pipe, Stream, compression}
+import fs2.compression.GunzipResult
+
+import CompressionBenchmark._
 
 @State(Scope.Thread)
-class Compress2Benchmark {
+class CompressionBenchmark {
 
   @Param(Array("true", "false"))
   var withRandomBytes: Boolean = _
 
   @Benchmark
   def deflate(): Byte =
-    benchmark(randomBytes, zeroBytes, compress2.deflate(bufferSize = bufferSize))
+    benchmark(randomBytes, zeroBytes, compression.deflate(bufferSize = bufferSize))
 
   @Benchmark
   def inflate(): Byte =
-    benchmark(randomBytesDeflated, zeroBytesDeflated, compress2.inflate(bufferSize = bufferSize))
+    benchmark(randomBytesDeflated, zeroBytesDeflated, compression.inflate(bufferSize = bufferSize))
 
   @Benchmark
   def gzip(): Byte =
-    benchmark(randomBytes, zeroBytes, compress2.gzip(bufferSize = bufferSize))
+    benchmark(randomBytes, zeroBytes, compression.gzip(bufferSize = bufferSize))
 
   @Benchmark
   def gunzip(): Byte =
     if (withRandomBytes)
-      lastThrough2(randomBytesGzipped, compress2.gunzip[IO](bufferSize = bufferSize))
-    else lastThrough2(zeroBytesGzipped, compress2.gunzip[IO](bufferSize = bufferSize))
+      lastThrough2(randomBytesGzipped, compression.gunzip[IO](bufferSize = bufferSize))
+    else lastThrough2(zeroBytesGzipped, compression.gunzip[IO](bufferSize = bufferSize))
 
   private def benchmark(
       randomInput: Array[Byte],
@@ -61,7 +63,7 @@ class Compress2Benchmark {
 
 }
 
-object Compress2Benchmark {
+object CompressionBenchmark {
 
   private val bytes: Int = 1024 * 1024
   private val bufferSize: Int = 32 * 1024
@@ -77,16 +79,16 @@ object Compress2Benchmark {
     Array.fill(bytes)(0.toByte)
 
   private val randomBytesDeflated: Array[Byte] =
-    through(randomBytes, compress2.deflate(bufferSize = bufferSize))
+    through(randomBytes, compression.deflate(bufferSize = bufferSize))
 
   private val zeroBytesDeflated: Array[Byte] =
-    through(zeroBytes, compress2.deflate(bufferSize = bufferSize))
+    through(zeroBytes, compression.deflate(bufferSize = bufferSize))
 
   private val randomBytesGzipped: Array[Byte] =
-    through(randomBytes, compress2.gzip(bufferSize = bufferSize))
+    through(randomBytes, compression.gzip(bufferSize = bufferSize))
 
   private val zeroBytesGzipped: Array[Byte] =
-    through(zeroBytes, compress2.gzip(bufferSize = bufferSize))
+    through(zeroBytes, compression.gzip(bufferSize = bufferSize))
 
   private def through(input: Array[Byte], pipe: Pipe[IO, Byte, Byte]): Array[Byte] =
     Stream
