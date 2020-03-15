@@ -8,6 +8,7 @@ import scala.util.Random
 import CompressBenchmark._
 
 @State(Scope.Thread)
+@deprecated("Remove when fs2.compress is removed", "2.3.0")
 class CompressBenchmark {
 
   @Param(Array("true", "false"))
