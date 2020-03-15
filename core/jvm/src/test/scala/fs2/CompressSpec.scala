@@ -16,6 +16,7 @@ import scala.collection.mutable
 
 import compress._
 
+@deprecated("Remove when fs2.compress is removed", "2.3.0")
 class CompressSpec extends Fs2Spec {
   def getBytes(s: String): Array[Byte] =
     s.getBytes
