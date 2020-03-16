@@ -1,0 +1,101 @@
+package fs2.benchmark
+
+import cats.effect.IO
+import org.openjdk.jmh.annotations.{Benchmark, Param, Scope, State}
+
+import scala.util.Random
+
+import fs2.{Chunk, Pipe, Stream, compression}
+import fs2.compression.GunzipResult
+
+import CompressionBenchmark._
+
+@State(Scope.Thread)
+class CompressionBenchmark {
+
+  @Param(Array("true", "false"))
+  var withRandomBytes: Boolean = _
+
+  @Benchmark
+  def deflate(): Byte =
+    benchmark(randomBytes, zeroBytes, compression.deflate(bufferSize = bufferSize))
+
+  @Benchmark
+  def inflate(): Byte =
+    benchmark(randomBytesDeflated, zeroBytesDeflated, compression.inflate(bufferSize = bufferSize))
+
+  @Benchmark
+  def gzip(): Byte =
+    benchmark(randomBytes, zeroBytes, compression.gzip(bufferSize = bufferSize))
+
+  @Benchmark
+  def gunzip(): Byte =
+    if (withRandomBytes)
+      lastThrough2(randomBytesGzipped, compression.gunzip[IO](bufferSize = bufferSize))
+    else lastThrough2(zeroBytesGzipped, compression.gunzip[IO](bufferSize = bufferSize))
+
+  private def benchmark(
+      randomInput: Array[Byte],
+      zeroInput: Array[Byte],
+      pipe: Pipe[IO, Byte, Byte]
+  ): Byte =
+    if (withRandomBytes) lastThrough(randomInput, pipe)
+    else lastThrough(zeroInput, pipe)
+
+  private def lastThrough(input: Array[Byte], pipe: Pipe[IO, Byte, Byte]): Byte =
+    Stream
+      .chunk[IO, Byte](Chunk.bytes(input))
+      .through(pipe)
+      .compile
+      .last
+      .unsafeRunSync
+      .get
+
+  private def lastThrough2(input: Array[Byte], pipe: Pipe[IO, Byte, GunzipResult[IO]]): Byte =
+    Stream
+      .chunk[IO, Byte](Chunk.bytes(input))
+      .through(pipe)
+      .flatMap(_.content)
+      .compile
+      .last
+      .unsafeRunSync
+      .get
+
+}
+
+object CompressionBenchmark {
+
+  private val bytes: Int = 1024 * 1024
+  private val bufferSize: Int = 32 * 1024
+
+  private val randomBytes: Array[Byte] = {
+    val random: Random = new Random(7919)
+    val buffer = Array.ofDim[Byte](bytes)
+    random.nextBytes(buffer)
+    buffer
+  }
+
+  private val zeroBytes: Array[Byte] =
+    Array.fill(bytes)(0.toByte)
+
+  private val randomBytesDeflated: Array[Byte] =
+    through(randomBytes, compression.deflate(bufferSize = bufferSize))
+
+  private val zeroBytesDeflated: Array[Byte] =
+    through(zeroBytes, compression.deflate(bufferSize = bufferSize))
+
+  private val randomBytesGzipped: Array[Byte] =
+    through(randomBytes, compression.gzip(bufferSize = bufferSize))
+
+  private val zeroBytesGzipped: Array[Byte] =
+    through(zeroBytes, compression.gzip(bufferSize = bufferSize))
+
+  private def through(input: Array[Byte], pipe: Pipe[IO, Byte, Byte]): Array[Byte] =
+    Stream
+      .chunk[IO, Byte](Chunk.bytes(input))
+      .through(pipe)
+      .compile
+      .to(Array)
+      .unsafeRunSync
+
+}
