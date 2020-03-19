@@ -36,8 +36,7 @@ package object reactivestreams {
   def fromPublisher[F[_]: ConcurrentEffect, A](p: Publisher[A]): Stream[F, A] =
     Stream
       .eval(StreamSubscriber[F, A])
-      .evalTap(s => Sync[F].delay(p.subscribe(s)))
-      .flatMap(_.sub.stream)
+      .flatMap(s => s.sub.stream(Sync[F].delay(p.subscribe(s))))
 
   implicit final class PublisherOps[A](val publisher: Publisher[A]) extends AnyVal {
 
