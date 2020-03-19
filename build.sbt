@@ -228,7 +228,8 @@ lazy val mimaSettings = Seq(
     ProblemFilters.exclude[IncompatibleSignatureProblem]("*"),
     // .to(sink) syntax was removed in 1.0.2 and has been hidden in all 2.x releases behind private[fs2], hence it's safe to remove
     ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Stream.to"),
-    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Stream.to$extension")
+    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Stream.to$extension"),
+    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.interop.reactivestreams.StreamSubscriber#FSM.stream")    // FSM is package private
   )
 )
 
