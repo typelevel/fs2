@@ -40,7 +40,10 @@ final class StreamSubscriber[F[_]: ConcurrentEffect, A](val sub: StreamSubscribe
   }
 
   /** Obtain a fs2.Stream */
-  @deprecated("subscribing to a publisher prior to pulling the stream is unsafe if interrupted", "2.2.3")
+  @deprecated(
+    "subscribing to a publisher prior to pulling the stream is unsafe if interrupted",
+    "2.2.3"
+  )
   def stream: Stream[F, A] = stream(().pure[F])
 
   def stream(subscribe: F[Unit]): Stream[F, A] = sub.stream(subscribe)
@@ -75,7 +78,11 @@ object StreamSubscriber {
 
     /** downstream stream */
     def stream(subscribe: F[Unit])(implicit ev: ApplicativeError[F, Throwable]): Stream[F, A] =
-      Stream.bracket(subscribe)(_ => onFinalize) >> Stream.eval(dequeue1).repeat.rethrow.unNoneTerminate
+      Stream.bracket(subscribe)(_ => onFinalize) >> Stream
+        .eval(dequeue1)
+        .repeat
+        .rethrow
+        .unNoneTerminate
   }
 
   private[reactivestreams] def fsm[F[_], A](implicit F: Concurrent[F]): F[FSM[F, A]] = {
