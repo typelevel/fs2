@@ -985,18 +985,13 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
     * @example {{{
     * scala> import cats.effect.IO
     * scala> Stream(1,2,3,4).evalMap(i => IO(println(i))).take(2).compile.drain.unsafeRunSync
-    * 1
-    * 2
+    * res0: Unit = ()
     * }}}
     *
     * But with `evalMaps`, it will print 4 times:
     * @example {{{
-    * scala> import cats.effect.IO
-    * scala> Stream(1,2,3,4).evalMaps(i => IO(println(i))).take(2).compile.drain.unsafeRunSync
-    * 1
-    * 2
-    * 3
-    * 4
+    * scala> Stream(1,2,3,4).evalMapChunk(i => IO(println(i))).take(2).compile.drain.unsafeRunSync
+    * res0: Unit = ()
     * }}}
     */
   def evalMapChunk[F2[x] >: F[x]: Applicative, O2](f: O => F2[O2]): Stream[F2, O2] =
