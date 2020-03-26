@@ -8,7 +8,7 @@ position: 5
 #### Talks and Presentations
 
 * [A sky full of streams](https://www.youtube.com/watch?v=oluPEFlXumw), a talk by [Jakub Kozłowski][kubukoz] at [Scala World](https://scala.world), a conference in the Lake District in the UK, in September 2019. Slides are available [on Speakerdeck](https://speakerdeck.com/kubukoz/a-sky-full-of-streams).
-* [FS2 - Crash course](https://www.youtube.com/watch?v=tbShO8eIXbI), a talk by [Łukasz Byczyński](lukasz-byczynski) from [Scalar](https://scalar-conf.com) in Warsaw, in April 2019. [Examples are available on the author's GitHub](https://github.com/lukaszbyczynski/scalar-fs2-cc).
+* [FS2 - Crash course](https://www.youtube.com/watch?v=tbShO8eIXbI), a talk by [Łukasz Byczyński][lukasz-byczynski] from [Scalar](https://scalar-conf.com) in Warsaw, in April 2019. [Examples are available on the author's GitHub](https://github.com/lukaszbyczynski/scalar-fs2-cc).
 * [Declarative Control Flow with fs2 Stream](https://www.youtube.com/watch?v=YSN__0VEsaw), a talk by [Fabio Labella][systemfw] at the [Typelevel Summit](https://typelevel.org/event/2018-03-summit-boston/), celebrated in Boston in March 2018. Slides available at the author's [Github](https://github.com/SystemFw/TL-Summit-Boston-2018).
 * [Compose your program flow with Stream](https://www.youtube.com/watch?v=x3GLwl1FxcA), a talk by [Fabio Labella][systemfw] at a Klarna tech talk, sometime before March 2018.
 * 2018-03-20: [Compose your program flow with Stream](https://www.youtube.com/watch?v=x3GLwl1FxcA) by [Fabio Labella][systemfw]
@@ -18,8 +18,8 @@ position: 5
 
 #### Tutorials
 
-* [Basic streams and combinators in fs2](https://www.youtube.com/watch?v=TmhIabcu6Fs), a tutorial by [Jakub Kozłowski](kubukoz) introducing basic Stream operations and constructors.
-* [Sharding a stream of values using Fs2](https://www.youtube.com/watch?v=FWYXqYQWAc0), a tutorial by [Gabriel Volpe](gvolpe) showcasing a specific use-case of fs2 streams.
+* [Basic streams and combinators in fs2](https://www.youtube.com/watch?v=TmhIabcu6Fs), a tutorial by [Jakub Kozłowski][kubukoz] introducing basic Stream operations and constructors.
+* [Sharding a stream of values using Fs2](https://www.youtube.com/watch?v=FWYXqYQWAc0), a tutorial by [Gabriel Volpe][gvolpe] showcasing a specific use-case of fs2 streams.
 * [An introduction to FS2 Streams](https://www.youtube.com/watch?v=B1wb4fIdtn4), a REPL-demo tutorial given by [Michael Pilquist][mpilquist] for the [Scala Toronto](https://www.meetup.com/scalator/events/254059603/) Meetup group, on September 2018.
 * Introduction to Functional Streams for Scala (FS2), a REPL-demo tutorial on FS2 (version 0.9), given by [Michael Pilquist][mpilquist] in May of 2016. The tutorial is split in three parts:
   * [Part 1](https://www.youtube.com/watch?v=cahvyadYfX8).
@@ -28,7 +28,8 @@ position: 5
 
 
 #### Blog Posts and Short Articles
-* [Leverage FS2 API to write to a file](https://davidfrancoeur.com/post/file-writing-fs2/) by [David Francoeur](francoeurdavid) describes writing data to files using the FS2 API.
+* [Leverage FS2 API to write to a file](https://davidfrancoeur.com/post/file-writing-fs2/) by [David Francoeur][francoeurdavid] describes writing data to files using the FS2 API.
+* [Scala FS2 — handle broken CSV lines](https://medium.com/se-notes-by-alexey-novakov/scala-fs2-handle-broken-csv-lines-8d8c4defcd88) by [Alexey Novakov][alexey_novakov] describes processing fragmented text data using FS2.
 * [Writing a simple Telegram bot with tagless final, http4s and fs2](https://pavkin.ru/writing-a-simple-telegram-bot-with-tagless-final-http4s-and-fs2/) by [Vladimir Pavkin][vpavkin] describes a process of writing a purely functional client for the Telegram messenger.
 * [Inference Driven Design](https://mpilquist.github.io/blog/2018/07/04/fs2/), by [Michael Pilquist][mpilquist], describes some of the tradeoffs in designing the API and the code of FS2, used to work around some of the problems in the Scala compiler.
 * [Tips for working with FS2](https://underscore.io/blog/posts/2018/03/20/fs2.html), by [Pere Villega](https://github.com/pvillega),
@@ -71,6 +72,7 @@ Since Haskell is the purely functional lazily-evaluated programming language _pa
 [vpavkin]: https://github.com/vpavkin
 [lukasz-byczynski]: https://github.com/lukaszbyczynski
 [francoeurdavid]: https://twitter.com/francoeurdavid
+[alexey_novakov]: https://twitter.com/alexey_novakov
 
 ### Older References ###
 
