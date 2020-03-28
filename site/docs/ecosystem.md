@@ -22,7 +22,7 @@ If you have a project you'd like to include in this list, either open a PR or le
 * [circe-fs2](https://github.com/circe/circe-fs2): Streaming JSON manipulation with [circe](https://github.com/circe/circe).
 * [doobie](https://github.com/tpolecat/doobie): Pure functional JDBC built on fs2.
 * [fs2-aws](https://github.com/saksdirect/fs2-aws): FS2 streams to interact with AWS utilities
-* [fs2-blobstore](https://github.com/lendup/fs2-blobstore): Minimal, idiomatic, stream-based Scala interface for key/value store implementations.
+* [fs2-blobstore](https://github.com/fs2-blobstore/fs2-blobstore): Minimal, idiomatic, stream-based Scala interface for S3, GCS, SFTP and other key/value store implementations.
 * [fs2-cassandra](https://github.com/Spinoco/fs2-cassandra): Cassandra bindings for fs2.
 * [fs2-columns](https://gitlab.com/lJoublanc/fs2-columns): a `Chunk` that uses [shapeless](https://github.com/milessabin/shapeless) to store `case class` data column-wise.
 * [fs2-cron](https://github.com/fthomas/fs2-cron): FS2 streams based on cron expressions.
