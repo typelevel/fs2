@@ -1204,6 +1204,10 @@ class StreamSpec extends Fs2Spec {
       assert(s.fold1(f).toVector == expected)
     }
 
+    "foldable" in {
+      forAll((c: List[Int]) => assert(Stream.foldable(c).compile.to(List) == c))
+    }
+
     "forall" in forAll { (s: Stream[Pure, Int], n0: PosInt) =>
       val n = n0 % 20 + 1
       val f = (i: Int) => i % n == 0
