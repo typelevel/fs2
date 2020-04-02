@@ -3416,6 +3416,12 @@ object Stream extends StreamLowPriority {
     eval(f).flatMap(s => s)
 
   /**
+    * Like `emits`, but works for any class that extends `Iterable`
+    */
+  def iterable[F[x] >: Pure[x], A](os: Iterable[A]): Stream[F, A] =
+    Stream.chunk(Chunk.iterable(os))
+
+  /**
     * An infinite `Stream` that repeatedly applies a given function
     * to a start value. `start` is the first value emitted, followed
     * by `f(start)`, then `f(f(start))`, and so on.

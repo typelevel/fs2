@@ -1978,6 +1978,10 @@ class StreamSpec extends Fs2Spec {
       assert(s.intersperse(n).toList == s.toList.flatMap(i => List(i, n)).dropRight(1))
     }
 
+    "iterable" in {
+      forAll((c: Set[Int]) => assert(Stream.iterable(c).compile.to(Set) == c))
+    }
+
     "iterate" in {
       assert(Stream.iterate(0)(_ + 1).take(100).toList == List.iterate(0, 100)(_ + 1))
     }
