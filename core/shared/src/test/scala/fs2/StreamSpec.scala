@@ -2094,6 +2094,27 @@ class StreamSpec extends Fs2Spec {
             }
           }
         }
+
+        "4 - terminate for non-error termination" in forAll { (s1: Stream[Pure, Int]) =>
+          s1.mergeHaltBoth(Stream.eval(EitherT.leftT[IO, Int]("error")))
+            .compile
+            .drain
+            .value
+            .assertNoException
+        }
+
+        "5 - terminate for non-error termination in a basic case" in {
+          Stream
+            .eval(EitherT.leftT[IO, Unit]("error"))
+            .onFinalize(EitherT.liftF(IO(println("L finalizer"))))
+            .mergeHaltBoth[EitherT[IO, String, *], Unit](
+              Stream.eval(EitherT.liftF(IO(println("R stream"))))
+            )
+            .compile
+            .drain
+            .value
+            .assertNoException
+        }
       }
 
       "run finalizers of inner streams first" in forAll {
