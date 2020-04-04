@@ -1909,17 +1909,17 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
   )(implicit F2: Concurrent[F2]): Stream[F2, O2] =
     Stream.eval {
       Deferred[F2, Unit].flatMap { interrupt =>
-        Deferred[F2, Option[Either[Throwable, Unit]]].flatMap { resultL =>
-          Deferred[F2, Option[Either[Throwable, Unit]]].flatMap { resultR =>
+        Deferred.tryable[F2, Option[Either[Throwable, Unit]]].flatMap { resultL =>
+          Deferred.tryable[F2, Option[Either[Throwable, Unit]]].flatMap { resultR =>
             Ref.of[F2, Boolean](false).flatMap { otherSideDone =>
               Queue.unbounded[F2, Option[Stream[F2, O2]]].map { resultQ =>
                 def runStream(
                     s: Stream[F2, O2],
-                    whenDone: Deferred[F2, Option[Either[Throwable, Unit]]]
+                    whenDone: TryableDeferred[F2, Option[Either[Throwable, Unit]]]
                 ): F2[Unit] = {
 
                   def finalizeOnError(exit: Option[Either[Throwable, Unit]]): F2[Unit] =
-                    whenDone.complete(exit) >>
+                    whenDone.complete(exit).attempt >>
                       interrupt.complete(()).attempt.void
 
                   Semaphore(1)
@@ -1948,6 +1948,15 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
                                 .enqueue1(None) // complete only if other side is done too.
                             else F2.unit
                           }
+                    }
+                    .guaranteeCase {
+                      case ExitCase.Error(e) => finalizeOnError(Some(Left(e)))
+                      case ExitCase.Canceled => finalizeOnError(None)
+                      case ExitCase.Completed =>
+                        whenDone.tryGet.flatMap {
+                          case Some(_) => F2.unit
+                          case None    => finalizeOnError(None)
+                        }
                     }
                 }
 

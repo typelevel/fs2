@@ -2100,7 +2100,7 @@ class StreamSpec extends Fs2Spec {
             .compile
             .drain
             .value
-            .assertNoException
+            .assertThrows[InterruptedException]
         }
 
         "5 - terminate for non-error termination in a basic case" in {
@@ -2113,7 +2113,7 @@ class StreamSpec extends Fs2Spec {
             .compile
             .drain
             .value
-            .assertNoException
+            .assertThrows[InterruptedException]
         }
       }
 
