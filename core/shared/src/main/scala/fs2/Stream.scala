@@ -1933,11 +1933,6 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
                         .compile
                         .drain
                     }
-                    .guaranteeCase {
-                      case ExitCase.Completed => F2.unit
-                      case ExitCase.Canceled  => finalizeOnError(None)
-                      case ExitCase.Error(e)  => finalizeOnError(Some(Left(e)))
-                    }
                     .flatMap { a =>
                       whenDone.complete(Some(Right(a))) >>
                         otherSideDone
