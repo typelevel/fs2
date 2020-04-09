@@ -4699,8 +4699,8 @@ object Stream extends StreamLowPriority {
     def covary[F[_]]: Pipe2[F, I, I2, O] = self.asInstanceOf[Pipe2[F, I, I2, O]]
   }
 
-  /** Implicitly covaries a pipe. */
-  implicit def covaryPurePipe[F[_], I, O](p: Pipe[Pure, I, O]): Pipe[F, I, O] =
+  // This is unsound! See #1838. Left for binary compatibility.
+  private[fs2] def covaryPurePipe[F[_], I, O](p: Pipe[Pure, I, O]): Pipe[F, I, O] =
     p.covary[F]
 
   /**
