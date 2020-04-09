@@ -4687,20 +4687,21 @@ object Stream extends StreamLowPriority {
   /** Provides operations on pure pipes for syntactic convenience. */
   implicit final class PurePipeOps[I, O](private val self: Pipe[Pure, I, O]) extends AnyVal {
 
-    /** Lifts this pipe to the specified effect type. */
-    def covary[F[_]]: Pipe[F, I, O] = self.asInstanceOf[Pipe[F, I, O]]
+    // This is unsound! See #1838. Left for binary compatibility.
+    private[fs2] def covary[F[_]]: Pipe[F, I, O] = self.asInstanceOf[Pipe[F, I, O]]
   }
 
   /** Provides operations on pure pipes for syntactic convenience. */
   implicit final class PurePipe2Ops[I, I2, O](private val self: Pipe2[Pure, I, I2, O])
       extends AnyVal {
 
-    /** Lifts this pipe to the specified effect type. */
-    def covary[F[_]]: Pipe2[F, I, I2, O] = self.asInstanceOf[Pipe2[F, I, I2, O]]
+    // This is unsound! See #1838. Left for binary compatibility.
+    private[fs2] def covary[F[_]]: Pipe2[F, I, I2, O] = self.asInstanceOf[Pipe2[F, I, I2, O]]
   }
 
   // This is unsound! See #1838. Left for binary compatibility.
-  private[fs2] def covaryPurePipe[F[_], I, O](p: Pipe[Pure, I, O]): Pipe[F, I, O] =
+  @deprecated("This is unsound! See #1838.", "2.3.1")
+  def covaryPurePipe[F[_], I, O](p: Pipe[Pure, I, O]): Pipe[F, I, O] =
     p.covary[F]
 
   /**
