@@ -6,7 +6,6 @@ import java.time.Instant
 import java.util.zip._
 
 import cats.effect._
-import fs2.Stream._
 
 import fs2.compression._
 
@@ -36,59 +35,74 @@ class CompressionSpec extends Fs2Spec {
   }
 
   "Compress" - {
-    "deflate input" in forAll(strings, intsBetween(0, 9), intsBetween(0, 2), booleans) {
-      (s: String, level: Int, strategy: Int, nowrap: Boolean) =>
-        val expected = deflateStream(getBytes(s), level, strategy, nowrap).toVector
-        Stream
-          .chunk[IO, Byte](Chunk.bytes(getBytes(s)))
-          .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
-          .through(
-            deflate(
-              level = level,
-              strategy = strategy,
-              nowrap = nowrap
-            )
-          )
-          .compile
-          .toVector
-          .asserting(actual => assert(actual == expected))
-    }
-
-    "inflate input" in forAll(strings, intsBetween(0, 9), intsBetween(0, 2), booleans) {
-      (s: String, level: Int, strategy: Int, nowrap: Boolean) =>
-        Stream
-          .chunk[IO, Byte](Chunk.bytes(getBytes(s)))
-          .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
-          .through(
-            deflate(
-              level = level,
-              strategy = strategy,
-              nowrap = nowrap
-            )
-          )
-          .compile
-          .to(Array)
-          .flatMap { deflated =>
-            val expected = inflateStream(deflated, nowrap).toVector
-            Stream
-              .chunk[IO, Byte](Chunk.bytes(deflated))
-              .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
-              .through(inflate(nowrap = nowrap))
-              .compile
-              .toVector
-              .asserting(actual => assert(actual == expected))
-          }
-    }
-
-    "deflate |> inflate ~= id" in forAll { s: Stream[Pure, Byte] =>
-      s.covary[IO]
+    "deflate input" in forAll(
+      strings,
+      intsBetween(0, 9),
+      specificValues(Deflater.DEFAULT_STRATEGY, Deflater.FILTERED, Deflater.HUFFMAN_ONLY),
+      booleans
+    ) { (s: String, level: Int, strategy: Int, nowrap: Boolean) =>
+      val expected = deflateStream(getBytes(s), level, strategy, nowrap).toVector
+      Stream
+        .chunk[IO, Byte](Chunk.bytes(getBytes(s)))
         .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
-        .through(deflate())
-        .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
-        .through(inflate())
+        .through(
+          deflate(
+            level = level,
+            strategy = strategy,
+            nowrap = nowrap,
+            flushMode = Deflater.NO_FLUSH
+          )
+        )
         .compile
         .toVector
-        .asserting(it => assert(it == s.toVector))
+        .asserting(actual => assert(actual == expected))
+    }
+
+    "inflate input" in forAll(
+      strings,
+      intsBetween(0, 9),
+      specificValues(Deflater.DEFAULT_STRATEGY, Deflater.FILTERED, Deflater.HUFFMAN_ONLY),
+      booleans,
+      specificValues(Deflater.NO_FLUSH, Deflater.SYNC_FLUSH, Deflater.FULL_FLUSH)
+    ) { (s: String, level: Int, strategy: Int, nowrap: Boolean, flushMode: Int) =>
+      Stream
+        .chunk[IO, Byte](Chunk.bytes(getBytes(s)))
+        .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
+        .through(
+          deflate(level = level, strategy = strategy, nowrap = nowrap, flushMode = flushMode)
+        )
+        .compile
+        .to(Array)
+        .flatMap { deflated =>
+          val expected = inflateStream(deflated, nowrap).toVector
+          Stream
+            .chunk[IO, Byte](Chunk.bytes(deflated))
+            .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
+            .through(inflate(nowrap = nowrap))
+            .compile
+            .toVector
+            .asserting(actual => assert(actual == expected))
+        }
+    }
+
+    "deflate |> inflate ~= id" in forAll(
+      strings,
+      intsBetween(0, 9),
+      specificValues(Deflater.DEFAULT_STRATEGY, Deflater.FILTERED, Deflater.HUFFMAN_ONLY),
+      booleans,
+      specificValues(Deflater.NO_FLUSH, Deflater.SYNC_FLUSH, Deflater.FULL_FLUSH)
+    ) { (s: String, level: Int, strategy: Int, nowrap: Boolean, flushMode: Int) =>
+      Stream
+        .chunk[IO, Byte](Chunk.bytes(getBytes(s)))
+        .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
+        .through(
+          deflate(level = level, strategy = strategy, nowrap = nowrap, flushMode = flushMode)
+        )
+        .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
+        .through(inflate(nowrap = nowrap))
+        .compile
+        .to(Array)
+        .asserting(it => assert(it.sameElements(getBytes(s))))
     }
 
     "deflate.compresses input" in {
@@ -133,21 +147,19 @@ class CompressionSpec extends Fs2Spec {
     "gzip |> gunzip ~= id" in forAll(
       strings,
       intsBetween(0, 9),
-      intsBetween(0, 2),
-      intsBetween(0, Int.MaxValue),
-      strings,
-      strings
+      specificValues(Deflater.DEFAULT_STRATEGY, Deflater.FILTERED, Deflater.HUFFMAN_ONLY),
+      specificValues(Deflater.NO_FLUSH, Deflater.SYNC_FLUSH, Deflater.FULL_FLUSH),
+      intsBetween(0, Int.MaxValue)
     ) {
       (
           s: String,
           level: Int,
           strategy: Int,
-          epochSeconds: Int,
-          fileName: String,
-          comment: String
+          flushMode: Int,
+          epochSeconds: Int
       ) =>
-        val expectedFileName = Option(toEncodableFileName(fileName))
-        val expectedComment = Option(toEncodableComment(comment))
+        val expectedFileName = Option(toEncodableFileName(s))
+        val expectedComment = Option(toEncodableComment(s))
         val expectedMTime = Option(Instant.ofEpochSecond(epochSeconds))
         Stream
           .chunk(Chunk.bytes(s.getBytes))
@@ -158,8 +170,9 @@ class CompressionSpec extends Fs2Spec {
               deflateLevel = Some(level),
               deflateStrategy = Some(strategy),
               modificationTime = Some(Instant.ofEpochSecond(epochSeconds)),
-              fileName = Some(fileName),
-              comment = Some(comment)
+              fileName = Some(s),
+              comment = Some(s),
+              deflateFlushMode = Some(flushMode)
             )
           )
           .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
@@ -180,21 +193,19 @@ class CompressionSpec extends Fs2Spec {
     "gzip |> gunzip ~= id (mutually prime chunk sizes, compression larger)" in forAll(
       strings,
       intsBetween(0, 9),
-      intsBetween(0, 2),
-      intsBetween(0, Int.MaxValue),
-      strings,
-      strings
+      specificValues(Deflater.DEFAULT_STRATEGY, Deflater.FILTERED, Deflater.HUFFMAN_ONLY),
+      specificValues(Deflater.NO_FLUSH, Deflater.SYNC_FLUSH, Deflater.FULL_FLUSH),
+      intsBetween(0, Int.MaxValue)
     ) {
       (
           s: String,
           level: Int,
           strategy: Int,
-          epochSeconds: Int,
-          fileName: String,
-          comment: String
+          flushMode: Int,
+          epochSeconds: Int
       ) =>
-        val expectedFileName = Option(toEncodableFileName(fileName))
-        val expectedComment = Option(toEncodableComment(comment))
+        val expectedFileName = Option(toEncodableFileName(s))
+        val expectedComment = Option(toEncodableComment(s))
         val expectedMTime = Option(Instant.ofEpochSecond(epochSeconds))
         Stream
           .chunk(Chunk.bytes(s.getBytes))
@@ -205,8 +216,9 @@ class CompressionSpec extends Fs2Spec {
               deflateLevel = Some(level),
               deflateStrategy = Some(strategy),
               modificationTime = Some(Instant.ofEpochSecond(epochSeconds)),
-              fileName = Some(fileName),
-              comment = Some(comment)
+              fileName = Some(s),
+              comment = Some(s),
+              deflateFlushMode = Some(flushMode)
             )
           )
           .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
@@ -227,21 +239,19 @@ class CompressionSpec extends Fs2Spec {
     "gzip |> gunzip ~= id (mutually prime chunk sizes, decompression larger)" in forAll(
       strings,
       intsBetween(0, 9),
-      intsBetween(0, 2),
-      intsBetween(0, Int.MaxValue),
-      strings,
-      strings
+      specificValues(Deflater.DEFAULT_STRATEGY, Deflater.FILTERED, Deflater.HUFFMAN_ONLY),
+      specificValues(Deflater.NO_FLUSH, Deflater.SYNC_FLUSH, Deflater.FULL_FLUSH),
+      intsBetween(0, Int.MaxValue)
     ) {
       (
           s: String,
           level: Int,
           strategy: Int,
-          epochSeconds: Int,
-          fileName: String,
-          comment: String
+          flushMode: Int,
+          epochSeconds: Int
       ) =>
-        val expectedFileName = Option(toEncodableFileName(fileName))
-        val expectedComment = Option(toEncodableComment(comment))
+        val expectedFileName = Option(toEncodableFileName(s))
+        val expectedComment = Option(toEncodableComment(s))
         val expectedMTime = Option(Instant.ofEpochSecond(epochSeconds))
         Stream
           .chunk(Chunk.bytes(s.getBytes))
@@ -252,8 +262,9 @@ class CompressionSpec extends Fs2Spec {
               deflateLevel = Some(level),
               deflateStrategy = Some(strategy),
               modificationTime = Some(Instant.ofEpochSecond(epochSeconds)),
-              fileName = Some(fileName),
-              comment = Some(comment)
+              fileName = Some(s),
+              comment = Some(s),
+              deflateFlushMode = Some(flushMode)
             )
           )
           .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
@@ -274,18 +285,16 @@ class CompressionSpec extends Fs2Spec {
     "gzip |> GZIPInputStream ~= id" in forAll(
       strings,
       intsBetween(0, 9),
-      intsBetween(0, 2),
-      intsBetween(0, Int.MaxValue),
-      strings,
-      strings
+      specificValues(Deflater.DEFAULT_STRATEGY, Deflater.FILTERED, Deflater.HUFFMAN_ONLY),
+      specificValues(Deflater.NO_FLUSH, Deflater.SYNC_FLUSH, Deflater.FULL_FLUSH),
+      intsBetween(0, Int.MaxValue)
     ) {
       (
           s: String,
           level: Int,
           strategy: Int,
-          epochSeconds: Int,
-          fileName: String,
-          comment: String
+          flushMode: Int,
+          epochSeconds: Int
       ) =>
         Stream
           .chunk[IO, Byte](Chunk.bytes(s.getBytes))
@@ -296,8 +305,9 @@ class CompressionSpec extends Fs2Spec {
               deflateLevel = Some(level),
               deflateStrategy = Some(strategy),
               modificationTime = Some(Instant.ofEpochSecond(epochSeconds)),
-              fileName = Some(fileName),
-              comment = Some(comment)
+              fileName = Some(s),
+              comment = Some(s),
+              deflateFlushMode = Some(flushMode)
             )
           )
           .compile

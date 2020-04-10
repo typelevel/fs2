@@ -18,12 +18,14 @@ object compression {
     * @param bufferSize size of the internal buffer that is used by the
     *                   compressor. Default size is 32 KB.
     * @param strategy compression strategy -- see `java.util.zip.Deflater` for details
+    * @param flushMode flush mode -- see `java.util.zip.Deflater` for details
     */
   def deflate[F[_]](
       level: Int = Deflater.DEFAULT_COMPRESSION,
       nowrap: Boolean = false,
       bufferSize: Int = 1024 * 32,
-      strategy: Int = Deflater.DEFAULT_STRATEGY
+      strategy: Int = Deflater.DEFAULT_STRATEGY,
+      flushMode: Int = Deflater.NO_FLUSH
   )(implicit SyncF: Sync[F]): Pipe[F, Byte, Byte] =
     stream =>
       Stream
@@ -34,21 +36,23 @@ object compression {
             deflater
           }
         )(deflater => SyncF.delay(deflater.end()))
-        .flatMap(deflater => _deflate(deflater, bufferSize, crc32 = None)(stream))
+        .flatMap(deflater => _deflate(deflater, bufferSize, crc32 = None, flushMode)(stream))
 
   private def _deflate[F[_]](
       deflater: Deflater,
       bufferSize: Int,
-      crc32: Option[CRC32]
+      crc32: Option[CRC32],
+      flushMode: Int
   ): Pipe[F, Byte, Byte] =
-    _deflate_stream(deflater, bufferSize.max(minBufferSize), crc32)(_).stream
+    _deflate_stream(deflater, bufferSize.max(minBufferSize), crc32, flushMode)(_).stream
 
   private def _deflate_chunk[F[_]](
       chunk: Chunk[Byte],
       deflater: Deflater,
       deflatedBufferSize: Int,
       isFinalChunk: Boolean,
-      crc32: Option[CRC32]
+      crc32: Option[CRC32],
+      flushMode: Int = Deflater.NO_FLUSH
   ): Pull[F, Byte, Unit] = {
     val bytesChunk = chunk.toBytes
     deflater.setInput(
@@ -64,7 +68,7 @@ object compression {
       (isFinalChunk && deflater.finished) || (!isFinalChunk && deflater.needsInput)
 
     def deflateInto(deflatedBuffer: Array[Byte]): Int =
-      if (isDone) 0 else deflater.deflate(deflatedBuffer)
+      if (isDone) 0 else deflater.deflate(deflatedBuffer, 0, deflatedBufferSize, flushMode)
 
     def pull(): Pull[F, Byte, Unit] = {
       val deflatedBuffer = new Array[Byte](deflatedBufferSize)
@@ -82,15 +86,13 @@ object compression {
   private def _deflate_stream[F[_]](
       deflater: Deflater,
       bufferSize: Int,
-      crc32: Option[CRC32]
+      crc32: Option[CRC32],
+      flushMode: Int = Deflater.NO_FLUSH
   ): Stream[F, Byte] => Pull[F, Byte, Unit] =
     _.pull.unconsNonEmpty.flatMap {
       case Some((inflatedChunk, inflatedStream)) =>
-        _deflate_chunk(inflatedChunk, deflater, bufferSize, isFinalChunk = false, crc32) >> _deflate_stream(
-          deflater,
-          bufferSize,
-          crc32
-        )(inflatedStream)
+        _deflate_chunk(inflatedChunk, deflater, bufferSize, isFinalChunk = false, crc32, flushMode) >>
+          _deflate_stream(deflater, bufferSize, crc32)(inflatedStream)
       case None =>
         _deflate_chunk(Chunk.empty[Byte], deflater, bufferSize, isFinalChunk = true, crc32)
     }
@@ -221,6 +223,7 @@ object compression {
     * @param modificationTime optional file modification time
     * @param fileName         optional file name
     * @param comment          optional file comment
+    * @param deflateFlushMode flush mode -- see `java.util.zip.Deflater` for details
     */
   def gzip[F[_]](
       bufferSize: Int = 1024 * 32,
@@ -228,7 +231,8 @@ object compression {
       deflateStrategy: Option[Int] = None,
       modificationTime: Option[Instant] = None,
       fileName: Option[String] = None,
-      comment: Option[String] = None
+      comment: Option[String] = None,
+      deflateFlushMode: Option[Int] = None
   )(implicit SyncF: Sync[F]): Pipe[F, Byte, Byte] =
     stream =>
       Stream
@@ -242,7 +246,12 @@ object compression {
         .flatMap {
           case (deflater, crc32) =>
             _gzip_header(modificationTime, deflateLevel, fileName, comment) ++
-              _deflate(deflater, bufferSize, Some(crc32))(stream) ++
+              _deflate(
+                deflater,
+                bufferSize,
+                Some(crc32),
+                deflateFlushMode.getOrElse(Deflater.NO_FLUSH)
+              )(stream) ++
               _gzip_trailer(deflater, crc32)
         }
 
