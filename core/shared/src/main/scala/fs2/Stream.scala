@@ -1972,11 +1972,17 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
   def mergeHaltBoth[F2[x] >: F[x]: Concurrent, O2 >: O](that: Stream[F2, O2]): Stream[F2, O2] =
     noneTerminate.merge(that.noneTerminate).unNoneTerminate
 
-  /** Like `merge`, but halts as soon as the `s1` branch halts. */
+  /** Like `merge`, but halts as soon as the `s1` branch halts.
+    *
+    * Note: it is *not* guaranteed that the last element of the stream will come from `s1`.
+    */
   def mergeHaltL[F2[x] >: F[x]: Concurrent, O2 >: O](that: Stream[F2, O2]): Stream[F2, O2] =
     noneTerminate.merge(that.map(Some(_))).unNoneTerminate
 
-  /** Like `merge`, but halts as soon as the `s2` branch halts. */
+  /** Like `merge`, but halts as soon as the `s2` branch halts.
+    *
+    * Note: it is *not* guaranteed that the last element of the stream will come from `s2`.
+    */
   def mergeHaltR[F2[x] >: F[x]: Concurrent, O2 >: O](that: Stream[F2, O2]): Stream[F2, O2] =
     that.mergeHaltL(this)
 
