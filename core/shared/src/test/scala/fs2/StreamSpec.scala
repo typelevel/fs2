@@ -1098,8 +1098,8 @@ class StreamSpec extends Fs2Spec {
     "every" in {
       flickersOnTravis
       type BD = (Boolean, FiniteDuration)
-      val durationSinceLastTrue: Pipe[Pure, BD, BD] = {
-        def go(lastTrue: FiniteDuration, s: Stream[Pure, BD]): Pull[Pure, BD, Unit] =
+      def durationSinceLastTrue[F[_]]: Pipe[F, BD, BD] = {
+        def go(lastTrue: FiniteDuration, s: Stream[F, BD]): Pull[F, BD, Unit] =
           s.pull.uncons1.flatMap {
             case None => Pull.done
             case Some((pair, tl)) =>
@@ -3964,5 +3964,11 @@ class StreamSpec extends Fs2Spec {
         .drain
         .assertThrows[TimeoutException]
     }
+  }
+
+  "pure pipes cannot be used with effectful streams (#1838)" in {
+    val p: Pipe[Pure, Int, List[Int]] = in => Stream(in.toList)
+    identity(p) // Avoid unused warning
+    assertDoesNotCompile("Stream.eval(IO(1)).through(p)")
   }
 }

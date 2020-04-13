@@ -1972,11 +1972,17 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
   def mergeHaltBoth[F2[x] >: F[x]: Concurrent, O2 >: O](that: Stream[F2, O2]): Stream[F2, O2] =
     noneTerminate.merge(that.noneTerminate).unNoneTerminate
 
-  /** Like `merge`, but halts as soon as the `s1` branch halts. */
+  /** Like `merge`, but halts as soon as the `s1` branch halts.
+    *
+    * Note: it is *not* guaranteed that the last element of the stream will come from `s1`.
+    */
   def mergeHaltL[F2[x] >: F[x]: Concurrent, O2 >: O](that: Stream[F2, O2]): Stream[F2, O2] =
     noneTerminate.merge(that.map(Some(_))).unNoneTerminate
 
-  /** Like `merge`, but halts as soon as the `s2` branch halts. */
+  /** Like `merge`, but halts as soon as the `s2` branch halts.
+    *
+    * Note: it is *not* guaranteed that the last element of the stream will come from `s2`.
+    */
   def mergeHaltR[F2[x] >: F[x]: Concurrent, O2 >: O](that: Stream[F2, O2]): Stream[F2, O2] =
     that.mergeHaltL(this)
 
@@ -4687,20 +4693,21 @@ object Stream extends StreamLowPriority {
   /** Provides operations on pure pipes for syntactic convenience. */
   implicit final class PurePipeOps[I, O](private val self: Pipe[Pure, I, O]) extends AnyVal {
 
-    /** Lifts this pipe to the specified effect type. */
-    def covary[F[_]]: Pipe[F, I, O] = self.asInstanceOf[Pipe[F, I, O]]
+    // This is unsound! See #1838. Left for binary compatibility.
+    private[fs2] def covary[F[_]]: Pipe[F, I, O] = self.asInstanceOf[Pipe[F, I, O]]
   }
 
   /** Provides operations on pure pipes for syntactic convenience. */
   implicit final class PurePipe2Ops[I, I2, O](private val self: Pipe2[Pure, I, I2, O])
       extends AnyVal {
 
-    /** Lifts this pipe to the specified effect type. */
-    def covary[F[_]]: Pipe2[F, I, I2, O] = self.asInstanceOf[Pipe2[F, I, I2, O]]
+    // This is unsound! See #1838. Left for binary compatibility.
+    private[fs2] def covary[F[_]]: Pipe2[F, I, I2, O] = self.asInstanceOf[Pipe2[F, I, I2, O]]
   }
 
-  /** Implicitly covaries a pipe. */
-  implicit def covaryPurePipe[F[_], I, O](p: Pipe[Pure, I, O]): Pipe[F, I, O] =
+  // This is unsound! See #1838. Left for binary compatibility.
+  @deprecated("This is unsound! See #1838.", "2.3.1")
+  def covaryPurePipe[F[_], I, O](p: Pipe[Pure, I, O]): Pipe[F, I, O] =
     p.covary[F]
 
   /**

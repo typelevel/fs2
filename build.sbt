@@ -207,7 +207,7 @@ lazy val releaseSettings = Seq(
 
 lazy val mimaSettings = Seq(
   mimaPreviousArtifacts := {
-    List("2.0.0").map { pv =>
+    List("2.0.0", "2.3.0").map { pv =>
       organization.value % (normalizedName.value + "_" + scalaBinaryVersion.value) % pv
     }.toSet
   },
