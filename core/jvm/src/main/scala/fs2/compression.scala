@@ -18,14 +18,37 @@ object compression {
     * @param bufferSize size of the internal buffer that is used by the
     *                   compressor. Default size is 32 KB.
     * @param strategy compression strategy -- see `java.util.zip.Deflater` for details
-    * @param flushMode flush mode -- see `java.util.zip.Deflater` for details
     */
   def deflate[F[_]](
       level: Int = Deflater.DEFAULT_COMPRESSION,
       nowrap: Boolean = false,
       bufferSize: Int = 1024 * 32,
-      strategy: Int = Deflater.DEFAULT_STRATEGY,
-      flushMode: Int = Deflater.NO_FLUSH
+      strategy: Int = Deflater.DEFAULT_STRATEGY
+  )(implicit SyncF: Sync[F]): Pipe[F, Byte, Byte] =
+    deflate[F](
+      level = level,
+      nowrap = nowrap,
+      bufferSize = bufferSize,
+      strategy = strategy,
+      flushMode = Deflater.NO_FLUSH
+    )
+
+  /**
+    * Returns a `Pipe` that deflates (compresses) its input elements using
+    * a `java.util.zip.Deflater` with the parameters `level`, `nowrap` and `strategy`.
+    * @param level the compression level (0-9)
+    * @param nowrap if true then use GZIP compatible compression
+    * @param bufferSize size of the internal buffer that is used by the
+    *                   compressor. Default size is 32 KB.
+    * @param strategy compression strategy -- see `java.util.zip.Deflater` for details
+    * @param flushMode flush mode -- see `java.util.zip.Deflater` for details
+    */
+  def deflate[F[_]](
+      level: Int,
+      nowrap: Boolean,
+      bufferSize: Int,
+      strategy: Int,
+      flushMode: Int
   )(implicit SyncF: Sync[F]): Pipe[F, Byte, Byte] =
     stream =>
       Stream
@@ -223,7 +246,6 @@ object compression {
     * @param modificationTime optional file modification time
     * @param fileName         optional file name
     * @param comment          optional file comment
-    * @param deflateFlushMode flush mode -- see `java.util.zip.Deflater` for details
     */
   def gzip[F[_]](
       bufferSize: Int = 1024 * 32,
@@ -231,8 +253,52 @@ object compression {
       deflateStrategy: Option[Int] = None,
       modificationTime: Option[Instant] = None,
       fileName: Option[String] = None,
-      comment: Option[String] = None,
-      deflateFlushMode: Option[Int] = None
+      comment: Option[String] = None
+  )(implicit SyncF: Sync[F]): Pipe[F, Byte, Byte] =
+    gzip[F](
+      bufferSize = bufferSize,
+      deflateLevel = deflateLevel,
+      deflateStrategy = deflateStrategy,
+      modificationTime = modificationTime,
+      fileName = fileName,
+      comment = comment,
+      deflateFlushMode = None
+    )
+
+  /**
+    * Returns a pipe that incrementally compresses input into the GZIP format
+    * as defined by RFC 1952 at https://www.ietf.org/rfc/rfc1952.txt. Output is
+    * compatible with the GNU utils `gunzip` utility, as well as really anything
+    * else that understands GZIP. Note, however, that the GZIP format is not
+    * "stable" in the sense that all compressors will produce identical output
+    * given identical input. Part of the header seeding is arbitrary and chosen by
+    * the compression implementation. For this reason, the exact bytes produced
+    * by this pipe will differ in insignificant ways from the exact bytes produced
+    * by a tool like the GNU utils `gzip`.
+    *
+    * @param bufferSize The buffer size which will be used to page data
+    *                   into chunks. This will be the chunk size of the
+    *                   output stream. You should set it to be equal to
+    *                   the size of the largest chunk in the input stream.
+    *                   Setting this to a size which is ''smaller'' than
+    *                   the chunks in the input stream will result in
+    *                   performance degradation of roughly 50-75%. Default
+    *                   size is 32 KB.
+    * @param deflateLevel     level the compression level (0-9)
+    * @param deflateStrategy  strategy compression strategy -- see `java.util.zip.Deflater` for details
+    * @param modificationTime optional file modification time
+    * @param fileName         optional file name
+    * @param comment          optional file comment
+    * @param deflateFlushMode flush mode -- see `java.util.zip.Deflater` for details
+    */
+  def gzip[F[_]](
+      bufferSize: Int,
+      deflateLevel: Option[Int],
+      deflateStrategy: Option[Int],
+      modificationTime: Option[Instant],
+      fileName: Option[String],
+      comment: Option[String],
+      deflateFlushMode: Option[Int]
   )(implicit SyncF: Sync[F]): Pipe[F, Byte, Byte] =
     stream =>
       Stream

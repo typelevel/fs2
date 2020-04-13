@@ -49,8 +49,7 @@ class CompressionSpec extends Fs2Spec {
           deflate(
             level = level,
             strategy = strategy,
-            nowrap = nowrap,
-            flushMode = Deflater.NO_FLUSH
+            nowrap = nowrap
           )
         )
         .compile
@@ -69,7 +68,13 @@ class CompressionSpec extends Fs2Spec {
         .chunk[IO, Byte](Chunk.bytes(getBytes(s)))
         .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
         .through(
-          deflate(level = level, strategy = strategy, nowrap = nowrap, flushMode = flushMode)
+          deflate(
+            level = level,
+            nowrap = nowrap,
+            bufferSize = 32 * 1024,
+            strategy = strategy,
+            flushMode = flushMode
+          )
         )
         .compile
         .to(Array)
@@ -96,7 +101,13 @@ class CompressionSpec extends Fs2Spec {
         .chunk[IO, Byte](Chunk.bytes(getBytes(s)))
         .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
         .through(
-          deflate(level = level, strategy = strategy, nowrap = nowrap, flushMode = flushMode)
+          deflate(
+            level = level,
+            nowrap = nowrap,
+            bufferSize = 32 * 1024,
+            strategy = strategy,
+            flushMode = flushMode
+          )
         )
         .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
         .through(inflate(nowrap = nowrap))
