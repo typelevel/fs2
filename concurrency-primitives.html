@@ -12,7 +12,7 @@
 
 <h3 id="fifo-first-in--first-out">FIFO (First IN / First OUT)</h3>
 
-<p>A typical use case of a <code class="highlighter-rouge">fs2.concurrent.Queue[F, A]</code>, also quite useful to communicate with the external world as shown in the <a href="guide.md#talking-to-the-external-world">guide</a>.</p>
+<p>A typical use case of a <code class="highlighter-rouge">fs2.concurrent.Queue[F, A]</code>, also quite useful to communicate with the external world as shown in the <a href="guide.html#talking-to-the-external-world">guide</a>.</p>
 
 <p>q1 has a buffer size of 1 while q2 has a buffer size of 100 so you will notice the buffering when  pulling elements out of the q2.</p>
 
@@ -29,8 +29,8 @@
     <span class="nc">Stream</span><span class="o">(</span>
       <span class="nv">Stream</span><span class="o">.</span><span class="py">range</span><span class="o">(</span><span class="mi">0</span><span class="o">,</span> <span class="mi">1000</span><span class="o">).</span><span class="py">covary</span><span class="o">[</span><span class="kt">F</span><span class="o">].</span><span class="py">through</span><span class="o">(</span><span class="nv">q1</span><span class="o">.</span><span class="py">enqueue</span><span class="o">),</span>
       <span class="nv">q1</span><span class="o">.</span><span class="py">dequeue</span><span class="o">.</span><span class="py">through</span><span class="o">(</span><span class="nv">q2</span><span class="o">.</span><span class="py">enqueue</span><span class="o">),</span>
-      <span class="c1">//.map won't work here as you're trying to map a pure value with a side effect. Use `evalMap` instead.</span>
-      <span class="nv">q2</span><span class="o">.</span><span class="py">dequeue</span><span class="o">.</span><span class="py">evalMap</span><span class="o">(</span><span class="n">n</span> <span class="k">=&gt;</span> <span class="nv">F</span><span class="o">.</span><span class="py">delay</span><span class="o">(</span><span class="nf">println</span><span class="o">(</span><span class="n">s</span><span class="s">"Pulling out $n from Queue #2"</span><span class="o">)))</span>
+      <span class="c1">//.map won't work here as you're trying to map a pure value with a side effect. Use `evalMap` instead.
+</span>      <span class="nv">q2</span><span class="o">.</span><span class="py">dequeue</span><span class="o">.</span><span class="py">evalMap</span><span class="o">(</span><span class="n">n</span> <span class="k">=&gt;</span> <span class="nv">F</span><span class="o">.</span><span class="py">delay</span><span class="o">(</span><span class="nf">println</span><span class="o">(</span><span class="n">s</span><span class="s">"Pulling out $n from Queue #2"</span><span class="o">)))</span>
     <span class="o">).</span><span class="py">parJoin</span><span class="o">(</span><span class="mi">3</span><span class="o">)</span>
 <span class="o">}</span>
 
@@ -78,8 +78,8 @@
   <span class="n">timer</span><span class="k">:</span> <span class="kt">Timer</span><span class="o">[</span><span class="kt">F</span><span class="o">]</span>
 <span class="o">)</span> <span class="o">{</span>
 
-  <span class="c1">// Publishing 15 text events, then single Quit event, and still publishing text events</span>
-  <span class="k">def</span> <span class="nf">startPublisher</span><span class="k">:</span> <span class="kt">Stream</span><span class="o">[</span><span class="kt">F</span>, <span class="kt">Unit</span><span class="o">]</span> <span class="k">=</span> <span class="o">{</span>
+  <span class="c1">// Publishing 15 text events, then single Quit event, and still publishing text events
+</span>  <span class="k">def</span> <span class="nf">startPublisher</span><span class="k">:</span> <span class="kt">Stream</span><span class="o">[</span><span class="kt">F</span>, <span class="kt">Unit</span><span class="o">]</span> <span class="k">=</span> <span class="o">{</span>
     <span class="k">val</span> <span class="nv">textEvents</span> <span class="k">=</span> <span class="nv">eventsTopic</span><span class="o">.</span><span class="py">publish</span><span class="o">(</span>
       <span class="nv">Stream</span><span class="o">.</span><span class="py">awakeEvery</span><span class="o">[</span><span class="kt">F</span><span class="o">](</span><span class="mf">1.</span><span class="n">second</span><span class="o">)</span>
         <span class="o">.</span><span class="py">zipRight</span><span class="o">(</span><span class="nv">Stream</span><span class="o">.</span><span class="py">eval</span><span class="o">(</span><span class="nv">timer</span><span class="o">.</span><span class="py">clock</span><span class="o">.</span><span class="py">realTime</span><span class="o">(</span><span class="nv">TimeUnit</span><span class="o">.</span><span class="py">MILLISECONDS</span><span class="o">).</span><span class="py">map</span><span class="o">(</span><span class="n">t</span> <span class="k">=&gt;</span> <span class="nc">Text</span><span class="o">(</span><span class="nv">t</span><span class="o">.</span><span class="py">toString</span><span class="o">))).</span><span class="py">repeat</span><span class="o">)</span>
@@ -90,8 +90,8 @@
     <span class="o">(</span><span class="nv">textEvents</span><span class="o">.</span><span class="py">take</span><span class="o">(</span><span class="mi">15</span><span class="o">)</span> <span class="o">++</span> <span class="n">quitEvent</span> <span class="o">++</span> <span class="n">textEvents</span><span class="o">).</span><span class="py">interruptWhen</span><span class="o">(</span><span class="n">interrupter</span><span class="o">)</span>
   <span class="o">}</span>
 
-  <span class="c1">// Creating 3 subscribers in a different period of time and join them to run concurrently</span>
-  <span class="k">def</span> <span class="nf">startSubscribers</span><span class="k">:</span> <span class="kt">Stream</span><span class="o">[</span><span class="kt">F</span>, <span class="kt">Unit</span><span class="o">]</span> <span class="k">=</span> <span class="o">{</span>
+  <span class="c1">// Creating 3 subscribers in a different period of time and join them to run concurrently
+</span>  <span class="k">def</span> <span class="nf">startSubscribers</span><span class="k">:</span> <span class="kt">Stream</span><span class="o">[</span><span class="kt">F</span>, <span class="kt">Unit</span><span class="o">]</span> <span class="k">=</span> <span class="o">{</span>
     <span class="k">def</span> <span class="nf">processEvent</span><span class="o">(</span><span class="n">subscriberNumber</span><span class="k">:</span> <span class="kt">Int</span><span class="o">)</span><span class="k">:</span> <span class="kt">Pipe</span><span class="o">[</span><span class="kt">F</span>, <span class="kt">Event</span>, <span class="kt">Unit</span><span class="o">]</span> <span class="k">=</span>
       <span class="nv">_</span><span class="o">.</span><span class="py">flatMap</span> <span class="o">{</span>
         <span class="k">case</span> <span class="n">e</span> <span class="k">@</span> <span class="nc">Text</span><span class="o">(</span><span class="k">_</span><span class="o">)</span> <span class="k">=&gt;</span>
