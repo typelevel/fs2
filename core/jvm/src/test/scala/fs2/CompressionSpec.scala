@@ -115,7 +115,7 @@ class CompressionSpec extends Fs2Spec {
           .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
           .through(
             deflate(
-              new JavaUtilZipDeflaterParams(
+              JavaUtilZipDeflaterParams(
                 bufferSize = 32 * 1024,
                 header = if (nowrap) ZLibParams.Header.GZIP else ZLibParams.Header.ZLIB,
                 level = level,
@@ -150,7 +150,7 @@ class CompressionSpec extends Fs2Spec {
         .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
         .through(
           deflate(
-            new JavaUtilZipDeflaterParams(
+            JavaUtilZipDeflaterParams(
               header = ZLibParams.Header.ZLIB
             )
           )
@@ -192,7 +192,7 @@ class CompressionSpec extends Fs2Spec {
           .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
           .through(
             deflate(
-              new JavaUtilZipDeflaterParams(
+              JavaUtilZipDeflaterParams(
                 bufferSize = 32 * 1024,
                 header = if (nowrap) ZLibParams.Header.GZIP else ZLibParams.Header.ZLIB,
                 level = level,
@@ -272,7 +272,7 @@ class CompressionSpec extends Fs2Spec {
               fileName = Some(s),
               modificationTime = Some(Instant.ofEpochSecond(epochSeconds)),
               comment = Some(s),
-              new JavaUtilZipDeflaterParams(
+              JavaUtilZipDeflaterParams(
                 bufferSize = 8192,
                 header = ZLibParams.Header.GZIP,
                 level = level,
@@ -321,7 +321,7 @@ class CompressionSpec extends Fs2Spec {
               fileName = Some(s),
               modificationTime = Some(Instant.ofEpochSecond(epochSeconds)),
               comment = Some(s),
-              new JavaUtilZipDeflaterParams(
+              JavaUtilZipDeflaterParams(
                 bufferSize = 1031,
                 header = ZLibParams.Header.GZIP,
                 level = level,
@@ -370,7 +370,7 @@ class CompressionSpec extends Fs2Spec {
               fileName = Some(s),
               modificationTime = Some(Instant.ofEpochSecond(epochSeconds)),
               comment = Some(s),
-              new JavaUtilZipDeflaterParams(
+              JavaUtilZipDeflaterParams(
                 bufferSize = 509,
                 header = ZLibParams.Header.GZIP,
                 level = level,
@@ -416,7 +416,7 @@ class CompressionSpec extends Fs2Spec {
               fileName = Some(s),
               modificationTime = Some(Instant.ofEpochSecond(epochSeconds)),
               comment = Some(s),
-              new JavaUtilZipDeflaterParams(
+              JavaUtilZipDeflaterParams(
                 bufferSize = 1024,
                 header = ZLibParams.Header.GZIP,
                 level = level,

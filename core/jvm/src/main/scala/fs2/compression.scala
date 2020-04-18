@@ -31,24 +31,55 @@ object compression {
 
   /**
     * Deflate algorithm parameters for the [[java.util.zip.Deflater]] implementation.
-    * @param bufferSize Size of the internal buffer. Default size is 32 KB.
-    * @param header Compression header. Defaults to [[ZLibParams.Header.ZLIB]].
-    * @param level Compression level. Default level is [[java.util.zip.Deflater.DEFAULT_COMPRESSION]].
-    * @param strategy Compression strategy. Default strategy is [[java.util.zip.Deflater.DEFAULT_STRATEGY]].
-    * @param flushMode Compression flush mode. Default flush mode is [[java.util.zip.Deflater.NO_FLUSH]].
     */
-  final class JavaUtilZipDeflaterParams(
-      val bufferSize: Int = 1024 * 32,
-      val header: ZLibParams.Header = ZLibParams.Header.ZLIB,
-      val level: JavaUtilZipDeflaterParams.Level = JavaUtilZipDeflaterParams.Level.DEFAULT,
-      val strategy: JavaUtilZipDeflaterParams.Strategy = JavaUtilZipDeflaterParams.Strategy.DEFAULT,
-      val flushMode: JavaUtilZipDeflaterParams.FlushMode =
-        JavaUtilZipDeflaterParams.FlushMode.DEFAULT
-  ) extends DeflateParams {
+  sealed trait JavaUtilZipDeflaterParams extends DeflateParams {
+
+    /**
+      * Size of the internal buffer. Default size is 32 KB.
+      */
+    val bufferSize: Int
+
+    /**
+      * Compression header. Defaults to [[ZLibParams.Header.ZLIB]].
+      */
+    val header: ZLibParams.Header
+
+    /**
+      * Compression level. Default level is [[java.util.zip.Deflater.DEFAULT_COMPRESSION]].
+      */
+    val level: JavaUtilZipDeflaterParams.Level
+
+    /**
+      * Compression strategy. Default strategy is [[java.util.zip.Deflater.DEFAULT_STRATEGY]].
+      */
+    val strategy: JavaUtilZipDeflaterParams.Strategy
+
+    /**
+      * Compression flush mode. Default flush mode is [[java.util.zip.Deflater.NO_FLUSH]].
+      */
+    val flushMode: JavaUtilZipDeflaterParams.FlushMode
+
     private[compression] val bufferSizeOrMinimum: Int = bufferSize.min(128)
   }
 
   object JavaUtilZipDeflaterParams {
+
+    def apply(
+        bufferSize: Int = 1024 * 32,
+        header: ZLibParams.Header = ZLibParams.Header.ZLIB,
+        level: JavaUtilZipDeflaterParams.Level = JavaUtilZipDeflaterParams.Level.DEFAULT,
+        strategy: JavaUtilZipDeflaterParams.Strategy = JavaUtilZipDeflaterParams.Strategy.DEFAULT,
+        flushMode: JavaUtilZipDeflaterParams.FlushMode = JavaUtilZipDeflaterParams.FlushMode.DEFAULT
+    ): JavaUtilZipDeflaterParams =
+      DeflaterParams(bufferSize, header, level, strategy, flushMode)
+
+    private case class DeflaterParams(
+        bufferSize: Int,
+        header: ZLibParams.Header,
+        level: JavaUtilZipDeflaterParams.Level,
+        strategy: JavaUtilZipDeflaterParams.Strategy,
+        flushMode: JavaUtilZipDeflaterParams.FlushMode
+    ) extends JavaUtilZipDeflaterParams
 
     sealed abstract class Level(private[compression] val juzDeflaterLevel: Int)
     case object Level {
@@ -120,12 +151,12 @@ object compression {
     /**
       * Reasonable defaults for most applications.
       */
-    val DEFAULT: JavaUtilZipDeflaterParams = new JavaUtilZipDeflaterParams()
+    val DEFAULT: JavaUtilZipDeflaterParams = JavaUtilZipDeflaterParams()
 
     /**
       * Best speed for real-time, intermittent, fragmented, interactive or discontinuous streams.
       */
-    val BEST_SPEED: JavaUtilZipDeflaterParams = new JavaUtilZipDeflaterParams(
+    val BEST_SPEED: JavaUtilZipDeflaterParams = JavaUtilZipDeflaterParams(
       level = Level.BEST_SPEED,
       strategy = Strategy.BEST_SPEED,
       flushMode = FlushMode.BEST_SPEED
@@ -134,7 +165,7 @@ object compression {
     /**
       * Best compression for finite, complete, readily-available, continuous or file streams.
       */
-    val BEST_COMPRESSION: JavaUtilZipDeflaterParams = new JavaUtilZipDeflaterParams(
+    val BEST_COMPRESSION: JavaUtilZipDeflaterParams = JavaUtilZipDeflaterParams(
       bufferSize = 1024 * 128,
       level = Level.BEST_COMPRESSION,
       strategy = Strategy.BEST_COMPRESSION,
@@ -161,7 +192,7 @@ object compression {
       strategy: Int = Deflater.DEFAULT_STRATEGY
   )(implicit SyncF: Sync[F]): Pipe[F, Byte, Byte] =
     deflate[F](
-      new JavaUtilZipDeflaterParams(
+      JavaUtilZipDeflaterParams(
         bufferSize = bufferSize,
         header = ZLibParams.Header(nowrap),
         level = JavaUtilZipDeflaterParams.Level(level),
@@ -265,22 +296,39 @@ object compression {
 
   /**
     * Inflate algorithm parameters for the [[java.util.zip.Inflater]] implementation.
-    * @param bufferSize Size of the internal buffer. Default size is 32 KB.
-    * @param header Compression header. Defaults to [[ZLibParams.Header.ZLIB]]
     */
-  final class JavaUtilZipInflaterParams(
-      val bufferSize: Int = 1024 * 32,
-      val header: ZLibParams.Header = ZLibParams.Header.ZLIB
-  ) extends InflateParams {
+  sealed trait JavaUtilZipInflaterParams extends InflateParams {
+
+    /**
+      * Size of the internal buffer. Default size is 32 KB.
+      */
+    val bufferSize: Int
+
+    /**
+      * Compression header. Defaults to [[ZLibParams.Header.ZLIB]]
+      */
+    val header: ZLibParams.Header
+
     private[compression] val bufferSizeOrMinimum: Int = bufferSize.min(128)
   }
 
   object JavaUtilZipInflaterParams {
 
+    def apply(
+        bufferSize: Int = 1024 * 32,
+        header: ZLibParams.Header = ZLibParams.Header.ZLIB
+    ): JavaUtilZipInflaterParams =
+      InflaterParams(bufferSize, header)
+
     /**
       * Reasonable defaults for most applications.
       */
-    val DEFAULT: JavaUtilZipInflaterParams = new JavaUtilZipInflaterParams()
+    val DEFAULT: JavaUtilZipInflaterParams = JavaUtilZipInflaterParams()
+
+    private case class InflaterParams(
+        bufferSize: Int,
+        header: ZLibParams.Header
+    ) extends JavaUtilZipInflaterParams
 
   }
 
@@ -295,7 +343,7 @@ object compression {
       implicit SyncF: Sync[F]
   ): Pipe[F, Byte, Byte] =
     inflate(
-      new JavaUtilZipInflaterParams(
+      JavaUtilZipInflaterParams(
         bufferSize = bufferSize,
         header = ZLibParams.Header(nowrap)
       )
@@ -462,7 +510,7 @@ object compression {
       fileName = fileName,
       modificationTime = modificationTime,
       comment = comment,
-      deflateParams = new JavaUtilZipDeflaterParams(
+      deflateParams = JavaUtilZipDeflaterParams(
         bufferSize = bufferSize,
         header = ZLibParams.Header.GZIP,
         level = deflateLevel
@@ -648,7 +696,7 @@ object compression {
       bufferSize: Int = 1024 * 32
   )(implicit SyncF: Sync[F]): Stream[F, Byte] => Stream[F, GunzipResult[F]] =
     gunzip(
-      new JavaUtilZipInflaterParams(
+      JavaUtilZipInflaterParams(
         bufferSize = bufferSize,
         header = ZLibParams.Header.GZIP
       )
