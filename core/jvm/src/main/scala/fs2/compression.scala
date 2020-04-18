@@ -10,9 +10,143 @@ import cats.effect.Sync
 /** Provides utilities for compressing/decompressing byte streams. */
 object compression {
 
+  object ZLibParams {
+
+    sealed abstract class Header(private[compression] val juzDeflaterNoWrap: Boolean)
+    case object Header {
+      final case object ZLIB extends Header(juzDeflaterNoWrap = false)
+      final case object GZIP extends Header(juzDeflaterNoWrap = true)
+    }
+
+  }
+
+  /**
+    * Deflate algorithm parameters for the selected implementation, as one of:
+    *   1. [[compression.JavaUtilZipDeflaterParams]] for [[java.util.zip.Deflater]]
+    */
+  sealed trait DeflateParams
+
+  /**
+    * Deflate algorithm parameters of the [[java.util.zip.Deflater]] implementation.
+    * @param bufferSize Size of the internal buffer. Default size is 32 KB.
+    * @param header If true then use GZIP compatible compression. Default is false.
+    * @param level Compression level. Default level is [[java.util.zip.Deflater.DEFAULT_COMPRESSION]].
+    * @param strategy Compression strategy. Default strategy is [[java.util.zip.Deflater.DEFAULT_STRATEGY]].
+    * @param flushMode Compression flush mode. Default flush mode is [[java.util.zip.Deflater.NO_FLUSH]].
+    */
+  final case class JavaUtilZipDeflaterParams(
+      bufferSize: Int = 1024 * 32,
+      header: ZLibParams.Header = ZLibParams.Header.ZLIB,
+      level: JavaUtilZipDeflaterParams.Level = JavaUtilZipDeflaterParams.Level.DEFAULT,
+      strategy: JavaUtilZipDeflaterParams.Strategy = JavaUtilZipDeflaterParams.Strategy.DEFAULT,
+      flushMode: JavaUtilZipDeflaterParams.FlushMode = JavaUtilZipDeflaterParams.FlushMode.DEFAULT
+  ) extends DeflateParams {
+    private[compression] val bufferSizeOrMinimum: Int = bufferSize.min(128)
+  }
+
+  object JavaUtilZipDeflaterParams {
+
+    sealed abstract class Level(private[compression] val juzDeflaterLevel: Int)
+    case object Level {
+      private[compression] def apply(level: Int): Level =
+        level match {
+          case Deflater.DEFAULT_COMPRESSION => Level.DEFAULT
+          case 0                            => Level.ZERO
+          case 1                            => Level.ONE
+          case 2                            => Level.TWO
+          case 3                            => Level.THREE
+          case 4                            => Level.FOUR
+          case 5                            => Level.FIVE
+          case 6                            => Level.SIX
+          case 7                            => Level.SEVEN
+          case 8                            => Level.EIGHT
+          case 9                            => Level.NINE
+        }
+
+      final case object DEFAULT extends Level(juzDeflaterLevel = Deflater.DEFAULT_COMPRESSION)
+      final case object BEST_SPEED extends Level(juzDeflaterLevel = Deflater.BEST_SPEED)
+      final case object BEST_COMPRESSION extends Level(juzDeflaterLevel = Deflater.BEST_COMPRESSION)
+      final case object NO_COMPRESSION extends Level(juzDeflaterLevel = Deflater.NO_COMPRESSION)
+      final case object ZERO extends Level(juzDeflaterLevel = 0)
+      final case object ONE extends Level(juzDeflaterLevel = 1)
+      final case object TWO extends Level(juzDeflaterLevel = 2)
+      final case object THREE extends Level(juzDeflaterLevel = 3)
+      final case object FOUR extends Level(juzDeflaterLevel = 4)
+      final case object FIVE extends Level(juzDeflaterLevel = 5)
+      final case object SIX extends Level(juzDeflaterLevel = 6)
+      final case object SEVEN extends Level(juzDeflaterLevel = 7)
+      final case object EIGHT extends Level(juzDeflaterLevel = 8)
+      final case object NINE extends Level(juzDeflaterLevel = 9)
+    }
+
+    sealed abstract class Strategy(private[compression] val juzDeflaterStrategy: Int)
+    case object Strategy {
+      private[compression] def apply(strategy: Int): Strategy =
+        strategy match {
+          case Deflater.DEFAULT_STRATEGY => Strategy.DEFAULT
+          case Deflater.FILTERED         => Strategy.FILTERED
+          case Deflater.HUFFMAN_ONLY     => Strategy.HUFFMAN_ONLY
+        }
+
+      final case object DEFAULT extends Strategy(juzDeflaterStrategy = Deflater.DEFAULT_STRATEGY)
+      final case object BEST_SPEED extends Strategy(juzDeflaterStrategy = Deflater.HUFFMAN_ONLY)
+      final case object BEST_COMPRESSION
+          extends Strategy(juzDeflaterStrategy = Deflater.DEFAULT_STRATEGY)
+      final case object FILTERED extends Strategy(juzDeflaterStrategy = Deflater.FILTERED)
+      final case object HUFFMAN_ONLY extends Strategy(juzDeflaterStrategy = Deflater.HUFFMAN_ONLY)
+    }
+
+    sealed abstract class FlushMode(private[compression] val juzDeflaterFlushMode: Int)
+    case object FlushMode {
+      private[compression] def apply(flushMode: Int): FlushMode =
+        flushMode match {
+          case Deflater.NO_FLUSH   => FlushMode.NO_FLUSH
+          case Deflater.SYNC_FLUSH => FlushMode.SYNC_FLUSH
+          case Deflater.FULL_FLUSH => FlushMode.FULL_FLUSH
+        }
+
+      final case object DEFAULT extends FlushMode(juzDeflaterFlushMode = Deflater.NO_FLUSH)
+      final case object BEST_SPEED extends FlushMode(juzDeflaterFlushMode = Deflater.FULL_FLUSH)
+      final case object BEST_COMPRESSION extends FlushMode(juzDeflaterFlushMode = Deflater.NO_FLUSH)
+      final case object NO_FLUSH extends FlushMode(juzDeflaterFlushMode = Deflater.NO_FLUSH)
+      final case object SYNC_FLUSH extends FlushMode(juzDeflaterFlushMode = Deflater.SYNC_FLUSH)
+      final case object FULL_FLUSH extends FlushMode(juzDeflaterFlushMode = Deflater.FULL_FLUSH)
+    }
+
+    /**
+      * Reasonable defaults for most applications.
+      */
+    val DEFAULT: JavaUtilZipDeflaterParams = JavaUtilZipDeflaterParams()
+
+    /**
+      * Best speed for real-time, intermittent, fragmented, interactive or discontinuous streams.
+      */
+    val BEST_SPEED: JavaUtilZipDeflaterParams = JavaUtilZipDeflaterParams(
+      level = Level.BEST_SPEED,
+      strategy = Strategy.BEST_SPEED,
+      flushMode = FlushMode.BEST_SPEED
+    )
+
+    /**
+      * Best compression for finite, complete, readily-available, continuous or file streams.
+      */
+    val BEST_COMPRESSION: JavaUtilZipDeflaterParams = JavaUtilZipDeflaterParams(
+      bufferSize = 1024 * 128,
+      level = Level.BEST_COMPRESSION,
+      strategy = Strategy.BEST_COMPRESSION,
+      flushMode = FlushMode.BEST_COMPRESSION
+    )
+
+    private[compression] def toHeader(nowrap: Boolean): ZLibParams.Header =
+      if (nowrap) ZLibParams.Header.GZIP else ZLibParams.Header.ZLIB
+
+  }
+
   /**
     * Returns a `Pipe` that deflates (compresses) its input elements using
     * a `java.util.zip.Deflater` with the parameters `level`, `nowrap` and `strategy`.
+    * Parameter flush mode is set to NO_FLUSH - use compression.deflate(DeflateParams)
+    * to configure this.
     * @param level the compression level (0-9)
     * @param nowrap if true then use GZIP compatible compression
     * @param bufferSize size of the internal buffer that is used by the
@@ -26,56 +160,52 @@ object compression {
       strategy: Int = Deflater.DEFAULT_STRATEGY
   )(implicit SyncF: Sync[F]): Pipe[F, Byte, Byte] =
     deflate[F](
-      level = level,
-      nowrap = nowrap,
-      bufferSize = bufferSize,
-      strategy = strategy,
-      flushMode = Deflater.NO_FLUSH
+      JavaUtilZipDeflaterParams(
+        bufferSize = bufferSize,
+        header = JavaUtilZipDeflaterParams.toHeader(nowrap),
+        level = JavaUtilZipDeflaterParams.Level(level),
+        strategy = JavaUtilZipDeflaterParams.Strategy(strategy),
+        flushMode = JavaUtilZipDeflaterParams.FlushMode.NO_FLUSH
+      )
     )
 
   /**
     * Returns a `Pipe` that deflates (compresses) its input elements using
-    * a `java.util.zip.Deflater` with the parameters `level`, `nowrap` and `strategy`.
-    * @param level the compression level (0-9)
-    * @param nowrap if true then use GZIP compatible compression
-    * @param bufferSize size of the internal buffer that is used by the
-    *                   compressor. Default size is 32 KB.
-    * @param strategy compression strategy -- see `java.util.zip.Deflater` for details
-    * @param flushMode flush mode -- see `java.util.zip.Deflater` for details
+    * the the Deflate algorithm.
+    *
+    * @param deflateParams See [[compression.DeflateParams]]
     */
   def deflate[F[_]](
-      level: Int,
-      nowrap: Boolean,
-      bufferSize: Int,
-      strategy: Int,
-      flushMode: Int
+      deflateParams: DeflateParams
   )(implicit SyncF: Sync[F]): Pipe[F, Byte, Byte] =
     stream =>
-      Stream
-        .bracket(
-          SyncF.delay {
-            val deflater = new Deflater(level, nowrap)
-            deflater.setStrategy(strategy)
-            deflater
-          }
-        )(deflater => SyncF.delay(deflater.end()))
-        .flatMap(deflater => _deflate(deflater, bufferSize, crc32 = None, flushMode)(stream))
+      deflateParams match {
+        case params: JavaUtilZipDeflaterParams =>
+          Stream
+            .bracket(
+              SyncF.delay {
+                val deflater =
+                  new Deflater(params.level.juzDeflaterLevel, params.header.juzDeflaterNoWrap)
+                deflater.setStrategy(params.strategy.juzDeflaterStrategy)
+                deflater
+              }
+            )(deflater => SyncF.delay(deflater.end()))
+            .flatMap(deflater => _deflate(params, deflater, crc32 = None)(stream))
+      }
 
   private def _deflate[F[_]](
+      deflateParams: JavaUtilZipDeflaterParams,
       deflater: Deflater,
-      bufferSize: Int,
-      crc32: Option[CRC32],
-      flushMode: Int
+      crc32: Option[CRC32]
   ): Pipe[F, Byte, Byte] =
-    _deflate_stream(deflater, bufferSize.max(minBufferSize), crc32, flushMode)(_).stream
+    _deflate_stream(deflateParams, deflater, crc32)(_).stream
 
   private def _deflate_chunk[F[_]](
-      chunk: Chunk[Byte],
+      deflateParams: JavaUtilZipDeflaterParams,
       deflater: Deflater,
-      deflatedBufferSize: Int,
-      isFinalChunk: Boolean,
       crc32: Option[CRC32],
-      flushMode: Int = Deflater.NO_FLUSH
+      chunk: Chunk[Byte],
+      isFinalChunk: Boolean
   ): Pull[F, Byte, Unit] = {
     val bytesChunk = chunk.toBytes
     deflater.setInput(
@@ -91,10 +221,17 @@ object compression {
       (isFinalChunk && deflater.finished) || (!isFinalChunk && deflater.needsInput)
 
     def deflateInto(deflatedBuffer: Array[Byte]): Int =
-      if (isDone) 0 else deflater.deflate(deflatedBuffer, 0, deflatedBufferSize, flushMode)
+      if (isDone) 0
+      else
+        deflater.deflate(
+          deflatedBuffer,
+          0,
+          deflateParams.bufferSizeOrMinimum,
+          deflateParams.flushMode.juzDeflaterFlushMode
+        )
 
     def pull(): Pull[F, Byte, Unit] = {
-      val deflatedBuffer = new Array[Byte](deflatedBufferSize)
+      val deflatedBuffer = new Array[Byte](deflateParams.bufferSizeOrMinimum)
       val deflatedBytes = deflateInto(deflatedBuffer)
       if (isDone) {
         Pull.output(asChunkBytes(deflatedBuffer, deflatedBytes))
@@ -107,17 +244,16 @@ object compression {
   }
 
   private def _deflate_stream[F[_]](
+      deflateParams: JavaUtilZipDeflaterParams,
       deflater: Deflater,
-      bufferSize: Int,
-      crc32: Option[CRC32],
-      flushMode: Int = Deflater.NO_FLUSH
+      crc32: Option[CRC32]
   ): Stream[F, Byte] => Pull[F, Byte, Unit] =
     _.pull.unconsNonEmpty.flatMap {
       case Some((inflatedChunk, inflatedStream)) =>
-        _deflate_chunk(inflatedChunk, deflater, bufferSize, isFinalChunk = false, crc32, flushMode) >>
-          _deflate_stream(deflater, bufferSize, crc32)(inflatedStream)
+        _deflate_chunk(deflateParams, deflater, crc32, inflatedChunk, isFinalChunk = false) >>
+          _deflate_stream(deflateParams, deflater, crc32)(inflatedStream)
       case None =>
-        _deflate_chunk(Chunk.empty[Byte], deflater, bufferSize, isFinalChunk = true, crc32)
+        _deflate_chunk(deflateParams, deflater, crc32, Chunk.empty[Byte], isFinalChunk = true)
     }
 
   /**
@@ -233,6 +369,12 @@ object compression {
     * by this pipe will differ in insignificant ways from the exact bytes produced
     * by a tool like the GNU utils `gzip`.
     *
+    * GZIP wraps a deflate stream with file attributes and stream integrity validation.
+    * Therefore, GZIP is a good choice for compressing finite, complete, readily-available,
+    * continuous or file streams. A simpler deflate stream may be better suited to
+    * real-time, intermittent, fragmented, interactive or discontinuous streams where
+    * network protocols typically provide stream integrity validation.
+    *
     * @param bufferSize The buffer size which will be used to page data
     *                   into chunks. This will be the chunk size of the
     *                   output stream. You should set it to be equal to
@@ -256,13 +398,20 @@ object compression {
       comment: Option[String] = None
   )(implicit SyncF: Sync[F]): Pipe[F, Byte, Byte] =
     gzip[F](
-      bufferSize = bufferSize,
-      deflateLevel = deflateLevel,
-      deflateStrategy = deflateStrategy,
-      modificationTime = modificationTime,
       fileName = fileName,
+      modificationTime = modificationTime,
       comment = comment,
-      deflateFlushMode = None
+      deflateParams = JavaUtilZipDeflaterParams(
+        bufferSize = bufferSize,
+        header = ZLibParams.Header.GZIP,
+        level = deflateLevel
+          .map(JavaUtilZipDeflaterParams.Level.apply)
+          .getOrElse(JavaUtilZipDeflaterParams.Level.DEFAULT),
+        strategy = deflateStrategy
+          .map(JavaUtilZipDeflaterParams.Strategy.apply)
+          .getOrElse(JavaUtilZipDeflaterParams.Strategy.DEFAULT),
+        flushMode = JavaUtilZipDeflaterParams.FlushMode.DEFAULT
+      )
     )
 
   /**
@@ -276,56 +425,57 @@ object compression {
     * by this pipe will differ in insignificant ways from the exact bytes produced
     * by a tool like the GNU utils `gzip`.
     *
-    * @param bufferSize The buffer size which will be used to page data
-    *                   into chunks. This will be the chunk size of the
-    *                   output stream. You should set it to be equal to
-    *                   the size of the largest chunk in the input stream.
-    *                   Setting this to a size which is ''smaller'' than
-    *                   the chunks in the input stream will result in
-    *                   performance degradation of roughly 50-75%. Default
-    *                   size is 32 KB.
-    * @param deflateLevel     level the compression level (0-9)
-    * @param deflateStrategy  strategy compression strategy -- see `java.util.zip.Deflater` for details
-    * @param modificationTime optional file modification time
+    * GZIP wraps a deflate stream with file attributes and stream integrity validation.
+    * Therefore, GZIP is a good choice for compressing finite, complete, readily-available,
+    * continuous or file streams. A simpler deflate stream may be better suited to
+    * real-time, intermittent, fragmented, interactive or discontinuous streams where
+    * network protocols typically provide stream integrity validation.
+    *
     * @param fileName         optional file name
+    * @param modificationTime optional file modification time
     * @param comment          optional file comment
-    * @param deflateFlushMode flush mode -- see `java.util.zip.Deflater` for details
+    * @param deflateParams    see [[compression.DeflateParams]]
     */
   def gzip[F[_]](
-      bufferSize: Int,
-      deflateLevel: Option[Int],
-      deflateStrategy: Option[Int],
-      modificationTime: Option[Instant],
       fileName: Option[String],
+      modificationTime: Option[Instant],
       comment: Option[String],
-      deflateFlushMode: Option[Int]
+      deflateParams: DeflateParams
   )(implicit SyncF: Sync[F]): Pipe[F, Byte, Byte] =
     stream =>
-      Stream
-        .bracket(
-          SyncF.delay {
-            val deflater = new Deflater(deflateLevel.getOrElse(Deflater.DEFAULT_COMPRESSION), true)
-            deflater.setStrategy(deflateStrategy.getOrElse(Deflater.DEFAULT_STRATEGY))
-            (deflater, new CRC32())
-          }
-        ) { case (deflater, _) => SyncF.delay(deflater.end()) }
-        .flatMap {
-          case (deflater, crc32) =>
-            _gzip_header(modificationTime, deflateLevel, fileName, comment) ++
-              _deflate(
-                deflater,
-                bufferSize,
-                Some(crc32),
-                deflateFlushMode.getOrElse(Deflater.NO_FLUSH)
-              )(stream) ++
-              _gzip_trailer(deflater, crc32)
-        }
+      deflateParams match {
+        case params @ JavaUtilZipDeflaterParams(_, ZLibParams.Header.GZIP, _, _, _) =>
+          Stream
+            .bracket(
+              SyncF.delay {
+                val deflater = new Deflater(params.level.juzDeflaterLevel, true)
+                deflater.setStrategy(params.strategy.juzDeflaterStrategy)
+                (deflater, new CRC32())
+              }
+            ) { case (deflater, _) => SyncF.delay(deflater.end()) }
+            .flatMap {
+              case (deflater, crc32) =>
+                _gzip_header(fileName, modificationTime, comment, params.level.juzDeflaterLevel) ++
+                  _deflate(
+                    params,
+                    deflater,
+                    Some(crc32)
+                  )(stream) ++
+                  _gzip_trailer(deflater, crc32)
+            }
+        case JavaUtilZipDeflaterParams(_, header, _, _, _) =>
+          Stream.raiseError(
+            new ZipException(
+              s"GZIP requires ZLIB header type ${ZLibParams.Header.GZIP.getClass.getSimpleName}, not ${header.getClass.getSimpleName}."
+            )
+          )
+      }
 
   private def _gzip_header[F[_]](
-      modificationTime: Option[Instant],
-      deflateLevel: Option[Int],
       fileName: Option[String],
-      comment: Option[String]
+      modificationTime: Option[Instant],
+      comment: Option[String],
+      deflateLevel: Int
   ): Stream[F, Byte] = {
     // See RFC 1952: https://www.ietf.org/rfc/rfc1952.txt
     val secondsSince197001010000: Long =
@@ -342,9 +492,9 @@ object compression {
       ((secondsSince197001010000 >> 16) & 0xff).toByte,
       ((secondsSince197001010000 >> 24) & 0xff).toByte,
       deflateLevel match { // XFL: Extra flags
-        case Some(Deflater.BEST_COMPRESSION) => gzipExtraFlag.DEFLATE_MAX_COMPRESSION_SLOWEST_ALGO
-        case Some(Deflater.BEST_SPEED)       => gzipExtraFlag.DEFLATE_FASTEST_ALGO
-        case _                               => zeroByte
+        case Deflater.BEST_COMPRESSION => gzipExtraFlag.DEFLATE_MAX_COMPRESSION_SLOWEST_ALGO
+        case Deflater.BEST_SPEED       => gzipExtraFlag.DEFLATE_FASTEST_ALGO
+        case _                         => zeroByte
       },
       gzipOperatingSystem.THIS
     ) // OS: Operating System
@@ -394,6 +544,21 @@ object compression {
     Stream.chunk(asChunkBytes(trailer))
   }
 
+  /**
+    * Gunzip decompression results including file properties and
+    * decompressed content stream, used as follows:
+    *   stream
+    *     .through(gunzip[IO]())
+    *     .flatMap { gunzipResult =>
+    *       // Access properties here.
+    *       gunzipResult.content
+    *     }
+    *
+    * @param content Uncompressed content stream.
+    * @param modificationTime Modification time of compressed file.
+    * @param fileName File name.
+    * @param comment File comment.
+    */
   final case class GunzipResult[F[_]](
       content: Stream[F, Byte],
       modificationTime: Option[Instant] = None,
@@ -416,15 +581,7 @@ object compression {
     *                   match the size of the largest chunk in the input stream.
     *                   This will also be the chunk size in the output stream.
     *                    Default size is 32 KB.
-    * @return    Returns a stream containing a single GzipResult containing the
-    *            properties of the content stream. Continue to stream the content
-    *            by flat mapping it:
-    *            stream
-    *             .through(gunzip[IO]())
-    *             .flatMap { gunzipResult =>
-    *               // Access properties here.
-    *               gunzipResult.content
-    *             }
+    * @return See [[compression.GunzipResult]]
     */
   def gunzip[F[_]](
       bufferSize: Int = 1024 * 32

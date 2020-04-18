@@ -6,8 +6,8 @@ import java.time.Instant
 import java.util.zip._
 
 import cats.effect._
-
 import fs2.compression._
+import org.scalatest.prop.Generator
 
 import scala.collection.mutable
 
@@ -34,7 +34,46 @@ class CompressionSpec extends Fs2Spec {
     byteArrayStream.toByteArray
   }
 
-  "Compress" - {
+  val zlibHeaders: Generator[ZLibParams.Header] = specificValues(
+    ZLibParams.Header.ZLIB,
+    ZLibParams.Header.GZIP
+  )
+
+  val juzDeflaterLevels: Generator[JavaUtilZipDeflaterParams.Level] = specificValues(
+    JavaUtilZipDeflaterParams.Level.DEFAULT,
+    JavaUtilZipDeflaterParams.Level.BEST_SPEED,
+    JavaUtilZipDeflaterParams.Level.BEST_COMPRESSION,
+    JavaUtilZipDeflaterParams.Level.NO_COMPRESSION,
+    JavaUtilZipDeflaterParams.Level.ZERO,
+    JavaUtilZipDeflaterParams.Level.ONE,
+    JavaUtilZipDeflaterParams.Level.TWO,
+    JavaUtilZipDeflaterParams.Level.THREE,
+    JavaUtilZipDeflaterParams.Level.FOUR,
+    JavaUtilZipDeflaterParams.Level.FIVE,
+    JavaUtilZipDeflaterParams.Level.SIX,
+    JavaUtilZipDeflaterParams.Level.SEVEN,
+    JavaUtilZipDeflaterParams.Level.EIGHT,
+    JavaUtilZipDeflaterParams.Level.NINE
+  )
+
+  val juzDeflaterStrategies: Generator[JavaUtilZipDeflaterParams.Strategy] = specificValues(
+    JavaUtilZipDeflaterParams.Strategy.DEFAULT,
+    JavaUtilZipDeflaterParams.Strategy.BEST_SPEED,
+    JavaUtilZipDeflaterParams.Strategy.BEST_COMPRESSION,
+    JavaUtilZipDeflaterParams.Strategy.FILTERED,
+    JavaUtilZipDeflaterParams.Strategy.HUFFMAN_ONLY
+  )
+
+  val juzDeflaterFlushModes: Generator[JavaUtilZipDeflaterParams.FlushMode] = specificValues(
+    JavaUtilZipDeflaterParams.FlushMode.DEFAULT,
+    JavaUtilZipDeflaterParams.FlushMode.BEST_SPEED,
+    JavaUtilZipDeflaterParams.FlushMode.BEST_COMPRESSION,
+    JavaUtilZipDeflaterParams.FlushMode.NO_FLUSH,
+    JavaUtilZipDeflaterParams.FlushMode.SYNC_FLUSH,
+    JavaUtilZipDeflaterParams.FlushMode.FULL_FLUSH
+  )
+
+  "Compression" - {
     "deflate input" in forAll(
       strings,
       intsBetween(0, 9),
@@ -59,61 +98,79 @@ class CompressionSpec extends Fs2Spec {
 
     "inflate input" in forAll(
       strings,
-      intsBetween(0, 9),
-      specificValues(Deflater.DEFAULT_STRATEGY, Deflater.FILTERED, Deflater.HUFFMAN_ONLY),
       booleans,
-      specificValues(Deflater.NO_FLUSH, Deflater.SYNC_FLUSH, Deflater.FULL_FLUSH)
-    ) { (s: String, level: Int, strategy: Int, nowrap: Boolean, flushMode: Int) =>
-      Stream
-        .chunk[IO, Byte](Chunk.bytes(getBytes(s)))
-        .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
-        .through(
-          deflate(
-            level = level,
-            nowrap = nowrap,
-            bufferSize = 32 * 1024,
-            strategy = strategy,
-            flushMode = flushMode
+      juzDeflaterLevels,
+      juzDeflaterStrategies,
+      juzDeflaterFlushModes
+    ) {
+      (
+          s: String,
+          nowrap: Boolean,
+          level: JavaUtilZipDeflaterParams.Level,
+          strategy: JavaUtilZipDeflaterParams.Strategy,
+          flushMode: JavaUtilZipDeflaterParams.FlushMode
+      ) =>
+        Stream
+          .chunk[IO, Byte](Chunk.bytes(getBytes(s)))
+          .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
+          .through(
+            deflate(
+              JavaUtilZipDeflaterParams(
+                bufferSize = 32 * 1024,
+                header = if (nowrap) ZLibParams.Header.GZIP else ZLibParams.Header.ZLIB,
+                level = level,
+                strategy = strategy,
+                flushMode = flushMode
+              )
+            )
           )
-        )
-        .compile
-        .to(Array)
-        .flatMap { deflated =>
-          val expected = inflateStream(deflated, nowrap).toVector
-          Stream
-            .chunk[IO, Byte](Chunk.bytes(deflated))
-            .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
-            .through(inflate(nowrap = nowrap))
-            .compile
-            .toVector
-            .asserting(actual => assert(actual == expected))
-        }
+          .compile
+          .to(Array)
+          .flatMap { deflated =>
+            val expected = inflateStream(deflated, nowrap).toVector
+            Stream
+              .chunk[IO, Byte](Chunk.bytes(deflated))
+              .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
+              .through(inflate(nowrap = nowrap))
+              .compile
+              .toVector
+              .asserting(actual => assert(actual == expected))
+          }
     }
 
     "deflate |> inflate ~= id" in forAll(
       strings,
-      intsBetween(0, 9),
-      specificValues(Deflater.DEFAULT_STRATEGY, Deflater.FILTERED, Deflater.HUFFMAN_ONLY),
       booleans,
-      specificValues(Deflater.NO_FLUSH, Deflater.SYNC_FLUSH, Deflater.FULL_FLUSH)
-    ) { (s: String, level: Int, strategy: Int, nowrap: Boolean, flushMode: Int) =>
-      Stream
-        .chunk[IO, Byte](Chunk.bytes(getBytes(s)))
-        .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
-        .through(
-          deflate(
-            level = level,
-            nowrap = nowrap,
-            bufferSize = 32 * 1024,
-            strategy = strategy,
-            flushMode = flushMode
+      juzDeflaterLevels,
+      juzDeflaterStrategies,
+      juzDeflaterFlushModes
+    ) {
+      (
+          s: String,
+          nowrap: Boolean,
+          level: JavaUtilZipDeflaterParams.Level,
+          strategy: JavaUtilZipDeflaterParams.Strategy,
+          flushMode: JavaUtilZipDeflaterParams.FlushMode
+      ) =>
+        Stream
+          .chunk[IO, Byte](Chunk.bytes(getBytes(s)))
+          .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
+          .through(
+            deflate(
+              JavaUtilZipDeflaterParams(
+                bufferSize = 32 * 1024,
+                header = if (nowrap) ZLibParams.Header.GZIP else ZLibParams.Header.ZLIB,
+                level = level,
+                strategy = strategy,
+                flushMode = flushMode
+              )
+            )
           )
-        )
-        .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
-        .through(inflate(nowrap = nowrap))
-        .compile
-        .to(Array)
-        .asserting(it => assert(it.sameElements(getBytes(s))))
+          .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
+          .through(inflate(nowrap = nowrap))
+          .compile
+          .to(Array)
+          .asserting(it => assert(it.sameElements(getBytes(s))))
     }
 
     "deflate.compresses input" in {
@@ -126,7 +183,7 @@ class CompressionSpec extends Fs2Spec {
       Stream
         .chunk[IO, Byte](Chunk.bytes(uncompressed))
         .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
-        .through(deflate(9))
+        .through(deflate(level = 9))
         .compile
         .toVector
         .asserting(compressed => assert(compressed.length < uncompressed.length))
@@ -157,16 +214,16 @@ class CompressionSpec extends Fs2Spec {
 
     "gzip |> gunzip ~= id" in forAll(
       strings,
-      intsBetween(0, 9),
-      specificValues(Deflater.DEFAULT_STRATEGY, Deflater.FILTERED, Deflater.HUFFMAN_ONLY),
-      specificValues(Deflater.NO_FLUSH, Deflater.SYNC_FLUSH, Deflater.FULL_FLUSH),
+      juzDeflaterLevels,
+      juzDeflaterStrategies,
+      juzDeflaterFlushModes,
       intsBetween(0, Int.MaxValue)
     ) {
       (
           s: String,
-          level: Int,
-          strategy: Int,
-          flushMode: Int,
+          level: JavaUtilZipDeflaterParams.Level,
+          strategy: JavaUtilZipDeflaterParams.Strategy,
+          flushMode: JavaUtilZipDeflaterParams.FlushMode,
           epochSeconds: Int
       ) =>
         val expectedFileName = Option(toEncodableFileName(s))
@@ -177,13 +234,16 @@ class CompressionSpec extends Fs2Spec {
           .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
           .through(
             gzip[IO](
-              8192,
-              deflateLevel = Some(level),
-              deflateStrategy = Some(strategy),
-              modificationTime = Some(Instant.ofEpochSecond(epochSeconds)),
               fileName = Some(s),
+              modificationTime = Some(Instant.ofEpochSecond(epochSeconds)),
               comment = Some(s),
-              deflateFlushMode = Some(flushMode)
+              JavaUtilZipDeflaterParams(
+                bufferSize = 8192,
+                header = ZLibParams.Header.GZIP,
+                level = level,
+                strategy = strategy,
+                flushMode = flushMode
+              )
             )
           )
           .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
@@ -203,16 +263,16 @@ class CompressionSpec extends Fs2Spec {
 
     "gzip |> gunzip ~= id (mutually prime chunk sizes, compression larger)" in forAll(
       strings,
-      intsBetween(0, 9),
-      specificValues(Deflater.DEFAULT_STRATEGY, Deflater.FILTERED, Deflater.HUFFMAN_ONLY),
-      specificValues(Deflater.NO_FLUSH, Deflater.SYNC_FLUSH, Deflater.FULL_FLUSH),
+      juzDeflaterLevels,
+      juzDeflaterStrategies,
+      juzDeflaterFlushModes,
       intsBetween(0, Int.MaxValue)
     ) {
       (
           s: String,
-          level: Int,
-          strategy: Int,
-          flushMode: Int,
+          level: JavaUtilZipDeflaterParams.Level,
+          strategy: JavaUtilZipDeflaterParams.Strategy,
+          flushMode: JavaUtilZipDeflaterParams.FlushMode,
           epochSeconds: Int
       ) =>
         val expectedFileName = Option(toEncodableFileName(s))
@@ -223,13 +283,16 @@ class CompressionSpec extends Fs2Spec {
           .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
           .through(
             gzip[IO](
-              1031,
-              deflateLevel = Some(level),
-              deflateStrategy = Some(strategy),
-              modificationTime = Some(Instant.ofEpochSecond(epochSeconds)),
               fileName = Some(s),
+              modificationTime = Some(Instant.ofEpochSecond(epochSeconds)),
               comment = Some(s),
-              deflateFlushMode = Some(flushMode)
+              JavaUtilZipDeflaterParams(
+                bufferSize = 1031,
+                header = ZLibParams.Header.GZIP,
+                level = level,
+                strategy = strategy,
+                flushMode = flushMode
+              )
             )
           )
           .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
@@ -249,16 +312,16 @@ class CompressionSpec extends Fs2Spec {
 
     "gzip |> gunzip ~= id (mutually prime chunk sizes, decompression larger)" in forAll(
       strings,
-      intsBetween(0, 9),
-      specificValues(Deflater.DEFAULT_STRATEGY, Deflater.FILTERED, Deflater.HUFFMAN_ONLY),
-      specificValues(Deflater.NO_FLUSH, Deflater.SYNC_FLUSH, Deflater.FULL_FLUSH),
+      juzDeflaterLevels,
+      juzDeflaterStrategies,
+      juzDeflaterFlushModes,
       intsBetween(0, Int.MaxValue)
     ) {
       (
           s: String,
-          level: Int,
-          strategy: Int,
-          flushMode: Int,
+          level: JavaUtilZipDeflaterParams.Level,
+          strategy: JavaUtilZipDeflaterParams.Strategy,
+          flushMode: JavaUtilZipDeflaterParams.FlushMode,
           epochSeconds: Int
       ) =>
         val expectedFileName = Option(toEncodableFileName(s))
@@ -269,13 +332,16 @@ class CompressionSpec extends Fs2Spec {
           .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
           .through(
             gzip[IO](
-              509,
-              deflateLevel = Some(level),
-              deflateStrategy = Some(strategy),
-              modificationTime = Some(Instant.ofEpochSecond(epochSeconds)),
               fileName = Some(s),
+              modificationTime = Some(Instant.ofEpochSecond(epochSeconds)),
               comment = Some(s),
-              deflateFlushMode = Some(flushMode)
+              JavaUtilZipDeflaterParams(
+                bufferSize = 509,
+                header = ZLibParams.Header.GZIP,
+                level = level,
+                strategy = strategy,
+                flushMode = flushMode
+              )
             )
           )
           .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
@@ -295,16 +361,16 @@ class CompressionSpec extends Fs2Spec {
 
     "gzip |> GZIPInputStream ~= id" in forAll(
       strings,
-      intsBetween(0, 9),
-      specificValues(Deflater.DEFAULT_STRATEGY, Deflater.FILTERED, Deflater.HUFFMAN_ONLY),
-      specificValues(Deflater.NO_FLUSH, Deflater.SYNC_FLUSH, Deflater.FULL_FLUSH),
+      juzDeflaterLevels,
+      juzDeflaterStrategies,
+      juzDeflaterFlushModes,
       intsBetween(0, Int.MaxValue)
     ) {
       (
           s: String,
-          level: Int,
-          strategy: Int,
-          flushMode: Int,
+          level: JavaUtilZipDeflaterParams.Level,
+          strategy: JavaUtilZipDeflaterParams.Strategy,
+          flushMode: JavaUtilZipDeflaterParams.FlushMode,
           epochSeconds: Int
       ) =>
         Stream
@@ -312,13 +378,16 @@ class CompressionSpec extends Fs2Spec {
           .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
           .through(
             gzip(
-              1024,
-              deflateLevel = Some(level),
-              deflateStrategy = Some(strategy),
-              modificationTime = Some(Instant.ofEpochSecond(epochSeconds)),
               fileName = Some(s),
+              modificationTime = Some(Instant.ofEpochSecond(epochSeconds)),
               comment = Some(s),
-              deflateFlushMode = Some(flushMode)
+              JavaUtilZipDeflaterParams(
+                bufferSize = 1024,
+                header = ZLibParams.Header.GZIP,
+                level = level,
+                strategy = strategy,
+                flushMode = flushMode
+              )
             )
           )
           .compile
