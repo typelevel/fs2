@@ -791,27 +791,30 @@ object compression {
           _.pull.unconsNonEmpty
             .flatMap {
               case Some((next, rest)) =>
-                if (next.size >= gzipTrailerBytes) {
-                  Pull.output(last) >> streamUntilTrailer(next)(rest)
+                if (inflater.finished()) {
+                  if (next.size >= gzipTrailerBytes) {
+                    if (last.nonEmpty) Pull.output(last) >> streamUntilTrailer(next)(rest)
+                    else streamUntilTrailer(next)(rest)
+                  } else {
+                    streamUntilTrailer(Chunk.concatBytes(List(last.toBytes, next.toBytes)))(rest)
+                  }
                 } else {
-                  streamUntilTrailer(Chunk.concatBytes(List(last.toBytes, next.toBytes)))(rest)
+                  if (last.nonEmpty)
+                    Pull.output(last) >> Pull.output(next) >>
+                      streamUntilTrailer(Chunk.empty[Byte])(rest)
+                  else Pull.output(next) >> streamUntilTrailer(Chunk.empty[Byte])(rest)
                 }
               case None =>
                 val preTrailerBytes = last.size - gzipTrailerBytes
                 if (preTrailerBytes > 0) {
-                  Pull.output(last.take(preTrailerBytes)) >> validateTrailer(
-                    last.drop(preTrailerBytes)
-                  )
+                  Pull.output(last.take(preTrailerBytes)) >>
+                    validateTrailer(last.drop(preTrailerBytes))
                 } else {
                   validateTrailer(last)
                 }
             }
 
-        stream.pull.unconsNonEmpty
-          .flatMap {
-            case Some((chunk, rest)) => streamUntilTrailer(chunk)(rest)
-            case None                => Pull.raiseError(new ZipException("Failed to read trailer (2)"))
-          }
+        streamUntilTrailer(Chunk.empty[Byte])(stream)
       }.stream
 
   /**

@@ -397,7 +397,7 @@ It flattens the nested stream, letting up to `maxOpen` inner streams run at a ti
 
 The `Concurrent` bound on `F` is required anywhere concurrency is used in the library. As mentioned earlier, users can bring their own effect types provided they also supply an `Concurrent` instance in implicit scope.
 
-In addition, there are a number of other concurrency primitives---asynchronous queues, signals, and semaphores. See the [Concurrency Primitives section](concurrency-primitives.md) for more examples. We'll make use of some of these in the next section when discussing how to talk to the external world.
+In addition, there are a number of other concurrency primitives---asynchronous queues, signals, and semaphores. See the [Concurrency Primitives section](concurrency-primitives.html) for more examples. We'll make use of some of these in the next section when discussing how to talk to the external world.
 
 ### Exercises Concurrency
 
@@ -584,17 +584,28 @@ import fs2.concurrent._
 import cats.effect.{ConcurrentEffect, ContextShift, IO}
 
 type Row = List[String]
+type RowOrError = Either[Throwable, Row]
 
 trait CSVHandle {
-  def withRows(cb: Either[Throwable,Row] => Unit): Unit
+  def withRows(cb: RowOrError => Unit): Unit
 }
 
-def rows[F[_]](h: CSVHandle)(implicit F: ConcurrentEffect[F], cs: ContextShift[F]): Stream[F,Row] =
+def rows[F[_]](h: CSVHandle)(implicit F: ConcurrentEffect[F], cs: ContextShift[F]): Stream[F,Row] = {
   for {
-    q <- Stream.eval(Queue.unbounded[F,Either[Throwable,Row]])
-    _ <- Stream.eval { F.delay(h.withRows(e => F.runAsync(q.enqueue1(e))(_ => IO.unit).unsafeRunSync)) }
-    row <- q.dequeue.rethrow
+    q <- Stream.eval(Queue.unbounded[F, Option[RowOrError]])
+    _ <- Stream.eval { F.delay {
+      def enqueue(v: Option[RowOrError]): Unit = F.runAsync(q.enqueue1(v))(_ => IO.unit).unsafeRunSync
+
+      // Fill the data
+      h.withRows(e => enqueue(Some(e))) 
+      // Upon returning from withRows signal that our stream has ended.
+      enqueue(None)
+    } }
+    // unNoneTerminate halts the stream at the first `None`.
+    // Without it the queue would be infinite.
+    row <- q.dequeue.unNoneTerminate.rethrow
   } yield row
+}
 ```
 
 See [`Queue`](https://github.com/functional-streams-for-scala/fs2/blob/series/1.0/core/shared/src/main/scala/fs2/concurrent/Queue.scala)
