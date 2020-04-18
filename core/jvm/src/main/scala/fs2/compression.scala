@@ -37,12 +37,13 @@ object compression {
     * @param strategy Compression strategy. Default strategy is [[java.util.zip.Deflater.DEFAULT_STRATEGY]].
     * @param flushMode Compression flush mode. Default flush mode is [[java.util.zip.Deflater.NO_FLUSH]].
     */
-  final case class JavaUtilZipDeflaterParams(
-      bufferSize: Int = 1024 * 32,
-      header: ZLibParams.Header = ZLibParams.Header.ZLIB,
-      level: JavaUtilZipDeflaterParams.Level = JavaUtilZipDeflaterParams.Level.DEFAULT,
-      strategy: JavaUtilZipDeflaterParams.Strategy = JavaUtilZipDeflaterParams.Strategy.DEFAULT,
-      flushMode: JavaUtilZipDeflaterParams.FlushMode = JavaUtilZipDeflaterParams.FlushMode.DEFAULT
+  final class JavaUtilZipDeflaterParams(
+      val bufferSize: Int = 1024 * 32,
+      val header: ZLibParams.Header = ZLibParams.Header.ZLIB,
+      val level: JavaUtilZipDeflaterParams.Level = JavaUtilZipDeflaterParams.Level.DEFAULT,
+      val strategy: JavaUtilZipDeflaterParams.Strategy = JavaUtilZipDeflaterParams.Strategy.DEFAULT,
+      val flushMode: JavaUtilZipDeflaterParams.FlushMode =
+        JavaUtilZipDeflaterParams.FlushMode.DEFAULT
   ) extends DeflateParams {
     private[compression] val bufferSizeOrMinimum: Int = bufferSize.min(128)
   }
@@ -119,12 +120,12 @@ object compression {
     /**
       * Reasonable defaults for most applications.
       */
-    val DEFAULT: JavaUtilZipDeflaterParams = JavaUtilZipDeflaterParams()
+    val DEFAULT: JavaUtilZipDeflaterParams = new JavaUtilZipDeflaterParams()
 
     /**
       * Best speed for real-time, intermittent, fragmented, interactive or discontinuous streams.
       */
-    val BEST_SPEED: JavaUtilZipDeflaterParams = JavaUtilZipDeflaterParams(
+    val BEST_SPEED: JavaUtilZipDeflaterParams = new JavaUtilZipDeflaterParams(
       level = Level.BEST_SPEED,
       strategy = Strategy.BEST_SPEED,
       flushMode = FlushMode.BEST_SPEED
@@ -133,7 +134,7 @@ object compression {
     /**
       * Best compression for finite, complete, readily-available, continuous or file streams.
       */
-    val BEST_COMPRESSION: JavaUtilZipDeflaterParams = JavaUtilZipDeflaterParams(
+    val BEST_COMPRESSION: JavaUtilZipDeflaterParams = new JavaUtilZipDeflaterParams(
       bufferSize = 1024 * 128,
       level = Level.BEST_COMPRESSION,
       strategy = Strategy.BEST_COMPRESSION,
@@ -160,7 +161,7 @@ object compression {
       strategy: Int = Deflater.DEFAULT_STRATEGY
   )(implicit SyncF: Sync[F]): Pipe[F, Byte, Byte] =
     deflate[F](
-      JavaUtilZipDeflaterParams(
+      new JavaUtilZipDeflaterParams(
         bufferSize = bufferSize,
         header = ZLibParams.Header(nowrap),
         level = JavaUtilZipDeflaterParams.Level(level),
@@ -267,11 +268,20 @@ object compression {
     * @param bufferSize Size of the internal buffer. Default size is 32 KB.
     * @param header Compression header. Defaults to [[ZLibParams.Header.ZLIB]]
     */
-  final case class JavaUtilZipInflaterParams(
-      bufferSize: Int = 1024 * 32,
-      header: ZLibParams.Header = ZLibParams.Header.ZLIB
+  final class JavaUtilZipInflaterParams(
+      val bufferSize: Int = 1024 * 32,
+      val header: ZLibParams.Header = ZLibParams.Header.ZLIB
   ) extends InflateParams {
     private[compression] val bufferSizeOrMinimum: Int = bufferSize.min(128)
+  }
+
+  object JavaUtilZipInflaterParams {
+
+    /**
+      * Reasonable defaults for most applications.
+      */
+    val DEFAULT: JavaUtilZipInflaterParams = new JavaUtilZipInflaterParams()
+
   }
 
   /**
@@ -285,7 +295,7 @@ object compression {
       implicit SyncF: Sync[F]
   ): Pipe[F, Byte, Byte] =
     inflate(
-      JavaUtilZipInflaterParams(
+      new JavaUtilZipInflaterParams(
         bufferSize = bufferSize,
         header = ZLibParams.Header(nowrap)
       )
@@ -452,7 +462,7 @@ object compression {
       fileName = fileName,
       modificationTime = modificationTime,
       comment = comment,
-      deflateParams = JavaUtilZipDeflaterParams(
+      deflateParams = new JavaUtilZipDeflaterParams(
         bufferSize = bufferSize,
         header = ZLibParams.Header.GZIP,
         level = deflateLevel
@@ -495,7 +505,7 @@ object compression {
   )(implicit SyncF: Sync[F]): Pipe[F, Byte, Byte] =
     stream =>
       deflateParams match {
-        case params @ JavaUtilZipDeflaterParams(_, ZLibParams.Header.GZIP, _, _, _) =>
+        case params: JavaUtilZipDeflaterParams if params.header == ZLibParams.Header.GZIP =>
           Stream
             .bracket(
               SyncF.delay {
@@ -514,10 +524,10 @@ object compression {
                   )(stream) ++
                   _gzip_trailer(deflater, crc32)
             }
-        case JavaUtilZipDeflaterParams(_, header, _, _, _) =>
+        case params: JavaUtilZipDeflaterParams =>
           Stream.raiseError(
             new ZipException(
-              s"${ZLibParams.Header.GZIP} header type required, not $header."
+              s"${ZLibParams.Header.GZIP} header type required, not ${params.header}."
             )
           )
       }
@@ -638,7 +648,7 @@ object compression {
       bufferSize: Int = 1024 * 32
   )(implicit SyncF: Sync[F]): Stream[F, Byte] => Stream[F, GunzipResult[F]] =
     gunzip(
-      JavaUtilZipInflaterParams(
+      new JavaUtilZipInflaterParams(
         bufferSize = bufferSize,
         header = ZLibParams.Header.GZIP
       )
@@ -663,7 +673,7 @@ object compression {
   )(implicit SyncF: Sync[F]): Stream[F, Byte] => Stream[F, GunzipResult[F]] =
     stream =>
       inflateParams match {
-        case params @ JavaUtilZipInflaterParams(_, ZLibParams.Header.GZIP) =>
+        case params: JavaUtilZipInflaterParams if params.header == ZLibParams.Header.GZIP =>
           Stream
             .bracket(SyncF.delay((new Inflater(true), new CRC32(), new CRC32()))) {
               case (inflater, _, _) => SyncF.delay(inflater.end())
@@ -687,10 +697,10 @@ object compression {
                   }
                   .stream
             }
-        case JavaUtilZipInflaterParams(_, header) =>
+        case params: JavaUtilZipInflaterParams =>
           Stream.raiseError(
             new ZipException(
-              s"${ZLibParams.Header.GZIP} header type required, not $header."
+              s"${ZLibParams.Header.GZIP} header type required, not ${params.header}."
             )
           )
       }
