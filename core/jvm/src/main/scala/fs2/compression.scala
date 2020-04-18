@@ -14,6 +14,9 @@ object compression {
 
     sealed abstract class Header(private[compression] val juzDeflaterNoWrap: Boolean)
     case object Header {
+      private[compression] def apply(juzDeflaterNoWrap: Boolean): ZLibParams.Header =
+        if (juzDeflaterNoWrap) ZLibParams.Header.GZIP else ZLibParams.Header.ZLIB
+
       final case object ZLIB extends Header(juzDeflaterNoWrap = false)
       final case object GZIP extends Header(juzDeflaterNoWrap = true)
     }
@@ -27,9 +30,9 @@ object compression {
   sealed trait DeflateParams
 
   /**
-    * Deflate algorithm parameters of the [[java.util.zip.Deflater]] implementation.
+    * Deflate algorithm parameters for the [[java.util.zip.Deflater]] implementation.
     * @param bufferSize Size of the internal buffer. Default size is 32 KB.
-    * @param header If true then use GZIP compatible compression. Default is false.
+    * @param header Compression header. Defaults to [[ZLibParams.Header.ZLIB]].
     * @param level Compression level. Default level is [[java.util.zip.Deflater.DEFAULT_COMPRESSION]].
     * @param strategy Compression strategy. Default strategy is [[java.util.zip.Deflater.DEFAULT_STRATEGY]].
     * @param flushMode Compression flush mode. Default flush mode is [[java.util.zip.Deflater.NO_FLUSH]].
@@ -50,17 +53,17 @@ object compression {
     case object Level {
       private[compression] def apply(level: Int): Level =
         level match {
-          case Deflater.DEFAULT_COMPRESSION => Level.DEFAULT
-          case 0                            => Level.ZERO
-          case 1                            => Level.ONE
-          case 2                            => Level.TWO
-          case 3                            => Level.THREE
-          case 4                            => Level.FOUR
-          case 5                            => Level.FIVE
-          case 6                            => Level.SIX
-          case 7                            => Level.SEVEN
-          case 8                            => Level.EIGHT
-          case 9                            => Level.NINE
+          case DEFAULT.juzDeflaterLevel => Level.DEFAULT
+          case ZERO.juzDeflaterLevel    => Level.ZERO
+          case ONE.juzDeflaterLevel     => Level.ONE
+          case TWO.juzDeflaterLevel     => Level.TWO
+          case THREE.juzDeflaterLevel   => Level.THREE
+          case FOUR.juzDeflaterLevel    => Level.FOUR
+          case FIVE.juzDeflaterLevel    => Level.FIVE
+          case SIX.juzDeflaterLevel     => Level.SIX
+          case SEVEN.juzDeflaterLevel   => Level.SEVEN
+          case EIGHT.juzDeflaterLevel   => Level.EIGHT
+          case NINE.juzDeflaterLevel    => Level.NINE
         }
 
       final case object DEFAULT extends Level(juzDeflaterLevel = Deflater.DEFAULT_COMPRESSION)
@@ -83,9 +86,9 @@ object compression {
     case object Strategy {
       private[compression] def apply(strategy: Int): Strategy =
         strategy match {
-          case Deflater.DEFAULT_STRATEGY => Strategy.DEFAULT
-          case Deflater.FILTERED         => Strategy.FILTERED
-          case Deflater.HUFFMAN_ONLY     => Strategy.HUFFMAN_ONLY
+          case DEFAULT.juzDeflaterStrategy      => Strategy.DEFAULT
+          case FILTERED.juzDeflaterStrategy     => Strategy.FILTERED
+          case HUFFMAN_ONLY.juzDeflaterStrategy => Strategy.HUFFMAN_ONLY
         }
 
       final case object DEFAULT extends Strategy(juzDeflaterStrategy = Deflater.DEFAULT_STRATEGY)
@@ -100,9 +103,9 @@ object compression {
     case object FlushMode {
       private[compression] def apply(flushMode: Int): FlushMode =
         flushMode match {
-          case Deflater.NO_FLUSH   => FlushMode.NO_FLUSH
-          case Deflater.SYNC_FLUSH => FlushMode.SYNC_FLUSH
-          case Deflater.FULL_FLUSH => FlushMode.FULL_FLUSH
+          case DEFAULT.juzDeflaterFlushMode    => FlushMode.NO_FLUSH
+          case SYNC_FLUSH.juzDeflaterFlushMode => FlushMode.SYNC_FLUSH
+          case FULL_FLUSH.juzDeflaterFlushMode => FlushMode.FULL_FLUSH
         }
 
       final case object DEFAULT extends FlushMode(juzDeflaterFlushMode = Deflater.NO_FLUSH)
@@ -137,9 +140,6 @@ object compression {
       flushMode = FlushMode.BEST_COMPRESSION
     )
 
-    private[compression] def toHeader(nowrap: Boolean): ZLibParams.Header =
-      if (nowrap) ZLibParams.Header.GZIP else ZLibParams.Header.ZLIB
-
   }
 
   /**
@@ -162,7 +162,7 @@ object compression {
     deflate[F](
       JavaUtilZipDeflaterParams(
         bufferSize = bufferSize,
-        header = JavaUtilZipDeflaterParams.toHeader(nowrap),
+        header = ZLibParams.Header(nowrap),
         level = JavaUtilZipDeflaterParams.Level(level),
         strategy = JavaUtilZipDeflaterParams.Strategy(strategy),
         flushMode = JavaUtilZipDeflaterParams.FlushMode.NO_FLUSH
@@ -257,6 +257,24 @@ object compression {
     }
 
   /**
+    * Inflate algorithm parameters for the selected implementation, as one of:
+    *   1. [[compression.JavaUtilZipInflaterParams]] for [[java.util.zip.Inflater]]
+    */
+  sealed trait InflateParams
+
+  /**
+    * Inflate algorithm parameters for the [[java.util.zip.Inflater]] implementation.
+    * @param bufferSize Size of the internal buffer. Default size is 32 KB.
+    * @param header Compression header. Defaults to [[ZLibParams.Header.ZLIB]]
+    */
+  final case class JavaUtilZipInflaterParams(
+      bufferSize: Int = 1024 * 32,
+      header: ZLibParams.Header = ZLibParams.Header.ZLIB
+  ) extends InflateParams {
+    private[compression] val bufferSizeOrMinimum: Int = bufferSize.min(128)
+  }
+
+  /**
     * Returns a `Pipe` that inflates (decompresses) its input elements using
     * a `java.util.zip.Inflater` with the parameter `nowrap`.
     * @param nowrap if true then support GZIP compatible decompression
@@ -266,19 +284,41 @@ object compression {
   def inflate[F[_]](nowrap: Boolean = false, bufferSize: Int = 1024 * 32)(
       implicit SyncF: Sync[F]
   ): Pipe[F, Byte, Byte] =
-    stream =>
-      Stream
-        .bracket(SyncF.delay(new Inflater(nowrap)))(inflater => SyncF.delay(inflater.end()))
-        .flatMap(inflater => _inflate(bufferSize, inflater, crc32 = None)(SyncF)(stream))
+    inflate(
+      JavaUtilZipInflaterParams(
+        bufferSize = bufferSize,
+        header = ZLibParams.Header(nowrap)
+      )
+    )
 
-  private def _inflate[F[_]](bufferSize: Int, inflater: Inflater, crc32: Option[CRC32])(
+  /**
+    * Returns a `Pipe` that inflates (decompresses) its input elements using
+    * a `java.util.zip.Inflater` with the parameter `nowrap`.
+    * @param inflateParams See [[compression.InflateParams]]
+    */
+  def inflate[F[_]](inflateParams: InflateParams)(implicit SyncF: Sync[F]): Pipe[F, Byte, Byte] =
+    stream =>
+      inflateParams match {
+        case params: JavaUtilZipInflaterParams =>
+          Stream
+            .bracket(SyncF.delay(new Inflater(params.header.juzDeflaterNoWrap)))(inflater =>
+              SyncF.delay(inflater.end())
+            )
+            .flatMap(inflater => _inflate(params, inflater, crc32 = None)(SyncF)(stream))
+      }
+
+  private def _inflate[F[_]](
+      inflateParams: JavaUtilZipInflaterParams,
+      inflater: Inflater,
+      crc32: Option[CRC32]
+  )(
       implicit SyncF: Sync[F]
   ): Pipe[F, Byte, Byte] =
     _.pull.unconsNonEmpty.flatMap {
       case Some((deflatedChunk, deflatedStream)) =>
-        _inflate_chunk(deflatedChunk, inflater, bufferSize.max(minBufferSize), crc32) >> _inflate_stream(
+        _inflate_chunk(inflateParams, inflater, crc32, deflatedChunk) >> _inflate_stream(
+          inflateParams,
           inflater,
-          bufferSize.max(minBufferSize),
           crc32
         )(SyncF)(deflatedStream)
       case None =>
@@ -286,10 +326,10 @@ object compression {
     }.stream
 
   private def _inflate_chunk[F[_]](
-      chunk: Chunk[Byte],
+      inflaterParams: JavaUtilZipInflaterParams,
       inflater: Inflater,
-      inflatedBufferSize: Int,
-      crc32: Option[CRC32]
+      crc32: Option[CRC32],
+      chunk: Chunk[Byte]
   ): Pull[F, Byte, Unit] = {
     val bytesChunk = chunk.toBytes
     inflater.setInput(
@@ -307,11 +347,22 @@ object compression {
       }
 
     def pull(): Pull[F, Byte, Unit] = {
-      val inflatedBuffer = new Array[Byte](inflatedBufferSize)
+      val inflatedBuffer = new Array[Byte](inflaterParams.bufferSizeOrMinimum)
 
       inflateInto(inflatedBuffer) match {
         case inflatedBytes if inflatedBytes <= -2 =>
-          Pull.output(chunk)
+          inflater.getRemaining match {
+            case bytesRemaining if bytesRemaining > 0 =>
+              Pull.output(
+                Chunk.Bytes(
+                  bytesChunk.values,
+                  bytesChunk.offset + bytesChunk.length - bytesRemaining,
+                  bytesRemaining
+                )
+              )
+            case _ =>
+              Pull.done
+          }
         case inflatedBytes if inflatedBytes == -1 =>
           Pull.done
         case inflatedBytes if inflatedBytes < inflatedBuffer.length =>
@@ -339,15 +390,15 @@ object compression {
   }
 
   private def _inflate_stream[F[_]](
+      inflateParams: JavaUtilZipInflaterParams,
       inflater: Inflater,
-      inflatedBufferSize: Int,
       crc32: Option[CRC32]
   )(implicit SyncF: Sync[F]): Stream[F, Byte] => Pull[F, Byte, Unit] =
     _.pull.unconsNonEmpty.flatMap {
       case Some((deflatedChunk, deflatedStream)) =>
-        _inflate_chunk(deflatedChunk, inflater, inflatedBufferSize, crc32) >> _inflate_stream(
+        _inflate_chunk(inflateParams, inflater, crc32, deflatedChunk) >> _inflate_stream(
+          inflateParams,
           inflater,
-          inflatedBufferSize,
           crc32
         )(SyncF)(deflatedStream)
       case None =>
@@ -466,7 +517,7 @@ object compression {
         case JavaUtilZipDeflaterParams(_, header, _, _, _) =>
           Stream.raiseError(
             new ZipException(
-              s"GZIP requires ZLIB header type ${ZLibParams.Header.GZIP.getClass.getSimpleName}, not ${header.getClass.getSimpleName}."
+              s"${ZLibParams.Header.GZIP} header type required, not $header."
             )
           )
       }
@@ -585,40 +636,71 @@ object compression {
     */
   def gunzip[F[_]](
       bufferSize: Int = 1024 * 32
-  )(
-      implicit SyncF: Sync[F]
-  ): Stream[F, Byte] => Stream[F, GunzipResult[F]] =
+  )(implicit SyncF: Sync[F]): Stream[F, Byte] => Stream[F, GunzipResult[F]] =
+    gunzip(
+      JavaUtilZipInflaterParams(
+        bufferSize = bufferSize,
+        header = ZLibParams.Header.GZIP
+      )
+    )
+
+  /**
+    * Returns a pipe that incrementally decompresses input according to the GZIP
+    * format as defined by RFC 1952 at https://www.ietf.org/rfc/rfc1952.txt. Any
+    * errors in decompression will be sequenced as exceptions into the output
+    * stream. Decompression is handled in a streaming and async fashion without
+    * any thread blockage.
+    *
+    * The chunk size here is actually really important. Matching the input stream
+    * largest chunk size, or roughly 8 KB (whichever is larger) is a good rule of
+    * thumb.
+    *
+    * @param inflateParams See [[compression.InflateParams]]
+    * @return See [[compression.GunzipResult]]
+    */
+  def gunzip[F[_]](
+      inflateParams: InflateParams
+  )(implicit SyncF: Sync[F]): Stream[F, Byte] => Stream[F, GunzipResult[F]] =
     stream =>
-      Stream
-        .bracket(SyncF.delay((new Inflater(true), new CRC32(), new CRC32()))) {
-          case (inflater, _, _) => SyncF.delay(inflater.end())
-        }
-        .flatMap {
-          case (inflater, headerCrc32, contentCrc32) =>
-            stream.pull
-              .unconsN(gzipHeaderBytes)
-              .flatMap {
-                case Some((mandatoryHeaderChunk, streamAfterMandatoryHeader)) =>
-                  _gunzip_matchMandatoryHeader(
-                    mandatoryHeaderChunk,
-                    streamAfterMandatoryHeader,
-                    headerCrc32,
-                    contentCrc32,
-                    bufferSize,
-                    inflater
-                  )
-                case None =>
-                  Pull.output1(GunzipResult(Stream.raiseError(new EOFException())))
-              }
-              .stream
-        }
+      inflateParams match {
+        case params @ JavaUtilZipInflaterParams(_, ZLibParams.Header.GZIP) =>
+          Stream
+            .bracket(SyncF.delay((new Inflater(true), new CRC32(), new CRC32()))) {
+              case (inflater, _, _) => SyncF.delay(inflater.end())
+            }
+            .flatMap {
+              case (inflater, headerCrc32, contentCrc32) =>
+                stream.pull
+                  .unconsN(gzipHeaderBytes)
+                  .flatMap {
+                    case Some((mandatoryHeaderChunk, streamAfterMandatoryHeader)) =>
+                      _gunzip_matchMandatoryHeader(
+                        params,
+                        mandatoryHeaderChunk,
+                        streamAfterMandatoryHeader,
+                        headerCrc32,
+                        contentCrc32,
+                        inflater
+                      )
+                    case None =>
+                      Pull.output1(GunzipResult(Stream.raiseError(new EOFException())))
+                  }
+                  .stream
+            }
+        case JavaUtilZipInflaterParams(_, header) =>
+          Stream.raiseError(
+            new ZipException(
+              s"${ZLibParams.Header.GZIP} header type required, not $header."
+            )
+          )
+      }
 
   private def _gunzip_matchMandatoryHeader[F[_]](
+      inflateParams: JavaUtilZipInflaterParams,
       mandatoryHeaderChunk: Chunk[Byte],
       streamAfterMandatoryHeader: Stream[F, Byte],
       headerCrc32: CRC32,
       contentCrc32: CRC32,
-      bufferSize: Int,
       inflater: Inflater
   )(implicit SyncF: Sync[F]) =
     (mandatoryHeaderChunk.size, mandatoryHeaderChunk.toBytes.values) match {
@@ -704,12 +786,12 @@ object compression {
         val secondsSince197001010000 =
           unsignedToLong(header(4), header(5), header(6), header(7))
         _gunzip_readOptionalHeader(
+          inflateParams,
           streamAfterMandatoryHeader,
           flags,
           headerCrc32,
           contentCrc32,
           secondsSince197001010000,
-          bufferSize,
           inflater
         ).pull.uncons1
           .flatMap {
@@ -749,12 +831,12 @@ object compression {
     }
 
   private def _gunzip_readOptionalHeader[F[_]](
+      inflateParams: JavaUtilZipInflaterParams,
       streamAfterMandatoryHeader: Stream[F, Byte],
       flags: Byte,
       headerCrc32: CRC32,
       contentCrc32: CRC32,
       secondsSince197001010000: Long,
-      bufferSize: Int,
       inflater: Inflater
   )(implicit SyncF: Sync[F]): Stream[F, GunzipResult[F]] =
     streamAfterMandatoryHeader
@@ -797,7 +879,7 @@ object compression {
                       )
                       .through(
                         _inflate(
-                          bufferSize = bufferSize,
+                          inflateParams = inflateParams,
                           inflater = inflater,
                           crc32 = Some(contentCrc32)
                         )
@@ -1006,8 +1088,6 @@ object compression {
 
     go(Nil, stream)
   }
-
-  private val minBufferSize = 128
 
   private val gzipHeaderBytes = 10
   private val gzipMagicFirstByte: Byte = 0x1f.toByte

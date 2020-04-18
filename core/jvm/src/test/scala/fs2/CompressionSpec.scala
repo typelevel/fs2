@@ -138,6 +138,41 @@ class CompressionSpec extends Fs2Spec {
           }
     }
 
+    "inflate input (deflated larger than inflated)" in {
+      Stream
+        .chunk[IO, Byte](
+          Chunk.bytes(
+            getBytes(
+              "꒔諒ᇂ즆ᰃ遇ኼ㎐만咘똠ᯈ䕍쏮쿻ࣇ㦲䷱瘫椪⫐褽睌쨘꛹騏蕾☦余쒧꺠ܝ猸b뷈埣ꂓ琌ཬ隖㣰忢鐮橀쁚誅렌폓㖅ꋹ켗餪庺Đ懣㫍㫌굦뢲䅦苮Ѣқ闭䮚ū﫣༶漵>껆拦휬콯耙腒䔖돆圹Ⲷ曩ꀌ㒈"
+            )
+          )
+        )
+        .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
+        .through(
+          deflate(
+            JavaUtilZipDeflaterParams(
+              header = ZLibParams.Header.ZLIB
+            )
+          )
+        )
+        .compile
+        .to(Array)
+        .flatMap { deflated =>
+          val expected = inflateStream(deflated, false).toVector
+          Stream
+            .chunk[IO, Byte](Chunk.bytes(deflated))
+            .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
+            .through(inflate(nowrap = false))
+            .compile
+            .toVector
+            .asserting { actual =>
+              val eStr = new String(expected.toArray)
+              val aStr = new String(actual.toArray)
+              assert(aStr == eStr)
+            }
+        }
+    }
+
     "deflate |> inflate ~= id" in forAll(
       strings,
       booleans,
