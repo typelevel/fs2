@@ -39,38 +39,38 @@ class CompressionSpec extends Fs2Spec {
     ZLibParams.Header.GZIP
   )
 
-  val juzDeflaterLevels: Generator[JavaUtilZipDeflaterParams.Level] = specificValues(
-    JavaUtilZipDeflaterParams.Level.DEFAULT,
-    JavaUtilZipDeflaterParams.Level.BEST_SPEED,
-    JavaUtilZipDeflaterParams.Level.BEST_COMPRESSION,
-    JavaUtilZipDeflaterParams.Level.NO_COMPRESSION,
-    JavaUtilZipDeflaterParams.Level.ZERO,
-    JavaUtilZipDeflaterParams.Level.ONE,
-    JavaUtilZipDeflaterParams.Level.TWO,
-    JavaUtilZipDeflaterParams.Level.THREE,
-    JavaUtilZipDeflaterParams.Level.FOUR,
-    JavaUtilZipDeflaterParams.Level.FIVE,
-    JavaUtilZipDeflaterParams.Level.SIX,
-    JavaUtilZipDeflaterParams.Level.SEVEN,
-    JavaUtilZipDeflaterParams.Level.EIGHT,
-    JavaUtilZipDeflaterParams.Level.NINE
+  val juzDeflaterLevels: Generator[DeflateParams.Level] = specificValues(
+    DeflateParams.Level.DEFAULT,
+    DeflateParams.Level.BEST_SPEED,
+    DeflateParams.Level.BEST_COMPRESSION,
+    DeflateParams.Level.NO_COMPRESSION,
+    DeflateParams.Level.ZERO,
+    DeflateParams.Level.ONE,
+    DeflateParams.Level.TWO,
+    DeflateParams.Level.THREE,
+    DeflateParams.Level.FOUR,
+    DeflateParams.Level.FIVE,
+    DeflateParams.Level.SIX,
+    DeflateParams.Level.SEVEN,
+    DeflateParams.Level.EIGHT,
+    DeflateParams.Level.NINE
   )
 
-  val juzDeflaterStrategies: Generator[JavaUtilZipDeflaterParams.Strategy] = specificValues(
-    JavaUtilZipDeflaterParams.Strategy.DEFAULT,
-    JavaUtilZipDeflaterParams.Strategy.BEST_SPEED,
-    JavaUtilZipDeflaterParams.Strategy.BEST_COMPRESSION,
-    JavaUtilZipDeflaterParams.Strategy.FILTERED,
-    JavaUtilZipDeflaterParams.Strategy.HUFFMAN_ONLY
+  val juzDeflaterStrategies: Generator[DeflateParams.Strategy] = specificValues(
+    DeflateParams.Strategy.DEFAULT,
+    DeflateParams.Strategy.BEST_SPEED,
+    DeflateParams.Strategy.BEST_COMPRESSION,
+    DeflateParams.Strategy.FILTERED,
+    DeflateParams.Strategy.HUFFMAN_ONLY
   )
 
-  val juzDeflaterFlushModes: Generator[JavaUtilZipDeflaterParams.FlushMode] = specificValues(
-    JavaUtilZipDeflaterParams.FlushMode.DEFAULT,
-    JavaUtilZipDeflaterParams.FlushMode.BEST_SPEED,
-    JavaUtilZipDeflaterParams.FlushMode.BEST_COMPRESSION,
-    JavaUtilZipDeflaterParams.FlushMode.NO_FLUSH,
-    JavaUtilZipDeflaterParams.FlushMode.SYNC_FLUSH,
-    JavaUtilZipDeflaterParams.FlushMode.FULL_FLUSH
+  val juzDeflaterFlushModes: Generator[DeflateParams.FlushMode] = specificValues(
+    DeflateParams.FlushMode.DEFAULT,
+    DeflateParams.FlushMode.BEST_SPEED,
+    DeflateParams.FlushMode.BEST_COMPRESSION,
+    DeflateParams.FlushMode.NO_FLUSH,
+    DeflateParams.FlushMode.SYNC_FLUSH,
+    DeflateParams.FlushMode.FULL_FLUSH
   )
 
   "Compression" - {
@@ -106,16 +106,16 @@ class CompressionSpec extends Fs2Spec {
       (
           s: String,
           nowrap: Boolean,
-          level: JavaUtilZipDeflaterParams.Level,
-          strategy: JavaUtilZipDeflaterParams.Strategy,
-          flushMode: JavaUtilZipDeflaterParams.FlushMode
+          level: DeflateParams.Level,
+          strategy: DeflateParams.Strategy,
+          flushMode: DeflateParams.FlushMode
       ) =>
         Stream
           .chunk[IO, Byte](Chunk.bytes(getBytes(s)))
           .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
           .through(
             deflate(
-              JavaUtilZipDeflaterParams(
+              DeflateParams(
                 bufferSize = 32 * 1024,
                 header = if (nowrap) ZLibParams.Header.GZIP else ZLibParams.Header.ZLIB,
                 level = level,
@@ -150,7 +150,7 @@ class CompressionSpec extends Fs2Spec {
         .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
         .through(
           deflate(
-            JavaUtilZipDeflaterParams(
+            DeflateParams(
               header = ZLibParams.Header.ZLIB
             )
           )
@@ -183,16 +183,16 @@ class CompressionSpec extends Fs2Spec {
       (
           s: String,
           nowrap: Boolean,
-          level: JavaUtilZipDeflaterParams.Level,
-          strategy: JavaUtilZipDeflaterParams.Strategy,
-          flushMode: JavaUtilZipDeflaterParams.FlushMode
+          level: DeflateParams.Level,
+          strategy: DeflateParams.Strategy,
+          flushMode: DeflateParams.FlushMode
       ) =>
         Stream
           .chunk[IO, Byte](Chunk.bytes(getBytes(s)))
           .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
           .through(
             deflate(
-              JavaUtilZipDeflaterParams(
+              DeflateParams(
                 bufferSize = 32 * 1024,
                 header = if (nowrap) ZLibParams.Header.GZIP else ZLibParams.Header.ZLIB,
                 level = level,
@@ -256,9 +256,9 @@ class CompressionSpec extends Fs2Spec {
     ) {
       (
           s: String,
-          level: JavaUtilZipDeflaterParams.Level,
-          strategy: JavaUtilZipDeflaterParams.Strategy,
-          flushMode: JavaUtilZipDeflaterParams.FlushMode,
+          level: DeflateParams.Level,
+          strategy: DeflateParams.Strategy,
+          flushMode: DeflateParams.FlushMode,
           epochSeconds: Int
       ) =>
         val expectedFileName = Option(toEncodableFileName(s))
@@ -272,7 +272,7 @@ class CompressionSpec extends Fs2Spec {
               fileName = Some(s),
               modificationTime = Some(Instant.ofEpochSecond(epochSeconds)),
               comment = Some(s),
-              JavaUtilZipDeflaterParams(
+              DeflateParams(
                 bufferSize = 8192,
                 header = ZLibParams.Header.GZIP,
                 level = level,
@@ -305,9 +305,9 @@ class CompressionSpec extends Fs2Spec {
     ) {
       (
           s: String,
-          level: JavaUtilZipDeflaterParams.Level,
-          strategy: JavaUtilZipDeflaterParams.Strategy,
-          flushMode: JavaUtilZipDeflaterParams.FlushMode,
+          level: DeflateParams.Level,
+          strategy: DeflateParams.Strategy,
+          flushMode: DeflateParams.FlushMode,
           epochSeconds: Int
       ) =>
         val expectedFileName = Option(toEncodableFileName(s))
@@ -321,7 +321,7 @@ class CompressionSpec extends Fs2Spec {
               fileName = Some(s),
               modificationTime = Some(Instant.ofEpochSecond(epochSeconds)),
               comment = Some(s),
-              JavaUtilZipDeflaterParams(
+              DeflateParams(
                 bufferSize = 1031,
                 header = ZLibParams.Header.GZIP,
                 level = level,
@@ -354,9 +354,9 @@ class CompressionSpec extends Fs2Spec {
     ) {
       (
           s: String,
-          level: JavaUtilZipDeflaterParams.Level,
-          strategy: JavaUtilZipDeflaterParams.Strategy,
-          flushMode: JavaUtilZipDeflaterParams.FlushMode,
+          level: DeflateParams.Level,
+          strategy: DeflateParams.Strategy,
+          flushMode: DeflateParams.FlushMode,
           epochSeconds: Int
       ) =>
         val expectedFileName = Option(toEncodableFileName(s))
@@ -370,7 +370,7 @@ class CompressionSpec extends Fs2Spec {
               fileName = Some(s),
               modificationTime = Some(Instant.ofEpochSecond(epochSeconds)),
               comment = Some(s),
-              JavaUtilZipDeflaterParams(
+              DeflateParams(
                 bufferSize = 509,
                 header = ZLibParams.Header.GZIP,
                 level = level,
@@ -403,9 +403,9 @@ class CompressionSpec extends Fs2Spec {
     ) {
       (
           s: String,
-          level: JavaUtilZipDeflaterParams.Level,
-          strategy: JavaUtilZipDeflaterParams.Strategy,
-          flushMode: JavaUtilZipDeflaterParams.FlushMode,
+          level: DeflateParams.Level,
+          strategy: DeflateParams.Strategy,
+          flushMode: DeflateParams.FlushMode,
           epochSeconds: Int
       ) =>
         Stream
@@ -416,7 +416,7 @@ class CompressionSpec extends Fs2Spec {
               fileName = Some(s),
               modificationTime = Some(Instant.ofEpochSecond(epochSeconds)),
               comment = Some(s),
-              JavaUtilZipDeflaterParams(
+              DeflateParams(
                 bufferSize = 1024,
                 header = ZLibParams.Header.GZIP,
                 level = level,
