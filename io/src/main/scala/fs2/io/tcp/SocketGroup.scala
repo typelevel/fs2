@@ -6,7 +6,6 @@ import scala.concurrent.duration._
 
 import java.net.{InetSocketAddress, SocketAddress, StandardSocketOptions}
 import java.nio.{Buffer, ByteBuffer}
-import java.nio.channels.spi.AsynchronousChannelProvider
 import java.nio.channels.{
   AsynchronousCloseException,
   AsynchronousServerSocketChannel,

@@ -2,7 +2,7 @@ language: scala
 
 scala:
   - 2.12.10
-  - 2.13.1
+  - 2.13.2
 
 jdk:
   - openjdk11

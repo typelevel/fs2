@@ -2,8 +2,6 @@ package fs2
 
 import scala.collection.{Factory, IterableFactory, MapFactory}
 
-import fs2.internal.{Resource => _, _}
-
 private[fs2] trait CollectorPlatform { self: Collector.type =>
   implicit def supportsFactory[A, C[_], B](
       f: Factory[A, C[B]]
