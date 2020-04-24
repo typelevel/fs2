@@ -289,7 +289,8 @@ object text {
         }
         idx += 1
       }
-      val out = Chunk.byteVector(ByteVector.view(acc).take((bidx - padding).toLong))
+      val paddingInBuffer = if (mod == 0) padding else 0
+      val out = Chunk.byteVector(ByteVector.view(acc).take((bidx - paddingInBuffer).toLong))
       val carry = State(buffer, mod, padding)
       Right((carry, out))
     }
