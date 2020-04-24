@@ -140,7 +140,7 @@ abstract class Chunk[+O] extends Serializable { self =>
   def iterator: Iterator[O] = new Iterator[O] {
     private[this] var i = 0
     def hasNext = i < self.size
-    def next = { val result = apply(i); i += 1; result }
+    def next() = { val result = apply(i); i += 1; result }
   }
 
   /**
@@ -196,7 +196,7 @@ abstract class Chunk[+O] extends Serializable { self =>
   def reverseIterator: Iterator[O] = new Iterator[O] {
     private[this] var i = self.size - 1
     def hasNext = i >= 0
-    def next = { val result = apply(i); i -= 1; result }
+    def next() = { val result = apply(i); i -= 1; result }
   }
 
   /** Like `foldLeft` but emits each intermediate result of `f`. */
