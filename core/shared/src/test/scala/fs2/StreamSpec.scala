@@ -1204,6 +1204,10 @@ class StreamSpec extends Fs2Spec {
       assert(s.fold1(f).toVector == expected)
     }
 
+    "foldable" in {
+      forAll((c: List[Int]) => assert(Stream.foldable(c).compile.to(List) == c))
+    }
+
     "forall" in forAll { (s: Stream[Pure, Int], n0: PosInt) =>
       val n = n0 % 20 + 1
       val f = (i: Int) => i % n == 0
@@ -1972,6 +1976,10 @@ class StreamSpec extends Fs2Spec {
 
     "intersperse" in forAll { (s: Stream[Pure, Int], n: Int) =>
       assert(s.intersperse(n).toList == s.toList.flatMap(i => List(i, n)).dropRight(1))
+    }
+
+    "iterable" in {
+      forAll((c: Set[Int]) => assert(Stream.iterable(c).compile.to(Set) == c))
     }
 
     "iterate" in {

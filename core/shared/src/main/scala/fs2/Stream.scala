@@ -3404,6 +3404,12 @@ object Stream extends StreamLowPriority {
     new PartiallyAppliedFromBlockingIterator(dummy = true)
 
   /**
+    * Like `emits`, but works for any G that has a `Foldable` instance.
+    */
+  def foldable[F[x] >: Pure[x], G[_]: Foldable, O](os: G[O]): Stream[F, O] =
+    Stream.emits(os.toList)
+
+  /**
     * Lifts an effect that generates a stream in to a stream. Alias for `eval(f).flatMap(_)`.
     *
     * @example {{{
@@ -3414,6 +3420,12 @@ object Stream extends StreamLowPriority {
     */
   def force[F[_], A](f: F[Stream[F, A]]): Stream[F, A] =
     eval(f).flatMap(s => s)
+
+  /**
+    * Like `emits`, but works for any class that extends `Iterable`
+    */
+  def iterable[F[x] >: Pure[x], A](os: Iterable[A]): Stream[F, A] =
+    Stream.chunk(Chunk.iterable(os))
 
   /**
     * An infinite `Stream` that repeatedly applies a given function
