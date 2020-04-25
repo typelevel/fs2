@@ -509,16 +509,6 @@ class StreamSpec extends Fs2Spec {
       }
     }
 
-    "collect" in forAll { (s: Stream[Pure, Int]) =>
-      val pf: PartialFunction[Int, Int] = { case x if x % 2 == 0 => x }
-      assert(s.collect(pf).toVector == s.toVector.collect(pf))
-    }
-
-    "collectFirst" in forAll { (s: Stream[Pure, Int]) =>
-      val pf: PartialFunction[Int, Int] = { case x if x % 2 == 0 => x }
-      assert(s.collectFirst(pf).toVector == s.collectFirst(pf).toVector)
-    }
-
     "compile" - {
       "resource" - {
         "concurrently" in {
@@ -876,20 +866,6 @@ class StreamSpec extends Fs2Spec {
       s1.covary[IO].either(s2).compile.toList.asserting { result =>
         assert(result.collect { case Left(i)  => i } == s1List)
         assert(result.collect { case Right(i) => i } == s2List)
-      }
-    }
-
-    "eval" in { Stream.eval(SyncIO(23)).compile.toList.asserting(it => assert(it == List(23))) }
-
-    "evals" - {
-      "with List" in {
-        Stream.evals(IO(List(1, 2, 3))).compile.toList.asserting(it => assert(it == List(1, 2, 3)))
-      }
-      "with Chain" in {
-        Stream.evals(IO(Chain(4, 5, 6))).compile.toList.asserting(it => assert(it == List(4, 5, 6)))
-      }
-      "with Option" in {
-        Stream.evals(IO(Option(42))).compile.toList.asserting(it => assert(it == List(42)))
       }
     }
 
