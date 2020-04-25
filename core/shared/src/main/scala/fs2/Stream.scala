@@ -2266,6 +2266,15 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
   ): Stream[F2, O2] =
     parJoin(Int.MaxValue)
 
+
+  def parZip[F2[x] >: F[x]: Concurrent, O2](that: Stream[F2, O2]): Stream[F2, (O, O2)] =
+    this zip that
+
+  def parZipWith[F2[x] >: F[x]: Concurrent, O2 >: O, O3, O4](
+      that: Stream[F2, O3]
+  )(f: (O2, O3) => O4): Stream[F2, O4] =
+    this.parZip(that).map(f.tupled)
+
   /** Like `interrupt` but resumes the stream when left branch goes to true. */
   def pauseWhen[F2[x] >: F[x]](
       pauseWhenTrue: Stream[F2, Boolean]

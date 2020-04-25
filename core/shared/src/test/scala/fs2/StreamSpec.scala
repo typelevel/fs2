@@ -3830,6 +3830,16 @@ class StreamSpec extends Fs2Spec {
       }
     }
 
+    "parZip" - {
+      "parZip outputs same results as zip" in forAll { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
+
+        val par = s1.covary[IO] parZip s2
+        val seq = s1 zip s2
+
+        par.compile.toList.asserting(result => assert(result == seq.compile.toList))
+      }
+    }
+
     "zipWithIndex" in forAll { (s: Stream[Pure, Int]) =>
       assert(s.zipWithIndex.toList == s.toList.zipWithIndex)
     }
