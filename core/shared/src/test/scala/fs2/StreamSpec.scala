@@ -14,15 +14,6 @@ import fs2.concurrent.{Queue, SignallingRef}
 
 class StreamSpec extends Fs2Spec {
   "Stream" - {
-    "++" in forAll { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
-      assert((s1 ++ s2).toList == (s1.toList ++ s2.toList))
-    }
-
-    ">>" in forAll { (s: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
-      assert((s >> s2).toList == s.flatMap(_ => s2).toList)
-    }
-
-    "apply" in { assert(Stream(1, 2, 3).toList == List(1, 2, 3)) }
 
     "awakeEvery" - {
       "basic" in {
