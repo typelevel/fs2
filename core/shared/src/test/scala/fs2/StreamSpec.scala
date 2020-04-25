@@ -894,20 +894,6 @@ class StreamSpec extends Fs2Spec {
       }
     }
 
-    "eval" in { Stream.eval(SyncIO(23)).compile.toList.asserting(it => assert(it == List(23))) }
-
-    "evals" - {
-      "with List" in {
-        Stream.evals(IO(List(1, 2, 3))).compile.toList.asserting(it => assert(it == List(1, 2, 3)))
-      }
-      "with Chain" in {
-        Stream.evals(IO(Chain(4, 5, 6))).compile.toList.asserting(it => assert(it == List(4, 5, 6)))
-      }
-      "with Option" in {
-        Stream.evals(IO(Option(42))).compile.toList.asserting(it => assert(it == List(42)))
-      }
-    }
-
     "evalSeq" - {
       "with List" in {
         Stream
