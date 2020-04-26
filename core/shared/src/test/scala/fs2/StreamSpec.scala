@@ -1,6 +1,7 @@
 package fs2
 
 import cats.~>
+import cats.Eq
 import cats.data._
 import cats.data.Chain
 import cats.effect._
@@ -3841,7 +3842,7 @@ class StreamSpec extends Fs2Spec {
       }
 
       "parZip evaluates effects with bounded concurrency" in {
-        pending
+        //pending
         // various shenanigans to support TestContext in our current test setup
         val contextShiftIO = ()
         val timerIO = ()
@@ -3851,13 +3852,13 @@ class StreamSpec extends Fs2Spec {
         implicit val timer: Timer[IO] = env.timer[IO]
 
         case class Snapshot[A, B](
-            emittedByLHS: Int = 0,
-            result: Vector[(A, B)] = Vector.empty,
-            emittedByRHS: Int = 0
+          lhsAt: Int = 0,
+          rhsAt: Int = 0,
+          outputAt: Vector[(A, B)] = Vector.empty,
         ) {
-          def incrLHS = copy(emittedByLHS = emittedByLHS + 1)
-          def incrRHS = copy(emittedByRHS = emittedByRHS + 1)
-          def addResult(r: (A, B)) = copy(result = result :+ r)
+          def lhs = copy(lhsAt = lhsAt + 1)
+          def rhs = copy(rhsAt = rhsAt + 1)
+          def outputWith(o: (A, B)) = copy(outputAt = outputAt :+ o)
         }
 
         def alternatingRate[A](coin: Boolean): Pipe[IO, A, A] =
@@ -3866,40 +3867,65 @@ class StreamSpec extends Fs2Spec {
               .as(!coin -> elem)
           }.map(_._2)
 
-        val test = Ref[IO]
-          .of(Snapshot[String, Int]())
+        val test = SignallingRef[IO, Snapshot[String, Int]](Snapshot())
           .flatMap { snapshot =>
             val lhs =
               Stream("a", "b", "c")
                 .through(alternatingRate(true))
-                .evalTap(_ => snapshot.update(_.incrLHS))
+                .evalTap(_ => snapshot.update(_.lhs))
 
             val rhs =
               Stream(1, 2, 3)
                 .through(alternatingRate(false))
-                .evalTap(_ => snapshot.update(_.incrRHS))
+                .evalTap(_ => snapshot.update(_.rhs))
 
+            // 
             // lhs emits after 1, 2, 1 seconds
             // rhs emits after 2, 1, 2 seconds
             val stream =
-              lhs.parZip(rhs).evalMap(x => snapshot.update(_.addResult(x)))
+              lhs.parZip(rhs).evalMap(x => snapshot.update(_.outputWith(x)))
+
+            val now = Clock[IO].realTime(MILLISECONDS)
 
             val checkProgress =
-              Stream.sleep_(10.millis) ++ // slight skew to avoid races when measuring
-                Stream // gets a snapshot every time the slowest stream completes
-                  .repeatEval(IO.sleep(2.seconds) >> snapshot.get)
-                  .take(3)
-                  .concurrently(stream)
+              Stream
+                .eval(now)
+                .flatMap { start =>
+                  // (Stream.sleep_(100.millis) ++ Stream.repeatEval(snapshot.get).metered(2.seconds))//
+                  snapshot
+                    .discrete
+                    .changes(Eq.fromUniversalEquals)
+                    .evalMap(s => now.map(_ - start).tupleRight(s))
+                }
+                .map { case (t, v) => (t, t / 100, v) }
+                .debug()
 
-            checkProgress.compile.toList
+            // val checkProgress =
+            //   Stream.sleep_(100.millis) ++ // slight skew to avoid races when measuring
+            //     Stream // gets a snapshot every time the slowest stream completes
+            //       .repeatEval(IO.sleep(2.seconds) >> snapshot.get)
+            //       .debug()
+
+            checkProgress
+              .concurrently(stream)
+              .interruptAfter(1.minute)
+              .compile
+              .toVector
           }
           .unsafeToFuture()
 
         // neither side should fall behind nor run ahead: max 2 elems in flight
-        val snapshots = List(
-          Snapshot(1, Vector("a" -> 1), 1),
-          Snapshot(2, Vector("a" -> 1, "b" -> 2), 2),
-          Snapshot(3, Vector("a" -> 1, "b" -> 2, "c" -> 3), 3)
+        val snapshots = Vector(
+          (0,0,Snapshot(0,0,Vector())),
+          (1000,10,Snapshot(1,0,Vector())),
+          (2000,20,Snapshot(1,1,Vector())),
+          (2000,20,Snapshot(1,1,Vector("a" -> 1))),
+          (3000,30,Snapshot(1,2,Vector("a" -> 1))),
+          (4000,40,Snapshot(2,2,Vector("a" -> 1))),
+          (4000,40,Snapshot(2,2,Vector("a" -> 1, "b" -> 2))),
+          (5000,50,Snapshot(3,2,Vector("a" -> 1, "b" -> 2))),
+          (6000,60,Snapshot(3,3,Vector("a" -> 1, "b" -> 2))),
+          (6000,60,Snapshot(3,3,Vector("a" -> 1, "b" -> 2, "c" -> 3)))
         )
 
         env.tick(1.minute)
