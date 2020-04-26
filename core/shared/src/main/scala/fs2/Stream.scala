@@ -2267,7 +2267,7 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
     parJoin(Int.MaxValue)
 
   def parZip[F2[x] >: F[x]: Concurrent, O2](that: Stream[F2, O2]): Stream[F2, (O, O2)] =
-    this.zip(that)
+    Stream.parZip(this, that)
 
   def parZipWith[F2[x] >: F[x]: Concurrent, O2 >: O, O3, O4](
       that: Stream[F2, O3]
@@ -4696,6 +4696,56 @@ object Stream extends StreamLowPriority {
     /** Provides an `uncons`-like operation on this leg of the stream. */
     def stepLeg: Pull[F, INothing, Option[StepLeg[F, O]]] =
       new Pull(Algebra.stepLeg(self))
+  }
+
+  /**
+    *  Implementation for parZip. `AnyVal` classes do not allow inner
+    *  classes, so the presence of the `State` trait forces this
+    *  method to be outside of the `Stream` class.
+    */
+  private[fs2] def parZip[F[_]: Concurrent, L, R](left: Stream[F, L], right: Stream[F, R]): Stream[F, (L, R)] = {
+    sealed trait State
+    case object Racing extends State
+    case class LeftFirst(leftValue: L, waitOnRight: Deferred[F, Unit]) extends State
+    case class RightFirst(rightValue: R, waitOnLeft: Deferred[F, Unit]) extends State
+
+    def emit(l: L, r: R) = Pull.output1(l -> r)
+
+    Stream.eval(Ref[F].of(Racing: State)).flatMap { state =>
+      def lhs(stream: Stream[F, L]): Pull[F, (L, R), Unit] =
+        stream.pull.uncons1.flatMap {
+          case None => Pull.done
+          case Some((leftValue, stream)) => Pull.eval {
+            Deferred[F, Unit].flatMap { awaitRight =>
+              state.modify {
+                case Racing =>
+                  LeftFirst(leftValue, awaitRight) -> Pull.eval(awaitRight.get)
+                case RightFirst(rightValue, awaitLeft) =>
+                  Racing -> { emit(leftValue, rightValue) >> Pull.eval(awaitLeft.complete(())) }
+                case LeftFirst(_, _) => sys.error("fs2 parZip protocol broken by lhs. File a bug")
+              }
+            }
+          }.flatten >> lhs(stream)
+        }
+
+      def rhs(stream: Stream[F, R]): Pull[F, (L, R), Unit] =
+        stream.pull.uncons1.flatMap {
+          case None => Pull.done
+          case Some((rightValue, stream)) => Pull.eval {
+            Deferred[F, Unit].flatMap { awaitLeft =>
+              state.modify {
+                case Racing =>
+                  RightFirst(rightValue, awaitLeft) -> Pull.eval(awaitLeft.get)
+                case LeftFirst(leftValue, awaitRight) =>
+                  Racing -> { emit(leftValue, rightValue) >> Pull.eval(awaitRight.complete(())) }
+                case RightFirst(_, _) => sys.error("fs2 parZip protocol broken by rhs. File a bug")
+              }
+            }
+          }.flatten >> rhs(stream)
+        }
+
+      lhs(left).stream.mergeHaltBoth(rhs(right).stream)
+    }
   }
 
   /** Provides operations on effectful pipes for syntactic convenience. */
