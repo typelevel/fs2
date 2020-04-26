@@ -365,6 +365,26 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
     filterWithPrevious((o1, o2) => eq.neqv(f(o1), f(o2)))
 
   /**
+    * Collects all output chunks in to a single chunk and emits it at the end of the
+    * source stream. Note: if more than 2^32-1 elements are collected, this operation
+    * will fail.
+    *
+    * @example {{{
+    * scala> import cats.implicits._
+    * scala> (Stream(1) ++ Stream(2, 3) ++ Stream(4, 5, 6)).chunkAll.toList
+    * res0: List[Chunk[Int]] = List(Chunk(1, 2, 3, 4, 5, 6))
+    * }}}
+    */
+  def chunkAll: Stream[F, Chunk[O]] = {
+    def loop(s: Stream[F, O], acc: Chunk.Queue[O]): Pull[F, Chunk[O], Unit] =
+      s.pull.uncons.flatMap {
+        case Some((hd, tl)) => loop(tl, acc :+ hd)
+        case None           => Pull.output1(acc.toChunk)
+      }
+    loop(this, Chunk.Queue.empty).stream
+  }
+
+  /**
     * Outputs all chunks from the source stream.
     *
     * @example {{{
