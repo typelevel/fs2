@@ -5,14 +5,17 @@ import cats.data._
 import cats.data.Chain
 import cats.effect._
 import cats.effect.concurrent.{Deferred, Ref, Semaphore}
+import cats.effect.laws.util.TestContext
 import cats.implicits._
 import scala.concurrent.duration._
 import scala.concurrent.TimeoutException
+import scala.util.Success
 import org.scalactic.anyvals._
 import org.scalatest.{Assertion, Succeeded}
 import fs2.concurrent.{Queue, SignallingRef}
 
 class StreamSpec extends Fs2Spec {
+
   "Stream" - {
     "++" in forAll { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
       assert((s1 ++ s2).toList == (s1.toList ++ s2.toList))
@@ -3831,12 +3834,28 @@ class StreamSpec extends Fs2Spec {
     }
 
     "parZip" - {
-      "parZip outputs same results as zip" in forAll { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
+      "parZip outputs the same results as zip" in forAll { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
 
         val par = s1.covary[IO] parZip s2
         val seq = s1 zip s2
 
-        par.compile.toList.asserting(result => assert(result == seq.compile.toList))
+        par.compile.toList.asserting(result => assert(result == seq.toList))
+      }
+
+      "parZip evaluates effects with bounded concurrency" in {
+        // various shenanigans to support TestContext in our current test setup
+        val contextShiftIO = ()
+        val timerIO = ()
+        val (_, _) = (contextShiftIO, timerIO)
+        val env = TestContext()
+        implicit val ctx: ContextShift[IO] = env.contextShift[IO](IO.ioEffect)
+        implicit val timer: Timer[IO] = env.timer[IO]
+
+        val p = IO.unit.start >> IO.sleep(1.second).as(true)
+
+        val r = p.unsafeToFuture
+        env.tick(1.second)
+        assert(r.value == Some(Success(true)))
       }
     }
 
