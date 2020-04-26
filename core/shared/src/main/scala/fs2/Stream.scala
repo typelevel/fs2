@@ -2266,9 +2266,8 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
   ): Stream[F2, O2] =
     parJoin(Int.MaxValue)
 
-
   def parZip[F2[x] >: F[x]: Concurrent, O2](that: Stream[F2, O2]): Stream[F2, (O, O2)] =
-    this zip that
+    this.zip(that)
 
   def parZipWith[F2[x] >: F[x]: Concurrent, O2 >: O, O3, O4](
       that: Stream[F2, O3]

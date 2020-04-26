@@ -9,7 +9,6 @@ import cats.effect.laws.util.TestContext
 import cats.implicits._
 import scala.concurrent.duration._
 import scala.concurrent.TimeoutException
-import scala.util.Success
 import org.scalactic.anyvals._
 import org.scalatest.{Assertion, Succeeded}
 import fs2.concurrent.{Queue, SignallingRef}
@@ -3834,15 +3833,15 @@ class StreamSpec extends Fs2Spec {
     }
 
     "parZip" - {
-      "parZip outputs the same results as zip" in forAll { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
-
-        val par = s1.covary[IO] parZip s2
-        val seq = s1 zip s2
-
-        par.compile.toList.asserting(result => assert(result == seq.toList))
+      "parZip outputs the same results as zip" in forAll {
+        (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
+          val par = s1.covary[IO].parZip(s2)
+          val seq = s1.zip(s2)
+          par.compile.toList.asserting(result => assert(result == seq.toList))
       }
 
       "parZip evaluates effects with bounded concurrency" in {
+        pending
         // various shenanigans to support TestContext in our current test setup
         val contextShiftIO = ()
         val timerIO = ()
@@ -3851,11 +3850,60 @@ class StreamSpec extends Fs2Spec {
         implicit val ctx: ContextShift[IO] = env.contextShift[IO](IO.ioEffect)
         implicit val timer: Timer[IO] = env.timer[IO]
 
-        val p = IO.unit.start >> IO.sleep(1.second).as(true)
+        case class Snapshot[A, B](
+            emittedByLHS: Int = 0,
+            result: Vector[(A, B)] = Vector.empty,
+            emittedByRHS: Int = 0
+        ) {
+          def incrLHS = copy(emittedByLHS = emittedByLHS + 1)
+          def incrRHS = copy(emittedByRHS = emittedByRHS + 1)
+          def addResult(r: (A, B)) = copy(result = result :+ r)
+        }
 
-        val r = p.unsafeToFuture
-        env.tick(1.second)
-        assert(r.value == Some(Success(true)))
+        def alternatingRate[A](coin: Boolean): Pipe[IO, A, A] =
+          _.evalMapAccumulate(coin) { (coin, elem) =>
+            IO.sleep(if (coin) 1.second else 2.seconds)
+              .as(!coin -> elem)
+          }.map(_._2)
+
+        val test = Ref[IO]
+          .of(Snapshot[String, Int]())
+          .flatMap { snapshot =>
+            val lhs =
+              Stream("a", "b", "c")
+                .through(alternatingRate(true))
+                .evalTap(_ => snapshot.update(_.incrLHS))
+
+            val rhs =
+              Stream(1, 2, 3)
+                .through(alternatingRate(false))
+                .evalTap(_ => snapshot.update(_.incrRHS))
+
+            // lhs emits after 1, 2, 1 seconds
+            // rhs emits after 2, 1, 2 seconds
+            val stream =
+              lhs.parZip(rhs).evalMap(x => snapshot.update(_.addResult(x)))
+
+            val checkProgress =
+              Stream.sleep_(10.millis) ++ // slight skew to avoid races when measuring
+                Stream // gets a snapshot every time the slowest stream completes
+                  .repeatEval(IO.sleep(2.seconds) >> snapshot.get)
+                  .take(3)
+                  .concurrently(stream)
+
+            checkProgress.compile.toList
+          }
+          .unsafeToFuture()
+
+        // neither side should fall behind nor run ahead: max 2 elems in flight
+        val snapshots = List(
+          Snapshot(1, Vector("a" -> 1), 1),
+          Snapshot(2, Vector("a" -> 1, "b" -> 2), 2),
+          Snapshot(3, Vector("a" -> 1, "b" -> 2, "c" -> 3), 3)
+        )
+
+        env.tick(1.minute)
+        test.map(result => assert(result == snapshots))
       }
     }
 
