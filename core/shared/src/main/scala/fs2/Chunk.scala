@@ -1671,6 +1671,9 @@ object Chunk extends CollectorK[Chunk] {
     * This is similar to a queue of individual elements but chunk structure is maintained.
     */
   final class Queue[A] private (val chunks: SQueue[Chunk[A]], val size: Int) {
+    def isEmpty: Boolean = size == 0
+    def nonEmpty: Boolean = size > 0
+
     def iterator: Iterator[A] = chunks.iterator.flatMap(_.iterator)
 
     /** Prepends a chunk to the start of this chunk queue. */

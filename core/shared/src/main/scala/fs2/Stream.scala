@@ -2666,21 +2666,21 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
     * }}}
     */
   def split(f: O => Boolean): Stream[F, Chunk[O]] = {
-    def go(buffer: List[Chunk[O]], s: Stream[F, O]): Pull[F, Chunk[O], Unit] =
+    def go(buffer: Chunk.Queue[O], s: Stream[F, O]): Pull[F, Chunk[O], Unit] =
       s.pull.uncons.flatMap {
         case Some((hd, tl)) =>
           hd.indexWhere(f) match {
-            case None => go(hd :: buffer, tl)
+            case None => go(buffer :+ hd, tl)
             case Some(idx) =>
               val pfx = hd.take(idx)
-              val b2 = pfx :: buffer
-              Pull.output1(Chunk.concat(b2.reverse)) >> go(Nil, tl.cons(hd.drop(idx + 1)))
+              val b2 = buffer :+ pfx
+              Pull.output1(b2.toChunk) >> go(Chunk.Queue.empty, tl.cons(hd.drop(idx + 1)))
           }
         case None =>
-          if (buffer.nonEmpty) Pull.output1(Chunk.concat(buffer.reverse))
+          if (buffer.nonEmpty) Pull.output1(buffer.toChunk)
           else Pull.done
       }
-    go(Nil, this).stream
+    go(Chunk.Queue.empty, this).stream
   }
 
   /**
@@ -4014,25 +4014,25 @@ object Stream extends StreamLowPriority {
         allowFewer: Boolean = false
     ): Pull[F, INothing, Option[(Chunk[O], Stream[F, O])]] = {
       def go(
-          acc: List[Chunk[O]],
+          acc: Chunk.Queue[O],
           n: Int,
           s: Stream[F, O]
       ): Pull[F, INothing, Option[(Chunk[O], Stream[F, O])]] =
         s.pull.uncons.flatMap {
           case None =>
             if (allowFewer && acc.nonEmpty)
-              Pull.pure(Some((Chunk.concat(acc.reverse), Stream.empty)))
+              Pull.pure(Some((acc.toChunk, Stream.empty)))
             else Pull.pure(None)
           case Some((hd, tl)) =>
-            if (hd.size < n) go(hd :: acc, n - hd.size, tl)
-            else if (hd.size == n) Pull.pure(Some(Chunk.concat((hd :: acc).reverse) -> tl))
+            if (hd.size < n) go(acc :+ hd, n - hd.size, tl)
+            else if (hd.size == n) Pull.pure(Some((acc :+ hd).toChunk -> tl))
             else {
               val (pfx, sfx) = hd.splitAt(n)
-              Pull.pure(Some(Chunk.concat((pfx :: acc).reverse) -> tl.cons(sfx)))
+              Pull.pure(Some((acc :+ pfx).toChunk -> tl.cons(sfx)))
             }
         }
       if (n <= 0) Pull.pure(Some((Chunk.empty, self)))
-      else go(Nil, n, self)
+      else go(Chunk.Queue.empty, n, self)
     }
 
     /** Like [[uncons]] but skips over empty chunks, pulling until it can emit the first non-empty chunk. */
