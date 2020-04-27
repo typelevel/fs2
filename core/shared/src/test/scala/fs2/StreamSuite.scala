@@ -5,7 +5,8 @@ import cats.effect.SyncIO
 import cats.implicits._
 import org.scalacheck.Prop.forAll
 
-class StreamBasicsSuite extends Fs2Suite {
+class StreamSuite extends Fs2Suite {
+
   property("append consistent with list concat") {
     forAll { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
       assertEquals((s1 ++ s2).toList, s1.toList ++ s2.toList)

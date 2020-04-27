@@ -10,5 +10,15 @@ abstract class Fs2Suite extends ScalaCheckSuite with TestPlatform with Generator
       .withMinSuccessfulTests(if (isJVM) 25 else 5)
       .withWorkers(1)
 
-  val testContext = FunFixture[TestContext](setup = _ => TestContext(), teardown = _ => ())
+  protected val testContext = FunFixture[TestContext](setup = _ => TestContext(), teardown = _ => ())
+
+  protected def group(name: String)(thunk: => Unit): Unit = {
+    val countBefore = munitTestsBuffer.size
+    val _ = thunk
+    val countAfter = munitTestsBuffer.size
+    val countRegistered = countAfter - countBefore
+    val registered = munitTestsBuffer.toList.drop(countBefore)
+    (0 until countRegistered).foreach(_ => munitTestsBuffer.remove(countBefore))
+    registered.foreach(t => munitTestsBuffer += t.withName(s"$name - ${t.name}"))
+  }
 }
