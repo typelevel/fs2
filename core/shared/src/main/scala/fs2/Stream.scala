@@ -1576,7 +1576,7 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
     map(Some(_): Option[O2]).holdResource(None)
 
   /**
-    * Determinsitically interleaves elements, starting on the left, terminating when the end of either branch is reached naturally.
+    * Deterministically interleaves elements, starting on the left, terminating when the end of either branch is reached naturally.
     *
     * @example {{{
     * scala> Stream(1, 2, 3).interleave(Stream(4, 5, 6, 7)).toList
@@ -1587,7 +1587,7 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
     zip(that).flatMap { case (o1, o2) => Stream(o1, o2) }
 
   /**
-    * Determinsitically interleaves elements, starting on the left, terminating when the ends of both branches are reached naturally.
+    * Deterministically interleaves elements, starting on the left, terminating when the ends of both branches are reached naturally.
     *
     * @example {{{
     * scala> Stream(1, 2, 3).interleaveAll(Stream(4, 5, 6, 7)).toList
@@ -2268,7 +2268,7 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
 
 
   /**
-    * Non-deterministic zip.
+    * Concurrent zip.
     *
     * It combines elements pairwise and in order like `zip`, but
     * instead of pulling from the left stream and then from the right
