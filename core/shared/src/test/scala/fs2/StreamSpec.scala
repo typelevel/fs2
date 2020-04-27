@@ -3841,7 +3841,7 @@ class StreamSpec extends Fs2Spec {
           par.compile.toList.asserting(result => assert(result == seq.toList))
       }
 
-      "parZip evaluates effects with bounded concurrency" in {
+      "parZip evaluates effects with bounded concurrency - 1" in {
         // various shenanigans to support TestContext in our current test setup
         val contextShiftIO = ()
         val timerIO = ()
@@ -3863,19 +3863,17 @@ class StreamSpec extends Fs2Spec {
             def parZipRace[A, B](lhs: Stream[IO, A], rhs: Stream[IO, B]) = {
               val rate = Stream(1, 2).repeat
               val skewedRate = Stream(2, 1).repeat
-              def sync[C](rate: Stream[IO, Int]): Pipe[IO, C, C] =
-                rate.evalMap(n => IO.sleep(n.seconds)).zipRight(_)
+              def sync[C]: Pipe2[IO, C, Int, C] =
+                (in, rate) => rate.evalMap(n => IO.sleep(n.seconds)).zipRight(in)
 
-              lhs.through(sync(rate)).parZip(rhs.through(sync(skewedRate)))
+              lhs.through2(rate)(sync).parZip(rhs.through2(skewedRate)(sync))
             }
 
             def update(f: Snapshot => Snapshot): IO[Unit] =
-              snapshot.access.flatMap {
-                case (v, set) =>
-                  Clock[IO].realTime(SECONDS).flatMap { now =>
-                    set(f(v).copy(time = now)).ifM(IO.unit, update(f))
-                  }
-              }
+              (snapshot.access, Clock[IO].realTime(SECONDS)).mapN {
+                case ((v, set), now) =>
+                  set(f(v).copy(time = now)).ifM(IO.unit, update(f))
+              }.flatten
 
             val stream =
               parZipRace(
@@ -3918,7 +3916,6 @@ class StreamSpec extends Fs2Spec {
         implicit val ctx: ContextShift[IO] = env.contextShift[IO](IO.ioEffect)
         implicit val timer: Timer[IO] = env.timer[IO]
 
-        // number of elements emitted by lhs, number elements emitted by rhs, and output of parZip
         @volatile var lhs: Int = 0
         @volatile var rhs: Int = 0
         @volatile var output: Vector[(String, Int)] = Vector()
@@ -3927,10 +3924,10 @@ class StreamSpec extends Fs2Spec {
         def parZipRace[A, B](lhs: Stream[IO, A], rhs: Stream[IO, B]) = {
           val rate = Stream(1, 2).repeat
           val skewedRate = Stream(2, 1).repeat
-          def sync[C](rate: Stream[IO, Int]): Pipe[IO, C, C] =
-            rate.evalMap(n => IO.sleep(n.seconds)).zipRight(_)
+          def sync[C]: Pipe2[IO, C, Int, C] =
+            (in, rate) => rate.evalMap(n => IO.sleep(n.seconds)).zipRight(in)
 
-          lhs.through(sync(rate)).parZip(rhs.through(sync(skewedRate)))
+          lhs.through2(rate)(sync).parZip(rhs.through2(skewedRate)(sync))
         }
 
         val stream = parZipRace(
@@ -3940,7 +3937,7 @@ class StreamSpec extends Fs2Spec {
 
         val result = stream.compile.toVector.unsafeToFuture()
 
-        // lhsAt, rhsAt and output at time T
+        // lhsAt, rhsAt and output at time T = [1s, 2s, ..]
         val snapshots = Vector(
           (1, 0, Vector()),
           (1, 1, Vector("a" -> 1)),

@@ -2266,9 +2266,35 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
   ): Stream[F2, O2] =
     parJoin(Int.MaxValue)
 
+
+  /**
+    * Non-deterministic zip.
+    *
+    * It combines elements pairwise and in order like `zip`, but
+    * instead of pulling from the left stream and then from the right
+    * stream, it evaluates both pulls concurrently.
+    * The resulting stream terminates when either stream terminates.
+    *
+    * The concurrency is bounded following a model of successive
+    * races: both sides start evaluation of a single element
+    * concurrently, and whichever finishes first waits for the other
+    * to catch up and the resulting pair to be emitted, at which point
+    * the process repeats. This means that no branch is allowed to get
+    * ahead by more than one element.
+    *
+    * Notes:
+    * - Effects within each stream are executed in order, they are
+    *   only concurrent with respect to each other.
+    * - The output of `parZip` is guaranteed to be the same as `zip`,
+    *   although the order in which effects are executed differs.
+    */
   def parZip[F2[x] >: F[x]: Concurrent, O2](that: Stream[F2, O2]): Stream[F2, (O, O2)] =
     Stream.parZip(this, that)
 
+  /**
+    * Like `parZip`, but combines elements pairwise with a function instead
+    * of tupling them.
+    **/
   def parZipWith[F2[x] >: F[x]: Concurrent, O2 >: O, O3, O4](
       that: Stream[F2, O3]
   )(f: (O2, O3) => O4): Stream[F2, O4] =
