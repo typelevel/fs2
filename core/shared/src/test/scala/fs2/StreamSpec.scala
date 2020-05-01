@@ -1,7 +1,6 @@
 package fs2
 
 import cats.~>
-import cats.Eq
 import cats.data._
 import cats.data.Chain
 import cats.effect._
@@ -3841,7 +3840,7 @@ class StreamSpec extends Fs2Spec {
           par.compile.toList.asserting(result => assert(result == seq.toList))
       }
 
-      "parZip evaluates effects with bounded concurrency - 1" in {
+      "parZip evaluates effects with bounded concurrency" in {
         // various shenanigans to support TestContext in our current test setup
         val contextShiftIO = ()
         val timerIO = ()
@@ -3850,72 +3849,7 @@ class StreamSpec extends Fs2Spec {
         implicit val ctx: ContextShift[IO] = env.contextShift[IO](IO.ioEffect)
         implicit val timer: Timer[IO] = env.timer[IO]
 
-        case class Snapshot(
-            time: Long = 0,
-            lhs: Int = 0,
-            rhs: Int = 0,
-            output: Vector[(String, Int)] = Vector()
-        )
-
-        val test = SignallingRef[IO, Snapshot](Snapshot())
-          .flatMap { snapshot =>
-            // synchronises lhs and rhs to test both sides of the race in parZip
-            def parZipRace[A, B](lhs: Stream[IO, A], rhs: Stream[IO, B]) = {
-              val rate = Stream(1, 2).repeat
-              val skewedRate = Stream(2, 1).repeat
-              def sync[C]: Pipe2[IO, C, Int, C] =
-                (in, rate) => rate.evalMap(n => IO.sleep(n.seconds)).zipRight(in)
-
-              lhs.through2(rate)(sync).parZip(rhs.through2(skewedRate)(sync))
-            }
-
-            def update(f: Snapshot => Snapshot): IO[Unit] =
-              (snapshot.access, Clock[IO].realTime(SECONDS)).mapN {
-                case ((v, set), now) =>
-                  set(f(v).copy(time = now)).ifM(IO.unit, update(f))
-              }.flatten
-
-            val stream =
-              parZipRace(
-                Stream("a", "b", "c").evalTap(_ => update(s => s.copy(lhs = s.lhs + 1))),
-                Stream(1, 2, 3).evalTap(_ => update(s => s.copy(rhs = s.rhs + 1)))
-              ).evalMap(x => update(s => s.copy(output = s.output :+ x)))
-
-            snapshot.discrete
-              .changes(Eq.fromUniversalEquals)
-              .concurrently(stream)
-              .interruptAfter(1.minute)
-              .compile
-              .toVector
-          }
-          .unsafeToFuture()
-
-        val snapshots = Vector(
-          Snapshot(time = 0, lhs = 0, rhs = 0, output = Vector()),
-          Snapshot(1, 1, 0, Vector()),
-          Snapshot(2, 1, 1, Vector()),
-          Snapshot(2, 1, 1, Vector("a" -> 1)),
-          Snapshot(3, 1, 2, Vector("a" -> 1)),
-          Snapshot(4, 2, 2, Vector("a" -> 1)),
-          Snapshot(4, 2, 2, Vector("a" -> 1, "b" -> 2)),
-          Snapshot(5, 3, 2, Vector("a" -> 1, "b" -> 2)),
-          Snapshot(6, 3, 3, Vector("a" -> 1, "b" -> 2)),
-          Snapshot(6, 3, 3, Vector("a" -> 1, "b" -> 2, "c" -> 3))
-        )
-
-        env.tick(1.minute)
-        test.map(result => assert(result == snapshots))
-      }
-
-      "parZip evaluates effects with bounded concurrency - 2" in {
-        // various shenanigans to support TestContext in our current test setup
-        val contextShiftIO = ()
-        val timerIO = ()
-        val (_, _) = (contextShiftIO, timerIO)
-        val env = TestContext()
-        implicit val ctx: ContextShift[IO] = env.contextShift[IO](IO.ioEffect)
-        implicit val timer: Timer[IO] = env.timer[IO]
-
+        // track progress of the computation
         @volatile var lhs: Int = 0
         @volatile var rhs: Int = 0
         @volatile var output: Vector[(String, Int)] = Vector()
