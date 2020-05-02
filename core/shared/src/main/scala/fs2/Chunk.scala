@@ -453,10 +453,9 @@ abstract class Chunk[+O] extends Serializable { self =>
     * }}}
     */
   def zipWithIndex: Chunk[(O, Int)] = {
-    val sz = size
-    val arr = new Array[(O, Int)](sz)
+    val arr = new Array[(O, Int)](size)
     var i = 0
-    while (i < sz) {
+    while (i < size) {
       arr(i) = (apply(i), i)
       i += 1
     }
