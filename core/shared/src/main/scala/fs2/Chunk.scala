@@ -444,6 +444,24 @@ abstract class Chunk[+O] extends Serializable { self =>
     Chunk.array(arr.asInstanceOf[Array[O3]])
   }
 
+  /**
+    * Zips the elements of the input chunk with its indices, and returns the new chunk.
+    *
+    * @example {{{
+    * scala> Chunk("The", "quick", "brown", "fox").zipWithIndex.toList
+    * res0: List[(String, Int)] = List((The,0), (quick,1), (brown,2), (fox,3))
+    * }}}
+    */
+  def zipWithIndex: Chunk[(O, Int)] = {
+    val arr = new Array[(O, Int)](size)
+    var i = 0
+    while (i < size) {
+      arr(i) = (apply(i), i)
+      i += 1
+    }
+    Chunk.array(arr)
+  }
+
   override def hashCode: Int = {
     import util.hashing.MurmurHash3
     var i = 0

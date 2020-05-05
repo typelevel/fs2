@@ -199,6 +199,10 @@ class ChunkSpec extends Fs2Spec {
     assert(arr2 === Array(0, 0))
   }
 
+  "zipWithIndex andThen toArray" in {
+    forAll((chunk: Chunk[Int]) => assert(chunk.zipWithIndex.toArray === chunk.toArray.zipWithIndex))
+  }
+
   "Boxed toArray - regression #1745" in {
     Chunk.Boxed(Array[Any](0)).asInstanceOf[Chunk[Int]].toArray[Any]
     Chunk.Boxed(Array[Any](0)).asInstanceOf[Chunk[Int]].toArray[Int]
