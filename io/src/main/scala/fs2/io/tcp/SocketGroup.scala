@@ -378,7 +378,7 @@ object SocketGroup {
       blocker: Blocker,
       nonBlockingThreadCount: Int = 0,
       nonBlockingThreadFactory: ThreadFactory =
-        ThreadFactories.named("fs2-socket-group-blocking", true)
+        ThreadFactories.named("fs2-socket-group-non-blocking", true)
   ): Resource[F, SocketGroup] =
     Resource(blocker.delay {
       val threadCount =
