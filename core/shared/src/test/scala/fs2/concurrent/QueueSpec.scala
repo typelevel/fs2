@@ -143,7 +143,9 @@ class QueueSpec extends Fs2Spec {
         .interruptWhen(Stream.sleep[IO](2.seconds).as(true))
         .compile
         .toList
-        .asserting(it => assert(it.size <= 11)) // if the stream won't be discrete we will get much more size notifications
+        .asserting(it =>
+          assert(it.size <= 11)
+        ) // if the stream won't be discrete we will get much more size notifications
     }
 
     "peek1" in {

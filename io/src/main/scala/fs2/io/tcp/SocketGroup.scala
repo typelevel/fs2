@@ -48,19 +48,20 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup, blocker: Blocker
       noDelay: Boolean = false,
       additionalSocketOptions: List[SocketOptionMapping[_]] = List.empty
   )(implicit F: Concurrent[F], CS: ContextShift[F]): Resource[F, Socket[F]] = {
-    def setup: F[AsynchronousSocketChannel] = blocker.delay {
-      val ch =
-        AsynchronousChannelProvider.provider().openAsynchronousSocketChannel(channelGroup)
-      ch.setOption[java.lang.Boolean](StandardSocketOptions.SO_REUSEADDR, reuseAddress)
-      ch.setOption[Integer](StandardSocketOptions.SO_SNDBUF, sendBufferSize)
-      ch.setOption[Integer](StandardSocketOptions.SO_RCVBUF, receiveBufferSize)
-      ch.setOption[java.lang.Boolean](StandardSocketOptions.SO_KEEPALIVE, keepAlive)
-      ch.setOption[java.lang.Boolean](StandardSocketOptions.TCP_NODELAY, noDelay)
-      additionalSocketOptions.foreach {
-        case SocketOptionMapping(option, value) => ch.setOption(option, value)
+    def setup: F[AsynchronousSocketChannel] =
+      blocker.delay {
+        val ch =
+          AsynchronousChannelProvider.provider().openAsynchronousSocketChannel(channelGroup)
+        ch.setOption[java.lang.Boolean](StandardSocketOptions.SO_REUSEADDR, reuseAddress)
+        ch.setOption[Integer](StandardSocketOptions.SO_SNDBUF, sendBufferSize)
+        ch.setOption[Integer](StandardSocketOptions.SO_RCVBUF, receiveBufferSize)
+        ch.setOption[java.lang.Boolean](StandardSocketOptions.SO_KEEPALIVE, keepAlive)
+        ch.setOption[java.lang.Boolean](StandardSocketOptions.TCP_NODELAY, noDelay)
+        additionalSocketOptions.foreach {
+          case SocketOptionMapping(option, value) => ch.setOption(option, value)
+        }
+        ch
       }
-      ch
-    }
 
     def connect(ch: AsynchronousSocketChannel): F[AsynchronousSocketChannel] =
       asyncYield[F, AsynchronousSocketChannel] { cb =>
@@ -105,8 +106,8 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup, blocker: Blocker
       reuseAddress: Boolean = true,
       receiveBufferSize: Int = 256 * 1024,
       additionalSocketOptions: List[SocketOptionMapping[_]] = List.empty
-  )(
-      implicit F: Concurrent[F],
+  )(implicit
+      F: Concurrent[F],
       CS: ContextShift[F]
   ): Stream[F, Resource[F, Socket[F]]] = {
     val _ = maxQueued // TODO delete maxQueued in 3.0
@@ -129,8 +130,8 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup, blocker: Blocker
       reuseAddress: Boolean = true,
       receiveBufferSize: Int = 256 * 1024,
       additionalSocketOptions: List[SocketOptionMapping[_]] = List.empty
-  )(
-      implicit F: Concurrent[F],
+  )(implicit
+      F: Concurrent[F],
       CS: ContextShift[F]
   ): Stream[F, Either[InetSocketAddress, Resource[F, Socket[F]]]] = {
     val _ = maxQueued
@@ -150,8 +151,8 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup, blocker: Blocker
       reuseAddress: Boolean = true,
       receiveBufferSize: Int = 256 * 1024,
       additionalSocketOptions: List[SocketOptionMapping[_]] = List.empty
-  )(
-      implicit F: Concurrent[F],
+  )(implicit
+      F: Concurrent[F],
       CS: ContextShift[F]
   ): Resource[F, (InetSocketAddress, Stream[F, Resource[F, Socket[F]]])] = {
 
@@ -252,19 +253,20 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup, blocker: Blocker
 
         // When the read operation is done, this will read up to buffer's position bytes from the buffer
         // this expects the buffer's position to be at bytes read + 1
-        def releaseBuffer(buff: ByteBuffer): F[Chunk[Byte]] = F.delay {
-          val read = buff.position()
-          val result =
-            if (read == 0) Chunk.bytes(Array.empty)
-            else {
-              val dest = new Array[Byte](read)
-              (buff: Buffer).flip()
-              buff.get(dest)
-              Chunk.bytes(dest)
-            }
-          (buff: Buffer).clear()
-          result
-        }
+        def releaseBuffer(buff: ByteBuffer): F[Chunk[Byte]] =
+          F.delay {
+            val read = buff.position()
+            val result =
+              if (read == 0) Chunk.bytes(Array.empty)
+              else {
+                val dest = new Array[Byte](read)
+                (buff: Buffer).flip()
+                buff.get(dest)
+                Chunk.bytes(dest)
+              }
+            (buff: Buffer).clear()
+            result
+          }
 
         def read0(max: Int, timeout: Option[FiniteDuration]): F[Option[Chunk[Byte]]] =
           readSemaphore.withPermit {
@@ -283,10 +285,10 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup, blocker: Blocker
               def go(timeoutMs: Long): F[Option[Chunk[Byte]]] =
                 readChunk(buff, timeoutMs).flatMap {
                   case (readBytes, took) =>
-                    if (readBytes < 0 || buff.position() >= max) {
+                    if (readBytes < 0 || buff.position() >= max)
                       // read is done
                       releaseBuffer(buff).map(Some(_))
-                    } else go((timeoutMs - took).max(0))
+                    else go((timeoutMs - took).max(0))
                 }
 
               go(timeout.map(_.toMillis).getOrElse(0L))
@@ -349,12 +351,14 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup, blocker: Blocker
             blocker.delay(ch.getRemoteAddress)
           def isOpen: F[Boolean] = blocker.delay(ch.isOpen)
           def close: F[Unit] = blocker.delay(ch.close())
-          def endOfOutput: F[Unit] = blocker.delay {
-            ch.shutdownOutput(); ()
-          }
-          def endOfInput: F[Unit] = blocker.delay {
-            ch.shutdownInput(); ()
-          }
+          def endOfOutput: F[Unit] =
+            blocker.delay {
+              ch.shutdownOutput(); ()
+            }
+          def endOfInput: F[Unit] =
+            blocker.delay {
+              ch.shutdownInput(); ()
+            }
         }
     }
     Resource.make(socket)(_ => blocker.delay(if (ch.isOpen) ch.close else ()).attempt.void)

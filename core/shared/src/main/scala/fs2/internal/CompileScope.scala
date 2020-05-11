@@ -266,7 +266,7 @@ private[fs2] final class CompileScope[F[_]] private (
         case None => F.pure(None)
         case Some((scope, tail)) =>
           if (scope.id == scopeId) F.pure(Some(scope))
-          else {
+          else
             F.flatMap(scope.state.get) { s =>
               if (s.children.isEmpty) go(tail)
               else
@@ -275,7 +275,6 @@ private[fs2] final class CompileScope[F[_]] private (
                   case Some(scope) => F.pure(Some(scope))
                 }
             }
-          }
       }
     if (self.id == scopeId) F.pure(Some(self))
     else
@@ -300,7 +299,7 @@ private[fs2] final class CompileScope[F[_]] private (
       }
 
     if (scopeId == self.id) F.pure(Some(self))
-    else {
+    else
       self.parent match {
         case None => self.findSelfOrChild(scopeId)
         case Some(parent) =>
@@ -309,7 +308,6 @@ private[fs2] final class CompileScope[F[_]] private (
             case None        => go(self).findSelfOrChild(scopeId)
           }
       }
-    }
   }
 
   // See docs on [[Scope#lease]]

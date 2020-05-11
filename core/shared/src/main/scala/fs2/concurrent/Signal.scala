@@ -40,8 +40,8 @@ object Signal extends SignalLowPriorityImplicits {
       def discrete = Stream(a) ++ Stream.eval_(F.never)
     }
 
-  implicit def applicativeInstance[F[_]](
-      implicit F: Concurrent[F]
+  implicit def applicativeInstance[F[_]](implicit
+      F: Concurrent[F]
   ): Applicative[Signal[F, ?]] =
     new Applicative[Signal[F, ?]] {
       override def map[A, B](fa: Signal[F, A])(f: A => B): Signal[F, B] =
@@ -61,8 +61,8 @@ object Signal extends SignalLowPriorityImplicits {
         }
     }
 
-  private def nondeterministicZip[F[_], A0, A1](xs: Stream[F, A0], ys: Stream[F, A1])(
-      implicit F: Concurrent[F]
+  private def nondeterministicZip[F[_], A0, A1](xs: Stream[F, A0], ys: Stream[F, A1])(implicit
+      F: Concurrent[F]
   ): Stream[F, (A0, A1)] = {
     type PullOutput = (A0, A1, Stream[F, A0], Stream[F, A1])
     val firstPull: OptionT[Pull[F, PullOutput, ?], Unit] = for {
@@ -166,16 +166,22 @@ object SignallingRef {
           override def getAndSet(a: A): F[A] =
             modify(old => (a, old))
 
-          def access: F[(A, A => F[Boolean])] = ref.access.map {
-            case (access, setter) =>
-              (access._2, { (a: A) =>
-                setter((access._1 + 1, a)).flatMap { success =>
-                  if (success)
-                    Concurrent[F].start(pubSub.publish((access._1, (access._1 + 1, a)))).as(true)
-                  else Applicative[F].pure(false)
-                }
-              })
-          }
+          def access: F[(A, A => F[Boolean])] =
+            ref.access.map {
+              case (access, setter) =>
+                (
+                  access._2,
+                  { (a: A) =>
+                    setter((access._1 + 1, a)).flatMap { success =>
+                      if (success)
+                        Concurrent[F]
+                          .start(pubSub.publish((access._1, (access._1 + 1, a))))
+                          .as(true)
+                      else Applicative[F].pure(false)
+                    }
+                  }
+                )
+            }
 
           def tryUpdate(f: A => A): F[Boolean] =
             tryModify(a => (f(a), ())).map(_.nonEmpty)
@@ -218,9 +224,10 @@ object SignallingRef {
           override def continuous: Stream[F, B] = fa.continuous.map(f)
           override def set(b: B): F[Unit] = fa.set(g(b))
           override def getAndSet(b: B): F[B] = fa.getAndSet(g(b)).map(f)
-          override def access: F[(B, B => F[Boolean])] = fa.access.map {
-            case (getter, setter) => (f(getter), b => setter(g(b)))
-          }
+          override def access: F[(B, B => F[Boolean])] =
+            fa.access.map {
+              case (getter, setter) => (f(getter), b => setter(g(b)))
+            }
           override def tryUpdate(h: B => B): F[Boolean] = fa.tryUpdate(a => g(h(f(a))))
           override def tryModify[B2](h: B => (B, B2)): F[Option[B2]] =
             fa.tryModify(a => h(f(a)).leftMap(g))

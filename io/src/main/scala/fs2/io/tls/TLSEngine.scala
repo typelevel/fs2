@@ -87,10 +87,11 @@ private[tls] object TLSEngine {
             }
           }
 
-      private def doWrite(binding: Binding[F]): F[Unit] = wrapBuffer.output.flatMap { out =>
-        if (out.isEmpty) Applicative[F].unit
-        else binding.write(out)
-      }
+      private def doWrite(binding: Binding[F]): F[Unit] =
+        wrapBuffer.output.flatMap { out =>
+          if (out.isEmpty) Applicative[F].unit
+          else binding.write(out)
+        }
 
       def unwrap(data: Chunk[Byte], binding: Binding[F]): F[Option[Chunk[Byte]]] =
         unwrapSem.withPermit(unwrapBuffer.input(data) >> doUnwrap(binding))

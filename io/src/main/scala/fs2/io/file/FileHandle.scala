@@ -90,15 +90,15 @@ trait FileHandle[F[_]] {
 object FileHandle {
 
   /** Creates a `FileHandle` for the file at the supplied `Path`. */
-  def fromPath[F[_]](path: Path, blocker: Blocker, flags: Seq[OpenOption])(
-      implicit F: Sync[F],
+  def fromPath[F[_]](path: Path, blocker: Blocker, flags: Seq[OpenOption])(implicit
+      F: Sync[F],
       cs: ContextShift[F]
   ): Resource[F, FileHandle[F]] =
     fromFileChannel(blocker.delay(FileChannel.open(path, flags: _*)), blocker)
 
   /** Creates a `FileHandle` for the supplied `FileChannel`. */
-  def fromFileChannel[F[_]](channel: F[FileChannel], blocker: Blocker)(
-      implicit F: Sync[F],
+  def fromFileChannel[F[_]](channel: F[FileChannel], blocker: Blocker)(implicit
+      F: Sync[F],
       cs: ContextShift[F]
   ): Resource[F, FileHandle[F]] =
     Resource.make(channel)(ch => blocker.delay(ch.close())).map(ch => mk(ch, blocker))

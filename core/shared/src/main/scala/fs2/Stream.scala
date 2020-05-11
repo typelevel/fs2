@@ -308,7 +308,7 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
     def go(buffer: List[Chunk[O]], last: Boolean, s: Stream[F, O]): Pull[F, O, Unit] =
       s.pull.uncons.flatMap {
         case Some((hd, tl)) =>
-          val (out, buf, newLast) = {
+          val (out, buf, newLast) =
             hd.foldLeft((Nil: List[Chunk[O]], Vector.empty[O], last)) {
               case ((out, buf, last), i) =>
                 val cur = f(i)
@@ -316,10 +316,9 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
                   (Chunk.vector(buf :+ i) :: out, Vector.empty, cur)
                 else (out, buf :+ i, cur)
             }
-          }
-          if (out.isEmpty) {
+          if (out.isEmpty)
             go(Chunk.vector(buf) :: buffer, newLast, tl)
-          } else {
+          else {
             val outBuffer =
               buffer.reverse.foldLeft(Pull.pure(()).covaryOutput[O])((acc, c) =>
                 acc >> Pull.output(c)
@@ -432,18 +431,16 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
     def go[A](nextChunk: Chunk.Queue[A], s: Stream[F, A]): Pull[F, Chunk[A], Unit] =
       s.pull.uncons.flatMap {
         case None =>
-          if (allowFewerTotal && nextChunk.size > 0) {
+          if (allowFewerTotal && nextChunk.size > 0)
             Pull.output1(nextChunk.toChunk)
-          } else {
+          else
             Pull.done
-          }
         case Some((hd, tl)) =>
           val next = nextChunk :+ hd
-          if (next.size >= n) {
+          if (next.size >= n)
             Pull.output1(next.toChunk) >> go(Chunk.Queue.empty, tl)
-          } else {
+          else
             go(next, tl)
-          }
       }
 
     this.pull.uncons.flatMap {
@@ -512,8 +509,8 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
     * res2: Vector[Int] = Vector(1, 2, 3, 4)
     * }}}
     */
-  def compile[F2[x] >: F[x], G[_], O2 >: O](
-      implicit compiler: Stream.Compiler[F2, G]
+  def compile[F2[x] >: F[x], G[_], O2 >: O](implicit
+      compiler: Stream.Compiler[F2, G]
   ): Stream.CompileOps[F2, G, O2] =
     new Stream.CompileOps[F2, G, O2](free)
 
@@ -1169,9 +1166,9 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
           val (allPass, newLast) = hd.foldLeft((true, last)) {
             case ((acc, last), o) => (acc && f(last, o), o)
           }
-          if (allPass) {
+          if (allPass)
             Pull.output(hd) >> go(newLast, tl)
-          } else {
+          else {
             val (acc, newLast) = hd.foldLeft((Vector.empty[O], last)) {
               case ((acc, last), o) =>
                 if (f(last, o)) (acc :+ o, o)
@@ -1226,7 +1223,7 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
           case _ =>
             def go(idx: Int): FreeC[F2, O2, Unit] =
               if (idx == hd.size) new Stream(tl).flatMap(f).free
-              else {
+              else
                 f(hd(idx)).free.transformWith {
                   case Result.Pure(_)   => go(idx + 1)
                   case Result.Fail(err) => Result.Fail(err)
@@ -1235,7 +1232,6 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
                   case Result.Interrupted(invalid, _) =>
                     sys.error(s"Invalid interruption context: $invalid (flatMap)")
                 }
-              }
 
             go(0)
         }
@@ -1365,9 +1361,8 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
           if (hd.nonEmpty) {
             val (k1, out) = current.getOrElse((f(hd(0)), Chunk.Queue.empty[O]))
             doChunk(hd, tl, k1, out, collection.immutable.Queue.empty)
-          } else {
+          } else
             go(current, tl)
-          }
         case None =>
           current
             .map {
@@ -1388,9 +1383,9 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
       if (differsAt == -1) {
         // whole chunk matches the current key, add this chunk to the accumulated output
         val newOut: Chunk.Queue[O] = out :+ chunk
-        if (newOut.size < limit) {
+        if (newOut.size < limit)
           Pull.output(Chunk.seq(acc)) >> go(Some((k1, newOut)), s)
-        } else {
+        else {
           val (prefix, suffix) = chunk.splitAt(limit - out.size)
           Pull.output(Chunk.seq(acc :+ ((k1, (out :+ prefix).toChunk)))) >> go(
             Some((k1, Chunk.Queue(suffix))),
@@ -1403,14 +1398,13 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
         val matching = chunk.take(differsAt)
         val newAcc = {
           val newOut = out :+ matching
-          if (newOut.size == 0) {
+          if (newOut.size == 0)
             acc
-          } else if (newOut.size > limit) {
+          else if (newOut.size > limit) {
             val (prefix, suffix) = matching.splitAt(limit - out.size)
             acc :+ ((k1, (out :+ prefix).toChunk)) :+ ((k1, suffix))
-          } else {
+          } else
             acc :+ ((k1, (out :+ matching).toChunk))
-          }
         }
         val nonMatching = chunk.drop(differsAt)
         // nonMatching is guaranteed to be non-empty here, because we know the last element of the chunk doesn't have
@@ -1469,17 +1463,16 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
                   // note the this is in a `release` action, and therefore uninterruptible
                   currentTimeout.modify {
                     case st @ (cancelInFlightTimeout, streamTerminated) =>
-                      if (streamTerminated) {
+                      if (streamTerminated)
                         // the stream finaliser will cancel the in flight
                         // timeout, we need to cancel the timeout we have
                         // just started
                         st -> fiber.cancel
-                      } else {
+                      else
                         // The stream finaliser hasn't run, so we cancel
                         // the in flight timeout and store the finaliser for
                         // the timeout we have just started
                         (fiber.cancel, streamTerminated) -> cancelInFlightTimeout
-                      }
                   }.flatten
                 }
             }
@@ -1512,9 +1505,9 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
                     val newAcc = acc :+ c
                     // this is the same if in the resize function,
                     // short circuited to avoid needlessly converting newAcc.toChunk
-                    if (newAcc.size < n) {
+                    if (newAcc.size < n)
                       Stream.empty ++ startTimeout.flatMap(newTimeout => go(newAcc, newTimeout))
-                    } else {
+                    else {
                       val (toEmit, rest) = resize(newAcc.toChunk, Stream.empty)
                       toEmit ++ startTimeout.flatMap { newTimeout =>
                         go(Chunk.Queue(rest), newTimeout)
@@ -1861,7 +1854,7 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
     * stream terminates)
     *
     * When either the inner or outer stream fails, the entire stream fails and the finalizer of the
-	* inner stream runs before the outer one.
+    * inner stream runs before the outer one.
     *
     */
   def switchMap[F2[x] >: F[x], O2](
@@ -1937,31 +1930,32 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
                     s: Stream[F2, O2],
                     whenDone: Deferred[F2, Either[Throwable, Unit]]
                 ): F2[Unit] =
-                  Semaphore(1).flatMap { guard => // guarantee we process only single chunk at any given time from any given side.
-                    s.chunks
-                      .evalMap { chunk =>
-                        guard.acquire >>
-                          resultQ.enqueue1(Some(Stream.chunk(chunk).onFinalize(guard.release)))
-                      }
-                      .interruptWhen(interrupt.get.attempt)
-                      .compile
-                      .drain
-                      .attempt
-                      .flatMap { r =>
-                        whenDone.complete(r) >> { // signal completion of our side before we will signal interruption, to make sure our result is always available to others
-                          if (r.isLeft)
-                            interrupt.complete(()).attempt.void // we need to attempt interruption in case the interrupt was already completed.
-                          else
-                            otherSideDone
-                              .modify(prev => (true, prev))
-                              .flatMap { otherDone =>
-                                if (otherDone)
-                                  resultQ
-                                    .enqueue1(None) // complete only if other side is done too.
-                                else F2.unit
-                              }
+                  Semaphore(1).flatMap {
+                    guard => // guarantee we process only single chunk at any given time from any given side.
+                      s.chunks
+                        .evalMap { chunk =>
+                          guard.acquire >>
+                            resultQ.enqueue1(Some(Stream.chunk(chunk).onFinalize(guard.release)))
                         }
-                      }
+                        .interruptWhen(interrupt.get.attempt)
+                        .compile
+                        .drain
+                        .attempt
+                        .flatMap { r =>
+                          whenDone.complete(r) >> { // signal completion of our side before we will signal interruption, to make sure our result is always available to others
+                            if (r.isLeft)
+                              interrupt.complete(()).attempt.void // we need to attempt interruption in case the interrupt was already completed.
+                            else
+                              otherSideDone
+                                .modify(prev => (true, prev))
+                                .flatMap { otherDone =>
+                                  if (otherDone)
+                                    resultQ
+                                      .enqueue1(None) // complete only if other side is done too.
+                                  else F2.unit
+                                }
+                          }
+                        }
                   }
 
                 def resultStream: Stream[F2, O2] =
@@ -2179,98 +2173,99 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
             .flatMap { running => // starts with 1 because outer stream is running by default
               Queue
                 .synchronousNoneTerminated[F2, Chunk[O2]]
-                .map { outputQ => // sync queue assures we won't overload heap when resulting stream is not able to catchup with inner streams
-                  // stops the join evaluation
-                  // all the streams will be terminated. If err is supplied, that will get attached to any error currently present
-                  def stop(rslt: Option[Throwable]): F2[Unit] =
-                    done.update {
-                      case rslt0 @ Some(Some(err0)) =>
-                        rslt.fold[Option[Option[Throwable]]](rslt0) { err =>
-                          Some(Some(CompositeFailure(err0, err)))
-                        }
-                      case _ => Some(rslt)
-                    } >> outputQ.enqueue1(None)
+                .map {
+                  outputQ => // sync queue assures we won't overload heap when resulting stream is not able to catchup with inner streams
+                    // stops the join evaluation
+                    // all the streams will be terminated. If err is supplied, that will get attached to any error currently present
+                    def stop(rslt: Option[Throwable]): F2[Unit] =
+                      done.update {
+                        case rslt0 @ Some(Some(err0)) =>
+                          rslt.fold[Option[Option[Throwable]]](rslt0) { err =>
+                            Some(Some(CompositeFailure(err0, err)))
+                          }
+                        case _ => Some(rslt)
+                      } >> outputQ.enqueue1(None)
 
-                  val incrementRunning: F2[Unit] = running.update(_ + 1)
-                  val decrementRunning: F2[Unit] =
-                    running.modify { n =>
-                      val now = n - 1
-                      now -> (if (now == 0) stop(None) else F2.unit)
-                    }.flatten
+                    val incrementRunning: F2[Unit] = running.update(_ + 1)
+                    val decrementRunning: F2[Unit] =
+                      running.modify { n =>
+                        val now = n - 1
+                        now -> (if (now == 0) stop(None) else F2.unit)
+                      }.flatten
 
-                  // runs inner stream
-                  // each stream is forked.
-                  // terminates when killSignal is true
-                  // failures will be propagated through `done` Signal
-                  // note that supplied scope's resources must be leased before the inner stream forks the execution to another thread
-                  // and that it must be released once the inner stream terminates or fails.
-                  def runInner(inner: Stream[F2, O2], outerScope: Scope[F2]): F2[Unit] =
-                    F2.uncancelable {
-                      outerScope.lease.flatMap {
-                        case Some(lease) =>
-                          available.acquire >>
-                            incrementRunning >>
-                            F2.start {
-                              inner.chunks
-                                .evalMap(s => outputQ.enqueue1(Some(s)))
-                                .interruptWhen(
-                                  done.map(_.nonEmpty)
-                                ) // must be AFTER enqueue to the sync queue, otherwise the process may hang to enqueue last item while being interrupted
-                                .compile
-                                .drain
-                                .attempt
-                                .flatMap { r =>
-                                  lease.cancel.flatMap { cancelResult =>
-                                    available.release >>
-                                      (CompositeFailure.fromResults(r, cancelResult) match {
-                                        case Right(()) => F2.unit
-                                        case Left(err) =>
-                                          stop(Some(err))
-                                      }) >> decrementRunning
+                    // runs inner stream
+                    // each stream is forked.
+                    // terminates when killSignal is true
+                    // failures will be propagated through `done` Signal
+                    // note that supplied scope's resources must be leased before the inner stream forks the execution to another thread
+                    // and that it must be released once the inner stream terminates or fails.
+                    def runInner(inner: Stream[F2, O2], outerScope: Scope[F2]): F2[Unit] =
+                      F2.uncancelable {
+                        outerScope.lease.flatMap {
+                          case Some(lease) =>
+                            available.acquire >>
+                              incrementRunning >>
+                              F2.start {
+                                inner.chunks
+                                  .evalMap(s => outputQ.enqueue1(Some(s)))
+                                  .interruptWhen(
+                                    done.map(_.nonEmpty)
+                                  ) // must be AFTER enqueue to the sync queue, otherwise the process may hang to enqueue last item while being interrupted
+                                  .compile
+                                  .drain
+                                  .attempt
+                                  .flatMap { r =>
+                                    lease.cancel.flatMap { cancelResult =>
+                                      available.release >>
+                                        (CompositeFailure.fromResults(r, cancelResult) match {
+                                          case Right(()) => F2.unit
+                                          case Left(err) =>
+                                            stop(Some(err))
+                                        }) >> decrementRunning
+                                    }
                                   }
-                                }
-                            }.void
+                              }.void
 
-                        case None =>
-                          F2.raiseError(
-                            new Throwable("Outer scope is closed during inner stream startup")
-                          )
-                      }
-                    }
-
-                  // runs the outer stream, interrupts when kill == true, and then decrements the `running`
-                  def runOuter: F2[Unit] =
-                    outer
-                      .flatMap { inner =>
-                        Stream.getScope[F2].evalMap(outerScope => runInner(inner, outerScope))
-                      }
-                      .interruptWhen(done.map(_.nonEmpty))
-                      .compile
-                      .drain
-                      .attempt
-                      .flatMap {
-                        case Left(err) => stop(Some(err)) >> decrementRunning
-                        case Right(_)  => F2.unit >> decrementRunning
+                          case None =>
+                            F2.raiseError(
+                              new Throwable("Outer scope is closed during inner stream startup")
+                            )
+                        }
                       }
 
-                  // awaits when all streams (outer + inner) finished,
-                  // and then collects result of the stream (outer + inner) execution
-                  def signalResult: F2[Unit] =
-                    done.get.flatMap {
-                      _.flatten
-                        .fold[F2[Unit]](F2.unit)(F2.raiseError)
-                    }
-
-                  Stream
-                    .bracket(F2.start(runOuter))(_ =>
-                      stop(None) >> running.discrete
-                        .dropWhile(_ > 0)
-                        .take(1)
+                    // runs the outer stream, interrupts when kill == true, and then decrements the `running`
+                    def runOuter: F2[Unit] =
+                      outer
+                        .flatMap { inner =>
+                          Stream.getScope[F2].evalMap(outerScope => runInner(inner, outerScope))
+                        }
+                        .interruptWhen(done.map(_.nonEmpty))
                         .compile
-                        .drain >> signalResult
-                    ) >>
-                    outputQ.dequeue
-                      .flatMap(Stream.chunk(_).covary[F2])
+                        .drain
+                        .attempt
+                        .flatMap {
+                          case Left(err) => stop(Some(err)) >> decrementRunning
+                          case Right(_)  => F2.unit >> decrementRunning
+                        }
+
+                    // awaits when all streams (outer + inner) finished,
+                    // and then collects result of the stream (outer + inner) execution
+                    def signalResult: F2[Unit] =
+                      done.get.flatMap {
+                        _.flatten
+                          .fold[F2[Unit]](F2.unit)(F2.raiseError)
+                      }
+
+                    Stream
+                      .bracket(F2.start(runOuter))(_ =>
+                        stop(None) >> running.discrete
+                          .dropWhile(_ > 0)
+                          .take(1)
+                          .compile
+                          .drain >> signalResult
+                      ) >>
+                      outputQ.dequeue
+                        .flatMap(Stream.chunk(_).covary[F2])
                 }
             }
         }
@@ -2279,8 +2274,8 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
   }
 
   /** Like [[parJoin]] but races all inner streams simultaneously. */
-  def parJoinUnbounded[F2[_], O2](
-      implicit ev: O <:< Stream[F2, O2],
+  def parJoinUnbounded[F2[_], O2](implicit
+      ev: O <:< Stream[F2, O2],
       ev2: F[_] <:< F2[_],
       F2: Concurrent[F2]
   ): Stream[F2, O2] =
@@ -2329,36 +2324,37 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
     */
   def rechunkRandomlyWithSeed[F2[x] >: F[x]](minFactor: Double, maxFactor: Double)(
       seed: Long
-  ): Stream[F2, O] = Stream.suspend {
-    assert(maxFactor >= minFactor, "maxFactor should be greater or equal to minFactor")
-    val random = new scala.util.Random(seed)
-    def factor: Double = Math.abs(random.nextInt()) % (maxFactor - minFactor) + minFactor
+  ): Stream[F2, O] =
+    Stream.suspend {
+      assert(maxFactor >= minFactor, "maxFactor should be greater or equal to minFactor")
+      val random = new scala.util.Random(seed)
+      def factor: Double = Math.abs(random.nextInt()) % (maxFactor - minFactor) + minFactor
 
-    def go(acc: Chunk.Queue[O], size: Option[Int], s: Stream[F2, Chunk[O]]): Pull[F2, O, Unit] = {
-      def nextSize(chunk: Chunk[O]): Pull[F2, INothing, Int] =
-        size match {
-          case Some(size) => Pull.pure(size)
-          case None       => Pull.pure((factor * chunk.size).toInt)
-        }
-
-      s.pull.uncons1.flatMap {
-        case Some((hd, tl)) =>
-          nextSize(hd).flatMap { size =>
-            if (acc.size < size) go(acc :+ hd, size.some, tl)
-            else if (acc.size == size)
-              Pull.output(acc.toChunk) >> go(Chunk.Queue(hd), size.some, tl)
-            else {
-              val (out, rem) = acc.toChunk.splitAt(size - 1)
-              Pull.output(out) >> go(Chunk.Queue(rem, hd), None, tl)
-            }
+      def go(acc: Chunk.Queue[O], size: Option[Int], s: Stream[F2, Chunk[O]]): Pull[F2, O, Unit] = {
+        def nextSize(chunk: Chunk[O]): Pull[F2, INothing, Int] =
+          size match {
+            case Some(size) => Pull.pure(size)
+            case None       => Pull.pure((factor * chunk.size).toInt)
           }
-        case None =>
-          Pull.output(acc.toChunk)
-      }
-    }
 
-    go(Chunk.Queue.empty, None, chunks).stream
-  }
+        s.pull.uncons1.flatMap {
+          case Some((hd, tl)) =>
+            nextSize(hd).flatMap { size =>
+              if (acc.size < size) go(acc :+ hd, size.some, tl)
+              else if (acc.size == size)
+                Pull.output(acc.toChunk) >> go(Chunk.Queue(hd), size.some, tl)
+              else {
+                val (out, rem) = acc.toChunk.splitAt(size - 1)
+                Pull.output(out) >> go(Chunk.Queue(rem, hd), None, tl)
+              }
+            }
+          case None =>
+            Pull.output(acc.toChunk)
+        }
+      }
+
+      go(Chunk.Queue.empty, None, chunks).stream
+    }
 
   /**
     * Rechunks the stream such that output chunks are within [inputChunk.size * minFactor, inputChunk.size * maxFactor].
@@ -2455,8 +2451,8 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
     * res0: List[Int] = List(-1)
     * }}}
     */
-  def rethrow[F2[x] >: F[x], O2](
-      implicit ev: O <:< Either[Throwable, O2],
+  def rethrow[F2[x] >: F[x], O2](implicit
+      ev: O <:< Either[Throwable, O2],
       rt: RaiseThrowable[F2]
   ): Stream[F2, O2] = {
     val _ = ev // Convince scalac that ev is used
@@ -2599,8 +2595,8 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
     * Note: printing to standard out is performed *synchronously*.
     * Use `showLinesStdOutAsync(blockingEc)` if synchronous writes are a concern.
     */
-  def showLinesStdOut[F2[x] >: F[x], O2 >: O](
-      implicit F: Sync[F2],
+  def showLinesStdOut[F2[x] >: F[x], O2 >: O](implicit
+      F: Sync[F2],
       showO: Show[O2]
   ): Stream[F2, Unit] =
     showLines[F2, O2](Console.out)
@@ -3516,11 +3512,12 @@ object Stream extends StreamLowPriority {
     * Returns a pure stream, as the pseudo random number generator is
     * deterministic based on the supplied seed.
     */
-  def randomSeeded[F[x] >: Pure[x]](seed: Long): Stream[F, Int] = Stream.suspend {
-    val r = new scala.util.Random(seed)
-    def go: Stream[F, Int] = Stream.emit(r.nextInt) ++ go
-    go
-  }
+  def randomSeeded[F[x] >: Pure[x]](seed: Long): Stream[F, Int] =
+    Stream.suspend {
+      val r = new scala.util.Random(seed)
+      def go: Stream[F, Int] = Stream.emit(r.nextInt) ++ go
+      go
+    }
 
   /**
     * Lazily produce the range `[start, stopExclusive)`. If you want to produce
@@ -3534,8 +3531,10 @@ object Stream extends StreamLowPriority {
     */
   def range[F[x] >: Pure[x]](start: Int, stopExclusive: Int, by: Int = 1): Stream[F, Int] = {
     def go(i: Int): Stream[F, Int] =
-      if ((by > 0 && i < stopExclusive && start < stopExclusive) ||
-          (by < 0 && i > stopExclusive && start > stopExclusive))
+      if (
+        (by > 0 && i < stopExclusive && start < stopExclusive) ||
+        (by < 0 && i > stopExclusive && start > stopExclusive)
+      )
         emit(i) ++ go(i + by)
       else empty
     go(start)
@@ -3579,12 +3578,13 @@ object Stream extends StreamLowPriority {
     *
     * Scopes can be manually introduced via [[scope]] if desired.
     */
-  def resourceWeak[F[_], O](r: Resource[F, O]): Stream[F, O] = r match {
-    case r: Resource.Allocate[F, O] =>
-      Stream.bracketCaseWeak(r.resource) { case ((_, release), e) => release(e) }.map(_._1)
-    case r: Resource.Bind[F, x, O] => resourceWeak(r.source).flatMap(o => resourceWeak(r.fs(o)))
-    case r: Resource.Suspend[F, O] => Stream.eval(r.resource).flatMap(resourceWeak)
-  }
+  def resourceWeak[F[_], O](r: Resource[F, O]): Stream[F, O] =
+    r match {
+      case r: Resource.Allocate[F, O] =>
+        Stream.bracketCaseWeak(r.resource) { case ((_, release), e) => release(e) }.map(_._1)
+      case r: Resource.Bind[F, x, O] => resourceWeak(r.source).flatMap(o => resourceWeak(r.fs(o)))
+      case r: Resource.Suspend[F, O] => Stream.eval(r.resource).flatMap(resourceWeak)
+    }
 
   /**
     * Retries `fo` on failure, returning a singleton stream with the
@@ -4336,13 +4336,14 @@ object Stream extends StreamLowPriority {
         Algebra.compile[F, O, B](stream, scope, false, init)(f)
       )((scope, ec) => scope.close(ec).rethrow)
 
-    implicit def syncInstance[F[_]](implicit F: Sync[F]): Compiler[F, F] = new Compiler[F, F] {
-      def apply[O, B, C](
-          s: Stream[F, O],
-          init: () => B
-      )(foldChunk: (B, Chunk[O]) => B, finalize: B => C): F[C] =
-        F.delay(init()).flatMap(i => Compiler.compile(s.free, i)(foldChunk)).map(finalize)
-    }
+    implicit def syncInstance[F[_]](implicit F: Sync[F]): Compiler[F, F] =
+      new Compiler[F, F] {
+        def apply[O, B, C](
+            s: Stream[F, O],
+            init: () => B
+        )(foldChunk: (B, Chunk[O]) => B, finalize: B => C): F[C] =
+          F.delay(init()).flatMap(i => Compiler.compile(s.free, i)(foldChunk)).map(finalize)
+      }
 
     implicit val pureInstance: Compiler[Pure, Id] = new Compiler[Pure, Id] {
       def apply[O, B, C](
@@ -4555,8 +4556,8 @@ object Stream extends StreamLowPriority {
       * This works for every other `compile.` method, although it's a
       * very natural fit with `lastOrError`.
       **/
-    def resource(
-        implicit compiler: Stream.Compiler[F, Resource[G, ?]]
+    def resource(implicit
+        compiler: Stream.Compiler[F, Resource[G, ?]]
     ): Stream.CompileOps[F, Resource[G, ?], O] =
       new Stream.CompileOps[F, Resource[G, ?], O](free)
 
@@ -4751,8 +4752,8 @@ object Stream extends StreamLowPriority {
     * res0: List[(Int, Int)] = List((1,1), (-2,2), (3,3))
     * }}}
     */
-  implicit def monadErrorInstance[F[_]](
-      implicit ev: ApplicativeError[F, Throwable]
+  implicit def monadErrorInstance[F[_]](implicit
+      ev: ApplicativeError[F, Throwable]
   ): MonadError[Stream[F, ?], Throwable] =
     new MonadError[Stream[F, ?], Throwable] {
       def pure[A](a: A) = Stream(a)
@@ -4760,10 +4761,11 @@ object Stream extends StreamLowPriority {
         s.handleErrorWith(h)
       def raiseError[A](t: Throwable) = Stream.raiseError[F](t)
       def flatMap[A, B](s: Stream[F, A])(f: A => Stream[F, B]) = s.flatMap(f)
-      def tailRecM[A, B](a: A)(f: A => Stream[F, Either[A, B]]) = f(a).flatMap {
-        case Left(a)  => tailRecM(a)(f)
-        case Right(b) => Stream(b)
-      }
+      def tailRecM[A, B](a: A)(f: A => Stream[F, Either[A, B]]) =
+        f(a).flatMap {
+          case Left(a)  => tailRecM(a)(f)
+          case Right(b) => Stream(b)
+        }
     }
 
   /** `Monoid` instance for `Stream`. */

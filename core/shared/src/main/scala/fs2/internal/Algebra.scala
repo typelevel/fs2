@@ -162,8 +162,8 @@ private[fs2] object Algebra {
       scope: CompileScope[F],
       extendLastTopLevelScope: Boolean,
       stream: FreeC[F, O, Unit]
-  )(
-      implicit F: MonadError[F, Throwable]
+  )(implicit
+      F: MonadError[F, Throwable]
   ): F[Option[(Chunk[O], CompileScope[F], FreeC[F, O, Unit])]] = {
     case class Done[X](scope: CompileScope[F]) extends R[X]
     case class Out[X](head: Chunk[X], scope: CompileScope[F], tail: FreeC[F, X, Unit]) extends R[X]
@@ -297,16 +297,15 @@ private[fs2] object Algebra {
                       case None => Result.fromEither(r)
                       case Some((interruptedScopeId, err)) =>
                         def err1 = CompositeFailure.fromList(r.swap.toOption.toList ++ err.toList)
-                        if (ancestor.findSelfOrAncestor(interruptedScopeId).isDefined) {
+                        if (ancestor.findSelfOrAncestor(interruptedScopeId).isDefined)
                           // we still have scopes to interrupt, lets build interrupted tail
                           Result.Interrupted(interruptedScopeId, err1)
-                        } else {
+                        else
                           // interrupts scope was already interrupted, resume operation
                           err1 match {
                             case None      => Result.unit
                             case Some(err) => Result.Fail(err)
                           }
-                        }
                     }
                     go(ancestor, extendedTopLevelScope, view.next(res))
                   }
@@ -318,17 +317,17 @@ private[fs2] object Algebra {
                 .orElse(scope.findSelfOrChild(close.scopeId))
               F.flatMap(scopeToClose) {
                 case Some(toClose) =>
-                  if (toClose.parent.isEmpty) {
+                  if (toClose.parent.isEmpty)
                     // Impossible - don't close root scope as a result of a `CloseScope` call
                     go(scope, extendedTopLevelScope, view.next(Result.unit))
-                  } else if (extendLastTopLevelScope && toClose.parent.flatMap(_.parent).isEmpty) {
+                  else if (extendLastTopLevelScope && toClose.parent.flatMap(_.parent).isEmpty)
                     // Request to close the current top-level scope - if we're supposed to extend
                     // it instead, leave the scope open and pass it to the continuation
                     extendedTopLevelScope.traverse_(_.close(ExitCase.Completed).rethrow) *>
                       F.flatMap(toClose.openAncestor)(ancestor =>
                         go(ancestor, Some(toClose), view.next(Result.unit))
                       )
-                  } else closeAndGo(toClose, close.exitCase)
+                  else closeAndGo(toClose, close.exitCase)
                 case None =>
                   // scope already closed, continue with current scope
                   val result = close.interruptedScope match {
@@ -400,16 +399,17 @@ private[fs2] object Algebra {
       stream: FreeC[F, O, Unit],
       concurrent: Option[Concurrent[G]]
   ): FreeC[G, O, Unit] = {
-    def translateAlgEffect[R](self: AlgEffect[F, R]): AlgEffect[G, R] = self match {
-      // safe to cast, used in translate only
-      // if interruption has to be supported concurrent for G has to be passed
-      case a: Acquire[F, r] =>
-        Acquire[G, r](fK(a.resource), (r, ec) => fK(a.release(r, ec)))
-      case e: Eval[F, R]  => Eval[G, R](fK(e.value))
-      case OpenScope(_)   => OpenScope[G](concurrent)
-      case c: CloseScope  => c
-      case g: GetScope[_] => g
-    }
+    def translateAlgEffect[R](self: AlgEffect[F, R]): AlgEffect[G, R] =
+      self match {
+        // safe to cast, used in translate only
+        // if interruption has to be supported concurrent for G has to be passed
+        case a: Acquire[F, r] =>
+          Acquire[G, r](fK(a.resource), (r, ec) => fK(a.release(r, ec)))
+        case e: Eval[F, R]  => Eval[G, R](fK(e.value))
+        case OpenScope(_)   => OpenScope[G](concurrent)
+        case c: CloseScope  => c
+        case g: GetScope[_] => g
+      }
 
     def translateStep[X](next: FreeC[F, X, Unit], isMainLevel: Boolean): FreeC[G, X, Unit] =
       next.viewL match {

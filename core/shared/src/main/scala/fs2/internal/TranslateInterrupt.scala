@@ -7,9 +7,10 @@ private[fs2] trait TranslateInterrupt[F[_]] {
 }
 
 private[fs2] trait TranslateInterruptLowPriorityImplicits {
-  implicit def unInterruptibleInstance[F[_]]: TranslateInterrupt[F] = new TranslateInterrupt[F] {
-    def concurrentInstance: Option[Concurrent[F]] = None
-  }
+  implicit def unInterruptibleInstance[F[_]]: TranslateInterrupt[F] =
+    new TranslateInterrupt[F] {
+      def concurrentInstance: Option[Concurrent[F]] = None
+    }
 }
 
 private[fs2] object TranslateInterrupt extends TranslateInterruptLowPriorityImplicits {

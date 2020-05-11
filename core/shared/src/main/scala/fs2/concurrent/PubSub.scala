@@ -160,9 +160,8 @@ private[fs2] object PubSub {
                 val queue1 = strategy.publish(pub.i, queue)
                 def action = acc.map(_ >> pub.complete).getOrElse(pub.complete)
                 go(queue1, remains.tail, keep, Some(action))
-              } else {
+              } else
                 go(queue, remains.tail, keep :+ pub, acc)
-              }
           }
         go(ps.queue, ps.publishers, ScalaQueue.empty, None)
       }
@@ -207,11 +206,12 @@ private[fs2] object PubSub {
             (ps2, action >> result)
           }.flatten
 
-        def clearPublisher(token: Token)(exitCase: ExitCase[Throwable]): F[Unit] = exitCase match {
-          case ExitCase.Completed => Applicative[F].unit
-          case ExitCase.Error(_) | ExitCase.Canceled =>
-            state.update(ps => ps.copy(publishers = ps.publishers.filterNot(_.token == token)))
-        }
+        def clearPublisher(token: Token)(exitCase: ExitCase[Throwable]): F[Unit] =
+          exitCase match {
+            case ExitCase.Completed => Applicative[F].unit
+            case ExitCase.Error(_) | ExitCase.Canceled =>
+              state.update(ps => ps.copy(publishers = ps.publishers.filterNot(_.token == token)))
+          }
 
         def clearSubscriber(token: Token): F[Unit] =
           state.update(ps => ps.copy(subscribers = ps.subscribers.filterNot(_.token == token)))
@@ -513,12 +513,10 @@ private[fs2] object PubSub {
           if (state._1) {
             val (s1, result) = strategy.get(selector, state._2)
             ((true, s1), result.map(Some(_)))
-          } else {
-            if (strategy.empty(state._2)) (state, Some(None))
-            else {
-              val (s1, result) = strategy.get(selector, state._2)
-              ((false, s1), result.map(Some(_)))
-            }
+          } else if (strategy.empty(state._2)) (state, Some(None))
+          else {
+            val (s1, result) = strategy.get(selector, state._2)
+            ((false, s1), result.map(Some(_)))
           }
 
         def empty(state: (Boolean, S)): Boolean =
@@ -528,9 +526,8 @@ private[fs2] object PubSub {
           if (state._1) {
             val (s, success) = strategy.subscribe(selector, state._2)
             ((true, s), success)
-          } else {
+          } else
             (state, false)
-          }
 
         def unsubscribe(selector: Sel, state: (Boolean, S)): (Boolean, S) =
           (state._1, strategy.unsubscribe(selector, state._2))

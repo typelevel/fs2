@@ -21,14 +21,16 @@ import CommonGenerators._
 trait ChunkGeneratorsLowPriority1 {
   protected def withShrinker[A](
       g: Generator[A]
-  )(shrinker: (A, Randomizer) => (Iterator[A], Randomizer)): Generator[A] = new Generator[A] {
-    override def initEdges(maxLength: PosZInt, rnd: Randomizer): (List[A], Randomizer) =
-      g.initEdges(maxLength, rnd)
-    override def next(szp: SizeParam, edges: List[A], rnd: Randomizer): (A, List[A], Randomizer) =
-      g.next(szp, edges, rnd)
-    override def shrink(value: A, rnd: Randomizer): (Iterator[A], Randomizer) = shrinker(value, rnd)
-    override def canonicals(rnd: Randomizer): (Iterator[A], Randomizer) = g.canonicals(rnd)
-  }
+  )(shrinker: (A, Randomizer) => (Iterator[A], Randomizer)): Generator[A] =
+    new Generator[A] {
+      override def initEdges(maxLength: PosZInt, rnd: Randomizer): (List[A], Randomizer) =
+        g.initEdges(maxLength, rnd)
+      override def next(szp: SizeParam, edges: List[A], rnd: Randomizer): (A, List[A], Randomizer) =
+        g.next(szp, edges, rnd)
+      override def shrink(value: A, rnd: Randomizer): (Iterator[A], Randomizer) =
+        shrinker(value, rnd)
+      override def canonicals(rnd: Randomizer): (Iterator[A], Randomizer) = g.canonicals(rnd)
+    }
 
   protected def withChunkShrinker[A](g: Generator[Chunk[A]]): Generator[Chunk[A]] =
     withShrinker(g) { (c, rnd) =>

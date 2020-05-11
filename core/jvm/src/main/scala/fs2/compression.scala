@@ -259,11 +259,10 @@ object compression {
     def pull(): Pull[F, Byte, Unit] = {
       val deflatedBuffer = new Array[Byte](deflateParams.bufferSizeOrMinimum)
       val deflatedBytes = deflateInto(deflatedBuffer)
-      if (isDone) {
+      if (isDone)
         Pull.output(asChunkBytes(deflatedBuffer, deflatedBytes))
-      } else {
+      else
         Pull.output(asChunkBytes(deflatedBuffer, deflatedBytes)) >> pull()
-      }
     }
 
     pull()
@@ -327,8 +326,8 @@ object compression {
     * @param bufferSize size of the internal buffer that is used by the
     *                   decompressor. Default size is 32 KB.
     */
-  def inflate[F[_]](nowrap: Boolean = false, bufferSize: Int = 1024 * 32)(
-      implicit SyncF: Sync[F]
+  def inflate[F[_]](nowrap: Boolean = false, bufferSize: Int = 1024 * 32)(implicit
+      SyncF: Sync[F]
   ): Pipe[F, Byte, Byte] =
     inflate(
       InflateParams(
@@ -354,8 +353,8 @@ object compression {
       inflateParams: InflateParams,
       inflater: Inflater,
       crc32: Option[CRC32]
-  )(
-      implicit SyncF: Sync[F]
+  )(implicit
+      SyncF: Sync[F]
   ): Pipe[F, Byte, Byte] =
     _.pull.unconsNonEmpty.flatMap {
       case Some((deflatedChunk, deflatedStream)) =>
@@ -409,7 +408,7 @@ object compression {
         case inflatedBytes if inflatedBytes == -1 =>
           Pull.done
         case inflatedBytes if inflatedBytes < inflatedBuffer.length =>
-          if (inflater.finished()) {
+          if (inflater.finished())
             inflater.getRemaining match {
               case bytesRemaining if bytesRemaining > 0 =>
                 Pull.output(asChunkBytes(inflatedBuffer, inflatedBytes)) >>
@@ -423,7 +422,7 @@ object compression {
               case _ =>
                 Pull.output(asChunkBytes(inflatedBuffer, inflatedBytes))
             }
-          } else Pull.output(asChunkBytes(inflatedBuffer, inflatedBytes))
+          else Pull.output(asChunkBytes(inflatedBuffer, inflatedBytes))
         case inflatedBytes =>
           Pull.output(asChunkBytes(inflatedBuffer, inflatedBytes)) >> pull()
       }
@@ -447,9 +446,8 @@ object compression {
       case None =>
         if (!inflater.finished)
           Pull.raiseError[F](new DataFormatException("Insufficient data"))
-        else {
+        else
           Pull.done
-        }
     }
 
   /**
@@ -748,18 +746,18 @@ object compression {
   )(implicit SyncF: Sync[F]) =
     (mandatoryHeaderChunk.size, mandatoryHeaderChunk.toBytes.values) match {
       case (
-          `gzipHeaderBytes`,
-          Array(
-            `gzipMagicFirstByte`,
-            `gzipMagicSecondByte`,
-            gzipCompressionMethod.DEFLATE,
-            flags,
-            _,
-            _,
-            _,
-            _,
-            _
-          )
+            `gzipHeaderBytes`,
+            Array(
+              `gzipMagicFirstByte`,
+              `gzipMagicSecondByte`,
+              gzipCompressionMethod.DEFLATE,
+              flags,
+              _,
+              _,
+              _,
+              _,
+              _
+            )
           ) if gzipFlag.reserved5(flags) =>
         Pull.output1(
           GunzipResult(
@@ -769,18 +767,18 @@ object compression {
           )
         )
       case (
-          `gzipHeaderBytes`,
-          Array(
-            `gzipMagicFirstByte`,
-            `gzipMagicSecondByte`,
-            gzipCompressionMethod.DEFLATE,
-            flags,
-            _,
-            _,
-            _,
-            _,
-            _
-          )
+            `gzipHeaderBytes`,
+            Array(
+              `gzipMagicFirstByte`,
+              `gzipMagicSecondByte`,
+              gzipCompressionMethod.DEFLATE,
+              flags,
+              _,
+              _,
+              _,
+              _,
+              _
+            )
           ) if gzipFlag.reserved6(flags) =>
         Pull.output1(
           GunzipResult(
@@ -790,18 +788,18 @@ object compression {
           )
         )
       case (
-          `gzipHeaderBytes`,
-          Array(
-            `gzipMagicFirstByte`,
-            `gzipMagicSecondByte`,
-            gzipCompressionMethod.DEFLATE,
-            flags,
-            _,
-            _,
-            _,
-            _,
-            _
-          )
+            `gzipHeaderBytes`,
+            Array(
+              `gzipMagicFirstByte`,
+              `gzipMagicSecondByte`,
+              gzipCompressionMethod.DEFLATE,
+              flags,
+              _,
+              _,
+              _,
+              _,
+              _
+            )
           ) if gzipFlag.reserved7(flags) =>
         Pull.output1(
           GunzipResult(
@@ -811,19 +809,19 @@ object compression {
           )
         )
       case (
-          `gzipHeaderBytes`,
-          header @ Array(
-            `gzipMagicFirstByte`,
-            `gzipMagicSecondByte`,
-            gzipCompressionMethod.DEFLATE,
-            flags,
-            _,
-            _,
-            _,
-            _,
-            _,
-            _
-          )
+            `gzipHeaderBytes`,
+            header @ Array(
+              `gzipMagicFirstByte`,
+              `gzipMagicSecondByte`,
+              gzipCompressionMethod.DEFLATE,
+              flags,
+              _,
+              _,
+              _,
+              _,
+              _,
+              _
+            )
           ) =>
         headerCrc32.update(header)
         val secondsSince197001010000 =
@@ -844,19 +842,19 @@ object compression {
               Pull.output1(GunzipResult(Stream.raiseError(new EOFException())))
           }
       case (
-          `gzipHeaderBytes`,
-          Array(
-            `gzipMagicFirstByte`,
-            `gzipMagicSecondByte`,
-            compressionMethod,
-            _,
-            _,
-            _,
-            _,
-            _,
-            _,
-            _
-          )
+            `gzipHeaderBytes`,
+            Array(
+              `gzipMagicFirstByte`,
+              `gzipMagicSecondByte`,
+              compressionMethod,
+              _,
+              _,
+              _,
+              _,
+              _,
+              _,
+              _
+            )
           ) =>
         Pull.output1(
           GunzipResult(
@@ -938,15 +936,18 @@ object compression {
       crc32: CRC32
   )(implicit Sync: Sync[F]): Pipe[F, Byte, Byte] =
     stream =>
-      if (isPresent) {
+      if (isPresent)
         stream.pull
           .unconsN(gzipOptionalExtraFieldLengthBytes)
           .flatMap {
             case Some((optionalExtraFieldLengthChunk, streamAfterOptionalExtraFieldLength)) =>
-              (optionalExtraFieldLengthChunk.size, optionalExtraFieldLengthChunk.toBytes.values) match {
+              (
+                optionalExtraFieldLengthChunk.size,
+                optionalExtraFieldLengthChunk.toBytes.values
+              ) match {
                 case (
-                    `gzipOptionalExtraFieldLengthBytes`,
-                    lengthBytes @ Array(firstByte, secondByte)
+                      `gzipOptionalExtraFieldLengthBytes`,
+                      lengthBytes @ Array(firstByte, secondByte)
                     ) =>
                   crc32.update(lengthBytes)
                   val optionalExtraFieldLength = unsignedToInt(firstByte, secondByte)
@@ -972,25 +973,25 @@ object compression {
           }
           .stream
           .flatten
-      } else stream
+      else stream
 
   private def _gunzip_readOptionalStringField[F[_]](
       isPresent: Boolean,
       crc32: CRC32,
       fieldName: String,
       fieldBytesSoftLimit: Int
-  )(
-      implicit SyncF: Sync[F]
+  )(implicit
+      SyncF: Sync[F]
   ): Stream[F, Byte] => Stream[F, (Option[String], Stream[F, Byte])] =
     stream =>
-      if (isPresent) {
+      if (isPresent)
         unconsUntil[F, Byte](_ == zeroByte, fieldBytesSoftLimit)(stream).flatMap {
           case Some((chunk, rest)) =>
             Pull.output1(
               (
-                if (chunk.isEmpty) {
+                if (chunk.isEmpty)
                   Some("")
-                } else {
+                else {
                   val bytesChunk = chunk.toBytes
                   crc32.update(bytesChunk.values, bytesChunk.offset, bytesChunk.length)
                   Some(
@@ -1019,31 +1020,30 @@ object compression {
               )
             )
         }.stream
-      } else Stream.emit((Option.empty[String], stream))
+      else Stream.emit((Option.empty[String], stream))
 
   private def _gunzip_validateHeader[F[_]](
       isPresent: Boolean,
       crc32: CRC32
   )(implicit SyncF: Sync[F]): Pipe[F, Byte, Byte] =
     stream =>
-      if (isPresent) {
+      if (isPresent)
         stream.pull
           .unconsN(gzipHeaderCrcBytes)
           .flatMap {
             case Some((headerCrcChunk, streamAfterHeaderCrc)) =>
               val expectedHeaderCrc16 = unsignedToInt(headerCrcChunk(0), headerCrcChunk(1))
               val actualHeaderCrc16 = crc32.getValue & 0xffff
-              if (expectedHeaderCrc16 != actualHeaderCrc16) {
+              if (expectedHeaderCrc16 != actualHeaderCrc16)
                 Pull.raiseError(new ZipException("Header failed CRC validation"))
-              } else {
+              else
                 Pull.output1(streamAfterHeaderCrc)
-              }
             case None =>
               Pull.raiseError(new ZipException("Failed to read header CRC"))
           }
           .stream
           .flatten
-      } else stream
+      else stream
 
   private def _gunzip_validateTrailer[F[_]](
       crc32: CRC32,
@@ -1059,41 +1059,36 @@ object compression {
             val actualInputCrc32 = crc32.getValue
             val expectedInputSize =
               unsignedToLong(trailerChunk(4), trailerChunk(5), trailerChunk(6), trailerChunk(7))
-            val actualInputSize = inflater.getBytesWritten & 0xFFFFFFFFL
-            if (expectedInputCrc32 != actualInputCrc32) {
+            val actualInputSize = inflater.getBytesWritten & 0xffffffffL
+            if (expectedInputCrc32 != actualInputCrc32)
               Pull.raiseError(new ZipException("Content failed CRC validation"))
-            } else if (expectedInputSize != actualInputSize) {
+            else if (expectedInputSize != actualInputSize)
               Pull.raiseError(new ZipException("Content failed size validation"))
-            } else {
+            else
               Pull.done
-            }
           } else Pull.raiseError(new ZipException("Failed to read trailer (1)"))
 
         def streamUntilTrailer(last: Chunk[Byte]): Stream[F, Byte] => Pull[F, Byte, Unit] =
           _.pull.unconsNonEmpty
             .flatMap {
               case Some((next, rest)) =>
-                if (inflater.finished()) {
-                  if (next.size >= gzipTrailerBytes) {
+                if (inflater.finished())
+                  if (next.size >= gzipTrailerBytes)
                     if (last.nonEmpty) Pull.output(last) >> streamUntilTrailer(next)(rest)
                     else streamUntilTrailer(next)(rest)
-                  } else {
+                  else
                     streamUntilTrailer(Chunk.concatBytes(List(last.toBytes, next.toBytes)))(rest)
-                  }
-                } else {
-                  if (last.nonEmpty)
-                    Pull.output(last) >> Pull.output(next) >>
-                      streamUntilTrailer(Chunk.empty[Byte])(rest)
-                  else Pull.output(next) >> streamUntilTrailer(Chunk.empty[Byte])(rest)
-                }
+                else if (last.nonEmpty)
+                  Pull.output(last) >> Pull.output(next) >>
+                    streamUntilTrailer(Chunk.empty[Byte])(rest)
+                else Pull.output(next) >> streamUntilTrailer(Chunk.empty[Byte])(rest)
               case None =>
                 val preTrailerBytes = last.size - gzipTrailerBytes
-                if (preTrailerBytes > 0) {
+                if (preTrailerBytes > 0)
                   Pull.output(last.take(preTrailerBytes)) >>
                     validateTrailer(last.drop(preTrailerBytes))
-                } else {
+                else
                   validateTrailer(last)
-                }
             }
 
         streamUntilTrailer(Chunk.empty[Byte])(stream)
@@ -1108,29 +1103,30 @@ object compression {
   private def unconsUntil[F[_], O](
       predicate: O => Boolean,
       softLimit: Int
-  ): Stream[F, O] => Pull[F, INothing, Option[(Chunk[O], Stream[F, O])]] = stream => {
-    def go(
-        acc: List[Chunk[O]],
-        rest: Stream[F, O],
-        size: Int = 0
-    ): Pull[F, INothing, Option[(Chunk[O], Stream[F, O])]] =
-      rest.pull.uncons.flatMap {
-        case None =>
-          Pull.pure(None)
-        case Some((hd, tl)) =>
-          hd.indexWhere(predicate) match {
-            case Some(i) =>
-              val (pfx, sfx) = hd.splitAt(i)
-              Pull.pure(Some(Chunk.concat((pfx :: acc).reverse) -> tl.cons(sfx)))
-            case None =>
-              val newSize = size + hd.size
-              if (newSize < softLimit) go(hd :: acc, tl, newSize)
-              else Pull.pure(Some(Chunk.concat((hd :: acc).reverse) -> tl))
-          }
-      }
+  ): Stream[F, O] => Pull[F, INothing, Option[(Chunk[O], Stream[F, O])]] =
+    stream => {
+      def go(
+          acc: List[Chunk[O]],
+          rest: Stream[F, O],
+          size: Int = 0
+      ): Pull[F, INothing, Option[(Chunk[O], Stream[F, O])]] =
+        rest.pull.uncons.flatMap {
+          case None =>
+            Pull.pure(None)
+          case Some((hd, tl)) =>
+            hd.indexWhere(predicate) match {
+              case Some(i) =>
+                val (pfx, sfx) = hd.splitAt(i)
+                Pull.pure(Some(Chunk.concat((pfx :: acc).reverse) -> tl.cons(sfx)))
+              case None =>
+                val newSize = size + hd.size
+                if (newSize < softLimit) go(hd :: acc, tl, newSize)
+                else Pull.pure(Some(Chunk.concat((hd :: acc).reverse) -> tl))
+            }
+        }
 
-    go(Nil, stream)
-  }
+      go(Nil, stream)
+    }
 
   private val gzipHeaderBytes = 10
   private val gzipMagicFirstByte: Byte = 0x1f.toByte
@@ -1198,7 +1194,8 @@ object compression {
 
   private val zeroByte: Byte = 0
 
-  private val fileNameBytesSoftLimit = 1024 // A limit is good practice. Actual limit will be max(chunk.size, soft limit). Typical maximum file size is 255 characters.
+  private val fileNameBytesSoftLimit =
+    1024 // A limit is good practice. Actual limit will be max(chunk.size, soft limit). Typical maximum file size is 255 characters.
   private val fileCommentBytesSoftLimit =
     1024 * 1024 // A limit is good practice. Actual limit will be max(chunk.size, soft limit). 1 MiB feels reasonable for a comment.
 

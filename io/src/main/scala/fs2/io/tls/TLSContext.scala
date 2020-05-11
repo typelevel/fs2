@@ -69,109 +69,110 @@ object TLSContext {
   def fromSSLContext(
       ctx: SSLContext,
       blocker: Blocker
-  ): TLSContext = new TLSContext {
-    def client[F[_]: Concurrent: ContextShift](
-        socket: Socket[F],
-        params: TLSParameters,
-        logger: Option[String => F[Unit]]
-    ): Resource[F, TLSSocket[F]] =
-      mkSocket(
-        socket,
-        true,
-        params,
-        logger
-      )
-
-    def server[F[_]: Concurrent: ContextShift](
-        socket: Socket[F],
-        params: TLSParameters,
-        logger: Option[String => F[Unit]]
-    ): Resource[F, TLSSocket[F]] =
-      mkSocket(
-        socket,
-        false,
-        params,
-        logger
-      )
-
-    private def mkSocket[F[_]: Concurrent: ContextShift](
-        socket: Socket[F],
-        clientMode: Boolean,
-        params: TLSParameters,
-        logger: Option[String => F[Unit]]
-    ): Resource[F, TLSSocket[F]] =
-      Resource
-        .liftF(
-          engine(
-            blocker,
-            clientMode,
-            params,
-            logger
-          )
+  ): TLSContext =
+    new TLSContext {
+      def client[F[_]: Concurrent: ContextShift](
+          socket: Socket[F],
+          params: TLSParameters,
+          logger: Option[String => F[Unit]]
+      ): Resource[F, TLSSocket[F]] =
+        mkSocket(
+          socket,
+          true,
+          params,
+          logger
         )
-        .flatMap(engine => TLSSocket(socket, engine))
 
-    def dtlsClient[F[_]: Concurrent: ContextShift](
-        socket: udp.Socket[F],
-        remoteAddress: InetSocketAddress,
-        params: TLSParameters,
-        logger: Option[String => F[Unit]]
-    ): Resource[F, DTLSSocket[F]] =
-      mkDtlsSocket(
-        socket,
-        remoteAddress,
-        true,
-        params,
-        logger
-      )
-
-    def dtlsServer[F[_]: Concurrent: ContextShift](
-        socket: udp.Socket[F],
-        remoteAddress: InetSocketAddress,
-        params: TLSParameters,
-        logger: Option[String => F[Unit]]
-    ): Resource[F, DTLSSocket[F]] =
-      mkDtlsSocket(
-        socket,
-        remoteAddress,
-        false,
-        params,
-        logger
-      )
-
-    private def mkDtlsSocket[F[_]: Concurrent: ContextShift](
-        socket: udp.Socket[F],
-        remoteAddress: InetSocketAddress,
-        clientMode: Boolean,
-        params: TLSParameters,
-        logger: Option[String => F[Unit]]
-    ): Resource[F, DTLSSocket[F]] =
-      Resource
-        .liftF(
-          engine(
-            blocker,
-            clientMode,
-            params,
-            logger
-          )
+      def server[F[_]: Concurrent: ContextShift](
+          socket: Socket[F],
+          params: TLSParameters,
+          logger: Option[String => F[Unit]]
+      ): Resource[F, TLSSocket[F]] =
+        mkSocket(
+          socket,
+          false,
+          params,
+          logger
         )
-        .flatMap(engine => DTLSSocket(socket, remoteAddress, engine))
 
-    private def engine[F[_]: Concurrent: ContextShift](
-        blocker: Blocker,
-        clientMode: Boolean,
-        params: TLSParameters,
-        logger: Option[String => F[Unit]]
-    ): F[TLSEngine[F]] = {
-      val sslEngine = Sync[F].delay {
-        val engine = ctx.createSSLEngine()
-        engine.setUseClientMode(clientMode)
-        engine.setSSLParameters(params.toSSLParameters)
-        engine
+      private def mkSocket[F[_]: Concurrent: ContextShift](
+          socket: Socket[F],
+          clientMode: Boolean,
+          params: TLSParameters,
+          logger: Option[String => F[Unit]]
+      ): Resource[F, TLSSocket[F]] =
+        Resource
+          .liftF(
+            engine(
+              blocker,
+              clientMode,
+              params,
+              logger
+            )
+          )
+          .flatMap(engine => TLSSocket(socket, engine))
+
+      def dtlsClient[F[_]: Concurrent: ContextShift](
+          socket: udp.Socket[F],
+          remoteAddress: InetSocketAddress,
+          params: TLSParameters,
+          logger: Option[String => F[Unit]]
+      ): Resource[F, DTLSSocket[F]] =
+        mkDtlsSocket(
+          socket,
+          remoteAddress,
+          true,
+          params,
+          logger
+        )
+
+      def dtlsServer[F[_]: Concurrent: ContextShift](
+          socket: udp.Socket[F],
+          remoteAddress: InetSocketAddress,
+          params: TLSParameters,
+          logger: Option[String => F[Unit]]
+      ): Resource[F, DTLSSocket[F]] =
+        mkDtlsSocket(
+          socket,
+          remoteAddress,
+          false,
+          params,
+          logger
+        )
+
+      private def mkDtlsSocket[F[_]: Concurrent: ContextShift](
+          socket: udp.Socket[F],
+          remoteAddress: InetSocketAddress,
+          clientMode: Boolean,
+          params: TLSParameters,
+          logger: Option[String => F[Unit]]
+      ): Resource[F, DTLSSocket[F]] =
+        Resource
+          .liftF(
+            engine(
+              blocker,
+              clientMode,
+              params,
+              logger
+            )
+          )
+          .flatMap(engine => DTLSSocket(socket, remoteAddress, engine))
+
+      private def engine[F[_]: Concurrent: ContextShift](
+          blocker: Blocker,
+          clientMode: Boolean,
+          params: TLSParameters,
+          logger: Option[String => F[Unit]]
+      ): F[TLSEngine[F]] = {
+        val sslEngine = Sync[F].delay {
+          val engine = ctx.createSSLEngine()
+          engine.setUseClientMode(clientMode)
+          engine.setSSLParameters(params.toSSLParameters)
+          engine
+        }
+        sslEngine.flatMap(TLSEngine[F](_, blocker, logger))
       }
-      sslEngine.flatMap(TLSEngine[F](_, blocker, logger))
     }
-  }
 
   /** Creates a `TLSContext` which trusts all certificates. */
   def insecure[F[_]: Sync: ContextShift](blocker: Blocker): F[TLSContext] =

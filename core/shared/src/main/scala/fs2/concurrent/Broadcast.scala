@@ -127,38 +127,41 @@ object Broadcast {
           current = i
         )
 
-      def get(selector: Token, queueState: State[O]): (State[O], Option[O]) = queueState match {
-        case State.AwaitSub(subscribers) =>
-          val nextSubs = subscribers + selector
-          if (nextSubs.size >= minReady) (State.Empty(nextSubs), None)
-          else (State.AwaitSub(nextSubs), None)
-        case State.Empty(subscribers) => (State.Empty(subscribers + selector), None)
-        case State.Processing(subscribers, processing, remains, o) =>
-          if (subscribers.contains(selector)) {
-            if (processing.contains(selector))
-              (State.Processing(subscribers, processing - selector, remains, o), Some(o))
-            else {
-              val remains1 = remains - selector
-              if (remains1.nonEmpty) (State.Processing(subscribers, processing, remains1, o), None)
-              else (State.Empty(subscribers), None)
-            }
-          } else
-            (State.Processing(subscribers + selector, processing, remains + selector, o), Some(o))
-      }
+      def get(selector: Token, queueState: State[O]): (State[O], Option[O]) =
+        queueState match {
+          case State.AwaitSub(subscribers) =>
+            val nextSubs = subscribers + selector
+            if (nextSubs.size >= minReady) (State.Empty(nextSubs), None)
+            else (State.AwaitSub(nextSubs), None)
+          case State.Empty(subscribers) => (State.Empty(subscribers + selector), None)
+          case State.Processing(subscribers, processing, remains, o) =>
+            if (subscribers.contains(selector))
+              if (processing.contains(selector))
+                (State.Processing(subscribers, processing - selector, remains, o), Some(o))
+              else {
+                val remains1 = remains - selector
+                if (remains1.nonEmpty)
+                  (State.Processing(subscribers, processing, remains1, o), None)
+                else (State.Empty(subscribers), None)
+              }
+            else
+              (State.Processing(subscribers + selector, processing, remains + selector, o), Some(o))
+        }
 
       def empty(queueState: State[O]): Boolean = queueState.isEmpty
 
       def subscribe(selector: Token, queueState: State[O]): (State[O], Boolean) =
         (queueState, false)
 
-      def unsubscribe(selector: Token, queueState: State[O]): State[O] = queueState match {
-        case State.AwaitSub(subscribers) => State.AwaitSub(subscribers - selector)
-        case State.Empty(subscribers)    => State.Empty(subscribers - selector)
-        case State.Processing(subscribers, processing, remains, o) =>
-          val remains1 = remains - selector
-          if (remains1.nonEmpty)
-            State.Processing(subscribers - selector, processing - selector, remains1, o)
-          else State.Empty(subscribers - selector)
-      }
+      def unsubscribe(selector: Token, queueState: State[O]): State[O] =
+        queueState match {
+          case State.AwaitSub(subscribers) => State.AwaitSub(subscribers - selector)
+          case State.Empty(subscribers)    => State.Empty(subscribers - selector)
+          case State.Processing(subscribers, processing, remains, o) =>
+            val remains1 = remains - selector
+            if (remains1.nonEmpty)
+              State.Processing(subscribers - selector, processing - selector, remains1, o)
+            else State.Empty(subscribers - selector)
+        }
     }
 }

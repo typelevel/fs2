@@ -160,8 +160,8 @@ object Pull extends PullLowPriority {
     new Pull(FreeC.suspend(p.free))
 
   /** `Sync` instance for `Pull`. */
-  implicit def syncInstance[F[_], O](
-      implicit ev: ApplicativeError[F, Throwable]
+  implicit def syncInstance[F[_], O](implicit
+      ev: ApplicativeError[F, Throwable]
   ): Sync[Pull[F, O, ?]] = {
     val _ = ev
     new PullSyncInstance[F, O]

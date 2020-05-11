@@ -103,12 +103,14 @@ final class SocketGroup(
             val membership = channel.join(group, interface)
             new AnySourceGroupMembership {
               def drop = blocker.delay(membership.drop)
-              def block(source: InetAddress) = F.delay {
-                membership.block(source); ()
-              }
-              def unblock(source: InetAddress) = blocker.delay {
-                membership.unblock(source); ()
-              }
+              def block(source: InetAddress) =
+                F.delay {
+                  membership.block(source); ()
+                }
+              def unblock(source: InetAddress) =
+                blocker.delay {
+                  membership.unblock(source); ()
+                }
               override def toString = "AnySourceGroupMembership"
             }
           }
@@ -117,13 +119,14 @@ final class SocketGroup(
             group: InetAddress,
             interface: NetworkInterface,
             source: InetAddress
-        ): F[GroupMembership] = F.delay {
-          val membership = channel.join(group, interface, source)
-          new GroupMembership {
-            def drop = blocker.delay(membership.drop)
-            override def toString = "GroupMembership"
+        ): F[GroupMembership] =
+          F.delay {
+            val membership = channel.join(group, interface, source)
+            new GroupMembership {
+              def drop = blocker.delay(membership.drop)
+              override def toString = "GroupMembership"
+            }
           }
-        }
 
         override def toString =
           s"Socket(${Option(

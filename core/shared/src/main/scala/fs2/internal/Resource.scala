@@ -112,13 +112,12 @@ private[internal] object Resource {
 
       def release(ec: ExitCase[Throwable]): F[Either[Throwable, Unit]] =
         F.flatMap(state.modify { s =>
-          if (s.leases != 0) {
+          if (s.leases != 0)
             // do not allow to run finalizer if there are leases open
             (s.copy(open = false), None)
-          } else {
+          else
             // reset finalizer to None, will be run, it available, otherwise the acquire will take care of it
             (s.copy(open = false, finalizer = None), s.finalizer)
-          }
         })(finalizer => finalizer.map(_(ec)).getOrElse(pru))
 
       def acquired(finalizer: ExitCase[Throwable] => F[Unit]): F[Either[Throwable, Boolean]] =

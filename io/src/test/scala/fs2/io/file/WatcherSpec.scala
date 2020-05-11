@@ -17,9 +17,12 @@ class WatcherSpec extends BaseFileSpec {
             Stream.resource(Blocker[IO]).flatMap { bec =>
               file
                 .watch[IO](bec, f, modifiers = modifiers)
-                .takeWhile({
-                  case Watcher.Event.Modified(_, _) => false; case _ => true
-                }, true)
+                .takeWhile(
+                  {
+                    case Watcher.Event.Modified(_, _) => false; case _ => true
+                  },
+                  true
+                )
                 .concurrently(smallDelay ++ modify(f))
             }
           }
@@ -33,9 +36,12 @@ class WatcherSpec extends BaseFileSpec {
             Stream.resource(Blocker[IO]).flatMap { bec =>
               file
                 .watch[IO](bec, f, modifiers = modifiers)
-                .takeWhile({
-                  case Watcher.Event.Deleted(_, _) => false; case _ => true
-                }, true)
+                .takeWhile(
+                  {
+                    case Watcher.Event.Deleted(_, _) => false; case _ => true
+                  },
+                  true
+                )
                 .concurrently(smallDelay ++ Stream.eval(IO(Files.delete(f))))
             }
           }

@@ -15,10 +15,11 @@ private[io] object JavaInputOutputStream {
   /** state of the upstream, we only indicate whether upstream is done and if it failed **/
   private final case class UpStreamState(done: Boolean, err: Option[Throwable])
   private sealed trait DownStreamState { self =>
-    def isDone: Boolean = self match {
-      case Done(_) => true
-      case _       => false
-    }
+    def isDone: Boolean =
+      self match {
+        case Done(_) => true
+        case _       => false
+      }
   }
   private final case class Done(rslt: Option[Throwable]) extends DownStreamState
   private final case class Ready(rem: Option[Bytes]) extends DownStreamState
@@ -82,10 +83,11 @@ private[io] object JavaInputOutputStream {
             }
         }
 
-      def setDone(rsn: Option[Throwable])(s0: DownStreamState): DownStreamState = s0 match {
-        case s @ Done(_) => s
-        case _           => Done(rsn)
-      }
+      def setDone(rsn: Option[Throwable])(s0: DownStreamState): DownStreamState =
+        s0 match {
+          case s @ Done(_) => s
+          case _           => Done(rsn)
+        }
 
       dnState.modify { s =>
         val (n, out) = tryGetChunk(s)
@@ -98,7 +100,7 @@ private[io] object JavaInputOutputStream {
             }
           case None =>
             n match {
-              case Done(None) => (-1).pure[F]
+              case Done(None) => -1.pure[F]
               case Done(Some(err)) =>
                 F.raiseError[Int](new IOException("Stream is in failed state", err))
               case _ =>
@@ -191,7 +193,7 @@ private[io] object JavaInputOutputStream {
                     readOnce(acc, 0, 1, queue, dnState).flatMap { read =>
                       if (read < 0) F.pure(-1)
                       else if (read == 0) go(acc)
-                      else F.pure(acc(0) & 0xFF)
+                      else F.pure(acc(0) & 0xff)
                     }
 
                   go(new Array[Byte](1)).toIO.unsafeRunSync

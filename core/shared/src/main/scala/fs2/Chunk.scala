@@ -137,11 +137,12 @@ abstract class Chunk[+O] extends Serializable { self =>
   final def isEmpty: Boolean = size == 0
 
   /** Creates an iterator that iterates the elements of this chunk. The returned iterator is not thread safe. */
-  def iterator: Iterator[O] = new Iterator[O] {
-    private[this] var i = 0
-    def hasNext = i < self.size
-    def next() = { val result = apply(i); i += 1; result }
-  }
+  def iterator: Iterator[O] =
+    new Iterator[O] {
+      private[this] var i = 0
+      def hasNext = i < self.size
+      def next() = { val result = apply(i); i += 1; result }
+    }
 
   /**
     * Returns the index of the first element which passes the specified predicate (i.e., `p(i) == true`)
@@ -193,11 +194,12 @@ abstract class Chunk[+O] extends Serializable { self =>
   final def nonEmpty: Boolean = size > 0
 
   /** Creates an iterator that iterates the elements of this chunk in reverse order. The returned iterator is not thread safe. */
-  def reverseIterator: Iterator[O] = new Iterator[O] {
-    private[this] var i = self.size - 1
-    def hasNext = i >= 0
-    def next() = { val result = apply(i); i -= 1; result }
-  }
+  def reverseIterator: Iterator[O] =
+    new Iterator[O] {
+      private[this] var i = self.size - 1
+      def hasNext = i >= 0
+      def next() = { val result = apply(i); i -= 1; result }
+    }
 
   /** Like `foldLeft` but emits each intermediate result of `f`. */
   def scanLeft[O2](z: O2)(f: (O2, O) => O2): Chunk[O2] =
@@ -419,10 +421,11 @@ abstract class Chunk[+O] extends Serializable { self =>
     * Returns true if this chunk is known to have elements of type `B`.
     * This is determined by checking if the chunk type mixes in `Chunk.KnownElementType`.
     */
-  def knownElementType[B](implicit classTag: ClassTag[B]): Boolean = this match {
-    case ket: Chunk.KnownElementType[_] if ket.elementClassTag eq classTag => true
-    case _                                                                 => false
-  }
+  def knownElementType[B](implicit classTag: ClassTag[B]): Boolean =
+    this match {
+      case ket: Chunk.KnownElementType[_] if ket.elementClassTag eq classTag => true
+      case _                                                                 => false
+    }
 
   /**
     * Zips this chunk the the supplied chunk, returning a chunk of tuples.
@@ -473,19 +476,20 @@ abstract class Chunk[+O] extends Serializable { self =>
     MurmurHash3.finalizeHash(h, i)
   }
 
-  override def equals(a: Any): Boolean = a match {
-    case c: Chunk[O] =>
-      size == c.size && {
-        var i = 0
-        var result = true
-        while (result && i < size) {
-          result = apply(i) == c(i)
-          i += 1
+  override def equals(a: Any): Boolean =
+    a match {
+      case c: Chunk[O] =>
+        size == c.size && {
+          var i = 0
+          var result = true
+          while (result && i < size) {
+            result = apply(i) == c(i)
+            i += 1
+          }
+          result
         }
-        result
-      }
-    case _ => false
-  }
+      case _ => false
+    }
 
   override def toString: String =
     iterator.mkString("Chunk(", ", ", ")")
@@ -588,35 +592,36 @@ object Chunk extends CollectorK[Chunk] {
   def seq[O](s: GSeq[O]): Chunk[O] = iterable(s)
 
   /** Creates a chunk from a `scala.collection.Iterable`. */
-  def iterable[O](i: collection.Iterable[O]): Chunk[O] = i match {
-    case ArrayBackedSeq(arr) =>
-      // arr is either a primitive array or a boxed array
-      // cast is safe b/c the array constructor will check for primitive vs boxed arrays
-      array(arr.asInstanceOf[Array[O]])
-    case v: Vector[O]                    => vector(v)
-    case b: collection.mutable.Buffer[O] => buffer(b)
-    case l: List[O] =>
-      if (l.isEmpty) empty
-      else if (l.tail.isEmpty) singleton(l.head)
-      else {
-        val bldr = collection.mutable.Buffer.newBuilder[O]
-        bldr ++= l
-        buffer(bldr.result)
-      }
-    case ix: GIndexedSeq[O] => indexedSeq(ix)
-    case _ =>
-      if (i.isEmpty) empty
-      else {
-        val itr = i.iterator
-        val head = itr.next
-        if (itr.hasNext) {
+  def iterable[O](i: collection.Iterable[O]): Chunk[O] =
+    i match {
+      case ArrayBackedSeq(arr) =>
+        // arr is either a primitive array or a boxed array
+        // cast is safe b/c the array constructor will check for primitive vs boxed arrays
+        array(arr.asInstanceOf[Array[O]])
+      case v: Vector[O]                    => vector(v)
+      case b: collection.mutable.Buffer[O] => buffer(b)
+      case l: List[O] =>
+        if (l.isEmpty) empty
+        else if (l.tail.isEmpty) singleton(l.head)
+        else {
           val bldr = collection.mutable.Buffer.newBuilder[O]
-          bldr += head
-          bldr ++= itr
+          bldr ++= l
           buffer(bldr.result)
-        } else singleton(head)
-      }
-  }
+        }
+      case ix: GIndexedSeq[O] => indexedSeq(ix)
+      case _ =>
+        if (i.isEmpty) empty
+        else {
+          val itr = i.iterator
+          val head = itr.next
+          if (itr.hasNext) {
+            val bldr = collection.mutable.Buffer.newBuilder[O]
+            bldr += head
+            bldr ++= itr
+            buffer(bldr.result)
+          } else singleton(head)
+        }
+    }
 
   /** Creates a chunk backed by a `Chain`. */
   def chain[O](c: Chain[O]): Chunk[O] =
@@ -1417,25 +1422,25 @@ object Chunk extends CollectorK[Chunk] {
     * otherwise an exception may be thrown.
     */
   def concat[A](chunks: GSeq[Chunk[A]], totalSize: Int): Chunk[A] =
-    if (totalSize == 0) {
+    if (totalSize == 0)
       Chunk.empty
-    } else if (chunks.forall(c => c.knownElementType[Boolean] || c.forall(_.isInstanceOf[Boolean]))) {
+    else if (chunks.forall(c => c.knownElementType[Boolean] || c.forall(_.isInstanceOf[Boolean])))
       concatBooleans(chunks.asInstanceOf[GSeq[Chunk[Boolean]]], totalSize).asInstanceOf[Chunk[A]]
-    } else if (chunks.forall(c => c.knownElementType[Byte] || c.forall(_.isInstanceOf[Byte]))) {
+    else if (chunks.forall(c => c.knownElementType[Byte] || c.forall(_.isInstanceOf[Byte])))
       concatBytes(chunks.asInstanceOf[GSeq[Chunk[Byte]]], totalSize).asInstanceOf[Chunk[A]]
-    } else if (chunks.forall(c => c.knownElementType[Float] || c.forall(_.isInstanceOf[Float]))) {
+    else if (chunks.forall(c => c.knownElementType[Float] || c.forall(_.isInstanceOf[Float])))
       concatFloats(chunks.asInstanceOf[GSeq[Chunk[Float]]], totalSize).asInstanceOf[Chunk[A]]
-    } else if (chunks.forall(c => c.knownElementType[Double] || c.forall(_.isInstanceOf[Double]))) {
+    else if (chunks.forall(c => c.knownElementType[Double] || c.forall(_.isInstanceOf[Double])))
       concatDoubles(chunks.asInstanceOf[GSeq[Chunk[Double]]], totalSize).asInstanceOf[Chunk[A]]
-    } else if (chunks.forall(c => c.knownElementType[Short] || c.forall(_.isInstanceOf[Short]))) {
+    else if (chunks.forall(c => c.knownElementType[Short] || c.forall(_.isInstanceOf[Short])))
       concatShorts(chunks.asInstanceOf[GSeq[Chunk[Short]]], totalSize).asInstanceOf[Chunk[A]]
-    } else if (chunks.forall(c => c.knownElementType[Int] || c.forall(_.isInstanceOf[Int]))) {
+    else if (chunks.forall(c => c.knownElementType[Int] || c.forall(_.isInstanceOf[Int])))
       concatInts(chunks.asInstanceOf[GSeq[Chunk[Int]]], totalSize).asInstanceOf[Chunk[A]]
-    } else if (chunks.forall(c => c.knownElementType[Long] || c.forall(_.isInstanceOf[Long]))) {
+    else if (chunks.forall(c => c.knownElementType[Long] || c.forall(_.isInstanceOf[Long])))
       concatLongs(chunks.asInstanceOf[GSeq[Chunk[Long]]], totalSize).asInstanceOf[Chunk[A]]
-    } else if (chunks.forall(c => c.knownElementType[Char] || c.forall(_.isInstanceOf[Char]))) {
+    else if (chunks.forall(c => c.knownElementType[Char] || c.forall(_.isInstanceOf[Char])))
       concatChars(chunks.asInstanceOf[GSeq[Chunk[Char]]], totalSize).asInstanceOf[Chunk[A]]
-    } else {
+    else {
       val arr = new Array[Any](totalSize)
       var offset = 0
       chunks.foreach { c =>
@@ -1597,10 +1602,11 @@ object Chunk extends CollectorK[Chunk] {
       (Chunk.buffer(bldr.result), cur)
     }
 
-  implicit def fs2EqForChunk[A: Eq]: Eq[Chunk[A]] = new Eq[Chunk[A]] {
-    def eqv(c1: Chunk[A], c2: Chunk[A]) =
-      c1.size === c2.size && (0 until c1.size).forall(i => c1(i) === c2(i))
-  }
+  implicit def fs2EqForChunk[A: Eq]: Eq[Chunk[A]] =
+    new Eq[Chunk[A]] {
+      def eqv(c1: Chunk[A], c2: Chunk[A]) =
+        c1.size === c2.size && (0 until c1.size).forall(i => c1(i) === c2(i))
+    }
 
   /**
     * `Traverse`, `Monad`, `Alternative`, and `TraverseFilter` instance for `Chunk`.
@@ -1634,21 +1640,22 @@ object Chunk extends CollectorK[Chunk] {
         val buf = collection.mutable.Buffer.newBuilder[B]
         var state = List(f(a).iterator)
         @tailrec
-        def go(): Unit = state match {
-          case Nil => ()
-          case h :: tail if h.isEmpty =>
-            state = tail
-            go()
-          case h :: tail =>
-            h.next match {
-              case Right(b) =>
-                buf += b
-                go()
-              case Left(a) =>
-                state = (f(a).iterator) :: h :: tail
-                go()
-            }
-        }
+        def go(): Unit =
+          state match {
+            case Nil => ()
+            case h :: tail if h.isEmpty =>
+              state = tail
+              go()
+            case h :: tail =>
+              h.next match {
+                case Right(b) =>
+                  buf += b
+                  go()
+                case Left(a) =>
+                  state = (f(a).iterator) :: h :: tail
+                  go()
+              }
+          }
         go()
         Chunk.buffer(buf.result)
       }
@@ -1745,10 +1752,11 @@ object Chunk extends CollectorK[Chunk] {
     /** Converts this chunk queue to a single chunk, copying all chunks to a single chunk. */
     def toChunk: Chunk[A] = Chunk.concat(chunks, size)
 
-    override def equals(that: Any): Boolean = that match {
-      case that: Queue[A] => size == that.size && chunks == that.chunks
-      case _              => false
-    }
+    override def equals(that: Any): Boolean =
+      that match {
+        case that: Queue[A] => size == that.size && chunks == that.chunks
+        case _              => false
+      }
 
     override def hashCode: Int = chunks.hashCode
 

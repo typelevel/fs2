@@ -24,9 +24,9 @@ object text {
      */
     def continuationBytes(b: Byte): Int =
       if ((b & 0x80) == 0x00) 0 // ASCII byte
-      else if ((b & 0xE0) == 0xC0) 1 // leading byte of a 2 byte seq
-      else if ((b & 0xF0) == 0xE0) 2 // leading byte of a 3 byte seq
-      else if ((b & 0xF8) == 0xF0) 3 // leading byte of a 4 byte seq
+      else if ((b & 0xe0) == 0xc0) 1 // leading byte of a 2 byte seq
+      else if ((b & 0xf0) == 0xe0) 2 // leading byte of a 3 byte seq
+      else if ((b & 0xf8) == 0xf0) 3 // leading byte of a 4 byte seq
       else -1 // continuation byte or garbage
 
     /*
@@ -91,9 +91,8 @@ object text {
               if (newBuffer.take(3).toChunk == utf8Bom) newBuffer.drop(3)
               else newBuffer
             doPull(Chunk.empty, Stream.emits(rem.chunks) ++ tl)
-          } else {
+          } else
             processByteOrderMark(Some(newBuffer), tl)
-          }
         case None =>
           buffer match {
             case Some(b) =>
@@ -160,18 +159,17 @@ object text {
           output: Vector[String],
           pendingLineFeed: Boolean
       ): (Chunk[String], Vector[String], Boolean) =
-        if (remainingInput.isEmpty) {
+        if (remainingInput.isEmpty)
           (Chunk.indexedSeq(output), buffer, pendingLineFeed)
-        } else {
+        else {
           val next = remainingInput.head
-          if (pendingLineFeed) {
+          if (pendingLineFeed)
             if (next.headOption == Some('\n')) {
               val out = (buffer.init :+ buffer.last.init).mkString
               go(next.tail +: remainingInput.tail, Vector.empty, output :+ out, false)
-            } else {
+            } else
               go(remainingInput, buffer, output, false)
-            }
-          } else {
+          else {
             val (out, carry) = linesFromString(next)
             val pendingLF =
               if (carry.nonEmpty) carry.last == '\r' else pendingLineFeed
@@ -241,35 +239,29 @@ object text {
           case c if alphabet.ignore(c) => // ignore
           case c =>
             val cidx = {
-              if (padding == 0) {
-                if (c == Pad) {
+              if (padding == 0)
+                if (c == Pad)
                   if (mod == 2 || mod == 3) {
                     padding += 1
                     0
-                  } else {
+                  } else
                     return paddingError
-                  }
-                } else {
+                else
                   try alphabet.toIndex(c)
                   catch {
                     case _: IllegalArgumentException =>
                       return Left(s"Invalid base 64 character '$c' at index $idx")
                   }
-                }
-              } else {
-                if (c == Pad) {
-                  if (padding == 1 && mod == 3) {
-                    padding += 1
-                    0
-                  } else {
-                    return paddingError
-                  }
-                } else {
-                  return Left(
-                    s"Unexpected character '$c' at index $idx after padding character; only '=' and whitespace characters allowed after first padding character"
-                  )
-                }
-              }
+              else if (c == Pad)
+                if (padding == 1 && mod == 3) {
+                  padding += 1
+                  0
+                } else
+                  return paddingError
+              else
+                return Left(
+                  s"Unexpected character '$c' at index $idx after padding character; only '=' and whitespace characters allowed after first padding character"
+                )
             }
             mod match {
               case 0 =>
@@ -368,13 +360,12 @@ object text {
       }
       (bldr: Buffer).flip
       val out = bldr.toString
-      if (mod == 0) {
+      if (mod == 0)
         (out, ByteVector.empty)
-      } else if (mod == 1) {
+      else if (mod == 1)
         (out, ByteVector(bytes(idx)))
-      } else {
+      else
         (out, ByteVector(bytes(idx), bytes(idx + 1)))
-      }
     }
 
     def go(carry: ByteVector, s: Stream[F, Byte]): Pull[F, String, Unit] =

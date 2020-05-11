@@ -163,8 +163,8 @@ object Queue {
       forStrategy(Strategy.circularBuffer(maxSize))
 
     /** Created a bounded queue that distributed always at max `fairSize` elements to any subscriber. */
-    def fairBounded[F[_], A](maxSize: Int, fairSize: Int)(
-        implicit F: Concurrent[F]
+    def fairBounded[F[_], A](maxSize: Int, fairSize: Int)(implicit
+        F: Concurrent[F]
     ): G[Queue[F, A]] =
       forStrategy(Strategy.boundedFifo(maxSize).transformSelector[Int]((sz, _) => sz.min(fairSize)))
 
@@ -177,8 +177,8 @@ object Queue {
       forStrategy(Strategy.synchronous)
 
     /** Like [[synchronous]], except that any enqueue of `None` will never block and cancels any dequeue operation. */
-    def synchronousNoneTerminated[F[_], A](
-        implicit F: Concurrent[F]
+    def synchronousNoneTerminated[F[_], A](implicit
+        F: Concurrent[F]
     ): G[NoneTerminatedQueue[F, A]] =
       forStrategyNoneTerminated(PubSub.Strategy.closeNow(Strategy.synchronous))
 
@@ -198,10 +198,11 @@ object Queue {
           def dequeue1: F[A] =
             pubSub.get(1).flatMap(headUnsafe[F, A])
 
-          def tryDequeue1: F[Option[A]] = pubSub.tryGet(1).flatMap {
-            case Some(chunk) => headUnsafe[F, A](chunk).map(Some(_))
-            case None        => Applicative[F].pure(None)
-          }
+          def tryDequeue1: F[Option[A]] =
+            pubSub.tryGet(1).flatMap {
+              case Some(chunk) => headUnsafe[F, A](chunk).map(Some(_))
+              case None        => Applicative[F].pure(None)
+            }
 
           def dequeueChunk1(maxSize: Int): F[Chunk[A]] =
             pubSub.get(maxSize)
@@ -473,28 +474,30 @@ object InspectableQueue {
 
           def offer1(a: A): F[Boolean] = pubSub.tryPublish(a)
 
-          def dequeue1: F[A] = pubSub.get(Right(1)).flatMap {
-            case Left(s) =>
-              Sync[F].raiseError(
-                new Throwable(
-                  s"Inspectable `dequeue1` requires chunk of size 1 with `A` got Left($s)"
+          def dequeue1: F[A] =
+            pubSub.get(Right(1)).flatMap {
+              case Left(s) =>
+                Sync[F].raiseError(
+                  new Throwable(
+                    s"Inspectable `dequeue1` requires chunk of size 1 with `A` got Left($s)"
+                  )
                 )
-              )
-            case Right(chunk) =>
-              Queue.headUnsafe[F, A](chunk)
-          }
+              case Right(chunk) =>
+                Queue.headUnsafe[F, A](chunk)
+            }
 
-          def tryDequeue1: F[Option[A]] = pubSub.tryGet(Right(1)).flatMap {
-            case None => Applicative[F].pure(None)
-            case Some(Left(s)) =>
-              Sync[F].raiseError(
-                new Throwable(
-                  s"Inspectable `dequeue1` requires chunk of size 1 with `A` got Left($s)"
+          def tryDequeue1: F[Option[A]] =
+            pubSub.tryGet(Right(1)).flatMap {
+              case None => Applicative[F].pure(None)
+              case Some(Left(s)) =>
+                Sync[F].raiseError(
+                  new Throwable(
+                    s"Inspectable `dequeue1` requires chunk of size 1 with `A` got Left($s)"
+                  )
                 )
-              )
-            case Some(Right(chunk)) =>
-              Queue.headUnsafe[F, A](chunk).map(Some(_))
-          }
+              case Some(Right(chunk)) =>
+                Queue.headUnsafe[F, A](chunk).map(Some(_))
+            }
 
           def dequeueChunk1(maxSize: Int): F[Chunk[A]] =
             pubSub.get(Right(maxSize)).map(_.toOption.getOrElse(Chunk.empty))

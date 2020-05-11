@@ -234,17 +234,17 @@ class CompressionSpec extends Fs2Spec {
         .through(deflater)
         .through(inflater)
       for {
-        first <- stream
-          .fold(Vector.empty[Byte]) { case (vector, byte) => vector :+ byte }
-          .compile
-          .last
-        second <- stream
-          .fold(Vector.empty[Byte]) { case (vector, byte) => vector :+ byte }
-          .compile
-          .last
-      } yield {
-        assert(first == second)
-      }
+        first <-
+          stream
+            .fold(Vector.empty[Byte]) { case (vector, byte) => vector :+ byte }
+            .compile
+            .last
+        second <-
+          stream
+            .fold(Vector.empty[Byte]) { case (vector, byte) => vector :+ byte }
+            .compile
+            .last
+      } yield assert(first == second)
     }
 
     "gzip |> gunzip ~= id" in forAll(
@@ -458,8 +458,12 @@ class CompressionSpec extends Fs2Spec {
     }
 
     "gunzip limit fileName and comment length" in {
-      val longString
-          : String = Array.fill(1024 * 1024 + 1)("x").mkString("") // max(classic.fileNameBytesSoftLimit, classic.fileCommentBytesSoftLimit) + 1
+      val longString: String =
+        Array
+          .fill(1024 * 1024 + 1)("x")
+          .mkString(
+            ""
+          ) // max(classic.fileNameBytesSoftLimit, classic.fileCommentBytesSoftLimit) + 1
       val expectedFileName = Option(toEncodableFileName(longString))
       val expectedComment = Option(toEncodableComment(longString))
       Stream
@@ -524,17 +528,17 @@ class CompressionSpec extends Fs2Spec {
         .through(gunzipStream)
         .flatMap(_.content)
       for {
-        first <- stream
-          .fold(Vector.empty[Byte]) { case (vector, byte) => vector :+ byte }
-          .compile
-          .last
-        second <- stream
-          .fold(Vector.empty[Byte]) { case (vector, byte) => vector :+ byte }
-          .compile
-          .last
-      } yield {
-        assert(first == second)
-      }
+        first <-
+          stream
+            .fold(Vector.empty[Byte]) { case (vector, byte) => vector :+ byte }
+            .compile
+            .last
+        second <-
+          stream
+            .fold(Vector.empty[Byte]) { case (vector, byte) => vector :+ byte }
+            .compile
+            .last
+      } yield assert(first == second)
     }
 
     def toEncodableFileName(fileName: String): String =

@@ -37,9 +37,8 @@ class ChunkSpec extends Fs2Spec {
       if (isJVM) {
         assert(Chunk(1, 2, 3).isInstanceOf[Chunk.Ints])
         assert(Chunk("Hello", "world").isInstanceOf[Chunk.Boxed[_]])
-      } else {
+      } else
         Succeeded
-      }
     }
 
     "Chunk.seq is optimized" in {

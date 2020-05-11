@@ -64,12 +64,13 @@ class StreamSpec extends Fs2Spec {
         def singleBracketTest[F[_]: Sync, A](use: Stream[F, A]): F[Unit] =
           for {
             events <- Ref.of[F, Vector[BracketEvent]](Vector.empty)
-            _ <- recordBracketEvents(events)
-              .evalMap(_ => events.get.asserting(events => assert(events == Vector(Acquired))))
-              .flatMap(_ => use)
-              .compile
-              .drain
-              .handleErrorWith { case _: Err => Sync[F].pure(()) }
+            _ <-
+              recordBracketEvents(events)
+                .evalMap(_ => events.get.asserting(events => assert(events == Vector(Acquired))))
+                .flatMap(_ => use)
+                .compile
+                .drain
+                .handleErrorWith { case _: Err => Sync[F].pure(()) }
             _ <- events.get.asserting(it => assert(it == Vector(Acquired, Released)))
           } yield ()
 
@@ -84,12 +85,13 @@ class StreamSpec extends Fs2Spec {
         def appendBracketTest[F[_]: Sync, A](use1: Stream[F, A], use2: Stream[F, A]): F[Unit] =
           for {
             events <- Ref.of[F, Vector[BracketEvent]](Vector.empty)
-            _ <- recordBracketEvents(events)
-              .flatMap(_ => use1)
-              .append(recordBracketEvents(events).flatMap(_ => use2))
-              .compile
-              .drain
-              .handleErrorWith { case _: Err => Sync[F].pure(()) }
+            _ <-
+              recordBracketEvents(events)
+                .flatMap(_ => use1)
+                .append(recordBracketEvents(events).flatMap(_ => use2))
+                .compile
+                .drain
+                .handleErrorWith { case _: Err => Sync[F].pure(()) }
             _ <- events.get.asserting { it =>
               assert(it == Vector(Acquired, Released, Acquired, Released))
             }
@@ -637,7 +639,9 @@ class StreamSpec extends Fs2Spec {
                 def record(s: String): IO[Unit] = st.update(_ :+ s)
                 (Stream.bracket(IO("a"))(_ => record("first finalize")) ++
                   Stream.bracket(IO("b"))(_ => record("second finalize")) ++
-                  Stream.bracket(IO("c"))(_ => record("third finalize"))).compile.resource.lastOrError
+                  Stream.bracket(IO("c"))(_ =>
+                    record("third finalize")
+                  )).compile.resource.lastOrError
                   .use(x => record(x)) *> st.get
               }
               .asserting(it =>
@@ -769,7 +773,9 @@ class StreamSpec extends Fs2Spec {
                   def runner: Stream[IO, Unit] =
                     Stream
                       .bracket(runnerRun.set(true))(_ =>
-                        IO.sleep(100.millis) >> // assure this inner finalizer always take longer run than `outer`
+                        IO.sleep(
+                          100.millis
+                        ) >> // assure this inner finalizer always take longer run than `outer`
                           finRef.update(_ :+ "Inner") >> // signal finalizer invoked
                           IO.raiseError[Unit](new Err) // signal a failure
                       ) >> // flag the concurrently had chance to start, as if the `s` will be empty `runner` may not be evaluated at all.
@@ -883,7 +889,7 @@ class StreamSpec extends Fs2Spec {
       val s1List = s1.toList
       val s2List = s2.toList
       s1.covary[IO].either(s2).compile.toList.asserting { result =>
-        assert(result.collect { case Left(i)  => i } == s1List)
+        assert(result.collect { case Left(i) => i } == s1List)
         assert(result.collect { case Right(i) => i } == s2List)
       }
     }
@@ -2091,7 +2097,7 @@ class StreamSpec extends Fs2Spec {
             .assertThrows[Err]
         }
 
-        if (isJVM) {
+        if (isJVM)
           "3 - constant flatMap, failure after emit" in {
             forAll { (s1: Stream[Pure, Int]) =>
               s1.merge(Stream.raiseError[IO](new Err))
@@ -2101,7 +2107,6 @@ class StreamSpec extends Fs2Spec {
                 .assertThrows[Err]
             }
           }
-        }
       }
 
       "run finalizers of inner streams first" in forAll {
@@ -2202,7 +2207,7 @@ class StreamSpec extends Fs2Spec {
       s1.covary[IO].map(Left(_)).mergeHaltBoth(s2.map(Right(_))).compile.toList.asserting {
         result =>
           assert(
-            (result.collect { case Left(a)    => a } == s1List) ||
+            (result.collect { case Left(a) => a } == s1List) ||
               (result.collect { case Right(a) => a } == s2List)
           )
       }
@@ -2304,12 +2309,15 @@ class StreamSpec extends Fs2Spec {
           }
         }
 
-      observationTests("observe", new Observer {
-        def apply[F[_]: Concurrent, O](
-            s: Stream[F, O]
-        )(observation: Pipe[F, O, Unit]): Stream[F, O] =
-          s.observe(observation)
-      })
+      observationTests(
+        "observe",
+        new Observer {
+          def apply[F[_]: Concurrent, O](
+              s: Stream[F, O]
+          )(observation: Pipe[F, O, Unit]): Stream[F, O] =
+            s.observe(observation)
+        }
+      )
 
       observationTests(
         "observeAsync",
@@ -2341,7 +2349,9 @@ class StreamSpec extends Fs2Spec {
               .eval(IO(1))
               .append(Stream.eval(IO.raiseError(new Err)))
               .observe(_.drain)
-              .flatMap(_ => Stream.eval(IO.sleep(100.millis)) >> Stream(1, 2)) //Have to do some work here, so that we give time for the underlying stream to try pull more
+              .flatMap(_ =>
+                Stream.eval(IO.sleep(100.millis)) >> Stream(1, 2)
+              ) //Have to do some work here, so that we give time for the underlying stream to try pull more
               .take(2)
               .compile
               .toList
@@ -2461,13 +2471,12 @@ class StreamSpec extends Fs2Spec {
 
                   def finalizer(idx: Int): IO[Unit] =
                     // this introduces delay and failure based on bias of the test
-                    if (idx == biasIdx) {
+                    if (idx == biasIdx)
                       IO.sleep(100.millis) >>
                         finalizerRef.update(_ :+ s"Inner $idx") >>
                         IO.raiseError(err)
-                    } else {
+                    else
                       finalizerRef.update(_ :+ s"Inner $idx")
-                    }
 
                   val prg0 =
                     bracketed.flatMap { _ =>
@@ -2544,7 +2553,10 @@ class StreamSpec extends Fs2Spec {
       }
 
       "outer failed" in {
-        Stream(Stream.sleep_[IO](1.minute), Stream.raiseError[IO](new Err)).parJoinUnbounded.compile.drain
+        Stream(
+          Stream.sleep_[IO](1.minute),
+          Stream.raiseError[IO](new Err)
+        ).parJoinUnbounded.compile.drain
           .assertThrows[Err]
       }
 
@@ -2567,7 +2579,9 @@ class StreamSpec extends Fs2Spec {
             .scan(0)((acc, _) => acc + 1)
             .evalMap { n =>
               if (n % 2 != 0)
-                pause.set(true) >> ((Stream.sleep_[IO](10.millis) ++ Stream.eval(pause.set(false))).compile.drain).start >> IO
+                pause.set(true) >> ((Stream.sleep_[IO](10.millis) ++ Stream.eval(
+                  pause.set(false)
+                )).compile.drain).start >> IO
                   .pure(n)
               else IO.pure(n)
             }
@@ -3201,7 +3215,9 @@ class StreamSpec extends Fs2Spec {
         .map(_._2)
         .compile
         .toList
-        .asserting(result => assert(result.head >= (delay * 0.95))) // Allow for sleep starting just before duration measurement
+        .asserting(result =>
+          assert(result.head >= (delay * 0.95))
+        ) // Allow for sleep starting just before duration measurement
     }
 
     "sliding" in forAll { (s: Stream[Pure, Int], n0: PosInt) =>

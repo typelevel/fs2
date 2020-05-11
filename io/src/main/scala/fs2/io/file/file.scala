@@ -112,7 +112,7 @@ package object file {
         case Some((hd, tl)) =>
           val newAcc = acc + hd.size
           cursor.writePull(hd).flatMap { nc =>
-            if (newAcc >= limit) {
+            if (newAcc >= limit)
               Pull
                 .eval {
                   fileHotswap
@@ -120,9 +120,8 @@ package object file {
                     .flatMap(newCursor)
                 }
                 .flatMap(nc => go(fileHotswap, nc, 0L, tl))
-            } else {
+            else
               go(fileHotswap, nc, newAcc, tl)
-            }
           }
         case None => Pull.done
       }
