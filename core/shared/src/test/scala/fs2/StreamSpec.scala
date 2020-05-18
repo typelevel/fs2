@@ -529,7 +529,7 @@ class StreamSpec extends Fs2Spec {
 
     "collectFirst" in forAll { (s: Stream[Pure, Int]) =>
       val pf: PartialFunction[Int, Int] = { case x if x % 2 == 0 => x }
-      assert(s.collectFirst(pf).toVector == s.toVector.collectFirst(pf))
+      assert(s.collectFirst(pf).toVector.headOption == s.toVector.collectFirst(pf))
     }
 
     "collectWhile" in forAll { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
