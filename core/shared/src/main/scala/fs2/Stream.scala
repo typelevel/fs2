@@ -508,7 +508,7 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
     * }}}
     */
   def collectWhile[O2](pf: PartialFunction[O, O2]): Stream[F, O2] =
-    takeWhile(pf.isDefinedAt).collect(pf)
+    takeWhile(pf.isDefinedAt).map(pf)
 
   /**
     * Gets a projection of this stream that allows converting it to an `F[..]` in a number of ways.
