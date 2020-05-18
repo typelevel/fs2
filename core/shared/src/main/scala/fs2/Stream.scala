@@ -499,6 +499,14 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
       }
       .stream
 
+  /**
+    * Like [[collect]] but terminates as soon as the partial function is undefined.
+    *
+    * @example {{{
+    * scala> Stream(Some(1), Some(2), Some(3), None, Some(4)).collect { case Some(i) => i }.toList
+    * res0: List[Int] = List(1, 2, 3)
+    * }}}
+    */
   def collectWhile[O2](pf: PartialFunction[O, O2]): Stream[F, O2] =
     takeWhile(pf.isDefinedAt).collect(pf)
 
