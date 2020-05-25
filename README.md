@@ -139,6 +139,7 @@ If you have a project you'd like to include in this list, either open a PR or le
   * [fd4s/fs2-kafka](https://github.com/fd4s/fs2-kafka): Functional Kafka Streams for Scala.
   * [spinoco/fs2-kafka](https://github.com/Spinoco/fs2-kafka): Simple client for Apache Kafka.
 * [fs2-mail](https://github.com/Spinoco/fs2-mail): Fully asynchronous java non-blocking email client using fs2.
+* [fs2-mqtt](https://github.com/user-signal/fs2-mqtt): A purely functional MQTT client library based on fs2 and cats effect.
 * [fs2-rabbit](https://github.com/gvolpe/fs2-rabbit): RabbitMQ stream-based client built on top of Fs2.
 * [fs2-reactive-streams](https://github.com/zainab-ali/fs2-reactive-streams): A reactive streams implementation for fs2.
 * [fs2-redis](https://github.com/gvolpe/fs2-redis): Redis stream-based client built on top of Fs2 / Cats Effect.
