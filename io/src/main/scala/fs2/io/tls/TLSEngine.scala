@@ -113,7 +113,7 @@ private[tls] object TLSEngine {
                 }
               case None => Applicative[F].pure(None)
             },
-            write0(Chunk.empty, None) >> read0(maxBytes, timeout)
+            write(Chunk.empty, None) >> read0(maxBytes, timeout)
           )
 
       /** Performs an unwrap operation on the underlying engine. */
