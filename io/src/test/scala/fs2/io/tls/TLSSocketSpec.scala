@@ -3,14 +3,14 @@ package io
 package tls
 
 import scala.util.control.NonFatal
+import scala.concurrent.duration._
 
-import java.net.InetSocketAddress
+import java.net.{InetAddress, InetSocketAddress}
 import javax.net.ssl.{SNIHostName, SSLContext}
 
 import cats.effect.{Blocker, IO}
 
 import fs2.io.tcp.SocketGroup
-import java.net.InetAddress
 
 class TLSSocketSpec extends TLSSpec {
   "TLSSocket" - {
@@ -76,14 +76,59 @@ class TLSSocketSpec extends TLSSpec {
                   val msg = Chunk.bytes("Hello, world!".getBytes)
                   val client = Stream.resource(socketGroup.client[IO](serverAddress)).flatMap {
                     clientSocket =>
-                      Stream.resource(tlsContext.client(clientSocket)).flatMap { clientSocketTls =>
-                        Stream.eval_(clientSocketTls.write(msg)) ++
-                          clientSocketTls.reads(8192).take(msg.size)
-                      }
+                      Stream
+                        .resource(
+                          tlsContext.client(
+                            clientSocket
+                            // logger = Some((m: String) =>
+                            //   IO.delay(println(s"${Console.MAGENTA}[TLS] $m${Console.RESET}"))
+                            // )
+                          )
+                        )
+                        .flatMap { clientSocketTls =>
+                          Stream.eval_(clientSocketTls.write(msg)) ++
+                            clientSocketTls.reads(8192).take(msg.size)
+                        }
                   }
 
                   client.concurrently(server).compile.to(Chunk).asserting(it => assert(it == msg))
               }
+          }
+        }
+      }
+    }
+
+    "client reads before writing" in {
+      Blocker[IO].use { blocker =>
+        SocketGroup[IO](blocker).use { socketGroup =>
+          socketGroup.client[IO](new InetSocketAddress("google.com", 443)).use { rawSocket =>
+            TLSContext.system[IO](blocker).flatMap { tlsContext =>
+              tlsContext
+                .client[IO](
+                  rawSocket,
+                  TLSParameters(
+                    serverNames = Some(List(new SNIHostName("www.google.com")))
+                  )
+                  // logger = Some((m: String) =>
+                  //   IO.delay(println(s"${Console.MAGENTA}[TLS] $m${Console.RESET}"))
+                  // )
+                )
+                .use { socket =>
+                  val send = Stream("GET / HTTP/1.1\r\nHost: www.google.com\r\n\r\n")
+                    .through(text.utf8Encode)
+                    .through(socket.writes())
+                  val receive = socket
+                    .reads(8192)
+                    .through(text.utf8Decode)
+                    .through(text.lines)
+                    .head
+                  receive
+                    .concurrently(send.delayBy(100.millis))
+                    .compile
+                    .string
+                    .asserting(it => assert(it == "HTTP/1.1 200 OK"))
+                }
+            }
           }
         }
       }
