@@ -240,8 +240,12 @@ lazy val mimaSettings = Seq(
     ), // FSM is package private
     ProblemFilters.exclude[Problem]("fs2.io.tls.TLSEngine.*"), // private[fs2] type
     ProblemFilters.exclude[Problem]("fs2.io.tls.TLSEngine#*"),
-    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.tls.TLSSocket.fs2$io$tls$TLSSocket$$binding$default$2"),
-    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.tls.TLSSocket.fs2$io$tls$TLSSocket$$binding$default$3")
+    ProblemFilters.exclude[DirectMissingMethodProblem](
+      "fs2.io.tls.TLSSocket.fs2$io$tls$TLSSocket$$binding$default$2"
+    ),
+    ProblemFilters.exclude[DirectMissingMethodProblem](
+      "fs2.io.tls.TLSSocket.fs2$io$tls$TLSSocket$$binding$default$3"
+    )
   )
 )
 
