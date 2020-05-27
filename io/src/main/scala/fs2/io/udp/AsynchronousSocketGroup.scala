@@ -219,7 +219,7 @@ private[udp] object AsynchronousSocketGroup {
             val bytes = new Array[Byte](readBuffer.remaining)
             readBuffer.get(bytes)
             (readBuffer: Buffer).clear()
-            reader(Right(new Packet(src, Chunk.bytes(bytes))))
+            reader(Right(Packet(src, Chunk.bytes(bytes))))
             true
           }
         } catch {

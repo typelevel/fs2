@@ -69,7 +69,7 @@ object TLSParameters {
       needClientAuth: Boolean = false,
       wantClientAuth: Boolean = false
   ): TLSParameters =
-    new DefaultTLSParameters(
+    DefaultTLSParameters(
       algorithmConstraints,
       applicationProtocols,
       cipherSuites,
