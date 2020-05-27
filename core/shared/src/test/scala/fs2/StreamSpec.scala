@@ -529,7 +529,14 @@ class StreamSpec extends Fs2Spec {
 
     "collectFirst" in forAll { (s: Stream[Pure, Int]) =>
       val pf: PartialFunction[Int, Int] = { case x if x % 2 == 0 => x }
-      assert(s.collectFirst(pf).toVector == s.collectFirst(pf).toVector)
+      assert(s.collectFirst(pf).toVector.headOption == s.toVector.collectFirst(pf))
+    }
+
+    "collectWhile" in forAll { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
+      val pf: PartialFunction[Int, Int] = { case x if x % 2 == 0 => x }
+      val even = s1.filter(_ % 2 == 0)
+      val odd = s2.filter(_ % 2 != 0)
+      assert((even ++ odd).collectWhile(pf).toVector == even.toVector)
     }
 
     "compile" - {
