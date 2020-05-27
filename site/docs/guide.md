@@ -199,6 +199,14 @@ The `handleErrorWith` method lets us catch any of these errors:
 err.handleErrorWith { e => Stream.emit(e.getMessage) }.compile.toList.unsafeRunSync()
 ```
 
+The `handleErrorWith` method function parameter is invoked when a stream terminates, and the stream is completed in failure.  In the following stream the second element will result in division by zero, causing an ArtithmeticException:
+
+```scala mdoc
+(Stream(1,2,3,4) ++ Stream.eval(IO.pure(5))).map(i => i / (i % 2)).handleErrorWith{ _ => Stream(0) }
+```
+
+The result will be a stream with a single integer zero.
+
 _Note: Don't use `handleErrorWith` for doing resource cleanup; use `bracket` as discussed in the next section. Also see [this section of the appendix](#a1) for more details._
 
 ### Resource acquisition
