@@ -34,6 +34,7 @@ If you have a project you'd like to include in this list, either open a PR or le
 * [fs2-jms](https://github.com/kiambogo/fs2-jms): Java Messaging Service (JMS) connectors for FS2 streams
 * [fs2-kafka](https://github.com/Spinoco/fs2-kafka): Simple client for Apache Kafka.
 * [fs2-mail](https://github.com/Spinoco/fs2-mail): Fully asynchronous java non-blocking email client using fs2.
+* [fs2-mqtt](https://github.com/user-signal/fs2-mqtt): A purely functional MQTT client library based on fs2 and cats effect.
 * [fs2-rabbit](https://fs2-rabbit.profunktor.dev/): RabbitMQ stream-based client built on top of fs2 and cats effect.
 * [fs2-reactive-streams](https://github.com/zainab-ali/fs2-reactive-streams): A reactive streams implementation for fs2.
 * [fs2-zk](https://github.com/Spinoco/fs2-zk): Simple Apache Zookeeper bindings for fs2.

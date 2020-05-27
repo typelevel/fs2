@@ -123,7 +123,8 @@ If you have a project you'd like to include in this list, either open a PR or le
 * [chromaprint](https://github.com/mgdigital/Chromaprint.scala): A Scala implementation of the Chromaprint/AcoustID audio fingerprinting algorithm, built with fs2 streams / Cats Effect.
 * [circe-fs2](https://github.com/circe/circe-fs2): Streaming JSON manipulation with [circe](https://github.com/circe/circe).
 * [doobie](https://github.com/tpolecat/doobie): Pure functional JDBC built on fs2.
-* [fs2-aws](https://github.com/saksdirect/fs2-aws): FS2 streams to interact with AWS utilities
+* [fs2-aws](https://github.com/laserdisc-io/fs2-aws): FS2 streams to interact with AWS utilities
+* [mysql-binlog-stream](https://github.com/laserdisc-io/mysql-binlog-stream): Stream MySQL binlog events with FS2
 * [fs2-blobstore](https://github.com/fs2-blobstore/fs2-blobstore): Minimal, idiomatic, stream-based Scala interface for S3, GCS, SFTP and other key/value store implementations.
 * [fs2-cassandra](https://github.com/Spinoco/fs2-cassandra): Cassandra bindings for fs2.
 * [fs2-columns](https://gitlab.com/lJoublanc/fs2-columns): a `Chunk` that uses [shapeless](https://github.com/milessabin/shapeless) to store `case class` data column-wise.
@@ -138,6 +139,7 @@ If you have a project you'd like to include in this list, either open a PR or le
   * [fd4s/fs2-kafka](https://github.com/fd4s/fs2-kafka): Functional Kafka Streams for Scala.
   * [spinoco/fs2-kafka](https://github.com/Spinoco/fs2-kafka): Simple client for Apache Kafka.
 * [fs2-mail](https://github.com/Spinoco/fs2-mail): Fully asynchronous java non-blocking email client using fs2.
+* [fs2-mqtt](https://github.com/user-signal/fs2-mqtt): A purely functional MQTT client library based on fs2 and cats effect.
 * [fs2-rabbit](https://github.com/gvolpe/fs2-rabbit): RabbitMQ stream-based client built on top of Fs2.
 * [fs2-reactive-streams](https://github.com/zainab-ali/fs2-reactive-streams): A reactive streams implementation for fs2.
 * [fs2-redis](https://github.com/gvolpe/fs2-redis): Redis stream-based client built on top of Fs2 / Cats Effect.
