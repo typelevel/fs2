@@ -73,7 +73,7 @@ class TLSSocketSpec extends TLSSpec {
                     }
                   }.parJoinUnbounded
 
-                  val msg = Chunk.bytes("Hello, world!".getBytes)
+                  val msg = Chunk.bytes(("Hello, world! " * 20000).getBytes)
                   val client = Stream.resource(socketGroup.client[IO](serverAddress)).flatMap {
                     clientSocket =>
                       Stream

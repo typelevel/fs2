@@ -82,7 +82,7 @@ private[tls] object InputOutputBuffer {
             Sync[F].delay {
               (out: Buffer).flip()
               val cap = out.limit()
-              val dest = Array.ofDim[Byte](cap)
+              val dest = new Array[Byte](cap)
               out.get(dest)
               (out: Buffer).clear()
               Chunk.bytes(dest)
@@ -90,7 +90,7 @@ private[tls] object InputOutputBuffer {
         }
 
       private def expandBuffer(buffer: ByteBuffer, resizeTo: Int => Int): ByteBuffer = {
-        val copy = Array.ofDim[Byte](buffer.position())
+        val copy = new Array[Byte](buffer.position())
         val next = ByteBuffer.allocate(resizeTo(buffer.capacity()))
         (buffer: Buffer).flip()
         buffer.get(copy)
