@@ -76,7 +76,7 @@ private[tls] object TLSEngine {
                 doWrite(timeout) >> {
                   result.getHandshakeStatus match {
                     case SSLEngineResult.HandshakeStatus.NOT_HANDSHAKING =>
-                      wrapBuffer.inputRemains.map(_ > 0).ifM(wrap(timeout), Applicative[F].unit)
+                      wrapBuffer.inputRemains.flatMap(x => wrap(timeout).whenA(x > 0))
                     case _ =>
                       handshakeSemaphore
                         .withPermit(stepHandshake(result, true, timeout)) >> wrap(timeout)
