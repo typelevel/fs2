@@ -227,3 +227,18 @@ object ZipThenBindThenParJoin extends App {
     .drain
     .unsafeRunSync()
 }
+
+object RetrySanityTest extends App {
+  implicit val cs: ContextShift[IO] = IO.contextShift(ExecutionContext.Implicits.global)
+  implicit val timer: Timer[IO] = IO.timer(ExecutionContext.global)
+  import scala.concurrent.duration._
+
+  Stream.retry(IO.unit, 1.second, _ * 2, 10).repeat.compile.drain.unsafeRunSync()
+}
+
+object AttemptsThenPullSanityTest extends App {
+  implicit val cs: ContextShift[IO] = IO.contextShift(ExecutionContext.Implicits.global)
+  implicit val timer: Timer[IO] = IO.timer(ExecutionContext.global)
+  import scala.concurrent.duration._
+  Stream.eval(IO.unit).attempts(Stream.constant(1.second)).head.repeat.compile.drain.unsafeRunSync()
+}
