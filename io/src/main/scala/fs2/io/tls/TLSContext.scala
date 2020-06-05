@@ -2,18 +2,21 @@ package fs2
 package io
 package tls
 
+import scala.concurrent.duration._
+
+import java.io.{FileInputStream, InputStream}
 import java.net.InetSocketAddress
+import java.nio.file.Path
 import java.security.KeyStore
 import java.security.cert.X509Certificate
 import javax.net.ssl.{KeyManagerFactory, SSLContext, TrustManagerFactory, X509TrustManager}
 
+import cats.Applicative
 import cats.effect.{Blocker, Concurrent, ContextShift, Resource, Sync}
 import cats.implicits._
 
 import fs2.io.tcp.Socket
-import java.io.InputStream
-import java.nio.file.Path
-import java.io.FileInputStream
+import fs2.io.udp.Packet
 
 /**
   * Allows creation of [[TLSSocket]]s.
@@ -104,6 +107,12 @@ object TLSContext {
         Resource
           .liftF(
             engine(
+              new TLSEngine.Binding[F] {
+                def write(data: Chunk[Byte], timeout: Option[FiniteDuration]): F[Unit] =
+                  socket.write(data, timeout)
+                def read(maxBytes: Int, timeout: Option[FiniteDuration]): F[Option[Chunk[Byte]]] =
+                  socket.read(maxBytes, timeout)
+              },
               blocker,
               clientMode,
               params,
@@ -150,6 +159,13 @@ object TLSContext {
         Resource
           .liftF(
             engine(
+              new TLSEngine.Binding[F] {
+                def write(data: Chunk[Byte], timeout: Option[FiniteDuration]): F[Unit] =
+                  if (data.isEmpty) Applicative[F].unit
+                  else socket.write(Packet(remoteAddress, data), timeout)
+                def read(maxBytes: Int, timeout: Option[FiniteDuration]): F[Option[Chunk[Byte]]] =
+                  socket.read(timeout).map(p => Some(p.bytes))
+              },
               blocker,
               clientMode,
               params,
@@ -159,6 +175,7 @@ object TLSContext {
           .flatMap(engine => DTLSSocket(socket, remoteAddress, engine))
 
       private def engine[F[_]: Concurrent: ContextShift](
+          binding: TLSEngine.Binding[F],
           blocker: Blocker,
           clientMode: Boolean,
           params: TLSParameters,
@@ -170,7 +187,7 @@ object TLSContext {
           engine.setSSLParameters(params.toSSLParameters)
           engine
         }
-        sslEngine.flatMap(TLSEngine[F](_, blocker, logger))
+        sslEngine.flatMap(TLSEngine[F](_, binding, blocker, logger))
       }
     }
 

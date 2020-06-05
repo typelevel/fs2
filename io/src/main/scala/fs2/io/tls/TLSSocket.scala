@@ -33,16 +33,6 @@ sealed trait TLSSocket[F[_]] extends Socket[F] {
 
 object TLSSocket {
 
-  private def binding[F[_]](
-      socket: Socket[F],
-      writeTimeout: Option[FiniteDuration] = None,
-      readMaxBytes: Int = 16 * 1024
-  ): TLSEngine.Binding[F] =
-    new TLSEngine.Binding[F] {
-      def write(data: Chunk[Byte]) = socket.write(data, writeTimeout)
-      def read = socket.read(readMaxBytes, None)
-    }
-
   private[tls] def apply[F[_]: Concurrent](
       socket: Socket[F],
       engine: TLSEngine[F]
@@ -57,18 +47,10 @@ object TLSSocket {
       readSem <- Semaphore(1)
     } yield new TLSSocket[F] {
       def write(bytes: Chunk[Byte], timeout: Option[FiniteDuration]): F[Unit] =
-        engine.wrap(bytes, binding(socket, writeTimeout = timeout))
+        engine.write(bytes, timeout)
 
       private def read0(maxBytes: Int, timeout: Option[FiniteDuration]): F[Option[Chunk[Byte]]] =
-        socket.read(maxBytes, timeout).flatMap {
-          case Some(c) =>
-            engine.unwrap(c, binding(socket)).flatMap {
-              case Some(c) => Applicative[F].pure(Some(c))
-              case None    => read0(maxBytes, timeout)
-            }
-          case None =>
-            Applicative[F].pure(None)
-        }
+        engine.read(maxBytes, timeout)
 
       def readN(numBytes: Int, timeout: Option[FiniteDuration]): F[Option[Chunk[Byte]]] =
         readSem.withPermit {
@@ -76,7 +58,7 @@ object TLSSocket {
             val toRead = numBytes - acc.size
             if (toRead <= 0) Applicative[F].pure(Some(acc.toChunk))
             else
-              read(numBytes, timeout).flatMap {
+              read0(numBytes, timeout).flatMap {
                 case Some(chunk) => go(acc :+ chunk): F[Option[Chunk[Byte]]]
                 case None        => Applicative[F].pure(Some(acc.toChunk)): F[Option[Chunk[Byte]]]
               }
