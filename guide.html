@@ -1,4 +1,4 @@
-<!DOCTYPE html><html><head><title>fs2: Guide</title><meta charset="utf-8" /><meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="author" content="co.fs2" /><meta name="description" content="Purely functional, effectful, resource-safe, concurrent streams for Scala" /><meta name="og:image" content="/img/poster.png" /><meta name="image" property="og:image" content="/img/poster.png" /><meta name="og:title" content="fs2: Guide" /><meta name="title" property="og:title" content="fs2: Guide" /><meta name="og:site_name" content="fs2" /><meta name="og:url" content="https://github.com/functional-streams-for-scala/fs2" /><meta name="og:type" content="website" /><meta name="og:description" content="Purely functional, effectful, resource-safe, concurrent streams for Scala" /><link rel="icon" type="image/png" href="/img/favicon.png" /><meta name="twitter:title" content="fs2: Guide" /><meta name="twitter:image" content="/img/poster.png" /><meta name="twitter:description" content="Purely functional, effectful, resource-safe, concurrent streams for Scala" /><meta name="twitter:card" content="summary_large_image" /><link rel="icon" type="image/png" sizes="16x16" href="/img/favicon16x16.png" /><link rel="icon" type="image/png" sizes="24x24" href="/img/favicon24x24.png" /><link rel="icon" type="image/png" sizes="32x32" href="/img/favicon32x32.png" /><link rel="icon" type="image/png" sizes="48x48" href="/img/favicon48x48.png" /><link rel="icon" type="image/png" sizes="57x57" href="/img/favicon57x57.png" /><link rel="icon" type="image/png" sizes="60x60" href="/img/favicon60x60.png" /><link rel="icon" type="image/png" sizes="64x64" href="/img/favicon64x64.png" /><link rel="icon" type="image/png" sizes="70x70" href="/img/favicon70x70.png" /><link rel="icon" type="image/png" sizes="72x72" href="/img/favicon72x72.png" /><link rel="icon" type="image/png" sizes="76x76" href="/img/favicon76x76.png" /><link rel="icon" type="image/png" sizes="96x96" href="/img/favicon96x96.png" /><link rel="icon" type="image/png" sizes="114x114" href="/img/favicon114x114.png" /><link rel="icon" type="image/png" sizes="120x120" href="/img/favicon120x120.png" /><link rel="icon" type="image/png" sizes="128x128" href="/img/favicon128x128.png" /><link rel="icon" type="image/png" sizes="144x144" href="/img/favicon144x144.png" /><link rel="icon" type="image/png" sizes="150x150" href="/img/favicon150x150.png" /><link rel="icon" type="image/png" sizes="152x152" href="/img/favicon152x152.png" /><link rel="icon" type="image/png" sizes="196x196" href="/img/favicon196x196.png" /><link rel="icon" type="image/png" sizes="310x310" href="/img/favicon310x310.png" /><link rel="icon" type="image/png" sizes="310x150" href="/img/favicon310x150.png" /><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css" /><link rel="stylesheet" href="/highlight/styles/atom-one-light.css" /><link rel="stylesheet" href="/css/light-style.css" /></head><body class="page"><nav id="navigation" aria-labelledby="main-navigation"><div class="navbar-wrapper container"><div class="navigation-brand"><a href="/" class="brand custom-feature-icon"><div class="page-icon-wrapper"></div><span class="brand-title">fs2</span></a></div><div class="navigation-menu"><ul><li><a href="https://github.com/functional-streams-for-scala/fs2" target="_blank" rel="noopener noreferrer"><i class="nav-item-icon fa fa-lg fa-github" hidden="true"></i><span class="nav-item-text">GitHub</span></a></li></ul></div></div></nav><nav class="menu-container" aria-labelledby="section-navigation"><div id="horizontal-menu"><ul class="horizontal-nav"><li><a class="" href="/">Home</a></li><li><a class=" active " href="/guide.html">Guide</a></li><li><a class="" href="/concurrency-primitives.html">Concurrency Primitives</a></li><li><a class="" href="/io.html">I/O</a></li><li><a class="" href="/faq.html">FAQ</a></li><li><a class="" href="/documentation.html">Documentation</a></li><li><a class="" href="/ecosystem.html">Community</a></li></ul></div></nav><main id="site-main" class="page-site-main"><section class="use"><div class="container"><div id="content"><!--
+<!DOCTYPE html><html><head><title>fs2: Guide</title><meta charset="utf-8" /><meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="author" content="co.fs2" /><meta name="description" content="Purely functional, effectful, resource-safe, concurrent streams for Scala" /><meta name="og:image" content="/img/poster.png" /><meta name="image" property="og:image" content="/img/poster.png" /><meta name="og:title" content="fs2: Guide" /><meta name="title" property="og:title" content="fs2: Guide" /><meta name="og:site_name" content="fs2" /><meta name="og:url" content="https://github.com/functional-streams-for-scala/fs2" /><meta name="og:type" content="website" /><meta name="og:description" content="Purely functional, effectful, resource-safe, concurrent streams for Scala" /><link rel="icon" type="image/png" href="/img/favicon.png" /><meta name="twitter:title" content="fs2: Guide" /><meta name="twitter:image" content="/img/poster.png" /><meta name="twitter:description" content="Purely functional, effectful, resource-safe, concurrent streams for Scala" /><meta name="twitter:card" content="summary_large_image" /><link rel="icon" type="image/png" sizes="16x16" href="/img/favicon16x16.png" /><link rel="icon" type="image/png" sizes="24x24" href="/img/favicon24x24.png" /><link rel="icon" type="image/png" sizes="32x32" href="/img/favicon32x32.png" /><link rel="icon" type="image/png" sizes="48x48" href="/img/favicon48x48.png" /><link rel="icon" type="image/png" sizes="57x57" href="/img/favicon57x57.png" /><link rel="icon" type="image/png" sizes="60x60" href="/img/favicon60x60.png" /><link rel="icon" type="image/png" sizes="64x64" href="/img/favicon64x64.png" /><link rel="icon" type="image/png" sizes="70x70" href="/img/favicon70x70.png" /><link rel="icon" type="image/png" sizes="72x72" href="/img/favicon72x72.png" /><link rel="icon" type="image/png" sizes="76x76" href="/img/favicon76x76.png" /><link rel="icon" type="image/png" sizes="96x96" href="/img/favicon96x96.png" /><link rel="icon" type="image/png" sizes="114x114" href="/img/favicon114x114.png" /><link rel="icon" type="image/png" sizes="120x120" href="/img/favicon120x120.png" /><link rel="icon" type="image/png" sizes="128x128" href="/img/favicon128x128.png" /><link rel="icon" type="image/png" sizes="144x144" href="/img/favicon144x144.png" /><link rel="icon" type="image/png" sizes="150x150" href="/img/favicon150x150.png" /><link rel="icon" type="image/png" sizes="152x152" href="/img/favicon152x152.png" /><link rel="icon" type="image/png" sizes="196x196" href="/img/favicon196x196.png" /><link rel="icon" type="image/png" sizes="310x310" href="/img/favicon310x310.png" /><link rel="icon" type="image/png" sizes="310x150" href="/img/favicon310x150.png" /><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css" /><link rel="stylesheet" href="/highlight/styles/atom-one-light.css" /><link rel="stylesheet" href="/css/light-style.css" /><link rel="stylesheet" href="/css/styles.css" /></head><body class="page"><nav id="navigation" aria-labelledby="main-navigation"><div class="navbar-wrapper container"><div class="navigation-brand"><a href="/" class="brand custom-feature-icon"><div class="page-icon-wrapper"></div><span class="brand-title">fs2</span></a></div><div class="navigation-menu"><ul><li><a href="https://github.com/functional-streams-for-scala/fs2" target="_blank" rel="noopener noreferrer"><i class="nav-item-icon fa fa-lg fa-github" hidden="true"></i><span class="nav-item-text">GitHub</span></a></li></ul></div></div></nav><nav class="menu-container" aria-labelledby="section-navigation"><div id="horizontal-menu"><ul class="horizontal-nav"><li><a class="" href="/">Home</a></li><li><a class=" active " href="/guide.html">Guide</a></li><li><a class="" href="/concurrency-primitives.html">Concurrency Primitives</a></li><li><a class="" href="/io.html">I/O</a></li><li><a class="" href="/faq.html">FAQ</a></li><li><a class="" href="/documentation.html">Documentation</a></li><li><a class="" href="/ecosystem.html">Community</a></li></ul></div></nav><main id="site-main" class="page-site-main"><section class="use"><div class="container"><div id="content"><!--
 This markdown file contains code examples which can be compiled using mdoc. Switch to `project docs`, then do `mdoc`. Output is produced in `docs/`.
 -->
 
@@ -227,6 +227,14 @@ In FS2 0.10.x, <code class="highlighter-rouge">Segment</code> played a large rol
 <span class="c1">// res25: List[String] = List("oh noes!")
 </span></code></pre></div></div>
 
+<p>The <code class="highlighter-rouge">handleErrorWith</code> method function parameter is invoked when a stream terminates, and the stream is completed in failure.  In the following stream the second element will result in division by zero, causing an ArtithmeticException:</p>
+
+<div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="o">(</span><span class="nc">Stream</span><span class="o">(</span><span class="mi">1</span><span class="o">,</span><span class="mi">2</span><span class="o">,</span><span class="mi">3</span><span class="o">,</span><span class="mi">4</span><span class="o">)</span> <span class="o">++</span> <span class="nv">Stream</span><span class="o">.</span><span class="py">eval</span><span class="o">(</span><span class="nv">IO</span><span class="o">.</span><span class="py">pure</span><span class="o">(</span><span class="mi">5</span><span class="o">))).</span><span class="py">map</span><span class="o">(</span><span class="n">i</span> <span class="k">=&gt;</span> <span class="n">i</span> <span class="o">/</span> <span class="o">(</span><span class="n">i</span> <span class="o">%</span> <span class="mi">2</span><span class="o">)).</span><span class="py">handleErrorWith</span><span class="o">{</span> <span class="k">_</span> <span class="k">=&gt;</span> <span class="nc">Stream</span><span class="o">(</span><span class="mi">0</span><span class="o">)</span> <span class="o">}</span>
+<span class="c1">// res26: Stream[IO[x], Int] = Stream(..)
+</span></code></pre></div></div>
+
+<p>The result will be a stream with a single integer zero.</p>
+
 <p><em>Note: Don’t use <code class="highlighter-rouge">handleErrorWith</code> for doing resource cleanup; use <code class="highlighter-rouge">bracket</code> as discussed in the next section. Also see <a href="#a1">this section of the appendix</a> for more details.</em></p>
 
 <h3 id="resource-acquisition">Resource acquisition</h3>
@@ -236,9 +244,9 @@ In FS2 0.10.x, <code class="highlighter-rouge">Segment</code> played a large rol
 <div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">val</span> <span class="nv">count</span> <span class="k">=</span> <span class="k">new</span> <span class="nv">java</span><span class="o">.</span><span class="py">util</span><span class="o">.</span><span class="py">concurrent</span><span class="o">.</span><span class="py">atomic</span><span class="o">.</span><span class="py">AtomicLong</span><span class="o">(</span><span class="mi">0</span><span class="o">)</span>
 <span class="c1">// count: java.util.concurrent.atomic.AtomicLong = 0
 </span><span class="k">val</span> <span class="nv">acquire</span> <span class="k">=</span> <span class="nc">IO</span> <span class="o">{</span> <span class="nf">println</span><span class="o">(</span><span class="s">"incremented: "</span> <span class="o">+</span> <span class="nv">count</span><span class="o">.</span><span class="py">incrementAndGet</span><span class="o">);</span> <span class="o">()</span> <span class="o">}</span>
-<span class="c1">// acquire: IO[Unit] = IO$178531618
+<span class="c1">// acquire: IO[Unit] = IO$1951830214
 </span><span class="k">val</span> <span class="nv">release</span> <span class="k">=</span> <span class="nc">IO</span> <span class="o">{</span> <span class="nf">println</span><span class="o">(</span><span class="s">"decremented: "</span> <span class="o">+</span> <span class="nv">count</span><span class="o">.</span><span class="py">decrementAndGet</span><span class="o">);</span> <span class="o">()</span> <span class="o">}</span>
-<span class="c1">// release: IO[Unit] = IO$902972128
+<span class="c1">// release: IO[Unit] = IO$114553775
 </span></code></pre></div></div>
 
 <div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nv">Stream</span><span class="o">.</span><span class="py">bracket</span><span class="o">(</span><span class="n">acquire</span><span class="o">)(</span><span class="k">_</span> <span class="k">=&gt;</span> <span class="n">release</span><span class="o">).</span><span class="py">flatMap</span><span class="o">(</span><span class="k">_</span> <span class="k">=&gt;</span> <span class="nc">Stream</span><span class="o">(</span><span class="mi">1</span><span class="o">,</span><span class="mi">2</span><span class="o">,</span><span class="mi">3</span><span class="o">)</span> <span class="o">++</span> <span class="n">err</span><span class="o">).</span><span class="py">compile</span><span class="o">.</span><span class="py">drain</span><span class="o">.</span><span class="py">unsafeRunSync</span><span class="o">()</span>
@@ -250,7 +258,7 @@ In FS2 0.10.x, <code class="highlighter-rouge">Segment</code> played a large rol
 <p>The inner stream fails, but notice the <code class="highlighter-rouge">release</code> action is still run:</p>
 
 <div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nv">count</span><span class="o">.</span><span class="py">get</span>
-<span class="c1">// res26: Long = 0L
+<span class="c1">// res27: Long = 0L
 </span></code></pre></div></div>
 
 <p>No matter how you transform an FS2 <code class="highlighter-rouge">Stream</code> or where any errors occur, the library guarantees that if the resource is acquired via a <code class="highlighter-rouge">bracket</code>, the release action associated with that <code class="highlighter-rouge">bracket</code> will be run. Here’s the signature of <code class="highlighter-rouge">bracket</code>:</p>
@@ -265,14 +273,14 @@ In FS2 0.10.x, <code class="highlighter-rouge">Segment</code> played a large rol
 <p>Implement <code class="highlighter-rouge">repeat</code>, which repeats a stream indefinitely, <code class="highlighter-rouge">drain</code>, which strips all output from a stream, <code class="highlighter-rouge">eval_</code>, which runs an effect and ignores its output, and <code class="highlighter-rouge">attempt</code>, which catches any errors produced by a stream:</p>
 
 <div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nc">Stream</span><span class="o">(</span><span class="mi">1</span><span class="o">,</span><span class="mi">0</span><span class="o">).</span><span class="py">repeat</span><span class="o">.</span><span class="py">take</span><span class="o">(</span><span class="mi">6</span><span class="o">).</span><span class="py">toList</span>
-<span class="c1">// res27: List[Int] = List(1, 0, 1, 0, 1, 0)
+<span class="c1">// res28: List[Int] = List(1, 0, 1, 0, 1, 0)
 </span><span class="nc">Stream</span><span class="o">(</span><span class="mi">1</span><span class="o">,</span><span class="mi">2</span><span class="o">,</span><span class="mi">3</span><span class="o">).</span><span class="py">drain</span><span class="o">.</span><span class="py">toList</span>
-<span class="c1">// res28: List[Nothing] = List()
+<span class="c1">// res29: List[Nothing] = List()
 </span><span class="nv">Stream</span><span class="o">.</span><span class="py">eval_</span><span class="o">(</span><span class="nc">IO</span><span class="o">(</span><span class="nf">println</span><span class="o">(</span><span class="s">"!!"</span><span class="o">))).</span><span class="py">compile</span><span class="o">.</span><span class="py">toVector</span><span class="o">.</span><span class="py">unsafeRunSync</span><span class="o">()</span>
 <span class="c1">// !!
-// res29: Vector[Nothing] = Vector()
+// res30: Vector[Nothing] = Vector()
 </span><span class="o">(</span><span class="nc">Stream</span><span class="o">(</span><span class="mi">1</span><span class="o">,</span><span class="mi">2</span><span class="o">)</span> <span class="o">++</span> <span class="nc">Stream</span><span class="o">(</span><span class="mi">3</span><span class="o">).</span><span class="py">map</span><span class="o">(</span><span class="k">_</span> <span class="k">=&gt;</span> <span class="k">throw</span> <span class="k">new</span> <span class="nc">Exception</span><span class="o">(</span><span class="s">"nooo!!!"</span><span class="o">))).</span><span class="py">attempt</span><span class="o">.</span><span class="py">toList</span>
-<span class="c1">// res30: List[Either[Throwable, Int]] = List(
+<span class="c1">// res31: List[Either[Throwable, Int]] = List(
 //   Right(1),
 //   Right(2),
 //   Left(java.lang.Exception: nooo!!!)
@@ -297,7 +305,7 @@ In FS2 0.10.x, <code class="highlighter-rouge">Segment</code> played a large rol
   <span class="o">}</span>
 
 <span class="nc">Stream</span><span class="o">(</span><span class="mi">1</span><span class="o">,</span><span class="mi">2</span><span class="o">,</span><span class="mi">3</span><span class="o">,</span><span class="mi">4</span><span class="o">).</span><span class="py">through</span><span class="o">(</span><span class="nf">tk</span><span class="o">(</span><span class="mi">2</span><span class="o">)).</span><span class="py">toList</span>
-<span class="c1">// res32: List[Int] = List(1, 2)
+<span class="c1">// res33: List[Int] = List(1, 2)
 </span></code></pre></div></div>
 
 <p>Let’s take this line by line.</p>
@@ -345,7 +353,7 @@ for the full set of operations on <code class="highlighter-rouge">Pull</code>.</
 <span class="o">}</span>
 
 <span class="nc">Stream</span><span class="o">(</span><span class="mi">1</span><span class="o">,</span><span class="mi">2</span><span class="o">,</span><span class="mi">3</span><span class="o">,</span><span class="mi">4</span><span class="o">).</span><span class="py">through</span><span class="o">(</span><span class="nf">tk</span><span class="o">(</span><span class="mi">2</span><span class="o">)).</span><span class="py">toList</span>
-<span class="c1">// res34: List[Int] = List(1, 2)
+<span class="c1">// res35: List[Int] = List(1, 2)
 </span></code></pre></div></div>
 
 <p>Taking this line by line:</p>
@@ -377,7 +385,7 @@ for the full set of operations on <code class="highlighter-rouge">Pull</code>.</
 <div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">val</span> <span class="nv">s2</span> <span class="k">=</span> <span class="nc">Stream</span><span class="o">(</span><span class="mi">1</span><span class="o">,</span><span class="mi">2</span><span class="o">,</span><span class="mi">3</span><span class="o">,</span><span class="mi">4</span><span class="o">).</span><span class="py">through</span><span class="o">(</span><span class="nf">tk</span><span class="o">(</span><span class="mi">2</span><span class="o">))</span>
 <span class="c1">// s2: Stream[Nothing, Int] = Stream(..)
 </span><span class="nv">s2</span><span class="o">.</span><span class="py">toList</span>
-<span class="c1">// res35: List[Int] = List(1, 2)
+<span class="c1">// res36: List[Int] = List(1, 2)
 </span></code></pre></div></div>
 
 <p>FS2 takes care to guarantee that any resources allocated by the <code class="highlighter-rouge">Pull</code> are released when the stream completes. Note again that <em>nothing happens</em> when we call <code class="highlighter-rouge">.stream</code> on a <code class="highlighter-rouge">Pull</code>, it is merely converting back to the <code class="highlighter-rouge">Stream</code> API.</p>
@@ -391,11 +399,11 @@ built using the <code class="highlighter-rouge">Pull</code> type.</p>
 <p>Try implementing <code class="highlighter-rouge">takeWhile</code>, <code class="highlighter-rouge">intersperse</code>, and <code class="highlighter-rouge">scan</code>:</p>
 
 <div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nv">Stream</span><span class="o">.</span><span class="py">range</span><span class="o">(</span><span class="mi">0</span><span class="o">,</span><span class="mi">100</span><span class="o">).</span><span class="py">takeWhile</span><span class="o">(</span><span class="k">_</span> <span class="o">&lt;</span> <span class="mi">7</span><span class="o">).</span><span class="py">toList</span>
-<span class="c1">// res36: List[Int] = List(0, 1, 2, 3, 4, 5, 6)
+<span class="c1">// res37: List[Int] = List(0, 1, 2, 3, 4, 5, 6)
 </span><span class="nc">Stream</span><span class="o">(</span><span class="s">"Alice"</span><span class="o">,</span><span class="s">"Bob"</span><span class="o">,</span><span class="s">"Carol"</span><span class="o">).</span><span class="py">intersperse</span><span class="o">(</span><span class="s">"|"</span><span class="o">).</span><span class="py">toList</span>
-<span class="c1">// res37: List[String] = List("Alice", "|", "Bob", "|", "Carol")
+<span class="c1">// res38: List[String] = List("Alice", "|", "Bob", "|", "Carol")
 </span><span class="nv">Stream</span><span class="o">.</span><span class="py">range</span><span class="o">(</span><span class="mi">1</span><span class="o">,</span><span class="mi">10</span><span class="o">).</span><span class="py">scan</span><span class="o">(</span><span class="mi">0</span><span class="o">)(</span><span class="k">_</span> <span class="o">+</span> <span class="k">_</span><span class="o">).</span><span class="py">toList</span> <span class="c1">// running sum
-// res38: List[Int] = List(0, 1, 3, 6, 10, 15, 21, 28, 36, 45)
+// res39: List[Int] = List(0, 1, 3, 6, 10, 15, 21, 28, 36, 45)
 </span></code></pre></div></div>
 
 <h3 id="concurrency">Concurrency</h3>
@@ -418,10 +426,10 @@ built using the <code class="highlighter-rouge">Pull</code> type.</p>
 <div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">import</span> <span class="nn">cats.effect.</span><span class="o">{</span><span class="nc">ContextShift</span><span class="o">,</span> <span class="nc">IO</span><span class="o">}</span>
 
 <span class="k">implicit</span> <span class="k">val</span> <span class="nv">ioContextShift</span><span class="k">:</span> <span class="kt">ContextShift</span><span class="o">[</span><span class="kt">IO</span><span class="o">]</span> <span class="k">=</span> <span class="nv">IO</span><span class="o">.</span><span class="py">contextShift</span><span class="o">(</span><span class="nv">scala</span><span class="o">.</span><span class="py">concurrent</span><span class="o">.</span><span class="py">ExecutionContext</span><span class="o">.</span><span class="py">Implicits</span><span class="o">.</span><span class="py">global</span><span class="o">)</span>
-<span class="c1">// ioContextShift: ContextShift[IO] = cats.effect.internals.IOContextShift@3b22448b
+<span class="c1">// ioContextShift: ContextShift[IO] = cats.effect.internals.IOContextShift@1cef5598
 </span>
 <span class="nc">Stream</span><span class="o">(</span><span class="mi">1</span><span class="o">,</span><span class="mi">2</span><span class="o">,</span><span class="mi">3</span><span class="o">).</span><span class="py">merge</span><span class="o">(</span><span class="nv">Stream</span><span class="o">.</span><span class="py">eval</span><span class="o">(</span><span class="nc">IO</span> <span class="o">{</span> <span class="nv">Thread</span><span class="o">.</span><span class="py">sleep</span><span class="o">(</span><span class="mi">200</span><span class="o">);</span> <span class="mi">4</span> <span class="o">})).</span><span class="py">compile</span><span class="o">.</span><span class="py">toVector</span><span class="o">.</span><span class="py">unsafeRunSync</span><span class="o">()</span>
-<span class="c1">// res40: Vector[Int] = Vector(1, 2, 3, 4)
+<span class="c1">// res41: Vector[Int] = Vector(1, 2, 3, 4)
 </span></code></pre></div></div>
 
 <p>The <code class="highlighter-rouge">merge</code> function supports concurrency. FS2 has a number of other useful concurrency functions like <code class="highlighter-rouge">concurrently</code> (runs another stream concurrently and discards its output), <code class="highlighter-rouge">interrupt</code> (halts if the left branch produces <code class="highlighter-rouge">false</code>), <code class="highlighter-rouge">either</code> (like <code class="highlighter-rouge">merge</code> but returns an <code class="highlighter-rouge">Either</code>), <code class="highlighter-rouge">mergeHaltBoth</code> (halts if either branch halts), and others.</p>
@@ -462,9 +470,9 @@ In the following example we will see how <code class="highlighter-rouge">interru
 <span class="k">import</span> <span class="nn">scala.concurrent.duration._</span>
 
 <span class="k">implicit</span> <span class="k">val</span> <span class="nv">contextShift</span> <span class="k">=</span> <span class="nv">IO</span><span class="o">.</span><span class="py">contextShift</span><span class="o">(</span><span class="nv">ExecutionContext</span><span class="o">.</span><span class="py">global</span><span class="o">)</span>
-<span class="c1">// contextShift: cats.effect.ContextShift[IO] = cats.effect.internals.IOContextShift@553cd556
+<span class="c1">// contextShift: cats.effect.ContextShift[IO] = cats.effect.internals.IOContextShift@3f2c3505
 </span><span class="k">implicit</span> <span class="k">val</span> <span class="nv">timer</span> <span class="k">=</span> <span class="nv">IO</span><span class="o">.</span><span class="py">timer</span><span class="o">(</span><span class="nv">ExecutionContext</span><span class="o">.</span><span class="py">global</span><span class="o">)</span>
-<span class="c1">// timer: cats.effect.Timer[IO] = cats.effect.internals.IOTimer@159556d0
+<span class="c1">// timer: cats.effect.Timer[IO] = cats.effect.internals.IOTimer@66fff79e
 </span></code></pre></div></div>
 
 <p>The example looks like this:</p>
@@ -483,10 +491,10 @@ In the following example we will see how <code class="highlighter-rouge">interru
 <span class="c1">// program: Stream[IO[x], Unit] = Stream(..)
 </span>
 <span class="nv">program</span><span class="o">.</span><span class="py">compile</span><span class="o">.</span><span class="py">drain</span><span class="o">.</span><span class="py">unsafeRunSync</span>
-<span class="c1">// 12:53:33.233024
-// 12:53:34.235712
-// 12:53:35.240551
-// 12:53:36.244284
+<span class="c1">// 09:09:21.348628
+// 09:09:22.351954
+// 09:09:23.355934
+// 09:09:24.356624
 </span></code></pre></div></div>
 
 <p>Let’s take this line by line now, so we can understand what’s going on.</p>
@@ -523,10 +531,10 @@ In the following example we will see how <code class="highlighter-rouge">interru
 <span class="c1">// program1: Stream[IO[x], Unit] = Stream(..)
 </span>
 <span class="nv">program1</span><span class="o">.</span><span class="py">compile</span><span class="o">.</span><span class="py">drain</span><span class="o">.</span><span class="py">unsafeRunSync</span>
-<span class="c1">// 12:53:38.237603
-// 12:53:39.242028
-// 12:53:40.246843
-// 12:53:41.251163
+<span class="c1">// 09:09:26.351879
+// 09:09:27.357319
+// 09:09:28.358221
+// 09:09:29.363917
 </span></code></pre></div></div>
 
 <h3 id="talking-to-the-external-world">Talking to the external world</h3>
@@ -551,7 +559,7 @@ In the following example we will see how <code class="highlighter-rouge">interru
 <span class="c1">// s: Stream[IO[x], String] = Stream(..)
 </span><span class="nv">s</span><span class="o">.</span><span class="py">compile</span><span class="o">.</span><span class="py">toVector</span><span class="o">.</span><span class="py">unsafeRunSync</span><span class="o">()</span>
 <span class="c1">// BOOOOM!!!
-// res44: Vector[String] = Vector("...moving on")
+// res45: Vector[String] = Vector("...moving on")
 </span></code></pre></div></div>
 
 <p>The way you bring synchronous effects into your effect type may differ. <code class="highlighter-rouge">Sync.delay</code> can be used for this generally, without committing to a particular effect:</p>
@@ -559,12 +567,12 @@ In the following example we will see how <code class="highlighter-rouge">interru
 <div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">import</span> <span class="nn">cats.effect.Sync</span>
 
 <span class="k">val</span> <span class="nv">T</span> <span class="k">=</span> <span class="nc">Sync</span><span class="o">[</span><span class="kt">IO</span><span class="o">]</span>
-<span class="c1">// T: Sync[IO] = cats.effect.IOInstances$$anon$3@46edc055
+<span class="c1">// T: Sync[IO] = cats.effect.IOInstances$$anon$3@1fe00b20
 </span><span class="k">val</span> <span class="nv">s2</span> <span class="k">=</span> <span class="nv">Stream</span><span class="o">.</span><span class="py">eval_</span><span class="o">(</span><span class="nv">T</span><span class="o">.</span><span class="py">delay</span> <span class="o">{</span> <span class="nf">destroyUniverse</span><span class="o">()</span> <span class="o">})</span> <span class="o">++</span> <span class="nc">Stream</span><span class="o">(</span><span class="s">"...moving on"</span><span class="o">)</span>
 <span class="c1">// s2: Stream[IO[x], String] = Stream(..)
 </span><span class="nv">s2</span><span class="o">.</span><span class="py">compile</span><span class="o">.</span><span class="py">toVector</span><span class="o">.</span><span class="py">unsafeRunSync</span><span class="o">()</span>
 <span class="c1">// BOOOOM!!!
-// res45: Vector[String] = Vector("...moving on")
+// res46: Vector[String] = Vector("...moving on")
 </span></code></pre></div></div>
 
 <p>When using this approach, be sure the expression you pass to delay doesn’t throw exceptions.</p>
@@ -611,10 +619,10 @@ In the following example we will see how <code class="highlighter-rouge">interru
 <span class="k">val</span> <span class="nv">bytes</span> <span class="k">=</span> <span class="nv">cats</span><span class="o">.</span><span class="py">effect</span><span class="o">.</span><span class="py">Async</span><span class="o">[</span><span class="kt">IO</span><span class="o">].</span><span class="py">async</span><span class="o">[</span><span class="kt">Array</span><span class="o">[</span><span class="kt">Byte</span><span class="o">]]</span> <span class="o">{</span> <span class="o">(</span><span class="n">cb</span><span class="k">:</span> <span class="kt">Either</span><span class="o">[</span><span class="kt">Throwable</span>,<span class="kt">Array</span><span class="o">[</span><span class="kt">Byte</span><span class="o">]]</span> <span class="k">=&gt;</span> <span class="nc">Unit</span><span class="o">)</span> <span class="k">=&gt;</span>
   <span class="nv">c</span><span class="o">.</span><span class="py">readBytesE</span><span class="o">(</span><span class="n">cb</span><span class="o">)</span>
 <span class="o">}</span>
-<span class="c1">// bytes: IO[Array[Byte]] = IO$1361128128
+<span class="c1">// bytes: IO[Array[Byte]] = IO$1744042191
 </span>
 <span class="nv">Stream</span><span class="o">.</span><span class="py">eval</span><span class="o">(</span><span class="n">bytes</span><span class="o">).</span><span class="py">map</span><span class="o">(</span><span class="nv">_</span><span class="o">.</span><span class="py">toList</span><span class="o">).</span><span class="py">compile</span><span class="o">.</span><span class="py">toVector</span><span class="o">.</span><span class="py">unsafeRunSync</span><span class="o">()</span>
-<span class="c1">// res46: Vector[List[Byte]] = Vector(List(0, 1, 2))
+<span class="c1">// res47: Vector[List[Byte]] = Vector(List(0, 1, 2))
 </span></code></pre></div></div>
 
 <p>Be sure to check out the
@@ -683,7 +691,7 @@ But there are times when we need use fs2 in conjunction with a different streami
 <p>A <code class="highlighter-rouge">ContextShift</code> instance is necessary when working with <code class="highlighter-rouge">IO</code></p>
 
 <div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">implicit</span> <span class="k">val</span> <span class="nv">contextShift</span><span class="k">:</span> <span class="kt">ContextShift</span><span class="o">[</span><span class="kt">IO</span><span class="o">]</span> <span class="k">=</span> <span class="nv">IO</span><span class="o">.</span><span class="py">contextShift</span><span class="o">(</span><span class="nv">ExecutionContext</span><span class="o">.</span><span class="py">global</span><span class="o">)</span>
-<span class="c1">// contextShift: ContextShift[IO] = cats.effect.internals.IOContextShift@5e0ee517
+<span class="c1">// contextShift: ContextShift[IO] = cats.effect.internals.IOContextShift@713cc542
 </span></code></pre></div></div>
 
 <p>To convert a <code class="highlighter-rouge">Stream</code> into a downstream unicast <code class="highlighter-rouge">org.reactivestreams.Publisher</code>:</p>
@@ -691,15 +699,15 @@ But there are times when we need use fs2 in conjunction with a different streami
 <div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">val</span> <span class="nv">stream</span> <span class="k">=</span> <span class="nc">Stream</span><span class="o">(</span><span class="mi">1</span><span class="o">,</span> <span class="mi">2</span><span class="o">,</span> <span class="mi">3</span><span class="o">).</span><span class="py">covary</span><span class="o">[</span><span class="kt">IO</span><span class="o">]</span>
 <span class="c1">// stream: Stream[IO, Int] = Stream(..)
 </span><span class="nv">stream</span><span class="o">.</span><span class="py">toUnicastPublisher</span>
-<span class="c1">// res49: StreamUnicastPublisher[IO[A], Int] = fs2.interop.reactivestreams.StreamUnicastPublisher@30d09fa5
+<span class="c1">// res50: StreamUnicastPublisher[IO[A], Int] = fs2.interop.reactivestreams.StreamUnicastPublisher@758cf689
 </span></code></pre></div></div>
 
 <p>To convert an upstream <code class="highlighter-rouge">org.reactivestreams.Publisher</code> into a <code class="highlighter-rouge">Stream</code>:</p>
 
 <div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">val</span> <span class="nv">publisher</span><span class="k">:</span> <span class="kt">StreamUnicastPublisher</span><span class="o">[</span><span class="kt">IO</span>, <span class="kt">Int</span><span class="o">]</span> <span class="k">=</span> <span class="nc">Stream</span><span class="o">(</span><span class="mi">1</span><span class="o">,</span> <span class="mi">2</span><span class="o">,</span> <span class="mi">3</span><span class="o">).</span><span class="py">covary</span><span class="o">[</span><span class="kt">IO</span><span class="o">].</span><span class="py">toUnicastPublisher</span>
-<span class="c1">// publisher: StreamUnicastPublisher[IO, Int] = fs2.interop.reactivestreams.StreamUnicastPublisher@410c26bb
+<span class="c1">// publisher: StreamUnicastPublisher[IO, Int] = fs2.interop.reactivestreams.StreamUnicastPublisher@4dd3463
 </span><span class="nv">publisher</span><span class="o">.</span><span class="py">toStream</span><span class="o">[</span><span class="kt">IO</span><span class="o">]</span>
-<span class="c1">// res50: Stream[IO, Int] = Stream(..)
+<span class="c1">// res51: Stream[IO, Int] = Stream(..)
 </span></code></pre></div></div>
 
 <p>A unicast publisher must have a single subscriber only.</p>
@@ -752,15 +760,15 @@ But there are times when we need use fs2 in conjunction with a different streami
 <span class="k">case</span> <span class="k">object</span> <span class="nc">Err</span> <span class="k">extends</span> <span class="nc">Throwable</span>
 
 <span class="o">(</span><span class="nc">Stream</span><span class="o">(</span><span class="mi">1</span><span class="o">)</span> <span class="o">++</span> <span class="nc">Stream</span><span class="o">(</span><span class="mi">2</span><span class="o">).</span><span class="py">map</span><span class="o">(</span><span class="k">_</span> <span class="k">=&gt;</span> <span class="k">throw</span> <span class="nc">Err</span><span class="o">)).</span><span class="py">take</span><span class="o">(</span><span class="mi">1</span><span class="o">).</span><span class="py">toList</span>
-<span class="c1">// res52: List[Int] = List(1)
-</span><span class="o">(</span><span class="nc">Stream</span><span class="o">(</span><span class="mi">1</span><span class="o">)</span> <span class="o">++</span> <span class="nv">Stream</span><span class="o">.</span><span class="py">raiseError</span><span class="o">[</span><span class="kt">IO</span><span class="o">](</span><span class="nc">Err</span><span class="o">)).</span><span class="py">take</span><span class="o">(</span><span class="mi">1</span><span class="o">).</span><span class="py">compile</span><span class="o">.</span><span class="py">toList</span><span class="o">.</span><span class="py">unsafeRunSync</span><span class="o">()</span>
 <span class="c1">// res53: List[Int] = List(1)
+</span><span class="o">(</span><span class="nc">Stream</span><span class="o">(</span><span class="mi">1</span><span class="o">)</span> <span class="o">++</span> <span class="nv">Stream</span><span class="o">.</span><span class="py">raiseError</span><span class="o">[</span><span class="kt">IO</span><span class="o">](</span><span class="nc">Err</span><span class="o">)).</span><span class="py">take</span><span class="o">(</span><span class="mi">1</span><span class="o">).</span><span class="py">compile</span><span class="o">.</span><span class="py">toList</span><span class="o">.</span><span class="py">unsafeRunSync</span><span class="o">()</span>
+<span class="c1">// res54: List[Int] = List(1)
 </span></code></pre></div></div>
 
 <p>The <code class="highlighter-rouge">take 1</code> uses <code class="highlighter-rouge">Pull</code> but doesn’t examine the entire stream, and neither of these examples will ever throw an error. This makes sense. A bit more subtle is that this code will <em>also</em> never throw an error:</p>
 
 <div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="o">(</span><span class="nc">Stream</span><span class="o">(</span><span class="mi">1</span><span class="o">)</span> <span class="o">++</span> <span class="nv">Stream</span><span class="o">.</span><span class="py">raiseError</span><span class="o">[</span><span class="kt">IO</span><span class="o">](</span><span class="nc">Err</span><span class="o">)).</span><span class="py">take</span><span class="o">(</span><span class="mi">1</span><span class="o">).</span><span class="py">compile</span><span class="o">.</span><span class="py">toList</span><span class="o">.</span><span class="py">unsafeRunSync</span><span class="o">()</span>
-<span class="c1">// res54: List[Int] = List(1)
+<span class="c1">// res55: List[Int] = List(1)
 </span></code></pre></div></div>
 
 <p>The reason is simple: the consumer (the <code class="highlighter-rouge">take(1)</code>) terminates as soon as it has an element. Once it has that element, it is done consuming the stream and doesn’t bother running any further steps of it, so the stream never actually completes normally—it has been interrupted before that can occur. We may be able to see in this case that nothing follows the emitted <code class="highlighter-rouge">1</code>, but FS2 doesn’t know this until it actually runs another step of the stream.</p>
@@ -772,7 +780,7 @@ But there are times when we need use fs2 in conjunction with a different streami
           <span class="nf">take</span><span class="o">(</span><span class="mi">1</span><span class="o">).</span>
           <span class="nv">compile</span><span class="o">.</span><span class="py">toVector</span><span class="o">.</span><span class="py">unsafeRunSync</span><span class="o">()</span>
 <span class="c1">// finalized!
-// res55: Vector[Int] = Vector(1)
+// res56: Vector[Int] = Vector(1)
 </span></code></pre></div></div>
 
 <p>That covers synchronous interrupts. Let’s look at asynchronous interrupts. Ponder what the result of <code class="highlighter-rouge">merged</code> will be in this example:</p>
