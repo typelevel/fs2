@@ -1793,7 +1793,7 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
     * }}}
     */
   def map[O2](f: O => O2): Stream[F, O2] =
-    this.pull.echo.mapOutput(f).stream
+    this.pull.echo.mapOutput(f).streamNoScope
 
   /**
     * Maps a running total according to `S` and the input with the function `f`.

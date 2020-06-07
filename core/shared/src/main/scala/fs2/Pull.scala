@@ -36,12 +36,26 @@ final class Pull[+F[_], +O, +R] private[fs2] (private val free: FreeC[F, O, R]) 
     new Pull(free.map(r => Right(r)).handleErrorWith(t => Result.Pure(Left(t))))
 
   /**
-    * Interpret this `Pull` to produce a `Stream`.
+    * Interpret this `Pull` to produce a `Stream`, introducing a scope.
     *
     * May only be called on pulls which return a `Unit` result type. Use `p.void.stream` to explicitly
     * ignore the result type of the pull.
     */
   def stream(implicit ev: R <:< Unit): Stream[F, O] = {
+    val _ = ev
+    new Stream(Algebra.scope(free.asInstanceOf[FreeC[F, O, Unit]]))
+  }
+
+  /**
+    * Interpret this `Pull` to produce a `Stream` without introducing a scope.
+    *
+    * Only use this if you know a scope is not needed. Scope introduction is generally harmless and the risk
+    * of not introducing a scope is a memory leak in streams that otherwise would execute in constant memory.
+    *
+    * May only be called on pulls which return a `Unit` result type. Use `p.void.stream` to explicitly
+    * ignore the result type of the pull.
+    */
+  def streamNoScope(implicit ev: R <:< Unit): Stream[F, O] = {
     val _ = ev
     new Stream(free.asInstanceOf[FreeC[F, O, Unit]])
   }
