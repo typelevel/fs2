@@ -1,6 +1,6 @@
 ---
 layout: page
-title:  "Community"
+title:  "Ecosystem"
 section: "ecosystem"
 position: 6
 ---
@@ -19,6 +19,8 @@ As described in the `README` file, FS2 is based mostly on `cats` and `cats-effec
 
 If you have a project you'd like to include in this list, either open a PR or let us know in [the gitter channel](https://gitter.im/functional-streams-for-scala/fs2) and we'll add a link to it here.
 
+* [canoe](https://github.com/augustjune/canoe): A purely functional library for building Telegram chatbots.
+* [chromaprint](https://github.com/mgdigital/Chromaprint.scala): A Scala implementation of the Chromaprint/AcoustID audio fingerprinting algorithm, built with fs2 streams / Cats Effect.
 * [circe-fs2](https://github.com/circe/circe-fs2): Streaming JSON manipulation with [circe](https://github.com/circe/circe).
 * [doobie](https://github.com/tpolecat/doobie): Pure functional JDBC built on fs2.
 * [fs2-aws](https://github.com/saksdirect/fs2-aws): FS2 streams to interact with AWS utilities
@@ -29,21 +31,30 @@ If you have a project you'd like to include in this list, either open a PR or le
 * [fs2-crypto](https://github.com/Spinoco/fs2-crypto): TLS support for fs2.
 * [fs2-data](https://github.com/satabin/fs2-data): A set of data parsers and manipulation libraries for various formats for fs2.
 * [fs2-elastic](https://github.com/amarrella/fs2-elastic): Simple client for Elasticsearch.
+* [fs2-ftp](https://github.com/regis-leray/fs2-ftp): Simple client for Ftp/Ftps/Sftp using fs2 and cats-effect.
+* [fs2-google-pubsub](https://github.com/permutive/fs2-google-pubsub): A [Google Cloud Pub/Sub](https://cloud.google.com/pubsub/) implementation using fs2 and cats-effect.
 * [fs2-grpc](https://github.com/fiadliel/fs2-grpc): gRPC implementation for FS2 / Cats Effect.
 * [fs2-http](https://github.com/Spinoco/fs2-http): Http server and client library implemented in fs2.
 * [fs2-jms](https://github.com/kiambogo/fs2-jms): Java Messaging Service (JMS) connectors for FS2 streams
-* [fs2-kafka](https://github.com/Spinoco/fs2-kafka): Simple client for Apache Kafka.
+* Apache Kafka integrations
+  * [kafka4s](https://github.com/Banno/kafka4s): Functional programming with Kafka and Scala.
+  * [fd4s/fs2-kafka](https://github.com/fd4s/fs2-kafka): Functional Kafka Streams for Scala.
+  * [spinoco/fs2-kafka](https://github.com/Spinoco/fs2-kafka): Simple client for Apache Kafka.
 * [fs2-mail](https://github.com/Spinoco/fs2-mail): Fully asynchronous java non-blocking email client using fs2.
 * [fs2-mqtt](https://github.com/user-signal/fs2-mqtt): A purely functional MQTT client library based on fs2 and cats effect.
 * [fs2-rabbit](https://fs2-rabbit.profunktor.dev/): RabbitMQ stream-based client built on top of fs2 and cats effect.
 * [fs2-reactive-streams](https://github.com/zainab-ali/fs2-reactive-streams): A reactive streams implementation for fs2.
+* [fs2-ssh](https://github.com/slamdata/fs2-ssh): A wrapper around Apache SSHD targeting cats-effect and fs2.
 * [fs2-zk](https://github.com/Spinoco/fs2-zk): Simple Apache Zookeeper bindings for fs2.
 * [http4s](http://http4s.org/): Minimal, idiomatic Scala interface for HTTP services using fs2.
 * [mongosaur](https://gitlab.com/lJoublanc/mongosaur): fs2-based MongoDB driver.
+* [mysql-binlog-stream](https://github.com/laserdisc-io/mysql-binlog-stream): Stream MySQL binlog events with FS2
 * [neotypes](https://github.com/neotypes/neotypes): A Scala lightweight, type-safe & asynchronous driver for neo4j. Support streaming queries using fs2.
+* [neutron](https://github.com/cr-org/neutron): Apache Pulsar bindings for fs2.
 * [redis4cats](https://redis4cats.profunktor.dev/): Redis client built on top of fs2 and cats effect.
 * [scarctic](https://gitlab.com/lJoublanc/scarctic): fs2-based driver for [MAN/AHL's Arctic](https://github.com/manahl/arctic) data store.
 * [scodec-protocols](https://github.com/scodec/scodec-protocols): A library for working with libpcap files. Contains many interesting pipes (e.g., working with time series and playing back streams at various rates).
 * [scodec-stream](https://github.com/scodec/scodec-stream): A library for streaming binary decoding and encoding, built using fs2 and [scodec](https://github.com/scodec/scodec).
 * [streamz](https://github.com/krasserm/streamz): A library that supports the conversion of [Akka Stream](http://doc.akka.io/docs/akka/2.4/scala/stream/index.html) `Source`s, `Flow`s and `Sink`s to and from FS2 `Stream`s, `Pipe`s and `Sink`s, respectively. It also supports the usage of [Apache Camel](http://camel.apache.org/) endpoints in FS2 `Stream`s and Akka Stream `Source`s, `Flow`s and `SubFlow`s.
 * [upperbound](https://github.com/SystemFw/upperbound): A purely functional, interval-based rate limiter with support for backpressure.
+* [vinyldns](https://github.com/vinyldns/vinyldns): A DNS governance system using fs2 for throttling updates to DNS backends.
