@@ -25,7 +25,7 @@ In FP there is a technique of design through algebras (speaking here in the most
 
 * you have some type, for example `Option`
 * some introduction forms (ways of getting "into" the algebra, e.g., `Option.empty`, `Option.some`; this is often referred to as "lifting" into a type)
-* some combinators (building programs in your algebra from smaller programs, like `Option.map`, `Option.flatMap`, `Option.getOrElse`, etc) 
+* some combinators (building programs in your algebra from smaller programs, like `Option.map`, `Option.flatMap`, `Option.getOrElse`, etc)
 * and potentially laws (e.g. `anyOption.flatMap(Option.empty) == Option.empty`)
 
 Basically it's a way to write programs in a mini-language (in this case the `Option` language), which affords high compositionality through combinators that helps us write larger programs in a Lego way.
@@ -44,3 +44,8 @@ Unsurprisingly, `Stream` also follows this pattern:
 For pure streams, we might convert them from `Stream[Pure, A]` -> `List[A]`.  For effectful streams, we transform them from `Stream[IO, A]` -> `IO[A]`.   The name compile is meant to evoke this translation process in which the `Stream` language gets compiled down to the `IO` language. It used to be called `run` in previous versions, but `compile` is more evocative of this transformation.
 
 Note that this pattern is also used for `Stream.pull`
+
+### What is the difference between Stream and Pull?
+
+{:.responsive-pic}
+![Stream and Pull](../img/stream-and-pull.png)
