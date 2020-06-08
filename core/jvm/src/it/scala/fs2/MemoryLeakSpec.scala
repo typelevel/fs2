@@ -147,7 +147,6 @@ class MemoryLeakSpec extends AnyFunSuite {
   }
 
   leakTest("parJoin") {
-    pending
     Stream.constant(Stream.empty[IO]).parJoin(5)
   }
 
@@ -168,7 +167,6 @@ class MemoryLeakSpec extends AnyFunSuite {
   }
 
   leakTest("signal continuous") {
-    pending
     Stream
       .eval(SignallingRef[IO, Unit](()))
       .flatMap(signal => signal.continuous.evalMap(a => signal.set(a)))
