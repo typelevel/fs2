@@ -7,11 +7,8 @@ import cats.effect.{ContextShift, IO, Timer}
 import cats.implicits._
 
 import org.scalatest.funsuite.AnyFunSuite
-import org.scalatest.Tag
 
 import fs2.concurrent._
-
-object MemoryLeakTest extends Tag("MemoryLeakTest")
 
 class MemoryLeakSpec extends AnyFunSuite {
 
@@ -35,7 +32,7 @@ class MemoryLeakSpec extends AnyFunSuite {
       monitorPeriod: FiniteDuration = 30.seconds,
       limitBytesIncrease: Long = 10 * 1024 * 1024
   )(stream: => Stream[IO, O]): Unit =
-    test(name, MemoryLeakTest) {
+    test(name) {
       IO.race(
           stream.compile.drain,
           IO.race(
@@ -44,9 +41,9 @@ class MemoryLeakSpec extends AnyFunSuite {
           )
         )
         .map {
-          case Left(_)         => ()
-          case Right(Right(_)) => ()
-          case Right(Left(delta))  => fail(s"leak detected - heap grew by $delta bytes")
+          case Left(_)            => ()
+          case Right(Right(_))    => ()
+          case Right(Left(delta)) => fail(s"leak detected - heap grew by $delta bytes")
         }
         .unsafeRunSync()
     }
