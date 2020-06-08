@@ -36,29 +36,29 @@ Quick links:
 
 ### <a id="getit"></a> Where to get the latest version ###
 
-The latest version is 2.2.x. See the badge at the top of the README for the exact version number.
+The latest version is 2.4.x. See the badge at the top of the README for the exact version number.
 
 If upgrading from the 1.0 series, see the [release notes for 2.0.0](https://github.com/functional-streams-for-scala/fs2/releases/tag/v2.0.0) for help with upgrading.
 
 
 ```
 // available for 2.12, 2.13
-libraryDependencies += "co.fs2" %% "fs2-core" % "2.2.1" // For cats 2 and cats-effect 2
+libraryDependencies += "co.fs2" %% "fs2-core" % "2.4.0" // For cats 2 and cats-effect 2
 
 // optional I/O library
-libraryDependencies += "co.fs2" %% "fs2-io" % "2.2.1"
+libraryDependencies += "co.fs2" %% "fs2-io" % "2.4.0"
 
 // optional reactive streams interop
-libraryDependencies += "co.fs2" %% "fs2-reactive-streams" % "2.2.1"
+libraryDependencies += "co.fs2" %% "fs2-reactive-streams" % "2.4.0"
 
 // optional experimental library
-libraryDependencies += "co.fs2" %% "fs2-experimental" % "2.2.1"
+libraryDependencies += "co.fs2" %% "fs2-experimental" % "2.4.0"
 ```
 
 The fs2-core library is also supported on Scala.js:
 
 ```
-libraryDependencies += "co.fs2" %%% "fs2-core" % "2.2.1"
+libraryDependencies += "co.fs2" %%% "fs2-core" % "2.4.0"
 ```
 
 There are [detailed migration guides](https://github.com/functional-streams-for-scala/fs2/blob/master/docs/) for migrating from older versions.
