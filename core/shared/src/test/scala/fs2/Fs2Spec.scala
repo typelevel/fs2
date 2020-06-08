@@ -4,10 +4,10 @@ import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
 
 import cats.{Functor, Monad}
-import cats.effect.{ContextShift, IO, Sync, Timer}
+import cats.effect.{ContextShift, Fiber, IO, Sync, Timer}
 import cats.implicits._
 
-import org.scalatest.{Assertion, Succeeded}
+import org.scalatest.{Args, Assertion, Status, Succeeded}
 import org.scalatest.concurrent.AsyncTimeLimitedTests
 import org.scalatest.freespec.AsyncFreeSpec
 import org.scalatest.prop.GeneratorDrivenPropertyChecks
@@ -50,6 +50,28 @@ abstract class Fs2Spec
 
   implicit override val generatorDrivenConfig: PropertyCheckConfiguration =
     PropertyCheckConfiguration(minSuccessful = if (isJVM) 25 else 5, workers = 1)
+
+  override def runTest(testName: String, args: Args): Status = {
+    // Start a fiber that logs execution of long running tests in order to differentiate
+    // hung tests from long tests. Note: on Scala.js, logging can only occur if the test
+    // yields execution periodically.
+    val loggingFiber: Fiber[IO, Unit] = logEverySoOften(testName, 5.seconds).unsafeRunSync
+    try super.runTest(testName, args)
+    finally loggingFiber.cancel.unsafeRunSync
+  }
+
+  private def logEverySoOften(testName: String, period: FiniteDuration): IO[Fiber[IO, Unit]] =
+    IO(System.currentTimeMillis).flatMap { start =>
+      def go: IO[Unit] =
+        IO.sleep(period) >>
+          IO(
+            println(
+              s"""Waiting for test "$testName" (${System.currentTimeMillis - start} milliseconds)"""
+            )
+          ) >>
+          go
+      go.start
+    }
 
   /** Returns a stream that has a 10% chance of failing with an error on each output value. */
   protected def spuriousFail[F[_]: RaiseThrowable, O](s: Stream[F, O]): Stream[F, O] =

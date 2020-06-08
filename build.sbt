@@ -91,7 +91,7 @@ lazy val commonTestSettings = Seq(
     case None => Seq()
   })),
   parallelExecution in Test := false,
-  testOptions in Test += Tests.Argument(TestFrameworks.ScalaTest, "-oDF", "-W", "5", "5"),
+  testOptions in Test += Tests.Argument(TestFrameworks.ScalaTest, "-oDF"),
   publishArtifact in Test := true
 )
 lazy val testSettings =
