@@ -5,8 +5,11 @@ import sbtcrossproject.crossProject
 
 val ReleaseTag = """^release/([\d\.]+a?)$""".r
 
-addCommandAlias("fmt", "; compile:scalafmt; test:scalafmt; scalafmtSbt")
-addCommandAlias("fmtCheck", "; compile:scalafmtCheck; test:scalafmtCheck; scalafmtSbtCheck")
+addCommandAlias("fmt", "; compile:scalafmt; test:scalafmt; it:scalafmt; scalafmtSbt")
+addCommandAlias(
+  "fmtCheck",
+  "; compile:scalafmtCheck; test:scalafmtCheck; it:scalafmtCheck; scalafmtSbtCheck"
+)
 
 lazy val contributors = Seq(
   "pchiusano" -> "Paul Chiusano",
@@ -257,8 +260,16 @@ lazy val root = project
   .settings(noPublish)
   .aggregate(coreJVM, coreJS, io, reactiveStreams, benchmark, experimental)
 
+lazy val IntegrationTest = config("it").extend(Test)
+
 lazy val core = crossProject(JVMPlatform, JSPlatform)
   .in(file("core"))
+  .configs(IntegrationTest)
+  .settings(Defaults.itSettings: _*)
+  .settings(
+    testOptions in IntegrationTest := Seq(Tests.Argument(TestFrameworks.ScalaTest, "-oDF")),
+    inConfig(IntegrationTest)(org.scalafmt.sbt.ScalafmtPlugin.scalafmtConfigSettings)
+  )
   .settings(crossCommonSettings: _*)
   .settings(
     name := "fs2-core",
