@@ -6,7 +6,10 @@ import sbtcrossproject.crossProject
 val ReleaseTag = """^release/([\d\.]+a?)$""".r
 
 addCommandAlias("fmt", "; compile:scalafmt; test:scalafmt; it:scalafmt; scalafmtSbt")
-addCommandAlias("fmtCheck", "; compile:scalafmtCheck; test:scalafmtCheck; it:scalafmtCheck; scalafmtSbtCheck")
+addCommandAlias(
+  "fmtCheck",
+  "; compile:scalafmtCheck; test:scalafmtCheck; it:scalafmtCheck; scalafmtSbtCheck"
+)
 
 lazy val contributors = Seq(
   "pchiusano" -> "Paul Chiusano",
@@ -257,7 +260,7 @@ lazy val root = project
   .settings(noPublish)
   .aggregate(coreJVM, coreJS, io, reactiveStreams, benchmark, experimental)
 
-lazy val IntegrationTest = config("it") extend(Test)
+lazy val IntegrationTest = config("it").extend(Test)
 
 lazy val core = crossProject(JVMPlatform, JSPlatform)
   .in(file("core"))
