@@ -2,7 +2,6 @@ package fs2
 
 import cats.~>
 import cats.effect._
-import cats.implicits._
 import scala.concurrent.{ExecutionContext, Future}
 import org.scalatest.{Assertion, Succeeded}
 
