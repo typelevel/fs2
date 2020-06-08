@@ -3,6 +3,9 @@ package fs2
 import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
 
+import java.lang.management.ManagementFactory
+import java.nio.file.{Files, Path}
+
 import cats.effect.{ContextShift, IO, Timer}
 import cats.implicits._
 
@@ -41,9 +44,10 @@ class MemoryLeakSpec extends AnyFunSuite {
           )
         )
         .map {
-          case Left(_)            => ()
-          case Right(Right(_))    => ()
-          case Right(Left(delta)) => fail(s"leak detected - heap grew by $delta bytes")
+          case Left(_)         => ()
+          case Right(Right(_)) => ()
+          case Right(Left(path)) =>
+            fail(s"leak detected - heap dump: $path")
         }
         .unsafeRunSync()
     }
@@ -52,21 +56,35 @@ class MemoryLeakSpec extends AnyFunSuite {
       warmupIterations: Int,
       samplePeriod: FiniteDuration,
       limitBytesIncrease: Long
-  ): IO[Long] = {
-    def warmup(iterationsLeft: Int): IO[Long] =
+  ): IO[Path] = {
+    def warmup(iterationsLeft: Int): IO[Path] =
       if (iterationsLeft > 0) IO.sleep(samplePeriod) >> warmup(iterationsLeft - 1)
       else heapUsed.flatMap(go)
 
-    def go(initial: Long): IO[Long] =
+    def go(initial: Long): IO[Path] =
       IO.sleep(samplePeriod) >>
         heapUsed.flatMap { bytes =>
           val delta = bytes - initial
-          if (delta > limitBytesIncrease) IO.pure(delta)
+          if (delta > limitBytesIncrease) dumpHeap
           else go(initial)
         }
 
     warmup(warmupIterations)
   }
+
+  private def dumpHeap: IO[Path] =
+    IO {
+      val path = Files.createTempFile("fs2-leak-test-", ".hprof")
+      Files.delete(path)
+      val server = ManagementFactory.getPlatformMBeanServer
+      val mbean = ManagementFactory.newPlatformMXBeanProxy(
+        server,
+        "com.sun.management:type=HotSpotDiagnostic",
+        classOf[com.sun.management.HotSpotDiagnosticMXBean]
+      )
+      mbean.dumpHeap(path.toString, true)
+      path
+    }
 
   leakTest("groupWithin") {
     Stream
