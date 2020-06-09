@@ -11,12 +11,7 @@ jobs:
           name: fs2-site
           signingKey: "${{ secrets.CACHIX_SIGNING_KEY }}"
       - name: "Building microsite 🚧"
-        run: "nix-shell --run \"sbt microsite/publishMicrosite --java-home $JAVA_HOME\""
+        run: "nix-shell --run \"echo $JAVA_HOME && sbt microsite/publishMicrosite --java-home $JAVA_HOME\""
 name: Microsite
 on:
   push:
-    branches:
-      - master
-    paths:
-      - "site/**"
-      - "**/README.md"
