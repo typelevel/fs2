@@ -12,4 +12,5 @@ in
       openjdk11 # 11.0.6-internal
       sbt # 1.3.10
     ];
+    JAVA_HOME = "${pkgs.openjdk11}/lib/openjdk";
   }
