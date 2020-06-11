@@ -248,7 +248,10 @@ lazy val mimaSettings = Seq(
     ),
     ProblemFilters.exclude[DirectMissingMethodProblem](
       "fs2.io.tls.TLSSocket.fs2$io$tls$TLSSocket$$binding$default$3"
-    )
+    ),
+    // InputOutputBuffer is private[tls]
+    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.tls.InputOutputBuffer.output"),
+    ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.io.tls.InputOutputBuffer.output")
   )
 )
 
