@@ -21,8 +21,8 @@ private[tls] trait InputOutputBuffer[F[_]] {
   /** Adds the specified chunk to the input buffer. */
   def input(data: Chunk[Byte]): F[Unit]
 
-  /** Removes all available data from the output buffer. */
-  def output: F[Chunk[Byte]]
+  /** Removes available data from the output buffer. */
+  def output(maxBytes: Int): F[Chunk[Byte]]
 
   /**
     * Performs an operation that may read from the input buffer and write to the output buffer.
@@ -75,16 +75,17 @@ private[tls] object InputOutputBuffer {
           }
         }
 
-      def output: F[Chunk[Byte]] =
+      def output(maxBytes: Int): F[Chunk[Byte]] =
         outBuff.get.flatMap { out =>
           if (out.position() == 0) Applicative[F].pure(Chunk.empty)
           else
             Sync[F].delay {
               (out: Buffer).flip()
               val cap = out.limit()
-              val dest = new Array[Byte](cap)
+              val sz = cap.min(maxBytes)
+              val dest = new Array[Byte](sz)
               out.get(dest)
-              (out: Buffer).clear()
+              out.compact()
               Chunk.bytes(dest)
             }
         }
