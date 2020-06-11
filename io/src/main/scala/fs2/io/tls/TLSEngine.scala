@@ -76,7 +76,8 @@ private[tls] object TLSEngine {
                 doWrite(timeout) >> {
                   result.getHandshakeStatus match {
                     case SSLEngineResult.HandshakeStatus.NOT_HANDSHAKING =>
-                      wrapBuffer.inputRemains.flatMap(x => wrap(timeout).whenA(x > 0 && result.bytesConsumed > 0))
+                      wrapBuffer.inputRemains
+                        .flatMap(x => wrap(timeout).whenA(x > 0 && result.bytesConsumed > 0))
                     case _ =>
                       handshakeSemaphore
                         .withPermit(stepHandshake(result, true, timeout)) >> wrap(timeout)
@@ -126,7 +127,9 @@ private[tls] object TLSEngine {
               case SSLEngineResult.Status.OK =>
                 result.getHandshakeStatus match {
                   case SSLEngineResult.HandshakeStatus.NOT_HANDSHAKING =>
-                    unwrapBuffer.inputRemains.map(_ > 0 && result.bytesConsumed > 0).ifM(unwrap(timeout), dequeueUnwrap)
+                    unwrapBuffer.inputRemains
+                      .map(_ > 0 && result.bytesConsumed > 0)
+                      .ifM(unwrap(timeout), dequeueUnwrap)
                   case SSLEngineResult.HandshakeStatus.FINISHED =>
                     unwrap(timeout)
                   case _ =>
