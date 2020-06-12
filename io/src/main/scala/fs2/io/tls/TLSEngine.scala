@@ -114,7 +114,7 @@ private[tls] object TLSEngine {
         )
 
       private def read1(maxBytes: Int, timeout: Option[FiniteDuration]): F[Option[Chunk[Byte]]] =
-        binding.read(maxBytes, timeout).flatMap {
+        binding.read(maxBytes.max(engine.getSession.getPacketBufferSize), timeout).flatMap {
           case Some(c) =>
             unwrapBuffer.input(c) >> unwrap(maxBytes, timeout).flatMap {
               case s @ Some(_) => Applicative[F].pure(s)
@@ -184,7 +184,7 @@ private[tls] object TLSEngine {
               if (remaining > 0 && result.getStatus != SSLEngineResult.Status.BUFFER_UNDERFLOW)
                 unwrapHandshake(timeout)
               else
-                binding.read(16 * 1024, timeout).flatMap {
+                binding.read(engine.getSession.getPacketBufferSize, timeout).flatMap {
                   case Some(c) => unwrapBuffer.input(c) >> unwrapHandshake(timeout)
                   case None    => stopWrap >> stopUnwrap
                 }
