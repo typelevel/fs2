@@ -15,10 +15,13 @@ private[fs2] trait CollectorPlatform { self: Collector.type =>
   implicit def supportsMapFactory[K, V, C[_, _]](f: MapFactory[C]): Collector.Aux[(K, V), C[K, V]] =
     make(Builder.fromMapFactory(f))
 
-  implicit def supportsTaggedArraySeq[A : ClassTag](a: ArraySeq.type): Collector.Aux[A, ArraySeq[A]] = {
+  implicit def supportsTaggedArraySeq[A: ClassTag](
+      a: ArraySeq.type
+  ): Collector.Aux[A, ArraySeq[A]] = {
     val _ = a
     make(implicitly[ClassTag[A]] match {
-      case ClassTag.Byte => Builder.byteArray.mapResult(ArraySeq.unsafeWrapArray).asInstanceOf[Builder[A, ArraySeq[A]]]
+      case ClassTag.Byte =>
+        Builder.byteArray.mapResult(ArraySeq.unsafeWrapArray).asInstanceOf[Builder[A, ArraySeq[A]]]
       case _ => Builder.taggedArraySeq[A]
     })
   }
