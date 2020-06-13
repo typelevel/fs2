@@ -15,6 +15,9 @@ private[fs2] trait CollectorPlatform { self: Collector.type =>
   implicit def supportsMapFactory[K, V, C[_, _]](f: MapFactory[C]): Collector.Aux[(K, V), C[K, V]] =
     make(Builder.fromMapFactory(f))
 
+  /**
+    * Use `ArraySeq.untagged` to build a `Collector` where a `ClassTag` is not available.
+    */
   implicit def supportsTaggedArraySeq[A: ClassTag](
       a: ArraySeq.type
   ): Collector.Aux[A, ArraySeq[A]] = {
