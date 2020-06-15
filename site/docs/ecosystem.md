@@ -17,7 +17,7 @@ As described in the `README` file, FS2 is based mostly on `cats` and `cats-effec
 
 ### Libraries using FS2, and integrations with data stores
 
-If you have a project you'd like to include in this list, either [click here](https://github.com/functional-streams-for-scala/fs2/edit/master/site/docs/ecosystem.md) or let us know in [the gitter channel](https://gitter.im/functional-streams-for-scala/fs2) and we'll add it for you.
+If you have a project you'd like to include in this list, either [click here](https://github.com/functional-streams-for-scala/fs2/edit/main/site/docs/ecosystem.md) or let us know in [the gitter channel](https://gitter.im/functional-streams-for-scala/fs2) and we'll add it for you.
 
 * [canoe](https://github.com/augustjune/canoe): A purely functional library for building Telegram chatbots.
 * [chromaprint](https://github.com/mgdigital/Chromaprint.scala): A Scala implementation of the Chromaprint/AcoustID audio fingerprinting algorithm, built with fs2 streams / Cats Effect.
@@ -59,4 +59,4 @@ If you have a project you'd like to include in this list, either [click here](ht
 * [upperbound](https://github.com/SystemFw/upperbound): A purely functional, interval-based rate limiter with support for backpressure.
 * [vinyldns](https://github.com/vinyldns/vinyldns): A DNS governance system using fs2 for throttling updates to DNS backends.
 
-Don't use see your project on the list? [Click here](https://github.com/functional-streams-for-scala/fs2/edit/master/site/docs/ecosystem.md) to add it!
+Don't use see your project on the list? [Click here](https://github.com/functional-streams-for-scala/fs2/edit/main/site/docs/ecosystem.md) to add it!

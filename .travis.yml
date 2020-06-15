@@ -31,5 +31,5 @@ script:
   - (test $TRAVIS_SCALA_VERSION == "2.12.10" && sbt ++$TRAVIS_SCALA_VERSION -Dfile.encoding=UTF8 -J-Xms2g -J-Xmx2g docs/mdoc) || test $TRAVIS_SCALA_VERSION == "2.13.2"
 
 after_success:
-  - test $PUBLISH == "true" && test $TRAVIS_PULL_REQUEST == "false" && test $TRAVIS_BRANCH == "master" && GPG_WARN_ON_FAILURE=true sbt +publish
+  - test $PUBLISH == "true" && test $TRAVIS_PULL_REQUEST == "false" && test $TRAVIS_BRANCH == "main" && GPG_WARN_ON_FAILURE=true sbt +publish
 
