@@ -5,7 +5,7 @@ import cats.arrow.FunctionK
 import cats.effect._
 import fs2.internal._
 import fs2.internal.FreeC.Result
-import fs2.internal.Algebra.Eval
+import fs2.internal.Algebra.{Lift => Eval}
 
 /**
   * A `p: Pull[F,O,R]` reads values from one or more streams, returns a

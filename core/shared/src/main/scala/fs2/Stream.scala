@@ -7,7 +7,7 @@ import cats.effect.concurrent._
 import cats.effect.implicits._
 import cats.implicits.{catsSyntaxEither => _, _}
 import fs2.concurrent._
-import fs2.internal.Algebra.{Acquire, Eval, GetScope, Output}
+import fs2.internal.Algebra.{Acquire, Lift => Eval, GetScope, Output}
 import fs2.internal.FreeC.Result
 import fs2.internal.{Resource => _, _}
 import java.io.PrintStream

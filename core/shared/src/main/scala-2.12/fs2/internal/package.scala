@@ -4,6 +4,7 @@ import scala.collection.generic.CanBuildFrom
 import scala.collection.mutable.Builder
 
 package object internal {
+  private[fs2] val  Algebra = FreeC
   private[fs2] type Factory[-A, +C] = CanBuildFrom[Nothing, A, C]
 
   private[fs2] implicit class FactoryOps[-A, +C](private val factory: Factory[A, C]) {
