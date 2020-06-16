@@ -17,7 +17,7 @@ scalaVersion in ThisBuild := crossScalaVersions.value.head
 githubWorkflowJavaVersions in ThisBuild := Seq("adopt@1.11")
 githubWorkflowPublishTargetBranches in ThisBuild := Seq(RefPredicate.Equals(Ref.Branch("master")))
 githubWorkflowBuild in ThisBuild := WorkflowStep.Sbt(
-  List("fmtCheck", "testJVM", "testJS", "doc", "mimaReportBinaryIssues", ";project coreJVM;it:test")
+  List("fmtCheck", "compile", "testJVM", "testJS", "doc", "mimaReportBinaryIssues", ";project coreJVM;it:test")
 )
 githubWorkflowEnv in ThisBuild ++= Map(
   "SONATYPE_USERNAME" -> "fs2-ci",

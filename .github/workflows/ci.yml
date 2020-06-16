@@ -78,7 +78,7 @@ jobs:
       - name: Check that workflows are up to date
         run: sbt ++${{ matrix.scala }} githubWorkflowCheck
 
-      - run: 'sbt ++${{ matrix.scala }} fmtCheck testJVM testJS doc mimaReportBinaryIssues '';project coreJVM;it:test'''
+      - run: 'sbt ++${{ matrix.scala }} fmtCheck compile testJVM testJS doc mimaReportBinaryIssues '';project coreJVM;it:test'''
 
       - name: Upload target directory 'experimental/target' (${{ matrix.scala }})
         uses: actions/upload-artifact@v1
