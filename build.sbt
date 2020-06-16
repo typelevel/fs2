@@ -282,7 +282,7 @@ lazy val root = project
   .settings(commonSettings)
   .settings(mimaSettings)
   .settings(noPublish)
-  .aggregate(coreJVM, coreJS, io, reactiveStreams, benchmark, experimental)
+  .aggregate(coreJVM, coreJS, io, reactiveStreams, benchmark, experimental, microsite)
 
 lazy val IntegrationTest = config("it").extend(Test)
 
@@ -386,6 +386,7 @@ lazy val microsite = project
   .in(file("site"))
   .enablePlugins(MicrositesPlugin)
   .settings(commonSettings)
+  .settings(noPublish)
   .settings(
     micrositeName := "fs2",
     micrositeDescription := "Purely functional, effectful, resource-safe, concurrent streams for Scala",
