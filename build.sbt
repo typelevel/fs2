@@ -11,6 +11,16 @@ addCommandAlias(
   "; compile:scalafmtCheck; test:scalafmtCheck; it:scalafmtCheck; scalafmtSbtCheck"
 )
 
+githubWorkflowJavaVersions in ThisBuild := Seq("adopt@1.11")
+githubWorkflowPublishTargetBranches in ThisBuild := Seq(RefPredicate.Equals(Ref.Branch("master")))
+githubWorkflowBuild in ThisBuild := WorkflowStep.Sbt(
+  List("fmtCheck", "testJVM", "testJS", "doc", "mimaReportBinaryIssues", ";project coreJVM;it:test")
+)
+githubWorkflowEnv in ThisBuild ++= Map(
+  "SONATYPE_USERNAME" -> "fs2-ci",
+  "SONATYPE_PASSWORD" -> s"$${{ secrets.SONATYPE_PASSWORD }}"
+)
+
 lazy val contributors = Seq(
   "pchiusano" -> "Paul Chiusano",
   "pchlupacek" -> "Pavel Chlupáček",
@@ -26,6 +36,7 @@ lazy val contributors = Seq(
 
 lazy val commonSettingsBase = Seq(
   organization := "co.fs2",
+  crossScalaVersions := Seq("2.12.10", "2.13.2"),
   scalacOptions ++= Seq(
     "-feature",
     "-deprecation",

@@ -1,7 +1,6 @@
 val scalaJSVersion =
   Option(System.getenv("SCALAJS_VERSION")).getOrElse("1.1.0")
 
-addSbtPlugin("com.dwijnand" % "sbt-travisci" % "1.2.0")
 addSbtPlugin("com.github.tkawachi" % "sbt-doctest" % "0.9.6")
 addSbtPlugin("com.typesafe.sbt" % "sbt-osgi" % "0.9.5")
 addSbtPlugin("com.github.gseitz" % "sbt-release" % "1.0.13")
@@ -15,3 +14,4 @@ addSbtPlugin("org.portable-scala" % "sbt-scalajs-crossproject" % "1.0.0")
 addSbtPlugin("org.scalameta" % "sbt-scalafmt" % "2.4.0")
 addSbtPlugin("com.47deg" % "sbt-microsites" % "1.2.1")
 addSbtPlugin("ch.epfl.scala" % "sbt-scalafix" % "0.9.17")
+addSbtPlugin("com.codecommit" % "sbt-github-actions" % "0.6.4")
