@@ -1,7 +1,7 @@
 FS2: Functional Streams for Scala
 =============
 
-[![Build Status](https://travis-ci.org/functional-streams-for-scala/fs2.svg?branch=main)](http://travis-ci.org/functional-streams-for-scala/fs2)
+[![Continuous Integration](https://github.com/functional-streams-for-scala/fs2/workflows/Continuous%20Integration/badge.svg)](https://github.com/functional-streams-for-scala/fs2/actions?query=workflow%3A%22Continuous+Integration%22)
 [![Gitter Chat](https://badges.gitter.im/functional-streams-for-scala/fs2.svg)](https://gitter.im/functional-streams-for-scala/fs2)
 [![Latest version](https://img.shields.io/maven-central/v/co.fs2/fs2-core_2.12.svg)](https://index.scala-lang.org/functional-streams-for-scala/fs2/fs2-core)
 
