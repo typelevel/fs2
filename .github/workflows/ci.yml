@@ -92,12 +92,6 @@ jobs:
           name: target-${{ matrix.os }}-${{ matrix.scala }}-${{ matrix.java }}-target
           path: target
 
-      - name: Upload target directory 'docs/target' (${{ matrix.scala }})
-        uses: actions/upload-artifact@v1
-        with:
-          name: target-${{ matrix.os }}-${{ matrix.scala }}-${{ matrix.java }}-docs_target
-          path: docs/target
-
       - name: Upload target directory 'core/js/target' (${{ matrix.scala }})
         uses: actions/upload-artifact@v1
         with:
@@ -221,18 +215,6 @@ jobs:
         with:
           name: target-${{ matrix.os }}-2.12.10-${{ matrix.java }}-target
           path: target
-
-      - name: Download target directory 'docs/target' (2.13.2)
-        uses: actions/download-artifact@v1
-        with:
-          name: target-${{ matrix.os }}-2.13.2-${{ matrix.java }}-docs_target
-          path: docs/target
-
-      - name: Download target directory 'docs/target' (2.12.10)
-        uses: actions/download-artifact@v1
-        with:
-          name: target-${{ matrix.os }}-2.12.10-${{ matrix.java }}-docs_target
-          path: docs/target
 
       - name: Download target directory 'core/js/target' (2.13.2)
         uses: actions/download-artifact@v1
