@@ -385,6 +385,7 @@ lazy val benchmark = project
 lazy val microsite = project
   .in(file("site"))
   .enablePlugins(MicrositesPlugin)
+  .disablePlugins(MimaPlugin)
   .settings(commonSettings)
   .settings(noPublish)
   .settings(
