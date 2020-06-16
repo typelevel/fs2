@@ -89,16 +89,33 @@ private[fs2] sealed abstract class FreeC[+F[_], +O, +R] {
 }
 
 private[fs2] object FreeC {
+
+  /* A FreeC can be one of the following:
+   *  - A Result or terminal, the end result of a pulling. This may have ended in:
+   *    - Succeeded with a result of type R.
+   *    - Failed with an exception
+   *    - Interrupted from another thread with a known `scopeId`
+   *
+   *  - A Bind, that binds a first computation(another FreeC) with a method to _continue_
+   *    the computation from the result of the first one `step`.
+   *
+   *  - A single Action, which can be one of following:
+   *
+   *    - Eval (or lift) an effectful operation of type `F[R]`
+   *    - Output some values of type O.
+   *    - Acquire a new resource and add its cleanup to the current scope.
+   *    - Open, Close, or Access to the resource scope.
+   *    - side-Step or fork to a different computation
+   */
+
+  /** A Result, or terminal, indicates how a pull or Free evaluation ended.
+    * A FreeC may have succeeded with a result, failed with an exception,
+    * or interrupted from another concurrent pull.
+    */
   sealed abstract class Result[+R]
       extends FreeC[PureK, INothing, R]
-      with ViewL[PureK, INothing, R] { self =>
+      with ViewL[PureK, INothing, R] {
     override def mapOutput[P](f: INothing => P): FreeC[PureK, INothing, R] = this
-    def asExitCase: ExitCase[Throwable] =
-      self match {
-        case Result.Pure(_)           => ExitCase.Completed
-        case Result.Fail(err)         => ExitCase.Error(err)
-        case Result.Interrupted(_, _) => ExitCase.Canceled
-      }
   }
 
   object Result {
@@ -172,11 +189,11 @@ private[fs2] object FreeC {
   object ViewL {
 
     /** unrolled view of FreeC `bind` structure **/
-    sealed abstract case class View[+F[_], O, X, R](step: Eval[F, O, X]) extends ViewL[F, O, R] {
+    sealed abstract case class View[+F[_], O, X, R](step: Action[F, O, X]) extends ViewL[F, O, R] {
       def next(r: Result[X]): FreeC[F, O, R]
     }
 
-    private[ViewL] final class EvalView[+F[_], O, R](step: Eval[F, O, R])
+    private[ViewL] final class EvalView[+F[_], O, R](step: Action[F, O, R])
         extends View[F, O, R, R](step) {
       def next(r: Result[R]): FreeC[F, O, R] = r
     }
@@ -186,12 +203,12 @@ private[fs2] object FreeC {
     @tailrec
     private def mk[F[_], O, Z](free: FreeC[F, O, Z]): ViewL[F, O, Z] =
       free match {
-        case r: Result[Z]     => r
-        case e: Eval[F, O, Z] => new EvalView[F, O, Z](e)
+        case r: Result[Z]       => r
+        case e: Action[F, O, Z] => new EvalView[F, O, Z](e)
         case b: FreeC.Bind[F, O, y, Z] =>
           b.step match {
             case r: Result[_] => mk(b.cont(r))
-            case e: Eval[F, O, y] =>
+            case e: Action[F, O, y] =>
               new ViewL.View[F, O, y, Z](e) {
                 def next(r: Result[y]): FreeC[F, O, Z] = b.cont(r)
               }
@@ -219,7 +236,13 @@ private[fs2] object FreeC {
         try use(a)
         catch { case NonFatal(t) => FreeC.Result.Fail(t) }
       used.transformWith { result =>
-        release(a, result.asExitCase).transformWith {
+        val exitCase: ExitCase[Throwable] = result match {
+          case Result.Pure(_)           => ExitCase.Completed
+          case Result.Fail(err)         => ExitCase.Error(err)
+          case Result.Interrupted(_, _) => ExitCase.Canceled
+        }
+
+        release(a, exitCase).transformWith {
           case Result.Fail(t2) =>
             result match {
               case Result.Fail(tres) => Result.Fail(CompositeFailure(tres, t2))
@@ -230,16 +253,15 @@ private[fs2] object FreeC {
       }
     }
 
-  /* `Eval[F[_], O, R]` is a Generalised Algebraic Data Type (GADT)
-   * of atomic instructions that can be evaluated in the effect `F`
+  /* An Action is an tomic instruction that can perform effects in `F`
    * to generate by-product outputs of type `O`.
    *
    * Each operation also generates an output of type `R` that is used
    * as control information for the rest of the interpretation or compilation.
    */
-  abstract class Eval[+F[_], +O, +R] extends FreeC[F, O, R]
+  abstract class Action[+F[_], +O, +R] extends FreeC[F, O, R]
 
-  final case class Output[O](values: Chunk[O]) extends FreeC.Eval[PureK, O, Unit] {
+  final case class Output[O](values: Chunk[O]) extends Action[PureK, O, Unit] {
     override def mapOutput[P](f: O => P): FreeC[PureK, P, Unit] =
       FreeC.suspend {
         try Output(values.map(f))
@@ -255,7 +277,7 @@ private[fs2] object FreeC {
     * @param scopeId            If scope has to be changed before this step is evaluated, id of the scope must be supplied
     */
   final case class Step[X](stream: FreeC[Any, X, Unit], scope: Option[Token])
-      extends FreeC.Eval[PureK, INothing, Option[(Chunk[X], Token, FreeC[Any, X, Unit])]] {
+      extends Action[PureK, INothing, Option[(Chunk[X], Token, FreeC[Any, X, Unit])]] {
     /* NOTE: The use of `Any` and `PureK` done to by-pass an error in Scala 2.12 type-checker,
      * that produces a crash when dealing with Higher-Kinded GADTs in which the F parameter appears
      * Inside one of the values of the case class.      */
@@ -264,11 +286,11 @@ private[fs2] object FreeC {
 
   /* The `AlgEffect` trait is for operations on the `F` effect that create no `O` output.
    * They are related to resources and scopes. */
-  sealed abstract class AlgEffect[+F[_], R] extends FreeC.Eval[F, INothing, R] {
+  sealed abstract class AlgEffect[+F[_], R] extends Action[F, INothing, R] {
     final def mapOutput[P](f: INothing => P): FreeC[F, P, R] = this
   }
 
-  final case class Lift[+F[_], R](value: F[R]) extends AlgEffect[F, R]
+  final case class Eval[+F[_], R](value: F[R]) extends AlgEffect[F, R]
 
   final case class Acquire[+F[_], R](
       resource: F[R],
@@ -472,7 +494,7 @@ private[fs2] object FreeC {
                   )
               }
 
-            case eval: Lift[F, r] =>
+            case eval: Eval[F, r] =>
               F.flatMap(scope.interruptibleEval(eval.value)) {
                 case Right(r)           => resume(Result.Pure(r))
                 case Left(Left(err))    => resume(Result.Fail(err))
@@ -628,7 +650,7 @@ private[fs2] object FreeC {
         // if interruption has to be supported concurrent for G has to be passed
         case a: Acquire[F, r] =>
           Acquire[G, r](fK(a.resource), (r, ec) => fK(a.release(r, ec)))
-        case e: Lift[F, R]  => Lift[G, R](fK(e.value))
+        case e: Eval[F, R]  => Eval[G, R](fK(e.value))
         case OpenScope(_)   => OpenScope[G](concurrent)
         case c: CloseScope  => c
         case g: GetScope[_] => g
