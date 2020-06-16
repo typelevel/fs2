@@ -382,18 +382,6 @@ lazy val benchmark = project
   .enablePlugins(JmhPlugin)
   .dependsOn(io)
 
-lazy val docs = project
-  .in(file("docs"))
-  .enablePlugins(MdocPlugin)
-  .settings(commonSettings)
-  .settings(
-    name := "fs2-docs",
-    mdocIn := file("docs") / "src",
-    mdocOut := file("docs")
-  )
-  .settings(mdocSettings)
-  .dependsOn(coreJVM, io, reactiveStreams)
-
 lazy val microsite = project
   .in(file("site"))
   .enablePlugins(MicrositesPlugin)
