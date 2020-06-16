@@ -15,7 +15,7 @@ crossScalaVersions in ThisBuild := Seq("2.13.2", "2.12.10")
 scalaVersion in ThisBuild := crossScalaVersions.value.head
 
 githubWorkflowJavaVersions in ThisBuild := Seq("adopt@1.11")
-githubWorkflowPublishTargetBranches in ThisBuild := Seq(RefPredicate.Equals(Ref.Branch("master")))
+githubWorkflowPublishTargetBranches in ThisBuild := Seq(RefPredicate.Equals(Ref.Branch("main")))
 githubWorkflowBuild in ThisBuild := WorkflowStep.Sbt(
   List(
     "fmtCheck",
