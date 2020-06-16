@@ -40,6 +40,22 @@ class QueueSpec extends Fs2Spec {
           .asserting(it => assert(it == expected))
       }
     }
+    "circularBufferNoneTerminated" in {
+      forAll { (s: Stream[Pure, Int], maxSize0: PosInt) =>
+        val maxSize = maxSize0 % 20 + 1
+        val expected = s.toList.takeRight(maxSize)
+        Stream
+          .eval(Queue.circularBufferNoneTerminated[IO, Int](maxSize))
+          .flatMap { q =>
+            s.noneTerminate
+              .evalMap(x => q.enqueue1(x))
+              .drain ++ q.dequeue
+          }
+          .compile
+          .toList
+          .asserting(it => assert(it == expected))
+      }
+    }
     "dequeueAvailable" in {
       forAll { (s: Stream[Pure, Int]) =>
         val expected = s.toList
