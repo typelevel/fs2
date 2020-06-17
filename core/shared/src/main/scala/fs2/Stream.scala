@@ -128,7 +128,7 @@ import cats.data.Ior.Both
   *
   * @hideImplicitConversion PureOps
   * @hideImplicitConversion IdOps
-  **/
+  */
 final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit]) extends AnyVal {
 
   /**
@@ -1101,7 +1101,6 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
     *    If `this` is empty, that value is the `mempty` of the instance of `Monoid`.
     *  - If `this` is a non-terminating stream, and no matter if it yields any value, then the result is
     *    equivalent to the `Stream.never`: it never terminates nor yields any value.
-    *
     */
   def exists(p: O => Boolean): Stream[F, Boolean] =
     this.pull.forall(!p(_)).flatMap(r => Pull.output1(!r)).stream
@@ -1709,22 +1708,21 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
       case None => Pull.done
       case Some(s) =>
         s.repeatPull {
-            _.uncons.flatMap {
-              case None => Pull.pure(None)
-              case Some((hd, tl)) =>
-                val interspersed = {
-                  val bldr = Vector.newBuilder[O2]
-                  bldr.sizeHint(hd.size * 2)
-                  hd.foreach { o =>
-                    bldr += separator
-                    bldr += o
-                  }
-                  Chunk.vector(bldr.result)
+          _.uncons.flatMap {
+            case None => Pull.pure(None)
+            case Some((hd, tl)) =>
+              val interspersed = {
+                val bldr = Vector.newBuilder[O2]
+                bldr.sizeHint(hd.size * 2)
+                hd.foreach { o =>
+                  bldr += separator
+                  bldr += o
                 }
-                Pull.output(interspersed) >> Pull.pure(Some(tl))
-            }
+                Chunk.vector(bldr.result)
+              }
+              Pull.output(interspersed) >> Pull.pure(Some(tl))
           }
-          .pull
+        }.pull
           .echo
     }.stream
 
@@ -1865,7 +1863,6 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
     *
     * When either the inner or outer stream fails, the entire stream fails and the finalizer of the
     * inner stream runs before the outer one.
-    *
     */
   def switchMap[F2[x] >: F[x], O2](
       f: O => Stream[F2, O2]
@@ -2318,7 +2315,7 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
   /**
     * Like `parZip`, but combines elements pairwise with a function instead
     * of tupling them.
-    **/
+    */
   def parZipWith[F2[x] >: F[x]: Concurrent, O2 >: O, O3, O4](
       that: Stream[F2, O3]
   )(f: (O2, O3) => O4): Stream[F2, O4] =
@@ -3341,15 +3338,15 @@ object Stream extends StreamLowPriority {
   def eval_[F[_], A](fa: F[A]): Stream[F, INothing] =
     new Stream(Eval(fa).map(_ => ()))
 
-  /** like `eval` but resulting chunk is flatten efficiently **/
+  /** Like `eval` but resulting chunk is flatten efficiently. */
   def evalUnChunk[F[_], O](fo: F[Chunk[O]]): Stream[F, O] =
     new Stream(Eval(fo).flatMap(Output(_)))
 
-  /** Like `eval`, but lifts a foldable structure. **/
+  /** Like `eval`, but lifts a foldable structure. */
   def evals[F[_], S[_]: Foldable, O](fo: F[S[O]]): Stream[F, O] =
     eval(fo).flatMap(so => Stream.emits(so.toList))
 
-  /** Like `evals`, but lifts any Seq in the effect. **/
+  /** Like `evals`, but lifts any Seq in the effect. */
   def evalSeq[F[_], S[A] <: Seq[A], O](fo: F[S[O]]): Stream[F, O] =
     eval(fo).flatMap(Stream.emits)
 
@@ -4598,7 +4595,7 @@ object Stream extends StreamLowPriority {
       *
       * This works for every other `compile.` method, although it's a
       * very natural fit with `lastOrError`.
-      **/
+      */
     def resource(implicit
         compiler: Stream.Compiler[F, Resource[G, ?]]
     ): Stream.CompileOps[F, Resource[G, ?], O] =
@@ -4722,7 +4719,6 @@ object Stream extends StreamLowPriority {
     *
     * Once the stream will stop to be interleaved (merged), then `stream` allows to return to normal stream
     * invocation.
-    *
     */
   final class StepLeg[F[_], O](
       val head: Chunk[O],
@@ -4880,7 +4876,6 @@ object Stream extends StreamLowPriority {
     * scala> Stream(1,2,3).align(Stream("A","B","C","D","E")).toList
     * res0: List[cats.data.Ior[Int,String]] = List(Both(1,A), Both(2,B), Both(3,C), Right(D), Right(E))
     * }}}
-    *
     */
   implicit def alignInstance[F[_]]: Align[Stream[F, ?]] =
     new Align[Stream[F, ?]] {

@@ -37,19 +37,17 @@ class MemoryLeakSpec extends AnyFunSuite {
   )(stream: => Stream[IO, O]): Unit =
     test(name) {
       IO.race(
-          stream.compile.drain,
-          IO.race(
-            monitorHeap(warmupIterations, samplePeriod, limitBytesIncrease),
-            IO.sleep(monitorPeriod)
-          )
+        stream.compile.drain,
+        IO.race(
+          monitorHeap(warmupIterations, samplePeriod, limitBytesIncrease),
+          IO.sleep(monitorPeriod)
         )
-        .map {
-          case Left(_)         => ()
-          case Right(Right(_)) => ()
-          case Right(Left(path)) =>
-            fail(s"leak detected - heap dump: $path")
-        }
-        .unsafeRunSync()
+      ).map {
+        case Left(_)         => ()
+        case Right(Right(_)) => ()
+        case Right(Left(path)) =>
+          fail(s"leak detected - heap dump: $path")
+      }.unsafeRunSync()
     }
 
   private def monitorHeap(

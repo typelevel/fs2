@@ -51,7 +51,6 @@ object CompositeFailure {
     * - When any of the results are on left, then the Left(err) is returned
     * - When both results fail, the Left(CompositeFailure(_)) is returned
     * - When both results succeeds then Right(()) is returned
-    *
     */
   def fromResults(
       first: Either[Throwable, Unit],

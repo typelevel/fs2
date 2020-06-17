@@ -6,7 +6,7 @@ import cats.effect.Timer
 
 import scala.concurrent.duration.FiniteDuration
 
-/**Provides various `Pull`s for working with files. */
+/** Provides various `Pull`s for working with files. */
 @deprecated("Use ReadCursor/WriteCursor instead", "2.1.0")
 object pulls {
 
