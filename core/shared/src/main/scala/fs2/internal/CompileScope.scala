@@ -59,7 +59,6 @@ import fs2.internal.CompileScope.InterruptContext
   *                       Normally the interruption awaits next step in Algebra to be evaluated, with exception
   *                       of Eval, that when interruption is enabled on scope will be wrapped in race,
   *                       that eventually allows interruption while eval is evaluating.
-  *
   */
 private[fs2] final class CompileScope[F[_]] private (
     val id: Token,
@@ -177,7 +176,7 @@ private[fs2] final class CompileScope[F[_]] private (
   private def releaseChildScope(id: Token): F[Unit] =
     state.update(_.unregisterChild(id))
 
-  /** Returns all direct resources of this scope (does not return resources in ancestor scopes or child scopes). **/
+  /** Returns all direct resources of this scope (does not return resources in ancestor scopes or child scopes). * */
   private def resources: F[Chain[Resource[F]]] =
     F.map(state.get)(_.resources)
 
@@ -235,7 +234,7 @@ private[fs2] final class CompileScope[F[_]] private (
       }
     }
 
-  /** Gets all ancestors of this scope, inclusive of root scope. **/
+  /** Gets all ancestors of this scope, inclusive of root scope. * */
   private def ancestors: Chain[CompileScope[F]] = {
     @tailrec
     def go(curr: CompileScope[F], acc: Chain[CompileScope[F]]): Chain[CompileScope[F]] =
@@ -246,7 +245,7 @@ private[fs2] final class CompileScope[F[_]] private (
     go(self, Chain.empty)
   }
 
-  /** finds ancestor of this scope given `scopeId` **/
+  /** finds ancestor of this scope given `scopeId` * */
   def findSelfOrAncestor(scopeId: Token): Option[CompileScope[F]] = {
     @tailrec
     def go(curr: CompileScope[F]): Option[CompileScope[F]] =
@@ -259,7 +258,7 @@ private[fs2] final class CompileScope[F[_]] private (
     go(self)
   }
 
-  /** finds scope in child hierarchy of current scope **/
+  /** finds scope in child hierarchy of current scope * */
   def findSelfOrChild(scopeId: Token): F[Option[CompileScope[F]]] = {
     def go(scopes: Chain[CompileScope[F]]): F[Option[CompileScope[F]]] =
       scopes.uncons match {
@@ -288,7 +287,6 @@ private[fs2] final class CompileScope[F[_]] private (
     * - check if id is current scope,
     * - check if id is parent or any of its children
     * - traverse all known scope ids, starting from the root.
-    *
     */
   def findStepScope(scopeId: Token): F[Option[CompileScope[F]]] = {
     @tailrec
@@ -402,7 +400,6 @@ private[fs2] object CompileScope {
     * @param children           Children of this scope. Children may appear during the parallel pulls where one scope may
     *                           split to multiple asynchronously acquired scopes and resources.
     *                           Still, likewise for resources they are released in reverse order.
-    *
     */
   final private case class State[F[_]](
       open: Boolean,

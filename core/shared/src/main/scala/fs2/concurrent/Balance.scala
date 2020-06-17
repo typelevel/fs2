@@ -36,7 +36,6 @@ object Balance {
     *   }.take(3).parJoinUnbounded.compile.to(Set).unsafeRunSync
     * }}}
     *
-    *
     * When `source` terminates, the resulting streams (workers) are terminated once all elements
     * so far pulled from `source` are processed.
     *

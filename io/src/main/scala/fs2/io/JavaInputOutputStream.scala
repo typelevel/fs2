@@ -12,7 +12,7 @@ import fs2.concurrent.{Queue, SignallingRef}
 
 private[io] object JavaInputOutputStream {
 
-  /** state of the upstream, we only indicate whether upstream is done and if it failed **/
+  /** state of the upstream, we only indicate whether upstream is done and if it failed * */
   private final case class UpStreamState(done: Boolean, err: Option[Throwable])
   private sealed trait DownStreamState { self =>
     def isDone: Boolean =
