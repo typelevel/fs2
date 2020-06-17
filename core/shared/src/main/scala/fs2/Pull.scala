@@ -4,8 +4,7 @@ import cats.{Eval => _, _}
 import cats.arrow.FunctionK
 import cats.effect._
 import fs2.internal._
-import fs2.internal.FreeC.Result
-import fs2.internal.Algebra.Eval
+import fs2.internal.FreeC.{Eval, Result}
 
 /**
   * A `p: Pull[F,O,R]` reads values from one or more streams, returns a
@@ -43,7 +42,7 @@ final class Pull[+F[_], +O, +R] private[fs2] (private val free: FreeC[F, O, R]) 
     */
   def stream(implicit ev: R <:< Unit): Stream[F, O] = {
     val _ = ev
-    new Stream(Algebra.scope(free.asInstanceOf[FreeC[F, O, Unit]]))
+    new Stream(FreeC.scope(free.asInstanceOf[FreeC[F, O, Unit]]))
   }
 
   /**
@@ -130,11 +129,11 @@ object Pull extends PullLowPriority {
 
   /** Outputs a single value. */
   def output1[F[x] >: Pure[x], O](o: O): Pull[F, O, Unit] =
-    new Pull(Algebra.output1[O](o))
+    new Pull(FreeC.output1[O](o))
 
   /** Outputs a chunk of values. */
   def output[F[x] >: Pure[x], O](os: Chunk[O]): Pull[F, O, Unit] =
-    if (os.isEmpty) Pull.done else new Pull(Algebra.Output[O](os))
+    if (os.isEmpty) Pull.done else new Pull(FreeC.Output[O](os))
 
   /** Pull that outputs nothing and has result of `r`. */
   def pure[F[x] >: Pure[x], R](r: R): Pull[F, INothing, R] =
