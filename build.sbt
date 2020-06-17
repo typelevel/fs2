@@ -16,15 +16,17 @@ scalaVersion in ThisBuild := crossScalaVersions.value.head
 
 githubWorkflowJavaVersions in ThisBuild := Seq("adopt@1.11")
 githubWorkflowPublishTargetBranches in ThisBuild := Seq(RefPredicate.Equals(Ref.Branch("main")))
-githubWorkflowBuild in ThisBuild := WorkflowStep.Sbt(
-  List(
-    "fmtCheck",
-    "compile",
-    "testJVM",
-    "testJS",
-    "doc",
-    "mimaReportBinaryIssues",
-    ";project coreJVM;it:test"
+githubWorkflowBuild in ThisBuild := Seq(
+  WorkflowStep.Sbt(
+    List(
+      "fmtCheck",
+      "compile",
+      "testJVM",
+      "testJS",
+      "doc",
+      "mimaReportBinaryIssues",
+      ";project coreJVM;it:test"
+    )
   )
 )
 githubWorkflowEnv in ThisBuild ++= Map(
