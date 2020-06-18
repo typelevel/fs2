@@ -1,39 +1,32 @@
 package fs2
 
-import org.scalatest.Assertion
 import org.scalatest.prop.{CommonGenerators, Generator}
 
 import scala.collection.immutable.ArraySeq
+import scala.collection.{immutable, mutable}
 import scala.reflect.ClassTag
 
 class ChunkPlatformSpec extends Fs2Spec {
 
   // TODO should probably make a unit chunk generator in ChunkGenerators
   private implicit val genUnit: Generator[Unit] = CommonGenerators.specificValue(())
-
-  private def assertSpecialised[A](arraySeq: ArraySeq[A]): Assertion =
-    arraySeq match {
-      case _: ArraySeq.ofRef[A]  => fail("Expected specialised ArraySeq but was not specialised")
-      case _: ArraySeq.ofInt     => succeed
-      case _: ArraySeq.ofDouble  => succeed
-      case _: ArraySeq.ofLong    => succeed
-      case _: ArraySeq.ofFloat   => succeed
-      case _: ArraySeq.ofChar    => succeed
-      case _: ArraySeq.ofByte    => succeed
-      case _: ArraySeq.ofShort   => succeed
-      case _: ArraySeq.ofBoolean => succeed
-      case _: ArraySeq.ofUnit    => succeed
-    }
+  private implicit def genArraySeq[A : Generator : ClassTag]: Generator[ArraySeq[A]] =
+    Generator.vectorGenerator[A].map(ArraySeq.from)
+  private implicit def genMutableArraySeq[A : Generator : ClassTag]: Generator[mutable.ArraySeq[A]] =
+    implicitly[Generator[ArraySeq[A]]].map(_.to(mutable.ArraySeq))
 
   private def testChunkToArraySeq[A](testName: String, shouldSpecialise: Boolean, f: Chunk[A] => ArraySeq[A])(implicit generator: Generator[Chunk[A]]): Unit = {
-    testName - {
+    s"Chunk toArraySeq $testName" - {
       "values" in forAll { chunk: Chunk[A] =>
         assert(f(chunk).toVector == chunk.toVector)
       }
 
       if (shouldSpecialise) {
         "specialised" in forAll { chunk: Chunk[A] =>
-          assertSpecialised(f(chunk))
+          f(chunk) match {
+            case _: ArraySeq.ofRef[A]  => fail("Expected specialised ArraySeq but was not specialised")
+            case _ => succeed
+          }
         }
       }
     }
@@ -45,7 +38,6 @@ class ChunkPlatformSpec extends Fs2Spec {
   private def testChunkToArraySeqUntagged[A](testName: String)(implicit generator: Generator[Chunk[A]]): Unit =
     testChunkToArraySeq[A](testName, shouldSpecialise = false, f = _.toArraySeqUntagged)
 
-  "Chunk toArraySeq" - {
     testChunkToArraySeqTagged[Int]("Int tagged", shouldSpecialise = true)
     testChunkToArraySeqTagged[Double]("Double tagged", shouldSpecialise = true)
     testChunkToArraySeqTagged[Long]("Long tagged", shouldSpecialise = true)
@@ -67,6 +59,42 @@ class ChunkPlatformSpec extends Fs2Spec {
     testChunkToArraySeqUntagged[Boolean]("Boolean untagged")
     testChunkToArraySeqUntagged[Unit]("Unit untagged")
     testChunkToArraySeqUntagged[String]("String untagged")
+
+  private def testChunkFromArraySeq[A : ClassTag : Generator]: Unit = {
+    val testTypeName: String = implicitly[ClassTag[A]].runtimeClass.getSimpleName
+
+    s"fromArraySeq ArraySeq[$testTypeName]" - {
+      "mutable" in forAll { arraySeq: mutable.ArraySeq[A] =>
+        assert(Chunk.arraySeq(arraySeq).toVector == arraySeq.toVector)
+      }
+
+      "immutable" in forAll { arraySeq: immutable.ArraySeq[A] =>
+        assert(Chunk.arraySeq(arraySeq).toVector == arraySeq.toVector)
+      }
+    }
+  }
+
+  "Chunk from ArraySeq" - {
+    testChunkFromArraySeq[Int]
+    testChunkFromArraySeq[Double]
+    testChunkFromArraySeq[Long]
+    testChunkFromArraySeq[Float]
+    testChunkFromArraySeq[Char]
+    testChunkFromArraySeq[Byte]
+    testChunkFromArraySeq[Short]
+    testChunkFromArraySeq[Boolean]
+    testChunkFromArraySeq[Unit]
+    testChunkFromArraySeq[String]
+  }
+
+  "Chunk iterable" - {
+    "mutable ArraySeq" in forAll { a: mutable.ArraySeq[String] =>
+      assert(Chunk.iterable(a).toVector == a.toVector)
+    }
+
+    "immutable ArraySeq" in forAll { a: immutable.ArraySeq[String] =>
+      assert(Chunk.iterable(a).toVector == a.toVector)
+    }
   }
 
 }

@@ -19,7 +19,6 @@ import java.nio.{
 import cats.{Alternative, Applicative, Eq, Eval, Monad, Traverse, TraverseFilter}
 import cats.data.{Chain, NonEmptyList}
 import cats.implicits._
-import fs2.internal.ArrayBackedSeq
 
 /**
   * Strict, finite sequence of values that allows index-based random access of elements.
@@ -495,7 +494,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] { self =>
     iterator.mkString("Chunk(", ", ", ")")
 }
 
-object Chunk extends CollectorK[Chunk] {
+object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
 
   /** Optional mix-in that provides the class tag of the element type in a chunk. */
   trait KnownElementType[A] { self: Chunk[A] =>
@@ -594,10 +593,8 @@ object Chunk extends CollectorK[Chunk] {
   /** Creates a chunk from a `scala.collection.Iterable`. */
   def iterable[O](i: collection.Iterable[O]): Chunk[O] =
     i match {
-      case ArrayBackedSeq(arr) =>
-        // arr is either a primitive array or a boxed array
-        // cast is safe b/c the array constructor will check for primitive vs boxed arrays
-        array(arr.asInstanceOf[Array[O]])
+      case a: collection.mutable.ArraySeq[O] => arraySeq(a)
+      case a: collection.immutable.ArraySeq[O] => arraySeq(a)
       case v: Vector[O]                    => vector(v)
       case b: collection.mutable.Buffer[O] => buffer(b)
       case l: List[O] =>

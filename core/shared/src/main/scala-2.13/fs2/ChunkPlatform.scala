@@ -1,6 +1,7 @@
 package fs2
 
 import scala.collection.immutable.ArraySeq
+import scala.collection.{immutable, mutable}
 import scala.reflect.ClassTag
 
 trait ChunkPlatform[+O] { self: Chunk[O] =>
@@ -26,5 +27,17 @@ trait ChunkPlatform[+O] { self: Chunk[O] =>
       }
     }
   }
+
+}
+
+trait ChunkCompanionPlatform { self: Chunk.type =>
+
+  // The array casts below are safe because the array constructor will check for primative vs boxed arrays
+
+  def arraySeq[O](arraySeq: immutable.ArraySeq[O]): Chunk[O] =
+    array(arraySeq.unsafeArray.asInstanceOf[Array[O]])
+
+  def arraySeq[O](arraySeq: mutable.ArraySeq[O]): Chunk[O] =
+    array(arraySeq.array.asInstanceOf[Array[O]])
 
 }
