@@ -33,7 +33,7 @@ import fs2.internal.ArrayBackedSeq
   * The operations on `Chunk` are all defined strictly. For example, `c.map(f).map(g).map(h)` results in
   * intermediate chunks being created (1 per call to `map`).
   */
-abstract class Chunk[+O] extends Serializable { self =>
+abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] { self =>
 
   /** Returns the number of elements in this chunk. */
   def size: Int
