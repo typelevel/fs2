@@ -593,10 +593,10 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
   /** Creates a chunk from a `scala.collection.Iterable`. */
   def iterable[O](i: collection.Iterable[O]): Chunk[O] =
     i match {
-      case a: collection.mutable.ArraySeq[O] => arraySeq(a)
+      case a: collection.mutable.ArraySeq[O]   => arraySeq(a)
       case a: collection.immutable.ArraySeq[O] => arraySeq(a)
-      case v: Vector[O]                    => vector(v)
-      case b: collection.mutable.Buffer[O] => buffer(b)
+      case v: Vector[O]                        => vector(v)
+      case b: collection.mutable.Buffer[O]     => buffer(b)
       case l: List[O] =>
         if (l.isEmpty) empty
         else if (l.tail.isEmpty) singleton(l.head)

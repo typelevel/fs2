@@ -6,16 +6,16 @@ import scala.reflect.ClassTag
 
 trait ChunkPlatform[+O] { self: Chunk[O] =>
 
-  def toArraySeq[O2 >: O : ClassTag]: ArraySeq[O2] = {
+  def toArraySeq[O2 >: O: ClassTag]: ArraySeq[O2] = {
     val array: Array[O2] = new Array[O2](size)
     copyToArray(array)
     ArraySeq.unsafeWrapArray[O2](array)
   }
 
-  def toArraySeqUntagged: ArraySeq[O] = {
+  def toArraySeqUntagged: ArraySeq[O] =
     self match {
       case knownType: Chunk.KnownElementType[O] => toArraySeq[O](knownType.elementClassTag)
-      case _ => {
+      case _ =>
         val buf = ArraySeq.untagged.newBuilder[O]
         buf.sizeHint(size)
         var i = 0
@@ -24,9 +24,7 @@ trait ChunkPlatform[+O] { self: Chunk[O] =>
           i += 1
         }
         buf.result()
-      }
     }
-  }
 
 }
 
