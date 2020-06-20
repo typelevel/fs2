@@ -1,9 +1,9 @@
 package fs2
 package concurrent
 
-import cats.{Applicative, Eq, Functor, Id}
 import cats.effect.{Concurrent, Sync}
 import cats.implicits._
+import cats.{Applicative, Eq, Functor, Id}
 import fs2.internal.{SizedQueue, Token}
 
 /** Provides the ability to enqueue elements to a `Queue`. */
@@ -454,6 +454,37 @@ trait InspectableQueue[F[_], A] extends Queue[F, A] {
   def getSize: F[Int]
 }
 
+/**
+  * Like [[InspectableQueue]], but allows allows signalling of no further enqueues by enqueueing `None`.
+  * Optimizes dequeue to minimum possible boxing.
+  */
+trait NoneTerminatedInspectableQueue[F[_], A] extends NoneTerminatedQueue[F, A] {
+
+  /**
+    * Returns the element which would be dequeued next,
+    * but without removing it. Completes when such an
+    * element is available.
+    */
+  def peek1: F[A]
+
+  /**
+    * The time-varying size of this `Queue`.
+    * Emits elements describing the current size of the queue.
+    * Offsetting enqueues and de-queues may not result in refreshes.
+    *
+    * Finally, note that operations like `dequeue` are optimized to
+    * work on chunks when possible, which will result in faster
+    * decreases in size that one might expect.
+    * More granular updates can be achieved by calling `dequeue1`
+    * repeatedly, but this is less efficient than dequeueing in
+    * batches.
+    */
+  def size: Stream[F, Int]
+
+  /** Gets the current size of the queue. */
+  def getSize: F[Int]
+}
+
 object InspectableQueue {
   final class InPartiallyApplied[G[_]](val G: Sync[G]) extends AnyVal {
 
@@ -464,6 +495,24 @@ object InspectableQueue {
     /** Creates a queue with the specified size bound. */
     def bounded[F[_], A](maxSize: Int)(implicit F: Concurrent[F]): G[InspectableQueue[F, A]] =
       forStrategy(Queue.Strategy.boundedFifo[A](maxSize))(_.headOption)(_.size)
+
+    /** Creates a bounded queue terminated by enqueueing `None`. All elements before `None` are preserved. */
+    def boundedNoneTerminated[F[_], A](
+        maxSize: Int
+    )(implicit F: Concurrent[F]): G[NoneTerminatedInspectableQueue[F, A]] =
+      forStrategyNoneTerminated[F, (Boolean, SizedQueue[A]), A](
+        PubSub.Strategy.closeDrainFirst(Queue.Strategy.boundedFifo(maxSize))
+      ) { case (_, h) => h.headOption } { case (_, h) => h.size }
+
+    /** Created an unbounded queue terminated by enqueueing `None`. All elements before `None`. */
+    def noneTerminated[F[_], A](implicit
+        F: Concurrent[F]
+    ): G[NoneTerminatedInspectableQueue[F, A]] =
+      forStrategyNoneTerminated[F, (Boolean, SizedQueue[A]), A](
+        PubSub.Strategy.closeDrainFirst(Queue.Strategy.fifo)
+      ) {
+        case (_, h) => h.headOption
+      } { case (_, h) => h.size }
 
     /** Creates a queue which stores the last `maxSize` enqueued elements and which never blocks on enqueue. */
     def circularBuffer[F[_], A](
@@ -572,6 +621,113 @@ object InspectableQueue {
         }
       }
     }
+
+    private[fs2] def forStrategyNoneTerminated[F[_]: Concurrent, S, A](
+        strategy: PubSub.Strategy[Option[A], Option[Chunk[A]], S, Int]
+    )(headOf: S => Option[A])(sizeOf: S => Int): G[NoneTerminatedInspectableQueue[F, A]] = {
+      implicit val SyncG: Sync[G] = G
+
+      implicit def eqInstance: Eq[S] = Eq.fromUniversalEquals[S]
+
+      PubSub.in[G].from(PubSub.Strategy.Inspectable.strategy(strategy)).map { pubSub =>
+        new NoneTerminatedInspectableQueue[F, A] {
+
+          override def dequeueChunk(maxSize: Int): Stream[F, A] =
+            pubSub
+              .getStream(Right(maxSize))
+              .map(_.toOption.flatten)
+              .unNoneTerminate
+              .flatMap(Stream.chunk)
+
+          override def dequeueBatch: Pipe[F, Int, A] =
+            _.evalMap(sz => pubSub.get(Right(sz)).map(_.toOption.flatten)).unNoneTerminate
+              .flatMap(Stream.chunk)
+
+          override def peek1: F[A] =
+            Sync[F].bracket(Sync[F].delay(new Token)) { token =>
+              def take: F[A] =
+                pubSub.get(Left(Some(token))).flatMap {
+                  case Left(s) =>
+                    headOf(s) match {
+                      case None    => take
+                      case Some(a) => Applicative[F].pure(a)
+                    }
+
+                  case Right(chunk) =>
+                    Sync[F].raiseError(
+                      new Throwable(
+                        s"Inspectable `peek1` requires state to be returned, got: $chunk"
+                      )
+                    )
+                }
+
+              take
+            }(token => pubSub.unsubscribe(Left(Some(token))))
+
+          override def size: Stream[F, Int] =
+            Stream
+              .bracket(Sync[F].delay(new Token))(token => pubSub.unsubscribe(Left(Some(token))))
+              .flatMap { token =>
+                pubSub.getStream(Left(Some(token))).flatMap {
+                  case Left(s)  => Stream.emit(sizeOf(s))
+                  case Right(_) => Stream.empty // impossible
+                }
+              }
+
+          override def getSize: F[Int] =
+            pubSub.get(Left(None)).map {
+              case Left(s)  => sizeOf(s)
+              case Right(_) => -1
+            }
+
+          override def dequeue1: F[Option[A]] =
+            pubSub.get(Right(1)).flatMap {
+              case Left(s) =>
+                Sync[F].raiseError(
+                  new Throwable(
+                    s"Inspectable `dequeue1` requires chunk of size 1 with `A` got Left($s)"
+                  )
+                )
+
+              case Right(Some(chunk)) =>
+                Queue.headUnsafe[F, A](chunk).map(Some(_))
+
+              case Right(None) => Applicative[F].pure(None)
+            }
+
+          override def tryDequeue1: F[Option[Option[A]]] =
+            pubSub.tryGet(Right(1)).flatMap {
+              case None => Applicative[F].pure(None)
+              case Some(Left(s)) =>
+                Sync[F].raiseError(
+                  new Throwable(
+                    s"Inspectable `dequeue1` requires chunk of size 1 with `A` got Left($s)"
+                  )
+                )
+              case Some(Right(chunk)) =>
+                chunk match {
+                  case Some(value) => Queue.headUnsafe[F, A](value).map(x => Some(Some(x)))
+                  case None        => Applicative[F].pure(None)
+                }
+            }
+
+          override def enqueue1(a: Option[A]): F[Unit] = pubSub.publish(a)
+
+          override def offer1(a: Option[A]): F[Boolean] = pubSub.tryPublish(a)
+
+          override def dequeueChunk1(maxSize: Int): F[Option[Chunk[A]]] =
+            pubSub
+              .get(Right(maxSize))
+              .map(_.toOption.getOrElse(Some(Chunk.empty)))
+
+          override def tryDequeueChunk1(maxSize: Int): F[Option[Option[Chunk[A]]]] =
+            pubSub
+              .tryGet(Right(maxSize))
+              .map(_.map(_.toOption.getOrElse(Some(Chunk.empty))))
+
+        }
+      }
+    }
   }
 
   /**
@@ -593,6 +749,16 @@ object InspectableQueue {
   /** Creates a queue with the specified size bound. */
   def bounded[F[_], A](maxSize: Int)(implicit F: Concurrent[F]): F[InspectableQueue[F, A]] =
     in[F].bounded(maxSize)
+
+  /** Creates a bounded queue terminated by enqueueing `None`. All elements before `None` are preserved. */
+  def boundedNoneTerminated[F[_], A](
+      maxSize: Int
+  )(implicit F: Concurrent[F]): F[NoneTerminatedInspectableQueue[F, A]] =
+    in[F].boundedNoneTerminated(maxSize)
+
+  /** Created an unbounded queue terminated by enqueueing `None`. All elements before `None`. */
+  def noneTerminated[F[_], A](implicit F: Concurrent[F]): F[NoneTerminatedInspectableQueue[F, A]] =
+    in[F].noneTerminated
 
   /** Creates a queue which stores the last `maxSize` enqueued elements and which never blocks on enqueue. */
   def circularBuffer[F[_], A](maxSize: Int)(implicit F: Concurrent[F]): F[InspectableQueue[F, A]] =

@@ -72,6 +72,23 @@ class QueueSuite extends Fs2Suite {
           assert(result.flatMap(_.toList) == expected)
         }
     }
+
+    forAllAsync { (s: Stream[Pure, Int]) =>
+      val expected = s.toList
+      Stream
+        .eval(InspectableQueue.noneTerminated[IO, Int])
+        .flatMap { q =>
+          s.noneTerminate
+            .evalMap(q.enqueue1)
+            .drain ++ q.dequeueChunk(Int.MaxValue).chunks
+        }
+        .compile
+        .toList
+        .map { result =>
+          assert(result.size < 2)
+          assert(result.flatMap(_.toList) == expected)
+        }
+    }
   }
   test("dequeueBatch unbounded") {
     forAllAsync { (s: Stream[Pure, Int], batchSize0: Int) =>
@@ -84,6 +101,21 @@ class QueueSuite extends Fs2Suite {
             .constant(batchSize)
             .through(q.dequeueBatch)
             .unNoneTerminate
+        }
+        .compile
+        .toList
+        .map(it => assert(it == expected))
+    }
+
+    forAllAsync { (s: Stream[Pure, Int], batchSize0: Int) =>
+      val batchSize = batchSize0 % 20 + 1
+      val expected = s.toList
+      Stream
+        .eval(InspectableQueue.noneTerminated[IO, Int])
+        .flatMap { q =>
+          s.noneTerminate.evalMap(e => q.enqueue1(e)).drain ++ Stream
+            .constant(batchSize)
+            .through(q.dequeueBatch)
         }
         .compile
         .toList
@@ -237,4 +269,47 @@ class QueueSuite extends Fs2Suite {
       .toList
       .map(it => assert(it.flatten == List(true, 42, 42, 43)))
   }
+
+  test("peek1 with dequeue1 noneTerminatedInspectableQueue"){
+    Stream
+      .eval(
+        for {
+          q <- InspectableQueue.noneTerminated[IO, Int]
+          f <- q.peek1.product(q.dequeue1).start
+          _ <- q.enqueue1(Some(42))
+          x <- f.join
+          g <- q.peek1.product(q.dequeue1).product(q.peek1.product(q.dequeue1)).start
+          _ <- q.enqueue1(Some(43))
+          _ <- q.enqueue1(Some(44))
+          yz <- g.join
+          (y, z) = yz
+        } yield List(x, y, z)
+      )
+      .compile
+      .toList
+      .map(it =>
+        assert(
+          it.flatten == List((42, Some(42)), (43, Some(43)), (44, Some(44)))
+        )
+      )
+  }
+
+  test("peek1 bounded noneTerminatedInspectableQueue"){
+      Stream
+        .eval(
+          for {
+            q <- InspectableQueue.boundedNoneTerminated[IO, Int](maxSize = 1)
+            _ <- q.enqueue1(Some(42))
+            f <- q.peek1.start
+            g <- q.peek1.start
+            b <- q.offer1(Some(43))
+            x <- f.join
+            y <- g.join
+            z <- q.dequeue1
+          } yield List(b, x, y, z)
+        )
+        .compile
+        .toList
+        .map(it => assert(it.flatten == List(false, 42, 42, Some(42))))
+    }
 }
