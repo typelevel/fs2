@@ -356,9 +356,9 @@ Writing to the console is often as simple as `s.evalMap(o => IO(println(o)))`. T
 def stdoutLines[F[_]: Sync: ContextShift, O: Show](
     blocker: Blocker,
     charset: Charset = utf8Charset
-): Pipe[F, O, Unit]
+): Pipe[F, O, INothing]
 
-def stdout[F[_]: Sync: ContextShift](blocker: Blocker): Pipe[F, Byte, Unit]
+def stdout[F[_]: Sync: ContextShift](blocker: Blocker): Pipe[F, Byte, INothing]
 ```
 
 Both of these pipes are provided in the `fs2.io` package object. Both wrap calls to the console with a `blocker.delay` to avoid fairness issues. The `stdoutLines` method uses a `Show[O]` instance to convert the stream elements to strings. Note these pipes may be more expensive than simplying doing a blocking println, depending on the application. We're trading fairness for the overhead of shifting execution to a blocking thread pool.

@@ -37,7 +37,7 @@ object Signal extends SignalLowPriorityImplicits {
     new Signal[F, A] {
       def get = F.pure(a)
       def continuous = Stream.constant(a)
-      def discrete = Stream(a) ++ Stream.eval_(F.never)
+      def discrete = Stream(a) ++ Stream.never
     }
 
   implicit def applicativeInstance[F[_]](implicit

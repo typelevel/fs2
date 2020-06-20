@@ -73,7 +73,7 @@ package object file {
       path: Path,
       blocker: Blocker,
       flags: Seq[StandardOpenOption] = List(StandardOpenOption.CREATE)
-  ): Pipe[F, Byte, Unit] =
+  ): Pipe[F, Byte, INothing] =
     in =>
       Stream
         .resource(WriteCursor.fromPath(path, blocker, flags))
@@ -92,7 +92,7 @@ package object file {
       limit: Long,
       blocker: Blocker,
       flags: Seq[StandardOpenOption] = List(StandardOpenOption.CREATE)
-  ): Pipe[F, Byte, Unit] = {
+  ): Pipe[F, Byte, INothing] = {
     def openNewFile: Resource[F, FileHandle[F]] =
       Resource
         .liftF(computePath)
@@ -133,7 +133,7 @@ package object file {
         .flatMap {
           case (fileHotswap, fileHandle) =>
             Stream.eval(newCursor(fileHandle)).flatMap { cursor =>
-              go(fileHotswap, cursor, 0L, in).stream
+              go(fileHotswap, cursor, 0L, in).stream.drain
             }
         }
   }
@@ -161,7 +161,8 @@ package object file {
   ): Stream[F, Watcher.Event] =
     Stream
       .resource(Watcher.default(blocker))
-      .flatMap(w => Stream.eval_(w.watch(path, types, modifiers)) ++ w.events(pollTimeout))
+      .evalTap(_.watch(path, types, modifiers))
+      .flatMap(_.events(pollTimeout))
 
   /**
     * Checks if a file exists

@@ -32,7 +32,7 @@ class SocketSpec extends Fs2Spec {
           )
           .flatMap {
             case (local, clients) =>
-              Stream.eval_(localBindAddress.complete(local)) ++
+              Stream.evalAction(localBindAddress.complete(local)) ++
                 clients.flatMap { s =>
                   Stream.resource(s).map { socket =>
                     socket
@@ -53,7 +53,6 @@ class SocketSpec extends Fs2Spec {
                 Stream
                   .chunk(message)
                   .through(socket.writes())
-                  .drain
                   .onFinalize(socket.endOfOutput) ++
                   socket.reads(1024, None).chunks.map(_.toArray)
               }
@@ -91,13 +90,12 @@ class SocketSpec extends Fs2Spec {
           )
           .flatMap {
             case (local, clients) =>
-              Stream.eval_(localBindAddress.complete(local)) ++
+              Stream.evalAction(localBindAddress.complete(local)) ++
                 clients.flatMap { s =>
                   Stream.emit(Stream.resource(s).flatMap { socket =>
                     Stream
                       .chunk(message)
                       .through(socket.writes())
-                      .drain
                       .onFinalize(socket.endOfOutput)
                   })
                 }

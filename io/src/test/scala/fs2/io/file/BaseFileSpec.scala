@@ -34,10 +34,11 @@ class BaseFileSpec extends Fs2Spec {
   protected def aFile(dir: Path): Stream[IO, Path] =
     Stream.eval(IO(Files.createTempFile(dir, "BaseFileSpec", ".tmp")))
 
+  // Return a Unit after modification so this can be used with flatTap
   protected def modify(file: Path): Stream[IO, Unit] =
     Stream.eval(IO(Files.write(file, Array[Byte](0, 1, 2, 3))).void)
 
-  protected def modifyLater(file: Path, blocker: Blocker): Stream[IO, Unit] =
+  protected def modifyLater(file: Path, blocker: Blocker): Stream[IO, INothing] =
     Stream
       .range(0, 4)
       .map(_.toByte)

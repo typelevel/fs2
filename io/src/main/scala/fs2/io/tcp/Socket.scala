@@ -72,5 +72,5 @@ trait Socket[F[_]] {
   /**
     * Writes the supplied stream of bytes to this socket via `write` semantics.
     */
-  def writes(timeout: Option[FiniteDuration] = None): Pipe[F, Byte, Unit]
+  def writes(timeout: Option[FiniteDuration] = None): Pipe[F, Byte, INothing]
 }

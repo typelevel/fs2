@@ -35,10 +35,9 @@ class DTLSSocketSpec extends TLSSpec {
                         val echoServer =
                           dtlsServerSocket
                             .reads(None)
-                            .evalMap(p => dtlsServerSocket.write(p, None))
-                            .drain
+                            .foreach(p => dtlsServerSocket.write(p, None))
                         val msg = Chunk.bytes("Hello, world!".getBytes)
-                        val echoClient = Stream.sleep_(500.milliseconds) ++ Stream.eval_(
+                        val echoClient = Stream.sleep_(500.milliseconds) ++ Stream.evalAction(
                           dtlsClientSocket.write(Packet(serverAddress, msg))
                         ) ++ Stream.eval(dtlsClientSocket.read())
                         echoClient

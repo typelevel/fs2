@@ -788,7 +788,7 @@ class StreamSpec extends Fs2Spec {
                           finRef.update(_ :+ "Inner") >> // signal finalizer invoked
                           IO.raiseError[Unit](new Err) // signal a failure
                       ) >> // flag the concurrently had chance to start, as if the `s` will be empty `runner` may not be evaluated at all.
-                      Stream.eval_(halt.complete(())) // immediately interrupt the outer stream
+                      Stream.evalAction(halt.complete(())) // immediately interrupt the outer stream
 
                   Stream
                     .bracket(IO.unit)(_ => finRef.update(_ :+ "Outer"))
@@ -1635,7 +1635,7 @@ class StreamSpec extends Fs2Spec {
           Stream
             .eval(Semaphore[IO](0))
             .flatMap { semaphore =>
-              val interrupt = Stream.emit(true) ++ Stream.eval_(semaphore.release)
+              val interrupt = Stream.emit(true) ++ Stream.evalAction(semaphore.release)
               s.covary[IO].evalMap(_ => semaphore.acquire).interruptWhen(interrupt)
             }
             .compile
@@ -1780,7 +1780,7 @@ class StreamSpec extends Fs2Spec {
           Stream
             .eval(Semaphore[IO](0))
             .flatMap { semaphore =>
-              s.covary[IO].interruptWhen(interrupt) >> Stream.eval_(semaphore.acquire)
+              s.covary[IO].interruptWhen(interrupt) >> Stream.evalAction(semaphore.acquire)
             }
             .compile
             .toList
@@ -1808,7 +1808,7 @@ class StreamSpec extends Fs2Spec {
                 .append(s)
                 .covary[IO]
                 .interruptWhen(interrupt)
-                .flatMap(_ => Stream.eval_(semaphore.acquire))
+                .flatMap(_ => Stream.evalAction(semaphore.acquire))
             }
             .compile
             .toList
@@ -2238,7 +2238,9 @@ class StreamSpec extends Fs2Spec {
 
     "observe/observeAsync" - {
       trait Observer {
-        def apply[F[_]: Concurrent, O](s: Stream[F, O])(observation: Pipe[F, O, Unit]): Stream[F, O]
+        def apply[F[_]: Concurrent, O](s: Stream[F, O])(
+            observation: Pipe[F, O, INothing]
+        ): Stream[F, O]
       }
 
       def observationTests(label: String, observer: Observer): Unit =
@@ -2249,7 +2251,7 @@ class StreamSpec extends Fs2Spec {
                 .of[IO, Int](0)
                 .flatMap { sum =>
                   val ints =
-                    observer(s.covary[IO])(_.evalMap(i => sum.update(_ + i))).compile.toList
+                    observer(s.covary[IO])(_.foreach(i => sum.update(_ + i))).compile.toList
                   ints.flatMap(out => sum.get.map(out -> _))
                 }
                 .asserting {
@@ -2302,7 +2304,7 @@ class StreamSpec extends Fs2Spec {
           "handle multiple consecutive observations" in {
             forAll { (s: Stream[Pure, Int]) =>
               val expected = s.toList
-              val sink: Pipe[IO, Int, Unit] = _.evalMap(_ => IO.unit)
+              val sink: Pipe[IO, Int, INothing] = _.foreach(_ => IO.unit)
               observer(observer(s.covary[IO])(sink))(sink).compile.toList
                 .asserting(it => assert(it == expected))
             }
@@ -2310,8 +2312,8 @@ class StreamSpec extends Fs2Spec {
 
           "no hangs on failures" in {
             forAll { (s: Stream[Pure, Int]) =>
-              val sink: Pipe[IO, Int, Unit] =
-                in => spuriousFail(in.evalMap(i => IO(i))).void
+              val sink: Pipe[IO, Int, INothing] =
+                in => spuriousFail(in.foreach(_ => IO.unit))
               val src: Stream[IO, Int] = spuriousFail(s.covary[IO])
               src.observe(sink).observe(sink).attempt.compile.drain.assertNoException
             }
@@ -2323,7 +2325,7 @@ class StreamSpec extends Fs2Spec {
         new Observer {
           def apply[F[_]: Concurrent, O](
               s: Stream[F, O]
-          )(observation: Pipe[F, O, Unit]): Stream[F, O] =
+          )(observation: Pipe[F, O, INothing]): Stream[F, O] =
             s.observe(observation)
         }
       )
@@ -2333,7 +2335,7 @@ class StreamSpec extends Fs2Spec {
         new Observer {
           def apply[F[_]: Concurrent, O](
               s: Stream[F, O]
-          )(observation: Pipe[F, O, Unit]): Stream[F, O] =
+          )(observation: Pipe[F, O, INothing]): Stream[F, O] =
             s.observeAsync(maxQueued = 10)(observation)
         }
       )
@@ -2345,7 +2347,7 @@ class StreamSpec extends Fs2Spec {
               .eval(IO(1))
               .append(Stream.eval(IO.raiseError(new Err)))
               .observe(
-                _.evalMap(_ => IO.sleep(100.millis))
+                _.foreach(_ => IO.sleep(100.millis))
               ) //Have to do some work here, so that we give time for the underlying stream to try pull more
               .take(1)
               .compile
@@ -2379,8 +2381,8 @@ class StreamSpec extends Fs2Spec {
         val test = for {
           iref <- is
           aref <- as
-          iSink = (_: Stream[IO, Int]).evalMap(i => iref.update(_ :+ i))
-          aSink = (_: Stream[IO, String]).evalMap(a => aref.update(_ :+ a))
+          iSink = (_: Stream[IO, Int]).foreach(i => iref.update(_ :+ i))
+          aSink = (_: Stream[IO, String]).foreach(a => aref.update(_ :+ a))
           _ <- s.take(10).observeEither(iSink, aSink).compile.drain
           iResult <- iref.get
           aResult <- aref.get
@@ -2393,14 +2395,14 @@ class StreamSpec extends Fs2Spec {
 
       "termination" - {
         "left" in {
-          s.observeEither[Int, String](_.take(0).void, _.void)
+          s.observeEither[Int, String](_.take(0).drain, _.drain)
             .compile
             .toList
             .asserting(r => assert(r.isEmpty))
         }
 
         "right" in {
-          s.observeEither[Int, String](_.void, _.take(0).void)
+          s.observeEither[Int, String](_.drain, _.take(0).drain)
             .compile
             .toList
             .asserting(r => assert(r.isEmpty))
@@ -2492,7 +2494,7 @@ class StreamSpec extends Fs2Spec {
                       Stream(
                         Stream.bracket(registerRun(0))(_ => finalizer(0)) >> s1,
                         Stream.bracket(registerRun(1))(_ => finalizer(1)) >> Stream
-                          .eval_(halt.complete(()))
+                          .evalAction(halt.complete(()))
                       )
                     }
 
@@ -2824,7 +2826,7 @@ class StreamSpec extends Fs2Spec {
           List(res1, res2, res3)
             .foldMap(Stream.resource)
             .evalTap(_ => record("use"))
-            .append(Stream.eval_(record("done")))
+            .append(Stream.evalAction(record("done")))
             .compile
             .drain *> st.get
         }
@@ -2872,7 +2874,7 @@ class StreamSpec extends Fs2Spec {
           List(res1, res2, res3)
             .foldMap(Stream.resourceWeak)
             .evalTap(_ => record("use"))
-            .append(Stream.eval_(record("done")))
+            .append(Stream.evalAction(record("done")))
             .compile
             .drain *> st.get
         }
@@ -2999,7 +3001,8 @@ class StreamSpec extends Fs2Spec {
             Counter[IO].flatMap { counter =>
               val sleepAndSet = IO.sleep(20.millis) >> signal.set(true)
               Stream
-                .eval_(sleepAndSet.start)
+                .eval(sleepAndSet.start)
+                .drain
                 .append(s.map { _ =>
                   Stream
                     .bracket(counter.increment)(_ => counter.decrement)
@@ -3024,7 +3027,8 @@ class StreamSpec extends Fs2Spec {
           Counter[IO].flatMap { counter =>
             val sleepAndSet = IO.sleep(20.millis) >> signal.set(true)
             Stream
-              .eval_(sleepAndSet.start)
+              .eval(sleepAndSet.start)
+              .drain
               .append(Stream(Stream(1)).map { inner =>
                 Stream
                   .bracket(counter.increment >> IO.sleep(2.seconds))(_ => counter.decrement)
@@ -3192,7 +3196,7 @@ class StreamSpec extends Fs2Spec {
           .scope
           .repeat
           .take(4)
-          .merge(Stream.eval_(IO.unit))
+          .merge(Stream.evalAction(IO.unit))
           .compile
           .drain
           .asserting(_ => assert(c.get == 0L))
