@@ -2,7 +2,7 @@ package fs2
 
 import scala.annotation.tailrec
 import scala.collection.immutable.{Queue => SQueue}
-import scala.collection.{IndexedSeq => GIndexedSeq, Seq => GSeq}
+import scala.collection.{mutable, IndexedSeq => GIndexedSeq, Seq => GSeq}
 import scala.reflect.ClassTag
 import scodec.bits.{BitVector, ByteVector}
 import java.nio.{
@@ -592,11 +592,10 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
 
   /** Creates a chunk from a `scala.collection.Iterable`. */
   def iterable[O](i: collection.Iterable[O]): Chunk[O] =
-    i match {
-      case a: collection.mutable.ArraySeq[O]   => arraySeq(a)
-      case a: collection.immutable.ArraySeq[O] => arraySeq(a)
-      case v: Vector[O]                        => vector(v)
-      case b: collection.mutable.Buffer[O]     => buffer(b)
+    platformIterable(i).getOrElse(i match {
+      case a: mutable.ArraySeq[O]          => arraySeq(a)
+      case v: Vector[O]                    => vector(v)
+      case b: collection.mutable.Buffer[O] => buffer(b)
       case l: List[O] =>
         if (l.isEmpty) empty
         else if (l.tail.isEmpty) singleton(l.head)
@@ -618,7 +617,13 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
             buffer(bldr.result)
           } else singleton(head)
         }
-    }
+    })
+
+  /**
+    * Creates a chunk backed by a mutable `ArraySeq`.
+    */
+  def arraySeq[O](arraySeq: mutable.ArraySeq[O]): Chunk[O] =
+    array(arraySeq.array.asInstanceOf[Array[O]])
 
   /** Creates a chunk backed by a `Chain`. */
   def chain[O](c: Chain[O]): Chunk[O] =
