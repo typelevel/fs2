@@ -149,7 +149,7 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
     this ++ s2
 
   /**
-    * Alias for `_.map(_ => o2)`.
+    * Equivalent to `val osMemoized = o2; _.map(_ => o2Memoized)`.
     *
     * @example {{{
     * scala> Stream(1,2,3).as(0).toList
