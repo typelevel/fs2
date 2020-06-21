@@ -17,17 +17,11 @@ scalaVersion in ThisBuild := crossScalaVersions.value.head
 githubWorkflowJavaVersions in ThisBuild := Seq("adopt@1.11")
 githubWorkflowPublishTargetBranches in ThisBuild := Seq(RefPredicate.Equals(Ref.Branch("main")))
 githubWorkflowBuild in ThisBuild := Seq(
-  WorkflowStep.Sbt(
-    List(
-      "fmtCheck",
-      "compile",
-      "testJVM",
-      "testJS",
-      "doc",
-      "mimaReportBinaryIssues",
-      ";project coreJVM;it:test"
-    )
-  )
+  WorkflowStep.Sbt(List("fmtCheck", "compile")),
+  WorkflowStep.Sbt(List("testJVM")),
+  WorkflowStep.Sbt(List("testJS")),
+  WorkflowStep.Sbt(List("doc", "mimaReportBinaryIssues")),
+  WorkflowStep.Sbt(List(";project coreJVM;it:test"))
 )
 githubWorkflowEnv in ThisBuild ++= Map(
   "SONATYPE_USERNAME" -> "fs2-ci",
@@ -117,7 +111,7 @@ lazy val commonTestSettings = Seq(
     case None => Seq()
   })),
   parallelExecution in Test := false,
-  testOptions in Test += Tests.Argument(TestFrameworks.ScalaTest, "-oDF"),
+  testOptions in Test += Tests.Argument(TestFrameworks.ScalaTest, "-oDS"),
   publishArtifact in Test := true
 )
 lazy val testSettings =
