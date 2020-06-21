@@ -4,7 +4,7 @@ import scala.collection.immutable.ArraySeq
 import scala.collection.immutable
 import scala.reflect.ClassTag
 
-trait ChunkPlatform[+O] { self: Chunk[O] =>
+private[fs2] trait ChunkPlatform[+O] { self: Chunk[O] =>
 
   def toArraySeq[O2 >: O: ClassTag]: ArraySeq[O2] = {
     val array: Array[O2] = new Array[O2](size)
@@ -28,7 +28,7 @@ trait ChunkPlatform[+O] { self: Chunk[O] =>
 
 }
 
-trait ChunkCompanionPlatform { self: Chunk.type =>
+private[fs2] trait ChunkCompanionPlatform { self: Chunk.type =>
 
   protected def platformIterable[O](i: Iterable[O]): Option[Chunk[O]] =
     i match {
