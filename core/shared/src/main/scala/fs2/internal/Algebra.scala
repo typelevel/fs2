@@ -41,9 +41,9 @@ private[fs2] sealed abstract class FreeC[+F[_], +O, +R] {
     new Bind[F2, O2, R, R2](this) {
       def cont(r: Result[R]): FreeC[F2, O2, R2] =
         r match {
-          case _: Result.Pure[_]        => post
-          case r: Result.Interrupted[_] => r
-          case r: Result.Fail           => r
+          case _: Result.Pure[_]     => post
+          case r: Result.Interrupted => r
+          case r: Result.Fail        => r
         }
     }
 
@@ -142,7 +142,7 @@ private[fs2] object FreeC {
       *                      Instead throwing errors immediately during interruption,
       *                      signalling of the errors may be deferred until the Interruption resumes.
       */
-    final case class Interrupted[X](context: X, deferredError: Option[Throwable])
+    final case class Interrupted(context: Token, deferredError: Option[Throwable])
         extends Result[INothing] {
       override def toString: String =
         s"FreeC.Interrupted($context, ${deferredError.map(_.getMessage)})"
@@ -253,7 +253,7 @@ private[fs2] object FreeC {
       }
     }
 
-  /* An Action is an tomic instruction that can perform effects in `F`
+  /* An Action is an atomic instruction that can perform effects in `F`
    * to generate by-product outputs of type `O`.
    *
    * Each operation also generates an output of type `R` that is used
@@ -427,11 +427,8 @@ private[fs2] object FreeC {
         case failed: FreeC.Result.Fail =>
           F.raiseError(failed.error)
 
-        case interrupted: FreeC.Result.Interrupted[_] =>
-          interrupted.context match {
-            case scopeId: Token => F.pure(Interrupted(scopeId, interrupted.deferredError))
-            case other          => sys.error(s"Unexpected interruption context: $other (compileLoop)")
-          }
+        case interrupted: FreeC.Result.Interrupted =>
+          F.pure(Interrupted(interrupted.context, interrupted.deferredError))
 
         case view: ViewL.View[F, X, y, Unit] =>
           def resume(res: Result[y]): F[R[X]] =
@@ -620,9 +617,7 @@ private[fs2] object FreeC {
             .fromList(interruptedError.toList :+ failed.error)
             .getOrElse(failed.error)
         )
-      case interrupted: Result.Interrupted[_] =>
-        // impossible
-        Result.Interrupted(interrupted.context, interrupted.deferredError)
+      case interrupted: Result.Interrupted => interrupted // impossible
 
       case view: ViewL.View[F, O, _, Unit] =>
         view.step match {
