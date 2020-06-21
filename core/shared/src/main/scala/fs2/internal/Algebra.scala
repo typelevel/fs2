@@ -368,27 +368,8 @@ private[fs2] object FreeC {
   def uncons[F[_], X, O](s: FreeC[F, O, Unit]): FreeC[F, X, Option[(Chunk[O], FreeC[F, O, Unit])]] =
     Step(s, None).map(_.map { case (h, _, t) => (h, t.asInstanceOf[FreeC[F, O, Unit]]) })
 
-  /** Left-folds the output of a stream. */
-  def compile[F[_], O, B](
-      stream: FreeC[F, O, Unit],
-      scope: CompileScope[F],
-      extendLastTopLevelScope: Boolean,
-      init: B
-  )(g: (B, Chunk[O]) => B)(implicit F: MonadError[F, Throwable]): F[B] =
-    compileLoop[F, O](scope, extendLastTopLevelScope, stream).flatMap {
-      case Some((output, scope, tail)) =>
-        try {
-          val b = g(init, output)
-          compile(tail, scope, extendLastTopLevelScope, b)(g)
-        } catch {
-          case NonFatal(err) =>
-            compile(tail.asHandler(err), scope, extendLastTopLevelScope, init)(g)
-        }
-      case None =>
-        F.pure(init)
-    }
-
-  /*
+  /* Left-folds the output of a stream.
+   *
    * Interruption of the stream is tightly coupled between FreeC, Algebra and CompileScope
    * Reason for this is unlike interruption of `F` type (i.e. IO) we need to find
    * recovery point where stream evaluation has to continue in Stream algebra
@@ -403,13 +384,13 @@ private[fs2] object FreeC {
    * Interpreter uses this to find any parents of this scope that has to be interrupted, and guards the
    * interruption so it won't propagate to scope that shall not be anymore interrupted.
    */
-  private[this] def compileLoop[F[_], O](
-      scope: CompileScope[F],
+  def compile[F[_], O, B](
+      stream: FreeC[F, O, Unit],
+      initScope: CompileScope[F],
       extendLastTopLevelScope: Boolean,
-      stream: FreeC[F, O, Unit]
-  )(implicit
-      F: MonadError[F, Throwable]
-  ): F[Option[(Chunk[O], CompileScope[F], FreeC[F, O, Unit])]] = {
+      init: B
+  )(g: (B, Chunk[O]) => B)(implicit F: MonadError[F, Throwable]): F[B] = {
+
     case class Done[X](scope: CompileScope[F]) extends R[X]
     case class Out[X](head: Chunk[X], scope: CompileScope[F], tail: FreeC[F, X, Unit]) extends R[X]
     case class Interrupted[X](scopeId: Token, err: Option[Throwable]) extends R[X]
@@ -581,15 +562,19 @@ private[fs2] object FreeC {
           }
       }
 
-    F.flatMap(go(scope, None, stream)) {
-      case Done(_)                => F.pure(None)
-      case Out(head, scope, tail) => F.pure(Some((head, scope, tail)))
-      case Interrupted(_, err) =>
-        err match {
-          case None      => F.pure(None)
-          case Some(err) => F.raiseError(err)
-        }
-    }
+    def outerLoop(scope: CompileScope[F], accB: B, stream: FreeC[F, O, Unit]): F[B] =
+      F.flatMap(go(scope, None, stream)) {
+        case Done(_) => F.pure(accB)
+        case Out(head, scope, tail) =>
+          try outerLoop(scope, g(accB, head), tail)
+          catch {
+            case NonFatal(err) => outerLoop(scope, accB, tail.asHandler(err))
+          }
+        case Interrupted(_, None)      => F.pure(accB)
+        case Interrupted(_, Some(err)) => F.raiseError(err)
+      }
+
+    outerLoop(initScope, init, stream)
   }
 
   /**
