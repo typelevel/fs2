@@ -359,12 +359,6 @@ private[fs2] object FreeC {
       }
     }
 
-  def translate[F[_], G[_], O](
-      s: FreeC[F, O, Unit],
-      u: F ~> G
-  )(implicit G: TranslateInterrupt[G]): FreeC[G, O, Unit] =
-    translate0[F, G, O](u, s, G.concurrentInstance)
-
   def uncons[F[_], X, O](s: FreeC[F, O, Unit]): FreeC[F, X, Option[(Chunk[O], FreeC[F, O, Unit])]] =
     Step(s, None).map(_.map { case (h, _, t) => (h, t.asInstanceOf[FreeC[F, O, Unit]]) })
 
@@ -619,11 +613,11 @@ private[fs2] object FreeC {
         }
     }
 
-  private def translate0[F[_], G[_], O](
-      fK: F ~> G,
+  def translate[F[_], G[_], O](
       stream: FreeC[F, O, Unit],
-      concurrent: Option[Concurrent[G]]
-  ): FreeC[G, O, Unit] = {
+      fK: F ~> G
+  )(implicit G: TranslateInterrupt[G]): FreeC[G, O, Unit] = {
+    val concurrent: Option[Concurrent[G]] = G.concurrentInstance
     def translateAlgEffect[R](self: AlgEffect[F, R]): AlgEffect[G, R] =
       self match {
         // safe to cast, used in translate only
