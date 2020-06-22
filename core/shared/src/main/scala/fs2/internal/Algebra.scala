@@ -385,10 +385,10 @@ private[fs2] object FreeC {
       init: B
   )(g: (B, Chunk[O]) => B)(implicit F: MonadError[F, Throwable]): F[B] = {
 
-    case class Done[X](scope: CompileScope[F]) extends R[X]
-    case class Out[X](head: Chunk[X], scope: CompileScope[F], tail: FreeC[F, X, Unit]) extends R[X]
-    case class Interrupted[X](scopeId: Token, err: Option[Throwable]) extends R[X]
-    sealed trait R[X]
+    case class Done(scope: CompileScope[F]) extends R[INothing]
+    case class Out[+X](head: Chunk[X], scope: CompileScope[F], tail: FreeC[F, X, Unit]) extends R[X]
+    case class Interrupted(scopeId: Token, err: Option[Throwable]) extends R[INothing]
+    sealed trait R[+X]
 
     def go[X](
         scope: CompileScope[F],
