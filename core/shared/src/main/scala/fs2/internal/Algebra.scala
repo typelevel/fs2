@@ -384,17 +384,16 @@ private[fs2] object FreeC {
       extendLastTopLevelScope: Boolean,
       init: B
   )(g: (B, Chunk[O]) => B)(implicit F: MonadError[F, Throwable]): F[B] = {
+    case class Done(scope: CompileScope[F]) extends R
+    case class Out(head: Chunk[O], scope: CompileScope[F], tail: FreeC[F, O, Unit]) extends R
+    case class Interrupted(scopeId: Token, err: Option[Throwable]) extends R
+    sealed trait R
 
-    case class Done[X](scope: CompileScope[F]) extends R[X]
-    case class Out[X](head: Chunk[X], scope: CompileScope[F], tail: FreeC[F, X, Unit]) extends R[X]
-    case class Interrupted[X](scopeId: Token, err: Option[Throwable]) extends R[X]
-    sealed trait R[X]
-
-    def go[X](
+    def go(
         scope: CompileScope[F],
         extendedTopLevelScope: Option[CompileScope[F]],
-        stream: FreeC[F, X, Unit]
-    ): F[R[X]] =
+        stream: FreeC[F, O, Unit]
+    ): F[R] =
       stream.viewL match {
         case _: FreeC.Result.Pure[Unit] =>
           F.pure(Done(scope))
@@ -405,11 +404,11 @@ private[fs2] object FreeC {
         case interrupted: FreeC.Result.Interrupted =>
           F.pure(Interrupted(interrupted.context, interrupted.deferredError))
 
-        case view: ViewL.View[F, X, y, Unit] =>
-          def resume(res: Result[y]): F[R[X]] =
-            go[X](scope, extendedTopLevelScope, view.next(res))
+        case view: ViewL.View[F, O, y, Unit] =>
+          def resume(res: Result[y]): F[R] =
+            go(scope, extendedTopLevelScope, view.next(res))
 
-          def interruptGuard(scope: CompileScope[F])(next: => F[R[X]]): F[R[X]] =
+          def interruptGuard(scope: CompileScope[F])(next: => F[R]): F[R] =
             F.flatMap(scope.isInterrupted) {
               case None => next
               case Some(Left(err)) =>
@@ -418,19 +417,19 @@ private[fs2] object FreeC {
                 go(scope, extendedTopLevelScope, view.next(Result.Interrupted(scopeId, None)))
             }
           view.step match {
-            case output: Output[X] =>
+            case output: Output[O] =>
               interruptGuard(scope)(
                 F.pure(Out(output.values, scope, view.next(FreeC.Result.unit)))
               )
 
-            case u: Step[y] =>
+            case u: Step[_] =>
               // if scope was specified in step, try to find it, otherwise use the current scope.
               F.flatMap(u.scope.fold[F[Option[CompileScope[F]]]](F.pure(Some(scope))) { scopeId =>
                 scope.findStepScope(scopeId)
               }) {
                 case Some(stepScope) =>
-                  val stepStream = u.stream.asInstanceOf[FreeC[F, y, Unit]]
-                  F.flatMap(F.attempt(go[y](stepScope, extendedTopLevelScope, stepStream))) {
+                  val stepStream = u.stream.asInstanceOf[FreeC[F, O, Unit]]
+                  F.flatMap(F.attempt(go(stepScope, extendedTopLevelScope, stepStream))) {
                     case Right(Done(scope)) =>
                       interruptGuard(scope)(
                         go(scope, extendedTopLevelScope, view.next(Result.Pure(None)))
@@ -439,7 +438,11 @@ private[fs2] object FreeC {
                       // if we originally swapped scopes we want to return the original
                       // scope back to the go as that is the scope that is expected to be here.
                       val nextScope = if (u.scope.isEmpty) outScope else scope
-                      val result = Result.Pure(Some((head, outScope.id, tail)))
+
+                      // this asInstanceOf should not be needed, since y equals the return type of Step,
+                      // which in this case is Option[(Chunk, Token, FreeC[_])]
+                      val stepped = Option((head, outScope.id, tail)).asInstanceOf[y]
+                      val result = Result.Pure(stepped)
                       interruptGuard(nextScope)(
                         go(nextScope, extendedTopLevelScope, view.next(result))
                       )
@@ -630,13 +633,13 @@ private[fs2] object FreeC {
         case g: GetScope[_] => g
       }
 
-    def translateStep[X](next: FreeC[F, X, Unit], isMainLevel: Boolean): FreeC[G, X, Unit] =
+    def translateStep(next: FreeC[F, O, Unit], isMainLevel: Boolean): FreeC[G, O, Unit] =
       next.viewL match {
         case result: Result[Unit] => result
 
-        case view: ViewL.View[F, X, y, Unit] =>
+        case view: ViewL.View[F, O, y, Unit] =>
           view.step match {
-            case output: Output[X] =>
+            case output: Output[O] =>
               output.transformWith {
                 case r @ Result.Pure(_) if isMainLevel =>
                   translateStep(view.next(r), isMainLevel)
@@ -645,21 +648,22 @@ private[fs2] object FreeC {
                   // Cast is safe here, as at this point the evaluation of this Step will end
                   // and the remainder of the free will be passed as a result in Bind. As such
                   // next Step will have this to evaluate, and will try to translate again.
-                  view.next(r).asInstanceOf[FreeC[G, X, Unit]]
+                  view.next(r).asInstanceOf[FreeC[G, O, Unit]]
 
                 case r @ Result.Fail(_) => translateStep(view.next(r), isMainLevel)
 
                 case r @ Result.Interrupted(_, _) => translateStep(view.next(r), isMainLevel)
               }
 
-            case step: Step[x] =>
+            case step: Step[_] =>
               // NOTE: The use of the `asInstanceOf` is to by-pass a compiler-crash in Scala 2.12,
               // involving GADTs with a covariant Higher-Kinded parameter.
-              Step[x](
-                stream = translateStep[x](step.stream.asInstanceOf[FreeC[F, x, Unit]], false),
+              Step[O](
+                stream = translateStep(step.stream.asInstanceOf[FreeC[F, O, Unit]], false),
                 scope = step.scope
               ).transformWith { r =>
-                translateStep[X](view.next(r.asInstanceOf[Result[y]]), isMainLevel)
+                // this asInstanceOf is because Scala does not infer y = Option[---]
+                translateStep(view.next(r.asInstanceOf[Result[y]]), isMainLevel)
               }
 
             case alg: AlgEffect[F, r] =>
@@ -668,7 +672,7 @@ private[fs2] object FreeC {
           }
       }
 
-    translateStep[O](stream, true)
+    translateStep(stream, true)
   }
 
 }
