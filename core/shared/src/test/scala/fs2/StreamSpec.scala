@@ -788,7 +788,7 @@ class StreamSpec extends Fs2Spec {
                           finRef.update(_ :+ "Inner") >> // signal finalizer invoked
                           IO.raiseError[Unit](new Err) // signal a failure
                       ) >> // flag the concurrently had chance to start, as if the `s` will be empty `runner` may not be evaluated at all.
-                      Stream.evalAction(halt.complete(())) // immediately interrupt the outer stream
+                      Stream.exec(halt.complete(())) // immediately interrupt the outer stream
 
                   Stream
                     .bracket(IO.unit)(_ => finRef.update(_ :+ "Outer"))
@@ -1635,7 +1635,7 @@ class StreamSpec extends Fs2Spec {
           Stream
             .eval(Semaphore[IO](0))
             .flatMap { semaphore =>
-              val interrupt = Stream.emit(true) ++ Stream.evalAction(semaphore.release)
+              val interrupt = Stream.emit(true) ++ Stream.exec(semaphore.release)
               s.covary[IO].evalMap(_ => semaphore.acquire).interruptWhen(interrupt)
             }
             .compile
@@ -1780,7 +1780,7 @@ class StreamSpec extends Fs2Spec {
           Stream
             .eval(Semaphore[IO](0))
             .flatMap { semaphore =>
-              s.covary[IO].interruptWhen(interrupt) >> Stream.evalAction(semaphore.acquire)
+              s.covary[IO].interruptWhen(interrupt) >> Stream.exec(semaphore.acquire)
             }
             .compile
             .toList
@@ -1808,7 +1808,7 @@ class StreamSpec extends Fs2Spec {
                 .append(s)
                 .covary[IO]
                 .interruptWhen(interrupt)
-                .flatMap(_ => Stream.evalAction(semaphore.acquire))
+                .flatMap(_ => Stream.exec(semaphore.acquire))
             }
             .compile
             .toList
@@ -2494,7 +2494,7 @@ class StreamSpec extends Fs2Spec {
                       Stream(
                         Stream.bracket(registerRun(0))(_ => finalizer(0)) >> s1,
                         Stream.bracket(registerRun(1))(_ => finalizer(1)) >> Stream
-                          .evalAction(halt.complete(()))
+                          .exec(halt.complete(()))
                       )
                     }
 
@@ -2826,7 +2826,7 @@ class StreamSpec extends Fs2Spec {
           List(res1, res2, res3)
             .foldMap(Stream.resource)
             .evalTap(_ => record("use"))
-            .append(Stream.evalAction(record("done")))
+            .append(Stream.exec(record("done")))
             .compile
             .drain *> st.get
         }
@@ -2874,7 +2874,7 @@ class StreamSpec extends Fs2Spec {
           List(res1, res2, res3)
             .foldMap(Stream.resourceWeak)
             .evalTap(_ => record("use"))
-            .append(Stream.evalAction(record("done")))
+            .append(Stream.exec(record("done")))
             .compile
             .drain *> st.get
         }
@@ -3196,7 +3196,7 @@ class StreamSpec extends Fs2Spec {
           .scope
           .repeat
           .take(4)
-          .merge(Stream.evalAction(IO.unit))
+          .merge(Stream.exec(IO.unit))
           .compile
           .drain
           .asserting(_ => assert(c.get == 0L))

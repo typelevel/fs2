@@ -8,7 +8,7 @@ import cats.implicits._
 trait Logger[F[_]] {
   def log(e: LogEvent): F[Unit]
 
-  def logInfo(msg: String): Stream[F, Nothing] = Stream.evalAction(log(LogEvent.Info(msg)))
+  def logInfo(msg: String): Stream[F, Nothing] = Stream.exec(log(LogEvent.Info(msg)))
 
   def logLifecycle(tag: String)(implicit F: Functor[F]): Stream[F, Unit] =
     Stream.resource(logLifecycleR(tag))

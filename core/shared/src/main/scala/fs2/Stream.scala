@@ -667,7 +667,7 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
             }
 
         val in: Stream[F2, Unit] = chunks.evalMap(onChunk) ++
-          Stream.evalAction(enqueueLatest >> queue.enqueue1(None))
+          Stream.exec(enqueueLatest >> queue.enqueue1(None))
 
         val out: Stream[F2, O] = queue.dequeue.unNoneTerminate
 
@@ -1344,7 +1344,7 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
     * }}}
     */
   def foreach[F2[x] >: F[x]](f: O => F2[Unit]): Stream[F2, INothing] =
-    flatMap(o => Stream.evalAction(f(o)))
+    flatMap(o => Stream.exec(f(o)))
 
   /**
     * Partitions the input into a stream of chunks according to a discriminator function.
@@ -1885,7 +1885,7 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
         haltRef =>
           def runInner(o: O, halt: Deferred[F2, Unit]): Stream[F2, O2] =
             Stream.eval(guard.acquire) >> // guard inner to prevent parallel inner streams
-              f(o).interruptWhen(halt.get.attempt) ++ Stream.evalAction(guard.release)
+              f(o).interruptWhen(halt.get.attempt) ++ Stream.exec(guard.release)
 
           this
             .evalMap { o =>
@@ -3342,22 +3342,9 @@ object Stream extends StreamLowPriority {
     *
     * Alias for `eval(fa).drain`.
     */
-  @deprecated("Use evalAction if passing an F[Unit] or eval(fa).drain if passing an F[A]", "2.5.0")
+  @deprecated("Use exec if passing an F[Unit] or eval(fa).drain if passing an F[A]", "2.5.0")
   def eval_[F[_], A](fa: F[A]): Stream[F, INothing] =
     new Stream(Eval(fa).map(_ => ()))
-
-  /**
-    * Creates a stream that evaluates the supplied action for its effect and then discards the returned unit.
-    * As a result, the returned stream emits no elements and hence has output type `INothing`.
-    *
-    * @example {{{
-    * scala> import cats.effect.IO
-    * scala> Stream.evalAction(IO(println("Ran"))).covaryOutput[Int].compile.toVector.unsafeRunSync
-    * res0: Vector[Int] = Vector()
-    * }}}
-    */
-  def evalAction[F[_]](action: F[Unit]): Stream[F, INothing] =
-    new Stream(Eval(action))
 
   /** Like `eval` but resulting chunk is flatten efficiently. */
   def evalUnChunk[F[_], O](fo: F[Chunk[O]]): Stream[F, O] =
@@ -3385,6 +3372,18 @@ object Stream extends StreamLowPriority {
       }
     go(0)
   }
+
+  /**
+    * As a result, the returned stream emits no elements and hence has output type `INothing`.
+    *
+    * @example {{{
+    * scala> import cats.effect.IO
+    * scala> Stream.exec(IO(println("Ran"))).covaryOutput[Int].compile.toVector.unsafeRunSync
+    * res0: Vector[Int] = Vector()
+    * }}}
+    */
+  def exec[F[_]](action: F[Unit]): Stream[F, INothing] =
+    new Stream(Eval(action))
 
   /**
     * Light weight alternative to [[fixedRate]] that sleeps for duration `d` before each pulled element.
@@ -3695,7 +3694,7 @@ object Stream extends StreamLowPriority {
     * performant version of `sleep(..) >> s`.
     */
   def sleep_[F[_]](d: FiniteDuration)(implicit timer: Timer[F]): Stream[F, INothing] =
-    Stream.evalAction(timer.sleep(d))
+    Stream.exec(timer.sleep(d))
 
   /**
     * Starts the supplied task and cancels it as finalization of the returned stream.
@@ -3864,20 +3863,20 @@ object Stream extends StreamLowPriority {
               sinkQ.dequeue.unNoneTerminate
                 .flatMap { chunk =>
                   Stream.chunk(chunk) ++
-                    Stream.evalAction(outQ.enqueue1(Some(chunk)))
+                    Stream.exec(outQ.enqueue1(Some(chunk)))
                 }
                 .through(p) ++
-                Stream.evalAction(outQ.enqueue1(None))
+                Stream.exec(outQ.enqueue1(None))
 
             def runner =
               sinkStream.concurrently(inputStream) ++
-                Stream.evalAction(outQ.enqueue1(None))
+                Stream.exec(outQ.enqueue1(None))
 
             def outputStream =
               outQ.dequeue.unNoneTerminate
                 .flatMap { chunk =>
                   Stream.chunk(chunk) ++
-                    Stream.evalAction(guard.release)
+                    Stream.exec(guard.release)
                 }
 
             outputStream.concurrently(runner)

@@ -83,7 +83,7 @@ class TLSSocketSpec extends TLSSpec {
                           )
                         )
                         .flatMap { clientSocketTls =>
-                          Stream.evalAction(clientSocketTls.write(msg)) ++
+                          Stream.exec(clientSocketTls.write(msg)) ++
                             clientSocketTls.reads(8192).take(msg.size)
                         }
                   }

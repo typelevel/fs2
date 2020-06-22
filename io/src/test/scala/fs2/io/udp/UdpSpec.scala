@@ -68,7 +68,7 @@ class UdpSpec extends Fs2Spec {
                   Stream
                     .emits(msgs.map(msg => Packet(serverAddress, msg)))
                     .flatMap { msg =>
-                      Stream.evalAction(clientSocket.write(msg)) ++ Stream.eval(clientSocket.read())
+                      Stream.exec(clientSocket.write(msg)) ++ Stream.eval(clientSocket.read())
                     }
                 }
                 val clients = Stream
@@ -111,7 +111,7 @@ class UdpSpec extends Fs2Spec {
                     interface.getInetAddresses.asScala.exists(_.isInstanceOf[Inet4Address])
                   }
                 val server = Stream
-                  .evalAction(
+                  .exec(
                     v4Interfaces.traverse_(interface => serverSocket.join(group, interface))
                   ) ++
                   serverSocket

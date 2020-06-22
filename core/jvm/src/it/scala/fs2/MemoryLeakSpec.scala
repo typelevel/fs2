@@ -140,7 +140,7 @@ class MemoryLeakSpec extends AnyFunSuite {
   }
 
   leakTest("drain onComplete") {
-    val s = Stream.repeatEval(IO(1)).pull.echo.stream.drain ++ Stream.evalAction(IO.unit)
+    val s = Stream.repeatEval(IO(1)).pull.echo.stream.drain ++ Stream.exec(IO.unit)
     Stream.empty.covary[IO].merge(s)
   }
 

@@ -32,7 +32,7 @@ class SocketSpec extends Fs2Spec {
           )
           .flatMap {
             case (local, clients) =>
-              Stream.evalAction(localBindAddress.complete(local)) ++
+              Stream.exec(localBindAddress.complete(local)) ++
                 clients.flatMap { s =>
                   Stream.resource(s).map { socket =>
                     socket
@@ -90,7 +90,7 @@ class SocketSpec extends Fs2Spec {
           )
           .flatMap {
             case (local, clients) =>
-              Stream.evalAction(localBindAddress.complete(local)) ++
+              Stream.exec(localBindAddress.complete(local)) ++
                 clients.flatMap { s =>
                   Stream.emit(Stream.resource(s).flatMap { socket =>
                     Stream
