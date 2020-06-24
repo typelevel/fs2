@@ -1236,8 +1236,8 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
                 f(hd(idx)).free.transformWith {
                   case Result.Pure(_)   => go(idx + 1)
                   case Result.Fail(err) => Result.Fail(err)
-                  case Result.Interrupted(scopeId, err) =>
-                    new Stream(FreeC.interruptBoundary(tl, scopeId, err)).flatMap(f).free
+                  case interrupted @ Result.Interrupted(_, _) =>
+                    new Stream(FreeC.interruptBoundary(tl, interrupted)).flatMap(f).free
                 }
 
             go(0)
