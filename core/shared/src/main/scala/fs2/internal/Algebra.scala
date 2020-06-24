@@ -305,7 +305,7 @@ private[fs2] object FreeC {
   // together with any errors accumulated during interruption process
   final case class CloseScope(
       scopeId: Token,
-      interruptedScope: Option[(Token, Option[Throwable])],
+      interruption: Option[Result.Interrupted],
       exitCase: ExitCase[Throwable]
   ) extends AlgEffect[PureK, Unit]
 
@@ -342,11 +342,11 @@ private[fs2] object FreeC {
   ): FreeC[F, O, Unit] =
     OpenScope(interruptible).flatMap { scopeId =>
       s.transformWith {
-        case Result.Pure(_) => CloseScope(scopeId, interruptedScope = None, ExitCase.Completed)
-        case Result.Interrupted(interruptedScopeId: Token, err) =>
-          CloseScope(scopeId, interruptedScope = Some((interruptedScopeId, err)), ExitCase.Canceled)
+        case Result.Pure(_) => CloseScope(scopeId, None, ExitCase.Completed)
+        case interrupted @ Result.Interrupted(_, _) =>
+          CloseScope(scopeId, Some(interrupted), ExitCase.Canceled)
         case Result.Fail(err) =>
-          CloseScope(scopeId, interruptedScope = None, ExitCase.Error(err)).transformWith {
+          CloseScope(scopeId, None, ExitCase.Error(err)).transformWith {
             case Result.Pure(_)    => Result.Fail(err)
             case Result.Fail(err0) => Result.Fail(CompositeFailure(err, err0, Nil))
             case Result.Interrupted(interruptedScopeId, _) =>
@@ -354,8 +354,6 @@ private[fs2] object FreeC {
                 s"Impossible, cannot interrupt when closing failed scope: $scopeId, $interruptedScopeId, $err"
               )
           }
-
-        case Result.Interrupted(ctx, _) => sys.error(s"Impossible context: $ctx")
       }
     }
 
@@ -510,9 +508,9 @@ private[fs2] object FreeC {
               def closeAndGo(toClose: CompileScope[F], ec: ExitCase[Throwable]) =
                 F.flatMap(toClose.close(ec)) { r =>
                   F.flatMap(toClose.openAncestor) { ancestor =>
-                    val res = close.interruptedScope match {
+                    val res = close.interruption match {
                       case None => Result.fromEither(r)
-                      case Some((interruptedScopeId, err)) =>
+                      case Some(Result.Interrupted(interruptedScopeId, err)) =>
                         def err1 = CompositeFailure.fromList(r.swap.toOption.toList ++ err.toList)
                         if (ancestor.findSelfOrAncestor(interruptedScopeId).isDefined)
                           // we still have scopes to interrupt, lets build interrupted tail
@@ -547,10 +545,7 @@ private[fs2] object FreeC {
                   else closeAndGo(toClose, close.exitCase)
                 case None =>
                   // scope already closed, continue with current scope
-                  val result = close.interruptedScope match {
-                    case Some((x, y)) => Result.Interrupted(x, y)
-                    case None         => Result.unit
-                  }
+                  val result = close.interruption.getOrElse(Result.unit)
                   go(scope, extendedTopLevelScope, view.next(result))
               }
           }
@@ -584,32 +579,27 @@ private[fs2] object FreeC {
     */
   def interruptBoundary[F[_], O](
       stream: FreeC[F, O, Unit],
-      interruptedScope: Token,
-      interruptedError: Option[Throwable]
+      interruption: Result.Interrupted
   ): FreeC[F, O, Unit] =
     stream.viewL match {
       case _: FreeC.Result.Pure[Unit] =>
-        Result.Interrupted(interruptedScope, interruptedError)
+        interruption
       case failed: FreeC.Result.Fail =>
         Result.Fail(
           CompositeFailure
-            .fromList(interruptedError.toList :+ failed.error)
+            .fromList(interruption.deferredError.toList :+ failed.error)
             .getOrElse(failed.error)
         )
       case interrupted: Result.Interrupted => interrupted // impossible
 
       case view: ViewL.View[F, O, _, Unit] =>
         view.step match {
-          case close: CloseScope =>
-            CloseScope(
-              close.scopeId,
-              Some((interruptedScope, interruptedError)),
-              ExitCase.Canceled
-            ) // Inner scope is getting closed b/c a parent was interrupted
-              .transformWith(view.next)
+          case CloseScope(scopeId, _, _) =>
+            // Inner scope is getting closed b/c a parent was interrupted
+            CloseScope(scopeId, Some(interruption), ExitCase.Canceled).transformWith(view.next)
           case _ =>
             // all other cases insert interruption cause
-            view.next(Result.Interrupted(interruptedScope, interruptedError))
+            view.next(interruption)
         }
     }
 
