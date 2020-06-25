@@ -47,7 +47,7 @@ private[fs2] sealed abstract class FreeC[+F[_], +O, +R] {
         }
     }
 
-  def transformWith[F2[x] >: F[x], O2 >: O, R2](
+  private[FreeC] def transformWith[F2[x] >: F[x], O2 >: O, R2](
       f: Result[R] => FreeC[F2, O2, R2]
   ): FreeC[F2, O2, R2] =
     new Bind[F2, O2, R, R2](this) {
@@ -566,6 +566,34 @@ private[fs2] object FreeC {
     outerLoop(initScope, init, stream)
   }
 
+  def flatMapOutput[F[_], F2[x] >: F[x], O, O2](
+      freeC: FreeC[F, O, Unit],
+      f: O => FreeC[F2, O2, Unit]
+  ): FreeC[F2, O2, Unit] =
+    uncons(freeC).flatMap {
+      case None => Result.unit
+
+      case Some((chunk, FreeC.Result.Pure(_))) if chunk.size == 1 =>
+        // nb: If tl is Pure, there's no need to propagate flatMap through the tail. Hence, we
+        // check if hd has only a single element, and if so, process it directly instead of folding.
+        // This allows recursive infinite streams of the form `def s: Stream[Pure,O] = Stream(o).flatMap { _ => s }`
+        f(chunk(0))
+
+      case Some((chunk, tail)) =>
+        def go(idx: Int): FreeC[F2, O2, Unit] =
+          if (idx == chunk.size)
+            flatMapOutput[F, F2, O, O2](tail, f)
+          else
+            f(chunk(idx)).transformWith {
+              case Result.Pure(_)   => go(idx + 1)
+              case Result.Fail(err) => Result.Fail(err)
+              case interruption @ Result.Interrupted(_, _) =>
+                flatMapOutput[F, F2, O, O2](interruptBoundary(tail, interruption), f)
+            }
+
+        go(0)
+    }
+
   /**
     * Inject interruption to the tail used in flatMap.
     * Assures that close of the scope is invoked if at the flatMap tail, otherwise switches evaluation to `interrupted` path
@@ -577,7 +605,7 @@ private[fs2] object FreeC {
     * @tparam O
     * @return
     */
-  def interruptBoundary[F[_], O](
+  private[this] def interruptBoundary[F[_], O](
       stream: FreeC[F, O, Unit],
       interruption: Result.Interrupted
   ): FreeC[F, O, Unit] =
