@@ -11,7 +11,7 @@ import cats.implicits._
 object Sink {
 
   /** Lifts a function `I => F[Unit]` to `Sink[F,I]`. */
-  @deprecated("Use stream.evalMap(f) instead", "1.0.2")
+  @deprecated("Use stream.foreach(f) instead", "1.0.2")
   def apply[F[_], I](f: I => F[Unit]): Sink[F, I] = _.foreach(f)
 
   /** Sink that prints each string from the source to the supplied `PrintStream`. */
