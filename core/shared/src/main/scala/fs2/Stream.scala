@@ -2851,6 +2851,12 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
     }
 
   /**
+    * Converts a `Stream[F, Nothing]` to a `Stream[F, Unit]` which emits a single `()` after this stream completes.
+    */
+  def unitary(implicit ev: O <:< Nothing): Stream[F, Unit] =
+    this.asInstanceOf[Stream[F, Nothing]] ++ Stream.emit(())
+
+  /**
     * Filters any 'None'.
     *
     * @example {{{
