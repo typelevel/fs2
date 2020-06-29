@@ -321,7 +321,7 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup, blocker: Blocker
               case Some(took) => go(buff, (remains - took).max(0))
             }
           writeSemaphore.withPermit {
-            go(bytes.toBytes.toByteBuffer, timeout.map(_.toMillis).getOrElse(0L))
+            go(bytes.toByteBuffer, timeout.map(_.toMillis).getOrElse(0L))
           }
         }
 
