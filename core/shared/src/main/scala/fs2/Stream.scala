@@ -4312,7 +4312,7 @@ object Stream extends StreamLowPriority {
       }
   }
 
-  /** Type class which describes compilation of a `Stream[F, O]` to a `G[?]`. */
+  /** Type class which describes compilation of a `Stream[F, O]` to a `G[*]`. */
   sealed trait Compiler[F[_], G[_]] {
     private[Stream] def apply[O, B, C](s: Stream[F, O], init: () => B)(
         fold: (B, Chunk[O]) => B,
@@ -4321,8 +4321,8 @@ object Stream extends StreamLowPriority {
   }
 
   trait LowPrioCompiler {
-    implicit def resourceInstance[F[_]](implicit F: Sync[F]): Compiler[F, Resource[F, ?]] =
-      new Compiler[F, Resource[F, ?]] {
+    implicit def resourceInstance[F[_]](implicit F: Sync[F]): Compiler[F, Resource[F, *]] =
+      new Compiler[F, Resource[F, *]] {
         def apply[O, B, C](
             s: Stream[F, O],
             init: () => B
@@ -4331,7 +4331,7 @@ object Stream extends StreamLowPriority {
             .makeCase(CompileScope.newRoot[F])((scope, ec) => scope.close(ec).rethrow)
             .flatMap { scope =>
               def resourceEval[A](fa: F[A]): Resource[F, A] =
-                Resource.suspend(fa.map(a => a.pure[Resource[F, ?]]))
+                Resource.suspend(fa.map(a => a.pure[Resource[F, *]]))
 
               resourceEval {
                 F.delay(init())
@@ -4375,8 +4375,8 @@ object Stream extends StreamLowPriority {
         finalize(Compiler.compile(s.covaryId[IO].free, init())(foldChunk).unsafeRunSync)
     }
 
-    implicit val fallibleInstance: Compiler[Fallible, Either[Throwable, ?]] =
-      new Compiler[Fallible, Either[Throwable, ?]] {
+    implicit val fallibleInstance: Compiler[Fallible, Either[Throwable, *]] =
+      new Compiler[Fallible, Either[Throwable, *]] {
         def apply[O, B, C](
             s: Stream[Fallible, O],
             init: () => B
@@ -4571,9 +4571,9 @@ object Stream extends StreamLowPriority {
       * very natural fit with `lastOrError`.
       */
     def resource(implicit
-        compiler: Stream.Compiler[F, Resource[G, ?]]
-    ): Stream.CompileOps[F, Resource[G, ?], O] =
-      new Stream.CompileOps[F, Resource[G, ?], O](free)
+        compiler: Stream.Compiler[F, Resource[G, *]]
+    ): Stream.CompileOps[F, Resource[G, *], O] =
+      new Stream.CompileOps[F, Resource[G, *], O](free)
 
     /**
       * Compiles this stream of strings in to a single string.
@@ -4823,8 +4823,8 @@ object Stream extends StreamLowPriority {
     */
   implicit def monadErrorInstance[F[_]](implicit
       ev: ApplicativeError[F, Throwable]
-  ): MonadError[Stream[F, ?], Throwable] =
-    new MonadError[Stream[F, ?], Throwable] {
+  ): MonadError[Stream[F, *], Throwable] =
+    new MonadError[Stream[F, *], Throwable] {
       def pure[A](a: A) = Stream(a)
       def handleErrorWith[A](s: Stream[F, A])(h: Throwable => Stream[F, A]) =
         s.handleErrorWith(h)
@@ -4851,8 +4851,8 @@ object Stream extends StreamLowPriority {
     * res0: List[cats.data.Ior[Int,String]] = List(Both(1,A), Both(2,B), Both(3,C), Right(D), Right(E))
     * }}}
     */
-  implicit def alignInstance[F[_]]: Align[Stream[F, ?]] =
-    new Align[Stream[F, ?]] {
+  implicit def alignInstance[F[_]]: Align[Stream[F, *]] =
+    new Align[Stream[F, *]] {
 
       private type ZipWithCont[G[_], O2, L, R] =
         Either[(Chunk[O2], Stream[G, O2]), Stream[G, O2]] => Pull[G, Ior[L, R], Unit]
@@ -4901,7 +4901,7 @@ object Stream extends StreamLowPriority {
           .stream
       }
 
-      override def functor: Functor[Stream[F, ?]] = Functor[Stream[F, ?]]
+      override def functor: Functor[Stream[F, *]] = Functor[Stream[F, *]]
 
       override def align[A, B](fa: Stream[F, A], fb: Stream[F, B]): Stream[F, Ior[A, B]] = {
 
@@ -4927,9 +4927,9 @@ object Stream extends StreamLowPriority {
     * res0: List[Int] = List(1, 2)
     * }}}
     */
-  implicit def functorFilterInstance[F[_]]: FunctorFilter[Stream[F, ?]] =
-    new FunctorFilter[Stream[F, ?]] {
-      override def functor: Functor[Stream[F, ?]] = Functor[Stream[F, ?]]
+  implicit def functorFilterInstance[F[_]]: FunctorFilter[Stream[F, *]] =
+    new FunctorFilter[Stream[F, *]] {
+      override def functor: Functor[Stream[F, *]] = Functor[Stream[F, *]]
       override def mapFilter[A, B](fa: Stream[F, A])(f: A => Option[B]): Stream[F, B] = {
         def pull: Stream[F, A] => Pull[F, B, Unit] =
           _.pull.uncons.flatMap {
@@ -4943,7 +4943,7 @@ object Stream extends StreamLowPriority {
     }
 
   /**
-    * `FunctionK` instance for `F ~> Stream[F, ?]`
+    * `FunctionK` instance for `F ~> Stream[F, *]`
     *
     * @example {{{
     * scala> import cats.Id
@@ -4951,19 +4951,19 @@ object Stream extends StreamLowPriority {
     * res0: cats.Id[List[Int]] = List(42)
     * }}}
     */
-  implicit def functionKInstance[F[_]]: F ~> Stream[F, ?] =
-    FunctionK.lift[F, Stream[F, ?]](Stream.eval)
+  implicit def functionKInstance[F[_]]: F ~> Stream[F, *] =
+    FunctionK.lift[F, Stream[F, *]](Stream.eval)
 
-  implicit def monoidKInstance[F[_]]: MonoidK[Stream[F, ?]] =
-    new MonoidK[Stream[F, ?]] {
+  implicit def monoidKInstance[F[_]]: MonoidK[Stream[F, *]] =
+    new MonoidK[Stream[F, *]] {
       def empty[A]: Stream[F, A] = Stream.empty
       def combineK[A](x: Stream[F, A], y: Stream[F, A]): Stream[F, A] = x ++ y
     }
 }
 
 private[fs2] trait StreamLowPriority {
-  implicit def monadInstance[F[_]]: Monad[Stream[F, ?]] =
-    new Monad[Stream[F, ?]] {
+  implicit def monadInstance[F[_]]: Monad[Stream[F, *]] =
+    new Monad[Stream[F, *]] {
       override def pure[A](x: A): Stream[F, A] = Stream(x)
 
       override def flatMap[A, B](fa: Stream[F, A])(f: A => Stream[F, B]): Stream[F, B] =

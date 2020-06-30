@@ -42,16 +42,16 @@ class StreamLawsSpec extends Fs2Spec with StreamArbitrary {
     )
 
   checkAll(
-    "MonadError[Stream[F, ?], Throwable]",
-    MonadErrorTests[Stream[IO, ?], Throwable].monadError[Int, Int, Int]
+    "MonadError[Stream[F, *], Throwable]",
+    MonadErrorTests[Stream[IO, *], Throwable].monadError[Int, Int, Int]
   )
   checkAll(
-    "FunctorFilter[Stream[F, ?]]",
-    FunctorFilterTests[Stream[IO, ?]].functorFilter[String, Int, Int]
+    "FunctorFilter[Stream[F, *]]",
+    FunctorFilterTests[Stream[IO, *]].functorFilter[String, Int, Int]
   )
-  checkAll("MonoidK[Stream[F, ?]]", MonoidKTests[Stream[IO, ?]].monoidK[Int])
+  checkAll("MonoidK[Stream[F, *]]", MonoidKTests[Stream[IO, *]].monoidK[Int])
   checkAll(
-    "Align[Stream[F, ?]]",
-    AlignTests[Stream[IO, ?]].align[Int, Int, Int, Int]
+    "Align[Stream[F, *]]",
+    AlignTests[Stream[IO, *]].align[Int, Int, Int, Int]
   )
 }

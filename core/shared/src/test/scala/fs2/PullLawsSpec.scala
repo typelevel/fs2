@@ -36,5 +36,5 @@ class PullLawsSpec extends Fs2Spec with StreamArbitrary {
     Eq.instance((x, y) => Eq.eqv(normalize(x), normalize(y)))
   }
 
-  checkAll("Sync[Pull[F, O, ?]]", SyncTests[Pull[IO, Int, ?]].sync[Int, Int, Int])
+  checkAll("Sync[Pull[F, O, *]]", SyncTests[Pull[IO, Int, *]].sync[Int, Int, Int])
 }
