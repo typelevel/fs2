@@ -42,8 +42,8 @@ object Signal extends SignalLowPriorityImplicits {
 
   implicit def applicativeInstance[F[_]](implicit
       F: Concurrent[F]
-  ): Applicative[Signal[F, ?]] =
-    new Applicative[Signal[F, ?]] {
+  ): Applicative[Signal[F, *]] =
+    new Applicative[Signal[F, *]] {
       override def map[A, B](fa: Signal[F, A])(f: A => B): Signal[F, B] =
         Signal.map(fa)(f)
 
@@ -65,7 +65,7 @@ object Signal extends SignalLowPriorityImplicits {
       F: Concurrent[F]
   ): Stream[F, (A0, A1)] = {
     type PullOutput = (A0, A1, Stream[F, A0], Stream[F, A1])
-    val firstPull: OptionT[Pull[F, PullOutput, ?], Unit] = for {
+    val firstPull: OptionT[Pull[F, PullOutput, *], Unit] = for {
       firstXAndRestOfXs <- OptionT(xs.pull.uncons1.covaryOutput[PullOutput])
       (x, restOfXs) = firstXAndRestOfXs
       firstYAndRestOfYs <- OptionT(ys.pull.uncons1.covaryOutput[PullOutput])
@@ -121,8 +121,8 @@ private[concurrent] trait SignalLowPriorityImplicits {
     * implicits if the [[Signal.applicativeInstance]] is applicable, allowing
     * the `Applicative` instance to be chosen.
     */
-  implicit def functorInstance[F[_]: Functor]: Functor[Signal[F, ?]] =
-    new Functor[Signal[F, ?]] {
+  implicit def functorInstance[F[_]: Functor]: Functor[Signal[F, *]] =
+    new Functor[Signal[F, *]] {
       override def map[A, B](fa: Signal[F, A])(f: A => B): Signal[F, B] =
         Signal.map(fa)(f)
     }
@@ -252,8 +252,8 @@ object SignallingRef {
     }
   }
 
-  implicit def invariantInstance[F[_]: Functor]: Invariant[SignallingRef[F, ?]] =
-    new Invariant[SignallingRef[F, ?]] {
+  implicit def invariantInstance[F[_]: Functor]: Invariant[SignallingRef[F, *]] =
+    new Invariant[SignallingRef[F, *]] {
       override def imap[A, B](fa: SignallingRef[F, A])(f: A => B)(g: B => A): SignallingRef[F, B] =
         new SignallingRef[F, B] {
           override def get: F[B] = fa.get.map(f)
