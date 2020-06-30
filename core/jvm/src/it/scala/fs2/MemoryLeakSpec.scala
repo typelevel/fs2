@@ -33,7 +33,7 @@ class MemoryLeakSpec extends AnyFunSuite {
       warmupIterations: Int = 3,
       samplePeriod: FiniteDuration = 3.seconds,
       monitorPeriod: FiniteDuration = 30.seconds,
-      limitBytesIncrease: Long = 10 * 1024 * 1024
+      limitBytesIncrease: Long = 20 * 1024 * 1024
   )(stream: => Stream[IO, O]): Unit =
     test(name) {
       IO.race(
