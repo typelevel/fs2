@@ -1054,6 +1054,8 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
     * application of the effectful function `f`.
     *
     * @example {{{
+    * scala> import cats.effect.IO
+    * scala> import cats.implicits._
     * scala> Stream(1, 2, 3, 4, 5).evalMapFilter(n => IO((n * 2).some.filter(_ % 4 == 0))).compile.toList.unsafeRunSync
     * res0: List[Int] = List(4, 8)
     * }}}
