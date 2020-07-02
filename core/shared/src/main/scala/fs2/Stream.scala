@@ -4968,6 +4968,9 @@ object Stream extends StreamLowPriority {
   implicit def functionKInstance[F[_]]: F ~> Stream[F, *] =
     FunctionK.lift[F, Stream[F, *]](Stream.eval)
 
+  def monoidKInstance[F[_]]: MonoidK[Stream[F, *]] =
+    alternativeInstance
+
   /** `Defer` instance for `Stream` */
   implicit def deferInstance[F[_]]: Defer[Stream[F, *]] =
     new Defer[Stream[F, *]] {
