@@ -4977,7 +4977,7 @@ object Stream extends StreamLowPriority {
   /** `Defer` instance for `Stream` */
   implicit def deferInstance[F[_]]: Defer[Stream[F, *]] =
     new Defer[Stream[F, *]] {
-      override def defer[A](fa: => Stream[F, A]): Stream[F, A] = Stream(()) >> fa
+      override def defer[A](fa: => Stream[F, A]): Stream[F, A] = Stream.empty ++ fa
     }
 }
 
