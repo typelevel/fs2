@@ -317,7 +317,7 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup, blocker: Blocker
                 }
               )
             }.flatMap {
-              case None       => F.pure(())
+              case None       => F.unit
               case Some(took) => go(buff, (remains - took).max(0))
             }
           writeSemaphore.withPermit {

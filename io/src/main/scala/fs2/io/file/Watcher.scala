@@ -304,7 +304,7 @@ object Watcher {
                         }
                         events.map(cancel -> _)
                     },
-                    F.pure(F.pure(()) -> List.empty[Event])
+                    F.pure(F.unit -> List.empty[Event])
                   )
               val subregisters: F[List[Event]] =
                 created.traverse(watchIfDirectory).flatMap { x =>
