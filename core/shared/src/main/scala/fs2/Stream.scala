@@ -4973,6 +4973,12 @@ object Stream extends StreamLowPriority {
       def empty[A]: Stream[F, A] = Stream.empty
       def combineK[A](x: Stream[F, A], y: Stream[F, A]): Stream[F, A] = x ++ y
     }
+
+  /** `Defer` instance for `Stream` */
+  implicit def deferInstance[F[_]]: Defer[Stream[F, *]] =
+    new Defer[Stream[F, *]] {
+      override def defer[A](fa: => Stream[F, A]): Stream[F, A] = Stream.empty ++ fa
+    }
 }
 
 private[fs2] trait StreamLowPriority {
