@@ -1015,7 +1015,7 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
     * res0: Unit = ()
     * }}}
     *
-    * But with `evalMaps`, it will print 4 times:
+    * But with `evalMapChunk`, it will print 4 times:
     * @example {{{
     * scala> Stream(1,2,3,4).evalMapChunk(i => IO(println(i))).take(2).compile.drain.unsafeRunSync
     * res0: Unit = ()
@@ -1048,6 +1048,20 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
 
     go(s, this).stream
   }
+
+  /**
+    * Effectfully maps and filters the elements of the stream depending on the optionality of the result of the
+    * application of the effectful function `f`.
+    *
+    * @example {{{
+    * scala> import cats.effect.IO
+    * scala> import cats.implicits._
+    * scala> Stream(1, 2, 3, 4, 5).evalMapFilter(n => IO((n * 2).some.filter(_ % 4 == 0))).compile.toList.unsafeRunSync
+    * res0: List[Int] = List(4, 8)
+    * }}}
+    */
+  def evalMapFilter[F2[x] >: F[x], O2](f: O => F2[Option[O2]]): Stream[F2, O2] =
+    evalMap(f).collect { case Some(v) => v }
 
   /**
     * Like `[[Stream#scan]]`, but accepts a function returning an `F[_]`.

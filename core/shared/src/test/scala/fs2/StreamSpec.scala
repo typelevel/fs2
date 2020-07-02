@@ -1099,6 +1099,30 @@ class StreamSpec extends Fs2Spec {
       r.map(_._2).compile.toVector.asserting(it => assert(it == sVector.map(f)))
     }
 
+    "evalMapFilter" - {
+      "with effectful optional identity function" in forAll { s: Stream[Pure, Int] =>
+        val s1 = s.toList
+        s.evalMapFilter(n => IO.pure(n.some)).compile.toList.asserting(it => assert(it == s1))
+      }
+
+      "with effectful constant function that returns None for any element" in forAll {
+        s: Stream[Pure, Int] =>
+          s.evalMapFilter(_ => IO.pure(none[Int]))
+            .compile
+            .toList
+            .asserting(it => assert(it.isEmpty))
+      }
+
+      "with effectful function that filters out odd elements" in {
+        Stream
+          .range(1, 10)
+          .evalMapFilter(e => IO.pure(e.some.filter(_ % 2 == 0)))
+          .compile
+          .toList
+          .asserting(it => assert(it == List(2, 4, 6, 8)))
+      }
+    }
+
     "evalScan" in forAll { (s: Stream[Pure, Int], n: String) =>
       val sVector = s.toVector
       val f: (String, Int) => IO[String] = (a: String, b: Int) => IO.pure(a + b)
