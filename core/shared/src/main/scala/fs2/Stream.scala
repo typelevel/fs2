@@ -4968,14 +4968,14 @@ object Stream extends StreamLowPriority {
   implicit def functionKInstance[F[_]]: F ~> Stream[F, *] =
     FunctionK.lift[F, Stream[F, *]](Stream.eval)
 
-  implicit def monoidKInstance[F[_]]: MonoidK[Stream[F, *]] =
-    new MonoidK[Stream[F, *]] {
-      def empty[A]: Stream[F, A] = Stream.empty
-      def combineK[A](x: Stream[F, A], y: Stream[F, A]): Stream[F, A] = x ++ y
+  /** `Defer` instance for `Stream` */
+  implicit def deferInstance[F[_]]: Defer[Stream[F, *]] =
+    new Defer[Stream[F, *]] {
+      override def defer[A](fa: => Stream[F, A]): Stream[F, A] = Stream(()) >> fa
     }
 }
 
-private[fs2] trait StreamLowPriority {
+private[fs2] trait StreamLowPriority extends StreamLowPriority1 {
   implicit def monadInstance[F[_]]: Monad[Stream[F, *]] =
     new Monad[Stream[F, *]] {
       override def pure[A](x: A): Stream[F, A] = Stream(x)
@@ -4988,5 +4988,18 @@ private[fs2] trait StreamLowPriority {
           case Left(a)  => tailRecM(a)(f)
           case Right(b) => Stream(b)
         }
+    }
+}
+
+private[fs2] trait StreamLowPriority1 {
+  implicit def alternativeInstance[F[_]]: Alternative[Stream[F, *]] =
+    new Alternative[Stream[F, *]] {
+      override def empty[A]: Stream[F, A] = Stream.empty
+
+      override def combineK[A](x: Stream[F, A], y: Stream[F, A]): Stream[F, A] = x ++ y
+
+      override def pure[A](x: A): Stream[F, A] = Stream(x)
+
+      override def ap[A, B](ff: Stream[F, A => B])(fa: Stream[F, A]): Stream[F, B] = ff >>= fa.map
     }
 }
