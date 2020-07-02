@@ -50,6 +50,7 @@ class StreamLawsSpec extends Fs2Spec with StreamArbitrary {
     FunctorFilterTests[Stream[IO, *]].functorFilter[String, Int, Int]
   )
   checkAll("MonoidK[Stream[F, *]]", MonoidKTests[Stream[IO, *]].monoidK[Int])
+  checkAll("Alternative[Stream[F, *]]", AlternativeTests[Stream[IO, *]].alternative[Int, Int, Int])
   checkAll(
     "Align[Stream[F, *]]",
     AlignTests[Stream[IO, *]].align[Int, Int, Int, Int]
