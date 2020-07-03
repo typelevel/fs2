@@ -234,42 +234,15 @@ lazy val releaseSettings = Seq(
 
 lazy val mimaSettings = Seq(
   mimaPreviousArtifacts := {
-    List("2.0.0", "2.3.0").map { pv =>
+    List().map { pv =>
       organization.value % (normalizedName.value + "_" + scalaBinaryVersion.value) % pv
     }.toSet
   },
   mimaBinaryIssueFilters ++= Seq(
-    // These methods were only used internally between Stream and Pull: they were private to fs2.
-    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Stream.fromFreeC"),
-    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Stream.get$extension"),
-    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Stream#IdOps.self$extension"),
-    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Pull.get$extension"),
-    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Pull.get"),
-    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Stream.get$extension"),
-    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Stream.get"),
-    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Pull.fromFreeC"),
-    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Pull.get$extension"),
     // No bincompat on internal package
     ProblemFilters.exclude[Problem]("fs2.internal.*"),
     // Mima reports all ScalaSignature changes as errors, despite the fact that they don't cause bincompat issues when version swapping (see https://github.com/lightbend/mima/issues/361)
-    ProblemFilters.exclude[IncompatibleSignatureProblem]("*"),
-    // .to(sink) syntax was removed in 1.0.2 and has been hidden in all 2.x releases behind private[fs2], hence it's safe to remove
-    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Stream.to"),
-    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Stream.to$extension"),
-    ProblemFilters.exclude[DirectMissingMethodProblem](
-      "fs2.interop.reactivestreams.StreamSubscriber#FSM.stream"
-    ), // FSM is package private
-    ProblemFilters.exclude[Problem]("fs2.io.tls.TLSEngine.*"), // private[fs2] type
-    ProblemFilters.exclude[Problem]("fs2.io.tls.TLSEngine#*"),
-    ProblemFilters.exclude[DirectMissingMethodProblem](
-      "fs2.io.tls.TLSSocket.fs2$io$tls$TLSSocket$$binding$default$2"
-    ),
-    ProblemFilters.exclude[DirectMissingMethodProblem](
-      "fs2.io.tls.TLSSocket.fs2$io$tls$TLSSocket$$binding$default$3"
-    ),
-    // InputOutputBuffer is private[tls]
-    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.tls.InputOutputBuffer.output"),
-    ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.io.tls.InputOutputBuffer.output")
+    ProblemFilters.exclude[IncompatibleSignatureProblem]("*")
   )
 )
 
