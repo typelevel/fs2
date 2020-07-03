@@ -3916,8 +3916,7 @@ object Stream extends StreamLowPriority {
   }
 
   /** Provides syntax for fallible streams. */
-  implicit final class FallibleOps[O](private val self: Stream[Fallible, O])
-      extends AnyVal {
+  implicit final class FallibleOps[O](private val self: Stream[Fallible, O]) extends AnyVal {
 
     /** Lifts this stream to the specified effect type. */
     def lift[F[_]](implicit F: ApplicativeError[F, Throwable]): Stream[F, O] = {
@@ -3943,8 +3942,7 @@ object Stream extends StreamLowPriority {
   }
 
   /** Provides `to` syntax for fallible streams. */
-  implicit final class FallibleTo[O](private val self: Stream[Fallible, O])
-      extends AnyVal {
+  implicit final class FallibleTo[O](private val self: Stream[Fallible, O]) extends AnyVal {
 
     /** Runs this fallible stream and returns the emitted elements in a collection of the specified type. Note: this method is only available on fallible streams. */
     def to(c: Collector[O]): Either[Throwable, c.Out] =
@@ -4360,7 +4358,11 @@ object Stream extends StreamLowPriority {
             s: Stream[Fallible, O],
             init: () => B
         )(foldChunk: (B, Chunk[O]) => B, finalize: B => C): Either[Throwable, C] =
-          Compiler.compile(s.lift[IO].underlying, init())(foldChunk).attempt.unsafeRunSync.map(finalize)
+          Compiler
+            .compile(s.lift[IO].underlying, init())(foldChunk)
+            .attempt
+            .unsafeRunSync
+            .map(finalize)
       }
   }
 
@@ -4779,7 +4781,8 @@ object Stream extends StreamLowPriority {
   }
 
   /** Provides operations on pure pipes for syntactic convenience. */
-  implicit final class PurePipe2Ops[I, I2, O](private val self: Pipe2[Pure, I, I2, O]) extends AnyVal {
+  implicit final class PurePipe2Ops[I, I2, O](private val self: Pipe2[Pure, I, I2, O])
+      extends AnyVal {
 
     // This is unsound! See #1838. Left for binary compatibility.
     private[fs2] def covary[F[_]]: Pipe2[F, I, I2, O] = self.asInstanceOf[Pipe2[F, I, I2, O]]
