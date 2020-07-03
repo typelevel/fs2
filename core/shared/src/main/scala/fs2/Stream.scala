@@ -7,7 +7,6 @@ import cats.effect.concurrent._
 import cats.effect.implicits._
 import cats.implicits.{catsSyntaxEither => _, _}
 import fs2.concurrent._
-import fs2.internal.FreeC.{Acquire, Eval, GetScope, Output, Result}
 import fs2.internal.{Resource => _, _}
 import java.io.PrintStream
 
@@ -129,7 +128,7 @@ import cats.data.Ior.Both
   * @hideImplicitConversion PureOps
   * @hideImplicitConversion IdOps
   */
-final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit]) extends AnyVal {
+final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, Unit]) {
 
   /**
     * Appends `s2` to the end of this stream.
@@ -142,7 +141,7 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
     * If `this` stream is infinite, then the result is equivalent to `this`.
     */
   def ++[F2[x] >: F[x], O2 >: O](s2: => Stream[F2, O2]): Stream[F2, O2] =
-    new Stream(free.append(s2.free))
+    new Stream(underlying >> s2.underlying)
 
   /** Appends `s2` to the end of this stream. Alias for `s1 ++ s2`. */
   def append[F2[x] >: F[x], O2 >: O](s2: => Stream[F2, O2]): Stream[F2, O2] =
@@ -522,7 +521,7 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
   def compile[F2[x] >: F[x], G[_], O2 >: O](implicit
       compiler: Stream.Compiler[F2, G]
   ): Stream.CompileOps[F2, G, O2] =
-    new Stream.CompileOps[F2, G, O2](free)
+    new Stream.CompileOps[F2, G, O2](underlying)
 
   /**
     * Runs the supplied stream in the background as elements from this stream are pulled.
@@ -1234,7 +1233,7 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
     * }}}
     */
   def flatMap[F2[x] >: F[x], O2](f: O => Stream[F2, O2]): Stream[F2, O2] =
-    new Stream(FreeC.flatMapOutput[F, F2, O, O2](free, (o: O) => f(o).free))
+    new Stream(Pull.flatMapOutput[F, F2, O, O2](underlying, (o: O) => f(o).underlying))
 
   /** Alias for `flatMap(_ => s2)`. */
   def >>[F2[x] >: F[x], O2](s2: => Stream[F2, O2]): Stream[F2, O2] =
@@ -1534,7 +1533,7 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
     * }}}
     */
   def handleErrorWith[F2[x] >: F[x], O2 >: O](h: Throwable => Stream[F2, O2]): Stream[F2, O2] =
-    new Stream(FreeC.scope(free).handleErrorWith(e => h(e).free))
+    new Stream(Pull.scope(underlying).handleErrorWith(e => h(e).underlying))
 
   /**
     * Emits the first element of this stream (if non-empty) and then halts.
@@ -1681,7 +1680,7 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
     * Creates a scope that may be interrupted by calling scope#interrupt.
     */
   def interruptScope[F2[x] >: F[x]: Concurrent]: Stream[F2, O] =
-    new Stream(FreeC.interruptScope(free: FreeC[F2, O, Unit]))
+    new Stream(Pull.interruptScope(underlying: Pull[F2, O, Unit]))
 
   /**
     * Emits the specified separator between every pair of elements in the source stream.
@@ -2018,7 +2017,7 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
     * }}}
     */
   def onComplete[F2[x] >: F[x], O2 >: O](s2: => Stream[F2, O2]): Stream[F2, O2] =
-    handleErrorWith(e => s2 ++ new Stream(Result.Fail(e))) ++ s2
+    handleErrorWith(e => s2 ++ new Stream(Pull.fail(e))) ++ s2
 
   /**
     * Runs the supplied effectful action at the end of this stream, regardless of how the stream terminates.
@@ -2060,7 +2059,7 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
   def onFinalizeCaseWeak[F2[x] >: F[x]](
       f: ExitCase[Throwable] => F2[Unit]
   )(implicit F2: Applicative[F2]): Stream[F2, O] =
-    new Stream(Acquire[F2, Unit](F2.unit, (_, ec) => f(ec)).flatMap(_ => free))
+    new Stream(Pull.acquire[F2, Unit](F2.unit, (_, ec) => f(ec)).flatMap(_ => underlying))
 
   /**
     * Like [[Stream#evalMap]], but will evaluate effects in parallel, emitting the results
@@ -2593,7 +2592,7 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
     * is introduced.
     */
   def scope: Stream[F, O] =
-    new Stream(FreeC.scope(free))
+    new Stream(Pull.scope(underlying))
 
   /**
     * Writes this stream to the supplied `PrintStream`, converting each element to a `String` via `Show`.
@@ -2799,14 +2798,14 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
     * stream, `translateInterruptible` instead, which requires a `Concurrent[G]` instance.
     */
   def translate[F2[x] >: F[x], G[_]](u: F2 ~> G): Stream[G, O] =
-    new Stream(FreeC.translate[F2, G, O](free, u))
+    new Stream(Pull.translate[F2, G, O](underlying, u))
 
   /**
     * Translates effect type from `F` to `G` using the supplied `FunctionK`.
     */
   def translateInterruptible[F2[x] >: F[x], G[_]: Concurrent](u: F2 ~> G): Stream[G, O] =
     new Stream(
-      FreeC.translate[F2, G, O](free, u)(TranslateInterrupt.interruptibleInstance[G])
+      Pull.translate[F2, G, O](underlying, u)(TranslateInterrupt.interruptibleInstance[G])
     )
 
   /**
@@ -3156,7 +3155,7 @@ object Stream extends StreamLowPriority {
     * }}}
     */
   def attemptEval[F[x] >: Pure[x], O](fo: F[O]): Stream[F, Either[Throwable, O]] =
-    new Stream(Pull.attemptEval(fo).flatMap(Pull.output1).get)
+    new Stream(Pull.attemptEval(fo).flatMap(Pull.output1))
 
   /**
     * Light weight alternative to `awakeEvery` that sleeps for duration `d` before each pulled element.
@@ -3229,7 +3228,7 @@ object Stream extends StreamLowPriority {
   def bracketCaseWeak[F[x] >: Pure[x], R](
       acquire: F[R]
   )(release: (R, ExitCase[Throwable]) => F[Unit]): Stream[F, R] =
-    new Stream(Acquire[F, R](acquire, release).flatMap(FreeC.output1(_)))
+    new Stream(Pull.acquire[F, R](acquire, release).flatMap(Pull.output1(_)))
 
   /**
     * Creates a pure stream that emits the elements of the supplied chunk.
@@ -3240,7 +3239,7 @@ object Stream extends StreamLowPriority {
     * }}}
     */
   def chunk[F[x] >: Pure[x], O](os: Chunk[O]): Stream[F, O] =
-    new Stream(Output[O](os))
+    new Stream(Pull.output(os))
 
   /**
     * Creates an infinite pure stream that always returns the supplied value.
@@ -3273,7 +3272,7 @@ object Stream extends StreamLowPriority {
     * res0: List[Int] = List(0)
     * }}}
     */
-  def emit[F[x] >: Pure[x], O](o: O): Stream[F, O] = new Stream(FreeC.output1[O](o))
+  def emit[F[x] >: Pure[x], O](o: O): Stream[F, O] = new Stream(Pull.output1(o))
 
   /**
     * Creates a pure stream that emits the supplied values.
@@ -3287,12 +3286,12 @@ object Stream extends StreamLowPriority {
     os match {
       case Nil    => empty
       case Seq(x) => emit(x)
-      case _      => new Stream(FreeC.Output[O](Chunk.seq(os)))
+      case _      => new Stream(Pull.output(Chunk.seq(os)))
     }
 
   /** Empty pure stream. */
   val empty: Stream[Pure, INothing] =
-    new Stream(Result.unit)
+    new Stream(Pull.done)
 
   /**
     * Creates a single element stream that gets its value by evaluating the supplied effect. If the effect fails,
@@ -3309,7 +3308,7 @@ object Stream extends StreamLowPriority {
     * }}}
     */
   def eval[F[_], O](fo: F[O]): Stream[F, O] =
-    new Stream(Eval(fo).flatMap(FreeC.output1))
+    new Stream(Pull.eval(fo).flatMap(Pull.output1))
 
   /**
     * Creates a stream that evaluates the supplied `fa` for its effect, discarding the output value.
@@ -3324,11 +3323,11 @@ object Stream extends StreamLowPriority {
     * }}}
     */
   def eval_[F[_], A](fa: F[A]): Stream[F, INothing] =
-    new Stream(Eval(fa).map(_ => ()))
+    new Stream(Pull.eval(fa).map(_ => ()))
 
   /** Like `eval` but resulting chunk is flatten efficiently. */
   def evalUnChunk[F[_], O](fo: F[Chunk[O]]): Stream[F, O] =
-    new Stream(Eval(fo).flatMap(Output(_)))
+    new Stream(Pull.eval(fo).flatMap(Pull.output(_)))
 
   /** Like `eval`, but lifts a foldable structure. */
   def evals[F[_], S[_]: Foldable, O](fo: F[S[O]]): Stream[F, O] =
@@ -3502,7 +3501,7 @@ object Stream extends StreamLowPriority {
     * This is a low-level method and generally should not be used by user code.
     */
   def getScope[F[x] >: Pure[x]]: Stream[F, Scope[F]] =
-    new Stream(GetScope[F]().flatMap(FreeC.output1(_)))
+    new Stream(Pull.getScope[F].flatMap(Pull.output1(_)))
 
   /**
     * A stream that never emits and never terminates.
@@ -3524,7 +3523,7 @@ object Stream extends StreamLowPriority {
     * }}}
     */
   def raiseError[F[_]: RaiseThrowable](e: Throwable): Stream[F, INothing] =
-    new Stream(Result.Fail(e))
+    new Stream(Pull.raiseError(e))
 
   /**
     * Creates a random stream of integers using a random seed.
@@ -3687,7 +3686,7 @@ object Stream extends StreamLowPriority {
     * }}}
     */
   def suspend[F[_], O](s: => Stream[F, O]): Stream[F, O] =
-    new Stream(FreeC.suspend(s.free))
+    new Stream(Pull.suspend(s.underlying))
 
   /**
     * Creates a stream by successively applying `f` until a `None` is returned, emitting
@@ -3769,14 +3768,7 @@ object Stream extends StreamLowPriority {
       .stream
 
   /** Provides syntax for streams that are invariant in `F` and `O`. */
-  implicit def InvariantOps[F[_], O](s: Stream[F, O]): InvariantOps[F, O] =
-    new InvariantOps(s.free)
-
-  /** Provides syntax for streams that are invariant in `F` and `O`. */
-  final class InvariantOps[F[_], O] private[Stream] (
-      private val free: FreeC[F, O, Unit]
-  ) extends AnyVal {
-    private def self: Stream[F, O] = new Stream(free)
+  implicit final class InvariantOps[F[_], O](private val self: Stream[F, O]) extends AnyVal {
 
     /**
       * Lifts this stream to the specified effect type.
@@ -3869,8 +3861,7 @@ object Stream extends StreamLowPriority {
     }
 
     /** Gets a projection of this stream that allows converting it to a `Pull` in a number of ways. */
-    def pull: ToPull[F, O] =
-      new ToPull[F, O](free)
+    def pull: ToPull[F, O] = new ToPull[F, O](self)
 
     /**
       * Repeatedly invokes `using`, running the resultant `Pull` each time, halting when a pull
@@ -3883,12 +3874,7 @@ object Stream extends StreamLowPriority {
   }
 
   /** Provides syntax for pure streams. */
-  implicit def PureOps[O](s: Stream[Pure, O]): PureOps[O] =
-    new PureOps(s.free)
-
-  /** Provides syntax for pure streams. */
-  final class PureOps[O] private[Stream] (private val free: FreeC[Pure, O, Unit]) extends AnyVal {
-    private def self: Stream[Pure, O] = new Stream[Pure, O](free)
+  implicit final class PureOps[O](private val self: Stream[Pure, O]) extends AnyVal {
 
     /** Alias for covary, to be able to write `Stream.empty[X]`. */
     def apply[F[_]]: Stream[F, O] = covary
@@ -3914,38 +3900,24 @@ object Stream extends StreamLowPriority {
   }
 
   /** Provides `to` syntax for pure streams. */
-  implicit def PureTo[O](s: Stream[Pure, O]): PureTo[O] =
-    new PureTo(s.free)
-
-  /** Provides `to` syntax for pure streams. */
-  final class PureTo[O] private[Stream] (private val free: FreeC[Pure, O, Unit]) extends AnyVal {
-    private def self: Stream[Pure, O] = new Stream[Pure, O](free)
+  implicit final class PureTo[O](private val self: Stream[Pure, O]) extends AnyVal {
 
     /** Runs this pure stream and returns the emitted elements in a collection of the specified type. Note: this method is only available on pure streams. */
     def to(c: Collector[O]): c.Out =
       self.covary[SyncIO].compile.to(c).unsafeRunSync
   }
 
-  /** Provides syntax for streams with effect type `cats.Id`. */
-  implicit def IdOps[O](s: Stream[Id, O]): IdOps[O] =
-    new IdOps(s.free)
-
   /** Provides syntax for pure pipes based on `cats.Id`. */
-  final class IdOps[O] private[Stream] (private val free: FreeC[Id, O, Unit]) extends AnyVal {
+  implicit final class IdOps[O](private val self: Stream[Id, O]) extends AnyVal {
     private def idToApplicative[F[_]: Applicative]: Id ~> F =
       new (Id ~> F) { def apply[A](a: Id[A]) = a.pure[F] }
 
-    def covaryId[F[_]: Applicative]: Stream[F, O] = new Stream(free).translate(idToApplicative[F])
+    def covaryId[F[_]: Applicative]: Stream[F, O] = self.translate(idToApplicative[F])
   }
 
-  /** Provides syntax for streams with effect type `Fallible`. */
-  implicit def FallibleOps[O](s: Stream[Fallible, O]): FallibleOps[O] =
-    new FallibleOps(s.free)
-
   /** Provides syntax for fallible streams. */
-  final class FallibleOps[O] private[Stream] (private val free: FreeC[Fallible, O, Unit])
+  implicit final class FallibleOps[O](private val self: Stream[Fallible, O])
       extends AnyVal {
-    private def self: Stream[Fallible, O] = new Stream(free)
 
     /** Lifts this stream to the specified effect type. */
     def lift[F[_]](implicit F: ApplicativeError[F, Throwable]): Stream[F, O] = {
@@ -3970,14 +3942,9 @@ object Stream extends StreamLowPriority {
     def toVector: Either[Throwable, Vector[O]] = to_(Vector)
   }
 
-  /** Provides `to` syntax for streams with effect type `Fallible`. */
-  implicit def FallibleTo[O](s: Stream[Fallible, O]): FallibleTo[O] =
-    new FallibleTo(s.free)
-
   /** Provides `to` syntax for fallible streams. */
-  final class FallibleTo[O] private[Stream] (private val free: FreeC[Fallible, O, Unit])
+  implicit final class FallibleTo[O](private val self: Stream[Fallible, O])
       extends AnyVal {
-    private def self: Stream[Fallible, O] = new Stream(free)
 
     /** Runs this fallible stream and returns the emitted elements in a collection of the specified type. Note: this method is only available on fallible streams. */
     def to(c: Collector[O]): Either[Throwable, c.Out] =
@@ -3986,10 +3953,8 @@ object Stream extends StreamLowPriority {
 
   /** Projection of a `Stream` providing various ways to get a `Pull` from the `Stream`. */
   final class ToPull[F[_], O] private[Stream] (
-      private val free: FreeC[F, O, Unit]
+      private val self: Stream[F, O]
   ) extends AnyVal {
-    private def self: Stream[F, O] =
-      new Stream(free)
 
     /**
       * Waits for a chunk of elements to be available in the source stream.
@@ -3998,7 +3963,7 @@ object Stream extends StreamLowPriority {
       * A `None` is returned as the resource of the pull upon reaching the end of the stream.
       */
     def uncons: Pull[F, INothing, Option[(Chunk[O], Stream[F, O])]] =
-      new Pull(FreeC.uncons(free)).map {
+      Pull.uncons(self.underlying).map {
         _.map { case (hd, tl) => (hd, new Stream(tl)) }
       }
 
@@ -4124,7 +4089,7 @@ object Stream extends StreamLowPriority {
       }
 
     /** Writes all inputs to the output of the returned `Pull`. */
-    def echo: Pull[F, O, Unit] = new Pull(free)
+    def echo: Pull[F, O, Unit] = self.underlying
 
     /** Reads a single element from the input and emits it to the output. */
     def echo1: Pull[F, O, Option[Stream[F, O]]] =
@@ -4265,8 +4230,8 @@ object Stream extends StreamLowPriority {
       * If you are not pulling from multiple streams, consider using `uncons`.
       */
     def stepLeg: Pull[F, INothing, Option[StepLeg[F, O]]] =
-      new Pull(GetScope[F]()).flatMap { scope =>
-        new StepLeg[F, O](Chunk.empty, scope.id, free).stepLeg
+      Pull.getScope[F].flatMap { scope =>
+        new StepLeg[F, O](Chunk.empty, scope.id, self.underlying).stepLeg
       }
 
     /** Emits the first `n` elements of the input. */
@@ -4349,7 +4314,7 @@ object Stream extends StreamLowPriority {
 
               resourceEval {
                 F.delay(init())
-                  .flatMap(i => FreeC.compile(s.free, scope, true, i)(foldChunk))
+                  .flatMap(i => Pull.compile(s.underlying, scope, true, i)(foldChunk))
                   .map(finalize)
               }
             }
@@ -4357,11 +4322,11 @@ object Stream extends StreamLowPriority {
   }
 
   object Compiler extends LowPrioCompiler {
-    private def compile[F[_], O, B](stream: FreeC[F, O, Unit], init: B)(
+    private def compile[F[_], O, B](stream: Pull[F, O, Unit], init: B)(
         f: (B, Chunk[O]) => B
     )(implicit F: Sync[F]): F[B] =
       F.bracketCase(CompileScope.newRoot[F])(scope =>
-        FreeC.compile[F, O, B](stream, scope, false, init)(f)
+        Pull.compile[F, O, B](stream, scope, false, init)(f)
       )((scope, ec) => scope.close(ec).rethrow)
 
     implicit def syncInstance[F[_]](implicit F: Sync[F]): Compiler[F, F] =
@@ -4370,7 +4335,7 @@ object Stream extends StreamLowPriority {
             s: Stream[F, O],
             init: () => B
         )(foldChunk: (B, Chunk[O]) => B, finalize: B => C): F[C] =
-          F.delay(init()).flatMap(i => Compiler.compile(s.free, i)(foldChunk)).map(finalize)
+          F.delay(init()).flatMap(i => Compiler.compile(s.underlying, i)(foldChunk)).map(finalize)
       }
 
     implicit val pureInstance: Compiler[Pure, Id] = new Compiler[Pure, Id] {
@@ -4378,7 +4343,7 @@ object Stream extends StreamLowPriority {
           s: Stream[Pure, O],
           init: () => B
       )(foldChunk: (B, Chunk[O]) => B, finalize: B => C): C =
-        finalize(Compiler.compile(s.covary[IO].free, init())(foldChunk).unsafeRunSync)
+        finalize(Compiler.compile(s.covary[IO].underlying, init())(foldChunk).unsafeRunSync)
     }
 
     implicit val idInstance: Compiler[Id, Id] = new Compiler[Id, Id] {
@@ -4386,7 +4351,7 @@ object Stream extends StreamLowPriority {
           s: Stream[Id, O],
           init: () => B
       )(foldChunk: (B, Chunk[O]) => B, finalize: B => C): C =
-        finalize(Compiler.compile(s.covaryId[IO].free, init())(foldChunk).unsafeRunSync)
+        finalize(Compiler.compile(s.covaryId[IO].underlying, init())(foldChunk).unsafeRunSync)
     }
 
     implicit val fallibleInstance: Compiler[Fallible, Either[Throwable, *]] =
@@ -4395,16 +4360,16 @@ object Stream extends StreamLowPriority {
             s: Stream[Fallible, O],
             init: () => B
         )(foldChunk: (B, Chunk[O]) => B, finalize: B => C): Either[Throwable, C] =
-          Compiler.compile(s.lift[IO].free, init())(foldChunk).attempt.unsafeRunSync.map(finalize)
+          Compiler.compile(s.lift[IO].underlying, init())(foldChunk).attempt.unsafeRunSync.map(finalize)
       }
   }
 
   /** Projection of a `Stream` providing various ways to compile a `Stream[F,O]` to a `G[...]`. */
   final class CompileOps[F[_], G[_], O] private[Stream] (
-      private val free: FreeC[F, O, Unit]
+      private val underlying: Pull[F, O, Unit]
   )(implicit compiler: Compiler[F, G]) {
     private def self: Stream[F, O] =
-      new Stream(free)
+      new Stream(underlying)
 
     /**
       * Compiles this stream in to a value of the target effect type `F` and
@@ -4587,7 +4552,7 @@ object Stream extends StreamLowPriority {
     def resource(implicit
         compiler: Stream.Compiler[F, Resource[G, *]]
     ): Stream.CompileOps[F, Resource[G, *], O] =
-      new Stream.CompileOps[F, Resource[G, *], O](free)
+      new Stream.CompileOps[F, Resource[G, *], O](underlying)
 
     /**
       * Compiles this stream of strings in to a single string.
@@ -4711,7 +4676,7 @@ object Stream extends StreamLowPriority {
   final class StepLeg[F[_], O](
       val head: Chunk[O],
       private[fs2] val scopeId: Token,
-      private[fs2] val next: FreeC[F, O, Unit]
+      private[fs2] val next: Pull[F, O, Unit]
   ) { self =>
 
     /**
@@ -4735,7 +4700,7 @@ object Stream extends StreamLowPriority {
 
     /** Provides an `uncons`-like operation on this leg of the stream. */
     def stepLeg: Pull[F, INothing, Option[StepLeg[F, O]]] =
-      new Pull(FreeC.stepLeg(self))
+      Pull.stepLeg(self)
   }
 
   /**
@@ -4795,7 +4760,7 @@ object Stream extends StreamLowPriority {
   }
 
   /** Provides operations on effectful pipes for syntactic convenience. */
-  implicit class PipeOps[F[_], I, O](private val self: Pipe[F, I, O]) extends AnyVal {
+  implicit final class PipeOps[F[_], I, O](private val self: Pipe[F, I, O]) extends AnyVal {
 
     /** Transforms the left input of the given `Pipe2` using a `Pipe`. */
     def attachL[I1, O2](p: Pipe2[F, O, I1, O2]): Pipe2[F, I, I1, O2] =
@@ -4814,8 +4779,7 @@ object Stream extends StreamLowPriority {
   }
 
   /** Provides operations on pure pipes for syntactic convenience. */
-  implicit final class PurePipe2Ops[I, I2, O](private val self: Pipe2[Pure, I, I2, O])
-      extends AnyVal {
+  implicit final class PurePipe2Ops[I, I2, O](private val self: Pipe2[Pure, I, I2, O]) extends AnyVal {
 
     // This is unsound! See #1838. Left for binary compatibility.
     private[fs2] def covary[F[_]]: Pipe2[F, I, I2, O] = self.asInstanceOf[Pipe2[F, I, I2, O]]
