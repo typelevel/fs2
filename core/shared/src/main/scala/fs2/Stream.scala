@@ -1576,7 +1576,6 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
       .compile
       .resource
       .lastOrError
-      .widen[Signal[F2, O2]] // TODO remove when Resource becomes covariant
 
   /**
     *  Like [[holdResource]] but does not require an initial value,
@@ -3896,21 +3895,14 @@ object Stream extends StreamLowPriority {
     /** Lifts this stream to the specified effect type. */
     def covary[F[_]]: Stream[F, O] = self
 
-    @inline private def to_(c: Collector[O]): c.Out =
+    def to(c: Collector[O]): c.Out =
       self.covary[SyncIO].compile.to(c).unsafeRunSync
 
-    // TODO Delete this in 3.0
-    private[Stream] def to[C[_]](implicit f: Factory[O, C[O]]): C[O] = to_(f)
-
-    /** Runs this pure stream and returns the emitted elements in a chunk. Note: this method is only available on pure streams. */
-    @deprecated("2.0.2", "Use .to(Chunk) instead")
-    def toChunk: Chunk[O] = to_(Chunk)
-
     /** Runs this pure stream and returns the emitted elements in a list. Note: this method is only available on pure streams. */
-    def toList: List[O] = to_(List)
+    def toList: List[O] = to(List)
 
     /** Runs this pure stream and returns the emitted elements in a vector. Note: this method is only available on pure streams. */
-    def toVector: Vector[O] = to_(Vector)
+    def toVector: Vector[O] = to(Vector)
   }
 
   /** Provides `to` syntax for pure streams. */
@@ -3953,21 +3945,14 @@ object Stream extends StreamLowPriority {
       self.asInstanceOf[Stream[F, O]]
     }
 
-    @inline private def to_(c: Collector[O]): Either[Throwable, c.Out] =
+    def to(c: Collector[O]): Either[Throwable, c.Out] =
       lift[SyncIO].compile.to(c).attempt.unsafeRunSync
 
-    // TODO Delete this in 3.0
-    private[Stream] def to[C[_]](implicit f: Factory[O, C[O]]): Either[Throwable, C[O]] = to_(f)
-
-    /** Runs this fallible stream and returns the emitted elements in a chunk. Note: this method is only available on fallible streams. */
-    @deprecated("2.0.2", "Use .to(Chunk) instead")
-    def toChunk: Either[Throwable, Chunk[O]] = to_(Chunk)
-
     /** Runs this fallible stream and returns the emitted elements in a list. Note: this method is only available on fallible streams. */
-    def toList: Either[Throwable, List[O]] = to_(List)
+    def toList: Either[Throwable, List[O]] = to(List)
 
     /** Runs this fallible stream and returns the emitted elements in a vector. Note: this method is only available on fallible streams. */
-    def toVector: Either[Throwable, Vector[O]] = to_(Vector)
+    def toVector: Either[Throwable, Vector[O]] = to(Vector)
   }
 
   /** Provides `to` syntax for streams with effect type `Fallible`. */
@@ -4631,23 +4616,8 @@ object Stream extends StreamLowPriority {
       * res3: scodec.bits.ByteVector = ByteVector(5 bytes, 0x0001020304)
       * }}}
       */
-    def to(collector: Collector[O]): G[collector.Out] = to_(collector)
-
-    @inline private def to_(collector: Collector[O]): G[collector.Out] =
+    def to(collector: Collector[O]): G[collector.Out] =
       compiler(self, () => collector.newBuilder)((acc, c) => { acc += c; acc }, _.result)
-
-    // TODO Delete this in 3.0
-    private[Stream] def to[C[_]](implicit f: Factory[O, C[O]]): G[C[O]] = to_(f)
-
-    /**
-      * Compiles this stream in to a value of the target effect type `F` by logging
-      * the output values to a `Chunk`.
-      *
-      * When this method has returned, the stream has not begun execution -- this method simply
-      * compiles the stream down to the target effect type.
-      */
-    @deprecated("2.0.2", "Use .compile.to(Chunk) instead")
-    def toChunk: G[Chunk[O]] = to_(Chunk)
 
     /**
       * Compiles this stream in to a value of the target effect type `F` by logging
@@ -4662,7 +4632,7 @@ object Stream extends StreamLowPriority {
       * res0: List[Int] = List(0, 1, 2, 3, 4)
       * }}}
       */
-    def toList: G[List[O]] = to_(List)
+    def toList: G[List[O]] = to(List)
 
     /**
       * Compiles this stream in to a value of the target effect type `F` by logging
@@ -4677,20 +4647,7 @@ object Stream extends StreamLowPriority {
       * res0: Vector[Int] = Vector(0, 1, 2, 3, 4)
       * }}}
       */
-    def toVector: G[Vector[O]] = to_(Vector)
-
-    /**
-      * Compiles this stream in to a value of the target effect type `F` by logging
-      * the output values to a `Map`.
-      *
-      * When this method has returned, the stream has not begun execution -- this method simply
-      * compiles the stream down to the target effect type.
-      */
-    @deprecated("2.0.2", "Use .compile.to(Map) instead")
-    def toMap[K, V](implicit ev: O <:< (K, V)): G[Map[K, V]] = {
-      val _ = ev
-      self.asInstanceOf[Stream[F, (K, V)]].compile.to_(Map)
-    }
+    def toVector: G[Vector[O]] = to(Vector)
   }
 
   /**
@@ -4820,11 +4777,6 @@ object Stream extends StreamLowPriority {
     // This is unsound! See #1838. Left for binary compatibility.
     private[fs2] def covary[F[_]]: Pipe2[F, I, I2, O] = self.asInstanceOf[Pipe2[F, I, I2, O]]
   }
-
-  // This is unsound! See #1838. Left for binary compatibility.
-  @deprecated("This is unsound! See #1838.", "2.3.1")
-  def covaryPurePipe[F[_], I, O](p: Pipe[Pure, I, O]): Pipe[F, I, O] =
-    p.covary[F]
 
   /**
     * `MonadError` instance for `Stream`.

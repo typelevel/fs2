@@ -1210,9 +1210,4 @@ object compression {
 
   private def unsignedToLong(lsb: Byte, byte2: Byte, byte3: Byte, msb: Byte): Long =
     ((msb.toLong & 0xff) << 24) | ((byte3 & 0xff) << 16) | ((byte2 & 0xff) << 8) | (lsb & 0xff)
-
-  @deprecated("No longer required", "2020-02-05")
-  final case class NonProgressiveDecompressionException(bufferSize: Int)
-      extends RuntimeException(s"buffer size $bufferSize is too small; gunzip cannot make progress")
-
 }

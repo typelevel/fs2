@@ -102,7 +102,6 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup, blocker: Blocker
     */
   def server[F[_]](
       address: InetSocketAddress,
-      maxQueued: Int = 0,
       reuseAddress: Boolean = true,
       receiveBufferSize: Int = 256 * 1024,
       additionalSocketOptions: List[SocketOptionMapping[_]] = List.empty
@@ -110,7 +109,6 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup, blocker: Blocker
       F: Concurrent[F],
       CS: ContextShift[F]
   ): Stream[F, Resource[F, Socket[F]]] = {
-    val _ = maxQueued // TODO delete maxQueued in 3.0
     Stream
       .resource(
         serverResource(
@@ -121,25 +119,6 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup, blocker: Blocker
         )
       )
       .flatMap { case (_, clients) => clients }
-  }
-
-  @deprecated("Use serverResource instead", "2.2.0")
-  def serverWithLocalAddress[F[_]](
-      address: InetSocketAddress,
-      maxQueued: Int = 0,
-      reuseAddress: Boolean = true,
-      receiveBufferSize: Int = 256 * 1024,
-      additionalSocketOptions: List[SocketOptionMapping[_]] = List.empty
-  )(implicit
-      F: Concurrent[F],
-      CS: ContextShift[F]
-  ): Stream[F, Either[InetSocketAddress, Resource[F, Socket[F]]]] = {
-    val _ = maxQueued
-    Stream
-      .resource(serverResource(address, reuseAddress, receiveBufferSize, additionalSocketOptions))
-      .flatMap {
-        case (localAddress, clients) => Stream(Left(localAddress)) ++ clients.map(Right(_))
-      }
   }
 
   /**
