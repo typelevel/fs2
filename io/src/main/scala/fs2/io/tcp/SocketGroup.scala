@@ -108,7 +108,7 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup, blocker: Blocker
   )(implicit
       F: Concurrent[F],
       CS: ContextShift[F]
-  ): Stream[F, Resource[F, Socket[F]]] = {
+  ): Stream[F, Resource[F, Socket[F]]] =
     Stream
       .resource(
         serverResource(
@@ -119,7 +119,6 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup, blocker: Blocker
         )
       )
       .flatMap { case (_, clients) => clients }
-  }
 
   /**
     * Like [[server]] but provides the `InetSocketAddress` of the bound server socket before providing accepted sockets.
