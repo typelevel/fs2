@@ -365,7 +365,7 @@ private[fs2] final class CompileScope[F[_]] private (
     * Or if the evaluation is interrupted by a failure this evaluates on `Left` - `Left` where the exception
     * that caused the interruption is returned so that it can be handled.
     */
-  private[internal] def interruptibleEval[A](f: F[A]): F[Either[Either[Throwable, Token], A]] =
+  private[fs2] def interruptibleEval[A](f: F[A]): F[Either[Either[Throwable, Token], A]] =
     interruptible match {
       case None => F.map(F.attempt(f))(_.swap.map(Left(_)).swap)
       case Some(iCtx) =>
@@ -435,7 +435,7 @@ private[fs2] object CompileScope {
     *                 when Some(None) scope was interrupted, and shall continue with `whenInterrupted`
     *                 when Some(Some(err)) scope has to be terminated with supplied failure.
     * @param interruptRoot Id of the scope that is root of this interruption and is guaranteed to be a parent of this scope.
-    *                      Once interrupted, this scope must be closed and `FreeC` must be signalled to provide recovery of the interruption.
+    *                      Once interrupted, this scope must be closed and pull must be signalled to provide recovery of the interruption.
     * @param cancelParent  Cancels listening on parent's interrupt.
     */
   final private[internal] case class InterruptContext[F[_]](
