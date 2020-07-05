@@ -477,7 +477,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] { self =>
 
   override def equals(a: Any): Boolean =
     a match {
-      case c: Chunk[O] =>
+      case c: Chunk[_] =>
         size == c.size && {
           var i = 0
           var result = true
@@ -497,7 +497,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] { self =>
 object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
 
   /** Optional mix-in that provides the class tag of the element type in a chunk. */
-  trait KnownElementType[A] { self: Chunk[A] =>
+  trait KnownElementType[A] extends Chunk[A] {
     def elementClassTag: ClassTag[A]
   }
 
@@ -593,9 +593,9 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
   /** Creates a chunk from a `scala.collection.Iterable`. */
   def iterable[O](i: collection.Iterable[O]): Chunk[O] =
     platformIterable(i).getOrElse(i match {
-      case a: mutable.ArraySeq[O]          => arraySeq(a)
+      case a: mutable.ArraySeq[o]          => arraySeq[o](a).asInstanceOf[Chunk[O]]
       case v: Vector[O]                    => vector(v)
-      case b: collection.mutable.Buffer[O] => buffer(b)
+      case b: collection.mutable.Buffer[o] => buffer[o](b).asInstanceOf[Chunk[O]]
       case l: List[O] =>
         if (l.isEmpty) empty
         else if (l.tail.isEmpty) singleton(l.head)
@@ -851,14 +851,9 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
       val b = readOnly(buf)
       (b: JBuffer).position(offset)
       (b: JBuffer).limit(offset + size)
-      if (xs.isInstanceOf[Array[C]]) {
-        get(b, xs.asInstanceOf[Array[C]], start, size)
-        ()
-      } else {
-        val arr = new Array[C](size)
-        get(b, arr, 0, size)
-        arr.copyToArray(xs, start)
-      }
+      val arr = new Array[C](size)
+      get(b, arr, 0, size)
+      arr.copyToArray(xs, start)
     }
 
     protected def splitAtChunk_(n: Int): (A, A) = {
@@ -1756,7 +1751,7 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
 
     override def equals(that: Any): Boolean =
       that match {
-        case that: Queue[A] => size == that.size && chunks == that.chunks
+        case that: Queue[_] => size == that.size && chunks == that.chunks
         case _              => false
       }
 
