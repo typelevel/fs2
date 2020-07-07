@@ -1032,8 +1032,8 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
   }
 
   /**
-    * Like `observe` but observes with a function `O => F[_]` instead of a pipe.
-    * Not as powerful as `observe` since not all pipes can be represented by `O => F[_]`, but much faster.
+    * Like `observe` but observes with a function `O => F[O2]` instead of a pipe.
+    * Not as powerful as `observe` since not all pipes can be represented by `O => F[O2]`, but much faster.
     * Alias for `evalMap(o => f(o).as(o))`.
     */
   def evalTap[F2[x] >: F[x]: Functor, O2](f: O => F2[O2]): Stream[F2, O] =
@@ -3077,9 +3077,9 @@ object Stream extends StreamLowPriority {
     */
   def emits[F[x] >: Pure[x], O](os: scala.collection.Seq[O]): Stream[F, O] =
     os match {
-      case Nil    => empty
-      case Seq(x) => emit(x.asInstanceOf[O])
-      case _      => new Stream(Pull.output(Chunk.seq(os)))
+      case Nil               => empty
+      case collection.Seq(x) => emit(x)
+      case _                 => new Stream(Pull.output(Chunk.seq(os)))
     }
 
   /** Empty pure stream. */
@@ -3724,6 +3724,7 @@ object Stream extends StreamLowPriority {
       Pull.loop(f.andThen(_.map(_.map(_.pull))))(pull).void.stream
   }
 
+  /** Provides syntax for streams of streams. */
   implicit final class NestedStreamOps[F[_], O](private val outer: Stream[F, Stream[F, O]])
       extends AnyVal {
 

@@ -830,7 +830,6 @@ object Pull extends PullLowPriority {
               }
 
             case alg: AlgEffect[F, r] =>
-              // Safe case but needed for Dotty
               translateAlgEffect(alg)
                 .transformWith(r =>
                   translateStep(view.next(r.asInstanceOf[Result[y]]), isMainLevel)
