@@ -2309,7 +2309,7 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
   )(f: (O2, O3) => O4): Stream[F2, O4] =
     this.parZip(that).map(f.tupled)
 
-  /** Like `interrupt` but resumes the stream when left branch goes to true. */
+  /** Pause this stream when `pauseWhenTrue` emits `False`, resuming when `True` is emitted. */
   def pauseWhen[F2[x] >: F[x]](
       pauseWhenTrue: Stream[F2, Boolean]
   )(implicit F2: Concurrent[F2]): Stream[F2, O] =
