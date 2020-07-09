@@ -60,12 +60,12 @@ object text {
       val splitAt = allBytes.size - lastIncompleteBytes(allBytes)
 
       if (splitAt == allBytes.size) {
-        bldr += new String(allBytes.toArray, utf8Charset)
+        bldr += new String(allBytes, utf8Charset)
         Chunk.empty
       } else if (splitAt == 0)
         Chunk.bytes(allBytes)
       else {
-        bldr += new String(allBytes.take(splitAt).toArray, utf8Charset)
+        bldr += new String(allBytes.take(splitAt), utf8Charset)
         Chunk.bytes(allBytes.drop(splitAt))
       }
     }
