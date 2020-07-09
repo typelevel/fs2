@@ -38,17 +38,46 @@ object text {
      * 0 is returned.
      */
     def lastIncompleteBytes(bs: Array[Byte]): Int = {
-      val lastThree = bs.drop(0.max(bs.size - 3)).toArray.reverseIterator
-      lastThree
-        .map(continuationBytes)
-        .zipWithIndex
-        .find {
-          case (c, _) => c >= 0
+      /*
+       * This is logically the same as this
+       * code, but written in a low level way
+       * to avoid any allocations and just do array
+       * access
+       *
+       *
+       *
+        val lastThree = bs.drop(0.max(bs.size - 3)).toArray.reverseIterator
+        lastThree
+          .map(continuationBytes)
+          .zipWithIndex
+          .find {
+            case (c, _) => c >= 0
+          }
+          .map {
+            case (c, i) => if (c == i) 0 else i + 1
+          }
+          .getOrElse(0)
+
+       */
+
+      val minIdx = 0.max(bs.size - 3)
+      var idx = bs.size - 1
+      var counter = 0
+      var res = 0
+      while (minIdx <= idx) {
+        val c = continuationBytes(bs(idx))
+        if (c >= 0) {
+          if (c == counter)
+            res = 0
+          else
+            res = counter + 1
+          // exit the loop
+          idx = 0
         }
-        .map {
-          case (c, i) => if (c == i) 0 else i + 1
-        }
-        .getOrElse(0)
+        idx = idx - 1
+        counter = counter + 1
+      }
+      res
     }
 
     def processSingleChunk(
@@ -56,10 +85,17 @@ object text {
         buffer: Chunk[Byte],
         nextBytes: Chunk[Byte]
     ): Chunk[Byte] = {
-      val allBytes = Array.concat(buffer.toArray, nextBytes.toArray)
+      // if processing ASCII or largely ASCII buffer is often empty
+      val allBytes =
+        if (buffer.isEmpty) nextBytes.toArray
+        else Array.concat(buffer.toArray, nextBytes.toArray)
+
       val splitAt = allBytes.size - lastIncompleteBytes(allBytes)
 
       if (splitAt == allBytes.size) {
+        // in the common case of ASCII chars
+        // we are in this branch so the next buffer will
+        // be empty
         bldr += new String(allBytes, utf8Charset)
         Chunk.empty
       } else if (splitAt == 0)
