@@ -4,6 +4,24 @@ import org.scalatest.Succeeded
 
 class ChunkQueueSpec extends Fs2Spec {
   "Chunk.Queue" - {
+    "startsWith matches List implementation prefixes" in {
+      forAll { (chunks: List[Chunk[Int]], items: List[Int]) =>
+        val queue = Chunk.Queue(chunks: _*)
+        val flattened: List[Int] = chunks.flatMap(_.toList)
+        val prefixes = (0 until flattened.size).map(flattened.take(_))
+
+        prefixes.foreach { prefix =>
+          assert(queue.startsWith(prefix))
+        }
+
+        val viaTake = queue.take(items.size).toChunk == Chunk.seq(items)
+        val computed = flattened.startsWith(items)
+        assert(computed == viaTake)
+        // here is another way to express the law:
+        assert(computed == queue.startsWith(items))
+      }
+    }
+
     "take" in {
       forAll { (chunks: List[Chunk[Int]], n: Int) =>
         val result = Chunk.Queue(chunks: _*).take(n)

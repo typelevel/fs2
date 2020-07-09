@@ -1709,6 +1709,31 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
     /** Appends a chunk to the end of this chunk queue. */
     def :+(c: Chunk[A]): Queue[A] = new Queue(chunks :+ c, size + c.size)
 
+    /** check to see if this starts with the items in the given seq
+      * should be the same as take(seq.size).toChunk == Chunk.seq(seq)
+      */
+    def startsWith(seq: Seq[A]): Boolean = {
+      val iter = seq.iterator
+
+      @annotation.tailrec
+      def check(chunks: SQueue[Chunk[A]], idx: Int): Boolean =
+        if (!iter.hasNext) true
+        else if (chunks.isEmpty) false
+        else {
+          val chead = chunks.head
+          if (chead.size == idx) check(chunks.tail, 0)
+          else {
+            val qitem = chead(idx)
+            val iitem = iter.next()
+            if (iitem == qitem)
+              check(chunks, idx + 1)
+            else false
+          }
+        }
+
+      check(chunks, 0)
+    }
+
     /** Takes the first `n` elements of this chunk queue in a way that preserves chunk structure. */
     def take(n: Int): Queue[A] =
       if (n <= 0) Queue.empty

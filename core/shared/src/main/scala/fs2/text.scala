@@ -4,13 +4,16 @@ import java.nio.{Buffer, CharBuffer}
 import java.nio.charset.Charset
 
 import scala.annotation.tailrec
+import scala.collection.mutable.Builder
 
 import scodec.bits.{Bases, ByteVector}
 
 /** Provides utilities for working with streams of text (e.g., encoding byte streams to strings). */
 object text {
   private val utf8Charset = Charset.forName("UTF-8")
-  private val utf8Bom: Chunk[Byte] = Chunk(0xef.toByte, 0xbb.toByte, 0xbf.toByte)
+  // unused, but maybe needed to keep binary compatibility
+  //private val utf8Bom: Chunk[Byte] = Chunk(0xef.toByte, 0xbb.toByte, 0xbf.toByte)
+  private[this] val utf8BomSeq: Seq[Byte] = Array(0xef.toByte, 0xbb.toByte, 0xbf.toByte).toSeq
 
   /** Converts UTF-8 encoded byte stream to a stream of `String`. */
   def utf8Decode[F[_]]: Pipe[F, Byte, String] =
@@ -49,60 +52,69 @@ object text {
     }
 
     def processSingleChunk(
-        outputAndBuffer: (List[String], Chunk[Byte]),
+        bldr: Builder[String, List[String]],
+        buffer: Chunk[Byte],
         nextBytes: Chunk[Byte]
-    ): (List[String], Chunk[Byte]) = {
-      val (output, buffer) = outputAndBuffer
+    ): Chunk[Byte] = {
       val allBytes = Array.concat(buffer.toArray, nextBytes.toArray)
       val splitAt = allBytes.size - lastIncompleteBytes(allBytes)
 
-      if (splitAt == allBytes.size)
-        (new String(allBytes.toArray, utf8Charset) :: output, Chunk.empty)
-      else if (splitAt == 0)
-        (output, Chunk.bytes(allBytes))
-      else
-        (
-          new String(allBytes.take(splitAt).toArray, utf8Charset) :: output,
-          Chunk.bytes(allBytes.drop(splitAt))
-        )
+      if (splitAt == allBytes.size) {
+        bldr += new String(allBytes.toArray, utf8Charset)
+        Chunk.empty
+      } else if (splitAt == 0)
+        Chunk.bytes(allBytes)
+      else {
+        bldr += new String(allBytes.take(splitAt).toArray, utf8Charset)
+        Chunk.bytes(allBytes.drop(splitAt))
+      }
     }
 
     def doPull(buf: Chunk[Byte], s: Stream[F, Chunk[Byte]]): Pull[F, String, Unit] =
       s.pull.uncons.flatMap {
         case Some((byteChunks, tail)) =>
-          val (output, nextBuffer) =
-            byteChunks.toList.foldLeft((Nil: List[String], buf))(processSingleChunk)
-          Pull.output(Chunk.seq(output.reverse)) >> doPull(nextBuffer, tail)
-        case None if !buf.isEmpty =>
+          // use local and private mutability here
+          var idx = 0
+          val size = byteChunks.size
+          val bldr = List.newBuilder[String]
+          var buf1 = buf
+          while (idx < size) {
+            val nextBytes = byteChunks(idx)
+            buf1 = processSingleChunk(bldr, buf1, nextBytes)
+            idx = idx + 1
+          }
+          Pull.output(Chunk.seq(bldr.result())) >> doPull(buf1, tail)
+        case None if buf.nonEmpty =>
           Pull.output1(new String(buf.toArray, utf8Charset))
         case None =>
           Pull.done
       }
 
     def processByteOrderMark(
-        buffer: Option[Chunk.Queue[Byte]],
+        buffer: Chunk.Queue[Byte] /* or null which we use as an Optional type to avoid boxing */,
         s: Stream[F, Chunk[Byte]]
     ): Pull[F, String, Unit] =
       s.pull.uncons1.flatMap {
         case Some((hd, tl)) =>
-          val newBuffer = buffer.getOrElse(Chunk.Queue.empty[Byte]) :+ hd
+          val newBuffer0 =
+            if (buffer ne null) buffer
+            else Chunk.Queue.empty[Byte]
+
+          val newBuffer: Chunk.Queue[Byte] = newBuffer0 :+ hd
           if (newBuffer.size >= 3) {
             val rem =
-              if (newBuffer.take(3).toChunk == utf8Bom) newBuffer.drop(3)
+              if (newBuffer.startsWith(utf8BomSeq)) newBuffer.drop(3)
               else newBuffer
             doPull(Chunk.empty, Stream.emits(rem.chunks) ++ tl)
           } else
-            processByteOrderMark(Some(newBuffer), tl)
+            processByteOrderMark(newBuffer, tl)
         case None =>
-          buffer match {
-            case Some(b) =>
-              doPull(Chunk.empty, Stream.emits(b.chunks))
-            case None =>
-              Pull.done
-          }
+          if (buffer ne null)
+            doPull(Chunk.empty, Stream.emits(buffer.chunks))
+          else Pull.done
       }
 
-    (in: Stream[F, Chunk[Byte]]) => processByteOrderMark(None, in).stream
+    (in: Stream[F, Chunk[Byte]]) => processByteOrderMark(null, in).stream
   }
 
   /** Encodes a stream of `String` in to a stream of bytes using the given charset. */
