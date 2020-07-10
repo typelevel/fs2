@@ -4,7 +4,6 @@ import scala.annotation.tailrec
 import scala.util.control.NonFatal
 
 import cats.{Eval => _, _}
-import cats.arrow.FunctionK
 import cats.effect._
 import cats.implicits._
 
@@ -203,8 +202,8 @@ object Pull extends PullLowPriority {
     * Repeatedly uses the output of the pull as input for the next step of the pull.
     * Halts when a step terminates with `None` or `Pull.raiseError`.
     */
-  def loop[F[_], O, R](using: R => Pull[F, O, Option[R]]): R => Pull[F, O, Option[R]] =
-    r => using(r).flatMap(_.map(loop(using)).getOrElse(Pull.pure(None)))
+  def loop[F[_], O, R](f: R => Pull[F, O, Option[R]]): R => Pull[F, O, Option[R]] =
+    r => f(r).flatMap(_.map(loop(f)).getOrElse(Pull.pure(None)))
 
   /** Outputs a single value. */
   def output1[F[x] >: Pure[x], O](o: O): Pull[F, O, Unit] = Output(Chunk.singleton(o))
@@ -273,7 +272,9 @@ object Pull extends PullLowPriority {
     * }}}
     */
   implicit def functionKInstance[F[_]]: F ~> Pull[F, INothing, *] =
-    FunctionK.lift[F, Pull[F, INothing, *]](Pull.eval)
+    new (F ~> Pull[F, INothing, *]) {
+      def apply[X](fx: F[X]) = Pull.eval(fx)
+    }
 
   /* Implementation notes:
    *
@@ -337,7 +338,7 @@ object Pull extends PullLowPriority {
     }
   }
 
-  private abstract class Bind[F[_], O, X, R](val step: Pull[F, O, X]) extends Pull[F, O, R] {
+  private abstract class Bind[+F[_], +O, X, +R](val step: Pull[F, O, X]) extends Pull[F, O, R] {
     def cont(r: Result[X]): Pull[F, O, R]
     def delegate: Bind[F, O, X, R] = this
 
@@ -348,7 +349,7 @@ object Pull extends PullLowPriority {
             new Bind[F, P, x, R](v.step.mapOutput(f)) {
               def cont(e: Result[x]) = v.next(e).mapOutput(f)
             }
-          case r: Result[_] => r
+          case r: Result[R] => r
         }
       }
   }
@@ -361,12 +362,12 @@ object Pull extends PullLowPriority {
   private object ViewL {
 
     /** unrolled view of Pull `bind` structure * */
-    private[Pull] sealed abstract case class View[+F[_], O, X, R](step: Action[F, O, X])
+    private[Pull] sealed abstract case class View[+F[_], +O, X, +R](step: Action[F, O, X])
         extends ViewL[F, O, R] {
       def next(r: Result[X]): Pull[F, O, R]
     }
 
-    final class EvalView[+F[_], O, R](step: Action[F, O, R]) extends View[F, O, R, R](step) {
+    final class EvalView[+F[_], +O, R](step: Action[F, O, R]) extends View[F, O, R, R](step) {
       def next(r: Result[R]): Pull[F, O, R] = r
     }
 
@@ -379,16 +380,18 @@ object Pull extends PullLowPriority {
         case e: Action[F, O, Z] => new EvalView[F, O, Z](e)
         case b: Bind[F, O, y, Z] =>
           b.step match {
-            case r: Result[_] => mk(b.cont(r))
-            case e: Action[F, O, y] =>
-              new ViewL.View[F, O, y, Z](e) {
-                def next(r: Result[y]): Pull[F, O, Z] = b.cont(r)
+            case r: Result[_] =>
+              val ry: Result[y] = r.asInstanceOf[Result[y]]
+              mk(b.cont(ry))
+            case e: Action[F, O, y2] =>
+              new ViewL.View[F, O, y2, Z](e) {
+                def next(r: Result[y2]): Pull[F, O, Z] = b.cont(r.asInstanceOf[Result[y]])
               }
             case bb: Bind[F, O, x, _] =>
               val nb = new Bind[F, O, x, Z](bb.step) {
                 private[this] val bdel: Bind[F, O, y, Z] = b.delegate
                 def cont(zr: Result[x]): Pull[F, O, Z] =
-                  new Bind[F, O, y, Z](bb.cont(zr)) {
+                  new Bind[F, O, y, Z](bb.cont(zr).asInstanceOf[Pull[F, O, y]]) {
                     override val delegate: Bind[F, O, y, Z] = bdel
                     def cont(yr: Result[y]): Pull[F, O, Z] = delegate.cont(yr)
                   }
@@ -406,7 +409,7 @@ object Pull extends PullLowPriority {
    */
   private abstract class Action[+F[_], +O, +R] extends Pull[F, O, R]
 
-  private final case class Output[O](values: Chunk[O]) extends Action[Pure, O, Unit] {
+  private final case class Output[+O](values: Chunk[O]) extends Action[Pure, O, Unit] {
     override def mapOutput[P](f: O => P): Pull[Pure, P, Unit] =
       Pull.suspend {
         try Output(values.map(f))
@@ -421,12 +424,9 @@ object Pull extends PullLowPriority {
     * @param stream             Stream to step
     * @param scopeId            If scope has to be changed before this step is evaluated, id of the scope must be supplied
     */
-  private final case class Step[X](stream: Pull[Any, X, Unit], scope: Option[Token])
-      extends Action[Pure, INothing, Option[(Chunk[X], Token, Pull[Any, X, Unit])]] {
-    /* NOTE: The use of `Any` and `Pure` done to by-pass an error in Scala 2.12 type-checker,
-     * that produces a crash when dealing with Higher-Kinded GADTs in which the F parameter appears
-     * Inside one of the values of the case class.      */
-    override def mapOutput[P](f: INothing => P): Step[X] = this
+  private final case class Step[+F[_], X](stream: Pull[F, X, Unit], scope: Option[Token])
+      extends Action[Pure, INothing, Option[(Chunk[X], Token, Pull[F, X, Unit])]] {
+    override def mapOutput[P](f: INothing => P): Step[F, X] = this
   }
 
   /* The `AlgEffect` trait is for operations on the `F` effect that create no `O` output.
@@ -460,7 +460,7 @@ object Pull extends PullLowPriority {
   private[fs2] def stepLeg[F[_], O](
       leg: Stream.StepLeg[F, O]
   ): Pull[F, Nothing, Option[Stream.StepLeg[F, O]]] =
-    Step[O](leg.next, Some(leg.scopeId)).map {
+    Step[F, O](leg.next, Some(leg.scopeId)).map {
       _.map {
         case (h, id, t) => new Stream.StepLeg[F, O](h, id, t.asInstanceOf[Pull[F, O, Unit]])
       }
@@ -564,12 +564,13 @@ object Pull extends PullLowPriority {
                 go(scope, extendedTopLevelScope, view.next(Result.Interrupted(scopeId, None)))
             }
           view.step match {
-            case output: Output[X] =>
+            case output: Output[_] =>
               interruptGuard(scope)(
                 F.pure(Out(output.values, scope, view.next(Pull.Result.unit)))
               )
 
-            case u: Step[y] =>
+            case uU: Step[f, y] =>
+              val u: Step[F, y] = uU.asInstanceOf[Step[F, y]]
               // if scope was specified in step, try to find it, otherwise use the current scope.
               F.flatMap(u.scope.fold[F[Option[CompileScope[F]]]](F.pure(Some(scope))) { scopeId =>
                 scope.findStepScope(scopeId)
@@ -586,8 +587,9 @@ object Pull extends PullLowPriority {
                       // scope back to the go as that is the scope that is expected to be here.
                       val nextScope = if (u.scope.isEmpty) outScope else scope
                       val result = Result.Succeeded(Some((head, outScope.id, tail)))
+                      val next = view.next(result).asInstanceOf[Pull[F, X, Unit]]
                       interruptGuard(nextScope)(
-                        go(nextScope, extendedTopLevelScope, view.next(result))
+                        go(nextScope, extendedTopLevelScope, next)
                       )
 
                     case Right(Interrupted(scopeId, err)) =>
@@ -807,7 +809,7 @@ object Pull extends PullLowPriority {
                 case r @ Result.Succeeded(_) if isMainLevel =>
                   translateStep(view.next(r), isMainLevel)
 
-                case r @ Result.Succeeded(_) if !isMainLevel =>
+                case r @ Result.Succeeded(_) =>
                   // Cast is safe here, as at this point the evaluation of this Step will end
                   // and the remainder of the free will be passed as a result in Bind. As such
                   // next Step will have this to evaluate, and will try to translate again.
@@ -818,11 +820,10 @@ object Pull extends PullLowPriority {
                 case r @ Result.Interrupted(_, _) => translateStep(view.next(r), isMainLevel)
               }
 
-            case step: Step[x] =>
-              // NOTE: The use of the `asInstanceOf` is to by-pass a compiler-crash in Scala 2.12,
-              // involving GADTs with a covariant Higher-Kinded parameter.
-              Step[x](
-                stream = translateStep[x](step.stream.asInstanceOf[Pull[F, x, Unit]], false),
+            case stepU: Step[f, x] =>
+              val step: Step[F, x] = stepU.asInstanceOf[Step[F, x]]
+              Step[G, x](
+                stream = translateStep[x](step.stream, false),
                 scope = step.scope
               ).transformWith { r =>
                 translateStep[X](view.next(r.asInstanceOf[Result[y]]), isMainLevel)
@@ -830,7 +831,9 @@ object Pull extends PullLowPriority {
 
             case alg: AlgEffect[F, r] =>
               translateAlgEffect(alg)
-                .transformWith(r => translateStep(view.next(r), isMainLevel))
+                .transformWith(r =>
+                  translateStep(view.next(r.asInstanceOf[Result[y]]), isMainLevel)
+                )
           }
       }
 
