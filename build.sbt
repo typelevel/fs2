@@ -77,7 +77,7 @@ lazy val commonSettingsBase = Seq(
     "org.typelevel" %%% "cats-effect" % "2.1.3",
     "org.typelevel" %%% "cats-effect-laws" % "2.1.3" % "test",
     "org.scalacheck" %%% "scalacheck" % "1.14.3" % "test",
-    "org.scalameta" %%% "munit-scalacheck" % "0.7.3" % "test",
+    "org.scalameta" %%% "munit-scalacheck" % "0.7.9" % "test",
     "org.scalatest" %%% "scalatest" % "3.3.0-SNAP2" % "test",
     "org.scalatestplus" %%% "scalacheck-1-14" % "3.2.0.0" % "test"
   ),
