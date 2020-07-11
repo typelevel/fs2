@@ -566,5 +566,47 @@ class StreamCombinatorsSuite extends Fs2Suite {
       assert(s.find(predicate).toList == s.toList.find(predicate).toList)
     }
   }
+  group("fold") {
+    property("1") {
+      forAll { (s: Stream[Pure, Int], n: Int) =>
+        val f = (a: Int, b: Int) => a + b
+        assert(s.fold(n)(f).toList == List(s.toList.foldLeft(n)(f)))
+      }
+    }
+
+    property("2") {
+      forAll { (s: Stream[Pure, Int], n: String) =>
+        val f = (a: String, b: Int) => a + b
+        assert(s.fold(n)(f).toList == List(s.toList.foldLeft(n)(f)))
+      }
+    }
+  }
+
+  group("foldMonoid") {
+    property("1") {
+      forAll { (s: Stream[Pure, Int]) =>
+        assert(s.foldMonoid.toVector == Vector(s.toVector.combineAll))
+      }
+    }
+
+    property("2") {
+      forAll { (s: Stream[Pure, Double]) =>
+        assert(s.foldMonoid.toVector == Vector(s.toVector.combineAll))
+      }
+    }
+  }
+
+  property("fold1") {
+    forAll { (s: Stream[Pure, Int]) =>
+      val v = s.toVector
+      val f = (a: Int, b: Int) => a + b
+      val expected = v.headOption.fold(Vector.empty[Int])(h => Vector(v.drop(1).foldLeft(h)(f)))
+      assert(s.fold1(f).toVector == expected)
+    }
+  }
+
+  property("foldable") {
+    forAll((c: List[Int]) => assert(Stream.foldable(c).compile.to(List) == c))
+  }
 
 }
