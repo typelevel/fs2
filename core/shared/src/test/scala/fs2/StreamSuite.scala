@@ -423,6 +423,31 @@ class StreamSuite extends Fs2Suite {
       }
     }
 
+    group("raiseError") {
+      test("compiled stream fails with an error raised in stream") {
+        Stream.raiseError[SyncIO](new Err).compile.drain.assertThrows[Err]
+      }
+
+      test("compiled stream fails with an error if error raised after an append") {
+        Stream
+          .emit(1)
+          .append(Stream.raiseError[IO](new Err))
+          .covary[IO]
+          .compile
+          .drain
+          .assertThrows[Err]
+      }
+
+      test("compiled stream does not fail if stream is termianted before raiseError") {
+        Stream
+          .emit(1)
+          .append(Stream.raiseError[IO](new Err))
+          .take(1)
+          .covary[IO]
+          .compile
+          .drain
+      }
+    }
   }
 
   group("compile") {

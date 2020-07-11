@@ -880,4 +880,192 @@ class StreamCombinatorsSuite extends Fs2Suite {
       r.compile.toVector.map(it => assert(it.toSet == sVector.map(f).toSet))
     }
   }
+
+  test("pause") {
+    Stream
+      .eval(SignallingRef[IO, Boolean](false))
+      .flatMap { pause =>
+        Stream
+          .awakeEvery[IO](10.millis)
+          .scan(0)((acc, _) => acc + 1)
+          .evalMap { n =>
+            if (n % 2 != 0)
+              pause.set(true) >> ((Stream.sleep_[IO](10.millis) ++ Stream.eval(
+                pause.set(false)
+              )).compile.drain).start >> IO
+                .pure(n)
+            else IO.pure(n)
+          }
+          .take(5)
+          .pauseWhen(pause)
+      }
+      .compile
+      .toList
+      .map(it => assert(it == List(0, 1, 2, 3, 4)))
+  }
+
+  group("prefetch") {
+    test("identity") {
+      forAllAsync { (s: Stream[Pure, Int]) =>
+        val expected = s.toList
+        s.covary[IO].prefetch.compile.toList.map(it => assert(it == expected))
+      }
+    }
+
+    test("timing") {
+      // should finish in about 3-4 seconds
+      IO.suspend {
+        val start = System.currentTimeMillis
+        Stream(1, 2, 3)
+          .evalMap(i => IO.sleep(1.second).as(i))
+          .prefetch
+          .flatMap(i => Stream.eval(IO.sleep(1.second).as(i)))
+          .compile
+          .toList
+          .map { _ =>
+            val stop = System.currentTimeMillis
+            val elapsed = stop - start
+            assert(elapsed < 6000L)
+          }
+      }
+    }
+  }
+
+  test("random") {
+    val x = Stream.random[SyncIO].take(100).compile.toList
+    (x, x).tupled.map {
+      case (first, second) =>
+        assert(first != second)
+    }
+  }
+
+  test("randomSeeded") {
+    val x = Stream.randomSeeded(1L).take(100).toList
+    val y = Stream.randomSeeded(1L).take(100).toList
+    assert(x == y)
+  }
+
+  test("range") {
+    assert(Stream.range(0, 100).toList == List.range(0, 100))
+    assert(Stream.range(0, 1).toList == List.range(0, 1))
+    assert(Stream.range(0, 0).toList == List.range(0, 0))
+    assert(Stream.range(0, 101, 2).toList == List.range(0, 101, 2))
+    assert(Stream.range(5, 0, -1).toList == List.range(5, 0, -1))
+    assert(Stream.range(5, 0, 1).toList == Nil)
+    assert(Stream.range(10, 50, 0).toList == Nil)
+  }
+
+  property("ranges") {
+    forAll(Gen.chooseNum(1, 101)) { size =>
+      val result = Stream
+        .ranges(0, 100, size)
+        .flatMap { case (i, j) => Stream.emits(i until j) }
+        .toVector
+      assert(result == IndexedSeq.range(0, 100))
+    }
+  }
+
+  group("rechunkRandomlyWithSeed") {
+    property("is deterministic") {
+      forAll { (s0: Stream[Pure, Int], seed: Long) =>
+        def s = s0.rechunkRandomlyWithSeed(minFactor = 0.1, maxFactor = 2.0)(seed)
+        assert(s.toList == s.toList)
+      }
+    }
+
+    property("does not drop elements") {
+      forAll { (s: Stream[Pure, Int], seed: Long) =>
+        assert(s.rechunkRandomlyWithSeed(minFactor = 0.1, maxFactor = 2.0)(seed).toList == s.toList)
+      }
+    }
+
+    property("chunk size in interval [inputChunk.size * minFactor, inputChunk.size * maxFactor]") {
+      forAll { (s: Stream[Pure, Int], seed: Long) =>
+        val c = s.chunks.toVector
+        if (c.nonEmpty) {
+          val (min, max) = c.tail.foldLeft(c.head.size -> c.head.size) {
+            case ((min, max), c) => Math.min(min, c.size) -> Math.max(max, c.size)
+          }
+          val (minChunkSize, maxChunkSize) = (min * 0.1, max * 2.0)
+          // Last element is dropped as it may not fulfill size constraint
+          val isChunkSizeCorrect = s
+            .rechunkRandomlyWithSeed(minFactor = 0.1, maxFactor = 2.0)(seed)
+            .chunks
+            .map(_.size)
+            .toVector
+            .dropRight(1)
+            .forall { it =>
+              it >= minChunkSize.toInt &&
+              it <= maxChunkSize.toInt
+            }
+          assert(isChunkSizeCorrect)
+        }
+      }
+    }
+  }
+
+  test("rechunkRandomly") {
+    forAllAsync { (s: Stream[Pure, Int]) =>
+      val expected = s.toList
+      s.rechunkRandomly[IO]().compile.toList.map(it => assert(it == expected))
+    }
+  }
+
+  test("repartition") {
+    assert(
+      Stream("Lore", "m ip", "sum dolo", "r sit amet")
+        .repartition(s => Chunk.array(s.split(" ")))
+        .toList ==
+        List("Lorem", "ipsum", "dolor", "sit", "amet")
+    )
+    assert(
+      Stream("hel", "l", "o Wor", "ld")
+        .repartition(s => Chunk.indexedSeq(s.grouped(2).toVector))
+        .toList ==
+        List("he", "ll", "o ", "Wo", "rl", "d")
+    )
+    assert(
+      Stream.empty
+        .covaryOutput[String]
+        .repartition(_ => Chunk.empty)
+        .toList == List()
+    )
+    assert(Stream("hello").repartition(_ => Chunk.empty).toList == List())
+
+    def input = Stream("ab").repeat
+    def ones(s: String) = Chunk.vector(s.grouped(1).toVector)
+    assert(input.take(2).repartition(ones).toVector == Vector("a", "b", "a", "b"))
+    assert(
+      input.take(4).repartition(ones).toVector == Vector(
+        "a",
+        "b",
+        "a",
+        "b",
+        "a",
+        "b",
+        "a",
+        "b"
+      )
+    )
+    assert(input.repartition(ones).take(2).toVector == Vector("a", "b"))
+    assert(input.repartition(ones).take(4).toVector == Vector("a", "b", "a", "b"))
+    assert(
+      Stream
+        .emits(input.take(4).toVector)
+        .repartition(ones)
+        .toVector == Vector("a", "b", "a", "b", "a", "b", "a", "b")
+    )
+
+    assert(
+      Stream(1, 2, 3, 4, 5).repartition(i => Chunk(i, i)).toList == List(1, 3, 6, 10, 15, 15)
+    )
+
+    assert(
+      Stream(1, 10, 100)
+        .repartition(_ => Chunk.seq(1 to 1000))
+        .take(4)
+        .toList == List(1, 2, 3, 4)
+    )
+  }
+
 }
