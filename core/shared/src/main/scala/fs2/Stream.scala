@@ -260,12 +260,14 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
     * }}}
     */
   def buffer(n: Int): Stream[F, O] =
-    this.repeatPull {
-      _.unconsN(n, allowFewer = true).flatMap {
-        case Some((hd, tl)) => Pull.output(hd).as(Some(tl))
-        case None           => Pull.pure(None)
+    if (n <= 0) this
+    else
+      this.repeatPull {
+        _.unconsN(n, allowFewer = true).flatMap {
+          case Some((hd, tl)) => Pull.output(hd).as(Some(tl))
+          case None           => Pull.pure(None)
+        }
       }
-    }
 
   /**
     * Behaves like the identity stream, but emits no output until the source is exhausted.

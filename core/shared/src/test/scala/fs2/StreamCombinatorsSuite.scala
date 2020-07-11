@@ -1,11 +1,13 @@
 package fs2
 
-import cats.data.Chain
+import scala.concurrent.duration._
+
 import cats.effect.{IO, Sync, SyncIO}
-import cats.effect.concurrent.Ref
+import cats.effect.concurrent.{Ref, Semaphore}
 import cats.implicits._
 import org.scalacheck.Prop.forAll
-import scala.concurrent.duration._
+
+import fs2.concurrent.SignallingRef
 
 class StreamCombinatorsSuite extends Fs2Suite {
 
@@ -101,6 +103,418 @@ class StreamCombinatorsSuite extends Fs2Suite {
             .map(_ => assert(counter == expected))
         }
       }
+    }
+  }
+
+  test("changes") {
+    assert(Stream.empty.covaryOutput[Int].changes.toList == Nil)
+    assert(Stream(1, 2, 3, 4).changes.toList == List(1, 2, 3, 4))
+    assert(Stream(1, 1, 2, 2, 3, 3, 4, 3).changes.toList == List(1, 2, 3, 4, 3))
+    val result = Stream("1", "2", "33", "44", "5", "66")
+      .changesBy(_.length)
+      .toList
+    assert(result == List("1", "33", "5", "66"))
+  }
+
+  property("collect consistent with list collect") {
+    forAll { (s: Stream[Pure, Int]) =>
+      val pf: PartialFunction[Int, Int] = { case x if x % 2 == 0 => x }
+      assertEquals(s.collect(pf).toList, s.toList.collect(pf))
+    }
+  }
+
+  property("collectFirst consistent with list collectFirst") {
+    forAll { (s: Stream[Pure, Int]) =>
+      val pf: PartialFunction[Int, Int] = { case x if x % 2 == 0 => x }
+      assertEquals(s.collectFirst(pf).toVector, s.collectFirst(pf).toVector)
+    }
+  }
+
+  property("collectWhile") {
+    forAll { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
+      val pf: PartialFunction[Int, Int] = { case x if x % 2 == 0 => x }
+      val even = s1.filter(_ % 2 == 0)
+      val odd = s2.filter(_ % 2 != 0)
+      assert((even ++ odd).collectWhile(pf).toVector == even.toVector)
+    }
+  }
+
+  test("debounce") {
+    val delay = 200.milliseconds
+    (Stream(1, 2, 3) ++ Stream.sleep[IO](delay * 2) ++ Stream() ++ Stream(4, 5) ++ Stream
+      .sleep[IO](delay / 2) ++ Stream(6))
+      .debounce(delay)
+      .compile
+      .toList
+      .map(it => assert(it == List(3, 6)))
+  }
+
+  property("delete") {
+    forAll { (s: Stream[Pure, Int], idx0: Int) =>
+      val v = s.toVector
+      val i = if (v.isEmpty) 0 else v((idx0 % v.size).abs)
+      assert(s.delete(_ == i).toVector == v.diff(Vector(i)))
+    }
+  }
+
+  property("drop") {
+    forAll { (s: Stream[Pure, Int], negate: Boolean, n0: Int) =>
+      val v = s.toVector
+      val n1 = if (v.isEmpty) 0 else (n0 % v.size).abs
+      val n = if (negate) -n1 else n1
+      assert(s.drop(n).toVector == s.toVector.drop(n))
+    }
+  }
+
+  property("dropLast") {
+    forAll { (s: Stream[Pure, Int]) =>
+      assert(s.dropLast.toVector == s.toVector.dropRight(1))
+    }
+  }
+
+  property("dropLastIf") {
+    forAll { (s: Stream[Pure, Int]) =>
+      assert(s.dropLastIf(_ => false).toVector == s.toVector)
+      assert(s.dropLastIf(_ => true).toVector == s.toVector.dropRight(1))
+    }
+  }
+
+  property("dropRight") {
+    forAll { (s: Stream[Pure, Int], negate: Boolean, n0: Int) =>
+      val v = s.toVector
+      val n1 = if (v.isEmpty) 0 else (n0 % v.size).abs
+      val n = if (negate) -n1 else n1
+      assert(s.dropRight(n).toVector == v.dropRight(n))
+    }
+  }
+
+  property("dropWhile") {
+    forAll { (s: Stream[Pure, Int], n0: Int) =>
+      val n = (n0 % 20).abs
+      val set = s.toVector.take(n).toSet
+      assert(s.dropWhile(set).toVector == s.toVector.dropWhile(set))
+    }
+  }
+
+  property("dropThrough") {
+    forAll { (s: Stream[Pure, Int], n0: Int) =>
+      val n = (n0 % 20).abs
+      val set = s.toVector.take(n).toSet
+      val expected = {
+        val vec = s.toVector.dropWhile(set)
+        if (vec.isEmpty) vec else vec.tail
+      }
+      assert(s.dropThrough(set).toVector == expected)
+    }
+  }
+
+  test("duration") {
+    val delay = 200.millis
+    Stream
+      .emit(())
+      .append(Stream.eval(IO.sleep(delay)))
+      .zip(Stream.duration[IO])
+      .drop(1)
+      .map(_._2)
+      .compile
+      .toVector
+      .map { result =>
+        assert(result.size == 1)
+        val head = result.head
+        assert(head.toMillis >= (delay.toMillis - 5))
+      }
+  }
+
+  test("either") {
+    forAllAsync { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
+      val s1List = s1.toList
+      val s2List = s2.toList
+      s1.covary[IO].either(s2).compile.toList.map { result =>
+        assert(result.collect { case Left(i) => i } == s1List)
+        assert(result.collect { case Right(i) => i } == s2List)
+      }
+    }
+  }
+
+  group("evalSeq") {
+    test("with List") {
+      Stream
+        .evalSeq(IO(List(1, 2, 3)))
+        .compile
+        .toList
+        .map(it => assert(it == List(1, 2, 3)))
+    }
+    test("with Seq") {
+      Stream.evalSeq(IO(Seq(4, 5, 6))).compile.toList.map(it => assert(it == List(4, 5, 6)))
+    }
+  }
+
+  group("evalFilter") {
+    test("with effectful const(true)") {
+      forAllAsync { s: Stream[Pure, Int] =>
+        val s1 = s.toList
+        s.evalFilter(_ => IO.pure(true)).compile.toList.map(it => assert(it == s1))
+      }
+    }
+
+    test("with effectful const(false)") {
+      forAllAsync { s: Stream[Pure, Int] =>
+        s.evalFilter(_ => IO.pure(false)).compile.toList.map(it => assert(it.isEmpty))
+      }
+    }
+
+    test("with function that filters out odd elements") {
+      Stream
+        .range(1, 10)
+        .evalFilter(e => IO(e % 2 == 0))
+        .compile
+        .toList
+        .map(it => assert(it == List(2, 4, 6, 8)))
+    }
+  }
+
+  group("evalFilterAsync") {
+    test("with effectful const(true)") {
+      forAllAsync { s: Stream[Pure, Int] =>
+        val s1 = s.toList
+        s.covary[IO]
+          .evalFilterAsync(5)(_ => IO.pure(true))
+          .compile
+          .toList
+          .map(it => assert(it == s1))
+      }
+    }
+
+    test("with effectful const(false)") {
+      forAllAsync { s: Stream[Pure, Int] =>
+        s.covary[IO]
+          .evalFilterAsync(5)(_ => IO.pure(false))
+          .compile
+          .toList
+          .map(it => assert(it.isEmpty))
+      }
+    }
+
+    test("with function that filters out odd elements") {
+      Stream
+        .range(1, 10)
+        .evalFilterAsync[IO](5)(e => IO(e % 2 == 0))
+        .compile
+        .toList
+        .map(it => assert(it == List(2, 4, 6, 8)))
+    }
+
+    test("filters up to N items in parallel") {
+      val s = Stream.range(0, 100)
+      val n = 5
+
+      (Semaphore[IO](n), SignallingRef[IO, Int](0)).tupled
+        .flatMap {
+          case (sem, sig) =>
+            val tested = s
+              .covary[IO]
+              .evalFilterAsync(n) { _ =>
+                val ensureAcquired =
+                  sem.tryAcquire.ifM(
+                    IO.unit,
+                    IO.raiseError(new Throwable("Couldn't acquire permit"))
+                  )
+
+                ensureAcquired.bracket(_ =>
+                  sig.update(_ + 1).bracket(_ => IO.sleep(10.millis))(_ => sig.update(_ - 1))
+                )(_ => sem.release) *>
+                  IO.pure(true)
+              }
+
+            sig.discrete
+              .interruptWhen(tested.drain)
+              .fold1(_.max(_))
+              .compile
+              .lastOrError
+              .product(sig.get)
+        }
+        .map(it => assert(it == ((n, 0))))
+    }
+  }
+
+  group("evalFilterNot") {
+    test("with effectful const(true)") {
+      forAllAsync { s: Stream[Pure, Int] =>
+        val s1 = s.toList
+        s.evalFilterNot(_ => IO.pure(false)).compile.toList.map(it => assert(it == s1))
+      }
+    }
+
+    test("with effectful const(false)") {
+      forAllAsync { s: Stream[Pure, Int] =>
+        s.evalFilterNot(_ => IO.pure(true)).compile.toList.map(it => assert(it.isEmpty))
+      }
+    }
+
+    test("with function that filters out odd elements") {
+      Stream
+        .range(1, 10)
+        .evalFilterNot(e => IO(e % 2 == 0))
+        .compile
+        .toList
+        .map(it => assert(it == List(1, 3, 5, 7, 9)))
+    }
+  }
+
+  group("evalFilterNotAsync") {
+    test("with effectful const(true)") {
+      forAllAsync { s: Stream[Pure, Int] =>
+        s.covary[IO]
+          .evalFilterNotAsync(5)(_ => IO.pure(true))
+          .compile
+          .toList
+          .map(it => assert(it.isEmpty))
+      }
+    }
+
+    test("with effectful const(false)") {
+      forAllAsync { s: Stream[Pure, Int] =>
+        val s1 = s.toList
+        s.covary[IO]
+          .evalFilterNotAsync(5)(_ => IO.pure(false))
+          .compile
+          .toList
+          .map(it => assert(it == s1))
+      }
+    }
+
+    test("with function that filters out odd elements") {
+      Stream
+        .range(1, 10)
+        .evalFilterNotAsync[IO](5)(e => IO(e % 2 == 0))
+        .compile
+        .toList
+        .map(it => assert(it == List(1, 3, 5, 7, 9)))
+    }
+
+    test("filters up to N items in parallel") {
+      val s = Stream.range(0, 100)
+      val n = 5
+
+      (Semaphore[IO](n), SignallingRef[IO, Int](0)).tupled
+        .flatMap {
+          case (sem, sig) =>
+            val tested = s
+              .covary[IO]
+              .evalFilterNotAsync(n) { _ =>
+                val ensureAcquired =
+                  sem.tryAcquire.ifM(
+                    IO.unit,
+                    IO.raiseError(new Throwable("Couldn't acquire permit"))
+                  )
+
+                ensureAcquired.bracket(_ =>
+                  sig.update(_ + 1).bracket(_ => IO.sleep(10.millis))(_ => sig.update(_ - 1))
+                )(_ => sem.release) *>
+                  IO.pure(false)
+              }
+
+            sig.discrete
+              .interruptWhen(tested.drain)
+              .fold1(_.max(_))
+              .compile
+              .lastOrError
+              .product(sig.get)
+        }
+        .map(it => assert(it == ((n, 0))))
+    }
+  }
+
+  test("evalMapAccumulate") {
+    forAllAsync { (s: Stream[Pure, Int], m: Int, n0: Int) =>
+      val sVector = s.toVector
+      val n = (n0 % 20).abs + 1
+      val f = (_: Int) % n == 0
+      val r = s.covary[IO].evalMapAccumulate(m)((s, i) => IO.pure((s + i, f(i))))
+      List(
+        r.map(_._1).compile.toVector.map(it => assert(it == sVector.scanLeft(m)(_ + _).tail)),
+        r.map(_._2).compile.toVector.map(it => assert(it == sVector.map(f)))
+      ).sequence_
+    }
+  }
+
+  group("evalMapFilter") {
+    test("with effectful optional identity function") {
+      forAllAsync { s: Stream[Pure, Int] =>
+        val s1 = s.toList
+        s.evalMapFilter(n => IO.pure(n.some)).compile.toList.map(it => assert(it == s1))
+      }
+    }
+
+    test("with effectful constant function that returns None for any element") {
+      forAllAsync { s: Stream[Pure, Int] =>
+        s.evalMapFilter(_ => IO.pure(none[Int]))
+          .compile
+          .toList
+          .map(it => assert(it.isEmpty))
+      }
+    }
+
+    test("with effectful function that filters out odd elements") {
+      Stream
+        .range(1, 10)
+        .evalMapFilter(e => IO.pure(e.some.filter(_ % 2 == 0)))
+        .compile
+        .toList
+        .map(it => assert(it == List(2, 4, 6, 8)))
+    }
+  }
+
+  test("evalScan") {
+    forAllAsync { (s: Stream[Pure, Int], n: String) =>
+      val sVector = s.toVector
+      val f: (String, Int) => IO[String] = (a: String, b: Int) => IO.pure(a + b)
+      val g = (a: String, b: Int) => a + b
+      s.covary[IO]
+        .evalScan(n)(f)
+        .compile
+        .toVector
+        .map(it => assert(it == sVector.scanLeft(n)(g)))
+    }
+  }
+
+  test("every".flaky) {
+    type BD = (Boolean, FiniteDuration)
+    def durationSinceLastTrue[F[_]]: Pipe[F, BD, BD] = {
+      def go(lastTrue: FiniteDuration, s: Stream[F, BD]): Pull[F, BD, Unit] =
+        s.pull.uncons1.flatMap {
+          case None => Pull.done
+          case Some((pair, tl)) =>
+            pair match {
+              case (true, d) =>
+                Pull.output1((true, d - lastTrue)) >> go(d, tl)
+              case (false, d) =>
+                Pull.output1((false, d - lastTrue)) >> go(lastTrue, tl)
+            }
+        }
+      s => go(0.seconds, s).stream
+    }
+
+    val delay = 20.millis
+    val draws = (600.millis / delay).min(50) // don't take forever
+
+    val durationsSinceSpike = Stream
+      .every[IO](delay)
+      .map(d => (d, System.nanoTime.nanos))
+      .take(draws.toInt)
+      .through(durationSinceLastTrue)
+
+    (IO.shift >> durationsSinceSpike.compile.toVector).map { result =>
+      val list = result.toList
+      assert(list.head._1, "every always emits true first")
+      assert(
+        list.tail.filter(_._1).map(_._2).forall(_ >= delay),
+        s"true means the delay has passed: ${list.tail}"
+      )
+      assert(
+        list.tail.filterNot(_._1).map(_._2).forall(_ <= delay),
+        s"false means the delay has not passed: ${list.tail}"
+      )
     }
   }
 
