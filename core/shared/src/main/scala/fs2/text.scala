@@ -60,19 +60,18 @@ object text {
 
        */
 
-      val minIdx = 0.max(bs.size - 3)
-      var idx = bs.size - 1
+      val minIdx = 0.max(bs.length - 3)
+      var idx = bs.length - 1
       var counter = 0
       var res = 0
       while (minIdx <= idx) {
         val c = continuationBytes(bs(idx))
         if (c >= 0) {
-          if (c == counter)
-            res = 0
-          else
+          if (c != counter) {
             res = counter + 1
+          }
           // exit the loop
-          idx = 0
+          return res
         }
         idx = idx - 1
         counter = counter + 1
@@ -90,9 +89,9 @@ object text {
         if (buffer.isEmpty) nextBytes.toArray
         else Array.concat(buffer.toArray, nextBytes.toArray)
 
-      val splitAt = allBytes.size - lastIncompleteBytes(allBytes)
+      val splitAt = allBytes.length - lastIncompleteBytes(allBytes)
 
-      if (splitAt == allBytes.size) {
+      if (splitAt == allBytes.length) {
         // in the common case of ASCII chars
         // we are in this branch so the next buffer will
         // be empty
