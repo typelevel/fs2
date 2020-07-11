@@ -3,7 +3,7 @@ package fs2
 import scala.concurrent.duration._
 
 import cats.data.Chain
-import cats.effect.{ExitCase, IO, Resource, Sync, SyncIO}
+import cats.effect.{ExitCase, IO, Resource, SyncIO}
 import cats.effect.concurrent.{Deferred, Ref}
 import cats.implicits._
 import org.scalacheck.Gen
@@ -624,7 +624,7 @@ class StreamSuite extends Fs2Suite {
       }
     }
 
-    test("3".flaky) {
+    test("3".ignore) {
       // TODO: Sometimes fails with inner == 1 on final assertion
       forAllAsync { (s: Stream[Pure, Stream[Pure, Int]], n0: Int) =>
         val n = (n0 % 10).abs + 1
@@ -750,6 +750,46 @@ class StreamSuite extends Fs2Suite {
           .compile
           .toList
           .map(it => assert(it == List(1, 1, 0)))
+      }
+    }
+
+    group("take") {
+      property("identity") {
+        forAll { (s: Stream[Pure, Int], negate: Boolean, n0: Int) =>
+          val n1 = (n0 % 20).abs + 1
+          val n = if (negate) -n1 else n1
+          assert(s.take(n).toList == s.toList.take(n))
+        }
+      }
+      test("chunks") {
+        val s = Stream(1, 2) ++ Stream(3, 4)
+        assert(s.take(3).chunks.map(_.toList).toList == List(List(1, 2), List(3)))
+      }
+    }
+
+    property("takeRight") {
+      forAll { (s: Stream[Pure, Int], negate: Boolean, n0: Int) =>
+        val n1 = (n0 % 20).abs + 1
+        val n = if (negate) -n1 else n1
+        assert(s.takeRight(n).toList == s.toList.takeRight(n))
+      }
+    }
+
+    property("takeWhile") {
+      forAll { (s: Stream[Pure, Int], n0: Int) =>
+        val n = (n0 % 20).abs + 1
+        val set = s.toList.take(n).toSet
+        assert(s.takeWhile(set).toList == s.toList.takeWhile(set))
+      }
+    }
+
+    property("takeThrough") {
+      forAll { (s: Stream[Pure, Int], n0: Int) =>
+        val n = (n0 % 20).abs + 1
+        val f = (i: Int) => i % n == 0
+        val vec = s.toVector
+        val result = vec.takeWhile(f) ++ vec.dropWhile(f).headOption
+        assert(s.takeThrough(f).toVector == result, vec.toString)
       }
     }
   }
@@ -919,5 +959,11 @@ class StreamSuite extends Fs2Suite {
         }
       }
     }
+  }
+
+  test("pure pipes cannot be used with effectful streams (#1838)") {
+    val p: Pipe[Pure, Int, List[Int]] = in => Stream(in.toList)
+    identity(p) // Avoid unused warning
+    assert(compileErrors("Stream.eval(IO(1)).through(p)").nonEmpty)
   }
 }

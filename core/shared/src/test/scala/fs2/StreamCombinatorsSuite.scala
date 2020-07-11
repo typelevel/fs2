@@ -1,9 +1,10 @@
 package fs2
 
 import scala.concurrent.duration._
+import scala.concurrent.TimeoutException
 
-import cats.effect.{Blocker, IO, Sync, SyncIO}
-import cats.effect.concurrent.{Ref, Semaphore}
+import cats.effect.{Blocker, IO, SyncIO}
+import cats.effect.concurrent.Semaphore
 import cats.implicits._
 import org.scalacheck.Gen
 import org.scalacheck.Prop.forAll
@@ -1181,4 +1182,85 @@ class StreamCombinatorsSuite extends Fs2Suite {
     }
   }
 
+  property("tail")(forAll((s: Stream[Pure, Int]) => assert(s.tail.toList == s.toList.drop(1))))
+
+  test("unfold") {
+    assert(
+      Stream
+        .unfold((0, 1)) {
+          case (f1, f2) =>
+            if (f1 <= 13) Some(((f1, f2), (f2, f1 + f2))) else None
+        }
+        .map(_._1)
+        .toList == List(0, 1, 1, 2, 3, 5, 8, 13)
+    )
+  }
+
+  test("unfoldChunk") {
+    assert(
+      Stream
+        .unfoldChunk(4L) { s =>
+          if (s > 0) Some((Chunk.longs(Array[Long](s, s)), s - 1))
+          else None
+        }
+        .toList == List[Long](4, 4, 3, 3, 2, 2, 1, 1)
+    )
+  }
+
+  test("unfoldEval") {
+    Stream
+      .unfoldEval(10)(s => IO.pure(if (s > 0) Some((s, s - 1)) else None))
+      .compile
+      .toList
+      .map(it => assert(it == List.range(10, 0, -1)))
+  }
+
+  test("unfoldChunkEval") {
+    Stream
+      .unfoldChunkEval(true)(s =>
+        SyncIO.pure(
+          if (s) Some((Chunk.booleans(Array[Boolean](s)), false))
+          else None
+        )
+      )
+      .compile
+      .toList
+      .map(it => assert(it == List(true)))
+  }
+
+  property("unNone") {
+    forAll { (s: Stream[Pure, Option[Int]]) =>
+      assert(s.unNone.chunks.toList == s.filter(_.isDefined).map(_.get).chunks.toList)
+    }
+  }
+
+  group("withTimeout") {
+    test("timeout never-ending stream") {
+      Stream.never[IO].timeout(100.millis).compile.drain.assertThrows[TimeoutException]
+    }
+
+    test("not trigger timeout on successfully completed stream") {
+      Stream.sleep(10.millis).timeout(1.second).compile.drain
+    }
+
+    test("compose timeouts d1 and d2 when d1 < d2") {
+      val d1 = 20.millis
+      val d2 = 30.millis
+      (Stream.sleep(10.millis).timeout(d1) ++ Stream.sleep(30.millis))
+        .timeout(d2)
+        .compile
+        .drain
+        .assertThrows[TimeoutException]
+    }
+
+    test("compose timeouts d1 and d2 when d1 > d2") {
+      val d1 = 40.millis
+      val d2 = 30.millis
+      (Stream.sleep(10.millis).timeout(d1) ++ Stream.sleep(25.millis))
+        .timeout(d2)
+        .compile
+        .drain
+        .assertThrows[TimeoutException]
+    }
+  }
 }

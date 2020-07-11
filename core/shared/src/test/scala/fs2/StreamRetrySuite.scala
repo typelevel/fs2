@@ -3,8 +3,6 @@ package fs2
 import scala.concurrent.duration._
 
 import cats.effect.IO
-import cats.effect.concurrent.{Deferred, Ref}
-import cats.implicits._
 
 class StreamRetrySuite extends Fs2Suite {
 
