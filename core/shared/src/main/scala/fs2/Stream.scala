@@ -1024,11 +1024,7 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
           Pull.eval(f(z, hd)).flatMap(o => Pull.output1(o) >> go(o, tl))
         case None => Pull.done
       }
-    this.pull.uncons1.flatMap {
-      case Some((hd, tl)) =>
-        Pull.eval(f(z, hd)).flatMap(o => Pull.output(Chunk.seq(List(z, o))) >> go(o, tl))
-      case None => Pull.output1(z)
-    }.stream
+    (Pull.output1(z) >> go(z, this)).stream
   }
 
   /**
