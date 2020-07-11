@@ -804,4 +804,80 @@ class StreamCombinatorsSuite extends Fs2Suite {
       }
     }
   }
+
+  property("intersperse") {
+    forAll { (s: Stream[Pure, Int], n: Int) =>
+      assert(s.intersperse(n).toList == s.toList.flatMap(i => List(i, n)).dropRight(1))
+    }
+  }
+
+  property("iterable") {
+    forAll((c: Set[Int]) => assert(Stream.iterable(c).compile.to(Set) == c))
+  }
+
+  test("iterate") {
+    assert(Stream.iterate(0)(_ + 1).take(100).toList == List.iterate(0, 100)(_ + 1))
+  }
+
+  test("iterateEval") {
+    Stream
+      .iterateEval(0)(i => IO(i + 1))
+      .take(100)
+      .compile
+      .toVector
+      .map(it => assert(it == List.iterate(0, 100)(_ + 1)))
+  }
+
+  property("last") {
+    forAll { (s: Stream[Pure, Int]) =>
+      val _ = s.last
+      assert(s.last.toList == List(s.toList.lastOption))
+    }
+  }
+
+  property("lastOr") {
+    forAll { (s: Stream[Pure, Int], n0: Int) =>
+      val n = (n0 % 20).abs + 1
+      assert(s.lastOr(n).toList == List(s.toList.lastOption.getOrElse(n)))
+    }
+  }
+
+  property("mapAccumulate") {
+    forAll { (s: Stream[Pure, Int], m: Int, n0: Int) =>
+      val n = (n0 % 20).abs + 1
+      val f = (_: Int) % n == 0
+      val r = s.mapAccumulate(m)((s, i) => (s + i, f(i)))
+
+      assert(r.map(_._1).toList == s.toList.scanLeft(m)(_ + _).tail)
+      assert(r.map(_._2).toList == s.toList.map(f))
+    }
+  }
+
+  group("mapAsync") {
+    test("same as map") {
+      forAllAsync { s: Stream[Pure, Int] =>
+        val f = (_: Int) + 1
+        val r = s.covary[IO].mapAsync(16)(i => IO(f(i)))
+        val sVector = s.toVector
+        r.compile.toVector.map(it => assert(it == sVector.map(f)))
+      }
+    }
+
+    test("exception") {
+      forAllAsync { s: Stream[Pure, Int] =>
+        val f = (_: Int) => IO.raiseError[Int](new RuntimeException)
+        val r = (s ++ Stream(1)).covary[IO].mapAsync(1)(f).attempt
+        r.compile.toVector.map(it => assert(it.size == 1))
+      }
+    }
+  }
+
+  test("mapAsyncUnordered") {
+    forAllAsync { s: Stream[Pure, Int] =>
+      val f = (_: Int) + 1
+      val r = s.covary[IO].mapAsyncUnordered(16)(i => IO(f(i)))
+      val sVector = s.toVector
+      r.compile.toVector.map(it => assert(it.toSet == sVector.map(f).toSet))
+    }
+  }
 }

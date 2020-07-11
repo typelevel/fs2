@@ -396,6 +396,33 @@ class StreamSuite extends Fs2Suite {
           }
       }
     }
+
+    group("map") {
+      property("map.toList == toList.map") {
+        forAll { (s: Stream[Pure, Int], f: Int => Int) =>
+          assert(s.map(f).toList == s.toList.map(f))
+        }
+      }
+
+      test("regression #1335 - stack safety of map") {
+        case class Tree[A](label: A, subForest: Stream[Pure, Tree[A]]) {
+          def flatten: Stream[Pure, A] =
+            Stream(this.label) ++ this.subForest.flatMap(_.flatten)
+        }
+
+        def unfoldTree(seed: Int): Tree[Int] =
+          Tree(seed, Stream(seed + 1).map(unfoldTree))
+
+        assert(unfoldTree(1).flatten.take(10).toList == List.tabulate(10)(_ + 1))
+      }
+    }
+
+    property("mapChunks") {
+      forAll { (s: Stream[Pure, Int]) =>
+        assert(s.mapChunks(identity).chunks.toList == s.chunks.toList)
+      }
+    }
+
   }
 
   group("compile") {

@@ -53,6 +53,17 @@ abstract class Fs2Suite extends ScalaCheckSuite with TestPlatform with Generator
       }
   }
 
+  /** Returns a stream that has a 10% chance of failing with an error on each output value. */
+  protected def spuriousFail[F[_]: RaiseThrowable, O](s: Stream[F, O]): Stream[F, O] =
+    Stream.suspend {
+      val counter = new java.util.concurrent.atomic.AtomicLong(0L)
+      s.flatMap { o =>
+        val i = counter.incrementAndGet
+        if (i % (math.random * 10 + 1).toInt == 0L) Stream.raiseError[F](new Err)
+        else Stream.emit(o)
+      }
+    }
+
   protected def group(name: String)(thunk: => Unit): Unit = {
     val countBefore = munitTestsBuffer.size
     val _ = thunk
