@@ -5,6 +5,7 @@ import scala.concurrent.duration._
 import cats.effect.{Blocker, IO, Sync, SyncIO}
 import cats.effect.concurrent.{Ref, Semaphore}
 import cats.implicits._
+import org.scalacheck.Gen
 import org.scalacheck.Prop.forAll
 
 import fs2.concurrent.SignallingRef
@@ -644,6 +645,163 @@ class StreamCombinatorsSuite extends Fs2Suite {
         .compile
         .toList
         .map(it => assert(it == x))
+    }
+  }
+
+  property("groupAdjacentBy") {
+    forAll { (s: Stream[Pure, Int], n0: Int) =>
+      val n = (n0 % 20).abs + 1
+      val f = (i: Int) => i % n
+      val s1 = s.groupAdjacentBy(f)
+      val s2 = s.map(f).changes
+      assert(s1.map(_._2).toList.flatMap(_.toList) == s.toList)
+      assert(s1.map(_._1).toList == s2.toList)
+      assert(
+        s1.map { case (k, vs) => vs.toVector.forall(f(_) == k) }.toList ==
+          s2.map(_ => true).toList
+      )
+    }
+  }
+
+  property("groupAdjacentByLimit") {
+    forAll { (s: Stream[Pure, Int], n0: Int) =>
+      val n = (n0 % 20).abs + 1
+      val s1 = s.groupAdjacentByLimit(n)(_ => true)
+      assert(s1.map(_._2).toList.map(_.toList) == s.toList.grouped(n).toList)
+    }
+  }
+
+  group("groupWithin") {
+    test("should never lose any elements") {
+      forAllAsync { (s0: Stream[Pure, Int], d0: Int, maxGroupSize0: Int) =>
+        val maxGroupSize = (maxGroupSize0 % 20).abs + 1
+        val d = (d0 % 50).abs.millis
+        val s = s0.map(i => (i % 500).abs)
+        val sList = s.toList
+        s.covary[IO]
+          .evalTap(shortDuration => IO.sleep(shortDuration.micros))
+          .groupWithin(maxGroupSize, d)
+          .flatMap(s => Stream.emits(s.toList))
+          .compile
+          .toList
+          .map(it => assert(it == sList))
+      }
+    }
+
+    test("should never emit empty groups") {
+      forAllAsync { (s: Stream[Pure, Int], d0: Int, maxGroupSize0: Int) =>
+        val maxGroupSize = (maxGroupSize0 % 20).abs + 1
+        val d = (d0 % 50).abs.millis
+        Stream(1)
+          .append(s)
+          .map(i => (i % 500).abs)
+          .covary[IO]
+          .evalTap(shortDuration => IO.sleep(shortDuration.micros))
+          .groupWithin(maxGroupSize, d)
+          .map(_.toList)
+          .compile
+          .toList
+          .map(it => assert(it.forall(_.nonEmpty)))
+      }
+    }
+
+    test("should never have more elements than in its specified limit") {
+      forAllAsync { (s: Stream[Pure, Int], d0: Int, maxGroupSize0: Int) =>
+        val maxGroupSize = (maxGroupSize0 % 20).abs + 1
+        val d = (d0 % 50).abs.millis
+        s.map(i => (i % 500).abs)
+          .evalTap(shortDuration => IO.sleep(shortDuration.micros))
+          .groupWithin(maxGroupSize, d)
+          .map(_.toList.size)
+          .compile
+          .toList
+          .map(it => assert(it.forall(_ <= maxGroupSize)))
+      }
+    }
+
+    test(
+      "should return a finite stream back in a single chunk given a group size equal to the stream size and an absurdly high duration"
+    ) {
+      forAllAsync { (streamAsList0: List[Int]) =>
+        val streamAsList = 0 :: streamAsList0
+        Stream
+          .emits(streamAsList)
+          .covary[IO]
+          .groupWithin(streamAsList.size, (Int.MaxValue - 1L).nanoseconds)
+          .compile
+          .toList
+          .map(it => assert(it.head.toList == streamAsList))
+      }
+    }
+  }
+
+  property("head")(forAll((s: Stream[Pure, Int]) => assert(s.head.toList == s.toList.take(1))))
+
+  group("interleave") {
+    test("interleave left/right side infinite") {
+      val ones = Stream.constant("1")
+      val s = Stream("A", "B", "C")
+      assert(ones.interleave(s).toList == List("1", "A", "1", "B", "1", "C"))
+      assert(s.interleave(ones).toList == List("A", "1", "B", "1", "C", "1"))
+    }
+
+    test("interleave both side infinite") {
+      val ones = Stream.constant("1")
+      val as = Stream.constant("A")
+      assert(ones.interleave(as).take(3).toList == List("1", "A", "1"))
+      assert(as.interleave(ones).take(3).toList == List("A", "1", "A"))
+    }
+
+    test("interleaveAll left/right side infinite") {
+      val ones = Stream.constant("1")
+      val s = Stream("A", "B", "C")
+      assert(
+        ones.interleaveAll(s).take(9).toList == List(
+          "1",
+          "A",
+          "1",
+          "B",
+          "1",
+          "C",
+          "1",
+          "1",
+          "1"
+        )
+      )
+      assert(
+        s.interleaveAll(ones).take(9).toList == List(
+          "A",
+          "1",
+          "B",
+          "1",
+          "C",
+          "1",
+          "1",
+          "1",
+          "1"
+        )
+      )
+    }
+
+    test("interleaveAll both side infinite") {
+      val ones = Stream.constant("1")
+      val as = Stream.constant("A")
+      assert(ones.interleaveAll(as).take(3).toList == List("1", "A", "1"))
+      assert(as.interleaveAll(ones).take(3).toList == List("A", "1", "A"))
+    }
+
+    // Uses a small scope to avoid using time to generate too large streams and not finishing
+    property("interleave is equal to interleaveAll on infinite streams (by step-indexing)") {
+      forAll(Gen.chooseNum(0, 100)) { (n: Int) =>
+        val ones = Stream.constant("1")
+        val as = Stream.constant("A")
+        assert(
+          ones.interleaveAll(as).take(n).toVector == ones
+            .interleave(as)
+            .take(n)
+            .toVector
+        )
+      }
     }
   }
 }
