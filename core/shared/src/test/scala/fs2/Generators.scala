@@ -2,10 +2,7 @@ package fs2
 
 import org.scalacheck.{Arbitrary, Gen}
 
-trait Generators {
-
-  private def smallLists[A](genA: Gen[A]): Gen[List[A]] =
-    Gen.posNum[Int].flatMap(n0 => Gen.listOfN(n0 % 20, genA))
+trait Generators extends ChunkGenerators {
 
   implicit def pureStreamGenerator[A: Arbitrary]: Arbitrary[Stream[Pure, A]] = Arbitrary {
     val genA = Arbitrary.arbitrary[A]

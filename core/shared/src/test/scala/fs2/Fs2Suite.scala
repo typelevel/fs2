@@ -1,7 +1,8 @@
 package fs2
 
-import munit.ScalaCheckSuite
 import cats.effect.laws.util.TestContext
+import munit.ScalaCheckSuite
+import org.typelevel.discipline.Laws
 
 abstract class Fs2Suite extends ScalaCheckSuite with TestPlatform with Generators {
 
@@ -21,4 +22,8 @@ abstract class Fs2Suite extends ScalaCheckSuite with TestPlatform with Generator
     (0 until countRegistered).foreach(_ => munitTestsBuffer.remove(countBefore))
     registered.foreach(t => munitTestsBuffer += t.withName(s"$name - ${t.name}"))
   }
+
+  protected def checkAll(name: String, ruleSet: Laws#RuleSet): Unit =
+    for ((id, prop) <- ruleSet.all.properties)
+      property(s"${name}.${id}")(prop)
 }

@@ -5,31 +5,33 @@ import cats.kernel.CommutativeMonoid
 import cats.kernel.laws.discipline.EqTests
 import cats.laws.discipline.{AlternativeTests, MonadTests, TraverseFilterTests, TraverseTests}
 import cats.implicits._
-import org.scalacheck.Cogen
-import org.scalactic.anyvals._
-import org.scalatest.Succeeded
-import org.scalatest.prop.Generator
+import org.scalacheck.{Arbitrary, Cogen, Gen}
+import org.scalacheck.Prop.forAll
 import scala.reflect.ClassTag
 import scala.util.control.NonFatal
 
-class ChunkSpec extends Fs2Spec {
-  implicit override val generatorDrivenConfig: PropertyCheckConfiguration =
-    PropertyCheckConfiguration(minSuccessful = if (isJVM) 300 else 50, workers = 1)
+class ChunkSpec extends Fs2Suite {
+  override def scalaCheckTestParameters =
+    super.scalaCheckTestParameters
+      .withMinSuccessfulTests(if (isJVM) 100 else 25)
+      .withWorkers(1)
 
-  "Chunk" - {
-    "chunk-formation (1)" in {
+  group("Chunk") {
+    test("chunk-formation (1)") {
       assert(Chunk.empty.toList == List())
       assert(Chunk.singleton(23).toList == List(23))
     }
 
-    "chunk-formation (2)" in forAll { (c: Vector[Int]) =>
-      assert(Chunk.seq(c).toVector == c)
-      assert(Chunk.seq(c).toList == c.toList)
-      assert(Chunk.indexedSeq(c).toVector == c)
-      assert(Chunk.indexedSeq(c).toList == c.toList)
+    property("chunk-formation (2)") {
+      forAll { (c: Vector[Int]) =>
+        assert(Chunk.seq(c).toVector == c)
+        assert(Chunk.seq(c).toList == c.toList)
+        assert(Chunk.indexedSeq(c).toVector == c)
+        assert(Chunk.indexedSeq(c).toList == c.toList)
+      }
     }
 
-    "Chunk.apply is optimized" in {
+    test("Chunk.apply is optimized") {
       assert(Chunk(1).isInstanceOf[Chunk.Singleton[_]])
       assert(Chunk("Hello").isInstanceOf[Chunk.Singleton[_]])
       // Varargs on Scala.js use a scala.scalajs.js.WrappedArray, which
@@ -37,15 +39,14 @@ class ChunkSpec extends Fs2Spec {
       if (isJVM) {
         assert(Chunk(1, 2, 3).isInstanceOf[Chunk.Ints])
         assert(Chunk("Hello", "world").isInstanceOf[Chunk.Boxed[_]])
-      } else
-        Succeeded
+      }
     }
 
-    "Chunk.seq is optimized" in {
+    test("Chunk.seq is optimized") {
       assert(Chunk.seq(List(1)).isInstanceOf[Chunk.Singleton[_]])
     }
 
-    "Array casts in Chunk.seq are safe" in {
+    test("Array casts in Chunk.seq are safe") {
       val as = collection.mutable.ArraySeq[Int](0, 1, 2)
       val c = Chunk.seq(as)
       try assert(c.isInstanceOf[Chunk.Boxed[_]]) // 2.11/2.12
@@ -55,63 +56,79 @@ class ChunkSpec extends Fs2Spec {
     }
   }
 
-  def testChunk[A: Generator: ClassTag: CommutativeMonoid: Eq: Cogen](
-      genChunk: Generator[Chunk[A]],
+  def testChunk[A: Arbitrary: ClassTag: CommutativeMonoid: Eq: Cogen](
+      genChunk: Gen[Chunk[A]],
       name: String,
       of: String,
       testTraverse: Boolean = true
   ): Unit =
-    s"$name" - {
-      implicit val implicitChunkGenerator: Generator[Chunk[A]] = genChunk
-      "size" in forAll((c: Chunk[A]) => assert(c.size == c.toList.size))
-      "take" in forAll { (c: Chunk[A], n: PosZInt) =>
-        assert(c.take(n).toVector == c.toVector.take(n))
+    group(s"$name") {
+      implicit val implicitChunkArb: Arbitrary[Chunk[A]] = Arbitrary(genChunk)
+      property("size") { forAll((c: Chunk[A]) => assert(c.size == c.toList.size)) }
+      property("take") { 
+        forAll { (c: Chunk[A], n: Int) =>
+          assert(c.take(n).toVector == c.toVector.take(n))
+        }
       }
-      "drop" in forAll { (c: Chunk[A], n: PosZInt) =>
-        assert(c.drop(n).toVector == c.toVector.drop(n))
+      property("drop") {
+        forAll { (c: Chunk[A], n: Int) =>
+          assert(c.drop(n).toVector == c.toVector.drop(n))
+        }
       }
-      "isEmpty" in forAll((c: Chunk[A]) => assert(c.isEmpty == c.toList.isEmpty))
-      "toArray" in forAll { c: Chunk[A] =>
-        assert(c.toArray.toVector == c.toVector)
-        // Do it twice to make sure the first time didn't mutate state
-        assert(c.toArray.toVector == c.toVector)
+      property("isEmpty") {
+        forAll((c: Chunk[A]) => assert(c.isEmpty == c.toList.isEmpty))
       }
-      "copyToArray" in forAll { c: Chunk[A] =>
-        val arr = new Array[A](c.size * 2)
-        c.copyToArray(arr, 0)
-        c.copyToArray(arr, c.size)
-        assert(arr.toVector == (c.toVector ++ c.toVector))
+      property("toArray") {
+        forAll { c: Chunk[A] =>
+          assert(c.toArray.toVector == c.toVector)
+          // Do it twice to make sure the first time didn't mutate state
+          assert(c.toArray.toVector == c.toVector)
+        }
       }
-      "concat" in forAll { (c1: Chunk[A], c2: Chunk[A]) =>
-        val result = Chunk
-          .concat(List(Chunk.empty, c1, Chunk.empty, c2))
-          .toVector
-        assert(result == (c1.toVector ++ c2.toVector))
+      property("copyToArray") {
+        forAll { c: Chunk[A] =>
+          val arr = new Array[A](c.size * 2)
+          c.copyToArray(arr, 0)
+          c.copyToArray(arr, c.size)
+          assert(arr.toVector == (c.toVector ++ c.toVector))
+        }
       }
-      "concat empty" in {
+      property("concat") {
+        forAll { (c1: Chunk[A], c2: Chunk[A]) =>
+          val result = Chunk
+            .concat(List(Chunk.empty, c1, Chunk.empty, c2))
+            .toVector
+          assert(result == (c1.toVector ++ c2.toVector))
+        }
+      }
+      test("concat empty") {
         assert(Chunk.concat[A](List(Chunk.empty, Chunk.empty)) == Chunk.empty)
       }
-      "scanLeft" in forAll { c: Chunk[A] =>
-        def step(acc: List[A], item: A) = acc :+ item
-        assert(c.scanLeft(List[A]())(step).toList == (c.toList.scanLeft(List[A]())(step)))
+      property("scanLeft") {
+        forAll { c: Chunk[A] =>
+          def step(acc: List[A], item: A) = acc :+ item
+          assert(c.scanLeft(List[A]())(step).toList == (c.toList.scanLeft(List[A]())(step)))
+        }
       }
-      "scanLeftCarry" in forAll { c: Chunk[A] =>
-        def step(acc: List[A], item: A) = acc :+ item
-        val listScan = c.toList.scanLeft(List[A]())(step)
-        val (chunkScan, chunkCarry) = c.scanLeftCarry(List[A]())(step)
+      property("scanLeftCarry") {
+        forAll { c: Chunk[A] =>
+          def step(acc: List[A], item: A) = acc :+ item
+          val listScan = c.toList.scanLeft(List[A]())(step)
+          val (chunkScan, chunkCarry) = c.scanLeftCarry(List[A]())(step)
 
-        assert((chunkScan.toList, chunkCarry) == ((listScan.tail, listScan.last)))
+          assert((chunkScan.toList, chunkCarry) == ((listScan.tail, listScan.last)))
+        }
       }
 
       if (implicitly[ClassTag[A]] == ClassTag.Byte)
-        "toByteBuffer.byte" in forAll { c: Chunk[A] =>
-          implicit val ev: A =:= Byte = null
-          val arr = new Array[Byte](c.size)
-          c.toByteBuffer.get(arr, 0, c.size)
-          assert(arr.toVector == c.toArray.toVector)
+        property("toByteBuffer.byte") {
+          forAll { c: Chunk[A] =>
+            implicit val ev: A =:= Byte = null
+            val arr = new Array[Byte](c.size)
+            c.toByteBuffer.get(arr, 0, c.size)
+            assert(arr.toVector == c.toArray.toVector)
+          }
         }
-
-      import org.scalacheck.GeneratorCompat._
 
       checkAll(s"Eq[Chunk[$of]]", EqTests[Chunk[A]].eqv)
       checkAll("Monad[Chunk]", MonadTests[Chunk].monad[A, A, A])
@@ -150,61 +167,60 @@ class ChunkSpec extends Fs2Spec {
   testChunk[Float](floatBufferChunkGenerator, "FloatBuffer", "Float", false)
   testChunk[Char](charBufferChunkGenerator, "CharBuffer", "Char")
 
-  "scanLeftCarry" - {
-    "returns empty and zero for empty Chunk" in {
+  group("scanLeftCarry") {
+    test("returns empty and zero for empty Chunk") {
       assert(Chunk[Int]().scanLeftCarry(0)(_ + _) == ((Chunk.empty, 0)))
     }
-    "returns first result and first result for singleton" in {
+    test("returns first result and first result for singleton") {
       assert(Chunk(2).scanLeftCarry(1)(_ + _) == ((Chunk(3), 3)))
     }
-    "returns all results and last result for multiple elements" in {
+    test("returns all results and last result for multiple elements") {
       assert(Chunk(2, 3).scanLeftCarry(1)(_ + _) == ((Chunk(3, 6), 6)))
     }
   }
 
-  "concat primitives" - {
+  group("concat primitives") {
     def testEmptyConcat[A](mkChunk: List[Chunk[A]] => Chunk[A]) =
-      assert(mkChunk(List(Chunk.empty, Chunk.empty)) === Chunk.empty)
+      assert(mkChunk(List(Chunk.empty, Chunk.empty)) == Chunk.empty)
 
-    "booleans" in testEmptyConcat(Chunk.concatBooleans)
-    "bytes" in testEmptyConcat(Chunk.concatBytes)
-    "floats" in testEmptyConcat(Chunk.concatFloats)
-    "doubles" in testEmptyConcat(Chunk.concatDoubles)
-    "shorts" in testEmptyConcat(Chunk.concatShorts)
-    "ints" in testEmptyConcat(Chunk.concatInts)
-    "longs" in testEmptyConcat(Chunk.concatLongs)
-    "chars" in testEmptyConcat(Chunk.concatChars)
+    test("booleans")(testEmptyConcat(Chunk.concatBooleans))
+    test("bytes")(testEmptyConcat(Chunk.concatBytes))
+    test("floats")(testEmptyConcat(Chunk.concatFloats))
+    test("doubles")(testEmptyConcat(Chunk.concatDoubles))
+    test("shorts")(testEmptyConcat(Chunk.concatShorts))
+    test("ints")(testEmptyConcat(Chunk.concatInts))
+    test("longs")(testEmptyConcat(Chunk.concatLongs))
+    test("chars")(testEmptyConcat(Chunk.concatChars))
   }
 
-  "map andThen toArray" in {
+  test("map andThen toArray") {
     val arr: Array[Int] = Chunk(0, 0).map(identity).toArray
-    assert(arr === Array(0, 0))
+    assert(arr.toList == List(0, 0))
   }
 
-  "mapAccumulate andThen toArray" in {
+  test("mapAccumulate andThen toArray") {
     val arr: Array[Int] = Chunk(0, 0).mapAccumulate(0)((s, o) => (s, o))._2.toArray
-    assert(arr === Array(0, 0))
+    assert(arr.toList == List(0, 0))
   }
 
-  "scanLeft andThen toArray" in {
+  test("scanLeft andThen toArray") {
     val arr: Array[Int] = Chunk(0, 0).scanLeft(0)((_, o) => o).toArray
-    assert(arr === Array(0, 0, 0))
+    assert(arr.toList == List(0, 0, 0))
   }
 
-  "zip andThen toArray" in {
+  test("zip andThen toArray") {
     val arr: Array[(Int, Int)] = Chunk(0, 0).zip(Chunk(0, 0)).toArray
-    assert(arr === Array((0, 0), (0, 0)))
+    assert(arr.toList == List((0, 0), (0, 0)))
     val arr2: Array[Int] = Chunk(0, 0).zip(Chunk(0, 0)).map(_._1).toArray
-    assert(arr2 === Array(0, 0))
+    assert(arr2.toList == List(0, 0))
   }
 
-  "zipWithIndex andThen toArray" in {
-    forAll((chunk: Chunk[Int]) => assert(chunk.zipWithIndex.toArray === chunk.toArray.zipWithIndex))
+  test("zipWithIndex andThen toArray") {
+    forAll((chunk: Chunk[Int]) => assert(chunk.zipWithIndex.toList == chunk.toArray.zipWithIndex.toList))
   }
 
-  "Boxed toArray - regression #1745" in {
+  test("Boxed toArray - regression #1745") {
     Chunk.Boxed(Array[Any](0)).asInstanceOf[Chunk[Int]].toArray[Any]
     Chunk.Boxed(Array[Any](0)).asInstanceOf[Chunk[Int]].toArray[Int]
-    Succeeded
   }
 }

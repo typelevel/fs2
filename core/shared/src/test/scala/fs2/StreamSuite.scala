@@ -23,6 +23,10 @@ class StreamSuite extends Fs2Suite {
     }
   }
 
+  property("chunk") {
+    forAll((c: Chunk[Int]) => assertEquals(Stream.chunk(c).compile.to(Chunk), c))
+  }
+
   test("eval") {
     assertEquals(Stream.eval(SyncIO(23)).compile.toList.unsafeRunSync, List(23))
   }

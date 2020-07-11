@@ -440,10 +440,6 @@ class StreamSpec extends Fs2Spec {
       assert(result == List("1", "33", "5", "66"))
     }
 
-    "chunk" in {
-      forAll((c: Chunk[Int]) => assert(Stream.chunk(c).compile.to(Chunk) == c))
-    }
-
     "chunkLimit" in forAll { (s: Stream[Pure, Int], n0: PosInt) =>
       val n = n0 % 20 + 1
       val sizeV = s.chunkLimit(n).toVector.map(_.size)

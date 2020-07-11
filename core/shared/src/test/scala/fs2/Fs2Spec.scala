@@ -11,6 +11,7 @@ import org.scalatest.{Args, Assertion, Status, Succeeded}
 import org.scalatest.concurrent.AsyncTimeLimitedTests
 import org.scalatest.freespec.AsyncFreeSpec
 import org.scalatest.prop.GeneratorDrivenPropertyChecks
+import org.scalatest.prop._
 import org.scalatest.time.Span
 import org.scalatestplus.scalacheck.Checkers
 
@@ -21,8 +22,6 @@ abstract class Fs2Spec
     with AsyncTimeLimitedTests
     with GeneratorDrivenPropertyChecks
     with Checkers
-    with MiscellaneousGenerators
-    with ChunkGenerators
     with StreamGenerators
     with EffectTestSupport
     with TestPlatform {
@@ -142,4 +141,9 @@ abstract class Fs2Spec
   protected def leftContainsAllOfRight(s1: Seq[_], s2: Seq[_]): Boolean =
     s2.forall(s1.contains)
 
+  implicit val throwableGenerator: Generator[Throwable] =
+    specificValue(new Err)
+
+  implicit def arrayGenerator[A: Generator: reflect.ClassTag]: Generator[Array[A]] =
+    lists[A].havingSizesBetween(0, 100).map(_.toArray)
 }
