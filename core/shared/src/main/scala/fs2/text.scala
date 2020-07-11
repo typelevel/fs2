@@ -67,9 +67,8 @@ object text {
       while (minIdx <= idx) {
         val c = continuationBytes(bs(idx))
         if (c >= 0) {
-          if (c != counter) {
+          if (c != counter)
             res = counter + 1
-          }
           // exit the loop
           return res
         }
