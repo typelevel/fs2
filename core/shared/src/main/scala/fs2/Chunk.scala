@@ -1662,20 +1662,79 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
         Chunk.buffer(buf.result)
       }
       override def combineK[A](x: Chunk[A], y: Chunk[A]): Chunk[A] =
-        Chunk.concat(List(x, y))
+        Chunk.concat(x :: y :: Nil)
       override def traverse: Traverse[Chunk] = this
       override def traverse[F[_], A, B](
           fa: Chunk[A]
-      )(f: A => F[B])(implicit F: Applicative[F]): F[Chunk[B]] =
-        foldRight[A, F[Vector[B]]](fa, Eval.always(F.pure(Vector.empty))) { (a, efv) =>
-          F.map2Eval(f(a), efv)(_ +: _)
-        }.value.map(Chunk.vector)
+      )(f: A => F[B])(implicit F: Applicative[F]): F[Chunk[B]] = {
+
+        val applied: collection.mutable.Buffer[F[B]] = {
+          val size = fa.size
+          val b = collection.mutable.Buffer.newBuilder[F[B]]
+          b.sizeHint(size)
+          var idx = 0
+          while (idx < size) {
+            b += f(fa(idx))
+            idx = idx + 1
+          }
+          b.result()
+        }
+
+        val fempty = F.pure(Chain.empty[B])
+
+        // By making a tree here we don't blow the stack
+        // even if the Chunk is very long
+        def loop(start: Int, end: Int): F[Chain[B]] =
+          if (start >= end) fempty
+          else if (start == (end - 1))
+            F.map(applied(start))(Chain.one)
+          else {
+            val end1 = start + ((end - start) / 2)
+            val left = loop(start, end1)
+            val right = loop(end1, end)
+            F.map2(left, right)(_.concat(_))
+          }
+
+        F.map(loop(0, fa.size))(Chunk.chain)
+      }
+
       override def traverseFilter[F[_], A, B](
           fa: Chunk[A]
-      )(f: A => F[Option[B]])(implicit F: Applicative[F]): F[Chunk[B]] =
-        foldRight[A, F[Vector[B]]](fa, Eval.always(F.pure(Vector.empty))) { (a, efv) =>
-          F.map2Eval(f(a), efv)((oa, efv) => oa.map(_ +: efv).getOrElse(efv))
-        }.value.map(Chunk.vector)
+      )(f: A => F[Option[B]])(implicit F: Applicative[F]): F[Chunk[B]] = {
+        val applied: collection.mutable.Buffer[F[Option[B]]] = {
+          val size = fa.size
+          val b = collection.mutable.Buffer.newBuilder[F[Option[B]]]
+          b.sizeHint(size)
+          var idx = 0
+          while (idx < size) {
+            b += f(fa(idx))
+            idx = idx + 1
+          }
+          b.result()
+        }
+
+        val empty = Chain.empty[B]
+        val fempty = F.pure(empty)
+
+        // By making a tree here we don't blow the stack
+        // even if the Chunk is very long
+        def loop(start: Int, end: Int): F[Chain[B]] =
+          if (start >= end) fempty
+          else if (start == (end - 1))
+            F.map(applied(start)) { opt =>
+              if (opt.isEmpty) empty
+              else Chain.one(opt.get)
+            }
+          else {
+            val end1 = start + ((end - start) / 2)
+            val left = loop(start, end1)
+            val right = loop(end1, end)
+            F.map2(left, right)(_.concat(_))
+          }
+
+        F.map(loop(0, fa.size))(Chunk.chain)
+      }
+
       override def mapFilter[A, B](fa: Chunk[A])(f: A => Option[B]): Chunk[B] = {
         val size = fa.size
         val b = collection.mutable.Buffer.newBuilder[B]
