@@ -20,40 +20,6 @@
 
 //
 
-//     "scan" - {
-//       "1" in forAll { (s: Stream[Pure, Int], n: Int) =>
-//         val f = (a: Int, b: Int) => a + b
-//         assert(s.scan(n)(f).toList == s.toList.scanLeft(n)(f))
-//       }
-
-//       "2" in {
-//         val s = Stream(1).map(x => x)
-//         val f = (a: Int, b: Int) => a + b
-//         assert(s.scan(0)(f).toList == s.toList.scanLeft(0)(f))
-//       }
-
-//       "temporal" in {
-//         val never = Stream.eval(IO.async[Int](_ => ()))
-//         val s = Stream(1)
-//         val f = (a: Int, b: Int) => a + b
-//         val result = s.toList.scanLeft(0)(f)
-//         s.append(never)
-//           .scan(0)(f)
-//           .take(result.size)
-//           .compile
-//           .toList
-//           .asserting(it => assert(it == result))
-//       }
-//     }
-
-//     "scan1" in forAll { (s: Stream[Pure, Int]) =>
-//       val v = s.toVector
-//       val f = (a: Int, b: Int) => a + b
-//       assert(
-//         s.scan1(f).toVector == v.headOption.fold(Vector.empty[Int])(h => v.drop(1).scanLeft(h)(f))
-//       )
-//     }
-
 //     "scope" - {
 //       "1" in {
 //         val c = new java.util.concurrent.atomic.AtomicLong(0)
