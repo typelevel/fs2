@@ -2,7 +2,7 @@ package fs2
 
 import scala.concurrent.duration._
 
-import cats.effect.{IO, Sync, SyncIO}
+import cats.effect.{Blocker, IO, Sync, SyncIO}
 import cats.effect.concurrent.{Ref, Semaphore}
 import cats.implicits._
 import org.scalacheck.Prop.forAll
@@ -609,4 +609,41 @@ class StreamCombinatorsSuite extends Fs2Suite {
     forAll((c: List[Int]) => assert(Stream.foldable(c).compile.to(List) == c))
   }
 
+  property("forall") {
+    forAll { (s: Stream[Pure, Int], n0: Int) =>
+      val n = (n0 % 20).abs + 1
+      val f = (i: Int) => i % n == 0
+      assert(s.forall(f).toList == List(s.toList.forall(f)))
+    }
+  }
+
+  property("fromEither") {
+    forAll { either: Either[Throwable, Int] =>
+      val stream: Stream[Fallible, Int] = Stream.fromEither[Fallible](either)
+      either match {
+        case Left(t)  => assert(stream.toList == Left(t))
+        case Right(i) => assert(stream.toList == Right(List(i)))
+      }
+    }
+  }
+
+  test("fromIterator") {
+    forAllAsync { x: List[Int] =>
+      Stream
+        .fromIterator[IO](x.iterator)
+        .compile
+        .toList
+        .map(it => assert(it == x))
+    }
+  }
+
+  test("fromBlockingIterator") {
+    forAllAsync { x: List[Int] =>
+      Stream
+        .fromBlockingIterator[IO](Blocker.liftExecutionContext(implicitly), x.iterator)
+        .compile
+        .toList
+        .map(it => assert(it == x))
+    }
+  }
 }

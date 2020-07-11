@@ -17,36 +17,6 @@ class StreamSpec extends Fs2Spec {
 
   "Stream" - {
 
-    "forall" in forAll { (s: Stream[Pure, Int], n0: PosInt) =>
-      val n = n0 % 20 + 1
-      val f = (i: Int) => i % n == 0
-      assert(s.forall(f).toList == List(s.toList.forall(f)))
-    }
-
-    "fromEither" in forAll { either: Either[Throwable, Int] =>
-      val stream: Stream[Fallible, Int] = Stream.fromEither[Fallible](either)
-      either match {
-        case Left(t)  => assert(stream.toList == Left(t))
-        case Right(i) => assert(stream.toList == Right(List(i)))
-      }
-    }
-
-    "fromIterator" in forAll { x: List[Int] =>
-      Stream
-        .fromIterator[SyncIO](x.iterator)
-        .compile
-        .toList
-        .asserting(it => assert(it == x))
-    }
-
-    "fromBlockingIterator" in forAll { x: List[Int] =>
-      Stream
-        .fromBlockingIterator[IO](Blocker.liftExecutionContext(implicitly), x.iterator)
-        .compile
-        .toList
-        .asserting(it => assert(it == x))
-    }
-
     "groupAdjacentBy" in forAll { (s: Stream[Pure, Int], n0: PosInt) =>
       val n = n0 % 20 + 1
       val f = (i: Int) => i % n
