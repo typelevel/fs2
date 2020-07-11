@@ -6,9 +6,11 @@ import cats.data.Chain
 import cats.effect.{ExitCase, IO, Resource, Sync, SyncIO}
 import cats.effect.concurrent.{Deferred, Ref}
 import cats.implicits._
+import org.scalacheck.Gen
+import org.scalacheck.Arbitrary.arbitrary
 import org.scalacheck.Prop.forAll
 
-import fs2.concurrent.Queue
+import fs2.concurrent.{Queue, SignallingRef}
 
 class StreamSuite extends Fs2Suite {
 
@@ -446,6 +448,272 @@ class StreamSuite extends Fs2Suite {
           .covary[IO]
           .compile
           .drain
+      }
+    }
+
+    property("repeat") {
+      forAll(
+        Gen.chooseNum(1, 200),
+        Gen.chooseNum(1, 200).flatMap(i => Gen.listOfN(i, arbitrary[Int]))
+      ) { (n: Int, testValues: List[Int]) =>
+        assert(
+          Stream.emits(testValues).repeat.take(n).toList == List
+            .fill(n / testValues.size + 1)(testValues)
+            .flatten
+            .take(n)
+        )
+      }
+    }
+
+    property("repeatN") {
+      forAll(
+        Gen.chooseNum(1, 200),
+        Gen.chooseNum(1, 200).flatMap(i => Gen.listOfN(i, arbitrary[Int]))
+      ) { (n: Int, testValues: List[Int]) =>
+        assert(Stream.emits(testValues).repeatN(n).toList == List.fill(n)(testValues).flatten)
+      }
+    }
+
+    test("resource") {
+      Ref[IO]
+        .of(List.empty[String])
+        .flatMap { st =>
+          def record(s: String): IO[Unit] = st.update(_ :+ s)
+          def mkRes(s: String): Resource[IO, Unit] =
+            Resource.make(record(s"acquire $s"))(_ => record(s"release $s"))
+
+          // We aim to trigger all the possible cases, and make sure all of them
+          // introduce scopes.
+
+          // Allocate
+          val res1 = mkRes("1")
+          // Bind
+          val res2 = mkRes("21") *> mkRes("22")
+          // Suspend
+          val res3 = Resource.suspend(
+            record("suspend").as(mkRes("3"))
+          )
+
+          List(res1, res2, res3)
+            .foldMap(Stream.resource)
+            .evalTap(_ => record("use"))
+            .append(Stream.eval_(record("done")))
+            .compile
+            .drain *> st.get
+        }
+        .map(it =>
+          assert(
+            it == List(
+              "acquire 1",
+              "use",
+              "release 1",
+              "acquire 21",
+              "acquire 22",
+              "use",
+              "release 22",
+              "release 21",
+              "suspend",
+              "acquire 3",
+              "use",
+              "release 3",
+              "done"
+            )
+          )
+        )
+    }
+
+    test("resourceWeak") {
+      Ref[IO]
+        .of(List.empty[String])
+        .flatMap { st =>
+          def record(s: String): IO[Unit] = st.update(_ :+ s)
+          def mkRes(s: String): Resource[IO, Unit] =
+            Resource.make(record(s"acquire $s"))(_ => record(s"release $s"))
+
+          // We aim to trigger all the possible cases, and make sure none of them
+          // introduce scopes.
+
+          // Allocate
+          val res1 = mkRes("1")
+          // Bind
+          val res2 = mkRes("21") *> mkRes("22")
+          // Suspend
+          val res3 = Resource.suspend(
+            record("suspend").as(mkRes("3"))
+          )
+
+          List(res1, res2, res3)
+            .foldMap(Stream.resourceWeak)
+            .evalTap(_ => record("use"))
+            .append(Stream.eval_(record("done")))
+            .compile
+            .drain *> st.get
+        }
+        .map(it =>
+          assert(
+            it == List(
+              "acquire 1",
+              "use",
+              "acquire 21",
+              "acquire 22",
+              "use",
+              "suspend",
+              "acquire 3",
+              "use",
+              "done",
+              "release 3",
+              "release 22",
+              "release 21",
+              "release 1"
+            )
+          )
+        )
+    }
+  }
+
+  group("resource safety") {
+    test("1") {
+      forAllAsync { (s1: Stream[Pure, Int]) =>
+        Counter[IO].flatMap { counter =>
+          val x = Stream.bracket(counter.increment)(_ => counter.decrement) >> s1
+          val y = Stream.raiseError[IO](new Err)
+          x.merge(y)
+            .attempt
+            .append(y.merge(x).attempt)
+            .compile
+            .drain
+            .flatMap(_ => counter.get)
+            .map(it => assert(it == 0L))
+        }
+      }
+    }
+
+    test("2a") {
+      Counter[IO].flatMap { counter =>
+        val s = Stream.raiseError[IO](new Err)
+        val b = Stream.bracket(counter.increment)(_ => counter.decrement) >> s
+        // subtle test, get different scenarios depending on interleaving:
+        // `s` completes with failure before the resource is acquired by `b`
+        // `b` has just caught inner error when outer `s` fails
+        // `b` fully completes before outer `s` fails
+        b.merge(s)
+          .compile
+          .drain
+          .attempt
+          .flatMap(_ => counter.get)
+          .map(it => assert(it == 0L))
+          .replicateA(25)
+      }
+    }
+
+    test("2b") {
+      forAllAsync { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
+        Counter[IO].flatMap { counter =>
+          val b1 = Stream.bracket(counter.increment)(_ => counter.decrement) >> s1
+          val b2 = Stream.bracket(counter.increment)(_ => counter.decrement) >> s2
+          spuriousFail(b1)
+            .merge(b2)
+            .attempt
+            .append(b1.merge(spuriousFail(b2)).attempt)
+            .append(spuriousFail(b1).merge(spuriousFail(b2)).attempt)
+            .compile
+            .drain
+            .flatMap(_ => counter.get)
+            .map(it => assert(it == 0L))
+        }
+      }
+    }
+
+    test("3".flaky) {
+      // TODO: Sometimes fails with inner == 1 on final assertion
+      forAllAsync { (s: Stream[Pure, Stream[Pure, Int]], n0: Int) =>
+        val n = (n0 % 10).abs + 1
+        Counter[IO].flatMap { outer =>
+          Counter[IO].flatMap { inner =>
+            val s2 = Stream.bracket(outer.increment)(_ => outer.decrement) >> s.map { _ =>
+              spuriousFail(Stream.bracket(inner.increment)(_ => inner.decrement) >> s)
+            }
+            val one = s2.parJoin(n).take(10).attempt
+            val two = s2.parJoin(n).attempt
+            one
+              .append(two)
+              .compile
+              .drain
+              .flatMap(_ => outer.get)
+              .map(it => assert(it == 0L))
+              .flatMap(_ => IO.sleep(50.millis)) // Allow time for inner stream to terminate
+              .flatMap(_ => inner.get)
+              .map(it => assert(it == 0L))
+          }
+        }
+      }
+    }
+
+    test("4") {
+      forAllAsync { (s: Stream[Pure, Int]) =>
+        Counter[IO].flatMap { counter =>
+          val s2 = Stream.bracket(counter.increment)(_ => counter.decrement) >> spuriousFail(
+            s.covary[IO]
+          )
+          val one = s2.prefetch.attempt
+          val two = s2.prefetch.prefetch.attempt
+          val three = s2.prefetch.prefetch.prefetch.attempt
+          one
+            .append(two)
+            .append(three)
+            .compile
+            .drain
+            .flatMap(_ => counter.get)
+            .map(it => assert(it == 0L))
+        }
+      }
+    }
+
+    test("5") {
+      forAllAsync { (s: Stream[Pure, Stream[Pure, Int]]) =>
+        SignallingRef[IO, Boolean](false).flatMap { signal =>
+          Counter[IO].flatMap { counter =>
+            val sleepAndSet = IO.sleep(20.millis) >> signal.set(true)
+            Stream
+              .eval_(sleepAndSet.start)
+              .append(s.map { _ =>
+                Stream
+                  .bracket(counter.increment)(_ => counter.decrement)
+                  .evalMap(_ => IO.never)
+                  .interruptWhen(signal.discrete)
+              })
+              .parJoinUnbounded
+              .compile
+              .drain
+              .flatMap(_ => counter.get)
+              .map(it => assert(it == 0L))
+          }
+        }
+      }
+    }
+
+    test("6") {
+      // simpler version of (5) above which previously failed reliably, checks the case where a
+      // stream is interrupted while in the middle of a resource acquire that is immediately followed
+      // by a step that never completes!
+      SignallingRef[IO, Boolean](false).flatMap { signal =>
+        Counter[IO].flatMap { counter =>
+          val sleepAndSet = IO.sleep(20.millis) >> signal.set(true)
+          Stream
+            .eval_(sleepAndSet.start)
+            .append(Stream(Stream(1)).map { inner =>
+              Stream
+                .bracket(counter.increment >> IO.sleep(2.seconds))(_ => counter.decrement)
+                .flatMap(_ => inner)
+                .evalMap(_ => IO.never)
+                .interruptWhen(signal.discrete)
+            })
+            .parJoinUnbounded
+            .compile
+            .drain
+            .flatMap(_ => counter.get)
+            .map(it => assert(it == 0L))
+        }
       }
     }
   }
