@@ -3,7 +3,7 @@ package concurrent
 
 import cats.effect.IO
 
-class BalanceSuiite extends Fs2Suite {
+class BalanceSuite extends Fs2Suite {
   test("all elements are processed") {
     forAllAsync { (source: Stream[Pure, Int], concurrent0: Int, chunkSize0: Int) =>
       val concurrent = (concurrent0 % 20).abs + 1
