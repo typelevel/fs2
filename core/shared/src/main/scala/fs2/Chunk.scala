@@ -1685,12 +1685,19 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
           // even if the Chunk is very long
           // by construction, this is never called with start == end
           def loop(start: Int, end: Int): F[Chain[B]] =
-            if (start == (end - 1))
-              F.map(applied(start))(Chain.one)
+            if (start >= (end - 2))
+              // Here we are at the leafs of the trees, either a single or a pair
+              if (start == (end - 2))
+                F.map2(applied(start), applied(start + 1)) { (a, b) =>
+                  Chain.one(a).concat(Chain.one(b))
+                }
+              else
+                F.map(applied(start))(Chain.one)
             else {
-              val end1 = start + ((end - start) / 2)
-              val left = loop(start, end1)
-              val right = loop(end1, end)
+              // we have 3 or more nodes left
+              val mid = start + ((end - start) / 2)
+              val left = loop(start, mid)
+              val right = loop(mid, end)
               F.map2(left, right)(_.concat(_))
             }
 
@@ -1719,15 +1726,26 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
           // even if the Chunk is very long
           // by construction, this is never called with start == end
           def loop(start: Int, end: Int): F[Chain[B]] =
-            if (start == (end - 1))
-              F.map(applied(start)) { opt =>
-                if (opt.isEmpty) empty
-                else Chain.one(opt.get)
-              }
+            if (start >= (end - 2))
+              // Here we are at the leafs of the trees, either a single or a pair
+              if (start == (end - 2))
+                F.map2(applied(start), applied(start + 1)) { (a, b) =>
+                  if (a.nonEmpty)
+                    if (b.nonEmpty) Chain.one(a.get).concat(Chain.one(b.get))
+                    else Chain.one(a.get)
+                  else if (b.nonEmpty) Chain.one(b.get)
+                  else empty
+                }
+              else
+                F.map(applied(start)) { opt =>
+                  if (opt.isEmpty) empty
+                  else Chain.one(opt.get)
+                }
             else {
-              val end1 = start + ((end - start) / 2)
-              val left = loop(start, end1)
-              val right = loop(end1, end)
+              // we have 3 or more nodes left
+              val mid = start + ((end - start) / 2)
+              val left = loop(start, mid)
+              val right = loop(mid, end)
               F.map2(left, right)(_.concat(_))
             }
 
