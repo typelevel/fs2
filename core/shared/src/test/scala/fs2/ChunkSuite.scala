@@ -10,7 +10,7 @@ import org.scalacheck.Prop.forAll
 import scala.reflect.ClassTag
 import scala.util.control.NonFatal
 
-class ChunkSpec extends Fs2Suite {
+class ChunkSuite extends Fs2Suite {
   override def scalaCheckTestParameters =
     super.scalaCheckTestParameters
       .withMinSuccessfulTests(if (isJVM) 100 else 25)
