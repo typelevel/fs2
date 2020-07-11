@@ -716,6 +716,42 @@ class StreamSuite extends Fs2Suite {
         }
       }
     }
+
+    group("scope") {
+      test("1") {
+        val c = new java.util.concurrent.atomic.AtomicLong(0)
+        val s1 = Stream.emit("a").covary[IO]
+        val s2 = Stream
+          .bracket(IO { assert(c.incrementAndGet() == 1L); () }) { _ =>
+            IO { c.decrementAndGet(); () }
+          }
+          .flatMap(_ => Stream.emit("b"))
+        (s1.scope ++ s2)
+          .take(2)
+          .scope
+          .repeat
+          .take(4)
+          .merge(Stream.eval_(IO.unit))
+          .compile
+          .drain
+          .map(_ => assert(c.get == 0L))
+      }
+
+      test("2") {
+        Stream
+          .eval(Ref.of[IO, Int](0))
+          .flatMap { ref =>
+            Stream(1).flatMap { _ =>
+              Stream
+                .bracketWeak(ref.update(_ + 1))(_ => ref.update(_ - 1))
+                .flatMap(_ => Stream.eval(ref.get)) ++ Stream.eval(ref.get)
+            }.scope ++ Stream.eval(ref.get)
+          }
+          .compile
+          .toList
+          .map(it => assert(it == List(1, 1, 0)))
+      }
+    }
   }
 
   group("compile") {

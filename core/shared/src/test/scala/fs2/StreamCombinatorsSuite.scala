@@ -1105,4 +1105,80 @@ class StreamCombinatorsSuite extends Fs2Suite {
       )
     }
   }
+
+  test("sleep") {
+    val delay = 200.millis
+    // force a sync up in duration, then measure how long sleep takes
+    val emitAndSleep = Stream(()) ++ Stream.sleep[IO](delay)
+    emitAndSleep
+      .zip(Stream.duration[IO])
+      .drop(1)
+      .map(_._2)
+      .compile
+      .toList
+      .map(result =>
+        assert(result.head >= (delay * 0.95))
+      ) // Allow for sleep starting just before duration measurement
+  }
+
+  property("sliding") {
+    forAll { (s: Stream[Pure, Int], n0: Int) =>
+      val n = (n0 % 20).abs + 1
+      assert(
+        s.sliding(n).toList.map(_.toList) == s.toList
+          .sliding(n)
+          .map(_.toList)
+          .toList
+      )
+    }
+  }
+
+  group("split") {
+    property("1") {
+      forAll { (s: Stream[Pure, Int], n0: Int) =>
+        val n = (n0 % 20).abs + 1
+        val s2 = s
+          .map(x => if (x == Int.MinValue) x + 1 else x)
+          .map(_.abs)
+          .filter(_ != 0)
+        assert(
+          s2.chunkLimit(n)
+            .intersperse(Chunk.singleton(0))
+            .flatMap(Stream.chunk)
+            .split(_ == 0)
+            .map(_.toVector)
+            .filter(_.nonEmpty)
+            .toVector == s2.chunkLimit(n).filter(_.nonEmpty).map(_.toVector).toVector,
+          s"n = $n, s = ${s.toList}, s2 = " + s2.toList
+        )
+      }
+    }
+
+    test("2") {
+      assert(
+        Stream(1, 2, 0, 0, 3, 0, 4).split(_ == 0).toVector.map(_.toVector) == Vector(
+          Vector(1, 2),
+          Vector(),
+          Vector(3),
+          Vector(4)
+        )
+      )
+      assert(
+        Stream(1, 2, 0, 0, 3, 0).split(_ == 0).toVector.map(_.toVector) == Vector(
+          Vector(1, 2),
+          Vector(),
+          Vector(3)
+        )
+      )
+      assert(
+        Stream(1, 2, 0, 0, 3, 0, 0).split(_ == 0).toVector.map(_.toVector) == Vector(
+          Vector(1, 2),
+          Vector(),
+          Vector(3),
+          Vector()
+        )
+      )
+    }
+  }
+
 }
