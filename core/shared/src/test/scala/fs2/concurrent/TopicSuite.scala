@@ -36,7 +36,7 @@ class TopicSuite extends Fs2Suite {
     }
   }
 
-  test("synchronous publish".ignore) {
+  test("synchronous publish".flaky) {
     // TODO I think there's a race condition on the signal in this test
     Topic[IO, Int](-1).flatMap { topic =>
       SignallingRef[IO, Int](0).flatMap { signal =>

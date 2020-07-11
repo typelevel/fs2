@@ -64,8 +64,8 @@ class ChunkSuite extends Fs2Suite {
   ): Unit =
     group(s"$name") {
       implicit val implicitChunkArb: Arbitrary[Chunk[A]] = Arbitrary(genChunk)
-      property("size") { forAll((c: Chunk[A]) => assert(c.size == c.toList.size)) }
-      property("take") { 
+      property("size")(forAll((c: Chunk[A]) => assert(c.size == c.toList.size)))
+      property("take") {
         forAll { (c: Chunk[A], n: Int) =>
           assert(c.take(n).toVector == c.toVector.take(n))
         }
@@ -216,7 +216,9 @@ class ChunkSuite extends Fs2Suite {
   }
 
   test("zipWithIndex andThen toArray") {
-    forAll((chunk: Chunk[Int]) => assert(chunk.zipWithIndex.toList == chunk.toArray.zipWithIndex.toList))
+    forAll((chunk: Chunk[Int]) =>
+      assert(chunk.zipWithIndex.toList == chunk.toArray.zipWithIndex.toList)
+    )
   }
 
   test("Boxed toArray - regression #1745") {

@@ -16,7 +16,7 @@ class TextSuite extends Fs2Suite {
     def utf8Bytes(s: String): Chunk[Byte] = Chunk.bytes(s.getBytes("UTF-8"))
     def utf8String(bs: Chunk[Byte]): String = new String(bs.toArray, "UTF-8")
 
-    def checkChar(c: Char): Unit = {
+    def checkChar(c: Char): Unit =
       (1 to 6).foreach { n =>
         assertEquals(
           Stream
@@ -24,12 +24,12 @@ class TextSuite extends Fs2Suite {
             .chunkLimit(n)
             .flatMap(Stream.chunk)
             .through(utf8Decode)
-            .toList, List(c.toString)
+            .toList,
+          List(c.toString)
         )
       }
-    }
 
-    def checkBytes(is: Int*): Unit = {
+    def checkBytes(is: Int*): Unit =
       (1 to 6).foreach { n =>
         val bytes = Chunk.bytes(is.map(_.toByte).toArray)
         assertEquals(
@@ -38,31 +38,37 @@ class TextSuite extends Fs2Suite {
             .chunkLimit(n)
             .flatMap(Stream.chunk)
             .through(utf8Decode)
-            .toList, List(utf8String(bytes))
+            .toList,
+          List(utf8String(bytes))
         )
       }
-    }
 
     def checkBytes2(is: Int*): Unit = {
       val bytes = Chunk.bytes(is.map(_.toByte).toArray)
-      assertEquals(Stream(bytes).flatMap(Stream.chunk).through(utf8Decode).toList.mkString, utf8String(bytes))
+      assertEquals(
+        Stream(bytes).flatMap(Stream.chunk).through(utf8Decode).toList.mkString,
+        utf8String(bytes)
+      )
     }
 
-    property("all chars roundtrip") { forAll((c: Char) => checkChar(c)) }
+    property("all chars roundtrip")(forAll((c: Char) => checkChar(c)))
 
     test("1 byte char")(checkBytes(0x24)) // $
-    test("2 byte char")(checkBytes(0xC2, 0xA2)) // ¢
-    test("3 byte char")(checkBytes(0xE2, 0x82, 0xAC)) // €
-    test("4 byte char")(checkBytes(0xF0, 0xA4, 0xAD, 0xA2))
+    test("2 byte char")(checkBytes(0xc2, 0xa2)) // ¢
+    test("3 byte char")(checkBytes(0xe2, 0x82, 0xac)) // €
+    test("4 byte char")(checkBytes(0xf0, 0xa4, 0xad, 0xa2))
 
-    test("incomplete 2 byte char")(checkBytes(0xC2))
-    test("incomplete 3 byte char")(checkBytes(0xE2, 0x82))
-    test("incomplete 4 byte char")(checkBytes(0xF0, 0xA4, 0xAD))
+    test("incomplete 2 byte char")(checkBytes(0xc2))
+    test("incomplete 3 byte char")(checkBytes(0xe2, 0x82))
+    test("incomplete 4 byte char")(checkBytes(0xf0, 0xa4, 0xad))
 
     property("preserves complete inputs") {
       forAll { (l0: List[String]) =>
         val l = l0.filter(_.nonEmpty)
-        assertEquals(Stream(l: _*).map(utf8Bytes).flatMap(Stream.chunk).through(utf8Decode).toList, l)
+        assertEquals(
+          Stream(l: _*).map(utf8Bytes).flatMap(Stream.chunk).through(utf8Decode).toList,
+          l
+        )
         assertEquals(Stream(l0: _*).map(utf8Bytes).through(utf8DecodeC).toList, l0)
       }
     }
@@ -70,7 +76,8 @@ class TextSuite extends Fs2Suite {
     property("utf8Encode andThen utf8Decode = id") {
       forAll { (s: String) =>
         assertEquals(Stream(s).through(utf8EncodeC).through(utf8DecodeC).toList, List(s))
-        if (s.nonEmpty) assertEquals(Stream(s).through(utf8Encode).through(utf8Decode).toList, List(s))
+        if (s.nonEmpty)
+          assertEquals(Stream(s).through(utf8Encode).through(utf8Decode).toList, List(s))
       }
     }
 
@@ -83,7 +90,8 @@ class TextSuite extends Fs2Suite {
             .flatMap(Stream.chunk)
             .through(utf8Decode)
             .filter(_.nonEmpty)
-            .toList, s.grouped(1).toList
+            .toList,
+          s.grouped(1).toList
         )
       }
     }
@@ -97,7 +105,8 @@ class TextSuite extends Fs2Suite {
             .flatMap(Stream.chunk)
             .through(utf8Decode)
             .toList
-            .mkString, s
+            .mkString,
+          s
         )
       }
     }
@@ -237,9 +246,9 @@ class TextSuite extends Fs2Suite {
       forAll { (lines0: Stream[Pure, String]) =>
         val lines = lines0.map(escapeCrLf)
         val s = lines.intersperse("\r\n").toList.mkString.grouped(3).toList
-        if (s.isEmpty) {
+        if (s.isEmpty)
           assertEquals(Stream.emits(s).through(text.lines).toList, Nil)
-        } else {
+        else {
           assertEquals(Stream.emits(s).through(text.lines).toList, lines.toList)
           assertEquals(Stream.emits(s).unchunk.through(text.lines).toList, lines.toList)
         }
@@ -251,7 +260,7 @@ class TextSuite extends Fs2Suite {
     forAll { (bs: List[Array[Byte]]) =>
       assertEquals(
         bs.map(Chunk.bytes).foldMap(Stream.chunk).through(text.base64Encode).compile.string,
-          bs.map(ByteVector.view(_)).foldLeft(ByteVector.empty)(_ ++ _).toBase64
+        bs.map(ByteVector.view(_)).foldLeft(ByteVector.empty)(_ ++ _).toBase64
       )
     }
   }
@@ -278,7 +287,7 @@ class TextSuite extends Fs2Suite {
             .through(text.base64Decode[Fallible])
             .compile
             .to(ByteVector),
-              Right(bs.map(ByteVector.view(_)).foldLeft(ByteVector.empty)(_ ++ _))
+          Right(bs.map(ByteVector.view(_)).foldLeft(ByteVector.empty)(_ ++ _))
         )
       }
     }
@@ -292,14 +301,14 @@ class TextSuite extends Fs2Suite {
           .map(_.leftMap(_.getMessage))
           .compile
           .to(List),
-            Right(
-              List(
-                Right(Chunk.byteVector(hex"00deadbeef00")),
-                Left(
-                  "Malformed padding - final quantum may optionally be padded with one or two padding characters such that the quantum is completed"
-                )
-              )
+        Right(
+          List(
+            Right(Chunk.byteVector(hex"00deadbeef00")),
+            Left(
+              "Malformed padding - final quantum may optionally be padded with one or two padding characters such that the quantum is completed"
             )
+          )
+        )
       )
     }
 
@@ -313,7 +322,7 @@ class TextSuite extends Fs2Suite {
             .through(text.base64Decode[Fallible])
             .compile
             .to(ByteVector),
-              Right(bs.map(ByteVector.view(_)).foldLeft(ByteVector.empty)(_ ++ _))
+          Right(bs.map(ByteVector.view(_)).foldLeft(ByteVector.empty)(_ ++ _))
         )
       }
     }
@@ -335,5 +344,5 @@ class TextSuite extends Fs2Suite {
       assertEquals(res, Right(decoded))
     }
   }
-  
+
 }

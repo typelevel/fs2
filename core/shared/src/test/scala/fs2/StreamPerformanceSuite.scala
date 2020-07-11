@@ -10,7 +10,8 @@ class StreamPerformanceSuite extends Fs2Suite {
     Ns.foreach { N =>
       test(N.toString) {
         assertEquals(
-          (1 until N).map(Stream.emit).foldLeft(Stream.emit(0))(_ ++ _).toVector, Vector
+          (1 until N).map(Stream.emit).foldLeft(Stream.emit(0))(_ ++ _).toVector,
+          Vector
             .range(0, N)
         )
       }
@@ -24,7 +25,8 @@ class StreamPerformanceSuite extends Fs2Suite {
           (0 until N)
             .map(Stream.emit)
             .foldRight(Stream.empty: Stream[Pure, Int])(_ ++ _)
-            .toVector, Vector.range(0, N)
+            .toVector,
+          Vector.range(0, N)
         )
       }
     }
@@ -37,7 +39,8 @@ class StreamPerformanceSuite extends Fs2Suite {
           (1 until N)
             .map(Stream.emit)
             .foldLeft(Stream.emit(0))((acc, a) => acc.flatMap(_ => a))
-            .toVector, Vector(N - 1)
+            .toVector,
+          Vector(N - 1)
         )
       }
     }
@@ -50,7 +53,8 @@ class StreamPerformanceSuite extends Fs2Suite {
           (1 until N)
             .map(Stream.emit)
             .foldLeft(Stream.emit(0))((acc, _) => acc.map(_ + 1))
-            .toVector, Vector(N - 1)
+            .toVector,
+          Vector(N - 1)
         )
       }
     }
@@ -67,7 +71,8 @@ class StreamPerformanceSuite extends Fs2Suite {
             )
             .compile
             .toVector
-            .unsafeRunSync, Vector(N - 1)
+            .unsafeRunSync,
+          Vector(N - 1)
         )
       }
     }
@@ -81,7 +86,8 @@ class StreamPerformanceSuite extends Fs2Suite {
             .map(Stream.emit)
             .reverse
             .foldLeft(Stream.emit(0))((acc, a) => a.flatMap(_ => acc))
-            .toVector, Vector(0)
+            .toVector,
+          Vector(0)
         )
       }
     }
@@ -99,7 +105,8 @@ class StreamPerformanceSuite extends Fs2Suite {
             )
             .compile
             .toVector
-            .unsafeRunSync, Vector(0)
+            .unsafeRunSync,
+          Vector(0)
         )
       }
     }
@@ -114,7 +121,8 @@ class StreamPerformanceSuite extends Fs2Suite {
             .foldLeft(Stream.emit(0) ++ Stream.emit(1) ++ Stream.emit(2))((acc, a) =>
               acc.flatMap(_ => a)
             )
-            .toVector, Vector(N - 1, N - 1, N - 1)
+            .toVector,
+          Vector(N - 1, N - 1, N - 1)
         )
       }
     }
@@ -130,7 +138,8 @@ class StreamPerformanceSuite extends Fs2Suite {
             .foldLeft(Stream.emit(0) ++ Stream.emit(1) ++ Stream.emit(2))((acc, a) =>
               a.flatMap(_ => acc)
             )
-            .toVector, Vector(0, 1, 2)
+            .toVector,
+          Vector(0, 1, 2)
         )
       }
     }
@@ -148,7 +157,8 @@ class StreamPerformanceSuite extends Fs2Suite {
                 case Some((hd, tl)) => Pull.output1(hd).as(Some(tl))
               }
             }
-            .toVector, Vector.range(0, N)
+            .toVector,
+          Vector.range(0, N)
         )
       }
     }
@@ -169,8 +179,7 @@ class StreamPerformanceSuite extends Fs2Suite {
                   .foldLeft(Stream.raiseError[IO](new Err): Stream[IO, Int]) { (acc, hd) =>
                     acc.handleErrorWith(_ => hd)
                   }
-              s.compile.toList
-                .attempt
+              s.compile.toList.attempt
                 .flatMap(_ => (ok.get, open.get).tupled)
                 .map {
                   case (ok, open) =>
@@ -196,8 +205,7 @@ class StreamPerformanceSuite extends Fs2Suite {
                 .foldLeft(Stream.raiseError[IO](new Err): Stream[IO, Int]) { (tl, hd) =>
                   hd.handleErrorWith(_ => tl)
                 }
-              s.compile.toList
-                .attempt
+              s.compile.toList.attempt
                 .flatMap(_ => (ok.get, open.get).tupled)
                 .map {
                   case (ok, open) =>
@@ -215,7 +223,8 @@ class StreamPerformanceSuite extends Fs2Suite {
     Ns.foreach { N =>
       test(N.toString) {
         assertEquals(
-          Stream.emits(Vector.range(0, N)).flatMap(i => Stream.emit(i)).toVector, Vector
+          Stream.emits(Vector.range(0, N)).flatMap(i => Stream.emit(i)).toVector,
+          Vector
             .range(0, N)
         )
       }
@@ -231,7 +240,8 @@ class StreamPerformanceSuite extends Fs2Suite {
             .map(i => i)
             .chunks
             .flatMap(Stream.chunk(_))
-            .toVector, Vector.range(0, N)
+            .toVector,
+          Vector.range(0, N)
         )
       }
     }

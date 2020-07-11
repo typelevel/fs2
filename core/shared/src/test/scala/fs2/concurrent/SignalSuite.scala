@@ -7,59 +7,58 @@ import cats.implicits._
 // import cats.laws.discipline.{ApplicativeTests, FunctorTests}
 import scala.concurrent.duration._
 
-class SignalSpec extends Fs2Spec {
-  implicit override val generatorDrivenConfig: PropertyCheckConfiguration =
-    PropertyCheckConfiguration(minSuccessful = 10, workers = 1)
+class SignalSuite extends Fs2Suite {
+  override def scalaCheckTestParameters =
+    super.scalaCheckTestParameters
+      .withMinSuccessfulTests(10)
+      .withWorkers(1)
 
   def waitFor(predicate: IO[Boolean]): IO[Unit] =
     predicate.flatMap(passed => if (passed) IO.unit else IO.sleep(5.millis) >> waitFor(predicate))
 
-  "SignallingRef" - {
-    "get/set/discrete" in {
-      forAll { (vs0: List[Long]) =>
-        val vs = vs0.map(n => if (n == 0) 1 else n)
-        SignallingRef[IO, Long](0L).flatMap { s =>
-          Ref.of[IO, Long](0).flatMap { r =>
-            val publisher = s.discrete.evalMap(r.set)
-            val consumer = vs.traverse { v =>
-              s.set(v) >> waitFor(s.get.map(_ == v)) >> waitFor(
-                r.get.flatMap(rval =>
-                  if (rval == 0) IO.pure(true)
-                  else waitFor(r.get.map(_ == v)).as(true)
-                )
+  test("get/set/discrete") {
+    forAllAsync { (vs0: List[Long]) =>
+      val vs = vs0.map(n => if (n == 0) 1 else n)
+      SignallingRef[IO, Long](0L).flatMap { s =>
+        Ref.of[IO, Long](0).flatMap { r =>
+          val publisher = s.discrete.evalMap(r.set)
+          val consumer = vs.traverse { v =>
+            s.set(v) >> waitFor(s.get.map(_ == v)) >> waitFor(
+              r.get.flatMap(rval =>
+                if (rval == 0) IO.pure(true)
+                else waitFor(r.get.map(_ == v)).as(true)
               )
-            }
-            Stream.eval(consumer).concurrently(publisher).compile.drain.assertNoException
+            )
           }
+          Stream.eval(consumer).concurrently(publisher).compile.drain
         }
       }
     }
+  }
 
-    "discrete" in {
-      // verifies that discrete always receives the most recent value, even when updates occur rapidly
-      forAll { (v0: Long, vsTl: List[Long]) =>
-        val vs = v0 :: vsTl
-        SignallingRef[IO, Long](0L).flatMap { s =>
-          Ref.of[IO, Long](0L).flatMap { r =>
-            val publisherR = s.discrete.evalMap(i => IO.sleep(10.millis) >> r.set(i))
-            val publisherS = vs.traverse(s.set)
-            val last = vs.last
-            val consumer = waitFor(r.get.map(_ == last))
-            Stream
-              .eval(consumer)
-              .concurrently(publisherR)
-              .concurrently(Stream.eval(publisherS))
-              .compile
-              .drain
-              .assertNoException
-          }
+  test("discrete") {
+    // verifies that discrete always receives the most recent value, even when updates occur rapidly
+    forAllAsync { (v0: Long, vsTl: List[Long]) =>
+      val vs = v0 :: vsTl
+      SignallingRef[IO, Long](0L).flatMap { s =>
+        Ref.of[IO, Long](0L).flatMap { r =>
+          val publisherR = s.discrete.evalMap(i => IO.sleep(10.millis) >> r.set(i))
+          val publisherS = vs.traverse(s.set)
+          val last = vs.last
+          val consumer = waitFor(r.get.map(_ == last))
+          Stream
+            .eval(consumer)
+            .concurrently(publisherR)
+            .concurrently(Stream.eval(publisherS))
+            .compile
+            .drain
         }
       }
     }
+  }
 
-    "holdOption" in {
-      Stream.range(1, 10).covary[IO].holdOption.compile.drain.assertNoException
-    }
+  test("holdOption") {
+    Stream.range(1, 10).covary[IO].holdOption.compile.drain
   }
 
   // TODO - Port laws tests once we have a compatible version of cats-laws
