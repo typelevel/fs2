@@ -518,4 +518,53 @@ class StreamCombinatorsSuite extends Fs2Suite {
     }
   }
 
+  property("exists") {
+    forAll { (s: Stream[Pure, Int], n0: Int) =>
+      val n = (n0 % 20).abs + 1
+      val f = (i: Int) => i % n == 0
+      assert(s.exists(f).toList == List(s.toList.exists(f)))
+    }
+  }
+
+  group("filter") {
+    property("1") {
+      forAll { (s: Stream[Pure, Int], n0: Int) =>
+        val n = (n0 % 20).abs + 1
+        val predicate = (i: Int) => i % n == 0
+        assert(s.filter(predicate).toList == s.toList.filter(predicate))
+      }
+    }
+
+    property("2") {
+      forAll { (s: Stream[Pure, Double]) =>
+        val predicate = (i: Double) => i - i.floor < 0.5
+        val s2 = s.mapChunks(c => Chunk.doubles(c.toArray))
+        assert(s2.filter(predicate).toList == s2.toList.filter(predicate))
+      }
+    }
+
+    property("3") {
+      forAll { (s: Stream[Pure, Byte]) =>
+        val predicate = (b: Byte) => b < 0
+        val s2 = s.mapChunks(c => Chunk.bytes(c.toArray))
+        assert(s2.filter(predicate).toList == s2.toList.filter(predicate))
+      }
+    }
+
+    property("4") {
+      forAll { (s: Stream[Pure, Boolean]) =>
+        val predicate = (b: Boolean) => !b
+        val s2 = s.mapChunks(c => Chunk.booleans(c.toArray))
+        assert(s2.filter(predicate).toList == s2.toList.filter(predicate))
+      }
+    }
+  }
+
+  property("find") {
+    forAll { (s: Stream[Pure, Int], i: Int) =>
+      val predicate = (item: Int) => item < i
+      assert(s.find(predicate).toList == s.toList.find(predicate).toList)
+    }
+  }
+
 }

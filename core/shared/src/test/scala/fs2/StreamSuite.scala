@@ -125,6 +125,224 @@ class StreamSuite extends Fs2Suite {
       assertEquals(Stream.evals(SyncIO(Option(42))).compile.toList.unsafeRunSync, List(42))
     }
 
+    property("flatMap") {
+      forAll { (s: Stream[Pure, Stream[Pure, Int]]) =>
+        assert(s.flatMap(inner => inner).toList == s.toList.flatMap(inner => inner.toList))
+      }
+    }
+
+    group("handleErrorWith") {
+      property("1") {
+        forAll { (s: Stream[Pure, Int]) =>
+          val s2 = s.covary[Fallible] ++ Stream.raiseError[Fallible](new Err)
+          assert(s2.handleErrorWith(_ => Stream.empty).toList == Right(s.toList))
+        }
+      }
+
+      test("2") {
+        val result = Stream.raiseError[Fallible](new Err).handleErrorWith(_ => Stream(1)).toList
+        assert(result == Right(List(1)))
+      }
+
+      test("3") {
+        val result = Stream(1)
+          .append(Stream.raiseError[Fallible](new Err))
+          .handleErrorWith(_ => Stream(1))
+          .toList
+        assert(result == Right(List(1, 1)))
+      }
+
+      test("4 - error in eval") {
+        Stream
+          .eval(SyncIO(throw new Err))
+          .map(Right(_): Either[Throwable, Int])
+          .handleErrorWith(t => Stream.emit(Left(t)).covary[SyncIO])
+          .take(1)
+          .compile
+          .toVector
+          .map(it => assert(it.head.swap.toOption.get.isInstanceOf[Err]))
+      }
+
+      test("5") {
+        Stream
+          .raiseError[SyncIO](new Err)
+          .handleErrorWith(e => Stream(e))
+          .flatMap(Stream.emit)
+          .compile
+          .toVector
+          .map { v =>
+            assert(v.size == 1)
+            assert(v.head.isInstanceOf[Err])
+          }
+      }
+
+      test("6") {
+        Stream
+          .raiseError[IO](new Err)
+          .handleErrorWith(Stream.emit)
+          .map(identity)
+          .compile
+          .toVector
+          .map { v =>
+            assert(v.size == 1)
+            assert(v.head.isInstanceOf[Err])
+          }
+      }
+
+      test("7 - parJoin") {
+        Stream(Stream.emit(1).covary[IO], Stream.raiseError[IO](new Err), Stream.emit(2).covary[IO])
+          .covary[IO]
+          .parJoin(4)
+          .attempt
+          .compile
+          .toVector
+          .map(it =>
+            assert(
+              it.collect { case Left(t) => t }
+                .exists(_.isInstanceOf[Err])
+            )
+          )
+      }
+
+      test("8") {
+        SyncIO.suspend {
+          var i = 0
+          Pull
+            .pure(1)
+            .covary[SyncIO]
+            .handleErrorWith { _ => i += 1; Pull.pure(2) }
+            .flatMap(_ => Pull.output1(i) >> Pull.raiseError[SyncIO](new Err))
+            .stream
+            .compile
+            .drain
+            .assertThrows[Err]
+            .map(_ => assert(i == 0))
+        }
+      }
+
+      test("9") {
+        SyncIO.suspend {
+          var i = 0
+          Pull
+            .eval(SyncIO(1))
+            .handleErrorWith { _ => i += 1; Pull.pure(2) }
+            .flatMap(_ => Pull.output1(i) >> Pull.raiseError[SyncIO](new Err))
+            .stream
+            .compile
+            .drain
+            .assertThrows[Err]
+            .map(_ => assert(i == 0))
+        }
+      }
+
+      test("10") {
+        SyncIO.suspend {
+          var i = 0
+          Pull
+            .eval(SyncIO(1))
+            .flatMap { x =>
+              Pull
+                .pure(x)
+                .handleErrorWith { _ => i += 1; Pull.pure(2) }
+                .flatMap(_ => Pull.output1(i) >> Pull.raiseError[SyncIO](new Err))
+            }
+            .stream
+            .compile
+            .drain
+            .assertThrows[Err]
+            .map(_ => assert(i == 0))
+        }
+      }
+
+      test("11") {
+        SyncIO.suspend {
+          var i = 0
+          Pull
+            .eval(SyncIO(???))
+            .handleErrorWith(_ => Pull.pure(i += 1))
+            .flatMap(_ => Pull.output1(i))
+            .stream
+            .compile
+            .drain
+            .map(_ => assert(i == 1))
+        }
+      }
+
+      test("12") {
+        SyncIO.suspend {
+          var i = 0
+          Stream
+            .bracket(SyncIO(1))(_ => SyncIO(i += 1))
+            .flatMap(_ => Stream.eval(SyncIO(???)))
+            .compile
+            .drain
+            .assertThrows[NotImplementedError]
+            .map(_ => assert(i == 1))
+        }
+      }
+
+      test("13") {
+        SyncIO.suspend {
+          var i = 0
+          Stream
+            .range(0, 10)
+            .covary[SyncIO]
+            .append(Stream.raiseError[SyncIO](new Err))
+            .handleErrorWith { _ => i += 1; Stream.empty }
+            .compile
+            .drain
+            .map(_ => assert(i == 1))
+        }
+      }
+
+      test("14") {
+        Stream
+          .range(0, 3)
+          .covary[SyncIO]
+          .append(Stream.raiseError[SyncIO](new Err))
+          .unchunk
+          .pull
+          .echo
+          .stream
+          .compile
+          .drain
+          .assertThrows[Err]
+      }
+
+      test("15") {
+        SyncIO.suspend {
+          var i = 0
+          (Stream
+            .range(0, 3)
+            .covary[SyncIO] ++ Stream.raiseError[SyncIO](new Err)).unchunk.pull.echo
+            .handleErrorWith { _ => i += 1; Pull.done }
+            .stream
+            .compile
+            .drain
+            .map(_ => assert(i == 1))
+        }
+      }
+
+      test("16 - parJoin CompositeFailure") {
+        Stream(
+          Stream.emit(1).covary[IO],
+          Stream.raiseError[IO](new Err),
+          Stream.raiseError[IO](new Err),
+          Stream.raiseError[IO](new Err),
+          Stream.emit(2).covary[IO]
+        ).covary[IO]
+          .parJoin(10)
+          .compile
+          .toVector
+          .attempt
+          .map({
+            case Left(err: CompositeFailure) =>
+              assert(err.all.toList.count(_.isInstanceOf[Err]) == 3)
+            case Left(err)    => fail("Expected Left[CompositeFailure]", err)
+            case Right(value) => fail(s"Expected Left[CompositeFailure] got Right($value)")
+          })
+      }
+    }
   }
 
   group("cancelation of compiled streams") {

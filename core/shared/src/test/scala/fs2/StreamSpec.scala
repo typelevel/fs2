@@ -17,47 +17,6 @@ class StreamSpec extends Fs2Spec {
 
   "Stream" - {
 
-    "exists" in forAll { (s: Stream[Pure, Int], n0: PosInt) =>
-      val n = n0 % 20 + 1
-      val f = (i: Int) => i % n == 0
-      assert(s.exists(f).toList == List(s.toList.exists(f)))
-    }
-
-    "filter" - {
-      "1" in forAll { (s: Stream[Pure, Int], n0: PosInt) =>
-        val n = n0 % 20 + 1
-        val predicate = (i: Int) => i % n == 0
-        assert(s.filter(predicate).toList == s.toList.filter(predicate))
-      }
-
-      "2" in forAll { (s: Stream[Pure, Double]) =>
-        val predicate = (i: Double) => i - i.floor < 0.5
-        val s2 = s.mapChunks(c => Chunk.doubles(c.toArray))
-        assert(s2.filter(predicate).toList == s2.toList.filter(predicate))
-      }
-
-      "3" in forAll { (s: Stream[Pure, Byte]) =>
-        val predicate = (b: Byte) => b < 0
-        val s2 = s.mapChunks(c => Chunk.bytes(c.toArray))
-        assert(s2.filter(predicate).toList == s2.toList.filter(predicate))
-      }
-
-      "4" in forAll { (s: Stream[Pure, Boolean]) =>
-        val predicate = (b: Boolean) => !b
-        val s2 = s.mapChunks(c => Chunk.booleans(c.toArray))
-        assert(s2.filter(predicate).toList == s2.toList.filter(predicate))
-      }
-    }
-
-    "find" in forAll { (s: Stream[Pure, Int], i: Int) =>
-      val predicate = (item: Int) => item < i
-      assert(s.find(predicate).toList == s.toList.find(predicate).toList)
-    }
-
-    "flatMap" in forAll { (s: Stream[Pure, Stream[Pure, Int]]) =>
-      assert(s.flatMap(inner => inner).toList == s.toList.flatMap(inner => inner.toList))
-    }
-
     "fold" - {
       "1" in forAll { (s: Stream[Pure, Int], n: Int) =>
         val f = (a: Int, b: Int) => a + b
