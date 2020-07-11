@@ -1,4 +1,3 @@
-
 //     "switchMap" - {
 //       "flatMap equivalence when switching never occurs" in forAll { s: Stream[Pure, Int] =>
 //         val expected = s.toList

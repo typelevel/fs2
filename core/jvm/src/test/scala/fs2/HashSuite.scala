@@ -4,10 +4,11 @@ import cats.effect.IO
 import cats.implicits._
 import java.security.MessageDigest
 import org.scalacheck.Gen
+import org.scalacheck.Prop.forAll
 
 import hash._
 
-class HashSpec extends Fs2Spec {
+class HashSuite extends Fs2Suite {
   def digest(algo: String, str: String): List[Byte] =
     MessageDigest.getInstance(algo).digest(str.getBytes).toList
 
@@ -26,29 +27,31 @@ class HashSpec extends Fs2Spec {
     assert(s.through(h).toList == digest(algo, str))
   }
 
-  "digests" - {
-    "md2" in forAll((s: String) => checkDigest(md2, "MD2", s))
-    "md5" in forAll((s: String) => checkDigest(md5, "MD5", s))
-    "sha1" in forAll((s: String) => checkDigest(sha1, "SHA-1", s))
-    "sha256" in forAll((s: String) => checkDigest(sha256, "SHA-256", s))
-    "sha384" in forAll((s: String) => checkDigest(sha384, "SHA-384", s))
-    "sha512" in forAll((s: String) => checkDigest(sha512, "SHA-512", s))
+  group("digests") {
+    test("md2")(forAll((s: String) => checkDigest(md2, "MD2", s)))
+    test("md5")(forAll((s: String) => checkDigest(md5, "MD5", s)))
+    test("sha1")(forAll((s: String) => checkDigest(sha1, "SHA-1", s)))
+    test("sha256")(forAll((s: String) => checkDigest(sha256, "SHA-256", s)))
+    test("sha384")(forAll((s: String) => checkDigest(sha384, "SHA-384", s)))
+    test("sha512")(forAll((s: String) => checkDigest(sha512, "SHA-512", s)))
   }
 
-  "empty input" in {
+  test("empty input") {
     assert(Stream.empty.through(sha1).toList.size == 20)
   }
 
-  "zero or one output" in forAll { (lb: List[Array[Byte]]) =>
-    val size = lb
-      .foldLeft(Stream.empty.covaryOutput[Byte])((acc, b) => acc ++ Stream.chunk(Chunk.bytes(b)))
-      .through(sha1)
-      .toList
-      .size
-    assert(size == 20)
+  test("zero or one output") {
+    forAll { (lb: List[Array[Byte]]) =>
+      val size = lb
+        .foldLeft(Stream.empty.covaryOutput[Byte])((acc, b) => acc ++ Stream.chunk(Chunk.bytes(b)))
+        .through(sha1)
+        .toList
+        .size
+      assert(size == 20)
+    }
   }
 
-  "thread-safety" in {
+  test("thread-safety") {
     val s = Stream
       .range(1, 100)
       .covary[IO]
@@ -57,7 +60,7 @@ class HashSpec extends Fs2Spec {
     (for {
       once <- s.compile.toVector
       oneHundred <- Vector.fill(100)(s.compile.toVector).parSequence
-    } yield (once, oneHundred)).asserting {
+    } yield (once, oneHundred)).map {
       case (once, oneHundred) => assert(oneHundred == Vector.fill(100)(once))
     }
   }
