@@ -1,6 +1,7 @@
 package fs2
 
 import scala.concurrent.duration._
+import scala.concurrent.ExecutionContext
 
 import cats.effect.{ContextShift, IO, Timer}
 import cats.effect.laws.util.TestContext
@@ -198,7 +199,7 @@ class StreamZipSuite extends Fs2Suite {
         val contextShiftIO = ()
         val timerIO = ()
         val (_, _) = (contextShiftIO, timerIO)
-        implicit val env: TestContext = TestContext()
+        val env: TestContext = TestContext()
         implicit val ctx: ContextShift[IO] = env.contextShift[IO](IO.ioEffect)
         implicit val timer: Timer[IO] = env.timer[IO]
 
@@ -240,6 +241,7 @@ class StreamZipSuite extends Fs2Suite {
         }
 
         env.tick(1.second)
+        implicit val ec: ExecutionContext = executionContext
         result.map(r => assertEquals(r, snapshots.last._3))
       }
   }
