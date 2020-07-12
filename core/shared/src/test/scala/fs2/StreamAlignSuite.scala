@@ -1,9 +1,6 @@
 package fs2
 
-import scala.concurrent.duration._
-
 import cats.data.Ior
-import cats.effect.IO
 import cats.implicits._
 import org.scalacheck.Prop.forAll
 

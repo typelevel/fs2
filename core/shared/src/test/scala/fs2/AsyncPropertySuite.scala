@@ -3,7 +3,8 @@ package fs2
 import scala.concurrent.Future
 
 import cats.data.State
-import cats.effect.IO
+import cats.effect.Effect
+import cats.effect.implicits._
 import cats.implicits._
 
 import munit.{Location, ScalaCheckSuite}
@@ -29,25 +30,26 @@ trait AsyncPropertySupport extends ScalaCheckSuite {
     State(s => go(Nil, scalaCheckTestParameters.minSuccessfulTests, s))
   }
 
-  private def reportPropertyFailure(f: IO[Unit], seed: Seed, describe: => String)(implicit
-      loc: Location
-  ): IO[Unit] =
+  private def reportPropertyFailure[F[_]](f: F[Unit], seed: Seed, describe: => String)(implicit
+      F: Effect[F], loc: Location
+  ): F[Unit] =
     f.handleErrorWith { t =>
       fail(s"Property failed with seed ${seed.toBase64} and params: " + describe, t)
     }
 
-  def forAllAsync[A](f: A => IO[Unit])(implicit arbA: Arbitrary[A], loc: Location): Future[Unit] = {
+  def forAllAsync[F[_], A](f: A => F[Unit])(implicit arbA: Arbitrary[A], F: Effect[F], loc: Location): Future[Unit] = {
     val seed = Seed.random()
     samples(arbA.arbitrary)
       .runA(seed)
       .value
       .traverse_(a => reportPropertyFailure(f(a), seed, a.toString))
+      .toIO
       .unsafeToFuture
   }
 
-  def forAllAsync[A, B](
-      f: (A, B) => IO[Unit]
-  )(implicit arbA: Arbitrary[A], arbB: Arbitrary[B], loc: Location): Future[Unit] = {
+  def forAllAsync[F[_], A, B](
+      f: (A, B) => F[Unit]
+  )(implicit arbA: Arbitrary[A], arbB: Arbitrary[B], F: Effect[F], loc: Location): Future[Unit] = {
     val all = for {
       as <- samples(arbA.arbitrary)
       bs <- samples(arbB.arbitrary)
@@ -59,13 +61,15 @@ trait AsyncPropertySupport extends ScalaCheckSuite {
       .traverse_ {
         case (a, b) => reportPropertyFailure(f(a, b), seed, s"($a, $b)")
       }
+      .toIO
       .unsafeToFuture
   }
 
-  def forAllAsync[A, B, C](f: (A, B, C) => IO[Unit])(implicit
+  def forAllAsync[F[_], A, B, C](f: (A, B, C) => F[Unit])(implicit
       arbA: Arbitrary[A],
       arbB: Arbitrary[B],
       arbC: Arbitrary[C],
+      F: Effect[F], 
       loc: Location
   ): Future[Unit] = {
     val all = for {
@@ -80,14 +84,16 @@ trait AsyncPropertySupport extends ScalaCheckSuite {
       .traverse_ {
         case ((a, b), c) => reportPropertyFailure(f(a, b, c), seed, s"($a, $b, $c)")
       }
+      .toIO
       .unsafeToFuture
   }
 
-  def forAllAsync[A, B, C, D](f: (A, B, C, D) => IO[Unit])(implicit
+  def forAllAsync[F[_], A, B, C, D](f: (A, B, C, D) => F[Unit])(implicit
       arbA: Arbitrary[A],
       arbB: Arbitrary[B],
       arbC: Arbitrary[C],
       arbD: Arbitrary[D],
+      F: Effect[F], 
       loc: Location
   ): Future[Unit] = {
     val all = for {
@@ -103,15 +109,17 @@ trait AsyncPropertySupport extends ScalaCheckSuite {
       .traverse_ {
         case (((a, b), c), d) => reportPropertyFailure(f(a, b, c, d), seed, s"($a, $b, $c, $d)")
       }
+      .toIO
       .unsafeToFuture
   }
 
-  def forAllAsync[A, B, C, D, E](f: (A, B, C, D, E) => IO[Unit])(implicit
+  def forAllAsync[F[_], A, B, C, D, E](f: (A, B, C, D, E) => F[Unit])(implicit
       arbA: Arbitrary[A],
       arbB: Arbitrary[B],
       arbC: Arbitrary[C],
       arbD: Arbitrary[D],
       arbE: Arbitrary[E],
+      F: Effect[F], 
       loc: Location
   ): Future[Unit] = {
     val all = for {
@@ -129,6 +137,7 @@ trait AsyncPropertySupport extends ScalaCheckSuite {
         case ((((a, b), c), d), e) =>
           reportPropertyFailure(f(a, b, c, d, e), seed, s"($a, $b, $c, $d, $e)")
       }
+      .toIO
       .unsafeToFuture
   }
 }

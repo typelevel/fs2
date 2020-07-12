@@ -4376,7 +4376,7 @@ object Stream extends StreamLowPriority {
           s: Stream[Pure, O],
           init: () => B
       )(foldChunk: (B, Chunk[O]) => B, finalize: B => C): C =
-        finalize(Compiler.compile(s.covary[IO].free, init())(foldChunk).unsafeRunSync)
+        finalize(Compiler.compile(s.covary[SyncIO].free, init())(foldChunk).unsafeRunSync)
     }
 
     implicit val idInstance: Compiler[Id, Id] = new Compiler[Id, Id] {
@@ -4384,7 +4384,7 @@ object Stream extends StreamLowPriority {
           s: Stream[Id, O],
           init: () => B
       )(foldChunk: (B, Chunk[O]) => B, finalize: B => C): C =
-        finalize(Compiler.compile(s.covaryId[IO].free, init())(foldChunk).unsafeRunSync)
+        finalize(Compiler.compile(s.covaryId[SyncIO].free, init())(foldChunk).unsafeRunSync)
     }
 
     implicit val fallibleInstance: Compiler[Fallible, Either[Throwable, *]] =
@@ -4393,7 +4393,7 @@ object Stream extends StreamLowPriority {
             s: Stream[Fallible, O],
             init: () => B
         )(foldChunk: (B, Chunk[O]) => B, finalize: B => C): Either[Throwable, C] =
-          Compiler.compile(s.lift[IO].free, init())(foldChunk).attempt.unsafeRunSync.map(finalize)
+          Compiler.compile(s.lift[SyncIO].free, init())(foldChunk).attempt.unsafeRunSync.map(finalize)
       }
   }
 

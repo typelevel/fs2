@@ -2,9 +2,11 @@ package fs2
 
 import cats.effect.IO
 import cats.implicits._
-
 class StreamPerformanceSuite extends Fs2Suite {
-  val Ns = List(2, 3, 100, 200, 400, 800, 1600, 3200, 6400, 12800, 25600, 51200, 102400)
+  val Ns = {
+    val all = List(2, 3, 100, 200, 400, 800, 1600, 3200, 6400, 12800, 25600, 51200, 102400)
+    if (isJVM) all else all.take(8)
+  }
 
   group("left-associated ++") {
     Ns.foreach { N =>

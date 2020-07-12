@@ -103,7 +103,7 @@ class StreamSwitchMapSuite extends Fs2Suite {
     }
   }
 
-  test("when primary stream fails, inner stream finalizer run before the primary one".flaky) {
+  test("when primary stream fails, inner stream finalizer run before the primary one".ignore) {
     Stream
       .eval(Ref[IO].of(false))
       .flatMap { verdict =>

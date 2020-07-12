@@ -608,7 +608,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
   }
 
   property("foldable") {
-    forAll((c: List[Int]) => assert(Stream.foldable(c).compile.to(List) == c))
+    forAll((c: List[Int]) => assertEquals(Stream.foldable(c).toList, c))
   }
 
   property("forall") {
@@ -813,7 +813,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
   }
 
   property("iterable") {
-    forAll((c: Set[Int]) => assert(Stream.iterable(c).compile.to(Set) == c))
+    forAll((c: Set[Int]) => assertEquals(Stream.iterable(c).compile.to(Set), c))
   }
 
   test("iterate") {

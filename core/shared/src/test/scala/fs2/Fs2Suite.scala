@@ -19,6 +19,8 @@ abstract class Fs2Suite
       .withMinSuccessfulTests(if (isJVM) 25 else 5)
       .withWorkers(1)
 
+  override def munitFlakyOK = true
+
   protected val testContext =
     FunFixture[TestContext](setup = _ => TestContext(), teardown = _ => ())
 
