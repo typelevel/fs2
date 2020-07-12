@@ -293,7 +293,7 @@ class CompressionSpec extends Fs2Suite {
     }
   }
 
-  test("gzip |> gunzip ~= id (mutually prime chunk sizes, compression larger)".flaky) {
+  test("gzip |> gunzip ~= id (mutually prime chunk sizes, compression larger)") {
     forAllAsync {
       (
           s: String,
@@ -338,7 +338,7 @@ class CompressionSpec extends Fs2Suite {
     }
   }
 
-  test("gzip |> gunzip ~= id (mutually prime chunk sizes, decompression larger)") {
+  test("gzip |> gunzip ~= id (mutually prime chunk sizes, decompression larger)".flaky) {
     forAllAsync {
       (
           s: String,
