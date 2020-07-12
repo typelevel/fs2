@@ -198,7 +198,7 @@ class StreamZipSuite extends Fs2Suite {
         val contextShiftIO = ()
         val timerIO = ()
         val (_, _) = (contextShiftIO, timerIO)
-        val env: TestContext = TestContext()
+        implicit val env: TestContext = TestContext()
         implicit val ctx: ContextShift[IO] = env.contextShift[IO](IO.ioEffect)
         implicit val timer: Timer[IO] = env.timer[IO]
 
