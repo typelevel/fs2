@@ -47,7 +47,12 @@ trait AsyncPropertySupport extends ScalaCheckSuite {
 
   def forAllAsync[F[_], A, B](
       f: (A, B) => F[Unit]
-  )(implicit arbA: Arbitrary[A], arbB: Arbitrary[B], F: ApplicativeError[F, Throwable], loc: Location): F[Unit] = {
+  )(implicit
+      arbA: Arbitrary[A],
+      arbB: Arbitrary[B],
+      F: ApplicativeError[F, Throwable],
+      loc: Location
+  ): F[Unit] = {
     val all = for {
       as <- samples(arbA.arbitrary)
       bs <- samples(arbB.arbitrary)

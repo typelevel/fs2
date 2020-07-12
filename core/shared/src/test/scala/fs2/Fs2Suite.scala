@@ -84,5 +84,8 @@ abstract class Fs2Suite
     new ValueTransform("IO", { case e: IO[_] => e.unsafeToFuture() })
 
   private val munitSyncIOTransform: ValueTransform =
-    new ValueTransform("SyncIO", { case e: SyncIO[_] => Future(e.unsafeRunSync())(executionContext) })
+    new ValueTransform(
+      "SyncIO",
+      { case e: SyncIO[_] => Future(e.unsafeRunSync())(executionContext) }
+    )
 }
