@@ -16,7 +16,7 @@ import fs2.concurrent._
 class MemoryLeakSpec extends FunSuite {
 
   lazy protected implicit val ioContextShift: ContextShift[IO] =
-    IO.contextShift(ExecutionContext.Implicits.global)
+    IO.contextShift(ExecutionContext.global)
   lazy protected implicit val ioTimer: Timer[IO] = IO.timer(ExecutionContext.global)
 
   private def heapUsed: IO[Long] =
