@@ -52,4 +52,22 @@ class ChunkQueueSuite extends Fs2Suite {
       if (cq.size > 1) assert(cq.drop(1).hashCode != cq.hashCode)
     }
   }
+
+  test("startsWith matches List implementation prefixes") {
+    forAll { (chunks: List[Chunk[Int]], items: List[Int]) =>
+      val queue = Chunk.Queue(chunks: _*)
+      val flattened: List[Int] = chunks.flatMap(_.toList)
+      val prefixes = (0 until flattened.size).map(flattened.take(_))
+
+      prefixes.foreach { prefix =>
+        assert(queue.startsWith(prefix))
+      }
+
+      val viaTake = queue.take(items.size).toChunk == Chunk.seq(items)
+      val computed = flattened.startsWith(items)
+      assert(computed == viaTake)
+      // here is another way to express the law:
+      assert(computed == queue.startsWith(items))
+    }
+  }
 }
