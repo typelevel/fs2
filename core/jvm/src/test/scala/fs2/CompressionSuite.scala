@@ -248,7 +248,7 @@ class CompressionSpec extends Fs2Suite {
     } yield assert(first == second)
   }
 
-  test("gzip |> gunzip ~= id") {
+  test("gzip |> gunzip ~= id".flaky) {
     forAllAsync {
       (
           s: String,
