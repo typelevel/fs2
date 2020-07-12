@@ -12,7 +12,7 @@ import org.scalacheck.{Arbitrary, Gen}
 
 import scala.collection.mutable
 
-class CompressionSpec extends Fs2Suite {
+class CompressionSuite extends Fs2Suite {
   def getBytes(s: String): Array[Byte] =
     s.getBytes
 
@@ -248,7 +248,7 @@ class CompressionSpec extends Fs2Suite {
     } yield assert(first == second)
   }
 
-  test("gzip |> gunzip ~= id".flaky) {
+  test("gzip |> gunzip ~= id") {
     forAllAsync {
       (
           s: String,
@@ -284,7 +284,7 @@ class CompressionSpec extends Fs2Suite {
           .flatMap { gunzipResult =>
             assert(gunzipResult.fileName == expectedFileName)
             assert(gunzipResult.comment == expectedComment)
-            if (epochSeconds != 0) assert(gunzipResult.modificationTime == expectedMTime)
+            if (epochSeconds > 0) assert(gunzipResult.modificationTime == expectedMTime)
             gunzipResult.content
           }
           .compile
@@ -293,7 +293,7 @@ class CompressionSpec extends Fs2Suite {
     }
   }
 
-  test("gzip |> gunzip ~= id (mutually prime chunk sizes, compression larger)".flaky) {
+  test("gzip |> gunzip ~= id (mutually prime chunk sizes, compression larger)") {
     forAllAsync {
       (
           s: String,
@@ -329,7 +329,7 @@ class CompressionSpec extends Fs2Suite {
           .flatMap { gunzipResult =>
             assert(gunzipResult.fileName == expectedFileName)
             assert(gunzipResult.comment == expectedComment)
-            if (epochSeconds != 0) assert(gunzipResult.modificationTime == expectedMTime)
+            if (epochSeconds > 0) assert(gunzipResult.modificationTime == expectedMTime)
             gunzipResult.content
           }
           .compile
@@ -338,7 +338,7 @@ class CompressionSpec extends Fs2Suite {
     }
   }
 
-  test("gzip |> gunzip ~= id (mutually prime chunk sizes, decompression larger)".flaky) {
+  test("gzip |> gunzip ~= id (mutually prime chunk sizes, decompression larger)") {
     forAllAsync {
       (
           s: String,
@@ -374,7 +374,7 @@ class CompressionSpec extends Fs2Suite {
           .flatMap { gunzipResult =>
             assert(gunzipResult.fileName == expectedFileName)
             assert(gunzipResult.comment == expectedComment)
-            if (epochSeconds != 0) assert(gunzipResult.modificationTime == expectedMTime)
+            if (epochSeconds > 0) assert(gunzipResult.modificationTime == expectedMTime)
             gunzipResult.content
           }
           .compile
