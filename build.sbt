@@ -78,8 +78,7 @@ lazy val commonSettingsBase = Seq(
     "org.typelevel" %%% "cats-effect-laws" % "2.1.3" % "test",
     "org.scalacheck" %%% "scalacheck" % "1.14.3" % "test",
     "org.scalameta" %%% "munit-scalacheck" % "0.7.9" % "test",
-    "org.scalatest" %%% "scalatest" % "3.3.0-SNAP2" % "test",
-    "org.scalatestplus" %%% "scalacheck-1-14" % "3.2.0.0" % "test"
+    "org.scalatest" %%% "scalatest" % "3.2.0" % "test" // For sbt-doctest
   ),
   testFrameworks += new TestFramework("munit.Framework"),
   scmInfo := Some(
@@ -348,7 +347,7 @@ lazy val reactiveStreams = project
     libraryDependencies ++= Seq(
       "org.reactivestreams" % "reactive-streams" % "1.0.3",
       "org.reactivestreams" % "reactive-streams-tck" % "1.0.3" % "test",
-      "org.scalatestplus" %% "scalatestplus-testng" % "1.0.0-M2" % "test"
+      "org.scalatestplus" %% "testng-6-7" % "3.2.0.0" % "test"
     )
   )
   .settings(mimaSettings)

@@ -17,12 +17,12 @@ import cats.implicits._
 
 import CollectionCompat._
 
-class UdpSpec extends Fs2Spec {
+class UdpSuite extends Fs2Suite {
   def mkSocketGroup: Stream[IO, SocketGroup] =
     Stream.resource(Blocker[IO].flatMap(blocker => SocketGroup[IO](blocker)))
 
-  "udp" - {
-    "echo one" in {
+  group("udp") {
+    test("echo one") {
       val msg = Chunk.bytes("Hello, world!".getBytes)
       mkSocketGroup
         .flatMap { socketGroup =>
@@ -46,10 +46,10 @@ class UdpSpec extends Fs2Spec {
         }
         .compile
         .toVector
-        .asserting(it => assert(it.map(_.bytes) == Vector(msg)))
+        .map(it => assert(it.map(_.bytes) == Vector(msg)))
     }
 
-    "echo lots" in {
+    test("echo lots") {
       val msgs = (1 to 20).toVector.map(n => Chunk.bytes(("Hello, world! " + n).getBytes))
       val numClients = 50
       val numParallelClients = 10
@@ -81,7 +81,7 @@ class UdpSpec extends Fs2Spec {
         }
         .compile
         .toVector
-        .asserting(res =>
+        .map(res =>
           assert(
             res.map(p => new String(p.bytes.toArray)).sorted == Vector
               .fill(numClients)(msgs.map(b => new String(b.toArray)))
@@ -91,8 +91,8 @@ class UdpSpec extends Fs2Spec {
         )
     }
 
-    "multicast" in {
-      pending // Fails often based on routing table of host machine
+    test("multicast".ignore) {
+      // Fails often based on routing table of host machine
       val group = InetAddress.getByName("232.10.10.10")
       val msg = Chunk.bytes("Hello, world!".getBytes)
       mkSocketGroup
@@ -127,10 +127,10 @@ class UdpSpec extends Fs2Spec {
         }
         .compile
         .toVector
-        .asserting(it => assert(it.map(_.bytes) == Vector(msg)))
+        .map(it => assert(it.map(_.bytes) == Vector(msg)))
     }
 
-    "timeouts supported" in {
+    test("timeouts supported") {
       mkSocketGroup
         .flatMap { socketGroup =>
           Stream

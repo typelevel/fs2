@@ -325,7 +325,7 @@ class StreamSuite extends Fs2Suite {
         }
       }
 
-      test("16 - parJoin CompositeFailure") {
+      test("16 - parJoin CompositeFailure".flaky) {
         Stream(
           Stream.emit(1).covary[IO],
           Stream.raiseError[IO](new Err),

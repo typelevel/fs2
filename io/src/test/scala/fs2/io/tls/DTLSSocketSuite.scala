@@ -11,9 +11,9 @@ import cats.implicits._
 
 import fs2.io.udp.{Packet, SocketGroup}
 
-class DTLSSocketSpec extends TLSSpec {
-  "DTLSSocket" - {
-    "echo" in {
+class DTLSSocketSuite extends TLSSuite {
+  group("DTLSSocket") {
+    test("echo") {
       Blocker[IO].use { blocker =>
         SocketGroup[IO](blocker).use { socketGroup =>
           testTlsContext(blocker).flatMap { tlsContext =>
@@ -45,7 +45,7 @@ class DTLSSocketSpec extends TLSSpec {
                           .concurrently(echoServer)
                           .compile
                           .toList
-                          .asserting(it => assert(it.map(_.bytes) == List(msg)))
+                          .map(it => assert(it.map(_.bytes) == List(msg)))
                     }
                   }
                 }

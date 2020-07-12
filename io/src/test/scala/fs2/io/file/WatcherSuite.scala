@@ -8,10 +8,9 @@ import cats.effect.{Blocker, IO}
 import cats.implicits._
 import java.nio.file._
 
-class WatcherSpec extends BaseFileSpec {
-  "Watcher" - {
-    "supports watching a file" - {
-      "for modifications" in {
+class WatcherSuite extends BaseFileSuite {
+    group("supports watching a file") {
+      test("for modifications") {
         tempFile
           .flatMap { f =>
             Stream.resource(Blocker[IO]).flatMap { bec =>
@@ -28,9 +27,8 @@ class WatcherSpec extends BaseFileSpec {
           }
           .compile
           .drain
-          .assertNoException
       }
-      "for deletions" in {
+      test("for deletions") {
         tempFile
           .flatMap { f =>
             Stream.resource(Blocker[IO]).flatMap { bec =>
@@ -47,12 +45,11 @@ class WatcherSpec extends BaseFileSpec {
           }
           .compile
           .drain
-          .assertNoException
       }
     }
 
-    "supports watching a directory" - {
-      "static recursive watching" in {
+    group("supports watching a directory") {
+      test("static recursive watching") {
         tempDirectory
           .flatMap { dir =>
             val a = dir.resolve("a")
@@ -69,9 +66,8 @@ class WatcherSpec extends BaseFileSpec {
           }
           .compile
           .drain
-          .assertNoException
       }
-      "dynamic recursive watching" in {
+      test("dynamic recursive watching") {
         tempDirectory
           .flatMap { dir =>
             val a = dir.resolve("a")
@@ -90,10 +86,8 @@ class WatcherSpec extends BaseFileSpec {
           }
           .compile
           .drain
-          .assertNoException
       }
     }
-  }
 
   private def smallDelay: Stream[IO, Nothing] =
     Stream.sleep_[IO](1000.millis)

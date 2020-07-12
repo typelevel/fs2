@@ -4,7 +4,7 @@ package tls
 
 import cats.effect.{Blocker, IO}
 
-abstract class TLSSpec extends Fs2Spec {
+abstract class TLSSuite extends Fs2Suite {
   def testTlsContext(blocker: Blocker): IO[TLSContext] =
     TLSContext.fromKeyStoreResource[IO](
       "keystore.jks",

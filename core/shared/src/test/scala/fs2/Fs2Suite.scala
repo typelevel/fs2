@@ -1,12 +1,11 @@
 package fs2
 
-import cats.effect.{ContextShift, IO, Sync, Timer}
-import cats.effect.laws.util.TestContext
-import cats.implicits._
-import munit.ScalaCheckSuite
-import org.typelevel.discipline.Laws
 import scala.concurrent.ExecutionContext
-import munit.Location
+
+import cats.effect.{ContextShift, IO, Sync, Timer}
+import cats.implicits._
+import munit.{Location, ScalaCheckSuite}
+import org.typelevel.discipline.Laws
 
 abstract class Fs2Suite
     extends ScalaCheckSuite
@@ -20,9 +19,6 @@ abstract class Fs2Suite
       .withWorkers(1)
 
   override def munitFlakyOK = true
-
-  protected val testContext =
-    FunFixture[TestContext](setup = _ => TestContext(), teardown = _ => ())
 
   implicit val realExecutionContext: ExecutionContext =
     scala.concurrent.ExecutionContext.Implicits.global

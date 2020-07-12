@@ -12,14 +12,13 @@ import cats.effect.{Blocker, IO}
 
 import fs2.io.tcp.SocketGroup
 
-class TLSSocketSpec extends TLSSpec {
-  "TLSSocket" - {
-    "google" - {
+class TLSSocketSuite extends TLSSuite {
+  group("TLSSocket") {
+    group("google") {
       List("TLSv1", "TLSv1.1", "TLSv1.2", "TLSv1.3").foreach { protocol =>
-        protocol in {
-          if (!supportedByPlatform(protocol))
-            cancel(s"$protocol not supported by this platform")
-          else
+        if (!supportedByPlatform(protocol)) {
+          test(s"$protocol - not supported by this platform".ignore) {}
+        } else test(protocol) {
             Blocker[IO].use { blocker =>
               SocketGroup[IO](blocker).use { socketGroup =>
                 socketGroup.client[IO](new InetSocketAddress("www.google.com", 443)).use { socket =>
@@ -46,7 +45,7 @@ class TLSSocketSpec extends TLSSpec {
                               .through(text.utf8Decode)
                               .through(text.lines)).head.compile.string
                         }
-                        .asserting(it => assert(it == "HTTP/1.1 200 OK"))
+                        .map(it => assert(it == "HTTP/1.1 200 OK"))
                     }
                 }
               }
@@ -55,7 +54,7 @@ class TLSSocketSpec extends TLSSpec {
       }
     }
 
-    "echo" in {
+    test("echo") {
       Blocker[IO].use { blocker =>
         SocketGroup[IO](blocker).use { socketGroup =>
           testTlsContext(blocker).flatMap { tlsContext =>
@@ -91,14 +90,14 @@ class TLSSocketSpec extends TLSSpec {
                         }
                   }
 
-                  client.concurrently(server).compile.to(Chunk).asserting(it => assert(it == msg))
+                  client.concurrently(server).compile.to(Chunk).map(it => assert(it == msg))
               }
           }
         }
       }
     }
 
-    "client reads before writing" in {
+    test("client reads before writing") {
       Blocker[IO].use { blocker =>
         SocketGroup[IO](blocker).use { socketGroup =>
           socketGroup.client[IO](new InetSocketAddress("google.com", 443)).use { rawSocket =>
@@ -126,7 +125,7 @@ class TLSSocketSpec extends TLSSpec {
                     .concurrently(send.delayBy(100.millis))
                     .compile
                     .string
-                    .asserting(it => assert(it == "HTTP/1.1 200 OK"))
+                    .map(it => assert(it == "HTTP/1.1 200 OK"))
                 }
             }
           }

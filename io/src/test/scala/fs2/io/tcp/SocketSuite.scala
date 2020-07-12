@@ -2,6 +2,8 @@ package fs2
 package io
 package tcp
 
+import scala.concurrent.duration._
+
 import java.net.InetSocketAddress
 import java.net.InetAddress
 
@@ -9,15 +11,17 @@ import cats.effect.{Blocker, IO}
 import cats.effect.concurrent.Deferred
 import cats.effect.Resource
 
-class SocketSpec extends Fs2Spec {
+class SocketSuite extends Fs2Suite {
   def mkSocketGroup: Stream[IO, SocketGroup] =
     Stream.resource(Blocker[IO].flatMap(blocker => SocketGroup[IO](blocker)))
 
-  "tcp" - {
+  val timeout = 30.seconds
+
+  group("tcp") {
     // spawns echo server, takes whatever client sends and echoes it back
     // up to 10 clients concurrently (5k total) send message and awaits echo of it
     // success is that all clients got what they have sent
-    "echo.requests" in {
+    test("echo.requests") {
       val message = Chunk.bytes("fs2.rocks".getBytes)
       val clientCount = 20
 
@@ -77,7 +81,7 @@ class SocketSpec extends Fs2Spec {
     }
 
     // Ensure that readN yields chunks of the requested size
-    "readN" in {
+    test("readN") {
       val message = Chunk.bytes("123456789012345678901234567890".getBytes)
 
       val localBindAddress =
@@ -129,7 +133,7 @@ class SocketSpec extends Fs2Spec {
       assert(result == sizes)
     }
 
-    "write - concurrent calls do not cause WritePendingException" in {
+    test("write - concurrent calls do not cause WritePendingException") {
       val message = Chunk.bytes(("123456789012345678901234567890" * 10000).getBytes)
 
       val localBindAddress =
@@ -161,7 +165,7 @@ class SocketSpec extends Fs2Spec {
         .compile
         .drain
         .attempt
-        .asserting(it => assert(it.isRight))
+        .map(it => assert(it.isRight))
     }
   }
 }

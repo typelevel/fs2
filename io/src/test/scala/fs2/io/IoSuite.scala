@@ -3,23 +3,24 @@ package fs2.io
 import java.io.{ByteArrayInputStream, InputStream, OutputStream}
 import java.util.concurrent.Executors
 import cats.effect.{Blocker, ContextShift, IO, Resource}
-import cats.implicits._
-import fs2.Fs2Spec
+import fs2.Fs2Suite
 import scala.concurrent.ExecutionContext
 
-class IoSpec extends Fs2Spec {
-  "readInputStream" - {
-    "non-buffered" in forAll(arrayGenerator[Byte], intsBetween(1, 20)) {
-      (bytes: Array[Byte], chunkSize: Int) =>
+class IoSuite extends Fs2Suite {
+  group("readInputStream") {
+    test("non-buffered") { forAllAsync {
+      (bytes: Array[Byte], chunkSize0: Int) =>
+        val chunkSize = (chunkSize0 % 20).abs + 1
         val is: InputStream = new ByteArrayInputStream(bytes)
         Blocker[IO].use { blocker =>
           val stream = readInputStream(IO(is), chunkSize, blocker)
-          stream.compile.toVector.asserting(it => assert(it.toArray === bytes))
+          stream.compile.toVector.map(it => assertEquals(it, bytes.toVector))
         }
-    }
+    }}
 
-    "buffered" in forAll(arrayGenerator[Byte], intsBetween(1, 20)) {
-      (bytes: Array[Byte], chunkSize: Int) =>
+    test("buffered") { forAllAsync {
+      (bytes: Array[Byte], chunkSize0: Int) =>
+        val chunkSize = (chunkSize0 % 20).abs + 1
         val is: InputStream = new ByteArrayInputStream(bytes)
         Blocker[IO].use { blocker =>
           val stream = readInputStream(IO(is), chunkSize, blocker)
@@ -27,45 +28,46 @@ class IoSpec extends Fs2Spec {
             .buffer(chunkSize * 2)
             .compile
             .toVector
-            .asserting(it => assert(it.toArray === bytes))
+            .map(it => assertEquals(it, bytes.toVector))
         }
+      }
     }
   }
 
-  "readOutputStream" - {
-    "writes data and terminates when `f` returns" in forAll(
-      arrayGenerator[Byte],
-      intsBetween(1, 20)
-    ) { (bytes: Array[Byte], chunkSize: Int) =>
+  group("readOutputStream") {
+    test("writes data and terminates when `f` returns") { forAllAsync { (bytes: Array[Byte], chunkSize0: Int) =>
+        val chunkSize = (chunkSize0 % 20).abs + 1
       Blocker[IO].use { blocker =>
         readOutputStream[IO](blocker, chunkSize)((os: OutputStream) =>
           blocker.delay[IO, Unit](os.write(bytes))
         ).compile
-          .to(Array)
-          .asserting(it => assert(it === bytes))
+          .to(Vector)
+          .map(it => assertEquals(it, bytes.toVector))
       }
-    }
+    }}
 
-    "can be manually closed from inside `f`" in forAll(intsBetween(1, 20)) { chunkSize: Int =>
+    test("can be manually closed from inside `f`") { forAllAsync { chunkSize0: Int =>
+        val chunkSize = (chunkSize0 % 20).abs + 1
       Blocker[IO].use { blocker =>
         readOutputStream[IO](blocker, chunkSize)((os: OutputStream) =>
           IO(os.close()) *> IO.never
         ).compile.toVector
-          .asserting(it => assert(it == Vector.empty))
+          .map(it => assert(it == Vector.empty))
       }
-    }
+    }}
 
-    "fails when `f` fails" in forAll(intsBetween(1, 20)) { chunkSize: Int =>
+    test("fails when `f` fails") { forAllAsync { chunkSize0: Int =>
+        val chunkSize = (chunkSize0 % 20).abs + 1
       val e = new Exception("boom")
       Blocker[IO].use { blocker =>
         readOutputStream[IO](blocker, chunkSize)((_: OutputStream) =>
           IO.raiseError(e)
         ).compile.toVector.attempt
-          .asserting(it => assert(it == Left(e)))
+          .map(it => assert(it == Left(e)))
       }
-    }
+    }}
 
-    "Doesn't deadlock with size-1 ContextShift thread pool" in {
+    test("Doesn't deadlock with size-1 ContextShift thread pool") {
       val pool = Resource
         .make(IO(Executors.newFixedThreadPool(1)))(ec => IO(ec.shutdown()))
         .map(ExecutionContext.fromExecutor)
@@ -88,19 +90,20 @@ class IoSpec extends Fs2Spec {
               .compile
               .toVector
           }
-          .asserting(it => assert(it.size == 5))
+          .map(it => assert(it.size == 5))
       }
     }
   }
 
-  "unsafeReadInputStream" - {
-    "non-buffered" in forAll(arrayGenerator[Byte], intsBetween(1, 20)) {
-      (bytes: Array[Byte], chunkSize: Int) =>
+  group("unsafeReadInputStream") {
+    test("non-buffered") { forAllAsync {
+      (bytes: Array[Byte], chunkSize0: Int) =>
+        val chunkSize = (chunkSize0 % 20).abs + 1
         val is: InputStream = new ByteArrayInputStream(bytes)
         Blocker[IO].use { blocker =>
           val stream = unsafeReadInputStream(IO(is), chunkSize, blocker)
-          stream.compile.toVector.asserting(it => assert(it.toArray === bytes))
+          stream.compile.toVector.map(it => assertEquals(it, bytes.toVector))
         }
     }
-  }
+   } }
 }

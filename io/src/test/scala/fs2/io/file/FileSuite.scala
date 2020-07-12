@@ -12,9 +12,9 @@ import fs2.io.CollectionCompat._
 
 import scala.concurrent.duration._
 
-class FileSpec extends BaseFileSpec {
-  "readAll" - {
-    "retrieves whole content of a file" in {
+class FileSuite extends BaseFileSuite {
+  group("readAll") {
+    test("retrieves whole content of a file") {
       assert(
         Stream
           .resource(Blocker[IO])
@@ -31,8 +31,8 @@ class FileSpec extends BaseFileSpec {
     }
   }
 
-  "readRange" - {
-    "reads half of a file" in {
+  group("readRange") {
+    test("reads half of a file") {
       assert(
         Stream
           .resource(Blocker[IO])
@@ -48,7 +48,7 @@ class FileSpec extends BaseFileSpec {
       )
     }
 
-    "reads full file if end is bigger than file size" in {
+    test("reads full file if end is bigger than file size") {
       assert(
         Stream
           .resource(Blocker[IO])
@@ -65,8 +65,8 @@ class FileSpec extends BaseFileSpec {
     }
   }
 
-  "writeAll" - {
-    "simple write" in {
+  group("writeAll") {
+    test("simple write") {
       assert(
         Stream
           .resource(Blocker[IO])
@@ -86,7 +86,7 @@ class FileSpec extends BaseFileSpec {
       )
     }
 
-    "append" in {
+    test("append") {
       assert(
         Stream
           .resource(Blocker[IO])
@@ -109,8 +109,8 @@ class FileSpec extends BaseFileSpec {
     }
   }
 
-  "tail" - {
-    "keeps reading a file as it is appended" in {
+  group("tail") {
+    test("keeps reading a file as it is appended") {
       assert(
         Stream
           .resource(Blocker[IO])
@@ -131,11 +131,11 @@ class FileSpec extends BaseFileSpec {
     }
   }
 
-  "exists" - {
-    "returns false on a non existent file" in {
+  group("exists") {
+    test("returns false on a non existent file") {
       assert(Blocker[IO].use(b => file.exists[IO](b, Paths.get("nothing"))).unsafeRunSync == false)
     }
-    "returns true on an existing file" in {
+    test("returns true on an existing file") {
       assert(
         Blocker[IO]
           .use(b => tempFile.evalMap(file.exists[IO](b, _)).compile.fold(true)(_ && _))
@@ -144,8 +144,8 @@ class FileSpec extends BaseFileSpec {
     }
   }
 
-  "permissions" - {
-    "should fail for a non existent file" in {
+  group("permissions") {
+    test("should fail for a non existent file") {
       assert(
         Blocker[IO]
           .use(b => file.permissions[IO](b, Paths.get("nothing")))
@@ -154,7 +154,7 @@ class FileSpec extends BaseFileSpec {
           .isLeft == true
       )
     }
-    "should return permissions for existing file" in {
+    test("should return permissions for existing file") {
       val permissions = PosixFilePermissions.fromString("rwxrwxr-x").asScala
       Blocker[IO]
         .use { b =>
@@ -163,12 +163,12 @@ class FileSpec extends BaseFileSpec {
             .compile
             .lastOrError
         }
-        .asserting(it => assert(it == permissions))
+        .map(it => assert(it == permissions))
     }
   }
 
-  "setPermissions" - {
-    "should fail for a non existent file" in {
+  group("setPermissions") {
+    test("should fail for a non existent file") {
       assert(
         Blocker[IO]
           .use(b => file.setPermissions[IO](b, Paths.get("nothing"), Set.empty))
@@ -177,7 +177,7 @@ class FileSpec extends BaseFileSpec {
           .isLeft == true
       )
     }
-    "should correctly change file permissions for existing file" in {
+    test("should correctly change file permissions for existing file") {
       val permissions = PosixFilePermissions.fromString("rwxrwxr-x").asScala
       val (initial, updated) = Blocker[IO]
         .use { b =>
@@ -199,8 +199,8 @@ class FileSpec extends BaseFileSpec {
     }
   }
 
-  "copy" - {
-    "returns a path to the new file" in {
+  group("copy") {
+    test("returns a path to the new file") {
       assert(
         (for {
           blocker <- Stream.resource(Blocker[IO])
@@ -213,8 +213,8 @@ class FileSpec extends BaseFileSpec {
     }
   }
 
-  "deleteIfExists" - {
-    "should result in non existent file" in {
+  group("deleteIfExists") {
+    test("should result in non existent file") {
       assert(
         tempFile
           .flatMap(path =>
@@ -229,8 +229,8 @@ class FileSpec extends BaseFileSpec {
     }
   }
 
-  "delete" - {
-    "should fail on a non existent file" in {
+  group("delete") {
+    test("should fail on a non existent file") {
       assert(
         Blocker[IO]
           .use(blocker => file.delete[IO](blocker, Paths.get("nothing")))
@@ -241,8 +241,8 @@ class FileSpec extends BaseFileSpec {
     }
   }
 
-  "deleteDirectoryRecursively" - {
-    "should remove a non-empty directory" in {
+  group("deleteDirectoryRecursively") {
+    test("should remove a non-empty directory") {
       val testPath = Paths.get("a")
       Stream
         .resource(Blocker[IO])
@@ -253,12 +253,12 @@ class FileSpec extends BaseFileSpec {
         }
         .compile
         .lastOrError
-        .asserting(it => assert(!it))
+        .map(it => assert(!it))
     }
   }
 
-  "move" - {
-    "should result in the old path being deleted" in {
+  group("move") {
+    test("should result in the old path being deleted") {
       assert(
         (for {
           blocker <- Stream.resource(Blocker[IO])
@@ -271,8 +271,8 @@ class FileSpec extends BaseFileSpec {
     }
   }
 
-  "size" - {
-    "should return correct size of ay file" in {
+  group("size") {
+    test("should return correct size of ay file") {
       assert(
         tempFile
           .flatTap(modify)
@@ -288,8 +288,8 @@ class FileSpec extends BaseFileSpec {
     }
   }
 
-  "tempFileStream" - {
-    "should remove the file following stream closure" in {
+  group("tempFileStream") {
+    test("should remove the file following stream closure") {
       Blocker[IO]
         .use { b =>
           file
@@ -301,10 +301,10 @@ class FileSpec extends BaseFileSpec {
               case (existsBefore, path) => file.exists[IO](b, path).map(existsBefore -> _)
             }
         }
-        .asserting(it => assert(it == true -> false))
+        .map(it => assert(it == true -> false))
     }
 
-    "should not fail if the file is deleted before the stream completes" in {
+    test("should not fail if the file is deleted before the stream completes") {
       Stream
         .resource(Blocker[IO])
         .flatMap { b =>
@@ -315,12 +315,12 @@ class FileSpec extends BaseFileSpec {
         .compile
         .lastOrError
         .attempt
-        .asserting(it => assert(it.isRight))
+        .map(it => assert(it.isRight))
     }
   }
 
-  "tempDirectoryStream" - {
-    "should remove the directory following stream closure" in {
+  group("tempDirectoryStream") {
+    test("should remove the directory following stream closure") {
       Blocker[IO]
         .use { b =>
           file
@@ -332,10 +332,10 @@ class FileSpec extends BaseFileSpec {
               case (existsBefore, path) => file.exists[IO](b, path).map(existsBefore -> _)
             }
         }
-        .asserting(it => assert(it == true -> false))
+        .map(it => assert(it == true -> false))
     }
 
-    "should not fail if the directory is deleted before the stream completes" in {
+    test("should not fail if the directory is deleted before the stream completes") {
       Stream
         .resource(Blocker[IO])
         .flatMap { b =>
@@ -346,12 +346,12 @@ class FileSpec extends BaseFileSpec {
         .compile
         .lastOrError
         .attempt
-        .asserting(it => assert(it.isRight))
+        .map(it => assert(it.isRight))
     }
   }
 
-  "createDirectory" - {
-    "should return in an existing path" in {
+  group("createDirectory") {
+    test("should return in an existing path") {
       assert(
         tempDirectory
           .flatMap(path =>
@@ -370,8 +370,8 @@ class FileSpec extends BaseFileSpec {
     }
   }
 
-  "createDirectories" - {
-    "should return in an existing path" in {
+  group("createDirectories") {
+    test("should return in an existing path") {
       assert(
         tempDirectory
           .flatMap(path =>
@@ -390,8 +390,8 @@ class FileSpec extends BaseFileSpec {
     }
   }
 
-  "directoryStream" - {
-    "returns an empty Stream on an empty directory" in {
+  group("directoryStream") {
+    test("returns an empty Stream on an empty directory") {
       assert(
         Stream
           .resource(Blocker[IO])
@@ -406,7 +406,7 @@ class FileSpec extends BaseFileSpec {
       )
     }
 
-    "returns all files in a directory correctly" in {
+    test("returns all files in a directory correctly") {
       assert(
         Stream
           .resource(Blocker[IO])
@@ -417,7 +417,7 @@ class FileSpec extends BaseFileSpec {
                 file.directoryStream[IO](blocker, parent).tupleRight(paths)
               }
           }
-          .map { case (path, paths) => paths.exists(_.normalize === path.normalize) }
+          .map { case (path, paths) => paths.exists(_.normalize == path.normalize) }
           .compile
           .fold(true)(_ & _)
           .unsafeRunSync() == true
@@ -425,15 +425,15 @@ class FileSpec extends BaseFileSpec {
     }
   }
 
-  "walk" - {
-    "returns the only file in a directory correctly" in {
+  group("walk") {
+    test("returns the only file in a directory correctly") {
       assert(
         Stream
           .resource(Blocker[IO])
           .flatMap { blocker =>
             tempFile
               .flatMap { path =>
-                file.walk[IO](blocker, path.getParent).map(_.normalize === path.normalize)
+                file.walk[IO](blocker, path.getParent).map(_.normalize == path.normalize)
               }
           }
           .compile
@@ -443,7 +443,7 @@ class FileSpec extends BaseFileSpec {
       )
     }
 
-    "returns all files in a directory correctly" in {
+    test("returns all files in a directory correctly") {
       assert(
         Stream
           .resource(Blocker[IO])
@@ -454,14 +454,14 @@ class FileSpec extends BaseFileSpec {
                 file.walk[IO](blocker, parent).tupleRight(parent :: paths)
               }
           }
-          .map { case (path, paths) => paths.exists(_.normalize === path.normalize) }
+          .map { case (path, paths) => paths.exists(_.normalize == path.normalize) }
           .compile
           .fold(true)(_ & _)
           .unsafeRunSync() == true // the directory itself and the files
       )
     }
 
-    "returns all files in a nested tree correctly" in {
+    test("returns all files in a nested tree correctly") {
       assert(
         Stream
           .resource(Blocker[IO])
@@ -477,7 +477,7 @@ class FileSpec extends BaseFileSpec {
     }
   }
 
-  "writeRotate" in {
+  test("writeRotate") {
     val bufferSize = 100
     val totalBytes = 1000
     val rotateLimit = 150
@@ -502,7 +502,7 @@ class FileSpec extends BaseFileSpec {
                   .sortBy(_.toString)
                   .traverse(p => file.size[IO](bec, p))
               }
-              .asserting { sizes =>
+              .map { sizes =>
                 assert(sizes.size == ((totalBytes + rotateLimit - 1) / rotateLimit))
                 assert(
                   sizes.init.forall(_ == rotateLimit) && sizes.last == (totalBytes % rotateLimit)
