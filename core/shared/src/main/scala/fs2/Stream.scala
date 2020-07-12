@@ -258,12 +258,14 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     * }}}
     */
   def buffer(n: Int): Stream[F, O] =
-    this.repeatPull {
-      _.unconsN(n, allowFewer = true).flatMap {
-        case Some((hd, tl)) => Pull.output(hd).as(Some(tl))
-        case None           => Pull.pure(None)
+    if (n <= 0) this
+    else
+      this.repeatPull {
+        _.unconsN(n, allowFewer = true).flatMap {
+          case Some((hd, tl)) => Pull.output(hd).as(Some(tl))
+          case None           => Pull.pure(None)
+        }
       }
-    }
 
   /**
     * Behaves like the identity stream, but emits no output until the source is exhausted.
@@ -4325,7 +4327,7 @@ object Stream extends StreamLowPriority {
           s: Stream[Pure, O],
           init: () => B
       )(foldChunk: (B, Chunk[O]) => B, finalize: B => C): C =
-        finalize(Compiler.compile(s.covary[IO].underlying, init())(foldChunk).unsafeRunSync)
+        finalize(Compiler.compile(s.covary[SyncIO].underlying, init())(foldChunk).unsafeRunSync)
     }
 
     implicit val idInstance: Compiler[Id, Id] = new Compiler[Id, Id] {
@@ -4333,7 +4335,7 @@ object Stream extends StreamLowPriority {
           s: Stream[Id, O],
           init: () => B
       )(foldChunk: (B, Chunk[O]) => B, finalize: B => C): C =
-        finalize(Compiler.compile(s.covaryId[IO].underlying, init())(foldChunk).unsafeRunSync)
+        finalize(Compiler.compile(s.covaryId[SyncIO].underlying, init())(foldChunk).unsafeRunSync)
     }
 
     implicit val fallibleInstance: Compiler[Fallible, Either[Throwable, *]] =
@@ -4343,7 +4345,7 @@ object Stream extends StreamLowPriority {
             init: () => B
         )(foldChunk: (B, Chunk[O]) => B, finalize: B => C): Either[Throwable, C] =
           Compiler
-            .compile(s.lift[IO].underlying, init())(foldChunk)
+            .compile(s.lift[SyncIO].underlying, init())(foldChunk)
             .attempt
             .unsafeRunSync
             .map(finalize)

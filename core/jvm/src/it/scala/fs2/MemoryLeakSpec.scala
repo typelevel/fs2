@@ -9,14 +9,14 @@ import java.nio.file.{Files, Path}
 import cats.effect.{ContextShift, IO, Timer}
 import cats.implicits._
 
-import org.scalatest.funsuite.AnyFunSuite
+import munit.FunSuite
 
 import fs2.concurrent._
 
-class MemoryLeakSpec extends AnyFunSuite {
+class MemoryLeakSpec extends FunSuite {
 
   lazy protected implicit val ioContextShift: ContextShift[IO] =
-    IO.contextShift(ExecutionContext.Implicits.global)
+    IO.contextShift(ExecutionContext.global)
   lazy protected implicit val ioTimer: Timer[IO] = IO.timer(ExecutionContext.global)
 
   private def heapUsed: IO[Long] =
