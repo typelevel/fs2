@@ -15,27 +15,29 @@ class JavaInputOutputStreamSuite extends Fs2Suite {
       } yield chunks.flatMap(Stream.chunk).covary[IO]
     }
 
-    property("arbitrary.streams") { forAll { (stream: Stream[IO, Byte]) =>
-      val example = stream.compile.toVector.unsafeRunSync()
+    property("arbitrary.streams") {
+      forAll { (stream: Stream[IO, Byte]) =>
+        val example = stream.compile.toVector.unsafeRunSync()
 
-      val fromInputStream =
-        toInputStreamResource(stream)
-          .use { is =>
-            // consume in same thread pool. Production application should never do this,
-            // instead they have to fork this to dedicated thread pool
-            val buff = new Array[Byte](20)
-            @tailrec
-            def go(acc: Vector[Byte]): IO[Vector[Byte]] =
-              is.read(buff) match {
-                case -1   => IO.pure(acc)
-                case read => go(acc ++ buff.take(read))
-              }
-            go(Vector.empty)
-          }
-          .unsafeRunSync()
+        val fromInputStream =
+          toInputStreamResource(stream)
+            .use { is =>
+              // consume in same thread pool. Production application should never do this,
+              // instead they have to fork this to dedicated thread pool
+              val buff = new Array[Byte](20)
+              @tailrec
+              def go(acc: Vector[Byte]): IO[Vector[Byte]] =
+                is.read(buff) match {
+                  case -1   => IO.pure(acc)
+                  case read => go(acc ++ buff.take(read))
+                }
+              go(Vector.empty)
+            }
+            .unsafeRunSync()
 
-      assert(example == fromInputStream)
-    }}
+        assert(example == fromInputStream)
+      }
+    }
 
     test("upstream.is.closed".ignore) {
       // https://github.com/functional-streams-for-scala/fs2/issues/1063

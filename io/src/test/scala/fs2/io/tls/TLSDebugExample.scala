@@ -47,5 +47,5 @@ class TLSDebugTest extends Fs2Suite {
       }
     }
 
-  test("google") { run(new InetSocketAddress("google.com", 443)) }
+  test("google")(run(new InetSocketAddress("google.com", 443)))
 }

@@ -31,13 +31,16 @@ trait AsyncPropertySupport extends ScalaCheckSuite {
   }
 
   private def reportPropertyFailure[F[_]](f: F[Unit], seed: Seed, describe: => String)(implicit
-      F: Effect[F], loc: Location
+      F: Effect[F],
+      loc: Location
   ): F[Unit] =
     f.handleErrorWith { t =>
       fail(s"Property failed with seed ${seed.toBase64} and params: " + describe, t)
     }
 
-  def forAllAsync[F[_], A](f: A => F[Unit])(implicit arbA: Arbitrary[A], F: Effect[F], loc: Location): Future[Unit] = {
+  def forAllAsync[F[_], A](
+      f: A => F[Unit]
+  )(implicit arbA: Arbitrary[A], F: Effect[F], loc: Location): Future[Unit] = {
     val seed = Seed.random()
     samples(arbA.arbitrary)
       .runA(seed)
@@ -69,7 +72,7 @@ trait AsyncPropertySupport extends ScalaCheckSuite {
       arbA: Arbitrary[A],
       arbB: Arbitrary[B],
       arbC: Arbitrary[C],
-      F: Effect[F], 
+      F: Effect[F],
       loc: Location
   ): Future[Unit] = {
     val all = for {
@@ -93,7 +96,7 @@ trait AsyncPropertySupport extends ScalaCheckSuite {
       arbB: Arbitrary[B],
       arbC: Arbitrary[C],
       arbD: Arbitrary[D],
-      F: Effect[F], 
+      F: Effect[F],
       loc: Location
   ): Future[Unit] = {
     val all = for {
@@ -119,7 +122,7 @@ trait AsyncPropertySupport extends ScalaCheckSuite {
       arbC: Arbitrary[C],
       arbD: Arbitrary[D],
       arbE: Arbitrary[E],
-      F: Effect[F], 
+      F: Effect[F],
       loc: Location
   ): Future[Unit] = {
     val all = for {

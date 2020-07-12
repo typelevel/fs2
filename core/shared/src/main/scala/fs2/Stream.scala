@@ -4393,7 +4393,11 @@ object Stream extends StreamLowPriority {
             s: Stream[Fallible, O],
             init: () => B
         )(foldChunk: (B, Chunk[O]) => B, finalize: B => C): Either[Throwable, C] =
-          Compiler.compile(s.lift[SyncIO].free, init())(foldChunk).attempt.unsafeRunSync.map(finalize)
+          Compiler
+            .compile(s.lift[SyncIO].free, init())(foldChunk)
+            .attempt
+            .unsafeRunSync
+            .map(finalize)
       }
   }
 

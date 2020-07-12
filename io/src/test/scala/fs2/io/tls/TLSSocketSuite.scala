@@ -16,9 +16,10 @@ class TLSSocketSuite extends TLSSuite {
   group("TLSSocket") {
     group("google") {
       List("TLSv1", "TLSv1.1", "TLSv1.2", "TLSv1.3").foreach { protocol =>
-        if (!supportedByPlatform(protocol)) {
+        if (!supportedByPlatform(protocol))
           test(s"$protocol - not supported by this platform".ignore) {}
-        } else test(protocol) {
+        else
+          test(protocol) {
             Blocker[IO].use { blocker =>
               SocketGroup[IO](blocker).use { socketGroup =>
                 socketGroup.client[IO](new InetSocketAddress("www.google.com", 443)).use { socket =>
@@ -50,7 +51,7 @@ class TLSSocketSuite extends TLSSuite {
                 }
               }
             }
-        }
+          }
       }
     }
 

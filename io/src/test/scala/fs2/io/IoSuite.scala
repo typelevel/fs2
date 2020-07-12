@@ -8,18 +8,19 @@ import scala.concurrent.ExecutionContext
 
 class IoSuite extends Fs2Suite {
   group("readInputStream") {
-    test("non-buffered") { forAllAsync {
-      (bytes: Array[Byte], chunkSize0: Int) =>
+    test("non-buffered") {
+      forAllAsync { (bytes: Array[Byte], chunkSize0: Int) =>
         val chunkSize = (chunkSize0 % 20).abs + 1
         val is: InputStream = new ByteArrayInputStream(bytes)
         Blocker[IO].use { blocker =>
           val stream = readInputStream(IO(is), chunkSize, blocker)
           stream.compile.toVector.map(it => assertEquals(it, bytes.toVector))
         }
-    }}
+      }
+    }
 
-    test("buffered") { forAllAsync {
-      (bytes: Array[Byte], chunkSize0: Int) =>
+    test("buffered") {
+      forAllAsync { (bytes: Array[Byte], chunkSize0: Int) =>
         val chunkSize = (chunkSize0 % 20).abs + 1
         val is: InputStream = new ByteArrayInputStream(bytes)
         Blocker[IO].use { blocker =>
@@ -35,37 +36,43 @@ class IoSuite extends Fs2Suite {
   }
 
   group("readOutputStream") {
-    test("writes data and terminates when `f` returns") { forAllAsync { (bytes: Array[Byte], chunkSize0: Int) =>
+    test("writes data and terminates when `f` returns") {
+      forAllAsync { (bytes: Array[Byte], chunkSize0: Int) =>
         val chunkSize = (chunkSize0 % 20).abs + 1
-      Blocker[IO].use { blocker =>
-        readOutputStream[IO](blocker, chunkSize)((os: OutputStream) =>
-          blocker.delay[IO, Unit](os.write(bytes))
-        ).compile
-          .to(Vector)
-          .map(it => assertEquals(it, bytes.toVector))
+        Blocker[IO].use { blocker =>
+          readOutputStream[IO](blocker, chunkSize)((os: OutputStream) =>
+            blocker.delay[IO, Unit](os.write(bytes))
+          ).compile
+            .to(Vector)
+            .map(it => assertEquals(it, bytes.toVector))
+        }
       }
-    }}
+    }
 
-    test("can be manually closed from inside `f`") { forAllAsync { chunkSize0: Int =>
+    test("can be manually closed from inside `f`") {
+      forAllAsync { chunkSize0: Int =>
         val chunkSize = (chunkSize0 % 20).abs + 1
-      Blocker[IO].use { blocker =>
-        readOutputStream[IO](blocker, chunkSize)((os: OutputStream) =>
-          IO(os.close()) *> IO.never
-        ).compile.toVector
-          .map(it => assert(it == Vector.empty))
+        Blocker[IO].use { blocker =>
+          readOutputStream[IO](blocker, chunkSize)((os: OutputStream) =>
+            IO(os.close()) *> IO.never
+          ).compile.toVector
+            .map(it => assert(it == Vector.empty))
+        }
       }
-    }}
+    }
 
-    test("fails when `f` fails") { forAllAsync { chunkSize0: Int =>
+    test("fails when `f` fails") {
+      forAllAsync { chunkSize0: Int =>
         val chunkSize = (chunkSize0 % 20).abs + 1
-      val e = new Exception("boom")
-      Blocker[IO].use { blocker =>
-        readOutputStream[IO](blocker, chunkSize)((_: OutputStream) =>
-          IO.raiseError(e)
-        ).compile.toVector.attempt
-          .map(it => assert(it == Left(e)))
+        val e = new Exception("boom")
+        Blocker[IO].use { blocker =>
+          readOutputStream[IO](blocker, chunkSize)((_: OutputStream) =>
+            IO.raiseError(e)
+          ).compile.toVector.attempt
+            .map(it => assert(it == Left(e)))
+        }
       }
-    }}
+    }
 
     test("Doesn't deadlock with size-1 ContextShift thread pool") {
       val pool = Resource
@@ -96,14 +103,15 @@ class IoSuite extends Fs2Suite {
   }
 
   group("unsafeReadInputStream") {
-    test("non-buffered") { forAllAsync {
-      (bytes: Array[Byte], chunkSize0: Int) =>
+    test("non-buffered") {
+      forAllAsync { (bytes: Array[Byte], chunkSize0: Int) =>
         val chunkSize = (chunkSize0 % 20).abs + 1
         val is: InputStream = new ByteArrayInputStream(bytes)
         Blocker[IO].use { blocker =>
           val stream = unsafeReadInputStream(IO(is), chunkSize, blocker)
           stream.compile.toVector.map(it => assertEquals(it, bytes.toVector))
         }
+      }
     }
-   } }
+  }
 }
