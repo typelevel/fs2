@@ -77,9 +77,10 @@ lazy val commonSettingsBase = Seq(
     "org.typelevel" %%% "cats-effect" % "2.1.3",
     "org.typelevel" %%% "cats-effect-laws" % "2.1.3" % "test",
     "org.scalacheck" %%% "scalacheck" % "1.14.3" % "test",
-    "org.scalatest" %%% "scalatest" % "3.3.0-SNAP2" % "test",
-    "org.scalatestplus" %%% "scalacheck-1-14" % "3.2.0.0" % "test"
+    "org.scalameta" %%% "munit-scalacheck" % "0.7.9" % "test",
+    "org.scalatest" %%% "scalatest" % "3.2.0" % "test" // For sbt-doctest
   ),
+  testFrameworks += new TestFramework("munit.Framework"),
   scmInfo := Some(
     ScmInfo(
       url("https://github.com/functional-streams-for-scala/fs2"),
@@ -219,7 +220,8 @@ lazy val commonJsSettings = Seq(
     val url =
       "https://raw.githubusercontent.com/functional-streams-for-scala/fs2"
     s"-P:scalajs:mapSourceURI:$dir->$url/${scmBranch(version.value)}/"
-  }
+  },
+  scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule))
 )
 
 lazy val noPublish = Seq(
@@ -345,7 +347,7 @@ lazy val reactiveStreams = project
     libraryDependencies ++= Seq(
       "org.reactivestreams" % "reactive-streams" % "1.0.3",
       "org.reactivestreams" % "reactive-streams-tck" % "1.0.3" % "test",
-      "org.scalatestplus" %% "scalatestplus-testng" % "1.0.0-M2" % "test"
+      "org.scalatestplus" %% "testng-6-7" % "3.2.0.0" % "test"
     )
   )
   .settings(mimaSettings)

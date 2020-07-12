@@ -36,7 +36,7 @@ object TLSDebug {
     }
 }
 
-class TLSDebugTest extends Fs2Spec {
+class TLSDebugTest extends Fs2Suite {
 
   def run(address: InetSocketAddress): IO[Unit] =
     Blocker[IO].use { blocker =>
@@ -47,5 +47,5 @@ class TLSDebugTest extends Fs2Spec {
       }
     }
 
-  "google" in run(new InetSocketAddress("google.com", 443))
+  test("google")(run(new InetSocketAddress("google.com", 443)))
 }
