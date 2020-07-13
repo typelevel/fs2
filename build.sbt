@@ -74,8 +74,8 @@ lazy val commonSettingsBase = Seq(
     compilerPlugin("org.typelevel" %% "kind-projector" % "0.10.3"),
     "org.typelevel" %%% "cats-core" % "2.1.1",
     "org.typelevel" %%% "cats-laws" % "2.1.1" % "test",
-    "org.typelevel" %%% "cats-effect" % "2.1.3",
-    "org.typelevel" %%% "cats-effect-laws" % "2.1.3" % "test",
+    "org.typelevel" %%% "cats-effect" % "2.1.4",
+    "org.typelevel" %%% "cats-effect-laws" % "2.1.4" % "test",
     "org.scalacheck" %%% "scalacheck" % "1.14.3" % "test",
     "org.scalameta" %%% "munit-scalacheck" % "0.7.9" % "test",
     "org.scalatest" %%% "scalatest" % "3.2.0" % "test" // For sbt-doctest
