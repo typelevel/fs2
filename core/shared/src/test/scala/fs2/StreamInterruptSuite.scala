@@ -217,7 +217,7 @@ class StreamInterruptSuite extends Fs2Suite {
   }
 
   test("14a - interrupt evalMap and then resume on append") {
-    forAllAsync { s: Stream[Pure, Int] =>
+    forAllAsync { (s: Stream[Pure, Int]) =>
       val expected = s.toList
       val interrupt = IO.sleep(50.millis).attempt
       s.covary[IO]
@@ -232,7 +232,7 @@ class StreamInterruptSuite extends Fs2Suite {
   }
 
   test("14b - interrupt evalMap+collect and then resume on append") {
-    forAllAsync { s: Stream[Pure, Int] =>
+    forAllAsync { (s: Stream[Pure, Int]) =>
       val expected = s.toList
       val interrupt = IO.sleep(50.millis).attempt
       s.covary[IO]
@@ -247,7 +247,7 @@ class StreamInterruptSuite extends Fs2Suite {
   }
 
   test("15 - interruption works when flatMap is followed by collect") {
-    forAllAsync { s: Stream[Pure, Int] =>
+    forAllAsync { (s: Stream[Pure, Int]) =>
       val expected = s.toList
       val interrupt = Stream.sleep_[IO](20.millis).compile.drain.attempt
       s.covary[IO]
@@ -329,7 +329,7 @@ class StreamInterruptSuite extends Fs2Suite {
   }
 
   test("20 - nested-interrupt") {
-    forAllAsync { s: Stream[Pure, Int] =>
+    forAllAsync { (s: Stream[Pure, Int]) =>
       val expected = s.toList
       Stream
         .eval(Semaphore[IO](0))

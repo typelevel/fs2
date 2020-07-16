@@ -76,7 +76,7 @@ class StreamConcurrentlySuite extends Fs2Suite {
   }
 
   test("run finalizers of background stream and properly handle exception") {
-    forAllAsync { s: Stream[Pure, Int] =>
+    forAllAsync { (s: Stream[Pure, Int]) =>
       Ref
         .of[IO, Boolean](false)
         .flatMap { runnerRun =>
