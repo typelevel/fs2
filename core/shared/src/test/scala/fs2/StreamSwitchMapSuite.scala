@@ -8,7 +8,7 @@ import cats.implicits._
 
 class StreamSwitchMapSuite extends Fs2Suite {
   test("flatMap equivalence when switching never occurs") {
-    forAllAsync { s: Stream[Pure, Int] =>
+    forAllAsync { (s: Stream[Pure, Int]) =>
       val expected = s.toList
       Stream
         .eval(Semaphore[IO](1))
@@ -25,7 +25,7 @@ class StreamSwitchMapSuite extends Fs2Suite {
   }
 
   test("inner stream finalizer always runs before switching") {
-    forAllAsync { s: Stream[Pure, Int] =>
+    forAllAsync { (s: Stream[Pure, Int]) =>
       Stream
         .eval(Ref[IO].of(true))
         .flatMap { ref =>

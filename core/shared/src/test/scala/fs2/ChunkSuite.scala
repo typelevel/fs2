@@ -79,14 +79,14 @@ class ChunkSuite extends Fs2Suite {
         forAll((c: Chunk[A]) => assert(c.isEmpty == c.toList.isEmpty))
       }
       property("toArray") {
-        forAll { c: Chunk[A] =>
+        forAll { (c: Chunk[A]) =>
           assert(c.toArray.toVector == c.toVector)
           // Do it twice to make sure the first time didn't mutate state
           assert(c.toArray.toVector == c.toVector)
         }
       }
       property("copyToArray") {
-        forAll { c: Chunk[A] =>
+        forAll { (c: Chunk[A]) =>
           val arr = new Array[A](c.size * 2)
           c.copyToArray(arr, 0)
           c.copyToArray(arr, c.size)
@@ -105,13 +105,13 @@ class ChunkSuite extends Fs2Suite {
         assert(Chunk.concat[A](List(Chunk.empty, Chunk.empty)) == Chunk.empty)
       }
       property("scanLeft") {
-        forAll { c: Chunk[A] =>
+        forAll { (c: Chunk[A]) =>
           def step(acc: List[A], item: A) = acc :+ item
           assert(c.scanLeft(List[A]())(step).toList == (c.toList.scanLeft(List[A]())(step)))
         }
       }
       property("scanLeftCarry") {
-        forAll { c: Chunk[A] =>
+        forAll { (c: Chunk[A]) =>
           def step(acc: List[A], item: A) = acc :+ item
           val listScan = c.toList.scanLeft(List[A]())(step)
           val (chunkScan, chunkCarry) = c.scanLeftCarry(List[A]())(step)
@@ -122,7 +122,7 @@ class ChunkSuite extends Fs2Suite {
 
       if (implicitly[ClassTag[A]] == ClassTag.Byte)
         property("toByteBuffer.byte") {
-          forAll { c: Chunk[A] =>
+          forAll { (c: Chunk[A]) =>
             implicit val ev: A =:= Byte = null
             val arr = new Array[Byte](c.size)
             c.toByteBuffer.get(arr, 0, c.size)

@@ -50,7 +50,7 @@ class IoSuite extends Fs2Suite {
     }
 
     test("can be manually closed from inside `f`") {
-      forAllAsync { chunkSize0: Int =>
+      forAllAsync { (chunkSize0: Int) =>
         val chunkSize = (chunkSize0 % 20).abs + 1
         Blocker[IO].use { blocker =>
           readOutputStream[IO](blocker, chunkSize)((os: OutputStream) =>
@@ -62,7 +62,7 @@ class IoSuite extends Fs2Suite {
     }
 
     test("fails when `f` fails") {
-      forAllAsync { chunkSize0: Int =>
+      forAllAsync { (chunkSize0: Int) =>
         val chunkSize = (chunkSize0 % 20).abs + 1
         val e = new Exception("boom")
         Blocker[IO].use { blocker =>
