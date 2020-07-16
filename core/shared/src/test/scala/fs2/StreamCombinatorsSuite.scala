@@ -253,14 +253,14 @@ class StreamCombinatorsSuite extends Fs2Suite {
 
   group("evalFilter") {
     test("with effectful const(true)") {
-      forAllAsync { s: Stream[Pure, Int] =>
+      forAllAsync { (s: Stream[Pure, Int]) =>
         val s1 = s.toList
         s.evalFilter(_ => IO.pure(true)).compile.toList.map(it => assert(it == s1))
       }
     }
 
     test("with effectful const(false)") {
-      forAllAsync { s: Stream[Pure, Int] =>
+      forAllAsync { (s: Stream[Pure, Int]) =>
         s.evalFilter(_ => IO.pure(false)).compile.toList.map(it => assert(it.isEmpty))
       }
     }
@@ -277,7 +277,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
 
   group("evalFilterAsync") {
     test("with effectful const(true)") {
-      forAllAsync { s: Stream[Pure, Int] =>
+      forAllAsync { (s: Stream[Pure, Int]) =>
         val s1 = s.toList
         s.covary[IO]
           .evalFilterAsync(5)(_ => IO.pure(true))
@@ -288,7 +288,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
     }
 
     test("with effectful const(false)") {
-      forAllAsync { s: Stream[Pure, Int] =>
+      forAllAsync { (s: Stream[Pure, Int]) =>
         s.covary[IO]
           .evalFilterAsync(5)(_ => IO.pure(false))
           .compile
@@ -341,14 +341,14 @@ class StreamCombinatorsSuite extends Fs2Suite {
 
   group("evalFilterNot") {
     test("with effectful const(true)") {
-      forAllAsync { s: Stream[Pure, Int] =>
+      forAllAsync { (s: Stream[Pure, Int]) =>
         val s1 = s.toList
         s.evalFilterNot(_ => IO.pure(false)).compile.toList.map(it => assert(it == s1))
       }
     }
 
     test("with effectful const(false)") {
-      forAllAsync { s: Stream[Pure, Int] =>
+      forAllAsync { (s: Stream[Pure, Int]) =>
         s.evalFilterNot(_ => IO.pure(true)).compile.toList.map(it => assert(it.isEmpty))
       }
     }
@@ -365,7 +365,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
 
   group("evalFilterNotAsync") {
     test("with effectful const(true)") {
-      forAllAsync { s: Stream[Pure, Int] =>
+      forAllAsync { (s: Stream[Pure, Int]) =>
         s.covary[IO]
           .evalFilterNotAsync(5)(_ => IO.pure(true))
           .compile
@@ -375,7 +375,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
     }
 
     test("with effectful const(false)") {
-      forAllAsync { s: Stream[Pure, Int] =>
+      forAllAsync { (s: Stream[Pure, Int]) =>
         val s1 = s.toList
         s.covary[IO]
           .evalFilterNotAsync(5)(_ => IO.pure(false))
@@ -442,14 +442,14 @@ class StreamCombinatorsSuite extends Fs2Suite {
 
   group("evalMapFilter") {
     test("with effectful optional identity function") {
-      forAllAsync { s: Stream[Pure, Int] =>
+      forAllAsync { (s: Stream[Pure, Int]) =>
         val s1 = s.toList
         s.evalMapFilter(n => IO.pure(n.some)).compile.toList.map(it => assert(it == s1))
       }
     }
 
     test("with effectful constant function that returns None for any element") {
-      forAllAsync { s: Stream[Pure, Int] =>
+      forAllAsync { (s: Stream[Pure, Int]) =>
         s.evalMapFilter(_ => IO.pure(none[Int]))
           .compile
           .toList
@@ -620,7 +620,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
   }
 
   property("fromEither") {
-    forAll { either: Either[Throwable, Int] =>
+    forAll { (either: Either[Throwable, Int]) =>
       val stream: Stream[Fallible, Int] = Stream.fromEither[Fallible](either)
       either match {
         case Left(t)  => assert(stream.toList == Left(t))
@@ -630,7 +630,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
   }
 
   test("fromIterator") {
-    forAllAsync { x: List[Int] =>
+    forAllAsync { (x: List[Int]) =>
       Stream
         .fromIterator[IO](x.iterator)
         .compile
@@ -640,7 +640,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
   }
 
   test("fromBlockingIterator") {
-    forAllAsync { x: List[Int] =>
+    forAllAsync { (x: List[Int]) =>
       Stream
         .fromBlockingIterator[IO](Blocker.liftExecutionContext(executionContext), x.iterator)
         .compile
@@ -856,7 +856,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
 
   group("mapAsync") {
     test("same as map") {
-      forAllAsync { s: Stream[Pure, Int] =>
+      forAllAsync { (s: Stream[Pure, Int]) =>
         val f = (_: Int) + 1
         val r = s.covary[IO].mapAsync(16)(i => IO(f(i)))
         val sVector = s.toVector
@@ -865,7 +865,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
     }
 
     test("exception") {
-      forAllAsync { s: Stream[Pure, Int] =>
+      forAllAsync { (s: Stream[Pure, Int]) =>
         val f = (_: Int) => IO.raiseError[Int](new RuntimeException)
         val r = (s ++ Stream(1)).covary[IO].mapAsync(1)(f).attempt
         r.compile.toVector.map(it => assert(it.size == 1))
@@ -874,7 +874,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
   }
 
   test("mapAsyncUnordered") {
-    forAllAsync { s: Stream[Pure, Int] =>
+    forAllAsync { (s: Stream[Pure, Int]) =>
       val f = (_: Int) + 1
       val r = s.covary[IO].mapAsyncUnordered(16)(i => IO(f(i)))
       val sVector = s.toVector

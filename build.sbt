@@ -46,8 +46,7 @@ lazy val commonSettingsBase = Seq(
   scalacOptions ++= Seq(
     "-feature",
     "-deprecation",
-    "-language:implicitConversions",
-    "-language:higherKinds",
+    "-language:implicitConversions,higherKinds",
     "-Xfatal-warnings"
   ) ++
     (scalaBinaryVersion.value match {
@@ -77,8 +76,7 @@ lazy val commonSettingsBase = Seq(
     "org.typelevel" %%% "cats-effect" % "2.1.4",
     "org.typelevel" %%% "cats-effect-laws" % "2.1.4" % "test",
     "org.scalacheck" %%% "scalacheck" % "1.14.3" % "test",
-    "org.scalameta" %%% "munit-scalacheck" % "0.7.9" % "test",
-    "org.scalatest" %%% "scalatest" % "3.2.0" % "test" // For sbt-doctest
+    "org.scalameta" %%% "munit-scalacheck" % "0.7.9" % "test"
   ),
   testFrameworks += new TestFramework("munit.Framework"),
   scmInfo := Some(
@@ -95,7 +93,7 @@ lazy val commonSettingsBase = Seq(
     implicit val contextShiftIO: ContextShift[IO] = IO.contextShift(global)
     implicit val timerIO: Timer[IO] = IO.timer(global)
   """,
-  doctestTestFramework := DoctestTestFramework.ScalaTest
+  doctestTestFramework := DoctestTestFramework.ScalaCheck
 ) ++ scaladocSettings ++ publishingSettings ++ releaseSettings
 
 lazy val commonSettings = commonSettingsBase ++ testSettings
@@ -112,7 +110,6 @@ lazy val commonTestSettings = Seq(
     case None => Seq()
   })),
   parallelExecution in Test := false,
-  testOptions in Test += Tests.Argument(TestFrameworks.ScalaTest, "-oDS"),
   publishArtifact in Test := true
 )
 lazy val testSettings =
@@ -290,7 +287,6 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
   .configs(IntegrationTest)
   .settings(Defaults.itSettings: _*)
   .settings(
-    testOptions in IntegrationTest := Seq(Tests.Argument(TestFrameworks.ScalaTest, "-oDF")),
     inConfig(IntegrationTest)(org.scalafmt.sbt.ScalafmtPlugin.scalafmtConfigSettings)
   )
   .settings(crossCommonSettings: _*)

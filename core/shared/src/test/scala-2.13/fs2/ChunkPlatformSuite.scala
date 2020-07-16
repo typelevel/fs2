@@ -21,14 +21,14 @@ class ChunkPlatformSuite extends Fs2Suite {
   )(implicit A: Arbitrary[Chunk[A]]): Unit =
     group(s"Chunk toArraySeq $testName") {
       property("values") {
-        forAll { chunk: Chunk[A] =>
+        forAll { (chunk: Chunk[A]) =>
           assert(f(chunk).toVector == chunk.toVector)
         }
       }
 
       if (shouldSpecialise)
         property("specialised") {
-          forAll { chunk: Chunk[A] =>
+          forAll { (chunk: Chunk[A]) =>
             f(chunk) match {
               case _: ArraySeq.ofRef[A] =>
                 fail("Expected specialised ArraySeq but was not specialised")
@@ -75,13 +75,13 @@ class ChunkPlatformSuite extends Fs2Suite {
 
     group(s"fromArraySeq ArraySeq[$testTypeName]") {
       property("mutable") {
-        forAll { arraySeq: mutable.ArraySeq[A] =>
+        forAll { (arraySeq: mutable.ArraySeq[A]) =>
           assert(Chunk.arraySeq(arraySeq).toVector == arraySeq.toVector)
         }
       }
 
       property("immutable") {
-        forAll { arraySeq: immutable.ArraySeq[A] =>
+        forAll { (arraySeq: immutable.ArraySeq[A]) =>
           assert(Chunk.arraySeq(arraySeq).toVector == arraySeq.toVector)
         }
       }
@@ -103,13 +103,13 @@ class ChunkPlatformSuite extends Fs2Suite {
 
   group("Chunk iterable") {
     property("mutable ArraySeq") {
-      forAll { a: mutable.ArraySeq[String] =>
+      forAll { (a: mutable.ArraySeq[String]) =>
         assert(Chunk.iterable(a).toVector == a.toVector)
       }
     }
 
     property("immutable ArraySeq") {
-      forAll { a: immutable.ArraySeq[String] =>
+      forAll { (a: immutable.ArraySeq[String]) =>
         assert(Chunk.iterable(a).toVector == a.toVector)
       }
     }
