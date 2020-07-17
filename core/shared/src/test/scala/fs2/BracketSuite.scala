@@ -10,8 +10,8 @@ import cats.implicits._
 class BracketSuite extends Fs2Suite {
 
   sealed trait BracketEvent
-  final case object Acquired extends BracketEvent
-  final case object Released extends BracketEvent
+  case object Acquired extends BracketEvent
+  case object Released extends BracketEvent
 
   def recordBracketEvents[F[_]](events: Ref[F, Vector[BracketEvent]]): Stream[F, Unit] =
     Stream.bracket(events.update(evts => evts :+ Acquired))(_ =>
