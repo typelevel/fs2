@@ -21,7 +21,7 @@ class PullSuite extends Fs2Suite {
   }
 
   property("fromEither") {
-    forAll { either: Either[Throwable, Int] =>
+    forAll { (either: Either[Throwable, Int]) =>
       val pull: Pull[Fallible, Int, Unit] = Pull.fromEither[Fallible](either)
 
       either match {
