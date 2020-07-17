@@ -102,15 +102,13 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup, blocker: Blocker
     */
   def server[F[_]](
       address: InetSocketAddress,
-      maxQueued: Int = 0,
       reuseAddress: Boolean = true,
       receiveBufferSize: Int = 256 * 1024,
       additionalSocketOptions: List[SocketOptionMapping[_]] = List.empty
   )(implicit
       F: Concurrent[F],
       CS: ContextShift[F]
-  ): Stream[F, Resource[F, Socket[F]]] = {
-    val _ = maxQueued // TODO delete maxQueued in 3.0
+  ): Stream[F, Resource[F, Socket[F]]] =
     Stream
       .resource(
         serverResource(
@@ -121,26 +119,6 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup, blocker: Blocker
         )
       )
       .flatMap { case (_, clients) => clients }
-  }
-
-  @deprecated("Use serverResource instead", "2.2.0")
-  def serverWithLocalAddress[F[_]](
-      address: InetSocketAddress,
-      maxQueued: Int = 0,
-      reuseAddress: Boolean = true,
-      receiveBufferSize: Int = 256 * 1024,
-      additionalSocketOptions: List[SocketOptionMapping[_]] = List.empty
-  )(implicit
-      F: Concurrent[F],
-      CS: ContextShift[F]
-  ): Stream[F, Either[InetSocketAddress, Resource[F, Socket[F]]]] = {
-    val _ = maxQueued
-    Stream
-      .resource(serverResource(address, reuseAddress, receiveBufferSize, additionalSocketOptions))
-      .flatMap {
-        case (localAddress, clients) => Stream(Left(localAddress)) ++ clients.map(Right(_))
-      }
-  }
 
   /**
     * Like [[server]] but provides the `InetSocketAddress` of the bound server socket before providing accepted sockets.
@@ -317,11 +295,11 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup, blocker: Blocker
                 }
               )
             }.flatMap {
-              case None       => F.pure(())
+              case None       => F.unit
               case Some(took) => go(buff, (remains - took).max(0))
             }
           writeSemaphore.withPermit {
-            go(bytes.toBytes.toByteBuffer, timeout.map(_.toMillis).getOrElse(0L))
+            go(bytes.toByteBuffer, timeout.map(_.toMillis).getOrElse(0L))
           }
         }
 

@@ -2,7 +2,7 @@ package fs2
 
 import scala.annotation.tailrec
 import scala.collection.immutable.{Queue => SQueue}
-import scala.collection.{IndexedSeq => GIndexedSeq, Seq => GSeq}
+import scala.collection.{mutable, IndexedSeq => GIndexedSeq, Seq => GSeq}
 import scala.reflect.ClassTag
 import scodec.bits.{BitVector, ByteVector}
 import java.nio.{
@@ -19,7 +19,6 @@ import java.nio.{
 import cats.{Alternative, Applicative, Eq, Eval, Monad, Traverse, TraverseFilter}
 import cats.data.{Chain, NonEmptyList}
 import cats.implicits._
-import fs2.internal.ArrayBackedSeq
 
 /**
   * Strict, finite sequence of values that allows index-based random access of elements.
@@ -33,7 +32,7 @@ import fs2.internal.ArrayBackedSeq
   * The operations on `Chunk` are all defined strictly. For example, `c.map(f).map(g).map(h)` results in
   * intermediate chunks being created (1 per call to `map`).
   */
-abstract class Chunk[+O] extends Serializable { self =>
+abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] { self =>
 
   /** Returns the number of elements in this chunk. */
   def size: Int
@@ -478,7 +477,7 @@ abstract class Chunk[+O] extends Serializable { self =>
 
   override def equals(a: Any): Boolean =
     a match {
-      case c: Chunk[O] =>
+      case c: Chunk[_] =>
         size == c.size && {
           var i = 0
           var result = true
@@ -495,10 +494,10 @@ abstract class Chunk[+O] extends Serializable { self =>
     iterator.mkString("Chunk(", ", ", ")")
 }
 
-object Chunk extends CollectorK[Chunk] {
+object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
 
   /** Optional mix-in that provides the class tag of the element type in a chunk. */
-  trait KnownElementType[A] { self: Chunk[A] =>
+  trait KnownElementType[A] extends Chunk[A] {
     def elementClassTag: ClassTag[A]
   }
 
@@ -593,13 +592,10 @@ object Chunk extends CollectorK[Chunk] {
 
   /** Creates a chunk from a `scala.collection.Iterable`. */
   def iterable[O](i: collection.Iterable[O]): Chunk[O] =
-    i match {
-      case ArrayBackedSeq(arr) =>
-        // arr is either a primitive array or a boxed array
-        // cast is safe b/c the array constructor will check for primitive vs boxed arrays
-        array(arr.asInstanceOf[Array[O]])
+    platformIterable(i).getOrElse(i match {
+      case a: mutable.ArraySeq[o]          => arraySeq[o](a).asInstanceOf[Chunk[O]]
       case v: Vector[O]                    => vector(v)
-      case b: collection.mutable.Buffer[O] => buffer(b)
+      case b: collection.mutable.Buffer[o] => buffer[o](b).asInstanceOf[Chunk[O]]
       case l: List[O] =>
         if (l.isEmpty) empty
         else if (l.tail.isEmpty) singleton(l.head)
@@ -621,11 +617,27 @@ object Chunk extends CollectorK[Chunk] {
             buffer(bldr.result)
           } else singleton(head)
         }
-    }
+    })
+
+  /**
+    * Creates a chunk backed by a mutable `ArraySeq`.
+    */
+  def arraySeq[O](arraySeq: mutable.ArraySeq[O]): Chunk[O] =
+    array(arraySeq.array.asInstanceOf[Array[O]])
 
   /** Creates a chunk backed by a `Chain`. */
   def chain[O](c: Chain[O]): Chunk[O] =
-    seq(c.toList)
+    if (c.isEmpty) empty
+    else {
+      val itr = c.iterator
+      val head = itr.next
+      if (itr.hasNext) {
+        val bldr = collection.mutable.Buffer.newBuilder[O]
+        bldr += head
+        bldr ++= itr
+        buffer(bldr.result)
+      } else singleton(head)
+    }
 
   /**
     * Creates a chunk backed by a mutable buffer. The underlying buffer must not be modified after
@@ -849,14 +861,9 @@ object Chunk extends CollectorK[Chunk] {
       val b = readOnly(buf)
       (b: JBuffer).position(offset)
       (b: JBuffer).limit(offset + size)
-      if (xs.isInstanceOf[Array[C]]) {
-        get(b, xs.asInstanceOf[Array[C]], start, size)
-        ()
-      } else {
-        val arr = new Array[C](size)
-        get(b, arr, 0, size)
-        arr.copyToArray(xs, start)
-      }
+      val arr = new Array[C](size)
+      get(b, arr, 0, size)
+      arr.copyToArray(xs, start)
     }
 
     protected def splitAtChunk_(n: Int): (A, A) = {
@@ -1660,20 +1667,98 @@ object Chunk extends CollectorK[Chunk] {
         Chunk.buffer(buf.result)
       }
       override def combineK[A](x: Chunk[A], y: Chunk[A]): Chunk[A] =
-        Chunk.concat(List(x, y))
+        Chunk.concat(x :: y :: Nil)
       override def traverse: Traverse[Chunk] = this
       override def traverse[F[_], A, B](
           fa: Chunk[A]
       )(f: A => F[B])(implicit F: Applicative[F]): F[Chunk[B]] =
-        foldRight[A, F[Vector[B]]](fa, Eval.always(F.pure(Vector.empty))) { (a, efv) =>
-          F.map2Eval(f(a), efv)(_ +: _)
-        }.value.map(Chunk.vector)
+        if (fa.isEmpty) F.pure(Chunk.empty[B])
+        else {
+          // we branch out by this factor
+          val width = 128
+          // By making a tree here we don't blow the stack
+          // even if the Chunk is very long
+          // by construction, this is never called with start == end
+          def loop(start: Int, end: Int): Eval[F[Chain[B]]] =
+            if (end - start <= width) {
+              // Here we are at the leafs of the trees
+              // we don't use map2Eval since it is always
+              // at most width in size.
+              var flist = f(fa(end - 1)).map(_ :: Nil)
+              var idx = end - 2
+              while (start <= idx) {
+                flist = F.map2(f(fa(idx)), flist)(_ :: _)
+                idx = idx - 1
+              }
+              Eval.now(flist.map(Chain.fromSeq(_)))
+            } else {
+              // we have width + 1 or more nodes left
+              val step = (end - start) / width
+
+              var fchain = Eval.defer(loop(start, start + step))
+              var start0 = start + step
+              var end0 = start0 + step
+
+              while (start0 < end) {
+                val end1 = math.min(end, end0)
+                fchain = fchain.flatMap(F.map2Eval(_, Eval.defer(loop(start0, end1)))(_.concat(_)))
+                start0 = start0 + step
+                end0 = end0 + step
+              }
+              fchain
+            }
+
+          F.map(loop(0, fa.size).value)(Chunk.chain)
+        }
+
       override def traverseFilter[F[_], A, B](
           fa: Chunk[A]
       )(f: A => F[Option[B]])(implicit F: Applicative[F]): F[Chunk[B]] =
-        foldRight[A, F[Vector[B]]](fa, Eval.always(F.pure(Vector.empty))) { (a, efv) =>
-          F.map2Eval(f(a), efv)((oa, efv) => oa.map(_ +: efv).getOrElse(efv))
-        }.value.map(Chunk.vector)
+        if (fa.isEmpty) F.pure(Chunk.empty[B])
+        else {
+          // we branch out by this factor
+          val width = 128
+          // By making a tree here we don't blow the stack
+          // even if the Chunk is very long
+          // by construction, this is never called with start == end
+          def loop(start: Int, end: Int): Eval[F[Chain[B]]] =
+            if (end - start <= width) {
+              // Here we are at the leafs of the trees
+              // we don't use map2Eval since it is always
+              // at most width in size.
+              var flist = f(fa(end - 1)).map {
+                case Some(a) => a :: Nil
+                case None    => Nil
+              }
+              var idx = end - 2
+              while (start <= idx) {
+                flist = F.map2(f(fa(idx)), flist) { (optB, list) =>
+                  if (optB.isDefined) optB.get :: list
+                  else list
+                }
+                idx = idx - 1
+              }
+              Eval.now(flist.map(Chain.fromSeq(_)))
+            } else {
+              // we have width + 1 or more nodes left
+              val step = (end - start) / width
+
+              var fchain = Eval.defer(loop(start, start + step))
+              var start0 = start + step
+              var end0 = start0 + step
+
+              while (start0 < end) {
+                val end1 = math.min(end, end0)
+                fchain = fchain.flatMap(F.map2Eval(_, Eval.defer(loop(start0, end1)))(_.concat(_)))
+                start0 = start0 + step
+                end0 = end0 + step
+              }
+              fchain
+            }
+
+          F.map(loop(0, fa.size).value)(Chunk.chain)
+        }
+
       override def mapFilter[A, B](fa: Chunk[A])(f: A => Option[B]): Chunk[B] = {
         val size = fa.size
         val b = collection.mutable.Buffer.newBuilder[B]
@@ -1706,6 +1791,31 @@ object Chunk extends CollectorK[Chunk] {
 
     /** Appends a chunk to the end of this chunk queue. */
     def :+(c: Chunk[A]): Queue[A] = new Queue(chunks :+ c, size + c.size)
+
+    /** check to see if this starts with the items in the given seq
+      * should be the same as take(seq.size).toChunk == Chunk.seq(seq)
+      */
+    def startsWith(seq: Seq[A]): Boolean = {
+      val iter = seq.iterator
+
+      @annotation.tailrec
+      def check(chunks: SQueue[Chunk[A]], idx: Int): Boolean =
+        if (!iter.hasNext) true
+        else if (chunks.isEmpty) false
+        else {
+          val chead = chunks.head
+          if (chead.size == idx) check(chunks.tail, 0)
+          else {
+            val qitem = chead(idx)
+            val iitem = iter.next()
+            if (iitem == qitem)
+              check(chunks, idx + 1)
+            else false
+          }
+        }
+
+      check(chunks, 0)
+    }
 
     /** Takes the first `n` elements of this chunk queue in a way that preserves chunk structure. */
     def take(n: Int): Queue[A] =
@@ -1754,7 +1864,7 @@ object Chunk extends CollectorK[Chunk] {
 
     override def equals(that: Any): Boolean =
       that match {
-        case that: Queue[A] => size == that.size && chunks == that.chunks
+        case that: Queue[_] => size == that.size && chunks == that.chunks
         case _              => false
       }
 

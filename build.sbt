@@ -17,17 +17,11 @@ scalaVersion in ThisBuild := crossScalaVersions.value.head
 githubWorkflowJavaVersions in ThisBuild := Seq("adopt@1.11")
 githubWorkflowPublishTargetBranches in ThisBuild := Seq(RefPredicate.Equals(Ref.Branch("main")))
 githubWorkflowBuild in ThisBuild := Seq(
-  WorkflowStep.Sbt(
-    List(
-      "fmtCheck",
-      "compile",
-      "testJVM",
-      "testJS",
-      "doc",
-      "mimaReportBinaryIssues",
-      ";project coreJVM;it:test"
-    )
-  )
+  WorkflowStep.Sbt(List("fmtCheck", "compile")),
+  WorkflowStep.Sbt(List("testJVM")),
+  WorkflowStep.Sbt(List("testJS")),
+  WorkflowStep.Sbt(List("doc", "mimaReportBinaryIssues")),
+  WorkflowStep.Sbt(List(";project coreJVM;it:test"))
 )
 githubWorkflowEnv in ThisBuild ++= Map(
   "SONATYPE_USERNAME" -> "fs2-ci",
@@ -52,8 +46,7 @@ lazy val commonSettingsBase = Seq(
   scalacOptions ++= Seq(
     "-feature",
     "-deprecation",
-    "-language:implicitConversions",
-    "-language:higherKinds",
+    "-language:implicitConversions,higherKinds",
     "-Xfatal-warnings"
   ) ++
     (scalaBinaryVersion.value match {
@@ -80,12 +73,12 @@ lazy val commonSettingsBase = Seq(
     compilerPlugin("org.typelevel" %% "kind-projector" % "0.10.3"),
     "org.typelevel" %%% "cats-core" % "2.1.1",
     "org.typelevel" %%% "cats-laws" % "2.1.1" % "test",
-    "org.typelevel" %%% "cats-effect" % "2.1.3",
-    "org.typelevel" %%% "cats-effect-laws" % "2.1.3" % "test",
+    "org.typelevel" %%% "cats-effect" % "2.1.4",
+    "org.typelevel" %%% "cats-effect-laws" % "2.1.4" % "test",
     "org.scalacheck" %%% "scalacheck" % "1.14.3" % "test",
-    "org.scalatest" %%% "scalatest" % "3.3.0-SNAP2" % "test",
-    "org.scalatestplus" %%% "scalacheck-1-14" % "3.1.2.0" % "test"
+    "org.scalameta" %%% "munit-scalacheck" % "0.7.9" % "test"
   ),
+  testFrameworks += new TestFramework("munit.Framework"),
   scmInfo := Some(
     ScmInfo(
       url("https://github.com/functional-streams-for-scala/fs2"),
@@ -100,7 +93,7 @@ lazy val commonSettingsBase = Seq(
     implicit val contextShiftIO: ContextShift[IO] = IO.contextShift(global)
     implicit val timerIO: Timer[IO] = IO.timer(global)
   """,
-  doctestTestFramework := DoctestTestFramework.ScalaTest
+  doctestTestFramework := DoctestTestFramework.ScalaCheck
 ) ++ scaladocSettings ++ publishingSettings ++ releaseSettings
 
 lazy val commonSettings = commonSettingsBase ++ testSettings
@@ -117,7 +110,6 @@ lazy val commonTestSettings = Seq(
     case None => Seq()
   })),
   parallelExecution in Test := false,
-  testOptions in Test += Tests.Argument(TestFrameworks.ScalaTest, "-oDS"),
   publishArtifact in Test := true
 )
 lazy val testSettings =
@@ -225,7 +217,8 @@ lazy val commonJsSettings = Seq(
     val url =
       "https://raw.githubusercontent.com/functional-streams-for-scala/fs2"
     s"-P:scalajs:mapSourceURI:$dir->$url/${scmBranch(version.value)}/"
-  }
+  },
+  scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule))
 )
 
 lazy val noPublish = Seq(
@@ -240,42 +233,15 @@ lazy val releaseSettings = Seq(
 
 lazy val mimaSettings = Seq(
   mimaPreviousArtifacts := {
-    List("2.0.0", "2.3.0").map { pv =>
+    List().map { pv =>
       organization.value % (normalizedName.value + "_" + scalaBinaryVersion.value) % pv
     }.toSet
   },
   mimaBinaryIssueFilters ++= Seq(
-    // These methods were only used internally between Stream and Pull: they were private to fs2.
-    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Stream.fromFreeC"),
-    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Stream.get$extension"),
-    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Stream#IdOps.self$extension"),
-    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Pull.get$extension"),
-    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Pull.get"),
-    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Stream.get$extension"),
-    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Stream.get"),
-    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Pull.fromFreeC"),
-    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Pull.get$extension"),
     // No bincompat on internal package
     ProblemFilters.exclude[Problem]("fs2.internal.*"),
     // Mima reports all ScalaSignature changes as errors, despite the fact that they don't cause bincompat issues when version swapping (see https://github.com/lightbend/mima/issues/361)
-    ProblemFilters.exclude[IncompatibleSignatureProblem]("*"),
-    // .to(sink) syntax was removed in 1.0.2 and has been hidden in all 2.x releases behind private[fs2], hence it's safe to remove
-    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Stream.to"),
-    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Stream.to$extension"),
-    ProblemFilters.exclude[DirectMissingMethodProblem](
-      "fs2.interop.reactivestreams.StreamSubscriber#FSM.stream"
-    ), // FSM is package private
-    ProblemFilters.exclude[Problem]("fs2.io.tls.TLSEngine.*"), // private[fs2] type
-    ProblemFilters.exclude[Problem]("fs2.io.tls.TLSEngine#*"),
-    ProblemFilters.exclude[DirectMissingMethodProblem](
-      "fs2.io.tls.TLSSocket.fs2$io$tls$TLSSocket$$binding$default$2"
-    ),
-    ProblemFilters.exclude[DirectMissingMethodProblem](
-      "fs2.io.tls.TLSSocket.fs2$io$tls$TLSSocket$$binding$default$3"
-    ),
-    // InputOutputBuffer is private[tls]
-    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.tls.InputOutputBuffer.output"),
-    ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.io.tls.InputOutputBuffer.output")
+    ProblemFilters.exclude[IncompatibleSignatureProblem]("*")
   )
 )
 
@@ -294,14 +260,13 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
   .configs(IntegrationTest)
   .settings(Defaults.itSettings: _*)
   .settings(
-    testOptions in IntegrationTest := Seq(Tests.Argument(TestFrameworks.ScalaTest, "-oDF")),
     inConfig(IntegrationTest)(org.scalafmt.sbt.ScalafmtPlugin.scalafmtConfigSettings)
   )
   .settings(crossCommonSettings: _*)
   .settings(
     name := "fs2-core",
     sourceDirectories in (Compile, scalafmt) += baseDirectory.value / "../shared/src/main/scala",
-    libraryDependencies += "org.scodec" %%% "scodec-bits" % "1.1.16"
+    libraryDependencies += "org.scodec" %%% "scodec-bits" % "1.1.17"
   )
   .jsSettings(commonJsSettings: _*)
 
@@ -351,7 +316,7 @@ lazy val reactiveStreams = project
     libraryDependencies ++= Seq(
       "org.reactivestreams" % "reactive-streams" % "1.0.3",
       "org.reactivestreams" % "reactive-streams-tck" % "1.0.3" % "test",
-      "org.scalatestplus" %% "scalatestplus-testng" % "1.0.0-M2" % "test"
+      "org.scalatestplus" %% "testng-6-7" % "3.2.0.0" % "test"
     )
   )
   .settings(mimaSettings)

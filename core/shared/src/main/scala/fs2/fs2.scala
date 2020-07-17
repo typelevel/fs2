@@ -16,14 +16,6 @@ package object fs2 {
   type Pipe2[F[_], -I, -I2, +O] = (Stream[F, I], Stream[F, I2]) => Stream[F, O]
 
   /**
-    * A pipe that converts a stream to a `Stream[F, INothing]`.
-    *
-    * Sinks are typically applied with the `to` operation on `Stream`.
-    */
-  @deprecated("Use Pipe[F, I, Unit] instead", "1.0.2")
-  type Sink[F[_], -I] = Pipe[F, I, INothing]
-
-  /**
     * Indicates that a stream evaluates no effects.
     *
     * A `Stream[Pure,O]` can be safely converted to a `Stream[F,O]` for all `F`.

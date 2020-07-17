@@ -6,9 +6,6 @@ import org.reactivestreams._
 import cats.effect._
 
 import java.util.concurrent.atomic.AtomicBoolean
-import scala.concurrent.ExecutionContext
-
-import org.scalatest.funsuite.AnyFunSuite
 
 /**
   * This behaviour is already tested by the Reactive Stream test
@@ -16,9 +13,7 @@ import org.scalatest.funsuite.AnyFunSuite
   * tests that run the assertions multiple times to make possible
   * failures due to race conditions more repeatable
   */
-class CancellationSpec extends AnyFunSuite {
-  implicit val ctx: ContextShift[IO] =
-    IO.contextShift(ExecutionContext.global)
+class CancellationSpec extends Fs2Suite {
 
   case class Sub[A](b: AtomicBoolean) extends Subscriber[A] {
     def onNext(t: A) = b.set(true)
