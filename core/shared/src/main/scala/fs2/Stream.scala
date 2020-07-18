@@ -1697,31 +1697,33 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     }.stream
 
   /**
-    * Writes this stream of strings to the supplied `PrintStream`.
+    * Writes this stream of strings to the supplied `PrintStream`, emitting a unit
+    * for each line that was written.
     *
     * Note: printing to the `PrintStream` is performed *synchronously*.
     * Use `linesAsync(out, blocker)` if synchronous writes are a concern.
     */
   def lines[F2[x] >: F[x]](
       out: PrintStream
-  )(implicit F: Sync[F2], ev: O <:< String): Stream[F2, INothing] = {
+  )(implicit F: Sync[F2], ev: O <:< String): Stream[F2, Unit] = {
     val _ = ev
     val src = this.asInstanceOf[Stream[F2, String]]
-    src.foreach(str => F.delay(out.println(str)))
+    src.evalMap(str => F.delay(out.println(str)))
   }
 
   /**
-    * Writes this stream of strings to the supplied `PrintStream`.
+    * Writes this stream of strings to the supplied `PrintStream`, emitting a unit
+    * for each line that was written.
     *
     * Note: printing to the `PrintStream` is performed on the supplied blocking execution context.
     */
   def linesAsync[F2[x] >: F[x]](
       out: PrintStream,
       blocker: Blocker
-  )(implicit F: Sync[F2], cs: ContextShift[F2], ev: O <:< String): Stream[F2, INothing] = {
+  )(implicit F: Sync[F2], cs: ContextShift[F2], ev: O <:< String): Stream[F2, Unit] = {
     val _ = ev
     val src = this.asInstanceOf[Stream[F2, String]]
-    src.foreach(str => blocker.delay(out.println(str)))
+    src.evalMap(str => blocker.delay(out.println(str)))
   }
 
   /**
@@ -2399,29 +2401,32 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     new Stream(Pull.scope(underlying))
 
   /**
-    * Writes this stream to the supplied `PrintStream`, converting each element to a `String` via `Show`.
+    * Writes this stream to the supplied `PrintStream`, converting each element to a `String` via `Show`,
+    * emitting a unit for each line written.
     *
     * Note: printing to the `PrintStream` is performed *synchronously*.
     * Use `showLinesAsync(out, blocker)` if synchronous writes are a concern.
     */
   def showLines[F2[x] >: F[x], O2 >: O](
       out: PrintStream
-  )(implicit F: Sync[F2], showO: Show[O2]): Stream[F2, INothing] =
+  )(implicit F: Sync[F2], showO: Show[O2]): Stream[F2, Unit] =
     covaryAll[F2, O2].map(_.show).lines(out)
 
   /**
-    * Writes this stream to the supplied `PrintStream`, converting each element to a `String` via `Show`.
+    * Writes this stream to the supplied `PrintStream`, converting each element to a `String` via `Show`,
+    * emitting a unit for each line written.
     *
     * Note: printing to the `PrintStream` is performed on the supplied blocking execution context.
     */
   def showLinesAsync[F2[x] >: F[x]: Sync: ContextShift, O2 >: O: Show](
       out: PrintStream,
       blocker: Blocker
-  ): Stream[F2, INothing] =
+  ): Stream[F2, Unit] =
     covaryAll[F2, O2].map(_.show).linesAsync(out, blocker)
 
   /**
-    * Writes this stream to standard out, converting each element to a `String` via `Show`.
+    * Writes this stream to standard out, converting each element to a `String` via `Show`,
+    * emitting a unit for each line written.
     *
     * Note: printing to standard out is performed *synchronously*.
     * Use `showLinesStdOutAsync(blockingEc)` if synchronous writes are a concern.
@@ -2429,17 +2434,18 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
   def showLinesStdOut[F2[x] >: F[x], O2 >: O](implicit
       F: Sync[F2],
       showO: Show[O2]
-  ): Stream[F2, INothing] =
+  ): Stream[F2, Unit] =
     showLines[F2, O2](Console.out)
 
   /**
-    * Writes this stream to standard out, converting each element to a `String` via `Show`.
+    * Writes this stream to standard out, converting each element to a `String` via `Show`,
+    * emitting a unit for each line written.
     *
     * Note: printing to the `PrintStream` is performed on the supplied blocking execution context.
     */
   def showLinesStdOutAsync[F2[x] >: F[x]: Sync: ContextShift, O2 >: O: Show](
       blocker: Blocker
-  ): Stream[F2, INothing] =
+  ): Stream[F2, Unit] =
     showLinesAsync[F2, O2](Console.out, blocker)
 
   /**
