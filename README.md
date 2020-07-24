@@ -125,7 +125,11 @@ If you have a project you'd like to include in this list, either open a PR or le
 
 Here's a (non-exhaustive) list of companies that use FS2 in production. Don't see yours? You can [add it in a PR!](https://github.com/functional-streams-for-scala/fs2/edit/main/README.md)
 
-*
+* [CompStak](https://www.compstak.com)
+* [Formedix](https://www.formedix.com/)
+* [Ocado Technology](https://www.ocadogroup.com/technology/technology-pioneers)
+* [OVO Energy](https://www.ovoenergy.com)
+* [Teikametrics](https://www.teikametrics.com)
 
 ### Acknowledgments ###
 
