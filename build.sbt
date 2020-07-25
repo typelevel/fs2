@@ -49,16 +49,15 @@ lazy val commonSettingsBase = Seq(
   scalacOptions ++= Seq(
     "-feature",
     "-deprecation",
-    "-language:implicitConversions,higherKinds",
     "-Xfatal-warnings"
   ) ++
     (scalaBinaryVersion.value match {
       case v if v.startsWith("2.13") =>
-        List("-Xlint", "-Ywarn-unused")
+        List("-Xlint", "-Ywarn-unused", "-language:implicitConversions,higherKinds")
       case v if v.startsWith("2.12") =>
-        List("-Ypartial-unification")
+        List("-Ypartial-unification", "-language:implicitConversions,higherKinds")
       case v if v.startsWith("0.") =>
-        List("-Ykind-projector")
+        List("-Ykind-projector", "-language:implicitConversions,higherKinds")
       case other => sys.error(s"Unsupported scala version: $other")
     }),
   scalacOptions in (Compile, console) ~= {
@@ -77,10 +76,10 @@ lazy val commonSettingsBase = Seq(
   libraryDependencies ++= Seq(
     ("org.typelevel" %%% "cats-core" % "2.2.0-M3").withDottyCompat(scalaVersion.value),
     ("org.typelevel" %%% "cats-laws" % "2.2.0-M3" % "test").withDottyCompat(scalaVersion.value),
-    ("org.typelevel" %%% "cats-effect" % "2.1.4").withDottyCompat(scalaVersion.value),
-    ("org.typelevel" %%% "cats-effect-laws" % "2.1.4" % "test").withDottyCompat(scalaVersion.value),
+    ("org.typelevel" %%% "cats-effect" % "2.2.0-RC1").withDottyCompat(scalaVersion.value),
+    ("org.typelevel" %%% "cats-effect-laws" % "2.2.0-RC1" % "test").withDottyCompat(scalaVersion.value),
     ("org.scalacheck" %%% "scalacheck" % "1.14.3" % "test").withDottyCompat(scalaVersion.value),
-    "org.scalameta" %%% "munit-scalacheck" % "0.7.9+6-69b9ed31-SNAPSHOT" % "test"
+    "org.scalameta" %%% "munit-scalacheck" % "0.7.10" % "test"
   ),
   libraryDependencies ++= { if (isDotty.value) Nil else Seq(
     compilerPlugin("org.typelevel" %% "kind-projector" % "0.10.3")
@@ -275,7 +274,14 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
           _.sharedSrcDir(baseDirectory.value, "main").toList.map(f => file(f.getPath + "-3"))
         )
       else Nil
-    },   
+    },
+    crossScalaVersions := { 
+      val default = crossScalaVersions.value
+      if (crossProjectPlatform.value.identifier != "jvm")
+        default.filter(_.startsWith("2."))
+      else
+        default
+    },
     libraryDependencies += "org.scodec" %%% "scodec-bits" % "2.0.0-SNAPSHOT"
   )
   .jsSettings(commonJsSettings: _*)
@@ -303,6 +309,13 @@ lazy val io = project
   .settings(mimaSettings)
   .settings(
     name := "fs2-io",
+    Compile / unmanagedSourceDirectories ++= {
+      if (isDotty.value)
+        List(CrossType.Pure, CrossType.Full).flatMap(
+          _.sharedSrcDir(baseDirectory.value / "io", "main").toList.map(f => file(f.getPath + "-3"))
+        )
+      else Nil
+    },   
     OsgiKeys.exportPackage := Seq("fs2.io.*"),
     OsgiKeys.privatePackage := Seq(),
     OsgiKeys.importPackage := {

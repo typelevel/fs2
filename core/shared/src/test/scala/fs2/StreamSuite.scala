@@ -916,13 +916,14 @@ class StreamSuite extends Fs2Suite {
         Ref[IO]
           .of(false)
           .flatMap { written =>
-            Stream
+            val p: IO[(Unit, IO[Unit])] = Stream
               .emit(())
               .onFinalize(written.set(true))
               .compile
               .resource
               .lastOrError
-              .allocated *> written.get
+              .allocated
+            p *> written.get
           }
           .map(it => assert(it == false))
       }

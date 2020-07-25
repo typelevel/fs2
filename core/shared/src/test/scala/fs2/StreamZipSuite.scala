@@ -196,12 +196,10 @@ class StreamZipSuite extends Fs2Suite {
       // Ticking env doesn't seem to be working on Scala.js for some reason
       test("parZip evaluates effects with bounded concurrency") {
         // various shenanigans to support TestContext in our current test setup
-        val contextShiftIO = ()
-        val timerIO = ()
-        val (_, _) = (contextShiftIO, timerIO)
         val env: TestContext = TestContext()
-        implicit val ctx: ContextShift[IO] = env.contextShift[IO](IO.ioEffect)
-        implicit val timer: Timer[IO] = env.timer[IO]
+        implicit val contextShiftIO: ContextShift[IO] = env.contextShift[IO](IO.ioEffect)
+        implicit val ioConcurrentEffect: cats.effect.ConcurrentEffect[IO] = IO.ioConcurrentEffect(contextShiftIO)
+        implicit val timerIO: Timer[IO] = env.timer[IO]
 
         // track progress of the computation
         @volatile var lhs: Int = 0
