@@ -76,7 +76,7 @@ lazy val commonSettingsBase = Seq(
     "org.typelevel" %%% "cats-effect" % "2.1.4",
     "org.typelevel" %%% "cats-effect-laws" % "2.1.4" % "test",
     "org.scalacheck" %%% "scalacheck" % "1.14.3" % "test",
-    "org.scalameta" %%% "munit-scalacheck" % "0.7.9" % "test"
+    "org.scalameta" %%% "munit-scalacheck" % "0.7.10" % "test"
   ),
   testFrameworks += new TestFramework("munit.Framework"),
   scmInfo := Some(
