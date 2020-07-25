@@ -158,7 +158,14 @@ lazy val scaladocSettings = Seq(
     "-implicits-show-all"
   ),
   scalacOptions in (Compile, doc) ~= { _.filterNot(_ == "-Xfatal-warnings") },
-  autoAPIMappings := true
+  autoAPIMappings := true,
+  Compile / doc / sources := {
+    val old = (Compile / doc / sources).value
+    if (isDotty.value)
+      Seq()
+    else
+      old
+  }
 )
 
 lazy val publishingSettings = Seq(
