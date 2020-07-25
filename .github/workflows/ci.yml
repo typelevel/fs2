@@ -24,7 +24,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest]
-        scala: [2.13.2, 2.12.10]
+        scala: [2.13.2, 2.12.10, 0.26.0-RC1]
         java: [adopt@1.11]
     runs-on: ${{ matrix.os }}
     steps:
@@ -212,6 +212,12 @@ jobs:
           name: target-${{ matrix.os }}-2.12.10-${{ matrix.java }}-experimental_target
           path: experimental/target
 
+      - name: Download target directory 'experimental/target' (0.26.0-RC1)
+        uses: actions/download-artifact@v1
+        with:
+          name: target-${{ matrix.os }}-0.26.0-RC1-${{ matrix.java }}-experimental_target
+          path: experimental/target
+
       - name: Download target directory 'target' (2.13.2)
         uses: actions/download-artifact@v1
         with:
@@ -222,6 +228,12 @@ jobs:
         uses: actions/download-artifact@v1
         with:
           name: target-${{ matrix.os }}-2.12.10-${{ matrix.java }}-target
+          path: target
+
+      - name: Download target directory 'target' (0.26.0-RC1)
+        uses: actions/download-artifact@v1
+        with:
+          name: target-${{ matrix.os }}-0.26.0-RC1-${{ matrix.java }}-target
           path: target
 
       - name: Download target directory 'core/js/target' (2.13.2)
@@ -236,6 +248,12 @@ jobs:
           name: target-${{ matrix.os }}-2.12.10-${{ matrix.java }}-core_js_target
           path: core/js/target
 
+      - name: Download target directory 'core/js/target' (0.26.0-RC1)
+        uses: actions/download-artifact@v1
+        with:
+          name: target-${{ matrix.os }}-0.26.0-RC1-${{ matrix.java }}-core_js_target
+          path: core/js/target
+
       - name: Download target directory 'site/target' (2.13.2)
         uses: actions/download-artifact@v1
         with:
@@ -246,6 +264,12 @@ jobs:
         uses: actions/download-artifact@v1
         with:
           name: target-${{ matrix.os }}-2.12.10-${{ matrix.java }}-site_target
+          path: site/target
+
+      - name: Download target directory 'site/target' (0.26.0-RC1)
+        uses: actions/download-artifact@v1
+        with:
+          name: target-${{ matrix.os }}-0.26.0-RC1-${{ matrix.java }}-site_target
           path: site/target
 
       - name: Download target directory 'core/jvm/target' (2.13.2)
@@ -260,6 +284,12 @@ jobs:
           name: target-${{ matrix.os }}-2.12.10-${{ matrix.java }}-core_jvm_target
           path: core/jvm/target
 
+      - name: Download target directory 'core/jvm/target' (0.26.0-RC1)
+        uses: actions/download-artifact@v1
+        with:
+          name: target-${{ matrix.os }}-0.26.0-RC1-${{ matrix.java }}-core_jvm_target
+          path: core/jvm/target
+
       - name: Download target directory 'io/target' (2.13.2)
         uses: actions/download-artifact@v1
         with:
@@ -270,6 +300,12 @@ jobs:
         uses: actions/download-artifact@v1
         with:
           name: target-${{ matrix.os }}-2.12.10-${{ matrix.java }}-io_target
+          path: io/target
+
+      - name: Download target directory 'io/target' (0.26.0-RC1)
+        uses: actions/download-artifact@v1
+        with:
+          name: target-${{ matrix.os }}-0.26.0-RC1-${{ matrix.java }}-io_target
           path: io/target
 
       - name: Download target directory 'reactive-streams/target' (2.13.2)
@@ -284,6 +320,12 @@ jobs:
           name: target-${{ matrix.os }}-2.12.10-${{ matrix.java }}-reactive-streams_target
           path: reactive-streams/target
 
+      - name: Download target directory 'reactive-streams/target' (0.26.0-RC1)
+        uses: actions/download-artifact@v1
+        with:
+          name: target-${{ matrix.os }}-0.26.0-RC1-${{ matrix.java }}-reactive-streams_target
+          path: reactive-streams/target
+
       - name: Download target directory 'benchmark/target' (2.13.2)
         uses: actions/download-artifact@v1
         with:
@@ -294,6 +336,12 @@ jobs:
         uses: actions/download-artifact@v1
         with:
           name: target-${{ matrix.os }}-2.12.10-${{ matrix.java }}-benchmark_target
+          path: benchmark/target
+
+      - name: Download target directory 'benchmark/target' (0.26.0-RC1)
+        uses: actions/download-artifact@v1
+        with:
+          name: target-${{ matrix.os }}-0.26.0-RC1-${{ matrix.java }}-benchmark_target
           path: benchmark/target
 
       - name: Download target directory 'project/target'
