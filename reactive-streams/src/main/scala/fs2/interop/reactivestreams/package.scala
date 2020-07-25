@@ -41,7 +41,7 @@ package object reactivestreams {
   implicit final class PublisherOps[A](val publisher: Publisher[A]) extends AnyVal {
 
     /** Creates a lazy stream from an `org.reactivestreams.Publisher` */
-    def toStream[F[_]: ConcurrentEffect](): Stream[F, A] =
+    def toStream[F[_]: ConcurrentEffect]: Stream[F, A] =
       fromPublisher(publisher)
   }
 
@@ -53,7 +53,7 @@ package object reactivestreams {
       * This publisher can only have a single subscription.
       * The stream is only ran when elements are requested.
       */
-    def toUnicastPublisher()(implicit F: ConcurrentEffect[F]): StreamUnicastPublisher[F, A] =
+    def toUnicastPublisher(implicit F: ConcurrentEffect[F]): StreamUnicastPublisher[F, A] =
       StreamUnicastPublisher(stream)
   }
 
