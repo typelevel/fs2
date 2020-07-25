@@ -159,6 +159,7 @@ class StreamPerformanceSuite extends Fs2Suite {
                 case Some((hd, tl)) => Pull.output1(hd).as(Some(tl))
               }
             }
+            .covary[Pure]
             .toVector,
           Vector.range(0, N)
         )

@@ -197,7 +197,7 @@ class StreamInterruptSuite extends Fs2Suite {
           Stream(1)
             .append(s)
             .covary[IO]
-            .interruptWhen(interrupt)
+            .interruptWhen(interrupt.covaryOutput[Boolean])
             .flatMap(_ => Stream.eval_(semaphore.acquire))
         }
         .compile

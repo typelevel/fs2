@@ -2340,7 +2340,7 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     *
     * @example {{{
     * scala> def take[F[_],O](s: Stream[F,O], n: Int): Stream[F,O] =
-    *      |   s.scanChunksOpt(n) { n => if (n <= 0) None else Some(c => if (c.size < n) (n - c.size, c) else (0, c.take(n))) }
+    *      |   s.scanChunksOpt(n) { n => if (n <= 0) None else Some((c: Chunk[O]) => if (c.size < n) (n - c.size, c) else (0, c.take(n))) }
     * scala> take(Stream.range(0,100), 5).toList
     * res0: List[Int] = List(0, 1, 2, 3, 4)
     * }}}
@@ -4283,7 +4283,7 @@ object Stream extends StreamLowPriority {
     ): G[C]
   }
 
-  trait LowPrioCompiler {
+  private[fs2] trait LowPrioCompiler2 {
     implicit def resourceInstance[F[_]](implicit F: Sync[F]): Compiler[F, Resource[F, *]] =
       new Compiler[F, Resource[F, *]] {
         def apply[O, B, C](
@@ -4305,8 +4305,33 @@ object Stream extends StreamLowPriority {
       }
   }
 
+  private[fs2] trait LowPrioCompiler1 extends LowPrioCompiler2 {
+    implicit val idInstance: Compiler[Id, Id] = new Compiler[Id, Id] {
+      def apply[O, B, C](
+          s: Stream[Id, O],
+          init: () => B
+      )(foldChunk: (B, Chunk[O]) => B, finalize: B => C): C =
+        finalize(Compiler.compile(s.covaryId[SyncIO].underlying, init())(foldChunk).unsafeRunSync)
+    }
+  }
+
+  private[fs2] trait LowPrioCompiler extends LowPrioCompiler1 {
+    implicit val fallibleInstance: Compiler[Fallible, Either[Throwable, *]] =
+      new Compiler[Fallible, Either[Throwable, *]] {
+        def apply[O, B, C](
+            s: Stream[Fallible, O],
+            init: () => B
+        )(foldChunk: (B, Chunk[O]) => B, finalize: B => C): Either[Throwable, C] =
+          Compiler
+            .compile(s.lift[SyncIO].underlying, init())(foldChunk)
+            .attempt
+            .unsafeRunSync
+            .map(finalize)
+      }
+  }
+
   object Compiler extends LowPrioCompiler {
-    private def compile[F[_], O, B](stream: Pull[F, O, Unit], init: B)(
+    private[fs2] def compile[F[_], O, B](stream: Pull[F, O, Unit], init: B)(
         f: (B, Chunk[O]) => B
     )(implicit F: Sync[F]): F[B] =
       F.bracketCase(CompileScope.newRoot[F])(scope =>
@@ -4330,26 +4355,6 @@ object Stream extends StreamLowPriority {
         finalize(Compiler.compile(s.covary[SyncIO].underlying, init())(foldChunk).unsafeRunSync)
     }
 
-    implicit val idInstance: Compiler[Id, Id] = new Compiler[Id, Id] {
-      def apply[O, B, C](
-          s: Stream[Id, O],
-          init: () => B
-      )(foldChunk: (B, Chunk[O]) => B, finalize: B => C): C =
-        finalize(Compiler.compile(s.covaryId[SyncIO].underlying, init())(foldChunk).unsafeRunSync)
-    }
-
-    implicit val fallibleInstance: Compiler[Fallible, Either[Throwable, *]] =
-      new Compiler[Fallible, Either[Throwable, *]] {
-        def apply[O, B, C](
-            s: Stream[Fallible, O],
-            init: () => B
-        )(foldChunk: (B, Chunk[O]) => B, finalize: B => C): Either[Throwable, C] =
-          Compiler
-            .compile(s.lift[SyncIO].underlying, init())(foldChunk)
-            .attempt
-            .unsafeRunSync
-            .map(finalize)
-      }
   }
 
   /** Projection of a `Stream` providing various ways to compile a `Stream[F,O]` to a `G[...]`. */

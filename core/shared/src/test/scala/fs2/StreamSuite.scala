@@ -922,7 +922,7 @@ class StreamSuite extends Fs2Suite {
               .compile
               .resource
               .lastOrError
-              .allocated >> written.get
+              .allocated *> written.get
           }
           .map(it => assert(it == false))
       }
