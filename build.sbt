@@ -258,7 +258,7 @@ lazy val root = project
   .settings(commonSettings)
   .settings(mimaSettings)
   .settings(noPublish)
-  .aggregate(coreJVM, coreJS, io, reactiveStreams, benchmark, experimental, microsite)
+  .aggregate(coreJVM, coreJS, io, reactiveStreams, benchmark, experimental)
 
 lazy val IntegrationTest = config("it").extend(Test)
 
