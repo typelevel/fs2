@@ -77,13 +77,18 @@ lazy val commonSettingsBase = Seq(
     ("org.typelevel" %%% "cats-core" % "2.2.0-M3").withDottyCompat(scalaVersion.value),
     ("org.typelevel" %%% "cats-laws" % "2.2.0-M3" % "test").withDottyCompat(scalaVersion.value),
     ("org.typelevel" %%% "cats-effect" % "2.2.0-RC1").withDottyCompat(scalaVersion.value),
-    ("org.typelevel" %%% "cats-effect-laws" % "2.2.0-RC1" % "test").withDottyCompat(scalaVersion.value),
+    ("org.typelevel" %%% "cats-effect-laws" % "2.2.0-RC1" % "test")
+      .withDottyCompat(scalaVersion.value),
     ("org.scalacheck" %%% "scalacheck" % "1.14.3" % "test").withDottyCompat(scalaVersion.value),
     "org.scalameta" %%% "munit-scalacheck" % "0.7.10" % "test"
   ),
-  libraryDependencies ++= { if (isDotty.value) Nil else Seq(
-    compilerPlugin("org.typelevel" %% "kind-projector" % "0.10.3")
-  )},
+  libraryDependencies ++= {
+    if (isDotty.value) Nil
+    else
+      Seq(
+        compilerPlugin("org.typelevel" %% "kind-projector" % "0.10.3")
+      )
+  },
   testFrameworks += new TestFramework("munit.Framework"),
   scmInfo := Some(
     ScmInfo(
@@ -275,7 +280,7 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
         )
       else Nil
     },
-    crossScalaVersions := { 
+    crossScalaVersions := {
       val default = crossScalaVersions.value
       if (crossProjectPlatform.value.identifier != "jvm")
         default.filter(_.startsWith("2."))
@@ -315,7 +320,7 @@ lazy val io = project
           _.sharedSrcDir(baseDirectory.value / "io", "main").toList.map(f => file(f.getPath + "-3"))
         )
       else Nil
-    },   
+    },
     OsgiKeys.exportPackage := Seq("fs2.io.*"),
     OsgiKeys.privatePackage := Seq(),
     OsgiKeys.importPackage := {

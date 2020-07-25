@@ -340,7 +340,9 @@ object compression {
     * a `java.util.zip.Inflater` with the parameter `nowrap`.
     * @param inflateParams See [[compression.InflateParams]]
     */
-  def inflateParams[F[_]](inflateParams: InflateParams)(implicit SyncF: Sync[F]): Pipe[F, Byte, Byte] =
+  def inflateParams[F[_]](
+      inflateParams: InflateParams
+  )(implicit SyncF: Sync[F]): Pipe[F, Byte, Byte] =
     stream =>
       Stream
         .bracket(SyncF.delay(new Inflater(inflateParams.header.juzDeflaterNoWrap)))(inflater =>

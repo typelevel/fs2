@@ -17,12 +17,14 @@ final class StreamUnicastPublisher[F[_]: ConcurrentEffect, A](val stream: Stream
     extends Publisher[A] {
   def subscribe(subscriber: Subscriber[_ >: A]): Unit = {
     nonNull(subscriber)
-    StreamSubscription(subscriber, stream).flatMap { subscription =>
-      Sync[F].delay {
-        subscriber.onSubscribe(subscription)
-        subscription.unsafeStart()
+    StreamSubscription(subscriber, stream)
+      .flatMap { subscription =>
+        Sync[F].delay {
+          subscriber.onSubscribe(subscription)
+          subscription.unsafeStart()
+        }
       }
-    }.unsafeRunAsync()
+      .unsafeRunAsync()
   }
 
   private def nonNull[B](b: B): Unit = if (b == null) throw new NullPointerException()

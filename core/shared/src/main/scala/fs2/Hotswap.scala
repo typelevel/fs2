@@ -114,7 +114,7 @@ object Hotswap {
                 case (newValue, newFinalizer) =>
                   swapFinalizer(newFinalizer).as(newValue)
               }
-            }
+          }
 
         override def clear: F[Unit] =
           swapFinalizer(().pure[F]).uncancelable

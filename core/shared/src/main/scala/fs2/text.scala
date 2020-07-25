@@ -265,7 +265,9 @@ object text {
     * Like [[base64Decode]] but takes a base 64 alphabet. For example,
     * `base64DecodeAlphabet(Bases.Alphabets.Base64Url)` will decode URL compatible base 64.
     */
-  def base64DecodeAlphabet[F[_]: RaiseThrowable](alphabet: Bases.Base64Alphabet): Pipe[F, String, Byte] = {
+  def base64DecodeAlphabet[F[_]: RaiseThrowable](
+      alphabet: Bases.Base64Alphabet
+  ): Pipe[F, String, Byte] = {
     // Adapted from scodec-bits, licensed under 3-clause BSD
     final case class State(buffer: Int, mod: Int, padding: Int)
     val Pad = alphabet.pad

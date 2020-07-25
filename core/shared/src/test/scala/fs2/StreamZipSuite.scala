@@ -198,7 +198,8 @@ class StreamZipSuite extends Fs2Suite {
         // various shenanigans to support TestContext in our current test setup
         val env: TestContext = TestContext()
         implicit val contextShiftIO: ContextShift[IO] = env.contextShift[IO](IO.ioEffect)
-        implicit val ioConcurrentEffect: cats.effect.ConcurrentEffect[IO] = IO.ioConcurrentEffect(contextShiftIO)
+        implicit val ioConcurrentEffect: cats.effect.ConcurrentEffect[IO] =
+          IO.ioConcurrentEffect(contextShiftIO)
         implicit val timerIO: Timer[IO] = env.timer[IO]
 
         // track progress of the computation

@@ -24,9 +24,10 @@ abstract class Fs2Suite
   implicit val timerIO: Timer[IO] = IO.timer(executionContext)
   implicit val contextShiftIO: ContextShift[IO] =
     IO.contextShift(executionContext)
-  
+
   // Shim to make Dotty happy
-  implicit val ioConcurrentEffect: cats.effect.ConcurrentEffect[IO] = IO.ioConcurrentEffect(contextShiftIO)
+  implicit val ioConcurrentEffect: cats.effect.ConcurrentEffect[IO] =
+    IO.ioConcurrentEffect(contextShiftIO)
 
   /** Provides various ways to make test assertions on an `F[A]`. */
   implicit class Asserting[F[_], A](private val self: F[A]) {

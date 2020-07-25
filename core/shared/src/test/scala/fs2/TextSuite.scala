@@ -288,7 +288,7 @@ class TextSuite extends Fs2Suite {
             .through(text.base64Decode)
             .compile
             .to(ByteVector) ==
-          Right(bs.map(ByteVector.view(_)).foldLeft(ByteVector.empty)(_ ++ _))
+            Right(bs.map(ByteVector.view(_)).foldLeft(ByteVector.empty)(_ ++ _))
         )
       }
     }
@@ -324,8 +324,8 @@ class TextSuite extends Fs2Suite {
             .covary[Fallible]
             .through(text.base64Decode)
             .compile
-            .to(ByteVector) == 
-          Right(bs.map(ByteVector.view(_)).foldLeft(ByteVector.empty)(_ ++ _))
+            .to(ByteVector) ==
+            Right(bs.map(ByteVector.view(_)).foldLeft(ByteVector.empty)(_ ++ _))
         )
       }
     }
