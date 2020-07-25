@@ -14,7 +14,7 @@ addCommandAlias(
   "; compile:scalafmtCheck; test:scalafmtCheck; it:scalafmtCheck; scalafmtSbtCheck"
 )
 
-crossScalaVersions in ThisBuild := Seq("2.13.2", "2.12.10", dottyLatestNightlyBuild.get)
+crossScalaVersions in ThisBuild := Seq("2.13.2", "2.12.10", "0.26.0-RC1")
 scalaVersion in ThisBuild := crossScalaVersions.value.head
 
 githubWorkflowJavaVersions in ThisBuild := Seq("adopt@1.11")
@@ -80,14 +80,8 @@ lazy val commonSettingsBase = Seq(
     ("org.typelevel" %%% "cats-effect" % "2.1.4").withDottyCompat(scalaVersion.value),
     ("org.typelevel" %%% "cats-effect-laws" % "2.1.4" % "test").withDottyCompat(scalaVersion.value),
     ("org.scalacheck" %%% "scalacheck" % "1.14.3" % "test").withDottyCompat(scalaVersion.value),
-    // "org.scalameta" %%% "munit-scalacheck" % "0.7.9" % "test", // TODO uncomment once Dotty 0.26 is out
-    ("org.scalatest" %%% "scalatest" % "3.2.0" % "test").withDottyCompat(scalaVersion.value) // For sbt-doctest
+    "org.scalameta" %%% "munit-scalacheck" % "0.7.9+6-69b9ed31-SNAPSHOT" % "test"
   ),
-  libraryDependencies += {
-    if (isDotty.value) "org.scalameta" % "munit-scalacheck_0.25" % "0.7.9" % "test"
-    else "org.scalameta" %%% "munit-scalacheck" % "0.7.9" % "test"
-  },
-  excludeDependencies += ExclusionRule("ch.epfl.lamp", "dotty-library_0.25"),
   libraryDependencies ++= { if (isDotty.value) Nil else Seq(
     compilerPlugin("org.typelevel" %% "kind-projector" % "0.10.3")
   )},
@@ -117,18 +111,13 @@ lazy val commonTestSettings = Seq(
     "-Dscala.concurrent.context.minThreads=8",
     "-Dscala.concurrent.context.numThreads=8",
     "-Dscala.concurrent.context.maxThreads=8"
-  ) ++ (sys.props.get("fs2.test.travis") match {
-    case Some(value) =>
-      Seq(s"-Dfs2.test.travis=true")
-    case None => Seq()
-  })),
+  )),
   parallelExecution in Test := false,
-  testOptions in Test += Tests.Argument(TestFrameworks.ScalaTest, "-oDS"),
   publishArtifact in Test := true
 )
+
 lazy val testSettings =
-  (fork in Test := true) +:
-    commonTestSettings
+  (fork in Test := true) +: commonTestSettings
 
 lazy val crossTestSettings =
   (fork in Test := crossProjectPlatform.value != JSPlatform) +:
@@ -274,7 +263,6 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
   .configs(IntegrationTest)
   .settings(Defaults.itSettings: _*)
   .settings(
-    testOptions in IntegrationTest := Seq(Tests.Argument(TestFrameworks.ScalaTest, "-oDF")),
     inConfig(IntegrationTest)(org.scalafmt.sbt.ScalafmtPlugin.scalafmtConfigSettings)
   )
   .settings(crossCommonSettings: _*)

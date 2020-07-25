@@ -118,7 +118,7 @@ class CompressionSuite extends Fs2Suite {
           .chunk[IO, Byte](Chunk.bytes(getBytes(s)))
           .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
           .through(
-            deflate(
+            deflateParams(
               DeflateParams(
                 bufferSize = 32 * 1024,
                 header = if (nowrap) ZLibParams.Header.GZIP else ZLibParams.Header.ZLIB,
@@ -154,7 +154,7 @@ class CompressionSuite extends Fs2Suite {
       )
       .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
       .through(
-        deflate(
+        deflateParams(
           DeflateParams(
             header = ZLibParams.Header.ZLIB
           )
@@ -191,7 +191,7 @@ class CompressionSuite extends Fs2Suite {
           .chunk[IO, Byte](Chunk.bytes(getBytes(s)))
           .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
           .through(
-            deflate(
+            deflateParams(
               DeflateParams(
                 bufferSize = 32 * 1024,
                 header = if (nowrap) ZLibParams.Header.GZIP else ZLibParams.Header.ZLIB,
