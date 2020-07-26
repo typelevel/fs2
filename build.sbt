@@ -441,13 +441,14 @@ lazy val experimental = project
 addCommandAlias("testJVM", ";coreJVM/test;io/test;reactiveStreams/test;benchmark/test")
 addCommandAlias("testJS", "coreJS/test")
 
-def withoutTargetPredicate(step: WorkflowStep): Boolean = step match { 
-  case step: WorkflowStep.Use => step.params("path").startsWith("site") 
-  case _ => false 
-} 
-  
-ThisBuild / githubWorkflowGeneratedUploadSteps := 
-  (ThisBuild / githubWorkflowGeneratedUploadSteps).value.filterNot(withoutTargetPredicate) 
- 
-ThisBuild / githubWorkflowGeneratedDownloadSteps := 
-  (ThisBuild / githubWorkflowGeneratedDownloadSteps).value.filterNot(withoutTargetPredicate) 
+def withoutTargetPredicate(step: WorkflowStep): Boolean =
+  step match {
+    case step: WorkflowStep.Use => step.params("path").startsWith("site")
+    case _                      => false
+  }
+
+ThisBuild / githubWorkflowGeneratedUploadSteps :=
+  (ThisBuild / githubWorkflowGeneratedUploadSteps).value.filterNot(withoutTargetPredicate)
+
+ThisBuild / githubWorkflowGeneratedDownloadSteps :=
+  (ThisBuild / githubWorkflowGeneratedDownloadSteps).value.filterNot(withoutTargetPredicate)
