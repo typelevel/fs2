@@ -13,6 +13,8 @@ addCommandAlias(
   "fmtCheck",
   "; compile:scalafmtCheck; test:scalafmtCheck; it:scalafmtCheck; scalafmtSbtCheck"
 )
+addCommandAlias("testJVM", ";coreJVM/test;io/test;reactiveStreams/test;benchmark/test")
+addCommandAlias("testJS", "coreJS/test")
 
 crossScalaVersions in ThisBuild := Seq("2.13.2", "2.12.10", "0.26.0-RC1")
 scalaVersion in ThisBuild := crossScalaVersions.value.head
@@ -30,6 +32,18 @@ githubWorkflowEnv in ThisBuild ++= Map(
   "SONATYPE_USERNAME" -> "fs2-ci",
   "SONATYPE_PASSWORD" -> s"$${{ secrets.SONATYPE_PASSWORD }}"
 )
+
+def withoutTargetPredicate(step: WorkflowStep): Boolean =
+  step match {
+    case step: WorkflowStep.Use => step.params("path").startsWith("site")
+    case _                      => false
+  }
+
+ThisBuild / githubWorkflowGeneratedUploadSteps :=
+  (ThisBuild / githubWorkflowGeneratedUploadSteps).value.filterNot(withoutTargetPredicate)
+
+ThisBuild / githubWorkflowGeneratedDownloadSteps :=
+  (ThisBuild / githubWorkflowGeneratedDownloadSteps).value.filterNot(withoutTargetPredicate)
 
 lazy val contributors = Seq(
   "pchiusano" -> "Paul Chiusano",
@@ -437,18 +451,3 @@ lazy val experimental = project
     osgiSettings
   )
   .dependsOn(coreJVM % "compile->compile;test->test")
-
-addCommandAlias("testJVM", ";coreJVM/test;io/test;reactiveStreams/test;benchmark/test")
-addCommandAlias("testJS", "coreJS/test")
-
-def withoutTargetPredicate(step: WorkflowStep): Boolean =
-  step match {
-    case step: WorkflowStep.Use => step.params("path").startsWith("site")
-    case _                      => false
-  }
-
-ThisBuild / githubWorkflowGeneratedUploadSteps :=
-  (ThisBuild / githubWorkflowGeneratedUploadSteps).value.filterNot(withoutTargetPredicate)
-
-ThisBuild / githubWorkflowGeneratedDownloadSteps :=
-  (ThisBuild / githubWorkflowGeneratedDownloadSteps).value.filterNot(withoutTargetPredicate)
