@@ -5,9 +5,6 @@ import sbtcrossproject.crossProject
 
 val ReleaseTag = """^release/([\d\.]+a?)$""".r
 
-// TODO When scodec-bits starts publishing stable releases, remove this
-resolvers in ThisBuild += Resolver.sonatypeRepo("snapshots")
-
 addCommandAlias("fmt", "; compile:scalafmt; test:scalafmt; it:scalafmt; scalafmtSbt")
 addCommandAlias(
   "fmtCheck",
@@ -312,7 +309,7 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
       else
         default
     },
-    libraryDependencies += "org.scodec" %%% "scodec-bits" % "2.0.0-SNAPSHOT"
+    libraryDependencies += "org.scodec" %%% "scodec-bits" % "1.1.18"
   )
   .jsSettings(commonJsSettings: _*)
 
