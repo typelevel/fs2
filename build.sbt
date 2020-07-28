@@ -262,9 +262,11 @@ lazy val releaseSettings = Seq(
 
 lazy val mimaSettings = Seq(
   mimaPreviousArtifacts := {
-    List("2.0.0", "2.3.0").map { pv =>
-      organization.value % (normalizedName.value + "_" + scalaBinaryVersion.value) % pv
-    }.toSet
+    if (isDotty.value) Nil
+    else
+      List("2.0.0", "2.3.0").map { pv =>
+        organization.value % (normalizedName.value + "_" + scalaBinaryVersion.value) % pv
+      }.toSet
   },
   mimaBinaryIssueFilters ++= Seq(
     // These methods were only used internally between Stream and Pull: they were private to fs2.
