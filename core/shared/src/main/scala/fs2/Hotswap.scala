@@ -108,13 +108,13 @@ object Hotswap {
       new Hotswap[F, R] {
         override def swap(next: Resource[F, R]): F[R] =
           // workaround for https://github.com/typelevel/cats-effect/issues/579
-          (next <* ().pure[Resource[F, *]]).allocated
-            .continual { r => // this whole block is inside continual and cannot be canceled
+          Concurrent[F].continual((next <* ().pure[Resource[F, *]]).allocated) {
+            r => // this whole block is inside continual and cannot be canceled
               Sync[F].fromEither(r).flatMap {
                 case (newValue, newFinalizer) =>
                   swapFinalizer(newFinalizer).as(newValue)
               }
-            }
+          }
 
         override def clear: F[Unit] =
           swapFinalizer(().pure[F]).uncancelable
