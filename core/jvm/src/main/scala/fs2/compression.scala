@@ -184,7 +184,7 @@ object compression {
       bufferSize: Int = 1024 * 32,
       strategy: Int = Deflater.DEFAULT_STRATEGY
   )(implicit SyncF: Sync[F]): Pipe[F, Byte, Byte] =
-    deflate[F](
+    deflateParams[F](
       DeflateParams(
         bufferSize = bufferSize,
         header = ZLibParams.Header(nowrap),
@@ -200,7 +200,7 @@ object compression {
     *
     * @param deflateParams See [[compression.DeflateParams]]
     */
-  def deflate[F[_]](
+  def deflateParams[F[_]](
       deflateParams: DeflateParams
   )(implicit SyncF: Sync[F]): Pipe[F, Byte, Byte] =
     stream =>
@@ -328,7 +328,7 @@ object compression {
   def inflate[F[_]](nowrap: Boolean = false, bufferSize: Int = 1024 * 32)(implicit
       SyncF: Sync[F]
   ): Pipe[F, Byte, Byte] =
-    inflate(
+    inflateParams(
       InflateParams(
         bufferSize = bufferSize,
         header = ZLibParams.Header(nowrap)
@@ -340,7 +340,9 @@ object compression {
     * a `java.util.zip.Inflater` with the parameter `nowrap`.
     * @param inflateParams See [[compression.InflateParams]]
     */
-  def inflate[F[_]](inflateParams: InflateParams)(implicit SyncF: Sync[F]): Pipe[F, Byte, Byte] =
+  def inflateParams[F[_]](
+      inflateParams: InflateParams
+  )(implicit SyncF: Sync[F]): Pipe[F, Byte, Byte] =
     stream =>
       Stream
         .bracket(SyncF.delay(new Inflater(inflateParams.header.juzDeflaterNoWrap)))(inflater =>

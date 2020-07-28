@@ -269,9 +269,10 @@ class TextSuite extends Fs2Suite {
 
     property("base64Encode andThen base64Decode") {
       forAll { (bs: List[Array[Byte]], unchunked: Boolean, rechunkSeed: Long) =>
-        assertEquals(
+        assert(
           bs.map(Chunk.bytes)
             .foldMap(Stream.chunk)
+            .covary[Fallible]
             .through(text.base64Encode)
             .through {
               // Change chunk structure to validate carries
@@ -284,10 +285,10 @@ class TextSuite extends Fs2Suite {
                 .interleave(Stream(" ", "\r\n", "\n", "  \r\n  ").map(Chunk.singleton).repeat)
                 .flatMap(Stream.chunk)
             }
-            .through(text.base64Decode[Fallible])
+            .through(text.base64Decode)
             .compile
-            .to(ByteVector),
-          Right(bs.map(ByteVector.view(_)).foldLeft(ByteVector.empty)(_ ++ _))
+            .to(ByteVector) ==
+            Right(bs.map(ByteVector.view(_)).foldLeft(ByteVector.empty)(_ ++ _))
         )
       }
     }
@@ -295,12 +296,13 @@ class TextSuite extends Fs2Suite {
     test("invalid padding") {
       assertEquals(
         Stream(hex"00deadbeef00".toBase64, "=====", hex"00deadbeef00".toBase64)
-          .through(text.base64Decode[Fallible])
+          .covary[Fallible]
+          .through(text.base64Decode)
           .chunks
           .attempt
           .map(_.leftMap(_.getMessage))
           .compile
-          .to(List),
+          .toList,
         Right(
           List(
             Right(Chunk.byteVector(hex"00deadbeef00")),
@@ -314,15 +316,16 @@ class TextSuite extends Fs2Suite {
 
     property("optional padding") {
       forAll { (bs: List[Array[Byte]]) =>
-        assertEquals(
+        assert(
           bs.map(Chunk.bytes)
             .foldMap(Stream.chunk)
             .through(text.base64Encode)
-            .takeWhile(_ != '=')
-            .through(text.base64Decode[Fallible])
+            .map(_.takeWhile(_ != '='))
+            .covary[Fallible]
+            .through(text.base64Decode)
             .compile
-            .to(ByteVector),
-          Right(bs.map(ByteVector.view(_)).foldLeft(ByteVector.empty)(_ ++ _))
+            .to(ByteVector) ==
+            Right(bs.map(ByteVector.view(_)).foldLeft(ByteVector.empty)(_ ++ _))
         )
       }
     }
@@ -336,7 +339,8 @@ class TextSuite extends Fs2Suite {
           .emits(encoded.toSeq)
           .chunkN(5)
           .flatMap(chunk => Stream(chunk.toArray.toSeq.mkString))
-          .through(text.base64Decode[Fallible](Base64Url))
+          .covary[Fallible]
+          .through(text.base64DecodeAlphabet(Base64Url))
           .chunks
           .fold(ByteVector.empty)(_ ++ _.toByteVector)
           .compile

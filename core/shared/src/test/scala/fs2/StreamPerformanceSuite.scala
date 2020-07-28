@@ -150,18 +150,15 @@ class StreamPerformanceSuite extends Fs2Suite {
   group("transduce (id)") {
     Ns.foreach { N =>
       test(N.toString) {
-        assertEquals(
-          (Stream
-            .chunk(Chunk.seq(0 until N)))
-            .repeatPull {
-              _.uncons1.flatMap {
-                case None           => Pull.pure(None)
-                case Some((hd, tl)) => Pull.output1(hd).as(Some(tl))
-              }
+        val s: Stream[Pure, Int] = Stream
+          .chunk(Chunk.seq(0 until N))
+          .repeatPull {
+            _.uncons1.flatMap {
+              case None           => Pull.pure(None)
+              case Some((hd, tl)) => Pull.output1(hd).as(Some(tl))
             }
-            .toVector,
-          Vector.range(0, N)
-        )
+          }
+        assertEquals(s.toVector, Vector.range(0, N))
       }
     }
   }

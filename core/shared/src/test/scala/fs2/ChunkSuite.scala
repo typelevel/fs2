@@ -139,7 +139,7 @@ class ChunkSuite extends Fs2Suite {
         checkAll(s"Traverse[Chunk]", TraverseTests[Chunk].traverse[A, A, A, A, Option, Option])
     }
 
-  implicit val commutativeMonoidForChar = new CommutativeMonoid[Char] {
+  implicit val commutativeMonoidForChar: CommutativeMonoid[Char] = new CommutativeMonoid[Char] {
     def combine(x: Char, y: Char): Char = (x + y).toChar
     def empty: Char = 0
   }
