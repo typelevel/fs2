@@ -262,7 +262,7 @@ lazy val releaseSettings = Seq(
 
 lazy val mimaSettings = Seq(
   mimaPreviousArtifacts := {
-    if (isDotty.value) Nil
+    if (isDotty.value) Set.empty
     else
       List("2.0.0", "2.3.0").map { pv =>
         organization.value % (normalizedName.value + "_" + scalaBinaryVersion.value) % pv
