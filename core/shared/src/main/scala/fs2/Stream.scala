@@ -2857,6 +2857,12 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
       }
     }
 
+  /**
+    * Alias for [[filter]]
+    * Implemented to enable filtering in for comprehensions
+    */
+  def withFilter(f: O => Boolean) = this.filter(f)
+
   private type ZipWithCont[G[_], I, O2, R] =
     Either[(Chunk[I], Stream[G, I]), Stream[G, I]] => Pull[G, O2, Option[R]]
 
