@@ -293,7 +293,7 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
   .settings(
     name := "fs2-core",
     sourceDirectories in (Compile, scalafmt) += baseDirectory.value / "../shared/src/main/scala",
-    libraryDependencies += "org.scodec" %%% "scodec-bits" % "1.1.17"
+    libraryDependencies += "org.scodec" %%% "scodec-bits" % "1.1.18"
   )
   .jsSettings(commonJsSettings: _*)
 
