@@ -1,4 +1,4 @@
-package fs2
+package notfs2
 
 import cats.implicits._
 import org.scalacheck.Gen
@@ -6,6 +6,7 @@ import org.scalacheck.Prop.forAll
 import scodec.bits._
 import scodec.bits.Bases.Alphabets.Base64Url
 
+import fs2._
 import fs2.text._
 
 class TextSuite extends Fs2Suite {
@@ -269,7 +270,7 @@ class TextSuite extends Fs2Suite {
 
     property("base64Encode andThen base64Decode") {
       forAll { (bs: List[Array[Byte]], unchunked: Boolean, rechunkSeed: Long) =>
-        assertEquals(
+        assert(
           bs.map(Chunk.bytes)
             .foldMap(Stream.chunk)
             .through(text.base64Encode)
@@ -286,21 +287,21 @@ class TextSuite extends Fs2Suite {
             }
             .through(text.base64Decode[Fallible])
             .compile
-            .to(ByteVector),
+            .to(ByteVector) ==
           Right(bs.map(ByteVector.view(_)).foldLeft(ByteVector.empty)(_ ++ _))
         )
       }
     }
 
     test("invalid padding") {
-      assertEquals(
+      assert(
         Stream(hex"00deadbeef00".toBase64, "=====", hex"00deadbeef00".toBase64)
           .through(text.base64Decode[Fallible])
           .chunks
           .attempt
           .map(_.leftMap(_.getMessage))
           .compile
-          .to(List),
+          .to(List) ==
         Right(
           List(
             Right(Chunk.byteVector(hex"00deadbeef00")),
@@ -314,14 +315,14 @@ class TextSuite extends Fs2Suite {
 
     property("optional padding") {
       forAll { (bs: List[Array[Byte]]) =>
-        assertEquals(
+        assert(
           bs.map(Chunk.bytes)
             .foldMap(Stream.chunk)
             .through(text.base64Encode)
-            .takeWhile(_ != '=')
+            .map(_.takeWhile(_ != '='))
             .through(text.base64Decode[Fallible])
             .compile
-            .to(ByteVector),
+            .to(ByteVector) ==
           Right(bs.map(ByteVector.view(_)).foldLeft(ByteVector.empty)(_ ++ _))
         )
       }
@@ -336,7 +337,7 @@ class TextSuite extends Fs2Suite {
           .emits(encoded.toSeq)
           .chunkN(5)
           .flatMap(chunk => Stream(chunk.toArray.toSeq.mkString))
-          .through(text.base64Decode[Fallible](Base64Url))
+          .through(text.base64DecodeAlphabet[Fallible](Base64Url))
           .chunks
           .fold(ByteVector.empty)(_ ++ _.toByteVector)
           .compile

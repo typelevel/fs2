@@ -1,4 +1,4 @@
-package fs2
+package notfs2
 
 import java.io.{ByteArrayInputStream, ByteArrayOutputStream}
 import java.nio.charset.StandardCharsets
@@ -6,6 +6,7 @@ import java.time.Instant
 import java.util.zip._
 
 import cats.effect._
+import fs2._
 import fs2.compression._
 
 import org.scalacheck.{Arbitrary, Gen}
@@ -118,7 +119,7 @@ class CompressionSuite extends Fs2Suite {
           .chunk[IO, Byte](Chunk.bytes(getBytes(s)))
           .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
           .through(
-            deflate(
+            deflateParams(
               DeflateParams(
                 bufferSize = 32 * 1024,
                 header = if (nowrap) ZLibParams.Header.GZIP else ZLibParams.Header.ZLIB,
@@ -154,7 +155,7 @@ class CompressionSuite extends Fs2Suite {
       )
       .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
       .through(
-        deflate(
+        deflateParams(
           DeflateParams(
             header = ZLibParams.Header.ZLIB
           )
@@ -191,7 +192,7 @@ class CompressionSuite extends Fs2Suite {
           .chunk[IO, Byte](Chunk.bytes(getBytes(s)))
           .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
           .through(
-            deflate(
+            deflateParams(
               DeflateParams(
                 bufferSize = 32 * 1024,
                 header = if (nowrap) ZLibParams.Header.GZIP else ZLibParams.Header.ZLIB,

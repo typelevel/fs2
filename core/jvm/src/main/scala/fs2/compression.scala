@@ -17,8 +17,8 @@ object compression {
       private[compression] def apply(juzDeflaterNoWrap: Boolean): ZLibParams.Header =
         if (juzDeflaterNoWrap) ZLibParams.Header.GZIP else ZLibParams.Header.ZLIB
 
-      final case object ZLIB extends Header(juzDeflaterNoWrap = false)
-      final case object GZIP extends Header(juzDeflaterNoWrap = true)
+      case object ZLIB extends Header(juzDeflaterNoWrap = false)
+      case object GZIP extends Header(juzDeflaterNoWrap = true)
     }
 
   }
@@ -92,20 +92,20 @@ object compression {
           case NINE.juzDeflaterLevel    => Level.NINE
         }
 
-      final case object DEFAULT extends Level(juzDeflaterLevel = Deflater.DEFAULT_COMPRESSION)
-      final case object BEST_SPEED extends Level(juzDeflaterLevel = Deflater.BEST_SPEED)
-      final case object BEST_COMPRESSION extends Level(juzDeflaterLevel = Deflater.BEST_COMPRESSION)
-      final case object NO_COMPRESSION extends Level(juzDeflaterLevel = Deflater.NO_COMPRESSION)
-      final case object ZERO extends Level(juzDeflaterLevel = 0)
-      final case object ONE extends Level(juzDeflaterLevel = 1)
-      final case object TWO extends Level(juzDeflaterLevel = 2)
-      final case object THREE extends Level(juzDeflaterLevel = 3)
-      final case object FOUR extends Level(juzDeflaterLevel = 4)
-      final case object FIVE extends Level(juzDeflaterLevel = 5)
-      final case object SIX extends Level(juzDeflaterLevel = 6)
-      final case object SEVEN extends Level(juzDeflaterLevel = 7)
-      final case object EIGHT extends Level(juzDeflaterLevel = 8)
-      final case object NINE extends Level(juzDeflaterLevel = 9)
+      case object DEFAULT extends Level(juzDeflaterLevel = Deflater.DEFAULT_COMPRESSION)
+      case object BEST_SPEED extends Level(juzDeflaterLevel = Deflater.BEST_SPEED)
+      case object BEST_COMPRESSION extends Level(juzDeflaterLevel = Deflater.BEST_COMPRESSION)
+      case object NO_COMPRESSION extends Level(juzDeflaterLevel = Deflater.NO_COMPRESSION)
+      case object ZERO extends Level(juzDeflaterLevel = 0)
+      case object ONE extends Level(juzDeflaterLevel = 1)
+      case object TWO extends Level(juzDeflaterLevel = 2)
+      case object THREE extends Level(juzDeflaterLevel = 3)
+      case object FOUR extends Level(juzDeflaterLevel = 4)
+      case object FIVE extends Level(juzDeflaterLevel = 5)
+      case object SIX extends Level(juzDeflaterLevel = 6)
+      case object SEVEN extends Level(juzDeflaterLevel = 7)
+      case object EIGHT extends Level(juzDeflaterLevel = 8)
+      case object NINE extends Level(juzDeflaterLevel = 9)
     }
 
     sealed abstract class Strategy(private[compression] val juzDeflaterStrategy: Int)
@@ -117,12 +117,12 @@ object compression {
           case HUFFMAN_ONLY.juzDeflaterStrategy => Strategy.HUFFMAN_ONLY
         }
 
-      final case object DEFAULT extends Strategy(juzDeflaterStrategy = Deflater.DEFAULT_STRATEGY)
-      final case object BEST_SPEED extends Strategy(juzDeflaterStrategy = Deflater.HUFFMAN_ONLY)
-      final case object BEST_COMPRESSION
+      case object DEFAULT extends Strategy(juzDeflaterStrategy = Deflater.DEFAULT_STRATEGY)
+      case object BEST_SPEED extends Strategy(juzDeflaterStrategy = Deflater.HUFFMAN_ONLY)
+      case object BEST_COMPRESSION
           extends Strategy(juzDeflaterStrategy = Deflater.DEFAULT_STRATEGY)
-      final case object FILTERED extends Strategy(juzDeflaterStrategy = Deflater.FILTERED)
-      final case object HUFFMAN_ONLY extends Strategy(juzDeflaterStrategy = Deflater.HUFFMAN_ONLY)
+      case object FILTERED extends Strategy(juzDeflaterStrategy = Deflater.FILTERED)
+      case object HUFFMAN_ONLY extends Strategy(juzDeflaterStrategy = Deflater.HUFFMAN_ONLY)
     }
 
     sealed abstract class FlushMode(private[compression] val juzDeflaterFlushMode: Int)
@@ -134,12 +134,12 @@ object compression {
           case FULL_FLUSH.juzDeflaterFlushMode => FlushMode.FULL_FLUSH
         }
 
-      final case object DEFAULT extends FlushMode(juzDeflaterFlushMode = Deflater.NO_FLUSH)
-      final case object BEST_SPEED extends FlushMode(juzDeflaterFlushMode = Deflater.FULL_FLUSH)
-      final case object BEST_COMPRESSION extends FlushMode(juzDeflaterFlushMode = Deflater.NO_FLUSH)
-      final case object NO_FLUSH extends FlushMode(juzDeflaterFlushMode = Deflater.NO_FLUSH)
-      final case object SYNC_FLUSH extends FlushMode(juzDeflaterFlushMode = Deflater.SYNC_FLUSH)
-      final case object FULL_FLUSH extends FlushMode(juzDeflaterFlushMode = Deflater.FULL_FLUSH)
+      case object DEFAULT extends FlushMode(juzDeflaterFlushMode = Deflater.NO_FLUSH)
+      case object BEST_SPEED extends FlushMode(juzDeflaterFlushMode = Deflater.FULL_FLUSH)
+      case object BEST_COMPRESSION extends FlushMode(juzDeflaterFlushMode = Deflater.NO_FLUSH)
+      case object NO_FLUSH extends FlushMode(juzDeflaterFlushMode = Deflater.NO_FLUSH)
+      case object SYNC_FLUSH extends FlushMode(juzDeflaterFlushMode = Deflater.SYNC_FLUSH)
+      case object FULL_FLUSH extends FlushMode(juzDeflaterFlushMode = Deflater.FULL_FLUSH)
     }
 
     /**
@@ -195,13 +195,18 @@ object compression {
       )
     )
 
+  // For binary compat
+  private[fs2] def deflate[F[_]: Sync](
+      params: DeflateParams
+  ): Pipe[F, Byte, Byte] = deflateParams(params)
+
   /**
     * Returns a `Pipe` that deflates (compresses) its input elements using
     * the the Deflate algorithm.
     *
     * @param deflateParams See [[compression.DeflateParams]]
     */
-  def deflate[F[_]](
+  def deflateParams[F[_]](
       deflateParams: DeflateParams
   )(implicit SyncF: Sync[F]): Pipe[F, Byte, Byte] =
     stream =>
@@ -336,12 +341,14 @@ object compression {
       )
     )
 
+  private[fs2] def inflate[F[_]: Sync](params: InflateParams): Pipe[F, Byte, Byte] = inflateParams(params)
+
   /**
     * Returns a `Pipe` that inflates (decompresses) its input elements using
     * a `java.util.zip.Inflater` with the parameter `nowrap`.
     * @param inflateParams See [[compression.InflateParams]]
     */
-  def inflate[F[_]](inflateParams: InflateParams)(implicit SyncF: Sync[F]): Pipe[F, Byte, Byte] =
+  def inflateParams[F[_]](inflateParams: InflateParams)(implicit SyncF: Sync[F]): Pipe[F, Byte, Byte] =
     stream =>
       Stream
         .bracket(SyncF.delay(new Inflater(inflateParams.header.juzDeflaterNoWrap)))(inflater =>

@@ -259,13 +259,16 @@ object text {
     * The default base 64 alphabet is used by this pipe.
     */
   def base64Decode[F[_]: RaiseThrowable]: Pipe[F, String, Byte] =
-    base64Decode(Bases.Alphabets.Base64)
+    base64DecodeAlphabet(Bases.Alphabets.Base64)
+
+  // For binary compat
+  private[fs2] def base64Decode[F[_]: RaiseThrowable](alphabet: Bases.Base64Alphabet): Pipe[F, String, Byte] = base64DecodeAlphabet(alphabet)
 
   /**
     * Like [[base64Decode]] but takes a base 64 alphabet. For example,
     * `base64Decode(Bases.Alphabets.Base64Url)` will decode URL compatible base 64.
     */
-  def base64Decode[F[_]: RaiseThrowable](alphabet: Bases.Base64Alphabet): Pipe[F, String, Byte] = {
+  def base64DecodeAlphabet[F[_]: RaiseThrowable](alphabet: Bases.Base64Alphabet): Pipe[F, String, Byte] = {
     // Adapted from scodec-bits, licensed under 3-clause BSD
     final case class State(buffer: Int, mod: Int, padding: Int)
     val Pad = alphabet.pad
@@ -373,13 +376,16 @@ object text {
     * Encodes a byte stream in to a stream of base 64 text.
     * The default base 64 alphabet is used by this pipe.
     */
-  def base64Encode[F[_]]: Pipe[F, Byte, String] = base64Encode(Bases.Alphabets.Base64)
+  def base64Encode[F[_]]: Pipe[F, Byte, String] = base64EncodeAlphabet(Bases.Alphabets.Base64)
+
+  // For binary compat
+  private[fs2] def base64Encode[F[_]](alphabet: Bases.Base64Alphabet): Pipe[F, Byte, String] = base64EncodeAlphabet(alphabet)
 
   /**
     * Like [[base64Encode]] but takes a base 64 alphabet. For example,
     * `base64Encode(Bases.Alphabets.Base64Url)` will encode URL compatible base 64.
     */
-  def base64Encode[F[_]](alphabet: Bases.Base64Alphabet): Pipe[F, Byte, String] = {
+  def base64EncodeAlphabet[F[_]](alphabet: Bases.Base64Alphabet): Pipe[F, Byte, String] = {
     // Adapted from scodec-bits, licensed under 3-clause BSD
     def encode(c: ByteVector): (String, ByteVector) = {
       val bytes = c.toArray

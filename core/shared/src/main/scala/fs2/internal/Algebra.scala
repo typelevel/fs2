@@ -158,7 +158,7 @@ private[fs2] object FreeC {
       }
   }
 
-  abstract class Bind[F[_], O, X, R](val step: FreeC[F, O, X]) extends FreeC[F, O, R] {
+  abstract class Bind[+F[_], +O, X, +R](val step: FreeC[F, O, X]) extends FreeC[F, O, R] {
     def cont(r: Result[X]): FreeC[F, O, R]
     def delegate: Bind[F, O, X, R] = this
 
@@ -169,7 +169,7 @@ private[fs2] object FreeC {
             new Bind[F, P, x, R](v.step.mapOutput(f)) {
               def cont(e: Result[x]) = v.next(e).mapOutput(f)
             }
-          case r: Result[_] => r
+          case r: Result[R] => r
         }
       }
 
@@ -189,11 +189,11 @@ private[fs2] object FreeC {
   object ViewL {
 
     /** unrolled view of FreeC `bind` structure * */
-    sealed abstract case class View[+F[_], O, X, R](step: Action[F, O, X]) extends ViewL[F, O, R] {
+    sealed abstract case class View[+F[_], +O, X, +R](step: Action[F, O, X]) extends ViewL[F, O, R] {
       def next(r: Result[X]): FreeC[F, O, R]
     }
 
-    private[ViewL] final class EvalView[+F[_], O, R](step: Action[F, O, R])
+    private[ViewL] final class EvalView[+F[_], +O, R](step: Action[F, O, R])
         extends View[F, O, R, R](step) {
       def next(r: Result[R]): FreeC[F, O, R] = r
     }
@@ -207,16 +207,18 @@ private[fs2] object FreeC {
         case e: Action[F, O, Z] => new EvalView[F, O, Z](e)
         case b: FreeC.Bind[F, O, y, Z] =>
           b.step match {
-            case r: Result[_] => mk(b.cont(r))
-            case e: Action[F, O, y] =>
-              new ViewL.View[F, O, y, Z](e) {
-                def next(r: Result[y]): FreeC[F, O, Z] = b.cont(r)
+            case r: Result[_] =>
+              val ry: Result[y] = r.asInstanceOf[Result[y]]
+              mk(b.cont(ry))
+            case e: Action[F, O, y2] =>
+              new ViewL.View[F, O, y2, Z](e) {
+                def next(r: Result[y2]): FreeC[F, O, Z] = b.cont(r.asInstanceOf[Result[y]])
               }
             case bb: FreeC.Bind[F, O, x, _] =>
               val nb = new Bind[F, O, x, Z](bb.step) {
                 private[this] val bdel: Bind[F, O, y, Z] = b.delegate
                 def cont(zr: Result[x]): FreeC[F, O, Z] =
-                  new Bind[F, O, y, Z](bb.cont(zr)) {
+                  new Bind[F, O, y, Z](bb.cont(zr).asInstanceOf[FreeC[F, O, y]]) {
                     override val delegate: Bind[F, O, y, Z] = bdel
                     def cont(yr: Result[y]): FreeC[F, O, Z] = delegate.cont(yr)
                   }
@@ -261,7 +263,7 @@ private[fs2] object FreeC {
    */
   abstract class Action[+F[_], +O, +R] extends FreeC[F, O, R]
 
-  final case class Output[O](values: Chunk[O]) extends Action[PureK, O, Unit] {
+  final case class Output[+O](values: Chunk[O]) extends Action[PureK, O, Unit] {
     override def mapOutput[P](f: O => P): FreeC[PureK, P, Unit] =
       FreeC.suspend {
         try Output(values.map(f))
@@ -276,12 +278,12 @@ private[fs2] object FreeC {
     * @param stream             Stream to step
     * @param scopeId            If scope has to be changed before this step is evaluated, id of the scope must be supplied
     */
-  final case class Step[X](stream: FreeC[Any, X, Unit], scope: Option[Token])
-      extends Action[PureK, INothing, Option[(Chunk[X], Token, FreeC[Any, X, Unit])]] {
+  final case class Step[+F[_], X](stream: FreeC[F, X, Unit], scope: Option[Token])
+      extends Action[PureK, INothing, Option[(Chunk[X], Token, FreeC[F, X, Unit])]] {
     /* NOTE: The use of `Any` and `PureK` done to by-pass an error in Scala 2.12 type-checker,
      * that produces a crash when dealing with Higher-Kinded GADTs in which the F parameter appears
      * Inside one of the values of the case class.      */
-    override def mapOutput[P](f: INothing => P): Step[X] = this
+    override def mapOutput[P](f: INothing => P): Step[F, X] = this
   }
 
   /* The `AlgEffect` trait is for operations on the `F` effect that create no `O` output.
@@ -314,7 +316,7 @@ private[fs2] object FreeC {
   def output1[O](value: O): FreeC[PureK, O, Unit] = Output(Chunk.singleton(value))
 
   def stepLeg[F[_], O](leg: Stream.StepLeg[F, O]): FreeC[F, Nothing, Option[Stream.StepLeg[F, O]]] =
-    Step[O](leg.next, Some(leg.scopeId)).map {
+    Step[F, O](leg.next, Some(leg.scopeId)).map {
       _.map {
         case (h, id, t) => new Stream.StepLeg[F, O](h, id, t.asInstanceOf[FreeC[F, O, Unit]])
       }
@@ -421,7 +423,8 @@ private[fs2] object FreeC {
                 F.pure(Out(output.values, scope, view.next(FreeC.Result.unit)))
               )
 
-            case u: Step[y] =>
+            case uU: Step[f, y] =>
+              val u: Step[F, y] = uU.asInstanceOf[Step[F, y]]
               // if scope was specified in step, try to find it, otherwise use the current scope.
               F.flatMap(u.scope.fold[F[Option[CompileScope[F]]]](F.pure(Some(scope))) { scopeId =>
                 scope.findStepScope(scopeId)
@@ -437,9 +440,12 @@ private[fs2] object FreeC {
                       // if we originally swapped scopes we want to return the original
                       // scope back to the go as that is the scope that is expected to be here.
                       val nextScope = if (u.scope.isEmpty) outScope else scope
-                      val result = Result.Pure(Some((head, outScope.id, tail)))
+                      val result = Result.Pure(
+                        Some((head, outScope.id, tail.asInstanceOf[FreeC[f, y, Unit]]))
+                      )
+                      val next = view.next(result).asInstanceOf[FreeC[F, X, Unit]]
                       interruptGuard(nextScope)(
-                        go(nextScope, extendedTopLevelScope, view.next(result))
+                        go(nextScope, extendedTopLevelScope, next)
                       )
 
                     case Right(Interrupted(scopeId, err)) =>
@@ -659,7 +665,7 @@ private[fs2] object FreeC {
                 case r @ Result.Pure(_) if isMainLevel =>
                   translateStep(view.next(r), isMainLevel)
 
-                case r @ Result.Pure(_) if !isMainLevel =>
+                case r @ Result.Pure(_) =>
                   // Cast is safe here, as at this point the evaluation of this Step will end
                   // and the remainder of the free will be passed as a result in Bind. As such
                   // next Step will have this to evaluate, and will try to translate again.
@@ -670,11 +676,10 @@ private[fs2] object FreeC {
                 case r @ Result.Interrupted(_, _) => translateStep(view.next(r), isMainLevel)
               }
 
-            case step: Step[x] =>
-              // NOTE: The use of the `asInstanceOf` is to by-pass a compiler-crash in Scala 2.12,
-              // involving GADTs with a covariant Higher-Kinded parameter.
-              Step[x](
-                stream = translateStep[x](step.stream.asInstanceOf[FreeC[F, x, Unit]], false),
+            case stepU: Step[f, x] =>
+              val step: Step[F, x] = stepU.asInstanceOf[Step[F, x]]
+              Step[G, x](
+                stream = translateStep[x](step.stream, false),
                 scope = step.scope
               ).transformWith { r =>
                 translateStep[X](view.next(r.asInstanceOf[Result[y]]), isMainLevel)
@@ -682,7 +687,7 @@ private[fs2] object FreeC {
 
             case alg: AlgEffect[F, r] =>
               translateAlgEffect(alg)
-                .transformWith(r => translateStep(view.next(r), isMainLevel))
+                .transformWith(r => translateStep(view.next(r.asInstanceOf[Result[y]]), isMainLevel))
           }
       }
 

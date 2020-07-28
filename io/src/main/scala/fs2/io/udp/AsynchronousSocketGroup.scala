@@ -91,7 +91,7 @@ private[udp] object AsynchronousSocketGroup {
           if (readers.isEmpty) None
           else {
             val (reader, timeout) = readers.pop()
-            timeout.foreach(_.cancel)
+            timeout.foreach(_.cancel())
             Some(reader)
           }
 
@@ -101,7 +101,7 @@ private[udp] object AsynchronousSocketGroup {
         ): () => Unit =
           if (closed) {
             reader(Left(new ClosedChannelException))
-            timeout.foreach(_.cancel)
+            timeout.foreach(_.cancel())
             () => ()
           } else {
             val r = (reader, timeout)
@@ -119,7 +119,7 @@ private[udp] object AsynchronousSocketGroup {
           if (writers.isEmpty) None
           else {
             val (w, timeout) = writers.pop()
-            timeout.foreach(_.cancel)
+            timeout.foreach(_.cancel())
             Some(w)
           }
 
@@ -129,7 +129,7 @@ private[udp] object AsynchronousSocketGroup {
         ): () => Unit =
           if (closed) {
             writer._2(Some(new ClosedChannelException))
-            timeout.foreach(_.cancel)
+            timeout.foreach(_.cancel())
             () => ()
           } else {
             val w = (writer, timeout)
@@ -141,13 +141,13 @@ private[udp] object AsynchronousSocketGroup {
           readers.iterator.asScala.foreach {
             case (cb, t) =>
               cb(Left(new ClosedChannelException))
-              t.foreach(_.cancel)
+              t.foreach(_.cancel())
           }
           readers.clear
           writers.iterator.asScala.foreach {
             case ((_, cb), t) =>
               cb(Some(new ClosedChannelException))
-              t.foreach(_.cancel)
+              t.foreach(_.cancel())
           }
           writers.clear
         }
@@ -293,9 +293,9 @@ private[udp] object AsynchronousSocketGroup {
         onSelectorThread {
           val channel = key.channel.asInstanceOf[DatagramChannel]
           val attachment = key.attachment.asInstanceOf[Attachment]
-          key.cancel
-          channel.close
-          attachment.close
+          key.cancel()
+          channel.close()
+          attachment.close()
         }(())
 
       override def close(): Unit =
@@ -325,7 +325,7 @@ private[udp] object AsynchronousSocketGroup {
         .newThread(new Runnable {
           def run = {
             while (!closed && !Thread.currentThread.isInterrupted) {
-              runPendingThunks
+              runPendingThunks()
               val timeout = pendingTimeouts.headOption.map { t =>
                 (t.expiry - System.currentTimeMillis).max(0L)
               }
@@ -364,13 +364,13 @@ private[udp] object AsynchronousSocketGroup {
               val now = System.currentTimeMillis
               var nextTimeout = pendingTimeouts.headOption
               while (nextTimeout.isDefined && nextTimeout.get.expiry <= now) {
-                nextTimeout.get.timedOut
+                nextTimeout.get.timedOut()
                 pendingTimeouts.dequeue()
                 nextTimeout = pendingTimeouts.headOption
               }
             }
-            close
-            runPendingThunks
+            close()
+            runPendingThunks()
           }
         })
       selectorThread.start()
@@ -378,3 +378,4 @@ private[udp] object AsynchronousSocketGroup {
       override def toString = "AsynchronousSocketGroup"
     }
 }
+

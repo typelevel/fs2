@@ -1,7 +1,6 @@
 package fs2
 
 import cats.{Eval => _, _}
-import cats.arrow.FunctionK
 import cats.effect._
 import fs2.internal._
 import fs2.internal.FreeC.{Eval, Result}
@@ -124,8 +123,8 @@ object Pull extends PullLowPriority {
     * Repeatedly uses the output of the pull as input for the next step of the pull.
     * Halts when a step terminates with `None` or `Pull.raiseError`.
     */
-  def loop[F[_], O, R](using: R => Pull[F, O, Option[R]]): R => Pull[F, O, Option[R]] =
-    r => using(r).flatMap(_.map(loop(using)).getOrElse(Pull.pure(None)))
+  def loop[F[_], O, R](f: R => Pull[F, O, Option[R]]): R => Pull[F, O, Option[R]] =
+    r => f(r).flatMap(_.map(loop(f)).getOrElse(Pull.pure(None)))
 
   /** Outputs a single value. */
   def output1[F[x] >: Pure[x], O](o: O): Pull[F, O, Unit] =
@@ -190,7 +189,9 @@ object Pull extends PullLowPriority {
     * }}}
     */
   implicit def functionKInstance[F[_]]: F ~> Pull[F, INothing, *] =
-    FunctionK.lift[F, Pull[F, INothing, *]](Pull.eval)
+    new (F ~> Pull[F, INothing, *]) {
+      def apply[X](fx: F[X]) = Pull.eval(fx)
+    }
 }
 
 private[fs2] trait PullLowPriority {
