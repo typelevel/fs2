@@ -378,4 +378,3 @@ private[udp] object AsynchronousSocketGroup {
       override def toString = "AsynchronousSocketGroup"
     }
 }
-
