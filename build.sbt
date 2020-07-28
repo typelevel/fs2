@@ -79,7 +79,9 @@ lazy val commonSettingsBase = Seq(
   scalacOptions in (Test, compile) ~= {
     _.filterNot("-Xfatal-warnings" == _)
   },
-  scalacOptions in (Compile, console) ++= { if (isDotty.value) Nil else Seq("-Ydelambdafy:inline") },
+  scalacOptions in (Compile, console) ++= {
+    if (isDotty.value) Nil else Seq("-Ydelambdafy:inline")
+  },
   scalacOptions in (Test, console) := (scalacOptions in (Compile, console)).value,
   javaOptions in (Test, run) ++= Seq("-Xms64m", "-Xmx64m"),
   libraryDependencies ++= Seq(
@@ -297,10 +299,18 @@ lazy val mimaSettings = Seq(
     ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.tls.InputOutputBuffer.output"),
     ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.io.tls.InputOutputBuffer.output"),
     // Private traits for implicit prioritization
-    ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.Stream#LowPrioCompiler.fs2$Stream$LowPrioCompiler$_setter_$fallibleInstance_="),
-    ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.Stream#LowPrioCompiler.fallibleInstance"),
-    ProblemFilters.exclude[InheritedNewAbstractMethodProblem]("fs2.Stream#LowPrioCompiler.fs2$Stream$LowPrioCompiler1$_setter_$idInstance_="),
-    ProblemFilters.exclude[InheritedNewAbstractMethodProblem]("fs2.Stream#LowPrioCompiler.idInstance")
+    ProblemFilters.exclude[ReversedMissingMethodProblem](
+      "fs2.Stream#LowPrioCompiler.fs2$Stream$LowPrioCompiler$_setter_$fallibleInstance_="
+    ),
+    ProblemFilters.exclude[ReversedMissingMethodProblem](
+      "fs2.Stream#LowPrioCompiler.fallibleInstance"
+    ),
+    ProblemFilters.exclude[InheritedNewAbstractMethodProblem](
+      "fs2.Stream#LowPrioCompiler.fs2$Stream$LowPrioCompiler1$_setter_$idInstance_="
+    ),
+    ProblemFilters.exclude[InheritedNewAbstractMethodProblem](
+      "fs2.Stream#LowPrioCompiler.idInstance"
+    )
   )
 )
 
