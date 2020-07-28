@@ -189,7 +189,8 @@ private[fs2] object FreeC {
   object ViewL {
 
     /** unrolled view of FreeC `bind` structure * */
-    sealed abstract case class View[+F[_], +O, X, +R](step: Action[F, O, X]) extends ViewL[F, O, R] {
+    sealed abstract case class View[+F[_], +O, X, +R](step: Action[F, O, X])
+        extends ViewL[F, O, R] {
       def next(r: Result[X]): FreeC[F, O, R]
     }
 
@@ -687,7 +688,9 @@ private[fs2] object FreeC {
 
             case alg: AlgEffect[F, r] =>
               translateAlgEffect(alg)
-                .transformWith(r => translateStep(view.next(r.asInstanceOf[Result[y]]), isMainLevel))
+                .transformWith(r =>
+                  translateStep(view.next(r.asInstanceOf[Result[y]]), isMainLevel)
+                )
           }
       }
 

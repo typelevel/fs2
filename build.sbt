@@ -295,7 +295,12 @@ lazy val mimaSettings = Seq(
     ),
     // InputOutputBuffer is private[tls]
     ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.tls.InputOutputBuffer.output"),
-    ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.io.tls.InputOutputBuffer.output")
+    ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.io.tls.InputOutputBuffer.output"),
+    // Private traits for implicit prioritization
+    ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.Stream#LowPrioCompiler.fs2$Stream$LowPrioCompiler$_setter_$fallibleInstance_="),
+    ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.Stream#LowPrioCompiler.fallibleInstance"),
+    ProblemFilters.exclude[InheritedNewAbstractMethodProblem]("fs2.Stream#LowPrioCompiler.fs2$Stream$LowPrioCompiler1$_setter_$idInstance_="),
+    ProblemFilters.exclude[InheritedNewAbstractMethodProblem]("fs2.Stream#LowPrioCompiler.idInstance")
   )
 )
 

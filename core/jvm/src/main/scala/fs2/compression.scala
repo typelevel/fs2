@@ -119,8 +119,7 @@ object compression {
 
       case object DEFAULT extends Strategy(juzDeflaterStrategy = Deflater.DEFAULT_STRATEGY)
       case object BEST_SPEED extends Strategy(juzDeflaterStrategy = Deflater.HUFFMAN_ONLY)
-      case object BEST_COMPRESSION
-          extends Strategy(juzDeflaterStrategy = Deflater.DEFAULT_STRATEGY)
+      case object BEST_COMPRESSION extends Strategy(juzDeflaterStrategy = Deflater.DEFAULT_STRATEGY)
       case object FILTERED extends Strategy(juzDeflaterStrategy = Deflater.FILTERED)
       case object HUFFMAN_ONLY extends Strategy(juzDeflaterStrategy = Deflater.HUFFMAN_ONLY)
     }
@@ -341,14 +340,17 @@ object compression {
       )
     )
 
-  private[fs2] def inflate[F[_]: Sync](params: InflateParams): Pipe[F, Byte, Byte] = inflateParams(params)
+  private[fs2] def inflate[F[_]: Sync](params: InflateParams): Pipe[F, Byte, Byte] =
+    inflateParams(params)
 
   /**
     * Returns a `Pipe` that inflates (decompresses) its input elements using
     * a `java.util.zip.Inflater` with the parameter `nowrap`.
     * @param inflateParams See [[compression.InflateParams]]
     */
-  def inflateParams[F[_]](inflateParams: InflateParams)(implicit SyncF: Sync[F]): Pipe[F, Byte, Byte] =
+  def inflateParams[F[_]](
+      inflateParams: InflateParams
+  )(implicit SyncF: Sync[F]): Pipe[F, Byte, Byte] =
     stream =>
       Stream
         .bracket(SyncF.delay(new Inflater(inflateParams.header.juzDeflaterNoWrap)))(inflater =>

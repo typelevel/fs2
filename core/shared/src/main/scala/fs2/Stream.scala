@@ -708,7 +708,7 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
     * }}}
     */
   def debug(
-      formatter: O => String = (o: O @annotation.unchecked.uncheckedVariance) => o.toString, 
+      formatter: O => String = (o: O @annotation.unchecked.uncheckedVariance) => o.toString,
       logger: String => Unit = println(_)
   ): Stream[F, O] =
     map { o =>
@@ -730,7 +730,8 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
     * }}}
     */
   def debugChunks(
-      formatter: Chunk[O] => String = (os: Chunk[O] @annotation.unchecked.uncheckedVariance) => os.toString, 
+      formatter: Chunk[O] => String = (os: Chunk[O] @annotation.unchecked.uncheckedVariance) =>
+        os.toString,
       logger: String => Unit = println(_)
   ): Stream[F, O] =
     chunks.flatMap { os =>
@@ -2123,7 +2124,11 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
 
   def parJoin[F2[_], O2](
       maxOpen: Int
-  )(implicit ev: O <:< Stream[F2, O2], ev2: F[Any] <:< F2[Any], F2: Concurrent[F2]): Stream[F2, O2] = {
+  )(implicit
+      ev: O <:< Stream[F2, O2],
+      ev2: F[Any] <:< F2[Any],
+      F2: Concurrent[F2]
+  ): Stream[F2, O2] = {
     assert(maxOpen > 0, "maxOpen must be > 0, was: " + maxOpen)
     val _ = (ev, ev2)
     val outer = this.asInstanceOf[Stream[F2, Stream[F2, O2]]]
@@ -3251,9 +3256,9 @@ object Stream extends StreamLowPriority {
     */
   def emits[F[x] >: Pure[x], O](os: scala.collection.Seq[O]): Stream[F, O] =
     os match {
-      case Nil    => empty
+      case Nil               => empty
       case collection.Seq(x) => emit(x)
-      case _      => new Stream(FreeC.Output[O](Chunk.seq(os)))
+      case _                 => new Stream(FreeC.Output[O](Chunk.seq(os)))
     }
 
   /** Empty pure stream. */
@@ -3584,8 +3589,6 @@ object Stream extends StreamLowPriority {
         resourceWeak[f, x](r.source).flatMap(o => resourceWeak[f, o](r.fs(o)))
       case r: Resource.Suspend[f, o] => Stream.eval(r.resource).flatMap(resourceWeak[f, o])
     }
-
-
 
   /**
     * Retries `fo` on failure, returning a singleton stream with the
