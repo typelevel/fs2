@@ -3882,6 +3882,7 @@ object Stream extends StreamLowPriority {
     /** Lifts this stream to the specified effect type. */
     def covary[F[_]]: Stream[F, O] = self
 
+    /** Runs this pure stream and returns the emitted elements in a collection of the specified type. Note: this method is only available on pure streams. */
     def to(c: Collector[O]): c.Out =
       self.covary[SyncIO].compile.to(c).unsafeRunSync
 
@@ -3890,14 +3891,6 @@ object Stream extends StreamLowPriority {
 
     /** Runs this pure stream and returns the emitted elements in a vector. Note: this method is only available on pure streams. */
     def toVector: Vector[O] = to(Vector)
-  }
-
-  /** Provides `to` syntax for pure streams. */
-  implicit final class PureTo[O](private val self: Stream[Pure, O]) extends AnyVal {
-
-    /** Runs this pure stream and returns the emitted elements in a collection of the specified type. Note: this method is only available on pure streams. */
-    def to(c: Collector[O]): c.Out =
-      self.covary[SyncIO].compile.to(c).unsafeRunSync
   }
 
   /** Provides syntax for pure pipes based on `cats.Id`. */
@@ -3917,6 +3910,7 @@ object Stream extends StreamLowPriority {
       self.asInstanceOf[Stream[F, O]]
     }
 
+    /** Runs this fallible stream and returns the emitted elements in a collection of the specified type. Note: this method is only available on fallible streams. */
     def to(c: Collector[O]): Either[Throwable, c.Out] =
       lift[SyncIO].compile.to(c).attempt.unsafeRunSync
 
@@ -3925,14 +3919,6 @@ object Stream extends StreamLowPriority {
 
     /** Runs this fallible stream and returns the emitted elements in a vector. Note: this method is only available on fallible streams. */
     def toVector: Either[Throwable, Vector[O]] = to(Vector)
-  }
-
-  /** Provides `to` syntax for fallible streams. */
-  implicit final class FallibleTo[O](private val self: Stream[Fallible, O]) extends AnyVal {
-
-    /** Runs this fallible stream and returns the emitted elements in a collection of the specified type. Note: this method is only available on fallible streams. */
-    def to(c: Collector[O]): Either[Throwable, c.Out] =
-      self.lift[SyncIO].compile.to(c).attempt.unsafeRunSync
   }
 
   /** Projection of a `Stream` providing various ways to get a `Pull` from the `Stream`. */
@@ -4283,7 +4269,7 @@ object Stream extends StreamLowPriority {
     ): G[C]
   }
 
-  private[fs2] trait LowPrioCompiler2 {
+  private[Stream] trait LowPrioCompiler2 {
     implicit def resourceInstance[F[_]](implicit F: Sync[F]): Compiler[F, Resource[F, *]] =
       new Compiler[F, Resource[F, *]] {
         def apply[O, B, C](
@@ -4305,7 +4291,7 @@ object Stream extends StreamLowPriority {
       }
   }
 
-  private[fs2] trait LowPrioCompiler1 extends LowPrioCompiler2 {
+  private[Stream] trait LowPrioCompiler1 extends LowPrioCompiler2 {
     implicit val idInstance: Compiler[Id, Id] = new Compiler[Id, Id] {
       def apply[O, B, C](
           s: Stream[Id, O],
@@ -4315,7 +4301,7 @@ object Stream extends StreamLowPriority {
     }
   }
 
-  private[fs2] trait LowPrioCompiler extends LowPrioCompiler1 {
+  private[Stream] trait LowPrioCompiler extends LowPrioCompiler1 {
     implicit val fallibleInstance: Compiler[Fallible, Either[Throwable, *]] =
       new Compiler[Fallible, Either[Throwable, *]] {
         def apply[O, B, C](
@@ -4331,7 +4317,7 @@ object Stream extends StreamLowPriority {
   }
 
   object Compiler extends LowPrioCompiler {
-    private[fs2] def compile[F[_], O, B](stream: Pull[F, O, Unit], init: B)(
+    private[Stream] def compile[F[_], O, B](stream: Pull[F, O, Unit], init: B)(
         f: (B, Chunk[O]) => B
     )(implicit F: Sync[F]): F[B] =
       F.bracketCase(CompileScope.newRoot[F])(scope =>
@@ -4354,7 +4340,6 @@ object Stream extends StreamLowPriority {
       )(foldChunk: (B, Chunk[O]) => B, finalize: B => C): C =
         finalize(Compiler.compile(s.covary[SyncIO].underlying, init())(foldChunk).unsafeRunSync)
     }
-
   }
 
   /** Projection of a `Stream` providing various ways to compile a `Stream[F,O]` to a `G[...]`. */

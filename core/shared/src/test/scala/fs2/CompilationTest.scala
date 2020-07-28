@@ -93,4 +93,6 @@ object ThisModuleShouldCompile {
   Stream.empty[Id].covaryOutput[Byte].compile.to(Chunk): Chunk[Byte]
 
   Stream(1, 2, 3).compile.to(Set)
+  Stream(1, 2, 3).to(List)
+  Stream(1, 2, 3).covary[Fallible].to(List)
 }
