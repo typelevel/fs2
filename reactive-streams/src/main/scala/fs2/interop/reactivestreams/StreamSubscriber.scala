@@ -39,6 +39,13 @@ final class StreamSubscriber[F[_]: ConcurrentEffect, A](val sub: StreamSubscribe
     sub.onError(t).unsafeRunAsync()
   }
 
+  /** Obtain a fs2.Stream */		
+  @deprecated(		
+    "subscribing to a publisher prior to pulling the stream is unsafe if interrupted",		
+    "2.2.3"		
+  )		
+  def stream: Stream[F, A] = stream(().pure[F])
+
   def stream(subscribe: F[Unit]): Stream[F, A] = sub.stream(subscribe)
 
   private def nonNull[B](b: B): Unit = if (b == null) throw new NullPointerException()
