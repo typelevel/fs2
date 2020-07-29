@@ -1,7 +1,6 @@
 package fs2
 
 import cats.{Eval => _, _}
-import cats.arrow.FunctionK
 import cats.effect._
 import cats.effect.concurrent._
 import cats.effect.implicits._
@@ -709,7 +708,7 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
     * }}}
     */
   def debug(
-      formatter: O => String = _.toString,
+      formatter: O => String = (o: O @annotation.unchecked.uncheckedVariance) => o.toString,
       logger: String => Unit = println(_)
   ): Stream[F, O] =
     map { o =>
@@ -731,7 +730,8 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
     * }}}
     */
   def debugChunks(
-      formatter: Chunk[O] => String = _.toString,
+      formatter: Chunk[O] => String = (os: Chunk[O] @annotation.unchecked.uncheckedVariance) =>
+        os.toString,
       logger: String => Unit = println(_)
   ): Stream[F, O] =
     chunks.flatMap { os =>
@@ -1089,13 +1089,13 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
     * Not as powerful as `observe` since not all pipes can be represented by `O => F[_]`, but much faster.
     * Alias for `evalMap(o => f(o).as(o))`.
     */
-  def evalTap[F2[x] >: F[x]: Functor](f: O => F2[_]): Stream[F2, O] =
+  def evalTap[F2[x] >: F[x]: Functor, O2](f: O => F2[O2]): Stream[F2, O] =
     evalMap(o => f(o).as(o))
 
   /**
     * Alias for `evalMapChunk(o => f(o).as(o))`.
     */
-  def evalTapChunk[F2[x] >: F[x]: Functor: Applicative](f: O => F2[_]): Stream[F2, O] =
+  def evalTapChunk[F2[x] >: F[x]: Functor: Applicative, O2](f: O => F2[O2]): Stream[F2, O] =
     evalMapChunk(o => f(o).as(o))
 
   /**
@@ -1495,7 +1495,7 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
                     emitNonEmpty(acc) ++ startTimeout.flatMap { newTimeout =>
                       go(Chunk.Queue.empty, newTimeout)
                     }
-                  case Left(t) if t != currentTimeout => go(acc, currentTimeout)
+                  case Left(_) => go(acc, currentTimeout)
                   case Right(c) if acc.size + c.size >= n =>
                     val newAcc = acc :+ c
                     // this is the same if in the resize function,
@@ -1508,7 +1508,7 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
                         go(Chunk.Queue(rest), newTimeout)
                       }
                     }
-                  case Right(c) if acc.size + c.size < n =>
+                  case Right(c) =>
                     go(acc :+ c, currentTimeout)
                 }
             }
@@ -2155,7 +2155,11 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
     */
   def parJoin[F2[_], O2](
       maxOpen: Int
-  )(implicit ev: O <:< Stream[F2, O2], ev2: F[_] <:< F2[_], F2: Concurrent[F2]): Stream[F2, O2] = {
+  )(implicit
+      ev: O <:< Stream[F2, O2],
+      ev2: F[Any] <:< F2[Any],
+      F2: Concurrent[F2]
+  ): Stream[F2, O2] = {
     assert(maxOpen > 0, "maxOpen must be > 0, was: " + maxOpen)
     val _ = (ev, ev2)
     val outer = this.asInstanceOf[Stream[F2, Stream[F2, O2]]]
@@ -2269,7 +2273,7 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
   /** Like [[parJoin]] but races all inner streams simultaneously. */
   def parJoinUnbounded[F2[_], O2](implicit
       ev: O <:< Stream[F2, O2],
-      ev2: F[_] <:< F2[_],
+      ev2: F[Any] <:< F2[Any],
       F2: Concurrent[F2]
   ): Stream[F2, O2] =
     parJoin(Int.MaxValue)
@@ -2548,7 +2552,7 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
     *
     * @example {{{
     * scala> def take[F[_],O](s: Stream[F,O], n: Int): Stream[F,O] =
-    *      |   s.scanChunksOpt(n) { n => if (n <= 0) None else Some(c => if (c.size < n) (n - c.size, c) else (0, c.take(n))) }
+    *      |   s.scanChunksOpt(n) { n => if (n <= 0) None else Some((c: Chunk[O]) => if (c.size < n) (n - c.size, c) else (0, c.take(n))) }
     * scala> take(Stream.range(0,100), 5).toList
     * res0: List[Int] = List(0, 1, 2, 3, 4)
     * }}}
@@ -3289,9 +3293,9 @@ object Stream extends StreamLowPriority {
     */
   def emits[F[x] >: Pure[x], O](os: scala.collection.Seq[O]): Stream[F, O] =
     os match {
-      case Nil    => empty
-      case Seq(x) => emit(x)
-      case _      => new Stream(FreeC.Output[O](Chunk.seq(os)))
+      case Nil               => empty
+      case collection.Seq(x) => emit(x)
+      case _                 => new Stream(FreeC.Output[O](Chunk.seq(os)))
     }
 
   /** Empty pure stream. */
@@ -3612,10 +3616,15 @@ object Stream extends StreamLowPriority {
     */
   def resourceWeak[F[_], O](r: Resource[F, O]): Stream[F, O] =
     r match {
-      case r: Resource.Allocate[F, O] =>
-        Stream.bracketCaseWeak(r.resource) { case ((_, release), e) => release(e) }.map(_._1)
-      case r: Resource.Bind[F, x, O] => resourceWeak(r.source).flatMap(o => resourceWeak(r.fs(o)))
-      case r: Resource.Suspend[F, O] => Stream.eval(r.resource).flatMap(resourceWeak)
+      case r: Resource.Allocate[f, o] =>
+        Stream
+          .bracketCaseWeak[f, (o, ExitCase[Throwable] => f[Unit])](r.resource) {
+            case ((_, release), e) => release(e)
+          }
+          .map(_._1)
+      case r: Resource.Bind[f, x, o] =>
+        resourceWeak[f, x](r.source).flatMap(o => resourceWeak[f, o](r.fs(o)))
+      case r: Resource.Suspend[f, o] => Stream.eval(r.resource).flatMap(resourceWeak[f, o])
     }
 
   /**
@@ -3881,9 +3890,9 @@ object Stream extends StreamLowPriority {
       * returns `None` instead of `Some(nextStream)`.
       */
     def repeatPull[O2](
-        using: Stream.ToPull[F, O] => Pull[F, O2, Option[Stream[F, O]]]
+        f: Stream.ToPull[F, O] => Pull[F, O2, Option[Stream[F, O]]]
     ): Stream[F, O2] =
-      Pull.loop(using.andThen(_.map(_.map(_.pull))))(pull).void.stream
+      Pull.loop(f.andThen(_.map(_.map(_.pull))))(pull).void.stream
   }
 
   /** Provides syntax for pure streams. */
@@ -4338,7 +4347,7 @@ object Stream extends StreamLowPriority {
     ): G[C]
   }
 
-  trait LowPrioCompiler {
+  private[Stream] trait LowPrioCompiler2 {
     implicit def resourceInstance[F[_]](implicit F: Sync[F]): Compiler[F, Resource[F, *]] =
       new Compiler[F, Resource[F, *]] {
         def apply[O, B, C](
@@ -4360,8 +4369,33 @@ object Stream extends StreamLowPriority {
       }
   }
 
+  private[Stream] trait LowPrioCompiler1 extends LowPrioCompiler2 {
+    implicit val idInstance: Compiler[Id, Id] = new Compiler[Id, Id] {
+      def apply[O, B, C](
+          s: Stream[Id, O],
+          init: () => B
+      )(foldChunk: (B, Chunk[O]) => B, finalize: B => C): C =
+        finalize(Compiler.compile(s.covaryId[SyncIO].free, init())(foldChunk).unsafeRunSync)
+    }
+  }
+
+  private[Stream] trait LowPrioCompiler extends LowPrioCompiler1 {
+    implicit val fallibleInstance: Compiler[Fallible, Either[Throwable, *]] =
+      new Compiler[Fallible, Either[Throwable, *]] {
+        def apply[O, B, C](
+            s: Stream[Fallible, O],
+            init: () => B
+        )(foldChunk: (B, Chunk[O]) => B, finalize: B => C): Either[Throwable, C] =
+          Compiler
+            .compile(s.lift[SyncIO].free, init())(foldChunk)
+            .attempt
+            .unsafeRunSync
+            .map(finalize)
+      }
+  }
+
   object Compiler extends LowPrioCompiler {
-    private def compile[F[_], O, B](stream: FreeC[F, O, Unit], init: B)(
+    private[Stream] def compile[F[_], O, B](stream: FreeC[F, O, Unit], init: B)(
         f: (B, Chunk[O]) => B
     )(implicit F: Sync[F]): F[B] =
       F.bracketCase(CompileScope.newRoot[F])(scope =>
@@ -4384,27 +4418,6 @@ object Stream extends StreamLowPriority {
       )(foldChunk: (B, Chunk[O]) => B, finalize: B => C): C =
         finalize(Compiler.compile(s.covary[SyncIO].free, init())(foldChunk).unsafeRunSync)
     }
-
-    implicit val idInstance: Compiler[Id, Id] = new Compiler[Id, Id] {
-      def apply[O, B, C](
-          s: Stream[Id, O],
-          init: () => B
-      )(foldChunk: (B, Chunk[O]) => B, finalize: B => C): C =
-        finalize(Compiler.compile(s.covaryId[SyncIO].free, init())(foldChunk).unsafeRunSync)
-    }
-
-    implicit val fallibleInstance: Compiler[Fallible, Either[Throwable, *]] =
-      new Compiler[Fallible, Either[Throwable, *]] {
-        def apply[O, B, C](
-            s: Stream[Fallible, O],
-            init: () => B
-        )(foldChunk: (B, Chunk[O]) => B, finalize: B => C): Either[Throwable, C] =
-          Compiler
-            .compile(s.lift[SyncIO].free, init())(foldChunk)
-            .attempt
-            .unsafeRunSync
-            .map(finalize)
-      }
   }
 
   /** Projection of a `Stream` providing various ways to compile a `Stream[F,O]` to a `G[...]`. */
@@ -4974,7 +4987,9 @@ object Stream extends StreamLowPriority {
     * }}}
     */
   implicit def functionKInstance[F[_]]: F ~> Stream[F, *] =
-    FunctionK.lift[F, Stream[F, *]](Stream.eval)
+    new (F ~> Stream[F, *]) {
+      def apply[X](fx: F[X]) = Stream.eval(fx)
+    }
 
   implicit def monoidKInstance[F[_]]: MonoidK[Stream[F, *]] =
     new MonoidK[Stream[F, *]] {

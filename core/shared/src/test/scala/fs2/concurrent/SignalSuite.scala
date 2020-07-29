@@ -58,7 +58,8 @@ class SignalSuite extends Fs2Suite {
   }
 
   test("holdOption") {
-    Stream.range(1, 10).covary[IO].holdOption.compile.drain
+    val s = Stream.range(1, 10).covary[IO].holdOption
+    s.compile.drain
   }
 
   // TODO - Port laws tests once we have a compatible version of cats-laws

@@ -55,7 +55,7 @@ private[reactivestreams] final class StreamSubscription[F[_], A](
         .compile
         .drain
 
-    s.unsafeRunAsync
+    s.unsafeRunAsync()
   }
 
   // According to the spec, it's acceptable for a concurrent cancel to not
@@ -77,7 +77,7 @@ private[reactivestreams] final class StreamSubscription[F[_], A](
     val prog = cancelled.get
       .ifM(ifTrue = F.unit, ifFalse = request.flatMap(requests.enqueue1).handleErrorWith(onError))
 
-    prog.unsafeRunAsync
+    prog.unsafeRunAsync()
   }
 }
 

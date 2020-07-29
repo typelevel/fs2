@@ -329,7 +329,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
               }
 
             sig.discrete
-              .interruptWhen(tested.drain)
+              .interruptWhen(tested.drain.covaryOutput[Boolean])
               .fold1(_.max(_))
               .compile
               .lastOrError
@@ -417,7 +417,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
               }
 
             sig.discrete
-              .interruptWhen(tested.drain)
+              .interruptWhen(tested.drain.covaryOutput[Boolean])
               .fold1(_.max(_))
               .compile
               .lastOrError

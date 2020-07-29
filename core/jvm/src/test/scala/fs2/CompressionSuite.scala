@@ -228,8 +228,8 @@ class CompressionSuite extends Fs2Suite {
   test("deflate and inflate are reusable") {
     val bytesIn: Int = 1024 * 1024
     val chunkSize = 1024
-    val deflater = deflate[IO](bufferSize = chunkSize)
-    val inflater = inflate[IO](bufferSize = chunkSize)
+    val deflater = deflate[IO](DeflateParams(bufferSize = chunkSize))
+    val inflater = inflate[IO](InflateParams(bufferSize = chunkSize))
     val stream = Stream
       .chunk[IO, Byte](Chunk.Bytes(1.to(bytesIn).map(_.toByte).toArray))
       .through(deflater)
