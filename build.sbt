@@ -257,7 +257,23 @@ lazy val noPublish = Seq(
 )
 
 lazy val releaseSettings = Seq(
-  releaseCrossBuild := true
+  releaseCrossBuild := true,
+  releaseProcess := {
+    import sbtrelease.ReleaseStateTransformations._
+    Seq[ReleaseStep](
+      inquireVersions,
+      runClean,
+      releaseStepCommandAndRemaining("+test"),
+      setReleaseVersion,
+      commitReleaseVersion,
+      tagRelease,
+      releaseStepCommandAndRemaining("+publish"),
+      setNextVersion,
+      commitNextVersion,
+      pushChanges
+    )
+  },
+  publishConfiguration := publishConfiguration.value.withOverwrite(true)
 )
 
 lazy val mimaSettings = Seq(
