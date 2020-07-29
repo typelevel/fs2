@@ -194,18 +194,13 @@ object compression {
       )
     )
 
-  // For binary compat
-  private[fs2] def deflate[F[_]: Sync](
-      params: DeflateParams
-  ): Pipe[F, Byte, Byte] = deflateParams(params)
-
   /**
     * Returns a `Pipe` that deflates (compresses) its input elements using
     * the the Deflate algorithm.
     *
     * @param deflateParams See [[compression.DeflateParams]]
     */
-  def deflateParams[F[_]](
+  def deflate[F[_]](
       deflateParams: DeflateParams
   )(implicit SyncF: Sync[F]): Pipe[F, Byte, Byte] =
     stream =>
@@ -340,15 +335,12 @@ object compression {
       )
     )
 
-  private[fs2] def inflate[F[_]: Sync](params: InflateParams): Pipe[F, Byte, Byte] =
-    inflateParams(params)
-
   /**
     * Returns a `Pipe` that inflates (decompresses) its input elements using
     * a `java.util.zip.Inflater` with the parameter `nowrap`.
     * @param inflateParams See [[compression.InflateParams]]
     */
-  def inflateParams[F[_]](
+  def inflate[F[_]](
       inflateParams: InflateParams
   )(implicit SyncF: Sync[F]): Pipe[F, Byte, Byte] =
     stream =>

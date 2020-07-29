@@ -119,7 +119,7 @@ class CompressionSuite extends Fs2Suite {
           .chunk[IO, Byte](Chunk.bytes(getBytes(s)))
           .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
           .through(
-            deflateParams(
+            deflate(
               DeflateParams(
                 bufferSize = 32 * 1024,
                 header = if (nowrap) ZLibParams.Header.GZIP else ZLibParams.Header.ZLIB,
@@ -155,7 +155,7 @@ class CompressionSuite extends Fs2Suite {
       )
       .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
       .through(
-        deflateParams(
+        deflate(
           DeflateParams(
             header = ZLibParams.Header.ZLIB
           )
@@ -192,7 +192,7 @@ class CompressionSuite extends Fs2Suite {
           .chunk[IO, Byte](Chunk.bytes(getBytes(s)))
           .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
           .through(
-            deflateParams(
+            deflate(
               DeflateParams(
                 bufferSize = 32 * 1024,
                 header = if (nowrap) ZLibParams.Header.GZIP else ZLibParams.Header.ZLIB,
@@ -229,8 +229,8 @@ class CompressionSuite extends Fs2Suite {
   test("deflate and inflate are reusable") {
     val bytesIn: Int = 1024 * 1024
     val chunkSize = 1024
-    val deflater = deflate[IO](bufferSize = chunkSize)
-    val inflater = inflate[IO](bufferSize = chunkSize)
+    val deflater = deflate[IO](DeflateParams(bufferSize = chunkSize))
+    val inflater = inflate[IO](InflateParams(bufferSize = chunkSize))
     val stream = Stream
       .chunk[IO, Byte](Chunk.Bytes(1.to(bytesIn).map(_.toByte).toArray))
       .through(deflater)
