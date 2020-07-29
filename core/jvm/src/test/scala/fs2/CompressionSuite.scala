@@ -1,4 +1,4 @@
-package notfs2
+package fs2
 
 import java.io.{ByteArrayInputStream, ByteArrayOutputStream}
 import java.nio.charset.StandardCharsets
@@ -6,7 +6,6 @@ import java.time.Instant
 import java.util.zip._
 
 import cats.effect._
-import fs2._
 import fs2.compression._
 
 import org.scalacheck.{Arbitrary, Gen}
