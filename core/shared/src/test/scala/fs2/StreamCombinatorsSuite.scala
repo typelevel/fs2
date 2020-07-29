@@ -1234,6 +1234,16 @@ class StreamCombinatorsSuite extends Fs2Suite {
     }
   }
 
+  group("withFilter") {
+    test("filter in for comprehension") {
+      val stream = for {
+        value <- Stream.range(0, 10)
+        if value % 2 == 0
+      } yield value
+      assert(stream.compile.toList == List(0, 2, 4, 6, 8))
+    }
+  }
+
   group("withTimeout") {
     test("timeout never-ending stream") {
       Stream.never[IO].timeout(100.millis).compile.drain.assertThrows[TimeoutException]

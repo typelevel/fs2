@@ -14,13 +14,12 @@ object compression {
 
     sealed abstract class Header(private[compression] val juzDeflaterNoWrap: Boolean)
     case object Header {
-      private[compression] def apply(juzDeflaterNoWrap: Boolean): ZLibParams.Header =
+      private[fs2] def apply(juzDeflaterNoWrap: Boolean): ZLibParams.Header =
         if (juzDeflaterNoWrap) ZLibParams.Header.GZIP else ZLibParams.Header.ZLIB
 
       case object ZLIB extends Header(juzDeflaterNoWrap = false)
       case object GZIP extends Header(juzDeflaterNoWrap = true)
     }
-
   }
 
   /**
@@ -77,7 +76,7 @@ object compression {
 
     sealed abstract class Level(private[compression] val juzDeflaterLevel: Int)
     case object Level {
-      private[compression] def apply(level: Int): Level =
+      private[fs2] def apply(level: Int): Level =
         level match {
           case DEFAULT.juzDeflaterLevel => Level.DEFAULT
           case ZERO.juzDeflaterLevel    => Level.ZERO
@@ -110,7 +109,7 @@ object compression {
 
     sealed abstract class Strategy(private[compression] val juzDeflaterStrategy: Int)
     case object Strategy {
-      private[compression] def apply(strategy: Int): Strategy =
+      private[fs2] def apply(strategy: Int): Strategy =
         strategy match {
           case DEFAULT.juzDeflaterStrategy      => Strategy.DEFAULT
           case FILTERED.juzDeflaterStrategy     => Strategy.FILTERED
@@ -126,7 +125,7 @@ object compression {
 
     sealed abstract class FlushMode(private[compression] val juzDeflaterFlushMode: Int)
     case object FlushMode {
-      private[compression] def apply(flushMode: Int): FlushMode =
+      private[fs2] def apply(flushMode: Int): FlushMode =
         flushMode match {
           case DEFAULT.juzDeflaterFlushMode    => FlushMode.NO_FLUSH
           case SYNC_FLUSH.juzDeflaterFlushMode => FlushMode.SYNC_FLUSH
@@ -164,35 +163,7 @@ object compression {
       strategy = Strategy.BEST_COMPRESSION,
       flushMode = FlushMode.BEST_COMPRESSION
     )
-
   }
-
-  /**
-    * Returns a `Pipe` that deflates (compresses) its input elements using
-    * a `java.util.zip.Deflater` with the parameters `level`, `nowrap` and `strategy`.
-    * Parameter flush mode is set to NO_FLUSH - use compression.deflate(DeflateParams)
-    * to configure this.
-    * @param level the compression level (0-9)
-    * @param nowrap if true then use GZIP compatible compression
-    * @param bufferSize size of the internal buffer that is used by the
-    *                   compressor. Default size is 32 KB.
-    * @param strategy compression strategy -- see `java.util.zip.Deflater` for details
-    */
-  def deflate[F[_]](
-      level: Int = Deflater.DEFAULT_COMPRESSION,
-      nowrap: Boolean = false,
-      bufferSize: Int = 1024 * 32,
-      strategy: Int = Deflater.DEFAULT_STRATEGY
-  )(implicit SyncF: Sync[F]): Pipe[F, Byte, Byte] =
-    deflateParams[F](
-      DeflateParams(
-        bufferSize = bufferSize,
-        header = ZLibParams.Header(nowrap),
-        level = DeflateParams.Level(level),
-        strategy = DeflateParams.Strategy(strategy),
-        flushMode = DeflateParams.FlushMode.NO_FLUSH
-      )
-    )
 
   /**
     * Returns a `Pipe` that deflates (compresses) its input elements using
@@ -200,7 +171,7 @@ object compression {
     *
     * @param deflateParams See [[compression.DeflateParams]]
     */
-  def deflateParams[F[_]](
+  def deflate[F[_]](
       deflateParams: DeflateParams
   )(implicit SyncF: Sync[F]): Pipe[F, Byte, Byte] =
     stream =>
@@ -321,26 +292,9 @@ object compression {
   /**
     * Returns a `Pipe` that inflates (decompresses) its input elements using
     * a `java.util.zip.Inflater` with the parameter `nowrap`.
-    * @param nowrap if true then support GZIP compatible decompression
-    * @param bufferSize size of the internal buffer that is used by the
-    *                   decompressor. Default size is 32 KB.
-    */
-  def inflate[F[_]](nowrap: Boolean = false, bufferSize: Int = 1024 * 32)(implicit
-      SyncF: Sync[F]
-  ): Pipe[F, Byte, Byte] =
-    inflateParams(
-      InflateParams(
-        bufferSize = bufferSize,
-        header = ZLibParams.Header(nowrap)
-      )
-    )
-
-  /**
-    * Returns a `Pipe` that inflates (decompresses) its input elements using
-    * a `java.util.zip.Inflater` with the parameter `nowrap`.
     * @param inflateParams See [[compression.InflateParams]]
     */
-  def inflateParams[F[_]](
+  def inflate[F[_]](
       inflateParams: InflateParams
   )(implicit SyncF: Sync[F]): Pipe[F, Byte, Byte] =
     stream =>

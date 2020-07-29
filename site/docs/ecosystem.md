@@ -56,8 +56,9 @@ If you have a project you'd like to include in this list, either [click here](ht
 * [scodec-protocols](https://github.com/scodec/scodec-protocols): A library for working with libpcap files. Contains many interesting pipes (e.g., working with time series and playing back streams at various rates).
 * [scodec-stream](https://github.com/scodec/scodec-stream): A library for streaming binary decoding and encoding, built using fs2 and [scodec](https://github.com/scodec/scodec).
 * [spata](https://github.com/fingo/spata): CSV parser build on FS2.
+* [sqs4s](https://github.com/d2a4u/sqs4s): A pure Scala client for AWS SQS using fs2.
 * [streamz](https://github.com/krasserm/streamz): A library that supports the conversion of [Akka Stream](http://doc.akka.io/docs/akka/2.4/scala/stream/index.html) `Source`s, `Flow`s and `Sink`s to and from FS2 `Stream`s, `Pipe`s and `Sink`s, respectively. It also supports the usage of [Apache Camel](http://camel.apache.org/) endpoints in FS2 `Stream`s and Akka Stream `Source`s, `Flow`s and `SubFlow`s.
 * [upperbound](https://github.com/SystemFw/upperbound): A purely functional, interval-based rate limiter with support for backpressure.
 * [vinyldns](https://github.com/vinyldns/vinyldns): A DNS governance system using fs2 for throttling updates to DNS backends.
 
-Don't use see your project on the list? [Click here](https://github.com/functional-streams-for-scala/fs2/edit/main/site/docs/ecosystem.md) to add it!
+Don't see your project on the list? [Click here](https://github.com/functional-streams-for-scala/fs2/edit/main/site/docs/ecosystem.md) to add it!

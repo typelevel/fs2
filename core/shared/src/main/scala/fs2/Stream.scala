@@ -685,6 +685,60 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     Stream.fixedRate[F2](rate).zipRight(this)
 
   /**
+    * Logs the elements of this stream as they are pulled.
+    *
+    * By default, `toString` is called on each element and the result is printed
+    * to standard out. To change formatting, supply a value for the `formatter`
+    * param. To change the destination, supply a value for the `logger` param.
+    *
+    * This method does not change the chunk structure of the stream. To debug the
+    * chunk structure, see [[debugChunks]].
+    *
+    * Logging is not done in `F` because this operation is intended for debugging,
+    * including pure streams.
+    *
+    * @example {{{
+    * scala> Stream(1, 2).append(Stream(3, 4)).debug(o => s"a: $o").toList
+    * a: 1
+    * a: 2
+    * a: 3
+    * a: 4
+    * res0: List[Int] = List(1, 2, 3, 4)
+    * }}}
+    */
+  def debug(
+      formatter: O => String = (o: O @annotation.unchecked.uncheckedVariance) => o.toString,
+      logger: String => Unit = println(_)
+  ): Stream[F, O] =
+    map { o =>
+      logger(formatter(o))
+      o
+    }
+
+  /**
+    * Like [[debug]] but logs chunks as they are pulled instead of individual elements.
+    *
+    * @example {{{
+    * scala> Stream(1, 2, 3).append(Stream(4, 5, 6)).debugChunks(c => s"a: $c").buffer(2).debugChunks(c => s"b: $c").toList
+    * a: Chunk(1, 2, 3)
+    * b: Chunk(1, 2)
+    * a: Chunk(4, 5, 6)
+    * b: Chunk(3, 4)
+    * b: Chunk(5, 6)
+    * res0: List[Int] = List(1, 2, 3, 4, 5, 6)
+    * }}}
+    */
+  def debugChunks(
+      formatter: Chunk[O] => String = (os: Chunk[O] @annotation.unchecked.uncheckedVariance) =>
+        os.toString,
+      logger: String => Unit = println(_)
+  ): Stream[F, O] =
+    chunks.flatMap { os =>
+      logger(formatter(os))
+      Stream.chunk(os)
+    }
+
+  /**
     * Returns a stream that when run, sleeps for duration `d` and then pulls from this stream.
     *
     * Alias for `sleep_[F](d) ++ this`.
@@ -2649,6 +2703,12 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
       }
     }
 
+  /**
+    * Alias for [[filter]]
+    * Implemented to enable filtering in for comprehensions
+    */
+  def withFilter(f: O => Boolean) = this.filter(f)
+
   private type ZipWithCont[G[_], I, O2, R] =
     Either[(Chunk[I], Stream[G, I]), Stream[G, I]] => Pull[G, O2, Option[R]]
 
@@ -3576,59 +3636,6 @@ object Stream extends StreamLowPriority {
       * }}}
       */
     def covary[F2[x] >: F[x]]: Stream[F2, O] = self
-
-    /**
-      * Logs the elements of this stream as they are pulled.
-      *
-      * By default, `toString` is called on each element and the result is printed
-      * to standard out. To change formatting, supply a value for the `formatter`
-      * param. To change the destination, supply a value for the `logger` param.
-      *
-      * This method does not change the chunk structure of the stream. To debug the
-      * chunk structure, see [[debugChunks]].
-      *
-      * Logging is not done in `F` because this operation is intended for debugging,
-      * including pure streams.
-      *
-      * @example {{{
-      * scala> Stream(1, 2).append(Stream(3, 4)).debug(o => s"a: $o").toList
-      * a: 1
-      * a: 2
-      * a: 3
-      * a: 4
-      * res0: List[Int] = List(1, 2, 3, 4)
-      * }}}
-      */
-    def debug(
-        formatter: O => String = _.toString,
-        logger: String => Unit = println(_)
-    ): Stream[F, O] =
-      self.map { o =>
-        logger(formatter(o))
-        o
-      }
-
-    /**
-      * Like [[debug]] but logs chunks as they are pulled instead of individual elements.
-      *
-      * @example {{{
-      * scala> Stream(1, 2, 3).append(Stream(4, 5, 6)).debugChunks(c => s"a: $c").buffer(2).debugChunks(c => s"b: $c").toList
-      * a: Chunk(1, 2, 3)
-      * b: Chunk(1, 2)
-      * a: Chunk(4, 5, 6)
-      * b: Chunk(3, 4)
-      * b: Chunk(5, 6)
-      * res0: List[Int] = List(1, 2, 3, 4, 5, 6)
-      * }}}
-      */
-    def debugChunks(
-        formatter: Chunk[O] => String = _.toString,
-        logger: String => Unit = println(_)
-    ): Stream[F, O] =
-      self.chunks.flatMap { os =>
-        logger(formatter(os))
-        Stream.chunk(os)
-      }
 
     /**
       * Synchronously sends values through `p`.

@@ -6,6 +6,7 @@ import org.scalacheck.Prop.forAll
 import scodec.bits._
 import scodec.bits.Bases.Alphabets.Base64Url
 
+import fs2._
 import fs2.text._
 
 class TextSuite extends Fs2Suite {
@@ -259,7 +260,7 @@ class TextSuite extends Fs2Suite {
   property("base64Encode") {
     forAll { (bs: List[Array[Byte]]) =>
       assertEquals(
-        bs.map(Chunk.bytes).foldMap(Stream.chunk).through(text.base64Encode).compile.string,
+        bs.map(Chunk.bytes).foldMap(Stream.chunk).through(text.base64.encode).compile.string,
         bs.map(ByteVector.view(_)).foldLeft(ByteVector.empty)(_ ++ _).toBase64
       )
     }
@@ -272,8 +273,7 @@ class TextSuite extends Fs2Suite {
         assert(
           bs.map(Chunk.bytes)
             .foldMap(Stream.chunk)
-            .covary[Fallible]
-            .through(text.base64Encode)
+            .through(text.base64.encode)
             .through {
               // Change chunk structure to validate carries
               if (unchunked) _.unchunk
@@ -285,7 +285,7 @@ class TextSuite extends Fs2Suite {
                 .interleave(Stream(" ", "\r\n", "\n", "  \r\n  ").map(Chunk.singleton).repeat)
                 .flatMap(Stream.chunk)
             }
-            .through(text.base64Decode)
+            .through(text.base64.decode[Fallible])
             .compile
             .to(ByteVector) ==
             Right(bs.map(ByteVector.view(_)).foldLeft(ByteVector.empty)(_ ++ _))
@@ -294,23 +294,22 @@ class TextSuite extends Fs2Suite {
     }
 
     test("invalid padding") {
-      assertEquals(
+      assert(
         Stream(hex"00deadbeef00".toBase64, "=====", hex"00deadbeef00".toBase64)
-          .covary[Fallible]
-          .through(text.base64Decode)
+          .through(text.base64.decode[Fallible])
           .chunks
           .attempt
           .map(_.leftMap(_.getMessage))
           .compile
-          .toList,
-        Right(
-          List(
-            Right(Chunk.byteVector(hex"00deadbeef00")),
-            Left(
-              "Malformed padding - final quantum may optionally be padded with one or two padding characters such that the quantum is completed"
+          .to(List) ==
+          Right(
+            List(
+              Right(Chunk.byteVector(hex"00deadbeef00")),
+              Left(
+                "Malformed padding - final quantum may optionally be padded with one or two padding characters such that the quantum is completed"
+              )
             )
           )
-        )
       )
     }
 
@@ -319,10 +318,9 @@ class TextSuite extends Fs2Suite {
         assert(
           bs.map(Chunk.bytes)
             .foldMap(Stream.chunk)
-            .through(text.base64Encode)
+            .through(text.base64.encode)
             .map(_.takeWhile(_ != '='))
-            .covary[Fallible]
-            .through(text.base64Decode)
+            .through(text.base64.decode[Fallible])
             .compile
             .to(ByteVector) ==
             Right(bs.map(ByteVector.view(_)).foldLeft(ByteVector.empty)(_ ++ _))
@@ -339,8 +337,7 @@ class TextSuite extends Fs2Suite {
           .emits(encoded.toSeq)
           .chunkN(5)
           .flatMap(chunk => Stream(chunk.toArray.toSeq.mkString))
-          .covary[Fallible]
-          .through(text.base64DecodeAlphabet(Base64Url))
+          .through(text.base64.decodeWithAlphabet[Fallible](Base64Url))
           .chunks
           .fold(ByteVector.empty)(_ ++ _.toByteVector)
           .compile

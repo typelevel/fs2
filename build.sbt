@@ -81,7 +81,9 @@ lazy val commonSettingsBase = Seq(
   scalacOptions in (Test, compile) ~= {
     _.filterNot("-Xfatal-warnings" == _)
   },
-  scalacOptions in (Compile, console) += "-Ydelambdafy:inline",
+  scalacOptions in (Compile, console) ++= {
+    if (isDotty.value) Nil else Seq("-Ydelambdafy:inline")
+  },
   scalacOptions in (Test, console) := (scalacOptions in (Compile, console)).value,
   javaOptions in (Test, run) ++= Seq("-Xms64m", "-Xmx64m"),
   libraryDependencies ++= Seq(
@@ -257,7 +259,23 @@ lazy val noPublish = Seq(
 )
 
 lazy val releaseSettings = Seq(
-  releaseCrossBuild := true
+  releaseCrossBuild := true,
+  releaseProcess := {
+    import sbtrelease.ReleaseStateTransformations._
+    Seq[ReleaseStep](
+      inquireVersions,
+      runClean,
+      releaseStepCommandAndRemaining("+test"),
+      setReleaseVersion,
+      commitReleaseVersion,
+      tagRelease,
+      releaseStepCommandAndRemaining("+publish"),
+      setNextVersion,
+      commitNextVersion,
+      pushChanges
+    )
+  },
+  publishConfiguration := publishConfiguration.value.withOverwrite(true)
 )
 
 lazy val mimaSettings = Seq(
