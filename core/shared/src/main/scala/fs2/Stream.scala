@@ -2122,6 +2122,37 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
   )(f: O => F2[O2]): Stream[F2, O2] =
     map(o => Stream.eval(f(o))).parJoin(maxConcurrent)
 
+  /**
+    * Nondeterministically merges a stream of streams (`outer`) in to a single stream,
+    * opening at most `maxOpen` streams at any point in time.
+    *
+    * The outer stream is evaluated and each resulting inner stream is run concurrently,
+    * up to `maxOpen` stream. Once this limit is reached, evaluation of the outer stream
+    * is paused until one or more inner streams finish evaluating.
+    *
+    * When the outer stream stops gracefully, all inner streams continue to run,
+    * resulting in a stream that will stop when all inner streams finish
+    * their evaluation.
+    *
+    * When the outer stream fails, evaluation of all inner streams is interrupted
+    * and the resulting stream will fail with same failure.
+    *
+    * When any of the inner streams fail, then the outer stream and all other inner
+    * streams are interrupted, resulting in stream that fails with the error of the
+    * stream that caused initial failure.
+    *
+    * Finalizers on each inner stream are run at the end of the inner stream,
+    * concurrently with other stream computations.
+    *
+    * Finalizers on the outer stream are run after all inner streams have been pulled
+    * from the outer stream but not before all inner streams terminate -- hence finalizers on the outer stream will run
+    * AFTER the LAST finalizer on the very last inner stream.
+    *
+    * Finalizers on the returned stream are run after the outer stream has finished
+    * and all open inner streams have finished.
+    *
+    * @param maxOpen    Maximum number of open inner streams at any time. Must be > 0.
+    */
   def parJoin[F2[_], O2](
       maxOpen: Int
   )(implicit
