@@ -96,8 +96,8 @@ trait Queue[F[_], A]
     */
   def imap[B](f: A => B)(g: B => A)(implicit F: Functor[F]): Queue[F, B] =
     new Queue[F, B] {
-      def enqueue1(a: B): F[Unit] = self.enqueue1(g(a))
-      def offer1(a: B): F[Boolean] = self.offer1(g(a))
+      def enqueue1(b: B): F[Unit] = self.enqueue1(g(b))
+      def offer1(b: B): F[Boolean] = self.offer1(g(b))
       def dequeue1: F[B] = self.dequeue1.map(f)
       def tryDequeue1: F[Option[B]] = self.tryDequeue1.map(_.map(f))
       def dequeueChunk1(maxSize: Int): F[Chunk[B]] = self.dequeueChunk1(maxSize).map(_.map(f))
