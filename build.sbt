@@ -180,6 +180,13 @@ lazy val scaladocSettings = Seq(
       Seq()
     else
       old
+  },
+  Test / doc / sources := {
+    val old = (Test / doc / sources).value
+    if (isDotty.value)
+      Seq()
+    else
+      old
   }
 )
 
