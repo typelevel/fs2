@@ -1230,11 +1230,13 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     * res0: List[Int] = List(1, 2, 2, 3, 3, 3)
     * }}}
     */
-  def flatMap[F2[x] >: F[x], O2](f: O => Stream[F2, O2]): Stream[F2, O2] =
+  def flatMap[F2[x] >: F[x], O2](f: O => Stream[F2, O2])(implicit ev: NotNothing[O]): Stream[F2, O2] = {
+    val _ = ev
     new Stream(Pull.flatMapOutput[F, F2, O, O2](underlying, (o: O) => f(o).underlying))
+  }
 
   /** Alias for `flatMap(_ => s2)`. */
-  def >>[F2[x] >: F[x], O2](s2: => Stream[F2, O2]): Stream[F2, O2] =
+  def >>[F2[x] >: F[x], O2](s2: => Stream[F2, O2])(implicit ev: NotNothing[O]): Stream[F2, O2] =
     flatMap(_ => s2)
 
   /** Flattens a stream of streams in to a single stream by concatenating each stream.
@@ -3497,7 +3499,7 @@ object Stream extends StreamLowPriority {
           .map(_._1)
       case r: Resource.Bind[f, x, o] =>
         resourceWeak[f, x](r.source).flatMap(o => resourceWeak[f, o](r.fs(o)))
-      case r: Resource.Suspend[f, o] => Stream.eval(r.resource).flatMap(resourceWeak[f, o])
+      case r: Resource.Suspend[f, o] => Stream.eval(r.resource).flatMap(resourceWeak[f, o])(NotNothing.instance)
     }
 
   /**
