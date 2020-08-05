@@ -11,6 +11,7 @@ import org.scalacheck.Prop.forAll
 import org.scalacheck.effect.PropF.forAllF
 
 class StreamZipSuite extends Fs2Suite {
+
   group("zip") {
     test("propagate error from closing the root scope") {
       val s1 = Stream.bracket(IO(1))(_ => IO.unit)
@@ -185,6 +186,13 @@ class StreamZipSuite extends Fs2Suite {
   }
 
   group("parZip") {
+    test("parZip outputs the same results as zip") {
+      forAllF { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
+        val par = s1.covary[IO].parZip(s2)
+        val seq = s1.zip(s2)
+        par.compile.toList.map(result => assert(result == seq.toList))
+      }
+    }
 
     test("parZip evaluates effects with bounded concurrency") {
       // various shenanigans to support TestContext in our current test setup
@@ -233,15 +241,6 @@ class StreamZipSuite extends Fs2Suite {
 
       env.tick(1.second)
       result.map(r => assertEquals(r, snapshots.last._3))(executionContext)
-    }
-
-    // Not sure why, but this has to be run *after* the previous test, or the previous test fails
-    test("parZip outputs the same results as zip") {
-      forAllF { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
-        val par = s1.covary[IO].parZip(s2)
-        val seq = s1.zip(s2)
-        par.compile.toList.map(result => assert(result == seq.toList))
-      }
     }
   }
 

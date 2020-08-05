@@ -21,6 +21,8 @@ abstract class Fs2Suite extends ScalaCheckEffectSuite with TestPlatform with Gen
   implicit val contextShiftIO: ContextShift[IO] =
     IO.contextShift(executionContext)
 
+  override def munitExecutionContext: ExecutionContext = executionContext
+
   /** Provides various ways to make test assertions on an `F[A]`. */
   implicit class Asserting[F[_], A](private val self: F[A]) {
 
