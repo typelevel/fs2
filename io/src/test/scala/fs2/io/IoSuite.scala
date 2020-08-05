@@ -5,11 +5,12 @@ import java.util.concurrent.Executors
 import cats.effect.{Blocker, ContextShift, IO, Resource}
 import fs2.Fs2Suite
 import scala.concurrent.ExecutionContext
+import org.scalacheck.effect.PropF.forAllF
 
 class IoSuite extends Fs2Suite {
   group("readInputStream") {
     test("non-buffered") {
-      forAllAsync { (bytes: Array[Byte], chunkSize0: Int) =>
+      forAllF { (bytes: Array[Byte], chunkSize0: Int) =>
         val chunkSize = (chunkSize0 % 20).abs + 1
         val is: InputStream = new ByteArrayInputStream(bytes)
         Blocker[IO].use { blocker =>
@@ -20,7 +21,7 @@ class IoSuite extends Fs2Suite {
     }
 
     test("buffered") {
-      forAllAsync { (bytes: Array[Byte], chunkSize0: Int) =>
+      forAllF { (bytes: Array[Byte], chunkSize0: Int) =>
         val chunkSize = (chunkSize0 % 20).abs + 1
         val is: InputStream = new ByteArrayInputStream(bytes)
         Blocker[IO].use { blocker =>
@@ -37,7 +38,7 @@ class IoSuite extends Fs2Suite {
 
   group("readOutputStream") {
     test("writes data and terminates when `f` returns") {
-      forAllAsync { (bytes: Array[Byte], chunkSize0: Int) =>
+      forAllF { (bytes: Array[Byte], chunkSize0: Int) =>
         val chunkSize = (chunkSize0 % 20).abs + 1
         Blocker[IO].use { blocker =>
           readOutputStream[IO](blocker, chunkSize)((os: OutputStream) =>
@@ -50,7 +51,7 @@ class IoSuite extends Fs2Suite {
     }
 
     test("can be manually closed from inside `f`") {
-      forAllAsync { (chunkSize0: Int) =>
+      forAllF { (chunkSize0: Int) =>
         val chunkSize = (chunkSize0 % 20).abs + 1
         Blocker[IO].use { blocker =>
           readOutputStream[IO](blocker, chunkSize)((os: OutputStream) =>
@@ -62,7 +63,7 @@ class IoSuite extends Fs2Suite {
     }
 
     test("fails when `f` fails") {
-      forAllAsync { (chunkSize0: Int) =>
+      forAllF { (chunkSize0: Int) =>
         val chunkSize = (chunkSize0 % 20).abs + 1
         val e = new Exception("boom")
         Blocker[IO].use { blocker =>
@@ -104,7 +105,7 @@ class IoSuite extends Fs2Suite {
 
   group("unsafeReadInputStream") {
     test("non-buffered") {
-      forAllAsync { (bytes: Array[Byte], chunkSize0: Int) =>
+      forAllF { (bytes: Array[Byte], chunkSize0: Int) =>
         val chunkSize = (chunkSize0 % 20).abs + 1
         val is: InputStream = new ByteArrayInputStream(bytes)
         Blocker[IO].use { blocker =>

@@ -6,6 +6,7 @@ import cats.effect.concurrent.Ref
 import cats.implicits._
 // import cats.laws.discipline.{ApplicativeTests, FunctorTests}
 import scala.concurrent.duration._
+import org.scalacheck.effect.PropF.forAllF
 
 class SignalSuite extends Fs2Suite {
   override def scalaCheckTestParameters =
@@ -17,7 +18,7 @@ class SignalSuite extends Fs2Suite {
     predicate.flatMap(passed => if (passed) IO.unit else IO.sleep(5.millis) >> waitFor(predicate))
 
   test("get/set/discrete") {
-    forAllAsync { (vs0: List[Long]) =>
+    forAllF { (vs0: List[Long]) =>
       val vs = vs0.map(n => if (n == 0) 1 else n)
       SignallingRef[IO, Long](0L).flatMap { s =>
         Ref.of[IO, Long](0).flatMap { r =>
@@ -38,7 +39,7 @@ class SignalSuite extends Fs2Suite {
 
   test("discrete") {
     // verifies that discrete always receives the most recent value, even when updates occur rapidly
-    forAllAsync { (v0: Long, vsTl: List[Long]) =>
+    forAllF { (v0: Long, vsTl: List[Long]) =>
       val vs = v0 :: vsTl
       SignallingRef[IO, Long](0L).flatMap { s =>
         Ref.of[IO, Long](0L).flatMap { r =>

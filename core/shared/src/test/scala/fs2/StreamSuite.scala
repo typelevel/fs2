@@ -9,6 +9,7 @@ import cats.implicits._
 import org.scalacheck.Gen
 import org.scalacheck.Arbitrary.arbitrary
 import org.scalacheck.Prop.forAll
+import org.scalacheck.effect.PropF.forAllF
 
 import fs2.concurrent.{Queue, SignallingRef}
 
@@ -573,7 +574,7 @@ class StreamSuite extends Fs2Suite {
 
   group("resource safety") {
     test("1") {
-      forAllAsync { (s1: Stream[Pure, Int]) =>
+      forAllF { (s1: Stream[Pure, Int]) =>
         Counter[IO].flatMap { counter =>
           val x = Stream.bracket(counter.increment)(_ => counter.decrement) >> s1
           val y = Stream.raiseError[IO](new Err)
@@ -607,7 +608,7 @@ class StreamSuite extends Fs2Suite {
     }
 
     test("2b") {
-      forAllAsync { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
+      forAllF { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
         Counter[IO].flatMap { counter =>
           val b1 = Stream.bracket(counter.increment)(_ => counter.decrement) >> s1
           val b2 = Stream.bracket(counter.increment)(_ => counter.decrement) >> s2
@@ -626,7 +627,7 @@ class StreamSuite extends Fs2Suite {
 
     test("3".ignore) {
       // TODO: Sometimes fails with inner == 1 on final assertion
-      forAllAsync { (s: Stream[Pure, Stream[Pure, Int]], n0: Int) =>
+      forAllF { (s: Stream[Pure, Stream[Pure, Int]], n0: Int) =>
         val n = (n0 % 10).abs + 1
         Counter[IO].flatMap { outer =>
           Counter[IO].flatMap { inner =>
@@ -650,7 +651,7 @@ class StreamSuite extends Fs2Suite {
     }
 
     test("4") {
-      forAllAsync { (s: Stream[Pure, Int]) =>
+      forAllF { (s: Stream[Pure, Int]) =>
         Counter[IO].flatMap { counter =>
           val s2 = Stream.bracket(counter.increment)(_ => counter.decrement) >> spuriousFail(
             s.covary[IO]
@@ -670,7 +671,7 @@ class StreamSuite extends Fs2Suite {
     }
 
     test("5") {
-      forAllAsync { (s: Stream[Pure, Stream[Pure, Int]]) =>
+      forAllF { (s: Stream[Pure, Stream[Pure, Int]]) =>
         SignallingRef[IO, Boolean](false).flatMap { signal =>
           Counter[IO].flatMap { counter =>
             val sleepAndSet = IO.sleep(20.millis) >> signal.set(true)

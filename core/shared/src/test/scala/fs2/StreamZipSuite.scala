@@ -8,6 +8,7 @@ import cats.effect.laws.util.TestContext
 import cats.implicits._
 
 import org.scalacheck.Prop.forAll
+import org.scalacheck.effect.PropF.forAllF
 
 class StreamZipSuite extends Fs2Suite {
   group("zip") {
@@ -185,7 +186,7 @@ class StreamZipSuite extends Fs2Suite {
 
   group("parZip") {
     test("parZip outputs the same results as zip") {
-      forAllAsync { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
+      forAllF { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
         val par = s1.covary[IO].parZip(s2)
         val seq = s1.zip(s2)
         par.compile.toList.map(result => assert(result == seq.toList))

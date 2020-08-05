@@ -4,12 +4,11 @@ import scala.concurrent.{ExecutionContext, Future}
 
 import cats.effect.{ContextShift, IO, Sync, SyncIO, Timer}
 import cats.implicits._
-import munit.{Location, ScalaCheckSuite}
+import munit.{Location, ScalaCheckEffectSuite}
 import org.typelevel.discipline.Laws
 
 abstract class Fs2Suite
-    extends ScalaCheckSuite
-    with AsyncPropertySupport
+    extends ScalaCheckEffectSuite
     with TestPlatform
     with Generators {
 
