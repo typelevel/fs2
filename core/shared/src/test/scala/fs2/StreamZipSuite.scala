@@ -1,7 +1,6 @@
 package fs2
 
 import scala.concurrent.duration._
-import scala.concurrent.ExecutionContext
 
 import cats.effect.{ContextShift, IO, Timer}
 import cats.effect.laws.util.TestContext
