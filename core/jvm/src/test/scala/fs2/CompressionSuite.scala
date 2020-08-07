@@ -98,7 +98,7 @@ class CompressionSuite extends Fs2Suite {
             DeflateParams(
               level = DeflateParams.Level(level),
               strategy = DeflateParams.Strategy(strategy),
-              header = ZLibParams.Header(nowrap),
+              header = ZLibParams.Header(nowrap)
             )
           )
         )
