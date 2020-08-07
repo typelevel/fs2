@@ -134,6 +134,7 @@ Here's a (non-exhaustive) list of companies that use FS2 in production. Don't se
 * [OVO Energy](https://www.ovoenergy.com)
 * [Ocado Technology](https://www.ocadogroup.com/technology/technology-pioneers)
 * [Teikametrics](https://www.teikametrics.com)
+* [IntentHQ](https://www.intenthq.com)
 
 ### Acknowledgments ###
 

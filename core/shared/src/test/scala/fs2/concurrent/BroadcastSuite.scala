@@ -2,10 +2,11 @@ package fs2
 package concurrent
 
 import cats.effect.IO
+import org.scalacheck.effect.PropF.forAllF
 
 class BroadcastSuite extends Fs2Suite {
   test("all subscribers see all elements") {
-    forAllAsync { (source: Stream[Pure, Int], concurrent0: Int) =>
+    forAllF { (source: Stream[Pure, Int], concurrent0: Int) =>
       val concurrent = (concurrent0 % 20).abs
       val expect = source.compile.toVector.map(_.toString)
 

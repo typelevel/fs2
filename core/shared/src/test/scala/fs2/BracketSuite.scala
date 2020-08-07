@@ -6,6 +6,7 @@ import cats.data.Chain
 import cats.effect.{ExitCase, IO, Sync, SyncIO}
 import cats.effect.concurrent.Ref
 import cats.implicits._
+import org.scalacheck.effect.PropF.forAllF
 
 class BracketSuite extends Fs2Suite {
 
@@ -62,7 +63,7 @@ class BracketSuite extends Fs2Suite {
   }
 
   test("nested") {
-    forAllAsync { (s0: List[Int], finalizerFail: Boolean) =>
+    forAllF { (s0: List[Int], finalizerFail: Boolean) =>
       // construct a deeply nested bracket stream in which the innermost stream fails
       // and check that as we unwind the stack, all resources get released
       // Also test for case where finalizer itself throws an error
@@ -87,7 +88,7 @@ class BracketSuite extends Fs2Suite {
   }
 
   test("early termination") {
-    forAllAsync { (s: Stream[Pure, Int], i0: Long, j0: Long, k0: Long) =>
+    forAllF { (s: Stream[Pure, Int], i0: Long, j0: Long, k0: Long) =>
       val i = i0 % 10
       val j = j0 % 10
       val k = k0 % 10
@@ -217,7 +218,7 @@ class BracketSuite extends Fs2Suite {
 
   group("bracketCase") {
     test("normal termination") {
-      forAllAsync { (s0: List[Stream[Pure, Int]]) =>
+      forAllF { (s0: List[Stream[Pure, Int]]) =>
         Counter[IO].flatMap { counter =>
           var ecs: Chain[ExitCase[Throwable]] = Chain.empty
           val s = s0.map { s =>
@@ -237,7 +238,7 @@ class BracketSuite extends Fs2Suite {
     }
 
     test("failure") {
-      forAllAsync { (s0: List[Stream[Pure, Int]]) =>
+      forAllF { (s0: List[Stream[Pure, Int]]) =>
         Counter[IO].flatMap { counter =>
           var ecs: Chain[ExitCase[Throwable]] = Chain.empty
           val s = s0.map { s =>
@@ -257,7 +258,7 @@ class BracketSuite extends Fs2Suite {
     }
 
     test("cancelation") {
-      forAllAsync { (s0: Stream[Pure, Int]) =>
+      forAllF { (s0: Stream[Pure, Int]) =>
         Counter[IO].flatMap { counter =>
           var ecs: Chain[ExitCase[Throwable]] = Chain.empty
           val s =
@@ -278,7 +279,7 @@ class BracketSuite extends Fs2Suite {
     }
 
     test("interruption") {
-      forAllAsync { (s0: Stream[Pure, Int]) =>
+      forAllF { (s0: Stream[Pure, Int]) =>
         Counter[IO].flatMap { counter =>
           var ecs: Chain[ExitCase[Throwable]] = Chain.empty
           val s =

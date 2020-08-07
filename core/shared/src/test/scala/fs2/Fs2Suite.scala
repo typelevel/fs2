@@ -4,14 +4,10 @@ import scala.concurrent.{ExecutionContext, Future}
 
 import cats.effect.{ContextShift, IO, Sync, SyncIO, Timer}
 import cats.implicits._
-import munit.{Location, ScalaCheckSuite}
+import munit.{Location, ScalaCheckEffectSuite}
 import org.typelevel.discipline.Laws
 
-abstract class Fs2Suite
-    extends ScalaCheckSuite
-    with AsyncPropertySupport
-    with TestPlatform
-    with Generators {
+abstract class Fs2Suite extends ScalaCheckEffectSuite with TestPlatform with Generators {
 
   override def scalaCheckTestParameters =
     super.scalaCheckTestParameters
@@ -24,6 +20,8 @@ abstract class Fs2Suite
   implicit val timerIO: Timer[IO] = IO.timer(executionContext)
   implicit val contextShiftIO: ContextShift[IO] =
     IO.contextShift(executionContext)
+
+  override def munitExecutionContext: ExecutionContext = executionContext
 
   /** Provides various ways to make test assertions on an `F[A]`. */
   implicit class Asserting[F[_], A](private val self: F[A]) {

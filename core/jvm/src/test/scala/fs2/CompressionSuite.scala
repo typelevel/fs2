@@ -9,6 +9,7 @@ import cats.effect._
 import fs2.compression._
 
 import org.scalacheck.{Arbitrary, Gen}
+import org.scalacheck.effect.PropF.forAllF
 
 import scala.collection.mutable
 
@@ -83,7 +84,7 @@ class CompressionSuite extends Fs2Suite {
   )
 
   test("deflate input") {
-    forAllAsync { (s: String, level0: Int, strategy0: Int, nowrap: Boolean) =>
+    forAllF { (s: String, level0: Int, strategy0: Int, nowrap: Boolean) =>
       val level = (level0 % 10).abs
       val strategy = Array(Deflater.DEFAULT_STRATEGY, Deflater.FILTERED, Deflater.HUFFMAN_ONLY)(
         (strategy0 % 3).abs
@@ -108,7 +109,7 @@ class CompressionSuite extends Fs2Suite {
   }
 
   test("inflate input") {
-    forAllAsync {
+    forAllF {
       (
           s: String,
           nowrap: Boolean,
@@ -181,7 +182,7 @@ class CompressionSuite extends Fs2Suite {
   }
 
   test("deflate |> inflate ~= id") {
-    forAllAsync {
+    forAllF {
       (
           s: String,
           nowrap: Boolean,
@@ -251,7 +252,7 @@ class CompressionSuite extends Fs2Suite {
   }
 
   test("gzip |> gunzip ~= id") {
-    forAllAsync {
+    forAllF {
       (
           s: String,
           level: DeflateParams.Level,
@@ -296,7 +297,7 @@ class CompressionSuite extends Fs2Suite {
   }
 
   test("gzip |> gunzip ~= id (mutually prime chunk sizes, compression larger)") {
-    forAllAsync {
+    forAllF {
       (
           s: String,
           level: DeflateParams.Level,
@@ -341,7 +342,7 @@ class CompressionSuite extends Fs2Suite {
   }
 
   test("gzip |> gunzip ~= id (mutually prime chunk sizes, decompression larger)") {
-    forAllAsync {
+    forAllF {
       (
           s: String,
           level: DeflateParams.Level,
@@ -386,7 +387,7 @@ class CompressionSuite extends Fs2Suite {
   }
 
   test("gzip |> GZIPInputStream ~= id") {
-    forAllAsync {
+    forAllF {
       (
           s: String,
           level: DeflateParams.Level,
