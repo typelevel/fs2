@@ -3,8 +3,6 @@ import com.typesafe.tools.mima.core._
 import sbtrelease.Version
 import sbtcrossproject.crossProject
 
-resolvers in ThisBuild += Resolver.sonatypeRepo("snapshots")
-
 val ReleaseTag = """^release/([\d\.]+a?)$""".r
 
 addCommandAlias("fmt", "; compile:scalafmt; test:scalafmt; it:scalafmt; scalafmtSbt")
@@ -92,7 +90,7 @@ lazy val commonSettingsBase = Seq(
     ("org.typelevel" %%% "cats-effect" % "2.1.4").withDottyCompat(scalaVersion.value),
     ("org.typelevel" %%% "cats-effect-laws" % "2.1.4" % "test")
       .withDottyCompat(scalaVersion.value),
-    "org.typelevel" %%% "scalacheck-effect-munit" % "0.0.0+1-acd11689-SNAPSHOT" % "test"
+    "org.typelevel" %%% "scalacheck-effect-munit" % "0.0.3" % "test"
   ),
   libraryDependencies ++= {
     if (isDotty.value) Nil
