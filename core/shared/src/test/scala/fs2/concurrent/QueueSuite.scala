@@ -4,10 +4,11 @@ package concurrent
 import cats.effect.IO
 import cats.implicits._
 import scala.concurrent.duration._
+import org.scalacheck.effect.PropF.forAllF
 
 class QueueSuite extends Fs2Suite {
   test("unbounded producer/consumer") {
-    forAllAsync { (s: Stream[Pure, Int]) =>
+    forAllF { (s: Stream[Pure, Int]) =>
       val expected = s.toList
       val n = expected.size
       Stream
@@ -23,7 +24,7 @@ class QueueSuite extends Fs2Suite {
     }
   }
   test("circularBuffer") {
-    forAllAsync { (s: Stream[Pure, Int], maxSize0: Int) =>
+    forAllF { (s: Stream[Pure, Int], maxSize0: Int) =>
       val maxSize = (maxSize0 % 20).abs + 1
       val expected = s.toList.takeRight(maxSize)
       Stream
@@ -40,7 +41,7 @@ class QueueSuite extends Fs2Suite {
   }
 
   test("circularBufferNoneTerminated") {
-    forAllAsync { (s: Stream[Pure, Int], maxSize0: Int) =>
+    forAllF { (s: Stream[Pure, Int], maxSize0: Int) =>
       val maxSize = (maxSize0 % 20).abs + 1
       val expected = s.toList.takeRight(maxSize)
       Stream
@@ -56,7 +57,7 @@ class QueueSuite extends Fs2Suite {
     }
   }
   test("dequeueAvailable") {
-    forAllAsync { (s: Stream[Pure, Int]) =>
+    forAllF { (s: Stream[Pure, Int]) =>
       val expected = s.toList
       Stream
         .eval(Queue.unbounded[IO, Option[Int]])
@@ -74,7 +75,7 @@ class QueueSuite extends Fs2Suite {
     }
   }
   test("dequeueBatch unbounded") {
-    forAllAsync { (s: Stream[Pure, Int], batchSize0: Int) =>
+    forAllF { (s: Stream[Pure, Int], batchSize0: Int) =>
       val batchSize = (batchSize0 % 20).abs + 1
       val expected = s.toList
       Stream
@@ -91,7 +92,7 @@ class QueueSuite extends Fs2Suite {
     }
   }
   test("dequeueBatch circularBuffer") {
-    forAllAsync { (s: Stream[Pure, Int], maxSize0: Int, batchSize0: Int) =>
+    forAllF { (s: Stream[Pure, Int], maxSize0: Int, batchSize0: Int) =>
       val maxSize = (maxSize0 % 20).abs + 1
       val batchSize = (batchSize0 % 20).abs + 1
       val expected = s.toList.takeRight(maxSize)

@@ -90,8 +90,7 @@ lazy val commonSettingsBase = Seq(
     ("org.typelevel" %%% "cats-effect" % "2.1.4").withDottyCompat(scalaVersion.value),
     ("org.typelevel" %%% "cats-effect-laws" % "2.1.4" % "test")
       .withDottyCompat(scalaVersion.value),
-    ("org.scalacheck" %%% "scalacheck" % "1.14.3" % "test").withDottyCompat(scalaVersion.value),
-    "org.scalameta" %%% "munit-scalacheck" % "0.7.10" % "test"
+    "org.typelevel" %%% "scalacheck-effect-munit" % "0.0.3" % "test"
   ),
   libraryDependencies ++= {
     if (isDotty.value) Nil

@@ -5,10 +5,11 @@ import scala.concurrent.duration._
 import cats.effect.IO
 import cats.effect.concurrent.{Deferred, Ref}
 import cats.implicits._
+import org.scalacheck.effect.PropF.forAllF
 
 class StreamParJoinSuite extends Fs2Suite {
   test("no concurrency") {
-    forAllAsync { (s: Stream[Pure, Int]) =>
+    forAllF { (s: Stream[Pure, Int]) =>
       val expected = s.toList.toSet
       s.covary[IO]
         .map(Stream.emit(_).covary[IO])
@@ -20,7 +21,7 @@ class StreamParJoinSuite extends Fs2Suite {
   }
 
   test("concurrency") {
-    forAllAsync { (s: Stream[Pure, Int], n0: Int) =>
+    forAllF { (s: Stream[Pure, Int], n0: Int) =>
       val n = (n0 % 20).abs + 1
       val expected = s.toList.toSet
       s.covary[IO]
@@ -33,7 +34,7 @@ class StreamParJoinSuite extends Fs2Suite {
   }
 
   test("concurrent flattening") {
-    forAllAsync { (s: Stream[Pure, Stream[Pure, Int]], n0: Int) =>
+    forAllF { (s: Stream[Pure, Stream[Pure, Int]], n0: Int) =>
       val n = (n0 % 20).abs + 1
       val expected = s.flatten.toList.toSet
       s.map(_.covary[IO])
@@ -46,7 +47,7 @@ class StreamParJoinSuite extends Fs2Suite {
   }
 
   test("merge consistency") {
-    forAllAsync { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
+    forAllF { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
       val parJoined = Stream(s1.covary[IO], s2).parJoin(2).compile.toList.map(_.toSet)
       val merged = s1.covary[IO].merge(s2).compile.toList.map(_.toSet)
       (parJoined, merged).tupled.map { case (pj, m) => assert(pj == m) }
@@ -68,7 +69,7 @@ class StreamParJoinSuite extends Fs2Suite {
   }
 
   test("run finalizers of inner streams first") {
-    forAllAsync { (s1: Stream[Pure, Int], bias: Boolean) =>
+    forAllF { (s1: Stream[Pure, Int], bias: Boolean) =>
       val err = new Err
       val biasIdx = if (bias) 1 else 0
       Ref

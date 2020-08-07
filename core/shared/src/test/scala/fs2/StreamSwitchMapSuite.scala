@@ -5,10 +5,11 @@ import scala.concurrent.duration._
 import cats.effect.IO
 import cats.effect.concurrent.{Deferred, Ref, Semaphore}
 import cats.implicits._
+import org.scalacheck.effect.PropF.forAllF
 
 class StreamSwitchMapSuite extends Fs2Suite {
   test("flatMap equivalence when switching never occurs") {
-    forAllAsync { (s: Stream[Pure, Int]) =>
+    forAllF { (s: Stream[Pure, Int]) =>
       val expected = s.toList
       Stream
         .eval(Semaphore[IO](1))
@@ -25,7 +26,7 @@ class StreamSwitchMapSuite extends Fs2Suite {
   }
 
   test("inner stream finalizer always runs before switching") {
-    forAllAsync { (s: Stream[Pure, Int]) =>
+    forAllF { (s: Stream[Pure, Int]) =>
       Stream
         .eval(Ref[IO].of(true))
         .flatMap { ref =>
@@ -45,7 +46,7 @@ class StreamSwitchMapSuite extends Fs2Suite {
   }
 
   test("when primary stream terminates, inner stream continues") {
-    forAllAsync { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
+    forAllF { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
       val expected = s1.last.unNoneTerminate.flatMap(s => s2 ++ Stream(s)).toList
       s1.covary[IO]
         .switchMap(s => Stream.sleep_[IO](25.millis) ++ s2 ++ Stream.emit(s))
@@ -56,7 +57,7 @@ class StreamSwitchMapSuite extends Fs2Suite {
   }
 
   test("when inner stream fails, overall stream fails") {
-    forAllAsync { (s0: Stream[Pure, Int]) =>
+    forAllF { (s0: Stream[Pure, Int]) =>
       val s = Stream(0) ++ s0
       s.delayBy[IO](25.millis)
         .switchMap(_ => Stream.raiseError[IO](new Err))
@@ -83,7 +84,7 @@ class StreamSwitchMapSuite extends Fs2Suite {
   }
 
   test("when inner stream fails, inner stream finalizer run before the primary one") {
-    forAllAsync { (s0: Stream[Pure, Int]) =>
+    forAllF { (s0: Stream[Pure, Int]) =>
       val s = Stream(0) ++ s0
       Stream
         .eval(Deferred[IO, Boolean])
