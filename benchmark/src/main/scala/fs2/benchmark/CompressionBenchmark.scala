@@ -22,7 +22,11 @@ class CompressionBenchmark {
 
   @Benchmark
   def inflate(): Byte =
-    benchmark(randomBytesDeflated, zeroBytesDeflated, compression.inflate(InflateParams(bufferSize = bufferSize)))
+    benchmark(
+      randomBytesDeflated,
+      zeroBytesDeflated,
+      compression.inflate(InflateParams(bufferSize = bufferSize))
+    )
 
   @Benchmark
   def gzip(): Byte =

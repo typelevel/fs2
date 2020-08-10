@@ -11,8 +11,8 @@ import fs2.Scope
   *
   * The acquisition of a resource has three steps:
   *
-  * 1. A `Resource` instance is created and registered with the current scope (`Algebra.Acquire`)
-  * 2. Resource acquisition action is evaluated
+  * 1. A `ScopedResource` instance is created and registered with the current scope (`Algebra.Acquire`)
+  * 2. Acquisition action is evaluated
   * 3. `acquired` is invoked to confirm acquisition of the resource
   *
   * The reason for this is that during asynchronous stream evaluation, one scope may close the other scope
@@ -23,19 +23,19 @@ import fs2.Scope
   * A resource may be released by any of the following methods:
   *
   * (1) The owning scope was closed by `Algebra.CloseScope`. This essentially evaluates `release` of
-  *     the `Resource` and acts like (1).
+  *     the `ScopedResource` and acts like (1).
   * (2) `acquired` was evaluated after scope was `released` by either (1) or (2). In this case,
   *     finalizer will be invoked immediately if the resource is not leased.
   * (3) `cancel` is invoked on a `Lease` for the resource. This will invoke the finalizer
   *     if the resource was already acquired and released and there are no other outstanding leases.
   *
-  * Resources may be leased to other scopes. Each scope must lease with `lease` and  when the other
+  * Scoped resources may be leased to other scopes. Each scope must lease with `lease` and  when the other
   * scope is closed (or when the resource lease is no longer required) release the lease with `Lease#cancel`.
   *
   * Note that every method which may potentially call a resource finalizer returns `F[Either[Throwable, Unit]]`
   * instead of `F[Unit]`` to make sure any errors that occur when releasing the resource are properly handled.
   */
-private[fs2] sealed abstract class Resource[F[_]] {
+private[fs2] sealed abstract class ScopedResource[F[_]] {
 
   /**
     * Id of the resource
@@ -79,12 +79,12 @@ private[fs2] sealed abstract class Resource[F[_]] {
   def lease: F[Option[Scope.Lease[F]]]
 }
 
-private[internal] object Resource {
+private[internal] object ScopedResource {
 
   /**
-    * State of the resource
+    * State of the resource.
     *
-    * @param open       Resource is open. At this state resource is either awating its acquisition
+    * @param open       resource is open. At this state resource is either awating its acquisition
     *                   by invoking the `acquired` or is used by Stream.
     * @param finalizer  When resource is successfully acquired, this will contain finalizer that shall be
     *                   invoked when the resource is released.
@@ -102,8 +102,8 @@ private[internal] object Resource {
 
   private[this] val initial = State(open = true, finalizer = None, leases = 0)
 
-  def create[F[_]](implicit F: Sync[F]): Resource[F] =
-    new Resource[F] {
+  def create[F[_]](implicit F: Sync[F]): ScopedResource[F] =
+    new ScopedResource[F] {
       private[this] val state: Ref[F, State[F]] = Ref.unsafe(initial)
 
       override val id: Token = new Token
