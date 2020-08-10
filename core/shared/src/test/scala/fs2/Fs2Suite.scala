@@ -1,13 +1,17 @@
 package fs2
 
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.ExecutionContext
 
-import cats.effect.{ContextShift, IO, Sync, SyncIO, Timer}
+import cats.effect.Sync
 import cats.implicits._
-import munit.{Location, ScalaCheckEffectSuite}
+import munit.{CatsEffectSuite, Location, ScalaCheckEffectSuite}
 import org.typelevel.discipline.Laws
 
-abstract class Fs2Suite extends ScalaCheckEffectSuite with TestPlatform with Generators {
+abstract class Fs2Suite
+    extends CatsEffectSuite
+    with ScalaCheckEffectSuite
+    with TestPlatform
+    with Generators {
 
   override def scalaCheckTestParameters =
     super.scalaCheckTestParameters
@@ -16,12 +20,7 @@ abstract class Fs2Suite extends ScalaCheckEffectSuite with TestPlatform with Gen
 
   override def munitFlakyOK = true
 
-  val executionContext: ExecutionContext = ExecutionContext.global
-  implicit val timerIO: Timer[IO] = IO.timer(executionContext)
-  implicit val contextShiftIO: ContextShift[IO] =
-    IO.contextShift(executionContext)
-
-  override def munitExecutionContext: ExecutionContext = executionContext
+  override val munitExecutionContext: ExecutionContext = ExecutionContext.global
 
   /** Provides various ways to make test assertions on an `F[A]`. */
   implicit class Asserting[F[_], A](private val self: F[A]) {
@@ -73,17 +72,4 @@ abstract class Fs2Suite extends ScalaCheckEffectSuite with TestPlatform with Gen
   protected def checkAll(name: String, ruleSet: Laws#RuleSet): Unit =
     for ((id, prop) <- ruleSet.all.properties)
       property(s"${name}.${id}")(prop)
-
-  override def munitValueTransforms: List[ValueTransform] =
-    super.munitValueTransforms ++ List(munitIOTransform, munitSyncIOTransform)
-
-  // From https://github.com/scalameta/munit/pull/134
-  private val munitIOTransform: ValueTransform =
-    new ValueTransform("IO", { case e: IO[_] => e.unsafeToFuture() })
-
-  private val munitSyncIOTransform: ValueTransform =
-    new ValueTransform(
-      "SyncIO",
-      { case e: SyncIO[_] => Future(e.unsafeRunSync())(executionContext) }
-    )
 }
