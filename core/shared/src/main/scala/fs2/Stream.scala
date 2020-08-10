@@ -7,7 +7,7 @@ import cats.effect.implicits._
 import cats.implicits.{catsSyntaxEither => _, _}
 import fs2.concurrent._
 import fs2.internal.FreeC.{Acquire, Eval, GetScope, Output, Result}
-import fs2.internal.{Resource => _, _}
+import fs2.internal._
 import java.io.PrintStream
 
 import scala.annotation.tailrec
