@@ -781,9 +781,9 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     *
     * Alias for `through(Balance(Int.MaxValue))`.
     */
-  def balanceAvailable[F2[x] >: F[x]: ConcurrentThrow]: Stream[F2, Stream[F2, O]] =
-    ??? // TODO
-  // through(Balance(Int.MaxValue))
+  def balanceAvailable[F2[x] >: F[x]: ConcurrentThrow: Ref.Mk: Deferred.Mk: Balance.Mk]
+      : Stream[F2, Stream[F2, O]] =
+    through(Balance[F2, O](Int.MaxValue))
 
   /**
     * Returns a stream of streams where each inner stream sees an even portion of the
@@ -799,9 +799,10 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     *
     * Alias for `through(Balance(chunkSize))`.
     */
-  def balance[F2[x] >: F[x]: ConcurrentThrow](chunkSize: Int): Stream[F2, Stream[F2, O]] =
-    ??? // TODO
-  // through(Balance(chunkSize))
+  def balance[F2[x] >: F[x]: ConcurrentThrow: Ref.Mk: Deferred.Mk: Balance.Mk](
+      chunkSize: Int
+  ): Stream[F2, Stream[F2, O]] =
+    through(Balance(chunkSize))
 
   /**
     * Like [[balance]] but instead of providing a stream of sources, runs each pipe.
