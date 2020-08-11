@@ -139,24 +139,32 @@ trait NoneTerminatedQueue[F[_], A]
 
 object Queue {
 
-    trait MkIn[F[_], G[_]] {
-        private[fs2] def mkPubSub[I, O, S, Selector](strategy: PubSub.Strategy[I, O, S, Selector]): F[PubSub[G, I, O, Selector]]
-        private[fs2] implicit val functorF: Functor[F]
-        private[fs2] implicit val concurrentThrowG: ConcurrentThrow[G]
-        private[fs2] implicit val mkToken: Token.Mk[G]
-    }
+  trait MkIn[F[_], G[_]] {
+    private[fs2] def mkPubSub[I, O, S, Selector](
+        strategy: PubSub.Strategy[I, O, S, Selector]
+    ): F[PubSub[G, I, O, Selector]]
+    private[fs2] implicit val functorF: Functor[F]
+    private[fs2] implicit val concurrentThrowG: ConcurrentThrow[G]
+    private[fs2] implicit val mkToken: Token.Mk[G]
+  }
 
-    object MkIn {
-        implicit def instance[F[_], G[_]](implicit F: Sync[F], G: Async[G] with ConcurrentThrow[G]): MkIn[F, G] = new MkIn[F, G] {
-          private[fs2] def mkPubSub[I, O, S, Selector](strategy: PubSub.Strategy[I, O, S, Selector]): F[PubSub[G, I, O, Selector]] =
-            PubSub.in[F].from(strategy)
-          private[fs2] implicit val functorF: Functor[F] = F
-          private[fs2] implicit val concurrentThrowG: ConcurrentThrow[G] = G
-          private[fs2] implicit val mkToken: Token.Mk[G] = Token.Mk.instance[G]
-        }
-    }
+  object MkIn {
+    implicit def instance[F[_], G[_]](implicit
+        F: Sync[F],
+        G: Async[G] with ConcurrentThrow[G]
+    ): MkIn[F, G] =
+      new MkIn[F, G] {
+        private[fs2] def mkPubSub[I, O, S, Selector](
+            strategy: PubSub.Strategy[I, O, S, Selector]
+        ): F[PubSub[G, I, O, Selector]] =
+          PubSub.in[F].from(strategy)
+        private[fs2] implicit val functorF: Functor[F] = F
+        private[fs2] implicit val concurrentThrowG: ConcurrentThrow[G] = G
+        private[fs2] implicit val mkToken: Token.Mk[G] = Token.Mk.instance[G]
+      }
+  }
 
-    type Mk[F[_]] = MkIn[F, F]
+  type Mk[F[_]] = MkIn[F, F]
 
   final class InPartiallyApplied[G[_]](private val unused: Boolean) extends AnyVal {
 
@@ -190,7 +198,7 @@ object Queue {
 
     /** Created a bounded queue that distributed always at max `fairSize` elements to any subscriber. */
     def fairBounded[F[_], A](maxSize: Int, fairSize: Int)(implicit
-      mk: MkIn[G, F]
+        mk: MkIn[G, F]
     ): G[Queue[F, A]] =
       forStrategy(Strategy.boundedFifo(maxSize).transformSelector[Int]((sz, _) => sz.min(fairSize)))
 
@@ -204,10 +212,9 @@ object Queue {
 
     /** Like [[synchronous]], except that any enqueue of `None` will never block and cancels any dequeue operation. */
     def synchronousNoneTerminated[F[_], A](implicit
-      mk: MkIn[G, F]
+        mk: MkIn[G, F]
     ): G[NoneTerminatedQueue[F, A]] =
       forStrategyNoneTerminated(PubSub.Strategy.closeNow(Strategy.synchronous))
-
 
     /** Creates a queue from the supplied strategy. */
     private[fs2] def forStrategy[F[_], S, A](
@@ -348,7 +355,9 @@ object Queue {
   def synchronousNoneTerminated[F[_], A](implicit mk: Mk[F]): F[NoneTerminatedQueue[F, A]] =
     in[F].synchronousNoneTerminated
 
-  private[fs2] def headUnsafe[F[_], A](chunk: Chunk[A])(implicit F: ApplicativeError[F, Throwable]): F[A] =
+  private[fs2] def headUnsafe[F[_], A](
+      chunk: Chunk[A]
+  )(implicit F: ApplicativeError[F, Throwable]): F[A] =
     if (chunk.size == 1) F.pure(chunk(0))
     else F.raiseError(new Throwable(s"Expected chunk of size 1. got $chunk"))
 
