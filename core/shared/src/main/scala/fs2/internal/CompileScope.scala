@@ -107,7 +107,8 @@ private[fs2] final class CompileScope[F[_]] private (
       val newScopeId = new Token
       self.interruptible match {
         case None =>
-          CompileScope[F](newScopeId, Some(self), None)
+          val fiCtx = interruptible.traverse(i => InterruptContext(i, newScopeId, F.unit))
+          fiCtx.flatMap(iCtx => CompileScope[F](newScopeId, Some(self), iCtx))
 
         case Some(parentICtx) =>
           parentICtx.childContext(interruptible, newScopeId).flatMap { iCtx =>
