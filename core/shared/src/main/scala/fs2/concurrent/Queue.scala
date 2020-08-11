@@ -151,7 +151,7 @@ object Queue {
   object MkIn {
     implicit def instance[F[_], G[_]](implicit
         F: Sync[F],
-        G: Async[G] with ConcurrentThrow[G]
+        G: Async[G]
     ): MkIn[F, G] =
       new MkIn[F, G] {
         private[fs2] def mkPubSub[I, O, S, Selector](
