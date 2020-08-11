@@ -2,8 +2,9 @@ package fs2
 
 import scala.concurrent.duration._
 
+import cats.Applicative
 import cats.data.Chain
-import cats.effect.{ExitCase, IO, Sync, SyncIO}
+import cats.effect.{IO, Resource, Sync, SyncIO}
 import cats.effect.concurrent.Ref
 import cats.implicits._
 import org.scalacheck.effect.PropF.forAllF
@@ -20,16 +21,16 @@ class BracketSuite extends Fs2Suite {
     )
 
   group("single bracket") {
-    def singleBracketTest[F[_]: Sync, A](use: Stream[F, A]): F[Unit] =
+    def singleBracketTest[F[_]: Resource.Bracket: Ref.Mk, A](use: Stream[F, A]): F[Unit] =
       for {
         events <- Ref.of[F, Vector[BracketEvent]](Vector.empty)
         _ <-
-          recordBracketEvents(events)
+          recordBracketEvents[F](events)
             .evalMap(_ => events.get.map(events => assert(events == Vector(Acquired))))
             .flatMap(_ => use)
             .compile
             .drain
-            .handleErrorWith { case _: Err => Sync[F].pure(()) }
+            .handleErrorWith { case _: Err => Applicative[F].pure(()) }
         _ <- events.get.map(it => assert(it == Vector(Acquired, Released)))
       } yield ()
 
@@ -41,7 +42,7 @@ class BracketSuite extends Fs2Suite {
   }
 
   group("bracket ++ bracket") {
-    def appendBracketTest[F[_]: Sync, A](use1: Stream[F, A], use2: Stream[F, A]): F[Unit] =
+    def appendBracketTest[F[_]: Resource.Bracket: Ref.Mk, A](use1: Stream[F, A], use2: Stream[F, A]): F[Unit] =
       for {
         events <- Ref.of[F, Vector[BracketEvent]](Vector.empty)
         _ <-
@@ -50,7 +51,7 @@ class BracketSuite extends Fs2Suite {
             .append(recordBracketEvents(events).flatMap(_ => use2))
             .compile
             .drain
-            .handleErrorWith { case _: Err => Sync[F].pure(()) }
+            .handleErrorWith { case _: Err => Applicative[F].pure(()) }
         _ <- events.get.map { it =>
           assert(it == Vector(Acquired, Released, Acquired, Released))
         }
@@ -106,7 +107,7 @@ class BracketSuite extends Fs2Suite {
   }
 
   test("finalizer should not be called until necessary") {
-    IO.suspend {
+    IO.defer {
       val buffer = collection.mutable.ListBuffer[String]()
       Stream
         .bracket(IO(buffer += "Acquired")) { _ =>
@@ -165,7 +166,7 @@ class BracketSuite extends Fs2Suite {
 
   group("finalizers are run in LIFO order") {
     test("explicit release") {
-      IO.suspend {
+      IO.defer {
         var o: Vector[Int] = Vector.empty
         (0 until 10)
           .foldLeft(Stream.eval(IO(0))) { (acc, i) =>
@@ -178,7 +179,7 @@ class BracketSuite extends Fs2Suite {
     }
 
     test("scope closure") {
-      IO.suspend {
+      IO.defer {
         var o: Vector[Int] = Vector.empty
         (0 until 10)
           .foldLeft(Stream.emit(1).map(_ => throw new Err): Stream[IO, Int]) { (acc, i) =>
@@ -220,7 +221,7 @@ class BracketSuite extends Fs2Suite {
     test("normal termination") {
       forAllF { (s0: List[Stream[Pure, Int]]) =>
         Counter[IO].flatMap { counter =>
-          var ecs: Chain[ExitCase[Throwable]] = Chain.empty
+          var ecs: Chain[Resource.ExitCase] = Chain.empty
           val s = s0.map { s =>
             Stream
               .bracketCase(counter.increment) { (_, ec) =>
@@ -231,7 +232,7 @@ class BracketSuite extends Fs2Suite {
           val s2 = s.foldLeft(Stream.empty: Stream[IO, Int])(_ ++ _)
           s2.append(s2.take(10)).take(10).compile.drain.flatMap(_ => counter.get).map { count =>
             assert(count == 0L)
-            ecs.toList.foreach(it => assert(it == ExitCase.Completed))
+            ecs.toList.foreach(it => assert(it == Resource.ExitCase.Completed))
           }
         }
       }
@@ -240,7 +241,7 @@ class BracketSuite extends Fs2Suite {
     test("failure") {
       forAllF { (s0: List[Stream[Pure, Int]]) =>
         Counter[IO].flatMap { counter =>
-          var ecs: Chain[ExitCase[Throwable]] = Chain.empty
+          var ecs: Chain[Resource.ExitCase] = Chain.empty
           val s = s0.map { s =>
             Stream
               .bracketCase(counter.increment) { (_, ec) =>
@@ -251,7 +252,7 @@ class BracketSuite extends Fs2Suite {
           val s2 = s.foldLeft(Stream.empty: Stream[IO, Int])(_ ++ _)
           s2.compile.drain.attempt.flatMap(_ => counter.get).map { count =>
             assert(count == 0L)
-            ecs.toList.foreach(it => assert(it.isInstanceOf[ExitCase.Error[Throwable]]))
+            ecs.toList.foreach(it => assert(it.isInstanceOf[Resource.ExitCase.Errored]))
           }
         }
       }
@@ -260,7 +261,7 @@ class BracketSuite extends Fs2Suite {
     test("cancelation") {
       forAllF { (s0: Stream[Pure, Int]) =>
         Counter[IO].flatMap { counter =>
-          var ecs: Chain[ExitCase[Throwable]] = Chain.empty
+          var ecs: Chain[Resource.ExitCase] = Chain.empty
           val s =
             Stream
               .bracketCase(counter.increment) { (_, ec) =>
@@ -272,7 +273,7 @@ class BracketSuite extends Fs2Suite {
             .flatMap(_ => counter.get)
             .map { count =>
               assert(count == 0L)
-              ecs.toList.foreach(it => assert(it == ExitCase.Canceled))
+              ecs.toList.foreach(it => assert(it == Resource.ExitCase.Canceled))
             }
         }
       }
@@ -281,7 +282,7 @@ class BracketSuite extends Fs2Suite {
     test("interruption") {
       forAllF { (s0: Stream[Pure, Int]) =>
         Counter[IO].flatMap { counter =>
-          var ecs: Chain[ExitCase[Throwable]] = Chain.empty
+          var ecs: Chain[Resource.ExitCase] = Chain.empty
           val s =
             Stream
               .bracketCase(counter.increment) { (_, ec) =>
@@ -290,7 +291,7 @@ class BracketSuite extends Fs2Suite {
               .flatMap(_ => s0 ++ Stream.never[IO])
           s.interruptAfter(50.millis).compile.drain.flatMap(_ => counter.get).map { count =>
             assert(count == 0L)
-            ecs.toList.foreach(it => assert(it == ExitCase.Canceled))
+            ecs.toList.foreach(it => assert(it == Resource.ExitCase.Canceled))
           }
         }
       }

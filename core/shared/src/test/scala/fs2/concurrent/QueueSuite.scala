@@ -192,7 +192,7 @@ class QueueSuite extends Fs2Suite {
           g <- q.peek1.product(q.dequeue1).product(q.peek1.product(q.dequeue1)).start
           _ <- q.enqueue1(43)
           _ <- q.enqueue1(44)
-          yz <- g.join
+          yz <- g.joinAndEmbedNever
           (y, z) = yz
         } yield List(x, y, z)
       )

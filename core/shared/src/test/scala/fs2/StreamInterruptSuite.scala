@@ -356,8 +356,8 @@ class StreamInterruptSuite extends Fs2Suite {
 
   test("21 - nested-interrupt - interrupt in outer scope interrupts the inner scope") {
     Stream
-      .eval(IO.async[Unit](_ => ()))
-      .interruptWhen(IO.async[Either[Throwable, Unit]](_ => ()))
+      .eval(IO.never[Unit])
+      .interruptWhen(IO.never[Either[Throwable, Unit]])
       .interruptWhen(IO(Right(()): Either[Throwable, Unit]))
       .compile
       .toList
@@ -366,8 +366,8 @@ class StreamInterruptSuite extends Fs2Suite {
 
   test("22 - nested-interrupt - interrupt in enclosing scope recovers") {
     Stream
-      .eval(IO.async[Unit](_ => ()))
-      .interruptWhen(IO.async[Either[Throwable, Unit]](_ => ()))
+      .eval(IO.never)
+      .interruptWhen(IO.never[Either[Throwable, Unit]])
       .append(Stream(1).delayBy[IO](10.millis))
       .interruptWhen(IO(Right(()): Either[Throwable, Unit]))
       .append(Stream(2))

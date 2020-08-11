@@ -3,7 +3,7 @@ package fs2
 import scala.concurrent.duration._
 
 import cats.data.Chain
-import cats.effect.{ExitCase, IO, Resource, SyncIO}
+import cats.effect.{IO, Outcome, Resource, SyncIO}
 import cats.effect.concurrent.{Deferred, Ref}
 import cats.implicits._
 import org.scalacheck.Gen
@@ -208,7 +208,7 @@ class StreamSuite extends Fs2Suite {
       }
 
       test("8") {
-        SyncIO.suspend {
+        SyncIO.defer {
           var i = 0
           Pull
             .pure(1)
@@ -224,7 +224,7 @@ class StreamSuite extends Fs2Suite {
       }
 
       test("9") {
-        SyncIO.suspend {
+        SyncIO.defer {
           var i = 0
           Pull
             .eval(SyncIO(1))
@@ -239,7 +239,7 @@ class StreamSuite extends Fs2Suite {
       }
 
       test("10") {
-        SyncIO.suspend {
+        SyncIO.defer {
           var i = 0
           Pull
             .eval(SyncIO(1))
@@ -258,7 +258,7 @@ class StreamSuite extends Fs2Suite {
       }
 
       test("11") {
-        SyncIO.suspend {
+        SyncIO.defer {
           var i = 0
           Pull
             .eval(SyncIO(???))
@@ -272,7 +272,7 @@ class StreamSuite extends Fs2Suite {
       }
 
       test("12") {
-        SyncIO.suspend {
+        SyncIO.defer {
           var i = 0
           Stream
             .bracket(SyncIO(1))(_ => SyncIO(i += 1))
@@ -285,7 +285,7 @@ class StreamSuite extends Fs2Suite {
       }
 
       test("13") {
-        SyncIO.suspend {
+        SyncIO.defer {
           var i = 0
           Stream
             .range(0, 10)
@@ -313,7 +313,7 @@ class StreamSuite extends Fs2Suite {
       }
 
       test("15") {
-        SyncIO.suspend {
+        SyncIO.defer {
           var i = 0
           (Stream
             .range(0, 3)
@@ -392,7 +392,7 @@ class StreamSuite extends Fs2Suite {
             Stream(
               Stream
                 .unfold(0)(i => (i + 1, i + 1).some)
-                .flatMap(i => Stream.sleep_(50.milliseconds) ++ Stream.emit(i))
+                .flatMap(i => Stream.sleep_[IO](50.milliseconds) ++ Stream.emit(i))
                 .through(q.enqueue),
               q.dequeue.drain
             ).parJoin(2)
@@ -945,7 +945,7 @@ class StreamSuite extends Fs2Suite {
         }
 
         test("2") {
-          val p = (Deferred[IO, ExitCase[Throwable]]).flatMap { stop =>
+          val p = (Deferred[IO, Outcome[IO, Throwable, Unit]]).flatMap { stop =>
             val r = Stream
               .never[IO]
               .compile
@@ -957,7 +957,7 @@ class StreamSuite extends Fs2Suite {
             r.start.flatMap(fiber => IO.sleep(200.millis) >> fiber.cancel >> stop.get)
           }
           p.timeout(2.seconds)
-            .map(it => assert(it == ExitCase.Canceled))
+            .map(it => assert(it == Outcome.Canceled))
         }
       }
     }

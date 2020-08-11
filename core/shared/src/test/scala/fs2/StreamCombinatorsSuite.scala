@@ -3,7 +3,7 @@ package fs2
 import scala.concurrent.duration._
 import scala.concurrent.TimeoutException
 
-import cats.effect.{Blocker, IO, SyncIO}
+import cats.effect.{IO, SyncIO}
 import cats.effect.concurrent.Semaphore
 import cats.implicits._
 import org.scalacheck.Gen
@@ -33,7 +33,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
     test("liveness") {
       val s = Stream
         .awakeEvery[IO](1.milli)
-        .evalMap(_ => IO.async[Unit](cb => executionContext.execute(() => cb(Right(())))))
+        .evalMap(_ => IO.async_[Unit](cb => munitExecutionContext.execute(() => cb(Right(())))))
         .take(200)
       Stream(s, s, s, s, s).parJoin(5).compile.drain
     }
@@ -49,7 +49,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
     test("buffer results of evalMap") {
       forAllF { (s: Stream[Pure, Int], n0: Int) =>
         val n = (n0 % 20).abs + 1
-        IO.suspend {
+        IO.defer {
           var counter = 0
           val s2 = s.append(Stream.emits(List.fill(n + 1)(0))).repeat
           s2.evalMap(i => IO { counter += 1; i })
@@ -71,7 +71,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
     test("buffer results of evalMap") {
       forAllF { (s: Stream[Pure, Int]) =>
         val expected = s.toList.size * 2
-        IO.suspend {
+        IO.defer {
           var counter = 0
           s.append(s)
             .evalMap(i => IO { counter += 1; i })
@@ -95,7 +95,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
     test("buffer results of evalMap") {
       forAllF { (s: Stream[Pure, Int]) =>
         val expected = s.toList.size * 2 + 1
-        IO.suspend {
+        IO.defer {
           var counter = 0
           val s2 = s.map(x => if (x == Int.MinValue) x + 1 else x).map(_.abs)
           val s3 = s2.append(Stream.emit(-1)).append(s2).evalMap(i => IO { counter += 1; i })
@@ -507,7 +507,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
       .take(draws.toInt)
       .through(durationSinceLastTrue)
 
-    (IO.shift >> durationsSinceSpike.compile.toVector).map { result =>
+    (IO.cede >> durationsSinceSpike.compile.toVector).map { result =>
       val list = result.toList
       assert(list.head._1, "every always emits true first")
       assert(
@@ -643,7 +643,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
   test("fromBlockingIterator") {
     forAllF { (x: List[Int]) =>
       Stream
-        .fromBlockingIterator[IO](Blocker.liftExecutionContext(executionContext), x.iterator)
+        .fromBlockingIterator[IO](x.iterator)
         .compile
         .toList
         .map(it => assert(it == x))
@@ -916,7 +916,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
 
     test("timing") {
       // should finish in about 3-4 seconds
-      IO.suspend {
+      IO.defer {
         val start = System.currentTimeMillis
         Stream(1, 2, 3)
           .evalMap(i => IO.sleep(1.second).as(i))
@@ -1085,7 +1085,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
     }
 
     test("temporal") {
-      val never = Stream.eval(IO.async[Int](_ => ()))
+      val never = Stream.eval(IO.async_[Int](_ => ()))
       val s = Stream(1)
       val f = (a: Int, b: Int) => a + b
       val result = s.toList.scanLeft(0)(f)
@@ -1251,13 +1251,13 @@ class StreamCombinatorsSuite extends Fs2Suite {
     }
 
     test("not trigger timeout on successfully completed stream") {
-      Stream.sleep(10.millis).timeout(1.second).compile.drain
+      Stream.sleep[IO](10.millis).timeout(1.second).compile.drain
     }
 
     test("compose timeouts d1 and d2 when d1 < d2") {
       val d1 = 20.millis
       val d2 = 30.millis
-      (Stream.sleep(10.millis).timeout(d1) ++ Stream.sleep(30.millis))
+      (Stream.sleep[IO](10.millis).timeout(d1) ++ Stream.sleep[IO](30.millis))
         .timeout(d2)
         .compile
         .drain
@@ -1267,7 +1267,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
     test("compose timeouts d1 and d2 when d1 > d2") {
       val d1 = 40.millis
       val d2 = 30.millis
-      (Stream.sleep(10.millis).timeout(d1) ++ Stream.sleep(25.millis))
+      (Stream.sleep[IO](10.millis).timeout(d1) ++ Stream.sleep[IO](25.millis))
         .timeout(d2)
         .compile
         .drain
