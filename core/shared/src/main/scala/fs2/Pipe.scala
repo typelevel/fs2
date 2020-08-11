@@ -1,6 +1,6 @@
 package fs2
 
-import cats.effect.Concurrent
+import cats.effect.ConcurrentThrow
 
 object Pipe {
 
@@ -9,6 +9,6 @@ object Pipe {
     * Input is fed to the first pipe until it terminates, at which point input is
     * fed to the second pipe, and so on.
     */
-  def join[F[_]: Concurrent, A, B](pipes: Stream[F, Pipe[F, A, B]]): Pipe[F, A, B] =
+  def join[F[_]: ConcurrentThrow, A, B](pipes: Stream[F, Pipe[F, A, B]]): Pipe[F, A, B] =
     _.broadcast.zipWith(pipes)(_.through(_)).flatten
 }

@@ -1,21 +1,19 @@
 package fs2.internal
 
-import cats.effect.Concurrent
-
 private[fs2] trait TranslateInterrupt[F[_]] {
-  def concurrentInstance: Option[Concurrent[F]]
+  def interruptible: Option[Interruptible[F]]
 }
 
 private[fs2] trait TranslateInterruptLowPriorityImplicits {
   implicit def unInterruptibleInstance[F[_]]: TranslateInterrupt[F] =
     new TranslateInterrupt[F] {
-      def concurrentInstance: Option[Concurrent[F]] = None
+      def interruptible: Option[Interruptible[F]] = None
     }
 }
 
 private[fs2] object TranslateInterrupt extends TranslateInterruptLowPriorityImplicits {
-  implicit def interruptibleInstance[F[_]: Concurrent]: TranslateInterrupt[F] =
+  implicit def interruptibleInstance[F[_]: Interruptible]: TranslateInterrupt[F] =
     new TranslateInterrupt[F] {
-      def concurrentInstance: Option[Concurrent[F]] = Some(implicitly[Concurrent[F]])
+      def interruptible: Option[Interruptible[F]] = Some(implicitly[Interruptible[F]])
     }
 }

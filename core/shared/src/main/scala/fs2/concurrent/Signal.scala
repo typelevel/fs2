@@ -3,7 +3,7 @@ package concurrent
 
 import cats.{Applicative, Functor, Invariant}
 import cats.data.{OptionT, State}
-import cats.effect.{Async, Concurrent, Sync}
+import cats.effect.{Async, ConcurrentThrow, Sync}
 import cats.effect.concurrent.{Deferred, Ref}
 import cats.implicits._
 import fs2.internal.Token
@@ -40,9 +40,7 @@ object Signal extends SignalLowPriorityImplicits {
       def discrete = Stream(a) ++ Stream.eval_(F.never)
     }
 
-  implicit def applicativeInstance[F[_]](implicit
-      F: Concurrent[F]
-  ): Applicative[Signal[F, *]] =
+  implicit def applicativeInstance[F[_]: Async]: Applicative[Signal[F, *]] =
     new Applicative[Signal[F, *]] {
       override def map[A, B](fa: Signal[F, A])(f: A => B): Signal[F, B] =
         Signal.map(fa)(f)
@@ -61,9 +59,7 @@ object Signal extends SignalLowPriorityImplicits {
         }
     }
 
-  private def nondeterministicZip[F[_], A0, A1](xs: Stream[F, A0], ys: Stream[F, A1])(implicit
-      F: Concurrent[F]
-  ): Stream[F, (A0, A1)] = {
+  private def nondeterministicZip[F[_]: Async, A0, A1](xs: Stream[F, A0], ys: Stream[F, A1]): Stream[F, (A0, A1)] = {
     type PullOutput = (A0, A1, Stream[F, A0], Stream[F, A1])
     val firstPull: OptionT[Pull[F, PullOutput, *], Unit] = for {
       firstXAndRestOfXs <- OptionT(xs.pull.uncons1.covaryOutput[PullOutput])
@@ -101,7 +97,7 @@ object Signal extends SignalLowPriorityImplicits {
   }
 
   implicit class BooleanSignalOps[F[_]](val self: Signal[F, Boolean]) extends AnyVal {
-    def interrupt[A](s: Stream[F, A])(implicit F: Concurrent[F]): Stream[F, A] =
+    def interrupt[A](s: Stream[F, A])(implicit F: ConcurrentThrow[F], mkDeferred: Deferred.Mk[F], mkRef: Ref.Mk[F]): Stream[F, A] =
       s.interruptWhen(self)
   }
 }
@@ -133,25 +129,35 @@ abstract class SignallingRef[F[_], A] extends Ref[F, A] with Signal[F, A]
 
 object SignallingRef {
 
-  /**
-    * Builds a `SignallingRef` for a `Concurrent` datatype, initialized
-    * to a supplied value.
-    */
-  def apply[F[_]: Concurrent, A](initial: A): F[SignallingRef[F, A]] =
-    in[F, F, A](initial)
+  sealed trait MkIn[F[_], G[_]] {
+    def refOf[A](initial: A): F[SignallingRef[G, A]]
+  }
+
+  object MkIn {
+    implicit def instance[F[_], G[_]](implicit F: Sync[F], G: Async[G]): MkIn[F, G] = new MkIn[F, G] {
+      def refOf[A](initial: A): F[SignallingRef[G, A]] =
+        Ref
+          .in[F, G, (A, Long, Map[Token, Deferred[G, (A, Long)]])]((initial, 0L, Map.empty))
+          .map(state => new SignallingRefImpl[G, A](state))
+    }
+  }
+
+  type Mk[F[_]] = MkIn[F, F]
 
   /**
-    * Builds a `SignallingRef` for `Concurrent` datatype.
-    * Like [[apply]], but initializes state using another effect constructor.
+    * Builds a `SignallingRef` for for effect `F`, initialized to the supplied value.
     */
-  def in[G[_]: Sync, F[_]: Concurrent, A](initial: A): G[SignallingRef[F, A]] =
-    Ref
-      .in[G, F, (A, Long, Map[Token, Deferred[F, (A, Long)]])]((initial, 0L, Map.empty))
-      .map(state => new SignallingRefImpl[F, A](state))
+  def of[F[_], A](initial: A)(implicit mk: Mk[F]): F[SignallingRef[F, A]] = mk.refOf(initial)
+
+  /**
+    * Builds a `SignallingRef` for effect `G` in the effect `F`.
+    * Like [[of]], but initializes state using another effect constructor.
+    */
+  def in[F[_], G[_], A](initial: A)(implicit mk: MkIn[F, G]): F[SignallingRef[G, A]] = mk.refOf(initial)
 
   private final class SignallingRefImpl[F[_], A](
       state: Ref[F, (A, Long, Map[Token, Deferred[F, (A, Long)]])]
-  )(implicit F: Concurrent[F])
+  )(implicit F: Async[F])
       extends SignallingRef[F, A] {
 
     override def get: F[A] = state.get.map(_._1)
@@ -177,7 +183,7 @@ object SignallingRef {
       def cleanup(id: Token): F[Unit] =
         state.update(s => s.copy(_3 = s._3 - id))
 
-      Stream.bracket(F.delay(new Token))(cleanup).flatMap { id =>
+      Stream.bracket(Token[F])(cleanup).flatMap { id =>
         Stream.eval(state.get).flatMap {
           case (a, l, _) => Stream.emit(a) ++ go(id, l)
         }

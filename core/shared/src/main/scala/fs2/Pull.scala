@@ -10,6 +10,7 @@ import cats.implicits._
 import fs2.internal._
 
 import Pull._
+import scala.concurrent.duration.FiniteDuration
 
 /**
   * A `p: Pull[F,O,R]` reads values from one or more streams, returns a
@@ -151,7 +152,7 @@ object Pull extends PullLowPriority {
 
   private[fs2] def acquire[F[_], R](
       resource: F[R],
-      release: (R, ExitCase[Throwable]) => F[Unit]
+      release: (R, Resource.ExitCase) => F[Unit]
   ): Pull[F, INothing, R] = Acquire(resource, release)
 
   /**
@@ -166,17 +167,17 @@ object Pull extends PullLowPriority {
   def bracketCase[F[_], O, A, B](
       acquire: Pull[F, O, A],
       use: A => Pull[F, O, B],
-      release: (A, ExitCase[Throwable]) => Pull[F, O, Unit]
+      release: (A, Resource.ExitCase) => Pull[F, O, Unit]
   ): Pull[F, O, B] =
     acquire.flatMap { a =>
       val used =
         try use(a)
         catch { case NonFatal(t) => Pull.Result.Fail(t) }
       used.transformWith { result =>
-        val exitCase: ExitCase[Throwable] = result match {
-          case Result.Succeeded(_)      => ExitCase.Completed
-          case Result.Fail(err)         => ExitCase.Error(err)
-          case Result.Interrupted(_, _) => ExitCase.Canceled
+        val exitCase: Resource.ExitCase = result match {
+          case Result.Succeeded(_)      => Resource.ExitCase.Completed
+          case Result.Fail(err)         => Resource.ExitCase.Errored(err)
+          case Result.Interrupted(_, _) => Resource.ExitCase.Canceled
         }
 
         release(a, exitCase).transformWith {
@@ -255,12 +256,8 @@ object Pull extends PullLowPriority {
     }
 
   /** `Sync` instance for `Pull`. */
-  implicit def syncInstance[F[_], O](implicit
-      ev: ApplicativeError[F, Throwable]
-  ): Sync[Pull[F, O, *]] = {
-    val _ = ev
+  implicit def syncInstance[F[_]: Sync, O]: Sync[Pull[F, O, *]] =
     new PullSyncInstance[F, O]
-  }
 
   /**
     * `FunctionK` instance for `F ~> Pull[F, INothing, *]`
@@ -439,11 +436,11 @@ object Pull extends PullLowPriority {
 
   private final case class Acquire[+F[_], R](
       resource: F[R],
-      release: (R, ExitCase[Throwable]) => F[Unit]
+      release: (R, Resource.ExitCase) => F[Unit]
   ) extends AlgEffect[F, R]
-  // NOTE: The use of a separate `G` and `Pure` is done o by-pass a compiler-crash in Scala 2.12,
+  // NOTE: The use of a separate `G` and `Pure` is done to by-pass a compiler-crash in Scala 2.12,
   // involving GADTs with a covariant Higher-Kinded parameter. */
-  private final case class OpenScope[G[_]](interruptible: Option[Concurrent[G]])
+  private final case class OpenScope[G[_]](interruptible: Option[Interruptible[G]])
       extends AlgEffect[Pure, Token]
 
   // `InterruptedScope` contains id of the scope currently being interrupted
@@ -451,7 +448,7 @@ object Pull extends PullLowPriority {
   private final case class CloseScope(
       scopeId: Token,
       interruption: Option[Result.Interrupted],
-      exitCase: ExitCase[Throwable]
+      exitCase: Resource.ExitCase
   ) extends AlgEffect[Pure, Unit]
 
   private final case class GetScope[F[_]]() extends AlgEffect[Pure, CompileScope[F]]
@@ -479,20 +476,20 @@ object Pull extends PullLowPriority {
     */
   private[fs2] def interruptScope[F[_], O](
       s: Pull[F, O, Unit]
-  )(implicit F: Concurrent[F]): Pull[F, O, Unit] =
+  )(implicit F: Interruptible[F]): Pull[F, O, Unit] =
     scope0(s, Some(F))
 
   private def scope0[F[_], O](
       s: Pull[F, O, Unit],
-      interruptible: Option[Concurrent[F]]
+      interruptible: Option[Interruptible[F]]
   ): Pull[F, O, Unit] =
     OpenScope(interruptible).flatMap { scopeId =>
       s.transformWith {
-        case Result.Succeeded(_) => CloseScope(scopeId, None, ExitCase.Completed)
+        case Result.Succeeded(_) => CloseScope(scopeId, None, Resource.ExitCase.Completed)
         case interrupted @ Result.Interrupted(_, _) =>
-          CloseScope(scopeId, Some(interrupted), ExitCase.Canceled)
+          CloseScope(scopeId, Some(interrupted), Resource.ExitCase.Canceled)
         case Result.Fail(err) =>
-          CloseScope(scopeId, None, ExitCase.Error(err)).transformWith {
+          CloseScope(scopeId, None, Resource.ExitCase.Errored(err)).transformWith {
             case Result.Succeeded(_) => Result.Fail(err)
             case Result.Fail(err0)   => Result.Fail(CompositeFailure(err, err0, Nil))
             case Result.Interrupted(interruptedScopeId, _) =>
@@ -634,7 +631,7 @@ object Pull extends PullLowPriority {
               resume(Result.Succeeded(scope.asInstanceOf[y]))
 
             case OpenScope(interruptibleX) =>
-              val interruptible = interruptibleX.asInstanceOf[Option[Concurrent[F]]]
+              val interruptible = interruptibleX.asInstanceOf[Option[Interruptible[F]]]
               interruptGuard(scope) {
                 val maybeCloseExtendedScope: F[Boolean] =
                   // If we're opening a new top-level scope (aka, direct descendant of root),
@@ -642,7 +639,7 @@ object Pull extends PullLowPriority {
                   if (scope.parent.isEmpty)
                     extendedTopLevelScope match {
                       case None    => false.pure[F]
-                      case Some(s) => s.close(ExitCase.Completed).rethrow.as(true)
+                      case Some(s) => s.close(Resource.ExitCase.Completed).rethrow.as(true)
                     }
                   else F.pure(false)
                 maybeCloseExtendedScope.flatMap { closedExtendedScope =>
@@ -657,7 +654,7 @@ object Pull extends PullLowPriority {
               }
 
             case close: CloseScope =>
-              def closeAndGo(toClose: CompileScope[F], ec: ExitCase[Throwable]) =
+              def closeAndGo(toClose: CompileScope[F], ec: Resource.ExitCase) =
                 F.flatMap(toClose.close(ec)) { r =>
                   F.flatMap(toClose.openAncestor) { ancestor =>
                     val res = close.interruption match {
@@ -690,7 +687,7 @@ object Pull extends PullLowPriority {
                   else if (extendLastTopLevelScope && toClose.parent.flatMap(_.parent).isEmpty)
                     // Request to close the current top-level scope - if we're supposed to extend
                     // it instead, leave the scope open and pass it to the continuation
-                    extendedTopLevelScope.traverse_(_.close(ExitCase.Completed).rethrow) *>
+                    extendedTopLevelScope.traverse_(_.close(Resource.ExitCase.Completed).rethrow) *>
                       F.flatMap(toClose.openAncestor)(ancestor =>
                         go(ancestor, Some(toClose), view.next(Result.unit))
                       )
@@ -776,7 +773,7 @@ object Pull extends PullLowPriority {
         view.step match {
           case CloseScope(scopeId, _, _) =>
             // Inner scope is getting closed b/c a parent was interrupted
-            CloseScope(scopeId, Some(interruption), ExitCase.Canceled).transformWith(view.next)
+            CloseScope(scopeId, Some(interruption), Resource.ExitCase.Canceled).transformWith(view.next)
           case _ =>
             // all other cases insert interruption cause
             view.next(interruption)
@@ -787,7 +784,7 @@ object Pull extends PullLowPriority {
       stream: Pull[F, O, Unit],
       fK: F ~> G
   )(implicit G: TranslateInterrupt[G]): Pull[G, O, Unit] = {
-    val concurrent: Option[Concurrent[G]] = G.concurrentInstance
+    val interruptible: Option[Interruptible[G]] = G.interruptible
     def translateAlgEffect[R](self: AlgEffect[F, R]): AlgEffect[G, R] =
       self match {
         // safe to cast, used in translate only
@@ -795,7 +792,7 @@ object Pull extends PullLowPriority {
         case a: Acquire[F, r] =>
           Acquire[G, r](fK(a.resource), (r, ec) => fK(a.release(r, ec)))
         case e: Eval[F, R]  => Eval[G, R](fK(e.value))
-        case OpenScope(_)   => OpenScope[G](concurrent)
+        case OpenScope(_)   => OpenScope[G](interruptible)
         case c: CloseScope  => c
         case g: GetScope[_] => g
       }
@@ -844,11 +841,11 @@ object Pull extends PullLowPriority {
 }
 
 private[fs2] trait PullLowPriority {
-  implicit def monadInstance[F[_], O]: Monad[Pull[F, O, *]] =
-    new PullSyncInstance[F, O]
+  implicit def monadErrorInstance[F[_], O]: MonadError[Pull[F, O, *], Throwable] =
+    new PullMonadErrorInstance[F, O]
 }
 
-private[fs2] class PullSyncInstance[F[_], O] extends Sync[Pull[F, O, *]] {
+private[fs2] class PullMonadErrorInstance[F[_], O] extends MonadError[Pull[F, O, *], Throwable] {
   def pure[A](a: A): Pull[F, O, A] = Pull.pure(a)
   def flatMap[A, B](p: Pull[F, O, A])(f: A => Pull[F, O, B]): Pull[F, O, B] =
     p.flatMap(f)
@@ -860,9 +857,10 @@ private[fs2] class PullSyncInstance[F[_], O] extends Sync[Pull[F, O, *]] {
   def raiseError[A](e: Throwable) = Pull.fail(e)
   def handleErrorWith[A](fa: Pull[F, O, A])(h: Throwable => Pull[F, O, A]) =
     fa.handleErrorWith(h)
-  def suspend[R](p: => Pull[F, O, R]) = Pull.suspend(p)
-  def bracketCase[A, B](acquire: Pull[F, O, A])(
-      use: A => Pull[F, O, B]
-  )(release: (A, ExitCase[Throwable]) => Pull[F, O, Unit]): Pull[F, O, B] =
-    Pull.bracketCase(acquire, use, release)
+}
+
+private[fs2] class PullSyncInstance[F[_], O](implicit F: Sync[F]) extends PullMonadErrorInstance[F, O] with Sync[Pull[F, O, *]] {
+  def monotonic: Pull[F, O, FiniteDuration] = Pull.eval(F.monotonic)
+  def realTime: Pull[F, O, FiniteDuration] = Pull.eval(F.realTime)
+  def suspend[A](hint: Sync.Type)(thunk: => A): Pull[F, O, A] = Pull.eval(F.suspend(hint)(thunk))
 }
