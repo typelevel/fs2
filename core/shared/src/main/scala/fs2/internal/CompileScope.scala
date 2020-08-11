@@ -117,23 +117,27 @@ private[fs2] final class CompileScope[F[_]] private (
     }
 
     createCompileScope.flatMap { scope =>
-      state.modify { s =>
-        if (!s.open) (s, None)
-        else
-          (s.copy(children = scope +: s.children), Some(scope))
-      }.flatMap {
-        case Some(s) => F.pure(Right(s))
-        case None    =>
-          // This scope is already closed so try to promote the open to an ancestor; this can fail
-          // if the root scope has already been closed, in which case, we can safely throw
-          self.parent match {
-            case Some(parent) =>
-              self.interruptible.map(_.cancelParent).getOrElse(F.unit) >> parent.open(interruptible)
+      state
+        .modify { s =>
+          if (!s.open) (s, None)
+          else
+            (s.copy(children = scope +: s.children), Some(scope))
+        }
+        .flatMap {
+          case Some(s) => F.pure(Right(s))
+          case None    =>
+            // This scope is already closed so try to promote the open to an ancestor; this can fail
+            // if the root scope has already been closed, in which case, we can safely throw
+            self.parent match {
+              case Some(parent) =>
+                self.interruptible.map(_.cancelParent).getOrElse(F.unit) >> parent.open(
+                  interruptible
+                )
 
-            case None =>
-              F.pure(Left(new IllegalStateException("cannot re-open root scope")))
-          }
-      }
+              case None =>
+                F.pure(Left(new IllegalStateException("cannot re-open root scope")))
+            }
+        }
     }
   }
 
@@ -151,18 +155,19 @@ private[fs2] final class CompileScope[F[_]] private (
   def acquireResource[R](
       fr: F[R],
       release: (R, Resource.ExitCase) => F[Unit]
-  ): F[Either[Throwable, R]] = {
+  ): F[Either[Throwable, R]] =
     ScopedResource.create[F].flatMap { resource =>
-      fr.redeemWith(t => F.pure(Left(t)), r => {
-        val finalizer = (ec: Resource.ExitCase) => release(r, ec)
-        F.flatMap(resource.acquired(finalizer)) { result =>
-          if (result.exists(identity)) F.map(register(resource))(_ => Right(r))
-          else F.pure(Left(result.swap.getOrElse(AcquireAfterScopeClosed)))
+      fr.redeemWith(
+        t => F.pure(Left(t)),
+        r => {
+          val finalizer = (ec: Resource.ExitCase) => release(r, ec)
+          F.flatMap(resource.acquired(finalizer)) { result =>
+            if (result.exists(identity)) F.map(register(resource))(_ => Right(r))
+            else F.pure(Left(result.swap.getOrElse(AcquireAfterScopeClosed)))
+          }
         }
-      }
       )
     }
-  }
 
   /**
     * Unregisters the child scope identified by the supplied id.
@@ -378,11 +383,18 @@ private[fs2] final class CompileScope[F[_]] private (
 
 private[fs2] object CompileScope {
 
-  private def apply[F[_]: Resource.Bracket: Ref.Mk](id: Token, parent: Option[CompileScope[F]], interruptible: Option[InterruptContext[F]]): F[CompileScope[F]] =
-    Ref.of(CompileScope.State.initial[F]).map(state => new CompileScope[F](id, parent, interruptible, state))
+  private def apply[F[_]: Resource.Bracket: Ref.Mk](
+      id: Token,
+      parent: Option[CompileScope[F]],
+      interruptible: Option[InterruptContext[F]]
+  ): F[CompileScope[F]] =
+    Ref
+      .of(CompileScope.State.initial[F])
+      .map(state => new CompileScope[F](id, parent, interruptible, state))
 
   /** Creates a new root scope. */
-  def newRoot[F[_]: Resource.Bracket: Ref.Mk]: F[CompileScope[F]] = apply[F](new Token(), None, None)
+  def newRoot[F[_]: Resource.Bracket: Ref.Mk]: F[CompileScope[F]] =
+    apply[F](new Token(), None, None)
 
   /**
     * State of a scope.
@@ -461,18 +473,22 @@ private[fs2] object CompileScope {
         .map { inter =>
           self.deferred.get.start.flatMap { fiber =>
             InterruptContext(inter, newScopeId, fiber.cancel).flatMap { context =>
-                fiber.join.flatMap { 
+              fiber.join
+                .flatMap {
                   case Outcome.Completed(interrupt) =>
                     interrupt.flatMap { i =>
                       context.ref.update(_.orElse(Some(i))) >>
                         context.deferred.complete(i).attempt.void
-                  }
+                    }
                   case Outcome.Errored(t) =>
                     context.ref.update(_.orElse(Some(Left(t)))) >>
                       context.deferred.complete(Left(t)).attempt.void
                   case Outcome.Canceled() => ??? // TODO
-                }.start.as(context)
-            }}
+                }
+                .start
+                .as(context)
+            }
+          }
         }
         .getOrElse(copy(cancelParent = Applicative[F].unit).pure[F])
   }
@@ -484,16 +500,16 @@ private[fs2] object CompileScope {
         newScopeId: Token,
         cancelParent: F[Unit]
     ): F[InterruptContext[F]] = {
-        import interruptible._
-        for {
-          ref <- Ref.of[F, Option[Either[Throwable, Token]]](None)
-          deferred <- Deferred[F, Either[Throwable, Token]]
-        } yield InterruptContext[F](
-          deferred = deferred,
-          ref = ref,
-          interruptRoot = newScopeId,
-          cancelParent = cancelParent
-        )
+      import interruptible._
+      for {
+        ref <- Ref.of[F, Option[Either[Throwable, Token]]](None)
+        deferred <- Deferred[F, Either[Throwable, Token]]
+      } yield InterruptContext[F](
+        deferred = deferred,
+        ref = ref,
+        interruptRoot = newScopeId,
+        cancelParent = cancelParent
+      )
     }
   }
 }

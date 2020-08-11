@@ -773,7 +773,8 @@ object Pull extends PullLowPriority {
         view.step match {
           case CloseScope(scopeId, _, _) =>
             // Inner scope is getting closed b/c a parent was interrupted
-            CloseScope(scopeId, Some(interruption), Resource.ExitCase.Canceled).transformWith(view.next)
+            CloseScope(scopeId, Some(interruption), Resource.ExitCase.Canceled)
+              .transformWith(view.next)
           case _ =>
             // all other cases insert interruption cause
             view.next(interruption)
@@ -859,7 +860,9 @@ private[fs2] class PullMonadErrorInstance[F[_], O] extends MonadError[Pull[F, O,
     fa.handleErrorWith(h)
 }
 
-private[fs2] class PullSyncInstance[F[_], O](implicit F: Sync[F]) extends PullMonadErrorInstance[F, O] with Sync[Pull[F, O, *]] {
+private[fs2] class PullSyncInstance[F[_], O](implicit F: Sync[F])
+    extends PullMonadErrorInstance[F, O]
+    with Sync[Pull[F, O, *]] {
   def monotonic: Pull[F, O, FiniteDuration] = Pull.eval(F.monotonic)
   def realTime: Pull[F, O, FiniteDuration] = Pull.eval(F.realTime)
   def suspend[A](hint: Sync.Type)(thunk: => A): Pull[F, O, A] = Pull.eval(F.suspend(hint)(thunk))

@@ -59,7 +59,10 @@ object Signal extends SignalLowPriorityImplicits {
         }
     }
 
-  private def nondeterministicZip[F[_]: Async, A0, A1](xs: Stream[F, A0], ys: Stream[F, A1]): Stream[F, (A0, A1)] = {
+  private def nondeterministicZip[F[_]: Async, A0, A1](
+      xs: Stream[F, A0],
+      ys: Stream[F, A1]
+  ): Stream[F, (A0, A1)] = {
     type PullOutput = (A0, A1, Stream[F, A0], Stream[F, A1])
     val firstPull: OptionT[Pull[F, PullOutput, *], Unit] = for {
       firstXAndRestOfXs <- OptionT(xs.pull.uncons1.covaryOutput[PullOutput])
@@ -97,7 +100,9 @@ object Signal extends SignalLowPriorityImplicits {
   }
 
   implicit class BooleanSignalOps[F[_]](val self: Signal[F, Boolean]) extends AnyVal {
-    def interrupt[A](s: Stream[F, A])(implicit F: ConcurrentThrow[F], mkDeferred: Deferred.Mk[F], mkRef: Ref.Mk[F]): Stream[F, A] =
+    def interrupt[A](
+        s: Stream[F, A]
+    )(implicit F: ConcurrentThrow[F], mkDeferred: Deferred.Mk[F], mkRef: Ref.Mk[F]): Stream[F, A] =
       s.interruptWhen(self)
   }
 }
@@ -134,12 +139,13 @@ object SignallingRef {
   }
 
   object MkIn {
-    implicit def instance[F[_], G[_]](implicit F: Sync[F], G: Async[G]): MkIn[F, G] = new MkIn[F, G] {
-      def refOf[A](initial: A): F[SignallingRef[G, A]] =
-        Ref
-          .in[F, G, (A, Long, Map[Token, Deferred[G, (A, Long)]])]((initial, 0L, Map.empty))
-          .map(state => new SignallingRefImpl[G, A](state))
-    }
+    implicit def instance[F[_], G[_]](implicit F: Sync[F], G: Async[G]): MkIn[F, G] =
+      new MkIn[F, G] {
+        def refOf[A](initial: A): F[SignallingRef[G, A]] =
+          Ref
+            .in[F, G, (A, Long, Map[Token, Deferred[G, (A, Long)]])]((initial, 0L, Map.empty))
+            .map(state => new SignallingRefImpl[G, A](state))
+      }
   }
 
   type Mk[F[_]] = MkIn[F, F]
@@ -153,7 +159,8 @@ object SignallingRef {
     * Builds a `SignallingRef` for effect `G` in the effect `F`.
     * Like [[of]], but initializes state using another effect constructor.
     */
-  def in[F[_], G[_], A](initial: A)(implicit mk: MkIn[F, G]): F[SignallingRef[G, A]] = mk.refOf(initial)
+  def in[F[_], G[_], A](initial: A)(implicit mk: MkIn[F, G]): F[SignallingRef[G, A]] =
+    mk.refOf(initial)
 
   private final class SignallingRefImpl[F[_], A](
       state: Ref[F, (A, Long, Map[Token, Deferred[F, (A, Long)]])]
