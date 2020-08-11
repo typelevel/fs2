@@ -16,6 +16,7 @@ object Broadcast {
     private[Broadcast] implicit val mkRef: Ref.MkIn[F, G]
     private[Broadcast] implicit val mkDeferred: Deferred.MkIn[F, G]
     private[Broadcast] implicit val mkSignallingRef: SignallingRef.MkIn[F, G]
+    private[Broadcast] implicit val mkQueue: Queue.MkIn[F, G]
   }
 
   object MkIn {
@@ -31,6 +32,7 @@ object Broadcast {
           Deferred.MkIn.instance[F, G]
         private[Broadcast] implicit val mkSignallingRef: SignallingRef.MkIn[F, G] =
           SignallingRef.MkIn.instance[F, G]
+        private[Broadcast] implicit val mkQueue: Queue.MkIn[F, G] = Queue.MkIn.instance[F, G]
       }
   }
 

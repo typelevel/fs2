@@ -13,6 +13,7 @@ object Balance {
     private[Balance] implicit val mkDeferred: Deferred.MkIn[F, G]
     private[Balance] implicit val mkSemaphore: Semaphore.MkIn[F, G]
     private[Balance] implicit val mkSignallingRef: SignallingRef.MkIn[F, G]
+    private[Balance] implicit val mkQueue: Queue.MkIn[F, G]
   }
 
   object MkIn {
@@ -26,6 +27,7 @@ object Balance {
           Semaphore.MkIn.instance[F, G]
         private[Balance] implicit val mkSignallingRef: SignallingRef.MkIn[F, G] =
           SignallingRef.MkIn.instance[F, G]
+        private[Balance] implicit val mkQueue: Queue.MkIn[F, G] = Queue.MkIn.instance[F, G]
       }
   }
 
