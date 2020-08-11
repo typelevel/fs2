@@ -7,15 +7,25 @@ import fs2._
 /** Provides mechanisms for balancing the distribution of chunks across multiple streams. */
 object Balance {
 
-  trait MkIn[F[_], G[_]] {
-    private[Balance] def apply[O]: F[PubSub[G, Option[Chunk[O]], Option[Chunk[O]], Int]]
+  sealed trait MkIn[F[_], G[_]] {
+    private[Balance] def mkPubSub[O]: F[PubSub[G, Option[Chunk[O]], Option[Chunk[O]], Int]]
+    private[Balance] implicit val mkRef: Ref.MkIn[F, G]
+    private[Balance] implicit val mkDeferred: Deferred.MkIn[F, G]
+    private[Balance] implicit val mkSemaphore: Semaphore.MkIn[F, G]
+    private[Balance] implicit val mkSignallingRef: SignallingRef.MkIn[F, G]
   }
 
   object MkIn {
     implicit def instance[F[_]: Sync, G[_]: Async]: MkIn[F, G] =
       new MkIn[F, G] {
-        private[Balance] def apply[O]: F[PubSub[G, Option[Chunk[O]], Option[Chunk[O]], Int]] =
+        private[Balance] def mkPubSub[O]: F[PubSub[G, Option[Chunk[O]], Option[Chunk[O]], Int]] =
           PubSub.in[F].from(PubSub.Strategy.closeDrainFirst(strategy[O]))
+        private[Balance] implicit val mkRef: Ref.MkIn[F, G] = Ref.MkIn.instance[F, G]
+        private[Balance] implicit val mkDeferred: Deferred.MkIn[F, G] = Deferred.MkIn.instance[F, G]
+        private[Balance] implicit val mkSemaphore: Semaphore.MkIn[F, G] =
+          Semaphore.MkIn.instance[F, G]
+        private[Balance] implicit val mkSignallingRef: SignallingRef.MkIn[F, G] =
+          SignallingRef.MkIn.instance[F, G]
       }
   }
 
@@ -57,10 +67,12 @@ object Balance {
     * The resulting stream terminates after the source stream terminates and all workers terminate.
     * Conversely, if the resulting stream is terminated early, the source stream will be terminated.
     */
-  def apply[F[_]: ConcurrentThrow: Mk: Ref.Mk: Deferred.Mk, O](
+  def apply[F[_]: ConcurrentThrow: Mk, O](
       chunkSize: Int
   ): Pipe[F, O, Stream[F, O]] = { source =>
-    Stream.eval(implicitly[Mk[F]].apply[O]).flatMap { pubSub =>
+    val mk = implicitly[Mk[F]]
+    import mk._
+    Stream.eval(mkPubSub[O]).flatMap { pubSub =>
       def subscriber =
         pubSub
           .getStream(chunkSize)
@@ -96,16 +108,17 @@ object Balance {
     * @param pipes pipes to use to process work
     * @param chunkSize maximum chunk to present to each pipe, allowing fair distribution between pipes
     */
-  def through[F[
-      _
-  ]: ConcurrentThrow: Mk: Ref.Mk: Deferred.Mk: Semaphore.Mk: SignallingRef.Mk, O, O2](
+  def through[F[_]: ConcurrentThrow: Mk, O, O2](
       chunkSize: Int
-  )(pipes: Pipe[F, O, O2]*): Pipe[F, O, O2] =
+  )(pipes: Pipe[F, O, O2]*): Pipe[F, O, O2] = {
+    val mk = implicitly[Mk[F]]
+    import mk._
     _.balance(chunkSize)
       .take(pipes.size)
       .zipWithIndex
       .map { case (stream, idx) => stream.through(pipes(idx.toInt)) }
       .parJoinUnbounded
+  }
 
   private def strategy[O]: PubSub.Strategy[Chunk[O], Chunk[O], Option[Chunk[O]], Int] =
     new PubSub.Strategy[Chunk[O], Chunk[O], Option[Chunk[O]], Int] {

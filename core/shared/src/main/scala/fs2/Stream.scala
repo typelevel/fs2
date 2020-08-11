@@ -190,9 +190,8 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     *
     * Alias for `through(Broadcast(1))`./
     */
-  def broadcast[F2[x] >: F[x]: ConcurrentThrow]: Stream[F2, Stream[F2, O]] =
-    ??? // TODO
-  // through(Broadcast(1))
+  def broadcast[F2[x] >: F[x]: ConcurrentThrow: Broadcast.Mk]: Stream[F2, Stream[F2, O]] =
+    through(Broadcast(1))
 
   /**
     * Like [[broadcast]] but instead of providing a stream of sources, runs each pipe.
@@ -216,14 +215,15 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     *
     * @param pipes    Pipes that will concurrently process the work.
     */
-  def broadcastTo[F2[x] >: F[x]: ConcurrentThrow](pipes: Pipe[F2, O, Unit]*): Stream[F2, Unit] =
-    ??? // TODO
-  // this.through(Broadcast.through(pipes.map(_.andThen(_.drain)): _*))
+  def broadcastTo[F2[x] >: F[x]: ConcurrentThrow: Broadcast.Mk](
+      pipes: Pipe[F2, O, Unit]*
+  ): Stream[F2, Unit] =
+    this.through(Broadcast.through(pipes.map(_.andThen(_.drain)): _*))
 
   /**
     * Variant of `broadcastTo` that broadcasts to `maxConcurrent` instances of a single pipe.
     */
-  def broadcastTo[F2[x] >: F[x]: ConcurrentThrow](
+  def broadcastTo[F2[x] >: F[x]: ConcurrentThrow: Broadcast.Mk](
       maxConcurrent: Int
   )(pipe: Pipe[F2, O, Unit]): Stream[F2, Unit] =
     this.broadcastTo[F2](List.fill(maxConcurrent)(pipe): _*)
@@ -231,16 +231,15 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
   /**
     * Alias for `through(Broadcast.through(pipes))`.
     */
-  def broadcastThrough[F2[x] >: F[x]: ConcurrentThrow, O2](
+  def broadcastThrough[F2[x] >: F[x]: ConcurrentThrow: Broadcast.Mk, O2](
       pipes: Pipe[F2, O, O2]*
   ): Stream[F2, O2] =
-    ??? // TODO
-  // through(Broadcast.through(pipes: _*))
+    through(Broadcast.through(pipes: _*))
 
   /**
     * Variant of `broadcastTo` that broadcasts to `maxConcurrent` instances of the supplied pipe.
     */
-  def broadcastThrough[F2[x] >: F[x]: ConcurrentThrow, O2](
+  def broadcastThrough[F2[x] >: F[x]: ConcurrentThrow: Broadcast.Mk, O2](
       maxConcurrent: Int
   )(pipe: Pipe[F2, O, O2]): Stream[F2, O2] =
     this.broadcastThrough[F2, O2](List.fill(maxConcurrent)(pipe): _*)
@@ -781,8 +780,7 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     *
     * Alias for `through(Balance(Int.MaxValue))`.
     */
-  def balanceAvailable[F2[x] >: F[x]: ConcurrentThrow: Ref.Mk: Deferred.Mk: Balance.Mk]
-      : Stream[F2, Stream[F2, O]] =
+  def balanceAvailable[F2[x] >: F[x]: ConcurrentThrow: Balance.Mk]: Stream[F2, Stream[F2, O]] =
     through(Balance[F2, O](Int.MaxValue))
 
   /**
@@ -799,7 +797,7 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     *
     * Alias for `through(Balance(chunkSize))`.
     */
-  def balance[F2[x] >: F[x]: ConcurrentThrow: Ref.Mk: Deferred.Mk: Balance.Mk](
+  def balance[F2[x] >: F[x]: ConcurrentThrow: Balance.Mk](
       chunkSize: Int
   ): Stream[F2, Stream[F2, O]] =
     through(Balance(chunkSize))
@@ -821,7 +819,7 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     * @param chunkSize max size of chunks taken from the source stream
     * @param pipes pipes that will concurrently process the work
     */
-  def balanceTo[F2[x] >: F[x]: ConcurrentThrow](
+  def balanceTo[F2[x] >: F[x]: ConcurrentThrow: Balance.Mk](
       chunkSize: Int
   )(pipes: Pipe[F2, O, Unit]*): Stream[F2, Unit] =
     balanceThrough[F2, Unit](chunkSize)(pipes.map(_.andThen(_.drain)): _*)
@@ -833,7 +831,7 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     * @param maxConcurrent maximum number of pipes to run concurrently
     * @param pipe pipe to use to process elements
     */
-  def balanceTo[F2[x] >: F[x]: ConcurrentThrow](chunkSize: Int, maxConcurrent: Int)(
+  def balanceTo[F2[x] >: F[x]: ConcurrentThrow: Balance.Mk](chunkSize: Int, maxConcurrent: Int)(
       pipe: Pipe[F2, O, Unit]
   ): Stream[F2, Unit] =
     balanceThrough[F2, Unit](chunkSize, maxConcurrent)(pipe.andThen(_.drain))
@@ -841,11 +839,10 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
   /**
     * Alias for `through(Balance.through(chunkSize)(pipes)`.
     */
-  def balanceThrough[F2[x] >: F[x]: ConcurrentThrow, O2](
+  def balanceThrough[F2[x] >: F[x]: ConcurrentThrow: Balance.Mk, O2](
       chunkSize: Int
   )(pipes: Pipe[F2, O, O2]*): Stream[F2, O2] =
-    ??? // TODO
-  // through(Balance.through[F2, O, O2](chunkSize)(pipes: _*))
+    through(Balance.through[F2, O, O2](chunkSize)(pipes: _*))
 
   /**
     * Variant of `balanceThrough` that takes number of concurrency required and single pipe.
@@ -854,7 +851,10 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     * @param maxConcurrent maximum number of pipes to run concurrently
     * @param pipe pipe to use to process elements
     */
-  def balanceThrough[F2[x] >: F[x]: ConcurrentThrow, O2](chunkSize: Int, maxConcurrent: Int)(
+  def balanceThrough[F2[x] >: F[x]: ConcurrentThrow: Balance.Mk, O2](
+      chunkSize: Int,
+      maxConcurrent: Int
+  )(
       pipe: Pipe[F2, O, O2]
   ): Stream[F2, O2] =
     balanceThrough[F2, O2](chunkSize)((0 until maxConcurrent).map(_ => pipe): _*)
