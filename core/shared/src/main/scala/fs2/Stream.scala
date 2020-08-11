@@ -2219,19 +2219,18 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     pauseWhen(pauseWhenTrue.discrete)
 
   /** Alias for `prefetchN(1)`. */
-  def prefetch[F2[x] >: F[x]: ConcurrentThrow]: Stream[F2, O] = prefetchN[F2](1)
+  def prefetch[F2[x] >: F[x]: ConcurrentThrow: Ref.Mk: Deferred.Mk: Queue.Mk]: Stream[F2, O] = prefetchN[F2](1)
 
   /**
     * Behaves like `identity`, but starts fetches up to `n` chunks in parallel with downstream
     * consumption, enabling processing on either side of the `prefetchN` to run in parallel.
     */
-  def prefetchN[F2[x] >: F[x]: ConcurrentThrow](n: Int): Stream[F2, O] =
-    ??? // TODO
-  // Stream.eval(Queue.bounded[F2, Option[Chunk[O]]](n)).flatMap { queue =>
-  //   queue.dequeue.unNoneTerminate
-  //     .flatMap(Stream.chunk(_))
-  //     .concurrently(chunks.noneTerminate.covary[F2].through(queue.enqueue))
-  // }
+  def prefetchN[F2[x] >: F[x]: ConcurrentThrow: Ref.Mk: Deferred.Mk: Queue.Mk](n: Int): Stream[F2, O] =
+    Stream.eval(Queue.bounded[F2, Option[Chunk[O]]](n)).flatMap { queue =>
+      queue.dequeue.unNoneTerminate
+        .flatMap(Stream.chunk(_))
+        .concurrently(chunks.noneTerminate.covary[F2].through(queue.enqueue))
+    }
 
   /**
     * Rechunks the stream such that output chunks are within `[inputChunk.size * minFactor, inputChunk.size * maxFactor]`.
