@@ -3674,52 +3674,51 @@ object Stream extends StreamLowPriority {
       * res0: Vector[Int] = Vector(2, 3, 4)
       * }}}
       */
-    def observe(p: Pipe[F, O, Unit])(implicit F: ConcurrentThrow[F]): Stream[F, O] =
+    def observe(p: Pipe[F, O, Unit])(implicit F: ConcurrentThrow[F], mkRef: Ref.Mk[F], mkDeferred: Deferred.Mk[F], mkSemaphore: Semaphore.Mk[F], mkQueue: Queue.Mk[F]): Stream[F, O] =
       observeAsync(1)(p)
 
     /** Send chunks through `p`, allowing up to `maxQueued` pending _chunks_ before blocking `s`. */
     def observeAsync(
         maxQueued: Int
-    )(p: Pipe[F, O, Unit])(implicit F: ConcurrentThrow[F]): Stream[F, O] =
-      ??? // TODO
-    // Stream.eval(Semaphore[F](maxQueued - 1)).flatMap { guard =>
-    //   Stream.eval(Queue.unbounded[F, Option[Chunk[O]]]).flatMap { outQ =>
-    //     Stream.eval(Queue.unbounded[F, Option[Chunk[O]]]).flatMap { sinkQ =>
-    //       def inputStream =
-    //         self.chunks.noneTerminate.evalMap {
-    //           case Some(chunk) =>
-    //             sinkQ.enqueue1(Some(chunk)) >>
-    //               guard.acquire
+    )(p: Pipe[F, O, Unit])(implicit F: ConcurrentThrow[F], mkRef: Ref.Mk[F], mkDeferred: Deferred.Mk[F], mkSemaphore: Semaphore.Mk[F], mkQueue: Queue.Mk[F]): Stream[F, O] =
+    Stream.eval(Semaphore[F](maxQueued - 1)).flatMap { guard =>
+      Stream.eval(Queue.unbounded[F, Option[Chunk[O]]]).flatMap { outQ =>
+        Stream.eval(Queue.unbounded[F, Option[Chunk[O]]]).flatMap { sinkQ =>
+          def inputStream =
+            self.chunks.noneTerminate.evalMap {
+              case Some(chunk) =>
+                sinkQ.enqueue1(Some(chunk)) >>
+                  guard.acquire
 
-    //           case None =>
-    //             sinkQ.enqueue1(None)
-    //         }
+              case None =>
+                sinkQ.enqueue1(None)
+            }
 
-    //       def sinkStream =
-    //         sinkQ.dequeue.unNoneTerminate
-    //           .flatMap { chunk =>
-    //             Stream.chunk(chunk) ++
-    //               Stream.eval_(outQ.enqueue1(Some(chunk)))
-    //           }
-    //           .through(p) ++
-    //           Stream.eval_(outQ.enqueue1(None))
+          def sinkStream =
+            sinkQ.dequeue.unNoneTerminate
+              .flatMap { chunk =>
+                Stream.chunk(chunk) ++
+                  Stream.eval_(outQ.enqueue1(Some(chunk)))
+              }
+              .through(p) ++
+              Stream.eval_(outQ.enqueue1(None))
 
-    //       def runner =
-    //         sinkStream.concurrently(inputStream) ++
-    //           Stream.eval_(outQ.enqueue1(None))
+          def runner =
+            sinkStream.concurrently(inputStream) ++
+              Stream.eval_(outQ.enqueue1(None))
 
-    //       def outputStream =
-    //         outQ.dequeue.unNoneTerminate
-    //           .flatMap { chunk =>
-    //             Stream.chunk(chunk) ++
-    //               Stream.eval_(guard.release)
-    //           }
+          def outputStream =
+            outQ.dequeue.unNoneTerminate
+              .flatMap { chunk =>
+                Stream.chunk(chunk) ++
+                  Stream.eval_(guard.release)
+              }
 
-    //       outputStream.concurrently(runner)
-    //     }
-    //   }
-    // }
-
+          outputStream.concurrently(runner)
+        }
+      }
+    }
+      
     /**
       * Observes this stream of `Either[L, R]` values with two pipes, one that
       * observes left values and another that observes right values.
@@ -3730,7 +3729,7 @@ object Stream extends StreamLowPriority {
     def observeEither[L, R](
         left: Pipe[F, L, Unit],
         right: Pipe[F, R, Unit]
-    )(implicit F: ConcurrentThrow[F], ev: O <:< Either[L, R]): Stream[F, Either[L, R]] = {
+    )(implicit F: ConcurrentThrow[F], mkRef: Ref.Mk[F], mkDeferred: Deferred.Mk[F], mkSemaphore: Semaphore.Mk[F], mkQueue: Queue.Mk[F], ev: O <:< Either[L, R]): Stream[F, Either[L, R]] = {
       val _ = ev
       val src = self.asInstanceOf[Stream[F, Either[L, R]]]
       src
