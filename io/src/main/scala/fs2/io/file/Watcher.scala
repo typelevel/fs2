@@ -133,20 +133,17 @@ object Watcher {
   }
 
   /** Creates a watcher for the default file system. */
-  def default[F[_]](
-      blocker: Blocker
-  )(implicit F: Concurrent[F], cs: ContextShift[F]): Resource[F, Watcher[F]] =
+  def default[F[_]](implicit F: Async[F], mkSignallingRef: SignallingRef.Mk[F]): Resource[F, Watcher[F]] =
     Resource
-      .liftF(blocker.delay(FileSystems.getDefault))
-      .flatMap(fromFileSystem(blocker, _))
+      .liftF(F.blocking(FileSystems.getDefault))
+      .flatMap(fromFileSystem(_))
 
   /** Creates a watcher for the supplied file system. */
   def fromFileSystem[F[_]](
-      blocker: Blocker,
       fs: FileSystem
-  )(implicit F: Concurrent[F], cs: ContextShift[F]): Resource[F, Watcher[F]] =
-    Resource(blocker.delay(fs.newWatchService).flatMap { ws =>
-      fromWatchService(blocker, ws).map(w => w -> blocker.delay(ws.close))
+  )(implicit F: Async[F]): Resource[F, Watcher[F]] =
+    Resource(F.blocking(fs.newWatchService).flatMap { ws =>
+      fromWatchService(ws).map(w => w -> F.blocking(ws.close))
     })
 
   private case class Registration[F[_]](
@@ -160,28 +157,25 @@ object Watcher {
 
   /** Creates a watcher for the supplied NIO `WatchService`. */
   def fromWatchService[F[_]](
-      blocker: Blocker,
       ws: WatchService
-  )(implicit F: Concurrent[F], cs: ContextShift[F]): F[Watcher[F]] =
-    SignallingRef[F, Map[WatchKey, Registration[F]]](Map.empty)
-      .map(new DefaultWatcher(blocker, ws, _))
+  )(implicit F: Async[F]): F[Watcher[F]] =
+    SignallingRef.of[F, Map[WatchKey, Registration[F]]](Map.empty)
+      .map(new DefaultWatcher(ws, _))
 
   private class DefaultWatcher[F[_]](
-      blocker: Blocker,
       ws: WatchService,
       registrations: SignallingRef[F, Map[WatchKey, Registration[F]]]
   )(implicit
-      F: Concurrent[F],
-      cs: ContextShift[F]
+      F: Async[F]
   ) extends Watcher[F] {
     private def isDir(p: Path): F[Boolean] =
-      blocker.delay(Files.isDirectory(p))
+      F.blocking(Files.isDirectory(p))
 
     private def track(key: WatchKey, r: Registration[F]): F[F[Unit]] =
       registrations
         .update(_.updated(key, r))
         .as {
-          blocker.delay(key.cancel) >> registrations.modify { s =>
+          F.blocking(key.cancel) >> registrations.modify { s =>
             (s - key) -> s.get(key).map(_.cleanup).getOrElse(F.unit)
           }.flatten
         }
@@ -209,7 +203,7 @@ object Watcher {
           )
         else if (types.contains(EventType.Created)) (types, false)
         else (EventType.Created +: types, true)
-      val dirs: F[List[Path]] = blocker.delay {
+      val dirs: F[List[Path]] = F.blocking {
         var dirs: List[Path] = Nil
         Files.walkFileTree(
           path,
@@ -267,7 +261,7 @@ object Watcher {
         types: Seq[Watcher.EventType],
         modifiers: Seq[WatchEvent.Modifier]
     ): F[WatchKey] =
-      blocker.delay {
+      F.blocking {
         val typesWithDefaults =
           if (types.isEmpty)
             List(EventType.Created, EventType.Deleted, EventType.Modified, EventType.Overflow)
@@ -292,12 +286,11 @@ object Watcher {
             if (reg.map(_.recurse).getOrElse(false)) {
               val created = events.collect { case Event.Created(p, _) => p }
               def watchIfDirectory(p: Path): F[(F[Unit], List[Event])] =
-                blocker
-                  .delay(Files.isDirectory(p))
+                F.blocking(Files.isDirectory(p))
                   .ifM(
                     watch(p, Seq(EventType.Created), reg.map(_.modifiers).getOrElse(Nil)).flatMap {
                       cancel =>
-                        val events: F[List[Event]] = blocker.delay {
+                        val events: F[List[Event]] = F.blocking {
                           var dirs: List[Path] = Nil
                           Files.list(p).forEach(d => dirs = d :: dirs)
                           dirs.map(Event.Created(_, 1))
@@ -328,7 +321,7 @@ object Watcher {
     private def unfilteredEvents(
         pollTimeout: FiniteDuration
     ): Stream[F, (WatchKey, List[Event])] = {
-      val poll: F[Option[(WatchKey, List[Event])]] = blocker.delay {
+      val poll: F[Option[(WatchKey, List[Event])]] = F.blocking {
         val key = ws.poll(pollTimeout.toMillis, TimeUnit.MILLISECONDS)
         if (key eq null) None
         else {

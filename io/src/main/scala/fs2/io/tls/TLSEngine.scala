@@ -7,7 +7,7 @@ import scala.concurrent.duration.FiniteDuration
 import javax.net.ssl.{SSLEngine, SSLEngineResult, SSLSession}
 
 import cats.Applicative
-import cats.effect.{Blocker, Concurrent, ContextShift, Sync}
+import cats.effect.{Async, Sync}
 import cats.effect.concurrent.Semaphore
 import cats.implicits._
 
@@ -31,10 +31,9 @@ private[tls] object TLSEngine {
     def read(maxBytes: Int, timeout: Option[FiniteDuration]): F[Option[Chunk[Byte]]]
   }
 
-  def apply[F[_]: Concurrent: ContextShift](
+  def apply[F[_]: Async](
       engine: SSLEngine,
       binding: Binding[F],
-      blocker: Blocker,
       logger: Option[String => F[Unit]] = None
   ): F[TLSEngine[F]] =
     for {
@@ -49,7 +48,7 @@ private[tls] object TLSEngine {
       readSemaphore <- Semaphore[F](1)
       writeSemaphore <- Semaphore[F](1)
       handshakeSemaphore <- Semaphore[F](1)
-      sslEngineTaskRunner = SSLEngineTaskRunner[F](engine, blocker)
+      sslEngineTaskRunner = SSLEngineTaskRunner[F](engine)
     } yield new TLSEngine[F] {
       private def log(msg: String): F[Unit] =
         logger.map(_(msg)).getOrElse(Applicative[F].unit)

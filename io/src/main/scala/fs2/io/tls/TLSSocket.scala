@@ -33,13 +33,13 @@ sealed trait TLSSocket[F[_]] extends Socket[F] {
 
 object TLSSocket {
 
-  private[tls] def apply[F[_]: Concurrent](
+  private[tls] def apply[F[_]: Async](
       socket: Socket[F],
       engine: TLSEngine[F]
   ): Resource[F, TLSSocket[F]] =
     Resource.make(mk(socket, engine))(_.close)
 
-  private def mk[F[_]: Concurrent](
+  private def mk[F[_]: Async](
       socket: Socket[F],
       engine: TLSEngine[F]
   ): F[TLSSocket[F]] =

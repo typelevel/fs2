@@ -17,7 +17,7 @@ import java.nio.channels.spi.AsynchronousChannelProvider
 import java.util.concurrent.{ThreadFactory, TimeUnit}
 
 import cats.implicits._
-import cats.effect.{Blocker, Concurrent, ContextShift, Resource, Sync}
+import cats.effect.{Async, Resource, Sync}
 import cats.effect.concurrent.{Ref, Semaphore}
 
 import fs2.internal.ThreadFactories
@@ -26,7 +26,7 @@ import fs2.internal.ThreadFactories
   * Resource that provides the ability to open client and server TCP sockets that all share
   * an underlying non-blocking channel group.
   */
-final class SocketGroup(channelGroup: AsynchronousChannelGroup, blocker: Blocker) {
+final class SocketGroup(channelGroup: AsynchronousChannelGroup) {
 
   /**
     * Opens a connection to the specified server represented as a [[Socket]].
@@ -47,9 +47,9 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup, blocker: Blocker
       keepAlive: Boolean = false,
       noDelay: Boolean = false,
       additionalSocketOptions: List[SocketOptionMapping[_]] = List.empty
-  )(implicit F: Concurrent[F], CS: ContextShift[F]): Resource[F, Socket[F]] = {
+  )(implicit F: Async[F]): Resource[F, Socket[F]] = {
     def setup: F[AsynchronousSocketChannel] =
-      blocker.delay {
+      F.blocking {
         val ch =
           AsynchronousChannelProvider.provider().openAsynchronousSocketChannel(channelGroup)
         ch.setOption[java.lang.Boolean](StandardSocketOptions.SO_REUSEADDR, reuseAddress)
@@ -64,7 +64,7 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup, blocker: Blocker
       }
 
     def connect(ch: AsynchronousSocketChannel): F[AsynchronousSocketChannel] =
-      asyncYield[F, AsynchronousSocketChannel] { cb =>
+      F.async_[AsynchronousSocketChannel] { cb =>
         ch.connect(
           to,
           null,
@@ -105,10 +105,7 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup, blocker: Blocker
       reuseAddress: Boolean = true,
       receiveBufferSize: Int = 256 * 1024,
       additionalSocketOptions: List[SocketOptionMapping[_]] = List.empty
-  )(implicit
-      F: Concurrent[F],
-      CS: ContextShift[F]
-  ): Stream[F, Resource[F, Socket[F]]] =
+  )(implicit F: Async[F]): Stream[F, Resource[F, Socket[F]]] =
     Stream
       .resource(
         serverResource(
@@ -129,12 +126,9 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup, blocker: Blocker
       reuseAddress: Boolean = true,
       receiveBufferSize: Int = 256 * 1024,
       additionalSocketOptions: List[SocketOptionMapping[_]] = List.empty
-  )(implicit
-      F: Concurrent[F],
-      CS: ContextShift[F]
-  ): Resource[F, (InetSocketAddress, Stream[F, Resource[F, Socket[F]]])] = {
+  )(implicit F: Async[F]): Resource[F, (InetSocketAddress, Stream[F, Resource[F, Socket[F]]])] = {
 
-    val setup: F[AsynchronousServerSocketChannel] = blocker.delay {
+    val setup: F[AsynchronousServerSocketChannel] = F.blocking {
       val ch = AsynchronousChannelProvider
         .provider()
         .openAsynchronousServerSocketChannel(channelGroup)
@@ -148,12 +142,12 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup, blocker: Blocker
     }
 
     def cleanup(sch: AsynchronousServerSocketChannel): F[Unit] =
-      blocker.delay(if (sch.isOpen) sch.close())
+      F.blocking(if (sch.isOpen) sch.close())
 
     def acceptIncoming(sch: AsynchronousServerSocketChannel): Stream[F, Resource[F, Socket[F]]] = {
       def go: Stream[F, Resource[F, Socket[F]]] = {
         def acceptChannel: F[AsynchronousSocketChannel] =
-          asyncYield[F, AsynchronousSocketChannel] { cb =>
+          F.async_[AsynchronousSocketChannel] { cb =>
             sch.accept(
               null,
               new CompletionHandler[AsynchronousSocketChannel, Void] {
@@ -173,7 +167,7 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup, blocker: Blocker
 
       go.handleErrorWith {
         case err: AsynchronousCloseException =>
-          Stream.eval(blocker.delay(sch.isOpen)).flatMap { isOpen =>
+          Stream.eval(F.blocking(sch.isOpen)).flatMap { isOpen =>
             if (isOpen) Stream.raiseError[F](err)
             else Stream.empty
           }
@@ -189,14 +183,14 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup, blocker: Blocker
 
   private def apply[F[_]](
       ch: AsynchronousSocketChannel
-  )(implicit F: Concurrent[F], cs: ContextShift[F]): Resource[F, Socket[F]] = {
+  )(implicit F: Async[F]): Resource[F, Socket[F]] = {
     val socket = (Semaphore[F](1), Semaphore[F](1), Ref[F].of(ByteBuffer.allocate(0))).mapN {
       (readSemaphore, writeSemaphore, bufferRef) =>
         // Reads data to remaining capacity of supplied ByteBuffer
         // Also measures time the read took returning this as tuple
         // of (bytes_read, read_duration)
         def readChunk(buff: ByteBuffer, timeoutMs: Long): F[(Int, Long)] =
-          asyncYield[F, (Int, Long)] { cb =>
+          F.async_[(Int, Long)] { cb =>
             val started = System.currentTimeMillis()
             ch.read(
               buff,
@@ -275,7 +269,7 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup, blocker: Blocker
 
         def write0(bytes: Chunk[Byte], timeout: Option[FiniteDuration]): F[Unit] = {
           def go(buff: ByteBuffer, remains: Long): F[Unit] =
-            asyncYield[F, Option[Long]] { cb =>
+            F.async_[Option[Long]] { cb =>
               val start = System.currentTimeMillis()
               ch.write(
                 buff,
@@ -324,22 +318,22 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup, blocker: Blocker
             _.chunks.flatMap(bs => Stream.eval(write(bs, timeout)))
 
           def localAddress: F[SocketAddress] =
-            blocker.delay(ch.getLocalAddress)
+            F.blocking(ch.getLocalAddress)
           def remoteAddress: F[SocketAddress] =
-            blocker.delay(ch.getRemoteAddress)
-          def isOpen: F[Boolean] = blocker.delay(ch.isOpen)
-          def close: F[Unit] = blocker.delay(ch.close())
+            F.blocking(ch.getRemoteAddress)
+          def isOpen: F[Boolean] = F.blocking(ch.isOpen)
+          def close: F[Unit] = F.blocking(ch.close())
           def endOfOutput: F[Unit] =
-            blocker.delay {
+            F.blocking {
               ch.shutdownOutput(); ()
             }
           def endOfInput: F[Unit] =
-            blocker.delay {
+            F.blocking {
               ch.shutdownInput(); ()
             }
         }
     }
-    Resource.make(socket)(_ => blocker.delay(if (ch.isOpen) ch.close else ()).attempt.void)
+    Resource.make(socket)(_ => F.blocking(if (ch.isOpen) ch.close else ()).attempt.void)
   }
 }
 
@@ -356,18 +350,17 @@ object SocketGroup {
     * https://openjdk.java.net/projects/nio/resources/AsynchronousIo.html for more
     * information on NIO thread pooling.
     */
-  def apply[F[_]: Sync: ContextShift](
-      blocker: Blocker,
+  def apply[F[_]: Sync](
       nonBlockingThreadCount: Int = 0,
       nonBlockingThreadFactory: ThreadFactory =
         ThreadFactories.named("fs2-socket-group-non-blocking", true)
   ): Resource[F, SocketGroup] =
-    Resource(blocker.delay {
+    Resource(Sync[F].blocking {
       val threadCount =
         if (nonBlockingThreadCount <= 0) Runtime.getRuntime.availableProcessors
         else nonBlockingThreadCount
       val acg = AsynchronousChannelGroup.withFixedThreadPool(threadCount, nonBlockingThreadFactory)
-      val group = new SocketGroup(acg, blocker)
-      (group, blocker.delay(acg.shutdown()))
+      val group = new SocketGroup(acg)
+      (group, Sync[F].blocking(acg.shutdown()))
     })
 }

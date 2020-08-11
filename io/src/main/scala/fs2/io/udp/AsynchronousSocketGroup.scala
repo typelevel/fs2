@@ -19,7 +19,7 @@ import java.nio.channels.{
 import java.util.ArrayDeque
 import java.util.concurrent.{ConcurrentLinkedQueue, CountDownLatch}
 
-import cats.effect.{Blocker, ContextShift, Resource, Sync}
+import cats.effect.{Resource, Sync}
 
 import CollectionCompat._
 
@@ -53,8 +53,8 @@ private[udp] object AsynchronousSocketGroup {
    */
   private class WriterPacket(val remote: InetSocketAddress, val bytes: ByteBuffer)
 
-  def apply[F[_]: Sync: ContextShift](blocker: Blocker): Resource[F, AsynchronousSocketGroup] =
-    Resource.make(blocker.delay(unsafe))(g => blocker.delay(g.close()))
+  def apply[F[_]: Sync]: Resource[F, AsynchronousSocketGroup] =
+    Resource.make(Sync[F].blocking(unsafe))(g => Sync[F].blocking(g.close()))
 
   private def unsafe: AsynchronousSocketGroup =
     new AsynchronousSocketGroup {

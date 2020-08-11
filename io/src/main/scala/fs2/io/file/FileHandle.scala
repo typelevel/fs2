@@ -6,7 +6,7 @@ import java.nio.ByteBuffer
 import java.nio.channels.{FileChannel, FileLock}
 import java.nio.file.{OpenOption, Path}
 
-import cats.effect.{Blocker, ContextShift, Resource, Sync}
+import cats.effect.{Resource, Sync}
 
 /**
   * Provides the ability to read/write/lock/inspect a file in the effect `F`.
@@ -90,38 +90,35 @@ trait FileHandle[F[_]] {
 object FileHandle {
 
   /** Creates a `FileHandle` for the file at the supplied `Path`. */
-  def fromPath[F[_]](path: Path, blocker: Blocker, flags: Seq[OpenOption])(implicit
-      F: Sync[F],
-      cs: ContextShift[F]
+  def fromPath[F[_]](path: Path, flags: Seq[OpenOption])(implicit
+      F: Sync[F]
   ): Resource[F, FileHandle[F]] =
-    fromFileChannel(blocker.delay(FileChannel.open(path, flags: _*)), blocker)
+    fromFileChannel(F.blocking(FileChannel.open(path, flags: _*)))
 
   /** Creates a `FileHandle` for the supplied `FileChannel`. */
-  def fromFileChannel[F[_]](channel: F[FileChannel], blocker: Blocker)(implicit
-      F: Sync[F],
-      cs: ContextShift[F]
+  def fromFileChannel[F[_]](channel: F[FileChannel])(implicit
+      F: Sync[F]
   ): Resource[F, FileHandle[F]] =
-    Resource.make(channel)(ch => blocker.delay(ch.close())).map(ch => mk(ch, blocker))
+    Resource.make(channel)(ch => F.blocking(ch.close())).map(ch => mk(ch))
 
   /** Creates a `FileHandle[F]` from a `java.nio.channels.FileChannel`. */
   private def mk[F[_]](
-      chan: FileChannel,
-      blocker: Blocker
-  )(implicit F: Sync[F], cs: ContextShift[F]): FileHandle[F] =
+      chan: FileChannel
+  )(implicit F: Sync[F]): FileHandle[F] =
     new FileHandle[F] {
       type Lock = FileLock
 
       override def force(metaData: Boolean): F[Unit] =
-        blocker.delay(chan.force(metaData))
+        F.blocking(chan.force(metaData))
 
       override def lock: F[Lock] =
-        blocker.delay(chan.lock)
+        F.blocking(chan.lock)
 
       override def lock(position: Long, size: Long, shared: Boolean): F[Lock] =
-        blocker.delay(chan.lock(position, size, shared))
+        F.blocking(chan.lock(position, size, shared))
 
       override def read(numBytes: Int, offset: Long): F[Option[Chunk[Byte]]] =
-        blocker.delay {
+        F.blocking {
           val buf = ByteBuffer.allocate(numBytes)
           val len = chan.read(buf, offset)
           if (len < 0) None
@@ -130,21 +127,21 @@ object FileHandle {
         }
 
       override def size: F[Long] =
-        blocker.delay(chan.size)
+        F.blocking(chan.size)
 
       override def truncate(size: Long): F[Unit] =
-        blocker.delay { chan.truncate(size); () }
+        F.blocking { chan.truncate(size); () }
 
       override def tryLock: F[Option[Lock]] =
-        blocker.delay(Option(chan.tryLock()))
+        F.blocking(Option(chan.tryLock()))
 
       override def tryLock(position: Long, size: Long, shared: Boolean): F[Option[Lock]] =
-        blocker.delay(Option(chan.tryLock(position, size, shared)))
+        F.blocking(Option(chan.tryLock(position, size, shared)))
 
       override def unlock(f: Lock): F[Unit] =
-        blocker.delay(f.release())
+        F.blocking(f.release())
 
       override def write(bytes: Chunk[Byte], offset: Long): F[Int] =
-        blocker.delay(chan.write(bytes.toBytes.toByteBuffer, offset))
+        F.blocking(chan.write(bytes.toBytes.toByteBuffer, offset))
     }
 }

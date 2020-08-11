@@ -656,8 +656,7 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
   def debounce[F2[x] >: F[x]](
       d: FiniteDuration
   )(implicit
-      F: ConcurrentThrow[F2],
-      temporal: TemporalThrow[F2],
+      F: TemporalThrow[F2],
       mkRef: Ref.Mk[F2],
       mkDeferred: Deferred.Mk[F2],
       mkQueue: Queue.Mk[F2]
@@ -674,7 +673,7 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
         if (ch.isEmpty) F.unit
         else
           ref.modify(s => Some(ch(ch.size - 1)) -> s).flatMap {
-            case None    => F.start(temporal.sleep(d) >> enqueueLatest).void
+            case None    => F.start(F.sleep(d) >> enqueueLatest).void
             case Some(_) => F.unit
           }
 
@@ -1448,8 +1447,7 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
       n: Int,
       d: FiniteDuration
   )(implicit
-      F: ConcurrentThrow[F2],
-      t: TemporalThrow[F2],
+      F: TemporalThrow[F2],
       mkRef: Ref.Mk[F2],
       mkDeferred: Deferred.Mk[F2],
       mkToken: Token.Mk[F2],
@@ -1465,7 +1463,7 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
       case (q, currentTimeout) =>
         def startTimeout: Stream[F2, Token] =
           Stream.eval(mkToken.newToken).evalTap { token =>
-            val timeout = t.sleep(d) >> q.enqueue1(token.asLeft.some)
+            val timeout = F.sleep(d) >> q.enqueue1(token.asLeft.some)
 
             // We need to cancel outstanding timeouts to avoid leaks
             // on interruption, but using `Stream.bracket` or
@@ -1641,7 +1639,7 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
   /**
     * Interrupts this stream after the specified duration has passed.
     */
-  def interruptAfter[F2[x] >: F[x]: ConcurrentThrow: TemporalThrow: Ref.Mk: Deferred.Mk](
+  def interruptAfter[F2[x] >: F[x]: TemporalThrow: Ref.Mk: Deferred.Mk](
       duration: FiniteDuration
   ): Stream[F2, O] =
     interruptWhen[F2](Stream.sleep_[F2](duration) ++ Stream(true))
@@ -1779,7 +1777,7 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     * Writes this stream of strings to the supplied `PrintStream`.
     *
     * Note: printing to the `PrintStream` is performed *synchronously*.
-    * Use `linesAsync(out, blocker)` if synchronous writes are a concern.
+    * Use `linesAsync(out)` if synchronous writes are a concern.
     */
   def lines[F2[x] >: F[x]](
       out: PrintStream
@@ -2643,11 +2641,11 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     f(this, s2)
 
   /** Fails this stream with a [[TimeoutException]] if it does not complete within given `timeout`. */
-  def timeout[F2[x] >: F[x]: ConcurrentThrow: TemporalThrow: Deferred.Mk](
+  def timeout[F2[x] >: F[x]: TemporalThrow: Deferred.Mk](
       timeout: FiniteDuration
   ): Stream[F2, O] =
     this.interruptWhen(
-      implicitly[TemporalThrow[F2]]
+      Temporal[F2]
         .sleep(timeout)
         .as(Left(new TimeoutException(s"Timed out after $timeout")))
         .widen[Either[Throwable, Unit]]
@@ -4521,7 +4519,7 @@ object Stream extends StreamLowPriority {
       *   def elapsedSeconds: F[Int]
       * }
       * object StopWatch {
-      *   def create[F[_]: ConcurrentThrow: TemporalThrow]: Stream[F, StopWatch[F]] =
+      *   def create[F[_]: TemporalThrow]: Stream[F, StopWatch[F]] =
       *     Stream.eval(Ref[F].of(0)).flatMap { c =>
       *       val api = new StopWatch[F] {
       *         def elapsedSeconds: F[Int] = c.get
@@ -4565,7 +4563,7 @@ object Stream extends StreamLowPriority {
       * object StopWatch {
       *   // ... def create as before ...
       *
-      *   def betterCreate[F[_]: ConcurrentThrow: TemporalThrow]: Resource[F, StopWatch[F]] =
+      *   def betterCreate[F[_]: TemporalThrow]: Resource[F, StopWatch[F]] =
       *     create.compile.resource.lastOrError
       * }
       * }}}

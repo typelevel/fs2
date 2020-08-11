@@ -4,8 +4,9 @@ package io
 import java.io.{IOException, InputStream}
 
 import cats.implicits._
-import cats.effect.{ConcurrentEffect, ExitCase, Resource}
+import cats.effect.{Effect, IO, Outcome, Resource}
 import cats.effect.implicits._
+import cats.effect.unsafe.IORuntime // TODO replace this once CE3 supports Unsafe effect running
 
 import fs2.Chunk.Bytes
 import fs2.concurrent.{Queue, SignallingRef}
@@ -26,7 +27,7 @@ private[io] object JavaInputOutputStream {
 
   def toInputStream[F[_]](
       source: Stream[F, Byte]
-  )(implicit F: ConcurrentEffect[F]): Resource[F, InputStream] = {
+  )(implicit F: Effect[F], ioRuntime: IORuntime): Resource[F, InputStream] = {
     def markUpstreamDone(
         queue: Queue[F, Either[Option[Throwable], Bytes]],
         upState: SignallingRef[F, UpStreamState],
@@ -51,11 +52,11 @@ private[io] object JavaInputOutputStream {
         .interruptWhen(dnState.discrete.map(_.isDone).filter(identity))
         .compile
         .drain
-        .guaranteeCase {
-          case ExitCase.Completed => markUpstreamDone(queue, upState, None)
-          case ExitCase.Error(t)  => markUpstreamDone(queue, upState, Some(t))
-          case ExitCase.Canceled  => markUpstreamDone(queue, upState, None)
-        }
+        .guaranteeCase { (outcome: Outcome[F, Throwable, Unit]) => outcome match {
+          case Outcome.Completed(_) => markUpstreamDone(queue, upState, None)
+          case Outcome.Errored(t)  => markUpstreamDone(queue, upState, Some(t))
+          case Outcome.Canceled() => markUpstreamDone(queue, upState, None)
+        }}
         .start
         .void
 
@@ -173,8 +174,8 @@ private[io] object JavaInputOutputStream {
       .liftF(
         (
           Queue.synchronous[F, Either[Option[Throwable], Bytes]],
-          SignallingRef[F, UpStreamState](UpStreamState(done = false, err = None)),
-          SignallingRef[F, DownStreamState](Ready(None))
+          SignallingRef.of[F, UpStreamState](UpStreamState(done = false, err = None)),
+          SignallingRef.of[F, DownStreamState](Ready(None))
         ).tupled
       )
       .flatMap {
@@ -183,10 +184,10 @@ private[io] object JavaInputOutputStream {
             .as(
               new InputStream {
                 override def close(): Unit =
-                  closeIs(upState, dnState).toIO.unsafeRunSync
+                  closeIs(upState, dnState).to[IO].unsafeRunSync
 
                 override def read(b: Array[Byte], off: Int, len: Int): Int =
-                  readOnce(b, off, len, queue, dnState).toIO.unsafeRunSync
+                  readOnce(b, off, len, queue, dnState).to[IO].unsafeRunSync
 
                 def read(): Int = {
                   def go(acc: Array[Byte]): F[Int] =
@@ -196,7 +197,7 @@ private[io] object JavaInputOutputStream {
                       else F.pure(acc(0) & 0xff)
                     }
 
-                  go(new Array[Byte](1)).toIO.unsafeRunSync
+                  go(new Array[Byte](1)).to[IO].unsafeRunSync
                 }
               }
             )

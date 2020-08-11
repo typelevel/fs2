@@ -4,7 +4,7 @@ package file
 
 import cats.{Monad, ~>}
 import cats.implicits._
-import cats.effect.{Blocker, ContextShift, Resource, Sync}
+import cats.effect.{Resource, Sync}
 
 import java.nio.file._
 import cats.arrow.FunctionK
@@ -59,12 +59,11 @@ object WriteCursor {
     * The `WRITE` option is added to the supplied flags. If the `APPEND` option is present in `flags`,
     * the offset is initialized to the current size of the file.
     */
-  def fromPath[F[_]: Sync: ContextShift](
+  def fromPath[F[_]: Sync](
       path: Path,
-      blocker: Blocker,
       flags: Seq[OpenOption] = List(StandardOpenOption.CREATE)
   ): Resource[F, WriteCursor[F]] =
-    FileHandle.fromPath(path, blocker, StandardOpenOption.WRITE :: flags.toList).flatMap {
+    FileHandle.fromPath(path, StandardOpenOption.WRITE :: flags.toList).flatMap {
       fileHandle =>
         val size = if (flags.contains(StandardOpenOption.APPEND)) fileHandle.size else 0L.pure[F]
         val cursor = size.map(s => WriteCursor(fileHandle, s))
@@ -76,7 +75,7 @@ object WriteCursor {
     *
     * If `append` is true, the offset is initialized to the current size of the file.
     */
-  def fromFileHandle[F[_]: Sync: ContextShift](
+  def fromFileHandle[F[_]: Sync](
       file: FileHandle[F],
       append: Boolean
   ): F[WriteCursor[F]] =

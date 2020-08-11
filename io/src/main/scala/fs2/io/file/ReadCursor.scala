@@ -7,7 +7,7 @@ import scala.concurrent.duration.FiniteDuration
 import cats.{Functor, ~>}
 import cats.arrow.FunctionK
 import cats.implicits._
-import cats.effect.{Blocker, ContextShift, Resource, Sync, Timer}
+import cats.effect.{Resource, Sync, TemporalThrow}
 
 import java.nio.file._
 
@@ -78,11 +78,11 @@ final case class ReadCursor[F[_]](file: FileHandle[F], offset: Long) {
     * polling for updates
     */
   def tail(chunkSize: Int, pollDelay: FiniteDuration)(implicit
-      timer: Timer[F]
+      t: TemporalThrow[F]
   ): Pull[F, Byte, ReadCursor[F]] =
     readPull(chunkSize).flatMap {
       case Some((next, chunk)) => Pull.output(chunk) >> next.tail(chunkSize, pollDelay)
-      case None                => Pull.eval(timer.sleep(pollDelay)) >> tail(chunkSize, pollDelay)
+      case None                => Pull.eval(t.sleep(pollDelay)) >> tail(chunkSize, pollDelay)
     }
 }
 
@@ -91,12 +91,11 @@ object ReadCursor {
   /**
     * Returns a `ReadCursor` for the specified path. The `READ` option is added to the supplied flags.
     */
-  def fromPath[F[_]: Sync: ContextShift](
+  def fromPath[F[_]: Sync](
       path: Path,
-      blocker: Blocker,
       flags: Seq[OpenOption] = Nil
   ): Resource[F, ReadCursor[F]] =
-    FileHandle.fromPath(path, blocker, StandardOpenOption.READ :: flags.toList).map { fileHandle =>
+    FileHandle.fromPath(path, StandardOpenOption.READ :: flags.toList).map { fileHandle =>
       ReadCursor(fileHandle, 0L)
     }
 }

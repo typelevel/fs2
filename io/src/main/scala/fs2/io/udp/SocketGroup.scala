@@ -13,12 +13,11 @@ import java.net.{
 }
 import java.nio.channels.{ClosedChannelException, DatagramChannel}
 
-import cats.effect.{Blocker, Concurrent, ContextShift, Resource, Sync}
+import cats.effect.{Async, Resource, Sync}
 import cats.implicits._
 
 final class SocketGroup(
-    asg: AsynchronousSocketGroup,
-    blocker: Blocker
+    asg: AsynchronousSocketGroup
 ) {
 
   /**
@@ -44,8 +43,8 @@ final class SocketGroup(
       multicastInterface: Option[NetworkInterface] = None,
       multicastTTL: Option[Int] = None,
       multicastLoopback: Boolean = true
-  )(implicit F: Concurrent[F], CS: ContextShift[F]): Resource[F, Socket[F]] = {
-    val mkChannel = blocker.delay {
+  )(implicit F: Async[F]): Resource[F, Socket[F]] = {
+    val mkChannel = F.blocking {
       val channel = protocolFamily
         .map(pf => DatagramChannel.open(pf))
         .getOrElse(DatagramChannel.open())
@@ -73,8 +72,8 @@ final class SocketGroup(
 
   private[udp] def mkSocket[F[_]](
       channel: DatagramChannel
-  )(implicit F: Concurrent[F], cs: ContextShift[F]): F[Socket[F]] =
-    blocker.delay {
+  )(implicit F: Async[F]): F[Socket[F]] =
+    F.blocking {
       new Socket[F] {
         private val ctx = asg.register(channel)
 
@@ -85,30 +84,30 @@ final class SocketGroup(
           )
 
         def read(timeout: Option[FiniteDuration]): F[Packet] =
-          asyncYield[F, Packet](cb => asg.read(ctx, timeout, result => cb(result)))
+          F.async_[Packet](cb => asg.read(ctx, timeout, result => cb(result)))
 
         def reads(timeout: Option[FiniteDuration]): Stream[F, Packet] =
           Stream.repeatEval(read(timeout))
 
         def write(packet: Packet, timeout: Option[FiniteDuration]): F[Unit] =
-          asyncYield[F, Unit](cb => asg.write(ctx, packet, timeout, t => cb(t.toLeft(()))))
+          F.async_[Unit](cb => asg.write(ctx, packet, timeout, t => cb(t.toLeft(()))))
 
         def writes(timeout: Option[FiniteDuration]): Pipe[F, Packet, Unit] =
           _.flatMap(p => Stream.eval(write(p, timeout)))
 
-        def close: F[Unit] = blocker.delay(asg.close(ctx))
+        def close: F[Unit] = F.blocking(asg.close(ctx))
 
         def join(group: InetAddress, interface: NetworkInterface): F[AnySourceGroupMembership] =
-          blocker.delay {
+          F.blocking {
             val membership = channel.join(group, interface)
             new AnySourceGroupMembership {
-              def drop = blocker.delay(membership.drop)
+              def drop = F.blocking(membership.drop)
               def block(source: InetAddress) =
-                F.delay {
+                F.blocking {
                   membership.block(source); ()
                 }
               def unblock(source: InetAddress) =
-                blocker.delay {
+                F.blocking {
                   membership.unblock(source); ()
                 }
               override def toString = "AnySourceGroupMembership"
@@ -123,7 +122,7 @@ final class SocketGroup(
           F.delay {
             val membership = channel.join(group, interface, source)
             new GroupMembership {
-              def drop = blocker.delay(membership.drop)
+              def drop = F.blocking(membership.drop)
               override def toString = "GroupMembership"
             }
           }
@@ -138,6 +137,6 @@ final class SocketGroup(
 }
 
 object SocketGroup {
-  def apply[F[_]: Sync: ContextShift](blocker: Blocker): Resource[F, SocketGroup] =
-    AsynchronousSocketGroup[F](blocker).map(asg => new SocketGroup(asg, blocker))
+  def apply[F[_]: Sync]: Resource[F, SocketGroup] =
+    AsynchronousSocketGroup[F].map(asg => new SocketGroup(asg))
 }

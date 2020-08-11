@@ -8,7 +8,7 @@ import java.net.{InetAddress, InetSocketAddress, NetworkInterface}
 import javax.net.ssl.SSLSession
 
 import cats.Applicative
-import cats.effect.{Concurrent, Resource, Sync}
+import cats.effect.{Async, Resource, Sync}
 import cats.implicits._
 
 import fs2.io.udp.{Packet, Socket}
@@ -32,14 +32,14 @@ sealed trait DTLSSocket[F[_]] extends Socket[F] {
 
 object DTLSSocket {
 
-  private[tls] def apply[F[_]: Concurrent](
+  private[tls] def apply[F[_]: Async](
       socket: Socket[F],
       remoteAddress: InetSocketAddress,
       engine: TLSEngine[F]
   ): Resource[F, DTLSSocket[F]] =
     Resource.make(mk(socket, remoteAddress, engine))(_.close)
 
-  private def mk[F[_]: Concurrent](
+  private def mk[F[_]: Async](
       socket: Socket[F],
       remoteAddress: InetSocketAddress,
       engine: TLSEngine[F]
