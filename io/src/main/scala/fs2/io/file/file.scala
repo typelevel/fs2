@@ -6,12 +6,11 @@ import java.nio.file._
 import java.nio.file.attribute.{BasicFileAttributes, FileAttribute, PosixFilePermission}
 import java.util.stream.{Stream => JStream}
 
-import cats.effect.{Async, ConcurrentThrow, Resource, Sync, TemporalThrow}
+import cats.effect.{Async, Resource, Sync, TemporalThrow}
 import cats.implicits._
 import fs2.io.CollectionCompat._
 
 import scala.concurrent.duration._
-import fs2.concurrent.SignallingRef
 
 /** Provides support for working with files. */
 package object file {

@@ -540,8 +540,8 @@ object Resource extends ResourceInstances {
   }
 
   trait Bracket0 {
-    implicit def catsEffectResourceBracketForSync[F[_]](implicit
-        F: Sync[F]
+    implicit def catsEffectResourceBracketForSyncEffect[F[_]](implicit
+        F: SyncEffect[F]
     ): Bracket[F] =
       new Bracket[F] {
         def bracketCase[A, B](

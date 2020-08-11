@@ -133,7 +133,7 @@ object Watcher {
   }
 
   /** Creates a watcher for the default file system. */
-  def default[F[_]](implicit F: Async[F], mkSignallingRef: SignallingRef.Mk[F]): Resource[F, Watcher[F]] =
+  def default[F[_]](implicit F: Async[F]): Resource[F, Watcher[F]] =
     Resource
       .liftF(F.blocking(FileSystems.getDefault))
       .flatMap(fromFileSystem(_))

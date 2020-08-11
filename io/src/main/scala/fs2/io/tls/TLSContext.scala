@@ -206,7 +206,7 @@ object TLSContext {
     Sync[F].blocking(SSLContext.getDefault).map(fromSSLContext(_))
 
   /** Creates a `TLSContext` from the specified key store file. */
-  def fromKeyStoreFile[F[_]: Sync](
+  def fromKeyStoreFile[F[_]: Async](
       file: Path,
       storePassword: Array[Char],
       keyPassword: Array[Char]
@@ -217,7 +217,7 @@ object TLSContext {
   }
 
   /** Creates a `TLSContext` from the specified class path resource. */
-  def fromKeyStoreResource[F[_]: Sync](
+  def fromKeyStoreResource[F[_]: Async](
       resource: String,
       storePassword: Array[Char],
       keyPassword: Array[Char]
@@ -227,7 +227,7 @@ object TLSContext {
     fromKeyStoreStream(stream, storePassword, keyPassword)
   }
 
-  private def fromKeyStoreStream[F[_]: Sync](
+  private def fromKeyStoreStream[F[_]: Async](
       stream: Resource[F, InputStream],
       storePassword: Array[Char],
       keyPassword: Array[Char]
