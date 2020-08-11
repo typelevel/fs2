@@ -237,10 +237,10 @@ object Pull extends PullLowPriority {
     * Lifts an Either[Throwable, A] to an effectful Pull[F, A, Unit].
     *
     * @example {{{
-    * scala> import cats.effect.IO, scala.util.Try
-    * scala> Pull.fromEither[IO](Right(42)).stream.compile.toList.unsafeRunSync()
+    * scala> import cats.effect.SyncIO, scala.util.Try
+    * scala> Pull.fromEither[SyncIO](Right(42)).stream.compile.toList.unsafeRunSync()
     * res0: List[Int] = List(42)
-    * scala> Try(Pull.fromEither[IO](Left(new RuntimeException)).stream.compile.toList.unsafeRunSync())
+    * scala> Try(Pull.fromEither[SyncIO](Left(new RuntimeException)).stream.compile.toList.unsafeRunSync())
     * res1: Try[List[INothing]] = Failure(java.lang.RuntimeException)
     * }}}
     */

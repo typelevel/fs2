@@ -2,7 +2,8 @@ package fs2
 
 import scala.concurrent.{ExecutionContext, Future}
 
-import cats.effect.{ContextShift, IO, Sync, SyncIO, Timer}
+import cats.effect.{IO, Sync, SyncIO}
+import cats.effect.unsafe.IORuntime
 import cats.implicits._
 import munit.{Location, ScalaCheckEffectSuite}
 import org.typelevel.discipline.Laws
@@ -16,12 +17,9 @@ abstract class Fs2Suite extends ScalaCheckEffectSuite with TestPlatform with Gen
 
   override def munitFlakyOK = true
 
-  val executionContext: ExecutionContext = ExecutionContext.global
-  implicit val timerIO: Timer[IO] = IO.timer(executionContext)
-  implicit val contextShiftIO: ContextShift[IO] =
-    IO.contextShift(executionContext)
+  implicit val ioRuntime: IORuntime = IORuntime.global
 
-  override def munitExecutionContext: ExecutionContext = executionContext
+  override def munitExecutionContext: ExecutionContext = ExecutionContext.global
 
   /** Provides various ways to make test assertions on an `F[A]`. */
   implicit class Asserting[F[_], A](private val self: F[A]) {
@@ -77,13 +75,12 @@ abstract class Fs2Suite extends ScalaCheckEffectSuite with TestPlatform with Gen
   override def munitValueTransforms: List[ValueTransform] =
     super.munitValueTransforms ++ List(munitIOTransform, munitSyncIOTransform)
 
-  // From https://github.com/scalameta/munit/pull/134
   private val munitIOTransform: ValueTransform =
     new ValueTransform("IO", { case e: IO[_] => e.unsafeToFuture() })
 
   private val munitSyncIOTransform: ValueTransform =
     new ValueTransform(
       "SyncIO",
-      { case e: SyncIO[_] => Future(e.unsafeRunSync())(executionContext) }
+      { case e: SyncIO[_] => Future(e.unsafeRunSync())(munitExecutionContext) }
     )
 }

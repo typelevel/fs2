@@ -160,7 +160,8 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     * Returns a stream of `O` values wrapped in `Right` until the first error, which is emitted wrapped in `Left`.
     *
     * @example {{{
-    * scala> (Stream(1,2,3) ++ Stream.raiseError[cats.effect.IO](new RuntimeException) ++ Stream(4,5,6)).attempt.compile.toList.unsafeRunSync()
+    * scala> import cats.effect.SyncIO
+    * scala> (Stream(1,2,3) ++ Stream.raiseError[SyncIO](new RuntimeException) ++ Stream(4,5,6)).attempt.compile.toList.unsafeRunSync()
     * res0: List[Either[Throwable,Int]] = List(Right(1), Right(2), Right(3), Left(java.lang.RuntimeException))
     * }}}
     *
@@ -248,14 +249,14 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     * Behaves like the identity function, but requests `n` elements at a time from the input.
     *
     * @example {{{
-    * scala> import cats.effect.IO
+    * scala> import cats.effect.SyncIO
     * scala> val buf = new scala.collection.mutable.ListBuffer[String]()
-    * scala> Stream.range(0, 100).covary[IO].
-    *      |   evalMap(i => IO { buf += s">$i"; i }).
+    * scala> Stream.range(0, 100).covary[SyncIO].
+    *      |   evalMap(i => SyncIO { buf += s">$i"; i }).
     *      |   buffer(4).
-    *      |   evalMap(i => IO { buf += s"<$i"; i }).
+    *      |   evalMap(i => SyncIO { buf += s"<$i"; i }).
     *      |   take(10).
-    *      |   compile.toVector.unsafeRunSync
+    *      |   compile.toVector.unsafeRunSync()
     * res0: Vector[Int] = Vector(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)
     * scala> buf.toList
     * res1: List[String] = List(>0, >1, >2, >3, <0, <1, <2, <3, >4, >5, >6, >7, <4, <5, <6, <7, >8, >9, >10, >11, <8, <9)
@@ -275,14 +276,14 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     * Behaves like the identity stream, but emits no output until the source is exhausted.
     *
     * @example {{{
-    * scala> import cats.effect.IO
+    * scala> import cats.effect.SyncIO
     * scala> val buf = new scala.collection.mutable.ListBuffer[String]()
-    * scala> Stream.range(0, 10).covary[IO].
-    *      |   evalMap(i => IO { buf += s">$i"; i }).
+    * scala> Stream.range(0, 10).covary[SyncIO].
+    *      |   evalMap(i => SyncIO { buf += s">$i"; i }).
     *      |   bufferAll.
-    *      |   evalMap(i => IO { buf += s"<$i"; i }).
+    *      |   evalMap(i => SyncIO { buf += s"<$i"; i }).
     *      |   take(4).
-    *      |   compile.toVector.unsafeRunSync
+    *      |   compile.toVector.unsafeRunSync()
     * res0: Vector[Int] = Vector(0, 1, 2, 3)
     * scala> buf.toList
     * res1: List[String] = List(>0, >1, >2, >3, >4, >5, >6, >7, >8, >9, <0, <1, <2, <3)
@@ -295,13 +296,13 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     * input in blocks that end whenever the predicate switches from true to false.
     *
     * @example {{{
-    * scala> import cats.effect.IO
+    * scala> import cats.effect.SyncIO
     * scala> val buf = new scala.collection.mutable.ListBuffer[String]()
-    * scala> Stream.range(0, 10).covary[IO].
-    *      |   evalMap(i => IO { buf += s">$i"; i }).
+    * scala> Stream.range(0, 10).covary[SyncIO].
+    *      |   evalMap(i => SyncIO { buf += s">$i"; i }).
     *      |   bufferBy(_ % 2 == 0).
-    *      |   evalMap(i => IO { buf += s"<$i"; i }).
-    *      |   compile.toVector.unsafeRunSync
+    *      |   evalMap(i => SyncIO { buf += s"<$i"; i }).
+    *      |   compile.toVector.unsafeRunSync()
     * res0: Vector[Int] = Vector(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)
     * scala> buf.toList
     * res1: List[String] = List(>0, >1, <0, <1, >2, >3, <2, <3, >4, >5, <4, <5, >6, >7, <6, <7, >8, >9, <8, <9)
@@ -517,9 +518,9 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     * Gets a projection of this stream that allows converting it to an `F[..]` in a number of ways.
     *
     * @example {{{
-    * scala> import cats.effect.IO
-    * scala> val prg: IO[Vector[Int]] = Stream.eval(IO(1)).append(Stream(2,3,4)).compile.toVector
-    * scala> prg.unsafeRunSync
+    * scala> import cats.effect.SyncIO
+    * scala> val prg: SyncIO[Vector[Int]] = Stream.eval(SyncIO(1)).append(Stream(2,3,4)).compile.toVector
+    * scala> prg.unsafeRunSync()
     * res2: Vector[Int] = Vector(1, 2, 3, 4)
     * }}}
     */
@@ -543,8 +544,7 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     * This method is equivalent to `this mergeHaltL that.drain`, just more efficient for `this` and `that` evaluation.
     *
     * @example {{{
-    * scala> import cats.effect.{ContextShift, IO}
-    * scala> implicit val cs: ContextShift[IO] = IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
+    * scala> import cats.effect.IO, cats.effect.unsafe.implicits.global
     * scala> val data: Stream[IO,Int] = Stream.range(1, 10).covary[IO]
     * scala> Stream.eval(fs2.concurrent.SignallingRef[IO,Int](0)).flatMap(s => Stream(s).concurrently(data.evalMap(s.set))).flatMap(_.discrete).takeWhile(_ < 9, true).compile.last.unsafeRunSync
     * res0: Option[Int] = Some(9)
@@ -644,9 +644,7 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     * There is no guarantee ta
     *
     * @example {{{
-    * scala> import scala.concurrent.duration._, cats.effect.{ContextShift, IO, Timer}
-    * scala> implicit val cs: ContextShift[IO] = IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
-    * scala> implicit val timer: Timer[IO] = IO.timer(scala.concurrent.ExecutionContext.Implicits.global)
+    * scala> import scala.concurrent.duration._, cats.effect.IO, cats.effect.unsafe.implicits.global
     * scala> val s = Stream(1, 2, 3) ++ Stream.sleep_[IO](500.millis) ++ Stream(4, 5) ++ Stream.sleep_[IO](10.millis) ++ Stream(6)
     * scala> val s2 = s.debounce(100.milliseconds)
     * scala> s2.compile.toVector.unsafeRunSync
@@ -865,8 +863,8 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     * while getting outputs from the opposite side of the merge.
     *
     * @example {{{
-    * scala> import cats.effect.IO
-    * scala> Stream.eval(IO(println("x"))).drain.compile.toVector.unsafeRunSync
+    * scala> import cats.effect.SyncIO
+    * scala> Stream.eval(SyncIO(println("x"))).drain.compile.toVector.unsafeRunSync()
     * res0: Vector[INothing] = Vector()
     * }}}
     */
@@ -994,12 +992,10 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     * Like `[[merge]]`, but tags each output with the branch it came from.
     *
     * @example {{{
-    * scala> import scala.concurrent.duration._, cats.effect.{ContextShift, IO, Timer}
-    * scala> implicit val cs: ContextShift[IO] = IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
-    * scala> implicit val timer: Timer[IO] = IO.timer(scala.concurrent.ExecutionContext.Implicits.global)
+    * scala> import scala.concurrent.duration._, cats.effect.IO, cats.effect.unsafe.implicits.global
     * scala> val s1 = Stream.awakeEvery[IO](1000.millis).scan(0)((acc, _) => acc + 1)
     * scala> val s = s1.either(Stream.sleep_[IO](500.millis) ++ s1).take(10)
-    * scala> s.take(10).compile.toVector.unsafeRunSync
+    * scala> s.take(10).compile.toVector.unsafeRunSync()
     * res0: Vector[Either[Int,Int]] = Vector(Left(0), Right(0), Left(1), Right(1), Left(2), Right(2), Left(3), Right(3), Left(4), Right(4))
     * }}}
     */
@@ -1012,8 +1008,8 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     * Alias for `flatMap(o => Stream.eval(f(o)))`.
     *
     * @example {{{
-    * scala> import cats.effect.IO
-    * scala> Stream(1,2,3,4).evalMap(i => IO(println(i))).compile.drain.unsafeRunSync
+    * scala> import cats.effect.SyncIO
+    * scala> Stream(1,2,3,4).evalMap(i => SyncIO(println(i))).compile.drain.unsafeRunSync()
     * res0: Unit = ()
     * }}}
     *
@@ -1029,14 +1025,14 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     *
     * For instance, `evalMap` would only print twice in the follow example (note the `take(2)`):
     * @example {{{
-    * scala> import cats.effect.IO
-    * scala> Stream(1,2,3,4).evalMap(i => IO(println(i))).take(2).compile.drain.unsafeRunSync
+    * scala> import cats.effect.SyncIO
+    * scala> Stream(1,2,3,4).evalMap(i => SyncIO(println(i))).take(2).compile.drain.unsafeRunSync()
     * res0: Unit = ()
     * }}}
     *
     * But with `evalMapChunk`, it will print 4 times:
     * @example {{{
-    * scala> Stream(1,2,3,4).evalMapChunk(i => IO(println(i))).take(2).compile.drain.unsafeRunSync
+    * scala> Stream(1,2,3,4).evalMapChunk(i => SyncIO(println(i))).take(2).compile.drain.unsafeRunSync()
     * res0: Unit = ()
     * }}}
     */
@@ -1047,8 +1043,8 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     * Like `[[Stream#mapAccumulate]]`, but accepts a function returning an `F[_]`.
     *
     * @example {{{
-    * scala> import cats.effect.IO
-    * scala> Stream(1,2,3,4).covary[IO].evalMapAccumulate(0)((acc,i) => IO((i, acc + i))).compile.toVector.unsafeRunSync
+    * scala> import cats.effect.SyncIO
+    * scala> Stream(1,2,3,4).covary[SyncIO].evalMapAccumulate(0)((acc,i) => SyncIO((i, acc + i))).compile.toVector.unsafeRunSync()
     * res0: Vector[(Int, Int)] = Vector((1,1), (2,3), (3,5), (4,7))
     * }}}
     */
@@ -1073,9 +1069,8 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     * application of the effectful function `f`.
     *
     * @example {{{
-    * scala> import cats.effect.IO
-    * scala> import cats.implicits._
-    * scala> Stream(1, 2, 3, 4, 5).evalMapFilter(n => IO((n * 2).some.filter(_ % 4 == 0))).compile.toList.unsafeRunSync
+    * scala> import cats.effect.SyncIO, cats.implicits._
+    * scala> Stream(1, 2, 3, 4, 5).evalMapFilter(n => SyncIO((n * 2).some.filter(_ % 4 == 0))).compile.toList.unsafeRunSync()
     * res0: List[Int] = List(4, 8)
     * }}}
     */
@@ -1086,8 +1081,8 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     * Like `[[Stream#scan]]`, but accepts a function returning an `F[_]`.
     *
     * @example {{{
-    * scala> import cats.effect.IO
-    * scala> Stream(1,2,3,4).covary[IO].evalScan(0)((acc,i) => IO(acc + i)).compile.toVector.unsafeRunSync
+    * scala> import cats.effect.SyncIO
+    * scala> Stream(1,2,3,4).covary[SyncIO].evalScan(0)((acc,i) => SyncIO(acc + i)).compile.toVector.unsafeRunSync()
     * res0: Vector[Int] = Vector(0, 1, 3, 6, 10)
     * }}}
     */
@@ -1550,7 +1545,8 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     * If `this` terminates with `Stream.raiseError(e)`, invoke `h(e)`.
     *
     * @example {{{
-    * scala> Stream(1, 2, 3).append(Stream.raiseError[cats.effect.IO](new RuntimeException)).handleErrorWith(_ => Stream(0)).compile.toList.unsafeRunSync()
+    * scala> import cats.effect.SyncIO
+    * scala> Stream(1, 2, 3).append(Stream.raiseError[SyncIO](new RuntimeException)).handleErrorWith(_ => Stream(0)).compile.toList.unsafeRunSync()
     * res0: List[Int] = List(1, 2, 3, 0)
     * }}}
     */
@@ -1775,9 +1771,6 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
 
   /**
     * Writes this stream of strings to the supplied `PrintStream`.
-    *
-    * Note: printing to the `PrintStream` is performed *synchronously*.
-    * Use `linesAsync(out)` if synchronous writes are a concern.
     */
   def lines[F2[x] >: F[x]](
       out: PrintStream
@@ -1850,7 +1843,8 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     * Behaves like the identity function but halts the stream on an error and does not return the error.
     *
     * @example {{{
-    * scala> (Stream(1,2,3) ++ Stream.raiseError[cats.effect.IO](new RuntimeException) ++ Stream(4, 5, 6)).mask.compile.toList.unsafeRunSync()
+    * scala> import cats.effect.SyncIO
+    * scala> (Stream(1,2,3) ++ Stream.raiseError[SyncIO](new RuntimeException) ++ Stream(4, 5, 6)).mask.compile.toList.unsafeRunSync()
     * res0: List[Int] = List(1, 2, 3)
     * }}}
     */
@@ -1922,9 +1916,7 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     * this implementation is little more efficient
     *
     * @example {{{
-    * scala> import scala.concurrent.duration._, cats.effect.{ContextShift, IO, Timer}
-    * scala> implicit val cs: ContextShift[IO] = IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
-    * scala> implicit val timer: Timer[IO] = IO.timer(scala.concurrent.ExecutionContext.Implicits.global)
+    * scala> import scala.concurrent.duration._, cats.effect.IO, cats.effect.unsafe.implicits.global
     * scala> val s1 = Stream.awakeEvery[IO](500.millis).scan(0)((acc, _) => acc + 1)
     * scala> val s = s1.merge(Stream.sleep_[IO](250.millis) ++ s1)
     * scala> s.take(6).compile.toVector.unsafeRunSync
@@ -2101,8 +2093,7 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     * the original stream.
     *
     * @example {{{
-    * scala> import cats.effect.{ContextShift, IO}
-    * scala> implicit val cs: ContextShift[IO] = IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
+    * scala> import cats.effect.IO, cats.effect.unsafe.implicits.global
     * scala> Stream(1,2,3,4).covary[IO].parEvalMap(2)(i => IO(println(i))).compile.drain.unsafeRunSync
     * res0: Unit = ()
     * }}}
@@ -2143,8 +2134,7 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     * See [[Stream#parEvalMap]] if retaining the original order of the stream is required.
     *
     * @example {{{
-    * scala> import cats.effect.{ContextShift, IO}
-    * scala> implicit val cs: ContextShift[IO] = IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
+    * scala> import cats.effect.IO, cats.effect.unsafe.implicits.global
     * scala> Stream(1,2,3,4).covary[IO].parEvalMapUnordered(2)(i => IO(println(i))).compile.drain.unsafeRunSync
     * res0: Unit = ()
     * }}}
@@ -2360,7 +2350,8 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     * Preserves chunkiness.
     *
     * @example {{{
-    * scala> Stream(Right(1), Right(2), Left(new RuntimeException), Right(3)).rethrow[cats.effect.IO, Int].handleErrorWith(_ => Stream(-1)).compile.toList.unsafeRunSync
+    * scala> import cats.effect.SyncIO
+    * scala> Stream(Right(1), Right(2), Left(new RuntimeException), Right(3)).rethrow[SyncIO, Int].handleErrorWith(_ => Stream(-1)).compile.toList.unsafeRunSync()
     * res0: List[Int] = List(-1)
     * }}}
     */
@@ -2849,11 +2840,9 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     * Useful with timed streams, the example below will emit a number every 100 milliseconds.
     *
     * @example {{{
-    * scala> import scala.concurrent.duration._, cats.effect.{ContextShift, IO, Timer}
-    * scala> implicit val cs: ContextShift[IO] = IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
-    * scala> implicit val timer: Timer[IO] = IO.timer(scala.concurrent.ExecutionContext.Implicits.global)
-    * scala> val s = Stream.fixedDelay(100.millis) zipRight Stream.range(0, 5)
-    * scala> s.compile.toVector.unsafeRunSync
+    * scala> import scala.concurrent.duration._, cats.effect.IO, cats.effect.unsafe.implicits.global
+    * scala> val s = Stream.fixedDelay[IO](100.millis) zipRight Stream.range(0, 5)
+    * scala> s.compile.toVector.unsafeRunSync()
     * res0: Vector[Int] = Vector(0, 1, 2, 3, 4)
     * }}}
     */
@@ -2865,10 +2854,8 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     * Useful with timed streams, the example below will emit a number every 100 milliseconds.
     *
     * @example {{{
-    * scala> import scala.concurrent.duration._, cats.effect.{ContextShift, IO, Timer}
-    * scala> implicit val cs: ContextShift[IO] = IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
-    * scala> implicit val timer: Timer[IO] = IO.timer(scala.concurrent.ExecutionContext.Implicits.global)
-    * scala> val s = Stream.range(0, 5) zipLeft Stream.fixedDelay(100.millis)
+    * scala> import scala.concurrent.duration._, cats.effect.IO, cats.effect.unsafe.implicits.global
+    * scala> val s = Stream.range(0, 5) zipLeft Stream.fixedDelay[IO](100.millis)
     * scala> s.compile.toVector.unsafeRunSync
     * res0: Vector[Int] = Vector(0, 1, 2, 3, 4)
     * }}}
@@ -3015,10 +3002,10 @@ object Stream extends StreamLowPriority {
     * Use [[eval]] instead if a failure while evaluating the effect should fail the stream.
     *
     * @example {{{
-    * scala> import cats.effect.IO
-    * scala> Stream.attemptEval(IO(10)).compile.toVector.unsafeRunSync
+    * scala> import cats.effect.SyncIO
+    * scala> Stream.attemptEval(SyncIO(10)).compile.toVector.unsafeRunSync()
     * res0: Vector[Either[Throwable,Int]] = Vector(Right(10))
-    * scala> Stream.attemptEval(IO(throw new RuntimeException)).compile.toVector.unsafeRunSync
+    * scala> Stream.attemptEval(SyncIO(throw new RuntimeException)).compile.toVector.unsafeRunSync()
     * res1: Vector[Either[Throwable,Nothing]] = Vector(Left(java.lang.RuntimeException))
     * }}}
     */
@@ -3168,10 +3155,10 @@ object Stream extends StreamLowPriority {
     * Use [[attemptEval]] instead if a failure while evaluating the effect should be emitted as a value.
     *
     * @example {{{
-    * scala> import cats.effect.IO
-    * scala> Stream.eval(IO(10)).compile.toVector.unsafeRunSync
+    * scala> import cats.effect.SyncIO
+    * scala> Stream.eval(SyncIO(10)).compile.toVector.unsafeRunSync()
     * res0: Vector[Int] = Vector(10)
-    * scala> Stream.eval(IO(throw new RuntimeException)).covaryOutput[Int].compile.toVector.attempt.unsafeRunSync
+    * scala> Stream.eval(SyncIO(throw new RuntimeException)).covaryOutput[Int].compile.toVector.attempt.unsafeRunSync()
     * res1: Either[Throwable,Vector[Int]] = Left(java.lang.RuntimeException)
     * }}}
     */
@@ -3185,8 +3172,8 @@ object Stream extends StreamLowPriority {
     * Alias for `eval(fa).drain`.
     *
     * @example {{{
-    * scala> import cats.effect.IO
-    * scala> Stream.eval_(IO(println("Ran"))).covaryOutput[Int].compile.toVector.unsafeRunSync
+    * scala> import cats.effect.SyncIO
+    * scala> Stream.eval_(SyncIO(println("Ran"))).covaryOutput[Int].compile.toVector.unsafeRunSync()
     * res0: Vector[Int] = Vector()
     * }}}
     */
@@ -3263,10 +3250,10 @@ object Stream extends StreamLowPriority {
     * Lifts an Either[Throwable, A] to an effectful Stream.
     *
     * @example {{{
-    * scala> import cats.effect.IO, scala.util.Try
-    * scala> Stream.fromEither[IO](Right(42)).compile.toList.unsafeRunSync
+    * scala> import cats.effect.SyncIO, scala.util.Try
+    * scala> Stream.fromEither[SyncIO](Right(42)).compile.toList.unsafeRunSync()
     * res0: List[Int] = List(42)
-    * scala> Try(Stream.fromEither[IO](Left(new RuntimeException)).compile.toList.unsafeRunSync)
+    * scala> Try(Stream.fromEither[SyncIO](Left(new RuntimeException)).compile.toList.unsafeRunSync())
     * res1: Try[List[Nothing]] = Failure(java.lang.RuntimeException)
     * }}}
     */
@@ -3323,8 +3310,8 @@ object Stream extends StreamLowPriority {
     * Lifts an effect that generates a stream in to a stream. Alias for `eval(f).flatMap(_)`.
     *
     * @example {{{
-    * scala> import cats.effect.IO
-    * scala> Stream.force(IO(Stream(1,2,3).covary[IO])).compile.toVector.unsafeRunSync
+    * scala> import cats.effect.SyncIO
+    * scala> Stream.force(SyncIO(Stream(1,2,3).covary[SyncIO])).compile.toVector.unsafeRunSync()
     * res0: Vector[Int] = Vector(1, 2, 3)
     * }}}
     */
@@ -3355,8 +3342,8 @@ object Stream extends StreamLowPriority {
     * the next state. `start` is the first value emitted.
     *
     * @example {{{
-    * scala> import cats.effect.IO
-    * scala> Stream.iterateEval(0)(i => IO(i + 1)).take(10).compile.toVector.unsafeRunSync
+    * scala> import cats.effect.SyncIO
+    * scala> Stream.iterateEval(0)(i => SyncIO(i + 1)).take(10).compile.toVector.unsafeRunSync()
     * res0: Vector[Int] = Vector(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)
     * }}}
     */
@@ -3382,10 +3369,10 @@ object Stream extends StreamLowPriority {
     * The `F` type must be explicitly provided (e.g., via `raiseError[IO]` or `raiseError[Fallible]`).
     *
     * @example {{{
-    * scala> import cats.effect.IO
+    * scala> import cats.effect.SyncIO
     * scala> Stream.raiseError[Fallible](new RuntimeException).toList
     * res0: Either[Throwable,List[INothing]] = Left(java.lang.RuntimeException)
-    * scala> Stream.raiseError[IO](new RuntimeException).covaryOutput[Int].compile.drain.attempt.unsafeRunSync
+    * scala> Stream.raiseError[SyncIO](new RuntimeException).covaryOutput[Int].compile.drain.attempt.unsafeRunSync()
     * res0: Either[Throwable,Unit] = Left(java.lang.RuntimeException)
     * }}}
     */
@@ -3666,8 +3653,7 @@ object Stream extends StreamLowPriority {
       * Note that if your pipe can be represented by an `O => F[Unit]`, `evalTap` will provide much greater performance.
       *
       * @example {{{
-      * scala> import cats.effect.{ContextShift, IO}, cats.implicits._
-      * scala> implicit val cs: ContextShift[IO] = IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
+      * scala> import cats.effect.IO, cats.effect.unsafe.implicits.global, cats.implicits._
       * scala> Stream(1, 2, 3).covary[IO].observe(_.showLinesStdOut).map(_ + 1).compile.toVector.unsafeRunSync
       * res0: Vector[Int] = Vector(2, 3, 4)
       * }}}
@@ -4425,8 +4411,8 @@ object Stream extends StreamLowPriority {
       * Like [[fold]] but uses the implicitly available `Monoid[O]` to combine elements.
       *
       * @example {{{
-      * scala> import cats.implicits._, cats.effect.IO
-      * scala> Stream(1, 2, 3, 4, 5).covary[IO].compile.foldMonoid.unsafeRunSync
+      * scala> import cats.implicits._, cats.effect.SyncIO
+      * scala> Stream(1, 2, 3, 4, 5).covary[SyncIO].compile.foldMonoid.unsafeRunSync()
       * res0: Int = 15
       * }}}
       */
@@ -4438,10 +4424,10 @@ object Stream extends StreamLowPriority {
       * If the stream emits no elements, `None` is returned.
       *
       * @example {{{
-      * scala> import cats.implicits._, cats.effect.IO
-      * scala> Stream(1, 2, 3, 4, 5).covary[IO].compile.foldSemigroup.unsafeRunSync
+      * scala> import cats.implicits._, cats.effect.SyncIO
+      * scala> Stream(1, 2, 3, 4, 5).covary[SyncIO].compile.foldSemigroup.unsafeRunSync()
       * res0: Option[Int] = Some(15)
-      * scala> Stream.empty.covaryAll[IO, Int].compile.foldSemigroup.unsafeRunSync
+      * scala> Stream.empty.covaryAll[SyncIO, Int].compile.foldSemigroup.unsafeRunSync()
       * res1: Option[Int] = None
       * }}}
       */
@@ -4457,8 +4443,8 @@ object Stream extends StreamLowPriority {
       * compiles the stream down to the target effect type.
       *
       * @example {{{
-      * scala> import cats.effect.IO
-      * scala> Stream.range(0,100).take(5).covary[IO].compile.last.unsafeRunSync
+      * scala> import cats.effect.SyncIO
+      * scala> Stream.range(0,100).take(5).covary[SyncIO].compile.last.unsafeRunSync()
       * res0: Option[Int] = Some(4)
       * }}}
       */
@@ -4474,10 +4460,10 @@ object Stream extends StreamLowPriority {
       * compiles the stream down to the target effect type.
       *
       * @example {{{
-      * scala> import cats.effect.IO
-      * scala> Stream.range(0,100).take(5).covary[IO].compile.lastOrError.unsafeRunSync
+      * scala> import cats.effect.SyncIO
+      * scala> Stream.range(0,100).take(5).covary[SyncIO].compile.lastOrError.unsafeRunSync()
       * res0: Int = 4
-      * scala> Stream.empty.covaryAll[IO, Int].compile.lastOrError.attempt.unsafeRunSync
+      * scala> Stream.empty.covaryAll[SyncIO, Int].compile.lastOrError.attempt.unsafeRunSync()
       * res1: Either[Throwable, Int] = Left(java.util.NoSuchElementException)
       * }}}
       */
@@ -4606,15 +4592,15 @@ object Stream extends StreamLowPriority {
       * compiles the stream down to the target effect type.
       *
       * @example {{{
-      * scala> import cats.effect.IO
-      * scala> val s = Stream.range(0,100).take(5).covary[IO]
-      * scala> s.compile.to(List).unsafeRunSync
+      * scala> import cats.effect.SyncIO
+      * scala> val s = Stream.range(0,100).take(5).covary[SyncIO]
+      * scala> s.compile.to(List).unsafeRunSync()
       * res0: List[Int] = List(0, 1, 2, 3, 4)
-      * scala> s.compile.to(Chunk).unsafeRunSync
+      * scala> s.compile.to(Chunk).unsafeRunSync()
       * res1: Chunk[Int] = Chunk(0, 1, 2, 3, 4)
-      * scala> s.map(i => (i % 2, i)).compile.to(Map).unsafeRunSync
+      * scala> s.map(i => (i % 2, i)).compile.to(Map).unsafeRunSync()
       * res2: Map[Int, Int] = Map(0 -> 4, 1 -> 3)
-      * scala> s.map(_.toByte).compile.to(scodec.bits.ByteVector).unsafeRunSync
+      * scala> s.map(_.toByte).compile.to(scodec.bits.ByteVector).unsafeRunSync()
       * res3: scodec.bits.ByteVector = ByteVector(5 bytes, 0x0001020304)
       * }}}
       */
@@ -4629,8 +4615,8 @@ object Stream extends StreamLowPriority {
       * compiles the stream down to the target effect type.
       *
       * @example {{{
-      * scala> import cats.effect.IO
-      * scala> Stream.range(0,100).take(5).covary[IO].compile.toList.unsafeRunSync
+      * scala> import cats.effect.SyncIO
+      * scala> Stream.range(0,100).take(5).covary[SyncIO].compile.toList.unsafeRunSync()
       * res0: List[Int] = List(0, 1, 2, 3, 4)
       * }}}
       */
@@ -4644,8 +4630,8 @@ object Stream extends StreamLowPriority {
       * compiles the stream down to the target effect type.
       *
       * @example {{{
-      * scala> import cats.effect.IO
-      * scala> Stream.range(0,100).take(5).covary[IO].compile.toVector.unsafeRunSync
+      * scala> import cats.effect.SyncIO
+      * scala> Stream.range(0,100).take(5).covary[SyncIO].compile.toVector.unsafeRunSync()
       * res0: Vector[Int] = Vector(0, 1, 2, 3, 4)
       * }}}
       */

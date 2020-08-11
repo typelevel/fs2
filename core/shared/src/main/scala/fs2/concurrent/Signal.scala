@@ -150,6 +150,9 @@ object SignallingRef {
 
   type Mk[F[_]] = MkIn[F, F]
 
+  /** Alias for `of`. */
+  def apply[F[_], A](initial: A)(implicit mk: Mk[F]): F[SignallingRef[F, A]] = mk.refOf(initial)
+
   /**
     * Builds a `SignallingRef` for for effect `F`, initialized to the supplied value.
     */

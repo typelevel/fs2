@@ -3,13 +3,10 @@ package notfs2
 import fs2._
 
 import cats.{Applicative, Id}
-import cats.effect.{ContextShift, IO, Resource, Timer}
+import cats.effect.{IO, Resource}
+import cats.effect.unsafe.implicits.global
 
 object ThisModuleShouldCompile {
-  implicit val timerIO: Timer[IO] = IO.timer(scala.concurrent.ExecutionContext.Implicits.global)
-  implicit val contextShiftIO: ContextShift[IO] =
-    IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
-
   /* Some checks that `.pull` can be used without annotations */
   Stream(1, 2, 3, 4).through(_.take(2))
   Stream.eval(IO.pure(1)).through(_.take(2))
