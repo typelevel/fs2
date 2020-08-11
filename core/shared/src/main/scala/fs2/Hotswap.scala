@@ -84,7 +84,9 @@ object Hotswap {
     * Creates a new `Hotswap` initialized with the specified resource.
     * The `Hotswap` instance and the initial resource are returned.
     */
-  def apply[F[_]: ConcurrentThrow: Ref.Mk, R](initial: Resource[F, R]): Resource[F, (Hotswap[F, R], R)] =
+  def apply[F[_]: ConcurrentThrow: Ref.Mk, R](
+      initial: Resource[F, R]
+  ): Resource[F, (Hotswap[F, R], R)] =
     create[F, R].evalMap(p => p.swap(initial).map(r => (p, r)))
 
   /**
@@ -109,8 +111,9 @@ object Hotswap {
       new Hotswap[F, R] {
         override def swap(next: Resource[F, R]): F[R] =
           implicitly[ConcurrentThrow[F]].uncancelable { _ =>
-            next.allocated.flatMap { case (newValue, finalizer) =>
-              swapFinalizer(finalizer).as(newValue)
+            next.allocated.flatMap {
+              case (newValue, finalizer) =>
+                swapFinalizer(finalizer).as(newValue)
             }
           }
 
