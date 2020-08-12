@@ -159,7 +159,8 @@ object Watcher {
   def fromWatchService[F[_]](
       ws: WatchService
   )(implicit F: Async[F]): F[Watcher[F]] =
-    SignallingRef.of[F, Map[WatchKey, Registration[F]]](Map.empty)
+    SignallingRef
+      .of[F, Map[WatchKey, Registration[F]]](Map.empty)
       .map(new DefaultWatcher(ws, _))
 
   private class DefaultWatcher[F[_]](

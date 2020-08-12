@@ -52,11 +52,13 @@ private[io] object JavaInputOutputStream {
         .interruptWhen(dnState.discrete.map(_.isDone).filter(identity))
         .compile
         .drain
-        .guaranteeCase { (outcome: Outcome[F, Throwable, Unit]) => outcome match {
-          case Outcome.Completed(_) => markUpstreamDone(queue, upState, None)
-          case Outcome.Errored(t)  => markUpstreamDone(queue, upState, Some(t))
-          case Outcome.Canceled() => markUpstreamDone(queue, upState, None)
-        }}
+        .guaranteeCase { (outcome: Outcome[F, Throwable, Unit]) =>
+          outcome match {
+            case Outcome.Completed(_) => markUpstreamDone(queue, upState, None)
+            case Outcome.Errored(t)   => markUpstreamDone(queue, upState, Some(t))
+            case Outcome.Canceled()   => markUpstreamDone(queue, upState, None)
+          }
+        }
         .start
         .void
 

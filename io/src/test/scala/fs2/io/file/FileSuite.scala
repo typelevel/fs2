@@ -6,7 +6,7 @@ import java.nio.file.{Paths, StandardOpenOption}
 import java.nio.file.attribute.PosixFilePermissions
 
 import cats.effect.concurrent.Ref
-import cats.effect.{Blocker, IO}
+import cats.effect.IO
 import cats.implicits._
 import fs2.io.CollectionCompat._
 
@@ -16,13 +16,9 @@ class FileSuite extends BaseFileSuite {
   group("readAll") {
     test("retrieves whole content of a file") {
       assert(
-        Stream
-          .resource(Blocker[IO])
-          .flatMap { bec =>
-            tempFile
-              .flatTap(modify)
-              .flatMap(path => file.readAll[IO](path, bec, 4096))
-          }
+        tempFile
+          .flatTap(modify)
+          .flatMap(path => file.readAll[IO](path, 4096))
           .compile
           .toList
           .map(_.size)
@@ -34,13 +30,9 @@ class FileSuite extends BaseFileSuite {
   group("readRange") {
     test("reads half of a file") {
       assert(
-        Stream
-          .resource(Blocker[IO])
-          .flatMap { bec =>
-            tempFile
-              .flatTap(modify)
-              .flatMap(path => file.readRange[IO](path, bec, 4096, 0, 2))
-          }
+        tempFile
+          .flatTap(modify)
+          .flatMap(path => file.readRange[IO](path, 4096, 0, 2))
           .compile
           .toList
           .map(_.size)
@@ -50,13 +42,9 @@ class FileSuite extends BaseFileSuite {
 
     test("reads full file if end is bigger than file size") {
       assert(
-        Stream
-          .resource(Blocker[IO])
-          .flatMap { bec =>
-            tempFile
-              .flatTap(modify)
-              .flatMap(path => file.readRange[IO](path, bec, 4096, 0, 100))
-          }
+        tempFile
+          .flatTap(modify)
+          .flatMap(path => file.readRange[IO](path, 4096, 0, 100))
           .compile
           .toList
           .map(_.size)
@@ -68,18 +56,14 @@ class FileSuite extends BaseFileSuite {
   group("writeAll") {
     test("simple write") {
       assert(
-        Stream
-          .resource(Blocker[IO])
-          .flatMap { bec =>
-            tempFile
-              .flatMap(path =>
-                Stream("Hello", " world!")
-                  .covary[IO]
-                  .through(text.utf8Encode)
-                  .through(file.writeAll[IO](path, bec))
-                  .drain ++ file.readAll[IO](path, bec, 4096).through(text.utf8Decode)
-              )
-          }
+        tempFile
+          .flatMap(path =>
+            Stream("Hello", " world!")
+              .covary[IO]
+              .through(text.utf8Encode)
+              .through(file.writeAll[IO](path))
+              .drain ++ file.readAll[IO](path, 4096).through(text.utf8Decode)
+          )
           .compile
           .foldMonoid
           .unsafeRunSync() == "Hello world!"
@@ -88,19 +72,15 @@ class FileSuite extends BaseFileSuite {
 
     test("append") {
       assert(
-        Stream
-          .resource(Blocker[IO])
-          .flatMap { bec =>
-            tempFile
-              .flatMap { path =>
-                val src = Stream("Hello", " world!").covary[IO].through(text.utf8Encode)
+        tempFile
+          .flatMap { path =>
+            val src = Stream("Hello", " world!").covary[IO].through(text.utf8Encode)
 
-                src.through(file.writeAll[IO](path, bec)).drain ++
-                  src
-                    .through(file.writeAll[IO](path, bec, List(StandardOpenOption.APPEND)))
-                    .drain ++
-                  file.readAll[IO](path, bec, 4096).through(text.utf8Decode)
-              }
+            src.through(file.writeAll[IO](path)).drain ++
+              src
+                .through(file.writeAll[IO](path, List(StandardOpenOption.APPEND)))
+                .drain ++
+              file.readAll[IO](path, 4096).through(text.utf8Decode)
           }
           .compile
           .foldMonoid
@@ -112,15 +92,11 @@ class FileSuite extends BaseFileSuite {
   group("tail") {
     test("keeps reading a file as it is appended") {
       assert(
-        Stream
-          .resource(Blocker[IO])
-          .flatMap { blocker =>
-            tempFile
-              .flatMap { path =>
-                file
-                  .tail[IO](path, blocker, 4096, pollDelay = 25.millis)
-                  .concurrently(modifyLater(path, blocker))
-              }
+        tempFile
+          .flatMap { path =>
+            file
+              .tail[IO](path, 4096, pollDelay = 25.millis)
+              .concurrently(modifyLater(path))
           }
           .take(4)
           .compile
@@ -133,12 +109,14 @@ class FileSuite extends BaseFileSuite {
 
   group("exists") {
     test("returns false on a non existent file") {
-      assert(Blocker[IO].use(b => file.exists[IO](b, Paths.get("nothing"))).unsafeRunSync == false)
+      assert(file.exists[IO](Paths.get("nothing")).unsafeRunSync == false)
     }
     test("returns true on an existing file") {
       assert(
-        Blocker[IO]
-          .use(b => tempFile.evalMap(file.exists[IO](b, _)).compile.fold(true)(_ && _))
+        tempFile
+          .evalMap(file.exists[IO](_))
+          .compile
+          .fold(true)(_ && _)
           .unsafeRunSync() == true
       )
     }
@@ -147,8 +125,8 @@ class FileSuite extends BaseFileSuite {
   group("permissions") {
     test("should fail for a non existent file") {
       assert(
-        Blocker[IO]
-          .use(b => file.permissions[IO](b, Paths.get("nothing")))
+        file
+          .permissions[IO](Paths.get("nothing"))
           .attempt
           .unsafeRunSync()
           .isLeft == true
@@ -156,13 +134,10 @@ class FileSuite extends BaseFileSuite {
     }
     test("should return permissions for existing file") {
       val permissions = PosixFilePermissions.fromString("rwxrwxr-x").asScala
-      Blocker[IO]
-        .use { b =>
-          tempFile
-            .evalMap(p => file.setPermissions[IO](b, p, permissions) >> file.permissions[IO](b, p))
-            .compile
-            .lastOrError
-        }
+      tempFile
+        .evalMap(p => file.setPermissions[IO](p, permissions) >> file.permissions[IO](p))
+        .compile
+        .lastOrError
         .map(it => assert(it == permissions))
     }
   }
@@ -170,8 +145,8 @@ class FileSuite extends BaseFileSuite {
   group("setPermissions") {
     test("should fail for a non existent file") {
       assert(
-        Blocker[IO]
-          .use(b => file.setPermissions[IO](b, Paths.get("nothing"), Set.empty))
+        file
+          .setPermissions[IO](Paths.get("nothing"), Set.empty)
           .attempt
           .unsafeRunSync()
           .isLeft == true
@@ -179,20 +154,18 @@ class FileSuite extends BaseFileSuite {
     }
     test("should correctly change file permissions for existing file") {
       val permissions = PosixFilePermissions.fromString("rwxrwxr-x").asScala
-      val (initial, updated) = Blocker[IO]
-        .use { b =>
-          tempFile
-            .evalMap { p =>
-              for {
-                initialPermissions <- file.permissions[IO](b, p)
-                _ <- file.setPermissions[IO](b, p, permissions)
-                updatedPermissions <- file.permissions[IO](b, p)
-              } yield (initialPermissions -> updatedPermissions)
-            }
-            .compile
-            .lastOrError
-        }
-        .unsafeRunSync()
+      val (initial, updated) =
+        tempFile
+          .evalMap { p =>
+            for {
+              initialPermissions <- file.permissions[IO](p)
+              _ <- file.setPermissions[IO](p, permissions)
+              updatedPermissions <- file.permissions[IO](p)
+            } yield (initialPermissions -> updatedPermissions)
+          }
+          .compile
+          .lastOrError
+          .unsafeRunSync()
 
       assert(initial != updated)
       assert(updated == permissions)
@@ -203,11 +176,10 @@ class FileSuite extends BaseFileSuite {
     test("returns a path to the new file") {
       assert(
         (for {
-          blocker <- Stream.resource(Blocker[IO])
           filePath <- tempFile
           tempDir <- tempDirectory
-          result <- Stream.eval(file.copy[IO](blocker, filePath, tempDir.resolve("newfile")))
-          exists <- Stream.eval(file.exists[IO](blocker, result))
+          result <- Stream.eval(file.copy[IO](filePath, tempDir.resolve("newfile")))
+          exists <- Stream.eval(file.exists[IO](result))
         } yield exists).compile.fold(true)(_ && _).unsafeRunSync() == true
       )
     }
@@ -217,11 +189,7 @@ class FileSuite extends BaseFileSuite {
     test("should result in non existent file") {
       assert(
         tempFile
-          .flatMap(path =>
-            Stream
-              .resource(Blocker[IO])
-              .evalMap(blocker => file.delete[IO](blocker, path) *> file.exists[IO](blocker, path))
-          )
+          .flatMap(path => Stream.eval(file.delete[IO](path) *> file.exists[IO](path)))
           .compile
           .fold(false)(_ || _)
           .unsafeRunSync() == false
@@ -232,8 +200,8 @@ class FileSuite extends BaseFileSuite {
   group("delete") {
     test("should fail on a non existent file") {
       assert(
-        Blocker[IO]
-          .use(blocker => file.delete[IO](blocker, Paths.get("nothing")))
+        file
+          .delete[IO](Paths.get("nothing"))
           .attempt
           .unsafeRunSync()
           .isLeft == true
@@ -245,12 +213,11 @@ class FileSuite extends BaseFileSuite {
     test("should remove a non-empty directory") {
       val testPath = Paths.get("a")
       Stream
-        .resource(Blocker[IO])
-        .evalMap { b =>
-          file.createDirectories[IO](b, testPath.resolve("b/c")) >>
-            file.deleteDirectoryRecursively[IO](b, testPath) >>
-            file.exists[IO](b, testPath)
-        }
+        .eval(
+          file.createDirectories[IO](testPath.resolve("b/c")) >>
+            file.deleteDirectoryRecursively[IO](testPath) >>
+            file.exists[IO](testPath)
+        )
         .compile
         .lastOrError
         .map(it => assert(!it))
@@ -261,11 +228,10 @@ class FileSuite extends BaseFileSuite {
     test("should result in the old path being deleted") {
       assert(
         (for {
-          blocker <- Stream.resource(Blocker[IO])
           filePath <- tempFile
           tempDir <- tempDirectory
-          _ <- Stream.eval(file.move[IO](blocker, filePath, tempDir.resolve("newfile")))
-          exists <- Stream.eval(file.exists[IO](blocker, filePath))
+          _ <- Stream.eval(file.move[IO](filePath, tempDir.resolve("newfile")))
+          exists <- Stream.eval(file.exists[IO](filePath))
         } yield exists).compile.fold(false)(_ || _).unsafeRunSync() == false
       )
     }
@@ -276,11 +242,7 @@ class FileSuite extends BaseFileSuite {
       assert(
         tempFile
           .flatTap(modify)
-          .flatMap(path =>
-            Stream
-              .resource(Blocker[IO])
-              .evalMap(blocker => file.size[IO](blocker, path))
-          )
+          .flatMap(path => Stream.eval(file.size[IO](path)))
           .compile
           .lastOrError
           .unsafeRunSync() == 4L
@@ -290,28 +252,21 @@ class FileSuite extends BaseFileSuite {
 
   group("tempFileStream") {
     test("should remove the file following stream closure") {
-      Blocker[IO]
-        .use { b =>
-          file
-            .tempFileStream[IO](b, Paths.get(""))
-            .evalMap(path => file.exists[IO](b, path).map(_ -> path))
-            .compile
-            .lastOrError
-            .flatMap {
-              case (existsBefore, path) => file.exists[IO](b, path).map(existsBefore -> _)
-            }
+      file
+        .tempFileStream[IO](Paths.get(""))
+        .evalMap(path => file.exists[IO](path).map(_ -> path))
+        .compile
+        .lastOrError
+        .flatMap {
+          case (existsBefore, path) => file.exists[IO](path).map(existsBefore -> _)
         }
         .map(it => assert(it == true -> false))
     }
 
     test("should not fail if the file is deleted before the stream completes") {
-      Stream
-        .resource(Blocker[IO])
-        .flatMap { b =>
-          file
-            .tempFileStream[IO](b, Paths.get(""))
-            .evalMap(path => file.delete[IO](b, path))
-        }
+      file
+        .tempFileStream[IO](Paths.get(""))
+        .evalMap(path => file.delete[IO](path))
         .compile
         .lastOrError
         .attempt
@@ -321,28 +276,21 @@ class FileSuite extends BaseFileSuite {
 
   group("tempDirectoryStream") {
     test("should remove the directory following stream closure") {
-      Blocker[IO]
-        .use { b =>
-          file
-            .tempDirectoryStream[IO](b, Paths.get(""))
-            .evalMap(path => file.exists[IO](b, path).map(_ -> path))
-            .compile
-            .lastOrError
-            .flatMap {
-              case (existsBefore, path) => file.exists[IO](b, path).map(existsBefore -> _)
-            }
+      file
+        .tempDirectoryStream[IO](Paths.get(""))
+        .evalMap(path => file.exists[IO](path).map(_ -> path))
+        .compile
+        .lastOrError
+        .flatMap {
+          case (existsBefore, path) => file.exists[IO](path).map(existsBefore -> _)
         }
         .map(it => assert(it == true -> false))
     }
 
     test("should not fail if the directory is deleted before the stream completes") {
-      Stream
-        .resource(Blocker[IO])
-        .flatMap { b =>
-          file
-            .tempDirectoryStream[IO](b, Paths.get(""))
-            .evalMap(path => file.delete[IO](b, path))
-        }
+      file
+        .tempDirectoryStream[IO](Paths.get(""))
+        .evalMap(path => file.delete[IO](path))
         .compile
         .lastOrError
         .attempt
@@ -354,14 +302,10 @@ class FileSuite extends BaseFileSuite {
     test("should return in an existing path") {
       assert(
         tempDirectory
-          .flatMap(path =>
-            Stream
-              .resource(Blocker[IO])
-              .evalMap(blocker =>
-                file
-                  .createDirectory[IO](blocker, path.resolve("temp"))
-                  .bracket(file.exists[IO](blocker, _))(file.deleteIfExists[IO](blocker, _).void)
-              )
+          .evalMap(path =>
+            file
+              .createDirectory[IO](path.resolve("temp"))
+              .bracket(file.exists[IO](_))(file.deleteIfExists[IO](_).void)
           )
           .compile
           .fold(true)(_ && _)
@@ -374,14 +318,10 @@ class FileSuite extends BaseFileSuite {
     test("should return in an existing path") {
       assert(
         tempDirectory
-          .flatMap(path =>
-            Stream
-              .resource(Blocker[IO])
-              .evalMap(blocker =>
-                file
-                  .createDirectories[IO](blocker, path.resolve("temp/inner"))
-                  .bracket(file.exists[IO](blocker, _))(file.deleteIfExists[IO](blocker, _).void)
-              )
+          .evalMap(path =>
+            file
+              .createDirectories[IO](path.resolve("temp/inner"))
+              .bracket(file.exists[IO](_))(file.deleteIfExists[IO](_).void)
           )
           .compile
           .fold(true)(_ && _)
@@ -393,12 +333,8 @@ class FileSuite extends BaseFileSuite {
   group("directoryStream") {
     test("returns an empty Stream on an empty directory") {
       assert(
-        Stream
-          .resource(Blocker[IO])
-          .flatMap { blocker =>
-            tempDirectory
-              .flatMap(path => file.directoryStream[IO](blocker, path))
-          }
+        tempDirectory
+          .flatMap(path => file.directoryStream[IO](path))
           .compile
           .toList
           .unsafeRunSync()
@@ -408,14 +344,10 @@ class FileSuite extends BaseFileSuite {
 
     test("returns all files in a directory correctly") {
       assert(
-        Stream
-          .resource(Blocker[IO])
-          .flatMap { blocker =>
-            tempFiles(10)
-              .flatMap { paths =>
-                val parent = paths.head.getParent
-                file.directoryStream[IO](blocker, parent).tupleRight(paths)
-              }
+        tempFiles(10)
+          .flatMap { paths =>
+            val parent = paths.head.getParent
+            file.directoryStream[IO](parent).tupleRight(paths)
           }
           .map { case (path, paths) => paths.exists(_.normalize == path.normalize) }
           .compile
@@ -428,13 +360,9 @@ class FileSuite extends BaseFileSuite {
   group("walk") {
     test("returns the only file in a directory correctly") {
       assert(
-        Stream
-          .resource(Blocker[IO])
-          .flatMap { blocker =>
-            tempFile
-              .flatMap { path =>
-                file.walk[IO](blocker, path.getParent).map(_.normalize == path.normalize)
-              }
+        tempFile
+          .flatMap { path =>
+            file.walk[IO](path.getParent).map(_.normalize == path.normalize)
           }
           .compile
           .toList
@@ -445,14 +373,10 @@ class FileSuite extends BaseFileSuite {
 
     test("returns all files in a directory correctly") {
       assert(
-        Stream
-          .resource(Blocker[IO])
-          .flatMap { blocker =>
-            tempFiles(10)
-              .flatMap { paths =>
-                val parent = paths.head.getParent
-                file.walk[IO](blocker, parent).tupleRight(parent :: paths)
-              }
+        tempFiles(10)
+          .flatMap { paths =>
+            val parent = paths.head.getParent
+            file.walk[IO](parent).tupleRight(parent :: paths)
           }
           .map { case (path, paths) => paths.exists(_.normalize == path.normalize) }
           .compile
@@ -463,12 +387,8 @@ class FileSuite extends BaseFileSuite {
 
     test("returns all files in a nested tree correctly") {
       assert(
-        Stream
-          .resource(Blocker[IO])
-          .flatMap { blocker =>
-            tempFilesHierarchy
-              .flatMap(topDir => file.walk[IO](blocker, topDir))
-          }
+        tempFilesHierarchy
+          .flatMap(topDir => file.walk[IO](topDir))
           .compile
           .toList
           .unsafeRunSync()
@@ -481,35 +401,32 @@ class FileSuite extends BaseFileSuite {
     val bufferSize = 100
     val totalBytes = 1000
     val rotateLimit = 150
-    Stream
-      .resource(Blocker[IO])
-      .flatMap { bec =>
-        tempDirectory.flatMap { dir =>
-          Stream.eval(Ref.of[IO, Int](0)).flatMap { counter =>
-            val path = counter.modify(i => (i + 1, i)).map(i => dir.resolve(i.toString))
-            val write = Stream(0x42.toByte).repeat
-              .buffer(bufferSize)
-              .take(totalBytes)
-              .through(file.writeRotate[IO](path, rotateLimit, bec))
-              .compile
-              .drain
-            val verify = file
-              .directoryStream[IO](bec, dir)
-              .compile
-              .toList
-              .flatMap { paths =>
-                paths
-                  .sortBy(_.toString)
-                  .traverse(p => file.size[IO](bec, p))
-              }
-              .map { sizes =>
-                assert(sizes.size == ((totalBytes + rotateLimit - 1) / rotateLimit))
-                assert(
-                  sizes.init.forall(_ == rotateLimit) && sizes.last == (totalBytes % rotateLimit)
-                )
-              }
-            Stream.eval(write *> verify)
-          }
+    tempDirectory
+      .flatMap { dir =>
+        Stream.eval(Ref.of[IO, Int](0)).flatMap { counter =>
+          val path = counter.modify(i => (i + 1, i)).map(i => dir.resolve(i.toString))
+          val write = Stream(0x42.toByte).repeat
+            .buffer(bufferSize)
+            .take(totalBytes)
+            .through(file.writeRotate[IO](path, rotateLimit))
+            .compile
+            .drain
+          val verify = file
+            .directoryStream[IO](dir)
+            .compile
+            .toList
+            .flatMap { paths =>
+              paths
+                .sortBy(_.toString)
+                .traverse(p => file.size[IO](p))
+            }
+            .map { sizes =>
+              assert(sizes.size == ((totalBytes + rotateLimit - 1) / rotateLimit))
+              assert(
+                sizes.init.forall(_ == rotateLimit) && sizes.last == (totalBytes % rotateLimit)
+              )
+            }
+          Stream.eval(write *> verify)
         }
       }
       .compile

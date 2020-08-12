@@ -42,7 +42,10 @@ class BracketSuite extends Fs2Suite {
   }
 
   group("bracket ++ bracket") {
-    def appendBracketTest[F[_]: Resource.Bracket: Ref.Mk, A](use1: Stream[F, A], use2: Stream[F, A]): F[Unit] =
+    def appendBracketTest[F[_]: Resource.Bracket: Ref.Mk, A](
+        use1: Stream[F, A],
+        use2: Stream[F, A]
+    ): F[Unit] =
       for {
         events <- Ref.of[F, Vector[BracketEvent]](Vector.empty)
         _ <-

@@ -189,7 +189,8 @@ object TLSContext {
 
   /** Creates a `TLSContext` which trusts all certificates. */
   def insecure[F[_]: Sync]: F[TLSContext] =
-    Sync[F].blocking {
+    Sync[F]
+      .blocking {
         val ctx = SSLContext.getInstance("TLS")
         val tm = new X509TrustManager {
           def checkClientTrusted(x: Array[X509Certificate], y: String): Unit = {}
@@ -233,7 +234,8 @@ object TLSContext {
       keyPassword: Array[Char]
   ): F[TLSContext] =
     stream.use { s =>
-      Sync[F].blocking {
+      Sync[F]
+        .blocking {
           val keyStore = KeyStore.getInstance(KeyStore.getDefaultType)
           keyStore.load(s, storePassword)
           keyStore
@@ -246,7 +248,8 @@ object TLSContext {
       keyStore: KeyStore,
       keyPassword: Array[Char]
   ): F[TLSContext] =
-    Sync[F].blocking {
+    Sync[F]
+      .blocking {
         val kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm)
         kmf.init(keyStore, keyPassword)
         val tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm)

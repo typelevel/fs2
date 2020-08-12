@@ -12,14 +12,14 @@ import java.net.{
 import java.nio.channels.InterruptedByTimeoutException
 import scala.concurrent.duration._
 
-import cats.effect.{Blocker, IO}
+import cats.effect.IO
 import cats.implicits._
 
 import CollectionCompat._
 
 class UdpSuite extends Fs2Suite {
   def mkSocketGroup: Stream[IO, SocketGroup] =
-    Stream.resource(Blocker[IO].flatMap(blocker => SocketGroup[IO](blocker)))
+    Stream.resource(SocketGroup[IO])
 
   group("udp") {
     test("echo one") {

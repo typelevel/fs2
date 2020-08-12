@@ -1,13 +1,7 @@
 package fs2
 
 import cats._
-import cats.effect.{
-  Async,
-  Effect,
-  Outcome,
-  Resource,
-  Sync
-}
+import cats.effect.{Async, Effect, Outcome, Resource, Sync}
 import cats.effect.implicits._
 import cats.effect.concurrent.Deferred
 import cats.effect.unsafe.IORuntime
@@ -56,8 +50,8 @@ package object io {
       closeAfterUse
     )
 
-  private def readBytesFromInputStream[F[_]](is: InputStream, buf: Array[Byte])(
-      implicit F: Sync[F]
+  private def readBytesFromInputStream[F[_]](is: InputStream, buf: Array[Byte])(implicit
+      F: Sync[F]
   ): F[Option[Chunk[Byte]]] =
     F.blocking(is.read(buf)).map { numBytes =>
       if (numBytes < 0) None
@@ -145,7 +139,7 @@ package object io {
           val write = f(os).guaranteeCase((outcome: Outcome[F, Throwable, Unit]) =>
             Sync[F].blocking(os.close()) *> err.complete(outcome match {
               case Outcome.Errored(t) => Some(t)
-              case _                 => None
+              case _                  => None
             })
           )
           val read = readInputStream(is.pure[F], chunkSize, closeAfterUse = false)

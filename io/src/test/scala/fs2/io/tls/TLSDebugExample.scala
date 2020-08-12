@@ -7,16 +7,15 @@ import javax.net.ssl.SNIHostName
 
 import fs2.io.tcp.SocketGroup
 
-import cats.effect.{Blocker, Concurrent, ContextShift, IO}
+import cats.effect.{Async, IO}
 import cats.implicits._
 
 object TLSDebug {
-  def debug[F[_]: Concurrent: ContextShift](
-      blocker: Blocker,
+  def debug[F[_]: Async](
       tlsContext: TLSContext,
       address: InetSocketAddress
   ): F[String] =
-    SocketGroup[F](blocker).use { socketGroup =>
+    SocketGroup[F]().use { socketGroup =>
       socketGroup.client[F](address).use { rawSocket =>
         tlsContext
           .client(
@@ -39,12 +38,10 @@ object TLSDebug {
 class TLSDebugTest extends Fs2Suite {
 
   def run(address: InetSocketAddress): IO[Unit] =
-    Blocker[IO].use { blocker =>
-      TLSContext.system[IO](blocker).flatMap { ctx =>
-        TLSDebug
-          .debug[IO](blocker, ctx, address)
-          .flatMap(l => IO(println(l)))
-      }
+    TLSContext.system[IO].flatMap { ctx =>
+      TLSDebug
+        .debug[IO](ctx, address)
+        .flatMap(l => IO(println(l)))
     }
 
   test("google")(run(new InetSocketAddress("google.com", 443)))

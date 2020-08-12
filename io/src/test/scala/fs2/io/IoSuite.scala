@@ -2,7 +2,8 @@ package fs2.io
 
 import java.io.{ByteArrayInputStream, InputStream, OutputStream}
 import java.util.concurrent.Executors
-import cats.effect.{Blocker, ContextShift, IO, Resource}
+import cats.effect.IO
+import cats.effect.unsafe.IORuntime
 import fs2.Fs2Suite
 import scala.concurrent.ExecutionContext
 import org.scalacheck.effect.PropF.forAllF
@@ -13,10 +14,8 @@ class IoSuite extends Fs2Suite {
       forAllF { (bytes: Array[Byte], chunkSize0: Int) =>
         val chunkSize = (chunkSize0 % 20).abs + 1
         val is: InputStream = new ByteArrayInputStream(bytes)
-        Blocker[IO].use { blocker =>
-          val stream = readInputStream(IO(is), chunkSize, blocker)
-          stream.compile.toVector.map(it => assertEquals(it, bytes.toVector))
-        }
+        val stream = readInputStream(IO(is), chunkSize)
+        stream.compile.toVector.map(it => assertEquals(it, bytes.toVector))
       }
     }
 
@@ -24,14 +23,12 @@ class IoSuite extends Fs2Suite {
       forAllF { (bytes: Array[Byte], chunkSize0: Int) =>
         val chunkSize = (chunkSize0 % 20).abs + 1
         val is: InputStream = new ByteArrayInputStream(bytes)
-        Blocker[IO].use { blocker =>
-          val stream = readInputStream(IO(is), chunkSize, blocker)
-          stream
-            .buffer(chunkSize * 2)
-            .compile
-            .toVector
-            .map(it => assertEquals(it, bytes.toVector))
-        }
+        val stream = readInputStream(IO(is), chunkSize)
+        stream
+          .buffer(chunkSize * 2)
+          .compile
+          .toVector
+          .map(it => assertEquals(it, bytes.toVector))
       }
     }
   }
@@ -40,25 +37,21 @@ class IoSuite extends Fs2Suite {
     test("writes data and terminates when `f` returns") {
       forAllF { (bytes: Array[Byte], chunkSize0: Int) =>
         val chunkSize = (chunkSize0 % 20).abs + 1
-        Blocker[IO].use { blocker =>
-          readOutputStream[IO](blocker, chunkSize)((os: OutputStream) =>
-            blocker.delay[IO, Unit](os.write(bytes))
-          ).compile
-            .to(Vector)
-            .map(it => assertEquals(it, bytes.toVector))
-        }
+        readOutputStream[IO](chunkSize)((os: OutputStream) =>
+          IO.blocking[Unit](os.write(bytes))
+        ).compile
+          .to(Vector)
+          .map(it => assertEquals(it, bytes.toVector))
       }
     }
 
     test("can be manually closed from inside `f`") {
       forAllF { (chunkSize0: Int) =>
         val chunkSize = (chunkSize0 % 20).abs + 1
-        Blocker[IO].use { blocker =>
-          readOutputStream[IO](blocker, chunkSize)((os: OutputStream) =>
-            IO(os.close()) *> IO.never
-          ).compile.toVector
-            .map(it => assert(it == Vector.empty))
-        }
+        readOutputStream[IO](chunkSize)((os: OutputStream) =>
+          IO(os.close()) *> IO.never
+        ).compile.toVector
+          .map(it => assert(it == Vector.empty))
       }
     }
 
@@ -66,20 +59,32 @@ class IoSuite extends Fs2Suite {
       forAllF { (chunkSize0: Int) =>
         val chunkSize = (chunkSize0 % 20).abs + 1
         val e = new Exception("boom")
-        Blocker[IO].use { blocker =>
-          readOutputStream[IO](blocker, chunkSize)((_: OutputStream) =>
-            IO.raiseError(e)
-          ).compile.toVector.attempt
-            .map(it => assert(it == Left(e)))
-        }
+        readOutputStream[IO](chunkSize)((_: OutputStream) =>
+          IO.raiseError(e)
+        ).compile.toVector.attempt
+          .map(it => assert(it == Left(e)))
       }
     }
 
     test("Doesn't deadlock with size-1 ContextShift thread pool") {
-      val pool = Resource
-        .make(IO(Executors.newFixedThreadPool(1)))(ec => IO(ec.shutdown()))
-        .map(ExecutionContext.fromExecutor)
-        .map(IO.contextShift)
+      implicit val ioRuntime: IORuntime = {
+        val compute = {
+          val pool = Executors.newFixedThreadPool(1)
+          (ExecutionContext.fromExecutor(pool), () => pool.shutdown())
+        }
+        val blocking = IORuntime.createDefaultBlockingExecutionContext()
+        val scheduler = IORuntime.createDefaultScheduler()
+        IORuntime(
+          compute._1,
+          blocking._1,
+          scheduler._1,
+          () => {
+            compute._2.apply()
+            blocking._2.apply()
+            scheduler._2.apply()
+          }
+        )
+      }
       def write(os: OutputStream): IO[Unit] =
         IO {
           os.write(1)
@@ -89,17 +94,12 @@ class IoSuite extends Fs2Suite {
           os.write(1)
           os.write(1)
         }
-      Blocker[IO].use { blocker =>
-        // Note: name `contextShiftIO` is important because it shadows the outer implicit, preventing ambiguity
-        pool
-          .use { implicit contextShiftIO: ContextShift[IO] =>
-            readOutputStream[IO](blocker, chunkSize = 1)(write)
-              .take(5)
-              .compile
-              .toVector
-          }
-          .map(it => assert(it.size == 5))
-      }
+      readOutputStream[IO](chunkSize = 1)(write)
+        .take(5)
+        .compile
+        .toVector
+        .map(it => assert(it.size == 5))
+        .unsafeRunSync()
     }
   }
 
@@ -108,10 +108,8 @@ class IoSuite extends Fs2Suite {
       forAllF { (bytes: Array[Byte], chunkSize0: Int) =>
         val chunkSize = (chunkSize0 % 20).abs + 1
         val is: InputStream = new ByteArrayInputStream(bytes)
-        Blocker[IO].use { blocker =>
-          val stream = unsafeReadInputStream(IO(is), chunkSize, blocker)
-          stream.compile.toVector.map(it => assertEquals(it, bytes.toVector))
-        }
+        val stream = unsafeReadInputStream(IO(is), chunkSize)
+        stream.compile.toVector.map(it => assertEquals(it, bytes.toVector))
       }
     }
   }

@@ -63,11 +63,10 @@ object WriteCursor {
       path: Path,
       flags: Seq[OpenOption] = List(StandardOpenOption.CREATE)
   ): Resource[F, WriteCursor[F]] =
-    FileHandle.fromPath(path, StandardOpenOption.WRITE :: flags.toList).flatMap {
-      fileHandle =>
-        val size = if (flags.contains(StandardOpenOption.APPEND)) fileHandle.size else 0L.pure[F]
-        val cursor = size.map(s => WriteCursor(fileHandle, s))
-        Resource.liftF(cursor)
+    FileHandle.fromPath(path, StandardOpenOption.WRITE :: flags.toList).flatMap { fileHandle =>
+      val size = if (flags.contains(StandardOpenOption.APPEND)) fileHandle.size else 0L.pure[F]
+      val cursor = size.map(s => WriteCursor(fileHandle, s))
+      Resource.liftF(cursor)
     }
 
   /**

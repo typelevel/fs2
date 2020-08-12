@@ -7,13 +7,13 @@ import scala.concurrent.duration._
 import java.net.InetSocketAddress
 import java.net.InetAddress
 
-import cats.effect.{Blocker, IO}
+import cats.effect.IO
 import cats.effect.concurrent.Deferred
 import cats.effect.Resource
 
 class SocketSuite extends Fs2Suite {
   def mkSocketGroup: Stream[IO, SocketGroup] =
-    Stream.resource(Blocker[IO].flatMap(blocker => SocketGroup[IO](blocker)))
+    Stream.resource(SocketGroup[IO]())
 
   val timeout = 30.seconds
 
