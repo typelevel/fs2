@@ -4,7 +4,9 @@ package reactivestreams
 
 import cats._
 import cats.effect._
+import cats.effect.implicits._
 import cats.effect.concurrent.{Deferred, Ref}
+import cats.effect.unsafe.IORuntime
 import cats.implicits._
 import org.reactivestreams._
 
@@ -15,28 +17,28 @@ import org.reactivestreams._
   *
   * @see [[https://github.com/reactive-streams/reactive-streams-jvm#2-subscriber-code]]
   */
-final class StreamSubscriber[F[_]: ConcurrentEffect, A](val sub: StreamSubscriber.FSM[F, A])
+final class StreamSubscriber[F[_]: Effect, A](val sub: StreamSubscriber.FSM[F, A])(implicit ioRuntime: IORuntime)
     extends Subscriber[A] {
 
   /** Called by an upstream reactivestreams system */
   def onSubscribe(s: Subscription): Unit = {
     nonNull(s)
-    sub.onSubscribe(s).unsafeRunAsync()
+    sub.onSubscribe(s).to[IO].unsafeRunAsync(_ => ())
   }
 
   /** Called by an upstream reactivestreams system */
   def onNext(a: A): Unit = {
     nonNull(a)
-    sub.onNext(a).unsafeRunAsync()
+    sub.onNext(a).to[IO].unsafeRunAsync(_ => ())
   }
 
   /** Called by an upstream reactivestreams system */
-  def onComplete(): Unit = sub.onComplete.unsafeRunAsync()
+  def onComplete(): Unit = sub.onComplete.to[IO].unsafeRunAsync(_ => ())
 
   /** Called by an upstream reactivestreams system */
   def onError(t: Throwable): Unit = {
     nonNull(t)
-    sub.onError(t).unsafeRunAsync()
+    sub.onError(t).to[IO].unsafeRunAsync(_ => ())
   }
 
   def stream(subscribe: F[Unit]): Stream[F, A] = sub.stream(subscribe)
@@ -45,7 +47,7 @@ final class StreamSubscriber[F[_]: ConcurrentEffect, A](val sub: StreamSubscribe
 }
 
 object StreamSubscriber {
-  def apply[F[_]: ConcurrentEffect, A]: F[StreamSubscriber[F, A]] =
+  def apply[F[_]: Effect, A](implicit ioRuntime: IORuntime): F[StreamSubscriber[F, A]] =
     fsm[F, A].map(new StreamSubscriber(_))
 
   /** A finite state machine describing the subscriber */
@@ -78,7 +80,7 @@ object StreamSubscriber {
         .unNoneTerminate
   }
 
-  private[reactivestreams] def fsm[F[_], A](implicit F: Concurrent[F]): F[FSM[F, A]] = {
+  private[reactivestreams] def fsm[F[_], A](implicit F: Async[F]): F[FSM[F, A]] = {
     type Out = Either[Throwable, Option[A]]
 
     sealed trait Input

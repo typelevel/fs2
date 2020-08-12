@@ -5,7 +5,7 @@ package reactivestreams
 import java.util.concurrent.atomic.AtomicInteger
 
 import cats.effect._
-import cats.implicits._
+import cats.effect.unsafe.implicits.global
 import org.reactivestreams._
 import org.reactivestreams.tck.SubscriberWhiteboxVerification.{
   SubscriberPuppet,
@@ -18,14 +18,11 @@ import org.reactivestreams.tck.{
 }
 import org.scalatestplus.testng.TestNGSuiteLike
 
-import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
 
 final class SubscriberWhiteboxSpec
     extends SubscriberWhiteboxVerification[Int](new TestEnvironment(1000L))
     with TestNGSuiteLike {
-  implicit val ctx: ContextShift[IO] =
-    IO.contextShift(ExecutionContext.global)
 
   private val counter = new AtomicInteger()
 
@@ -73,8 +70,6 @@ final class WhiteboxSubscriber[A](sub: StreamSubscriber[IO, A], probe: WhiteboxS
 final class SubscriberBlackboxSpec
     extends SubscriberBlackboxVerification[Int](new TestEnvironment(1000L))
     with TestNGSuiteLike {
-  val timer = IO.timer(ExecutionContext.global)
-  implicit val ctx: ContextShift[IO] = IO.contextShift(ExecutionContext.global)
 
   private val counter = new AtomicInteger()
 
@@ -82,7 +77,7 @@ final class SubscriberBlackboxSpec
 
   override def triggerRequest(s: Subscriber[_ >: Int]): Unit = {
     val req = s.asInstanceOf[StreamSubscriber[IO, Int]].sub.dequeue1
-    (Stream.eval(timer.sleep(100.milliseconds) >> req)).compile.drain.unsafeRunAsync(_ => ())
+    (Stream.eval(IO.sleep(100.milliseconds) >> req)).compile.drain.unsafeRunAsync(_ => ())
   }
 
   def createElement(i: Int): Int = counter.incrementAndGet()

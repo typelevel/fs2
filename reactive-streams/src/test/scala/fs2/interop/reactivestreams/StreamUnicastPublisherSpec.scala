@@ -3,6 +3,7 @@ package interop
 package reactivestreams
 
 import cats.effect._
+import cats.effect.unsafe.implicits.global
 import org.reactivestreams._
 import org.reactivestreams.tck.{PublisherVerification, TestEnvironment}
 import org.scalatestplus.testng._
@@ -22,8 +23,6 @@ final class FailedPublisher extends Publisher[Int] {
 final class StreamUnicastPublisherSpec
     extends PublisherVerification[Int](new TestEnvironment(1000L))
     with TestNGSuiteLike {
-  implicit val ctx: ContextShift[IO] =
-    IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
 
   def createPublisher(n: Long): StreamUnicastPublisher[IO, Int] = {
     val s =

@@ -4,6 +4,7 @@ package reactivestreams
 
 import cats.effect._
 import cats.effect.implicits._
+import cats.effect.unsafe.IORuntime
 import cats.implicits._
 import fs2._
 import fs2.concurrent.{Queue, SignallingRef}
@@ -21,7 +22,7 @@ private[reactivestreams] final class StreamSubscription[F[_], A](
     cancelled: SignallingRef[F, Boolean],
     sub: Subscriber[A],
     stream: Stream[F, A]
-)(implicit F: ConcurrentEffect[F])
+)(implicit F: Effect[F], ioRuntime: IORuntime)
     extends Subscription {
   import StreamSubscription._
 
@@ -66,7 +67,7 @@ private[reactivestreams] final class StreamSubscription[F[_], A](
   // See https://github.com/zainab-ali/fs2-reactive-streams/issues/29
   // and https://github.com/zainab-ali/fs2-reactive-streams/issues/46
   def cancel(): Unit =
-    cancelled.set(true).toIO.unsafeRunSync
+    cancelled.set(true).to[IO].unsafeRunSync
 
   def request(n: Long): Unit = {
     val request: F[Request] =
@@ -88,10 +89,10 @@ private[reactivestreams] object StreamSubscription {
   case object Infinite extends Request
   case class Finite(n: Long) extends Request
 
-  def apply[F[_]: ConcurrentEffect, A](
+  def apply[F[_]: Effect, A](
       sub: Subscriber[A],
       stream: Stream[F, A]
-  ): F[StreamSubscription[F, A]] =
+  )(implicit ioRuntime: IORuntime): F[StreamSubscription[F, A]] =
     SignallingRef(false).flatMap { cancelled =>
       Queue.unbounded[F, Request].map { requests =>
         new StreamSubscription(requests, cancelled, sub, stream)

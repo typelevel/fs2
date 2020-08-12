@@ -1,16 +1,16 @@
 package fs2.experimental.concurrent
 
-import cats.effect.Concurrent
+import cats.effect.Async
 import fs2.Chunk
 import fs2.internal.SizedQueue
 
 object Queue {
-  def forStrategy[F[_]: Concurrent, S, A](
+  def forStrategy[F[_]: Async, S, A](
       strategy: PubSub.Strategy[A, Chunk[A], S, Int]
   ): F[fs2.concurrent.Queue[F, A]] =
     fs2.concurrent.Queue.in[F].forStrategy(strategy)
 
-  private[fs2] def forStrategyNoneTerminated[F[_]: Concurrent, S, A](
+  private[fs2] def forStrategyNoneTerminated[F[_]: Async, S, A](
       strategy: PubSub.Strategy[Option[A], Option[Chunk[A]], S, Int]
   ): F[fs2.concurrent.NoneTerminatedQueue[F, A]] =
     fs2.concurrent.Queue.in[F].forStrategyNoneTerminated(strategy)

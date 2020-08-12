@@ -1,6 +1,6 @@
 package fs2.experimental.concurrent
 
-import cats.effect.Concurrent
+import cats.effect.Async
 import cats.syntax.all._
 import fs2._
 
@@ -13,7 +13,7 @@ trait PubSub[F[_], I, O, Selector]
     with concurrent.PubSub[F, I, O, Selector]
 
 object PubSub {
-  def apply[F[_]: Concurrent, I, O, QS, Selector](
+  def apply[F[_]: Async, I, O, QS, Selector](
       strategy: Strategy[I, O, QS, Selector]
   ): F[PubSub[F, I, O, Selector]] =
     fs2.concurrent.PubSub(strategy).map { self =>

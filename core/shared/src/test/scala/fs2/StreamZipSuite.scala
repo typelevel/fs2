@@ -1,8 +1,8 @@
 package fs2
 
-import scala.concurrent.duration._
+// import scala.concurrent.duration._
 
-import cats.effect.IO
+import cats.effect.{IO, SyncIO}
 // import cats.effect.laws.util.TestContext
 import cats.implicits._
 
@@ -13,8 +13,8 @@ class StreamZipSuite extends Fs2Suite {
 
   group("zip") {
     test("propagate error from closing the root scope") {
-      val s1 = Stream.bracket(IO(1))(_ => IO.unit)
-      val s2 = Stream.bracket(IO("a"))(_ => IO.raiseError(new Err))
+      val s1 = Stream.bracket(SyncIO(1))(_ => SyncIO.unit)
+      val s2 = Stream.bracket(SyncIO("a"))(_ => SyncIO.raiseError(new Err))
 
       val r1 = s1.zip(s2).compile.drain.attempt.unsafeRunSync()
       assert(r1.fold(identity, r => fail(s"expected left but got Right($r)")).isInstanceOf[Err])
