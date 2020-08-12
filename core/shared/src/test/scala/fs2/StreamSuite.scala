@@ -957,7 +957,7 @@ class StreamSuite extends Fs2Suite {
             r.start.flatMap(fiber => IO.sleep(200.millis) >> fiber.cancel >> stop.get)
           }
           p.timeout(2.seconds)
-            .map(it => assert(it == Outcome.Canceled))
+            .map(it => assert(it == Outcome.Canceled()))
         }
       }
     }

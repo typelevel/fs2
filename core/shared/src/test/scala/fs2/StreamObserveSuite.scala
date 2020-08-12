@@ -2,14 +2,14 @@ package fs2
 
 import scala.concurrent.duration._
 
-import cats.effect.{Concurrent, IO}
+import cats.effect.{Async, IO}
 import cats.effect.concurrent.Ref
 import cats.implicits._
 import org.scalacheck.effect.PropF.forAllF
 
 class StreamObserveSuite extends Fs2Suite {
   trait Observer {
-    def apply[F[_]: Concurrent, O](s: Stream[F, O])(observation: Pipe[F, O, Unit]): Stream[F, O]
+    def apply[F[_]: Async, O](s: Stream[F, O])(observation: Pipe[F, O, Unit]): Stream[F, O]
   }
 
   def observationTests(label: String, observer: Observer): Unit =
@@ -94,7 +94,7 @@ class StreamObserveSuite extends Fs2Suite {
   observationTests(
     "observe",
     new Observer {
-      def apply[F[_]: Concurrent, O](
+      def apply[F[_]: Async, O](
           s: Stream[F, O]
       )(observation: Pipe[F, O, Unit]): Stream[F, O] =
         s.observe(observation)
@@ -104,7 +104,7 @@ class StreamObserveSuite extends Fs2Suite {
   observationTests(
     "observeAsync",
     new Observer {
-      def apply[F[_]: Concurrent, O](
+      def apply[F[_]: Async, O](
           s: Stream[F, O]
       )(observation: Pipe[F, O, Unit]): Stream[F, O] =
         s.observeAsync(maxQueued = 10)(observation)

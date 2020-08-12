@@ -4,7 +4,7 @@ import scala.concurrent.duration._
 
 import cats.Applicative
 import cats.data.Chain
-import cats.effect.{IO, Resource, Sync, SyncIO}
+import cats.effect.{IO, Resource, SyncIO}
 import cats.effect.concurrent.Ref
 import cats.implicits._
 import org.scalacheck.effect.PropF.forAllF

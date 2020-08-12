@@ -123,12 +123,12 @@ class StreamParJoinSuite extends Fs2Suite {
   }
 
   group("hangs") {
-    val full = if (isJVM) Stream.constant(42) else Stream.constant(42).evalTap(_ => IO.shift)
-    val hang = Stream.repeatEval(IO.async[Unit](_ => ()))
+    val full = if (isJVM) Stream.constant(42) else Stream.constant(42).evalTap(_ => IO.cede)
+    val hang = Stream.repeatEval(IO.never[Unit])
     val hang2: Stream[IO, Nothing] = full.drain
     val hang3: Stream[IO, Nothing] =
       Stream
-        .repeatEval[IO, Unit](IO.async[Unit](cb => cb(Right(()))) >> IO.shift)
+        .repeatEval[IO, Unit](IO.async_[Unit](cb => cb(Right(()))) >> IO.cede)
         .drain
 
     test("1") {
