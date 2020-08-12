@@ -2,6 +2,7 @@ package fs2
 package benchmark
 
 import cats.effect.IO
+import cats.effect.unsafe.implicits.global
 import org.openjdk.jmh.annotations.{
   Benchmark,
   BenchmarkMode,
@@ -26,7 +27,7 @@ class StreamBenchmark {
       .covary[IO]
       .compile
       .last
-      .unsafeRunSync
+      .unsafeRunSync()
       .get
 
   @Benchmark
@@ -37,7 +38,7 @@ class StreamBenchmark {
       .covary[IO]
       .compile
       .last
-      .unsafeRunSync
+      .unsafeRunSync()
       .get
 
   @Benchmark
@@ -48,7 +49,7 @@ class StreamBenchmark {
       .covary[IO]
       .compile
       .last
-      .unsafeRunSync
+      .unsafeRunSync()
       .get
 
   @Benchmark
@@ -60,16 +61,16 @@ class StreamBenchmark {
       .covary[IO]
       .compile
       .last
-      .unsafeRunSync
+      .unsafeRunSync()
       .get
 
   @Benchmark
   def eval(): Unit =
-    Stream.repeatEval(IO(())).take(n).compile.last.unsafeRunSync.get
+    Stream.repeatEval(IO(())).take(n).compile.last.unsafeRunSync().get
 
   @Benchmark
   def toVector(): Vector[Int] =
-    Stream.emits(0 until n).covary[IO].compile.toVector.unsafeRunSync
+    Stream.emits(0 until n).covary[IO].compile.toVector.unsafeRunSync()
 
   @Benchmark @BenchmarkMode(Array(Mode.AverageTime)) @OutputTimeUnit(TimeUnit.NANOSECONDS)
   def emitsThenFlatMap(): Vector[Int] =
@@ -77,7 +78,7 @@ class StreamBenchmark {
 
   @Benchmark
   def sliding() =
-    Stream.emits(0 until 16384).sliding(n).covary[IO].compile.drain.unsafeRunSync
+    Stream.emits(0 until 16384).sliding(n).covary[IO].compile.drain.unsafeRunSync()
 
   @Benchmark
   def mapAccumulate() =
@@ -91,13 +92,13 @@ class StreamBenchmark {
       .covary[IO]
       .compile
       .drain
-      .unsafeRunSync
+      .unsafeRunSync()
 
   @Benchmark
   def evalMap() =
-    Stream.emits(0 until n).evalMap(x => IO(x * 5)).compile.drain.unsafeRunSync
+    Stream.emits(0 until n).evalMap(x => IO(x * 5)).compile.drain.unsafeRunSync()
 
   @Benchmark
   def evalMaps() =
-    Stream.emits(0 until n).evalMapChunk(x => IO(x * 5)).compile.drain.unsafeRunSync
+    Stream.emits(0 until n).evalMapChunk(x => IO(x * 5)).compile.drain.unsafeRunSync()
 }

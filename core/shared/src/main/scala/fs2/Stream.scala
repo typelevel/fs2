@@ -3943,7 +3943,7 @@ object Stream extends StreamLowPriority {
 
     /** Runs this pure stream and returns the emitted elements in a collection of the specified type. Note: this method is only available on pure streams. */
     def to(c: Collector[O]): c.Out =
-      self.covary[SyncIO].compile.to(c).unsafeRunSync
+      self.covary[SyncIO].compile.to(c).unsafeRunSync()
 
     /** Runs this pure stream and returns the emitted elements in a list. Note: this method is only available on pure streams. */
     def toList: List[O] = to(List)
@@ -3971,7 +3971,7 @@ object Stream extends StreamLowPriority {
 
     /** Runs this fallible stream and returns the emitted elements in a collection of the specified type. Note: this method is only available on fallible streams. */
     def to(c: Collector[O]): Either[Throwable, c.Out] =
-      lift[SyncIO].compile.to(c).attempt.unsafeRunSync
+      lift[SyncIO].compile.to(c).attempt.unsafeRunSync()
 
     /** Runs this fallible stream and returns the emitted elements in a list. Note: this method is only available on fallible streams. */
     def toList: Either[Throwable, List[O]] = to(List)
@@ -4357,7 +4357,7 @@ object Stream extends StreamLowPriority {
           s: Stream[Id, O],
           init: () => B
       )(foldChunk: (B, Chunk[O]) => B, finalize: B => C): C =
-        finalize(Compiler.compile(s.covaryId[SyncIO].underlying, init())(foldChunk).unsafeRunSync)
+        finalize(Compiler.compile(s.covaryId[SyncIO].underlying, init())(foldChunk).unsafeRunSync())
     }
   }
 
@@ -4371,7 +4371,7 @@ object Stream extends StreamLowPriority {
           Compiler
             .compile(s.lift[SyncIO].underlying, init())(foldChunk)
             .attempt
-            .unsafeRunSync
+            .unsafeRunSync()
             .map(finalize)
       }
   }
@@ -4401,7 +4401,7 @@ object Stream extends StreamLowPriority {
           s: Stream[Pure, O],
           init: () => B
       )(foldChunk: (B, Chunk[O]) => B, finalize: B => C): C =
-        finalize(Compiler.compile(s.covary[SyncIO].underlying, init())(foldChunk).unsafeRunSync)
+        finalize(Compiler.compile(s.covary[SyncIO].underlying, init())(foldChunk).unsafeRunSync())
     }
   }
 

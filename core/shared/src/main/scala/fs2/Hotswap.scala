@@ -2,7 +2,7 @@ package fs2
 
 import cats.ApplicativeError
 import cats.implicits._
-import cats.effect.{ConcurrentThrow, Resource}
+import cats.effect.{Concurrent, ConcurrentThrow, Resource}
 import cats.effect.concurrent.Ref
 import cats.effect.implicits._
 
@@ -110,8 +110,8 @@ object Hotswap {
     Resource.make(initialize)(finalize).map { state =>
       new Hotswap[F, R] {
         override def swap(next: Resource[F, R]): F[R] =
-          implicitly[ConcurrentThrow[F]].uncancelable { _ =>
-            next.allocated.flatMap {
+          Concurrent[F].uncancelable { _ =>
+            Concurrent[F].flatMap(next.allocated) {
               case (newValue, finalizer) =>
                 swapFinalizer(finalizer).as(newValue)
             }

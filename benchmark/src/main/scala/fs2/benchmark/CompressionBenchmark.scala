@@ -1,6 +1,7 @@
 package fs2.benchmark
 
 import cats.effect.IO
+import cats.effect.unsafe.implicits.global
 import org.openjdk.jmh.annotations.{Benchmark, Param, Scope, State}
 
 import scala.util.Random
@@ -52,7 +53,7 @@ class CompressionBenchmark {
       .through(pipe)
       .compile
       .last
-      .unsafeRunSync
+      .unsafeRunSync()
       .get
 
   private def lastThrough2(input: Array[Byte], pipe: Pipe[IO, Byte, GunzipResult[IO]]): Byte =
@@ -62,7 +63,7 @@ class CompressionBenchmark {
       .flatMap(_.content)
       .compile
       .last
-      .unsafeRunSync
+      .unsafeRunSync()
       .get
 
 }

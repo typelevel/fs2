@@ -2,6 +2,7 @@ package fs2
 package benchmark
 
 import cats.effect.IO
+import cats.effect.unsafe.implicits.global
 import org.openjdk.jmh.annotations.{Benchmark, Param, Scope, Setup, State}
 
 @State(Scope.Thread)
@@ -25,6 +26,6 @@ class TextBenchmark {
       .through(text.utf8Decode[IO])
       .compile
       .last
-      .unsafeRunSync
+      .unsafeRunSync()
       .get
 }
