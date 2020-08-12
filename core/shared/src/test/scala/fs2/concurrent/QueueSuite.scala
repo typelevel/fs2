@@ -172,13 +172,13 @@ class QueueSuite extends Fs2Suite {
           f <- q.peek1.start
           g <- q.peek1.start
           _ <- q.enqueue1(42)
-          x <- f.join
-          y <- g.join
+          x <- f.joinAndEmbedNever
+          y <- g.joinAndEmbedNever
         } yield List(x, y)
       )
       .compile
       .toList
-      .map(it => assert(it.flatten == List(42, 42)))
+      .map(it => assertEquals(it.flatten, List(42, 42)))
   }
 
   test("peek1 with dequeue1") {
@@ -188,7 +188,7 @@ class QueueSuite extends Fs2Suite {
           q <- InspectableQueue.unbounded[IO, Int]
           f <- q.peek1.product(q.dequeue1).start
           _ <- q.enqueue1(42)
-          x <- f.join
+          x <- f.joinAndEmbedNever
           g <- q.peek1.product(q.dequeue1).product(q.peek1.product(q.dequeue1)).start
           _ <- q.enqueue1(43)
           _ <- q.enqueue1(44)
@@ -198,7 +198,7 @@ class QueueSuite extends Fs2Suite {
       )
       .compile
       .toList
-      .map(it => assert(it.flatten == List((42, 42), (43, 43), (44, 44))))
+      .map(it => assertEquals(it.flatten, List((42, 42), (43, 43), (44, 44))))
   }
 
   test("peek1 bounded queue") {
@@ -210,14 +210,14 @@ class QueueSuite extends Fs2Suite {
           g <- q.peek1.start
           _ <- q.enqueue1(42)
           b <- q.offer1(43)
-          x <- f.join
-          y <- g.join
+          x <- f.joinAndEmbedNever
+          y <- g.joinAndEmbedNever
           z <- q.dequeue1
         } yield List(b, x, y, z)
       )
       .compile
       .toList
-      .map(it => assert(it.flatten == List(false, 42, 42, 42)))
+      .map(it => assertEquals(it.flatten, List[AnyVal](false, 42, 42, 42)))
   }
 
   test("peek1 circular buffer") {
@@ -228,14 +228,14 @@ class QueueSuite extends Fs2Suite {
           f <- q.peek1.start
           g <- q.peek1.start
           _ <- q.enqueue1(42)
-          x <- f.join
-          y <- g.join
+          x <- f.joinAndEmbedNever
+          y <- g.joinAndEmbedNever
           b <- q.offer1(43)
           z <- q.peek1
         } yield List(b, x, y, z)
       )
       .compile
       .toList
-      .map(it => assert(it.flatten == List(true, 42, 42, 43)))
+      .map(it => assertEquals(it.flatten, List[AnyVal](true, 42, 42, 43)))
   }
 }
