@@ -196,10 +196,10 @@ class StreamZipSuite extends Fs2Suite {
     test("parZip evaluates effects with bounded concurrency") {
       // various shenanigans to support TestContext in our current test setup
       val env: TestContext = TestContext()
-      implicit val contextShiftIO: ContextShift[IO] = env.contextShift[IO](IO.ioEffect)
+      implicit val munitContextShift: ContextShift[IO] = env.contextShift[IO](IO.ioEffect)
       implicit val ioConcurrentEffect: cats.effect.ConcurrentEffect[IO] =
-        IO.ioConcurrentEffect(contextShiftIO)
-      implicit val timerIO: Timer[IO] = env.timer[IO]
+        IO.ioConcurrentEffect(munitContextShift)
+      implicit val munitTimer: Timer[IO] = env.timer[IO]
 
       // track progress of the computation
       @volatile var lhs: Int = 0
@@ -239,7 +239,7 @@ class StreamZipSuite extends Fs2Suite {
       }
 
       env.tick(1.second)
-      result.map(r => assertEquals(r, snapshots.last._3))(executionContext)
+      result.map(r => assertEquals(r, snapshots.last._3))(munitExecutionContext)
     }
   }
 
