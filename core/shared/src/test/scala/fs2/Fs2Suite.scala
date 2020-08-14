@@ -8,7 +8,10 @@ import cats.implicits._
 import munit.{Location, ScalaCheckEffectSuite}
 import org.typelevel.discipline.Laws
 
-abstract class Fs2Suite extends ScalaCheckEffectSuite with TestPlatform with Generators {
+abstract class Fs2Suite
+    extends ScalaCheckEffectSuite
+    with TestPlatform
+    with Generators {
 
   override def scalaCheckTestParameters =
     super.scalaCheckTestParameters
@@ -19,7 +22,7 @@ abstract class Fs2Suite extends ScalaCheckEffectSuite with TestPlatform with Gen
 
   implicit val ioRuntime: IORuntime = IORuntime.global
 
-  override def munitExecutionContext: ExecutionContext = ExecutionContext.global
+  override val munitExecutionContext: ExecutionContext = ExecutionContext.global
 
   /** Provides various ways to make test assertions on an `F[A]`. */
   implicit class Asserting[F[_], A](private val self: F[A]) {
