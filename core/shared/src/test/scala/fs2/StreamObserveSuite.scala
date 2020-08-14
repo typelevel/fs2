@@ -5,6 +5,7 @@ import scala.concurrent.duration._
 import cats.effect.{Concurrent, IO}
 import cats.effect.concurrent.Ref
 import cats.implicits._
+import org.scalacheck.effect.PropF.forAllF
 
 class StreamObserveSuite extends Fs2Suite {
   trait Observer {
@@ -14,7 +15,7 @@ class StreamObserveSuite extends Fs2Suite {
   def observationTests(label: String, observer: Observer): Unit =
     group(label) {
       test("basic functionality") {
-        forAllAsync { (s: Stream[Pure, Int]) =>
+        forAllF { (s: Stream[Pure, Int]) =>
           Ref
             .of[IO, Int](0)
             .flatMap { sum =>
@@ -30,7 +31,7 @@ class StreamObserveSuite extends Fs2Suite {
       }
 
       test("handle errors from observing sink") {
-        forAllAsync { (s: Stream[Pure, Int]) =>
+        forAllF { (s: Stream[Pure, Int]) =>
           observer(s.covary[IO])(_ => Stream.raiseError[IO](new Err)).attempt.compile.toList
             .map { result =>
               assert(result.size == 1)
@@ -44,7 +45,7 @@ class StreamObserveSuite extends Fs2Suite {
       }
 
       test("propagate error from source") {
-        forAllAsync { (s: Stream[Pure, Int]) =>
+        forAllF { (s: Stream[Pure, Int]) =>
           observer(s.drain ++ Stream.raiseError[IO](new Err))(_.drain).attempt.compile.toList
             .map { result =>
               assert(result.size == 1)
@@ -59,12 +60,12 @@ class StreamObserveSuite extends Fs2Suite {
 
       group("handle finite observing sink") {
         test("1") {
-          forAllAsync { (s: Stream[Pure, Int]) =>
+          forAllF { (s: Stream[Pure, Int]) =>
             observer(s.covary[IO])(_ => Stream.empty).compile.toList.map(it => assert(it == Nil))
           }
         }
         test("2") {
-          forAllAsync { (s: Stream[Pure, Int]) =>
+          forAllF { (s: Stream[Pure, Int]) =>
             observer(Stream(1, 2) ++ s.covary[IO])(_.take(1).drain).compile.toList
               .map(it => assert(it == Nil))
           }
@@ -72,7 +73,7 @@ class StreamObserveSuite extends Fs2Suite {
       }
 
       test("handle multiple consecutive observations") {
-        forAllAsync { (s: Stream[Pure, Int]) =>
+        forAllF { (s: Stream[Pure, Int]) =>
           val expected = s.toList
           val sink: Pipe[IO, Int, INothing] = _.foreach(_ => IO.unit)
           observer(observer(s.covary[IO])(sink))(sink).compile.toList
@@ -81,7 +82,7 @@ class StreamObserveSuite extends Fs2Suite {
       }
 
       test("no hangs on failures") {
-        forAllAsync { (s: Stream[Pure, Int]) =>
+        forAllF { (s: Stream[Pure, Int]) =>
           val sink: Pipe[IO, Int, INothing] =
             in => spuriousFail(in.foreach(_ => IO.unit))
           val src: Stream[IO, Int] = spuriousFail(s.covary[IO])

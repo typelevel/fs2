@@ -5,11 +5,12 @@ import scala.concurrent.duration._
 import cats.effect.IO
 import cats.effect.concurrent.{Deferred, Ref}
 import cats.implicits._
+import org.scalacheck.effect.PropF.forAllF
 
 class StreamMergeSuite extends Fs2Suite {
   group("merge") {
     test("basic") {
-      forAllAsync { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
+      forAllF { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
         val expected = s1.toList.toSet ++ s2.toList.toSet
         s1.merge(s2.covary[IO])
           .compile
@@ -20,13 +21,13 @@ class StreamMergeSuite extends Fs2Suite {
 
     group("left/right identity") {
       test("1") {
-        forAllAsync { (s1: Stream[Pure, Int]) =>
+        forAllF { (s1: Stream[Pure, Int]) =>
           val expected = s1.toList
           s1.covary[IO].merge(Stream.empty).compile.toList.map(it => assert(it == expected))
         }
       }
       test("2") {
-        forAllAsync { (s1: Stream[Pure, Int]) =>
+        forAllF { (s1: Stream[Pure, Int]) =>
           val expected = s1.toList
           Stream.empty.merge(s1.covary[IO]).compile.toList.map(it => assert(it == expected))
         }
@@ -35,13 +36,13 @@ class StreamMergeSuite extends Fs2Suite {
 
     group("left/right failure") {
       test("1") {
-        forAllAsync { (s1: Stream[Pure, Int]) =>
+        forAllF { (s1: Stream[Pure, Int]) =>
           s1.covary[IO].merge(Stream.raiseError[IO](new Err)).compile.drain.assertThrows[Err]
         }
       }
 
       test("2 - never-ending flatMap, failure after emit") {
-        forAllAsync { (s1: Stream[Pure, Int]) =>
+        forAllF { (s1: Stream[Pure, Int]) =>
           s1.merge(Stream.raiseError[IO](new Err))
             .evalMap(_ => IO.never)
             .compile
@@ -52,7 +53,7 @@ class StreamMergeSuite extends Fs2Suite {
 
       if (isJVM)
         test("3 - constant flatMap, failure after emit") {
-          forAllAsync { (s1: Stream[Pure, Int]) =>
+          forAllF { (s1: Stream[Pure, Int]) =>
             s1.merge(Stream.raiseError[IO](new Err))
               .flatMap(_ => Stream.constant(true))
               .compile
@@ -63,7 +64,7 @@ class StreamMergeSuite extends Fs2Suite {
     }
 
     test("run finalizers of inner streams first") {
-      forAllAsync { (s: Stream[Pure, Int], leftBiased: Boolean) =>
+      forAllF { (s: Stream[Pure, Int], leftBiased: Boolean) =>
         // tests that finalizers of inner stream are always run before outer finalizer
         // also this will test that when the either side throws an exception in finalizer it is caught
         val err = new Err
@@ -156,7 +157,7 @@ class StreamMergeSuite extends Fs2Suite {
   }
 
   test("mergeHaltBoth") {
-    forAllAsync { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
+    forAllF { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
       val s1List = s1.toList
       val s2List = s2.toList
       s1.covary[IO].map(Left(_)).mergeHaltBoth(s2.map(Right(_))).compile.toList.map { result =>
@@ -169,7 +170,7 @@ class StreamMergeSuite extends Fs2Suite {
   }
 
   test("mergeHaltL") {
-    forAllAsync { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
+    forAllF { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
       val s1List = s1.toList
       s1.covary[IO].map(Left(_)).mergeHaltL(s2.map(Right(_))).compile.toList.map { result =>
         assert(result.collect { case Left(a) => a } == s1List)
@@ -178,7 +179,7 @@ class StreamMergeSuite extends Fs2Suite {
   }
 
   test("mergeHaltR") {
-    forAllAsync { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
+    forAllF { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
       val s2List = s2.toList
       s1.covary[IO].map(Left(_)).mergeHaltR(s2.map(Right(_))).compile.toList.map { result =>
         assert(result.collect { case Right(a) => a } == s2List)

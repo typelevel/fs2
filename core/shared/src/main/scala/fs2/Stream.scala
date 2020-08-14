@@ -6,7 +6,7 @@ import cats.effect.concurrent._
 import cats.effect.implicits._
 import cats.implicits.{catsSyntaxEither => _, _}
 import fs2.concurrent._
-import fs2.internal.{Resource => _, _}
+import fs2.internal._
 import java.io.PrintStream
 
 import scala.annotation.tailrec
@@ -683,6 +683,60 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     */
   def metered[F2[x] >: F[x]: Timer](rate: FiniteDuration): Stream[F2, O] =
     Stream.fixedRate[F2](rate).zipRight(this)
+
+  /**
+    * Logs the elements of this stream as they are pulled.
+    *
+    * By default, `toString` is called on each element and the result is printed
+    * to standard out. To change formatting, supply a value for the `formatter`
+    * param. To change the destination, supply a value for the `logger` param.
+    *
+    * This method does not change the chunk structure of the stream. To debug the
+    * chunk structure, see [[debugChunks]].
+    *
+    * Logging is not done in `F` because this operation is intended for debugging,
+    * including pure streams.
+    *
+    * @example {{{
+    * scala> Stream(1, 2).append(Stream(3, 4)).debug(o => s"a: $o").toList
+    * a: 1
+    * a: 2
+    * a: 3
+    * a: 4
+    * res0: List[Int] = List(1, 2, 3, 4)
+    * }}}
+    */
+  def debug(
+      formatter: O => String = (o: O @annotation.unchecked.uncheckedVariance) => o.toString,
+      logger: String => Unit = println(_)
+  ): Stream[F, O] =
+    map { o =>
+      logger(formatter(o))
+      o
+    }
+
+  /**
+    * Like [[debug]] but logs chunks as they are pulled instead of individual elements.
+    *
+    * @example {{{
+    * scala> Stream(1, 2, 3).append(Stream(4, 5, 6)).debugChunks(c => s"a: $c").buffer(2).debugChunks(c => s"b: $c").toList
+    * a: Chunk(1, 2, 3)
+    * b: Chunk(1, 2)
+    * a: Chunk(4, 5, 6)
+    * b: Chunk(3, 4)
+    * b: Chunk(5, 6)
+    * res0: List[Int] = List(1, 2, 3, 4, 5, 6)
+    * }}}
+    */
+  def debugChunks(
+      formatter: Chunk[O] => String = (os: Chunk[O] @annotation.unchecked.uncheckedVariance) =>
+        os.toString,
+      logger: String => Unit = println(_)
+  ): Stream[F, O] =
+    chunks.flatMap { os =>
+      logger(formatter(os))
+      Stream.chunk(os)
+    }
 
   /**
     * Returns a stream that when run, sleeps for duration `d` and then pulls from this stream.
@@ -1705,10 +1759,10 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     */
   def lines[F2[x] >: F[x]](
       out: PrintStream
-  )(implicit F: Sync[F2], ev: O <:< String): Stream[F2, Unit] = {
+  )(implicit F: Sync[F2], ev: O <:< String): Stream[F2, INothing] = {
     val _ = ev
     val src = this.asInstanceOf[Stream[F2, String]]
-    src.evalMap(str => F.delay(out.println(str)))
+    src.foreach(str => F.delay(out.println(str)))
   }
 
   /**
@@ -1720,10 +1774,10 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
   def linesAsync[F2[x] >: F[x]](
       out: PrintStream,
       blocker: Blocker
-  )(implicit F: Sync[F2], cs: ContextShift[F2], ev: O <:< String): Stream[F2, Unit] = {
+  )(implicit F: Sync[F2], cs: ContextShift[F2], ev: O <:< String): Stream[F2, INothing] = {
     val _ = ev
     val src = this.asInstanceOf[Stream[F2, String]]
-    src.evalMap(str => blocker.delay(out.println(str)))
+    src.foreach(str => blocker.delay(out.println(str)))
   }
 
   /**
@@ -1813,25 +1867,24 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
       f: O => Stream[F2, O2]
   )(implicit F2: Concurrent[F2]): Stream[F2, O2] =
     Stream.force(Semaphore[F2](1).flatMap { guard =>
-      Ref.of[F2, Option[Deferred[F2, Unit]]](None).map {
-        haltRef =>
-          def runInner(o: O, halt: Deferred[F2, Unit]): Stream[F2, O2] =
-            Stream.eval(guard.acquire) >> // guard inner to prevent parallel inner streams
-              f(o).interruptWhen(halt.get.attempt) ++ Stream.exec(guard.release)
+      Ref.of[F2, Option[Deferred[F2, Unit]]](None).map { haltRef =>
+        def runInner(o: O, halt: Deferred[F2, Unit]): Stream[F2, O2] =
+          Stream.eval(guard.acquire) >> // guard inner to prevent parallel inner streams
+            f(o).interruptWhen(halt.get.attempt) ++ Stream.exec(guard.release)
 
-          this
-            .evalMap { o =>
-              Deferred[F2, Unit].flatMap { halt =>
-                haltRef
-                  .getAndSet(halt.some)
-                  .flatMap {
-                    case None       => F2.unit
-                    case Some(last) => last.complete(()) // interrupt the previous one
-                  }
-                  .as(runInner(o, halt))
-              }
+        this
+          .evalMap { o =>
+            Deferred[F2, Unit].flatMap { halt =>
+              haltRef
+                .getAndSet(halt.some)
+                .flatMap {
+                  case None       => F2.unit
+                  case Some(last) => last.complete(()) // interrupt the previous one
+                }
+                .as(runInner(o, halt))
             }
-            .parJoin(2)
+          }
+          .parJoin(2)
       }
     })
 
@@ -2355,7 +2408,7 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     *
     * @example {{{
     * scala> def take[F[_],O](s: Stream[F,O], n: Int): Stream[F,O] =
-    *      |   s.scanChunksOpt(n) { n => if (n <= 0) None else Some(c => if (c.size < n) (n - c.size, c) else (0, c.take(n))) }
+    *      |   s.scanChunksOpt(n) { n => if (n <= 0) None else Some((c: Chunk[O]) => if (c.size < n) (n - c.size, c) else (0, c.take(n))) }
     * scala> take(Stream.range(0,100), 5).toList
     * res0: List[Int] = List(0, 1, 2, 3, 4)
     * }}}
@@ -2409,7 +2462,7 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     */
   def showLines[F2[x] >: F[x], O2 >: O](
       out: PrintStream
-  )(implicit F: Sync[F2], showO: Show[O2]): Stream[F2, Unit] =
+  )(implicit F: Sync[F2], showO: Show[O2]): Stream[F2, INothing] =
     covaryAll[F2, O2].map(_.show).lines(out)
 
   /**
@@ -2421,7 +2474,7 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
   def showLinesAsync[F2[x] >: F[x]: Sync: ContextShift, O2 >: O: Show](
       out: PrintStream,
       blocker: Blocker
-  ): Stream[F2, Unit] =
+  ): Stream[F2, INothing] =
     covaryAll[F2, O2].map(_.show).linesAsync(out, blocker)
 
   /**
@@ -2434,7 +2487,7 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
   def showLinesStdOut[F2[x] >: F[x], O2 >: O](implicit
       F: Sync[F2],
       showO: Show[O2]
-  ): Stream[F2, Unit] =
+  ): Stream[F2, INothing] =
     showLines[F2, O2](Console.out)
 
   /**
@@ -2445,7 +2498,7 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     */
   def showLinesStdOutAsync[F2[x] >: F[x]: Sync: ContextShift, O2 >: O: Show](
       blocker: Blocker
-  ): Stream[F2, Unit] =
+  ): Stream[F2, INothing] =
     showLinesAsync[F2, O2](Console.out, blocker)
 
   /**
@@ -2673,6 +2726,12 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
           }
       }
     }
+
+  /**
+    * Alias for [[filter]]
+    * Implemented to enable filtering in for comprehensions
+    */
+  def withFilter(f: O => Boolean) = this.filter(f)
 
   private type ZipWithCont[G[_], I, O2, R] =
     Either[(Chunk[I], Stream[G, I]), Stream[G, I]] => Pull[G, O2, Option[R]]
@@ -3610,59 +3669,6 @@ object Stream extends StreamLowPriority {
     def covary[F2[x] >: F[x]]: Stream[F2, O] = self
 
     /**
-      * Logs the elements of this stream as they are pulled.
-      *
-      * By default, `toString` is called on each element and the result is printed
-      * to standard out. To change formatting, supply a value for the `formatter`
-      * param. To change the destination, supply a value for the `logger` param.
-      *
-      * This method does not change the chunk structure of the stream. To debug the
-      * chunk structure, see [[debugChunks]].
-      *
-      * Logging is not done in `F` because this operation is intended for debugging,
-      * including pure streams.
-      *
-      * @example {{{
-      * scala> Stream(1, 2).append(Stream(3, 4)).debug(o => s"a: $o").toList
-      * a: 1
-      * a: 2
-      * a: 3
-      * a: 4
-      * res0: List[Int] = List(1, 2, 3, 4)
-      * }}}
-      */
-    def debug(
-        formatter: O => String = _.toString,
-        logger: String => Unit = println(_)
-    ): Stream[F, O] =
-      self.map { o =>
-        logger(formatter(o))
-        o
-      }
-
-    /**
-      * Like [[debug]] but logs chunks as they are pulled instead of individual elements.
-      *
-      * @example {{{
-      * scala> Stream(1, 2, 3).append(Stream(4, 5, 6)).debugChunks(c => s"a: $c").buffer(2).debugChunks(c => s"b: $c").toList
-      * a: Chunk(1, 2, 3)
-      * b: Chunk(1, 2)
-      * a: Chunk(4, 5, 6)
-      * b: Chunk(3, 4)
-      * b: Chunk(5, 6)
-      * res0: List[Int] = List(1, 2, 3, 4, 5, 6)
-      * }}}
-      */
-    def debugChunks(
-        formatter: Chunk[O] => String = _.toString,
-        logger: String => Unit = println(_)
-    ): Stream[F, O] =
-      self.chunks.flatMap { os =>
-        logger(formatter(os))
-        Stream.chunk(os)
-      }
-
-    /**
       * Synchronously sends values through `p`.
       *
       * If `p` fails, then resulting stream will fail. If `p` halts the evaluation will halt too.
@@ -3916,6 +3922,7 @@ object Stream extends StreamLowPriority {
     /** Lifts this stream to the specified effect type. */
     def covary[F[_]]: Stream[F, O] = self
 
+    /** Runs this pure stream and returns the emitted elements in a collection of the specified type. Note: this method is only available on pure streams. */
     def to(c: Collector[O]): c.Out =
       self.covary[SyncIO].compile.to(c).unsafeRunSync
 
@@ -3924,14 +3931,6 @@ object Stream extends StreamLowPriority {
 
     /** Runs this pure stream and returns the emitted elements in a vector. Note: this method is only available on pure streams. */
     def toVector: Vector[O] = to(Vector)
-  }
-
-  /** Provides `to` syntax for pure streams. */
-  implicit final class PureTo[O](private val self: Stream[Pure, O]) extends AnyVal {
-
-    /** Runs this pure stream and returns the emitted elements in a collection of the specified type. Note: this method is only available on pure streams. */
-    def to(c: Collector[O]): c.Out =
-      self.covary[SyncIO].compile.to(c).unsafeRunSync
   }
 
   /** Provides syntax for pure pipes based on `cats.Id`. */
@@ -3951,6 +3950,7 @@ object Stream extends StreamLowPriority {
       self.asInstanceOf[Stream[F, O]]
     }
 
+    /** Runs this fallible stream and returns the emitted elements in a collection of the specified type. Note: this method is only available on fallible streams. */
     def to(c: Collector[O]): Either[Throwable, c.Out] =
       lift[SyncIO].compile.to(c).attempt.unsafeRunSync
 
@@ -3959,14 +3959,6 @@ object Stream extends StreamLowPriority {
 
     /** Runs this fallible stream and returns the emitted elements in a vector. Note: this method is only available on fallible streams. */
     def toVector: Either[Throwable, Vector[O]] = to(Vector)
-  }
-
-  /** Provides `to` syntax for fallible streams. */
-  implicit final class FallibleTo[O](private val self: Stream[Fallible, O]) extends AnyVal {
-
-    /** Runs this fallible stream and returns the emitted elements in a collection of the specified type. Note: this method is only available on fallible streams. */
-    def to(c: Collector[O]): Either[Throwable, c.Out] =
-      self.lift[SyncIO].compile.to(c).attempt.unsafeRunSync
   }
 
   /** Projection of a `Stream` providing various ways to get a `Pull` from the `Stream`. */
@@ -4317,7 +4309,7 @@ object Stream extends StreamLowPriority {
     ): G[C]
   }
 
-  trait LowPrioCompiler {
+  private[Stream] trait LowPrioCompiler2 {
     implicit def resourceInstance[F[_]](implicit F: Sync[F]): Compiler[F, Resource[F, *]] =
       new Compiler[F, Resource[F, *]] {
         def apply[O, B, C](
@@ -4339,8 +4331,33 @@ object Stream extends StreamLowPriority {
       }
   }
 
+  private[Stream] trait LowPrioCompiler1 extends LowPrioCompiler2 {
+    implicit val idInstance: Compiler[Id, Id] = new Compiler[Id, Id] {
+      def apply[O, B, C](
+          s: Stream[Id, O],
+          init: () => B
+      )(foldChunk: (B, Chunk[O]) => B, finalize: B => C): C =
+        finalize(Compiler.compile(s.covaryId[SyncIO].underlying, init())(foldChunk).unsafeRunSync)
+    }
+  }
+
+  private[Stream] trait LowPrioCompiler extends LowPrioCompiler1 {
+    implicit val fallibleInstance: Compiler[Fallible, Either[Throwable, *]] =
+      new Compiler[Fallible, Either[Throwable, *]] {
+        def apply[O, B, C](
+            s: Stream[Fallible, O],
+            init: () => B
+        )(foldChunk: (B, Chunk[O]) => B, finalize: B => C): Either[Throwable, C] =
+          Compiler
+            .compile(s.lift[SyncIO].underlying, init())(foldChunk)
+            .attempt
+            .unsafeRunSync
+            .map(finalize)
+      }
+  }
+
   object Compiler extends LowPrioCompiler {
-    private def compile[F[_], O, B](stream: Pull[F, O, Unit], init: B)(
+    private[Stream] def compile[F[_], O, B](stream: Pull[F, O, Unit], init: B)(
         f: (B, Chunk[O]) => B
     )(implicit F: Sync[F]): F[B] =
       F.bracketCase(CompileScope.newRoot[F])(scope =>
@@ -4363,27 +4380,6 @@ object Stream extends StreamLowPriority {
       )(foldChunk: (B, Chunk[O]) => B, finalize: B => C): C =
         finalize(Compiler.compile(s.covary[SyncIO].underlying, init())(foldChunk).unsafeRunSync)
     }
-
-    implicit val idInstance: Compiler[Id, Id] = new Compiler[Id, Id] {
-      def apply[O, B, C](
-          s: Stream[Id, O],
-          init: () => B
-      )(foldChunk: (B, Chunk[O]) => B, finalize: B => C): C =
-        finalize(Compiler.compile(s.covaryId[SyncIO].underlying, init())(foldChunk).unsafeRunSync)
-    }
-
-    implicit val fallibleInstance: Compiler[Fallible, Either[Throwable, *]] =
-      new Compiler[Fallible, Either[Throwable, *]] {
-        def apply[O, B, C](
-            s: Stream[Fallible, O],
-            init: () => B
-        )(foldChunk: (B, Chunk[O]) => B, finalize: B => C): Either[Throwable, C] =
-          Compiler
-            .compile(s.lift[SyncIO].underlying, init())(foldChunk)
-            .attempt
-            .unsafeRunSync
-            .map(finalize)
-      }
   }
 
   /** Projection of a `Stream` providing various ways to compile a `Stream[F,O]` to a `G[...]`. */

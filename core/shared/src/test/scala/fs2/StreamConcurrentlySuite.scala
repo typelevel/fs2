@@ -5,11 +5,12 @@ import scala.concurrent.duration._
 import cats.effect.IO
 import cats.effect.concurrent.{Deferred, Ref, Semaphore}
 import cats.implicits._
+import org.scalacheck.effect.PropF.forAllF
 
 class StreamConcurrentlySuite extends Fs2Suite {
 
   test("when background stream terminates, overall stream continues") {
-    forAllAsync { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
+    forAllF { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
       val expected = s1.toList
       s1.delayBy[IO](25.millis)
         .concurrently(s2)
@@ -20,7 +21,7 @@ class StreamConcurrentlySuite extends Fs2Suite {
   }
 
   test("when background stream fails, overall stream fails") {
-    forAllAsync { (s: Stream[Pure, Int]) =>
+    forAllF { (s: Stream[Pure, Int]) =>
       s.delayBy[IO](25.millis)
         .concurrently(Stream.raiseError[IO](new Err))
         .compile
@@ -44,7 +45,7 @@ class StreamConcurrentlySuite extends Fs2Suite {
   }
 
   test("when primary stream terminates, background stream is terminated") {
-    forAllAsync { (s: Stream[Pure, Int]) =>
+    forAllF { (s: Stream[Pure, Int]) =>
       Stream
         .eval(Semaphore[IO](0))
         .flatMap { semaphore =>
@@ -59,7 +60,7 @@ class StreamConcurrentlySuite extends Fs2Suite {
   }
 
   test("when background stream fails, primary stream fails even when hung") {
-    forAllAsync { (s: Stream[Pure, Int]) =>
+    forAllF { (s: Stream[Pure, Int]) =>
       Stream
         .eval(Deferred[IO, Unit])
         .flatMap { gate =>
@@ -76,7 +77,7 @@ class StreamConcurrentlySuite extends Fs2Suite {
   }
 
   test("run finalizers of background stream and properly handle exception") {
-    forAllAsync { (s: Stream[Pure, Int]) =>
+    forAllF { (s: Stream[Pure, Int]) =>
       Ref
         .of[IO, Boolean](false)
         .flatMap { runnerRun =>

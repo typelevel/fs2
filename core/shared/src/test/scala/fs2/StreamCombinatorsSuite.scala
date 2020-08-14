@@ -8,6 +8,7 @@ import cats.effect.concurrent.Semaphore
 import cats.implicits._
 import org.scalacheck.Gen
 import org.scalacheck.Prop.forAll
+import org.scalacheck.effect.PropF.forAllF
 
 import fs2.concurrent.SignallingRef
 
@@ -32,7 +33,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
     test("liveness") {
       val s = Stream
         .awakeEvery[IO](1.milli)
-        .evalMap(_ => IO.async[Unit](cb => executionContext.execute(() => cb(Right(())))))
+        .evalMap(_ => IO.async[Unit](cb => munitExecutionContext.execute(() => cb(Right(())))))
         .take(200)
       Stream(s, s, s, s, s).parJoin(5).compile.drain
     }
@@ -46,7 +47,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
     }
 
     test("buffer results of evalMap") {
-      forAllAsync { (s: Stream[Pure, Int], n0: Int) =>
+      forAllF { (s: Stream[Pure, Int], n0: Int) =>
         val n = (n0 % 20).abs + 1
         IO.suspend {
           var counter = 0
@@ -68,7 +69,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
     }
 
     test("buffer results of evalMap") {
-      forAllAsync { (s: Stream[Pure, Int]) =>
+      forAllF { (s: Stream[Pure, Int]) =>
         val expected = s.toList.size * 2
         IO.suspend {
           var counter = 0
@@ -92,7 +93,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
     }
 
     test("buffer results of evalMap") {
-      forAllAsync { (s: Stream[Pure, Int]) =>
+      forAllF { (s: Stream[Pure, Int]) =>
         val expected = s.toList.size * 2 + 1
         IO.suspend {
           var counter = 0
@@ -228,7 +229,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
   }
 
   test("either") {
-    forAllAsync { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
+    forAllF { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
       val s1List = s1.toList
       val s2List = s2.toList
       s1.covary[IO].either(s2).compile.toList.map { result =>
@@ -253,14 +254,14 @@ class StreamCombinatorsSuite extends Fs2Suite {
 
   group("evalFilter") {
     test("with effectful const(true)") {
-      forAllAsync { (s: Stream[Pure, Int]) =>
+      forAllF { (s: Stream[Pure, Int]) =>
         val s1 = s.toList
         s.evalFilter(_ => IO.pure(true)).compile.toList.map(it => assert(it == s1))
       }
     }
 
     test("with effectful const(false)") {
-      forAllAsync { (s: Stream[Pure, Int]) =>
+      forAllF { (s: Stream[Pure, Int]) =>
         s.evalFilter(_ => IO.pure(false)).compile.toList.map(it => assert(it.isEmpty))
       }
     }
@@ -277,7 +278,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
 
   group("evalFilterAsync") {
     test("with effectful const(true)") {
-      forAllAsync { (s: Stream[Pure, Int]) =>
+      forAllF { (s: Stream[Pure, Int]) =>
         val s1 = s.toList
         s.covary[IO]
           .evalFilterAsync(5)(_ => IO.pure(true))
@@ -288,7 +289,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
     }
 
     test("with effectful const(false)") {
-      forAllAsync { (s: Stream[Pure, Int]) =>
+      forAllF { (s: Stream[Pure, Int]) =>
         s.covary[IO]
           .evalFilterAsync(5)(_ => IO.pure(false))
           .compile
@@ -329,7 +330,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
               }
 
             sig.discrete
-              .interruptWhen(tested.drain)
+              .interruptWhen(tested.drain.covaryOutput[Boolean])
               .fold1(_.max(_))
               .compile
               .lastOrError
@@ -341,14 +342,14 @@ class StreamCombinatorsSuite extends Fs2Suite {
 
   group("evalFilterNot") {
     test("with effectful const(true)") {
-      forAllAsync { (s: Stream[Pure, Int]) =>
+      forAllF { (s: Stream[Pure, Int]) =>
         val s1 = s.toList
         s.evalFilterNot(_ => IO.pure(false)).compile.toList.map(it => assert(it == s1))
       }
     }
 
     test("with effectful const(false)") {
-      forAllAsync { (s: Stream[Pure, Int]) =>
+      forAllF { (s: Stream[Pure, Int]) =>
         s.evalFilterNot(_ => IO.pure(true)).compile.toList.map(it => assert(it.isEmpty))
       }
     }
@@ -365,7 +366,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
 
   group("evalFilterNotAsync") {
     test("with effectful const(true)") {
-      forAllAsync { (s: Stream[Pure, Int]) =>
+      forAllF { (s: Stream[Pure, Int]) =>
         s.covary[IO]
           .evalFilterNotAsync(5)(_ => IO.pure(true))
           .compile
@@ -375,7 +376,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
     }
 
     test("with effectful const(false)") {
-      forAllAsync { (s: Stream[Pure, Int]) =>
+      forAllF { (s: Stream[Pure, Int]) =>
         val s1 = s.toList
         s.covary[IO]
           .evalFilterNotAsync(5)(_ => IO.pure(false))
@@ -417,7 +418,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
               }
 
             sig.discrete
-              .interruptWhen(tested.drain)
+              .interruptWhen(tested.drain.covaryOutput[Boolean])
               .fold1(_.max(_))
               .compile
               .lastOrError
@@ -428,7 +429,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
   }
 
   test("evalMapAccumulate") {
-    forAllAsync { (s: Stream[Pure, Int], m: Int, n0: Int) =>
+    forAllF { (s: Stream[Pure, Int], m: Int, n0: Int) =>
       val sVector = s.toVector
       val n = (n0 % 20).abs + 1
       val f = (_: Int) % n == 0
@@ -442,14 +443,14 @@ class StreamCombinatorsSuite extends Fs2Suite {
 
   group("evalMapFilter") {
     test("with effectful optional identity function") {
-      forAllAsync { (s: Stream[Pure, Int]) =>
+      forAllF { (s: Stream[Pure, Int]) =>
         val s1 = s.toList
         s.evalMapFilter(n => IO.pure(n.some)).compile.toList.map(it => assert(it == s1))
       }
     }
 
     test("with effectful constant function that returns None for any element") {
-      forAllAsync { (s: Stream[Pure, Int]) =>
+      forAllF { (s: Stream[Pure, Int]) =>
         s.evalMapFilter(_ => IO.pure(none[Int]))
           .compile
           .toList
@@ -468,7 +469,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
   }
 
   test("evalScan") {
-    forAllAsync { (s: Stream[Pure, Int], n: String) =>
+    forAllF { (s: Stream[Pure, Int], n: String) =>
       val sVector = s.toVector
       val f: (String, Int) => IO[String] = (a: String, b: Int) => IO.pure(a + b)
       val g = (a: String, b: Int) => a + b
@@ -630,7 +631,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
   }
 
   test("fromIterator") {
-    forAllAsync { (x: List[Int]) =>
+    forAllF { (x: List[Int]) =>
       Stream
         .fromIterator[IO](x.iterator)
         .compile
@@ -640,9 +641,9 @@ class StreamCombinatorsSuite extends Fs2Suite {
   }
 
   test("fromBlockingIterator") {
-    forAllAsync { (x: List[Int]) =>
+    forAllF { (x: List[Int]) =>
       Stream
-        .fromBlockingIterator[IO](Blocker.liftExecutionContext(executionContext), x.iterator)
+        .fromBlockingIterator[IO](Blocker.liftExecutionContext(munitExecutionContext), x.iterator)
         .compile
         .toList
         .map(it => assert(it == x))
@@ -674,7 +675,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
 
   group("groupWithin") {
     test("should never lose any elements") {
-      forAllAsync { (s0: Stream[Pure, Int], d0: Int, maxGroupSize0: Int) =>
+      forAllF { (s0: Stream[Pure, Int], d0: Int, maxGroupSize0: Int) =>
         val maxGroupSize = (maxGroupSize0 % 20).abs + 1
         val d = (d0 % 50).abs.millis
         val s = s0.map(i => (i % 500).abs)
@@ -690,7 +691,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
     }
 
     test("should never emit empty groups") {
-      forAllAsync { (s: Stream[Pure, Int], d0: Int, maxGroupSize0: Int) =>
+      forAllF { (s: Stream[Pure, Int], d0: Int, maxGroupSize0: Int) =>
         val maxGroupSize = (maxGroupSize0 % 20).abs + 1
         val d = (d0 % 50).abs.millis
         Stream(1)
@@ -707,7 +708,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
     }
 
     test("should never have more elements than in its specified limit") {
-      forAllAsync { (s: Stream[Pure, Int], d0: Int, maxGroupSize0: Int) =>
+      forAllF { (s: Stream[Pure, Int], d0: Int, maxGroupSize0: Int) =>
         val maxGroupSize = (maxGroupSize0 % 20).abs + 1
         val d = (d0 % 50).abs.millis
         s.map(i => (i % 500).abs)
@@ -723,7 +724,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
     test(
       "should return a finite stream back in a single chunk given a group size equal to the stream size and an absurdly high duration"
     ) {
-      forAllAsync { (streamAsList0: List[Int]) =>
+      forAllF { (streamAsList0: List[Int]) =>
         val streamAsList = 0 :: streamAsList0
         Stream
           .emits(streamAsList)
@@ -856,7 +857,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
 
   group("mapAsync") {
     test("same as map") {
-      forAllAsync { (s: Stream[Pure, Int]) =>
+      forAllF { (s: Stream[Pure, Int]) =>
         val f = (_: Int) + 1
         val r = s.covary[IO].mapAsync(16)(i => IO(f(i)))
         val sVector = s.toVector
@@ -865,7 +866,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
     }
 
     test("exception") {
-      forAllAsync { (s: Stream[Pure, Int]) =>
+      forAllF { (s: Stream[Pure, Int]) =>
         val f = (_: Int) => IO.raiseError[Int](new RuntimeException)
         val r = (s ++ Stream(1)).covary[IO].mapAsync(1)(f).attempt
         r.compile.toVector.map(it => assert(it.size == 1))
@@ -874,7 +875,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
   }
 
   test("mapAsyncUnordered") {
-    forAllAsync { (s: Stream[Pure, Int]) =>
+    forAllF { (s: Stream[Pure, Int]) =>
       val f = (_: Int) + 1
       val r = s.covary[IO].mapAsyncUnordered(16)(i => IO(f(i)))
       val sVector = s.toVector
@@ -907,7 +908,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
 
   group("prefetch") {
     test("identity") {
-      forAllAsync { (s: Stream[Pure, Int]) =>
+      forAllF { (s: Stream[Pure, Int]) =>
         val expected = s.toList
         s.covary[IO].prefetch.compile.toList.map(it => assert(it == expected))
       }
@@ -1006,7 +1007,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
   }
 
   test("rechunkRandomly") {
-    forAllAsync { (s: Stream[Pure, Int]) =>
+    forAllF { (s: Stream[Pure, Int]) =>
       val expected = s.toList
       s.rechunkRandomly[IO]().compile.toList.map(it => assert(it == expected))
     }
@@ -1231,6 +1232,16 @@ class StreamCombinatorsSuite extends Fs2Suite {
   property("unNone") {
     forAll { (s: Stream[Pure, Option[Int]]) =>
       assert(s.unNone.chunks.toList == s.filter(_.isDefined).map(_.get).chunks.toList)
+    }
+  }
+
+  group("withFilter") {
+    test("filter in for comprehension") {
+      val stream = for {
+        value <- Stream.range(0, 10)
+        if value % 2 == 0
+      } yield value
+      assert(stream.compile.toList == List(0, 2, 4, 6, 8))
     }
   }
 

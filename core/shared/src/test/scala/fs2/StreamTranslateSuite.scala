@@ -4,10 +4,11 @@ import scala.concurrent.duration._
 
 import cats.~>
 import cats.effect.IO
+import org.scalacheck.effect.PropF.forAllF
 
 class StreamTranslateSuite extends Fs2Suite {
   test("1 - id") {
-    forAllAsync { (s: Stream[Pure, Int]) =>
+    forAllF { (s: Stream[Pure, Int]) =>
       val expected = s.toList
       s.covary[IO]
         .flatMap(i => Stream.eval(IO.pure(i)))
@@ -19,7 +20,7 @@ class StreamTranslateSuite extends Fs2Suite {
   }
 
   test("2") {
-    forAllAsync { (s: Stream[Pure, Int]) =>
+    forAllF { (s: Stream[Pure, Int]) =>
       val expected = s.toList
       s.covary[Function0]
         .flatMap(i => Stream.eval(() => i))
@@ -34,7 +35,7 @@ class StreamTranslateSuite extends Fs2Suite {
   }
 
   test("3 - ok to have multiple translates") {
-    forAllAsync { (s: Stream[Pure, Int]) =>
+    forAllF { (s: Stream[Pure, Int]) =>
       val expected = s.toList
       s.covary[Function0]
         .flatMap(i => Stream.eval(() => i))

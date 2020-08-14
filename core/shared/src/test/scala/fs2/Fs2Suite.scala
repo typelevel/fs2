@@ -1,15 +1,15 @@
 package fs2
 
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.ExecutionContext
 
-import cats.effect.{ContextShift, IO, Sync, SyncIO, Timer}
+import cats.effect.{ConcurrentEffect, IO, Sync}
 import cats.implicits._
-import munit.{Location, ScalaCheckSuite}
+import munit.{CatsEffectSuite, Location, ScalaCheckEffectSuite}
 import org.typelevel.discipline.Laws
 
 abstract class Fs2Suite
-    extends ScalaCheckSuite
-    with AsyncPropertySupport
+    extends CatsEffectSuite
+    with ScalaCheckEffectSuite
     with TestPlatform
     with Generators {
 
@@ -20,10 +20,11 @@ abstract class Fs2Suite
 
   override def munitFlakyOK = true
 
-  val executionContext: ExecutionContext = ExecutionContext.global
-  implicit val timerIO: Timer[IO] = IO.timer(executionContext)
-  implicit val contextShiftIO: ContextShift[IO] =
-    IO.contextShift(executionContext)
+  override val munitExecutionContext: ExecutionContext = ExecutionContext.global
+
+  // This is not normally necessary but Dotty requires it
+  implicit val ioConcurrentEffect: ConcurrentEffect[IO] =
+    IO.ioConcurrentEffect(munitContextShift)
 
   /** Provides various ways to make test assertions on an `F[A]`. */
   implicit class Asserting[F[_], A](private val self: F[A]) {
@@ -75,17 +76,4 @@ abstract class Fs2Suite
   protected def checkAll(name: String, ruleSet: Laws#RuleSet): Unit =
     for ((id, prop) <- ruleSet.all.properties)
       property(s"${name}.${id}")(prop)
-
-  override def munitValueTransforms: List[ValueTransform] =
-    super.munitValueTransforms ++ List(munitIOTransform, munitSyncIOTransform)
-
-  // From https://github.com/scalameta/munit/pull/134
-  private val munitIOTransform: ValueTransform =
-    new ValueTransform("IO", { case e: IO[_] => e.unsafeToFuture() })
-
-  private val munitSyncIOTransform: ValueTransform =
-    new ValueTransform(
-      "SyncIO",
-      { case e: SyncIO[_] => Future(e.unsafeRunSync())(executionContext) }
-    )
 }

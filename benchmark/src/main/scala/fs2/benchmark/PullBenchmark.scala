@@ -10,18 +10,20 @@ class PullBenchmark {
   var n: Int = _
 
   @Benchmark
-  def unconsPull(): Int =
-    (Stream
-      .chunk(Chunk.seq(0 to 2560)))
+  def unconsPull(): Int = {
+    val s: Stream[Pure, Int] = Stream
+      .chunk(Chunk.seq(0 to 2560))
       .repeatPull { s =>
         s.unconsN(n).flatMap {
           case Some((h, t)) => Pull.output(h).as(Some(t))
           case None         => Pull.pure(None)
         }
       }
+    s
       .covary[IO]
       .compile
       .last
       .unsafeRunSync
       .get
+  }
 }

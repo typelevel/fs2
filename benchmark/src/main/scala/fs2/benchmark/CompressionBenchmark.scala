@@ -6,7 +6,7 @@ import org.openjdk.jmh.annotations.{Benchmark, Param, Scope, State}
 import scala.util.Random
 
 import fs2.{Chunk, Pipe, Stream, compression}
-import fs2.compression.GunzipResult
+import fs2.compression._
 
 import CompressionBenchmark._
 
@@ -18,11 +18,15 @@ class CompressionBenchmark {
 
   @Benchmark
   def deflate(): Byte =
-    benchmark(randomBytes, zeroBytes, compression.deflate(bufferSize = bufferSize))
+    benchmark(randomBytes, zeroBytes, compression.deflate(DeflateParams(bufferSize = bufferSize)))
 
   @Benchmark
   def inflate(): Byte =
-    benchmark(randomBytesDeflated, zeroBytesDeflated, compression.inflate(bufferSize = bufferSize))
+    benchmark(
+      randomBytesDeflated,
+      zeroBytesDeflated,
+      compression.inflate(InflateParams(bufferSize = bufferSize))
+    )
 
   @Benchmark
   def gzip(): Byte =
@@ -79,10 +83,10 @@ object CompressionBenchmark {
     Array.fill(bytes)(0.toByte)
 
   private val randomBytesDeflated: Array[Byte] =
-    through(randomBytes, compression.deflate(bufferSize = bufferSize))
+    through(randomBytes, compression.deflate(DeflateParams(bufferSize = bufferSize)))
 
   private val zeroBytesDeflated: Array[Byte] =
-    through(zeroBytes, compression.deflate(bufferSize = bufferSize))
+    through(zeroBytes, compression.deflate(DeflateParams(bufferSize = bufferSize)))
 
   private val randomBytesGzipped: Array[Byte] =
     through(randomBytes, compression.gzip(bufferSize = bufferSize))

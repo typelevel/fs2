@@ -50,7 +50,7 @@ import fs2.internal.CompileScope.InterruptContext
   * === Resource allocation ===
   *
   * Resources are allocated when the interpreter interprets the `Acquire` element, which is typically constructed
-  * via `Stream.bracket`. See [[Resource]] docs for more information.
+  * via `Stream.bracket`. See [[ScopedResource]] docs for more information.
   *
   * @param id              Unique identification of the scope
   * @param parent          If empty indicates root scope. If non-empty, indicates parent of this scope.
@@ -74,7 +74,7 @@ private[fs2] final class CompileScope[F[_]] private (
     * Registers supplied resource in this scope.
     * This is always invoked before state can be marked as closed.
     */
-  private def register(resource: Resource[F]): F[Unit] =
+  private def register(resource: ScopedResource[F]): F[Unit] =
     state.update(s => s.copy(resources = resource +: s.resources))
 
   /**
@@ -155,7 +155,7 @@ private[fs2] final class CompileScope[F[_]] private (
       fr: F[R],
       release: (R, ExitCase[Throwable]) => F[Unit]
   ): F[Either[Throwable, R]] = {
-    val resource = Resource.create
+    val resource = ScopedResource.create
     F.flatMap(F.attempt(fr)) {
       case Right(r) =>
         val finalizer = (ec: ExitCase[Throwable]) => F.suspend(release(r, ec))
@@ -177,7 +177,7 @@ private[fs2] final class CompileScope[F[_]] private (
     state.update(_.unregisterChild(id))
 
   /** Returns all direct resources of this scope (does not return resources in ancestor scopes or child scopes). * */
-  private def resources: F[Chain[Resource[F]]] =
+  private def resources: F[Chain[ScopedResource[F]]] =
     F.map(state.get)(_.resources)
 
   /**
@@ -204,13 +204,13 @@ private[fs2] final class CompileScope[F[_]] private (
     * If this scope has a parent scope, this scope will be unregistered from its parent.
     *
     * Note that if there were leased or not yet acquired resources, these resource will not yet be
-    * finalized after this scope is closed, but they will get finalized shortly after. See [[Resource]] for
+    * finalized after this scope is closed, but they will get finalized shortly after. See [[ScopedResource]] for
     * more details.
     */
   def close(ec: ExitCase[Throwable]): F[Either[Throwable, Unit]] =
     F.flatMap(state.modify(s => s.close -> s)) { previous =>
       F.flatMap(traverseError[CompileScope[F]](previous.children, _.close(ec))) { resultChildren =>
-        F.flatMap(traverseError[Resource[F]](previous.resources, _.release(ec))) {
+        F.flatMap(traverseError[ScopedResource[F]](previous.resources, _.release(ec))) {
           resultResources =>
             F.flatMap(self.interruptible.map(_.cancelParent).getOrElse(F.unit)) { _ =>
               F.map(self.parent.fold(F.unit)(_.releaseChildScope(self.id))) { _ =>
@@ -403,7 +403,7 @@ private[fs2] object CompileScope {
     */
   final private case class State[F[_]](
       open: Boolean,
-      resources: Chain[Resource[F]],
+      resources: Chain[ScopedResource[F]],
       children: Chain[CompileScope[F]]
   ) { self =>
 

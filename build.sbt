@@ -10,8 +10,10 @@ addCommandAlias(
   "fmtCheck",
   "; compile:scalafmtCheck; test:scalafmtCheck; it:scalafmtCheck; scalafmtSbtCheck"
 )
+addCommandAlias("testJVM", ";coreJVM/test;io/test;reactiveStreams/test;benchmark/test")
+addCommandAlias("testJS", "coreJS/test")
 
-crossScalaVersions in ThisBuild := Seq("2.13.2", "2.12.10")
+crossScalaVersions in ThisBuild := Seq("2.13.2", "2.12.10", "0.26.0-RC1")
 scalaVersion in ThisBuild := crossScalaVersions.value.head
 
 githubWorkflowJavaVersions in ThisBuild := Seq("adopt@1.11")
@@ -27,6 +29,18 @@ githubWorkflowEnv in ThisBuild ++= Map(
   "SONATYPE_USERNAME" -> "fs2-ci",
   "SONATYPE_PASSWORD" -> s"$${{ secrets.SONATYPE_PASSWORD }}"
 )
+
+def withoutTargetPredicate(step: WorkflowStep): Boolean =
+  step match {
+    case step: WorkflowStep.Use => step.params("path").startsWith("site")
+    case _                      => false
+  }
+
+ThisBuild / githubWorkflowGeneratedUploadSteps :=
+  (ThisBuild / githubWorkflowGeneratedUploadSteps).value.filterNot(withoutTargetPredicate)
+
+ThisBuild / githubWorkflowGeneratedDownloadSteps :=
+  (ThisBuild / githubWorkflowGeneratedDownloadSteps).value.filterNot(withoutTargetPredicate)
 
 lazy val contributors = Seq(
   "pchiusano" -> "Paul Chiusano",
@@ -46,14 +60,15 @@ lazy val commonSettingsBase = Seq(
   scalacOptions ++= Seq(
     "-feature",
     "-deprecation",
-    "-language:implicitConversions,higherKinds",
     "-Xfatal-warnings"
   ) ++
     (scalaBinaryVersion.value match {
       case v if v.startsWith("2.13") =>
-        List("-Xlint", "-Ywarn-unused")
+        List("-Xlint", "-Ywarn-unused", "-language:implicitConversions,higherKinds")
       case v if v.startsWith("2.12") =>
-        List("-Ypartial-unification")
+        List("-Ypartial-unification", "-language:implicitConversions,higherKinds")
+      case v if v.startsWith("0.") =>
+        List("-Ykind-projector", "-language:implicitConversions,higherKinds")
       case other => sys.error(s"Unsupported scala version: $other")
     }),
   scalacOptions in (Compile, console) ~= {
@@ -66,18 +81,27 @@ lazy val commonSettingsBase = Seq(
   scalacOptions in (Test, compile) ~= {
     _.filterNot("-Xfatal-warnings" == _)
   },
-  scalacOptions in (Compile, console) += "-Ydelambdafy:inline",
+  scalacOptions in (Compile, console) ++= {
+    if (isDotty.value) Nil else Seq("-Ydelambdafy:inline")
+  },
   scalacOptions in (Test, console) := (scalacOptions in (Compile, console)).value,
   javaOptions in (Test, run) ++= Seq("-Xms64m", "-Xmx64m"),
   libraryDependencies ++= Seq(
-    compilerPlugin("org.typelevel" %% "kind-projector" % "0.10.3"),
-    "org.typelevel" %%% "cats-core" % "2.1.1",
-    "org.typelevel" %%% "cats-laws" % "2.1.1" % "test",
-    "org.typelevel" %%% "cats-effect" % "2.1.4",
-    "org.typelevel" %%% "cats-effect-laws" % "2.1.4" % "test",
-    "org.scalacheck" %%% "scalacheck" % "1.14.3" % "test",
-    "org.scalameta" %%% "munit-scalacheck" % "0.7.9" % "test"
+    ("org.typelevel" %%% "cats-core" % "2.2.0-RC2").withDottyCompat(scalaVersion.value),
+    ("org.typelevel" %%% "cats-laws" % "2.2.0-RC2" % "test").withDottyCompat(scalaVersion.value),
+    ("org.typelevel" %%% "cats-effect" % "2.2.0-RC3").withDottyCompat(scalaVersion.value),
+    ("org.typelevel" %%% "cats-effect-laws" % "2.2.0-RC3" % "test")
+      .withDottyCompat(scalaVersion.value),
+    "org.typelevel" %%% "scalacheck-effect-munit" % "0.0.3" % "test",
+    "org.typelevel" %%% "munit-cats-effect" % "0.0-ec56350" % "test"
   ),
+  libraryDependencies ++= {
+    if (isDotty.value) Nil
+    else
+      Seq(
+        compilerPlugin("org.typelevel" %% "kind-projector" % "0.10.3")
+      )
+  },
   testFrameworks += new TestFramework("munit.Framework"),
   scmInfo := Some(
     ScmInfo(
@@ -104,17 +128,13 @@ lazy val commonTestSettings = Seq(
     "-Dscala.concurrent.context.minThreads=8",
     "-Dscala.concurrent.context.numThreads=8",
     "-Dscala.concurrent.context.maxThreads=8"
-  ) ++ (sys.props.get("fs2.test.travis") match {
-    case Some(value) =>
-      Seq(s"-Dfs2.test.travis=true")
-    case None => Seq()
-  })),
+  )),
   parallelExecution in Test := false,
   publishArtifact in Test := true
 )
+
 lazy val testSettings =
-  (fork in Test := true) +:
-    commonTestSettings
+  (fork in Test := true) +: commonTestSettings
 
 lazy val crossTestSettings =
   (fork in Test := crossProjectPlatform.value != JSPlatform) +:
@@ -141,17 +161,35 @@ def scmBranch(v: String): String = {
 }
 
 lazy val scaladocSettings = Seq(
-  scalacOptions in (Compile, doc) ++= Seq(
-    "-doc-source-url",
-    s"${scmInfo.value.get.browseUrl}/tree/${scmBranch(version.value)}€{FILE_PATH}.scala",
-    "-sourcepath",
-    baseDirectory.in(LocalRootProject).value.getAbsolutePath,
-    "-implicits",
-    "-implicits-sound-shadowing",
-    "-implicits-show-all"
-  ),
+  scalacOptions in (Compile, doc) ++= {
+    if (isDotty.value) Nil
+    else
+      Seq(
+        "-doc-source-url",
+        s"${scmInfo.value.get.browseUrl}/tree/${scmBranch(version.value)}€{FILE_PATH}.scala",
+        "-sourcepath",
+        baseDirectory.in(LocalRootProject).value.getAbsolutePath,
+        "-implicits",
+        "-implicits-sound-shadowing",
+        "-implicits-show-all"
+      )
+  },
   scalacOptions in (Compile, doc) ~= { _.filterNot(_ == "-Xfatal-warnings") },
-  autoAPIMappings := true
+  autoAPIMappings := true,
+  Compile / doc / sources := {
+    val old = (Compile / doc / sources).value
+    if (isDotty.value)
+      Seq()
+    else
+      old
+  },
+  Test / doc / sources := {
+    val old = (Test / doc / sources).value
+    if (isDotty.value)
+      Seq()
+    else
+      old
+  }
 )
 
 lazy val publishingSettings = Seq(
@@ -228,7 +266,23 @@ lazy val noPublish = Seq(
 )
 
 lazy val releaseSettings = Seq(
-  releaseCrossBuild := true
+  releaseCrossBuild := true,
+  releaseProcess := {
+    import sbtrelease.ReleaseStateTransformations._
+    Seq[ReleaseStep](
+      inquireVersions,
+      runClean,
+      releaseStepCommandAndRemaining("+test"),
+      setReleaseVersion,
+      commitReleaseVersion,
+      tagRelease,
+      releaseStepCommandAndRemaining("+publish"),
+      setNextVersion,
+      commitNextVersion,
+      pushChanges
+    )
+  },
+  publishConfiguration := publishConfiguration.value.withOverwrite(true)
 )
 
 lazy val mimaSettings = Seq(
@@ -251,7 +305,7 @@ lazy val root = project
   .settings(commonSettings)
   .settings(mimaSettings)
   .settings(noPublish)
-  .aggregate(coreJVM, coreJS, io, reactiveStreams, benchmark, experimental, microsite)
+  .aggregate(coreJVM, coreJS, io, reactiveStreams, benchmark, experimental)
 
 lazy val IntegrationTest = config("it").extend(Test)
 
@@ -266,7 +320,21 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
   .settings(
     name := "fs2-core",
     sourceDirectories in (Compile, scalafmt) += baseDirectory.value / "../shared/src/main/scala",
-    libraryDependencies += "org.scodec" %%% "scodec-bits" % "1.1.17"
+    Compile / unmanagedSourceDirectories ++= {
+      if (isDotty.value)
+        List(CrossType.Pure, CrossType.Full).flatMap(
+          _.sharedSrcDir(baseDirectory.value, "main").toList.map(f => file(f.getPath + "-3"))
+        )
+      else Nil
+    },
+    crossScalaVersions := {
+      val default = crossScalaVersions.value
+      if (crossProjectPlatform.value.identifier != "jvm")
+        default.filter(_.startsWith("2."))
+      else
+        default
+    },
+    libraryDependencies += "org.scodec" %%% "scodec-bits" % "1.1.18"
   )
   .jsSettings(commonJsSettings: _*)
 
@@ -293,6 +361,13 @@ lazy val io = project
   .settings(mimaSettings)
   .settings(
     name := "fs2-io",
+    Compile / unmanagedSourceDirectories ++= {
+      if (isDotty.value)
+        List(CrossType.Pure, CrossType.Full).flatMap(
+          _.sharedSrcDir(baseDirectory.value / "io", "main").toList.map(f => file(f.getPath + "-3"))
+        )
+      else Nil
+    },
     OsgiKeys.exportPackage := Seq("fs2.io.*"),
     OsgiKeys.privatePackage := Seq(),
     OsgiKeys.importPackage := {
@@ -316,7 +391,7 @@ lazy val reactiveStreams = project
     libraryDependencies ++= Seq(
       "org.reactivestreams" % "reactive-streams" % "1.0.3",
       "org.reactivestreams" % "reactive-streams-tck" % "1.0.3" % "test",
-      "org.scalatestplus" %% "testng-6-7" % "3.2.0.0" % "test"
+      ("org.scalatestplus" %% "testng-6-7" % "3.2.1.0" % "test").withDottyCompat(scalaVersion.value)
     )
   )
   .settings(mimaSettings)
@@ -398,6 +473,3 @@ lazy val experimental = project
     osgiSettings
   )
   .dependsOn(coreJVM % "compile->compile;test->test")
-
-addCommandAlias("testJVM", ";coreJVM/test;io/test;reactiveStreams/test;benchmark/test")
-addCommandAlias("testJS", "coreJS/test")

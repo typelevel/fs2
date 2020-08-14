@@ -121,6 +121,21 @@ You can find a list of libraries and integrations with data stores built on top 
 
 If you have a project you'd like to include in this list, either open a PR or let us know in [the gitter channel](https://gitter.im/functional-streams-for-scala/fs2) and we'll add a link to it.
 
+### Adopters ### 
+
+Here's a (non-exhaustive) list of companies that use FS2 in production. Don't see yours? You can [add it in a PR!](https://github.com/functional-streams-for-scala/fs2/edit/main/README.md)
+
+* [Banno](https://banno.com/)
+* [Chatroulette](https://v2.chatroulette.com/)
+* [Comcast](https://www.xfinity.com/)
+* [CompStak](https://www.compstak.com)
+* [Disney Streaming](https://www.disneyplus.com)
+* [Formedix](https://www.formedix.com/)
+* [OVO Energy](https://www.ovoenergy.com)
+* [Ocado Technology](https://www.ocadogroup.com/technology/technology-pioneers)
+* [Teikametrics](https://www.teikametrics.com)
+* [IntentHQ](https://www.intenthq.com)
+
 ### Acknowledgments ###
 
 [![YourKit](https://www.yourkit.com/images/yklogo.png)](https://www.yourkit.com/)
