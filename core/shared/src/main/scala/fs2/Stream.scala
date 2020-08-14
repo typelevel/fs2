@@ -1924,9 +1924,8 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
                 ): F2[Unit] =
                   Semaphore(1).flatMap {
                     guard => // guarantee we process only single chunk at any given time from any given side.
-                      s.chunks
+                      Stream.repeatEval(guard.acquire).zipRight(s.chunks)
                         .evalMap { chunk =>
-                          guard.acquire >>
                             resultQ.enqueue1(Some(Stream.chunk(chunk).onFinalize(guard.release)))
                         }
                         .interruptWhen(interrupt.get.attempt)
