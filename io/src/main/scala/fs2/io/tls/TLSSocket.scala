@@ -58,7 +58,7 @@ object TLSSocket {
             val toRead = numBytes - acc.size
             if (toRead <= 0) Applicative[F].pure(Some(acc.toChunk))
             else
-              read0(numBytes, timeout).flatMap {
+              read0(toRead, timeout).flatMap {
                 case Some(chunk) => go(acc :+ chunk): F[Option[Chunk[Byte]]]
                 case None        => Applicative[F].pure(Some(acc.toChunk)): F[Option[Chunk[Byte]]]
               }
