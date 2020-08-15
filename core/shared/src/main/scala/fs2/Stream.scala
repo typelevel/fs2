@@ -1928,7 +1928,7 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
                       Pull
                         .eval(resultQ.enqueue1(Some(Stream.chunk(hd).onFinalize(guard.release)))) >>
                         go(tl, guard, queue)
-                    case None => Pull.pure(None)
+                    case None => Pull.done
                   }
                 def runStream(
                     s: Stream[F2, O2],
