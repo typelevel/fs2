@@ -1918,17 +1918,25 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
           Deferred[F2, Either[Throwable, Unit]].flatMap { resultR =>
             Ref.of[F2, Boolean](false).flatMap { otherSideDone =>
               Queue.unbounded[F2, Option[Stream[F2, O2]]].map { resultQ =>
+                def go(
+                    s: Stream[F2, O2],
+                    guard: Semaphore[F2],
+                    queue: Queue[F2, Option[Stream[F2, O2]]]
+                ): Pull[F2, O2, Unit] =
+                  Pull.eval(guard.acquire) >> s.pull.uncons.flatMap {
+                    case Some((hd, tl)) =>
+                      Pull
+                        .eval(resultQ.enqueue1(Some(Stream.chunk(hd).onFinalize(guard.release)))) >>
+                        go(tl, guard, queue)
+                    case None => Pull.done
+                  }
                 def runStream(
                     s: Stream[F2, O2],
                     whenDone: Deferred[F2, Either[Throwable, Unit]]
                 ): F2[Unit] =
                   Semaphore(1).flatMap {
                     guard => // guarantee we process only single chunk at any given time from any given side.
-                      s.chunks
-                        .evalMap { chunk =>
-                          guard.acquire >>
-                            resultQ.enqueue1(Some(Stream.chunk(chunk).onFinalize(guard.release)))
-                        }
+                      go(s, guard, resultQ).stream
                         .interruptWhen(interrupt.get.attempt)
                         .compile
                         .drain

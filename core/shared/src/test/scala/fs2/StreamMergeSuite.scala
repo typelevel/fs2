@@ -186,4 +186,23 @@ class StreamMergeSuite extends Fs2Suite {
       }
     }
   }
+
+  test("merge not emit ahead") {
+    forAllF { (v: Int) =>
+      val expected = List(v, v + 1)
+      Ref
+        .of[IO, Int](v)
+        .map { ref =>
+          Stream
+            .repeatEval(ref.get)
+            .merge(Stream.never[IO])
+            .evalMap { value =>
+              IO.sleep(100.milliseconds) >> ref.set(value + 1) >> IO(value)
+            }
+            .take(2)
+        }
+        .flatMap(_.compile.toList)
+        .map(result => assert(result == expected))
+    }
+  }
 }
