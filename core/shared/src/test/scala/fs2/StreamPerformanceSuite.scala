@@ -167,26 +167,29 @@ class StreamPerformanceSuite extends Fs2Suite {
     group("left associated") {
       Ns.foreach { N =>
         test(N.toString) {
-          Counter[SyncIO].flatMap { open =>
-            Counter[SyncIO].flatMap { ok =>
-              val bracketed: Stream[SyncIO, Int] = Stream
-                .bracket(open.increment)(_ => ok.increment >> open.decrement)
-                .flatMap(_ => Stream(1) ++ Stream.raiseError[SyncIO](new Err))
-              val s: Stream[SyncIO, Int] =
-                List
-                  .fill(N)(bracketed)
-                  .foldLeft(Stream.raiseError[SyncIO](new Err): Stream[SyncIO, Int]) { (acc, hd) =>
-                    acc.handleErrorWith(_ => hd)
+          Counter[SyncIO]
+            .flatMap { open =>
+              Counter[SyncIO].flatMap { ok =>
+                val bracketed: Stream[SyncIO, Int] = Stream
+                  .bracket(open.increment)(_ => ok.increment >> open.decrement)
+                  .flatMap(_ => Stream(1) ++ Stream.raiseError[SyncIO](new Err))
+                val s: Stream[SyncIO, Int] =
+                  List
+                    .fill(N)(bracketed)
+                    .foldLeft(Stream.raiseError[SyncIO](new Err): Stream[SyncIO, Int]) {
+                      (acc, hd) =>
+                        acc.handleErrorWith(_ => hd)
+                    }
+                s.compile.toList.attempt
+                  .flatMap(_ => (ok.get, open.get).tupled)
+                  .map {
+                    case (ok, open) =>
+                      assertEquals(ok, N.toLong)
+                      assertEquals(open, 0L)
                   }
-              s.compile.toList.attempt
-                .flatMap(_ => (ok.get, open.get).tupled)
-                .map {
-                  case (ok, open) =>
-                    assertEquals(ok, N.toLong)
-                    assertEquals(open, 0L)
-                }
+              }
             }
-          }.unsafeRunSync()
+            .unsafeRunSync()
         }
       }
     }
@@ -194,25 +197,27 @@ class StreamPerformanceSuite extends Fs2Suite {
     group("right associated") {
       Ns.foreach { N =>
         test(N.toString) {
-          Counter[SyncIO].flatMap { open =>
-            Counter[SyncIO].flatMap { ok =>
-              val bracketed: Stream[SyncIO, Int] = Stream
-                .bracket(open.increment)(_ => ok.increment >> open.decrement)
-                .flatMap(_ => Stream(1) ++ Stream.raiseError[SyncIO](new Err))
-              val s: Stream[SyncIO, Int] = List
-                .fill(N)(bracketed)
-                .foldLeft(Stream.raiseError[SyncIO](new Err): Stream[SyncIO, Int]) { (tl, hd) =>
-                  hd.handleErrorWith(_ => tl)
-                }
-              s.compile.toList.attempt
-                .flatMap(_ => (ok.get, open.get).tupled)
-                .map {
-                  case (ok, open) =>
-                    assertEquals(ok, N.toLong)
-                    assertEquals(open, 0L)
-                }
+          Counter[SyncIO]
+            .flatMap { open =>
+              Counter[SyncIO].flatMap { ok =>
+                val bracketed: Stream[SyncIO, Int] = Stream
+                  .bracket(open.increment)(_ => ok.increment >> open.decrement)
+                  .flatMap(_ => Stream(1) ++ Stream.raiseError[SyncIO](new Err))
+                val s: Stream[SyncIO, Int] = List
+                  .fill(N)(bracketed)
+                  .foldLeft(Stream.raiseError[SyncIO](new Err): Stream[SyncIO, Int]) { (tl, hd) =>
+                    hd.handleErrorWith(_ => tl)
+                  }
+                s.compile.toList.attempt
+                  .flatMap(_ => (ok.get, open.get).tupled)
+                  .map {
+                    case (ok, open) =>
+                      assertEquals(ok, N.toLong)
+                      assertEquals(open, 0L)
+                  }
+              }
             }
-          }.unsafeRunSync()
+            .unsafeRunSync()
         }
       }
     }

@@ -570,7 +570,9 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
         }
 
       // stop background process but await for it to finalise with a result
-      val stopBack: F2[Unit] = interrupt.complete(()).attempt >> doneR.get.flatMap(ApplicativeError[F2, Throwable].fromEither)
+      val stopBack: F2[Unit] = interrupt.complete(()).attempt >> doneR.get.flatMap(
+        ApplicativeError[F2, Throwable].fromEither
+      )
 
       Stream.bracket(Concurrent[F2].start(runR))(_ => stopBack) >>
         this.interruptWhen(interrupt.get.attempt)
@@ -1689,8 +1691,8 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
       ) { c =>
         val r = c match {
           case Outcome.Completed(_) => Right(())
-          case Outcome.Errored(t)  => Left(t)
-          case Outcome.Canceled()  => Right(())
+          case Outcome.Errored(t)   => Left(t)
+          case Outcome.Canceled()   => Right(())
         }
         doneR.complete(r) >>
           interruptL.complete(())
