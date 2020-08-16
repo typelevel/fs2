@@ -1,9 +1,7 @@
 package fs2.concurrent
 
-import cats.effect.concurrent.Ref
-import cats.effect.concurrent.Deferred
-import cats.effect.kernel.Async
-import cats.effect.concurrent.Semaphore
+import cats.effect.Async
+import cats.effect.concurrent.{Deferred, Ref, Semaphore}
 
 sealed trait Alloc[F[_]] {
   implicit def mkRef: Ref.Mk[F]
