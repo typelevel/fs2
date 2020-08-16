@@ -548,29 +548,32 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     */
   def concurrently[F2[x] >: F[x], O2](
       that: Stream[F2, O2]
-  )(implicit F: Concurrent[F2]): Stream[F2, O] =
-    Stream.eval {
-      Deferred[F2, Unit].flatMap { interrupt =>
-        Deferred[F2, Either[Throwable, Unit]].map { doneR =>
-          def runR: F2[Unit] =
-            that.interruptWhen(interrupt.get.attempt).compile.drain.attempt.flatMap { r =>
-              doneR.complete(r) >> {
-                if (r.isLeft)
-                  interrupt
-                    .complete(())
-                    .attempt
-                    .void // interrupt only if this failed otherwise give change to `this` to finalize
-                else F.unit
-              }
-            }
-
-          Stream.bracket(F.start(runR))(_ =>
-            interrupt.complete(()).attempt >> // always interrupt `that`
-              doneR.get.flatMap(F.fromEither) // always await `that` result
-          ) >> this.interruptWhen(interrupt.get.attempt)
+  )(implicit F: Concurrent[F2]): Stream[F2, O] = {
+    val fstream: F2[Stream[F2, O]] = for {
+      interrupt <- Deferred[F2, Unit]
+      doneR <- Deferred[F2, Either[Throwable, Unit]]
+    } yield {
+      def runR: F2[Unit] =
+        that.interruptWhen(interrupt.get.attempt).compile.drain.attempt.flatMap { r =>
+          doneR.complete(r) >> {
+            if (r.isLeft)
+              interrupt
+                .complete(())
+                .attempt
+                .void // interrupt only if this failed otherwise give change to `this` to finalize
+            else F.unit
+          }
         }
-      }
-    }.flatten
+
+      // stop background process but await for it to finalise with a result
+      val stopBack: F2[Unit] = interrupt.complete(()).attempt >> doneR.get.flatMap(F.fromEither)
+
+      Stream.bracket(F.start(runR))(_ => stopBack) >>
+        this.interruptWhen(interrupt.get.attempt)
+    }
+
+    Stream.eval(fstream).flatten
+  }
 
   /**
     * Prepends a chunk onto the front of this stream.
@@ -1641,33 +1644,30 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
   def interruptWhen[F2[x] >: F[x]](
       haltWhenTrue: Stream[F2, Boolean]
   )(implicit F2: Concurrent[F2]): Stream[F2, O] =
-    Stream.eval(Deferred[F2, Unit]).flatMap { interruptL =>
-      Stream.eval(Deferred[F2, Either[Throwable, Unit]]).flatMap { doneR =>
-        Stream.eval(Deferred[F2, Unit]).flatMap { interruptR =>
-          def runR =
-            F2.guaranteeCase(
-              haltWhenTrue
-                .takeWhile(!_)
-                .interruptWhen(interruptR.get.attempt)
-                .compile
-                .drain
-            ) { c =>
-              val r = c match {
-                case ExitCase.Completed => Right(())
-                case ExitCase.Error(t)  => Left(t)
-                case ExitCase.Canceled  => Right(())
-              }
-              doneR.complete(r) >>
-                interruptL.complete(())
-            }
-
-          Stream.bracket(F2.start(runR))(_ =>
-            interruptR.complete(()) >>
-              doneR.get.flatMap(F2.fromEither)
-          ) >> this.interruptWhen(interruptL.get.attempt)
+    for {
+      interruptL <- Stream.eval(Deferred[F2, Unit])
+      doneR <- Stream.eval(Deferred[F2, Either[Throwable, Unit]])
+      interruptR <- Stream.eval(Deferred[F2, Unit])
+      runR = F2.guaranteeCase(
+        haltWhenTrue
+          .takeWhile(!_)
+          .interruptWhen(interruptR.get.attempt)
+          .compile
+          .drain
+      ) { c =>
+        val r = c match {
+          case ExitCase.Completed => Right(())
+          case ExitCase.Error(t)  => Left(t)
+          case ExitCase.Canceled  => Right(())
         }
+        doneR.complete(r) >>
+          interruptL.complete(())
       }
-    }
+      _ <- Stream.bracket(F2.start(runR))(_ =>
+        interruptR.complete(()) >> doneR.get.flatMap(F2.fromEither)
+      )
+      res <- this.interruptWhen(interruptL.get.attempt)
+    } yield res
 
   /** Alias for `interruptWhen(haltWhenTrue.get)`. */
   def interruptWhen[F2[x] >: F[x]: Concurrent](
@@ -1928,68 +1928,76 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     */
   def merge[F2[x] >: F[x], O2 >: O](
       that: Stream[F2, O2]
-  )(implicit F2: Concurrent[F2]): Stream[F2, O2] =
-    Stream.eval {
-      Deferred[F2, Unit].flatMap { interrupt =>
-        Deferred[F2, Either[Throwable, Unit]].flatMap { resultL =>
-          Deferred[F2, Either[Throwable, Unit]].flatMap { resultR =>
-            Ref.of[F2, Boolean](false).flatMap { otherSideDone =>
-              Queue.unbounded[F2, Option[Stream[F2, O2]]].map { resultQ =>
-                def runStream(
-                    s: Stream[F2, O2],
-                    whenDone: Deferred[F2, Either[Throwable, Unit]]
-                ): F2[Unit] =
-                  Semaphore(1).flatMap {
-                    guard => // guarantee we process only single chunk at any given time from any given side.
-                      s.chunks
-                        .evalMap { chunk =>
-                          guard.acquire >>
-                            resultQ.enqueue1(Some(Stream.chunk(chunk).onFinalize(guard.release)))
-                        }
-                        .interruptWhen(interrupt.get.attempt)
-                        .compile
-                        .drain
-                        .attempt
-                        .flatMap { r =>
-                          whenDone.complete(r) >> { // signal completion of our side before we will signal interruption, to make sure our result is always available to others
-                            if (r.isLeft)
-                              interrupt.complete(()).attempt.void // we need to attempt interruption in case the interrupt was already completed.
-                            else
-                              otherSideDone
-                                .modify(prev => (true, prev))
-                                .flatMap { otherDone =>
-                                  if (otherDone)
-                                    resultQ
-                                      .enqueue1(None) // complete only if other side is done too.
-                                  else F2.unit
-                                }
-                          }
-                        }
-                  }
+  )(implicit F2: Concurrent[F2]): Stream[F2, O2] = {
 
-                def resultStream: Stream[F2, O2] =
-                  resultQ.dequeue.unNoneTerminate.flatten
-                    .interruptWhen(interrupt.get.attempt)
+    val fstream: F2[Stream[F2, O2]] = for {
+      interrupt <- Deferred[F2, Unit]
+      resultL <- Deferred[F2, Either[Throwable, Unit]]
+      resultR <- Deferred[F2, Either[Throwable, Unit]]
+      otherSideDone <- Ref.of[F2, Boolean](false)
+      resultQ <- Queue.unbounded[F2, Option[Stream[F2, O2]]]
+    } yield {
 
-                Stream.bracket(
-                  F2.start(runStream(this, resultL)) >>
-                    F2.start(runStream(that, resultR))
-                ) { _ =>
+      def go(
+          s: Stream[F2, O2],
+          guard: Semaphore[F2],
+          queue: Queue[F2, Option[Stream[F2, O2]]]
+      ): Pull[F2, O2, Unit] =
+        Pull.eval(guard.acquire) >> s.pull.uncons.flatMap {
+          case Some((hd, tl)) =>
+            Pull
+              .eval(resultQ.enqueue1(Some(Stream.chunk(hd).onFinalize(guard.release)))) >>
+              go(tl, guard, queue)
+          case None => Pull.done
+        }
+      def runStream(s: Stream[F2, O2], whenDone: Deferred[F2, Either[Throwable, Unit]]): F2[Unit] =
+        // guarantee we process only single chunk at any given time from any given side.
+        Semaphore(1).flatMap { guard =>
+          go(s, guard, resultQ).stream
+            .interruptWhen(interrupt.get.attempt)
+            .compile
+            .drain
+            .attempt
+            .flatMap { r =>
+              whenDone.complete(r) >> { // signal completion of our side before we will signal interruption, to make sure our result is always available to others
+                if (r.isLeft)
                   interrupt
                     .complete(())
-                    .attempt >> // interrupt so the upstreams have chance to complete
-                    resultL.get.flatMap { left =>
-                      resultR.get.flatMap { right =>
-                        F2.fromEither(CompositeFailure.fromResults(left, right))
-                      }
+                    .attempt
+                    .void // we need to attempt interruption in case the interrupt was already completed.
+                else
+                  otherSideDone
+                    .modify(prev => (true, prev))
+                    .flatMap { otherDone =>
+                      if (otherDone)
+                        resultQ
+                          .enqueue1(None) // complete only if other side is done too.
+                      else F2.unit
                     }
-                } >> resultStream
               }
             }
-          }
         }
-      }
-    }.flatten
+
+      def resultStream: Stream[F2, O2] =
+        resultQ.dequeue.unNoneTerminate.flatten
+          .interruptWhen(interrupt.get.attempt)
+
+      Stream.bracket(
+        F2.start(runStream(this, resultL)) >>
+          F2.start(runStream(that, resultR))
+      ) { _ =>
+        interrupt
+          .complete(())
+          .attempt >> // interrupt so the upstreams have chance to complete
+          resultL.get.flatMap { left =>
+            resultR.get.flatMap { right =>
+              F2.fromEither(CompositeFailure.fromResults(left, right))
+            }
+          }
+      } >> resultStream
+    }
+    Stream.eval(fstream).flatten
+  }
 
   /** Like `merge`, but halts as soon as _either_ branch halts. */
   def mergeHaltBoth[F2[x] >: F[x]: Concurrent, O2 >: O](that: Stream[F2, O2]): Stream[F2, O2] =
@@ -3806,111 +3814,100 @@ object Stream extends StreamLowPriority {
         maxOpen: Int
     )(implicit F: Concurrent[F]): Stream[F, O] = {
       assert(maxOpen > 0, "maxOpen must be > 0, was: " + maxOpen)
-      Stream.eval {
-        SignallingRef(None: Option[Option[Throwable]]).flatMap { done =>
-          Semaphore(maxOpen).flatMap { available =>
-            SignallingRef(1L)
-              .flatMap { running => // starts with 1 because outer stream is running by default
-                Queue
-                  .synchronousNoneTerminated[F, Chunk[O]]
-                  .map {
-                    outputQ => // sync queue assures we won't overload heap when resulting stream is not able to catchup with inner streams
-                      // stops the join evaluation
-                      // all the streams will be terminated. If err is supplied, that will get attached to any error currently present
-                      def stop(rslt: Option[Throwable]): F[Unit] =
-                        done.update {
-                          case rslt0 @ Some(Some(err0)) =>
-                            rslt.fold[Option[Option[Throwable]]](rslt0) { err =>
-                              Some(Some(CompositeFailure(err0, err)))
-                            }
-                          case _ => Some(rslt)
-                        } >> outputQ.enqueue1(None)
-
-                      val incrementRunning: F[Unit] = running.update(_ + 1)
-                      val decrementRunning: F[Unit] =
-                        running.modify { n =>
-                          val now = n - 1
-                          now -> (if (now == 0) stop(None) else F.unit)
-                        }.flatten
-
-                      // runs inner stream
-                      // each stream is forked.
-                      // terminates when killSignal is true
-                      // failures will be propagated through `done` Signal
-                      // note that supplied scope's resources must be leased before the inner stream forks the execution to another thread
-                      // and that it must be released once the inner stream terminates or fails.
-                      def runInner(inner: Stream[F, O], outerScope: Scope[F]): F[Unit] =
-                        F.uncancelable {
-                          outerScope.lease.flatMap {
-                            case Some(lease) =>
-                              available.acquire >>
-                                incrementRunning >>
-                                F.start {
-                                  inner.chunks
-                                    .evalMap(s => outputQ.enqueue1(Some(s)))
-                                    .interruptWhen(
-                                      done.map(_.nonEmpty)
-                                    ) // must be AFTER enqueue to the sync queue, otherwise the process may hang to enqueue last item while being interrupted
-                                    .compile
-                                    .drain
-                                    .attempt
-                                    .flatMap { r =>
-                                      lease.cancel.flatMap { cancelResult =>
-                                        available.release >>
-                                          (CompositeFailure.fromResults(r, cancelResult) match {
-                                            case Right(()) => F.unit
-                                            case Left(err) =>
-                                              stop(Some(err))
-                                          }) >> decrementRunning
-                                      }
-                                    }
-                                }.void
-
-                            case None =>
-                              F.raiseError(
-                                new Throwable("Outer scope is closed during inner stream startup")
-                              )
-                          }
-                        }
-
-                      // runs the outer stream, interrupts when kill == true, and then decrements the `running`
-                      def runOuter: F[Unit] =
-                        outer
-                          .flatMap { inner =>
-                            Stream.getScope[F].evalMap(outerScope => runInner(inner, outerScope))
-                          }
-                          .interruptWhen(done.map(_.nonEmpty))
-                          .compile
-                          .drain
-                          .attempt
-                          .flatMap {
-                            case Left(err) => stop(Some(err)) >> decrementRunning
-                            case Right(_)  => F.unit >> decrementRunning
-                          }
-
-                      // awaits when all streams (outer + inner) finished,
-                      // and then collects result of the stream (outer + inner) execution
-                      def signalResult: F[Unit] =
-                        done.get.flatMap {
-                          _.flatten
-                            .fold[F[Unit]](F.unit)(F.raiseError)
-                        }
-
-                      Stream
-                        .bracket(F.start(runOuter))(_ =>
-                          stop(None) >> running.discrete
-                            .dropWhile(_ > 0)
-                            .take(1)
-                            .compile
-                            .drain >> signalResult
-                        ) >>
-                        outputQ.dequeue
-                          .flatMap(Stream.chunk(_).covary[F])
-                  }
+      val fstream: F[Stream[F, O]] = for {
+        done <- SignallingRef(None: Option[Option[Throwable]])
+        available <- Semaphore(maxOpen)
+        // starts with 1 because outer stream is running by default
+        running <- SignallingRef(1L)
+        // sync queue assures we won't overload heap when resulting stream is not able to catchup with inner streams
+        outputQ <- Queue.synchronousNoneTerminated[F, Chunk[O]]
+      } yield {
+        // stops the join evaluation
+        // all the streams will be terminated. If err is supplied, that will get attached to any error currently present
+        def stop(rslt: Option[Throwable]): F[Unit] =
+          done.update {
+            case rslt0 @ Some(Some(err0)) =>
+              rslt.fold[Option[Option[Throwable]]](rslt0) { err =>
+                Some(Some(CompositeFailure(err0, err)))
               }
+            case _ => Some(rslt)
+          } >> outputQ.enqueue1(None)
+
+        val incrementRunning: F[Unit] = running.update(_ + 1)
+        val decrementRunning: F[Unit] =
+          running.modify { n =>
+            val now = n - 1
+            now -> (if (now == 0) stop(None) else F.unit)
+          }.flatten
+
+        // "block" and await until the `running` counter drops to zero.
+        val awaitWhileRunning: F[Unit] = running.discrete.dropWhile(_ > 0).take(1).compile.drain
+
+        // runs one inner stream,
+        // each stream is forked.
+        // terminates when killSignal is true
+        // failures will be propagated through `done` Signal
+        // note that supplied scope's resources must be leased before the inner stream forks the execution to another thread
+        // and that it must be released once the inner stream terminates or fails.
+        def runInner(inner: Stream[F, O], outerScope: Scope[F]): F[Unit] =
+          F.uncancelable {
+            outerScope.lease.flatMap {
+              case Some(lease) =>
+                available.acquire >>
+                  incrementRunning >>
+                  F.start {
+                    inner.chunks
+                      .evalMap(s => outputQ.enqueue1(Some(s)))
+                      .interruptWhen(
+                        done.map(_.nonEmpty)
+                      ) // must be AFTER enqueue to the sync queue, otherwise the process may hang to enqueue last item while being interrupted
+                      .compile
+                      .drain
+                      .attempt
+                      .flatMap { r =>
+                        lease.cancel.flatMap { cancelResult =>
+                          available.release >>
+                            (CompositeFailure.fromResults(r, cancelResult) match {
+                              case Right(()) => F.unit
+                              case Left(err) =>
+                                stop(Some(err))
+                            }) >> decrementRunning
+                        }
+                      }
+                  }.void
+
+              case None =>
+                F.raiseError(
+                  new Throwable("Outer scope is closed during inner stream startup")
+                )
+            }
           }
-        }
-      }.flatten
+
+        // runs the outer stream, interrupts when kill == true, and then decrements the `running`
+        def runOuter: F[Unit] =
+          outer
+            .flatMap(inner => Stream.getScope[F].evalMap(outerScope => runInner(inner, outerScope)))
+            .interruptWhen(done.map(_.nonEmpty))
+            .compile
+            .drain
+            .attempt
+            .flatMap {
+              case Left(err) => stop(Some(err)) >> decrementRunning
+              case Right(_)  => F.unit >> decrementRunning
+            }
+
+        // awaits when all streams (outer + inner) finished,
+        // and then collects result of the stream (outer + inner) execution
+        def signalResult: F[Unit] =
+          done.get.flatMap(_.flatten.fold[F[Unit]](F.unit)(F.raiseError))
+
+        Stream
+          .bracket(F.start(runOuter))(_ => stop(None) >> awaitWhileRunning >> signalResult) >>
+          outputQ.dequeue
+            .flatMap(Stream.chunk(_).covary[F])
+      }
+
+      Stream.eval(fstream).flatten
     }
 
     /** Like [[parJoin]] but races all inner streams simultaneously. */
