@@ -102,7 +102,7 @@ object Signal extends SignalLowPriorityImplicits {
   implicit class BooleanSignalOps[F[_]](val self: Signal[F, Boolean]) extends AnyVal {
     def interrupt[A](
         s: Stream[F, A]
-    )(implicit F: ConcurrentThrow[F], mkDeferred: Deferred.Mk[F], mkRef: Ref.Mk[F]): Stream[F, A] =
+    )(implicit F: ConcurrentThrow[F], alloc: Alloc[F]): Stream[F, A] =
       s.interruptWhen(self)
   }
 }

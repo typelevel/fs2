@@ -1,37 +1,36 @@
 package fs2.concurrent
 
 import cats.effect._
-import cats.effect.concurrent.{Deferred, Ref, Semaphore}
 import fs2._
 
 /** Provides mechanisms for balancing the distribution of chunks across multiple streams. */
 object Balance {
 
-  sealed trait MkIn[F[_], G[_]] {
-    private[Balance] def mkPubSub[O]: F[PubSub[G, Option[Chunk[O]], Option[Chunk[O]], Int]]
-    private[Balance] implicit val mkRef: Ref.MkIn[F, G]
-    private[Balance] implicit val mkDeferred: Deferred.MkIn[F, G]
-    private[Balance] implicit val mkSemaphore: Semaphore.MkIn[F, G]
-    private[Balance] implicit val mkSignallingRef: SignallingRef.MkIn[F, G]
-    private[Balance] implicit val mkQueue: Queue.MkIn[F, G]
+  sealed trait Mk[F[_]] {
+    def apply[O](chunkSize: Int): Pipe[F, O, Stream[F, O]]
   }
 
-  object MkIn {
-    implicit def instance[F[_]: Sync, G[_]: Async]: MkIn[F, G] =
-      new MkIn[F, G] {
-        private[Balance] def mkPubSub[O]: F[PubSub[G, Option[Chunk[O]], Option[Chunk[O]], Int]] =
-          PubSub.in[F].from(PubSub.Strategy.closeDrainFirst(strategy[O]))
-        private[Balance] implicit val mkRef: Ref.MkIn[F, G] = Ref.MkIn.instance[F, G]
-        private[Balance] implicit val mkDeferred: Deferred.MkIn[F, G] = Deferred.MkIn.instance[F, G]
-        private[Balance] implicit val mkSemaphore: Semaphore.MkIn[F, G] =
-          Semaphore.MkIn.instance[F, G]
-        private[Balance] implicit val mkSignallingRef: SignallingRef.MkIn[F, G] =
-          SignallingRef.MkIn.instance[F, G]
-        private[Balance] implicit val mkQueue: Queue.MkIn[F, G] = Queue.MkIn.instance[F, G]
+  object Mk {
+    implicit def instance[F[_]: Async]: Mk[F] =
+      new Mk[F] {
+        def apply[O](chunkSize: Int): Pipe[F, O, Stream[F, O]] = { source =>
+          Stream.eval(PubSub.in[F].from(PubSub.Strategy.closeDrainFirst(strategy[O]))).flatMap {
+            pubSub =>
+              def subscriber =
+                pubSub
+                  .getStream(chunkSize)
+                  .unNoneTerminate
+                  .flatMap(Stream.chunk)
+              def push =
+                source.chunks
+                  .evalMap(chunk => pubSub.publish(Some(chunk)))
+                  .onFinalize(pubSub.publish(None))
+
+              Stream.constant(subscriber).concurrently(push)
+          }
+        }
       }
   }
-
-  type Mk[F[_]] = MkIn[F, F]
 
   /**
     * Allows balanced processing of this stream via multiple concurrent streams.
@@ -69,25 +68,9 @@ object Balance {
     * The resulting stream terminates after the source stream terminates and all workers terminate.
     * Conversely, if the resulting stream is terminated early, the source stream will be terminated.
     */
-  def apply[F[_]: ConcurrentThrow: Mk, O](
+  def apply[F[_], O](
       chunkSize: Int
-  ): Pipe[F, O, Stream[F, O]] = { source =>
-    val mk = implicitly[Mk[F]]
-    import mk._
-    Stream.eval(mkPubSub[O]).flatMap { pubSub =>
-      def subscriber =
-        pubSub
-          .getStream(chunkSize)
-          .unNoneTerminate
-          .flatMap(Stream.chunk)
-      def push =
-        source.chunks
-          .evalMap(chunk => pubSub.publish(Some(chunk)))
-          .onFinalize(pubSub.publish(None))
-
-      Stream.constant(subscriber).concurrently(push)
-    }
-  }
+  )(implicit mk: Mk[F]): Pipe[F, O, Stream[F, O]] = mk(chunkSize)
 
   /**
     * Like `apply` but instead of providing a stream of worker streams, the supplied pipes are
@@ -110,17 +93,14 @@ object Balance {
     * @param pipes pipes to use to process work
     * @param chunkSize maximum chunk to present to each pipe, allowing fair distribution between pipes
     */
-  def through[F[_]: ConcurrentThrow: Mk, O, O2](
+  def through[F[_]: ConcurrentThrow: Alloc, O, O2](
       chunkSize: Int
-  )(pipes: Pipe[F, O, O2]*): Pipe[F, O, O2] = {
-    val mk = implicitly[Mk[F]]
-    import mk._
+  )(pipes: Pipe[F, O, O2]*): Pipe[F, O, O2] =
     _.balance(chunkSize)
       .take(pipes.size)
       .zipWithIndex
       .map { case (stream, idx) => stream.through(pipes(idx.toInt)) }
       .parJoinUnbounded
-  }
 
   private def strategy[O]: PubSub.Strategy[Chunk[O], Chunk[O], Option[Chunk[O]], Int] =
     new PubSub.Strategy[Chunk[O], Chunk[O], Option[Chunk[O]], Int] {

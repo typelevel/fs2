@@ -17,8 +17,9 @@ import org.reactivestreams._
   *
   * @see [[https://github.com/reactive-streams/reactive-streams-jvm#2-subscriber-code]]
   */
-final class StreamSubscriber[F[_]: Effect, A](val sub: StreamSubscriber.FSM[F, A])(implicit ioRuntime: IORuntime)
-    extends Subscriber[A] {
+final class StreamSubscriber[F[_]: Effect, A](val sub: StreamSubscriber.FSM[F, A])(implicit
+    ioRuntime: IORuntime
+) extends Subscriber[A] {
 
   /** Called by an upstream reactivestreams system */
   def onSubscribe(s: Subscription): Unit = {

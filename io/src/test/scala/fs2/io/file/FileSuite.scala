@@ -61,7 +61,9 @@ class FileSuite extends BaseFileSuite {
             Stream("Hello", " world!")
               .covary[IO]
               .through(text.utf8Encode)
-              .through(file.writeAll[IO](path)) ++ file.readAll[IO](path, 4096).through(text.utf8Decode)
+              .through(file.writeAll[IO](path)) ++ file
+              .readAll[IO](path, 4096)
+              .through(text.utf8Decode)
           )
           .compile
           .foldMonoid
@@ -71,12 +73,14 @@ class FileSuite extends BaseFileSuite {
 
     test("append") {
       assert(
-            tempFile
-              .flatMap { path =>
-                val src = Stream("Hello", " world!").covary[IO].through(text.utf8Encode)
-                src.through(file.writeAll[IO](path)) ++
-                  src.through(file.writeAll[IO](path, List(StandardOpenOption.APPEND))) ++ file.readAll[IO](path, 4096).through(text.utf8Decode)
-              }
+        tempFile
+          .flatMap { path =>
+            val src = Stream("Hello", " world!").covary[IO].through(text.utf8Encode)
+            src.through(file.writeAll[IO](path)) ++
+              src.through(file.writeAll[IO](path, List(StandardOpenOption.APPEND))) ++ file
+              .readAll[IO](path, 4096)
+              .through(text.utf8Decode)
+          }
           .compile
           .foldMonoid
           .unsafeRunSync() == "Hello world!Hello world!"

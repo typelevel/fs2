@@ -14,8 +14,9 @@ import org.reactivestreams._
   *
   * @see [[https://github.com/reactive-streams/reactive-streams-jvm#1-publisher-code]]
   */
-final class StreamUnicastPublisher[F[_]: Effect, A](val stream: Stream[F, A])(implicit ioRuntime: IORuntime)
-    extends Publisher[A] {
+final class StreamUnicastPublisher[F[_]: Effect, A](val stream: Stream[F, A])(implicit
+    ioRuntime: IORuntime
+) extends Publisher[A] {
   def subscribe(subscriber: Subscriber[_ >: A]): Unit = {
     nonNull(subscriber)
     StreamSubscription(subscriber, stream)
@@ -32,6 +33,8 @@ final class StreamUnicastPublisher[F[_]: Effect, A](val stream: Stream[F, A])(im
 }
 
 object StreamUnicastPublisher {
-  def apply[F[_]: Effect, A](s: Stream[F, A])(implicit ioRuntime: IORuntime): StreamUnicastPublisher[F, A] =
+  def apply[F[_]: Effect, A](
+      s: Stream[F, A]
+  )(implicit ioRuntime: IORuntime): StreamUnicastPublisher[F, A] =
     new StreamUnicastPublisher(s)
 }
