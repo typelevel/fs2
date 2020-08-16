@@ -29,7 +29,7 @@ class StreamInterruptSuite extends Fs2Suite {
       Stream
         .eval(Semaphore[IO](0))
         .flatMap { semaphore =>
-          val interrupt = Stream.emit(true) ++ Stream.eval_(semaphore.release)
+          val interrupt = Stream.emit(true) ++ Stream.exec(semaphore.release)
           s.covary[IO].evalMap(_ => semaphore.acquire).interruptWhen(interrupt)
         }
         .compile
@@ -170,7 +170,7 @@ class StreamInterruptSuite extends Fs2Suite {
       Stream
         .eval(Semaphore[IO](0))
         .flatMap { semaphore =>
-          s.covary[IO].interruptWhen(interrupt) >> Stream.eval_(semaphore.acquire)
+          s.covary[IO].interruptWhen(interrupt) >> Stream.exec(semaphore.acquire)
         }
         .compile
         .toList
@@ -199,7 +199,7 @@ class StreamInterruptSuite extends Fs2Suite {
             .append(s)
             .covary[IO]
             .interruptWhen(interrupt.covaryOutput[Boolean])
-            .flatMap(_ => Stream.eval_(semaphore.acquire))
+            .flatMap(_ => Stream.exec(semaphore.acquire))
         }
         .compile
         .toList

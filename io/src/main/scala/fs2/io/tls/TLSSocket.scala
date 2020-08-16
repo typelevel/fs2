@@ -72,8 +72,8 @@ object TLSSocket {
       def reads(maxBytes: Int, timeout: Option[FiniteDuration]): Stream[F, Byte] =
         Stream.repeatEval(read(maxBytes, timeout)).unNoneTerminate.flatMap(Stream.chunk)
 
-      def writes(timeout: Option[FiniteDuration]): Pipe[F, Byte, Unit] =
-        _.chunks.evalMap(write(_, timeout))
+      def writes(timeout: Option[FiniteDuration]): Pipe[F, Byte, INothing] =
+        _.chunks.foreach(write(_, timeout))
 
       def endOfOutput: F[Unit] =
         engine.stopWrap >> socket.endOfOutput

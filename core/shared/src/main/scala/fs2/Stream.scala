@@ -215,15 +215,15 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     *
     * @param pipes    Pipes that will concurrently process the work.
     */
-  def broadcastTo[F2[x] >: F[x]: Concurrent](pipes: Pipe[F2, O, Unit]*): Stream[F2, Unit] =
-    this.through(Broadcast.through(pipes.map(_.andThen(_.drain)): _*))
+  def broadcastTo[F2[x] >: F[x]: Concurrent](pipes: Pipe[F2, O, Nothing]*): Stream[F2, INothing] =
+    this.through(Broadcast.through(pipes: _*))
 
   /**
     * Variant of `broadcastTo` that broadcasts to `maxConcurrent` instances of a single pipe.
     */
   def broadcastTo[F2[x] >: F[x]: Concurrent](
       maxConcurrent: Int
-  )(pipe: Pipe[F2, O, Unit]): Stream[F2, Unit] =
+  )(pipe: Pipe[F2, O, Nothing]): Stream[F2, INothing] =
     this.broadcastTo[F2](List.fill(maxConcurrent)(pipe): _*)
 
   /**
@@ -667,7 +667,7 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
             }
 
         val in: Stream[F2, Unit] = chunks.evalMap(onChunk) ++
-          Stream.eval_(enqueueLatest >> queue.enqueue1(None))
+          Stream.exec(enqueueLatest >> queue.enqueue1(None))
 
         val out: Stream[F2, O] = queue.dequeue.unNoneTerminate
 
@@ -807,8 +807,8 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     */
   def balanceTo[F2[x] >: F[x]: Concurrent](
       chunkSize: Int
-  )(pipes: Pipe[F2, O, Unit]*): Stream[F2, Unit] =
-    balanceThrough[F2, Unit](chunkSize)(pipes.map(_.andThen(_.drain)): _*)
+  )(pipes: Pipe[F2, O, Nothing]*): Stream[F2, INothing] =
+    balanceThrough[F2, INothing](chunkSize)(pipes: _*)
 
   /**
     * Variant of `balanceTo` that broadcasts to `maxConcurrent` instances of a single pipe.
@@ -818,9 +818,9 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     * @param pipe pipe to use to process elements
     */
   def balanceTo[F2[x] >: F[x]: Concurrent](chunkSize: Int, maxConcurrent: Int)(
-      pipe: Pipe[F2, O, Unit]
-  ): Stream[F2, Unit] =
-    balanceThrough[F2, Unit](chunkSize, maxConcurrent)(pipe.andThen(_.drain))
+      pipe: Pipe[F2, O, INothing]
+  ): Stream[F2, INothing] =
+    balanceThrough[F2, INothing](chunkSize, maxConcurrent)(pipe)
 
   /**
     * Alias for `through(Balance.through(chunkSize)(pipes)`.
@@ -1230,11 +1230,15 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     * res0: List[Int] = List(1, 2, 2, 3, 3, 3)
     * }}}
     */
-  def flatMap[F2[x] >: F[x], O2](f: O => Stream[F2, O2]): Stream[F2, O2] =
+  def flatMap[F2[x] >: F[x], O2](
+      f: O => Stream[F2, O2]
+  )(implicit ev: NotNothing[O]): Stream[F2, O2] = {
+    val _ = ev
     new Stream(Pull.flatMapOutput[F, F2, O, O2](underlying, (o: O) => f(o).underlying))
+  }
 
   /** Alias for `flatMap(_ => s2)`. */
-  def >>[F2[x] >: F[x], O2](s2: => Stream[F2, O2]): Stream[F2, O2] =
+  def >>[F2[x] >: F[x], O2](s2: => Stream[F2, O2])(implicit ev: NotNothing[O]): Stream[F2, O2] =
     flatMap(_ => s2)
 
   /** Flattens a stream of streams in to a single stream by concatenating each stream.
@@ -1317,6 +1321,19 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     */
   def forall(p: O => Boolean): Stream[F, Boolean] =
     this.pull.forall(p).flatMap(Pull.output1).stream
+
+  /**
+    * Like `evalMap` but discards the result of evaluation, resulting
+    * in a stream with no elements.
+    *
+    * @example {{{
+    * scala> import cats.effect.IO
+    * scala> Stream(1,2,3,4).foreach(i => IO(println(i))).compile.drain.unsafeRunSync
+    * res0: Unit = ()
+    * }}}
+    */
+  def foreach[F2[x] >: F[x]](f: O => F2[Unit]): Stream[F2, INothing] =
+    flatMap(o => Stream.exec(f(o)))
 
   /**
     * Partitions the input into a stream of chunks according to a discriminator function.
@@ -1738,31 +1755,33 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     }.stream
 
   /**
-    * Writes this stream of strings to the supplied `PrintStream`.
+    * Writes this stream of strings to the supplied `PrintStream`, emitting a unit
+    * for each line that was written.
     *
     * Note: printing to the `PrintStream` is performed *synchronously*.
     * Use `linesAsync(out, blocker)` if synchronous writes are a concern.
     */
   def lines[F2[x] >: F[x]](
       out: PrintStream
-  )(implicit F: Sync[F2], ev: O <:< String): Stream[F2, Unit] = {
+  )(implicit F: Sync[F2], ev: O <:< String): Stream[F2, INothing] = {
     val _ = ev
     val src = this.asInstanceOf[Stream[F2, String]]
-    src.evalMap(str => F.delay(out.println(str)))
+    src.foreach(str => F.delay(out.println(str)))
   }
 
   /**
-    * Writes this stream of strings to the supplied `PrintStream`.
+    * Writes this stream of strings to the supplied `PrintStream`, emitting a unit
+    * for each line that was written.
     *
     * Note: printing to the `PrintStream` is performed on the supplied blocking execution context.
     */
   def linesAsync[F2[x] >: F[x]](
       out: PrintStream,
       blocker: Blocker
-  )(implicit F: Sync[F2], cs: ContextShift[F2], ev: O <:< String): Stream[F2, Unit] = {
+  )(implicit F: Sync[F2], cs: ContextShift[F2], ev: O <:< String): Stream[F2, INothing] = {
     val _ = ev
     val src = this.asInstanceOf[Stream[F2, String]]
-    src.evalMap(str => blocker.delay(out.println(str)))
+    src.foreach(str => blocker.delay(out.println(str)))
   }
 
   /**
@@ -1855,7 +1874,7 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
       Ref.of[F2, Option[Deferred[F2, Unit]]](None).map { haltRef =>
         def runInner(o: O, halt: Deferred[F2, Unit]): Stream[F2, O2] =
           Stream.eval(guard.acquire) >> // guard inner to prevent parallel inner streams
-            f(o).interruptWhen(halt.get.attempt) ++ Stream.eval_(guard.release)
+            f(o).interruptWhen(halt.get.attempt) ++ Stream.exec(guard.release)
 
         this
           .evalMap { o =>
@@ -2439,29 +2458,32 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     new Stream(Pull.scope(underlying))
 
   /**
-    * Writes this stream to the supplied `PrintStream`, converting each element to a `String` via `Show`.
+    * Writes this stream to the supplied `PrintStream`, converting each element to a `String` via `Show`,
+    * emitting a unit for each line written.
     *
     * Note: printing to the `PrintStream` is performed *synchronously*.
     * Use `showLinesAsync(out, blocker)` if synchronous writes are a concern.
     */
   def showLines[F2[x] >: F[x], O2 >: O](
       out: PrintStream
-  )(implicit F: Sync[F2], showO: Show[O2]): Stream[F2, Unit] =
+  )(implicit F: Sync[F2], showO: Show[O2]): Stream[F2, INothing] =
     covaryAll[F2, O2].map(_.show).lines(out)
 
   /**
-    * Writes this stream to the supplied `PrintStream`, converting each element to a `String` via `Show`.
+    * Writes this stream to the supplied `PrintStream`, converting each element to a `String` via `Show`,
+    * emitting a unit for each line written.
     *
     * Note: printing to the `PrintStream` is performed on the supplied blocking execution context.
     */
   def showLinesAsync[F2[x] >: F[x]: Sync: ContextShift, O2 >: O: Show](
       out: PrintStream,
       blocker: Blocker
-  ): Stream[F2, Unit] =
+  ): Stream[F2, INothing] =
     covaryAll[F2, O2].map(_.show).linesAsync(out, blocker)
 
   /**
-    * Writes this stream to standard out, converting each element to a `String` via `Show`.
+    * Writes this stream to standard out, converting each element to a `String` via `Show`,
+    * emitting a unit for each line written.
     *
     * Note: printing to standard out is performed *synchronously*.
     * Use `showLinesStdOutAsync(blockingEc)` if synchronous writes are a concern.
@@ -2469,17 +2491,18 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
   def showLinesStdOut[F2[x] >: F[x], O2 >: O](implicit
       F: Sync[F2],
       showO: Show[O2]
-  ): Stream[F2, Unit] =
+  ): Stream[F2, INothing] =
     showLines[F2, O2](Console.out)
 
   /**
-    * Writes this stream to standard out, converting each element to a `String` via `Show`.
+    * Writes this stream to standard out, converting each element to a `String` via `Show`,
+    * emitting a unit for each line written.
     *
     * Note: printing to the `PrintStream` is performed on the supplied blocking execution context.
     */
   def showLinesStdOutAsync[F2[x] >: F[x]: Sync: ContextShift, O2 >: O: Show](
       blocker: Blocker
-  ): Stream[F2, Unit] =
+  ): Stream[F2, INothing] =
     showLinesAsync[F2, O2](Console.out, blocker)
 
   /**
@@ -2667,6 +2690,12 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
         case Some((hd, tl)) => Pull.output1(hd).as(Some(tl))
       }
     }
+
+  /**
+    * Converts a `Stream[F, Nothing]` to a `Stream[F, Unit]` which emits a single `()` after this stream completes.
+    */
+  def unitary(implicit ev: O <:< Nothing): Stream[F, Unit] =
+    this.asInstanceOf[Stream[F, Nothing]] ++ Stream.emit(())
 
   /**
     * Filters any 'None'.
@@ -3165,13 +3194,8 @@ object Stream extends StreamLowPriority {
     * As a result, the returned stream emits no elements and hence has output type `INothing`.
     *
     * Alias for `eval(fa).drain`.
-    *
-    * @example {{{
-    * scala> import cats.effect.IO
-    * scala> Stream.eval_(IO(println("Ran"))).covaryOutput[Int].compile.toVector.unsafeRunSync
-    * res0: Vector[Int] = Vector()
-    * }}}
     */
+  @deprecated("Use exec if passing an F[Unit] or eval(fa).drain if passing an F[A]", "2.5.0")
   def eval_[F[_], A](fa: F[A]): Stream[F, INothing] =
     new Stream(Pull.eval(fa).map(_ => ()))
 
@@ -3201,6 +3225,18 @@ object Stream extends StreamLowPriority {
       }
     go(0)
   }
+
+  /**
+    * As a result, the returned stream emits no elements and hence has output type `INothing`.
+    *
+    * @example {{{
+    * scala> import cats.effect.IO
+    * scala> Stream.exec(IO(println("Ran"))).covaryOutput[Int].compile.toVector.unsafeRunSync
+    * res0: Vector[Int] = Vector()
+    * }}}
+    */
+  def exec[F[_]](action: F[Unit]): Stream[F, INothing] =
+    new Stream(Pull.eval(action))
 
   /**
     * Light weight alternative to [[fixedRate]] that sleeps for duration `d` before each pulled element.
@@ -3357,7 +3393,7 @@ object Stream extends StreamLowPriority {
     * A stream that never emits and never terminates.
     */
   def never[F[_]](implicit F: Async[F]): Stream[F, Nothing] =
-    Stream.eval_(F.never)
+    Stream.eval(F.never)
 
   /**
     * Creates a stream that, when run, fails with the supplied exception.
@@ -3465,7 +3501,8 @@ object Stream extends StreamLowPriority {
           .map(_._1)
       case r: Resource.Bind[f, x, o] =>
         resourceWeak[f, x](r.source).flatMap(o => resourceWeak[f, o](r.fs(o)))
-      case r: Resource.Suspend[f, o] => Stream.eval(r.resource).flatMap(resourceWeak[f, o])
+      case r: Resource.Suspend[f, o] =>
+        Stream.eval(r.resource).flatMap(resourceWeak[f, o])(NotNothing.instance)
     }
 
   /**
@@ -3516,7 +3553,7 @@ object Stream extends StreamLowPriority {
     * performant version of `sleep(..) >> s`.
     */
   def sleep_[F[_]](d: FiniteDuration)(implicit timer: Timer[F]): Stream[F, INothing] =
-    sleep(d).drain
+    Stream.exec(timer.sleep(d))
 
   /**
     * Starts the supplied task and cancels it as finalization of the returned stream.
@@ -3654,11 +3691,13 @@ object Stream extends StreamLowPriority {
       * res0: Vector[Int] = Vector(2, 3, 4)
       * }}}
       */
-    def observe(p: Pipe[F, O, Unit])(implicit F: Concurrent[F]): Stream[F, O] =
+    def observe(p: Pipe[F, O, INothing])(implicit F: Concurrent[F]): Stream[F, O] =
       observeAsync(1)(p)
 
     /** Send chunks through `p`, allowing up to `maxQueued` pending _chunks_ before blocking `s`. */
-    def observeAsync(maxQueued: Int)(p: Pipe[F, O, Unit])(implicit F: Concurrent[F]): Stream[F, O] =
+    def observeAsync(
+        maxQueued: Int
+    )(p: Pipe[F, O, INothing])(implicit F: Concurrent[F]): Stream[F, O] =
       Stream.eval(Semaphore[F](maxQueued - 1)).flatMap { guard =>
         Stream.eval(Queue.unbounded[F, Option[Chunk[O]]]).flatMap { outQ =>
           Stream.eval(Queue.unbounded[F, Option[Chunk[O]]]).flatMap { sinkQ =>
@@ -3676,20 +3715,20 @@ object Stream extends StreamLowPriority {
               sinkQ.dequeue.unNoneTerminate
                 .flatMap { chunk =>
                   Stream.chunk(chunk) ++
-                    Stream.eval_(outQ.enqueue1(Some(chunk)))
+                    Stream.exec(outQ.enqueue1(Some(chunk)))
                 }
                 .through(p) ++
-                Stream.eval_(outQ.enqueue1(None))
+                Stream.exec(outQ.enqueue1(None))
 
             def runner =
               sinkStream.concurrently(inputStream) ++
-                Stream.eval_(outQ.enqueue1(None))
+                Stream.exec(outQ.enqueue1(None))
 
             def outputStream =
               outQ.dequeue.unNoneTerminate
                 .flatMap { chunk =>
                   Stream.chunk(chunk) ++
-                    Stream.eval_(guard.release)
+                    Stream.exec(guard.release)
                 }
 
             outputStream.concurrently(runner)
@@ -3705,8 +3744,8 @@ object Stream extends StreamLowPriority {
       * If either `halts` the evaluation will halt too.
       */
     def observeEither[L, R](
-        left: Pipe[F, L, Unit],
-        right: Pipe[F, R, Unit]
+        left: Pipe[F, L, INothing],
+        right: Pipe[F, R, INothing]
     )(implicit F: Concurrent[F], ev: O <:< Either[L, R]): Stream[F, Either[L, R]] = {
       val _ = ev
       val src = self.asInstanceOf[Stream[F, Either[L, R]]]

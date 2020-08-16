@@ -498,7 +498,7 @@ class StreamSuite extends Fs2Suite {
           List(res1, res2, res3)
             .foldMap(Stream.resource)
             .evalTap(_ => record("use"))
-            .append(Stream.eval_(record("done")))
+            .append(Stream.exec(record("done")))
             .compile
             .drain *> st.get
         }
@@ -546,7 +546,7 @@ class StreamSuite extends Fs2Suite {
           List(res1, res2, res3)
             .foldMap(Stream.resourceWeak)
             .evalTap(_ => record("use"))
-            .append(Stream.eval_(record("done")))
+            .append(Stream.exec(record("done")))
             .compile
             .drain *> st.get
         }
@@ -676,7 +676,7 @@ class StreamSuite extends Fs2Suite {
           Counter[IO].flatMap { counter =>
             val sleepAndSet = IO.sleep(20.millis) >> signal.set(true)
             Stream
-              .eval_(sleepAndSet.start)
+              .exec(sleepAndSet.start.void)
               .append(s.map { _ =>
                 Stream
                   .bracket(counter.increment)(_ => counter.decrement)
@@ -701,7 +701,7 @@ class StreamSuite extends Fs2Suite {
         Counter[IO].flatMap { counter =>
           val sleepAndSet = IO.sleep(20.millis) >> signal.set(true)
           Stream
-            .eval_(sleepAndSet.start)
+            .exec(sleepAndSet.start.void)
             .append(Stream(Stream(1)).map { inner =>
               Stream
                 .bracket(counter.increment >> IO.sleep(2.seconds))(_ => counter.decrement)
@@ -732,7 +732,7 @@ class StreamSuite extends Fs2Suite {
           .scope
           .repeat
           .take(4)
-          .merge(Stream.eval_(IO.unit))
+          .merge(Stream.exec(IO.unit))
           .compile
           .drain
           .map(_ => assert(c.get == 0L))

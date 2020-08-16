@@ -111,15 +111,15 @@ package object io {
       fos: F[OutputStream],
       blocker: Blocker,
       closeAfterUse: Boolean = true
-  )(implicit F: Sync[F], cs: ContextShift[F]): Pipe[F, Byte, Unit] =
+  )(implicit F: Sync[F], cs: ContextShift[F]): Pipe[F, Byte, INothing] =
     s => {
-      def useOs(os: OutputStream): Stream[F, Unit] =
-        s.chunks.evalMap(c => blocker.delay(os.write(c.toArray)))
+      def useOs(os: OutputStream): Stream[F, INothing] =
+        s.chunks.foreach(c => blocker.delay(os.write(c.toArray)))
 
       val os =
         if (closeAfterUse) Stream.bracket(fos)(os => blocker.delay(os.close()))
         else Stream.eval(fos)
-      os.flatMap(os => useOs(os) ++ Stream.eval(blocker.delay(os.flush())))
+      os.flatMap(os => useOs(os) ++ Stream.exec(blocker.delay(os.flush())))
     }
 
   /**
@@ -183,7 +183,7 @@ package object io {
     readInputStream(blocker.delay(System.in), bufSize, blocker, false)
 
   /** Pipe of bytes that writes emitted values to standard output asynchronously. */
-  def stdout[F[_]: Sync: ContextShift](blocker: Blocker): Pipe[F, Byte, Unit] =
+  def stdout[F[_]: Sync: ContextShift](blocker: Blocker): Pipe[F, Byte, INothing] =
     writeOutputStream(blocker.delay(System.out), blocker, false)
 
   /**
@@ -196,7 +196,7 @@ package object io {
   def stdoutLines[F[_]: Sync: ContextShift, O: Show](
       blocker: Blocker,
       charset: Charset = utf8Charset
-  ): Pipe[F, O, Unit] =
+  ): Pipe[F, O, INothing] =
     _.map(_.show).through(text.encode(charset)).through(stdout(blocker))
 
   /** Stream of `String` read asynchronously from standard input decoded in UTF-8. */
