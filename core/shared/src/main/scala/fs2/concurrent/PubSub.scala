@@ -256,7 +256,6 @@ private[fs2] object PubSub {
           val ps1 = publish_(i, ps)
           (ps1, Applicative[F].unit)
         } else {
-          Deferred[F, Unit]
           val publisher = Publisher(new Token, i, Deferred.unsafe[F, Unit])
 
           def awaitCancellable =
