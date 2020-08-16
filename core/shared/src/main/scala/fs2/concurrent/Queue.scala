@@ -19,7 +19,7 @@ trait Enqueue[F[_], A] {
 
   /**
     * Enqueues each element of the input stream to this queue by
-    * calling `enqueue1` on each element.
+    * calling `enqueue1` on each element. Emits a unit for each element enqueued.
     */
   def enqueue: Pipe[F, A, Unit] = _.evalMap(enqueue1)
 

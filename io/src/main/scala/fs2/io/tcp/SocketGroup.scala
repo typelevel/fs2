@@ -314,8 +314,8 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup) {
 
           def write(bytes: Chunk[Byte], timeout: Option[FiniteDuration]): F[Unit] =
             write0(bytes, timeout)
-          def writes(timeout: Option[FiniteDuration]): Pipe[F, Byte, Unit] =
-            _.chunks.flatMap(bs => Stream.eval(write(bs, timeout)))
+          def writes(timeout: Option[FiniteDuration]): Pipe[F, Byte, INothing] =
+            _.chunks.foreach(write(_, timeout))
 
           def localAddress: F[SocketAddress] =
             F.blocking(ch.getLocalAddress)

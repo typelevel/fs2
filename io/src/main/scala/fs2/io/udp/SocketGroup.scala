@@ -92,8 +92,8 @@ final class SocketGroup(
         def write(packet: Packet, timeout: Option[FiniteDuration]): F[Unit] =
           F.async_[Unit](cb => asg.write(ctx, packet, timeout, t => cb(t.toLeft(()))))
 
-        def writes(timeout: Option[FiniteDuration]): Pipe[F, Packet, Unit] =
-          _.flatMap(p => Stream.eval(write(p, timeout)))
+        def writes(timeout: Option[FiniteDuration]): Pipe[F, Packet, INothing] =
+          _.foreach(write(_, timeout))
 
         def close: F[Unit] = F.blocking(asg.close(ctx))
 

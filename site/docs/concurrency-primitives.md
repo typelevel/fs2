@@ -100,11 +100,11 @@ class EventService[F[_]](eventsTopic: Topic[F, Event], interrupter: SignallingRe
 
   // Creating 3 subscribers in a different period of time and join them to run concurrently
   def startSubscribers: Stream[F, Unit] = {
-    def processEvent(subscriberNumber: Int): Pipe[F, Event, Unit] =
-      _.flatMap {
+    def processEvent(subscriberNumber: Int): Pipe[F, Event, INothing] =
+      _.foreach {
         case e @ Text(_) =>
-           Stream.eval(F.delay(println(s"Subscriber #$subscriberNumber processing event: $e")))
-       case Quit => Stream.eval(interrupter.set(true))
+           F.delay(println(s"Subscriber #$subscriberNumber processing event: $e"))
+       case Quit => interrupter.set(true)
      }
 
     val events: Stream[F, Event] =

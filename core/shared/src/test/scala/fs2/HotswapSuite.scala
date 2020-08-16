@@ -28,9 +28,9 @@ class HotswapSuite extends Fs2Suite {
         .flatMap {
           case (hotswap, _) =>
             logger.logInfo("using a") ++
-              Stream.eval_(hotswap.swap(logger.logLifecycleR("b"))) ++
+              Stream.exec(hotswap.swap(logger.logLifecycleR("b"))) ++
               logger.logInfo("using b") ++
-              Stream.eval_(hotswap.swap(logger.logLifecycleR("c"))) ++
+              Stream.exec(hotswap.swap(logger.logLifecycleR("c"))) ++
               logger.logInfo("using c")
         }
         .compile
@@ -59,7 +59,7 @@ class HotswapSuite extends Fs2Suite {
         .flatMap {
           case (hotswap, _) =>
             logger.logInfo("using a") ++
-              Stream.eval_(hotswap.clear) ++
+              Stream.exec(hotswap.clear) ++
               logger.logInfo("after clear")
         }
         .compile

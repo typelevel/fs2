@@ -69,7 +69,7 @@ package object file {
   def writeAll[F[_]: Sync](
       path: Path,
       flags: Seq[StandardOpenOption] = List(StandardOpenOption.CREATE)
-  ): Pipe[F, Byte, Unit] =
+  ): Pipe[F, Byte, INothing] =
     in =>
       Stream
         .resource(WriteCursor.fromPath(path, flags))
@@ -87,7 +87,7 @@ package object file {
       computePath: F[Path],
       limit: Long,
       flags: Seq[StandardOpenOption] = List(StandardOpenOption.CREATE)
-  )(implicit F: Async[F]): Pipe[F, Byte, Unit] = {
+  )(implicit F: Async[F]): Pipe[F, Byte, INothing] = {
     def openNewFile: Resource[F, FileHandle[F]] =
       Resource
         .liftF(computePath)
@@ -128,7 +128,7 @@ package object file {
         .flatMap {
           case (fileHotswap, fileHandle) =>
             Stream.eval(newCursor(fileHandle)).flatMap { cursor =>
-              go(fileHotswap, cursor, 0L, in).stream
+              go(fileHotswap, cursor, 0L, in).stream.drain
             }
         }
   }
@@ -155,7 +155,8 @@ package object file {
   )(implicit F: Async[F]): Stream[F, Watcher.Event] =
     Stream
       .resource(Watcher.default)
-      .flatMap(w => Stream.eval_(w.watch(path, types, modifiers)) ++ w.events(pollTimeout))
+      .evalTap(_.watch(path, types, modifiers))
+      .flatMap(_.events(pollTimeout))
 
   /**
     * Checks if a file exists

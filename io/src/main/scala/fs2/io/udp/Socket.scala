@@ -50,7 +50,7 @@ trait Socket[F[_]] {
     * If `timeout` is specified, then resulting pipe will fail with `java.nio.channels.InterruptedByTimeoutException`
     * if a write was not completed in given timeout.
     */
-  def writes(timeout: Option[FiniteDuration] = None): Pipe[F, Packet, Unit]
+  def writes(timeout: Option[FiniteDuration] = None): Pipe[F, Packet, INothing]
 
   /** Returns the local address of this udp socket. */
   def localAddress: F[InetSocketAddress]

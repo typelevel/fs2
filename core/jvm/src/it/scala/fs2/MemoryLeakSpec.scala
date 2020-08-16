@@ -140,7 +140,7 @@ class MemoryLeakSpec extends FunSuite {
   }
 
   leakTest("drain onComplete") {
-    val s = Stream.repeatEval(IO(1)).pull.echo.stream.drain ++ Stream.eval_(IO(println("done")))
+    val s = Stream.repeatEval(IO(1)).pull.echo.stream.drain ++ Stream.exec(IO.unit)
     Stream.empty.covary[IO].merge(s)
   }
 
@@ -180,7 +180,6 @@ class MemoryLeakSpec extends FunSuite {
           cnt = (cnt + 1) % 1000000
           if (cnt == 0) {
             val now = System.currentTimeMillis
-            println("Elapsed: " + (now - start))
             start = now
           }
         })

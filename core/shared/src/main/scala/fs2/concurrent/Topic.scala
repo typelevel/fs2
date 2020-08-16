@@ -21,7 +21,7 @@
 // abstract class Topic[F[_], A] { self =>
 
 //   /**
-//     * Publishes elements from source of `A` to this topic.
+//     * Publishes elements from source of `A` to this topic and emits a unit for each element published.
 //     * [[Pipe]] equivalent of `publish1`.
 //     */
 //   def publish: Pipe[F, A, Unit]
