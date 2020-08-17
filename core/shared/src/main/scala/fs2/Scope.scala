@@ -34,7 +34,7 @@ abstract class Scope[F[_]] {
   def leaseOrError(implicit F: MonadError[F, Throwable]): F[Scope.Lease[F]] =
     lease.flatMap {
       case Some(l) => F.pure(l)
-      case None => F.raiseError(new Throwable("Scope closed at time of lease"))
+      case None    => F.raiseError(new Throwable("Scope closed at time of lease"))
     }
 
   /**
