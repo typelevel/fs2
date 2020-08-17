@@ -59,14 +59,13 @@ lazy val commonSettingsBase = Seq(
   organization := "co.fs2",
   scalacOptions ++= Seq(
     "-feature",
-    "-deprecation",
-    "-Xfatal-warnings"
+    "-deprecation"
   ) ++
     (scalaBinaryVersion.value match {
       case v if v.startsWith("2.13") =>
-        List("-Xlint", "-Ywarn-unused", "-language:implicitConversions,higherKinds")
+        List("-Xfatal-warnings", "-Xlint", "-Ywarn-unused", "-language:implicitConversions,higherKinds")
       case v if v.startsWith("2.12") =>
-        List("-Ypartial-unification", "-language:implicitConversions,higherKinds")
+        List("-Xfatal-warnings", "-Ypartial-unification", "-language:implicitConversions,higherKinds")
       case v if v.startsWith("0.") =>
         List("-Ykind-projector", "-language:implicitConversions,higherKinds")
       case other => sys.error(s"Unsupported scala version: $other")
