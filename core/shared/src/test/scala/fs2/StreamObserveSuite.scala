@@ -9,7 +9,7 @@ import org.scalacheck.effect.PropF.forAllF
 
 class StreamObserveSuite extends Fs2Suite {
   trait Observer {
-    def apply[F[_]: Async, O](s: Stream[F, O])(observation: Pipe[F, O, Unit]): Stream[F, O]
+    def apply[F[_]: Async, O](s: Stream[F, O])(observation: Pipe[F, O, INothing]): Stream[F, O]
   }
 
   def observationTests(label: String, observer: Observer): Unit =
@@ -20,7 +20,7 @@ class StreamObserveSuite extends Fs2Suite {
             .of[IO, Int](0)
             .flatMap { sum =>
               val ints =
-                observer(s.covary[IO])(_.evalMap(i => sum.update(_ + i))).compile.toList
+                observer(s.covary[IO])(_.foreach(i => sum.update(_ + i))).compile.toList
               ints.flatMap(out => sum.get.map(out -> _))
             }
             .map {
@@ -75,7 +75,7 @@ class StreamObserveSuite extends Fs2Suite {
       test("handle multiple consecutive observations") {
         forAllF { (s: Stream[Pure, Int]) =>
           val expected = s.toList
-          val sink: Pipe[IO, Int, Unit] = _.evalMap(_ => IO.unit)
+          val sink: Pipe[IO, Int, INothing] = _.foreach(_ => IO.unit)
           observer(observer(s.covary[IO])(sink))(sink).compile.toList
             .map(it => assert(it == expected))
         }
@@ -83,8 +83,8 @@ class StreamObserveSuite extends Fs2Suite {
 
       test("no hangs on failures") {
         forAllF { (s: Stream[Pure, Int]) =>
-          val sink: Pipe[IO, Int, Unit] =
-            in => spuriousFail(in.evalMap(i => IO(i))).void
+          val sink: Pipe[IO, Int, INothing] =
+            in => spuriousFail(in.foreach(_ => IO.unit))
           val src: Stream[IO, Int] = spuriousFail(s.covary[IO])
           src.observe(sink).observe(sink).attempt.compile.drain
         }
@@ -96,7 +96,7 @@ class StreamObserveSuite extends Fs2Suite {
     new Observer {
       def apply[F[_]: Async, O](
           s: Stream[F, O]
-      )(observation: Pipe[F, O, Unit]): Stream[F, O] =
+      )(observation: Pipe[F, O, INothing]): Stream[F, O] =
         s.observe(observation)
     }
   )
@@ -106,7 +106,7 @@ class StreamObserveSuite extends Fs2Suite {
     new Observer {
       def apply[F[_]: Async, O](
           s: Stream[F, O]
-      )(observation: Pipe[F, O, Unit]): Stream[F, O] =
+      )(observation: Pipe[F, O, INothing]): Stream[F, O] =
         s.observeAsync(maxQueued = 10)(observation)
     }
   )
@@ -118,7 +118,7 @@ class StreamObserveSuite extends Fs2Suite {
           .eval(IO(1))
           .append(Stream.eval(IO.raiseError(new Err)))
           .observe(
-            _.evalMap(_ => IO.sleep(100.millis))
+            _.foreach(_ => IO.sleep(100.millis))
           ) //Have to do some work here, so that we give time for the underlying stream to try pull more
           .take(1)
           .compile
@@ -151,8 +151,8 @@ class StreamObserveSuite extends Fs2Suite {
       for {
         iref <- is
         aref <- as
-        iSink = (_: Stream[IO, Int]).evalMap(i => iref.update(_ :+ i))
-        aSink = (_: Stream[IO, String]).evalMap(a => aref.update(_ :+ a))
+        iSink = (_: Stream[IO, Int]).foreach(i => iref.update(_ :+ i))
+        aSink = (_: Stream[IO, String]).foreach(a => aref.update(_ :+ a))
         _ <- s.take(10).observeEither(iSink, aSink).compile.drain
         iResult <- iref.get
         aResult <- aref.get
@@ -164,14 +164,14 @@ class StreamObserveSuite extends Fs2Suite {
 
     group("termination") {
       test("left") {
-        s.observeEither[Int, String](_.take(0).void, _.void)
+        s.observeEither[Int, String](_.take(0).drain, _.drain)
           .compile
           .toList
           .map(r => assert(r.isEmpty))
       }
 
       test("right") {
-        s.observeEither[Int, String](_.void, _.take(0).void)
+        s.observeEither[Int, String](_.drain, _.take(0).drain)
           .compile
           .toList
           .map(r => assert(r.isEmpty))

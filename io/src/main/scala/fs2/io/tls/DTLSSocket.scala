@@ -58,8 +58,8 @@ object DTLSSocket {
         def write(packet: Packet, timeout: Option[FiniteDuration] = None): F[Unit] =
           engine.write(packet.bytes, timeout)
 
-        def writes(timeout: Option[FiniteDuration] = None): Pipe[F, Packet, Unit] =
-          _.flatMap(p => Stream.eval(write(p, timeout)))
+        def writes(timeout: Option[FiniteDuration] = None): Pipe[F, Packet, INothing] =
+          _.foreach(write(_, timeout))
         def localAddress: F[InetSocketAddress] = socket.localAddress
         def close: F[Unit] = socket.close
         def join(group: InetAddress, interface: NetworkInterface): F[AnySourceGroupMembership] =

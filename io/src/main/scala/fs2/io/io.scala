@@ -88,15 +88,15 @@ package object io {
   def writeOutputStream[F[_]](
       fos: F[OutputStream],
       closeAfterUse: Boolean = true
-  )(implicit F: Sync[F]): Pipe[F, Byte, Unit] =
+  )(implicit F: Sync[F]): Pipe[F, Byte, INothing] =
     s => {
-      def useOs(os: OutputStream): Stream[F, Unit] =
-        s.chunks.evalMap(c => F.blocking(os.write(c.toArray)))
+      def useOs(os: OutputStream): Stream[F, INothing] =
+        s.chunks.foreach(c => F.blocking(os.write(c.toArray)))
 
       val os =
         if (closeAfterUse) Stream.bracket(fos)(os => F.blocking(os.close()))
         else Stream.eval(fos)
-      os.flatMap(os => useOs(os) ++ Stream.eval(F.blocking(os.flush())))
+      os.flatMap(os => useOs(os) ++ Stream.exec(F.blocking(os.flush())))
     }
 
   /**
@@ -159,7 +159,7 @@ package object io {
     readInputStream(Sync[F].blocking(System.in), bufSize, false)
 
   /** Pipe of bytes that writes emitted values to standard output asynchronously. */
-  def stdout[F[_]: Sync]: Pipe[F, Byte, Unit] =
+  def stdout[F[_]: Sync]: Pipe[F, Byte, INothing] =
     writeOutputStream(Sync[F].blocking(System.out), false)
 
   /**
@@ -171,7 +171,7 @@ package object io {
     */
   def stdoutLines[F[_]: Sync, O: Show](
       charset: Charset = utf8Charset
-  ): Pipe[F, O, Unit] =
+  ): Pipe[F, O, INothing] =
     _.map(_.show).through(text.encode(charset)).through(stdout)
 
   /** Stream of `String` read asynchronously from standard input decoded in UTF-8. */

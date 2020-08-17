@@ -51,7 +51,10 @@ package object reactivestreams {
       * This publisher can only have a single subscription.
       * The stream is only ran when elements are requested.
       */
-    def toUnicastPublisher(implicit F: Effect[F], ioRuntime: IORuntime): StreamUnicastPublisher[F, A] =
+    def toUnicastPublisher(implicit
+        F: Effect[F],
+        ioRuntime: IORuntime
+    ): StreamUnicastPublisher[F, A] =
       StreamUnicastPublisher(stream)
   }
 
@@ -64,7 +67,7 @@ package object reactivestreams {
 
     def unsafeRunAsync(): Unit =
       fa.to[IO].unsafeRunAsync {
-        case Left(t) => reportFailure(t)
+        case Left(t)  => reportFailure(t)
         case Right(_) => ()
       }
   }

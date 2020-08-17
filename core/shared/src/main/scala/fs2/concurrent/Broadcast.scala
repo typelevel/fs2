@@ -1,42 +1,42 @@
 package fs2.concurrent
 
 import cats.effect.{Async, ConcurrentThrow, Sync}
-import cats.effect.concurrent.{Deferred, Ref}
 import fs2.internal.Token
 import fs2._
 
 /** Provides mechanisms for broadcast distribution of elements to multiple streams. */
 object Broadcast {
 
-  sealed trait MkIn[F[_], G[_]] {
-    private[Broadcast] def mkPubSub[O](
-        minReady: Int
-    ): F[PubSub[G, Option[Chunk[O]], Option[Chunk[O]], Token]]
-    private[Broadcast] implicit val mkToken: Token.Mk[F]
-    private[Broadcast] implicit val mkRef: Ref.MkIn[F, G]
-    private[Broadcast] implicit val mkDeferred: Deferred.MkIn[F, G]
-    private[Broadcast] implicit val mkSignallingRef: SignallingRef.MkIn[F, G]
-    private[Broadcast] implicit val mkQueue: Queue.MkIn[F, G]
+  sealed trait Mk[F[_]] {
+    def apply[O](minReady: Int): Pipe[F, O, Stream[F, O]]
   }
 
-  object MkIn {
-    implicit def instance[F[_]: Sync, G[_]: Async]: MkIn[F, G] =
-      new MkIn[F, G] {
-        private[Broadcast] def mkPubSub[O](
-            minReady: Int
-        ): F[PubSub[G, Option[Chunk[O]], Option[Chunk[O]], Token]] =
-          PubSub.in[F].from(PubSub.Strategy.closeDrainFirst(strategy[Chunk[O]](minReady)))
-        private[Broadcast] implicit val mkToken: Token.Mk[F] = Token.Mk.instance[F]
-        private[Broadcast] implicit val mkRef: Ref.MkIn[F, G] = Ref.MkIn.instance[F, G]
-        private[Broadcast] implicit val mkDeferred: Deferred.MkIn[F, G] =
-          Deferred.MkIn.instance[F, G]
-        private[Broadcast] implicit val mkSignallingRef: SignallingRef.MkIn[F, G] =
-          SignallingRef.MkIn.instance[F, G]
-        private[Broadcast] implicit val mkQueue: Queue.MkIn[F, G] = Queue.MkIn.instance[F, G]
+  object Mk {
+    implicit def instance[F[_]: Async]: Mk[F] =
+      new Mk[F] {
+        def apply[O](minReady: Int): Pipe[F, O, Stream[F, O]] = { source =>
+          Stream
+            .eval(PubSub.in[F].from(PubSub.Strategy.closeDrainFirst(strategy[Chunk[O]](minReady))))
+            .flatMap { pubSub =>
+              def subscriber =
+                Stream.bracket(Sync[F].delay(new Token))(pubSub.unsubscribe).flatMap { selector =>
+                  pubSub
+                    .getStream(selector)
+                    .unNoneTerminate
+                    .flatMap(Stream.chunk)
+                }
+
+              def publish =
+                source.chunks
+                  .evalMap(chunk => pubSub.publish(Some(chunk)))
+                  .onFinalize(pubSub.publish(None))
+
+              Stream.constant(subscriber).concurrently(publish)
+            }
+        }
+
       }
   }
-
-  type Mk[F[_]] = MkIn[F, F]
 
   /**
     * Allows elements of a stream to be broadcast to multiple workers.
@@ -69,26 +69,7 @@ object Broadcast {
     * @param minReady specifies that broadcasting will hold off until at least `minReady` subscribers will
     *                 be ready
     */
-  def apply[F[_]: ConcurrentThrow: Mk, O](minReady: Int): Pipe[F, O, Stream[F, O]] = { source =>
-    val mk = implicitly[Mk[F]]
-    import mk._
-    Stream.eval(mkPubSub[O](minReady)).flatMap { pubSub =>
-      def subscriber =
-        Stream.bracket(Token[F])(pubSub.unsubscribe).flatMap { selector =>
-          pubSub
-            .getStream(selector)
-            .unNoneTerminate
-            .flatMap(Stream.chunk)
-        }
-
-      def publish =
-        source.chunks
-          .evalMap(chunk => pubSub.publish(Some(chunk)))
-          .onFinalize(pubSub.publish(None))
-
-      Stream.constant(subscriber).concurrently(publish)
-    }
-  }
+  def apply[F[_], O](minReady: Int)(implicit mk: Mk[F]): Pipe[F, O, Stream[F, O]] = mk(minReady)
 
   /**
     * Like [[apply]] but instead of providing a stream of worker streams, it runs each inner stream through
@@ -101,9 +82,9 @@ object Broadcast {
     *
     * @param pipes pipes that will concurrently process the work
     */
-  def through[F[_]: ConcurrentThrow: Mk, O, O2](pipes: Pipe[F, O, O2]*): Pipe[F, O, O2] = {
-    val mk = implicitly[Mk[F]]
-    import mk._
+  def through[F[_]: ConcurrentThrow: Alloc, O, O2](pipes: Pipe[F, O, O2]*): Pipe[F, O, O2] = {
+    val alloc = Alloc[F]
+    import alloc._
     _.through(apply(pipes.size))
       .take(pipes.size)
       .zipWithIndex

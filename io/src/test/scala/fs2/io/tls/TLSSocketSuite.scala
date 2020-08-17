@@ -38,8 +38,7 @@ class TLSSocketSuite extends TLSSuite {
                         (Stream("GET / HTTP/1.1\r\nHost: www.google.com\r\n\r\n")
                           .covary[IO]
                           .through(text.utf8Encode)
-                          .through(tlsSocket.writes())
-                          .drain ++
+                          .through(tlsSocket.writes()) ++
                           tlsSocket
                             .reads(8192)
                             .through(text.utf8Decode)
@@ -63,9 +62,7 @@ class TLSSocketSuite extends TLSSuite {
                 val server = clients.map { client =>
                   Stream.resource(client).flatMap { clientSocket =>
                     Stream.resource(tlsContext.server(clientSocket)).flatMap { clientSocketTls =>
-                      clientSocketTls.reads(8192).chunks.flatMap { c =>
-                        Stream.eval(clientSocketTls.write(c))
-                      }
+                      clientSocketTls.reads(8192).chunks.foreach(clientSocketTls.write(_))
                     }
                   }
                 }.parJoinUnbounded
@@ -83,7 +80,7 @@ class TLSSocketSuite extends TLSSuite {
                         )
                       )
                       .flatMap { clientSocketTls =>
-                        Stream.eval_(clientSocketTls.write(msg)) ++
+                        Stream.exec(clientSocketTls.write(msg)) ++
                           clientSocketTls.reads(8192).take(msg.size)
                       }
                   }
