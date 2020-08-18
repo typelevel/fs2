@@ -262,8 +262,7 @@ object Pull extends PullLowPriority {
     * Gets the current scope, allowing manual leasing or interruption.
     * This is a low-level method and generally should not be used by user code.
     */
-  def getScope[F[_]]: Pull[F, INothing, Scope[F]] =
-    new Pull(FreeC.GetScope[F]())
+  def getScope[F[_]]: Pull[F, INothing, Scope[F]] = GetScope[F]()
 
   /**
     * Returns a pull that evaluates the supplied by-name each time the pull is used,
@@ -475,7 +474,7 @@ object Pull extends PullLowPriority {
   ) extends AlgEffect[Pure, Unit]
 
   private final case class GetScope[F[_]]() extends AlgEffect[Pure, CompileScope[F]]
-  private[fs2] def getScope[F[_]]: Pull[Pure, INothing, CompileScope[F]] = GetScope[F]()
+  private[fs2] def getScopeInternal[F[_]]: Pull[Pure, INothing, CompileScope[F]] = GetScope[F]()
 
   private[fs2] def stepLeg[F[_], O](
       leg: Stream.StepLeg[F, O]
