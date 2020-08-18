@@ -1,5 +1,8 @@
 package fs2
 
+import cats.MonadError
+import cats.implicits._
+
 /**
   * Represents a period of stream execution in which resources are acquired and released.
   *
@@ -26,6 +29,13 @@ abstract class Scope[F[_]] {
     * successfully leased.
     */
   def lease: F[Option[Scope.Lease[F]]]
+
+  /** Like [[lease]], but fails with an error if the scope is closed. */
+  def leaseOrError(implicit F: MonadError[F, Throwable]): F[Scope.Lease[F]] =
+    lease.flatMap {
+      case Some(l) => F.pure(l)
+      case None    => F.raiseError(new Throwable("Scope closed at time of lease"))
+    }
 
   /**
     * Interrupts evaluation of the current scope. Only scopes previously indicated with Stream.interruptScope may be interrupted.

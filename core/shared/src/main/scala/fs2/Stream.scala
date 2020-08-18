@@ -3904,43 +3904,44 @@ object Stream extends StreamLowPriority {
         // "block" and await until the `running` counter drops to zero.
         val awaitWhileRunning: F[Unit] = running.discrete.dropWhile(_ > 0).take(1).compile.drain
 
-        // runs one inner stream,
-        // each stream is forked.
+        // signals that a running stream, either inner or ourer, finished with or without failure.
+        def endWithResult(result: Either[Throwable, Unit]): F[Unit] =
+          result match {
+            case Right(()) => decrementRunning
+            case Left(err) => stop(Some(err)) >> decrementRunning
+          }
+
+        def leaseOrFail(scope: Scope[F]): F[Scope.Lease[F]] =
+          scope.lease.flatMap {
+            case Some(lease) => F.pure(lease)
+            case None =>
+              F.raiseError(new Throwable("Outer scope is closed during inner stream startup"))
+          }
+
+        val extractFromQueue: Stream[F, O] = outputQ.dequeue.flatMap(Stream.chunk(_))
+        def insertToQueue(str: Stream[F, O]) = str.chunks.evalMap(s => outputQ.enqueue1(Some(s)))
+
+        // runs one inner stream, each stream is forked.
         // terminates when killSignal is true
         // failures will be propagated through `done` Signal
         // note that supplied scope's resources must be leased before the inner stream forks the execution to another thread
         // and that it must be released once the inner stream terminates or fails.
         def runInner(inner: Stream[F, O], outerScope: Scope[F]): F[Unit] =
           F.uncancelable { _ =>
-            outerScope.lease.flatMap {
-              case Some(lease) =>
-                available.acquire >>
-                  incrementRunning >>
-                  F.start {
-                    inner.chunks
-                      .evalMap(s => outputQ.enqueue1(Some(s)))
-                      .interruptWhen(
-                        done.map(_.nonEmpty)
-                      ) // must be AFTER enqueue to the sync queue, otherwise the process may hang to enqueue last item while being interrupted
-                      .compile
-                      .drain
-                      .attempt
-                      .flatMap { r =>
-                        lease.cancel.flatMap { cancelResult =>
-                          available.release >>
-                            (CompositeFailure.fromResults(r, cancelResult) match {
-                              case Right(()) => F.unit
-                              case Left(err) =>
-                                stop(Some(err))
-                            }) >> decrementRunning
-                        }
-                      }
-                  }.void
-
-              case None =>
-                F.raiseError(
-                  new Throwable("Outer scope is closed during inner stream startup")
-                )
+            leaseOrFail(outerScope).flatMap { lease =>
+              available.acquire >>
+                incrementRunning >>
+                F.start {
+                  // Note that the `interrupt` must be AFTER the enqueue to the sync queue,
+                  // otherwise the process may hang to enqueue last item while being interrupted
+                  val backInsertions = insertToQueue(inner).interruptWhen(done.map(_.nonEmpty))
+                  for {
+                    r <- backInsertions.compile.drain.attempt
+                    cancelResult <- lease.cancel
+                    _ <- available.release
+                    _ <- endWithResult(CompositeFailure.fromResults(r, cancelResult))
+                  } yield ()
+                }.void
             }
           }
 
@@ -3952,20 +3953,16 @@ object Stream extends StreamLowPriority {
             .compile
             .drain
             .attempt
-            .flatMap {
-              case Left(err) => stop(Some(err)) >> decrementRunning
-              case Right(_)  => F.unit >> decrementRunning
-            }
+            .flatMap(endWithResult)
 
         // awaits when all streams (outer + inner) finished,
         // and then collects result of the stream (outer + inner) execution
         def signalResult: F[Unit] =
           done.get.flatMap(_.flatten.fold[F[Unit]](F.unit)(F.raiseError))
 
-        Stream
-          .bracket(F.start(runOuter))(_ => stop(None) >> awaitWhileRunning >> signalResult) >>
-          outputQ.dequeue
-            .flatMap(Stream.chunk(_).covary[F])
+        val endOuter: F[Unit] = stop(None) >> awaitWhileRunning >> signalResult
+
+        Stream.bracket(F.start(runOuter))(_ => endOuter) >> extractFromQueue
       }
 
       Stream.eval(fstream).flatten
@@ -4306,7 +4303,7 @@ object Stream extends StreamLowPriority {
       * If you are not pulling from multiple streams, consider using `uncons`.
       */
     def stepLeg: Pull[F, INothing, Option[StepLeg[F, O]]] =
-      Pull.getScope[F].flatMap { scope =>
+      Pull.getScopeInternal[F].flatMap { scope =>
         new StepLeg[F, O](Chunk.empty, scope.id, self.underlying).stepLeg
       }
 
