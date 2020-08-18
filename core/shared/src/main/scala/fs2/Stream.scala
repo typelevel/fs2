@@ -3911,13 +3911,6 @@ object Stream extends StreamLowPriority {
             case Left(err) => stop(Some(err)) >> decrementRunning
           }
 
-        def leaseOrFail(scope: Scope[F]): F[Scope.Lease[F]] =
-          scope.lease.flatMap {
-            case Some(lease) => F.pure(lease)
-            case None =>
-              F.raiseError(new Throwable("Outer scope is closed during inner stream startup"))
-          }
-
         val extractFromQueue: Stream[F, O] = outputQ.dequeue.flatMap(Stream.chunk(_))
         def insertToQueue(str: Stream[F, O]) = str.chunks.evalMap(s => outputQ.enqueue1(Some(s)))
 
@@ -3928,7 +3921,7 @@ object Stream extends StreamLowPriority {
         // and that it must be released once the inner stream terminates or fails.
         def runInner(inner: Stream[F, O], outerScope: Scope[F]): F[Unit] =
           F.uncancelable { _ =>
-            leaseOrFail(outerScope).flatMap { lease =>
+            outerScope.leaseOrError.flatMap { lease =>
               available.acquire >>
                 incrementRunning >>
                 F.start {
