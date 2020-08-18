@@ -199,6 +199,19 @@ object Pull extends PullLowPriority {
     Eval[F, R](fr)
 
   /**
+    * Extends the scope of the currently open resources to the specified stream, preventing them
+    * from being finalized until after `s` completes execution, even if the returned pull is converted
+    * to a stream, compiled, and evaluated before `s` is compiled and evaluated.
+    */
+  def extendScopeTo[F[_], O](
+      s: Stream[F, O]
+  )(implicit F: MonadError[F, Throwable]): Pull[F, INothing, Stream[F, O]] =
+    for {
+      scope <- Pull.getScope[F]
+      lease <- Pull.eval(scope.leaseOrError)
+    } yield s.onFinalize(lease.cancel.redeem(F.raiseError(_), _ => F.unit))
+
+  /**
     * Repeatedly uses the output of the pull as input for the next step of the pull.
     * Halts when a step terminates with `None` or `Pull.raiseError`.
     */
@@ -244,6 +257,13 @@ object Pull extends PullLowPriority {
     * }}}
     */
   def fromEither[F[x]] = new PartiallyAppliedFromEither[F]
+
+  /**
+    * Gets the current scope, allowing manual leasing or interruption.
+    * This is a low-level method and generally should not be used by user code.
+    */
+  def getScope[F[_]]: Pull[F, INothing, Scope[F]] =
+    new Pull(FreeC.GetScope[F]())
 
   /**
     * Returns a pull that evaluates the supplied by-name each time the pull is used,
