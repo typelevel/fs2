@@ -2092,32 +2092,38 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     */
   def parEvalMap[F2[x] >: F[x]: Concurrent, O2](
       maxConcurrent: Int
-  )(f: O => F2[O2]): Stream[F2, O2] =
-    Stream.eval(Queue.bounded[F2, Option[F2[Either[Throwable, O2]]]](maxConcurrent)).flatMap {
-      queue =>
-        Stream.eval(Deferred[F2, Unit]).flatMap { dequeueDone =>
-          queue.dequeue.unNoneTerminate
-            .evalMap(identity)
-            .rethrow
-            .onFinalize(dequeueDone.complete(()))
-            .concurrently {
-              evalMap { o =>
-                Deferred[F2, Either[Throwable, O2]].flatMap { value =>
-                  val enqueue =
-                    queue.enqueue1(Some(value.get)).as {
-                      Stream.eval(f(o).attempt).evalMap(value.complete)
-                    }
-
-                  Concurrent[F2].race(dequeueDone.get, enqueue).map {
-                    case Left(())      => Stream.empty
-                    case Right(stream) => stream
-                  }
-                }
-              }.parJoin(maxConcurrent)
-                .onFinalize(Concurrent[F2].race(dequeueDone.get, queue.enqueue1(None)).void)
-            }
+  )(f: O => F2[O2]): Stream[F2, O2] = {
+    val fstream: F2[Stream[F2, O2]] = for {
+      queue <- Queue.bounded[F2, Option[F2[Either[Throwable, O2]]]](maxConcurrent)
+      dequeueDone <- Deferred[F2, Unit]
+    } yield {
+      def forkOnElem(o: O): F2[Stream[F2, Unit]] =
+        for {
+          value <- Deferred[F2, Either[Throwable, O2]]
+          enqueue = queue.enqueue1(Some(value.get)).as {
+            Stream.eval(f(o).attempt).evalMap(value.complete)
+          }
+          eit <- Concurrent[F2].race(dequeueDone.get, enqueue)
+        } yield eit match {
+          case Left(())      => Stream.empty
+          case Right(stream) => stream
         }
+
+      val background = this
+        .evalMap(forkOnElem)
+        .parJoin(maxConcurrent)
+        .onFinalize(Concurrent[F2].race(dequeueDone.get, queue.enqueue1(None)).void)
+
+      val foreground =
+        queue.dequeue.unNoneTerminate
+          .evalMap(identity)
+          .rethrow
+          .onFinalize(dequeueDone.complete(()))
+
+      foreground.concurrently(background)
     }
+    Stream.eval(fstream).flatten
+  }
 
   /**
     * Like [[Stream#evalMap]], but will evaluate effects in parallel, emitting the results
