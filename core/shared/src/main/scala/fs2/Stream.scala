@@ -1987,63 +1987,55 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
       otherSideDone <- Ref.of[F2, Boolean](false)
       resultQ <- Queue.unbounded[F2, Option[Stream[F2, O2]]]
     } yield {
-      def go(
-          s: Stream[F2, O2],
-          guard: Semaphore[F2],
-          queue: Queue[F2, Option[Stream[F2, O2]]]
-      ): Pull[F2, O2, Unit] =
+
+      def watchInterrupted(str: Stream[F2, O2]): Stream[F2, O2] =
+        str.interruptWhen(interrupt.get.attempt)
+
+      // action to signal that one stream is finished, and if it is te last one
+      // then close te queue (by putting a None in it)
+      val doneAndClose: F2[Unit] = otherSideDone.modify(prev => (true, prev)).flatMap {
+        // complete only if other side is done too.
+        case true  => resultQ.enqueue1(None)
+        case false => F2.unit
+      }
+
+      // stream that is generated from pumping out the elements of the queue.
+      val pumpFromQueue: Stream[F2, O2] = resultQ.dequeue.unNoneTerminate.flatten
+
+      // action to interrupt the processing of both streams by completing interrupt
+      // We need to use `attempt` because `interruption` may already be completed.
+      val signalInterruption: F2[Unit] = interrupt.complete(()).attempt.void
+
+      def go(s: Stream[F2, O2], guard: Semaphore[F2]): Pull[F2, O2, Unit] =
         Pull.eval(guard.acquire) >> s.pull.uncons.flatMap {
           case Some((hd, tl)) =>
-            Pull
-              .eval(resultQ.enqueue1(Some(Stream.chunk(hd).onFinalize(guard.release)))) >>
-              go(tl, guard, queue)
+            val enq = resultQ.enqueue1(Some(Stream.chunk(hd).onFinalize(guard.release)))
+            Pull.eval(enq) >> go(tl, guard)
           case None => Pull.done
         }
+
       def runStream(s: Stream[F2, O2], whenDone: Deferred[F2, Either[Throwable, Unit]]): F2[Unit] =
         // guarantee we process only single chunk at any given time from any given side.
         Semaphore(1).flatMap { guard =>
-          go(s, guard, resultQ).stream
-            .interruptWhen(interrupt.get.attempt)
-            .compile
-            .drain
-            .attempt
-            .flatMap { r =>
-              whenDone.complete(r) >> { // signal completion of our side before we will signal interruption, to make sure our result is always available to others
-                if (r.isLeft)
-                  interrupt
-                    .complete(())
-                    .attempt
-                    .void // we need to attempt interruption in case the interrupt was already completed.
-                else
-                  otherSideDone
-                    .modify(prev => (true, prev))
-                    .flatMap { otherDone =>
-                      if (otherDone)
-                        resultQ
-                          .enqueue1(None) // complete only if other side is done too.
-                      else F2.unit
-                    }
-              }
-            }
+          val str = watchInterrupted(go(s, guard).stream)
+          str.compile.drain.attempt.flatMap {
+            // signal completion of our side before we will signal interruption,
+            // to make sure our result is always available to others
+            case r @ Left(_)  => whenDone.complete(r) >> signalInterruption
+            case r @ Right(_) => whenDone.complete(r) >> doneAndClose
+          }
         }
 
-      def resultStream: Stream[F2, O2] =
-        resultQ.dequeue.unNoneTerminate.flatten
-          .interruptWhen(interrupt.get.attempt)
+      val atRunEnd: F2[Unit] = for {
+        _ <- signalInterruption // interrupt so the upstreams have chance to complete
+        left <- resultL.get
+        right <- resultR.get
+        r <- F2.fromEither(CompositeFailure.fromResults(left, right))
+      } yield r
 
-      Stream.bracket(
-        F2.start(runStream(this, resultL)) >>
-          F2.start(runStream(that, resultR))
-      ) { _ =>
-        interrupt
-          .complete(())
-          .attempt >> // interrupt so the upstreams have chance to complete
-          resultL.get.flatMap { left =>
-            resultR.get.flatMap { right =>
-              F2.fromEither(CompositeFailure.fromResults(left, right))
-            }
-          }
-      } >> resultStream
+      val runStreams = F2.start(runStream(this, resultL)) >> F2.start(runStream(that, resultR))
+
+      Stream.bracket(runStreams)(_ => atRunEnd) >> watchInterrupted(pumpFromQueue)
     }
     Stream.eval(fstream).flatten
   }
@@ -2160,33 +2152,38 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
   )(f: O => F2[O2]): Stream[F2, O2] = {
     val alloc = Alloc[F2]
     import alloc._
-    Stream.eval(Queue.bounded[F2, Option[F2[Either[Throwable, O2]]]](maxConcurrent)).flatMap {
-      queue =>
-        Stream.eval(Deferred[F2, Unit]).flatMap { dequeueDone =>
-          queue.dequeue.unNoneTerminate
-            .evalMap(identity)
-            .rethrow
-            .onFinalize(dequeueDone.complete(()))
-            .concurrently {
-              evalMap { o =>
-                Deferred[F2, Either[Throwable, O2]].flatMap { value =>
-                  val enqueue =
-                    queue.enqueue1(Some(value.get)).as {
-                      Stream.eval(f(o).attempt).evalMap(value.complete)
-                    }
 
-                  implicitly[ConcurrentThrow[F2]].race(dequeueDone.get, enqueue).map {
-                    case Left(())      => Stream.empty
-                    case Right(stream) => stream
-                  }
-                }
-              }.parJoin(maxConcurrent)
-                .onFinalize(
-                  implicitly[ConcurrentThrow[F2]].race(dequeueDone.get, queue.enqueue1(None)).void
-                )
-            }
+    val fstream: F2[Stream[F2, O2]] = for {
+      queue <- Queue.bounded[F2, Option[F2[Either[Throwable, O2]]]](maxConcurrent)
+      dequeueDone <- Deferred[F2, Unit]
+    } yield {
+      def forkOnElem(o: O): F2[Stream[F2, Unit]] =
+        for {
+          value <- Deferred[F2, Either[Throwable, O2]]
+          enqueue = queue.enqueue1(Some(value.get)).as {
+            Stream.eval(f(o).attempt).evalMap(value.complete)
+          }
+          eit <- Concurrent[F2].race(dequeueDone.get, enqueue)
+        } yield eit match {
+          case Left(())      => Stream.empty
+          case Right(stream) => stream
         }
+
+      val background = this
+        .evalMap(forkOnElem)
+        .parJoin(maxConcurrent)
+        .onFinalize(Concurrent[F2].race(dequeueDone.get, queue.enqueue1(None)).void)
+
+      val foreground =
+        queue.dequeue.unNoneTerminate
+          .evalMap(identity)
+          .rethrow
+          .onFinalize(dequeueDone.complete(()))
+
+      foreground.concurrently(background)
     }
+
+    Stream.eval(fstream).flatten
   }
 
   /**
