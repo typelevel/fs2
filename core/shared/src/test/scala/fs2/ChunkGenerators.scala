@@ -23,19 +23,26 @@ trait ChunkGeneratorsLowPriority1 extends MiscellaneousGenerators {
   implicit def unspecializedChunkArbitrary[A](implicit A: Arbitrary[A]): Arbitrary[Chunk[A]] =
     Arbitrary(unspecializedChunkGenerator(A.arbitrary))
 
-  def unspecializedChunkGenerator[A](genA: Gen[A]): Gen[Chunk[A]] =
-    Gen.frequency(
+  def unspecializedChunkGenerator[A](genA: Gen[A]): Gen[Chunk[A]] = {
+    val gen = Gen.frequency(
       1 -> Gen.const(Chunk.empty[A]),
       5 -> genA.map(Chunk.singleton),
-      10 -> smallLists(genA).map(Chunk.seq),
-      10 -> smallLists(genA).map(_.toVector).map(Chunk.vector),
-      10 -> smallLists(genA)
+      10 -> Gen.listOf(genA).map(Chunk.seq),
+      10 -> Gen.listOf(genA).map(_.toVector).map(Chunk.vector),
+      10 -> Gen.listOf(genA)
         .map(_.toVector)
         .map(as => Chunk.buffer(collection.mutable.Buffer.empty ++= as)),
-      10 -> smallLists(genA)
+      10 -> Gen.listOf(genA)
         .map(_.toVector)
         .map(as => Chunk.chain(Chain.fromSeq(as))) // TODO Add variety in Chain
     )
+
+    Gen.frequency(
+      20 -> Gen.resize(20, gen),
+      5 -> gen,
+      2 -> Gen.resize(300, gen)
+    )
+  }
 }
 
 trait ChunkGeneratorsLowPriority extends ChunkGeneratorsLowPriority1 {
@@ -58,7 +65,7 @@ trait ChunkGenerators extends ChunkGeneratorsLowPriority {
       build: (Array[A], Int, Int) => Chunk[A]
   )(implicit ct: ClassTag[A]): Gen[Chunk[A]] =
     for {
-      values <- smallLists(genA).map(_.toArray)
+      values <- Gen.listOf(genA).map(_.toArray)
       offset <- Gen.chooseNum(0, values.size)
       sz <- Gen.chooseNum(0, values.size - offset)
     } yield build(values, offset, sz)
@@ -70,7 +77,7 @@ trait ChunkGenerators extends ChunkGeneratorsLowPriority {
       wrap: Array[A] => B
   )(implicit cta: ClassTag[A]): Gen[Chunk[A]] =
     for {
-      values <- smallLists(genA).map(_.toArray)
+      values <- Gen.listOf(genA).map(_.toArray)
       n = values.size
       pos <- Gen.chooseNum(0, n)
       lim <- Gen.chooseNum(pos, n)
@@ -95,7 +102,7 @@ trait ChunkGenerators extends ChunkGeneratorsLowPriority {
 
   val byteVectorChunkGenerator: Gen[Chunk[Byte]] =
     for {
-      values <- smallLists(arbitrary[Byte]).map(_.toArray)
+      values <- Gen.listOf(arbitrary[Byte]).map(_.toArray)
     } yield Chunk.byteVector(ByteVector.view(values))
 
   val byteChunkGenerator: Gen[Chunk[Byte]] =
