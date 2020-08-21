@@ -51,8 +51,14 @@ class StreamMergeSuite extends Fs2Suite {
         }
       }
 
+      /**
+        * Ignored for now because of intermittent failures.
+        *
+        * Reproduce with this seed:
+        * "UL4hdZX4aMPzkhx51hbRhml2Kp7v4QQh9H82XieVorH="
+        */
       if (isJVM)
-        test("3 - constant flatMap, failure after emit") {
+        test("3 - constant flatMap, failure after emit".ignore) {
           forAllF { (s1: Stream[Pure, Int]) =>
             s1.merge(Stream.raiseError[IO](new Err))
               .flatMap(_ => Stream.constant(true))
