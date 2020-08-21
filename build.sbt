@@ -54,7 +54,7 @@ lazy val contributors = Seq(
 )
 
 lazy val commonSettingsBase = Seq(
-  organization := "co.fs2",
+  organization := "org.typelevel",
   scalacOptions ++= Seq(
     "-feature",
     "-deprecation",
