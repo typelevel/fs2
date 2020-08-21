@@ -236,7 +236,7 @@ private[fs2] object PubSub {
 
     private def clearPublisher(token: Token)(outcome: Outcome[F, _, _]): F[Unit] =
       outcome match {
-        case _: Outcome.Completed[_, _, _] => Applicative[F].unit
+        case Outcome.Completed(_) => Applicative[F].unit
         case Outcome.Errored(_) | Outcome.Canceled() =>
           state.update(ps => ps.copy(publishers = ps.publishers.filterNot(_.token == token)))
       }
