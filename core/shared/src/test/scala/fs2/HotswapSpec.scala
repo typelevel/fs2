@@ -1,6 +1,5 @@
 package fs2
 
-import cats.implicits._
 import cats.effect.IO
 
 class HotswapSpec extends Fs2Spec {

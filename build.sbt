@@ -5,8 +5,11 @@ import sbtcrossproject.crossProject
 
 val ReleaseTag = """^release/([\d\.]+a?)$""".r
 
-addCommandAlias("fmt", "; compile:scalafmt; test:scalafmt; scalafmtSbt")
-addCommandAlias("fmtCheck", "; compile:scalafmtCheck; test:scalafmtCheck; scalafmtSbtCheck")
+addCommandAlias("fmt", "; compile:scalafmt; test:scalafmt; it:scalafmt; scalafmtSbt")
+addCommandAlias(
+  "fmtCheck",
+  "; compile:scalafmtCheck; test:scalafmtCheck; it:scalafmtCheck; scalafmtSbtCheck"
+)
 
 lazy val contributors = Seq(
   "pchiusano" -> "Paul Chiusano",
@@ -58,7 +61,7 @@ lazy val commonSettingsBase = Seq(
     "org.typelevel" %%% "cats-effect-laws" % "2.1.3" % "test",
     "org.scalacheck" %%% "scalacheck" % "1.14.3" % "test",
     "org.scalatest" %%% "scalatest" % "3.3.0-SNAP2" % "test",
-    "org.scalatestplus" %%% "scalacheck-1-14" % "3.1.1.1" % "test"
+    "org.scalatestplus" %%% "scalacheck-1-14" % "3.1.2.0" % "test"
   ),
   scmInfo := Some(
     ScmInfo(
@@ -237,7 +240,15 @@ lazy val mimaSettings = Seq(
     ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Stream.to$extension"),
     ProblemFilters.exclude[DirectMissingMethodProblem](
       "fs2.interop.reactivestreams.StreamSubscriber#FSM.stream"
-    ) // FSM is package private
+    ), // FSM is package private
+    ProblemFilters.exclude[Problem]("fs2.io.tls.TLSEngine.*"), // private[fs2] type
+    ProblemFilters.exclude[Problem]("fs2.io.tls.TLSEngine#*"),
+    ProblemFilters.exclude[DirectMissingMethodProblem](
+      "fs2.io.tls.TLSSocket.fs2$io$tls$TLSSocket$$binding$default$2"
+    ),
+    ProblemFilters.exclude[DirectMissingMethodProblem](
+      "fs2.io.tls.TLSSocket.fs2$io$tls$TLSSocket$$binding$default$3"
+    )
   )
 )
 
@@ -249,13 +260,21 @@ lazy val root = project
   .settings(noPublish)
   .aggregate(coreJVM, coreJS, io, reactiveStreams, benchmark, experimental)
 
+lazy val IntegrationTest = config("it").extend(Test)
+
 lazy val core = crossProject(JVMPlatform, JSPlatform)
   .in(file("core"))
+  .configs(IntegrationTest)
+  .settings(Defaults.itSettings: _*)
+  .settings(
+    testOptions in IntegrationTest := Seq(Tests.Argument(TestFrameworks.ScalaTest, "-oDF")),
+    inConfig(IntegrationTest)(org.scalafmt.sbt.ScalafmtPlugin.scalafmtConfigSettings)
+  )
   .settings(crossCommonSettings: _*)
   .settings(
     name := "fs2-core",
     sourceDirectories in (Compile, scalafmt) += baseDirectory.value / "../shared/src/main/scala",
-    libraryDependencies += "org.scodec" %%% "scodec-bits" % "1.1.14"
+    libraryDependencies += "org.scodec" %%% "scodec-bits" % "1.1.15"
   )
   .jsSettings(commonJsSettings: _*)
 
@@ -360,6 +379,8 @@ lazy val microsite = project
     micrositeDescription := "Purely functional, effectful, resource-safe, concurrent streams for Scala",
     micrositeGithubOwner := "functional-streams-for-scala",
     micrositeGithubRepo := "fs2",
+    micrositePushSiteWith := GitHub4s,
+    micrositeGithubToken := sys.env.get("GITHUB_TOKEN"),
     micrositeBaseUrl := "",
     micrositeHighlightTheme := "atom-one-light",
     micrositeExtraMdFilesOutput := resourceManaged.value / "main" / "jekyll",

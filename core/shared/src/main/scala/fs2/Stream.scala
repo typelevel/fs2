@@ -500,6 +500,17 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
       .stream
 
   /**
+    * Like [[collect]] but terminates as soon as the partial function is undefined.
+    *
+    * @example {{{
+    * scala> Stream(Some(1), Some(2), Some(3), None, Some(4)).collectWhile { case Some(i) => i }.toList
+    * res0: List[Int] = List(1, 2, 3)
+    * }}}
+    */
+  def collectWhile[O2](pf: PartialFunction[O, O2]): Stream[F, O2] =
+    takeWhile(pf.isDefinedAt).map(pf)
+
+  /**
     * Gets a projection of this stream that allows converting it to an `F[..]` in a number of ways.
     *
     * @example {{{
@@ -1589,7 +1600,7 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
     map(Some(_): Option[O2]).holdResource(None)
 
   /**
-    * Determinsitically interleaves elements, starting on the left, terminating when the end of either branch is reached naturally.
+    * Deterministically interleaves elements, starting on the left, terminating when the end of either branch is reached naturally.
     *
     * @example {{{
     * scala> Stream(1, 2, 3).interleave(Stream(4, 5, 6, 7)).toList
@@ -1600,7 +1611,7 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
     zip(that).flatMap { case (o1, o2) => Stream(o1, o2) }
 
   /**
-    * Determinsitically interleaves elements, starting on the left, terminating when the ends of both branches are reached naturally.
+    * Deterministically interleaves elements, starting on the left, terminating when the ends of both branches are reached naturally.
     *
     * @example {{{
     * scala> Stream(1, 2, 3).interleaveAll(Stream(4, 5, 6, 7)).toList
@@ -1782,7 +1793,7 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
     * }}}
     */
   def map[O2](f: O => O2): Stream[F, O2] =
-    this.pull.echo.mapOutput(f).stream
+    this.pull.echo.mapOutput(f).streamNoScope
 
   /**
     * Maps a running total according to `S` and the input with the function `f`.
@@ -2296,6 +2307,39 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
       F2: Concurrent[F2]
   ): Stream[F2, O2] =
     parJoin(Int.MaxValue)
+
+  /**
+    * Concurrent zip.
+    *
+    * It combines elements pairwise and in order like `zip`, but
+    * instead of pulling from the left stream and then from the right
+    * stream, it evaluates both pulls concurrently.
+    * The resulting stream terminates when either stream terminates.
+    *
+    * The concurrency is bounded following a model of successive
+    * races: both sides start evaluation of a single element
+    * concurrently, and whichever finishes first waits for the other
+    * to catch up and the resulting pair to be emitted, at which point
+    * the process repeats. This means that no branch is allowed to get
+    * ahead by more than one element.
+    *
+    * Notes:
+    * - Effects within each stream are executed in order, they are
+    *   only concurrent with respect to each other.
+    * - The output of `parZip` is guaranteed to be the same as `zip`,
+    *   although the order in which effects are executed differs.
+    */
+  def parZip[F2[x] >: F[x]: Concurrent, O2](that: Stream[F2, O2]): Stream[F2, (O, O2)] =
+    Stream.parZip(this, that)
+
+  /**
+    * Like `parZip`, but combines elements pairwise with a function instead
+    * of tupling them.
+    **/
+  def parZipWith[F2[x] >: F[x]: Concurrent, O2 >: O, O3, O4](
+      that: Stream[F2, O3]
+  )(f: (O2, O3) => O4): Stream[F2, O4] =
+    this.parZip(that).map(f.tupled)
 
   /** Like `interrupt` but resumes the stream when left branch goes to true. */
   def pauseWhen[F2[x] >: F[x]](
@@ -4725,6 +4769,62 @@ object Stream extends StreamLowPriority {
     /** Provides an `uncons`-like operation on this leg of the stream. */
     def stepLeg: Pull[F, INothing, Option[StepLeg[F, O]]] =
       new Pull(Algebra.stepLeg(self))
+  }
+
+  /**
+    *  Implementation for parZip. `AnyVal` classes do not allow inner
+    *  classes, so the presence of the `State` trait forces this
+    *  method to be outside of the `Stream` class.
+    */
+  private[fs2] def parZip[F[_]: Concurrent, L, R](
+      left: Stream[F, L],
+      right: Stream[F, R]
+  ): Stream[F, (L, R)] = {
+    sealed trait State
+    case object Racing extends State
+    case class LeftFirst(leftValue: L, waitOnRight: Deferred[F, Unit]) extends State
+    case class RightFirst(rightValue: R, waitOnLeft: Deferred[F, Unit]) extends State
+
+    def emit(l: L, r: R) = Pull.output1(l -> r)
+
+    Stream.eval(Ref[F].of(Racing: State)).flatMap { state =>
+      def lhs(stream: Stream[F, L]): Pull[F, (L, R), Unit] =
+        stream.pull.uncons1.flatMap {
+          case None => Pull.done
+          case Some((leftValue, stream)) =>
+            Pull.eval {
+              Deferred[F, Unit].flatMap { awaitRight =>
+                state.modify {
+                  case Racing =>
+                    LeftFirst(leftValue, awaitRight) -> Pull.eval(awaitRight.get)
+                  case RightFirst(rightValue, awaitLeft) =>
+                    Racing -> { emit(leftValue, rightValue) >> Pull.eval(awaitLeft.complete(())) }
+                  case LeftFirst(_, _) => sys.error("fs2 parZip protocol broken by lhs. File a bug")
+                }
+              }
+            }.flatten >> lhs(stream)
+        }
+
+      def rhs(stream: Stream[F, R]): Pull[F, (L, R), Unit] =
+        stream.pull.uncons1.flatMap {
+          case None => Pull.done
+          case Some((rightValue, stream)) =>
+            Pull.eval {
+              Deferred[F, Unit].flatMap { awaitLeft =>
+                state.modify {
+                  case Racing =>
+                    RightFirst(rightValue, awaitLeft) -> Pull.eval(awaitLeft.get)
+                  case LeftFirst(leftValue, awaitRight) =>
+                    Racing -> { emit(leftValue, rightValue) >> Pull.eval(awaitRight.complete(())) }
+                  case RightFirst(_, _) =>
+                    sys.error("fs2 parZip protocol broken by rhs. File a bug")
+                }
+              }
+            }.flatten >> rhs(stream)
+        }
+
+      lhs(left).stream.mergeHaltBoth(rhs(right).stream)
+    }
   }
 
   /** Provides operations on effectful pipes for syntactic convenience. */

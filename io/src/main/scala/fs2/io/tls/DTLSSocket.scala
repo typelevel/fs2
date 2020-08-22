@@ -47,26 +47,16 @@ object DTLSSocket {
     Applicative[F].pure {
       new DTLSSocket[F] {
 
-        private def binding(
-            writeTimeout: Option[FiniteDuration]
-        ): TLSEngine.Binding[F] =
-          new TLSEngine.Binding[F] {
-            def write(data: Chunk[Byte]) =
-              if (data.isEmpty) Applicative[F].unit
-              else socket.write(Packet(remoteAddress, data), writeTimeout)
-            def read = socket.read(None).map(p => Some(p.bytes))
-          }
         def read(timeout: Option[FiniteDuration] = None): F[Packet] =
-          socket.read(timeout).flatMap { p =>
-            engine.unwrap(p.bytes, binding(None)).flatMap {
-              case Some(bytes) => Applicative[F].pure(Packet(p.remote, bytes))
-              case None        => read(timeout)
-            }
+          engine.read(Int.MaxValue, timeout).flatMap {
+            case Some(bytes) => Applicative[F].pure(Packet(remoteAddress, bytes))
+            case None        => read(timeout)
           }
+
         def reads(timeout: Option[FiniteDuration] = None): Stream[F, Packet] =
           Stream.repeatEval(read(timeout))
         def write(packet: Packet, timeout: Option[FiniteDuration] = None): F[Unit] =
-          engine.wrap(packet.bytes, binding(writeTimeout = timeout))
+          engine.write(packet.bytes, timeout)
 
         def writes(timeout: Option[FiniteDuration] = None): Pipe[F, Packet, Unit] =
           _.flatMap(p => Stream.eval(write(p, timeout)))

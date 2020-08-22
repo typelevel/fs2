@@ -36,29 +36,29 @@ Quick links:
 
 ### <a id="getit"></a> Where to get the latest version ###
 
-The latest version is 2.2.x. See the badge at the top of the README for the exact version number.
+The latest version is 2.4.x. See the badge at the top of the README for the exact version number.
 
 If upgrading from the 1.0 series, see the [release notes for 2.0.0](https://github.com/functional-streams-for-scala/fs2/releases/tag/v2.0.0) for help with upgrading.
 
 
 ```
 // available for 2.12, 2.13
-libraryDependencies += "co.fs2" %% "fs2-core" % "2.2.1" // For cats 2 and cats-effect 2
+libraryDependencies += "co.fs2" %% "fs2-core" % "2.4.0" // For cats 2 and cats-effect 2
 
 // optional I/O library
-libraryDependencies += "co.fs2" %% "fs2-io" % "2.2.1"
+libraryDependencies += "co.fs2" %% "fs2-io" % "2.4.0"
 
 // optional reactive streams interop
-libraryDependencies += "co.fs2" %% "fs2-reactive-streams" % "2.2.1"
+libraryDependencies += "co.fs2" %% "fs2-reactive-streams" % "2.4.0"
 
 // optional experimental library
-libraryDependencies += "co.fs2" %% "fs2-experimental" % "2.2.1"
+libraryDependencies += "co.fs2" %% "fs2-experimental" % "2.4.0"
 ```
 
 The fs2-core library is also supported on Scala.js:
 
 ```
-libraryDependencies += "co.fs2" %%% "fs2-core" % "2.2.1"
+libraryDependencies += "co.fs2" %%% "fs2-core" % "2.4.0"
 ```
 
 There are [detailed migration guides](https://github.com/functional-streams-for-scala/fs2/blob/master/docs/) for migrating from older versions.
@@ -117,42 +117,9 @@ These features mean that FS2 goes beyond streaming I/O to offer a very general a
 
 ### Projects using FS2 ###
 
-If you have a project you'd like to include in this list, either open a PR or let us know in [the gitter channel](https://gitter.im/functional-streams-for-scala/fs2) and we'll add a link to it here.
+You can find a list of libraries and integrations with data stores built on top of FS2 here: [https://fs2.io/ecosystem.html](https://fs2.io/ecosystem.html).
 
-* [canoe](https://github.com/augustjune/canoe): A purely functional library for building Telegram chatbots.
-* [chromaprint](https://github.com/mgdigital/Chromaprint.scala): A Scala implementation of the Chromaprint/AcoustID audio fingerprinting algorithm, built with fs2 streams / Cats Effect.
-* [circe-fs2](https://github.com/circe/circe-fs2): Streaming JSON manipulation with [circe](https://github.com/circe/circe).
-* [doobie](https://github.com/tpolecat/doobie): Pure functional JDBC built on fs2.
-* [fs2-aws](https://github.com/saksdirect/fs2-aws): FS2 streams to interact with AWS utilities
-* [fs2-blobstore](https://github.com/fs2-blobstore/fs2-blobstore): Minimal, idiomatic, stream-based Scala interface for S3, GCS, SFTP and other key/value store implementations.
-* [fs2-cassandra](https://github.com/Spinoco/fs2-cassandra): Cassandra bindings for fs2.
-* [fs2-columns](https://gitlab.com/lJoublanc/fs2-columns): a `Chunk` that uses [shapeless](https://github.com/milessabin/shapeless) to store `case class` data column-wise.
-* [fs2-cron](https://github.com/fthomas/fs2-cron): FS2 streams based on cron expressions.
-* [fs2-crypto](https://github.com/Spinoco/fs2-crypto): TLS support for fs2.
-* [fs2-elastic](https://github.com/amarrella/fs2-elastic): Simple client for Elasticsearch.
-* [fs2-google-pubsub](https://github.com/permutive/fs2-google-pubsub): A [Google Cloud Pub/Sub](https://cloud.google.com/pubsub/) implementation using fs2 and cats-effect.
-* [fs2-grpc](https://github.com/fiadliel/fs2-grpc): gRPC implementation for FS2 / Cats Effect.
-* [fs2-http](https://github.com/Spinoco/fs2-http): Http server and client library implemented in fs2.
-* [fs2-jms](https://github.com/kiambogo/fs2-jms): JMS connectors for FS2 streams
-* fs2-kafka
-  * [fd4s/fs2-kafka](https://github.com/fd4s/fs2-kafka): Functional Kafka Streams for Scala.
-  * [spinoco/fs2-kafka](https://github.com/Spinoco/fs2-kafka): Simple client for Apache Kafka.
-* [fs2-mail](https://github.com/Spinoco/fs2-mail): Fully asynchronous java non-blocking email client using fs2.
-* [fs2-rabbit](https://github.com/gvolpe/fs2-rabbit): RabbitMQ stream-based client built on top of Fs2.
-* [fs2-reactive-streams](https://github.com/zainab-ali/fs2-reactive-streams): A reactive streams implementation for fs2.
-* [fs2-redis](https://github.com/gvolpe/fs2-redis): Redis stream-based client built on top of Fs2 / Cats Effect.
-* [fs2-ssh](https://github.com/slamdata/fs2-ssh): A wrapper around Apache SSHD targeting cats-effect and fs2.
-* [fs2-zk](https://github.com/Spinoco/fs2-zk): Simple Apache Zookeeper bindings for fs2.
-* [fs2-ftp](https://github.com/regis-leray/fs2-ftp): Simple client for Ftp/Ftps/Sftp using fs2 and cats-effect.
-* [http4s](http://http4s.org/): Minimal, idiomatic Scala interface for HTTP services using fs2.
-* [kafka4s](https://github.com/Banno/kafka4s): Functional programming with Kafka and Scala
-* [mongosaur](https://gitlab.com/lJoublanc/mongosaur): fs2-based MongoDB driver.
-* [scarctic](https://gitlab.com/lJoublanc/scarctic): fs2-based driver for [MAN/AHL's Arctic](https://github.com/manahl/arctic) data store.
-* [scodec-protocols](https://github.com/scodec/scodec-protocols): A library for working with libpcap files. Contains many interesting pipes (e.g., working with time series and playing back streams at various rates).
-* [scodec-stream](https://github.com/scodec/scodec-stream): A library for streaming binary decoding and encoding, built using fs2 and [scodec](https://github.com/scodec/scodec).
-* [streamz](https://github.com/krasserm/streamz): A library that supports the conversion of [Akka Stream](http://doc.akka.io/docs/akka/2.4/scala/stream/index.html) `Source`s, `Flow`s and `Sink`s to and from FS2 `Stream`s, `Pipe`s and `Sink`s, respectively. It also supports the usage of [Apache Camel](http://camel.apache.org/) endpoints in FS2 `Stream`s and Akka Stream `Source`s, `Flow`s and `SubFlow`s.
-* [upperbound](https://github.com/SystemFw/upperbound): A purely functional, interval-based rate limiter with support for backpressure.
-* [vinyldns](https://github.com/vinyldns/vinyldns): A DNS governance system using fs2 for throttling updates to DNS backends.
+If you have a project you'd like to include in this list, either open a PR or let us know in [the gitter channel](https://gitter.im/functional-streams-for-scala/fs2) and we'll add a link to it.
 
 ### Acknowledgments ###
 
