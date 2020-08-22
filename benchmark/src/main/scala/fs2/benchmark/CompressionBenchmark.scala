@@ -101,6 +101,6 @@ object CompressionBenchmark {
       .through(pipe)
       .compile
       .to(Array)
-      .unsafeRunSync
+      .unsafeRunSync()
 
 }
