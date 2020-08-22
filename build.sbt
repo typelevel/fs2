@@ -95,8 +95,8 @@ lazy val commonSettingsBase = Seq(
   scalacOptions in (Test, console) := (scalacOptions in (Compile, console)).value,
   javaOptions in (Test, run) ++= Seq("-Xms64m", "-Xmx64m"),
   libraryDependencies ++= Seq(
-    ("org.typelevel" %%% "cats-core" % "2.2.0-RC3").withDottyCompat(scalaVersion.value),
-    ("org.typelevel" %%% "cats-laws" % "2.2.0-RC3" % "test").withDottyCompat(scalaVersion.value),
+    ("org.typelevel" %%% "cats-core" % "2.2.0-RC4").withDottyCompat(scalaVersion.value),
+    ("org.typelevel" %%% "cats-laws" % "2.2.0-RC4" % "test").withDottyCompat(scalaVersion.value),
     "org.typelevel" %%% "cats-effect" % "3.0-8a09def",
     "org.typelevel" %%% "cats-effect-laws" % "3.0-8a09def" % "test",
     "org.typelevel" %%% "scalacheck-effect-munit" % "0.0.3" % "test"

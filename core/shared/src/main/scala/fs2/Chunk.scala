@@ -1700,8 +1700,11 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
               var end0 = start0 + step
 
               while (start0 < end) {
+                // Make sure these are vals, to avoid capturing mutable state
+                // in the lazy context of Eval
                 val end1 = math.min(end, end0)
-                fchain = fchain.flatMap(F.map2Eval(_, Eval.defer(loop(start0, end1)))(_.concat(_)))
+                val start1 = start0
+                fchain = fchain.flatMap(F.map2Eval(_, Eval.defer(loop(start1, end1)))(_.concat(_)))
                 start0 = start0 + step
                 end0 = end0 + step
               }
@@ -1748,8 +1751,11 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
               var end0 = start0 + step
 
               while (start0 < end) {
+                // Make sure these are vals, to avoid capturing mutable state
+                // in the lazy context of Eval
                 val end1 = math.min(end, end0)
-                fchain = fchain.flatMap(F.map2Eval(_, Eval.defer(loop(start0, end1)))(_.concat(_)))
+                val start1 = start0
+                fchain = fchain.flatMap(F.map2Eval(_, Eval.defer(loop(start1, end1)))(_.concat(_)))
                 start0 = start0 + step
                 end0 = end0 + step
               }
