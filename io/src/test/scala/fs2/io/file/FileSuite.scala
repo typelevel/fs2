@@ -108,7 +108,7 @@ class FileSuite extends BaseFileSuite {
 
   group("exists") {
     test("returns false on a non existent file") {
-      assert(file.exists[IO](Paths.get("nothing")).unsafeRunSync == false)
+      assert(file.exists[IO](Paths.get("nothing")).unsafeRunSync() == false)
     }
     test("returns true on an existing file") {
       assert(
