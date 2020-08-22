@@ -186,10 +186,10 @@ private[io] object JavaInputOutputStream {
             .as(
               new InputStream {
                 override def close(): Unit =
-                  closeIs(upState, dnState).to[IO].unsafeRunSync
+                  closeIs(upState, dnState).to[IO].unsafeRunSync()
 
                 override def read(b: Array[Byte], off: Int, len: Int): Int =
-                  readOnce(b, off, len, queue, dnState).to[IO].unsafeRunSync
+                  readOnce(b, off, len, queue, dnState).to[IO].unsafeRunSync()
 
                 def read(): Int = {
                   def go(acc: Array[Byte]): F[Int] =
@@ -199,7 +199,7 @@ private[io] object JavaInputOutputStream {
                       else F.pure(acc(0) & 0xff)
                     }
 
-                  go(new Array[Byte](1)).to[IO].unsafeRunSync
+                  go(new Array[Byte](1)).to[IO].unsafeRunSync()
                 }
               }
             )

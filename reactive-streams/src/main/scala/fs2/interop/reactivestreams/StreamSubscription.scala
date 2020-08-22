@@ -60,14 +60,14 @@ private[reactivestreams] final class StreamSubscription[F[_], A](
   }
 
   // According to the spec, it's acceptable for a concurrent cancel to not
-  // be processed immediately, bt if you have synchronous `cancel();
+  // be processed immediately, but if you have synchronous `cancel();
   // request()`, then the request _must_ be a no op. For this reason, we
   // need to make sure that `cancel()` does not return until the
   // `cancelled` signal has been set.
   // See https://github.com/zainab-ali/fs2-reactive-streams/issues/29
   // and https://github.com/zainab-ali/fs2-reactive-streams/issues/46
   def cancel(): Unit =
-    cancelled.set(true).to[IO].unsafeRunSync
+    cancelled.set(true).to[IO].unsafeRunSync()
 
   def request(n: Long): Unit = {
     val request: F[Request] =
