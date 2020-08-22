@@ -49,10 +49,11 @@ object Collector extends CollectorPlatform {
     def +=(c: Chunk[A]): Unit
     def result: X
 
-    def mapResult[Y](f: X => Y): Builder[A, Y] = new Builder[A, Y] {
-      def +=(c: Chunk[A]): Unit = self += c
-      def result: Y = f(self.result)
-    }
+    def mapResult[Y](f: X => Y): Builder[A, Y] =
+      new Builder[A, Y] {
+        def +=(c: Chunk[A]): Unit = self += c
+        def result: Y = f(self.result)
+      }
   }
 
   object Builder extends BuilderPlatform {
@@ -92,8 +93,9 @@ trait CollectorK[+C[_]] {
 }
 
 object CollectorK {
-  implicit def toCollector[A, C[_]](c: CollectorK[C]): Collector.Aux[A, C[A]] = new Collector[A] {
-    type Out = C[A]
-    def newBuilder: Collector.Builder[A, C[A]] = c.newBuilder[A]
-  }
+  implicit def toCollector[A, C[_]](c: CollectorK[C]): Collector.Aux[A, C[A]] =
+    new Collector[A] {
+      type Out = C[A]
+      def newBuilder: Collector.Builder[A, C[A]] = c.newBuilder[A]
+    }
 }

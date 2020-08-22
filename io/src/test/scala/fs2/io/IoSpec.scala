@@ -48,7 +48,9 @@ class IoSpec extends Fs2Spec {
 
     "can be manually closed from inside `f`" in forAll(intsBetween(1, 20)) { chunkSize: Int =>
       Blocker[IO].use { blocker =>
-        readOutputStream[IO](blocker, chunkSize)((os: OutputStream) => IO(os.close()) *> IO.never).compile.toVector
+        readOutputStream[IO](blocker, chunkSize)((os: OutputStream) =>
+          IO(os.close()) *> IO.never
+        ).compile.toVector
           .asserting(it => assert(it == Vector.empty))
       }
     }
@@ -56,7 +58,9 @@ class IoSpec extends Fs2Spec {
     "fails when `f` fails" in forAll(intsBetween(1, 20)) { chunkSize: Int =>
       val e = new Exception("boom")
       Blocker[IO].use { blocker =>
-        readOutputStream[IO](blocker, chunkSize)((_: OutputStream) => IO.raiseError(e)).compile.toVector.attempt
+        readOutputStream[IO](blocker, chunkSize)((_: OutputStream) =>
+          IO.raiseError(e)
+        ).compile.toVector.attempt
           .asserting(it => assert(it == Left(e)))
       }
     }
@@ -66,14 +70,15 @@ class IoSpec extends Fs2Spec {
         .make(IO(Executors.newFixedThreadPool(1)))(ec => IO(ec.shutdown()))
         .map(ExecutionContext.fromExecutor)
         .map(IO.contextShift)
-      def write(os: OutputStream): IO[Unit] = IO {
-        os.write(1)
-        os.write(1)
-        os.write(1)
-        os.write(1)
-        os.write(1)
-        os.write(1)
-      }
+      def write(os: OutputStream): IO[Unit] =
+        IO {
+          os.write(1)
+          os.write(1)
+          os.write(1)
+          os.write(1)
+          os.write(1)
+          os.write(1)
+        }
       Blocker[IO].use { blocker =>
         // Note: name `contextShiftIO` is important because it shadows the outer implicit, preventing ambiguity
         pool

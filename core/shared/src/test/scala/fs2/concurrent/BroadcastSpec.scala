@@ -25,9 +25,8 @@ class BroadcastSpec extends Fs2Spec {
               assert(result.size == concurrent)
               result.values.foreach(it => assert(it == expect))
               Succeeded
-            } else {
+            } else
               assert(result.values.isEmpty)
-            }
           }
       }
     }

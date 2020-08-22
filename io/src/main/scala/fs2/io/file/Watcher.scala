@@ -80,13 +80,14 @@ object Watcher {
     final case object Overflow extends EventType
     final case class NonStandard(kind: WatchEvent.Kind[_]) extends EventType
 
-    def toWatchEventKind(et: EventType): WatchEvent.Kind[_] = et match {
-      case EventType.Created           => StandardWatchEventKinds.ENTRY_CREATE
-      case EventType.Modified          => StandardWatchEventKinds.ENTRY_MODIFY
-      case EventType.Deleted           => StandardWatchEventKinds.ENTRY_DELETE
-      case EventType.Overflow          => StandardWatchEventKinds.OVERFLOW
-      case EventType.NonStandard(kind) => kind
-    }
+    def toWatchEventKind(et: EventType): WatchEvent.Kind[_] =
+      et match {
+        case EventType.Created           => StandardWatchEventKinds.ENTRY_CREATE
+        case EventType.Modified          => StandardWatchEventKinds.ENTRY_MODIFY
+        case EventType.Deleted           => StandardWatchEventKinds.ENTRY_DELETE
+        case EventType.Overflow          => StandardWatchEventKinds.OVERFLOW
+        case EventType.NonStandard(kind) => kind
+      }
   }
 
   /** Event raised by `Watcher`. Supports standard events as well as arbitrary non-standard events (via `NonStandard`). */
@@ -118,16 +119,17 @@ object Watcher {
       }
 
     /** Determines the path for which the supplied event references. */
-    def pathOf(event: Event): Option[Path] = event match {
-      case Event.Created(p, _)  => Some(p)
-      case Event.Deleted(p, _)  => Some(p)
-      case Event.Modified(p, _) => Some(p)
-      case Event.Overflow(_)    => None
-      case Event.NonStandard(e, registeredDirectory) =>
-        if (e.context.isInstanceOf[Path])
-          Some(registeredDirectory.resolve(e.context.asInstanceOf[Path]))
-        else None
-    }
+    def pathOf(event: Event): Option[Path] =
+      event match {
+        case Event.Created(p, _)  => Some(p)
+        case Event.Deleted(p, _)  => Some(p)
+        case Event.Modified(p, _) => Some(p)
+        case Event.Overflow(_)    => None
+        case Event.NonStandard(e, registeredDirectory) =>
+          if (e.context.isInstanceOf[Path])
+            Some(registeredDirectory.resolve(e.context.asInstanceOf[Path]))
+          else None
+      }
   }
 
   /** Creates a watcher for the default file system. */
@@ -207,12 +209,15 @@ object Watcher {
         else (EventType.Created +: types, true)
       val dirs: F[List[Path]] = blocker.delay {
         var dirs: List[Path] = Nil
-        Files.walkFileTree(path, new SimpleFileVisitor[Path] {
-          override def preVisitDirectory(path: Path, attrs: BasicFileAttributes) = {
-            dirs = path :: dirs
-            FileVisitResult.CONTINUE
+        Files.walkFileTree(
+          path,
+          new SimpleFileVisitor[Path] {
+            override def preVisitDirectory(path: Path, attrs: BasicFileAttributes) = {
+              dirs = path :: dirs
+              FileVisitResult.CONTINUE
+            }
           }
-        })
+        )
         dirs
       }
       dirs.flatMap(

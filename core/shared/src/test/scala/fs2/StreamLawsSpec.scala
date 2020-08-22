@@ -13,8 +13,8 @@ import org.scalacheck.{Arbitrary, Gen}
 import Arbitrary.arbitrary
 
 trait StreamArbitrary {
-  implicit def arbStream[F[_], O](
-      implicit arbO: Arbitrary[O],
+  implicit def arbStream[F[_], O](implicit
+      arbO: Arbitrary[O],
       arbFo: Arbitrary[F[O]],
       arbFu: Arbitrary[F[Unit]]
   ): Arbitrary[Stream[F, O]] =

@@ -23,8 +23,10 @@ class DTLSSocketSpec extends TLSSpec {
                 socketGroup.open[IO]().use { clientSocket =>
                   clientSocket.localAddress.map(_.getPort).flatMap { clientPort =>
                     val clientAddress = new InetSocketAddress("localhost", clientPort)
-                    val serverLogger = None // Some((msg: String) => IO(println(s"\u001b[33m${msg}\u001b[0m")))
-                    val clientLogger = None // Some((msg: String) => IO(println(s"\u001b[32m${msg}\u001b[0m")))
+                    val serverLogger =
+                      None // Some((msg: String) => IO(println(s"\u001b[33m${msg}\u001b[0m")))
+                    val clientLogger =
+                      None // Some((msg: String) => IO(println(s"\u001b[32m${msg}\u001b[0m")))
                     (
                       tlsContext.dtlsServer(serverSocket, clientAddress, logger = serverLogger),
                       tlsContext.dtlsClient(clientSocket, serverAddress, logger = clientLogger)

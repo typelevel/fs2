@@ -70,7 +70,8 @@ package object io {
     )
 
   private def readBytesFromInputStream[F[_]](is: InputStream, buf: Array[Byte], blocker: Blocker)(
-      implicit F: Sync[F],
+      implicit
+      F: Sync[F],
       cs: ContextShift[F]
   ): F[Option[Chunk[Byte]]] =
     blocker.delay(is.read(buf)).map { numBytes =>

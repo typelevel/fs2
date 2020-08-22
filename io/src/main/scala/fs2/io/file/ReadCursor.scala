@@ -77,8 +77,8 @@ final case class ReadCursor[F[_]](file: FileHandle[F], offset: Long) {
     * @param pollDelay amount of time to wait upon reaching the end of the file before
     * polling for updates
     */
-  def tail(chunkSize: Int, pollDelay: FiniteDuration)(
-      implicit timer: Timer[F]
+  def tail(chunkSize: Int, pollDelay: FiniteDuration)(implicit
+      timer: Timer[F]
   ): Pull[F, Byte, ReadCursor[F]] =
     readPull(chunkSize).flatMap {
       case Some((next, chunk)) => Pull.output(chunk) >> next.tail(chunkSize, pollDelay)

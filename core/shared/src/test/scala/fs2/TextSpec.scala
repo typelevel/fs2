@@ -55,13 +55,13 @@ class TextSpec extends Fs2Spec {
       "all chars" in forAll((c: Char) => checkChar(c))
 
       "1 byte char" in checkBytes(0x24) // $
-      "2 byte char" in checkBytes(0xC2, 0xA2) // ¢
-      "3 byte char" in checkBytes(0xE2, 0x82, 0xAC) // €
-      "4 byte char" in checkBytes(0xF0, 0xA4, 0xAD, 0xA2)
+      "2 byte char" in checkBytes(0xc2, 0xa2) // ¢
+      "3 byte char" in checkBytes(0xe2, 0x82, 0xac) // €
+      "4 byte char" in checkBytes(0xf0, 0xa4, 0xad, 0xa2)
 
-      "incomplete 2 byte char" in checkBytes(0xC2)
-      "incomplete 3 byte char" in checkBytes(0xE2, 0x82)
-      "incomplete 4 byte char" in checkBytes(0xF0, 0xA4, 0xAD)
+      "incomplete 2 byte char" in checkBytes(0xc2)
+      "incomplete 3 byte char" in checkBytes(0xe2, 0x82)
+      "incomplete 4 byte char" in checkBytes(0xf0, 0xa4, 0xad)
 
       "preserve complete inputs" in forAll { (l0: List[String]) =>
         val l = l0.filter(_.nonEmpty)
@@ -234,9 +234,9 @@ class TextSpec extends Fs2Spec {
       "grouped in 3 characater chunks" in forAll { (lines0: Stream[Pure, String]) =>
         val lines = lines0.map(escapeCrLf)
         val s = lines.intersperse("\r\n").toList.mkString.grouped(3).toList
-        if (s.isEmpty) {
+        if (s.isEmpty)
           assert(Stream.emits(s).through(text.lines).toList == Nil)
-        } else {
+        else {
           assert(Stream.emits(s).through(text.lines).toList == lines.toList)
           assert(Stream.emits(s).unchunk.through(text.lines).toList == lines.toList)
         }

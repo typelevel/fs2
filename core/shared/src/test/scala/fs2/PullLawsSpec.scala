@@ -14,8 +14,8 @@ import Arbitrary.arbitrary
 class PullLawsSpec extends Fs2Spec with StreamArbitrary {
   implicit val ec: TestContext = TestContext()
 
-  implicit def arbPull[F[_], O, R](
-      implicit arbR: Arbitrary[R],
+  implicit def arbPull[F[_], O, R](implicit
+      arbR: Arbitrary[R],
       arbFr: Arbitrary[F[R]],
       arbFo: Arbitrary[F[O]],
       arbO: Arbitrary[O],

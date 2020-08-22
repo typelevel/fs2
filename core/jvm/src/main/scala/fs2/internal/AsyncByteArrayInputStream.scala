@@ -42,9 +42,8 @@ private[fs2] final class AsyncByteArrayInputStream(val bound: Int) extends Input
       val _ = bytes += chunk
       _available += chunk.length
       true
-    } else {
+    } else
       false
-    }
 
   override def available() = _available
 
@@ -55,9 +54,9 @@ private[fs2] final class AsyncByteArrayInputStream(val bound: Int) extends Input
   }
 
   override def read(target: Array[Byte], off: Int, len: Int): Int =
-    if (bytes.isEmpty) {
+    if (bytes.isEmpty)
       throw AsyncByteArrayInputStream.AsyncError
-    } else {
+    else {
       val head = bytes.head
       val copied = math.min(len, head.length - headOffset)
       System.arraycopy(head, headOffset, target, off, copied)

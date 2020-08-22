@@ -74,8 +74,8 @@ object compress {
     * @param bufferSize size of the internal buffer that is used by the
     *                   decompressor. Default size is 32 KB.
     */
-  def inflate[F[_]](nowrap: Boolean = false, bufferSize: Int = 1024 * 32)(
-      implicit ev: RaiseThrowable[F]
+  def inflate[F[_]](nowrap: Boolean = false, bufferSize: Int = 1024 * 32)(implicit
+      ev: RaiseThrowable[F]
   ): Pipe[F, Byte, Byte] =
     _.pull.uncons.flatMap {
       case None => Pull.done
@@ -88,8 +88,8 @@ object compress {
         Pull.output(Chunk.bytes(result)) >> _inflate_stream(inflater, buffer)(ev)(tl)
     }.stream
 
-  private def _inflate_stream[F[_]](inflater: Inflater, buffer: Array[Byte])(
-      implicit ev: RaiseThrowable[F]
+  private def _inflate_stream[F[_]](inflater: Inflater, buffer: Array[Byte])(implicit
+      ev: RaiseThrowable[F]
   ): Stream[F, Byte] => Pull[F, Byte, Unit] =
     _.pull.uncons.flatMap {
       case Some((hd, tl)) =>
@@ -148,17 +148,18 @@ object compress {
           Stream.chunk(Chunk.bytes(back))
         }
 
-        def processChunk(c: Chunk[Byte]): Unit = c match {
-          case Chunk.Bytes(values, off, len) =>
-            gzos.write(values, off, len)
-          case Chunk.ByteVectorChunk(bv) =>
-            bv.copyToStream(gzos)
-          case chunk =>
-            val len = chunk.size
-            val buf = new Array[Byte](len)
-            chunk.copyToArray(buf, 0)
-            gzos.write(buf)
-        }
+        def processChunk(c: Chunk[Byte]): Unit =
+          c match {
+            case Chunk.Bytes(values, off, len) =>
+              gzos.write(values, off, len)
+            case Chunk.ByteVectorChunk(bv) =>
+              bv.copyToStream(gzos)
+            case chunk =>
+              val len = chunk.size
+              val buf = new Array[Byte](len)
+              chunk.copyToArray(buf, 0)
+              gzos.write(buf)
+          }
 
         val body: Stream[F, Byte] = in.chunks.flatMap { c =>
           processChunk(c)
@@ -242,12 +243,14 @@ object compress {
         pageBeginning(in).stream.flatMap {
           case (gzis, in) =>
             lazy val stepDecompress: Stream[F, Byte] = Stream.suspend {
-              val inner = new Array[Byte](bufferSize * 2) // double the input buffer size since we're decompressing
+              val inner =
+                new Array[Byte](
+                  bufferSize * 2
+                ) // double the input buffer size since we're decompressing
 
               val len =
-                try {
-                  gzis.read(inner)
-                } catch {
+                try gzis.read(inner)
+                catch {
                   case AsyncByteArrayInputStream.AsyncError => 0
                 }
 

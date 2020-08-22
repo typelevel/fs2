@@ -10,10 +10,11 @@ private[fs2] final class SizedQueue[A](private val underlying: Queue[A], val siz
   def headOption: Option[A] = underlying.headOption
   def tail: SizedQueue[A] = if (isEmpty) this else new SizedQueue(underlying.tail, size - 1)
   def toQueue: Queue[A] = underlying
-  override def equals(other: Any): Boolean = other match {
-    case that: SizedQueue[A] => underlying == that.underlying && size == that.size
-    case _                   => false
-  }
+  override def equals(other: Any): Boolean =
+    other match {
+      case that: SizedQueue[A] => underlying == that.underlying && size == that.size
+      case _                   => false
+    }
   override def hashCode: Int = underlying.hashCode
   override def toString: String = underlying.mkString("SizedQueue(", ", ", ")")
 }

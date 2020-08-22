@@ -7,8 +7,8 @@ import org.scalatest.enablers._
 import org.scalatest.prop._
 import scala.concurrent.{ExecutionContext, Future}
 
-class ToFuturePropCheckerAsserting[F[_]](toFuture: F ~> Future)(
-    implicit val executionContext: ExecutionContext
+class ToFuturePropCheckerAsserting[F[_]](toFuture: F ~> Future)(implicit
+    val executionContext: ExecutionContext
 ) extends PropCheckerAsserting[F[Assertion]] { self =>
 
   type Result = Future[Assertion]

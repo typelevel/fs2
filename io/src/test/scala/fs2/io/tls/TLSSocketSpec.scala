@@ -17,9 +17,9 @@ class TLSSocketSpec extends TLSSpec {
     "google" - {
       List("TLSv1", "TLSv1.1", "TLSv1.2", "TLSv1.3").foreach { protocol =>
         protocol in {
-          if (!supportedByPlatform(protocol)) {
+          if (!supportedByPlatform(protocol))
             cancel(s"$protocol not supported by this platform")
-          } else {
+          else
             Blocker[IO].use { blocker =>
               SocketGroup[IO](blocker).use { socketGroup =>
                 socketGroup.client[IO](new InetSocketAddress("www.google.com", 443)).use { socket =>
@@ -51,7 +51,6 @@ class TLSSocketSpec extends TLSSpec {
                 }
               }
             }
-          }
         }
       }
     }

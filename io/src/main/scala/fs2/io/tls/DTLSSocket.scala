@@ -49,12 +49,13 @@ object DTLSSocket {
 
         private def binding(
             writeTimeout: Option[FiniteDuration]
-        ): TLSEngine.Binding[F] = new TLSEngine.Binding[F] {
-          def write(data: Chunk[Byte]) =
-            if (data.isEmpty) Applicative[F].unit
-            else socket.write(Packet(remoteAddress, data), writeTimeout)
-          def read = socket.read(None).map(p => Some(p.bytes))
-        }
+        ): TLSEngine.Binding[F] =
+          new TLSEngine.Binding[F] {
+            def write(data: Chunk[Byte]) =
+              if (data.isEmpty) Applicative[F].unit
+              else socket.write(Packet(remoteAddress, data), writeTimeout)
+            def read = socket.read(None).map(p => Some(p.bytes))
+          }
         def read(timeout: Option[FiniteDuration] = None): F[Packet] =
           socket.read(timeout).flatMap { p =>
             engine.unwrap(p.bytes, binding(None)).flatMap {

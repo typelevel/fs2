@@ -87,15 +87,18 @@ class TopicSpec extends Fs2Spec {
           .eval(Topic[IO, Int](0))
           .flatMap { topic =>
             def subscribers = topic.subscribers
-            def subscribe = Stream.fixedDelay[IO](200.millis).evalMap { _ =>
-              topic.subscribe(10).compile.drain.start.void
-            }
+            def subscribe =
+              Stream.fixedDelay[IO](200.millis).evalMap { _ =>
+                topic.subscribe(10).compile.drain.start.void
+              }
             subscribers.concurrently(subscribe)
           }
           .interruptWhen(Stream.sleep[IO](2.seconds).as(true))
 
       p.compile.toList
-        .asserting(it => assert(it.size <= 11)) // if the stream won't be discrete we will get much more size notifications
+        .asserting(it =>
+          assert(it.size <= 11)
+        ) // if the stream won't be discrete we will get much more size notifications
     }
 
     "unregister subscribers under concurrent load" in {

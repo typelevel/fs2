@@ -25,12 +25,11 @@ private[fs2] object ThreadFactories {
         t.setUncaughtExceptionHandler(new UncaughtExceptionHandler {
           def uncaughtException(t: Thread, e: Throwable): Unit = {
             ExecutionContext.defaultReporter(e)
-            if (exitJvmOnFatalError) {
+            if (exitJvmOnFatalError)
               e match {
                 case NonFatal(_) => ()
                 case _           => System.exit(-1)
               }
-            }
           }
         })
         t
