@@ -324,7 +324,7 @@ private[fs2] object PubSub {
     */
   trait Strategy[I, O, S, Selector] { self =>
 
-    /** Initial state of this strategy. **/
+    /** Initial state of this strategy. * */
     def initial: S
 
     /**
@@ -381,7 +381,7 @@ private[fs2] object PubSub {
       */
     def unsubscribe(selector: Selector, state: S): S
 
-    /** Transforms selector to selector of this state by applying the `f` to `Sel2` and state of this strategy. **/
+    /** Transforms selector to selector of this state by applying the `f` to `Sel2` and state of this strategy. * */
     def transformSelector[Sel2](f: (Sel2, S) => Selector): PubSub.Strategy[I, O, S, Sel2] =
       new PubSub.Strategy[I, O, S, Sel2] {
         def initial: S =

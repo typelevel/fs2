@@ -29,6 +29,7 @@ position: 5
 
 #### Blog Posts and Short Articles
 * [Leverage FS2 API to write to a file](https://davidfrancoeur.com/post/file-writing-fs2/) by [David Francoeur][francoeurdavid] describes writing data to files using the FS2 API.
+* [Build a Stream to fetch everything behind an offset paged API](https://davidfrancoeur.com/post/paged-api-fs2/) by [David Francoeur][francoeurdavid] describes how to gather all issues for a Gitlab project.
 * [Scala FS2 — handle broken CSV lines](https://medium.com/se-notes-by-alexey-novakov/scala-fs2-handle-broken-csv-lines-8d8c4defcd88) by [Alexey Novakov][alexey_novakov] describes processing fragmented text data using FS2.
 * [Writing a simple Telegram bot with tagless final, http4s and fs2](https://pavkin.ru/writing-a-simple-telegram-bot-with-tagless-final-http4s-and-fs2/) by [Vladimir Pavkin][vpavkin] describes a process of writing a purely functional client for the Telegram messenger.
 * [Inference Driven Design](https://mpilquist.github.io/blog/2018/07/04/fs2/), by [Michael Pilquist][mpilquist], describes some of the tradeoffs in designing the API and the code of FS2, used to work around some of the problems in the Scala compiler.

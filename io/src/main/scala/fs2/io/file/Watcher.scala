@@ -170,8 +170,10 @@ object Watcher {
       blocker: Blocker,
       ws: WatchService,
       registrations: SignallingRef[F, Map[WatchKey, Registration[F]]]
-  )(implicit F: Concurrent[F], cs: ContextShift[F])
-      extends Watcher[F] {
+  )(implicit
+      F: Concurrent[F],
+      cs: ContextShift[F]
+  ) extends Watcher[F] {
     private def isDir(p: Path): F[Boolean] =
       blocker.delay(Files.isDirectory(p))
 

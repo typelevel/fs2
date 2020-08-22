@@ -16,7 +16,7 @@ name: Microsite
 on:
   push:
     branches:
-      - master
+      - main
     paths:
       - "site/**"
       - "**/README.md"

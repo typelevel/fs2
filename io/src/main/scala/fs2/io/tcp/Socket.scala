@@ -46,7 +46,7 @@ trait Socket[F[_]] {
   /** Indicates that this channel will not read more data. Causes `End-Of-Stream` be signalled to `available`. */
   def endOfInput: F[Unit]
 
-  /** Indicates to peer, we are done writing. **/
+  /** Indicates to peer, we are done writing. * */
   def endOfOutput: F[Unit]
 
   def isOpen: F[Boolean]

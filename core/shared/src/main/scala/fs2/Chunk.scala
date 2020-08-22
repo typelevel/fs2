@@ -2,7 +2,7 @@ package fs2
 
 import scala.annotation.tailrec
 import scala.collection.immutable.{Queue => SQueue}
-import scala.collection.{IndexedSeq => GIndexedSeq, Seq => GSeq}
+import scala.collection.{mutable, IndexedSeq => GIndexedSeq, Seq => GSeq}
 import scala.reflect.ClassTag
 import scodec.bits.{BitVector, ByteVector}
 import java.nio.{
@@ -19,7 +19,6 @@ import java.nio.{
 import cats.{Alternative, Applicative, Eq, Eval, Monad, Traverse, TraverseFilter}
 import cats.data.{Chain, NonEmptyList}
 import cats.implicits._
-import fs2.internal.ArrayBackedSeq
 
 /**
   * Strict, finite sequence of values that allows index-based random access of elements.
@@ -33,7 +32,7 @@ import fs2.internal.ArrayBackedSeq
   * The operations on `Chunk` are all defined strictly. For example, `c.map(f).map(g).map(h)` results in
   * intermediate chunks being created (1 per call to `map`).
   */
-abstract class Chunk[+O] extends Serializable { self =>
+abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] { self =>
 
   /** Returns the number of elements in this chunk. */
   def size: Int
@@ -495,7 +494,7 @@ abstract class Chunk[+O] extends Serializable { self =>
     iterator.mkString("Chunk(", ", ", ")")
 }
 
-object Chunk extends CollectorK[Chunk] {
+object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
 
   /** Optional mix-in that provides the class tag of the element type in a chunk. */
   trait KnownElementType[A] { self: Chunk[A] =>
@@ -593,11 +592,8 @@ object Chunk extends CollectorK[Chunk] {
 
   /** Creates a chunk from a `scala.collection.Iterable`. */
   def iterable[O](i: collection.Iterable[O]): Chunk[O] =
-    i match {
-      case ArrayBackedSeq(arr) =>
-        // arr is either a primitive array or a boxed array
-        // cast is safe b/c the array constructor will check for primitive vs boxed arrays
-        array(arr.asInstanceOf[Array[O]])
+    platformIterable(i).getOrElse(i match {
+      case a: mutable.ArraySeq[O]          => arraySeq(a)
       case v: Vector[O]                    => vector(v)
       case b: collection.mutable.Buffer[O] => buffer(b)
       case l: List[O] =>
@@ -621,7 +617,13 @@ object Chunk extends CollectorK[Chunk] {
             buffer(bldr.result)
           } else singleton(head)
         }
-    }
+    })
+
+  /**
+    * Creates a chunk backed by a mutable `ArraySeq`.
+    */
+  def arraySeq[O](arraySeq: mutable.ArraySeq[O]): Chunk[O] =
+    array(arraySeq.array.asInstanceOf[Array[O]])
 
   /** Creates a chunk backed by a `Chain`. */
   def chain[O](c: Chain[O]): Chunk[O] =

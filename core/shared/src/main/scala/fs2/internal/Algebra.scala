@@ -3,20 +3,265 @@ package fs2.internal
 import cats.{MonadError, ~>}
 import cats.effect.{Concurrent, ExitCase}
 import cats.implicits._
-import fs2.{Pure => PureK, _}
+import fs2.{Chunk, CompositeFailure, INothing, Pure => PureK, Stream}
 import fs2.internal.FreeC.{Result, ViewL}
 
+import scala.annotation.tailrec
 import scala.util.control.NonFatal
+import FreeC._
 
-/* `Eval[F[_], O, R]` is a Generalised Algebraic Data Type (GADT)
- * of atomic instructions that can be evaluated in the effect `F`
- * to generate by-product outputs of type `O`.
- *
- * Each operation also generates an output of type `R` that is used
- * as control information for the rest of the interpretation or compilation.
- */
-private[fs2] object Algebra {
-  final case class Output[O](values: Chunk[O]) extends FreeC.Eval[PureK, O, Unit] {
+/**
+  * Free Monad with Catch (and Interruption).
+  *
+  * [[FreeC]] provides mechanism for ensuring stack safety and capturing any exceptions that may arise during computation.
+  *
+  * Furthermore, it may capture Interruption of the evaluation, although [[FreeC]] itself does not have any
+  * interruptible behaviour per se.
+  *
+  * Interruption cause may be captured in [[FreeC.Result.Interrupted]] and allows user to pass along any information relevant
+  * to interpreter.
+  *
+  * Typically the [[FreeC]] user provides interpretation of FreeC in form of [[ViewL]] structure, that allows to step
+  * FreeC via series of Results ([[Result.Pure]], [[Result.Fail]] and [[Result.Interrupted]]) and FreeC step ([[ViewL.View]])
+  */
+private[fs2] sealed abstract class FreeC[+F[_], +O, +R] {
+  def flatMap[F2[x] >: F[x], O2 >: O, R2](f: R => FreeC[F2, O2, R2]): FreeC[F2, O2, R2] =
+    new Bind[F2, O2, R, R2](this) {
+      def cont(e: Result[R]): FreeC[F2, O2, R2] =
+        e match {
+          case Result.Pure(r) =>
+            try f(r)
+            catch { case NonFatal(e) => FreeC.Result.Fail(e) }
+          case res @ Result.Interrupted(_, _) => res
+          case res @ Result.Fail(_)           => res
+        }
+    }
+
+  def append[F2[x] >: F[x], O2 >: O, R2](post: => FreeC[F2, O2, R2]): FreeC[F2, O2, R2] =
+    new Bind[F2, O2, R, R2](this) {
+      def cont(r: Result[R]): FreeC[F2, O2, R2] =
+        r match {
+          case _: Result.Pure[_]     => post
+          case r: Result.Interrupted => r
+          case r: Result.Fail        => r
+        }
+    }
+
+  private[FreeC] def transformWith[F2[x] >: F[x], O2 >: O, R2](
+      f: Result[R] => FreeC[F2, O2, R2]
+  ): FreeC[F2, O2, R2] =
+    new Bind[F2, O2, R, R2](this) {
+      def cont(r: Result[R]): FreeC[F2, O2, R2] =
+        try f(r)
+        catch { case NonFatal(e) => FreeC.Result.Fail(e) }
+    }
+
+  def map[O2 >: O, R2](f: R => R2): FreeC[F, O2, R2] =
+    new Bind[F, O2, R, R2](this) {
+      def cont(e: Result[R]): FreeC[F, O2, R2] = Result.map(e)(f)
+    }
+
+  def handleErrorWith[F2[x] >: F[x], O2 >: O, R2 >: R](
+      h: Throwable => FreeC[F2, O2, R2]
+  ): FreeC[F2, O2, R2] =
+    new Bind[F2, O2, R2, R2](this) {
+      def cont(e: Result[R2]): FreeC[F2, O2, R2] =
+        e match {
+          case Result.Fail(e) =>
+            try h(e)
+            catch { case NonFatal(e) => FreeC.Result.Fail(e) }
+          case other => other
+        }
+    }
+
+  def asHandler(e: Throwable): FreeC[F, O, R] =
+    ViewL(this) match {
+      case Result.Pure(_)  => Result.Fail(e)
+      case Result.Fail(e2) => Result.Fail(CompositeFailure(e2, e))
+      case Result.Interrupted(ctx, err) =>
+        Result.Interrupted(ctx, err.map(t => CompositeFailure(e, t)).orElse(Some(e)))
+      case v @ ViewL.View(_) => v.next(Result.Fail(e))
+    }
+
+  def viewL[F2[x] >: F[x], O2 >: O, R2 >: R]: ViewL[F2, O2, R2] = ViewL(this)
+
+  def mapOutput[P](f: O => P): FreeC[F, P, R]
+}
+
+private[fs2] object FreeC {
+
+  /* A FreeC can be one of the following:
+   *  - A Result or terminal, the end result of a pulling. This may have ended in:
+   *    - Succeeded with a result of type R.
+   *    - Failed with an exception
+   *    - Interrupted from another thread with a known `scopeId`
+   *
+   *  - A Bind, that binds a first computation(another FreeC) with a method to _continue_
+   *    the computation from the result of the first one `step`.
+   *
+   *  - A single Action, which can be one of following:
+   *
+   *    - Eval (or lift) an effectful operation of type `F[R]`
+   *    - Output some values of type O.
+   *    - Acquire a new resource and add its cleanup to the current scope.
+   *    - Open, Close, or Access to the resource scope.
+   *    - side-Step or fork to a different computation
+   */
+
+  /** A Result, or terminal, indicates how a pull or Free evaluation ended.
+    * A FreeC may have succeeded with a result, failed with an exception,
+    * or interrupted from another concurrent pull.
+    */
+  sealed abstract class Result[+R]
+      extends FreeC[PureK, INothing, R]
+      with ViewL[PureK, INothing, R] {
+    override def mapOutput[P](f: INothing => P): FreeC[PureK, INothing, R] = this
+  }
+
+  object Result {
+    val unit: Result[Unit] = Result.Pure(())
+
+    def fromEither[R](either: Either[Throwable, R]): Result[R] =
+      either.fold(Result.Fail(_), Result.Pure(_))
+
+    final case class Pure[+R](r: R) extends Result[R] {
+      override def toString: String = s"FreeC.Pure($r)"
+    }
+
+    final case class Fail(error: Throwable) extends Result[INothing] {
+      override def toString: String = s"FreeC.Fail($error)"
+    }
+
+    /**
+      * Signals that FreeC evaluation was interrupted.
+      *
+      * @param context Any user specific context that needs to be captured during interruption
+      *                for eventual resume of the operation.
+      *
+      * @param deferredError Any errors, accumulated during resume of the interruption.
+      *                      Instead throwing errors immediately during interruption,
+      *                      signalling of the errors may be deferred until the Interruption resumes.
+      */
+    final case class Interrupted(context: Token, deferredError: Option[Throwable])
+        extends Result[INothing] {
+      override def toString: String =
+        s"FreeC.Interrupted($context, ${deferredError.map(_.getMessage)})"
+    }
+
+    private[FreeC] def map[A, B](fa: Result[A])(f: A => B): Result[B] =
+      fa match {
+        case Result.Pure(r) =>
+          try Result.Pure(f(r))
+          catch { case NonFatal(err) => Result.Fail(err) }
+        case failure @ Result.Fail(_)               => failure
+        case interrupted @ Result.Interrupted(_, _) => interrupted
+      }
+  }
+
+  abstract class Bind[F[_], O, X, R](val step: FreeC[F, O, X]) extends FreeC[F, O, R] {
+    def cont(r: Result[X]): FreeC[F, O, R]
+    def delegate: Bind[F, O, X, R] = this
+
+    override def mapOutput[P](f: O => P): FreeC[F, P, R] =
+      suspend {
+        viewL match {
+          case v: ViewL.View[F, O, x, R] =>
+            new Bind[F, P, x, R](v.step.mapOutput(f)) {
+              def cont(e: Result[x]) = v.next(e).mapOutput(f)
+            }
+          case r: Result[_] => r
+        }
+      }
+
+    override def toString: String = s"FreeC.Bind($step)"
+  }
+
+  def suspend[F[_], O, R](fr: => FreeC[F, O, R]): FreeC[F, O, R] =
+    new Bind[F, O, Unit, R](Result.unit) {
+      def cont(r: Result[Unit]): FreeC[F, O, R] = fr
+    }
+
+  /**
+    * Unrolled view of a `FreeC` structure. may be `Result` or `EvalBind`
+    */
+  sealed trait ViewL[+F[_], +O, +R]
+
+  object ViewL {
+
+    /** unrolled view of FreeC `bind` structure * */
+    sealed abstract case class View[+F[_], O, X, R](step: Action[F, O, X]) extends ViewL[F, O, R] {
+      def next(r: Result[X]): FreeC[F, O, R]
+    }
+
+    private[ViewL] final class EvalView[+F[_], O, R](step: Action[F, O, R])
+        extends View[F, O, R, R](step) {
+      def next(r: Result[R]): FreeC[F, O, R] = r
+    }
+
+    private[fs2] def apply[F[_], O, R](free: FreeC[F, O, R]): ViewL[F, O, R] = mk(free)
+
+    @tailrec
+    private def mk[F[_], O, Z](free: FreeC[F, O, Z]): ViewL[F, O, Z] =
+      free match {
+        case r: Result[Z]       => r
+        case e: Action[F, O, Z] => new EvalView[F, O, Z](e)
+        case b: FreeC.Bind[F, O, y, Z] =>
+          b.step match {
+            case r: Result[_] => mk(b.cont(r))
+            case e: Action[F, O, y] =>
+              new ViewL.View[F, O, y, Z](e) {
+                def next(r: Result[y]): FreeC[F, O, Z] = b.cont(r)
+              }
+            case bb: FreeC.Bind[F, O, x, _] =>
+              val nb = new Bind[F, O, x, Z](bb.step) {
+                private[this] val bdel: Bind[F, O, y, Z] = b.delegate
+                def cont(zr: Result[x]): FreeC[F, O, Z] =
+                  new Bind[F, O, y, Z](bb.cont(zr)) {
+                    override val delegate: Bind[F, O, y, Z] = bdel
+                    def cont(yr: Result[y]): FreeC[F, O, Z] = delegate.cont(yr)
+                  }
+              }
+              mk(nb)
+          }
+      }
+  }
+
+  def bracketCase[F[_], O, A, B](
+      acquire: FreeC[F, O, A],
+      use: A => FreeC[F, O, B],
+      release: (A, ExitCase[Throwable]) => FreeC[F, O, Unit]
+  ): FreeC[F, O, B] =
+    acquire.flatMap { a =>
+      val used =
+        try use(a)
+        catch { case NonFatal(t) => FreeC.Result.Fail(t) }
+      used.transformWith { result =>
+        val exitCase: ExitCase[Throwable] = result match {
+          case Result.Pure(_)           => ExitCase.Completed
+          case Result.Fail(err)         => ExitCase.Error(err)
+          case Result.Interrupted(_, _) => ExitCase.Canceled
+        }
+
+        release(a, exitCase).transformWith {
+          case Result.Fail(t2) =>
+            result match {
+              case Result.Fail(tres) => Result.Fail(CompositeFailure(tres, t2))
+              case result            => result
+            }
+          case _ => result
+        }
+      }
+    }
+
+  /* An Action is an atomic instruction that can perform effects in `F`
+   * to generate by-product outputs of type `O`.
+   *
+   * Each operation also generates an output of type `R` that is used
+   * as control information for the rest of the interpretation or compilation.
+   */
+  abstract class Action[+F[_], +O, +R] extends FreeC[F, O, R]
+
+  final case class Output[O](values: Chunk[O]) extends Action[PureK, O, Unit] {
     override def mapOutput[P](f: O => P): FreeC[PureK, P, Unit] =
       FreeC.suspend {
         try Output(values.map(f))
@@ -32,7 +277,7 @@ private[fs2] object Algebra {
     * @param scopeId            If scope has to be changed before this step is evaluated, id of the scope must be supplied
     */
   final case class Step[X](stream: FreeC[Any, X, Unit], scope: Option[Token])
-      extends FreeC.Eval[PureK, INothing, Option[(Chunk[X], Token, FreeC[Any, X, Unit])]] {
+      extends Action[PureK, INothing, Option[(Chunk[X], Token, FreeC[Any, X, Unit])]] {
     /* NOTE: The use of `Any` and `PureK` done to by-pass an error in Scala 2.12 type-checker,
      * that produces a crash when dealing with Higher-Kinded GADTs in which the F parameter appears
      * Inside one of the values of the case class.      */
@@ -41,7 +286,7 @@ private[fs2] object Algebra {
 
   /* The `AlgEffect` trait is for operations on the `F` effect that create no `O` output.
    * They are related to resources and scopes. */
-  sealed abstract class AlgEffect[+F[_], R] extends FreeC.Eval[F, INothing, R] {
+  sealed abstract class AlgEffect[+F[_], R] extends Action[F, INothing, R] {
     final def mapOutput[P](f: INothing => P): FreeC[F, P, R] = this
   }
 
@@ -60,7 +305,7 @@ private[fs2] object Algebra {
   // together with any errors accumulated during interruption process
   final case class CloseScope(
       scopeId: Token,
-      interruptedScope: Option[(Token, Option[Throwable])],
+      interruption: Option[Result.Interrupted],
       exitCase: ExitCase[Throwable]
   ) extends AlgEffect[PureK, Unit]
 
@@ -97,11 +342,11 @@ private[fs2] object Algebra {
   ): FreeC[F, O, Unit] =
     OpenScope(interruptible).flatMap { scopeId =>
       s.transformWith {
-        case Result.Pure(_) => CloseScope(scopeId, interruptedScope = None, ExitCase.Completed)
-        case Result.Interrupted(interruptedScopeId: Token, err) =>
-          CloseScope(scopeId, interruptedScope = Some((interruptedScopeId, err)), ExitCase.Canceled)
+        case Result.Pure(_) => CloseScope(scopeId, None, ExitCase.Completed)
+        case interrupted @ Result.Interrupted(_, _) =>
+          CloseScope(scopeId, Some(interrupted), ExitCase.Canceled)
         case Result.Fail(err) =>
-          CloseScope(scopeId, interruptedScope = None, ExitCase.Error(err)).transformWith {
+          CloseScope(scopeId, None, ExitCase.Error(err)).transformWith {
             case Result.Pure(_)    => Result.Fail(err)
             case Result.Fail(err0) => Result.Fail(CompositeFailure(err, err0, Nil))
             case Result.Interrupted(interruptedScopeId, _) =>
@@ -109,41 +354,14 @@ private[fs2] object Algebra {
                 s"Impossible, cannot interrupt when closing failed scope: $scopeId, $interruptedScopeId, $err"
               )
           }
-
-        case Result.Interrupted(ctx, _) => sys.error(s"Impossible context: $ctx")
       }
     }
-
-  def translate[F[_], G[_], O](
-      s: FreeC[F, O, Unit],
-      u: F ~> G
-  )(implicit G: TranslateInterrupt[G]): FreeC[G, O, Unit] =
-    translate0[F, G, O](u, s, G.concurrentInstance)
 
   def uncons[F[_], X, O](s: FreeC[F, O, Unit]): FreeC[F, X, Option[(Chunk[O], FreeC[F, O, Unit])]] =
     Step(s, None).map(_.map { case (h, _, t) => (h, t.asInstanceOf[FreeC[F, O, Unit]]) })
 
-  /** Left-folds the output of a stream. */
-  def compile[F[_], O, B](
-      stream: FreeC[F, O, Unit],
-      scope: CompileScope[F],
-      extendLastTopLevelScope: Boolean,
-      init: B
-  )(g: (B, Chunk[O]) => B)(implicit F: MonadError[F, Throwable]): F[B] =
-    compileLoop[F, O](scope, extendLastTopLevelScope, stream).flatMap {
-      case Some((output, scope, tail)) =>
-        try {
-          val b = g(init, output)
-          compile(tail, scope, extendLastTopLevelScope, b)(g)
-        } catch {
-          case NonFatal(err) =>
-            compile(tail.asHandler(err), scope, extendLastTopLevelScope, init)(g)
-        }
-      case None =>
-        F.pure(init)
-    }
-
-  /*
+  /* Left-folds the output of a stream.
+   *
    * Interruption of the stream is tightly coupled between FreeC, Algebra and CompileScope
    * Reason for this is unlike interruption of `F` type (i.e. IO) we need to find
    * recovery point where stream evaluation has to continue in Stream algebra
@@ -158,17 +376,17 @@ private[fs2] object Algebra {
    * Interpreter uses this to find any parents of this scope that has to be interrupted, and guards the
    * interruption so it won't propagate to scope that shall not be anymore interrupted.
    */
-  private[this] def compileLoop[F[_], O](
-      scope: CompileScope[F],
+  def compile[F[_], O, B](
+      stream: FreeC[F, O, Unit],
+      initScope: CompileScope[F],
       extendLastTopLevelScope: Boolean,
-      stream: FreeC[F, O, Unit]
-  )(implicit
-      F: MonadError[F, Throwable]
-  ): F[Option[(Chunk[O], CompileScope[F], FreeC[F, O, Unit])]] = {
-    case class Done[X](scope: CompileScope[F]) extends R[X]
-    case class Out[X](head: Chunk[X], scope: CompileScope[F], tail: FreeC[F, X, Unit]) extends R[X]
-    case class Interrupted[X](scopeId: Token, err: Option[Throwable]) extends R[X]
-    sealed trait R[X]
+      init: B
+  )(g: (B, Chunk[O]) => B)(implicit F: MonadError[F, Throwable]): F[B] = {
+
+    case class Done(scope: CompileScope[F]) extends R[INothing]
+    case class Out[+X](head: Chunk[X], scope: CompileScope[F], tail: FreeC[F, X, Unit]) extends R[X]
+    case class Interrupted(scopeId: Token, err: Option[Throwable]) extends R[INothing]
+    sealed trait R[+X]
 
     def go[X](
         scope: CompileScope[F],
@@ -182,11 +400,8 @@ private[fs2] object Algebra {
         case failed: FreeC.Result.Fail =>
           F.raiseError(failed.error)
 
-        case interrupted: FreeC.Result.Interrupted[_] =>
-          interrupted.context match {
-            case scopeId: Token => F.pure(Interrupted(scopeId, interrupted.deferredError))
-            case other          => sys.error(s"Unexpected interruption context: $other (compileLoop)")
-          }
+        case interrupted: FreeC.Result.Interrupted =>
+          F.pure(Interrupted(interrupted.context, interrupted.deferredError))
 
         case view: ViewL.View[F, X, y, Unit] =>
           def resume(res: Result[y]): F[R[X]] =
@@ -293,9 +508,9 @@ private[fs2] object Algebra {
               def closeAndGo(toClose: CompileScope[F], ec: ExitCase[Throwable]) =
                 F.flatMap(toClose.close(ec)) { r =>
                   F.flatMap(toClose.openAncestor) { ancestor =>
-                    val res = close.interruptedScope match {
+                    val res = close.interruption match {
                       case None => Result.fromEither(r)
-                      case Some((interruptedScopeId, err)) =>
+                      case Some(Result.Interrupted(interruptedScopeId, err)) =>
                         def err1 = CompositeFailure.fromList(r.swap.toOption.toList ++ err.toList)
                         if (ancestor.findSelfOrAncestor(interruptedScopeId).isDefined)
                           // we still have scopes to interrupt, lets build interrupted tail
@@ -330,25 +545,54 @@ private[fs2] object Algebra {
                   else closeAndGo(toClose, close.exitCase)
                 case None =>
                   // scope already closed, continue with current scope
-                  val result = close.interruptedScope match {
-                    case Some((x, y)) => Result.Interrupted(x, y)
-                    case None         => Result.unit
-                  }
+                  val result = close.interruption.getOrElse(Result.unit)
                   go(scope, extendedTopLevelScope, view.next(result))
               }
           }
       }
 
-    F.flatMap(go(scope, None, stream)) {
-      case Done(_)                => F.pure(None)
-      case Out(head, scope, tail) => F.pure(Some((head, scope, tail)))
-      case Interrupted(_, err) =>
-        err match {
-          case None      => F.pure(None)
-          case Some(err) => F.raiseError(err)
-        }
-    }
+    def outerLoop(scope: CompileScope[F], accB: B, stream: FreeC[F, O, Unit]): F[B] =
+      F.flatMap(go(scope, None, stream)) {
+        case Done(_) => F.pure(accB)
+        case Out(head, scope, tail) =>
+          try outerLoop(scope, g(accB, head), tail)
+          catch {
+            case NonFatal(err) => outerLoop(scope, accB, tail.asHandler(err))
+          }
+        case Interrupted(_, None)      => F.pure(accB)
+        case Interrupted(_, Some(err)) => F.raiseError(err)
+      }
+
+    outerLoop(initScope, init, stream)
   }
+
+  def flatMapOutput[F[_], F2[x] >: F[x], O, O2](
+      freeC: FreeC[F, O, Unit],
+      f: O => FreeC[F2, O2, Unit]
+  ): FreeC[F2, O2, Unit] =
+    uncons(freeC).flatMap {
+      case None => Result.unit
+
+      case Some((chunk, FreeC.Result.Pure(_))) if chunk.size == 1 =>
+        // nb: If tl is Pure, there's no need to propagate flatMap through the tail. Hence, we
+        // check if hd has only a single element, and if so, process it directly instead of folding.
+        // This allows recursive infinite streams of the form `def s: Stream[Pure,O] = Stream(o).flatMap { _ => s }`
+        f(chunk(0))
+
+      case Some((chunk, tail)) =>
+        def go(idx: Int): FreeC[F2, O2, Unit] =
+          if (idx == chunk.size)
+            flatMapOutput[F, F2, O, O2](tail, f)
+          else
+            f(chunk(idx)).transformWith {
+              case Result.Pure(_)   => go(idx + 1)
+              case Result.Fail(err) => Result.Fail(err)
+              case interruption @ Result.Interrupted(_, _) =>
+                flatMapOutput[F, F2, O, O2](interruptBoundary(tail, interruption), f)
+            }
+
+        go(0)
+    }
 
   /**
     * Inject interruption to the tail used in flatMap.
@@ -361,44 +605,37 @@ private[fs2] object Algebra {
     * @tparam O
     * @return
     */
-  def interruptBoundary[F[_], O](
+  private[this] def interruptBoundary[F[_], O](
       stream: FreeC[F, O, Unit],
-      interruptedScope: Token,
-      interruptedError: Option[Throwable]
+      interruption: Result.Interrupted
   ): FreeC[F, O, Unit] =
     stream.viewL match {
       case _: FreeC.Result.Pure[Unit] =>
-        Result.Interrupted(interruptedScope, interruptedError)
+        interruption
       case failed: FreeC.Result.Fail =>
         Result.Fail(
           CompositeFailure
-            .fromList(interruptedError.toList :+ failed.error)
+            .fromList(interruption.deferredError.toList :+ failed.error)
             .getOrElse(failed.error)
         )
-      case interrupted: Result.Interrupted[_] =>
-        // impossible
-        Result.Interrupted(interrupted.context, interrupted.deferredError)
+      case interrupted: Result.Interrupted => interrupted // impossible
 
       case view: ViewL.View[F, O, _, Unit] =>
         view.step match {
-          case close: CloseScope =>
-            CloseScope(
-              close.scopeId,
-              Some((interruptedScope, interruptedError)),
-              ExitCase.Canceled
-            ) // Inner scope is getting closed b/c a parent was interrupted
-              .transformWith(view.next)
+          case CloseScope(scopeId, _, _) =>
+            // Inner scope is getting closed b/c a parent was interrupted
+            CloseScope(scopeId, Some(interruption), ExitCase.Canceled).transformWith(view.next)
           case _ =>
             // all other cases insert interruption cause
-            view.next(Result.Interrupted(interruptedScope, interruptedError))
+            view.next(interruption)
         }
     }
 
-  private def translate0[F[_], G[_], O](
-      fK: F ~> G,
+  def translate[F[_], G[_], O](
       stream: FreeC[F, O, Unit],
-      concurrent: Option[Concurrent[G]]
-  ): FreeC[G, O, Unit] = {
+      fK: F ~> G
+  )(implicit G: TranslateInterrupt[G]): FreeC[G, O, Unit] = {
+    val concurrent: Option[Concurrent[G]] = G.concurrentInstance
     def translateAlgEffect[R](self: AlgEffect[F, R]): AlgEffect[G, R] =
       self match {
         // safe to cast, used in translate only

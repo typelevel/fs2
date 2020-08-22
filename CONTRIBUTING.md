@@ -112,7 +112,7 @@ Serving HTTP on 0.0.0.0 port 4000 ...
 [fs2-issues]: https://github.com/functional-streams-for-scala/fs2/issues
 [fs2-pulls]: https://github.com/functional-streams-for-scala/fs2/pulls
 [fs2-dev]: https://gitter.im/functional-streams-for-scala/fs2-dev
-[coc]: https://github.com/functional-streams-for-scala/fs2/blob/master/CODE_OF_CONDUCT.md
+[coc]: https://github.com/functional-streams-for-scala/fs2/blob/main/CODE_OF_CONDUCT.md
 [sbt]: https://www.scala-sbt.org
 [mima]: https://github.com/lightbend/mima
 [scalafmt]: https://scalameta.org/scalafmt

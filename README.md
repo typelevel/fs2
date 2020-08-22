@@ -1,7 +1,7 @@
 FS2: Functional Streams for Scala
 =============
 
-[![Build Status](https://travis-ci.org/functional-streams-for-scala/fs2.svg?branch=master)](http://travis-ci.org/functional-streams-for-scala/fs2)
+[![Continuous Integration](https://github.com/functional-streams-for-scala/fs2/workflows/Continuous%20Integration/badge.svg)](https://github.com/functional-streams-for-scala/fs2/actions?query=workflow%3A%22Continuous+Integration%22)
 [![Gitter Chat](https://badges.gitter.im/functional-streams-for-scala/fs2.svg)](https://gitter.im/functional-streams-for-scala/fs2)
 [![Latest version](https://img.shields.io/maven-central/v/co.fs2/fs2-core_2.12.svg)](https://index.scala-lang.org/functional-streams-for-scala/fs2/fs2-core)
 
@@ -61,7 +61,7 @@ The fs2-core library is also supported on Scala.js:
 libraryDependencies += "co.fs2" %%% "fs2-core" % "2.4.0"
 ```
 
-There are [detailed migration guides](https://github.com/functional-streams-for-scala/fs2/blob/master/docs/) for migrating from older versions.
+There are [detailed migration guides](https://github.com/functional-streams-for-scala/fs2/blob/main/docs/) for migrating from older versions.
 
 
 ### <a id="about"></a>Example ###
@@ -129,4 +129,5 @@ Special thanks to [YourKit](https://www.yourkit.com/) for supporting this projec
 
 ### Code of Conduct ###
 
-See the [Code of Conduct](https://github.com/functional-streams-for-scala/fs2/blob/master/CODE_OF_CONDUCT.md).
+See the [Code of Conduct](https://github.com/functional-streams-for-scala/fs2/blob/main/CODE_OF_CONDUCT.md).
+

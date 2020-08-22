@@ -11,6 +11,23 @@ addCommandAlias(
   "; compile:scalafmtCheck; test:scalafmtCheck; it:scalafmtCheck; scalafmtSbtCheck"
 )
 
+crossScalaVersions in ThisBuild := Seq("2.13.2", "2.12.10")
+scalaVersion in ThisBuild := crossScalaVersions.value.head
+
+githubWorkflowJavaVersions in ThisBuild := Seq("adopt@1.11")
+githubWorkflowPublishTargetBranches in ThisBuild := Seq(RefPredicate.Equals(Ref.Branch("main")))
+githubWorkflowBuild in ThisBuild := Seq(
+  WorkflowStep.Sbt(List("fmtCheck", "compile")),
+  WorkflowStep.Sbt(List("testJVM")),
+  WorkflowStep.Sbt(List("testJS")),
+  WorkflowStep.Sbt(List("doc", "mimaReportBinaryIssues")),
+  WorkflowStep.Sbt(List(";project coreJVM;it:test"))
+)
+githubWorkflowEnv in ThisBuild ++= Map(
+  "SONATYPE_USERNAME" -> "fs2-ci",
+  "SONATYPE_PASSWORD" -> s"$${{ secrets.SONATYPE_PASSWORD }}"
+)
+
 lazy val contributors = Seq(
   "pchiusano" -> "Paul Chiusano",
   "pchlupacek" -> "Pavel Chlupáček",
@@ -61,7 +78,7 @@ lazy val commonSettingsBase = Seq(
     "org.typelevel" %%% "cats-effect-laws" % "2.1.3" % "test",
     "org.scalacheck" %%% "scalacheck" % "1.14.3" % "test",
     "org.scalatest" %%% "scalatest" % "3.3.0-SNAP2" % "test",
-    "org.scalatestplus" %%% "scalacheck-1-14" % "3.1.2.0" % "test"
+    "org.scalatestplus" %%% "scalacheck-1-14" % "3.2.0.0" % "test"
   ),
   scmInfo := Some(
     ScmInfo(
@@ -94,7 +111,7 @@ lazy val commonTestSettings = Seq(
     case None => Seq()
   })),
   parallelExecution in Test := false,
-  testOptions in Test += Tests.Argument(TestFrameworks.ScalaTest, "-oDF"),
+  testOptions in Test += Tests.Argument(TestFrameworks.ScalaTest, "-oDS"),
   publishArtifact in Test := true
 )
 lazy val testSettings =
@@ -161,7 +178,8 @@ lazy val publishingSettings = Seq(
   pomExtra := {
     <developers>
       {
-      for ((username, name) <- contributors) yield <developer>
+      for ((username, name) <- contributors)
+        yield <developer>
         <id>{username}</id>
         <name>{name}</name>
         <url>http://github.com/{username}</url>
@@ -180,7 +198,7 @@ lazy val publishingSettings = Seq(
     val stripTestScope = stripIf(n => n.label == "dependency" && (n \ "scope").text == "test")
     new RuleTransformer(stripTestScope).transform(node)(0)
   },
-  gpgWarnOnFailure := Option(System.getenv().get("GPG_WARN_ON_FAILURE")).isDefined
+  gpgWarnOnFailure := version.value.endsWith("SNAPSHOT")
 )
 
 lazy val commonJsSettings = Seq(
@@ -248,7 +266,10 @@ lazy val mimaSettings = Seq(
     ),
     ProblemFilters.exclude[DirectMissingMethodProblem](
       "fs2.io.tls.TLSSocket.fs2$io$tls$TLSSocket$$binding$default$3"
-    )
+    ),
+    // InputOutputBuffer is private[tls]
+    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.tls.InputOutputBuffer.output"),
+    ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.io.tls.InputOutputBuffer.output")
   )
 )
 
@@ -258,7 +279,7 @@ lazy val root = project
   .settings(commonSettings)
   .settings(mimaSettings)
   .settings(noPublish)
-  .aggregate(coreJVM, coreJS, io, reactiveStreams, benchmark, experimental)
+  .aggregate(coreJVM, coreJS, io, reactiveStreams, benchmark, experimental, microsite)
 
 lazy val IntegrationTest = config("it").extend(Test)
 
@@ -274,7 +295,7 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
   .settings(
     name := "fs2-core",
     sourceDirectories in (Compile, scalafmt) += baseDirectory.value / "../shared/src/main/scala",
-    libraryDependencies += "org.scodec" %%% "scodec-bits" % "1.1.15"
+    libraryDependencies += "org.scodec" %%% "scodec-bits" % "1.1.17"
   )
   .jsSettings(commonJsSettings: _*)
 
@@ -358,22 +379,12 @@ lazy val benchmark = project
   .enablePlugins(JmhPlugin)
   .dependsOn(io)
 
-lazy val docs = project
-  .in(file("docs"))
-  .enablePlugins(MdocPlugin)
-  .settings(commonSettings)
-  .settings(
-    name := "fs2-docs",
-    mdocIn := file("docs") / "src",
-    mdocOut := file("docs")
-  )
-  .settings(mdocSettings)
-  .dependsOn(coreJVM, io, reactiveStreams)
-
 lazy val microsite = project
   .in(file("site"))
   .enablePlugins(MicrositesPlugin)
+  .disablePlugins(MimaPlugin)
   .settings(commonSettings)
+  .settings(noPublish)
   .settings(
     micrositeName := "fs2",
     micrositeDescription := "Purely functional, effectful, resource-safe, concurrent streams for Scala",

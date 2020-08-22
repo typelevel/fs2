@@ -162,6 +162,12 @@ object Queue {
     def circularBuffer[F[_], A](maxSize: Int)(implicit F: Concurrent[F]): G[Queue[F, A]] =
       forStrategy(Strategy.circularBuffer(maxSize))
 
+    /** Creates a queue terminated by enqueueing `None`. All elements before `None` are preserved and never blocks on enqueue. */
+    def circularBufferNoneTerminated[F[_], A](
+        maxSize: Int
+    )(implicit F: Concurrent[F]): G[NoneTerminatedQueue[F, A]] =
+      forStrategyNoneTerminated(PubSub.Strategy.closeDrainFirst(Strategy.circularBuffer(maxSize)))
+
     /** Created a bounded queue that distributed always at max `fairSize` elements to any subscriber. */
     def fairBounded[F[_], A](maxSize: Int, fairSize: Int)(implicit
         F: Concurrent[F]
@@ -298,6 +304,12 @@ object Queue {
   /** Creates a queue which stores the last `maxSize` enqueued elements and which never blocks on enqueue. */
   def circularBuffer[F[_], A](maxSize: Int)(implicit F: Concurrent[F]): F[Queue[F, A]] =
     in[F].circularBuffer(maxSize)
+
+  /** Creates a queue terminated by enqueueing `None`. All elements before `None` are preserved and never blocks on enqueue. */
+  def circularBufferNoneTerminated[F[_], A](
+      maxSize: Int
+  )(implicit F: Concurrent[F]): F[NoneTerminatedQueue[F, A]] =
+    in[F].circularBufferNoneTerminated(maxSize)
 
   /** Created a bounded queue that distributed always at max `fairSize` elements to any subscriber. */
   def fairBounded[F[_], A](maxSize: Int, fairSize: Int)(implicit F: Concurrent[F]): F[Queue[F, A]] =
