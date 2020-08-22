@@ -7,7 +7,7 @@ import cats.effect.implicits._
 import cats.implicits.{catsSyntaxEither => _, _}
 import fs2.concurrent._
 import fs2.internal.FreeC.{Acquire, Eval, GetScope, Output, Result}
-import fs2.internal.{Resource => _, _}
+import fs2.internal._
 import java.io.PrintStream
 
 import scala.annotation.tailrec
@@ -1854,25 +1854,24 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
       f: O => Stream[F2, O2]
   )(implicit F2: Concurrent[F2]): Stream[F2, O2] =
     Stream.force(Semaphore[F2](1).flatMap { guard =>
-      Ref.of[F2, Option[Deferred[F2, Unit]]](None).map {
-        haltRef =>
-          def runInner(o: O, halt: Deferred[F2, Unit]): Stream[F2, O2] =
-            Stream.eval(guard.acquire) >> // guard inner to prevent parallel inner streams
-              f(o).interruptWhen(halt.get.attempt) ++ Stream.eval_(guard.release)
+      Ref.of[F2, Option[Deferred[F2, Unit]]](None).map { haltRef =>
+        def runInner(o: O, halt: Deferred[F2, Unit]): Stream[F2, O2] =
+          Stream.eval(guard.acquire) >> // guard inner to prevent parallel inner streams
+            f(o).interruptWhen(halt.get.attempt) ++ Stream.eval_(guard.release)
 
-          this
-            .evalMap { o =>
-              Deferred[F2, Unit].flatMap { halt =>
-                haltRef
-                  .getAndSet(halt.some)
-                  .flatMap {
-                    case None       => F2.unit
-                    case Some(last) => last.complete(()) // interrupt the previous one
-                  }
-                  .as(runInner(o, halt))
-              }
+        this
+          .evalMap { o =>
+            Deferred[F2, Unit].flatMap { halt =>
+              haltRef
+                .getAndSet(halt.some)
+                .flatMap {
+                  case None       => F2.unit
+                  case Some(last) => last.complete(()) // interrupt the previous one
+                }
+                .as(runInner(o, halt))
             }
-            .parJoin(2)
+          }
+          .parJoin(2)
       }
     })
 

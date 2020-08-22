@@ -74,8 +74,8 @@ class TLSSocketSuite extends TLSSuite {
                   }.parJoinUnbounded
 
                   val msg = Chunk.bytes(("Hello, world! " * 20000).getBytes)
-                  val client = Stream.resource(socketGroup.client[IO](serverAddress)).flatMap {
-                    clientSocket =>
+                  val client =
+                    Stream.resource(socketGroup.client[IO](serverAddress)).flatMap { clientSocket =>
                       Stream
                         .resource(
                           tlsContext.client(
@@ -89,7 +89,7 @@ class TLSSocketSuite extends TLSSuite {
                           Stream.eval_(clientSocketTls.write(msg)) ++
                             clientSocketTls.reads(8192).take(msg.size)
                         }
-                  }
+                    }
 
                   client.concurrently(server).compile.to(Chunk).map(it => assert(it == msg))
               }

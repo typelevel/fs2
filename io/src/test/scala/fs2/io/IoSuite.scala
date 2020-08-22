@@ -90,9 +90,9 @@ class IoSuite extends Fs2Suite {
           os.write(1)
         }
       Blocker[IO].use { blocker =>
-        // Note: name `contextShiftIO` is important because it shadows the outer implicit, preventing ambiguity
+        // Note: name `munitContextShift` is important because it shadows the outer implicit, preventing ambiguity
         pool
-          .use { implicit contextShiftIO: ContextShift[IO] =>
+          .use { implicit munitContextShift: ContextShift[IO] =>
             readOutputStream[IO](blocker, chunkSize = 1)(write)
               .take(5)
               .compile

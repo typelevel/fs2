@@ -33,7 +33,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
     test("liveness") {
       val s = Stream
         .awakeEvery[IO](1.milli)
-        .evalMap(_ => IO.async[Unit](cb => executionContext.execute(() => cb(Right(())))))
+        .evalMap(_ => IO.async[Unit](cb => munitExecutionContext.execute(() => cb(Right(())))))
         .take(200)
       Stream(s, s, s, s, s).parJoin(5).compile.drain
     }
@@ -643,7 +643,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
   test("fromBlockingIterator") {
     forAllF { (x: List[Int]) =>
       Stream
-        .fromBlockingIterator[IO](Blocker.liftExecutionContext(executionContext), x.iterator)
+        .fromBlockingIterator[IO](Blocker.liftExecutionContext(munitExecutionContext), x.iterator)
         .compile
         .toList
         .map(it => assert(it == x))
