@@ -88,12 +88,6 @@ jobs:
 
       - run: 'sbt ++${{ matrix.scala }} '';project coreJVM;it:test'''
 
-      - name: Upload target directory 'experimental/target' (${{ matrix.scala }})
-        uses: actions/upload-artifact@v1
-        with:
-          name: target-${{ matrix.os }}-${{ matrix.scala }}-${{ matrix.java }}-experimental_target
-          path: experimental/target
-
       - name: Upload target directory 'target' (${{ matrix.scala }})
         uses: actions/upload-artifact@v1
         with:
@@ -193,24 +187,6 @@ jobs:
         with:
           path: ~/.sbt
           key: ${{ runner.os }}-sbt-cache-${{ hashFiles('**/*.sbt') }}-${{ hashFiles('project/build.properties') }}
-
-      - name: Download target directory 'experimental/target' (2.13.2)
-        uses: actions/download-artifact@v1
-        with:
-          name: target-${{ matrix.os }}-2.13.2-${{ matrix.java }}-experimental_target
-          path: experimental/target
-
-      - name: Download target directory 'experimental/target' (2.12.10)
-        uses: actions/download-artifact@v1
-        with:
-          name: target-${{ matrix.os }}-2.12.10-${{ matrix.java }}-experimental_target
-          path: experimental/target
-
-      - name: Download target directory 'experimental/target' (0.26.0-RC1)
-        uses: actions/download-artifact@v1
-        with:
-          name: target-${{ matrix.os }}-0.26.0-RC1-${{ matrix.java }}-experimental_target
-          path: experimental/target
 
       - name: Download target directory 'target' (2.13.2)
         uses: actions/download-artifact@v1
