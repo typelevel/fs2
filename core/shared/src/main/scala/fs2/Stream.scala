@@ -365,6 +365,26 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
     filterWithPrevious((o1, o2) => eq.neqv(f(o1), f(o2)))
 
   /**
+    * Collects all output chunks in to a single chunk and emits it at the end of the
+    * source stream. Note: if more than 2^32-1 elements are collected, this operation
+    * will fail.
+    *
+    * @example {{{
+    * scala> import cats.implicits._
+    * scala> (Stream(1) ++ Stream(2, 3) ++ Stream(4, 5, 6)).chunkAll.toList
+    * res0: List[Chunk[Int]] = List(Chunk(1, 2, 3, 4, 5, 6))
+    * }}}
+    */
+  def chunkAll: Stream[F, Chunk[O]] = {
+    def loop(s: Stream[F, O], acc: Chunk.Queue[O]): Pull[F, Chunk[O], Unit] =
+      s.pull.uncons.flatMap {
+        case Some((hd, tl)) => loop(tl, acc :+ hd)
+        case None           => Pull.output1(acc.toChunk)
+      }
+    loop(this, Chunk.Queue.empty).stream
+  }
+
+  /**
     * Outputs all chunks from the source stream.
     *
     * @example {{{
@@ -1988,11 +2008,17 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
   def mergeHaltBoth[F2[x] >: F[x]: Concurrent, O2 >: O](that: Stream[F2, O2]): Stream[F2, O2] =
     noneTerminate.merge(that.noneTerminate).unNoneTerminate
 
-  /** Like `merge`, but halts as soon as the `s1` branch halts. */
+  /** Like `merge`, but halts as soon as the `s1` branch halts.
+    *
+    * Note: it is *not* guaranteed that the last element of the stream will come from `s1`.
+    */
   def mergeHaltL[F2[x] >: F[x]: Concurrent, O2 >: O](that: Stream[F2, O2]): Stream[F2, O2] =
     noneTerminate.merge(that.map(Some(_))).unNoneTerminate
 
-  /** Like `merge`, but halts as soon as the `s2` branch halts. */
+  /** Like `merge`, but halts as soon as the `s2` branch halts.
+    *
+    * Note: it is *not* guaranteed that the last element of the stream will come from `s2`.
+    */
   def mergeHaltR[F2[x] >: F[x]: Concurrent, O2 >: O](that: Stream[F2, O2]): Stream[F2, O2] =
     that.mergeHaltL(this)
 
@@ -2656,21 +2682,21 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
     * }}}
     */
   def split(f: O => Boolean): Stream[F, Chunk[O]] = {
-    def go(buffer: List[Chunk[O]], s: Stream[F, O]): Pull[F, Chunk[O], Unit] =
+    def go(buffer: Chunk.Queue[O], s: Stream[F, O]): Pull[F, Chunk[O], Unit] =
       s.pull.uncons.flatMap {
         case Some((hd, tl)) =>
           hd.indexWhere(f) match {
-            case None => go(hd :: buffer, tl)
+            case None => go(buffer :+ hd, tl)
             case Some(idx) =>
               val pfx = hd.take(idx)
-              val b2 = pfx :: buffer
-              Pull.output1(Chunk.concat(b2.reverse)) >> go(Nil, tl.cons(hd.drop(idx + 1)))
+              val b2 = buffer :+ pfx
+              Pull.output1(b2.toChunk) >> go(Chunk.Queue.empty, tl.cons(hd.drop(idx + 1)))
           }
         case None =>
-          if (buffer.nonEmpty) Pull.output1(Chunk.concat(buffer.reverse))
+          if (buffer.nonEmpty) Pull.output1(buffer.toChunk)
           else Pull.done
       }
-    go(Nil, this).stream
+    go(Chunk.Queue.empty, this).stream
   }
 
   /**
@@ -3414,6 +3440,12 @@ object Stream extends StreamLowPriority {
     new PartiallyAppliedFromBlockingIterator(dummy = true)
 
   /**
+    * Like `emits`, but works for any G that has a `Foldable` instance.
+    */
+  def foldable[F[x] >: Pure[x], G[_]: Foldable, O](os: G[O]): Stream[F, O] =
+    Stream.emits(os.toList)
+
+  /**
     * Lifts an effect that generates a stream in to a stream. Alias for `eval(f).flatMap(_)`.
     *
     * @example {{{
@@ -3424,6 +3456,12 @@ object Stream extends StreamLowPriority {
     */
   def force[F[_], A](f: F[Stream[F, A]]): Stream[F, A] =
     eval(f).flatMap(s => s)
+
+  /**
+    * Like `emits`, but works for any class that extends `Iterable`
+    */
+  def iterable[F[x] >: Pure[x], A](os: Iterable[A]): Stream[F, A] =
+    Stream.chunk(Chunk.iterable(os))
 
   /**
     * An infinite `Stream` that repeatedly applies a given function
@@ -3992,25 +4030,25 @@ object Stream extends StreamLowPriority {
         allowFewer: Boolean = false
     ): Pull[F, INothing, Option[(Chunk[O], Stream[F, O])]] = {
       def go(
-          acc: List[Chunk[O]],
+          acc: Chunk.Queue[O],
           n: Int,
           s: Stream[F, O]
       ): Pull[F, INothing, Option[(Chunk[O], Stream[F, O])]] =
         s.pull.uncons.flatMap {
           case None =>
             if (allowFewer && acc.nonEmpty)
-              Pull.pure(Some((Chunk.concat(acc.reverse), Stream.empty)))
+              Pull.pure(Some((acc.toChunk, Stream.empty)))
             else Pull.pure(None)
           case Some((hd, tl)) =>
-            if (hd.size < n) go(hd :: acc, n - hd.size, tl)
-            else if (hd.size == n) Pull.pure(Some(Chunk.concat((hd :: acc).reverse) -> tl))
+            if (hd.size < n) go(acc :+ hd, n - hd.size, tl)
+            else if (hd.size == n) Pull.pure(Some((acc :+ hd).toChunk -> tl))
             else {
               val (pfx, sfx) = hd.splitAt(n)
-              Pull.pure(Some(Chunk.concat((pfx :: acc).reverse) -> tl.cons(sfx)))
+              Pull.pure(Some((acc :+ pfx).toChunk -> tl.cons(sfx)))
             }
         }
       if (n <= 0) Pull.pure(Some((Chunk.empty, self)))
-      else go(Nil, n, self)
+      else go(Chunk.Queue.empty, n, self)
     }
 
     /** Like [[uncons]] but skips over empty chunks, pulling until it can emit the first non-empty chunk. */
@@ -4703,20 +4741,21 @@ object Stream extends StreamLowPriority {
   /** Provides operations on pure pipes for syntactic convenience. */
   implicit final class PurePipeOps[I, O](private val self: Pipe[Pure, I, O]) extends AnyVal {
 
-    /** Lifts this pipe to the specified effect type. */
-    def covary[F[_]]: Pipe[F, I, O] = self.asInstanceOf[Pipe[F, I, O]]
+    // This is unsound! See #1838. Left for binary compatibility.
+    private[fs2] def covary[F[_]]: Pipe[F, I, O] = self.asInstanceOf[Pipe[F, I, O]]
   }
 
   /** Provides operations on pure pipes for syntactic convenience. */
   implicit final class PurePipe2Ops[I, I2, O](private val self: Pipe2[Pure, I, I2, O])
       extends AnyVal {
 
-    /** Lifts this pipe to the specified effect type. */
-    def covary[F[_]]: Pipe2[F, I, I2, O] = self.asInstanceOf[Pipe2[F, I, I2, O]]
+    // This is unsound! See #1838. Left for binary compatibility.
+    private[fs2] def covary[F[_]]: Pipe2[F, I, I2, O] = self.asInstanceOf[Pipe2[F, I, I2, O]]
   }
 
-  /** Implicitly covaries a pipe. */
-  implicit def covaryPurePipe[F[_], I, O](p: Pipe[Pure, I, O]): Pipe[F, I, O] =
+  // This is unsound! See #1838. Left for binary compatibility.
+  @deprecated("This is unsound! See #1838.", "2.3.1")
+  def covaryPurePipe[F[_], I, O](p: Pipe[Pure, I, O]): Pipe[F, I, O] =
     p.covary[F]
 
   /**

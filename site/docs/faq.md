@@ -14,3 +14,33 @@ Sometimes, stream programs that call `unsafeRunSync` or other blocking operation
  - In Ammonite, run `interp.configureCompiler(_.settings.Ydelambdafy.tryToSetColon(List("inline")))`
  - In SBT, add `scalacOptions in Console += "-Ydelambdafy:inline"`
  - Instead of calling `s.unsafeRunSync`, call `s.unsafeRunAsync(println)` or `Await.result(s.unsafeToFuture, timeout)`
+
+### What does `Stream.compile` do?  Is it actually compiling something?  Optimizing the stream somehow?
+
+\* _This question/answer adapted from this [Gitter thread](https://gitter.im/functional-streams-for-scala/fs2?at=5e962ebb6823cb38acd12ebd) with the bulk of the response coming from Fabio Labella._
+
+At its core, `Stream[F, O].compile` is nothing more than a namespace for related methods that return the same type wrapper, `F`.  It's not compiling anything or doing any optimization.  For example, all the methods on `(s: Stream[IO, Int]).compile` generally have the return type `IO[Int]`.
+
+In FP there is a technique of design through algebras (speaking here in the most general sense, even more general than tagless final) and it basically works like this:
+
+* you have some type, for example `Option`
+* some introduction forms (ways of getting "into" the algebra, e.g., `Option.empty`, `Option.some`; this is often referred to as "lifting" into a type)
+* some combinators (building programs in your algebra from smaller programs, like `Option.map`, `Option.flatMap`, `Option.getOrElse`, etc) 
+* and potentially laws (e.g. `anyOption.flatMap(Option.empty) == Option.empty`)
+
+Basically it's a way to write programs in a mini-language (in this case the `Option` language), which affords high compositionality through combinators that helps us write larger programs in a Lego way.
+
+But what does it mean to "run" programs in Option?  "Running" an algebraic programs amounts to transforming the carrier type (`Option[A]`), into a different type (say `A`). The shape of this transformation depends on the shape of the language, and in the case of `Option`, it's basically `getOrElse` or `fold`.
+
+This trasformation function is called an eliminator.  These functions transform your algebra type to another type, and correspond to our notion of "running".  
+
+Unsurprisingly, `Stream` also follows this pattern:
+
+* `Stream` is the type
+* `emit`, `eval` are the introduction forms (take types that aren't `Stream`, and convert them to `Stream`)
+* `++`, `flatMap`, `concurrently` are combinators
+* and lastly you have the elimination form, which begins with `compile`
+
+For pure streams, we might convert them from `Stream[Pure, A]` -> `List[A]`.  For effectful streams, we transform them from `Stream[IO, A]` -> `IO[A]`.   The name compile is meant to evoke this translation process in which the `Stream` language gets compiled down to the `IO` language. It used to be called `run` in previous versions, but `compile` is more evocative of this transformation.
+
+Note that this pattern is also used for `Stream.pull`

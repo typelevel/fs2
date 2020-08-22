@@ -140,7 +140,7 @@ abstract class Chunk[+O] extends Serializable { self =>
   def iterator: Iterator[O] = new Iterator[O] {
     private[this] var i = 0
     def hasNext = i < self.size
-    def next = { val result = apply(i); i += 1; result }
+    def next() = { val result = apply(i); i += 1; result }
   }
 
   /**
@@ -196,7 +196,7 @@ abstract class Chunk[+O] extends Serializable { self =>
   def reverseIterator: Iterator[O] = new Iterator[O] {
     private[this] var i = self.size - 1
     def hasNext = i >= 0
-    def next = { val result = apply(i); i -= 1; result }
+    def next() = { val result = apply(i); i -= 1; result }
   }
 
   /** Like `foldLeft` but emits each intermediate result of `f`. */
@@ -442,6 +442,24 @@ abstract class Chunk[+O] extends Serializable { self =>
       i += 1
     }
     Chunk.array(arr.asInstanceOf[Array[O3]])
+  }
+
+  /**
+    * Zips the elements of the input chunk with its indices, and returns the new chunk.
+    *
+    * @example {{{
+    * scala> Chunk("The", "quick", "brown", "fox").zipWithIndex.toList
+    * res0: List[(String, Int)] = List((The,0), (quick,1), (brown,2), (fox,3))
+    * }}}
+    */
+  def zipWithIndex: Chunk[(O, Int)] = {
+    val arr = new Array[(O, Int)](size)
+    var i = 0
+    while (i < size) {
+      arr(i) = (apply(i), i)
+      i += 1
+    }
+    Chunk.array(arr)
   }
 
   override def hashCode: Int = {
@@ -1671,6 +1689,9 @@ object Chunk extends CollectorK[Chunk] {
     * This is similar to a queue of individual elements but chunk structure is maintained.
     */
   final class Queue[A] private (val chunks: SQueue[Chunk[A]], val size: Int) {
+    def isEmpty: Boolean = size == 0
+    def nonEmpty: Boolean = size > 0
+
     def iterator: Iterator[A] = chunks.iterator.flatMap(_.iterator)
 
     /** Prepends a chunk to the start of this chunk queue. */

@@ -145,6 +145,7 @@ If you have a project you'd like to include in this list, either open a PR or le
 * [fs2-zk](https://github.com/Spinoco/fs2-zk): Simple Apache Zookeeper bindings for fs2.
 * [fs2-ftp](https://github.com/regis-leray/fs2-ftp): Simple client for Ftp/Ftps/Sftp using fs2 and cats-effect.
 * [http4s](http://http4s.org/): Minimal, idiomatic Scala interface for HTTP services using fs2.
+* [kafka4s](https://github.com/Banno/kafka4s): Functional programming with Kafka and Scala
 * [mongosaur](https://gitlab.com/lJoublanc/mongosaur): fs2-based MongoDB driver.
 * [scarctic](https://gitlab.com/lJoublanc/scarctic): fs2-based driver for [MAN/AHL's Arctic](https://github.com/manahl/arctic) data store.
 * [scodec-protocols](https://github.com/scodec/scodec-protocols): A library for working with libpcap files. Contains many interesting pipes (e.g., working with time series and playing back streams at various rates).

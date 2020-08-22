@@ -6,7 +6,6 @@ import cats.effect.laws.discipline.arbitrary._
 import cats.effect.laws.util.TestContext
 import cats.effect.laws.util.TestInstances._
 import cats.implicits._
-import cats.laws.discipline._
 import cats.effect.laws.discipline._
 
 import org.scalacheck.{Arbitrary, Gen}

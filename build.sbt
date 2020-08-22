@@ -54,8 +54,8 @@ lazy val commonSettingsBase = Seq(
     compilerPlugin("org.typelevel" %% "kind-projector" % "0.10.3"),
     "org.typelevel" %%% "cats-core" % "2.1.1",
     "org.typelevel" %%% "cats-laws" % "2.1.1" % "test",
-    "org.typelevel" %%% "cats-effect" % "2.1.2",
-    "org.typelevel" %%% "cats-effect-laws" % "2.1.2" % "test",
+    "org.typelevel" %%% "cats-effect" % "2.1.3",
+    "org.typelevel" %%% "cats-effect-laws" % "2.1.3" % "test",
     "org.scalacheck" %%% "scalacheck" % "1.14.3" % "test",
     "org.scalatest" %%% "scalatest" % "3.3.0-SNAP2" % "test",
     "org.scalatestplus" %%% "scalacheck-1-14" % "3.1.1.1" % "test"
@@ -207,7 +207,7 @@ lazy val releaseSettings = Seq(
 
 lazy val mimaSettings = Seq(
   mimaPreviousArtifacts := {
-    List("2.0.0").map { pv =>
+    List("2.0.0", "2.3.0").map { pv =>
       organization.value % (normalizedName.value + "_" + scalaBinaryVersion.value) % pv
     }.toSet
   },

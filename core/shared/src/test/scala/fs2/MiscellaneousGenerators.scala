@@ -8,5 +8,5 @@ trait MiscellaneousGenerators {
     specificValue(new Err)
 
   implicit def arrayGenerator[A: Generator: reflect.ClassTag]: Generator[Array[A]] =
-    lists[A].map(_.toArray)
+    lists[A].havingSizesBetween(0, 100).map(_.toArray)
 }

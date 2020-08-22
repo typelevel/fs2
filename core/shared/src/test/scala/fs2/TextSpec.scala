@@ -4,6 +4,7 @@ import org.scalatest.{Assertion, Succeeded}
 
 import cats.implicits._
 import scodec.bits._
+import scodec.bits.Bases.Alphabets.Base64Url
 
 import fs2.text._
 
@@ -314,6 +315,23 @@ class TextSpec extends Fs2Spec {
                 Right(bs.map(ByteVector.view(_)).foldLeft(ByteVector.empty)(_ ++ _))
           )
         }
+      }
+
+      "#1852" in {
+        val string = "0123456789012345678901234567890123456789012345678901234"
+        val encoded = ByteVector.view(string.getBytes()).toBase64(Base64Url)
+        val decoded = ByteVector.fromBase64(encoded, Base64Url)
+        val res =
+          Stream
+            .emits(encoded.toSeq)
+            .chunkN(5)
+            .flatMap(chunk => Stream(chunk.toArray.toSeq.mkString))
+            .through(text.base64Decode[Fallible](Base64Url))
+            .chunks
+            .fold(ByteVector.empty)(_ ++ _.toByteVector)
+            .compile
+            .last
+        assert(res == Right(decoded))
       }
     }
   }

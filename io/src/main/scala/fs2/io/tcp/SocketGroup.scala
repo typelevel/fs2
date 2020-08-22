@@ -6,7 +6,6 @@ import scala.concurrent.duration._
 
 import java.net.{InetSocketAddress, SocketAddress, StandardSocketOptions}
 import java.nio.{Buffer, ByteBuffer}
-import java.nio.channels.spi.AsynchronousChannelProvider
 import java.nio.channels.{
   AsynchronousCloseException,
   AsynchronousServerSocketChannel,
@@ -379,7 +378,7 @@ object SocketGroup {
       blocker: Blocker,
       nonBlockingThreadCount: Int = 0,
       nonBlockingThreadFactory: ThreadFactory =
-        ThreadFactories.named("fs2-socket-group-blocking", true)
+        ThreadFactories.named("fs2-socket-group-non-blocking", true)
   ): Resource[F, SocketGroup] =
     Resource(blocker.delay {
       val threadCount =

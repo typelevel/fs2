@@ -17,7 +17,7 @@ These data structures could be very handy in a few cases. See below examples of 
 
 ### FIFO (First IN / First OUT)
 
-A typical use case of a `fs2.concurrent.Queue[F, A]`, also quite useful to communicate with the external world as shown in the [guide](guide.md#talking-to-the-external-world).
+A typical use case of a `fs2.concurrent.Queue[F, A]`, also quite useful to communicate with the external world as shown in the [guide](guide.html#talking-to-the-external-world).
 
 q1 has a buffer size of 1 while q2 has a buffer size of 100 so you will notice the buffering when  pulling elements out of the q2.
 
