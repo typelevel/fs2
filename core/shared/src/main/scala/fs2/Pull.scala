@@ -1,7 +1,6 @@
 package fs2
 
 import cats.{Eval => _, _}
-import cats.arrow.FunctionK
 import cats.effect._
 import fs2.internal._
 import fs2.internal.FreeC.{Eval, Result}
@@ -124,8 +123,8 @@ object Pull extends PullLowPriority {
     * Repeatedly uses the output of the pull as input for the next step of the pull.
     * Halts when a step terminates with `None` or `Pull.raiseError`.
     */
-  def loop[F[_], O, R](using: R => Pull[F, O, Option[R]]): R => Pull[F, O, Option[R]] =
-    r => using(r).flatMap(_.map(loop(using)).getOrElse(Pull.pure(None)))
+  def loop[F[_], O, R](f: R => Pull[F, O, Option[R]]): R => Pull[F, O, Option[R]] =
+    r => f(r).flatMap(_.map(loop(f)).getOrElse(Pull.pure(None)))
 
   /** Outputs a single value. */
   def output1[F[x] >: Pure[x], O](o: O): Pull[F, O, Unit] =
@@ -175,13 +174,13 @@ object Pull extends PullLowPriority {
   /** `Sync` instance for `Pull`. */
   implicit def syncInstance[F[_], O](implicit
       ev: ApplicativeError[F, Throwable]
-  ): Sync[Pull[F, O, ?]] = {
+  ): Sync[Pull[F, O, *]] = {
     val _ = ev
     new PullSyncInstance[F, O]
   }
 
   /**
-    * `FunctionK` instance for `F ~> Pull[F, INothing, ?]`
+    * `FunctionK` instance for `F ~> Pull[F, INothing, *]`
     *
     * @example {{{
     * scala> import cats.Id
@@ -189,16 +188,18 @@ object Pull extends PullLowPriority {
     * res0: cats.Id[List[Int]] = List(42)
     * }}}
     */
-  implicit def functionKInstance[F[_]]: F ~> Pull[F, INothing, ?] =
-    FunctionK.lift[F, Pull[F, INothing, ?]](Pull.eval)
+  implicit def functionKInstance[F[_]]: F ~> Pull[F, INothing, *] =
+    new (F ~> Pull[F, INothing, *]) {
+      def apply[X](fx: F[X]) = Pull.eval(fx)
+    }
 }
 
 private[fs2] trait PullLowPriority {
-  implicit def monadInstance[F[_], O]: Monad[Pull[F, O, ?]] =
+  implicit def monadInstance[F[_], O]: Monad[Pull[F, O, *]] =
     new PullSyncInstance[F, O]
 }
 
-private[fs2] class PullSyncInstance[F[_], O] extends Sync[Pull[F, O, ?]] {
+private[fs2] class PullSyncInstance[F[_], O] extends Sync[Pull[F, O, *]] {
   def pure[A](a: A): Pull[F, O, A] = Pull.pure(a)
   def flatMap[A, B](p: Pull[F, O, A])(f: A => Pull[F, O, B]): Pull[F, O, B] =
     p.flatMap(f)

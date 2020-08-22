@@ -153,7 +153,7 @@ private[io] object JavaInputOutputStream {
           .last
           .flatMap {
             _.flatten match {
-              case None      => F.pure(())
+              case None      => F.unit
               case Some(err) => F.raiseError[Unit](err)
             }
           }

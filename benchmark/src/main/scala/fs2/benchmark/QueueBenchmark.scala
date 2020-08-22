@@ -1,7 +1,7 @@
 package fs2.benchmark
 
 import cats.syntax.all._
-import cats.effect.{Concurrent, IO}
+import cats.effect.{Concurrent, ContextShift, IO}
 import fs2._
 import fs2.concurrent.Queue
 import org.openjdk.jmh.annotations.{Benchmark, Param, Scope, State}
@@ -9,8 +9,8 @@ import org.openjdk.jmh.annotations.{Benchmark, Param, Scope, State}
 import scala.concurrent.ExecutionContext
 @State(Scope.Thread)
 class QueueBenchmark {
-  implicit val cs = IO.contextShift(ExecutionContext.global)
-  implicit val concurrent = IO.ioConcurrentEffect
+  implicit val cs: ContextShift[IO] = IO.contextShift(ExecutionContext.global)
+  implicit val concurrent: Concurrent[IO] = IO.ioConcurrentEffect
 
   val size = 100000
 

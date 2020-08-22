@@ -1,12 +1,19 @@
 package fs2
 
-import org.scalatest.prop._
-import CommonGenerators._
+import org.scalacheck.{Arbitrary, Gen}
+import Arbitrary.arbitrary
 
 trait MiscellaneousGenerators {
-  implicit val throwableGenerator: Generator[Throwable] =
-    specificValue(new Err)
+  val throwableGenerator: Gen[Throwable] =
+    Gen.const(new Err)
+  implicit val throwableArbitrary: Arbitrary[Throwable] =
+    Arbitrary(throwableGenerator)
 
-  implicit def arrayGenerator[A: Generator: reflect.ClassTag]: Generator[Array[A]] =
-    lists[A].havingSizesBetween(0, 100).map(_.toArray)
+  def arrayGenerator[A: reflect.ClassTag](genA: Gen[A]): Gen[Array[A]] =
+    Gen.chooseNum(0, 100).flatMap(n => Gen.listOfN(n, genA)).map(_.toArray)
+  implicit def arrayArbitrary[A: Arbitrary: reflect.ClassTag]: Arbitrary[Array[A]] =
+    Arbitrary(arrayGenerator(arbitrary[A]))
+
+  def smallLists[A](genA: Gen[A]): Gen[List[A]] =
+    Gen.posNum[Int].flatMap(n0 => Gen.listOfN(n0 % 20, genA))
 }

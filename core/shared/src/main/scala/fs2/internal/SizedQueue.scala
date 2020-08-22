@@ -12,7 +12,7 @@ private[fs2] final class SizedQueue[A](private val underlying: Queue[A], val siz
   def toQueue: Queue[A] = underlying
   override def equals(other: Any): Boolean =
     other match {
-      case that: SizedQueue[A] => underlying == that.underlying && size == that.size
+      case that: SizedQueue[_] => size == that.size && underlying == that.underlying
       case _                   => false
     }
   override def hashCode: Int = underlying.hashCode

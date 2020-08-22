@@ -11,7 +11,7 @@ addCommandAlias(
   "; compile:scalafmtCheck; test:scalafmtCheck; it:scalafmtCheck; scalafmtSbtCheck"
 )
 
-crossScalaVersions in ThisBuild := Seq("2.13.2", "2.12.10")
+crossScalaVersions in ThisBuild := Seq("2.13.2", "2.12.10", "0.26.0-RC1")
 scalaVersion in ThisBuild := crossScalaVersions.value.head
 
 githubWorkflowJavaVersions in ThisBuild := Seq("adopt@1.11")
@@ -27,6 +27,18 @@ githubWorkflowEnv in ThisBuild ++= Map(
   "SONATYPE_USERNAME" -> "fs2-ci",
   "SONATYPE_PASSWORD" -> s"$${{ secrets.SONATYPE_PASSWORD }}"
 )
+
+def withoutTargetPredicate(step: WorkflowStep): Boolean =
+  step match {
+    case step: WorkflowStep.Use => step.params("path").startsWith("site")
+    case _                      => false
+  }
+
+ThisBuild / githubWorkflowGeneratedUploadSteps :=
+  (ThisBuild / githubWorkflowGeneratedUploadSteps).value.filterNot(withoutTargetPredicate)
+
+ThisBuild / githubWorkflowGeneratedDownloadSteps :=
+  (ThisBuild / githubWorkflowGeneratedDownloadSteps).value.filterNot(withoutTargetPredicate)
 
 lazy val contributors = Seq(
   "pchiusano" -> "Paul Chiusano",
@@ -46,15 +58,15 @@ lazy val commonSettingsBase = Seq(
   scalacOptions ++= Seq(
     "-feature",
     "-deprecation",
-    "-language:implicitConversions",
-    "-language:higherKinds",
     "-Xfatal-warnings"
   ) ++
     (scalaBinaryVersion.value match {
       case v if v.startsWith("2.13") =>
-        List("-Xlint", "-Ywarn-unused")
+        List("-Xlint", "-Ywarn-unused", "-language:implicitConversions,higherKinds")
       case v if v.startsWith("2.12") =>
-        List("-Ypartial-unification")
+        List("-Ypartial-unification", "-language:implicitConversions,higherKinds")
+      case v if v.startsWith("0.") =>
+        List("-Ykind-projector", "-language:implicitConversions,higherKinds")
       case other => sys.error(s"Unsupported scala version: $other")
     }),
   scalacOptions in (Compile, console) ~= {
@@ -67,19 +79,27 @@ lazy val commonSettingsBase = Seq(
   scalacOptions in (Test, compile) ~= {
     _.filterNot("-Xfatal-warnings" == _)
   },
-  scalacOptions in (Compile, console) += "-Ydelambdafy:inline",
+  scalacOptions in (Compile, console) ++= {
+    if (isDotty.value) Nil else Seq("-Ydelambdafy:inline")
+  },
   scalacOptions in (Test, console) := (scalacOptions in (Compile, console)).value,
   javaOptions in (Test, run) ++= Seq("-Xms64m", "-Xmx64m"),
   libraryDependencies ++= Seq(
-    compilerPlugin("org.typelevel" %% "kind-projector" % "0.10.3"),
-    "org.typelevel" %%% "cats-core" % "2.1.1",
-    "org.typelevel" %%% "cats-laws" % "2.1.1" % "test",
-    "org.typelevel" %%% "cats-effect" % "2.1.3",
-    "org.typelevel" %%% "cats-effect-laws" % "2.1.3" % "test",
-    "org.scalacheck" %%% "scalacheck" % "1.14.3" % "test",
-    "org.scalatest" %%% "scalatest" % "3.3.0-SNAP2" % "test",
-    "org.scalatestplus" %%% "scalacheck-1-14" % "3.2.0.0" % "test"
+    ("org.typelevel" %%% "cats-core" % "2.2.0-RC2").withDottyCompat(scalaVersion.value),
+    ("org.typelevel" %%% "cats-laws" % "2.2.0-RC2" % "test").withDottyCompat(scalaVersion.value),
+    ("org.typelevel" %%% "cats-effect" % "2.1.4").withDottyCompat(scalaVersion.value),
+    ("org.typelevel" %%% "cats-effect-laws" % "2.1.4" % "test")
+      .withDottyCompat(scalaVersion.value),
+    "org.typelevel" %%% "scalacheck-effect-munit" % "0.0.3" % "test"
   ),
+  libraryDependencies ++= {
+    if (isDotty.value) Nil
+    else
+      Seq(
+        compilerPlugin("org.typelevel" %% "kind-projector" % "0.10.3")
+      )
+  },
+  testFrameworks += new TestFramework("munit.Framework"),
   scmInfo := Some(
     ScmInfo(
       url("https://github.com/functional-streams-for-scala/fs2"),
@@ -94,7 +114,7 @@ lazy val commonSettingsBase = Seq(
     implicit val contextShiftIO: ContextShift[IO] = IO.contextShift(global)
     implicit val timerIO: Timer[IO] = IO.timer(global)
   """,
-  doctestTestFramework := DoctestTestFramework.ScalaTest
+  doctestTestFramework := DoctestTestFramework.ScalaCheck
 ) ++ scaladocSettings ++ publishingSettings ++ releaseSettings
 
 lazy val commonSettings = commonSettingsBase ++ testSettings
@@ -105,13 +125,8 @@ lazy val commonTestSettings = Seq(
     "-Dscala.concurrent.context.minThreads=8",
     "-Dscala.concurrent.context.numThreads=8",
     "-Dscala.concurrent.context.maxThreads=8"
-  ) ++ (sys.props.get("fs2.test.travis") match {
-    case Some(value) =>
-      Seq(s"-Dfs2.test.travis=true")
-    case None => Seq()
-  })),
+  )),
   parallelExecution in Test := false,
-  testOptions in Test += Tests.Argument(TestFrameworks.ScalaTest, "-oDS"),
   publishArtifact in Test := true
 )
 lazy val testSettings =
@@ -143,17 +158,35 @@ def scmBranch(v: String): String = {
 }
 
 lazy val scaladocSettings = Seq(
-  scalacOptions in (Compile, doc) ++= Seq(
-    "-doc-source-url",
-    s"${scmInfo.value.get.browseUrl}/tree/${scmBranch(version.value)}€{FILE_PATH}.scala",
-    "-sourcepath",
-    baseDirectory.in(LocalRootProject).value.getAbsolutePath,
-    "-implicits",
-    "-implicits-sound-shadowing",
-    "-implicits-show-all"
-  ),
+  scalacOptions in (Compile, doc) ++= {
+    if (isDotty.value) Nil
+    else
+      Seq(
+        "-doc-source-url",
+        s"${scmInfo.value.get.browseUrl}/tree/${scmBranch(version.value)}€{FILE_PATH}.scala",
+        "-sourcepath",
+        baseDirectory.in(LocalRootProject).value.getAbsolutePath,
+        "-implicits",
+        "-implicits-sound-shadowing",
+        "-implicits-show-all"
+      )
+  },
   scalacOptions in (Compile, doc) ~= { _.filterNot(_ == "-Xfatal-warnings") },
-  autoAPIMappings := true
+  autoAPIMappings := true,
+  Compile / doc / sources := {
+    val old = (Compile / doc / sources).value
+    if (isDotty.value)
+      Seq()
+    else
+      old
+  },
+  Test / doc / sources := {
+    val old = (Test / doc / sources).value
+    if (isDotty.value)
+      Seq()
+    else
+      old
+  }
 )
 
 lazy val publishingSettings = Seq(
@@ -219,7 +252,8 @@ lazy val commonJsSettings = Seq(
     val url =
       "https://raw.githubusercontent.com/functional-streams-for-scala/fs2"
     s"-P:scalajs:mapSourceURI:$dir->$url/${scmBranch(version.value)}/"
-  }
+  },
+  scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule))
 )
 
 lazy val noPublish = Seq(
@@ -229,14 +263,32 @@ lazy val noPublish = Seq(
 )
 
 lazy val releaseSettings = Seq(
-  releaseCrossBuild := true
+  releaseCrossBuild := true,
+  releaseProcess := {
+    import sbtrelease.ReleaseStateTransformations._
+    Seq[ReleaseStep](
+      inquireVersions,
+      runClean,
+      releaseStepCommandAndRemaining("+test"),
+      setReleaseVersion,
+      commitReleaseVersion,
+      tagRelease,
+      releaseStepCommandAndRemaining("+publish"),
+      setNextVersion,
+      commitNextVersion,
+      pushChanges
+    )
+  },
+  publishConfiguration := publishConfiguration.value.withOverwrite(true)
 )
 
 lazy val mimaSettings = Seq(
   mimaPreviousArtifacts := {
-    List("2.0.0", "2.3.0").map { pv =>
-      organization.value % (normalizedName.value + "_" + scalaBinaryVersion.value) % pv
-    }.toSet
+    if (isDotty.value) Set.empty
+    else
+      List("2.0.0", "2.3.0", "2.4.2").map { pv =>
+        organization.value % (normalizedName.value + "_" + scalaBinaryVersion.value) % pv
+      }.toSet
   },
   mimaBinaryIssueFilters ++= Seq(
     // These methods were only used internally between Stream and Pull: they were private to fs2.
@@ -269,7 +321,20 @@ lazy val mimaSettings = Seq(
     ),
     // InputOutputBuffer is private[tls]
     ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.tls.InputOutputBuffer.output"),
-    ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.io.tls.InputOutputBuffer.output")
+    ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.io.tls.InputOutputBuffer.output"),
+    // Private traits for implicit prioritization
+    ProblemFilters.exclude[ReversedMissingMethodProblem](
+      "fs2.Stream#LowPrioCompiler.fs2$Stream$LowPrioCompiler$_setter_$fallibleInstance_="
+    ),
+    ProblemFilters.exclude[ReversedMissingMethodProblem](
+      "fs2.Stream#LowPrioCompiler.fallibleInstance"
+    ),
+    ProblemFilters.exclude[InheritedNewAbstractMethodProblem](
+      "fs2.Stream#LowPrioCompiler.fs2$Stream$LowPrioCompiler1$_setter_$idInstance_="
+    ),
+    ProblemFilters.exclude[InheritedNewAbstractMethodProblem](
+      "fs2.Stream#LowPrioCompiler.idInstance"
+    )
   )
 )
 
@@ -279,7 +344,7 @@ lazy val root = project
   .settings(commonSettings)
   .settings(mimaSettings)
   .settings(noPublish)
-  .aggregate(coreJVM, coreJS, io, reactiveStreams, benchmark, experimental, microsite)
+  .aggregate(coreJVM, coreJS, io, reactiveStreams, benchmark, experimental)
 
 lazy val IntegrationTest = config("it").extend(Test)
 
@@ -288,14 +353,27 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
   .configs(IntegrationTest)
   .settings(Defaults.itSettings: _*)
   .settings(
-    testOptions in IntegrationTest := Seq(Tests.Argument(TestFrameworks.ScalaTest, "-oDF")),
     inConfig(IntegrationTest)(org.scalafmt.sbt.ScalafmtPlugin.scalafmtConfigSettings)
   )
   .settings(crossCommonSettings: _*)
   .settings(
     name := "fs2-core",
     sourceDirectories in (Compile, scalafmt) += baseDirectory.value / "../shared/src/main/scala",
-    libraryDependencies += "org.scodec" %%% "scodec-bits" % "1.1.17"
+    Compile / unmanagedSourceDirectories ++= {
+      if (isDotty.value)
+        List(CrossType.Pure, CrossType.Full).flatMap(
+          _.sharedSrcDir(baseDirectory.value, "main").toList.map(f => file(f.getPath + "-3"))
+        )
+      else Nil
+    },
+    crossScalaVersions := {
+      val default = crossScalaVersions.value
+      if (crossProjectPlatform.value.identifier != "jvm")
+        default.filter(_.startsWith("2."))
+      else
+        default
+    },
+    libraryDependencies += "org.scodec" %%% "scodec-bits" % "1.1.18"
   )
   .jsSettings(commonJsSettings: _*)
 
@@ -322,6 +400,13 @@ lazy val io = project
   .settings(mimaSettings)
   .settings(
     name := "fs2-io",
+    Compile / unmanagedSourceDirectories ++= {
+      if (isDotty.value)
+        List(CrossType.Pure, CrossType.Full).flatMap(
+          _.sharedSrcDir(baseDirectory.value / "io", "main").toList.map(f => file(f.getPath + "-3"))
+        )
+      else Nil
+    },
     OsgiKeys.exportPackage := Seq("fs2.io.*"),
     OsgiKeys.privatePackage := Seq(),
     OsgiKeys.importPackage := {
@@ -345,7 +430,7 @@ lazy val reactiveStreams = project
     libraryDependencies ++= Seq(
       "org.reactivestreams" % "reactive-streams" % "1.0.3",
       "org.reactivestreams" % "reactive-streams-tck" % "1.0.3" % "test",
-      "org.scalatestplus" %% "scalatestplus-testng" % "1.0.0-M2" % "test"
+      ("org.scalatestplus" %% "testng-6-7" % "3.2.0.0" % "test").withDottyCompat(scalaVersion.value)
     )
   )
   .settings(mimaSettings)
