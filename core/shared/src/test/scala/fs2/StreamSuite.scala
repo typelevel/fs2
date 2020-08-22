@@ -119,13 +119,13 @@ class StreamSuite extends Fs2Suite {
     }
 
     test("eval") {
-      assertEquals(Stream.eval(SyncIO(23)).compile.toList.unsafeRunSync, List(23))
+      assertEquals(Stream.eval(SyncIO(23)).compile.toList.unsafeRunSync(), List(23))
     }
 
     test("evals") {
-      assertEquals(Stream.evals(SyncIO(List(1, 2, 3))).compile.toList.unsafeRunSync, List(1, 2, 3))
-      assertEquals(Stream.evals(SyncIO(Chain(4, 5, 6))).compile.toList.unsafeRunSync, List(4, 5, 6))
-      assertEquals(Stream.evals(SyncIO(Option(42))).compile.toList.unsafeRunSync, List(42))
+      assertEquals(Stream.evals(SyncIO(List(1, 2, 3))).compile.toList.unsafeRunSync(), List(1, 2, 3))
+      assertEquals(Stream.evals(SyncIO(Chain(4, 5, 6))).compile.toList.unsafeRunSync(), List(4, 5, 6))
+      assertEquals(Stream.evals(SyncIO(Option(42))).compile.toList.unsafeRunSync(), List(42))
     }
 
     property("flatMap") {

@@ -549,7 +549,7 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     * @example {{{
     * scala> import cats.effect.IO, cats.effect.unsafe.implicits.global
     * scala> val data: Stream[IO,Int] = Stream.range(1, 10).covary[IO]
-    * scala> Stream.eval(fs2.concurrent.SignallingRef[IO,Int](0)).flatMap(s => Stream(s).concurrently(data.evalMap(s.set))).flatMap(_.discrete).takeWhile(_ < 9, true).compile.last.unsafeRunSync
+    * scala> Stream.eval(fs2.concurrent.SignallingRef[IO,Int](0)).flatMap(s => Stream(s).concurrently(data.evalMap(s.set))).flatMap(_.discrete).takeWhile(_ < 9, true).compile.last.unsafeRunSync()
     * res0: Option[Int] = Some(9)
     * }}}
     */
@@ -655,7 +655,7 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     * scala> import scala.concurrent.duration._, cats.effect.IO, cats.effect.unsafe.implicits.global
     * scala> val s = Stream(1, 2, 3) ++ Stream.sleep_[IO](500.millis) ++ Stream(4, 5) ++ Stream.sleep_[IO](10.millis) ++ Stream(6)
     * scala> val s2 = s.debounce(100.milliseconds)
-    * scala> s2.compile.toVector.unsafeRunSync
+    * scala> s2.compile.toVector.unsafeRunSync()
     * res0: Vector[Int] = Vector(3, 6)
     * }}}
     */
@@ -1969,7 +1969,7 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     * scala> import scala.concurrent.duration._, cats.effect.IO, cats.effect.unsafe.implicits.global
     * scala> val s1 = Stream.awakeEvery[IO](500.millis).scan(0)((acc, _) => acc + 1)
     * scala> val s = s1.merge(Stream.sleep_[IO](250.millis) ++ s1)
-    * scala> s.take(6).compile.toVector.unsafeRunSync
+    * scala> s.take(6).compile.toVector.unsafeRunSync()
     * res0: Vector[Int] = Vector(0, 0, 1, 1, 2, 2)
     * }}}
     */
@@ -2141,7 +2141,7 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     *
     * @example {{{
     * scala> import cats.effect.IO, cats.effect.unsafe.implicits.global
-    * scala> Stream(1,2,3,4).covary[IO].parEvalMap(2)(i => IO(println(i))).compile.drain.unsafeRunSync
+    * scala> Stream(1,2,3,4).covary[IO].parEvalMap(2)(i => IO(println(i))).compile.drain.unsafeRunSync()
     * res0: Unit = ()
     * }}}
     */
@@ -2194,7 +2194,7 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     *
     * @example {{{
     * scala> import cats.effect.IO, cats.effect.unsafe.implicits.global
-    * scala> Stream(1,2,3,4).covary[IO].parEvalMapUnordered(2)(i => IO(println(i))).compile.drain.unsafeRunSync
+    * scala> Stream(1,2,3,4).covary[IO].parEvalMapUnordered(2)(i => IO(println(i))).compile.drain.unsafeRunSync()
     * res0: Unit = ()
     * }}}
     */
@@ -2931,7 +2931,7 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     * @example {{{
     * scala> import scala.concurrent.duration._, cats.effect.IO, cats.effect.unsafe.implicits.global
     * scala> val s = Stream.range(0, 5) zipLeft Stream.fixedDelay[IO](100.millis)
-    * scala> s.compile.toVector.unsafeRunSync
+    * scala> s.compile.toVector.unsafeRunSync()
     * res0: Vector[Int] = Vector(0, 1, 2, 3, 4)
     * }}}
     */
@@ -3737,7 +3737,7 @@ object Stream extends StreamLowPriority {
       *
       * @example {{{
       * scala> import cats.effect.IO, cats.effect.unsafe.implicits.global, cats.implicits._
-      * scala> Stream(1, 2, 3).covary[IO].observe(_.showLinesStdOut).map(_ + 1).compile.toVector.unsafeRunSync
+      * scala> Stream(1, 2, 3).covary[IO].observe(_.showLinesStdOut).map(_ + 1).compile.toVector.unsafeRunSync()
       * res0: Vector[Int] = Vector(2, 3, 4)
       * }}}
       */
