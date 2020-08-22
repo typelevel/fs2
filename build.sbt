@@ -308,7 +308,7 @@ lazy val root = project
   .settings(commonSettings)
   .settings(mimaSettings)
   .settings(noPublish)
-  .aggregate(coreJVM, coreJS, io, reactiveStreams, benchmark, experimental)
+  .aggregate(coreJVM, coreJS, io, reactiveStreams, benchmark)
 
 lazy val IntegrationTest = config("it").extend(Test)
 
@@ -454,25 +454,3 @@ lazy val microsite = project
   )
   .settings(mdocSettings)
   .dependsOn(coreJVM, io, reactiveStreams)
-
-lazy val experimental = project
-  .in(file("experimental"))
-  .enablePlugins(SbtOsgi)
-  .settings(commonSettings)
-  .settings(mimaSettings)
-  .settings(
-    name := "fs2-experimental",
-    OsgiKeys.exportPackage := Seq("fs2.experimental.*"),
-    OsgiKeys.privatePackage := Seq(),
-    OsgiKeys.importPackage := {
-      val Some((major, minor)) = CrossVersion.partialVersion(scalaVersion.value)
-      Seq(
-        s"""scala.*;version="[$major.$minor,$major.${minor + 1})"""",
-        """fs2.*;version="${Bundle-Version}"""",
-        "*"
-      )
-    },
-    OsgiKeys.additionalHeaders := Map("-removeheaders" -> "Include-Resource,Private-Package"),
-    osgiSettings
-  )
-  .dependsOn(coreJVM % "compile->compile;test->test")
