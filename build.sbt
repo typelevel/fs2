@@ -92,64 +92,14 @@ ThisBuild / Test / run / javaOptions ++= Seq("-Xms64m", "-Xmx64m")
 ThisBuild / Test / parallelExecution := false
 
 ThisBuild / initialCommands := s"""
-    import fs2._, cats.effect._, cats.effect.implicits._, cats.implicits._
-    import scala.concurrent.ExecutionContext.Implicits.global, scala.concurrent.duration._
-    implicit val contextShiftIO: ContextShift[IO] = IO.contextShift(global)
-    implicit val timerIO: Timer[IO] = IO.timer(global)
+    import fs2._, cats.effect._, cats.effect.implicits._, cats.effect.unsafe.implicits.global, cats.implicits._, scala.concurrent.duration._
   """
 
 ThisBuild / mimaBinaryIssueFilters ++= Seq(
-  // These methods were only used internally between Stream and Pull: they were private to fs2.
-  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Stream.fromFreeC"),
-  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Stream.get$extension"),
-  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Stream#IdOps.self$extension"),
-  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Pull.get$extension"),
-  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Pull.get"),
-  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Stream.get$extension"),
-  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Stream.get"),
-  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Pull.fromFreeC"),
-  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Pull.get$extension"),
   // No bincompat on internal package
   ProblemFilters.exclude[Problem]("fs2.internal.*"),
   // Mima reports all ScalaSignature changes as errors, despite the fact that they don't cause bincompat issues when version swapping (see https://github.com/lightbend/mima/issues/361)
-  ProblemFilters.exclude[IncompatibleSignatureProblem]("*"),
-  // .to(sink) syntax was removed in 1.0.2 and has been hidden in all 2.x releases behind private[fs2], hence it's safe to remove
-  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Stream.to"),
-  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Stream.to$extension"),
-  ProblemFilters.exclude[DirectMissingMethodProblem](
-    "fs2.interop.reactivestreams.StreamSubscriber#FSM.stream"
-  ), // FSM is package private
-  ProblemFilters.exclude[Problem]("fs2.io.tls.TLSEngine.*"), // private[fs2] type
-  ProblemFilters.exclude[Problem]("fs2.io.tls.TLSEngine#*"),
-  ProblemFilters.exclude[DirectMissingMethodProblem](
-    "fs2.io.tls.TLSSocket.fs2$io$tls$TLSSocket$$binding$default$2"
-  ),
-  ProblemFilters.exclude[DirectMissingMethodProblem](
-    "fs2.io.tls.TLSSocket.fs2$io$tls$TLSSocket$$binding$default$3"
-  ),
-  // InputOutputBuffer is private[tls]
-  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.tls.InputOutputBuffer.output"),
-  ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.io.tls.InputOutputBuffer.output"),
-  // Private traits for implicit prioritization
-  ProblemFilters.exclude[ReversedMissingMethodProblem](
-    "fs2.Stream#LowPrioCompiler.fs2$Stream$LowPrioCompiler$_setter_$fallibleInstance_="
-  ),
-  ProblemFilters.exclude[ReversedMissingMethodProblem](
-    "fs2.Stream#LowPrioCompiler.fallibleInstance"
-  ),
-  ProblemFilters.exclude[InheritedNewAbstractMethodProblem](
-    "fs2.Stream#LowPrioCompiler.fs2$Stream$LowPrioCompiler1$_setter_$idInstance_="
-  ),
-  ProblemFilters.exclude[InheritedNewAbstractMethodProblem](
-    "fs2.Stream#LowPrioCompiler.idInstance"
-  ),
-  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Chunk.toArrayUnsafe"),
-  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Chunk#*.toArrayUnsafe"),
-  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.PullSyncInstance.attemptTap"),
-  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.PullSyncInstance.ifElseM"),
-  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.PullSyncInstance.fproductLeft"),
-  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Pull.free"),
-  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Stream.free")
+  ProblemFilters.exclude[IncompatibleSignatureProblem]("*")
 )
 
 lazy val root = project
