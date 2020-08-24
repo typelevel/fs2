@@ -1,3 +1,24 @@
+/*
+ * Copyright (c) 2013 Functional Streams for Scala
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of
+ * this software and associated documentation files (the "Software"), to deal in
+ * the Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+ * the Software, and to permit persons to whom the Software is furnished to do so,
+ * subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+ * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+ * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+ * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+
 package fs2
 
 import cats.{Eval => _, _}
@@ -1777,7 +1798,7 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
                   bldr += separator
                   bldr += o
                 }
-                Chunk.vector(bldr.result)
+                Chunk.vector(bldr.result())
               }
               Pull.output(interspersed) >> Pull.pure(Some(tl))
           }
@@ -3466,7 +3487,7 @@ object Stream extends StreamLowPriority {
     */
   def random[F[_]](implicit F: Sync[F]): Stream[F, Int] =
     Stream.eval(F.delay(new scala.util.Random())).flatMap { r =>
-      def go: Stream[F, Int] = Stream.emit(r.nextInt) ++ go
+      def go: Stream[F, Int] = Stream.emit(r.nextInt()) ++ go
       go
     }
 
@@ -3478,7 +3499,7 @@ object Stream extends StreamLowPriority {
   def randomSeeded[F[x] >: Pure[x]](seed: Long): Stream[F, Int] =
     Stream.suspend {
       val r = new scala.util.Random(seed)
-      def go: Stream[F, Int] = Stream.emit(r.nextInt) ++ go
+      def go: Stream[F, Int] = Stream.emit(r.nextInt()) ++ go
       go
     }
 
@@ -3584,7 +3605,7 @@ object Stream extends StreamLowPriority {
     Stream
       .eval(fo)
       .attempts(delays)
-      .take(maxAttempts)
+      .take(maxAttempts.toLong)
       .takeThrough(_.fold(err => retriable(err), _ => false))
       .last
       .map(_.get)

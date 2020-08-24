@@ -1,3 +1,24 @@
+/*
+ * Copyright (c) 2013 Functional Streams for Scala
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of
+ * this software and associated documentation files (the "Software"), to deal in
+ * the Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+ * the Software, and to permit persons to whom the Software is furnished to do so,
+ * subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+ * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+ * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+ * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+
 package fs2
 
 import scala.annotation.tailrec
@@ -51,7 +72,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] { self =>
         b += pf(o)
       i += 1
     }
-    Chunk.buffer(b.result)
+    Chunk.buffer(b.result())
   }
 
   /** Copies the elements of this chunk in to the specified array at the specified start index. */
@@ -70,7 +91,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] { self =>
       if (p(e)) b += e
       i += 1
     }
-    Chunk.buffer(b.result)
+    Chunk.buffer(b.result())
   }
 
   /** Returns the first element for which the predicate returns true or `None` if no elements satisfy the predicate. */
@@ -95,7 +116,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] { self =>
       val b = collection.mutable.Buffer.newBuilder[O2]
       b.sizeHint(totalSize)
       buf.foreach(c => b ++= c.iterator)
-      Chunk.buffer(b.result)
+      Chunk.buffer(b.result())
     }
 
   /** Left-folds the elements of this chunk. */
@@ -381,7 +402,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] { self =>
         buf += apply(i)
         i += 1
       }
-      buf.result
+      buf.result()
     }
 
   /** Converts this chunk to a vector. */
@@ -395,7 +416,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] { self =>
         buf += apply(i)
         i += 1
       }
-      buf.result
+      buf.result()
     }
 
   /** Converts this chunk to a scodec-bits ByteVector. */
@@ -537,7 +558,10 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
   private final class VectorChunk[O](v: Vector[O]) extends Chunk[O] {
     def size = v.length
     def apply(i: Int) = v(i)
-    def copyToArray[O2 >: O](xs: Array[O2], start: Int): Unit = v.copyToArray(xs, start)
+    def copyToArray[O2 >: O](xs: Array[O2], start: Int): Unit = {
+      v.copyToArray(xs, start)
+      ()
+    }
     override def toVector = v
     protected def splitAtChunk_(n: Int): (Chunk[O], Chunk[O]) = {
       val (fst, snd) = v.splitAt(n)
@@ -567,7 +591,10 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
   private final class IndexedSeqChunk[O](s: GIndexedSeq[O]) extends Chunk[O] {
     def size = s.length
     def apply(i: Int) = s(i)
-    def copyToArray[O2 >: O](xs: Array[O2], start: Int): Unit = s.copyToArray(xs, start)
+    def copyToArray[O2 >: O](xs: Array[O2], start: Int): Unit = {
+      s.copyToArray(xs, start)
+      ()
+    }
     override def toVector = s.toVector
 
     override def drop(n: Int): Chunk[O] =
@@ -602,19 +629,19 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
         else {
           val bldr = collection.mutable.Buffer.newBuilder[O]
           bldr ++= l
-          buffer(bldr.result)
+          buffer(bldr.result())
         }
       case ix: GIndexedSeq[O] => indexedSeq(ix)
       case _ =>
         if (i.isEmpty) empty
         else {
           val itr = i.iterator
-          val head = itr.next
+          val head = itr.next()
           if (itr.hasNext) {
             val bldr = collection.mutable.Buffer.newBuilder[O]
             bldr += head
             bldr ++= itr
-            buffer(bldr.result)
+            buffer(bldr.result())
           } else singleton(head)
         }
     })
@@ -630,12 +657,12 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
     if (c.isEmpty) empty
     else {
       val itr = c.iterator
-      val head = itr.next
+      val head = itr.next()
       if (itr.hasNext) {
         val bldr = collection.mutable.Buffer.newBuilder[O]
         bldr += head
         bldr ++= itr
-        buffer(bldr.result)
+        buffer(bldr.result())
       } else singleton(head)
     }
 
@@ -651,7 +678,10 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
   private final class BufferChunk[O](b: collection.mutable.Buffer[O]) extends Chunk[O] {
     def size = b.length
     def apply(i: Int) = b(i)
-    def copyToArray[O2 >: O](xs: Array[O2], start: Int): Unit = b.copyToArray(xs, start)
+    def copyToArray[O2 >: O](xs: Array[O2], start: Int): Unit = {
+      b.copyToArray(xs, start)
+      ()
+    }
     override def toVector = b.toVector
 
     override def drop(n: Int): Chunk[O] =
@@ -718,8 +748,10 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
     def copyToArray[O2 >: O](xs: Array[O2], start: Int): Unit =
       if (xs.isInstanceOf[Array[AnyRef]])
         System.arraycopy(values, offset, xs, start, length)
-      else
+      else {
         values.iterator.slice(offset, offset + length).copyToArray(xs, start)
+        ()
+      }
 
     protected def splitAtChunk_(n: Int): (Chunk[O], Chunk[O]) =
       Boxed(values, offset, n) -> Boxed(values, offset + n, length - n)
@@ -758,8 +790,10 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
     def copyToArray[O2 >: Boolean](xs: Array[O2], start: Int): Unit =
       if (xs.isInstanceOf[Array[Boolean]])
         System.arraycopy(values, offset, xs, start, length)
-      else
+      else {
         values.iterator.slice(offset, offset + length).copyToArray(xs, start)
+        ()
+      }
 
     override def drop(n: Int): Chunk[Boolean] =
       if (n <= 0) this
@@ -800,8 +834,10 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
     def copyToArray[O2 >: Byte](xs: Array[O2], start: Int): Unit =
       if (xs.isInstanceOf[Array[Byte]])
         System.arraycopy(values, offset, xs, start, length)
-      else
+      else {
         values.iterator.slice(offset, offset + length).copyToArray(xs, start)
+        ()
+      }
 
     override def drop(n: Int): Chunk[Byte] =
       if (n <= 0) this
@@ -864,6 +900,7 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
       val arr = new Array[C](size)
       get(b, arr, 0, size)
       arr.copyToArray(xs, start)
+      ()
     }
 
     protected def splitAtChunk_(n: Int): (A, A) = {
@@ -911,14 +948,14 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
       val b = readOnly(buf)
       (b: JBuffer).position(offset)
       (b: JBuffer).limit(offset + size)
-      if (xs.isInstanceOf[Array[Short]]) {
+      if (xs.isInstanceOf[Array[Short]])
         get(b, xs.asInstanceOf[Array[Short]], start, size)
-        ()
-      } else {
+      else {
         val arr = new Array[Short](size)
         get(b, arr, 0, size)
         arr.copyToArray(xs, start)
       }
+      ()
     }
   }
 
@@ -995,6 +1032,7 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
         val arr = new Array[Double](size)
         get(b, arr, 0, size)
         arr.copyToArray(xs, start)
+        ()
       }
     }
   }
@@ -1064,6 +1102,7 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
         val arr = new Array[Int](size)
         get(b, arr, 0, size)
         arr.copyToArray(xs, start)
+        ()
       }
     }
   }
@@ -1148,8 +1187,10 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
     def copyToArray[O2 >: Short](xs: Array[O2], start: Int): Unit =
       if (xs.isInstanceOf[Array[Short]])
         System.arraycopy(values, offset, xs, start, length)
-      else
+      else {
         values.iterator.slice(offset, offset + length).copyToArray(xs, start)
+        ()
+      }
 
     override def drop(n: Int): Chunk[Short] =
       if (n <= 0) this
@@ -1189,8 +1230,10 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
     def copyToArray[O2 >: Int](xs: Array[O2], start: Int): Unit =
       if (xs.isInstanceOf[Array[Int]])
         System.arraycopy(values, offset, xs, start, length)
-      else
+      else {
         values.iterator.slice(offset, offset + length).copyToArray(xs, start)
+        ()
+      }
 
     override def drop(n: Int): Chunk[Int] =
       if (n <= 0) this
@@ -1230,8 +1273,10 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
     def copyToArray[O2 >: Long](xs: Array[O2], start: Int): Unit =
       if (xs.isInstanceOf[Array[Long]])
         System.arraycopy(values, offset, xs, start, length)
-      else
+      else {
         values.iterator.slice(offset, offset + length).copyToArray(xs, start)
+        ()
+      }
 
     override def drop(n: Int): Chunk[Long] =
       if (n <= 0) this
@@ -1272,8 +1317,10 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
     def copyToArray[O2 >: Float](xs: Array[O2], start: Int): Unit =
       if (xs.isInstanceOf[Array[Float]])
         System.arraycopy(values, offset, xs, start, length)
-      else
+      else {
         values.iterator.slice(offset, offset + length).copyToArray(xs, start)
+        ()
+      }
 
     override def drop(n: Int): Chunk[Float] =
       if (n <= 0) this
@@ -1314,8 +1361,10 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
     def copyToArray[O2 >: Double](xs: Array[O2], start: Int): Unit =
       if (xs.isInstanceOf[Array[Double]])
         System.arraycopy(values, offset, xs, start, length)
-      else
+      else {
         values.iterator.slice(offset, offset + length).copyToArray(xs, start)
+        ()
+      }
 
     override def drop(n: Int): Chunk[Double] =
       if (n <= 0) this
@@ -1357,8 +1406,10 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
     def copyToArray[O2 >: Char](xs: Array[O2], start: Int): Unit =
       if (xs.isInstanceOf[Array[Char]])
         System.arraycopy(values, offset, xs, start, length)
-      else
+      else {
         values.iterator.slice(offset, offset + length).copyToArray(xs, start)
+        ()
+      }
 
     override def drop(n: Int): Chunk[Char] =
       if (n <= 0) this
@@ -1390,7 +1441,7 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
     def elementClassTag = ClassTag.Byte
 
     def apply(i: Int): Byte =
-      toByteVector(i)
+      toByteVector(i.toLong)
 
     def size: Int =
       toByteVector.size.toInt
@@ -1398,20 +1449,23 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
     def copyToArray[O2 >: Byte](xs: Array[O2], start: Int): Unit =
       if (xs.isInstanceOf[Array[Byte]])
         toByteVector.copyToArray(xs.asInstanceOf[Array[Byte]], start)
-      else toByteVector.toIndexedSeq.copyToArray(xs)
+      else {
+        toByteVector.toIndexedSeq.copyToArray(xs)
+        ()
+      }
 
     override def drop(n: Int): Chunk[Byte] =
       if (n <= 0) this
       else if (n >= size) Chunk.empty
-      else ByteVectorChunk(toByteVector.drop(n))
+      else ByteVectorChunk(toByteVector.drop(n.toLong))
 
     override def take(n: Int): Chunk[Byte] =
       if (n <= 0) Chunk.empty
       else if (n >= size) this
-      else ByteVectorChunk(toByteVector.take(n))
+      else ByteVectorChunk(toByteVector.take(n.toLong))
 
     protected def splitAtChunk_(n: Int): (Chunk[Byte], Chunk[Byte]) = {
-      val (before, after) = toByteVector.splitAt(n)
+      val (before, after) = toByteVector.splitAt(n.toLong)
       (ByteVectorChunk(before), ByteVectorChunk(after))
     }
 
@@ -1606,7 +1660,7 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
         cur = tl
         rem -= 1
       }
-      (Chunk.buffer(bldr.result), cur)
+      (Chunk.buffer(bldr.result()), cur)
     }
 
   implicit def fs2EqForChunk[A: Eq]: Eq[Chunk[A]] =
@@ -1654,7 +1708,7 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
               state = tail
               go()
             case h :: tail =>
-              h.next match {
+              h.next() match {
                 case Right(b) =>
                   buf += b
                   go()
@@ -1664,7 +1718,7 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
               }
           }
         go()
-        Chunk.buffer(buf.result)
+        Chunk.buffer(buf.result())
       }
       override def combineK[A](x: Chunk[A], y: Chunk[A]): Chunk[A] =
         Chunk.concat(x :: y :: Nil)
@@ -1776,7 +1830,7 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
             b += o.get
           i += 1
         }
-        Chunk.buffer(b.result)
+        Chunk.buffer(b.result())
       }
     }
 
