@@ -314,4 +314,3 @@ lazy val microsite = project
     githubWorkflowArtifactUpload := false
   )
   .dependsOn(coreJVM, io, reactiveStreams)
-
