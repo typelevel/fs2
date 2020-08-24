@@ -311,7 +311,8 @@ lazy val microsite = project
         .filterNot("-Xlint" == _)
         .filterNot("-Xfatal-warnings" == _)
     },
-    scalacOptions in Compile += "-Ydelambdafy:inline"
+    scalacOptions in Compile += "-Ydelambdafy:inline",
+    githubWorkflowArtifactUpload := false
   )
   .dependsOn(coreJVM, io, reactiveStreams)
 
