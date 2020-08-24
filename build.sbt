@@ -222,6 +222,7 @@ lazy val io = project
   .enablePlugins(SbtOsgi)
   .settings(
     name := "fs2-io",
+    Test / fork := true,
     Compile / unmanagedSourceDirectories ++= {
       if (isDotty.value)
         List(CrossType.Pure, CrossType.Full).flatMap(
