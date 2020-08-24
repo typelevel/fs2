@@ -249,6 +249,7 @@ lazy val reactiveStreams = project
   .enablePlugins(SbtOsgi)
   .settings(
     name := "fs2-reactive-streams",
+    Test / fork := true,
     libraryDependencies ++= Seq(
       "org.reactivestreams" % "reactive-streams" % "1.0.3",
       "org.reactivestreams" % "reactive-streams-tck" % "1.0.3" % "test",
