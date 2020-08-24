@@ -1,3 +1,24 @@
+/*
+ * Copyright (c) 2013 Functional Streams for Scala
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of
+ * this software and associated documentation files (the "Software"), to deal in
+ * the Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+ * the Software, and to permit persons to whom the Software is furnished to do so,
+ * subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+ * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+ * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+ * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+
 package fs2
 package benchmark
 
@@ -26,7 +47,7 @@ class StreamBenchmark {
       .covary[IO]
       .compile
       .last
-      .unsafeRunSync
+      .unsafeRunSync()
       .get
 
   @Benchmark
@@ -37,7 +58,7 @@ class StreamBenchmark {
       .covary[IO]
       .compile
       .last
-      .unsafeRunSync
+      .unsafeRunSync()
       .get
 
   @Benchmark
@@ -48,7 +69,7 @@ class StreamBenchmark {
       .covary[IO]
       .compile
       .last
-      .unsafeRunSync
+      .unsafeRunSync()
       .get
 
   @Benchmark
@@ -60,16 +81,16 @@ class StreamBenchmark {
       .covary[IO]
       .compile
       .last
-      .unsafeRunSync
+      .unsafeRunSync()
       .get
 
   @Benchmark
   def eval(): Unit =
-    Stream.repeatEval(IO(())).take(n).compile.last.unsafeRunSync.get
+    Stream.repeatEval(IO(())).take(n).compile.last.unsafeRunSync().get
 
   @Benchmark
   def toVector(): Vector[Int] =
-    Stream.emits(0 until n).covary[IO].compile.toVector.unsafeRunSync
+    Stream.emits(0 until n).covary[IO].compile.toVector.unsafeRunSync()
 
   @Benchmark @BenchmarkMode(Array(Mode.AverageTime)) @OutputTimeUnit(TimeUnit.NANOSECONDS)
   def emitsThenFlatMap(): Vector[Int] =
@@ -77,7 +98,7 @@ class StreamBenchmark {
 
   @Benchmark
   def sliding() =
-    Stream.emits(0 until 16384).sliding(n).covary[IO].compile.drain.unsafeRunSync
+    Stream.emits(0 until 16384).sliding(n).covary[IO].compile.drain.unsafeRunSync()
 
   @Benchmark
   def mapAccumulate() =
@@ -91,13 +112,13 @@ class StreamBenchmark {
       .covary[IO]
       .compile
       .drain
-      .unsafeRunSync
+      .unsafeRunSync()
 
   @Benchmark
   def evalMap() =
-    Stream.emits(0 until n).evalMap(x => IO(x * 5)).compile.drain.unsafeRunSync
+    Stream.emits(0 until n).evalMap(x => IO(x * 5)).compile.drain.unsafeRunSync()
 
   @Benchmark
   def evalMaps() =
-    Stream.emits(0 until n).evalMapChunk(x => IO(x * 5)).compile.drain.unsafeRunSync
+    Stream.emits(0 until n).evalMapChunk(x => IO(x * 5)).compile.drain.unsafeRunSync()
 }
