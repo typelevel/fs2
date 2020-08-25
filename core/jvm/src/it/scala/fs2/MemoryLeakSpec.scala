@@ -9,7 +9,7 @@ import java.nio.file.{Files, Path}
 import cats.effect.{ContextShift, IO, Timer}
 import cats.implicits._
 
-import munit.FunSuite
+import munit.{FunSuite, TestOptions}
 
 import fs2.concurrent._
 
@@ -19,6 +19,14 @@ class MemoryLeakSpec extends FunSuite {
     IO.contextShift(ExecutionContext.global)
   lazy protected implicit val ioTimer: Timer[IO] = IO.timer(ExecutionContext.global)
 
+  case class LeakTestParams(
+      warmupIterations: Int = 3,
+      samplePeriod: FiniteDuration = 1.seconds,
+      monitorPeriod: FiniteDuration = 30.seconds,
+      limitTotalBytesIncrease: Long = 20 * 1024 * 1024,
+      limitConsecutiveIncreases: Int = 10
+  )
+
   private def heapUsed: IO[Long] =
     IO {
       val runtime = Runtime.getRuntime
@@ -27,20 +35,22 @@ class MemoryLeakSpec extends FunSuite {
       val free = runtime.freeMemory()
       total - free
     }
-
   protected def leakTest[O](
-      name: String,
-      warmupIterations: Int = 3,
-      samplePeriod: FiniteDuration = 3.seconds,
-      monitorPeriod: FiniteDuration = 30.seconds,
-      limitBytesIncrease: Long = 20 * 1024 * 1024
-  )(stream: => Stream[IO, O]): Unit =
+      name: TestOptions,
+      params: LeakTestParams = LeakTestParams()
+  )(stream: => Stream[IO, O]): Unit = leakTestF(name, params)(stream.compile.drain)
+ 
+  protected def leakTestF[O](
+      name: TestOptions,
+      params: LeakTestParams = LeakTestParams()
+  )(f: => IO[Unit]): Unit =
     test(name) {
+      println(s"Running leak test ${name.name}")
       IO.race(
-        stream.compile.drain,
+        f,
         IO.race(
-          monitorHeap(warmupIterations, samplePeriod, limitBytesIncrease),
-          IO.sleep(monitorPeriod)
+          monitorHeap(params.warmupIterations, params.samplePeriod, params.limitTotalBytesIncrease, params.limitConsecutiveIncreases),
+          IO.sleep(params.monitorPeriod)
         )
       ).map {
         case Left(_)         => ()
@@ -53,18 +63,30 @@ class MemoryLeakSpec extends FunSuite {
   private def monitorHeap(
       warmupIterations: Int,
       samplePeriod: FiniteDuration,
-      limitBytesIncrease: Long
+      limitTotalBytesIncrease: Long,
+      limitConsecutiveIncreases: Int
   ): IO[Path] = {
     def warmup(iterationsLeft: Int): IO[Path] =
       if (iterationsLeft > 0) IO.sleep(samplePeriod) >> warmup(iterationsLeft - 1)
-      else heapUsed.flatMap(go)
+      else heapUsed.flatMap(x => go(x, x, 0))
 
-    def go(initial: Long): IO[Path] =
+    def go(initial: Long, last: Long, positiveCount: Int): IO[Path] =
       IO.sleep(samplePeriod) >>
         heapUsed.flatMap { bytes =>
-          val delta = bytes - initial
-          if (delta > limitBytesIncrease) dumpHeap
-          else go(initial)
+          val deltaSinceStart = bytes - initial
+          val deltaSinceLast = bytes - last
+          def printBytes(x: Long) = f"$x%,d"
+          def printDelta(x: Long) = {
+            val pfx = if (x > 0) "+" else ""
+            s"$pfx${printBytes(x)}"
+          }
+          println(f"Heap: ${printBytes(bytes)}%12.12s total, ${printDelta(deltaSinceStart)}%12.12s since start, ${printDelta(deltaSinceLast)}%12.12s in last ${samplePeriod}")
+          if (deltaSinceStart > limitTotalBytesIncrease) dumpHeap
+          else if (deltaSinceLast > 0) {
+            if (positiveCount > limitConsecutiveIncreases) dumpHeap
+            else go(initial, bytes, positiveCount + 1)
+          }
+          else go(initial, bytes, 0)
         }
 
     warmup(warmupIterations)
@@ -200,7 +222,7 @@ class MemoryLeakSpec extends FunSuite {
       .repeat
   }
 
-  leakTest("queue") {
+  leakTest("queue".flaky) {
     Stream
       .eval(Queue.bounded[IO, Either[Throwable, Option[Int]]](10))
       .flatMap { queue =>
@@ -218,7 +240,6 @@ class MemoryLeakSpec extends FunSuite {
           )
           .evalMap(_ => IO.unit)
       }
-
   }
 
   leakTest("progress merge") {

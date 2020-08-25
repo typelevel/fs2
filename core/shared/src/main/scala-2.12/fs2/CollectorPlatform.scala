@@ -22,7 +22,6 @@
 package fs2
 
 import scala.collection.generic.{
-  GenericSetTemplate,
   GenericTraversableTemplate,
   MapFactory,
   SetFactory,
