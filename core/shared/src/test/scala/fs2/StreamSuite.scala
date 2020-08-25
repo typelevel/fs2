@@ -383,10 +383,7 @@ class StreamSuite extends Fs2Suite {
       startAndCancelSoonAfter(s.compile.drain)
 
     def constantStream: Stream[IO, Int] =
-      Stream.constant(1).evalTap(_ => IO.sleep(1.milli))
-    // TODO - This should work but it fails consistently on CI, which uses GraalVM. I suspect
-    // the IO cancelation isn't visible to the thread doing evaluation
-    // if (isJVM) Stream.constant(1) else Stream.constant(1).evalTap(_ => IO.sleep(1.milli))
+      Stream.constant(1).evalTapChunk(_ => IO.cede)
 
     test("constant")(testCancelation(constantStream))
 
