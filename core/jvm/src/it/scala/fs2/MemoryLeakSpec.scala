@@ -25,6 +25,14 @@ class MemoryLeakSpec extends FunSuite {
       limitConsecutiveIncreases: Int = 10
   )
 
+  case class LeakTestParams(
+      warmupIterations: Int = 3,
+      samplePeriod: FiniteDuration = 1.seconds,
+      monitorPeriod: FiniteDuration = 30.seconds,
+      limitTotalBytesIncrease: Long = 20 * 1024 * 1024,
+      limitConsecutiveIncreases: Int = 10
+  )
+
   private def heapUsed: IO[Long] =
     IO {
       val runtime = Runtime.getRuntime
