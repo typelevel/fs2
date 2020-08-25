@@ -39,7 +39,7 @@ class MemoryLeakSpec extends FunSuite {
       name: TestOptions,
       params: LeakTestParams = LeakTestParams()
   )(stream: => Stream[IO, O]): Unit = leakTestF(name, params)(stream.compile.drain)
- 
+
   protected def leakTestF[O](
       name: TestOptions,
       params: LeakTestParams = LeakTestParams()
@@ -49,7 +49,12 @@ class MemoryLeakSpec extends FunSuite {
       IO.race(
         f,
         IO.race(
-          monitorHeap(params.warmupIterations, params.samplePeriod, params.limitTotalBytesIncrease, params.limitConsecutiveIncreases),
+          monitorHeap(
+            params.warmupIterations,
+            params.samplePeriod,
+            params.limitTotalBytesIncrease,
+            params.limitConsecutiveIncreases
+          ),
           IO.sleep(params.monitorPeriod)
         )
       ).map {
@@ -80,12 +85,13 @@ class MemoryLeakSpec extends FunSuite {
             val pfx = if (x > 0) "+" else ""
             s"$pfx${printBytes(x)}"
           }
-          println(f"Heap: ${printBytes(bytes)}%12.12s total, ${printDelta(deltaSinceStart)}%12.12s since start, ${printDelta(deltaSinceLast)}%12.12s in last ${samplePeriod}")
+          println(
+            f"Heap: ${printBytes(bytes)}%12.12s total, ${printDelta(deltaSinceStart)}%12.12s since start, ${printDelta(deltaSinceLast)}%12.12s in last ${samplePeriod}"
+          )
           if (deltaSinceStart > limitTotalBytesIncrease) dumpHeap
-          else if (deltaSinceLast > 0) {
+          else if (deltaSinceLast > 0)
             if (positiveCount > limitConsecutiveIncreases) dumpHeap
             else go(initial, bytes, positiveCount + 1)
-          }
           else go(initial, bytes, 0)
         }
 
@@ -162,7 +168,7 @@ class MemoryLeakSpec extends FunSuite {
   }
 
   leakTest("drain onComplete") {
-    val s = Stream.repeatEval(IO(1)).pull.echo.stream.drain ++ Stream.eval_(IO(println("done")))
+    val s = Stream.repeatEval(IO(1)).pull.echo.stream.drain ++ Stream.eval_(IO.unit)
     Stream.empty.covary[IO].merge(s)
   }
 
@@ -202,7 +208,6 @@ class MemoryLeakSpec extends FunSuite {
           cnt = (cnt + 1) % 1000000
           if (cnt == 0) {
             val now = System.currentTimeMillis
-            println("Elapsed: " + (now - start))
             start = now
           }
         })
