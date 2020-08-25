@@ -1,7 +1,29 @@
+/*
+ * Copyright (c) 2013 Functional Streams for Scala
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of
+ * this software and associated documentation files (the "Software"), to deal in
+ * the Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+ * the Software, and to permit persons to whom the Software is furnished to do so,
+ * subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+ * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+ * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+ * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+
 package fs2
 
 import cats.{Eval => _, _}
 import cats.effect._
+import cats.implicits._
 import fs2.internal._
 import fs2.internal.FreeC.{Eval, Result}
 
@@ -120,6 +142,19 @@ object Pull extends PullLowPriority {
     new Pull(Eval[F, R](fr))
 
   /**
+    * Extends the scope of the currently open resources to the specified stream, preventing them
+    * from being finalized until after `s` completes execution, even if the returned pull is converted
+    * to a stream, compiled, and evaluated before `s` is compiled and evaluated.
+    */
+  def extendScopeTo[F[_], O](
+      s: Stream[F, O]
+  )(implicit F: MonadError[F, Throwable]): Pull[F, INothing, Stream[F, O]] =
+    for {
+      scope <- Pull.getScope[F]
+      lease <- Pull.eval(scope.leaseOrError)
+    } yield s.onFinalize(lease.cancel.redeemWith(F.raiseError(_), _ => F.unit))
+
+  /**
     * Repeatedly uses the output of the pull as input for the next step of the pull.
     * Halts when a step terminates with `None` or `Pull.raiseError`.
     */
@@ -163,6 +198,13 @@ object Pull extends PullLowPriority {
     * }}}
     */
   def fromEither[F[x]] = new PartiallyAppliedFromEither[F]
+
+  /**
+    * Gets the current scope, allowing manual leasing or interruption.
+    * This is a low-level method and generally should not be used by user code.
+    */
+  def getScope[F[_]]: Pull[F, INothing, Scope[F]] =
+    new Pull(FreeC.GetScope[F]())
 
   /**
     * Returns a pull that evaluates the supplied by-name each time the pull is used,

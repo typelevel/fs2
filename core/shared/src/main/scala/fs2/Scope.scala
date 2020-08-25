@@ -1,4 +1,28 @@
+/*
+ * Copyright (c) 2013 Functional Streams for Scala
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of
+ * this software and associated documentation files (the "Software"), to deal in
+ * the Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+ * the Software, and to permit persons to whom the Software is furnished to do so,
+ * subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+ * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+ * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+ * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+
 package fs2
+
+import cats.MonadError
+import cats.implicits._
 
 /**
   * Represents a period of stream execution in which resources are acquired and released.
@@ -26,6 +50,13 @@ abstract class Scope[F[_]] {
     * successfully leased.
     */
   def lease: F[Option[Scope.Lease[F]]]
+
+  /** Like [[lease]], but fails with an error if the scope is closed. */
+  def leaseOrError(implicit F: MonadError[F, Throwable]): F[Scope.Lease[F]] =
+    lease.flatMap {
+      case Some(l) => F.pure(l)
+      case None    => F.raiseError(new Throwable("Scope closed at time of lease"))
+    }
 
   /**
     * Interrupts evaluation of the current scope. Only scopes previously indicated with Stream.interruptScope may be interrupted.

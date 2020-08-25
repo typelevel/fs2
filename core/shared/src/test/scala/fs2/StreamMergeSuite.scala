@@ -1,3 +1,24 @@
+/*
+ * Copyright (c) 2013 Functional Streams for Scala
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of
+ * this software and associated documentation files (the "Software"), to deal in
+ * the Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+ * the Software, and to permit persons to whom the Software is furnished to do so,
+ * subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+ * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+ * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+ * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+
 package fs2
 
 import scala.concurrent.duration._
@@ -208,6 +229,25 @@ class StreamMergeSuite extends Fs2Suite {
       s1.covary[IO].map(Left(_)).mergeHaltR(s2.map(Right(_))).compile.toList.map { result =>
         assert(result.collect { case Right(a) => a } == s2List)
       }
+    }
+  }
+
+  test("merge not emit ahead") {
+    forAllF { (v: Int) =>
+      val expected = List(v, v + 1)
+      Ref
+        .of[IO, Int](v)
+        .map { ref =>
+          Stream
+            .repeatEval(ref.get)
+            .merge(Stream.never[IO])
+            .evalMap { value =>
+              IO.sleep(100.milliseconds) >> ref.set(value + 1) >> IO(value)
+            }
+            .take(2)
+        }
+        .flatMap(_.compile.toList)
+        .map(result => assert(result == expected))
     }
   }
 }
