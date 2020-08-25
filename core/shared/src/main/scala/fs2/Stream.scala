@@ -1936,8 +1936,8 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
 
     val fstream: F2[Stream[F2, O2]] = for {
       interrupt <- Deferred[F2, Unit]
-      resultL <- Deferred.tryable[F2, Option[Either[Throwable, Unit]]]
-      resultR <- Deferred.tryable[F2, Option[Either[Throwable, Unit]]]
+      resultL <- Deferred[F2, Either[Throwable, Unit]]
+      resultR <- Deferred[F2, Either[Throwable, Unit]]
       otherSideDone <- Ref.of[F2, Boolean](false)
       resultQ <- Queue.unbounded[F2, Option[Stream[F2, O2]]]
     } yield {
@@ -1968,41 +1968,23 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
           case None => Pull.done
         }
 
-      def runStream(
-          s: Stream[F2, O2],
-          whenDone: TryableDeferred[F2, Option[Either[Throwable, Unit]]]
-      ): F2[Unit] = {
-        val finalizeOnSuccess: F2[Unit] =
-          whenDone.complete(Some(Right(()))) >> doneAndClose
-
-        def finalizeOnError(exit: Option[Either[Throwable, Unit]]): F2[Unit] =
-          whenDone.complete(exit).attempt >> interrupt.complete(()).attempt.void
-
+      def runStream(s: Stream[F2, O2], whenDone: Deferred[F2, Either[Throwable, Unit]]): F2[Unit] =
         // guarantee we process only single chunk at any given time from any given side.
         Semaphore(1).flatMap { guard =>
           val str = watchInterrupted(go(s, guard).stream)
-
-          (str.compile.drain >> finalizeOnSuccess).guaranteeCase {
-            case ExitCase.Error(e) => finalizeOnError(Some(Left(e)))
-            case ExitCase.Canceled => finalizeOnError(None)
-            case ExitCase.Completed =>
-              whenDone.tryGet.flatMap { a =>
-                if (a.isDefined) F2.unit else finalizeOnError(None)
-              }
+          str.compile.drain.attempt.flatMap {
+            // signal completion of our side before we will signal interruption,
+            // to make sure our result is always available to others
+            case r @ Left(_)  => whenDone.complete(r) >> signalInterruption
+            case r @ Right(_) => whenDone.complete(r) >> doneAndClose
           }
         }
-      }
 
       val atRunEnd: F2[Unit] = for {
         _ <- signalInterruption // interrupt so the upstreams have chance to complete
         left <- resultL.get
         right <- resultR.get
-        r <- F2.fromEither(
-          CompositeFailure.fromResults(
-            left.getOrElse(Left(new InterruptedException)),
-            right.getOrElse(Left(new InterruptedException))
-          )
-        )
+        r <- F2.fromEither(CompositeFailure.fromResults(left, right))
       } yield r
 
       val runStreams = F2.start(runStream(this, resultL)) >> F2.start(runStream(that, resultR))
