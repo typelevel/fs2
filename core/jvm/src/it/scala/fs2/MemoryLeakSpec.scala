@@ -25,14 +25,6 @@ class MemoryLeakSpec extends FunSuite {
       limitConsecutiveIncreases: Int = 10
   )
 
-  case class LeakTestParams(
-      warmupIterations: Int = 3,
-      samplePeriod: FiniteDuration = 1.seconds,
-      monitorPeriod: FiniteDuration = 30.seconds,
-      limitTotalBytesIncrease: Long = 20 * 1024 * 1024,
-      limitConsecutiveIncreases: Int = 10
-  )
-
   private def heapUsed: IO[Long] =
     IO {
       val runtime = Runtime.getRuntime
@@ -41,12 +33,13 @@ class MemoryLeakSpec extends FunSuite {
       val free = runtime.freeMemory()
       total - free
     }
+
   protected def leakTest[O](
       name: TestOptions,
       params: LeakTestParams = LeakTestParams()
   )(stream: => Stream[IO, O]): Unit = leakTestF(name, params)(stream.compile.drain)
 
-  protected def leakTestF[O](
+  protected def leakTestF(
       name: TestOptions,
       params: LeakTestParams = LeakTestParams()
   )(f: => IO[Unit]): Unit =
