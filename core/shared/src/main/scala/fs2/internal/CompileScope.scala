@@ -23,14 +23,14 @@ package fs2.internal
 
 import scala.annotation.tailrec
 
-import cats.{Applicative, Monad, Traverse, TraverseFilter}
+import cats.{Applicative, Id, Monad, Traverse, TraverseFilter}
 import cats.data.Chain
 import cats.effect.{ConcurrentThrow, Outcome, Resource}
 import cats.effect.concurrent.{Deferred, Ref}
 import cats.effect.implicits._
 import cats.implicits._
 import fs2.{CompositeFailure, Pure, Scope}
-import fs2.internal.CompileScope.InterruptContext
+import fs2.internal.CompileScope.{InterruptContext, InterruptionOutcome}
 
 /**
   * Implementation of [[Scope]] for the internal stream interpreter.
@@ -358,9 +358,9 @@ private[fs2] final class CompileScope[F[_]] private (
           new IllegalStateException("Scope#interrupt called for Scope that cannot be interrupted")
         )
       case Some(iCtx) =>
-        val outcome = cause.fold(
-          t => InterruptionOutcome.Errored(t),
-          _ => InterruptionOutcome.Completed(iCtx.interruptRoot)
+        val outcome: InterruptionOutcome = cause.fold(
+          t => Outcome.Errored(t),
+          _ => Outcome.Completed[Id, Throwable, Token](iCtx.interruptRoot)
         )
         iCtx.complete(outcome)
     }
@@ -392,10 +392,10 @@ private[fs2] final class CompileScope[F[_]] private (
   private[fs2] def interruptibleEval[A](f: F[A]): F[Either[InterruptionOutcome, A]] =
     interruptible match {
       case None =>
-        f.attempt.map(_.leftMap(t => InterruptionOutcome.Errored(t)))
+        f.attempt.map(_.leftMap(t => Outcome.Errored(t)))
       case Some(iCtx) =>
         iCtx.concurrentThrow.race(iCtx.deferred.get, f.attempt).map {
-          case Right(result) => result.leftMap(InterruptionOutcome.Errored(_))
+          case Right(result) => result.leftMap(Outcome.Errored(_))
           case Left(other)   => Left(other)
         }
     }
@@ -405,6 +405,8 @@ private[fs2] final class CompileScope[F[_]] private (
 }
 
 private[fs2] object CompileScope {
+
+  type InterruptionOutcome = Outcome[Id, Throwable, Token]
 
   private def apply[F[_]: Resource.Bracket: Ref.Mk](
       id: Token,
@@ -504,9 +506,9 @@ private[fs2] object CompileScope {
                   case Outcome.Completed(interrupt) =>
                     interrupt.flatMap(i => context.complete(i))
                   case Outcome.Errored(t) =>
-                    context.complete(InterruptionOutcome.Errored(t))
+                    context.complete(Outcome.Errored(t))
                   case Outcome.Canceled() =>
-                    context.complete(InterruptionOutcome.Canceled)
+                    context.complete(Outcome.Canceled())
                 }
                 .start
                 .as(context)
