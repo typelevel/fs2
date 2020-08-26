@@ -23,14 +23,14 @@ package fs2.internal
 
 import scala.annotation.tailrec
 
-import cats.{Applicative, Monad, Traverse, TraverseFilter}
+import cats.{Applicative, Id, Monad, Traverse, TraverseFilter}
 import cats.data.Chain
 import cats.effect.{ConcurrentThrow, Outcome, Resource}
 import cats.effect.concurrent.{Deferred, Ref}
 import cats.effect.implicits._
 import cats.implicits._
 import fs2.{CompositeFailure, Pure, Scope}
-import fs2.internal.CompileScope.InterruptContext
+import fs2.internal.CompileScope.{InterruptContext, InterruptionOutcome}
 
 /**
   * Implementation of [[Scope]] for the internal stream interpreter.
@@ -358,11 +358,11 @@ private[fs2] final class CompileScope[F[_]] private (
           new IllegalStateException("Scope#interrupt called for Scope that cannot be interrupted")
         )
       case Some(iCtx) =>
-        // note that we guard interruption here by Attempt to prevent failure on multiple sets.
-        val interruptCause = cause.map(_ => iCtx.interruptRoot)
-        F.guarantee(iCtx.deferred.complete(interruptCause)) {
-          iCtx.ref.update(_.orElse(Some(interruptCause)))
-        }
+        val outcome: InterruptionOutcome = cause.fold(
+          t => Outcome.Errored(t),
+          _ => Outcome.Completed[Id, Throwable, Token](iCtx.interruptRoot)
+        )
+        iCtx.complete(outcome)
     }
 
   /**
@@ -371,7 +371,7 @@ private[fs2] final class CompileScope[F[_]] private (
     * If yields to Some(Right(scope,next)) that yields to next `scope`, that has to be run and `next`  stream
     * to evaluate
     */
-  def isInterrupted: F[Option[Either[Throwable, Token]]] =
+  def isInterrupted: F[Option[InterruptionOutcome]] =
     interruptible match {
       case None       => F.pure(None)
       case Some(iCtx) => iCtx.ref.get
@@ -389,12 +389,13 @@ private[fs2] final class CompileScope[F[_]] private (
     * Or if the evaluation is interrupted by a failure this evaluates on `Left` - `Left` where the exception
     * that caused the interruption is returned so that it can be handled.
     */
-  private[fs2] def interruptibleEval[A](f: F[A]): F[Either[Either[Throwable, Token], A]] =
+  private[fs2] def interruptibleEval[A](f: F[A]): F[Either[InterruptionOutcome, A]] =
     interruptible match {
-      case None => f.attempt.map(_.swap.map(Left(_)).swap)
+      case None =>
+        f.attempt.map(_.leftMap(t => Outcome.Errored(t)))
       case Some(iCtx) =>
         iCtx.concurrentThrow.race(iCtx.deferred.get, f.attempt).map {
-          case Right(result) => result.leftMap(Left(_))
+          case Right(result) => result.leftMap(Outcome.Errored(_))
           case Left(other)   => Left(other)
         }
     }
@@ -404,6 +405,8 @@ private[fs2] final class CompileScope[F[_]] private (
 }
 
 private[fs2] object CompileScope {
+
+  type InterruptionOutcome = Outcome[Id, Throwable, Token]
 
   private def apply[F[_]: Resource.Bracket: Ref.Mk](
       id: Token,
@@ -469,11 +472,14 @@ private[fs2] object CompileScope {
     * @param cancelParent  Cancels listening on parent's interrupt.
     */
   final private[internal] case class InterruptContext[F[_]](
-      deferred: Deferred[F, Either[Throwable, Token]],
-      ref: Ref[F, Option[Either[Throwable, Token]]],
+      deferred: Deferred[F, InterruptionOutcome],
+      ref: Ref[F, Option[InterruptionOutcome]],
       interruptRoot: Token,
       cancelParent: F[Unit]
   )(implicit val concurrentThrow: ConcurrentThrow[F], mkRef: Ref.Mk[F]) { self =>
+
+    def complete(outcome: InterruptionOutcome): F[Unit] =
+      ref.update(_.orElse(Some(outcome))).guarantee(deferred.complete(outcome).attempt.void)
 
     /**
       * Creates a [[InterruptContext]] for a child scope which can be interruptible as well.
@@ -498,14 +504,11 @@ private[fs2] object CompileScope {
               fiber.join
                 .flatMap {
                   case Outcome.Completed(interrupt) =>
-                    interrupt.flatMap { i =>
-                      context.ref.update(_.orElse(Some(i))) >>
-                        context.deferred.complete(i).attempt.void
-                    }
+                    interrupt.flatMap(i => context.complete(i))
                   case Outcome.Errored(t) =>
-                    context.ref.update(_.orElse(Some(Left(t)))) >>
-                      context.deferred.complete(Left(t)).attempt.void
-                  case Outcome.Canceled() => ??? // TODO
+                    context.complete(Outcome.Errored(t))
+                  case Outcome.Canceled() =>
+                    context.complete(Outcome.Canceled())
                 }
                 .start
                 .as(context)
@@ -524,8 +527,8 @@ private[fs2] object CompileScope {
     ): F[InterruptContext[F]] = {
       import interruptible._
       for {
-        ref <- Ref.of[F, Option[Either[Throwable, Token]]](None)
-        deferred <- Deferred[F, Either[Throwable, Token]]
+        ref <- Ref.of[F, Option[InterruptionOutcome]](None)
+        deferred <- Deferred[F, InterruptionOutcome]
       } yield InterruptContext[F](
         deferred = deferred,
         ref = ref,

@@ -595,9 +595,11 @@ object Pull extends PullLowPriority {
           def interruptGuard(scope: CompileScope[F])(next: => F[R[X]]): F[R[X]] =
             F.flatMap(scope.isInterrupted) {
               case None => next
-              case Some(Left(err)) =>
+              case Some(Outcome.Errored(err)) =>
                 go(scope, extendedTopLevelScope, view.next(Result.Fail(err)))
-              case Some(Right(scopeId)) =>
+              case Some(Outcome.Canceled()) =>
+                go(scope, extendedTopLevelScope, view.next(Result.Interrupted(scope.id, None)))
+              case Some(Outcome.Completed(scopeId)) =>
                 go(scope, extendedTopLevelScope, view.next(Result.Interrupted(scopeId, None)))
             }
           view.step match {
@@ -655,9 +657,12 @@ object Pull extends PullLowPriority {
 
             case eval: Eval[F, r] =>
               F.flatMap(scope.interruptibleEval(eval.value)) {
-                case Right(r)           => resume(Result.Succeeded(r))
-                case Left(Left(err))    => resume(Result.Fail(err))
-                case Left(Right(token)) => resume(Result.Interrupted(token, None))
+                case Right(r)                   => resume(Result.Succeeded(r))
+                case Left(Outcome.Errored(err)) => resume(Result.Fail(err))
+                case Left(Outcome.Canceled()) =>
+                  resume(Result.Interrupted(scope.id, None))
+                case Left(Outcome.Completed(token)) =>
+                  resume(Result.Interrupted(token, None))
               }
 
             case acquire: Acquire[F, r] =>
