@@ -657,10 +657,12 @@ object Pull extends PullLowPriority {
 
             case eval: Eval[F, r] =>
               F.flatMap(scope.interruptibleEval(eval.value)) {
-                case Right(r)           => resume(Result.Succeeded(r))
-                case Left(InterruptionOutcome.Errored(err))    => resume(Result.Fail(err))
-                case Left(InterruptionOutcome.Canceled)    => resume(Result.Interrupted(scope.id, None))
-                case Left(InterruptionOutcome.Completed(token)) => resume(Result.Interrupted(token, None))
+                case Right(r)                               => resume(Result.Succeeded(r))
+                case Left(InterruptionOutcome.Errored(err)) => resume(Result.Fail(err))
+                case Left(InterruptionOutcome.Canceled) =>
+                  resume(Result.Interrupted(scope.id, None))
+                case Left(InterruptionOutcome.Completed(token)) =>
+                  resume(Result.Interrupted(token, None))
               }
 
             case acquire: Acquire[F, r] =>

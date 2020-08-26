@@ -358,7 +358,10 @@ private[fs2] final class CompileScope[F[_]] private (
           new IllegalStateException("Scope#interrupt called for Scope that cannot be interrupted")
         )
       case Some(iCtx) =>
-        val outcome = cause.fold(t => InterruptionOutcome.Errored(t), _ => InterruptionOutcome.Completed(iCtx.interruptRoot))
+        val outcome = cause.fold(
+          t => InterruptionOutcome.Errored(t),
+          _ => InterruptionOutcome.Completed(iCtx.interruptRoot)
+        )
         iCtx.complete(outcome)
     }
 
@@ -499,7 +502,7 @@ private[fs2] object CompileScope {
               fiber.join
                 .flatMap {
                   case Outcome.Completed(interrupt) =>
-                    interrupt.flatMap { i => context.complete(i) }
+                    interrupt.flatMap(i => context.complete(i))
                   case Outcome.Errored(t) =>
                     context.complete(InterruptionOutcome.Errored(t))
                   case Outcome.Canceled() =>
