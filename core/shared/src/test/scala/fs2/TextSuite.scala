@@ -42,7 +42,7 @@ class TextSuite extends Fs2Suite {
     def genStringNoBom: Gen[String] = Arbitrary.arbitrary[String].filterNot(_.startsWith("\ufeff"))
 
     def checkChar(c: Char): Unit =
-      if (c != '\ufeff') {
+      if (c != '\ufeff')
         (1 to 6).foreach { n =>
           assertEquals(
             Stream
@@ -54,7 +54,6 @@ class TextSuite extends Fs2Suite {
             List(c.toString)
           )
         }
-      }
 
     def checkBytes(is: Int*): Unit =
       (1 to 6).foreach { n =>
