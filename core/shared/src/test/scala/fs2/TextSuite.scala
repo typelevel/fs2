@@ -37,7 +37,6 @@ class TextSuite extends Fs2Suite {
   group("utf8Decoder") {
     def utf8Bytes(s: String): Chunk[Byte] = Chunk.bytes(s.getBytes("UTF-8"))
     def utf8String(bs: Chunk[Byte]): String = new String(bs.toArray, "UTF-8")
-    val utf8Bom = Chunk[Byte](0xef.toByte, 0xbb.toByte, 0xbf.toByte)
 
     def genStringNoBom: Gen[String] = Arbitrary.arbitrary[String].filterNot(_.startsWith("\ufeff"))
 
