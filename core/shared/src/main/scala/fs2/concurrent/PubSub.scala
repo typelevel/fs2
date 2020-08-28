@@ -101,8 +101,8 @@ private[fs2] object PubSub {
       i: A,
       signal: Deferred[F, Unit]
   ) {
-    def complete(implicit F: ConcurrentThrow[F]): F[Unit] =
-      F.start(signal.complete(())).void
+    def complete: F[Unit] =
+      signal.complete(())
   }
 
   private final case class Subscriber[F[_], A, Selector](
@@ -110,8 +110,8 @@ private[fs2] object PubSub {
       selector: Selector,
       signal: Deferred[F, A]
   ) {
-    def complete(a: A)(implicit F: ConcurrentThrow[F]): F[Unit] =
-      F.start(signal.complete(a)).void
+    def complete(a: A): F[Unit] =
+      signal.complete(a)
   }
 
   private final case class PubSubState[F[_], I, O, QS, Selector](
