@@ -53,6 +53,18 @@ object next {
       def start[A](fa: F[A]) = F.start(fa)
       def uncancelable[A](body: Poll[F] => F[A]): F[A] = F.uncancelable(body)
     }
+
+    def semaphore[F[_]](n: Long)(implicit F: next.Alloc[F]): F[Semaphore[F]] = {
+      implicit val mkRef: Ref.Mk[F] = new Ref.Mk[F] {
+         def refOf[A](a: A) = F.ref(a)
+      }
+
+      implicit val mkDef: Deferred.Mk[F] = new Deferred.Mk[F] {
+        def deferred[A] = F.deferred[A]
+      }
+
+      Semaphore[F](n)(Semaphore.MkIn.instance[F, F])
+    }
   }
 }
 
