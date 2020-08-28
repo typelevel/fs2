@@ -127,18 +127,17 @@ private[fs2] object PubSub {
   }
 
   object MkIn {
-    implicit def instance[F[_], G[_]](implicit F: Sync[F], G: Async[G]): MkIn[F, G] =
-      ???
-    //   new MkIn[F, G] {
-    //     def apply[I, O, QS, Selector](
-    //         strategy: PubSub.Strategy[I, O, QS, Selector]
-    //     ): F[PubSub[G, I, O, Selector]] =
-    //       Ref
-    //         .in[F, G, PubSubState[G, I, O, QS, Selector]](
-    //           PubSubState(strategy.initial, ScalaQueue.empty, ScalaQueue.empty)
-    //         )
-    //         .map(state => new PubSubAsync(strategy, state))
-    //   }
+    implicit def instance[F[_]: Functor, G[_]: ConcurrentThrow: Deferred.Mk](implicit mk: Ref.MkIn[F, G]): MkIn[F, G] =
+      new MkIn[F, G] {
+        def apply[I, O, QS, Selector](
+            strategy: PubSub.Strategy[I, O, QS, Selector]
+        ): F[PubSub[G, I, O, Selector]] =
+          Ref
+            .in[F, G, PubSubState[G, I, O, QS, Selector]](
+              PubSubState(strategy.initial, ScalaQueue.empty, ScalaQueue.empty)
+            )
+            .map(state => new PubSubAsync(strategy, state))
+      }
   }
 
   type Mk[F[_]] = MkIn[F, F]
@@ -154,7 +153,7 @@ private[fs2] object PubSub {
     )(implicit mk: MkIn[G, F]): G[PubSub[F, I, O, Selector]] = mk(strategy)
   }
 
-  private class PubSubAsync[F[_]: ConcurrentThrow: Ref.Mk: Deferred.Mk, I, O, QS, Selector](
+  private class PubSubAsync[F[_]: ConcurrentThrow: Deferred.Mk, I, O, QS, Selector](
       strategy: Strategy[I, O, QS, Selector],
       state: Ref[F, PubSubState[F, I, O, QS, Selector]]
   ) extends PubSub[F, I, O, Selector] {
