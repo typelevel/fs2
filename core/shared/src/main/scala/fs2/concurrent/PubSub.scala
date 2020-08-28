@@ -318,8 +318,11 @@ private[fs2] object PubSub {
       }
 
     def getStream(selector: Selector): Stream[F, O] =
-      Stream.bracket(Sync[F].delay(new Token))(clearSubscriber).flatMap { token =>
-        def get_ =
+      Stream.suspend {
+        val token = new Token // side effect, don't inline
+
+        Stream.bracket(token.pure[F])(clearSubscriber).flatMap { token =>
+          def get_ =
             Deferred[F, O].flatMap { deferred =>
               update { ps =>
                 tryGet_(selector, ps) match {
@@ -335,35 +338,9 @@ private[fs2] object PubSub {
               }
             }
 
-        Stream.repeatEval(get_)
+          Stream.repeatEval(get_)
+        }
       }
-
-      // Stream.bracket(Deferred[F, Token])(_.get.flatMap(clearSubscriber)).flatMap { waitForToken =>
-      //   def get_ =
-      //     Concurrent[F].uncancelable { poll =>
-      //       Deferred[F, O].flatMap { deferred =>
-      //         update { ps =>
-      //           val token = new Token // side-effect, don't inline
-
-      //           tryGet_(selector, ps) match {
-      //             case (ps, None) =>
-      //               val sub =
-      //                 Subscriber(token, selector, deferred)
-
-      //               val action = waitForToken.complete(token) >> poll(sub.signal.get)
-
-      //               (ps.copy(subscribers = ps.subscribers :+ sub), action)
-
-      //             case (ps, Some(o)) =>
-      //               (ps, Applicative[F].pure(o))
-      //           }
-      //         }
-      //       }
-      //     }
-
-      //   Stream.repeatEval(get_)
-      // }
-
 
     def tryGet(selector: Selector): F[Option[O]] =
       update { ps =>
