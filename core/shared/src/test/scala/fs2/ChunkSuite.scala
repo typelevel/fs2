@@ -31,8 +31,6 @@ import org.scalacheck.Prop.forAll
 import scala.reflect.ClassTag
 import scala.util.control.NonFatal
 
-// TODO Restore these
-@munit.IgnoreSuite
 class ChunkSuite extends Fs2Suite {
   override def scalaCheckTestParameters =
     super.scalaCheckTestParameters
