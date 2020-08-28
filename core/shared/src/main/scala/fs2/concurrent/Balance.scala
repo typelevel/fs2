@@ -34,22 +34,7 @@ object Balance {
   object Mk {
     implicit def instance[F[_]: Async]: Mk[F] =
       new Mk[F] {
-        def apply[O](chunkSize: Int): Pipe[F, O, Stream[F, O]] = { source =>
-          Stream.eval(PubSub(PubSub.Strategy.closeDrainFirst(strategy[O]))).flatMap {
-            pubSub =>
-              def subscriber =
-                pubSub
-                  .getStream(chunkSize)
-                  .unNoneTerminate
-                  .flatMap(Stream.chunk)
-              def push =
-                source.chunks
-                  .evalMap(chunk => pubSub.publish(Some(chunk)))
-                  .onFinalize(pubSub.publish(None))
-
-              Stream.constant(subscriber).concurrently(push)
-          }
-        }
+        def apply[O](chunkSize: Int): Pipe[F, O, Stream[F, O]] = ???
       }
   }
 
@@ -89,9 +74,22 @@ object Balance {
     * The resulting stream terminates after the source stream terminates and all workers terminate.
     * Conversely, if the resulting stream is terminated early, the source stream will be terminated.
     */
-  def apply[F[_], O](
-      chunkSize: Int
-  )(implicit mk: Mk[F]): Pipe[F, O, Stream[F, O]] = mk(chunkSize)
+  def apply[F[_]: Alloc: next.Alloc, O](chunkSize: Int): Pipe[F, O, Stream[F, O]] = { source =>
+    Stream.eval(PubSub(PubSub.Strategy.closeDrainFirst(strategy[O]))).flatMap {
+      pubSub =>
+      def subscriber =
+        pubSub
+          .getStream(chunkSize)
+          .unNoneTerminate
+          .flatMap(Stream.chunk)
+      def push =
+        source.chunks
+          .evalMap(chunk => pubSub.publish(Some(chunk)))
+          .onFinalize(pubSub.publish(None))
+
+      Stream.constant(subscriber).concurrently(push)
+    }
+  }
 
   /**
     * Like `apply` but instead of providing a stream of worker streams, the supplied pipes are
