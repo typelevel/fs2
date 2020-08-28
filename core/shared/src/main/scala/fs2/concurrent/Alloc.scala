@@ -60,7 +60,6 @@ sealed trait Alloc[F[_]] {
   implicit def mkRef: Ref.Mk[F]
   implicit def mkDeferred: Deferred.Mk[F]
   implicit def mkSemaphore: Semaphore.Mk[F]
-  implicit def mkSignallingRef: SignallingRef.Mk[F]
 }
 
 object Alloc {
@@ -72,6 +71,5 @@ object Alloc {
       implicit def mkRef: Ref.Mk[F] = Ref.MkIn.instance[F, F]
       implicit def mkDeferred: Deferred.Mk[F] = Deferred.MkIn.instance[F, F]
       implicit def mkSemaphore: Semaphore.Mk[F] = Semaphore.MkIn.instance[F, F]
-      implicit def mkSignallingRef: SignallingRef.Mk[F] = SignallingRef.Mk.instance[F]
     }
 }
