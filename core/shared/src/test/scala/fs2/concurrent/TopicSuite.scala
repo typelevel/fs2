@@ -27,7 +27,7 @@ import cats.effect.IO
 import scala.concurrent.duration._
 
 // TODO
-@munit.IgnoreSuite
+//@munit.IgnoreSuite
 class TopicSuite extends Fs2Suite {
   test("subscribers see all elements published") {
     Topic[IO, Int](-1).flatMap { topic =>
@@ -120,7 +120,7 @@ class TopicSuite extends Fs2Suite {
       ) // if the stream won't be discrete we will get much more size notifications
   }
 
-  test("unregister subscribers under concurrent load") {
+  test("unregister subscribers under concurrent load".ignore) {
     Topic[IO, Int](0)
       .flatMap { topic =>
         Stream
