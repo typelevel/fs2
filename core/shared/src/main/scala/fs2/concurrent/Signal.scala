@@ -155,21 +155,18 @@ abstract class SignallingRef[F[_], A] extends Ref[F, A] with Signal[F, A]
 
 object SignallingRef {
 
-  sealed trait MkIn[F[_], G[_]] {
-    def refOf[A](initial: A): F[SignallingRef[G, A]]
+  sealed trait Mk[F[_]] {
+    def refOf[A](initial: A): F[SignallingRef[F, A]]
   }
 
-  object MkIn {
-    implicit def instance[F[_], G[_]](implicit F: Sync[F], G: Async[G]): MkIn[F, G] =
-      new MkIn[F, G] {
-        def refOf[A](initial: A): F[SignallingRef[G, A]] =
-          Ref
-            .in[F, G, (A, Long, Map[Token, Deferred[G, (A, Long)]])]((initial, 0L, Map.empty))
-            .map(state => new SignallingRefImpl[G, A](state))
+  object Mk {
+    implicit def instance[F[_]: Async]: Mk[F] =
+      new Mk[F] {
+        def refOf[A](initial: A): F[SignallingRef[F, A]] =
+          Ref.of[F, (A, Long, Map[Token, Deferred[F, (A, Long)]])]((initial, 0L, Map.empty))
+            .map(state => new SignallingRefImpl[F, A](state))
       }
   }
-
-  type Mk[F[_]] = MkIn[F, F]
 
   /** Alias for `of`. */
   def apply[F[_], A](initial: A)(implicit mk: Mk[F]): F[SignallingRef[F, A]] = mk.refOf(initial)
@@ -178,13 +175,6 @@ object SignallingRef {
     * Builds a `SignallingRef` for for effect `F`, initialized to the supplied value.
     */
   def of[F[_], A](initial: A)(implicit mk: Mk[F]): F[SignallingRef[F, A]] = mk.refOf(initial)
-
-  /**
-    * Builds a `SignallingRef` for effect `G` in the effect `F`.
-    * Like [[of]], but initializes state using another effect constructor.
-    */
-  def in[F[_], G[_], A](initial: A)(implicit mk: MkIn[F, G]): F[SignallingRef[G, A]] =
-    mk.refOf(initial)
 
   private final class SignallingRefImpl[F[_], A](
       state: Ref[F, (A, Long, Map[Token, Deferred[F, (A, Long)]])]
