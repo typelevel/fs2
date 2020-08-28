@@ -581,7 +581,7 @@ object InspectableQueue {
                 }
 
               def peek1: F[A] =
-                Sync[F].bracket(Token[F]) { token =>
+                Sync[F].bracket(Token.create[F]) { token =>
                   def take: F[A] =
                     pubSub.get(Left(Some(token))).flatMap {
                       case Left(s) =>
