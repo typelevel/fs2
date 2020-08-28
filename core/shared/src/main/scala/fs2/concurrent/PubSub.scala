@@ -127,7 +127,7 @@ private[fs2] object PubSub {
   }
 
   object MkIn {
-    implicit def instance[F[_]: Functor, G[_]: ConcurrentThrow: Deferred.Mk](implicit mk: Ref.MkIn[F, G]): MkIn[F, G] =
+    implicit def instance[F[_]: Functor, G[_]: Async: Deferred.Mk](implicit mk: Ref.MkIn[F, G]): MkIn[F, G] =
       new MkIn[F, G] {
         def apply[I, O, QS, Selector](
             strategy: PubSub.Strategy[I, O, QS, Selector]
@@ -153,7 +153,7 @@ private[fs2] object PubSub {
     )(implicit mk: MkIn[G, F]): G[PubSub[F, I, O, Selector]] = mk(strategy)
   }
 
-  private class PubSubAsync[F[_]: ConcurrentThrow: Deferred.Mk, I, O, QS, Selector](
+  private class PubSubAsync[F[_]: Async: Deferred.Mk, I, O, QS, Selector](
       strategy: Strategy[I, O, QS, Selector],
       state: Ref[F, PubSubState[F, I, O, QS, Selector]]
   ) extends PubSub[F, I, O, Selector] {
@@ -318,31 +318,51 @@ private[fs2] object PubSub {
       }
 
     def getStream(selector: Selector): Stream[F, O] =
-      Stream.bracket(Deferred[F, Token])(_.get.flatMap(clearSubscriber)).flatMap { waitForToken =>
+      Stream.bracket(Sync[F].delay(new Token))(clearSubscriber).flatMap { token =>
         def get_ =
-          Concurrent[F].uncancelable { poll =>
             Deferred[F, O].flatMap { deferred =>
               update { ps =>
-                val token = new Token // side-effect, don't inline
-
                 tryGet_(selector, ps) match {
                   case (ps, None) =>
                     val sub =
                       Subscriber(token, selector, deferred)
 
-                    val action = waitForToken.complete(token) >> poll(sub.signal.get)
-
-                    (ps.copy(subscribers = ps.subscribers :+ sub), action)
+                    (ps.copy(subscribers = ps.subscribers :+ sub), sub.signal.get)
 
                   case (ps, Some(o)) =>
                     (ps, Applicative[F].pure(o))
                 }
               }
             }
-          }
 
         Stream.repeatEval(get_)
       }
+
+      // Stream.bracket(Deferred[F, Token])(_.get.flatMap(clearSubscriber)).flatMap { waitForToken =>
+      //   def get_ =
+      //     Concurrent[F].uncancelable { poll =>
+      //       Deferred[F, O].flatMap { deferred =>
+      //         update { ps =>
+      //           val token = new Token // side-effect, don't inline
+
+      //           tryGet_(selector, ps) match {
+      //             case (ps, None) =>
+      //               val sub =
+      //                 Subscriber(token, selector, deferred)
+
+      //               val action = waitForToken.complete(token) >> poll(sub.signal.get)
+
+      //               (ps.copy(subscribers = ps.subscribers :+ sub), action)
+
+      //             case (ps, Some(o)) =>
+      //               (ps, Applicative[F].pure(o))
+      //           }
+      //         }
+      //       }
+      //     }
+
+      //   Stream.repeatEval(get_)
+      // }
 
 
     def tryGet(selector: Selector): F[Option[O]] =
