@@ -24,7 +24,7 @@ package concurrent
 
 import cats.{Applicative, Functor, Invariant}
 import cats.data.{OptionT, State}
-import cats.effect.{Async, ConcurrentThrow, Sync}
+import cats.effect.ConcurrentThrow
 import cats.effect.concurrent.{Deferred, Ref}
 import cats.implicits._
 import fs2.internal.Token
@@ -54,14 +54,14 @@ trait Signal[F[_], A] {
 }
 
 object Signal extends SignalLowPriorityImplicits {
-  def constant[F[_], A](a: A)(implicit F: Async[F]): Signal[F, A] =
+  def constant[F[_], A](a: A)(implicit F: ConcurrentThrow[F]): Signal[F, A] =
     new Signal[F, A] {
       def get = F.pure(a)
       def continuous = Stream.constant(a)
       def discrete = Stream(a) ++ Stream.never
     }
 
-  implicit def applicativeInstance[F[_]: Async]: Applicative[Signal[F, *]] =
+  implicit def applicativeInstance[F[_]: ConcurrentThrow: Alloc]: Applicative[Signal[F, *]] =
     new Applicative[Signal[F, *]] {
       override def map[A, B](fa: Signal[F, A])(f: A => B): Signal[F, B] =
         Signal.map(fa)(f)
@@ -80,7 +80,7 @@ object Signal extends SignalLowPriorityImplicits {
         }
     }
 
-  private def nondeterministicZip[F[_]: Async, A0, A1](
+  private def nondeterministicZip[F[_]: ConcurrentThrow: Alloc, A0, A1](
       xs: Stream[F, A0],
       ys: Stream[F, A1]
   ): Stream[F, (A0, A1)] = {
@@ -160,7 +160,7 @@ object SignallingRef {
   }
 
   object Mk {
-    implicit def instance[F[_]: Async]: Mk[F] =
+    implicit def instance[F[_]: ConcurrentThrow: Ref.Mk: Deferred.Mk]: Mk[F] =
       new Mk[F] {
         def refOf[A](initial: A): F[SignallingRef[F, A]] =
           Ref.of[F, (A, Long, Map[Token, Deferred[F, (A, Long)]])]((initial, 0L, Map.empty))
@@ -178,7 +178,7 @@ object SignallingRef {
 
   private final class SignallingRefImpl[F[_], A](
       state: Ref[F, (A, Long, Map[Token, Deferred[F, (A, Long)]])]
-  )(implicit F: Async[F])
+  )(implicit F: ConcurrentThrow[F], mk: Deferred.Mk[F])
       extends SignallingRef[F, A] {
 
     override def get: F[A] = state.get.map(_._1)

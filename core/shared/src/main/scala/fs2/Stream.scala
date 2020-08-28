@@ -3462,7 +3462,7 @@ object Stream extends StreamLowPriority {
   /**
     * A stream that never emits and never terminates.
     */
-  def never[F[_]](implicit F: Async[F]): Stream[F, Nothing] =
+  def never[F[_]](implicit F: ConcurrentThrow[F]): Stream[F, Nothing] =
     Stream.eval(F.never)
 
   /**
