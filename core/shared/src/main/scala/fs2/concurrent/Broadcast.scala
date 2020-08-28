@@ -28,37 +28,6 @@ import fs2._
 /** Provides mechanisms for broadcast distribution of elements to multiple streams. */
 object Broadcast {
 
-  sealed trait Mk[F[_]] {
-    def apply[O](minReady: Int): Pipe[F, O, Stream[F, O]]
-  }
-
-  object Mk {
-    implicit def instance[F[_]: Async]: Mk[F] =
-      new Mk[F] {
-        def apply[O](minReady: Int): Pipe[F, O, Stream[F, O]] = { source =>
-          Stream
-            .eval(PubSub(PubSub.Strategy.closeDrainFirst(strategy[Chunk[O]](minReady))))
-            .flatMap { pubSub =>
-              def subscriber =
-                Stream.bracket(Token[F])(pubSub.unsubscribe).flatMap { selector =>
-                  pubSub
-                    .getStream(selector)
-                    .unNoneTerminate
-                    .flatMap(Stream.chunk)
-                }
-
-              def publish =
-                source.chunks
-                  .evalMap(chunk => pubSub.publish(Some(chunk)))
-                  .onFinalize(pubSub.publish(None))
-
-              Stream.constant(subscriber).concurrently(publish)
-            }
-        }
-
-      }
-  }
-
   /**
     * Allows elements of a stream to be broadcast to multiple workers.
     *
@@ -90,7 +59,26 @@ object Broadcast {
     * @param minReady specifies that broadcasting will hold off until at least `minReady` subscribers will
     *                 be ready
     */
-  def apply[F[_], O](minReady: Int)(implicit mk: Mk[F]): Pipe[F, O, Stream[F, O]] = mk(minReady)
+  def apply[F[_]: next.Alloc: Alloc, O](minReady: Int): Pipe[F, O, Stream[F, O]] = { source =>
+    Stream
+      .eval(PubSub(PubSub.Strategy.closeDrainFirst(strategy[Chunk[O]](minReady))))
+      .flatMap { pubSub =>
+        def subscriber =
+          Stream.bracket(Token[F])(pubSub.unsubscribe).flatMap { selector =>
+            pubSub
+              .getStream(selector)
+              .unNoneTerminate
+              .flatMap(Stream.chunk)
+          }
+
+        def publish =
+          source.chunks
+            .evalMap(chunk => pubSub.publish(Some(chunk)))
+            .onFinalize(pubSub.publish(None))
+
+        Stream.constant(subscriber).concurrently(publish)
+      }
+  }
 
   /**
     * Like [[apply]] but instead of providing a stream of worker streams, it runs each inner stream through
