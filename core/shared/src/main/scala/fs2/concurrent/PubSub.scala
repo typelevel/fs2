@@ -98,27 +98,11 @@ private[fs2] trait PubSub[F[_], I, O, Selector] extends Publish[F, I] with Subsc
 private[fs2] object PubSub {
   def apply[F[_], I, O, QS, Selector](
     strategy: PubSub.Strategy[I, O, QS, Selector]
-  )(implicit F: Mk[F]): F[PubSub[F, I, O, Selector]] =
-    F.apply(strategy)
-
-  sealed trait Mk[F[_]] {
-    def apply[I, O, QA, Selector](
-        strategy: PubSub.Strategy[I, O, QA, Selector]
-    ): F[PubSub[F, I, O, Selector]]
-  }
-
-  object Mk {
-    implicit def instance[F[_]: ConcurrentThrow: Ref.Mk: Deferred.Mk]: Mk[F] =
-      new Mk[F] {
-        def apply[I, O, QS, Selector](
-          strategy: PubSub.Strategy[I, O, QS, Selector]
-        ): F[PubSub[F, I, O, Selector]] =
-          Ref.of[F, PubSubState[F, I, O, QS, Selector]](
-            PubSubState(strategy.initial, ScalaQueue.empty, ScalaQueue.empty)
-          )
-            .map(state => new PubSubAsync(strategy, state))
-      }
-  }
+  )(implicit F: next.Alloc[F]): F[PubSub[F, I, O, Selector]] =
+    F.ref[PubSubState[F, I, O, QS, Selector]](
+      PubSubState(strategy.initial, ScalaQueue.empty, ScalaQueue.empty)
+    )
+      .map(state => new PubSubAsync(strategy, state))
 
   private final case class Publisher[F[_], A](
       token: Token,
@@ -144,10 +128,10 @@ private[fs2] object PubSub {
       subscribers: ScalaQueue[Subscriber[F, O, Selector]]
   )
 
-  private class PubSubAsync[F[_]: ConcurrentThrow: Deferred.Mk, I, O, QS, Selector](
+  private class PubSubAsync[F[_], I, O, QS, Selector](
       strategy: Strategy[I, O, QS, Selector],
       state: Ref[F, PubSubState[F, I, O, QS, Selector]]
-  ) extends PubSub[F, I, O, Selector] {
+  )(implicit F: next.Alloc[F]) extends PubSub[F, I, O, Selector] {
 
     private type PS = PubSubState[F, I, O, QS, Selector]
 
@@ -263,7 +247,7 @@ private[fs2] object PubSub {
       }
 
     def publish(i: I): F[Unit] =
-      (Deferred[F, Unit], Token[F]).tupled.flatMap { case (deferred, token) =>
+      (F.deferred[Unit], Token[F]).tupled.flatMap { case (deferred, token) =>
         update { ps =>
           if (strategy.accepts(i, ps.queue)) {
             val ps1 = publish_(i, ps)
@@ -289,7 +273,7 @@ private[fs2] object PubSub {
       }
 
     def get(selector: Selector): F[O] =
-      (Deferred[F, O], Token[F]).tupled.flatMap { case (deferred, token) =>
+      (F.deferred[O], Token[F]).tupled.flatMap { case (deferred, token) =>
         update { ps =>
           tryGet_(selector, ps) match {
             case (ps, None) =>
@@ -309,7 +293,7 @@ private[fs2] object PubSub {
     def getStream(selector: Selector): Stream[F, O] =
       Stream.bracket(Token[F])(clearSubscriber).flatMap { token =>
         def get_ =
-          Deferred[F, O].flatMap { deferred =>
+          F.deferred[O].flatMap { deferred =>
             update { ps =>
               tryGet_(selector, ps) match {
                 case (ps, None) =>

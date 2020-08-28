@@ -108,7 +108,7 @@ object Topic {
     * Constructs a `Topic` for a provided `Concurrent` datatype. The
     * `initial` value is immediately published.
     */
-  def apply[F[_], A](initial: A)(implicit F: ConcurrentThrow[F], mk: PubSub.Mk[F]): F[Topic[F, A]] = {
+  def apply[F[_], A](initial: A)(implicit F: next.Alloc[F]): F[Topic[F, A]] = {
       implicit def eqInstance: Eq[Strategy.State[A]] =
       Eq.instance[Strategy.State[A]](_.subscribers.keySet == _.subscribers.keySet)
 
