@@ -21,10 +21,11 @@
 
 package fs2.concurrent
 
-import cats.{Applicative, Eq}
-import cats.effect.concurrent.{Deferred, Ref}
-import cats.effect.{ConcurrentThrow, Sync}
-import cats.implicits._
+import cats._, implicits._
+import cats.effect._
+import cats.effect.concurrent._
+import cats.effect.implicits._
+
 import fs2._
 import fs2.internal.Token
 
@@ -127,16 +128,17 @@ private[fs2] object PubSub {
 
   object MkIn {
     implicit def instance[F[_], G[_]](implicit F: Sync[F], G: Async[G]): MkIn[F, G] =
-      new MkIn[F, G] {
-        def apply[I, O, QS, Selector](
-            strategy: PubSub.Strategy[I, O, QS, Selector]
-        ): F[PubSub[G, I, O, Selector]] =
-          Ref
-            .in[F, G, PubSubState[G, I, O, QS, Selector]](
-              PubSubState(strategy.initial, ScalaQueue.empty, ScalaQueue.empty)
-            )
-            .map(state => new PubSubAsync(strategy, state))
-      }
+      ???
+    //   new MkIn[F, G] {
+    //     def apply[I, O, QS, Selector](
+    //         strategy: PubSub.Strategy[I, O, QS, Selector]
+    //     ): F[PubSub[G, I, O, Selector]] =
+    //       Ref
+    //         .in[F, G, PubSubState[G, I, O, QS, Selector]](
+    //           PubSubState(strategy.initial, ScalaQueue.empty, ScalaQueue.empty)
+    //         )
+    //         .map(state => new PubSubAsync(strategy, state))
+    //   }
   }
 
   type Mk[F[_]] = MkIn[F, F]
@@ -152,11 +154,10 @@ private[fs2] object PubSub {
     )(implicit mk: MkIn[G, F]): G[PubSub[F, I, O, Selector]] = mk(strategy)
   }
 
-  private class PubSubAsync[F[_], I, O, QS, Selector](
+  private class PubSubAsync[F[_]: ConcurrentThrow: Ref.Mk: Deferred.Mk, I, O, QS, Selector](
       strategy: Strategy[I, O, QS, Selector],
       state: Ref[F, PubSubState[F, I, O, QS, Selector]]
-  )(implicit F: Async[F])
-      extends PubSub[F, I, O, Selector] {
+  ) extends PubSub[F, I, O, Selector] {
 
     private type PS = PubSubState[F, I, O, QS, Selector]
 
@@ -272,17 +273,19 @@ private[fs2] object PubSub {
       }
 
     def publish(i: I): F[Unit] =
-      update { ps =>
-        if (strategy.accepts(i, ps.queue)) {
-          val ps1 = publish_(i, ps)
-          (ps1, Applicative[F].unit)
-        } else {
-          val publisher = Publisher(new Token, i, Deferred.unsafe[F, Unit])
+      Deferred[F, Unit].flatMap { deferred =>
+        update { ps =>
+          if (strategy.accepts(i, ps.queue)) {
+            val ps1 = publish_(i, ps)
+            (ps1, Applicative[F].unit)
+          } else {
+            val publisher = Publisher(new Token, i, deferred)
 
-          def awaitCancellable =
-            F.guaranteeCase(publisher.signal.get)(clearPublisher(publisher.token))
+            def awaitCancellable =
+              publisher.signal.get.guaranteeCase(clearPublisher(publisher.token))
 
-          (ps.copy(publishers = ps.publishers :+ publisher), awaitCancellable)
+            (ps.copy(publishers = ps.publishers :+ publisher), awaitCancellable)
+          }
         }
       }
 
@@ -296,41 +299,52 @@ private[fs2] object PubSub {
       }
 
     def get(selector: Selector): F[O] =
-      update { ps =>
-        tryGet_(selector, ps) match {
-          case (ps, None) =>
-            val token = new Token
+      Deferred[F, O].flatMap { deferred =>
+        update { ps =>
+          tryGet_(selector, ps) match {
+            case (ps, None) =>
+              val token = new Token
 
-            val sub =
-              Subscriber(token, selector, Deferred.unsafe[F, O])
+              val sub =
+                Subscriber(token, selector, deferred)
 
-            def cancellableGet =
-              F.guaranteeCase(sub.signal.get)(clearSubscriberOnCancel(token))
+              def cancellableGet =
+                sub.signal.get.guaranteeCase(clearSubscriberOnCancel(token))
 
-            (ps.copy(subscribers = ps.subscribers :+ sub), cancellableGet)
-          case (ps, Some(o)) =>
-            (ps, Applicative[F].pure(o))
+              (ps.copy(subscribers = ps.subscribers :+ sub), cancellableGet)
+            case (ps, Some(o)) =>
+              (ps, o.pure[F])
+          }
         }
       }
 
     def getStream(selector: Selector): Stream[F, O] =
-      Stream.bracket(Sync[F].delay(new Token))(clearSubscriber).flatMap { token =>
+      Stream.bracket(Deferred[F, Token])(_.get.flatMap(clearSubscriber)).flatMap { waitForToken =>
         def get_ =
-          update { ps =>
-            tryGet_(selector, ps) match {
-              case (ps, None) =>
-                val sub =
-                  Subscriber(token, selector, Deferred.unsafe[F, O])
+          Concurrent[F].uncancelable { poll =>
+            Deferred[F, O].flatMap { deferred =>
+              update { ps =>
+                val token = new Token // side-effect, don't inline
 
-                (ps.copy(subscribers = ps.subscribers :+ sub), sub.signal.get)
+                tryGet_(selector, ps) match {
+                  case (ps, None) =>
+                    val sub =
+                      Subscriber(token, selector, deferred)
 
-              case (ps, Some(o)) =>
-                (ps, Applicative[F].pure(o))
+                    val action = waitForToken.complete(token) >> poll(sub.signal.get)
+
+                    (ps.copy(subscribers = ps.subscribers :+ sub), action)
+
+                  case (ps, Some(o)) =>
+                    (ps, Applicative[F].pure(o))
+                }
+              }
             }
           }
 
         Stream.repeatEval(get_)
       }
+
 
     def tryGet(selector: Selector): F[Option[O]] =
       update { ps =>
