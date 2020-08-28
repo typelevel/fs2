@@ -42,7 +42,7 @@ object Alloc {
       implicit def mkRef: Ref.Mk[F] = Ref.MkIn.instance[F, F]
       implicit def mkDeferred: Deferred.Mk[F] = Deferred.MkIn.instance[F, F]
       implicit def mkSemaphore: Semaphore.Mk[F] = Semaphore.MkIn.instance[F, F]
-      implicit def mkQueue: Queue.Mk[F] = Queue.MkIn.instance[F, F]
+      implicit def mkQueue: Queue.Mk[F] = Queue.Mk.instance[F]
       implicit def mkSignallingRef: SignallingRef.Mk[F] = SignallingRef.MkIn.instance[F, F]
       implicit def mkBalance: Balance.Mk[F] = Balance.Mk.instance[F]
       implicit def mkBroadcast: Broadcast.Mk[F] = Broadcast.Mk.instance[F]

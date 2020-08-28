@@ -37,7 +37,7 @@ object Broadcast {
       new Mk[F] {
         def apply[O](minReady: Int): Pipe[F, O, Stream[F, O]] = { source =>
           Stream
-            .eval(PubSub.in[F].from(PubSub.Strategy.closeDrainFirst(strategy[Chunk[O]](minReady))))
+            .eval(PubSub(PubSub.Strategy.closeDrainFirst(strategy[Chunk[O]](minReady))))
             .flatMap { pubSub =>
               def subscriber =
                 Stream.bracket(Sync[F].delay(new Token))(pubSub.unsubscribe).flatMap { selector =>

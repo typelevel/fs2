@@ -96,6 +96,30 @@ private[fs2] trait Subscribe[F[_], A, Selector] {
 private[fs2] trait PubSub[F[_], I, O, Selector] extends Publish[F, I] with Subscribe[F, O, Selector]
 
 private[fs2] object PubSub {
+  def apply[F[_], I, O, QS, Selector](
+    strategy: PubSub.Strategy[I, O, QS, Selector]
+  )(implicit F: Mk[F]): F[PubSub[F, I, O, Selector]] =
+    F.apply(strategy)
+
+  sealed trait Mk[F[_]] {
+    def apply[I, O, QA, Selector](
+      strategy: PubSub.Strategy[I, O, QA, Selector]
+    ): F[PubSub[F, I, O, Selector]]
+  }
+
+  object Mk {
+    implicit def instance[F[_]: ConcurrentThrow: Ref.Mk: Deferred.Mk]: Mk[F] =
+      new Mk[F] {
+        def apply[I, O, QS, Selector](
+          strategy: PubSub.Strategy[I, O, QS, Selector]
+        ): F[PubSub[F, I, O, Selector]] =
+          Ref.of[F, PubSubState[F, I, O, QS, Selector]](
+            PubSubState(strategy.initial, ScalaQueue.empty, ScalaQueue.empty)
+          )
+            .map(state => new PubSubAsync(strategy, state))
+      }
+  }
+
   private final case class Publisher[F[_], A](
       token: Token,
       i: A,
@@ -119,39 +143,6 @@ private[fs2] object PubSub {
       publishers: ScalaQueue[Publisher[F, I]],
       subscribers: ScalaQueue[Subscriber[F, O, Selector]]
   )
-
-  sealed trait MkIn[F[_], G[_]] {
-    def apply[I, O, QA, Selector](
-        strategy: PubSub.Strategy[I, O, QA, Selector]
-    ): F[PubSub[G, I, O, Selector]]
-  }
-
-  object MkIn {
-    implicit def instance[F[_]: Functor, G[_]: ConcurrentThrow: Deferred.Mk](implicit mk: Ref.MkIn[F, G]): MkIn[F, G] =
-      new MkIn[F, G] {
-        def apply[I, O, QS, Selector](
-            strategy: PubSub.Strategy[I, O, QS, Selector]
-        ): F[PubSub[G, I, O, Selector]] =
-          Ref
-            .in[F, G, PubSubState[G, I, O, QS, Selector]](
-              PubSubState(strategy.initial, ScalaQueue.empty, ScalaQueue.empty)
-            )
-            .map(state => new PubSubAsync(strategy, state))
-      }
-  }
-
-  type Mk[F[_]] = MkIn[F, F]
-
-  def apply[F[_]: Mk, I, O, QS, Selector](
-      strategy: PubSub.Strategy[I, O, QS, Selector]
-  ): F[PubSub[F, I, O, Selector]] =
-    in[F].from(strategy)
-
-  final class InPartiallyApplied[G[_]](private val unused: Boolean) extends AnyVal {
-    def from[F[_], I, O, QS, Selector](
-        strategy: PubSub.Strategy[I, O, QS, Selector]
-    )(implicit mk: MkIn[G, F]): G[PubSub[F, I, O, Selector]] = mk(strategy)
-  }
 
   private class PubSubAsync[F[_]: ConcurrentThrow: Deferred.Mk, I, O, QS, Selector](
       strategy: Strategy[I, O, QS, Selector],
@@ -359,15 +350,6 @@ private[fs2] object PubSub {
         (ps.copy(queue = strategy.unsubscribe(selector, ps.queue)), Applicative[F].unit)
       }
   }
-
-  /**
-    * Like [[apply]] but initializes state using another effect constructor
-    *
-    * This builder uses the
-    * [[https://typelevel.org/cats/guidelines.html#partially-applied-type-params Partially-Applied Type]]
-    * technique.
-    */
-  def in[G[_]] = new InPartiallyApplied[G](true)
 
   /**
     * Describes a the behavior of a `PubSub`.

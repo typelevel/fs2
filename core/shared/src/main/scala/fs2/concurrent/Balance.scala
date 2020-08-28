@@ -35,7 +35,7 @@ object Balance {
     implicit def instance[F[_]: Async]: Mk[F] =
       new Mk[F] {
         def apply[O](chunkSize: Int): Pipe[F, O, Stream[F, O]] = { source =>
-          Stream.eval(PubSub.in[F].from(PubSub.Strategy.closeDrainFirst(strategy[O]))).flatMap {
+          Stream.eval(PubSub(PubSub.Strategy.closeDrainFirst(strategy[O]))).flatMap {
             pubSub =>
               def subscriber =
                 pubSub
