@@ -21,14 +21,9 @@
 
 package fs2.internal
 
-import cats.effect.ConcurrentThrow
-import cats.effect.concurrent.Deferred
+import fs2.concurrent.next
 
-final class Interruptible[F[_]](implicit
-    val concurrentThrow: ConcurrentThrow[F],
-    val mkDeferred: Deferred.Mk[F]
-)
-
+final class Interruptible[F[_]](implicit val concurrent: next.Alloc[F])
 object Interruptible {
-  implicit def instance[F[_]: ConcurrentThrow: Deferred.Mk]: Interruptible[F] = new Interruptible[F]
+  implicit def instance[F[_]: next.Alloc]: Interruptible[F] = new Interruptible[F]
 }

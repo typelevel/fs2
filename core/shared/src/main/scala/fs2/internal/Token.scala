@@ -43,13 +43,13 @@ object Token {
     * but also has zero impact on meaningful behaviour for the user,
     * unlike for example internal concurrency.
     *
-    * Furthermore, token creation it has the several properties:
+    * Furthermore, token creation has the several properties:
     * - it's synchronous
     * - it's infallible
     * - it's not created in contexts that affect stack safety such as iteration
     *
     * Given all these reasons, we suspend it via `Monad` instead of
-    * using `Sync.`
+    * using `Sync.` Do not try this at home.
     */
   def apply[F[_]: Monad]: F[Token] =
     ().pure[F].map(_ => new Token)

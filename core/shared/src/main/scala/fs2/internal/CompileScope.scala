@@ -31,6 +31,7 @@ import cats.effect.implicits._
 import cats.implicits._
 import fs2.{CompositeFailure, Pure, Scope}
 import fs2.internal.CompileScope.{InterruptContext, InterruptionOutcome}
+import fs2.concurrent.next
 
 /**
   * Implementation of [[Scope]] for the internal stream interpreter.
@@ -526,8 +527,8 @@ private[fs2] object CompileScope {
     ): F[InterruptContext[F]] = {
       import interruptible._
       for {
-        ref <- Ref.of[F, Option[InterruptionOutcome]](None)
-        deferred <- Deferred[F, InterruptionOutcome]
+        ref <- next.Alloc[F].ref[Option[InterruptionOutcome]](None)
+        deferred <- next.Alloc[F].deferred[InterruptionOutcome]
       } yield InterruptContext[F](
         deferred = deferred,
         ref = ref,

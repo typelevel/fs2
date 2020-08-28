@@ -61,7 +61,7 @@ object Signal extends SignalLowPriorityImplicits {
       def discrete = Stream(a) ++ Stream.never
     }
 
-  implicit def applicativeInstance[F[_]: next.Alloc: Alloc]: Applicative[Signal[F, *]] =
+  implicit def applicativeInstance[F[_]: next.Alloc]: Applicative[Signal[F, *]] =
     new Applicative[Signal[F, *]] {
       override def map[A, B](fa: Signal[F, A])(f: A => B): Signal[F, B] =
         Signal.map(fa)(f)
@@ -80,7 +80,7 @@ object Signal extends SignalLowPriorityImplicits {
         }
     }
 
-  private def nondeterministicZip[F[_]: next.Alloc: Alloc, A0, A1](
+  private def nondeterministicZip[F[_]: next.Alloc, A0, A1](
       xs: Stream[F, A0],
       ys: Stream[F, A1]
   ): Stream[F, (A0, A1)] = {
@@ -123,7 +123,7 @@ object Signal extends SignalLowPriorityImplicits {
   implicit class BooleanSignalOps[F[_]](val self: Signal[F, Boolean]) extends AnyVal {
     def interrupt[A](
         s: Stream[F, A]
-    )(implicit F: ConcurrentThrow[F], alloc: Alloc[F]): Stream[F, A] =
+    )(implicit F: next.Alloc[F]): Stream[F, A] =
       s.interruptWhen(self)
   }
 }

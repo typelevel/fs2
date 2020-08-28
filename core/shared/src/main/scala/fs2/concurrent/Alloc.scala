@@ -68,20 +68,21 @@ object next {
   }
 }
 
-sealed trait Alloc[F[_]] {
-  implicit def mkRef: Ref.Mk[F]
-  implicit def mkDeferred: Deferred.Mk[F]
-  implicit def mkSemaphore: Semaphore.Mk[F]
-}
 
-object Alloc {
-  def apply[F[_]](implicit instance: Alloc[F]): instance.type = instance
+// sealed trait Alloc[F[_]] {
+//   implicit def mkRef: Ref.Mk[F]
+//   implicit def mkDeferred: Deferred.Mk[F]
+//   implicit def mkSemaphore: Semaphore.Mk[F]
+// }
 
-  import cats.effect.Async
-  implicit def instance[F[_]: Async]: Alloc[F] =
-    new Alloc[F] {
-      implicit def mkRef: Ref.Mk[F] = Ref.MkIn.instance[F, F]
-      implicit def mkDeferred: Deferred.Mk[F] = Deferred.MkIn.instance[F, F]
-      implicit def mkSemaphore: Semaphore.Mk[F] = Semaphore.MkIn.instance[F, F]
-    }
-}
+// object Alloc {
+//   def apply[F[_]](implicit instance: Alloc[F]): instance.type = instance
+
+//   import cats.effect.Async
+//   implicit def instance[F[_]: Async]: Alloc[F] =
+//     new Alloc[F] {
+//       implicit def mkRef: Ref.Mk[F] = Ref.MkIn.instance[F, F]
+//       implicit def mkDeferred: Deferred.Mk[F] = Deferred.MkIn.instance[F, F]
+//       implicit def mkSemaphore: Semaphore.Mk[F] = Semaphore.MkIn.instance[F, F]
+//     }
+// }
