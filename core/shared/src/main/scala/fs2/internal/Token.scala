@@ -24,8 +24,6 @@ package fs2.internal
 import cats.Monad
 import cats.syntax.all._
 
-import cats.effect.Sync
-
 /** Represents a unique identifier (using object equality). */
 final class Token private () extends Serializable {
   override def toString: String = s"Token(${hashCode.toHexString})"
