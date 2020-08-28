@@ -216,19 +216,14 @@ object SignallingRef {
     override def getAndSet(a: A): F[A] = modify(old => (a, old))
 
     override def access: F[(A, A => F[Boolean])] =
-      state.access.flatMap {
+      state.access.map {
         case (snapshot, set) =>
-          F.delay {
-            val hasBeenCalled = new java.util.concurrent.atomic.AtomicBoolean(false)
-            val setter =
-              (a: A) =>
-                F.delay(hasBeenCalled.compareAndSet(false, true))
-                  .ifM(
-                    if (a == snapshot._1) set((a, snapshot._2, snapshot._3)) else F.pure(false),
-                    F.pure(false)
-                  )
-            (snapshot._1, setter)
+          val setter = { (a: A) =>
+            if (a == snapshot._1) set((a, snapshot._2, snapshot._3))
+            else F.pure(false)
           }
+
+          (snapshot._1, setter)
       }
 
     override def tryUpdate(f: A => A): F[Boolean] =
