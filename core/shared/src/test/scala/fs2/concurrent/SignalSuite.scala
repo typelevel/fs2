@@ -86,9 +86,10 @@ class SignalSuite extends Fs2Suite {
       (v, set) = access
       r1 <- set(v)
       r2 <- set(v)
-    } yield assert((r1, r2) == (true, false))
-
-
+    } yield {
+      assert(r1 == true)
+      assert(r2 == false)
+    }
   }
 
   test("holdOption") {
