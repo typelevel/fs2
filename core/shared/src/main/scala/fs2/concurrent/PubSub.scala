@@ -103,7 +103,7 @@ private[fs2] object PubSub {
 
   sealed trait Mk[F[_]] {
     def apply[I, O, QA, Selector](
-      strategy: PubSub.Strategy[I, O, QA, Selector]
+        strategy: PubSub.Strategy[I, O, QA, Selector]
     ): F[PubSub[F, I, O, Selector]]
   }
 
