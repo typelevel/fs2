@@ -127,7 +127,7 @@ private[fs2] object PubSub {
   }
 
   object MkIn {
-    implicit def instance[F[_]: Functor, G[_]: Async: Deferred.Mk](implicit mk: Ref.MkIn[F, G]): MkIn[F, G] =
+    implicit def instance[F[_]: Functor, G[_]: ConcurrentThrow: Deferred.Mk](implicit mk: Ref.MkIn[F, G]): MkIn[F, G] =
       new MkIn[F, G] {
         def apply[I, O, QS, Selector](
             strategy: PubSub.Strategy[I, O, QS, Selector]
@@ -153,7 +153,7 @@ private[fs2] object PubSub {
     )(implicit mk: MkIn[G, F]): G[PubSub[F, I, O, Selector]] = mk(strategy)
   }
 
-  private class PubSubAsync[F[_]: Async: Deferred.Mk, I, O, QS, Selector](
+  private class PubSubAsync[F[_]: ConcurrentThrow: Deferred.Mk, I, O, QS, Selector](
       strategy: Strategy[I, O, QS, Selector],
       state: Ref[F, PubSubState[F, I, O, QS, Selector]]
   ) extends PubSub[F, I, O, Selector] {
