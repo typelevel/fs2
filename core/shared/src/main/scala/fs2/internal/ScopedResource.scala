@@ -126,10 +126,13 @@ private[internal] object ScopedResource {
   private[this] val initial = State(open = true, finalizer = None, leases = 0)
 
   def create[F[_]](implicit F: MonadError[F, Throwable], mkRef: Ref.Mk[F]): F[ScopedResource[F]] =
-    Ref.of[F, State[F]](initial).map { state =>
+    for {
+      state <- Ref.of[F, State[F]](initial)
+      token <- Token[F]
+    } yield { 
       new ScopedResource[F] {
 
-        override val id: Token = new Token
+        override val id: Token = token
 
         private[this] val pru: F[Either[Throwable, Unit]] =
           (Right(()): Either[Throwable, Unit]).pure[F]

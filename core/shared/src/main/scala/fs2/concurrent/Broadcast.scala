@@ -40,7 +40,7 @@ object Broadcast {
             .eval(PubSub(PubSub.Strategy.closeDrainFirst(strategy[Chunk[O]](minReady))))
             .flatMap { pubSub =>
               def subscriber =
-                Stream.bracket(Sync[F].delay(new Token))(pubSub.unsubscribe).flatMap { selector =>
+                Stream.bracket(Token[F])(pubSub.unsubscribe).flatMap { selector =>
                   pubSub
                     .getStream(selector)
                     .unNoneTerminate

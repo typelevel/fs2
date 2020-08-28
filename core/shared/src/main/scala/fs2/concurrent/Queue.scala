@@ -198,7 +198,7 @@ object Queue {
   }
 
   object Mk {
-    implicit def instance[F[_]: Async]: Mk[F] =
+    implicit def instance[F[_]](implicit F: Async[F]): Mk[F] =
       new Mk[F] {
 
         def unbounded[A]: F[Queue[F, A]] =
@@ -296,8 +296,8 @@ object Queue {
 
               def tryDequeue1: F[Option[Option[A]]] =
                 pubSub.tryGet(1).flatMap {
-                  case None              => None.pure[F]
-                  case Some(None)        => Some(None).pure[F]
+                  case None              => F.pure(None)
+                  case Some(None)        => F.pure(Some(None))
                   case Some(Some(chunk)) => headUnsafe[F, A](chunk).map(a => Some(Some(a)))
                 }
 
@@ -309,7 +309,7 @@ object Queue {
 
               def dequeue1: F[Option[A]] =
                 pubSub.get(1).flatMap {
-                  case None        => None.pure[F]
+                  case None        => F.pure(None)
                   case Some(chunk) => headUnsafe[F, A](chunk).map(Some(_))
                 }
             }
@@ -504,7 +504,7 @@ object InspectableQueue {
   }
 
   object Mk {
-    implicit def instance[F[_]: Async]: Mk[F] =
+    implicit def instance[F[_]](implicit F: Async[F]): Mk[F] =
       new Mk[F] {
 
         /** Creates a queue with no size bound. */
@@ -547,7 +547,7 @@ object InspectableQueue {
 
               def tryDequeue1: F[Option[A]] =
                 pubSub.tryGet(Right(1)).flatMap {
-                  case None => None.pure[F]
+                  case None => F.pure(None)
                   case Some(Left(s)) =>
                     ApplicativeError[F, Throwable].raiseError(
                           new Throwable(
@@ -581,7 +581,7 @@ object InspectableQueue {
                 }
 
               def peek1: F[A] =
-                Sync[F].bracket(Token.create[F]) { token =>
+                Sync[F].bracket(Token[F]) { token =>
                   def take: F[A] =
                     pubSub.get(Left(Some(token))).flatMap {
                       case Left(s) =>
@@ -603,7 +603,7 @@ object InspectableQueue {
 
               def size: Stream[F, Int] =
                 Stream
-                  .bracket(Sync[F].delay(new Token))(token => pubSub.unsubscribe(Left(Some(token))))
+                  .bracket(Token[F])(token => pubSub.unsubscribe(Left(Some(token))))
                   .flatMap { token =>
                     pubSub.getStream(Left(Some(token))).flatMap {
                       case Left(s)  => Stream.emit(sizeOf(s))

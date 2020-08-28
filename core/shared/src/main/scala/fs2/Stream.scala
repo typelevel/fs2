@@ -1511,40 +1511,39 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
       .flatMap {
         case (q, currentTimeout) =>
           def startTimeout: Stream[F2, Token] =
-            Stream.suspend {
-              Stream(new Token).evalTap { token =>
-                val timeout = F.sleep(d) >> q.enqueue1(token.asLeft.some)
+            Stream.eval(Token[F2]).evalTap { token =>
+              val timeout = F.sleep(d) >> q.enqueue1(token.asLeft.some)
 
-                // We need to cancel outstanding timeouts to avoid leaks
-                // on interruption, but using `Stream.bracket` or
-                // derivatives causes a memory leak due to all the
-                // finalisers accumulating. Therefore we dispose of them
-                // manually, with a cooperative strategy between a single
-                // stream finaliser, and F finalisers on each timeout.
-                //
-                // Note that to avoid races, the correctness of the
-                // algorithm does not depend on timely cancellation of
-                // previous timeouts, but uses a versioning scheme to
-                // ensure stale timeouts are no-ops.
-                timeout.start
-                  .bracket(_ => F.unit) { fiber =>
-                    // note the this is in a `release` action, and therefore uninterruptible
-                    currentTimeout.modify {
-                      case st @ (cancelInFlightTimeout, streamTerminated) =>
-                        if (streamTerminated)
-                          // the stream finaliser will cancel the in flight
-                          // timeout, we need to cancel the timeout we have
-                          // just started
-                          st -> fiber.cancel
-                        else
-                          // The stream finaliser hasn't run, so we cancel
-                          // the in flight timeout and store the finaliser for
-                          // the timeout we have just started
-                          (fiber.cancel, streamTerminated) -> cancelInFlightTimeout
-                    }.flatten
-                  }
-              }
+              // We need to cancel outstanding timeouts to avoid leaks
+              // on interruption, but using `Stream.bracket` or
+              // derivatives causes a memory leak due to all the
+              // finalisers accumulating. Therefore we dispose of them
+              // manually, with a cooperative strategy between a single
+              // stream finaliser, and F finalisers on each timeout.
+              //
+              // Note that to avoid races, the correctness of the
+              // algorithm does not depend on timely cancellation of
+              // previous timeouts, but uses a versioning scheme to
+              // ensure stale timeouts are no-ops.
+              timeout.start
+                .bracket(_ => F.unit) { fiber =>
+                  // note the this is in a `release` action, and therefore uninterruptible
+                  currentTimeout.modify {
+                    case st @ (cancelInFlightTimeout, streamTerminated) =>
+                      if (streamTerminated)
+                        // the stream finaliser will cancel the in flight
+                        // timeout, we need to cancel the timeout we have
+                        // just started
+                        st -> fiber.cancel
+                      else
+                        // The stream finaliser hasn't run, so we cancel
+                        // the in flight timeout and store the finaliser for
+                        // the timeout we have just started
+                        (fiber.cancel, streamTerminated) -> cancelInFlightTimeout
+                  }.flatten
+                }
             }
+
 
           def producer =
             this.chunks.map(_.asRight.some).through(q.enqueue).onFinalize(q.enqueue1(None))

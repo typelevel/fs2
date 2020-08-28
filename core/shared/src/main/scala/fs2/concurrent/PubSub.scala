@@ -263,13 +263,13 @@ private[fs2] object PubSub {
       }
 
     def publish(i: I): F[Unit] =
-      Deferred[F, Unit].flatMap { deferred =>
+      (Deferred[F, Unit], Token[F]).tupled.flatMap { case (deferred, token) =>
         update { ps =>
           if (strategy.accepts(i, ps.queue)) {
             val ps1 = publish_(i, ps)
             (ps1, Applicative[F].unit)
           } else {
-            val publisher = Publisher(new Token, i, deferred)
+            val publisher = Publisher(token, i, deferred)
 
             def awaitCancellable =
               publisher.signal.get.guaranteeCase(clearPublisher(publisher.token))
@@ -289,12 +289,10 @@ private[fs2] object PubSub {
       }
 
     def get(selector: Selector): F[O] =
-      Deferred[F, O].flatMap { deferred =>
+      (Deferred[F, O], Token[F]).tupled.flatMap { case (deferred, token) =>
         update { ps =>
           tryGet_(selector, ps) match {
             case (ps, None) =>
-              val token = new Token
-
               val sub =
                 Subscriber(token, selector, deferred)
 
@@ -309,29 +307,26 @@ private[fs2] object PubSub {
       }
 
     def getStream(selector: Selector): Stream[F, O] =
-      Stream.suspend {
-        val token = new Token // side effect, don't inline
+      Stream.bracket(Token[F])(clearSubscriber).flatMap { token =>
+        def get_ =
+          Deferred[F, O].flatMap { deferred =>
+            update { ps =>
+              tryGet_(selector, ps) match {
+                case (ps, None) =>
+                  val sub =
+                    Subscriber(token, selector, deferred)
 
-        Stream.bracket(token.pure[F])(clearSubscriber).flatMap { token =>
-          def get_ =
-            Deferred[F, O].flatMap { deferred =>
-              update { ps =>
-                tryGet_(selector, ps) match {
-                  case (ps, None) =>
-                    val sub =
-                      Subscriber(token, selector, deferred)
+                  (ps.copy(subscribers = ps.subscribers :+ sub), sub.signal.get)
 
-                    (ps.copy(subscribers = ps.subscribers :+ sub), sub.signal.get)
-
-                  case (ps, Some(o)) =>
-                    (ps, Applicative[F].pure(o))
-                }
+                case (ps, Some(o)) =>
+                  (ps, Applicative[F].pure(o))
               }
             }
+          }
 
-          Stream.repeatEval(get_)
-        }
+        Stream.repeatEval(get_)
       }
+
 
     def tryGet(selector: Selector): F[Option[O]] =
       update { ps =>
