@@ -651,23 +651,53 @@ class StreamCombinatorsSuite extends Fs2Suite {
     }
   }
 
-  test("fromIterator") {
-    forAllF { (x: List[Int]) =>
-      Stream
-        .fromIterator[IO](x.iterator)
-        .compile
-        .toList
-        .map(it => assert(it == x))
+  group("fromIterator") {
+    test("single") {
+      forAllF { (x: List[Int]) =>
+        Stream
+          .fromIterator[IO](x.iterator)
+          .compile
+          .toList
+          .map(it => assert(it == x))
+      }
+    }
+
+    test("chunked") {
+      forAllF { (x: List[Int], cs: Int) =>
+        val chunkSize = (cs % 4096).abs + 1
+        Stream
+          .fromIterator[IO](x.iterator, chunkSize)
+          .compile
+          .toList
+          .map(it => assert(it == x))
+      }
     }
   }
 
-  test("fromBlockingIterator") {
-    forAllF { (x: List[Int]) =>
-      Stream
-        .fromBlockingIterator[IO](Blocker.liftExecutionContext(munitExecutionContext), x.iterator)
-        .compile
-        .toList
-        .map(it => assert(it == x))
+  group("fromBlockingIterator") {
+    test("single") {
+      forAllF { (x: List[Int]) =>
+        Stream
+          .fromBlockingIterator[IO](Blocker.liftExecutionContext(munitExecutionContext), x.iterator)
+          .compile
+          .toList
+          .map(it => assert(it == x))
+      }
+    }
+
+    test("chunked") {
+      forAllF { (x: List[Int], cs: Int) =>
+        val chunkSize = (cs % 4096).abs + 1
+        Stream
+          .fromBlockingIterator[IO](
+            Blocker.liftExecutionContext(munitExecutionContext),
+            x.iterator,
+            chunkSize
+          )
+          .compile
+          .toList
+          .map(it => assert(it == x))
+      }
     }
   }
 

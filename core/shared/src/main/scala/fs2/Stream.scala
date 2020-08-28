@@ -3426,6 +3426,7 @@ object Stream extends StreamLowPriority {
   private[fs2] final class PartiallyAppliedFromIterator[F[_]](
       private val dummy: Boolean
   ) extends AnyVal {
+
     def apply[A](iterator: Iterator[A])(implicit F: Sync[F]): Stream[F, A] = {
       def getNext(i: Iterator[A]): F[Option[(A, Iterator[A])]] =
         F.delay(i.hasNext).flatMap { b =>
@@ -3433,6 +3434,17 @@ object Stream extends StreamLowPriority {
         }
 
       Stream.unfoldEval(iterator)(getNext)
+    }
+
+    def apply[A](iterator: Iterator[A], chunkSize: Int)(implicit F: Sync[F]): Stream[F, A] = {
+      def getNextChunk(i: Iterator[A]): F[Option[(Chunk[A], Iterator[A])]] =
+        F.delay {
+          for (_ <- 1 to chunkSize if i.hasNext) yield i.next()
+        }.map { s =>
+          if (s.isEmpty) None else Some((Chunk.seq(s), i))
+        }
+
+      Stream.unfoldChunkEval(iterator)(getNextChunk)
     }
   }
 
@@ -3445,6 +3457,7 @@ object Stream extends StreamLowPriority {
   private[fs2] final class PartiallyAppliedFromBlockingIterator[F[_]](
       private val dummy: Boolean
   ) extends AnyVal {
+
     def apply[A](
         blocker: Blocker,
         iterator: Iterator[A]
@@ -3455,6 +3468,23 @@ object Stream extends StreamLowPriority {
         }
 
       Stream.unfoldEval(iterator)(getNext)
+    }
+
+    def apply[A](
+        blocker: Blocker,
+        iterator: Iterator[A],
+        chunkSize: Int
+    )(implicit F: Sync[F], cs: ContextShift[F]): Stream[F, A] = {
+      def getNextChunk(i: Iterator[A]): F[Option[(Chunk[A], Iterator[A])]] =
+        blocker
+          .delay {
+            for (_ <- 1 to chunkSize if i.hasNext) yield i.next()
+          }
+          .map { s =>
+            if (s.isEmpty) None else Some((Chunk.seq(s), i))
+          }
+
+      Stream.unfoldChunkEval(iterator)(getNextChunk)
     }
   }
 
