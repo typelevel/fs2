@@ -111,7 +111,7 @@ class MemoryLeakSpec extends FunSuite {
       path
     }
 
-  leakTest("groupWithin") {
+  leakTest("groupWithin".flaky) {
     Stream
       .eval(IO.never)
       .covary[IO]
