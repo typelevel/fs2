@@ -98,7 +98,7 @@ private[fs2] trait PubSub[F[_], I, O, Selector] extends Publish[F, I] with Subsc
 private[fs2] object PubSub {
   def apply[F[_], I, O, QS, Selector](
     strategy: PubSub.Strategy[I, O, QS, Selector]
-  )(implicit F: next.Alloc[F]): F[PubSub[F, I, O, Selector]] =
+  )(implicit F: tc.Concurrent[F]): F[PubSub[F, I, O, Selector]] =
     F.ref[PubSubState[F, I, O, QS, Selector]](
       PubSubState(strategy.initial, ScalaQueue.empty, ScalaQueue.empty)
     )
@@ -131,7 +131,7 @@ private[fs2] object PubSub {
   private class PubSubAsync[F[_], I, O, QS, Selector](
       strategy: Strategy[I, O, QS, Selector],
       state: Ref[F, PubSubState[F, I, O, QS, Selector]]
-  )(implicit F: next.Alloc[F]) extends PubSub[F, I, O, Selector] {
+  )(implicit F: tc.Concurrent[F]) extends PubSub[F, I, O, Selector] {
 
     private type PS = PubSubState[F, I, O, QS, Selector]
 

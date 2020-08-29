@@ -61,7 +61,7 @@ object Signal extends SignalLowPriorityImplicits {
       def discrete = Stream(a) ++ Stream.never
     }
 
-  implicit def applicativeInstance[F[_]: next.Alloc]: Applicative[Signal[F, *]] =
+  implicit def applicativeInstance[F[_]: tc.Concurrent]: Applicative[Signal[F, *]] =
     new Applicative[Signal[F, *]] {
       override def map[A, B](fa: Signal[F, A])(f: A => B): Signal[F, B] =
         Signal.map(fa)(f)
@@ -80,7 +80,7 @@ object Signal extends SignalLowPriorityImplicits {
         }
     }
 
-  private def nondeterministicZip[F[_]: next.Alloc, A0, A1](
+  private def nondeterministicZip[F[_]: tc.Concurrent, A0, A1](
       xs: Stream[F, A0],
       ys: Stream[F, A1]
   ): Stream[F, (A0, A1)] = {
@@ -123,7 +123,7 @@ object Signal extends SignalLowPriorityImplicits {
   implicit class BooleanSignalOps[F[_]](val self: Signal[F, Boolean]) extends AnyVal {
     def interrupt[A](
         s: Stream[F, A]
-    )(implicit F: next.Alloc[F]): Stream[F, A] =
+    )(implicit F: tc.Concurrent[F]): Stream[F, A] =
       s.interruptWhen(self)
   }
 }
@@ -160,7 +160,7 @@ object SignallingRef {
   }
 
   object Mk {
-    // implicit def instance[F[_]](impl): next.Alloc]: Mk[F] =
+    // implicit def instance[F[_]](impl): tc.Concurrent]: Mk[F] =
     //   new Mk[F] {
     //     def refOf[A](initial: A): F[SignallingRef[F, A]] =
     //       Ref.of[F, (A, Long, Map[Token, Deferred[F, (A, Long)]])]((initial, 0L, Map.empty))
@@ -169,20 +169,20 @@ object SignallingRef {
   }
 
   /** Alias for `of`. */
-  def apply[F[_]: next.Alloc, A](initial: A): F[SignallingRef[F, A]] =
+  def apply[F[_]: tc.Concurrent, A](initial: A): F[SignallingRef[F, A]] =
     of(initial)
 
   /**
     * Builds a `SignallingRef` for for effect `F`, initialized to the supplied value.
     */
-  def of[F[_], A](initial: A)(implicit F: next.Alloc[F]): F[SignallingRef[F, A]] =
+  def of[F[_], A](initial: A)(implicit F: tc.Concurrent[F]): F[SignallingRef[F, A]] =
     F.ref[(A, Long, Map[Token, Deferred[F, (A, Long)]])]((initial, 0L, Map.empty))
       .map(state => new SignallingRefImpl[F, A](state))
 
 
   private final class SignallingRefImpl[F[_], A](
       state: Ref[F, (A, Long, Map[Token, Deferred[F, (A, Long)]])]
-  )(implicit F: next.Alloc[F])
+  )(implicit F: tc.Concurrent[F])
       extends SignallingRef[F, A] {
 
     override def get: F[A] = state.get.map(_._1)

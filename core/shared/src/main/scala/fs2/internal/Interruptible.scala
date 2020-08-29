@@ -23,7 +23,7 @@ package fs2.internal
 
 import fs2.concurrent.next
 
-final class Interruptible[F[_]](implicit val concurrent: next.Alloc[F])
+final class Interruptible[F[_]](implicit val concurrent: fs2.tc.Concurrent[F])
 object Interruptible {
-  implicit def instance[F[_]: next.Alloc]: Interruptible[F] = new Interruptible[F]
+  implicit def instance[F[_]: fs2.tc.Concurrent]: Interruptible[F] = new Interruptible[F]
 }

@@ -30,7 +30,7 @@ object Pipe {
     * Input is fed to the first pipe until it terminates, at which point input is
     * fed to the second pipe, and so on.
     */
-  def join[F[_]: next.Alloc, A, B](
+  def join[F[_]: tc.Concurrent, A, B](
       pipes: Stream[F, Pipe[F, A, B]]
   ): Pipe[F, A, B] =
     _.broadcast.zipWith(pipes)(_.through(_)).flatten

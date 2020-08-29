@@ -74,7 +74,7 @@ object Balance {
     * The resulting stream terminates after the source stream terminates and all workers terminate.
     * Conversely, if the resulting stream is terminated early, the source stream will be terminated.
     */
-  def apply[F[_]: next.Alloc, O](chunkSize: Int): Pipe[F, O, Stream[F, O]] = { source =>
+  def apply[F[_]: tc.Concurrent, O](chunkSize: Int): Pipe[F, O, Stream[F, O]] = { source =>
     Stream.eval(PubSub(PubSub.Strategy.closeDrainFirst(strategy[O]))).flatMap {
       pubSub =>
       def subscriber =
@@ -112,7 +112,7 @@ object Balance {
     * @param pipes pipes to use to process work
     * @param chunkSize maximum chunk to present to each pipe, allowing fair distribution between pipes
     */
-  def through[F[_]: next.Alloc, O, O2](
+  def through[F[_]: tc.Concurrent, O, O2](
       chunkSize: Int
   )(pipes: Pipe[F, O, O2]*): Pipe[F, O, O2] =
     _.balance(chunkSize)

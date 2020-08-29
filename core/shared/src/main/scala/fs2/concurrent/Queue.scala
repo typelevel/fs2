@@ -161,50 +161,50 @@ trait NoneTerminatedQueue[F[_], A]
 object Queue {
 
   /** Creates a queue with no size bound. */
-  def unbounded[F[_]: next.Alloc, A]: F[Queue[F, A]] =
+  def unbounded[F[_]: tc.Concurrent, A]: F[Queue[F, A]] =
     create(Strategy.fifo[A])
 
   /** Creates an unbounded queue that distributed always at max `fairSize` elements to any subscriber. */
-  def fairUnbounded[F[_]: next.Alloc, A](fairSize: Int): F[Queue[F, A]] =
+  def fairUnbounded[F[_]: tc.Concurrent, A](fairSize: Int): F[Queue[F, A]] =
     create(Strategy.fifo[A].transformSelector[Int]((sz, _) => sz.min(fairSize)))
 
   /** Creates a queue with the specified size bound. */
-  def bounded[F[_]: next.Alloc, A](maxSize: Int): F[Queue[F, A]] =
+  def bounded[F[_]: tc.Concurrent, A](maxSize: Int): F[Queue[F, A]] =
     create(Strategy.boundedFifo(maxSize))
 
   /** Creates a bounded queue terminated by enqueueing `None`. All elements before `None` are preserved. */
-  def boundedNoneTerminated[F[_]: next.Alloc, A](maxSize: Int): F[NoneTerminatedQueue[F, A]] =
+  def boundedNoneTerminated[F[_]: tc.Concurrent, A](maxSize: Int): F[NoneTerminatedQueue[F, A]] =
     createNoneTerminated(PubSub.Strategy.closeDrainFirst(Strategy.boundedFifo(maxSize)))
 
   /** Creates a queue which stores the last `maxSize` enqueued elements and which never blocks on enqueue. */
-  def circularBuffer[F[_]: next.Alloc, A](maxSize: Int): F[Queue[F, A]] =
+  def circularBuffer[F[_]: tc.Concurrent, A](maxSize: Int): F[Queue[F, A]] =
     create(Strategy.circularBuffer(maxSize))
 
   /** Creates a queue terminated by enqueueing `None`. All elements before `None` are preserved and never blocks on enqueue. */
-  def circularBufferNoneTerminated[F[_]: next.Alloc, A](maxSize: Int): F[NoneTerminatedQueue[F, A]] =
+  def circularBufferNoneTerminated[F[_]: tc.Concurrent, A](maxSize: Int): F[NoneTerminatedQueue[F, A]] =
     createNoneTerminated(
       PubSub.Strategy.closeDrainFirst(Strategy.circularBuffer(maxSize))
     )
 
   /** Created a bounded queue that distributed always at max `fairSize` elements to any subscriber. */
-  def fairBounded[F[_]: next.Alloc, A](maxSize: Int, fairSize: Int): F[Queue[F, A]] =
+  def fairBounded[F[_]: tc.Concurrent, A](maxSize: Int, fairSize: Int): F[Queue[F, A]] =
     create(
       Strategy.boundedFifo(maxSize).transformSelector[Int]((sz, _) => sz.min(fairSize))
     )
 
   /** Created an unbounded queue terminated by enqueueing `None`. All elements before `None`. */
-  def noneTerminated[F[_]: next.Alloc, A]: F[NoneTerminatedQueue[F, A]] =
+  def noneTerminated[F[_]: tc.Concurrent, A]: F[NoneTerminatedQueue[F, A]] =
     createNoneTerminated(PubSub.Strategy.closeDrainFirst(Strategy.fifo))
 
   /** Creates a queue which allows at most a single element to be enqueued at any time. */
-  def synchronous[F[_]: next.Alloc, A]: F[Queue[F, A]] =
+  def synchronous[F[_]: tc.Concurrent, A]: F[Queue[F, A]] =
     create(Strategy.synchronous)
 
   /** Like [[synchronous]], except that any enqueue of `None` will never block and cancels any dequeue operation. */
-  def synchronousNoneTerminated[F[_]: next.Alloc, A]: F[NoneTerminatedQueue[F, A]] =
+  def synchronousNoneTerminated[F[_]: tc.Concurrent, A]: F[NoneTerminatedQueue[F, A]] =
     createNoneTerminated(PubSub.Strategy.closeNow(Strategy.synchronous))
 
-  def create[F[_]: next.Alloc, S, A](
+  def create[F[_]: tc.Concurrent, S, A](
     strategy: PubSub.Strategy[A, Chunk[A], S, Int]
   ): F[Queue[F, A]] =
     PubSub(strategy).map { pubSub =>
@@ -240,7 +240,7 @@ object Queue {
 
   def createNoneTerminated[F[_], S, A](
     strategy: PubSub.Strategy[Option[A], Option[Chunk[A]], S, Int]
-  )(implicit F: next.Alloc[F]): F[NoneTerminatedQueue[F, A]] =
+  )(implicit F: tc.Concurrent[F]): F[NoneTerminatedQueue[F, A]] =
     PubSub(strategy).map { pubSub =>
       new NoneTerminatedQueue[F, A] {
         def enqueue1(a: Option[A]): F[Unit] =
@@ -410,16 +410,16 @@ trait InspectableQueue[F[_], A] extends Queue[F, A] {
 
 object InspectableQueue {
   /** Creates a queue with no size bound. */
-  def unbounded[F[_]: next.Alloc, A]: F[InspectableQueue[F, A]] =
+  def unbounded[F[_]: tc.Concurrent, A]: F[InspectableQueue[F, A]] =
     create(Queue.Strategy.fifo[A])(_.headOption)(_.size)
 
 
   /** Creates a queue with the specified size bound. */
-  def bounded[F[_]: next.Alloc, A](maxSize: Int): F[InspectableQueue[F, A]] =
+  def bounded[F[_]: tc.Concurrent, A](maxSize: Int): F[InspectableQueue[F, A]] =
     create(Queue.Strategy.boundedFifo[A](maxSize))(_.headOption)(_.size)
 
   /** Creates a queue which stores the last `maxSize` enqueued elements and which never blocks on enqueue. */
-  def circularBuffer[F[_]: next.Alloc, A](maxSize: Int): F[InspectableQueue[F, A]] =
+  def circularBuffer[F[_]: tc.Concurrent, A](maxSize: Int): F[InspectableQueue[F, A]] =
     create(Queue.Strategy.circularBuffer[A](maxSize))(_.headOption)(_.size)
 
   def create[F[_], S, A](
@@ -428,7 +428,7 @@ object InspectableQueue {
     headOf: S => Option[A]
   )(
     sizeOf: S => Int
-  )(implicit F: next.Alloc[F]): F[InspectableQueue[F, A]] = {
+  )(implicit F: tc.Concurrent[F]): F[InspectableQueue[F, A]] = {
     implicit def eqInstance: Eq[S] = Eq.fromUniversalEquals[S]
     PubSub(PubSub.Strategy.Inspectable.strategy(strategy)).map { pubSub =>
       new InspectableQueue[F, A] {
@@ -484,7 +484,7 @@ object InspectableQueue {
           }
 
         def peek1: F[A] =
-          next.Alloc[F].bracket(Token[F]) { token =>
+          tc.Concurrent[F].bracket(Token[F]) { token =>
             def take: F[A] =
               pubSub.get(Left(Some(token))).flatMap {
                 case Left(s) =>
