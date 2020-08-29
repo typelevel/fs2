@@ -21,23 +21,10 @@
 
 package fs2.concurrent
 
-import cats.effect._
 import fs2._
 
 /** Provides mechanisms for balancing the distribution of chunks across multiple streams. */
 object Balance {
-
-  sealed trait Mk[F[_]] {
-    def apply[O](chunkSize: Int): Pipe[F, O, Stream[F, O]]
-  }
-
-  object Mk {
-    implicit def instance[F[_]: Async]: Mk[F] =
-      new Mk[F] {
-        def apply[O](chunkSize: Int): Pipe[F, O, Stream[F, O]] = ???
-      }
-  }
-
   /**
     * Allows balanced processing of this stream via multiple concurrent streams.
     *
