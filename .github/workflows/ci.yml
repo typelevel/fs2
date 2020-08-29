@@ -86,7 +86,7 @@ jobs:
 
       - run: sbt ++${{ matrix.scala }} testJS
 
-      - run: sbt ++${{ matrix.scala }} doc mimaReportBinaryIssues
+      - run: sbt ++${{ matrix.scala }} mimaReportBinaryIssues
 
       - run: 'sbt ++${{ matrix.scala }} ''project coreJVM'' it:test'
 

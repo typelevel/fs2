@@ -35,7 +35,7 @@ ThisBuild / githubWorkflowBuild := Seq(
   WorkflowStep.Sbt(List("fmtCheck", "compile")),
   WorkflowStep.Sbt(List("testJVM")),
   WorkflowStep.Sbt(List("testJS")),
-  WorkflowStep.Sbt(List("doc", "mimaReportBinaryIssues")),
+  WorkflowStep.Sbt(List("mimaReportBinaryIssues")),
   WorkflowStep.Sbt(List("project coreJVM", "it:test"))
 )
 
@@ -150,8 +150,12 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.PullSyncInstance.fproductLeft"),
   ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Pull.free"),
   ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Stream.free"),
-  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Stream#PartiallyAppliedFromBlockingIterator.apply$extension"),
-  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Stream#PartiallyAppliedFromIterator.apply$extension")
+  ProblemFilters.exclude[DirectMissingMethodProblem](
+    "fs2.Stream#PartiallyAppliedFromBlockingIterator.apply$extension"
+  ),
+  ProblemFilters.exclude[DirectMissingMethodProblem](
+    "fs2.Stream#PartiallyAppliedFromIterator.apply$extension"
+  )
 )
 
 lazy val root = project
