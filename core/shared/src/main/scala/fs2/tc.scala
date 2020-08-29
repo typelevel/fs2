@@ -59,7 +59,7 @@ object tc {
       }
 
     def semaphore[F[_]](n: Long)(implicit F: Concurrent[F]): F[Semaphore[F]] =
-      Semaphore[F](n)(Semaphore.MkIn.instance[F, F])
+      Semaphore[F](n)(Semaphore.MkIn.instance[F, F](instance, instance, instance, instance))
   }
 
   trait Temporal[F[_]] extends Concurrent[F] with TemporalThrow[F]
