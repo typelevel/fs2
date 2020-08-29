@@ -26,7 +26,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest]
-        scala: [2.13.3, 2.12.10, 0.26.0-RC1]
+        scala: [2.13.3, 2.12.10, 0.27.0-RC1]
         java: [adopt@1.11]
     runs-on: ${{ matrix.os }}
     steps:
@@ -86,9 +86,9 @@ jobs:
 
       - run: sbt ++${{ matrix.scala }} testJS
 
-      - run: sbt ++${{ matrix.scala }} doc mimaReportBinaryIssues
+      - run: sbt ++${{ matrix.scala }} mimaReportBinaryIssues
 
-      - run: 'sbt ++${{ matrix.scala }} '';project coreJVM;it:test'''
+      - run: 'sbt ++${{ matrix.scala }} ''project coreJVM'' it:test'
 
       - name: Compress target directories
         run: tar cf targets.tar target core/js/target core/jvm/target io/target reactive-streams/target benchmark/target project/target
@@ -106,7 +106,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest]
-        scala: [0.26.0-RC1]
+        scala: [0.27.0-RC1]
         java: [adopt@1.11]
     runs-on: ${{ matrix.os }}
     steps:
@@ -177,12 +177,12 @@ jobs:
           tar xf targets.tar
           rm targets.tar
 
-      - name: Download target directories (0.26.0-RC1)
+      - name: Download target directories (0.27.0-RC1)
         uses: actions/download-artifact@v2
         with:
-          name: target-${{ matrix.os }}-0.26.0-RC1-${{ matrix.java }}
+          name: target-${{ matrix.os }}-0.27.0-RC1-${{ matrix.java }}
 
-      - name: Inflate target directories (0.26.0-RC1)
+      - name: Inflate target directories (0.27.0-RC1)
         run: |
           tar xf targets.tar
           rm targets.tar

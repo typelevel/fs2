@@ -3366,6 +3366,7 @@ object Stream extends StreamLowPriority {
   private[fs2] final class PartiallyAppliedFromIterator[F[_]](
       private val dummy: Boolean
   ) extends AnyVal {
+
     def apply[A](iterator: Iterator[A])(implicit F: Sync[F]): Stream[F, A] = {
       def getNext(i: Iterator[A]): F[Option[(A, Iterator[A])]] =
         F.delay(i.hasNext).flatMap { b =>
@@ -3385,6 +3386,7 @@ object Stream extends StreamLowPriority {
   private[fs2] final class PartiallyAppliedFromBlockingIterator[F[_]](
       private val dummy: Boolean
   ) extends AnyVal {
+
     def apply[A](
         iterator: Iterator[A]
     )(implicit F: Sync[F]): Stream[F, A] = {
