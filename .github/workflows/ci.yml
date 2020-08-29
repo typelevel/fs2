@@ -88,7 +88,7 @@ jobs:
 
       - run: sbt ++${{ matrix.scala }} doc mimaReportBinaryIssues
 
-      - run: 'sbt ++${{ matrix.scala }} '';project coreJVM;it:test'''
+      - run: 'sbt ++${{ matrix.scala }} ''project coreJVM'' it:test'
 
       - name: Compress target directories
         run: tar cf targets.tar experimental/target target core/js/target core/jvm/target io/target reactive-streams/target benchmark/target project/target

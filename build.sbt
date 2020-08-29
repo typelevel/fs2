@@ -35,8 +35,8 @@ ThisBuild / githubWorkflowBuild := Seq(
   WorkflowStep.Sbt(List("fmtCheck", "compile")),
   WorkflowStep.Sbt(List("testJVM")),
   WorkflowStep.Sbt(List("testJS")),
-  WorkflowStep.Sbt(List("doc", "+mimaReportBinaryIssues")),
-  WorkflowStep.Sbt(List(";project coreJVM;it:test"))
+  WorkflowStep.Sbt(List("doc", "mimaReportBinaryIssues")),
+  WorkflowStep.Sbt(List("project coreJVM", "it:test"))
 )
 
 ThisBuild / githubWorkflowEnv ++= Map(
