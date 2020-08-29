@@ -62,7 +62,7 @@ class StreamMergeSuite extends Fs2Suite {
         }
       }
 
-      test("2 - never-ending flatMap, failure after emit") {
+      test("2 - never-ending flatMap, failure after emit".ignore) {
         forAllF { (s1: Stream[Pure, Int]) =>
           s1.merge(Stream.raiseError[IO](new Err))
             .evalMap(_ => IO.never)
