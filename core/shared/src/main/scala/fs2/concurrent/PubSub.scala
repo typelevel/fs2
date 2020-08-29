@@ -99,7 +99,7 @@ private[fs2] object PubSub {
   def apply[F[_], I, O, QS, Selector](
     strategy: PubSub.Strategy[I, O, QS, Selector]
   )(implicit F: tc.Concurrent[F]): F[PubSub[F, I, O, Selector]] =
-    F.ref[PubSubState[F, I, O, QS, Selector]](
+    F.refOf[PubSubState[F, I, O, QS, Selector]](
       PubSubState(strategy.initial, ScalaQueue.empty, ScalaQueue.empty)
     )
       .map(state => new PubSubAsync(strategy, state))

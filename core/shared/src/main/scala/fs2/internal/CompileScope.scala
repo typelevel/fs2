@@ -526,7 +526,7 @@ private[fs2] object CompileScope {
     ): F[InterruptContext[F]] = {
       import interruptible._
       for {
-        ref <- fs2.tc.Concurrent[F].ref[Option[InterruptionOutcome]](None)
+        ref <- fs2.tc.Concurrent[F].refOf[Option[InterruptionOutcome]](None)
         deferred <- fs2.tc.Concurrent[F].deferred[InterruptionOutcome]
       } yield InterruptContext[F](
         deferred = deferred,

@@ -163,7 +163,7 @@ object SignallingRef {
     * Builds a `SignallingRef` for for effect `F`, initialized to the supplied value.
     */
   def of[F[_], A](initial: A)(implicit F: tc.Concurrent[F]): F[SignallingRef[F, A]] =
-    F.ref[(A, Long, Map[Token, Deferred[F, (A, Long)]])]((initial, 0L, Map.empty))
+    F.refOf[(A, Long, Map[Token, Deferred[F, (A, Long)]])]((initial, 0L, Map.empty))
       .map(state => new SignallingRefImpl[F, A](state))
 
 

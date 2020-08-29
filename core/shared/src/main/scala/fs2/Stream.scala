@@ -677,7 +677,7 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
       d: FiniteDuration
   )(implicit F: tc.Temporal[F2]): Stream[F2, O] =
     Stream.eval(Queue.bounded[F2, Option[O]](1)).flatMap { queue =>
-      Stream.eval(F.ref[Option[O]](None)).flatMap { ref =>
+      Stream.eval(F.refOf[Option[O]](None)).flatMap { ref =>
         val enqueueLatest: F2[Unit] =
           ref.modify(s => None -> s).flatMap {
             case v @ Some(_) => queue.enqueue1(v)
@@ -1484,7 +1484,7 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
       .eval {
         Queue
           .synchronousNoneTerminated[F2, Either[Token, Chunk[O]]]
-          .product(F.ref(F.unit -> false))
+          .product(F.refOf(F.unit -> false))
       }
       .flatMap {
         case (q, currentTimeout) =>
@@ -1682,6 +1682,7 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
   def interruptWhen[F2[x] >: F[x]](
       haltWhenTrue: Stream[F2, Boolean]
   )(implicit F: tc.Concurrent[F2]): Stream[F2, O] = {
+    val a: F2[Unit] = haltWhenTrue.compile.drain
     for {
       interruptL <- Stream.eval(F.deferred[Unit])
       doneR <- Stream.eval(F.deferred[Either[Throwable, Unit]])
@@ -1691,7 +1692,7 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
         .interruptWhen(interruptR.get.attempt)
         .compile
         .drain
-        .guaranteeCase { c =>
+        .guaranteeCase { c: Outcome[F2, Throwable, Unit] =>
            val r = c match {
             case Outcome.Completed(_) => Right(())
             case Outcome.Errored(t)   => Left(t)
@@ -1903,7 +1904,7 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
       f: O => Stream[F2, O2]
   )(implicit F: tc.Concurrent[F2]): Stream[F2, O2] = {
     Stream.force(tc.Concurrent.semaphore[F2](1).flatMap { guard =>
-      F.ref[Option[Deferred[F2, Unit]]](None).map { haltRef =>
+      F.refOf[Option[Deferred[F2, Unit]]](None).map { haltRef =>
         def runInner(o: O, halt: Deferred[F2, Unit]): Stream[F2, O2] =
           Stream.eval(guard.acquire) >> // guard inner to prevent parallel inner streams
             f(o).interruptWhen(halt.get.attempt) ++ Stream.exec(guard.release)
@@ -1964,7 +1965,7 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
       interrupt <- F.deferred[Unit]
       resultL <- F.deferred[Either[Throwable, Unit]]
       resultR <- F.deferred[Either[Throwable, Unit]]
-      otherSideDone <- F.ref[Boolean](false)
+      otherSideDone <- F.refOf[Boolean](false)
       resultQ <- Queue.unbounded[F2, Option[Stream[F2, O2]]]
     } yield {
 
@@ -4526,7 +4527,7 @@ object Stream extends StreamLowPriority {
       * }
       * object StopWatch {
       *   def create[F[_]](implicit F: tc.Temporal[F]): Stream[F, StopWatch[F]] =
-      *     Stream.eval(F.ref(0)).flatMap { c =>
+      *     Stream.eval(F.refOf(0)).flatMap { c =>
       *       val api = new StopWatch[F] {
       *         def elapsedSeconds: F[Int] = c.get
       *       }
@@ -4719,7 +4720,7 @@ object Stream extends StreamLowPriority {
 
     def emit(l: L, r: R) = Pull.output1(l -> r)
 
-    Stream.eval(F.ref(Racing: State)).flatMap { state =>
+    Stream.eval(F.refOf(Racing: State)).flatMap { state =>
       def lhs(stream: Stream[F, L]): Pull[F, (L, R), Unit] =
         stream.pull.uncons1.flatMap {
           case None => Pull.done
