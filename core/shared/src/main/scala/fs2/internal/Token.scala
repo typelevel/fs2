@@ -43,7 +43,7 @@ object Token {
     * but also has zero impact on meaningful behaviour for the user,
     * unlike for example internal concurrency.
     *
-    * Furthermore, token creation has the several properties:
+    * Furthermore, token creation has the following properties:
     * - it's synchronous
     * - it's infallible
     * - it's not created in contexts that affect stack safety such as iteration
