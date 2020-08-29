@@ -129,9 +129,9 @@ class MemoryLeakSpec extends FunSuite {
   }
 
   leakTest("topic continuous publish") {
-   Stream
-     .eval(Topic[IO, Int](-1))
-     .flatMap(topic => Stream.repeatEval(topic.publish1(1)))
+    Stream
+      .eval(Topic[IO, Int](-1))
+      .flatMap(topic => Stream.repeatEval(topic.publish1(1)))
   }
 
   leakTest("brackets") {
