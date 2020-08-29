@@ -3364,16 +3364,19 @@ object Stream extends StreamLowPriority {
     new PartiallyAppliedFromEither(dummy = true)
 
   private[fs2] final class PartiallyAppliedFromIterator[F[_]](
-      private val dummy: Boolean
+      private val blocking: Boolean
   ) extends AnyVal {
+    def apply[A](iterator: Iterator[A], chunkSize: Int)(implicit F: Sync[F]): Stream[F, A] = {
+      def eff[B](thunk: => B) = if (blocking) F.blocking(thunk) else F.delay(thunk)
 
-    def apply[A](iterator: Iterator[A])(implicit F: Sync[F]): Stream[F, A] = {
-      def getNext(i: Iterator[A]): F[Option[(A, Iterator[A])]] =
-        F.delay(i.hasNext).flatMap { b =>
-          if (b) F.delay(i.next()).map(a => (a, i).some) else F.pure(None)
+      def getNextChunk(i: Iterator[A]): F[Option[(Chunk[A], Iterator[A])]] =
+        eff {
+          for (_ <- 1 to chunkSize if i.hasNext) yield i.next()
+        }.map { s =>
+          if (s.isEmpty) None else Some((Chunk.seq(s), i))
         }
 
-      Stream.unfoldEval(iterator)(getNext)
+      Stream.unfoldChunkEval(iterator)(getNextChunk)
     }
   }
 
@@ -3381,29 +3384,13 @@ object Stream extends StreamLowPriority {
     * Lifts an iterator into a Stream.
     */
   def fromIterator[F[_]]: PartiallyAppliedFromIterator[F] =
-    new PartiallyAppliedFromIterator(dummy = true)
-
-  private[fs2] final class PartiallyAppliedFromBlockingIterator[F[_]](
-      private val dummy: Boolean
-  ) extends AnyVal {
-
-    def apply[A](
-        iterator: Iterator[A]
-    )(implicit F: Sync[F]): Stream[F, A] = {
-      def getNext(i: Iterator[A]): F[Option[(A, Iterator[A])]] =
-        F.blocking(i.hasNext).flatMap { b =>
-          if (b) F.blocking(i.next()).map(a => (a, i).some) else F.pure(None)
-        }
-
-      Stream.unfoldEval(iterator)(getNext)
-    }
-  }
+    new PartiallyAppliedFromIterator(blocking = false)
 
   /**
     * Lifts an iterator into a Stream, shifting any interaction with the iterator to the blocking pool.
     */
-  def fromBlockingIterator[F[_]]: PartiallyAppliedFromBlockingIterator[F] =
-    new PartiallyAppliedFromBlockingIterator(dummy = true)
+  def fromBlockingIterator[F[_]]: PartiallyAppliedFromIterator[F] =
+    new PartiallyAppliedFromIterator(blocking = true)
 
   /**
     * Like `emits`, but works for any G that has a `Foldable` instance.

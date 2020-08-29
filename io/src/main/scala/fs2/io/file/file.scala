@@ -421,11 +421,13 @@ package object file {
       _.iterator.asScala
     )
 
+  private val pathStreamChunkSize = 16
+
   private def _runJavaCollectionResource[F[_]: Sync, C <: AutoCloseable](
       javaCollection: F[C],
       collectionIterator: C => Iterator[Path]
   ): Stream[F, Path] =
     Stream
       .resource(Resource.fromAutoCloseable(javaCollection))
-      .flatMap(ds => Stream.fromBlockingIterator[F](collectionIterator(ds)))
+      .flatMap(ds => Stream.fromBlockingIterator[F](collectionIterator(ds), pathStreamChunkSize))
 }

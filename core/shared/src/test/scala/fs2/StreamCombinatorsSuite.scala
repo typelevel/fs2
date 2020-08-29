@@ -652,9 +652,10 @@ class StreamCombinatorsSuite extends Fs2Suite {
   }
 
   test("fromIterator") {
-    forAllF { (x: List[Int]) =>
+    forAllF { (x: List[Int], cs: Int) =>
+      val chunkSize = (cs % 4096).abs + 1
       Stream
-        .fromIterator[IO](x.iterator)
+        .fromIterator[IO](x.iterator, chunkSize)
         .compile
         .toList
         .map(it => assert(it == x))
@@ -662,9 +663,10 @@ class StreamCombinatorsSuite extends Fs2Suite {
   }
 
   test("fromBlockingIterator") {
-    forAllF { (x: List[Int]) =>
+    forAllF { (x: List[Int], cs: Int) =>
+      val chunkSize = (cs % 4096).abs + 1
       Stream
-        .fromBlockingIterator[IO](x.iterator)
+        .fromBlockingIterator[IO](x.iterator, chunkSize)
         .compile
         .toList
         .map(it => assert(it == x))
