@@ -68,6 +68,8 @@ object tc {
 
   trait Temporal[F[_]] extends Concurrent[F] with TemporalThrow[F]
   object Temporal {
+    def apply[F[_]](implicit F: Temporal[F]): F.type = F
+
     implicit def instance[F[_]](implicit F: Concurrent[F], T: TemporalThrow[F]): Temporal[F] =
       new Temporal[F] {
         def sleep(time: FiniteDuration): F[Unit] = T.sleep(time)

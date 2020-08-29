@@ -199,7 +199,7 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     * Note: The resulting stream does *not* automatically halt at the
     * first successful attempt. Also see `retry`.
     */
-  def attempts[F2[x] >: F[x]: TemporalThrow](
+  def attempts[F2[x] >: F[x]: tc.Temporal](
       delays: Stream[F2, FiniteDuration]
   ): Stream[F2, Either[Throwable, O]] =
     attempt ++ delays.flatMap(delay => Stream.sleep_(delay) ++ attempt)
@@ -675,12 +675,9 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     */
   def debounce[F2[x] >: F[x]](
       d: FiniteDuration
-  )(implicit
-      F: TemporalThrow[F2],
-      alloc: tc.Concurrent[F2]
-  ): Stream[F2, O] =
+  )(implicit F: tc.Temporal[F2]): Stream[F2, O] =
     Stream.eval(Queue.bounded[F2, Option[O]](1)).flatMap { queue =>
-      Stream.eval(alloc.ref[Option[O]](None)).flatMap { ref =>
+      Stream.eval(F.ref[Option[O]](None)).flatMap { ref =>
         val enqueueLatest: F2[Unit] =
           ref.modify(s => None -> s).flatMap {
             case v @ Some(_) => queue.enqueue1(v)
@@ -710,7 +707,7 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     * Provided `rate` should be viewed as maximum rate:
     * resulting rate can't exceed the output rate of `this` stream.
     */
-  def metered[F2[x] >: F[x]: TemporalThrow](rate: FiniteDuration): Stream[F2, O] =
+  def metered[F2[x] >: F[x]: tc.Temporal](rate: FiniteDuration): Stream[F2, O] =
     Stream.fixedRate[F2](rate).zipRight(this)
 
   /**
@@ -772,7 +769,7 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     *
     * Alias for `sleep_[F](d) ++ this`.
     */
-  def delayBy[F2[x] >: F[x]: TemporalThrow](d: FiniteDuration): Stream[F2, O] =
+  def delayBy[F2[x] >: F[x]: tc.Temporal](d: FiniteDuration): Stream[F2, O] =
     Stream.sleep_[F2](d) ++ this
 
   /**
@@ -1482,15 +1479,12 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
   def groupWithin[F2[x] >: F[x]](
       n: Int,
       d: FiniteDuration
-  )(implicit
-      F: TemporalThrow[F2],
-      alloc: tc.Concurrent[F2]
-  ): Stream[F2, Chunk[O]] =
+  )(implicit F: tc.Temporal[F2]): Stream[F2, Chunk[O]] =
     Stream
       .eval {
         Queue
           .synchronousNoneTerminated[F2, Either[Token, Chunk[O]]]
-          .product(alloc.ref(F.unit -> false))
+          .product(F.ref(F.unit -> false))
       }
       .flatMap {
         case (q, currentTimeout) =>
@@ -1673,7 +1667,7 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
   /**
     * Interrupts this stream after the specified duration has passed.
     */
-  def interruptAfter[F2[x] >: F[x]: TemporalThrow: tc.Concurrent](
+  def interruptAfter[F2[x] >: F[x]: tc.Temporal](
       duration: FiniteDuration
   ): Stream[F2, O] =
     interruptWhen[F2](Stream.sleep_[F2](duration) ++ Stream(true))
@@ -2676,11 +2670,11 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     f(this, s2)
 
   /** Fails this stream with a [[TimeoutException]] if it does not complete within given `timeout`. */
-  def timeout[F2[x] >: F[x]: TemporalThrow: tc.Concurrent](
+  def timeout[F2[x] >: F[x]: tc.Temporal](
       timeout: FiniteDuration
   ): Stream[F2, O] =
     this.interruptWhen(
-      Temporal[F2]
+      tc.Temporal[F2]
         .sleep(timeout)
         .as(Left(new TimeoutException(s"Timed out after $timeout")))
         .widen[Either[Throwable, Unit]]
@@ -3067,7 +3061,7 @@ object Stream extends StreamLowPriority {
     */
   def awakeDelay[F[x] >: Pure[x]](
       d: FiniteDuration
-  )(implicit t: TemporalThrow[F]): Stream[F, FiniteDuration] =
+  )(implicit t: tc.Temporal[F]): Stream[F, FiniteDuration] =
     Stream.eval(t.monotonic.map(_.toNanos)).flatMap { start =>
       fixedDelay[F](d) >> Stream
         .eval(t.monotonic.map(_.toNanos).map(now => (now - start).nanos))
@@ -3085,7 +3079,7 @@ object Stream extends StreamLowPriority {
     */
   def awakeEvery[F[x] >: Pure[x]](
       d: FiniteDuration
-  )(implicit t: TemporalThrow[F]): Stream[F, FiniteDuration] =
+  )(implicit t: tc.Temporal[F]): Stream[F, FiniteDuration] =
     Stream.eval(t.monotonic.map(_.toNanos)).flatMap { start =>
       fixedRate[F](d) >> Stream
         .eval(t.monotonic.map(_.toNanos).map(now => (now - start).nanos))
@@ -3274,7 +3268,7 @@ object Stream extends StreamLowPriority {
     *
     * Alias for `sleep(d).repeat`.
     */
-  def fixedDelay[F[_]](d: FiniteDuration)(implicit t: TemporalThrow[F]): Stream[F, Unit] =
+  def fixedDelay[F[_]](d: FiniteDuration)(implicit t: tc.Temporal[F]): Stream[F, Unit] =
     sleep(d).repeat
 
   /**
@@ -3284,7 +3278,7 @@ object Stream extends StreamLowPriority {
     *
     * @param d FiniteDuration between emits of the resulting stream
     */
-  def fixedRate[F[_]](d: FiniteDuration)(implicit t: TemporalThrow[F]): Stream[F, Unit] = {
+  def fixedRate[F[_]](d: FiniteDuration)(implicit t: tc.Temporal[F]): Stream[F, Unit] = {
     def now: Stream[F, Long] = Stream.eval(t.monotonic.map(_.toNanos))
     def go(started: Long): Stream[F, Unit] =
       now.flatMap { finished =>
@@ -3545,7 +3539,7 @@ object Stream extends StreamLowPriority {
     *                  returned when a non-retriable failure is
     *                  encountered
     */
-  def retry[F[_]: TemporalThrow: RaiseThrowable, O](
+  def retry[F[_]: tc.Temporal: RaiseThrowable, O](
       fo: F[O],
       delay: FiniteDuration,
       nextDelay: FiniteDuration => FiniteDuration,
@@ -3569,14 +3563,14 @@ object Stream extends StreamLowPriority {
   /**
     * A single-element `Stream` that waits for the duration `d` before emitting unit.
     */
-  def sleep[F[_]](d: FiniteDuration)(implicit t: TemporalThrow[F]): Stream[F, Unit] =
+  def sleep[F[_]](d: FiniteDuration)(implicit t: tc.Temporal[F]): Stream[F, Unit] =
     Stream.eval(t.sleep(d))
 
   /**
     * Alias for `sleep(d).drain`. Often used in conjunction with `++` (i.e., `sleep_(..) ++ s`) as a more
     * performant version of `sleep(..) >> s`.
     */
-  def sleep_[F[_]](d: FiniteDuration)(implicit t: TemporalThrow[F]): Stream[F, INothing] =
+  def sleep_[F[_]](d: FiniteDuration)(implicit t: tc.Temporal[F]): Stream[F, INothing] =
     Stream.exec(t.sleep(d))
 
   /**
@@ -4531,8 +4525,8 @@ object Stream extends StreamLowPriority {
       *   def elapsedSeconds: F[Int]
       * }
       * object StopWatch {
-      *   def create[F[_]: TemporalThrow]: Stream[F, StopWatch[F]] =
-      *     Stream.eval(Ref[F].of(0)).flatMap { c =>
+      *   def create[F[_]](implicit F: tc.Temporal[F]): Stream[F, StopWatch[F]] =
+      *     Stream.eval(F.ref(0)).flatMap { c =>
       *       val api = new StopWatch[F] {
       *         def elapsedSeconds: F[Int] = c.get
       *       }
@@ -4575,7 +4569,7 @@ object Stream extends StreamLowPriority {
       * object StopWatch {
       *   // ... def create as before ...
       *
-      *   def betterCreate[F[_]: TemporalThrow]: Resource[F, StopWatch[F]] =
+      *   def betterCreate[F[_]: tc.Temporal]: Resource[F, StopWatch[F]] =
       *     create.compile.resource.lastOrError
       * }
       * }}}
