@@ -25,6 +25,7 @@ import fs2._
 
 /** Provides mechanisms for balancing the distribution of chunks across multiple streams. */
 object Balance {
+
   /**
     * Allows balanced processing of this stream via multiple concurrent streams.
     *
