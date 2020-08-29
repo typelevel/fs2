@@ -1681,8 +1681,7 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     */
   def interruptWhen[F2[x] >: F[x]](
       haltWhenTrue: Stream[F2, Boolean]
-  )(implicit F: tc.Concurrent[F2]): Stream[F2, O] = {
-    val a: F2[Unit] = haltWhenTrue.compile.drain
+  )(implicit F: tc.Concurrent[F2]): Stream[F2, O] =
     for {
       interruptL <- Stream.eval(F.deferred[Unit])
       doneR <- Stream.eval(F.deferred[Either[Throwable, Unit]])
@@ -1705,7 +1704,6 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
       )
       res <- this.interruptWhen(interruptL.get.attempt)
     } yield res
-  }
 
   /** Alias for `interruptWhen(haltWhenTrue.get)`. */
   def interruptWhen[F2[x] >: F[x]: tc.Concurrent](
@@ -3719,7 +3717,7 @@ object Stream extends StreamLowPriority {
         maxQueued: Int
     )(p: Pipe[F, O, INothing])(implicit
         F: tc.Concurrent[F]): Stream[F, O] = {
-      Stream.eval(tc.Concurrent.semaphore[F](maxQueued - 1)).flatMap { guard =>
+      Stream.eval(tc.Concurrent.semaphore[F](maxQueued - 1L)).flatMap { guard =>
         Stream.eval(Queue.unbounded[F, Option[Chunk[O]]]).flatMap { outQ =>
           Stream.eval(Queue.unbounded[F, Option[Chunk[O]]]).flatMap { sinkQ =>
             def inputStream =
@@ -3830,7 +3828,7 @@ object Stream extends StreamLowPriority {
       assert(maxOpen > 0, "maxOpen must be > 0, was: " + maxOpen)
       val fstream: F[Stream[F, O]] = for {
         done <- SignallingRef(None: Option[Option[Throwable]])
-        available <- tc.Concurrent.semaphore(maxOpen)
+        available <- tc.Concurrent.semaphore(maxOpen.toLong)
         // starts with 1 because outer stream is running by default
         running <- SignallingRef(1L)
         // sync queue assures we won't overload heap when resulting stream is not able to catchup with inner streams

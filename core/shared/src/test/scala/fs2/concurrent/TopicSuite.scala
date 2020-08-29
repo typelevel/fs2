@@ -38,7 +38,7 @@ class TopicSuite extends Fs2Suite {
         .covary[IO]
         .through(topic.publish)
       val subscriber =
-        topic.subscribe(Int.MaxValue).take(count + 1).fold(Vector.empty[Int]) {
+        topic.subscribe(Int.MaxValue).take(count + 1.toLong).fold(Vector.empty[Int]) {
           _ :+ _
         }
 
@@ -73,7 +73,7 @@ class TopicSuite extends Fs2Suite {
           .through(topic.publish)
         val subscriber = topic
           .subscribe(1)
-          .take(count + 1)
+          .take(count + 1L)
           .flatMap(is => Stream.eval(signal.get).map(is -> _))
           .fold(Vector.empty[(Int, Int)])(_ :+ _)
 

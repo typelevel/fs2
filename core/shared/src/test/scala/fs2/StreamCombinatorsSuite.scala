@@ -75,7 +75,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
           val s2 = s.append(Stream.emits(List.fill(n + 1)(0))).repeat
           s2.evalMap(i => IO { counter += 1; i })
             .buffer(n)
-            .take(n + 1)
+            .take(n + 1L)
             .compile
             .drain
             .map(_ => assert(counter == (n * 2)))
@@ -97,7 +97,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
           s.append(s)
             .evalMap(i => IO { counter += 1; i })
             .bufferAll
-            .take(s.toList.size + 1)
+            .take(s.toList.size + 1L)
             .compile
             .drain
             .map(_ => assert(counter == expected))
@@ -121,7 +121,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
           val s2 = s.map(x => if (x == Int.MinValue) x + 1 else x).map(_.abs)
           val s3 = s2.append(Stream.emit(-1)).append(s2).evalMap(i => IO { counter += 1; i })
           s3.bufferBy(_ >= 0)
-            .take(s.toList.size + 2)
+            .take(s.toList.size + 2L)
             .compile
             .drain
             .map(_ => assert(counter == expected))
@@ -186,7 +186,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
       val v = s.toVector
       val n1 = if (v.isEmpty) 0 else (n0 % v.size).abs
       val n = if (negate) -n1 else n1
-      assert(s.drop(n).toVector == s.toVector.drop(n))
+      assert(s.drop(n.toLong).toVector == s.toVector.drop(n))
     }
   }
 
@@ -332,7 +332,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
       val s = Stream.range(0, 100)
       val n = 5
 
-      (Semaphore[IO](n), SignallingRef[IO, Int](0)).tupled
+      (Semaphore[IO](n.toLong), SignallingRef[IO, Int](0)).tupled
         .flatMap {
           case (sem, sig) =>
             val tested = s
@@ -420,7 +420,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
       val s = Stream.range(0, 100)
       val n = 5
 
-      (Semaphore[IO](n), SignallingRef[IO, Int](0)).tupled
+      (Semaphore[IO](n.toLong), SignallingRef[IO, Int](0)).tupled
         .flatMap {
           case (sem, sig) =>
             val tested = s
@@ -525,7 +525,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
     val durationsSinceSpike = Stream
       .every[IO](delay)
       .map(d => (d, System.nanoTime.nanos))
-      .take(draws.toInt)
+      .take(draws.toLong)
       .through(durationSinceLastTrue)
 
     (IO.cede >> durationsSinceSpike.compile.toVector).map { result =>
@@ -819,9 +819,9 @@ class StreamCombinatorsSuite extends Fs2Suite {
         val ones = Stream.constant("1")
         val as = Stream.constant("A")
         assert(
-          ones.interleaveAll(as).take(n).toVector == ones
+          ones.interleaveAll(as).take(n.toLong).toVector == ones
             .interleave(as)
-            .take(n)
+            .take(n.toLong)
             .toVector
         )
       }
@@ -1112,7 +1112,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
       val result = s.toList.scanLeft(0)(f)
       s.append(never)
         .scan(0)(f)
-        .take(result.size)
+        .take(result.size.toLong)
         .compile
         .toList
         .map(it => assert(it == result))
