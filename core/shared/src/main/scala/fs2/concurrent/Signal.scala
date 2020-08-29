@@ -155,19 +155,6 @@ abstract class SignallingRef[F[_], A] extends Ref[F, A] with Signal[F, A]
 
 object SignallingRef {
 
-  sealed trait Mk[F[_]] {
-    def refOf[A](initial: A): F[SignallingRef[F, A]]
-  }
-
-  object Mk {
-    // implicit def instance[F[_]](impl): tc.Concurrent]: Mk[F] =
-    //   new Mk[F] {
-    //     def refOf[A](initial: A): F[SignallingRef[F, A]] =
-    //       Ref.of[F, (A, Long, Map[Token, Deferred[F, (A, Long)]])]((initial, 0L, Map.empty))
-    //         .map(state => new SignallingRefImpl[F, A](state))
-    //   }
-  }
-
   /** Alias for `of`. */
   def apply[F[_]: tc.Concurrent, A](initial: A): F[SignallingRef[F, A]] =
     of(initial)
