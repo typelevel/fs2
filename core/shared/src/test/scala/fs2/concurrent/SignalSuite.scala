@@ -79,6 +79,19 @@ class SignalSuite extends Fs2Suite {
     }
   }
 
+  test("Signal.access cannot be used twice") {
+    for {
+      s <- SignallingRef[IO, Long](0L)
+      access <- s.access
+      (v, set) = access
+      r1 <- set(v)
+      r2 <- set(v)
+    } yield {
+      assert(r1 == true)
+      assert(r2 == false)
+    }
+  }
+
   test("holdOption") {
     val s = Stream.range(1, 10).covary[IO].holdOption
     s.compile.drain

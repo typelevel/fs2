@@ -73,9 +73,9 @@ class StreamSuite extends Fs2Suite {
         val chunkedV = s.chunkMin(n, true).toVector
         val withIfSmallerV = s.chunkMin(n, false).toVector
         val unchunkedV = s.toVector
-        val smallerSet = s.take(n - 1).toVector
-        val smallerN = s.take(n - 1).chunkMin(n, false).toVector
-        val smallerY = s.take(n - 1).chunkMin(n, true).toVector
+        val smallerSet = s.take(n - 1L).toVector
+        val smallerN = s.take(n - 1L).chunkMin(n, false).toVector
+        val smallerY = s.take(n - 1L).chunkMin(n, true).toVector
         // All but last list have n values
         assert(chunkedV.dropRight(1).forall(_.size >= n))
         // Equivalent to last chunk with allowFewerTotal
@@ -485,7 +485,7 @@ class StreamSuite extends Fs2Suite {
         Gen.chooseNum(1, 200).flatMap(i => Gen.listOfN(i, arbitrary[Int]))
       ) { (n: Int, testValues: List[Int]) =>
         assert(
-          Stream.emits(testValues).repeat.take(n).toList == List
+          Stream.emits(testValues).repeat.take(n.toLong).toList == List
             .fill(n / testValues.size + 1)(testValues)
             .flatten
             .take(n)
@@ -498,7 +498,9 @@ class StreamSuite extends Fs2Suite {
         Gen.chooseNum(1, 200),
         Gen.chooseNum(1, 200).flatMap(i => Gen.listOfN(i, arbitrary[Int]))
       ) { (n: Int, testValues: List[Int]) =>
-        assert(Stream.emits(testValues).repeatN(n).toList == List.fill(n)(testValues).flatten)
+        assert(
+          Stream.emits(testValues).repeatN(n.toLong).toList == List.fill(n)(testValues).flatten
+        )
       }
     }
 
@@ -786,7 +788,7 @@ class StreamSuite extends Fs2Suite {
         forAll { (s: Stream[Pure, Int], negate: Boolean, n0: Int) =>
           val n1 = (n0 % 20).abs + 1
           val n = if (negate) -n1 else n1
-          assert(s.take(n).toList == s.toList.take(n))
+          assert(s.take(n.toLong).toList == s.toList.take(n))
         }
       }
       test("chunks") {

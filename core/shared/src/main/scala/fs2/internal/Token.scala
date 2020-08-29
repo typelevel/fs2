@@ -21,25 +21,36 @@
 
 package fs2.internal
 
-import cats.effect.Sync
+import cats.Monad
+import cats.syntax.all._
 
 /** Represents a unique identifier (using object equality). */
-final class Token private[fs2] () extends Serializable {
+final class Token private () extends Serializable {
   override def toString: String = s"Token(${hashCode.toHexString})"
 }
 
 object Token {
 
-  def apply[F[_]](implicit mk: Mk[F]): F[Token] = mk.newToken
-
-  trait Mk[F[_]] {
-    def newToken: F[Token]
-  }
-
-  object Mk {
-    implicit def instance[F[_]](implicit F: Sync[F]): Mk[F] =
-      new Mk[F] {
-        override def newToken: F[Token] = F.delay(new Token)
-      }
-  }
+  /**
+    * Token provides uniqueness by relying on object equality,
+    * which means that `new Token` is actually a side-effect
+    * in this case.
+    *
+    * We want to make sure we preserve referential transparency when
+    * using tokens, but imposing a `Sync` bound is not desirable here,
+    * since it forces a very strong constraint on user code for
+    * something that is not only an internal implementation detail,
+    * but also has zero impact on meaningful behaviour for the user,
+    * unlike for example internal concurrency.
+    *
+    * Furthermore, token creation has the following properties:
+    * - it's synchronous
+    * - it's infallible
+    * - it's not created in contexts that affect stack safety such as iteration
+    *
+    * Given all these reasons, we suspend it via `Monad` instead of
+    * using `Sync.` Do not try this at home.
+    */
+  def apply[F[_]: Monad]: F[Token] =
+    ().pure[F].map(_ => new Token)
 }

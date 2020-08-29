@@ -124,8 +124,7 @@ private[fs2] final class CompileScope[F[_]] private (
      *     or as a result of interrupting this scope. But it should not propagate its own interruption to this scope.
      *
      */
-    val createCompileScope: F[CompileScope[F]] = {
-      val newScopeId = new Token
+    val createCompileScope: F[CompileScope[F]] = Token[F].flatMap { newScopeId =>
       self.interruptible match {
         case None =>
           val fiCtx = interruptible.traverse(i => InterruptContext(i, newScopeId, F.unit))
@@ -419,7 +418,7 @@ private[fs2] object CompileScope {
 
   /** Creates a new root scope. */
   def newRoot[F[_]: Resource.Bracket: Ref.Mk]: F[CompileScope[F]] =
-    apply[F](new Token(), None, None)
+    Token[F].flatMap(apply[F](_, None, None))
 
   /**
     * State of a scope.
@@ -527,8 +526,8 @@ private[fs2] object CompileScope {
     ): F[InterruptContext[F]] = {
       import interruptible._
       for {
-        ref <- Ref.of[F, Option[InterruptionOutcome]](None)
-        deferred <- Deferred[F, InterruptionOutcome]
+        ref <- fs2.tc.Concurrent[F].refOf[Option[InterruptionOutcome]](None)
+        deferred <- fs2.tc.Concurrent[F].deferred[InterruptionOutcome]
       } yield InterruptContext[F](
         deferred = deferred,
         ref = ref,

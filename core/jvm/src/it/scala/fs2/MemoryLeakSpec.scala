@@ -111,7 +111,7 @@ class MemoryLeakSpec extends FunSuite {
       path
     }
 
-  leakTest("groupWithin") {
+  leakTest("groupWithin".flaky) {
     Stream
       .eval(IO.never)
       .covary[IO]
@@ -128,12 +128,11 @@ class MemoryLeakSpec extends FunSuite {
     a
   }
 
-  // TODO
-  // leakTest("topic continuous publish") {
-  //  Stream
-  //    .eval(Topic[IO, Int](-1))
-  //    .flatMap(topic => Stream.repeatEval(topic.publish1(1)))
-  //}
+  leakTest("topic continuous publish") {
+    Stream
+      .eval(Topic[IO, Int](-1))
+      .flatMap(topic => Stream.repeatEval(topic.publish1(1)))
+  }
 
   leakTest("brackets") {
     Stream.constant(1).flatMap { _ =>

@@ -19,32 +19,28 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2.concurrent
+package fs2
 
-import cats.effect.Async
-import cats.effect.concurrent.{Deferred, Ref, Semaphore}
+import fs2.internal.Token
+import cats.effect.SyncIO
 
-sealed trait Alloc[F[_]] {
-  implicit def mkRef: Ref.Mk[F]
-  implicit def mkDeferred: Deferred.Mk[F]
-  implicit def mkSemaphore: Semaphore.Mk[F]
-  implicit def mkQueue: Queue.Mk[F]
-  implicit def mkSignallingRef: SignallingRef.Mk[F]
-  implicit def mkBalance: Balance.Mk[F]
-  implicit def mkBroadcast: Broadcast.Mk[F]
-}
+class TokenSuite extends Fs2Suite {
+  test("Tokens are unique") {
+    for {
+      a <- Token[SyncIO]
+      b <- Token[SyncIO]
+    } yield assert(a != b)
+  }
 
-object Alloc {
-  def apply[F[_]](implicit instance: Alloc[F]): instance.type = instance
+  test("Tokens are stable") {
+    Token[SyncIO].map(t => assert(t == t))
+  }
 
-  implicit def instance[F[_]: Async]: Alloc[F] =
-    new Alloc[F] {
-      implicit def mkRef: Ref.Mk[F] = Ref.MkIn.instance[F, F]
-      implicit def mkDeferred: Deferred.Mk[F] = Deferred.MkIn.instance[F, F]
-      implicit def mkSemaphore: Semaphore.Mk[F] = Semaphore.MkIn.instance[F, F]
-      implicit def mkQueue: Queue.Mk[F] = Queue.MkIn.instance[F, F]
-      implicit def mkSignallingRef: SignallingRef.Mk[F] = SignallingRef.MkIn.instance[F, F]
-      implicit def mkBalance: Balance.Mk[F] = Balance.Mk.instance[F]
-      implicit def mkBroadcast: Broadcast.Mk[F] = Broadcast.Mk.instance[F]
-    }
+  test("Tokens are referentially transparent") {
+    val token = Token[SyncIO]
+    for {
+      a <- token
+      b <- token
+    } yield assert(a != b)
+  }
 }

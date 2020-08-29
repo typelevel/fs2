@@ -27,7 +27,6 @@ import org.scalacheck.Prop.forAll
 import scodec.bits._
 import scodec.bits.Bases.Alphabets.Base64Url
 
-import fs2._
 import fs2.text._
 
 class TextSuite extends Fs2Suite {

@@ -37,7 +37,7 @@ class QueueSuite extends Fs2Suite {
         .flatMap { q =>
           q.dequeue
             .merge(s.evalMap(q.enqueue1).drain)
-            .take(n)
+            .take(n.toLong)
         }
         .compile
         .toList

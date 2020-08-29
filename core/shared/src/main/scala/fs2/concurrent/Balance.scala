@@ -21,37 +21,10 @@
 
 package fs2.concurrent
 
-import cats.effect._
 import fs2._
 
 /** Provides mechanisms for balancing the distribution of chunks across multiple streams. */
 object Balance {
-
-  sealed trait Mk[F[_]] {
-    def apply[O](chunkSize: Int): Pipe[F, O, Stream[F, O]]
-  }
-
-  object Mk {
-    implicit def instance[F[_]: Async]: Mk[F] =
-      new Mk[F] {
-        def apply[O](chunkSize: Int): Pipe[F, O, Stream[F, O]] = { source =>
-          Stream.eval(PubSub.in[F].from(PubSub.Strategy.closeDrainFirst(strategy[O]))).flatMap {
-            pubSub =>
-              def subscriber =
-                pubSub
-                  .getStream(chunkSize)
-                  .unNoneTerminate
-                  .flatMap(Stream.chunk)
-              def push =
-                source.chunks
-                  .evalMap(chunk => pubSub.publish(Some(chunk)))
-                  .onFinalize(pubSub.publish(None))
-
-              Stream.constant(subscriber).concurrently(push)
-          }
-        }
-      }
-  }
 
   /**
     * Allows balanced processing of this stream via multiple concurrent streams.
@@ -89,9 +62,21 @@ object Balance {
     * The resulting stream terminates after the source stream terminates and all workers terminate.
     * Conversely, if the resulting stream is terminated early, the source stream will be terminated.
     */
-  def apply[F[_], O](
-      chunkSize: Int
-  )(implicit mk: Mk[F]): Pipe[F, O, Stream[F, O]] = mk(chunkSize)
+  def apply[F[_]: tc.Concurrent, O](chunkSize: Int): Pipe[F, O, Stream[F, O]] = { source =>
+    Stream.eval(PubSub(PubSub.Strategy.closeDrainFirst(strategy[O]))).flatMap { pubSub =>
+      def subscriber =
+        pubSub
+          .getStream(chunkSize)
+          .unNoneTerminate
+          .flatMap(Stream.chunk)
+      def push =
+        source.chunks
+          .evalMap(chunk => pubSub.publish(Some(chunk)))
+          .onFinalize(pubSub.publish(None))
+
+      Stream.constant(subscriber).concurrently(push)
+    }
+  }
 
   /**
     * Like `apply` but instead of providing a stream of worker streams, the supplied pipes are
@@ -114,7 +99,7 @@ object Balance {
     * @param pipes pipes to use to process work
     * @param chunkSize maximum chunk to present to each pipe, allowing fair distribution between pipes
     */
-  def through[F[_]: ConcurrentThrow: Alloc, O, O2](
+  def through[F[_]: tc.Concurrent, O, O2](
       chunkSize: Int
   )(pipes: Pipe[F, O, O2]*): Pipe[F, O, O2] =
     _.balance(chunkSize)

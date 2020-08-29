@@ -24,7 +24,7 @@ package concurrent
 
 import cats.{Applicative, Functor, Invariant}
 import cats.data.{OptionT, State}
-import cats.effect.{Async, ConcurrentThrow, Sync}
+import cats.effect.ConcurrentThrow
 import cats.effect.concurrent.{Deferred, Ref}
 import cats.implicits._
 import fs2.internal.Token
@@ -54,14 +54,14 @@ trait Signal[F[_], A] {
 }
 
 object Signal extends SignalLowPriorityImplicits {
-  def constant[F[_], A](a: A)(implicit F: Async[F]): Signal[F, A] =
+  def constant[F[_], A](a: A)(implicit F: ConcurrentThrow[F]): Signal[F, A] =
     new Signal[F, A] {
       def get = F.pure(a)
       def continuous = Stream.constant(a)
       def discrete = Stream(a) ++ Stream.never
     }
 
-  implicit def applicativeInstance[F[_]: Async]: Applicative[Signal[F, *]] =
+  implicit def applicativeInstance[F[_]: tc.Concurrent]: Applicative[Signal[F, *]] =
     new Applicative[Signal[F, *]] {
       override def map[A, B](fa: Signal[F, A])(f: A => B): Signal[F, B] =
         Signal.map(fa)(f)
@@ -80,7 +80,7 @@ object Signal extends SignalLowPriorityImplicits {
         }
     }
 
-  private def nondeterministicZip[F[_]: Async, A0, A1](
+  private def nondeterministicZip[F[_]: tc.Concurrent, A0, A1](
       xs: Stream[F, A0],
       ys: Stream[F, A1]
   ): Stream[F, (A0, A1)] = {
@@ -123,7 +123,7 @@ object Signal extends SignalLowPriorityImplicits {
   implicit class BooleanSignalOps[F[_]](val self: Signal[F, Boolean]) extends AnyVal {
     def interrupt[A](
         s: Stream[F, A]
-    )(implicit F: ConcurrentThrow[F], alloc: Alloc[F]): Stream[F, A] =
+    )(implicit F: tc.Concurrent[F]): Stream[F, A] =
       s.interruptWhen(self)
   }
 }
@@ -155,40 +155,20 @@ abstract class SignallingRef[F[_], A] extends Ref[F, A] with Signal[F, A]
 
 object SignallingRef {
 
-  sealed trait MkIn[F[_], G[_]] {
-    def refOf[A](initial: A): F[SignallingRef[G, A]]
-  }
-
-  object MkIn {
-    implicit def instance[F[_], G[_]](implicit F: Sync[F], G: Async[G]): MkIn[F, G] =
-      new MkIn[F, G] {
-        def refOf[A](initial: A): F[SignallingRef[G, A]] =
-          Ref
-            .in[F, G, (A, Long, Map[Token, Deferred[G, (A, Long)]])]((initial, 0L, Map.empty))
-            .map(state => new SignallingRefImpl[G, A](state))
-      }
-  }
-
-  type Mk[F[_]] = MkIn[F, F]
-
   /** Alias for `of`. */
-  def apply[F[_], A](initial: A)(implicit mk: Mk[F]): F[SignallingRef[F, A]] = mk.refOf(initial)
+  def apply[F[_]: tc.Concurrent, A](initial: A): F[SignallingRef[F, A]] =
+    of(initial)
 
   /**
     * Builds a `SignallingRef` for for effect `F`, initialized to the supplied value.
     */
-  def of[F[_], A](initial: A)(implicit mk: Mk[F]): F[SignallingRef[F, A]] = mk.refOf(initial)
-
-  /**
-    * Builds a `SignallingRef` for effect `G` in the effect `F`.
-    * Like [[of]], but initializes state using another effect constructor.
-    */
-  def in[F[_], G[_], A](initial: A)(implicit mk: MkIn[F, G]): F[SignallingRef[G, A]] =
-    mk.refOf(initial)
+  def of[F[_], A](initial: A)(implicit F: tc.Concurrent[F]): F[SignallingRef[F, A]] =
+    F.refOf[(A, Long, Map[Token, Deferred[F, (A, Long)]])]((initial, 0L, Map.empty))
+      .map(state => new SignallingRefImpl[F, A](state))
 
   private final class SignallingRefImpl[F[_], A](
       state: Ref[F, (A, Long, Map[Token, Deferred[F, (A, Long)]])]
-  )(implicit F: Async[F])
+  )(implicit F: tc.Concurrent[F])
       extends SignallingRef[F, A] {
 
     override def get: F[A] = state.get.map(_._1)
@@ -199,7 +179,7 @@ object SignallingRef {
     override def discrete: Stream[F, A] = {
       def go(id: Token, lastUpdate: Long): Stream[F, A] = {
         def getNext: F[(A, Long)] =
-          Deferred[F, (A, Long)]
+          F.deferred[(A, Long)]
             .flatMap { deferred =>
               state.modify {
                 case s @ (a, updates, listeners) =>
@@ -226,19 +206,14 @@ object SignallingRef {
     override def getAndSet(a: A): F[A] = modify(old => (a, old))
 
     override def access: F[(A, A => F[Boolean])] =
-      state.access.flatMap {
+      state.access.map {
         case (snapshot, set) =>
-          F.delay {
-            val hasBeenCalled = new java.util.concurrent.atomic.AtomicBoolean(false)
-            val setter =
-              (a: A) =>
-                F.delay(hasBeenCalled.compareAndSet(false, true))
-                  .ifM(
-                    if (a == snapshot._1) set((a, snapshot._2, snapshot._3)) else F.pure(false),
-                    F.pure(false)
-                  )
-            (snapshot._1, setter)
+          val setter = { (a: A) =>
+            if (a == snapshot._1) set((a, snapshot._2, snapshot._3))
+            else F.pure(false)
           }
+
+          (snapshot._1, setter)
       }
 
     override def tryUpdate(f: A => A): F[Boolean] =
