@@ -1692,7 +1692,7 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
           .interruptWhen(interruptR.get.attempt)
           .compile
           .drain
-          .guaranteeCase { c: Outcome[F2, Throwable, Unit] =>
+          .guaranteeCase { (c: Outcome[F2, Throwable, Unit]) =>
             val r = c match {
               case Outcome.Completed(_) => Right(())
               case Outcome.Errored(t)   => Left(t)
