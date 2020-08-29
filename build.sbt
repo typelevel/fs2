@@ -149,7 +149,9 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.PullSyncInstance.ifElseM"),
   ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.PullSyncInstance.fproductLeft"),
   ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Pull.free"),
-  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Stream.free")
+  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Stream.free"),
+  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Stream#PartiallyAppliedFromBlockingIterator.apply$extension"),
+  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Stream#PartiallyAppliedFromIterator.apply$extension")
 )
 
 lazy val root = project
