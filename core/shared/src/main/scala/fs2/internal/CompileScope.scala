@@ -31,7 +31,6 @@ import cats.effect.implicits._
 import cats.implicits._
 import fs2.{CompositeFailure, Pure, Scope}
 import fs2.internal.CompileScope.{InterruptContext, InterruptionOutcome}
-import fs2.concurrent.next
 
 /**
   * Implementation of [[Scope]] for the internal stream interpreter.

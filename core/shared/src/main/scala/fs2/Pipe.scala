@@ -21,8 +21,6 @@
 
 package fs2
 
-import fs2.concurrent.next
-
 object Pipe {
 
   /**
