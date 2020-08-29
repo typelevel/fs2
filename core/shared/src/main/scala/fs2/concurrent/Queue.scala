@@ -23,7 +23,6 @@ package fs2
 package concurrent
 
 import cats.{Applicative, ApplicativeError, Eq, Functor, Id}
-import cats.effect.{Async, Sync}
 import cats.implicits._
 import fs2.internal.{SizedQueue, Token}
 

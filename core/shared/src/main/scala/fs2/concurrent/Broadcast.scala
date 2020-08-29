@@ -21,7 +21,6 @@
 
 package fs2.concurrent
 
-import cats.effect.{Async, ConcurrentThrow, Sync}
 import fs2.internal.Token
 import fs2._
 

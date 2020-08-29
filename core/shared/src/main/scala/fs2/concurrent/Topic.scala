@@ -24,7 +24,6 @@ package concurrent
 
 import cats.Eq
 import cats.syntax.all._
-import cats.effect.{ConcurrentThrow}
 
 import fs2.internal.{SizedQueue, Token}
 
