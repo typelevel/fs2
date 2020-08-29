@@ -108,7 +108,7 @@ object Topic {
     * `initial` value is immediately published.
     */
   def apply[F[_], A](initial: A)(implicit F: tc.Concurrent[F]): F[Topic[F, A]] = {
-      implicit def eqInstance: Eq[Strategy.State[A]] =
+    implicit def eqInstance: Eq[Strategy.State[A]] =
       Eq.instance[Strategy.State[A]](_.subscribers.keySet == _.subscribers.keySet)
 
     PubSub(PubSub.Strategy.Inspectable.strategy(Strategy.boundedSubscribers(initial)))
@@ -117,7 +117,8 @@ object Topic {
           def subscriber(size: Int): Stream[F, ((Token, Int), Stream[F, SizedQueue[A]])] =
             Stream
               .bracket(
-                Token[F].tupleRight(size)
+                Token[F]
+                  .tupleRight(size)
                   .flatTap(selector => pubSub.subscribe(Right(selector)))
               )(selector => pubSub.unsubscribe(Right(selector)))
               .map { selector =>

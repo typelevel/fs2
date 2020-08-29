@@ -21,34 +21,42 @@
 
 package fs2
 
-import cats.effect.{ConcurrentThrow, TemporalThrow, Poll}
-import cats.effect.concurrent.{Ref, Deferred, Semaphore}
+import cats.effect.{ConcurrentThrow, Poll, TemporalThrow}
+import cats.effect.concurrent.{Deferred, Ref, Semaphore}
 import scala.concurrent.duration.FiniteDuration
 
 object tc {
-  trait Concurrent[F[_]] extends cats.effect.Concurrent[F, Throwable] with Ref.Mk[F] with Deferred.Mk[F]
+  trait Concurrent[F[_]]
+      extends cats.effect.Concurrent[F, Throwable]
+      with Ref.Mk[F]
+      with Deferred.Mk[F]
   object Concurrent {
     def apply[F[_]](implicit F: Concurrent[F]): F.type = F
 
-    implicit def instance[F[_]](implicit F: ConcurrentThrow[F], refMk: Ref.Mk[F], defMk: Deferred.Mk[F]): Concurrent[F] = new Concurrent[F] {
-      type E = Throwable
+    implicit def instance[F[_]](implicit
+        F: ConcurrentThrow[F],
+        refMk: Ref.Mk[F],
+        defMk: Deferred.Mk[F]
+    ): Concurrent[F] =
+      new Concurrent[F] {
+        type E = Throwable
 
-      def deferred[A] = defMk.deferred[A]
-      def refOf[A](a: A) = refMk.refOf(a)
-      def pure[A](x: A) = F.pure(x)
-      def flatMap[A, B](fa: F[A])(f: A => F[B]) = F.flatMap(fa)(f)
-      def tailRecM[A, B](a: A)(f: A => F[Either[A, B]]) = F.tailRecM(a)(f)
-      def handleErrorWith [A](fa: F[A])(f: E => F[A]) = F.handleErrorWith(fa)(f)
-      def raiseError [A](e: E) = F.raiseError(e)
-      def canceled: F[Unit] = F.canceled
-      def cede: F[Unit] = F.cede
-      def forceR[A, B](fa: F[A])(fb: F[B]) = F.forceR(fa)(fb)
-      def never[A]: F[A] = F.never
-      def onCancel[A](fa: F[A], fin: F[Unit]) = F.onCancel(fa, fin)
-      def racePair[A, B](fa: F[A], fb: F[B]) = F.racePair(fa, fb)
-      def start[A](fa: F[A]) = F.start(fa)
-      def uncancelable[A](body: Poll[F] => F[A]): F[A] = F.uncancelable(body)
-    }
+        def deferred[A] = defMk.deferred[A]
+        def refOf[A](a: A) = refMk.refOf(a)
+        def pure[A](x: A) = F.pure(x)
+        def flatMap[A, B](fa: F[A])(f: A => F[B]) = F.flatMap(fa)(f)
+        def tailRecM[A, B](a: A)(f: A => F[Either[A, B]]) = F.tailRecM(a)(f)
+        def handleErrorWith[A](fa: F[A])(f: E => F[A]) = F.handleErrorWith(fa)(f)
+        def raiseError[A](e: E) = F.raiseError(e)
+        def canceled: F[Unit] = F.canceled
+        def cede: F[Unit] = F.cede
+        def forceR[A, B](fa: F[A])(fb: F[B]) = F.forceR(fa)(fb)
+        def never[A]: F[A] = F.never
+        def onCancel[A](fa: F[A], fin: F[Unit]) = F.onCancel(fa, fin)
+        def racePair[A, B](fa: F[A], fb: F[B]) = F.racePair(fa, fb)
+        def start[A](fa: F[A]) = F.start(fa)
+        def uncancelable[A](body: Poll[F] => F[A]): F[A] = F.uncancelable(body)
+      }
 
     def semaphore[F[_]](n: Long)(implicit F: Concurrent[F]): F[Semaphore[F]] =
       Semaphore[F](n)(Semaphore.MkIn.instance[F, F])
@@ -70,8 +78,8 @@ object tc {
         def pure[A](x: A) = F.pure(x)
         def flatMap[A, B](fa: F[A])(f: A => F[B]) = F.flatMap(fa)(f)
         def tailRecM[A, B](a: A)(f: A => F[Either[A, B]]) = F.tailRecM(a)(f)
-        def handleErrorWith [A](fa: F[A])(f: E => F[A]) = F.handleErrorWith(fa)(f)
-        def raiseError [A](e: E) = F.raiseError(e)
+        def handleErrorWith[A](fa: F[A])(f: E => F[A]) = F.handleErrorWith(fa)(f)
+        def raiseError[A](e: E) = F.raiseError(e)
         def canceled: F[Unit] = F.canceled
         def cede: F[Unit] = F.cede
         def forceR[A, B](fa: F[A])(fb: F[B]) = F.forceR(fa)(fb)

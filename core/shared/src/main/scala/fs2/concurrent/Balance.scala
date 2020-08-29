@@ -75,8 +75,7 @@ object Balance {
     * Conversely, if the resulting stream is terminated early, the source stream will be terminated.
     */
   def apply[F[_]: tc.Concurrent, O](chunkSize: Int): Pipe[F, O, Stream[F, O]] = { source =>
-    Stream.eval(PubSub(PubSub.Strategy.closeDrainFirst(strategy[O]))).flatMap {
-      pubSub =>
+    Stream.eval(PubSub(PubSub.Strategy.closeDrainFirst(strategy[O]))).flatMap { pubSub =>
       def subscriber =
         pubSub
           .getStream(chunkSize)

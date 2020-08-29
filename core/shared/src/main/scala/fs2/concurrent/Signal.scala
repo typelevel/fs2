@@ -166,7 +166,6 @@ object SignallingRef {
     F.refOf[(A, Long, Map[Token, Deferred[F, (A, Long)]])]((initial, 0L, Map.empty))
       .map(state => new SignallingRefImpl[F, A](state))
 
-
   private final class SignallingRefImpl[F[_], A](
       state: Ref[F, (A, Long, Map[Token, Deferred[F, (A, Long)]])]
   )(implicit F: tc.Concurrent[F])

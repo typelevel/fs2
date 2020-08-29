@@ -180,7 +180,9 @@ object Queue {
     create(Strategy.circularBuffer(maxSize))
 
   /** Creates a queue terminated by enqueueing `None`. All elements before `None` are preserved and never blocks on enqueue. */
-  def circularBufferNoneTerminated[F[_]: tc.Concurrent, A](maxSize: Int): F[NoneTerminatedQueue[F, A]] =
+  def circularBufferNoneTerminated[F[_]: tc.Concurrent, A](
+      maxSize: Int
+  ): F[NoneTerminatedQueue[F, A]] =
     createNoneTerminated(
       PubSub.Strategy.closeDrainFirst(Strategy.circularBuffer(maxSize))
     )
@@ -204,7 +206,7 @@ object Queue {
     createNoneTerminated(PubSub.Strategy.closeNow(Strategy.synchronous))
 
   def create[F[_]: tc.Concurrent, S, A](
-    strategy: PubSub.Strategy[A, Chunk[A], S, Int]
+      strategy: PubSub.Strategy[A, Chunk[A], S, Int]
   ): F[Queue[F, A]] =
     PubSub(strategy).map { pubSub =>
       new Queue[F, A] {
@@ -238,7 +240,7 @@ object Queue {
     }
 
   def createNoneTerminated[F[_], S, A](
-    strategy: PubSub.Strategy[Option[A], Option[Chunk[A]], S, Int]
+      strategy: PubSub.Strategy[Option[A], Option[Chunk[A]], S, Int]
   )(implicit F: tc.Concurrent[F]): F[NoneTerminatedQueue[F, A]] =
     PubSub(strategy).map { pubSub =>
       new NoneTerminatedQueue[F, A] {
@@ -280,6 +282,7 @@ object Queue {
     }
 
   object Strategy {
+
     /** Unbounded fifo strategy. */
     def boundedFifo[A](maxSize: Int): PubSub.Strategy[A, Chunk[A], SizedQueue[A], Int] =
       PubSub.Strategy.bounded(maxSize)(fifo[A])(_.size)
@@ -373,7 +376,7 @@ object Queue {
   }
 
   private[fs2] def headUnsafe[F[_], A](
-    chunk: Chunk[A]
+      chunk: Chunk[A]
   )(implicit F: ApplicativeError[F, Throwable]): F[A] =
     if (chunk.size == 1) F.pure(chunk(0))
     else F.raiseError(new Throwable(s"Expected chunk of size 1. got $chunk"))
@@ -408,10 +411,10 @@ trait InspectableQueue[F[_], A] extends Queue[F, A] {
 }
 
 object InspectableQueue {
+
   /** Creates a queue with no size bound. */
   def unbounded[F[_]: tc.Concurrent, A]: F[InspectableQueue[F, A]] =
     create(Queue.Strategy.fifo[A])(_.headOption)(_.size)
-
 
   /** Creates a queue with the specified size bound. */
   def bounded[F[_]: tc.Concurrent, A](maxSize: Int): F[InspectableQueue[F, A]] =
@@ -422,11 +425,11 @@ object InspectableQueue {
     create(Queue.Strategy.circularBuffer[A](maxSize))(_.headOption)(_.size)
 
   def create[F[_], S, A](
-    strategy: PubSub.Strategy[A, Chunk[A], S, Int]
+      strategy: PubSub.Strategy[A, Chunk[A], S, Int]
   )(
-    headOf: S => Option[A]
+      headOf: S => Option[A]
   )(
-    sizeOf: S => Int
+      sizeOf: S => Int
   )(implicit F: tc.Concurrent[F]): F[InspectableQueue[F, A]] = {
     implicit def eqInstance: Eq[S] = Eq.fromUniversalEquals[S]
     PubSub(PubSub.Strategy.Inspectable.strategy(strategy)).map { pubSub =>
@@ -483,25 +486,26 @@ object InspectableQueue {
           }
 
         def peek1: F[A] =
-          tc.Concurrent[F].bracket(Token[F]) { token =>
-            def take: F[A] =
-              pubSub.get(Left(Some(token))).flatMap {
-                case Left(s) =>
-                  headOf(s) match {
-                    case None    => take
-                    case Some(a) => a.pure[F]
-                  }
+          tc.Concurrent[F]
+            .bracket(Token[F]) { token =>
+              def take: F[A] =
+                pubSub.get(Left(Some(token))).flatMap {
+                  case Left(s) =>
+                    headOf(s) match {
+                      case None    => take
+                      case Some(a) => a.pure[F]
+                    }
 
-                case Right(chunk) =>
-                  ApplicativeError[F, Throwable].raiseError(
-                    new Throwable(
-                      s"Inspectable `peek1` requires state to be returned, got: $chunk"
+                  case Right(chunk) =>
+                    ApplicativeError[F, Throwable].raiseError(
+                      new Throwable(
+                        s"Inspectable `peek1` requires state to be returned, got: $chunk"
+                      )
                     )
-                  )
-              }
+                }
 
-            take
-          }(token => pubSub.unsubscribe(Left(Some(token))))
+              take
+            }(token => pubSub.unsubscribe(Left(Some(token))))
 
         def size: Stream[F, Int] =
           Stream
@@ -522,5 +526,3 @@ object InspectableQueue {
     }
   }
 }
-
-

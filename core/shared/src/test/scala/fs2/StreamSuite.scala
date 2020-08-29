@@ -498,7 +498,9 @@ class StreamSuite extends Fs2Suite {
         Gen.chooseNum(1, 200),
         Gen.chooseNum(1, 200).flatMap(i => Gen.listOfN(i, arbitrary[Int]))
       ) { (n: Int, testValues: List[Int]) =>
-        assert(Stream.emits(testValues).repeatN(n.toLong).toList == List.fill(n)(testValues).flatten)
+        assert(
+          Stream.emits(testValues).repeatN(n.toLong).toList == List.fill(n)(testValues).flatten
+        )
       }
     }
 

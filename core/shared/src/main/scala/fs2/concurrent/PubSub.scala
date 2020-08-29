@@ -95,12 +95,11 @@ private[fs2] trait PubSub[F[_], I, O, Selector] extends Publish[F, I] with Subsc
 
 private[fs2] object PubSub {
   def apply[F[_], I, O, QS, Selector](
-    strategy: PubSub.Strategy[I, O, QS, Selector]
+      strategy: PubSub.Strategy[I, O, QS, Selector]
   )(implicit F: tc.Concurrent[F]): F[PubSub[F, I, O, Selector]] =
     F.refOf[PubSubState[F, I, O, QS, Selector]](
       PubSubState(strategy.initial, ScalaQueue.empty, ScalaQueue.empty)
-    )
-      .map(state => new PubSubAsync(strategy, state))
+    ).map(state => new PubSubAsync(strategy, state))
 
   private final case class Publisher[F[_], A](
       token: Token,
@@ -129,7 +128,8 @@ private[fs2] object PubSub {
   private class PubSubAsync[F[_], I, O, QS, Selector](
       strategy: Strategy[I, O, QS, Selector],
       state: Ref[F, PubSubState[F, I, O, QS, Selector]]
-  )(implicit F: tc.Concurrent[F]) extends PubSub[F, I, O, Selector] {
+  )(implicit F: tc.Concurrent[F])
+      extends PubSub[F, I, O, Selector] {
 
     private type PS = PubSubState[F, I, O, QS, Selector]
 
@@ -245,20 +245,21 @@ private[fs2] object PubSub {
       }
 
     def publish(i: I): F[Unit] =
-      (F.deferred[Unit], Token[F]).tupled.flatMap { case (deferred, token) =>
-        update { ps =>
-          if (strategy.accepts(i, ps.queue)) {
-            val ps1 = publish_(i, ps)
-            (ps1, Applicative[F].unit)
-          } else {
-            val publisher = Publisher(token, i, deferred)
+      (F.deferred[Unit], Token[F]).tupled.flatMap {
+        case (deferred, token) =>
+          update { ps =>
+            if (strategy.accepts(i, ps.queue)) {
+              val ps1 = publish_(i, ps)
+              (ps1, Applicative[F].unit)
+            } else {
+              val publisher = Publisher(token, i, deferred)
 
-            def awaitCancellable =
-              publisher.signal.get.guaranteeCase(clearPublisher(publisher.token))
+              def awaitCancellable =
+                publisher.signal.get.guaranteeCase(clearPublisher(publisher.token))
 
-            (ps.copy(publishers = ps.publishers :+ publisher), awaitCancellable)
+              (ps.copy(publishers = ps.publishers :+ publisher), awaitCancellable)
+            }
           }
-        }
       }
 
     def tryPublish(i: I): F[Boolean] =
@@ -271,21 +272,22 @@ private[fs2] object PubSub {
       }
 
     def get(selector: Selector): F[O] =
-      (F.deferred[O], Token[F]).tupled.flatMap { case (deferred, token) =>
-        update { ps =>
-          tryGet_(selector, ps) match {
-            case (ps, None) =>
-              val sub =
-                Subscriber(token, selector, deferred)
+      (F.deferred[O], Token[F]).tupled.flatMap {
+        case (deferred, token) =>
+          update { ps =>
+            tryGet_(selector, ps) match {
+              case (ps, None) =>
+                val sub =
+                  Subscriber(token, selector, deferred)
 
-              def cancellableGet =
-                sub.signal.get.guaranteeCase(clearSubscriberOnCancel(token))
+                def cancellableGet =
+                  sub.signal.get.guaranteeCase(clearSubscriberOnCancel(token))
 
-              (ps.copy(subscribers = ps.subscribers :+ sub), cancellableGet)
-            case (ps, Some(o)) =>
-              (ps, o.pure[F])
+                (ps.copy(subscribers = ps.subscribers :+ sub), cancellableGet)
+              case (ps, Some(o)) =>
+                (ps, o.pure[F])
+            }
           }
-        }
       }
 
     def getStream(selector: Selector): Stream[F, O] =
@@ -308,7 +310,6 @@ private[fs2] object PubSub {
 
         Stream.repeatEval(get_)
       }
-
 
     def tryGet(selector: Selector): F[Option[O]] =
       update { ps =>

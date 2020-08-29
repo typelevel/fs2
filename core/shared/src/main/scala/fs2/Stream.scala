@@ -571,7 +571,9 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     * res0: Option[Int] = Some(9)
     * }}}
     */
-  def concurrently[F2[x] >: F[x], O2](that: Stream[F2, O2])(implicit F: tc.Concurrent[F2]): Stream[F2, O] = {
+  def concurrently[F2[x] >: F[x], O2](
+      that: Stream[F2, O2]
+  )(implicit F: tc.Concurrent[F2]): Stream[F2, O] = {
     val fstream: F2[Stream[F2, O]] = for {
       interrupt <- F.deferred[Unit]
       doneR <- F.deferred[Either[Throwable, Unit]]
@@ -1522,7 +1524,6 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
                 }
             }
 
-
           def producer =
             this.chunks.map(_.asRight.some).through(q.enqueue).onFinalize(q.enqueue1(None))
 
@@ -1611,8 +1612,7 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     }
 
   /** Like [[hold]] but does not require an initial value, and hence all output elements are wrapped in `Some`. */
-  def holdOption[F2[x] >: F[x]: tc.Concurrent, O2 >: O]
-      : Stream[F2, Signal[F2, Option[O2]]] =
+  def holdOption[F2[x] >: F[x]: tc.Concurrent, O2 >: O]: Stream[F2, Signal[F2, Option[O2]]] =
     map(Some(_): Option[O2]).hold(None)
 
   /**
@@ -1686,22 +1686,22 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
       interruptL <- Stream.eval(F.deferred[Unit])
       doneR <- Stream.eval(F.deferred[Either[Throwable, Unit]])
       interruptR <- Stream.eval(F.deferred[Unit])
-      runR = haltWhenTrue
-        .takeWhile(!_)
-        .interruptWhen(interruptR.get.attempt)
-        .compile
-        .drain
-        .guaranteeCase { c: Outcome[F2, Throwable, Unit] =>
-           val r = c match {
-            case Outcome.Completed(_) => Right(())
-            case Outcome.Errored(t)   => Left(t)
-            case Outcome.Canceled()   => Right(())
+      runR =
+        haltWhenTrue
+          .takeWhile(!_)
+          .interruptWhen(interruptR.get.attempt)
+          .compile
+          .drain
+          .guaranteeCase { c: Outcome[F2, Throwable, Unit] =>
+            val r = c match {
+              case Outcome.Completed(_) => Right(())
+              case Outcome.Errored(t)   => Left(t)
+              case Outcome.Canceled()   => Right(())
+            }
+            doneR.complete(r) >> interruptL.complete(())
           }
-          doneR.complete(r) >> interruptL.complete(())
-      }
-      _ <- Stream.bracket(runR.start)(_ =>
-        interruptR.complete(()) >> doneR.get.flatMap(F.fromEither)
-      )
+      _ <-
+        Stream.bracket(runR.start)(_ => interruptR.complete(()) >> doneR.get.flatMap(F.fromEither))
       res <- this.interruptWhen(interruptL.get.attempt)
     } yield res
 
@@ -1900,7 +1900,7 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     */
   def switchMap[F2[x] >: F[x], O2](
       f: O => Stream[F2, O2]
-  )(implicit F: tc.Concurrent[F2]): Stream[F2, O2] = {
+  )(implicit F: tc.Concurrent[F2]): Stream[F2, O2] =
     Stream.force(tc.Concurrent.semaphore[F2](1).flatMap { guard =>
       F.refOf[Option[Deferred[F2, Unit]]](None).map { haltRef =>
         def runInner(o: O, halt: Deferred[F2, Unit]): Stream[F2, O2] =
@@ -1922,7 +1922,6 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
           .parJoin(2)
       }
     })
-  }
 
   /**
     * Interleaves the two inputs nondeterministically. The output stream
@@ -3715,8 +3714,7 @@ object Stream extends StreamLowPriority {
     /** Send chunks through `p`, allowing up to `maxQueued` pending _chunks_ before blocking `s`. */
     def observeAsync(
         maxQueued: Int
-    )(p: Pipe[F, O, INothing])(implicit
-        F: tc.Concurrent[F]): Stream[F, O] = {
+    )(p: Pipe[F, O, INothing])(implicit F: tc.Concurrent[F]): Stream[F, O] =
       Stream.eval(tc.Concurrent.semaphore[F](maxQueued - 1L)).flatMap { guard =>
         Stream.eval(Queue.unbounded[F, Option[Chunk[O]]]).flatMap { outQ =>
           Stream.eval(Queue.unbounded[F, Option[Chunk[O]]]).flatMap { sinkQ =>
@@ -3754,7 +3752,6 @@ object Stream extends StreamLowPriority {
           }
         }
       }
-    }
 
     /**
       * Observes this stream of `Either[L, R]` values with two pipes, one that
@@ -3913,8 +3910,7 @@ object Stream extends StreamLowPriority {
     }
 
     /** Like [[parJoin]] but races all inner streams simultaneously. */
-    def parJoinUnbounded(implicit
-        F: tc.Concurrent[F]): Stream[F, O] =
+    def parJoinUnbounded(implicit F: tc.Concurrent[F]): Stream[F, O] =
       parJoin(Int.MaxValue)
   }
 

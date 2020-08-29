@@ -33,7 +33,7 @@ class TokenSuite extends Fs2Suite {
   }
 
   test("Tokens are stable") {
-    Token[SyncIO].map { t => assert(t == t) }
+    Token[SyncIO].map(t => assert(t == t))
   }
 
   test("Tokens are referentially transparent") {
