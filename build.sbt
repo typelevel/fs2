@@ -18,10 +18,10 @@ ThisBuild / organizationName := "Functional Streams for Scala"
 ThisBuild / homepage := Some(url("https://github.com/typelevel/fs2"))
 ThisBuild / startYear := Some(2013)
 
-ThisBuild / crossScalaVersions := Seq("2.13.3", "2.12.10", "0.26.0-RC1")
+ThisBuild / crossScalaVersions := Seq("2.13.3", "2.12.10", "0.27.0-RC1")
 
 ThisBuild / versionIntroduced := Map(
-  "0.26.0-RC1" -> "2.4.99"
+  "0.27.0-RC1" -> "2.4.99"
 )
 
 ThisBuild / githubWorkflowJavaVersions := Seq("adopt@1.11")
@@ -35,8 +35,8 @@ ThisBuild / githubWorkflowBuild := Seq(
   WorkflowStep.Sbt(List("fmtCheck", "compile")),
   WorkflowStep.Sbt(List("testJVM")),
   WorkflowStep.Sbt(List("testJS")),
-  WorkflowStep.Sbt(List("doc", "mimaReportBinaryIssues")),
-  WorkflowStep.Sbt(List(";project coreJVM;it:test"))
+  WorkflowStep.Sbt(List("mimaReportBinaryIssues")),
+  WorkflowStep.Sbt(List("project coreJVM", "it:test"))
 )
 
 ThisBuild / githubWorkflowEnv ++= Map(
@@ -149,7 +149,13 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.PullSyncInstance.ifElseM"),
   ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.PullSyncInstance.fproductLeft"),
   ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Pull.free"),
-  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Stream.free")
+  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Stream.free"),
+  ProblemFilters.exclude[DirectMissingMethodProblem](
+    "fs2.Stream#PartiallyAppliedFromBlockingIterator.apply$extension"
+  ),
+  ProblemFilters.exclude[DirectMissingMethodProblem](
+    "fs2.Stream#PartiallyAppliedFromIterator.apply$extension"
+  )
 )
 
 lazy val root = project
@@ -189,9 +195,9 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
   .settings(
     // Libraries cross-built for Dotty
     libraryDependencies ++= Seq(
-      "org.scodec" %%% "scodec-bits" % "1.1.18",
-      "org.typelevel" %%% "scalacheck-effect-munit" % "0.0.3" % "test",
-      "org.typelevel" %%% "munit-cats-effect" % "0.2.0" % "test"
+      "org.scodec" %%% "scodec-bits" % "1.1.19",
+      "org.typelevel" %%% "scalacheck-effect-munit" % "0.1.0" % "test",
+      "org.typelevel" %%% "munit-cats-effect" % "0.3.0" % "test"
     )
   )
 

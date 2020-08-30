@@ -32,8 +32,6 @@ import scodec.bits.{Bases, ByteVector}
 /** Provides utilities for working with streams of text (e.g., encoding byte streams to strings). */
 object text {
   private val utf8Charset = Charset.forName("UTF-8")
-  // unused, but maybe needed to keep binary compatibility
-  //private val utf8Bom: Chunk[Byte] = Chunk(0xef.toByte, 0xbb.toByte, 0xbf.toByte)
   private[this] val utf8BomSeq: Seq[Byte] = Array(0xef.toByte, 0xbb.toByte, 0xbf.toByte).toSeq
 
   /** Converts UTF-8 encoded byte stream to a stream of `String`. */
