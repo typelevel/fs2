@@ -243,10 +243,12 @@ object compression {
       deflateParams: DeflateParams,
       deflater: Deflater,
       crc32: Option[CRC32]
-  ): Pipe[F, Byte, Byte] = {
-    val deflatedBuffer = new Array[Byte](deflateParams.bufferSizeOrMinimum)
-    _deflate_stream(deflateParams, deflater, crc32, deflatedBuffer)(_).stream
-  }
+  ): Pipe[F, Byte, Byte] =
+    in =>
+      Stream.suspend {
+        val deflatedBuffer = new Array[Byte](deflateParams.bufferSizeOrMinimum)
+        _deflate_stream(deflateParams, deflater, crc32, deflatedBuffer)(in).stream
+      }
 
   private def _deflate_chunk[F[_]](
       deflateParams: DeflateParams,
@@ -394,26 +396,28 @@ object compression {
       crc32: Option[CRC32]
   )(implicit
       SyncF: Sync[F]
-  ): Pipe[F, Byte, Byte] = {
-    val inflatedBuffer = new Array[Byte](inflateParams.bufferSizeOrMinimum)
-    _.pull.unconsNonEmpty.flatMap {
-      case Some((deflatedChunk, deflatedStream)) =>
-        _inflate_chunk(
-          inflateParams,
-          inflater,
-          crc32,
-          deflatedChunk,
-          inflatedBuffer
-        ) >> _inflate_stream(
-          inflateParams,
-          inflater,
-          crc32,
-          inflatedBuffer
-        )(SyncF)(deflatedStream)
-      case None =>
-        Pull.done
-    }.stream
-  }
+  ): Pipe[F, Byte, Byte] =
+    in =>
+      Stream.suspend {
+        val inflatedBuffer = new Array[Byte](inflateParams.bufferSizeOrMinimum)
+        in.pull.unconsNonEmpty.flatMap {
+          case Some((deflatedChunk, deflatedStream)) =>
+            _inflate_chunk(
+              inflateParams,
+              inflater,
+              crc32,
+              deflatedChunk,
+              inflatedBuffer
+            ) >> _inflate_stream(
+              inflateParams,
+              inflater,
+              crc32,
+              inflatedBuffer
+            )(SyncF)(deflatedStream)
+          case None =>
+            Pull.done
+        }.stream
+      }
 
   private def _inflate_chunk[F[_]](
       inflaterParams: InflateParams,
