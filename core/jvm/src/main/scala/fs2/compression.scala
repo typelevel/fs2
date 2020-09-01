@@ -282,9 +282,9 @@ object compression {
     def pull(): Pull[F, Byte, Unit] = {
       val deflatedBytes = runDeflate()
       if (isDone)
-        Pull.output(asChunkBytes(deflatedBuffer, deflatedBytes, true))
+        Pull.output(copyAsChunkBytes(deflatedBuffer, deflatedBytes))
       else
-        Pull.output(asChunkBytes(deflatedBuffer, deflatedBytes, true)) >> pull()
+        Pull.output(copyAsChunkBytes(deflatedBuffer, deflatedBytes)) >> pull()
     }
 
     pull()
@@ -458,7 +458,7 @@ object compression {
           if (inflater.finished())
             inflater.getRemaining match {
               case bytesRemaining if bytesRemaining > 0 =>
-                Pull.output(asChunkBytes(inflatedBuffer, inflatedBytes, true)) >>
+                Pull.output(copyAsChunkBytes(inflatedBuffer, inflatedBytes)) >>
                   Pull.output(
                     Chunk.Bytes(
                       bytesChunk.values,
@@ -467,11 +467,11 @@ object compression {
                     )
                   )
               case _ =>
-                Pull.output(asChunkBytes(inflatedBuffer, inflatedBytes, true))
+                Pull.output(copyAsChunkBytes(inflatedBuffer, inflatedBytes))
             }
-          else Pull.output(asChunkBytes(inflatedBuffer, inflatedBytes, true))
+          else Pull.output(copyAsChunkBytes(inflatedBuffer, inflatedBytes))
         case inflatedBytes =>
-          Pull.output(asChunkBytes(inflatedBuffer, inflatedBytes, true)) >> pull()
+          Pull.output(copyAsChunkBytes(inflatedBuffer, inflatedBytes)) >> pull()
       }
 
     pull()
@@ -663,14 +663,14 @@ object compression {
       (crc32Value & 0xff).toByte,
       ((crc32Value >> 8) & 0xff).toByte
     )
-    Stream.chunk(asChunkBytes(header)) ++
+    Stream.chunk(moveAsChunkBytes(header)) ++
       fileNameEncoded
-        .map(bytes => Stream.chunk(asChunkBytes(bytes)) ++ Stream.emit(zeroByte))
+        .map(bytes => Stream.chunk(moveAsChunkBytes(bytes)) ++ Stream.emit(zeroByte))
         .getOrElse(Stream.empty) ++
       commentEncoded
-        .map(bytes => Stream.chunk(asChunkBytes(bytes)) ++ Stream.emit(zeroByte))
+        .map(bytes => Stream.chunk(moveAsChunkBytes(bytes)) ++ Stream.emit(zeroByte))
         .getOrElse(Stream.empty) ++
-      Stream.chunk(asChunkBytes(crc16))
+      Stream.chunk(moveAsChunkBytes(crc16))
   }
 
   private def _gzip_trailer[F[_]](deflater: Deflater, crc32: CRC32): Stream[F, Byte] = {
@@ -687,7 +687,7 @@ object compression {
       ((bytesIn >> 16) & 0xff).toByte,
       ((bytesIn >> 24) & 0xff).toByte
     )
-    Stream.chunk(asChunkBytes(trailer))
+    Stream.chunk(moveAsChunkBytes(trailer))
   }
 
   /**
@@ -1253,18 +1253,22 @@ object compression {
   private val fileCommentBytesSoftLimit =
     1024 * 1024 // A limit is good practice. Actual limit will be max(chunk.size, soft limit). 1 MiB feels reasonable for a comment.
 
-  private def asChunkBytes(values: Array[Byte]): Chunk[Byte] =
-    asChunkBytes(values, values.length, false)
+  private def moveAsChunkBytes(values: Array[Byte]): Chunk[Byte] =
+    moveAsChunkBytes(values, values.length)
 
-  private def asChunkBytes(values: Array[Byte], length: Int, copy: Boolean): Chunk[Byte] =
-    if (length > 0)
-      if (copy) {
-        val target = new Array[Byte](length)
-        System.arraycopy(values, 0, target, 0, length)
-        Chunk.Bytes(target, 0, length)
-      } else
-        Chunk.Bytes(values, 0, length)
+  private def moveAsChunkBytes(values: Array[Byte], length: Int): Chunk[Byte] =
+    if (length > 0) Chunk.Bytes(values, 0, length)
     else Chunk.empty[Byte]
+
+  private def copyAsChunkBytes(values: Array[Byte]): Chunk[Byte] =
+    copyAsChunkBytes(values, values.length)
+
+  private def copyAsChunkBytes(values: Array[Byte], length: Int): Chunk[Byte] =
+    if (length > 0) {
+      val target = new Array[Byte](length)
+      System.arraycopy(values, 0, target, 0, length)
+      Chunk.Bytes(target, 0, length)
+    } else Chunk.empty[Byte]
 
   private def unsignedToInt(lsb: Byte, msb: Byte): Int =
     ((msb & 0xff) << 8) | (lsb & 0xff)
