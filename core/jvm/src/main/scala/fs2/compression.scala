@@ -73,7 +73,7 @@ object compression {
       */
     val flushMode: DeflateParams.FlushMode
 
-    private[compression] val bufferSizeOrMinimum: Int = bufferSize.min(128)
+    private[compression] val bufferSizeOrMinimum: Int = bufferSize.max(128)
   }
 
   object DeflateParams {
@@ -215,13 +215,18 @@ object compression {
       deflater: Deflater,
       crc32: Option[CRC32]
   ): Pipe[F, Byte, Byte] =
-    _deflate_stream(deflateParams, deflater, crc32)(_).stream
+    in =>
+      Stream.suspend {
+        val deflatedBuffer = new Array[Byte](deflateParams.bufferSizeOrMinimum)
+        _deflate_stream(deflateParams, deflater, crc32, deflatedBuffer)(in).stream
+      }
 
   private def _deflate_chunk[F[_]](
       deflateParams: DeflateParams,
       deflater: Deflater,
       crc32: Option[CRC32],
       chunk: Chunk[Byte],
+      deflatedBuffer: Array[Byte],
       isFinalChunk: Boolean
   ): Pull[F, Byte, Unit] = {
     val bytesChunk = chunk.toBytes
@@ -237,7 +242,7 @@ object compression {
     def isDone: Boolean =
       (isFinalChunk && deflater.finished) || (!isFinalChunk && deflater.needsInput)
 
-    def deflateInto(deflatedBuffer: Array[Byte]): Int =
+    def runDeflate(): Int =
       if (isDone) 0
       else
         deflater.deflate(
@@ -248,12 +253,11 @@ object compression {
         )
 
     def pull(): Pull[F, Byte, Unit] = {
-      val deflatedBuffer = new Array[Byte](deflateParams.bufferSizeOrMinimum)
-      val deflatedBytes = deflateInto(deflatedBuffer)
+      val deflatedBytes = runDeflate()
       if (isDone)
-        Pull.output(asChunkBytes(deflatedBuffer, deflatedBytes))
+        Pull.output(copyAsChunkBytes(deflatedBuffer, deflatedBytes))
       else
-        Pull.output(asChunkBytes(deflatedBuffer, deflatedBytes)) >> pull()
+        Pull.output(copyAsChunkBytes(deflatedBuffer, deflatedBytes)) >> pull()
     }
 
     pull()
@@ -262,14 +266,29 @@ object compression {
   private def _deflate_stream[F[_]](
       deflateParams: DeflateParams,
       deflater: Deflater,
-      crc32: Option[CRC32]
+      crc32: Option[CRC32],
+      deflatedBuffer: Array[Byte]
   ): Stream[F, Byte] => Pull[F, Byte, Unit] =
     _.pull.unconsNonEmpty.flatMap {
       case Some((inflatedChunk, inflatedStream)) =>
-        _deflate_chunk(deflateParams, deflater, crc32, inflatedChunk, isFinalChunk = false) >>
-          _deflate_stream(deflateParams, deflater, crc32)(inflatedStream)
+        _deflate_chunk(
+          deflateParams,
+          deflater,
+          crc32,
+          inflatedChunk,
+          deflatedBuffer,
+          isFinalChunk = false
+        ) >>
+          _deflate_stream(deflateParams, deflater, crc32, deflatedBuffer)(inflatedStream)
       case None =>
-        _deflate_chunk(deflateParams, deflater, crc32, Chunk.empty[Byte], isFinalChunk = true)
+        _deflate_chunk(
+          deflateParams,
+          deflater,
+          crc32,
+          Chunk.empty[Byte],
+          deflatedBuffer,
+          isFinalChunk = true
+        )
     }
 
   /**
@@ -287,7 +306,7 @@ object compression {
       */
     val header: ZLibParams.Header
 
-    private[compression] val bufferSizeOrMinimum: Int = bufferSize.min(128)
+    private[compression] val bufferSizeOrMinimum: Int = bufferSize.max(128)
   }
 
   object InflateParams {
@@ -332,22 +351,34 @@ object compression {
   )(implicit
       SyncF: Sync[F]
   ): Pipe[F, Byte, Byte] =
-    _.pull.unconsNonEmpty.flatMap {
-      case Some((deflatedChunk, deflatedStream)) =>
-        _inflate_chunk(inflateParams, inflater, crc32, deflatedChunk) >> _inflate_stream(
-          inflateParams,
-          inflater,
-          crc32
-        )(SyncF)(deflatedStream)
-      case None =>
-        Pull.done
-    }.stream
+    in =>
+      Stream.suspend {
+        val inflatedBuffer = new Array[Byte](inflateParams.bufferSizeOrMinimum)
+        in.pull.unconsNonEmpty.flatMap {
+          case Some((deflatedChunk, deflatedStream)) =>
+            _inflate_chunk(
+              inflateParams,
+              inflater,
+              crc32,
+              deflatedChunk,
+              inflatedBuffer
+            ) >> _inflate_stream(
+              inflateParams,
+              inflater,
+              crc32,
+              inflatedBuffer
+            )(SyncF)(deflatedStream)
+          case None =>
+            Pull.done
+        }.stream
+      }
 
   private def _inflate_chunk[F[_]](
       inflaterParams: InflateParams,
       inflater: Inflater,
       crc32: Option[CRC32],
-      chunk: Chunk[Byte]
+      chunk: Chunk[Byte],
+      inflatedBuffer: Array[Byte]
   ): Pull[F, Byte, Unit] = {
     val bytesChunk = chunk.toBytes
     inflater.setInput(
@@ -355,7 +386,7 @@ object compression {
       bytesChunk.offset,
       bytesChunk.length
     )
-    def inflateInto(inflatedBuffer: Array[Byte]): Int =
+    def runInflate(): Int =
       if (inflater.finished()) -2
       else if (inflater.needsInput()) -1
       else {
@@ -364,10 +395,8 @@ object compression {
         byteCount
       }
 
-    def pull(): Pull[F, Byte, Unit] = {
-      val inflatedBuffer = new Array[Byte](inflaterParams.bufferSizeOrMinimum)
-
-      inflateInto(inflatedBuffer) match {
+    def pull(): Pull[F, Byte, Unit] =
+      runInflate() match {
         case inflatedBytes if inflatedBytes <= -2 =>
           inflater.getRemaining match {
             case bytesRemaining if bytesRemaining > 0 =>
@@ -387,7 +416,7 @@ object compression {
           if (inflater.finished())
             inflater.getRemaining match {
               case bytesRemaining if bytesRemaining > 0 =>
-                Pull.output(asChunkBytes(inflatedBuffer, inflatedBytes)) >>
+                Pull.output(copyAsChunkBytes(inflatedBuffer, inflatedBytes)) >>
                   Pull.output(
                     Chunk.Bytes(
                       bytesChunk.values,
@@ -396,13 +425,12 @@ object compression {
                     )
                   )
               case _ =>
-                Pull.output(asChunkBytes(inflatedBuffer, inflatedBytes))
+                Pull.output(copyAsChunkBytes(inflatedBuffer, inflatedBytes))
             }
-          else Pull.output(asChunkBytes(inflatedBuffer, inflatedBytes))
+          else Pull.output(copyAsChunkBytes(inflatedBuffer, inflatedBytes))
         case inflatedBytes =>
-          Pull.output(asChunkBytes(inflatedBuffer, inflatedBytes)) >> pull()
+          Pull.output(copyAsChunkBytes(inflatedBuffer, inflatedBytes)) >> pull()
       }
-    }
 
     pull()
   }
@@ -410,14 +438,22 @@ object compression {
   private def _inflate_stream[F[_]](
       inflateParams: InflateParams,
       inflater: Inflater,
-      crc32: Option[CRC32]
+      crc32: Option[CRC32],
+      inflatedBuffer: Array[Byte]
   )(implicit SyncF: Sync[F]): Stream[F, Byte] => Pull[F, Byte, Unit] =
     _.pull.unconsNonEmpty.flatMap {
       case Some((deflatedChunk, deflatedStream)) =>
-        _inflate_chunk(inflateParams, inflater, crc32, deflatedChunk) >> _inflate_stream(
+        _inflate_chunk(
           inflateParams,
           inflater,
-          crc32
+          crc32,
+          deflatedChunk,
+          inflatedBuffer
+        ) >> _inflate_stream(
+          inflateParams,
+          inflater,
+          crc32,
+          inflatedBuffer
         )(SyncF)(deflatedStream)
       case None =>
         if (!inflater.finished)
@@ -585,14 +621,14 @@ object compression {
       (crc32Value & 0xff).toByte,
       ((crc32Value >> 8) & 0xff).toByte
     )
-    Stream.chunk(asChunkBytes(header)) ++
+    Stream.chunk(moveAsChunkBytes(header)) ++
       fileNameEncoded
-        .map(bytes => Stream.chunk(asChunkBytes(bytes)) ++ Stream.emit(zeroByte))
+        .map(bytes => Stream.chunk(moveAsChunkBytes(bytes)) ++ Stream.emit(zeroByte))
         .getOrElse(Stream.empty) ++
       commentEncoded
-        .map(bytes => Stream.chunk(asChunkBytes(bytes)) ++ Stream.emit(zeroByte))
+        .map(bytes => Stream.chunk(moveAsChunkBytes(bytes)) ++ Stream.emit(zeroByte))
         .getOrElse(Stream.empty) ++
-      Stream.chunk(asChunkBytes(crc16))
+      Stream.chunk(moveAsChunkBytes(crc16))
   }
 
   private def _gzip_trailer[F[_]](deflater: Deflater, crc32: CRC32): Stream[F, Byte] = {
@@ -609,7 +645,7 @@ object compression {
       ((bytesIn >> 16) & 0xff).toByte,
       ((bytesIn >> 24) & 0xff).toByte
     )
-    Stream.chunk(asChunkBytes(trailer))
+    Stream.chunk(moveAsChunkBytes(trailer))
   }
 
   /**
@@ -1175,11 +1211,22 @@ object compression {
   private val fileCommentBytesSoftLimit =
     1024 * 1024 // A limit is good practice. Actual limit will be max(chunk.size, soft limit). 1 MiB feels reasonable for a comment.
 
-  private def asChunkBytes(values: Array[Byte]): Chunk[Byte] =
-    asChunkBytes(values, values.length)
+  private def moveAsChunkBytes(values: Array[Byte]): Chunk[Byte] =
+    moveAsChunkBytes(values, values.length)
 
-  private def asChunkBytes(values: Array[Byte], length: Int): Chunk[Byte] =
-    if (length > 0) Chunk.Bytes(values, 0, length) else Chunk.empty[Byte]
+  private def moveAsChunkBytes(values: Array[Byte], length: Int): Chunk[Byte] =
+    if (length > 0) Chunk.Bytes(values, 0, length)
+    else Chunk.empty[Byte]
+
+  private def copyAsChunkBytes(values: Array[Byte]): Chunk[Byte] =
+    copyAsChunkBytes(values, values.length)
+
+  private def copyAsChunkBytes(values: Array[Byte], length: Int): Chunk[Byte] =
+    if (length > 0) {
+      val target = new Array[Byte](length)
+      System.arraycopy(values, 0, target, 0, length)
+      Chunk.Bytes(target, 0, length)
+    } else Chunk.empty[Byte]
 
   private def unsignedToInt(lsb: Byte, msb: Byte): Int =
     ((msb & 0xff) << 8) | (lsb & 0xff)
