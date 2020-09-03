@@ -25,7 +25,8 @@ import scala.annotation.tailrec
 
 import cats.{Applicative, Id, Monad, Traverse, TraverseFilter}
 import cats.data.Chain
-import cats.effect.{ConcurrentThrow, Outcome, Resource}
+import cats.effect.{Outcome, Resource}
+import cats.effect.kernel.{Concurrent, ConcurrentThrow}
 import cats.effect.concurrent.{Deferred, Ref}
 import cats.effect.implicits._
 import cats.implicits._
@@ -412,7 +413,7 @@ private[fs2] object CompileScope {
       parent: Option[CompileScope[F]],
       interruptible: Option[InterruptContext[F]]
   ): F[CompileScope[F]] =
-    Ref
+    Ref[F]
       .of(CompileScope.State.initial[F])
       .map(state => new CompileScope[F](id, parent, interruptible, state))
 
@@ -475,7 +476,7 @@ private[fs2] object CompileScope {
       ref: Ref[F, Option[InterruptionOutcome]],
       interruptRoot: Token,
       cancelParent: F[Unit]
-  )(implicit val concurrentThrow: ConcurrentThrow[F], mkRef: Ref.Mk[F]) { self =>
+  )(implicit val concurrentThrow: ConcurrentThrow[F]) { self =>
 
     def complete(outcome: InterruptionOutcome): F[Unit] =
       ref.update(_.orElse(Some(outcome))).guarantee(deferred.complete(outcome).attempt.void)
@@ -519,15 +520,15 @@ private[fs2] object CompileScope {
 
   private object InterruptContext {
 
-    def apply[F[_]: Monad: Ref.Mk](
+    def apply[F[_]: Monad](
         interruptible: Interruptible[F],
         newScopeId: Token,
         cancelParent: F[Unit]
     ): F[InterruptContext[F]] = {
       import interruptible._
       for {
-        ref <- fs2.tc.Concurrent[F].refOf[Option[InterruptionOutcome]](None)
-        deferred <- fs2.tc.Concurrent[F].deferred[InterruptionOutcome]
+        ref <- Concurrent[F].ref[Option[InterruptionOutcome]](None)
+        deferred <- Concurrent[F].deferred[InterruptionOutcome]
       } yield InterruptContext[F](
         deferred = deferred,
         ref = ref,

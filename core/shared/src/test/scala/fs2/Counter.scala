@@ -32,5 +32,5 @@ final class Counter[F[_]](private val ref: Ref[F, Long]) {
 }
 
 object Counter {
-  def apply[F[_]: Sync]: F[Counter[F]] = Ref.of[F, Long](0L).map(new Counter(_))
+  def apply[F[_]: Sync]: F[Counter[F]] = Ref[F].of[Long](0L).map(new Counter(_))
 }

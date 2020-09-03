@@ -57,7 +57,7 @@ class SocketSuite extends Fs2Suite {
           )
           .flatMap {
             case (local, clients) =>
-              Stream.exec(localBindAddress.complete(local)) ++
+              Stream.exec(localBindAddress.completeOrFail(local)) ++
                 clients.flatMap { s =>
                   Stream.resource(s).map { socket =>
                     socket
@@ -115,7 +115,7 @@ class SocketSuite extends Fs2Suite {
           )
           .flatMap {
             case (local, clients) =>
-              Stream.exec(localBindAddress.complete(local)) ++
+              Stream.exec(localBindAddress.completeOrFail(local)) ++
                 clients.flatMap { s =>
                   Stream.emit(Stream.resource(s).flatMap { socket =>
                     Stream

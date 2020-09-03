@@ -23,7 +23,8 @@ package fs2
 
 import cats.ApplicativeError
 import cats.implicits._
-import cats.effect.{Concurrent, ConcurrentThrow, Resource}
+import cats.effect.kernel.{Concurrent, ConcurrentThrow}
+import cats.effect.Resource
 import cats.effect.concurrent.Ref
 import cats.effect.implicits._
 
@@ -105,7 +106,7 @@ object Hotswap {
     * Creates a new `Hotswap` initialized with the specified resource.
     * The `Hotswap` instance and the initial resource are returned.
     */
-  def apply[F[_]: ConcurrentThrow: Ref.Mk, R](
+  def apply[F[_]: ConcurrentThrow, R](
       initial: Resource[F, R]
   ): Resource[F, (Hotswap[F, R], R)] =
     create[F, R].evalMap(p => p.swap(initial).map(r => (p, r)))
@@ -114,11 +115,11 @@ object Hotswap {
     * Creates a new `Hotswap`, which represents a `Resource`
     * that can be swapped during the lifetime of this `Hotswap`.
     */
-  def create[F[_]: ConcurrentThrow: Ref.Mk, R]: Resource[F, Hotswap[F, R]] = {
+  def create[F[_]: ConcurrentThrow, R]: Resource[F, Hotswap[F, R]] = {
     def raise[A](msg: String): F[A] =
       ApplicativeError[F, Throwable].raiseError(new RuntimeException(msg))
 
-    def initialize = Ref[F].of(().pure[F].some)
+    def initialize = Concurrent[F].ref(().pure[F].some)
 
     def finalize(state: Ref[F, Option[F[Unit]]]): F[Unit] =
       state

@@ -25,7 +25,7 @@ import scala.concurrent.duration._
 
 import cats.Applicative
 import cats.data.Chain
-import cats.effect.{IO, Resource, SyncIO}
+import cats.effect.{IO, Resource, SyncEffect, SyncIO}
 import cats.effect.concurrent.Ref
 import cats.implicits._
 import org.scalacheck.effect.PropF.forAllF
@@ -42,9 +42,9 @@ class BracketSuite extends Fs2Suite {
     )
 
   group("single bracket") {
-    def singleBracketTest[F[_]: Resource.Bracket: Ref.Mk, A](use: Stream[F, A]): F[Unit] =
+    def singleBracketTest[F[_]: SyncEffect, A](use: Stream[F, A]): F[Unit] =
       for {
-        events <- Ref.of[F, Vector[BracketEvent]](Vector.empty)
+        events <- Ref[F].of[Vector[BracketEvent]](Vector.empty)
         _ <-
           recordBracketEvents[F](events)
             .evalMap(_ => events.get.map(events => assert(events == Vector(Acquired))))
@@ -63,12 +63,12 @@ class BracketSuite extends Fs2Suite {
   }
 
   group("bracket ++ bracket") {
-    def appendBracketTest[F[_]: Resource.Bracket: Ref.Mk, A](
+    def appendBracketTest[F[_]: SyncEffect, A](
         use1: Stream[F, A],
         use2: Stream[F, A]
     ): F[Unit] =
       for {
-        events <- Ref.of[F, Vector[BracketEvent]](Vector.empty)
+        events <- Ref[F].of[Vector[BracketEvent]](Vector.empty)
         _ <-
           recordBracketEvents(events)
             .flatMap(_ => use1)
@@ -228,8 +228,8 @@ class BracketSuite extends Fs2Suite {
   }
 
   test("handleErrorWith closes scopes") {
-    Ref
-      .of[SyncIO, Vector[BracketEvent]](Vector.empty)
+    Ref[SyncIO]
+      .of[Vector[BracketEvent]](Vector.empty)
       .flatMap { events =>
         recordBracketEvents[SyncIO](events)
           .flatMap(_ => Stream.raiseError[SyncIO](new Err))

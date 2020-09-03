@@ -118,7 +118,7 @@ class StreamParJoinSuite extends Fs2Suite {
                   Stream(
                     Stream.bracket(registerRun(0))(_ => finalizer(0)) >> s1,
                     Stream.bracket(registerRun(1))(_ => finalizer(1)) >> Stream
-                      .exec(halt.complete(()))
+                      .exec(halt.completeOrFail(()))
                   )
                 }
 

@@ -158,7 +158,7 @@ package object io {
           // stream and finalization of the write stream, so we capture the error
           // that occurs when writing and rethrow it.
           val write = f(os).guaranteeCase((outcome: Outcome[F, Throwable, Unit]) =>
-            Sync[F].blocking(os.close()) *> err.complete(outcome match {
+            Sync[F].blocking(os.close()) *> err.completeOrFail(outcome match {
               case Outcome.Errored(t) => Some(t)
               case _                  => None
             })

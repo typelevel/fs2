@@ -127,7 +127,7 @@ private[internal] object ScopedResource {
 
   def create[F[_]](implicit F: MonadError[F, Throwable], mkRef: Ref.Mk[F]): F[ScopedResource[F]] =
     for {
-      state <- Ref.of[F, State[F]](initial)
+      state <- Ref[F].of[State[F]](initial)
       token <- Token[F]
     } yield new ScopedResource[F] {
 
