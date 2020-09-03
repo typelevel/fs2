@@ -125,9 +125,9 @@ private[internal] object ScopedResource {
 
   private[this] val initial = State(open = true, finalizer = None, leases = 0)
 
-  def create[F[_]](implicit F: MonadError[F, Throwable], mkRef: Ref.Mk[F]): F[ScopedResource[F]] =
+  def create[F[_]](implicit F: CompilationTarget[F]): F[ScopedResource[F]] =
     for {
-      state <- Ref[F].of[State[F]](initial)
+      state <- F.ref[State[F]](initial)
       token <- Token[F]
     } yield new ScopedResource[F] {
 

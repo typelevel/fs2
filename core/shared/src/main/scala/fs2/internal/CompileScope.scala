@@ -88,7 +88,7 @@ private[fs2] final class CompileScope[F[_]] private (
     val parent: Option[CompileScope[F]],
     val interruptible: Option[InterruptContext[F]],
     private val state: Ref[F, CompileScope.State[F]]
-)(implicit val F: Resource.Bracket[F], mkRef: Ref.Mk[F])
+)(implicit val F: CompilationTarget[F])
     extends Scope[F] { self =>
 
   /**
@@ -408,17 +408,16 @@ private[fs2] object CompileScope {
 
   type InterruptionOutcome = Outcome[Id, Throwable, Token]
 
-  private def apply[F[_]: Resource.Bracket: Ref.Mk](
+  private def apply[F[_]](
       id: Token,
       parent: Option[CompileScope[F]],
       interruptible: Option[InterruptContext[F]]
-  ): F[CompileScope[F]] =
-    Ref[F]
-      .of(CompileScope.State.initial[F])
+  )(implicit F: CompilationTarget[F]): F[CompileScope[F]] =
+     F.ref(CompileScope.State.initial[F])
       .map(state => new CompileScope[F](id, parent, interruptible, state))
 
   /** Creates a new root scope. */
-  def newRoot[F[_]: Resource.Bracket: Ref.Mk]: F[CompileScope[F]] =
+  def newRoot[F[_]: CompilationTarget]: F[CompileScope[F]] =
     Token[F].flatMap(apply[F](_, None, None))
 
   /**
