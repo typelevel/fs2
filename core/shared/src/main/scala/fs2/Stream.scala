@@ -2562,8 +2562,7 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
   /**
     * Starts this stream and cancels it as finalization of the returned stream.
     */
-  def spawn[F2[x] >: F[x]: ConcurrentThrow]
-      : Stream[F2, Fiber[F2, Throwable, Unit]] =
+  def spawn[F2[x] >: F[x]: ConcurrentThrow]: Stream[F2, Fiber[F2, Throwable, Unit]] =
     Stream.supervise(this.covary[F2].compile.drain)
 
   /**
@@ -4308,9 +4307,10 @@ object Stream extends StreamLowPriority {
       }
       resourceInstance[F]
     }
-    implicit def syncResourceInstance[F[_]: SyncEffect]: Compiler[F, Resource[F, *]] = resourceInstance[F]
+    implicit def syncResourceInstance[F[_]: SyncEffect]: Compiler[F, Resource[F, *]] =
+      resourceInstance[F]
 
-    def resourceInstance[F[_]: Resource.Bracket: Ref.Mk]: Compiler[F, Resource[F, *]] =
+    private def resourceInstance[F[_]: Resource.Bracket: Ref.Mk]: Compiler[F, Resource[F, *]] =
       new Compiler[F, Resource[F, *]] {
         def apply[O, B, C](
             s: Stream[F, O],
@@ -4338,7 +4338,10 @@ object Stream extends StreamLowPriority {
           s: Stream[Id, O],
           init: () => B
       )(foldChunk: (B, Chunk[O]) => B, finalize: B => C): C =
-        finalize(Compiler.compile(s.covaryId[SyncIO].underlying, init())(foldChunk).unsafeRunSync())
+        Compiler
+          .syncInstance[SyncIO]
+          .apply(s.covaryId[SyncIO], init)(foldChunk, finalize)
+          .unsafeRunSync()
     }
   }
 
@@ -4350,10 +4353,10 @@ object Stream extends StreamLowPriority {
             init: () => B
         )(foldChunk: (B, Chunk[O]) => B, finalize: B => C): Either[Throwable, C] =
           Compiler
-            .compile(s.lift[SyncIO].underlying, init())(foldChunk)
+            .syncInstance[SyncIO]
+            .apply(s.lift[SyncIO], init)(foldChunk, finalize)
             .attempt
             .unsafeRunSync()
-            .map(finalize)
       }
   }
 
@@ -4361,27 +4364,22 @@ object Stream extends StreamLowPriority {
     implicit def syncInstance[F[_]: SyncEffect]: Compiler[F, F] =
       forBracket[F]
 
-    def forBracket[F[_]: Resource.Bracket: Ref.Mk]: Compiler[F, F] =
+    protected def forBracket[F[_]: Resource.Bracket: Ref.Mk]: Compiler[F, F] =
       new Compiler[F, F] {
         def apply[O, B, C](
             s: Stream[F, O],
             init: () => B
         )(foldChunk: (B, Chunk[O]) => B, finalize: B => C): F[C] =
-          // HACK: we defer evaluation of init() in a flatMap here to avoid a Sync[F] or Defer[F] constraint
-          Resource.Bracket[F].unit.flatMap { _ =>
-            Compiler.compile(s.underlying, init())(foldChunk).map(finalize)
-          }
+          Resource
+            .Bracket[F]
+            .bracketCase(CompileScope.newRoot[F])(scope =>
+              Pull.compile[F, O, B](s.underlying, scope, false, init())(foldChunk)
+            )((scope, ec) => scope.close(ec).rethrow)
+            .map(finalize)
       }
   }
 
   object Compiler extends LowPrioCompiler {
-    private[Stream] def compile[F[_], O, B](stream: Pull[F, O, Unit], init: B)(
-        f: (B, Chunk[O]) => B
-    )(implicit bracket: Resource.Bracket[F], mkRef: Ref.Mk[F]): F[B] =
-      bracket.bracketCase(CompileScope.newRoot[F])(scope =>
-        Pull.compile[F, O, B](stream, scope, false, init)(f)
-      )((scope, ec) => scope.close(ec).rethrow)
-
     implicit def concurrentInstance[F[_]: ConcurrentThrow]: Compiler[F, F] = {
       implicit val mkRef: Ref.Mk[F] = new Ref.Mk[F] {
         def refOf[A](a: A): F[Ref[F, A]] = Concurrent[F].ref(a)
@@ -4394,7 +4392,10 @@ object Stream extends StreamLowPriority {
           s: Stream[Pure, O],
           init: () => B
       )(foldChunk: (B, Chunk[O]) => B, finalize: B => C): C =
-        finalize(Compiler.compile(s.covary[SyncIO].underlying, init())(foldChunk).unsafeRunSync())
+        Compiler
+          .syncInstance[SyncIO]
+          .apply(s.covary[SyncIO], init)(foldChunk, finalize)
+          .unsafeRunSync()
     }
   }
 
