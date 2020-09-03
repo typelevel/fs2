@@ -342,7 +342,7 @@ class StreamInterruptSuite extends Fs2Suite {
     Deferred[IO, Unit]
       .flatMap { latch =>
         Stream
-          .eval(latch.get.guarantee(latch.completeOrFail(())))
+          .eval(latch.get.guarantee(latch.complete(()).void))
           .interruptAfter(200.millis)
           .compile
           .drain >> latch.get.as(true)

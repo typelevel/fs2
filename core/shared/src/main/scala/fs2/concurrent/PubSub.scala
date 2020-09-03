@@ -107,8 +107,8 @@ private[fs2] object PubSub {
       i: A,
       signal: Deferred[F, Unit]
   ) {
-    def complete(implicit F: MonadError[F, Throwable]): F[Unit] =
-      signal.completeOrFail(())
+    def complete(implicit F: Functor[F]): F[Unit] =
+      signal.complete(()).void
   }
 
   private final case class Subscriber[F[_], A, Selector](
@@ -116,8 +116,8 @@ private[fs2] object PubSub {
       selector: Selector,
       signal: Deferred[F, A]
   ) {
-    def complete(a: A)(implicit F: MonadError[F, Throwable]): F[Unit] =
-      signal.completeOrFail(a)
+    def complete(a: A)(implicit F: Functor[F]): F[Unit] =
+      signal.complete(a).void
   }
 
   private final case class PubSubState[F[_], I, O, QS, Selector](

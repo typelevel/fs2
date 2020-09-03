@@ -47,12 +47,4 @@ package object fs2 {
     * Alias for `Nothing` which works better with type inference.
     */
   type INothing <: Nothing
-
-  import cats.MonadError
-  import cats.effect.kernel.Deferred
-  import cats.implicits._
-  implicit class DeferredOps[F[_], A](private val self: Deferred[F, A]) extends AnyVal {
-    def completeOrFail(a: A)(implicit F: MonadError[F, Throwable]): F[Unit] =
-      self.complete(a).ifM(F.unit, F.raiseError(new Throwable("Failed to complete deferred")))
-  }
 }

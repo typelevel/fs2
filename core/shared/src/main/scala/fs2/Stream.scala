@@ -1699,7 +1699,7 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
               case Outcome.Errored(t)   => Left(t)
               case Outcome.Canceled()   => Right(())
             }
-            doneR.complete(r) >> interruptL.completeOrFail(())
+            doneR.complete(r) >> interruptL.complete(()).void
           }
       _ <-
         Stream.bracket(runR.start)(_ => interruptR.complete(()) >> doneR.get.flatMap(F.fromEither))
@@ -1915,7 +1915,7 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
                 .getAndSet(halt.some)
                 .flatMap {
                   case None       => F.unit
-                  case Some(last) => last.completeOrFail(()) // interrupt the previous one
+                  case Some(last) => last.complete(()).void // interrupt the previous one
                 }
                 .as(runInner(o, halt))
             }
@@ -2135,7 +2135,7 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
         for {
           value <- F.deferred[Either[Throwable, O2]]
           enqueue = queue.enqueue1(Some(value.get)).as {
-            Stream.eval(f(o).attempt).evalMap(value.completeOrFail(_))
+            Stream.eval(f(o).attempt).evalMap(value.complete(_).void)
           }
           eit <- Concurrent[F2].race(dequeueDone.get, enqueue)
         } yield eit match {
@@ -2152,7 +2152,7 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
         queue.dequeue.unNoneTerminate
           .evalMap(identity)
           .rethrow
-          .onFinalize(dequeueDone.completeOrFail(()))
+          .onFinalize(dequeueDone.complete(()).void)
 
       foreground.concurrently(background)
     }
