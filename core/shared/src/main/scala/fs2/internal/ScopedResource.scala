@@ -21,9 +21,7 @@
 
 package fs2.internal
 
-import cats.MonadError
 import cats.effect.Resource
-import cats.effect.concurrent.Ref
 import cats.implicits._
 
 import fs2.{Compiler, Scope}
