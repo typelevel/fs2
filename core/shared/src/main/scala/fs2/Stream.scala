@@ -21,20 +21,21 @@
 
 package fs2
 
+import scala.annotation.tailrec
+import scala.concurrent.TimeoutException
+import scala.concurrent.duration._
+import java.io.PrintStream
+
 import cats.{Eval => _, _}
+import cats.data.Ior
 import cats.effect._
 import cats.effect.concurrent._
 import cats.effect.implicits._
 import cats.implicits.{catsSyntaxEither => _, _}
+
+import fs2.compat._
 import fs2.concurrent._
 import fs2.internal._
-import java.io.PrintStream
-
-import scala.annotation.tailrec
-import scala.concurrent.TimeoutException
-import scala.concurrent.duration._
-import cats.data.Ior
-import cats.data.Ior.Both
 
 /**
   * A stream producing output of type `O` and which may evaluate `F` effects.
@@ -1268,13 +1269,13 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     */
   def flatMap[F2[x] >: F[x], O2](
       f: O => Stream[F2, O2]
-  )(implicit ev: NotNothing[O]): Stream[F2, O2] = {
+  )(implicit ev: Not[O <:< Nothing]): Stream[F2, O2] = {
     val _ = ev
     new Stream(Pull.flatMapOutput[F, F2, O, O2](underlying, (o: O) => f(o).underlying))
   }
 
   /** Alias for `flatMap(_ => s2)`. */
-  def >>[F2[x] >: F[x], O2](s2: => Stream[F2, O2])(implicit ev: NotNothing[O]): Stream[F2, O2] =
+  def >>[F2[x] >: F[x], O2](s2: => Stream[F2, O2])(implicit ev: Not[O <:< Nothing]): Stream[F2, O2] =
     flatMap(_ => s2)
 
   /** Flattens a stream of streams in to a single stream by concatenating each stream.
@@ -3508,7 +3509,7 @@ object Stream extends StreamLowPriority {
       case r: Resource.Bind[f, x, o] =>
         resourceWeak[f, x](r.source).flatMap(o => resourceWeak[f, o](r.fs(o)))
       case r: Resource.Suspend[f, o] =>
-        Stream.eval(r.resource).flatMap(resourceWeak[f, o])(NotNothing.instance)
+        Stream.eval(r.resource).flatMap(resourceWeak[f, o])(Not.value)
     }
 
   /**
@@ -4872,7 +4873,7 @@ object Stream extends StreamLowPriority {
         alignWith_(fa, fb)(
           _.fold(contFor(_, Ior.left[A, B]), echoIor(_, Ior.left[A, B])),
           _.fold(contFor(_, Ior.right[A, B]), echoIor(_, Ior.right[A, B]))
-        )(Both[A, B](_, _))
+        )(Ior.Both[A, B](_, _))
       }
     }
 
