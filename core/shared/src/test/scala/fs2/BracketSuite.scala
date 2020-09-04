@@ -27,7 +27,7 @@ import cats.Applicative
 import cats.data.Chain
 import cats.effect.{IO, Resource, SyncIO}
 import cats.effect.concurrent.Ref
-import cats.implicits._
+import cats.syntax.all._
 import org.scalacheck.effect.PropF.forAllF
 
 class BracketSuite extends Fs2Suite {

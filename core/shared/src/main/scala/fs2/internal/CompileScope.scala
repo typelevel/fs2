@@ -28,7 +28,8 @@ import cats.data.Chain
 import cats.effect.{ConcurrentThrow, Outcome, Resource}
 import cats.effect.concurrent.{Deferred, Ref}
 import cats.effect.implicits._
-import cats.implicits._
+import cats.syntax.all._
+
 import fs2.{CompositeFailure, Pure, Scope}
 import fs2.internal.CompileScope.{InterruptContext, InterruptionOutcome}
 

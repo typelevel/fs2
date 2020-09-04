@@ -22,7 +22,7 @@
 package fs2
 package concurrent
 
-import cats.implicits._
+import cats.syntax.all._
 import cats.effect.IO
 import scala.concurrent.duration._
 

@@ -92,7 +92,7 @@ ThisBuild / Test / run / javaOptions ++= Seq("-Xms64m", "-Xmx64m")
 ThisBuild / Test / parallelExecution := false
 
 ThisBuild / initialCommands := s"""
-    import fs2._, cats.effect._, cats.effect.implicits._, cats.effect.unsafe.implicits.global, cats.implicits._, scala.concurrent.duration._
+    import fs2._, cats.effect._, cats.effect.implicits._, cats.effect.unsafe.implicits.global, cats.syntax.all._, scala.concurrent.duration._
   """
 
 ThisBuild / mimaBinaryIssueFilters ++= Seq(
@@ -127,8 +127,8 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
     },
     // Libraries not yet cross-built for Dotty
     libraryDependencies ++= Seq(
-      "org.typelevel" %%% "cats-core" % "2.1.1",
-      "org.typelevel" %%% "cats-laws" % "2.1.1" % "test"
+      "org.typelevel" %%% "cats-core" % "2.2.0",
+      "org.typelevel" %%% "cats-laws" % "2.2.0" % "test"
     )
   )
   .settings(dottyLibrarySettings)

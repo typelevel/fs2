@@ -25,7 +25,7 @@ package fs2
 
 import cats.effect.{IO, SyncIO}
 // import cats.effect.laws.util.TestContext
-import cats.implicits._
+import cats.syntax.all._
 
 import org.scalacheck.Prop.forAll
 import org.scalacheck.effect.PropF.forAllF

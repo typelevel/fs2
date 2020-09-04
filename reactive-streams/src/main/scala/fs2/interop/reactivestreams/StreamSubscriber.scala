@@ -28,7 +28,8 @@ import cats.effect._
 import cats.effect.implicits._
 import cats.effect.concurrent.{Deferred, Ref}
 import cats.effect.unsafe.IORuntime
-import cats.implicits._
+import cats.syntax.all._
+
 import org.reactivestreams._
 
 /**

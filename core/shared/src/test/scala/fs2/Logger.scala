@@ -24,7 +24,7 @@ package fs2
 import cats.Functor
 import cats.effect.{Resource, Sync}
 import cats.effect.concurrent.Ref
-import cats.implicits._
+import cats.syntax.all._
 
 trait Logger[F[_]] {
   def log(e: LogEvent): F[Unit]

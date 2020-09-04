@@ -39,7 +39,7 @@ import java.nio.{
 
 import cats.{Alternative, Applicative, Eq, Eval, Monad, Traverse, TraverseFilter}
 import cats.data.{Chain, NonEmptyList}
-import cats.implicits._
+import cats.syntax.all._
 
 /**
   * Strict, finite sequence of values that allows index-based random access of elements.
@@ -1673,7 +1673,7 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
     * `Traverse`, `Monad`, `Alternative`, and `TraverseFilter` instance for `Chunk`.
     *
     * @example {{{
-    * scala> import cats.implicits._, scala.util._
+    * scala> import cats.syntax.all._, scala.util._
     * scala> Chunk("1", "2", "NaN").mapFilter(s => Try(s.toInt).toOption)
     * res0: fs2.Chunk[Int] = Chunk(1, 2)
     * }}}

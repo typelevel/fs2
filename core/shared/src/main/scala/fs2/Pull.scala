@@ -22,16 +22,16 @@
 package fs2
 
 import scala.annotation.tailrec
+import scala.concurrent.duration.FiniteDuration
 import scala.util.control.NonFatal
 
 import cats.{Eval => _, _}
 import cats.effect._
-import cats.implicits._
+import cats.syntax.all._
 
 import fs2.internal._
 
 import Pull._
-import scala.concurrent.duration.FiniteDuration
 
 /**
   * A `p: Pull[F,O,R]` reads values from one or more streams, returns a

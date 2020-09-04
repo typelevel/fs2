@@ -27,7 +27,7 @@ import javax.net.ssl.SSLEngine
 
 import cats.Applicative
 import cats.effect.Sync
-import cats.implicits._
+import cats.syntax.all._
 
 private[tls] trait SSLEngineTaskRunner[F[_]] {
   def runDelegatedTasks: F[Unit]

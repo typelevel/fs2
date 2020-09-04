@@ -363,7 +363,6 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     * using natural equality for comparison.
     *
     * @example {{{
-    * scala> import cats.implicits._
     * scala> Stream(1,1,2,2,2,3,3).changes.toList
     * res0: List[Int] = List(1, 2, 3)
     * }}}
@@ -381,7 +380,6 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     * consider something like: `src.map(o => (o, f(o))).changesBy(_._2).map(_._1)`
     *
     * @example {{{
-    * scala> import cats.implicits._
     * scala> Stream(1,1,2,4,6,9).changesBy(_ % 2).toList
     * res0: List[Int] = List(1, 2, 9)
     * }}}
@@ -395,7 +393,6 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     * will fail.
     *
     * @example {{{
-    * scala> import cats.implicits._
     * scala> (Stream(1) ++ Stream(2, 3) ++ Stream(4, 5, 6)).chunkAll.toList
     * res0: List[Chunk[Int]] = List(Chunk(1, 2, 3, 4, 5, 6))
     * }}}
@@ -1089,7 +1086,7 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     * application of the effectful function `f`.
     *
     * @example {{{
-    * scala> import cats.effect.SyncIO, cats.implicits._
+    * scala> import cats.effect.SyncIO, cats.syntax.all._
     * scala> Stream(1, 2, 3, 4, 5).evalMapFilter(n => SyncIO((n * 2).some.filter(_ % 4 == 0))).compile.toList.unsafeRunSync()
     * res0: List[Int] = List(4, 8)
     * }}}
@@ -1312,7 +1309,6 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     * Alias for `map(f).foldMonoid`.
     *
     * @example {{{
-    * scala> import cats.implicits._
     * scala> Stream(1, 2, 3, 4, 5).foldMap(_ => 1).toList
     * res0: List[Int] = List(5)
     * }}}
@@ -1330,7 +1326,6 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     *    equivalent to the `Stream.never`: it never terminates nor yields any value.
     *
     * @example {{{
-    * scala> import cats.implicits._
     * scala> Stream(1, 2, 3, 4, 5).foldMonoid.toList
     * res0: List[Int] = List(15)
     * }}}
@@ -1383,7 +1378,6 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     * [[groupAdjacentByLimit]].
     *
     * @example {{{
-    * scala> import cats.implicits._
     * scala> Stream("Hello", "Hi", "Greetings", "Hey").groupAdjacentBy(_.head).toList.map { case (k,vs) => k -> vs.toList }
     * res0: List[(Char,List[String])] = List((H,List(Hello, Hi)), (G,List(Greetings)), (H,List(Hey)))
     * }}}
@@ -1395,7 +1389,6 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     * Like [[groupAdjacentBy]] but limits the size of emitted chunks.
     *
     * @example {{{
-    * scala> import cats.implicits._
     * scala> Stream.range(0, 12).groupAdjacentByLimit(3)(_ / 4).toList
     * res0: List[(Int,Chunk[Int])] = List((0,Chunk(0, 1, 2)), (0,Chunk(3)), (1,Chunk(4, 5, 6)), (1,Chunk(7)), (2,Chunk(8, 9, 10)), (2,Chunk(11)))
     * }}}
@@ -2310,7 +2303,6 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     * Reduces this stream with the Semigroup for `O`.
     *
     * @example {{{
-    * scala> import cats.implicits._
     * scala> Stream("The", "quick", "brown", "fox").intersperse(" ").reduceSemigroup.toList
     * res0: List[String] = List(The quick brown fox)
     * }}}
@@ -2325,7 +2317,6 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     * Semigroup `S`.
     *
     * @example {{{
-    * scala> import cats.implicits._
     * scala> Stream("Hel", "l", "o Wor", "ld").repartition(s => Chunk.array(s.split(" "))).toList
     * res0: List[String] = List(Hello, World)
     * }}}
@@ -2475,7 +2466,6 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     * Alias for `map(f).scanMonoid`.
     *
     * @example {{{
-    * scala> import cats.implicits._
     * scala> Stream("a", "aa", "aaa", "aaaa").scanMap(_.length).toList
     * res0: List[Int] = List(0, 1, 3, 6, 10)
     * }}}
@@ -2487,7 +2477,6 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     * Folds this stream with the monoid for `O` while emitting all intermediate results.
     *
     * @example {{{
-    * scala> import cats.implicits._
     * scala> Stream(1, 2, 3, 4).scanMonoid.toList
     * res0: List[Int] = List(0, 1, 3, 6, 10)
     * }}}
@@ -3693,7 +3682,7 @@ object Stream extends StreamLowPriority {
       * Note that if your pipe can be represented by an `O => F[Unit]`, `evalTap` will provide much greater performance.
       *
       * @example {{{
-      * scala> import cats.effect.IO, cats.effect.unsafe.implicits.global, cats.implicits._
+      * scala> import cats.effect.IO, cats.effect.unsafe.implicits.global
       * scala> Stream(1, 2, 3).covary[IO].observe(_.showLinesStdOut).map(_ + 1).compile.toVector.unsafeRunSync()
       * res0: Vector[Int] = Vector(2, 3, 4)
       * }}}
@@ -4416,7 +4405,7 @@ object Stream extends StreamLowPriority {
       * Like [[fold]] but uses the implicitly available `Monoid[O]` to combine elements.
       *
       * @example {{{
-      * scala> import cats.implicits._, cats.effect.SyncIO
+      * scala> import cats.effect.SyncIO
       * scala> Stream(1, 2, 3, 4, 5).covary[SyncIO].compile.foldMonoid.unsafeRunSync()
       * res0: Int = 15
       * }}}
@@ -4429,7 +4418,7 @@ object Stream extends StreamLowPriority {
       * If the stream emits no elements, `None` is returned.
       *
       * @example {{{
-      * scala> import cats.implicits._, cats.effect.SyncIO
+      * scala> import cats.effect.SyncIO
       * scala> Stream(1, 2, 3, 4, 5).covary[SyncIO].compile.foldSemigroup.unsafeRunSync()
       * res0: Option[Int] = Some(15)
       * scala> Stream.empty.covaryAll[SyncIO, Int].compile.foldSemigroup.unsafeRunSync()
@@ -4482,7 +4471,6 @@ object Stream extends StreamLowPriority {
       * {{{
       *  import fs2._
       *  import cats.effect._
-      *  import cats.implicits._
       *
       *  val stream = Stream.iterate(0)(_ + 1).take(5).covary[IO]
       *
@@ -4775,7 +4763,7 @@ object Stream extends StreamLowPriority {
     * `MonadError` instance for `Stream`.
     *
     * @example {{{
-    * scala> import cats.implicits._
+    * scala> import cats.syntax.all._
     * scala> Stream(1, -2, 3).fproduct(_.abs).toList
     * res0: List[(Int, Int)] = List((1,1), (-2,2), (3,3))
     * }}}
@@ -4805,7 +4793,7 @@ object Stream extends StreamLowPriority {
 
   /** `Align` instance for `Stream`.
     * * @example {{{
-    * scala> import cats.implicits._
+    * scala> import cats.syntax.all._
     * scala> Stream(1,2,3).align(Stream("A","B","C","D","E")).toList
     * res0: List[cats.data.Ior[Int,String]] = List(Both(1,A), Both(2,B), Both(3,C), Right(D), Right(E))
     * }}}
@@ -4881,7 +4869,7 @@ object Stream extends StreamLowPriority {
     * `FunctorFilter` instance for `Stream`.
     *
     * @example {{{
-    * scala> import cats.implicits._, scala.util._
+    * scala> import cats.syntax.all._, scala.util._
     * scala> Stream("1", "2", "NaN").mapFilter(s => Try(s.toInt).toOption).toList
     * res0: List[Int] = List(1, 2)
     * }}}

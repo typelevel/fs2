@@ -89,8 +89,8 @@ object ThisModuleShouldCompile {
 
   // Ensure that Stream#flatMap is favored over cats's flatMap
   {
-    import cats.implicits._
-    1 |+| 1 // Mask unused warning from cats.implicits._ import
+    import cats.syntax.all._
+    1 |+| 1 // Mask unused warning from cats.syntax.all._ import
     Stream(1, 2, 3).flatMap(i => Stream.eval(IO.pure(i)))
     (Stream(1, 2, 3).flatMap(i => Stream.eval(IO(i)))): Stream[IO, Int]
   }

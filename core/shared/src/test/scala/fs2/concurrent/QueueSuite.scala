@@ -23,7 +23,7 @@ package fs2
 package concurrent
 
 import cats.effect.IO
-import cats.implicits._
+import cats.syntax.all._
 import scala.concurrent.duration._
 import org.scalacheck.effect.PropF.forAllF
 

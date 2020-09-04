@@ -26,8 +26,8 @@ package reactivestreams
 import cats.effect._
 import cats.effect.implicits._
 import cats.effect.unsafe.IORuntime
-import cats.implicits._
-import fs2._
+import cats.syntax.all._
+
 import fs2.concurrent.{Queue, SignallingRef}
 import org.reactivestreams._
 
