@@ -7,7 +7,7 @@ import java.lang.management.ManagementFactory
 import java.nio.file.{Files, Path}
 
 import cats.effect.{ContextShift, IO, Timer}
-import cats.implicits._
+import cats.syntax.all._
 
 import munit.{FunSuite, TestOptions}
 

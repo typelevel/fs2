@@ -34,7 +34,7 @@ import java.nio.channels.InterruptedByTimeoutException
 import scala.concurrent.duration._
 
 import cats.effect.{Blocker, IO}
-import cats.implicits._
+import cats.syntax.all._
 
 import CollectionCompat._
 

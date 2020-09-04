@@ -29,7 +29,7 @@ import javax.net.ssl.SNIHostName
 import fs2.io.tcp.SocketGroup
 
 import cats.effect.{Blocker, Concurrent, ContextShift, IO}
-import cats.implicits._
+import cats.syntax.all._
 
 object TLSDebug {
   def debug[F[_]: Concurrent: ContextShift](

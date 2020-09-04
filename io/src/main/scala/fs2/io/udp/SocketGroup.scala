@@ -35,7 +35,7 @@ import java.net.{
 import java.nio.channels.{ClosedChannelException, DatagramChannel}
 
 import cats.effect.{Blocker, Concurrent, ContextShift, Resource, Sync}
-import cats.implicits._
+import cats.syntax.all._
 
 final class SocketGroup(
     asg: AsynchronousSocketGroup,

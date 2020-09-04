@@ -30,7 +30,7 @@ import javax.net.ssl.{SSLEngine, SSLEngineResult, SSLSession}
 import cats.Applicative
 import cats.effect.{Blocker, Concurrent, ContextShift, Sync}
 import cats.effect.concurrent.Semaphore
-import cats.implicits._
+import cats.syntax.all._
 
 /**
   * Provides the ability to establish and communicate over a TLS session.

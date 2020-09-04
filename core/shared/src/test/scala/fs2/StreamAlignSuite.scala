@@ -22,7 +22,7 @@
 package fs2
 
 import cats.data.Ior
-import cats.implicits._
+import cats.syntax.all._
 import org.scalacheck.Prop.forAll
 
 class StreamAlignSuite extends Fs2Suite {

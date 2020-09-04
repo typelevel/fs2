@@ -26,7 +26,7 @@ import scala.concurrent.duration._
 import cats.data.Chain
 import cats.effect.{ExitCase, IO, Sync, SyncIO}
 import cats.effect.concurrent.Ref
-import cats.implicits._
+import cats.syntax.all._
 import org.scalacheck.effect.PropF.forAllF
 
 class BracketSuite extends Fs2Suite {

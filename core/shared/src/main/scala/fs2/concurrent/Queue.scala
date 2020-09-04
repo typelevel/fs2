@@ -24,7 +24,7 @@ package concurrent
 
 import cats.{Applicative, Eq, Functor, Id}
 import cats.effect.{Concurrent, Sync}
-import cats.implicits._
+import cats.syntax.all._
 import fs2.internal.{SizedQueue, Token}
 
 /** Provides the ability to enqueue elements to a `Queue`. */

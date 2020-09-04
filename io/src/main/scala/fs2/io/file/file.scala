@@ -28,7 +28,7 @@ import java.nio.file.attribute.{BasicFileAttributes, FileAttribute, PosixFilePer
 import java.util.stream.{Stream => JStream}
 
 import cats.effect.{Blocker, Concurrent, ContextShift, Resource, Sync, Timer}
-import cats.implicits._
+import cats.syntax.all._
 import fs2.io.CollectionCompat._
 
 import scala.concurrent.duration._

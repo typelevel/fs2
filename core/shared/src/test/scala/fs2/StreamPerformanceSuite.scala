@@ -22,7 +22,7 @@
 package fs2
 
 import cats.effect.IO
-import cats.implicits._
+import cats.syntax.all._
 class StreamPerformanceSuite extends Fs2Suite {
   val Ns = {
     val all = List(2, 3, 100, 200, 400, 800, 1600, 3200, 6400, 12800, 25600, 51200, 102400)

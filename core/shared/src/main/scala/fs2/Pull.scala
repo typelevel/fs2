@@ -23,7 +23,7 @@ package fs2
 
 import cats.{Eval => _, _}
 import cats.effect._
-import cats.implicits._
+import cats.syntax.all._
 import fs2.internal._
 import fs2.internal.FreeC.{Eval, Result}
 

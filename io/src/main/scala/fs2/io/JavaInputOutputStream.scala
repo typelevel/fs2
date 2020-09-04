@@ -24,7 +24,7 @@ package io
 
 import java.io.{IOException, InputStream}
 
-import cats.implicits._
+import cats.syntax.all._
 import cats.effect.{ConcurrentEffect, ExitCase, Resource}
 import cats.effect.implicits._
 

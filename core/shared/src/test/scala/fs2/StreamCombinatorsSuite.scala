@@ -26,7 +26,7 @@ import scala.concurrent.TimeoutException
 
 import cats.effect.{Blocker, IO, SyncIO}
 import cats.effect.concurrent.Semaphore
-import cats.implicits._
+import cats.syntax.all._
 import org.scalacheck.Gen
 import org.scalacheck.Prop.forAll
 import org.scalacheck.effect.PropF.forAllF

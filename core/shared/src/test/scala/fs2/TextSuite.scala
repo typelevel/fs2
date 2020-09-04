@@ -21,7 +21,7 @@
 
 package fs2
 
-import cats.implicits._
+import cats.syntax.all._
 import org.scalacheck.{Arbitrary, Gen}
 import org.scalacheck.Prop.forAll
 import scodec.bits._

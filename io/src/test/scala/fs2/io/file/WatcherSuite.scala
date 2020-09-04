@@ -26,7 +26,7 @@ package file
 import scala.concurrent.duration._
 
 import cats.effect.{Blocker, IO}
-import cats.implicits._
+import cats.syntax.all._
 import java.nio.file._
 
 class WatcherSuite extends BaseFileSuite {

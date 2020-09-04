@@ -24,7 +24,7 @@ package interop
 package reactivestreams
 
 import cats.effect._
-import cats.implicits._
+import cats.syntax.all._
 import org.reactivestreams._
 
 /**

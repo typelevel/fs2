@@ -21,7 +21,7 @@
 
 package fs2
 
-import cats.implicits._
+import cats.syntax.all._
 import cats.effect.{Concurrent, Resource, Sync}
 import cats.effect.concurrent.Ref
 import cats.effect.implicits._
