@@ -24,7 +24,6 @@ package fs2
 import cats.{Eval => _, _}
 import cats.effect._
 import cats.effect.concurrent._
-import cats.effect.kernel.{Concurrent, ConcurrentThrow}
 import cats.effect.implicits._
 import cats.implicits.{catsSyntaxEither => _, _}
 import fs2.concurrent._

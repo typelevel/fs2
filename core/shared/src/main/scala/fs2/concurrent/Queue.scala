@@ -23,8 +23,9 @@ package fs2
 package concurrent
 
 import cats.{Applicative, ApplicativeError, Eq, Functor, Id}
-import cats.effect.kernel.{Concurrent, ConcurrentThrow}
+import cats.effect.{Concurrent, ConcurrentThrow}
 import cats.implicits._
+
 import fs2.internal.{SizedQueue, Token}
 
 /** Provides the ability to enqueue elements to a `Queue`. */

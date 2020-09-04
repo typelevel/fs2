@@ -21,57 +21,31 @@
 
 package fs2.internal
 
-import cats.effect.{Resource, Sync}
+import cats.effect.{ConcurrentThrow, Resource, Sync}
 import cats.effect.concurrent.Ref
-import cats.effect.kernel.ConcurrentThrow
-
-import Resource.ExitCase
 
 sealed trait CompilationTarget[F[_]] extends Resource.Bracket[F] {
   def ref[A](a: A): F[Ref[F, A]]
 }
 
 private[fs2] trait CompilationTargetLowPriority {
-  implicit def forSync[F[_]](implicit F: Sync[F]): CompilationTarget[F] =
-    new CompilationTarget[F] {
-      def pure[A](a: A) = F.pure(a)
-      def handleErrorWith[A](fa: F[A])(f: Throwable => F[A]): F[A] = F.handleErrorWith(fa)(f)
-      def raiseError[A](e: Throwable): F[A] = F.raiseError(e)
-      def bracketCase[A, B](
-          acquire: F[A]
-      )(use: A => F[B])(release: (A, Resource.ExitCase) => F[Unit]): F[B] =
-        flatMap(acquire) { a =>
-          val handled = onError(use(a)) {
-            case e => void(attempt(release(a, ExitCase.Errored(e))))
-          }
-          flatMap(handled)(b => as(attempt(release(a, ExitCase.Completed)), b))
-        }
-      def flatMap[A, B](fa: F[A])(f: A => F[B]): F[B] = F.flatMap(fa)(f)
-      def tailRecM[A, B](a: A)(f: A => F[Either[A, B]]): F[B] = F.tailRecM(a)(f)
-      def ref[A](a: A): F[Ref[F, A]] = Ref[F].of(a)
-    }
+  implicit def forSync[F[_]: Sync]: CompilationTarget[F] = new SyncCompilationTarget
+
+  private final class SyncCompilationTarget[F[_]](protected implicit val F: Sync[F])
+      extends CompilationTarget[F]
+      with Resource.Bracket.SyncBracket[F] {
+    def ref[A](a: A): F[Ref[F, A]] = Ref[F].of(a)
+  }
 }
 
 object CompilationTarget extends CompilationTargetLowPriority {
-  implicit def forConcurrent[F[_]](implicit F: ConcurrentThrow[F]): CompilationTarget[F] =
-    new CompilationTarget[F] {
-      def pure[A](a: A) = F.pure(a)
-      def handleErrorWith[A](fa: F[A])(f: Throwable => F[A]): F[A] = F.handleErrorWith(fa)(f)
-      def raiseError[A](e: Throwable): F[A] = F.raiseError(e)
-      def bracketCase[A, B](
-          acquire: F[A]
-      )(use: A => F[B])(release: (A, Resource.ExitCase) => F[Unit]): F[B] =
-        F.uncancelable { poll =>
-          flatMap(acquire) { a =>
-            val finalized = F.onCancel(poll(use(a)), release(a, ExitCase.Canceled))
-            val handled = onError(finalized) {
-              case e => void(attempt(release(a, ExitCase.Errored(e))))
-            }
-            flatMap(handled)(b => as(attempt(release(a, ExitCase.Completed)), b))
-          }
-        }
-      def flatMap[A, B](fa: F[A])(f: A => F[B]): F[B] = F.flatMap(fa)(f)
-      def tailRecM[A, B](a: A)(f: A => F[Either[A, B]]): F[B] = F.tailRecM(a)(f)
-      def ref[A](a: A): F[Ref[F, A]] = F.ref(a)
-    }
+  implicit def forConcurrent[F[_]: ConcurrentThrow]: CompilationTarget[F] =
+    new ConcurrentCompilationTarget
+
+  private final class ConcurrentCompilationTarget[F[_]](
+      protected implicit val F: ConcurrentThrow[F]
+  ) extends CompilationTarget[F]
+      with Resource.Bracket.SpawnBracket[F] {
+    def ref[A](a: A): F[Ref[F, A]] = F.ref(a)
+  }
 }

@@ -21,7 +21,7 @@
 
 package fs2.concurrent
 
-import cats.effect.kernel.ConcurrentThrow
+import cats.effect.ConcurrentThrow
 
 import fs2._
 

@@ -22,8 +22,8 @@
 package fs2.concurrent
 
 import cats._, implicits._
+import cats.effect.{ConcurrentThrow, Outcome}
 import cats.effect.concurrent._
-import cats.effect.kernel.ConcurrentThrow
 import cats.effect.implicits._
 
 import fs2._
@@ -31,7 +31,6 @@ import fs2.internal.Token
 
 import scala.annotation.tailrec
 import scala.collection.immutable.{Queue => ScalaQueue}
-import cats.effect.kernel.Outcome
 
 private[fs2] trait Publish[F[_], A] {
 

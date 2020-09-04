@@ -24,9 +24,10 @@ package concurrent
 
 import cats.{Applicative, Functor, Invariant}
 import cats.data.{OptionT, State}
-import cats.effect.kernel.ConcurrentThrow
+import cats.effect.ConcurrentThrow
 import cats.effect.concurrent.{Deferred, Ref}
 import cats.implicits._
+
 import fs2.internal.Token
 
 /** Pure holder of a single value of type `A` that can be read in the effect `F`. */

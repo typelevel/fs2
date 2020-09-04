@@ -23,8 +23,7 @@ package fs2
 
 import cats.ApplicativeError
 import cats.implicits._
-import cats.effect.kernel.{Concurrent, ConcurrentThrow}
-import cats.effect.Resource
+import cats.effect.{Concurrent, ConcurrentThrow, Resource}
 import cats.effect.concurrent.Ref
 import cats.effect.implicits._
 

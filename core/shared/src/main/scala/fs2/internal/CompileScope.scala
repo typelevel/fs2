@@ -25,11 +25,11 @@ import scala.annotation.tailrec
 
 import cats.{Applicative, Id, Monad, Traverse, TraverseFilter}
 import cats.data.Chain
-import cats.effect.{Outcome, Resource}
-import cats.effect.kernel.{Concurrent, ConcurrentThrow}
+import cats.effect.{Concurrent, ConcurrentThrow, Outcome, Resource}
 import cats.effect.concurrent.{Deferred, Ref}
 import cats.effect.implicits._
 import cats.implicits._
+
 import fs2.{CompositeFailure, Pure, Scope}
 import fs2.internal.CompileScope.{InterruptContext, InterruptionOutcome}
 
@@ -413,7 +413,7 @@ private[fs2] object CompileScope {
       parent: Option[CompileScope[F]],
       interruptible: Option[InterruptContext[F]]
   )(implicit F: CompilationTarget[F]): F[CompileScope[F]] =
-     F.ref(CompileScope.State.initial[F])
+    F.ref(CompileScope.State.initial[F])
       .map(state => new CompileScope[F](id, parent, interruptible, state))
 
   /** Creates a new root scope. */

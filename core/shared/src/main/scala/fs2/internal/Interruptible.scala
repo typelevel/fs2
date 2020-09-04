@@ -21,7 +21,7 @@
 
 package fs2.internal
 
-import cats.effect.kernel.ConcurrentThrow
+import cats.effect.ConcurrentThrow
 
 final class Interruptible[F[_]](implicit val concurrent: ConcurrentThrow[F])
 object Interruptible {

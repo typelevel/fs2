@@ -21,7 +21,7 @@
 
 package fs2
 
-import cats.effect.kernel.ConcurrentThrow
+import cats.effect.ConcurrentThrow
 
 object Pipe {
 
