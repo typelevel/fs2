@@ -24,7 +24,7 @@ package io
 package file
 
 import cats.effect.{Blocker, IO}
-import cats.implicits._
+import cats.syntax.all._
 import java.io.IOException
 import java.nio.file._
 import java.nio.file.attribute.BasicFileAttributes

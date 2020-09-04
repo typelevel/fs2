@@ -28,7 +28,7 @@ import java.nio.{Buffer, ByteBuffer}
 import cats.Applicative
 import cats.effect.Sync
 import cats.effect.concurrent.Ref
-import cats.implicits._
+import cats.syntax.all._
 
 /**
   * Wraps a pair of `ByteBuffer`s for use with an `SSLEngine` -- an input buffer and an output buffer.

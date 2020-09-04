@@ -37,7 +37,7 @@ import java.nio.channels.AsynchronousChannelGroup
 import java.nio.channels.spi.AsynchronousChannelProvider
 import java.util.concurrent.{ThreadFactory, TimeUnit}
 
-import cats.implicits._
+import cats.syntax.all._
 import cats.effect.{Blocker, Concurrent, ContextShift, Resource, Sync}
 import cats.effect.concurrent.{Ref, Semaphore}
 

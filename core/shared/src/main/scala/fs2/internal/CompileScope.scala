@@ -27,7 +27,7 @@ import cats.{Traverse, TraverseFilter}
 import cats.data.Chain
 import cats.effect.{Concurrent, ExitCase, Sync}
 import cats.effect.concurrent.{Deferred, Ref}
-import cats.implicits._
+import cats.syntax.all._
 import fs2.{CompositeFailure, Pure, Scope}
 import fs2.internal.CompileScope.InterruptContext
 

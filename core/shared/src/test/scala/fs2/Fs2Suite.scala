@@ -24,7 +24,7 @@ package fs2
 import scala.concurrent.ExecutionContext
 
 import cats.effect.{ConcurrentEffect, IO, Sync}
-import cats.implicits._
+import cats.syntax.all._
 import munit.{CatsEffectSuite, Location, ScalaCheckEffectSuite}
 import org.typelevel.discipline.Laws
 

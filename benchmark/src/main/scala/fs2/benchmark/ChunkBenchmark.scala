@@ -24,7 +24,7 @@ package benchmark
 
 import org.openjdk.jmh.annotations.{Benchmark, Param, Scope, Setup, State}
 
-import cats.implicits._
+import cats.syntax.all._
 
 @State(Scope.Thread)
 class ChunkBenchmark {

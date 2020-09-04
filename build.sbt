@@ -92,7 +92,7 @@ ThisBuild / Test / run / javaOptions ++= Seq("-Xms64m", "-Xmx64m")
 ThisBuild / Test / parallelExecution := false
 
 ThisBuild / initialCommands := s"""
-    import fs2._, cats.effect._, cats.effect.implicits._, cats.implicits._
+    import fs2._, cats.effect._, cats.effect.implicits._, cats.syntax.all._
     import scala.concurrent.ExecutionContext.Implicits.global, scala.concurrent.duration._
     implicit val contextShiftIO: ContextShift[IO] = IO.contextShift(global)
     implicit val timerIO: Timer[IO] = IO.timer(global)
@@ -184,8 +184,8 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
     },
     // Libraries not yet cross-built for Dotty
     libraryDependencies ++= Seq(
-      "org.typelevel" %%% "cats-core" % "2.1.1",
-      "org.typelevel" %%% "cats-laws" % "2.1.1" % "test",
+      "org.typelevel" %%% "cats-core" % "2.2.0",
+      "org.typelevel" %%% "cats-laws" % "2.2.0" % "test",
       "org.typelevel" %%% "cats-effect" % "2.1.4",
       "org.typelevel" %%% "cats-effect-laws" % "2.1.4" % "test"
     )

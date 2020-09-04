@@ -70,7 +70,7 @@ FS2 is a streaming I/O library. The design goals are compositionality, expressiv
 
 ```scala
 import cats.effect.{Blocker, ExitCode, IO, IOApp, Resource}
-import cats.implicits._
+import cats.syntax.all._
 import fs2.{io, text, Stream}
 import java.nio.file.Paths
 

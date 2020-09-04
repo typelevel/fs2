@@ -23,7 +23,7 @@ package fs2.internal
 
 import cats.{MonadError, ~>}
 import cats.effect.{Concurrent, ExitCase}
-import cats.implicits._
+import cats.syntax.all._
 import fs2.{Chunk, CompositeFailure, INothing, Pure => PureK, Stream}
 import fs2.internal.FreeC.{Result, ViewL}
 

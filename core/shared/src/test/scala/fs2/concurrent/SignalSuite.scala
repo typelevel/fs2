@@ -24,7 +24,7 @@ package concurrent
 
 import cats.effect.IO
 import cats.effect.concurrent.Ref
-import cats.implicits._
+import cats.syntax.all._
 // import cats.laws.discipline.{ApplicativeTests, FunctorTests}
 import scala.concurrent.duration._
 import org.scalacheck.effect.PropF.forAllF

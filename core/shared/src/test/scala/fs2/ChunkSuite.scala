@@ -25,7 +25,7 @@ import cats.Eq
 import cats.kernel.CommutativeMonoid
 import cats.kernel.laws.discipline.EqTests
 import cats.laws.discipline.{AlternativeTests, MonadTests, TraverseFilterTests, TraverseTests}
-import cats.implicits._
+import cats.syntax.all._
 import org.scalacheck.{Arbitrary, Cogen, Gen}
 import org.scalacheck.Prop.forAll
 import scala.reflect.ClassTag

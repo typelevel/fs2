@@ -25,7 +25,7 @@ import java.io.PrintStream
 
 import cats.Show
 import cats.effect.{Concurrent, Sync}
-import cats.implicits._
+import cats.syntax.all._
 
 /** Companion for [[Sink]]. */
 @deprecated("Use Pipe instead", "1.0.2")
