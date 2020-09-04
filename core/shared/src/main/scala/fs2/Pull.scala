@@ -547,12 +547,12 @@ object Pull extends PullLowPriority {
 
   /* Left-folds the output of a stream.
    *
-   * Interruption of the stream is tightly coupled between Pull, Algebra and CompileScope
-   * Reason for this is unlike interruption of `F` type (i.e. IO) we need to find
-   * recovery point where stream evaluation has to continue in Stream algebra
+   * Interruption of the stream is tightly coupled between Pull and CompileScope.
+   * Reason for this is unlike interruption of `F` type (e.g. IO) we need to find
+   * recovery point where stream evaluation has to continue in Stream algebra.
    *
-   * As such the `Token` is passed to Pull.Result.Interrupted as glue between Pull/Algebra that allows pass-along
-   * information for Algebra and scope to correctly compute recovery point after interruption was signalled via `CompilerScope`.
+   * As such the `Token` is passed to Pull.Result.Interrupted as glue between Pull that allows pass-along
+   * the information to correctly compute recovery point after interruption was signalled via `CompileScope`.
    *
    * This token indicates scope of the computation where interruption actually happened.
    * This is used to precisely find most relevant interruption scope where interruption shall be resumed

@@ -148,7 +148,7 @@ import cats.data.Ior.Both
   * @hideImplicitConversion PureOps
   * @hideImplicitConversion IdOps
   */
-final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, Unit]) {
+final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F, O, Unit]) {
 
   /**
     * Appends `s2` to the end of this stream.
@@ -546,7 +546,7 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
     * }}}
     */
   def compile[F2[x] >: F[x], G[_], O2 >: O](implicit
-      compiler: Stream.Compiler[F2, G]
+      compiler: Compiler[F2, G]
   ): Stream.CompileOps[F2, G, O2] =
     new Stream.CompileOps[F2, G, O2](underlying)
 
@@ -4290,96 +4290,6 @@ object Stream extends StreamLowPriority {
       }
   }
 
-  /** Type class which describes compilation of a `Stream[F, O]` to a `G[*]`. */
-  sealed trait Compiler[F[_], G[_]] {
-    private[Stream] def apply[O, B, C](s: Stream[F, O], init: () => B)(
-        fold: (B, Chunk[O]) => B,
-        finalize: B => C
-    ): G[C]
-  }
-
-  private[Stream] trait LowPrioCompiler2 {
-
-    implicit def resourceInstance[F[_]: CompilationTarget]: Compiler[F, Resource[F, *]] =
-      new Compiler[F, Resource[F, *]] {
-        def apply[O, B, C](
-            s: Stream[F, O],
-            init: () => B
-        )(foldChunk: (B, Chunk[O]) => B, finalize: B => C): Resource[F, C] =
-          Resource
-            .makeCase(CompileScope.newRoot[F])((scope, ec) => scope.close(ec).rethrow)
-            .flatMap { scope =>
-              def resourceEval[A](fa: F[A]): Resource[F, A] =
-                Resource.suspend(fa.map(a => a.pure[Resource[F, *]]))
-
-              resourceEval {
-                Applicative[F].unit
-                  .map(_ => init()) // HACK
-                  .flatMap(i => Pull.compile(s.underlying, scope, true, i)(foldChunk))
-                  .map(finalize)
-              }
-            }
-      }
-  }
-
-  private[Stream] trait LowPrioCompiler1 extends LowPrioCompiler2 {
-    implicit val idInstance: Compiler[Id, Id] = new Compiler[Id, Id] {
-      def apply[O, B, C](
-          s: Stream[Id, O],
-          init: () => B
-      )(foldChunk: (B, Chunk[O]) => B, finalize: B => C): C =
-        Compiler
-          .target[SyncIO]
-          .apply(s.covaryId[SyncIO], init)(foldChunk, finalize)
-          .unsafeRunSync()
-    }
-  }
-
-  private[Stream] trait LowPrioCompiler0 extends LowPrioCompiler1 {
-    implicit val fallibleInstance: Compiler[Fallible, Either[Throwable, *]] =
-      new Compiler[Fallible, Either[Throwable, *]] {
-        def apply[O, B, C](
-            s: Stream[Fallible, O],
-            init: () => B
-        )(foldChunk: (B, Chunk[O]) => B, finalize: B => C): Either[Throwable, C] =
-          Compiler
-            .target[SyncIO]
-            .apply(s.lift[SyncIO], init)(foldChunk, finalize)
-            .attempt
-            .unsafeRunSync()
-      }
-  }
-
-  private[Stream] trait LowPrioCompiler extends LowPrioCompiler0 {
-    implicit def target[F[_]: CompilationTarget]: Compiler[F, F] =
-      new Compiler[F, F] {
-        def apply[O, B, C](
-            s: Stream[F, O],
-            init: () => B
-        )(foldChunk: (B, Chunk[O]) => B, finalize: B => C): F[C] =
-          Resource
-            .Bracket[F]
-            .bracketCase(CompileScope.newRoot[F])(scope =>
-              Pull.compile[F, O, B](s.underlying, scope, false, init())(foldChunk)
-            )((scope, ec) => scope.close(ec).rethrow)
-            .map(finalize)
-      }
-  }
-
-  object Compiler extends LowPrioCompiler {
-
-    implicit val pureInstance: Compiler[Pure, Id] = new Compiler[Pure, Id] {
-      def apply[O, B, C](
-          s: Stream[Pure, O],
-          init: () => B
-      )(foldChunk: (B, Chunk[O]) => B, finalize: B => C): C =
-        Compiler
-          .target[SyncIO]
-          .apply(s.covary[SyncIO], init)(foldChunk, finalize)
-          .unsafeRunSync()
-    }
-  }
-
   /** Projection of a `Stream` providing various ways to compile a `Stream[F,O]` to a `G[...]`. */
   final class CompileOps[F[_], G[_], O] private[Stream] (
       private val underlying: Pull[F, O, Unit]
@@ -4566,7 +4476,7 @@ object Stream extends StreamLowPriority {
       * very natural fit with `lastOrError`.
       */
     def resource(implicit
-        compiler: Stream.Compiler[F, Resource[G, *]]
+        compiler: Compiler[F, Resource[G, *]]
     ): Stream.CompileOps[F, Resource[G, *], O] =
       new Stream.CompileOps[F, Resource[G, *], O](underlying)
 

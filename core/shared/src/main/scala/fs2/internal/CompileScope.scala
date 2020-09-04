@@ -30,7 +30,7 @@ import cats.effect.concurrent.{Deferred, Ref}
 import cats.effect.implicits._
 import cats.implicits._
 
-import fs2.{CompositeFailure, Pure, Scope}
+import fs2.{Compiler, CompositeFailure, Pure, Scope}
 import fs2.internal.CompileScope.{InterruptContext, InterruptionOutcome}
 
 /**
@@ -88,7 +88,7 @@ private[fs2] final class CompileScope[F[_]] private (
     val parent: Option[CompileScope[F]],
     val interruptible: Option[InterruptContext[F]],
     private val state: Ref[F, CompileScope.State[F]]
-)(implicit val F: CompilationTarget[F])
+)(implicit val F: Compiler.Target[F])
     extends Scope[F] { self =>
 
   /**
@@ -412,12 +412,12 @@ private[fs2] object CompileScope {
       id: Token,
       parent: Option[CompileScope[F]],
       interruptible: Option[InterruptContext[F]]
-  )(implicit F: CompilationTarget[F]): F[CompileScope[F]] =
+  )(implicit F: Compiler.Target[F]): F[CompileScope[F]] =
     F.ref(CompileScope.State.initial[F])
       .map(state => new CompileScope[F](id, parent, interruptible, state))
 
   /** Creates a new root scope. */
-  def newRoot[F[_]: CompilationTarget]: F[CompileScope[F]] =
+  def newRoot[F[_]: Compiler.Target]: F[CompileScope[F]] =
     Token[F].flatMap(apply[F](_, None, None))
 
   /**
