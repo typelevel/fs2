@@ -1272,7 +1272,9 @@ final class Stream[+F[_], +O] private[fs2] (private val underlying: Pull[F, O, U
   }
 
   /** Alias for `flatMap(_ => s2)`. */
-  def >>[F2[x] >: F[x], O2](s2: => Stream[F2, O2])(implicit ev: Not[O <:< Nothing]): Stream[F2, O2] =
+  def >>[F2[x] >: F[x], O2](
+      s2: => Stream[F2, O2]
+  )(implicit ev: Not[O <:< Nothing]): Stream[F2, O2] =
     flatMap(_ => s2)
 
   /** Flattens a stream of streams in to a single stream by concatenating each stream.

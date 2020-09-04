@@ -125,6 +125,10 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
         _.sharedSrcDir(baseDirectory.value, "main").toList.map(f => file(f.getPath + major))
       )
     },
+    Compile / scalafmt / unmanagedSources := (Compile / scalafmt / unmanagedSources).value
+      .filterNot(_.toString.endsWith("Not.scala")),
+    Test / scalafmt / unmanagedSources := (Test / scalafmt / unmanagedSources).value
+      .filterNot(_.toString.endsWith("Not.scala")),
     // Libraries not yet cross-built for Dotty
     libraryDependencies ++= Seq(
       "org.typelevel" %%% "cats-core" % "2.2.0",
