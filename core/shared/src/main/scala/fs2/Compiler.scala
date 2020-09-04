@@ -32,7 +32,7 @@ import scala.annotation.implicitNotFound
 /** Type class which describes compilation of a `Stream[F, O]` to a `G[*]`. */
 @implicitNotFound("Cannot find an implicit Compiler[F, G]. This typically means you need a Concurrent[F] in scope")
 sealed trait Compiler[F[_], G[_]] {
-  private[fs2] def apply[O, B, C](s: Stream[F, O], init: () => B)(
+  private[fs2] def apply[O, B, C](stream: Pull[F, O, Unit], init: () => B)(
       fold: (B, Chunk[O]) => B,
       finalize: B => C
   ): G[C]
@@ -43,7 +43,7 @@ private[fs2] trait CompilerLowPriority2 {
   implicit def resource[F[_]: Compiler.Target]: Compiler[F, Resource[F, *]] =
     new Compiler[F, Resource[F, *]] {
       def apply[O, B, C](
-          s: Stream[F, O],
+          stream: Pull[F, O, Unit],
           init: () => B
       )(foldChunk: (B, Chunk[O]) => B, finalize: B => C): Resource[F, C] =
         Resource
@@ -55,7 +55,7 @@ private[fs2] trait CompilerLowPriority2 {
             resourceEval {
               Applicative[F].unit
                 .map(_ => init()) // HACK
-                .flatMap(i => Pull.compile(s.underlying, scope, true, i)(foldChunk))
+                .flatMap(i => Pull.compile(stream, scope, true, i)(foldChunk))
                 .map(finalize)
             }
           }
@@ -66,13 +66,13 @@ private[fs2] trait CompilerLowPriority1 extends CompilerLowPriority2 {
   implicit def target[F[_]: Compiler.Target]: Compiler[F, F] =
     new Compiler[F, F] {
       def apply[O, B, C](
-          s: Stream[F, O],
+          stream: Pull[F, O, Unit],
           init: () => B
       )(foldChunk: (B, Chunk[O]) => B, finalize: B => C): F[C] =
         Resource
           .Bracket[F]
           .bracketCase(CompileScope.newRoot[F])(scope =>
-            Pull.compile[F, O, B](s.underlying, scope, false, init())(foldChunk)
+            Pull.compile[F, O, B](stream, scope, false, init())(foldChunk)
           )((scope, ec) => scope.close(ec).rethrow)
           .map(finalize)
     }
@@ -81,12 +81,12 @@ private[fs2] trait CompilerLowPriority1 extends CompilerLowPriority2 {
 private[fs2] trait CompilerLowPriority0 extends CompilerLowPriority1 {
   implicit val idInstance: Compiler[Id, Id] = new Compiler[Id, Id] {
     def apply[O, B, C](
-        s: Stream[Id, O],
+        stream: Pull[Id, O, Unit],
         init: () => B
     )(foldChunk: (B, Chunk[O]) => B, finalize: B => C): C =
       Compiler
         .target[SyncIO]
-        .apply(s.covaryId[SyncIO], init)(foldChunk, finalize)
+        .apply(stream.covaryId[SyncIO], init)(foldChunk, finalize)
         .unsafeRunSync()
   }
 }
@@ -95,12 +95,12 @@ private[fs2] trait CompilerLowPriority extends CompilerLowPriority0 {
   implicit val fallibleInstance: Compiler[Fallible, Either[Throwable, *]] =
     new Compiler[Fallible, Either[Throwable, *]] {
       def apply[O, B, C](
-          s: Stream[Fallible, O],
+          stream: Pull[Fallible, O, Unit],
           init: () => B
       )(foldChunk: (B, Chunk[O]) => B, finalize: B => C): Either[Throwable, C] =
         Compiler
           .target[SyncIO]
-          .apply(s.lift[SyncIO], init)(foldChunk, finalize)
+          .apply(stream.asInstanceOf[Pull[SyncIO, O, Unit]], init)(foldChunk, finalize)
           .attempt
           .unsafeRunSync()
     }
@@ -109,12 +109,12 @@ private[fs2] trait CompilerLowPriority extends CompilerLowPriority0 {
 object Compiler extends CompilerLowPriority {
   implicit val pureInstance: Compiler[Pure, Id] = new Compiler[Pure, Id] {
     def apply[O, B, C](
-        s: Stream[Pure, O],
+        stream: Pull[Pure, O, Unit],
         init: () => B
     )(foldChunk: (B, Chunk[O]) => B, finalize: B => C): C =
       Compiler
         .target[SyncIO]
-        .apply(s.covary[SyncIO], init)(foldChunk, finalize)
+        .apply(stream.covary[SyncIO], init)(foldChunk, finalize)
         .unsafeRunSync()
   }
 

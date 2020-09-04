@@ -886,6 +886,14 @@ object Pull extends PullLowPriority {
   }
 }
 
+/** Provides syntax for pure pulls based on `cats.Id`. */
+  implicit final class IdOps[O](private val self: Pull[Id, O, Unit]) extends AnyVal {
+    private def idToApplicative[F[_]: Applicative]: Id ~> F =
+      new (Id ~> F) { def apply[A](a: Id[A]) = a.pure[F] }
+
+    def covaryId[F[_]: Applicative]: Pull[F, O, Unit] = Pull.translate(self, idToApplicative[F])
+  }
+
 private[fs2] trait PullLowPriority {
   implicit def monadErrorInstance[F[_], O]: MonadError[Pull[F, O, *], Throwable] =
     new PullMonadErrorInstance[F, O]

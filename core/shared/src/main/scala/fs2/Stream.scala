@@ -4294,8 +4294,6 @@ object Stream extends StreamLowPriority {
   final class CompileOps[F[_], G[_], O] private[Stream] (
       private val underlying: Pull[F, O, Unit]
   )(implicit compiler: Compiler[F, G]) {
-    private def self: Stream[F, O] =
-      new Stream(underlying)
 
     /**
       * Compiles this stream in to a value of the target effect type `F` and
@@ -4323,7 +4321,7 @@ object Stream extends StreamLowPriority {
       * compiles the stream down to the target effect type.
       */
     def foldChunks[B](init: B)(f: (B, Chunk[O]) => B): G[B] =
-      compiler(self, () => init)(f, identity)
+      compiler(underlying, () => init)(f, identity)
 
     /**
       * Like [[fold]] but uses the implicitly available `Monoid[O]` to combine elements.
@@ -4492,7 +4490,7 @@ object Stream extends StreamLowPriority {
       */
     def string(implicit ev: O <:< String): G[String] = {
       val _ = ev
-      self.asInstanceOf[Stream[F, String]].compile.to(Collector.string)
+      new Stream(underlying).asInstanceOf[Stream[F, String]].compile.to(Collector.string)
     }
 
     /**
@@ -4523,7 +4521,7 @@ object Stream extends StreamLowPriority {
       * }}}
       */
     def to(collector: Collector[O]): G[collector.Out] =
-      compiler(self, () => collector.newBuilder)((acc, c) => { acc += c; acc }, _.result)
+      compiler(underlying, () => collector.newBuilder)((acc, c) => { acc += c; acc }, _.result)
 
     /**
       * Compiles this stream in to a value of the target effect type `F` by logging
