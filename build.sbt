@@ -195,7 +195,7 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
   .settings(
     // Libraries cross-built for Dotty
     libraryDependencies ++= Seq(
-      "org.scodec" %%% "scodec-bits" % "1.1.19",
+      "org.scodec" %%% "scodec-bits" % "1.1.20",
       "org.typelevel" %%% "scalacheck-effect-munit" % "0.1.0" % "test",
       "org.typelevel" %%% "munit-cats-effect" % "0.3.0" % "test"
     )
@@ -259,7 +259,7 @@ lazy val reactiveStreams = project
     libraryDependencies ++= Seq(
       "org.reactivestreams" % "reactive-streams" % "1.0.3",
       "org.reactivestreams" % "reactive-streams-tck" % "1.0.3" % "test",
-      ("org.scalatestplus" %% "testng-6-7" % "3.2.1.0" % "test").withDottyCompat(scalaVersion.value)
+      ("org.scalatestplus" %% "testng-6-7" % "3.2.2.0" % "test").withDottyCompat(scalaVersion.value)
     ),
     OsgiKeys.exportPackage := Seq("fs2.interop.reactivestreams.*"),
     OsgiKeys.privatePackage := Seq(),
