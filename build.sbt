@@ -186,8 +186,8 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
     libraryDependencies ++= Seq(
       "org.typelevel" %%% "cats-core" % "2.2.0",
       "org.typelevel" %%% "cats-laws" % "2.2.0" % "test",
-      "org.typelevel" %%% "cats-effect" % "2.1.4",
-      "org.typelevel" %%% "cats-effect-laws" % "2.1.4" % "test"
+      "org.typelevel" %%% "cats-effect" % "2.2.0",
+      "org.typelevel" %%% "cats-effect-laws" % "2.2.0" % "test"
     )
   )
   .settings(dottyLibrarySettings)
