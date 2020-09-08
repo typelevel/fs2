@@ -1163,7 +1163,9 @@ class StreamCombinatorsSuite extends Fs2Suite {
     forAll { (s: Stream[Pure, Int]) =>
       val v = s.toVector
       val f = (a: Int, b: Int) => a + b
-      s.scan1Semigroup.toVector == v.headOption.fold(Vector.empty[Int])(h => v.drop(1).scanLeft(h)(f))
+      s.scan1Semigroup.toVector == v.headOption.fold(Vector.empty[Int])(h =>
+        v.drop(1).scanLeft(h)(f)
+      )
     }
   }
 
