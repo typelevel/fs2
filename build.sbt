@@ -142,8 +142,8 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
     libraryDependencies ++= Seq(
       "org.typelevel" %%% "cats-effect" % "3.0-d2cb13e",
       "org.typelevel" %%% "cats-effect-laws" % "3.0-d2cb13e" % "test",
-      "org.scodec" %%% "scodec-bits" % "1.1.19",
-      "org.typelevel" %%% "scalacheck-effect-munit" % "0.1.0" % "test"
+      "org.scodec" %%% "scodec-bits" % "1.1.20",
+      "org.typelevel" %%% "scalacheck-effect-munit" % "0.2.0" % "test"
     )
   )
 
@@ -205,7 +205,7 @@ lazy val reactiveStreams = project
     libraryDependencies ++= Seq(
       "org.reactivestreams" % "reactive-streams" % "1.0.3",
       "org.reactivestreams" % "reactive-streams-tck" % "1.0.3" % "test",
-      ("org.scalatestplus" %% "testng-6-7" % "3.2.1.0" % "test").withDottyCompat(scalaVersion.value)
+      ("org.scalatestplus" %% "testng-6-7" % "3.2.2.0" % "test").withDottyCompat(scalaVersion.value)
     ),
     OsgiKeys.exportPackage := Seq("fs2.interop.reactivestreams.*"),
     OsgiKeys.privatePackage := Seq(),
