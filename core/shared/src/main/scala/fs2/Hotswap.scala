@@ -131,9 +131,8 @@ object Hotswap {
           // workaround for https://github.com/typelevel/cats-effect/issues/579
           Concurrent[F].continual((next <* ().pure[Resource[F, *]]).allocated) {
             r => // this whole block is inside continual and cannot be canceled
-              Sync[F].fromEither(r).flatMap {
-                case (newValue, newFinalizer) =>
-                  swapFinalizer(newFinalizer).as(newValue)
+              Sync[F].fromEither(r).flatMap { case (newValue, newFinalizer) =>
+                swapFinalizer(newFinalizer).as(newValue)
               }
           }
 

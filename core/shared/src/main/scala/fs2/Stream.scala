@@ -1063,9 +1063,8 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
       in.pull.uncons1.flatMap {
         case None => Pull.done
         case Some((hd, tl)) =>
-          Pull.eval(f(s, hd)).flatMap {
-            case (ns, o) =>
-              Pull.output1((ns, o)) >> go(ns, tl)
+          Pull.eval(f(s, hd)).flatMap { case (ns, o) =>
+            Pull.output1((ns, o)) >> go(ns, tl)
           }
       }
 
@@ -1204,16 +1203,15 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
         case None           => Pull.done
         case Some((hd, tl)) =>
           // Check if we can emit this chunk unmodified
-          val (allPass, newLast) = hd.foldLeft((true, last)) {
-            case ((acc, last), o) => (acc && f(last, o), o)
+          val (allPass, newLast) = hd.foldLeft((true, last)) { case ((acc, last), o) =>
+            (acc && f(last, o), o)
           }
           if (allPass)
             Pull.output(hd) >> go(newLast, tl)
           else {
-            val (acc, newLast) = hd.foldLeft((Vector.empty[O], last)) {
-              case ((acc, last), o) =>
-                if (f(last, o)) (acc :+ o, o)
-                else (acc, last)
+            val (acc, newLast) = hd.foldLeft((Vector.empty[O], last)) { case ((acc, last), o) =>
+              if (f(last, o)) (acc :+ o, o)
+              else (acc, last)
             }
             Pull.output(Chunk.vector(acc)) >> go(newLast, tl)
           }
@@ -1376,8 +1374,8 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
             go(current, tl)
         case None =>
           current
-            .map {
-              case (k1, out) => if (out.size == 0) Pull.done else Pull.output1((k1, out.toChunk))
+            .map { case (k1, out) =>
+              if (out.size == 0) Pull.done else Pull.output1((k1, out.toChunk))
             }
             .getOrElse(Pull.done)
       }
@@ -1452,91 +1450,88 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
           .synchronousNoneTerminated[F2, Either[Token, Chunk[O]]]
           .product(Ref[F2].of(F.unit -> false))
       }
-      .flatMap {
-        case (q, currentTimeout) =>
-          def startTimeout: Stream[F2, Token] =
-            Stream.eval(F.delay(new Token)).evalTap { t =>
-              val timeout = timer.sleep(d) >> q.enqueue1(t.asLeft.some)
+      .flatMap { case (q, currentTimeout) =>
+        def startTimeout: Stream[F2, Token] =
+          Stream.eval(F.delay(new Token)).evalTap { t =>
+            val timeout = timer.sleep(d) >> q.enqueue1(t.asLeft.some)
 
-              // We need to cancel outstanding timeouts to avoid leaks
-              // on interruption, but using `Stream.bracket` or
-              // derivatives causes a memory leak due to all the
-              // finalisers accumulating. Therefore we dispose of them
-              // manually, with a cooperative strategy between a single
-              // stream finaliser, and F finalisers on each timeout.
-              //
-              // Note that to avoid races, the correctness of the
-              // algorithm does not depend on timely cancellation of
-              // previous timeouts, but uses a versioning scheme to
-              // ensure stale timeouts are no-ops.
-              timeout.start
-                .bracket(_ => F.unit) { fiber =>
-                  // note the this is in a `release` action, and therefore uninterruptible
-                  currentTimeout.modify {
-                    case st @ (cancelInFlightTimeout, streamTerminated) =>
-                      if (streamTerminated)
-                        // the stream finaliser will cancel the in flight
-                        // timeout, we need to cancel the timeout we have
-                        // just started
-                        st -> fiber.cancel
-                      else
-                        // The stream finaliser hasn't run, so we cancel
-                        // the in flight timeout and store the finaliser for
-                        // the timeout we have just started
-                        (fiber.cancel, streamTerminated) -> cancelInFlightTimeout
-                  }.flatten
-                }
-            }
+            // We need to cancel outstanding timeouts to avoid leaks
+            // on interruption, but using `Stream.bracket` or
+            // derivatives causes a memory leak due to all the
+            // finalisers accumulating. Therefore we dispose of them
+            // manually, with a cooperative strategy between a single
+            // stream finaliser, and F finalisers on each timeout.
+            //
+            // Note that to avoid races, the correctness of the
+            // algorithm does not depend on timely cancellation of
+            // previous timeouts, but uses a versioning scheme to
+            // ensure stale timeouts are no-ops.
+            timeout.start
+              .bracket(_ => F.unit) { fiber =>
+                // note the this is in a `release` action, and therefore uninterruptible
+                currentTimeout.modify { case st @ (cancelInFlightTimeout, streamTerminated) =>
+                  if (streamTerminated)
+                    // the stream finaliser will cancel the in flight
+                    // timeout, we need to cancel the timeout we have
+                    // just started
+                    st -> fiber.cancel
+                  else
+                    // The stream finaliser hasn't run, so we cancel
+                    // the in flight timeout and store the finaliser for
+                    // the timeout we have just started
+                    (fiber.cancel, streamTerminated) -> cancelInFlightTimeout
+                }.flatten
+              }
+          }
 
-          def producer =
-            this.chunks.map(_.asRight.some).through(q.enqueue).onFinalize(q.enqueue1(None))
+        def producer =
+          this.chunks.map(_.asRight.some).through(q.enqueue).onFinalize(q.enqueue1(None))
 
-          def emitNonEmpty(c: Chunk.Queue[O]): Stream[F2, Chunk[O]] =
-            if (c.size > 0) Stream.emit(c.toChunk)
-            else Stream.empty
+        def emitNonEmpty(c: Chunk.Queue[O]): Stream[F2, Chunk[O]] =
+          if (c.size > 0) Stream.emit(c.toChunk)
+          else Stream.empty
 
-          def resize(c: Chunk[O], s: Stream[F2, Chunk[O]]): (Stream[F2, Chunk[O]], Chunk[O]) =
-            if (c.size < n) s -> c
-            else {
-              val (unit, rest) = c.splitAt(n)
-              resize(rest, s ++ Stream.emit(unit))
-            }
+        def resize(c: Chunk[O], s: Stream[F2, Chunk[O]]): (Stream[F2, Chunk[O]], Chunk[O]) =
+          if (c.size < n) s -> c
+          else {
+            val (unit, rest) = c.splitAt(n)
+            resize(rest, s ++ Stream.emit(unit))
+          }
 
-          def go(acc: Chunk.Queue[O], currentTimeout: Token): Stream[F2, Chunk[O]] =
-            Stream.eval(q.dequeue1).flatMap {
-              case None => emitNonEmpty(acc)
-              case Some(e) =>
-                e match {
-                  case Left(t) if t == currentTimeout =>
-                    emitNonEmpty(acc) ++ startTimeout.flatMap { newTimeout =>
-                      go(Chunk.Queue.empty, newTimeout)
+        def go(acc: Chunk.Queue[O], currentTimeout: Token): Stream[F2, Chunk[O]] =
+          Stream.eval(q.dequeue1).flatMap {
+            case None => emitNonEmpty(acc)
+            case Some(e) =>
+              e match {
+                case Left(t) if t == currentTimeout =>
+                  emitNonEmpty(acc) ++ startTimeout.flatMap { newTimeout =>
+                    go(Chunk.Queue.empty, newTimeout)
+                  }
+                case Left(_) => go(acc, currentTimeout)
+                case Right(c) if acc.size + c.size >= n =>
+                  val newAcc = acc :+ c
+                  // this is the same if in the resize function,
+                  // short circuited to avoid needlessly converting newAcc.toChunk
+                  if (newAcc.size < n)
+                    Stream.empty ++ startTimeout.flatMap(newTimeout => go(newAcc, newTimeout))
+                  else {
+                    val (toEmit, rest) = resize(newAcc.toChunk, Stream.empty)
+                    toEmit ++ startTimeout.flatMap { newTimeout =>
+                      go(Chunk.Queue(rest), newTimeout)
                     }
-                  case Left(_) => go(acc, currentTimeout)
-                  case Right(c) if acc.size + c.size >= n =>
-                    val newAcc = acc :+ c
-                    // this is the same if in the resize function,
-                    // short circuited to avoid needlessly converting newAcc.toChunk
-                    if (newAcc.size < n)
-                      Stream.empty ++ startTimeout.flatMap(newTimeout => go(newAcc, newTimeout))
-                    else {
-                      val (toEmit, rest) = resize(newAcc.toChunk, Stream.empty)
-                      toEmit ++ startTimeout.flatMap { newTimeout =>
-                        go(Chunk.Queue(rest), newTimeout)
-                      }
-                    }
-                  case Right(c) =>
-                    go(acc :+ c, currentTimeout)
-                }
-            }
+                  }
+                case Right(c) =>
+                  go(acc :+ c, currentTimeout)
+              }
+          }
 
-          startTimeout
-            .flatMap(t => go(Chunk.Queue.empty, t).concurrently(producer))
-            .onFinalize {
-              currentTimeout.modify {
-                case (cancelInFlightTimeout, _) =>
-                  (F.unit, true) -> cancelInFlightTimeout
-              }.flatten
-            }
+        startTimeout
+          .flatMap(t => go(Chunk.Queue.empty, t).concurrently(producer))
+          .onFinalize {
+            currentTimeout.modify { case (cancelInFlightTimeout, _) =>
+              (F.unit, true) -> cancelInFlightTimeout
+            }.flatten
+          }
       }
 
   /**
@@ -1621,9 +1616,8 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
   def interleaveAll[F2[x] >: F[x], O2 >: O](that: Stream[F2, O2]): Stream[F2, O2] =
     map(Some(_): Option[O2])
       .zipAll(that.map(Some(_): Option[O2]))(None, None)
-      .flatMap {
-        case (o1Opt, o2Opt) =>
-          Stream(o1Opt.toSeq: _*) ++ Stream(o2Opt.toSeq: _*)
+      .flatMap { case (o1Opt, o2Opt) =>
+        Stream(o1Opt.toSeq: _*) ++ Stream(o2Opt.toSeq: _*)
       }
 
   /**
@@ -2425,14 +2419,13 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
     this.pull
       .scanChunks(Option.empty[O2]) { (carry, chunk) =>
         val (out, (_, c2)) = chunk
-          .scanLeftCarry((Chunk.empty[O2], carry)) {
-            case ((_, carry), o) =>
-              val o2: O2 = carry.fold(o: O2)(S.combine(_, o))
-              val partitions: Chunk[O2] = f(o2)
-              if (partitions.isEmpty) partitions -> None
-              else if (partitions.size == 1) Chunk.empty -> partitions.last
-              else
-                partitions.take(partitions.size - 1) -> partitions.last
+          .scanLeftCarry((Chunk.empty[O2], carry)) { case ((_, carry), o) =>
+            val o2: O2 = carry.fold(o: O2)(S.combine(_, o))
+            val partitions: Chunk[O2] = f(o2)
+            if (partitions.isEmpty) partitions -> None
+            else if (partitions.size == 1) Chunk.empty -> partitions.last
+            else
+              partitions.take(partitions.size - 1) -> partitions.last
           }
         (c2, out.flatMap { case (o, _) => o })
       }
@@ -3061,8 +3054,8 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
       s.pull.uncons.flatMap {
         case None => Pull.output1((last, None))
         case Some((hd, tl)) =>
-          val (newLast, out) = hd.mapAccumulate(last) {
-            case (prev, next) => (next, (prev, Some(next)))
+          val (newLast, out) = hd.mapAccumulate(last) { case (prev, next) =>
+            (next, (prev, Some(next)))
           }
           Pull.output(out) >> go(newLast, tl)
       }
@@ -3082,8 +3075,8 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
     * }}}
     */
   def zipWithPrevious: Stream[F, (Option[O], O)] =
-    mapAccumulate[Option[O], (Option[O], O)](None) {
-      case (prev, next) => (Some(next), (prev, next))
+    mapAccumulate[Option[O], (Option[O], O)](None) { case (prev, next) =>
+      (Some(next), (prev, next))
     }.map { case (_, prevNext) => prevNext }
 
   /**
@@ -3801,8 +3794,8 @@ object Stream extends StreamLowPriority {
   def unfoldLoopEval[F[_], S, O](s: S)(f: S => F[(O, Option[S])]): Stream[F, O] =
     Pull
       .loop[F, O, S](s =>
-        Pull.eval(f(s)).flatMap {
-          case (o, sOpt) => Pull.output1(o) >> Pull.pure(sOpt)
+        Pull.eval(f(s)).flatMap { case (o, sOpt) =>
+          Pull.output1(o) >> Pull.pure(sOpt)
         }
       )(s)
       .void

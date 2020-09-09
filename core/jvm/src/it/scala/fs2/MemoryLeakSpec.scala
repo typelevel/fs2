@@ -263,9 +263,8 @@ class MemoryLeakSpec extends FunSuite {
     Stream
       .fixedDelay[IO](1.milliseconds)
       .zip(sources)
-      .flatMap {
-        case (_, s) =>
-          s.map(Stream.constant(_).covary[IO]).parJoinUnbounded
+      .flatMap { case (_, s) =>
+        s.map(Stream.constant(_).covary[IO]).parJoinUnbounded
       }
   }
 

@@ -320,8 +320,8 @@ class FileSuite extends BaseFileSuite {
             .evalMap(path => file.exists[IO](b, path).map(_ -> path))
             .compile
             .lastOrError
-            .flatMap {
-              case (existsBefore, path) => file.exists[IO](b, path).map(existsBefore -> _)
+            .flatMap { case (existsBefore, path) =>
+              file.exists[IO](b, path).map(existsBefore -> _)
             }
         }
         .map(it => assert(it == true -> false))
@@ -351,8 +351,8 @@ class FileSuite extends BaseFileSuite {
             .evalMap(path => file.exists[IO](b, path).map(_ -> path))
             .compile
             .lastOrError
-            .flatMap {
-              case (existsBefore, path) => file.exists[IO](b, path).map(existsBefore -> _)
+            .flatMap { case (existsBefore, path) =>
+              file.exists[IO](b, path).map(existsBefore -> _)
             }
         }
         .map(it => assert(it == true -> false))

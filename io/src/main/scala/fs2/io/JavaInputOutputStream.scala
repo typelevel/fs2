@@ -166,9 +166,8 @@ private[io] object JavaInputOutputStream {
         case _           => Done(None)
       } >>
         upState.discrete
-          .collectFirst {
-            case UpStreamState(true, maybeErr) =>
-              maybeErr // await upStreamDome to yield as true
+          .collectFirst { case UpStreamState(true, maybeErr) =>
+            maybeErr // await upStreamDome to yield as true
           }
           .compile
           .last
@@ -198,31 +197,30 @@ private[io] object JavaInputOutputStream {
           SignallingRef[F, DownStreamState](Ready(None))
         ).tupled
       )
-      .flatMap {
-        case (queue, upState, dnState) =>
-          val mkInputStream = processInput(source, queue, upState, dnState)
-            .as(
-              new InputStream {
-                override def close(): Unit =
-                  closeIs(upState, dnState).toIO.unsafeRunSync()
+      .flatMap { case (queue, upState, dnState) =>
+        val mkInputStream = processInput(source, queue, upState, dnState)
+          .as(
+            new InputStream {
+              override def close(): Unit =
+                closeIs(upState, dnState).toIO.unsafeRunSync()
 
-                override def read(b: Array[Byte], off: Int, len: Int): Int =
-                  readOnce(b, off, len, queue, dnState).toIO.unsafeRunSync()
+              override def read(b: Array[Byte], off: Int, len: Int): Int =
+                readOnce(b, off, len, queue, dnState).toIO.unsafeRunSync()
 
-                def read(): Int = {
-                  def go(acc: Array[Byte]): F[Int] =
-                    readOnce(acc, 0, 1, queue, dnState).flatMap { read =>
-                      if (read < 0) F.pure(-1)
-                      else if (read == 0) go(acc)
-                      else F.pure(acc(0) & 0xff)
-                    }
+              def read(): Int = {
+                def go(acc: Array[Byte]): F[Int] =
+                  readOnce(acc, 0, 1, queue, dnState).flatMap { read =>
+                    if (read < 0) F.pure(-1)
+                    else if (read == 0) go(acc)
+                    else F.pure(acc(0) & 0xff)
+                  }
 
-                  go(new Array[Byte](1)).toIO.unsafeRunSync()
-                }
+                go(new Array[Byte](1)).toIO.unsafeRunSync()
               }
-            )
+            }
+          )
 
-          Resource.make(mkInputStream)(_ => closeIs(upState, dnState))
+        Resource.make(mkInputStream)(_ => closeIs(upState, dnState))
       }
   }
 }

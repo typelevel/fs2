@@ -44,9 +44,8 @@ class StreamObserveSuite extends Fs2Suite {
                 observer(s.covary[IO])(_.evalMap(i => sum.update(_ + i))).compile.toList
               ints.flatMap(out => sum.get.map(out -> _))
             }
-            .map {
-              case (out, sum) =>
-                assert(out.sum == sum)
+            .map { case (out, sum) =>
+              assert(out.sum == sum)
             }
         }
       }

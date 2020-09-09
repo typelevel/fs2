@@ -149,20 +149,18 @@ object Topic {
             subscriber(maxQueued).flatMap { case (_, s) => s.flatMap(q => Stream.emits(q.toQueue)) }
 
           def subscribeSize(maxQueued: Int): Stream[F, (A, Int)] =
-            subscriber(maxQueued).flatMap {
-              case (selector, stream) =>
-                stream
-                  .flatMap { q =>
-                    Stream.emits(q.toQueue.zipWithIndex.map { case (a, idx) => (a, q.size - idx) })
+            subscriber(maxQueued).flatMap { case (selector, stream) =>
+              stream
+                .flatMap { q =>
+                  Stream.emits(q.toQueue.zipWithIndex.map { case (a, idx) => (a, q.size - idx) })
+                }
+                .evalMap { case (a, remQ) =>
+                  pubSub.get(Left(None)).map {
+                    case Left(s) =>
+                      (a, s.subscribers.get(selector).map(_.size + remQ).getOrElse(remQ))
+                    case Right(_) => (a, -1) // impossible
                   }
-                  .evalMap {
-                    case (a, remQ) =>
-                      pubSub.get(Left(None)).map {
-                        case Left(s) =>
-                          (a, s.subscribers.get(selector).map(_.size + remQ).getOrElse(remQ))
-                        case Right(_) => (a, -1) // impossible
-                      }
-                  }
+                }
             }
 
           def subscribers: Stream[F, Int] =
