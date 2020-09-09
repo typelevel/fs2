@@ -2534,6 +2534,17 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
     }.stream
 
   /**
+    * Like `[[scan1]], but uses the implicitly available `Semigroup[O2]` to combine elements.
+    *
+    * @example {{{
+    * scala> Stream(1,2,3,4).scan1Semigroup.toList
+    * res0: List[Int] = List(1, 3, 6, 10)
+    * }}}
+    */
+  def scan1Semigroup[O2 >: O](implicit O2: Semigroup[O2]): Stream[F, O2] =
+    scan1(O2.combine)
+
+  /**
     * Like `scan` but `f` is applied to each chunk of the source stream.
     * The resulting chunk is emitted and the result of the chunk is used in the
     * next invocation of `f`.

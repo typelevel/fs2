@@ -1159,6 +1159,16 @@ class StreamCombinatorsSuite extends Fs2Suite {
     }
   }
 
+  property("scan1Semigroup") {
+    forAll { (s: Stream[Pure, Int]) =>
+      val v = s.toVector
+      val f = (a: Int, b: Int) => a + b
+      s.scan1Semigroup.toVector == v.headOption.fold(Vector.empty[Int])(h =>
+        v.drop(1).scanLeft(h)(f)
+      )
+    }
+  }
+
   test("sleep") {
     val delay = 200.millis
     // force a sync up in duration, then measure how long sleep takes
