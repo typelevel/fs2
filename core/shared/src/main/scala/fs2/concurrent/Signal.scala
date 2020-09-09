@@ -96,12 +96,11 @@ object Signal extends SignalLowPriorityImplicits {
       }
     } yield ()
     firstPull.value.void.stream
-      .flatMap {
-        case (x, y, restOfXs, restOfYs) =>
-          restOfXs.either(restOfYs).scan((x, y)) {
-            case ((_, rightElem), Left(newElem)) => (newElem, rightElem)
-            case ((leftElem, _), Right(newElem)) => (leftElem, newElem)
-          }
+      .flatMap { case (x, y, restOfXs, restOfYs) =>
+        restOfXs.either(restOfYs).scan((x, y)) {
+          case ((_, rightElem), Left(newElem)) => (newElem, rightElem)
+          case ((leftElem, _), Right(newElem)) => (leftElem, newElem)
+        }
       }
   }
 
@@ -185,10 +184,9 @@ object SignallingRef {
         def getNext: F[(A, Long)] =
           Deferred[F, (A, Long)]
             .flatMap { deferred =>
-              state.modify {
-                case s @ (a, updates, listeners) =>
-                  if (updates != lastUpdate) s -> (a -> updates).pure[F]
-                  else (a, updates, listeners + (id -> deferred)) -> deferred.get
+              state.modify { case s @ (a, updates, listeners) =>
+                if (updates != lastUpdate) s -> (a -> updates).pure[F]
+                else (a, updates, listeners + (id -> deferred)) -> deferred.get
               }.flatten
             }
 
@@ -199,8 +197,8 @@ object SignallingRef {
         state.update(s => s.copy(_3 = s._3 - id))
 
       Stream.bracket(F.delay(new Token))(cleanup).flatMap { id =>
-        Stream.eval(state.get).flatMap {
-          case (a, l, _) => Stream.emit(a) ++ go(id, l)
+        Stream.eval(state.get).flatMap { case (a, l, _) =>
+          Stream.emit(a) ++ go(id, l)
         }
       }
     }
@@ -210,19 +208,18 @@ object SignallingRef {
     override def getAndSet(a: A): F[A] = modify(old => (a, old))
 
     override def access: F[(A, A => F[Boolean])] =
-      state.access.flatMap {
-        case (snapshot, set) =>
-          F.delay {
-            val hasBeenCalled = new java.util.concurrent.atomic.AtomicBoolean(false)
-            val setter =
-              (a: A) =>
-                F.delay(hasBeenCalled.compareAndSet(false, true))
-                  .ifM(
-                    if (a == snapshot._1) set((a, snapshot._2, snapshot._3)) else F.pure(false),
-                    F.pure(false)
-                  )
-            (snapshot._1, setter)
-          }
+      state.access.flatMap { case (snapshot, set) =>
+        F.delay {
+          val hasBeenCalled = new java.util.concurrent.atomic.AtomicBoolean(false)
+          val setter =
+            (a: A) =>
+              F.delay(hasBeenCalled.compareAndSet(false, true))
+                .ifM(
+                  if (a == snapshot._1) set((a, snapshot._2, snapshot._3)) else F.pure(false),
+                  F.pure(false)
+                )
+          (snapshot._1, setter)
+        }
       }
 
     override def tryUpdate(f: A => A): F[Boolean] =
@@ -230,16 +227,14 @@ object SignallingRef {
 
     override def tryModify[B](f: A => (A, B)): F[Option[B]] =
       state
-        .tryModify {
-          case (a, updates, listeners) =>
-            val (newA, result) = f(a)
-            val newUpdates = updates + 1
-            val newState = (newA, newUpdates, Map.empty[Token, Deferred[F, (A, Long)]])
-            val action = listeners.toVector.traverse {
-              case (_, deferred) =>
-                F.start(deferred.complete(newA -> newUpdates))
-            }
-            newState -> (action *> result.pure[F])
+        .tryModify { case (a, updates, listeners) =>
+          val (newA, result) = f(a)
+          val newUpdates = updates + 1
+          val newState = (newA, newUpdates, Map.empty[Token, Deferred[F, (A, Long)]])
+          val action = listeners.toVector.traverse { case (_, deferred) =>
+            F.start(deferred.complete(newA -> newUpdates))
+          }
+          newState -> (action *> result.pure[F])
         }
         .flatMap {
           case None     => F.pure(None)
@@ -250,16 +245,14 @@ object SignallingRef {
       modify(a => (f(a), ()))
 
     override def modify[B](f: A => (A, B)): F[B] =
-      state.modify {
-        case (a, updates, listeners) =>
-          val (newA, result) = f(a)
-          val newUpdates = updates + 1
-          val newState = (newA, newUpdates, Map.empty[Token, Deferred[F, (A, Long)]])
-          val action = listeners.toVector.traverse {
-            case (_, deferred) =>
-              F.start(deferred.complete(newA -> newUpdates))
-          }
-          newState -> (action *> result.pure[F])
+      state.modify { case (a, updates, listeners) =>
+        val (newA, result) = f(a)
+        val newUpdates = updates + 1
+        val newState = (newA, newUpdates, Map.empty[Token, Deferred[F, (A, Long)]])
+        val action = listeners.toVector.traverse { case (_, deferred) =>
+          F.start(deferred.complete(newA -> newUpdates))
+        }
+        newState -> (action *> result.pure[F])
       }.flatten
 
     override def tryModifyState[B](state: State[A, B]): F[Option[B]] = {
@@ -283,8 +276,8 @@ object SignallingRef {
           override def set(b: B): F[Unit] = fa.set(g(b))
           override def getAndSet(b: B): F[B] = fa.getAndSet(g(b)).map(f)
           override def access: F[(B, B => F[Boolean])] =
-            fa.access.map {
-              case (getter, setter) => (f(getter), b => setter(g(b)))
+            fa.access.map { case (getter, setter) =>
+              (f(getter), b => setter(g(b)))
             }
           override def tryUpdate(h: B => B): F[Boolean] = fa.tryUpdate(a => g(h(f(a))))
           override def tryModify[B2](h: B => (B, B2)): F[Option[B2]] =

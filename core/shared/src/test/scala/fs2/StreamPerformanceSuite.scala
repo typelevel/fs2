@@ -202,10 +202,9 @@ class StreamPerformanceSuite extends Fs2Suite {
                     }
                 s.compile.toList.attempt
                   .flatMap(_ => (ok.get, open.get).tupled)
-                  .map {
-                    case (ok, open) =>
-                      assertEquals(ok, N.toLong)
-                      assertEquals(open, 0L)
+                  .map { case (ok, open) =>
+                    assertEquals(ok, N.toLong)
+                    assertEquals(open, 0L)
                   }
               }
             }
@@ -230,10 +229,9 @@ class StreamPerformanceSuite extends Fs2Suite {
                   }
                 s.compile.toList.attempt
                   .flatMap(_ => (ok.get, open.get).tupled)
-                  .map {
-                    case (ok, open) =>
-                      assertEquals(ok, N.toLong)
-                      assertEquals(open, 0L)
+                  .map { case (ok, open) =>
+                    assertEquals(ok, N.toLong)
+                    assertEquals(open, 0L)
                   }
               }
             }

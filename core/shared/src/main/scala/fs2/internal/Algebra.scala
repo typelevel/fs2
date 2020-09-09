@@ -339,8 +339,8 @@ private[fs2] object FreeC {
 
   def stepLeg[F[_], O](leg: Stream.StepLeg[F, O]): FreeC[F, Nothing, Option[Stream.StepLeg[F, O]]] =
     Step[F, O](leg.next, Some(leg.scopeId)).map {
-      _.map {
-        case (h, id, t) => new Stream.StepLeg[F, O](h, id, t.asInstanceOf[FreeC[F, O, Unit]])
+      _.map { case (h, id, t) =>
+        new Stream.StepLeg[F, O](h, id, t.asInstanceOf[FreeC[F, O, Unit]])
       }
     }
 

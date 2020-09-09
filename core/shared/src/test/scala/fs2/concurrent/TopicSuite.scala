@@ -85,13 +85,12 @@ class TopicSuite extends Fs2Suite {
           .map { result =>
             assert(result.toMap.size == subs)
 
-            result.foreach {
-              case (_, subResults) =>
-                val diff: Set[Int] = subResults.map {
-                  case (read, state) => Math.abs(state - read)
-                }.toSet
-                assert(diff.min == 0 || diff.min == 1)
-                assert(diff.max == 0 || diff.max == 1)
+            result.foreach { case (_, subResults) =>
+              val diff: Set[Int] = subResults.map { case (read, state) =>
+                Math.abs(state - read)
+              }.toSet
+              assert(diff.min == 0 || diff.min == 1)
+              assert(diff.max == 0 || diff.max == 1)
             }
           }
       }

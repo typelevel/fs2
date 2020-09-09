@@ -78,8 +78,8 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup, blocker: Blocker
         ch.setOption[Integer](StandardSocketOptions.SO_RCVBUF, receiveBufferSize)
         ch.setOption[java.lang.Boolean](StandardSocketOptions.SO_KEEPALIVE, keepAlive)
         ch.setOption[java.lang.Boolean](StandardSocketOptions.TCP_NODELAY, noDelay)
-        additionalSocketOptions.foreach {
-          case SocketOptionMapping(option, value) => ch.setOption(option, value)
+        additionalSocketOptions.foreach { case SocketOptionMapping(option, value) =>
+          ch.setOption(option, value)
         }
         ch
       }
@@ -158,8 +158,8 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup, blocker: Blocker
     val _ = maxQueued
     Stream
       .resource(serverResource(address, reuseAddress, receiveBufferSize, additionalSocketOptions))
-      .flatMap {
-        case (localAddress, clients) => Stream(Left(localAddress)) ++ clients.map(Right(_))
+      .flatMap { case (localAddress, clients) =>
+        Stream(Left(localAddress)) ++ clients.map(Right(_))
       }
   }
 
@@ -183,8 +183,8 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup, blocker: Blocker
         .openAsynchronousServerSocketChannel(channelGroup)
       ch.setOption[java.lang.Boolean](StandardSocketOptions.SO_REUSEADDR, reuseAddress)
       ch.setOption[Integer](StandardSocketOptions.SO_RCVBUF, receiveBufferSize)
-      additionalSocketOptions.foreach {
-        case SocketOptionMapping(option, value) => ch.setOption(option, value)
+      additionalSocketOptions.foreach { case SocketOptionMapping(option, value) =>
+        ch.setOption(option, value)
       }
       ch.bind(address)
       ch
@@ -292,10 +292,9 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup, blocker: Blocker
         def read0(max: Int, timeout: Option[FiniteDuration]): F[Option[Chunk[Byte]]] =
           readSemaphore.withPermit {
             getBufferOf(max).flatMap { buff =>
-              readChunk(buff, timeout.map(_.toMillis).getOrElse(0L)).flatMap {
-                case (read, _) =>
-                  if (read < 0) F.pure(None)
-                  else releaseBuffer(buff).map(Some(_))
+              readChunk(buff, timeout.map(_.toMillis).getOrElse(0L)).flatMap { case (read, _) =>
+                if (read < 0) F.pure(None)
+                else releaseBuffer(buff).map(Some(_))
               }
             }
           }
@@ -304,12 +303,11 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup, blocker: Blocker
           readSemaphore.withPermit {
             getBufferOf(max).flatMap { buff =>
               def go(timeoutMs: Long): F[Option[Chunk[Byte]]] =
-                readChunk(buff, timeoutMs).flatMap {
-                  case (readBytes, took) =>
-                    if (readBytes < 0 || buff.position() >= max)
-                      // read is done
-                      releaseBuffer(buff).map(Some(_))
-                    else go((timeoutMs - took).max(0))
+                readChunk(buff, timeoutMs).flatMap { case (readBytes, took) =>
+                  if (readBytes < 0 || buff.position() >= max)
+                    // read is done
+                    releaseBuffer(buff).map(Some(_))
+                  else go((timeoutMs - took).max(0))
                 }
 
               go(timeout.map(_.toMillis).getOrElse(0L))

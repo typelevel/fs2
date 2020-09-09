@@ -261,34 +261,33 @@ object compress {
               Pull.raiseError(NonProgressiveDecompressionException(bufferSize))
           }
 
-        pageBeginning(in).stream.flatMap {
-          case (gzis, in) =>
-            lazy val stepDecompress: Stream[F, Byte] = Stream.suspend {
-              val inner =
-                new Array[Byte](
-                  bufferSize * 2
-                ) // double the input buffer size since we're decompressing
+        pageBeginning(in).stream.flatMap { case (gzis, in) =>
+          lazy val stepDecompress: Stream[F, Byte] = Stream.suspend {
+            val inner =
+              new Array[Byte](
+                bufferSize * 2
+              ) // double the input buffer size since we're decompressing
 
-              val len =
-                try gzis.read(inner)
-                catch {
-                  case AsyncByteArrayInputStream.AsyncError => 0
-                }
+            val len =
+              try gzis.read(inner)
+              catch {
+                case AsyncByteArrayInputStream.AsyncError => 0
+              }
 
-              if (len > 0)
-                Stream.chunk(Chunk.bytes(inner, 0, len)) ++ stepDecompress
-              else
-                Stream.empty
-            }
+            if (len > 0)
+              Stream.chunk(Chunk.bytes(inner, 0, len)) ++ stepDecompress
+            else
+              Stream.empty
+          }
 
-            // Note: It is possible for this to fail with a non-progressive error
-            //       if `in` contains bytes in addition to the compressed data.
-            val mainline = in.chunks.flatMap { chunk =>
-              push(chunk)
-              stepDecompress
-            }
+          // Note: It is possible for this to fail with a non-progressive error
+          //       if `in` contains bytes in addition to the compressed data.
+          val mainline = in.chunks.flatMap { chunk =>
+            push(chunk)
+            stepDecompress
+          }
 
-            stepDecompress ++ mainline
+          stepDecompress ++ mainline
         }
       }
 
