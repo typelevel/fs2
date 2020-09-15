@@ -30,7 +30,7 @@ import java.net.InetSocketAddress
 import java.nio.file.Path
 import java.security.KeyStore
 import java.security.cert.X509Certificate
-import javax.net.ssl.{KeyManagerFactory, SSLContext, TrustManagerFactory, X509TrustManager}
+import javax.net.ssl.{KeyManagerFactory, SSLContext, SSLEngine, TrustManagerFactory, X509TrustManager}
 
 import cats.Applicative
 import cats.effect.{Blocker, Concurrent, ContextShift, Resource, Sync}
@@ -38,6 +38,7 @@ import cats.syntax.all._
 
 import fs2.io.tcp.Socket
 import fs2.io.udp.Packet
+import java.util.function.BiFunction
 
 /**
   * Allows creation of [[TLSSocket]]s.
@@ -206,6 +207,16 @@ object TLSContext {
           val engine = ctx.createSSLEngine()
           engine.setUseClientMode(clientMode)
           engine.setSSLParameters(params.toSSLParameters)
+          params.handshakeApplicationProtocolSelector
+            .foreach{f => 
+              import scala.jdk.CollectionConverters._
+              engine.setHandshakeApplicationProtocolSelector(
+                new java.util.function.BiFunction[SSLEngine, java.util.List[String], String]{
+                  def apply(engine: SSLEngine, protocols: java.util.List[String]): String = 
+                    f(engine, protocols.asScala.toList)
+                }
+              )
+            }
           engine
         }
         sslEngine.flatMap(TLSEngine[F](_, binding, blocker, logger))

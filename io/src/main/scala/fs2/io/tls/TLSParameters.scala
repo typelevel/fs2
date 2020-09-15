@@ -24,7 +24,7 @@ package io
 package tls
 
 import java.security.AlgorithmConstraints
-import javax.net.ssl.{SNIMatcher, SNIServerName, SSLParameters}
+import javax.net.ssl.{SNIMatcher, SNIServerName, SSLEngine, SSLParameters}
 
 import CollectionCompat._
 
@@ -47,6 +47,7 @@ sealed trait TLSParameters {
   val useCipherSuitesOrder: Boolean
   val needClientAuth: Boolean
   val wantClientAuth: Boolean
+  val handshakeApplicationProtocolSelector: Option[(SSLEngine, List[String]) => String]
 
   /**
     *  Converts to a `javax.net.ssl.SSLParameters` instance.
@@ -88,7 +89,8 @@ object TLSParameters {
       sniMatchers: Option[List[SNIMatcher]] = None,
       useCipherSuitesOrder: Boolean = false,
       needClientAuth: Boolean = false,
-      wantClientAuth: Boolean = false
+      wantClientAuth: Boolean = false,
+      handshakeApplicationProtocolSelector: Option[(SSLEngine, List[String]) => String] = None,
   ): TLSParameters =
     DefaultTLSParameters(
       algorithmConstraints,
@@ -102,7 +104,8 @@ object TLSParameters {
       sniMatchers,
       useCipherSuitesOrder,
       needClientAuth,
-      wantClientAuth
+      wantClientAuth,
+      handshakeApplicationProtocolSelector
     )
 
   private case class DefaultTLSParameters(
@@ -117,6 +120,7 @@ object TLSParameters {
       sniMatchers: Option[List[SNIMatcher]],
       useCipherSuitesOrder: Boolean,
       needClientAuth: Boolean,
-      wantClientAuth: Boolean
+      wantClientAuth: Boolean,
+      handshakeApplicationProtocolSelector: Option[(SSLEngine, List[String]) => String],
   ) extends TLSParameters
 }
