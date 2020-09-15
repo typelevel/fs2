@@ -30,7 +30,13 @@ import java.net.InetSocketAddress
 import java.nio.file.Path
 import java.security.KeyStore
 import java.security.cert.X509Certificate
-import javax.net.ssl.{KeyManagerFactory, SSLContext, SSLEngine, TrustManagerFactory, X509TrustManager}
+import javax.net.ssl.{
+  KeyManagerFactory,
+  SSLContext,
+  SSLEngine,
+  TrustManagerFactory,
+  X509TrustManager
+}
 
 import cats.Applicative
 import cats.effect.{Blocker, Concurrent, ContextShift, Resource, Sync}
@@ -208,11 +214,11 @@ object TLSContext {
           engine.setUseClientMode(clientMode)
           engine.setSSLParameters(params.toSSLParameters)
           params.handshakeApplicationProtocolSelector
-            .foreach{f => 
+            .foreach { f =>
               import scala.jdk.CollectionConverters._
               engine.setHandshakeApplicationProtocolSelector(
-                new BiFunction[SSLEngine, java.util.List[String], String]{
-                  def apply(engine: SSLEngine, protocols: java.util.List[String]): String = 
+                new BiFunction[SSLEngine, java.util.List[String], String] {
+                  def apply(engine: SSLEngine, protocols: java.util.List[String]): String =
                     f(engine, protocols.asScala.toList)
                 }
               )

@@ -90,7 +90,7 @@ object TLSParameters {
       useCipherSuitesOrder: Boolean = false,
       needClientAuth: Boolean = false,
       wantClientAuth: Boolean = false,
-      handshakeApplicationProtocolSelector: Option[(SSLEngine, List[String]) => String] = None,
+      handshakeApplicationProtocolSelector: Option[(SSLEngine, List[String]) => String] = None
   ): TLSParameters =
     DefaultTLSParameters(
       algorithmConstraints,
@@ -121,6 +121,6 @@ object TLSParameters {
       useCipherSuitesOrder: Boolean,
       needClientAuth: Boolean,
       wantClientAuth: Boolean,
-      handshakeApplicationProtocolSelector: Option[(SSLEngine, List[String]) => String],
+      handshakeApplicationProtocolSelector: Option[(SSLEngine, List[String]) => String]
   ) extends TLSParameters
 }
