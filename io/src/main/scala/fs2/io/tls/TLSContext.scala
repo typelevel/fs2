@@ -211,7 +211,7 @@ object TLSContext {
             .foreach{f => 
               import scala.jdk.CollectionConverters._
               engine.setHandshakeApplicationProtocolSelector(
-                new java.util.function.BiFunction[SSLEngine, java.util.List[String], String]{
+                new BiFunction[SSLEngine, java.util.List[String], String]{
                   def apply(engine: SSLEngine, protocols: java.util.List[String]): String = 
                     f(engine, protocols.asScala.toList)
                 }
