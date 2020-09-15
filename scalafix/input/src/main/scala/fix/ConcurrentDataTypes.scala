@@ -4,7 +4,7 @@ rule = v1
 package fix
 
 import cats.effect._
-import cats.implicits._
+import cats.syntax.all._
 import fs2._
 import fs2.async.mutable.{Queue, Semaphore, Signal, Topic}
 import fs2.async.{Ref, refOf, _}

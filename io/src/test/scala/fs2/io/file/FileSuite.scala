@@ -28,7 +28,8 @@ import java.nio.file.attribute.PosixFilePermissions
 
 import cats.effect.concurrent.Ref
 import cats.effect.IO
-import cats.implicits._
+import cats.syntax.all._
+
 import fs2.io.CollectionCompat._
 
 import scala.concurrent.duration._

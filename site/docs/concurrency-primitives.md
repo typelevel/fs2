@@ -22,7 +22,7 @@ A typical use case of a `fs2.concurrent.Queue[F, A]`, also quite useful to commu
 q1 has a buffer size of 1 while q2 has a buffer size of 100 so you will notice the buffering when  pulling elements out of the q2.
 
 ```scala mdoc:silent
-import cats.implicits._
+import cats.syntax.all._
 import cats.effect.{Concurrent, ExitCode, IO, IOApp, Timer}
 import fs2.concurrent.Queue
 import fs2.Stream
@@ -165,7 +165,7 @@ Finally, R3 was done showing an availability of one once again.
 ```scala mdoc:silent
 import cats.effect.{Concurrent, ExitCode, IO, IOApp}
 import cats.effect.concurrent.Semaphore
-import cats.implicits._
+import cats.syntax.all._
 import fs2.Stream
 
 import scala.concurrent.ExecutionContext.Implicits.global

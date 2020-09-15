@@ -32,7 +32,7 @@ To get started, let's write a client program that connects to a server, sends a 
 import fs2.{Chunk, Stream}
 import fs2.io.tcp.{Socket, SocketGroup}
 import cats.effect.{Blocker, Concurrent, ContextShift, Sync}
-import cats.implicits._
+import cats.syntax.all._
 import java.net.InetSocketAddress
 
 def client[F[_]: Concurrent: ContextShift]: F[Unit] =
@@ -203,7 +203,7 @@ Adapting the TCP client example for UDP gives us the following:
 import fs2.{Chunk, text, Stream}
 import fs2.io.udp.{Packet, Socket, SocketGroup}
 import cats.effect.{Concurrent, ContextShift, Sync}
-import cats.implicits._
+import cats.syntax.all._
 import java.net.InetSocketAddress
 
 def client[F[_]: Concurrent: ContextShift](socketGroup: SocketGroup): F[Unit] = {
@@ -252,7 +252,7 @@ import fs2.{Chunk, Stream, text}
 import fs2.io.tcp.SocketGroup
 import fs2.io.tls.TLSContext
 import cats.effect.{Concurrent, ContextShift, Sync}
-import cats.implicits._
+import cats.syntax.all._
 import java.net.InetSocketAddress
 
 def client[F[_]: Concurrent: ContextShift](

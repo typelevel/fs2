@@ -92,7 +92,7 @@ ThisBuild / Test / run / javaOptions ++= Seq("-Xms64m", "-Xmx64m")
 ThisBuild / Test / parallelExecution := false
 
 ThisBuild / initialCommands := s"""
-    import fs2._, cats.effect._, cats.effect.implicits._, cats.effect.unsafe.implicits.global, cats.implicits._, scala.concurrent.duration._
+    import fs2._, cats.effect._, cats.effect.implicits._, cats.effect.unsafe.implicits.global, cats.syntax.all._, scala.concurrent.duration._
   """
 
 ThisBuild / mimaBinaryIssueFilters ++= Seq(
@@ -120,16 +120,19 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
     name := "fs2-core",
     sourceDirectories in (Compile, scalafmt) += baseDirectory.value / "../shared/src/main/scala",
     Compile / unmanagedSourceDirectories ++= {
-      if (isDotty.value)
-        List(CrossType.Pure, CrossType.Full).flatMap(
-          _.sharedSrcDir(baseDirectory.value, "main").toList.map(f => file(f.getPath + "-3"))
-        )
-      else Nil
+      val major = if (isDotty.value) "-3" else "-2"
+      List(CrossType.Pure, CrossType.Full).flatMap(
+        _.sharedSrcDir(baseDirectory.value, "main").toList.map(f => file(f.getPath + major))
+      )
     },
+    Compile / scalafmt / unmanagedSources := (Compile / scalafmt / unmanagedSources).value
+      .filterNot(_.toString.endsWith("Not.scala")),
+    Test / scalafmt / unmanagedSources := (Test / scalafmt / unmanagedSources).value
+      .filterNot(_.toString.endsWith("Not.scala")),
     // Libraries not yet cross-built for Dotty
     libraryDependencies ++= Seq(
-      "org.typelevel" %%% "cats-core" % "2.1.1",
-      "org.typelevel" %%% "cats-laws" % "2.1.1" % "test"
+      "org.typelevel" %%% "cats-core" % "2.2.0",
+      "org.typelevel" %%% "cats-laws" % "2.2.0" % "test"
     )
   )
   .settings(dottyLibrarySettings)
@@ -139,8 +142,8 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
     libraryDependencies ++= Seq(
       "org.typelevel" %%% "cats-effect" % "3.0-40ace7e",
       "org.typelevel" %%% "cats-effect-laws" % "3.0-40ace7e" % "test",
-      "org.scodec" %%% "scodec-bits" % "1.1.19",
-      "org.typelevel" %%% "scalacheck-effect-munit" % "0.1.0" % "test"
+      "org.scodec" %%% "scodec-bits" % "1.1.20",
+      "org.typelevel" %%% "scalacheck-effect-munit" % "0.2.0" % "test"
     )
   )
 
@@ -173,11 +176,10 @@ lazy val io = project
     name := "fs2-io",
     Test / fork := true,
     Compile / unmanagedSourceDirectories ++= {
-      if (isDotty.value)
-        List(CrossType.Pure, CrossType.Full).flatMap(
-          _.sharedSrcDir(baseDirectory.value / "io", "main").toList.map(f => file(f.getPath + "-3"))
-        )
-      else Nil
+      val major = if (isDotty.value) "-3" else "-2"
+      List(CrossType.Pure, CrossType.Full).flatMap(
+        _.sharedSrcDir(baseDirectory.value, "main").toList.map(f => file(f.getPath + major))
+      )
     },
     OsgiKeys.exportPackage := Seq("fs2.io.*"),
     OsgiKeys.privatePackage := Seq(),
@@ -203,7 +205,7 @@ lazy val reactiveStreams = project
     libraryDependencies ++= Seq(
       "org.reactivestreams" % "reactive-streams" % "1.0.3",
       "org.reactivestreams" % "reactive-streams-tck" % "1.0.3" % "test",
-      ("org.scalatestplus" %% "testng-6-7" % "3.2.1.0" % "test").withDottyCompat(scalaVersion.value)
+      ("org.scalatestplus" %% "testng-6-7" % "3.2.2.0" % "test").withDottyCompat(scalaVersion.value)
     ),
     OsgiKeys.exportPackage := Seq("fs2.interop.reactivestreams.*"),
     OsgiKeys.privatePackage := Seq(),

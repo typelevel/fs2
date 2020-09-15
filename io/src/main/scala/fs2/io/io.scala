@@ -26,7 +26,8 @@ import cats.effect.{Async, Effect, Outcome, Resource, Sync}
 import cats.effect.implicits._
 import cats.effect.concurrent.Deferred
 import cats.effect.unsafe.IORuntime
-import cats.implicits._
+import cats.syntax.all._
+
 import java.io.{InputStream, OutputStream, PipedInputStream, PipedOutputStream}
 import java.nio.charset.Charset
 

@@ -25,7 +25,7 @@ import scala.concurrent.duration._
 
 import cats.effect.IO
 import cats.effect.concurrent.{Deferred, Ref}
-import cats.implicits._
+import cats.syntax.all._
 import org.scalacheck.effect.PropF.forAllF
 
 class StreamMergeSuite extends Fs2Suite {

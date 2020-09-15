@@ -25,7 +25,7 @@ import scala.concurrent.{ExecutionContext, Future}
 
 import cats.effect.{IO, Sync, SyncIO}
 import cats.effect.unsafe.IORuntime
-import cats.implicits._
+import cats.syntax.all._
 import munit.{Location, ScalaCheckEffectSuite}
 import org.typelevel.discipline.Laws
 

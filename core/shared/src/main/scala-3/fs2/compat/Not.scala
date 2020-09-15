@@ -19,18 +19,7 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2
+package fs2.compat
 
-import cats.effect.Sync
-import cats.effect.concurrent.Ref
-import cats.syntax.all._
-
-final class Counter[F[_]](private val ref: Ref[F, Long]) {
-  def increment: F[Unit] = ref.update(_ + 1)
-  def decrement: F[Unit] = ref.update(_ - 1)
-  def get: F[Long] = ref.get
-}
-
-object Counter {
-  def apply[F[_]: Sync]: F[Counter[F]] = Ref[F].of[Long](0L).map(new Counter(_))
-}
+type Not[+A] = scala.util.Not[A]
+val Not = scala.util.Not

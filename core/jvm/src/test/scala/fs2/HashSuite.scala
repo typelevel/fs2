@@ -22,7 +22,7 @@
 package fs2
 
 import cats.effect.IO
-import cats.implicits._
+import cats.syntax.all._
 import java.security.MessageDigest
 import org.scalacheck.Gen
 import org.scalacheck.Prop.forAll

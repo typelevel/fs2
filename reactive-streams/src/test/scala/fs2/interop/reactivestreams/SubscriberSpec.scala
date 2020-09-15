@@ -27,6 +27,7 @@ import java.util.concurrent.atomic.AtomicInteger
 
 import cats.effect._
 import cats.effect.unsafe.implicits.global
+
 import org.reactivestreams._
 import org.reactivestreams.tck.SubscriberWhiteboxVerification.{
   SubscriberPuppet,

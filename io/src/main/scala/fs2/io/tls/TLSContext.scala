@@ -34,7 +34,7 @@ import javax.net.ssl.{KeyManagerFactory, SSLContext, TrustManagerFactory, X509Tr
 
 import cats.Applicative
 import cats.effect.{Async, Resource, Sync}
-import cats.implicits._
+import cats.syntax.all._
 
 import fs2.io.tcp.Socket
 import fs2.io.udp.Packet

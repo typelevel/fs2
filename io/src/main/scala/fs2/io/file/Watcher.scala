@@ -25,7 +25,7 @@ package io
 import scala.concurrent.duration._
 
 import cats.effect._
-import cats.implicits._
+import cats.syntax.all._
 import java.nio.file._
 import java.nio.file.attribute.BasicFileAttributes
 import java.util.concurrent.TimeUnit

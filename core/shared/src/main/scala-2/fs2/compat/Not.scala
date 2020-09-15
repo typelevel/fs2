@@ -19,21 +19,18 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2
+package fs2.compat
 
-/**
-  * Witnesses that a type `A` is not the type `Nothing`.
-  *
-  * This is used to prevent operations like `flatMap` from being called
-  * on a `Stream[F, Nothing]`. Doing so is typically incorrect as the
-  * function passed to `flatMap` of shape `Nothing => Stream[F, B]` can
-  * never be called.
-  */
-sealed trait NotNothing[-A]
-object NotNothing {
-  @annotation.implicitAmbiguous("Invalid type Nothing found in prohibited position")
-  implicit val nothing1: NotNothing[Nothing] = new NotNothing[Nothing] {}
-  implicit val nothing2: NotNothing[Nothing] = new NotNothing[Nothing] {}
+// Scala 2 port of https://github.com/dotty-staging/dotty/blob/3217bc14a309718a79a4d7a99553664974a8d754/library/src-bootstrapped/scala/util/Not.scala
 
-  implicit def instance[A]: NotNothing[A] = new NotNothing[A] {}
+final class Not[+A] private ()
+
+private[compat] trait NotLowPriority {
+  implicit def default[A]: Not[A] = Not.value
+}
+
+object Not extends NotLowPriority {
+  val value: Not[Nothing] = new Not[Nothing]
+  implicit def amb1[A](implicit ev: A): Not[A] = ???
+  implicit def amb2[A](implicit ev: A): Not[A] = ???
 }

@@ -25,7 +25,7 @@ import scala.concurrent.duration._
 
 import cats.effect.{Async, IO}
 import cats.effect.concurrent.Ref
-import cats.implicits._
+import cats.syntax.all._
 import org.scalacheck.effect.PropF.forAllF
 
 class StreamObserveSuite extends Fs2Suite {

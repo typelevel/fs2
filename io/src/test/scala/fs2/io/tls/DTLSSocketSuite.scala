@@ -28,7 +28,7 @@ import scala.concurrent.duration._
 import java.net.InetSocketAddress
 
 import cats.effect.IO
-import cats.implicits._
+import cats.syntax.all._
 
 import fs2.io.udp.{Packet, SocketGroup}
 

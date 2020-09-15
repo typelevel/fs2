@@ -24,7 +24,7 @@ package io
 package file
 
 import cats.{Monad, ~>}
-import cats.implicits._
+import cats.syntax.all._
 import cats.effect.{Resource, Sync}
 
 import java.nio.file._

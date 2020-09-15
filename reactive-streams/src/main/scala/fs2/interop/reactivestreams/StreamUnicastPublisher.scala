@@ -25,7 +25,8 @@ package reactivestreams
 
 import cats.effect._
 import cats.effect.unsafe.IORuntime
-import cats.implicits._
+import cats.syntax.all._
+
 import org.reactivestreams._
 
 /**

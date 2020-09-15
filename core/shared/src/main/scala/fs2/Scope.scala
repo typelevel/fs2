@@ -22,7 +22,7 @@
 package fs2
 
 import cats.MonadError
-import cats.implicits._
+import cats.syntax.all._
 
 /**
   * Represents a period of stream execution in which resources are acquired and released.

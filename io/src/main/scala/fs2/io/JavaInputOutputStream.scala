@@ -24,7 +24,7 @@ package io
 
 import java.io.{IOException, InputStream}
 
-import cats.implicits._
+import cats.syntax.all._
 import cats.effect.{Effect, IO, Outcome, Resource}
 import cats.effect.implicits._
 import cats.effect.unsafe.IORuntime // TODO replace this once CE3 supports Unsafe effect running
