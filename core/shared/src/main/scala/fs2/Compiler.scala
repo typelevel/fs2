@@ -133,13 +133,13 @@ object Compiler extends CompilerLowPriority {
   }
 
   object Target extends TargetLowPriority {
-    implicit def forConcurrent[F[_]: ConcurrentThrow]: Target[F] =
+    implicit def forConcurrent[F[_]: Concurrent]: Target[F] =
       new ConcurrentTarget
 
     private final class ConcurrentTarget[F[_]](
-        protected implicit val F: ConcurrentThrow[F]
+        protected implicit val F: Concurrent[F]
     ) extends Target[F]
-        with Resource.Bracket.SpawnBracket[F] {
+        with Resource.Bracket.MonadCancelBracket[F] {
       def ref[A](a: A): F[Ref[F, A]] = F.ref(a)
     }
   }

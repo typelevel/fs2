@@ -21,7 +21,7 @@
 
 package fs2.concurrent
 
-import cats.effect.ConcurrentThrow
+import cats.effect.Concurrent
 
 import fs2.internal.Token
 import fs2._
@@ -60,7 +60,7 @@ object Broadcast {
     * @param minReady specifies that broadcasting will hold off until at least `minReady` subscribers will
     *                 be ready
     */
-  def apply[F[_]: ConcurrentThrow, O](minReady: Int): Pipe[F, O, Stream[F, O]] = { source =>
+  def apply[F[_]: Concurrent, O](minReady: Int): Pipe[F, O, Stream[F, O]] = { source =>
     Stream
       .eval(PubSub(PubSub.Strategy.closeDrainFirst(strategy[Chunk[O]](minReady))))
       .flatMap { pubSub =>
@@ -92,7 +92,7 @@ object Broadcast {
     *
     * @param pipes pipes that will concurrently process the work
     */
-  def through[F[_]: ConcurrentThrow, O, O2](pipes: Pipe[F, O, O2]*): Pipe[F, O, O2] =
+  def through[F[_]: Concurrent, O, O2](pipes: Pipe[F, O, O2]*): Pipe[F, O, O2] =
     _.through(apply(pipes.size))
       .take(pipes.size.toLong)
       .zipWithIndex

@@ -25,7 +25,7 @@ import scala.annotation.tailrec
 
 import cats.{Applicative, Id, Monad, Traverse, TraverseFilter}
 import cats.data.Chain
-import cats.effect.{Concurrent, ConcurrentThrow, Outcome, Resource}
+import cats.effect.{Concurrent, Outcome, Resource}
 import cats.effect.concurrent.{Deferred, Ref}
 import cats.effect.implicits._
 import cats.syntax.all._
@@ -394,7 +394,7 @@ private[fs2] final class CompileScope[F[_]] private (
       case None =>
         f.attempt.map(_.leftMap(t => Outcome.Errored(t)))
       case Some(iCtx) =>
-        iCtx.concurrentThrow.race(iCtx.deferred.get, f.attempt).map {
+        iCtx.Concurrent.race(iCtx.deferred.get, f.attempt).map {
           case Right(result) => result.leftMap(Outcome.Errored(_))
           case Left(other)   => Left(other)
         }
@@ -461,7 +461,7 @@ private[fs2] object CompileScope {
   /**
     * A context of interruption status. This is shared from the parent that was created as interruptible to all
     * its children. It assures consistent view of the interruption through the stack
-    * @param concurrent   ConcurrentThrow, used to create interruption at Eval.
+    * @param concurrent   Concurrent, used to create interruption at Eval.
     *                 If signalled with None, normal interruption is signalled. If signaled with Some(err) failure is signalled.
     * @param ref      When None, scope is not interrupted,
     *                 when Some(None) scope was interrupted, and shall continue with `whenInterrupted`
@@ -475,7 +475,7 @@ private[fs2] object CompileScope {
       ref: Ref[F, Option[InterruptionOutcome]],
       interruptRoot: Token,
       cancelParent: F[Unit]
-  )(implicit val concurrentThrow: ConcurrentThrow[F]) { self =>
+  )(implicit val Concurrent: Concurrent[F]) { self =>
 
     def complete(outcome: InterruptionOutcome): F[Unit] =
       ref.update(_.orElse(Some(outcome))).guarantee(deferred.complete(outcome).attempt.void)
@@ -526,8 +526,8 @@ private[fs2] object CompileScope {
     ): F[InterruptContext[F]] = {
       import interruptible._
       for {
-        ref <- Concurrent[F].ref[Option[InterruptionOutcome]](None)
-        deferred <- Concurrent[F].deferred[InterruptionOutcome]
+        ref <- implicitly[Concurrent[F]].ref[Option[InterruptionOutcome]](None)
+        deferred <- implicitly[Concurrent[F]].deferred[InterruptionOutcome]
       } yield InterruptContext[F](
         deferred = deferred,
         ref = ref,

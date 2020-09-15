@@ -22,7 +22,7 @@
 package fs2.concurrent
 
 import cats._, implicits._
-import cats.effect.{ConcurrentThrow, Outcome}
+import cats.effect.{Concurrent, Outcome}
 import cats.effect.concurrent._
 import cats.effect.implicits._
 
@@ -96,7 +96,7 @@ private[fs2] trait PubSub[F[_], I, O, Selector] extends Publish[F, I] with Subsc
 private[fs2] object PubSub {
   def apply[F[_], I, O, QS, Selector](
       strategy: PubSub.Strategy[I, O, QS, Selector]
-  )(implicit F: ConcurrentThrow[F]): F[PubSub[F, I, O, Selector]] =
+  )(implicit F: Concurrent[F]): F[PubSub[F, I, O, Selector]] =
     F.ref[PubSubState[F, I, O, QS, Selector]](
       PubSubState(strategy.initial, ScalaQueue.empty, ScalaQueue.empty)
     ).map(state => new PubSubAsync(strategy, state))
@@ -128,7 +128,7 @@ private[fs2] object PubSub {
   private class PubSubAsync[F[_], I, O, QS, Selector](
       strategy: Strategy[I, O, QS, Selector],
       state: Ref[F, PubSubState[F, I, O, QS, Selector]]
-  )(implicit F: ConcurrentThrow[F])
+  )(implicit F: Concurrent[F])
       extends PubSub[F, I, O, Selector] {
 
     private type PS = PubSubState[F, I, O, QS, Selector]
