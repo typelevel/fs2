@@ -55,17 +55,16 @@ class SocketSuite extends Fs2Suite {
             socketGroup
               .serverResource[IO](new InetSocketAddress(InetAddress.getByName(null), 0))
           )
-          .flatMap {
-            case (local, clients) =>
-              Stream.exec(localBindAddress.complete(local).void) ++
-                clients.flatMap { s =>
-                  Stream.resource(s).map { socket =>
-                    socket
-                      .reads(1024)
-                      .through(socket.writes())
-                      .onFinalize(socket.endOfOutput)
-                  }
+          .flatMap { case (local, clients) =>
+            Stream.exec(localBindAddress.complete(local).void) ++
+              clients.flatMap { s =>
+                Stream.resource(s).map { socket =>
+                  socket
+                    .reads(1024)
+                    .through(socket.writes())
+                    .onFinalize(socket.endOfOutput)
                 }
+              }
           }
           .parJoinUnbounded
 
@@ -113,17 +112,16 @@ class SocketSuite extends Fs2Suite {
             socketGroup
               .serverResource[IO](new InetSocketAddress(InetAddress.getByName(null), 0))
           )
-          .flatMap {
-            case (local, clients) =>
-              Stream.exec(localBindAddress.complete(local).void) ++
-                clients.flatMap { s =>
-                  Stream.emit(Stream.resource(s).flatMap { socket =>
-                    Stream
-                      .chunk(message)
-                      .through(socket.writes())
-                      .onFinalize(socket.endOfOutput)
-                  })
-                }
+          .flatMap { case (local, clients) =>
+            Stream.exec(localBindAddress.complete(local).void) ++
+              clients.flatMap { s =>
+                Stream.emit(Stream.resource(s).flatMap { socket =>
+                  Stream
+                    .chunk(message)
+                    .through(socket.writes())
+                    .onFinalize(socket.endOfOutput)
+                })
+              }
           }
           .parJoinUnbounded
           .drain
@@ -161,8 +159,8 @@ class SocketSuite extends Fs2Suite {
       def doNothingServer(socketGroup: SocketGroup) =
         socketGroup
           .serverResource[IO](new InetSocketAddress(InetAddress.getByName(null), 0))
-          .flatMap {
-            case (address, _) => Resource.liftF(localBindAddress.complete(address))
+          .flatMap { case (address, _) =>
+            Resource.liftF(localBindAddress.complete(address))
           }
 
       mkSocketGroup

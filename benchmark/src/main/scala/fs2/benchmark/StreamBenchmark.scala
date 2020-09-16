@@ -105,10 +105,9 @@ class StreamBenchmark {
   def mapAccumulate() =
     Stream
       .emits(0 until n)
-      .mapAccumulate(0) {
-        case (acc, i) =>
-          val added = acc + i
-          (added, added)
+      .mapAccumulate(0) { case (acc, i) =>
+        val added = acc + i
+        (added, added)
       }
       .covary[IO]
       .compile

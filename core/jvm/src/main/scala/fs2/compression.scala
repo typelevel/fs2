@@ -557,15 +557,14 @@ object compression {
                 (deflater, new CRC32())
               }
             ) { case (deflater, _) => SyncF.delay(deflater.end()) }
-            .flatMap {
-              case (deflater, crc32) =>
-                _gzip_header(fileName, modificationTime, comment, params.level.juzDeflaterLevel) ++
-                  _deflate(
-                    params,
-                    deflater,
-                    Some(crc32)
-                  )(stream) ++
-                  _gzip_trailer(deflater, crc32)
+            .flatMap { case (deflater, crc32) =>
+              _gzip_header(fileName, modificationTime, comment, params.level.juzDeflaterLevel) ++
+                _deflate(
+                  params,
+                  deflater,
+                  Some(crc32)
+                )(stream) ++
+                _gzip_trailer(deflater, crc32)
             }
         case params: DeflateParams =>
           Stream.raiseError(
@@ -721,24 +720,23 @@ object compression {
             .bracket(SyncF.delay((new Inflater(true), new CRC32(), new CRC32()))) {
               case (inflater, _, _) => SyncF.delay(inflater.end())
             }
-            .flatMap {
-              case (inflater, headerCrc32, contentCrc32) =>
-                stream.pull
-                  .unconsN(gzipHeaderBytes)
-                  .flatMap {
-                    case Some((mandatoryHeaderChunk, streamAfterMandatoryHeader)) =>
-                      _gunzip_matchMandatoryHeader(
-                        params,
-                        mandatoryHeaderChunk,
-                        streamAfterMandatoryHeader,
-                        headerCrc32,
-                        contentCrc32,
-                        inflater
-                      )
-                    case None =>
-                      Pull.output1(GunzipResult(Stream.raiseError(new EOFException())))
-                  }
-                  .stream
+            .flatMap { case (inflater, headerCrc32, contentCrc32) =>
+              stream.pull
+                .unconsN(gzipHeaderBytes)
+                .flatMap {
+                  case Some((mandatoryHeaderChunk, streamAfterMandatoryHeader)) =>
+                    _gunzip_matchMandatoryHeader(
+                      params,
+                      mandatoryHeaderChunk,
+                      streamAfterMandatoryHeader,
+                      headerCrc32,
+                      contentCrc32,
+                      inflater
+                    )
+                  case None =>
+                    Pull.output1(GunzipResult(Stream.raiseError(new EOFException())))
+                }
+                .stream
             }
         case params: InflateParams =>
           Stream.raiseError(
@@ -902,45 +900,43 @@ object compression {
           fileNameBytesSoftLimit
         )
       )
-      .flatMap {
-        case (fileName, streamAfterFileName) =>
-          streamAfterFileName
-            .through(
-              _gunzip_readOptionalStringField(
-                gzipFlag.fcomment(flags),
-                headerCrc32,
-                "file comment",
-                fileCommentBytesSoftLimit
+      .flatMap { case (fileName, streamAfterFileName) =>
+        streamAfterFileName
+          .through(
+            _gunzip_readOptionalStringField(
+              gzipFlag.fcomment(flags),
+              headerCrc32,
+              "file comment",
+              fileCommentBytesSoftLimit
+            )
+          )
+          .flatMap { case (comment, streamAfterComment) =>
+            Stream.emit(
+              GunzipResult(
+                modificationTime =
+                  if (secondsSince197001010000 != 0)
+                    Some(Instant.ofEpochSecond(secondsSince197001010000))
+                  else None,
+                fileName = fileName,
+                comment = comment,
+                content = streamAfterComment
+                  .through(
+                    _gunzip_validateHeader(
+                      (flags & gzipFlag.FHCRC) == gzipFlag.FHCRC,
+                      headerCrc32
+                    )
+                  )
+                  .through(
+                    _inflate(
+                      inflateParams = inflateParams,
+                      inflater = inflater,
+                      crc32 = Some(contentCrc32)
+                    )
+                  )
+                  .through(_gunzip_validateTrailer(contentCrc32, inflater))
               )
             )
-            .flatMap {
-              case (comment, streamAfterComment) =>
-                Stream.emit(
-                  GunzipResult(
-                    modificationTime =
-                      if (secondsSince197001010000 != 0)
-                        Some(Instant.ofEpochSecond(secondsSince197001010000))
-                      else None,
-                    fileName = fileName,
-                    comment = comment,
-                    content = streamAfterComment
-                      .through(
-                        _gunzip_validateHeader(
-                          (flags & gzipFlag.FHCRC) == gzipFlag.FHCRC,
-                          headerCrc32
-                        )
-                      )
-                      .through(
-                        _inflate(
-                          inflateParams = inflateParams,
-                          inflater = inflater,
-                          crc32 = Some(contentCrc32)
-                        )
-                      )
-                      .through(_gunzip_validateTrailer(contentCrc32, inflater))
-                  )
-                )
-            }
+          }
       }
 
   private def _gunzip_skipOptionalExtraField[F[_]](

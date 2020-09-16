@@ -23,7 +23,7 @@ package fs2.internal
 
 import scala.annotation.tailrec
 
-import cats.{Applicative, Id, Monad, Traverse, TraverseFilter}
+import cats.{Applicative, Id, Traverse, TraverseFilter}
 import cats.data.Chain
 import cats.effect.{Concurrent, Outcome, Resource}
 import cats.effect.concurrent.{Deferred, Ref}
@@ -519,15 +519,15 @@ private[fs2] object CompileScope {
 
   private object InterruptContext {
 
-    def apply[F[_]: Monad](
+    def apply[F[_]](
         interruptible: Interruptible[F],
         newScopeId: Token,
         cancelParent: F[Unit]
     ): F[InterruptContext[F]] = {
       import interruptible._
       for {
-        ref <- implicitly[Concurrent[F]].ref[Option[InterruptionOutcome]](None)
-        deferred <- implicitly[Concurrent[F]].deferred[InterruptionOutcome]
+        ref <- Concurrent[F].ref[Option[InterruptionOutcome]](None)
+        deferred <- Concurrent[F].deferred[InterruptionOutcome]
       } yield InterruptContext[F](
         deferred = deferred,
         ref = ref,

@@ -488,7 +488,7 @@ object InspectableQueue {
           }
 
         def peek1: F[A] =
-          implicitly[Concurrent[F]]
+          Concurrent[F]
             .bracket(Token[F]) { token =>
               def take: F[A] =
                 pubSub.get(Left(Some(token))).flatMap {

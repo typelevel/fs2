@@ -100,8 +100,8 @@ class FileSuite extends BaseFileSuite {
             val src = Stream("Hello", " world!").covary[IO].through(text.utf8Encode)
             src.through(file.writeAll[IO](path)) ++
               src.through(file.writeAll[IO](path, List(StandardOpenOption.APPEND))) ++ file
-              .readAll[IO](path, 4096)
-              .through(text.utf8Decode)
+                .readAll[IO](path, 4096)
+                .through(text.utf8Decode)
           }
           .compile
           .foldMonoid
@@ -278,8 +278,8 @@ class FileSuite extends BaseFileSuite {
         .evalMap(path => file.exists[IO](path).map(_ -> path))
         .compile
         .lastOrError
-        .flatMap {
-          case (existsBefore, path) => file.exists[IO](path).map(existsBefore -> _)
+        .flatMap { case (existsBefore, path) =>
+          file.exists[IO](path).map(existsBefore -> _)
         }
         .map(it => assert(it == true -> false))
     }
@@ -302,8 +302,8 @@ class FileSuite extends BaseFileSuite {
         .evalMap(path => file.exists[IO](path).map(_ -> path))
         .compile
         .lastOrError
-        .flatMap {
-          case (existsBefore, path) => file.exists[IO](path).map(existsBefore -> _)
+        .flatMap { case (existsBefore, path) =>
+          file.exists[IO](path).map(existsBefore -> _)
         }
         .map(it => assert(it == true -> false))
     }

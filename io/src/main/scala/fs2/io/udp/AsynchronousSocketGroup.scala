@@ -159,16 +159,14 @@ private[udp] object AsynchronousSocketGroup {
           }
 
         def close(): Unit = {
-          readers.iterator.asScala.foreach {
-            case (cb, t) =>
-              cb(Left(new ClosedChannelException))
-              t.foreach(_.cancel())
+          readers.iterator.asScala.foreach { case (cb, t) =>
+            cb(Left(new ClosedChannelException))
+            t.foreach(_.cancel())
           }
           readers.clear
-          writers.iterator.asScala.foreach {
-            case ((_, cb), t) =>
-              cb(Some(new ClosedChannelException))
-              t.foreach(_.cancel())
+          writers.iterator.asScala.foreach { case ((_, cb), t) =>
+            cb(Some(new ClosedChannelException))
+            t.foreach(_.cancel())
           }
           writers.clear
         }

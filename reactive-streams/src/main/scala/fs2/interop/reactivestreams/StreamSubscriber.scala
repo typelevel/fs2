@@ -156,7 +156,8 @@ object StreamSubscriber {
           case Idle(sub)              => WaitingOnUpstream(sub, r) -> F.delay(sub.request(1))
           case err @ UpstreamError(e) => err -> r.complete(e.asLeft).void
           case UpstreamCompletion     => UpstreamCompletion -> r.complete(None.asRight).void
-          case o                      => o -> r.complete((new Error(s"received request in invalid state [$o]")).asLeft).void
+          case o =>
+            o -> r.complete((new Error(s"received request in invalid state [$o]")).asLeft).void
         }
       }
 

@@ -30,7 +30,9 @@ import fs2.internal._
 import scala.annotation.implicitNotFound
 
 /** Type class which describes compilation of a `Stream[F, O]` to a `G[*]`. */
-@implicitNotFound("Cannot find an implicit Compiler[F, G]. This typically means you need a Concurrent[F] in scope")
+@implicitNotFound(
+  "Cannot find an implicit Compiler[F, G]. This typically means you need a Concurrent[F] in scope"
+)
 sealed trait Compiler[F[_], G[_]] {
   private[fs2] def apply[O, B, C](stream: Pull[F, O, Unit], init: () => B)(
       fold: (B, Chunk[O]) => B,

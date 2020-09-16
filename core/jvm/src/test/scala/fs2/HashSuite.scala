@@ -81,8 +81,8 @@ class HashSuite extends Fs2Suite {
     (for {
       once <- s.compile.toVector
       oneHundred <- Vector.fill(100)(s.compile.toVector).parSequence
-    } yield (once, oneHundred)).map {
-      case (once, oneHundred) => assert(oneHundred == Vector.fill(100)(once))
+    } yield (once, oneHundred)).map { case (once, oneHundred) =>
+      assert(oneHundred == Vector.fill(100)(once))
     }
   }
 }

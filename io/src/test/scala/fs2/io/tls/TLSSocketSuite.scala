@@ -78,35 +78,34 @@ class TLSSocketSuite extends TLSSuite {
         testTlsContext.flatMap { tlsContext =>
           socketGroup
             .serverResource[IO](new InetSocketAddress(InetAddress.getByName(null), 0))
-            .use {
-              case (serverAddress, clients) =>
-                val server = clients.map { client =>
-                  Stream.resource(client).flatMap { clientSocket =>
-                    Stream.resource(tlsContext.server(clientSocket)).flatMap { clientSocketTls =>
-                      clientSocketTls.reads(8192).chunks.foreach(clientSocketTls.write(_))
-                    }
+            .use { case (serverAddress, clients) =>
+              val server = clients.map { client =>
+                Stream.resource(client).flatMap { clientSocket =>
+                  Stream.resource(tlsContext.server(clientSocket)).flatMap { clientSocketTls =>
+                    clientSocketTls.reads(8192).chunks.foreach(clientSocketTls.write(_))
                   }
-                }.parJoinUnbounded
+                }
+              }.parJoinUnbounded
 
-                val msg = Chunk.bytes(("Hello, world! " * 20000).getBytes)
-                val client =
-                  Stream.resource(socketGroup.client[IO](serverAddress)).flatMap { clientSocket =>
-                    Stream
-                      .resource(
-                        tlsContext.client(
-                          clientSocket
-                          // logger = Some((m: String) =>
-                          //   IO.delay(println(s"${Console.MAGENTA}[TLS] $m${Console.RESET}"))
-                          // )
-                        )
+              val msg = Chunk.bytes(("Hello, world! " * 20000).getBytes)
+              val client =
+                Stream.resource(socketGroup.client[IO](serverAddress)).flatMap { clientSocket =>
+                  Stream
+                    .resource(
+                      tlsContext.client(
+                        clientSocket
+                        // logger = Some((m: String) =>
+                        //   IO.delay(println(s"${Console.MAGENTA}[TLS] $m${Console.RESET}"))
+                        // )
                       )
-                      .flatMap { clientSocketTls =>
-                        Stream.exec(clientSocketTls.write(msg)) ++
-                          clientSocketTls.reads(8192).take(msg.size)
-                      }
-                  }
+                    )
+                    .flatMap { clientSocketTls =>
+                      Stream.exec(clientSocketTls.write(msg)) ++
+                        clientSocketTls.reads(8192).take(msg.size)
+                    }
+                }
 
-                client.concurrently(server).compile.to(Chunk).map(it => assert(it == msg))
+              client.concurrently(server).compile.to(Chunk).map(it => assert(it == msg))
             }
         }
       }

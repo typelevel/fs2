@@ -118,7 +118,7 @@ object Hotswap {
     def raise[A](msg: String): F[A] =
       ApplicativeError[F, Throwable].raiseError(new RuntimeException(msg))
 
-    def initialize = implicitly[Concurrent[F]].ref(().pure[F].some)
+    def initialize = Concurrent[F].ref(().pure[F].some)
 
     def finalize(state: Ref[F, Option[F[Unit]]]): F[Unit] =
       state
@@ -131,10 +131,9 @@ object Hotswap {
     Resource.make(initialize)(finalize).map { state =>
       new Hotswap[F, R] {
         override def swap(next: Resource[F, R]): F[R] =
-          implicitly[Concurrent[F]].uncancelable { _ =>
-            implicitly[Concurrent[F]].flatMap(next.allocated) {
-              case (newValue, finalizer) =>
-                swapFinalizer(finalizer).as(newValue)
+          Concurrent[F].uncancelable { _ =>
+            Concurrent[F].flatMap(next.allocated) { case (newValue, finalizer) =>
+              swapFinalizer(finalizer).as(newValue)
             }
           }
 
