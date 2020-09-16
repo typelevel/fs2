@@ -830,14 +830,13 @@ class StreamSuite extends Fs2Suite {
         val prog: Resource[IO, IO[Unit]] =
           Stream
             .eval(Deferred[IO, Unit].product(Deferred[IO, Unit]))
-            .flatMap {
-              case (startCondition, waitForStream) =>
-                val worker = Stream.eval(startCondition.get) ++ Stream.eval(
-                  waitForStream.complete(())
-                )
-                val result = startCondition.complete(()) >> waitForStream.get
+            .flatMap { case (startCondition, waitForStream) =>
+              val worker = Stream.eval(startCondition.get) ++ Stream.eval(
+                waitForStream.complete(())
+              )
+              val result = startCondition.complete(()) >> waitForStream.get
 
-                Stream.emit(result).concurrently(worker)
+              Stream.emit(result).concurrently(worker)
             }
             .compile
             .resource

@@ -333,29 +333,28 @@ class StreamCombinatorsSuite extends Fs2Suite {
       val n = 5
 
       (Semaphore[IO](n.toLong), SignallingRef[IO, Int](0)).tupled
-        .flatMap {
-          case (sem, sig) =>
-            val tested = s
-              .covary[IO]
-              .evalFilterAsync(n) { _ =>
-                val ensureAcquired =
-                  sem.tryAcquire.ifM(
-                    IO.unit,
-                    IO.raiseError(new Throwable("Couldn't acquire permit"))
-                  )
+        .flatMap { case (sem, sig) =>
+          val tested = s
+            .covary[IO]
+            .evalFilterAsync(n) { _ =>
+              val ensureAcquired =
+                sem.tryAcquire.ifM(
+                  IO.unit,
+                  IO.raiseError(new Throwable("Couldn't acquire permit"))
+                )
 
-                ensureAcquired.bracket(_ =>
-                  sig.update(_ + 1).bracket(_ => IO.sleep(10.millis))(_ => sig.update(_ - 1))
-                )(_ => sem.release) *>
-                  IO.pure(true)
-              }
+              ensureAcquired.bracket(_ =>
+                sig.update(_ + 1).bracket(_ => IO.sleep(10.millis))(_ => sig.update(_ - 1))
+              )(_ => sem.release) *>
+                IO.pure(true)
+            }
 
-            sig.discrete
-              .interruptWhen(tested.drain.covaryOutput[Boolean])
-              .fold1(_.max(_))
-              .compile
-              .lastOrError
-              .product(sig.get)
+          sig.discrete
+            .interruptWhen(tested.drain.covaryOutput[Boolean])
+            .fold1(_.max(_))
+            .compile
+            .lastOrError
+            .product(sig.get)
         }
         .map(it => assert(it == ((n, 0))))
     }
@@ -421,29 +420,28 @@ class StreamCombinatorsSuite extends Fs2Suite {
       val n = 5
 
       (Semaphore[IO](n.toLong), SignallingRef[IO, Int](0)).tupled
-        .flatMap {
-          case (sem, sig) =>
-            val tested = s
-              .covary[IO]
-              .evalFilterNotAsync(n) { _ =>
-                val ensureAcquired =
-                  sem.tryAcquire.ifM(
-                    IO.unit,
-                    IO.raiseError(new Throwable("Couldn't acquire permit"))
-                  )
+        .flatMap { case (sem, sig) =>
+          val tested = s
+            .covary[IO]
+            .evalFilterNotAsync(n) { _ =>
+              val ensureAcquired =
+                sem.tryAcquire.ifM(
+                  IO.unit,
+                  IO.raiseError(new Throwable("Couldn't acquire permit"))
+                )
 
-                ensureAcquired.bracket(_ =>
-                  sig.update(_ + 1).bracket(_ => IO.sleep(10.millis))(_ => sig.update(_ - 1))
-                )(_ => sem.release) *>
-                  IO.pure(false)
-              }
+              ensureAcquired.bracket(_ =>
+                sig.update(_ + 1).bracket(_ => IO.sleep(10.millis))(_ => sig.update(_ - 1))
+              )(_ => sem.release) *>
+                IO.pure(false)
+            }
 
-            sig.discrete
-              .interruptWhen(tested.drain.covaryOutput[Boolean])
-              .fold1(_.max(_))
-              .compile
-              .lastOrError
-              .product(sig.get)
+          sig.discrete
+            .interruptWhen(tested.drain.covaryOutput[Boolean])
+            .fold1(_.max(_))
+            .compile
+            .lastOrError
+            .product(sig.get)
         }
         .map(it => assert(it == ((n, 0))))
     }
@@ -958,9 +956,8 @@ class StreamCombinatorsSuite extends Fs2Suite {
 
   test("random") {
     val x = Stream.random[SyncIO].take(100).compile.toList
-    (x, x).tupled.map {
-      case (first, second) =>
-        assert(first != second)
+    (x, x).tupled.map { case (first, second) =>
+      assert(first != second)
     }
   }
 
@@ -1008,8 +1005,8 @@ class StreamCombinatorsSuite extends Fs2Suite {
       forAll { (s: Stream[Pure, Int], seed: Long) =>
         val c = s.chunks.toVector
         if (c.nonEmpty) {
-          val (min, max) = c.tail.foldLeft(c.head.size -> c.head.size) {
-            case ((min, max), c) => Math.min(min, c.size) -> Math.max(max, c.size)
+          val (min, max) = c.tail.foldLeft(c.head.size -> c.head.size) { case ((min, max), c) =>
+            Math.min(min, c.size) -> Math.max(max, c.size)
           }
           val (minChunkSize, maxChunkSize) = (min * 0.1, max * 2.0)
           // Last element is dropped as it may not fulfill size constraint
@@ -1211,9 +1208,8 @@ class StreamCombinatorsSuite extends Fs2Suite {
   test("unfold") {
     assert(
       Stream
-        .unfold((0, 1)) {
-          case (f1, f2) =>
-            if (f1 <= 13) Some(((f1, f2), (f2, f1 + f2))) else None
+        .unfold((0, 1)) { case (f1, f2) =>
+          if (f1 <= 13) Some(((f1, f2), (f2, f1 + f2))) else None
         }
         .map(_._1)
         .toList == List(0, 1, 1, 2, 3, 5, 8, 13)

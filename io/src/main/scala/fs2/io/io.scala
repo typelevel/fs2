@@ -150,26 +150,25 @@ package object io {
         }
       )
 
-    Stream.resource(mkOutput).flatMap {
-      case (os, is) =>
-        Stream.eval(Deferred[F, Option[Throwable]]).flatMap { err =>
-          // We need to close the output stream regardless of how `f` finishes
-          // to ensure an outstanding blocking read on the input stream completes.
-          // In such a case, there's a race between completion of the read
-          // stream and finalization of the write stream, so we capture the error
-          // that occurs when writing and rethrow it.
-          val write = f(os).guaranteeCase((outcome: Outcome[F, Throwable, Unit]) =>
-            Sync[F].blocking(os.close()) *> err.complete(outcome match {
-              case Outcome.Errored(t) => Some(t)
-              case _                  => None
-            })
-          )
-          val read = readInputStream(is.pure[F], chunkSize, closeAfterUse = false)
-          read.concurrently(Stream.eval(write)) ++ Stream.eval(err.get).flatMap {
-            case None    => Stream.empty
-            case Some(t) => Stream.raiseError[F](t)
-          }
+    Stream.resource(mkOutput).flatMap { case (os, is) =>
+      Stream.eval(Deferred[F, Option[Throwable]]).flatMap { err =>
+        // We need to close the output stream regardless of how `f` finishes
+        // to ensure an outstanding blocking read on the input stream completes.
+        // In such a case, there's a race between completion of the read
+        // stream and finalization of the write stream, so we capture the error
+        // that occurs when writing and rethrow it.
+        val write = f(os).guaranteeCase((outcome: Outcome[F, Throwable, Unit]) =>
+          Sync[F].blocking(os.close()) *> err.complete(outcome match {
+            case Outcome.Errored(t) => Some(t)
+            case _                  => None
+          })
+        )
+        val read = readInputStream(is.pure[F], chunkSize, closeAfterUse = false)
+        read.concurrently(Stream.eval(write)) ++ Stream.eval(err.get).flatMap {
+          case None    => Stream.empty
+          case Some(t) => Stream.raiseError[F](t)
         }
+      }
     }
   }
 

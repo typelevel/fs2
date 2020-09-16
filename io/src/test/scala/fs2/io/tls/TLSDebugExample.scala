@@ -48,8 +48,8 @@ object TLSDebug {
               tlsSocket.session.map { session =>
                 s"Cipher suite: ${session.getCipherSuite}\r\n" +
                   "Peer certificate chain:\r\n" + session.getPeerCertificates.zipWithIndex
-                  .map { case (cert, idx) => s"Certificate $idx: $cert" }
-                  .mkString("\r\n")
+                    .map { case (cert, idx) => s"Certificate $idx: $cert" }
+                    .mkString("\r\n")
               }
           }
       }

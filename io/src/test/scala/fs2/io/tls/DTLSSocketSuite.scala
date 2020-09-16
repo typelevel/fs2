@@ -50,21 +50,20 @@ class DTLSSocketSuite extends TLSSuite {
                   (
                     tlsContext.dtlsServer(serverSocket, clientAddress, logger = serverLogger),
                     tlsContext.dtlsClient(clientSocket, serverAddress, logger = clientLogger)
-                  ).tupled.use {
-                    case (dtlsServerSocket, dtlsClientSocket) =>
-                      val echoServer =
-                        dtlsServerSocket
-                          .reads(None)
-                          .foreach(p => dtlsServerSocket.write(p, None))
-                      val msg = Chunk.bytes("Hello, world!".getBytes)
-                      val echoClient = Stream.sleep_[IO](500.milliseconds) ++ Stream.exec(
-                        dtlsClientSocket.write(Packet(serverAddress, msg))
-                      ) ++ Stream.eval(dtlsClientSocket.read())
-                      echoClient
-                        .concurrently(echoServer)
-                        .compile
-                        .toList
-                        .map(it => assert(it.map(_.bytes) == List(msg)))
+                  ).tupled.use { case (dtlsServerSocket, dtlsClientSocket) =>
+                    val echoServer =
+                      dtlsServerSocket
+                        .reads(None)
+                        .foreach(p => dtlsServerSocket.write(p, None))
+                    val msg = Chunk.bytes("Hello, world!".getBytes)
+                    val echoClient = Stream.sleep_[IO](500.milliseconds) ++ Stream.exec(
+                      dtlsClientSocket.write(Packet(serverAddress, msg))
+                    ) ++ Stream.eval(dtlsClientSocket.read())
+                    echoClient
+                      .concurrently(echoServer)
+                      .compile
+                      .toList
+                      .map(it => assert(it.map(_.bytes) == List(msg)))
                   }
                 }
               }

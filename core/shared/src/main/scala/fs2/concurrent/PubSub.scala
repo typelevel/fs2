@@ -245,21 +245,20 @@ private[fs2] object PubSub {
       }
 
     def publish(i: I): F[Unit] =
-      (F.deferred[Unit], Token[F]).tupled.flatMap {
-        case (deferred, token) =>
-          update { ps =>
-            if (strategy.accepts(i, ps.queue)) {
-              val ps1 = publish_(i, ps)
-              (ps1, Applicative[F].unit)
-            } else {
-              val publisher = Publisher(token, i, deferred)
+      (F.deferred[Unit], Token[F]).tupled.flatMap { case (deferred, token) =>
+        update { ps =>
+          if (strategy.accepts(i, ps.queue)) {
+            val ps1 = publish_(i, ps)
+            (ps1, Applicative[F].unit)
+          } else {
+            val publisher = Publisher(token, i, deferred)
 
-              def awaitCancellable =
-                publisher.signal.get.guaranteeCase(clearPublisher(publisher.token))
+            def awaitCancellable =
+              publisher.signal.get.guaranteeCase(clearPublisher(publisher.token))
 
-              (ps.copy(publishers = ps.publishers :+ publisher), awaitCancellable)
-            }
+            (ps.copy(publishers = ps.publishers :+ publisher), awaitCancellable)
           }
+        }
       }
 
     def tryPublish(i: I): F[Boolean] =
@@ -272,22 +271,21 @@ private[fs2] object PubSub {
       }
 
     def get(selector: Selector): F[O] =
-      (F.deferred[O], Token[F]).tupled.flatMap {
-        case (deferred, token) =>
-          update { ps =>
-            tryGet_(selector, ps) match {
-              case (ps, None) =>
-                val sub =
-                  Subscriber(token, selector, deferred)
+      (F.deferred[O], Token[F]).tupled.flatMap { case (deferred, token) =>
+        update { ps =>
+          tryGet_(selector, ps) match {
+            case (ps, None) =>
+              val sub =
+                Subscriber(token, selector, deferred)
 
-                def cancellableGet =
-                  sub.signal.get.guaranteeCase(clearSubscriberOnCancel(token))
+              def cancellableGet =
+                sub.signal.get.guaranteeCase(clearSubscriberOnCancel(token))
 
-                (ps.copy(subscribers = ps.subscribers :+ sub), cancellableGet)
-              case (ps, Some(o)) =>
-                (ps, o.pure[F])
-            }
+              (ps.copy(subscribers = ps.subscribers :+ sub), cancellableGet)
+            case (ps, Some(o)) =>
+              (ps, o.pure[F])
           }
+        }
       }
 
     def getStream(selector: Selector): Stream[F, O] =

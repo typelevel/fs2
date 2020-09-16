@@ -102,10 +102,9 @@ class StreamMergeSuite extends Fs2Suite {
                 Stream.bracket(IO.unit)(_ => finalizerRef.update(_ :+ "Outer"))
 
               def register(side: String): IO[Unit] =
-                sideRunRef.update {
-                  case (left, right) =>
-                    if (side == "L") (true, right)
-                    else (left, true)
+                sideRunRef.update { case (left, right) =>
+                  if (side == "L") (true, right)
+                  else (left, true)
                 }
 
               def finalizer(side: String): IO[Unit] =
@@ -132,30 +131,29 @@ class StreamMergeSuite extends Fs2Suite {
 
               prg0.compile.drain.attempt.flatMap { r =>
                 finalizerRef.get.flatMap { finalizers =>
-                  sideRunRef.get.flatMap {
-                    case (left, right) =>
-                      if (left && right) IO {
-                        assert(
-                          List("Inner L", "Inner R", "Outer").forall(finalizers.contains)
-                        )
-                        assert(finalizers.lastOption == Some("Outer"))
-                        assert(r == Left(err))
+                  sideRunRef.get.flatMap { case (left, right) =>
+                    if (left && right) IO {
+                      assert(
+                        List("Inner L", "Inner R", "Outer").forall(finalizers.contains)
+                      )
+                      assert(finalizers.lastOption == Some("Outer"))
+                      assert(r == Left(err))
+                    }
+                    else if (left) IO {
+                      assert(finalizers == List("Inner L", "Outer"))
+                      if (leftBiased) assert(r == Left(err))
+                      else assert(r == Right(()))
+                    }
+                    else if (right) IO {
+                      assert(finalizers == List("Inner R", "Outer"))
+                      if (!leftBiased) assert(r == Left(err))
+                      else assert(r == Right(()))
+                    }
+                    else
+                      IO {
+                        assert(finalizers == List("Outer"))
+                        assert(r == Right(()))
                       }
-                      else if (left) IO {
-                        assert(finalizers == List("Inner L", "Outer"))
-                        if (leftBiased) assert(r == Left(err))
-                        else assert(r == Right(()))
-                      }
-                      else if (right) IO {
-                        assert(finalizers == List("Inner R", "Outer"))
-                        if (!leftBiased) assert(r == Left(err))
-                        else assert(r == Right(()))
-                      }
-                      else
-                        IO {
-                          assert(finalizers == List("Outer"))
-                          assert(r == Right(()))
-                        }
                   }
                 }
               }

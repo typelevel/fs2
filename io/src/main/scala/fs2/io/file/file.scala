@@ -147,11 +147,10 @@ package object file {
     in =>
       Stream
         .resource(Hotswap(openNewFile))
-        .flatMap {
-          case (fileHotswap, fileHandle) =>
-            Stream.eval(newCursor(fileHandle)).flatMap { cursor =>
-              go(fileHotswap, cursor, 0L, in).stream.drain
-            }
+        .flatMap { case (fileHotswap, fileHandle) =>
+          Stream.eval(newCursor(fileHandle)).flatMap { cursor =>
+            go(fileHotswap, cursor, 0L, in).stream.drain
+          }
         }
   }
 

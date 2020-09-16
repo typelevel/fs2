@@ -132,9 +132,8 @@ object Hotswap {
       new Hotswap[F, R] {
         override def swap(next: Resource[F, R]): F[R] =
           Concurrent[F].uncancelable { _ =>
-            Concurrent[F].flatMap(next.allocated) {
-              case (newValue, finalizer) =>
-                swapFinalizer(finalizer).as(newValue)
+            Concurrent[F].flatMap(next.allocated) { case (newValue, finalizer) =>
+              swapFinalizer(finalizer).as(newValue)
             }
           }
 

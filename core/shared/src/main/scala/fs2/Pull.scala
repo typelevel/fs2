@@ -498,8 +498,8 @@ object Pull extends PullLowPriority {
       leg: Stream.StepLeg[F, O]
   ): Pull[F, Nothing, Option[Stream.StepLeg[F, O]]] =
     Step[F, O](leg.next, Some(leg.scopeId)).map {
-      _.map {
-        case (h, id, t) => new Stream.StepLeg[F, O](h, id, t.asInstanceOf[Pull[F, O, Unit]])
+      _.map { case (h, id, t) =>
+        new Stream.StepLeg[F, O](h, id, t.asInstanceOf[Pull[F, O, Unit]])
       }
     }
 

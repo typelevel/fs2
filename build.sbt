@@ -76,9 +76,8 @@ ThisBuild / developers ++= List(
   "runarorama" -> "Rúnar Ó. Bjarnason",
   "jedws" -> "Jed Wesley-Smith",
   "durban" -> "Daniel Urban"
-).map {
-  case (username, fullName) =>
-    Developer(username, fullName, s"@$username", url(s"https://github.com/$username"))
+).map { case (username, fullName) =>
+  Developer(username, fullName, s"@$username", url(s"https://github.com/$username"))
 }
 
 ThisBuild / fatalWarningsInCI := false
