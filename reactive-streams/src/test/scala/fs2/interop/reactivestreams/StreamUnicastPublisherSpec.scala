@@ -24,7 +24,8 @@ package interop
 package reactivestreams
 
 import cats.effect._
-import cats.effect.unsafe.implicits.global
+// import cats.effect.unsafe.implicits.global
+import cats.effect.unsafe.IORuntime
 import org.reactivestreams._
 import org.reactivestreams.tck.{PublisherVerification, TestEnvironment}
 import org.scalatestplus.testng._
@@ -44,6 +45,15 @@ final class FailedPublisher extends Publisher[Int] {
 final class StreamUnicastPublisherSpec
     extends PublisherVerification[Int](new TestEnvironment(1000L))
     with TestNGSuiteLike {
+
+  // TODO Default runtime's work stealing pool causes test failure in:
+  // required_spec313_cancelMustMakeThePublisherEventuallyDropAllReferencesToTheSubscriber
+  implicit val ioRuntime: IORuntime = IORuntime(
+    scala.concurrent.ExecutionContext.global,
+    IORuntime.createDefaultBlockingExecutionContext()._1,
+    IORuntime.createDefaultScheduler()._1,
+    () => ()
+  )
 
   def createPublisher(n: Long): StreamUnicastPublisher[IO, Int] = {
     val s =
