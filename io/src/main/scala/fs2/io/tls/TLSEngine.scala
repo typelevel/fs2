@@ -39,6 +39,7 @@ import cats.syntax.all._
   */
 private[tls] trait TLSEngine[F[_]] {
   def beginHandshake: F[Unit]
+  def applicationProtocol: F[String]
   def session: F[SSLSession]
   def stopWrap: F[Unit]
   def stopUnwrap: F[Unit]
@@ -77,6 +78,7 @@ private[tls] object TLSEngine {
 
       def beginHandshake = Sync[F].delay(engine.beginHandshake())
       def session = Sync[F].delay(engine.getSession())
+      def applicationProtocol = Sync[F].delay(engine.getApplicationProtocol())
       def stopWrap = Sync[F].delay(engine.closeOutbound())
       def stopUnwrap = Sync[F].delay(engine.closeInbound()).attempt.void
 
