@@ -32,7 +32,8 @@ import CollectionCompat._
   * Parameters used in creation of a TLS/DTLS session.
   * See `javax.net.ssl.SSLParameters` for detailed documentation on each parameter.
   *
-  * Note: `applicationProtocols`, `enableRetransmissions`, and `maximumPacketSize` require Java 9+.
+  * Note: `applicationProtocols`, `enableRetransmissions`, `maximumPacketSize`, and
+  * `handshakeApplicationProtocolSelector` require Java 9+.
   */
 sealed trait TLSParameters {
   val algorithmConstraints: Option[AlgorithmConstraints]
@@ -106,6 +107,37 @@ object TLSParameters {
       needClientAuth,
       wantClientAuth,
       handshakeApplicationProtocolSelector
+    )
+
+  // For binary compatibility
+  def apply(
+      algorithmConstraints: Option[AlgorithmConstraints],
+      applicationProtocols: Option[List[String]],
+      cipherSuites: Option[List[String]],
+      enableRetransmissions: Option[Boolean],
+      endpointIdentificationAlgorithm: Option[String],
+      maximumPacketSize: Option[Int],
+      protocols: Option[List[String]],
+      serverNames: Option[List[SNIServerName]],
+      sniMatchers: Option[List[SNIMatcher]],
+      useCipherSuitesOrder: Boolean,
+      needClientAuth: Boolean,
+      wantClientAuth: Boolean
+  ): TLSParameters =
+    apply(
+      algorithmConstraints,
+      applicationProtocols,
+      cipherSuites,
+      enableRetransmissions,
+      endpointIdentificationAlgorithm,
+      maximumPacketSize,
+      protocols,
+      serverNames,
+      sniMatchers,
+      useCipherSuitesOrder,
+      needClientAuth,
+      wantClientAuth,
+      None
     )
 
   private case class DefaultTLSParameters(
