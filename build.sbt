@@ -156,10 +156,18 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
     "fs2.Stream#PartiallyAppliedFromIterator.apply$extension"
   ),
   ProblemFilters.exclude[MissingTypesProblem]("fs2.io.tls.TLSParameters$DefaultTLSParameters$"),
-  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.tls.TLSParameters#DefaultTLSParameters.apply"),
-  ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.io.tls.TLSParameters.handshakeApplicationProtocolSelector"),
-  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.tls.TLSParameters#DefaultTLSParameters.copy"),
-  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.tls.TLSParameters#DefaultTLSParameters.this")
+  ProblemFilters.exclude[DirectMissingMethodProblem](
+    "fs2.io.tls.TLSParameters#DefaultTLSParameters.apply"
+  ),
+  ProblemFilters.exclude[ReversedMissingMethodProblem](
+    "fs2.io.tls.TLSParameters.handshakeApplicationProtocolSelector"
+  ),
+  ProblemFilters.exclude[DirectMissingMethodProblem](
+    "fs2.io.tls.TLSParameters#DefaultTLSParameters.copy"
+  ),
+  ProblemFilters.exclude[DirectMissingMethodProblem](
+    "fs2.io.tls.TLSParameters#DefaultTLSParameters.this"
+  )
 )
 
 lazy val root = project
