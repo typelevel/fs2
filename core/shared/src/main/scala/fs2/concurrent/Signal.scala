@@ -23,7 +23,7 @@ package fs2
 package concurrent
 
 import cats.{Applicative, Functor, Invariant}
-import cats.data.{OptionT, State}
+import cats.data.OptionT
 import cats.effect.Concurrent
 import cats.effect.concurrent.{Deferred, Ref}
 import cats.syntax.all._
@@ -161,16 +161,13 @@ object SignallingRef {
   /**
     * Builds a `SignallingRef` for for effect `F`, initialized to the supplied value.
     */
-  def of[F[_], A](initial: A)(implicit F: Concurrent[F]): F[SignallingRef[F, A]] =
-    F.ref(SignalState[F, A](initial, 0L, Map.empty))
-      .map(state => new SignallingRef.Impl[F, A](state))
+  def of[F[_], A](initial: A)(implicit F: Concurrent[F]): F[SignallingRef[F, A]] = {
+    case class State[F[_], A](value: A, updates: Long, listeners: Map[Token, Deferred[F, (A, Long)]])
 
-  private case class SignalState[F[_], A](value: A, updates: Long, listeners: Map[Token, Deferred[F, (A, Long)]])
-
-  private final class Impl[F[_], A](
-      state: Ref[F, SignalState[F, A]]
-  )(implicit F: Concurrent[F])
-      extends SignallingRef[F, A] {
+    final class Impl[F[_], A](
+      state: Ref[F, State[F, A]]
+    )(implicit F: Concurrent[F])
+        extends SignallingRef[F, A] {
 
     override def get: F[A] = state.get.map(_.value)
 
@@ -182,7 +179,7 @@ object SignallingRef {
         def getNext: F[(A, Long)] =
           F.deferred[(A, Long)]
             .flatMap { deferred =>
-              state.modify { case s @ SignalState(a, updates, listeners) =>
+              state.modify { case s @ State(a, updates, listeners) =>
                 if (updates != lastUpdate) s -> (a -> updates).pure[F]
                 else s.copy(listeners = listeners + (id -> deferred)) -> deferred.get
               }.flatten
@@ -201,10 +198,10 @@ object SignallingRef {
       }
     }
 
-    def updateAndNotify[B](state: SignalState[F, A], f: A => (A, B)): (SignalState[F, A], F[B]) = {
+    def updateAndNotify[B](state: State[F, A], f: A => (A, B)): (State[F, A], F[B]) = {
       val (newValue, result) = f(state.value)
       val newUpdates = state.updates + 1
-      val newState = SignalState[F, A](newValue, newUpdates, Map.empty)
+      val newState = State[F, A](newValue, newUpdates, Map.empty)
       val notifyListeners = state.listeners.values.toVector.traverse_ { listener =>
        listener.complete(newValue -> newUpdates)
       }
@@ -242,16 +239,24 @@ object SignallingRef {
         (state.value, setter)
       }
 
-    override def tryModifyState[B](state: State[A, B]): F[Option[B]] = {
+    override def tryModifyState[B](state: cats.data.State[A, B]): F[Option[B]] = {
       val f = state.runF.value
       tryModify(a => f(a).value)
     }
 
-    override def modifyState[B](state: State[A, B]): F[B] = {
+    override def modifyState[B](state: cats.data.State[A, B]): F[B] = {
       val f = state.runF.value
       modify(a => f(a).value)
     }
   }
+
+    F.ref(State[F, A](initial, 0L, Map.empty))
+      .map(state => new Impl[F, A](state))
+
+  }
+
+
+
 
   implicit def invariantInstance[F[_]: Functor]: Invariant[SignallingRef[F, *]] =
     new Invariant[SignallingRef[F, *]] {
@@ -276,9 +281,9 @@ object SignallingRef {
               val (a2, b2) = bb(f(a))
               g(a2) -> b2
             }
-          override def tryModifyState[C](state: State[B, C]): F[Option[C]] =
+          override def tryModifyState[C](state: cats.data.State[B, C]): F[Option[C]] =
             fa.tryModifyState(state.dimap(f)(g))
-          override def modifyState[C](state: State[B, C]): F[C] =
+          override def modifyState[C](state: cats.data.State[B, C]): F[C] =
             fa.modifyState(state.dimap(f)(g))
         }
     }
