@@ -117,7 +117,6 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
   )
   .settings(
     name := "fs2-core",
-    sourceDirectories in (Compile, scalafmt) += baseDirectory.value / "../shared/src/main/scala",
     Compile / unmanagedSourceDirectories ++= {
       val major = if (isDotty.value) "-3" else "-2"
       List(CrossType.Pure, CrossType.Full).flatMap(
