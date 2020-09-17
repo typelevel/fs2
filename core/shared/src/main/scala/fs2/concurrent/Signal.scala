@@ -201,14 +201,15 @@ object SignallingRef {
       }
     }
 
-    def updateAndNotify(state: SignalState[F, A], newValue: A): (SignalState[F, A], F[Unit]) = {
+    def updateAndNotify[B](state: SignalState[F, A], f: A => (A, B)): (SignalState[F, A], F[B]) = {
+      val (newValue, result) = f(state.value)
       val newUpdates = state.updates + 1
       val newState = SignalState[F, A](newValue, newUpdates, Map.empty)
-      val notify = state.listeners.toVector.traverse { case (_, deferred) =>
-        F.start(deferred.complete(newValue -> newUpdates))
+      val notifyListeners = state.listeners.values.toVector.traverse_ { listener =>
+       listener.complete(newValue -> newUpdates)
       }
 
-      newState -> notify.void
+      newState -> notifyListeners.as(result)
     }
 
     override def set(a: A): F[Unit] = update(_ => a)
@@ -217,25 +218,10 @@ object SignallingRef {
       modify(a => f(a) -> ())
 
     override def modify[B](f: A => (A, B)): F[B] =
-      state.modify { state =>
-        val (newValue, result) = f(state.value)
-        val (newState, notify) = updateAndNotify(state, newValue)
-
-        newState -> notify.as(result)
-      }.flatten
+      state.modify(updateAndNotify(_, f)).flatten
 
     override def tryModify[B](f: A => (A, B)): F[Option[B]] =
-      state
-        .tryModify { state =>
-          val (newValue, result) = f(state.value)
-          val (newState, notify) = updateAndNotify(state, newValue)
-
-          newState -> notify.as(result)
-        }
-        .flatMap {
-          case None     => F.pure(None)
-          case Some(fb) => fb.map(Some(_))
-        }
+      state.tryModify(updateAndNotify(_, f)).flatMap(_.sequence)
 
     override def tryUpdate(f: A => A): F[Boolean] =
       tryModify(a => f(a) -> ()).map(_.isDefined)
@@ -245,10 +231,11 @@ object SignallingRef {
     override def access: F[(A, A => F[Boolean])] =
       state.access.map { case (state, set) => 
         val setter = { (newValue: A) =>
-          val (newState, notify) = updateAndNotify(state, newValue)
+          val (newState, notifyListeners) =
+            updateAndNotify(state, _ => (newValue, ()))
 
           set(newState).flatTap { succeeded =>
-            notify.whenA(succeeded)
+            notifyListeners.whenA(succeeded)
           }
         }
 
