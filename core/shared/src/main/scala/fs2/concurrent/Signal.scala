@@ -58,7 +58,7 @@ trait Signal[F[_], A] {
   def get: F[A]
 }
 
-object Signal extends SignalLowPriorityImplicits {
+object Signal extends SignalInstances {
   def constant[F[_], A](a: A)(implicit F: Concurrent[F]): Signal[F, A] =
     new Signal[F, A] {
       def get = F.pure(a)
@@ -66,92 +66,28 @@ object Signal extends SignalLowPriorityImplicits {
       def discrete = Stream(a) ++ Stream.never
     }
 
-  implicit def applicativeInstance[F[_]: Concurrent]: Applicative[Signal[F, *]] =
-    new Applicative[Signal[F, *]] {
-      override def map[A, B](fa: Signal[F, A])(f: A => B): Signal[F, B] =
-        Signal.map(fa)(f)
-
-      override def pure[A](x: A): Signal[F, A] =
-        Signal.constant(x)
-
-      override def ap[A, B](ff: Signal[F, A => B])(fa: Signal[F, A]): Signal[F, B] =
-        new Signal[F, B] {
-          override def discrete: Stream[F, B] =
-            nondeterministicZip(ff.discrete, fa.discrete).map { case (f, a) => f(a) }
-
-          override def continuous: Stream[F, B] = Stream.repeatEval(get)
-
-          override def get: F[B] = ff.get.ap(fa.get)
-        }
-    }
-
-  private def nondeterministicZip[F[_]: Concurrent, A0, A1](
-      xs: Stream[F, A0],
-      ys: Stream[F, A1]
-  ): Stream[F, (A0, A1)] = {
-    type PullOutput = (A0, A1, Stream[F, A0], Stream[F, A1])
-    val firstPull: OptionT[Pull[F, PullOutput, *], Unit] = for {
-      firstXAndRestOfXs <- OptionT(xs.pull.uncons1.covaryOutput[PullOutput])
-      (x, restOfXs) = firstXAndRestOfXs
-      firstYAndRestOfYs <- OptionT(ys.pull.uncons1.covaryOutput[PullOutput])
-      (y, restOfYs) = firstYAndRestOfYs
-      _ <- OptionT.liftF {
-        Pull.output1[F, PullOutput]((x, y, restOfXs, restOfYs)): Pull[F, PullOutput, Unit]
-      }
-    } yield ()
-    firstPull.value.void.stream
-      .flatMap { case (x, y, restOfXs, restOfYs) =>
-        restOfXs.either(restOfYs).scan((x, y)) {
-          case ((_, rightElem), Left(newElem)) => (newElem, rightElem)
-          case ((leftElem, _), Right(newElem)) => (leftElem, newElem)
-        }
-      }
-  }
-
-  private[concurrent] def map[F[_]: Functor, A, B](fa: Signal[F, A])(f: A => B): Signal[F, B] =
+  def mapped[F[_]: Functor, A, B](fa: Signal[F, A])(f: A => B): Signal[F, B] =
     new Signal[F, B] {
       def continuous: Stream[F, B] = fa.continuous.map(f)
       def discrete: Stream[F, B] = fa.discrete.map(f)
       def get: F[B] = Functor[F].map(fa.get)(f)
     }
 
+  // TODO do we need this?
   implicit class SignalOps[F[_], A](val self: Signal[F, A]) extends AnyVal {
-
     /**
       * Converts this signal to signal of `B` by applying `f`.
       */
     def map[B](f: A => B)(implicit F: Functor[F]): Signal[F, B] =
-      Signal.map(self)(f)
+      self.map(f)
   }
 
   implicit class BooleanSignalOps[F[_]](val self: Signal[F, Boolean]) extends AnyVal {
     def interrupt[A](
-        s: Stream[F, A]
+      s: Stream[F, A]
     )(implicit F: Concurrent[F]): Stream[F, A] =
       s.interruptWhen(self)
   }
-}
-
-private[concurrent] trait SignalLowPriorityImplicits {
-
-  /**
-    * Note that this is not subsumed by [[Signal.applicativeInstance]] because
-    * [[Signal.applicativeInstance]] requires a `Concurrent[F]`
-    * since it non-deterministically zips elements together while our
-    * `Functor` instance has no other constraints.
-    *
-    * Separating the two instances allows us to make the `Functor` instance
-    * more general.
-    *
-    * We put this in a `SignalLowPriorityImplicits` trait to resolve ambiguous
-    * implicits if the [[Signal.applicativeInstance]] is applicable, allowing
-    * the `Applicative` instance to be chosen.
-    */
-  implicit def functorInstance[F[_]: Functor]: Functor[Signal[F, *]] =
-    new Functor[Signal[F, *]] {
-      override def map[A, B](fa: Signal[F, A])(f: A => B): Signal[F, B] =
-        Signal.map(fa)(f)
-    }
 }
 
 /**
@@ -264,37 +200,100 @@ object SignallingRef {
           }
         }
       }
-
-
   }
 
   implicit def invariantInstance[F[_]: Functor]: Invariant[SignallingRef[F, *]] =
     new Invariant[SignallingRef[F, *]] {
       override def imap[A, B](fa: SignallingRef[F, A])(f: A => B)(g: B => A): SignallingRef[F, B] =
         new SignallingRef[F, B] {
-          override def get: F[B] = fa.get.map(f)
-          override def discrete: Stream[F, B] = fa.discrete.map(f)
-          override def continuous: Stream[F, B] = fa.continuous.map(f)
-          override def set(b: B): F[Unit] = fa.set(g(b))
-          override def getAndSet(b: B): F[B] = fa.getAndSet(g(b)).map(f)
-          override def access: F[(B, B => F[Boolean])] =
+           def get: F[B] = fa.get.map(f)
+           def discrete: Stream[F, B] = fa.discrete.map(f)
+           def continuous: Stream[F, B] = fa.continuous.map(f)
+           def set(b: B): F[Unit] = fa.set(g(b))
+           def access: F[(B, B => F[Boolean])] =
             fa.access.map { case (getter, setter) =>
               (f(getter), b => setter(g(b)))
             }
-          override def tryUpdate(h: B => B): F[Boolean] = fa.tryUpdate(a => g(h(f(a))))
-          override def tryModify[B2](h: B => (B, B2)): F[Option[B2]] =
+           def tryUpdate(h: B => B): F[Boolean] = fa.tryUpdate(a => g(h(f(a))))
+           def tryModify[B2](h: B => (B, B2)): F[Option[B2]] =
             fa.tryModify(a => h(f(a)).leftMap(g))
-          override def update(bb: B => B): F[Unit] =
+           def update(bb: B => B): F[Unit] =
             modify(b => (bb(b), ()))
-          override def modify[B2](bb: B => (B, B2)): F[B2] =
+           def modify[B2](bb: B => (B, B2)): F[B2] =
             fa.modify { a =>
               val (a2, b2) = bb(f(a))
               g(a2) -> b2
             }
-          override def tryModifyState[C](state: cats.data.State[B, C]): F[Option[C]] =
+           def tryModifyState[C](state: cats.data.State[B, C]): F[Option[C]] =
             fa.tryModifyState(state.dimap(f)(g))
-          override def modifyState[C](state: cats.data.State[B, C]): F[C] =
+           def modifyState[C](state: cats.data.State[B, C]): F[C] =
             fa.modifyState(state.dimap(f)(g))
         }
     }
 }
+
+
+private[concurrent] trait SignalInstances extends SignalLowPriorityInstances {
+  implicit def applicativeInstance[F[_]: Concurrent]: Applicative[Signal[F, *]] = {
+    def nondeterministicZip[A0, A1](xs: Stream[F, A0], ys: Stream[F, A1]): Stream[F, (A0, A1)] = {
+      type PullOutput = (A0, A1, Stream[F, A0], Stream[F, A1])
+
+      val firstPull: OptionT[Pull[F, PullOutput, *], Unit] = for {
+        firstXAndRestOfXs <- OptionT(xs.pull.uncons1.covaryOutput[PullOutput])
+        (x, restOfXs) = firstXAndRestOfXs
+        firstYAndRestOfYs <- OptionT(ys.pull.uncons1.covaryOutput[PullOutput])
+        (y, restOfYs) = firstYAndRestOfYs
+        _ <- OptionT.liftF {
+          Pull.output1[F, PullOutput]((x, y, restOfXs, restOfYs)): Pull[F, PullOutput, Unit]
+        }
+      } yield ()
+
+      firstPull.value.void.stream
+        .flatMap { case (x, y, restOfXs, restOfYs) =>
+          restOfXs.either(restOfYs).scan((x, y)) {
+            case ((_, rightElem), Left(newElem)) => (newElem, rightElem)
+            case ((leftElem, _), Right(newElem)) => (leftElem, newElem)
+          }
+        }
+    }
+
+    new Applicative[Signal[F, *]] {
+      override def map[A, B](fa: Signal[F, A])(f: A => B): Signal[F, B] = Signal.mapped(fa)(f)
+
+      def pure[A](x: A): Signal[F, A] = Signal.constant(x)
+
+      def ap[A, B](ff: Signal[F, A => B])(fa: Signal[F, A]): Signal[F, B] =
+        new Signal[F, B] {
+          def discrete: Stream[F, B] =
+            nondeterministicZip(ff.discrete, fa.discrete).map { case (f, a) => f(a) }
+
+          def continuous: Stream[F, B] = Stream.repeatEval(get)
+
+          def get: F[B] = ff.get.ap(fa.get)
+        }
+    }
+  }
+}
+
+private[concurrent] trait SignalLowPriorityInstances {
+
+  /**
+    * Note that this is not subsumed by [[Signal.applicativeInstance]] because
+    * [[Signal.applicativeInstance]] requires a `Concurrent[F]`
+    * since it non-deterministically zips elements together while our
+    * `Functor` instance has no other constraints.
+    *
+    * Separating the two instances allows us to make the `Functor` instance
+    * more general.
+    *
+    * We put this in a `SignalLowPriorityImplicits` trait to resolve ambiguous
+    * implicits if the [[Signal.applicativeInstance]] is applicable, allowing
+    * the `Applicative` instance to be chosen.
+    */
+  implicit def functorInstance[F[_]: Functor]: Functor[Signal[F, *]] =
+    new Functor[Signal[F, *]] {
+      def map[A, B](fa: Signal[F, A])(f: A => B): Signal[F, B] =
+        Signal.mapped(fa)(f)
+    }
+}
+
