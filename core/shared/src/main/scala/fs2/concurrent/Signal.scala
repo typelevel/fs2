@@ -22,6 +22,12 @@
 package fs2
 package concurrent
 
+// TODO
+// comment on access conflict with discrete
+// create implicits object to put instances in
+// change bound in Token.apply
+// change pauseWhen
+
 import cats.{Applicative, Functor, Invariant}
 import cats.data.OptionT
 import cats.effect.Concurrent
@@ -162,17 +168,17 @@ object SignallingRef {
     * Builds a `SignallingRef` for for effect `F`, initialized to the supplied value.
     */
   def of[F[_], A](initial: A)(implicit F: Concurrent[F]): F[SignallingRef[F, A]] = {
-    case class State(value: A, updates: Long, listeners: Map[Token, Deferred[F, (A, Long)]])
+    case class State(value: A, lastUpdate: Long, listeners: Map[Token, Deferred[F, (A, Long)]])
 
     F.ref(State(initial, 0L, Map.empty))
       .map { state =>
 
         def updateAndNotify[B](state: State, f: A => (A, B)): (State, F[B]) = {
           val (newValue, result) = f(state.value)
-          val newUpdates = state.updates + 1
-          val newState = State(newValue, newUpdates, Map.empty)
+          val lastUpdate = state.lastUpdate + 1
+          val newState = State(newValue, lastUpdate, Map.empty)
           val notifyListeners = state.listeners.values.toVector.traverse_ { listener =>
-            listener.complete(newValue -> newUpdates)
+            listener.complete(newValue -> lastUpdate)
           }
 
           newState -> notifyListeners.as(result)
@@ -184,17 +190,20 @@ object SignallingRef {
           def continuous: Stream[F, A] = Stream.repeatEval(get)
 
           def discrete: Stream[F, A] = {
-            def go(id: Token, lastUpdate: Long): Stream[F, A] = {
+            def go(id: Token, lastSeen: Long): Stream[F, A] = {
               def getNext: F[(A, Long)] =
-                F.deferred[(A, Long)]
-                  .flatMap { deferred =>
-                    state.modify { case s @ State(a, updates, listeners) =>
-                      if (updates != lastUpdate) s -> (a -> updates).pure[F]
-                      else s.copy(listeners = listeners + (id -> deferred)) -> deferred.get
-                    }.flatten
-                  }
+                F.deferred[(A, Long)].flatMap { wait =>
+                  state.modify { case state @ State(value, lastUpdate, listeners) =>
+                    if (lastUpdate != lastSeen)
+                      state -> (value -> lastUpdate).pure[F]
+                    else
+                      state.copy(listeners = listeners + (id -> wait)) -> wait.get
+                  }.flatten
+                }
 
-              Stream.eval(getNext).flatMap { case (a, l) => Stream.emit(a) ++ go(id, l) }
+              Stream.eval(getNext).flatMap { case (a, lastUpdate) =>
+                Stream.emit(a) ++ go(id, lastSeen = lastUpdate)
+              }
             }
 
             def cleanup(id: Token): F[Unit] =
@@ -202,7 +211,7 @@ object SignallingRef {
 
             Stream.bracket(Token[F])(cleanup).flatMap { id =>
               Stream.eval(state.get).flatMap { state =>
-                Stream.emit(state.value) ++ go(id, state.updates)
+                Stream.emit(state.value) ++ go(id, state.lastUpdate)
               }
             }
           }
@@ -248,9 +257,6 @@ object SignallingRef {
 
 
   }
-
-
-
 
   implicit def invariantInstance[F[_]: Functor]: Invariant[SignallingRef[F, *]] =
     new Invariant[SignallingRef[F, *]] {
