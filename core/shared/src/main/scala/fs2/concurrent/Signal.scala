@@ -172,7 +172,7 @@ object SignallingRef {
   )(implicit F: Concurrent[F])
       extends SignallingRef[F, A] {
 
-    override def get: F[A] = state.get.map(_._1)
+    override def get: F[A] = state.get.map(_.value)
 
     override def continuous: Stream[F, A] =
       Stream.repeatEval(get)
