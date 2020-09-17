@@ -23,7 +23,6 @@ package fs2
 package concurrent
 
 // TODO
-// comment on access conflict with discrete
 // create implicits object to put instances in
 // change bound in Token.apply
 // change pauseWhen
@@ -155,7 +154,18 @@ private[concurrent] trait SignalLowPriorityImplicits {
     }
 }
 
-/** Pure holder of a single value of type `A` that can be both read and updated in the effect `F`. */
+/**
+  * Pure holder of a single value of type `A` that can be both read
+  * and updated in the effect `F`.
+  *
+  * The update methods have the same semantics as Ref, as well as
+  * propagating changes to `discrete` (with a last-update-wins policy
+  * in case of very fast updates).
+  *
+  * The `access` method differs slightly from `Ref` in that the update
+  * function, in the presence of `discrete`, can return `false` and
+  * need looping even without any other writers.
+  */
 abstract class SignallingRef[F[_], A] extends Ref[F, A] with Signal[F, A]
 
 object SignallingRef {
