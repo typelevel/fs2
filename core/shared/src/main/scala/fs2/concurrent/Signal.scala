@@ -164,93 +164,90 @@ object SignallingRef {
   def of[F[_], A](initial: A)(implicit F: Concurrent[F]): F[SignallingRef[F, A]] = {
     case class State(value: A, updates: Long, listeners: Map[Token, Deferred[F, (A, Long)]])
 
-    final class Impl(
-      state: Ref[F, State]
-    ) extends SignallingRef[F, A] {
+    F.ref(State(initial, 0L, Map.empty))
+      .map { state =>
+        new SignallingRef[F, A] {
+          override def get: F[A] = state.get.map(_.value)
 
-    override def get: F[A] = state.get.map(_.value)
+          override def continuous: Stream[F, A] =
+            Stream.repeatEval(get)
 
-    override def continuous: Stream[F, A] =
-      Stream.repeatEval(get)
+          override def discrete: Stream[F, A] = {
+            def go(id: Token, lastUpdate: Long): Stream[F, A] = {
+              def getNext: F[(A, Long)] =
+                F.deferred[(A, Long)]
+                  .flatMap { deferred =>
+                    state.modify { case s @ State(a, updates, listeners) =>
+                      if (updates != lastUpdate) s -> (a -> updates).pure[F]
+                      else s.copy(listeners = listeners + (id -> deferred)) -> deferred.get
+                    }.flatten
+                  }
 
-    override def discrete: Stream[F, A] = {
-      def go(id: Token, lastUpdate: Long): Stream[F, A] = {
-        def getNext: F[(A, Long)] =
-          F.deferred[(A, Long)]
-            .flatMap { deferred =>
-              state.modify { case s @ State(a, updates, listeners) =>
-                if (updates != lastUpdate) s -> (a -> updates).pure[F]
-                else s.copy(listeners = listeners + (id -> deferred)) -> deferred.get
-              }.flatten
+              Stream.eval(getNext).flatMap { case (a, l) => Stream.emit(a) ++ go(id, l) }
             }
 
-        Stream.eval(getNext).flatMap { case (a, l) => Stream.emit(a) ++ go(id, l) }
-      }
+            def cleanup(id: Token): F[Unit] =
+              state.update(s => s.copy(listeners = s.listeners - id))
 
-      def cleanup(id: Token): F[Unit] =
-        state.update(s => s.copy(listeners = s.listeners - id))
+            Stream.bracket(Token[F])(cleanup).flatMap { id =>
+              Stream.eval(state.get).flatMap { state =>
+                Stream.emit(state.value) ++ go(id, state.updates)
+              }
+            }
+          }
 
-      Stream.bracket(Token[F])(cleanup).flatMap { id =>
-        Stream.eval(state.get).flatMap { state =>
-          Stream.emit(state.value) ++ go(id, state.updates)
-        }
-      }
-    }
+          def updateAndNotify[B](state: State, f: A => (A, B)): (State, F[B]) = {
+            val (newValue, result) = f(state.value)
+            val newUpdates = state.updates + 1
+            val newState = State(newValue, newUpdates, Map.empty)
+            val notifyListeners = state.listeners.values.toVector.traverse_ { listener =>
+              listener.complete(newValue -> newUpdates)
+            }
 
-    def updateAndNotify[B](state: State, f: A => (A, B)): (State, F[B]) = {
-      val (newValue, result) = f(state.value)
-      val newUpdates = state.updates + 1
-      val newState = State(newValue, newUpdates, Map.empty)
-      val notifyListeners = state.listeners.values.toVector.traverse_ { listener =>
-       listener.complete(newValue -> newUpdates)
-      }
+            newState -> notifyListeners.as(result)
+          }
 
-      newState -> notifyListeners.as(result)
-    }
+          override def set(a: A): F[Unit] = update(_ => a)
 
-    override def set(a: A): F[Unit] = update(_ => a)
+          override def update(f: A => A): F[Unit] =
+            modify(a => f(a) -> ())
 
-    override def update(f: A => A): F[Unit] =
-      modify(a => f(a) -> ())
+          override def modify[B](f: A => (A, B)): F[B] =
+            state.modify(updateAndNotify(_, f)).flatten
 
-    override def modify[B](f: A => (A, B)): F[B] =
-      state.modify(updateAndNotify(_, f)).flatten
+          override def tryModify[B](f: A => (A, B)): F[Option[B]] =
+            state.tryModify(updateAndNotify(_, f)).flatMap(_.sequence)
 
-    override def tryModify[B](f: A => (A, B)): F[Option[B]] =
-      state.tryModify(updateAndNotify(_, f)).flatMap(_.sequence)
+          override def tryUpdate(f: A => A): F[Boolean] =
+            tryModify(a => f(a) -> ()).map(_.isDefined)
 
-    override def tryUpdate(f: A => A): F[Boolean] =
-      tryModify(a => f(a) -> ()).map(_.isDefined)
 
-    override def getAndSet(a: A): F[A] = modify(old => (a, old))
+          override def access: F[(A, A => F[Boolean])] =
+            state.access.map { case (state, set) =>
+              val setter = { (newValue: A) =>
+                val (newState, notifyListeners) =
+                  updateAndNotify(state, _ => (newValue, ()))
 
-    override def access: F[(A, A => F[Boolean])] =
-      state.access.map { case (state, set) => 
-        val setter = { (newValue: A) =>
-          val (newState, notifyListeners) =
-            updateAndNotify(state, _ => (newValue, ()))
+                set(newState).flatTap { succeeded =>
+                  notifyListeners.whenA(succeeded)
+                }
+              }
 
-          set(newState).flatTap { succeeded =>
-            notifyListeners.whenA(succeeded)
+              (state.value, setter)
+            }
+
+          override def tryModifyState[B](state: cats.data.State[A, B]): F[Option[B]] = {
+            val f = state.runF.value
+            tryModify(a => f(a).value)
+          }
+
+          override def modifyState[B](state: cats.data.State[A, B]): F[B] = {
+            val f = state.runF.value
+            modify(a => f(a).value)
           }
         }
+   }
 
-        (state.value, setter)
-      }
-
-    override def tryModifyState[B](state: cats.data.State[A, B]): F[Option[B]] = {
-      val f = state.runF.value
-      tryModify(a => f(a).value)
-    }
-
-    override def modifyState[B](state: cats.data.State[A, B]): F[B] = {
-      val f = state.runF.value
-      modify(a => f(a).value)
-    }
-  }
-
-    F.ref(State(initial, 0L, Map.empty))
-      .map(state => new Impl(state))
 
   }
 
