@@ -478,7 +478,7 @@ private[fs2] object CompileScope {
   )(implicit val Concurrent: Concurrent[F]) { self =>
 
     def complete(outcome: InterruptionOutcome): F[Unit] =
-      ref.update(_.orElse(Some(outcome))).guarantee(deferred.complete(outcome).attempt.void)
+      ref.update(_.orElse(Some(outcome))).guarantee(deferred.complete(outcome).void)
 
     /**
       * Creates a [[InterruptContext]] for a child scope which can be interruptible as well.

@@ -582,14 +582,13 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
             if (r.isLeft)
               interrupt
                 .complete(())
-                .attempt
                 .void // interrupt only if this failed otherwise give change to `this` to finalize
             else F.unit
           }
         }
 
       // stop background process but await for it to finalise with a result
-      val stopBack: F2[Unit] = interrupt.complete(()).attempt >> doneR.get.flatMap(
+      val stopBack: F2[Unit] = interrupt.complete(()) >> doneR.get.flatMap(
         F.fromEither
       )
 
@@ -1972,7 +1971,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
 
       // action to interrupt the processing of both streams by completing interrupt
       // We need to use `attempt` because `interruption` may already be completed.
-      val signalInterruption: F2[Unit] = interrupt.complete(()).attempt.void
+      val signalInterruption: F2[Unit] = interrupt.complete(()).void
 
       def go(s: Stream[F2, O2], guard: Semaphore[F2]): Pull[F2, O2, Unit] =
         Pull.eval(guard.acquire) >> s.pull.uncons.flatMap {
@@ -2124,7 +2123,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
         for {
           value <- F.deferred[Either[Throwable, O2]]
           enqueue = queue.enqueue1(Some(value.get)).as {
-            Stream.eval(f(o).attempt).evalMap(value.complete(_).void)
+            Stream.eval(f(o).attempt.flatMap(value.complete(_).void))
           }
           eit <- F.race(dequeueDone.get, enqueue)
         } yield eit match {
