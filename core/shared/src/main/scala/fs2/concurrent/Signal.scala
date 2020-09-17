@@ -164,7 +164,7 @@ object SignallingRef {
 
           def set(a: A): F[Unit] = update(_ => a)
 
-          def update(f: A => A): F[Unit] = modify(a => f(a) -> ())
+          def update(f: A => A): F[Unit] = modify(a => (f(a), ()))
 
           def modify[B](f: A => (A, B)): F[B] =
             state.modify(updateAndNotify(_, f)).flatten
@@ -173,7 +173,7 @@ object SignallingRef {
             state.tryModify(updateAndNotify(_, f)).flatMap(_.sequence)
 
           def tryUpdate(f: A => A): F[Boolean] =
-            tryModify(a => f(a) -> ()).map(_.isDefined)
+            tryModify(a => (f(a), ())).map(_.isDefined)
 
           def access: F[(A, A => F[Boolean])] =
             state.access.map { case (state, set) =>
