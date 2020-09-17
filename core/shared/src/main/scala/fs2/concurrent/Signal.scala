@@ -162,12 +162,11 @@ object SignallingRef {
     * Builds a `SignallingRef` for for effect `F`, initialized to the supplied value.
     */
   def of[F[_], A](initial: A)(implicit F: Concurrent[F]): F[SignallingRef[F, A]] = {
-    case class State[F[_], A](value: A, updates: Long, listeners: Map[Token, Deferred[F, (A, Long)]])
+    case class State(value: A, updates: Long, listeners: Map[Token, Deferred[F, (A, Long)]])
 
-    final class Impl[F[_], A](
-      state: Ref[F, State[F, A]]
-    )(implicit F: Concurrent[F])
-        extends SignallingRef[F, A] {
+    final class Impl(
+      state: Ref[F, State]
+    ) extends SignallingRef[F, A] {
 
     override def get: F[A] = state.get.map(_.value)
 
@@ -198,10 +197,10 @@ object SignallingRef {
       }
     }
 
-    def updateAndNotify[B](state: State[F, A], f: A => (A, B)): (State[F, A], F[B]) = {
+    def updateAndNotify[B](state: State, f: A => (A, B)): (State, F[B]) = {
       val (newValue, result) = f(state.value)
       val newUpdates = state.updates + 1
-      val newState = State[F, A](newValue, newUpdates, Map.empty)
+      val newState = State(newValue, newUpdates, Map.empty)
       val notifyListeners = state.listeners.values.toVector.traverse_ { listener =>
        listener.complete(newValue -> newUpdates)
       }
@@ -250,8 +249,8 @@ object SignallingRef {
     }
   }
 
-    F.ref(State[F, A](initial, 0L, Map.empty))
-      .map(state => new Impl[F, A](state))
+    F.ref(State(initial, 0L, Map.empty))
+      .map(state => new Impl(state))
 
   }
 
