@@ -22,6 +22,7 @@
 package fs2.concurrent
 
 import cats._, implicits._
+import cats.effect.{Concurrent, Outcome}
 import cats.effect.concurrent._
 import cats.effect.implicits._
 
@@ -30,7 +31,6 @@ import fs2.internal.Token
 
 import scala.annotation.tailrec
 import scala.collection.immutable.{Queue => ScalaQueue}
-import cats.effect.kernel.Outcome
 
 private[fs2] trait Publish[F[_], A] {
 
@@ -96,8 +96,8 @@ private[fs2] trait PubSub[F[_], I, O, Selector] extends Publish[F, I] with Subsc
 private[fs2] object PubSub {
   def apply[F[_], I, O, QS, Selector](
       strategy: PubSub.Strategy[I, O, QS, Selector]
-  )(implicit F: tc.Concurrent[F]): F[PubSub[F, I, O, Selector]] =
-    F.refOf[PubSubState[F, I, O, QS, Selector]](
+  )(implicit F: Concurrent[F]): F[PubSub[F, I, O, Selector]] =
+    F.ref[PubSubState[F, I, O, QS, Selector]](
       PubSubState(strategy.initial, ScalaQueue.empty, ScalaQueue.empty)
     ).map(state => new PubSubAsync(strategy, state))
 
@@ -106,8 +106,8 @@ private[fs2] object PubSub {
       i: A,
       signal: Deferred[F, Unit]
   ) {
-    def complete: F[Unit] =
-      signal.complete(())
+    def complete(implicit F: Functor[F]): F[Unit] =
+      signal.complete(()).void
   }
 
   private final case class Subscriber[F[_], A, Selector](
@@ -115,8 +115,8 @@ private[fs2] object PubSub {
       selector: Selector,
       signal: Deferred[F, A]
   ) {
-    def complete(a: A): F[Unit] =
-      signal.complete(a)
+    def complete(a: A)(implicit F: Functor[F]): F[Unit] =
+      signal.complete(a).void
   }
 
   private final case class PubSubState[F[_], I, O, QS, Selector](
@@ -128,7 +128,7 @@ private[fs2] object PubSub {
   private class PubSubAsync[F[_], I, O, QS, Selector](
       strategy: Strategy[I, O, QS, Selector],
       state: Ref[F, PubSubState[F, I, O, QS, Selector]]
-  )(implicit F: tc.Concurrent[F])
+  )(implicit F: Concurrent[F])
       extends PubSub[F, I, O, Selector] {
 
     private type PS = PubSubState[F, I, O, QS, Selector]

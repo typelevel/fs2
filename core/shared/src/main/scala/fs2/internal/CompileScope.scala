@@ -23,14 +23,14 @@ package fs2.internal
 
 import scala.annotation.tailrec
 
-import cats.{Applicative, Id, Monad, Traverse, TraverseFilter}
+import cats.{Applicative, Id, Traverse, TraverseFilter}
 import cats.data.Chain
-import cats.effect.{ConcurrentThrow, Outcome, Resource}
+import cats.effect.{Concurrent, Outcome, Resource}
 import cats.effect.concurrent.{Deferred, Ref}
 import cats.effect.implicits._
 import cats.syntax.all._
 
-import fs2.{CompositeFailure, Pure, Scope}
+import fs2.{Compiler, CompositeFailure, Pure, Scope}
 import fs2.internal.CompileScope.{InterruptContext, InterruptionOutcome}
 
 /**
@@ -88,7 +88,7 @@ private[fs2] final class CompileScope[F[_]] private (
     val parent: Option[CompileScope[F]],
     val interruptible: Option[InterruptContext[F]],
     private val state: Ref[F, CompileScope.State[F]]
-)(implicit val F: Resource.Bracket[F], mkRef: Ref.Mk[F])
+)(implicit val F: Compiler.Target[F])
     extends Scope[F] { self =>
 
   /**
@@ -394,7 +394,7 @@ private[fs2] final class CompileScope[F[_]] private (
       case None =>
         f.attempt.map(_.leftMap(t => Outcome.Errored(t)))
       case Some(iCtx) =>
-        iCtx.concurrentThrow.race(iCtx.deferred.get, f.attempt).map {
+        iCtx.Concurrent.race(iCtx.deferred.get, f.attempt).map {
           case Right(result) => result.leftMap(Outcome.Errored(_))
           case Left(other)   => Left(other)
         }
@@ -408,17 +408,16 @@ private[fs2] object CompileScope {
 
   type InterruptionOutcome = Outcome[Id, Throwable, Token]
 
-  private def apply[F[_]: Resource.Bracket: Ref.Mk](
+  private def apply[F[_]](
       id: Token,
       parent: Option[CompileScope[F]],
       interruptible: Option[InterruptContext[F]]
-  ): F[CompileScope[F]] =
-    Ref
-      .of(CompileScope.State.initial[F])
+  )(implicit F: Compiler.Target[F]): F[CompileScope[F]] =
+    F.ref(CompileScope.State.initial[F])
       .map(state => new CompileScope[F](id, parent, interruptible, state))
 
   /** Creates a new root scope. */
-  def newRoot[F[_]: Resource.Bracket: Ref.Mk]: F[CompileScope[F]] =
+  def newRoot[F[_]: Compiler.Target]: F[CompileScope[F]] =
     Token[F].flatMap(apply[F](_, None, None))
 
   /**
@@ -462,7 +461,7 @@ private[fs2] object CompileScope {
   /**
     * A context of interruption status. This is shared from the parent that was created as interruptible to all
     * its children. It assures consistent view of the interruption through the stack
-    * @param concurrent   ConcurrentThrow, used to create interruption at Eval.
+    * @param concurrent   Concurrent, used to create interruption at Eval.
     *                 If signalled with None, normal interruption is signalled. If signaled with Some(err) failure is signalled.
     * @param ref      When None, scope is not interrupted,
     *                 when Some(None) scope was interrupted, and shall continue with `whenInterrupted`
@@ -476,10 +475,10 @@ private[fs2] object CompileScope {
       ref: Ref[F, Option[InterruptionOutcome]],
       interruptRoot: Token,
       cancelParent: F[Unit]
-  )(implicit val concurrentThrow: ConcurrentThrow[F], mkRef: Ref.Mk[F]) { self =>
+  )(implicit val Concurrent: Concurrent[F]) { self =>
 
     def complete(outcome: InterruptionOutcome): F[Unit] =
-      ref.update(_.orElse(Some(outcome))).guarantee(deferred.complete(outcome).attempt.void)
+      ref.update(_.orElse(Some(outcome))).guarantee(deferred.complete(outcome).void)
 
     /**
       * Creates a [[InterruptContext]] for a child scope which can be interruptible as well.
@@ -520,15 +519,15 @@ private[fs2] object CompileScope {
 
   private object InterruptContext {
 
-    def apply[F[_]: Monad: Ref.Mk](
+    def apply[F[_]](
         interruptible: Interruptible[F],
         newScopeId: Token,
         cancelParent: F[Unit]
     ): F[InterruptContext[F]] = {
       import interruptible._
       for {
-        ref <- fs2.tc.Concurrent[F].refOf[Option[InterruptionOutcome]](None)
-        deferred <- fs2.tc.Concurrent[F].deferred[InterruptionOutcome]
+        ref <- Concurrent[F].ref[Option[InterruptionOutcome]](None)
+        deferred <- Concurrent[F].deferred[InterruptionOutcome]
       } yield InterruptContext[F](
         deferred = deferred,
         ref = ref,

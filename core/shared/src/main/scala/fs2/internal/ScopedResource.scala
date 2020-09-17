@@ -21,11 +21,10 @@
 
 package fs2.internal
 
-import cats.MonadError
 import cats.effect.Resource
-import cats.effect.concurrent.Ref
 import cats.implicits._
-import fs2.Scope
+
+import fs2.{Compiler, Scope}
 
 /**
   * Represents a resource acquired during stream interpretation.
@@ -125,9 +124,9 @@ private[internal] object ScopedResource {
 
   private[this] val initial = State(open = true, finalizer = None, leases = 0)
 
-  def create[F[_]](implicit F: MonadError[F, Throwable], mkRef: Ref.Mk[F]): F[ScopedResource[F]] =
+  def create[F[_]](implicit F: Compiler.Target[F]): F[ScopedResource[F]] =
     for {
-      state <- Ref.of[F, State[F]](initial)
+      state <- F.ref[State[F]](initial)
       token <- Token[F]
     } yield new ScopedResource[F] {
 

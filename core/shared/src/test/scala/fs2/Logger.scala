@@ -42,7 +42,7 @@ trait Logger[F[_]] {
 
 object Logger {
   def apply[F[_]: Sync]: F[Logger[F]] =
-    Ref.of(Nil: List[LogEvent]).map { ref =>
+    Ref[F].of(Nil: List[LogEvent]).map { ref =>
       new Logger[F] {
         def log(e: LogEvent): F[Unit] = ref.update(acc => e :: acc)
         def get: F[List[LogEvent]] = ref.get.map(_.reverse)

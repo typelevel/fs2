@@ -27,7 +27,7 @@ import java.nio.file._
 import java.nio.file.attribute.{BasicFileAttributes, FileAttribute, PosixFilePermission}
 import java.util.stream.{Stream => JStream}
 
-import cats.effect.{Async, Resource, Sync, TemporalThrow}
+import cats.effect.{Async, Resource, Sync, Temporal}
 import cats.syntax.all._
 
 import fs2.io.CollectionCompat._
@@ -73,7 +73,7 @@ package object file {
     *
     * If an error occurs while reading from the file, the overall stream fails.
     */
-  def tail[F[_]: Sync: TemporalThrow](
+  def tail[F[_]: Sync: Temporal](
       path: Path,
       chunkSize: Int,
       offset: Long = 0L,

@@ -21,7 +21,9 @@
 
 package fs2.internal
 
-final class Interruptible[F[_]](implicit val concurrent: fs2.tc.Concurrent[F])
+import cats.effect.Concurrent
+
+final class Interruptible[F[_]](implicit val concurrent: Concurrent[F])
 object Interruptible {
-  implicit def instance[F[_]: fs2.tc.Concurrent]: Interruptible[F] = new Interruptible[F]
+  implicit def instance[F[_]: Concurrent]: Interruptible[F] = new Interruptible[F]
 }

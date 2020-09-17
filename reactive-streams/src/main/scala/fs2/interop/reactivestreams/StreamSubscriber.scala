@@ -133,30 +133,31 @@ object StreamSubscriber {
             o -> (F.delay(s.cancel) >> F.raiseError(err))
         }
         case OnNext(a) => {
-          case WaitingOnUpstream(s, r) => Idle(s) -> r.complete(a.some.asRight)
+          case WaitingOnUpstream(s, r) => Idle(s) -> r.complete(a.some.asRight).void
           case DownstreamCancellation  => DownstreamCancellation -> F.unit
           case o                       => o -> F.raiseError(new Error(s"received record [$a] in invalid state [$o]"))
         }
         case OnComplete => {
-          case WaitingOnUpstream(_, r) => UpstreamCompletion -> r.complete(None.asRight)
+          case WaitingOnUpstream(_, r) => UpstreamCompletion -> r.complete(None.asRight).void
           case _                       => UpstreamCompletion -> F.unit
         }
         case OnError(e) => {
-          case WaitingOnUpstream(_, r) => UpstreamError(e) -> r.complete(e.asLeft)
+          case WaitingOnUpstream(_, r) => UpstreamError(e) -> r.complete(e.asLeft).void
           case _                       => UpstreamError(e) -> F.unit
         }
         case OnFinalize => {
           case WaitingOnUpstream(sub, r) =>
-            DownstreamCancellation -> (F.delay(sub.cancel) >> r.complete(None.asRight))
+            DownstreamCancellation -> (F.delay(sub.cancel) >> r.complete(None.asRight)).void
           case Idle(sub) => DownstreamCancellation -> F.delay(sub.cancel)
           case o         => o -> F.unit
         }
         case OnDequeue(r) => {
           case Uninitialized          => RequestBeforeSubscription(r) -> F.unit
           case Idle(sub)              => WaitingOnUpstream(sub, r) -> F.delay(sub.request(1))
-          case err @ UpstreamError(e) => err -> r.complete(e.asLeft)
-          case UpstreamCompletion     => UpstreamCompletion -> r.complete(None.asRight)
-          case o                      => o -> r.complete((new Error(s"received request in invalid state [$o]")).asLeft)
+          case err @ UpstreamError(e) => err -> r.complete(e.asLeft).void
+          case UpstreamCompletion     => UpstreamCompletion -> r.complete(None.asRight).void
+          case o =>
+            o -> r.complete((new Error(s"received request in invalid state [$o]")).asLeft).void
         }
       }
 

@@ -113,7 +113,7 @@ class StreamConcurrentlySuite extends Fs2Suite {
                       finRef.update(_ :+ "Inner") >> // signal finalizer invoked
                       IO.raiseError[Unit](new Err) // signal a failure
                   ) >> // flag the concurrently had chance to start, as if the `s` will be empty `runner` may not be evaluated at all.
-                  Stream.exec(halt.complete(())) // immediately interrupt the outer stream
+                  Stream.exec(halt.complete(()).void) // immediately interrupt the outer stream
 
               Stream
                 .bracket(IO.unit)(_ => finRef.update(_ :+ "Outer"))

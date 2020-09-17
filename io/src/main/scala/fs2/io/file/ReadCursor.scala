@@ -28,7 +28,7 @@ import scala.concurrent.duration.FiniteDuration
 import cats.{Functor, ~>}
 import cats.arrow.FunctionK
 import cats.syntax.all._
-import cats.effect.{Resource, Sync, TemporalThrow}
+import cats.effect.{Resource, Sync, Temporal}
 
 import java.nio.file._
 
@@ -99,7 +99,7 @@ final case class ReadCursor[F[_]](file: FileHandle[F], offset: Long) {
     * polling for updates
     */
   def tail(chunkSize: Int, pollDelay: FiniteDuration)(implicit
-      t: TemporalThrow[F]
+      t: Temporal[F]
   ): Pull[F, Byte, ReadCursor[F]] =
     readPull(chunkSize).flatMap {
       case Some((next, chunk)) => Pull.output(chunk) >> next.tail(chunkSize, pollDelay)

@@ -980,7 +980,7 @@ class StreamSuite extends Fs2Suite {
               .resource
               .drain
               .use(_ => IO.unit)
-              .guaranteeCase(stop.complete)
+              .guaranteeCase(stop.complete(_).void)
 
             r.start.flatMap(fiber => IO.sleep(200.millis) >> fiber.cancel >> stop.get)
           }

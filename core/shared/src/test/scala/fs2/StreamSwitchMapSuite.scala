@@ -112,7 +112,7 @@ class StreamSwitchMapSuite extends Fs2Suite {
         .flatMap { verdict =>
           Stream.eval(Ref[IO].of(false)).flatMap { innerReleased =>
             s.delayBy[IO](25.millis)
-              .onFinalize(innerReleased.get.flatMap(inner => verdict.complete(inner)))
+              .onFinalize(innerReleased.get.flatMap(inner => verdict.complete(inner).void))
               .switchMap(_ => Stream.raiseError[IO](new Err).onFinalize(innerReleased.set(true)))
               .attempt
               .drain ++

@@ -158,10 +158,12 @@ package object io {
         // stream and finalization of the write stream, so we capture the error
         // that occurs when writing and rethrow it.
         val write = f(os).guaranteeCase((outcome: Outcome[F, Throwable, Unit]) =>
-          Sync[F].blocking(os.close()) *> err.complete(outcome match {
-            case Outcome.Errored(t) => Some(t)
-            case _                  => None
-          })
+          Sync[F].blocking(os.close()) *> err
+            .complete(outcome match {
+              case Outcome.Errored(t) => Some(t)
+              case _                  => None
+            })
+            .void
         )
         val read = readInputStream(is.pure[F], chunkSize, closeAfterUse = false)
         read.concurrently(Stream.eval(write)) ++ Stream.eval(err.get).flatMap {

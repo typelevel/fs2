@@ -62,8 +62,8 @@ private[tls] trait InputOutputBuffer[F[_]] {
 private[tls] object InputOutputBuffer {
   def apply[F[_]: Sync](inputSize: Int, outputSize: Int): F[InputOutputBuffer[F]] =
     for {
-      inBuff <- Ref.of[F, ByteBuffer](ByteBuffer.allocate(inputSize))
-      outBuff <- Ref.of[F, ByteBuffer](ByteBuffer.allocate(outputSize))
+      inBuff <- Ref[F].of[ByteBuffer](ByteBuffer.allocate(inputSize))
+      outBuff <- Ref[F].of[ByteBuffer](ByteBuffer.allocate(outputSize))
     } yield new InputOutputBuffer[F] {
 
       def input(data: Chunk[Byte]): F[Unit] =

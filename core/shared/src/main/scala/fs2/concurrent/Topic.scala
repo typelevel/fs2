@@ -23,6 +23,7 @@ package fs2
 package concurrent
 
 import cats.Eq
+import cats.effect.Concurrent
 import cats.syntax.all._
 
 import fs2.internal.{SizedQueue, Token}
@@ -107,7 +108,7 @@ object Topic {
     * Constructs a `Topic` for a provided `Concurrent` datatype. The
     * `initial` value is immediately published.
     */
-  def apply[F[_], A](initial: A)(implicit F: tc.Concurrent[F]): F[Topic[F, A]] = {
+  def apply[F[_], A](initial: A)(implicit F: Concurrent[F]): F[Topic[F, A]] = {
     implicit def eqInstance: Eq[Strategy.State[A]] =
       Eq.instance[Strategy.State[A]](_.subscribers.keySet == _.subscribers.keySet)
 
