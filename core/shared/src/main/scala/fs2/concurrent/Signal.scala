@@ -203,6 +203,39 @@ object SignallingRef {
 
     override def set(a: A): F[Unit] = update(_ => a)
 
+    override def update(f: A => A): F[Unit] =
+      modify(a => f(a) -> ())
+
+    override def modify[B](f: A => (A, B)): F[B] =
+      state.modify { case SignalState(a, updates, listeners) =>
+        val (newA, result) = f(a)
+        val newUpdates = updates + 1
+        val newState = SignalState[F, A](newA, newUpdates, Map.empty)
+        val action = listeners.toVector.traverse { case (_, deferred) =>
+          F.start(deferred.complete(newA -> newUpdates))
+        }
+        newState -> (action *> result.pure[F])
+      }.flatten
+
+    override def tryModify[B](f: A => (A, B)): F[Option[B]] =
+      state
+        .tryModify { case SignalState(a, updates, listeners) =>
+          val (newA, result) = f(a)
+          val newUpdates = updates + 1
+          val newState = SignalState[F, A](newA, newUpdates, Map.empty)
+          val action = listeners.toVector.traverse { case (_, deferred) =>
+            F.start(deferred.complete(newA -> newUpdates))
+          }
+          newState -> (action *> result.pure[F])
+        }
+        .flatMap {
+          case None     => F.pure(None)
+          case Some(fb) => fb.map(Some(_))
+        }
+
+    override def tryUpdate(f: A => A): F[Boolean] =
+      tryModify(a => f(a) -> ()).map(_.isDefined)
+
     override def getAndSet(a: A): F[A] = modify(old => (a, old))
 
     override def access: F[(A, A => F[Boolean])] =
@@ -221,39 +254,6 @@ object SignallingRef {
 
         (value, setter)
       }
-
-    override def tryUpdate(f: A => A): F[Boolean] =
-      F.map(tryModify(a => (f(a), ())))(_.isDefined)
-
-    override def tryModify[B](f: A => (A, B)): F[Option[B]] =
-      state
-        .tryModify { case SignalState(a, updates, listeners) =>
-          val (newA, result) = f(a)
-          val newUpdates = updates + 1
-          val newState = SignalState[F, A](newA, newUpdates, Map.empty)
-          val action = listeners.toVector.traverse { case (_, deferred) =>
-            F.start(deferred.complete(newA -> newUpdates))
-          }
-          newState -> (action *> result.pure[F])
-        }
-        .flatMap {
-          case None     => F.pure(None)
-          case Some(fb) => fb.map(Some(_))
-        }
-
-    override def update(f: A => A): F[Unit] =
-      modify(a => (f(a), ()))
-
-    override def modify[B](f: A => (A, B)): F[B] =
-      state.modify { case SignalState(a, updates, listeners) =>
-        val (newA, result) = f(a)
-        val newUpdates = updates + 1
-        val newState = SignalState[F, A](newA, newUpdates, Map.empty)
-        val action = listeners.toVector.traverse { case (_, deferred) =>
-          F.start(deferred.complete(newA -> newUpdates))
-        }
-        newState -> (action *> result.pure[F])
-      }.flatten
 
     override def tryModifyState[B](state: State[A, B]): F[Option[B]] = {
       val f = state.runF.value
