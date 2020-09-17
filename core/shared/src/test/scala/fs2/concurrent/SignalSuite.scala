@@ -84,11 +84,15 @@ class SignalSuite extends Fs2Suite {
       s <- SignallingRef[IO, Long](0L)
       access <- s.access
       (v, set) = access
-      r1 <- set(v)
-      r2 <- set(v)
+      v1 = v + 1
+      v2 = v1 + 1
+      r1 <- set(v1)
+      r2 <- set(v2)
+      r3 <- s.get
     } yield {
       assert(r1 == true)
       assert(r2 == false)
+      assert(r3 == v1)
     }
   }
 

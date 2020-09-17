@@ -205,11 +205,7 @@ object SignallingRef {
 
     override def access: F[(A, A => F[Boolean])] =
       state.access.map { case (snapshot, set) =>
-        val setter = { (a: A) =>
-          if (a == snapshot._1) set((a, snapshot._2, snapshot._3))
-          else F.pure(false)
-        }
-
+        val setter = { (a: A) => set((a, snapshot._2, snapshot._3)) }
         (snapshot._1, setter)
       }
 
