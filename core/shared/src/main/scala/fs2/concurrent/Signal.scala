@@ -162,11 +162,13 @@ object SignallingRef {
     * Builds a `SignallingRef` for for effect `F`, initialized to the supplied value.
     */
   def of[F[_], A](initial: A)(implicit F: Concurrent[F]): F[SignallingRef[F, A]] =
-    F.ref[(A, Long, Map[Token, Deferred[F, (A, Long)]])]((initial, 0L, Map.empty))
-      .map(state => new SignallingRefImpl[F, A](state))
+    F.ref(SignalState[F, A](initial, 0L, Map.empty))
+      .map(state => new SignallingRef.Impl[F, A](state))
 
-  private final class SignallingRefImpl[F[_], A](
-      state: Ref[F, (A, Long, Map[Token, Deferred[F, (A, Long)]])]
+  private case class SignalState[F[_], A](value: A, updates: Long, listeners: Map[Token, Deferred[F, (A, Long)]])
+
+  private final class Impl[F[_], A](
+      state: Ref[F, SignalState[F, A]] // (A, Long, Map[Token, Deferred[F, (A, Long)]])]
   )(implicit F: Concurrent[F])
       extends SignallingRef[F, A] {
 
@@ -180,9 +182,9 @@ object SignallingRef {
         def getNext: F[(A, Long)] =
           F.deferred[(A, Long)]
             .flatMap { deferred =>
-              state.modify { case s @ (a, updates, listeners) =>
+              state.modify { case s @ SignalState(a, updates, listeners) =>
                 if (updates != lastUpdate) s -> (a -> updates).pure[F]
-                else (a, updates, listeners + (id -> deferred)) -> deferred.get
+                else SignalState(a, updates, listeners + (id -> deferred)) -> deferred.get
               }.flatten
             }
 
@@ -190,10 +192,10 @@ object SignallingRef {
       }
 
       def cleanup(id: Token): F[Unit] =
-        state.update(s => s.copy(_3 = s._3 - id))
+        state.update(s => s.copy(listeners = s.listeners - id))
 
       Stream.bracket(Token[F])(cleanup).flatMap { id =>
-        Stream.eval(state.get).flatMap { case (a, l, _) =>
+        Stream.eval(state.get).flatMap { case SignalState(a, l, _) =>
           Stream.emit(a) ++ go(id, l)
         }
       }
@@ -204,10 +206,10 @@ object SignallingRef {
     override def getAndSet(a: A): F[A] = modify(old => (a, old))
 
     override def access: F[(A, A => F[Boolean])] =
-      state.access.map { case ((value, updates, listeners), set) =>
+      state.access.map { case ( SignalState(value, updates, listeners), set) =>
         val setter = { (newValue: A) =>
           val newUpdates = updates + 1
-          val newState = (newValue, newUpdates, Map.empty[Token, Deferred[F, (A, Long)]])
+          val newState = SignalState[F, A](newValue, newUpdates, Map.empty)
           val notifyListeners = listeners.toVector.traverse { case (_, deferred) =>
             F.start(deferred.complete(newValue -> newUpdates))
           }
@@ -225,10 +227,10 @@ object SignallingRef {
 
     override def tryModify[B](f: A => (A, B)): F[Option[B]] =
       state
-        .tryModify { case (a, updates, listeners) =>
+        .tryModify { case SignalState(a, updates, listeners) =>
           val (newA, result) = f(a)
           val newUpdates = updates + 1
-          val newState = (newA, newUpdates, Map.empty[Token, Deferred[F, (A, Long)]])
+          val newState = SignalState[F, A](newA, newUpdates, Map.empty)
           val action = listeners.toVector.traverse { case (_, deferred) =>
             F.start(deferred.complete(newA -> newUpdates))
           }
@@ -243,10 +245,10 @@ object SignallingRef {
       modify(a => (f(a), ()))
 
     override def modify[B](f: A => (A, B)): F[B] =
-      state.modify { case (a, updates, listeners) =>
+      state.modify { case SignalState(a, updates, listeners) =>
         val (newA, result) = f(a)
         val newUpdates = updates + 1
-        val newState = (newA, newUpdates, Map.empty[Token, Deferred[F, (A, Long)]])
+        val newState = SignalState[F, A](newA, newUpdates, Map.empty)
         val action = listeners.toVector.traverse { case (_, deferred) =>
           F.start(deferred.complete(newA -> newUpdates))
         }
