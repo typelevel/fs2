@@ -168,7 +168,7 @@ object SignallingRef {
   private case class SignalState[F[_], A](value: A, updates: Long, listeners: Map[Token, Deferred[F, (A, Long)]])
 
   private final class Impl[F[_], A](
-      state: Ref[F, SignalState[F, A]] // (A, Long, Map[Token, Deferred[F, (A, Long)]])]
+      state: Ref[F, SignalState[F, A]]
   )(implicit F: Concurrent[F])
       extends SignallingRef[F, A] {
 
@@ -184,7 +184,7 @@ object SignallingRef {
             .flatMap { deferred =>
               state.modify { case s @ SignalState(a, updates, listeners) =>
                 if (updates != lastUpdate) s -> (a -> updates).pure[F]
-                else SignalState(a, updates, listeners + (id -> deferred)) -> deferred.get
+                else s.copy(listeners = listeners + (id -> deferred)) -> deferred.get
               }.flatten
             }
 
@@ -195,8 +195,8 @@ object SignallingRef {
         state.update(s => s.copy(listeners = s.listeners - id))
 
       Stream.bracket(Token[F])(cleanup).flatMap { id =>
-        Stream.eval(state.get).flatMap { case SignalState(a, l, _) =>
-          Stream.emit(a) ++ go(id, l)
+        Stream.eval(state.get).flatMap { state =>
+          Stream.emit(state.value) ++ go(id, state.updates)
         }
       }
     }
