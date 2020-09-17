@@ -201,32 +201,36 @@ object SignallingRef {
       }
     }
 
+    def updateAndNotify(state: SignalState[F, A], newValue: A): (SignalState[F, A], F[Unit]) = {
+      val newUpdates = state.updates + 1
+      val newState = SignalState[F, A](newValue, newUpdates, Map.empty)
+      val notify = state.listeners.toVector.traverse { case (_, deferred) =>
+        F.start(deferred.complete(newValue -> newUpdates))
+      }
+
+      newState -> notify.void
+    }
+
     override def set(a: A): F[Unit] = update(_ => a)
 
     override def update(f: A => A): F[Unit] =
       modify(a => f(a) -> ())
 
     override def modify[B](f: A => (A, B)): F[B] =
-      state.modify { case SignalState(a, updates, listeners) =>
-        val (newA, result) = f(a)
-        val newUpdates = updates + 1
-        val newState = SignalState[F, A](newA, newUpdates, Map.empty)
-        val action = listeners.toVector.traverse { case (_, deferred) =>
-          F.start(deferred.complete(newA -> newUpdates))
-        }
-        newState -> (action *> result.pure[F])
+      state.modify { state =>
+        val (newValue, result) = f(state.value)
+        val (newState, notify) = updateAndNotify(state, newValue)
+
+        newState -> notify.as(result)
       }.flatten
 
     override def tryModify[B](f: A => (A, B)): F[Option[B]] =
       state
-        .tryModify { case SignalState(a, updates, listeners) =>
-          val (newA, result) = f(a)
-          val newUpdates = updates + 1
-          val newState = SignalState[F, A](newA, newUpdates, Map.empty)
-          val action = listeners.toVector.traverse { case (_, deferred) =>
-            F.start(deferred.complete(newA -> newUpdates))
-          }
-          newState -> (action *> result.pure[F])
+        .tryModify { state =>
+          val (newValue, result) = f(state.value)
+          val (newState, notify) = updateAndNotify(state, newValue)
+
+          newState -> notify.as(result)
         }
         .flatMap {
           case None     => F.pure(None)
@@ -239,20 +243,16 @@ object SignallingRef {
     override def getAndSet(a: A): F[A] = modify(old => (a, old))
 
     override def access: F[(A, A => F[Boolean])] =
-      state.access.map { case ( SignalState(value, updates, listeners), set) =>
+      state.access.map { case (state, set) => 
         val setter = { (newValue: A) =>
-          val newUpdates = updates + 1
-          val newState = SignalState[F, A](newValue, newUpdates, Map.empty)
-          val notifyListeners = listeners.toVector.traverse { case (_, deferred) =>
-            F.start(deferred.complete(newValue -> newUpdates))
-          }
+          val (newState, notify) = updateAndNotify(state, newValue)
 
           set(newState).flatTap { succeeded =>
-            notifyListeners.whenA(succeeded)
+            notify.whenA(succeeded)
           }
         }
 
-        (value, setter)
+        (state.value, setter)
       }
 
     override def tryModifyState[B](state: State[A, B]): F[Option[B]] = {
