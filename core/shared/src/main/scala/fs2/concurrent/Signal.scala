@@ -166,13 +166,24 @@ object SignallingRef {
 
     F.ref(State(initial, 0L, Map.empty))
       .map { state =>
+
+        def updateAndNotify[B](state: State, f: A => (A, B)): (State, F[B]) = {
+          val (newValue, result) = f(state.value)
+          val newUpdates = state.updates + 1
+          val newState = State(newValue, newUpdates, Map.empty)
+          val notifyListeners = state.listeners.values.toVector.traverse_ { listener =>
+            listener.complete(newValue -> newUpdates)
+          }
+
+          newState -> notifyListeners.as(result)
+        }
+
         new SignallingRef[F, A] {
-          override def get: F[A] = state.get.map(_.value)
+          def get: F[A] = state.get.map(_.value)
 
-          override def continuous: Stream[F, A] =
-            Stream.repeatEval(get)
+          def continuous: Stream[F, A] = Stream.repeatEval(get)
 
-          override def discrete: Stream[F, A] = {
+          def discrete: Stream[F, A] = {
             def go(id: Token, lastUpdate: Long): Stream[F, A] = {
               def getNext: F[(A, Long)] =
                 F.deferred[(A, Long)]
@@ -196,33 +207,20 @@ object SignallingRef {
             }
           }
 
-          def updateAndNotify[B](state: State, f: A => (A, B)): (State, F[B]) = {
-            val (newValue, result) = f(state.value)
-            val newUpdates = state.updates + 1
-            val newState = State(newValue, newUpdates, Map.empty)
-            val notifyListeners = state.listeners.values.toVector.traverse_ { listener =>
-              listener.complete(newValue -> newUpdates)
-            }
+          def set(a: A): F[Unit] = update(_ => a)
 
-            newState -> notifyListeners.as(result)
-          }
+          def update(f: A => A): F[Unit] = modify(a => f(a) -> ())
 
-          override def set(a: A): F[Unit] = update(_ => a)
-
-          override def update(f: A => A): F[Unit] =
-            modify(a => f(a) -> ())
-
-          override def modify[B](f: A => (A, B)): F[B] =
+          def modify[B](f: A => (A, B)): F[B] =
             state.modify(updateAndNotify(_, f)).flatten
 
-          override def tryModify[B](f: A => (A, B)): F[Option[B]] =
+          def tryModify[B](f: A => (A, B)): F[Option[B]] =
             state.tryModify(updateAndNotify(_, f)).flatMap(_.sequence)
 
-          override def tryUpdate(f: A => A): F[Boolean] =
+          def tryUpdate(f: A => A): F[Boolean] =
             tryModify(a => f(a) -> ()).map(_.isDefined)
 
-
-          override def access: F[(A, A => F[Boolean])] =
+          def access: F[(A, A => F[Boolean])] =
             state.access.map { case (state, set) =>
               val setter = { (newValue: A) =>
                 val (newState, notifyListeners) =
@@ -236,17 +234,17 @@ object SignallingRef {
               (state.value, setter)
             }
 
-          override def tryModifyState[B](state: cats.data.State[A, B]): F[Option[B]] = {
+          def tryModifyState[B](state: cats.data.State[A, B]): F[Option[B]] = {
             val f = state.runF.value
             tryModify(a => f(a).value)
           }
 
-          override def modifyState[B](state: cats.data.State[A, B]): F[B] = {
+          def modifyState[B](state: cats.data.State[A, B]): F[B] = {
             val f = state.runF.value
             modify(a => f(a).value)
           }
         }
-   }
+      }
 
 
   }
