@@ -96,7 +96,7 @@ class SignalSuite extends Fs2Suite {
     }
   }
 
-  test("access updates discrete".ignore) {
+  test("access updates discrete") {
     SignallingRef[IO, Int](0).flatMap { s =>
       def cas: IO[Unit] =
         s.access.flatMap { case (v, set) =>
