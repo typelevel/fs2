@@ -73,13 +73,12 @@ object Signal extends SignalInstances {
       def get: F[B] = Functor[F].map(fa.get)(f)
     }
 
-  // TODO do we need this?
   implicit class SignalOps[F[_], A](val self: Signal[F, A]) extends AnyVal {
     /**
       * Converts this signal to signal of `B` by applying `f`.
       */
     def map[B](f: A => B)(implicit F: Functor[F]): Signal[F, B] =
-      self.map(f)
+      Signal.mapped(self)(f)
   }
 
   implicit class BooleanSignalOps[F[_]](val self: Signal[F, Boolean]) extends AnyVal {
