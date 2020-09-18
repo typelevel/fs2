@@ -69,6 +69,7 @@ object Signal extends SignalInstances {
     }
 
   implicit class SignalOps[F[_], A](val self: Signal[F, A]) extends AnyVal {
+
     /**
       * Converts this signal to signal of `B` by applying `f`.
       */
@@ -78,7 +79,7 @@ object Signal extends SignalInstances {
 
   implicit class BooleanSignalOps[F[_]](val self: Signal[F, Boolean]) extends AnyVal {
     def interrupt[A](
-      s: Stream[F, A]
+        s: Stream[F, A]
     )(implicit F: Concurrent[F]): Stream[F, A] =
       s.interruptWhen(self)
   }
@@ -112,7 +113,6 @@ object SignallingRef {
 
     F.ref(State(initial, 0L, Map.empty))
       .map { state =>
-
         def updateAndNotify[B](state: State, f: A => (A, B)): (State, F[B]) = {
           val (newValue, result) = f(state.value)
           val lastUpdate = state.lastUpdate + 1
@@ -200,32 +200,31 @@ object SignallingRef {
     new Invariant[SignallingRef[F, *]] {
       override def imap[A, B](fa: SignallingRef[F, A])(f: A => B)(g: B => A): SignallingRef[F, B] =
         new SignallingRef[F, B] {
-           def get: F[B] = fa.get.map(f)
-           def discrete: Stream[F, B] = fa.discrete.map(f)
-           def continuous: Stream[F, B] = fa.continuous.map(f)
-           def set(b: B): F[Unit] = fa.set(g(b))
-           def access: F[(B, B => F[Boolean])] =
+          def get: F[B] = fa.get.map(f)
+          def discrete: Stream[F, B] = fa.discrete.map(f)
+          def continuous: Stream[F, B] = fa.continuous.map(f)
+          def set(b: B): F[Unit] = fa.set(g(b))
+          def access: F[(B, B => F[Boolean])] =
             fa.access.map { case (getter, setter) =>
               (f(getter), b => setter(g(b)))
             }
-           def tryUpdate(h: B => B): F[Boolean] = fa.tryUpdate(a => g(h(f(a))))
-           def tryModify[B2](h: B => (B, B2)): F[Option[B2]] =
+          def tryUpdate(h: B => B): F[Boolean] = fa.tryUpdate(a => g(h(f(a))))
+          def tryModify[B2](h: B => (B, B2)): F[Option[B2]] =
             fa.tryModify(a => h(f(a)).leftMap(g))
-           def update(bb: B => B): F[Unit] =
+          def update(bb: B => B): F[Unit] =
             modify(b => (bb(b), ()))
-           def modify[B2](bb: B => (B, B2)): F[B2] =
+          def modify[B2](bb: B => (B, B2)): F[B2] =
             fa.modify { a =>
               val (a2, b2) = bb(f(a))
               g(a2) -> b2
             }
-           def tryModifyState[C](state: cats.data.State[B, C]): F[Option[C]] =
+          def tryModifyState[C](state: cats.data.State[B, C]): F[Option[C]] =
             fa.tryModifyState(state.dimap(f)(g))
-           def modifyState[C](state: cats.data.State[B, C]): F[C] =
+          def modifyState[C](state: cats.data.State[B, C]): F[C] =
             fa.modifyState(state.dimap(f)(g))
         }
     }
 }
-
 
 private[concurrent] trait SignalInstances extends SignalLowPriorityInstances {
   implicit def applicativeInstance[F[_]: Concurrent]: Applicative[Signal[F, *]] = {
@@ -290,4 +289,3 @@ private[concurrent] trait SignalLowPriorityInstances {
         Signal.mapped(fa)(f)
     }
 }
-

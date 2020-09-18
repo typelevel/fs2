@@ -72,8 +72,8 @@ abstract class Fs2Suite extends ScalaCheckEffectSuite with TestPlatform with Gen
       }
   }
 
-
   implicit class Deterministically[F[_], A](private val self: IO[A]) {
+
     /**
       * Allows to run an IO deterministically through TextContext.
       * Assumes you want to run the IO to completion, if you need to step through execution,
@@ -103,7 +103,6 @@ abstract class Fs2Suite extends ScalaCheckEffectSuite with TestPlatform with Gen
     (ctx, runtime)
   }
 
-
   /** Returns a stream that has a 10% chance of failing with an error on each output value. */
   protected def spuriousFail[F[_]: RaiseThrowable, O](s: Stream[F, O]): Stream[F, O] =
     Stream.suspend {
@@ -130,7 +129,11 @@ abstract class Fs2Suite extends ScalaCheckEffectSuite with TestPlatform with Gen
       property(s"${name}.${id}")(prop)
 
   override def munitValueTransforms: List[ValueTransform] =
-    super.munitValueTransforms ++ List(munitIOTransform, munitSyncIOTransform, munitDeterministicIOTransform)
+    super.munitValueTransforms ++ List(
+      munitIOTransform,
+      munitSyncIOTransform,
+      munitDeterministicIOTransform
+    )
 
   private val munitIOTransform: ValueTransform =
     new ValueTransform("IO", { case e: IO[_] => e.unsafeToFuture() })

@@ -906,7 +906,8 @@ class StreamCombinatorsSuite extends Fs2Suite {
 
   group("pauseWhen") {
     test("pause and resume") {
-      (SignallingRef[IO, Boolean](false) product Ref[IO].of(0))
+      SignallingRef[IO, Boolean](false)
+        .product(Ref[IO].of(0))
         .flatMap { case (pause, counter) =>
           def counterChangesFrom(i: Int): IO[Unit] =
             counter.get.flatMap { v =>
@@ -937,7 +938,6 @@ class StreamCombinatorsSuite extends Fs2Suite {
             _ <- counterChangesFrom(v)
           } yield ()
 
-
           for {
             fiber <- stream.compile.drain.start
             _ <- behaviour.timeout(5.seconds).guarantee(fiber.cancel)
@@ -946,13 +946,16 @@ class StreamCombinatorsSuite extends Fs2Suite {
     }
 
     test("starts in paused state") {
-      (SignallingRef[IO, Boolean](true) product Ref[IO].of(false))
+      SignallingRef[IO, Boolean](true)
+        .product(Ref[IO].of(false))
         .flatMap { case (pause, written) =>
           Stream
             .eval(written.set(true))
             .pauseWhen(pause)
             .timeout(200.millis)
-            .compile.drain.attempt >> written.get.map(assertEquals(_, false))
+            .compile
+            .drain
+            .attempt >> written.get.map(assertEquals(_, false))
         }
     }
   }

@@ -2210,7 +2210,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       def writer = pauseWhenTrue.evalMap(pauseSignal.set).drain
 
       pauseWhen(pauseSignal).mergeHaltBoth(writer)
-  }
+    }
 
   /** Pause this stream when `pauseWhenTrue` is `true`, resume when it's `false`. */
   def pauseWhen[F2[x] >: F[x]: Concurrent](

@@ -21,7 +21,6 @@
 
 package fs2
 
-
 import cats.effect.{IO, SyncIO}
 import cats.syntax.all._
 
@@ -214,49 +213,49 @@ class StreamZipSuite extends Fs2Suite {
       }
     }
 
-      test("parZip evaluates effects with bounded concurrency") {
-        val (env, runtime) = createDeterministicRuntime
+    test("parZip evaluates effects with bounded concurrency") {
+      val (env, runtime) = createDeterministicRuntime
 
-        // track progress of the computation
-        @volatile var lhs: Int = 0
-        @volatile var rhs: Int = 0
-        @volatile var output: Vector[(String, Int)] = Vector()
+      // track progress of the computation
+      @volatile var lhs: Int = 0
+      @volatile var rhs: Int = 0
+      @volatile var output: Vector[(String, Int)] = Vector()
 
-        // synchronises lhs and rhs to test both sides of the race in parZip
-        def parZipRace[A, B](lhs: Stream[IO, A], rhs: Stream[IO, B]) = {
-          val rate = Stream(1, 2).repeat
-          val skewedRate = Stream(2, 1).repeat
-          def sync[C]: Pipe2[IO, C, Int, C] =
-            (in, rate) => rate.evalMap(n => IO.sleep(n.seconds)).zipRight(in)
+      // synchronises lhs and rhs to test both sides of the race in parZip
+      def parZipRace[A, B](lhs: Stream[IO, A], rhs: Stream[IO, B]) = {
+        val rate = Stream(1, 2).repeat
+        val skewedRate = Stream(2, 1).repeat
+        def sync[C]: Pipe2[IO, C, Int, C] =
+          (in, rate) => rate.evalMap(n => IO.sleep(n.seconds)).zipRight(in)
 
-          lhs.through2(rate)(sync).parZip(rhs.through2(skewedRate)(sync))
-        }
-
-        val stream = parZipRace(
-          Stream("a", "b", "c").evalTap(_ => IO { lhs = lhs + 1 }),
-          Stream(1, 2, 3).evalTap(_ => IO { rhs = rhs + 1 })
-        ).evalTap(x => IO { output = output :+ x })
-
-        val result = stream.compile.toVector.unsafeToFuture()(runtime)
-
-        // lhsAt, rhsAt and output at time T = [1s, 2s, ..]
-        val snapshots = Vector(
-          (1, 0, Vector()),
-          (1, 1, Vector("a" -> 1)),
-          (1, 2, Vector("a" -> 1)),
-          (2, 2, Vector("a" -> 1, "b" -> 2)),
-          (3, 2, Vector("a" -> 1, "b" -> 2)),
-          (3, 3, Vector("a" -> 1, "b" -> 2, "c" -> 3))
-        )
-
-        snapshots.foreach { snapshot =>
-          env.tick(1.second)
-          assertEquals((lhs, rhs, output), snapshot)
-        }
-
-        env.tick(1.second)
-        result.map(r => assertEquals(r, snapshots.last._3))(munitExecutionContext)
+        lhs.through2(rate)(sync).parZip(rhs.through2(skewedRate)(sync))
       }
+
+      val stream = parZipRace(
+        Stream("a", "b", "c").evalTap(_ => IO { lhs = lhs + 1 }),
+        Stream(1, 2, 3).evalTap(_ => IO { rhs = rhs + 1 })
+      ).evalTap(x => IO { output = output :+ x })
+
+      val result = stream.compile.toVector.unsafeToFuture()(runtime)
+
+      // lhsAt, rhsAt and output at time T = [1s, 2s, ..]
+      val snapshots = Vector(
+        (1, 0, Vector()),
+        (1, 1, Vector("a" -> 1)),
+        (1, 2, Vector("a" -> 1)),
+        (2, 2, Vector("a" -> 1, "b" -> 2)),
+        (3, 2, Vector("a" -> 1, "b" -> 2)),
+        (3, 3, Vector("a" -> 1, "b" -> 2, "c" -> 3))
+      )
+
+      snapshots.foreach { snapshot =>
+        env.tick(1.second)
+        assertEquals((lhs, rhs, output), snapshot)
+      }
+
+      env.tick(1.second)
+      result.map(r => assertEquals(r, snapshots.last._3))(munitExecutionContext)
+    }
   }
 
   property("zipWithIndex") {

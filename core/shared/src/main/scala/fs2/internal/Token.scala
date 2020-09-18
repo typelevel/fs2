@@ -31,6 +31,7 @@ final class Token private () extends Serializable {
 }
 
 object Token {
+
   /**
     * Token provides uniqueness by relying on object equality,
     * which means that `new Token` is actually a side-effect

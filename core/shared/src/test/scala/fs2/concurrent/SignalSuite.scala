@@ -106,7 +106,6 @@ class SignalSuite extends Fs2Suite {
       def updates =
         s.discrete.takeWhile(_ != 1).compile.drain
 
-
       updates.start.flatMap { fiber =>
         cas >> fiber.join.timeout(5.seconds)
       }
