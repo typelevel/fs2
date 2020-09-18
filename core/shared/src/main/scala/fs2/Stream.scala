@@ -2221,7 +2221,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
      stream.interruptWhen(pauseSignal.discrete.map(_.isEmpty))
     }
 
-  /** Alias for `pauseWhen(pauseWhenTrue.discrete)`. */
+  /** Pause this stream when `pauseWhenTrue` is `true`, resume when it's `false`. */
   def pauseWhen[F2[x] >: F[x]: Concurrent](
       pauseWhenTrue: Signal[F2, Boolean]
   ): Stream[F2, O] = {
