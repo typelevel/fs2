@@ -906,34 +906,34 @@ class StreamCombinatorsSuite extends Fs2Suite {
 
   test("pause") {
     (SignallingRef[IO, Boolean](false) product Ref[IO].of(0))
-      .flatMap { case (pause, count) =>
-        def countChangesFrom(i: Int): IO[Unit] =
-          count.get.flatMap { v =>
-            (IO.sleep(100.millis) >> countChangesFrom(i)).whenA(i == v)
+      .flatMap { case (pause, counter) =>
+        def counterChangesFrom(i: Int): IO[Unit] =
+          counter.get.flatMap { v =>
+            counterChangesFrom(i).whenA(i == v)
           }
 
-        def countStopsChanging: IO[Int] = {
+        def counterStopsChanging: IO[Int] = {
           def loop(i: Int): IO[Int] =
-            IO.sleep(100.millis) >> count.get.flatMap { v =>
+            counter.get.flatMap { v =>
               if (i == v) i.pure[IO] else loop(i)
             }
 
-          count.get.flatMap(loop)
+          counter.get.flatMap(loop)
         }
 
         val stream =
           Stream
             .iterate(0)(_ + 1)
             .covary[IO]
-            .evalMap(count.set)
+            .evalMap(counter.set)
             .pauseWhen(pause)
 
         val behaviour = for {
-          _ <- countChangesFrom(0)
+          _ <- counterChangesFrom(0)
           _ <- pause.set(true)
-          v <- countStopsChanging
+          v <- counterStopsChanging
           _ <- pause.set(false)
-          _ <- countChangesFrom(v)
+          _ <- counterChangesFrom(v)
         } yield ()
 
 
