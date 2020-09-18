@@ -2206,20 +2206,11 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   def pauseWhen[F2[x] >: F[x]: Concurrent](
       pauseWhenTrue: Stream[F2, Boolean]
   ): Stream[F2, O] =
-    pauseWhenTrue.noneTerminate.hold(Some(false)).flatMap { pauseSignal =>
-      def pauseIfNeeded = Stream.exec {
-        pauseSignal.get.flatMap {
-          case Some(false) => Applicative[F2].unit
-          case _           => pauseSignal.discrete.dropWhile(_.getOrElse(true)).take(1).compile.drain
-        }
-      }
+    Stream.eval(SignallingRef[F2, Boolean](false)).flatMap { pauseSignal =>
+      def writer = pauseWhenTrue.evalMap(pauseSignal.set).drain
 
-     val stream = pauseIfNeeded ++ chunks.flatMap { chunk =>
-       pauseIfNeeded ++ Stream.chunk(chunk)
-     }
-
-     stream.interruptWhen(pauseSignal.discrete.map(_.isEmpty))
-    }
+      pauseWhen(pauseSignal).mergeHaltBoth(writer)
+  }
 
   /** Pause this stream when `pauseWhenTrue` is `true`, resume when it's `false`. */
   def pauseWhen[F2[x] >: F[x]: Concurrent](
