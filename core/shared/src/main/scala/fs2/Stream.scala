@@ -2207,18 +2207,18 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       pauseWhenTrue: Stream[F2, Boolean]
   ): Stream[F2, O] =
     pauseWhenTrue.noneTerminate.hold(Some(false)).flatMap { pauseSignal =>
-      def pauseIfNeeded: F2[Unit] =
+      def pauseIfNeeded = Stream.exec {
         pauseSignal.get.flatMap {
           case Some(false) => Applicative[F2].unit
           case _           => pauseSignal.discrete.dropWhile(_.getOrElse(true)).take(1).compile.drain
         }
+      }
 
-      chunks
-        .flatMap { chunk =>
-          Stream.eval(pauseIfNeeded) >>
-            Stream.chunk(chunk)
-        }
-        .interruptWhen(pauseSignal.discrete.map(_.isEmpty))
+     val stream = pauseIfNeeded ++ chunks.flatMap { chunk =>
+       pauseIfNeeded ++ Stream.chunk(chunk)
+     }
+
+     stream.interruptWhen(pauseSignal.discrete.map(_.isEmpty))
     }
 
   /** Alias for `pauseWhen(pauseWhenTrue.discrete)`. */

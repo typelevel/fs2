@@ -945,7 +945,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
         }
     }
 
-    test("starts in paused state".only) {
+    test("starts in paused state") {
       (SignallingRef[IO, Boolean](true) product Ref[IO].of(false))
         .flatMap { case (pause, written) =>
           Stream
