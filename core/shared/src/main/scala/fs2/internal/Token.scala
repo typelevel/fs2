@@ -49,7 +49,7 @@ object Token {
     * - it's infallible
     * - it's not created in contexts that affect stack safety such as iteration
     *
-    * Given all these reasons, we suspend it via `flatMap` of
+    * Given all these reasons, we suspend it via `flatMap` instead of
     * using `Sync[F].delay`. Do not try this at home.
     *
     * Note: The `Compiler.Target` bound only resolves if `F` has an
