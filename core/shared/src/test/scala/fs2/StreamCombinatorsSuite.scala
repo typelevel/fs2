@@ -904,44 +904,57 @@ class StreamCombinatorsSuite extends Fs2Suite {
     }
   }
 
-  test("pause") {
-    (SignallingRef[IO, Boolean](false) product Ref[IO].of(0))
-      .flatMap { case (pause, counter) =>
-        def counterChangesFrom(i: Int): IO[Unit] =
-          counter.get.flatMap { v =>
-            counterChangesFrom(i).whenA(i == v)
-          }
-
-        def counterStopsChanging: IO[Int] = {
-          def loop(i: Int): IO[Int] =
+  group("pauseWhen") {
+    test("pause and resume") {
+      (SignallingRef[IO, Boolean](false) product Ref[IO].of(0))
+        .flatMap { case (pause, counter) =>
+          def counterChangesFrom(i: Int): IO[Unit] =
             counter.get.flatMap { v =>
-              if (i == v) i.pure[IO] else loop(i)
+              counterChangesFrom(i).whenA(i == v)
             }
 
-          counter.get.flatMap(loop)
+          def counterStopsChanging: IO[Int] = {
+            def loop(i: Int): IO[Int] =
+              counter.get.flatMap { v =>
+                if (i == v) i.pure[IO] else loop(i)
+              }
+
+            counter.get.flatMap(loop)
+          }
+
+          val stream =
+            Stream
+              .iterate(0)(_ + 1)
+              .covary[IO]
+              .evalMap(counter.set)
+              .pauseWhen(pause)
+
+          val behaviour = for {
+            _ <- counterChangesFrom(0)
+            _ <- pause.set(true)
+            v <- counterStopsChanging
+            _ <- pause.set(false)
+            _ <- counterChangesFrom(v)
+          } yield ()
+
+
+          for {
+            fiber <- stream.compile.drain.start
+            _ <- behaviour.timeout(5.seconds).guarantee(fiber.cancel)
+          } yield ()
         }
+    }
 
-        val stream =
+    test("starts in paused state".only) {
+      (SignallingRef[IO, Boolean](true) product Ref[IO].of(false))
+        .flatMap { case (pause, written) =>
           Stream
-            .iterate(0)(_ + 1)
-            .covary[IO]
-            .evalMap(counter.set)
+            .eval(written.set(true))
             .pauseWhen(pause)
-
-        val behaviour = for {
-          _ <- counterChangesFrom(0)
-          _ <- pause.set(true)
-          v <- counterStopsChanging
-          _ <- pause.set(false)
-          _ <- counterChangesFrom(v)
-        } yield ()
-
-
-        for {
-          fiber <- stream.compile.drain.start
-          _ <- behaviour.timeout(5.seconds).guarantee(fiber.cancel)
-        } yield ()
-      }
+            .timeout(200.millis)
+            .compile.drain.attempt >> written.get.map(assertEquals(_, false))
+        }
+    }
   }
 
   group("prefetch") {
