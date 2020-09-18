@@ -25,7 +25,7 @@ import scala.concurrent.duration._
 import scala.concurrent.TimeoutException
 
 import cats.effect.{IO, SyncIO}
-import cats.effect.concurrent.Semaphore
+import cats.effect.concurrent.{Ref, Semaphore}
 import cats.syntax.all._
 import org.scalacheck.Gen
 import org.scalacheck.Prop.forAll
@@ -904,27 +904,86 @@ class StreamCombinatorsSuite extends Fs2Suite {
     }
   }
 
-  test("pause") {
-    Stream
-      .eval(SignallingRef[IO, Boolean](false))
-      .flatMap { pause =>
-        Stream
-          .awakeEvery[IO](10.millis)
-          .scan(0)((acc, _) => acc + 1)
-          .evalMap { n =>
-            if (n % 2 != 0)
-              pause.set(true) >> ((Stream.sleep_[IO](10.millis) ++ Stream.eval(
-                pause.set(false)
-              )).compile.drain).start >> IO
-                .pure(n)
-            else IO.pure(n)
-          }
-          .take(5)
-          .pauseWhen(pause)
-      }
-      .compile
-      .toList
-      .map(it => assert(it == List(0, 1, 2, 3, 4)))
+  // pauseWhen, when the stream is in paused state, and gets interrupted
+  // - start, interruptWhen + deferred works
+  // - concurrently works
+  // - start then cancel hangs
+  // - start then cancel works if the stream is not paused anymore
+  test("pause".only) {
+    (SignallingRef[IO, Boolean](false) product Ref[IO].of(0))
+      .flatMap { case (pause, count) =>
+        cats.effect.concurrent.Deferred[IO, Unit].flatMap { d =>
+          val stream =
+          Stream
+            .iterate(0)(_ + 1)
+            .covary[IO]
+            .metered(1.second)
+            .debug()
+            .evalMap(count.set)
+            .pauseWhen(pause)
+          //  .interruptWhen(d.get.attempt)
+            .onFinalize(IO(println("hello")))
+
+        for  {
+          fiber <- stream.compile.drain.start
+          _ <- IO.sleep(1500.millis)
+          r1 <- count.get
+          _ <- IO(println(s"got $r1"))
+          _ <- pause.set(true)
+          _ <- IO(println("pause"))
+          _ <- IO.sleep(1500.millis)
+          r2 <- count.get
+          _ <- IO(println(s"got $r2"))
+
+          _ <- IO(println("let's wait"))
+          _ <- IO.sleep(3000.millis)
+         // _ <- pause.set(false)
+          _ <- IO(println("unpause"))
+          _ <- IO.sleep(1500.millis)
+          r3 <- count.get
+          _ <- IO(println(s"got $r3"))
+//          _ <- d.complete(())
+          _ <- fiber.cancel
+        } yield {
+          assertEquals(r1, 0)
+          assertEquals(r2, 1)
+          assertEquals(r3, 2)
+        }
+
+          Stream.eval(
+          for  {
+          _ <- IO.sleep(1500.millis)
+          r1 <- count.get
+          _ <- IO(println(s"got $r1"))
+          _ <- pause.set(true)
+          _ <- IO(println("pause"))
+          _ <- IO.sleep(1500.millis)
+          r2 <- count.get
+          _ <- IO(println(s"got $r2"))
+
+          _ <- IO(println("let's wait"))
+          _ <- IO.sleep(3000.millis)
+         // _ <- pause.set(false)
+          _ <- IO(println("unpause"))
+          _ <- IO.sleep(1500.millis)
+          r3 <- count.get
+          _ <- IO(println(s"got $r3"))
+        } yield {
+          assertEquals(r1, 0)
+          assertEquals(r2, 1)
+          assertEquals(r3, 2)
+        }).concurrently(stream).compile.drain
+
+}
+      }//.ticked
+
+    // SignallingRef[IO, Boolean](true).flatMap { wait =>
+    //   Stream.eval(wait.discrete.drop(1).take(1).compile.drain >> IO(println("yo"))).onFinalize(IO(println("hello"))).compile.drain.start.flatMap { f =>
+    //     IO(println("started")) >> IO.sleep(5.second) >> f.cancel
+    //   }.timeout(10.seconds)
+    // }
+    // val a = IO.sleep(1.second) >> IO(println("fork you"))
+    // val b = IO.sleep
   }
 
   group("prefetch") {
