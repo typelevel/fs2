@@ -215,7 +215,7 @@ class StreamZipSuite extends Fs2Suite {
     }
 
       test("parZip evaluates effects with bounded concurrency") {
-        val (env, runtime) = createTestRuntime
+        val (env, runtime) = createDeterministicRuntime
 
         // track progress of the computation
         @volatile var lhs: Int = 0

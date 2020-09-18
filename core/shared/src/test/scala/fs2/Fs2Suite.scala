@@ -22,7 +22,7 @@
 package fs2
 
 import scala.concurrent.{ExecutionContext, Future}
-import scala.concurrent.duration.FiniteDuration
+import scala.concurrent.duration._
 
 import cats.effect.{IO, Sync, SyncIO}
 import cats.effect.unsafe.{IORuntime, Scheduler}
@@ -72,8 +72,20 @@ abstract class Fs2Suite extends ScalaCheckEffectSuite with TestPlatform with Gen
       }
   }
 
+
+  implicit class Deterministically[F[_], A](private val self: IO[A]) {
+    /**
+      * Allows to run an IO deterministically through TextContext.
+      * Assumes you want to run the IO to completion, if you need to step through execution,
+      * you will have to do it manually, starting from `createDeterministicRuntime`
+      */
+    def ticked: Deterministic[A] = Deterministic(self)
+  }
+
+  case class Deterministic[A](fa: IO[A])
+
   /* Creates a new environment for deterministic tests which require stepping through */
-  protected def createTestRuntime: (TestContext, IORuntime) = {
+  protected def createDeterministicRuntime: (TestContext, IORuntime) = {
     val ctx = TestContext()
 
     val scheduler = new Scheduler {
@@ -118,7 +130,7 @@ abstract class Fs2Suite extends ScalaCheckEffectSuite with TestPlatform with Gen
       property(s"${name}.${id}")(prop)
 
   override def munitValueTransforms: List[ValueTransform] =
-    super.munitValueTransforms ++ List(munitIOTransform, munitSyncIOTransform)
+    super.munitValueTransforms ++ List(munitIOTransform, munitSyncIOTransform, munitDeterministicIOTransform)
 
   private val munitIOTransform: ValueTransform =
     new ValueTransform("IO", { case e: IO[_] => e.unsafeToFuture() })
@@ -127,5 +139,16 @@ abstract class Fs2Suite extends ScalaCheckEffectSuite with TestPlatform with Gen
     new ValueTransform(
       "SyncIO",
       { case e: SyncIO[_] => Future(e.unsafeRunSync())(munitExecutionContext) }
+    )
+
+  private val munitDeterministicIOTransform: ValueTransform =
+    new ValueTransform(
+      "Deterministic IO",
+      { case e: Deterministic[_] =>
+        val (ctx, runtime) = createDeterministicRuntime
+        val r = e.fa.unsafeToFuture()(runtime)
+        ctx.tickAll(3.days)
+        r
+      }
     )
 }
