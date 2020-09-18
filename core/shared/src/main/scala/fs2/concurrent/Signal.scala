@@ -22,10 +22,6 @@
 package fs2
 package concurrent
 
-// TODO
-// change bound in Token.apply
-// change pauseWhen
-
 import cats.{Applicative, Functor, Invariant}
 import cats.data.OptionT
 import cats.effect.Concurrent
