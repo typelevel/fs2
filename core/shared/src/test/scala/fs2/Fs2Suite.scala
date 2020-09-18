@@ -22,10 +22,14 @@
 package fs2
 
 import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.duration.FiniteDuration
 
 import cats.effect.{IO, Sync, SyncIO}
-import cats.effect.unsafe.IORuntime
+import cats.effect.unsafe.{IORuntime, Scheduler}
+import cats.effect.testkit.TestContext
+
 import cats.syntax.all._
+
 import munit.{Location, ScalaCheckEffectSuite}
 import org.typelevel.discipline.Laws
 
@@ -67,6 +71,26 @@ abstract class Fs2Suite extends ScalaCheckEffectSuite with TestPlatform with Gen
           )
       }
   }
+
+  /* Creates a new environment for deterministic tests which require stepping through */
+  protected def createTestRuntime: (TestContext, IORuntime) = {
+    val ctx = TestContext()
+
+    val scheduler = new Scheduler {
+      def sleep(delay: FiniteDuration, action: Runnable): Runnable = {
+        val cancel = ctx.schedule(delay, action)
+        new Runnable { def run() = cancel() }
+      }
+
+      def nowMillis() = ctx.now().toMillis
+      def monotonicNanos() = ctx.now().toNanos
+    }
+
+    val runtime = IORuntime(ctx, ctx, scheduler, () => ())
+
+    (ctx, runtime)
+  }
+
 
   /** Returns a stream that has a 10% chance of failing with an error on each output value. */
   protected def spuriousFail[F[_]: RaiseThrowable, O](s: Stream[F, O]): Stream[F, O] =
