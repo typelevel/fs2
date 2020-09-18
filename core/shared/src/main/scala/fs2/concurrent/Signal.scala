@@ -23,7 +23,6 @@ package fs2
 package concurrent
 
 // TODO
-// create implicits object to put instances in
 // change bound in Token.apply
 // change pauseWhen
 
