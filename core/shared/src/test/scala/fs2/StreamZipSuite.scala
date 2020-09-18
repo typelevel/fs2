@@ -251,11 +251,11 @@ class StreamZipSuite extends Fs2Suite {
 
         snapshots.foreach { snapshot =>
           env.tick(1.second)
-          assert((lhs, rhs, output) == snapshot)
+          assertEquals((lhs, rhs, output), snapshot)
         }
 
         env.tick(1.second)
-        result.map(r => assert(r == snapshots.last._3))(munitExecutionContext)
+        result.map(r => assertEquals(r, snapshots.last._3))(munitExecutionContext)
       }
   }
 
