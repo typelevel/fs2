@@ -905,18 +905,18 @@ class StreamCombinatorsSuite extends Fs2Suite {
   }
 
   group("pauseWhen") {
-    test("pause and resume") {
+    test("pause and resume".only) {
       SignallingRef[IO, Boolean](false)
         .product(Ref[IO].of(0))
         .flatMap { case (pause, counter) =>
           def counterChangesFrom(i: Int): IO[Unit] =
             counter.get.flatMap { v =>
-              counterChangesFrom(i).whenA(i == v)
+              IO.cede >> counterChangesFrom(i).whenA(i == v)
             }
 
           def counterStopsChanging: IO[Int] = {
             def loop(i: Int): IO[Int] =
-              counter.get.flatMap { v =>
+              IO.cede >> counter.get.flatMap { v =>
                 if (i == v) i.pure[IO] else loop(i)
               }
 
@@ -927,7 +927,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
             Stream
               .iterate(0)(_ + 1)
               .covary[IO]
-              .evalMap(counter.set)
+              .evalMap(i => counter.set(i) >> IO.cede)
               .pauseWhen(pause)
 
           val behaviour = for {
