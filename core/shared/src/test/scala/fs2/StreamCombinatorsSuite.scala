@@ -25,7 +25,7 @@ import scala.concurrent.duration._
 import scala.concurrent.TimeoutException
 
 import cats.effect.{IO, SyncIO}
-import cats.effect.concurrent.Semaphore
+import cats.effect.concurrent.{Ref, Semaphore}
 import cats.syntax.all._
 import org.scalacheck.Gen
 import org.scalacheck.Prop.forAll
@@ -904,27 +904,60 @@ class StreamCombinatorsSuite extends Fs2Suite {
     }
   }
 
-  test("pause") {
-    Stream
-      .eval(SignallingRef[IO, Boolean](false))
-      .flatMap { pause =>
-        Stream
-          .awakeEvery[IO](10.millis)
-          .scan(0)((acc, _) => acc + 1)
-          .evalMap { n =>
-            if (n % 2 != 0)
-              pause.set(true) >> ((Stream.sleep_[IO](10.millis) ++ Stream.eval(
-                pause.set(false)
-              )).compile.drain).start >> IO
-                .pure(n)
-            else IO.pure(n)
+  group("pauseWhen") {
+    test("pause and resume") {
+      SignallingRef[IO, Boolean](false)
+        .product(Ref[IO].of(0))
+        .flatMap { case (pause, counter) =>
+          def counterChangesFrom(i: Int): IO[Unit] =
+            counter.get.flatMap { v =>
+              IO.cede >> counterChangesFrom(i).whenA(i == v)
+            }
+
+          def counterStopsChanging: IO[Int] = {
+            def loop(i: Int): IO[Int] =
+              IO.cede >> counter.get.flatMap { v =>
+                if (i == v) i.pure[IO] else loop(i)
+              }
+
+            counter.get.flatMap(loop)
           }
-          .take(5)
-          .pauseWhen(pause)
-      }
-      .compile
-      .toList
-      .map(it => assert(it == List(0, 1, 2, 3, 4)))
+
+          val stream =
+            Stream
+              .iterate(0)(_ + 1)
+              .covary[IO]
+              .evalMap(i => counter.set(i) >> IO.cede)
+              .pauseWhen(pause)
+
+          val behaviour = for {
+            _ <- counterChangesFrom(0)
+            _ <- pause.set(true)
+            v <- counterStopsChanging
+            _ <- pause.set(false)
+            _ <- counterChangesFrom(v)
+          } yield ()
+
+          for {
+            fiber <- stream.compile.drain.start
+            _ <- behaviour.timeout(5.seconds).guarantee(fiber.cancel)
+          } yield ()
+        }
+    }
+
+    test("starts in paused state") {
+      SignallingRef[IO, Boolean](true)
+        .product(Ref[IO].of(false))
+        .flatMap { case (pause, written) =>
+          Stream
+            .eval(written.set(true))
+            .pauseWhen(pause)
+            .timeout(200.millis)
+            .compile
+            .drain
+            .attempt >> written.get.map(assertEquals(_, false))
+        }
+    }
   }
 
   group("prefetch") {

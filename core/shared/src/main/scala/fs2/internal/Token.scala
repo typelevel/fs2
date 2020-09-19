@@ -23,6 +23,7 @@ package fs2.internal
 
 import cats.Monad
 import cats.syntax.all._
+import fs2.Compiler
 
 /** Represents a unique identifier (using object equality). */
 final class Token private () extends Serializable {
@@ -48,9 +49,13 @@ object Token {
     * - it's infallible
     * - it's not created in contexts that affect stack safety such as iteration
     *
-    * Given all these reasons, we suspend it via `Monad` instead of
-    * using `Sync.` Do not try this at home.
+    * Given all these reasons, we suspend it via `flatMap` instead of
+    * using `Sync[F].delay`. Do not try this at home.
+    *
+    * Note: The `Compiler.Target` bound only resolves if `F` has an
+    * instance of `Sync` or `Concurrent`, meaning that `flatMap` is
+    * guaranteed to suspend.
     */
-  def apply[F[_]: Monad]: F[Token] =
+  def apply[F[_]: Compiler.Target]: F[Token] =
     ().pure[F].map(_ => new Token)
 }

@@ -79,16 +79,36 @@ class SignalSuite extends Fs2Suite {
     }
   }
 
-  test("Signal.access cannot be used twice") {
+  test("access cannot be used twice") {
     for {
       s <- SignallingRef[IO, Long](0L)
       access <- s.access
       (v, set) = access
-      r1 <- set(v)
-      r2 <- set(v)
+      v1 = v + 1
+      v2 = v1 + 1
+      r1 <- set(v1)
+      r2 <- set(v2)
+      r3 <- s.get
     } yield {
       assert(r1 == true)
       assert(r2 == false)
+      assert(r3 == v1)
+    }
+  }
+
+  test("access updates discrete") {
+    SignallingRef[IO, Int](0).flatMap { s =>
+      def cas: IO[Unit] =
+        s.access.flatMap { case (v, set) =>
+          set(v + 1).ifM(IO.unit, cas)
+        }
+
+      def updates =
+        s.discrete.takeWhile(_ != 1).compile.drain
+
+      updates.start.flatMap { fiber =>
+        cas >> fiber.join.timeout(5.seconds)
+      }
     }
   }
 

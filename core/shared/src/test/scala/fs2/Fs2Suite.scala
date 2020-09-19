@@ -22,10 +22,14 @@
 package fs2
 
 import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.duration._
 
 import cats.effect.{IO, Sync, SyncIO}
-import cats.effect.unsafe.IORuntime
+import cats.effect.unsafe.{IORuntime, Scheduler}
+import cats.effect.testkit.TestContext
+
 import cats.syntax.all._
+
 import munit.{Location, ScalaCheckEffectSuite}
 import org.typelevel.discipline.Laws
 
@@ -68,6 +72,37 @@ abstract class Fs2Suite extends ScalaCheckEffectSuite with TestPlatform with Gen
       }
   }
 
+  implicit class Deterministically[F[_], A](private val self: IO[A]) {
+
+    /**
+      * Allows to run an IO deterministically through TextContext.
+      * Assumes you want to run the IO to completion, if you need to step through execution,
+      * you will have to do it manually, starting from `createDeterministicRuntime`
+      */
+    def ticked: Deterministic[A] = Deterministic(self)
+  }
+
+  case class Deterministic[A](fa: IO[A])
+
+  /* Creates a new environment for deterministic tests which require stepping through */
+  protected def createDeterministicRuntime: (TestContext, IORuntime) = {
+    val ctx = TestContext()
+
+    val scheduler = new Scheduler {
+      def sleep(delay: FiniteDuration, action: Runnable): Runnable = {
+        val cancel = ctx.schedule(delay, action)
+        new Runnable { def run() = cancel() }
+      }
+
+      def nowMillis() = ctx.now().toMillis
+      def monotonicNanos() = ctx.now().toNanos
+    }
+
+    val runtime = IORuntime(ctx, ctx, scheduler, () => ())
+
+    (ctx, runtime)
+  }
+
   /** Returns a stream that has a 10% chance of failing with an error on each output value. */
   protected def spuriousFail[F[_]: RaiseThrowable, O](s: Stream[F, O]): Stream[F, O] =
     Stream.suspend {
@@ -94,7 +129,11 @@ abstract class Fs2Suite extends ScalaCheckEffectSuite with TestPlatform with Gen
       property(s"${name}.${id}")(prop)
 
   override def munitValueTransforms: List[ValueTransform] =
-    super.munitValueTransforms ++ List(munitIOTransform, munitSyncIOTransform)
+    super.munitValueTransforms ++ List(
+      munitIOTransform,
+      munitSyncIOTransform,
+      munitDeterministicIOTransform
+    )
 
   private val munitIOTransform: ValueTransform =
     new ValueTransform("IO", { case e: IO[_] => e.unsafeToFuture() })
@@ -103,5 +142,16 @@ abstract class Fs2Suite extends ScalaCheckEffectSuite with TestPlatform with Gen
     new ValueTransform(
       "SyncIO",
       { case e: SyncIO[_] => Future(e.unsafeRunSync())(munitExecutionContext) }
+    )
+
+  private val munitDeterministicIOTransform: ValueTransform =
+    new ValueTransform(
+      "Deterministic IO",
+      { case e: Deterministic[_] =>
+        val (ctx, runtime) = createDeterministicRuntime
+        val r = e.fa.unsafeToFuture()(runtime)
+        ctx.tickAll(3.days)
+        r
+      }
     )
 }

@@ -2206,26 +2206,28 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   def pauseWhen[F2[x] >: F[x]: Concurrent](
       pauseWhenTrue: Stream[F2, Boolean]
   ): Stream[F2, O] =
-    pauseWhenTrue.noneTerminate.hold(Some(false)).flatMap { pauseSignal =>
-      def pauseIfNeeded: F2[Unit] =
-        pauseSignal.get.flatMap {
-          case Some(false) => Applicative[F2].unit
-          case _           => pauseSignal.discrete.dropWhile(_.getOrElse(true)).take(1).compile.drain
-        }
+    Stream.eval(SignallingRef[F2, Boolean](false)).flatMap { pauseSignal =>
+      def writer = pauseWhenTrue.evalMap(pauseSignal.set).drain
 
-      chunks
-        .flatMap { chunk =>
-          Stream.eval(pauseIfNeeded) >>
-            Stream.chunk(chunk)
-        }
-        .interruptWhen(pauseSignal.discrete.map(_.isEmpty))
+      pauseWhen(pauseSignal).mergeHaltBoth(writer)
     }
 
-  /** Alias for `pauseWhen(pauseWhenTrue.discrete)`. */
+  /** Pause this stream when `pauseWhenTrue` is `true`, resume when it's `false`. */
   def pauseWhen[F2[x] >: F[x]: Concurrent](
       pauseWhenTrue: Signal[F2, Boolean]
-  ): Stream[F2, O] =
-    pauseWhen(pauseWhenTrue.discrete)
+  ): Stream[F2, O] = {
+
+    def waitToResume =
+      pauseWhenTrue.discrete.dropWhile(_ == true).take(1).compile.drain
+
+    def pauseIfNeeded = Stream.exec {
+      pauseWhenTrue.get.flatMap(paused => waitToResume.whenA(paused))
+    }
+
+    pauseIfNeeded ++ chunks.flatMap { chunk =>
+      pauseIfNeeded ++ Stream.chunk(chunk)
+    }
+  }
 
   /** Alias for `prefetchN(1)`. */
   def prefetch[F2[x] >: F[x]: Concurrent]: Stream[F2, O] =
