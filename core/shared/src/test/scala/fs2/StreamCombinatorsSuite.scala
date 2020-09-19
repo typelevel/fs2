@@ -905,7 +905,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
   }
 
   group("pauseWhen") {
-    test("pause and resume".only) {
+    test("pause and resume") {
       SignallingRef[IO, Boolean](false)
         .product(Ref[IO].of(0))
         .flatMap { case (pause, counter) =>
