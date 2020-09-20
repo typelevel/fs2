@@ -672,7 +672,7 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
   def debounce[F2[x] >: F[x]](
       d: FiniteDuration
   )(implicit F: Concurrent[F2], timer: Timer[F2]): Stream[F2, O] =
-    Stream.eval(Queue.bounded[F2, Option[O]](1)).flatMap { queue =>
+    Stream.asyncNoneTerminated[F2, O](1) { queue =>
       Stream.eval(Ref.of[F2, Option[O]](None)).flatMap { ref =>
         val enqueueLatest: F2[Unit] =
           ref.modify(s => None -> s).flatMap {
@@ -688,12 +688,8 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
               case Some(_) => F.unit
             }
 
-        val in: Stream[F2, Unit] = chunks.evalMap(onChunk) ++
+        chunks.evalMap(onChunk) ++
           Stream.eval_(enqueueLatest >> queue.enqueue1(None))
-
-        val out: Stream[F2, O] = queue.dequeue.unNoneTerminate
-
-        out.concurrently(in)
       }
     }
 
@@ -1925,7 +1921,7 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
       resultL <- Deferred[F2, Either[Throwable, Unit]]
       resultR <- Deferred[F2, Either[Throwable, Unit]]
       otherSideDone <- Ref.of[F2, Boolean](false)
-      resultQ <- Queue.unbounded[F2, Option[Stream[F2, O2]]]
+      resultQ <- Queue.noneTerminated[F2, Stream[F2, O2]]
     } yield {
 
       def watchInterrupted(str: Stream[F2, O2]): Stream[F2, O2] =
@@ -1940,7 +1936,7 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
       }
 
       // stream that is generated from pumping out the elements of the queue.
-      val pumpFromQueue: Stream[F2, O2] = resultQ.dequeue.unNoneTerminate.flatten
+      val pumpFromQueue: Stream[F2, O2] = resultQ.dequeue.flatten
 
       // action to interrupt the processing of both streams by completing interrupt
       // We need to use `attempt` because `interruption` may already be completed.
@@ -2083,30 +2079,27 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
   def parEvalMap[F2[x] >: F[x]: Concurrent, O2](
       maxConcurrent: Int
   )(f: O => F2[O2]): Stream[F2, O2] =
-    Stream.eval(Queue.bounded[F2, Option[F2[Either[Throwable, O2]]]](maxConcurrent)).flatMap {
-      queue =>
-        Stream.eval(Deferred[F2, Unit]).flatMap { dequeueDone =>
-          queue.dequeue.unNoneTerminate
-            .evalMap(identity)
-            .rethrow
-            .onFinalize(dequeueDone.complete(()))
-            .concurrently {
-              evalMap { o =>
-                Deferred[F2, Either[Throwable, O2]].flatMap { value =>
-                  val enqueue =
-                    queue.enqueue1(Some(value.get)).as {
-                      Stream.eval(f(o).attempt).evalMap(value.complete)
-                    }
-
-                  Concurrent[F2].race(dequeueDone.get, enqueue).map {
-                    case Left(())      => Stream.empty
-                    case Right(stream) => stream
-                  }
+    Stream.eval(Deferred[F2, Unit]).flatMap { dequeueDone =>
+      Stream
+        .asyncNoneTerminated[F2, F2[Either[Throwable, O2]]](maxConcurrent) { queue =>
+          evalMap { o =>
+            Deferred[F2, Either[Throwable, O2]].flatMap { value =>
+              val enqueue =
+                queue.enqueue1(Some(value.get)).as {
+                  Stream.eval(f(o).attempt).evalMap(value.complete)
                 }
-              }.parJoin(maxConcurrent)
-                .onFinalize(Concurrent[F2].race(dequeueDone.get, queue.enqueue1(None)).void)
+
+              Concurrent[F2].race(dequeueDone.get, enqueue).map {
+                case Left(())      => Stream.empty
+                case Right(stream) => stream
+              }
             }
+          }.parJoin(maxConcurrent)
+            .onFinalize(Concurrent[F2].race(dequeueDone.get, queue.enqueue1(None)).void)
         }
+        .evalMap(identity)
+        .rethrow
+        .onFinalize(dequeueDone.complete(()))
     }
 
   /**
@@ -2337,11 +2330,11 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
     * consumption, enabling processing on either side of the `prefetchN` to run in parallel.
     */
   def prefetchN[F2[x] >: F[x]: Concurrent](n: Int): Stream[F2, O] =
-    Stream.eval(Queue.bounded[F2, Option[Chunk[O]]](n)).flatMap { queue =>
-      queue.dequeue.unNoneTerminate
-        .flatMap(Stream.chunk(_))
-        .concurrently(chunks.noneTerminate.covary[F2].through(queue.enqueue))
-    }
+    Stream
+      .asyncNoneTerminated[F2, Chunk[O]](n) { queue =>
+        chunks.noneTerminate.covary[F2].through(queue.enqueue)
+      }
+      .flatMap(Stream.chunk(_))
 
   /**
     * Rechunks the stream such that output chunks are within `[inputChunk.size * minFactor, inputChunk.size * maxFactor]`.
@@ -3150,6 +3143,26 @@ object Stream extends StreamLowPriority {
   /** Creates a pure stream that emits the supplied values. To convert to an effectful stream, use `covary`. */
   def apply[F[x] >: Pure[x], O](os: O*): Stream[F, O] = emits(os)
 
+  def async[F[x] >: Pure[x], O](maxWaiting: Int)(f: Enqueue[F, O] => Stream[F, Unit])(implicit
+      F: Concurrent[F]
+  ): Stream[F, O] =
+    queue[F, O, O](Queue.bounded[F, O](maxWaiting).widen)(f)
+
+  def asyncUnbounded[F[x] >: Pure[x], O](f: Enqueue[F, O] => Stream[F, Unit])(implicit
+      F: Concurrent[F]
+  ): Stream[F, O] =
+    queue[F, O, O](Queue.unbounded[F, O].widen)(f)
+
+  def asyncNoneTerminatedUnbounded[F[x] >: Pure[x], O](f: Enqueue[F, Option[O]] => Stream[F, Unit])(
+      implicit F: Concurrent[F]
+  ): Stream[F, O] =
+    queue[F, Option[O], O](Queue.noneTerminated[F, O].widen)(f)
+
+  def asyncNoneTerminated[F[x] >: Pure[x], O](maxWaiting: Int)(
+      f: Enqueue[F, Option[O]] => Stream[F, Unit]
+  )(implicit F: Concurrent[F]): Stream[F, O] =
+    queue[F, Option[O], O](Queue.boundedNoneTerminated[F, O](maxWaiting).widen)(f)
+
   /**
     * Creates a single element stream that gets its value by evaluating the supplied effect. If the effect fails, a `Left`
     * is emitted. Otherwise, a `Right` is emitted.
@@ -3549,6 +3562,13 @@ object Stream extends StreamLowPriority {
   def never[F[_]](implicit F: Async[F]): Stream[F, Nothing] =
     Stream.eval_(F.never)
 
+  def queue[F[x] >: Pure[x], I, O](queue: F[Enqueue[F, I] with Dequeue[F, O]])(
+      f: Enqueue[F, I] => Stream[F, Unit]
+  )(implicit F: Concurrent[F]): Stream[F, O] =
+    Stream.eval(queue).flatMap { q =>
+      q.dequeue.concurrently(f(q))
+    }
+
   /**
     * Creates a stream that, when run, fails with the supplied exception.
     *
@@ -3857,41 +3877,29 @@ object Stream extends StreamLowPriority {
     /** Send chunks through `p`, allowing up to `maxQueued` pending _chunks_ before blocking `s`. */
     def observeAsync(maxQueued: Int)(p: Pipe[F, O, Unit])(implicit F: Concurrent[F]): Stream[F, O] =
       Stream.eval(Semaphore[F]((maxQueued - 1).toLong)).flatMap { guard =>
-        Stream.eval(Queue.unbounded[F, Option[Chunk[O]]]).flatMap { outQ =>
-          Stream.eval(Queue.unbounded[F, Option[Chunk[O]]]).flatMap { sinkQ =>
-            def inputStream =
-              self.chunks.noneTerminate.evalMap {
-                case Some(chunk) =>
-                  sinkQ.enqueue1(Some(chunk)) >>
-                    guard.acquire
-
-                case None =>
-                  sinkQ.enqueue1(None)
+        Stream
+          .asyncNoneTerminatedUnbounded[F, Chunk[O]] { outQ =>
+            Stream
+              .asyncNoneTerminatedUnbounded[F, Chunk[O]] { sinkQ =>
+                self.chunks.noneTerminate.evalMap {
+                  case Some(chunk) =>
+                    sinkQ.enqueue1(Some(chunk)) >>
+                      guard.acquire
+                  case None =>
+                    sinkQ.enqueue1(None)
+                }
               }
-
-            def sinkStream =
-              sinkQ.dequeue.unNoneTerminate
-                .flatMap { chunk =>
-                  Stream.chunk(chunk) ++
-                    Stream.eval_(outQ.enqueue1(Some(chunk)))
-                }
-                .through(p) ++
-                Stream.eval_(outQ.enqueue1(None))
-
-            def runner =
-              sinkStream.concurrently(inputStream) ++
-                Stream.eval_(outQ.enqueue1(None))
-
-            def outputStream =
-              outQ.dequeue.unNoneTerminate
-                .flatMap { chunk =>
-                  Stream.chunk(chunk) ++
-                    Stream.eval_(guard.release)
-                }
-
-            outputStream.concurrently(runner)
+              .flatMap { sunkChunk =>
+                Stream.chunk(sunkChunk) ++
+                  Stream.eval_(outQ.enqueue1(Some(sunkChunk)))
+              }
+              .through(p) ++
+              Stream.eval_(outQ.enqueue1(None))
           }
-        }
+          .flatMap { outputChunk =>
+            Stream.chunk(outputChunk) ++
+              Stream.eval_(guard.release)
+          }
       }
 
     /**
