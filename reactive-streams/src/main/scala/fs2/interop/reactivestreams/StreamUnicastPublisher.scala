@@ -24,7 +24,7 @@ package interop
 package reactivestreams
 
 import cats.effect._
-import cats.effect.unsafe.IORuntime
+import cats.effect.unsafe.UnsafeRun
 import cats.syntax.all._
 
 import org.reactivestreams._
@@ -36,9 +36,8 @@ import org.reactivestreams._
   *
   * @see [[https://github.com/reactive-streams/reactive-streams-jvm#1-publisher-code]]
   */
-final class StreamUnicastPublisher[F[_]: Effect, A](val stream: Stream[F, A])(implicit
-    ioRuntime: IORuntime
-) extends Publisher[A] {
+final class StreamUnicastPublisher[F[_]: Async: UnsafeRun, A](val stream: Stream[F, A])
+    extends Publisher[A] {
   def subscribe(subscriber: Subscriber[_ >: A]): Unit = {
     nonNull(subscriber)
     StreamSubscription(subscriber, stream)
@@ -55,8 +54,8 @@ final class StreamUnicastPublisher[F[_]: Effect, A](val stream: Stream[F, A])(im
 }
 
 object StreamUnicastPublisher {
-  def apply[F[_]: Effect, A](
+  def apply[F[_]: Async: UnsafeRun, A](
       s: Stream[F, A]
-  )(implicit ioRuntime: IORuntime): StreamUnicastPublisher[F, A] =
+  ): StreamUnicastPublisher[F, A] =
     new StreamUnicastPublisher(s)
 }

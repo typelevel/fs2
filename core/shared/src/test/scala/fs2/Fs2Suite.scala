@@ -25,7 +25,7 @@ import scala.concurrent.{ExecutionContext, Future}
 import scala.concurrent.duration._
 
 import cats.effect.{IO, Sync, SyncIO}
-import cats.effect.unsafe.{IORuntime, Scheduler}
+import cats.effect.unsafe.{IORuntime, Scheduler, UnsafeRun}
 import cats.effect.testkit.TestContext
 
 import cats.syntax.all._
@@ -43,6 +43,7 @@ abstract class Fs2Suite extends ScalaCheckEffectSuite with TestPlatform with Gen
   override def munitFlakyOK = true
 
   implicit val ioRuntime: IORuntime = IORuntime.global
+  implicit val unsafeRunForIO: UnsafeRun[IO] = ioRuntime.unsafeRunForIO
 
   override val munitExecutionContext: ExecutionContext = ExecutionContext.global
 
