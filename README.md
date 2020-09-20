@@ -109,9 +109,9 @@ These features mean that FS2 goes beyond streaming I/O to offer a very general a
 ### <a id="docs"></a>Documentation and getting help ###
 
 * There are Scaladoc API documentations for [the core library][core-api], which defines and implements the core types for streams and pulls, as well as the type aliases for pipes and sinks. [The `io` library][io-api] provides FS2 bindings for NIO-based file I/O and TCP/UDP networking.
-* [The official guide](https://functional-streams-for-scala.github.io/fs2/guide.html) is a good starting point for learning more about the library.
-* The [documentation page](https://functional-streams-for-scala.github.io/fs2/documentation.html) is intended to serve as a list of all references, including conference presentation recordings, academic papers, and blog posts, on the use and implementation of `fs2`.
-* [The FAQ](https://functional-streams-for-scala.github.io/fs2/faq.html) has frequently asked questions. Feel free to open issues or PRs with additions to the FAQ!
+* [The official guide](https://fs2.io/guide.html) is a good starting point for learning more about the library.
+* The [documentation page](https://fs2.io/documentation.html) is intended to serve as a list of all references, including conference presentation recordings, academic papers, and blog posts, on the use and implementation of `fs2`.
+* [The FAQ](https://fs2.io/faq.html) has frequently asked questions. Feel free to open issues or PRs with additions to the FAQ!
 * Also feel free to come discuss and ask/answer questions in [the gitter channel](https://gitter.im/functional-streams-for-scala/fs2) and/or on StackOverflow using [the tag FS2](http://stackoverflow.com/tags/fs2). Gitter will generally get you a quicker answer.
 
 ### Projects using FS2 ###
