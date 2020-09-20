@@ -600,18 +600,19 @@ trait CSVHandle {
 
 def rows[F[_]](h: CSVHandle)(implicit F: ConcurrentEffect[F], cs: ContextShift[F]): Stream[F,Row] = {
   for {
-    q <- Stream.eval(Queue.unbounded[F, Option[RowOrError]])
+    q <- Stream.eval(Queue.noneTerminated[F, RowOrError])
+    // Reminder: F.delay takes a lazy (by-name) argument. The block passed here doesn't get evaluated inside this `for`, 
+    //  but rather when the `rows` Stream is eventually interpreted
     _ <- Stream.eval { F.delay {
-      def enqueue(v: Option[RowOrError]): Unit = F.runAsync(q.enqueue1(v))(_ => IO.unit).unsafeRunSync
+      def enqueue(v: Option[RowOrError]): Unit = F.runAsync(q.enqueue1(v))(_ => IO.unit).unsafeRunSync()
 
-      // Fill the data
+      // Fill the data - withRows blocks while reading the file, asynchronously invoking the callback we pass to it on every row
       h.withRows(e => enqueue(Some(e))) 
-      // Upon returning from withRows signal that our stream has ended.
+      // Upon returning from withRows, signal that our stream has ended.
       enqueue(None)
     } }
-    // unNoneTerminate halts the stream at the first `None`.
-    // Without it the queue would be infinite.
-    row <- q.dequeue.unNoneTerminate.rethrow
+    // Because `q` is a `NoneTerminatedQueue`, the `dequeue` stream will terminate when it comes upon a `None` value that was enqueued
+    row <- q.dequeue.rethrow
   } yield row
 }
 ```
