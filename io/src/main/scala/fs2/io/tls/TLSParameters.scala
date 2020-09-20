@@ -24,7 +24,7 @@ package io
 package tls
 
 import java.security.AlgorithmConstraints
-import javax.net.ssl.{SNIMatcher, SNIServerName, SSLParameters}
+import javax.net.ssl.{SNIMatcher, SNIServerName, SSLEngine, SSLParameters}
 
 import CollectionCompat._
 
@@ -32,7 +32,8 @@ import CollectionCompat._
   * Parameters used in creation of a TLS/DTLS session.
   * See `javax.net.ssl.SSLParameters` for detailed documentation on each parameter.
   *
-  * Note: `applicationProtocols`, `enableRetransmissions`, and `maximumPacketSize` require Java 9+.
+  * Note: `applicationProtocols`, `enableRetransmissions`, `maximumPacketSize`, and
+  * `handshakeApplicationProtocolSelector` require Java 9+.
   */
 sealed trait TLSParameters {
   val algorithmConstraints: Option[AlgorithmConstraints]
@@ -47,6 +48,7 @@ sealed trait TLSParameters {
   val useCipherSuitesOrder: Boolean
   val needClientAuth: Boolean
   val wantClientAuth: Boolean
+  val handshakeApplicationProtocolSelector: Option[(SSLEngine, List[String]) => String]
 
   /**
     *  Converts to a `javax.net.ssl.SSLParameters` instance.
@@ -88,7 +90,8 @@ object TLSParameters {
       sniMatchers: Option[List[SNIMatcher]] = None,
       useCipherSuitesOrder: Boolean = false,
       needClientAuth: Boolean = false,
-      wantClientAuth: Boolean = false
+      wantClientAuth: Boolean = false,
+      handshakeApplicationProtocolSelector: Option[(SSLEngine, List[String]) => String] = None
   ): TLSParameters =
     DefaultTLSParameters(
       algorithmConstraints,
@@ -102,7 +105,39 @@ object TLSParameters {
       sniMatchers,
       useCipherSuitesOrder,
       needClientAuth,
-      wantClientAuth
+      wantClientAuth,
+      handshakeApplicationProtocolSelector
+    )
+
+  // For binary compatibility
+  def apply(
+      algorithmConstraints: Option[AlgorithmConstraints],
+      applicationProtocols: Option[List[String]],
+      cipherSuites: Option[List[String]],
+      enableRetransmissions: Option[Boolean],
+      endpointIdentificationAlgorithm: Option[String],
+      maximumPacketSize: Option[Int],
+      protocols: Option[List[String]],
+      serverNames: Option[List[SNIServerName]],
+      sniMatchers: Option[List[SNIMatcher]],
+      useCipherSuitesOrder: Boolean,
+      needClientAuth: Boolean,
+      wantClientAuth: Boolean
+  ): TLSParameters =
+    apply(
+      algorithmConstraints,
+      applicationProtocols,
+      cipherSuites,
+      enableRetransmissions,
+      endpointIdentificationAlgorithm,
+      maximumPacketSize,
+      protocols,
+      serverNames,
+      sniMatchers,
+      useCipherSuitesOrder,
+      needClientAuth,
+      wantClientAuth,
+      None
     )
 
   private case class DefaultTLSParameters(
@@ -117,6 +152,7 @@ object TLSParameters {
       sniMatchers: Option[List[SNIMatcher]],
       useCipherSuitesOrder: Boolean,
       needClientAuth: Boolean,
-      wantClientAuth: Boolean
+      wantClientAuth: Boolean,
+      handshakeApplicationProtocolSelector: Option[(SSLEngine, List[String]) => String]
   ) extends TLSParameters
 }
