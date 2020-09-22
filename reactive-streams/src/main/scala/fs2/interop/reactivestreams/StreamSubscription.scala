@@ -23,9 +23,6 @@ package fs2
 package interop
 package reactivestreams
 
-import scala.concurrent.Await
-import scala.concurrent.duration.Duration
-
 import cats.effect._
 import cats.effect.implicits._
 import cats.effect.unsafe.UnsafeRun
@@ -90,10 +87,8 @@ private[reactivestreams] final class StreamSubscription[F[_], A](
   // `cancelled` signal has been set.
   // See https://github.com/zainab-ali/fs2-reactive-streams/issues/29
   // and https://github.com/zainab-ali/fs2-reactive-streams/issues/46
-  def cancel(): Unit = {
-    val (fut, _) = runner.unsafeRunFutureCancelable(cancelled.set(true))
-    Await.result(fut, Duration.Inf)
-  }
+  def cancel(): Unit =
+    cancelled.set(true).unsafeRunSync()
 
   def request(n: Long): Unit = {
     val request: F[Request] =

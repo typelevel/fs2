@@ -47,28 +47,23 @@ final class StreamSubscriber[F[_], A](val sub: StreamSubscriber.FSM[F, A])(impli
   /** Called by an upstream reactivestreams system */
   def onSubscribe(s: Subscription): Unit = {
     nonNull(s)
-    runner.unsafeRunFutureCancelable(sub.onSubscribe(s))
-    ()
+    sub.onSubscribe(s).unsafeRunAsync()
   }
 
   /** Called by an upstream reactivestreams system */
   def onNext(a: A): Unit = {
     nonNull(a)
-    runner.unsafeRunFutureCancelable(sub.onNext(a))
-    ()
+    sub.onNext(a).unsafeRunAsync()
   }
 
   /** Called by an upstream reactivestreams system */
-  def onComplete(): Unit = {
-    runner.unsafeRunFutureCancelable(sub.onComplete)
-    ()
-  }
+  def onComplete(): Unit =
+    sub.onComplete.unsafeRunAsync()
 
   /** Called by an upstream reactivestreams system */
   def onError(t: Throwable): Unit = {
     nonNull(t)
-    runner.unsafeRunFutureCancelable(sub.onError(t))
-    ()
+    sub.onError(t).unsafeRunAsync()
   }
 
   def stream(subscribe: F[Unit]): Stream[F, A] = sub.stream(subscribe)
