@@ -675,7 +675,7 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
     Stream.eval(Queue.bounded[F2, Option[O]](1)).flatMap { queue =>
       Stream.eval(Ref.of[F2, Option[O]](None)).flatMap { ref =>
         val enqueueLatest: F2[Unit] =
-          ref.modify(s => None -> s).flatMap {
+          ref.getAndSet(None).flatMap {
             case v @ Some(_) => queue.enqueue1(v)
             case None        => F.unit
           }
@@ -683,7 +683,7 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
         def onChunk(ch: Chunk[O]): F2[Unit] =
           if (ch.isEmpty) F.unit
           else
-            ref.modify(s => Some(ch(ch.size - 1)) -> s).flatMap {
+            ref.getAndSet(Some(ch(ch.size - 1))).flatMap {
               case None    => F.start(timer.sleep(d) >> enqueueLatest).void
               case Some(_) => F.unit
             }
@@ -1528,9 +1528,9 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
         startTimeout
           .flatMap(t => go(Chunk.Queue.empty, t).concurrently(producer))
           .onFinalize {
-            currentTimeout.modify { case (cancelInFlightTimeout, _) =>
-              (F.unit, true) -> cancelInFlightTimeout
-            }.flatten
+            currentTimeout
+              .getAndSet(F.unit -> true)
+              .flatMap { case (cancelInFlightTimeout, _) => cancelInFlightTimeout }
           }
       }
 
@@ -1933,7 +1933,7 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
 
       // action to signal that one stream is finished, and if it is te last one
       // then close te queue (by putting a None in it)
-      val doneAndClose: F2[Unit] = otherSideDone.modify(prev => (true, prev)).flatMap {
+      val doneAndClose: F2[Unit] = otherSideDone.getAndSet(true).flatMap {
         // complete only if other side is done too.
         case true  => resultQ.enqueue1(None)
         case false => F2.unit
@@ -2190,10 +2190,9 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
 
       val incrementRunning: F2[Unit] = running.update(_ + 1)
       val decrementRunning: F2[Unit] =
-        running.modify { n =>
-          val now = n - 1
-          now -> (if (now == 0) stop(None) else F2.unit)
-        }.flatten
+        running
+          .updateAndGet(_ - 1)
+          .flatMap(now => (if (now == 0) stop(None) else F2.unit))
 
       // "block" and await until the `running` counter drops to zero.
       val awaitWhileRunning: F2[Unit] = running.discrete.dropWhile(_ > 0).take(1).compile.drain
