@@ -2206,37 +2206,36 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
       // and that it must be released once the inner stream terminates or fails.
       def runInner(inner: Stream[F2, O2], outerScope: Scope[F2]): F2[Unit] =
         F2.uncancelable {
-          outerScope.lease.flatMap {
-            case Some(lease) =>
-              available.acquire >>
-                incrementRunning >>
-                F2.start {
-                  inner.chunks
-                    .evalMap(s => outputQ.enqueue1(Some(s)))
-                    .interruptWhen(
-                      done.map(_.nonEmpty)
-                    ) // must be AFTER enqueue to the sync queue, otherwise the process may hang to enqueue last item while being interrupted
-                    .compile
-                    .drain
-                    .attempt
-                    .flatMap { r =>
-                      lease.cancel.flatMap { cancelResult =>
-                        available.release >>
-                          (CompositeFailure.fromResults(r, cancelResult) match {
-                            case Right(()) => F2.unit
-                            case Left(err) =>
-                              stop(Some(err))
-                          }) >> decrementRunning
-                      }
+          outerScope.lease
+            .flatMap[Scope.Lease[F2]] {
+              case Some(lease) => lease.pure[F2]
+              case None =>
+                F2.raiseError(
+                  new Throwable("Outer scope is closed during inner stream startup")
+                )
+            }
+            .flatTap(_ => available.acquire >> incrementRunning)
+            .flatMap { lease =>
+              F2.start {
+                inner.chunks
+                  .evalMap(s => outputQ.enqueue1(Some(s)))
+                  .interruptWhen(
+                    done.map(_.nonEmpty)
+                  ) // must be AFTER enqueue to the sync queue, otherwise the process may hang to enqueue last item while being interrupted
+                  .compile
+                  .drain
+                  .attempt
+                  .flatMap { runResult =>
+                    (lease.cancel <* available.release).flatMap { cancelResult =>
+                      (CompositeFailure.fromResults(runResult, cancelResult) match {
+                        case Right(()) => F2.unit
+                        case Left(err) => stop(Some(err))
+                      })
                     }
-                }.void
-
-            case None =>
-              F2.raiseError(
-                new Throwable("Outer scope is closed during inner stream startup")
-              )
-          }
-        }
+                  } >> decrementRunning
+              }
+            }
+        }.void
 
       // runs the outer stream, interrupts when kill == true, and then decrements the `running`
       def runOuter: F2[Unit] =
@@ -2247,9 +2246,9 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
           .drain
           .attempt
           .flatMap {
-            case Left(err) => stop(Some(err)) >> decrementRunning
-            case Right(_)  => F2.unit >> decrementRunning
-          }
+            case Left(err) => stop(Some(err))
+            case Right(_)  => F2.unit
+          } >> decrementRunning
 
       // awaits when all streams (outer + inner) finished,
       // and then collects result of the stream (outer + inner) execution
@@ -3860,13 +3859,9 @@ object Stream extends StreamLowPriority {
         Stream.eval(Queue.unbounded[F, Option[Chunk[O]]]).flatMap { outQ =>
           Stream.eval(Queue.unbounded[F, Option[Chunk[O]]]).flatMap { sinkQ =>
             def inputStream =
-              self.chunks.noneTerminate.evalMap {
-                case Some(chunk) =>
-                  sinkQ.enqueue1(Some(chunk)) >>
-                    guard.acquire
-
-                case None =>
-                  sinkQ.enqueue1(None)
+              self.chunks.noneTerminate.evalTap(sinkQ.enqueue1).evalMap {
+                case Some(_) => guard.acquire
+                case None    => F.unit
               }
 
             def sinkStream =
