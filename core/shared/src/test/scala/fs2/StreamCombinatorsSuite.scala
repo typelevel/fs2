@@ -649,6 +649,16 @@ class StreamCombinatorsSuite extends Fs2Suite {
     }
   }
 
+  property("fromOption") {
+    forAll { (option: Option[Int]) =>
+      val stream: Stream[Pure, Int] = Stream.fromOption[Pure](option)
+      option match {
+        case None    => assert(stream.toList == List.empty)
+        case Some(i) => assert(stream.toList == List(i))
+      }
+    }
+  }
+
   test("fromIterator") {
     forAllF { (x: List[Int], cs: Int) =>
       val chunkSize = (cs % 4096).abs + 1
