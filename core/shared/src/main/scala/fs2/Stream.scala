@@ -3287,7 +3287,7 @@ object Stream extends StreamLowPriority {
     * scala> Stream.fromOption[SyncIO](Some(42)).compile.toList.unsafeRunSync()
     * res0: List[Int] = List(42)
     * scala> Stream.fromOption[SyncIO](None).compile.toList.unsafeRunSync()
-    * res1: List[Int] = List()
+    * res1: List[Nothing] = List()
     * }}}
     */
   def fromOption[F[_]]: PartiallyAppliedFromOption[F] =
