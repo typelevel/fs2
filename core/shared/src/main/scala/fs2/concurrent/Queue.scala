@@ -533,10 +533,10 @@ object InspectableQueue {
             }
 
           def dequeueChunk1(maxSize: Int): F[Chunk[A]] =
-            pubSub.get(Right(maxSize)).map(_.toOption.getOrElse(Chunk.empty))
+            pubSub.get(Right(maxSize)).map(_.getOrElse(Chunk.empty))
 
           def tryDequeueChunk1(maxSize: Int): F[Option[Chunk[A]]] =
-            pubSub.tryGet(Right(maxSize)).map(_.map(_.toOption.getOrElse(Chunk.empty)))
+            pubSub.tryGet(Right(maxSize)).map(_.map(_.getOrElse(Chunk.empty)))
 
           def dequeueChunk(maxSize: Int): Stream[F, A] =
             pubSub.getStream(Right(maxSize)).flatMap {
@@ -549,7 +549,7 @@ object InspectableQueue {
               Stream
                 .evalUnChunk(
                   pubSub.get(Right(sz)).map {
-                    _.toOption.getOrElse(Chunk.empty)
+                    _.getOrElse(Chunk.empty)
                   }
                 )
             }
