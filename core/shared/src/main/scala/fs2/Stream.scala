@@ -681,12 +681,14 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
           }
 
         def onChunk(ch: Chunk[O]): F2[Unit] =
-          if (ch.isEmpty) F.unit
-          else
-            ref.getAndSet(Some(ch(ch.size - 1))).flatMap {
-              case None    => F.start(timer.sleep(d) >> enqueueLatest).void
-              case Some(_) => F.unit
-            }
+          ch.last match {
+            case None => F.unit
+            case s @ Some(_) =>
+              ref.getAndSet(s).flatMap {
+                case None    => F.start(timer.sleep(d) >> enqueueLatest).void
+                case Some(_) => F.unit
+              }
+          }
 
         val in: Stream[F2, Unit] = chunks.evalMap(onChunk) ++
           Stream.eval_(enqueueLatest >> queue.enqueue1(None))
