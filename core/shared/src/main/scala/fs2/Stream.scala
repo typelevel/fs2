@@ -3273,6 +3273,26 @@ object Stream extends StreamLowPriority {
     now.flatMap(go)
   }
 
+  private[fs2] final class PartiallyAppliedFromOption[F[_]](
+      private val dummy: Boolean
+  ) extends AnyVal {
+    def apply[A](option: Option[A]): Stream[F, A] =
+      option.map(Stream.emit).getOrElse(Stream.empty)
+  }
+
+  /** Lifts an Option[A] to an effectful Stream.
+    *
+    * @example {{{
+    * scala> import cats.effect.SyncIO
+    * scala> Stream.fromOption[SyncIO](Some(42)).compile.toList.unsafeRunSync()
+    * res0: List[Int] = List(42)
+    * scala> Stream.fromOption[SyncIO](None).compile.toList.unsafeRunSync()
+    * res1: List[Nothing] = List()
+    * }}}
+    */
+  def fromOption[F[_]]: PartiallyAppliedFromOption[F] =
+    new PartiallyAppliedFromOption(dummy = true)
+
   private[fs2] final class PartiallyAppliedFromEither[F[_]](
       private val dummy: Boolean
   ) extends AnyVal {
