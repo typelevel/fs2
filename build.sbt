@@ -232,7 +232,8 @@ lazy val coreJS = core.js
   .settings(
     scalaJSStage in Test := FastOptStage,
     jsEnv := new org.scalajs.jsenv.nodejs.NodeJSEnv(),
-    scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule))
+    scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule)),
+    crossScalaVersions := crossScalaVersions.value.filterNot(_.startsWith("0."))
   )
 
 lazy val io = project
