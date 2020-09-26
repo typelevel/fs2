@@ -308,7 +308,7 @@ lazy val microsite = project
   .settings(
     micrositeName := "fs2",
     micrositeDescription := "Purely functional, effectful, resource-safe, concurrent streams for Scala",
-    micrositeGithubOwner := "functional-streams-for-scala",
+    micrositeGithubOwner := "typelevel",
     micrositeGithubRepo := "fs2",
     micrositePushSiteWith := GitHub4s,
     micrositeGithubToken := sys.env.get("GITHUB_TOKEN"),
