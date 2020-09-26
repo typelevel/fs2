@@ -4,7 +4,7 @@ let
     packageOverrides = pkgs: rec {
       sbt = pkgs.sbt.overrideAttrs (
         old: rec {
-          version = "1.3.12";
+          version = "1.3.13";
 
           patchPhase = ''
             echo -java-home ${pkgs.openjdk11} >> conf/sbtopts
@@ -25,6 +25,6 @@ in
     buildInputs = with pkgs; [
       jekyll # 4.1.0
       openjdk11 # 11.0.6-internal
-      sbt # 1.3.12
+      sbt # 1.3.13
     ];
   }
