@@ -51,14 +51,7 @@ private[fs2] trait CompilerLowPriority2 {
       )(foldChunk: (B, Chunk[O]) => B): Resource[F, B] =
         Resource
           .makeCase(CompileScope.newRoot[F])((scope, ec) => scope.close(ec).rethrow)
-          .flatMap { scope =>
-            def resourceEval[A](fa: F[A]): Resource[F, A] =
-              Resource.suspend(fa.map(a => a.pure[Resource[F, *]]))
-
-            resourceEval {
-              Pull.compile(stream, scope, true, init)(foldChunk)
-            }
-          }
+          .evalMap(scope => Pull.compile(stream, scope, true, init)(foldChunk))
     }
 }
 
