@@ -4327,7 +4327,7 @@ object Stream extends StreamLowPriority {
       * compiles the stream down to the target effect type.
       */
     def foldChunks[B](init: B)(f: (B, Chunk[O]) => B): G[B] =
-      compiler(underlying, () => init)(f, identity)
+      compiler(underlying, init)(f)
 
     /**
       * Like [[fold]] but uses the implicitly available `Monoid[O]` to combine elements.
@@ -4525,8 +4525,12 @@ object Stream extends StreamLowPriority {
       * res3: scodec.bits.ByteVector = ByteVector(5 bytes, 0x0001020304)
       * }}}
       */
-    def to(collector: Collector[O]): G[collector.Out] =
-      compiler(underlying, () => collector.newBuilder)((acc, c) => { acc += c; acc }, _.result)
+    def to(collector: Collector[O]): G[collector.Out] = {
+      implicit val G: Monad[G] = compiler.target
+      G.unit.map(_ => collector.newBuilder).flatMap { builder =>
+        compiler(underlying, builder) { (acc, c) => acc += c; acc }.map(_.result)
+      }
+    }
 
     /**
       * Compiles this stream in to a value of the target effect type `F` by logging
