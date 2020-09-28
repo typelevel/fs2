@@ -4527,9 +4527,11 @@ object Stream extends StreamLowPriority {
       */
     def to(collector: Collector[O]): G[collector.Out] = {
       implicit val G: Monad[G] = compiler.target
-      G.unit.map(_ => collector.newBuilder).flatMap { builder =>
-        compiler(underlying, builder) { (acc, c) => acc += c; acc }.map(_.result)
-      }
+      // G.unit suspends creation of the mutable builder
+      for {
+        _ <- G.unit
+        builder <- compiler(underlying, collector.newBuilder) { (acc, c) => acc += c; acc }
+      } yield builder.result
     }
 
     /**
