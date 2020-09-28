@@ -178,7 +178,7 @@ lazy val io = project
     Compile / unmanagedSourceDirectories ++= {
       val major = if (isDotty.value) "-3" else "-2"
       List(CrossType.Pure, CrossType.Full).flatMap(
-        _.sharedSrcDir(baseDirectory.value, "main").toList.map(f => file(f.getPath + major))
+        _.sharedSrcDir(baseDirectory.value / "io", "main").toList.map(f => file(f.getPath + major))
       )
     },
     OsgiKeys.exportPackage := Seq("fs2.io.*"),
