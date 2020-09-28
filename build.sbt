@@ -165,7 +165,8 @@ lazy val coreJS = core.js
   .settings(
     scalaJSStage in Test := FastOptStage,
     jsEnv := new org.scalajs.jsenv.nodejs.NodeJSEnv(),
-    scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule))
+    scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule)),
+    crossScalaVersions := crossScalaVersions.value.filterNot(_.startsWith("0."))
   )
 
 lazy val io = project
@@ -240,7 +241,7 @@ lazy val microsite = project
   .settings(
     micrositeName := "fs2",
     micrositeDescription := "Purely functional, effectful, resource-safe, concurrent streams for Scala",
-    micrositeGithubOwner := "functional-streams-for-scala",
+    micrositeGithubOwner := "typelevel",
     micrositeGithubRepo := "fs2",
     micrositePushSiteWith := GitHub4s,
     micrositeGithubToken := sys.env.get("GITHUB_TOKEN"),

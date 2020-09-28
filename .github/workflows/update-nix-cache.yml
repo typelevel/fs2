@@ -1,23 +1,26 @@
-name: Microsite
+name: Cachix
 
 on:
   push:
     branches:
       - main
     paths:
-      - "site/**"
-      - "**/README.md"
+      - "nix/**"
+      - "shell.nix"
 
 jobs:
-  publish:
+  update-nix-cache:
     env:
+      CACHIX_SIGNING_KEY: "${{ secrets.CACHIX_SIGNING_KEY }}"
       GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
     runs-on: ubuntu-18.04
     steps:
       - uses: actions/checkout@v2.1.0
 
       - name: "Install Nix ❄️"
-        uses: nixbuild/nix-quick-install-action@v2
+        uses: cachix/install-nix-action@v11
+        with:
+          skip_adding_nixpkgs_channel: true
 
       - name: "Install Cachix ❄️"
         uses: cachix/cachix-action@v6
@@ -25,5 +28,5 @@ jobs:
           name: fs2-site
           signingKey: "${{ secrets.CACHIX_SIGNING_KEY }}"
 
-      - name: "Building microsite 🚧"
-        run: nix-shell --run "sbt '++2.13.3;microsite/publishMicrosite'"
+      - name: "Update Nix cache"
+        run: nix-store -qR --include-outputs $(nix-instantiate shell.nix) | cachix push fs2-site
