@@ -21,7 +21,7 @@
 
 package fs2
 
-import cats.{Applicative, Id, Monad}
+import cats.{Id, Monad}
 import cats.effect._
 import cats.effect.concurrent.Ref
 import cats.syntax.all._
