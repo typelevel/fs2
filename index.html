@@ -25,7 +25,7 @@ and thus FS2 can be used with other effect libraries, such as <a href="https://m
   <li><a href="http://fs2.io/index.html">Microsite</a></li>
   <li><a href="#about">About the library</a></li>
   <li><a href="#getit">How to get latest version</a></li>
-  <li>API docs: <a href="https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-core_2.12/2.2.1/fs2-core_2.12-2.2.1-javadoc.jar/!/fs2/index.html">fs2-core</a>, <a href="https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-io_2.12/2.2.1/fs2-io_2.12-2.2.1-javadoc.jar/!/fs2/io/index.html">fs2-io</a>, <a href="https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-reactive-streams_2.12/2.2.1/fs2-reactive-streams_2.12-2.2.1-javadoc.jar/!/fs2/interop/reactivestreams/index.html">fs2-reactive-streams</a>, <a href="https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-experimental_2.12/2.2.1/fs2-experimental_2.12-2.2.1-javadoc.jar/!/fs2/experimental/index.html">fs2-experimental</a></li>
+  <li>API docs: <a href="https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-core_2.12/2.4.4/fs2-core_2.12-2.4.4-javadoc.jar/!/fs2/index.html">fs2-core</a>, <a href="https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-io_2.12/2.4.4/fs2-io_2.12-2.4.4-javadoc.jar/!/fs2/io/index.html">fs2-io</a>, <a href="https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-reactive-streams_2.12/2.4.4/fs2-reactive-streams_2.12-2.4.4-javadoc.jar/!/fs2/interop/reactivestreams/index.html">fs2-reactive-streams</a>, <a href="https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-experimental_2.12/2.4.4/fs2-experimental_2.12-2.4.4-javadoc.jar/!/fs2/experimental/index.html">fs2-experimental</a></li>
   <li><a href="#docs">Docs and getting help</a></li>
 </ul>
 
@@ -36,21 +36,21 @@ and thus FS2 can be used with other effect libraries, such as <a href="https://m
 <p>If upgrading from the 1.0 series, see the <a href="https://github.com/functional-streams-for-scala/fs2/releases/tag/v2.0.0">release notes for 2.0.0</a> for help with upgrading.</p>
 
 <div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>// available for 2.12, 2.13
-libraryDependencies += "co.fs2" %% "fs2-core" % "2.4.0" // For cats 2 and cats-effect 2
+libraryDependencies += "co.fs2" %% "fs2-core" % "2.4.4" // For cats 2 and cats-effect 2
 
 // optional I/O library
-libraryDependencies += "co.fs2" %% "fs2-io" % "2.4.0"
+libraryDependencies += "co.fs2" %% "fs2-io" % "2.4.4"
 
 // optional reactive streams interop
-libraryDependencies += "co.fs2" %% "fs2-reactive-streams" % "2.4.0"
+libraryDependencies += "co.fs2" %% "fs2-reactive-streams" % "2.4.4"
 
 // optional experimental library
-libraryDependencies += "co.fs2" %% "fs2-experimental" % "2.4.0"
+libraryDependencies += "co.fs2" %% "fs2-experimental" % "2.4.4"
 </code></pre></div></div>
 
 <p>The fs2-core library is also supported on Scala.js:</p>
 
-<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>libraryDependencies += "co.fs2" %%% "fs2-core" % "2.4.0"
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>libraryDependencies += "co.fs2" %%% "fs2-core" % "2.4.4"
 </code></pre></div></div>
 
 <p>There are <a href="https://github.com/functional-streams-for-scala/fs2/blob/main/docs/">detailed migration guides</a> for migrating from older versions.</p>
@@ -101,7 +101,7 @@ libraryDependencies += "co.fs2" %% "fs2-experimental" % "2.4.0"
 <h3 id="documentation-and-getting-help"><a id="docs"></a>Documentation and getting help</h3>
 
 <ul>
-  <li>There are Scaladoc API documentations for <a href="https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-core_2.12/2.2.1/fs2-core_2.12-2.2.1-javadoc.jar/!/fs2/index.html">the core library</a>, which defines and implements the core types for streams and pulls, as well as the type aliases for pipes and sinks. <a href="https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-io_2.12/2.2.1/fs2-io_2.12-2.2.1-javadoc.jar/!/fs2/io/index.html">The <code class="language-plaintext highlighter-rouge">io</code> library</a> provides FS2 bindings for NIO-based file I/O and TCP/UDP networking.</li>
+  <li>There are Scaladoc API documentations for <a href="https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-core_2.12/2.4.4/fs2-core_2.12-2.4.4-javadoc.jar/!/fs2/index.html">the core library</a>, which defines and implements the core types for streams and pulls, as well as the type aliases for pipes and sinks. <a href="https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-io_2.12/2.4.4/fs2-io_2.12-2.4.4-javadoc.jar/!/fs2/io/index.html">The <code class="language-plaintext highlighter-rouge">io</code> library</a> provides FS2 bindings for NIO-based file I/O and TCP/UDP networking.</li>
   <li><a href="https://fs2.io/guide.html">The official guide</a> is a good starting point for learning more about the library.</li>
   <li>The <a href="https://fs2.io/documentation.html">documentation page</a> is intended to serve as a list of all references, including conference presentation recordings, academic papers, and blog posts, on the use and implementation of <code class="language-plaintext highlighter-rouge">fs2</code>.</li>
   <li><a href="https://fs2.io/faq.html">The FAQ</a> has frequently asked questions. Feel free to open issues or PRs with additions to the FAQ!</li>
