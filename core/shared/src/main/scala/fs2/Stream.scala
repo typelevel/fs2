@@ -1544,7 +1544,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
                 case Right(c) =>
                   val newAcc = acc :+ c
                   if (newAcc.size < n)
-                    go(acc :+ c, currentTimeout)
+                    go(newAcc, currentTimeout)
                   else {
                     val (toEmit, rest) = resize(newAcc.toChunk, Stream.empty)
                     toEmit ++ startTimeout.flatMap { newTimeout =>
