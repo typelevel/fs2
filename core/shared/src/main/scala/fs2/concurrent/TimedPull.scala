@@ -169,41 +169,6 @@ object tp {
   //       .drain
   //   }.flatten
 
-  trait Alarm[F[_]] {
-  def reset(d: FiniteDuration, timeoutId: Token): F[Unit]
-  def timeouts: Stream[F, Token]
-  }
-object Alarm {
-  def create[F[_]: Temporal]: F[Alarm[F]] = {
-
-    def now = Temporal[F].monotonic
-
-    class Timeout(val id: Token, issuedAt: FiniteDuration, d: FiniteDuration) {
-      def asOfNow:  F[FiniteDuration] = now.map(now => d - (now - issuedAt))
-    }
-    object Timeout {
-      def issueNow(id: Token, d: FiniteDuration): F[Timeout] = now.map(new Timeout(id, _, d))
-    }
-
-    SignallingRef[F, Option[Timeout]](None).map { time =>
-      def nextAfter(t: Timeout): Stream[F, Timeout] =
-          time.discrete.unNone.dropWhile(_.id == t.id).head
-
-        new Alarm[F] {
-          def timeouts: Stream[F, Token] =
-            Stream.eval(time.get).unNone.flatMap { timeout =>
-              Stream.eval(timeout.asOfNow).flatMap { t =>
-                if (t <= 0.nanos) Stream.emit(timeout.id) ++ nextAfter(timeout).drain
-                else Stream.sleep_[F](t)
-              }
-            } ++ timeouts
-
-          def reset(d: FiniteDuration, id: Token) = Timeout.issueNow(id, d).flatMap(t => time.set(t.some))
-        }
-      }
-  }
-}
-
   // def groupWithin[F[x] >: F[x]](
   //     n: Int,
   //     d: FiniteDuration
