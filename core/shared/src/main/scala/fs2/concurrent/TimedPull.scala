@@ -28,6 +28,77 @@ import cats.effect._
 import cats.syntax.all._
 
 object tp {
+  trait TimedPull[F[_], A] {
+    def uncons: Pull[F, INothing, Option[(Either[Token, Chunk[A]], TimedPull[F, A])]]
+    def startTimer(t: FiniteDuration): Pull[F, INothing, Unit]
+  }
+  object TimedPull {
+    def go[F[_]: Temporal, A, B](f: TimedPull[F, A] => Pull[F, B, Unit]): Pipe[F, A, B] = { source =>
+      def now = Temporal[F].monotonic
+
+      class Timeout(val id: Token, issuedAt: FiniteDuration, d: FiniteDuration) {
+        def asOfNow:  F[FiniteDuration] = now.map(now => d - (now - issuedAt))
+      }
+      object Timeout {
+        def issueNow(d: FiniteDuration): F[Timeout] = for {
+          id <- Token[F]
+          at <- now
+        } yield new Timeout(id, at, d)
+      }
+
+      Stream.eval(SignallingRef[F, Option[Timeout]](None)).flatMap { time =>
+        def nextAfter(t: Timeout): Stream[F, Timeout] =
+          time.discrete.unNone.dropWhile(_.id == t.id).head
+
+        def timeouts: Stream[F, Token] =
+          Stream.eval(time.get).unNone.flatMap { timeout =>
+            Stream.eval(timeout.asOfNow).flatMap { t =>
+              if (t <= 0.nanos) Stream.emit(timeout.id) ++ nextAfter(timeout).drain
+              else Stream.sleep_[F](t)
+            }
+          } ++ timeouts
+
+        def reset(t: FiniteDuration) =
+          Timeout.issueNow(t).flatMap(t => time.set(t.some))
+
+        def output: Stream[F, Either[Token, Chunk[A]]] =
+          timeouts
+            .map(_.asLeft)
+            .mergeHaltR(source.chunks.map(_.asRight))
+            .evalMapFilter {
+              case Right(c) => c.asRight[Token].some.pure[F]
+              case Left(id) => time.get.map(t => t.filter(_.id != id).as(id.asLeft[Chunk[A]]))
+            }
+
+        def toTimedPull(s: Stream[F, Either[Token, Chunk[A]]]): TimedPull[F, A] = new TimedPull[F, A] {
+          def uncons: Pull[F, INothing, Option[(Either[Token, Chunk[A]], TimedPull[F, A])]] =
+            s.pull.uncons1
+              .map(_.map(_.map(toTimedPull)))
+
+          def startTimer(t: FiniteDuration): Pull[F, INothing, Unit] = Pull.eval(reset(t))
+        }
+
+        val timedPull = toTimedPull(output)
+
+        f(timedPull).stream
+      }
+    }
+  }
+
+
+  import cats.effect.unsafe.implicits.global
+
+
+  def ex = {
+    def s(as: Int*) = Stream(as)
+    def t(d: FiniteDuration) = Stream.sleep_[IO](d)
+
+    s(1,2,3,4,5) ++ s(6,7,8,9,10) ++ t(300.millis) ++ s(11,12,13) ++ t(200.millis) ++ s(14) ++ t(600.millis) ++ s(15, 16, 17) ++ s(18, 19, 20, 21, 22) ++ t(1.second)
+  }
+
+  def t = ex.groupWithin(5, 1.second).debug().compile.toVector.unsafeRunSync()
+  //  def tt = groupWithin(ex, 5, 1.second).debug.compile.toVector
+
   // components:
   //  a queue of chunks and timeouts
   //  a mechanism for resettable timeouts
