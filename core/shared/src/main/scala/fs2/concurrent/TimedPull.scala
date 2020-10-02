@@ -1,0 +1,174 @@
+/*
+ * Copyright (c) 2013 Functional Streams for Scala
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of
+ * this software and associated documentation files (the "Software"), to deal in
+ * the Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+ * the Software, and to permit persons to whom the Software is furnished to do so,
+ * subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+ * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+ * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+ * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+
+package fs2
+package concurrent
+
+import scala.concurrent.duration._
+import fs2.internal.Token
+import cats.effect._
+import cats.syntax.all._
+
+object tp {
+  // def prog =
+  //   (MiniKafka.create[F], Queue.synchronous[F, Unit], SignallingRef[F, Unit](())).mapN {
+  //     (kafka, q, sig) =>
+  //     def consumer = Stream.repeatEval(sig.set(()) >> q.dequeue1).evalMap(_ => kafka.commit)
+  //     def producer = sig.discrete.zipRight(Stream.repeatEval(kafka.poll)).through(q.enqueue)
+
+  //     consumer
+  //       .concurrently(producer)
+  //       .compile
+  //       .drain
+  //   }.flatten
+
+  trait Alarm[F[_]] {
+  def reset(d: FiniteDuration, timeoutId: Token): F[Unit]
+  def timeouts: Stream[F, Token]
+  }
+object Alarm {
+  def create[F[_]: Temporal]: F[Alarm[F]] = {
+
+    def now = Temporal[F].monotonic
+
+    class Timeout(val id: Token, issuedAt: FiniteDuration, d: FiniteDuration) {
+      def asOfNow:  F[FiniteDuration] = now.map(now => d - (now - issuedAt))
+    }
+    object Timeout {
+      def issueNow(id: Token, d: FiniteDuration): F[Timeout] = now.map(new Timeout(id, _, d))
+    }
+
+    SignallingRef[F, Option[Timeout]](None).map { time =>
+      def nextAfter(t: Timeout): Stream[F, Timeout] =
+          time.discrete.unNone.dropWhile(_.id == t.id).head
+
+        new Alarm[F] {
+          def timeouts: Stream[F, Token] =
+            Stream.eval(time.get).unNone.flatMap { timeout =>
+              Stream.eval(timeout.asOfNow).flatMap { t =>
+                if (t <= 0.nanos) Stream.emit(timeout.id) ++ nextAfter(timeout).drain
+                else Stream.sleep_[F](t)
+              }
+            } ++ timeouts
+
+          def reset(d: FiniteDuration, id: Token) = Timeout.issueNow(id, d).flatMap(t => time.set(t.some))
+        }
+      }
+  }
+}
+
+  // def groupWithin[F[x] >: F[x]](
+  //     n: Int,
+  //     d: FiniteDuration
+  // )(implicit F: Temporal[F2]): Stream[F2, Chunk[O]] =
+  //   Stream
+  //     .eval {
+  //       Queue
+  //         .synchronousNoneTerminated[F2, Either[Token, Chunk[O]]]
+  //         .product(F.ref(F.unit -> false))
+  //     }
+  //     .flatMap { case (q, currentTimeout) =>
+  //       def startTimeout: Stream[F2, Token] =
+  //         Stream.eval(Token[F2]).evalTap { token =>
+  //           val timeout = F.sleep(d) >> q.enqueue1(token.asLeft.some)
+
+  //           // We need to cancel outstanding timeouts to avoid leaks
+  //           // on interruption, but using `Stream.bracket` or
+  //           // derivatives causes a memory leak due to all the
+  //           // finalisers accumulating. Therefore we dispose of them
+  //           // manually, with a cooperative strategy between a single
+  //           // stream finaliser, and F finalisers on each timeout.
+  //           //
+  //           // Note that to avoid races, the correctness of the
+  //           // algorithm does not depend on timely cancellation of
+  //           // previous timeouts, but uses a versioning scheme to
+  //           // ensure stale timeouts are no-ops.
+  //           timeout.start
+  //             .bracket(_ => F.unit) { fiber =>
+  //               // note the this is in a `release` action, and therefore uninterruptible
+  //               currentTimeout.modify { case st @ (cancelInFlightTimeout, streamTerminated) =>
+  //                 if (streamTerminated)
+  //                   // the stream finaliser will cancel the in flight
+  //                   // timeout, we need to cancel the timeout we have
+  //                   // just started
+  //                   st -> fiber.cancel
+  //                 else
+  //                   // The stream finaliser hasn't run, so we cancel
+  //                   // the in flight timeout and store the finaliser for
+  //                   // the timeout we have just started
+  //                   (fiber.cancel, streamTerminated) -> cancelInFlightTimeout
+  //               }.flatten
+  //             }
+  //         }
+
+  //       def producer =
+  //         this.chunks.map(_.asRight.some).through(q.enqueue).onFinalize(q.enqueue1(None))
+
+  //       def emitNonEmpty(c: Chunk.Queue[O]): Stream[F2, Chunk[O]] =
+  //         if (c.size > 0) Stream.emit(c.toChunk)
+  //         else Stream.empty
+
+  //       def resize(c: Chunk[O], s: Stream[F2, Chunk[O]]): (Stream[F2, Chunk[O]], Chunk[O]) =
+  //         if (c.size < n) s -> c
+  //         else {
+  //           val (unit, rest) = c.splitAt(n)
+  //           resize(rest, s ++ Stream.emit(unit))
+  //         }
+
+  //       def go(acc: Chunk.Queue[O], currentTimeout: Token): Stream[F2, Chunk[O]] =
+  //         Stream.eval(q.dequeue1).flatMap {
+  //           case None => emitNonEmpty(acc)
+  //           case Some(e) =>
+  //             e match {
+  //               case Left(t) if t == currentTimeout =>
+  //                 emitNonEmpty(acc) ++ startTimeout.flatMap { newTimeout =>
+  //                   go(Chunk.Queue.empty, newTimeout)
+  //                 }
+  //               case Left(_) => go(acc, currentTimeout)
+  //               case Right(c) if acc.size + c.size >= n =>
+  //                 val newAcc = acc :+ c
+  //                 // this is the same if in the resize function,
+  //                 // short circuited to avoid needlessly converting newAcc.toChunk
+  //                 if (newAcc.size < n)
+  //                   Stream.empty ++ startTimeout.flatMap(newTimeout => go(newAcc, newTimeout))
+  //                 else {
+  //                   val (toEmit, rest) = resize(newAcc.toChunk, Stream.empty)
+  //                   toEmit ++ startTimeout.flatMap { newTimeout =>
+  //                     go(Chunk.Queue(rest), newTimeout)
+  //                   }
+  //                 }
+  //               case Right(c) =>
+  //                 go(acc :+ c, currentTimeout)
+  //             }
+  //         }
+
+  //       startTimeout
+  //         .flatMap(t => go(Chunk.Queue.empty, t).concurrently(producer))
+  //         .onFinalize {
+  //           currentTimeout
+  //             .getAndSet(F.unit -> true)
+  //             .flatMap { case (cancelInFlightTimeout, _) => cancelInFlightTimeout }
+  //         }
+  //     }
+
+
+
+}
