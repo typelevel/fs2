@@ -28,6 +28,28 @@ import cats.effect._
 import cats.syntax.all._
 
 object tp {
+  // components:
+  //  a queue of chunks and timeouts
+  //  a mechanism for resettable timeouts
+  //  a way to avoid reacting to stale timeouts
+
+  // problematic interleaving
+  //  go is iterating and accumulating
+  //  the stream enqueues a chunk
+  //  the timeout enqueues
+  //  go pulls a chunk
+  //  go reaches limit, resets and starts another timeout, then recurs
+  //  go receives stale timeout, needs to be able to discard it
+  //  the state tracking the current timeout needs to be set before the next iteration of go
+
+  // if we express timedUncons and startTimer as `F`, that guarantee is hard to achieve
+  // cause they could be concurrent. We could express both as Pulls, forcing a sync loop.
+  // need to add a note that the `unconsTimed` `Pull`, unlike `uncons`, is not idempotent
+
+  // A separate concern would be to guarantee true pull-based semantics vs push-based with backpressure at 1
+
+
+
   // def prog =
   //   (MiniKafka.create[F], Queue.synchronous[F, Unit], SignallingRef[F, Unit](())).mapN {
   //     (kafka, q, sig) =>
