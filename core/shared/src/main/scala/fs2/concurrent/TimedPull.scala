@@ -20,8 +20,9 @@
  */
 
 package fs2
-package concurrent
+//package concurrent
 
+import fs2.concurrent.SignallingRef
 import scala.concurrent.duration._
 import fs2.internal.Token
 import cats.effect._
@@ -88,16 +89,52 @@ object tp {
 
   import cats.effect.unsafe.implicits.global
 
+  def groupWithin[O](s: Stream[IO, O], n: Int, t: FiniteDuration) =
+    TimedPull.go[IO, O, Chunk[O]] { tp =>
+      def emitNonEmpty(c: Chunk.Queue[O]): Pull[IO, Chunk[O], Unit] =
+        if (c.size > 0) Pull.output1(c.toChunk)
+        else Pull.done
+
+      def resize(c: Chunk[O], s: Pull[IO, Chunk[O], Unit]): (Pull[IO, Chunk[O], Unit], Chunk[O]) =
+        if (c.size < n) s -> c
+        else {
+          val (unit, rest) = c.splitAt(n)
+          resize(rest, s >> Pull.output1(unit))
+        }
+
+      def go(acc: Chunk.Queue[O], tp: TimedPull[IO, O]): Pull[IO, Chunk[O], Unit] =
+        tp.uncons.flatMap {
+          case None => emitNonEmpty(acc)
+          case Some((e, next)) =>
+            e match {
+              case Left(_) =>
+                emitNonEmpty(acc) >> tp.startTimer(t) >> go(Chunk.Queue.empty, next)
+              case Right(c) =>
+                val newAcc = acc :+ c
+                if (newAcc.size < n)
+                  go(newAcc, next)
+                else {
+                  val (toEmit, rest) = resize(newAcc.toChunk, Pull.done)
+                  toEmit >> tp.startTimer(t) >> go(Chunk.Queue(rest), next)
+                }
+            }
+        }
+
+      go(Chunk.Queue.empty, tp)
+    }.apply(s)
+
 
   def ex = {
-    def s(as: Int*) = Stream(as)
+    def s(as: Int*): Stream[IO, Int] = Stream(as:_*)
     def t(d: FiniteDuration) = Stream.sleep_[IO](d)
 
-    s(1,2,3,4,5) ++ s(6,7,8,9,10) ++ t(300.millis) ++ s(11,12,13) ++ t(200.millis) ++ s(14) ++ t(600.millis) ++ s(15, 16, 17) ++ s(18, 19, 20, 21, 22) ++ t(1.second)
+    s(1,2,3,4,5) ++ s(6,7,8,9,10) ++ t(300.millis) ++ s(11,12,13) ++ t(200.millis) ++ s(14) ++ s(5,5,5) ++ t(600.millis) ++ s(15, 16, 17) ++ s(18, 19, 20, 21, 22) ++ t(1.second)
   }
 
   def t = ex.groupWithin(5, 1.second).debug().compile.toVector.unsafeRunSync()
-  //  def tt = groupWithin(ex, 5, 1.second).debug.compile.toVector
+  def tt = groupWithin(ex, 5, 1.second).debug().compile.toVector.unsafeRunSync()
+
+
 
   // components:
   //  a queue of chunks and timeouts
@@ -262,6 +299,28 @@ object Alarm {
   //         }
   //     }
 
+   // def go(acc: Chunk.Queue[O], currentTimeout: Token): Stream[F2, Chunk[O]] =
+   //        Stream.eval(q.dequeue1).flatMap {
+   //          case None => emitNonEmpty(acc)
+   //          case Some(e) =>
+   //            e match {
+   //              case Left(t) if t == currentTimeout =>
+   //                emitNonEmpty(acc) ++ startTimeout.flatMap { newTimeout =>
+   //                  go(Chunk.Queue.empty, newTimeout)
+   //                }
+   //              case Left(_) => go(acc, currentTimeout)
+   //              case Right(c) =>
+   //                val newAcc = acc :+ c
+   //                if (newAcc.size < n)
+   //                  go(newAcc, currentTimeout)
+   //                else {
+   //                  val (toEmit, rest) = resize(newAcc.toChunk, Stream.empty)
+   //                  toEmit ++ startTimeout.flatMap { newTimeout =>
+   //                    go(Chunk.Queue(rest), newTimeout)
+   //                  }
+   //                }
+   //            }
+   //        }
 
 
 }
