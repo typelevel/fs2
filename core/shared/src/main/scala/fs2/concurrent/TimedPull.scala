@@ -34,23 +34,24 @@ object tp {
     def startTimer(t: FiniteDuration): Pull[F, INothing, Unit]
   }
   object TimedPull {
-    def go[F[_]: Temporal, A, B](f: TimedPull[F, A] => Pull[F, B, Unit]): Pipe[F, A, B] = { source =>
+    // newTimeout
+    // change Token in TimedPull
+    // move filter of stale timeouts in the Pull
+    def go[F[_]: Temporal, A, B](pull: TimedPull[F, A] => Pull[F, B, Unit]): Pipe[F, A, B] = { source =>
       def now = Temporal[F].monotonic
 
       class Timeout(val id: Token, issuedAt: FiniteDuration, d: FiniteDuration) {
         def asOfNow:  F[FiniteDuration] = now.map(now => d - (now - issuedAt))
       }
-      object Timeout {
-        def issueNow(d: FiniteDuration): F[Timeout] = for {
-          id <- Token[F]
-          at <- now
-        } yield new Timeout(id, at, d)
-      }
+
+      def newTimeout(d: FiniteDuration): F[Timeout] =
+        (Token[F], now).mapN(new Timeout(_, _, d))
 
       Stream.eval(SignallingRef[F, Option[Timeout]](None)).flatMap { time =>
         def nextAfter(t: Timeout): Stream[F, Timeout] =
           time.discrete.unNone.dropWhile(_.id == t.id).head
 
+        // is the initial time.get.unNone fine or does it spin?
         def timeouts: Stream[F, Token] =
           Stream.eval(time.get).unNone.flatMap { timeout =>
             Stream.eval(timeout.asOfNow).flatMap { t =>
@@ -58,9 +59,6 @@ object tp {
               else Stream.sleep_[F](t)
             }
           } ++ timeouts
-
-        def reset(t: FiniteDuration) =
-          Timeout.issueNow(t).flatMap(t => time.set(t.some))
 
         def output: Stream[F, Either[Token, Chunk[A]]] =
           timeouts
@@ -76,12 +74,12 @@ object tp {
             s.pull.uncons1
               .map(_.map(_.map(toTimedPull)))
 
-          def startTimer(t: FiniteDuration): Pull[F, INothing, Unit] = Pull.eval(reset(t))
+          def startTimer(t: FiniteDuration): Pull[F, INothing, Unit] = Pull.eval {
+            newTimeout(t).flatMap(t => time.set(t.some))
+          }
         }
 
-        val timedPull = toTimedPull(output)
-
-        f(timedPull).stream
+        pull(toTimedPull(output)).stream
       }
     }
   }
