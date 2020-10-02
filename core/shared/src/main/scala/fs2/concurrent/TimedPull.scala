@@ -30,7 +30,8 @@ import cats.syntax.all._
 
 object tp {
   trait TimedPull[F[_], A] {
-    def uncons: Pull[F, INothing, Option[(Either[Token, Chunk[A]], TimedPull[F, A])]]
+    type Timeout
+    def uncons: Pull[F, INothing, Option[(Either[Timeout, Chunk[A]], TimedPull[F, A])]]
     def startTimer(t: FiniteDuration): Pull[F, INothing, Unit]
   }
   object TimedPull {
@@ -70,6 +71,8 @@ object tp {
             }
 
         def toTimedPull(s: Stream[F, Either[Token, Chunk[A]]]): TimedPull[F, A] = new TimedPull[F, A] {
+          type Timeout = Token
+
           def uncons: Pull[F, INothing, Option[(Either[Token, Chunk[A]], TimedPull[F, A])]] =
             s.pull.uncons1
               .map(_.map(_.map(toTimedPull)))
@@ -83,9 +86,6 @@ object tp {
       }
     }
   }
-
-
-  import cats.effect.unsafe.implicits.global
 
   def groupWithin[O](s: Stream[IO, O], n: Int, t: FiniteDuration) =
     TimedPull.go[IO, O, Chunk[O]] { tp =>
@@ -121,6 +121,7 @@ object tp {
       go(Chunk.Queue.empty, tp)
     }.apply(s)
 
+  import cats.effect.unsafe.implicits.global
 
   def ex = {
     def s(as: Int*): Stream[IO, Int] = Stream(as:_*)
