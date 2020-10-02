@@ -117,7 +117,7 @@ object tp {
             }
         }
 
-      go(Chunk.Queue.empty, tp)
+      tp.startTimer(t) >> go(Chunk.Queue.empty, tp)
     }.apply(s)
 
   import cats.effect.unsafe.implicits.global
