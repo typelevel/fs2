@@ -1541,20 +1541,16 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
                     go(Chunk.Queue.empty, newTimeout)
                   }
                 case Left(_) => go(acc, currentTimeout)
-                case Right(c) if acc.size + c.size >= n =>
+                case Right(c) =>
                   val newAcc = acc :+ c
-                  // this is the same if in the resize function,
-                  // short circuited to avoid needlessly converting newAcc.toChunk
                   if (newAcc.size < n)
-                    Stream.empty ++ startTimeout.flatMap(newTimeout => go(newAcc, newTimeout))
+                    go(newAcc, currentTimeout)
                   else {
                     val (toEmit, rest) = resize(newAcc.toChunk, Stream.empty)
                     toEmit ++ startTimeout.flatMap { newTimeout =>
                       go(Chunk.Queue(rest), newTimeout)
                     }
                   }
-                case Right(c) =>
-                  go(acc :+ c, currentTimeout)
               }
           }
 
