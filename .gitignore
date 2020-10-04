@@ -21,3 +21,4 @@ test-output
 project/metals.sbt
 project/project
 .vscode
+.bsp

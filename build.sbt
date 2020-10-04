@@ -117,12 +117,6 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
   )
   .settings(
     name := "fs2-core",
-    Compile / unmanagedSourceDirectories ++= {
-      val major = if (isDotty.value) "-3" else "-2"
-      List(CrossType.Pure, CrossType.Full).flatMap(
-        _.sharedSrcDir(baseDirectory.value, "main").toList.map(f => file(f.getPath + major))
-      )
-    },
     Compile / scalafmt / unmanagedSources := (Compile / scalafmt / unmanagedSources).value
       .filterNot(_.toString.endsWith("Not.scala")),
     Test / scalafmt / unmanagedSources := (Test / scalafmt / unmanagedSources).value
@@ -175,12 +169,6 @@ lazy val io = project
   .settings(
     name := "fs2-io",
     Test / fork := true,
-    Compile / unmanagedSourceDirectories ++= {
-      val major = if (isDotty.value) "-3" else "-2"
-      List(CrossType.Pure, CrossType.Full).flatMap(
-        _.sharedSrcDir(baseDirectory.value / "io", "main").toList.map(f => file(f.getPath + major))
-      )
-    },
     OsgiKeys.exportPackage := Seq("fs2.io.*"),
     OsgiKeys.privatePackage := Seq(),
     OsgiKeys.importPackage := {
