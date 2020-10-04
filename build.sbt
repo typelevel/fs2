@@ -138,9 +138,9 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
   .settings(
     // Libraries cross-built for Dotty
     libraryDependencies ++= Seq(
-      "org.typelevel" %%% "cats-effect" % "3.0-ac83d13",
-      "org.typelevel" %%% "cats-effect-laws" % "3.0-ac83d13" % "test",
-      "org.typelevel" %%% "cats-effect-testkit" % "3.0-ac83d13" % "test",
+      "org.typelevel" %%% "cats-effect" % "3.0-de7d987",
+      "org.typelevel" %%% "cats-effect-laws" % "3.0-de7d987" % "test",
+      "org.typelevel" %%% "cats-effect-testkit" % "3.0-de7d987" % "test",
       "org.scodec" %%% "scodec-bits" % "1.1.20",
       "org.typelevel" %%% "scalacheck-effect-munit" % "0.2.0" % "test"
     )
@@ -165,7 +165,8 @@ lazy val coreJS = core.js
   .settings(
     scalaJSStage in Test := FastOptStage,
     jsEnv := new org.scalajs.jsenv.nodejs.NodeJSEnv(),
-    scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule))
+    scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule)),
+    crossScalaVersions := crossScalaVersions.value.filterNot(_.startsWith("0."))
   )
 
 lazy val io = project
@@ -177,7 +178,7 @@ lazy val io = project
     Compile / unmanagedSourceDirectories ++= {
       val major = if (isDotty.value) "-3" else "-2"
       List(CrossType.Pure, CrossType.Full).flatMap(
-        _.sharedSrcDir(baseDirectory.value, "main").toList.map(f => file(f.getPath + major))
+        _.sharedSrcDir(baseDirectory.value / "io", "main").toList.map(f => file(f.getPath + major))
       )
     },
     OsgiKeys.exportPackage := Seq("fs2.io.*"),
@@ -240,7 +241,7 @@ lazy val microsite = project
   .settings(
     micrositeName := "fs2",
     micrositeDescription := "Purely functional, effectful, resource-safe, concurrent streams for Scala",
-    micrositeGithubOwner := "functional-streams-for-scala",
+    micrositeGithubOwner := "typelevel",
     micrositeGithubRepo := "fs2",
     micrositePushSiteWith := GitHub4s,
     micrositeGithubToken := sys.env.get("GITHUB_TOKEN"),

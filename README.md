@@ -29,10 +29,10 @@ Quick links:
 * [Docs and getting help](#docs)
 
 [microsite]: http://fs2.io/index.html
-[core-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-core_2.12/2.2.1/fs2-core_2.12-2.2.1-javadoc.jar/!/fs2/index.html
-[io-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-io_2.12/2.2.1/fs2-io_2.12-2.2.1-javadoc.jar/!/fs2/io/index.html
-[rx-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-reactive-streams_2.12/2.2.1/fs2-reactive-streams_2.12-2.2.1-javadoc.jar/!/fs2/interop/reactivestreams/index.html
-[experimental-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-experimental_2.12/2.2.1/fs2-experimental_2.12-2.2.1-javadoc.jar/!/fs2/experimental/index.html
+[core-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-core_2.12/2.4.4/fs2-core_2.12-2.4.4-javadoc.jar/!/fs2/index.html
+[io-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-io_2.12/2.4.4/fs2-io_2.12-2.4.4-javadoc.jar/!/fs2/io/index.html
+[rx-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-reactive-streams_2.12/2.4.4/fs2-reactive-streams_2.12-2.4.4-javadoc.jar/!/fs2/interop/reactivestreams/index.html
+[experimental-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-experimental_2.12/2.4.4/fs2-experimental_2.12-2.4.4-javadoc.jar/!/fs2/experimental/index.html
 
 ### <a id="getit"></a> Where to get the latest version ###
 
@@ -43,22 +43,22 @@ If upgrading from the 1.0 series, see the [release notes for 2.0.0](https://gith
 
 ```
 // available for 2.12, 2.13
-libraryDependencies += "co.fs2" %% "fs2-core" % "2.4.0" // For cats 2 and cats-effect 2
+libraryDependencies += "co.fs2" %% "fs2-core" % "2.4.4" // For cats 2 and cats-effect 2
 
 // optional I/O library
-libraryDependencies += "co.fs2" %% "fs2-io" % "2.4.0"
+libraryDependencies += "co.fs2" %% "fs2-io" % "2.4.4"
 
 // optional reactive streams interop
-libraryDependencies += "co.fs2" %% "fs2-reactive-streams" % "2.4.0"
+libraryDependencies += "co.fs2" %% "fs2-reactive-streams" % "2.4.4"
 
 // optional experimental library
-libraryDependencies += "co.fs2" %% "fs2-experimental" % "2.4.0"
+libraryDependencies += "co.fs2" %% "fs2-experimental" % "2.4.4"
 ```
 
 The fs2-core library is also supported on Scala.js:
 
 ```
-libraryDependencies += "co.fs2" %%% "fs2-core" % "2.4.0"
+libraryDependencies += "co.fs2" %%% "fs2-core" % "2.4.4"
 ```
 
 There are [detailed migration guides](https://github.com/functional-streams-for-scala/fs2/blob/main/docs/) for migrating from older versions.
@@ -120,12 +120,12 @@ You can find a list of libraries and integrations with data stores built on top 
 
 If you have a project you'd like to include in this list, either open a PR or let us know in [the gitter channel](https://gitter.im/functional-streams-for-scala/fs2) and we'll add a link to it.
 
-### Adopters ### 
+### Adopters ###
 
 Here's a (non-exhaustive) list of companies that use FS2 in production. Don't see yours? You can [add it in a PR!](https://github.com/functional-streams-for-scala/fs2/edit/main/README.md)
 
 * [Banno](https://banno.com/)
-* [Chatroulette](https://v2.chatroulette.com/)
+* [Chatroulette](https://about.chatroulette.com/)
 * [Comcast](https://www.xfinity.com/)
 * [CompStak](https://www.compstak.com)
 * [Disney Streaming](https://www.disneyplus.com)

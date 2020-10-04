@@ -678,18 +678,20 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     Stream.eval(Queue.bounded[F2, Option[O]](1)).flatMap { queue =>
       Stream.eval(F.ref[Option[O]](None)).flatMap { ref =>
         val enqueueLatest: F2[Unit] =
-          ref.modify(s => None -> s).flatMap {
+          ref.getAndSet(None).flatMap {
             case v @ Some(_) => queue.enqueue1(v)
             case None        => F.unit
           }
 
         def onChunk(ch: Chunk[O]): F2[Unit] =
-          if (ch.isEmpty) F.unit
-          else
-            ref.modify(s => Some(ch(ch.size - 1)) -> s).flatMap {
-              case None    => F.start(F.sleep(d) >> enqueueLatest).void
-              case Some(_) => F.unit
-            }
+          ch.last match {
+            case None => F.unit
+            case s @ Some(_) =>
+              ref.getAndSet(s).flatMap {
+                case None    => F.start(F.sleep(d) >> enqueueLatest).void
+                case Some(_) => F.unit
+              }
+          }
 
         val in: Stream[F2, Unit] = chunks.evalMap(onChunk) ++
           Stream.exec(enqueueLatest >> queue.enqueue1(None))
@@ -1539,29 +1541,25 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
                     go(Chunk.Queue.empty, newTimeout)
                   }
                 case Left(_) => go(acc, currentTimeout)
-                case Right(c) if acc.size + c.size >= n =>
+                case Right(c) =>
                   val newAcc = acc :+ c
-                  // this is the same if in the resize function,
-                  // short circuited to avoid needlessly converting newAcc.toChunk
                   if (newAcc.size < n)
-                    Stream.empty ++ startTimeout.flatMap(newTimeout => go(newAcc, newTimeout))
+                    go(newAcc, currentTimeout)
                   else {
                     val (toEmit, rest) = resize(newAcc.toChunk, Stream.empty)
                     toEmit ++ startTimeout.flatMap { newTimeout =>
                       go(Chunk.Queue(rest), newTimeout)
                     }
                   }
-                case Right(c) =>
-                  go(acc :+ c, currentTimeout)
               }
           }
 
         startTimeout
           .flatMap(t => go(Chunk.Queue.empty, t).concurrently(producer))
           .onFinalize {
-            currentTimeout.modify { case (cancelInFlightTimeout, _) =>
-              (F.unit, true) -> cancelInFlightTimeout
-            }.flatten
+            currentTimeout
+              .getAndSet(F.unit -> true)
+              .flatMap { case (cancelInFlightTimeout, _) => cancelInFlightTimeout }
           }
       }
 
@@ -1960,7 +1958,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
 
       // action to signal that one stream is finished, and if it is te last one
       // then close te queue (by putting a None in it)
-      val doneAndClose: F2[Unit] = otherSideDone.modify(prev => (true, prev)).flatMap {
+      val doneAndClose: F2[Unit] = otherSideDone.getAndSet(true).flatMap {
         // complete only if other side is done too.
         case true  => resultQ.enqueue1(None)
         case false => F.unit
@@ -3273,6 +3271,26 @@ object Stream extends StreamLowPriority {
     now.flatMap(go)
   }
 
+  private[fs2] final class PartiallyAppliedFromOption[F[_]](
+      private val dummy: Boolean
+  ) extends AnyVal {
+    def apply[A](option: Option[A]): Stream[F, A] =
+      option.map(Stream.emit).getOrElse(Stream.empty)
+  }
+
+  /** Lifts an Option[A] to an effectful Stream.
+    *
+    * @example {{{
+    * scala> import cats.effect.SyncIO
+    * scala> Stream.fromOption[SyncIO](Some(42)).compile.toList.unsafeRunSync()
+    * res0: List[Int] = List(42)
+    * scala> Stream.fromOption[SyncIO](None).compile.toList.unsafeRunSync()
+    * res1: List[Nothing] = List()
+    * }}}
+    */
+  def fromOption[F[_]]: PartiallyAppliedFromOption[F] =
+    new PartiallyAppliedFromOption(dummy = true)
+
   private[fs2] final class PartiallyAppliedFromEither[F[_]](
       private val dummy: Boolean
   ) extends AnyVal {
@@ -3693,13 +3711,9 @@ object Stream extends StreamLowPriority {
         Stream.eval(Queue.unbounded[F, Option[Chunk[O]]]).flatMap { outQ =>
           Stream.eval(Queue.unbounded[F, Option[Chunk[O]]]).flatMap { sinkQ =>
             def inputStream =
-              self.chunks.noneTerminate.evalMap {
-                case Some(chunk) =>
-                  sinkQ.enqueue1(Some(chunk)) >>
-                    guard.acquire
-
-                case None =>
-                  sinkQ.enqueue1(None)
+              self.chunks.noneTerminate.evalTap(sinkQ.enqueue1).evalMap {
+                case Some(_) => guard.acquire
+                case None    => F.unit
               }
 
             def sinkStream =
@@ -4307,7 +4321,7 @@ object Stream extends StreamLowPriority {
       * compiles the stream down to the target effect type.
       */
     def foldChunks[B](init: B)(f: (B, Chunk[O]) => B): G[B] =
-      compiler(underlying, () => init)(f, identity)
+      compiler(underlying, init)(f)
 
     /**
       * Like [[fold]] but uses the implicitly available `Monoid[O]` to combine elements.
@@ -4505,8 +4519,14 @@ object Stream extends StreamLowPriority {
       * res3: scodec.bits.ByteVector = ByteVector(5 bytes, 0x0001020304)
       * }}}
       */
-    def to(collector: Collector[O]): G[collector.Out] =
-      compiler(underlying, () => collector.newBuilder)((acc, c) => { acc += c; acc }, _.result)
+    def to(collector: Collector[O]): G[collector.Out] = {
+      implicit val G: Monad[G] = compiler.target
+      // G.unit suspends creation of the mutable builder
+      for {
+        _ <- G.unit
+        builder <- compiler(underlying, collector.newBuilder) { (acc, c) => acc += c; acc }
+      } yield builder.result
+    }
 
     /**
       * Compiles this stream in to a value of the target effect type `F` by logging

@@ -21,7 +21,6 @@
 
 package fs2.internal
 
-import cats.Monad
 import cats.syntax.all._
 import fs2.Compiler
 
