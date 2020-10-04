@@ -187,13 +187,6 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
   .settings(
     name := "fs2-core",
     sourceDirectories in (Compile, scalafmt) += baseDirectory.value / "../shared/src/main/scala",
-    Compile / unmanagedSourceDirectories ++= {
-      if (isDotty.value)
-        List(CrossType.Pure, CrossType.Full).flatMap(
-          _.sharedSrcDir(baseDirectory.value, "main").toList.map(f => file(f.getPath + "-3"))
-        )
-      else Nil
-    },
     // Libraries not yet cross-built for Dotty
     libraryDependencies ++= Seq(
       "org.typelevel" %%% "cats-core" % "2.2.0",
@@ -242,13 +235,6 @@ lazy val io = project
   .settings(
     name := "fs2-io",
     Test / fork := true,
-    Compile / unmanagedSourceDirectories ++= {
-      if (isDotty.value)
-        List(CrossType.Pure, CrossType.Full).flatMap(
-          _.sharedSrcDir(baseDirectory.value / "io", "main").toList.map(f => file(f.getPath + "-3"))
-        )
-      else Nil
-    },
     OsgiKeys.exportPackage := Seq("fs2.io.*"),
     OsgiKeys.privatePackage := Seq(),
     OsgiKeys.importPackage := {
