@@ -24,7 +24,7 @@ package fs2
 import cats.ApplicativeError
 import cats.syntax.all._
 import cats.effect.{Concurrent, Resource}
-import cats.effect.concurrent.Ref
+import cats.effect.kernel.Ref
 import cats.effect.implicits._
 
 /**

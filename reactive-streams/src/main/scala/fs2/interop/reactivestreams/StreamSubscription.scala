@@ -24,8 +24,7 @@ package interop
 package reactivestreams
 
 import cats.effect._
-import cats.effect.implicits._
-import cats.effect.unsafe.IORuntime
+import cats.effect.unsafe.UnsafeRun
 import cats.syntax.all._
 
 import fs2.concurrent.{Queue, SignallingRef}
@@ -43,7 +42,7 @@ private[reactivestreams] final class StreamSubscription[F[_], A](
     cancelled: SignallingRef[F, Boolean],
     sub: Subscriber[A],
     stream: Stream[F, A]
-)(implicit F: Effect[F], ioRuntime: IORuntime)
+)(implicit F: Async[F], runner: UnsafeRun[F])
     extends Subscription {
   import StreamSubscription._
 
@@ -77,7 +76,7 @@ private[reactivestreams] final class StreamSubscription[F[_], A](
         .compile
         .drain
 
-    s.unsafeRunAsync()
+    runner.unsafeRunAndForget(s)
   }
 
   // According to the spec, it's acceptable for a concurrent cancel to not
@@ -88,7 +87,7 @@ private[reactivestreams] final class StreamSubscription[F[_], A](
   // See https://github.com/zainab-ali/fs2-reactive-streams/issues/29
   // and https://github.com/zainab-ali/fs2-reactive-streams/issues/46
   def cancel(): Unit =
-    cancelled.set(true).to[IO].unsafeRunSync()
+    runner.unsafeRunSync(cancelled.set(true))
 
   def request(n: Long): Unit = {
     val request: F[Request] =
@@ -99,7 +98,7 @@ private[reactivestreams] final class StreamSubscription[F[_], A](
     val prog = cancelled.get
       .ifM(ifTrue = F.unit, ifFalse = request.flatMap(requests.enqueue1).handleErrorWith(onError))
 
-    prog.unsafeRunAsync()
+    runner.unsafeRunAndForget(prog)
   }
 }
 
@@ -110,10 +109,10 @@ private[reactivestreams] object StreamSubscription {
   case object Infinite extends Request
   case class Finite(n: Long) extends Request
 
-  def apply[F[_]: Effect, A](
+  def apply[F[_]: Async: UnsafeRun, A](
       sub: Subscriber[A],
       stream: Stream[F, A]
-  )(implicit ioRuntime: IORuntime): F[StreamSubscription[F, A]] =
+  ): F[StreamSubscription[F, A]] =
     SignallingRef(false).flatMap { cancelled =>
       Queue.unbounded[F, Request].map { requests =>
         new StreamSubscription(requests, cancelled, sub, stream)

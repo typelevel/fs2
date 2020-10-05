@@ -25,9 +25,9 @@ package io
 import java.io.{IOException, InputStream}
 
 import cats.syntax.all._
-import cats.effect.{Effect, IO, Outcome, Resource}
+import cats.effect.{Async, Outcome, Resource}
+import cats.effect.unsafe.UnsafeRun
 import cats.effect.implicits._
-import cats.effect.unsafe.IORuntime // TODO replace this once CE3 supports Unsafe effect running
 
 import fs2.Chunk.Bytes
 import fs2.concurrent.{Queue, SignallingRef}
@@ -48,7 +48,7 @@ private[io] object JavaInputOutputStream {
 
   def toInputStream[F[_]](
       source: Stream[F, Byte]
-  )(implicit F: Effect[F], ioRuntime: IORuntime): Resource[F, InputStream] = {
+  )(implicit F: Async[F], runner: UnsafeRun[F]): Resource[F, InputStream] = {
     def markUpstreamDone(
         queue: Queue[F, Either[Option[Throwable], Bytes]],
         upState: SignallingRef[F, UpStreamState],
@@ -75,7 +75,7 @@ private[io] object JavaInputOutputStream {
         .drain
         .guaranteeCase { (outcome: Outcome[F, Throwable, Unit]) =>
           outcome match {
-            case Outcome.Completed(_) => markUpstreamDone(queue, upState, None)
+            case Outcome.Succeeded(_) => markUpstreamDone(queue, upState, None)
             case Outcome.Errored(t)   => markUpstreamDone(queue, upState, Some(t))
             case Outcome.Canceled()   => markUpstreamDone(queue, upState, None)
           }
@@ -205,10 +205,10 @@ private[io] object JavaInputOutputStream {
           .as(
             new InputStream {
               override def close(): Unit =
-                closeIs(upState, dnState).to[IO].unsafeRunSync()
+                runner.unsafeRunAndForget(closeIs(upState, dnState))
 
               override def read(b: Array[Byte], off: Int, len: Int): Int =
-                readOnce(b, off, len, queue, dnState).to[IO].unsafeRunSync()
+                runner.unsafeRunSync(readOnce(b, off, len, queue, dnState))
 
               def read(): Int = {
                 def go(acc: Array[Byte]): F[Int] =
@@ -218,7 +218,7 @@ private[io] object JavaInputOutputStream {
                     else F.pure(acc(0) & 0xff)
                   }
 
-                go(new Array[Byte](1)).to[IO].unsafeRunSync()
+                runner.unsafeRunSync(go(new Array[Byte](1)))
               }
             }
           )

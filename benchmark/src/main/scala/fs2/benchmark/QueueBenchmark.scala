@@ -30,7 +30,7 @@ import org.openjdk.jmh.annotations.{Benchmark, Param, Scope, State}
 @State(Scope.Thread)
 class QueueBenchmark {
 
-  val size = 100000
+  val size = 100000L
 
   @Param(Array("1", "2", "5", "10", "50", "100"))
   var n: Int = _

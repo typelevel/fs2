@@ -22,7 +22,7 @@
 package fs2
 
 import cats.effect.Sync
-import cats.effect.concurrent.Ref
+import cats.effect.kernel.Ref
 import cats.syntax.all._
 
 final class Counter[F[_]](private val ref: Ref[F, Long]) {

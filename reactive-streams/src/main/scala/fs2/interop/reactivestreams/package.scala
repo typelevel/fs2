@@ -23,8 +23,7 @@ package fs2
 package interop
 
 import cats.effect._
-import cats.effect.implicits._
-import cats.effect.unsafe.IORuntime
+import cats.effect.unsafe.UnsafeRun
 import org.reactivestreams._
 
 /**
@@ -52,7 +51,7 @@ package object reactivestreams {
     *
     * The publisher only receives a subscriber when the stream is run.
     */
-  def fromPublisher[F[_]: Effect, A](p: Publisher[A])(implicit ioRuntime: IORuntime): Stream[F, A] =
+  def fromPublisher[F[_]: Async: UnsafeRun, A](p: Publisher[A]): Stream[F, A] =
     Stream
       .eval(StreamSubscriber[F, A])
       .flatMap(s => s.sub.stream(Sync[F].delay(p.subscribe(s))))
@@ -60,7 +59,7 @@ package object reactivestreams {
   implicit final class PublisherOps[A](val publisher: Publisher[A]) extends AnyVal {
 
     /** Creates a lazy stream from an `org.reactivestreams.Publisher` */
-    def toStream[F[_]: Effect](implicit ioRuntime: IORuntime): Stream[F, A] =
+    def toStream[F[_]: Async: UnsafeRun]: Stream[F, A] =
       fromPublisher(publisher)
   }
 
@@ -73,23 +72,9 @@ package object reactivestreams {
       * The stream is only ran when elements are requested.
       */
     def toUnicastPublisher(implicit
-        F: Effect[F],
-        ioRuntime: IORuntime
+        F: Async[F],
+        runner: UnsafeRun[F]
     ): StreamUnicastPublisher[F, A] =
       StreamUnicastPublisher(stream)
-  }
-
-  private[interop] implicit class Runner[F[_]: Effect, A](fa: F[A])(implicit ioRuntime: IORuntime) {
-    def reportFailure(e: Throwable) =
-      Thread.getDefaultUncaughtExceptionHandler match {
-        case null => e.printStackTrace()
-        case h    => h.uncaughtException(Thread.currentThread(), e)
-      }
-
-    def unsafeRunAsync(): Unit =
-      fa.to[IO].unsafeRunAsync {
-        case Left(t)  => reportFailure(t)
-        case Right(_) => ()
-      }
   }
 }

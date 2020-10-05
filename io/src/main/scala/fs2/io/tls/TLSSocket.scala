@@ -29,7 +29,7 @@ import java.net.SocketAddress
 import javax.net.ssl.SSLSession
 
 import cats.Applicative
-import cats.effect.concurrent.Semaphore
+import cats.effect.std.Semaphore
 import cats.effect._
 import cats.syntax.all._
 
@@ -50,6 +50,11 @@ sealed trait TLSSocket[F[_]] extends Socket[F] {
     * session info such as the negotiated cipher suite or the peer certificate.
     */
   def session: F[SSLSession]
+
+  /**
+    * Provides access to the current application protocol that has been negotiated.
+    */
+  def applicationProtocol: F[String]
 }
 
 object TLSSocket {

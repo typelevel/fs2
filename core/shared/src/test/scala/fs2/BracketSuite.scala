@@ -25,8 +25,8 @@ import scala.concurrent.duration._
 
 import cats.Applicative
 import cats.data.Chain
-import cats.effect.{IO, Resource, SyncEffect, SyncIO}
-import cats.effect.concurrent.Ref
+import cats.effect.{IO, Resource, Sync, SyncIO}
+import cats.effect.kernel.Ref
 import cats.syntax.all._
 import org.scalacheck.effect.PropF.forAllF
 
@@ -42,7 +42,7 @@ class BracketSuite extends Fs2Suite {
     )
 
   group("single bracket") {
-    def singleBracketTest[F[_]: SyncEffect, A](use: Stream[F, A]): F[Unit] =
+    def singleBracketTest[F[_]: Sync, A](use: Stream[F, A]): F[Unit] =
       for {
         events <- Ref[F].of[Vector[BracketEvent]](Vector.empty)
         _ <-
@@ -63,7 +63,7 @@ class BracketSuite extends Fs2Suite {
   }
 
   group("bracket ++ bracket") {
-    def appendBracketTest[F[_]: SyncEffect, A](
+    def appendBracketTest[F[_]: Sync, A](
         use1: Stream[F, A],
         use2: Stream[F, A]
     ): F[Unit] =
@@ -256,7 +256,7 @@ class BracketSuite extends Fs2Suite {
           val s2 = s.foldLeft(Stream.empty: Stream[IO, Int])(_ ++ _)
           s2.append(s2.take(10)).take(10).compile.drain.flatMap(_ => counter.get).map { count =>
             assert(count == 0L)
-            ecs.toList.foreach(it => assert(it == Resource.ExitCase.Completed))
+            ecs.toList.foreach(it => assert(it == Resource.ExitCase.Succeeded))
           }
         }
       }

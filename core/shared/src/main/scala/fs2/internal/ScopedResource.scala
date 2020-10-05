@@ -151,7 +151,7 @@ private[internal] object ScopedResource {
         state.modify { s =>
           if (s.isFinished)
             // state is closed and there are no leases, finalizer has to be invoked right away
-            s -> finalizer(Resource.ExitCase.Completed).as(false).attempt
+            s -> finalizer(Resource.ExitCase.Succeeded).as(false).attempt
           else {
             val attemptFinalizer = (ec: Resource.ExitCase) => finalizer(ec).attempt
             // either state is open, or leases are present, either release or `Lease#cancel` will run the finalizer
@@ -183,7 +183,7 @@ private[internal] object ScopedResource {
                   // Scope is closed and this is last lease, assure finalizer is removed from the state and run
                   // previous finalizer shall be always present at this point, this shall invoke it
                   s.copy(finalizer = None) -> (s.finalizer match {
-                    case Some(ff) => ff(Resource.ExitCase.Completed)
+                    case Some(ff) => ff(Resource.ExitCase.Succeeded)
                     case None     => pru
                   })
                 }.flatten

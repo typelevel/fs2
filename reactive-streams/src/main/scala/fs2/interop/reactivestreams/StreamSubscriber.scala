@@ -25,9 +25,8 @@ package reactivestreams
 
 import cats._
 import cats.effect._
-import cats.effect.implicits._
-import cats.effect.concurrent.{Deferred, Ref}
-import cats.effect.unsafe.IORuntime
+import cats.effect.kernel.{Deferred, Ref}
+import cats.effect.unsafe.UnsafeRun
 import cats.syntax.all._
 
 import org.reactivestreams._
@@ -39,29 +38,31 @@ import org.reactivestreams._
   *
   * @see [[https://github.com/reactive-streams/reactive-streams-jvm#2-subscriber-code]]
   */
-final class StreamSubscriber[F[_]: Effect, A](val sub: StreamSubscriber.FSM[F, A])(implicit
-    ioRuntime: IORuntime
+final class StreamSubscriber[F[_], A](val sub: StreamSubscriber.FSM[F, A])(implicit
+    F: ApplicativeError[F, Throwable],
+    runner: UnsafeRun[F]
 ) extends Subscriber[A] {
 
   /** Called by an upstream reactivestreams system */
   def onSubscribe(s: Subscription): Unit = {
     nonNull(s)
-    sub.onSubscribe(s).to[IO].unsafeRunAsync(_ => ())
+    runner.unsafeRunAndForget(sub.onSubscribe(s))
   }
 
   /** Called by an upstream reactivestreams system */
   def onNext(a: A): Unit = {
     nonNull(a)
-    sub.onNext(a).to[IO].unsafeRunAsync(_ => ())
+    runner.unsafeRunAndForget(sub.onNext(a))
   }
 
   /** Called by an upstream reactivestreams system */
-  def onComplete(): Unit = sub.onComplete.to[IO].unsafeRunAsync(_ => ())
+  def onComplete(): Unit =
+    runner.unsafeRunAndForget(sub.onComplete)
 
   /** Called by an upstream reactivestreams system */
   def onError(t: Throwable): Unit = {
     nonNull(t)
-    sub.onError(t).to[IO].unsafeRunAsync(_ => ())
+    runner.unsafeRunAndForget(sub.onError(t))
   }
 
   def stream(subscribe: F[Unit]): Stream[F, A] = sub.stream(subscribe)
@@ -70,7 +71,7 @@ final class StreamSubscriber[F[_]: Effect, A](val sub: StreamSubscriber.FSM[F, A
 }
 
 object StreamSubscriber {
-  def apply[F[_]: Effect, A](implicit ioRuntime: IORuntime): F[StreamSubscriber[F, A]] =
+  def apply[F[_]: Async: UnsafeRun, A]: F[StreamSubscriber[F, A]] =
     fsm[F, A].map(new StreamSubscriber(_))
 
   /** A finite state machine describing the subscriber */

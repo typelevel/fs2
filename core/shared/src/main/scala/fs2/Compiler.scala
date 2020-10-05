@@ -23,7 +23,7 @@ package fs2
 
 import cats.{Id, Monad}
 import cats.effect._
-import cats.effect.concurrent.Ref
+import cats.effect.kernel.Ref
 import cats.syntax.all._
 
 import fs2.internal._

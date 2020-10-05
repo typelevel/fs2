@@ -29,7 +29,7 @@ import java.net.InetSocketAddress
 import java.net.InetAddress
 
 import cats.effect.IO
-import cats.effect.concurrent.Deferred
+import cats.effect.kernel.Deferred
 import cats.effect.Resource
 
 class SocketSuite extends Fs2Suite {
@@ -89,7 +89,7 @@ class SocketSuite extends Fs2Suite {
           .flatMap { socketGroup =>
             Stream(echoServer(socketGroup).drain, clients(socketGroup))
               .parJoin(2)
-              .take(clientCount)
+              .take(clientCount.toLong)
           }
           .compile
           .toVector
@@ -141,7 +141,7 @@ class SocketSuite extends Fs2Suite {
           .flatMap { socketGroup =>
             Stream(junkServer(socketGroup), klient(socketGroup))
               .parJoin(2)
-              .take(sizes.length)
+              .take(sizes.length.toLong)
           }
           .compile
           .toVector

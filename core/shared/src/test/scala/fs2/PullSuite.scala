@@ -22,7 +22,7 @@
 package fs2
 
 import cats.effect.IO
-import cats.effect.concurrent.Ref
+import cats.effect.kernel.Ref
 import org.scalacheck.Prop.forAll
 
 class PullSuite extends Fs2Suite {

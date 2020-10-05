@@ -22,10 +22,10 @@
 package fs2
 
 import cats._
-import cats.effect.{Async, Effect, Outcome, Resource, Sync}
+import cats.effect.{Async, Outcome, Resource, Sync}
 import cats.effect.implicits._
-import cats.effect.concurrent.Deferred
-import cats.effect.unsafe.IORuntime
+import cats.effect.kernel.Deferred
+import cats.effect.unsafe.UnsafeRun
 import cats.syntax.all._
 
 import java.io.{InputStream, OutputStream, PipedInputStream, PipedOutputStream}
@@ -209,19 +209,19 @@ package object io {
     * original stream completely terminates.
     *
     * Because all `InputStream` methods block (including `close`), the resulting `InputStream`
-    * should be consumed on a different thread pool than the one that is backing the `ConcurrentEffect`.
+    * should be consumed on a different thread pool than the one that is backing the effect.
     *
     * Note that the implementation is not thread safe -- only one thread is allowed at any time
     * to operate on the resulting `java.io.InputStream`.
     */
-  def toInputStream[F[_]](implicit F: Effect[F], ioRuntime: IORuntime): Pipe[F, Byte, InputStream] =
+  def toInputStream[F[_]: Async: UnsafeRun]: Pipe[F, Byte, InputStream] =
     source => Stream.resource(toInputStreamResource(source))
 
   /**
     * Like [[toInputStream]] but returns a `Resource` rather than a single element stream.
     */
-  def toInputStreamResource[F[_]](
+  def toInputStreamResource[F[_]: Async: UnsafeRun](
       source: Stream[F, Byte]
-  )(implicit F: Effect[F], ioRuntime: IORuntime): Resource[F, InputStream] =
+  ): Resource[F, InputStream] =
     JavaInputOutputStream.toInputStream(source)
 }

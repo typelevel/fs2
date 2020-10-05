@@ -23,7 +23,7 @@ package fs2
 
 import cats.Functor
 import cats.effect.{Resource, Sync}
-import cats.effect.concurrent.Ref
+import cats.effect.kernel.Ref
 import cats.syntax.all._
 
 trait Logger[F[_]] {

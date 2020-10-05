@@ -101,7 +101,7 @@ class TLSSocketSuite extends TLSSuite {
                     )
                     .flatMap { clientSocketTls =>
                       Stream.exec(clientSocketTls.write(msg)) ++
-                        clientSocketTls.reads(8192).take(msg.size)
+                        clientSocketTls.reads(8192).take(msg.size.toLong)
                     }
                 }
 

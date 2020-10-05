@@ -23,7 +23,7 @@ package fs2
 package concurrent
 
 import cats.effect.IO
-import cats.effect.concurrent.Ref
+import cats.effect.kernel.Ref
 import cats.syntax.all._
 // import cats.laws.discipline.{ApplicativeTests, FunctorTests}
 import scala.concurrent.duration._
