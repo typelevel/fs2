@@ -437,9 +437,7 @@ object Files {
 
   implicit def forAync[F[_]: Async]: Files[F] = new AsyncBaseFiles[F]
 
-  private final class AsyncBaseFiles[F[_]: Async]
-      extends BaseFiles.SyncBaseFiles[F]
-      with Files[F] {
+  private final class AsyncBaseFiles[F[_]: Async] extends BaseFiles.SyncBaseFiles[F] with Files[F] {
 
     def tail(path: Path, chunkSize: Int, offset: Long, pollDelay: FiniteDuration): Stream[F, Byte] =
       Stream.resource(ReadCursor.fromPath(path)).flatMap { cursor =>
