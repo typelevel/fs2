@@ -27,15 +27,15 @@ import scala.concurrent.duration._
 
 import cats.effect.IO
 
-import java.nio.file._
+import java.nio.file.{Files => JFiles, _}
 
 class WatcherSuite extends BaseFileSuite {
   group("supports watching a file") {
     test("for modifications") {
       tempFile
         .flatMap { f =>
-          file
-            .watch[IO](f, modifiers = modifiers)
+          Files[IO]
+            .watch(f, modifiers = modifiers)
             .takeWhile(
               {
                 case Watcher.Event.Modified(_, _) => false; case _ => true
@@ -50,15 +50,15 @@ class WatcherSuite extends BaseFileSuite {
     test("for deletions") {
       tempFile
         .flatMap { f =>
-          file
-            .watch[IO](f, modifiers = modifiers)
+          Files[IO]
+            .watch(f, modifiers = modifiers)
             .takeWhile(
               {
                 case Watcher.Event.Deleted(_, _) => false; case _ => true
               },
               true
             )
-            .concurrently(smallDelay ++ Stream.eval(IO(Files.delete(f))))
+            .concurrently(smallDelay ++ Stream.eval(IO(JFiles.delete(f))))
         }
         .compile
         .drain
@@ -71,9 +71,9 @@ class WatcherSuite extends BaseFileSuite {
         .flatMap { dir =>
           val a = dir.resolve("a")
           val b = a.resolve("b")
-          Stream.eval(IO(Files.createDirectory(a)) >> IO(Files.write(b, Array[Byte]()))) >>
-            file
-              .watch[IO](dir, modifiers = modifiers)
+          Stream.eval(IO(JFiles.createDirectory(a)) >> IO(JFiles.write(b, Array[Byte]()))) >>
+            Files[IO]
+              .watch(dir, modifiers = modifiers)
               .takeWhile({
                 case Watcher.Event.Modified(_, _) => false; case _ => true
               })
@@ -87,14 +87,14 @@ class WatcherSuite extends BaseFileSuite {
         .flatMap { dir =>
           val a = dir.resolve("a")
           val b = a.resolve("b")
-          file
-            .watch[IO](dir, modifiers = modifiers)
+          Files[IO]
+            .watch(dir, modifiers = modifiers)
             .takeWhile({
               case Watcher.Event.Created(_, _) => false; case _ => true
             })
             .concurrently(
               smallDelay ++ Stream
-                .eval(IO(Files.createDirectory(a)) >> IO(Files.write(b, Array[Byte]())))
+                .eval(IO(JFiles.createDirectory(a)) >> IO(JFiles.write(b, Array[Byte]())))
             )
         }
         .compile

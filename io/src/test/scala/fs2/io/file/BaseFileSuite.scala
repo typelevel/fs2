@@ -27,14 +27,14 @@ import cats.effect.IO
 import cats.syntax.all._
 
 import java.io.IOException
-import java.nio.file._
+import java.nio.file.{Files => JFiles, _}
 import java.nio.file.attribute.BasicFileAttributes
 
 import scala.concurrent.duration._
 
 class BaseFileSuite extends Fs2Suite {
   protected def tempDirectory: Stream[IO, Path] =
-    Stream.bracket(IO(Files.createTempDirectory("BaseFileSpec")))(deleteDirectoryRecursively(_))
+    Stream.bracket(IO(JFiles.createTempDirectory("BaseFileSpec")))(deleteDirectoryRecursively(_))
 
   protected def tempFile: Stream[IO, Path] =
     tempDirectory.flatMap(dir => aFile(dir))
@@ -45,20 +45,20 @@ class BaseFileSuite extends Fs2Suite {
   protected def tempFilesHierarchy: Stream[IO, Path] =
     tempDirectory.flatMap { topDir =>
       Stream
-        .eval(IO(Files.createTempDirectory(topDir, "BaseFileSpec")))
+        .eval(IO(JFiles.createTempDirectory(topDir, "BaseFileSpec")))
         .repeatN(5)
         .flatMap(dir =>
-          Stream.eval(IO(Files.createTempFile(dir, "BaseFileSpecSub", ".tmp")).replicateA(5))
+          Stream.eval(IO(JFiles.createTempFile(dir, "BaseFileSpecSub", ".tmp")).replicateA(5))
         )
         .drain ++ Stream.emit(topDir)
     }
 
   protected def aFile(dir: Path): Stream[IO, Path] =
-    Stream.eval(IO(Files.createTempFile(dir, "BaseFileSpec", ".tmp")))
+    Stream.eval(IO(JFiles.createTempFile(dir, "BaseFileSpec", ".tmp")))
 
   // Return a Unit after modification so this can be used with flatTap
   protected def modify(file: Path): Stream[IO, Unit] =
-    Stream.eval(IO(Files.write(file, Array[Byte](0, 1, 2, 3))).void)
+    Stream.eval(IO(JFiles.write(file, Array[Byte](0, 1, 2, 3))).void)
 
   protected def modifyLater(file: Path): Stream[IO, INothing] =
     Stream
@@ -66,19 +66,19 @@ class BaseFileSuite extends Fs2Suite {
       .map(_.toByte)
       .covary[IO]
       .metered(250.millis)
-      .through(writeAll(file, StandardOpenOption.APPEND :: Nil))
+      .through(Files[IO].writeAll(file, StandardOpenOption.APPEND :: Nil))
 
   protected def deleteDirectoryRecursively(dir: Path): IO[Unit] =
     IO {
-      Files.walkFileTree(
+      JFiles.walkFileTree(
         dir,
         new SimpleFileVisitor[Path] {
           override def visitFile(path: Path, attrs: BasicFileAttributes) = {
-            Files.delete(path)
+            JFiles.delete(path)
             FileVisitResult.CONTINUE
           }
           override def postVisitDirectory(path: Path, e: IOException) = {
-            Files.delete(path)
+            JFiles.delete(path)
             FileVisitResult.CONTINUE
           }
         }
