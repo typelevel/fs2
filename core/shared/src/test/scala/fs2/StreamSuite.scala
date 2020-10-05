@@ -25,7 +25,7 @@ import scala.concurrent.duration._
 
 import cats.data.Chain
 import cats.effect.{IO, Outcome, Resource, SyncIO}
-import cats.effect.concurrent.{Deferred, Ref}
+import cats.effect.kernel.{Deferred, Ref}
 import cats.syntax.all._
 import org.scalacheck.Gen
 import org.scalacheck.Arbitrary.arbitrary

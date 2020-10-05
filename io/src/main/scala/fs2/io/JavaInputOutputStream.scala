@@ -22,12 +22,10 @@
 package fs2
 package io
 
-import scala.concurrent.Await
-import scala.concurrent.duration.Duration
 import java.io.{IOException, InputStream}
 
 import cats.syntax.all._
-import cats.effect.{Async, IO, Outcome, Resource}
+import cats.effect.{Async, Outcome, Resource}
 import cats.effect.unsafe.UnsafeRun
 import cats.effect.implicits._
 
@@ -77,7 +75,7 @@ private[io] object JavaInputOutputStream {
         .drain
         .guaranteeCase { (outcome: Outcome[F, Throwable, Unit]) =>
           outcome match {
-            case Outcome.Completed(_) => markUpstreamDone(queue, upState, None)
+            case Outcome.Succeeded(_) => markUpstreamDone(queue, upState, None)
             case Outcome.Errored(t)   => markUpstreamDone(queue, upState, Some(t))
             case Outcome.Canceled()   => markUpstreamDone(queue, upState, None)
           }
@@ -206,16 +204,11 @@ private[io] object JavaInputOutputStream {
         val mkInputStream = processInput(source, queue, upState, dnState)
           .as(
             new InputStream {
-              override def close(): Unit = {
-                runner.unsafeRunFutureCancelable(closeIs(upState, dnState))
-                ()
-              }
+              override def close(): Unit =
+                runner.unsafeRunAndForget(closeIs(upState, dnState))
 
-              override def read(b: Array[Byte], off: Int, len: Int): Int = {
-                val (fut, _) =
-                  runner.unsafeRunFutureCancelable(readOnce(b, off, len, queue, dnState))
-                Await.result(fut, Duration.Inf)
-              }
+              override def read(b: Array[Byte], off: Int, len: Int): Int =
+                runner.unsafeRunSync(readOnce(b, off, len, queue, dnState))
 
               def read(): Int = {
                 def go(acc: Array[Byte]): F[Int] =
@@ -225,8 +218,7 @@ private[io] object JavaInputOutputStream {
                     else F.pure(acc(0) & 0xff)
                   }
 
-                val (fut, _) = runner.unsafeRunFutureCancelable(go(new Array[Byte](1)))
-                Await.result(fut, Duration.Inf)
+                runner.unsafeRunSync(go(new Array[Byte](1)))
               }
             }
           )

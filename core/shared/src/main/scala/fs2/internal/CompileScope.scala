@@ -26,7 +26,7 @@ import scala.annotation.tailrec
 import cats.{Applicative, Id, Traverse, TraverseFilter}
 import cats.data.Chain
 import cats.effect.{Concurrent, Outcome, Resource}
-import cats.effect.concurrent.{Deferred, Ref}
+import cats.effect.kernel.{Deferred, Ref}
 import cats.effect.implicits._
 import cats.syntax.all._
 
@@ -360,7 +360,7 @@ private[fs2] final class CompileScope[F[_]] private (
       case Some(iCtx) =>
         val outcome: InterruptionOutcome = cause.fold(
           t => Outcome.Errored(t),
-          _ => Outcome.Completed[Id, Throwable, Token](iCtx.interruptRoot)
+          _ => Outcome.Succeeded[Id, Throwable, Token](iCtx.interruptRoot)
         )
         iCtx.complete(outcome)
     }
@@ -502,7 +502,7 @@ private[fs2] object CompileScope {
             InterruptContext(inter, newScopeId, fiber.cancel).flatMap { context =>
               fiber.join
                 .flatMap {
-                  case Outcome.Completed(interrupt) =>
+                  case Outcome.Succeeded(interrupt) =>
                     interrupt.flatMap(i => context.complete(i))
                   case Outcome.Errored(t) =>
                     context.complete(Outcome.Errored(t))

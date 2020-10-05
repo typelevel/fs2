@@ -24,7 +24,7 @@ package fs2
 import scala.concurrent.duration._
 
 import cats.effect.IO
-import cats.effect.concurrent.{Deferred, Ref}
+import cats.effect.kernel.{Deferred, Ref}
 import cats.syntax.all._
 import org.scalacheck.effect.PropF.forAllF
 

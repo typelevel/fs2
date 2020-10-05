@@ -27,7 +27,7 @@ import java.nio.{Buffer, ByteBuffer}
 
 import cats.Applicative
 import cats.effect.Sync
-import cats.effect.concurrent.Ref
+import cats.effect.kernel.Ref
 import cats.syntax.all._
 
 /**
@@ -79,6 +79,7 @@ private[tls] object InputOutputBuffer {
             Sync[F].delay {
               val bs = data.toBytes
               in.put(bs.values, bs.offset, bs.size)
+              ()
             }
           }
 

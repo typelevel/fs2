@@ -357,7 +357,6 @@ object compression {
         in.pull.unconsNonEmpty.flatMap {
           case Some((deflatedChunk, deflatedStream)) =>
             _inflate_chunk(
-              inflateParams,
               inflater,
               crc32,
               deflatedChunk,
@@ -374,7 +373,6 @@ object compression {
       }
 
   private def _inflate_chunk[F[_]](
-      inflaterParams: InflateParams,
       inflater: Inflater,
       crc32: Option[CRC32],
       chunk: Chunk[Byte],
@@ -444,7 +442,6 @@ object compression {
     _.pull.unconsNonEmpty.flatMap {
       case Some((deflatedChunk, deflatedStream)) =>
         _inflate_chunk(
-          inflateParams,
           inflater,
           crc32,
           deflatedChunk,
@@ -1213,9 +1210,6 @@ object compression {
   private def moveAsChunkBytes(values: Array[Byte], length: Int): Chunk[Byte] =
     if (length > 0) Chunk.Bytes(values, 0, length)
     else Chunk.empty[Byte]
-
-  private def copyAsChunkBytes(values: Array[Byte]): Chunk[Byte] =
-    copyAsChunkBytes(values, values.length)
 
   private def copyAsChunkBytes(values: Array[Byte], length: Int): Chunk[Byte] =
     if (length > 0) {

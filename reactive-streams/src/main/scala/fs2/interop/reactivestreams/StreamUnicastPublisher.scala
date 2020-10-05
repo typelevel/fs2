@@ -40,14 +40,15 @@ final class StreamUnicastPublisher[F[_]: Async: UnsafeRun, A](val stream: Stream
     extends Publisher[A] {
   def subscribe(subscriber: Subscriber[_ >: A]): Unit = {
     nonNull(subscriber)
-    StreamSubscription(subscriber, stream)
-      .flatMap { subscription =>
-        Sync[F].delay {
-          subscriber.onSubscribe(subscription)
-          subscription.unsafeStart()
+    UnsafeRun[F].unsafeRunAndForget {
+      StreamSubscription(subscriber, stream)
+        .flatMap { subscription =>
+          Sync[F].delay {
+            subscriber.onSubscribe(subscription)
+            subscription.unsafeStart()
+          }
         }
-      }
-      .unsafeRunAsync()
+    }
   }
 
   private def nonNull[B](b: B): Unit = if (b == null) throw new NullPointerException()

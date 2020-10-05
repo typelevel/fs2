@@ -29,7 +29,8 @@ import java.io.PrintStream
 import cats.{Eval => _, _}
 import cats.data.Ior
 import cats.effect._
-import cats.effect.concurrent._
+import cats.effect.kernel.Deferred
+import cats.effect.std.Semaphore
 import cats.effect.implicits._
 import cats.implicits.{catsSyntaxEither => _, _}
 
@@ -1681,7 +1682,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
           .drain
           .guaranteeCase { (c: Outcome[F2, Throwable, Unit]) =>
             val r = c match {
-              case Outcome.Completed(_) => Right(())
+              case Outcome.Succeeded(_) => Right(())
               case Outcome.Errored(t)   => Left(t)
               case Outcome.Canceled()   => Right(())
             }
@@ -4413,7 +4414,7 @@ object Stream extends StreamLowPriority {
       * {{{
       * import fs2._
       * import cats.effect._
-      * import cats.effect.concurrent.Ref
+      * import cats.effect.kernel.Ref
       * import scala.concurrent.duration._
       *
       * trait StopWatch[F[_]] {

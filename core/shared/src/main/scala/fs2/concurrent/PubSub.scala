@@ -23,7 +23,7 @@ package fs2.concurrent
 
 import cats._, implicits._
 import cats.effect.{Concurrent, Outcome}
-import cats.effect.concurrent._
+import cats.effect.kernel.{Deferred, Ref}
 import cats.effect.implicits._
 
 import fs2._
@@ -230,7 +230,7 @@ private[fs2] object PubSub {
 
     private def clearPublisher(token: Token)(outcome: Outcome[F, _, _]): F[Unit] =
       outcome match {
-        case _: Outcome.Completed[F, _, _] => Applicative[F].unit
+        case _: Outcome.Succeeded[F, _, _] => Applicative[F].unit
         case Outcome.Errored(_) | Outcome.Canceled() =>
           state.update(ps => ps.copy(publishers = ps.publishers.filterNot(_.token == token)))
       }
@@ -240,7 +240,7 @@ private[fs2] object PubSub {
 
     private def clearSubscriberOnCancel(token: Token)(outcome: Outcome[F, _, _]): F[Unit] =
       outcome match {
-        case _: Outcome.Completed[F, _, _]           => Applicative[F].unit
+        case _: Outcome.Succeeded[F, _, _]           => Applicative[F].unit
         case Outcome.Errored(_) | Outcome.Canceled() => clearSubscriber(token)
       }
 

@@ -29,7 +29,7 @@ import javax.net.ssl.{SSLEngine, SSLEngineResult, SSLSession}
 
 import cats.Applicative
 import cats.effect.{Async, Sync}
-import cats.effect.concurrent.Semaphore
+import cats.effect.std.Semaphore
 import cats.syntax.all._
 
 /**

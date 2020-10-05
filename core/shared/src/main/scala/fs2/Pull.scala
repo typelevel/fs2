@@ -196,7 +196,7 @@ object Pull extends PullLowPriority {
         catch { case NonFatal(t) => Pull.Result.Fail(t) }
       used.transformWith { result =>
         val exitCase: Resource.ExitCase = result match {
-          case Result.Succeeded(_)      => Resource.ExitCase.Completed
+          case Result.Succeeded(_)      => Resource.ExitCase.Succeeded
           case Result.Fail(err)         => Resource.ExitCase.Errored(err)
           case Result.Interrupted(_, _) => Resource.ExitCase.Canceled
         }
@@ -525,7 +525,7 @@ object Pull extends PullLowPriority {
   ): Pull[F, O, Unit] =
     OpenScope(interruptible).flatMap { scopeId =>
       s.transformWith {
-        case Result.Succeeded(_) => CloseScope(scopeId, None, Resource.ExitCase.Completed)
+        case Result.Succeeded(_) => CloseScope(scopeId, None, Resource.ExitCase.Succeeded)
         case interrupted @ Result.Interrupted(_, _) =>
           CloseScope(scopeId, Some(interrupted), Resource.ExitCase.Canceled)
         case Result.Fail(err) =>
@@ -599,7 +599,7 @@ object Pull extends PullLowPriority {
                 go(scope, extendedTopLevelScope, view.next(Result.Fail(err)))
               case Some(Outcome.Canceled()) =>
                 go(scope, extendedTopLevelScope, view.next(Result.Interrupted(scope.id, None)))
-              case Some(Outcome.Completed(scopeId)) =>
+              case Some(Outcome.Succeeded(scopeId)) =>
                 go(scope, extendedTopLevelScope, view.next(Result.Interrupted(scopeId, None)))
             }
           view.step match {
@@ -661,7 +661,7 @@ object Pull extends PullLowPriority {
                 case Left(Outcome.Errored(err)) => resume(Result.Fail(err))
                 case Left(Outcome.Canceled()) =>
                   resume(Result.Interrupted(scope.id, None))
-                case Left(Outcome.Completed(token)) =>
+                case Left(Outcome.Succeeded(token)) =>
                   resume(Result.Interrupted(token, None))
               }
 
@@ -684,7 +684,7 @@ object Pull extends PullLowPriority {
                   if (scope.parent.isEmpty)
                     extendedTopLevelScope match {
                       case None    => false.pure[F]
-                      case Some(s) => s.close(Resource.ExitCase.Completed).rethrow.as(true)
+                      case Some(s) => s.close(Resource.ExitCase.Succeeded).rethrow.as(true)
                     }
                   else F.pure(false)
                 maybeCloseExtendedScope.flatMap { closedExtendedScope =>
@@ -732,7 +732,7 @@ object Pull extends PullLowPriority {
                   else if (extendLastTopLevelScope && toClose.parent.flatMap(_.parent).isEmpty)
                     // Request to close the current top-level scope - if we're supposed to extend
                     // it instead, leave the scope open and pass it to the continuation
-                    extendedTopLevelScope.traverse_(_.close(Resource.ExitCase.Completed).rethrow) *>
+                    extendedTopLevelScope.traverse_(_.close(Resource.ExitCase.Succeeded).rethrow) *>
                       F.flatMap(toClose.openAncestor)(ancestor =>
                         go(ancestor, Some(toClose), view.next(Result.unit))
                       )

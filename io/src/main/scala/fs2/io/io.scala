@@ -24,7 +24,7 @@ package fs2
 import cats._
 import cats.effect.{Async, Outcome, Resource, Sync}
 import cats.effect.implicits._
-import cats.effect.concurrent.Deferred
+import cats.effect.kernel.Deferred
 import cats.effect.unsafe.UnsafeRun
 import cats.syntax.all._
 
@@ -214,14 +214,14 @@ package object io {
     * Note that the implementation is not thread safe -- only one thread is allowed at any time
     * to operate on the resulting `java.io.InputStream`.
     */
-  def toInputStream[F[_]](implicit F: Async[F], runner: UnsafeRun[F]): Pipe[F, Byte, InputStream] =
+  def toInputStream[F[_]: Async: UnsafeRun]: Pipe[F, Byte, InputStream] =
     source => Stream.resource(toInputStreamResource(source))
 
   /**
     * Like [[toInputStream]] but returns a `Resource` rather than a single element stream.
     */
-  def toInputStreamResource[F[_]](
+  def toInputStreamResource[F[_]: Async: UnsafeRun](
       source: Stream[F, Byte]
-  )(implicit F: Async[F], runner: UnsafeRun[F]): Resource[F, InputStream] =
+  ): Resource[F, InputStream] =
     JavaInputOutputStream.toInputStream(source)
 }

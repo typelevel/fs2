@@ -87,7 +87,7 @@ class StreamBenchmark {
 
   @Benchmark
   def eval(): Unit =
-    Stream.repeatEval(IO(())).take(n).compile.last.unsafeRunSync().get
+    Stream.repeatEval(IO(())).take(n.toLong).compile.last.unsafeRunSync().get
 
   @Benchmark
   def toVector(): Vector[Int] =

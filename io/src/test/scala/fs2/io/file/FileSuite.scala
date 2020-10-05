@@ -26,7 +26,7 @@ package file
 import java.nio.file.{Paths, StandardOpenOption}
 import java.nio.file.attribute.PosixFilePermissions
 
-import cats.effect.concurrent.Ref
+import cats.effect.kernel.Ref
 import cats.effect.IO
 import cats.syntax.all._
 
@@ -428,8 +428,8 @@ class FileSuite extends BaseFileSuite {
           val path = counter.modify(i => (i + 1, i)).map(i => dir.resolve(i.toString))
           val write = Stream(0x42.toByte).repeat
             .buffer(bufferSize)
-            .take(totalBytes)
-            .through(file.writeRotate[IO](path, rotateLimit))
+            .take(totalBytes.toLong)
+            .through(file.writeRotate[IO](path, rotateLimit.toLong))
             .compile
             .drain
           val verify = file

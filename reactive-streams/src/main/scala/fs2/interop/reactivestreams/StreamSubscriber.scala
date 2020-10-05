@@ -25,8 +25,7 @@ package reactivestreams
 
 import cats._
 import cats.effect._
-import cats.effect.implicits._
-import cats.effect.concurrent.{Deferred, Ref}
+import cats.effect.kernel.{Deferred, Ref}
 import cats.effect.unsafe.UnsafeRun
 import cats.syntax.all._
 
@@ -47,23 +46,23 @@ final class StreamSubscriber[F[_], A](val sub: StreamSubscriber.FSM[F, A])(impli
   /** Called by an upstream reactivestreams system */
   def onSubscribe(s: Subscription): Unit = {
     nonNull(s)
-    sub.onSubscribe(s).unsafeRunAsync()
+    runner.unsafeRunAndForget(sub.onSubscribe(s))
   }
 
   /** Called by an upstream reactivestreams system */
   def onNext(a: A): Unit = {
     nonNull(a)
-    sub.onNext(a).unsafeRunAsync()
+    runner.unsafeRunAndForget(sub.onNext(a))
   }
 
   /** Called by an upstream reactivestreams system */
   def onComplete(): Unit =
-    sub.onComplete.unsafeRunAsync()
+    runner.unsafeRunAndForget(sub.onComplete)
 
   /** Called by an upstream reactivestreams system */
   def onError(t: Throwable): Unit = {
     nonNull(t)
-    sub.onError(t).unsafeRunAsync()
+    runner.unsafeRunAndForget(sub.onError(t))
   }
 
   def stream(subscribe: F[Unit]): Stream[F, A] = sub.stream(subscribe)

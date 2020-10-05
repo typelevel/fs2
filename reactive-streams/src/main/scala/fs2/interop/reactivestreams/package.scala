@@ -22,11 +22,7 @@
 package fs2
 package interop
 
-import scala.concurrent.Await
-import scala.concurrent.duration.Duration
-
 import cats.effect._
-import cats.effect.implicits._
 import cats.effect.unsafe.UnsafeRun
 import org.reactivestreams._
 
@@ -37,7 +33,6 @@ import org.reactivestreams._
   * scala> import fs2._
   * scala> import fs2.interop.reactivestreams._
   * scala> import cats.effect.IO, cats.effect.unsafe.implicits.global
-  * scala> implicit val unsafeRunIO: cats.effect.unsafe.UnsafeRun[IO] = global.unsafeRunForIO // TODO delete
   * scala>
   * scala> val upstream: Stream[IO, Int] = Stream(1, 2, 3).covary[IO]
   * scala> val publisher: StreamUnicastPublisher[IO, Int] = upstream.toUnicastPublisher
@@ -81,17 +76,5 @@ package object reactivestreams {
         runner: UnsafeRun[F]
     ): StreamUnicastPublisher[F, A] =
       StreamUnicastPublisher(stream)
-  }
-
-  private[interop] implicit class UnsafeRunOps[F[_], A](fa: F[A])(implicit runner: UnsafeRun[F]) {
-    def unsafeRunAsync(): Unit = {
-      runner.unsafeRunFutureCancelable(fa)
-      ()
-    }
-
-    def unsafeRunSync(): A = {
-      val (fut, _) = runner.unsafeRunFutureCancelable(fa)
-      Await.result(fut, Duration.Inf)
-    }
   }
 }
