@@ -132,9 +132,9 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
   .settings(
     // Libraries cross-built for Dotty
     libraryDependencies ++= Seq(
-      "org.typelevel" %%% "cats-effect" % "3.0-805b021",
-      "org.typelevel" %%% "cats-effect-laws" % "3.0-805b021" % "test",
-      "org.typelevel" %%% "cats-effect-testkit" % "3.0-805b021" % "test",
+      "org.typelevel" %%% "cats-effect" % "3.0.0-M1",
+      "org.typelevel" %%% "cats-effect-laws" % "3.0.0-M1" % "test",
+      "org.typelevel" %%% "cats-effect-testkit" % "3.0.0-M1" % "test",
       "org.scodec" %%% "scodec-bits" % "1.1.20",
       "org.typelevel" %%% "scalacheck-effect-munit" % "0.2.0" % "test"
     )
