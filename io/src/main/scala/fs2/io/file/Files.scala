@@ -36,7 +36,15 @@ import java.util.stream.{Stream => JStream}
 
 import fs2.io.CollectionCompat._
 
-trait SyncFiles[F[_]] {
+/**
+  * Provides basic capabilities related to working with files.
+  *
+  * Normally, the [[Files]] capability should be used instead, which extends this trait
+  * with a few additional operations. `SyncFiles[F]` provides operations that only
+  * require synchronous effects -- * e.g., `SyncFiles[SyncIO]` has an instance whereas
+  * `Files[SyncIO]` does not.
+  */
+sealed trait SyncFiles[F[_]] {
 
   /**
     * Copies a file from the source to the target path,
@@ -387,6 +395,11 @@ object SyncFiles {
   }
 }
 
+/**
+  * Provides operations related to working with files in the effect `F`.
+  *
+  * An instance is available for any effect `F` which has an `Async[F]` instance.
+  */
 trait Files[F[_]] extends SyncFiles[F] {
 
   /**
