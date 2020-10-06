@@ -109,14 +109,10 @@ final case class ReadCursor[F[_]](file: FileHandle[F], offset: Long) {
 
 object ReadCursor {
 
-  /**
-    * Returns a `ReadCursor` for the specified path. The `READ` option is added to the supplied flags.
-    */
+  @deprecated("Use Files[F].readCursor")
   def fromPath[F[_]: Sync](
       path: Path,
       flags: Seq[OpenOption] = Nil
   ): Resource[F, ReadCursor[F]] =
-    FileHandle.fromPath(path, StandardOpenOption.READ :: flags.toList).map { fileHandle =>
-      ReadCursor(fileHandle, 0L)
-    }
+    SyncFiles[F].readCursor(path, flags)
 }

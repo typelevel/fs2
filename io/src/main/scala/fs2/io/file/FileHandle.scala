@@ -110,20 +110,16 @@ trait FileHandle[F[_]] {
 
 object FileHandle {
 
-  /** Creates a `FileHandle` for the file at the supplied `Path`. */
-  def fromPath[F[_]](path: Path, flags: Seq[OpenOption])(implicit
-      F: Sync[F]
-  ): Resource[F, FileHandle[F]] =
-    fromFileChannel(F.blocking(FileChannel.open(path, flags: _*)))
+  @deprecated("Use Files[F].open")
+  def fromPath[F[_]: Sync](path: Path, flags: Seq[OpenOption]): Resource[F, FileHandle[F]] =
+    SyncFiles[F].open(path, flags)
 
-  /** Creates a `FileHandle` for the supplied `FileChannel`. */
-  def fromFileChannel[F[_]](channel: F[FileChannel])(implicit
-      F: Sync[F]
-  ): Resource[F, FileHandle[F]] =
-    Resource.make(channel)(ch => F.blocking(ch.close())).map(ch => mk(ch))
+  @deprecated("Use Files[F].openFileChannel")
+  def fromFileChannel[F[_]: Sync](channel: F[FileChannel]): Resource[F, FileHandle[F]] =
+    SyncFiles[F].openFileChannel(channel)
 
   /** Creates a `FileHandle[F]` from a `java.nio.channels.FileChannel`. */
-  private def mk[F[_]](
+  private[file] def make[F[_]](
       chan: FileChannel
   )(implicit F: Sync[F]): FileHandle[F] =
     new FileHandle[F] {
