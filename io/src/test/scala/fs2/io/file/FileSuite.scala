@@ -273,8 +273,11 @@ class FileSuite extends BaseFileSuite {
 
   group("tempFile") {
     test("should remove the file following stream closure") {
-      Stream.resource(Files[IO]
-        .tempFile(Paths.get("")))
+      Stream
+        .resource(
+          Files[IO]
+            .tempFile(Paths.get(""))
+        )
         .evalMap(path => Files[IO].exists(path).map(_ -> path))
         .compile
         .lastOrError
@@ -285,8 +288,11 @@ class FileSuite extends BaseFileSuite {
     }
 
     test("should not fail if the file is deleted before the stream completes") {
-      Stream.resource(Files[IO]
-        .tempFile(Paths.get("")))
+      Stream
+        .resource(
+          Files[IO]
+            .tempFile(Paths.get(""))
+        )
         .evalMap(path => Files[IO].delete(path))
         .compile
         .lastOrError
@@ -297,8 +303,11 @@ class FileSuite extends BaseFileSuite {
 
   group("tempDirectoryStream") {
     test("should remove the directory following stream closure") {
-      Stream.resource(Files[IO]
-        .tempDirectory(Paths.get("")))
+      Stream
+        .resource(
+          Files[IO]
+            .tempDirectory(Paths.get(""))
+        )
         .evalMap(path => Files[IO].exists(path).map(_ -> path))
         .compile
         .lastOrError
@@ -309,8 +318,11 @@ class FileSuite extends BaseFileSuite {
     }
 
     test("should not fail if the directory is deleted before the stream completes") {
-      Stream.resource(Files[IO]
-        .tempDirectory(Paths.get("")))
+      Stream
+        .resource(
+          Files[IO]
+            .tempDirectory(Paths.get(""))
+        )
         .evalMap(path => Files[IO].delete(path))
         .compile
         .lastOrError
