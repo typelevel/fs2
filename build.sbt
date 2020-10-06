@@ -28,7 +28,8 @@ ThisBuild / githubWorkflowJavaVersions := Seq("adopt@1.11")
 
 ThisBuild / githubWorkflowPublishTargetBranches := Seq(
   RefPredicate.Equals(Ref.Branch("main")),
-  RefPredicate.Equals(Ref.Branch("develop"))
+  RefPredicate.Equals(Ref.Branch("develop")),
+  RefPredicate.StartsWith(Ref.Tag("v"))
 )
 
 ThisBuild / githubWorkflowBuild := Seq(
