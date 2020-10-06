@@ -37,24 +37,24 @@ import scala.concurrent.duration._
 /** Provides support for working with files. */
 package object file {
 
-  @deprecated("Use BaseFiles[F].readAll")
+  @deprecated("Use Files[F].readAll")
   def readAll[F[_]: Sync](
       path: Path,
       chunkSize: Int
-  ): Stream[F, Byte] = BaseFiles[F].readAll(path, chunkSize)
+  ): Stream[F, Byte] = SyncFiles[F].readAll(path, chunkSize)
 
   /**
     * Reads a range of data synchronously from the file at the specified `java.nio.file.Path`.
     * `start` is inclusive, `end` is exclusive, so when `start` is 0 and `end` is 2,
     * two bytes are read.
     */
-  @deprecated("Use BaseFiles[F].readRange")
+  @deprecated("Use Files[F].readRange")
   def readRange[F[_]: Sync](
       path: Path,
       chunkSize: Int,
       start: Long,
       end: Long
-  ): Stream[F, Byte] = BaseFiles[F].readRange(path, chunkSize, start, end)
+  ): Stream[F, Byte] = SyncFiles[F].readRange(path, chunkSize, start, end)
 
   /**
     * Returns an infinite stream of data from the file at the specified path.
@@ -79,11 +79,11 @@ package object file {
     *
     * Adds the WRITE flag to any other `OpenOption` flags specified. By default, also adds the CREATE flag.
     */
-  @deprecated("Use BaseFiles[F].writeAll")
+  @deprecated("Use Files[F].writeAll")
   def writeAll[F[_]: Sync](
       path: Path,
       flags: Seq[StandardOpenOption] = List(StandardOpenOption.CREATE)
-  ): Pipe[F, Byte, INothing] = BaseFiles[F].writeAll(path, flags)
+  ): Pipe[F, Byte, INothing] = SyncFiles[F].writeAll(path, flags)
 
   /**
     * Writes all data to a sequence of files, each limited in size to `limit`.
@@ -133,49 +133,49 @@ package object file {
     * subsequence access will succeed. Care should be taken when using this
     * method in security sensitive applications.
     */
-  @deprecated("Use BaseFiles[F].exists")
+  @deprecated("Use Files[F].exists")
   def exists[F[_]: Sync](
       path: Path,
       flags: Seq[LinkOption] = Seq.empty
   ): F[Boolean] =
-    BaseFiles[F].exists(path, flags)
+    SyncFiles[F].exists(path, flags)
 
   /**
     * Get file permissions as set of [[PosixFilePermission]]
     *
     * This will only work for POSIX supporting file systems
     */
-  @deprecated("Use BaseFiles[F].permissions")
+  @deprecated("Use Files[F].permissions")
   def permissions[F[_]: Sync](
       path: Path,
       flags: Seq[LinkOption] = Seq.empty
   ): F[Set[PosixFilePermission]] =
-    BaseFiles[F].permissions(path, flags)
+    SyncFiles[F].permissions(path, flags)
 
   /**
     * Set file permissions from set of [[PosixFilePermission]]
     *
     * This will only work for POSIX supporting file systems
     */
-  @deprecated("Use BaseFiles[F].setPermissions")
+  @deprecated("Use Files[F].setPermissions")
   def setPermissions[F[_]: Sync](
       path: Path,
       permissions: Set[PosixFilePermission]
   ): F[Path] =
-    BaseFiles[F].setPermissions(path, permissions)
+    SyncFiles[F].setPermissions(path, permissions)
 
   /**
     * Copies a file from the source to the target path,
     *
     * By default, the copy fails if the target file already exists or is a symbolic link.
     */
-  @deprecated("Use BaseFiles[F].copy")
+  @deprecated("Use Files[F].copy")
   def copy[F[_]: Sync](
       source: Path,
       target: Path,
       flags: Seq[CopyOption] = Seq.empty
   ): F[Path] =
-    BaseFiles[F].copy(source, target, flags)
+    SyncFiles[F].copy(source, target, flags)
 
   /**
     * Deletes a file.
@@ -183,173 +183,173 @@ package object file {
     * If the file is a directory then the directory must be empty for this action to succeed.
     * This action will fail if the path doesn't exist.
     */
-  @deprecated("Use BaseFiles[F].delete")
+  @deprecated("Use Files[F].delete")
   def delete[F[_]: Sync](path: Path): F[Unit] =
-    BaseFiles[F].delete(path)
+    SyncFiles[F].delete(path)
 
   /**
     * Like `delete`, but will not fail when the path doesn't exist.
     */
-  @deprecated("Use BaseFiles[F].deleteIfExists")
+  @deprecated("Use Files[F].deleteIfExists")
   def deleteIfExists[F[_]: Sync](path: Path): F[Boolean] =
-    BaseFiles[F].deleteIfExists(path)
+    SyncFiles[F].deleteIfExists(path)
 
   /**
     * Recursively delete a directory
     */
-  @deprecated("Use BaseFiles[F].deleteDirectoryRecursively")
+  @deprecated("Use Files[F].deleteDirectoryRecursively")
   def deleteDirectoryRecursively[F[_]: Sync](
       path: Path,
       options: Set[FileVisitOption] = Set.empty
   ): F[Unit] =
-    BaseFiles[F].deleteDirectoryRecursively(path, options)
+    SyncFiles[F].deleteDirectoryRecursively(path, options)
 
   /**
     * Returns the size of a file (in bytes).
     */
-  @deprecated("Use BaseFiles[F].size")
+  @deprecated("Use Files[F].size")
   def size[F[_]: Sync](path: Path): F[Long] =
-    BaseFiles[F].size(path)
+    SyncFiles[F].size(path)
 
   /**
     * Moves (or renames) a file from the source to the target path.
     *
     * By default, the move fails if the target file already exists or is a symbolic link.
     */
-  @deprecated("Use BaseFiles[F].move")
+  @deprecated("Use Files[F].move")
   def move[F[_]: Sync](
       source: Path,
       target: Path,
       flags: Seq[CopyOption] = Seq.empty
   ): F[Path] =
-    BaseFiles[F].move(source, target, flags)
+    SyncFiles[F].move(source, target, flags)
 
   /**
     * Creates a stream containing the path of a temporary file.
     *
     * The temporary file is removed when the stream completes.
     */
-  @deprecated("Use Stream.resource(BaseFiles[F].tempFile(..))")
+  @deprecated("Use Stream.resource(Files[F].tempFile(..))")
   def tempFileStream[F[_]: Sync](
       dir: Path,
       prefix: String = "",
       suffix: String = ".tmp",
       attributes: Seq[FileAttribute[_]] = Seq.empty
   ): Stream[F, Path] =
-    Stream.resource(BaseFiles[F].tempFile(dir, prefix, suffix, attributes))
+    Stream.resource(SyncFiles[F].tempFile(dir, prefix, suffix, attributes))
 
   /**
     * Creates a resource containing the path of a temporary file.
     *
     * The temporary file is removed during the resource release.
     */
-  @deprecated("Use BaseFiles[F].tempFile")
+  @deprecated("Use Files[F].tempFile")
   def tempFileResource[F[_]: Sync](
       dir: Path,
       prefix: String = "",
       suffix: String = ".tmp",
       attributes: Seq[FileAttribute[_]] = Seq.empty
   ): Resource[F, Path] =
-    BaseFiles[F].tempFile(dir, prefix, suffix, attributes)
+    SyncFiles[F].tempFile(dir, prefix, suffix, attributes)
 
   /**
     * Creates a stream containing the path of a temporary directory.
     *
     * The temporary directory is removed when the stream completes.
     */
-  @deprecated("Use Stream.resource(BaseFiles[F].tempDirectory(..))")
+  @deprecated("Use Stream.resource(SyncFiles[F].tempDirectory(..))")
   def tempDirectoryStream[F[_]: Sync](
       dir: Path,
       prefix: String = "",
       attributes: Seq[FileAttribute[_]] = Seq.empty
   ): Stream[F, Path] =
-    Stream.resource(BaseFiles[F].tempDirectory(dir, prefix, attributes))
+    Stream.resource(SyncFiles[F].tempDirectory(dir, prefix, attributes))
 
   /**
     * Creates a resource containing the path of a temporary directory.
     *
     * The temporary directory is removed during the resource release.
     */
-  @deprecated("Use BaseFiles[F].tempDirectory")
+  @deprecated("Use Files[F].tempDirectory")
   def tempDirectoryResource[F[_]: Sync](
       dir: Path,
       prefix: String = "",
       attributes: Seq[FileAttribute[_]] = Seq.empty
   ): Resource[F, Path] =
-    BaseFiles[F].tempDirectory(dir, prefix, attributes)
+    SyncFiles[F].tempDirectory(dir, prefix, attributes)
 
   /**
     * Creates a new directory at the given path
     */
-  @deprecated("Use BaseFiles[F].createDirectory")
+  @deprecated("Use Files[F].createDirectory")
   def createDirectory[F[_]: Sync](
       path: Path,
       flags: Seq[FileAttribute[_]] = Seq.empty
   ): F[Path] =
-    BaseFiles[F].createDirectory(path, flags)
+    SyncFiles[F].createDirectory(path, flags)
 
   /**
     * Creates a new directory at the given path and creates all nonexistent parent directories beforehand.
     */
-  @deprecated("Use BaseFiles[F].createDirectories")
+  @deprecated("Use Files[F].createDirectories")
   def createDirectories[F[_]: Sync](
       path: Path,
       flags: Seq[FileAttribute[_]] = Seq.empty
   ): F[Path] =
-    BaseFiles[F].createDirectories(path, flags)
+    SyncFiles[F].createDirectories(path, flags)
 
   /**
     * Creates a stream of [[Path]]s inside a directory.
     */
-  @deprecated("Use BaseFiles[F].directoryStream")
+  @deprecated("Use Files[F].directoryStream")
   def directoryStream[F[_]: Sync](path: Path): Stream[F, Path] =
-    BaseFiles[F].directoryStream(path)
+    SyncFiles[F].directoryStream(path)
 
   /**
     * Creates a stream of [[Path]]s inside a directory, filtering the results by the given predicate.
     */
-  @deprecated("Use BaseFiles[F].directoryStream")
+  @deprecated("Use Files[F].directoryStream")
   def directoryStream[F[_]: Sync](
       path: Path,
       filter: Path => Boolean
   ): Stream[F, Path] =
-    BaseFiles[F].directoryStream(path, filter)
+    SyncFiles[F].directoryStream(path, filter)
 
   /**
     * Creates a stream of [[Path]]s inside a directory which match the given glob.
     */
-  @deprecated("Use BaseFiles[F].directoryStream")
+  @deprecated("Use Files[F].directoryStream")
   def directoryStream[F[_]: Sync](
       path: Path,
       glob: String
   ): Stream[F, Path] =
-    BaseFiles[F].directoryStream(path, glob)
+    SyncFiles[F].directoryStream(path, glob)
 
   /**
     * Creates a stream of [[Path]]s contained in a given file tree. Depth is unlimited.
     */
-  @deprecated("Use BaseFiles[F].walk")
+  @deprecated("Use Files[F].walk")
   def walk[F[_]: Sync](start: Path): Stream[F, Path] =
-    BaseFiles[F].walk(start)
+    SyncFiles[F].walk(start)
 
   /**
     * Creates a stream of [[Path]]s contained in a given file tree, respecting the supplied options. Depth is unlimited.
     */
-  @deprecated("Use BaseFiles[F].walk")
+  @deprecated("Use Files[F].walk")
   def walk[F[_]: Sync](
       start: Path,
       options: Seq[FileVisitOption]
   ): Stream[F, Path] =
-    BaseFiles[F].walk(start, options)
+    SyncFiles[F].walk(start, options)
 
   /**
     * Creates a stream of [[Path]]s contained in a given file tree down to a given depth.
     */
-  @deprecated("Use BaseFiles[F].walk")
+  @deprecated("Use Files[F].walk")
   def walk[F[_]: Sync](
       start: Path,
       maxDepth: Int,
       options: Seq[FileVisitOption] = Seq.empty
   ): Stream[F, Path] =
-    BaseFiles[F].walk(start, maxDepth, options)
+    SyncFiles[F].walk(start, maxDepth, options)
 }

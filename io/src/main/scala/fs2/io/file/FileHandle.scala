@@ -110,13 +110,13 @@ trait FileHandle[F[_]] {
 
 object FileHandle {
 
-  @deprecated("Use BaseFiles[F].open")
+  @deprecated("Use Files[F].open")
   def fromPath[F[_]: Sync](path: Path, flags: Seq[OpenOption]): Resource[F, FileHandle[F]] =
-    BaseFiles[F].open(path, flags)
+    SyncFiles[F].open(path, flags)
 
-  @deprecated("Use BaseFiles[F].openFileChannel")
+  @deprecated("Use Files[F].openFileChannel")
   def fromFileChannel[F[_]: Sync](channel: F[FileChannel]): Resource[F, FileHandle[F]] =
-    BaseFiles[F].openFileChannel(channel)
+    SyncFiles[F].openFileChannel(channel)
 
   /** Creates a `FileHandle[F]` from a `java.nio.channels.FileChannel`. */
   private[file] def make[F[_]](

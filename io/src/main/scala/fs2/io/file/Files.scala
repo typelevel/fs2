@@ -36,7 +36,7 @@ import java.util.stream.{Stream => JStream}
 
 import fs2.io.CollectionCompat._
 
-trait BaseFiles[F[_]] {
+trait SyncFiles[F[_]] {
 
   /**
     * Copies a file from the source to the target path,
@@ -217,12 +217,12 @@ trait BaseFiles[F[_]] {
   ): F[WriteCursor[F]]
 }
 
-object BaseFiles {
-  def apply[F[_]](implicit F: BaseFiles[F]): F.type = F
+object SyncFiles {
+  def apply[F[_]](implicit F: SyncFiles[F]): F.type = F
 
-  implicit def forSync[F[_]: Sync]: BaseFiles[F] = new SyncBaseFiles[F]
+  implicit def forSync[F[_]: Sync]: SyncFiles[F] = new Impl[F]
 
-  private[file] class SyncBaseFiles[F[_]: Sync] extends BaseFiles[F] {
+  private[file] class Impl[F[_]: Sync] extends SyncFiles[F] {
 
     def copy(source: Path, target: Path, flags: Seq[CopyOption]): F[Path] =
       Sync[F].blocking(JFiles.copy(source, target, flags: _*))
@@ -387,7 +387,7 @@ object BaseFiles {
   }
 }
 
-trait Files[F[_]] extends BaseFiles[F] {
+trait Files[F[_]] extends SyncFiles[F] {
 
   /**
     * Returns an infinite stream of data from the file at the specified path.
@@ -446,7 +446,7 @@ object Files {
 
   implicit def forAsync[F[_]: Async]: Files[F] = new AsyncFiles[F]
 
-  private final class AsyncFiles[F[_]: Async] extends BaseFiles.SyncBaseFiles[F] with Files[F] {
+  private final class AsyncFiles[F[_]: Async] extends SyncFiles.Impl[F] with Files[F] {
 
     def tail(path: Path, chunkSize: Int, offset: Long, pollDelay: FiniteDuration): Stream[F, Byte] =
       Stream.resource(readCursor(path)).flatMap { cursor =>

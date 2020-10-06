@@ -74,17 +74,17 @@ final case class WriteCursor[F[_]](file: FileHandle[F], offset: Long) {
 
 object WriteCursor {
 
-  @deprecated("Use BaseFiles[F].writeCursor")
+  @deprecated("Use Files[F].writeCursor")
   def fromPath[F[_]: Sync](
       path: Path,
       flags: Seq[OpenOption] = List(StandardOpenOption.CREATE)
   ): Resource[F, WriteCursor[F]] =
-    BaseFiles[F].writeCursor(path, flags)
+    SyncFiles[F].writeCursor(path, flags)
 
-  @deprecated("Use BaseFiles[F].writeCursorFromFileHandle")
+  @deprecated("Use Files[F].writeCursorFromFileHandle")
   def fromFileHandle[F[_]: Sync](
       file: FileHandle[F],
       append: Boolean
   ): F[WriteCursor[F]] =
-    BaseFiles[F].writeCursorFromFileHandle(file, append)
+    SyncFiles[F].writeCursorFromFileHandle(file, append)
 }
