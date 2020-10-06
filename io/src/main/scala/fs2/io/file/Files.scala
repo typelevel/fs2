@@ -106,7 +106,7 @@ trait BaseFiles[F[_]] {
   def move(source: Path, target: Path, flags: Seq[CopyOption] = Seq.empty): F[Path]
 
   /** Creates a `FileHandle` for the file at the supplied `Path`. */
-  def openPath(path: Path, flags: Seq[OpenOption]): Resource[F, FileHandle[F]]
+  def open(path: Path, flags: Seq[OpenOption]): Resource[F, FileHandle[F]]
 
   /** Creates a `FileHandle` for the supplied `FileChannel`. */
   def openFileChannel(channel: F[FileChannel]): Resource[F, FileHandle[F]]
@@ -122,6 +122,11 @@ trait BaseFiles[F[_]] {
     * Reads all data from the file at the specified `java.nio.file.Path`.
     */
   def readAll(path: Path, chunkSize: Int): Stream[F, Byte]
+
+  /**
+    * Returns a `ReadCursor` for the specified path. The `READ` option is added to the supplied flags.
+    */
+  def readCursor(path: Path, flags: Seq[OpenOption] = Nil): Resource[F, ReadCursor[F]]
 
   /**
     * Reads a range of data synchronously from the file at the specified `java.nio.file.Path`.
@@ -143,23 +148,11 @@ trait BaseFiles[F[_]] {
   def size(path: Path): F[Long]
 
   /**
-    * Creates a stream containing the path of a temporary file.
-    *
-    * The temporary file is removed when the stream completes.
-    */
-  def tempFileStream(
-      dir: Path,
-      prefix: String = "",
-      suffix: String = ".tmp",
-      attributes: Seq[FileAttribute[_]] = Seq.empty
-  ): Stream[F, Path]
-
-  /**
     * Creates a resource containing the path of a temporary file.
     *
     * The temporary file is removed during the resource release.
     */
-  def tempFileResource(
+  def tempFile(
       dir: Path,
       prefix: String = "",
       suffix: String = ".tmp",
@@ -167,22 +160,11 @@ trait BaseFiles[F[_]] {
   ): Resource[F, Path]
 
   /**
-    * Creates a stream containing the path of a temporary directory.
-    *
-    * The temporary directory is removed when the stream completes.
-    */
-  def tempDirectoryStream(
-      dir: Path,
-      prefix: String = "",
-      attributes: Seq[FileAttribute[_]] = Seq.empty
-  ): Stream[F, Path]
-
-  /**
     * Creates a resource containing the path of a temporary directory.
     *
     * The temporary directory is removed during the resource release.
     */
-  def tempDirectoryResource(
+  def tempDirectory(
       dir: Path,
       prefix: String = "",
       attributes: Seq[FileAttribute[_]] = Seq.empty
@@ -212,6 +194,27 @@ trait BaseFiles[F[_]] {
       path: Path,
       flags: Seq[StandardOpenOption] = List(StandardOpenOption.CREATE)
   ): Pipe[F, Byte, INothing]
+
+  /**
+    * Returns a `WriteCursor` for the specified path.
+    *
+    * The `WRITE` option is added to the supplied flags. If the `APPEND` option is present in `flags`,
+    * the offset is initialized to the current size of the file.
+    */
+  def writeCursor(
+      path: Path,
+      flags: Seq[OpenOption] = List(StandardOpenOption.CREATE)
+  ): Resource[F, WriteCursor[F]]
+
+  /**
+    * Returns a `WriteCursor` for the specified file handle.
+    *
+    * If `append` is true, the offset is initialized to the current size of the file.
+    */
+  def writeCursorFromFileHandle(
+      file: FileHandle[F],
+      append: Boolean
+  ): F[WriteCursor[F]]
 }
 
 object BaseFiles {
@@ -292,22 +295,27 @@ object BaseFiles {
     def move(source: Path, target: Path, flags: Seq[CopyOption]): F[Path] =
       Sync[F].blocking(JFiles.move(source, target, flags: _*))
 
-    def openPath(path: Path, flags: Seq[OpenOption]): Resource[F, FileHandle[F]] =
-      FileHandle.fromPath(path, flags)
+    def open(path: Path, flags: Seq[OpenOption]): Resource[F, FileHandle[F]] =
+      openFileChannel(Sync[F].blocking(FileChannel.open(path, flags: _*)))
 
     def openFileChannel(channel: F[FileChannel]): Resource[F, FileHandle[F]] =
-      FileHandle.fromFileChannel(channel)
+      Resource.make(channel)(ch => Sync[F].blocking(ch.close())).map(ch => FileHandle.make(ch))
 
     def permissions(path: Path, flags: Seq[LinkOption]): F[Set[PosixFilePermission]] =
       Sync[F].blocking(JFiles.getPosixFilePermissions(path, flags: _*).asScala)
 
     def readAll(path: Path, chunkSize: Int): Stream[F, Byte] =
-      Stream.resource(ReadCursor.fromPath(path)).flatMap { cursor =>
+      Stream.resource(readCursor(path)).flatMap { cursor =>
         cursor.readAll(chunkSize).void.stream
       }
 
+    def readCursor(path: Path, flags: Seq[OpenOption] = Nil): Resource[F, ReadCursor[F]] =
+      open(path, StandardOpenOption.READ :: flags.toList).map { fileHandle =>
+        ReadCursor(fileHandle, 0L)
+      }
+
     def readRange(path: Path, chunkSize: Int, start: Long, end: Long): Stream[F, Byte] =
-      Stream.resource(ReadCursor.fromPath(path)).flatMap { cursor =>
+      Stream.resource(readCursor(path)).flatMap { cursor =>
         cursor.seek(start).readUntil(chunkSize, end).void.stream
       }
 
@@ -317,15 +325,7 @@ object BaseFiles {
     def size(path: Path): F[Long] =
       Sync[F].blocking(JFiles.size(path))
 
-    def tempFileStream(
-        dir: Path,
-        prefix: String,
-        suffix: String,
-        attributes: Seq[FileAttribute[_]]
-    ): Stream[F, Path] =
-      Stream.resource(tempFileResource(dir, prefix, suffix, attributes))
-
-    def tempFileResource(
+    def tempFile(
         dir: Path,
         prefix: String,
         suffix: String,
@@ -335,14 +335,7 @@ object BaseFiles {
         Sync[F].blocking(JFiles.createTempFile(dir, prefix, suffix, attributes: _*))
       }(deleteIfExists(_).void)
 
-    def tempDirectoryStream(
-        dir: Path,
-        prefix: String,
-        attributes: Seq[FileAttribute[_]]
-    ): Stream[F, Path] =
-      Stream.resource(tempDirectoryResource(dir, prefix, attributes))
-
-    def tempDirectoryResource(
+    def tempDirectory(
         dir: Path,
         prefix: String,
         attributes: Seq[FileAttribute[_]]
@@ -372,8 +365,24 @@ object BaseFiles {
     ): Pipe[F, Byte, INothing] =
       in =>
         Stream
-          .resource(WriteCursor.fromPath(path, flags))
+          .resource(writeCursor(path, flags))
           .flatMap(_.writeAll(in).void.stream)
+
+    def writeCursor(
+        path: Path,
+        flags: Seq[OpenOption] = List(StandardOpenOption.CREATE)
+    ): Resource[F, WriteCursor[F]] =
+      open(path, StandardOpenOption.WRITE :: flags.toList).flatMap { fileHandle =>
+        val size = if (flags.contains(StandardOpenOption.APPEND)) fileHandle.size else 0L.pure[F]
+        val cursor = size.map(s => WriteCursor(fileHandle, s))
+        Resource.liftF(cursor)
+      }
+
+    def writeCursorFromFileHandle(
+        file: FileHandle[F],
+        append: Boolean
+    ): F[WriteCursor[F]] =
+      if (append) file.size.map(s => WriteCursor(file, s)) else WriteCursor(file, 0L).pure[F]
 
   }
 }
@@ -435,12 +444,12 @@ trait Files[F[_]] extends BaseFiles[F] {
 object Files {
   def apply[F[_]](implicit F: Files[F]): F.type = F
 
-  implicit def forAync[F[_]: Async]: Files[F] = new AsyncBaseFiles[F]
+  implicit def forAsync[F[_]: Async]: Files[F] = new AsyncFiles[F]
 
-  private final class AsyncBaseFiles[F[_]: Async] extends BaseFiles.SyncBaseFiles[F] with Files[F] {
+  private final class AsyncFiles[F[_]: Async] extends BaseFiles.SyncBaseFiles[F] with Files[F] {
 
     def tail(path: Path, chunkSize: Int, offset: Long, pollDelay: FiniteDuration): Stream[F, Byte] =
-      Stream.resource(ReadCursor.fromPath(path)).flatMap { cursor =>
+      Stream.resource(readCursor(path)).flatMap { cursor =>
         cursor.seek(offset).tail(chunkSize, pollDelay).void.stream
       }
 
@@ -465,10 +474,10 @@ object Files {
       def openNewFile: Resource[F, FileHandle[F]] =
         Resource
           .liftF(computePath)
-          .flatMap(p => FileHandle.fromPath(p, StandardOpenOption.WRITE :: flags.toList))
+          .flatMap(p => open(p, StandardOpenOption.WRITE :: flags.toList))
 
       def newCursor(file: FileHandle[F]): F[WriteCursor[F]] =
-        WriteCursor.fromFileHandle[F](file, flags.contains(StandardOpenOption.APPEND))
+        writeCursorFromFileHandle(file, flags.contains(StandardOpenOption.APPEND))
 
       def go(
           fileHotswap: Hotswap[F, FileHandle[F]],

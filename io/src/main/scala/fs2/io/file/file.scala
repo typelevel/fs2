@@ -229,54 +229,54 @@ package object file {
     *
     * The temporary file is removed when the stream completes.
     */
-  @deprecated("Use BaseFiles[F].tempFileStream")
+  @deprecated("Use Stream.resource(BaseFiles[F].tempFile(..))")
   def tempFileStream[F[_]: Sync](
       dir: Path,
       prefix: String = "",
       suffix: String = ".tmp",
       attributes: Seq[FileAttribute[_]] = Seq.empty
   ): Stream[F, Path] =
-    BaseFiles[F].tempFileStream(dir, prefix, suffix, attributes)
+    Stream.resource(BaseFiles[F].tempFile(dir, prefix, suffix, attributes))
 
   /**
     * Creates a resource containing the path of a temporary file.
     *
     * The temporary file is removed during the resource release.
     */
-  @deprecated("Use BaseFiles[F].tempFileResource")
+  @deprecated("Use BaseFiles[F].tempFile")
   def tempFileResource[F[_]: Sync](
       dir: Path,
       prefix: String = "",
       suffix: String = ".tmp",
       attributes: Seq[FileAttribute[_]] = Seq.empty
   ): Resource[F, Path] =
-    BaseFiles[F].tempFileResource(dir, prefix, suffix, attributes)
+    BaseFiles[F].tempFile(dir, prefix, suffix, attributes)
 
   /**
     * Creates a stream containing the path of a temporary directory.
     *
     * The temporary directory is removed when the stream completes.
     */
-  @deprecated("Use BaseFiles[F].tempDirectoryStream")
+  @deprecated("Use Stream.resource(BaseFiles[F].tempDirectory(..))")
   def tempDirectoryStream[F[_]: Sync](
       dir: Path,
       prefix: String = "",
       attributes: Seq[FileAttribute[_]] = Seq.empty
   ): Stream[F, Path] =
-    BaseFiles[F].tempDirectoryStream(dir, prefix, attributes)
+    Stream.resource(BaseFiles[F].tempDirectory(dir, prefix, attributes))
 
   /**
     * Creates a resource containing the path of a temporary directory.
     *
     * The temporary directory is removed during the resource release.
     */
-  @deprecated("Use BaseFiles[F].tempDirectoryResource")
+  @deprecated("Use BaseFiles[F].tempDirectory")
   def tempDirectoryResource[F[_]: Sync](
       dir: Path,
       prefix: String = "",
       attributes: Seq[FileAttribute[_]] = Seq.empty
   ): Resource[F, Path] =
-    BaseFiles[F].tempDirectoryResource(dir, prefix, attributes)
+    BaseFiles[F].tempDirectory(dir, prefix, attributes)
 
   /**
     * Creates a new directory at the given path

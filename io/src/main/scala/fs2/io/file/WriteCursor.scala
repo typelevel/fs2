@@ -74,30 +74,17 @@ final case class WriteCursor[F[_]](file: FileHandle[F], offset: Long) {
 
 object WriteCursor {
 
-  /**
-    * Returns a `WriteCursor` for the specified path.
-    *
-    * The `WRITE` option is added to the supplied flags. If the `APPEND` option is present in `flags`,
-    * the offset is initialized to the current size of the file.
-    */
+  @deprecated("Use BaseFiles[F].writeCursor")
   def fromPath[F[_]: Sync](
       path: Path,
       flags: Seq[OpenOption] = List(StandardOpenOption.CREATE)
   ): Resource[F, WriteCursor[F]] =
-    FileHandle.fromPath(path, StandardOpenOption.WRITE :: flags.toList).flatMap { fileHandle =>
-      val size = if (flags.contains(StandardOpenOption.APPEND)) fileHandle.size else 0L.pure[F]
-      val cursor = size.map(s => WriteCursor(fileHandle, s))
-      Resource.liftF(cursor)
-    }
+    BaseFiles[F].writeCursor(path, flags)
 
-  /**
-    * Returns a `WriteCursor` for the specified file handle.
-    *
-    * If `append` is true, the offset is initialized to the current size of the file.
-    */
+  @deprecated("Use BaseFiles[F].writeCursorFromFileHandle")
   def fromFileHandle[F[_]: Sync](
       file: FileHandle[F],
       append: Boolean
   ): F[WriteCursor[F]] =
-    if (append) file.size.map(s => WriteCursor(file, s)) else WriteCursor(file, 0L).pure[F]
+    BaseFiles[F].writeCursorFromFileHandle(file, append)
 }
