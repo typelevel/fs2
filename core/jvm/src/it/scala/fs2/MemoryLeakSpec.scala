@@ -111,7 +111,7 @@ class MemoryLeakSpec extends FunSuite {
       path
     }
 
-  leakTest("groupWithin".flaky) {
+  leakTest("groupWithin") {
     Stream
       .eval(IO.never)
       .covary[IO]
@@ -227,7 +227,7 @@ class MemoryLeakSpec extends FunSuite {
       .repeat
   }
 
-  leakTest("queue".flaky) {
+  leakTest("queue") {
     Stream
       .eval(Queue.bounded[IO, Either[Throwable, Option[Int]]](10))
       .flatMap { queue =>
@@ -247,12 +247,12 @@ class MemoryLeakSpec extends FunSuite {
       }
   }
 
-  leakTest("progress merge".flaky) {
+  leakTest("progress merge") {
     val progress = Stream.constant(1, 128).covary[IO]
     progress.merge(progress)
   }
 
-  leakTest("hung merge".flaky) {
+  leakTest("hung merge") {
     val hung = Stream.eval(IO.never)
     val progress = Stream.constant(1, 128).covary[IO]
     hung.merge(progress)
