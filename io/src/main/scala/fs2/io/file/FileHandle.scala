@@ -110,11 +110,11 @@ trait FileHandle[F[_]] {
 
 object FileHandle {
 
-  @deprecated("Use Files[F].open")
+  @deprecated("Use Files[F].open", "3.0.0")
   def fromPath[F[_]: Sync](path: Path, flags: Seq[OpenOption]): Resource[F, FileHandle[F]] =
     SyncFiles[F].open(path, flags)
 
-  @deprecated("Use Files[F].openFileChannel")
+  @deprecated("Use Files[F].openFileChannel", "3.0.0")
   def fromFileChannel[F[_]: Sync](channel: F[FileChannel]): Resource[F, FileHandle[F]] =
     SyncFiles[F].openFileChannel(channel)
 

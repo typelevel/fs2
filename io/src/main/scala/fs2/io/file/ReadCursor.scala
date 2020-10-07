@@ -109,7 +109,7 @@ final case class ReadCursor[F[_]](file: FileHandle[F], offset: Long) {
 
 object ReadCursor {
 
-  @deprecated("Use Files[F].readCursor")
+  @deprecated("Use Files[F].readCursor", "3.0.0")
   def fromPath[F[_]: Sync](
       path: Path,
       flags: Seq[OpenOption] = Nil

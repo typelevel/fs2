@@ -22,22 +22,18 @@
 package fs2
 package io
 
-import java.io.IOException
 import java.nio.file.{Files => _, _}
-import java.nio.file.attribute.{BasicFileAttributes, FileAttribute, PosixFilePermission}
-import java.util.stream.{Stream => JStream}
+import java.nio.file.attribute.{FileAttribute, PosixFilePermission}
 
-import cats.effect.{Async, Resource, Sync, Temporal}
+import cats.effect.{Async, Resource, Sync}
 import cats.syntax.all._
-
-import fs2.io.CollectionCompat._
 
 import scala.concurrent.duration._
 
 /** Provides support for working with files. */
 package object file {
 
-  @deprecated("Use Files[F].readAll")
+  @deprecated("Use Files[F].readAll", "3.0.0")
   def readAll[F[_]: Sync](
       path: Path,
       chunkSize: Int
@@ -48,7 +44,7 @@ package object file {
     * `start` is inclusive, `end` is exclusive, so when `start` is 0 and `end` is 2,
     * two bytes are read.
     */
-  @deprecated("Use Files[F].readRange")
+  @deprecated("Use Files[F].readRange", "3.0.0")
   def readRange[F[_]: Sync](
       path: Path,
       chunkSize: Int,
@@ -66,7 +62,7 @@ package object file {
     *
     * If an error occurs while reading from the file, the overall stream fails.
     */
-  @deprecated("Use Files[F].tail")
+  @deprecated("Use Files[F].tail", "3.0.0")
   def tail[F[_]: Async](
       path: Path,
       chunkSize: Int,
@@ -79,7 +75,7 @@ package object file {
     *
     * Adds the WRITE flag to any other `OpenOption` flags specified. By default, also adds the CREATE flag.
     */
-  @deprecated("Use Files[F].writeAll")
+  @deprecated("Use Files[F].writeAll", "3.0.0")
   def writeAll[F[_]: Sync](
       path: Path,
       flags: Seq[StandardOpenOption] = List(StandardOpenOption.CREATE)
@@ -93,7 +89,7 @@ package object file {
     * by analyzing the current state of the filesystem -- e.g., by looking at all
     * files in a directory and generating a unique name.
     */
-  @deprecated("Use Files[F].writeRotate")
+  @deprecated("Use Files[F].writeRotate", "3.0.0")
   def writeRotate[F[_]](
       computePath: F[Path],
       limit: Long,
@@ -107,7 +103,7 @@ package object file {
     * The watcher is returned as a resource. To use the watcher, lift the resource to a stream,
     * watch or register 1 or more paths, and then return `watcher.events()`.
     */
-  @deprecated("Use Files[F].watcher")
+  @deprecated("Use Files[F].watcher", "3.0.0")
   def watcher[F[_]](implicit F: Async[F]): Resource[F, Watcher[F]] =
     Files[F].watcher
 
@@ -116,7 +112,7 @@ package object file {
     *
     * Alias for creating a watcher and watching the supplied path, releasing the watcher when the resulting stream is finalized.
     */
-  @deprecated("Use Files[F].watch")
+  @deprecated("Use Files[F].watch", "3.0.0")
   def watch[F[_]](
       path: Path,
       types: Seq[Watcher.EventType] = Nil,
@@ -133,7 +129,7 @@ package object file {
     * subsequence access will succeed. Care should be taken when using this
     * method in security sensitive applications.
     */
-  @deprecated("Use Files[F].exists")
+  @deprecated("Use Files[F].exists", "3.0.0")
   def exists[F[_]: Sync](
       path: Path,
       flags: Seq[LinkOption] = Seq.empty
@@ -145,7 +141,7 @@ package object file {
     *
     * This will only work for POSIX supporting file systems
     */
-  @deprecated("Use Files[F].permissions")
+  @deprecated("Use Files[F].permissions", "3.0.0")
   def permissions[F[_]: Sync](
       path: Path,
       flags: Seq[LinkOption] = Seq.empty
@@ -157,7 +153,7 @@ package object file {
     *
     * This will only work for POSIX supporting file systems
     */
-  @deprecated("Use Files[F].setPermissions")
+  @deprecated("Use Files[F].setPermissions", "3.0.0")
   def setPermissions[F[_]: Sync](
       path: Path,
       permissions: Set[PosixFilePermission]
@@ -169,7 +165,7 @@ package object file {
     *
     * By default, the copy fails if the target file already exists or is a symbolic link.
     */
-  @deprecated("Use Files[F].copy")
+  @deprecated("Use Files[F].copy", "3.0.0")
   def copy[F[_]: Sync](
       source: Path,
       target: Path,
@@ -183,21 +179,21 @@ package object file {
     * If the file is a directory then the directory must be empty for this action to succeed.
     * This action will fail if the path doesn't exist.
     */
-  @deprecated("Use Files[F].delete")
+  @deprecated("Use Files[F].delete", "3.0.0")
   def delete[F[_]: Sync](path: Path): F[Unit] =
     SyncFiles[F].delete(path)
 
   /**
     * Like `delete`, but will not fail when the path doesn't exist.
     */
-  @deprecated("Use Files[F].deleteIfExists")
+  @deprecated("Use Files[F].deleteIfExists", "3.0.0")
   def deleteIfExists[F[_]: Sync](path: Path): F[Boolean] =
     SyncFiles[F].deleteIfExists(path)
 
   /**
     * Recursively delete a directory
     */
-  @deprecated("Use Files[F].deleteDirectoryRecursively")
+  @deprecated("Use Files[F].deleteDirectoryRecursively", "3.0.0")
   def deleteDirectoryRecursively[F[_]: Sync](
       path: Path,
       options: Set[FileVisitOption] = Set.empty
@@ -207,7 +203,7 @@ package object file {
   /**
     * Returns the size of a file (in bytes).
     */
-  @deprecated("Use Files[F].size")
+  @deprecated("Use Files[F].size", "3.0.0")
   def size[F[_]: Sync](path: Path): F[Long] =
     SyncFiles[F].size(path)
 
@@ -216,7 +212,7 @@ package object file {
     *
     * By default, the move fails if the target file already exists or is a symbolic link.
     */
-  @deprecated("Use Files[F].move")
+  @deprecated("Use Files[F].move", "3.0.0")
   def move[F[_]: Sync](
       source: Path,
       target: Path,
@@ -229,7 +225,7 @@ package object file {
     *
     * The temporary file is removed when the stream completes.
     */
-  @deprecated("Use Stream.resource(Files[F].tempFile(..))")
+  @deprecated("Use Stream.resource(Files[F].tempFile(..))", "3.0.0")
   def tempFileStream[F[_]: Sync](
       dir: Path,
       prefix: String = "",
@@ -243,7 +239,7 @@ package object file {
     *
     * The temporary file is removed during the resource release.
     */
-  @deprecated("Use Files[F].tempFile")
+  @deprecated("Use Files[F].tempFile", "3.0.0")
   def tempFileResource[F[_]: Sync](
       dir: Path,
       prefix: String = "",
@@ -257,7 +253,7 @@ package object file {
     *
     * The temporary directory is removed when the stream completes.
     */
-  @deprecated("Use Stream.resource(SyncFiles[F].tempDirectory(..))")
+  @deprecated("Use Stream.resource(SyncFiles[F].tempDirectory(..))", "3.0.0")
   def tempDirectoryStream[F[_]: Sync](
       dir: Path,
       prefix: String = "",
@@ -270,7 +266,7 @@ package object file {
     *
     * The temporary directory is removed during the resource release.
     */
-  @deprecated("Use Files[F].tempDirectory")
+  @deprecated("Use Files[F].tempDirectory", "3.0.0")
   def tempDirectoryResource[F[_]: Sync](
       dir: Path,
       prefix: String = "",
@@ -281,7 +277,7 @@ package object file {
   /**
     * Creates a new directory at the given path
     */
-  @deprecated("Use Files[F].createDirectory")
+  @deprecated("Use Files[F].createDirectory", "3.0.0")
   def createDirectory[F[_]: Sync](
       path: Path,
       flags: Seq[FileAttribute[_]] = Seq.empty
@@ -291,7 +287,7 @@ package object file {
   /**
     * Creates a new directory at the given path and creates all nonexistent parent directories beforehand.
     */
-  @deprecated("Use Files[F].createDirectories")
+  @deprecated("Use Files[F].createDirectories", "3.0.0")
   def createDirectories[F[_]: Sync](
       path: Path,
       flags: Seq[FileAttribute[_]] = Seq.empty
@@ -301,14 +297,14 @@ package object file {
   /**
     * Creates a stream of [[Path]]s inside a directory.
     */
-  @deprecated("Use Files[F].directoryStream")
+  @deprecated("Use Files[F].directoryStream", "3.0.0")
   def directoryStream[F[_]: Sync](path: Path): Stream[F, Path] =
     SyncFiles[F].directoryStream(path)
 
   /**
     * Creates a stream of [[Path]]s inside a directory, filtering the results by the given predicate.
     */
-  @deprecated("Use Files[F].directoryStream")
+  @deprecated("Use Files[F].directoryStream", "3.0.0")
   def directoryStream[F[_]: Sync](
       path: Path,
       filter: Path => Boolean
@@ -318,7 +314,7 @@ package object file {
   /**
     * Creates a stream of [[Path]]s inside a directory which match the given glob.
     */
-  @deprecated("Use Files[F].directoryStream")
+  @deprecated("Use Files[F].directoryStream", "3.0.0")
   def directoryStream[F[_]: Sync](
       path: Path,
       glob: String
@@ -328,14 +324,14 @@ package object file {
   /**
     * Creates a stream of [[Path]]s contained in a given file tree. Depth is unlimited.
     */
-  @deprecated("Use Files[F].walk")
+  @deprecated("Use Files[F].walk", "3.0.0")
   def walk[F[_]: Sync](start: Path): Stream[F, Path] =
     SyncFiles[F].walk(start)
 
   /**
     * Creates a stream of [[Path]]s contained in a given file tree, respecting the supplied options. Depth is unlimited.
     */
-  @deprecated("Use Files[F].walk")
+  @deprecated("Use Files[F].walk", "3.0.0")
   def walk[F[_]: Sync](
       start: Path,
       options: Seq[FileVisitOption]
@@ -345,7 +341,7 @@ package object file {
   /**
     * Creates a stream of [[Path]]s contained in a given file tree down to a given depth.
     */
-  @deprecated("Use Files[F].walk")
+  @deprecated("Use Files[F].walk", "3.0.0")
   def walk[F[_]: Sync](
       start: Path,
       maxDepth: Int,

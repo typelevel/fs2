@@ -29,7 +29,7 @@ import cats.effect.kernel.{Async, Resource, Sync}
 import cats.syntax.all._
 
 import java.io.IOException
-import java.nio.channels.{FileChannel, FileLock}
+import java.nio.channels.FileChannel
 import java.nio.file.{Files => JFiles, _}
 import java.nio.file.attribute.{BasicFileAttributes, FileAttribute, PosixFilePermission}
 import java.util.stream.{Stream => JStream}
