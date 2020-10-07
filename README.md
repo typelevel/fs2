@@ -11,7 +11,7 @@ FS2 is a library for purely functional, effectful, and polymorphic stream proces
 Its design goals are compositionality, expressiveness, resource safety, and speed.
 The name is a modified acronym for **F**unctional **S**treams for **Scala** (FSS, or FS2).
 
-FS2 is available for Scala 2.12, Scala 2.13, and [Scala.js](http://www.scala-js.org/).
+FS2 is available for Scala 2.12, Scala 2.13, Scala 3, and [Scala.js](http://www.scala-js.org/).
 FS2 is built upon two major functional libraries for Scala, [Cats](https://typelevel.org/cats/), and [Cats-Effect](https://typelevel.org/cats-effect/).
 Regardless of those dependencies, FS2 core types (streams and pulls) are polymorphic in the effect type (as long as it is compatible with `cats-effect` typeclasses),
 and thus FS2 can be used with other effect libraries, such as [Monix](https://monix.io/).
@@ -36,29 +36,26 @@ Quick links:
 
 ### <a id="getit"></a> Where to get the latest version ###
 
-The latest version is 2.4.x. See the badge at the top of the README for the exact version number.
+The latest version is 3.0.0-M1.
 
-If upgrading from the 1.0 series, see the [release notes for 2.0.0](https://github.com/functional-streams-for-scala/fs2/releases/tag/v2.0.0) for help with upgrading.
+If upgrading from the 2.x series, see the [release notes for 3.0.0-M1](https://github.com/functional-streams-for-scala/fs2/releases/tag/v3.0.0-M1) for help with upgrading.
 
 
 ```
-// available for 2.12, 2.13
-libraryDependencies += "co.fs2" %% "fs2-core" % "2.4.4" // For cats 2 and cats-effect 2
+// available for 2.12, 2.13, 0.27
+libraryDependencies += "co.fs2" %% "fs2-core" % "3.0.0-M1"
 
 // optional I/O library
-libraryDependencies += "co.fs2" %% "fs2-io" % "2.4.4"
+libraryDependencies += "co.fs2" %% "fs2-io" % "3.0.0-M1"
 
 // optional reactive streams interop
-libraryDependencies += "co.fs2" %% "fs2-reactive-streams" % "2.4.4"
-
-// optional experimental library
-libraryDependencies += "co.fs2" %% "fs2-experimental" % "2.4.4"
+libraryDependencies += "co.fs2" %% "fs2-reactive-streams" % "3.0.0-M1"
 ```
 
 The fs2-core library is also supported on Scala.js:
 
 ```
-libraryDependencies += "co.fs2" %%% "fs2-core" % "2.4.4"
+libraryDependencies += "co.fs2" %%% "fs2-core" % "3.0.0-M1"
 ```
 
 There are [detailed migration guides](https://github.com/functional-streams-for-scala/fs2/blob/main/docs/) for migrating from older versions.
@@ -69,7 +66,7 @@ There are [detailed migration guides](https://github.com/functional-streams-for-
 FS2 is a streaming I/O library. The design goals are compositionality, expressiveness, resource safety, and speed. Here's a simple example of its use:
 
 ```scala
-import cats.effect.{IO, IOApp, Resource}
+import cats.effect.{IO, IOApp}
 import fs2.{text, Stream}
 import fs2.io.file.Files
 import java.nio.file.Paths
