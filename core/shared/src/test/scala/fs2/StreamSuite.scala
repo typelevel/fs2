@@ -565,20 +565,21 @@ class StreamSuite extends Fs2Suite {
         )
       import scala.concurrent.duration._
       def res(ref: Ref[IO, List[String]], ec: ExecutionContext): Resource[IO, Unit] =
-        Resource.make(munitContextShift.evalOn(ec)(for {
-          _ <- ref.update(_ :+ "starting acquire")
-          _ <- IO.sleep(500.millis)
-          _ <- ref.update(_ :+ "acquired")
-        } yield ()))(_ => ref.update(_ :+ "released"))
+        Resource.make(munitContextShift.evalOn(ec)(IO {
+          println("starting acq")
+          Thread.sleep(1000)
+          println("acq")
+        }))(_ => IO(println("released")))
 
       otherECRes.use { otherEC =>
         (for {
           st <- Ref.of[IO, List[String]](List.empty)
           res <- IO.race(
             Stream.resource(res(st, otherEC)).compile.toVector,
-            IO.sleep(10.millis)
+            IO.sleep(100.millis)
           )
           result <- st.get
+          _ <- IO.sleep(1.seconds)
         } yield result).map { result =>
           assert(result == List("starting acquire", "acquired", "released"))
         }
