@@ -21,8 +21,9 @@
 
 package fs2
 
-import scala.concurrent.duration._
+import java.util.concurrent.Executors
 
+import scala.concurrent.duration._
 import cats.data.Chain
 import cats.effect.{ExitCase, IO, Resource, SyncIO}
 import cats.effect.concurrent.{Deferred, Ref}
@@ -31,8 +32,9 @@ import org.scalacheck.Gen
 import org.scalacheck.Arbitrary.arbitrary
 import org.scalacheck.Prop.forAll
 import org.scalacheck.effect.PropF.forAllF
-
 import fs2.concurrent.{Queue, SignallingRef}
+
+import scala.concurrent.ExecutionContext
 
 class StreamSuite extends Fs2Suite {
 
@@ -548,6 +550,39 @@ class StreamSuite extends Fs2Suite {
             )
           )
         )
+    }
+
+    test(
+      "Resource acquired on another thread pool is released when compiled stream is interrupted"
+    ) {
+      val otherECRes =
+        Resource.make(IO {
+          scala.concurrent.ExecutionContext.fromExecutorService(Executors.newCachedThreadPool())
+        })(ec =>
+          IO {
+            ec.shutdown
+          }
+        )
+      import scala.concurrent.duration._
+      def res(ref: Ref[IO, List[String]], ec: ExecutionContext): Resource[IO, Unit] =
+        Resource.make(munitContextShift.evalOn(ec)(for {
+          _ <- ref.update(_ :+ "starting acquire")
+          _ <- IO.sleep(500.millis)
+          _ <- ref.update(_ :+ "acquired")
+        } yield ()))(_ => ref.update(_ :+ "released"))
+
+      otherECRes.use { otherEC =>
+        (for {
+          st <- Ref.of[IO, List[String]](List.empty)
+          res <- IO.race(
+            Stream.resource(res(st, otherEC)).compile.toVector,
+            IO.sleep(10.millis)
+          )
+          result <- st.get
+        } yield result).map { result =>
+          assert(result == List("starting acquire", "acquired", "released"))
+        }
+      }
     }
 
     test("resourceWeak") {
