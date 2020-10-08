@@ -177,14 +177,16 @@ private[fs2] final class CompileScope[F[_]] private (
       release: (R, ExitCase[Throwable]) => F[Unit]
   ): F[Either[Throwable, R]] = {
     val resource = ScopedResource.create
-    F.flatMap(F.attempt(fr)) {
-      case Right(r) =>
-        val finalizer = (ec: ExitCase[Throwable]) => F.suspend(release(r, ec))
-        F.flatMap(resource.acquired(finalizer)) { result =>
-          if (result.exists(identity)) F.map(register(resource))(_ => Right(r))
-          else F.pure(Left(result.swap.getOrElse(AcquireAfterScopeClosed)))
-        }
-      case Left(err) => F.pure(Left(err))
+    F.uncancelable {
+      F.flatMap(F.attempt(fr)) {
+        case Right(r) =>
+          val finalizer = (ec: ExitCase[Throwable]) => F.suspend(release(r, ec))
+          F.flatMap(resource.acquired(finalizer)) { result =>
+            if (result.exists(identity)) F.map(register(resource))(_ => Right(r))
+            else F.pure(Left(result.swap.getOrElse(AcquireAfterScopeClosed)))
+          }
+        case Left(err) => F.pure(Left(err))
+      }
     }
   }
 
