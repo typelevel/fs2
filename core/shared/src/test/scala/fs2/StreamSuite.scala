@@ -432,7 +432,9 @@ class StreamSuite extends Fs2Suite {
         ref <- Ref.of[IO, Boolean](false)
         _ <- testCancelation {
           // This will be canceled after a second, while the acquire is still running
-          Stream.bracket(IO.sleep(1100.millis))(_ => ref.set(true))
+          Stream.bracket(IO.sleep(1100.millis))(_ => ref.set(true)) >> Stream.bracket(IO.unit)(_ =>
+            IO.unit
+          )
         }
         // Stream cancelation does not back pressure on canceled acquisitions so give time for the acquire to complete here
         _ <- IO.sleep(200.milliseconds)
