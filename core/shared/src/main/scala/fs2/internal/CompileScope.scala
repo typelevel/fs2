@@ -93,10 +93,13 @@ private[fs2] final class CompileScope[F[_]] private (
 
   /**
     * Registers supplied resource in this scope.
-    * This is always invoked before state can be marked as closed.
+    * Returns false and makes no registration if this scope has been closed.
     */
-  private def register(resource: ScopedResource[F]): F[Unit] =
-    state.update(s => s.copy(resources = resource +: s.resources))
+  private def register(resource: ScopedResource[F]): F[Boolean] =
+    state.modify { s =>
+      if (s.open) (s.copy(resources = resource +: s.resources), true)
+      else (s, false)
+    }
 
   /**
     * Opens a child scope.
@@ -179,16 +182,26 @@ private[fs2] final class CompileScope[F[_]] private (
       release: (R, Resource.ExitCase) => F[Unit]
   ): F[Either[Throwable, R]] =
     ScopedResource.create[F].flatMap { resource =>
-      fr.redeemWith(
-        t => F.pure(Left(t)),
-        r => {
-          val finalizer = (ec: Resource.ExitCase) => release(r, ec)
-          F.flatMap(resource.acquired(finalizer)) { result =>
-            if (result.exists(identity)) F.map(register(resource))(_ => Right(r))
-            else F.pure(Left(result.swap.getOrElse(AcquireAfterScopeClosed)))
+      F.uncancelable {
+        fr.redeemWith(
+          t => F.pure(Left(t)),
+          r => {
+            val finalizer = (ec: Resource.ExitCase) => release(r, ec)
+            resource.acquired(finalizer).flatMap { result =>
+              if (result.exists(identity)) {
+                register(resource).flatMap {
+                  case false =>
+                    finalizer(Resource.ExitCase.Canceled).as(Left(AcquireAfterScopeClosed))
+                  case true => F.pure(Right(r))
+                }
+              } else {
+                finalizer(Resource.ExitCase.Canceled)
+                  .as(Left(result.swap.getOrElse(AcquireAfterScopeClosed)))
+              }
+            }
           }
-        }
-      )
+        )
+      }
     }
 
   /**
