@@ -432,45 +432,14 @@ class StreamSuite extends Fs2Suite {
         ref <- Ref.of[IO, Boolean](false)
         _ <- testCancelation {
           // This will be canceled after a second, while the acquire is still running
-          Stream.bracket(IO.sleep(1100.millis))(_ => ref.set(true))
+          Stream.bracket(IO.sleep(1100.millis))(_ => ref.set(true)) >> Stream.bracket(IO.unit)(_ =>
+            IO.unit
+          )
         }
         // Stream cancelation does not back pressure on canceled acquisitions so give time for the acquire to complete here
         _ <- IO.sleep(200.milliseconds)
         released <- ref.get
       } yield assert(released)
-    }
-
-    test(
-      "Resource acquired on another thread pool is released when compiled stream is interrupted".only
-    ) {
-      import java.util.concurrent.Executors
-      import scala.concurrent.ExecutionContext
-      import scala.concurrent.duration._
-      val otherECRes =
-        Resource.make(IO {
-          scala.concurrent.ExecutionContext.fromExecutorService(Executors.newCachedThreadPool())
-        })(ec =>
-          IO {
-            ec.shutdown
-          }
-        )
-      def res(idx: Int, ec: ExecutionContext): Resource[IO, Unit] =
-        Resource.make(munitContextShift.evalOn(ec)(IO {
-          println(s"starting acq ${idx}")
-          Thread.sleep(1000)
-          println(s"acq ${idx}")
-        }))(_ => IO(println(s"released ${idx}")))
-
-      otherECRes.use { otherEC =>
-        for {
-          _ <- testCancelation(
-            Stream
-              .resource(res(0, otherEC))
-              .flatMap(_ => Stream.resource(res(1, otherEC)))
-          )
-          _ <- IO.sleep(5.seconds) // give ample time for cleanups to happen
-        } yield ()
-      }
     }
   }
 

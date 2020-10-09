@@ -144,11 +144,9 @@ private[internal] object ScopedResource {
       def acquired(finalizer: ExitCase[Throwable] => F[Unit]): F[Either[Throwable, Boolean]] =
         F.flatten(state.modify { s =>
           if (s.isFinished) {
-            println("ACQ FINISHD ALREADY")
             // state is closed and there are no leases, finalizer has to be invoked right away
             s -> F.attempt(F.as(finalizer(ExitCase.Completed), false))
           } else {
-            println("REG FINAL")
             val attemptFinalizer = (ec: ExitCase[Throwable]) => F.attempt(finalizer(ec))
             // either state is open, or leases are present, either release or `Lease#cancel` will run the finalizer
             s.copy(finalizer = Some(attemptFinalizer)) -> F.pure(Right(true))

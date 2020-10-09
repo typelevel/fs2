@@ -93,11 +93,10 @@ private[fs2] final class CompileScope[F[_]] private (
 
   /**
     * Registers supplied resource in this scope.
-    * This is always invoked before state can be marked as closed.
+    * Returns false and makes no registration if this scope has been closed.
     */
   private def register(resource: ScopedResource[F]): F[Boolean] =
     state.modify { s =>
-      // println(s">> REGISTERING TO $id $s")
       if (s.open) (s.copy(resources = resource +: s.resources), true)
       else (s, false)
     }
@@ -131,7 +130,6 @@ private[fs2] final class CompileScope[F[_]] private (
      */
     val createCompileScope: F[CompileScope[F]] = {
       val newScopeId = new Token
-      // println(s">> CREATED NEW SCOPE $newScopeId")
       self.interruptible match {
         case None =>
           val iCtx = InterruptContext.unsafeFromInterruptible(interruptible, newScopeId)
@@ -185,18 +183,15 @@ private[fs2] final class CompileScope[F[_]] private (
     F.uncancelable {
       F.flatMap(F.attempt(fr)) {
         case Right(r) =>
-          // println(s">>>> $id ACQ COMPLETED")
           val finalizer = (ec: ExitCase[Throwable]) => F.suspend(release(r, ec))
           F.flatMap(resource.acquired(finalizer)) { result =>
             if (result.exists(identity)) {
-              // println(s">>>> $id REG")
               F.flatMap(register(resource)) {
                 case false =>
                   finalizer(ExitCase.Canceled).as(Left(AcquireAfterScopeClosed))
                 case true => F.pure(Right(r))
               }
             } else {
-              // println(s">>> $id LATE")
               finalizer(ExitCase.Canceled).as(Left(result.swap.getOrElse(AcquireAfterScopeClosed)))
             }
           }
@@ -247,7 +242,6 @@ private[fs2] final class CompileScope[F[_]] private (
     */
   def close(ec: ExitCase[Throwable]): F[Either[Throwable, Unit]] =
     F.flatMap(state.modify(s => s.close -> s)) { previous =>
-      // println(s">>> CLOSED $id " + previous)
       F.flatMap(traverseError[CompileScope[F]](previous.children, _.close(ec))) { resultChildren =>
         F.flatMap(traverseError[ScopedResource[F]](previous.resources, _.release(ec))) {
           resultResources =>
