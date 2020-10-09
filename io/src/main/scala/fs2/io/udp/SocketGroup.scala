@@ -64,7 +64,7 @@ final class SocketGroup(
       multicastInterface: Option[NetworkInterface] = None,
       multicastTTL: Option[Int] = None,
       multicastLoopback: Boolean = true
-  )(implicit F: Sockets[F]): Resource[F, Socket[F]] = {
+  )(implicit F: Network[F]): Resource[F, Socket[F]] = {
     import F.async
     val mkChannel = F.async.blocking {
       val channel = protocolFamily
@@ -94,7 +94,7 @@ final class SocketGroup(
 
   private[udp] def mkSocket[F[_]](
       channel: DatagramChannel
-  )(implicit F: Sockets[F]): F[Socket[F]] =
+  )(implicit F: Network[F]): F[Socket[F]] =
     F.async.blocking {
       new Socket[F] {
         private val ctx = asg.register(channel)

@@ -69,7 +69,7 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup) {
       keepAlive: Boolean = false,
       noDelay: Boolean = false,
       additionalSocketOptions: List[SocketOptionMapping[_]] = List.empty
-  )(implicit F: Sockets[F]): Resource[F, Socket[F]] = {
+  )(implicit F: Network[F]): Resource[F, Socket[F]] = {
     import F.async
     def setup: F[AsynchronousSocketChannel] =
       F.async.blocking {
@@ -128,7 +128,7 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup) {
       reuseAddress: Boolean = true,
       receiveBufferSize: Int = 256 * 1024,
       additionalSocketOptions: List[SocketOptionMapping[_]] = List.empty
-  )(implicit F: Sockets[F]): Stream[F, Resource[F, Socket[F]]] =
+  )(implicit F: Network[F]): Stream[F, Resource[F, Socket[F]]] =
     Stream
       .resource(
         serverResource(
@@ -149,7 +149,7 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup) {
       reuseAddress: Boolean = true,
       receiveBufferSize: Int = 256 * 1024,
       additionalSocketOptions: List[SocketOptionMapping[_]] = List.empty
-  )(implicit F: Sockets[F]): Resource[F, (InetSocketAddress, Stream[F, Resource[F, Socket[F]]])] = {
+  )(implicit F: Network[F]): Resource[F, (InetSocketAddress, Stream[F, Resource[F, Socket[F]]])] = {
     import F.async
 
     val setup: F[AsynchronousServerSocketChannel] = F.async.blocking {
@@ -207,7 +207,7 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup) {
 
   private def apply[F[_]](
       ch: AsynchronousSocketChannel
-  )(implicit F: Sockets[F]): Resource[F, Socket[F]] = {
+  )(implicit F: Network[F]): Resource[F, Socket[F]] = {
     import F.async
     val socket = (Semaphore[F](1), Semaphore[F](1), Ref[F].of(ByteBuffer.allocate(0))).mapN {
       (readSemaphore, writeSemaphore, bufferRef) =>

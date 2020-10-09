@@ -21,17 +21,16 @@
 
 package fs2
 package io
-package tls
 
 import cats.effect.Async
 
-sealed trait TLS[F[_]] {
-  private[tls] implicit val async: Async[F]
+sealed trait Network[F[_]] {
+  private[io] implicit val async: Async[F]
 }
 
-object TLS {
-  def apply[F[_]](implicit F: TLS[F]): F.type = F
+object Network {
+  def apply[F[_]](implicit F: Network[F]): F.type = F
 
-  implicit def forAsync[F[_]](implicit F: Async[F]): TLS[F] =
-    new TLS[F] { val async = F }
+  implicit def forAsync[F[_]](implicit F: Async[F]): Network[F] =
+    new Network[F] { val async = F }
 }

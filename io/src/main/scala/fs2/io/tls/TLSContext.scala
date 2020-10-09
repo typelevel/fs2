@@ -59,7 +59,7 @@ sealed trait TLSContext {
       socket: Socket[F],
       params: TLSParameters = TLSParameters.Default,
       logger: Option[String => F[Unit]] = None
-  )(implicit T: TLS[F], S: tcp.Sockets[F]): Resource[F, TLSSocket[F]]
+  )(implicit F: Network[F]): Resource[F, TLSSocket[F]]
 
   /**
     * Creates a `TLSSocket` in server mode, using the supplied parameters.
@@ -69,7 +69,7 @@ sealed trait TLSContext {
       socket: Socket[F],
       params: TLSParameters = TLSParameters.Default,
       logger: Option[String => F[Unit]] = None
-  )(implicit T: TLS[F], S: tcp.Sockets[F]): Resource[F, TLSSocket[F]]
+  )(implicit F: Network[F]): Resource[F, TLSSocket[F]]
 
   /**
     * Creates a `DTLSSocket` in client mode, using the supplied parameters.
@@ -80,7 +80,7 @@ sealed trait TLSContext {
       remoteAddress: InetSocketAddress,
       params: TLSParameters = TLSParameters.Default,
       logger: Option[String => F[Unit]] = None
-  )(implicit T: TLS[F], S: udp.Sockets[F]): Resource[F, DTLSSocket[F]]
+  )(implicit F: Network[F]): Resource[F, DTLSSocket[F]]
 
   /**
     * Creates a `DTLSSocket` in server mode, using the supplied parameters.
@@ -91,7 +91,7 @@ sealed trait TLSContext {
       remoteAddress: InetSocketAddress,
       params: TLSParameters = TLSParameters.Default,
       logger: Option[String => F[Unit]] = None
-  )(implicit T: TLS[F], S: udp.Sockets[F]): Resource[F, DTLSSocket[F]]
+  )(implicit F: Network[F]): Resource[F, DTLSSocket[F]]
 }
 
 object TLSContext {
@@ -105,7 +105,7 @@ object TLSContext {
           socket: Socket[F],
           params: TLSParameters,
           logger: Option[String => F[Unit]]
-      )(implicit T: TLS[F], S: tcp.Sockets[F]): Resource[F, TLSSocket[F]] =
+      )(implicit F: Network[F]): Resource[F, TLSSocket[F]] =
         mkSocket(
           socket,
           true,
@@ -117,7 +117,7 @@ object TLSContext {
           socket: Socket[F],
           params: TLSParameters,
           logger: Option[String => F[Unit]]
-      )(implicit T: TLS[F], S: tcp.Sockets[F]): Resource[F, TLSSocket[F]] =
+      )(implicit F: Network[F]): Resource[F, TLSSocket[F]] =
         mkSocket(
           socket,
           false,
@@ -130,8 +130,8 @@ object TLSContext {
           clientMode: Boolean,
           params: TLSParameters,
           logger: Option[String => F[Unit]]
-      )(implicit T: TLS[F], S: tcp.Sockets[F]): Resource[F, TLSSocket[F]] = {
-        import T.async
+      )(implicit F: Network[F]): Resource[F, TLSSocket[F]] = {
+        import F.async
         Resource
           .liftF(
             engine(
@@ -154,7 +154,7 @@ object TLSContext {
           remoteAddress: InetSocketAddress,
           params: TLSParameters,
           logger: Option[String => F[Unit]]
-      )(implicit T: TLS[F], S: udp.Sockets[F]): Resource[F, DTLSSocket[F]] =
+      )(implicit F: Network[F]): Resource[F, DTLSSocket[F]] =
         mkDtlsSocket(
           socket,
           remoteAddress,
@@ -168,7 +168,7 @@ object TLSContext {
           remoteAddress: InetSocketAddress,
           params: TLSParameters,
           logger: Option[String => F[Unit]]
-      )(implicit T: TLS[F], S: udp.Sockets[F]): Resource[F, DTLSSocket[F]] =
+      )(implicit F: Network[F]): Resource[F, DTLSSocket[F]] =
         mkDtlsSocket(
           socket,
           remoteAddress,
@@ -183,8 +183,8 @@ object TLSContext {
           clientMode: Boolean,
           params: TLSParameters,
           logger: Option[String => F[Unit]]
-      )(implicit T: TLS[F], S: udp.Sockets[F]): Resource[F, DTLSSocket[F]] = {
-        import T.async
+      )(implicit F: Network[F]): Resource[F, DTLSSocket[F]] = {
+        import F.async
         Resource
           .liftF(
             engine(
@@ -208,9 +208,9 @@ object TLSContext {
           clientMode: Boolean,
           params: TLSParameters,
           logger: Option[String => F[Unit]]
-      )(implicit T: TLS[F]): F[TLSEngine[F]] = {
-        import T.async
-        val sslEngine = T.async.blocking {
+      )(implicit F: Network[F]): F[TLSEngine[F]] = {
+        import F.async
+        val sslEngine = F.async.blocking {
           val engine = ctx.createSSLEngine()
           engine.setUseClientMode(clientMode)
           engine.setSSLParameters(params.toSSLParameters)
@@ -231,9 +231,9 @@ object TLSContext {
     }
 
   /** Creates a `TLSContext` which trusts all certificates. */
-  def insecure[F[_]](implicit T: TLS[F]): F[TLSContext] = {
-    import T.async
-    TLS[F].async
+  def insecure[F[_]](implicit F: Network[F]): F[TLSContext] = {
+    import F.async
+    F.async
       .blocking {
         val ctx = SSLContext.getInstance("TLS")
         val tm = new X509TrustManager {
@@ -248,9 +248,9 @@ object TLSContext {
   }
 
   /** Creates a `TLSContext` from the system default `SSLContext`. */
-  def system[F[_]](implicit T: TLS[F]): F[TLSContext] = {
-    import T.async
-    T.async.blocking(SSLContext.getDefault).map(fromSSLContext(_))
+  def system[F[_]](implicit F: Network[F]): F[TLSContext] = {
+    import F.async
+    F.async.blocking(SSLContext.getDefault).map(fromSSLContext(_))
   }
 
   /** Creates a `TLSContext` from the specified key store file. */
@@ -258,10 +258,10 @@ object TLSContext {
       file: Path,
       storePassword: Array[Char],
       keyPassword: Array[Char]
-  )(implicit T: TLS[F]): F[TLSContext] = {
-    import T.async
-    val load = T.async.blocking(new FileInputStream(file.toFile): InputStream)
-    val stream = Resource.make(load)(s => T.async.blocking(s.close))
+  )(implicit F: Network[F]): F[TLSContext] = {
+    import F.async
+    val load = F.async.blocking(new FileInputStream(file.toFile): InputStream)
+    val stream = Resource.make(load)(s => F.async.blocking(s.close))
     fromKeyStoreStream(stream, storePassword, keyPassword)
   }
 
@@ -270,10 +270,10 @@ object TLSContext {
       resource: String,
       storePassword: Array[Char],
       keyPassword: Array[Char]
-  )(implicit T: TLS[F]): F[TLSContext] = {
-    import T.async
-    val load = TLS[F].async.blocking(getClass.getClassLoader.getResourceAsStream(resource))
-    val stream = Resource.make(load)(s => TLS[F].async.blocking(s.close))
+  )(implicit F: Network[F]): F[TLSContext] = {
+    import F.async
+    val load = F.async.blocking(getClass.getClassLoader.getResourceAsStream(resource))
+    val stream = Resource.make(load)(s => F.async.blocking(s.close))
     fromKeyStoreStream(stream, storePassword, keyPassword)
   }
 
@@ -281,10 +281,10 @@ object TLSContext {
       stream: Resource[F, InputStream],
       storePassword: Array[Char],
       keyPassword: Array[Char]
-  )(implicit T: TLS[F]): F[TLSContext] = {
-    import T.async
+  )(implicit F: Network[F]): F[TLSContext] = {
+    import F.async
     stream.use { s =>
-      T.async
+      F.async
         .blocking {
           val keyStore = KeyStore.getInstance(KeyStore.getDefaultType)
           keyStore.load(s, storePassword)
@@ -298,9 +298,9 @@ object TLSContext {
   def fromKeyStore[F[_]](
       keyStore: KeyStore,
       keyPassword: Array[Char]
-  )(implicit T: TLS[F]): F[TLSContext] = {
-    import T.async
-    T.async
+  )(implicit F: Network[F]): F[TLSContext] = {
+    import F.async
+    F.async
       .blocking {
         val kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm)
         kmf.init(keyStore, keyPassword)
