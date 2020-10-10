@@ -706,6 +706,9 @@ class StreamCombinatorsSuite extends Fs2Suite {
   }
 
   group("groupWithin") {
+    // TODO more tests:
+    // with no waiting, it should be equal to chunkN
+    // test a couple of simple timeout cases
     test("should never lose any elements") {
       forAllF { (s0: Stream[Pure, Int], d0: Int, maxGroupSize0: Int) =>
         val maxGroupSize = (maxGroupSize0 % 20).abs + 1
@@ -751,6 +754,16 @@ class StreamCombinatorsSuite extends Fs2Suite {
           .toList
           .map(it => assert(it.forall(_ <= maxGroupSize)))
       }
+    }
+
+    test("should be equivalent to chunkN when no timeouts trigger") {
+      val s = Stream.range(0, 100)
+      val size = 5
+
+      val out0 = s.covary[IO].groupWithin(size, 1.second).map(_.toList).compile.toList
+      val out1 = s.chunkN(size).map(_.toList).compile.toList
+
+      out0.map(it => assertEquals(it, out1))
     }
 
     test(
