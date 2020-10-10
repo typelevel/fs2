@@ -427,176 +427,191 @@ class StreamSuite extends Fs2Suite {
       }
     }
 
-    group("map") {
-      property("map.toList == toList.map") {
-        forAll { (s: Stream[Pure, Int], f: Int => Int) =>
-          assert(s.map(f).toList == s.toList.map(f))
+    test("#2072 - stream canceled while resource acquisition is running") {
+      for {
+        ref <- Ref.of[IO, Boolean](false)
+        _ <- testCancelation {
+          // This will be canceled after a second, while the acquire is still running
+          Stream.bracket(IO.sleep(1100.millis))(_ => ref.set(true)) >> Stream.bracket(IO.unit)(_ =>
+            IO.unit
+          )
         }
-      }
+        // Stream cancelation does not back pressure on canceled acquisitions so give time for the acquire to complete here
+        _ <- IO.sleep(200.milliseconds)
+        released <- ref.get
+      } yield assert(released)
+    }
+  }
 
-      test("regression #1335 - stack safety of map") {
-        case class Tree[A](label: A, subForest: Stream[Pure, Tree[A]]) {
-          def flatten: Stream[Pure, A] =
-            Stream(this.label) ++ this.subForest.flatMap(_.flatten)
-        }
-
-        def unfoldTree(seed: Int): Tree[Int] =
-          Tree(seed, Stream(seed + 1).map(unfoldTree))
-
-        assert(unfoldTree(1).flatten.take(10).toList == List.tabulate(10)(_ + 1))
+  group("map") {
+    property("map.toList == toList.map") {
+      forAll { (s: Stream[Pure, Int], f: Int => Int) =>
+        assert(s.map(f).toList == s.toList.map(f))
       }
     }
 
-    property("mapChunks") {
-      forAll { (s: Stream[Pure, Int]) =>
-        assert(s.mapChunks(identity).chunks.toList == s.chunks.toList)
+    test("regression #1335 - stack safety of map") {
+      case class Tree[A](label: A, subForest: Stream[Pure, Tree[A]]) {
+        def flatten: Stream[Pure, A] =
+          Stream(this.label) ++ this.subForest.flatMap(_.flatten)
       }
+
+      def unfoldTree(seed: Int): Tree[Int] =
+        Tree(seed, Stream(seed + 1).map(unfoldTree))
+
+      assert(unfoldTree(1).flatten.take(10).toList == List.tabulate(10)(_ + 1))
+    }
+  }
+
+  property("mapChunks") {
+    forAll { (s: Stream[Pure, Int]) =>
+      assert(s.mapChunks(identity).chunks.toList == s.chunks.toList)
+    }
+  }
+
+  group("raiseError") {
+    test("compiled stream fails with an error raised in stream") {
+      Stream.raiseError[SyncIO](new Err).compile.drain.assertThrows[Err]
     }
 
-    group("raiseError") {
-      test("compiled stream fails with an error raised in stream") {
-        Stream.raiseError[SyncIO](new Err).compile.drain.assertThrows[Err]
-      }
+    test("compiled stream fails with an error if error raised after an append") {
+      Stream
+        .emit(1)
+        .append(Stream.raiseError[IO](new Err))
+        .covary[IO]
+        .compile
+        .drain
+        .assertThrows[Err]
+    }
 
-      test("compiled stream fails with an error if error raised after an append") {
-        Stream
-          .emit(1)
-          .append(Stream.raiseError[IO](new Err))
-          .covary[IO]
+    test("compiled stream does not fail if stream is termianted before raiseError") {
+      Stream
+        .emit(1)
+        .append(Stream.raiseError[IO](new Err))
+        .take(1)
+        .covary[IO]
+        .compile
+        .drain
+    }
+  }
+
+  property("repeat") {
+    forAll(
+      Gen.chooseNum(1, 200),
+      Gen.chooseNum(1, 200).flatMap(i => Gen.listOfN(i, arbitrary[Int]))
+    ) { (n: Int, testValues: List[Int]) =>
+      assert(
+        Stream.emits(testValues).repeat.take(n).toList == List
+          .fill(n / testValues.size + 1)(testValues)
+          .flatten
+          .take(n)
+      )
+    }
+  }
+
+  property("repeatN") {
+    forAll(
+      Gen.chooseNum(1, 200),
+      Gen.chooseNum(1, 200).flatMap(i => Gen.listOfN(i, arbitrary[Int]))
+    ) { (n: Int, testValues: List[Int]) =>
+      assert(Stream.emits(testValues).repeatN(n).toList == List.fill(n)(testValues).flatten)
+    }
+  }
+
+  test("resource") {
+    Ref[IO]
+      .of(List.empty[String])
+      .flatMap { st =>
+        def record(s: String): IO[Unit] = st.update(_ :+ s)
+        def mkRes(s: String): Resource[IO, Unit] =
+          Resource.make(record(s"acquire $s"))(_ => record(s"release $s"))
+
+        // We aim to trigger all the possible cases, and make sure all of them
+        // introduce scopes.
+
+        // Allocate
+        val res1 = mkRes("1")
+        // Bind
+        val res2 = mkRes("21") *> mkRes("22")
+        // Suspend
+        val res3 = Resource.suspend(
+          record("suspend").as(mkRes("3"))
+        )
+
+        List(res1, res2, res3)
+          .foldMap(Stream.resource)
+          .evalTap(_ => record("use"))
+          .append(Stream.eval_(record("done")))
           .compile
-          .drain
-          .assertThrows[Err]
+          .drain *> st.get
       }
-
-      test("compiled stream does not fail if stream is termianted before raiseError") {
-        Stream
-          .emit(1)
-          .append(Stream.raiseError[IO](new Err))
-          .take(1)
-          .covary[IO]
-          .compile
-          .drain
-      }
-    }
-
-    property("repeat") {
-      forAll(
-        Gen.chooseNum(1, 200),
-        Gen.chooseNum(1, 200).flatMap(i => Gen.listOfN(i, arbitrary[Int]))
-      ) { (n: Int, testValues: List[Int]) =>
+      .map(it =>
         assert(
-          Stream.emits(testValues).repeat.take(n).toList == List
-            .fill(n / testValues.size + 1)(testValues)
-            .flatten
-            .take(n)
+          it == List(
+            "acquire 1",
+            "use",
+            "release 1",
+            "acquire 21",
+            "acquire 22",
+            "use",
+            "release 22",
+            "release 21",
+            "suspend",
+            "acquire 3",
+            "use",
+            "release 3",
+            "done"
+          )
         )
+      )
+  }
+
+  test("resourceWeak") {
+    Ref[IO]
+      .of(List.empty[String])
+      .flatMap { st =>
+        def record(s: String): IO[Unit] = st.update(_ :+ s)
+        def mkRes(s: String): Resource[IO, Unit] =
+          Resource.make(record(s"acquire $s"))(_ => record(s"release $s"))
+
+        // We aim to trigger all the possible cases, and make sure none of them
+        // introduce scopes.
+
+        // Allocate
+        val res1 = mkRes("1")
+        // Bind
+        val res2 = mkRes("21") *> mkRes("22")
+        // Suspend
+        val res3 = Resource.suspend(
+          record("suspend").as(mkRes("3"))
+        )
+
+        List(res1, res2, res3)
+          .foldMap(Stream.resourceWeak)
+          .evalTap(_ => record("use"))
+          .append(Stream.eval_(record("done")))
+          .compile
+          .drain *> st.get
       }
-    }
-
-    property("repeatN") {
-      forAll(
-        Gen.chooseNum(1, 200),
-        Gen.chooseNum(1, 200).flatMap(i => Gen.listOfN(i, arbitrary[Int]))
-      ) { (n: Int, testValues: List[Int]) =>
-        assert(Stream.emits(testValues).repeatN(n).toList == List.fill(n)(testValues).flatten)
-      }
-    }
-
-    test("resource") {
-      Ref[IO]
-        .of(List.empty[String])
-        .flatMap { st =>
-          def record(s: String): IO[Unit] = st.update(_ :+ s)
-          def mkRes(s: String): Resource[IO, Unit] =
-            Resource.make(record(s"acquire $s"))(_ => record(s"release $s"))
-
-          // We aim to trigger all the possible cases, and make sure all of them
-          // introduce scopes.
-
-          // Allocate
-          val res1 = mkRes("1")
-          // Bind
-          val res2 = mkRes("21") *> mkRes("22")
-          // Suspend
-          val res3 = Resource.suspend(
-            record("suspend").as(mkRes("3"))
-          )
-
-          List(res1, res2, res3)
-            .foldMap(Stream.resource)
-            .evalTap(_ => record("use"))
-            .append(Stream.eval_(record("done")))
-            .compile
-            .drain *> st.get
-        }
-        .map(it =>
-          assert(
-            it == List(
-              "acquire 1",
-              "use",
-              "release 1",
-              "acquire 21",
-              "acquire 22",
-              "use",
-              "release 22",
-              "release 21",
-              "suspend",
-              "acquire 3",
-              "use",
-              "release 3",
-              "done"
-            )
+      .map(it =>
+        assert(
+          it == List(
+            "acquire 1",
+            "use",
+            "acquire 21",
+            "acquire 22",
+            "use",
+            "suspend",
+            "acquire 3",
+            "use",
+            "done",
+            "release 3",
+            "release 22",
+            "release 21",
+            "release 1"
           )
         )
-    }
-
-    test("resourceWeak") {
-      Ref[IO]
-        .of(List.empty[String])
-        .flatMap { st =>
-          def record(s: String): IO[Unit] = st.update(_ :+ s)
-          def mkRes(s: String): Resource[IO, Unit] =
-            Resource.make(record(s"acquire $s"))(_ => record(s"release $s"))
-
-          // We aim to trigger all the possible cases, and make sure none of them
-          // introduce scopes.
-
-          // Allocate
-          val res1 = mkRes("1")
-          // Bind
-          val res2 = mkRes("21") *> mkRes("22")
-          // Suspend
-          val res3 = Resource.suspend(
-            record("suspend").as(mkRes("3"))
-          )
-
-          List(res1, res2, res3)
-            .foldMap(Stream.resourceWeak)
-            .evalTap(_ => record("use"))
-            .append(Stream.eval_(record("done")))
-            .compile
-            .drain *> st.get
-        }
-        .map(it =>
-          assert(
-            it == List(
-              "acquire 1",
-              "use",
-              "acquire 21",
-              "acquire 22",
-              "use",
-              "suspend",
-              "acquire 3",
-              "use",
-              "done",
-              "release 3",
-              "release 22",
-              "release 21",
-              "release 1"
-            )
-          )
-        )
-    }
+      )
   }
 
   group("resource safety") {
