@@ -24,6 +24,24 @@ package io
 
 import cats.effect.Async
 
+/**
+ * Provides the ability to work with TCP, UDP, and TLS.
+ * 
+ * @example {{{
+ * import fs2.Stream
+ * import fs2.io.{Network, udp}
+ * 
+ * def send[F[_]: Network](socketGroup: udp.SocketGroup, packet: udp.Packet): F[Unit] =
+ *   socketGroup.open().use { socket =>
+ *     socket.write(packet)
+ *   }
+ * }}}
+ * 
+ * In this example, the `F[_]` parameter to `send` requires the `Network` constraint instead
+ * of requiring the much more powerful `Async`.
+ * 
+ * An instance is available for any effect `F` which has an `Async[F]` instance.
+ */
 sealed trait Network[F[_]] {
   private[io] implicit val async: Async[F]
 }
