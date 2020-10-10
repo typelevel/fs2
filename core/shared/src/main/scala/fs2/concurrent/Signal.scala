@@ -32,8 +32,7 @@ import fs2.internal.Token
 /** Pure holder of a single value of type `A` that can be read in the effect `F`. */
 trait Signal[F[_], A] {
 
-  /**
-    * Returns a stream of the updates to this signal.
+  /** Returns a stream of the updates to this signal.
     *
     * Updates that are very close together may result in only the last update appearing
     * in the stream. If you want to be notified about every single update, use
@@ -41,14 +40,12 @@ trait Signal[F[_], A] {
     */
   def discrete: Stream[F, A]
 
-  /**
-    * Returns a stream of the current value of the signal. An element is always
+  /** Returns a stream of the current value of the signal. An element is always
     * available -- on each pull, the current value is supplied.
     */
   def continuous: Stream[F, A]
 
-  /**
-    * Asynchronously gets the current value of this `Signal`.
+  /** Asynchronously gets the current value of this `Signal`.
     */
   def get: F[A]
 }
@@ -113,8 +110,7 @@ object Signal extends SignalLowPriorityImplicits {
 
   implicit class SignalOps[F[_], A](val self: Signal[F, A]) extends AnyVal {
 
-    /**
-      * Converts this signal to signal of `B` by applying `f`.
+    /** Converts this signal to signal of `B` by applying `f`.
       */
     def map[B](f: A => B)(implicit F: Functor[F]): Signal[F, B] =
       Signal.map(self)(f)
@@ -128,8 +124,7 @@ object Signal extends SignalLowPriorityImplicits {
 
 private[concurrent] trait SignalLowPriorityImplicits {
 
-  /**
-    * Note that this is not subsumed by [[Signal.applicativeInstance]] because
+  /** Note that this is not subsumed by [[Signal.applicativeInstance]] because
     * [[Signal.applicativeInstance]] requires a `Concurrent[F]`
     * since it non-deterministically zips elements together while our
     * `Functor` instance has no other constraints.
@@ -153,15 +148,13 @@ abstract class SignallingRef[F[_], A] extends Ref[F, A] with Signal[F, A]
 
 object SignallingRef {
 
-  /**
-    * Builds a `SignallingRef` for a `Concurrent` datatype, initialized
+  /** Builds a `SignallingRef` for a `Concurrent` datatype, initialized
     * to a supplied value.
     */
   def apply[F[_]: Concurrent, A](initial: A): F[SignallingRef[F, A]] =
     in[F, F, A](initial)
 
-  /**
-    * Builds a `SignallingRef` for `Concurrent` datatype.
+  /** Builds a `SignallingRef` for `Concurrent` datatype.
     * Like [[apply]], but initializes state using another effect constructor.
     */
   def in[G[_]: Sync, F[_]: Concurrent, A](initial: A): G[SignallingRef[F, A]] =

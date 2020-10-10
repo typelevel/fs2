@@ -66,8 +66,7 @@ object CompositeFailure {
       case first :: second :: rest => Some(apply(first, second, rest))
     }
 
-  /**
-    * Builds composite failure from the results supplied.
+  /** Builds composite failure from the results supplied.
     *
     * - When any of the results are on left, then the Left(err) is returned
     * - When both results fail, the Left(CompositeFailure(_)) is returned

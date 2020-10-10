@@ -25,8 +25,7 @@ import cats.effect.{ExitCase, Sync}
 import cats.effect.concurrent.Ref
 import fs2.Scope
 
-/**
-  * Represents a resource acquired during stream interpretation.
+/** Represents a resource acquired during stream interpretation.
   *
   * A resource is acquired by `Algebra.Acquire` and then released by `Algebra.CloseScope`.
   *
@@ -58,13 +57,11 @@ import fs2.Scope
   */
 private[fs2] sealed abstract class ScopedResource[F[_]] {
 
-  /**
-    * Id of the resource
+  /** Id of the resource
     */
   def id: Token
 
-  /**
-    * Depending on resource state this will either release resource, or when resource was not yet fully
+  /** Depending on resource state this will either release resource, or when resource was not yet fully
     * acquired, this will schedule releasing of the resource at earliest opportunity, that is when:
     *
     * (a) The resource finished its acquisition
@@ -77,8 +74,7 @@ private[fs2] sealed abstract class ScopedResource[F[_]] {
     */
   def release(ec: ExitCase[Throwable]): F[Either[Throwable, Unit]]
 
-  /**
-    * Signals that resource was successfully acquired.
+  /** Signals that resource was successfully acquired.
     *
     * If the resource was closed before being acquired, then supplied finalizer is run.
     * That may result in finalizer eventually failing.
@@ -91,8 +87,7 @@ private[fs2] sealed abstract class ScopedResource[F[_]] {
     */
   def acquired(finalizer: ExitCase[Throwable] => F[Unit]): F[Either[Throwable, Boolean]]
 
-  /**
-    * Signals that this resource was leased by another scope than one allocating this resource.
+  /** Signals that this resource was leased by another scope than one allocating this resource.
     *
     * Yields to `Some(lease)`, if this resource was successfully leased, and scope must bind `lease.cancel` it when not needed anymore.
     * or to `None` when this resource cannot be leased because resource is already released.
@@ -102,8 +97,7 @@ private[fs2] sealed abstract class ScopedResource[F[_]] {
 
 private[internal] object ScopedResource {
 
-  /**
-    * State of the resource.
+  /** State of the resource.
     *
     * @param open       resource is open. At this state resource is either awating its acquisition
     *                   by invoking the `acquired` or is used by Stream.

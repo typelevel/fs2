@@ -44,33 +44,27 @@ object compression {
 
   }
 
-  /**
-    * Deflate algorithm parameters.
+  /** Deflate algorithm parameters.
     */
   sealed trait DeflateParams {
 
-    /**
-      * Size of the internal buffer. Default size is 32 KB.
+    /** Size of the internal buffer. Default size is 32 KB.
       */
     val bufferSize: Int
 
-    /**
-      * Compression header. Defaults to [[ZLibParams.Header.ZLIB]].
+    /** Compression header. Defaults to [[ZLibParams.Header.ZLIB]].
       */
     val header: ZLibParams.Header
 
-    /**
-      * Compression level. Default level is [[java.util.zip.Deflater.DEFAULT_COMPRESSION]].
+    /** Compression level. Default level is [[java.util.zip.Deflater.DEFAULT_COMPRESSION]].
       */
     val level: DeflateParams.Level
 
-    /**
-      * Compression strategy. Default strategy is [[java.util.zip.Deflater.DEFAULT_STRATEGY]].
+    /** Compression strategy. Default strategy is [[java.util.zip.Deflater.DEFAULT_STRATEGY]].
       */
     val strategy: DeflateParams.Strategy
 
-    /**
-      * Compression flush mode. Default flush mode is [[java.util.zip.Deflater.NO_FLUSH]].
+    /** Compression flush mode. Default flush mode is [[java.util.zip.Deflater.NO_FLUSH]].
       */
     val flushMode: DeflateParams.FlushMode
 
@@ -162,13 +156,11 @@ object compression {
       case object FULL_FLUSH extends FlushMode(juzDeflaterFlushMode = Deflater.FULL_FLUSH)
     }
 
-    /**
-      * Reasonable defaults for most applications.
+    /** Reasonable defaults for most applications.
       */
     val DEFAULT: DeflateParams = DeflateParams()
 
-    /**
-      * Best speed for real-time, intermittent, fragmented, interactive or discontinuous streams.
+    /** Best speed for real-time, intermittent, fragmented, interactive or discontinuous streams.
       */
     val BEST_SPEED: DeflateParams = DeflateParams(
       level = Level.BEST_SPEED,
@@ -176,8 +168,7 @@ object compression {
       flushMode = FlushMode.BEST_SPEED
     )
 
-    /**
-      * Best compression for finite, complete, readily-available, continuous or file streams.
+    /** Best compression for finite, complete, readily-available, continuous or file streams.
       */
     val BEST_COMPRESSION: DeflateParams = DeflateParams(
       bufferSize = 1024 * 128,
@@ -188,8 +179,7 @@ object compression {
 
   }
 
-  /**
-    * Returns a `Pipe` that deflates (compresses) its input elements using
+  /** Returns a `Pipe` that deflates (compresses) its input elements using
     * a `java.util.zip.Deflater` with the parameters `level`, `nowrap` and `strategy`.
     * Parameter flush mode is set to NO_FLUSH - use compression.deflate(DeflateParams)
     * to configure this.
@@ -215,8 +205,7 @@ object compression {
       )
     )
 
-  /**
-    * Returns a `Pipe` that deflates (compresses) its input elements using
+  /** Returns a `Pipe` that deflates (compresses) its input elements using
     * the the Deflate algorithm.
     *
     * @param deflateParams See [[compression.DeflateParams]]
@@ -320,18 +309,15 @@ object compression {
         )
     }
 
-  /**
-    * Inflate algorithm parameters.
+  /** Inflate algorithm parameters.
     */
   sealed trait InflateParams {
 
-    /**
-      * Size of the internal buffer. Default size is 32 KB.
+    /** Size of the internal buffer. Default size is 32 KB.
       */
     val bufferSize: Int
 
-    /**
-      * Compression header. Defaults to [[ZLibParams.Header.ZLIB]]
+    /** Compression header. Defaults to [[ZLibParams.Header.ZLIB]]
       */
     val header: ZLibParams.Header
 
@@ -346,8 +332,7 @@ object compression {
     ): InflateParams =
       InflateParamsImpl(bufferSize, header)
 
-    /**
-      * Reasonable defaults for most applications.
+    /** Reasonable defaults for most applications.
       */
     val DEFAULT: InflateParams = InflateParams()
 
@@ -358,8 +343,7 @@ object compression {
 
   }
 
-  /**
-    * Returns a `Pipe` that inflates (decompresses) its input elements using
+  /** Returns a `Pipe` that inflates (decompresses) its input elements using
     * a `java.util.zip.Inflater` with the parameter `nowrap`.
     * @param nowrap if true then support GZIP compatible decompression
     * @param bufferSize size of the internal buffer that is used by the
@@ -375,8 +359,7 @@ object compression {
       )
     )
 
-  /**
-    * Returns a `Pipe` that inflates (decompresses) its input elements using
+  /** Returns a `Pipe` that inflates (decompresses) its input elements using
     * a `java.util.zip.Inflater` with the parameter `nowrap`.
     * @param inflateParams See [[compression.InflateParams]]
     */
@@ -508,8 +491,7 @@ object compression {
           Pull.done
     }
 
-  /**
-    * Returns a pipe that incrementally compresses input into the GZIP format
+  /** Returns a pipe that incrementally compresses input into the GZIP format
     * as defined by RFC 1952 at https://www.ietf.org/rfc/rfc1952.txt. Output is
     * compatible with the GNU utils `gunzip` utility, as well as really anything
     * else that understands GZIP. Note, however, that the GZIP format is not
@@ -564,8 +546,7 @@ object compression {
       )
     )
 
-  /**
-    * Returns a pipe that incrementally compresses input into the GZIP format
+  /** Returns a pipe that incrementally compresses input into the GZIP format
     * as defined by RFC 1952 at https://www.ietf.org/rfc/rfc1952.txt. Output is
     * compatible with the GNU utils `gunzip` utility, as well as really anything
     * else that understands GZIP. Note, however, that the GZIP format is not
@@ -693,8 +674,7 @@ object compression {
     Stream.chunk(moveAsChunkBytes(trailer))
   }
 
-  /**
-    * Gunzip decompression results including file properties and
+  /** Gunzip decompression results including file properties and
     * decompressed content stream, used as follows:
     *   stream
     *     .through(gunzip[IO]())
@@ -715,8 +695,7 @@ object compression {
       comment: Option[String] = None
   )
 
-  /**
-    * Returns a pipe that incrementally decompresses input according to the GZIP
+  /** Returns a pipe that incrementally decompresses input according to the GZIP
     * format as defined by RFC 1952 at https://www.ietf.org/rfc/rfc1952.txt. Any
     * errors in decompression will be sequenced as exceptions into the output
     * stream. Decompression is handled in a streaming and async fashion without
@@ -742,8 +721,7 @@ object compression {
       )
     )
 
-  /**
-    * Returns a pipe that incrementally decompresses input according to the GZIP
+  /** Returns a pipe that incrementally decompresses input according to the GZIP
     * format as defined by RFC 1952 at https://www.ietf.org/rfc/rfc1952.txt. Any
     * errors in decompression will be sequenced as exceptions into the output
     * stream. Decompression is handled in a streaming and async fashion without
@@ -1148,8 +1126,7 @@ object compression {
         streamUntilTrailer(Chunk.empty[Byte])(stream)
       }.stream
 
-  /**
-    * Like Stream.unconsN, but returns a chunk of elements that do not satisfy the predicate, splitting chunk as necessary.
+  /** Like Stream.unconsN, but returns a chunk of elements that do not satisfy the predicate, splitting chunk as necessary.
     * Elements will not be dropped after the soft limit is breached.
     *
     * `Pull.pure(None)` is returned if the end of the source stream is reached.

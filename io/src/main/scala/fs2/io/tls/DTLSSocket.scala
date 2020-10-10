@@ -34,8 +34,7 @@ import cats.syntax.all._
 
 import fs2.io.udp.{Packet, Socket}
 
-/**
-  * UDP socket that supports encryption via DTLS.
+/** UDP socket that supports encryption via DTLS.
   *
   * To construct a `DTLSSocket`, use the `dtlsClient` and `dtlsServer` methods on `TLSContext`.
   */
@@ -44,8 +43,7 @@ sealed trait DTLSSocket[F[_]] extends Socket[F] {
   /** Initiates handshaking -- either the initial or a renegotiation. */
   def beginHandshake: F[Unit]
 
-  /**
-    * Provides access to the current `SSLSession` for purposes of querying
+  /** Provides access to the current `SSLSession` for purposes of querying
     * session info such as the negotiated cipher suite or the peer certificate.
     */
   def session: F[SSLSession]

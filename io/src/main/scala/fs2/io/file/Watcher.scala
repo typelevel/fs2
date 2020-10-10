@@ -33,13 +33,11 @@ import fs2.concurrent.SignallingRef
 
 import CollectionCompat._
 
-/**
-  * Allows watching the file system for changes to directories and files by using the platform's `WatchService`.
+/** Allows watching the file system for changes to directories and files by using the platform's `WatchService`.
   */
 sealed abstract class Watcher[F[_]] {
 
-  /**
-    * Registers for events on the specified path.
+  /** Registers for events on the specified path.
     *
     * This is more feature-rich than the platform's `Path#register`. The supplied path may be
     * a file or directory and events may raised for all descendants of the path. Use [[register]] for
@@ -60,8 +58,7 @@ sealed abstract class Watcher[F[_]] {
       modifiers: Seq[WatchEvent.Modifier] = Nil
   ): F[F[Unit]]
 
-  /**
-    * Registers for events on the specified path.
+  /** Registers for events on the specified path.
     *
     * This is a low-level abstraction on the platform's `Path#register`. The supplied path must be
     * a directory and events are raised for only direct descendants of the path. Use [[watch]] for
@@ -82,8 +79,7 @@ sealed abstract class Watcher[F[_]] {
       modifiers: Seq[WatchEvent.Modifier] = Nil
   ): F[F[Unit]]
 
-  /**
-    * Stream of events for paths that have been registered or watched.
+  /** Stream of events for paths that have been registered or watched.
     *
     * @param pollTimeout amount of time for which the underlying platform is polled for events
     */
@@ -120,8 +116,7 @@ object Watcher {
     final case class Overflow(count: Int) extends Event
     final case class NonStandard(event: WatchEvent[_], registeredDirectory: Path) extends Event
 
-    /**
-      * Converts a NIO `WatchEvent` to an FS2 `Watcher.Event`.
+    /** Converts a NIO `WatchEvent` to an FS2 `Watcher.Event`.
       *
       * @param e event to convert
       * @param registeredDirectory path of the directory for which the event's path is relative

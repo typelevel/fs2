@@ -27,15 +27,13 @@ import scala.concurrent.duration._
 
 import java.net.SocketAddress
 
-/**
-  * Provides the ability to read/write from a TCP socket in the effect `F`.
+/** Provides the ability to read/write from a TCP socket in the effect `F`.
   *
   * To construct a `Socket`, use the methods in the [[fs2.io.tcp]] package object.
   */
 trait Socket[F[_]] {
 
-  /**
-    * Reads up to `maxBytes` from the peer.
+  /** Reads up to `maxBytes` from the peer.
     *
     * Evaluates to None, if there are no more bytes to be read in future, due stream reached End-Of-Stream state
     * before returning even single byte. Otherwise returns Some(bytes) with bytes that were ready to be read.
@@ -49,14 +47,12 @@ trait Socket[F[_]] {
     */
   def read(maxBytes: Int, timeout: Option[FiniteDuration] = None): F[Option[Chunk[Byte]]]
 
-  /**
-    * Reads stream of bytes from this socket with `read` semantics. Terminates when eof is received.
+  /** Reads stream of bytes from this socket with `read` semantics. Terminates when eof is received.
     * On timeout, this fails with `java.nio.channels.InterruptedByTimeoutException`.
     */
   def reads(maxBytes: Int, timeout: Option[FiniteDuration] = None): Stream[F, Byte]
 
-  /**
-    * Reads exactly `numBytes` from the peer in a single chunk.
+  /** Reads exactly `numBytes` from the peer in a single chunk.
     * If `timeout` is provided and no data arrives within the specified duration, then this results in
     * failure with `java.nio.channels.InterruptedByTimeoutException`.
     *
@@ -81,8 +77,7 @@ trait Socket[F[_]] {
   /** Asks for the local address of the socket. */
   def localAddress: F[SocketAddress]
 
-  /**
-    * Writes `bytes` to the peer. If `timeout` is provided
+  /** Writes `bytes` to the peer. If `timeout` is provided
     * and the operation does not complete in the specified duration,
     * the returned `Process` fails with a `java.nio.channels.InterruptedByTimeoutException`.
     *
@@ -90,8 +85,7 @@ trait Socket[F[_]] {
     */
   def write(bytes: Chunk[Byte], timeout: Option[FiniteDuration] = None): F[Unit]
 
-  /**
-    * Writes the supplied stream of bytes to this socket via `write` semantics.
+  /** Writes the supplied stream of bytes to this socket via `write` semantics.
     */
   def writes(timeout: Option[FiniteDuration] = None): Pipe[F, Byte, Unit]
 }

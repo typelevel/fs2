@@ -41,8 +41,7 @@ import cats.{Alternative, Applicative, Eq, Eval, Monad, Traverse, TraverseFilter
 import cats.data.{Chain, NonEmptyList}
 import cats.syntax.all._
 
-/**
-  * Strict, finite sequence of values that allows index-based random access of elements.
+/** Strict, finite sequence of values that allows index-based random access of elements.
   *
   * `Chunk`s can be created from a variety of collection types using methods on the `Chunk` companion
   * (e.g., `Chunk.vector`, `Chunk.seq`, `Chunk.array`). Additionally, the `Chunk` companion
@@ -164,8 +163,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] { self =>
       def next() = { val result = apply(i); i += 1; result }
     }
 
-  /**
-    * Returns the index of the first element which passes the specified predicate (i.e., `p(i) == true`)
+  /** Returns the index of the first element which passes the specified predicate (i.e., `p(i) == true`)
     * or `None` if no elements pass the predicate.
     */
   def indexWhere(p: O => Boolean): Option[Int] = {
@@ -192,8 +190,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] { self =>
     Chunk.boxed(arr.asInstanceOf[Array[O2]])
   }
 
-  /**
-    * Maps the supplied stateful function over each element, outputting the final state and the accumulated outputs.
+  /** Maps the supplied stateful function over each element, outputting the final state and the accumulated outputs.
     * The first invocation of `f` uses `init` as the input state value. Each successive invocation uses
     * the output state of the previous invocation.
     */
@@ -269,8 +266,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] { self =>
     arr
   }
 
-  /**
-    * Converts this chunk to a `Chunk.Booleans`, allowing access to the underlying array of elements.
+  /** Converts this chunk to a `Chunk.Booleans`, allowing access to the underlying array of elements.
     * If this chunk is already backed by an unboxed array of booleans, this method runs in constant time.
     * Otherwise, this method will copy of the elements of this chunk in to a single array.
     */
@@ -283,8 +279,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] { self =>
     }
   }
 
-  /**
-    * Converts this chunk to a `Chunk.Bytes`, allowing access to the underlying array of elements.
+  /** Converts this chunk to a `Chunk.Bytes`, allowing access to the underlying array of elements.
     * If this chunk is already backed by an unboxed array of bytes, this method runs in constant time.
     * Otherwise, this method will copy of the elements of this chunk in to a single array.
     */
@@ -315,8 +310,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] { self =>
     }
   }
 
-  /**
-    * Converts this chunk to a `Chunk.Shorts`, allowing access to the underlying array of elements.
+  /** Converts this chunk to a `Chunk.Shorts`, allowing access to the underlying array of elements.
     * If this chunk is already backed by an unboxed array of bytes, this method runs in constant time.
     * Otherwise, this method will copy of the elements of this chunk in to a single array.
     */
@@ -329,8 +323,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] { self =>
     }
   }
 
-  /**
-    * Converts this chunk to a `Chunk.Ints`, allowing access to the underlying array of elements.
+  /** Converts this chunk to a `Chunk.Ints`, allowing access to the underlying array of elements.
     * If this chunk is already backed by an unboxed array of bytes, this method runs in constant time.
     * Otherwise, this method will copy of the elements of this chunk in to a single array.
     */
@@ -342,8 +335,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] { self =>
     }
   }
 
-  /**
-    * Converts this chunk to a `Chunk.Longs`, allowing access to the underlying array of elements.
+  /** Converts this chunk to a `Chunk.Longs`, allowing access to the underlying array of elements.
     * If this chunk is already backed by an unboxed array of longs, this method runs in constant time.
     * Otherwise, this method will copy of the elements of this chunk in to a single array.
     */
@@ -355,8 +347,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] { self =>
     }
   }
 
-  /**
-    * Converts this chunk to a `Chunk.Floats`, allowing access to the underlying array of elements.
+  /** Converts this chunk to a `Chunk.Floats`, allowing access to the underlying array of elements.
     * If this chunk is already backed by an unboxed array of doubles, this method runs in constant time.
     * Otherwise, this method will copy of the elements of this chunk in to a single array.
     */
@@ -369,8 +360,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] { self =>
     }
   }
 
-  /**
-    * Converts this chunk to a `Chunk.Doubles`, allowing access to the underlying array of elements.
+  /** Converts this chunk to a `Chunk.Doubles`, allowing access to the underlying array of elements.
     * If this chunk is already backed by an unboxed array of doubles, this method runs in constant time.
     * Otherwise, this method will copy of the elements of this chunk in to a single array.
     */
@@ -437,8 +427,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] { self =>
     }
   }
 
-  /**
-    * Returns true if this chunk is known to have elements of type `B`.
+  /** Returns true if this chunk is known to have elements of type `B`.
     * This is determined by checking if the chunk type mixes in `Chunk.KnownElementType`.
     */
   def knownElementType[B](implicit classTag: ClassTag[B]): Boolean =
@@ -447,13 +436,11 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] { self =>
       case _                                                                 => false
     }
 
-  /**
-    * Zips this chunk the the supplied chunk, returning a chunk of tuples.
+  /** Zips this chunk the the supplied chunk, returning a chunk of tuples.
     */
   def zip[O2](that: Chunk[O2]): Chunk[(O, O2)] = zipWith(that)(Tuple2.apply)
 
-  /**
-    * Zips this chunk with the supplied chunk, passing each pair to `f`, resulting in
+  /** Zips this chunk with the supplied chunk, passing each pair to `f`, resulting in
     * an output chunk.
     */
   def zipWith[O2, O3](that: Chunk[O2])(f: (O, O2) => O3): Chunk[O3] = {
@@ -467,8 +454,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] { self =>
     Chunk.array(arr.asInstanceOf[Array[O3]])
   }
 
-  /**
-    * Zips the elements of the input chunk with its indices, and returns the new chunk.
+  /** Zips the elements of the input chunk with its indices, and returns the new chunk.
     *
     * @example {{{
     * scala> Chunk("The", "quick", "brown", "fox").zipWithIndex.toList
@@ -646,8 +632,7 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
         }
     })
 
-  /**
-    * Creates a chunk backed by a mutable `ArraySeq`.
+  /** Creates a chunk backed by a mutable `ArraySeq`.
     */
   def arraySeq[O](arraySeq: mutable.ArraySeq[O]): Chunk[O] =
     array(arraySeq.array.asInstanceOf[Array[O]])
@@ -666,8 +651,7 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
       } else singleton(head)
     }
 
-  /**
-    * Creates a chunk backed by a mutable buffer. The underlying buffer must not be modified after
+  /** Creates a chunk backed by a mutable buffer. The underlying buffer must not be modified after
     * it is passed to this function.
     */
   def buffer[O](b: collection.mutable.Buffer[O]): Chunk[O] =
@@ -1477,8 +1461,7 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
   def concat[A](chunks: GSeq[Chunk[A]]): Chunk[A] =
     concat(chunks, chunks.foldLeft(0)(_ + _.size))
 
-  /**
-    * Concatenates the specified sequence of chunks in to a single chunk, avoiding boxing.
+  /** Concatenates the specified sequence of chunks in to a single chunk, avoiding boxing.
     * The `totalSize` parameter must be equal to the sum of the size of each chunk or
     * otherwise an exception may be thrown.
     */
@@ -1513,8 +1496,7 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
       Chunk.boxed(arr.asInstanceOf[Array[A]])
     }
 
-  /**
-    * Concatenates the specified sequence of chunks in to a single unboxed chunk.
+  /** Concatenates the specified sequence of chunks in to a single unboxed chunk.
     * The `totalSize` parameter must be equal to the sum of the size of each chunk or
     * otherwise an exception may be thrown.
     */
@@ -1540,8 +1522,7 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
   def concatBooleans(chunks: GSeq[Chunk[Boolean]]): Chunk[Boolean] =
     concatBooleans(chunks, chunks.foldLeft(0)(_ + _.size))
 
-  /**
-    * Concatenates the specified sequence of boolean chunks in to a single chunk.
+  /** Concatenates the specified sequence of boolean chunks in to a single chunk.
     * The `totalSize` parameter must be equal to the sum of the size of each chunk or
     * otherwise an exception may be thrown.
     */
@@ -1552,8 +1533,7 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
   def concatBytes(chunks: GSeq[Chunk[Byte]]): Chunk[Byte] =
     concatBytes(chunks, chunks.foldLeft(0)(_ + _.size))
 
-  /**
-    * Concatenates the specified sequence of byte chunks in to a single chunk.
+  /** Concatenates the specified sequence of byte chunks in to a single chunk.
     * The `totalSize` parameter must be equal to the sum of the size of each chunk or
     * otherwise an exception may be thrown.
     */
@@ -1564,8 +1544,7 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
   def concatFloats(chunks: GSeq[Chunk[Float]]): Chunk[Float] =
     concatFloats(chunks, chunks.foldLeft(0)(_ + _.size))
 
-  /**
-    * Concatenates the specified sequence of float chunks in to a single chunk.
+  /** Concatenates the specified sequence of float chunks in to a single chunk.
     * The `totalSize` parameter must be equal to the sum of the size of each chunk or
     * otherwise an exception may be thrown.
     */
@@ -1576,8 +1555,7 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
   def concatDoubles(chunks: GSeq[Chunk[Double]]): Chunk[Double] =
     concatDoubles(chunks, chunks.foldLeft(0)(_ + _.size))
 
-  /**
-    * Concatenates the specified sequence of double chunks in to a single chunk.
+  /** Concatenates the specified sequence of double chunks in to a single chunk.
     * The `totalSize` parameter must be equal to the sum of the size of each chunk or
     * otherwise an exception may be thrown.
     */
@@ -1588,8 +1566,7 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
   def concatShorts(chunks: GSeq[Chunk[Short]]): Chunk[Short] =
     concatShorts(chunks, chunks.foldLeft(0)(_ + _.size))
 
-  /**
-    * Concatenates the specified sequence of short chunks in to a single chunk.
+  /** Concatenates the specified sequence of short chunks in to a single chunk.
     * The `totalSize` parameter must be equal to the sum of the size of each chunk or
     * otherwise an exception may be thrown.
     */
@@ -1600,8 +1577,7 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
   def concatInts(chunks: GSeq[Chunk[Int]]): Chunk[Int] =
     concatInts(chunks, chunks.foldLeft(0)(_ + _.size))
 
-  /**
-    * Concatenates the specified sequence of int chunks in to a single chunk.
+  /** Concatenates the specified sequence of int chunks in to a single chunk.
     * The `totalSize` parameter must be equal to the sum of the size of each chunk or
     * otherwise an exception may be thrown.
     */
@@ -1612,8 +1588,7 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
   def concatLongs(chunks: GSeq[Chunk[Long]]): Chunk[Long] =
     concatLongs(chunks, chunks.foldLeft(0)(_ + _.size))
 
-  /**
-    * Concatenates the specified sequence of long chunks in to a single chunk.
+  /** Concatenates the specified sequence of long chunks in to a single chunk.
     * The `totalSize` parameter must be equal to the sum of the size of each chunk or
     * otherwise an exception may be thrown.
     */
@@ -1624,21 +1599,18 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
   def concatChars(chunks: GSeq[Chunk[Char]]): Chunk[Char] =
     concatChars(chunks, chunks.foldLeft(0)(_ + _.size))
 
-  /**
-    * Concatenates the specified sequence of char chunks in to a single chunk.
+  /** Concatenates the specified sequence of char chunks in to a single chunk.
     * The `totalSize` parameter must be equal to the sum of the size of each chunk or
     * otherwise an exception may be thrown.
     */
   def concatChars(chunks: GSeq[Chunk[Char]], totalSize: Int): Chunk[Char] =
     concatUnboxed(chunks, totalSize, Chunk.chars)
 
-  /**
-    * Creates a chunk consisting of the elements of `queue`.
+  /** Creates a chunk consisting of the elements of `queue`.
     */
   def queue[A](queue: collection.immutable.Queue[A]): Chunk[A] = seq(queue)
 
-  /**
-    * Creates a chunk consisting of the first `n` elements of `queue` and returns the remainder.
+  /** Creates a chunk consisting of the first `n` elements of `queue` and returns the remainder.
     */
   def queueFirstN[A](
       queue: collection.immutable.Queue[A],
@@ -1669,8 +1641,7 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
         c1.size === c2.size && (0 until c1.size).forall(i => c1(i) === c2(i))
     }
 
-  /**
-    * `Traverse`, `Monad`, `Alternative`, and `TraverseFilter` instance for `Chunk`.
+  /** `Traverse`, `Monad`, `Alternative`, and `TraverseFilter` instance for `Chunk`.
     *
     * @example {{{
     * scala> import cats.syntax.all._, scala.util._
@@ -1834,8 +1805,7 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
       }
     }
 
-  /**
-    * A FIFO queue of chunks that provides an O(1) size method and provides the ability to
+  /** A FIFO queue of chunks that provides an O(1) size method and provides the ability to
     * take and drop individual elements while preserving the chunk structure as much as possible.
     *
     * This is similar to a queue of individual elements but chunk structure is maintained.
