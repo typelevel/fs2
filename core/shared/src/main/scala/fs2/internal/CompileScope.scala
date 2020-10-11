@@ -96,9 +96,9 @@ private[fs2] final class CompileScope[F[_]] private (
     * Returns false and makes no registration if this scope has been closed.
     */
   private def register(resource: ScopedResource[F]): F[Boolean] =
-    state.modify { s =>
-      if (s.open) (s.copy(resources = resource +: s.resources), true)
-      else (s, false)
+    state.modify {
+      case s: CompileScope.State.Open[F]   => (s.copy(resources = resource +: s.resources), true)
+      case s: CompileScope.State.Closed[F] => (s, false)
     }
 
   /**
@@ -143,9 +143,9 @@ private[fs2] final class CompileScope[F[_]] private (
 
     createCompileScope.flatMap { scope =>
       state
-        .modify { s =>
-          if (!s.open) (s, None)
-          else
+        .modify {
+          case s: CompileScope.State.Closed[F] => (s, None)
+          case s: CompileScope.State.Open[F] =>
             (s.copy(children = scope +: s.children), Some(scope))
         }
         .flatMap {
@@ -211,11 +211,17 @@ private[fs2] final class CompileScope[F[_]] private (
     * reachable from its parent.
     */
   private def releaseChildScope(id: Token): F[Unit] =
-    state.update(_.unregisterChild(id))
+    state.update {
+      case s: CompileScope.State.Open[F]   => s.unregisterChild(id)
+      case s: CompileScope.State.Closed[F] => s
+    }
 
   /** Returns all direct resources of this scope (does not return resources in ancestor scopes or child scopes). * */
   private def resources: F[Chain[ScopedResource[F]]] =
-    F.map(state.get)(_.resources)
+    state.get.map {
+      case s: CompileScope.State.Open[F]   => s.resources
+      case s: CompileScope.State.Closed[F] => Chain.empty
+    }
 
   /**
     * Traverses supplied `Chain` with `f` that may produce a failure, and collects these failures.
@@ -225,7 +231,7 @@ private[fs2] final class CompileScope[F[_]] private (
       ca: Chain[A],
       f: A => F[Either[Throwable, Unit]]
   ): F[Either[Throwable, Unit]] =
-    F.map(Traverse[Chain].traverse(ca)(f)) { results =>
+    Traverse[Chain].traverse(ca)(f).map { results =>
       CompositeFailure
         .fromList(results.collect { case Left(err) => err }.toList)
         .toLeft(())
@@ -245,29 +251,29 @@ private[fs2] final class CompileScope[F[_]] private (
     * more details.
     */
   def close(ec: Resource.ExitCase): F[Either[Throwable, Unit]] =
-    F.flatMap(state.modify(s => s.close -> s)) { previous =>
-      F.flatMap(traverseError[CompileScope[F]](previous.children, _.close(ec))) { resultChildren =>
-        F.flatMap(traverseError[ScopedResource[F]](previous.resources, _.release(ec))) {
-          resultResources =>
-            F.flatMap(self.interruptible.map(_.cancelParent).getOrElse(F.unit)) { _ =>
-              F.map(self.parent.fold(F.unit)(_.releaseChildScope(self.id))) { _ =>
-                val results = resultChildren.fold(List(_), _ => Nil) ++ resultResources.fold(
-                  List(_),
-                  _ => Nil
-                )
-                CompositeFailure.fromList(results.toList).toLeft(())
-              }
-            }
+    state.modify(s => CompileScope.State.closed -> s).flatMap {
+      case previous: CompileScope.State.Open[F] =>
+        for {
+          resultChildren <- traverseError[CompileScope[F]](previous.children, _.close(ec))
+          resultResources <- traverseError[ScopedResource[F]](previous.resources, _.release(ec))
+          _ <- self.interruptible.map(_.cancelParent).getOrElse(F.unit)
+          _ <- self.parent.fold(F.unit)(_.releaseChildScope(self.id))
+        } yield {
+          val results = resultChildren.fold(List(_), _ => Nil) ++ resultResources.fold(
+            List(_),
+            _ => Nil
+          )
+          CompositeFailure.fromList(results.toList).toLeft(())
         }
-      }
+      case _: CompileScope.State.Closed[F] => F.pure(Right(()))
     }
 
   /** Returns closest open parent scope or root. */
   def openAncestor: F[CompileScope[F]] =
     self.parent.fold(F.pure(self)) { parent =>
-      parent.state.get.flatMap { s =>
-        if (s.open) F.pure(parent)
-        else parent.openAncestor
+      parent.state.get.flatMap {
+        case _: CompileScope.State.Open[F]   => F.pure(parent)
+        case _: CompileScope.State.Closed[F] => parent.openAncestor
       }
     }
 
@@ -303,18 +309,23 @@ private[fs2] final class CompileScope[F[_]] private (
         case Some((scope, tail)) =>
           if (scope.id == scopeId) F.pure(Some(scope))
           else
-            F.flatMap(scope.state.get) { s =>
-              if (s.children.isEmpty) go(tail)
-              else
-                F.flatMap(go(s.children)) {
-                  case None        => go(tail)
-                  case Some(scope) => F.pure(Some(scope))
-                }
+            scope.state.get.flatMap {
+              case s: CompileScope.State.Open[F] =>
+                if (s.children.isEmpty) go(tail)
+                else
+                  go(s.children).flatMap {
+                    case None        => go(tail)
+                    case Some(scope) => F.pure(Some(scope))
+                  }
+              case s: CompileScope.State.Closed[F] => go(tail)
             }
       }
     if (self.id == scopeId) F.pure(Some(self))
     else
-      state.get.flatMap(s => go(s.children))
+      state.get.flatMap {
+        case s: CompileScope.State.Open[F]   => go(s.children)
+        case s: CompileScope.State.Closed[F] => F.pure(None)
+      }
   }
 
   /**
@@ -347,9 +358,8 @@ private[fs2] final class CompileScope[F[_]] private (
 
   // See docs on [[Scope#lease]]
   def lease: F[Option[Scope.Lease[F]]] =
-    state.get.flatMap { s =>
-      if (!s.open) F.pure(None)
-      else {
+    state.get.flatMap {
+      case s: CompileScope.State.Open[F] =>
         val allScopes = (s.children :+ self) ++ ancestors
         Traverse[Chain].flatTraverse(allScopes)(_.resources).flatMap { allResources =>
           TraverseFilter[Chain].traverseFilter(allResources)(r => r.lease).map { allLeases =>
@@ -360,7 +370,7 @@ private[fs2] final class CompileScope[F[_]] private (
             Some(lease)
           }
         }
-      }
+      case s: CompileScope.State.Closed[F] => F.pure(None)
     }
 
   // See docs on [[Scope#interrupt]]
@@ -433,41 +443,33 @@ private[fs2] object CompileScope {
   def newRoot[F[_]: Compiler.Target]: F[CompileScope[F]] =
     Token[F].flatMap(apply[F](_, None, None))
 
-  /**
-    * State of a scope.
-    *
-    * @param open               Yields to true if the scope is open
-    *
-    * @param resources          All acquired resources (that means synchronously, or the ones acquired asynchronously) are
-    *                           registered here. Note that the resources are prepended when acquired, to be released in reverse
-    *                           order s they were acquired.
-    *
-    * @param children           Children of this scope. Children may appear during the parallel pulls where one scope may
-    *                           split to multiple asynchronously acquired scopes and resources.
-    *                           Still, likewise for resources they are released in reverse order.
-    */
-  final private case class State[F[_]](
-      open: Boolean,
-      resources: Chain[ScopedResource[F]],
-      children: Chain[CompileScope[F]]
-  ) { self =>
-
-    def unregisterChild(id: Token): State[F] =
-      self.children.deleteFirst(_.id == id) match {
-        case Some((_, newChildren)) => self.copy(children = newChildren)
-        case None                   => self
-      }
-
-    def close: State[F] = CompileScope.State.closed
-  }
-
+  private sealed trait State[F[_]]
   private object State {
+
+    /**
+      * @param resources          All acquired resources (that means synchronously, or the ones acquired asynchronously) are
+      *                           registered here. Note that the resources are prepended when acquired, to be released in reverse
+      *                           order s they were acquired.
+      *
+      * @param children           Children of this scope. Children may appear during the parallel pulls where one scope may
+      *                           split to multiple asynchronously acquired scopes and resources.
+      *                           Still, likewise for resources they are released in reverse order.
+      */
+    case class Open[F[_]](resources: Chain[ScopedResource[F]], children: Chain[CompileScope[F]])
+        extends State[F] { self =>
+      def unregisterChild(id: Token): State[F] =
+        self.children.deleteFirst(_.id == id) match {
+          case Some((_, newChildren)) => self.copy(children = newChildren)
+          case None                   => self
+        }
+    }
+    case class Closed[F[_]]() extends State[F]
+
     private val initial_ =
-      State[Pure](open = true, resources = Chain.empty, children = Chain.empty)
+      Open[Nothing](resources = Chain.empty, children = Chain.empty)
     def initial[F[_]]: State[F] = initial_.asInstanceOf[State[F]]
 
-    private val closed_ =
-      State[Pure](open = false, resources = Chain.empty, children = Chain.empty)
+    private val closed_ = Closed[Nothing]()
     def closed[F[_]]: State[F] = closed_.asInstanceOf[State[F]]
   }
 

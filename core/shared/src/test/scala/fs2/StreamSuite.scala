@@ -589,7 +589,7 @@ class StreamSuite extends Fs2Suite {
         List(res1, res2, res3)
           .foldMap(Stream.resourceWeak)
           .evalTap(_ => record("use"))
-          .append(Stream.eval_(record("done")))
+          .append(Stream.exec(record("done")))
           .compile
           .drain *> st.get
       }
