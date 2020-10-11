@@ -819,9 +819,19 @@ object Pull extends PullLowPriority {
       self match {
         // safe to cast, used in translate only
         // if interruption has to be supported concurrent for G has to be passed
-        case a: Acquire[f, r] =>
-          ??? // TODO
-        // Acquire[G, r](p => fK(a.resource(p)), (r, ec) => fK(a.release(r, ec)))
+        case aU: Acquire[f, r] =>
+          val a: Acquire[F, r] = aU.asInstanceOf[Acquire[F, r]]
+          val gK: G ~> F = ??? // TODO
+          Acquire[G, r](
+            pollG => {
+              val pollF: Poll[F] = new Poll[F] {
+                def apply[X](fx: F[X]): F[X] =
+                  gK(pollG(fK(fx)))
+              }
+              fK(a.resource(pollF))
+            }, 
+            (r, ec) => fK(a.release(r, ec))
+          )
         case e: Eval[F, R]  => Eval[G, R](fK(e.value))
         case OpenScope(_)   => OpenScope[G](interruptible)
         case c: CloseScope  => c

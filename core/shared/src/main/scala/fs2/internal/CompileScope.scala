@@ -30,7 +30,7 @@ import cats.effect.kernel.{Deferred, Ref}
 import cats.effect.implicits._
 import cats.syntax.all._
 
-import fs2.{Compiler, CompositeFailure, Pure, Scope}
+import fs2.{Compiler, CompositeFailure, Scope}
 import fs2.internal.CompileScope.{InterruptContext, InterruptionOutcome}
 
 /** Implementation of [[Scope]] for the internal stream interpreter.
