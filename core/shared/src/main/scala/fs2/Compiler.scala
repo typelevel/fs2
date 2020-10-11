@@ -116,17 +116,19 @@ object Compiler extends CompilerLowPriority {
 
   sealed trait Target[F[_]] extends Resource.Bracket[F] {
     def ref[A](a: A): F[Ref[F, A]]
-    def uncancelable[A](fa: F[A]): F[A]
+    def uncancelable[A](fa: Poll[F] => F[A]): F[A]
   }
 
   private[fs2] trait TargetLowPriority {
     implicit def forSync[F[_]: Sync]: Target[F] = new SyncTarget
 
+    private val nullPoll0: Poll[Id] = new Poll[Id] { def apply[X](fx: Id[X]) = fx }
+    private def nullPoll[F[_]]: Poll[F] = nullPoll0.asInstanceOf[Poll[F]]
     private final class SyncTarget[F[_]](protected implicit val F: Sync[F])
         extends Target[F]
         with Resource.Bracket.SyncBracket[F] {
       def ref[A](a: A): F[Ref[F, A]] = Ref[F].of(a)
-      def uncancelable[A](fa: F[A]): F[A] = fa
+      def uncancelable[A](fa: Poll[F] => F[A]): F[A] = fa(nullPoll)
     }
   }
 
@@ -139,7 +141,7 @@ object Compiler extends CompilerLowPriority {
     ) extends Target[F]
         with Resource.Bracket.MonadCancelBracket[F] {
       def ref[A](a: A): F[Ref[F, A]] = F.ref(a)
-      def uncancelable[A](fa: F[A]): F[A] = F.uncancelable(_ => fa)
+      def uncancelable[A](fa: Poll[F] => F[A]): F[A] = F.uncancelable(p => fa(p))
     }
   }
 }

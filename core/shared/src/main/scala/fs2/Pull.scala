@@ -169,7 +169,7 @@ sealed abstract class Pull[+F[_], +O, +R] {
 object Pull extends PullLowPriority {
 
   private[fs2] def acquire[F[_], R](
-      resource: F[R],
+      resource: Poll[F] => F[R],
       release: (R, Resource.ExitCase) => F[Unit]
   ): Pull[F, INothing, R] = Acquire(resource, release)
 
@@ -460,8 +460,8 @@ object Pull extends PullLowPriority {
 
   private final case class Eval[+F[_], R](value: F[R]) extends AlgEffect[F, R]
 
-  private final case class Acquire[+F[_], R](
-      resource: F[R],
+  private final case class Acquire[F[_], R](
+      resource: Poll[F] => F[R],
       release: (R, Resource.ExitCase) => F[Unit]
   ) extends AlgEffect[F, R]
   // NOTE: The use of a separate `G` and `Pure` is done to by-pass a compiler-crash in Scala 2.12,
@@ -649,7 +649,8 @@ object Pull extends PullLowPriority {
                   resume(Result.Interrupted(token, None))
               }
 
-            case acquire: Acquire[F, r] =>
+            case acquire0: Acquire[f, r] =>
+              val acquire: Acquire[F, r] = acquire0.asInstanceOf[Acquire[F, r]]
               interruptGuard(scope) {
                 F.flatMap(scope.acquireResource(acquire.resource, acquire.release)) { r =>
                   resume(Result.fromEither(r))
@@ -818,8 +819,9 @@ object Pull extends PullLowPriority {
       self match {
         // safe to cast, used in translate only
         // if interruption has to be supported concurrent for G has to be passed
-        case a: Acquire[F, r] =>
-          Acquire[G, r](fK(a.resource), (r, ec) => fK(a.release(r, ec)))
+        case a: Acquire[f, r] =>
+          ??? // TODO
+        // Acquire[G, r](p => fK(a.resource(p)), (r, ec) => fK(a.release(r, ec)))
         case e: Eval[F, R]  => Eval[G, R](fK(e.value))
         case OpenScope(_)   => OpenScope[G](interruptible)
         case c: CloseScope  => c

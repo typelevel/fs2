@@ -1991,7 +1991,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   def onFinalizeCaseWeak[F2[x] >: F[x]](
       f: Resource.ExitCase => F2[Unit]
   )(implicit F2: Applicative[F2]): Stream[F2, O] =
-    new Stream(Pull.acquire[F2, Unit](F2.unit, (_, ec) => f(ec)).flatMap(_ => underlying))
+    new Stream(Pull.acquire[F2, Unit](_ => F2.unit, (_, ec) => f(ec)).flatMap(_ => underlying))
 
   /** Like [[Stream#evalMap]], but will evaluate effects in parallel, emitting the results
     * downstream in the same order as the input stream. The number of concurrent effects
@@ -2948,6 +2948,21 @@ object Stream extends StreamLowPriority {
     */
   def bracketCaseWeak[F[x] >: Pure[x], R](
       acquire: F[R]
+  )(release: (R, Resource.ExitCase) => F[Unit]): Stream[F, R] =
+    bracketFullWeak[F, R](_ => acquire)(release)
+
+  /** Like [[bracketCase]] but the acquire action may be canceled.
+    */
+  def bracketFull[F[x] >: Pure[x], R](
+      acquire: Poll[F] => F[R]
+  )(release: (R, Resource.ExitCase) => F[Unit]): Stream[F, R] =
+    bracketFullWeak(acquire)(release).scope
+
+  /** Like [[bracketFull]] but no scope is introduced, causing resource finalization to
+    * occur at the end of the current scope at the time of acquisition.
+    */
+  def bracketFullWeak[F[x] >: Pure[x], R](
+      acquire: Poll[F] => F[R]
   )(release: (R, Resource.ExitCase) => F[Unit]): Stream[F, R] =
     new Stream(Pull.acquire[F, R](acquire, release).flatMap(Pull.output1(_)))
 
