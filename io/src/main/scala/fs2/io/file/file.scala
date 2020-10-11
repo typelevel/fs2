@@ -1,3 +1,24 @@
+/*
+ * Copyright (c) 2013 Functional Streams for Scala
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of
+ * this software and associated documentation files (the "Software"), to deal in
+ * the Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+ * the Software, and to permit persons to whom the Software is furnished to do so,
+ * subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+ * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+ * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+ * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+
 package fs2
 package io
 
@@ -7,7 +28,7 @@ import java.nio.file.attribute.{BasicFileAttributes, FileAttribute, PosixFilePer
 import java.util.stream.{Stream => JStream}
 
 import cats.effect.{Blocker, Concurrent, ContextShift, Resource, Sync, Timer}
-import cats.implicits._
+import cats.syntax.all._
 import fs2.io.CollectionCompat._
 
 import scala.concurrent.duration._
@@ -15,8 +36,7 @@ import scala.concurrent.duration._
 /** Provides support for working with files. */
 package object file {
 
-  /**
-    * Reads all data synchronously from the file at the specified `java.nio.file.Path`.
+  /** Reads all data synchronously from the file at the specified `java.nio.file.Path`.
     */
   def readAll[F[_]: Sync: ContextShift](
       path: Path,
@@ -27,8 +47,7 @@ package object file {
       cursor.readAll(chunkSize).void.stream
     }
 
-  /**
-    * Reads a range of data synchronously from the file at the specified `java.nio.file.Path`.
+  /** Reads a range of data synchronously from the file at the specified `java.nio.file.Path`.
     * `start` is inclusive, `end` is exclusive, so when `start` is 0 and `end` is 2,
     * two bytes are read.
     */
@@ -43,8 +62,7 @@ package object file {
       cursor.seek(start).readUntil(chunkSize, end).void.stream
     }
 
-  /**
-    * Returns an infinite stream of data from the file at the specified path.
+  /** Returns an infinite stream of data from the file at the specified path.
     * Starts reading from the specified offset and upon reaching the end of the file,
     * polls every `pollDuration` for additional updates to the file.
     *
@@ -64,8 +82,7 @@ package object file {
       cursor.seek(offset).tail(chunkSize, pollDelay).void.stream
     }
 
-  /**
-    * Writes all data to the file at the specified `java.nio.file.Path`.
+  /** Writes all data to the file at the specified `java.nio.file.Path`.
     *
     * Adds the WRITE flag to any other `OpenOption` flags specified. By default, also adds the CREATE flag.
     */
@@ -79,8 +96,7 @@ package object file {
         .resource(WriteCursor.fromPath(path, blocker, flags))
         .flatMap(_.writeAll(in).void.stream)
 
-  /**
-    * Writes all data to a sequence of files, each limited in size to `limit`.
+  /** Writes all data to a sequence of files, each limited in size to `limit`.
     *
     * The `computePath` operation is used to compute the path of the first file
     * and every subsequent file. Typically, the next file should be determined
@@ -130,16 +146,14 @@ package object file {
     in =>
       Stream
         .resource(Hotswap(openNewFile))
-        .flatMap {
-          case (fileHotswap, fileHandle) =>
-            Stream.eval(newCursor(fileHandle)).flatMap { cursor =>
-              go(fileHotswap, cursor, 0L, in).stream
-            }
+        .flatMap { case (fileHotswap, fileHandle) =>
+          Stream.eval(newCursor(fileHandle)).flatMap { cursor =>
+            go(fileHotswap, cursor, 0L, in).stream
+          }
         }
   }
 
-  /**
-    * Creates a [[Watcher]] for the default file system.
+  /** Creates a [[Watcher]] for the default file system.
     *
     * The watcher is returned as a resource. To use the watcher, lift the resource to a stream,
     * watch or register 1 or more paths, and then return `watcher.events()`.
@@ -147,8 +161,7 @@ package object file {
   def watcher[F[_]: Concurrent: ContextShift](blocker: Blocker): Resource[F, Watcher[F]] =
     Watcher.default(blocker)
 
-  /**
-    * Watches a single path.
+  /** Watches a single path.
     *
     * Alias for creating a watcher and watching the supplied path, releasing the watcher when the resulting stream is finalized.
     */
@@ -163,8 +176,7 @@ package object file {
       .resource(Watcher.default(blocker))
       .flatMap(w => Stream.eval_(w.watch(path, types, modifiers)) ++ w.events(pollTimeout))
 
-  /**
-    * Checks if a file exists
+  /** Checks if a file exists
     *
     * Note that the result of this method is immediately outdated. If this
     * method indicates the file exists then there is no guarantee that a
@@ -178,8 +190,7 @@ package object file {
   ): F[Boolean] =
     blocker.delay(Files.exists(path, flags: _*))
 
-  /**
-    * Get file permissions as set of [[PosixFilePermission]]
+  /** Get file permissions as set of [[PosixFilePermission]]
     *
     * This will only work for POSIX supporting file systems
     */
@@ -190,8 +201,7 @@ package object file {
   ): F[Set[PosixFilePermission]] =
     blocker.delay(Files.getPosixFilePermissions(path, flags: _*).asScala)
 
-  /**
-    * Set file permissions from set of [[PosixFilePermission]]
+  /** Set file permissions from set of [[PosixFilePermission]]
     *
     * This will only work for POSIX supporting file systems
     */
@@ -202,8 +212,7 @@ package object file {
   ): F[Path] =
     blocker.delay(Files.setPosixFilePermissions(path, permissions.asJava))
 
-  /**
-    * Copies a file from the source to the target path,
+  /** Copies a file from the source to the target path,
     *
     * By default, the copy fails if the target file already exists or is a symbolic link.
     */
@@ -215,8 +224,7 @@ package object file {
   ): F[Path] =
     blocker.delay(Files.copy(source, target, flags: _*))
 
-  /**
-    * Deletes a file.
+  /** Deletes a file.
     *
     * If the file is a directory then the directory must be empty for this action to succeed.
     * This action will fail if the path doesn't exist.
@@ -224,14 +232,12 @@ package object file {
   def delete[F[_]: Sync: ContextShift](blocker: Blocker, path: Path): F[Unit] =
     blocker.delay(Files.delete(path))
 
-  /**
-    * Like `delete`, but will not fail when the path doesn't exist.
+  /** Like `delete`, but will not fail when the path doesn't exist.
     */
   def deleteIfExists[F[_]: Sync: ContextShift](blocker: Blocker, path: Path): F[Boolean] =
     blocker.delay(Files.deleteIfExists(path))
 
-  /**
-    * Recursively delete a directory
+  /** Recursively delete a directory
     */
   def deleteDirectoryRecursively[F[_]: Sync: ContextShift](
       blocker: Blocker,
@@ -256,14 +262,12 @@ package object file {
       )
     }
 
-  /**
-    * Returns the size of a file (in bytes).
+  /** Returns the size of a file (in bytes).
     */
   def size[F[_]: Sync: ContextShift](blocker: Blocker, path: Path): F[Long] =
     blocker.delay(Files.size(path))
 
-  /**
-    * Moves (or renames) a file from the source to the target path.
+  /** Moves (or renames) a file from the source to the target path.
     *
     * By default, the move fails if the target file already exists or is a symbolic link.
     */
@@ -275,8 +279,7 @@ package object file {
   ): F[Path] =
     blocker.delay(Files.move(source, target, flags: _*))
 
-  /**
-    * Creates a stream containing the path of a temporary file.
+  /** Creates a stream containing the path of a temporary file.
     *
     * The temporary file is removed when the stream completes.
     */
@@ -289,8 +292,7 @@ package object file {
   ): Stream[F, Path] =
     Stream.resource(tempFileResource[F](blocker, dir, prefix, suffix, attributes))
 
-  /**
-    * Creates a resource containing the path of a temporary file.
+  /** Creates a resource containing the path of a temporary file.
     *
     * The temporary file is removed during the resource release.
     */
@@ -305,8 +307,7 @@ package object file {
       blocker.delay(Files.createTempFile(dir, prefix, suffix, attributes: _*))
     }(deleteIfExists[F](blocker, _).void)
 
-  /**
-    * Creates a stream containing the path of a temporary directory.
+  /** Creates a stream containing the path of a temporary directory.
     *
     * The temporary directory is removed when the stream completes.
     */
@@ -318,8 +319,7 @@ package object file {
   ): Stream[F, Path] =
     Stream.resource(tempDirectoryResource[F](blocker, dir, prefix, attributes))
 
-  /**
-    * Creates a resource containing the path of a temporary directory.
+  /** Creates a resource containing the path of a temporary directory.
     *
     * The temporary directory is removed during the resource release.
     */
@@ -336,8 +336,7 @@ package object file {
         .recover { case _: NoSuchFileException => () }
     }
 
-  /**
-    * Creates a new directory at the given path
+  /** Creates a new directory at the given path
     */
   def createDirectory[F[_]: Sync: ContextShift](
       blocker: Blocker,
@@ -346,8 +345,7 @@ package object file {
   ): F[Path] =
     blocker.delay(Files.createDirectory(path, flags: _*))
 
-  /**
-    * Creates a new directory at the given path and creates all nonexistent parent directories beforehand.
+  /** Creates a new directory at the given path and creates all nonexistent parent directories beforehand.
     */
   def createDirectories[F[_]: Sync: ContextShift](
       blocker: Blocker,
@@ -356,8 +354,7 @@ package object file {
   ): F[Path] =
     blocker.delay(Files.createDirectories(path, flags: _*))
 
-  /**
-    * Creates a stream of [[Path]]s inside a directory.
+  /** Creates a stream of [[Path]]s inside a directory.
     */
   def directoryStream[F[_]: Sync: ContextShift](blocker: Blocker, path: Path): Stream[F, Path] =
     _runJavaCollectionResource[F, DirectoryStream[Path]](
@@ -366,8 +363,7 @@ package object file {
       _.asScala.iterator
     )
 
-  /**
-    * Creates a stream of [[Path]]s inside a directory, filtering the results by the given predicate.
+  /** Creates a stream of [[Path]]s inside a directory, filtering the results by the given predicate.
     */
   def directoryStream[F[_]: Sync: ContextShift](
       blocker: Blocker,
@@ -380,8 +376,7 @@ package object file {
       _.asScala.iterator
     )
 
-  /**
-    * Creates a stream of [[Path]]s inside a directory which match the given glob.
+  /** Creates a stream of [[Path]]s inside a directory which match the given glob.
     */
   def directoryStream[F[_]: Sync: ContextShift](
       blocker: Blocker,
@@ -394,14 +389,12 @@ package object file {
       _.asScala.iterator
     )
 
-  /**
-    * Creates a stream of [[Path]]s contained in a given file tree. Depth is unlimited.
+  /** Creates a stream of [[Path]]s contained in a given file tree. Depth is unlimited.
     */
   def walk[F[_]: Sync: ContextShift](blocker: Blocker, start: Path): Stream[F, Path] =
     walk[F](blocker, start, Seq.empty)
 
-  /**
-    * Creates a stream of [[Path]]s contained in a given file tree, respecting the supplied options. Depth is unlimited.
+  /** Creates a stream of [[Path]]s contained in a given file tree, respecting the supplied options. Depth is unlimited.
     */
   def walk[F[_]: Sync: ContextShift](
       blocker: Blocker,
@@ -410,8 +403,7 @@ package object file {
   ): Stream[F, Path] =
     walk[F](blocker, start, Int.MaxValue, options)
 
-  /**
-    * Creates a stream of [[Path]]s contained in a given file tree down to a given depth.
+  /** Creates a stream of [[Path]]s contained in a given file tree down to a given depth.
     */
   def walk[F[_]: Sync: ContextShift](
       blocker: Blocker,

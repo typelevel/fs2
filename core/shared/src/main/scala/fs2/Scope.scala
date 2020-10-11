@@ -1,18 +1,37 @@
+/*
+ * Copyright (c) 2013 Functional Streams for Scala
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of
+ * this software and associated documentation files (the "Software"), to deal in
+ * the Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+ * the Software, and to permit persons to whom the Software is furnished to do so,
+ * subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+ * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+ * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+ * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+
 package fs2
 
 import cats.MonadError
-import cats.implicits._
+import cats.syntax.all._
 
-/**
-  * Represents a period of stream execution in which resources are acquired and released.
+/** Represents a period of stream execution in which resources are acquired and released.
   *
   * Note: this type is generally used to implement low-level actions that manipulate
   * resource lifetimes and hence, isn't generally used by user-level code.
   */
 abstract class Scope[F[_]] {
 
-  /**
-    * Leases the resources of this scope until the returned lease is cancelled.
+  /** Leases the resources of this scope until the returned lease is cancelled.
     *
     * Note that this leases all resources in this scope, resources in all parent scopes (up to root)
     * and resources of all child scopes.
@@ -37,8 +56,7 @@ abstract class Scope[F[_]] {
       case None    => F.raiseError(new Throwable("Scope closed at time of lease"))
     }
 
-  /**
-    * Interrupts evaluation of the current scope. Only scopes previously indicated with Stream.interruptScope may be interrupted.
+  /** Interrupts evaluation of the current scope. Only scopes previously indicated with Stream.interruptScope may be interrupted.
     * For other scopes this will fail.
     *
     * Interruption is final and may take two forms:
@@ -54,14 +72,12 @@ abstract class Scope[F[_]] {
 
 object Scope {
 
-  /**
-    * Represents one or more resources that were leased from a scope, causing their
+  /** Represents one or more resources that were leased from a scope, causing their
     * lifetimes to be extended until `cancel` is invoked on this lease.
     */
   abstract class Lease[F[_]] {
 
-    /**
-      * Cancels the lease of all resources tracked by this lease.
+    /** Cancels the lease of all resources tracked by this lease.
       *
       * This may run finalizers on some of the resources (depending on the state of their owning scopes).
       * If one or more finalizers fail, the returned action completes with a `Left(t)`, providing the failure.

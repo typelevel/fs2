@@ -1,9 +1,30 @@
+/*
+ * Copyright (c) 2013 Functional Streams for Scala
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of
+ * this software and associated documentation files (the "Software"), to deal in
+ * the Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+ * the Software, and to permit persons to whom the Software is furnished to do so,
+ * subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+ * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+ * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+ * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+
 package fs2
 
 import scala.concurrent.ExecutionContext
 
 import cats.effect.{ConcurrentEffect, IO, Sync}
-import cats.implicits._
+import cats.syntax.all._
 import munit.{CatsEffectSuite, Location, ScalaCheckEffectSuite}
 import org.typelevel.discipline.Laws
 
@@ -29,8 +50,7 @@ abstract class Fs2Suite
   /** Provides various ways to make test assertions on an `F[A]`. */
   implicit class Asserting[F[_], A](private val self: F[A]) {
 
-    /**
-      * Asserts that the `F[A]` fails with an exception of type `E`.
+    /** Asserts that the `F[A]` fails with an exception of type `E`.
       */
     def assertThrows[E <: Throwable](implicit
         F: Sync[F],
@@ -58,7 +78,7 @@ abstract class Fs2Suite
       val counter = new java.util.concurrent.atomic.AtomicLong(0L)
       s.flatMap { o =>
         val i = counter.incrementAndGet
-        if (i % (math.random * 10 + 1).toInt == 0L) Stream.raiseError[F](new Err)
+        if (i % (math.random() * 10 + 1).toInt == 0L) Stream.raiseError[F](new Err)
         else Stream.emit(o)
       }
     }

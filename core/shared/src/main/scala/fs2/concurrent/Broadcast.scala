@@ -1,3 +1,24 @@
+/*
+ * Copyright (c) 2013 Functional Streams for Scala
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of
+ * this software and associated documentation files (the "Software"), to deal in
+ * the Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+ * the Software, and to permit persons to whom the Software is furnished to do so,
+ * subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+ * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+ * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+ * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+
 package fs2.concurrent
 
 import cats.effect.{Concurrent, Sync}
@@ -7,8 +28,7 @@ import fs2._
 /** Provides mechanisms for broadcast distribution of elements to multiple streams. */
 object Broadcast {
 
-  /**
-    * Allows elements of a stream to be broadcast to multiple workers.
+  /** Allows elements of a stream to be broadcast to multiple workers.
     *
     * As the elements arrive, they are broadcast to all `workers` that have started evaluation before the
     * element was pulled.
@@ -58,8 +78,7 @@ object Broadcast {
     }
   }
 
-  /**
-    * Like [[apply]] but instead of providing a stream of worker streams, it runs each inner stream through
+  /** Like [[apply]] but instead of providing a stream of worker streams, it runs each inner stream through
     * the supplied pipes.
     *
     * Supplied pipes are run concurrently with each other. Hence, the number of pipes determines concurrency.
@@ -71,13 +90,12 @@ object Broadcast {
     */
   def through[F[_]: Concurrent, O, O2](pipes: Pipe[F, O, O2]*): Pipe[F, O, O2] =
     _.through(apply(pipes.size))
-      .take(pipes.size)
+      .take(pipes.size.toLong)
       .zipWithIndex
       .map { case (src, idx) => src.through(pipes(idx.toInt)) }
       .parJoinUnbounded
 
-  /**
-    * State of the strategy
+  /** State of the strategy
     *  - AwaitSub:   Awaiting minimum number of subscribers
     *  - Empty:      Awaiting single publish
     *  - Processing: Subscribers are processing the elememts, awaiting them to confirm done.

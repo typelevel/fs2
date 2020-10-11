@@ -1,30 +1,48 @@
+/*
+ * Copyright (c) 2013 Functional Streams for Scala
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of
+ * this software and associated documentation files (the "Software"), to deal in
+ * the Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+ * the Software, and to permit persons to whom the Software is furnished to do so,
+ * subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+ * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+ * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+ * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+
 package fs2
 package concurrent
 
 import cats.{Applicative, Eq, Functor, Id}
 import cats.effect.{Concurrent, Sync}
-import cats.implicits._
+import cats.syntax.all._
 import fs2.internal.{SizedQueue, Token}
 
 /** Provides the ability to enqueue elements to a `Queue`. */
 trait Enqueue[F[_], A] {
 
-  /**
-    * Enqueues one element to this `Queue`.
+  /** Enqueues one element to this `Queue`.
     * If the queue is `full` this waits until queue has space.
     *
     * This completes after `a`  has been successfully enqueued to this `Queue`
     */
   def enqueue1(a: A): F[Unit]
 
-  /**
-    * Enqueues each element of the input stream to this queue by
+  /** Enqueues each element of the input stream to this queue by
     * calling `enqueue1` on each element.
     */
   def enqueue: Pipe[F, A, Unit] = _.evalMap(enqueue1)
 
-  /**
-    * Offers one element to this `Queue`.
+  /** Offers one element to this `Queue`.
     *
     * Evaluates to `false` if the queue is full, indicating the `a` was not queued up.
     * Evaluates to `true` if the `a` was queued up successfully.
@@ -40,8 +58,7 @@ trait Dequeue1[F[_], A] {
   /** Dequeues one `A` from this queue. Completes once one is ready. */
   def dequeue1: F[A]
 
-  /**
-    * Tries to dequeue a single element. Unlike `dequeue1`, this method does not semantically
+  /** Tries to dequeue a single element. Unlike `dequeue1`, this method does not semantically
     * block until a chunk is available - instead, `None` is returned immediately.
     */
   def tryDequeue1: F[Option[A]]
@@ -53,8 +70,7 @@ trait DequeueChunk1[F[_], G[_], A] {
   /** Dequeues one `Chunk[A]` with no more than `maxSize` elements. Completes once one is ready. */
   def dequeueChunk1(maxSize: Int): F[G[Chunk[A]]]
 
-  /**
-    * Tries to dequeue a single chunk of no more than `max size` elements.
+  /** Tries to dequeue a single chunk of no more than `max size` elements.
     * Unlike `dequeueChunk1`, this method does not semantically block until a chunk is available -
     * instead, `None` is returned immediately.
     */
@@ -71,15 +87,13 @@ trait Dequeue[F[_], A] {
   /** Dequeues elements from the queue, ensuring elements are dequeued in chunks not exceeding `maxSize`. */
   def dequeueChunk(maxSize: Int): Stream[F, A]
 
-  /**
-    * Provides a pipe that converts a stream of batch sizes in to a stream of elements by dequeuing
+  /** Provides a pipe that converts a stream of batch sizes in to a stream of elements by dequeuing
     * batches of the specified size.
     */
   def dequeueBatch: Pipe[F, Int, A]
 }
 
-/**
-  * A queue of elements. Operations are all nonblocking in their
+/** A queue of elements. Operations are all nonblocking in their
   * implementations, but may be 'semantically' blocking. For instance,
   * a queue may have a bound on its size, in which case enqueuing may
   * block (be delayed asynchronously) until there is an offsetting dequeue.
@@ -90,8 +104,7 @@ trait Queue[F[_], A]
     with DequeueChunk1[F, Id, A]
     with Dequeue[F, A] { self =>
 
-  /**
-    * Returns an alternate view of this `Queue` where its elements are of type `B`,
+  /** Returns an alternate view of this `Queue` where its elements are of type `B`,
     * given two functions, `A => B` and `B => A`.
     */
   def imap[B](f: A => B)(g: B => A)(implicit F: Functor[F]): Queue[F, B] =
@@ -108,8 +121,7 @@ trait Queue[F[_], A]
     }
 }
 
-/**
-  * Like [[Queue]], but allows allows signalling of no further enqueues by enqueueing `None`.
+/** Like [[Queue]], but allows allows signalling of no further enqueues by enqueueing `None`.
   * Optimizes dequeue to minimum possible boxing.
   */
 trait NoneTerminatedQueue[F[_], A]
@@ -118,8 +130,7 @@ trait NoneTerminatedQueue[F[_], A]
     with DequeueChunk1[F, Option, A]
     with Dequeue[F, A] { self =>
 
-  /**
-    * Returns an alternate view of this `NoneTerminatedQueue` where its elements are of type `B`,
+  /** Returns an alternate view of this `NoneTerminatedQueue` where its elements are of type `B`,
     * given two functions, `A => B` and `B => A`.
     */
   def imap[B](f: A => B)(g: B => A)(implicit F: Functor[F]): NoneTerminatedQueue[F, B] =
@@ -271,8 +282,7 @@ object Queue {
     }
   }
 
-  /**
-    * Provides constructors for Queue with state initialized using
+  /** Provides constructors for Queue with state initialized using
     * another `Sync` datatype.
     *
     * This method uses the [[http://typelevel.org/cats/guidelines.html#partially-applied-type-params Partially Applied Type Params technique]]
@@ -354,8 +364,7 @@ object Queue {
     /** Unbounded fifo strategy. */
     def fifo[A]: PubSub.Strategy[A, Chunk[A], SizedQueue[A], Int] = unbounded(_ :+ _)
 
-    /**
-      * Strategy that allows at most a single element to be published.
+    /** Strategy that allows at most a single element to be published.
       * Before the `A` is published successfully, at least one subscriber must be ready to consume.
       */
     def synchronous[A]: PubSub.Strategy[A, Chunk[A], (Boolean, Option[A]), Int] =
@@ -390,8 +399,7 @@ object Queue {
           queueState
       }
 
-    /**
-      * Creates unbounded queue strategy for `A` with configurable append function.
+    /** Creates unbounded queue strategy for `A` with configurable append function.
       *
       * @param append function used to append new elements to the queue
       */
@@ -429,15 +437,13 @@ object Queue {
 /** Extension of [[Queue]] that allows peeking and inspection of the current size. */
 trait InspectableQueue[F[_], A] extends Queue[F, A] {
 
-  /**
-    * Returns the element which would be dequeued next,
+  /** Returns the element which would be dequeued next,
     * but without removing it. Completes when such an
     * element is available.
     */
   def peek1: F[A]
 
-  /**
-    * The time-varying size of this `Queue`.
+  /** The time-varying size of this `Queue`.
     * Emits elements describing the current size of the queue.
     * Offsetting enqueues and de-queues may not result in refreshes.
     *
@@ -512,10 +518,10 @@ object InspectableQueue {
             }
 
           def dequeueChunk1(maxSize: Int): F[Chunk[A]] =
-            pubSub.get(Right(maxSize)).map(_.toOption.getOrElse(Chunk.empty))
+            pubSub.get(Right(maxSize)).map(_.getOrElse(Chunk.empty))
 
           def tryDequeueChunk1(maxSize: Int): F[Option[Chunk[A]]] =
-            pubSub.tryGet(Right(maxSize)).map(_.map(_.toOption.getOrElse(Chunk.empty)))
+            pubSub.tryGet(Right(maxSize)).map(_.map(_.getOrElse(Chunk.empty)))
 
           def dequeueChunk(maxSize: Int): Stream[F, A] =
             pubSub.getStream(Right(maxSize)).flatMap {
@@ -528,7 +534,7 @@ object InspectableQueue {
               Stream
                 .evalUnChunk(
                   pubSub.get(Right(sz)).map {
-                    _.toOption.getOrElse(Chunk.empty)
+                    _.getOrElse(Chunk.empty)
                   }
                 )
             }
@@ -574,8 +580,7 @@ object InspectableQueue {
     }
   }
 
-  /**
-    * Provides constructors for InspectableQueue with state initialized using
+  /** Provides constructors for InspectableQueue with state initialized using
     * another `Sync` datatype.
     *
     * This method uses the [[http://typelevel.org/cats/guidelines.html#partially-applied-type-params Partially Applied Type Params technique]]

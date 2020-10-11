@@ -1,7 +1,28 @@
+/*
+ * Copyright (c) 2013 Functional Streams for Scala
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of
+ * this software and associated documentation files (the "Software"), to deal in
+ * the Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+ * the Software, and to permit persons to whom the Software is furnished to do so,
+ * subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+ * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+ * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+ * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+
 package fs2
 
 import cats.effect.IO
-import cats.implicits._
+import cats.syntax.all._
 class StreamPerformanceSuite extends Fs2Suite {
   val Ns = {
     val all = List(2, 3, 100, 200, 400, 800, 1600, 3200, 6400, 12800, 25600, 51200, 102400)
@@ -73,7 +94,7 @@ class StreamPerformanceSuite extends Fs2Suite {
             )
             .compile
             .toVector
-            .unsafeRunSync,
+            .unsafeRunSync(),
           Vector(N - 1)
         )
       }
@@ -107,7 +128,7 @@ class StreamPerformanceSuite extends Fs2Suite {
             )
             .compile
             .toVector
-            .unsafeRunSync,
+            .unsafeRunSync(),
           Vector(0)
         )
       }
@@ -167,26 +188,27 @@ class StreamPerformanceSuite extends Fs2Suite {
     group("left associated") {
       Ns.foreach { N =>
         test(N.toString) {
-          Counter[IO].flatMap { open =>
-            Counter[IO].flatMap { ok =>
-              val bracketed: Stream[IO, Int] = Stream
-                .bracket(open.increment)(_ => ok.increment >> open.decrement)
-                .flatMap(_ => Stream(1) ++ Stream.raiseError[IO](new Err))
-              val s: Stream[IO, Int] =
-                List
-                  .fill(N)(bracketed)
-                  .foldLeft(Stream.raiseError[IO](new Err): Stream[IO, Int]) { (acc, hd) =>
-                    acc.handleErrorWith(_ => hd)
-                  }
-              s.compile.toList.attempt
-                .flatMap(_ => (ok.get, open.get).tupled)
-                .map {
-                  case (ok, open) =>
+          Counter[IO]
+            .flatMap { open =>
+              Counter[IO].flatMap { ok =>
+                val bracketed: Stream[IO, Int] = Stream
+                  .bracket(open.increment)(_ => ok.increment >> open.decrement)
+                  .flatMap(_ => Stream(1) ++ Stream.raiseError[IO](new Err))
+                val s: Stream[IO, Int] =
+                  List
+                    .fill(N)(bracketed)
+                    .foldLeft(Stream.raiseError[IO](new Err): Stream[IO, Int]) { (acc, hd) =>
+                      acc.handleErrorWith(_ => hd)
+                    }
+                s.compile.toList.attempt
+                  .flatMap(_ => (ok.get, open.get).tupled)
+                  .map { case (ok, open) =>
                     assertEquals(ok, N.toLong)
                     assertEquals(open, 0L)
-                }
+                  }
+              }
             }
-          }.unsafeRunSync
+            .unsafeRunSync()
         }
       }
     }
@@ -194,25 +216,26 @@ class StreamPerformanceSuite extends Fs2Suite {
     group("right associated") {
       Ns.foreach { N =>
         test(N.toString) {
-          Counter[IO].flatMap { open =>
-            Counter[IO].flatMap { ok =>
-              val bracketed: Stream[IO, Int] = Stream
-                .bracket(open.increment)(_ => ok.increment >> open.decrement)
-                .flatMap(_ => Stream(1) ++ Stream.raiseError[IO](new Err))
-              val s: Stream[IO, Int] = List
-                .fill(N)(bracketed)
-                .foldLeft(Stream.raiseError[IO](new Err): Stream[IO, Int]) { (tl, hd) =>
-                  hd.handleErrorWith(_ => tl)
-                }
-              s.compile.toList.attempt
-                .flatMap(_ => (ok.get, open.get).tupled)
-                .map {
-                  case (ok, open) =>
+          Counter[IO]
+            .flatMap { open =>
+              Counter[IO].flatMap { ok =>
+                val bracketed: Stream[IO, Int] = Stream
+                  .bracket(open.increment)(_ => ok.increment >> open.decrement)
+                  .flatMap(_ => Stream(1) ++ Stream.raiseError[IO](new Err))
+                val s: Stream[IO, Int] = List
+                  .fill(N)(bracketed)
+                  .foldLeft(Stream.raiseError[IO](new Err): Stream[IO, Int]) { (tl, hd) =>
+                    hd.handleErrorWith(_ => tl)
+                  }
+                s.compile.toList.attempt
+                  .flatMap(_ => (ok.get, open.get).tupled)
+                  .map { case (ok, open) =>
                     assertEquals(ok, N.toLong)
                     assertEquals(open, 0L)
-                }
+                  }
+              }
             }
-          }.unsafeRunSync
+            .unsafeRunSync()
         }
       }
     }

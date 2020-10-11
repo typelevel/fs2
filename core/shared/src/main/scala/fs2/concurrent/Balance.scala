@@ -1,3 +1,24 @@
+/*
+ * Copyright (c) 2013 Functional Streams for Scala
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of
+ * this software and associated documentation files (the "Software"), to deal in
+ * the Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+ * the Software, and to permit persons to whom the Software is furnished to do so,
+ * subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+ * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+ * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+ * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+
 package fs2.concurrent
 
 import cats.effect.Concurrent
@@ -6,8 +27,7 @@ import fs2._
 /** Provides mechanisms for balancing the distribution of chunks across multiple streams. */
 object Balance {
 
-  /**
-    * Allows balanced processing of this stream via multiple concurrent streams.
+  /** Allows balanced processing of this stream via multiple concurrent streams.
     *
     * This could be viewed as Stream "fan-out" operation, allowing concurrent processing of elements.
     * As the elements arrive, they are evenly distributed to streams that have already started their
@@ -58,8 +78,7 @@ object Balance {
     }
   }
 
-  /**
-    * Like `apply` but instead of providing a stream of worker streams, the supplied pipes are
+  /** Like `apply` but instead of providing a stream of worker streams, the supplied pipes are
     * used to transform each worker.
     *
     * Each supplied pipe is run concurrently with other. This means that amount of pipes
@@ -81,7 +100,7 @@ object Balance {
     */
   def through[F[_]: Concurrent, O, O2](chunkSize: Int)(pipes: Pipe[F, O, O2]*): Pipe[F, O, O2] =
     _.balance(chunkSize)
-      .take(pipes.size)
+      .take(pipes.size.toLong)
       .zipWithIndex
       .map { case (stream, idx) => stream.through(pipes(idx.toInt)) }
       .parJoinUnbounded

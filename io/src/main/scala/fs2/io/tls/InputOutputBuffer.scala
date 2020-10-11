@@ -1,3 +1,24 @@
+/*
+ * Copyright (c) 2013 Functional Streams for Scala
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of
+ * this software and associated documentation files (the "Software"), to deal in
+ * the Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+ * the Software, and to permit persons to whom the Software is furnished to do so,
+ * subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+ * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+ * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+ * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+
 package fs2
 package io
 package tls
@@ -7,10 +28,9 @@ import java.nio.{Buffer, ByteBuffer}
 import cats.Applicative
 import cats.effect.Sync
 import cats.effect.concurrent.Ref
-import cats.implicits._
+import cats.syntax.all._
 
-/**
-  * Wraps a pair of `ByteBuffer`s for use with an `SSLEngine` -- an input buffer and an output buffer.
+/** Wraps a pair of `ByteBuffer`s for use with an `SSLEngine` -- an input buffer and an output buffer.
   *
   * One or more chunks of bytes are added to the input buffer via the [[input]] method. Once input
   * data has been added, calling [[perform]] allows read access to the input and write access to the
@@ -24,8 +44,7 @@ private[tls] trait InputOutputBuffer[F[_]] {
   /** Removes available data from the output buffer. */
   def output(maxBytes: Int): F[Chunk[Byte]]
 
-  /**
-    * Performs an operation that may read from the input buffer and write to the output buffer.
+  /** Performs an operation that may read from the input buffer and write to the output buffer.
     * When `f` is called, the input buffer has been flipped. After `f` completes, the input buffer
     * is compacted.
     */

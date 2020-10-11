@@ -1,3 +1,24 @@
+/*
+ * Copyright (c) 2013 Functional Streams for Scala
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of
+ * this software and associated documentation files (the "Software"), to deal in
+ * the Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+ * the Software, and to permit persons to whom the Software is furnished to do so,
+ * subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+ * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+ * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+ * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+
 package fs2
 package io
 package tls
@@ -9,22 +30,27 @@ import java.net.InetSocketAddress
 import java.nio.file.Path
 import java.security.KeyStore
 import java.security.cert.X509Certificate
-import javax.net.ssl.{KeyManagerFactory, SSLContext, TrustManagerFactory, X509TrustManager}
+import javax.net.ssl.{
+  KeyManagerFactory,
+  SSLContext,
+  SSLEngine,
+  TrustManagerFactory,
+  X509TrustManager
+}
 
 import cats.Applicative
 import cats.effect.{Blocker, Concurrent, ContextShift, Resource, Sync}
-import cats.implicits._
+import cats.syntax.all._
 
 import fs2.io.tcp.Socket
 import fs2.io.udp.Packet
+import java.util.function.BiFunction
 
-/**
-  * Allows creation of [[TLSSocket]]s.
+/** Allows creation of [[TLSSocket]]s.
   */
 sealed trait TLSContext {
 
-  /**
-    * Creates a `TLSSocket` in client mode, using the supplied parameters.
+  /** Creates a `TLSSocket` in client mode, using the supplied parameters.
     * Internal debug logging of the session can be enabled by passing a logger.
     */
   def client[F[_]: Concurrent: ContextShift](
@@ -33,8 +59,7 @@ sealed trait TLSContext {
       logger: Option[String => F[Unit]] = None
   ): Resource[F, TLSSocket[F]]
 
-  /**
-    * Creates a `TLSSocket` in server mode, using the supplied parameters.
+  /** Creates a `TLSSocket` in server mode, using the supplied parameters.
     * Internal debug logging of the session can be enabled by passing a logger.
     */
   def server[F[_]: Concurrent: ContextShift](
@@ -43,8 +68,7 @@ sealed trait TLSContext {
       logger: Option[String => F[Unit]] = None
   ): Resource[F, TLSSocket[F]]
 
-  /**
-    * Creates a `DTLSSocket` in client mode, using the supplied parameters.
+  /** Creates a `DTLSSocket` in client mode, using the supplied parameters.
     * Internal debug logging of the session can be enabled by passing a logger.
     */
   def dtlsClient[F[_]: Concurrent: ContextShift](
@@ -54,8 +78,7 @@ sealed trait TLSContext {
       logger: Option[String => F[Unit]] = None
   ): Resource[F, DTLSSocket[F]]
 
-  /**
-    * Creates a `DTLSSocket` in server mode, using the supplied parameters.
+  /** Creates a `DTLSSocket` in server mode, using the supplied parameters.
     * Internal debug logging of the session can be enabled by passing a logger.
     */
   def dtlsServer[F[_]: Concurrent: ContextShift](
@@ -185,6 +208,16 @@ object TLSContext {
           val engine = ctx.createSSLEngine()
           engine.setUseClientMode(clientMode)
           engine.setSSLParameters(params.toSSLParameters)
+          params.handshakeApplicationProtocolSelector
+            .foreach { f =>
+              import fs2.io.CollectionCompat._
+              engine.setHandshakeApplicationProtocolSelector(
+                new BiFunction[SSLEngine, java.util.List[String], String] {
+                  def apply(engine: SSLEngine, protocols: java.util.List[String]): String =
+                    f(engine, protocols.asScala.toList)
+                }
+              )
+            }
           engine
         }
         sslEngine.flatMap(TLSEngine[F](_, binding, blocker, logger))

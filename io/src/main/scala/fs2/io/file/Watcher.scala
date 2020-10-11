@@ -1,10 +1,31 @@
+/*
+ * Copyright (c) 2013 Functional Streams for Scala
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of
+ * this software and associated documentation files (the "Software"), to deal in
+ * the Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+ * the Software, and to permit persons to whom the Software is furnished to do so,
+ * subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+ * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+ * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+ * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+
 package fs2
 package io
 
 import scala.concurrent.duration._
 
 import cats.effect._
-import cats.implicits._
+import cats.syntax.all._
 import java.nio.file._
 import java.nio.file.attribute.BasicFileAttributes
 import java.util.concurrent.TimeUnit
@@ -12,13 +33,11 @@ import fs2.concurrent.SignallingRef
 
 import CollectionCompat._
 
-/**
-  * Allows watching the file system for changes to directories and files by using the platform's `WatchService`.
+/** Allows watching the file system for changes to directories and files by using the platform's `WatchService`.
   */
 sealed abstract class Watcher[F[_]] {
 
-  /**
-    * Registers for events on the specified path.
+  /** Registers for events on the specified path.
     *
     * This is more feature-rich than the platform's `Path#register`. The supplied path may be
     * a file or directory and events may raised for all descendants of the path. Use [[register]] for
@@ -39,8 +58,7 @@ sealed abstract class Watcher[F[_]] {
       modifiers: Seq[WatchEvent.Modifier] = Nil
   ): F[F[Unit]]
 
-  /**
-    * Registers for events on the specified path.
+  /** Registers for events on the specified path.
     *
     * This is a low-level abstraction on the platform's `Path#register`. The supplied path must be
     * a directory and events are raised for only direct descendants of the path. Use [[watch]] for
@@ -61,8 +79,7 @@ sealed abstract class Watcher[F[_]] {
       modifiers: Seq[WatchEvent.Modifier] = Nil
   ): F[F[Unit]]
 
-  /**
-    * Stream of events for paths that have been registered or watched.
+  /** Stream of events for paths that have been registered or watched.
     *
     * @param pollTimeout amount of time for which the underlying platform is polled for events
     */
@@ -99,8 +116,7 @@ object Watcher {
     final case class Overflow(count: Int) extends Event
     final case class NonStandard(event: WatchEvent[_], registeredDirectory: Path) extends Event
 
-    /**
-      * Converts a NIO `WatchEvent` to an FS2 `Watcher.Event`.
+    /** Converts a NIO `WatchEvent` to an FS2 `Watcher.Event`.
       *
       * @param e event to convert
       * @param registeredDirectory path of the directory for which the event's path is relative

@@ -1,7 +1,28 @@
+/*
+ * Copyright (c) 2013 Functional Streams for Scala
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of
+ * this software and associated documentation files (the "Software"), to deal in
+ * the Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+ * the Software, and to permit persons to whom the Software is furnished to do so,
+ * subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+ * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+ * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+ * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+
 package fs2
 
-import cats.implicits._
-import org.scalacheck.Gen
+import cats.syntax.all._
+import org.scalacheck.{Arbitrary, Gen}
 import org.scalacheck.Prop.forAll
 import scodec.bits._
 import scodec.bits.Bases.Alphabets.Base64Url
@@ -11,24 +32,27 @@ import fs2.text._
 
 class TextSuite extends Fs2Suite {
   override def scalaCheckTestParameters =
-    super.scalaCheckTestParameters.withMinSuccessfulTests(100)
+    super.scalaCheckTestParameters.withMinSuccessfulTests(1000)
 
   group("utf8Decoder") {
     def utf8Bytes(s: String): Chunk[Byte] = Chunk.bytes(s.getBytes("UTF-8"))
     def utf8String(bs: Chunk[Byte]): String = new String(bs.toArray, "UTF-8")
 
+    def genStringNoBom: Gen[String] = Arbitrary.arbitrary[String].filterNot(_.startsWith("\ufeff"))
+
     def checkChar(c: Char): Unit =
-      (1 to 6).foreach { n =>
-        assertEquals(
-          Stream
-            .chunk(utf8Bytes(c.toString))
-            .chunkLimit(n)
-            .flatMap(Stream.chunk)
-            .through(utf8Decode)
-            .toList,
-          List(c.toString)
-        )
-      }
+      if (c != '\ufeff')
+        (1 to 6).foreach { n =>
+          assertEquals(
+            Stream
+              .chunk(utf8Bytes(c.toString))
+              .chunkLimit(n)
+              .flatMap(Stream.chunk)
+              .through(utf8Decode)
+              .toList,
+            List(c.toString)
+          )
+        }
 
     def checkBytes(is: Int*): Unit =
       (1 to 6).foreach { n =>
@@ -64,7 +88,7 @@ class TextSuite extends Fs2Suite {
     test("incomplete 4 byte char")(checkBytes(0xf0, 0xa4, 0xad))
 
     property("preserves complete inputs") {
-      forAll { (l0: List[String]) =>
+      forAll(Gen.listOf(genStringNoBom)) { (l0: List[String]) =>
         val l = l0.filter(_.nonEmpty)
         assertEquals(
           Stream(l: _*).map(utf8Bytes).flatMap(Stream.chunk).through(utf8Decode).toList,
@@ -75,7 +99,7 @@ class TextSuite extends Fs2Suite {
     }
 
     property("utf8Encode andThen utf8Decode = id") {
-      forAll { (s: String) =>
+      forAll(genStringNoBom) { (s: String) =>
         assertEquals(Stream(s).through(utf8EncodeC).through(utf8DecodeC).toList, List(s))
         if (s.nonEmpty)
           assertEquals(Stream(s).through(utf8Encode).through(utf8Decode).toList, List(s))
@@ -83,16 +107,16 @@ class TextSuite extends Fs2Suite {
     }
 
     property("1 byte sequences") {
-      forAll { (s: String) =>
+      forAll(genStringNoBom) { (s: String) =>
         assertEquals(
           Stream
             .chunk(utf8Bytes(s))
             .chunkLimit(1)
             .flatMap(Stream.chunk)
             .through(utf8Decode)
-            .filter(_.nonEmpty)
-            .toList,
-          s.grouped(1).toList
+            .compile
+            .string,
+          s
         )
       }
     }
@@ -105,8 +129,8 @@ class TextSuite extends Fs2Suite {
             .chunkLimit(n)
             .flatMap(Stream.chunk)
             .through(utf8Decode)
-            .toList
-            .mkString,
+            .compile
+            .string,
           s
         )
       }
@@ -115,13 +139,13 @@ class TextSuite extends Fs2Suite {
     group("handles byte order mark") {
       val bom = Chunk[Byte](0xef.toByte, 0xbb.toByte, 0xbf.toByte)
       property("single chunk") {
-        forAll { (s: String) =>
+        forAll(genStringNoBom) { (s: String) =>
           val c = Chunk.concat(List(bom, utf8Bytes(s)))
           assertEquals(Stream.chunk(c).through(text.utf8Decode).compile.string, s)
         }
       }
       property("spanning chunks") {
-        forAll { (s: String) =>
+        forAll(genStringNoBom) { (s: String) =>
           val c = Chunk.concat(List(bom, utf8Bytes(s)))
           assertEquals(Stream.emits(c.toArray[Byte]).through(text.utf8Decode).compile.string, s)
         }

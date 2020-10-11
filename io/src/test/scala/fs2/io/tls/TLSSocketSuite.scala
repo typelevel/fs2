@@ -1,3 +1,24 @@
+/*
+ * Copyright (c) 2013 Functional Streams for Scala
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of
+ * this software and associated documentation files (the "Software"), to deal in
+ * the Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+ * the Software, and to permit persons to whom the Software is furnished to do so,
+ * subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+ * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+ * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+ * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+
 package fs2
 package io
 package tls
@@ -61,37 +82,36 @@ class TLSSocketSuite extends TLSSuite {
           testTlsContext(blocker).flatMap { tlsContext =>
             socketGroup
               .serverResource[IO](new InetSocketAddress(InetAddress.getByName(null), 0))
-              .use {
-                case (serverAddress, clients) =>
-                  val server = clients.map { client =>
-                    Stream.resource(client).flatMap { clientSocket =>
-                      Stream.resource(tlsContext.server(clientSocket)).flatMap { clientSocketTls =>
-                        clientSocketTls.reads(8192).chunks.flatMap { c =>
-                          Stream.eval(clientSocketTls.write(c))
-                        }
+              .use { case (serverAddress, clients) =>
+                val server = clients.map { client =>
+                  Stream.resource(client).flatMap { clientSocket =>
+                    Stream.resource(tlsContext.server(clientSocket)).flatMap { clientSocketTls =>
+                      clientSocketTls.reads(8192).chunks.flatMap { c =>
+                        Stream.eval(clientSocketTls.write(c))
                       }
                     }
-                  }.parJoinUnbounded
+                  }
+                }.parJoinUnbounded
 
-                  val msg = Chunk.bytes(("Hello, world! " * 20000).getBytes)
-                  val client =
-                    Stream.resource(socketGroup.client[IO](serverAddress)).flatMap { clientSocket =>
-                      Stream
-                        .resource(
-                          tlsContext.client(
-                            clientSocket
-                            // logger = Some((m: String) =>
-                            //   IO.delay(println(s"${Console.MAGENTA}[TLS] $m${Console.RESET}"))
-                            // )
-                          )
+                val msg = Chunk.bytes(("Hello, world! " * 20000).getBytes)
+                val client =
+                  Stream.resource(socketGroup.client[IO](serverAddress)).flatMap { clientSocket =>
+                    Stream
+                      .resource(
+                        tlsContext.client(
+                          clientSocket
+                          // logger = Some((m: String) =>
+                          //   IO.delay(println(s"${Console.MAGENTA}[TLS] $m${Console.RESET}"))
+                          // )
                         )
-                        .flatMap { clientSocketTls =>
-                          Stream.eval_(clientSocketTls.write(msg)) ++
-                            clientSocketTls.reads(8192).take(msg.size)
-                        }
-                    }
+                      )
+                      .flatMap { clientSocketTls =>
+                        Stream.eval_(clientSocketTls.write(msg)) ++
+                          clientSocketTls.reads(8192).take(msg.size)
+                      }
+                  }
 
-                  client.concurrently(server).compile.to(Chunk).map(it => assert(it == msg))
+                client.concurrently(server).compile.to(Chunk).map(it => assert(it == msg))
               }
           }
         }

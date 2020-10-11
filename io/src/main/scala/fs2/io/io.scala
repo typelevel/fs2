@@ -1,3 +1,24 @@
+/*
+ * Copyright (c) 2013 Functional Streams for Scala
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of
+ * this software and associated documentation files (the "Software"), to deal in
+ * the Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+ * the Software, and to permit persons to whom the Software is furnished to do so,
+ * subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+ * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+ * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+ * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+
 package fs2
 
 import cats._
@@ -13,12 +34,11 @@ import cats.effect.{
 }
 import cats.effect.implicits._
 import cats.effect.concurrent.Deferred
-import cats.implicits._
+import cats.syntax.all._
 import java.io.{InputStream, OutputStream, PipedInputStream, PipedOutputStream}
 import java.nio.charset.Charset
 
-/**
-  * Provides various ways to work with streams that perform IO.
+/** Provides various ways to work with streams that perform IO.
   *
   * These methods accept a `cats.effect.Blocker`, as the underlying
   * implementations perform blocking IO.
@@ -28,8 +48,7 @@ import java.nio.charset.Charset
 package object io {
   private val utf8Charset = Charset.forName("UTF-8")
 
-  /**
-    * Reads all bytes from the specified `InputStream` with a buffer size of `chunkSize`.
+  /** Reads all bytes from the specified `InputStream` with a buffer size of `chunkSize`.
     * Set `closeAfterUse` to false if the `InputStream` should not be closed after use.
     */
   def readInputStream[F[_]](
@@ -45,8 +64,7 @@ package object io {
       closeAfterUse
     )
 
-  /**
-    * Reads all bytes from the specified `InputStream` with a buffer size of `chunkSize`.
+  /** Reads all bytes from the specified `InputStream` with a buffer size of `chunkSize`.
     * Set `closeAfterUse` to false if the `InputStream` should not be closed after use.
     *
     * Each read operation is performed on the supplied blocker.
@@ -100,8 +118,7 @@ package object io {
       Stream.eval(fis).flatMap(useIs)
   }
 
-  /**
-    * Writes all bytes to the specified `OutputStream`. Set `closeAfterUse` to false if
+  /** Writes all bytes to the specified `OutputStream`. Set `closeAfterUse` to false if
     * the `OutputStream` should not be closed after use.
     *
     * Each write operation is performed on the supplied execution context. Writes are
@@ -122,8 +139,7 @@ package object io {
       os.flatMap(os => useOs(os) ++ Stream.eval(blocker.delay(os.flush())))
     }
 
-  /**
-    * Take a function that emits to an [[java.io.OutputStream OutputStream]] effectfully,
+  /** Take a function that emits to an [[java.io.OutputStream OutputStream]] effectfully,
     * and return a stream which, when run, will perform that function and emit
     * the bytes recorded in the OutputStream as an fs2.Stream
     *
@@ -152,26 +168,25 @@ package object io {
         }
       )
 
-    Stream.resource(mkOutput).flatMap {
-      case (os, is) =>
-        Stream.eval(Deferred[F, Option[Throwable]]).flatMap { err =>
-          // We need to close the output stream regardless of how `f` finishes
-          // to ensure an outstanding blocking read on the input stream completes.
-          // In such a case, there's a race between completion of the read
-          // stream and finalization of the write stream, so we capture the error
-          // that occurs when writing and rethrow it.
-          val write = f(os).guaranteeCase(ec =>
-            blocker.delay(os.close()) *> err.complete(ec match {
-              case ExitCase.Error(t) => Some(t)
-              case _                 => None
-            })
-          )
-          val read = readInputStream(is.pure[F], chunkSize, blocker, closeAfterUse = false)
-          read.concurrently(Stream.eval(write)) ++ Stream.eval(err.get).flatMap {
-            case None    => Stream.empty
-            case Some(t) => Stream.raiseError[F](t)
-          }
+    Stream.resource(mkOutput).flatMap { case (os, is) =>
+      Stream.eval(Deferred[F, Option[Throwable]]).flatMap { err =>
+        // We need to close the output stream regardless of how `f` finishes
+        // to ensure an outstanding blocking read on the input stream completes.
+        // In such a case, there's a race between completion of the read
+        // stream and finalization of the write stream, so we capture the error
+        // that occurs when writing and rethrow it.
+        val write = f(os).guaranteeCase(ec =>
+          blocker.delay(os.close()) *> err.complete(ec match {
+            case ExitCase.Error(t) => Some(t)
+            case _                 => None
+          })
+        )
+        val read = readInputStream(is.pure[F], chunkSize, blocker, closeAfterUse = false)
+        read.concurrently(Stream.eval(write)) ++ Stream.eval(err.get).flatMap {
+          case None    => Stream.empty
+          case Some(t) => Stream.raiseError[F](t)
         }
+      }
     }
   }
 
@@ -186,8 +201,7 @@ package object io {
   def stdout[F[_]: Sync: ContextShift](blocker: Blocker): Pipe[F, Byte, Unit] =
     writeOutputStream(blocker.delay(System.out), blocker, false)
 
-  /**
-    * Writes this stream to standard output asynchronously, converting each element to
+  /** Writes this stream to standard output asynchronously, converting each element to
     * a sequence of bytes via `Show` and the given `Charset`.
     *
     * Each write operation is performed on the supplied execution context. Writes are
@@ -203,8 +217,7 @@ package object io {
   def stdinUtf8[F[_]: Sync: ContextShift](bufSize: Int, blocker: Blocker): Stream[F, String] =
     stdin(bufSize, blocker).through(text.utf8Decode)
 
-  /**
-    * Pipe that converts a stream of bytes to a stream that will emit a single `java.io.InputStream`,
+  /** Pipe that converts a stream of bytes to a stream that will emit a single `java.io.InputStream`,
     * that is closed whenever the resulting stream terminates.
     *
     * If the `close` of resulting input stream is invoked manually, then this will await until the
@@ -219,8 +232,7 @@ package object io {
   def toInputStream[F[_]](implicit F: ConcurrentEffect[F]): Pipe[F, Byte, InputStream] =
     source => Stream.resource(toInputStreamResource(source))
 
-  /**
-    * Like [[toInputStream]] but returns a `Resource` rather than a single element stream.
+  /** Like [[toInputStream]] but returns a `Resource` rather than a single element stream.
     */
   def toInputStreamResource[F[_]](
       source: Stream[F, Byte]

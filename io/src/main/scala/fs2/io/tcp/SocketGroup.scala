@@ -1,3 +1,24 @@
+/*
+ * Copyright (c) 2013 Functional Streams for Scala
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of
+ * this software and associated documentation files (the "Software"), to deal in
+ * the Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+ * the Software, and to permit persons to whom the Software is furnished to do so,
+ * subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+ * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+ * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+ * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+
 package fs2
 package io
 package tcp
@@ -16,20 +37,18 @@ import java.nio.channels.AsynchronousChannelGroup
 import java.nio.channels.spi.AsynchronousChannelProvider
 import java.util.concurrent.{ThreadFactory, TimeUnit}
 
-import cats.implicits._
+import cats.syntax.all._
 import cats.effect.{Blocker, Concurrent, ContextShift, Resource, Sync}
 import cats.effect.concurrent.{Ref, Semaphore}
 
 import fs2.internal.ThreadFactories
 
-/**
-  * Resource that provides the ability to open client and server TCP sockets that all share
+/** Resource that provides the ability to open client and server TCP sockets that all share
   * an underlying non-blocking channel group.
   */
 final class SocketGroup(channelGroup: AsynchronousChannelGroup, blocker: Blocker) {
 
-  /**
-    * Opens a connection to the specified server represented as a [[Socket]].
+  /** Opens a connection to the specified server represented as a [[Socket]].
     * The connection is closed when the resource is released.
     *
     * @param to                   address of remote server
@@ -57,8 +76,8 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup, blocker: Blocker
         ch.setOption[Integer](StandardSocketOptions.SO_RCVBUF, receiveBufferSize)
         ch.setOption[java.lang.Boolean](StandardSocketOptions.SO_KEEPALIVE, keepAlive)
         ch.setOption[java.lang.Boolean](StandardSocketOptions.TCP_NODELAY, noDelay)
-        additionalSocketOptions.foreach {
-          case SocketOptionMapping(option, value) => ch.setOption(option, value)
+        additionalSocketOptions.foreach { case SocketOptionMapping(option, value) =>
+          ch.setOption(option, value)
         }
         ch
       }
@@ -80,8 +99,7 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup, blocker: Blocker
     Resource.liftF(setup.flatMap(connect)).flatMap(apply(_))
   }
 
-  /**
-    * Stream that binds to the specified address and provides a connection for,
+  /** Stream that binds to the specified address and provides a connection for,
     * represented as a [[Socket]], for each client that connects to the bound address.
     *
     * Returns a stream of stream of sockets.
@@ -137,13 +155,12 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup, blocker: Blocker
     val _ = maxQueued
     Stream
       .resource(serverResource(address, reuseAddress, receiveBufferSize, additionalSocketOptions))
-      .flatMap {
-        case (localAddress, clients) => Stream(Left(localAddress)) ++ clients.map(Right(_))
+      .flatMap { case (localAddress, clients) =>
+        Stream(Left(localAddress)) ++ clients.map(Right(_))
       }
   }
 
-  /**
-    * Like [[server]] but provides the `InetSocketAddress` of the bound server socket before providing accepted sockets.
+  /** Like [[server]] but provides the `InetSocketAddress` of the bound server socket before providing accepted sockets.
     * The inner stream emits one socket for each client that connects to the server.
     */
   def serverResource[F[_]](
@@ -162,8 +179,8 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup, blocker: Blocker
         .openAsynchronousServerSocketChannel(channelGroup)
       ch.setOption[java.lang.Boolean](StandardSocketOptions.SO_REUSEADDR, reuseAddress)
       ch.setOption[Integer](StandardSocketOptions.SO_RCVBUF, receiveBufferSize)
-      additionalSocketOptions.foreach {
-        case SocketOptionMapping(option, value) => ch.setOption(option, value)
+      additionalSocketOptions.foreach { case SocketOptionMapping(option, value) =>
+        ch.setOption(option, value)
       }
       ch.bind(address)
       ch
@@ -271,10 +288,9 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup, blocker: Blocker
         def read0(max: Int, timeout: Option[FiniteDuration]): F[Option[Chunk[Byte]]] =
           readSemaphore.withPermit {
             getBufferOf(max).flatMap { buff =>
-              readChunk(buff, timeout.map(_.toMillis).getOrElse(0L)).flatMap {
-                case (read, _) =>
-                  if (read < 0) F.pure(None)
-                  else releaseBuffer(buff).map(Some(_))
+              readChunk(buff, timeout.map(_.toMillis).getOrElse(0L)).flatMap { case (read, _) =>
+                if (read < 0) F.pure(None)
+                else releaseBuffer(buff).map(Some(_))
               }
             }
           }
@@ -283,12 +299,11 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup, blocker: Blocker
           readSemaphore.withPermit {
             getBufferOf(max).flatMap { buff =>
               def go(timeoutMs: Long): F[Option[Chunk[Byte]]] =
-                readChunk(buff, timeoutMs).flatMap {
-                  case (readBytes, took) =>
-                    if (readBytes < 0 || buff.position() >= max)
-                      // read is done
-                      releaseBuffer(buff).map(Some(_))
-                    else go((timeoutMs - took).max(0))
+                readChunk(buff, timeoutMs).flatMap { case (readBytes, took) =>
+                  if (readBytes < 0 || buff.position() >= max)
+                    // read is done
+                    releaseBuffer(buff).map(Some(_))
+                  else go((timeoutMs - took).max(0))
                 }
 
               go(timeout.map(_.toMillis).getOrElse(0L))
@@ -367,8 +382,7 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup, blocker: Blocker
 
 object SocketGroup {
 
-  /**
-    * Creates a `SocketGroup`.
+  /** Creates a `SocketGroup`.
     *
     * The supplied `blocker` is used for networking calls other than
     * reads/writes. All reads and writes are performed on a non-blocking thread pool

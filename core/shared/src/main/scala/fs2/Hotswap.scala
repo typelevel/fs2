@@ -1,12 +1,32 @@
+/*
+ * Copyright (c) 2013 Functional Streams for Scala
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of
+ * this software and associated documentation files (the "Software"), to deal in
+ * the Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+ * the Software, and to permit persons to whom the Software is furnished to do so,
+ * subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+ * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+ * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+ * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+
 package fs2
 
-import cats.implicits._
+import cats.syntax.all._
 import cats.effect.{Concurrent, Resource, Sync}
 import cats.effect.concurrent.Ref
 import cats.effect.implicits._
 
-/**
-  * Supports treating a linear sequence of resources as a single resource.
+/** Supports treating a linear sequence of resources as a single resource.
   *
   * A `Hotswap[F, R]` instance is created as a `Resource` and hence, has
   * a lifetime that is scoped by the `Resource`. After creation, a `Resource[F, R]`
@@ -46,8 +66,7 @@ import cats.effect.implicits._
   */
 sealed trait Hotswap[F[_], R] {
 
-  /**
-    * Allocates a new resource, closes the last one if present, and
+  /** Allocates a new resource, closes the last one if present, and
     * returns the newly allocated `R`.
     *
     * If there are no further calls to `swap`, the resource created by
@@ -66,8 +85,7 @@ sealed trait Hotswap[F[_], R] {
     */
   def swap(next: Resource[F, R]): F[R]
 
-  /**
-    * Runs the finalizer of the current resource, if any, and restores
+  /** Runs the finalizer of the current resource, if any, and restores
     * this `Hotswap` to its initial state.
     *
     * Like `swap`, you need to ensure that no code is using the old `R` when
@@ -79,15 +97,13 @@ sealed trait Hotswap[F[_], R] {
 
 object Hotswap {
 
-  /**
-    * Creates a new `Hotswap` initialized with the specified resource.
+  /** Creates a new `Hotswap` initialized with the specified resource.
     * The `Hotswap` instance and the initial resource are returned.
     */
   def apply[F[_]: Concurrent, R](initial: Resource[F, R]): Resource[F, (Hotswap[F, R], R)] =
     create[F, R].evalMap(p => p.swap(initial).map(r => (p, r)))
 
-  /**
-    * Creates a new `Hotswap`, which represents a `Resource`
+  /** Creates a new `Hotswap`, which represents a `Resource`
     * that can be swapped during the lifetime of this `Hotswap`.
     */
   def create[F[_]: Concurrent, R]: Resource[F, Hotswap[F, R]] = {
@@ -110,9 +126,8 @@ object Hotswap {
           // workaround for https://github.com/typelevel/cats-effect/issues/579
           Concurrent[F].continual((next <* ().pure[Resource[F, *]]).allocated) {
             r => // this whole block is inside continual and cannot be canceled
-              Sync[F].fromEither(r).flatMap {
-                case (newValue, newFinalizer) =>
-                  swapFinalizer(newFinalizer).as(newValue)
+              Sync[F].fromEither(r).flatMap { case (newValue, newFinalizer) =>
+                swapFinalizer(newFinalizer).as(newValue)
               }
           }
 

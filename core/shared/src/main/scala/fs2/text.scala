@@ -1,3 +1,24 @@
+/*
+ * Copyright (c) 2013 Functional Streams for Scala
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of
+ * this software and associated documentation files (the "Software"), to deal in
+ * the Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+ * the Software, and to permit persons to whom the Software is furnished to do so,
+ * subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+ * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+ * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+ * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+
 package fs2
 
 import java.nio.{Buffer, CharBuffer}
@@ -11,8 +32,6 @@ import scodec.bits.{Bases, ByteVector}
 /** Provides utilities for working with streams of text (e.g., encoding byte streams to strings). */
 object text {
   private val utf8Charset = Charset.forName("UTF-8")
-  // unused, but maybe needed to keep binary compatibility
-  //private val utf8Bom: Chunk[Byte] = Chunk(0xef.toByte, 0xbb.toByte, 0xbf.toByte)
   private[this] val utf8BomSeq: Seq[Byte] = Array(0xef.toByte, 0xbb.toByte, 0xbf.toByte).toSeq
 
   /** Converts UTF-8 encoded byte stream to a stream of `String`. */
@@ -252,8 +271,7 @@ object text {
   /** Functions for working with base 64. */
   object base64 {
 
-    /**
-      * Converts a stream of base 64 text in to a stream of bytes.
+    /** Converts a stream of base 64 text in to a stream of bytes.
       *
       * If the text is not valid base 64, the pipe fails with an exception. Padding
       * characters at the end of the input stream are optional, but if present, must
@@ -264,8 +282,7 @@ object text {
     def decode[F[_]: RaiseThrowable]: Pipe[F, String, Byte] =
       decodeWithAlphabet(Bases.Alphabets.Base64)
 
-    /**
-      * Like [[decode]] but takes a base 64 alphabet. For example,
+    /** Like [[decode]] but takes a base 64 alphabet. For example,
       * `decodeWithAlphabet(Bases.Alphabets.Base64Url)` will decode URL compatible base 64.
       */
     def decodeWithAlphabet[F[_]: RaiseThrowable](
@@ -374,15 +391,13 @@ object text {
       in => go(State(0, 0, 0), in).stream
     }
 
-    /**
-      * Encodes a byte stream in to a stream of base 64 text.
+    /** Encodes a byte stream in to a stream of base 64 text.
       * The default base 64 alphabet is used by this pipe.
       */
     def encode[F[_]]: Pipe[F, Byte, String] =
       encodeWithAlphabet(Bases.Alphabets.Base64)
 
-    /**
-      * Like [[encode]] but takes a base 64 alphabet. For example,
+    /** Like [[encode]] but takes a base 64 alphabet. For example,
       * `encodeWithAlphabet(Bases.Alphabets.Base64Url)` will encode URL compatible base 64.
       */
     def encodeWithAlphabet[F[_]](alphabet: Bases.Base64Alphabet): Pipe[F, Byte, String] = {

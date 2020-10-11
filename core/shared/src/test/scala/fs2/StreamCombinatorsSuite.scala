@@ -1,3 +1,24 @@
+/*
+ * Copyright (c) 2013 Functional Streams for Scala
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of
+ * this software and associated documentation files (the "Software"), to deal in
+ * the Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+ * the Software, and to permit persons to whom the Software is furnished to do so,
+ * subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+ * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+ * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+ * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+
 package fs2
 
 import scala.concurrent.duration._
@@ -5,7 +26,7 @@ import scala.concurrent.TimeoutException
 
 import cats.effect.{Blocker, IO, SyncIO}
 import cats.effect.concurrent.Semaphore
-import cats.implicits._
+import cats.syntax.all._
 import org.scalacheck.Gen
 import org.scalacheck.Prop.forAll
 import org.scalacheck.effect.PropF.forAllF
@@ -312,29 +333,28 @@ class StreamCombinatorsSuite extends Fs2Suite {
       val n = 5
 
       (Semaphore[IO](n), SignallingRef[IO, Int](0)).tupled
-        .flatMap {
-          case (sem, sig) =>
-            val tested = s
-              .covary[IO]
-              .evalFilterAsync(n) { _ =>
-                val ensureAcquired =
-                  sem.tryAcquire.ifM(
-                    IO.unit,
-                    IO.raiseError(new Throwable("Couldn't acquire permit"))
-                  )
+        .flatMap { case (sem, sig) =>
+          val tested = s
+            .covary[IO]
+            .evalFilterAsync(n) { _ =>
+              val ensureAcquired =
+                sem.tryAcquire.ifM(
+                  IO.unit,
+                  IO.raiseError(new Throwable("Couldn't acquire permit"))
+                )
 
-                ensureAcquired.bracket(_ =>
-                  sig.update(_ + 1).bracket(_ => IO.sleep(10.millis))(_ => sig.update(_ - 1))
-                )(_ => sem.release) *>
-                  IO.pure(true)
-              }
+              ensureAcquired.bracket(_ =>
+                sig.update(_ + 1).bracket(_ => IO.sleep(10.millis))(_ => sig.update(_ - 1))
+              )(_ => sem.release) *>
+                IO.pure(true)
+            }
 
-            sig.discrete
-              .interruptWhen(tested.drain.covaryOutput[Boolean])
-              .fold1(_.max(_))
-              .compile
-              .lastOrError
-              .product(sig.get)
+          sig.discrete
+            .interruptWhen(tested.drain.covaryOutput[Boolean])
+            .fold1(_.max(_))
+            .compile
+            .lastOrError
+            .product(sig.get)
         }
         .map(it => assert(it == ((n, 0))))
     }
@@ -400,29 +420,28 @@ class StreamCombinatorsSuite extends Fs2Suite {
       val n = 5
 
       (Semaphore[IO](n), SignallingRef[IO, Int](0)).tupled
-        .flatMap {
-          case (sem, sig) =>
-            val tested = s
-              .covary[IO]
-              .evalFilterNotAsync(n) { _ =>
-                val ensureAcquired =
-                  sem.tryAcquire.ifM(
-                    IO.unit,
-                    IO.raiseError(new Throwable("Couldn't acquire permit"))
-                  )
+        .flatMap { case (sem, sig) =>
+          val tested = s
+            .covary[IO]
+            .evalFilterNotAsync(n) { _ =>
+              val ensureAcquired =
+                sem.tryAcquire.ifM(
+                  IO.unit,
+                  IO.raiseError(new Throwable("Couldn't acquire permit"))
+                )
 
-                ensureAcquired.bracket(_ =>
-                  sig.update(_ + 1).bracket(_ => IO.sleep(10.millis))(_ => sig.update(_ - 1))
-                )(_ => sem.release) *>
-                  IO.pure(false)
-              }
+              ensureAcquired.bracket(_ =>
+                sig.update(_ + 1).bracket(_ => IO.sleep(10.millis))(_ => sig.update(_ - 1))
+              )(_ => sem.release) *>
+                IO.pure(false)
+            }
 
-            sig.discrete
-              .interruptWhen(tested.drain.covaryOutput[Boolean])
-              .fold1(_.max(_))
-              .compile
-              .lastOrError
-              .product(sig.get)
+          sig.discrete
+            .interruptWhen(tested.drain.covaryOutput[Boolean])
+            .fold1(_.max(_))
+            .compile
+            .lastOrError
+            .product(sig.get)
         }
         .map(it => assert(it == ((n, 0))))
     }
@@ -630,23 +649,53 @@ class StreamCombinatorsSuite extends Fs2Suite {
     }
   }
 
-  test("fromIterator") {
-    forAllF { (x: List[Int]) =>
-      Stream
-        .fromIterator[IO](x.iterator)
-        .compile
-        .toList
-        .map(it => assert(it == x))
+  group("fromIterator") {
+    test("single") {
+      forAllF { (x: List[Int]) =>
+        Stream
+          .fromIterator[IO](x.iterator)
+          .compile
+          .toList
+          .map(it => assert(it == x))
+      }
+    }
+
+    test("chunked") {
+      forAllF { (x: List[Int], cs: Int) =>
+        val chunkSize = (cs % 4096).abs + 1
+        Stream
+          .fromIterator[IO](x.iterator, chunkSize)
+          .compile
+          .toList
+          .map(it => assert(it == x))
+      }
     }
   }
 
-  test("fromBlockingIterator") {
-    forAllF { (x: List[Int]) =>
-      Stream
-        .fromBlockingIterator[IO](Blocker.liftExecutionContext(munitExecutionContext), x.iterator)
-        .compile
-        .toList
-        .map(it => assert(it == x))
+  group("fromBlockingIterator") {
+    test("single") {
+      forAllF { (x: List[Int]) =>
+        Stream
+          .fromBlockingIterator[IO](Blocker.liftExecutionContext(munitExecutionContext), x.iterator)
+          .compile
+          .toList
+          .map(it => assert(it == x))
+      }
+    }
+
+    test("chunked") {
+      forAllF { (x: List[Int], cs: Int) =>
+        val chunkSize = (cs % 4096).abs + 1
+        Stream
+          .fromBlockingIterator[IO](
+            Blocker.liftExecutionContext(munitExecutionContext),
+            x.iterator,
+            chunkSize
+          )
+          .compile
+          .toList
+          .map(it => assert(it == x))
+      }
     }
   }
 
@@ -935,9 +984,8 @@ class StreamCombinatorsSuite extends Fs2Suite {
 
   test("random") {
     val x = Stream.random[SyncIO].take(100).compile.toList
-    (x, x).tupled.map {
-      case (first, second) =>
-        assert(first != second)
+    (x, x).tupled.map { case (first, second) =>
+      assert(first != second)
     }
   }
 
@@ -985,8 +1033,8 @@ class StreamCombinatorsSuite extends Fs2Suite {
       forAll { (s: Stream[Pure, Int], seed: Long) =>
         val c = s.chunks.toVector
         if (c.nonEmpty) {
-          val (min, max) = c.tail.foldLeft(c.head.size -> c.head.size) {
-            case ((min, max), c) => Math.min(min, c.size) -> Math.max(max, c.size)
+          val (min, max) = c.tail.foldLeft(c.head.size -> c.head.size) { case ((min, max), c) =>
+            Math.min(min, c.size) -> Math.max(max, c.size)
           }
           val (minChunkSize, maxChunkSize) = (min * 0.1, max * 2.0)
           // Last element is dropped as it may not fulfill size constraint
@@ -1108,6 +1156,16 @@ class StreamCombinatorsSuite extends Fs2Suite {
     }
   }
 
+  property("scan1Semigroup") {
+    forAll { (s: Stream[Pure, Int]) =>
+      val v = s.toVector
+      val f = (a: Int, b: Int) => a + b
+      s.scan1Semigroup.toVector == v.headOption.fold(Vector.empty[Int])(h =>
+        v.drop(1).scanLeft(h)(f)
+      )
+    }
+  }
+
   test("sleep") {
     val delay = 200.millis
     // force a sync up in duration, then measure how long sleep takes
@@ -1188,9 +1246,8 @@ class StreamCombinatorsSuite extends Fs2Suite {
   test("unfold") {
     assert(
       Stream
-        .unfold((0, 1)) {
-          case (f1, f2) =>
-            if (f1 <= 13) Some(((f1, f2), (f2, f1 + f2))) else None
+        .unfold((0, 1)) { case (f1, f2) =>
+          if (f1 <= 13) Some(((f1, f2), (f2, f1 + f2))) else None
         }
         .map(_._1)
         .toList == List(0, 1, 1, 2, 3, 5, 8, 13)
