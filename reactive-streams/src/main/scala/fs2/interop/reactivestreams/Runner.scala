@@ -17,4 +17,12 @@ private[interop] class Runner[F[_]: ConcurrentEffect] {
       case Left(e)  => IO(reportFailure(e))
       case Right(_) => IO.unit
     }.unsafeRunSync
+
+  def unsafeRunSync[A](fa: F[A]): Unit = {
+    val io = ConcurrentEffect[F].toIO(fa)
+    io.attempt.unsafeRunSync match {
+      case Left(failure) => reportFailure(failure)
+      case _             =>
+    }
+  }
 }

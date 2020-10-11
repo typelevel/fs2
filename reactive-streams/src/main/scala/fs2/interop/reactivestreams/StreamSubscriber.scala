@@ -21,22 +21,22 @@ final class StreamSubscriber[F[_]: ConcurrentEffect, A](val sub: StreamSubscribe
   /** Called by an upstream reactivestreams system */
   def onSubscribe(s: Subscription): Unit = {
     nonNull(s)
-    sub.onSubscribe(s).unsafeRunAsync(runner)
+    sub.onSubscribe(s).unsafeRunSync(runner)
   }
 
   /** Called by an upstream reactivestreams system */
   def onNext(a: A): Unit = {
     nonNull(a)
-    sub.onNext(a).unsafeRunAsync(runner)
+    sub.onNext(a).unsafeRunSync(runner)
   }
 
   /** Called by an upstream reactivestreams system */
-  def onComplete(): Unit = sub.onComplete.unsafeRunAsync(runner)
+  def onComplete(): Unit = sub.onComplete.unsafeRunSync(runner)
 
   /** Called by an upstream reactivestreams system */
   def onError(t: Throwable): Unit = {
     nonNull(t)
-    sub.onError(t).unsafeRunAsync(runner)
+    sub.onError(t).unsafeRunSync(runner)
   }
 
   /** Obtain a fs2.Stream */

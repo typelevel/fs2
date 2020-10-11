@@ -16,14 +16,17 @@ class SubscriberStabilitySpec extends Fs2Suite {
 
     class TestRunner[F[_]: ConcurrentEffect: Timer](impl: Runner[F]) extends Runner[F] {
       private val rnd = new scala.util.Random()
-      override def unsafeRunAsync[A](fa: F[A]): Unit = {
-        val randomDelay =
-          for {
-            ms <- Sync[F].delay(rnd.nextInt(50))
-            _ <- Timer[F].sleep(ms.millis)
-          } yield ()
+
+      private val randomDelay: F[Unit] =
+        for {
+          ms <- Sync[F].delay(rnd.nextInt(50))
+          _ <- Timer[F].sleep(ms.millis)
+        } yield ()
+
+      override def unsafeRunAsync[A](fa: F[A]): Unit =
         impl.unsafeRunAsync(randomDelay *> fa)
-      }
+      override def unsafeRunSync[A](fa: F[A]): Unit =
+        impl.unsafeRunSync(randomDelay *> fa)
     }
 
     val testRunner: Runner[IO] = new TestRunner[IO](realRunner)

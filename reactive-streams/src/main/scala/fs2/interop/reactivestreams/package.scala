@@ -59,5 +59,7 @@ package object reactivestreams {
   private[interop] implicit class RunnerSyntax[F[_]: ConcurrentEffect, A](fa: F[A]) {
     def unsafeRunAsync(runner: Runner[F]): Unit = 
       runner.unsafeRunAsync(fa)
+    def unsafeRunSync(runner: Runner[F]): Unit = 
+      runner.unsafeRunSync(fa)
   }
 }
