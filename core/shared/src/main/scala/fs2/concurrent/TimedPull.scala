@@ -103,6 +103,32 @@ object tp {
 
   // TODO both old and new impl probably have a corner case with timing out on the first chunk
   // think about that
+  // Actually it doesn't affect only the first chunk, but every time there has been a timeout
+  // but no chunks currently emitted (empty acc)
+
+  // so let's say we have groupWithin(10, 1.second). A stream emits 10
+  // elems, so groupWithin emits those and restarts go, with an empty
+  // Chunk queue. Then the stream sleeps 1 second, groupWithin hits the
+  // timeout, emits nothing, and resets the timer. The stream sleep 200
+  // mills, and emits 3 elems. In the current implementation, that
+  // something is not emitted, because the timer has been resetted (and
+  // is not at 800 mills). But from the persective of the returned
+  // Stream, we have been waiting for an element for 1.2 seconds, and
+  // even though 3 elems have been emitted by the original stream, those
+  // are not emitted in the result
+  //
+  //  A simpler case of this problem would be a timeout before the first
+  // chunk of the stream arrives: again say the stream sleeps 1.2 seconds
+  // on then emits 3 elems, the current implementation will wait another
+  // 800 millis before emitting those 3, whereas arguably they should be
+  // emitted immediately
+  //
+  // a solution would be to go in another recursive state, has timed out,
+  // which emits the next chunk as soon as it arrives, and resets the timer then.
+  // the question is what to do if the chunk which arrives after the limit is bigger
+  // than the size: do we emit all of it (after splitting), or do we accumulate the remainder
+  // for the next chunk?
+
   def groupWithin[O](s: Stream[IO, O], n: Int, t: FiniteDuration) =
     TimedPull.go[IO, O, Chunk[O]] { tp =>
       def emitNonEmpty(c: Chunk.Queue[O]): Pull[IO, Chunk[O], Unit] =
