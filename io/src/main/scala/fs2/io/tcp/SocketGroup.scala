@@ -69,9 +69,10 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup) {
       keepAlive: Boolean = false,
       noDelay: Boolean = false,
       additionalSocketOptions: List[SocketOptionMapping[_]] = List.empty
-  )(implicit F: Async[F]): Resource[F, Socket[F]] = {
+  )(implicit F: Network[F]): Resource[F, Socket[F]] = {
+    import F.async
     def setup: F[AsynchronousSocketChannel] =
-      F.blocking {
+      F.async.blocking {
         val ch =
           AsynchronousChannelProvider.provider().openAsynchronousSocketChannel(channelGroup)
         ch.setOption[java.lang.Boolean](StandardSocketOptions.SO_REUSEADDR, reuseAddress)
@@ -86,7 +87,7 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup) {
       }
 
     def connect(ch: AsynchronousSocketChannel): F[AsynchronousSocketChannel] =
-      F.async_[AsynchronousSocketChannel] { cb =>
+      F.async.async_[AsynchronousSocketChannel] { cb =>
         ch.connect(
           to,
           null,
@@ -127,7 +128,7 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup) {
       reuseAddress: Boolean = true,
       receiveBufferSize: Int = 256 * 1024,
       additionalSocketOptions: List[SocketOptionMapping[_]] = List.empty
-  )(implicit F: Async[F]): Stream[F, Resource[F, Socket[F]]] =
+  )(implicit F: Network[F]): Stream[F, Resource[F, Socket[F]]] =
     Stream
       .resource(
         serverResource(
@@ -148,9 +149,10 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup) {
       reuseAddress: Boolean = true,
       receiveBufferSize: Int = 256 * 1024,
       additionalSocketOptions: List[SocketOptionMapping[_]] = List.empty
-  )(implicit F: Async[F]): Resource[F, (InetSocketAddress, Stream[F, Resource[F, Socket[F]]])] = {
+  )(implicit F: Network[F]): Resource[F, (InetSocketAddress, Stream[F, Resource[F, Socket[F]]])] = {
+    import F.async
 
-    val setup: F[AsynchronousServerSocketChannel] = F.blocking {
+    val setup: F[AsynchronousServerSocketChannel] = F.async.blocking {
       val ch = AsynchronousChannelProvider
         .provider()
         .openAsynchronousServerSocketChannel(channelGroup)
@@ -164,12 +166,12 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup) {
     }
 
     def cleanup(sch: AsynchronousServerSocketChannel): F[Unit] =
-      F.blocking(if (sch.isOpen) sch.close())
+      F.async.blocking(if (sch.isOpen) sch.close())
 
     def acceptIncoming(sch: AsynchronousServerSocketChannel): Stream[F, Resource[F, Socket[F]]] = {
       def go: Stream[F, Resource[F, Socket[F]]] = {
         def acceptChannel: F[AsynchronousSocketChannel] =
-          F.async_[AsynchronousSocketChannel] { cb =>
+          F.async.async_[AsynchronousSocketChannel] { cb =>
             sch.accept(
               null,
               new CompletionHandler[AsynchronousSocketChannel, Void] {
@@ -189,7 +191,7 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup) {
 
       go.handleErrorWith {
         case err: AsynchronousCloseException =>
-          Stream.eval(F.blocking(sch.isOpen)).flatMap { isOpen =>
+          Stream.eval(F.async.blocking(sch.isOpen)).flatMap { isOpen =>
             if (isOpen) Stream.raiseError[F](err)
             else Stream.empty
           }
@@ -205,14 +207,15 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup) {
 
   private def apply[F[_]](
       ch: AsynchronousSocketChannel
-  )(implicit F: Async[F]): Resource[F, Socket[F]] = {
+  )(implicit F: Network[F]): Resource[F, Socket[F]] = {
+    import F.async
     val socket = (Semaphore[F](1), Semaphore[F](1), Ref[F].of(ByteBuffer.allocate(0))).mapN {
       (readSemaphore, writeSemaphore, bufferRef) =>
         // Reads data to remaining capacity of supplied ByteBuffer
         // Also measures time the read took returning this as tuple
         // of (bytes_read, read_duration)
         def readChunk(buff: ByteBuffer, timeoutMs: Long): F[(Int, Long)] =
-          F.async_[(Int, Long)] { cb =>
+          F.async.async_[(Int, Long)] { cb =>
             val started = System.currentTimeMillis()
             ch.read(
               buff,
@@ -236,9 +239,9 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup) {
         def getBufferOf(sz: Int): F[ByteBuffer] =
           bufferRef.get.flatMap { buff =>
             if (buff.capacity() < sz)
-              F.delay(ByteBuffer.allocate(sz)).flatTap(bufferRef.set)
+              F.async.delay(ByteBuffer.allocate(sz)).flatTap(bufferRef.set)
             else
-              F.delay {
+              F.async.delay {
                 (buff: Buffer).clear()
                 (buff: Buffer).limit(sz)
                 buff
@@ -248,7 +251,7 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup) {
         // When the read operation is done, this will read up to buffer's position bytes from the buffer
         // this expects the buffer's position to be at bytes read + 1
         def releaseBuffer(buff: ByteBuffer): F[Chunk[Byte]] =
-          F.delay {
+          F.async.delay {
             val read = buff.position()
             val result =
               if (read == 0) Chunk.bytes(Array.empty)
@@ -266,7 +269,7 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup) {
           readSemaphore.withPermit {
             getBufferOf(max).flatMap { buff =>
               readChunk(buff, timeout.map(_.toMillis).getOrElse(0L)).flatMap { case (read, _) =>
-                if (read < 0) F.pure(None)
+                if (read < 0) F.async.pure(None)
                 else releaseBuffer(buff).map(Some(_))
               }
             }
@@ -289,29 +292,31 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup) {
 
         def write0(bytes: Chunk[Byte], timeout: Option[FiniteDuration]): F[Unit] = {
           def go(buff: ByteBuffer, remains: Long): F[Unit] =
-            F.async_[Option[Long]] { cb =>
-              val start = System.currentTimeMillis()
-              ch.write(
-                buff,
-                remains,
-                TimeUnit.MILLISECONDS,
-                (),
-                new CompletionHandler[Integer, Unit] {
-                  def completed(result: Integer, attachment: Unit): Unit =
-                    cb(
-                      Right(
-                        if (buff.remaining() <= 0) None
-                        else Some(System.currentTimeMillis() - start)
+            F.async
+              .async_[Option[Long]] { cb =>
+                val start = System.currentTimeMillis()
+                ch.write(
+                  buff,
+                  remains,
+                  TimeUnit.MILLISECONDS,
+                  (),
+                  new CompletionHandler[Integer, Unit] {
+                    def completed(result: Integer, attachment: Unit): Unit =
+                      cb(
+                        Right(
+                          if (buff.remaining() <= 0) None
+                          else Some(System.currentTimeMillis() - start)
+                        )
                       )
-                    )
-                  def failed(err: Throwable, attachment: Unit): Unit =
-                    cb(Left(err))
-                }
-              )
-            }.flatMap {
-              case None       => F.unit
-              case Some(took) => go(buff, (remains - took).max(0))
-            }
+                    def failed(err: Throwable, attachment: Unit): Unit =
+                      cb(Left(err))
+                  }
+                )
+              }
+              .flatMap {
+                case None       => F.async.unit
+                case Some(took) => go(buff, (remains - took).max(0))
+              }
           writeSemaphore.withPermit {
             go(bytes.toByteBuffer, timeout.map(_.toMillis).getOrElse(0L))
           }
@@ -338,22 +343,22 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup) {
             _.chunks.foreach(write(_, timeout))
 
           def localAddress: F[SocketAddress] =
-            F.blocking(ch.getLocalAddress)
+            F.async.blocking(ch.getLocalAddress)
           def remoteAddress: F[SocketAddress] =
-            F.blocking(ch.getRemoteAddress)
-          def isOpen: F[Boolean] = F.blocking(ch.isOpen)
-          def close: F[Unit] = F.blocking(ch.close())
+            F.async.blocking(ch.getRemoteAddress)
+          def isOpen: F[Boolean] = F.async.blocking(ch.isOpen)
+          def close: F[Unit] = F.async.blocking(ch.close())
           def endOfOutput: F[Unit] =
-            F.blocking {
+            F.async.blocking {
               ch.shutdownOutput(); ()
             }
           def endOfInput: F[Unit] =
-            F.blocking {
+            F.async.blocking {
               ch.shutdownInput(); ()
             }
         }
     }
-    Resource.make(socket)(_ => F.blocking(if (ch.isOpen) ch.close else ()).attempt.void)
+    Resource.make(socket)(_ => F.async.blocking(if (ch.isOpen) ch.close else ()).attempt.void)
   }
 }
 
