@@ -31,8 +31,7 @@ import cats.syntax.all._
 
 import org.reactivestreams._
 
-/**
-  * Implementation of a `org.reactivestreams.Subscriber`.
+/** Implementation of a `org.reactivestreams.Subscriber`.
   *
   * This is used to obtain a `fs2.Stream` from an upstream reactivestreams system.
   *

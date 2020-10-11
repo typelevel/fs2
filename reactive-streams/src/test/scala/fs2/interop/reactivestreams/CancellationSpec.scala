@@ -28,8 +28,7 @@ import cats.effect._
 
 import java.util.concurrent.atomic.AtomicBoolean
 
-/**
-  * This behaviour is already tested by the Reactive Stream test
+/** This behaviour is already tested by the Reactive Stream test
   * suite, but it's proven difficult to enforce, so we add our own
   * tests that run the assertions multiple times to make possible
   * failures due to race conditions more repeatable

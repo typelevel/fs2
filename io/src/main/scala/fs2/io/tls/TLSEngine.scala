@@ -32,8 +32,7 @@ import cats.effect.{Async, Sync}
 import cats.effect.std.Semaphore
 import cats.syntax.all._
 
-/**
-  * Provides the ability to establish and communicate over a TLS session.
+/** Provides the ability to establish and communicate over a TLS session.
   *
   * This is a functional wrapper of the JDK `SSLEngine`.
   */
@@ -179,8 +178,7 @@ private[tls] object TLSEngine {
       private def dequeueUnwrap(maxBytes: Int): F[Option[Chunk[Byte]]] =
         unwrapBuffer.output(maxBytes).map(out => if (out.isEmpty) None else Some(out))
 
-      /**
-        * Determines what to do next given the result of a handshake operation.
+      /** Determines what to do next given the result of a handshake operation.
         * Must be called with `handshakeSem`.
         */
       private def stepHandshake(

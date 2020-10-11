@@ -44,14 +44,12 @@ import cats.effect.std.Semaphore
 
 import fs2.internal.ThreadFactories
 
-/**
-  * Resource that provides the ability to open client and server TCP sockets that all share
+/** Resource that provides the ability to open client and server TCP sockets that all share
   * an underlying non-blocking channel group.
   */
 final class SocketGroup(channelGroup: AsynchronousChannelGroup) {
 
-  /**
-    * Opens a connection to the specified server represented as a [[Socket]].
+  /** Opens a connection to the specified server represented as a [[Socket]].
     * The connection is closed when the resource is released.
     *
     * @param to                   address of remote server
@@ -103,8 +101,7 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup) {
     Resource.liftF(setup.flatMap(connect)).flatMap(apply(_))
   }
 
-  /**
-    * Stream that binds to the specified address and provides a connection for,
+  /** Stream that binds to the specified address and provides a connection for,
     * represented as a [[Socket]], for each client that connects to the bound address.
     *
     * Returns a stream of stream of sockets.
@@ -140,8 +137,7 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup) {
       )
       .flatMap { case (_, clients) => clients }
 
-  /**
-    * Like [[server]] but provides the `InetSocketAddress` of the bound server socket before providing accepted sockets.
+  /** Like [[server]] but provides the `InetSocketAddress` of the bound server socket before providing accepted sockets.
     * The inner stream emits one socket for each client that connects to the server.
     */
   def serverResource[F[_]](
@@ -364,8 +360,7 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup) {
 
 object SocketGroup {
 
-  /**
-    * Creates a `SocketGroup`.
+  /** Creates a `SocketGroup`.
     *
     * The supplied `blocker` is used for networking calls other than
     * reads/writes. All reads and writes are performed on a non-blocking thread pool

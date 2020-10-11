@@ -44,8 +44,7 @@ import cats.effect.{Resource, Sync}
 
 import CollectionCompat._
 
-/**
-  * Supports read/write operations on an arbitrary number of UDP sockets using a shared selector thread.
+/** Supports read/write operations on an arbitrary number of UDP sockets using a shared selector thread.
   *
   * Each `AsynchronousSocketGroup` is assigned a single daemon thread that performs all read/write operations.
   */

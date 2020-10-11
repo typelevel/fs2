@@ -34,14 +34,12 @@ import scala.collection.immutable.{Queue => ScalaQueue}
 
 private[fs2] trait Publish[F[_], A] {
 
-  /**
-    * Publishes one element.
+  /** Publishes one element.
     * This completes after element was successfully published.
     */
   def publish(a: A): F[Unit]
 
-  /**
-    * Tries to publish one element.
+  /** Tries to publish one element.
     *
     * Evaluates to `false` if element was not published.
     * Evaluates to `true` if element was published successfully.
@@ -51,15 +49,13 @@ private[fs2] trait Publish[F[_], A] {
 
 private[fs2] trait Subscribe[F[_], A, Selector] {
 
-  /**
-    * Gets elements satisfying the `selector`, yielding when such an element is available.
+  /** Gets elements satisfying the `selector`, yielding when such an element is available.
     *
     * @param selector selector describing which `A` to receive
     */
   def get(selector: Selector): F[A]
 
-  /**
-    * A variant of `get`, that instead of returning one element will return multiple elements
+  /** A variant of `get`, that instead of returning one element will return multiple elements
     * in form of stream.
     *
     * @param selector selector describing which `A` to receive
@@ -67,23 +63,20 @@ private[fs2] trait Subscribe[F[_], A, Selector] {
     */
   def getStream(selector: Selector): Stream[F, A]
 
-  /**
-    * Like `get`, but instead of semantically blocking for a matching element, returns immediately
+  /** Like `get`, but instead of semantically blocking for a matching element, returns immediately
     * with `None` if such an element is not available.
     *
     * @param selector selector describing which `A` to receive
     */
   def tryGet(selector: Selector): F[Option[A]]
 
-  /**
-    * Creates a subscription for the supplied selector.
+  /** Creates a subscription for the supplied selector.
     * If the subscription is not supported or not successful, this yields to false.
     * @param selector selector describing which `A` to receive
     */
   def subscribe(selector: Selector): F[Boolean]
 
-  /**
-    * Cancels a subscription previously registered with [[subscribe]].
+  /** Cancels a subscription previously registered with [[subscribe]].
     * Must be invoked if the subscriber will no longer consume elements.
     *
     * @param selector selector to unsubscribe
@@ -327,8 +320,7 @@ private[fs2] object PubSub {
       }
   }
 
-  /**
-    * Describes a the behavior of a `PubSub`.
+  /** Describes a the behavior of a `PubSub`.
     *
     * @tparam I the type of element that may be published
     * @tparam O the type of element that may be subscribed for
@@ -340,8 +332,7 @@ private[fs2] object PubSub {
     /** Initial state of this strategy. * */
     def initial: S
 
-    /**
-      * Verifies if `I` can be accepted.
+    /** Verifies if `I` can be accepted.
       *
       * If this yields to true, then the pubsub can accept this element, and interpreter is free to invoke `publish`.
       * If this yields to false, then interpreter holds the publisher, until there is at least one  `get`
@@ -351,8 +342,7 @@ private[fs2] object PubSub {
       */
     def accepts(i: I, state: S): Boolean
 
-    /**
-      * Publishes `I`. This must always succeed.
+    /** Publishes `I`. This must always succeed.
       *
       * Interpreter must only invoke this when `accepts` yields to true.
       *
@@ -360,8 +350,7 @@ private[fs2] object PubSub {
       */
     def publish(i: I, state: S): S
 
-    /**
-      * Gets `O`, selected by `selector`.
+    /** Gets `O`, selected by `selector`.
       *
       * Yields to `None`, if subscriber cannot be satisfied, causing the subscriber to hold, until next successful `publish`
       * Yields to `Some((s,o))` if the subscriber may be satisfied.
@@ -371,13 +360,11 @@ private[fs2] object PubSub {
       */
     def get(selector: Selector, state: S): (S, Option[O])
 
-    /**
-      * Yields to true if there are no elements to `get`.
+    /** Yields to true if there are no elements to `get`.
       */
     def empty(state: S): Boolean
 
-    /**
-      * Consulted by interpreter to subscribe the given selector.
+    /** Consulted by interpreter to subscribe the given selector.
       * A subscriptions manages context/state across multiple `get` requests.
       * Yields to false if the subscription cannot be satisfied.
       *
@@ -385,8 +372,7 @@ private[fs2] object PubSub {
       */
     def subscribe(selector: Selector, state: S): (S, Boolean)
 
-    /**
-      * When strategy supports long-term subscriptions, this is used by interpreter
+    /** When strategy supports long-term subscriptions, this is used by interpreter
       * to cancel a previous subscription, indicating the subscriber is no longer interested
       * in getting more data.
       *
@@ -416,8 +402,7 @@ private[fs2] object PubSub {
 
   object Strategy {
 
-    /**
-      * Creates bounded strategy, that won't accept elements if size produced by `f` is >= `maxSize`.
+    /** Creates bounded strategy, that won't accept elements if size produced by `f` is >= `maxSize`.
       *
       * @param maxSize maximum size of enqueued `A` before this is full
       * @param f function to extract current size of `S`
@@ -447,8 +432,7 @@ private[fs2] object PubSub {
           strategy.unsubscribe(selector, state)
       }
 
-    /**
-      * Adapts a strategy to one that supports closing.
+    /** Adapts a strategy to one that supports closing.
       *
       * Closeable PubSub are closed by publishing `None` instead of Some(a).
       * The close takes precedence over any elements.
@@ -495,8 +479,7 @@ private[fs2] object PubSub {
           state.map(s => strategy.unsubscribe(selector, s))
       }
 
-    /**
-      * Like [[closeNow]] but instead of terminating immediately,
+    /** Like [[closeNow]] but instead of terminating immediately,
       * the pubsub will terminate when all elements are consumed.
       *
       * When the PubSub is closed, but not all elements yet consumed,
@@ -548,8 +531,7 @@ private[fs2] object PubSub {
 
     object Discrete {
 
-      /**
-        * State of the discrete strategy.
+      /** State of the discrete strategy.
         *
         * Allows consumption of `A` values that may arrive out of order,
         * however signals the discrete values in order, as they have been received.
@@ -567,8 +549,7 @@ private[fs2] object PubSub {
           seen: Set[Token]
       )
 
-      /**
-        * Strategy providing possibility for a discrete `get` in correct order.
+      /** Strategy providing possibility for a discrete `get` in correct order.
         *
         * Elements incoming as tuples of their timestamp and value. Also, each publish contains
         * timestamp of previous value, that should be replaced by new value.
@@ -629,8 +610,7 @@ private[fs2] object PubSub {
 
     object Inspectable {
 
-      /**
-        * State representation for inspectable strategy that
+      /** State representation for inspectable strategy that
         * keeps track of strategy state and keeps track of all subscribers that have seen the last known state.
         *
         * @param qs           State of the strategy to be inspected
@@ -641,8 +621,7 @@ private[fs2] object PubSub {
           inspected: Set[Token]
       )
 
-      /**
-        * Allows to enhance the supplied strategy by ability to inspect the state.
+      /** Allows to enhance the supplied strategy by ability to inspect the state.
         * If the `S` is same as previous state (by applying the supplied `Eq` then
         * `get` will not be signalled, if invoked with `Left(Some(token))` - subscription based
         * subscriber.

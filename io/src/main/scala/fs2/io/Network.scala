@@ -24,8 +24,7 @@ package io
 
 import cats.effect.Async
 
-/**
-  * Provides the ability to work with TCP, UDP, and TLS.
+/** Provides the ability to work with TCP, UDP, and TLS.
   *
   * @example {{{
   * import fs2.Stream

@@ -27,8 +27,7 @@ import cats.effect.{Concurrent, Resource}
 import cats.effect.kernel.Ref
 import cats.effect.implicits._
 
-/**
-  * Supports treating a linear sequence of resources as a single resource.
+/** Supports treating a linear sequence of resources as a single resource.
   *
   * A `Hotswap[F, R]` instance is created as a `Resource` and hence, has
   * a lifetime that is scoped by the `Resource`. After creation, a `Resource[F, R]`
@@ -68,8 +67,7 @@ import cats.effect.implicits._
   */
 sealed trait Hotswap[F[_], R] {
 
-  /**
-    * Allocates a new resource, closes the last one if present, and
+  /** Allocates a new resource, closes the last one if present, and
     * returns the newly allocated `R`.
     *
     * If there are no further calls to `swap`, the resource created by
@@ -88,8 +86,7 @@ sealed trait Hotswap[F[_], R] {
     */
   def swap(next: Resource[F, R]): F[R]
 
-  /**
-    * Runs the finalizer of the current resource, if any, and restores
+  /** Runs the finalizer of the current resource, if any, and restores
     * this `Hotswap` to its initial state.
     *
     * Like `swap`, you need to ensure that no code is using the old `R` when
@@ -101,8 +98,7 @@ sealed trait Hotswap[F[_], R] {
 
 object Hotswap {
 
-  /**
-    * Creates a new `Hotswap` initialized with the specified resource.
+  /** Creates a new `Hotswap` initialized with the specified resource.
     * The `Hotswap` instance and the initial resource are returned.
     */
   def apply[F[_]: Concurrent, R](
@@ -110,8 +106,7 @@ object Hotswap {
   ): Resource[F, (Hotswap[F, R], R)] =
     create[F, R].evalMap(p => p.swap(initial).map(r => (p, r)))
 
-  /**
-    * Creates a new `Hotswap`, which represents a `Resource`
+  /** Creates a new `Hotswap`, which represents a `Resource`
     * that can be swapped during the lifetime of this `Hotswap`.
     */
   def create[F[_]: Concurrent, R]: Resource[F, Hotswap[F, R]] = {

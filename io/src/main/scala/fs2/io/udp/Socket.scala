@@ -27,23 +27,20 @@ import scala.concurrent.duration.FiniteDuration
 
 import java.net.{InetAddress, InetSocketAddress, NetworkInterface}
 
-/**
-  * Provides the ability to read/write from a UDP socket in the effect `F`.
+/** Provides the ability to read/write from a UDP socket in the effect `F`.
   *
   * To construct a `Socket`, use the methods in the [[fs2.io.udp]] package object.
   */
 trait Socket[F[_]] {
 
-  /**
-    * Reads a single packet from this udp socket.
+  /** Reads a single packet from this udp socket.
     *
     * If `timeout` is specified, then resulting `F` will fail with `java.nio.channels.InterruptedByTimeoutException`
     * if read was not satisfied in given timeout.
     */
   def read(timeout: Option[FiniteDuration] = None): F[Packet]
 
-  /**
-    * Reads packets received from this udp socket.
+  /** Reads packets received from this udp socket.
     *
     * Note that multiple `reads` may execute at same time, causing each evaluation to receive fair
     * amount of messages.
@@ -55,8 +52,7 @@ trait Socket[F[_]] {
     */
   def reads(timeout: Option[FiniteDuration] = None): Stream[F, Packet]
 
-  /**
-    * Write a single packet to this udp socket.
+  /** Write a single packet to this udp socket.
     *
     * If `timeout` is specified, then resulting `F` will fail with `java.nio.channels.InterruptedByTimeoutException`
     * if write was not completed in given timeout.
@@ -65,8 +61,7 @@ trait Socket[F[_]] {
     */
   def write(packet: Packet, timeout: Option[FiniteDuration] = None): F[Unit]
 
-  /**
-    * Writes supplied packets to this udp socket.
+  /** Writes supplied packets to this udp socket.
     *
     * If `timeout` is specified, then resulting pipe will fail with `java.nio.channels.InterruptedByTimeoutException`
     * if a write was not completed in given timeout.
@@ -79,16 +74,14 @@ trait Socket[F[_]] {
   /** Closes this socket. */
   def close: F[Unit]
 
-  /**
-    * Joins a multicast group on a specific network interface.
+  /** Joins a multicast group on a specific network interface.
     *
     * @param group address of group to join
     * @param interface network interface upon which to listen for datagrams
     */
   def join(group: InetAddress, interface: NetworkInterface): F[AnySourceGroupMembership]
 
-  /**
-    * Joins a source specific multicast group on a specific network interface.
+  /** Joins a source specific multicast group on a specific network interface.
     *
     * @param group address of group to join
     * @param interface network interface upon which to listen for datagrams

@@ -41,8 +41,7 @@ final class SocketGroup(
     asg: AsynchronousSocketGroup
 ) {
 
-  /**
-    * Provides a UDP Socket that, when run, will bind to the specified address.
+  /** Provides a UDP Socket that, when run, will bind to the specified address.
     *
     * @param address              address to bind to; defaults to an ephemeral port on all interfaces
     * @param reuseAddress         whether address has to be reused (see `java.net.StandardSocketOptions.SO_REUSEADDR`)

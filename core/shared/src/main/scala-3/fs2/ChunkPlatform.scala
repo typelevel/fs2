@@ -58,8 +58,7 @@ private[fs2] trait ChunkCompanionPlatform { self: Chunk.type =>
       case _                        => None
     }
 
-  /**
-    * Creates a chunk backed by an immutable `ArraySeq`.
+  /** Creates a chunk backed by an immutable `ArraySeq`.
     */
   def arraySeq[O](arraySeq: immutable.ArraySeq[O]): Chunk[O] =
     array(arraySeq.unsafeArray.asInstanceOf[Array[O]])

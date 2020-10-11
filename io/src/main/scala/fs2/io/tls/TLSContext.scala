@@ -46,13 +46,11 @@ import fs2.io.tcp.Socket
 import fs2.io.udp.Packet
 import java.util.function.BiFunction
 
-/**
-  * Allows creation of [[TLSSocket]]s.
+/** Allows creation of [[TLSSocket]]s.
   */
 sealed trait TLSContext {
 
-  /**
-    * Creates a `TLSSocket` in client mode, using the supplied parameters.
+  /** Creates a `TLSSocket` in client mode, using the supplied parameters.
     * Internal debug logging of the session can be enabled by passing a logger.
     */
   def client[F[_]](
@@ -61,8 +59,7 @@ sealed trait TLSContext {
       logger: Option[String => F[Unit]] = None
   )(implicit F: Network[F]): Resource[F, TLSSocket[F]]
 
-  /**
-    * Creates a `TLSSocket` in server mode, using the supplied parameters.
+  /** Creates a `TLSSocket` in server mode, using the supplied parameters.
     * Internal debug logging of the session can be enabled by passing a logger.
     */
   def server[F[_]](
@@ -71,8 +68,7 @@ sealed trait TLSContext {
       logger: Option[String => F[Unit]] = None
   )(implicit F: Network[F]): Resource[F, TLSSocket[F]]
 
-  /**
-    * Creates a `DTLSSocket` in client mode, using the supplied parameters.
+  /** Creates a `DTLSSocket` in client mode, using the supplied parameters.
     * Internal debug logging of the session can be enabled by passing a logger.
     */
   def dtlsClient[F[_]](
@@ -82,8 +78,7 @@ sealed trait TLSContext {
       logger: Option[String => F[Unit]] = None
   )(implicit F: Network[F]): Resource[F, DTLSSocket[F]]
 
-  /**
-    * Creates a `DTLSSocket` in server mode, using the supplied parameters.
+  /** Creates a `DTLSSocket` in server mode, using the supplied parameters.
     * Internal debug logging of the session can be enabled by passing a logger.
     */
   def dtlsServer[F[_]](

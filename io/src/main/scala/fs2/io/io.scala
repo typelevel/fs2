@@ -31,14 +31,12 @@ import cats.syntax.all._
 import java.io.{InputStream, OutputStream, PipedInputStream, PipedOutputStream}
 import java.nio.charset.Charset
 
-/**
-  * Provides various ways to work with streams that perform IO.
+/** Provides various ways to work with streams that perform IO.
   */
 package object io {
   private val utf8Charset = Charset.forName("UTF-8")
 
-  /**
-    * Reads all bytes from the specified `InputStream` with a buffer size of `chunkSize`.
+  /** Reads all bytes from the specified `InputStream` with a buffer size of `chunkSize`.
     * Set `closeAfterUse` to false if the `InputStream` should not be closed after use.
     */
   def readInputStream[F[_]](
@@ -52,8 +50,7 @@ package object io {
       closeAfterUse
     )
 
-  /**
-    * Reads all bytes from the specified `InputStream` with a buffer size of `chunkSize`.
+  /** Reads all bytes from the specified `InputStream` with a buffer size of `chunkSize`.
     * Set `closeAfterUse` to false if the `InputStream` should not be closed after use.
     *
     * Recycles an underlying input buffer for performance. It is safe to call
@@ -100,8 +97,7 @@ package object io {
       Stream.eval(fis).flatMap(useIs)
   }
 
-  /**
-    * Writes all bytes to the specified `OutputStream`. Set `closeAfterUse` to false if
+  /** Writes all bytes to the specified `OutputStream`. Set `closeAfterUse` to false if
     * the `OutputStream` should not be closed after use.
     *
     * Each write operation is performed on the supplied execution context. Writes are
@@ -121,8 +117,7 @@ package object io {
       os.flatMap(os => useOs(os) ++ Stream.exec(F.blocking(os.flush())))
     }
 
-  /**
-    * Take a function that emits to an [[java.io.OutputStream OutputStream]] effectfully,
+  /** Take a function that emits to an [[java.io.OutputStream OutputStream]] effectfully,
     * and return a stream which, when run, will perform that function and emit
     * the bytes recorded in the OutputStream as an fs2.Stream
     *
@@ -185,8 +180,7 @@ package object io {
   def stdout[F[_]: Sync]: Pipe[F, Byte, INothing] =
     writeOutputStream(Sync[F].blocking(System.out), false)
 
-  /**
-    * Writes this stream to standard output asynchronously, converting each element to
+  /** Writes this stream to standard output asynchronously, converting each element to
     * a sequence of bytes via `Show` and the given `Charset`.
     *
     * Each write operation is performed on the supplied execution context. Writes are
@@ -201,8 +195,7 @@ package object io {
   def stdinUtf8[F[_]: Sync](bufSize: Int): Stream[F, String] =
     stdin(bufSize).through(text.utf8Decode)
 
-  /**
-    * Pipe that converts a stream of bytes to a stream that will emit a single `java.io.InputStream`,
+  /** Pipe that converts a stream of bytes to a stream that will emit a single `java.io.InputStream`,
     * that is closed whenever the resulting stream terminates.
     *
     * If the `close` of resulting input stream is invoked manually, then this will await until the
@@ -217,8 +210,7 @@ package object io {
   def toInputStream[F[_]: Async: UnsafeRun]: Pipe[F, Byte, InputStream] =
     source => Stream.resource(toInputStreamResource(source))
 
-  /**
-    * Like [[toInputStream]] but returns a `Resource` rather than a single element stream.
+  /** Like [[toInputStream]] but returns a `Resource` rather than a single element stream.
     */
   def toInputStreamResource[F[_]: Async: UnsafeRun](
       source: Stream[F, Byte]

@@ -33,8 +33,7 @@ import fs2.internal._
 
 import Pull._
 
-/**
-  * A `p: Pull[F,O,R]` reads values from one or more streams, returns a
+/** A `p: Pull[F,O,R]` reads values from one or more streams, returns a
   * result of type `R`, and produces a `Stream[F,O]` when calling `p.stream`.
   *
   * Any resources acquired by `p` are freed following the call to `stream`.
@@ -68,8 +67,7 @@ sealed abstract class Pull[+F[_], +O, +R] {
   def attempt: Pull[F, O, Either[Throwable, R]] =
     map(r => Right(r)).handleErrorWith(t => Result.Succeeded(Left(t)))
 
-  /**
-    * Interpret this `Pull` to produce a `Stream`, introducing a scope.
+  /** Interpret this `Pull` to produce a `Stream`, introducing a scope.
     *
     * May only be called on pulls which return a `Unit` result type. Use `p.void.stream` to explicitly
     * ignore the result type of the pull.
@@ -79,8 +77,7 @@ sealed abstract class Pull[+F[_], +O, +R] {
     new Stream(Pull.scope(this.asInstanceOf[Pull[F, O, Unit]]))
   }
 
-  /**
-    * Interpret this `Pull` to produce a `Stream` without introducing a scope.
+  /** Interpret this `Pull` to produce a `Stream` without introducing a scope.
     *
     * Only use this if you know a scope is not needed. Scope introduction is generally harmless and the risk
     * of not introducing a scope is a memory leak in streams that otherwise would execute in constant memory.
@@ -176,8 +173,7 @@ object Pull extends PullLowPriority {
       release: (R, Resource.ExitCase) => F[Unit]
   ): Pull[F, INothing, R] = Acquire(resource, release)
 
-  /**
-    * Like [[eval]] but if the effectful value fails, the exception is returned in a `Left`
+  /** Like [[eval]] but if the effectful value fails, the exception is returned in a `Left`
     * instead of failing the pull.
     */
   def attemptEval[F[_], R](fr: F[R]): Pull[F, INothing, Either[Throwable, R]] =
@@ -220,8 +216,7 @@ object Pull extends PullLowPriority {
   def eval[F[_], R](fr: F[R]): Pull[F, INothing, R] =
     Eval[F, R](fr)
 
-  /**
-    * Extends the scope of the currently open resources to the specified stream, preventing them
+  /** Extends the scope of the currently open resources to the specified stream, preventing them
     * from being finalized until after `s` completes execution, even if the returned pull is converted
     * to a stream, compiled, and evaluated before `s` is compiled and evaluated.
     */
@@ -233,8 +228,7 @@ object Pull extends PullLowPriority {
       lease <- Pull.eval(scope.leaseOrError)
     } yield s.onFinalize(lease.cancel.redeemWith(F.raiseError(_), _ => F.unit))
 
-  /**
-    * Repeatedly uses the output of the pull as input for the next step of the pull.
+  /** Repeatedly uses the output of the pull as input for the next step of the pull.
     * Halts when a step terminates with `None` or `Pull.raiseError`.
     */
   def loop[F[_], O, R](f: R => Pull[F, O, Option[R]]): R => Pull[F, O, Option[R]] =
@@ -251,8 +245,7 @@ object Pull extends PullLowPriority {
   def pure[F[x] >: Pure[x], R](r: R): Pull[F, INothing, R] =
     Result.Succeeded(r)
 
-  /**
-    * Reads and outputs nothing, and fails with the given error.
+  /** Reads and outputs nothing, and fails with the given error.
     *
     * The `F` type must be explicitly provided (e.g., via `raiseError[IO]` or `raiseError[Fallible]`).
     */
@@ -267,8 +260,7 @@ object Pull extends PullLowPriority {
       either.fold(raiseError[F], output1)
   }
 
-  /**
-    * Lifts an Either[Throwable, A] to an effectful Pull[F, A, Unit].
+  /** Lifts an Either[Throwable, A] to an effectful Pull[F, A, Unit].
     *
     * @example {{{
     * scala> import cats.effect.SyncIO, scala.util.Try
@@ -280,14 +272,12 @@ object Pull extends PullLowPriority {
     */
   def fromEither[F[x]] = new PartiallyAppliedFromEither[F]
 
-  /**
-    * Gets the current scope, allowing manual leasing or interruption.
+  /** Gets the current scope, allowing manual leasing or interruption.
     * This is a low-level method and generally should not be used by user code.
     */
   def getScope[F[_]]: Pull[F, INothing, Scope[F]] = GetScope[F]()
 
-  /**
-    * Returns a pull that evaluates the supplied by-name each time the pull is used,
+  /** Returns a pull that evaluates the supplied by-name each time the pull is used,
     * allowing use of a mutable value in pull computations.
     */
   def suspend[F[x] >: Pure[x], O, R](p: => Pull[F, O, R]): Pull[F, O, R] =
@@ -299,8 +289,7 @@ object Pull extends PullLowPriority {
   implicit def syncInstance[F[_]: Sync, O]: Sync[Pull[F, O, *]] =
     new PullSyncInstance[F, O]
 
-  /**
-    * `FunctionK` instance for `F ~> Pull[F, INothing, *]`
+  /** `FunctionK` instance for `F ~> Pull[F, INothing, *]`
     *
     * @example {{{
     * scala> import cats.Id
@@ -359,8 +348,7 @@ object Pull extends PullLowPriority {
       override def map[R](f: INothing => R): Result[R] = this
     }
 
-    /**
-      * Signals that Pull evaluation was interrupted.
+    /** Signals that Pull evaluation was interrupted.
       *
       * @param context Any user specific context that needs to be captured during interruption
       *                for eventual resume of the operation.
@@ -391,8 +379,7 @@ object Pull extends PullLowPriority {
       }
   }
 
-  /**
-    * Unrolled view of a `Pull` structure. may be `Result` or `EvalBind`
+  /** Unrolled view of a `Pull` structure. may be `Result` or `EvalBind`
     */
   private sealed trait ViewL[+F[_], +O, +R]
 
@@ -454,8 +441,7 @@ object Pull extends PullLowPriority {
       }
   }
 
-  /**
-    * Steps through the stream, providing either `uncons` or `stepLeg`.
+  /** Steps through the stream, providing either `uncons` or `stepLeg`.
     * Yields to head in form of chunk, then id of the scope that was active after step evaluated and tail of the `stream`.
     *
     * @param stream             Stream to step
@@ -503,15 +489,13 @@ object Pull extends PullLowPriority {
       }
     }
 
-  /**
-    * Wraps supplied pull in new scope, that will be opened before this pull is evaluated
+  /** Wraps supplied pull in new scope, that will be opened before this pull is evaluated
     * and closed once this pull either finishes its evaluation or when it fails.
     */
   private[fs2] def scope[F[_], O](s: Pull[F, O, Unit]): Pull[F, O, Unit] =
     scope0(s, None)
 
-  /**
-    * Like `scope` but allows this scope to be interrupted.
+  /** Like `scope` but allows this scope to be interrupted.
     * Note that this may fail with `Interrupted` when interruption occurred
     */
   private[fs2] def interruptScope[F[_], O](
@@ -788,8 +772,7 @@ object Pull extends PullLowPriority {
         go(0)
     }
 
-  /**
-    * Inject interruption to the tail used in flatMap.
+  /** Inject interruption to the tail used in flatMap.
     * Assures that close of the scope is invoked if at the flatMap tail, otherwise switches evaluation to `interrupted` path
     *
     * @param stream             tail to inject interruption into

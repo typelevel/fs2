@@ -31,22 +31,19 @@ import fs2.internal.{SizedQueue, Token}
 /** Provides the ability to enqueue elements to a `Queue`. */
 trait Enqueue[F[_], A] {
 
-  /**
-    * Enqueues one element to this `Queue`.
+  /** Enqueues one element to this `Queue`.
     * If the queue is `full` this waits until queue has space.
     *
     * This completes after `a`  has been successfully enqueued to this `Queue`
     */
   def enqueue1(a: A): F[Unit]
 
-  /**
-    * Enqueues each element of the input stream to this queue by
+  /** Enqueues each element of the input stream to this queue by
     * calling `enqueue1` on each element. Emits a unit for each element enqueued.
     */
   def enqueue: Pipe[F, A, Unit] = _.evalMap(enqueue1)
 
-  /**
-    * Offers one element to this `Queue`.
+  /** Offers one element to this `Queue`.
     *
     * Evaluates to `false` if the queue is full, indicating the `a` was not queued up.
     * Evaluates to `true` if the `a` was queued up successfully.
@@ -62,8 +59,7 @@ trait Dequeue1[F[_], A] {
   /** Dequeues one `A` from this queue. Completes once one is ready. */
   def dequeue1: F[A]
 
-  /**
-    * Tries to dequeue a single element. Unlike `dequeue1`, this method does not semantically
+  /** Tries to dequeue a single element. Unlike `dequeue1`, this method does not semantically
     * block until a chunk is available - instead, `None` is returned immediately.
     */
   def tryDequeue1: F[Option[A]]
@@ -75,8 +71,7 @@ trait DequeueChunk1[F[_], G[_], A] {
   /** Dequeues one `Chunk[A]` with no more than `maxSize` elements. Completes once one is ready. */
   def dequeueChunk1(maxSize: Int): F[G[Chunk[A]]]
 
-  /**
-    * Tries to dequeue a single chunk of no more than `max size` elements.
+  /** Tries to dequeue a single chunk of no more than `max size` elements.
     * Unlike `dequeueChunk1`, this method does not semantically block until a chunk is available -
     * instead, `None` is returned immediately.
     */
@@ -93,15 +88,13 @@ trait Dequeue[F[_], A] {
   /** Dequeues elements from the queue, ensuring elements are dequeued in chunks not exceeding `maxSize`. */
   def dequeueChunk(maxSize: Int): Stream[F, A]
 
-  /**
-    * Provides a pipe that converts a stream of batch sizes in to a stream of elements by dequeuing
+  /** Provides a pipe that converts a stream of batch sizes in to a stream of elements by dequeuing
     * batches of the specified size.
     */
   def dequeueBatch: Pipe[F, Int, A]
 }
 
-/**
-  * A queue of elements. Operations are all nonblocking in their
+/** A queue of elements. Operations are all nonblocking in their
   * implementations, but may be 'semantically' blocking. For instance,
   * a queue may have a bound on its size, in which case enqueuing may
   * block (be delayed asynchronously) until there is an offsetting dequeue.
@@ -112,8 +105,7 @@ trait Queue[F[_], A]
     with DequeueChunk1[F, Id, A]
     with Dequeue[F, A] { self =>
 
-  /**
-    * Returns an alternate view of this `Queue` where its elements are of type `B`,
+  /** Returns an alternate view of this `Queue` where its elements are of type `B`,
     * given two functions, `A => B` and `B => A`.
     */
   def imap[B](f: A => B)(g: B => A)(implicit F: Functor[F]): Queue[F, B] =
@@ -130,8 +122,7 @@ trait Queue[F[_], A]
     }
 }
 
-/**
-  * Like [[Queue]], but allows allows signalling of no further enqueues by enqueueing `None`.
+/** Like [[Queue]], but allows allows signalling of no further enqueues by enqueueing `None`.
   * Optimizes dequeue to minimum possible boxing.
   */
 trait NoneTerminatedQueue[F[_], A]
@@ -140,8 +131,7 @@ trait NoneTerminatedQueue[F[_], A]
     with DequeueChunk1[F, Option, A]
     with Dequeue[F, A] { self =>
 
-  /**
-    * Returns an alternate view of this `NoneTerminatedQueue` where its elements are of type `B`,
+  /** Returns an alternate view of this `NoneTerminatedQueue` where its elements are of type `B`,
     * given two functions, `A => B` and `B => A`.
     */
   def imap[B](f: A => B)(g: B => A)(implicit F: Functor[F]): NoneTerminatedQueue[F, B] =
@@ -306,8 +296,7 @@ object Queue {
     /** Unbounded fifo strategy. */
     def fifo[A]: PubSub.Strategy[A, Chunk[A], SizedQueue[A], Int] = unbounded(_ :+ _)
 
-    /**
-      * Strategy that allows at most a single element to be published.
+    /** Strategy that allows at most a single element to be published.
       * Before the `A` is published successfully, at least one subscriber must be ready to consume.
       */
     def synchronous[A]: PubSub.Strategy[A, Chunk[A], (Boolean, Option[A]), Int] =
@@ -342,8 +331,7 @@ object Queue {
           queueState
       }
 
-    /**
-      * Creates unbounded queue strategy for `A` with configurable append function.
+    /** Creates unbounded queue strategy for `A` with configurable append function.
       *
       * @param append function used to append new elements to the queue
       */
@@ -387,15 +375,13 @@ object Queue {
 /** Extension of [[Queue]] that allows peeking and inspection of the current size. */
 trait InspectableQueue[F[_], A] extends Queue[F, A] {
 
-  /**
-    * Returns the element which would be dequeued next,
+  /** Returns the element which would be dequeued next,
     * but without removing it. Completes when such an
     * element is available.
     */
   def peek1: F[A]
 
-  /**
-    * The time-varying size of this `Queue`.
+  /** The time-varying size of this `Queue`.
     * Emits elements describing the current size of the queue.
     * Offsetting enqueues and de-queues may not result in refreshes.
     *

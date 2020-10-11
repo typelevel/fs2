@@ -32,8 +32,7 @@ import fs2.internal.Token
 /** Pure holder of a single value of type `A` that can be read in the effect `F`. */
 trait Signal[F[_], A] {
 
-  /**
-    * Returns a stream of the updates to this signal.
+  /** Returns a stream of the updates to this signal.
     *
     * Updates that are very close together may result in only the last update appearing
     * in the stream. If you want to be notified about every single update, use
@@ -41,14 +40,12 @@ trait Signal[F[_], A] {
     */
   def discrete: Stream[F, A]
 
-  /**
-    * Returns a stream of the current value of the signal. An element is always
+  /** Returns a stream of the current value of the signal. An element is always
     * available -- on each pull, the current value is supplied.
     */
   def continuous: Stream[F, A]
 
-  /**
-    * Asynchronously gets the current value of this `Signal`.
+  /** Asynchronously gets the current value of this `Signal`.
     */
   def get: F[A]
 }
@@ -70,8 +67,7 @@ object Signal extends SignalInstances {
 
   implicit class SignalOps[F[_], A](val self: Signal[F, A]) extends AnyVal {
 
-    /**
-      * Converts this signal to signal of `B` by applying `f`.
+    /** Converts this signal to signal of `B` by applying `f`.
       */
     def map[B](f: A => B)(implicit F: Functor[F]): Signal[F, B] =
       Signal.mapped(self)(f)
@@ -85,8 +81,7 @@ object Signal extends SignalInstances {
   }
 }
 
-/**
-  * Pure holder of a single value of type `A` that can be both read
+/** Pure holder of a single value of type `A` that can be both read
   * and updated in the effect `F`.
   *
   * The update methods have the same semantics as Ref, as well as
@@ -105,8 +100,7 @@ object SignallingRef {
   def apply[F[_]: Concurrent, A](initial: A): F[SignallingRef[F, A]] =
     of(initial)
 
-  /**
-    * Builds a `SignallingRef` for for effect `F`, initialized to the supplied value.
+  /** Builds a `SignallingRef` for for effect `F`, initialized to the supplied value.
     */
   def of[F[_], A](initial: A)(implicit F: Concurrent[F]): F[SignallingRef[F, A]] = {
     case class State(value: A, lastUpdate: Long, listeners: Map[Token, Deferred[F, (A, Long)]])
@@ -270,8 +264,7 @@ private[concurrent] trait SignalInstances extends SignalLowPriorityInstances {
 
 private[concurrent] trait SignalLowPriorityInstances {
 
-  /**
-    * Note that this is not subsumed by [[Signal.applicativeInstance]] because
+  /** Note that this is not subsumed by [[Signal.applicativeInstance]] because
     * [[Signal.applicativeInstance]] requires a `Concurrent[F]`
     * since it non-deterministically zips elements together while our
     * `Functor` instance has no other constraints.

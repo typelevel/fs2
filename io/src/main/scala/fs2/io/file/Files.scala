@@ -36,8 +36,7 @@ import java.util.stream.{Stream => JStream}
 
 import fs2.io.CollectionCompat._
 
-/**
-  * Provides basic capabilities related to working with files.
+/** Provides basic capabilities related to working with files.
   *
   * Normally, the [[Files]] capability should be used instead, which extends this trait
   * with a few additional operations. `SyncFiles[F]` provides operations that only
@@ -46,58 +45,48 @@ import fs2.io.CollectionCompat._
   */
 sealed trait SyncFiles[F[_]] {
 
-  /**
-    * Copies a file from the source to the target path,
+  /** Copies a file from the source to the target path,
     *
     * By default, the copy fails if the target file already exists or is a symbolic link.
     */
   def copy(source: Path, target: Path, flags: Seq[CopyOption] = Seq.empty): F[Path]
 
-  /**
-    * Creates a new directory at the given path.
+  /** Creates a new directory at the given path.
     */
   def createDirectory(path: Path, flags: Seq[FileAttribute[_]] = Seq.empty): F[Path]
 
-  /**
-    * Creates a new directory at the given path and creates all nonexistent parent directories beforehand.
+  /** Creates a new directory at the given path and creates all nonexistent parent directories beforehand.
     */
   def createDirectories(path: Path, flags: Seq[FileAttribute[_]] = Seq.empty): F[Path]
 
-  /**
-    * Deletes a file.
+  /** Deletes a file.
     *
     * If the file is a directory then the directory must be empty for this action to succeed.
     * This action will fail if the path doesn't exist.
     */
   def delete(path: Path): F[Unit]
 
-  /**
-    * Like `delete`, but will not fail when the path doesn't exist.
+  /** Like `delete`, but will not fail when the path doesn't exist.
     */
   def deleteIfExists(path: Path): F[Boolean]
 
-  /**
-    * Recursively delete a directory
+  /** Recursively delete a directory
     */
   def deleteDirectoryRecursively(path: Path, options: Set[FileVisitOption] = Set.empty): F[Unit]
 
-  /**
-    * Creates a stream of [[Path]]s inside a directory.
+  /** Creates a stream of [[Path]]s inside a directory.
     */
   def directoryStream(path: Path): Stream[F, Path]
 
-  /**
-    * Creates a stream of [[Path]]s inside a directory, filtering the results by the given predicate.
+  /** Creates a stream of [[Path]]s inside a directory, filtering the results by the given predicate.
     */
   def directoryStream(path: Path, filter: Path => Boolean): Stream[F, Path]
 
-  /**
-    * Creates a stream of [[Path]]s inside a directory which match the given glob.
+  /** Creates a stream of [[Path]]s inside a directory which match the given glob.
     */
   def directoryStream(path: Path, glob: String): Stream[F, Path]
 
-  /**
-    * Checks if a file exists.
+  /** Checks if a file exists.
     *
     * Note that the result of this method is immediately outdated. If this
     * method indicates the file exists then there is no guarantee that a
@@ -106,8 +95,7 @@ sealed trait SyncFiles[F[_]] {
     */
   def exists(path: Path, flags: Seq[LinkOption] = Seq.empty): F[Boolean]
 
-  /**
-    * Moves (or renames) a file from the source to the target path.
+  /** Moves (or renames) a file from the source to the target path.
     *
     * By default, the move fails if the target file already exists or is a symbolic link.
     */
@@ -119,44 +107,37 @@ sealed trait SyncFiles[F[_]] {
   /** Creates a `FileHandle` for the supplied `FileChannel`. */
   def openFileChannel(channel: F[FileChannel]): Resource[F, FileHandle[F]]
 
-  /**
-    * Get file permissions as set of [[PosixFilePermission]].
+  /** Get file permissions as set of [[PosixFilePermission]].
     *
     * Note: this will only work for POSIX supporting file systems.
     */
   def permissions(path: Path, flags: Seq[LinkOption] = Seq.empty): F[Set[PosixFilePermission]]
 
-  /**
-    * Reads all data from the file at the specified `java.nio.file.Path`.
+  /** Reads all data from the file at the specified `java.nio.file.Path`.
     */
   def readAll(path: Path, chunkSize: Int): Stream[F, Byte]
 
-  /**
-    * Returns a `ReadCursor` for the specified path. The `READ` option is added to the supplied flags.
+  /** Returns a `ReadCursor` for the specified path. The `READ` option is added to the supplied flags.
     */
   def readCursor(path: Path, flags: Seq[OpenOption] = Nil): Resource[F, ReadCursor[F]]
 
-  /**
-    * Reads a range of data synchronously from the file at the specified `java.nio.file.Path`.
+  /** Reads a range of data synchronously from the file at the specified `java.nio.file.Path`.
     * `start` is inclusive, `end` is exclusive, so when `start` is 0 and `end` is 2,
     * two bytes are read.
     */
   def readRange(path: Path, chunkSize: Int, start: Long, end: Long): Stream[F, Byte]
 
-  /**
-    * Set file permissions from set of [[PosixFilePermission]].
+  /** Set file permissions from set of [[PosixFilePermission]].
     *
     * Note: this will only work for POSIX supporting file systems.
     */
   def setPermissions(path: Path, permissions: Set[PosixFilePermission]): F[Path]
 
-  /**
-    * Returns the size of a file (in bytes).
+  /** Returns the size of a file (in bytes).
     */
   def size(path: Path): F[Long]
 
-  /**
-    * Creates a resource containing the path of a temporary file.
+  /** Creates a resource containing the path of a temporary file.
     *
     * The temporary file is removed during the resource release.
     */
@@ -167,8 +148,7 @@ sealed trait SyncFiles[F[_]] {
       attributes: Seq[FileAttribute[_]] = Seq.empty
   ): Resource[F, Path]
 
-  /**
-    * Creates a resource containing the path of a temporary directory.
+  /** Creates a resource containing the path of a temporary directory.
     *
     * The temporary directory is removed during the resource release.
     */
@@ -178,23 +158,19 @@ sealed trait SyncFiles[F[_]] {
       attributes: Seq[FileAttribute[_]] = Seq.empty
   ): Resource[F, Path]
 
-  /**
-    * Creates a stream of [[Path]]s contained in a given file tree. Depth is unlimited.
+  /** Creates a stream of [[Path]]s contained in a given file tree. Depth is unlimited.
     */
   def walk(start: Path): Stream[F, Path]
 
-  /**
-    * Creates a stream of [[Path]]s contained in a given file tree, respecting the supplied options. Depth is unlimited.
+  /** Creates a stream of [[Path]]s contained in a given file tree, respecting the supplied options. Depth is unlimited.
     */
   def walk(start: Path, options: Seq[FileVisitOption]): Stream[F, Path]
 
-  /**
-    * Creates a stream of [[Path]]s contained in a given file tree down to a given depth.
+  /** Creates a stream of [[Path]]s contained in a given file tree down to a given depth.
     */
   def walk(start: Path, maxDepth: Int, options: Seq[FileVisitOption] = Seq.empty): Stream[F, Path]
 
-  /**
-    * Writes all data to the file at the specified `java.nio.file.Path`.
+  /** Writes all data to the file at the specified `java.nio.file.Path`.
     *
     * Adds the WRITE flag to any other `OpenOption` flags specified. By default, also adds the CREATE flag.
     */
@@ -203,8 +179,7 @@ sealed trait SyncFiles[F[_]] {
       flags: Seq[StandardOpenOption] = List(StandardOpenOption.CREATE)
   ): Pipe[F, Byte, INothing]
 
-  /**
-    * Returns a `WriteCursor` for the specified path.
+  /** Returns a `WriteCursor` for the specified path.
     *
     * The `WRITE` option is added to the supplied flags. If the `APPEND` option is present in `flags`,
     * the offset is initialized to the current size of the file.
@@ -214,8 +189,7 @@ sealed trait SyncFiles[F[_]] {
       flags: Seq[OpenOption] = List(StandardOpenOption.CREATE)
   ): Resource[F, WriteCursor[F]]
 
-  /**
-    * Returns a `WriteCursor` for the specified file handle.
+  /** Returns a `WriteCursor` for the specified file handle.
     *
     * If `append` is true, the offset is initialized to the current size of the file.
     */
@@ -395,15 +369,13 @@ object SyncFiles {
   }
 }
 
-/**
-  * Provides operations related to working with files in the effect `F`.
+/** Provides operations related to working with files in the effect `F`.
   *
   * An instance is available for any effect `F` which has an `Async[F]` instance.
   */
 trait Files[F[_]] extends SyncFiles[F] {
 
-  /**
-    * Returns an infinite stream of data from the file at the specified path.
+  /** Returns an infinite stream of data from the file at the specified path.
     * Starts reading from the specified offset and upon reaching the end of the file,
     * polls every `pollDuration` for additional updates to the file.
     *
@@ -419,16 +391,14 @@ trait Files[F[_]] extends SyncFiles[F] {
       pollDelay: FiniteDuration = 1.second
   ): Stream[F, Byte]
 
-  /**
-    * Creates a [[Watcher]] for the default file system.
+  /** Creates a [[Watcher]] for the default file system.
     *
     * The watcher is returned as a resource. To use the watcher, lift the resource to a stream,
     * watch or register 1 or more paths, and then return `watcher.events()`.
     */
   def watcher: Resource[F, Watcher[F]]
 
-  /**
-    * Watches a single path.
+  /** Watches a single path.
     *
     * Alias for creating a watcher and watching the supplied path, releasing the watcher when the resulting stream is finalized.
     */
@@ -439,8 +409,7 @@ trait Files[F[_]] extends SyncFiles[F] {
       pollTimeout: FiniteDuration = 1.second
   ): Stream[F, Watcher.Event]
 
-  /**
-    * Writes all data to a sequence of files, each limited in size to `limit`.
+  /** Writes all data to a sequence of files, each limited in size to `limit`.
     *
     * The `computePath` operation is used to compute the path of the first file
     * and every subsequent file. Typically, the next file should be determined
