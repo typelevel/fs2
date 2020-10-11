@@ -101,6 +101,8 @@ object tp {
     }
   }
 
+  // TODO both old and new impl probably have a corner case with timing out on the first chunk
+  // think about that
   def groupWithin[O](s: Stream[IO, O], n: Int, t: FiniteDuration) =
     TimedPull.go[IO, O, Chunk[O]] { tp =>
       def emitNonEmpty(c: Chunk.Queue[O]): Pull[IO, Chunk[O], Unit] =
@@ -111,7 +113,6 @@ object tp {
         if (c.size < n) s -> c
         else {
           val (unit, rest) = c.splitAt(n)
-          // TODO use Chunq.queue here instead of aggregating via emission?
           resize(rest, s >> Pull.output1(unit))
         }
 

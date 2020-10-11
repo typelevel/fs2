@@ -706,8 +706,6 @@ class StreamCombinatorsSuite extends Fs2Suite {
   }
 
   group("groupWithin") {
-    // TODO more tests:
-    // test a couple of simple timeout cases
     test("should never lose any elements") {
       forAllF { (s0: Stream[Pure, Int], d0: Int, maxGroupSize0: Int) =>
         val maxGroupSize = (maxGroupSize0 % 20).abs + 1
