@@ -33,8 +33,10 @@ import org.reactivestreams._
   *
   * @see [[https://github.com/reactive-streams/reactive-streams-jvm#1-publisher-code]]
   */
-final class StreamUnicastPublisher[F[_]: ConcurrentEffect, A](val stream: Stream[F, A], runner: Runner[F])
-    extends Publisher[A] {
+final class StreamUnicastPublisher[F[_]: ConcurrentEffect, A](
+    val stream: Stream[F, A],
+    runner: Runner[F]
+) extends Publisher[A] {
   def subscribe(subscriber: Subscriber[_ >: A]): Unit = {
     nonNull(subscriber)
     StreamSubscription(subscriber, stream, runner)
@@ -51,6 +53,9 @@ final class StreamUnicastPublisher[F[_]: ConcurrentEffect, A](val stream: Stream
 }
 
 object StreamUnicastPublisher {
-  def apply[F[_]: ConcurrentEffect, A](s: Stream[F, A], runner: Runner[F]): StreamUnicastPublisher[F, A] =
+  def apply[F[_]: ConcurrentEffect, A](
+      s: Stream[F, A],
+      runner: Runner[F]
+  ): StreamUnicastPublisher[F, A] =
     new StreamUnicastPublisher(s, runner)
 }
