@@ -30,7 +30,7 @@ import cats.syntax.all._
 
 object tp {
 
-  // test case for stale timeout
+  //TODO test case for stale timeout
   // source stream: wait 100millis then emit chunk than `never`
   // timed pull body:, start time 100 millis (to race with source) then, recursively
   // if left, record that

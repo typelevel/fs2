@@ -777,6 +777,38 @@ class StreamCombinatorsSuite extends Fs2Suite {
           .map(it => assert(it.head.toList == streamAsList))
       }
     }
+
+    test("accumulation and splitting") {
+      val t = 200.millis
+      val size = 5
+      val sleep = Stream.sleep_[IO](2 * t)
+
+      def chunk(from: Int, size: Int) =
+        Stream.range(from, from + size).chunkAll.flatMap(Stream.chunk)
+
+      // this test example is designed to have good coverage of
+      // the chunk manipulation logic in groupWithin
+      val source =
+        chunk(from = 1, size = 3) ++
+        sleep ++
+        chunk(from = 4, size = 12) ++
+        chunk(from = 16 , size = 7)
+
+      val expected = List(
+        List(1, 2, 3),
+        List(4, 5, 6, 7, 8),
+        List(9, 10, 11, 12, 13),
+        List(14, 15, 16, 17, 18),
+        List(19, 20, 21, 22)
+      )
+
+      source
+        .groupWithin(size, t)
+        .map(_.toList)
+        .compile
+        .toList
+        .map(it => assertEquals(it, expected))
+    }
   }
 
   property("head")(forAll((s: Stream[Pure, Int]) => assert(s.head.toList == s.toList.take(1))))
