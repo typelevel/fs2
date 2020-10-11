@@ -1,11 +1,31 @@
+/*
+ * Copyright (c) 2013 Functional Streams for Scala
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of
+ * this software and associated documentation files (the "Software"), to deal in
+ * the Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+ * the Software, and to permit persons to whom the Software is furnished to do so,
+ * subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+ * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+ * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+ * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+
 package fs2.internal
 
 import cats.effect.{ExitCase, Sync}
 import cats.effect.concurrent.Ref
 import fs2.Scope
 
-/**
-  * Represents a resource acquired during stream interpretation.
+/** Represents a resource acquired during stream interpretation.
   *
   * A resource is acquired by `Algebra.Acquire` and then released by `Algebra.CloseScope`.
   *
@@ -37,13 +57,11 @@ import fs2.Scope
   */
 private[fs2] sealed abstract class ScopedResource[F[_]] {
 
-  /**
-    * Id of the resource
+  /** Id of the resource
     */
   def id: Token
 
-  /**
-    * Depending on resource state this will either release resource, or when resource was not yet fully
+  /** Depending on resource state this will either release resource, or when resource was not yet fully
     * acquired, this will schedule releasing of the resource at earliest opportunity, that is when:
     *
     * (a) The resource finished its acquisition
@@ -56,8 +74,7 @@ private[fs2] sealed abstract class ScopedResource[F[_]] {
     */
   def release(ec: ExitCase[Throwable]): F[Either[Throwable, Unit]]
 
-  /**
-    * Signals that resource was successfully acquired.
+  /** Signals that resource was successfully acquired.
     *
     * If the resource was closed before being acquired, then supplied finalizer is run.
     * That may result in finalizer eventually failing.
@@ -70,8 +87,7 @@ private[fs2] sealed abstract class ScopedResource[F[_]] {
     */
   def acquired(finalizer: ExitCase[Throwable] => F[Unit]): F[Either[Throwable, Boolean]]
 
-  /**
-    * Signals that this resource was leased by another scope than one allocating this resource.
+  /** Signals that this resource was leased by another scope than one allocating this resource.
     *
     * Yields to `Some(lease)`, if this resource was successfully leased, and scope must bind `lease.cancel` it when not needed anymore.
     * or to `None` when this resource cannot be leased because resource is already released.
@@ -81,8 +97,7 @@ private[fs2] sealed abstract class ScopedResource[F[_]] {
 
 private[internal] object ScopedResource {
 
-  /**
-    * State of the resource.
+  /** State of the resource.
     *
     * @param open       resource is open. At this state resource is either awating its acquisition
     *                   by invoking the `acquired` or is used by Stream.
@@ -122,10 +137,10 @@ private[internal] object ScopedResource {
 
       def acquired(finalizer: ExitCase[Throwable] => F[Unit]): F[Either[Throwable, Boolean]] =
         F.flatten(state.modify { s =>
-          if (s.isFinished)
+          if (s.isFinished) {
             // state is closed and there are no leases, finalizer has to be invoked right away
             s -> F.attempt(F.as(finalizer(ExitCase.Completed), false))
-          else {
+          } else {
             val attemptFinalizer = (ec: ExitCase[Throwable]) => F.attempt(finalizer(ec))
             // either state is open, or leases are present, either release or `Lease#cancel` will run the finalizer
             s.copy(finalizer = Some(attemptFinalizer)) -> F.pure(Right(true))

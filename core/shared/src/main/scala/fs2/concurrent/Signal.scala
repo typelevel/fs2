@@ -1,3 +1,24 @@
+/*
+ * Copyright (c) 2013 Functional Streams for Scala
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of
+ * this software and associated documentation files (the "Software"), to deal in
+ * the Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+ * the Software, and to permit persons to whom the Software is furnished to do so,
+ * subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+ * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+ * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+ * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+
 package fs2
 package concurrent
 
@@ -5,14 +26,13 @@ import cats.{Applicative, Functor, Invariant}
 import cats.data.{OptionT, State}
 import cats.effect.{Async, Concurrent, Sync}
 import cats.effect.concurrent.{Deferred, Ref}
-import cats.implicits._
+import cats.syntax.all._
 import fs2.internal.Token
 
 /** Pure holder of a single value of type `A` that can be read in the effect `F`. */
 trait Signal[F[_], A] {
 
-  /**
-    * Returns a stream of the updates to this signal.
+  /** Returns a stream of the updates to this signal.
     *
     * Updates that are very close together may result in only the last update appearing
     * in the stream. If you want to be notified about every single update, use
@@ -20,14 +40,12 @@ trait Signal[F[_], A] {
     */
   def discrete: Stream[F, A]
 
-  /**
-    * Returns a stream of the current value of the signal. An element is always
+  /** Returns a stream of the current value of the signal. An element is always
     * available -- on each pull, the current value is supplied.
     */
   def continuous: Stream[F, A]
 
-  /**
-    * Asynchronously gets the current value of this `Signal`.
+  /** Asynchronously gets the current value of this `Signal`.
     */
   def get: F[A]
 }
@@ -75,12 +93,11 @@ object Signal extends SignalLowPriorityImplicits {
       }
     } yield ()
     firstPull.value.void.stream
-      .flatMap {
-        case (x, y, restOfXs, restOfYs) =>
-          restOfXs.either(restOfYs).scan((x, y)) {
-            case ((_, rightElem), Left(newElem)) => (newElem, rightElem)
-            case ((leftElem, _), Right(newElem)) => (leftElem, newElem)
-          }
+      .flatMap { case (x, y, restOfXs, restOfYs) =>
+        restOfXs.either(restOfYs).scan((x, y)) {
+          case ((_, rightElem), Left(newElem)) => (newElem, rightElem)
+          case ((leftElem, _), Right(newElem)) => (leftElem, newElem)
+        }
       }
   }
 
@@ -93,8 +110,7 @@ object Signal extends SignalLowPriorityImplicits {
 
   implicit class SignalOps[F[_], A](val self: Signal[F, A]) extends AnyVal {
 
-    /**
-      * Converts this signal to signal of `B` by applying `f`.
+    /** Converts this signal to signal of `B` by applying `f`.
       */
     def map[B](f: A => B)(implicit F: Functor[F]): Signal[F, B] =
       Signal.map(self)(f)
@@ -108,8 +124,7 @@ object Signal extends SignalLowPriorityImplicits {
 
 private[concurrent] trait SignalLowPriorityImplicits {
 
-  /**
-    * Note that this is not subsumed by [[Signal.applicativeInstance]] because
+  /** Note that this is not subsumed by [[Signal.applicativeInstance]] because
     * [[Signal.applicativeInstance]] requires a `Concurrent[F]`
     * since it non-deterministically zips elements together while our
     * `Functor` instance has no other constraints.
@@ -133,15 +148,13 @@ abstract class SignallingRef[F[_], A] extends Ref[F, A] with Signal[F, A]
 
 object SignallingRef {
 
-  /**
-    * Builds a `SignallingRef` for a `Concurrent` datatype, initialized
+  /** Builds a `SignallingRef` for a `Concurrent` datatype, initialized
     * to a supplied value.
     */
   def apply[F[_]: Concurrent, A](initial: A): F[SignallingRef[F, A]] =
     in[F, F, A](initial)
 
-  /**
-    * Builds a `SignallingRef` for `Concurrent` datatype.
+  /** Builds a `SignallingRef` for `Concurrent` datatype.
     * Like [[apply]], but initializes state using another effect constructor.
     */
   def in[G[_]: Sync, F[_]: Concurrent, A](initial: A): G[SignallingRef[F, A]] =
@@ -164,10 +177,9 @@ object SignallingRef {
         def getNext: F[(A, Long)] =
           Deferred[F, (A, Long)]
             .flatMap { deferred =>
-              state.modify {
-                case s @ (a, updates, listeners) =>
-                  if (updates != lastUpdate) s -> (a -> updates).pure[F]
-                  else (a, updates, listeners + (id -> deferred)) -> deferred.get
+              state.modify { case s @ (a, updates, listeners) =>
+                if (updates != lastUpdate) s -> (a -> updates).pure[F]
+                else (a, updates, listeners + (id -> deferred)) -> deferred.get
               }.flatten
             }
 
@@ -178,8 +190,8 @@ object SignallingRef {
         state.update(s => s.copy(_3 = s._3 - id))
 
       Stream.bracket(F.delay(new Token))(cleanup).flatMap { id =>
-        Stream.eval(state.get).flatMap {
-          case (a, l, _) => Stream.emit(a) ++ go(id, l)
+        Stream.eval(state.get).flatMap { case (a, l, _) =>
+          Stream.emit(a) ++ go(id, l)
         }
       }
     }
@@ -189,19 +201,18 @@ object SignallingRef {
     override def getAndSet(a: A): F[A] = modify(old => (a, old))
 
     override def access: F[(A, A => F[Boolean])] =
-      state.access.flatMap {
-        case (snapshot, set) =>
-          F.delay {
-            val hasBeenCalled = new java.util.concurrent.atomic.AtomicBoolean(false)
-            val setter =
-              (a: A) =>
-                F.delay(hasBeenCalled.compareAndSet(false, true))
-                  .ifM(
-                    if (a == snapshot._1) set((a, snapshot._2, snapshot._3)) else F.pure(false),
-                    F.pure(false)
-                  )
-            (snapshot._1, setter)
-          }
+      state.access.flatMap { case (snapshot, set) =>
+        F.delay {
+          val hasBeenCalled = new java.util.concurrent.atomic.AtomicBoolean(false)
+          val setter =
+            (a: A) =>
+              F.delay(hasBeenCalled.compareAndSet(false, true))
+                .ifM(
+                  if (a == snapshot._1) set((a, snapshot._2, snapshot._3)) else F.pure(false),
+                  F.pure(false)
+                )
+          (snapshot._1, setter)
+        }
       }
 
     override def tryUpdate(f: A => A): F[Boolean] =
@@ -209,16 +220,14 @@ object SignallingRef {
 
     override def tryModify[B](f: A => (A, B)): F[Option[B]] =
       state
-        .tryModify {
-          case (a, updates, listeners) =>
-            val (newA, result) = f(a)
-            val newUpdates = updates + 1
-            val newState = (newA, newUpdates, Map.empty[Token, Deferred[F, (A, Long)]])
-            val action = listeners.toVector.traverse {
-              case (_, deferred) =>
-                F.start(deferred.complete(newA -> newUpdates))
-            }
-            newState -> (action *> result.pure[F])
+        .tryModify { case (a, updates, listeners) =>
+          val (newA, result) = f(a)
+          val newUpdates = updates + 1
+          val newState = (newA, newUpdates, Map.empty[Token, Deferred[F, (A, Long)]])
+          val action = listeners.toVector.traverse { case (_, deferred) =>
+            F.start(deferred.complete(newA -> newUpdates))
+          }
+          newState -> (action *> result.pure[F])
         }
         .flatMap {
           case None     => F.pure(None)
@@ -229,16 +238,14 @@ object SignallingRef {
       modify(a => (f(a), ()))
 
     override def modify[B](f: A => (A, B)): F[B] =
-      state.modify {
-        case (a, updates, listeners) =>
-          val (newA, result) = f(a)
-          val newUpdates = updates + 1
-          val newState = (newA, newUpdates, Map.empty[Token, Deferred[F, (A, Long)]])
-          val action = listeners.toVector.traverse {
-            case (_, deferred) =>
-              F.start(deferred.complete(newA -> newUpdates))
-          }
-          newState -> (action *> result.pure[F])
+      state.modify { case (a, updates, listeners) =>
+        val (newA, result) = f(a)
+        val newUpdates = updates + 1
+        val newState = (newA, newUpdates, Map.empty[Token, Deferred[F, (A, Long)]])
+        val action = listeners.toVector.traverse { case (_, deferred) =>
+          F.start(deferred.complete(newA -> newUpdates))
+        }
+        newState -> (action *> result.pure[F])
       }.flatten
 
     override def tryModifyState[B](state: State[A, B]): F[Option[B]] = {
@@ -262,8 +269,8 @@ object SignallingRef {
           override def set(b: B): F[Unit] = fa.set(g(b))
           override def getAndSet(b: B): F[B] = fa.getAndSet(g(b)).map(f)
           override def access: F[(B, B => F[Boolean])] =
-            fa.access.map {
-              case (getter, setter) => (f(getter), b => setter(g(b)))
+            fa.access.map { case (getter, setter) =>
+              (f(getter), b => setter(g(b)))
             }
           override def tryUpdate(h: B => B): F[Boolean] = fa.tryUpdate(a => g(h(f(a))))
           override def tryModify[B2](h: B => (B, B2)): F[Option[B2]] =

@@ -1,3 +1,24 @@
+/*
+ * Copyright (c) 2013 Functional Streams for Scala
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of
+ * this software and associated documentation files (the "Software"), to deal in
+ * the Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+ * the Software, and to permit persons to whom the Software is furnished to do so,
+ * subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+ * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+ * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+ * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+
 package fs2
 package io
 package tcp
@@ -34,17 +55,16 @@ class SocketSuite extends Fs2Suite {
             socketGroup
               .serverResource[IO](new InetSocketAddress(InetAddress.getByName(null), 0))
           )
-          .flatMap {
-            case (local, clients) =>
-              Stream.eval_(localBindAddress.complete(local)) ++
-                clients.flatMap { s =>
-                  Stream.resource(s).map { socket =>
-                    socket
-                      .reads(1024)
-                      .through(socket.writes())
-                      .onFinalize(socket.endOfOutput)
-                  }
+          .flatMap { case (local, clients) =>
+            Stream.eval_(localBindAddress.complete(local)) ++
+              clients.flatMap { s =>
+                Stream.resource(s).map { socket =>
+                  socket
+                    .reads(1024)
+                    .through(socket.writes())
+                    .onFinalize(socket.endOfOutput)
                 }
+              }
           }
           .parJoinUnbounded
 
@@ -93,18 +113,17 @@ class SocketSuite extends Fs2Suite {
             socketGroup
               .serverResource[IO](new InetSocketAddress(InetAddress.getByName(null), 0))
           )
-          .flatMap {
-            case (local, clients) =>
-              Stream.eval_(localBindAddress.complete(local)) ++
-                clients.flatMap { s =>
-                  Stream.emit(Stream.resource(s).flatMap { socket =>
-                    Stream
-                      .chunk(message)
-                      .through(socket.writes())
-                      .drain
-                      .onFinalize(socket.endOfOutput)
-                  })
-                }
+          .flatMap { case (local, clients) =>
+            Stream.eval_(localBindAddress.complete(local)) ++
+              clients.flatMap { s =>
+                Stream.emit(Stream.resource(s).flatMap { socket =>
+                  Stream
+                    .chunk(message)
+                    .through(socket.writes())
+                    .drain
+                    .onFinalize(socket.endOfOutput)
+                })
+              }
           }
           .parJoinUnbounded
           .drain
@@ -142,8 +161,8 @@ class SocketSuite extends Fs2Suite {
       def doNothingServer(socketGroup: SocketGroup) =
         socketGroup
           .serverResource[IO](new InetSocketAddress(InetAddress.getByName(null), 0))
-          .flatMap {
-            case (address, _) => Resource.liftF(localBindAddress.complete(address))
+          .flatMap { case (address, _) =>
+            Resource.liftF(localBindAddress.complete(address))
           }
 
       mkSocketGroup

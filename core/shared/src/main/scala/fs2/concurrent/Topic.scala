@@ -1,3 +1,24 @@
+/*
+ * Copyright (c) 2013 Functional Streams for Scala
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of
+ * this software and associated documentation files (the "Software"), to deal in
+ * the Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+ * the Software, and to permit persons to whom the Software is furnished to do so,
+ * subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+ * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+ * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+ * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+
 package fs2
 package concurrent
 
@@ -7,8 +28,7 @@ import cats.effect.{Concurrent, Sync}
 
 import fs2.internal.{SizedQueue, Token}
 
-/**
-  * Asynchronous Topic.
+/** Asynchronous Topic.
   *
   * Topic allows you to distribute `A` published by arbitrary number of publishers to arbitrary number of subscribers.
   *
@@ -20,14 +40,12 @@ import fs2.internal.{SizedQueue, Token}
   */
 abstract class Topic[F[_], A] { self =>
 
-  /**
-    * Publishes elements from source of `A` to this topic.
+  /** Publishes elements from source of `A` to this topic.
     * [[Pipe]] equivalent of `publish1`.
     */
   def publish: Pipe[F, A, Unit]
 
-  /**
-    * Publishes one `A` to topic.
+  /** Publishes one `A` to topic.
     *
     * This waits until `a` is published to all subscribers.
     * If any of the subscribers is over the `maxQueued` limit, this will wait to complete until that subscriber processes
@@ -35,8 +53,7 @@ abstract class Topic[F[_], A] { self =>
     */
   def publish1(a: A): F[Unit]
 
-  /**
-    * Subscribes for `A` values that are published to this topic.
+  /** Subscribes for `A` values that are published to this topic.
     *
     * Pulling on the returned stream opens a "subscription", which allows up to
     * `maxQueued` elements to be enqueued as a result of publication.
@@ -54,19 +71,16 @@ abstract class Topic[F[_], A] { self =>
     */
   def subscribe(maxQueued: Int): Stream[F, A]
 
-  /**
-    * Like [[subscribe]] but emits an approximate number of queued elements for this subscription
+  /** Like [[subscribe]] but emits an approximate number of queued elements for this subscription
     * with each emitted `A` value.
     */
   def subscribeSize(maxQueued: Int): Stream[F, (A, Int)]
 
-  /**
-    * Signal of current active subscribers.
+  /** Signal of current active subscribers.
     */
   def subscribers: Stream[F, Int]
 
-  /**
-    * Returns an alternate view of this `Topic` where its elements are of type `B`,
+  /** Returns an alternate view of this `Topic` where its elements are of type `B`,
     * given two functions, `A => B` and `B => A`.
     */
   def imap[B](f: A => B)(g: B => A): Topic[F, B] =
@@ -83,15 +97,13 @@ abstract class Topic[F[_], A] { self =>
 
 object Topic {
 
-  /**
-    * Constructs a `Topic` for a provided `Concurrent` datatype. The
+  /** Constructs a `Topic` for a provided `Concurrent` datatype. The
     * `initial` value is immediately published.
     */
   def apply[F[_], A](initial: A)(implicit F: Concurrent[F]): F[Topic[F, A]] =
     in[F, F, A](initial)
 
-  /**
-    * Constructs a `Topic` for a provided `Concurrent` datatype.
+  /** Constructs a `Topic` for a provided `Concurrent` datatype.
     * Like [[apply]], but a `Topic` state is initialized using another effect constructor
     */
   def in[G[_], F[_], A](initial: A)(implicit F: Concurrent[F], G: Sync[G]): G[Topic[F, A]] = {
@@ -128,20 +140,18 @@ object Topic {
             subscriber(maxQueued).flatMap { case (_, s) => s.flatMap(q => Stream.emits(q.toQueue)) }
 
           def subscribeSize(maxQueued: Int): Stream[F, (A, Int)] =
-            subscriber(maxQueued).flatMap {
-              case (selector, stream) =>
-                stream
-                  .flatMap { q =>
-                    Stream.emits(q.toQueue.zipWithIndex.map { case (a, idx) => (a, q.size - idx) })
+            subscriber(maxQueued).flatMap { case (selector, stream) =>
+              stream
+                .flatMap { q =>
+                  Stream.emits(q.toQueue.zipWithIndex.map { case (a, idx) => (a, q.size - idx) })
+                }
+                .evalMap { case (a, remQ) =>
+                  pubSub.get(Left(None)).map {
+                    case Left(s) =>
+                      (a, s.subscribers.get(selector).map(_.size + remQ).getOrElse(remQ))
+                    case Right(_) => (a, -1) // impossible
                   }
-                  .evalMap {
-                    case (a, remQ) =>
-                      pubSub.get(Left(None)).map {
-                        case Left(s) =>
-                          (a, s.subscribers.get(selector).map(_.size + remQ).getOrElse(remQ))
-                        case Right(_) => (a, -1) // impossible
-                      }
-                  }
+                }
             }
 
           def subscribers: Stream[F, Int] =
@@ -163,8 +173,7 @@ object Topic {
         subscribers: Map[(Token, Int), SizedQueue[A]]
     )
 
-    /**
-      * Strategy for topic, where every subscriber can specify max size of queued elements.
+    /** Strategy for topic, where every subscriber can specify max size of queued elements.
       * If that subscription is exceeded any other `publish` to the topic will hold,
       * until such subscriber disappears, or consumes more elements.
       *

@@ -1,9 +1,30 @@
+/*
+ * Copyright (c) 2013 Functional Streams for Scala
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of
+ * this software and associated documentation files (the "Software"), to deal in
+ * the Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+ * the Software, and to permit persons to whom the Software is furnished to do so,
+ * subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+ * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+ * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+ * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+
 package fs2
 package io
 
 import java.io.{IOException, InputStream}
 
-import cats.implicits._
+import cats.syntax.all._
 import cats.effect.{ConcurrentEffect, ExitCase, Resource}
 import cats.effect.implicits._
 
@@ -145,9 +166,8 @@ private[io] object JavaInputOutputStream {
         case _           => Done(None)
       } >>
         upState.discrete
-          .collectFirst {
-            case UpStreamState(true, maybeErr) =>
-              maybeErr // await upStreamDome to yield as true
+          .collectFirst { case UpStreamState(true, maybeErr) =>
+            maybeErr // await upStreamDome to yield as true
           }
           .compile
           .last
@@ -177,31 +197,30 @@ private[io] object JavaInputOutputStream {
           SignallingRef[F, DownStreamState](Ready(None))
         ).tupled
       )
-      .flatMap {
-        case (queue, upState, dnState) =>
-          val mkInputStream = processInput(source, queue, upState, dnState)
-            .as(
-              new InputStream {
-                override def close(): Unit =
-                  closeIs(upState, dnState).toIO.unsafeRunSync
+      .flatMap { case (queue, upState, dnState) =>
+        val mkInputStream = processInput(source, queue, upState, dnState)
+          .as(
+            new InputStream {
+              override def close(): Unit =
+                closeIs(upState, dnState).toIO.unsafeRunSync()
 
-                override def read(b: Array[Byte], off: Int, len: Int): Int =
-                  readOnce(b, off, len, queue, dnState).toIO.unsafeRunSync
+              override def read(b: Array[Byte], off: Int, len: Int): Int =
+                readOnce(b, off, len, queue, dnState).toIO.unsafeRunSync()
 
-                def read(): Int = {
-                  def go(acc: Array[Byte]): F[Int] =
-                    readOnce(acc, 0, 1, queue, dnState).flatMap { read =>
-                      if (read < 0) F.pure(-1)
-                      else if (read == 0) go(acc)
-                      else F.pure(acc(0) & 0xff)
-                    }
+              def read(): Int = {
+                def go(acc: Array[Byte]): F[Int] =
+                  readOnce(acc, 0, 1, queue, dnState).flatMap { read =>
+                    if (read < 0) F.pure(-1)
+                    else if (read == 0) go(acc)
+                    else F.pure(acc(0) & 0xff)
+                  }
 
-                  go(new Array[Byte](1)).toIO.unsafeRunSync
-                }
+                go(new Array[Byte](1)).toIO.unsafeRunSync()
               }
-            )
+            }
+          )
 
-          Resource.make(mkInputStream)(_ => closeIs(upState, dnState))
+        Resource.make(mkInputStream)(_ => closeIs(upState, dnState))
       }
   }
 }

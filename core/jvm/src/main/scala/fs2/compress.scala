@@ -1,3 +1,24 @@
+/*
+ * Copyright (c) 2013 Functional Streams for Scala
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of
+ * this software and associated documentation files (the "Software"), to deal in
+ * the Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+ * the Software, and to permit persons to whom the Software is furnished to do so,
+ * subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+ * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+ * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+ * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+
 package fs2
 
 import fs2.internal.AsyncByteArrayInputStream
@@ -12,8 +33,7 @@ import scala.collection.mutable.ArrayBuffer
 @deprecated("Use fs2.compression instead", "2.3.0")
 object compress {
 
-  /**
-    * Returns a `Pipe` that deflates (compresses) its input elements using
+  /** Returns a `Pipe` that deflates (compresses) its input elements using
     * a `java.util.zip.Deflater` with the parameters `level`, `nowrap` and `strategy`.
     * @param level the compression level (0-9)
     * @param nowrap if true then use GZIP compatible compression
@@ -67,8 +87,7 @@ object compress {
       _deflate_collect(deflater, buffer, acc ++ buffer.iterator.take(count), fin)
     }
 
-  /**
-    * Returns a `Pipe` that inflates (decompresses) its input elements using
+  /** Returns a `Pipe` that inflates (decompresses) its input elements using
     * a `java.util.zip.Inflater` with the parameter `nowrap`.
     * @param nowrap if true then support GZIP compatible decompression
     * @param bufferSize size of the internal buffer that is used by the
@@ -117,8 +136,7 @@ object compress {
       _inflate_collect(inflater, buffer, acc ++ buffer.iterator.take(count))
     }
 
-  /**
-    * Returns a pipe that incrementally compresses input into the GZIP format
+  /** Returns a pipe that incrementally compresses input into the GZIP format
     * by delegating to `java.util.zip.GZIPOutputStream`. Output is compatible
     * with the GNU utils `gunzip` utility, as well as really anything else that
     * understands GZIP. Note, however, that the GZIP format is not "stable" in
@@ -175,8 +193,7 @@ object compress {
         body ++ trailer
       }
 
-  /**
-    * Returns a pipe that incrementally decompresses input according to the GZIP
+  /** Returns a pipe that incrementally decompresses input according to the GZIP
     * format. Any errors in decompression will be sequenced as exceptions into the
     * output stream. The implementation of this pipe delegates directly to
     * `GZIPInputStream`. Despite this, decompression is still handled in a streaming
@@ -240,34 +257,33 @@ object compress {
               Pull.raiseError(NonProgressiveDecompressionException(bufferSize))
           }
 
-        pageBeginning(in).stream.flatMap {
-          case (gzis, in) =>
-            lazy val stepDecompress: Stream[F, Byte] = Stream.suspend {
-              val inner =
-                new Array[Byte](
-                  bufferSize * 2
-                ) // double the input buffer size since we're decompressing
+        pageBeginning(in).stream.flatMap { case (gzis, in) =>
+          lazy val stepDecompress: Stream[F, Byte] = Stream.suspend {
+            val inner =
+              new Array[Byte](
+                bufferSize * 2
+              ) // double the input buffer size since we're decompressing
 
-              val len =
-                try gzis.read(inner)
-                catch {
-                  case AsyncByteArrayInputStream.AsyncError => 0
-                }
+            val len =
+              try gzis.read(inner)
+              catch {
+                case AsyncByteArrayInputStream.AsyncError => 0
+              }
 
-              if (len > 0)
-                Stream.chunk(Chunk.bytes(inner, 0, len)) ++ stepDecompress
-              else
-                Stream.empty
-            }
+            if (len > 0)
+              Stream.chunk(Chunk.bytes(inner, 0, len)) ++ stepDecompress
+            else
+              Stream.empty
+          }
 
-            // Note: It is possible for this to fail with a non-progressive error
-            //       if `in` contains bytes in addition to the compressed data.
-            val mainline = in.chunks.flatMap { chunk =>
-              push(chunk)
-              stepDecompress
-            }
+          // Note: It is possible for this to fail with a non-progressive error
+          //       if `in` contains bytes in addition to the compressed data.
+          val mainline = in.chunks.flatMap { chunk =>
+            push(chunk)
+            stepDecompress
+          }
 
-            stepDecompress ++ mainline
+          stepDecompress ++ mainline
         }
       }
 
