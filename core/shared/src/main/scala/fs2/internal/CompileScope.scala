@@ -443,9 +443,9 @@ private[fs2] object CompileScope {
   def newRoot[F[_]: Compiler.Target]: F[CompileScope[F]] =
     Token[F].flatMap(apply[F](_, None, None))
 
-
   private sealed trait State[F[_]]
   private object State {
+
     /**
       * @param resources          All acquired resources (that means synchronously, or the ones acquired asynchronously) are
       *                           registered here. Note that the resources are prepended when acquired, to be released in reverse
