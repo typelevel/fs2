@@ -89,7 +89,7 @@ object tp {
 
           def uncons: Pull[F, INothing, Option[(Either[Token, Chunk[A]], TimedPull[F, A])]] =
             s.pull.uncons1
-              .map(_.map(_.map(toTimedPull)))
+              .map( _.map { case (r, next) => r -> toTimedPull(next)} )
 
           def startTimer(t: FiniteDuration): Pull[F, INothing, Unit] = Pull.eval {
             newTimeout(t).flatMap(t => time.set(t.some))
