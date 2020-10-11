@@ -20,7 +20,8 @@ private[reactivestreams] final class StreamSubscription[F[_], A](
     requests: Queue[F, StreamSubscription.Request],
     cancelled: SignallingRef[F, Boolean],
     sub: Subscriber[A],
-    stream: Stream[F, A]
+    stream: Stream[F, A],
+    runner: Runner[F]
 )(implicit F: ConcurrentEffect[F])
     extends Subscription {
   import StreamSubscription._
@@ -55,7 +56,7 @@ private[reactivestreams] final class StreamSubscription[F[_], A](
         .compile
         .drain
 
-    s.unsafeRunAsync()
+    s.unsafeRunAsync(runner)
   }
 
   // According to the spec, it's acceptable for a concurrent cancel to not
@@ -77,7 +78,7 @@ private[reactivestreams] final class StreamSubscription[F[_], A](
     val prog = cancelled.get
       .ifM(ifTrue = F.unit, ifFalse = request.flatMap(requests.enqueue1).handleErrorWith(onError))
 
-    prog.unsafeRunAsync()
+    prog.unsafeRunAsync(runner)
   }
 }
 
@@ -90,11 +91,12 @@ private[reactivestreams] object StreamSubscription {
 
   def apply[F[_]: ConcurrentEffect, A](
       sub: Subscriber[A],
-      stream: Stream[F, A]
+      stream: Stream[F, A],
+      runner: Runner[F]
   ): F[StreamSubscription[F, A]] =
     SignallingRef(false).flatMap { cancelled =>
       Queue.unbounded[F, Request].map { requests =>
-        new StreamSubscription(requests, cancelled, sub, stream)
+        new StreamSubscription(requests, cancelled, sub, stream, runner)
       }
     }
 }
