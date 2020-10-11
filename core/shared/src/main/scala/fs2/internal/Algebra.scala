@@ -31,8 +31,7 @@ import scala.annotation.tailrec
 import scala.util.control.NonFatal
 import FreeC._
 
-/**
-  * Free Monad with Catch (and Interruption).
+/** Free Monad with Catch (and Interruption).
   *
   * [[FreeC]] provides mechanism for ensuring stack safety and capturing any exceptions that may arise during computation.
   *
@@ -153,8 +152,7 @@ private[fs2] object FreeC {
       override def toString: String = s"FreeC.Fail($error)"
     }
 
-    /**
-      * Signals that FreeC evaluation was interrupted.
+    /** Signals that FreeC evaluation was interrupted.
       *
       * @param context Any user specific context that needs to be captured during interruption
       *                for eventual resume of the operation.
@@ -202,8 +200,7 @@ private[fs2] object FreeC {
       def cont(r: Result[Unit]): FreeC[F, O, R] = fr
     }
 
-  /**
-    * Unrolled view of a `FreeC` structure. may be `Result` or `EvalBind`
+  /** Unrolled view of a `FreeC` structure. may be `Result` or `EvalBind`
     */
   sealed trait ViewL[+F[_], +O, +R]
 
@@ -293,8 +290,7 @@ private[fs2] object FreeC {
       }
   }
 
-  /**
-    * Steps through the stream, providing either `uncons` or `stepLeg`.
+  /** Steps through the stream, providing either `uncons` or `stepLeg`.
     * Yields to head in form of chunk, then id of the scope that was active after step evaluated and tail of the `stream`.
     *
     * @param stream             Stream to step
@@ -344,15 +340,13 @@ private[fs2] object FreeC {
       }
     }
 
-  /**
-    * Wraps supplied pull in new scope, that will be opened before this pull is evaluated
+  /** Wraps supplied pull in new scope, that will be opened before this pull is evaluated
     * and closed once this pull either finishes its evaluation or when it fails.
     */
   def scope[F[_], O](s: FreeC[F, O, Unit]): FreeC[F, O, Unit] =
     scope0(s, None)
 
-  /**
-    * Like `scope` but allows this scope to be interrupted.
+  /** Like `scope` but allows this scope to be interrupted.
     * Note that this may fail with `Interrupted` when interruption occurred
     */
   private[fs2] def interruptScope[F[_], O](
@@ -622,8 +616,7 @@ private[fs2] object FreeC {
         go(0)
     }
 
-  /**
-    * Inject interruption to the tail used in flatMap.
+  /** Inject interruption to the tail used in flatMap.
     * Assures that close of the scope is invoked if at the flatMap tail, otherwise switches evaluation to `interrupted` path
     *
     * @param stream             tail to inject interruption into

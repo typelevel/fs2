@@ -26,8 +26,7 @@ import cats.effect._
 import cats.effect.implicits._
 import org.reactivestreams._
 
-/**
-  * Implementation of the reactivestreams protocol for fs2
+/** Implementation of the reactivestreams protocol for fs2
   *
   * @example {{{
   * scala> import fs2._
@@ -49,8 +48,7 @@ import org.reactivestreams._
   */
 package object reactivestreams {
 
-  /**
-    * Creates a lazy stream from an `org.reactivestreams.Publisher`.
+  /** Creates a lazy stream from an `org.reactivestreams.Publisher`.
     *
     * The publisher only receives a subscriber when the stream is run.
     */
@@ -68,8 +66,7 @@ package object reactivestreams {
 
   implicit final class StreamOps[F[_], A](val stream: Stream[F, A]) {
 
-    /**
-      * Creates a [[StreamUnicastPublisher]] from a stream.
+    /** Creates a [[StreamUnicastPublisher]] from a stream.
       *
       * This publisher can only have a single subscription.
       * The stream is only ran when elements are requested.

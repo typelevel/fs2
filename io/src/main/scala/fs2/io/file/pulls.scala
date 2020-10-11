@@ -31,8 +31,7 @@ import scala.concurrent.duration.FiniteDuration
 @deprecated("Use ReadCursor/WriteCursor instead", "2.1.0")
 object pulls {
 
-  /**
-    * Given a `FileHandle[F]`, creates a `Pull` which reads all data from the associated file.
+  /** Given a `FileHandle[F]`, creates a `Pull` which reads all data from the associated file.
     */
   @deprecated("Use ReadCursor(h, 0L).readAll(chunkSize).void", "2.1.0")
   def readAllFromFileHandle[F[_]](chunkSize: Int)(h: FileHandle[F]): Pull[F, Byte, Unit] =
@@ -50,8 +49,7 @@ object pulls {
   ): Pull[F, Byte, Unit] =
     ReadCursor(h, offset).tail(chunkSize, delay).void
 
-  /**
-    * Given a `Stream[F, Byte]` and `FileHandle[F]`, writes all data from the stream to the file.
+  /** Given a `Stream[F, Byte]` and `FileHandle[F]`, writes all data from the stream to the file.
     */
   @deprecated("Use WriteCursor(out, 0).writeAll(in).void", "2.1.0")
   def writeAllToFileHandle[F[_]](in: Stream[F, Byte], out: FileHandle[F]): Pull[F, Nothing, Unit] =

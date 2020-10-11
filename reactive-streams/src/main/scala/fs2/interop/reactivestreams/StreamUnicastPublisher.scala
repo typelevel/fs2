@@ -27,8 +27,7 @@ import cats.effect._
 import cats.syntax.all._
 import org.reactivestreams._
 
-/**
-  * Implementation of a `org.reactivestreams.Publisher`
+/** Implementation of a `org.reactivestreams.Publisher`
   *
   * This is used to publish elements from a `fs2.Stream` to a downstream reactivestreams system.
   *

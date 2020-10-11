@@ -50,8 +50,7 @@ abstract class Fs2Suite
   /** Provides various ways to make test assertions on an `F[A]`. */
   implicit class Asserting[F[_], A](private val self: F[A]) {
 
-    /**
-      * Asserts that the `F[A]` fails with an exception of type `E`.
+    /** Asserts that the `F[A]` fails with an exception of type `E`.
       */
     def assertThrows[E <: Throwable](implicit
         F: Sync[F],

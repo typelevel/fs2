@@ -33,8 +33,7 @@ import scala.collection.mutable.ArrayBuffer
 @deprecated("Use fs2.compression instead", "2.3.0")
 object compress {
 
-  /**
-    * Returns a `Pipe` that deflates (compresses) its input elements using
+  /** Returns a `Pipe` that deflates (compresses) its input elements using
     * a `java.util.zip.Deflater` with the parameters `level`, `nowrap` and `strategy`.
     * @param level the compression level (0-9)
     * @param nowrap if true then use GZIP compatible compression
@@ -88,8 +87,7 @@ object compress {
       _deflate_collect(deflater, buffer, acc ++ buffer.iterator.take(count), fin)
     }
 
-  /**
-    * Returns a `Pipe` that inflates (decompresses) its input elements using
+  /** Returns a `Pipe` that inflates (decompresses) its input elements using
     * a `java.util.zip.Inflater` with the parameter `nowrap`.
     * @param nowrap if true then support GZIP compatible decompression
     * @param bufferSize size of the internal buffer that is used by the
@@ -138,8 +136,7 @@ object compress {
       _inflate_collect(inflater, buffer, acc ++ buffer.iterator.take(count))
     }
 
-  /**
-    * Returns a pipe that incrementally compresses input into the GZIP format
+  /** Returns a pipe that incrementally compresses input into the GZIP format
     * by delegating to `java.util.zip.GZIPOutputStream`. Output is compatible
     * with the GNU utils `gunzip` utility, as well as really anything else that
     * understands GZIP. Note, however, that the GZIP format is not "stable" in
@@ -196,8 +193,7 @@ object compress {
         body ++ trailer
       }
 
-  /**
-    * Returns a pipe that incrementally decompresses input according to the GZIP
+  /** Returns a pipe that incrementally decompresses input according to the GZIP
     * format. Any errors in decompression will be sequenced as exceptions into the
     * output stream. The implementation of this pipe delegates directly to
     * `GZIPInputStream`. Despite this, decompression is still handled in a streaming

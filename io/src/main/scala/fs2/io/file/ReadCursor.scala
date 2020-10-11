@@ -32,23 +32,20 @@ import cats.effect.{Blocker, ContextShift, Resource, Sync, Timer}
 
 import java.nio.file._
 
-/**
-  * Associates a `FileHandle` with an offset in to the file.
+/** Associates a `FileHandle` with an offset in to the file.
   *
   * This encapsulates the pattern of incrementally reading bytes in from a file,
   * a chunk at a time. Convenience methods are provided for working with pulls.
   */
 final case class ReadCursor[F[_]](file: FileHandle[F], offset: Long) {
 
-  /**
-    * Reads a single chunk from the underlying file handle, returning the
+  /** Reads a single chunk from the underlying file handle, returning the
     * read chunk and a new cursor with an offset incremented by the chunk size.
     */
   def read(chunkSize: Int)(implicit F: Functor[F]): F[Option[(ReadCursor[F], Chunk[Byte])]] =
     read_[F](chunkSize, FunctionK.id[F])
 
-  /**
-    * Like `read` but returns a pull instead of an `F[(ReadCursor[F], Option[Chunk[Byte]])]`.
+  /** Like `read` but returns a pull instead of an `F[(ReadCursor[F], Option[Chunk[Byte]])]`.
     */
   def readPull(chunkSize: Int): Pull[F, Nothing, Option[(ReadCursor[F], Chunk[Byte])]] =
     read_(chunkSize, Pull.functionKInstance)
@@ -64,8 +61,7 @@ final case class ReadCursor[F[_]](file: FileHandle[F], offset: Long) {
       }
     }
 
-  /**
-    * Reads all chunks from the underlying file handle, returning a cursor
+  /** Reads all chunks from the underlying file handle, returning a cursor
     * with offset incremented by the total number of bytes read.
     */
   def readAll(chunkSize: Int): Pull[F, Byte, ReadCursor[F]] =
@@ -74,8 +70,7 @@ final case class ReadCursor[F[_]](file: FileHandle[F], offset: Long) {
       case None                => Pull.pure(this)
     }
 
-  /**
-    * Reads chunks until the specified end position in the file. Returns a pull that outputs
+  /** Reads chunks until the specified end position in the file. Returns a pull that outputs
     * the read chunks and completes with a cursor with offset incremented by the total number
     * of bytes read.
     */
@@ -91,8 +86,7 @@ final case class ReadCursor[F[_]](file: FileHandle[F], offset: Long) {
   /** Returns a new cursor with the offset adjusted to the specified position. */
   def seek(position: Long): ReadCursor[F] = ReadCursor(file, position)
 
-  /**
-    * Returns an infinite stream that reads until the end of the file and then starts
+  /** Returns an infinite stream that reads until the end of the file and then starts
     * polling the file for additional writes. Similar to the `tail` command line utility.
     *
     * @param pollDelay amount of time to wait upon reaching the end of the file before
@@ -109,8 +103,7 @@ final case class ReadCursor[F[_]](file: FileHandle[F], offset: Long) {
 
 object ReadCursor {
 
-  /**
-    * Returns a `ReadCursor` for the specified path. The `READ` option is added to the supplied flags.
+  /** Returns a `ReadCursor` for the specified path. The `READ` option is added to the supplied flags.
     */
   def fromPath[F[_]: Sync: ContextShift](
       path: Path,

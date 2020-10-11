@@ -25,8 +25,7 @@ import scala.reflect.ClassTag
 
 import scodec.bits.ByteVector
 
-/**
-  * Supports building a result of type `Out` from zero or more `Chunk[A]`.
+/** Supports building a result of type `Out` from zero or more `Chunk[A]`.
   *
   * This is similar to the standard library collection builders but optimized for
   * building a collection from a stream.

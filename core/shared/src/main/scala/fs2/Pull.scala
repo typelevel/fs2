@@ -27,8 +27,7 @@ import cats.syntax.all._
 import fs2.internal._
 import fs2.internal.FreeC.{Eval, Result}
 
-/**
-  * A `p: Pull[F,O,R]` reads values from one or more streams, returns a
+/** A `p: Pull[F,O,R]` reads values from one or more streams, returns a
   * result of type `R`, and produces a `Stream[F,O]` when calling `p.stream`.
   *
   * Any resources acquired by `p` are freed following the call to `stream`.
@@ -55,8 +54,7 @@ final class Pull[+F[_], +O, +R] private[fs2] (private val free: FreeC[F, O, R]) 
   def attempt: Pull[F, O, Either[Throwable, R]] =
     new Pull(free.map(r => Right(r)).handleErrorWith(t => Result.Pure(Left(t))))
 
-  /**
-    * Interpret this `Pull` to produce a `Stream`, introducing a scope.
+  /** Interpret this `Pull` to produce a `Stream`, introducing a scope.
     *
     * May only be called on pulls which return a `Unit` result type. Use `p.void.stream` to explicitly
     * ignore the result type of the pull.
@@ -66,8 +64,7 @@ final class Pull[+F[_], +O, +R] private[fs2] (private val free: FreeC[F, O, R]) 
     new Stream(FreeC.scope(free.asInstanceOf[FreeC[F, O, Unit]]))
   }
 
-  /**
-    * Interpret this `Pull` to produce a `Stream` without introducing a scope.
+  /** Interpret this `Pull` to produce a `Stream` without introducing a scope.
     *
     * Only use this if you know a scope is not needed. Scope introduction is generally harmless and the risk
     * of not introducing a scope is a memory leak in streams that otherwise would execute in constant memory.
@@ -122,8 +119,7 @@ final class Pull[+F[_], +O, +R] private[fs2] (private val free: FreeC[F, O, R]) 
 
 object Pull extends PullLowPriority {
 
-  /**
-    * Like [[eval]] but if the effectful value fails, the exception is returned in a `Left`
+  /** Like [[eval]] but if the effectful value fails, the exception is returned in a `Left`
     * instead of failing the pull.
     */
   def attemptEval[F[_], R](fr: F[R]): Pull[F, INothing, Either[Throwable, R]] =
@@ -141,8 +137,7 @@ object Pull extends PullLowPriority {
   def eval[F[_], R](fr: F[R]): Pull[F, INothing, R] =
     new Pull(Eval[F, R](fr))
 
-  /**
-    * Extends the scope of the currently open resources to the specified stream, preventing them
+  /** Extends the scope of the currently open resources to the specified stream, preventing them
     * from being finalized until after `s` completes execution, even if the returned pull is converted
     * to a stream, compiled, and evaluated before `s` is compiled and evaluated.
     */
@@ -154,8 +149,7 @@ object Pull extends PullLowPriority {
       lease <- Pull.eval(scope.leaseOrError)
     } yield s.onFinalize(lease.cancel.redeemWith(F.raiseError(_), _ => F.unit))
 
-  /**
-    * Repeatedly uses the output of the pull as input for the next step of the pull.
+  /** Repeatedly uses the output of the pull as input for the next step of the pull.
     * Halts when a step terminates with `None` or `Pull.raiseError`.
     */
   def loop[F[_], O, R](f: R => Pull[F, O, Option[R]]): R => Pull[F, O, Option[R]] =
@@ -173,8 +167,7 @@ object Pull extends PullLowPriority {
   def pure[F[x] >: Pure[x], R](r: R): Pull[F, INothing, R] =
     new Pull(Result.Pure(r))
 
-  /**
-    * Reads and outputs nothing, and fails with the given error.
+  /** Reads and outputs nothing, and fails with the given error.
     *
     * The `F` type must be explicitly provided (e.g., via `raiseError[IO]` or `raiseError[Fallible]`).
     */
@@ -186,8 +179,7 @@ object Pull extends PullLowPriority {
       either.fold(Pull.raiseError[F], Pull.output1)
   }
 
-  /**
-    * Lifts an Either[Throwable, A] to an effectful Pull[F, A, Unit].
+  /** Lifts an Either[Throwable, A] to an effectful Pull[F, A, Unit].
     *
     * @example {{{
     * scala> import cats.effect.IO, scala.util.Try
@@ -199,15 +191,13 @@ object Pull extends PullLowPriority {
     */
   def fromEither[F[x]] = new PartiallyAppliedFromEither[F]
 
-  /**
-    * Gets the current scope, allowing manual leasing or interruption.
+  /** Gets the current scope, allowing manual leasing or interruption.
     * This is a low-level method and generally should not be used by user code.
     */
   def getScope[F[_]]: Pull[F, INothing, Scope[F]] =
     new Pull(FreeC.GetScope[F]())
 
-  /**
-    * Returns a pull that evaluates the supplied by-name each time the pull is used,
+  /** Returns a pull that evaluates the supplied by-name each time the pull is used,
     * allowing use of a mutable value in pull computations.
     */
   def suspend[F[x] >: Pure[x], O, R](p: => Pull[F, O, R]): Pull[F, O, R] =
@@ -221,8 +211,7 @@ object Pull extends PullLowPriority {
     new PullSyncInstance[F, O]
   }
 
-  /**
-    * `FunctionK` instance for `F ~> Pull[F, INothing, *]`
+  /** `FunctionK` instance for `F ~> Pull[F, INothing, *]`
     *
     * @example {{{
     * scala> import cats.Id

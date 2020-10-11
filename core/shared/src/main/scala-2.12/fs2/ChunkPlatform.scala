@@ -33,8 +33,7 @@ private[fs2] trait ChunkCompanionPlatform { self: Chunk.type =>
       case _                  => None
     }
 
-  /**
-    * Creates a chunk backed by a `WrappedArray`
+  /** Creates a chunk backed by a `WrappedArray`
     */
   def wrappedArray[O](wrappedArray: WrappedArray[O]): Chunk[O] =
     array(wrappedArray.array.asInstanceOf[Array[O]])

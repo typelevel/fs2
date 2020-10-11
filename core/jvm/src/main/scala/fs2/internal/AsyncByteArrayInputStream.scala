@@ -26,8 +26,7 @@ import scala.util.control.NoStackTrace
 
 import java.io.InputStream
 
-/**
-  * An in-memory buffered byte InputStream designed to fake continuation suspension by throwing
+/** An in-memory buffered byte InputStream designed to fake continuation suspension by throwing
   * exceptions. This will work so long as any delegating code (such as other InputStreams) perform
   * reads *before* changing any internal state. Reads that are interleaved with state changes may
   * result in invalid continuations.

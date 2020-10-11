@@ -31,8 +31,7 @@ import cats.syntax.all._
 import fs2.{CompositeFailure, Pure, Scope}
 import fs2.internal.CompileScope.InterruptContext
 
-/**
-  * Implementation of [[Scope]] for the internal stream interpreter.
+/** Implementation of [[Scope]] for the internal stream interpreter.
   *
   * Represents a period of stream execution in which resources are acquired and released.
   * A scope has a state, consisting of resources (with associated finalizers) acquired in this scope
@@ -91,8 +90,7 @@ private[fs2] final class CompileScope[F[_]] private (
   private val state: Ref[F, CompileScope.State[F]] =
     Ref.unsafe(CompileScope.State.initial)
 
-  /**
-    * Registers supplied resource in this scope.
+  /** Registers supplied resource in this scope.
     * Returns false and makes no registration if this scope has been closed.
     */
   private def register(resource: ScopedResource[F]): F[Boolean] =
@@ -101,8 +99,7 @@ private[fs2] final class CompileScope[F[_]] private (
       else (s, false)
     }
 
-  /**
-    * Opens a child scope.
+  /** Opens a child scope.
     *
     * If this scope is currently closed, then the child scope is opened on the first
     * open ancestor of this scope.
@@ -164,8 +161,7 @@ private[fs2] final class CompileScope[F[_]] private (
     }
   }
 
-  /**
-    * fs2 Stream is interpreted synchronously, as such the resource acquisition is fully synchronous.
+  /** fs2 Stream is interpreted synchronously, as such the resource acquisition is fully synchronous.
     * No next step (even when stream was interrupted) is run before the resource
     * is fully acquired.
     *
@@ -200,8 +196,7 @@ private[fs2] final class CompileScope[F[_]] private (
     }
   }
 
-  /**
-    * Unregisters the child scope identified by the supplied id.
+  /** Unregisters the child scope identified by the supplied id.
     *
     * As a result of unregistering a child scope, its resources are no longer
     * reachable from its parent.
@@ -213,8 +208,7 @@ private[fs2] final class CompileScope[F[_]] private (
   private def resources: F[Chain[ScopedResource[F]]] =
     F.map(state.get)(_.resources)
 
-  /**
-    * Traverses supplied `Chain` with `f` that may produce a failure, and collects these failures.
+  /** Traverses supplied `Chain` with `f` that may produce a failure, and collects these failures.
     * Returns failure with collected failures, or `Unit` on successful traversal.
     */
   private def traverseError[A](
@@ -227,8 +221,7 @@ private[fs2] final class CompileScope[F[_]] private (
         .toLeft(())
     }
 
-  /**
-    * Closes this scope.
+  /** Closes this scope.
     *
     * All resources of this scope are released when this is evaluated.
     *
@@ -313,8 +306,7 @@ private[fs2] final class CompileScope[F[_]] private (
       F.flatMap(state.get)(s => go(s.children))
   }
 
-  /**
-    * Tries to locate scope for the step.
+  /** Tries to locate scope for the step.
     * It is good chance, that scope is either current scope or the sibling of current scope.
     * As such the order of search is:
     * - check if id is current scope,
@@ -374,8 +366,7 @@ private[fs2] final class CompileScope[F[_]] private (
         }
     }
 
-  /**
-    * Checks if current scope is interrupted.
+  /** Checks if current scope is interrupted.
     * If yields to None, scope is not interrupted and evaluation may normally proceed.
     * If yields to Some(Right(scope,next)) that yields to next `scope`, that has to be run and `next`  stream
     * to evaluate
@@ -386,8 +377,7 @@ private[fs2] final class CompileScope[F[_]] private (
       case Some(iCtx) => iCtx.ref.get
     }
 
-  /**
-    * When the stream is evaluated, there may be `Eval` that needs to be cancelled early,
+  /** When the stream is evaluated, there may be `Eval` that needs to be cancelled early,
     * when scope allows interruption.
     * Instead of just allowing eval to complete, this will race between eval and interruption promise.
     * Then, if eval completes without interrupting, this will return on `Right`.
@@ -421,8 +411,7 @@ private[fs2] object CompileScope {
   def newRoot[F[_]: Sync]: F[CompileScope[F]] =
     Sync[F].delay(new CompileScope[F](new Token(), None, None))
 
-  /**
-    * State of a scope.
+  /** State of a scope.
     *
     * @param open               Yields to true if the scope is open
     *
@@ -459,8 +448,7 @@ private[fs2] object CompileScope {
     def closed[F[_]]: State[F] = closed_.asInstanceOf[State[F]]
   }
 
-  /**
-    * A context of interruption status. This is shared from the parent that was created as interruptible to all
+  /** A context of interruption status. This is shared from the parent that was created as interruptible to all
     * its children. It assures consistent view of the interruption through the stack
     * @param concurrent   Concurrent, used to create interruption at Eval.
     *                 If signalled with None, normal interruption is signalled. If signaled with Some(err) failure is signalled.
@@ -479,8 +467,7 @@ private[fs2] object CompileScope {
       cancelParent: F[Unit]
   ) { self =>
 
-    /**
-      * Creates a [[InterruptContext]] for a child scope which can be interruptible as well.
+    /** Creates a [[InterruptContext]] for a child scope which can be interruptible as well.
       *
       * In case the child scope is interruptible, this will ensure that this scope interrupt will
       * interrupt the child scope as well.
@@ -522,8 +509,7 @@ private[fs2] object CompileScope {
 
   private object InterruptContext {
 
-    /**
-      * Creates a new interrupt context for a new scope if the scope is interruptible.
+    /** Creates a new interrupt context for a new scope if the scope is interruptible.
       *
       * This is UNSAFE method as we are creating promise and ref directly here.
       *

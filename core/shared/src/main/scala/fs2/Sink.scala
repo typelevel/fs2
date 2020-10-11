@@ -40,23 +40,20 @@ object Sink {
   def lines[F[_]](out: PrintStream)(implicit F: Sync[F]): Sink[F, String] =
     apply(str => F.delay(out.println(str)))
 
-  /**
-    * Sink that prints each element from the source to the supplied `PrintStream`
+  /** Sink that prints each element from the source to the supplied `PrintStream`
     * using the `Show` instance for the input type.
     */
   @deprecated("Use stream.showLines(out) instead", "1.0.2")
   def showLines[F[_]: Sync, I: Show](out: PrintStream): Sink[F, I] =
     _.map(_.show).through(lines(out))
 
-  /**
-    * Sink that prints each element from the source to the standard out
+  /** Sink that prints each element from the source to the standard out
     * using the `Show` instance for the input type.
     */
   @deprecated("Use stream.showLinesStdOut instead", "1.0.2")
   def showLinesStdOut[F[_]: Sync, I: Show]: Sink[F, I] = showLines(Console.out)
 
-  /**
-    * Sink that routes each element to one of two sinks.
+  /** Sink that routes each element to one of two sinks.
     * `Left` values get sent to the `left` sink, and likewise for `Right`
     *
     * If either of `left` or `right` fails, then resulting stream will fail.
