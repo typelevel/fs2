@@ -133,10 +133,6 @@ object tp {
 
   def groupWithin[O](s: Stream[IO, O], n: Int, t: FiniteDuration) =
     TimedPull.go[IO, O, Chunk[O]] { tp =>
-      def emitNonEmpty(c: Chunk.Queue[O]): Pull[IO, Chunk[O], Unit] =
-        if (c.size > 0) Pull.output1(c.toChunk)
-        else Pull.done
-
       def resize(c: Chunk[O], s: Pull[IO, Chunk[O], Unit]): (Pull[IO, Chunk[O], Unit], Chunk[O]) =
         if (c.size < n) s -> c
         else {
@@ -146,11 +142,15 @@ object tp {
 
       def go(acc: Chunk.Queue[O], tp: TimedPull[IO, O]): Pull[IO, Chunk[O], Unit] =
         tp.uncons.flatMap {
-          case None => emitNonEmpty(acc)
+          case None =>
+            Pull.output1(acc.toChunk).whenA(acc.nonEmpty)
           case Some((e, next)) =>
             e match {
               case Left(_) =>
-                emitNonEmpty(acc) >> tp.startTimer(t) >> go(Chunk.Queue.empty, next)
+                if (acc.nonEmpty)
+                  Pull.output1(acc.toChunk) >> tp.startTimer(t) >> go(Chunk.Queue.empty, next)
+                else // TODO fix resetting bug as per comment above
+                  emitNonEmpty(acc) >> tp.startTimer(t) >> go(Chunk.Queue.empty, next)
               case Right(c) =>
                 val newAcc = acc :+ c
                 if (newAcc.size < n)
