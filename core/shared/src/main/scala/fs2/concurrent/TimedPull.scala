@@ -78,10 +78,12 @@ object tp {
           timeouts
             .map(_.asLeft)
             .mergeHaltR(source.chunks.map(_.asRight))
-            .evalMapFilter { // TODO filter of stale timeouts in uncons
-
-              case Right(c) => c.asRight[Token].some.pure[F]
-              case Left(id) => time.get.map(t => t.filter(_.id != id).as(id.asLeft[Chunk[A]]))
+            .flatMap {
+              case chunk @ Right(_) => Stream.emit(chunk)
+              case timeout @ Left(id) =>
+                Stream
+                  .eval(time.get)
+                  .collect { case Some(currentTimeout) if currentTimeout.id == id => timeout }
             }
 
         def toTimedPull(s: Stream[F, Either[Token, Chunk[A]]]): TimedPull[F, A] = new TimedPull[F, A] {
