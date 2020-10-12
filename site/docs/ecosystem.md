@@ -51,6 +51,7 @@ If you have a project you'd like to include in this list, either [click here](ht
 * [mysql-binlog-stream](https://github.com/laserdisc-io/mysql-binlog-stream): Stream MySQL binlog events with FS2
 * [neotypes](https://github.com/neotypes/neotypes): A Scala lightweight, type-safe & asynchronous driver for neo4j. Support streaming queries using fs2.
 * [neutron](https://github.com/cr-org/neutron): Apache Pulsar bindings for fs2.
+* [prox](https://vigoo.github.io/prox/): A library for working with system processes
 * [redis4cats](https://redis4cats.profunktor.dev/): Redis client built on top of fs2 and cats effect.
 * [scarctic](https://gitlab.com/lJoublanc/scarctic): fs2-based driver for [MAN/AHL's Arctic](https://github.com/manahl/arctic) data store.
 * [scodec-protocols](https://github.com/scodec/scodec-protocols): A library for working with libpcap files. Contains many interesting pipes (e.g., working with time series and playing back streams at various rates).
