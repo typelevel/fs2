@@ -1633,12 +1633,8 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
 
   /** Creates a scope that may be interrupted by calling scope#interrupt.
     */
-  def interruptScope[F2[x] >: F[x]: Concurrent]: Stream[F2, O] =
-    new Stream(
-      Pull.interruptScope(underlying: Pull[F2, O, Unit])(
-        Interruptible.instance(Concurrent[F2])
-      )
-    )
+  def interruptScope: Stream[F, O] =
+    new Stream(Pull.interruptScope(underlying))
 
   /** Emits the specified separator between every pair of elements in the source stream.
     *
@@ -2529,21 +2525,15 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     )
 
   /** Translates effect type from `F` to `G` using the supplied `FunctionK`.
-    *
-    * Note: the resulting stream is *not* interruptible in all cases. To get an interruptible
-    * stream, `translateInterruptible` instead, which requires a `Concurrent[G]` instance.
     */
   def translate[F2[x] >: F[x], G[_]](u: F2 ~> G): Stream[G, O] =
     new Stream(Pull.translate[F2, G, O](underlying, u))
 
   /** Translates effect type from `F` to `G` using the supplied `FunctionK`.
     */
-  def translateInterruptible[F2[x] >: F[x], G[_]: Concurrent](
-      u: F2 ~> G
-  ): Stream[G, O] =
-    new Stream(
-      Pull.translate[F2, G, O](underlying, u)(TranslateInterrupt.interruptibleInstance[G])
-    )
+  @deprecated("Use translate instead", "3.0")
+  def translateInterruptible[F2[x] >: F[x], G[_]](u: F2 ~> G): Stream[G, O] =
+    new Stream(Pull.translate[F2, G, O](underlying, u))
 
   /** Converts the input to a stream of 1-element chunks.
     *

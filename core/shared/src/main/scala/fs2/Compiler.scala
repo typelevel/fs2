@@ -116,7 +116,7 @@ object Compiler extends CompilerLowPriority {
 
   sealed trait Target[F[_]] extends Resource.Bracket[F] {
     def ref[A](a: A): F[Ref[F, A]]
-    def uncancelable[A](fa: F[A]): F[A]
+    def concurrent: Option[Concurrent[F]]
   }
 
   private[fs2] trait TargetLowPriority {
@@ -126,7 +126,7 @@ object Compiler extends CompilerLowPriority {
         extends Target[F]
         with Resource.Bracket.SyncBracket[F] {
       def ref[A](a: A): F[Ref[F, A]] = Ref[F].of(a)
-      def uncancelable[A](fa: F[A]): F[A] = fa
+      def concurrent: Option[Concurrent[F]] = None
     }
   }
 
@@ -140,6 +140,7 @@ object Compiler extends CompilerLowPriority {
         with Resource.Bracket.MonadCancelBracket[F] {
       def ref[A](a: A): F[Ref[F, A]] = F.ref(a)
       def uncancelable[A](fa: F[A]): F[A] = F.uncancelable(_ => fa)
+      def concurrent: Option[Concurrent[F]] = Some(F)
     }
   }
 }

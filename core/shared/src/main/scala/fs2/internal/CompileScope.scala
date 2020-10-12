@@ -25,7 +25,7 @@ import scala.annotation.tailrec
 
 import cats.{Applicative, Id, Traverse, TraverseFilter}
 import cats.data.Chain
-import cats.effect.{Concurrent, Outcome, Resource}
+import cats.effect.{Concurrent, Outcome, Poll, Resource}
 import cats.effect.kernel.{Deferred, Ref}
 import cats.effect.implicits._
 import cats.syntax.all._
@@ -106,9 +106,7 @@ private[fs2] final class CompileScope[F[_]] private (
     *
     * Returns scope that has to be used in next compilation step.
     */
-  def open(
-      interruptible: Option[Interruptible[F]]
-  ): F[Either[Throwable, CompileScope[F]]] = {
+  def open(interruptible: Boolean): F[Either[Throwable, CompileScope[F]]] = {
     /*
      * Creates a context for a new scope.
      *
@@ -128,7 +126,9 @@ private[fs2] final class CompileScope[F[_]] private (
     val createCompileScope: F[CompileScope[F]] = Token[F].flatMap { newScopeId =>
       self.interruptible match {
         case None =>
-          val fiCtx = interruptible.traverse(i => InterruptContext(i, newScopeId, F.unit))
+          val fiCtx = F.concurrent
+            .filter(_ => interruptible)
+            .traverse(implicit C => InterruptContext(newScopeId, F.unit))
           fiCtx.flatMap(iCtx => CompileScope[F](newScopeId, Some(self), iCtx))
 
         case Some(parentICtx) =>
@@ -178,7 +178,7 @@ private[fs2] final class CompileScope[F[_]] private (
       release: (R, Resource.ExitCase) => F[Unit]
   ): F[Either[Throwable, R]] =
     ScopedResource.create[F].flatMap { resource =>
-      F.uncancelable {
+      val acq: Poll[F] => F[Either[Throwable, R]] = _ =>
         fr.redeemWith(
           t => F.pure(Left(t)),
           r => {
@@ -197,6 +197,9 @@ private[fs2] final class CompileScope[F[_]] private (
             }
           }
         )
+      F.concurrent match {
+        case Some(c) => c.uncancelable(acq)
+        case None    => acq(new Poll[F] { def apply[X](fx: F[X]) = fx })
       }
     }
 
@@ -495,47 +498,42 @@ private[fs2] object CompileScope {
       * @param newScopeId     The id of the new scope.
       */
     def childContext(
-        interruptible: Option[Interruptible[F]],
+        interruptible: Boolean,
         newScopeId: Token
     ): F[InterruptContext[F]] =
-      interruptible
-        .map { inter =>
-          self.deferred.get.start.flatMap { fiber =>
-            InterruptContext(inter, newScopeId, fiber.cancel).flatMap { context =>
-              fiber.join
-                .flatMap {
-                  case Outcome.Succeeded(interrupt) =>
-                    interrupt.flatMap(i => context.complete(i))
-                  case Outcome.Errored(t) =>
-                    context.complete(Outcome.Errored(t))
-                  case Outcome.Canceled() =>
-                    context.complete(Outcome.Canceled())
-                }
-                .start
-                .as(context)
-            }
+      if (interruptible) {
+        self.deferred.get.start.flatMap { fiber =>
+          InterruptContext(newScopeId, fiber.cancel).flatMap { context =>
+            fiber.join
+              .flatMap {
+                case Outcome.Succeeded(interrupt) =>
+                  interrupt.flatMap(i => context.complete(i))
+                case Outcome.Errored(t) =>
+                  context.complete(Outcome.Errored(t))
+                case Outcome.Canceled() =>
+                  context.complete(Outcome.Canceled())
+              }
+              .start
+              .as(context)
           }
         }
-        .getOrElse(copy(cancelParent = Applicative[F].unit).pure[F])
+      } else copy(cancelParent = Applicative[F].unit).pure[F]
   }
 
   private object InterruptContext {
 
     def apply[F[_]](
-        interruptible: Interruptible[F],
         newScopeId: Token,
         cancelParent: F[Unit]
-    ): F[InterruptContext[F]] = {
-      import interruptible._
+    )(implicit F: Concurrent[F]): F[InterruptContext[F]] =
       for {
-        ref <- Concurrent[F].ref[Option[InterruptionOutcome]](None)
-        deferred <- Concurrent[F].deferred[InterruptionOutcome]
+        ref <- F.ref[Option[InterruptionOutcome]](None)
+        deferred <- F.deferred[InterruptionOutcome]
       } yield InterruptContext[F](
         deferred = deferred,
         ref = ref,
         interruptRoot = newScopeId,
         cancelParent = cancelParent
       )
-    }
   }
 }
