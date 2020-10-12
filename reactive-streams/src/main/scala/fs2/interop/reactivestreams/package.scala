@@ -23,6 +23,7 @@ package fs2
 package interop
 
 import cats.effect._
+import cats.effect.implicits._
 import org.reactivestreams._
 
 /** Implementation of the reactivestreams protocol for fs2
@@ -53,7 +54,7 @@ package object reactivestreams {
     */
   def fromPublisher[F[_]: ConcurrentEffect, A](p: Publisher[A]): Stream[F, A] =
     Stream
-      .eval(StreamSubscriber[F, A](new Runner[F]))
+      .eval(StreamSubscriber[F, A])
       .flatMap(s => s.sub.stream(Sync[F].delay(p.subscribe(s))))
 
   implicit final class PublisherOps[A](val publisher: Publisher[A]) extends AnyVal {
@@ -71,13 +72,28 @@ package object reactivestreams {
       * The stream is only ran when elements are requested.
       */
     def toUnicastPublisher(implicit F: ConcurrentEffect[F]): StreamUnicastPublisher[F, A] =
-      StreamUnicastPublisher(stream, new Runner[F])
+      StreamUnicastPublisher(stream)
   }
 
-  private[interop] implicit class RunnerSyntax[F[_]: ConcurrentEffect, A](fa: F[A]) {
-    def unsafeRunAsync(runner: Runner[F]): Unit =
-      runner.unsafeRunAsync(fa)
-    def unsafeRunSync(runner: Runner[F]): Unit =
-      runner.unsafeRunSync(fa)
+  private[interop] implicit class Runner[F[_]: ConcurrentEffect, A](fa: F[A]) {
+    private def reportFailure(e: Throwable) =
+      Thread.getDefaultUncaughtExceptionHandler match {
+        case null => e.printStackTrace()
+        case h    => h.uncaughtException(Thread.currentThread(), e)
+      }
+
+    def unsafeRunAsync[A](): Unit =
+      fa.runAsync {
+        case Left(e)  => IO(reportFailure(e))
+        case Right(_) => IO.unit
+      }.unsafeRunSync()
+
+    def unsafeRunSync[A](): Unit = {
+      val io = ConcurrentEffect[F].toIO(fa)
+      io.attempt.unsafeRunSync() match {
+        case Left(failure) => reportFailure(failure)
+        case _             =>
+      }
+    }
   }
 }

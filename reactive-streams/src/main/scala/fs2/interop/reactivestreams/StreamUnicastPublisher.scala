@@ -23,8 +23,8 @@ package fs2
 package interop
 package reactivestreams
 
+import cats.implicits._
 import cats.effect._
-import cats.syntax.all._
 import org.reactivestreams._
 
 /** Implementation of a `org.reactivestreams.Publisher`
@@ -34,19 +34,18 @@ import org.reactivestreams._
   * @see [[https://github.com/reactive-streams/reactive-streams-jvm#1-publisher-code]]
   */
 final class StreamUnicastPublisher[F[_]: ConcurrentEffect, A](
-    val stream: Stream[F, A],
-    runner: Runner[F]
+    val stream: Stream[F, A]
 ) extends Publisher[A] {
   def subscribe(subscriber: Subscriber[_ >: A]): Unit = {
     nonNull(subscriber)
-    StreamSubscription(subscriber, stream, runner)
+    StreamSubscription(subscriber, stream)
       .flatMap { subscription =>
         Sync[F].delay {
           subscriber.onSubscribe(subscription)
           subscription.unsafeStart()
         }
       }
-      .unsafeRunAsync(runner)
+      .unsafeRunAsync()
   }
 
   private def nonNull[B](b: B): Unit = if (b == null) throw new NullPointerException()
@@ -54,8 +53,7 @@ final class StreamUnicastPublisher[F[_]: ConcurrentEffect, A](
 
 object StreamUnicastPublisher {
   def apply[F[_]: ConcurrentEffect, A](
-      s: Stream[F, A],
-      runner: Runner[F]
+      s: Stream[F, A]
   ): StreamUnicastPublisher[F, A] =
-    new StreamUnicastPublisher(s, runner)
+    new StreamUnicastPublisher(s)
 }

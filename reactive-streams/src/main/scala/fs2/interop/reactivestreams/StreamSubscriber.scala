@@ -36,29 +36,27 @@ import org.reactivestreams._
   * @see [[https://github.com/reactive-streams/reactive-streams-jvm#2-subscriber-code]]
   */
 final class StreamSubscriber[F[_]: ConcurrentEffect, A](
-    val sub: StreamSubscriber.FSM[F, A],
-    runner: Runner[F]
-) extends Subscriber[A] {
+    val sub: StreamSubscriber.FSM[F, A]) extends Subscriber[A] {
 
   /** Called by an upstream reactivestreams system */
   def onSubscribe(s: Subscription): Unit = {
     nonNull(s)
-    sub.onSubscribe(s).unsafeRunSync(runner)
+    sub.onSubscribe(s).unsafeRunSync()
   }
 
   /** Called by an upstream reactivestreams system */
   def onNext(a: A): Unit = {
     nonNull(a)
-    sub.onNext(a).unsafeRunSync(runner)
+    sub.onNext(a).unsafeRunSync()
   }
 
   /** Called by an upstream reactivestreams system */
-  def onComplete(): Unit = sub.onComplete.unsafeRunSync(runner)
+  def onComplete(): Unit = sub.onComplete.unsafeRunSync()
 
   /** Called by an upstream reactivestreams system */
   def onError(t: Throwable): Unit = {
     nonNull(t)
-    sub.onError(t).unsafeRunSync(runner)
+    sub.onError(t).unsafeRunSync()
   }
 
   /** Obtain a fs2.Stream */
@@ -74,8 +72,8 @@ final class StreamSubscriber[F[_]: ConcurrentEffect, A](
 }
 
 object StreamSubscriber {
-  def apply[F[_]: ConcurrentEffect, A](runner: Runner[F]): F[StreamSubscriber[F, A]] =
-    fsm[F, A].map(new StreamSubscriber(_, runner))
+  def apply[F[_]: ConcurrentEffect, A]: F[StreamSubscriber[F, A]] =
+    fsm[F, A].map(new StreamSubscriber(_))
 
   /** A finite state machine describing the subscriber */
   private[reactivestreams] trait FSM[F[_], A] {
