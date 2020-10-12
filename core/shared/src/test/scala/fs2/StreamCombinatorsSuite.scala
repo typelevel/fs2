@@ -810,36 +810,71 @@ class StreamCombinatorsSuite extends Fs2Suite {
         .map(it => assertEquals(it, expected))
     }
 
-    test("does not reset timeout if nothing is emitted") {
-      Stream.eval(Ref[IO].of(List.empty[Int])).flatMap { st =>
-        val source = {
-          Stream(1,2,3) ++
-          Stream.sleep_[IO](1300.millis) ++
-          Stream(4,5,6,7,8) ++
-          Stream.sleep_[IO](2.seconds)
-        }
-          .groupWithin(3, 1.second)
-          .map(_.toList)
-          .evalMap(c => st.update(_ ++ c))
+    test("does not reset timeout if nothing is emitted".ignore) {
 
-        val check =
-          for {
-            a <- st.get.iterateWhile(_ == Nil)
-            _ <- IO.sleep(1400.millis)
-            b <- st.get
-            _ <- IO.sleep(1100.millis)
-            c <- st.get
-          } yield (a, b, c)
+      Ref[IO].of(0.millis).flatMap { ref =>
+        val timeout = 5.seconds
 
-        Stream.eval(check).concurrently(source)
-      }.compile
-        .lastOrError
-        .map { case (a, b, c) =>
-          assertEquals(a, List(1,2,3))
-          assertEquals(b, List(1,2,3,4,5,6))
-          assertEquals(c, List(1,2,3,4,5,6, 7, 8))
-        }
-    }
+        def measureEmission[A]: Pipe[IO, A, A] =
+          _.chunks
+            .evalTap(_ => IO.monotonic.flatMap(ref.set))
+            .flatMap(Stream.chunk)
+
+        // emits elements after the timeout has expired
+        val source =
+          Stream.sleep_[IO](timeout + 200.millis) ++
+          Stream(4,5) ++
+          Stream.never[IO] // avoids emission due to source termination
+
+        source
+          .through(measureEmission)
+          .groupWithin(5, timeout)
+          .evalMap { _ => (IO.monotonic, ref.get).mapN(_ - _) }
+          .interruptAfter(timeout * 3)
+          .compile
+          .lastOrError
+      }.map { groupWithinDelay =>
+        // The stream emits after the timeout 
+        // so groupWithin should re-emit with zero delay
+        assertEquals(groupWithinDelay, 0.millis)
+      }.ticked
+
+  }
+    // .debugChunks(formatter = (c => s"pre $c ${System.currentTimeMillis - n}"))
+    // .groupWithin(3, 5.second)
+    // .debug(formatter = (c => s"post $c ${System.currentTimeMillis - n}"))
+    // .compile
+
+    // }
+    //   Stream.eval(Ref[IO].of(List.empty[Int])).flatMap { st =>
+    //     val source = {
+    //       Stream(1,2,3) ++
+    //       Stream.sleep_[IO](1300.millis) ++
+    //       Stream(4,5,6,7,8) ++
+    //       Stream.sleep_[IO](2.seconds)
+    //     }
+    //       .groupWithin(3, 1.second)
+    //       .map(_.toList)
+    //       .evalMap(c => st.update(_ ++ c))
+
+    //     val check =
+    //       for {
+    //         a <- st.get.iterateWhile(_ == Nil)
+    //         _ <- IO.sleep(1400.millis)
+    //         b <- st.get
+    //         _ <- IO.sleep(1100.millis)
+    //         c <- st.get
+    //       } yield (a, b, c)
+
+    //     Stream.eval(check).concurrently(source)
+    //   }.compile
+    //     .lastOrError
+    //     .map { case (a, b, c) =>
+    //       assertEquals(a, List(1,2,3))
+    //       assertEquals(b, List(1,2,3,4,5,6))
+    //       assertEquals(c, List(1,2,3,4,5,6, 7, 8))
+    //     }
+    // }
   }
 
   property("head")(forAll((s: Stream[Pure, Int]) => assert(s.head.toList == s.toList.take(1))))
