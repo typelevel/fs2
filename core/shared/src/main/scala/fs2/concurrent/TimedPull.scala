@@ -91,7 +91,7 @@ object tp {
 
           def uncons: Pull[F, INothing, Option[(Either[Token, Chunk[A]], TimedPull[F, A])]] =
             s.pull.uncons1
-              .map( _.map { case (r, next) => r -> toTimedPull(next)} )
+              .map( _.map { case (r, next) => r -> toTimedPull(next) })
 
           def startTimer(t: FiniteDuration): Pull[F, INothing, Unit] = Pull.eval {
             newTimeout(t).flatMap(t => time.set(t.some))
@@ -182,8 +182,27 @@ object tp {
   def t = ex.groupWithin(5, 1.second).debug().compile.toVector.unsafeRunSync()
   def tt = groupWithin(ex, 5, 1.second).debug().compile.toVector.unsafeRunSync()
 
+  // timeout reset
+  def ttt = {
+    val n = System.currentTimeMillis
 
+    {
+      Stream.exec(IO(println("start"))) ++
+      Stream(1,2,3) ++
+      Stream.sleep_[IO](5200.millis) ++
+      Stream(4,5) ++
+      //  Stream(6,7) ++
+      Stream.sleep_[IO](7.seconds) //++
+//    Stream(8, 9)
 
+  }
+    .debugChunks(formatter = (c => s"pre $c ${System.currentTimeMillis - n}"))
+    .groupWithin(3, 5.second)
+    .debug(formatter = (c => s"post $c ${System.currentTimeMillis - n}"))
+    .compile
+    .drain
+    .unsafeRunSync()
+  }
   // components:
   //  a queue of chunks and timeouts
   //  a mechanism for resettable timeouts

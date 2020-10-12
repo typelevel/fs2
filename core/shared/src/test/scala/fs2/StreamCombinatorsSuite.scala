@@ -809,6 +809,37 @@ class StreamCombinatorsSuite extends Fs2Suite {
         .toList
         .map(it => assertEquals(it, expected))
     }
+
+    test("does not reset timeout if nothing is emitted") {
+      Stream.eval(Ref[IO].of(List.empty[Int])).flatMap { st =>
+        val source = {
+          Stream(1,2,3) ++
+          Stream.sleep_[IO](1300.millis) ++
+          Stream(4,5,6,7,8) ++
+          Stream.sleep_[IO](2.seconds)
+        }
+          .groupWithin(3, 1.second)
+          .map(_.toList)
+          .evalMap(c => st.update(_ ++ c))
+
+        val check =
+          for {
+            a <- st.get.iterateWhile(_ == Nil)
+            _ <- IO.sleep(1400.millis)
+            b <- st.get
+            _ <- IO.sleep(1100.millis)
+            c <- st.get
+          } yield (a, b, c)
+
+        Stream.eval(check).concurrently(source)
+      }.compile
+        .lastOrError
+        .map { case (a, b, c) =>
+          assertEquals(a, List(1,2,3))
+          assertEquals(b, List(1,2,3,4,5,6))
+          assertEquals(c, List(1,2,3,4,5,6, 7, 8))
+        }
+    }
   }
 
   property("head")(forAll((s: Stream[Pure, Int]) => assert(s.head.toList == s.toList.take(1))))
