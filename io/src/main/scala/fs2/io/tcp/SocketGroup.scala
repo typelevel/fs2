@@ -38,7 +38,7 @@ import java.nio.channels.spi.AsynchronousChannelProvider
 import java.util.concurrent.{ThreadFactory, TimeUnit}
 
 import cats.syntax.all._
-import cats.effect.{Async, Resource, Sync}
+import cats.effect.{Resource, Sync}
 import cats.effect.kernel.Ref
 import cats.effect.std.Semaphore
 

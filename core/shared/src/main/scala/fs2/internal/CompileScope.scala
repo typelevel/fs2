@@ -30,7 +30,7 @@ import cats.effect.kernel.{Deferred, Ref}
 import cats.effect.implicits._
 import cats.syntax.all._
 
-import fs2.{Compiler, CompositeFailure, Pure, Scope}
+import fs2.{Compiler, CompositeFailure, Scope}
 import fs2.internal.CompileScope.{InterruptContext, InterruptionOutcome}
 
 /** Implementation of [[Scope]] for the internal stream interpreter.
@@ -215,7 +215,7 @@ private[fs2] final class CompileScope[F[_]] private (
   private def resources: F[Chain[ScopedResource[F]]] =
     state.get.map {
       case s: CompileScope.State.Open[F]   => s.resources
-      case s: CompileScope.State.Closed[F] => Chain.empty
+      case _: CompileScope.State.Closed[F] => Chain.empty
     }
 
   /** Traverses supplied `Chain` with `f` that may produce a failure, and collects these failures.
@@ -310,14 +310,14 @@ private[fs2] final class CompileScope[F[_]] private (
                     case None        => go(tail)
                     case Some(scope) => F.pure(Some(scope))
                   }
-              case s: CompileScope.State.Closed[F] => go(tail)
+              case _: CompileScope.State.Closed[F] => go(tail)
             }
       }
     if (self.id == scopeId) F.pure(Some(self))
     else
       state.get.flatMap {
         case s: CompileScope.State.Open[F]   => go(s.children)
-        case s: CompileScope.State.Closed[F] => F.pure(None)
+        case _: CompileScope.State.Closed[F] => F.pure(None)
       }
   }
 
@@ -362,7 +362,7 @@ private[fs2] final class CompileScope[F[_]] private (
             Some(lease)
           }
         }
-      case s: CompileScope.State.Closed[F] => F.pure(None)
+      case _: CompileScope.State.Closed[F] => F.pure(None)
     }
 
   // See docs on [[Scope#interrupt]]

@@ -39,7 +39,7 @@ import javax.net.ssl.{
 }
 
 import cats.Applicative
-import cats.effect.{Async, Resource, Sync}
+import cats.effect.Resource
 import cats.syntax.all._
 
 import fs2.io.tcp.Socket

@@ -34,7 +34,7 @@ import java.net.{
 }
 import java.nio.channels.{ClosedChannelException, DatagramChannel}
 
-import cats.effect.{Async, Resource, Sync}
+import cats.effect.{Resource, Sync}
 import cats.syntax.all._
 
 final class SocketGroup(
