@@ -82,13 +82,13 @@ package object reactivestreams {
         case h    => h.uncaughtException(Thread.currentThread(), e)
       }
 
-    def unsafeRunAsync[A](): Unit =
+    def unsafeRunAsync(): Unit =
       fa.runAsync {
         case Left(e)  => IO(reportFailure(e))
         case Right(_) => IO.unit
       }.unsafeRunSync()
 
-    def unsafeRunSync[A](): Unit = {
+    def unsafeRunSync(): Unit = {
       val io = ConcurrentEffect[F].toIO(fa)
       io.attempt.unsafeRunSync() match {
         case Left(failure) => reportFailure(failure)
