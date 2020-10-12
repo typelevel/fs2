@@ -76,7 +76,7 @@ package object reactivestreams {
   }
 
   private[interop] implicit class Runner[F[_]: ConcurrentEffect, A](fa: F[A]) {
-    private def reportFailure(e: Throwable) =
+    def reportFailure(e: Throwable) =
       Thread.getDefaultUncaughtExceptionHandler match {
         case null => e.printStackTrace()
         case h    => h.uncaughtException(Thread.currentThread(), e)
