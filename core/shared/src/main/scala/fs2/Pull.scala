@@ -610,9 +610,9 @@ object Pull extends PullLowPriority {
                       // scope back to the go as that is the scope that is expected to be here.
                       val nextScope = if (u.scope.isEmpty) outScope else scope
                       val uncons = (head, outScope.id, tail.asInstanceOf[Pull[f, y, Unit]])
-                     //Option[(Chunk[y], Token, Pull[f, y, Unit])])                    
+                      //Option[(Chunk[y], Token, Pull[f, y, Unit])])
                       val result = Result.Succeeded(Some(uncons))
-                      interruptGuard(nextScope){
+                      interruptGuard(nextScope) {
                         val next = view.next(result).asInstanceOf[Pull[F, X, Unit]]
                         go(nextScope, extendedTopLevelScope, next)
                       }
