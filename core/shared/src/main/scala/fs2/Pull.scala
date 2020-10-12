@@ -609,13 +609,13 @@ object Pull extends PullLowPriority {
                       // if we originally swapped scopes we want to return the original
                       // scope back to the go as that is the scope that is expected to be here.
                       val nextScope = if (u.scope.isEmpty) outScope else scope
-                      val result = Result.Succeeded(
-                        Some((head, outScope.id, tail.asInstanceOf[Pull[f, y, Unit]]))
-                      ) //Option[(Chunk[y], Token, Pull[f, y, Unit])])
-                      val next = view.next(result).asInstanceOf[Pull[F, X, Unit]]
-                      interruptGuard(nextScope)(
+                      val uncons = (head, outScope.id, tail.asInstanceOf[Pull[f, y, Unit]])
+                      //Option[(Chunk[y], Token, Pull[f, y, Unit])])
+                      val result = Result.Succeeded(Some(uncons))
+                      interruptGuard(nextScope) {
+                        val next = view.next(result).asInstanceOf[Pull[F, X, Unit]]
                         go(nextScope, extendedTopLevelScope, next)
-                      )
+                      }
 
                     case Right(Interrupted(scopeId, err)) =>
                       go(scope, extendedTopLevelScope, view.next(Result.Interrupted(scopeId, err)))
