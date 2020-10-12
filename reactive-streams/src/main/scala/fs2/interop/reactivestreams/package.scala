@@ -87,5 +87,13 @@ package object reactivestreams {
         case Left(e)  => IO(reportFailure(e))
         case Right(_) => IO.unit
       }.unsafeRunSync()
+
+    def unsafeRunSync(): Unit = {
+      val io = ConcurrentEffect[F].toIO(fa)
+      io.attempt.unsafeRunSync() match {
+        case Left(failure) => reportFailure(failure)
+        case _             =>
+      }
+    }
   }
 }

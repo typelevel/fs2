@@ -99,7 +99,8 @@ final class SubscriberBlackboxSpec
 
   private val counter = new AtomicInteger()
 
-  def createSubscriber(): StreamSubscriber[IO, Int] = StreamSubscriber[IO, Int].unsafeRunSync()
+  def createSubscriber(): StreamSubscriber[IO, Int] =
+    StreamSubscriber[IO, Int].unsafeRunSync()
 
   override def triggerRequest(s: Subscriber[_ >: Int]): Unit = {
     val req = s.asInstanceOf[StreamSubscriber[IO, Int]].sub.dequeue1
