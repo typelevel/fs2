@@ -140,7 +140,10 @@ object tp {
           resize(rest, s >> Pull.output1(unit))
         }
 
-      def go(acc: Chunk.Queue[O], tp: TimedPull[IO, O]): Pull[IO, Chunk[O], Unit] =
+      // Invariants:
+      // acc.size < n, always
+      // hasTimedOut == true iff a timeout has been received, and acc.isEmpty
+      def go(acc: Chunk.Queue[O], tp: TimedPull[IO, O], hasTimedOut: Boolean = false): Pull[IO, Chunk[O], Unit] =
         tp.uncons.flatMap {
           case None =>
             Pull.output1(acc.toChunk).whenA(acc.nonEmpty)
@@ -148,12 +151,14 @@ object tp {
             e match {
               case Left(_) =>
                 if (acc.nonEmpty)
-                  Pull.output1(acc.toChunk) >> tp.startTimer(t) >> go(Chunk.Queue.empty, next)
-                else // TODO fix resetting bug as per comment above
-                  emitNonEmpty(acc) >> tp.startTimer(t) >> go(Chunk.Queue.empty, next)
+                  Pull.output1(acc.toChunk) >>
+                  tp.startTimer(t) >>
+                  go(Chunk.Queue.empty, next)
+                else
+                  go(Chunk.Queue.empty, next, hasTimedOut = true)
               case Right(c) =>
                 val newAcc = acc :+ c
-                if (newAcc.size < n)
+                if (newAcc.size < n && !hasTimedOut)
                   go(newAcc, next)
                 else {
                   val (toEmit, rest) = resize(newAcc.toChunk, Pull.done)
