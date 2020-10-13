@@ -44,4 +44,11 @@ class TimedPullSuite extends Fs2Suite {
   test("timed pull") {
     IO.unit
   }
+
+  // -- based on a stream emitting multiple elements, with metered
+  // pull single element, no timeout
+  // pull multiple elements, timeout reset with no timeout
+  // pull single element, timeout
+  // pull multiple elements, timeout reset, with timeout
+  // try pull multiple elements with no timeout reset, with timeout
 }
