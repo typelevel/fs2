@@ -4289,6 +4289,59 @@ object Stream extends StreamLowPriority {
               Pull.output(pfx) >> Pull.pure(Some(tl.cons(sfx)))
           }
       }
+
+    // TODO scaladoc
+    def timed[O2](pull: Stream.TimedPull[F, O] => Pull[F, O2, Unit])(implicit t: Temporal[F]): Pull[F, O2, Unit] = {
+      def now = t.monotonic
+
+      class Timeout(val id: Token, issuedAt: FiniteDuration, d: FiniteDuration) {
+        def asOfNow:  F[FiniteDuration] = now.map(now => d - (now - issuedAt))
+      }
+
+      def newTimeout(d: FiniteDuration): F[Timeout] =
+        (Token[F], now).mapN(new Timeout(_, _, d))
+
+      Pull.eval(SignallingRef[F, Option[Timeout]](None)).flatMap { time =>
+        def nextAfter(t: Timeout): Stream[F, Timeout] =
+          time.discrete.unNone.dropWhile(_.id == t.id).head
+
+        // TODO is the initial time.get.unNone fine or does it spin?
+        def timeouts: Stream[F, Token] =
+          Stream.eval(time.get).unNone.flatMap { timeout =>
+            Stream.eval(timeout.asOfNow).flatMap { t =>
+              if (t <= 0.nanos) Stream.emit(timeout.id) ++ nextAfter(timeout).drain
+              else Stream.sleep_[F](t)
+            }
+          } ++ timeouts
+
+        def output: Stream[F, Either[Token, Chunk[O]]] =
+          timeouts
+            .map(_.asLeft)
+            .mergeHaltR(self.chunks.map(_.asRight))
+            .flatMap {
+              case chunk @ Right(_) => Stream.emit(chunk)
+              case timeout @ Left(id) =>
+                Stream
+                  .eval(time.get)
+                  .collect { case Some(currentTimeout) if currentTimeout.id == id => timeout }
+            }
+
+        def toTimedPull(s: Stream[F, Either[Token, Chunk[O]]]): TimedPull[F, O] = new TimedPull[F, O] {
+          type Timeout = Token
+
+          def uncons: Pull[F, INothing, Option[(Either[Token, Chunk[O]], TimedPull[F, O])]] =
+            s.pull.uncons1
+              .map( _.map { case (r, next) => r -> toTimedPull(next) })
+
+          def startTimer(t: FiniteDuration): Pull[F, INothing, Unit] = Pull.eval {
+            newTimeout(t).flatMap(t => time.set(t.some))
+          }
+        }
+
+        pull(toTimedPull(output))
+      }
+
+    }
   }
 
   /** Projection of a `Stream` providing various ways to compile a `Stream[F,O]` to a `G[...]`. */
@@ -4558,6 +4611,13 @@ object Stream extends StreamLowPriority {
       * }}}
       */
     def toVector: G[Vector[O]] = to(Vector)
+  }
+
+  // TODO scaladoc
+  trait TimedPull[F[_], A] {
+    type Timeout
+    def uncons: Pull[F, INothing, Option[(Either[Timeout, Chunk[A]], TimedPull[F, A])]]
+    def startTimer(t: FiniteDuration): Pull[F, INothing, Unit]
   }
 
   /**
