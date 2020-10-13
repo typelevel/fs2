@@ -1504,9 +1504,14 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
                   go(Chunk.Queue.empty, next, hasTimedOut = true)
               case Right(c) =>
                 val newAcc = acc :+ c
-                if (newAcc.size < n && !hasTimedOut)
-                  go(newAcc, next)
-                else {
+                if (newAcc.size < n) {
+                  if(hasTimedOut)
+                    Pull.output1(newAcc.toChunk) >>
+                    timedPull.startTimer(d) >>
+                    go(Chunk.Queue.empty, next)
+                  else
+                    go(newAcc, next)
+                } else {
                   val (toEmit, rest) = resize(newAcc.toChunk, Pull.done)
                   toEmit >> timedPull.startTimer(d) >> go(Chunk.Queue(rest), next)
                 }
