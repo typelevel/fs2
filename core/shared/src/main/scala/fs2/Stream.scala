@@ -1472,97 +1472,49 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * Empty groups, which can occur if no elements can be pulled from upstream
     * in a given time window, will not be emitted.
     *
-    * Note: a time window starts each time downstream pulls.
+    * Note: a time window starts each time downstream pulls. TODO: correct this
     */
   def groupWithin[F2[x] >: F[x]](
       n: Int,
       d: FiniteDuration
   )(implicit F: Temporal[F2]): Stream[F2, Chunk[O]] =
-    Stream
-      .eval {
-        Queue
-          .synchronousNoneTerminated[F2, Either[Token, Chunk[O]]]
-          .product(F.ref(F.unit -> false))
-      }
-      .flatMap { case (q, currentTimeout) =>
-        def startTimeout: Stream[F2, Token] =
-          Stream.eval(Token[F2]).evalTap { token =>
-            val timeout = F.sleep(d) >> q.enqueue1(token.asLeft.some)
+    this.covary[F2].pull.timed { timedPull =>
+      def resize(c: Chunk[O], s: Pull[F2, Chunk[O], Unit]): (Pull[F2, Chunk[O], Unit], Chunk[O]) =
+        if (c.size < n) s -> c
+        else {
+          val (unit, rest) = c.splitAt(n)
+          resize(rest, s >> Pull.output1(unit))
+        }
 
-            // We need to cancel outstanding timeouts to avoid leaks
-            // on interruption, but using `Stream.bracket` or
-            // derivatives causes a memory leak due to all the
-            // finalisers accumulating. Therefore we dispose of them
-            // manually, with a cooperative strategy between a single
-            // stream finaliser, and F finalisers on each timeout.
-            //
-            // Note that to avoid races, the correctness of the
-            // algorithm does not depend on timely cancellation of
-            // previous timeouts, but uses a versioning scheme to
-            // ensure stale timeouts are no-ops.
-            timeout.start
-              .bracket(_ => F.unit) { fiber =>
-                // note the this is in a `release` action, and therefore uninterruptible
-                currentTimeout.modify { case st @ (cancelInFlightTimeout, streamTerminated) =>
-                  if (streamTerminated)
-                    // the stream finaliser will cancel the in flight
-                    // timeout, we need to cancel the timeout we have
-                    // just started
-                    st -> fiber.cancel
-                  else
-                    // The stream finaliser hasn't run, so we cancel
-                    // the in flight timeout and store the finaliser for
-                    // the timeout we have just started
-                    (fiber.cancel, streamTerminated) -> cancelInFlightTimeout
-                }.flatten
-              }
-          }
+      // Invariants:
+      // acc.size < n, always
+      // hasTimedOut == true iff a timeout has been received, and acc.isEmpty
+      def go(acc: Chunk.Queue[O], timedPull: Stream.TimedPull[F2, O], hasTimedOut: Boolean = false): Pull[F2, Chunk[O], Unit] =
+        timedPull.uncons.flatMap {
+          case None =>
+            Pull.output1(acc.toChunk).whenA(acc.nonEmpty)
+          case Some((e, next)) =>
+            e match {
+              case Left(_) =>
+                if (acc.nonEmpty)
+                  Pull.output1(acc.toChunk) >>
+                  timedPull.startTimer(d) >>
+                  go(Chunk.Queue.empty, next)
+                else
+                  go(Chunk.Queue.empty, next, hasTimedOut = true)
+              case Right(c) =>
+                val newAcc = acc :+ c
+                if (newAcc.size < n && !hasTimedOut)
+                  go(newAcc, next)
+                else {
+                  val (toEmit, rest) = resize(newAcc.toChunk, Pull.done)
+                  toEmit >> timedPull.startTimer(d) >> go(Chunk.Queue(rest), next)
+                }
+            }
+        }
 
-        def producer =
-          this.chunks.map(_.asRight.some).through(q.enqueue).onFinalize(q.enqueue1(None))
-
-        def emitNonEmpty(c: Chunk.Queue[O]): Stream[F2, Chunk[O]] =
-          if (c.size > 0) Stream.emit(c.toChunk)
-          else Stream.empty
-
-        def resize(c: Chunk[O], s: Stream[F2, Chunk[O]]): (Stream[F2, Chunk[O]], Chunk[O]) =
-          if (c.size < n) s -> c
-          else {
-            val (unit, rest) = c.splitAt(n)
-            resize(rest, s ++ Stream.emit(unit))
-          }
-
-        def go(acc: Chunk.Queue[O], currentTimeout: Token): Stream[F2, Chunk[O]] =
-          Stream.eval(q.dequeue1).flatMap {
-            case None => emitNonEmpty(acc)
-            case Some(e) =>
-              e match {
-                case Left(t) if t == currentTimeout =>
-                  emitNonEmpty(acc) ++ startTimeout.flatMap { newTimeout =>
-                    go(Chunk.Queue.empty, newTimeout)
-                  }
-                case Left(_) => go(acc, currentTimeout)
-                case Right(c) =>
-                  val newAcc = acc :+ c
-                  if (newAcc.size < n)
-                    go(newAcc, currentTimeout)
-                  else {
-                    val (toEmit, rest) = resize(newAcc.toChunk, Stream.empty)
-                    toEmit ++ startTimeout.flatMap { newTimeout =>
-                      go(Chunk.Queue(rest), newTimeout)
-                    }
-                  }
-              }
-          }
-
-        startTimeout
-          .flatMap(t => go(Chunk.Queue.empty, t).concurrently(producer))
-          .onFinalize {
-            currentTimeout
-              .getAndSet(F.unit -> true)
-              .flatMap { case (cancelInFlightTimeout, _) => cancelInFlightTimeout }
-          }
-      }
+      timedPull.startTimer(d) >> go(Chunk.Queue.empty, timedPull)
+    }.stream
 
   /**
     * If `this` terminates with `Stream.raiseError(e)`, invoke `h(e)`.
