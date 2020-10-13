@@ -810,8 +810,8 @@ class StreamCombinatorsSuite extends Fs2Suite {
         .map(it => assertEquals(it, expected))
     }
 
+    // TODO verify with new implementation
     test("does not reset timeout if nothing is emitted".ignore) {
-
       Ref[IO].of(0.millis).flatMap { ref =>
         val timeout = 5.seconds
 

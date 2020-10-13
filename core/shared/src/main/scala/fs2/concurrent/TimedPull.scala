@@ -30,21 +30,6 @@ import cats.syntax.all._
 
 object tp {
 
-  //TODO test case for stale timeout
-  // source stream: wait 100millis then emit chunk than `never`
-  // timed pull body:, start time 100 millis (to race with source) then, recursively
-  // if left, record that
-  // if right/ record that and start a very long timeout (to reset it but not get it)
-  // interrupt resulting stream after some time, but not as long as the second timeout
-  //  good outcomes:
-  //   recorded chunk only
-  //   recorded timeout and then chunk
-  //  bug to repro if check is eliminated
-  //   recorded chunk and then timeout: since the new timeout is far in the future,
-  //   it means we received a stale timeout, which breaks the invariant that an old
-  //   timeout can never be received after startTimer is called
-
-
   trait TimedPull[F[_], A] {
     type Timeout
     def uncons: Pull[F, INothing, Option[(Either[Timeout, Chunk[A]], TimedPull[F, A])]]
