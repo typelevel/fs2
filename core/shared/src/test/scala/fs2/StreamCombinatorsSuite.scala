@@ -726,8 +726,8 @@ class StreamCombinatorsSuite extends Fs2Suite {
       forAllF { (s: Stream[Pure, Int], d0: Int, maxGroupSize0: Int) =>
         val maxGroupSize = (maxGroupSize0 % 20).abs + 1
         val d = (d0 % 50).abs.millis
-        Stream(1)
-          .append(s)
+
+        s
           .map(i => (i % 500).abs)
           .covary[IO]
           .evalTap(shortDuration => IO.sleep(shortDuration.micros))
@@ -837,8 +837,12 @@ class StreamCombinatorsSuite extends Fs2Suite {
         // so groupWithin should re-emit with zero delay
         assertEquals(groupWithinDelay, 0.millis)
       }.ticked
-
     }
+
+    // TODO
+    // timeout reset with empty chunk
+    // changing < to  <= and having a test that breaks (none of the current ones do)
+    // failing to propagate rest and the should never lose any elements does not fail
   }
 
   property("head")(forAll((s: Stream[Pure, Int]) => assert(s.head.toList == s.toList.take(1))))
