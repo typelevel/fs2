@@ -4248,8 +4248,9 @@ object Stream extends StreamLowPriority {
       }
 
     // TODO scaladoc
-    def timed[O2](pull: Stream.TimedPull[F, O] => Pull[F, O2, Unit])(implicit t: Temporal[F]): Pull[F, O2, Unit] = {
-      def now = t.monotonic
+    // TODO don't hardcode Unit
+    def timed[O2](pull: Stream.TimedPull[F, O] => Pull[F, O2, Unit])(implicit F: Temporal[F]): Pull[F, O2, Unit] = {
+      def now = F.monotonic
 
       class Timeout(val id: Token, issuedAt: FiniteDuration, d: FiniteDuration) {
         def asOfNow:  F[FiniteDuration] = now.map(now => d - (now - issuedAt))
