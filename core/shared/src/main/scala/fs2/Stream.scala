@@ -1504,6 +1504,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
                 else
                   go(Chunk.Queue.empty, next, hasTimedOut = true)
               case Right(c) if hasTimedOut =>
+                // it has timed out without reset, so acc is empty
                 val (toEmit, rest) =
                   if (c.size < n) Pull.output1(c) -> Chunk.empty
                   else resize(c, Pull.done)

@@ -839,7 +839,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
       }.ticked
     }
 
-    test("Edge case: does not introduce unnecessary delays when groupSize == chunkSize") {
+    test("Edge case: should not introduce unnecessary delays when groupSize == chunkSize") {
       Ref[IO].of(0.millis).flatMap { ref =>
         val timeout = 5.seconds
 
@@ -862,9 +862,6 @@ class StreamCombinatorsSuite extends Fs2Suite {
         assertEquals(groupWithinDelay, 0.millis)
       }.ticked
     }
-
-    // TODO
-    // timeout reset with empty chunk
   }
 
   property("head")(forAll((s: Stream[Pure, Int]) => assert(s.head.toList == s.toList.take(1))))
