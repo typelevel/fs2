@@ -833,16 +833,38 @@ class StreamCombinatorsSuite extends Fs2Suite {
           .compile
           .lastOrError
       }.map { groupWithinDelay =>
-        // The stream emits after the timeout 
+        // The stream emits after the timeout
         // so groupWithin should re-emit with zero delay
+        assertEquals(groupWithinDelay, 0.millis)
+      }.ticked
+    }
+
+    test("Edge case: does not introduce unnecessary delays when groupSize == chunkSize") {
+      Ref[IO].of(0.millis).flatMap { ref =>
+        val timeout = 5.seconds
+
+        def measureEmission[A]: Pipe[IO, A, A] =
+          _.chunks
+            .evalTap(_ => IO.monotonic.flatMap(ref.set))
+            .flatMap(Stream.chunk)
+
+        val source =
+          Stream(1, 2, 3) ++
+          Stream.sleep_[IO](timeout + 200.millis)
+
+        source
+          .through(measureEmission)
+          .groupWithin(3, timeout)
+          .evalMap { _ => (IO.monotonic, ref.get).mapN(_ - _) }
+          .compile
+          .lastOrError
+      }.map { groupWithinDelay =>
         assertEquals(groupWithinDelay, 0.millis)
       }.ticked
     }
 
     // TODO
     // timeout reset with empty chunk
-    // changing < to  <= and having a test that breaks (none of the current ones do)
-    // failing to propagate rest and the should never lose any elements does not fail
   }
 
   property("head")(forAll((s: Stream[Pure, Int]) => assert(s.head.toList == s.toList.take(1))))
