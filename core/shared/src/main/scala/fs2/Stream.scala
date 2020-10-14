@@ -1503,14 +1503,16 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
                   Pull.output1(acc.toChunk) >> resetTimerAndGo(Chunk.Queue.empty)
                 else
                   go(Chunk.Queue.empty, next, hasTimedOut = true)
-              case Right(c) =>
+              case Right(c) if hasTimedOut =>
+                val (toEmit, rest) =
+                  if (c.size < n) Pull.output1(c) -> Chunk.empty
+                  else resize(c, Pull.done)
+                toEmit >> resetTimerAndGo(Chunk.Queue(rest))
+              case Right(c) if !hasTimedOut =>
                 val newAcc = acc :+ c
-                if (newAcc.size < n) {
-                  if(hasTimedOut)
-                    Pull.output1(newAcc.toChunk) >> resetTimerAndGo(Chunk.Queue.empty)
-                  else
-                    go(newAcc, next)
-                } else {
+                if (newAcc.size < n)
+                  go(newAcc, next)
+                else {
                   val (toEmit, rest) = resize(newAcc.toChunk, Pull.done)
                   toEmit >> resetTimerAndGo(Chunk.Queue(rest))
                 }
