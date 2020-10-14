@@ -1494,26 +1494,25 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
           case None =>
             Pull.output1(acc.toChunk).whenA(acc.nonEmpty)
           case Some((e, next)) =>
+            def resetTimerAndGo(q: Chunk.Queue[O]) =
+              timedPull.startTimer(d) >> go(q, next)
+
             e match {
               case Left(_) =>
                 if (acc.nonEmpty)
-                  Pull.output1(acc.toChunk) >>
-                  timedPull.startTimer(d) >>
-                  go(Chunk.Queue.empty, next)
+                  Pull.output1(acc.toChunk) >> resetTimerAndGo(Chunk.Queue.empty)
                 else
                   go(Chunk.Queue.empty, next, hasTimedOut = true)
               case Right(c) =>
                 val newAcc = acc :+ c
                 if (newAcc.size < n) {
                   if(hasTimedOut)
-                    Pull.output1(newAcc.toChunk) >>
-                    timedPull.startTimer(d) >>
-                    go(Chunk.Queue.empty, next)
+                    Pull.output1(newAcc.toChunk) >> resetTimerAndGo(Chunk.Queue.empty)
                   else
                     go(newAcc, next)
                 } else {
                   val (toEmit, rest) = resize(newAcc.toChunk, Pull.done)
-                  toEmit >> timedPull.startTimer(d) >> go(Chunk.Queue(rest), next)
+                  toEmit >> resetTimerAndGo(Chunk.Queue(rest))
                 }
             }
         }
