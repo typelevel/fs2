@@ -23,15 +23,14 @@ package fs2.internal
 
 import scala.annotation.tailrec
 
-import cats.{Applicative, Id, Traverse, TraverseFilter}
+import cats.{Id, Traverse, TraverseFilter}
 import cats.data.Chain
-import cats.effect.{Concurrent, Outcome, Poll, Resource}
-import cats.effect.kernel.{Deferred, Ref}
-import cats.effect.implicits._
+import cats.effect.{Outcome, Resource}
+import cats.effect.kernel.Ref
 import cats.syntax.all._
 
 import fs2.{Compiler, CompositeFailure, Scope}
-import fs2.internal.CompileScope.{InterruptContext, InterruptionOutcome}
+import fs2.internal.InterruptContext.InterruptionOutcome
 
 /** Implementation of [[Scope]] for the internal stream interpreter.
   *
@@ -126,10 +125,8 @@ private[fs2] final class CompileScope[F[_]] private (
     val createCompileScope: F[CompileScope[F]] = Token[F].flatMap { newScopeId =>
       self.interruptible match {
         case None =>
-          val fiCtx = F.concurrent
-            .filter(_ => interruptible)
-            .traverse(implicit C => InterruptContext(newScopeId, F.unit))
-          fiCtx.flatMap(iCtx => CompileScope[F](newScopeId, Some(self), iCtx))
+          val optFCtx = if (interruptible) F.interruptContext(newScopeId) else None
+          optFCtx.sequence.flatMap(iCtx => CompileScope[F](newScopeId, Some(self), iCtx))
 
         case Some(parentICtx) =>
           parentICtx.childContext(interruptible, newScopeId).flatMap { iCtx =>
@@ -178,7 +175,7 @@ private[fs2] final class CompileScope[F[_]] private (
       release: (R, Resource.ExitCase) => F[Unit]
   ): F[Either[Throwable, R]] =
     ScopedResource.create[F].flatMap { resource =>
-      val acq: Poll[F] => F[Either[Throwable, R]] = _ =>
+      F.uncancelable { _ =>
         fr.redeemWith(
           t => F.pure(Left(t)),
           r => {
@@ -197,9 +194,6 @@ private[fs2] final class CompileScope[F[_]] private (
             }
           }
         )
-      F.concurrent match {
-        case Some(c) => c.uncancelable(acq)
-        case None    => acq(new Poll[F] { def apply[X](fx: F[X]) = fx })
       }
     }
 
@@ -410,10 +404,7 @@ private[fs2] final class CompileScope[F[_]] private (
       case None =>
         f.attempt.map(_.leftMap(t => Outcome.Errored(t)))
       case Some(iCtx) =>
-        iCtx.Concurrent.race(iCtx.deferred.get, f.attempt).map {
-          case Right(result) => result.leftMap(Outcome.Errored(_))
-          case Left(other)   => Left(other)
-        }
+        iCtx.eval(f)
     }
 
   override def toString =
@@ -421,8 +412,6 @@ private[fs2] final class CompileScope[F[_]] private (
 }
 
 private[fs2] object CompileScope {
-
-  type InterruptionOutcome = Outcome[Id, Throwable, Token]
 
   private def apply[F[_]](
       id: Token,
@@ -463,77 +452,5 @@ private[fs2] object CompileScope {
 
     private val closed_ = Closed[Nothing]()
     def closed[F[_]]: State[F] = closed_.asInstanceOf[State[F]]
-  }
-
-  /** A context of interruption status. This is shared from the parent that was created as interruptible to all
-    * its children. It assures consistent view of the interruption through the stack
-    * @param concurrent   Concurrent, used to create interruption at Eval.
-    *                 If signalled with None, normal interruption is signalled. If signaled with Some(err) failure is signalled.
-    * @param ref      When None, scope is not interrupted,
-    *                 when Some(None) scope was interrupted, and shall continue with `whenInterrupted`
-    *                 when Some(Some(err)) scope has to be terminated with supplied failure.
-    * @param interruptRoot Id of the scope that is root of this interruption and is guaranteed to be a parent of this scope.
-    *                      Once interrupted, this scope must be closed and pull must be signalled to provide recovery of the interruption.
-    * @param cancelParent  Cancels listening on parent's interrupt.
-    */
-  final private[internal] case class InterruptContext[F[_]](
-      deferred: Deferred[F, InterruptionOutcome],
-      ref: Ref[F, Option[InterruptionOutcome]],
-      interruptRoot: Token,
-      cancelParent: F[Unit]
-  )(implicit val Concurrent: Concurrent[F]) { self =>
-
-    def complete(outcome: InterruptionOutcome): F[Unit] =
-      ref.update(_.orElse(Some(outcome))).guarantee(deferred.complete(outcome).void)
-
-    /** Creates a [[InterruptContext]] for a child scope which can be interruptible as well.
-      *
-      * In case the child scope is interruptible, this will ensure that this scope interrupt will
-      * interrupt the child scope as well.
-      *
-      * In any case this will make sure that a close of the child scope will not cancel listening
-      * on parent interrupt for this scope.
-      *
-      * @param interruptible  Whether the child scope should be interruptible.
-      * @param newScopeId     The id of the new scope.
-      */
-    def childContext(
-        interruptible: Boolean,
-        newScopeId: Token
-    ): F[InterruptContext[F]] =
-      if (interruptible) {
-        self.deferred.get.start.flatMap { fiber =>
-          InterruptContext(newScopeId, fiber.cancel).flatMap { context =>
-            fiber.join
-              .flatMap {
-                case Outcome.Succeeded(interrupt) =>
-                  interrupt.flatMap(i => context.complete(i))
-                case Outcome.Errored(t) =>
-                  context.complete(Outcome.Errored(t))
-                case Outcome.Canceled() =>
-                  context.complete(Outcome.Canceled())
-              }
-              .start
-              .as(context)
-          }
-        }
-      } else copy(cancelParent = Applicative[F].unit).pure[F]
-  }
-
-  private object InterruptContext {
-
-    def apply[F[_]](
-        newScopeId: Token,
-        cancelParent: F[Unit]
-    )(implicit F: Concurrent[F]): F[InterruptContext[F]] =
-      for {
-        ref <- F.ref[Option[InterruptionOutcome]](None)
-        deferred <- F.deferred[InterruptionOutcome]
-      } yield InterruptContext[F](
-        deferred = deferred,
-        ref = ref,
-        interruptRoot = newScopeId,
-        cancelParent = cancelParent
-      )
   }
 }
