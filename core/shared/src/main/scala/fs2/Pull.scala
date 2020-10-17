@@ -686,6 +686,32 @@ object Pull extends PullLowPriority {
                 case inter @ Interrupted(_, _) => inter
               }
 
+            case mout: MapOutput[g, z, x] =>
+              val translatex = translation.asInstanceOf[g ~> F]
+              val runInner: F[R[g, z]] =
+                go[g, z](scope, extendedTopLevelScope, translatex, mout.stream)
+
+              runInner.attempt.flatMap {
+                case Right(out: Out[g, z]) =>
+                  val mappedTail: Pull[g, x, y] = MapOutput(out.tail, mout.fun)
+                  val contTail: Pull[g, x, Unit] = new Bind[g, x, y, Unit](mappedTail){
+                    def cont(r: Result[y]): Pull[g, x, Unit] =
+                      view.next(r).asInstanceOf[Pull[g, x, Unit]]
+                  }
+
+                  try {
+                    F.pure(Out[G, X](out.head.map(mout.fun), out.scope, contTail))
+                  } catch { case NonFatal(e) =>
+                      go(scope, extendedTopLevelScope, translation, view.next(Result.Fail(e)))
+                  }
+                case Right(dd @ Done(_))              =>
+                  go(scope, extendedTopLevelScope, translation, view.next(Result.unit))
+                case Right(inter @ Interrupted(tok,err)) =>
+                  go(scope, extendedTopLevelScope, translation, view.next(Result.Interrupted(tok, err)))
+                case Left(e) =>
+                  go(scope, extendedTopLevelScope, translation, view.next(Result.Fail(e)))
+              }
+
             case uU: Step[f, y] =>
               val u: Step[G, y] = uU.asInstanceOf[Step[G, y]]
               val stepScopeF: F[CompileScope[F]] = u.scope match {
@@ -927,7 +953,6 @@ object Pull extends PullLowPriority {
   ): Pull[G, O, Unit] =
     Translate(stream, fK)
 
-  /* Applies the outputs of this pull to `f` and returns the result in a new `Pull`. */
   private[fs2] def mapOutput[F[_], O, P](
       stream: Pull[F, O, Unit],
       fun: O => P
@@ -939,6 +964,7 @@ object Pull extends PullLowPriority {
       case m: MapOutput[f, q, o] => MapOutput(m.stream, fun.compose(m.fun))
       case _                     => MapOutput(stream, fun)
     }
+
 
   /** Provides syntax for pure pulls based on `cats.Id`. */
   implicit final class IdOps[O](private val self: Pull[Id, O, Unit]) extends AnyVal {
