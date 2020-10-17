@@ -694,8 +694,13 @@ object Pull extends PullLowPriority {
                   (r: r, ec: Resource.ExitCase) => translation(acquire.release(r, ec))
                 )
 
-                F.flatMap(onScope) { r =>
-                  val result = Result.fromEither(r)
+                F.flatMap(onScope) { outcome =>
+                  val result = outcome match {
+                    case Outcome.Succeeded(Right(r))      => Result.Succeeded(r)
+                    case Outcome.Succeeded(Left(scopeId)) => Result.Interrupted(scopeId, None)
+                    case Outcome.Canceled()               => Result.Interrupted(scope.id, None)
+                    case Outcome.Errored(err)             => Result.Fail(err)
+                  }
                   go(scope, extendedTopLevelScope, translation, view.next(result))
                 }
               }
@@ -707,8 +712,13 @@ object Pull extends PullLowPriority {
                   (r: r, ec: Resource.ExitCase) => translation(acquire.release(r, ec))
                 )
 
-                F.flatMap(onScope) { r =>
-                  val result = Result.fromEither(r)
+                F.flatMap(onScope) { outcome =>
+                  val result = outcome match {
+                    case Outcome.Succeeded(Right(r))      => Result.Succeeded(r)
+                    case Outcome.Succeeded(Left(scopeId)) => Result.Interrupted(scopeId, None)
+                    case Outcome.Canceled()               => Result.Interrupted(scope.id, None)
+                    case Outcome.Errored(err)             => Result.Fail(err)
+                  }
                   go(scope, extendedTopLevelScope, translation, view.next(result))
                 }
               }

@@ -173,28 +173,37 @@ private[fs2] final class CompileScope[F[_]] private (
   def acquireResource[R](
       acquire: Poll[F] => F[R],
       release: (R, Resource.ExitCase) => F[Unit]
-  ): F[Either[Throwable, R]] =
-    ScopedResource.create[F].flatMap { resource =>
-      F.uncancelable { poll =>
-        acquire(poll).redeemWith(
-          t => F.pure(Left(t)),
-          r => {
-            val finalizer = (ec: Resource.ExitCase) => release(r, ec)
-            resource.acquired(finalizer).flatMap { result =>
-              if (result.exists(identity)) {
-                register(resource).flatMap {
-                  case false =>
-                    finalizer(Resource.ExitCase.Canceled).as(Left(AcquireAfterScopeClosed))
-                  case true => F.pure(Right(r))
+  ): F[Outcome[Id, Throwable, Either[Token, R]]] =
+    interruptibleEval[Either[Throwable, R]] {
+      ScopedResource.create[F].flatMap { resource =>
+        F.uncancelable { poll =>
+          acquire(poll).redeemWith(
+            t => F.pure(Left(t)),
+            r => {
+              val finalizer = (ec: Resource.ExitCase) => release(r, ec)
+              resource.acquired(finalizer).flatMap { result =>
+                if (result.exists(identity)) {
+                  register(resource).flatMap {
+                    case false =>
+                      finalizer(Resource.ExitCase.Canceled).as(Left(AcquireAfterScopeClosed))
+                    case true => F.pure(Right(r))
+                  }
+                } else {
+                  finalizer(Resource.ExitCase.Canceled)
+                    .as(Left(result.swap.getOrElse(AcquireAfterScopeClosed)))
                 }
-              } else {
-                finalizer(Resource.ExitCase.Canceled)
-                  .as(Left(result.swap.getOrElse(AcquireAfterScopeClosed)))
               }
             }
-          }
-        )
+          )
+        }
       }
+    }.map {
+      case Left(Outcome.Errored(t)) => Outcome.Errored(t)
+      case Left(Outcome.Canceled()) => Outcome.Canceled()
+      case Left(Outcome.Succeeded(token)) =>
+        Outcome.Succeeded[Id, Throwable, Either[Token, R]](Left(token))
+      case Right(Left(t))  => Outcome.Errored(t)
+      case Right(Right(r)) => Outcome.Succeeded[Id, Throwable, Either[Token, R]](Right(r))
     }
 
   /** Unregisters the child scope identified by the supplied id.

@@ -241,42 +241,45 @@ class BracketSuite extends Fs2Suite {
       .map(it => assert(it == List(Acquired, Released, Acquired, Released)))
   }
 
-  group("bracketCase") {
-    test("normal termination") {
-      forAllF { (s0: List[Stream[Pure, Int]]) =>
-        Counter[IO].flatMap { counter =>
-          var ecs: Chain[Resource.ExitCase] = Chain.empty
-          val s = s0.map { s =>
-            Stream
-              .bracketCase(counter.increment) { (_, ec) =>
+  def bracketCaseLikeTests(
+      runOnlyEarlyTerminationTests: Boolean,
+      bracketCase: IO[Unit] => ((Unit, Resource.ExitCase) => IO[Unit]) => Stream[IO, Unit]
+  ) = {
+    if (!runOnlyEarlyTerminationTests) {
+      test("normal termination") {
+        forAllF { (s0: List[Stream[Pure, Int]]) =>
+          Counter[IO].flatMap { counter =>
+            var ecs: Chain[Resource.ExitCase] = Chain.empty
+            val s = s0.map { s =>
+              bracketCase(counter.increment) { (_, ec) =>
                 counter.decrement >> IO { ecs = ecs :+ ec }
               }
-              .flatMap(_ => s)
-          }
-          val s2 = s.foldLeft(Stream.empty: Stream[IO, Int])(_ ++ _)
-          s2.append(s2.take(10)).take(10).compile.drain.flatMap(_ => counter.get).map { count =>
-            assert(count == 0L)
-            ecs.toList.foreach(it => assert(it == Resource.ExitCase.Succeeded))
+                .flatMap(_ => s)
+            }
+            val s2 = s.foldLeft(Stream.empty: Stream[IO, Int])(_ ++ _)
+            s2.append(s2.take(10)).take(10).compile.drain.flatMap(_ => counter.get).map { count =>
+              assert(count == 0L)
+              ecs.toList.foreach(it => assert(it == Resource.ExitCase.Succeeded))
+            }
           }
         }
       }
-    }
 
-    test("failure") {
-      forAllF { (s0: List[Stream[Pure, Int]]) =>
-        Counter[IO].flatMap { counter =>
-          var ecs: Chain[Resource.ExitCase] = Chain.empty
-          val s = s0.map { s =>
-            Stream
-              .bracketCase(counter.increment) { (_, ec) =>
+      test("failure") {
+        forAllF { (s0: List[Stream[Pure, Int]]) =>
+          Counter[IO].flatMap { counter =>
+            var ecs: Chain[Resource.ExitCase] = Chain.empty
+            val s = s0.map { s =>
+              bracketCase(counter.increment) { (_, ec) =>
                 counter.decrement >> IO { ecs = ecs :+ ec }
               }
-              .flatMap(_ => s ++ Stream.raiseError[IO](new Err))
-          }
-          val s2 = s.foldLeft(Stream.empty: Stream[IO, Int])(_ ++ _)
-          s2.compile.drain.attempt.flatMap(_ => counter.get).map { count =>
-            assert(count == 0L)
-            ecs.toList.foreach(it => assert(it.isInstanceOf[Resource.ExitCase.Errored]))
+                .flatMap(_ => s ++ Stream.raiseError[IO](new Err))
+            }
+            val s2 = s.foldLeft(Stream.empty: Stream[IO, Int])(_ ++ _)
+            s2.compile.drain.attempt.flatMap(_ => counter.get).map { count =>
+              assert(count == 0L)
+              ecs.toList.foreach(it => assert(it.isInstanceOf[Resource.ExitCase.Errored]))
+            }
           }
         }
       }
@@ -284,41 +287,62 @@ class BracketSuite extends Fs2Suite {
 
     test("cancelation") {
       forAllF { (s0: Stream[Pure, Int]) =>
-        Counter[IO].flatMap { counter =>
-          var ecs: Chain[Resource.ExitCase] = Chain.empty
-          val s =
-            Stream
-              .bracketCase(counter.increment) { (_, ec) =>
+        Counter[IO]
+          .flatMap { counter =>
+            var ecs: Chain[Resource.ExitCase] = Chain.empty
+            val s =
+              bracketCase(counter.increment) { (_, ec) =>
                 counter.decrement >> IO { ecs = ecs :+ ec }
               }
-              .flatMap(_ => s0 ++ Stream.never[IO])
-          s.compile.drain.start
-            .flatMap(f => IO.sleep(50.millis) >> f.cancel)
-            .flatMap(_ => counter.get)
-            .map { count =>
-              assert(count == 0L)
-              ecs.toList.foreach(it => assert(it == Resource.ExitCase.Canceled))
-            }
-        }
+                .flatMap(_ => s0 ++ Stream.never[IO])
+            s.compile.drain.start
+              .flatMap(f => IO.sleep(50.millis) >> f.cancel)
+              .flatMap(_ => counter.get)
+              .map { count =>
+                assert(count == 0L)
+                ecs.toList.foreach(it => assert(it == Resource.ExitCase.Canceled))
+              }
+          }
+          .timeout(20.seconds)
       }
     }
 
     test("interruption") {
       forAllF { (s0: Stream[Pure, Int]) =>
-        Counter[IO].flatMap { counter =>
-          var ecs: Chain[Resource.ExitCase] = Chain.empty
-          val s =
-            Stream
-              .bracketCase(counter.increment) { (_, ec) =>
+        Counter[IO]
+          .flatMap { counter =>
+            var ecs: Chain[Resource.ExitCase] = Chain.empty
+            val s =
+              bracketCase(counter.increment) { (_, ec) =>
                 counter.decrement >> IO { ecs = ecs :+ ec }
               }
-              .flatMap(_ => s0 ++ Stream.never[IO])
-          s.interruptAfter(50.millis).compile.drain.flatMap(_ => counter.get).map { count =>
-            assert(count == 0L)
-            ecs.toList.foreach(it => assert(it == Resource.ExitCase.Canceled))
+                .flatMap(_ => s0 ++ Stream.never[IO])
+            s.interruptAfter(50.millis).compile.drain.flatMap(_ => counter.get).map { count =>
+              assert(count == 0L)
+              ecs.toList.foreach(it => assert(it == Resource.ExitCase.Canceled))
+            }
           }
-        }
+          .timeout(20.seconds)
       }
+    }
+  }
+
+  group("bracketCase") {
+    bracketCaseLikeTests(false, acq => rel => Stream.bracketCase(acq)(rel))
+  }
+
+  group("bracketFull") {
+    group("no polling") {
+      bracketCaseLikeTests(false, acq => rel => Stream.bracketFull[IO, Unit](_ => acq)(rel))
+    }
+    group("polling") {
+      bracketCaseLikeTests(false, acq => rel => Stream.bracketFull[IO, Unit](p => p(acq))(rel))
+    }
+    group("long running unmasked acquire") {
+      bracketCaseLikeTests(
+        true,
+        acq => rel => Stream.bracketFull[IO, Unit](p => p(IO.sleep(1.hour)) *> acq)(rel)
+      )
     }
   }
 
