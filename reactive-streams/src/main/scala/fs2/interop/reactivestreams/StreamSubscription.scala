@@ -114,9 +114,9 @@ private[reactivestreams] object StreamSubscription {
       stream: Stream[F, A],
       runner: Dispatcher.Runner[F]
   ): F[StreamSubscription[F, A]] =
-      SignallingRef(false).flatMap { cancelled =>
-        Queue.unbounded[F, Request].map { requests =>
-          new StreamSubscription(requests, cancelled, sub, stream, runner)
-        }
+    SignallingRef(false).flatMap { cancelled =>
+      Queue.unbounded[F, Request].map { requests =>
+        new StreamSubscription(requests, cancelled, sub, stream, runner)
       }
+    }
 }

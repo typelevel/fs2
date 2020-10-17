@@ -26,6 +26,7 @@ package reactivestreams
 import java.util.concurrent.atomic.AtomicInteger
 
 import cats.effect._
+import cats.effect.std.Dispatcher
 import cats.effect.unsafe.implicits.global
 
 import org.reactivestreams._
@@ -38,13 +39,14 @@ import org.reactivestreams.tck.{
   SubscriberWhiteboxVerification,
   TestEnvironment
 }
+import org.scalatest.BeforeAndAfterAll
 import org.scalatestplus.testng.TestNGSuiteLike
 
 import scala.concurrent.duration._
 
 final class SubscriberWhiteboxSpec
     extends SubscriberWhiteboxVerification[Int](new TestEnvironment(1000L))
-    with TestNGSuiteLike {
+    with UnsafeTestNGSuite {
 
   private val counter = new AtomicInteger()
 
@@ -91,7 +93,7 @@ final class WhiteboxSubscriber[A](sub: StreamSubscriber[IO, A], probe: WhiteboxS
 
 final class SubscriberBlackboxSpec
     extends SubscriberBlackboxVerification[Int](new TestEnvironment(1000L))
-    with TestNGSuiteLike {
+    with UnsafeTestNGSuite {
 
   private val counter = new AtomicInteger()
 

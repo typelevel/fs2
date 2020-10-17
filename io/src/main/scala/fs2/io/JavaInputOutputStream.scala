@@ -193,39 +193,39 @@ private[io] object JavaInputOutputStream {
      *                        that downstream has been terminated that in turn kills upstream
      */
     Dispatcher { runner =>
-    Resource
-      .liftF(
-        (
-          Queue.synchronous[F, Either[Option[Throwable], Bytes]],
-          SignallingRef.of[F, UpStreamState](UpStreamState(done = false, err = None)),
-          SignallingRef.of[F, DownStreamState](Ready(None))
-        ).tupled
-      )
-      .flatMap { case (queue, upState, dnState) =>
-        val mkInputStream = processInput(source, queue, upState, dnState)
-          .as(
-            new InputStream {
-              override def close(): Unit =
-                runner.unsafeRunAndForget(closeIs(upState, dnState))
+      Resource
+        .liftF(
+          (
+            Queue.synchronous[F, Either[Option[Throwable], Bytes]],
+            SignallingRef.of[F, UpStreamState](UpStreamState(done = false, err = None)),
+            SignallingRef.of[F, DownStreamState](Ready(None))
+          ).tupled
+        )
+        .flatMap { case (queue, upState, dnState) =>
+          val mkInputStream = processInput(source, queue, upState, dnState)
+            .as(
+              new InputStream {
+                override def close(): Unit =
+                  runner.unsafeRunAndForget(closeIs(upState, dnState))
 
-              override def read(b: Array[Byte], off: Int, len: Int): Int =
-                runner.unsafeRunSync(readOnce(b, off, len, queue, dnState))
+                override def read(b: Array[Byte], off: Int, len: Int): Int =
+                  runner.unsafeRunSync(readOnce(b, off, len, queue, dnState))
 
-              def read(): Int = {
-                def go(acc: Array[Byte]): F[Int] =
-                  readOnce(acc, 0, 1, queue, dnState).flatMap { read =>
-                    if (read < 0) F.pure(-1)
-                    else if (read == 0) go(acc)
-                    else F.pure(acc(0) & 0xff)
-                  }
+                def read(): Int = {
+                  def go(acc: Array[Byte]): F[Int] =
+                    readOnce(acc, 0, 1, queue, dnState).flatMap { read =>
+                      if (read < 0) F.pure(-1)
+                      else if (read == 0) go(acc)
+                      else F.pure(acc(0) & 0xff)
+                    }
 
-                runner.unsafeRunSync(go(new Array[Byte](1)))
+                  runner.unsafeRunSync(go(new Array[Byte](1)))
+                }
               }
-            }
-          )
+            )
 
-        Resource.make(mkInputStream)(_ => closeIs(upState, dnState))
-      }
+          Resource.make(mkInputStream)(_ => closeIs(upState, dnState))
+        }
     }
   }
 }

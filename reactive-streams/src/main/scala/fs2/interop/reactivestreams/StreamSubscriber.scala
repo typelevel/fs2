@@ -37,7 +37,10 @@ import org.reactivestreams._
   *
   * @see [[https://github.com/reactive-streams/reactive-streams-jvm#2-subscriber-code]]
   */
-final class StreamSubscriber[F[_], A](val sub: StreamSubscriber.FSM[F, A], runner: Dispatcher.Runner[F])(implicit
+final class StreamSubscriber[F[_], A](
+    val sub: StreamSubscriber.FSM[F, A],
+    runner: Dispatcher.Runner[F]
+)(implicit
     F: ApplicativeError[F, Throwable]
 ) extends Subscriber[A] {
 

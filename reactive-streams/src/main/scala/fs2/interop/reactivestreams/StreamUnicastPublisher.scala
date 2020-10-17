@@ -35,8 +35,10 @@ import org.reactivestreams._
   *
   * @see [[https://github.com/reactive-streams/reactive-streams-jvm#1-publisher-code]]
   */
-final class StreamUnicastPublisher[F[_]: Async, A](val stream: Stream[F, A], runner: Dispatcher.Runner[F])
-    extends Publisher[A] {
+final class StreamUnicastPublisher[F[_]: Async, A](
+    val stream: Stream[F, A],
+    runner: Dispatcher.Runner[F]
+) extends Publisher[A] {
   def subscribe(subscriber: Subscriber[_ >: A]): Unit = {
     nonNull(subscriber)
     runner.unsafeRunAndForget {

@@ -50,12 +50,15 @@ package object reactivestreams {
     * The publisher only receives a subscriber when the stream is run.
     */
   def fromPublisher[F[_]: Async, A](p: Publisher[A]): Stream[F, A] =
-    Stream.resource(Dispatcher[F, Stream[F, A]] { runner =>
-      Resource.pure(
-      Stream
-        .eval(StreamSubscriber[F, A](runner))
-        .flatMap(s => s.sub.stream(Sync[F].delay(p.subscribe(s)))))
-    }).flatten
+    Stream
+      .resource(Dispatcher[F, Stream[F, A]] { runner =>
+        Resource.pure(
+          Stream
+            .eval(StreamSubscriber[F, A](runner))
+            .flatMap(s => s.sub.stream(Sync[F].delay(p.subscribe(s))))
+        )
+      })
+      .flatten
 
   implicit final class PublisherOps[A](val publisher: Publisher[A]) extends AnyVal {
 
