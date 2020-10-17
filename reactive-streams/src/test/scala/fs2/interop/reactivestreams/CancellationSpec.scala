@@ -48,8 +48,8 @@ class CancellationSpec extends Fs2Suite {
   val attempts = 10000
 
   def withRunner(f: Dispatcher.Runner[IO] => Unit): Unit =
-    Dispatcher[IO, Unit](runner => Resource.liftF(IO(f(runner))))
-      .use(_ => IO.unit)
+    Dispatcher[IO, Dispatcher.Runner[IO]](Resource.pure)
+      .use(runner => IO(f(runner)))
       .unsafeRunSync()
 
   test("after subscription is cancelled request must be noOps") {
