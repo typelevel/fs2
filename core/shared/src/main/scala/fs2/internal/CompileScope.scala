@@ -249,10 +249,8 @@ private[fs2] final class CompileScope[F[_]] private (
           _ <- self.interruptible.map(_.cancelParent).getOrElse(F.unit)
           _ <- self.parent.fold(F.unit)(_.releaseChildScope(self.id))
         } yield {
-          val results = resultChildren.fold(List(_), _ => Nil) ++ resultResources.fold(
-            List(_),
-            _ => Nil
-          )
+          val results =
+            resultChildren.fold(List(_), _ => Nil) ++ resultResources.fold(List(_), _ => Nil)
           CompositeFailure.fromList(results.toList).toLeft(())
         }
       case _: CompileScope.State.Closed[F] => F.pure(Right(()))

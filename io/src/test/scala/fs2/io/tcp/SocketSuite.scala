@@ -168,14 +168,8 @@ class SocketSuite extends Fs2Suite {
           Stream.resource(doNothingServer(socketGroup)) >>
             Stream.eval(localBindAddress.get).flatMap { address =>
               Stream
-                .resource(
-                  socketGroup.client[IO](address)
-                )
-                .flatMap(sock =>
-                  Stream(
-                    Stream.eval(sock.write(message)).repeatN(10L)
-                  ).repeatN(2L)
-                )
+                .resource(socketGroup.client[IO](address))
+                .flatMap(sock => Stream(Stream.eval(sock.write(message)).repeatN(10L)).repeatN(2L))
                 .parJoinUnbounded
             }
         }

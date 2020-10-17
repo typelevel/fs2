@@ -74,9 +74,7 @@ object Signal extends SignalInstances {
   }
 
   implicit class BooleanSignalOps[F[_]](val self: Signal[F, Boolean]) extends AnyVal {
-    def interrupt[A](
-        s: Stream[F, A]
-    )(implicit F: Concurrent[F]): Stream[F, A] =
+    def interrupt[A](s: Stream[F, A])(implicit F: Concurrent[F]): Stream[F, A] =
       s.interruptWhen(self)
   }
 }

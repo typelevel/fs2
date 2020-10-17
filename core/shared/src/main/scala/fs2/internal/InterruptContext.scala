@@ -60,10 +60,7 @@ final private[fs2] case class InterruptContext[F[_]](
     * @param interruptible  Whether the child scope should be interruptible.
     * @param newScopeId     The id of the new scope.
     */
-  def childContext(
-      interruptible: Boolean,
-      newScopeId: Token
-  ): F[InterruptContext[F]] =
+  def childContext(interruptible: Boolean, newScopeId: Token): F[InterruptContext[F]] =
     if (interruptible) {
       self.deferred.get.start.flatMap { fiber =>
         InterruptContext(newScopeId, fiber.cancel).flatMap { context =>
@@ -93,10 +90,9 @@ private[fs2] object InterruptContext {
 
   type InterruptionOutcome = Outcome[Id, Throwable, Token]
 
-  def apply[F[_]](
-      newScopeId: Token,
-      cancelParent: F[Unit]
-  )(implicit F: Concurrent[F]): F[InterruptContext[F]] =
+  def apply[F[_]](newScopeId: Token, cancelParent: F[Unit])(
+      implicit F: Concurrent[F]
+  ): F[InterruptContext[F]] =
     for {
       ref <- F.ref[Option[InterruptionOutcome]](None)
       deferred <- F.deferred[InterruptionOutcome]

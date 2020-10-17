@@ -38,16 +38,10 @@ package object io {
   /** Reads all bytes from the specified `InputStream` with a buffer size of `chunkSize`.
     * Set `closeAfterUse` to false if the `InputStream` should not be closed after use.
     */
-  def readInputStream[F[_]](
-      fis: F[InputStream],
-      chunkSize: Int,
-      closeAfterUse: Boolean = true
-  )(implicit F: Sync[F]): Stream[F, Byte] =
-    readInputStreamGeneric(
-      fis,
-      F.delay(new Array[Byte](chunkSize)),
-      closeAfterUse
-    )
+  def readInputStream[F[_]](fis: F[InputStream], chunkSize: Int, closeAfterUse: Boolean = true)(
+      implicit F: Sync[F]
+  ): Stream[F, Byte] =
+    readInputStreamGeneric(fis, F.delay(new Array[Byte](chunkSize)), closeAfterUse)
 
   /** Reads all bytes from the specified `InputStream` with a buffer size of `chunkSize`.
     * Set `closeAfterUse` to false if the `InputStream` should not be closed after use.
@@ -62,14 +56,10 @@ package object io {
       chunkSize: Int,
       closeAfterUse: Boolean = true
   )(implicit F: Sync[F]): Stream[F, Byte] =
-    readInputStreamGeneric(
-      fis,
-      F.pure(new Array[Byte](chunkSize)),
-      closeAfterUse
-    )
+    readInputStreamGeneric(fis, F.pure(new Array[Byte](chunkSize)), closeAfterUse)
 
-  private def readBytesFromInputStream[F[_]](is: InputStream, buf: Array[Byte])(implicit
-      F: Sync[F]
+  private def readBytesFromInputStream[F[_]](is: InputStream, buf: Array[Byte])(
+      implicit F: Sync[F]
   ): F[Option[Chunk[Byte]]] =
     F.blocking(is.read(buf)).map { numBytes =>
       if (numBytes < 0) None
@@ -102,10 +92,9 @@ package object io {
     * Each write operation is performed on the supplied execution context. Writes are
     * blocking so the execution context should be configured appropriately.
     */
-  def writeOutputStream[F[_]](
-      fos: F[OutputStream],
-      closeAfterUse: Boolean = true
-  )(implicit F: Sync[F]): Pipe[F, Byte, INothing] =
+  def writeOutputStream[F[_]](fos: F[OutputStream], closeAfterUse: Boolean = true)(
+      implicit F: Sync[F]
+  ): Pipe[F, Byte, INothing] =
     s => {
       def useOs(os: OutputStream): Stream[F, INothing] =
         s.chunks.foreach(c => F.blocking(os.write(c.toArray)))
@@ -126,11 +115,7 @@ package object io {
     *
     * If none of those happens, the stream will run forever.
     */
-  def readOutputStream[F[_]: Async](
-      chunkSize: Int
-  )(
-      f: OutputStream => F[Unit]
-  ): Stream[F, Byte] = {
+  def readOutputStream[F[_]: Async](chunkSize: Int)(f: OutputStream => F[Unit]): Stream[F, Byte] = {
     val mkOutput: Resource[F, (OutputStream, InputStream)] =
       Resource.make(Sync[F].delay {
         val os = new PipedOutputStream()
@@ -185,9 +170,7 @@ package object io {
     * Each write operation is performed on the supplied execution context. Writes are
     * blocking so the execution context should be configured appropriately.
     */
-  def stdoutLines[F[_]: Sync, O: Show](
-      charset: Charset = utf8Charset
-  ): Pipe[F, O, INothing] =
+  def stdoutLines[F[_]: Sync, O: Show](charset: Charset = utf8Charset): Pipe[F, O, INothing] =
     _.map(_.show).through(text.encode(charset)).through(stdout)
 
   /** Stream of `String` read asynchronously from standard input decoded in UTF-8. */
@@ -211,8 +194,6 @@ package object io {
 
   /** Like [[toInputStream]] but returns a `Resource` rather than a single element stream.
     */
-  def toInputStreamResource[F[_]: Async](
-      source: Stream[F, Byte]
-  ): Resource[F, InputStream] =
+  def toInputStreamResource[F[_]: Async](source: Stream[F, Byte]): Resource[F, InputStream] =
     JavaInputOutputStream.toInputStream(source)
 }

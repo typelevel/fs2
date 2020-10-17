@@ -232,30 +232,26 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     *
     * @param pipes    Pipes that will concurrently process the work.
     */
-  def broadcastTo[F2[x] >: F[x]: Concurrent](
-      pipes: Pipe[F2, O, Nothing]*
-  ): Stream[F2, INothing] =
+  def broadcastTo[F2[x] >: F[x]: Concurrent](pipes: Pipe[F2, O, Nothing]*): Stream[F2, INothing] =
     this.through(Broadcast.through(pipes: _*))
 
   /** Variant of `broadcastTo` that broadcasts to `maxConcurrent` instances of a single pipe.
     */
-  def broadcastTo[F2[x] >: F[x]: Concurrent](
-      maxConcurrent: Int
-  )(pipe: Pipe[F2, O, Nothing]): Stream[F2, INothing] =
+  def broadcastTo[F2[x] >: F[x]: Concurrent](maxConcurrent: Int)(
+      pipe: Pipe[F2, O, Nothing]
+  ): Stream[F2, INothing] =
     this.broadcastTo[F2](List.fill(maxConcurrent)(pipe): _*)
 
   /** Alias for `through(Broadcast.through(pipes))`.
     */
-  def broadcastThrough[F2[x] >: F[x]: Concurrent, O2](
-      pipes: Pipe[F2, O, O2]*
-  ): Stream[F2, O2] =
+  def broadcastThrough[F2[x] >: F[x]: Concurrent, O2](pipes: Pipe[F2, O, O2]*): Stream[F2, O2] =
     through(Broadcast.through(pipes: _*))
 
   /** Variant of `broadcastTo` that broadcasts to `maxConcurrent` instances of the supplied pipe.
     */
-  def broadcastThrough[F2[x] >: F[x]: Concurrent, O2](
-      maxConcurrent: Int
-  )(pipe: Pipe[F2, O, O2]): Stream[F2, O2] =
+  def broadcastThrough[F2[x] >: F[x]: Concurrent, O2](maxConcurrent: Int)(
+      pipe: Pipe[F2, O, O2]
+  ): Stream[F2, O2] =
     this.broadcastThrough[F2, O2](List.fill(maxConcurrent)(pipe): _*)
 
   /** Behaves like the identity function, but requests `n` elements at a time from the input.
@@ -520,8 +516,8 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * res2: Vector[Int] = Vector(1, 2, 3, 4)
     * }}}
     */
-  def compile[F2[x] >: F[x], G[_], O2 >: O](implicit
-      compiler: Compiler[F2, G]
+  def compile[F2[x] >: F[x], G[_], O2 >: O](
+      implicit compiler: Compiler[F2, G]
   ): Stream.CompileOps[F2, G, O2] =
     new Stream.CompileOps[F2, G, O2](underlying)
 
@@ -564,9 +560,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
         }
 
       // stop background process but await for it to finalise with a result
-      val stopBack: F2[Unit] = interrupt.complete(()) >> doneR.get.flatMap(
-        F.fromEither
-      )
+      val stopBack: F2[Unit] = interrupt.complete(()) >> doneR.get.flatMap(F.fromEither)
 
       Stream.bracket(runR.start)(_ => stopBack) >>
         this.interruptWhen(interrupt.get.attempt)
@@ -642,9 +636,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * res0: Vector[Int] = Vector(3, 6)
     * }}}
     */
-  def debounce[F2[x] >: F[x]](
-      d: FiniteDuration
-  )(implicit F: Temporal[F2]): Stream[F2, O] =
+  def debounce[F2[x] >: F[x]](d: FiniteDuration)(implicit F: Temporal[F2]): Stream[F2, O] =
     Stream.eval(Queue.bounded[F2, Option[O]](1)).flatMap { queue =>
       Stream.eval(F.ref[Option[O]](None)).flatMap { ref =>
         val enqueueLatest: F2[Unit] =
@@ -775,9 +767,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     *
     * Alias for `through(Balance(chunkSize))`.
     */
-  def balance[F2[x] >: F[x]: Concurrent](
-      chunkSize: Int
-  ): Stream[F2, Stream[F2, O]] =
+  def balance[F2[x] >: F[x]: Concurrent](chunkSize: Int): Stream[F2, Stream[F2, O]] =
     through(Balance(chunkSize))
 
   /** Like [[balance]] but instead of providing a stream of sources, runs each pipe.
@@ -796,9 +786,9 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * @param chunkSize max size of chunks taken from the source stream
     * @param pipes pipes that will concurrently process the work
     */
-  def balanceTo[F2[x] >: F[x]: Concurrent](
-      chunkSize: Int
-  )(pipes: Pipe[F2, O, Nothing]*): Stream[F2, INothing] =
+  def balanceTo[F2[x] >: F[x]: Concurrent](chunkSize: Int)(
+      pipes: Pipe[F2, O, Nothing]*
+  ): Stream[F2, INothing] =
     balanceThrough[F2, INothing](chunkSize)(pipes: _*)
 
   /** Variant of `balanceTo` that broadcasts to `maxConcurrent` instances of a single pipe.
@@ -814,9 +804,9 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
 
   /** Alias for `through(Balance.through(chunkSize)(pipes)`.
     */
-  def balanceThrough[F2[x] >: F[x]: Concurrent, O2](
-      chunkSize: Int
-  )(pipes: Pipe[F2, O, O2]*): Stream[F2, O2] =
+  def balanceThrough[F2[x] >: F[x]: Concurrent, O2](chunkSize: Int)(
+      pipes: Pipe[F2, O, O2]*
+  ): Stream[F2, O2] =
     through(Balance.through[F2, O, O2](chunkSize)(pipes: _*))
 
   /** Variant of `balanceThrough` that takes number of concurrency required and single pipe.
@@ -825,10 +815,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * @param maxConcurrent maximum number of pipes to run concurrently
     * @param pipe pipe to use to process elements
     */
-  def balanceThrough[F2[x] >: F[x]: Concurrent, O2](
-      chunkSize: Int,
-      maxConcurrent: Int
-  )(
+  def balanceThrough[F2[x] >: F[x]: Concurrent, O2](chunkSize: Int, maxConcurrent: Int)(
       pipe: Pipe[F2, O, O2]
   ): Stream[F2, O2] =
     balanceThrough[F2, O2](chunkSize)((0 until maxConcurrent).map(_ => pipe): _*)
@@ -968,9 +955,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * res0: Vector[Either[Int,Int]] = Vector(Left(0), Right(0), Left(1), Right(1), Left(2), Right(2), Left(3), Right(3), Left(4), Right(4))
     * }}}
     */
-  def either[F2[x] >: F[x]: Concurrent, O2](
-      that: Stream[F2, O2]
-  ): Stream[F2, Either[O, O2]] =
+  def either[F2[x] >: F[x]: Concurrent, O2](that: Stream[F2, O2]): Stream[F2, Either[O, O2]] =
     map(Left(_)).merge(that.map(Right(_)))
 
   /** Alias for `flatMap(o => Stream.eval(f(o)))`.
@@ -1111,9 +1096,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   /** Like `filter`, but allows filtering based on an effect, with up to [[maxConcurrent]] concurrently running effects.
     * The ordering of emitted elements is unchanged.
     */
-  def evalFilterAsync[F2[x] >: F[
-    x
-  ]: Concurrent](
+  def evalFilterAsync[F2[x] >: F[x]: Concurrent](
       maxConcurrent: Int
   )(f: O => F2[Boolean]): Stream[F2, O] =
     parEvalMap[F2, Stream[F2, O]](maxConcurrent) { o =>
@@ -1131,9 +1114,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   /** Like `filterNot`, but allows filtering based on an effect, with up to [[maxConcurrent]] concurrently running effects.
     * The ordering of emitted elements is unchanged.
     */
-  def evalFilterNotAsync[F2[x] >: F[
-    x
-  ]: Concurrent](
+  def evalFilterNotAsync[F2[x] >: F[x]: Concurrent](
       maxConcurrent: Int
   )(f: O => F2[Boolean]): Stream[F2, O] =
     parEvalMap[F2, Stream[F2, O]](maxConcurrent) { o =>
@@ -1206,9 +1187,9 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   }
 
   /** Alias for `flatMap(_ => s2)`. */
-  def >>[F2[x] >: F[x], O2](
-      s2: => Stream[F2, O2]
-  )(implicit ev: Not[O <:< Nothing]): Stream[F2, O2] =
+  def >>[F2[x] >: F[x], O2](s2: => Stream[F2, O2])(
+      implicit ev: Not[O <:< Nothing]
+  ): Stream[F2, O2] =
     flatMap(_ => s2)
 
   /** Flattens a stream of streams in to a single stream by concatenating each stream.
@@ -1379,13 +1360,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
         // nonMatching is guaranteed to be non-empty here, because we know the last element of the chunk doesn't have
         // the same key as the first
         val k2 = f(nonMatching(0))
-        doChunk(
-          nonMatching,
-          s,
-          k2,
-          Chunk.Queue.empty,
-          newAcc
-        )
+        doChunk(nonMatching, s, k2, Chunk.Queue.empty, newAcc)
       }
     }
 
@@ -1399,10 +1374,9 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     *
     * Note: a time window starts each time downstream pulls.
     */
-  def groupWithin[F2[x] >: F[x]](
-      n: Int,
-      d: FiniteDuration
-  )(implicit F: Temporal[F2]): Stream[F2, Chunk[O]] =
+  def groupWithin[F2[x] >: F[x]](n: Int, d: FiniteDuration)(
+      implicit F: Temporal[F2]
+  ): Stream[F2, Chunk[O]] =
     Stream
       .eval {
         Queue
@@ -1515,9 +1489,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * produced by `source`. If the source stream is empty, the resulting signal
     * will always be `initial`.
     */
-  def hold[F2[x] >: F[x]: Concurrent, O2 >: O](
-      initial: O2
-  ): Stream[F2, Signal[F2, O2]] =
+  def hold[F2[x] >: F[x]: Concurrent, O2 >: O](initial: O2): Stream[F2, Signal[F2, O2]] =
     Stream.eval(SignallingRef.of[F2, O2](initial)).flatMap { sig =>
       Stream(sig).concurrently(evalMap(sig.set))
     }
@@ -1528,9 +1500,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
 
   /** Like [[hold]] but returns a `Resource` rather than a single element stream.
     */
-  def holdResource[F2[x] >: F[x]: Concurrent, O2 >: O](
-      initial: O2
-  ): Resource[F2, Signal[F2, O2]] =
+  def holdResource[F2[x] >: F[x]: Concurrent, O2 >: O](initial: O2): Resource[F2, Signal[F2, O2]] =
     Stream
       .eval(SignallingRef.of[F2, O2](initial))
       .flatMap(sig => Stream(sig).concurrently(evalMap(sig.set)))
@@ -1541,9 +1511,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   /**  Like [[holdResource]] but does not require an initial value,
     *  and hence all output elements are wrapped in `Some`.
     */
-  def holdOptionResource[F2[x] >: F[
-    x
-  ]: Concurrent, O2 >: O]: Resource[F2, Signal[F2, Option[O2]]] =
+  def holdOptionResource[F2[x] >: F[x]: Concurrent, O2 >: O]: Resource[F2, Signal[F2, Option[O2]]] =
     map(Some(_): Option[O2]).holdResource(None)
 
   /** Deterministically interleaves elements, starting on the left, terminating when the end of either branch is reached naturally.
@@ -1572,9 +1540,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
 
   /** Interrupts this stream after the specified duration has passed.
     */
-  def interruptAfter[F2[x] >: F[x]: Temporal](
-      duration: FiniteDuration
-  ): Stream[F2, O] =
+  def interruptAfter[F2[x] >: F[x]: Temporal](duration: FiniteDuration): Stream[F2, O] =
     interruptWhen[F2](Stream.sleep_[F2](duration) ++ Stream(true))
 
   /** Let through the `s2` branch as long as the `s1` branch is `false`,
@@ -1616,9 +1582,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     interruptWhen(haltWhenTrue.get)
 
   /** Alias for `interruptWhen(haltWhenTrue.discrete)`. */
-  def interruptWhen[F2[x] >: F[x]: Concurrent](
-      haltWhenTrue: Signal[F2, Boolean]
-  ): Stream[F2, O] =
+  def interruptWhen[F2[x] >: F[x]: Concurrent](haltWhenTrue: Signal[F2, Boolean]): Stream[F2, O] =
     interruptWhen(haltWhenTrue.discrete)
 
   /** Interrupts the stream, when `haltOnSignal` finishes its evaluation.
@@ -1729,20 +1693,14 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
 
   /** Alias for [[parEvalMap]].
     */
-  def mapAsync[F2[x] >: F[
-    x
-  ]: Concurrent, O2](
-      maxConcurrent: Int
-  )(f: O => F2[O2]): Stream[F2, O2] =
+  def mapAsync[F2[x] >: F[x]: Concurrent, O2](maxConcurrent: Int)(f: O => F2[O2]): Stream[F2, O2] =
     parEvalMap[F2, O2](maxConcurrent)(f)
 
   /** Alias for [[parEvalMapUnordered]].
     */
-  def mapAsyncUnordered[F2[x] >: F[
-    x
-  ]: Concurrent, O2](
-      maxConcurrent: Int
-  )(f: O => F2[O2]): Stream[F2, O2] =
+  def mapAsyncUnordered[F2[x] >: F[x]: Concurrent, O2](maxConcurrent: Int)(
+      f: O => F2[O2]
+  ): Stream[F2, O2] =
     map(o => Stream.eval(f(o))).parJoin(maxConcurrent)
 
   /** Applies the specified pure function to each chunk in this stream.
@@ -1785,9 +1743,9 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * When either the inner or outer stream fails, the entire stream fails and the finalizer of the
     * inner stream runs before the outer one.
     */
-  def switchMap[F2[x] >: F[x], O2](
-      f: O => Stream[F2, O2]
-  )(implicit F: Concurrent[F2]): Stream[F2, O2] =
+  def switchMap[F2[x] >: F[x], O2](f: O => Stream[F2, O2])(
+      implicit F: Concurrent[F2]
+  ): Stream[F2, O2] =
     Stream.force(Semaphore[F2](1).flatMap { guard =>
       F.ref[Option[Deferred[F2, Unit]]](None).map { haltRef =>
         def runInner(o: O, halt: Deferred[F2, Unit]): Stream[F2, O2] =
@@ -1905,27 +1863,21 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   }
 
   /** Like `merge`, but halts as soon as _either_ branch halts. */
-  def mergeHaltBoth[F2[x] >: F[x]: Concurrent, O2 >: O](
-      that: Stream[F2, O2]
-  ): Stream[F2, O2] =
+  def mergeHaltBoth[F2[x] >: F[x]: Concurrent, O2 >: O](that: Stream[F2, O2]): Stream[F2, O2] =
     noneTerminate.merge(that.noneTerminate).unNoneTerminate
 
   /** Like `merge`, but halts as soon as the `s1` branch halts.
     *
     * Note: it is *not* guaranteed that the last element of the stream will come from `s1`.
     */
-  def mergeHaltL[F2[x] >: F[x]: Concurrent, O2 >: O](
-      that: Stream[F2, O2]
-  ): Stream[F2, O2] =
+  def mergeHaltL[F2[x] >: F[x]: Concurrent, O2 >: O](that: Stream[F2, O2]): Stream[F2, O2] =
     noneTerminate.merge(that.map(Some(_))).unNoneTerminate
 
   /** Like `merge`, but halts as soon as the `s2` branch halts.
     *
     * Note: it is *not* guaranteed that the last element of the stream will come from `s2`.
     */
-  def mergeHaltR[F2[x] >: F[x]: Concurrent, O2 >: O](
-      that: Stream[F2, O2]
-  ): Stream[F2, O2] =
+  def mergeHaltR[F2[x] >: F[x]: Concurrent, O2 >: O](that: Stream[F2, O2]): Stream[F2, O2] =
     that.mergeHaltL(this)
 
   /** Emits each output wrapped in a `Some` and emits a `None` at the end of the stream.
@@ -1972,9 +1924,9 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
 
   /** Like [[onFinalize]] but provides the reason for finalization as an `ExitCase[Throwable]`.
     */
-  def onFinalizeCase[F2[x] >: F[x]](
-      f: Resource.ExitCase => F2[Unit]
-  )(implicit F2: Applicative[F2]): Stream[F2, O] =
+  def onFinalizeCase[F2[x] >: F[x]](f: Resource.ExitCase => F2[Unit])(
+      implicit F2: Applicative[F2]
+  ): Stream[F2, O] =
     Stream.bracketCase(F2.unit)((_, ec) => f(ec)) >> this
 
   /** Like [[onFinalizeCase]] but does not introduce a scope, allowing finalization to occur after
@@ -1984,9 +1936,9 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     *
     * See [[onFinalizeWeak]] for more details on semantics.
     */
-  def onFinalizeCaseWeak[F2[x] >: F[x]](
-      f: Resource.ExitCase => F2[Unit]
-  )(implicit F2: Applicative[F2]): Stream[F2, O] =
+  def onFinalizeCaseWeak[F2[x] >: F[x]](f: Resource.ExitCase => F2[Unit])(
+      implicit F2: Applicative[F2]
+  ): Stream[F2, O] =
     new Stream(Pull.acquire[F2, Unit](F2.unit, (_, ec) => f(ec)).flatMap(_ => underlying))
 
   /** Like [[Stream#evalMap]], but will evaluate effects in parallel, emitting the results
@@ -2049,11 +2001,9 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * res0: Unit = ()
     * }}}
     */
-  def parEvalMapUnordered[F2[x] >: F[
-    x
-  ]: Concurrent, O2](
-      maxConcurrent: Int
-  )(f: O => F2[O2]): Stream[F2, O2] =
+  def parEvalMapUnordered[F2[x] >: F[x]: Concurrent, O2](maxConcurrent: Int)(
+      f: O => F2[O2]
+  ): Stream[F2, O2] =
     map(o => Stream.eval(f(o))).parJoin(maxConcurrent)
 
   /** Concurrent zip.
@@ -2076,23 +2026,19 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * - The output of `parZip` is guaranteed to be the same as `zip`,
     *   although the order in which effects are executed differs.
     */
-  def parZip[F2[x] >: F[x]: Concurrent, O2](
-      that: Stream[F2, O2]
-  ): Stream[F2, (O, O2)] =
+  def parZip[F2[x] >: F[x]: Concurrent, O2](that: Stream[F2, O2]): Stream[F2, (O, O2)] =
     Stream.parZip(this, that)
 
   /** Like `parZip`, but combines elements pairwise with a function instead
     * of tupling them.
     */
-  def parZipWith[F2[x] >: F[x]: Concurrent, O2 >: O, O3, O4](
-      that: Stream[F2, O3]
-  )(f: (O2, O3) => O4): Stream[F2, O4] =
+  def parZipWith[F2[x] >: F[x]: Concurrent, O2 >: O, O3, O4](that: Stream[F2, O3])(
+      f: (O2, O3) => O4
+  ): Stream[F2, O4] =
     this.parZip(that).map(f.tupled)
 
   /** Pause this stream when `pauseWhenTrue` emits `true`, resuming when `false` is emitted. */
-  def pauseWhen[F2[x] >: F[x]: Concurrent](
-      pauseWhenTrue: Stream[F2, Boolean]
-  ): Stream[F2, O] =
+  def pauseWhen[F2[x] >: F[x]: Concurrent](pauseWhenTrue: Stream[F2, Boolean]): Stream[F2, O] =
     Stream.eval(SignallingRef[F2, Boolean](false)).flatMap { pauseSignal =>
       def writer = pauseWhenTrue.evalMap(pauseSignal.set).drain
 
@@ -2100,9 +2046,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     }
 
   /** Pause this stream when `pauseWhenTrue` is `true`, resume when it's `false`. */
-  def pauseWhen[F2[x] >: F[x]: Concurrent](
-      pauseWhenTrue: Signal[F2, Boolean]
-  ): Stream[F2, O] = {
+  def pauseWhen[F2[x] >: F[x]: Concurrent](pauseWhenTrue: Signal[F2, Boolean]): Stream[F2, O] = {
 
     def waitToResume =
       pauseWhenTrue.discrete.dropWhile(_ == true).take(1).compile.drain
@@ -2123,9 +2067,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   /** Behaves like `identity`, but starts fetches up to `n` chunks in parallel with downstream
     * consumption, enabling processing on either side of the `prefetchN` to run in parallel.
     */
-  def prefetchN[F2[x] >: F[x]: Concurrent](
-      n: Int
-  ): Stream[F2, O] =
+  def prefetchN[F2[x] >: F[x]: Concurrent](n: Int): Stream[F2, O] =
     Stream.eval(Queue.bounded[F2, Option[Chunk[O]]](n)).flatMap { queue =>
       queue.dequeue.unNoneTerminate
         .flatMap(Stream.chunk(_))
@@ -2256,8 +2198,8 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * res0: List[Int] = List(-1)
     * }}}
     */
-  def rethrow[F2[x] >: F[x], O2](implicit
-      ev: O <:< Either[Throwable, O2],
+  def rethrow[F2[x] >: F[x], O2](
+      implicit ev: O <:< Either[Throwable, O2],
       rt: RaiseThrowable[F2]
   ): Stream[F2, O2] = {
     val _ = ev // Convince scalac that ev is used
@@ -2328,9 +2270,9 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * res0: List[Int] = List(0, 1, 2, 3, 4)
     * }}}
     */
-  def scanChunksOpt[S, O2 >: O, O3](
-      init: S
-  )(f: S => Option[Chunk[O2] => (S, Chunk[O3])]): Stream[F, O3] =
+  def scanChunksOpt[S, O2 >: O, O3](init: S)(
+      f: S => Option[Chunk[O2] => (S, Chunk[O3])]
+  ): Stream[F, O3] =
     this.pull.scanChunksOpt(init)(f).void.stream
 
   /** Alias for `map(f).scanMonoid`.
@@ -2374,8 +2316,8 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   /** Writes this stream to standard out, converting each element to a `String` via `Show`,
     * emitting a unit for each line written.
     */
-  def showLinesStdOut[F2[x] >: F[x], O2 >: O](implicit
-      F: Sync[F2],
+  def showLinesStdOut[F2[x] >: F[x], O2 >: O](
+      implicit F: Sync[F2],
       showO: Show[O2]
   ): Stream[F2, INothing] =
     showLines[F2, O2](Console.out)
@@ -2508,15 +2450,13 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   def through[F2[x] >: F[x], O2](f: Stream[F, O] => Stream[F2, O2]): Stream[F2, O2] = f(this)
 
   /** Transforms this stream and `s2` using the given `Pipe2`. */
-  def through2[F2[x] >: F[x], O2, O3](
-      s2: Stream[F2, O2]
-  )(f: (Stream[F, O], Stream[F2, O2]) => Stream[F2, O3]): Stream[F2, O3] =
+  def through2[F2[x] >: F[x], O2, O3](s2: Stream[F2, O2])(
+      f: (Stream[F, O], Stream[F2, O2]) => Stream[F2, O3]
+  ): Stream[F2, O3] =
     f(this, s2)
 
   /** Fails this stream with a [[TimeoutException]] if it does not complete within given `timeout`. */
-  def timeout[F2[x] >: F[x]: Temporal](
-      timeout: FiniteDuration
-  ): Stream[F2, O] =
+  def timeout[F2[x] >: F[x]: Temporal](timeout: FiniteDuration): Stream[F2, O] =
     this.interruptWhen(
       Temporal[F2]
         .sleep(timeout)
@@ -2595,10 +2535,11 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   private type ZipWithCont[G[_], I, O2, R] =
     Either[(Chunk[I], Stream[G, I]), Stream[G, I]] => Pull[G, O2, Option[R]]
 
-  private def zipWith_[F2[x] >: F[x], O2 >: O, O3, O4](that: Stream[F2, O3])(
-      k1: ZipWithCont[F2, O2, O4, INothing],
-      k2: ZipWithCont[F2, O3, O4, INothing]
-  )(f: (O2, O3) => O4): Stream[F2, O4] = {
+  private def zipWith_[F2[x] >: F[x], O2 >: O, O3, O4](
+      that: Stream[F2, O3]
+  )(k1: ZipWithCont[F2, O2, O4, INothing], k2: ZipWithCont[F2, O3, O4, INothing])(
+      f: (O2, O3) => O4
+  ): Stream[F2, O4] = {
     def go(
         leg1: Stream.StepLeg[F2, O2],
         leg2: Stream.StepLeg[F2, O3]
@@ -2741,9 +2682,9 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * res0: List[Int] = List(5, 7, 9)
     * }}}
     */
-  def zipWith[F2[x] >: F[x], O2 >: O, O3, O4](
-      that: Stream[F2, O3]
-  )(f: (O2, O3) => O4): Stream[F2, O4] =
+  def zipWith[F2[x] >: F[x], O2 >: O, O3, O4](that: Stream[F2, O3])(
+      f: (O2, O3) => O4
+  ): Stream[F2, O4] =
     zipWith_[F2, O2, O3, O4](that)(_ => Pull.pure(None), _ => Pull.pure(None))(f)
 
   /** Zips the elements of the input stream with its indices, and returns the new stream.
@@ -2928,17 +2869,17 @@ object Stream extends StreamLowPriority {
     * `ExitCase.Canceled` is passed to the release action in the event of either stream interruption or
     * overall compiled effect cancelation.
     */
-  def bracketCase[F[x] >: Pure[x], R](
-      acquire: F[R]
-  )(release: (R, Resource.ExitCase) => F[Unit]): Stream[F, R] =
+  def bracketCase[F[x] >: Pure[x], R](acquire: F[R])(
+      release: (R, Resource.ExitCase) => F[Unit]
+  ): Stream[F, R] =
     bracketCaseWeak(acquire)(release).scope
 
   /** Like [[bracketCase]] but no scope is introduced, causing resource finalization to
     * occur at the end of the current scope at the time of acquisition.
     */
-  def bracketCaseWeak[F[x] >: Pure[x], R](
-      acquire: F[R]
-  )(release: (R, Resource.ExitCase) => F[Unit]): Stream[F, R] =
+  def bracketCaseWeak[F[x] >: Pure[x], R](acquire: F[R])(
+      release: (R, Resource.ExitCase) => F[Unit]
+  ): Stream[F, R] =
     new Stream(Pull.acquire[F, R](acquire, release).flatMap(Pull.output1(_)))
 
   /** Creates a pure stream that emits the elements of the supplied chunk.
@@ -3091,9 +3032,8 @@ object Stream extends StreamLowPriority {
     now.flatMap(go)
   }
 
-  private[fs2] final class PartiallyAppliedFromOption[F[_]](
-      private val dummy: Boolean
-  ) extends AnyVal {
+  private[fs2] final class PartiallyAppliedFromOption[F[_]](private val dummy: Boolean)
+      extends AnyVal {
     def apply[A](option: Option[A]): Stream[F, A] =
       option.map(Stream.emit).getOrElse(Stream.empty)
   }
@@ -3111,9 +3051,8 @@ object Stream extends StreamLowPriority {
   def fromOption[F[_]]: PartiallyAppliedFromOption[F] =
     new PartiallyAppliedFromOption(dummy = true)
 
-  private[fs2] final class PartiallyAppliedFromEither[F[_]](
-      private val dummy: Boolean
-  ) extends AnyVal {
+  private[fs2] final class PartiallyAppliedFromEither[F[_]](private val dummy: Boolean)
+      extends AnyVal {
     def apply[A](either: Either[Throwable, A])(implicit ev: RaiseThrowable[F]): Stream[F, A] =
       either.fold(Stream.raiseError[F], Stream.emit)
   }
@@ -3131,9 +3070,8 @@ object Stream extends StreamLowPriority {
   def fromEither[F[_]]: PartiallyAppliedFromEither[F] =
     new PartiallyAppliedFromEither(dummy = true)
 
-  private[fs2] final class PartiallyAppliedFromIterator[F[_]](
-      private val blocking: Boolean
-  ) extends AnyVal {
+  private[fs2] final class PartiallyAppliedFromIterator[F[_]](private val blocking: Boolean)
+      extends AnyVal {
     def apply[A](iterator: Iterator[A], chunkSize: Int)(implicit F: Sync[F]): Stream[F, A] = {
       def eff[B](thunk: => B) = if (blocking) F.blocking(thunk) else F.delay(thunk)
 
@@ -3366,9 +3304,7 @@ object Stream extends StreamLowPriority {
 
   /** Starts the supplied task and cancels it as finalization of the returned stream.
     */
-  def supervise[F[_], A](
-      fa: F[A]
-  )(implicit F: Concurrent[F]): Stream[F, Fiber[F, Throwable, A]] =
+  def supervise[F[_], A](fa: F[A])(implicit F: Concurrent[F]): Stream[F, Fiber[F, Throwable, A]] =
     bracket(F.start(fa))(_.cancel)
 
   /** Returns a stream that evaluates the supplied by-name each time the stream is used,
@@ -3558,9 +3494,7 @@ object Stream extends StreamLowPriority {
     /** Repeatedly invokes `using`, running the resultant `Pull` each time, halting when a pull
       * returns `None` instead of `Some(nextStream)`.
       */
-    def repeatPull[O2](
-        f: Stream.ToPull[F, O] => Pull[F, O2, Option[Stream[F, O]]]
-    ): Stream[F, O2] =
+    def repeatPull[O2](f: Stream.ToPull[F, O] => Pull[F, O2, Option[Stream[F, O]]]): Stream[F, O2] =
       Pull.loop(f.andThen(_.map(_.map(_.pull))))(pull).void.stream
   }
 
@@ -3598,9 +3532,7 @@ object Stream extends StreamLowPriority {
       *
       * @param maxOpen    Maximum number of open inner streams at any time. Must be > 0.
       */
-    def parJoin(
-        maxOpen: Int
-    )(implicit F: Concurrent[F]): Stream[F, O] = {
+    def parJoin(maxOpen: Int)(implicit F: Concurrent[F]): Stream[F, O] = {
       assert(maxOpen > 0, "maxOpen must be > 0, was: " + maxOpen)
       val fstream: F[Stream[F, O]] = for {
         done <- SignallingRef(None: Option[Option[Throwable]])
@@ -3742,9 +3674,7 @@ object Stream extends StreamLowPriority {
   }
 
   /** Projection of a `Stream` providing various ways to get a `Pull` from the `Stream`. */
-  final class ToPull[F[_], O] private[Stream] (
-      private val self: Stream[F, O]
-  ) extends AnyVal {
+  final class ToPull[F[_], O] private[Stream] (private val self: Stream[F, O]) extends AnyVal {
 
     /** Waits for a chunk of elements to be available in the source stream.
       * The chunk of elements along with a new stream are provided as the resource of the returned pull.
@@ -4071,9 +4001,9 @@ object Stream extends StreamLowPriority {
   }
 
   /** Projection of a `Stream` providing various ways to compile a `Stream[F,O]` to a `G[...]`. */
-  final class CompileOps[F[_], G[_], O] private[Stream] (
-      private val underlying: Pull[F, O, Unit]
-  )(implicit compiler: Compiler[F, G]) {
+  final class CompileOps[F[_], G[_], O] private[Stream] (private val underlying: Pull[F, O, Unit])(
+      implicit compiler: Compiler[F, G]
+  ) {
 
     /** Compiles this stream in to a value of the target effect type `F` and
       * discards any output values of the stream.
@@ -4244,8 +4174,8 @@ object Stream extends StreamLowPriority {
       * This works for every other `compile.` method, although it's a
       * very natural fit with `lastOrError`.
       */
-    def resource(implicit
-        compiler: Compiler[F, Resource[G, *]]
+    def resource(
+        implicit compiler: Compiler[F, Resource[G, *]]
     ): Stream.CompileOps[F, Resource[G, *], O] =
       new Stream.CompileOps[F, Resource[G, *], O](underlying)
 
@@ -4374,10 +4304,9 @@ object Stream extends StreamLowPriority {
     *  classes, so the presence of the `State` trait forces this
     *  method to be outside of the `Stream` class.
     */
-  private[fs2] def parZip[F[_], L, R](
-      left: Stream[F, L],
-      right: Stream[F, R]
-  )(implicit F: Concurrent[F]): Stream[F, (L, R)] = {
+  private[fs2] def parZip[F[_], L, R](left: Stream[F, L], right: Stream[F, R])(
+      implicit F: Concurrent[F]
+  ): Stream[F, (L, R)] = {
     sealed trait State
     case object Racing extends State
     case class LeftFirst(leftValue: L, waitOnRight: Deferred[F, Unit]) extends State
@@ -4460,8 +4389,8 @@ object Stream extends StreamLowPriority {
     * res0: List[(Int, Int)] = List((1,1), (-2,2), (3,3))
     * }}}
     */
-  implicit def monadErrorInstance[F[_]](implicit
-      ev: ApplicativeError[F, Throwable]
+  implicit def monadErrorInstance[F[_]](
+      implicit ev: ApplicativeError[F, Throwable]
   ): MonadError[Stream[F, *], Throwable] =
     new MonadError[Stream[F, *], Throwable] {
       def pure[A](a: A) = Stream(a)
@@ -4496,12 +4425,10 @@ object Stream extends StreamLowPriority {
       private type ZipWithCont[G[_], O2, L, R] =
         Either[(Chunk[O2], Stream[G, O2]), Stream[G, O2]] => Pull[G, Ior[L, R], Unit]
 
-      private def alignWith_[F2[x] >: F[x], O2, O3](
-          fa: Stream[F2, O2],
-          fb: Stream[F2, O3]
-      )(k1: ZipWithCont[F2, O2, O2, O3], k2: ZipWithCont[F2, O3, O2, O3])(
-          f: (O2, O3) => Ior[O2, O3]
-      ): Stream[F2, Ior[O2, O3]] = {
+      private def alignWith_[F2[x] >: F[x], O2, O3](fa: Stream[F2, O2], fb: Stream[F2, O3])(
+          k1: ZipWithCont[F2, O2, O2, O3],
+          k2: ZipWithCont[F2, O3, O2, O3]
+      )(f: (O2, O3) => Ior[O2, O3]): Stream[F2, Ior[O2, O3]] = {
         def go(
             leg1: Stream.StepLeg[F2, O2],
             leg2: Stream.StepLeg[F2, O3]

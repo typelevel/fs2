@@ -108,9 +108,7 @@ object FileHandle {
     SyncFiles[F].openFileChannel(channel)
 
   /** Creates a `FileHandle[F]` from a `java.nio.channels.FileChannel`. */
-  private[file] def make[F[_]](
-      chan: FileChannel
-  )(implicit F: Sync[F]): FileHandle[F] =
+  private[file] def make[F[_]](chan: FileChannel)(implicit F: Sync[F]): FileHandle[F] =
     new FileHandle[F] {
       type Lock = FileLock
 

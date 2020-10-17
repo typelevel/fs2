@@ -155,9 +155,7 @@ object Watcher {
       .flatMap(fromFileSystem(_))
 
   /** Creates a watcher for the supplied file system. */
-  def fromFileSystem[F[_]](
-      fs: FileSystem
-  )(implicit F: Async[F]): Resource[F, Watcher[F]] =
+  def fromFileSystem[F[_]](fs: FileSystem)(implicit F: Async[F]): Resource[F, Watcher[F]] =
     Resource(F.blocking(fs.newWatchService).flatMap { ws =>
       fromWatchService(ws).map(w => w -> F.blocking(ws.close))
     })
@@ -172,9 +170,7 @@ object Watcher {
   )
 
   /** Creates a watcher for the supplied NIO `WatchService`. */
-  def fromWatchService[F[_]](
-      ws: WatchService
-  )(implicit F: Async[F]): F[Watcher[F]] =
+  def fromWatchService[F[_]](ws: WatchService)(implicit F: Async[F]): F[Watcher[F]] =
     SignallingRef
       .of[F, Map[WatchKey, Registration[F]]](Map.empty)
       .map(new DefaultWatcher(ws, _))
@@ -182,9 +178,8 @@ object Watcher {
   private class DefaultWatcher[F[_]](
       ws: WatchService,
       registrations: SignallingRef[F, Map[WatchKey, Registration[F]]]
-  )(implicit
-      F: Async[F]
-  ) extends Watcher[F] {
+  )(implicit F: Async[F])
+      extends Watcher[F] {
     private def isDir(p: Path): F[Boolean] =
       F.blocking(Files.isDirectory(p))
 

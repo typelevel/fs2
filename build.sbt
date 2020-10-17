@@ -20,9 +20,7 @@ ThisBuild / startYear := Some(2013)
 
 ThisBuild / crossScalaVersions := Seq("2.13.3", "2.12.10", "0.27.0-RC1")
 
-ThisBuild / versionIntroduced := Map(
-  "0.27.0-RC1" -> "3.0.0"
-)
+ThisBuild / versionIntroduced := Map("0.27.0-RC1" -> "3.0.0")
 
 ThisBuild / githubWorkflowJavaVersions := Seq("adopt@1.11")
 
@@ -113,9 +111,7 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
   .in(file("core"))
   .configs(IntegrationTest)
   .settings(Defaults.itSettings: _*)
-  .settings(
-    inConfig(IntegrationTest)(org.scalafmt.sbt.ScalafmtPlugin.scalafmtConfigSettings)
-  )
+  .settings(inConfig(IntegrationTest)(org.scalafmt.sbt.ScalafmtPlugin.scalafmtConfigSettings))
   .settings(
     name := "fs2-core",
     Compile / scalafmt / unmanagedSources := (Compile / scalafmt / unmanagedSources).value

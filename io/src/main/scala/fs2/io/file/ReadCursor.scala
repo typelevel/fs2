@@ -92,8 +92,8 @@ final case class ReadCursor[F[_]](file: FileHandle[F], offset: Long) {
     * @param pollDelay amount of time to wait upon reaching the end of the file before
     * polling for updates
     */
-  def tail(chunkSize: Int, pollDelay: FiniteDuration)(implicit
-      t: Temporal[F]
+  def tail(chunkSize: Int, pollDelay: FiniteDuration)(
+      implicit t: Temporal[F]
   ): Pull[F, Byte, ReadCursor[F]] =
     readPull(chunkSize).flatMap {
       case Some((next, chunk)) => Pull.output(chunk) >> next.tail(chunkSize, pollDelay)
@@ -104,9 +104,6 @@ final case class ReadCursor[F[_]](file: FileHandle[F], offset: Long) {
 object ReadCursor {
 
   @deprecated("Use Files[F].readCursor", "3.0.0")
-  def fromPath[F[_]: Sync](
-      path: Path,
-      flags: Seq[OpenOption] = Nil
-  ): Resource[F, ReadCursor[F]] =
+  def fromPath[F[_]: Sync](path: Path, flags: Seq[OpenOption] = Nil): Resource[F, ReadCursor[F]] =
     SyncFiles[F].readCursor(path, flags)
 }

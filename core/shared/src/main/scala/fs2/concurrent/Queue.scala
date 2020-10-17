@@ -175,15 +175,11 @@ object Queue {
   def circularBufferNoneTerminated[F[_]: Concurrent, A](
       maxSize: Int
   ): F[NoneTerminatedQueue[F, A]] =
-    createNoneTerminated(
-      PubSub.Strategy.closeDrainFirst(Strategy.circularBuffer(maxSize))
-    )
+    createNoneTerminated(PubSub.Strategy.closeDrainFirst(Strategy.circularBuffer(maxSize)))
 
   /** Created a bounded queue that distributed always at max `fairSize` elements to any subscriber. */
   def fairBounded[F[_]: Concurrent, A](maxSize: Int, fairSize: Int): F[Queue[F, A]] =
-    create(
-      Strategy.boundedFifo(maxSize).transformSelector[Int]((sz, _) => sz.min(fairSize))
-    )
+    create(Strategy.boundedFifo(maxSize).transformSelector[Int]((sz, _) => sz.min(fairSize)))
 
   /** Created an unbounded queue terminated by enqueueing `None`. All elements before `None`. */
   def noneTerminated[F[_]: Concurrent, A]: F[NoneTerminatedQueue[F, A]] =
@@ -412,13 +408,9 @@ object InspectableQueue {
   def circularBuffer[F[_]: Concurrent, A](maxSize: Int): F[InspectableQueue[F, A]] =
     create(Queue.Strategy.circularBuffer[A](maxSize))(_.headOption)(_.size)
 
-  def create[F[_], S, A](
-      strategy: PubSub.Strategy[A, Chunk[A], S, Int]
-  )(
+  def create[F[_], S, A](strategy: PubSub.Strategy[A, Chunk[A], S, Int])(
       headOf: S => Option[A]
-  )(
-      sizeOf: S => Int
-  )(implicit F: Concurrent[F]): F[InspectableQueue[F, A]] = {
+  )(sizeOf: S => Int)(implicit F: Concurrent[F]): F[InspectableQueue[F, A]] = {
     implicit def eqInstance: Eq[S] = Eq.fromUniversalEquals[S]
     PubSub(PubSub.Strategy.Inspectable.strategy(strategy)).map { pubSub =>
       new InspectableQueue[F, A] {
@@ -466,11 +458,9 @@ object InspectableQueue {
         def dequeueBatch: Pipe[F, Int, A] =
           _.flatMap { sz =>
             Stream
-              .evalUnChunk(
-                pubSub.get(Right(sz)).map {
-                  _.getOrElse(Chunk.empty)
-                }
-              )
+              .evalUnChunk(pubSub.get(Right(sz)).map {
+                _.getOrElse(Chunk.empty)
+              })
           }
 
         def peek1: F[A] =

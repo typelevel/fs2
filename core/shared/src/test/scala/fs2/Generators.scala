@@ -40,8 +40,8 @@ trait Generators extends ChunkGenerators {
       )
     }
 
-  implicit def effectfulStreamGenerator[F[_], O](implicit
-      arbO: Arbitrary[O],
+  implicit def effectfulStreamGenerator[F[_], O](
+      implicit arbO: Arbitrary[O],
       arbFo: Arbitrary[F[O]],
       arbFu: Arbitrary[F[Unit]]
   ): Arbitrary[Stream[F, O]] =
@@ -58,8 +58,8 @@ trait Generators extends ChunkGenerators {
       )
     )
 
-  implicit def pullGenerator[F[_], O, R](implicit
-      arbR: Arbitrary[R],
+  implicit def pullGenerator[F[_], O, R](
+      implicit arbR: Arbitrary[R],
       arbFr: Arbitrary[F[R]],
       arbFo: Arbitrary[F[O]],
       arbO: Arbitrary[O],

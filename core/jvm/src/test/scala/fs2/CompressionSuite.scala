@@ -58,10 +58,7 @@ class CompressionSuite extends Fs2Suite {
   }
 
   implicit val zlibHeaders: Arbitrary[ZLibParams.Header] = Arbitrary(
-    Gen.oneOf(
-      ZLibParams.Header.ZLIB,
-      ZLibParams.Header.GZIP
-    )
+    Gen.oneOf(ZLibParams.Header.ZLIB, ZLibParams.Header.GZIP)
   )
 
   implicit val juzDeflaterLevels: Arbitrary[DeflateParams.Level] = Arbitrary(
@@ -177,13 +174,7 @@ class CompressionSuite extends Fs2Suite {
         )
       )
       .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
-      .through(
-        deflate(
-          DeflateParams(
-            header = ZLibParams.Header.ZLIB
-          )
-        )
-      )
+      .through(deflate(DeflateParams(header = ZLibParams.Header.ZLIB)))
       .compile
       .to(Array)
       .flatMap { deflated =>
@@ -302,9 +293,7 @@ class CompressionSuite extends Fs2Suite {
             )
           )
           .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
-          .through(
-            gunzip[IO](8192)
-          )
+          .through(gunzip[IO](8192))
           .flatMap { gunzipResult =>
             assert(gunzipResult.fileName == expectedFileName)
             assert(gunzipResult.comment == expectedComment)
@@ -347,9 +336,7 @@ class CompressionSuite extends Fs2Suite {
             )
           )
           .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
-          .through(
-            gunzip[IO](509)
-          )
+          .through(gunzip[IO](509))
           .flatMap { gunzipResult =>
             assert(gunzipResult.fileName == expectedFileName)
             assert(gunzipResult.comment == expectedComment)
@@ -392,9 +379,7 @@ class CompressionSuite extends Fs2Suite {
             )
           )
           .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
-          .through(
-            gunzip[IO](1031)
-          )
+          .through(gunzip[IO](1031))
           .flatMap { gunzipResult =>
             assert(gunzipResult.fileName == expectedFileName)
             assert(gunzipResult.comment == expectedComment)
@@ -470,9 +455,7 @@ class CompressionSuite extends Fs2Suite {
     val longString: String =
       Array
         .fill(1024 * 1024 + 1)("x")
-        .mkString(
-          ""
-        ) // max(classic.fileNameBytesSoftLimit, classic.fileCommentBytesSoftLimit) + 1
+        .mkString("") // max(classic.fileNameBytesSoftLimit, classic.fileCommentBytesSoftLimit) + 1
     val expectedFileName = Option(toEncodableFileName(longString))
     val expectedComment = Option(toEncodableComment(longString))
     Stream
@@ -510,9 +493,7 @@ class CompressionSuite extends Fs2Suite {
       0xe2, 0x02, 0x00, 0x57, 0xb3, 0x5e, 0x6d, 0x23, 0x00, 0x00, 0x00).map(_.toByte)
     Stream
       .chunk(Chunk.bytes(compressed))
-      .through(
-        gunzip[IO]()
-      )
+      .through(gunzip[IO]())
       .flatMap { gunzipResult =>
         assert(gunzipResult.fileName == expectedFileName)
         assert(gunzipResult.comment == expectedComment)

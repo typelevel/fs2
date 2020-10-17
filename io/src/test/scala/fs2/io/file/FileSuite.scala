@@ -195,14 +195,12 @@ class FileSuite extends BaseFileSuite {
 
   group("copy") {
     test("returns a path to the new file") {
-      assert(
-        (for {
-          filePath <- tempFile
-          tempDir <- tempDirectory
-          result <- Stream.eval(Files[IO].copy(filePath, tempDir.resolve("newfile")))
-          exists <- Stream.eval(Files[IO].exists(result))
-        } yield exists).compile.fold(true)(_ && _).unsafeRunSync() == true
-      )
+      assert((for {
+        filePath <- tempFile
+        tempDir <- tempDirectory
+        result <- Stream.eval(Files[IO].copy(filePath, tempDir.resolve("newfile")))
+        exists <- Stream.eval(Files[IO].exists(result))
+      } yield exists).compile.fold(true)(_ && _).unsafeRunSync() == true)
     }
   }
 
@@ -247,14 +245,12 @@ class FileSuite extends BaseFileSuite {
 
   group("move") {
     test("should result in the old path being deleted") {
-      assert(
-        (for {
-          filePath <- tempFile
-          tempDir <- tempDirectory
-          _ <- Stream.eval(Files[IO].move(filePath, tempDir.resolve("newfile")))
-          exists <- Stream.eval(Files[IO].exists(filePath))
-        } yield exists).compile.fold(false)(_ || _).unsafeRunSync() == false
-      )
+      assert((for {
+        filePath <- tempFile
+        tempDir <- tempDirectory
+        _ <- Stream.eval(Files[IO].move(filePath, tempDir.resolve("newfile")))
+        exists <- Stream.eval(Files[IO].exists(filePath))
+      } yield exists).compile.fold(false)(_ || _).unsafeRunSync() == false)
     }
   }
 

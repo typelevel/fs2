@@ -339,10 +339,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
             .covary[IO]
             .evalFilterAsync(n) { _ =>
               val ensureAcquired =
-                sem.tryAcquire.ifM(
-                  IO.unit,
-                  IO.raiseError(new Throwable("Couldn't acquire permit"))
-                )
+                sem.tryAcquire.ifM(IO.unit, IO.raiseError(new Throwable("Couldn't acquire permit")))
 
               ensureAcquired.bracket(_ =>
                 sig.update(_ + 1).bracket(_ => IO.sleep(10.millis))(_ => sig.update(_ - 1))
@@ -426,10 +423,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
             .covary[IO]
             .evalFilterNotAsync(n) { _ =>
               val ensureAcquired =
-                sem.tryAcquire.ifM(
-                  IO.unit,
-                  IO.raiseError(new Throwable("Couldn't acquire permit"))
-                )
+                sem.tryAcquire.ifM(IO.unit, IO.raiseError(new Throwable("Couldn't acquire permit")))
 
               ensureAcquired.bracket(_ =>
                 sig.update(_ + 1).bracket(_ => IO.sleep(10.millis))(_ => sig.update(_ - 1))
@@ -790,30 +784,10 @@ class StreamCombinatorsSuite extends Fs2Suite {
       val ones = Stream.constant("1")
       val s = Stream("A", "B", "C")
       assert(
-        ones.interleaveAll(s).take(9).toList == List(
-          "1",
-          "A",
-          "1",
-          "B",
-          "1",
-          "C",
-          "1",
-          "1",
-          "1"
-        )
+        ones.interleaveAll(s).take(9).toList == List("1", "A", "1", "B", "1", "C", "1", "1", "1")
       )
       assert(
-        s.interleaveAll(ones).take(9).toList == List(
-          "A",
-          "1",
-          "B",
-          "1",
-          "C",
-          "1",
-          "1",
-          "1",
-          "1"
-        )
+        s.interleaveAll(ones).take(9).toList == List("A", "1", "B", "1", "C", "1", "1", "1", "1")
       )
     }
 
@@ -1102,16 +1076,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
     def ones(s: String) = Chunk.vector(s.grouped(1).toVector)
     assert(input.take(2).repartition(ones).toVector == Vector("a", "b", "a", "b"))
     assert(
-      input.take(4).repartition(ones).toVector == Vector(
-        "a",
-        "b",
-        "a",
-        "b",
-        "a",
-        "b",
-        "a",
-        "b"
-      )
+      input.take(4).repartition(ones).toVector == Vector("a", "b", "a", "b", "a", "b", "a", "b")
     )
     assert(input.repartition(ones).take(2).toVector == Vector("a", "b"))
     assert(input.repartition(ones).take(4).toVector == Vector("a", "b", "a", "b"))
@@ -1122,9 +1087,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
         .toVector == Vector("a", "b", "a", "b", "a", "b", "a", "b")
     )
 
-    assert(
-      Stream(1, 2, 3, 4, 5).repartition(i => Chunk(i, i)).toList == List(1, 3, 6, 10, 15, 15)
-    )
+    assert(Stream(1, 2, 3, 4, 5).repartition(i => Chunk(i, i)).toList == List(1, 3, 6, 10, 15, 15))
 
     assert(
       Stream(1, 10, 100)
@@ -1222,12 +1185,10 @@ class StreamCombinatorsSuite extends Fs2Suite {
 
     test("2") {
       assert(
-        Stream(1, 2, 0, 0, 3, 0, 4).split(_ == 0).toVector.map(_.toVector) == Vector(
-          Vector(1, 2),
-          Vector(),
-          Vector(3),
-          Vector(4)
-        )
+        Stream(1, 2, 0, 0, 3, 0, 4)
+          .split(_ == 0)
+          .toVector
+          .map(_.toVector) == Vector(Vector(1, 2), Vector(), Vector(3), Vector(4))
       )
       assert(
         Stream(1, 2, 0, 0, 3, 0).split(_ == 0).toVector.map(_.toVector) == Vector(
@@ -1237,12 +1198,10 @@ class StreamCombinatorsSuite extends Fs2Suite {
         )
       )
       assert(
-        Stream(1, 2, 0, 0, 3, 0, 0).split(_ == 0).toVector.map(_.toVector) == Vector(
-          Vector(1, 2),
-          Vector(),
-          Vector(3),
-          Vector()
-        )
+        Stream(1, 2, 0, 0, 3, 0, 0)
+          .split(_ == 0)
+          .toVector
+          .map(_.toVector) == Vector(Vector(1, 2), Vector(), Vector(3), Vector())
       )
     }
   }

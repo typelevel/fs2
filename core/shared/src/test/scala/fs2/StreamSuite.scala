@@ -388,9 +388,7 @@ class StreamSuite extends Fs2Suite {
     test("constant")(testCancelation(constantStream))
 
     test("bracketed stream") {
-      testCancelation(
-        Stream.bracket(IO.unit)(_ => IO.unit).flatMap(_ => constantStream)
-      )
+      testCancelation(Stream.bracket(IO.unit)(_ => IO.unit).flatMap(_ => constantStream))
     }
 
     test("concurrently") {
@@ -534,9 +532,7 @@ class StreamSuite extends Fs2Suite {
         // Bind
         val res2 = mkRes("21") *> mkRes("22")
         // Suspend
-        val res3 = Resource.suspend(
-          record("suspend").as(mkRes("3"))
-        )
+        val res3 = Resource.suspend(record("suspend").as(mkRes("3")))
 
         List(res1, res2, res3)
           .foldMap(Stream.resource(_))
@@ -582,9 +578,7 @@ class StreamSuite extends Fs2Suite {
         // Bind
         val res2 = mkRes("21") *> mkRes("22")
         // Suspend
-        val res3 = Resource.suspend(
-          record("suspend").as(mkRes("3"))
-        )
+        val res3 = Resource.suspend(record("suspend").as(mkRes("3")))
 
         List(res1, res2, res3)
           .foldMap(Stream.resourceWeak(_))
@@ -695,9 +689,8 @@ class StreamSuite extends Fs2Suite {
     test("4") {
       forAllF { (s: Stream[Pure, Int]) =>
         Counter[IO].flatMap { counter =>
-          val s2 = Stream.bracket(counter.increment)(_ => counter.decrement) >> spuriousFail(
-            s.covary[IO]
-          )
+          val s2 =
+            Stream.bracket(counter.increment)(_ => counter.decrement) >> spuriousFail(s.covary[IO])
           val one = s2.prefetch.attempt
           val two = s2.prefetch.prefetch.attempt
           val three = s2.prefetch.prefetch.prefetch.attempt
@@ -844,9 +837,8 @@ class StreamSuite extends Fs2Suite {
           Stream
             .eval(Deferred[IO, Unit].product(Deferred[IO, Unit]))
             .flatMap { case (startCondition, waitForStream) =>
-              val worker = Stream.eval(startCondition.get) ++ Stream.eval(
-                waitForStream.complete(())
-              )
+              val worker =
+                Stream.eval(startCondition.get) ++ Stream.eval(waitForStream.complete(()))
               val result = startCondition.complete(()) >> waitForStream.get
 
               Stream.emit(result).concurrently(worker)

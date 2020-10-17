@@ -32,10 +32,7 @@ import cats.effect.{Async, IO}
 import cats.syntax.all._
 
 object TLSDebug {
-  def debug[F[_]: Async](
-      tlsContext: TLSContext,
-      address: InetSocketAddress
-  ): F[String] =
+  def debug[F[_]: Async](tlsContext: TLSContext, address: InetSocketAddress): F[String] =
     SocketGroup[F]().use { socketGroup =>
       socketGroup.client[F](address).use { rawSocket =>
         tlsContext

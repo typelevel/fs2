@@ -78,9 +78,6 @@ object WriteCursor {
     SyncFiles[F].writeCursor(path, flags)
 
   @deprecated("Use Files[F].writeCursorFromFileHandle", "3.0.0")
-  def fromFileHandle[F[_]: Sync](
-      file: FileHandle[F],
-      append: Boolean
-  ): F[WriteCursor[F]] =
+  def fromFileHandle[F[_]: Sync](file: FileHandle[F], append: Boolean): F[WriteCursor[F]] =
     SyncFiles[F].writeCursorFromFileHandle(file, append)
 }

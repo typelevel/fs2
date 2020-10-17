@@ -365,12 +365,7 @@ object text {
               Right(Chunk((state.buffer >> 4).toByte))
             case 3 =>
               val buffer = state.buffer
-              Right(
-                Chunk(
-                  (buffer >> 10).toByte,
-                  (buffer >> 2).toByte
-                )
-              )
+              Right(Chunk((buffer >> 10).toByte, (buffer >> 2).toByte))
           }
 
       def go(state: State, s: Stream[F, String]): Pull[F, Byte, Unit] =
@@ -408,9 +403,8 @@ object text {
         var idx = 0
         val mod = bytes.length % 3
         while (idx < bytes.length - mod) {
-          var buffer = ((bytes(idx) & 0xff) << 16) | ((bytes(idx + 1) & 0xff) << 8) | (bytes(
-            idx + 2
-          ) & 0xff)
+          var buffer =
+            ((bytes(idx) & 0xff) << 16) | ((bytes(idx + 1) & 0xff) << 8) | (bytes(idx + 2) & 0xff)
           val fourth = buffer & 0x3f
           buffer = buffer >> 6
           val third = buffer & 0x3f

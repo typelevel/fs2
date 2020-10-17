@@ -35,29 +35,22 @@ class StreamAlignSuite extends Fs2Suite {
   test("left side empty and right side populated") {
     val empty = Stream.empty
     val s = Stream("A", "B", "C")
-    assert(
-      empty.align(s).take(3).toList == List(Ior.Right("A"), Ior.Right("B"), Ior.Right("C"))
-    )
+    assert(empty.align(s).take(3).toList == List(Ior.Right("A"), Ior.Right("B"), Ior.Right("C")))
   }
 
   test("right side empty and left side populated") {
     val empty = Stream.empty
     val s = Stream("A", "B", "C")
-    assert(
-      s.align(empty).take(3).toList == List(Ior.Left("A"), Ior.Left("B"), Ior.Left("C"))
-    )
+    assert(s.align(empty).take(3).toList == List(Ior.Left("A"), Ior.Left("B"), Ior.Left("C")))
   }
 
   test("values in both sides") {
     val ones = Stream.constant("1")
     val s = Stream("A", "B", "C")
     assert(
-      s.align(ones).take(4).toList == List(
-        Ior.Both("A", "1"),
-        Ior.Both("B", "1"),
-        Ior.Both("C", "1"),
-        Ior.Right("1")
-      )
+      s.align(ones)
+        .take(4)
+        .toList == List(Ior.Both("A", "1"), Ior.Both("B", "1"), Ior.Both("C", "1"), Ior.Right("1"))
     )
   }
 

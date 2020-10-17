@@ -114,9 +114,7 @@ class StreamObserveSuite extends Fs2Suite {
   observationTests(
     "observe",
     new Observer {
-      def apply[F[_]: Async, O](
-          s: Stream[F, O]
-      )(observation: Pipe[F, O, INothing]): Stream[F, O] =
+      def apply[F[_]: Async, O](s: Stream[F, O])(observation: Pipe[F, O, INothing]): Stream[F, O] =
         s.observe(observation)
     }
   )
@@ -124,9 +122,7 @@ class StreamObserveSuite extends Fs2Suite {
   observationTests(
     "observeAsync",
     new Observer {
-      def apply[F[_]: Async, O](
-          s: Stream[F, O]
-      )(observation: Pipe[F, O, INothing]): Stream[F, O] =
+      def apply[F[_]: Async, O](s: Stream[F, O])(observation: Pipe[F, O, INothing]): Stream[F, O] =
         s.observeAsync(maxQueued = 10)(observation)
     }
   )

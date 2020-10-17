@@ -40,9 +40,8 @@ import org.reactivestreams._
 final class StreamSubscriber[F[_], A](
     val sub: StreamSubscriber.FSM[F, A],
     runner: Dispatcher.Runner[F]
-)(implicit
-    F: ApplicativeError[F, Throwable]
-) extends Subscriber[A] {
+)(implicit F: ApplicativeError[F, Throwable])
+    extends Subscriber[A] {
 
   /** Called by an upstream reactivestreams system */
   def onSubscribe(s: Subscription): Unit = {

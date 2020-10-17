@@ -160,10 +160,7 @@ object Topic {
   }
 
   private[fs2] object Strategy {
-    final case class State[A](
-        last: A,
-        subscribers: Map[(Token, Int), SizedQueue[A]]
-    )
+    final case class State[A](last: A, subscribers: Map[(Token, Int), SizedQueue[A]])
 
     /** Strategy for topic, where every subscriber can specify max size of queued elements.
       * If that subscription is exceeded any other `publish` to the topic will hold,
@@ -181,10 +178,7 @@ object Topic {
           state.subscribers.forall { case ((_, max), q) => q.size < max }
 
         def publish(i: A, state: State[A]): State[A] =
-          State(
-            last = i,
-            subscribers = state.subscribers.map { case (k, v) => (k, v :+ i) }
-          )
+          State(last = i, subscribers = state.subscribers.map { case (k, v) => (k, v :+ i) })
 
         // Register empty queue
         def regEmpty(selector: (Token, Int), state: State[A]): State[A] =

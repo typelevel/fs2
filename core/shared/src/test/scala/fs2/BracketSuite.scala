@@ -63,10 +63,7 @@ class BracketSuite extends Fs2Suite {
   }
 
   group("bracket ++ bracket") {
-    def appendBracketTest[F[_]: Sync, A](
-        use1: Stream[F, A],
-        use2: Stream[F, A]
-    ): F[Unit] =
+    def appendBracketTest[F[_]: Sync, A](use1: Stream[F, A], use2: Stream[F, A]): F[Unit] =
       for {
         events <- Ref[F].of[Vector[BracketEvent]](Vector.empty)
         _ <-
@@ -150,13 +147,7 @@ class BracketSuite extends Fs2Suite {
         .toList
         .map { _ =>
           assert(
-            buffer.toList == List(
-              "Acquired",
-              "Used",
-              "FlatMapped",
-              "ReleaseInvoked",
-              "Released"
-            )
+            buffer.toList == List("Acquired", "Used", "FlatMapped", "ReleaseInvoked", "Released")
           )
         }
     }

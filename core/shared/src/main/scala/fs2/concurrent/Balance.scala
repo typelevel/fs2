@@ -99,9 +99,7 @@ object Balance {
     * @param pipes pipes to use to process work
     * @param chunkSize maximum chunk to present to each pipe, allowing fair distribution between pipes
     */
-  def through[F[_]: Concurrent, O, O2](
-      chunkSize: Int
-  )(pipes: Pipe[F, O, O2]*): Pipe[F, O, O2] =
+  def through[F[_]: Concurrent, O, O2](chunkSize: Int)(pipes: Pipe[F, O, O2]*): Pipe[F, O, O2] =
     _.balance(chunkSize)
       .take(pipes.size.toLong)
       .zipWithIndex

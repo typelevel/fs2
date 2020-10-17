@@ -111,22 +111,15 @@ class StreamZipSuite extends Fs2Suite {
       val ones = Stream.constant("1")
       val s = Stream("A", "B", "C")
       assert(
-        ones.zipAll(s)("2", "Z").take(5).toList == List(
-          "1" -> "A",
-          "1" -> "B",
-          "1" -> "C",
-          "1" -> "Z",
-          "1" -> "Z"
-        )
+        ones
+          .zipAll(s)("2", "Z")
+          .take(5)
+          .toList == List("1" -> "A", "1" -> "B", "1" -> "C", "1" -> "Z", "1" -> "Z")
       )
       assert(
-        s.zipAll(ones)("Z", "2").take(5).toList == List(
-          "A" -> "1",
-          "B" -> "1",
-          "C" -> "1",
-          "Z" -> "1",
-          "Z" -> "1"
-        )
+        s.zipAll(ones)("Z", "2")
+          .take(5)
+          .toList == List("A" -> "1", "B" -> "1", "C" -> "1", "Z" -> "1", "Z" -> "1")
       )
     }
 
@@ -294,9 +287,7 @@ class StreamZipSuite extends Fs2Suite {
     test("2") {
       assert(Stream().zipWithPrevious.toList == Nil)
       assert(Stream(0).zipWithPrevious.toList == List((None, 0)))
-      assert(
-        Stream(0, 1, 2).zipWithPrevious.toList == List((None, 0), (Some(0), 1), (Some(1), 2))
-      )
+      assert(Stream(0, 1, 2).zipWithPrevious.toList == List((None, 0), (Some(0), 1), (Some(1), 2)))
     }
   }
 
@@ -347,9 +338,8 @@ class StreamZipSuite extends Fs2Suite {
 
   group("regressions") {
     test("#1089") {
-      (Stream.chunk(Chunk.bytes(Array.fill(2000)(1.toByte))) ++ Stream.eval(
-        IO.never[Byte]
-      )).take(2000).chunks.compile.toVector
+      (Stream.chunk(Chunk.bytes(Array.fill(2000)(1.toByte))) ++ Stream
+        .eval(IO.never[Byte])).take(2000).chunks.compile.toVector
     }
 
     test("#1107 - scope") {

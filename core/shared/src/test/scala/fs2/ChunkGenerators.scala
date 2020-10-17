@@ -60,11 +60,7 @@ trait ChunkGeneratorsLowPriority1 extends MiscellaneousGenerators {
         .map(as => Chunk.chain(Chain.fromSeq(as))) // TODO Add variety in Chain
     )
 
-    Gen.frequency(
-      20 -> Gen.resize(20, gen),
-      5 -> gen,
-      2 -> Gen.resize(300, gen)
-    )
+    Gen.frequency(20 -> Gen.resize(20, gen), 5 -> gen, 2 -> Gen.resize(300, gen))
   }
 }
 
@@ -84,9 +80,9 @@ trait ChunkGeneratorsLowPriority extends ChunkGeneratorsLowPriority1 {
 }
 
 trait ChunkGenerators extends ChunkGeneratorsLowPriority {
-  private def arrayChunkGenerator[A](genA: Gen[A])(
-      build: (Array[A], Int, Int) => Chunk[A]
-  )(implicit ct: ClassTag[A]): Gen[Chunk[A]] =
+  private def arrayChunkGenerator[A](
+      genA: Gen[A]
+  )(build: (Array[A], Int, Int) => Chunk[A])(implicit ct: ClassTag[A]): Gen[Chunk[A]] =
     for {
       values <- Gen.listOf(genA).map(_.toArray)
       offset <- Gen.chooseNum(0, values.size)
@@ -247,10 +243,7 @@ trait ChunkGenerators extends ChunkGeneratorsLowPriority {
     )
 
   val charChunkGenerator: Gen[Chunk[Char]] =
-    Gen.frequency(
-      9 -> chunkGenerator(arbitrary[Char]),
-      1 -> charBufferChunkGenerator
-    )
+    Gen.frequency(9 -> chunkGenerator(arbitrary[Char]), 1 -> charBufferChunkGenerator)
   implicit val charChunkArbitrary: Arbitrary[Chunk[Char]] =
     Arbitrary(charChunkGenerator)
 

@@ -132,9 +132,7 @@ class UdpSuite extends Fs2Suite {
                     interface.getInetAddresses.asScala.exists(_.isInstanceOf[Inet4Address])
                   }
                 val server = Stream
-                  .exec(
-                    v4Interfaces.traverse_(interface => serverSocket.join(group, interface))
-                  ) ++
+                  .exec(v4Interfaces.traverse_(interface => serverSocket.join(group, interface))) ++
                   serverSocket
                     .reads()
                     .evalMap(packet => serverSocket.write(packet))

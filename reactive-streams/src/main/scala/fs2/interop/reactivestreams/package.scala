@@ -74,9 +74,7 @@ package object reactivestreams {
       * This publisher can only have a single subscription.
       * The stream is only ran when elements are requested.
       */
-    def toUnicastPublisher(implicit
-        F: Async[F]
-    ): Resource[F, StreamUnicastPublisher[F, A]] =
+    def toUnicastPublisher(implicit F: Async[F]): Resource[F, StreamUnicastPublisher[F, A]] =
       Dispatcher[F, StreamUnicastPublisher[F, A]] { runner =>
         Resource.pure(StreamUnicastPublisher(stream, runner))
       }

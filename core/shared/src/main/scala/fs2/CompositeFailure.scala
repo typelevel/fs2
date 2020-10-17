@@ -24,10 +24,8 @@ package fs2
 import cats.data.NonEmptyList
 
 /** Represents multiple (>1) exceptions were thrown. */
-final class CompositeFailure(
-    val head: Throwable,
-    val tail: NonEmptyList[Throwable]
-) extends Throwable(
+final class CompositeFailure(val head: Throwable, val tail: NonEmptyList[Throwable])
+    extends Throwable(
       s"Multiple exceptions were thrown (${1 + tail.size}), first ${head.getClass.getName}: ${head.getMessage}",
       head
     ) {

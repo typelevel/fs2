@@ -443,10 +443,8 @@ object Pull extends PullLowPriority {
 
   /* A translation point, that wraps an inner stream written in another effect
    */
-  private final case class Translate[G[_], F[_], +O](
-      stream: Pull[G, O, Unit],
-      fk: G ~> F
-  ) extends Action[F, O, Unit] {
+  private final case class Translate[G[_], F[_], +O](stream: Pull[G, O, Unit], fk: G ~> F)
+      extends Action[F, O, Unit] {
     override def mapOutput[O2](f: O => O2): Pull[F, O2, Unit] =
       Translate(stream.mapOutput(f), fk)
   }
@@ -507,14 +505,9 @@ object Pull extends PullLowPriority {
   /** Like `scope` but allows this scope to be interrupted.
     * Note that this may fail with `Interrupted` when interruption occurred
     */
-  private[fs2] def interruptScope[F[_], O](
-      s: Pull[F, O, Unit]
-  ): Pull[F, O, Unit] = scope0(s, true)
+  private[fs2] def interruptScope[F[_], O](s: Pull[F, O, Unit]): Pull[F, O, Unit] = scope0(s, true)
 
-  private def scope0[F[_], O](
-      s: Pull[F, O, Unit],
-      interruptible: Boolean
-  ): Pull[F, O, Unit] =
+  private def scope0[F[_], O](s: Pull[F, O, Unit], interruptible: Boolean): Pull[F, O, Unit] =
     OpenScope(interruptible).flatMap { scopeId =>
       s.transformWith {
         case Result.Succeeded(_) => CloseScope(scopeId, None, Resource.ExitCase.Succeeded)
@@ -558,9 +551,7 @@ object Pull extends PullLowPriority {
       initScope: CompileScope[F],
       extendLastTopLevelScope: Boolean,
       init: B
-  )(g: (B, Chunk[O]) => B)(implicit
-      F: MonadError[F, Throwable]
-  ): F[B] = {
+  )(g: (B, Chunk[O]) => B)(implicit F: MonadError[F, Throwable]): F[B] = {
 
     sealed trait R[+G[_], +X]
     case class Done(scope: CompileScope[F]) extends R[Pure, INothing]
@@ -598,9 +589,7 @@ object Pull extends PullLowPriority {
             }
           view.step match {
             case output: Output[_] =>
-              interruptGuard(scope)(
-                F.pure(Out(output.values, scope, view.next(Pull.Result.unit)))
-              )
+              interruptGuard(scope)(F.pure(Out(output.values, scope, view.next(Pull.Result.unit))))
 
             case tst: Translate[h, g, x] =>
               val composed: h ~> F = translation.asInstanceOf[g ~> F].compose[h](tst.fk)
@@ -649,18 +638,14 @@ object Pull extends PullLowPriority {
                   }
 
                 case None =>
-                  F.raiseError(
-                    new RuntimeException(
-                      s"""|Scope lookup failure!
+                  F.raiseError(new RuntimeException(s"""|Scope lookup failure!
                           |
                           |This is typically caused by uncons-ing from two or more streams in the same Pull.
                           |To do this safely, use `s.pull.stepLeg` instead of `s.pull.uncons` or a variant
                           |thereof. See the implementation of `Stream#zipWith_` for an example.
                           |
                           |Scope id: ${scope.id}
-                          |Step: ${u}""".stripMargin
-                    )
-                  )
+                          |Step: ${u}""".stripMargin))
               }
 
             case eval: Eval[G, r] =>

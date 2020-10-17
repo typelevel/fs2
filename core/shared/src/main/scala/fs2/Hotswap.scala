@@ -101,9 +101,7 @@ object Hotswap {
   /** Creates a new `Hotswap` initialized with the specified resource.
     * The `Hotswap` instance and the initial resource are returned.
     */
-  def apply[F[_]: Concurrent, R](
-      initial: Resource[F, R]
-  ): Resource[F, (Hotswap[F, R], R)] =
+  def apply[F[_]: Concurrent, R](initial: Resource[F, R]): Resource[F, (Hotswap[F, R], R)] =
     create[F, R].evalMap(p => p.swap(initial).map(r => (p, r)))
 
   /** Creates a new `Hotswap`, which represents a `Resource`

@@ -81,9 +81,7 @@ private[tls] object InputOutputBuffer {
             }
           }
 
-      def perform[A](
-          f: (ByteBuffer, ByteBuffer) => A
-      ): F[A] =
+      def perform[A](f: (ByteBuffer, ByteBuffer) => A): F[A] =
         inBuff.get.flatMap { in =>
           outBuff.get.flatMap { out =>
             Sync[F].delay {

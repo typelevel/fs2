@@ -92,33 +92,17 @@ sealed trait TLSContext {
 object TLSContext {
 
   /** Creates a `TLSContext` from an `SSLContext`. */
-  def fromSSLContext(
-      ctx: SSLContext
-  ): TLSContext =
+  def fromSSLContext(ctx: SSLContext): TLSContext =
     new TLSContext {
-      def client[F[_]](
-          socket: Socket[F],
-          params: TLSParameters,
-          logger: Option[String => F[Unit]]
-      )(implicit F: Network[F]): Resource[F, TLSSocket[F]] =
-        mkSocket(
-          socket,
-          true,
-          params,
-          logger
-        )
+      def client[F[_]](socket: Socket[F], params: TLSParameters, logger: Option[String => F[Unit]])(
+          implicit F: Network[F]
+      ): Resource[F, TLSSocket[F]] =
+        mkSocket(socket, true, params, logger)
 
-      def server[F[_]](
-          socket: Socket[F],
-          params: TLSParameters,
-          logger: Option[String => F[Unit]]
-      )(implicit F: Network[F]): Resource[F, TLSSocket[F]] =
-        mkSocket(
-          socket,
-          false,
-          params,
-          logger
-        )
+      def server[F[_]](socket: Socket[F], params: TLSParameters, logger: Option[String => F[Unit]])(
+          implicit F: Network[F]
+      ): Resource[F, TLSSocket[F]] =
+        mkSocket(socket, false, params, logger)
 
       private def mkSocket[F[_]](
           socket: Socket[F],
@@ -150,13 +134,7 @@ object TLSContext {
           params: TLSParameters,
           logger: Option[String => F[Unit]]
       )(implicit F: Network[F]): Resource[F, DTLSSocket[F]] =
-        mkDtlsSocket(
-          socket,
-          remoteAddress,
-          true,
-          params,
-          logger
-        )
+        mkDtlsSocket(socket, remoteAddress, true, params, logger)
 
       def dtlsServer[F[_]](
           socket: udp.Socket[F],
@@ -164,13 +142,7 @@ object TLSContext {
           params: TLSParameters,
           logger: Option[String => F[Unit]]
       )(implicit F: Network[F]): Resource[F, DTLSSocket[F]] =
-        mkDtlsSocket(
-          socket,
-          remoteAddress,
-          false,
-          params,
-          logger
-        )
+        mkDtlsSocket(socket, remoteAddress, false, params, logger)
 
       private def mkDtlsSocket[F[_]](
           socket: udp.Socket[F],
@@ -249,11 +221,9 @@ object TLSContext {
   }
 
   /** Creates a `TLSContext` from the specified key store file. */
-  def fromKeyStoreFile[F[_]](
-      file: Path,
-      storePassword: Array[Char],
-      keyPassword: Array[Char]
-  )(implicit F: Network[F]): F[TLSContext] = {
+  def fromKeyStoreFile[F[_]](file: Path, storePassword: Array[Char], keyPassword: Array[Char])(
+      implicit F: Network[F]
+  ): F[TLSContext] = {
     import F.async
     val load = F.async.blocking(new FileInputStream(file.toFile): InputStream)
     val stream = Resource.make(load)(s => F.async.blocking(s.close))
@@ -290,10 +260,9 @@ object TLSContext {
   }
 
   /** Creates a `TLSContext` from the specified key store. */
-  def fromKeyStore[F[_]](
-      keyStore: KeyStore,
-      keyPassword: Array[Char]
-  )(implicit F: Network[F]): F[TLSContext] = {
+  def fromKeyStore[F[_]](keyStore: KeyStore, keyPassword: Array[Char])(
+      implicit F: Network[F]
+  ): F[TLSContext] = {
     import F.async
     F.async
       .blocking {

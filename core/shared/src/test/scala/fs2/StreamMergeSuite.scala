@@ -132,9 +132,7 @@ class StreamMergeSuite extends Fs2Suite {
                 finalizerRef.get.flatMap { finalizers =>
                   sideRunRef.get.flatMap { case (left, right) =>
                     if (left && right) IO {
-                      assert(
-                        List("Inner L", "Inner R", "Outer").forall(finalizers.contains)
-                      )
+                      assert(List("Inner L", "Inner R", "Outer").forall(finalizers.contains))
                       assert(finalizers.lastOption == Some("Outer"))
                       assert(r == Left(err))
                     }

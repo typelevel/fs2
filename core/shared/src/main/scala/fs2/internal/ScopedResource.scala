@@ -149,10 +149,8 @@ private[internal] object ScopedResource {
           else {
             val attemptFinalizer = (ec: Resource.ExitCase) => finalizer(ec).attempt
             // either state is open, or leases are present, either release or `Lease#cancel` will run the finalizer
-            s.copy(finalizer = Some(attemptFinalizer)) -> (Right(true): Either[
-              Throwable,
-              Boolean
-            ]).pure[F]
+            s.copy(finalizer = Some(attemptFinalizer)) -> (Right(true): Either[Throwable, Boolean])
+              .pure[F]
           }
         }.flatten
 

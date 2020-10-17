@@ -26,9 +26,9 @@ import scala.collection.{Factory, IterableFactory, MapFactory}
 import scala.reflect.ClassTag
 
 private[fs2] trait CollectorPlatform { self: Collector.type =>
-  implicit def supportsFactory[A, C[_], B](
-      f: Factory[A, C[B]]
-  ): Collector.Aux[A, C[B]] = make(Builder.fromFactory(f))
+  implicit def supportsFactory[A, C[_], B](f: Factory[A, C[B]]): Collector.Aux[A, C[B]] = make(
+    Builder.fromFactory(f)
+  )
 
   implicit def supportsIterableFactory[A, C[_]](f: IterableFactory[C]): Collector.Aux[A, C[A]] =
     make(Builder.fromIterableFactory(f))

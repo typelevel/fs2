@@ -118,9 +118,7 @@ class TLSSocketSuite extends TLSSuite {
             tlsContext
               .client[IO](
                 rawSocket,
-                TLSParameters(
-                  serverNames = Some(List(new SNIHostName("www.google.com")))
-                )
+                TLSParameters(serverNames = Some(List(new SNIHostName("www.google.com"))))
                 // logger = Some((m: String) =>
                 //   IO.delay(println(s"${Console.MAGENTA}[TLS] $m${Console.RESET}"))
                 // )

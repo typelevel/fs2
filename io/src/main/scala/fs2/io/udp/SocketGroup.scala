@@ -37,9 +37,7 @@ import java.nio.channels.{ClosedChannelException, DatagramChannel}
 import cats.effect.{Resource, Sync}
 import cats.syntax.all._
 
-final class SocketGroup(
-    asg: AsynchronousSocketGroup
-) {
+final class SocketGroup(asg: AsynchronousSocketGroup) {
 
   /** Provides a UDP Socket that, when run, will bind to the specified address.
     *
@@ -91,9 +89,7 @@ final class SocketGroup(
     Resource(mkChannel.flatMap(ch => mkSocket(ch).map(s => s -> s.close)))
   }
 
-  private[udp] def mkSocket[F[_]](
-      channel: DatagramChannel
-  )(implicit F: Network[F]): F[Socket[F]] =
+  private[udp] def mkSocket[F[_]](channel: DatagramChannel)(implicit F: Network[F]): F[Socket[F]] =
     F.async.blocking {
       new Socket[F] {
         private val ctx = asg.register(channel)

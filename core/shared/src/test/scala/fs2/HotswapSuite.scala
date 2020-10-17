@@ -31,13 +31,7 @@ class HotswapSuite extends Fs2Suite {
         .flatMap(_ => logger.logInfo("using"))
         .compile
         .drain *> logger.get.map(it =>
-        assert(
-          it == List(
-            LogEvent.Acquired("a"),
-            LogEvent.Info("using"),
-            LogEvent.Released("a")
-          )
-        )
+        assert(it == List(LogEvent.Acquired("a"), LogEvent.Info("using"), LogEvent.Released("a")))
       )
     }
   }

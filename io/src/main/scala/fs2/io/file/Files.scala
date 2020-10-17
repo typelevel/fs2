@@ -193,10 +193,7 @@ sealed trait SyncFiles[F[_]] {
     *
     * If `append` is true, the offset is initialized to the current size of the file.
     */
-  def writeCursorFromFileHandle(
-      file: FileHandle[F],
-      append: Boolean
-  ): F[WriteCursor[F]]
+  def writeCursorFromFileHandle(file: FileHandle[F], append: Boolean): F[WriteCursor[F]]
 }
 
 object SyncFiles {
@@ -221,10 +218,7 @@ object SyncFiles {
     def deleteIfExists(path: Path): F[Boolean] =
       Sync[F].blocking(JFiles.deleteIfExists(path))
 
-    def deleteDirectoryRecursively(
-        path: Path,
-        options: Set[FileVisitOption]
-    ): F[Unit] =
+    def deleteDirectoryRecursively(path: Path, options: Set[FileVisitOption]): F[Unit] =
       Sync[F].blocking {
         JFiles.walkFileTree(
           path,
@@ -360,10 +354,7 @@ object SyncFiles {
         Resource.liftF(cursor)
       }
 
-    def writeCursorFromFileHandle(
-        file: FileHandle[F],
-        append: Boolean
-    ): F[WriteCursor[F]] =
+    def writeCursorFromFileHandle(file: FileHandle[F], append: Boolean): F[WriteCursor[F]] =
       if (append) file.size.map(s => WriteCursor(file, s)) else WriteCursor(file, 0L).pure[F]
 
   }

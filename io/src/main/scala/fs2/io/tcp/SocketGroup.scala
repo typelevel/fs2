@@ -128,14 +128,7 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup) {
       additionalSocketOptions: List[SocketOptionMapping[_]] = List.empty
   )(implicit F: Network[F]): Stream[F, Resource[F, Socket[F]]] =
     Stream
-      .resource(
-        serverResource(
-          address,
-          reuseAddress,
-          receiveBufferSize,
-          additionalSocketOptions
-        )
-      )
+      .resource(serverResource(address, reuseAddress, receiveBufferSize, additionalSocketOptions))
       .flatMap { case (_, clients) => clients }
 
   /** Like [[server]] but provides the `InetSocketAddress` of the bound server socket before providing accepted sockets.

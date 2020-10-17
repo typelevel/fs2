@@ -187,16 +187,14 @@ class QueueSuite extends Fs2Suite {
 
   test("peek1") {
     Stream
-      .eval(
-        for {
-          q <- InspectableQueue.unbounded[IO, Int]
-          f <- q.peek1.start
-          g <- q.peek1.start
-          _ <- q.enqueue1(42)
-          x <- f.joinAndEmbedNever
-          y <- g.joinAndEmbedNever
-        } yield List(x, y)
-      )
+      .eval(for {
+        q <- InspectableQueue.unbounded[IO, Int]
+        f <- q.peek1.start
+        g <- q.peek1.start
+        _ <- q.enqueue1(42)
+        x <- f.joinAndEmbedNever
+        y <- g.joinAndEmbedNever
+      } yield List(x, y))
       .compile
       .toList
       .map(it => assertEquals(it.flatten, List(42, 42)))
@@ -204,19 +202,17 @@ class QueueSuite extends Fs2Suite {
 
   test("peek1 with dequeue1") {
     Stream
-      .eval(
-        for {
-          q <- InspectableQueue.unbounded[IO, Int]
-          f <- q.peek1.product(q.dequeue1).start
-          _ <- q.enqueue1(42)
-          x <- f.joinAndEmbedNever
-          g <- q.peek1.product(q.dequeue1).product(q.peek1.product(q.dequeue1)).start
-          _ <- q.enqueue1(43)
-          _ <- q.enqueue1(44)
-          yz <- g.joinAndEmbedNever
-          (y, z) = yz
-        } yield List(x, y, z)
-      )
+      .eval(for {
+        q <- InspectableQueue.unbounded[IO, Int]
+        f <- q.peek1.product(q.dequeue1).start
+        _ <- q.enqueue1(42)
+        x <- f.joinAndEmbedNever
+        g <- q.peek1.product(q.dequeue1).product(q.peek1.product(q.dequeue1)).start
+        _ <- q.enqueue1(43)
+        _ <- q.enqueue1(44)
+        yz <- g.joinAndEmbedNever
+        (y, z) = yz
+      } yield List(x, y, z))
       .compile
       .toList
       .map(it => assertEquals(it.flatten, List((42, 42), (43, 43), (44, 44))))
@@ -224,18 +220,16 @@ class QueueSuite extends Fs2Suite {
 
   test("peek1 bounded queue") {
     Stream
-      .eval(
-        for {
-          q <- InspectableQueue.bounded[IO, Int](maxSize = 1)
-          f <- q.peek1.start
-          g <- q.peek1.start
-          _ <- q.enqueue1(42)
-          b <- q.offer1(43)
-          x <- f.joinAndEmbedNever
-          y <- g.joinAndEmbedNever
-          z <- q.dequeue1
-        } yield List(b, x, y, z)
-      )
+      .eval(for {
+        q <- InspectableQueue.bounded[IO, Int](maxSize = 1)
+        f <- q.peek1.start
+        g <- q.peek1.start
+        _ <- q.enqueue1(42)
+        b <- q.offer1(43)
+        x <- f.joinAndEmbedNever
+        y <- g.joinAndEmbedNever
+        z <- q.dequeue1
+      } yield List(b, x, y, z))
       .compile
       .toList
       .map(it => assertEquals(it.flatten, List[AnyVal](false, 42, 42, 42)))
@@ -243,18 +237,16 @@ class QueueSuite extends Fs2Suite {
 
   test("peek1 circular buffer") {
     Stream
-      .eval(
-        for {
-          q <- InspectableQueue.circularBuffer[IO, Int](maxSize = 1)
-          f <- q.peek1.start
-          g <- q.peek1.start
-          _ <- q.enqueue1(42)
-          x <- f.joinAndEmbedNever
-          y <- g.joinAndEmbedNever
-          b <- q.offer1(43)
-          z <- q.peek1
-        } yield List(b, x, y, z)
-      )
+      .eval(for {
+        q <- InspectableQueue.circularBuffer[IO, Int](maxSize = 1)
+        f <- q.peek1.start
+        g <- q.peek1.start
+        _ <- q.enqueue1(42)
+        x <- f.joinAndEmbedNever
+        y <- g.joinAndEmbedNever
+        b <- q.offer1(43)
+        z <- q.peek1
+      } yield List(b, x, y, z))
       .compile
       .toList
       .map(it => assertEquals(it.flatten, List[AnyVal](true, 42, 42, 43)))

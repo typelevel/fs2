@@ -51,8 +51,8 @@ abstract class Fs2Suite extends ScalaCheckEffectSuite with TestPlatform with Gen
 
     /** Asserts that the `F[A]` fails with an exception of type `E`.
       */
-    def assertThrows[E <: Throwable](implicit
-        F: Sync[F],
+    def assertThrows[E <: Throwable](
+        implicit F: Sync[F],
         ct: reflect.ClassTag[E],
         loc: Location
     ): F[Unit] =

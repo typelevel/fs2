@@ -221,11 +221,7 @@ private[tls] object TLSEngine {
           .flatMap { result =>
             result.getStatus match {
               case SSLEngineResult.Status.OK | SSLEngineResult.Status.BUFFER_UNDERFLOW =>
-                doWrite(timeout) >> stepHandshake(
-                  result,
-                  true,
-                  timeout
-                )
+                doWrite(timeout) >> stepHandshake(result, true, timeout)
               case SSLEngineResult.Status.BUFFER_OVERFLOW =>
                 wrapBuffer.expandOutput >> wrapHandshake(timeout)
               case SSLEngineResult.Status.CLOSED =>
