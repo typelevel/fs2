@@ -158,7 +158,7 @@ class StreamTranslateSuite extends Fs2Suite {
       .eval(IO.never)
       .merge(Stream.eval(IO(1)).delayBy(5.millis).repeat)
       .interruptAfter(10.millis)
-      .translateInterruptible(cats.arrow.FunctionK.id[IO])
+      .translate(cats.arrow.FunctionK.id[IO])
       .compile
       .drain
   }

@@ -441,6 +441,16 @@ object Pull extends PullLowPriority {
       }
   }
 
+  /* A translation point, that wraps an inner stream written in another effect
+   */
+  private final case class Translate[G[_], F[_], +O](
+      stream: Pull[G, O, Unit],
+      fk: G ~> F
+  ) extends Action[F, O, Unit] {
+    override def mapOutput[O2](f: O => O2): Pull[F, O2, Unit] =
+      Translate(stream.mapOutput(f), fk)
+  }
+
   /** Steps through the stream, providing either `uncons` or `stepLeg`.
     * Yields to head in form of chunk, then id of the scope that was active after step evaluated and tail of the `stream`.
     *
@@ -466,8 +476,7 @@ object Pull extends PullLowPriority {
   ) extends AlgEffect[F, R]
   // NOTE: The use of a separate `G` and `Pure` is done to by-pass a compiler-crash in Scala 2.12,
   // involving GADTs with a covariant Higher-Kinded parameter. */
-  private final case class OpenScope[G[_]](interruptible: Option[Interruptible[G]])
-      extends AlgEffect[Pure, Token]
+  private final case class OpenScope(useInterruption: Boolean) extends AlgEffect[Pure, Token]
 
   // `InterruptedScope` contains id of the scope currently being interrupted
   // together with any errors accumulated during interruption process
@@ -493,19 +502,18 @@ object Pull extends PullLowPriority {
     * and closed once this pull either finishes its evaluation or when it fails.
     */
   private[fs2] def scope[F[_], O](s: Pull[F, O, Unit]): Pull[F, O, Unit] =
-    scope0(s, None)
+    scope0(s, false)
 
   /** Like `scope` but allows this scope to be interrupted.
     * Note that this may fail with `Interrupted` when interruption occurred
     */
   private[fs2] def interruptScope[F[_], O](
       s: Pull[F, O, Unit]
-  )(implicit F: Interruptible[F]): Pull[F, O, Unit] =
-    scope0(s, Some(F))
+  ): Pull[F, O, Unit] = scope0(s, true)
 
   private def scope0[F[_], O](
       s: Pull[F, O, Unit],
-      interruptible: Option[Interruptible[F]]
+      interruptible: Boolean
   ): Pull[F, O, Unit] =
     OpenScope(interruptible).flatMap { scopeId =>
       s.transformWith {
@@ -550,18 +558,22 @@ object Pull extends PullLowPriority {
       initScope: CompileScope[F],
       extendLastTopLevelScope: Boolean,
       init: B
-  )(g: (B, Chunk[O]) => B)(implicit F: MonadError[F, Throwable]): F[B] = {
+  )(g: (B, Chunk[O]) => B)(implicit
+      F: MonadError[F, Throwable]
+  ): F[B] = {
 
-    case class Done(scope: CompileScope[F]) extends R[INothing]
-    case class Out[+X](head: Chunk[X], scope: CompileScope[F], tail: Pull[F, X, Unit]) extends R[X]
-    case class Interrupted(scopeId: Token, err: Option[Throwable]) extends R[INothing]
-    sealed trait R[+X]
+    sealed trait R[+G[_], +X]
+    case class Done(scope: CompileScope[F]) extends R[Pure, INothing]
+    case class Out[+G[_], +X](head: Chunk[X], scope: CompileScope[F], tail: Pull[G, X, Unit])
+        extends R[G, X]
+    case class Interrupted(scopeId: Token, err: Option[Throwable]) extends R[Pure, INothing]
 
-    def go[X](
+    def go[G[_], X](
         scope: CompileScope[F],
         extendedTopLevelScope: Option[CompileScope[F]],
-        stream: Pull[F, X, Unit]
-    ): F[R[X]] =
+        translation: G ~> F,
+        stream: Pull[G, X, Unit]
+    ): F[R[G, X]] =
       ViewL(stream) match {
         case _: Pull.Result.Succeeded[Unit] =>
           F.pure(Done(scope))
@@ -572,19 +584,17 @@ object Pull extends PullLowPriority {
         case interrupted: Pull.Result.Interrupted =>
           F.pure(Interrupted(interrupted.context, interrupted.deferredError))
 
-        case view: ViewL.View[F, X, y, Unit] =>
-          def resume(res: Result[y]): F[R[X]] =
-            go[X](scope, extendedTopLevelScope, view.next(res))
-
-          def interruptGuard(scope: CompileScope[F])(next: => F[R[X]]): F[R[X]] =
+        case view: ViewL.View[G, X, y, Unit] =>
+          def interruptGuard(scope: CompileScope[F])(next: => F[R[G, X]]): F[R[G, X]] =
             F.flatMap(scope.isInterrupted) {
               case None => next
-              case Some(Outcome.Errored(err)) =>
-                go(scope, extendedTopLevelScope, view.next(Result.Fail(err)))
-              case Some(Outcome.Canceled()) =>
-                go(scope, extendedTopLevelScope, view.next(Result.Interrupted(scope.id, None)))
-              case Some(Outcome.Succeeded(scopeId)) =>
-                go(scope, extendedTopLevelScope, view.next(Result.Interrupted(scopeId, None)))
+              case Some(outcome) =>
+                val result = outcome match {
+                  case Outcome.Errored(err)       => Result.Fail(err)
+                  case Outcome.Canceled()         => Result.Interrupted(scope.id, None)
+                  case Outcome.Succeeded(scopeId) => Result.Interrupted(scopeId, None)
+                }
+                go(scope, extendedTopLevelScope, translation, view.next(result))
             }
           view.step match {
             case output: Output[_] =>
@@ -592,36 +602,50 @@ object Pull extends PullLowPriority {
                 F.pure(Out(output.values, scope, view.next(Pull.Result.unit)))
               )
 
+            case tst: Translate[h, g, x] =>
+              val composed: h ~> F = translation.asInstanceOf[g ~> F].compose[h](tst.fk)
+              val runInner: F[R[h, x]] =
+                go[h, x](scope, extendedTopLevelScope, composed, tst.stream)
+
+              F.map(runInner) {
+                case out: Out[h, x]            => Out[g, x](out.head, out.scope, Translate(out.tail, tst.fk))
+                case dd @ Done(_)              => dd
+                case inter @ Interrupted(_, _) => inter
+              }
+
             case uU: Step[f, y] =>
-              val u: Step[F, y] = uU.asInstanceOf[Step[F, y]]
+              val u: Step[G, y] = uU.asInstanceOf[Step[G, y]]
               // if scope was specified in step, try to find it, otherwise use the current scope.
               F.flatMap(u.scope.fold[F[Option[CompileScope[F]]]](F.pure(Some(scope))) { scopeId =>
                 scope.findStepScope(scopeId)
               }) {
                 case Some(stepScope) =>
-                  val stepStream = u.stream.asInstanceOf[Pull[F, y, Unit]]
-                  F.flatMap(F.attempt(go[y](stepScope, extendedTopLevelScope, stepStream))) {
+                  val stepStream = u.stream.asInstanceOf[Pull[G, y, Unit]]
+                  val runInner = go[G, y](stepScope, extendedTopLevelScope, translation, stepStream)
+                  F.flatMap(F.attempt(runInner)) {
                     case Right(Done(scope)) =>
-                      interruptGuard(scope)(
-                        go(scope, extendedTopLevelScope, view.next(Result.Succeeded(None)))
-                      )
-                    case Right(Out(head, outScope, tail)) =>
+                      interruptGuard(scope) {
+                        val result = Result.Succeeded(None)
+                        go(scope, extendedTopLevelScope, translation, view.next(result))
+                      }
+                    case Right(out: Out[g, y]) =>
                       // if we originally swapped scopes we want to return the original
                       // scope back to the go as that is the scope that is expected to be here.
-                      val nextScope = if (u.scope.isEmpty) outScope else scope
-                      val uncons = (head, outScope.id, tail.asInstanceOf[Pull[f, y, Unit]])
+                      val nextScope = if (u.scope.isEmpty) out.scope else scope
+                      val uncons = (out.head, out.scope.id, out.tail.asInstanceOf[Pull[f, y, Unit]])
                       //Option[(Chunk[y], Token, Pull[f, y, Unit])])
                       val result = Result.Succeeded(Some(uncons))
                       interruptGuard(nextScope) {
-                        val next = view.next(result).asInstanceOf[Pull[F, X, Unit]]
-                        go(nextScope, extendedTopLevelScope, next)
+                        val next = view.next(result).asInstanceOf[Pull[g, X, Unit]]
+                        go(nextScope, extendedTopLevelScope, translation, next)
                       }
 
                     case Right(Interrupted(scopeId, err)) =>
-                      go(scope, extendedTopLevelScope, view.next(Result.Interrupted(scopeId, err)))
+                      val cont = view.next(Result.Interrupted(scopeId, err))
+                      go(scope, extendedTopLevelScope, translation, cont)
 
                     case Left(err) =>
-                      go(scope, extendedTopLevelScope, view.next(Result.Fail(err)))
+                      go(scope, extendedTopLevelScope, translation, view.next(Result.Fail(err)))
                   }
 
                 case None =>
@@ -639,28 +663,35 @@ object Pull extends PullLowPriority {
                   )
               }
 
-            case eval: Eval[F, r] =>
-              F.flatMap(scope.interruptibleEval(eval.value)) {
-                case Right(r)                   => resume(Result.Succeeded(r))
-                case Left(Outcome.Errored(err)) => resume(Result.Fail(err))
-                case Left(Outcome.Canceled()) =>
-                  resume(Result.Interrupted(scope.id, None))
-                case Left(Outcome.Succeeded(token)) =>
-                  resume(Result.Interrupted(token, None))
+            case eval: Eval[G, r] =>
+              F.flatMap(scope.interruptibleEval(translation(eval.value))) { eitherOutcome =>
+                val result = eitherOutcome match {
+                  case Right(r)                       => Result.Succeeded(r)
+                  case Left(Outcome.Errored(err))     => Result.Fail(err)
+                  case Left(Outcome.Canceled())       => Result.Interrupted(scope.id, None)
+                  case Left(Outcome.Succeeded(token)) => Result.Interrupted(token, None)
+                }
+                go(scope, extendedTopLevelScope, translation, view.next(result))
               }
 
-            case acquire: Acquire[F, r] =>
+            case acquire: Acquire[G, r] =>
               interruptGuard(scope) {
-                F.flatMap(scope.acquireResource(acquire.resource, acquire.release)) { r =>
-                  resume(Result.fromEither(r))
+                val onScope = scope.acquireResource(
+                  translation(acquire.resource),
+                  (res: r, ec: Resource.ExitCase) => translation(acquire.release(res, ec))
+                )
+
+                F.flatMap(onScope) { r =>
+                  val result = Result.fromEither(r)
+                  go(scope, extendedTopLevelScope, translation, view.next(result))
                 }
               }
 
             case _: GetScope[_] =>
-              resume(Result.Succeeded(scope.asInstanceOf[y]))
+              val result = Result.Succeeded(scope.asInstanceOf[y])
+              go(scope, extendedTopLevelScope, translation, view.next(result))
 
-            case OpenScope(interruptibleX) =>
-              val interruptible = interruptibleX.asInstanceOf[Option[Interruptible[F]]]
+            case open: OpenScope =>
               interruptGuard(scope) {
                 val maybeCloseExtendedScope: F[Boolean] =
                   // If we're opening a new top-level scope (aka, direct descendant of root),
@@ -673,11 +704,13 @@ object Pull extends PullLowPriority {
                   else F.pure(false)
                 maybeCloseExtendedScope.flatMap { closedExtendedScope =>
                   val newExtendedScope = if (closedExtendedScope) None else extendedTopLevelScope
-                  F.flatMap(scope.open(interruptible)) {
+                  F.flatMap(scope.open(open.useInterruption)) {
                     case Left(err) =>
-                      go(scope, newExtendedScope, view.next(Result.Fail(err)))
+                      val result = Result.Fail(err)
+                      go(scope, newExtendedScope, translation, view.next(result))
                     case Right(childScope) =>
-                      go(childScope, newExtendedScope, view.next(Result.Succeeded(childScope.id)))
+                      val result = Result.Succeeded(childScope.id)
+                      go(childScope, newExtendedScope, translation, view.next(result))
                   }
                 }
               }
@@ -700,7 +733,7 @@ object Pull extends PullLowPriority {
                             case Some(err) => Result.Fail(err)
                           }
                     }
-                    go(ancestor, extendedTopLevelScope, view.next(res))
+                    go(ancestor, extendedTopLevelScope, translation, view.next(res))
                   }
                 }
 
@@ -712,30 +745,33 @@ object Pull extends PullLowPriority {
                 case Some(toClose) =>
                   if (toClose.parent.isEmpty)
                     // Impossible - don't close root scope as a result of a `CloseScope` call
-                    go(scope, extendedTopLevelScope, view.next(Result.unit))
+                    go(scope, extendedTopLevelScope, translation, view.next(Result.unit))
                   else if (extendLastTopLevelScope && toClose.parent.flatMap(_.parent).isEmpty)
                     // Request to close the current top-level scope - if we're supposed to extend
                     // it instead, leave the scope open and pass it to the continuation
                     extendedTopLevelScope.traverse_(_.close(Resource.ExitCase.Succeeded).rethrow) *>
                       F.flatMap(toClose.openAncestor)(ancestor =>
-                        go(ancestor, Some(toClose), view.next(Result.unit))
+                        go(ancestor, Some(toClose), translation, view.next(Result.unit))
                       )
                   else closeAndGo(toClose, close.exitCase)
                 case None =>
                   // scope already closed, continue with current scope
                   val result = close.interruption.getOrElse(Result.unit)
-                  go(scope, extendedTopLevelScope, view.next(result))
+                  go(scope, extendedTopLevelScope, translation, view.next(result))
               }
           }
       }
 
+    val initFk: F ~> F = cats.arrow.FunctionK.id[F]
+
     def outerLoop(scope: CompileScope[F], accB: B, stream: Pull[F, O, Unit]): F[B] =
-      F.flatMap(go(scope, None, stream)) {
+      F.flatMap(go[F, O](scope, None, initFk, stream)) {
         case Done(_) => F.pure(accB)
-        case Out(head, scope, tail) =>
-          try outerLoop(scope, g(accB, head), tail)
+        case out: Out[f, o] =>
+          try outerLoop(out.scope, g(accB, out.head), out.tail.asInstanceOf[Pull[f, O, Unit]])
           catch {
-            case NonFatal(err) => outerLoop(scope, accB, tail.asHandler(err))
+            case NonFatal(err) =>
+              outerLoop(out.scope, accB, out.tail.asHandler(err).asInstanceOf[Pull[f, O, Unit]])
           }
         case Interrupted(_, None)      => F.pure(accB)
         case Interrupted(_, Some(err)) => F.raiseError(err)
@@ -812,61 +848,8 @@ object Pull extends PullLowPriority {
   private[fs2] def translate[F[_], G[_], O](
       stream: Pull[F, O, Unit],
       fK: F ~> G
-  )(implicit G: TranslateInterrupt[G]): Pull[G, O, Unit] = {
-    val interruptible: Option[Interruptible[G]] = G.interruptible
-    def translateAlgEffect[R](self: AlgEffect[F, R]): AlgEffect[G, R] =
-      self match {
-        // safe to cast, used in translate only
-        // if interruption has to be supported concurrent for G has to be passed
-        case a: Acquire[F, r] =>
-          Acquire[G, r](fK(a.resource), (r, ec) => fK(a.release(r, ec)))
-        case e: Eval[F, R]  => Eval[G, R](fK(e.value))
-        case OpenScope(_)   => OpenScope[G](interruptible)
-        case c: CloseScope  => c
-        case g: GetScope[_] => g
-      }
-
-    def translateStep[X](next: Pull[F, X, Unit], isMainLevel: Boolean): Pull[G, X, Unit] =
-      ViewL(next) match {
-        case result: Result[Unit] => result
-
-        case view: ViewL.View[F, X, y, Unit] =>
-          view.step match {
-            case output: Output[X] =>
-              output.transformWith {
-                case r @ Result.Succeeded(_) if isMainLevel =>
-                  translateStep(view.next(r), isMainLevel)
-
-                case r @ Result.Succeeded(_) =>
-                  // Cast is safe here, as at this point the evaluation of this Step will end
-                  // and the remainder of the free will be passed as a result in Bind. As such
-                  // next Step will have this to evaluate, and will try to translate again.
-                  view.next(r).asInstanceOf[Pull[G, X, Unit]]
-
-                case r @ Result.Fail(_) => translateStep(view.next(r), isMainLevel)
-
-                case r @ Result.Interrupted(_, _) => translateStep(view.next(r), isMainLevel)
-              }
-
-            case stepU: Step[f, x] =>
-              val step: Step[F, x] = stepU.asInstanceOf[Step[F, x]]
-              Step[G, x](
-                stream = translateStep[x](step.stream, false),
-                scope = step.scope
-              ).transformWith { r =>
-                translateStep[X](view.next(r.asInstanceOf[Result[y]]), isMainLevel)
-              }
-
-            case alg: AlgEffect[F, r] =>
-              translateAlgEffect(alg)
-                .transformWith(r =>
-                  translateStep(view.next(r.asInstanceOf[Result[y]]), isMainLevel)
-                )
-          }
-      }
-
-    translateStep[O](stream, true)
-  }
+  ): Pull[G, O, Unit] =
+    Translate(stream, fK)
 
   /** Provides syntax for pure pulls based on `cats.Id`. */
   implicit final class IdOps[O](private val self: Pull[Id, O, Unit]) extends AnyVal {
