@@ -171,13 +171,13 @@ object Pull extends PullLowPriority {
   private[fs2] def acquire[F[_], R](
       resource: F[R],
       release: (R, Resource.ExitCase) => F[Unit]
-  ): Pull[F, INothing, R] = Acquire(resource, release)
+  ): Pull[F, INothing, R] = Acquire(Left(resource), release)
 
   private[fs2] def acquireCancelable[F[_], R](
       resource: Poll[F] => F[R],
       release: (R, Resource.ExitCase) => F[Unit]
   )(implicit F: MonadCancel[F, Throwable]): Pull[F, INothing, R] =
-    AcquireCancelable(resource, release, F)
+    Acquire(Right((resource, F)), release)
 
   /** Like [[eval]] but if the effectful value fails, the exception is returned in a `Left`
     * instead of failing the pull.
@@ -476,19 +476,11 @@ object Pull extends PullLowPriority {
 
   private final case class Eval[+F[_], R](value: F[R]) extends AlgEffect[F, R]
 
-  private final case class Acquire[+F[_], R](
-      resource: F[R],
+  private final case class Acquire[F[_], R](
+      resource: Either[F[R], (Poll[F] => F[R], MonadCancel[F, Throwable])],
       release: (R, Resource.ExitCase) => F[Unit]
   ) extends AlgEffect[F, R]
 
-  private final case class AcquireCancelable[F[_], R](
-      resource: Poll[F] => F[R],
-      release: (R, Resource.ExitCase) => F[Unit],
-      monadCancel: MonadCancel[F, Throwable]
-  ) extends AlgEffect[F, R]
-
-  // NOTE: The use of a separate `G` and `Pure` is done to by-pass a compiler-crash in Scala 2.12,
-  // involving GADTs with a covariant Higher-Kinded parameter. */
   private final case class OpenScope(useInterruption: Boolean) extends AlgEffect[Pure, Token]
 
   // `InterruptedScope` contains id of the scope currently being interrupted
@@ -689,26 +681,12 @@ object Pull extends PullLowPriority {
 
             case acquire: Acquire[G, r] =>
               interruptGuard(scope) {
-                val onScope = scope.acquireResource(
-                  _ => translation(acquire.resource),
-                  (r: r, ec: Resource.ExitCase) => translation(acquire.release(r, ec))
-                )
-
-                F.flatMap(onScope) { outcome =>
-                  val result = outcome match {
-                    case Outcome.Succeeded(Right(r))      => Result.Succeeded(r)
-                    case Outcome.Succeeded(Left(scopeId)) => Result.Interrupted(scopeId, None)
-                    case Outcome.Canceled()               => Result.Interrupted(scope.id, None)
-                    case Outcome.Errored(err)             => Result.Fail(err)
-                  }
-                  go(scope, extendedTopLevelScope, translation, view.next(result))
-                }
-              }
-
-            case acquire: AcquireCancelable[G, r] =>
-              interruptGuard(scope) {
                 val onScope = scope.acquireResource[r](
-                  p => p(translation(acquire.monadCancel.uncancelable(acquire.resource))),
+                  p =>
+                    acquire.resource match {
+                      case Left(acq)        => translation(acq)
+                      case Right((acq, mc)) => p(translation(mc.uncancelable(acq)))
+                    },
                   (r: r, ec: Resource.ExitCase) => translation(acquire.release(r, ec))
                 )
 
