@@ -26,8 +26,8 @@ import java.io.{IOException, InputStream}
 
 import cats.syntax.all._
 import cats.effect.{Async, Outcome, Resource}
-import cats.effect.unsafe.UnsafeRun
 import cats.effect.implicits._
+import cats.effect.std.Dispatcher
 
 import fs2.Chunk.Bytes
 import fs2.concurrent.{Queue, SignallingRef}
@@ -48,7 +48,7 @@ private[io] object JavaInputOutputStream {
 
   def toInputStream[F[_]](
       source: Stream[F, Byte]
-  )(implicit F: Async[F], runner: UnsafeRun[F]): Resource[F, InputStream] = {
+  )(implicit F: Async[F]): Resource[F, InputStream] = {
     def markUpstreamDone(
         queue: Queue[F, Either[Option[Throwable], Bytes]],
         upState: SignallingRef[F, UpStreamState],
@@ -192,12 +192,13 @@ private[io] object JavaInputOutputStream {
      * - DownStream signal -  keeps any remainders from last `read` and signals
      *                        that downstream has been terminated that in turn kills upstream
      */
+    Dispatcher { runner =>
     Resource
       .liftF(
         (
           Queue.synchronous[F, Either[Option[Throwable], Bytes]],
           SignallingRef.of[F, UpStreamState](UpStreamState(done = false, err = None)),
-          SignallingRef.of[F, DownStreamState](Ready(None))
+          SignallingRef.of[F, DownStreamState](Ready(None)),
         ).tupled
       )
       .flatMap { case (queue, upState, dnState) =>
@@ -225,5 +226,6 @@ private[io] object JavaInputOutputStream {
 
         Resource.make(mkInputStream)(_ => closeIs(upState, dnState))
       }
+    }
   }
 }

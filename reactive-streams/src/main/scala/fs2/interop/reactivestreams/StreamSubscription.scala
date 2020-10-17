@@ -24,7 +24,7 @@ package interop
 package reactivestreams
 
 import cats.effect._
-import cats.effect.unsafe.UnsafeRun
+import cats.effect.std.Dispatcher
 import cats.syntax.all._
 
 import fs2.concurrent.{Queue, SignallingRef}
@@ -40,8 +40,9 @@ private[reactivestreams] final class StreamSubscription[F[_], A](
     requests: Queue[F, StreamSubscription.Request],
     cancelled: SignallingRef[F, Boolean],
     sub: Subscriber[A],
-    stream: Stream[F, A]
-)(implicit F: Async[F], runner: UnsafeRun[F])
+    stream: Stream[F, A],
+    runner: Dispatcher.Runner[F]
+)(implicit F: Async[F])
     extends Subscription {
   import StreamSubscription._
 
@@ -108,13 +109,14 @@ private[reactivestreams] object StreamSubscription {
   case object Infinite extends Request
   case class Finite(n: Long) extends Request
 
-  def apply[F[_]: Async: UnsafeRun, A](
+  def apply[F[_]: Async, A](
       sub: Subscriber[A],
-      stream: Stream[F, A]
+      stream: Stream[F, A],
+      runner: Dispatcher.Runner[F]
   ): F[StreamSubscription[F, A]] =
-    SignallingRef(false).flatMap { cancelled =>
-      Queue.unbounded[F, Request].map { requests =>
-        new StreamSubscription(requests, cancelled, sub, stream)
+      SignallingRef(false).flatMap { cancelled =>
+        Queue.unbounded[F, Request].map { requests =>
+          new StreamSubscription(requests, cancelled, sub, stream, runner)
+        }
       }
-    }
 }

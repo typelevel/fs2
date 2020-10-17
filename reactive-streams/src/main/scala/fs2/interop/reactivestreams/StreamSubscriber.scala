@@ -26,7 +26,7 @@ package reactivestreams
 import cats._
 import cats.effect._
 import cats.effect.kernel.{Deferred, Ref}
-import cats.effect.unsafe.UnsafeRun
+import cats.effect.std.Dispatcher
 import cats.syntax.all._
 
 import org.reactivestreams._
@@ -37,9 +37,8 @@ import org.reactivestreams._
   *
   * @see [[https://github.com/reactive-streams/reactive-streams-jvm#2-subscriber-code]]
   */
-final class StreamSubscriber[F[_], A](val sub: StreamSubscriber.FSM[F, A])(implicit
-    F: ApplicativeError[F, Throwable],
-    runner: UnsafeRun[F]
+final class StreamSubscriber[F[_], A](val sub: StreamSubscriber.FSM[F, A], runner: Dispatcher.Runner[F])(implicit
+    F: ApplicativeError[F, Throwable]
 ) extends Subscriber[A] {
 
   /** Called by an upstream reactivestreams system */
@@ -70,8 +69,8 @@ final class StreamSubscriber[F[_], A](val sub: StreamSubscriber.FSM[F, A])(impli
 }
 
 object StreamSubscriber {
-  def apply[F[_]: Async: UnsafeRun, A]: F[StreamSubscriber[F, A]] =
-    fsm[F, A].map(new StreamSubscriber(_))
+  def apply[F[_]: Async, A](runner: Dispatcher.Runner[F]): F[StreamSubscriber[F, A]] =
+    fsm[F, A].map(new StreamSubscriber(_, runner))
 
   /** A finite state machine describing the subscriber */
   private[reactivestreams] trait FSM[F[_], A] {

@@ -23,7 +23,7 @@ package fs2
 package interop
 
 import cats.effect._
-import cats.effect.unsafe.UnsafeRun
+import cats.effect.std.Dispatcher
 import org.reactivestreams._
 
 /** Implementation of the reactivestreams protocol for fs2
@@ -49,15 +49,18 @@ package object reactivestreams {
     *
     * The publisher only receives a subscriber when the stream is run.
     */
-  def fromPublisher[F[_]: Async: UnsafeRun, A](p: Publisher[A]): Stream[F, A] =
-    Stream
-      .eval(StreamSubscriber[F, A])
-      .flatMap(s => s.sub.stream(Sync[F].delay(p.subscribe(s))))
+  def fromPublisher[F[_]: Async, A](p: Publisher[A]): Stream[F, A] =
+    Stream.resource(Dispatcher[F, Stream[F, A]] { runner =>
+      Resource.pure(
+      Stream
+        .eval(StreamSubscriber[F, A](runner))
+        .flatMap(s => s.sub.stream(Sync[F].delay(p.subscribe(s)))))
+    }).flatten
 
   implicit final class PublisherOps[A](val publisher: Publisher[A]) extends AnyVal {
 
     /** Creates a lazy stream from an `org.reactivestreams.Publisher` */
-    def toStream[F[_]: Async: UnsafeRun]: Stream[F, A] =
+    def toStream[F[_]: Async]: Stream[F, A] =
       fromPublisher(publisher)
   }
 
@@ -69,9 +72,10 @@ package object reactivestreams {
       * The stream is only ran when elements are requested.
       */
     def toUnicastPublisher(implicit
-        F: Async[F],
-        runner: UnsafeRun[F]
-    ): StreamUnicastPublisher[F, A] =
-      StreamUnicastPublisher(stream)
+        F: Async[F]
+    ): Resource[F, StreamUnicastPublisher[F, A]] =
+      Dispatcher[F, StreamUnicastPublisher[F, A]] { runner =>
+        Resource.pure(StreamUnicastPublisher(stream, runner))
+      }
   }
 }

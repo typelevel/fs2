@@ -46,9 +46,6 @@ final class SubscriberWhiteboxSpec
     extends SubscriberWhiteboxVerification[Int](new TestEnvironment(1000L))
     with TestNGSuiteLike {
 
-  // https://github.com/typelevel/cats-effect/pull/1213
-  implicit val unsafeRunIO: cats.effect.unsafe.UnsafeRun[IO] = global.unsafeRunForIO
-
   private val counter = new AtomicInteger()
 
   def createSubscriber(
@@ -95,9 +92,6 @@ final class WhiteboxSubscriber[A](sub: StreamSubscriber[IO, A], probe: WhiteboxS
 final class SubscriberBlackboxSpec
     extends SubscriberBlackboxVerification[Int](new TestEnvironment(1000L))
     with TestNGSuiteLike {
-
-  // https://github.com/typelevel/cats-effect/pull/1213
-  implicit val unsafeRunIO: cats.effect.unsafe.UnsafeRun[IO] = global.unsafeRunForIO
 
   private val counter = new AtomicInteger()
 

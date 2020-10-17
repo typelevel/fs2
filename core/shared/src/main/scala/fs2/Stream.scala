@@ -3306,7 +3306,7 @@ object Stream extends StreamLowPriority {
   def repeatEval[F[_], O](fo: F[O]): Stream[F, O] = eval(fo).repeat
 
   /** Converts the supplied resource in to a singleton stream. */
-  def resource[F[_], O](r: Resource[F, O]): Stream[F, O] =
+  def resource[F[_]: Applicative, O](r: Resource[F, O]): Stream[F, O] =
     resourceWeak(r).scope
 
   /** Like [[resource]] but does not introduce a scope, allowing finalization to occur after
@@ -3314,8 +3314,8 @@ object Stream extends StreamLowPriority {
     *
     * Scopes can be manually introduced via [[scope]] if desired.
     */
-  def resourceWeak[F[_], O](r: Resource[F, O]): Stream[F, O] =
-    r match {
+  def resourceWeak[F[_]: Applicative, O](r: Resource[F, O]): Stream[F, O] =
+    r.preinterpret match {
       case r: Resource.Allocate[f, o] =>
         Stream
           .bracketCaseWeak[f, (o, Resource.ExitCase => f[Unit])](r.resource) {

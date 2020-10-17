@@ -45,9 +45,6 @@ final class StreamUnicastPublisherSpec
     extends PublisherVerification[Int](new TestEnvironment(1000L))
     with TestNGSuiteLike {
 
-  // https://github.com/typelevel/cats-effect/pull/1213
-  implicit val unsafeRunIO: cats.effect.unsafe.UnsafeRun[IO] = global.unsafeRunForIO
-
   def createPublisher(n: Long): StreamUnicastPublisher[IO, Int] = {
     val s =
       if (n == java.lang.Long.MAX_VALUE) Stream.range(1, 20).repeat

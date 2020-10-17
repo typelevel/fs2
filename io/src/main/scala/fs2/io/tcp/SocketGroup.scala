@@ -37,6 +37,7 @@ import java.nio.channels.AsynchronousChannelGroup
 import java.nio.channels.spi.AsynchronousChannelProvider
 import java.util.concurrent.{ThreadFactory, TimeUnit}
 
+import cats.Applicative
 import cats.syntax.all._
 import cats.effect.{Resource, Sync}
 import cats.effect.kernel.Ref
@@ -120,7 +121,7 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup) {
     * @param reuseAddress       whether address may be reused (see `java.net.StandardSocketOptions.SO_REUSEADDR`)
     * @param receiveBufferSize  size of receive buffer (see `java.net.StandardSocketOptions.SO_RCVBUF`)
     */
-  def server[F[_]](
+  def server[F[_]: Applicative](
       address: InetSocketAddress,
       reuseAddress: Boolean = true,
       receiveBufferSize: Int = 256 * 1024,
