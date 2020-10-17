@@ -34,7 +34,7 @@ trait UnsafeTestNGSuite extends TestNGSuiteLike {
   protected var runner: Dispatcher.Runner[IO] = _
   private var shutdownRunner: IO[Unit] = _
 
-  val dispatcher = Dispatcher[IO, Dispatcher.Runner[IO]](r => Resource.pure(r)).allocated
+  val dispatcher = Dispatcher[IO, Dispatcher.Runner[IO]](Resource.pure).allocated
   val t = dispatcher.unsafeRunSync()
   runner = t._1
   shutdownRunner = t._2
