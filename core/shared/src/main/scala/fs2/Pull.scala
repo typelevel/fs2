@@ -173,6 +173,12 @@ object Pull extends PullLowPriority {
       release: (R, Resource.ExitCase) => F[Unit]
   ): Pull[F, INothing, R] = Acquire(resource, release)
 
+  private[fs2] def acquireCancelable[F[_], R](
+      resource: Poll[F] => F[R],
+      release: (R, Resource.ExitCase) => F[Unit]
+  )(implicit F: MonadCancel[F, Throwable]): Pull[F, INothing, R] =
+    AcquireCancelable(resource, release, F)
+
   /** Like [[eval]] but if the effectful value fails, the exception is returned in a `Left`
     * instead of failing the pull.
     */
@@ -474,6 +480,13 @@ object Pull extends PullLowPriority {
       resource: F[R],
       release: (R, Resource.ExitCase) => F[Unit]
   ) extends AlgEffect[F, R]
+
+  private final case class AcquireCancelable[F[_], R](
+      resource: Poll[F] => F[R],
+      release: (R, Resource.ExitCase) => F[Unit],
+      monadCancel: MonadCancel[F, Throwable]
+  ) extends AlgEffect[F, R]
+
   // NOTE: The use of a separate `G` and `Pure` is done to by-pass a compiler-crash in Scala 2.12,
   // involving GADTs with a covariant Higher-Kinded parameter. */
   private final case class OpenScope(useInterruption: Boolean) extends AlgEffect[Pure, Token]
@@ -677,8 +690,21 @@ object Pull extends PullLowPriority {
             case acquire: Acquire[G, r] =>
               interruptGuard(scope) {
                 val onScope = scope.acquireResource(
-                  translation(acquire.resource),
-                  (res: r, ec: Resource.ExitCase) => translation(acquire.release(res, ec))
+                  _ => translation(acquire.resource),
+                  (r: r, ec: Resource.ExitCase) => translation(acquire.release(r, ec))
+                )
+
+                F.flatMap(onScope) { r =>
+                  val result = Result.fromEither(r)
+                  go(scope, extendedTopLevelScope, translation, view.next(result))
+                }
+              }
+
+            case acquire: AcquireCancelable[G, r] =>
+              interruptGuard(scope) {
+                val onScope = scope.acquireResource[r](
+                  p => p(translation(acquire.monadCancel.uncancelable(acquire.resource))),
+                  (r: r, ec: Resource.ExitCase) => translation(acquire.release(r, ec))
                 )
 
                 F.flatMap(onScope) { r =>

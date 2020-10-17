@@ -25,7 +25,7 @@ import scala.annotation.tailrec
 
 import cats.{Id, Traverse, TraverseFilter}
 import cats.data.Chain
-import cats.effect.{Outcome, Resource}
+import cats.effect.{Outcome, Poll, Resource}
 import cats.effect.kernel.Ref
 import cats.syntax.all._
 
@@ -171,12 +171,12 @@ private[fs2] final class CompileScope[F[_]] private (
     * leased in `parJoin`. But even then the order of the lease of the resources respects acquisition of the resources that leased them.
     */
   def acquireResource[R](
-      fr: F[R],
+      acquire: Poll[F] => F[R],
       release: (R, Resource.ExitCase) => F[Unit]
   ): F[Either[Throwable, R]] =
     ScopedResource.create[F].flatMap { resource =>
-      F.uncancelable { _ =>
-        fr.redeemWith(
+      F.uncancelable { poll =>
+        acquire(poll).redeemWith(
           t => F.pure(Left(t)),
           r => {
             val finalizer = (ec: Resource.ExitCase) => release(r, ec)
