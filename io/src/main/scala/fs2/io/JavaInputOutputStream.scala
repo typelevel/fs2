@@ -198,7 +198,7 @@ private[io] object JavaInputOutputStream {
         (
           Queue.synchronous[F, Either[Option[Throwable], Bytes]],
           SignallingRef.of[F, UpStreamState](UpStreamState(done = false, err = None)),
-          SignallingRef.of[F, DownStreamState](Ready(None)),
+          SignallingRef.of[F, DownStreamState](Ready(None))
         ).tupled
       )
       .flatMap { case (queue, upState, dnState) =>

@@ -31,11 +31,11 @@ import org.reactivestreams._
   * @example {{{
   * scala> import fs2._
   * scala> import fs2.interop.reactivestreams._
-  * scala> import cats.effect.IO, cats.effect.unsafe.implicits.global
+  * scala> import cats.effect.{IO, Resource}, cats.effect.unsafe.implicits.global
   * scala>
   * scala> val upstream: Stream[IO, Int] = Stream(1, 2, 3).covary[IO]
-  * scala> val publisher: StreamUnicastPublisher[IO, Int] = upstream.toUnicastPublisher
-  * scala> val downstream: Stream[IO, Int] = publisher.toStream[IO]
+  * scala> val publisher: Resource[IO, StreamUnicastPublisher[IO, Int]] = upstream.toUnicastPublisher
+  * scala> val downstream: Stream[IO, Int] = Stream.resource(publisher).flatMap(_.toStream[IO])
   * scala>
   * scala> downstream.compile.toVector.unsafeRunSync()
   * res0: Vector[Int] = Vector(1, 2, 3)
