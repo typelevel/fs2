@@ -25,6 +25,8 @@ import scala.concurrent.duration._
 import cats.effect.IO
 import cats.effect.kernel.Ref
 import cats.syntax.all._
+import cats.data.OptionT
+import org.scalacheck.effect.PropF.forAllF
 
 class TimedPullSuite extends Fs2Suite {
 //TODO test case for stale timeout
@@ -43,6 +45,25 @@ class TimedPullSuite extends Fs2Suite {
 
   test("timed pull") {
     IO.unit
+  }
+
+  import Stream.TimedPull
+  test("pull elements, no timeout") {
+    forAllF { (s: Stream[Pure, Int]) =>
+      s.covary[IO].pull.timed { tp =>
+        def loop(tp: TimedPull[IO, Int]): Pull[IO, Int, Unit] =
+          tp.uncons.flatMap {
+            case None => Pull.done
+            case Some((Right(c), next)) => Pull.output(c) >> loop(next)
+            case Some((Left(_), _)) => Pull.raiseError[IO](new Exception)
+          }
+
+        loop(tp)
+      }.stream
+        .compile
+        .toList
+        .map(it => assertEquals(it, s.compile.toList))
+    }
   }
 
   // -- based on a stream emitting multiple elements, with metered
