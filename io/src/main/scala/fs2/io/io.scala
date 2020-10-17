@@ -25,7 +25,6 @@ import cats._
 import cats.effect.{Async, Outcome, Resource, Sync}
 import cats.effect.implicits._
 import cats.effect.kernel.Deferred
-import cats.effect.unsafe.UnsafeRun
 import cats.syntax.all._
 
 import java.io.{InputStream, OutputStream, PipedInputStream, PipedOutputStream}
@@ -207,12 +206,12 @@ package object io {
     * Note that the implementation is not thread safe -- only one thread is allowed at any time
     * to operate on the resulting `java.io.InputStream`.
     */
-  def toInputStream[F[_]: Async: UnsafeRun]: Pipe[F, Byte, InputStream] =
+  def toInputStream[F[_]: Async]: Pipe[F, Byte, InputStream] =
     source => Stream.resource(toInputStreamResource(source))
 
   /** Like [[toInputStream]] but returns a `Resource` rather than a single element stream.
     */
-  def toInputStreamResource[F[_]: Async: UnsafeRun](
+  def toInputStreamResource[F[_]: Async](
       source: Stream[F, Byte]
   ): Resource[F, InputStream] =
     JavaInputOutputStream.toInputStream(source)

@@ -24,32 +24,21 @@ package interop
 package reactivestreams
 
 import cats.effect._
-import org.reactivestreams._
-import org.reactivestreams.tck.{PublisherVerification, TestEnvironment}
+import cats.effect.std.Dispatcher
+import cats.effect.unsafe.implicits.global
+import org.scalatestplus.testng._
+import org.testng.annotations.AfterClass
 
-final class FailedSubscription extends Subscription {
-  def cancel(): Unit = {}
-  def request(n: Long): Unit = {}
-}
+trait UnsafeTestNGSuite extends TestNGSuiteLike {
 
-final class FailedPublisher extends Publisher[Int] {
-  def subscribe(subscriber: Subscriber[_ >: Int]): Unit = {
-    subscriber.onSubscribe(new FailedSubscription)
-    subscriber.onError(new Error("BOOM"))
-  }
-}
+  protected var runner: Dispatcher.Runner[IO] = _
+  private var shutdownRunner: IO[Unit] = _
 
-final class StreamUnicastPublisherSpec
-    extends PublisherVerification[Int](new TestEnvironment(1000L))
-    with UnsafeTestNGSuite {
+  private val dispatcher = Dispatcher[IO, Dispatcher.Runner[IO]](Resource.pure).allocated
+  private val t = dispatcher.unsafeRunSync()
+  runner = t._1
+  shutdownRunner = t._2
 
-  def createPublisher(n: Long): StreamUnicastPublisher[IO, Int] = {
-    val s =
-      if (n == java.lang.Long.MAX_VALUE) Stream.range(1, 20).repeat
-      else Stream(1).repeat.scan(1)(_ + _).map(i => if (i > n) None else Some(i)).unNoneTerminate
-
-    StreamUnicastPublisher(s.covary[IO], runner)
-  }
-
-  def createFailedPublisher(): FailedPublisher = new FailedPublisher()
+  @AfterClass
+  def afterAll() = shutdownRunner.unsafeRunSync()
 }

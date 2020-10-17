@@ -501,7 +501,7 @@ class StreamSuite extends Fs2Suite {
       Gen.chooseNum(1, 200).flatMap(i => Gen.listOfN(i, arbitrary[Int]))
     ) { (n: Int, testValues: List[Int]) =>
       assert(
-        Stream.emits(testValues).repeat.take(n).toList == List
+        Stream.emits(testValues).repeat.take(n.toLong).toList == List
           .fill(n / testValues.size + 1)(testValues)
           .flatten
           .take(n)
@@ -514,7 +514,7 @@ class StreamSuite extends Fs2Suite {
       Gen.chooseNum(1, 200),
       Gen.chooseNum(1, 200).flatMap(i => Gen.listOfN(i, arbitrary[Int]))
     ) { (n: Int, testValues: List[Int]) =>
-      assert(Stream.emits(testValues).repeatN(n).toList == List.fill(n)(testValues).flatten)
+      assert(Stream.emits(testValues).repeatN(n.toLong).toList == List.fill(n)(testValues).flatten)
     }
   }
 
@@ -539,7 +539,7 @@ class StreamSuite extends Fs2Suite {
         )
 
         List(res1, res2, res3)
-          .foldMap(Stream.resource)
+          .foldMap(Stream.resource(_))
           .evalTap(_ => record("use"))
           .append(Stream.exec(record("done")))
           .compile
@@ -587,7 +587,7 @@ class StreamSuite extends Fs2Suite {
         )
 
         List(res1, res2, res3)
-          .foldMap(Stream.resourceWeak)
+          .foldMap(Stream.resourceWeak(_))
           .evalTap(_ => record("use"))
           .append(Stream.exec(record("done")))
           .compile
