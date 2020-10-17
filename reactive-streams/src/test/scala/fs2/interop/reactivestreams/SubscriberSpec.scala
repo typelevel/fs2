@@ -26,7 +26,6 @@ package reactivestreams
 import java.util.concurrent.atomic.AtomicInteger
 
 import cats.effect._
-import cats.effect.std.Dispatcher
 import cats.effect.unsafe.implicits.global
 
 import org.reactivestreams._
@@ -39,8 +38,6 @@ import org.reactivestreams.tck.{
   SubscriberWhiteboxVerification,
   TestEnvironment
 }
-import org.scalatest.BeforeAndAfterAll
-import org.scalatestplus.testng.TestNGSuiteLike
 
 import scala.concurrent.duration._
 

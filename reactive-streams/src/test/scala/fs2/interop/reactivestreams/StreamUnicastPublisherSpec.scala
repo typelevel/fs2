@@ -24,10 +24,8 @@ package interop
 package reactivestreams
 
 import cats.effect._
-import cats.effect.unsafe.implicits.global
 import org.reactivestreams._
 import org.reactivestreams.tck.{PublisherVerification, TestEnvironment}
-import org.scalatestplus.testng._
 
 final class FailedSubscription extends Subscription {
   def cancel(): Unit = {}

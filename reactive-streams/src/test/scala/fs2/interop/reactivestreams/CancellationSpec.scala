@@ -48,7 +48,9 @@ class CancellationSpec extends Fs2Suite {
   val attempts = 10000
 
   def withRunner(f: Dispatcher.Runner[IO] => Unit): Unit =
-    Dispatcher[IO, Unit] { runner => Resource.liftF(IO(f(runner))) }.use(_ => IO.unit).unsafeRunSync()
+    Dispatcher[IO, Unit](runner => Resource.liftF(IO(f(runner))))
+      .use(_ => IO.unit)
+      .unsafeRunSync()
 
   test("after subscription is cancelled request must be noOps") {
     withRunner { runner =>
@@ -69,16 +71,16 @@ class CancellationSpec extends Fs2Suite {
 
   test("after subscription is cancelled additional cancelations must be noOps") {
     withRunner { runner =>
-    var i = 0
-    val b = new AtomicBoolean(false)
-    while (i < attempts) {
-      val sub = StreamSubscription(Sub[Int](b), s, runner).unsafeRunSync()
-      sub.unsafeStart()
-      sub.cancel()
-      sub.cancel()
-      i = i + 1
-    }
-    if (b.get) fail("onCancel was called after the subscription was cancelled")
+      var i = 0
+      val b = new AtomicBoolean(false)
+      while (i < attempts) {
+        val sub = StreamSubscription(Sub[Int](b), s, runner).unsafeRunSync()
+        sub.unsafeStart()
+        sub.cancel()
+        sub.cancel()
+        i = i + 1
+      }
+      if (b.get) fail("onCancel was called after the subscription was cancelled")
     }
   }
 }

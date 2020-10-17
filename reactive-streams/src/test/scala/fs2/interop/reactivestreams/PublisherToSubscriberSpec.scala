@@ -30,7 +30,8 @@ final class PublisherToSubscriberSpec extends Fs2Suite {
 
   test("should have the same output as input") {
     forAll { (ints: Seq[Int]) =>
-      val subscriberStream = Stream.resource(Stream.emits(ints).covary[IO].toUnicastPublisher).flatMap(_.toStream[IO])
+      val subscriberStream =
+        Stream.resource(Stream.emits(ints).covary[IO].toUnicastPublisher).flatMap(_.toStream[IO])
 
       assert(subscriberStream.compile.toVector.unsafeRunSync() == (ints.toVector))
     }
@@ -49,7 +50,9 @@ final class PublisherToSubscriberSpec extends Fs2Suite {
   test("should cancel upstream if downstream completes") {
     forAll { (as: Seq[Int], bs: Seq[Int]) =>
       val subscriberStream =
-        Stream.resource(Stream.emits(as ++ bs).covary[IO].toUnicastPublisher).flatMap(_.toStream[IO].take(as.size.toLong))
+        Stream
+          .resource(Stream.emits(as ++ bs).covary[IO].toUnicastPublisher)
+          .flatMap(_.toStream[IO].take(as.size.toLong))
 
       assert(subscriberStream.compile.toVector.unsafeRunSync() == (as.toVector))
     }
