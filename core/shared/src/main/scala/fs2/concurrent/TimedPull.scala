@@ -51,13 +51,15 @@ object tp {
           time.discrete.unNone.dropWhile(_.id == t.id).head
 
         // TODO is the initial time.get.unNone fine or does it spin?
-        def timeouts: Stream[F, Token] =
-          Stream.eval(time.get).unNone.flatMap { timeout =>
+        def timeouts: Stream[F, Token] = {
+          println("hey")
+          Stream.eval(Concurrent[F].unit.map(_ => println("yo")) >> time.get).unNone.flatMap { timeout =>
             Stream.eval(timeout.asOfNow).flatMap { t =>
               if (t <= 0.nanos) Stream.emit(timeout.id) ++ nextAfter(timeout).drain
               else Stream.sleep_[F](t)
             }
           } ++ timeouts
+        }
 
         def output: Stream[F, Either[Token, Chunk[A]]] =
           timeouts
@@ -87,45 +89,6 @@ object tp {
       }
     }
   }
-
-  def groupWithin[O](s: Stream[IO, O], n: Int, t: FiniteDuration) =
-    TimedPull.go[IO, O, Chunk[O]] { tp =>
-      def resize(c: Chunk[O], s: Pull[IO, Chunk[O], Unit]): (Pull[IO, Chunk[O], Unit], Chunk[O]) =
-        if (c.size < n) s -> c
-        else {
-          val (unit, rest) = c.splitAt(n)
-          resize(rest, s >> Pull.output1(unit))
-        }
-
-      // Invariants:
-      // acc.size < n, always
-      // hasTimedOut == true iff a timeout has been received, and acc.isEmpty
-      def go(acc: Chunk.Queue[O], tp: TimedPull[IO, O], hasTimedOut: Boolean = false): Pull[IO, Chunk[O], Unit] =
-        tp.uncons.flatMap {
-          case None =>
-            Pull.output1(acc.toChunk).whenA(acc.nonEmpty)
-          case Some((e, next)) =>
-            e match {
-              case Left(_) =>
-                if (acc.nonEmpty)
-                  Pull.output1(acc.toChunk) >>
-                  tp.startTimer(t) >>
-                  go(Chunk.Queue.empty, next)
-                else
-                  go(Chunk.Queue.empty, next, hasTimedOut = true)
-              case Right(c) =>
-                val newAcc = acc :+ c
-                if (newAcc.size < n && !hasTimedOut)
-                  go(newAcc, next)
-                else {
-                  val (toEmit, rest) = resize(newAcc.toChunk, Pull.done)
-                  toEmit >> tp.startTimer(t) >> go(Chunk.Queue(rest), next)
-                }
-            }
-        }
-
-      tp.startTimer(t) >> go(Chunk.Queue.empty, tp)
-    }.apply(s)
 
   import cats.effect.unsafe.implicits.global
 
@@ -160,10 +123,25 @@ object tp {
     .drain
     .unsafeRunSync()
   }
-  // components:
-  //  a queue of chunks and timeouts
-  //  a mechanism for resettable timeouts
-  //  a way to avoid reacting to stale timeouts
+  def tttt = {
+    Stream.range(1, 100)
+      .unchunk
+      .covary[IO]
+      .metered(100.millis)
+      .through {
+        TimedPull.go[IO, Int, Int] { tp =>
+          def go(tp: TimedPull[IO, Int]): Pull[IO, Int, Unit] =
+            tp.uncons.flatMap {
+              case None => Pull.done
+              case Some((Right(c), n)) => Pull.output(c) >> go(n)
+              case Some((_, n)) => go(n)
+            }
+
+          //tp.startTimer(500.millis) >>
+          go(tp)
+        }
+      }.compile.drain.unsafeRunSync()
+  }
 
   // problematic interleaving
   //  go is iterating and accumulating

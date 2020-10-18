@@ -4549,6 +4549,7 @@ object Stream extends StreamLowPriority {
           time.discrete.unNone.dropWhile(_.id == t.id).head
 
         // TODO is the initial time.get.unNone fine or does it spin?
+        // it does spin, create a dummy Timeout and use nextAfter to avoid?
         def timeouts: Stream[F, Token] =
           Stream.eval(time.get).unNone.flatMap { timeout =>
             Stream.eval(timeout.asOfNow).flatMap { t =>
