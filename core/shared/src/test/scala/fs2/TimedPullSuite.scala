@@ -21,11 +21,13 @@
 
 package fs2
 
-import scala.concurrent.duration._
 import cats.effect.IO
 import cats.effect.kernel.Ref
 import cats.syntax.all._
-import cats.data.OptionT
+
+import scala.concurrent.duration._
+import java.util.concurrent.TimeoutException
+
 import org.scalacheck.effect.PropF.forAllF
 
 class TimedPullSuite extends Fs2Suite {
@@ -48,7 +50,7 @@ class TimedPullSuite extends Fs2Suite {
   }
 
   import Stream.TimedPull
-  test("pull elements, no timeout") {
+  test("behaves as a normal Pull when no timeouts are used") {
     forAllF { (s: Stream[Pure, Int]) =>
       s.covary[IO].pull.timed { tp =>
         def loop(tp: TimedPull[IO, Int]): Pull[IO, Int, Unit] =
@@ -66,9 +68,30 @@ class TimedPullSuite extends Fs2Suite {
     }
   }
 
+  test("pulls elements with timeouts, no timeouts trigger") {
+    // TODO cannot use PropF with `.ticked` at the moment
+    val l = List.range(1, 500)
+    val s = Stream.emits(l).covary[IO].rechunkRandomly()
+    val period = 500.millis
+    val timeout = 600.millis
+
+    s.metered(period).pull.timed { tp =>
+      def loop(tp: TimedPull[IO, Int]): Pull[IO, Int, Unit] =
+        tp.uncons.flatMap {
+          case None => Pull.done
+          case Some((Right(c), next)) => Pull.output(c) >> tp.startTimer(timeout)  >> loop(next)
+          case Some((Left(_), _)) => Pull.raiseError[IO](new TimeoutException)
+        }
+
+      tp.startTimer(timeout) >> loop(tp)
+    }.stream
+      .compile
+      .toList
+      .map(it => assertEquals(it, l))
+      .ticked
+  }
+
   // -- based on a stream emitting multiple elements, with metered
-  // pull single element, no timeout
-  // pull multiple elements, timeout reset with no timeout
   // pull single element, timeout
   // pull multiple elements, timeout reset, with timeout
   // try pull multiple elements with no timeout reset, with timeout
