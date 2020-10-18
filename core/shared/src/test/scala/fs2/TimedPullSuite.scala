@@ -91,6 +91,18 @@ class TimedPullSuite extends Fs2Suite {
       .ticked
   }
 
+  test("times out whilst pulling a single element") {
+    Stream.eval(IO.sleep(300.millis).as(1))
+      .pull
+      .timed { tp =>
+        tp.startTimer(100.millis) >>
+        tp.uncons.flatMap {
+          case Some((Left(_), _)) => Pull.done
+          case _ => Pull.raiseError[IO](new Exception("timeout expected"))
+        }
+      }.stream.compile.drain
+  }
+
   // -- based on a stream emitting multiple elements, with metered
   // pull single element, timeout
   // pull multiple elements, timeout reset, with timeout
