@@ -57,7 +57,7 @@ class TimedPullSuite extends Fs2Suite {
           tp.uncons.flatMap {
             case None => Pull.done
             case Some((Right(c), next)) => Pull.output(c) >> loop(next)
-            case Some((Left(_), _)) => Pull.raiseError[IO](new Exception)
+            case Some((Left(_), _)) => Pull.raiseError[IO](new Exception("unexpected timeout"))
           }
 
         loop(tp)

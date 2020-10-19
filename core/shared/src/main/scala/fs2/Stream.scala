@@ -4544,49 +4544,45 @@ object Stream extends StreamLowPriority {
       def newTimeout(d: FiniteDuration): F[Timeout] =
         (Token[F], now).mapN(new Timeout(_, _, d))
 
+      Pull
+        .eval { newTimeout(0.millis) mproduct SignallingRef.of }
+        .flatMap { case (initial, time) =>
+          def nextAfter(t: Timeout): Stream[F, Nothing] =
+            time.discrete.dropWhile(_.id == t.id).head.drain
 
-      // TODO remove option, use mproduct
-      Pull.eval(newTimeout(0.millis) mproduct SignallingRef.of).flatMap { case (_, time) =>
-        // TODO make into Stream[F, Nothing]
-        def nextAfter(t: Timeout): Stream[F, Timeout] =
-          time.discrete.dropWhile(_.id == t.id).head
-
-        // TODO is the initial time.get.unNone fine or does it spin?
-        // use repeat instead of ++
-        // add initial nextAfter
-        // merge eval, use mproduct
-        def timeouts: Stream[F, Token] =
-          Stream.eval(time.get).flatMap { timeout =>
-            Stream.eval(timeout.asOfNow).flatMap { t =>
-              if (t <= 0.nanos) Stream.emit(timeout.id) ++ nextAfter(timeout).drain
+          def timeouts: Stream[F, Token] =
+            nextAfter(initial) ++
+           Stream
+            .eval { time.get.mproduct(_.asOfNow) }
+            .flatMap { case (timeout, t) =>
+              if (t <= 0.nanos) Stream.emit(timeout.id) ++ nextAfter(timeout)
               else Stream.sleep_[F](t)
+            }.repeat
+
+          def output: Stream[F, Either[Token, Chunk[O]]] =
+            timeouts.map(_.asLeft)
+              .mergeHaltR(source.chunks.map(_.asRight))
+              .flatMap {
+                case chunk @ Right(_) => Stream.emit(chunk)
+                case timeout @ Left(id) =>
+                  Stream
+                    .eval(time.get)
+                    .collect { case currentTimeout if currentTimeout.id == id => timeout }
+              }
+
+          def toTimedPull(s: Stream[F, Either[Token, Chunk[O]]]): TimedPull[F, O] = new TimedPull[F, O] {
+            type Timeout = Token
+
+            def uncons: Pull[F, INothing, Option[(Either[Token, Chunk[O]], TimedPull[F, O])]] =
+              s.pull.uncons1
+                .map( _.map { case (r, next) => r -> toTimedPull(next) })
+
+            def startTimer(t: FiniteDuration): Pull[F, INothing, Unit] = Pull.eval {
+              newTimeout(t).flatMap(time.set)
             }
-          } ++ timeouts
-
-        def output: Stream[F, Either[Token, Chunk[O]]] =
-          timeouts.map(_.asLeft)
-            .mergeHaltR(source.chunks.map(_.asRight))
-            .flatMap {
-              case chunk @ Right(_) => Stream.emit(chunk)
-              case timeout @ Left(id) =>
-                Stream
-                  .eval(time.get)
-                  .collect { case currentTimeout if currentTimeout.id == id => timeout }
-            }
-
-        def toTimedPull(s: Stream[F, Either[Token, Chunk[O]]]): TimedPull[F, O] = new TimedPull[F, O] {
-          type Timeout = Token
-
-          def uncons: Pull[F, INothing, Option[(Either[Token, Chunk[O]], TimedPull[F, O])]] =
-            s.pull.uncons1
-              .map( _.map { case (r, next) => r -> toTimedPull(next) })
-
-          def startTimer(t: FiniteDuration): Pull[F, INothing, Unit] = Pull.eval {
-            newTimeout(t).flatMap(time.set)
           }
-        }
 
-        pull(toTimedPull(output))
+          pull(toTimedPull(output))
       }
     }
   }
