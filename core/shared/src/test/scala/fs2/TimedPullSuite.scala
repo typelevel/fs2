@@ -45,11 +45,8 @@ class TimedPullSuite extends Fs2Suite {
   //   it means we received a stale timeout, which breaks the invariant that an old
   //   timeout can never be received after startTimer is called
 
-  test("timed pull") {
-    IO.unit
-  }
-
   import Stream.TimedPull
+
   test("behaves as a normal Pull when no timeouts are used") {
     forAllF { (s: Stream[Pure, Int]) =>
       s.covary[IO].pull.timed { tp =>
