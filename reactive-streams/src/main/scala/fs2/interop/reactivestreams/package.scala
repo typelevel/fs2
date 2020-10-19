@@ -51,14 +51,12 @@ package object reactivestreams {
     */
   def fromPublisher[F[_]: Async, A](p: Publisher[A]): Stream[F, A] =
     Stream
-      .resource(Dispatcher[F, Stream[F, A]] { runner =>
-        Resource.pure(
-          Stream
-            .eval(StreamSubscriber[F, A](runner))
-            .flatMap(s => s.sub.stream(Sync[F].delay(p.subscribe(s))))
-        )
-      })
-      .flatten
+      .resource(Dispatcher[F])
+      .flatMap { dispatcher =>
+        Stream
+          .eval(StreamSubscriber[F, A](dispatcher))
+          .flatMap(s => s.sub.stream(Sync[F].delay(p.subscribe(s))))
+      }
 
   implicit final class PublisherOps[A](val publisher: Publisher[A]) extends AnyVal {
 
@@ -77,8 +75,8 @@ package object reactivestreams {
     def toUnicastPublisher(implicit
         F: Async[F]
     ): Resource[F, StreamUnicastPublisher[F, A]] =
-      Dispatcher[F, StreamUnicastPublisher[F, A]] { runner =>
-        Resource.pure(StreamUnicastPublisher(stream, runner))
+      Dispatcher[F].map { runner =>
+        StreamUnicastPublisher(stream, runner)
       }
   }
 }

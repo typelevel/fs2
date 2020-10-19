@@ -76,7 +76,7 @@ object TLSSocket {
         engine.read(maxBytes, timeout)
 
       def readN(numBytes: Int, timeout: Option[FiniteDuration]): F[Option[Chunk[Byte]]] =
-        readSem.withPermit {
+        readSem.permit.use { _ =>
           def go(acc: Chunk.Queue[Byte]): F[Option[Chunk[Byte]]] = {
             val toRead = numBytes - acc.size
             if (toRead <= 0) Applicative[F].pure(Some(acc.toChunk))
@@ -90,7 +90,7 @@ object TLSSocket {
         }
 
       def read(maxBytes: Int, timeout: Option[FiniteDuration]): F[Option[Chunk[Byte]]] =
-        readSem.withPermit(read0(maxBytes, timeout))
+        readSem.permit.use(_ => read0(maxBytes, timeout))
 
       def reads(maxBytes: Int, timeout: Option[FiniteDuration]): Stream[F, Byte] =
         Stream.repeatEval(read(maxBytes, timeout)).unNoneTerminate.flatMap(Stream.chunk)

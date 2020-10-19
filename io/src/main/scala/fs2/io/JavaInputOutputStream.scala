@@ -192,7 +192,7 @@ private[io] object JavaInputOutputStream {
      * - DownStream signal -  keeps any remainders from last `read` and signals
      *                        that downstream has been terminated that in turn kills upstream
      */
-    Dispatcher[F, InputStream] { runner =>
+    Dispatcher[F].flatMap { dispatcher =>
       Resource
         .liftF(
           (
@@ -206,10 +206,10 @@ private[io] object JavaInputOutputStream {
             .as(
               new InputStream {
                 override def close(): Unit =
-                  runner.unsafeRunAndForget(closeIs(upState, dnState))
+                  dispatcher.unsafeRunAndForget(closeIs(upState, dnState))
 
                 override def read(b: Array[Byte], off: Int, len: Int): Int =
-                  runner.unsafeRunSync(readOnce(b, off, len, queue, dnState))
+                  dispatcher.unsafeRunSync(readOnce(b, off, len, queue, dnState))
 
                 def read(): Int = {
                   def go(acc: Array[Byte]): F[Int] =
@@ -219,7 +219,7 @@ private[io] object JavaInputOutputStream {
                       else F.pure(acc(0) & 0xff)
                     }
 
-                  runner.unsafeRunSync(go(new Array[Byte](1)))
+                  dispatcher.unsafeRunSync(go(new Array[Byte](1)))
                 }
               }
             )
