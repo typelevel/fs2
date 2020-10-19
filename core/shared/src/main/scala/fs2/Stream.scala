@@ -4545,7 +4545,7 @@ object Stream extends StreamLowPriority {
         (Token[F], now).mapN(new Timeout(_, _, d))
 
       Pull
-        .eval { newTimeout(0.millis) mproduct SignallingRef.of }
+        .eval { newTimeout(0.millis) mproduct SignallingRef.of[F, Timeout] }
         .flatMap { case (initial, time) =>
           def nextAfter(t: Timeout): Stream[F, Nothing] =
             time.discrete.dropWhile(_.id == t.id).head.drain
