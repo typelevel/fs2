@@ -124,28 +124,34 @@ class TimedPullSuite extends Fs2Suite {
       .ticked
   }
 
-  test("timeout can be reset before triggering".only) {
-    // use `never` to test logic without worrying about termination
-    val s = Stream.sleep[IO](1.second).as(1).evalMap(x => IO(println(x))) ++ Stream.sleep[IO](1.second).as(2).evalMap(x => IO(println(x))) ++ Stream.never[IO]
+  test("timeout can be reset before triggering") {
+    val s =
+      Stream.emit(()) ++
+      Stream.sleep[IO](1.second) ++
+      Stream.sleep[IO](1.second) ++
+      // use `never` to test logic without worrying about termination
+      Stream.never[IO]
 
-    s.pull.timed { tp =>
-      tp.startTimer(900.millis) >>
-      Pull.eval(IO.sleep(800.millis)) >>
-      tp.startTimer(301.millis) >>
-      tp.uncons.flatMap {
-        case Some((Right(_), next)) =>
-          next.uncons.flatMap {
-            case Some((Left(_), _)) => Pull.done
-            case _ =>
-              Pull.raiseError[IO](new Exception(s"Expected timeout second, received element"))
+    def fail(s: String) = Pull.raiseError[IO](new Exception(s))
+
+    s.pull.timed { one =>
+      one.startTimer(900.millis) >> one.uncons.flatMap {
+        case Some((Right(_), two)) =>
+         two.startTimer(1100.millis) >> two.uncons.flatMap {
+            case Some((Right(_), three)) =>
+              three.uncons.flatMap {
+                case Some((Left(_), _)) => Pull.done
+                case _ => fail(s"Expected timeout third, received element")
+              }
+            case _ => fail(s"Expected element second, received timeout")
           }
-        case _ =>
-          Pull.raiseError[IO](new Exception(s"Expected element first, received timeout"))
+        case _ => fail(s"Expected element first, received timeout")
       }
+
     }.stream
       .compile
       .drain
-    //  .ticked
+      .ticked
   }
   // -- based on a stream emitting multiple elements, with metered
 
