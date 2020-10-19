@@ -100,7 +100,7 @@ class TimedPullSuite extends Fs2Suite {
           case Some((Left(_), _)) => Pull.done
           case _ => Pull.raiseError[IO](new Exception("timeout expected"))
         }
-      }.stream.compile.drain
+      }.stream.compile.drain.ticked
   }
 
   
