@@ -70,12 +70,13 @@ class TimedPullSuite extends Fs2Suite {
 
   test("pulls elements with timeouts, no timeouts trigger") {
     // TODO cannot use PropF with `.ticked` at the moment
-    val l = List.range(1, 500)
+    val l = List.range(1, 100)
     val s = Stream.emits(l).covary[IO].rechunkRandomly()
     val period = 500.millis
     val timeout = 600.millis
 
-    s.metered(period).pull.timed { tp =>
+    s.metered(period)
+      .pull.timed { tp =>
       def loop(tp: TimedPull[IO, Int]): Pull[IO, Int, Unit] =
         tp.uncons.flatMap {
           case None => Pull.done
