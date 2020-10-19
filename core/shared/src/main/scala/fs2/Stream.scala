@@ -4554,9 +4554,10 @@ object Stream extends StreamLowPriority {
             nextAfter(initial) ++
            Stream
             .eval { time.get.mproduct(_.asOfNow) }
-            .flatMap { case (timeout, t) =>
-              if (t <= 0.nanos) Stream.emit(timeout.id) ++ nextAfter(timeout)
-              else Stream.sleep_[F](t)
+            .flatMap { case (currentTimeout, timeToWait) =>
+              if (timeToWait <= 0.nanos)
+                Stream.emit(currentTimeout.id) ++ nextAfter(currentTimeout)
+              else Stream.sleep_[F](timeToWait)
             }.repeat
 
           def output: Stream[F, Either[Token, Chunk[O]]] =
