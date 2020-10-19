@@ -104,7 +104,29 @@ class TimedPullSuite extends Fs2Suite {
       }.stream.compile.drain.ticked
   }
 
-  
+  test("pulls elements with timeouts, timeouts trigger after reset") {
+    val timeout = 500.millis
+    val t = 600.millis
+    val n = 10
+    val s = Stream.constant(1).covary[IO].metered(t).take(n)
+    val expected = Stream("timeout", "elem").repeat.take(n * 2).compile.toList
+
+    s.pull.timed { tp =>
+      def go(tp: TimedPull[IO, Int]): Pull[IO, String, Unit] =
+        tp.uncons.flatMap {
+          case None => Pull.done
+          case Some((Right(_), next)) => Pull.output1("elem") >> tp.startTimer(timeout) >> go(next)
+          case Some((Left(_), next)) => Pull.output1("timeout") >> go(next)
+        }
+
+      tp.startTimer(timeout) >> go(tp)
+    }.stream
+      .compile
+      .toList
+      .map(it => assertEquals(it, expected))
+      .ticked
+  }
+
   // -- based on a stream emitting multiple elements, with metered
   // pull multiple elements, timeout reset, with timeout
   // try pull multiple elements with no timeout reset, with timeout
