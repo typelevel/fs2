@@ -150,7 +150,7 @@ class SocketSuite extends Fs2Suite {
       assert(result == sizes)
     }
 
-    test("write - concurrent calls do not cause WritePendingException".only) {
+    test("write - concurrent calls do not cause WritePendingException") {
       val message = Chunk.bytes(("123456789012345678901234567890" * 10000).getBytes)
 
       val localBindAddress =
