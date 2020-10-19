@@ -115,6 +115,31 @@ object tp {
       }.compile.drain.unsafeRunSync()
   }
 
+  def tt = {
+        val s = Stream.sleep[IO](1.second).as(1).evalMap(x => IO(println(x))) ++ Stream.sleep[IO](1.second).as(2).evalMap(x => IO(println(x))) ++ Stream.never[IO]
+
+    s.pull.timed { tp =>
+      tp.startTimer(900.millis) >>
+      tp.startTimer(1.second) >>
+      Pull.eval(IO.sleep(800.millis)) >>
+      // tp.startTimer(301.millis) >>
+      tp.uncons.flatMap {
+        case Some((Right(_), next)) =>
+          next.uncons.flatMap {
+            case Some((Left(_), _)) => Pull.done
+            case _ =>
+              Pull.raiseError[IO](new Exception(s"Expected timeout second, received element"))
+          }
+        case _ =>
+          Pull.raiseError[IO](new Exception(s"Expected element first, received timeout"))
+      }
+    }.stream
+      .compile
+      .drain
+  }.unsafeRunSync(
+
+)
+
   // problematic interleaving
   //  go is iterating and accumulating
   //  the stream enqueues a chunk

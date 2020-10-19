@@ -124,7 +124,31 @@ class TimedPullSuite extends Fs2Suite {
       .ticked
   }
 
+  test("timeout can be reset before triggering".only) {
+    // use `never` to test logic without worrying about termination
+    val s = Stream.sleep[IO](1.second).as(1).evalMap(x => IO(println(x))) ++ Stream.sleep[IO](1.second).as(2).evalMap(x => IO(println(x))) ++ Stream.never[IO]
+
+    s.pull.timed { tp =>
+      tp.startTimer(900.millis) >>
+      Pull.eval(IO.sleep(800.millis)) >>
+      tp.startTimer(301.millis) >>
+      tp.uncons.flatMap {
+        case Some((Right(_), next)) =>
+          next.uncons.flatMap {
+            case Some((Left(_), _)) => Pull.done
+            case _ =>
+              Pull.raiseError[IO](new Exception(s"Expected timeout second, received element"))
+          }
+        case _ =>
+          Pull.raiseError[IO](new Exception(s"Expected element first, received timeout"))
+      }
+    }.stream
+      .compile
+      .drain
+    //  .ticked
+  }
   // -- based on a stream emitting multiple elements, with metered
-  // pull multiple elements, timeout reset, with timeout
+
   // try pull multiple elements with no timeout reset, with timeout
+  // resetting timeouts before they trigger
 }
