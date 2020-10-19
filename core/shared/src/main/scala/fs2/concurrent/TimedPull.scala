@@ -46,23 +46,25 @@ object tp {
       def newTimeout(d: FiniteDuration): F[Timeout] =
         (Token[F], now).mapN(new Timeout(_, _, d))
 
-      Stream.eval(SignallingRef[F, Option[Timeout]](None)).flatMap { time =>
+      def put(s: String) = Concurrent[F].unit.map(_ => println(s))
+
+      Stream.eval(newTimeout(0.millis).flatTap(x => put(x.toString)).mproduct(SignallingRef[F, Timeout])).flatMap { case (initial, time) =>
         def nextAfter(t: Timeout): Stream[F, Timeout] =
-          time.discrete.unNone.dropWhile(_.id == t.id).head
+          time.discrete.dropWhile(_.id == t.id).head
+
+
 
         // TODO is the initial time.get.unNone fine or does it spin?
-        def timeouts: Stream[F, Token] = {
-          println("hey")
-          Stream.eval(Concurrent[F].unit.map(_ => println("yo")) >> time.get).unNone.flatMap { timeout =>
+        def timeouts: Stream[F, Token] =
+          Stream.eval(put("yo") >> time.get.flatTap(x => put(x.toString))).flatMap { timeout =>
             Stream.eval(timeout.asOfNow).flatMap { t =>
-              if (t <= 0.nanos) Stream.emit(timeout.id) ++ nextAfter(timeout).drain
-              else Stream.sleep_[F](t)
+              if (t <= 0.nanos) Stream.eval_(put("a")) ++ Stream.emit(timeout.id) ++ nextAfter(timeout).drain
+              else Stream.eval_(put("b"))  ++ Stream.sleep_[F](t)
             }
           } ++ timeouts
-        }
 
         def output: Stream[F, Either[Token, Chunk[A]]] =
-          timeouts
+          (nextAfter(initial).drain ++ timeouts)
             .map(_.asLeft)
             .mergeHaltR(source.chunks.map(_.asRight))
             .flatMap {
@@ -70,7 +72,8 @@ object tp {
               case timeout @ Left(id) =>
                 Stream
                   .eval(time.get)
-                  .collect { case Some(currentTimeout) if currentTimeout.id == id => timeout }
+                  .collect { case currentTimeout if currentTimeout.id == id => timeout }
+                  .evalTap(x => put(x.toString))
             }
 
         def toTimedPull(s: Stream[F, Either[Token, Chunk[A]]]): TimedPull[F, A] = new TimedPull[F, A] {
@@ -81,7 +84,7 @@ object tp {
               .map( _.map { case (r, next) => r -> toTimedPull(next) })
 
           def startTimer(t: FiniteDuration): Pull[F, INothing, Unit] = Pull.eval {
-            newTimeout(t).flatMap(t => time.set(t.some))
+            newTimeout(t).flatMap(time.set)
           }
         }
 
@@ -92,39 +95,8 @@ object tp {
 
   import cats.effect.unsafe.implicits.global
 
-  def ex = {
-    def s(as: Int*): Stream[IO, Int] = Stream(as:_*)
-    def t(d: FiniteDuration) = Stream.sleep_[IO](d)
-
-    s(1,2,3,4,5) ++ s(6,7,8,9,10) ++ t(300.millis) ++ s(11,12,13) ++ t(200.millis) ++ s(14) ++ s(5,5,5) ++ t(600.millis) ++ s(15, 16, 17) ++ s(18, 19, 20, 21, 22) ++ t(1.second)
-  }
-
-  def t = ex.groupWithin(5, 1.second).debug().compile.toVector.unsafeRunSync()
-  def tt = groupWithin(ex, 5, 1.second).debug().compile.toVector.unsafeRunSync()
-
-  // timeout reset
-  def ttt = {
-    val n = System.currentTimeMillis
-
-    {
-      Stream.exec(IO(println("start"))) ++
-      Stream(1,2,3) ++
-      Stream.sleep_[IO](5200.millis) ++
-      Stream(4,5) ++
-      //  Stream(6,7) ++
-      Stream.sleep_[IO](7.seconds) //++
-//    Stream(8, 9)
-
-  }
-    .debugChunks(formatter = (c => s"pre $c ${System.currentTimeMillis - n}"))
-    .groupWithin(3, 5.second)
-    .debug(formatter = (c => s"post $c ${System.currentTimeMillis - n}"))
-    .compile
-    .drain
-    .unsafeRunSync()
-  }
-  def tttt = {
-    Stream.range(1, 100)
+  def t = {
+    Stream.range(1, 50)
       .unchunk
       .covary[IO]
       .metered(100.millis)
