@@ -90,7 +90,7 @@ class TimedPullSuite extends Fs2Suite {
   }
 
   test("times out whilst pulling a single element") {
-    Stream.eval(IO.sleep(300.millis).as(1))
+    Stream.sleep[IO](300.millis)
       .pull
       .timed { tp =>
         tp.startTimer(100.millis) >>
