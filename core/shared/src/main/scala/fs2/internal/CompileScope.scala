@@ -318,6 +318,25 @@ private[fs2] final class CompileScope[F[_]] private (
       }
   }
 
+  /** Tries to shift from the current scope with the given ScopeId, if one exists.
+    * If not, throws an error.
+    */
+  def shiftScope(scopeId: Token, context: => String): F[CompileScope[F]] =
+    findStepScope(scopeId).flatMap {
+      case Some(scope) => F.pure(scope)
+      case None =>
+        val msg =
+          s"""|Scope lookup failure!
+              |
+              |This is typically caused by uncons-ing from two or more streams in the same Pull.
+              |To do this safely, use `s.pull.stepLeg` instead of `s.pull.uncons` or a variant
+              |thereof. See the implementation of `Stream#zipWith_` for an example.
+              |
+              |Scope id: $id
+              |Step: $context""".stripMargin
+        F.raiseError(new RuntimeException(msg))
+    }
+
   /** Tries to locate scope for the step.
     * It is good chance, that scope is either current scope or the sibling of current scope.
     * As such the order of search is:
