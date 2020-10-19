@@ -314,9 +314,9 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup) {
                 case None       => F.async.unit
                 case Some(took) => go(buff, (remains - took).max(0))
               }
-          val next = go(bytes.toByteBuffer, timeout.map(_.toMillis).getOrElse(0L))
-          // Note: if next is moved to inside the writeSemaphore use block, the "write - concurrent calls do not cause WritePendingException" hangs
-          writeSemaphore.permit.use(_ => next)
+          writeSemaphore.permit.use { _ =>
+            go(bytes.toByteBuffer, timeout.map(_.toMillis).getOrElse(0L))
+          }
         }
 
         ///////////////////////////////////
