@@ -4537,28 +4537,22 @@ object Stream extends StreamLowPriority {
     private[fs2] def apply[F[_]: Temporal, O, O2, R](source: Stream[F, O])(pull: TimedPull[F, O] => Pull[F, O2, R]): Pull[F, O2, R] = {
       def now = Temporal[F].monotonic
 
-      class Timeout(val id: Token, issuedAt: FiniteDuration, d: FiniteDuration) {
-        def asOfNow:  F[FiniteDuration] = now.map(now => d - (now - issuedAt))
-      }
+      case class Timeout(id: Token, d: FiniteDuration)
 
       def newTimeout(d: FiniteDuration): F[Timeout] =
-        (Token[F], now).mapN(new Timeout(_, _, d))
+        Token[F].map(new Timeout(_, d))
 
       Pull
         .eval { newTimeout(0.millis) mproduct SignallingRef.of[F, Timeout] }
         .flatMap { case (initial, time) =>
-          def nextAfter(t: Timeout): Stream[F, Nothing] =
-            time.discrete.dropWhile(_.id == t.id).head.drain
 
           def timeouts: Stream[F, Token] =
-            nextAfter(initial) ++
-           Stream
-            .eval { time.get.mproduct(_.asOfNow) }
-            .flatMap { case (currentTimeout, timeToWait) =>
-              if (timeToWait <= 0.nanos)
-                Stream.emit(currentTimeout.id) ++ nextAfter(currentTimeout)
-              else Stream.sleep_[F](timeToWait)
-            }.repeat
+            time
+              .discrete
+              .dropWhile(_.id == initial.id)
+              .switchMap { timeout =>
+                Stream.sleep(timeout.d).as(timeout.id)
+              }
 
           def output: Stream[F, Either[Token, Chunk[O]]] =
             timeouts.map(_.asLeft)

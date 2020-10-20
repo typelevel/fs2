@@ -165,7 +165,7 @@ class TimedPullSuite extends Fs2Suite {
       .ticked
   }
 
-  test("timeout can be reset to a shorter one".ignore) {
+  test("timeout can be reset to a shorter one") {
     val s =
       Stream.emit(()) ++
       Stream.sleep[IO](1.second) ++
