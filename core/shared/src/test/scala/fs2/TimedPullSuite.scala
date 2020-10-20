@@ -101,6 +101,31 @@ class TimedPullSuite extends Fs2Suite {
       }.stream.compile.drain.ticked
   }
 
+  test("times out after pulling multiple elements") {
+    val l = List(1,2,3)
+    val s = Stream.emits(l) ++ Stream.never[IO]
+    val t = 100.millis
+    val timeout = 350.millis
+
+      s
+      .metered(100.millis)
+      .pull
+      .timed { tp =>
+        def go(tp: TimedPull[IO, Int]): Pull[IO, Int, Unit] =
+          tp.uncons.flatMap {
+            case Some((Right(c), n)) => Pull.output(c) >> go(n)
+            case Some((Left(_), _)) => Pull.done
+            case None => Pull.raiseError[IO](new Exception("Unexpected end of input"))
+          }
+
+        tp.startTimer(timeout) >> go(tp)
+      }.stream
+      .compile
+      .toList
+      .map(it => assertEquals(it, l))
+      .ticked
+  }
+
   test("pulls elements with timeouts, timeouts trigger after reset") {
     val timeout = 500.millis
     val t = 600.millis
