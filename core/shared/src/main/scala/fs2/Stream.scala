@@ -4534,24 +4534,17 @@ object Stream extends StreamLowPriority {
       * classes, so the presence of the `Timeout` class forces this
       * method to be outside of the `Stream.ToPull` class.
       */
-    private[fs2] def apply[F[_]: Temporal, O, O2, R](source: Stream[F, O])(pull: TimedPull[F, O] => Pull[F, O2, R]): Pull[F, O2, R] = {
-      def now = Temporal[F].monotonic
-
-      case class Timeout(id: Token, d: FiniteDuration)
-
-      def newTimeout(d: FiniteDuration): F[Timeout] =
-        Token[F].map(new Timeout(_, d))
-
+    private[fs2] def apply[F[_]: Temporal, O, O2, R](source: Stream[F, O])(pull: TimedPull[F, O] => Pull[F, O2, R]): Pull[F, O2, R] =
       Pull
-        .eval { newTimeout(0.millis) mproduct SignallingRef.of[F, Timeout] }
+        .eval { Token[F].mproduct(id => SignallingRef.of(id -> 0.millis)) }
         .flatMap { case (initial, time) =>
 
           def timeouts: Stream[F, Token] =
             time
               .discrete
-              .dropWhile(_.id == initial.id)
-              .switchMap { timeout =>
-                Stream.sleep(timeout.d).as(timeout.id)
+              .dropWhile { case (id, _) => id == initial }
+              .switchMap { case (id, duration) =>
+                Stream.sleep(duration).as(id)
               }
 
           def output: Stream[F, Either[Token, Chunk[O]]] =
@@ -4562,7 +4555,7 @@ object Stream extends StreamLowPriority {
                 case timeout @ Left(id) =>
                   Stream
                     .eval(time.get)
-                    .collect { case currentTimeout if currentTimeout.id == id => timeout }
+                    .collect { case (currentTimeout, _) if currentTimeout == id => timeout }
               }
 
           def toTimedPull(s: Stream[F, Either[Token, Chunk[O]]]): TimedPull[F, O] = new TimedPull[F, O] {
@@ -4573,14 +4566,13 @@ object Stream extends StreamLowPriority {
                 .map( _.map { case (r, next) => r -> toTimedPull(next) })
 
             def startTimer(t: FiniteDuration): Pull[F, INothing, Unit] = Pull.eval {
-              newTimeout(t).flatMap(time.set)
+              Token[F].tupleRight(t).flatMap(time.set)
             }
           }
 
           pull(toTimedPull(output))
       }
     }
-  }
 
   /**
     * When merging multiple streams, this represents step of one leg.

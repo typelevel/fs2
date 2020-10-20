@@ -136,10 +136,28 @@ object tp {
     }.stream
       .compile
       .drain
-  }.unsafeRunSync(
+  }.unsafeRunSync()
 
-)
 
+  def ttt =
+    Stream
+      .range(1, 10)
+      .covary[IO]
+      .evalTap(i => IO(println(i)))
+      .switchMap(_ => Stream.sleep[IO](0.millis))
+      //.switchMap(Stream.emit)
+      .evalTap(i => IO(println(i)))
+      .interruptAfter(5.seconds)
+      .compile
+      .drain
+      .unsafeRunSync()
+
+
+  def tttt =
+    Stream.range(1, 50).covary[IO].metered(100.millis).hold(0).flatMap { s =>
+      s.discrete.dropWhile(_ == 0).switchMap(a => Stream.sleep[IO](0.millis).as(a)).showLinesStdOut
+    }.interruptAfter(5.seconds).compile.drain.unsafeRunSync
+  
   // problematic interleaving
   //  go is iterating and accumulating
   //  the stream enqueues a chunk
