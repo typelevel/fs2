@@ -165,6 +165,30 @@ class TimedPullSuite extends Fs2Suite {
       .ticked
   }
 
+  test("timeout can be reset to a shorter one".ignore) {
+    val s =
+      Stream.emit(()) ++
+      Stream.sleep[IO](1.second) ++
+      Stream.never[IO]
+
+    def fail(s: String) = Pull.raiseError[IO](new Exception(s))
+
+    s.pull.timed { one =>
+      one.startTimer(2.seconds) >> one.uncons.flatMap {
+        case Some((Right(_), two)) =>
+         two.startTimer(900.millis) >> two.uncons.flatMap {
+           case Some((Left(_), _)) => Pull.done
+           case _ => fail(s"Expected timeout second, received element")
+         }
+        case _ => fail(s"Expected element first, received timeout")
+      }
+    }
+      .stream
+      .compile
+      .drain
+      .ticked
+  }
+
   test("never emits stale timeouts")  {
     val t = 200.millis
 
@@ -209,5 +233,4 @@ class TimedPullSuite extends Fs2Suite {
       .replicateA(10) // number of iterations to stress the race
       .ticked
   }
-
 }
