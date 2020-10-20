@@ -172,11 +172,11 @@ object text {
 
   /** Encodes a stream of `String` in to a stream of bytes using the given charset. */
   def encode[F[_]](charset: Charset): Pipe[F, String, Byte] =
-    _.flatMap(s => Stream.chunk(Chunk.bytes(s.getBytes(charset))))
+    _.mapChunks(c => c.flatMap(s => Chunk.bytes(s.getBytes(charset))))
 
   /** Encodes a stream of `String` in to a stream of `Chunk[Byte]` using the given charset. */
   def encodeC[F[_]](charset: Charset): Pipe[F, String, Chunk[Byte]] =
-    _.map(s => Chunk.bytes(s.getBytes(charset)))
+    _.mapChunks(_.map(s => Chunk.bytes(s.getBytes(charset))))
 
   /** Encodes a stream of `String` in to a stream of bytes using the UTF-8 charset. */
   def utf8Encode[F[_]]: Pipe[F, String, Byte] =
