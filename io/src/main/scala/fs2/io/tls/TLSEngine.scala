@@ -28,7 +28,7 @@ import scala.concurrent.duration.FiniteDuration
 import javax.net.ssl.{SSLEngine, SSLEngineResult, SSLSession}
 
 import cats.Applicative
-import cats.effect.{Async, Sync}
+import cats.effect.kernel.{Async, Sync}
 import cats.effect.std.Semaphore
 import cats.syntax.all._
 

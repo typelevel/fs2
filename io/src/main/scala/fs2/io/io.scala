@@ -22,8 +22,8 @@
 package fs2
 
 import cats._
-import cats.effect.{Async, Outcome, Resource, Sync}
-import cats.effect.implicits._
+import cats.effect.kernel.{Async, Outcome, Resource, Sync}
+import cats.effect.kernel.implicits._
 import cats.effect.kernel.Deferred
 import cats.syntax.all._
 

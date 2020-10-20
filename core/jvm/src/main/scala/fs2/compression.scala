@@ -26,7 +26,7 @@ import java.nio.charset.StandardCharsets
 import java.time.Instant
 import java.util.zip._
 
-import cats.effect.Sync
+import cats.effect.kernel.Sync
 
 /** Provides utilities for compressing/decompressing byte streams. */
 object compression {

@@ -27,7 +27,7 @@ import java.nio.ByteBuffer
 import java.nio.channels.{FileChannel, FileLock}
 import java.nio.file.{OpenOption, Path}
 
-import cats.effect.{Resource, Sync}
+import cats.effect.kernel.{Resource, Sync}
 
 /** Provides the ability to read/write/lock/inspect a file in the effect `F`.
   */

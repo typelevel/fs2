@@ -23,9 +23,8 @@ package fs2
 
 import cats.ApplicativeError
 import cats.syntax.all._
-import cats.effect.{Concurrent, Resource}
-import cats.effect.kernel.Ref
-import cats.effect.implicits._
+import cats.effect.kernel.{Concurrent, Ref, Resource}
+import cats.effect.kernel.implicits._
 
 /** Supports treating a linear sequence of resources as a single resource.
   *

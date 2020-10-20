@@ -30,7 +30,7 @@ import javax.net.ssl.SSLSession
 
 import cats.Applicative
 import cats.effect.std.Semaphore
-import cats.effect._
+import cats.effect.kernel._
 import cats.syntax.all._
 
 import fs2.io.tcp.Socket

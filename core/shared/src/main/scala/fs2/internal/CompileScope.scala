@@ -25,8 +25,7 @@ import scala.annotation.tailrec
 
 import cats.{Id, Traverse, TraverseFilter}
 import cats.data.Chain
-import cats.effect.{Outcome, Resource}
-import cats.effect.kernel.Ref
+import cats.effect.kernel.{Outcome, Ref, Resource}
 import cats.syntax.all._
 
 import fs2.{Compiler, CompositeFailure, Scope}

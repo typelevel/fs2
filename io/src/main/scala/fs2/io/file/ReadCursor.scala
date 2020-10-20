@@ -28,7 +28,7 @@ import scala.concurrent.duration.FiniteDuration
 import cats.{Functor, ~>}
 import cats.arrow.FunctionK
 import cats.syntax.all._
-import cats.effect.{Resource, Sync, Temporal}
+import cats.effect.kernel.{Resource, Sync, Temporal}
 
 import java.nio.file._
 

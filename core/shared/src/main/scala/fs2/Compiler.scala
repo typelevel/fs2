@@ -22,8 +22,8 @@
 package fs2
 
 import cats.{Id, Monad}
-import cats.effect._
-import cats.effect.kernel.Ref
+import cats.effect.SyncIO
+import cats.effect.kernel.{Concurrent, Poll, Ref, Resource, Sync}
 import cats.syntax.all._
 
 import fs2.internal._

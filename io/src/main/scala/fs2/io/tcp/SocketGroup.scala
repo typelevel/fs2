@@ -39,8 +39,7 @@ import java.util.concurrent.{ThreadFactory, TimeUnit}
 
 import cats.Applicative
 import cats.syntax.all._
-import cats.effect.{Resource, Sync}
-import cats.effect.kernel.Ref
+import cats.effect.kernel.{Ref, Resource, Sync}
 import cats.effect.std.Semaphore
 
 import fs2.internal.ThreadFactories

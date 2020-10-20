@@ -26,7 +26,7 @@ import scala.concurrent.duration.FiniteDuration
 import scala.util.control.NonFatal
 
 import cats.{Eval => _, _}
-import cats.effect._
+import cats.effect.kernel._
 import cats.syntax.all._
 
 import fs2.internal._

@@ -40,7 +40,7 @@ import java.nio.channels.{
 import java.util.ArrayDeque
 import java.util.concurrent.{ConcurrentLinkedQueue, CountDownLatch}
 
-import cats.effect.{Resource, Sync}
+import cats.effect.kernel.{Resource, Sync}
 
 import CollectionCompat._
 

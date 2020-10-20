@@ -24,7 +24,7 @@ package concurrent
 
 import cats.{Applicative, Functor, Invariant}
 import cats.data.OptionT
-import cats.effect.Concurrent
+import cats.effect.kernel.Concurrent
 import cats.effect.kernel.{Deferred, Ref}
 import cats.syntax.all._
 import fs2.internal.Token
