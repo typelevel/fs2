@@ -615,52 +615,38 @@ object Pull extends PullLowPriority {
 
             case uU: Step[f, y] =>
               val u: Step[G, y] = uU.asInstanceOf[Step[G, y]]
+              val stepScopeF: F[CompileScope[F]] = u.scope match {
+                case None          => F.pure(scope)
+                case Some(scopeId) => scope.shiftScope(scopeId, u.toString)
+              }
               // if scope was specified in step, try to find it, otherwise use the current scope.
-              F.flatMap(u.scope.fold[F[Option[CompileScope[F]]]](F.pure(Some(scope))) { scopeId =>
-                scope.findStepScope(scopeId)
-              }) {
-                case Some(stepScope) =>
-                  val stepStream = u.stream.asInstanceOf[Pull[G, y, Unit]]
-                  val runInner = go[G, y](stepScope, extendedTopLevelScope, translation, stepStream)
-                  F.flatMap(F.attempt(runInner)) {
-                    case Right(Done(scope)) =>
-                      interruptGuard(scope) {
-                        val result = Result.Succeeded(None)
-                        go(scope, extendedTopLevelScope, translation, view.next(result))
-                      }
-                    case Right(out: Out[g, y]) =>
-                      // if we originally swapped scopes we want to return the original
-                      // scope back to the go as that is the scope that is expected to be here.
-                      val nextScope = if (u.scope.isEmpty) out.scope else scope
-                      val uncons = (out.head, out.scope.id, out.tail.asInstanceOf[Pull[f, y, Unit]])
-                      //Option[(Chunk[y], Token, Pull[f, y, Unit])])
-                      val result = Result.Succeeded(Some(uncons))
-                      interruptGuard(nextScope) {
-                        val next = view.next(result).asInstanceOf[Pull[g, X, Unit]]
-                        go(nextScope, extendedTopLevelScope, translation, next)
-                      }
+              F.flatMap(stepScopeF) { stepScope =>
+                val runInner = go[G, y](stepScope, extendedTopLevelScope, translation, u.stream)
+                F.flatMap(F.attempt(runInner)) {
+                  case Right(Done(scope)) =>
+                    interruptGuard(scope) {
+                      val result = Result.Succeeded(None)
+                      go(scope, extendedTopLevelScope, translation, view.next(result))
+                    }
+                  case Right(out: Out[g, y]) =>
+                    // if we originally swapped scopes we want to return the original
+                    // scope back to the go as that is the scope that is expected to be here.
+                    val nextScope = if (u.scope.isEmpty) out.scope else scope
+                    val uncons = (out.head, out.scope.id, out.tail.asInstanceOf[Pull[f, y, Unit]])
+                    //Option[(Chunk[y], Token, Pull[f, y, Unit])])
+                    val result = Result.Succeeded(Some(uncons))
+                    interruptGuard(nextScope) {
+                      val next = view.next(result).asInstanceOf[Pull[g, X, Unit]]
+                      go(nextScope, extendedTopLevelScope, translation, next)
+                    }
 
-                    case Right(Interrupted(scopeId, err)) =>
-                      val cont = view.next(Result.Interrupted(scopeId, err))
-                      go(scope, extendedTopLevelScope, translation, cont)
+                  case Right(Interrupted(scopeId, err)) =>
+                    val cont = view.next(Result.Interrupted(scopeId, err))
+                    go(scope, extendedTopLevelScope, translation, cont)
 
-                    case Left(err) =>
-                      go(scope, extendedTopLevelScope, translation, view.next(Result.Fail(err)))
-                  }
-
-                case None =>
-                  F.raiseError(
-                    new RuntimeException(
-                      s"""|Scope lookup failure!
-                          |
-                          |This is typically caused by uncons-ing from two or more streams in the same Pull.
-                          |To do this safely, use `s.pull.stepLeg` instead of `s.pull.uncons` or a variant
-                          |thereof. See the implementation of `Stream#zipWith_` for an example.
-                          |
-                          |Scope id: ${scope.id}
-                          |Step: ${u}""".stripMargin
-                    )
-                  )
+                  case Left(err) =>
+                    go(scope, extendedTopLevelScope, translation, view.next(Result.Fail(err)))
+                }
               }
 
             case eval: Eval[G, r] =>
