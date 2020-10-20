@@ -22,7 +22,6 @@
 package fs2
 
 import cats.effect.IO
-import cats.effect.kernel.Ref
 import cats.syntax.all._
 
 import scala.concurrent.duration._
@@ -31,19 +30,6 @@ import java.util.concurrent.TimeoutException
 import org.scalacheck.effect.PropF.forAllF
 
 class TimedPullSuite extends Fs2Suite {
-//TODO test case for stale timeout
-  // source stream: wait 100millis then emit chunk than `never`
-  // timed pull body:, start time 100 millis (to race with source) then, recursively
-  // if left, record that
-  // if right/ record that and start a very long timeout (to reset it but not get it)
-  // interrupt resulting stream after some time, but not as long as the second timeout
-  //  good outcomes:
-  //   recorded chunk only
-  //   recorded timeout and then chunk
-  //  bug to repro if check is eliminated
-  //   recorded chunk and then timeout: since the new timeout is far in the future,
-  //   it means we received a stale timeout, which breaks the invariant that an old
-  //   timeout can never be received after startTimer is called
 
   import Stream.TimedPull
 
@@ -108,7 +94,7 @@ class TimedPullSuite extends Fs2Suite {
     val timeout = 350.millis
 
       s
-      .metered(100.millis)
+      .metered(t)
       .pull
       .timed { tp =>
         def go(tp: TimedPull[IO, Int]): Pull[IO, Int, Unit] =
@@ -178,8 +164,50 @@ class TimedPullSuite extends Fs2Suite {
       .drain
       .ticked
   }
-  // -- based on a stream emitting multiple elements, with metered
 
-  // try pull multiple elements with no timeout reset, with timeout
-  // resetting timeouts before they trigger
+  test("never emits stale timeouts")  {
+    val t = 200.millis
+
+    val prog =
+      (Stream.sleep[IO](t) ++ Stream.never[IO])
+        .pull.timed { tp =>
+        def go(tp: TimedPull[IO, Unit]): Pull[IO, String, Unit] =
+          tp.uncons.flatMap {
+            case None => Pull.done
+            case Some((Right(_), n)) =>
+              Pull.output1("elem") >>
+              tp.startTimer(4.days) >> // reset old timeout, without ever getting the new one
+              go(n)
+            case Some((Left(_), n)) =>
+              Pull.output1("timeout") >> go(n)
+          }
+
+        tp.startTimer(t) >> // race between timeout and stream waiting
+        go(tp)
+      }.stream
+        .interruptAfter(3.seconds)
+        .compile
+        .toList
+
+    def check(results: List[String]): IO[Unit] = {
+      val validInterleavings = Set(List("timeout", "elem"), List("elem"))
+      // since the new timeout is far in the future it means we received a stale timeout,
+      // which breaks the invariant that an old timeout can never be unconsed
+      // after startTimer has reset it
+      val buggyInterleavings = Set(List("elem", "timeout"))
+
+      if (validInterleavings.contains(results))
+        IO.unit
+      else if (buggyInterleavings.contains(results))
+        IO.raiseError(new Exception("A stale timeout was received"))
+      else
+        IO.raiseError(new Exception("Unexpected error"))
+    }
+
+    prog
+      .flatMap(check)
+      .replicateA(10) // number of iterations to stress the race
+      .ticked
+  }
+
 }
