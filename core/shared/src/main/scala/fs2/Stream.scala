@@ -4250,7 +4250,44 @@ object Stream extends StreamLowPriority {
       }
 
     // TODO scaladoc
-    def timed[O2, R](pull: Stream.TimedPull[F, O] => Pull[F, O2, R])(implicit F: Temporal[F]): Pull[F, O2, R] = TimedPull(self)(pull)
+    def timed[O2, R](pull: Stream.TimedPull[F, O] => Pull[F, O2, R])(implicit F: Temporal[F]): Pull[F, O2, R] =
+      Pull
+        .eval { Token[F].mproduct(id => SignallingRef.of(id -> 0.millis)) }
+        .flatMap { case (initial, time) =>
+
+          def timeouts: Stream[F, Token] =
+            time
+              .discrete
+              .dropWhile { case (id, _) => id == initial }
+              .switchMap { case (id, duration) =>
+                Stream.sleep(duration).as(id)
+              }
+
+          def output: Stream[F, Either[Token, Chunk[O]]] =
+            timeouts.map(_.asLeft)
+              .mergeHaltR(self.chunks.map(_.asRight))
+              .flatMap {
+                case chunk @ Right(_) => Stream.emit(chunk)
+                case timeout @ Left(id) =>
+                  Stream
+                    .eval(time.get)
+                    .collect { case (currentTimeout, _) if currentTimeout == id => timeout }
+              }
+
+          def toTimedPull(s: Stream[F, Either[Token, Chunk[O]]]): TimedPull[F, O] = new TimedPull[F, O] {
+            type Timeout = Token
+
+            def uncons: Pull[F, INothing, Option[(Either[Token, Chunk[O]], TimedPull[F, O])]] =
+              s.pull.uncons1
+                .map( _.map { case (r, next) => r -> toTimedPull(next) })
+
+            def startTimer(t: FiniteDuration): Pull[F, INothing, Unit] = Pull.eval {
+              Token[F].tupleRight(t).flatMap(time.set)
+            }
+          }
+
+          pull(toTimedPull(output))
+        }
   }
 
   /** Projection of a `Stream` providing various ways to compile a `Stream[F,O]` to a `G[...]`. */
@@ -4528,51 +4565,6 @@ object Stream extends StreamLowPriority {
     def uncons: Pull[F, INothing, Option[(Either[Timeout, Chunk[A]], TimedPull[F, A])]]
     def startTimer(t: FiniteDuration): Pull[F, INothing, Unit]
   }
-  object TimedPull {
-    /**
-      * Implementation for `stream.pull.timed`. `AnyVal` classes do not allow inner
-      * classes, so the presence of the `Timeout` class forces this
-      * method to be outside of the `Stream.ToPull` class.
-      */
-    private[fs2] def apply[F[_]: Temporal, O, O2, R](source: Stream[F, O])(pull: TimedPull[F, O] => Pull[F, O2, R]): Pull[F, O2, R] =
-      Pull
-        .eval { Token[F].mproduct(id => SignallingRef.of(id -> 0.millis)) }
-        .flatMap { case (initial, time) =>
-
-          def timeouts: Stream[F, Token] =
-            time
-              .discrete
-              .dropWhile { case (id, _) => id == initial }
-              .switchMap { case (id, duration) =>
-                Stream.sleep(duration).as(id)
-              }
-
-          def output: Stream[F, Either[Token, Chunk[O]]] =
-            timeouts.map(_.asLeft)
-              .mergeHaltR(source.chunks.map(_.asRight))
-              .flatMap {
-                case chunk @ Right(_) => Stream.emit(chunk)
-                case timeout @ Left(id) =>
-                  Stream
-                    .eval(time.get)
-                    .collect { case (currentTimeout, _) if currentTimeout == id => timeout }
-              }
-
-          def toTimedPull(s: Stream[F, Either[Token, Chunk[O]]]): TimedPull[F, O] = new TimedPull[F, O] {
-            type Timeout = Token
-
-            def uncons: Pull[F, INothing, Option[(Either[Token, Chunk[O]], TimedPull[F, O])]] =
-              s.pull.uncons1
-                .map( _.map { case (r, next) => r -> toTimedPull(next) })
-
-            def startTimer(t: FiniteDuration): Pull[F, INothing, Unit] = Pull.eval {
-              Token[F].tupleRight(t).flatMap(time.set)
-            }
-          }
-
-          pull(toTimedPull(output))
-      }
-    }
 
   /**
     * When merging multiple streams, this represents step of one leg.
