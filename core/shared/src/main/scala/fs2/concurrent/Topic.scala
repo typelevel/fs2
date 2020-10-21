@@ -23,7 +23,7 @@ package fs2
 package concurrent
 
 import cats.Eq
-import cats.effect.Concurrent
+import cats.effect.kernel.Concurrent
 import cats.syntax.all._
 
 import fs2.internal.{SizedQueue, Token}

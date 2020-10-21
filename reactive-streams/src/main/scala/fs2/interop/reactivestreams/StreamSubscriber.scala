@@ -24,8 +24,7 @@ package interop
 package reactivestreams
 
 import cats._
-import cats.effect._
-import cats.effect.kernel.{Deferred, Ref}
+import cats.effect.kernel.{Async, Deferred, Ref}
 import cats.effect.std.Dispatcher
 import cats.syntax.all._
 
@@ -39,7 +38,7 @@ import org.reactivestreams._
   */
 final class StreamSubscriber[F[_], A](
     val sub: StreamSubscriber.FSM[F, A],
-    runner: Dispatcher.Runner[F]
+    dispatcher: Dispatcher[F]
 )(implicit
     F: ApplicativeError[F, Throwable]
 ) extends Subscriber[A] {
@@ -47,23 +46,23 @@ final class StreamSubscriber[F[_], A](
   /** Called by an upstream reactivestreams system */
   def onSubscribe(s: Subscription): Unit = {
     nonNull(s)
-    runner.unsafeRunSync(sub.onSubscribe(s).attempt.void)
+    dispatcher.unsafeRunSync(sub.onSubscribe(s).attempt.void)
   }
 
   /** Called by an upstream reactivestreams system */
   def onNext(a: A): Unit = {
     nonNull(a)
-    runner.unsafeRunSync(sub.onNext(a).attempt.void)
+    dispatcher.unsafeRunSync(sub.onNext(a).attempt.void)
   }
 
   /** Called by an upstream reactivestreams system */
   def onComplete(): Unit =
-    runner.unsafeRunSync(sub.onComplete.attempt.void)
+    dispatcher.unsafeRunSync(sub.onComplete.attempt.void)
 
   /** Called by an upstream reactivestreams system */
   def onError(t: Throwable): Unit = {
     nonNull(t)
-    runner.unsafeRunSync(sub.onError(t).attempt.void)
+    dispatcher.unsafeRunSync(sub.onError(t).attempt.void)
   }
 
   def stream(subscribe: F[Unit]): Stream[F, A] = sub.stream(subscribe)
@@ -72,8 +71,8 @@ final class StreamSubscriber[F[_], A](
 }
 
 object StreamSubscriber {
-  def apply[F[_]: Async, A](runner: Dispatcher.Runner[F]): F[StreamSubscriber[F, A]] =
-    fsm[F, A].map(new StreamSubscriber(_, runner))
+  def apply[F[_]: Async, A](dispatcher: Dispatcher[F]): F[StreamSubscriber[F, A]] =
+    fsm[F, A].map(new StreamSubscriber(_, dispatcher))
 
   /** A finite state machine describing the subscriber */
   private[reactivestreams] trait FSM[F[_], A] {

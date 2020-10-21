@@ -22,9 +22,8 @@
 package fs2.concurrent
 
 import cats._, implicits._
-import cats.effect.{Concurrent, Outcome}
-import cats.effect.kernel.{Deferred, Ref}
-import cats.effect.implicits._
+import cats.effect.kernel.{Concurrent, Deferred, Outcome, Ref}
+import cats.effect.kernel.implicits._
 
 import fs2._
 import fs2.internal.Token

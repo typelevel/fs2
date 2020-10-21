@@ -23,7 +23,7 @@ package fs2
 package interop
 package reactivestreams
 
-import cats.effect._
+import cats.effect.kernel._
 import cats.effect.std.Dispatcher
 import cats.syntax.all._
 
@@ -37,12 +37,12 @@ import org.reactivestreams._
   */
 final class StreamUnicastPublisher[F[_]: Async, A](
     val stream: Stream[F, A],
-    runner: Dispatcher.Runner[F]
+    dispatcher: Dispatcher[F]
 ) extends Publisher[A] {
   def subscribe(subscriber: Subscriber[_ >: A]): Unit = {
     nonNull(subscriber)
-    runner.unsafeRunAndForget {
-      StreamSubscription(subscriber, stream, runner)
+    dispatcher.unsafeRunAndForget {
+      StreamSubscription(subscriber, stream, dispatcher)
         .flatMap { subscription =>
           Sync[F].delay {
             subscriber.onSubscribe(subscription)
@@ -58,7 +58,7 @@ final class StreamUnicastPublisher[F[_]: Async, A](
 object StreamUnicastPublisher {
   def apply[F[_]: Async, A](
       s: Stream[F, A],
-      runner: Dispatcher.Runner[F]
+      dispatcher: Dispatcher[F]
   ): StreamUnicastPublisher[F, A] =
-    new StreamUnicastPublisher(s, runner)
+    new StreamUnicastPublisher(s, dispatcher)
 }

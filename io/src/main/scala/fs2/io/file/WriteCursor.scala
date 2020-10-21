@@ -25,7 +25,7 @@ package file
 
 import cats.{Monad, ~>}
 import cats.syntax.all._
-import cats.effect.{Resource, Sync}
+import cats.effect.kernel.{Resource, Sync}
 
 import java.nio.file._
 import cats.arrow.FunctionK

@@ -156,17 +156,27 @@ class SocketSuite extends Fs2Suite {
       val localBindAddress =
         Deferred[IO, InetSocketAddress].unsafeRunSync()
 
-      def doNothingServer(socketGroup: SocketGroup) =
-        socketGroup
-          .serverResource[IO](new InetSocketAddress(InetAddress.getByName(null), 0))
-          .flatMap { case (address, _) =>
-            Resource.liftF(localBindAddress.complete(address))
+      val server: SocketGroup => Stream[IO, Unit] = socketGroup =>
+        Stream
+          .resource(
+            socketGroup
+              .serverResource[IO](new InetSocketAddress(InetAddress.getByName(null), 0))
+          )
+          .flatMap { case (local, clients) =>
+            Stream.exec(localBindAddress.complete(local).void) ++
+              clients.flatMap { s =>
+                Stream.resource(s).map { socket =>
+                  socket.reads(1024).drain
+                }
+              }
           }
+          .parJoinUnbounded
 
       mkSocketGroup
         .flatMap { socketGroup =>
-          Stream.resource(doNothingServer(socketGroup)) >>
-            Stream.eval(localBindAddress.get).flatMap { address =>
+          Stream
+            .eval(localBindAddress.get)
+            .flatMap { address =>
               Stream
                 .resource(
                   socketGroup.client[IO](address)
@@ -178,6 +188,7 @@ class SocketSuite extends Fs2Suite {
                 )
                 .parJoinUnbounded
             }
+            .concurrently(server(socketGroup))
         }
         .compile
         .drain

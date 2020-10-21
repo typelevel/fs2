@@ -29,7 +29,7 @@ import java.net.{InetAddress, InetSocketAddress, NetworkInterface}
 import javax.net.ssl.SSLSession
 
 import cats.Applicative
-import cats.effect.{Async, Resource, Sync}
+import cats.effect.kernel.{Async, Resource, Sync}
 import cats.syntax.all._
 
 import fs2.io.udp.{Packet, Socket}

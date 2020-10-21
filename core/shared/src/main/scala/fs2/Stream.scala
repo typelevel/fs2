@@ -28,10 +28,10 @@ import java.io.PrintStream
 
 import cats.{Eval => _, _}
 import cats.data.Ior
-import cats.effect._
-import cats.effect.kernel.Deferred
+import cats.effect.SyncIO
+import cats.effect.kernel._
 import cats.effect.std.Semaphore
-import cats.effect.implicits._
+import cats.effect.kernel.implicits._
 import cats.implicits.{catsSyntaxEither => _, _}
 
 import fs2.compat._

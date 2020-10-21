@@ -39,8 +39,7 @@ import java.util.concurrent.{ThreadFactory, TimeUnit}
 
 import cats.Applicative
 import cats.syntax.all._
-import cats.effect.{Resource, Sync}
-import cats.effect.kernel.Ref
+import cats.effect.kernel.{Ref, Resource, Sync}
 import cats.effect.std.Semaphore
 
 import fs2.internal.ThreadFactories
@@ -263,7 +262,7 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup) {
           }
 
         def read0(max: Int, timeout: Option[FiniteDuration]): F[Option[Chunk[Byte]]] =
-          readSemaphore.withPermit {
+          readSemaphore.permit.use { _ =>
             getBufferOf(max).flatMap { buff =>
               readChunk(buff, timeout.map(_.toMillis).getOrElse(0L)).flatMap { case (read, _) =>
                 if (read < 0) F.async.pure(None)
@@ -273,7 +272,7 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup) {
           }
 
         def readN0(max: Int, timeout: Option[FiniteDuration]): F[Option[Chunk[Byte]]] =
-          readSemaphore.withPermit {
+          readSemaphore.permit.use { _ =>
             getBufferOf(max).flatMap { buff =>
               def go(timeoutMs: Long): F[Option[Chunk[Byte]]] =
                 readChunk(buff, timeoutMs).flatMap { case (readBytes, took) =>
@@ -314,7 +313,7 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup) {
                 case None       => F.async.unit
                 case Some(took) => go(buff, (remains - took).max(0))
               }
-          writeSemaphore.withPermit {
+          writeSemaphore.permit.use { _ =>
             go(bytes.toByteBuffer, timeout.map(_.toMillis).getOrElse(0L))
           }
         }

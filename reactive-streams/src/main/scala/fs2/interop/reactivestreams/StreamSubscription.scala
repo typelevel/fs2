@@ -23,7 +23,7 @@ package fs2
 package interop
 package reactivestreams
 
-import cats.effect._
+import cats.effect.kernel._
 import cats.effect.std.Dispatcher
 import cats.syntax.all._
 
@@ -41,7 +41,7 @@ private[reactivestreams] final class StreamSubscription[F[_], A](
     cancelled: SignallingRef[F, Boolean],
     sub: Subscriber[A],
     stream: Stream[F, A],
-    runner: Dispatcher.Runner[F]
+    dispatcher: Dispatcher[F]
 )(implicit F: Async[F])
     extends Subscription {
   import StreamSubscription._
@@ -76,7 +76,7 @@ private[reactivestreams] final class StreamSubscription[F[_], A](
         .compile
         .drain
 
-    runner.unsafeRunAndForget(s)
+    dispatcher.unsafeRunAndForget(s)
   }
 
   // According to the spec, it's acceptable for a concurrent cancel to not
@@ -87,7 +87,7 @@ private[reactivestreams] final class StreamSubscription[F[_], A](
   // See https://github.com/zainab-ali/fs2-reactive-streams/issues/29
   // and https://github.com/zainab-ali/fs2-reactive-streams/issues/46
   def cancel(): Unit =
-    runner.unsafeRunSync(cancelled.set(true))
+    dispatcher.unsafeRunSync(cancelled.set(true))
 
   def request(n: Long): Unit = {
     val request: F[Request] =
@@ -98,7 +98,7 @@ private[reactivestreams] final class StreamSubscription[F[_], A](
     val prog = cancelled.get
       .ifM(ifTrue = F.unit, ifFalse = request.flatMap(requests.enqueue1).handleErrorWith(onError))
 
-    runner.unsafeRunAndForget(prog)
+    dispatcher.unsafeRunAndForget(prog)
   }
 }
 
@@ -112,11 +112,11 @@ private[reactivestreams] object StreamSubscription {
   def apply[F[_]: Async, A](
       sub: Subscriber[A],
       stream: Stream[F, A],
-      runner: Dispatcher.Runner[F]
+      dispatcher: Dispatcher[F]
   ): F[StreamSubscription[F, A]] =
     SignallingRef(false).flatMap { cancelled =>
       Queue.unbounded[F, Request].map { requests =>
-        new StreamSubscription(requests, cancelled, sub, stream, runner)
+        new StreamSubscription(requests, cancelled, sub, stream, dispatcher)
       }
     }
 }

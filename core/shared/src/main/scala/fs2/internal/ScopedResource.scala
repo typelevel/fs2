@@ -21,7 +21,7 @@
 
 package fs2.internal
 
-import cats.effect.Resource
+import cats.effect.kernel.Resource
 import cats.implicits._
 
 import fs2.{Compiler, Scope}
