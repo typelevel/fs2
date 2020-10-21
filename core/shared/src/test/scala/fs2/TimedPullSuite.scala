@@ -25,13 +25,14 @@ import cats.effect.IO
 import cats.syntax.all._
 
 import scala.concurrent.duration._
-import java.util.concurrent.TimeoutException
 
 import org.scalacheck.effect.PropF.forAllF
 
 class TimedPullSuite extends Fs2Suite {
 
   import Stream.TimedPull
+
+  def fail(s: String) = Pull.raiseError[IO](new Exception(s))
 
   test("behaves as a normal Pull when no timeouts are used") {
     forAllF { (s: Stream[Pure, Int]) =>
@@ -40,7 +41,7 @@ class TimedPullSuite extends Fs2Suite {
           tp.uncons.flatMap {
             case None => Pull.done
             case Some((Right(c), next)) => Pull.output(c) >> loop(next)
-            case Some((Left(_), _)) => Pull.raiseError[IO](new Exception("unexpected timeout"))
+            case Some((Left(_), _)) => fail("unexpected timeout")
           }
 
         loop(tp)
@@ -64,7 +65,7 @@ class TimedPullSuite extends Fs2Suite {
         tp.uncons.flatMap {
           case None => Pull.done
           case Some((Right(c), next)) => Pull.output(c) >> tp.timeout(timeout)  >> loop(next)
-          case Some((Left(_), _)) => Pull.raiseError[IO](new TimeoutException)
+          case Some((Left(_), _)) => fail("unexpected timeout")
         }
 
       tp.timeout(timeout) >> loop(tp)
@@ -82,7 +83,7 @@ class TimedPullSuite extends Fs2Suite {
         tp.timeout(100.millis) >>
         tp.uncons.flatMap {
           case Some((Left(_), _)) => Pull.done
-          case _ => Pull.raiseError[IO](new Exception("timeout expected"))
+          case _ => fail("timeout expected")
         }
       }.stream.compile.drain.ticked
   }
@@ -101,7 +102,7 @@ class TimedPullSuite extends Fs2Suite {
           tp.uncons.flatMap {
             case Some((Right(c), n)) => Pull.output(c) >> go(n)
             case Some((Left(_), _)) => Pull.done
-            case None => Pull.raiseError[IO](new Exception("Unexpected end of input"))
+            case None => fail("Unexpected end of input")
           }
 
         tp.timeout(timeout) >> go(tp)
@@ -143,8 +144,6 @@ class TimedPullSuite extends Fs2Suite {
       // use `never` to test logic without worrying about termination
       Stream.never[IO]
 
-    def fail(s: String) = Pull.raiseError[IO](new Exception(s))
-
     s.pull.timed { one =>
       one.timeout(900.millis) >> one.uncons.flatMap {
         case Some((Right(_), two)) =>
@@ -170,8 +169,6 @@ class TimedPullSuite extends Fs2Suite {
       Stream.emit(()) ++
       Stream.sleep[IO](1.second) ++
       Stream.never[IO]
-
-    def fail(s: String) = Pull.raiseError[IO](new Exception(s))
 
     s.pull.timed { one =>
       one.timeout(2.seconds) >> one.uncons.flatMap {
