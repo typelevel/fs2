@@ -25,8 +25,8 @@ package io
 import java.io.{IOException, InputStream}
 
 import cats.syntax.all._
-import cats.effect.{Async, Outcome, Resource}
-import cats.effect.implicits._
+import cats.effect.kernel.{Async, Outcome, Resource}
+import cats.effect.kernel.implicits._
 import cats.effect.std.Dispatcher
 
 import fs2.Chunk.Bytes

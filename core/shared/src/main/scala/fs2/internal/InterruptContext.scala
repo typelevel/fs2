@@ -22,9 +22,8 @@
 package fs2.internal
 
 import cats.{Applicative, Id}
-import cats.effect.{Concurrent, Outcome}
-import cats.effect.kernel.{Deferred, Ref}
-import cats.effect.implicits._
+import cats.effect.kernel.{Concurrent, Deferred, Outcome, Ref}
+import cats.effect.kernel.implicits._
 import cats.syntax.all._
 import InterruptContext.InterruptionOutcome
 

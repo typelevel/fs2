@@ -24,8 +24,7 @@ package interop
 package reactivestreams
 
 import cats._
-import cats.effect._
-import cats.effect.kernel.{Deferred, Ref}
+import cats.effect.kernel.{Async, Deferred, Ref}
 import cats.effect.std.Dispatcher
 import cats.syntax.all._
 

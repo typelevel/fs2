@@ -23,7 +23,7 @@ package fs2
 package interop
 package reactivestreams
 
-import cats.effect._
+import cats.effect.kernel._
 import cats.effect.std.Dispatcher
 import cats.syntax.all._
 

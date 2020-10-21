@@ -22,7 +22,7 @@
 package fs2
 package io
 
-import cats.effect.Async
+import cats.effect.kernel.Async
 
 /** Provides the ability to work with TCP, UDP, and TLS.
   *

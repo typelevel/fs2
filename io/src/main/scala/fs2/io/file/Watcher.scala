@@ -24,7 +24,7 @@ package io
 
 import scala.concurrent.duration._
 
-import cats.effect._
+import cats.effect.kernel._
 import cats.syntax.all._
 import java.nio.file._
 import java.nio.file.attribute.BasicFileAttributes
