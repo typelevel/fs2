@@ -4252,7 +4252,7 @@ object Stream extends StreamLowPriority {
     /**
       * Allows expressing `Pull` computations whose `uncons` can receive
       * a user-controlled, resettable `timeout`.
-      * See [[Stream$.TimedPull]] for more info on timed `uncons` and `timeout`.
+      * See [[TimedPull]] for more info on timed `uncons` and `timeout`.
       *
       * As a quick example, let's write a timed pull which emits the
       * string "late!" whenever a chunk of the stream is not emitted
@@ -4593,10 +4593,36 @@ object Stream extends StreamLowPriority {
     def toVector: G[Vector[O]] = to(Vector)
   }
 
-  // TODO scaladoc
-  trait TimedPull[F[_], A] {
+/**
+  * An abstraction for writing `Pull` computations that can timeout
+  * while reading from a `Stream`.
+  *
+  * A `TimedPull` is not created or intepreted directly, but by calling [[timed]].
+  * {{{
+  * yourStream.pull.timed(tp => ...).stream
+  * }}}
+  *
+  * The argument to `timed` is a `TimedPull[F, O] => Pull[F, O2, R]`
+  * function which describes the pulling logic, and is often recursive, with shape:
+  *
+  * {{{
+  * def go(tp: TimedPull[F, A]): Pull[F, B, Unit] =
+  *   tp.uncons.flatMap {
+  *     case Some((Right(chunk), next)) => doSomething >> go(next)
+  *     case Some((Left(_), next)) => doSomethingElse >> go(next)
+  *     case None => Pull.done
+  *   }
+  * }}}
+  *
+  * Where `doSomething` and `doSomethingElse` are `Pull` computations
+  * such as `Pull.output`, in addition to `TimedPull.timeout`.
+  *
+  * See below for detailed descriptions of `timeout` and `uncons`, and
+  * look at the [[ToPull.timed]] scaladoc for an example of usage.
+  */
+  trait TimedPull[F[_], O] {
     type Timeout
-    def uncons: Pull[F, INothing, Option[(Either[Timeout, Chunk[A]], TimedPull[F, A])]]
+    def uncons: Pull[F, INothing, Option[(Either[Timeout, Chunk[O]], TimedPull[F, O])]]
     def timeout(t: FiniteDuration): Pull[F, INothing, Unit]
   }
 
