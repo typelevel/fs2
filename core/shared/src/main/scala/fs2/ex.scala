@@ -24,7 +24,7 @@ package fs2
 
 object ex {
 
-import cats.effect._
+import cats.effect.IO
 import cats.effect.unsafe.implicits.global
 import scala.concurrent.duration._
 

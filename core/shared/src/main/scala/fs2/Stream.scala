@@ -4249,7 +4249,36 @@ object Stream extends StreamLowPriority {
           }
       }
 
-    // TODO scaladoc
+    /**
+      * Allows expressing `Pull` computations whose `uncons` can receive
+      * a user-controlled, resettable `timeout`.
+      * See [[Stream$.TimedPull]] for more info on timed `uncons` and `timeout`.
+      *
+      * As a quick example, let's write a timed pull which emits the
+      * string "late!" whenever a chunk of the stream is not emitted
+      * within 150 milliseconds:
+      *
+      * @example {{{
+      * scala> import cats.effect.IO
+      * scala> import cats.effect.unsafe.implicits.global
+      * scala> import scala.concurrent.duration._
+      * scala> val s = (Stream("elem") ++ Stream.sleep_[IO](200.millis)).repeat.take(3)
+      * scala> s.pull
+      *      |  .timed { timedPull =>
+      *      |     def go(timedPull: Stream.TimedPull[IO, String]): Pull[IO, String, Unit] =
+      *      |       timedPull.timeout(150.millis) >> // starts new timeout and stops the previous one
+      *      |       timedPull.uncons.flatMap {
+      *      |         case Some((Right(elems), next)) => Pull.output(elems) >> go(next)
+      *      |         case Some((Left(_), next)) => Pull.output1("late!") >> go(next)
+      *      |         case None => Pull.done
+      *      |       }
+      *      |     go(timedPull)
+      *      |  }.stream.compile.toVector.unsafeRunSync()
+      * res0: Vector[String] = Vector(elem, late!, elem, late!, elem)
+      * }}}
+      *
+      * For a more complex example, look at the implementation of [[Stream.groupWithin]].
+      */
     def timed[O2, R](pull: Stream.TimedPull[F, O] => Pull[F, O2, R])(implicit F: Temporal[F]): Pull[F, O2, R] =
       Pull
         .eval { Token[F].mproduct(id => SignallingRef.of(id -> 0.millis)) }
@@ -4282,7 +4311,7 @@ object Stream extends StreamLowPriority {
           def toTimedPull(s: Stream[F, Either[Token, Chunk[O]]]): TimedPull[F, O] = new TimedPull[F, O] {
             type Timeout = Token
 
-            def uncons: Pull[F, INothing, Option[(Either[Token, Chunk[O]], TimedPull[F, O])]] =
+            def uncons: Pull[F, INothing, Option[(Either[Timeout, Chunk[O]], TimedPull[F, O])]] =
               s.pull.uncons1
                 .map( _.map { case (r, next) => r -> toTimedPull(next) })
 
