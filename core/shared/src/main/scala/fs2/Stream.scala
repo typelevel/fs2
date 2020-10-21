@@ -4260,7 +4260,12 @@ object Stream extends StreamLowPriority {
               .discrete
               .dropWhile { case (id, _) => id == initial }
               .switchMap { case (id, duration) =>
-                Stream.sleep(duration).as(id)
+                // We cannot move this check into a `filter`:
+                // we want `switchMap` to execute and cancel the previous timeout
+                if (duration != 0.nanos)
+                  Stream.sleep(duration).as(id)
+                else
+                  Stream.empty
               }
 
           def output: Stream[F, Either[Token, Chunk[O]]] =

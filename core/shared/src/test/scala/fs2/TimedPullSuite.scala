@@ -186,6 +186,30 @@ class TimedPullSuite extends Fs2Suite {
       .ticked
   }
 
+  test("timeout can be reset without starting a new one") {
+    val s  = Stream.sleep[IO](2.seconds) ++ Stream.sleep[IO](2.seconds)
+    val t = 3.seconds
+
+    s.pull.timed { one =>
+      one.timeout(t) >> one.uncons.flatMap {
+        case Some((Right(_), two)) =>
+         two.timeout(0.millis) >>
+          two.uncons.flatMap {
+            case Some((Right(_), three)) =>
+              three.uncons.flatMap {
+                case None => Pull.done
+                case v => fail(s"Expected end of stream, received $v")
+             }
+            case _  => fail("Expected element second, received timeout")
+          }
+        case _ => fail("Expected element first, received timeout")
+      }
+    }.stream
+     .compile
+      .drain
+      .ticked
+  }
+
   test("never emits stale timeouts")  {
     val t = 200.millis
 
@@ -197,7 +221,7 @@ class TimedPullSuite extends Fs2Suite {
             case None => Pull.done
             case Some((Right(_), n)) =>
               Pull.output1("elem") >>
-              tp.timeout(4.days) >> // reset old timeout, without ever getting the new one
+              tp.timeout(0.millis) >> // cancel old timeout without starting a new one
               go(n)
             case Some((Left(_), n)) =>
               Pull.output1("timeout") >> go(n)
@@ -212,9 +236,9 @@ class TimedPullSuite extends Fs2Suite {
 
     def check(results: List[String]): IO[Unit] = {
       val validInterleavings = Set(List("timeout", "elem"), List("elem"))
-      // since the new timeout is far in the future it means we received a stale timeout,
-      // which breaks the invariant that an old timeout can never be unconsed
-      // after timeout has reset it
+      // we canceled the timeout after receiving an element, so this
+      // interleaving breaks the invariant that an old timeout can never
+      // be unconsed after timeout has reset it
       val buggyInterleavings = Set(List("elem", "timeout"))
 
       if (validInterleavings.contains(results))
