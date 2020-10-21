@@ -1495,7 +1495,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
             Pull.output1(acc.toChunk).whenA(acc.nonEmpty)
           case Some((e, next)) =>
             def resetTimerAndGo(q: Chunk.Queue[O]) =
-              timedPull.startTimer(d) >> go(q, next)
+              timedPull.timeout(d) >> go(q, next)
 
             e match {
               case Left(_) =>
@@ -1520,7 +1520,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
             }
         }
 
-      timedPull.startTimer(d) >> go(Chunk.Queue.empty, timedPull)
+      timedPull.timeout(d) >> go(Chunk.Queue.empty, timedPull)
     }.stream
 
   /**
@@ -4281,7 +4281,7 @@ object Stream extends StreamLowPriority {
               s.pull.uncons1
                 .map( _.map { case (r, next) => r -> toTimedPull(next) })
 
-            def startTimer(t: FiniteDuration): Pull[F, INothing, Unit] = Pull.eval {
+            def timeout(t: FiniteDuration): Pull[F, INothing, Unit] = Pull.eval {
               Token[F].tupleRight(t).flatMap(time.set)
             }
           }
@@ -4563,7 +4563,7 @@ object Stream extends StreamLowPriority {
   trait TimedPull[F[_], A] {
     type Timeout
     def uncons: Pull[F, INothing, Option[(Either[Timeout, Chunk[A]], TimedPull[F, A])]]
-    def startTimer(t: FiniteDuration): Pull[F, INothing, Unit]
+    def timeout(t: FiniteDuration): Pull[F, INothing, Unit]
   }
 
   /**

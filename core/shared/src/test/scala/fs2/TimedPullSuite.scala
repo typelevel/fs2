@@ -63,11 +63,11 @@ class TimedPullSuite extends Fs2Suite {
       def loop(tp: TimedPull[IO, Int]): Pull[IO, Int, Unit] =
         tp.uncons.flatMap {
           case None => Pull.done
-          case Some((Right(c), next)) => Pull.output(c) >> tp.startTimer(timeout)  >> loop(next)
+          case Some((Right(c), next)) => Pull.output(c) >> tp.timeout(timeout)  >> loop(next)
           case Some((Left(_), _)) => Pull.raiseError[IO](new TimeoutException)
         }
 
-      tp.startTimer(timeout) >> loop(tp)
+      tp.timeout(timeout) >> loop(tp)
     }.stream
       .compile
       .toList
@@ -79,7 +79,7 @@ class TimedPullSuite extends Fs2Suite {
     Stream.sleep[IO](300.millis)
       .pull
       .timed { tp =>
-        tp.startTimer(100.millis) >>
+        tp.timeout(100.millis) >>
         tp.uncons.flatMap {
           case Some((Left(_), _)) => Pull.done
           case _ => Pull.raiseError[IO](new Exception("timeout expected"))
@@ -104,7 +104,7 @@ class TimedPullSuite extends Fs2Suite {
             case None => Pull.raiseError[IO](new Exception("Unexpected end of input"))
           }
 
-        tp.startTimer(timeout) >> go(tp)
+        tp.timeout(timeout) >> go(tp)
       }.stream
       .compile
       .toList
@@ -123,11 +123,11 @@ class TimedPullSuite extends Fs2Suite {
       def go(tp: TimedPull[IO, Int]): Pull[IO, String, Unit] =
         tp.uncons.flatMap {
           case None => Pull.done
-          case Some((Right(_), next)) => Pull.output1("elem") >> tp.startTimer(timeout) >> go(next)
+          case Some((Right(_), next)) => Pull.output1("elem") >> tp.timeout(timeout) >> go(next)
           case Some((Left(_), next)) => Pull.output1("timeout") >> go(next)
         }
 
-      tp.startTimer(timeout) >> go(tp)
+      tp.timeout(timeout) >> go(tp)
     }.stream
       .compile
       .toList
@@ -146,9 +146,9 @@ class TimedPullSuite extends Fs2Suite {
     def fail(s: String) = Pull.raiseError[IO](new Exception(s))
 
     s.pull.timed { one =>
-      one.startTimer(900.millis) >> one.uncons.flatMap {
+      one.timeout(900.millis) >> one.uncons.flatMap {
         case Some((Right(_), two)) =>
-         two.startTimer(1100.millis) >> two.uncons.flatMap {
+         two.timeout(1100.millis) >> two.uncons.flatMap {
             case Some((Right(_), three)) =>
               three.uncons.flatMap {
                 case Some((Left(_), _)) => Pull.done
@@ -174,9 +174,9 @@ class TimedPullSuite extends Fs2Suite {
     def fail(s: String) = Pull.raiseError[IO](new Exception(s))
 
     s.pull.timed { one =>
-      one.startTimer(2.seconds) >> one.uncons.flatMap {
+      one.timeout(2.seconds) >> one.uncons.flatMap {
         case Some((Right(_), two)) =>
-         two.startTimer(900.millis) >> two.uncons.flatMap {
+         two.timeout(900.millis) >> two.uncons.flatMap {
            case Some((Left(_), _)) => Pull.done
            case _ => fail(s"Expected timeout second, received element")
          }
@@ -200,13 +200,13 @@ class TimedPullSuite extends Fs2Suite {
             case None => Pull.done
             case Some((Right(_), n)) =>
               Pull.output1("elem") >>
-              tp.startTimer(4.days) >> // reset old timeout, without ever getting the new one
+              tp.timeout(4.days) >> // reset old timeout, without ever getting the new one
               go(n)
             case Some((Left(_), n)) =>
               Pull.output1("timeout") >> go(n)
           }
 
-        tp.startTimer(t) >> // race between timeout and stream waiting
+        tp.timeout(t) >> // race between timeout and stream waiting
         go(tp)
       }.stream
         .interruptAfter(3.seconds)
@@ -217,7 +217,7 @@ class TimedPullSuite extends Fs2Suite {
       val validInterleavings = Set(List("timeout", "elem"), List("elem"))
       // since the new timeout is far in the future it means we received a stale timeout,
       // which breaks the invariant that an old timeout can never be unconsed
-      // after startTimer has reset it
+      // after timeout has reset it
       val buggyInterleavings = Set(List("elem", "timeout"))
 
       if (validInterleavings.contains(results))
