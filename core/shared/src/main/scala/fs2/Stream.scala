@@ -1445,6 +1445,36 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
       d: FiniteDuration
   )(implicit timer: Timer[F2], F: Concurrent[F2]): Stream[F2, Chunk[O]] =
     Stream
+      .eval(Ref.of[F2, Int](0))
+      .flatMap { sizeRef =>
+        groupBy(
+          chunk =>
+            sizeRef.modify { size =>
+              val toTake = n - size
+              if (toTake > chunk.size) (size + chunk.size, (chunk, None))
+              else {
+                val (unit, rest) = chunk.splitAt(toTake)
+                (0, (unit, Some(rest)))
+              }
+            },
+          d
+        )
+      }
+
+  /**
+    * Divide this streams into groups of elements received within a time window,
+    * or limited by `f` that splits chunk into two new chunks.
+    * The first goes to the current group, the second, if exists, opens the new group
+    * Empty groups, which can occur if no elements can be pulled from upstream
+    * in a given time window, will not be emitted.
+    *
+    * Note: a time window starts each time downstream pulls.
+    */
+  def groupBy[F2[x] >: F[x], O2 >: O](
+      f: Chunk[O] => F2[(Chunk[O2], Option[Chunk[O2]])],
+      d: FiniteDuration
+  )(implicit timer: Timer[F2], F: Concurrent[F2]): Stream[F2, Chunk[O2]] =
+    Stream
       .eval {
         Queue
           .synchronousNoneTerminated[F2, Either[Token, Chunk[O]]]
@@ -1484,21 +1514,14 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
               }
           }
 
-        def producer =
+        def producer: Stream[F2, Unit] =
           this.chunks.map(_.asRight.some).through(q.enqueue).onFinalize(q.enqueue1(None))
 
-        def emitNonEmpty(c: Chunk.Queue[O]): Stream[F2, Chunk[O]] =
-          if (c.size > 0) Stream.emit(c.toChunk)
+        def emitNonEmpty(c: Chunk.Queue[O2]): Stream[F2, Chunk[O2]] =
+          if (c.nonEmpty) Stream.emit(c.toChunk)
           else Stream.empty
 
-        def resize(c: Chunk[O], s: Stream[F2, Chunk[O]]): (Stream[F2, Chunk[O]], Chunk[O]) =
-          if (c.size < n) s -> c
-          else {
-            val (unit, rest) = c.splitAt(n)
-            resize(rest, s ++ Stream.emit(unit))
-          }
-
-        def go(acc: Chunk.Queue[O], currentTimeout: Token): Stream[F2, Chunk[O]] =
+        def go(acc: Chunk.Queue[O2], currentTimeout: Token): Stream[F2, Chunk[O2]] =
           Stream.eval(q.dequeue1).flatMap {
             case None => emitNonEmpty(acc)
             case Some(e) =>
@@ -1508,20 +1531,16 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
                     go(Chunk.Queue.empty, newTimeout)
                   }
                 case Left(_) => go(acc, currentTimeout)
-                case Right(c) if acc.size + c.size >= n =>
-                  val newAcc = acc :+ c
-                  // this is the same if in the resize function,
-                  // short circuited to avoid needlessly converting newAcc.toChunk
-                  if (newAcc.size < n)
-                    Stream.empty ++ startTimeout.flatMap(newTimeout => go(newAcc, newTimeout))
-                  else {
-                    val (toEmit, rest) = resize(newAcc.toChunk, Stream.empty)
-                    toEmit ++ startTimeout.flatMap { newTimeout =>
-                      go(Chunk.Queue(rest), newTimeout)
-                    }
-                  }
                 case Right(c) =>
-                  go(acc :+ c, currentTimeout)
+                  Stream.eval(f(c)).flatMap {
+                    case (toAdd, Some(rest)) =>
+                      emitNonEmpty(acc :+ toAdd) ++ startTimeout.flatMap { newTimeout =>
+                        go(Chunk.Queue(rest), newTimeout)
+                      }
+
+                    case (toAdd, None) =>
+                      go(acc :+ toAdd, currentTimeout)
+                  }
               }
           }
 
