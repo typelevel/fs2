@@ -1489,7 +1489,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       // Invariants:
       // acc.size < n, always
       // hasTimedOut == true iff a timeout has been received, and acc.isEmpty
-      def go(acc: Chunk.Queue[O], timedPull: Stream.TimedPull[F2, O], hasTimedOut: Boolean = false): Pull[F2, Chunk[O], Unit] =
+      def go(acc: Chunk.Queue[O], timedPull: Pull.Timed[F2, O], hasTimedOut: Boolean = false): Pull[F2, Chunk[O], Unit] =
         timedPull.uncons.flatMap {
           case None =>
             Pull.output1(acc.toChunk).whenA(acc.nonEmpty)
@@ -4252,7 +4252,7 @@ object Stream extends StreamLowPriority {
     /**
       * Allows expressing `Pull` computations whose `uncons` can receive
       * a user-controlled, resettable `timeout`.
-      * See [[TimedPull]] for more info on timed `uncons` and `timeout`.
+      * See [[Pull.Timed]] for more info on timed `uncons` and `timeout`.
       *
       * As a quick example, let's write a timed pull which emits the
       * string "late!" whenever a chunk of the stream is not emitted
@@ -4265,7 +4265,7 @@ object Stream extends StreamLowPriority {
       * scala> val s = (Stream("elem") ++ Stream.sleep_[IO](200.millis)).repeat.take(3)
       * scala> s.pull
       *      |  .timed { timedPull =>
-      *      |     def go(timedPull: Stream.TimedPull[IO, String]): Pull[IO, String, Unit] =
+      *      |     def go(timedPull: Pull.Timed[IO, String]): Pull[IO, String, Unit] =
       *      |       timedPull.timeout(150.millis) >> // starts new timeout and stops the previous one
       *      |       timedPull.uncons.flatMap {
       *      |         case Some((Right(elems), next)) => Pull.output(elems) >> go(next)
@@ -4279,7 +4279,7 @@ object Stream extends StreamLowPriority {
       *
       * For a more complex example, look at the implementation of [[Stream.groupWithin]].
       */
-    def timed[O2, R](pull: Stream.TimedPull[F, O] => Pull[F, O2, R])(implicit F: Temporal[F]): Pull[F, O2, R] =
+    def timed[O2, R](pull: Pull.Timed[F, O] => Pull[F, O2, R])(implicit F: Temporal[F]): Pull[F, O2, R] =
       Pull
         .eval { Token[F].mproduct(id => SignallingRef.of(id -> 0.millis)) }
         .flatMap { case (initial, time) =>
@@ -4308,10 +4308,10 @@ object Stream extends StreamLowPriority {
                     .collect { case (currentTimeout, _) if currentTimeout == id => timeout }
               }
 
-          def toTimedPull(s: Stream[F, Either[Token, Chunk[O]]]): TimedPull[F, O] = new TimedPull[F, O] {
+          def toTimedPull(s: Stream[F, Either[Token, Chunk[O]]]): Pull.Timed[F, O] = new Pull.Timed[F, O] {
             type Timeout = Token
 
-            def uncons: Pull[F, INothing, Option[(Either[Timeout, Chunk[O]], TimedPull[F, O])]] =
+            def uncons: Pull[F, INothing, Option[(Either[Timeout, Chunk[O]], Pull.Timed[F, O])]] =
               s.pull.uncons1
                 .map( _.map { case (r, next) => r -> toTimedPull(next) })
 
@@ -4591,39 +4591,6 @@ object Stream extends StreamLowPriority {
       * }}}
       */
     def toVector: G[Vector[O]] = to(Vector)
-  }
-
-/**
-  * An abstraction for writing `Pull` computations that can timeout
-  * while reading from a `Stream`.
-  *
-  * A `TimedPull` is not created or intepreted directly, but by calling [[timed]].
-  * {{{
-  * yourStream.pull.timed(tp => ...).stream
-  * }}}
-  *
-  * The argument to `timed` is a `TimedPull[F, O] => Pull[F, O2, R]`
-  * function which describes the pulling logic, and is often recursive, with shape:
-  *
-  * {{{
-  * def go(tp: TimedPull[F, A]): Pull[F, B, Unit] =
-  *   tp.uncons.flatMap {
-  *     case Some((Right(chunk), next)) => doSomething >> go(next)
-  *     case Some((Left(_), next)) => doSomethingElse >> go(next)
-  *     case None => Pull.done
-  *   }
-  * }}}
-  *
-  * Where `doSomething` and `doSomethingElse` are `Pull` computations
-  * such as `Pull.output`, in addition to `TimedPull.timeout`.
-  *
-  * See below for detailed descriptions of `timeout` and `uncons`, and
-  * look at the [[ToPull.timed]] scaladoc for an example of usage.
-  */
-  trait TimedPull[F[_], O] {
-    type Timeout
-    def uncons: Pull[F, INothing, Option[(Either[Timeout, Chunk[O]], TimedPull[F, O])]]
-    def timeout(t: FiniteDuration): Pull[F, INothing, Unit]
   }
 
   /**

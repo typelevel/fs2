@@ -33,7 +33,7 @@ val s = emitThenWait.repeat.take(3)
 
 def a = s.pull
  .timed { timedPull =>
-    def go(timedPull: Stream.TimedPull[IO, String]): Pull[IO, String, Unit] =
+    def go(timedPull: Pull.Timed[IO, String]): Pull[IO, String, Unit] =
       timedPull.timeout(150.millis) >> // starts a timeout timer, resets the previous one
       timedPull.uncons.flatMap {
         case Some((Right(elems), next)) => Pull.output(elems) >> go(next)

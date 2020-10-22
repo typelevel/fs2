@@ -295,6 +295,39 @@ object Pull extends PullLowPriority {
       def cont(r: Result[Unit]): Pull[F, O, R] = p
     }
 
+  /**
+    * An abstraction for writing `Pull` computations that can timeout
+    * while reading from a `Stream`.
+    *
+    * A `TimedPull` is not created or intepreted directly, but by calling [[timed]].
+    * {{{
+    * yourStream.pull.timed(tp => ...).stream
+    * }}}
+    *
+    * The argument to `timed` is a `TimedPull[F, O] => Pull[F, O2, R]`
+    * function which describes the pulling logic, and is often recursive, with shape:
+    *
+    * {{{
+    * def go(tp: TimedPull[F, A]): Pull[F, B, Unit] =
+    *   tp.uncons.flatMap {
+    *     case Some((Right(chunk), next)) => doSomething >> go(next)
+    *     case Some((Left(_), next)) => doSomethingElse >> go(next)
+    *     case None => Pull.done
+    *   }
+    * }}}
+    *
+    * Where `doSomething` and `doSomethingElse` are `Pull` computations
+    * such as `Pull.output`, in addition to `TimedPull.timeout`.
+    *
+    * See below for detailed descriptions of `timeout` and `uncons`, and
+    * look at the [[ToPull.timed]] scaladoc for an example of usage.
+    */
+  trait Timed[F[_], O] {
+    type Timeout
+    def uncons: Pull[F, INothing, Option[(Either[Timeout, Chunk[O]], Pull.Timed[F, O])]]
+    def timeout(t: FiniteDuration): Pull[F, INothing, Unit]
+  }
+
   /** `Sync` instance for `Pull`. */
   implicit def syncInstance[F[_]: Sync, O]: Sync[Pull[F, O, *]] =
     new PullSyncInstance[F, O]

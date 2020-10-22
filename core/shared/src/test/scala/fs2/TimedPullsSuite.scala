@@ -28,16 +28,14 @@ import scala.concurrent.duration._
 
 import org.scalacheck.effect.PropF.forAllF
 
-class TimedPullSuite extends Fs2Suite {
-
-  import Stream.TimedPull
+class TimedPullsSuite extends Fs2Suite {
 
   def fail(s: String) = Pull.raiseError[IO](new Exception(s))
 
   test("behaves as a normal Pull when no timeouts are used") {
     forAllF { (s: Stream[Pure, Int]) =>
       s.covary[IO].pull.timed { tp =>
-        def loop(tp: TimedPull[IO, Int]): Pull[IO, Int, Unit] =
+        def loop(tp: Pull.Timed[IO, Int]): Pull[IO, Int, Unit] =
           tp.uncons.flatMap {
             case None => Pull.done
             case Some((Right(c), next)) => Pull.output(c) >> loop(next)
@@ -61,7 +59,7 @@ class TimedPullSuite extends Fs2Suite {
 
     s.metered(period)
       .pull.timed { tp =>
-      def loop(tp: TimedPull[IO, Int]): Pull[IO, Int, Unit] =
+      def loop(tp: Pull.Timed[IO, Int]): Pull[IO, Int, Unit] =
         tp.uncons.flatMap {
           case None => Pull.done
           case Some((Right(c), next)) => Pull.output(c) >> tp.timeout(timeout)  >> loop(next)
@@ -98,7 +96,7 @@ class TimedPullSuite extends Fs2Suite {
       .metered(t)
       .pull
       .timed { tp =>
-        def go(tp: TimedPull[IO, Int]): Pull[IO, Int, Unit] =
+        def go(tp: Pull.Timed[IO, Int]): Pull[IO, Int, Unit] =
           tp.uncons.flatMap {
             case Some((Right(c), n)) => Pull.output(c) >> go(n)
             case Some((Left(_), _)) => Pull.done
@@ -121,7 +119,7 @@ class TimedPullSuite extends Fs2Suite {
     val expected = Stream("timeout", "elem").repeat.take(n * 2).compile.toList
 
     s.pull.timed { tp =>
-      def go(tp: TimedPull[IO, Int]): Pull[IO, String, Unit] =
+      def go(tp: Pull.Timed[IO, Int]): Pull[IO, String, Unit] =
         tp.uncons.flatMap {
           case None => Pull.done
           case Some((Right(_), next)) => Pull.output1("elem") >> tp.timeout(timeout) >> go(next)
@@ -216,7 +214,7 @@ class TimedPullSuite extends Fs2Suite {
     val prog =
       (Stream.sleep[IO](t) ++ Stream.never[IO])
         .pull.timed { tp =>
-        def go(tp: TimedPull[IO, Unit]): Pull[IO, String, Unit] =
+        def go(tp: Pull.Timed[IO, Unit]): Pull[IO, String, Unit] =
           tp.uncons.flatMap {
             case None => Pull.done
             case Some((Right(_), n)) =>
