@@ -4801,7 +4801,7 @@ object Stream extends StreamLowPriority {
 private[fs2] trait StreamLowPriority {
   implicit def monadInstance[F[_]]: Monad[Stream[F, *]] =
     new Monad[Stream[F, *]] {
-      override def pure[A](x: A): Stream[F, A] = Stream(x)
+      override def pure[A](x: A): Stream[F, A] = Stream.emit(x)
 
       override def flatMap[A, B](fa: Stream[F, A])(f: A => Stream[F, B]): Stream[F, B] =
         fa.flatMap(f)
