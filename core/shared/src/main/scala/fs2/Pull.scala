@@ -299,16 +299,16 @@ object Pull extends PullLowPriority {
     * An abstraction for writing `Pull` computations that can timeout
     * while reading from a `Stream`.
     *
-    * A `TimedPull` is not created or intepreted directly, but by calling [[timed]].
+    * A `Pull.Timed` is not created or intepreted directly, but by calling [[Stream.ToPull.timed]].
     * {{{
     * yourStream.pull.timed(tp => ...).stream
     * }}}
     *
-    * The argument to `timed` is a `TimedPull[F, O] => Pull[F, O2, R]`
+    * The argument to `timed` is a `Pull.Timed[F, O] => Pull[F, O2, R]`
     * function which describes the pulling logic, and is often recursive, with shape:
     *
     * {{{
-    * def go(tp: TimedPull[F, A]): Pull[F, B, Unit] =
+    * def go(tp: Pull.Timed[F, A]): Pull[F, B, Unit] =
     *   tp.uncons.flatMap {
     *     case Some((Right(chunk), next)) => doSomething >> go(next)
     *     case Some((Left(_), next)) => doSomethingElse >> go(next)
@@ -320,7 +320,7 @@ object Pull extends PullLowPriority {
     * such as `Pull.output`, in addition to `TimedPull.timeout`.
     *
     * See below for detailed descriptions of `timeout` and `uncons`, and
-    * look at the [[ToPull.timed]] scaladoc for an example of usage.
+    * look at the [[Stream.ToPull.timed]] scaladoc for an example of usage.
     */
   trait Timed[F[_], O] {
     type Timeout
