@@ -299,17 +299,20 @@ object Pull extends PullLowPriority {
     * An abstraction for writing `Pull` computations that can timeout
     * while reading from a `Stream`.
     *
-    * A `Pull.Timed` is not created or intepreted directly, but by calling [[Stream.ToPull.timed]].
+    * A `Pull.Timed` is not created or intepreted directly, but by
+    * calling [[Stream.ToPull.timed]].
+    *
     * {{{
     * yourStream.pull.timed(tp => ...).stream
     * }}}
     *
     * The argument to `timed` is a `Pull.Timed[F, O] => Pull[F, O2, R]`
-    * function which describes the pulling logic, and is often recursive, with shape:
+    * function, which describes the pulling logic and is often recursive,
+    * with shape:
     *
     * {{{
-    * def go(tp: Pull.Timed[F, A]): Pull[F, B, Unit] =
-    *   tp.uncons.flatMap {
+    * def go(timedPull: Pull.Timed[F, A]): Pull[F, B, Unit] =
+    *   timedPull.uncons.flatMap {
     *     case Some((Right(chunk), next)) => doSomething >> go(next)
     *     case Some((Left(_), next)) => doSomethingElse >> go(next)
     *     case None => Pull.done
@@ -317,14 +320,53 @@ object Pull extends PullLowPriority {
     * }}}
     *
     * Where `doSomething` and `doSomethingElse` are `Pull` computations
-    * such as `Pull.output`, in addition to `TimedPull.timeout`.
+    * such as `Pull.output`, in addition to `Pull.Timed.timeout`.
     *
     * See below for detailed descriptions of `timeout` and `uncons`, and
     * look at the [[Stream.ToPull.timed]] scaladoc for an example of usage.
     */
   trait Timed[F[_], O] {
     type Timeout
+
+    /**
+      * Waits for either a chunk of elements to be available in the
+      * source stream, or a timeout to trigger. Whichever happens
+      * first is provided as the resource of the returned pull,
+      * alongside a new timed pull that can be used for awaiting
+      * again. A `None` is returned as the resource of the pull upon
+      * reaching the end of the stream.
+      *
+      * Receiving a timeout is not a fatal event: the evaluation of the
+      * current chunk is not interrupted, and the next timed pull is
+      * still returned for further iteration. The lifetime of timeouts
+      * is handled by explicit calls to the `timeout` method: `uncons`
+      * does not start, restart or cancel any timeouts.
+      *
+      * Note that the type of timeouts is existential in `Pull.Timed`
+      * (hidden, basically) so you cannot do anything on it except for
+      * pattern matching, which is best done as a `Left(_)` case.
+      */
     def uncons: Pull[F, INothing, Option[(Either[Timeout, Chunk[O]], Pull.Timed[F, O])]]
+
+    /**
+      * Asynchronously starts a timeout that will be received by
+      * `uncons` after `t`, and immediately returns.
+      *
+      * Timeouts are resettable: if `timeout` executes whilst a
+      * previous timeout is pending, it will cancel it before starting
+      * the new one, so that there is at most one timeout in flight at
+      * any given time. The implementation guards against stale
+      * timeouts: after resetting a timeout, a subsequent `uncons` is
+      * guaranteed to never receive an old one.
+      *
+      * Timeouts can be reset to any `t`, longer or shorter than the
+      * previous timeout, but a duration of 0 is treated specially, in
+      * that it will cancel a pending timeout but not start a new one.
+      *
+      * Note: the very first execution of `timeout` does not start
+      * running until the first call to `uncons`, but subsequent calls
+      * proceed independently after that.
+      */
     def timeout(t: FiniteDuration): Pull[F, INothing, Unit]
   }
 
