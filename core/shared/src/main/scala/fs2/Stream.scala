@@ -1467,16 +1467,30 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   }
 
   /**
-    * Divide this streams into groups of elements received within a time window,
-    * or limited by the number of the elements, whichever happens first.
-    * Empty groups, which can occur if no elements can be pulled from upstream
-    * in a given time window, will not be emitted.
+    * Divides this stream into chunks of elements of size `n`.
+    * Each time a group of size `n` is emitted, `timeout` is reset.
     *
-    * Note: a time window starts each time downstream pulls. TODO: correct this
+    * If the current chunk does not reach size `n` by the time the
+    * `timeout` period elapses, it emits a chunk containing however
+    * many elements have been accumulated so far, and resets
+    * `timeout`.
+    *
+    * However, if no elements at all have been accumulated when
+    * `timeout` expires, empty chunks are *not* emitted, and `timeout`
+    * is not reset.
+    * Instead, the next chunk to arrive is emitted immediately (since
+    * the stream is still in a timed out state), and only then is
+    * `timeout` reset. If the chunk received in a timed out state is
+    * bigger than `n`, the first `n` elements of it are emitted
+    * immediately in a chunk, `timeout` is reset, and the remaining
+    * elements are used for the next chunk.
+    *
+    * When the stream terminates, any accumulated elements are emitted
+    * immediately in a chunk, even if `timeout` is not expired.
     */
   def groupWithin[F2[x] >: F[x]](
       n: Int,
-      d: FiniteDuration
+      timeout: FiniteDuration
   )(implicit F: Temporal[F2]): Stream[F2, Chunk[O]] =
     this.covary[F2].pull.timed { timedPull =>
       def resize(c: Chunk[O], s: Pull[F2, Chunk[O], Unit]): (Pull[F2, Chunk[O], Unit], Chunk[O]) =
@@ -1495,7 +1509,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
             Pull.output1(acc.toChunk).whenA(acc.nonEmpty)
           case Some((e, next)) =>
             def resetTimerAndGo(q: Chunk.Queue[O]) =
-              timedPull.timeout(d) >> go(q, next)
+              timedPull.timeout(timeout) >> go(q, next)
 
             e match {
               case Left(_) =>
@@ -1520,7 +1534,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
             }
         }
 
-      timedPull.timeout(d) >> go(Chunk.Queue.empty, timedPull)
+      timedPull.timeout(timeout) >> go(Chunk.Queue.empty, timedPull)
     }.stream
 
   /**
