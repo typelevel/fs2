@@ -291,8 +291,7 @@ object Pull extends PullLowPriority {
       def cont(r: Result[Unit]): Pull[F, O, R] = p
     }
 
-  /**
-    * An abstraction for writing `Pull` computations that can timeout
+  /** An abstraction for writing `Pull` computations that can timeout
     * while reading from a `Stream`.
     *
     * A `Pull.Timed` is not created or intepreted directly, but by
@@ -324,8 +323,7 @@ object Pull extends PullLowPriority {
   trait Timed[F[_], O] {
     type Timeout
 
-    /**
-      * Waits for either a chunk of elements to be available in the
+    /** Waits for either a chunk of elements to be available in the
       * source stream, or a timeout to trigger. Whichever happens
       * first is provided as the resource of the returned pull,
       * alongside a new timed pull that can be used for awaiting
@@ -344,8 +342,7 @@ object Pull extends PullLowPriority {
       */
     def uncons: Pull[F, INothing, Option[(Either[Timeout, Chunk[O]], Pull.Timed[F, O])]]
 
-    /**
-      * Asynchronously starts a timeout that will be received by
+    /** Asynchronously starts a timeout that will be received by
       * `uncons` after `t`, and immediately returns.
       *
       * Timeouts are resettable: if `timeout` executes whilst a

@@ -1392,8 +1392,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     go(None, this).stream
   }
 
-  /**
-    * Divides this stream into chunks of elements of size `n`.
+  /** Divides this stream into chunks of elements of size `n`.
     * Each time a group of size `n` is emitted, `timeout` is reset.
     *
     * If the current chunk does not reach size `n` by the time the
@@ -4067,8 +4066,7 @@ object Stream extends StreamLowPriority {
           }
       }
 
-    /**
-      * Allows expressing `Pull` computations whose `uncons` can receive
+    /** Allows expressing `Pull` computations whose `uncons` can receive
       * a user-controlled, resettable `timeout`.
       * See [[Pull.Timed]] for more info on timed `uncons` and `timeout`.
       *
