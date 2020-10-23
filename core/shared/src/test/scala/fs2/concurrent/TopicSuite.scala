@@ -26,8 +26,6 @@ import cats.syntax.all._
 import cats.effect.IO
 import scala.concurrent.duration._
 
-// TODO
-//@munit.IgnoreSuite
 class TopicSuite extends Fs2Suite {
   test("subscribers see all elements published") {
     Topic[IO, Int](-1).flatMap { topic =>
