@@ -1688,7 +1688,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * }}}
     */
   def map[O2](f: O => O2): Stream[F, O2] =
-    this.pull.echo.mapOutput(f).streamNoScope
+    Pull.mapOutput(underlying, f).streamNoScope
 
   /** Maps a running total according to `S` and the input with the function `f`.
     *
