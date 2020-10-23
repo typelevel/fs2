@@ -197,6 +197,17 @@ sealed trait SyncFiles[F[_]] {
       file: FileHandle[F],
       append: Boolean
   ): F[WriteCursor[F]]
+
+  def isDirectory(
+      path: Path,
+      linkOption: Seq[LinkOption]
+  ): F[Boolean]
+
+  def isFile(
+      path: Path,
+      linkOption: Seq[LinkOption]
+  ): F[Boolean]
+
 }
 
 object SyncFiles {
@@ -365,6 +376,22 @@ object SyncFiles {
         append: Boolean
     ): F[WriteCursor[F]] =
       if (append) file.size.map(s => WriteCursor(file, s)) else WriteCursor(file, 0L).pure[F]
+
+    def isDirectory(
+        path: Path,
+        linkOption: Seq[LinkOption] = Nil
+    ): F[Boolean] =
+      Sync[F].delay(
+        JFiles.getAttribute(path, "basic:isDirectory", linkOption: _*).asInstanceOf[Boolean]
+      )
+
+    def isFile(
+        path: Path,
+        linkOption: Seq[LinkOption]
+    ): F[Boolean] =
+      Sync[F].delay(
+        JFiles.getAttribute(path, "basic:isRegularFile", linkOption: _*).asInstanceOf[Boolean]
+      )
 
   }
 }

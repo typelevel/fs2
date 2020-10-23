@@ -465,4 +465,48 @@ class FileSuite extends BaseFileSuite {
       .compile
       .lastOrError
   }
+
+  group("isDirectory") {
+    test("returns false if the path is for a file") {
+      assert(
+        tempFile
+          .flatMap(v => Stream.eval(Files[IO].isDirectory(v, Nil)))
+          .compile
+          .lastOrError
+          .unsafeRunSync() == false
+      )
+    }
+
+    test("returns true if the path is for a directory") {
+      assert(
+        tempDirectory
+          .flatMap(v => Stream.eval(Files[IO].isDirectory(v, Nil)))
+          .compile
+          .lastOrError
+          .unsafeRunSync() == true
+      )
+    }
+  }
+
+  group("isFile") {
+    test("returns true if the path is for a file") {
+      assert(
+        tempFile
+          .flatMap(v => Stream.eval(Files[IO].isFile(v, Nil)))
+          .compile
+          .lastOrError
+          .unsafeRunSync() == true
+      )
+    }
+
+    test("returns false if the path is for a directory") {
+      assert(
+        tempDirectory
+          .flatMap(v => Stream.eval(Files[IO].isFile(v, Nil)))
+          .compile
+          .lastOrError
+          .unsafeRunSync() == false
+      )
+    }
+  }
 }
