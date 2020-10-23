@@ -72,8 +72,7 @@ class StreamMergeSuite extends Fs2Suite {
         }
       }
 
-      /**
-        * Ignored for now because of intermittent failures.
+      /** Ignored for now because of intermittent failures.
         *
         * Reproduce with this seed:
         * "UL4hdZX4aMPzkhx51hbRhml2Kp7v4QQh9H82XieVorH="

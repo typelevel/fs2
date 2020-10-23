@@ -24,45 +24,45 @@ package interop
 package reactivestreams
 
 import cats._
-import cats.effect._
-import cats.effect.kernel.{Deferred, Ref}
-import cats.effect.unsafe.UnsafeRun
+import cats.effect.kernel.{Async, Deferred, Ref}
+import cats.effect.std.Dispatcher
 import cats.syntax.all._
 
 import org.reactivestreams._
 
-/**
-  * Implementation of a `org.reactivestreams.Subscriber`.
+/** Implementation of a `org.reactivestreams.Subscriber`.
   *
   * This is used to obtain a `fs2.Stream` from an upstream reactivestreams system.
   *
   * @see [[https://github.com/reactive-streams/reactive-streams-jvm#2-subscriber-code]]
   */
-final class StreamSubscriber[F[_], A](val sub: StreamSubscriber.FSM[F, A])(implicit
-    F: ApplicativeError[F, Throwable],
-    runner: UnsafeRun[F]
+final class StreamSubscriber[F[_], A](
+    val sub: StreamSubscriber.FSM[F, A],
+    dispatcher: Dispatcher[F]
+)(implicit
+    F: ApplicativeError[F, Throwable]
 ) extends Subscriber[A] {
 
   /** Called by an upstream reactivestreams system */
   def onSubscribe(s: Subscription): Unit = {
     nonNull(s)
-    runner.unsafeRunAndForget(sub.onSubscribe(s))
+    dispatcher.unsafeRunSync(sub.onSubscribe(s).attempt.void)
   }
 
   /** Called by an upstream reactivestreams system */
   def onNext(a: A): Unit = {
     nonNull(a)
-    runner.unsafeRunAndForget(sub.onNext(a))
+    dispatcher.unsafeRunSync(sub.onNext(a).attempt.void)
   }
 
   /** Called by an upstream reactivestreams system */
   def onComplete(): Unit =
-    runner.unsafeRunAndForget(sub.onComplete)
+    dispatcher.unsafeRunSync(sub.onComplete.attempt.void)
 
   /** Called by an upstream reactivestreams system */
   def onError(t: Throwable): Unit = {
     nonNull(t)
-    runner.unsafeRunAndForget(sub.onError(t))
+    dispatcher.unsafeRunSync(sub.onError(t).attempt.void)
   }
 
   def stream(subscribe: F[Unit]): Stream[F, A] = sub.stream(subscribe)
@@ -71,8 +71,8 @@ final class StreamSubscriber[F[_], A](val sub: StreamSubscriber.FSM[F, A])(impli
 }
 
 object StreamSubscriber {
-  def apply[F[_]: Async: UnsafeRun, A]: F[StreamSubscriber[F, A]] =
-    fsm[F, A].map(new StreamSubscriber(_))
+  def apply[F[_]: Async, A](dispatcher: Dispatcher[F]): F[StreamSubscriber[F, A]] =
+    fsm[F, A].map(new StreamSubscriber(_, dispatcher))
 
   /** A finite state machine describing the subscriber */
   private[reactivestreams] trait FSM[F[_], A] {

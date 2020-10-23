@@ -21,8 +21,7 @@
 
 package fs2
 
-/**
-  * Indicates that a stream evaluates no effects but unlike [[Pure]], may raise errors.
+/** Indicates that a stream evaluates no effects but unlike [[Pure]], may raise errors.
   *
   * Uninhabited.
   *

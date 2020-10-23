@@ -21,15 +21,14 @@
 
 package fs2.concurrent
 
-import cats.effect.Concurrent
+import cats.effect.kernel.Concurrent
 
 import fs2._
 
 /** Provides mechanisms for balancing the distribution of chunks across multiple streams. */
 object Balance {
 
-  /**
-    * Allows balanced processing of this stream via multiple concurrent streams.
+  /** Allows balanced processing of this stream via multiple concurrent streams.
     *
     * This could be viewed as Stream "fan-out" operation, allowing concurrent processing of elements.
     * As the elements arrive, they are evenly distributed to streams that have already started their
@@ -80,8 +79,7 @@ object Balance {
     }
   }
 
-  /**
-    * Like `apply` but instead of providing a stream of worker streams, the supplied pipes are
+  /** Like `apply` but instead of providing a stream of worker streams, the supplied pipes are
     * used to transform each worker.
     *
     * Each supplied pipe is run concurrently with other. This means that amount of pipes

@@ -25,11 +25,11 @@ package reactivestreams
 
 import org.reactivestreams._
 import cats.effect._
+import cats.effect.std.Dispatcher
 
 import java.util.concurrent.atomic.AtomicBoolean
 
-/**
-  * This behaviour is already tested by the Reactive Stream test
+/** This behaviour is already tested by the Reactive Stream test
   * suite, but it's proven difficult to enforce, so we add our own
   * tests that run the assertions multiple times to make possible
   * failures due to race conditions more repeatable
@@ -47,31 +47,40 @@ class CancellationSpec extends Fs2Suite {
 
   val attempts = 10000
 
+  def withDispatcher(f: Dispatcher[IO] => Unit): Unit =
+    Dispatcher[IO]
+      .use(dispatcher => IO(f(dispatcher)))
+      .unsafeRunSync()
+
   test("after subscription is cancelled request must be noOps") {
-    var i = 0
-    val b = new AtomicBoolean(false)
-    while (i < attempts) {
-      val sub = StreamSubscription(Sub[Int](b), s).unsafeRunSync()
-      sub.unsafeStart()
-      sub.cancel()
-      sub.request(1)
-      sub.request(1)
-      sub.request(1)
-      i = i + 1
+    withDispatcher { dispatcher =>
+      var i = 0
+      val b = new AtomicBoolean(false)
+      while (i < attempts) {
+        val sub = StreamSubscription(Sub[Int](b), s, dispatcher).unsafeRunSync()
+        sub.unsafeStart()
+        sub.cancel()
+        sub.request(1)
+        sub.request(1)
+        sub.request(1)
+        i = i + 1
+      }
+      if (b.get) fail("onNext was called after the subscription was cancelled")
     }
-    if (b.get) fail("onNext was called after the subscription was cancelled")
   }
 
   test("after subscription is cancelled additional cancelations must be noOps") {
-    var i = 0
-    val b = new AtomicBoolean(false)
-    while (i < attempts) {
-      val sub = StreamSubscription(Sub[Int](b), s).unsafeRunSync()
-      sub.unsafeStart()
-      sub.cancel()
-      sub.cancel()
-      i = i + 1
+    withDispatcher { dispatcher =>
+      var i = 0
+      val b = new AtomicBoolean(false)
+      while (i < attempts) {
+        val sub = StreamSubscription(Sub[Int](b), s, dispatcher).unsafeRunSync()
+        sub.unsafeStart()
+        sub.cancel()
+        sub.cancel()
+        i = i + 1
+      }
+      if (b.get) fail("onCancel was called after the subscription was cancelled")
     }
-    if (b.get) fail("onCancel was called after the subscription was cancelled")
   }
 }

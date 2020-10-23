@@ -21,7 +21,7 @@
 
 package fs2.concurrent
 
-import cats.effect.Concurrent
+import cats.effect.kernel.Concurrent
 
 import fs2.internal.Token
 import fs2._
@@ -29,8 +29,7 @@ import fs2._
 /** Provides mechanisms for broadcast distribution of elements to multiple streams. */
 object Broadcast {
 
-  /**
-    * Allows elements of a stream to be broadcast to multiple workers.
+  /** Allows elements of a stream to be broadcast to multiple workers.
     *
     * As the elements arrive, they are broadcast to all `workers` that have started evaluation before the
     * element was pulled.
@@ -81,8 +80,7 @@ object Broadcast {
       }
   }
 
-  /**
-    * Like [[apply]] but instead of providing a stream of worker streams, it runs each inner stream through
+  /** Like [[apply]] but instead of providing a stream of worker streams, it runs each inner stream through
     * the supplied pipes.
     *
     * Supplied pipes are run concurrently with each other. Hence, the number of pipes determines concurrency.
@@ -99,8 +97,7 @@ object Broadcast {
       .map { case (src, idx) => src.through(pipes(idx.toInt)) }
       .parJoinUnbounded
 
-  /**
-    * State of the strategy
+  /** State of the strategy
     *  - AwaitSub:   Awaiting minimum number of subscribers
     *  - Empty:      Awaiting single publish
     *  - Processing: Subscribers are processing the elememts, awaiting them to confirm done.

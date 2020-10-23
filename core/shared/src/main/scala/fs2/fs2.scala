@@ -21,30 +21,26 @@
 
 package object fs2 {
 
-  /**
-    * A stream transformation represented as a function from stream to stream.
+  /** A stream transformation represented as a function from stream to stream.
     *
     * Pipes are typically applied with the `through` operation on `Stream`.
     */
   type Pipe[F[_], -I, +O] = Stream[F, I] => Stream[F, O]
 
-  /**
-    * A stream transformation that combines two streams in to a single stream,
+  /** A stream transformation that combines two streams in to a single stream,
     * represented as a function from two streams to a single stream.
     *
     * `Pipe2`s are typically applied with the `through2` operation on `Stream`.
     */
   type Pipe2[F[_], -I, -I2, +O] = (Stream[F, I], Stream[F, I2]) => Stream[F, O]
 
-  /**
-    * Indicates that a stream evaluates no effects.
+  /** Indicates that a stream evaluates no effects.
     *
     * A `Stream[Pure,O]` can be safely converted to a `Stream[F,O]` for all `F`.
     */
   type Pure[A] <: Nothing
 
-  /**
-    * Alias for `Nothing` which works better with type inference.
+  /** Alias for `Nothing` which works better with type inference.
     */
   type INothing <: Nothing
 }

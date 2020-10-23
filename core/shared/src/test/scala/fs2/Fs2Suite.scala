@@ -49,8 +49,7 @@ abstract class Fs2Suite extends ScalaCheckEffectSuite with TestPlatform with Gen
   /** Provides various ways to make test assertions on an `F[A]`. */
   implicit class Asserting[F[_], A](private val self: F[A]) {
 
-    /**
-      * Asserts that the `F[A]` fails with an exception of type `E`.
+    /** Asserts that the `F[A]` fails with an exception of type `E`.
       */
     def assertThrows[E <: Throwable](implicit
         F: Sync[F],
@@ -74,8 +73,7 @@ abstract class Fs2Suite extends ScalaCheckEffectSuite with TestPlatform with Gen
 
   implicit class Deterministically[F[_], A](private val self: IO[A]) {
 
-    /**
-      * Allows to run an IO deterministically through TextContext.
+    /** Allows to run an IO deterministically through TextContext.
       * Assumes you want to run the IO to completion, if you need to step through execution,
       * you will have to do it manually, starting from `createDeterministicRuntime`
       */

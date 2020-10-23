@@ -19,22 +19,26 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2.internal
+package fs2
+package interop
+package reactivestreams
 
-private[fs2] trait TranslateInterrupt[F[_]] {
-  def interruptible: Option[Interruptible[F]]
-}
+import cats.effect._
+import cats.effect.std.Dispatcher
+import cats.effect.unsafe.implicits.global
+import org.scalatestplus.testng._
+import org.testng.annotations.AfterClass
 
-private[fs2] trait TranslateInterruptLowPriorityImplicits {
-  implicit def unInterruptibleInstance[F[_]]: TranslateInterrupt[F] =
-    new TranslateInterrupt[F] {
-      def interruptible: Option[Interruptible[F]] = None
-    }
-}
+trait UnsafeTestNGSuite extends TestNGSuiteLike {
 
-private[fs2] object TranslateInterrupt extends TranslateInterruptLowPriorityImplicits {
-  implicit def interruptibleInstance[F[_]: Interruptible]: TranslateInterrupt[F] =
-    new TranslateInterrupt[F] {
-      def interruptible: Option[Interruptible[F]] = Some(implicitly[Interruptible[F]])
-    }
+  protected var runner: Dispatcher[IO] = _
+  private var shutdownRunner: IO[Unit] = _
+
+  private val dispatcher = Dispatcher[IO].allocated
+  private val t = dispatcher.unsafeRunSync()
+  runner = t._1
+  shutdownRunner = t._2
+
+  @AfterClass
+  def afterAll() = shutdownRunner.unsafeRunSync()
 }

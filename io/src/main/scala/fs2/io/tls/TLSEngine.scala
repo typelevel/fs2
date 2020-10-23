@@ -28,12 +28,11 @@ import scala.concurrent.duration.FiniteDuration
 import javax.net.ssl.{SSLEngine, SSLEngineResult, SSLSession}
 
 import cats.Applicative
-import cats.effect.{Async, Sync}
+import cats.effect.kernel.{Async, Sync}
 import cats.effect.std.Semaphore
 import cats.syntax.all._
 
-/**
-  * Provides the ability to establish and communicate over a TLS session.
+/** Provides the ability to establish and communicate over a TLS session.
   *
   * This is a functional wrapper of the JDK `SSLEngine`.
   */
@@ -82,7 +81,7 @@ private[tls] object TLSEngine {
       def stopUnwrap = Sync[F].delay(engine.closeInbound()).attempt.void
 
       def write(data: Chunk[Byte], timeout: Option[FiniteDuration]): F[Unit] =
-        writeSemaphore.withPermit(write0(data, timeout))
+        writeSemaphore.permit.use(_ => write0(data, timeout))
 
       private def write0(data: Chunk[Byte], timeout: Option[FiniteDuration]): F[Unit] =
         wrapBuffer.input(data) >> wrap(timeout)
@@ -101,8 +100,8 @@ private[tls] object TLSEngine {
                       wrapBuffer.inputRemains
                         .flatMap(x => wrap(timeout).whenA(x > 0 && result.bytesConsumed > 0))
                     case _ =>
-                      handshakeSemaphore
-                        .withPermit(stepHandshake(result, true, timeout)) >> wrap(timeout)
+                      handshakeSemaphore.permit
+                        .use(_ => stepHandshake(result, true, timeout)) >> wrap(timeout)
                   }
                 }
               case SSLEngineResult.Status.BUFFER_UNDERFLOW =>
@@ -121,7 +120,7 @@ private[tls] object TLSEngine {
         }
 
       def read(maxBytes: Int, timeout: Option[FiniteDuration]): F[Option[Chunk[Byte]]] =
-        readSemaphore.withPermit(read0(maxBytes, timeout))
+        readSemaphore.permit.use(_ => read0(maxBytes, timeout))
 
       private def initialHandshakeDone: F[Boolean] =
         Sync[F].delay(engine.getSession.getCipherSuite != "SSL_NULL_WITH_NULL_NULL")
@@ -161,8 +160,8 @@ private[tls] object TLSEngine {
                   case SSLEngineResult.HandshakeStatus.FINISHED =>
                     unwrap(maxBytes, timeout)
                   case _ =>
-                    handshakeSemaphore
-                      .withPermit(stepHandshake(result, false, timeout)) >> unwrap(
+                    handshakeSemaphore.permit
+                      .use(_ => stepHandshake(result, false, timeout)) >> unwrap(
                       maxBytes,
                       timeout
                     )
@@ -179,8 +178,7 @@ private[tls] object TLSEngine {
       private def dequeueUnwrap(maxBytes: Int): F[Option[Chunk[Byte]]] =
         unwrapBuffer.output(maxBytes).map(out => if (out.isEmpty) None else Some(out))
 
-      /**
-        * Determines what to do next given the result of a handshake operation.
+      /** Determines what to do next given the result of a handshake operation.
         * Must be called with `handshakeSem`.
         */
       private def stepHandshake(

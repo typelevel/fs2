@@ -24,8 +24,7 @@ package fs2
 import cats.ApplicativeError
 import scala.annotation.implicitNotFound
 
-/**
-  * Witnesses that `F` supports raising throwables.
+/** Witnesses that `F` supports raising throwables.
   *
   * An instance of `RaiseThrowable` is available for any `F` which has an
   * `ApplicativeError[F, Throwable]` instance. Alternatively, an instance

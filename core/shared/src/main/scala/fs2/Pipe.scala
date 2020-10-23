@@ -21,12 +21,11 @@
 
 package fs2
 
-import cats.effect.Concurrent
+import cats.effect.kernel.Concurrent
 
 object Pipe {
 
-  /**
-    * Joins a stream of pipes in to a single pipe.
+  /** Joins a stream of pipes in to a single pipe.
     * Input is fed to the first pipe until it terminates, at which point input is
     * fed to the second pipe, and so on.
     */

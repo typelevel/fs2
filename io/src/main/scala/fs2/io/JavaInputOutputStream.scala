@@ -25,9 +25,9 @@ package io
 import java.io.{IOException, InputStream}
 
 import cats.syntax.all._
-import cats.effect.{Async, Outcome, Resource}
-import cats.effect.unsafe.UnsafeRun
-import cats.effect.implicits._
+import cats.effect.kernel.{Async, Outcome, Resource}
+import cats.effect.kernel.implicits._
+import cats.effect.std.Dispatcher
 
 import fs2.Chunk.Bytes
 import fs2.concurrent.{Queue, SignallingRef}
@@ -48,7 +48,7 @@ private[io] object JavaInputOutputStream {
 
   def toInputStream[F[_]](
       source: Stream[F, Byte]
-  )(implicit F: Async[F], runner: UnsafeRun[F]): Resource[F, InputStream] = {
+  )(implicit F: Async[F]): Resource[F, InputStream] = {
     def markUpstreamDone(
         queue: Queue[F, Either[Option[Throwable], Bytes]],
         upState: SignallingRef[F, UpStreamState],
@@ -192,38 +192,40 @@ private[io] object JavaInputOutputStream {
      * - DownStream signal -  keeps any remainders from last `read` and signals
      *                        that downstream has been terminated that in turn kills upstream
      */
-    Resource
-      .liftF(
-        (
-          Queue.synchronous[F, Either[Option[Throwable], Bytes]],
-          SignallingRef.of[F, UpStreamState](UpStreamState(done = false, err = None)),
-          SignallingRef.of[F, DownStreamState](Ready(None))
-        ).tupled
-      )
-      .flatMap { case (queue, upState, dnState) =>
-        val mkInputStream = processInput(source, queue, upState, dnState)
-          .as(
-            new InputStream {
-              override def close(): Unit =
-                runner.unsafeRunAndForget(closeIs(upState, dnState))
+    Dispatcher[F].flatMap { dispatcher =>
+      Resource
+        .liftF(
+          (
+            Queue.synchronous[F, Either[Option[Throwable], Bytes]],
+            SignallingRef.of[F, UpStreamState](UpStreamState(done = false, err = None)),
+            SignallingRef.of[F, DownStreamState](Ready(None))
+          ).tupled
+        )
+        .flatMap { case (queue, upState, dnState) =>
+          val mkInputStream = processInput(source, queue, upState, dnState)
+            .as(
+              new InputStream {
+                override def close(): Unit =
+                  dispatcher.unsafeRunAndForget(closeIs(upState, dnState))
 
-              override def read(b: Array[Byte], off: Int, len: Int): Int =
-                runner.unsafeRunSync(readOnce(b, off, len, queue, dnState))
+                override def read(b: Array[Byte], off: Int, len: Int): Int =
+                  dispatcher.unsafeRunSync(readOnce(b, off, len, queue, dnState))
 
-              def read(): Int = {
-                def go(acc: Array[Byte]): F[Int] =
-                  readOnce(acc, 0, 1, queue, dnState).flatMap { read =>
-                    if (read < 0) F.pure(-1)
-                    else if (read == 0) go(acc)
-                    else F.pure(acc(0) & 0xff)
-                  }
+                def read(): Int = {
+                  def go(acc: Array[Byte]): F[Int] =
+                    readOnce(acc, 0, 1, queue, dnState).flatMap { read =>
+                      if (read < 0) F.pure(-1)
+                      else if (read == 0) go(acc)
+                      else F.pure(acc(0) & 0xff)
+                    }
 
-                runner.unsafeRunSync(go(new Array[Byte](1)))
+                  dispatcher.unsafeRunSync(go(new Array[Byte](1)))
+                }
               }
-            }
-          )
+            )
 
-        Resource.make(mkInputStream)(_ => closeIs(upState, dnState))
-      }
+          Resource.make(mkInputStream)(_ => closeIs(upState, dnState))
+        }
+    }
   }
 }

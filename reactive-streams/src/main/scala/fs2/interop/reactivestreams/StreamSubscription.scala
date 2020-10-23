@@ -23,15 +23,14 @@ package fs2
 package interop
 package reactivestreams
 
-import cats.effect._
-import cats.effect.unsafe.UnsafeRun
+import cats.effect.kernel._
+import cats.effect.std.Dispatcher
 import cats.syntax.all._
 
 import fs2.concurrent.{Queue, SignallingRef}
 import org.reactivestreams._
 
-/**
-  * Implementation of a `org.reactivestreams.Subscription`.
+/** Implementation of a `org.reactivestreams.Subscription`.
   *
   * This is used by the [[StreamUnicastPublisher]] to send elements from a `fs2.Stream` to a downstream reactivestreams system.
   *
@@ -41,8 +40,9 @@ private[reactivestreams] final class StreamSubscription[F[_], A](
     requests: Queue[F, StreamSubscription.Request],
     cancelled: SignallingRef[F, Boolean],
     sub: Subscriber[A],
-    stream: Stream[F, A]
-)(implicit F: Async[F], runner: UnsafeRun[F])
+    stream: Stream[F, A],
+    dispatcher: Dispatcher[F]
+)(implicit F: Async[F])
     extends Subscription {
   import StreamSubscription._
 
@@ -76,7 +76,7 @@ private[reactivestreams] final class StreamSubscription[F[_], A](
         .compile
         .drain
 
-    runner.unsafeRunAndForget(s)
+    dispatcher.unsafeRunAndForget(s)
   }
 
   // According to the spec, it's acceptable for a concurrent cancel to not
@@ -87,7 +87,7 @@ private[reactivestreams] final class StreamSubscription[F[_], A](
   // See https://github.com/zainab-ali/fs2-reactive-streams/issues/29
   // and https://github.com/zainab-ali/fs2-reactive-streams/issues/46
   def cancel(): Unit =
-    runner.unsafeRunSync(cancelled.set(true))
+    dispatcher.unsafeRunSync(cancelled.set(true))
 
   def request(n: Long): Unit = {
     val request: F[Request] =
@@ -98,7 +98,7 @@ private[reactivestreams] final class StreamSubscription[F[_], A](
     val prog = cancelled.get
       .ifM(ifTrue = F.unit, ifFalse = request.flatMap(requests.enqueue1).handleErrorWith(onError))
 
-    runner.unsafeRunAndForget(prog)
+    dispatcher.unsafeRunAndForget(prog)
   }
 }
 
@@ -109,13 +109,14 @@ private[reactivestreams] object StreamSubscription {
   case object Infinite extends Request
   case class Finite(n: Long) extends Request
 
-  def apply[F[_]: Async: UnsafeRun, A](
+  def apply[F[_]: Async, A](
       sub: Subscriber[A],
-      stream: Stream[F, A]
+      stream: Stream[F, A],
+      dispatcher: Dispatcher[F]
   ): F[StreamSubscription[F, A]] =
     SignallingRef(false).flatMap { cancelled =>
       Queue.unbounded[F, Request].map { requests =>
-        new StreamSubscription(requests, cancelled, sub, stream)
+        new StreamSubscription(requests, cancelled, sub, stream, dispatcher)
       }
     }
 }

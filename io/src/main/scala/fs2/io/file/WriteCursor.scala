@@ -25,13 +25,12 @@ package file
 
 import cats.{Monad, ~>}
 import cats.syntax.all._
-import cats.effect.{Resource, Sync}
+import cats.effect.kernel.{Resource, Sync}
 
 import java.nio.file._
 import cats.arrow.FunctionK
 
-/**
-  * Associates a `FileHandle` with an offset in to the file.
+/** Associates a `FileHandle` with an offset in to the file.
   *
   * This encapsulates the pattern of incrementally writing bytes in to a file,
   * a chunk at a time. Convenience methods are provided for working with pulls.
@@ -41,15 +40,13 @@ final case class WriteCursor[F[_]](file: FileHandle[F], offset: Long) {
   /** Returns a new cursor with the offset adjusted to the specified position. */
   def seek(position: Long): WriteCursor[F] = WriteCursor(file, position)
 
-  /**
-    * Writes a single chunk to the underlying file handle, returning a new cursor
+  /** Writes a single chunk to the underlying file handle, returning a new cursor
     * with an offset incremented by the chunk size.
     */
   def write(bytes: Chunk[Byte])(implicit F: Monad[F]): F[WriteCursor[F]] =
     write_[F](bytes, FunctionK.id[F])
 
-  /**
-    * Like `write` but returns a pull instead of an `F[WriteCursor[F]]`.
+  /** Like `write` but returns a pull instead of an `F[WriteCursor[F]]`.
     */
   def writePull(bytes: Chunk[Byte]): Pull[F, Nothing, WriteCursor[F]] =
     write_(bytes, Pull.functionKInstance)
@@ -61,8 +58,7 @@ final case class WriteCursor[F[_]](file: FileHandle[F], offset: Long) {
       else next.write_(bytes.drop(written), u)
     }
 
-  /**
-    * Writes all chunks from the supplied stream to the underlying file handle, returning a cursor
+  /** Writes all chunks from the supplied stream to the underlying file handle, returning a cursor
     * with offset incremented by the total number of bytes written.
     */
   def writeAll(s: Stream[F, Byte]): Pull[F, Nothing, WriteCursor[F]] =

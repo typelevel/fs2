@@ -30,13 +30,12 @@ import javax.net.ssl.SSLSession
 
 import cats.Applicative
 import cats.effect.std.Semaphore
-import cats.effect._
+import cats.effect.kernel._
 import cats.syntax.all._
 
 import fs2.io.tcp.Socket
 
-/**
-  * TCP socket that supports encryption via TLS.
+/** TCP socket that supports encryption via TLS.
   *
   * To construct a `TLSSocket`, use the `client` and `server` methods on `TLSContext`.
   */
@@ -45,14 +44,12 @@ sealed trait TLSSocket[F[_]] extends Socket[F] {
   /** Initiates handshaking -- either the initial or a renegotiation. */
   def beginHandshake: F[Unit]
 
-  /**
-    * Provides access to the current `SSLSession` for purposes of querying
+  /** Provides access to the current `SSLSession` for purposes of querying
     * session info such as the negotiated cipher suite or the peer certificate.
     */
   def session: F[SSLSession]
 
-  /**
-    * Provides access to the current application protocol that has been negotiated.
+  /** Provides access to the current application protocol that has been negotiated.
     */
   def applicationProtocol: F[String]
 }
@@ -79,7 +76,7 @@ object TLSSocket {
         engine.read(maxBytes, timeout)
 
       def readN(numBytes: Int, timeout: Option[FiniteDuration]): F[Option[Chunk[Byte]]] =
-        readSem.withPermit {
+        readSem.permit.use { _ =>
           def go(acc: Chunk.Queue[Byte]): F[Option[Chunk[Byte]]] = {
             val toRead = numBytes - acc.size
             if (toRead <= 0) Applicative[F].pure(Some(acc.toChunk))
@@ -93,7 +90,7 @@ object TLSSocket {
         }
 
       def read(maxBytes: Int, timeout: Option[FiniteDuration]): F[Option[Chunk[Byte]]] =
-        readSem.withPermit(read0(maxBytes, timeout))
+        readSem.permit.use(_ => read0(maxBytes, timeout))
 
       def reads(maxBytes: Int, timeout: Option[FiniteDuration]): Stream[F, Byte] =
         Stream.repeatEval(read(maxBytes, timeout)).unNoneTerminate.flatMap(Stream.chunk)

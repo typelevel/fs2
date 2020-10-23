@@ -22,8 +22,8 @@
 package fs2
 
 import cats.{Id, Monad}
-import cats.effect._
-import cats.effect.kernel.Ref
+import cats.effect.SyncIO
+import cats.effect.kernel.{Concurrent, Poll, Ref, Resource, Sync}
 import cats.syntax.all._
 
 import fs2.internal._
@@ -116,15 +116,21 @@ object Compiler extends CompilerLowPriority {
 
   sealed trait Target[F[_]] extends Resource.Bracket[F] {
     def ref[A](a: A): F[Ref[F, A]]
+    def uncancelable[A](f: Poll[F] => F[A]): F[A]
+    private[fs2] def interruptContext(root: Token): Option[F[InterruptContext[F]]]
   }
 
   private[fs2] trait TargetLowPriority {
     implicit def forSync[F[_]: Sync]: Target[F] = new SyncTarget
 
+    private val idPoll: Poll[Id] = new Poll[Id] { def apply[X](fx: Id[X]) = fx }
+
     private final class SyncTarget[F[_]](protected implicit val F: Sync[F])
         extends Target[F]
         with Resource.Bracket.SyncBracket[F] {
       def ref[A](a: A): F[Ref[F, A]] = Ref[F].of(a)
+      def uncancelable[A](f: Poll[F] => F[A]): F[A] = f(idPoll.asInstanceOf[Poll[F]])
+      private[fs2] def interruptContext(root: Token): Option[F[InterruptContext[F]]] = None
     }
   }
 
@@ -137,6 +143,10 @@ object Compiler extends CompilerLowPriority {
     ) extends Target[F]
         with Resource.Bracket.MonadCancelBracket[F] {
       def ref[A](a: A): F[Ref[F, A]] = F.ref(a)
+      def uncancelable[A](f: Poll[F] => F[A]): F[A] = F.uncancelable(f)
+      private[fs2] def interruptContext(root: Token): Option[F[InterruptContext[F]]] = Some(
+        InterruptContext(root, F.unit)
+      )
     }
   }
 }

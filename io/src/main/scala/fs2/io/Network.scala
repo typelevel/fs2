@@ -19,11 +19,35 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2.internal
+package fs2
+package io
 
-import cats.effect.Concurrent
+import cats.effect.kernel.Async
 
-final class Interruptible[F[_]](implicit val concurrent: Concurrent[F])
-object Interruptible {
-  implicit def instance[F[_]: Concurrent]: Interruptible[F] = new Interruptible[F]
+/** Provides the ability to work with TCP, UDP, and TLS.
+  *
+  * @example {{{
+  * import fs2.Stream
+  * import fs2.io.{Network, udp}
+  *
+  * def send[F[_]: Network](socketGroup: udp.SocketGroup, packet: udp.Packet): F[Unit] =
+  *   socketGroup.open().use { socket =>
+  *     socket.write(packet)
+  *   }
+  * }}}
+  *
+  * In this example, the `F[_]` parameter to `send` requires the `Network` constraint instead
+  * of requiring the much more powerful `Async`.
+  *
+  * An instance is available for any effect `F` which has an `Async[F]` instance.
+  */
+sealed trait Network[F[_]] {
+  private[io] implicit val async: Async[F]
+}
+
+object Network {
+  def apply[F[_]](implicit F: Network[F]): F.type = F
+
+  implicit def forAsync[F[_]](implicit F: Async[F]): Network[F] =
+    new Network[F] { val async = F }
 }

@@ -23,25 +23,26 @@ package fs2
 package interop
 package reactivestreams
 
-import cats.effect._
-import cats.effect.unsafe.UnsafeRun
+import cats.effect.kernel._
+import cats.effect.std.Dispatcher
 import cats.syntax.all._
 
 import org.reactivestreams._
 
-/**
-  * Implementation of a `org.reactivestreams.Publisher`
+/** Implementation of a `org.reactivestreams.Publisher`
   *
   * This is used to publish elements from a `fs2.Stream` to a downstream reactivestreams system.
   *
   * @see [[https://github.com/reactive-streams/reactive-streams-jvm#1-publisher-code]]
   */
-final class StreamUnicastPublisher[F[_]: Async: UnsafeRun, A](val stream: Stream[F, A])
-    extends Publisher[A] {
+final class StreamUnicastPublisher[F[_]: Async, A](
+    val stream: Stream[F, A],
+    dispatcher: Dispatcher[F]
+) extends Publisher[A] {
   def subscribe(subscriber: Subscriber[_ >: A]): Unit = {
     nonNull(subscriber)
-    UnsafeRun[F].unsafeRunAndForget {
-      StreamSubscription(subscriber, stream)
+    dispatcher.unsafeRunAndForget {
+      StreamSubscription(subscriber, stream, dispatcher)
         .flatMap { subscription =>
           Sync[F].delay {
             subscriber.onSubscribe(subscription)
@@ -55,8 +56,9 @@ final class StreamUnicastPublisher[F[_]: Async: UnsafeRun, A](val stream: Stream
 }
 
 object StreamUnicastPublisher {
-  def apply[F[_]: Async: UnsafeRun, A](
-      s: Stream[F, A]
+  def apply[F[_]: Async, A](
+      s: Stream[F, A],
+      dispatcher: Dispatcher[F]
   ): StreamUnicastPublisher[F, A] =
-    new StreamUnicastPublisher(s)
+    new StreamUnicastPublisher(s, dispatcher)
 }

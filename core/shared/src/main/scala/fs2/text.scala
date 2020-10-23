@@ -172,11 +172,11 @@ object text {
 
   /** Encodes a stream of `String` in to a stream of bytes using the given charset. */
   def encode[F[_]](charset: Charset): Pipe[F, String, Byte] =
-    _.flatMap(s => Stream.chunk(Chunk.bytes(s.getBytes(charset))))
+    _.mapChunks(c => c.flatMap(s => Chunk.bytes(s.getBytes(charset))))
 
   /** Encodes a stream of `String` in to a stream of `Chunk[Byte]` using the given charset. */
   def encodeC[F[_]](charset: Charset): Pipe[F, String, Chunk[Byte]] =
-    _.map(s => Chunk.bytes(s.getBytes(charset)))
+    _.mapChunks(_.map(s => Chunk.bytes(s.getBytes(charset))))
 
   /** Encodes a stream of `String` in to a stream of bytes using the UTF-8 charset. */
   def utf8Encode[F[_]]: Pipe[F, String, Byte] =
@@ -271,8 +271,7 @@ object text {
   /** Functions for working with base 64. */
   object base64 {
 
-    /**
-      * Converts a stream of base 64 text in to a stream of bytes.
+    /** Converts a stream of base 64 text in to a stream of bytes.
       *
       * If the text is not valid base 64, the pipe fails with an exception. Padding
       * characters at the end of the input stream are optional, but if present, must
@@ -283,8 +282,7 @@ object text {
     def decode[F[_]: RaiseThrowable]: Pipe[F, String, Byte] =
       decodeWithAlphabet(Bases.Alphabets.Base64)
 
-    /**
-      * Like [[decode]] but takes a base 64 alphabet. For example,
+    /** Like [[decode]] but takes a base 64 alphabet. For example,
       * `decodeWithAlphabet(Bases.Alphabets.Base64Url)` will decode URL compatible base 64.
       */
     def decodeWithAlphabet[F[_]: RaiseThrowable](
@@ -393,15 +391,13 @@ object text {
       in => go(State(0, 0, 0), in).stream
     }
 
-    /**
-      * Encodes a byte stream in to a stream of base 64 text.
+    /** Encodes a byte stream in to a stream of base 64 text.
       * The default base 64 alphabet is used by this pipe.
       */
     def encode[F[_]]: Pipe[F, Byte, String] =
       encodeWithAlphabet(Bases.Alphabets.Base64)
 
-    /**
-      * Like [[encode]] but takes a base 64 alphabet. For example,
+    /** Like [[encode]] but takes a base 64 alphabet. For example,
       * `encodeWithAlphabet(Bases.Alphabets.Base64Url)` will encode URL compatible base 64.
       */
     def encodeWithAlphabet[F[_]](alphabet: Bases.Base64Alphabet): Pipe[F, Byte, String] = {

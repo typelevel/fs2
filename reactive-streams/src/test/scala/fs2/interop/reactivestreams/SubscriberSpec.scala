@@ -38,23 +38,19 @@ import org.reactivestreams.tck.{
   SubscriberWhiteboxVerification,
   TestEnvironment
 }
-import org.scalatestplus.testng.TestNGSuiteLike
 
 import scala.concurrent.duration._
 
 final class SubscriberWhiteboxSpec
     extends SubscriberWhiteboxVerification[Int](new TestEnvironment(1000L))
-    with TestNGSuiteLike {
-
-  // https://github.com/typelevel/cats-effect/pull/1213
-  implicit val unsafeRunIO: cats.effect.unsafe.UnsafeRun[IO] = global.unsafeRunForIO
+    with UnsafeTestNGSuite {
 
   private val counter = new AtomicInteger()
 
   def createSubscriber(
       p: SubscriberWhiteboxVerification.WhiteboxSubscriberProbe[Int]
   ): Subscriber[Int] =
-    StreamSubscriber[IO, Int]
+    StreamSubscriber[IO, Int](runner)
       .map(s => new WhiteboxSubscriber(s, p))
       .unsafeRunSync()
 
@@ -94,14 +90,12 @@ final class WhiteboxSubscriber[A](sub: StreamSubscriber[IO, A], probe: WhiteboxS
 
 final class SubscriberBlackboxSpec
     extends SubscriberBlackboxVerification[Int](new TestEnvironment(1000L))
-    with TestNGSuiteLike {
-
-  // https://github.com/typelevel/cats-effect/pull/1213
-  implicit val unsafeRunIO: cats.effect.unsafe.UnsafeRun[IO] = global.unsafeRunForIO
+    with UnsafeTestNGSuite {
 
   private val counter = new AtomicInteger()
 
-  def createSubscriber(): StreamSubscriber[IO, Int] = StreamSubscriber[IO, Int].unsafeRunSync()
+  def createSubscriber(): StreamSubscriber[IO, Int] =
+    StreamSubscriber[IO, Int](runner).unsafeRunSync()
 
   override def triggerRequest(s: Subscriber[_ >: Int]): Unit = {
     val req = s.asInstanceOf[StreamSubscriber[IO, Int]].sub.dequeue1
