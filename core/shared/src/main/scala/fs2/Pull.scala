@@ -54,15 +54,6 @@ sealed abstract class Pull[+F[_], +O, +R] {
   /** Alias for `_.map(_ => o2)`. */
   def as[R2](r2: R2): Pull[F, O, R2] = map(_ => r2)
 
-  private[Pull] def asHandler(e: Throwable): Pull[F, O, R] =
-    ViewL(this) match {
-      case Result.Succeeded(_) => Result.Fail(e)
-      case Result.Fail(e2)     => Result.Fail(CompositeFailure(e2, e))
-      case Result.Interrupted(ctx, err) =>
-        Result.Interrupted(ctx, err.map(t => CompositeFailure(e, t)).orElse(Some(e)))
-      case v @ ViewL.View(_) => v.next(Result.Fail(e))
-    }
-
   /** Returns a pull with the result wrapped in `Right`, or an error wrapped in `Left` if the pull has failed. */
   def attempt: Pull[F, O, Either[Throwable, R]] =
     map(r => Right(r)).handleErrorWith(t => Result.Succeeded(Left(t)))
@@ -131,9 +122,6 @@ sealed abstract class Pull[+F[_], +O, +R] {
     new Bind[F, O, R, R2](this) {
       def cont(r: Result[R]) = r.map(f)
     }
-
-  /** Applies the outputs of this pull to `f` and returns the result in a new `Pull`. */
-  def mapOutput[O2](f: O => O2): Pull[F, O2, R]
 
   /** Run `p2` after `this`, regardless of errors during `this`, then reraise any errors encountered during `this`. */
   def onComplete[F2[x] >: F[x], O2 >: O, R2 >: R](p2: => Pull[F2, O2, R2]): Pull[F2, O2, R2] =
@@ -406,9 +394,7 @@ object Pull extends PullLowPriority {
     */
   private sealed abstract class Result[+R]
       extends Pull[Pure, INothing, R]
-      with ViewL[Pure, INothing, R] {
-    override def mapOutput[P](f: INothing => P): Pull[Pure, INothing, R] = this
-  }
+      with ViewL[Pure, INothing]
 
   private object Result {
     val unit: Result[Unit] = Result.Succeeded(())
@@ -444,63 +430,51 @@ object Pull extends PullLowPriority {
   private abstract class Bind[+F[_], +O, X, +R](val step: Pull[F, O, X]) extends Pull[F, O, R] {
     def cont(r: Result[X]): Pull[F, O, R]
     def delegate: Bind[F, O, X, R] = this
-
-    override def mapOutput[P](f: O => P): Pull[F, P, R] =
-      suspend {
-        ViewL(this) match {
-          case v: ViewL.View[F, O, x, R] =>
-            new Bind[F, P, x, R](v.step.mapOutput(f)) {
-              def cont(e: Result[x]) = v.next(e).mapOutput(f)
-            }
-          case r: Result[R] => r
-        }
-      }
   }
 
   /** Unrolled view of a `Pull` structure. may be `Result` or `EvalBind`
     */
-  private sealed trait ViewL[+F[_], +O, +R]
+  private sealed trait ViewL[+F[_], +O]
 
-  private object ViewL {
+  private sealed abstract case class View[+F[_], +O, X](step: Action[F, O, X]) extends ViewL[F, O] {
+    def next(r: Result[X]): Pull[F, O, Unit]
+  }
+  private final class EvalView[+F[_], +O](step: Action[F, O, Unit]) extends View[F, O, Unit](step) {
+    def next(r: Result[Unit]): Pull[F, O, Unit] = r
+  }
 
-    /** unrolled view of Pull `bind` structure * */
-    private[Pull] sealed abstract case class View[+F[_], +O, X, +R](step: Action[F, O, X])
-        extends ViewL[F, O, R] {
-      def next(r: Result[X]): Pull[F, O, R]
-    }
+  /* unrolled view of Pull `bind` structure * */
 
-    final class EvalView[+F[_], +O, R](step: Action[F, O, R]) extends View[F, O, R, R](step) {
-      def next(r: Result[R]): Pull[F, O, R] = r
-    }
-
-    def apply[F[_], O, R](free: Pull[F, O, R]): ViewL[F, O, R] = mk(free)
+  private def viewL[F[_], O](stream: Pull[F, O, Unit]): ViewL[F, O] = {
 
     @tailrec
-    private def mk[F[_], O, Z](free: Pull[F, O, Z]): ViewL[F, O, Z] =
+    def mk(free: Pull[F, O, Unit]): ViewL[F, O] =
       free match {
-        case r: Result[Z]       => r
-        case e: Action[F, O, Z] => new EvalView[F, O, Z](e)
-        case b: Bind[F, O, y, Z] =>
+        case r: Result[Unit]       => r
+        case e: Action[F, O, Unit] => new EvalView[F, O](e)
+        case b: Bind[F, O, y, Unit] =>
           b.step match {
             case r: Result[_] =>
               val ry: Result[y] = r.asInstanceOf[Result[y]]
               mk(b.cont(ry))
             case e: Action[F, O, y2] =>
-              new ViewL.View[F, O, y2, Z](e) {
-                def next(r: Result[y2]): Pull[F, O, Z] = b.cont(r.asInstanceOf[Result[y]])
+              new View[F, O, y2](e) {
+                def next(r: Result[y2]): Pull[F, O, Unit] = b.cont(r.asInstanceOf[Result[y]])
               }
             case bb: Bind[F, O, x, _] =>
-              val nb = new Bind[F, O, x, Z](bb.step) {
-                private[this] val bdel: Bind[F, O, y, Z] = b.delegate
-                def cont(zr: Result[x]): Pull[F, O, Z] =
-                  new Bind[F, O, y, Z](bb.cont(zr).asInstanceOf[Pull[F, O, y]]) {
-                    override val delegate: Bind[F, O, y, Z] = bdel
-                    def cont(yr: Result[y]): Pull[F, O, Z] = delegate.cont(yr)
+              val nb = new Bind[F, O, x, Unit](bb.step) {
+                private[this] val bdel: Bind[F, O, y, Unit] = b.delegate
+                def cont(zr: Result[x]): Pull[F, O, Unit] =
+                  new Bind[F, O, y, Unit](bb.cont(zr).asInstanceOf[Pull[F, O, y]]) {
+                    override val delegate: Bind[F, O, y, Unit] = bdel
+                    def cont(yr: Result[y]): Pull[F, O, Unit] = delegate.cont(yr)
                   }
               }
               mk(nb)
           }
       }
+
+    mk(stream)
   }
 
   /* An Action is an atomic instruction that can perform effects in `F`
@@ -511,23 +485,14 @@ object Pull extends PullLowPriority {
    */
   private abstract class Action[+F[_], +O, +R] extends Pull[F, O, R]
 
-  private final case class Output[+O](values: Chunk[O]) extends Action[Pure, O, Unit] {
-    override def mapOutput[P](f: O => P): Pull[Pure, P, Unit] =
-      Pull.suspend {
-        try Output(values.map(f))
-        catch { case NonFatal(t) => Result.Fail(t) }
-      }
-  }
+  private final case class Output[+O](values: Chunk[O]) extends Action[Pure, O, Unit]
 
   /* A translation point, that wraps an inner stream written in another effect
    */
   private final case class Translate[G[_], F[_], +O](
       stream: Pull[G, O, Unit],
       fk: G ~> F
-  ) extends Action[F, O, Unit] {
-    override def mapOutput[O2](f: O => O2): Pull[F, O2, Unit] =
-      Translate(stream.mapOutput(f), fk)
-  }
+  ) extends Action[F, O, Unit]
 
   /** Steps through the stream, providing either `uncons` or `stepLeg`.
     * Yields to head in form of chunk, then id of the scope that was active after step evaluated and tail of the `stream`.
@@ -536,15 +501,11 @@ object Pull extends PullLowPriority {
     * @param scopeId            If scope has to be changed before this step is evaluated, id of the scope must be supplied
     */
   private final case class Step[+F[_], X](stream: Pull[F, X, Unit], scope: Option[Token])
-      extends Action[Pure, INothing, Option[(Chunk[X], Token, Pull[F, X, Unit])]] {
-    override def mapOutput[P](f: INothing => P): Step[F, X] = this
-  }
+      extends Action[Pure, INothing, Option[(Chunk[X], Token, Pull[F, X, Unit])]]
 
   /* The `AlgEffect` trait is for operations on the `F` effect that create no `O` output.
    * They are related to resources and scopes. */
-  private sealed abstract class AlgEffect[+F[_], R] extends Action[F, INothing, R] {
-    final def mapOutput[P](f: INothing => P): Pull[F, P, R] = this
-  }
+  private sealed abstract class AlgEffect[+F[_], R] extends Action[F, INothing, R]
 
   private final case class Eval[+F[_], R](value: F[R]) extends AlgEffect[F, R]
 
@@ -651,8 +612,8 @@ object Pull extends PullLowPriority {
         translation: G ~> F,
         stream: Pull[G, X, Unit]
     ): F[R[G, X]] =
-      ViewL(stream) match {
-        case _: Pull.Result.Succeeded[Unit] =>
+      viewL(stream) match {
+        case _: Pull.Result.Succeeded[_] =>
           F.pure(Done(scope))
 
         case failed: Pull.Result.Fail =>
@@ -661,7 +622,7 @@ object Pull extends PullLowPriority {
         case interrupted: Pull.Result.Interrupted =>
           F.pure(Interrupted(interrupted.context, interrupted.deferredError))
 
-        case view: ViewL.View[G, X, y, Unit] =>
+        case view: View[G, X, y] =>
           def interruptGuard(scope: CompileScope[F])(next: => F[R[G, X]]): F[R[G, X]] =
             F.flatMap(scope.isInterrupted) {
               case None => next
@@ -842,8 +803,16 @@ object Pull extends PullLowPriority {
         case out: Out[f, o] =>
           try outerLoop(out.scope, g(accB, out.head), out.tail.asInstanceOf[Pull[f, O, Unit]])
           catch {
-            case NonFatal(err) =>
-              outerLoop(out.scope, accB, out.tail.asHandler(err).asInstanceOf[Pull[f, O, Unit]])
+            case NonFatal(e) =>
+              val handled = viewL(out.tail) match {
+                case Result.Succeeded(_) => Result.Fail(e)
+                case Result.Fail(e2)     => Result.Fail(CompositeFailure(e2, e))
+                case Result.Interrupted(ctx, err) =>
+                  Result.Interrupted(ctx, err.map(t => CompositeFailure(e, t)).orElse(Some(e)))
+                case v @ View(_) => v.next(Result.Fail(e))
+              }
+
+              outerLoop(out.scope, accB, handled.asInstanceOf[Pull[f, O, Unit]])
           }
         case Interrupted(_, None)      => F.pure(accB)
         case Interrupted(_, Some(err)) => F.raiseError(err)
@@ -894,8 +863,8 @@ object Pull extends PullLowPriority {
       stream: Pull[F, O, Unit],
       interruption: Result.Interrupted
   ): Pull[F, O, Unit] =
-    ViewL(stream) match {
-      case _: Pull.Result.Succeeded[Unit] =>
+    viewL(stream) match {
+      case _: Pull.Result.Succeeded[_] =>
         interruption
       case failed: Pull.Result.Fail =>
         Result.Fail(
@@ -905,7 +874,7 @@ object Pull extends PullLowPriority {
         )
       case interrupted: Result.Interrupted => interrupted // impossible
 
-      case view: ViewL.View[F, O, _, Unit] =>
+      case view: View[F, O, _] =>
         view.step match {
           case CloseScope(scopeId, _, _) =>
             // Inner scope is getting closed b/c a parent was interrupted
@@ -922,6 +891,35 @@ object Pull extends PullLowPriority {
       fK: F ~> G
   ): Pull[G, O, Unit] =
     Translate(stream, fK)
+
+  /* Applies the outputs of this pull to `f` and returns the result in a new `Pull`. */
+  private[fs2] def mapOutput[F[_], O, P](
+      stream: Pull[F, O, Unit],
+      fun: O => P
+  ): Pull[F, P, Unit] =
+    stream match {
+      case r: Result[_]          => r
+      case a: AlgEffect[F, _]    => a
+      case t: Translate[g, f, _] => Translate[g, f, P](mapOutput(t.stream, fun), t.fk)
+      case _ =>
+        suspend {
+          viewL(stream) match {
+            case r: Result[Unit] => r
+            case v: View[F, O, x] =>
+              val mstep: Pull[F, P, x] = (v.step: Action[F, O, x]) match {
+                case o: Output[O] =>
+                  try Output(o.values.map(fun))
+                  catch { case NonFatal(t) => Result.Fail(t) }
+                case t: Translate[g, f, O] => Translate[g, f, P](mapOutput(t.stream, fun), t.fk)
+                case s: Step[F, _]         => s
+                case a: AlgEffect[F, _]    => a
+              }
+              new Bind[F, P, x, Unit](mstep) {
+                def cont(r: Result[x]) = mapOutput(v.next(r), fun)
+              }
+          }
+        }
+    }
 
   /** Provides syntax for pure pulls based on `cats.Id`. */
   implicit final class IdOps[O](private val self: Pull[Id, O, Unit]) extends AnyVal {
