@@ -726,8 +726,8 @@ class StreamCombinatorsSuite extends Fs2Suite {
       forAllF { (s: Stream[Pure, Int], d0: Int, maxGroupSize0: Int) =>
         val maxGroupSize = (maxGroupSize0 % 20).abs + 1
         val d = (d0 % 50).abs.millis
-        Stream(1)
-          .append(s)
+
+        s
           .map(i => (i % 500).abs)
           .covary[IO]
           .evalTap(shortDuration => IO.sleep(shortDuration.micros))
@@ -753,6 +753,16 @@ class StreamCombinatorsSuite extends Fs2Suite {
       }
     }
 
+    test("should be equivalent to chunkN when no timeouts trigger") {
+      val s = Stream.range(0, 100)
+      val size = 5
+
+      val out0 = s.covary[IO].groupWithin(size, 1.second).map(_.toList).compile.toList
+      val out1 = s.chunkN(size).map(_.toList).compile.toList
+
+      out0.map(it => assertEquals(it, out1))
+    }
+
     test(
       "should return a finite stream back in a single chunk given a group size equal to the stream size and an absurdly high duration"
     ) {
@@ -766,6 +776,99 @@ class StreamCombinatorsSuite extends Fs2Suite {
           .toList
           .map(it => assert(it.head.toList == streamAsList))
       }
+    }
+
+    test("accumulation and splitting") {
+      val t = 200.millis
+      val size = 5
+      val sleep = Stream.sleep_[IO](2 * t)
+
+      def chunk(from: Int, size: Int) =
+        Stream.range(from, from + size).chunkAll.flatMap(Stream.chunk)
+
+      // this test example is designed to have good coverage of
+      // the chunk manipulation logic in groupWithin
+      val source =
+        chunk(from = 1, size = 3) ++
+          sleep ++
+          chunk(from = 4, size = 12) ++
+          chunk(from = 16, size = 7)
+
+      val expected = List(
+        List(1, 2, 3),
+        List(4, 5, 6, 7, 8),
+        List(9, 10, 11, 12, 13),
+        List(14, 15, 16, 17, 18),
+        List(19, 20, 21, 22)
+      )
+
+      source
+        .groupWithin(size, t)
+        .map(_.toList)
+        .compile
+        .toList
+        .map(it => assertEquals(it, expected))
+    }
+
+    test("does not reset timeout if nothing is emitted") {
+      Ref[IO]
+        .of(0.millis)
+        .flatMap { ref =>
+          val timeout = 5.seconds
+
+          def measureEmission[A]: Pipe[IO, A, A] =
+            _.chunks
+              .evalTap(_ => IO.monotonic.flatMap(ref.set))
+              .flatMap(Stream.chunk)
+
+          // emits elements after the timeout has expired
+          val source =
+            Stream.sleep_[IO](timeout + 200.millis) ++
+              Stream(4, 5) ++
+              Stream.never[IO] // avoids emission due to source termination
+
+          source
+            .through(measureEmission)
+            .groupWithin(5, timeout)
+            .evalMap(_ => (IO.monotonic, ref.get).mapN(_ - _))
+            .interruptAfter(timeout * 3)
+            .compile
+            .lastOrError
+        }
+        .map { groupWithinDelay =>
+          // The stream emits after the timeout
+          // so groupWithin should re-emit with zero delay
+          assertEquals(groupWithinDelay, 0.millis)
+        }
+        .ticked
+    }
+
+    test("Edge case: should not introduce unnecessary delays when groupSize == chunkSize") {
+      Ref[IO]
+        .of(0.millis)
+        .flatMap { ref =>
+          val timeout = 5.seconds
+
+          def measureEmission[A]: Pipe[IO, A, A] =
+            _.chunks
+              .evalTap(_ => IO.monotonic.flatMap(ref.set))
+              .flatMap(Stream.chunk)
+
+          val source =
+            Stream(1, 2, 3) ++
+              Stream.sleep_[IO](timeout + 200.millis)
+
+          source
+            .through(measureEmission)
+            .groupWithin(3, timeout)
+            .evalMap(_ => (IO.monotonic, ref.get).mapN(_ - _))
+            .compile
+            .lastOrError
+        }
+        .map { groupWithinDelay =>
+          assertEquals(groupWithinDelay, 0.millis)
+        }
+        .ticked
     }
   }
 
