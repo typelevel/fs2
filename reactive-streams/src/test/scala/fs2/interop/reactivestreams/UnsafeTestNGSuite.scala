@@ -31,14 +31,14 @@ import org.testng.annotations.AfterClass
 
 trait UnsafeTestNGSuite extends TestNGSuiteLike {
 
-  protected var runner: Dispatcher[IO] = _
-  private var shutdownRunner: IO[Unit] = _
+  protected var dispatcher: Dispatcher[IO] = _
+  private var shutdownDispatcher: IO[Unit] = _
 
-  private val dispatcher = Dispatcher[IO].allocated
-  private val t = dispatcher.unsafeRunSync()
-  runner = t._1
-  shutdownRunner = t._2
+  private val mkDispatcher = Dispatcher[IO].allocated
+  private val t = mkDispatcher.unsafeRunSync()
+  dispatcher = t._1
+  shutdownDispatcher = t._2
 
   @AfterClass
-  def afterAll() = shutdownRunner.unsafeRunSync()
+  def afterAll() = shutdownDispatcher.unsafeRunSync()
 }

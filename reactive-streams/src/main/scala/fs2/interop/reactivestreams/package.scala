@@ -75,8 +75,8 @@ package object reactivestreams {
     def toUnicastPublisher(implicit
         F: Async[F]
     ): Resource[F, StreamUnicastPublisher[F, A]] =
-      Dispatcher[F].map { runner =>
-        StreamUnicastPublisher(stream, runner)
+      Dispatcher[F].map { dispatcher =>
+        StreamUnicastPublisher(stream, dispatcher)
       }
   }
 }

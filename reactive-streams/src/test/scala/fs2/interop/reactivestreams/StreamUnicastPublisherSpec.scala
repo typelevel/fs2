@@ -48,7 +48,7 @@ final class StreamUnicastPublisherSpec
       if (n == java.lang.Long.MAX_VALUE) Stream.range(1, 20).repeat
       else Stream(1).repeat.scan(1)(_ + _).map(i => if (i > n) None else Some(i)).unNoneTerminate
 
-    StreamUnicastPublisher(s.covary[IO], runner)
+    StreamUnicastPublisher(s.covary[IO], dispatcher)
   }
 
   def createFailedPublisher(): FailedPublisher = new FailedPublisher()
