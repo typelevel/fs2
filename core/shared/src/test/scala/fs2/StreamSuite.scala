@@ -518,6 +518,12 @@ class StreamSuite extends Fs2Suite {
     }
   }
 
+  test("resource-append") {
+    val res1: Resource[IO, String] = Resource.make(IO.pure("start"))(_ => IO.unit)
+    val str: Stream[IO, String] = Stream.resource(res1) ++ Stream.emit("done")
+    str.compile.toList.map(it => assertEquals(it, List("start", "done")))
+  }
+
   test("resource") {
     Ref[IO]
       .of(List.empty[String])
