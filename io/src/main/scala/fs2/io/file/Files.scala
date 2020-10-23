@@ -379,7 +379,7 @@ object SyncFiles {
 
     def isDirectory(
         path: Path,
-        linkOption: Seq[LinkOption] = Nil
+        linkOption: Seq[LinkOption]
     ): F[Boolean] =
       Sync[F].delay(
         JFiles.getAttribute(path, "basic:isDirectory", linkOption: _*).asInstanceOf[Boolean]
