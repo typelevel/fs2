@@ -200,12 +200,12 @@ sealed trait SyncFiles[F[_]] {
 
   def isDirectory(
       path: Path,
-      linkOption: Seq[LinkOption]
+      linkOption: Seq[LinkOption] = Nil
   ): F[Boolean]
 
   def isFile(
       path: Path,
-      linkOption: Seq[LinkOption]
+      linkOption: Seq[LinkOption] = Nil
   ): F[Boolean]
 
 }
