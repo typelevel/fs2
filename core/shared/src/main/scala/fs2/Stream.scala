@@ -1411,7 +1411,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * elements are used for the next chunk.
     *
     * When the stream terminates, any accumulated elements are emitted
-    * immediately in a chunk, even if `timeout` is not expired.
+    * immediately in a chunk, even if `timeout` has not expired.
     */
   def groupWithin[F2[x] >: F[x]](
       n: Int,
@@ -1452,7 +1452,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
                     if (c.size < n) Pull.output1(c) -> Chunk.empty
                     else resize(c, Pull.done)
                   toEmit >> resetTimerAndGo(Chunk.Queue(rest))
-                case Right(c) if !hasTimedOut =>
+                case Right(c) =>
                   val newAcc = acc :+ c
                   if (newAcc.size < n)
                     go(newAcc, next)
