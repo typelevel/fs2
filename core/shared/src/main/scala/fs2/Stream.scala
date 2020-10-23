@@ -1492,50 +1492,55 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       n: Int,
       timeout: FiniteDuration
   )(implicit F: Temporal[F2]): Stream[F2, Chunk[O]] =
-    this.covary[F2].pull.timed { timedPull =>
-      def resize(c: Chunk[O], s: Pull[F2, Chunk[O], Unit]): (Pull[F2, Chunk[O], Unit], Chunk[O]) =
-        if (c.size < n) s -> c
-        else {
-          val (unit, rest) = c.splitAt(n)
-          resize(rest, s >> Pull.output1(unit))
-        }
+    this
+      .covary[F2]
+      .pull
+      .timed { timedPull =>
+        def resize(c: Chunk[O], s: Pull[F2, Chunk[O], Unit]): (Pull[F2, Chunk[O], Unit], Chunk[O]) =
+          if (c.size < n) s -> c
+          else {
+            val (unit, rest) = c.splitAt(n)
+            resize(rest, s >> Pull.output1(unit))
+          }
 
-      // Invariants:
-      // acc.size < n, always
-      // hasTimedOut == true iff a timeout has been received, and acc.isEmpty
-      def go(acc: Chunk.Queue[O], timedPull: Pull.Timed[F2, O], hasTimedOut: Boolean = false): Pull[F2, Chunk[O], Unit] =
-        timedPull.uncons.flatMap {
-          case None =>
-            Pull.output1(acc.toChunk).whenA(acc.nonEmpty)
-          case Some((e, next)) =>
-            def resetTimerAndGo(q: Chunk.Queue[O]) =
-              timedPull.timeout(timeout) >> go(q, next)
+        // Invariants:
+        // acc.size < n, always
+        // hasTimedOut == true iff a timeout has been received, and acc.isEmpty
+        def go(acc: Chunk.Queue[O], timedPull: Pull.Timed[F2, O], hasTimedOut: Boolean = false)
+            : Pull[F2, Chunk[O], Unit] =
+          timedPull.uncons.flatMap {
+            case None =>
+              Pull.output1(acc.toChunk).whenA(acc.nonEmpty)
+            case Some((e, next)) =>
+              def resetTimerAndGo(q: Chunk.Queue[O]) =
+                timedPull.timeout(timeout) >> go(q, next)
 
-            e match {
-              case Left(_) =>
-                if (acc.nonEmpty)
-                  Pull.output1(acc.toChunk) >> resetTimerAndGo(Chunk.Queue.empty)
-                else
-                  go(Chunk.Queue.empty, next, hasTimedOut = true)
-              case Right(c) if hasTimedOut =>
-                // it has timed out without reset, so acc is empty
-                val (toEmit, rest) =
-                  if (c.size < n) Pull.output1(c) -> Chunk.empty
-                  else resize(c, Pull.done)
-                toEmit >> resetTimerAndGo(Chunk.Queue(rest))
-              case Right(c) if !hasTimedOut =>
-                val newAcc = acc :+ c
-                if (newAcc.size < n)
-                  go(newAcc, next)
-                else {
-                  val (toEmit, rest) = resize(newAcc.toChunk, Pull.done)
+              e match {
+                case Left(_) =>
+                  if (acc.nonEmpty)
+                    Pull.output1(acc.toChunk) >> resetTimerAndGo(Chunk.Queue.empty)
+                  else
+                    go(Chunk.Queue.empty, next, hasTimedOut = true)
+                case Right(c) if hasTimedOut =>
+                  // it has timed out without reset, so acc is empty
+                  val (toEmit, rest) =
+                    if (c.size < n) Pull.output1(c) -> Chunk.empty
+                    else resize(c, Pull.done)
                   toEmit >> resetTimerAndGo(Chunk.Queue(rest))
-                }
-            }
-        }
+                case Right(c) if !hasTimedOut =>
+                  val newAcc = acc :+ c
+                  if (newAcc.size < n)
+                    go(newAcc, next)
+                  else {
+                    val (toEmit, rest) = resize(newAcc.toChunk, Pull.done)
+                    toEmit >> resetTimerAndGo(Chunk.Queue(rest))
+                  }
+              }
+          }
 
-      timedPull.timeout(timeout) >> go(Chunk.Queue.empty, timedPull)
-    }.stream
+        timedPull.timeout(timeout) >> go(Chunk.Queue.empty, timedPull)
+      }
+      .stream
 
   /**
     * If `this` terminates with `Stream.raiseError(e)`, invoke `h(e)`.
@@ -4293,14 +4298,14 @@ object Stream extends StreamLowPriority {
       *
       * For a more complex example, look at the implementation of [[Stream.groupWithin]].
       */
-    def timed[O2, R](pull: Pull.Timed[F, O] => Pull[F, O2, R])(implicit F: Temporal[F]): Pull[F, O2, R] =
+    def timed[O2, R](
+        pull: Pull.Timed[F, O] => Pull[F, O2, R]
+    )(implicit F: Temporal[F]): Pull[F, O2, R] =
       Pull
-        .eval { Token[F].mproduct(id => SignallingRef.of(id -> 0.millis)) }
+        .eval(Token[F].mproduct(id => SignallingRef.of(id -> 0.millis)))
         .flatMap { case (initial, time) =>
-
           def timeouts: Stream[F, Token] =
-            time
-              .discrete
+            time.discrete
               .dropWhile { case (id, _) => id == initial }
               .switchMap { case (id, duration) =>
                 // We cannot move this check into a `filter`:
@@ -4312,7 +4317,8 @@ object Stream extends StreamLowPriority {
               }
 
           def output: Stream[F, Either[Token, Chunk[O]]] =
-            timeouts.map(_.asLeft)
+            timeouts
+              .map(_.asLeft)
               .mergeHaltR(self.chunks.map(_.asRight))
               .flatMap {
                 case chunk @ Right(_) => Stream.emit(chunk)
@@ -4322,17 +4328,18 @@ object Stream extends StreamLowPriority {
                     .collect { case (currentTimeout, _) if currentTimeout == id => timeout }
               }
 
-          def toTimedPull(s: Stream[F, Either[Token, Chunk[O]]]): Pull.Timed[F, O] = new Pull.Timed[F, O] {
-            type Timeout = Token
+          def toTimedPull(s: Stream[F, Either[Token, Chunk[O]]]): Pull.Timed[F, O] =
+            new Pull.Timed[F, O] {
+              type Timeout = Token
 
-            def uncons: Pull[F, INothing, Option[(Either[Timeout, Chunk[O]], Pull.Timed[F, O])]] =
-              s.pull.uncons1
-                .map( _.map { case (r, next) => r -> toTimedPull(next) })
+              def uncons: Pull[F, INothing, Option[(Either[Timeout, Chunk[O]], Pull.Timed[F, O])]] =
+                s.pull.uncons1
+                  .map(_.map { case (r, next) => r -> toTimedPull(next) })
 
-            def timeout(t: FiniteDuration): Pull[F, INothing, Unit] = Pull.eval {
-              Token[F].tupleRight(t).flatMap(time.set)
+              def timeout(t: FiniteDuration): Pull[F, INothing, Unit] = Pull.eval {
+                Token[F].tupleRight(t).flatMap(time.set)
+              }
             }
-          }
 
           pull(toTimedPull(output))
         }
