@@ -494,6 +494,11 @@ object Pull extends PullLowPriority {
       fk: G ~> F
   ) extends Action[F, O, Unit]
 
+  private final case class MapOutput[F[_], O, P](
+      stream: Pull[F, O, Unit],
+      fun: O => P
+  ) extends Action[F, P, Unit]
+
   /** Steps through the stream, providing either `uncons` or `stepLeg`.
     * Yields to head in form of chunk, then id of the scope that was active after step evaluated and tail of the `stream`.
     *
@@ -639,6 +644,36 @@ object Pull extends PullLowPriority {
               interruptGuard(scope)(
                 F.pure(Out(output.values, scope, view.next(Pull.Result.unit)))
               )
+
+            case mout: MapOutput[g, z, x] => // y = Unit
+
+              def innerMapOutput[G[_], Z, X](
+                  stream: Pull[G, Z, Unit],
+                  fun: Z => X
+              ): Pull[G, X, Unit] =
+                viewL(stream) match {
+                  case r: Result[Unit] => r
+                  case v: View[G, Z, x] =>
+                    val mstep: Pull[G, X, x] = (v.step: Action[G, Z, x]) match {
+                      case o: Output[Z] =>
+                        try Output(o.values.map(fun))
+                        catch { case NonFatal(t) => Result.Fail(t) }
+                      case t: Translate[g, f, Z] =>
+                        Translate[g, f, X](innerMapOutput(t.stream, fun), t.fk)
+                      case s: Step[g, _]         => s
+                      case a: AlgEffect[g, _]    => a
+                      case m: MapOutput[g, q, Z] => innerMapOutput(m.stream, fun.compose(m.fun))
+                    }
+                    new Bind[G, X, x, Unit](mstep) {
+                      def cont(r: Result[x]) = innerMapOutput(v.next(r), fun)
+                    }
+                }
+
+              val mo: Pull[g, X, Unit] = innerMapOutput[g, z, X](mout.stream, mout.fun)
+              val str = new Bind[g, X, Unit, Unit](mo) {
+                def cont(r: Result[Unit]) = view.next(r).asInstanceOf[Pull[g, X, Unit]]
+              }
+              go(scope, extendedTopLevelScope, translation, str)
 
             case tst: Translate[h, g, x] =>
               val composed: h ~> F = translation.asInstanceOf[g ~> F].compose[h](tst.fk)
@@ -901,24 +936,8 @@ object Pull extends PullLowPriority {
       case r: Result[_]          => r
       case a: AlgEffect[F, _]    => a
       case t: Translate[g, f, _] => Translate[g, f, P](mapOutput(t.stream, fun), t.fk)
-      case _ =>
-        suspend {
-          viewL(stream) match {
-            case r: Result[_] => r.asInstanceOf[Result[Unit]]
-            case v: View[F, O, x] =>
-              val mstep: Pull[F, P, x] = (v.step: Action[F, O, x]) match {
-                case o: Output[O] =>
-                  try Output(o.values.map(fun))
-                  catch { case NonFatal(t) => Result.Fail(t) }
-                case t: Translate[g, f, O] => Translate[g, f, P](mapOutput(t.stream, fun), t.fk)
-                case s: Step[f, _]         => s
-                case a: AlgEffect[F, _]    => a
-              }
-              new Bind[F, P, x, Unit](mstep) {
-                def cont(r: Result[x]) = mapOutput(v.next(r), fun)
-              }
-          }
-        }
+      case m: MapOutput[F, q, O] => MapOutput(m.stream, fun.compose(m.fun))
+      case _                     => MapOutput(stream, fun)
     }
 
   /** Provides syntax for pure pulls based on `cats.Id`. */
