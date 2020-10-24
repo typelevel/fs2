@@ -71,13 +71,13 @@ class StreamCombinatorsSuite extends Fs2Suite {
     test("buffer results of evalMap") {
       forAllF { (s: Stream[Pure, Int], n0: Int) =>
         val n = (n0 % 20).abs + 1
-        IO.ref(0).flatMap { counter =>
+        Counter[IO].flatMap { counter =>
           val s2 = s.append(Stream.emits(List.fill(n + 1)(0))).repeat
-          s2.evalTap(_ => counter.update(_ + 1))
+          s2.evalTap(_ => counter.increment)
             .buffer(n)
             .take(n + 1L)
             .compile
-            .drain >> counter.get.assertEquals(n * 2)
+            .drain >> counter.get.assertEquals(n.toLong * 2)
         }
       }
     }
@@ -91,13 +91,13 @@ class StreamCombinatorsSuite extends Fs2Suite {
     test("buffer results of evalMap") {
       forAllF { (s: Stream[Pure, Int]) =>
         val expected = s.toList.size * 2
-        IO.ref(0).flatMap { counter =>
+        Counter[IO].flatMap { counter =>
           s.append(s)
-            .evalTap(_ => counter.update(_ + 1))
+            .evalTap(_ => counter.increment)
             .bufferAll
             .take(s.toList.size + 1L)
             .compile
-            .drain >> counter.get.assertEquals(expected)
+            .drain >> counter.get.assertEquals(expected.toLong)
         }
       }
     }
@@ -113,13 +113,13 @@ class StreamCombinatorsSuite extends Fs2Suite {
     test("buffer results of evalMap") {
       forAllF { (s: Stream[Pure, Int]) =>
         val expected = s.toList.size * 2 + 1
-        IO.ref(0).flatMap { counter =>
+        Counter[IO].flatMap { counter =>
           val s2 = s.map(x => if (x == Int.MinValue) x + 1 else x).map(_.abs)
-          val s3 = s2.append(Stream.emit(-1)).append(s2).evalTap(_ => counter.update(_ + 1))
+          val s3 = s2.append(Stream.emit(-1)).append(s2).evalTap(_ => counter.increment)
           s3.bufferBy(_ >= 0)
             .take(s.toList.size + 2L)
             .compile
-            .drain >> counter.get.assertEquals(expected)
+            .drain >> counter.get.assertEquals(expected.toLong)
         }
       }
     }
