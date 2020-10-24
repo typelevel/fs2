@@ -44,7 +44,7 @@ class BracketSuite extends Fs2Suite {
     def singleBracketTest[A](use: Stream[IO, A]): IO[Unit] =
       Ref[IO].of(List.empty[BracketEvent]).flatMap { events =>
         recordBracketEvents(events)
-          .evalMap(_ => events.get.map(events => assert(events == List(Acquired))))
+          .evalMap(_ => events.get.map(events => assertEquals(events, List(Acquired)))
           .flatMap(_ => use)
           .compile
           .drain
