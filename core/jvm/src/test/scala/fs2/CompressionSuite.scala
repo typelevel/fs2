@@ -125,7 +125,7 @@ class CompressionSuite extends Fs2Suite {
         )
         .compile
         .toVector
-        .map(actual => assert(actual == expected))
+        .assertEquals(expected)
     }
   }
 
@@ -162,7 +162,7 @@ class CompressionSuite extends Fs2Suite {
               .through(inflate(InflateParams(header = ZLibParams.Header(nowrap))))
               .compile
               .toVector
-              .map(actual => assert(actual == expected))
+              .assertEquals(expected)
           }
     }
   }
@@ -187,18 +187,15 @@ class CompressionSuite extends Fs2Suite {
       .compile
       .to(Array)
       .flatMap { deflated =>
-        val expected = inflateStream(deflated, false).toVector
+        val expected = new String(inflateStream(deflated, false))
         Stream
           .chunk[IO, Byte](Chunk.bytes(deflated))
           .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
           .through(inflate(InflateParams(header = ZLibParams.Header(false))))
           .compile
-          .toVector
-          .map { actual =>
-            val eStr = new String(expected.toArray)
-            val aStr = new String(actual.toArray)
-            assert(aStr == eStr)
-          }
+          .to(Array)
+          .map(new String(_))
+          .assertEquals(expected)
       }
   }
 
@@ -269,7 +266,7 @@ class CompressionSuite extends Fs2Suite {
           .fold(Vector.empty[Byte]) { case (vector, byte) => vector :+ byte }
           .compile
           .last
-    } yield assert(first == second)
+    } yield assertEquals(first, second)
   }
 
   test("gzip |> gunzip ~= id") {
@@ -313,7 +310,7 @@ class CompressionSuite extends Fs2Suite {
           }
           .compile
           .toVector
-          .map(bytes => assert(bytes == s.getBytes.toSeq))
+          .assertEquals(s.getBytes.toVector)
     }
   }
 
@@ -358,7 +355,7 @@ class CompressionSuite extends Fs2Suite {
           }
           .compile
           .toVector
-          .map(bytes => assert(bytes == s.getBytes.toSeq))
+          .assertEquals(s.getBytes.toVector)
     }
   }
 
@@ -403,7 +400,7 @@ class CompressionSuite extends Fs2Suite {
           }
           .compile
           .toVector
-          .map(bytes => assert(bytes == s.getBytes.toSeq))
+          .assertEquals(s.getBytes.toVector)
     }
   }
 
@@ -446,7 +443,7 @@ class CompressionSuite extends Fs2Suite {
               read = gzis.read()
             }
 
-            assert(buffer.toVector == s.getBytes.toVector)
+            assertEquals(buffer.toVector, s.getBytes.toVector)
           }
     }
   }
@@ -521,9 +518,8 @@ class CompressionSuite extends Fs2Suite {
       }
       .compile
       .toVector
-      .map { vector =>
-        assert(new String(vector.toArray, StandardCharsets.US_ASCII) == expectedContent)
-      }
+      .map { vector => new String(vector.toArray, StandardCharsets.US_ASCII) }
+      .assertEquals(expectedContent)
   }
 
   test("gzip and gunzip are reusable") {
@@ -547,7 +543,7 @@ class CompressionSuite extends Fs2Suite {
           .fold(Vector.empty[Byte]) { case (vector, byte) => vector :+ byte }
           .compile
           .last
-    } yield assert(first == second)
+    } yield assertEquals(first, second)
   }
 
   def toEncodableFileName(fileName: String): String =
