@@ -45,7 +45,7 @@ class HashSuite extends Fs2Suite {
             acc ++ Stream.chunk(Chunk.bytes(c))
           )
 
-    assert(s.through(h).toList == digest(algo, str))
+    assertEquals(s.through(h).toList, digest(algo, str))
   }
 
   group("digests") {
@@ -58,7 +58,7 @@ class HashSuite extends Fs2Suite {
   }
 
   test("empty input") {
-    assert(Stream.empty.through(sha1).toList.size == 20)
+    assertEquals(Stream.empty.through(sha1).toList.size, 20)
   }
 
   test("zero or one output") {
@@ -68,7 +68,7 @@ class HashSuite extends Fs2Suite {
         .through(sha1)
         .toList
         .size
-      assert(size == 20)
+      assertEquals(size, 20)
     }
   }
 
@@ -78,11 +78,9 @@ class HashSuite extends Fs2Suite {
       .covary[IO]
       .flatMap(i => Stream.chunk(Chunk.bytes(i.toString.getBytes)))
       .through(sha512)
-    (for {
+    for {
       once <- s.compile.toVector
       oneHundred <- Vector.fill(100)(s.compile.toVector).parSequence
-    } yield (once, oneHundred)).map { case (once, oneHundred) =>
-      assert(oneHundred == Vector.fill(100)(once))
-    }
+    } yield assertEquals(oneHundred, Vector.fill(100)(once))
   }
 }
