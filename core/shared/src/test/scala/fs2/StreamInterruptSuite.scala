@@ -42,7 +42,7 @@ class StreamInterruptSuite extends Fs2Suite {
         }
         .compile
         .toList
-        .map(it => assert(it == Nil))
+        .assertEquals(Nil)
     }
   }
 
@@ -56,7 +56,7 @@ class StreamInterruptSuite extends Fs2Suite {
         }
         .compile
         .toList
-        .map(it => assert(it == Nil))
+        .assertEquals(Nil)
     }
   }
 
@@ -154,7 +154,7 @@ class StreamInterruptSuite extends Fs2Suite {
           .interruptWhen(Stream.constant(false))
           .compile
           .toList
-          .map(it => assert(it == s.toList))
+          .assertEquals(s.toList)
       }
     }
   }
@@ -196,7 +196,7 @@ class StreamInterruptSuite extends Fs2Suite {
         }
         .compile
         .toList
-        .map(it => assert(it == Nil))
+        .assertEquals(Nil)
     }
   }
 
@@ -237,7 +237,7 @@ class StreamInterruptSuite extends Fs2Suite {
       .append(Stream(5))
       .compile
       .toList
-      .map(it => assert(it == List(5)))
+      .assertEquals(List(5))
   }
 
   test("14a - interrupt evalMap and then resume on append") {
@@ -251,7 +251,7 @@ class StreamInterruptSuite extends Fs2Suite {
         .append(s)
         .compile
         .toList
-        .map(it => assert(it == expected))
+        .assertEquals(expected)
     }
   }
 
@@ -266,7 +266,7 @@ class StreamInterruptSuite extends Fs2Suite {
         .collect { case Some(v) => v }
         .compile
         .toList
-        .map(it => assert(it == expected))
+        .assertEquals(expected)
     }
   }
 
@@ -286,7 +286,7 @@ class StreamInterruptSuite extends Fs2Suite {
         .collect { case Some(i) => i }
         .compile
         .toList
-        .map(it => assert(it == expected))
+        .assertEquals(expected)
     }
   }
 
@@ -306,7 +306,7 @@ class StreamInterruptSuite extends Fs2Suite {
       .through(p)
       .compile
       .toList
-      .map(result => assert(result == (result.headOption.toList ++ result.tail.filter(_ != 0))))
+      .map(result => assert(result == (result.headOption.toList ++ result.tail.filter(_ != 0)))) // TODO seems messy
   }
 
   test("17 - minimal resume on append with pull") {
@@ -326,7 +326,7 @@ class StreamInterruptSuite extends Fs2Suite {
       .append(Stream(5))
       .compile
       .toList
-      .map(it => assert(it == List(5)))
+      .assertEquals(List(5))
   }
 
   test("18 - resume with append after evalMap interruption") {
@@ -337,7 +337,8 @@ class StreamInterruptSuite extends Fs2Suite {
       .append(Stream(5))
       .compile
       .toList
-      .map(it => assert(it == List(5)))
+      .assertEquals(List(5))
+
   }
 
   test("19 - interrupted eval is cancelled") {
@@ -347,7 +348,7 @@ class StreamInterruptSuite extends Fs2Suite {
           .eval(latch.get.guarantee(latch.complete(()).void))
           .interruptAfter(200.millis)
           .compile
-          .drain >> latch.get.as(true)
+          .drain >> latch.get
       }
       .timeout(3.seconds)
   }
@@ -373,7 +374,7 @@ class StreamInterruptSuite extends Fs2Suite {
         }
         .compile
         .toList
-        .map(it => assert(it == expected))
+        .assertEquals(expected)
     }
   }
 
@@ -384,7 +385,7 @@ class StreamInterruptSuite extends Fs2Suite {
       .interruptWhen(IO(Right(()): Either[Throwable, Unit]))
       .compile
       .toList
-      .map(it => assert(it == Nil))
+      .assertEquals(Nil)
   }
 
   test("22 - nested-interrupt - interrupt in enclosing scope recovers") {
@@ -396,6 +397,6 @@ class StreamInterruptSuite extends Fs2Suite {
       .append(Stream(2))
       .compile
       .toList
-      .map(it => assert(it == List(2)))
+      .assertEquals(List(2))
   }
 }
