@@ -36,7 +36,8 @@ class BalanceSuite extends Fs2Suite {
         .balanceThrough(chunkSize = chunkSize, maxConcurrent = concurrent)(_.map(_.toLong))
         .compile
         .toVector
-        .map(it => assert(it.sorted == expected))
+        .map(_.sorted)
+        .assertEquals(expected)
     }
   }
 }
