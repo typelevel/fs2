@@ -1413,7 +1413,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
 
   group("withTimeout") {
     test("timeout never-ending stream") {
-      Stream.never[IO].timeout(100.millis).compile.drain.assertThrows[TimeoutException]
+      Stream.never[IO].timeout(100.millis).compile.drain.intercept[TimeoutException]
     }
 
     test("not trigger timeout on successfully completed stream") {
@@ -1427,7 +1427,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
         .timeout(d2)
         .compile
         .drain
-        .assertThrows[TimeoutException]
+        .intercept[TimeoutException]
     }
 
     test("compose timeouts d1 and d2 when d1 > d2") {
@@ -1437,7 +1437,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
         .timeout(d2)
         .compile
         .drain
-        .assertThrows[TimeoutException]
+        .intercept[TimeoutException]
     }
   }
 }

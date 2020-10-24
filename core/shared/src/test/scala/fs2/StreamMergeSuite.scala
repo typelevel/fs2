@@ -58,7 +58,7 @@ class StreamMergeSuite extends Fs2Suite {
     group("left/right failure") {
       test("1") {
         forAllF { (s1: Stream[Pure, Int]) =>
-          s1.covary[IO].merge(Stream.raiseError[IO](new Err)).compile.drain.assertThrows[Err]
+          s1.covary[IO].merge(Stream.raiseError[IO](new Err)).compile.drain.intercept[Err].void
         }
       }
 
@@ -68,7 +68,8 @@ class StreamMergeSuite extends Fs2Suite {
             .evalMap(_ => IO.never)
             .compile
             .drain
-            .assertThrows[Err]
+            .intercept[Err]
+            .void
         }
       }
 
@@ -84,7 +85,8 @@ class StreamMergeSuite extends Fs2Suite {
               .flatMap(_ => Stream.constant(true))
               .compile
               .drain
-              .assertThrows[Err]
+              .intercept[Err]
+              .void
           }
         }
     }

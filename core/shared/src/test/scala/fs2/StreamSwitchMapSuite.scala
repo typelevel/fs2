@@ -85,7 +85,8 @@ class StreamSwitchMapSuite extends Fs2Suite {
         .switchMap(_ => Stream.raiseError[IO](new Err))
         .compile
         .drain
-        .assertThrows[Err]
+        .intercept[Err]
+        .void
     }
   }
 
@@ -102,7 +103,7 @@ class StreamSwitchMapSuite extends Fs2Suite {
       }
       .compile
       .drain
-      .assertThrows[Err]
+      .intercept[Err]
   }
 
   test("when inner stream fails, inner stream finalizer run before the primary one") {
@@ -122,7 +123,8 @@ class StreamSwitchMapSuite extends Fs2Suite {
         }
         .compile
         .drain
-        .assertThrows[Err]
+        .intercept[Err]
+        .void
     }
   }
 
@@ -142,6 +144,6 @@ class StreamSwitchMapSuite extends Fs2Suite {
       }
       .compile
       .drain
-      .assertThrows[Err]
+      .intercept[Err]
   }
 }

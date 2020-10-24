@@ -105,7 +105,7 @@ class BracketSuite extends Fs2Suite {
             .flatMap(_ => Stream(i) ++ inner)
         )
         nested.compile.drain
-          .assertThrows[Err]
+          .intercept[Err]
           .flatMap(_ => counter.get)
           .map(it => assert(it == 0L))
       }
@@ -223,8 +223,8 @@ class BracketSuite extends Fs2Suite {
     val s1 = Stream.bracket(IO(1))(_ => IO.unit)
     val s2 = Stream.bracket(IO("a"))(_ => IO.raiseError(new Err))
 
-    test("fail left")(s1.zip(s2).compile.drain.assertThrows[Err])
-    test("fail right")(s2.zip(s1).compile.drain.assertThrows[Err])
+    test("fail left")(s1.zip(s2).compile.drain.intercept[Err])
+    test("fail right")(s2.zip(s1).compile.drain.intercept[Err])
   }
 
   test("handleErrorWith closes scopes") {

@@ -48,7 +48,8 @@ class StreamConcurrentlySuite extends Fs2Suite {
         .concurrently(Stream.raiseError[IO](new Err))
         .compile
         .drain
-        .assertThrows[Err]
+        .intercept[Err]
+        .void
     }
   }
 
@@ -63,7 +64,7 @@ class StreamConcurrentlySuite extends Fs2Suite {
       }
       .compile
       .drain
-      .assertThrows[Err]
+      .intercept[Err]
   }
 
   test("when primary stream terminates, background stream is terminated") {
@@ -94,7 +95,8 @@ class StreamConcurrentlySuite extends Fs2Suite {
         }
         .compile
         .drain
-        .assertThrows[Err]
+        .intercept[Err]
+        .void
     }
   }
 

@@ -24,16 +24,16 @@ package fs2
 import scala.concurrent.{ExecutionContext, Future}
 import scala.concurrent.duration._
 
-import cats.effect.{IO, Sync, SyncIO}
+import cats.effect.{IO, SyncIO}
 import cats.effect.unsafe.{IORuntime, Scheduler}
 import cats.effect.testkit.TestContext
 
 import cats.syntax.all._
 
-import munit.{Location, ScalaCheckEffectSuite}
+import munit.{CatsEffectSuite, ScalaCheckEffectSuite}
 import org.typelevel.discipline.Laws
 
-abstract class Fs2Suite extends ScalaCheckEffectSuite with TestPlatform with Generators {
+abstract class Fs2Suite extends CatsEffectSuite with ScalaCheckEffectSuite with TestPlatform with Generators {
 
   override def scalaCheckTestParameters =
     super.scalaCheckTestParameters
@@ -42,34 +42,7 @@ abstract class Fs2Suite extends ScalaCheckEffectSuite with TestPlatform with Gen
 
   override def munitFlakyOK = true
 
-  implicit val ioRuntime: IORuntime = IORuntime.global
-
   override val munitExecutionContext: ExecutionContext = ExecutionContext.global
-
-  /** Provides various ways to make test assertions on an `F[A]`. */
-  implicit class Asserting[F[_], A](private val self: F[A]) {
-
-    /** Asserts that the `F[A]` fails with an exception of type `E`.
-      */
-    def assertThrows[E <: Throwable](implicit
-        F: Sync[F],
-        ct: reflect.ClassTag[E],
-        loc: Location
-    ): F[Unit] =
-      self.attempt.flatMap {
-        case Left(_: E) => F.pure(())
-        case Left(t) =>
-          F.delay(
-            fail(
-              s"Expected an exception of type ${ct.runtimeClass.getName} but got an exception: $t"
-            )
-          )
-        case Right(a) =>
-          F.delay(
-            fail(s"Expected an exception of type ${ct.runtimeClass.getName} but got a result: $a")
-          )
-      }
-  }
 
   implicit class Deterministically[F[_], A](private val self: IO[A]) {
 
@@ -101,6 +74,22 @@ abstract class Fs2Suite extends ScalaCheckEffectSuite with TestPlatform with Gen
     (ctx, runtime)
   }
 
+  override def munitValueTransforms: List[ValueTransform] =
+    super.munitValueTransforms ++ List(
+      munitDeterministicIOTransform
+    )
+
+  private val munitDeterministicIOTransform: ValueTransform =
+    new ValueTransform(
+      "Deterministic IO",
+      { case e: Deterministic[_] =>
+        val (ctx, runtime) = createDeterministicRuntime
+        val r = e.fa.unsafeToFuture()(runtime)
+        ctx.tickAll(3.days)
+        r
+      }
+    )
+
   /** Returns a stream that has a 10% chance of failing with an error on each output value. */
   protected def spuriousFail[F[_]: RaiseThrowable, O](s: Stream[F, O]): Stream[F, O] =
     Stream.suspend {
@@ -125,31 +114,4 @@ abstract class Fs2Suite extends ScalaCheckEffectSuite with TestPlatform with Gen
   protected def checkAll(name: String, ruleSet: Laws#RuleSet): Unit =
     for ((id, prop) <- ruleSet.all.properties)
       property(s"${name}.${id}")(prop)
-
-  override def munitValueTransforms: List[ValueTransform] =
-    super.munitValueTransforms ++ List(
-      munitIOTransform,
-      munitSyncIOTransform,
-      munitDeterministicIOTransform
-    )
-
-  private val munitIOTransform: ValueTransform =
-    new ValueTransform("IO", { case e: IO[_] => e.unsafeToFuture() })
-
-  private val munitSyncIOTransform: ValueTransform =
-    new ValueTransform(
-      "SyncIO",
-      { case e: SyncIO[_] => Future(e.unsafeRunSync())(munitExecutionContext) }
-    )
-
-  private val munitDeterministicIOTransform: ValueTransform =
-    new ValueTransform(
-      "Deterministic IO",
-      { case e: Deterministic[_] =>
-        val (ctx, runtime) = createDeterministicRuntime
-        val r = e.fa.unsafeToFuture()(runtime)
-        ctx.tickAll(3.days)
-        r
-      }
-    )
 }
