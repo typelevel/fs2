@@ -162,7 +162,7 @@ class UdpSuite extends Fs2Suite {
         }
         .compile
         .drain
-        .assertThrows[InterruptedByTimeoutException]
+        .intercept[InterruptedByTimeoutException]
     }
   }
 }

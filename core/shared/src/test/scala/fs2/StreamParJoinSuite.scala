@@ -191,7 +191,7 @@ class StreamParJoinSuite extends Fs2Suite {
       Stream.sleep_[IO](1.minute),
       Stream.raiseError[IO](new Err)
     ).parJoinUnbounded.compile.drain
-      .assertThrows[Err]
+      .intercept[Err]
   }
 
   test("propagate error from inner stream before ++") {

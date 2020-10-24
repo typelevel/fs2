@@ -225,7 +225,8 @@ class StreamInterruptSuite extends Fs2Suite {
         }
         .compile
         .toList
-        .assertThrows[Err]
+        .intercept[Err]
+        .void
     }
   }
 

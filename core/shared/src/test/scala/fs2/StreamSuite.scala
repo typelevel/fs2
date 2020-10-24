@@ -245,7 +245,7 @@ class StreamSuite extends Fs2Suite {
             .stream
             .compile
             .drain
-            .assertThrows[Err]
+            .intercept[Err]
             .map(_ => assert(i == 0))
         }
       }
@@ -260,7 +260,7 @@ class StreamSuite extends Fs2Suite {
             .stream
             .compile
             .drain
-            .assertThrows[Err]
+            .intercept[Err]
             .map(_ => assert(i == 0))
         }
       }
@@ -279,7 +279,7 @@ class StreamSuite extends Fs2Suite {
             .stream
             .compile
             .drain
-            .assertThrows[Err]
+            .intercept[Err]
             .map(_ => assert(i == 0))
         }
       }
@@ -306,7 +306,7 @@ class StreamSuite extends Fs2Suite {
             .flatMap(_ => Stream.eval(SyncIO(???)))
             .compile
             .drain
-            .assertThrows[NotImplementedError]
+            .intercept[NotImplementedError]
             .map(_ => assert(i == 1))
         }
       }
@@ -336,7 +336,7 @@ class StreamSuite extends Fs2Suite {
           .stream
           .compile
           .drain
-          .assertThrows[Err]
+          .intercept[Err]
       }
 
       test("15") {
@@ -471,7 +471,7 @@ class StreamSuite extends Fs2Suite {
 
   group("raiseError") {
     test("compiled stream fails with an error raised in stream") {
-      Stream.raiseError[SyncIO](new Err).compile.drain.assertThrows[Err]
+      Stream.raiseError[SyncIO](new Err).compile.drain.intercept[Err]
     }
 
     test("compiled stream fails with an error if error raised after an append") {
@@ -481,7 +481,7 @@ class StreamSuite extends Fs2Suite {
         .covary[IO]
         .compile
         .drain
-        .assertThrows[Err]
+        .intercept[Err]
     }
 
     test("compiled stream does not fail if stream is termianted before raiseError") {

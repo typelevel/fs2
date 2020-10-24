@@ -904,14 +904,14 @@ object Pull extends PullLowPriority {
       case _ =>
         suspend {
           viewL(stream) match {
-            case r: Result[Unit] => r
+            case r: Result[_] => r.asInstanceOf[Result[Unit]]
             case v: View[F, O, x] =>
               val mstep: Pull[F, P, x] = (v.step: Action[F, O, x]) match {
                 case o: Output[O] =>
                   try Output(o.values.map(fun))
                   catch { case NonFatal(t) => Result.Fail(t) }
                 case t: Translate[g, f, O] => Translate[g, f, P](mapOutput(t.stream, fun), t.fk)
-                case s: Step[F, _]         => s
+                case s: Step[f, _]         => s
                 case a: AlgEffect[F, _]    => a
               }
               new Bind[F, P, x, Unit](mstep) {
