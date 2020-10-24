@@ -290,7 +290,7 @@ class StreamInterruptSuite extends Fs2Suite {
     }
   }
 
-  test("16 - if a pipe is interrupted, it will not restart evaluation") {
+  test("16 - if a pipe is interrupted, it will not restart evaluation. Issue 1179") {
     def p: Pipe[IO, Int, Int] = {
       def loop(acc: Int, s: Stream[IO, Int]): Pull[IO, Int, Unit] =
         s.pull.uncons1.flatMap {
@@ -300,13 +300,13 @@ class StreamInterruptSuite extends Fs2Suite {
       in => loop(0, in).stream
     }
     Stream
-      .unfold(0)(i => Some((i, i + 1)))
+      .iterate(0)(_ + 1)
       .flatMap(Stream.emit(_).delayBy[IO](10.millis))
       .interruptWhen(Stream.emit(true).delayBy[IO](150.millis))
       .through(p)
       .compile
-      .toList
-      .map(result => assert(result == (result.headOption.toList ++ result.tail.filter(_ != 0)))) // TODO seems messy
+      .lastOrError
+      .map(it => assert(it != 0))
   }
 
   test("17 - minimal resume on append with pull") {
