@@ -198,11 +198,40 @@ sealed trait SyncFiles[F[_]] {
       append: Boolean
   ): F[WriteCursor[F]]
 
+  /** Tests whether a file is a directory.
+    *
+    * The options sequence may be used to indicate how symbolic links are handled for the case that the file is a symbolic link.
+    * By default, symbolic links are followed and the file attribute of the final target of the link is read.
+    * If the option NOFOLLOW_LINKS is present then symbolic links are not followed.
+    *
+    * Where is it required to distinguish an I/O exception from the case that the
+    * file is not a directory then the file attributes can be read with the
+    * readAttributes method and the file type tested with the BasicFileAttributes.isDirectory() method.
+    *
+    * @param path the path to the file to test
+    * @param options - options indicating how symbolic links are handled
+    * @return true if the file is a directory; false if the file does not exist, is not a directory, or it cannot be determined if the file is a directory or not.
+    */
   def isDirectory(
       path: Path,
       linkOption: Seq[LinkOption] = Nil
   ): F[Boolean]
 
+  /** Tests whether a file is a regular file with opaque content.
+    *
+    * The options sequence may be used to indicate how symbolic links are handled for the case that
+    * the file is a symbolic link. By default, symbolic links are followed and the file
+    * attribute of the final target of the link is read. If the option NOFOLLOW_LINKS is present
+    * then symbolic links are not followed.
+    *
+    * Where is it required to distinguish an I/O exception from the case that the file is
+    * not a regular file then the file attributes can be read with the readAttributes
+    * method and the file type tested with the BasicFileAttributes.isRegularFile() method.
+    *
+    * @param path the path to the file
+    * @param options options indicating how symbolic links are handled
+    * @return true if the file is a regular file; false if the file does not exist, is not a regular file, or it cannot be determined if the file is a regular file or not.
+    */
   def isFile(
       path: Path,
       linkOption: Seq[LinkOption] = Nil
@@ -382,7 +411,7 @@ object SyncFiles {
         linkOption: Seq[LinkOption]
     ): F[Boolean] =
       Sync[F].delay(
-        JFiles.getAttribute(path, "basic:isDirectory", linkOption: _*).asInstanceOf[Boolean]
+        JFiles.isDirectory(path, linkOption: _*)
       )
 
     def isFile(
@@ -390,7 +419,7 @@ object SyncFiles {
         linkOption: Seq[LinkOption]
     ): F[Boolean] =
       Sync[F].delay(
-        JFiles.getAttribute(path, "basic:isRegularFile", linkOption: _*).asInstanceOf[Boolean]
+        JFiles.isRegularFile(path, linkOption: _*)
       )
 
   }
