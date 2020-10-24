@@ -33,7 +33,11 @@ import cats.syntax.all._
 import munit.{CatsEffectSuite, ScalaCheckEffectSuite}
 import org.typelevel.discipline.Laws
 
-abstract class Fs2Suite extends CatsEffectSuite with ScalaCheckEffectSuite with TestPlatform with Generators {
+abstract class Fs2Suite
+    extends CatsEffectSuite
+    with ScalaCheckEffectSuite
+    with TestPlatform
+    with Generators {
 
   override def scalaCheckTestParameters =
     super.scalaCheckTestParameters
