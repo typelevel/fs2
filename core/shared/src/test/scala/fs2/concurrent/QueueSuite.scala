@@ -41,9 +41,10 @@ class QueueSuite extends Fs2Suite {
         }
         .compile
         .toList
-        .map(it => assert(it == expected))
+        .assertEquals(expected)
     }
   }
+
   test("circularBuffer") {
     forAllF { (s: Stream[Pure, Int], maxSize0: Int) =>
       val maxSize = (maxSize0 % 20).abs + 1
@@ -57,7 +58,7 @@ class QueueSuite extends Fs2Suite {
         }
         .compile
         .toList
-        .map(it => assert(it == expected))
+        .assertEquals(expected)
     }
   }
 
@@ -74,9 +75,10 @@ class QueueSuite extends Fs2Suite {
         }
         .compile
         .toList
-        .map(it => assert(it == expected))
+        .assertEquals(expected)
     }
   }
+
   test("dequeueAvailable") {
     forAllF { (s: Stream[Pure, Int]) =>
       val expected = s.toList
@@ -91,10 +93,11 @@ class QueueSuite extends Fs2Suite {
         .toList
         .map { result =>
           assert(result.size < 2)
-          assert(result.flatMap(_.toList) == expected)
+          assertEquals(result.flatMap(_.toList), expected)
         }
     }
   }
+
   test("dequeueBatch unbounded") {
     forAllF { (s: Stream[Pure, Int], batchSize0: Int) =>
       val batchSize = (batchSize0 % 20).abs + 1
@@ -109,9 +112,10 @@ class QueueSuite extends Fs2Suite {
         }
         .compile
         .toList
-        .map(it => assert(it == expected))
+        .assertEquals(expected)
     }
   }
+
   test("dequeueBatch circularBuffer") {
     forAllF { (s: Stream[Pure, Int], maxSize0: Int, batchSize0: Int) =>
       val maxSize = (maxSize0 % 20).abs + 1
@@ -127,7 +131,7 @@ class QueueSuite extends Fs2Suite {
         }
         .compile
         .toList
-        .map(it => assert(it == expected))
+        .assertEquals(expected)
     }
   }
 
@@ -141,7 +145,7 @@ class QueueSuite extends Fs2Suite {
             q.enqueue1(2) >>
             q.dequeue1
         }
-        .map(it => assert(it == 1))
+        .assertEquals(1)
     }
 
     test("cancel") {
@@ -153,7 +157,7 @@ class QueueSuite extends Fs2Suite {
             q.enqueue1(2) >>
             q.dequeue1
         }
-        .map(it => assert(it == 1))
+        .assertEquals(1)
     }
   }
 
@@ -163,8 +167,8 @@ class QueueSuite extends Fs2Suite {
       .flatMap(_.size)
       .take(1)
       .compile
-      .toList
-      .map(it => assert(it == List(0)))
+      .lastOrError
+      .assertEquals(0)
   }
 
   test("size stream is discrete") {
@@ -180,9 +184,8 @@ class QueueSuite extends Fs2Suite {
       .interruptWhen(Stream.sleep[IO](2.seconds).as(true))
       .compile
       .toList
-      .map(it =>
-        assert(it.size <= 11)
-      ) // if the stream won't be discrete we will get much more size notifications
+      .map(it => assert(it.size <= 11))
+    // if the stream won't be discrete we will get much more size notifications
   }
 
   test("peek1") {
@@ -199,7 +202,8 @@ class QueueSuite extends Fs2Suite {
       )
       .compile
       .toList
-      .map(it => assertEquals(it.flatten, List(42, 42)))
+      .map(_.flatten)
+      .assertEquals(List(42, 42))
   }
 
   test("peek1 with dequeue1") {
@@ -219,7 +223,8 @@ class QueueSuite extends Fs2Suite {
       )
       .compile
       .toList
-      .map(it => assertEquals(it.flatten, List((42, 42), (43, 43), (44, 44))))
+      .map(_.flatten)
+      .assertEquals(List((42, 42), (43, 43), (44, 44)))
   }
 
   test("peek1 bounded queue") {
@@ -238,7 +243,8 @@ class QueueSuite extends Fs2Suite {
       )
       .compile
       .toList
-      .map(it => assertEquals(it.flatten, List[AnyVal](false, 42, 42, 42)))
+      .map(_.flatten)
+      .assertEquals(List[AnyVal](false, 42, 42, 42))
   }
 
   test("peek1 circular buffer") {
@@ -257,6 +263,7 @@ class QueueSuite extends Fs2Suite {
       )
       .compile
       .toList
-      .map(it => assertEquals(it.flatten, List[AnyVal](true, 42, 42, 43)))
+      .map(_.flatten)
+      .assertEquals(List[AnyVal](true, 42, 42, 43))
   }
 }
