@@ -303,9 +303,9 @@ class CompressionSuite extends Fs2Suite {
             gunzip[IO](8192)
           )
           .flatMap { gunzipResult =>
-            assert(gunzipResult.fileName == expectedFileName)
-            assert(gunzipResult.comment == expectedComment)
-            if (epochSeconds > 0) assert(gunzipResult.modificationTime == expectedMTime)
+            assertEquals(gunzipResult.fileName, expectedFileName)
+            assertEquals(gunzipResult.comment, expectedComment)
+            if (epochSeconds > 0) assertEquals(gunzipResult.modificationTime, expectedMTime)
             gunzipResult.content
           }
           .compile
@@ -348,9 +348,9 @@ class CompressionSuite extends Fs2Suite {
             gunzip[IO](509)
           )
           .flatMap { gunzipResult =>
-            assert(gunzipResult.fileName == expectedFileName)
-            assert(gunzipResult.comment == expectedComment)
-            if (epochSeconds > 0) assert(gunzipResult.modificationTime == expectedMTime)
+            assertEquals(gunzipResult.fileName, expectedFileName)
+            assertEquals(gunzipResult.comment, expectedComment)
+            if (epochSeconds > 0) assertEquals(gunzipResult.modificationTime, expectedMTime)
             gunzipResult.content
           }
           .compile
@@ -393,9 +393,9 @@ class CompressionSuite extends Fs2Suite {
             gunzip[IO](1031)
           )
           .flatMap { gunzipResult =>
-            assert(gunzipResult.fileName == expectedFileName)
-            assert(gunzipResult.comment == expectedComment)
-            if (epochSeconds > 0) assert(gunzipResult.modificationTime == expectedMTime)
+            assertEquals(gunzipResult.fileName, expectedFileName)
+            assertEquals(gunzipResult.comment, expectedComment)
+            if (epochSeconds > 0) assertEquals(gunzipResult.modificationTime, expectedMTime)
             gunzipResult.content
           }
           .compile
@@ -491,8 +491,8 @@ class CompressionSuite extends Fs2Suite {
         gunzipResult.content
       }
       .compile
-      .toVector
-      .map(vector => assert(vector.isEmpty))
+      .last
+      .assertEquals(None)
   }
 
   test("unix.gzip |> gunzip") {
@@ -511,9 +511,9 @@ class CompressionSuite extends Fs2Suite {
         gunzip[IO]()
       )
       .flatMap { gunzipResult =>
-        assert(gunzipResult.fileName == expectedFileName)
-        assert(gunzipResult.comment == expectedComment)
-        assert(gunzipResult.modificationTime == expectedMTime)
+        assertEquals(gunzipResult.fileName, expectedFileName)
+        assertEquals(gunzipResult.comment, expectedComment)
+        assertEquals(gunzipResult.modificationTime, expectedMTime)
         gunzipResult.content
       }
       .compile
