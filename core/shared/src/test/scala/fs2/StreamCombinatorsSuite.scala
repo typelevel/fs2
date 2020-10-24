@@ -37,7 +37,7 @@ import fs2.concurrent.SignallingRef
 class StreamCombinatorsSuite extends Fs2Suite {
 
   group("awakeEvery") {
-    test("basic") { // TODO
+    test("basic") {
       Stream
         .awakeEvery[IO](500.millis)
         .map(_.toMillis)
@@ -1049,21 +1049,14 @@ class StreamCombinatorsSuite extends Fs2Suite {
     }
 
     test("timing") {
-      // should finish in about 3-4 seconds
-      IO.defer {
-        val start = System.currentTimeMillis
+      IO.monotonic.flatMap { start =>
         Stream(1, 2, 3)
-          .evalMap(i => IO.sleep(1.second).as(i))
+          .evalMap(_ => IO.sleep(1.second))
           .prefetch
-          .flatMap(i => Stream.eval(IO.sleep(1.second).as(i)))
+          .evalMap(_ => IO.sleep(1.second))
           .compile
-          .toList
-          .map { _ =>
-            val stop = System.currentTimeMillis
-            val elapsed = stop - start
-            assert(elapsed < 6000L)
-          } // TODO
-      }
+          .drain >> IO.monotonic.map(_ - start).assertEquals(4.seconds)
+      }.ticked
     }
   }
 
