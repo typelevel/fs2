@@ -278,7 +278,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
 
     test("with effectful const(false)") {
       forAllF { (s: Stream[Pure, Int]) =>
-        s.evalFilter(_ => IO.pure(false)).compile.toList.map(_.isEmpty).assertEquals(true) // TODO
+        s.evalFilter(_ => IO.pure(false)).compile.last.assertEquals(None)
       }
     }
 
@@ -309,9 +309,8 @@ class StreamCombinatorsSuite extends Fs2Suite {
         s.covary[IO]
           .evalFilterAsync(5)(_ => IO.pure(false))
           .compile
-          .toList
-          .map(_.isEmpty) // TODO
-          .assertEquals(true)
+          .last
+          .assertEquals(None)
       }
     }
 
@@ -365,7 +364,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
 
     test("with effectful const(false)") {
       forAllF { (s: Stream[Pure, Int]) =>
-        s.evalFilterNot(_ => IO.pure(true)).compile.toList.map(_.isEmpty).assertEquals(true) // TODO
+        s.evalFilterNot(_ => IO.pure(true)).compile.last.assertEquals(None)
       }
     }
 
@@ -385,9 +384,8 @@ class StreamCombinatorsSuite extends Fs2Suite {
         s.covary[IO]
           .evalFilterNotAsync(5)(_ => IO.pure(true))
           .compile
-          .toList
-          .map(_.isEmpty) // TODO
-          .assertEquals(true)
+          .last
+          .assertEquals(None)
       }
     }
 
@@ -467,9 +465,8 @@ class StreamCombinatorsSuite extends Fs2Suite {
       forAllF { (s: Stream[Pure, Int]) =>
         s.evalMapFilter(_ => IO.pure(none[Int]))
           .compile
-          .toList
-          .map(_.isEmpty) // TODO
-          .assertEquals(true)
+          .last
+          .assertEquals(None)
       }
     }
 
@@ -727,10 +724,9 @@ class StreamCombinatorsSuite extends Fs2Suite {
           .covary[IO]
           .evalTap(shortDuration => IO.sleep(shortDuration.micros))
           .groupWithin(maxGroupSize, d)
-          .map(_.toList) // TODO
           .compile
           .toList
-          .map(it => assert(it.forall(_.nonEmpty))) // TODO
+          .map(it => assert(it.forall(_.nonEmpty)))
       }
     }
 
@@ -741,10 +737,9 @@ class StreamCombinatorsSuite extends Fs2Suite {
         s.map(i => (i % 500).abs)
           .evalTap(shortDuration => IO.sleep(shortDuration.micros))
           .groupWithin(maxGroupSize, d)
-          .map(_.toList.size) // TODO
           .compile
-          .toList // TODO
-          .map(it => assert(it.forall(_ <= maxGroupSize)))
+          .toList
+          .map(it => assert(it.forall(_.size <= maxGroupSize)))
       }
     }
 
@@ -770,7 +765,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
           .compile
           .toList
           .map(_.head.toList)
-          .assertEquals(streamAsList) // TODO
+          .assertEquals(streamAsList)
       }
     }
 
@@ -1274,10 +1269,9 @@ class StreamCombinatorsSuite extends Fs2Suite {
             .intersperse(Chunk.singleton(0))
             .flatMap(Stream.chunk)
             .split(_ == 0)
-            .map(_.toVector) // TODO why go through Vector?
             .filter(_.nonEmpty)
             .toVector,
-          s2.chunkLimit(n).filter(_.nonEmpty).map(_.toVector).toVector,
+          s2.chunkLimit(n).filter(_.nonEmpty).toVector,
           s"n = $n, s = ${s.toList}, s2 = " + s2.toList
         )
       }
