@@ -1223,22 +1223,6 @@ class StreamCombinatorsSuite extends Fs2Suite {
     }
   }
 
-  // TODO is it worth testing this? it's in CE
-  test("sleep") {
-    val delay = 200.millis
-    // force a sync up in duration, then measure how long sleep takes
-    val emitAndSleep = Stream(()) ++ Stream.sleep[IO](delay)
-    emitAndSleep
-      .zip(Stream.duration[IO])
-      .drop(1)
-      .map(_._2)
-      .compile
-      .toList
-      .map(result =>
-        assert(result.head >= (delay * 0.95))
-      ) // Allow for sleep starting just before duration measurement
-  }
-
   property("sliding") {
     forAll { (s: Stream[Pure, Int], n0: Int) =>
       val n = (n0 % 20).abs + 1
