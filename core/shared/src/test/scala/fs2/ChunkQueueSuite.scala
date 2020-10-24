@@ -86,9 +86,9 @@ class ChunkQueueSuite extends Fs2Suite {
 
       val viaTake = queue.take(items.size).toChunk == Chunk.seq(items)
       val computed = flattened.startsWith(items)
-      assert(computed == viaTake)
+      assertEquals(computed, viaTake)
       // here is another way to express the law:
-      assert(computed == queue.startsWith(items))
+      assertEquals(computed, queue.startsWith(items))
     }
   }
 }
