@@ -90,9 +90,9 @@ class SignalSuite extends Fs2Suite {
       r2 <- set(v2)
       r3 <- s.get
     } yield {
-      assert(r1 == true)
-      assert(r2 == false)
-      assert(r3 == v1)
+      assert(r1)
+      assert(!r2)
+      assertEquals(r3, v1)
     }
   }
 
