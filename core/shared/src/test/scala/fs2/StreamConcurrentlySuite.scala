@@ -38,7 +38,7 @@ class StreamConcurrentlySuite extends Fs2Suite {
         .concurrently(s2)
         .compile
         .toList
-        .map(it => assert(it == expected))
+        .assertEquals(expected)
     }
   }
 
@@ -131,14 +131,14 @@ class StreamConcurrentlySuite extends Fs2Suite {
                       if (runnerStarted) IO {
                         // finalizers shall be called in correct order and
                         // exception shall be thrown
-                        assert(finalizers == List("Inner", "Outer"))
+                        assertEquals(finalizers, List("Inner", "Outer"))
                         assert(r.swap.toOption.get.isInstanceOf[Err])
                       }
                       else
                         IO {
                           // still the outer finalizer shall be run, but there is no failure in `s`
-                          assert(finalizers == List("Outer"))
-                          assert(r == Right(()))
+                          assertEquals(finalizers, List("Outer"))
+                          assertEquals(r, Right(()))
                         }
                     }
                   }
