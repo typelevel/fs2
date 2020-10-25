@@ -146,7 +146,7 @@ class ChunkSuite extends Fs2Suite {
             implicit val ev: A =:= Byte = null
             val arr = new Array[Byte](c.size)
             c.toByteBuffer.get(arr, 0, c.size)
-            assert(arr.toVector ==  c.toArray.toVector)
+            assertEquals(arr.toVector, c.toArray.toVector)
           }
         }
 
