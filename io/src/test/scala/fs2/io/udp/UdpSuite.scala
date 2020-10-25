@@ -66,14 +66,20 @@ class UdpSuite extends Fs2Suite {
             }
         }
         .compile
-        .toVector
-        .map(it => assert(it.map(_.bytes) == Vector(msg)))
+        .lastOrError
+        .map(_.bytes)
+        .assertEquals(msg)
     }
 
     test("echo lots") {
       val msgs = (1 to 20).toVector.map(n => Chunk.bytes(("Hello, world! " + n).getBytes))
       val numClients = 50
       val numParallelClients = 10
+      val expected = Vector
+        .fill(numClients)(msgs.map(b => new String(b.toArray)))
+        .flatten
+        .sorted
+
       mkSocketGroup
         .flatMap { socketGroup =>
           Stream
@@ -102,14 +108,8 @@ class UdpSuite extends Fs2Suite {
         }
         .compile
         .toVector
-        .map(res =>
-          assert(
-            res.map(p => new String(p.bytes.toArray)).sorted == Vector
-              .fill(numClients)(msgs.map(b => new String(b.toArray)))
-              .flatten
-              .sorted
-          )
-        )
+        .map(_.map(p => new String(p.bytes.toArray)).sorted)
+        .assertEquals(expected)
     }
 
     test("multicast".ignore) {
@@ -149,8 +149,9 @@ class UdpSuite extends Fs2Suite {
             }
         }
         .compile
-        .toVector
-        .map(it => assert(it.map(_.bytes) == Vector(msg)))
+        .lastOrError
+        .map(_.bytes)
+        .assertEquals(msg)
     }
 
     test("timeouts supported") {
