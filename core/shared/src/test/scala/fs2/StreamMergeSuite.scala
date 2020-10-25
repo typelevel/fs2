@@ -36,7 +36,8 @@ class StreamMergeSuite extends Fs2Suite {
         s1.merge(s2.covary[IO])
           .compile
           .toList
-          .map(result => assert(result.toSet == expected))
+          .map(_.toSet)
+          .assertEquals(expected)
       }
     }
 
@@ -44,13 +45,13 @@ class StreamMergeSuite extends Fs2Suite {
       test("1") {
         forAllF { (s1: Stream[Pure, Int]) =>
           val expected = s1.toList
-          s1.covary[IO].merge(Stream.empty).compile.toList.map(it => assert(it == expected))
+          s1.covary[IO].merge(Stream.empty).compile.toList.assertEquals(expected)
         }
       }
       test("2") {
         forAllF { (s1: Stream[Pure, Int]) =>
           val expected = s1.toList
-          Stream.empty.merge(s1.covary[IO]).compile.toList.map(it => assert(it == expected))
+          Stream.empty.merge(s1.covary[IO]).compile.toList.assertEquals(expected)
         }
       }
     }
@@ -137,23 +138,23 @@ class StreamMergeSuite extends Fs2Suite {
                       assert(
                         List("Inner L", "Inner R", "Outer").forall(finalizers.contains)
                       )
-                      assert(finalizers.lastOption == Some("Outer"))
-                      assert(r == Left(err))
+                      assertEquals(finalizers.lastOption, Some("Outer"))
+                      assertEquals(r, Left(err))
                     }
                     else if (left) IO {
-                      assert(finalizers == List("Inner L", "Outer"))
-                      if (leftBiased) assert(r == Left(err))
-                      else assert(r == Right(()))
+                      assertEquals(finalizers, List("Inner L", "Outer"))
+                      if (leftBiased) assertEquals(r, Left(err))
+                      else assertEquals(r, Right(()))
                     }
                     else if (right) IO {
-                      assert(finalizers == List("Inner R", "Outer"))
-                      if (!leftBiased) assert(r == Left(err))
-                      else assert(r == Right(()))
+                      assertEquals(finalizers, List("Inner R", "Outer"))
+                      if (!leftBiased) assertEquals(r, Left(err))
+                      else assertEquals(r, Right(()))
                     }
                     else
                       IO {
-                        assert(finalizers == List("Outer"))
-                        assert(r == Right(()))
+                        assertEquals(finalizers, List("Outer"))
+                        assertEquals(r, Right(()))
                       }
                   }
                 }
@@ -173,12 +174,12 @@ class StreamMergeSuite extends Fs2Suite {
           .repeatEval[IO, Unit](IO.async_[Unit](cb => cb(Right(()))) >> IO.cede)
           .drain
 
-      test("1")(full.merge(hang).take(1).compile.toList.map(it => assert(it == List(42))))
-      test("2")(full.merge(hang2).take(1).compile.toList.map(it => assert(it == List(42))))
-      test("3")(full.merge(hang3).take(1).compile.toList.map(it => assert(it == List(42))))
-      test("4")(hang.merge(full).take(1).compile.toList.map(it => assert(it == List(42))))
-      test("5")(hang2.merge(full).take(1).compile.toList.map(it => assert(it == List(42))))
-      test("6")(hang3.merge(full).take(1).compile.toList.map(it => assert(it == List(42))))
+      test("1")(full.merge(hang).take(1).compile.lastOrError.assertEquals(42))
+      test("2")(full.merge(hang2).take(1).compile.lastOrError.assertEquals(42))
+      test("3")(full.merge(hang3).take(1).compile.lastOrError.assertEquals(42))
+      test("4")(hang.merge(full).take(1).compile.lastOrError.assertEquals(42))
+      test("5")(hang2.merge(full).take(1).compile.lastOrError.assertEquals(42))
+      test("6")(hang3.merge(full).take(1).compile.lastOrError.assertEquals(42))
     }
   }
 
@@ -198,18 +199,22 @@ class StreamMergeSuite extends Fs2Suite {
   test("mergeHaltL") {
     forAllF { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
       val s1List = s1.toList
-      s1.covary[IO].map(Left(_)).mergeHaltL(s2.map(Right(_))).compile.toList.map { result =>
-        assert(result.collect { case Left(a) => a } == s1List)
-      }
+      s1.covary[IO].map(Left(_)).mergeHaltL(s2.map(Right(_)))
+        .collect { case Left(a) => a }
+        .compile
+        .toList
+        .assertEquals(s1List)
     }
   }
 
   test("mergeHaltR") {
     forAllF { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
       val s2List = s2.toList
-      s1.covary[IO].map(Left(_)).mergeHaltR(s2.map(Right(_))).compile.toList.map { result =>
-        assert(result.collect { case Right(a) => a } == s2List)
-      }
+      s1.covary[IO].map(Left(_)).mergeHaltR(s2.map(Right(_)))
+        .collect { case Right(a) => a }
+        .compile
+        .toList
+        .assertEquals(s2List)
     }
   }
 
@@ -218,7 +223,7 @@ class StreamMergeSuite extends Fs2Suite {
       val expected = List(v, v + 1)
       Ref
         .of[IO, Int](v)
-        .map { ref =>
+        .flatMap { ref =>
           Stream
             .repeatEval(ref.get)
             .merge(Stream.never[IO])
@@ -226,9 +231,9 @@ class StreamMergeSuite extends Fs2Suite {
               IO.sleep(100.milliseconds) >> ref.set(value + 1) >> IO(value)
             }
             .take(2)
+            .compile.toList
+            .assertEquals(expected)
         }
-        .flatMap(_.compile.toList)
-        .map(result => assert(result == expected))
     }
   }
 }
