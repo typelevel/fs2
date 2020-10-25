@@ -306,7 +306,7 @@ class StreamInterruptSuite extends Fs2Suite {
       .through(p)
       .compile
       .lastOrError
-      .map(it => assert(it != 0))
+      .map(it => assertNotEquals(it, 0))
   }
 
   test("17 - minimal resume on append with pull") {

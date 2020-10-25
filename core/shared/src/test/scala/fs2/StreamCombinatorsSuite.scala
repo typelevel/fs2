@@ -1063,7 +1063,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
   test("random") {
     val x = Stream.random[SyncIO].take(100).compile.toList
     (x, x).tupled.map { case (first, second) =>
-      assert(first != second)
+      assertNotEquals(first, second)
     }
   }
 
