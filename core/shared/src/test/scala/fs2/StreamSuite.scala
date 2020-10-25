@@ -63,7 +63,7 @@ class StreamSuite extends Fs2Suite {
         val n = (n0 % 20).abs + 1
         val sizeV = s.chunkLimit(n).toVector.map(_.size)
         assert(sizeV.forall(_ <= n))
-        assert(sizeV.combineAll == s.toVector.size)
+        assertEquals(sizeV.combineAll, s.toVector.size)
       }
     }
 
@@ -80,15 +80,15 @@ class StreamSuite extends Fs2Suite {
         assert(chunkedV.dropRight(1).forall(_.size >= n))
         // Equivalent to last chunk with allowFewerTotal
         if (chunkedV.nonEmpty && chunkedV.last.size < n)
-          assert(chunkedV.dropRight(1) == withIfSmallerV)
+          assertEquals(chunkedV.dropRight(1), withIfSmallerV)
         // Flattened sequence with allowFewerTotal true is equal to vector without chunking
-        assert(chunkedV.foldLeft(Vector.empty[Int])((v, l) => v ++ l.toVector) == unchunkedV)
+        assertEquals(chunkedV.foldLeft(Vector.empty[Int])((v, l) => v ++ l.toVector), unchunkedV)
         // If smaller than Chunk Size and allowFewerTotal false is empty then
         // no elements should be emitted
-        assert(smallerN == Vector.empty)
+        assertEquals(smallerN,  Vector.empty)
         // If smaller than Chunk Size and allowFewerTotal true is equal to the size
         // of the taken chunk initially
-        assert(smallerY.foldLeft(Vector.empty[Int])((v, l) => v ++ l.toVector) == smallerSet)
+        assertEquals(smallerY.foldLeft(Vector.empty[Int])((v, l) => v ++ l.toVector), smallerSet)
       }
     }
 
@@ -101,9 +101,9 @@ class StreamSuite extends Fs2Suite {
           // All but last list have n0 values
           assert(chunkedV.dropRight(1).forall(_.size == n))
           // Last list has at most n0 values
-          assert(chunkedV.lastOption.fold(true)(_.size <= n))
+          assert(chunkedV.lastOption.forall(_.size <= n))
           // Flattened sequence is equal to vector without chunking
-          assert(chunkedV.foldLeft(Vector.empty[Int])((v, l) => v ++ l.toVector) == unchunkedV)
+          assertEquals(chunkedV.foldLeft(Vector.empty[Int])((v, l) => v ++ l.toVector), unchunkedV)
         }
       }
 
@@ -118,7 +118,7 @@ class StreamSuite extends Fs2Suite {
           // Flattened sequence is equal to vector without chunking, minus "left over" values that could not fit in a chunk
           val left = chunkedV.foldLeft(Vector.empty[Int])((v, l) => v ++ l.toVector)
           val right = unchunkedV.take(expectedSize)
-          assert(left == right)
+          assertEquals(left, right)
         }
       }
     }
@@ -127,37 +127,31 @@ class StreamSuite extends Fs2Suite {
       property("chunks.map identity") {
         forAll { (v: Vector[Vector[Int]]) =>
           val s = if (v.isEmpty) Stream.empty else v.map(Stream.emits).reduce(_ ++ _)
-          assert(s.chunks.map(_.toVector).toVector == v.filter(_.nonEmpty))
+          assertEquals(s.chunks.map(_.toVector).toVector, v.filter(_.nonEmpty))
         }
       }
 
       property("chunks.flatMap(chunk) identity") {
         forAll { (v: Vector[Vector[Int]]) =>
           val s = if (v.isEmpty) Stream.empty else v.map(Stream.emits).reduce(_ ++ _)
-          assert(s.chunks.flatMap(Stream.chunk).toVector == v.flatten)
+          assertEquals(s.chunks.flatMap(Stream.chunk).toVector, v.flatten)
         }
       }
     }
 
     test("eval") {
-      assertEquals(Stream.eval(SyncIO(23)).compile.toList.unsafeRunSync(), List(23))
+      Stream.eval(SyncIO(23)).compile.lastOrError.assertEquals(23)
     }
 
     test("evals") {
-      assertEquals(
-        Stream.evals(SyncIO(List(1, 2, 3))).compile.toList.unsafeRunSync(),
-        List(1, 2, 3)
-      )
-      assertEquals(
-        Stream.evals(SyncIO(Chain(4, 5, 6))).compile.toList.unsafeRunSync(),
-        List(4, 5, 6)
-      )
-      assertEquals(Stream.evals(SyncIO(Option(42))).compile.toList.unsafeRunSync(), List(42))
+      Stream.evals(SyncIO(List(1, 2, 3))).compile.toList.assertEquals(List(1, 2, 3)) >>
+      Stream.evals(SyncIO(Chain(4, 5, 6))).compile.toList.assertEquals(List(4, 5, 6)) >>
+      Stream.evals(SyncIO(Option(42))).compile.lastOrError.assertEquals(42)
     }
 
     property("flatMap") {
       forAll { (s: Stream[Pure, Stream[Pure, Int]]) =>
-        assert(s.flatMap(inner => inner).toList == s.toList.flatMap(inner => inner.toList))
+        assertEquals(s.flatMap(inner => inner).toList, s.toList.flatMap(inner => inner.toList))
       }
     }
 
@@ -165,13 +159,14 @@ class StreamSuite extends Fs2Suite {
       property("1") {
         forAll { (s: Stream[Pure, Int]) =>
           val s2 = s.covary[Fallible] ++ Stream.raiseError[Fallible](new Err)
-          assert(s2.handleErrorWith(_ => Stream.empty).toList == Right(s.toList))
+          assertEquals(s2.handleErrorWith(_ => Stream.empty).toList, Right(s.toList))
         }
       }
 
       test("2") {
-        val result = Stream.raiseError[Fallible](new Err).handleErrorWith(_ => Stream(1)).toList
-        assert(result == Right(List(1)))
+        val result =
+          Stream.raiseError[Fallible](new Err).handleErrorWith(_ => Stream(1)).compile.lastOrError
+        assertEquals(result, Right(1))
       }
 
       test("3") {
@@ -179,7 +174,7 @@ class StreamSuite extends Fs2Suite {
           .append(Stream.raiseError[Fallible](new Err))
           .handleErrorWith(_ => Stream(1))
           .toList
-        assert(result == Right(List(1, 1)))
+        assertEquals(result, Right(List(1, 1)))
       }
 
       test("4 - error in eval") {
@@ -201,7 +196,7 @@ class StreamSuite extends Fs2Suite {
           .compile
           .toVector
           .map { v =>
-            assert(v.size == 1)
+            assertEquals(v.size, 1)
             assert(v.head.isInstanceOf[Err])
           }
       }
@@ -214,7 +209,7 @@ class StreamSuite extends Fs2Suite {
           .compile
           .toVector
           .map { v =>
-            assert(v.size == 1)
+            assertEquals(v.size, 1)
             assert(v.head.isInstanceOf[Err])
           }
       }
@@ -235,93 +230,81 @@ class StreamSuite extends Fs2Suite {
       }
 
       test("8") {
-        SyncIO.defer {
-          var i = 0
+        Counter[IO].flatMap { counter =>
           Pull
-            .pure(1)
-            .covary[SyncIO]
-            .handleErrorWith { _ => i += 1; Pull.pure(2) }
-            .flatMap(_ => Pull.output1(i) >> Pull.raiseError[SyncIO](new Err))
+            .pure(42)
+            .covary[IO]
+            .handleErrorWith(_ => Pull.eval(counter.increment))
+            .flatMap(_ => Pull.raiseError[IO](new Err))
             .stream
             .compile
             .drain
-            .intercept[Err]
-            .map(_ => assert(i == 0))
+            .intercept[Err] >> counter.get.assertEquals(0L)
         }
       }
 
       test("9") {
-        SyncIO.defer {
-          var i = 0
+        Counter[IO].flatMap { counter =>
           Pull
-            .eval(SyncIO(1))
-            .handleErrorWith { _ => i += 1; Pull.pure(2) }
-            .flatMap(_ => Pull.output1(i) >> Pull.raiseError[SyncIO](new Err))
+            .eval(IO(42))
+            .handleErrorWith(_ => Pull.eval(counter.increment))
+            .flatMap(_ => Pull.raiseError[IO](new Err))
             .stream
             .compile
             .drain
-            .intercept[Err]
-            .map(_ => assert(i == 0))
+            .intercept[Err] >> counter.get.assertEquals(0L)
         }
       }
 
       test("10") {
-        SyncIO.defer {
-          var i = 0
+        Counter[IO].flatMap { counter =>
           Pull
-            .eval(SyncIO(1))
+            .eval(IO(42))
             .flatMap { x =>
-              Pull
-                .pure(x)
-                .handleErrorWith { _ => i += 1; Pull.pure(2) }
-                .flatMap(_ => Pull.output1(i) >> Pull.raiseError[SyncIO](new Err))
+              Pull.pure(x)
+                .handleErrorWith(_ => Pull.eval(counter.increment))
+                .flatMap(_ => Pull.raiseError[IO](new Err))
             }
             .stream
             .compile
             .drain
-            .intercept[Err]
-            .map(_ => assert(i == 0))
+            .intercept[Err] >> counter.get.assertEquals(0L)
         }
       }
 
       test("11") {
-        SyncIO.defer {
-          var i = 0
+
+        Counter[IO].flatMap { counter =>
           Pull
-            .eval(SyncIO(???))
-            .handleErrorWith(_ => Pull.pure(i += 1))
-            .flatMap(_ => Pull.output1(i))
+            .eval(IO(???))
+            .handleErrorWith(_ => Pull.eval(counter.increment))
+            .flatMap(_ => Pull.done)
             .stream
             .compile
-            .drain
-            .map(_ => assert(i == 1))
+            .drain >> counter.get.assertEquals(1L)
         }
       }
 
       test("12") {
-        SyncIO.defer {
-          var i = 0
+        Counter[IO].flatMap { counter =>
           Stream
-            .bracket(SyncIO(1))(_ => SyncIO(i += 1))
-            .flatMap(_ => Stream.eval(SyncIO(???)))
+            .bracket(IO.unit)(_ => counter.increment)
+            .flatMap(_ => Stream.eval(IO(???)))
             .compile
             .drain
-            .intercept[NotImplementedError]
-            .map(_ => assert(i == 1))
+            .intercept[NotImplementedError] >> counter.get.assertEquals(1L)
         }
       }
 
       test("13") {
-        SyncIO.defer {
-          var i = 0
+        Counter[IO].flatMap { counter =>          
           Stream
             .range(0, 10)
-            .covary[SyncIO]
-            .append(Stream.raiseError[SyncIO](new Err))
-            .handleErrorWith { _ => i += 1; Stream.empty }
+            .covary[IO]
+            .append(Stream.raiseError[IO](new Err))
+            .handleErrorWith { _ => Stream.eval(counter.increment) }
             .compile
-            .drain
-            .map(_ => assert(i == 1))
+            .drain >> counter.get.assertEquals(1L)
         }
       }
 
@@ -340,16 +323,16 @@ class StreamSuite extends Fs2Suite {
       }
 
       test("15") {
-        SyncIO.defer {
-          var i = 0
-          (Stream
-            .range(0, 3)
-            .covary[SyncIO] ++ Stream.raiseError[SyncIO](new Err)).unchunk.pull.echo
-            .handleErrorWith { _ => i += 1; Pull.done }
-            .stream
-            .compile
-            .drain
-            .map(_ => assert(i == 1))
+        Counter[IO].flatMap { counter =>
+          {
+            Stream
+              .range(0, 3)
+              .covary[IO] ++ Stream.raiseError[IO](new Err)
+          }.unchunk.pull.echo
+           .handleErrorWith { _ => Pull.eval(counter.increment) }
+           .stream
+           .compile
+           .drain >> counter.get.assertEquals(1L)
         }
       }
 
@@ -377,7 +360,7 @@ class StreamSuite extends Fs2Suite {
 
   group("cancelation of compiled streams") {
     def startAndCancelSoonAfter[A](fa: IO[A]): IO[Unit] =
-      fa.start.flatMap(fiber => IO.sleep(1.second) >> fiber.cancel)
+      fa.background.use(_ => IO.sleep(1.second))
 
     def testCancelation[A](s: Stream[IO, A]): IO[Unit] =
       startAndCancelSoonAfter(s.compile.drain)
@@ -446,7 +429,7 @@ class StreamSuite extends Fs2Suite {
   group("map") {
     property("map.toList == toList.map") {
       forAll { (s: Stream[Pure, Int], f: Int => Int) =>
-        assert(s.map(f).toList == s.toList.map(f))
+        assertEquals(s.map(f).toList, s.toList.map(f))
       }
     }
 
@@ -459,13 +442,13 @@ class StreamSuite extends Fs2Suite {
       def unfoldTree(seed: Int): Tree[Int] =
         Tree(seed, Stream(seed + 1).map(unfoldTree))
 
-      assert(unfoldTree(1).flatten.take(10).toList == List.tabulate(10)(_ + 1))
+      assertEquals(unfoldTree(1).flatten.take(10).toList, List.tabulate(10)(_ + 1))
     }
   }
 
   property("mapChunks") {
     forAll { (s: Stream[Pure, Int]) =>
-      assert(s.mapChunks(identity).chunks.toList == s.chunks.toList)
+      assertEquals(s.mapChunks(identity).chunks.toList, s.chunks.toList)
     }
   }
 
@@ -500,11 +483,9 @@ class StreamSuite extends Fs2Suite {
       Gen.chooseNum(1, 200),
       Gen.chooseNum(1, 200).flatMap(i => Gen.listOfN(i, arbitrary[Int]))
     ) { (n: Int, testValues: List[Int]) =>
-      assert(
-        Stream.emits(testValues).repeat.take(n.toLong).toList == List
-          .fill(n / testValues.size + 1)(testValues)
-          .flatten
-          .take(n)
+      assertEquals(
+        Stream.emits(testValues).repeat.take(n.toLong).toList,
+        List.fill(n / testValues.size + 1)(testValues).flatten.take(n)
       )
     }
   }
@@ -514,7 +495,7 @@ class StreamSuite extends Fs2Suite {
       Gen.chooseNum(1, 200),
       Gen.chooseNum(1, 200).flatMap(i => Gen.listOfN(i, arbitrary[Int]))
     ) { (n: Int, testValues: List[Int]) =>
-      assert(Stream.emits(testValues).repeatN(n.toLong).toList == List.fill(n)(testValues).flatten)
+      assertEquals(Stream.emits(testValues).repeatN(n.toLong).toList, List.fill(n)(testValues).flatten)
     }
   }
 
@@ -544,32 +525,29 @@ class StreamSuite extends Fs2Suite {
           record("suspend").as(mkRes("3"))
         )
 
-        List(res1, res2, res3)
+        val s = List(res1, res2, res3)
           .foldMap(Stream.resource(_))
           .evalTap(_ => record("use"))
           .append(Stream.exec(record("done")))
-          .compile
-          .drain *> st.get
-      }
-      .map(it =>
-        assert(
-          it == List(
-            "acquire 1",
-            "use",
-            "release 1",
-            "acquire 21",
-            "acquire 22",
-            "use",
-            "release 22",
-            "release 21",
-            "suspend",
-            "acquire 3",
-            "use",
-            "release 3",
-            "done"
-          )
+
+        val expected = List(
+          "acquire 1",
+          "use",
+          "release 1",
+          "acquire 21",
+          "acquire 22",
+          "use",
+          "release 22",
+          "release 21",
+          "suspend",
+          "acquire 3",
+          "use",
+          "release 3",
+          "done"
         )
-      )
+
+        s.compile.drain >> st.get.assertEquals(expected)
+      }
   }
 
   test("resourceWeak") {
@@ -592,32 +570,29 @@ class StreamSuite extends Fs2Suite {
           record("suspend").as(mkRes("3"))
         )
 
-        List(res1, res2, res3)
+        val s = List(res1, res2, res3)
           .foldMap(Stream.resourceWeak(_))
           .evalTap(_ => record("use"))
           .append(Stream.exec(record("done")))
-          .compile
-          .drain *> st.get
-      }
-      .map(it =>
-        assert(
-          it == List(
-            "acquire 1",
-            "use",
-            "acquire 21",
-            "acquire 22",
-            "use",
-            "suspend",
-            "acquire 3",
-            "use",
-            "done",
-            "release 3",
-            "release 22",
-            "release 21",
-            "release 1"
-          )
+
+        val expected = List(
+          "acquire 1",
+          "use",
+          "acquire 21",
+          "acquire 22",
+          "use",
+          "suspend",
+          "acquire 3",
+          "use",
+          "done",
+          "release 3",
+          "release 22",
+          "release 21",
+          "release 1"
         )
-      )
+
+        s.compile.drain >> st.get.assertEquals(expected)
+      }
   }
 
   group("resource safety") {
@@ -630,9 +605,7 @@ class StreamSuite extends Fs2Suite {
             .attempt
             .append(y.merge(x).attempt)
             .compile
-            .drain
-            .flatMap(_ => counter.get)
-            .map(it => assert(it == 0L))
+            .drain >> counter.get.assertEquals(0L)
         }
       }
     }
@@ -645,13 +618,13 @@ class StreamSuite extends Fs2Suite {
         // `s` completes with failure before the resource is acquired by `b`
         // `b` has just caught inner error when outer `s` fails
         // `b` fully completes before outer `s` fails
-        b.merge(s)
+
+        {
+          b.merge(s)
           .compile
           .drain
-          .attempt
-          .flatMap(_ => counter.get)
-          .map(it => assert(it == 0L))
-          .replicateA(25)
+          .attempt >> counter.get.assertEquals(0L)
+        }.replicateA(25)
       }
     }
 
@@ -666,9 +639,7 @@ class StreamSuite extends Fs2Suite {
             .append(b1.merge(spuriousFail(b2)).attempt)
             .append(spuriousFail(b1).merge(spuriousFail(b2)).attempt)
             .compile
-            .drain
-            .flatMap(_ => counter.get)
-            .map(it => assert(it == 0L))
+            .drain >> counter.get.assertEquals(0L)
         }
       }
     }
@@ -684,15 +655,12 @@ class StreamSuite extends Fs2Suite {
             }
             val one = s2.parJoin(n).take(10).attempt
             val two = s2.parJoin(n).attempt
-            one
-              .append(two)
-              .compile
-              .drain
-              .flatMap(_ => outer.get)
-              .map(it => assert(it == 0L))
-              .flatMap(_ => IO.sleep(50.millis)) // Allow time for inner stream to terminate
-              .flatMap(_ => inner.get)
-              .map(it => assert(it == 0L))
+            for {
+              _ <- one.append(two).compile.drain
+              _ <- outer.get.assertEquals(0L)
+              _ <- IO.sleep(50.millis) // Allow time for inner stream to terminate
+              _ <- inner.get.assertEquals(0L)
+            } yield ()
           }
         }
       }
@@ -711,9 +679,7 @@ class StreamSuite extends Fs2Suite {
             .append(two)
             .append(three)
             .compile
-            .drain
-            .flatMap(_ => counter.get)
-            .map(it => assert(it == 0L))
+            .drain >> counter.get.assertEquals(0L)
         }
       }
     }
@@ -733,9 +699,7 @@ class StreamSuite extends Fs2Suite {
               })
               .parJoinUnbounded
               .compile
-              .drain
-              .flatMap(_ => counter.get)
-              .map(it => assert(it == 0L))
+              .drain >> counter.get.assertEquals(0L)
           }
         }
       }
@@ -759,9 +723,7 @@ class StreamSuite extends Fs2Suite {
             })
             .parJoinUnbounded
             .compile
-            .drain
-            .flatMap(_ => counter.get)
-            .map(it => assert(it == 0L))
+            .drain >> counter.get.assertEquals(0L)
         }
       }
     }
@@ -771,8 +733,8 @@ class StreamSuite extends Fs2Suite {
         val c = new java.util.concurrent.atomic.AtomicLong(0)
         val s1 = Stream.emit("a").covary[IO]
         val s2 = Stream
-          .bracket(IO { assert(c.incrementAndGet() == 1L); () }) { _ =>
-            IO { c.decrementAndGet(); () }
+          .bracket(IO { assertEquals(c.incrementAndGet, 1L) }) { _ =>
+            IO { c.decrementAndGet }.void
           }
           .flatMap(_ => Stream.emit("b"))
         (s1.scope ++ s2)
@@ -782,23 +744,22 @@ class StreamSuite extends Fs2Suite {
           .take(4)
           .merge(Stream.exec(IO.unit))
           .compile
-          .drain
-          .map(_ => assert(c.get == 0L))
+          .drain >> IO(c.get).assertEquals(0L)
       }
 
       test("2") {
         Stream
-          .eval(Ref.of[IO, Int](0))
-          .flatMap { ref =>
+          .eval(Counter[IO])
+          .flatMap { counter =>
             Stream(1).flatMap { _ =>
               Stream
-                .bracketWeak(ref.update(_ + 1))(_ => ref.update(_ - 1))
-                .flatMap(_ => Stream.eval(ref.get)) ++ Stream.eval(ref.get)
-            }.scope ++ Stream.eval(ref.get)
+                .bracketWeak(counter.increment)(_ => counter.decrement)
+                .flatMap(_ => Stream.eval(counter.get)) ++ Stream.eval(counter.get)
+            }.scope ++ Stream.eval(counter.get)
           }
           .compile
           .toList
-          .map(it => assert(it == List(1, 1, 0)))
+          .assertEquals(List(1L, 1, 0))
       }
     }
 
@@ -807,12 +768,12 @@ class StreamSuite extends Fs2Suite {
         forAll { (s: Stream[Pure, Int], negate: Boolean, n0: Int) =>
           val n1 = (n0 % 20).abs + 1
           val n = if (negate) -n1 else n1
-          assert(s.take(n.toLong).toList == s.toList.take(n))
+          assertEquals(s.take(n.toLong).toList, s.toList.take(n))
         }
       }
       test("chunks") {
         val s = Stream(1, 2) ++ Stream(3, 4)
-        assert(s.take(3).chunks.map(_.toList).toList == List(List(1, 2), List(3)))
+        assertEquals(s.take(3).chunks.map(_.toList).toList, List(List(1, 2), List(3)))
       }
     }
 
@@ -820,7 +781,7 @@ class StreamSuite extends Fs2Suite {
       forAll { (s: Stream[Pure, Int], negate: Boolean, n0: Int) =>
         val n1 = (n0 % 20).abs + 1
         val n = if (negate) -n1 else n1
-        assert(s.takeRight(n).toList == s.toList.takeRight(n))
+        assertEquals(s.takeRight(n).toList, s.toList.takeRight(n))
       }
     }
 
@@ -828,7 +789,7 @@ class StreamSuite extends Fs2Suite {
       forAll { (s: Stream[Pure, Int], n0: Int) =>
         val n = (n0 % 20).abs + 1
         val set = s.toList.take(n).toSet
-        assert(s.takeWhile(set).toList == s.toList.takeWhile(set))
+        assertEquals(s.takeWhile(set).toList, s.toList.takeWhile(set))
       }
     }
 
@@ -838,7 +799,7 @@ class StreamSuite extends Fs2Suite {
         val f = (i: Int) => i % n == 0
         val vec = s.toVector
         val result = vec.takeWhile(f) ++ vec.dropWhile(f).headOption
-        assert(s.takeThrough(f).toVector == result, vec.toString)
+        assertEquals(s.takeThrough(f).toVector, result, vec.toString)
       }
     }
   }
@@ -904,8 +865,7 @@ class StreamSuite extends Fs2Suite {
                 .use(x => record(x))
 
             stream >> io >> resource >> st.get
-          }
-          .map(it => assert(it == expected))
+          }.assertEquals(expected)
       }
 
       test("onFinalizeWeak") {
@@ -924,7 +884,7 @@ class StreamSuite extends Fs2Suite {
               .lastOrError
               .use(x => record(x)) >> st.get
           }
-          .map(it => assert(it == List("1", "emit", "2", "3", "4")))
+          .assertEquals(List("1", "emit", "2", "3", "4"))
       }
 
       group("last scope extended, not all scopes") {
@@ -942,7 +902,7 @@ class StreamSuite extends Fs2Suite {
                 .lastOrError
                 .use(x => record(x)) *> st.get
             }
-            .map(it => assert(it == List("first finalize", "start", "second finalize")))
+            .assertEquals(List("first finalize", "start", "second finalize"))
         }
         test("2") {
           Ref[IO]
@@ -954,9 +914,7 @@ class StreamSuite extends Fs2Suite {
                 Stream.bracket(IO("c"))(_ => record("third finalize"))).compile.resource.lastOrError
                 .use(x => record(x)) *> st.get
             }
-            .map(it =>
-              assert(it == List("first finalize", "second finalize", "c", "third finalize"))
-            )
+            .assertEquals(List("first finalize", "second finalize", "c", "third finalize"))
         }
       }
 
@@ -971,9 +929,8 @@ class StreamSuite extends Fs2Suite {
               .resource
               .lastOrError
               .allocated
-            p *> written.get
+            p >> written.get.assertEquals(false)
           }
-          .map(it => assert(it == false))
       }
 
       group("interruption") {
@@ -988,7 +945,7 @@ class StreamSuite extends Fs2Suite {
             .compile
             .lastOrError
             .timeout(2.seconds)
-            .map(it => assert(it == true))
+            .assertEquals(true)
         }
 
         test("2") {
@@ -1001,10 +958,9 @@ class StreamSuite extends Fs2Suite {
               .use(_ => IO.unit)
               .guaranteeCase(stop.complete(_).void)
 
-            r.start.flatMap(fiber => IO.sleep(200.millis) >> fiber.cancel >> stop.get)
+            r.background.use(_ => IO.sleep(200.millis)) >> stop.get
           }
-          p.timeout(2.seconds)
-            .map(it => assert(it == Outcome.Canceled()))
+          p.timeout(2.seconds).assertEquals(Outcome.Canceled(): Outcome[IO, Throwable, Unit])
         }
       }
     }
