@@ -146,7 +146,8 @@ class ChunkSuite extends Fs2Suite {
             implicit val ev: A =:= Byte = null
             val arr = new Array[Byte](c.size)
             c.toByteBuffer.get(arr, 0, c.size)
-            assertEquals(arr.toVector, c.toArray.toVector)
+            // fails to use `ev` to infer, so we resort to the untyped check
+            assertEquals[Any,Any](arr.toVector, c.toArray.toVector)
           }
         }
 
