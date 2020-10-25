@@ -290,7 +290,7 @@ class StreamInterruptSuite extends Fs2Suite {
     }
   }
 
-  test("16 - if a pipe is interrupted, it will not restart evaluation. Issue 1179") {
+  test("16 - issue #1179 - if a pipe is interrupted, it will not restart evaluation") {
     def p: Pipe[IO, Int, Int] = {
       def loop(acc: Int, s: Stream[IO, Int]): Pull[IO, Int, Unit] =
         s.pull.uncons1.flatMap {

@@ -348,12 +348,12 @@ class StreamSuite extends Fs2Suite {
           .compile
           .toVector
           .attempt
-          .map({
+          .map {
             case Left(err: CompositeFailure) =>
               assert(err.all.toList.count(_.isInstanceOf[Err]) == 3)
             case Left(err)    => fail("Expected Left[CompositeFailure]", err)
             case Right(value) => fail(s"Expected Left[CompositeFailure] got Right($value)")
-          })
+          }
       }
     }
   }
