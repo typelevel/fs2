@@ -22,86 +22,78 @@
 package fs2.io
 
 import cats.effect.IO
-import fs2.{Chunk, Fs2Suite, Stream}
-import org.scalacheck.Arbitrary
-import org.scalacheck.Prop.forAll
+import fs2.{Chunk, Fs2Suite, Stream, Pure}
+
+import org.scalacheck.Gen
+import org.scalacheck.effect.PropF.forAllF
 
 import scala.annotation.tailrec
 
 class JavaInputOutputStreamSuite extends Fs2Suite {
   group("ToInputStream") {
-    implicit val streamByteGenerator: Arbitrary[Stream[IO, Byte]] = Arbitrary {
-      for {
-        chunks <- pureStreamGenerator[Chunk[Byte]].arbitrary
-      } yield chunks.flatMap(Stream.chunk).covary[IO]
-    }
+    val streamByteGenerator: Gen[Stream[Pure, Byte]] =
+      pureStreamGenerator[Chunk[Byte]]
+        .arbitrary
+        .map(_.flatMap(Stream.chunk))
 
-    property("arbitrary.streams") {
-      forAll { (stream: Stream[IO, Byte]) =>
-        val example = stream.compile.toVector.unsafeRunSync()
+    test("arbitrary streams") {
+      forAllF(streamByteGenerator) { (stream: Stream[Pure, Byte]) =>
+        val example = stream.compile.toVector
 
-        val fromInputStream =
-          toInputStreamResource(stream)
-            .use { is =>
-              // consume in same thread pool. Production application should never do this,
-              // instead they have to fork this to dedicated thread pool
+        toInputStreamResource(stream.covary[IO])
+          .use { is =>
+            // consume in same thread pool. Production application should never do this,
+            // instead they have to fork this to dedicated thread pool
+            IO {
               val buff = new Array[Byte](20)
               @tailrec
-              def go(acc: Vector[Byte]): IO[Vector[Byte]] =
+              def go(acc: Vector[Byte]): Vector[Byte] =
                 is.read(buff) match {
-                  case -1   => IO.pure(acc)
+                  case -1   => acc
                   case read => go(acc ++ buff.take(read))
                 }
               go(Vector.empty)
             }
-            .unsafeRunSync()
-
-        assert(example == fromInputStream)
+          }
+          .assertEquals(example)
       }
     }
 
-    test("upstream.is.closed".ignore) {
+    test("upstream is closed".ignore) {
       // https://github.com/functional-streams-for-scala/fs2/issues/1063
-      var closed: Boolean = false
-      val s: Stream[IO, Byte] =
-        Stream(1.toByte).onFinalize(IO { closed = true })
+      IO.ref(false).flatMap { closed =>
+        val s = Stream(1.toByte).onFinalize(closed.set(true))
 
-      toInputStreamResource(s).use(_ => IO.unit).unsafeRunSync()
-
-      // eventually...
-      assert(closed)
+        toInputStreamResource(s).use(_ => IO.unit) >> closed.get
+      }.assertEquals(true)
     }
 
     test("upstream.is.force-closed".ignore) {
       // https://github.com/functional-streams-for-scala/fs2/issues/1063
-      var closed: Boolean = false
-      val s: Stream[IO, Byte] =
-        Stream(1.toByte).onFinalize(IO { closed = true })
+      IO.ref(false).flatMap { closed =>
+        val s = Stream(1.toByte).onFinalize(closed.set(true))
 
-      val result =
-        toInputStreamResource(s)
-          .use { is =>
-            IO {
-              is.close()
-              closed // verifies that once close() terminates upstream was already cleaned up
-            }
-          }
-          .unsafeRunSync()
-
-      assert(result)
+        toInputStreamResource(s).use {is =>
+          // verifies that, once close() terminates, upstream is cleaned up
+          IO(is.close) >> closed.get
+        }
+      }.assertEquals(true)
     }
 
     test("converts to 0..255 int values except EOF mark") {
-      Stream
+      val s = Stream
         .range(0, 256, 1)
+
+      val expected = s.toVector :+ (-1)
+
+      s
         .map(_.toByte)
         .covary[IO]
         .through(toInputStream)
-        .map(is => Vector.fill(257)(is.read()))
+        .flatMap(is => Stream.eval(IO(is.read)).repeatN(257))
         .compile
         .toVector
-        .map(_.flatten)
-        .map(it => assert(it == (Stream.range(0, 256, 1) ++ Stream(-1)).toVector))
+        .assertEquals(expected)
     }
   }
 }
