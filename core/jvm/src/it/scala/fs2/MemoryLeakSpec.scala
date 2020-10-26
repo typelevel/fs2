@@ -118,16 +118,6 @@ class MemoryLeakSpec extends FunSuite {
       .groupWithin(Int.MaxValue, 1.millis)
   }
 
-  leakTest("groupWithin 2".ignore) {
-    def a: Stream[IO, Chunk[Int]] =
-      Stream
-        .eval(IO.never)
-        .covary[IO]
-        .groupWithin(Int.MaxValue, 1.second)
-        .interruptAfter(100.millis) ++ a
-    a
-  }
-
   leakTest("topic continuous publish") {
     Stream
       .eval(Topic[IO, Int](-1))
