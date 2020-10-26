@@ -629,7 +629,7 @@ object Pull extends PullLowPriority {
 
         case view: View[G, X, y] =>
           def interruptGuard(scope: CompileScope[F])(next: => F[R[G, X]]): F[R[G, X]] =
-            F.flatMap(scope.isInterrupted) {
+            scope.isInterrupted.flatMap {
               case None => next
               case Some(outcome) =>
                 val result = outcome match {
@@ -693,9 +693,9 @@ object Pull extends PullLowPriority {
                 case Some(scopeId) => scope.shiftScope(scopeId, u.toString)
               }
               // if scope was specified in step, try to find it, otherwise use the current scope.
-              F.flatMap(stepScopeF) { stepScope =>
+              stepScopeF.flatMap { stepScope =>
                 val runInner = go[G, y](stepScope, extendedTopLevelScope, translation, u.stream)
-                F.flatMap(F.attempt(runInner)) {
+                runInner.attempt.flatMap {
                   case Right(Done(scope)) =>
                     interruptGuard(scope) {
                       val result = Result.Succeeded(None)
@@ -723,7 +723,7 @@ object Pull extends PullLowPriority {
               }
 
             case eval: Eval[G, r] =>
-              F.flatMap(scope.interruptibleEval(translation(eval.value))) { eitherOutcome =>
+              scope.interruptibleEval(translation(eval.value)).flatMap { eitherOutcome =>
                 val result = eitherOutcome match {
                   case Right(r)                       => Result.Succeeded(r)
                   case Left(Outcome.Errored(err))     => Result.Fail(err)
@@ -744,7 +744,7 @@ object Pull extends PullLowPriority {
                   (r: r, ec: Resource.ExitCase) => translation(acquire.release(r, ec))
                 )
 
-                F.flatMap(onScope) { outcome =>
+                onScope.flatMap { outcome =>
                   val result = outcome match {
                     case Outcome.Succeeded(Right(r))      => Result.Succeeded(r)
                     case Outcome.Succeeded(Left(scopeId)) => Result.Interrupted(scopeId, None)
@@ -772,7 +772,7 @@ object Pull extends PullLowPriority {
                   else F.pure(false)
                 maybeCloseExtendedScope.flatMap { closedExtendedScope =>
                   val newExtendedScope = if (closedExtendedScope) None else extendedTopLevelScope
-                  F.flatMap(scope.open(open.useInterruption)) {
+                  scope.open(open.useInterruption).flatMap {
                     case Left(err) =>
                       val result = Result.Fail(err)
                       go(scope, newExtendedScope, translation, view.next(result))
@@ -785,8 +785,8 @@ object Pull extends PullLowPriority {
 
             case close: CloseScope =>
               def closeAndGo(toClose: CompileScope[F], ec: Resource.ExitCase) =
-                F.flatMap(toClose.close(ec)) { r =>
-                  F.flatMap(toClose.openAncestor) { ancestor =>
+                toClose.close(ec).flatMap { r =>
+                  toClose.openAncestor.flatMap { ancestor =>
                     val res = close.interruption match {
                       case None => Result.fromEither(r)
                       case Some(Result.Interrupted(interruptedScopeId, err)) =>
@@ -809,7 +809,7 @@ object Pull extends PullLowPriority {
                 .findSelfOrAncestor(close.scopeId)
                 .pure[F]
                 .orElse(scope.findSelfOrChild(close.scopeId))
-              F.flatMap(scopeToClose) {
+              scopeToClose.flatMap {
                 case Some(toClose) =>
                   if (toClose.parent.isEmpty)
                     // Impossible - don't close root scope as a result of a `CloseScope` call
@@ -818,9 +818,9 @@ object Pull extends PullLowPriority {
                     // Request to close the current top-level scope - if we're supposed to extend
                     // it instead, leave the scope open and pass it to the continuation
                     extendedTopLevelScope.traverse_(_.close(Resource.ExitCase.Succeeded).rethrow) *>
-                      F.flatMap(toClose.openAncestor)(ancestor =>
+                     toClose.openAncestor.flatMap { ancestor =>
                         go(ancestor, Some(toClose), translation, view.next(Result.unit))
-                      )
+                      }
                   else closeAndGo(toClose, close.exitCase)
                 case None =>
                   // scope already closed, continue with current scope
@@ -833,7 +833,7 @@ object Pull extends PullLowPriority {
     val initFk: F ~> F = cats.arrow.FunctionK.id[F]
 
     def outerLoop(scope: CompileScope[F], accB: B, stream: Pull[F, O, Unit]): F[B] =
-      F.flatMap(go[F, O](scope, None, initFk, stream)) {
+      go[F, O](scope, None, initFk, stream).flatMap {
         case Done(_) => F.pure(accB)
         case out: Out[f, o] =>
           try outerLoop(out.scope, g(accB, out.head), out.tail.asInstanceOf[Pull[f, O, Unit]])
