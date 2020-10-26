@@ -338,9 +338,11 @@ class StreamCombinatorsSuite extends Fs2Suite {
                   IO.raiseError(new Throwable("Couldn't acquire permit"))
                 )
 
-              ensureAcquired.bracket(_ =>
-                sig.update(_ + 1).bracket(_ => IO.sleep(10.millis))(_ => sig.update(_ - 1))
-              )(_ => sem.release).as(true)
+              ensureAcquired
+                .bracket(_ =>
+                  sig.update(_ + 1).bracket(_ => IO.sleep(10.millis))(_ => sig.update(_ - 1))
+                )(_ => sem.release)
+                .as(true)
             }
 
           sig.discrete
@@ -424,9 +426,11 @@ class StreamCombinatorsSuite extends Fs2Suite {
                   IO.raiseError(new Throwable("Couldn't acquire permit"))
                 )
 
-              ensureAcquired.bracket(_ =>
-                sig.update(_ + 1).bracket(_ => IO.sleep(10.millis))(_ => sig.update(_ - 1))
-              )(_ => sem.release).as(false)
+              ensureAcquired
+                .bracket(_ =>
+                  sig.update(_ + 1).bracket(_ => IO.sleep(10.millis))(_ => sig.update(_ - 1))
+                )(_ => sem.release)
+                .as(false)
             }
 
           sig.discrete
@@ -827,7 +831,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
             .lastOrError
         }
         .assertEquals(0.millis) // The stream emits after the timeout
-                               // so groupWithin should re-emit with zero delay
+        // so groupWithin should re-emit with zero delay
         .ticked
     }
 
@@ -1103,7 +1107,10 @@ class StreamCombinatorsSuite extends Fs2Suite {
 
     property("does not drop elements") {
       forAll { (s: Stream[Pure, Int], seed: Long) =>
-        assertEquals(s.rechunkRandomlyWithSeed(minFactor = 0.1, maxFactor = 2.0)(seed).toList, s.toList)
+        assertEquals(
+          s.rechunkRandomlyWithSeed(minFactor = 0.1, maxFactor = 2.0)(seed).toList,
+          s.toList
+        )
       }
     }
 
@@ -1144,13 +1151,13 @@ class StreamCombinatorsSuite extends Fs2Suite {
       Stream("Lore", "m ip", "sum dolo", "r sit amet")
         .repartition(s => Chunk.array(s.split(" ")))
         .toList,
-        List("Lorem", "ipsum", "dolor", "sit", "amet")
+      List("Lorem", "ipsum", "dolor", "sit", "amet")
     )
     assertEquals(
       Stream("hel", "l", "o Wor", "ld")
         .repartition(s => Chunk.indexedSeq(s.grouped(2).toVector))
         .toList,
-        List("he", "ll", "o ", "Wo", "rl", "d")
+      List("he", "ll", "o ", "Wo", "rl", "d")
     )
     assert(
       Stream.empty

@@ -50,30 +50,34 @@ class SocketSuite extends Fs2Suite {
       val message = Chunk.bytes("fs2.rocks".getBytes)
       val clientCount = 20L
 
-      Stream.resource(setup).flatMap { case (server, clients) =>
-        val echoServer = server.map { socket =>
-          socket
-            .reads(1024)
-            .through(socket.writes())
-            .onFinalize(socket.endOfOutput)
-        }.parJoinUnbounded
-
-        val msgClients = clients
-          .take(clientCount)
-          .map { socket =>
-            Stream
-              .chunk(message)
-              .through(socket.writes())
-              .onFinalize(socket.endOfOutput) ++
+      Stream
+        .resource(setup)
+        .flatMap { case (server, clients) =>
+          val echoServer = server.map { socket =>
             socket
               .reads(1024)
-              .chunks
-              .map(bytes => new String(bytes.toArray))
-          }.parJoin(10)
-           .take(clientCount)
+              .through(socket.writes())
+              .onFinalize(socket.endOfOutput)
+          }.parJoinUnbounded
 
-        msgClients.concurrently(echoServer)
-      }.compile
+          val msgClients = clients
+            .take(clientCount)
+            .map { socket =>
+              Stream
+                .chunk(message)
+                .through(socket.writes())
+                .onFinalize(socket.endOfOutput) ++
+                socket
+                  .reads(1024)
+                  .chunks
+                  .map(bytes => new String(bytes.toArray))
+            }
+            .parJoin(10)
+            .take(clientCount)
+
+          msgClients.concurrently(echoServer)
+        }
+        .compile
         .toVector
         .map { it =>
           assertEquals(it.size.toLong, clientCount)
@@ -85,44 +89,54 @@ class SocketSuite extends Fs2Suite {
       val message = Chunk.bytes("123456789012345678901234567890".getBytes)
       val sizes = Vector(1, 2, 3, 4, 3, 2, 1)
 
-      Stream.resource(setup).flatMap { case (server, clients) =>
-        val junkServer = server.map { socket =>
-          Stream
-            .chunk(message)
-            .through(socket.writes())
-            .onFinalize(socket.endOfOutput)
-        }.parJoinUnbounded
-
-        val client =
-          clients.take(1).flatMap { socket =>
+      Stream
+        .resource(setup)
+        .flatMap { case (server, clients) =>
+          val junkServer = server.map { socket =>
             Stream
-              .emits(sizes)
-              .evalMap(socket.readN(_))
-              .unNone
-              .map(_.size)
-          }.take(sizes.length.toLong)
+              .chunk(message)
+              .through(socket.writes())
+              .onFinalize(socket.endOfOutput)
+          }.parJoinUnbounded
 
-        client.concurrently(junkServer)
-      }.compile
-       .toVector
-       .assertEquals(sizes)
+          val client =
+            clients
+              .take(1)
+              .flatMap { socket =>
+                Stream
+                  .emits(sizes)
+                  .evalMap(socket.readN(_))
+                  .unNone
+                  .map(_.size)
+              }
+              .take(sizes.length.toLong)
+
+          client.concurrently(junkServer)
+        }
+        .compile
+        .toVector
+        .assertEquals(sizes)
     }
 
     test("write - concurrent calls do not cause a WritePendingException") {
       val message = Chunk.bytes(("123456789012345678901234567890" * 10000).getBytes)
 
-      Stream.resource(setup).flatMap { case (server, clients) =>
-        val readOnlyServer = server.map(_.reads(1024)).parJoinUnbounded
-        val client  =
-          clients.take(1).flatMap { socket =>
-            // concurrent writes
-            Stream {
-              Stream.eval(socket.write(message)).repeatN(10L)
-            }.repeatN(2L).parJoinUnbounded
-          }
+      Stream
+        .resource(setup)
+        .flatMap { case (server, clients) =>
+          val readOnlyServer = server.map(_.reads(1024)).parJoinUnbounded
+          val client =
+            clients.take(1).flatMap { socket =>
+              // concurrent writes
+              Stream {
+                Stream.eval(socket.write(message)).repeatN(10L)
+              }.repeatN(2L).parJoinUnbounded
+            }
 
-        client.concurrently(readOnlyServer)
-      }.compile.drain
+          client.concurrently(readOnlyServer)
+        }
+        .compile
+        .drain
     }
   }
 }

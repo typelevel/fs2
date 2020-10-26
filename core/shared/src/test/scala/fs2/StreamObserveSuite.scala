@@ -38,10 +38,8 @@ class StreamObserveSuite extends Fs2Suite {
       test("basic functionality") {
         forAllF { (s: Stream[Pure, Int]) =>
           IO.ref(0).flatMap { sum =>
-            observer(s.covary[IO]){ _.foreach(i => sum.update(_ + i)) }
-              .compile
-              .foldMonoid
-              .flatMap { out => sum.get.assertEquals(out) }
+            observer(s.covary[IO])(_.foreach(i => sum.update(_ + i))).compile.foldMonoid
+              .flatMap(out => sum.get.assertEquals(out))
           }
         }
       }

@@ -85,7 +85,7 @@ class StreamSuite extends Fs2Suite {
         assertEquals(chunkedV.foldLeft(Vector.empty[Int])((v, l) => v ++ l.toVector), unchunkedV)
         // If smaller than Chunk Size and allowFewerTotal false is empty then
         // no elements should be emitted
-        assertEquals(smallerN,  Vector.empty)
+        assertEquals(smallerN, Vector.empty)
         // If smaller than Chunk Size and allowFewerTotal true is equal to the size
         // of the taken chunk initially
         assertEquals(smallerY.foldLeft(Vector.empty[Int])((v, l) => v ++ l.toVector), smallerSet)
@@ -145,8 +145,8 @@ class StreamSuite extends Fs2Suite {
 
     test("evals") {
       Stream.evals(SyncIO(List(1, 2, 3))).compile.toList.assertEquals(List(1, 2, 3)) >>
-      Stream.evals(SyncIO(Chain(4, 5, 6))).compile.toList.assertEquals(List(4, 5, 6)) >>
-      Stream.evals(SyncIO(Option(42))).compile.lastOrError.assertEquals(42)
+        Stream.evals(SyncIO(Chain(4, 5, 6))).compile.toList.assertEquals(List(4, 5, 6)) >>
+        Stream.evals(SyncIO(Option(42))).compile.lastOrError.assertEquals(42)
     }
 
     property("flatMap") {
@@ -261,7 +261,8 @@ class StreamSuite extends Fs2Suite {
           Pull
             .eval(IO(42))
             .flatMap { x =>
-              Pull.pure(x)
+              Pull
+                .pure(x)
                 .handleErrorWith(_ => Pull.eval(counter.increment))
                 .flatMap(_ => Pull.raiseError[IO](new Err))
             }
@@ -297,12 +298,12 @@ class StreamSuite extends Fs2Suite {
       }
 
       test("13") {
-        Counter[IO].flatMap { counter =>          
+        Counter[IO].flatMap { counter =>
           Stream
             .range(0, 10)
             .covary[IO]
             .append(Stream.raiseError[IO](new Err))
-            .handleErrorWith { _ => Stream.eval(counter.increment) }
+            .handleErrorWith(_ => Stream.eval(counter.increment))
             .compile
             .drain >> counter.get.assertEquals(1L)
         }
@@ -329,10 +330,10 @@ class StreamSuite extends Fs2Suite {
               .range(0, 3)
               .covary[IO] ++ Stream.raiseError[IO](new Err)
           }.unchunk.pull.echo
-           .handleErrorWith { _ => Pull.eval(counter.increment) }
-           .stream
-           .compile
-           .drain >> counter.get.assertEquals(1L)
+            .handleErrorWith(_ => Pull.eval(counter.increment))
+            .stream
+            .compile
+            .drain >> counter.get.assertEquals(1L)
         }
       }
 
@@ -495,7 +496,10 @@ class StreamSuite extends Fs2Suite {
       Gen.chooseNum(1, 200),
       Gen.chooseNum(1, 200).flatMap(i => Gen.listOfN(i, arbitrary[Int]))
     ) { (n: Int, testValues: List[Int]) =>
-      assertEquals(Stream.emits(testValues).repeatN(n.toLong).toList, List.fill(n)(testValues).flatten)
+      assertEquals(
+        Stream.emits(testValues).repeatN(n.toLong).toList,
+        List.fill(n)(testValues).flatten
+      )
     }
   }
 
@@ -620,10 +624,7 @@ class StreamSuite extends Fs2Suite {
         // `b` fully completes before outer `s` fails
 
         {
-          b.merge(s)
-          .compile
-          .drain
-          .attempt >> counter.get.assertEquals(0L)
+          b.merge(s).compile.drain.attempt >> counter.get.assertEquals(0L)
         }.replicateA(25)
       }
     }
@@ -733,8 +734,8 @@ class StreamSuite extends Fs2Suite {
         val c = new java.util.concurrent.atomic.AtomicLong(0)
         val s1 = Stream.emit("a").covary[IO]
         val s2 = Stream
-          .bracket(IO { assertEquals(c.incrementAndGet, 1L) }) { _ =>
-            IO { c.decrementAndGet }.void
+          .bracket(IO(assertEquals(c.incrementAndGet, 1L))) { _ =>
+            IO(c.decrementAndGet).void
           }
           .flatMap(_ => Stream.emit("b"))
         (s1.scope ++ s2)
@@ -865,7 +866,8 @@ class StreamSuite extends Fs2Suite {
                 .use(x => record(x))
 
             stream >> io >> resource >> st.get
-          }.assertEquals(expected)
+          }
+          .assertEquals(expected)
       }
 
       test("onFinalizeWeak") {

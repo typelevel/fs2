@@ -201,9 +201,7 @@ class StreamParJoinSuite extends Fs2Suite {
 
     (Stream
       .emit(Stream.raiseError[IO](err))
-      .parJoinUnbounded ++ Stream.emit(1))
-      .compile
-      .drain
+      .parJoinUnbounded ++ Stream.emit(1)).compile.drain
       .intercept[Err]
   }
 }

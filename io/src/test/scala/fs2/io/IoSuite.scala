@@ -61,8 +61,7 @@ class IoSuite extends Fs2Suite {
         val chunkSize = (chunkSize0 % 20).abs + 1
         readOutputStream[IO](chunkSize)((os: OutputStream) =>
           IO.blocking[Unit](os.write(bytes))
-        ).compile
-          .toVector
+        ).compile.toVector
           .assertEquals(bytes.toVector)
       }
     }
@@ -80,9 +79,9 @@ class IoSuite extends Fs2Suite {
     test("fails when `f` fails") {
       forAllF { (chunkSize0: Int) =>
         val chunkSize = (chunkSize0 % 20).abs + 1
-        readOutputStream[IO](chunkSize)((_: OutputStream) =>
-          IO.raiseError(new Err)
-        ).compile.drain.intercept[Err].void
+        readOutputStream[IO](chunkSize)((_: OutputStream) => IO.raiseError(new Err)).compile.drain
+          .intercept[Err]
+          .void
       }
     }
 

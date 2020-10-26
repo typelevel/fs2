@@ -22,7 +22,7 @@
 package fs2.io
 
 import cats.effect.IO
-import fs2.{Chunk, Fs2Suite, Stream, Pure}
+import fs2.{Chunk, Fs2Suite, Pure, Stream}
 
 import org.scalacheck.Gen
 import org.scalacheck.effect.PropF.forAllF
@@ -32,8 +32,7 @@ import scala.annotation.tailrec
 class JavaInputOutputStreamSuite extends Fs2Suite {
   group("ToInputStream") {
     val streamByteGenerator: Gen[Stream[Pure, Byte]] =
-      pureStreamGenerator[Chunk[Byte]]
-        .arbitrary
+      pureStreamGenerator[Chunk[Byte]].arbitrary
         .map(_.flatMap(Stream.chunk))
 
     test("arbitrary streams") {
@@ -61,30 +60,34 @@ class JavaInputOutputStreamSuite extends Fs2Suite {
 
     test("upstream is closed".ignore) {
       // https://github.com/functional-streams-for-scala/fs2/issues/1063
-      IO.ref(false).flatMap { closed =>
-        val s = Stream(1.toByte).onFinalize(closed.set(true))
+      IO.ref(false)
+        .flatMap { closed =>
+          val s = Stream(1.toByte).onFinalize(closed.set(true))
 
-        toInputStreamResource(s).use(_ => IO.unit) >> closed.get
-      }.assertEquals(true)
+          toInputStreamResource(s).use(_ => IO.unit) >> closed.get
+        }
+        .assertEquals(true)
     }
 
     test("upstream is force closed".ignore) {
       // https://github.com/functional-streams-for-scala/fs2/issues/1063
-      IO.ref(false).flatMap { closed =>
-        val s = Stream(1.toByte).onFinalize(closed.set(true))
+      IO.ref(false)
+        .flatMap { closed =>
+          val s = Stream(1.toByte).onFinalize(closed.set(true))
 
-        toInputStreamResource(s).use {is =>
-          // verifies that, once close() terminates, upstream is cleaned up
-          IO(is.close) >> closed.get
+          toInputStreamResource(s).use { is =>
+            // verifies that, once close() terminates, upstream is cleaned up
+            IO(is.close) >> closed.get
+          }
         }
-      }.assertEquals(true)
+        .assertEquals(true)
     }
 
     test("converts to 0..255 int values except EOF mark") {
       val s = Stream
         .range(0, 256, 1)
 
-      val expected = s.toVector :+ (-1)
+      val expected = s.toVector :+ -1
 
       s
         .map(_.toByte)

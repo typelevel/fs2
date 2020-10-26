@@ -50,7 +50,8 @@ class BaseFileSuite extends Fs2Suite {
           _.flatMap { dir =>
             IO(JFiles.createTempFile(dir, "BaseFileSpecSub", ".tmp")).replicateA(5)
           }
-        }.as(topDir)
+        }
+        .as(topDir)
     }
 
   protected def aFile(dir: Path): IO[Path] =

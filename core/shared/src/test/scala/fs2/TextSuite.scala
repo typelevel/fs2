@@ -311,7 +311,7 @@ class TextSuite extends Fs2Suite {
             .through(text.base64.decode[Fallible])
             .compile
             .to(ByteVector): Either[Throwable, ByteVector],
-            Right(bs.map(ByteVector.view(_)).foldLeft(ByteVector.empty)(_ ++ _))
+          Right(bs.map(ByteVector.view(_)).foldLeft(ByteVector.empty)(_ ++ _))
         )
       }
     }
@@ -325,14 +325,14 @@ class TextSuite extends Fs2Suite {
           .map(_.leftMap(_.getMessage))
           .compile
           .toList,
-          Right(
-            List(
-              Right(Chunk.byteVector(hex"00deadbeef00")),
-              Left(
-                "Malformed padding - final quantum may optionally be padded with one or two padding characters such that the quantum is completed"
-              )
+        Right(
+          List(
+            Right(Chunk.byteVector(hex"00deadbeef00")),
+            Left(
+              "Malformed padding - final quantum may optionally be padded with one or two padding characters such that the quantum is completed"
             )
           )
+        )
       )
     }
 
@@ -346,7 +346,7 @@ class TextSuite extends Fs2Suite {
             .through(text.base64.decode[Fallible])
             .compile
             .to(ByteVector): Either[Throwable, ByteVector],
-            Right(bs.map(ByteVector.view(_)).foldLeft(ByteVector.empty)(_ ++ _))
+          Right(bs.map(ByteVector.view(_)).foldLeft(ByteVector.empty)(_ ++ _))
         )
       }
     }

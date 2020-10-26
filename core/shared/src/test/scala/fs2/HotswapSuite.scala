@@ -31,13 +31,13 @@ class HotswapSuite extends Fs2Suite {
         .flatMap(_ => logger.logInfo("using"))
         .compile
         .drain >>
-      logger.get.assertEquals(
-        List(
-          LogEvent.Acquired("a"),
-          LogEvent.Info("using"),
-          LogEvent.Released("a")
+        logger.get.assertEquals(
+          List(
+            LogEvent.Acquired("a"),
+            LogEvent.Info("using"),
+            LogEvent.Released("a")
+          )
         )
-      )
     }
   }
 
@@ -54,19 +54,19 @@ class HotswapSuite extends Fs2Suite {
         }
         .compile
         .drain >>
-      logger.get.assertEquals(
-        List(
-          LogEvent.Acquired("a"),
-          LogEvent.Info("using a"),
-          LogEvent.Acquired("b"),
-          LogEvent.Released("a"),
-          LogEvent.Info("using b"),
-          LogEvent.Acquired("c"),
-          LogEvent.Released("b"),
-          LogEvent.Info("using c"),
-          LogEvent.Released("c")
+        logger.get.assertEquals(
+          List(
+            LogEvent.Acquired("a"),
+            LogEvent.Info("using a"),
+            LogEvent.Acquired("b"),
+            LogEvent.Released("a"),
+            LogEvent.Info("using b"),
+            LogEvent.Acquired("c"),
+            LogEvent.Released("b"),
+            LogEvent.Info("using c"),
+            LogEvent.Released("c")
+          )
         )
-      )
     }
   }
 
@@ -81,14 +81,14 @@ class HotswapSuite extends Fs2Suite {
         }
         .compile
         .drain >>
-      logger.get.assertEquals(
-        List(
-          LogEvent.Acquired("a"),
-          LogEvent.Info("using a"),
-          LogEvent.Released("a"),
-          LogEvent.Info("after clear")
+        logger.get.assertEquals(
+          List(
+            LogEvent.Acquired("a"),
+            LogEvent.Info("using a"),
+            LogEvent.Released("a"),
+            LogEvent.Info("after clear")
+          )
         )
-      )
     }
   }
 }

@@ -199,7 +199,9 @@ class StreamMergeSuite extends Fs2Suite {
   test("mergeHaltL") {
     forAllF { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
       val s1List = s1.toList
-      s1.covary[IO].map(Left(_)).mergeHaltL(s2.map(Right(_)))
+      s1.covary[IO]
+        .map(Left(_))
+        .mergeHaltL(s2.map(Right(_)))
         .collect { case Left(a) => a }
         .compile
         .toList
@@ -210,7 +212,9 @@ class StreamMergeSuite extends Fs2Suite {
   test("mergeHaltR") {
     forAllF { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
       val s2List = s2.toList
-      s1.covary[IO].map(Left(_)).mergeHaltR(s2.map(Right(_)))
+      s1.covary[IO]
+        .map(Left(_))
+        .mergeHaltR(s2.map(Right(_)))
         .collect { case Right(a) => a }
         .compile
         .toList
@@ -231,7 +235,8 @@ class StreamMergeSuite extends Fs2Suite {
               IO.sleep(100.milliseconds) >> ref.set(value + 1) >> IO(value)
             }
             .take(2)
-            .compile.toList
+            .compile
+            .toList
             .assertEquals(expected)
         }
     }

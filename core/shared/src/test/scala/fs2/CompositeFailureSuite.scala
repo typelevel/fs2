@@ -37,5 +37,3 @@ class CompositeFailureSuite extends Fs2Suite {
     assert(compositeFailure.all.collect { case cf: CompositeFailure => cf }.isEmpty)
   }
 }
-
-

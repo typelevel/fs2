@@ -36,12 +36,11 @@ import fs2.io.tcp.SocketGroup
 class TLSSocketSuite extends TLSSuite {
   val size = 8192
 
-
   group("TLSSocket") {
     group("google") {
       def googleSetup(protocol: String) =
         for {
-          tlsContext <- Resource liftF TLSContext.system[IO]
+          tlsContext <- Resource.liftF(TLSContext.system[IO])
           socketGroup <- SocketGroup[IO]()
           socket <- socketGroup.client[IO](new InetSocketAddress("google.com", 443))
           tlsSocket <- tlsContext.client[IO](
@@ -58,16 +57,19 @@ class TLSSocketSuite extends TLSSuite {
 
       def writesBeforeReading(protocol: String) =
         test(s"$protocol - client writes before reading") {
-          Stream.resource(googleSetup(protocol)).flatMap { tlsSocket =>
-            Stream(googleDotCom)
-              .covary[IO]
-              .through(text.utf8Encode)
-              .through(tlsSocket.writes()) ++
-            tlsSocket
-              .reads(size)
-              .through(text.utf8Decode)
-              .through(text.lines)
-          }.head
+          Stream
+            .resource(googleSetup(protocol))
+            .flatMap { tlsSocket =>
+              Stream(googleDotCom)
+                .covary[IO]
+                .through(text.utf8Encode)
+                .through(tlsSocket.writes()) ++
+                tlsSocket
+                  .reads(size)
+                  .through(text.utf8Decode)
+                  .through(text.lines)
+            }
+            .head
             .compile
             .string
             .assertEquals(httpOk)
@@ -75,17 +77,20 @@ class TLSSocketSuite extends TLSSuite {
 
       def readsBeforeWriting(protocol: String) =
         test(s"$protocol - client reads before writing") {
-          Stream.resource(googleSetup(protocol)).flatMap { socket =>
-            val send = Stream(googleDotCom)
-              .through(text.utf8Encode)
-              .through(socket.writes())
-            val receive = socket
-              .reads(size)
-              .through(text.utf8Decode)
-              .through(text.lines)
+          Stream
+            .resource(googleSetup(protocol))
+            .flatMap { socket =>
+              val send = Stream(googleDotCom)
+                .through(text.utf8Encode)
+                .through(socket.writes())
+              val receive = socket
+                .reads(size)
+                .through(text.utf8Decode)
+                .through(text.lines)
 
-            receive.concurrently(send.delayBy(100.millis))
-          } .head
+              receive.concurrently(send.delayBy(100.millis))
+            }
+            .head
             .compile
             .string
             .assertEquals(httpOk)
@@ -111,7 +116,7 @@ class TLSSocketSuite extends TLSSuite {
 
       val setup = for {
         socketGroup <- SocketGroup[IO]()
-        tlsContext <- Resource liftF testTlsContext
+        tlsContext <- Resource.liftF(testTlsContext)
         inetAddress = new InetSocketAddress(InetAddress.getByName(null), 0)
         addressAndConnections <- socketGroup.serverResource[IO](inetAddress)
         (serverAddress, connections) = addressAndConnections
@@ -119,17 +124,20 @@ class TLSSocketSuite extends TLSSuite {
         client <- socketGroup.client[IO](serverAddress).flatMap(tlsContext.client(_))
       } yield server -> client
 
-      Stream.resource(setup).flatMap { case (server,  clientSocket) =>
-        val echoServer = server.map { socket =>
-          socket.reads(size).chunks.foreach(socket.write(_))
-        }.parJoinUnbounded
+      Stream
+        .resource(setup)
+        .flatMap { case (server, clientSocket) =>
+          val echoServer = server.map { socket =>
+            socket.reads(size).chunks.foreach(socket.write(_))
+          }.parJoinUnbounded
 
-        val client =
-          Stream.exec(clientSocket.write(msg)) ++
-        clientSocket.reads(size).take(msg.size.toLong)
+          val client =
+            Stream.exec(clientSocket.write(msg)) ++
+              clientSocket.reads(size).take(msg.size.toLong)
 
-        client.concurrently(echoServer)
-      }.compile
+          client.concurrently(echoServer)
+        }
+        .compile
         .to(Chunk)
         .assertEquals(msg)
     }

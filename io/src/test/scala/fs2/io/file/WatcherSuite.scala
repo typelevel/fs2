@@ -32,14 +32,15 @@ import java.nio.file.{Files => JFiles, _}
 class WatcherSuite extends BaseFileSuite {
   group("supports watching a file") {
     test("for modifications") {
-      Stream.resource(tempFile)
+      Stream
+        .resource(tempFile)
         .flatMap { f =>
           Files[IO]
             .watch(f, modifiers = modifiers)
             .takeWhile(
               {
                 case Watcher.Event.Modified(_, _) => false
-                case _ => true
+                case _                            => true
               },
               true
             )
@@ -49,14 +50,15 @@ class WatcherSuite extends BaseFileSuite {
         .drain
     }
     test("for deletions") {
-      Stream.resource(tempFile)
+      Stream
+        .resource(tempFile)
         .flatMap { f =>
           Files[IO]
             .watch(f, modifiers = modifiers)
             .takeWhile(
               {
                 case Watcher.Event.Deleted(_, _) => false
-                case _ => true
+                case _                           => true
               },
               true
             )
@@ -69,7 +71,8 @@ class WatcherSuite extends BaseFileSuite {
 
   group("supports watching a directory") {
     test("static recursive watching") {
-      Stream.resource(tempDirectory)
+      Stream
+        .resource(tempDirectory)
         .flatMap { dir =>
           val a = dir.resolve("a")
           val b = a.resolve("b")
@@ -78,7 +81,7 @@ class WatcherSuite extends BaseFileSuite {
               .watch(dir, modifiers = modifiers)
               .takeWhile {
                 case Watcher.Event.Modified(_, _) => false
-                case _ => true
+                case _                            => true
               }
               .concurrently(smallDelay ++ Stream.eval(modify(b)))
         }
@@ -86,15 +89,16 @@ class WatcherSuite extends BaseFileSuite {
         .drain
     }
     test("dynamic recursive watching") {
-      Stream.resource(tempDirectory)
+      Stream
+        .resource(tempDirectory)
         .flatMap { dir =>
           val a = dir.resolve("a")
           val b = a.resolve("b")
           Files[IO]
             .watch(dir, modifiers = modifiers)
-            .takeWhile{
+            .takeWhile {
               case Watcher.Event.Created(_, _) => false
-              case _ => true
+              case _                           => true
             }
             .concurrently(
               smallDelay ++ Stream

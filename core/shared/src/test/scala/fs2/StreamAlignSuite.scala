@@ -28,7 +28,7 @@ import org.scalacheck.Prop.forAll
 class StreamAlignSuite extends Fs2Suite {
   property("align") {
     forAll { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
-      assertEquals(s1.align(s2).toList,  s1.toList.align(s2.toList))
+      assertEquals(s1.align(s2).toList, s1.toList.align(s2.toList))
     }
   }
 
@@ -36,7 +36,8 @@ class StreamAlignSuite extends Fs2Suite {
     val empty = Stream.empty
     val s = Stream("A", "B", "C")
     assertEquals(
-      empty.align(s).take(3).toList,  List(Ior.Right("A"), Ior.Right("B"), Ior.Right("C"))
+      empty.align(s).take(3).toList,
+      List(Ior.Right("A"), Ior.Right("B"), Ior.Right("C"))
     )
   }
 
@@ -44,7 +45,8 @@ class StreamAlignSuite extends Fs2Suite {
     val empty = Stream.empty
     val s = Stream("A", "B", "C")
     assertEquals(
-      s.align(empty).take(3).toList,  List(Ior.Left("A"), Ior.Left("B"), Ior.Left("C"))
+      s.align(empty).take(3).toList,
+      List(Ior.Left("A"), Ior.Left("B"), Ior.Left("C"))
     )
   }
 

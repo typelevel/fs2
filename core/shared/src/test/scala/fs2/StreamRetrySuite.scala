@@ -34,25 +34,26 @@ class StreamRetrySuite extends Fs2Suite {
     Counter[IO].flatMap { attempts =>
       val job = attempts.increment.as("success")
 
-      Stream.retry(job, 1.seconds, x => x, 100)
+      Stream
+        .retry(job, 1.seconds, x => x, 100)
         .compile
         .lastOrError
         .assertEquals("success") >> attempts.get.assertEquals(1L)
-      }
     }
+  }
 
   test("eventual success") {
-    (Counter[IO], Counter[IO]).tupled.flatMap {
-      case (failures, successes) =>
-        val job = failures.get.flatMap { n =>
-          if (n == 5) successes.increment.as("success")
-          else failures.increment >> IO.raiseError(RetryErr())
-        }
+    (Counter[IO], Counter[IO]).tupled.flatMap { case (failures, successes) =>
+      val job = failures.get.flatMap { n =>
+        if (n == 5) successes.increment.as("success")
+        else failures.increment >> IO.raiseError(RetryErr())
+      }
 
-        Stream.retry(job, 100.millis, x => x, 100)
-          .compile
-          .lastOrError
-          .assertEquals("success") >>
+      Stream
+        .retry(job, 100.millis, x => x, 100)
+        .compile
+        .lastOrError
+        .assertEquals("success") >>
         failures.get.assertEquals(5L) >>
         successes.get.assertEquals(1L)
     }
@@ -66,65 +67,67 @@ class StreamRetrySuite extends Fs2Suite {
         _ <- IO.raiseError[Unit](RetryErr(v.toString))
       } yield ()
 
-      Stream.retry(job, 100.millis, x => x, 5)
+      Stream
+        .retry(job, 100.millis, x => x, 5)
         .compile
         .drain
         .map(_ => fail("Expected a RetryErr"))
-        .recoverWith {
-          case RetryErr(msg) =>
-            failures.get.assertEquals(5L) >>
+        .recoverWith { case RetryErr(msg) =>
+          failures.get.assertEquals(5L) >>
             IO(msg).assertEquals("5")
         }
     }
   }
 
   test("fatal") {
-    (Counter[IO], Counter[IO]).tupled.flatMap {
-      case (failures, successes) =>
-        val job = failures.get.flatMap { n =>
-          if (n == 5) failures.increment >> IO.raiseError(RetryErr("fatal"))
-          else if (n > 5) successes.increment.as("success")
-          else failures.increment >> IO.raiseError(RetryErr())
-        }
+    (Counter[IO], Counter[IO]).tupled.flatMap { case (failures, successes) =>
+      val job = failures.get.flatMap { n =>
+        if (n == 5) failures.increment >> IO.raiseError(RetryErr("fatal"))
+        else if (n > 5) successes.increment.as("success")
+        else failures.increment >> IO.raiseError(RetryErr())
+      }
 
       val f: Throwable => Boolean = _.getMessage != "fatal"
 
-        Stream.retry(job, 100.millis, x => x, 100, f)
-          .compile
-          .drain
-          .map(_ => fail("Expected a RetryErr"))
-          .recoverWith {
-            case RetryErr(msg) =>
-              failures.get.assertEquals(6L) >>
-              successes.get.assertEquals(0L) >>
-              IO(msg).assertEquals("fatal")
+      Stream
+        .retry(job, 100.millis, x => x, 100, f)
+        .compile
+        .drain
+        .map(_ => fail("Expected a RetryErr"))
+        .recoverWith { case RetryErr(msg) =>
+          failures.get.assertEquals(6L) >>
+            successes.get.assertEquals(0L) >>
+            IO(msg).assertEquals("fatal")
         }
     }
   }
 
   test("delays") {
-    IO.ref(List.empty[FiniteDuration]).flatMap { delays =>
-      IO.monotonic.flatMap { start =>
-        val unit = 200L
-        val maxTries = 5
-        val measuredDelays = delays.get.map {
-          _.sliding(2)
-            .map(s => (s.tail.head - s.head) / unit)
-            .toList
-        }
-        val job = IO.monotonic.flatMap { t =>
-          delays.update(_ :+ (t - start)) >> IO.raiseError(RetryErr())
-        }
-        val expected = List.range(1, maxTries).map(_.millis)
-
-        Stream.retry(job, unit.millis, _ + unit.millis, maxTries)
-          .compile
-          .drain
-          .map(_ => fail("Expected a RetryErr"))
-          .recoverWith {
-            case RetryErr(_) => measuredDelays.assertEquals(expected)
+    IO.ref(List.empty[FiniteDuration])
+      .flatMap { delays =>
+        IO.monotonic.flatMap { start =>
+          val unit = 200L
+          val maxTries = 5
+          val measuredDelays = delays.get.map {
+            _.sliding(2)
+              .map(s => (s.tail.head - s.head) / unit)
+              .toList
           }
+          val job = IO.monotonic.flatMap { t =>
+            delays.update(_ :+ (t - start)) >> IO.raiseError(RetryErr())
+          }
+          val expected = List.range(1, maxTries).map(_.millis)
+
+          Stream
+            .retry(job, unit.millis, _ + unit.millis, maxTries)
+            .compile
+            .drain
+            .map(_ => fail("Expected a RetryErr"))
+            .recoverWith { case RetryErr(_) =>
+              measuredDelays.assertEquals(expected)
+            }
+        }
       }
-    }.ticked
+      .ticked
   }
 }

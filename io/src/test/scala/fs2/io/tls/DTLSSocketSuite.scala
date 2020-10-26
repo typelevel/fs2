@@ -29,7 +29,7 @@ import java.net.InetSocketAddress
 
 import cats.effect.{IO, Resource}
 
-import fs2.io.udp.{Packet, SocketGroup, Socket}
+import fs2.io.udp.{Packet, Socket, SocketGroup}
 
 class DTLSSocketSuite extends TLSSuite {
   group("DTLSSocket") {
@@ -42,7 +42,7 @@ class DTLSSocketSuite extends TLSSuite {
           .map(a => new InetSocketAddress("localhost", a.getPort))
 
       val setup = for {
-        tlsContext <- Resource liftF testTlsContext
+        tlsContext <- Resource.liftF(testTlsContext)
         socketGroup <- SocketGroup[IO]
         serverSocket <- socketGroup.open[IO]()
         serverAddress <- address(serverSocket)
@@ -52,21 +52,22 @@ class DTLSSocketSuite extends TLSSuite {
         tlsClientSocket <- tlsContext.dtlsClient(clientSocket, serverAddress, logger = logger)
       } yield (tlsServerSocket, tlsClientSocket, serverAddress)
 
-      Stream.resource(setup)
-        .flatMap {
-          case (serverSocket, clientSocket, serverAddress) =>
-            val echoServer =
-              serverSocket
-                .reads()
-                .foreach(serverSocket.write(_))
-            val echoClient = Stream.eval {
-              IO.sleep(500.millis) >>
+      Stream
+        .resource(setup)
+        .flatMap { case (serverSocket, clientSocket, serverAddress) =>
+          val echoServer =
+            serverSocket
+              .reads()
+              .foreach(serverSocket.write(_))
+          val echoClient = Stream.eval {
+            IO.sleep(500.millis) >>
               clientSocket.write(Packet(serverAddress, msg)) >>
               clientSocket.read()
-            }
+          }
 
-            echoClient.concurrently(echoServer)
-        }.compile
+          echoClient.concurrently(echoServer)
+        }
+        .compile
         .lastOrError
         .map(_.bytes)
         .assertEquals(msg)

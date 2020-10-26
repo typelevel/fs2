@@ -518,7 +518,7 @@ class CompressionSuite extends Fs2Suite {
       }
       .compile
       .toVector
-      .map { vector => new String(vector.toArray, StandardCharsets.US_ASCII) }
+      .map(vector => new String(vector.toArray, StandardCharsets.US_ASCII))
       .assertEquals(expectedContent)
   }
 

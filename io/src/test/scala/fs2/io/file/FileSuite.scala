@@ -36,7 +36,8 @@ import scala.concurrent.duration._
 class FileSuite extends BaseFileSuite {
   group("readAll") {
     test("retrieves whole content of a file") {
-      Stream.resource(tempFile.evalMap(modify))
+      Stream
+        .resource(tempFile.evalMap(modify))
         .flatMap(path => Files[IO].readAll(path, 4096))
         .map(_ => 1)
         .compile
@@ -47,7 +48,8 @@ class FileSuite extends BaseFileSuite {
 
   group("readRange") {
     test("reads half of a file") {
-      Stream.resource(tempFile.evalMap(modify))
+      Stream
+        .resource(tempFile.evalMap(modify))
         .flatMap(path => Files[IO].readRange(path, 4096, 0, 2))
         .map(_ => 1)
         .compile
@@ -55,7 +57,8 @@ class FileSuite extends BaseFileSuite {
         .assertEquals(2)
     }
     test("reads full file if end is bigger than file size") {
-      Stream.resource(tempFile.evalMap(modify))
+      Stream
+        .resource(tempFile.evalMap(modify))
         .flatMap(path => Files[IO].readRange(path, 4096, 0, 100))
         .map(_ => 1)
         .compile
@@ -66,7 +69,8 @@ class FileSuite extends BaseFileSuite {
 
   group("writeAll") {
     test("simple write") {
-      Stream.resource(tempFile)
+      Stream
+        .resource(tempFile)
         .flatMap { path =>
           Stream("Hello", " world!")
             .covary[IO]
@@ -81,13 +85,14 @@ class FileSuite extends BaseFileSuite {
     }
 
     test("append") {
-      Stream.resource(tempFile)
+      Stream
+        .resource(tempFile)
         .flatMap { path =>
           val src = Stream("Hello", " world!").covary[IO].through(text.utf8Encode)
           src.through(Files[IO].writeAll(path)) ++
-          src.through(Files[IO].writeAll(path, List(StandardOpenOption.APPEND))) ++ Files[IO]
-            .readAll(path, 4096)
-            .through(text.utf8Decode)
+            src.through(Files[IO].writeAll(path, List(StandardOpenOption.APPEND))) ++ Files[IO]
+              .readAll(path, 4096)
+              .through(text.utf8Decode)
         }
         .compile
         .foldMonoid
@@ -97,7 +102,8 @@ class FileSuite extends BaseFileSuite {
 
   group("tail") {
     test("keeps reading a file as it is appended") {
-      Stream.resource(tempFile)
+      Stream
+        .resource(tempFile)
         .flatMap { path =>
           Files[IO]
             .tail(path, 4096, pollDelay = 25.millis)
@@ -124,16 +130,18 @@ class FileSuite extends BaseFileSuite {
 
   group("permissions") {
     test("should fail for a non existent file") {
-        Files[IO]
-          .permissions(Paths.get("nothing"))
-          .intercept[Throwable]
-      }
+      Files[IO]
+        .permissions(Paths.get("nothing"))
+        .intercept[Throwable]
+    }
     test("should return permissions for existing file") {
       val permissions = PosixFilePermissions.fromString("rwxrwxr-x").asScala
-      tempFile.use { p =>
-        Files[IO].setPermissions(p, permissions) >>
-        Files[IO].permissions(p)
-      }.assertEquals(permissions)
+      tempFile
+        .use { p =>
+          Files[IO].setPermissions(p, permissions) >>
+            Files[IO].permissions(p)
+        }
+        .assertEquals(permissions)
     }
   }
 
@@ -161,28 +169,31 @@ class FileSuite extends BaseFileSuite {
 
   group("copy") {
     test("returns a path to the new file") {
-      (tempFile, tempDirectory).tupled.use {
-        case (filePath, tempDir) =>
+      (tempFile, tempDirectory).tupled
+        .use { case (filePath, tempDir) =>
           Files[IO]
             .copy(filePath, tempDir.resolve("newfile"))
             .flatMap(Files[IO].exists(_))
-      }.assertEquals(true)
+        }
+        .assertEquals(true)
     }
   }
 
   group("deleteIfExists") {
     test("should result in non existent file") {
-      tempFile.use { path =>
-        Files[IO].delete(path) >> Files[IO].exists(path)
-      }.assertEquals(false)
+      tempFile
+        .use { path =>
+          Files[IO].delete(path) >> Files[IO].exists(path)
+        }
+        .assertEquals(false)
     }
   }
 
   group("delete") {
     test("should fail on a non existent file") {
-        Files[IO]
-          .delete(Paths.get("nothing"))
-          .intercept[Throwable]
+      Files[IO]
+        .delete(Paths.get("nothing"))
+        .intercept[Throwable]
     }
   }
 
@@ -190,26 +201,29 @@ class FileSuite extends BaseFileSuite {
     test("should remove a non-empty directory") {
       val testPath = Paths.get("a")
       Files[IO].createDirectories(testPath.resolve("b/c")) >>
-      Files[IO].deleteDirectoryRecursively(testPath) >>
-      Files[IO].exists(testPath).assertEquals(false)
+        Files[IO].deleteDirectoryRecursively(testPath) >>
+        Files[IO].exists(testPath).assertEquals(false)
     }
   }
 
   group("move") {
     test("should result in the old path being deleted") {
-      (tempFile, tempDirectory).tupled.use {
-        case (filePath, tempDir) =>
+      (tempFile, tempDirectory).tupled
+        .use { case (filePath, tempDir) =>
           Files[IO].move(filePath, tempDir.resolve("newfile")) >>
-          Files[IO].exists(filePath)
-      }.assertEquals(false)
+            Files[IO].exists(filePath)
+        }
+        .assertEquals(false)
     }
   }
 
   group("size") {
     test("should return correct size of ay file") {
-      tempFile.use { path =>
-        modify(path) >> Files[IO].size(path)
-      }.assertEquals(4L)
+      tempFile
+        .use { path =>
+          modify(path) >> Files[IO].size(path)
+        }
+        .assertEquals(4L)
     }
   }
 
@@ -247,7 +261,8 @@ class FileSuite extends BaseFileSuite {
           Files[IO]
             .tempFile(Paths.get(""))
             .evalMap(path => Files[IO].exists(path).tupleRight(path))
-        }.compile
+        }
+        .compile
         .lastOrError
         .flatMap { case (existsBefore, path) =>
           Files[IO]
@@ -273,7 +288,8 @@ class FileSuite extends BaseFileSuite {
           Files[IO]
             .createDirectory(path.resolve("temp"))
             .bracket(Files[IO].exists(_))(Files[IO].deleteIfExists(_).void)
-        }.assertEquals(true)
+        }
+        .assertEquals(true)
     }
   }
 
@@ -284,27 +300,31 @@ class FileSuite extends BaseFileSuite {
           Files[IO]
             .createDirectories(path.resolve("temp/inner"))
             .bracket(Files[IO].exists(_))(Files[IO].deleteIfExists(_).void)
-        }.assertEquals(true)
+        }
+        .assertEquals(true)
     }
   }
 
   group("directoryStream") {
     test("returns an empty Stream on an empty directory") {
-      tempDirectory.use { path =>
-        Files[IO]
-          .directoryStream(path)
-          .compile
-          .last
-      }.assertEquals(None)
+      tempDirectory
+        .use { path =>
+          Files[IO]
+            .directoryStream(path)
+            .compile
+            .last
+        }
+        .assertEquals(None)
     }
 
     test("returns all files in a directory correctly") {
-      Stream.resource(tempFiles(10))
+      Stream
+        .resource(tempFiles(10))
         .flatMap { paths =>
           val parent = paths.head.getParent
           Files[IO]
             .directoryStream(parent)
-            .map { path => paths.exists(_.normalize == path.normalize) }
+            .map(path => paths.exists(_.normalize == path.normalize))
         }
         .compile
         .fold(true)(_ & _)
@@ -314,7 +334,8 @@ class FileSuite extends BaseFileSuite {
 
   group("walk") {
     test("returns the only file in a directory correctly") {
-      Stream.resource(tempFile)
+      Stream
+        .resource(tempFile)
         .flatMap { path =>
           Files[IO].walk(path.getParent).map(_.normalize == path.normalize)
         }
@@ -325,12 +346,13 @@ class FileSuite extends BaseFileSuite {
     }
 
     test("returns all files in a directory correctly") {
-      Stream.resource(tempFiles(10))
+      Stream
+        .resource(tempFiles(10))
         .flatMap { paths =>
           val parent = paths.head.getParent
           Files[IO]
             .walk(parent)
-            .map { path => (parent :: paths).exists(_.normalize == path.normalize) }
+            .map(path => (parent :: paths).exists(_.normalize == path.normalize))
         }
         .compile
         .fold(true)(_ & _)
@@ -338,7 +360,8 @@ class FileSuite extends BaseFileSuite {
     }
 
     test("returns all files in a nested tree correctly") {
-      Stream.resource(tempFilesHierarchy)
+      Stream
+        .resource(tempFilesHierarchy)
         .flatMap(topDir => Files[IO].walk(topDir))
         .map(_ => 1)
         .compile
@@ -351,7 +374,8 @@ class FileSuite extends BaseFileSuite {
     val bufferSize = 100
     val totalBytes = 1000
     val rotateLimit = 150
-    Stream.resource(tempDirectory)
+    Stream
+      .resource(tempDirectory)
       .flatMap { dir =>
         Stream.eval(IO.ref(0)).flatMap { counter =>
           val path = counter.modify(i => (i + 1) -> dir.resolve(i.toString))

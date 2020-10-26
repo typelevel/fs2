@@ -818,7 +818,7 @@ object Pull extends PullLowPriority {
                     // Request to close the current top-level scope - if we're supposed to extend
                     // it instead, leave the scope open and pass it to the continuation
                     extendedTopLevelScope.traverse_(_.close(Resource.ExitCase.Succeeded).rethrow) *>
-                     toClose.openAncestor.flatMap { ancestor =>
+                      toClose.openAncestor.flatMap { ancestor =>
                         go(ancestor, Some(toClose), translation, view.next(Result.unit))
                       }
                   else closeAndGo(toClose, close.exitCase)

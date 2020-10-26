@@ -38,16 +38,16 @@ class ChunkSuite extends Fs2Suite {
 
   group("Chunk") {
     test("chunk-formation (1)") {
-      assertEquals(Chunk.empty.toList,  List())
-      assertEquals(Chunk.singleton(23).toList,  List(23))
+      assertEquals(Chunk.empty.toList, List())
+      assertEquals(Chunk.singleton(23).toList, List(23))
     }
 
     property("chunk-formation (2)") {
       forAll { (c: Vector[Int]) =>
-        assertEquals(Chunk.seq(c).toVector,  c)
-        assertEquals(Chunk.seq(c).toList,  c.toList)
-        assertEquals(Chunk.indexedSeq(c).toVector,  c)
-        assertEquals(Chunk.indexedSeq(c).toList,  c.toList)
+        assertEquals(Chunk.seq(c).toVector, c)
+        assertEquals(Chunk.seq(c).toList, c.toList)
+        assertEquals(Chunk.indexedSeq(c).toVector, c)
+        assertEquals(Chunk.indexedSeq(c).toList, c.toList)
       }
     }
 
@@ -84,25 +84,25 @@ class ChunkSuite extends Fs2Suite {
   ): Unit =
     group(s"$name") {
       implicit val implicitChunkArb: Arbitrary[Chunk[A]] = Arbitrary(genChunk)
-      property("size")(forAll((c: Chunk[A]) => assertEquals(c.size,  c.toList.size)))
+      property("size")(forAll((c: Chunk[A]) => assertEquals(c.size, c.toList.size)))
       property("take") {
         forAll { (c: Chunk[A], n: Int) =>
-          assertEquals(c.take(n).toVector,  c.toVector.take(n))
+          assertEquals(c.take(n).toVector, c.toVector.take(n))
         }
       }
       property("drop") {
         forAll { (c: Chunk[A], n: Int) =>
-          assertEquals(c.drop(n).toVector,  c.toVector.drop(n))
+          assertEquals(c.drop(n).toVector, c.toVector.drop(n))
         }
       }
       property("isEmpty") {
-        forAll((c: Chunk[A]) => assertEquals(c.isEmpty,  c.toList.isEmpty))
+        forAll((c: Chunk[A]) => assertEquals(c.isEmpty, c.toList.isEmpty))
       }
       property("toArray") {
         forAll { (c: Chunk[A]) =>
-          assertEquals(c.toArray.toVector,  c.toVector)
+          assertEquals(c.toArray.toVector, c.toVector)
           // Do it twice to make sure the first time didn't mutate state
-          assertEquals(c.toArray.toVector,  c.toVector)
+          assertEquals(c.toArray.toVector, c.toVector)
         }
       }
       property("copyToArray") {
@@ -110,7 +110,7 @@ class ChunkSuite extends Fs2Suite {
           val arr = new Array[A](c.size * 2)
           c.copyToArray(arr, 0)
           c.copyToArray(arr, c.size)
-          assertEquals(arr.toVector,  (c.toVector ++ c.toVector))
+          assertEquals(arr.toVector, (c.toVector ++ c.toVector))
         }
       }
       property("concat") {
@@ -118,16 +118,16 @@ class ChunkSuite extends Fs2Suite {
           val result = Chunk
             .concat(List(Chunk.empty, c1, Chunk.empty, c2))
             .toVector
-          assertEquals(result,  (c1.toVector ++ c2.toVector))
+          assertEquals(result, (c1.toVector ++ c2.toVector))
         }
       }
       test("concat empty") {
-        assertEquals(Chunk.concat[A](List(Chunk.empty, Chunk.empty)),  Chunk.empty)
+        assertEquals(Chunk.concat[A](List(Chunk.empty, Chunk.empty)), Chunk.empty)
       }
       property("scanLeft") {
         forAll { (c: Chunk[A]) =>
           def step(acc: List[A], item: A) = acc :+ item
-          assertEquals(c.scanLeft(List[A]())(step).toList,  (c.toList.scanLeft(List[A]())(step)))
+          assertEquals(c.scanLeft(List[A]())(step).toList, (c.toList.scanLeft(List[A]())(step)))
         }
       }
       property("scanLeftCarry") {
@@ -136,7 +136,7 @@ class ChunkSuite extends Fs2Suite {
           val listScan = c.toList.scanLeft(List[A]())(step)
           val (chunkScan, chunkCarry) = c.scanLeftCarry(List[A]())(step)
 
-          assertEquals((chunkScan.toList, chunkCarry),  ((listScan.tail, listScan.last)))
+          assertEquals((chunkScan.toList, chunkCarry), ((listScan.tail, listScan.last)))
         }
       }
 
@@ -147,7 +147,7 @@ class ChunkSuite extends Fs2Suite {
             val arr = new Array[Byte](c.size)
             c.toByteBuffer.get(arr, 0, c.size)
             // fails to use `ev` to infer, so we resort to the untyped check
-            assertEquals[Any,Any](arr.toVector, c.toArray.toVector)
+            assertEquals[Any, Any](arr.toVector, c.toArray.toVector)
           }
         }
 
@@ -190,19 +190,19 @@ class ChunkSuite extends Fs2Suite {
 
   group("scanLeftCarry") {
     test("returns empty and zero for empty Chunk") {
-      assertEquals(Chunk[Int]().scanLeftCarry(0)(_ + _),  ((Chunk.empty, 0)))
+      assertEquals(Chunk[Int]().scanLeftCarry(0)(_ + _), ((Chunk.empty, 0)))
     }
     test("returns first result and first result for singleton") {
-      assertEquals(Chunk(2).scanLeftCarry(1)(_ + _),  ((Chunk(3), 3)))
+      assertEquals(Chunk(2).scanLeftCarry(1)(_ + _), ((Chunk(3), 3)))
     }
     test("returns all results and last result for multiple elements") {
-      assertEquals(Chunk(2, 3).scanLeftCarry(1)(_ + _),  ((Chunk(3, 6), 6)))
+      assertEquals(Chunk(2, 3).scanLeftCarry(1)(_ + _), ((Chunk(3, 6), 6)))
     }
   }
 
   group("concat primitives") {
     def testEmptyConcat[A](mkChunk: List[Chunk[A]] => Chunk[A]) =
-      assertEquals(mkChunk(List(Chunk.empty, Chunk.empty)),  Chunk.empty)
+      assertEquals(mkChunk(List(Chunk.empty, Chunk.empty)), Chunk.empty)
 
     test("booleans")(testEmptyConcat(Chunk.concatBooleans))
     test("bytes")(testEmptyConcat(Chunk.concatBytes))
@@ -216,24 +216,24 @@ class ChunkSuite extends Fs2Suite {
 
   test("map andThen toArray") {
     val arr: Array[Int] = Chunk(0, 0).map(identity).toArray
-    assertEquals(arr.toList,  List(0, 0))
+    assertEquals(arr.toList, List(0, 0))
   }
 
   test("mapAccumulate andThen toArray") {
     val arr: Array[Int] = Chunk(0, 0).mapAccumulate(0)((s, o) => (s, o))._2.toArray
-    assertEquals(arr.toList,  List(0, 0))
+    assertEquals(arr.toList, List(0, 0))
   }
 
   test("scanLeft andThen toArray") {
     val arr: Array[Int] = Chunk(0, 0).scanLeft(0)((_, o) => o).toArray
-    assertEquals(arr.toList,  List(0, 0, 0))
+    assertEquals(arr.toList, List(0, 0, 0))
   }
 
   test("zip andThen toArray") {
     val arr: Array[(Int, Int)] = Chunk(0, 0).zip(Chunk(0, 0)).toArray
-    assertEquals(arr.toList,  List((0, 0), (0, 0)))
+    assertEquals(arr.toList, List((0, 0), (0, 0)))
     val arr2: Array[Int] = Chunk(0, 0).zip(Chunk(0, 0)).map(_._1).toArray
-    assertEquals(arr2.toList,  List(0, 0))
+    assertEquals(arr2.toList, List(0, 0))
   }
 
   test("zipWithIndex andThen toArray") {

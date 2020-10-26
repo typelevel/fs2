@@ -49,7 +49,7 @@ class BracketSuite extends Fs2Suite {
           .compile
           .drain
           .handleError { case _: Err => () } >>
-        events.get.assertEquals(List(Acquired, Released))
+          events.get.assertEquals(List(Acquired, Released))
       }
 
     test("normal termination")(singleBracketTest(Stream.empty))
@@ -71,7 +71,7 @@ class BracketSuite extends Fs2Suite {
           .compile
           .drain
           .handleError { case _: Err => () } >>
-        events.get.assertEquals(List(Acquired, Released, Acquired, Released))
+          events.get.assertEquals(List(Acquired, Released, Acquired, Released))
       }
 
     test("normal termination")(appendBracketTest(Stream.empty, Stream.empty))
@@ -191,11 +191,11 @@ class BracketSuite extends Fs2Suite {
     }
 
     test("scope closure") {
-        IO.ref(List.empty[Int]).flatMap { track =>
+      IO.ref(List.empty[Int]).flatMap { track =>
         (0 until 10)
           .foldLeft(Stream.emit(1).map(_ => throw new Err): Stream[IO, Int]) { (acc, i) =>
             Stream.emit(i) ++ Stream
-              .bracket(IO(i))(i => track.update(_ :+ i ))
+              .bracket(IO(i))(i => track.update(_ :+ i))
               .flatMap(_ => acc)
           }
           .attempt
@@ -235,24 +235,25 @@ class BracketSuite extends Fs2Suite {
 
     def bracketed(state: Ref[IO, (Long, Chain[Resource.ExitCase])]) =
       bracketCase {
-        state.update { case (l, ecs) => (l + 1) -> ecs}
-      }{ (_, ec) =>
+        state.update { case (l, ecs) => (l + 1) -> ecs }
+      } { (_, ec) =>
         state.update { case (l, ecs) => (l - 1) -> (ecs :+ ec) }
       }
 
     if (!runOnlyEarlyTerminationTests) {
       test("normal termination") {
         forAllF { (s0: List[Stream[Pure, Int]]) =>
-         newState.flatMap { state =>
-           val s =
-             s0.foldMap { s => bracketed(state).flatMap(_ => s) }
+          newState.flatMap { state =>
+            val s =
+              s0.foldMap(s => bracketed(state).flatMap(_ => s))
 
-           s
-             .append(s.take(10))
-             .take(10)
-             .compile.drain >> state.get.map { case (count, ecs) =>
-               assertEquals(count, 0L)
-               assert(ecs.forall(_ == Resource.ExitCase.Succeeded))
+            s
+              .append(s.take(10))
+              .take(10)
+              .compile
+              .drain >> state.get.map { case (count, ecs) =>
+              assertEquals(count, 0L)
+              assert(ecs.forall(_ == Resource.ExitCase.Succeeded))
             }
           }
         }
@@ -261,9 +262,9 @@ class BracketSuite extends Fs2Suite {
       test("failure") {
         forAllF { (s0: List[Stream[Pure, Int]]) =>
           newState.flatMap { state =>
-           val s =  s0.foldMap { s =>
+            val s = s0.foldMap { s =>
               bracketed(state).flatMap(_ => s ++ Stream.raiseError[IO](new Err))
-           }
+            }
 
             s.compile.drain.attempt >> state.get.map { case (count, ecs) =>
               assertEquals(count, 0L)
@@ -276,31 +277,33 @@ class BracketSuite extends Fs2Suite {
 
     test("cancelation") {
       forAllF { (s0: Stream[Pure, Int]) =>
-        newState.flatMap { state =>
-          val s = bracketed(state).flatMap(_ => s0 ++ Stream.never[IO])
+        newState
+          .flatMap { state =>
+            val s = bracketed(state).flatMap(_ => s0 ++ Stream.never[IO])
 
-          s.compile.drain
-            .background.use { _ =>
+            s.compile.drain.background.use { _ =>
               IO.sleep(50.millis)
             } >> state.get.map { case (count, ecs) =>
-                assertEquals(count, 0L)
-                assert(ecs.forall(_ == Resource.ExitCase.Canceled))
+              assertEquals(count, 0L)
+              assert(ecs.forall(_ == Resource.ExitCase.Canceled))
             }
-        }.timeout(20.seconds)
+          }
+          .timeout(20.seconds)
       }
     }
 
     test("interruption") {
       forAllF { (s0: Stream[Pure, Int]) =>
-        newState.flatMap { state =>
-          val s = bracketed(state).flatMap(_ => s0 ++ Stream.never[IO])
+        newState
+          .flatMap { state =>
+            val s = bracketed(state).flatMap(_ => s0 ++ Stream.never[IO])
 
-          s.interruptAfter(50.millis).compile.drain >> state.get.map {
-            case (count, ecs) =>
+            s.interruptAfter(50.millis).compile.drain >> state.get.map { case (count, ecs) =>
               assertEquals(count, 0L)
               assert(ecs.forall(_ == Resource.ExitCase.Canceled))
+            }
           }
-        }.timeout(20.seconds)
+          .timeout(20.seconds)
       }
     }
   }
