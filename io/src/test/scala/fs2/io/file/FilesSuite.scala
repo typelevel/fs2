@@ -33,7 +33,7 @@ import fs2.io.CollectionCompat._
 
 import scala.concurrent.duration._
 
-class FileSuite extends BaseFileSuite {
+class FilesSuite extends BaseFileSuite {
   group("readAll") {
     test("retrieves whole content of a file") {
       Stream
