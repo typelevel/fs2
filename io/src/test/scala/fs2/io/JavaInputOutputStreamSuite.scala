@@ -68,7 +68,7 @@ class JavaInputOutputStreamSuite extends Fs2Suite {
       }.assertEquals(true)
     }
 
-    test("upstream.is.force-closed".ignore) {
+    test("upstream is force closed".ignore) {
       // https://github.com/functional-streams-for-scala/fs2/issues/1063
       IO.ref(false).flatMap { closed =>
         val s = Stream(1.toByte).onFinalize(closed.set(true))
