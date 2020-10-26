@@ -23,7 +23,7 @@ package fs2
 package io
 package file
 
-import cats.effect.IO
+import cats.effect.{IO, Resource}
 import cats.syntax.all._
 
 import java.io.IOException
@@ -33,32 +33,31 @@ import java.nio.file.attribute.BasicFileAttributes
 import scala.concurrent.duration._
 
 class BaseFileSuite extends Fs2Suite {
-  protected def tempDirectory: Stream[IO, Path] =
-    Stream.bracket(IO(JFiles.createTempDirectory("BaseFileSpec")))(deleteDirectoryRecursively(_))
+  protected def tempDirectory: Resource[IO, Path] =
+    Resource.make(IO(JFiles.createTempDirectory("BaseFileSpec")))(deleteDirectoryRecursively(_))
 
-  protected def tempFile: Stream[IO, Path] =
-    tempDirectory.flatMap(dir => aFile(dir))
+  protected def tempFile: Resource[IO, Path] =
+    tempDirectory.evalMap(aFile)
 
-  protected def tempFiles(count: Int): Stream[IO, List[Path]] =
-    tempDirectory.flatMap(dir => aFile(dir).replicateA(count))
+  protected def tempFiles(count: Int): Resource[IO, List[Path]] =
+    tempDirectory.evalMap(aFile(_).replicateA(count))
 
-  protected def tempFilesHierarchy: Stream[IO, Path] =
-    tempDirectory.flatMap { topDir =>
-      Stream
-        .eval(IO(JFiles.createTempDirectory(topDir, "BaseFileSpec")))
-        .repeatN(5)
-        .flatMap(dir =>
-          Stream.eval(IO(JFiles.createTempFile(dir, "BaseFileSpecSub", ".tmp")).replicateA(5))
-        )
-        .drain ++ Stream.emit(topDir)
+  protected def tempFilesHierarchy: Resource[IO, Path] =
+    tempDirectory.evalMap { topDir =>
+      List
+        .fill(5)(IO(JFiles.createTempDirectory(topDir, "BaseFileSpec")))
+        .traverse {
+          _.flatMap { dir =>
+            IO(JFiles.createTempFile(dir, "BaseFileSpecSub", ".tmp")).replicateA(5)
+          }
+        }.as(topDir)
     }
 
-  protected def aFile(dir: Path): Stream[IO, Path] =
-    Stream.eval(IO(JFiles.createTempFile(dir, "BaseFileSpec", ".tmp")))
+  protected def aFile(dir: Path): IO[Path] =
+    IO(JFiles.createTempFile(dir, "BaseFileSpec", ".tmp"))
 
-  // Return a Unit after modification so this can be used with flatTap
-  protected def modify(file: Path): Stream[IO, Unit] =
-    Stream.eval(IO(JFiles.write(file, Array[Byte](0, 1, 2, 3))).void)
+  protected def modify(file: Path): IO[Path] =
+    IO(JFiles.write(file, Array[Byte](0, 1, 2, 3))).as(file)
 
   protected def modifyLater(file: Path): Stream[IO, INothing] =
     Stream
@@ -83,6 +82,5 @@ class BaseFileSuite extends Fs2Suite {
           }
         }
       )
-      ()
-    }
+    }.void
 }
