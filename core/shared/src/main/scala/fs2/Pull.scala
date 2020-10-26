@@ -596,133 +596,137 @@ object Pull extends PullLowPriority {
    * Interpreter uses this to find any parents of this scope that has to be interrupted, and guards the
    * interruption so it won't propagate to scope that shall not be anymore interrupted.
    */
-  private[fs2] def compile[F[_], O, B](
-      stream: Pull[F, O, Unit],
-      initScope: CompileScope[F],
+  private[fs2] def compile[Final[_], O, Blob](
+      stream: Pull[Final, O, Unit],
+      initScope: CompileScope[Final],
       extendLastTopLevelScope: Boolean,
-      init: B
-  )(g: (B, Chunk[O]) => B)(implicit
-      F: MonadError[F, Throwable]
-  ): F[B] = {
+      init: Blob
+  )(foldChunk: (Blob, Chunk[O]) => Blob)(implicit
+      Final: MonadError[Final, Throwable]
+  ): Final[Blob] = {
 
-    sealed trait R[+G[_], +X]
-    case class Done(scope: CompileScope[F]) extends R[Pure, INothing]
-    case class Out[+G[_], +X](head: Chunk[X], scope: CompileScope[F], tail: Pull[G, X, Unit])
-        extends R[G, X]
-    case class Interrupted(scopeId: Token, err: Option[Throwable]) extends R[Pure, INothing]
+    /* A Rap is a Rap-ture in the interpretation of the Pull... which happens when there is an operation
+     */
+    sealed trait Rap[+G[_], +X]
+    case class Done(scope: CompileScope[Final]) extends Rap[Pure, INothing]
+    case class Out[+G[_], +X](head: Chunk[X], scope: CompileScope[Final], tail: Pull[G, X, Unit])
+        extends Rap[G, X]
+    case class Interrupted(scopeId: Token, err: Option[Throwable]) extends Rap[Pure, INothing]
 
-    def go[G[_], X](
-        scope: CompileScope[F],
-        extendedTopLevelScope: Option[CompileScope[F]],
-        translation: G ~> F,
-        stream: Pull[G, X, Unit]
-    ): F[R[G, X]] =
-      viewL(stream) match {
-        case _: Pull.Result.Succeeded[_] =>
-          F.pure(Done(scope))
+    def go[Carrier[_], Elem](
+        scope: CompileScope[Final],
+        extendedTopLevelScope: Option[CompileScope[Final]],
+        translation: Carrier ~> Final,
+        stream: Pull[Carrier, Elem, Unit]
+    ): Final[Rap[Carrier, Elem]] = {
 
-        case failed: Pull.Result.Fail =>
-          F.raiseError(failed.error)
-
-        case interrupted: Pull.Result.Interrupted =>
-          F.pure(Interrupted(interrupted.context, interrupted.deferredError))
-
-        case view: View[G, X, y] =>
-          def interruptGuard(scope: CompileScope[F])(next: => F[R[G, X]]): F[R[G, X]] =
-            scope.isInterrupted.flatMap {
-              case None => next
-              case Some(outcome) =>
-                val result = outcome match {
-                  case Outcome.Errored(err)       => Result.Fail(err)
-                  case Outcome.Canceled()         => Result.Interrupted(scope.id, None)
-                  case Outcome.Succeeded(scopeId) => Result.Interrupted(scopeId, None)
-                }
-                go(scope, extendedTopLevelScope, translation, view.next(result))
+      def interruptGuard[S](
+          scope: CompileScope[Final],
+          view: View[Carrier, Elem, S]
+      )(next: => Final[Rap[Carrier, Elem]]): Final[Rap[Carrier, Elem]] =
+        scope.isInterrupted.flatMap {
+          case None => next
+          case Some(outcome) =>
+            val result = outcome match {
+              case Outcome.Errored(err)       => Result.Fail(err)
+              case Outcome.Canceled()         => Result.Interrupted(scope.id, None)
+              case Outcome.Succeeded(scopeId) => Result.Interrupted(scopeId, None)
             }
+            go(scope, extendedTopLevelScope, translation, view.next(result))
+        }
+
+      viewL(stream) match {
+        case _: Result.Succeeded[_] => Final.pure(Done(scope))
+
+        case failed: Result.Fail => Final.raiseError(failed.error)
+
+        case interrupted: Result.Interrupted =>
+          Final.pure(Interrupted(interrupted.context, interrupted.deferredError))
+
+        case view: View[Carrier, Elem, y] =>
+          // y: the type of the step in the view
           view.step match {
-            case output: Output[_] =>
-              interruptGuard(scope)(
-                F.pure(Out(output.values, scope, view.next(Pull.Result.unit)))
+            case output: Output[elem] => // this type should be Elem
+              interruptGuard(scope, view)(
+                Final.pure(Out[Carrier, Elem](output.values, scope, view.next(Result.unit)))
               )
 
             case mout: MapOutput[g, z, x] => // y = Unit
-
-              def innerMapOutput[G[_], Z, X](
-                  stream: Pull[G, Z, Unit],
-                  fun: Z => X
-              ): Pull[G, X, Unit] =
+              def innerMapOutput[K[_], A, B](
+                  stream: Pull[K, A, Unit],
+                  fun: A => B
+              ): Pull[K, B, Unit] =
                 viewL(stream) match {
                   case r: Result[_] => r.asInstanceOf[Result[Unit]]
-                  case v: View[G, Z, x] =>
-                    val mstep: Pull[G, X, x] = (v.step: Action[G, Z, x]) match {
-                      case o: Output[Z] =>
-                        try Output(o.values.map(fun))
+                  case v: View[K, A, x] =>
+                    val mstep: Pull[K, B, x] = (v.step: Action[K, A, x]) match {
+                      case o: Output[A] =>
+                        try Output[B](o.values.map(fun))
                         catch { case NonFatal(t) => Result.Fail(t) }
-                      case t: Translate[g, f, Z] =>
-                        Translate[g, f, X](innerMapOutput(t.stream, fun), t.fk)
-                      case s: Step[g, _]         => s
-                      case a: AlgEffect[g, _]    => a
-                      case m: MapOutput[g, q, z] => innerMapOutput(m.stream, fun.compose(m.fun))
+                      case t: Translate[h, k, a] =>
+                        Translate[h, k, B](innerMapOutput[h, A, B](t.stream, fun), t.fk)
+                      case s: Step[k, _]         => s
+                      case a: AlgEffect[k, _]    => a
+                      case m: MapOutput[k, q, z] => innerMapOutput(m.stream, fun.compose(m.fun))
                     }
-                    new Bind[G, X, x, Unit](mstep) {
+                    new Bind[K, B, x, Unit](mstep) {
                       def cont(r: Result[x]) = innerMapOutput(v.next(r), fun)
                     }
                 }
-
-              val mo: Pull[g, X, Unit] = innerMapOutput[g, z, X](mout.stream, mout.fun)
-              val str = new Bind[g, X, Unit, Unit](mo) {
-                def cont(r: Result[Unit]) = view.next(r).asInstanceOf[Pull[g, X, Unit]]
+              val mo: Pull[g, Elem, Unit] = innerMapOutput[g, z, Elem](mout.stream, mout.fun)
+              val str = new Bind[g, Elem, Unit, Unit](mo) {
+                def cont(r: Result[Unit]) = view.next(r).asInstanceOf[Pull[g, Elem, Unit]]
               }
               go(scope, extendedTopLevelScope, translation, str)
 
-            case tst: Translate[h, g, x] =>
-              val composed: h ~> F = translation.asInstanceOf[g ~> F].compose[h](tst.fk)
-              val runInner: F[R[h, x]] =
-                go[h, x](scope, extendedTopLevelScope, composed, tst.stream)
-
-              F.map(runInner) {
-                case out: Out[h, x]            => Out[g, x](out.head, out.scope, Translate(out.tail, tst.fk))
+            case tst: Translate[src, g, Elem] => // g = Carrier
+              val innerFK: src ~> Final = tst.fk.andThen(translation.asInstanceOf[g ~> Final])
+              go[src, Elem](scope, extendedTopLevelScope, innerFK, tst.stream).map {
+                case outx: Out[srcx, elemx] =>
+                  val out = outx.asInstanceOf[Out[src, Elem]]
+                  out.copy(tail = Translate[src, g, Elem](out.tail, tst.fk))
                 case dd @ Done(_)              => dd
                 case inter @ Interrupted(_, _) => inter
               }
 
-            case uU: Step[f, y] =>
-              val u: Step[G, y] = uU.asInstanceOf[Step[G, y]]
-              val stepScopeF: F[CompileScope[F]] = u.scope match {
-                case None          => F.pure(scope)
+            case uU: Step[f, z] =>
+              val u: Step[Carrier, z] = uU.asInstanceOf[Step[Carrier, z]]
+              val stepScopeF: Final[CompileScope[Final]] = u.scope match {
+                case None          => Final.pure(scope)
                 case Some(scopeId) => scope.shiftScope(scopeId, u.toString)
               }
               // if scope was specified in step, try to find it, otherwise use the current scope.
               stepScopeF.flatMap { stepScope =>
-                val runInner = go[G, y](stepScope, extendedTopLevelScope, translation, u.stream)
-                runInner.attempt.flatMap {
-                  case Right(Done(scope)) =>
-                    interruptGuard(scope) {
-                      val result = Result.Succeeded(None)
-                      go(scope, extendedTopLevelScope, translation, view.next(result))
-                    }
-                  case Right(out: Out[g, y]) =>
-                    // if we originally swapped scopes we want to return the original
-                    // scope back to the go as that is the scope that is expected to be here.
-                    val nextScope = if (u.scope.isEmpty) out.scope else scope
-                    val uncons = (out.head, out.scope.id, out.tail.asInstanceOf[Pull[f, y, Unit]])
-                    //Option[(Chunk[y], Token, Pull[f, y, Unit])])
-                    val result = Result.Succeeded(Some(uncons))
-                    interruptGuard(nextScope) {
-                      val next = view.next(result).asInstanceOf[Pull[g, X, Unit]]
-                      go(nextScope, extendedTopLevelScope, translation, next)
-                    }
+                go[Carrier, z](stepScope, extendedTopLevelScope, translation, u.stream).attempt
+                  .flatMap {
+                    case Right(Done(scope)) =>
+                      interruptGuard(scope, view) {
+                        val result = Result.Succeeded(None)
+                        go(scope, extendedTopLevelScope, translation, view.next(result))
+                      }
+                    case Right(out: Out[g, z]) =>
+                      // if we originally swapped scopes we want to return the original
+                      // scope back to the go as that is the scope that is expected to be here.
+                      val nextScope = if (u.scope.isEmpty) out.scope else scope
+                      interruptGuard(nextScope, view) {
+                        val uncons =
+                          (out.head, out.scope.id, out.tail.asInstanceOf[Pull[f, z, Unit]])
+                        //Option[(Chunk[z], Token, Pull[f, y, Unit])])
+                        val result = Result.Succeeded(Some(uncons))
+                        val next = view.next(result).asInstanceOf[Pull[g, Elem, Unit]]
+                        go(nextScope, extendedTopLevelScope, translation, next)
+                      }
 
-                  case Right(Interrupted(scopeId, err)) =>
-                    val cont = view.next(Result.Interrupted(scopeId, err))
-                    go(scope, extendedTopLevelScope, translation, cont)
+                    case Right(Interrupted(scopeId, err)) =>
+                      val cont = view.next(Result.Interrupted(scopeId, err))
+                      go(scope, extendedTopLevelScope, translation, cont)
 
-                  case Left(err) =>
-                    go(scope, extendedTopLevelScope, translation, view.next(Result.Fail(err)))
-                }
+                    case Left(err) =>
+                      go(scope, extendedTopLevelScope, translation, view.next(Result.Fail(err)))
+                  }
               }
 
-            case eval: Eval[G, r] =>
+            case eval: Eval[Carrier, r] => // r = y
               scope.interruptibleEval(translation(eval.value)).flatMap { eitherOutcome =>
                 val result = eitherOutcome match {
                   case Right(r)                       => Result.Succeeded(r)
@@ -733,8 +737,8 @@ object Pull extends PullLowPriority {
                 go(scope, extendedTopLevelScope, translation, view.next(result))
               }
 
-            case acquire: Acquire[G, r] =>
-              interruptGuard(scope) {
+            case acquire: Acquire[Carrier, r] => // r = y
+              interruptGuard(scope, view) {
                 val onScope = scope.acquireResource[r](
                   p =>
                     acquire.resource match {
@@ -755,21 +759,21 @@ object Pull extends PullLowPriority {
                 }
               }
 
-            case _: GetScope[_] =>
+            case _: GetScope[_] => // y = CompileScope[Carrier]
               val result = Result.Succeeded(scope.asInstanceOf[y])
               go(scope, extendedTopLevelScope, translation, view.next(result))
 
-            case open: OpenScope =>
-              interruptGuard(scope) {
-                val maybeCloseExtendedScope: F[Boolean] =
+            case open: OpenScope => // y = Token
+              interruptGuard(scope, view) {
+                val maybeCloseExtendedScope: Final[Boolean] =
                   // If we're opening a new top-level scope (aka, direct descendant of root),
                   // close the current extended top-level scope if it is defined.
                   if (scope.parent.isEmpty)
                     extendedTopLevelScope match {
-                      case None    => false.pure[F]
+                      case None    => false.pure[Final]
                       case Some(s) => s.close(Resource.ExitCase.Succeeded).rethrow.as(true)
                     }
-                  else F.pure(false)
+                  else Final.pure(false)
                 maybeCloseExtendedScope.flatMap { closedExtendedScope =>
                   val newExtendedScope = if (closedExtendedScope) None else extendedTopLevelScope
                   scope.open(open.useInterruption).flatMap {
@@ -783,8 +787,8 @@ object Pull extends PullLowPriority {
                 }
               }
 
-            case close: CloseScope =>
-              def closeAndGo(toClose: CompileScope[F], ec: Resource.ExitCase) =
+            case close: CloseScope => // y = Unit
+              def closeAndGo(toClose: CompileScope[Final], ec: Resource.ExitCase) =
                 toClose.close(ec).flatMap { r =>
                   toClose.openAncestor.flatMap { ancestor =>
                     val res = close.interruption match {
@@ -805,9 +809,9 @@ object Pull extends PullLowPriority {
                   }
                 }
 
-              val scopeToClose: F[Option[CompileScope[F]]] = scope
+              val scopeToClose: Final[Option[CompileScope[Final]]] = scope
                 .findSelfOrAncestor(close.scopeId)
-                .pure[F]
+                .pure[Final]
                 .orElse(scope.findSelfOrChild(close.scopeId))
               scopeToClose.flatMap {
                 case Some(toClose) =>
@@ -829,14 +833,23 @@ object Pull extends PullLowPriority {
               }
           }
       }
+    }
 
-    val initFk: F ~> F = cats.arrow.FunctionK.id[F]
+    val initFk: Final ~> Final = cats.arrow.FunctionK.id[Final]
 
-    def outerLoop(scope: CompileScope[F], accB: B, stream: Pull[F, O, Unit]): F[B] =
-      go[F, O](scope, None, initFk, stream).flatMap {
-        case Done(_) => F.pure(accB)
+    def outerLoop(
+        scope: CompileScope[Final],
+        accB: Blob,
+        stream: Pull[Final, O, Unit]
+    ): Final[Blob] =
+      go[Final, O](scope, None, initFk, stream).flatMap {
+        case Done(_) => Final.pure(accB)
         case out: Out[f, o] =>
-          try outerLoop(out.scope, g(accB, out.head), out.tail.asInstanceOf[Pull[f, O, Unit]])
+          try outerLoop(
+            out.scope,
+            foldChunk(accB, out.head),
+            out.tail.asInstanceOf[Pull[f, O, Unit]]
+          )
           catch {
             case NonFatal(e) =>
               val handled = viewL(out.tail) match {
@@ -849,8 +862,8 @@ object Pull extends PullLowPriority {
 
               outerLoop(out.scope, accB, handled.asInstanceOf[Pull[f, O, Unit]])
           }
-        case Interrupted(_, None)      => F.pure(accB)
-        case Interrupted(_, Some(err)) => F.raiseError(err)
+        case Interrupted(_, None)      => Final.pure(accB)
+        case Interrupted(_, Some(err)) => Final.raiseError(err)
       }
 
     outerLoop(initScope, init, stream)
@@ -863,7 +876,7 @@ object Pull extends PullLowPriority {
     uncons(p).flatMap {
       case None => Result.unit
 
-      case Some((chunk, Pull.Result.Succeeded(_))) if chunk.size == 1 =>
+      case Some((chunk, Result.Succeeded(_))) if chunk.size == 1 =>
         // nb: If tl is Pure, there's no need to propagate flatMap through the tail. Hence, we
         // check if hd has only a single element, and if so, process it directly instead of folding.
         // This allows recursive infinite streams of the form `def s: Stream[Pure,O] = Stream(o).flatMap { _ => s }`
