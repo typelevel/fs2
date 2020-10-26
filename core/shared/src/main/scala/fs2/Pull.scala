@@ -652,7 +652,7 @@ object Pull extends PullLowPriority {
                   fun: Z => X
               ): Pull[G, X, Unit] =
                 viewL(stream) match {
-                  case r: Result[Unit] => r
+                  case r: Result[_] => r.asInstanceOf[Result[Unit]]
                   case v: View[G, Z, x] =>
                     val mstep: Pull[G, X, x] = (v.step: Action[G, Z, x]) match {
                       case o: Output[Z] =>
@@ -662,7 +662,7 @@ object Pull extends PullLowPriority {
                         Translate[g, f, X](innerMapOutput(t.stream, fun), t.fk)
                       case s: Step[g, _]         => s
                       case a: AlgEffect[g, _]    => a
-                      case m: MapOutput[g, q, Z] => innerMapOutput(m.stream, fun.compose(m.fun))
+                      case m: MapOutput[g, q, z] => innerMapOutput(m.stream, fun.compose(m.fun))
                     }
                     new Bind[G, X, x, Unit](mstep) {
                       def cont(r: Result[x]) = innerMapOutput(v.next(r), fun)
@@ -936,7 +936,7 @@ object Pull extends PullLowPriority {
       case r: Result[_]          => r
       case a: AlgEffect[F, _]    => a
       case t: Translate[g, f, _] => Translate[g, f, P](mapOutput(t.stream, fun), t.fk)
-      case m: MapOutput[F, q, O] => MapOutput(m.stream, fun.compose(m.fun))
+      case m: MapOutput[f, q, o] => MapOutput(m.stream, fun.compose(m.fun))
       case _                     => MapOutput(stream, fun)
     }
 
