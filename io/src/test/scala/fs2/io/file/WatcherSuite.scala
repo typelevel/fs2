@@ -29,7 +29,7 @@ import cats.effect.IO
 
 import java.nio.file.{Files => JFiles, _}
 
-class WatcherSuite extends BaseFileSuite {
+class WatcherSuite extends Fs2Suite with BaseFileSuite {
   group("supports watching a file") {
     test("for modifications") {
       Stream

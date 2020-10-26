@@ -32,7 +32,7 @@ import java.nio.file.attribute.BasicFileAttributes
 
 import scala.concurrent.duration._
 
-class BaseFileSuite extends Fs2Suite {
+trait BaseFileSuite {
   protected def tempDirectory: Resource[IO, Path] =
     Resource.make(IO(JFiles.createTempDirectory("BaseFileSpec")))(deleteDirectoryRecursively(_))
 
