@@ -186,7 +186,6 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
   )
   .settings(
     name := "fs2-core",
-    sourceDirectories in (Compile, scalafmt) += baseDirectory.value / "../shared/src/main/scala",
     // Libraries not yet cross-built for Dotty
     libraryDependencies ++= Seq(
       "org.typelevel" %%% "cats-core" % "2.2.0",
@@ -202,7 +201,7 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
     libraryDependencies ++= Seq(
       "org.scodec" %%% "scodec-bits" % "1.1.20",
       "org.typelevel" %%% "scalacheck-effect-munit" % "0.2.0" % "test",
-      "org.typelevel" %%% "munit-cats-effect" % "0.3.0" % "test"
+      "org.typelevel" %%% "munit-cats-effect-2" % "0.6.0" % "test"
     )
   )
 
