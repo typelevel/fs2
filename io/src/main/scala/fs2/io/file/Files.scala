@@ -140,9 +140,10 @@ sealed trait SyncFiles[F[_]] {
   /** Creates a resource containing the path of a temporary file.
     *
     * The temporary file is removed during the resource release.
+    * @param dir the directory which the temporary file will be created in. Pass in None to use the default system temp directory
     */
   def tempFile(
-      dir: Path,
+      dir: Option[Path] = None,
       prefix: String = "",
       suffix: String = ".tmp",
       attributes: Seq[FileAttribute[_]] = Seq.empty
@@ -151,9 +152,10 @@ sealed trait SyncFiles[F[_]] {
   /** Creates a resource containing the path of a temporary directory.
     *
     * The temporary directory is removed during the resource release.
+    * @param dir the directory which the temporary directory will be created in. Pass in None to use the default system temp directory
     */
   def tempDirectory(
-      dir: Path,
+      dir: Option[Path] = None,
       prefix: String = "",
       attributes: Seq[FileAttribute[_]] = Seq.empty
   ): Resource[F, Path]
@@ -348,22 +350,33 @@ object SyncFiles {
       Sync[F].blocking(JFiles.size(path))
 
     def tempFile(
-        dir: Path,
+        dir: Option[Path],
         prefix: String,
         suffix: String,
         attributes: Seq[FileAttribute[_]]
     ): Resource[F, Path] =
       Resource.make {
-        Sync[F].blocking(JFiles.createTempFile(dir, prefix, suffix, attributes: _*))
+        dir match {
+          case Some(dir) =>
+            Sync[F].blocking(JFiles.createTempFile(dir, prefix, suffix, attributes: _*))
+          case None =>
+            Sync[F].blocking(JFiles.createTempFile(prefix, suffix, attributes: _*))
+        }
+
       }(deleteIfExists(_).void)
 
     def tempDirectory(
-        dir: Path,
+        dir: Option[Path],
         prefix: String,
         attributes: Seq[FileAttribute[_]]
     ): Resource[F, Path] =
       Resource.make {
-        Sync[F].blocking(JFiles.createTempDirectory(dir, prefix, attributes: _*))
+        dir match {
+          case Some(dir) =>
+            Sync[F].blocking(JFiles.createTempDirectory(dir, prefix, attributes: _*))
+          case None =>
+            Sync[F].blocking(JFiles.createTempDirectory(prefix, attributes: _*))
+        }
       } { p =>
         deleteDirectoryRecursively(p)
           .recover { case _: NoSuchFileException => () }

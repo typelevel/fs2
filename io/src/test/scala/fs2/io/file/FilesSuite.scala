@@ -252,6 +252,35 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
         .compile
         .lastOrError
     }
+
+    test("should create the file in the specified directory") {
+      tempDirectory
+        .evalMap { tempDir =>
+          val files = Files[IO]
+          files
+            .tempFile(Some(tempDir))
+            .use { file =>
+              files.exists(tempDir.resolve(file.getFileName))
+            }
+        }
+        .compile
+        .lastOrError
+        .map(it => assert(it))
+    }
+
+    test("should create the file in the default temp directory when dir is not specified") {
+
+      val files = Files[IO]
+
+      files
+        .tempFile(None)
+        .use { file =>
+          IO(System.getProperty("java.io.tmpdir")).flatMap(dir =>
+            files.exists(Paths.get(dir).resolve(file.getFileName))
+          )
+        }
+        .map(existsInDefault => assert(existsInDefault))
+    }
   }
 
   group("tempDirectoryStream") {
@@ -259,7 +288,7 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
       Stream
         .resource {
           Files[IO]
-            .tempFile(Paths.get(""))
+            .tempDirectory(Paths.get(""))
             .evalMap(path => Files[IO].exists(path).tupleRight(path))
         }
         .compile
@@ -278,6 +307,35 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
         .evalMap(Files[IO].delete)
         .compile
         .lastOrError
+    }
+
+    test("should create the directory in the specified directory") {
+      tempDirectory
+        .evalMap { tempDir =>
+          val files = Files[IO]
+          files
+            .tempDirectory(Some(tempDir))
+            .use { directory =>
+              files.exists(tempDir.resolve(directory.getFileName))
+            }
+        }
+        .compile
+        .lastOrError
+        .map(it => assert(it))
+    }
+
+    test("should create the directory in the default temp directory when dir is not specified") {
+
+      val files = Files[IO]
+
+      files
+        .tempDirectory(None)
+        .use { directory =>
+          IO(System.getProperty("java.io.tmpdir")).flatMap(dir =>
+            files.exists(Paths.get(dir).resolve(directory.getFileName))
+          )
+        }
+        .map(existsInDefault => assert(existsInDefault))
     }
   }
 
