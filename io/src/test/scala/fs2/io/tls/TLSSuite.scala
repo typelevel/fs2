@@ -32,4 +32,6 @@ abstract class TLSSuite extends Fs2Suite {
       "password".toCharArray,
       "password".toCharArray
     )
+
+  val logger = None // Some((msg: String) => IO(println(s"\u001b[33m${msg}\u001b[0m")))
 }

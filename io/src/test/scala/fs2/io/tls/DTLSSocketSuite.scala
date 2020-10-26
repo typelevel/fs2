@@ -27,50 +27,49 @@ import scala.concurrent.duration._
 
 import java.net.InetSocketAddress
 
-import cats.effect.IO
-import cats.syntax.all._
+import cats.effect.{IO, Resource}
 
-import fs2.io.udp.{Packet, SocketGroup}
+import fs2.io.udp.{Packet, SocketGroup, Socket}
 
 class DTLSSocketSuite extends TLSSuite {
   group("DTLSSocket") {
     test("echo") {
-      SocketGroup[IO].use { socketGroup =>
-        testTlsContext.flatMap { tlsContext =>
-          socketGroup.open[IO]().use { serverSocket =>
-            serverSocket.localAddress.map(_.getPort).flatMap { serverPort =>
-              val serverAddress = new InetSocketAddress("localhost", serverPort)
-              socketGroup.open[IO]().use { clientSocket =>
-                clientSocket.localAddress.map(_.getPort).flatMap { clientPort =>
-                  val clientAddress = new InetSocketAddress("localhost", clientPort)
-                  val serverLogger =
-                    None // Some((msg: String) => IO(println(s"\u001b[33m${msg}\u001b[0m")))
-                  val clientLogger =
-                    None // Some((msg: String) => IO(println(s"\u001b[32m${msg}\u001b[0m")))
-                  (
-                    tlsContext.dtlsServer(serverSocket, clientAddress, logger = serverLogger),
-                    tlsContext.dtlsClient(clientSocket, serverAddress, logger = clientLogger)
-                  ).tupled.use { case (dtlsServerSocket, dtlsClientSocket) =>
-                    val echoServer =
-                      dtlsServerSocket
-                        .reads(None)
-                        .foreach(p => dtlsServerSocket.write(p, None))
-                    val msg = Chunk.bytes("Hello, world!".getBytes)
-                    val echoClient = Stream.sleep_[IO](500.milliseconds) ++ Stream.exec(
-                      dtlsClientSocket.write(Packet(serverAddress, msg))
-                    ) ++ Stream.eval(dtlsClientSocket.read())
-                    echoClient
-                      .concurrently(echoServer)
-                      .compile
-                      .toList
-                      .map(it => assert(it.map(_.bytes) == List(msg)))
-                  }
-                }
-              }
+      val msg = Chunk.bytes("Hello, world!".getBytes)
+
+      def address(s: Socket[IO]) =
+        Resource
+          .liftF(s.localAddress)
+          .map(a => new InetSocketAddress("localhost", a.getPort))
+
+      val setup = for {
+        tlsContext <- Resource liftF testTlsContext
+        socketGroup <- SocketGroup[IO]
+        serverSocket <- socketGroup.open[IO]()
+        serverAddress <- address(serverSocket)
+        clientSocket <- socketGroup.open[IO]()
+        clientAddress <- address(clientSocket)
+        tlsServerSocket <- tlsContext.dtlsServer(serverSocket, clientAddress, logger = logger)
+        tlsClientSocket <- tlsContext.dtlsClient(clientSocket, serverAddress, logger = logger)
+      } yield (tlsServerSocket, tlsClientSocket, serverAddress)
+
+      Stream.resource(setup)
+        .flatMap {
+          case (serverSocket, clientSocket, serverAddress) =>
+            val echoServer =
+              serverSocket
+                .reads()
+                .foreach(serverSocket.write(_))
+            val echoClient = Stream.eval {
+              IO.sleep(500.millis) >>
+              clientSocket.write(Packet(serverAddress, msg)) >>
+              clientSocket.read()
             }
-          }
-        }
-      }
+
+            echoClient.concurrently(echoServer)
+        }.compile
+        .lastOrError
+        .map(_.bytes)
+        .assertEquals(msg)
     }
   }
 }
