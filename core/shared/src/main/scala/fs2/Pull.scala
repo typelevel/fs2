@@ -670,10 +670,24 @@ object Pull extends PullLowPriority {
                 }
 
               val mo: Pull[g, X, Unit] = innerMapOutput[g, z, X](mout.stream, mout.fun)
-              val str = new Bind[g, X, Unit, Unit](mo) {
-                def cont(r: Result[Unit]) = view.next(r).asInstanceOf[Pull[g, X, Unit]]
+
+              val transx = translation.asInstanceOf[g ~> F]
+              go[g, X](scope, extendedTopLevelScope, transx, mo).attempt.flatMap {
+                case Left(e) =>
+                  go(scope, extendedTopLevelScope, translation, view.next(Result.Fail(e)))
+                case Right(Done(_)) =>
+                  go(scope, extendedTopLevelScope, translation, view.next(Result.unit))
+
+                case Right(Interrupted(tok, err)) =>
+                  val res = Result.Interrupted(tok, err)
+                  go(scope, extendedTopLevelScope, translation, view.next(res))
+
+                case Right(out: Out[g, x]) =>
+                  val contTail = new Bind[g, X, Unit, Unit](out.tail) {
+                    def cont(r: Result[Unit]) = view.next(r).asInstanceOf[Pull[g, X, Unit]]
+                  }
+                  F.pure(Out(out.head, out.scope, contTail))
               }
-              go(scope, extendedTopLevelScope, translation, str)
 
             case tst: Translate[h, g, x] =>
               val composed: h ~> F = translation.asInstanceOf[g ~> F].compose[h](tst.fk)
