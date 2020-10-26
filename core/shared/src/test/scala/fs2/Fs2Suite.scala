@@ -21,14 +21,12 @@
 
 package fs2
 
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
 
-import cats.effect.{IO, SyncIO}
+import cats.effect.IO
 import cats.effect.unsafe.{IORuntime, Scheduler}
 import cats.effect.testkit.TestContext
-
-import cats.syntax.all._
 
 import munit.{CatsEffectSuite, ScalaCheckEffectSuite}
 import org.typelevel.discipline.Laws
