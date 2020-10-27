@@ -506,7 +506,9 @@ object Pull extends PullLowPriority {
     * @param scopeId            If scope has to be changed before this step is evaluated, id of the scope must be supplied
     */
   private final case class Step[+F[_], X](stream: Pull[F, X, Unit], scope: Option[Token])
-      extends Action[Pure, INothing, Option[(Chunk[X], Token, Pull[F, X, Unit])]]
+      extends Action[Pure, INothing, Option[StepStop[F, X]]]
+
+  private type StepStop[+F[_], +X] = (Chunk[X], Token, Pull[F, X, Unit])
 
   /* The `AlgEffect` trait is for operations on the `F` effect that create no `O` output.
    * They are related to resources and scopes. */
@@ -616,59 +618,215 @@ object Pull extends PullLowPriority {
         extendedTopLevelScope: Option[CompileScope[F]],
         translation: G ~> F,
         stream: Pull[G, X, Unit]
-    ): F[R[G, X]] =
+    ): F[R[G, X]] = {
+
+      def interruptGuard(scope: CompileScope[F], view: View[G, X, _])(
+          next: => F[R[G, X]]
+      ): F[R[G, X]] =
+        scope.isInterrupted.flatMap {
+          case None => next
+          case Some(outcome) =>
+            val result = outcome match {
+              case Outcome.Errored(err)       => Result.Fail(err)
+              case Outcome.Canceled()         => Result.Interrupted(scope.id, None)
+              case Outcome.Succeeded(scopeId) => Result.Interrupted(scopeId, None)
+            }
+            go(scope, extendedTopLevelScope, translation, view.next(result))
+        }
+
+      def innerMapOutput[K[_], C, D](stream: Pull[K, C, Unit], fun: C => D): Pull[K, D, Unit] =
+        viewL(stream) match {
+          case r: Result[_] => r.asInstanceOf[Result[Unit]]
+          case v: View[K, C, x] =>
+            val mstep: Pull[K, D, x] = (v.step: Action[K, C, x]) match {
+              case o: Output[C] =>
+                try Output(o.values.map(fun))
+                catch { case NonFatal(t) => Result.Fail(t) }
+              case t: Translate[l, k, C] => // k= K
+                Translate[l, k, D](innerMapOutput[l, C, D](t.stream, fun), t.fk)
+              case s: Step[k, _]         => s
+              case a: AlgEffect[k, _]    => a
+              case m: MapOutput[k, b, c] => innerMapOutput(m.stream, fun.compose(m.fun))
+            }
+            new Bind[K, D, x, Unit](mstep) {
+              def cont(r: Result[x]) = innerMapOutput(v.next(r), fun)
+            }
+        }
+
+      def goMapOutput[Z](mout: MapOutput[G, Z, X], view: View[G, X, Unit]): F[R[G, X]] = {
+        val mo: Pull[G, X, Unit] = innerMapOutput[G, Z, X](mout.stream, mout.fun)
+        val str = new Bind[G, X, Unit, Unit](mo) {
+          def cont(r: Result[Unit]) = view.next(r)
+        }
+        go(scope, extendedTopLevelScope, translation, str)
+      }
+
+      def goTranslate[H[_]](tst: Translate[H, G, X], view: View[G, X, Unit]): F[R[G, X]] = {
+        val composed: H ~> F = tst.fk.andThen(translation)
+        val runInner: F[R[H, X]] = go(scope, extendedTopLevelScope, composed, tst.stream)
+
+        F.map(runInner) {
+          case out: Out[H, X]            => Out(out.head, out.scope, Translate(out.tail, tst.fk))
+          case dd @ Done(_)              => dd
+          case inter @ Interrupted(_, _) => inter
+        }
+      }
+
+      def goStep[Y](u: Step[G, Y], view: View[G, X, Option[StepStop[G, Y]]]): F[R[G, X]] = {
+        def outGo(out: Out[G, Y]): F[R[G, X]] = {
+          // if we originally swapped scopes we want to return the original
+          // scope back to the go as that is the scope that is expected to be here.
+          val nextScope = if (u.scope.isEmpty) out.scope else scope
+          interruptGuard(nextScope, view) {
+            val result: Result[Option[StepStop[G, Y]]] = {
+              val uncons = (out.head, out.scope.id, out.tail)
+              Result.Succeeded(Some(uncons))
+            }
+            go(nextScope, extendedTopLevelScope, translation, view.next(result))
+          }
+        }
+
+        // if scope was specified in step, try to find it, otherwise use the current scope.
+        val stepScopeF: F[CompileScope[F]] = u.scope match {
+          case None          => F.pure(scope)
+          case Some(scopeId) => scope.shiftScope(scopeId, u.toString)
+        }
+        stepScopeF.flatMap { stepScope =>
+          val runInner = go[G, Y](stepScope, extendedTopLevelScope, translation, u.stream)
+          runInner.attempt.flatMap {
+            case Right(Done(scope)) =>
+              interruptGuard(scope, view) {
+                val result = Result.Succeeded(None)
+                go(scope, extendedTopLevelScope, translation, view.next(result))
+              }
+            case Right(out: Out[_, _]) => outGo(out)
+
+            case Right(Interrupted(scopeId, err)) =>
+              val cont = view.next(Result.Interrupted(scopeId, err))
+              go(scope, extendedTopLevelScope, translation, cont)
+
+            case Left(err) =>
+              go(scope, extendedTopLevelScope, translation, view.next(Result.Fail(err)))
+          }
+        }
+      }
+
+      def goEval[V](eval: Eval[G, V], view: View[G, X, V]): F[R[G, X]] =
+        scope.interruptibleEval(translation(eval.value)).flatMap { eitherOutcome =>
+          val result = eitherOutcome match {
+            case Right(r)                       => Result.Succeeded(r)
+            case Left(Outcome.Errored(err))     => Result.Fail(err)
+            case Left(Outcome.Canceled())       => Result.Interrupted(scope.id, None)
+            case Left(Outcome.Succeeded(token)) => Result.Interrupted(token, None)
+          }
+          go(scope, extendedTopLevelScope, translation, view.next(result))
+        }
+
+      def goAcquire[Rsrc](acquire: Acquire[G, Rsrc], view: View[G, X, Rsrc]): F[R[G, X]] = {
+        val onScope = scope.acquireResource[Rsrc](
+          p =>
+            acquire.resource match {
+              case Left(acq)        => translation(acq)
+              case Right((acq, mc)) => p(translation(mc.uncancelable(acq)))
+            },
+          (r: Rsrc, ec: ExitCase) => translation(acquire.release(r, ec))
+        )
+
+        val cont = onScope.flatMap { outcome =>
+          val result = outcome match {
+            case Outcome.Succeeded(Right(r))      => Result.Succeeded(r)
+            case Outcome.Succeeded(Left(scopeId)) => Result.Interrupted(scopeId, None)
+            case Outcome.Canceled()               => Result.Interrupted(scope.id, None)
+            case Outcome.Errored(err)             => Result.Fail(err)
+          }
+          go(scope, extendedTopLevelScope, translation, view.next(result))
+        }
+        interruptGuard(scope, view)(cont)
+      }
+
+      def goOpenScope(open: OpenScope, view: View[G, X, Token]): F[R[G, X]] = {
+        val maybeCloseExtendedScope: F[Boolean] =
+          // If we're opening a new top-level scope (aka, direct descendant of root),
+          // close the current extended top-level scope if it is defined.
+          if (scope.parent.isEmpty)
+            extendedTopLevelScope match {
+              case None    => false.pure[F]
+              case Some(s) => s.close(ExitCase.Succeeded).rethrow.as(true)
+            }
+          else F.pure(false)
+        val cont = maybeCloseExtendedScope.flatMap { closedExtendedScope =>
+          val newExtendedScope = if (closedExtendedScope) None else extendedTopLevelScope
+          scope.open(open.useInterruption).flatMap {
+            case Left(err) =>
+              val result = Result.Fail(err)
+              go(scope, newExtendedScope, translation, view.next(result))
+            case Right(childScope) =>
+              val result = Result.Succeeded(childScope.id)
+              go(childScope, newExtendedScope, translation, view.next(result))
+          }
+        }
+        interruptGuard(scope, view)(cont)
+      }
+
+      def goCloseScope(close: CloseScope, view: View[G, X, Unit]): F[R[G, X]] = {
+        def closeAndGo(toClose: CompileScope[F], ec: ExitCase) =
+          toClose.close(ec).flatMap { r =>
+            toClose.openAncestor.flatMap { ancestor =>
+              val res = close.interruption match {
+                case None => Result.fromEither(r)
+                case Some(Result.Interrupted(interruptedScopeId, err)) =>
+                  def err1 = CompositeFailure.fromList(r.swap.toOption.toList ++ err.toList)
+                  if (ancestor.findSelfOrAncestor(interruptedScopeId).isDefined)
+                    // we still have scopes to interrupt, lets build interrupted tail
+                    Result.Interrupted(interruptedScopeId, err1)
+                  else
+                    // interrupts scope was already interrupted, resume operation
+                    err1 match {
+                      case None      => Result.unit
+                      case Some(err) => Result.Fail(err)
+                    }
+              }
+              go(ancestor, extendedTopLevelScope, translation, view.next(res))
+            }
+          }
+
+        val scopeToClose: F[Option[CompileScope[F]]] = scope
+          .findSelfOrAncestor(close.scopeId)
+          .pure[F]
+          .orElse(scope.findSelfOrChild(close.scopeId))
+        scopeToClose.flatMap {
+          case Some(toClose) =>
+            if (toClose.parent.isEmpty)
+              // Impossible - don't close root scope as a result of a `CloseScope` call
+              go(scope, extendedTopLevelScope, translation, view.next(Result.unit))
+            else if (extendLastTopLevelScope && toClose.parent.flatMap(_.parent).isEmpty)
+              // Request to close the current top-level scope - if we're supposed to extend
+              // it instead, leave the scope open and pass it to the continuation
+              extendedTopLevelScope.traverse_(_.close(ExitCase.Succeeded).rethrow) *>
+                toClose.openAncestor.flatMap { ancestor =>
+                  go(ancestor, Some(toClose), translation, view.next(Result.unit))
+                }
+            else closeAndGo(toClose, close.exitCase)
+          case None =>
+            // scope already closed, continue with current scope
+            val result = close.interruption.getOrElse(Result.unit)
+            go(scope, extendedTopLevelScope, translation, view.next(result))
+        }
+      }
+
       viewL(stream) match {
-        case _: Result.Succeeded[_] =>
-          F.pure(Done(scope))
-
-        case failed: Result.Fail =>
-          F.raiseError(failed.error)
-
-        case interrupted: Result.Interrupted =>
-          F.pure(Interrupted(interrupted.context, interrupted.deferredError))
+        case _: Result.Succeeded[_]  => F.pure(Done(scope))
+        case failed: Result.Fail     => F.raiseError(failed.error)
+        case int: Result.Interrupted => F.pure(Interrupted(int.context, int.deferredError))
 
         case view: View[G, X, y] =>
-          def interruptGuard(scope: CompileScope[F])(next: => F[R[G, X]]): F[R[G, X]] =
-            scope.isInterrupted.flatMap {
-              case None => next
-              case Some(outcome) =>
-                val result = outcome match {
-                  case Outcome.Errored(err)       => Result.Fail(err)
-                  case Outcome.Canceled()         => Result.Interrupted(scope.id, None)
-                  case Outcome.Succeeded(scopeId) => Result.Interrupted(scopeId, None)
-                }
-                go(scope, extendedTopLevelScope, translation, view.next(result))
-            }
           view.step match {
             case output: Output[_] =>
-              interruptGuard(scope)(
+              interruptGuard(scope, view)(
                 F.pure(Out(output.values, scope, view.next(Result.unit)))
               )
 
             case mout: MapOutput[g, z, x] => // y = Unit
-
-              def innerMapOutput[G[_], Z, X](
-                  stream: Pull[G, Z, Unit],
-                  fun: Z => X
-              ): Pull[G, X, Unit] =
-                viewL(stream) match {
-                  case r: Result[_] => r.asInstanceOf[Result[Unit]]
-                  case v: View[G, Z, x] =>
-                    val mstep: Pull[G, X, x] = (v.step: Action[G, Z, x]) match {
-                      case o: Output[Z] =>
-                        try Output(o.values.map(fun))
-                        catch { case NonFatal(t) => Result.Fail(t) }
-                      case t: Translate[g, f, Z] =>
-                        Translate[g, f, X](innerMapOutput(t.stream, fun), t.fk)
-                      case s: Step[g, _]         => s
-                      case a: AlgEffect[g, _]    => a
-                      case m: MapOutput[g, q, z] => innerMapOutput(m.stream, fun.compose(m.fun))
-                    }
-                    new Bind[G, X, x, Unit](mstep) {
-                      def cont(r: Result[x]) = innerMapOutput(v.next(r), fun)
-                    }
-                }
-
               val mo: Pull[g, X, Unit] = innerMapOutput[g, z, X](mout.stream, mout.fun)
               val str = new Bind[g, X, Unit, Unit](mo) {
                 def cont(r: Result[Unit]) = view.next(r).asInstanceOf[Pull[g, X, Unit]]
@@ -686,149 +844,28 @@ object Pull extends PullLowPriority {
                 case inter @ Interrupted(_, _) => inter
               }
 
-            case uU: Step[f, y] =>
+            case uU: Step[g, y] =>
               val u: Step[G, y] = uU.asInstanceOf[Step[G, y]]
-              val stepScopeF: F[CompileScope[F]] = u.scope match {
-                case None          => F.pure(scope)
-                case Some(scopeId) => scope.shiftScope(scopeId, u.toString)
-              }
-              // if scope was specified in step, try to find it, otherwise use the current scope.
-              stepScopeF.flatMap { stepScope =>
-                val runInner = go[G, y](stepScope, extendedTopLevelScope, translation, u.stream)
-                runInner.attempt.flatMap {
-                  case Right(Done(scope)) =>
-                    interruptGuard(scope) {
-                      val result = Result.Succeeded(None)
-                      go(scope, extendedTopLevelScope, translation, view.next(result))
-                    }
-                  case Right(out: Out[g, y]) =>
-                    // if we originally swapped scopes we want to return the original
-                    // scope back to the go as that is the scope that is expected to be here.
-                    val nextScope = if (u.scope.isEmpty) out.scope else scope
-                    val uncons = (out.head, out.scope.id, out.tail.asInstanceOf[Pull[f, y, Unit]])
-                    //Option[(Chunk[y], Token, Pull[f, y, Unit])])
-                    val result = Result.Succeeded(Some(uncons))
-                    interruptGuard(nextScope) {
-                      val next = view.next(result).asInstanceOf[Pull[g, X, Unit]]
-                      go(nextScope, extendedTopLevelScope, translation, next)
-                    }
-
-                  case Right(Interrupted(scopeId, err)) =>
-                    val cont = view.next(Result.Interrupted(scopeId, err))
-                    go(scope, extendedTopLevelScope, translation, cont)
-
-                  case Left(err) =>
-                    go(scope, extendedTopLevelScope, translation, view.next(Result.Fail(err)))
-                }
-              }
+              goStep(u, view.asInstanceOf[View[G, X, Option[StepStop[G, y]]]])
 
             case eval: Eval[G, r] =>
-              scope.interruptibleEval(translation(eval.value)).flatMap { eitherOutcome =>
-                val result = eitherOutcome match {
-                  case Right(r)                       => Result.Succeeded(r)
-                  case Left(Outcome.Errored(err))     => Result.Fail(err)
-                  case Left(Outcome.Canceled())       => Result.Interrupted(scope.id, None)
-                  case Left(Outcome.Succeeded(token)) => Result.Interrupted(token, None)
-                }
-                go(scope, extendedTopLevelScope, translation, view.next(result))
-              }
+              goEval[r](eval, view.asInstanceOf[View[G, X, r]])
 
-            case acquire: Acquire[G, r] =>
-              interruptGuard(scope) {
-                val onScope = scope.acquireResource[r](
-                  p =>
-                    acquire.resource match {
-                      case Left(acq)        => translation(acq)
-                      case Right((acq, mc)) => p(translation(mc.uncancelable(acq)))
-                    },
-                  (r: r, ec: ExitCase) => translation(acquire.release(r, ec))
-                )
-
-                onScope.flatMap { outcome =>
-                  val result = outcome match {
-                    case Outcome.Succeeded(Right(r))      => Result.Succeeded(r)
-                    case Outcome.Succeeded(Left(scopeId)) => Result.Interrupted(scopeId, None)
-                    case Outcome.Canceled()               => Result.Interrupted(scope.id, None)
-                    case Outcome.Errored(err)             => Result.Fail(err)
-                  }
-                  go(scope, extendedTopLevelScope, translation, view.next(result))
-                }
-              }
+            case acquire: Acquire[G, resource] =>
+              goAcquire[resource](acquire, view.asInstanceOf[View[G, X, resource]])
 
             case _: GetScope[_] =>
               val result = Result.Succeeded(scope.asInstanceOf[y])
               go(scope, extendedTopLevelScope, translation, view.next(result))
 
             case open: OpenScope =>
-              interruptGuard(scope) {
-                val maybeCloseExtendedScope: F[Boolean] =
-                  // If we're opening a new top-level scope (aka, direct descendant of root),
-                  // close the current extended top-level scope if it is defined.
-                  if (scope.parent.isEmpty)
-                    extendedTopLevelScope match {
-                      case None    => false.pure[F]
-                      case Some(s) => s.close(ExitCase.Succeeded).rethrow.as(true)
-                    }
-                  else F.pure(false)
-                maybeCloseExtendedScope.flatMap { closedExtendedScope =>
-                  val newExtendedScope = if (closedExtendedScope) None else extendedTopLevelScope
-                  scope.open(open.useInterruption).flatMap {
-                    case Left(err) =>
-                      val result = Result.Fail(err)
-                      go(scope, newExtendedScope, translation, view.next(result))
-                    case Right(childScope) =>
-                      val result = Result.Succeeded(childScope.id)
-                      go(childScope, newExtendedScope, translation, view.next(result))
-                  }
-                }
-              }
+              goOpenScope(open, view.asInstanceOf[View[G, X, Token]])
 
             case close: CloseScope =>
-              def closeAndGo(toClose: CompileScope[F], ec: ExitCase) =
-                toClose.close(ec).flatMap { r =>
-                  toClose.openAncestor.flatMap { ancestor =>
-                    val res = close.interruption match {
-                      case None => Result.fromEither(r)
-                      case Some(Result.Interrupted(interruptedScopeId, err)) =>
-                        def err1 = CompositeFailure.fromList(r.swap.toOption.toList ++ err.toList)
-                        if (ancestor.findSelfOrAncestor(interruptedScopeId).isDefined)
-                          // we still have scopes to interrupt, lets build interrupted tail
-                          Result.Interrupted(interruptedScopeId, err1)
-                        else
-                          // interrupts scope was already interrupted, resume operation
-                          err1 match {
-                            case None      => Result.unit
-                            case Some(err) => Result.Fail(err)
-                          }
-                    }
-                    go(ancestor, extendedTopLevelScope, translation, view.next(res))
-                  }
-                }
-
-              val scopeToClose: F[Option[CompileScope[F]]] = scope
-                .findSelfOrAncestor(close.scopeId)
-                .pure[F]
-                .orElse(scope.findSelfOrChild(close.scopeId))
-              scopeToClose.flatMap {
-                case Some(toClose) =>
-                  if (toClose.parent.isEmpty)
-                    // Impossible - don't close root scope as a result of a `CloseScope` call
-                    go(scope, extendedTopLevelScope, translation, view.next(Result.unit))
-                  else if (extendLastTopLevelScope && toClose.parent.flatMap(_.parent).isEmpty)
-                    // Request to close the current top-level scope - if we're supposed to extend
-                    // it instead, leave the scope open and pass it to the continuation
-                    extendedTopLevelScope.traverse_(_.close(ExitCase.Succeeded).rethrow) *>
-                      toClose.openAncestor.flatMap { ancestor =>
-                        go(ancestor, Some(toClose), translation, view.next(Result.unit))
-                      }
-                  else closeAndGo(toClose, close.exitCase)
-                case None =>
-                  // scope already closed, continue with current scope
-                  val result = close.interruption.getOrElse(Result.unit)
-                  go(scope, extendedTopLevelScope, translation, view.next(result))
-              }
+              goCloseScope(close, view.asInstanceOf[View[G, X, Unit]])
           }
       }
+    }
 
     val initFk: F ~> F = cats.arrow.FunctionK.id[F]
 
