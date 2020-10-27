@@ -36,7 +36,7 @@ class StreamTranslateSuite extends Fs2Suite {
         .translate(cats.arrow.FunctionK.id[IO])
         .compile
         .toList
-        .map(it => assert(it == expected))
+        .assertEquals(expected)
     }
   }
 
@@ -51,7 +51,7 @@ class StreamTranslateSuite extends Fs2Suite {
         })
         .compile
         .toList
-        .map(it => assert(it == expected))
+        .assertEquals(expected)
     }
   }
 
@@ -71,7 +71,7 @@ class StreamTranslateSuite extends Fs2Suite {
         })
         .compile
         .toList
-        .map(it => assert(it == expected))
+        .assertEquals(expected)
     }
   }
 
@@ -85,7 +85,7 @@ class StreamTranslateSuite extends Fs2Suite {
       })
       .compile
       .toList
-      .map(it => assert(it == List((1, 1))))
+      .assertEquals(List((1, 1)))
   }
 
   test("5 - ok to translate a step leg that emits multiple chunks") {
@@ -102,7 +102,7 @@ class StreamTranslateSuite extends Fs2Suite {
       })
       .compile
       .toList
-      .map(it => assert(it == List(1, 2)))
+      .assertEquals(List(1, 2))
   }
 
   test("6 - ok to translate step leg that has uncons in its structure") {
@@ -123,7 +123,7 @@ class StreamTranslateSuite extends Fs2Suite {
       })
       .compile
       .toList
-      .map(it => assert(it == List(2, 3, 3, 4)))
+      .assertEquals(List(2, 3, 3, 4))
   }
 
   test("7 - ok to translate step leg that is forced back in to a stream") {
@@ -141,7 +141,7 @@ class StreamTranslateSuite extends Fs2Suite {
       })
       .compile
       .toList
-      .map(it => assert(it == List(1, 2)))
+      .assertEquals(List(1, 2))
   }
 
   test("stack safety") {

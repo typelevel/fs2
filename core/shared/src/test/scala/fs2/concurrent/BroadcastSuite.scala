@@ -29,7 +29,7 @@ class BroadcastSuite extends Fs2Suite {
   test("all subscribers see all elements") {
     forAllF { (source: Stream[Pure, Int], concurrent0: Int) =>
       val concurrent = (concurrent0 % 20).abs
-      val expect = source.compile.toVector.map(_.toString)
+      val expected = source.compile.toVector.map(_.toString)
 
       def pipe(idx: Int): Pipe[IO, Int, (Int, String)] =
         _.map(i => (idx, i.toString))
@@ -40,9 +40,9 @@ class BroadcastSuite extends Fs2Suite {
         .toVector
         .map(_.groupBy(_._1).map { case (k, v) => (k, v.map(_._2).toVector) })
         .map { result =>
-          if (expect.nonEmpty) {
-            assert(result.size == concurrent)
-            result.values.foreach(it => assert(it == expect))
+          if (expected.nonEmpty) {
+            assertEquals(result.size, concurrent)
+            result.values.foreach(it => assertEquals(it, expected))
           } else
             assert(result.values.isEmpty)
         }

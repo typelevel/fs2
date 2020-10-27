@@ -43,75 +43,77 @@ class StreamZipSuite extends Fs2Suite {
     }
 
     test("issue #941 - scope closure issue") {
-      assert(
+      assertEquals(
         Stream(1, 2, 3)
           .map(_ + 1)
           .repeat
           .zip(Stream(4, 5, 6).map(_ + 1).repeat)
           .take(4)
-          .toList == List((2, 5), (3, 6), (4, 7), (2, 5))
+          .toList,
+        List((2, 5), (3, 6), (4, 7), (2, 5))
       )
     }
 
     test("zipWith left/right side infinite") {
       val ones = Stream.constant("1")
       val s = Stream("A", "B", "C")
-      assert(ones.zipWith(s)(_ + _).toList == List("1A", "1B", "1C"))
-      assert(s.zipWith(ones)(_ + _).toList == List("A1", "B1", "C1"))
+      assertEquals(ones.zipWith(s)(_ + _).toList, List("1A", "1B", "1C"))
+      assertEquals(s.zipWith(ones)(_ + _).toList, List("A1", "B1", "C1"))
     }
 
     test("zipWith both side infinite") {
       val ones = Stream.constant("1")
       val as = Stream.constant("A")
-      assert(ones.zipWith(as)(_ + _).take(3).toList == List("1A", "1A", "1A"))
-      assert(as.zipWith(ones)(_ + _).take(3).toList == List("A1", "A1", "A1"))
+      assertEquals(ones.zipWith(as)(_ + _).take(3).toList, List("1A", "1A", "1A"))
+      assertEquals(as.zipWith(ones)(_ + _).take(3).toList, List("A1", "A1", "A1"))
     }
 
     test("zipAllWith left/right side infinite") {
       val ones = Stream.constant("1")
       val s = Stream("A", "B", "C")
-      assert(
-        ones.zipAllWith(s)("2", "Z")(_ + _).take(5).toList ==
-          List("1A", "1B", "1C", "1Z", "1Z")
+      assertEquals(
+        ones.zipAllWith(s)("2", "Z")(_ + _).take(5).toList,
+        List("1A", "1B", "1C", "1Z", "1Z")
       )
-      assert(
-        s.zipAllWith(ones)("Z", "2")(_ + _).take(5).toList ==
-          List("A1", "B1", "C1", "Z1", "Z1")
+      assertEquals(
+        s.zipAllWith(ones)("Z", "2")(_ + _).take(5).toList,
+        List("A1", "B1", "C1", "Z1", "Z1")
       )
     }
 
     test("zipAllWith both side infinite") {
       val ones = Stream.constant("1")
       val as = Stream.constant("A")
-      assert(
-        ones.zipAllWith(as)("2", "Z")(_ + _).take(3).toList ==
-          List("1A", "1A", "1A")
+      assertEquals(
+        ones.zipAllWith(as)("2", "Z")(_ + _).take(3).toList,
+        List("1A", "1A", "1A")
       )
-      assert(
-        as.zipAllWith(ones)("Z", "2")(_ + _).take(3).toList ==
-          List("A1", "A1", "A1")
+      assertEquals(
+        as.zipAllWith(ones)("Z", "2")(_ + _).take(3).toList,
+        List("A1", "A1", "A1")
       )
     }
 
     test("zip left/right side infinite") {
       val ones = Stream.constant("1")
       val s = Stream("A", "B", "C")
-      assert(ones.zip(s).toList == List("1" -> "A", "1" -> "B", "1" -> "C"))
-      assert(s.zip(ones).toList == List("A" -> "1", "B" -> "1", "C" -> "1"))
+      assertEquals(ones.zip(s).toList, List("1" -> "A", "1" -> "B", "1" -> "C"))
+      assertEquals(s.zip(ones).toList, List("A" -> "1", "B" -> "1", "C" -> "1"))
     }
 
     test("zip both side infinite") {
       val ones = Stream.constant("1")
       val as = Stream.constant("A")
-      assert(ones.zip(as).take(3).toList == List("1" -> "A", "1" -> "A", "1" -> "A"))
-      assert(as.zip(ones).take(3).toList == List("A" -> "1", "A" -> "1", "A" -> "1"))
+      assertEquals(ones.zip(as).take(3).toList, List("1" -> "A", "1" -> "A", "1" -> "A"))
+      assertEquals(as.zip(ones).take(3).toList, List("A" -> "1", "A" -> "1", "A" -> "1"))
     }
 
     test("zipAll left/right side infinite") {
       val ones = Stream.constant("1")
       val s = Stream("A", "B", "C")
-      assert(
-        ones.zipAll(s)("2", "Z").take(5).toList == List(
+      assertEquals(
+        ones.zipAll(s)("2", "Z").take(5).toList,
+        List(
           "1" -> "A",
           "1" -> "B",
           "1" -> "C",
@@ -119,8 +121,9 @@ class StreamZipSuite extends Fs2Suite {
           "1" -> "Z"
         )
       )
-      assert(
-        s.zipAll(ones)("Z", "2").take(5).toList == List(
+      assertEquals(
+        s.zipAll(ones)("Z", "2").take(5).toList,
+        List(
           "A" -> "1",
           "B" -> "1",
           "C" -> "1",
@@ -133,8 +136,14 @@ class StreamZipSuite extends Fs2Suite {
     test("zipAll both side infinite") {
       val ones = Stream.constant("1")
       val as = Stream.constant("A")
-      assert(ones.zipAll(as)("2", "Z").take(3).toList == List("1" -> "A", "1" -> "A", "1" -> "A"))
-      assert(as.zipAll(ones)("Z", "2").take(3).toList == List("A" -> "1", "A" -> "1", "A" -> "1"))
+      assertEquals(
+        ones.zipAll(as)("2", "Z").take(3).toList,
+        List("1" -> "A", "1" -> "A", "1" -> "A")
+      )
+      assertEquals(
+        as.zipAll(ones)("Z", "2").take(3).toList,
+        List("A" -> "1", "A" -> "1", "A" -> "1")
+      )
     }
 
     group("zip with scopes") {
@@ -142,7 +151,7 @@ class StreamZipSuite extends Fs2Suite {
         // this tests that streams opening resources on each branch will close
         // scopes independently.
         val s = Stream(0).scope
-        assert((s ++ s).zip(s).toList == List((0, 0)))
+        assertEquals((s ++ s).zip(s).toList, List((0, 0)))
       }
       def brokenZip[F[_], A, B](s1: Stream[F, A], s2: Stream[F, B]): Stream[F, (A, B)] = {
         def go(s1: Stream[F, A], s2: Stream[F, B]): Pull[F, (A, B), Unit] =
@@ -165,27 +174,27 @@ class StreamZipSuite extends Fs2Suite {
         Logger[IO]
           .flatMap { logger =>
             def s(tag: String) =
-              logger.logLifecycle(tag) >> (logger.logLifecycle(s"$tag - 1") ++ logger
-                .logLifecycle(s"$tag - 2"))
-            s("a").zip(s("b")).compile.drain *> logger.get
-          }
-          .map { it =>
-            assert(
-              it == List(
-                LogEvent.Acquired("a"),
-                LogEvent.Acquired("a - 1"),
-                LogEvent.Acquired("b"),
-                LogEvent.Acquired("b - 1"),
-                LogEvent.Released("a - 1"),
-                LogEvent.Acquired("a - 2"),
-                LogEvent.Released("b - 1"),
-                LogEvent.Acquired("b - 2"),
-                LogEvent.Released("a - 2"),
-                LogEvent.Released("a"),
-                LogEvent.Released("b - 2"),
-                LogEvent.Released("b")
+              logger.logLifecycle(tag) >> {
+                logger.logLifecycle(s"$tag - 1") ++ logger.logLifecycle(s"$tag - 2")
+              }
+
+            s("a").zip(s("b")).compile.drain >>
+              logger.get.assertEquals(
+                List(
+                  LogEvent.Acquired("a"),
+                  LogEvent.Acquired("a - 1"),
+                  LogEvent.Acquired("b"),
+                  LogEvent.Acquired("b - 1"),
+                  LogEvent.Released("a - 1"),
+                  LogEvent.Acquired("a - 2"),
+                  LogEvent.Released("b - 1"),
+                  LogEvent.Acquired("b - 2"),
+                  LogEvent.Released("a - 2"),
+                  LogEvent.Released("a"),
+                  LogEvent.Released("b - 2"),
+                  LogEvent.Released("b")
+                )
               )
-            )
           }
       }
     }
@@ -193,8 +202,9 @@ class StreamZipSuite extends Fs2Suite {
     test("issue #1120 - zip with uncons") {
       // this tests we can properly look up scopes for the zipped streams
       val rangeStream = Stream.emits((0 to 3).toList)
-      assert(
-        rangeStream.zip(rangeStream).attempt.map(identity).toVector == Vector(
+      assertEquals(
+        rangeStream.zip(rangeStream).attempt.map(identity).toVector,
+        Vector(
           Right((0, 0)),
           Right((1, 1)),
           Right((2, 2)),
@@ -208,8 +218,8 @@ class StreamZipSuite extends Fs2Suite {
     test("parZip outputs the same results as zip") {
       forAllF { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
         val par = s1.covary[IO].parZip(s2)
-        val seq = s1.zip(s2)
-        par.compile.toList.map(result => assert(result == seq.toList))
+        val seq = s1.zip(s2).toList
+        par.compile.toList.assertEquals(seq)
       }
     }
 
@@ -260,42 +270,48 @@ class StreamZipSuite extends Fs2Suite {
 
   property("zipWithIndex") {
     forAll { (s: Stream[Pure, Int]) =>
-      assert(s.zipWithIndex.toList == s.toList.zipWithIndex)
+      val expected = s.toList.zipWithIndex.map { case (e, i) => e -> i.toLong }
+      assertEquals(s.zipWithIndex.toList, expected)
     }
   }
 
   group("zipWithNext") {
     property("1") {
       forAll { (s: Stream[Pure, Int]) =>
-        assert(s.zipWithNext.toList == {
-          val xs = s.toList
+        val xs = s.toList
+
+        assertEquals(
+          s.zipWithNext.toList,
           xs.zipAll(xs.map(Some(_)).drop(1), -1, None)
-        })
+        )
       }
     }
 
     test("2") {
-      assert(Stream().zipWithNext.toList == Nil)
-      assert(Stream(0).zipWithNext.toList == List((0, None)))
-      assert(Stream(0, 1, 2).zipWithNext.toList == List((0, Some(1)), (1, Some(2)), (2, None)))
+      assertEquals(Stream().zipWithNext.toList, Nil)
+      assertEquals(Stream(0).zipWithNext.toList, List((0, None)))
+      assertEquals(Stream(0, 1, 2).zipWithNext.toList, List((0, Some(1)), (1, Some(2)), (2, None)))
     }
   }
 
   group("zipWithPrevious") {
     property("1") {
       forAll { (s: Stream[Pure, Int]) =>
-        assert(s.zipWithPrevious.toList == {
-          val xs = s.toList
+        val xs = s.toList
+
+        assertEquals(
+          s.zipWithPrevious.toList,
           (None +: xs.map(Some(_))).zip(xs)
-        })
+        )
       }
     }
 
     test("2") {
-      assert(Stream().zipWithPrevious.toList == Nil)
-      assert(Stream(0).zipWithPrevious.toList == List((None, 0)))
-      assert(
-        Stream(0, 1, 2).zipWithPrevious.toList == List((None, 0), (Some(0), 1), (Some(1), 2))
+      assertEquals(Stream().zipWithPrevious.toList, Nil)
+      assertEquals(Stream(0).zipWithPrevious.toList, List((None, 0)))
+      assertEquals(
+        Stream(0, 1, 2).zipWithPrevious.toList,
+        List((None, 0), (Some(0), 1), (Some(1), 2))
       )
     }
   }
@@ -303,22 +319,25 @@ class StreamZipSuite extends Fs2Suite {
   group("zipWithPreviousAndNext") {
     property("1") {
       forAll { (s: Stream[Pure, Int]) =>
-        assert(s.zipWithPreviousAndNext.toList == {
-          val xs = s.toList
-          val zipWithPrevious = (None +: xs.map(Some(_))).zip(xs)
-          val zipWithPreviousAndNext = zipWithPrevious
-            .zipAll(xs.map(Some(_)).drop(1), (None, -1), None)
-            .map { case ((prev, that), next) => (prev, that, next) }
+        val xs = s.toList
+        val zipWithPrevious = (None +: xs.map(Some(_))).zip(xs)
+        val zipWithPreviousAndNext = zipWithPrevious
+          .zipAll(xs.map(Some(_)).drop(1), (None, -1), None)
+          .map { case ((prev, that), next) => (prev, that, next) }
+
+        assertEquals(
+          s.zipWithPreviousAndNext.toList,
           zipWithPreviousAndNext
-        })
+        )
       }
     }
 
     test("2") {
-      assert(Stream().zipWithPreviousAndNext.toList == Nil)
-      assert(Stream(0).zipWithPreviousAndNext.toList == List((None, 0, None)))
-      assert(
-        Stream(0, 1, 2).zipWithPreviousAndNext.toList == List(
+      assertEquals(Stream().zipWithPreviousAndNext.toList, Nil)
+      assertEquals(Stream(0).zipWithPreviousAndNext.toList, List((None, 0, None)))
+      assertEquals(
+        Stream(0, 1, 2).zipWithPreviousAndNext.toList,
+        List(
           (None, 0, Some(1)),
           (Some(0), 1, Some(2)),
           (Some(1), 2, None)
@@ -328,21 +347,23 @@ class StreamZipSuite extends Fs2Suite {
   }
 
   test("zipWithScan") {
-    assert(
+    assertEquals(
       Stream("uno", "dos", "tres", "cuatro")
         .zipWithScan(0)(_ + _.length)
-        .toList == List("uno" -> 0, "dos" -> 3, "tres" -> 6, "cuatro" -> 10)
+        .toList,
+      List("uno" -> 0, "dos" -> 3, "tres" -> 6, "cuatro" -> 10)
     )
-    assert(Stream().zipWithScan(())((_, _) => ???).toList == Nil)
+    assertEquals(Stream().zipWithScan(())((_, _) => ???).toList, Nil)
   }
 
   test("zipWithScan1") {
-    assert(
+    assertEquals(
       Stream("uno", "dos", "tres", "cuatro")
         .zipWithScan1(0)(_ + _.length)
-        .toList == List("uno" -> 3, "dos" -> 6, "tres" -> 10, "cuatro" -> 16)
+        .toList,
+      List("uno" -> 3, "dos" -> 6, "tres" -> 10, "cuatro" -> 16)
     )
-    assert(Stream().zipWithScan1(())((_, _) => ???).toList == Nil)
+    assertEquals(Stream().zipWithScan1(())((_, _) => ???).toList, Nil)
   }
 
   group("regressions") {

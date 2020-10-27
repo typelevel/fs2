@@ -43,7 +43,7 @@ class StreamSwitchMapSuite extends Fs2Suite {
         }
         .compile
         .toList
-        .map(it => assert(it == expected))
+        .assertEquals(expected)
     }
   }
 
@@ -74,7 +74,7 @@ class StreamSwitchMapSuite extends Fs2Suite {
         .switchMap(s => Stream.sleep_[IO](25.millis) ++ s2 ++ Stream.emit(s))
         .compile
         .toList
-        .map(it => assert(it == expected))
+        .assertEquals(expected)
     }
   }
 

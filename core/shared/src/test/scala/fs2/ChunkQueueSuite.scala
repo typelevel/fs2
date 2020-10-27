@@ -61,7 +61,7 @@ class ChunkQueueSuite extends Fs2Suite {
       val cq = Chunk.Queue(chunks: _*)
       assertEquals(cq, cq)
       assertEquals(cq, Chunk.Queue(chunks: _*))
-      if (cq.size > 1) assert(cq.drop(1) != cq)
+      if (cq.size > 1) assertNotEquals(cq.drop(1), cq)
     }
   }
 
@@ -70,7 +70,7 @@ class ChunkQueueSuite extends Fs2Suite {
       val cq = Chunk.Queue(chunks: _*)
       assertEquals(cq.hashCode, cq.hashCode)
       assertEquals(cq.hashCode, Chunk.Queue(chunks: _*).hashCode)
-      if (cq.size > 1) assert(cq.drop(1).hashCode != cq.hashCode)
+      if (cq.size > 1) assertNotEquals(cq.drop(1).hashCode, cq.hashCode)
     }
   }
 
@@ -86,9 +86,9 @@ class ChunkQueueSuite extends Fs2Suite {
 
       val viaTake = queue.take(items.size).toChunk == Chunk.seq(items)
       val computed = flattened.startsWith(items)
-      assert(computed == viaTake)
+      assertEquals(computed, viaTake)
       // here is another way to express the law:
-      assert(computed == queue.startsWith(items))
+      assertEquals(computed, queue.startsWith(items))
     }
   }
 }

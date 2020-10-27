@@ -33,7 +33,7 @@ class CompositeFailureSuite extends Fs2Suite {
       err(3),
       List(CompositeFailure(err(4), err(5)))
     )
-    assert(compositeFailure.all.map(_.getMessage) == NonEmptyList.of("1", "2", "3", "4", "5"))
+    assertEquals(compositeFailure.all.map(_.getMessage), NonEmptyList.of("1", "2", "3", "4", "5"))
     assert(compositeFailure.all.collect { case cf: CompositeFailure => cf }.isEmpty)
   }
 }

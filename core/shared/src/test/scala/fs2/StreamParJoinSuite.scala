@@ -31,13 +31,13 @@ import org.scalacheck.effect.PropF.forAllF
 class StreamParJoinSuite extends Fs2Suite {
   test("no concurrency") {
     forAllF { (s: Stream[Pure, Int]) =>
-      val expected = s.toList.toSet
+      val expected = s.toList
       s.covary[IO]
         .map(Stream.emit(_).covary[IO])
         .parJoin(1)
         .compile
         .toList
-        .map(it => assert(it.toSet == expected))
+        .assertEquals(expected)
     }
   }
 
@@ -50,7 +50,8 @@ class StreamParJoinSuite extends Fs2Suite {
         .parJoin(n)
         .compile
         .toList
-        .map(it => assert(it.toSet == expected))
+        .map(_.toSet)
+        .assertEquals(expected)
     }
   }
 
@@ -63,7 +64,8 @@ class StreamParJoinSuite extends Fs2Suite {
         .parJoin(n)
         .compile
         .toList
-        .map(it => assert(it.toSet == expected))
+        .map(_.toSet)
+        .assertEquals(expected)
     }
   }
 
@@ -71,7 +73,7 @@ class StreamParJoinSuite extends Fs2Suite {
     forAllF { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
       val parJoined = Stream(s1.covary[IO], s2).parJoin(2).compile.toList.map(_.toSet)
       val merged = s1.covary[IO].merge(s2).compile.toList.map(_.toSet)
-      (parJoined, merged).tupled.map { case (pj, m) => assert(pj == m) }
+      (parJoined, merged).tupled.map { case (pj, m) => assertEquals(pj, m) }
     }
   }
 
@@ -129,10 +131,10 @@ class StreamParJoinSuite extends Fs2Suite {
                       val expectedFinalizers = streamRunned.map { idx =>
                         s"Inner $idx"
                       } :+ "Outer"
-                      assert(finalizers.toSet == expectedFinalizers.toSet)
-                      assert(finalizers.lastOption == Some("Outer"))
-                      if (streamRunned.contains(biasIdx)) assert(r == Left(err))
-                      else assert(r == Right(()))
+                      assertEquals(finalizers.toSet, expectedFinalizers.toSet)
+                      assertEquals(finalizers.lastOption, Some("Outer"))
+                      if (streamRunned.contains(biasIdx)) assertEquals(r, Left(err))
+                      else assertEquals(r, Right(()))
                     }
                   }
                 }
@@ -157,32 +159,32 @@ class StreamParJoinSuite extends Fs2Suite {
         .parJoin(10)
         .take(1)
         .compile
-        .toList
-        .map(it => assert(it == List(42)))
+        .lastOrError
+        .assertEquals(42)
     }
     test("2") {
       Stream(full, hang2)
         .parJoin(10)
         .take(1)
         .compile
-        .toList
-        .map(it => assert(it == List(42)))
+        .lastOrError
+        .assertEquals(42)
     }
     test("3") {
       Stream(full, hang3)
         .parJoin(10)
         .take(1)
         .compile
-        .toList
-        .map(it => assert(it == List(42)))
+        .lastOrError
+        .assertEquals(42)
     }
     test("4") {
       Stream(hang3, hang2, full)
         .parJoin(10)
         .take(1)
         .compile
-        .toList
-        .map(it => assert(it == List(42)))
+        .lastOrError
+        .assertEquals(42)
     }
   }
 
@@ -199,7 +201,7 @@ class StreamParJoinSuite extends Fs2Suite {
 
     (Stream
       .emit(Stream.raiseError[IO](err))
-      .parJoinUnbounded ++ Stream.emit(1)).compile.toList.attempt
-      .map(it => assert(it == Left(err)))
+      .parJoinUnbounded ++ Stream.emit(1)).compile.drain
+      .intercept[Err]
   }
 }

@@ -21,8 +21,8 @@
 
 package fs2
 
-import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
+import scala.concurrent.ExecutionContext
 
 import cats.effect.IO
 import cats.effect.unsafe.{IORuntime, Scheduler}

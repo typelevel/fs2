@@ -26,6 +26,7 @@ import java.util.concurrent.Executors
 import cats.effect.IO
 import cats.effect.unsafe.IORuntime
 import fs2.Fs2Suite
+import fs2.Err
 import scala.concurrent.ExecutionContext
 import org.scalacheck.effect.PropF.forAllF
 
@@ -36,7 +37,7 @@ class IoSuite extends Fs2Suite {
         val chunkSize = (chunkSize0 % 20).abs + 1
         val is: InputStream = new ByteArrayInputStream(bytes)
         val stream = readInputStream(IO(is), chunkSize)
-        stream.compile.toVector.map(it => assertEquals(it, bytes.toVector))
+        stream.compile.toVector.assertEquals(bytes.toVector)
       }
     }
 
@@ -49,7 +50,7 @@ class IoSuite extends Fs2Suite {
           .buffer(chunkSize * 2)
           .compile
           .toVector
-          .map(it => assertEquals(it, bytes.toVector))
+          .assertEquals(bytes.toVector)
       }
     }
   }
@@ -60,9 +61,8 @@ class IoSuite extends Fs2Suite {
         val chunkSize = (chunkSize0 % 20).abs + 1
         readOutputStream[IO](chunkSize)((os: OutputStream) =>
           IO.blocking[Unit](os.write(bytes))
-        ).compile
-          .to(Vector)
-          .map(it => assertEquals(it, bytes.toVector))
+        ).compile.toVector
+          .assertEquals(bytes.toVector)
       }
     }
 
@@ -72,23 +72,21 @@ class IoSuite extends Fs2Suite {
         readOutputStream[IO](chunkSize)((os: OutputStream) =>
           IO(os.close()) *> IO.never
         ).compile.toVector
-          .map(it => assert(it == Vector.empty))
+          .assertEquals(Vector.empty)
       }
     }
 
     test("fails when `f` fails") {
       forAllF { (chunkSize0: Int) =>
         val chunkSize = (chunkSize0 % 20).abs + 1
-        val e = new Exception("boom")
-        readOutputStream[IO](chunkSize)((_: OutputStream) =>
-          IO.raiseError(e)
-        ).compile.toVector.attempt
-          .map(it => assert(it == Left(e)))
+        readOutputStream[IO](chunkSize)((_: OutputStream) => IO.raiseError(new Err)).compile.drain
+          .intercept[Err]
+          .void
       }
     }
 
     test("Doesn't deadlock with size-1 ContextShift thread pool") {
-      implicit val ioRuntime: IORuntime = {
+      val ioRuntime: IORuntime = {
         val compute = {
           val pool = Executors.newFixedThreadPool(1)
           (ExecutionContext.fromExecutor(pool), () => pool.shutdown())
@@ -115,12 +113,15 @@ class IoSuite extends Fs2Suite {
           os.write(1)
           os.write(1)
         }
-      readOutputStream[IO](chunkSize = 1)(write)
+      val prog = readOutputStream[IO](chunkSize = 1)(write)
         .take(5)
         .compile
         .toVector
-        .map(it => assert(it.size == 5))
-        .unsafeRunSync()
+        .map(_.size)
+        .assertEquals(5)
+
+      prog
+        .unsafeToFuture()(ioRuntime) // run explicitly so we can override the runtime
     }
   }
 
@@ -130,7 +131,7 @@ class IoSuite extends Fs2Suite {
         val chunkSize = (chunkSize0 % 20).abs + 1
         val is: InputStream = new ByteArrayInputStream(bytes)
         val stream = unsafeReadInputStream(IO(is), chunkSize)
-        stream.compile.toVector.map(it => assertEquals(it, bytes.toVector))
+        stream.compile.toVector.assertEquals(bytes.toVector)
       }
     }
   }

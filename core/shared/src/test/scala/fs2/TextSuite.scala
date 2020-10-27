@@ -293,7 +293,7 @@ class TextSuite extends Fs2Suite {
 
     property("base64Encode andThen base64Decode") {
       forAll { (bs: List[Array[Byte]], unchunked: Boolean, rechunkSeed: Long) =>
-        assert(
+        assertEquals(
           bs.map(Chunk.bytes)
             .foldMap(Stream.chunk)
             .through(text.base64.encode)
@@ -310,43 +310,43 @@ class TextSuite extends Fs2Suite {
             }
             .through(text.base64.decode[Fallible])
             .compile
-            .to(ByteVector) ==
-            Right(bs.map(ByteVector.view(_)).foldLeft(ByteVector.empty)(_ ++ _))
+            .to(ByteVector): Either[Throwable, ByteVector],
+          Right(bs.map(ByteVector.view(_)).foldLeft(ByteVector.empty)(_ ++ _))
         )
       }
     }
 
     test("invalid padding") {
-      assert(
+      assertEquals(
         Stream(hex"00deadbeef00".toBase64, "=====", hex"00deadbeef00".toBase64)
           .through(text.base64.decode[Fallible])
           .chunks
           .attempt
           .map(_.leftMap(_.getMessage))
           .compile
-          .to(List) ==
-          Right(
-            List(
-              Right(Chunk.byteVector(hex"00deadbeef00")),
-              Left(
-                "Malformed padding - final quantum may optionally be padded with one or two padding characters such that the quantum is completed"
-              )
+          .toList,
+        Right(
+          List(
+            Right(Chunk.byteVector(hex"00deadbeef00")),
+            Left(
+              "Malformed padding - final quantum may optionally be padded with one or two padding characters such that the quantum is completed"
             )
           )
+        )
       )
     }
 
     property("optional padding") {
       forAll { (bs: List[Array[Byte]]) =>
-        assert(
+        assertEquals(
           bs.map(Chunk.bytes)
             .foldMap(Stream.chunk)
             .through(text.base64.encode)
             .map(_.takeWhile(_ != '='))
             .through(text.base64.decode[Fallible])
             .compile
-            .to(ByteVector) ==
-            Right(bs.map(ByteVector.view(_)).foldLeft(ByteVector.empty)(_ ++ _))
+            .to(ByteVector): Either[Throwable, ByteVector],
+          Right(bs.map(ByteVector.view(_)).foldLeft(ByteVector.empty)(_ ++ _))
         )
       }
     }

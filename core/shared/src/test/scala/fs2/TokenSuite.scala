@@ -29,11 +29,11 @@ class TokenSuite extends Fs2Suite {
     for {
       a <- Token[SyncIO]
       b <- Token[SyncIO]
-    } yield assert(a != b)
+    } yield assertNotEquals(a, b)
   }
 
   test("Tokens are stable") {
-    Token[SyncIO].map(t => assert(t == t))
+    Token[SyncIO].map(t => assertEquals(t, t))
   }
 
   test("Tokens are referentially transparent") {
@@ -41,6 +41,6 @@ class TokenSuite extends Fs2Suite {
     for {
       a <- token
       b <- token
-    } yield assert(a != b)
+    } yield assertNotEquals(a, b)
   }
 }

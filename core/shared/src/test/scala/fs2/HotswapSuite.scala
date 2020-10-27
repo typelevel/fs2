@@ -30,15 +30,14 @@ class HotswapSuite extends Fs2Suite {
         .resource(Hotswap(logger.logLifecycleR("a")))
         .flatMap(_ => logger.logInfo("using"))
         .compile
-        .drain *> logger.get.map(it =>
-        assert(
-          it == List(
+        .drain >>
+        logger.get.assertEquals(
+          List(
             LogEvent.Acquired("a"),
             LogEvent.Info("using"),
             LogEvent.Released("a")
           )
         )
-      )
     }
   }
 
@@ -54,9 +53,9 @@ class HotswapSuite extends Fs2Suite {
             logger.logInfo("using c")
         }
         .compile
-        .drain *> logger.get.map(it =>
-        assert(
-          it == List(
+        .drain >>
+        logger.get.assertEquals(
+          List(
             LogEvent.Acquired("a"),
             LogEvent.Info("using a"),
             LogEvent.Acquired("b"),
@@ -68,7 +67,6 @@ class HotswapSuite extends Fs2Suite {
             LogEvent.Released("c")
           )
         )
-      )
     }
   }
 
@@ -82,16 +80,15 @@ class HotswapSuite extends Fs2Suite {
             logger.logInfo("after clear")
         }
         .compile
-        .drain *> logger.get.map(it =>
-        assert(
-          it == List(
+        .drain >>
+        logger.get.assertEquals(
+          List(
             LogEvent.Acquired("a"),
             LogEvent.Info("using a"),
             LogEvent.Released("a"),
             LogEvent.Info("after clear")
           )
         )
-      )
     }
   }
 }

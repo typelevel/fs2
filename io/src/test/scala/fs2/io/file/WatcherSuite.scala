@@ -29,32 +29,36 @@ import cats.effect.IO
 
 import java.nio.file.{Files => JFiles, _}
 
-class WatcherSuite extends BaseFileSuite {
+class WatcherSuite extends Fs2Suite with BaseFileSuite {
   group("supports watching a file") {
     test("for modifications") {
-      tempFile
+      Stream
+        .resource(tempFile)
         .flatMap { f =>
           Files[IO]
             .watch(f, modifiers = modifiers)
             .takeWhile(
               {
-                case Watcher.Event.Modified(_, _) => false; case _ => true
+                case Watcher.Event.Modified(_, _) => false
+                case _                            => true
               },
               true
             )
-            .concurrently(smallDelay ++ modify(f))
+            .concurrently(smallDelay ++ Stream.eval(modify(f)))
         }
         .compile
         .drain
     }
     test("for deletions") {
-      tempFile
+      Stream
+        .resource(tempFile)
         .flatMap { f =>
           Files[IO]
             .watch(f, modifiers = modifiers)
             .takeWhile(
               {
-                case Watcher.Event.Deleted(_, _) => false; case _ => true
+                case Watcher.Event.Deleted(_, _) => false
+                case _                           => true
               },
               true
             )
@@ -67,31 +71,35 @@ class WatcherSuite extends BaseFileSuite {
 
   group("supports watching a directory") {
     test("static recursive watching") {
-      tempDirectory
+      Stream
+        .resource(tempDirectory)
         .flatMap { dir =>
           val a = dir.resolve("a")
           val b = a.resolve("b")
-          Stream.eval(IO(JFiles.createDirectory(a)) >> IO(JFiles.write(b, Array[Byte]()))) >>
+          Stream.eval(IO(JFiles.createDirectory(a)) >> IO(JFiles.write(b, Array[Byte]()))) ++
             Files[IO]
               .watch(dir, modifiers = modifiers)
-              .takeWhile({
-                case Watcher.Event.Modified(_, _) => false; case _ => true
-              })
-              .concurrently(smallDelay ++ modify(b))
+              .takeWhile {
+                case Watcher.Event.Modified(_, _) => false
+                case _                            => true
+              }
+              .concurrently(smallDelay ++ Stream.eval(modify(b)))
         }
         .compile
         .drain
     }
     test("dynamic recursive watching") {
-      tempDirectory
+      Stream
+        .resource(tempDirectory)
         .flatMap { dir =>
           val a = dir.resolve("a")
           val b = a.resolve("b")
           Files[IO]
             .watch(dir, modifiers = modifiers)
-            .takeWhile({
-              case Watcher.Event.Created(_, _) => false; case _ => true
-            })
+            .takeWhile {
+              case Watcher.Event.Created(_, _) => false
+              case _                           => true
+            }
             .concurrently(
               smallDelay ++ Stream
                 .eval(IO(JFiles.createDirectory(a)) >> IO(JFiles.write(b, Array[Byte]())))

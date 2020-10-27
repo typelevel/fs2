@@ -29,8 +29,6 @@ import java.net.InetSocketAddress
 import java.net.InetAddress
 
 import cats.effect.IO
-import cats.effect.kernel.Deferred
-import cats.effect.Resource
 
 class SocketSuite extends Fs2Suite {
   def mkSocketGroup: Stream[IO, SocketGroup] =
@@ -38,162 +36,107 @@ class SocketSuite extends Fs2Suite {
 
   val timeout = 30.seconds
 
+  val setup = for {
+    socketGroup <- SocketGroup[IO]()
+    defaultAddress = new InetSocketAddress(InetAddress.getByName(null), 0)
+    serverSetup <- socketGroup.serverResource[IO](defaultAddress)
+    (bindAddress, serverConnections) = serverSetup
+    server = serverConnections.flatMap(Stream.resource(_))
+    clients = Stream.resource(socketGroup.client[IO](bindAddress)).repeat
+  } yield (server -> clients)
+
   group("tcp") {
-    // spawns echo server, takes whatever client sends and echoes it back
-    // up to 10 clients concurrently (5k total) send message and awaits echo of it
-    // success is that all clients got what they have sent
-    test("echo.requests") {
+    test("echo requests - each concurrent client gets back what it sent") {
       val message = Chunk.bytes("fs2.rocks".getBytes)
-      val clientCount = 20
+      val clientCount = 20L
 
-      val localBindAddress =
-        Deferred[IO, InetSocketAddress].unsafeRunSync()
+      Stream
+        .resource(setup)
+        .flatMap { case (server, clients) =>
+          val echoServer = server.map { socket =>
+            socket
+              .reads(1024)
+              .through(socket.writes())
+              .onFinalize(socket.endOfOutput)
+          }.parJoinUnbounded
 
-      val echoServer: SocketGroup => Stream[IO, Unit] = socketGroup =>
-        Stream
-          .resource(
-            socketGroup
-              .serverResource[IO](new InetSocketAddress(InetAddress.getByName(null), 0))
-          )
-          .flatMap { case (local, clients) =>
-            Stream.exec(localBindAddress.complete(local).void) ++
-              clients.flatMap { s =>
-                Stream.resource(s).map { socket =>
-                  socket
-                    .reads(1024)
-                    .through(socket.writes())
-                    .onFinalize(socket.endOfOutput)
-                }
-              }
-          }
-          .parJoinUnbounded
-
-      val clients: SocketGroup => Stream[IO, Array[Byte]] = socketGroup =>
-        Stream
-          .range(0, clientCount)
-          .map { _ =>
-            Stream.eval(localBindAddress.get).flatMap { local =>
-              Stream.resource(socketGroup.client[IO](local)).flatMap { socket =>
-                Stream
-                  .chunk(message)
-                  .through(socket.writes())
-                  .onFinalize(socket.endOfOutput) ++
-                  socket.reads(1024, None).chunks.map(_.toArray)
-              }
+          val msgClients = clients
+            .take(clientCount)
+            .map { socket =>
+              Stream
+                .chunk(message)
+                .through(socket.writes())
+                .onFinalize(socket.endOfOutput) ++
+                socket
+                  .reads(1024)
+                  .chunks
+                  .map(bytes => new String(bytes.toArray))
             }
-          }
-          .parJoin(10)
+            .parJoin(10)
+            .take(clientCount)
 
-      val result =
-        mkSocketGroup
-          .flatMap { socketGroup =>
-            Stream(echoServer(socketGroup).drain, clients(socketGroup))
-              .parJoin(2)
-              .take(clientCount.toLong)
-          }
-          .compile
-          .toVector
-          .unsafeRunTimed(timeout)
-          .get
-      assert(result.size == clientCount)
-      assert(result.map(new String(_)).toSet == Set("fs2.rocks"))
+          msgClients.concurrently(echoServer)
+        }
+        .compile
+        .toVector
+        .map { it =>
+          assertEquals(it.size.toLong, clientCount)
+          assert(it.forall(_ == "fs2.rocks"))
+        }
     }
 
-    // Ensure that readN yields chunks of the requested size
-    test("readN") {
+    test("readN yields chunks of the requested size") {
       val message = Chunk.bytes("123456789012345678901234567890".getBytes)
-
-      val localBindAddress =
-        Deferred[IO, InetSocketAddress].unsafeRunSync()
-
-      val junkServer: SocketGroup => Stream[IO, Nothing] = socketGroup =>
-        Stream
-          .resource(
-            socketGroup
-              .serverResource[IO](new InetSocketAddress(InetAddress.getByName(null), 0))
-          )
-          .flatMap { case (local, clients) =>
-            Stream.exec(localBindAddress.complete(local).void) ++
-              clients.flatMap { s =>
-                Stream.emit(Stream.resource(s).flatMap { socket =>
-                  Stream
-                    .chunk(message)
-                    .through(socket.writes())
-                    .onFinalize(socket.endOfOutput)
-                })
-              }
-          }
-          .parJoinUnbounded
-          .drain
-
       val sizes = Vector(1, 2, 3, 4, 3, 2, 1)
 
-      val klient: SocketGroup => Stream[IO, Int] = socketGroup =>
-        for {
-          addr <- Stream.eval(localBindAddress.get)
-          sock <- Stream.resource(socketGroup.client[IO](addr))
-          size <- Stream.emits(sizes)
-          op <- Stream.eval(sock.readN(size, None))
-        } yield op.map(_.size).getOrElse(-1)
+      Stream
+        .resource(setup)
+        .flatMap { case (server, clients) =>
+          val junkServer = server.map { socket =>
+            Stream
+              .chunk(message)
+              .through(socket.writes())
+              .onFinalize(socket.endOfOutput)
+          }.parJoinUnbounded
 
-      val result =
-        mkSocketGroup
-          .flatMap { socketGroup =>
-            Stream(junkServer(socketGroup), klient(socketGroup))
-              .parJoin(2)
+          val client =
+            clients
+              .take(1)
+              .flatMap { socket =>
+                Stream
+                  .emits(sizes)
+                  .evalMap(socket.readN(_))
+                  .unNone
+                  .map(_.size)
+              }
               .take(sizes.length.toLong)
-          }
-          .compile
-          .toVector
-          .unsafeRunTimed(timeout)
-          .get
-      assert(result == sizes)
+
+          client.concurrently(junkServer)
+        }
+        .compile
+        .toVector
+        .assertEquals(sizes)
     }
 
-    test("write - concurrent calls do not cause WritePendingException") {
+    test("write - concurrent calls do not cause a WritePendingException") {
       val message = Chunk.bytes(("123456789012345678901234567890" * 10000).getBytes)
 
-      val localBindAddress =
-        Deferred[IO, InetSocketAddress].unsafeRunSync()
-
-      val server: SocketGroup => Stream[IO, Unit] = socketGroup =>
-        Stream
-          .resource(
-            socketGroup
-              .serverResource[IO](new InetSocketAddress(InetAddress.getByName(null), 0))
-          )
-          .flatMap { case (local, clients) =>
-            Stream.exec(localBindAddress.complete(local).void) ++
-              clients.flatMap { s =>
-                Stream.resource(s).map { socket =>
-                  socket.reads(1024).drain
-                }
-              }
-          }
-          .parJoinUnbounded
-
-      mkSocketGroup
-        .flatMap { socketGroup =>
-          Stream
-            .eval(localBindAddress.get)
-            .flatMap { address =>
-              Stream
-                .resource(
-                  socketGroup.client[IO](address)
-                )
-                .flatMap(sock =>
-                  Stream(
-                    Stream.eval(sock.write(message)).repeatN(10L)
-                  ).repeatN(2L)
-                )
-                .parJoinUnbounded
+      Stream
+        .resource(setup)
+        .flatMap { case (server, clients) =>
+          val readOnlyServer = server.map(_.reads(1024)).parJoinUnbounded
+          val client =
+            clients.take(1).flatMap { socket =>
+              // concurrent writes
+              Stream {
+                Stream.eval(socket.write(message)).repeatN(10L)
+              }.repeatN(2L).parJoinUnbounded
             }
-            .concurrently(server(socketGroup))
+
+          client.concurrently(readOnlyServer)
         }
         .compile
         .drain
-        .attempt
-        .map(it => assert(it.isRight))
     }
   }
 }
