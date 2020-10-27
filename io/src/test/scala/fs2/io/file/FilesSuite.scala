@@ -263,7 +263,7 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
               files.exists(tempDir.resolve(file.getFileName))
             }
         }
-        .map(existsInTemp => assertEquals(existsInTemp, true))
+        .assertEquals(true)
     }
 
     test("should create the file in the default temp directory when dir is not specified") {
@@ -277,7 +277,7 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
             files.exists(Paths.get(dir).resolve(file.getFileName))
           )
         }
-        .map(existsInDefault => assertEquals(existsInDefault, true))
+        .assertEquals(true)
     }
   }
 
@@ -317,7 +317,7 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
               files.exists(tempDir.resolve(directory.getFileName))
             }
         }
-        .map(existsInTemp => assertEquals(existsInTemp, true))
+        .assertEquals(true)
     }
 
     test("should create the directory in the default temp directory when dir is not specified") {
@@ -331,7 +331,7 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
             files.exists(Paths.get(dir).resolve(directory.getFileName))
           )
         }
-        .map(existsInDefault => assertEquals(existsInDefault, true))
+        .assertEquals(true)
     }
   }
 
