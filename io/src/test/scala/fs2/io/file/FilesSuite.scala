@@ -232,7 +232,7 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
       Stream
         .resource {
           Files[IO]
-            .tempFile(Paths.get(""))
+            .tempFile(Some(Paths.get("")))
             .evalMap(path => Files[IO].exists(path).tupleRight(path))
         }
         .compile
@@ -247,7 +247,7 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
 
     test("should not fail if the file is deleted before the stream completes") {
       Stream
-        .resource(Files[IO].tempFile(Paths.get("")))
+        .resource(Files[IO].tempFile(Some(Paths.get(""))))
         .evalMap(Files[IO].delete)
         .compile
         .lastOrError
@@ -255,7 +255,7 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
 
     test("should create the file in the specified directory") {
       tempDirectory
-        .evalMap { tempDir =>
+        .use { tempDir =>
           val files = Files[IO]
           files
             .tempFile(Some(tempDir))
@@ -263,8 +263,6 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
               files.exists(tempDir.resolve(file.getFileName))
             }
         }
-        .compile
-        .lastOrError
         .map(it => assert(it))
     }
 
@@ -288,7 +286,7 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
       Stream
         .resource {
           Files[IO]
-            .tempDirectory(Paths.get(""))
+            .tempDirectory(Some(Paths.get("")))
             .evalMap(path => Files[IO].exists(path).tupleRight(path))
         }
         .compile
@@ -303,7 +301,7 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
 
     test("should not fail if the directory is deleted before the stream completes") {
       Stream
-        .resource(Files[IO].tempDirectory(Paths.get("")))
+        .resource(Files[IO].tempDirectory(Some(Paths.get(""))))
         .evalMap(Files[IO].delete)
         .compile
         .lastOrError
@@ -311,7 +309,7 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
 
     test("should create the directory in the specified directory") {
       tempDirectory
-        .evalMap { tempDir =>
+        .use { tempDir =>
           val files = Files[IO]
           files
             .tempDirectory(Some(tempDir))
@@ -319,8 +317,6 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
               files.exists(tempDir.resolve(directory.getFileName))
             }
         }
-        .compile
-        .lastOrError
         .map(it => assert(it))
     }
 
