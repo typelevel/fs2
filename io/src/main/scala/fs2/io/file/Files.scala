@@ -137,10 +137,14 @@ sealed trait SyncFiles[F[_]] {
     */
   def size(path: Path): F[Long]
 
-  /** Creates a resource containing the path of a temporary file.
+  /** Creates a [[Resource]] which can be used to create a temporary file.
+    *  The file is created during resource allocation, and removed during its release.
     *
-    * The temporary file is removed during the resource release.
     * @param dir the directory which the temporary file will be created in. Pass in None to use the default system temp directory
+    * @param prefix the prefix string to be used in generating the file's name
+    * @param suffix the suffix string to be used in generating the file's name
+    * @param attributes an optional list of file attributes to set atomically when creating the file
+    * @return a resource containing the path of the temporary file
     */
   def tempFile(
       dir: Option[Path] = None,
@@ -149,10 +153,13 @@ sealed trait SyncFiles[F[_]] {
       attributes: Seq[FileAttribute[_]] = Seq.empty
   ): Resource[F, Path]
 
-  /** Creates a resource containing the path of a temporary directory.
+  /** Creates a [[Resource]] which can be used to create a temporary directory.
+    *  The directory is created during resource allocation, and removed during its release.
     *
-    * The temporary directory is removed during the resource release.
     * @param dir the directory which the temporary directory will be created in. Pass in None to use the default system temp directory
+    * @param prefix the prefix string to be used in generating the directory's name
+    * @param attributes an optional list of file attributes to set atomically when creating the directory
+    * @return a resource containing the path of the temporary directory
     */
   def tempDirectory(
       dir: Option[Path] = None,
