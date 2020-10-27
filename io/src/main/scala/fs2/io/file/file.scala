@@ -216,7 +216,7 @@ package object file {
       suffix: String = ".tmp",
       attributes: Seq[FileAttribute[_]] = Seq.empty
   ): Stream[F, Path] =
-    Stream.resource(SyncFiles[F].tempFile(dir, prefix, suffix, attributes))
+    Stream.resource(SyncFiles[F].tempFile(Some(dir), prefix, suffix, attributes))
 
   /** Creates a resource containing the path of a temporary file.
     *
@@ -229,7 +229,7 @@ package object file {
       suffix: String = ".tmp",
       attributes: Seq[FileAttribute[_]] = Seq.empty
   ): Resource[F, Path] =
-    SyncFiles[F].tempFile(dir, prefix, suffix, attributes)
+    SyncFiles[F].tempFile(Some(dir), prefix, suffix, attributes)
 
   /** Creates a stream containing the path of a temporary directory.
     *
@@ -241,7 +241,7 @@ package object file {
       prefix: String = "",
       attributes: Seq[FileAttribute[_]] = Seq.empty
   ): Stream[F, Path] =
-    Stream.resource(SyncFiles[F].tempDirectory(dir, prefix, attributes))
+    Stream.resource(SyncFiles[F].tempDirectory(Some(dir), prefix, attributes))
 
   /** Creates a resource containing the path of a temporary directory.
     *
@@ -253,7 +253,7 @@ package object file {
       prefix: String = "",
       attributes: Seq[FileAttribute[_]] = Seq.empty
   ): Resource[F, Path] =
-    SyncFiles[F].tempDirectory(dir, prefix, attributes)
+    SyncFiles[F].tempDirectory(Some(dir), prefix, attributes)
 
   /** Creates a new directory at the given path
     */

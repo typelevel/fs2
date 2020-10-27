@@ -232,7 +232,7 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
       Stream
         .resource {
           Files[IO]
-            .tempFile(Paths.get(""))
+            .tempFile(Some(Paths.get("")))
             .evalMap(path => Files[IO].exists(path).tupleRight(path))
         }
         .compile
@@ -247,10 +247,37 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
 
     test("should not fail if the file is deleted before the stream completes") {
       Stream
-        .resource(Files[IO].tempFile(Paths.get("")))
+        .resource(Files[IO].tempFile(Some(Paths.get(""))))
         .evalMap(Files[IO].delete)
         .compile
         .lastOrError
+    }
+
+    test("should create the file in the specified directory") {
+      tempDirectory
+        .use { tempDir =>
+          val files = Files[IO]
+          files
+            .tempFile(Some(tempDir))
+            .use { file =>
+              files.exists(tempDir.resolve(file.getFileName))
+            }
+        }
+        .assertEquals(true)
+    }
+
+    test("should create the file in the default temp directory when dir is not specified") {
+
+      val files = Files[IO]
+
+      files
+        .tempFile(None)
+        .use { file =>
+          IO(System.getProperty("java.io.tmpdir")).flatMap(dir =>
+            files.exists(Paths.get(dir).resolve(file.getFileName))
+          )
+        }
+        .assertEquals(true)
     }
   }
 
@@ -259,7 +286,7 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
       Stream
         .resource {
           Files[IO]
-            .tempFile(Paths.get(""))
+            .tempDirectory(Some(Paths.get("")))
             .evalMap(path => Files[IO].exists(path).tupleRight(path))
         }
         .compile
@@ -274,10 +301,37 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
 
     test("should not fail if the directory is deleted before the stream completes") {
       Stream
-        .resource(Files[IO].tempDirectory(Paths.get("")))
+        .resource(Files[IO].tempDirectory(Some(Paths.get(""))))
         .evalMap(Files[IO].delete)
         .compile
         .lastOrError
+    }
+
+    test("should create the directory in the specified directory") {
+      tempDirectory
+        .use { tempDir =>
+          val files = Files[IO]
+          files
+            .tempDirectory(Some(tempDir))
+            .use { directory =>
+              files.exists(tempDir.resolve(directory.getFileName))
+            }
+        }
+        .assertEquals(true)
+    }
+
+    test("should create the directory in the default temp directory when dir is not specified") {
+
+      val files = Files[IO]
+
+      files
+        .tempDirectory(None)
+        .use { directory =>
+          IO(System.getProperty("java.io.tmpdir")).flatMap(dir =>
+            files.exists(Paths.get(dir).resolve(directory.getFileName))
+          )
+        }
+        .assertEquals(true)
     }
   }
 

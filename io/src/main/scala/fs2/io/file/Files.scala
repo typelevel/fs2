@@ -137,23 +137,32 @@ sealed trait SyncFiles[F[_]] {
     */
   def size(path: Path): F[Long]
 
-  /** Creates a resource containing the path of a temporary file.
+  /** Creates a [[Resource]] which can be used to create a temporary file.
+    *  The file is created during resource allocation, and removed during its release.
     *
-    * The temporary file is removed during the resource release.
+    * @param dir the directory which the temporary file will be created in. Pass in None to use the default system temp directory
+    * @param prefix the prefix string to be used in generating the file's name
+    * @param suffix the suffix string to be used in generating the file's name
+    * @param attributes an optional list of file attributes to set atomically when creating the file
+    * @return a resource containing the path of the temporary file
     */
   def tempFile(
-      dir: Path,
+      dir: Option[Path] = None,
       prefix: String = "",
       suffix: String = ".tmp",
       attributes: Seq[FileAttribute[_]] = Seq.empty
   ): Resource[F, Path]
 
-  /** Creates a resource containing the path of a temporary directory.
+  /** Creates a [[Resource]] which can be used to create a temporary directory.
+    *  The directory is created during resource allocation, and removed during its release.
     *
-    * The temporary directory is removed during the resource release.
+    * @param dir the directory which the temporary directory will be created in. Pass in None to use the default system temp directory
+    * @param prefix the prefix string to be used in generating the directory's name
+    * @param attributes an optional list of file attributes to set atomically when creating the directory
+    * @return a resource containing the path of the temporary directory
     */
   def tempDirectory(
-      dir: Path,
+      dir: Option[Path] = None,
       prefix: String = "",
       attributes: Seq[FileAttribute[_]] = Seq.empty
   ): Resource[F, Path]
@@ -348,22 +357,33 @@ object SyncFiles {
       Sync[F].blocking(JFiles.size(path))
 
     def tempFile(
-        dir: Path,
+        dir: Option[Path],
         prefix: String,
         suffix: String,
         attributes: Seq[FileAttribute[_]]
     ): Resource[F, Path] =
       Resource.make {
-        Sync[F].blocking(JFiles.createTempFile(dir, prefix, suffix, attributes: _*))
+        dir match {
+          case Some(dir) =>
+            Sync[F].blocking(JFiles.createTempFile(dir, prefix, suffix, attributes: _*))
+          case None =>
+            Sync[F].blocking(JFiles.createTempFile(prefix, suffix, attributes: _*))
+        }
+
       }(deleteIfExists(_).void)
 
     def tempDirectory(
-        dir: Path,
+        dir: Option[Path],
         prefix: String,
         attributes: Seq[FileAttribute[_]]
     ): Resource[F, Path] =
       Resource.make {
-        Sync[F].blocking(JFiles.createTempDirectory(dir, prefix, attributes: _*))
+        dir match {
+          case Some(dir) =>
+            Sync[F].blocking(JFiles.createTempDirectory(dir, prefix, attributes: _*))
+          case None =>
+            Sync[F].blocking(JFiles.createTempDirectory(prefix, attributes: _*))
+        }
       } { p =>
         deleteDirectoryRecursively(p)
           .recover { case _: NoSuchFileException => () }
