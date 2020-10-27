@@ -156,8 +156,7 @@ class MemoryLeakSpec extends FunSuite {
     (Stream.constant(1).covary[IO] ++ Stream.empty).pull.echo.stream
   }
 
-  // TODO This runs and after 30s, fails to cancel
-  leakTest("drain onComplete".ignore) {
+  leakTest("drain onComplete") {
     val s = Stream.repeatEval(IO(1)).pull.echo.stream.drain ++ Stream.exec(IO.unit)
     Stream.empty.covary[IO].merge(s)
   }
