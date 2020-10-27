@@ -30,7 +30,7 @@ import cats.effect.kernel._
 import cats.syntax.all._
 
 import fs2.internal._
-
+import Resource.ExitCase
 import Pull._
 
 /** A `p: Pull[F,O,R]` reads values from one or more streams, returns a
@@ -88,7 +88,7 @@ sealed abstract class Pull[+F[_], +O, +R] {
         e match {
           case Result.Succeeded(r) =>
             try f(r)
-            catch { case NonFatal(e) => Pull.Result.Fail(e) }
+            catch { case NonFatal(e) => Result.Fail(e) }
           case res @ Result.Interrupted(_, _) => res
           case res @ Result.Fail(_)           => res
         }
@@ -158,12 +158,12 @@ object Pull extends PullLowPriority {
 
   private[fs2] def acquire[F[_], R](
       resource: F[R],
-      release: (R, Resource.ExitCase) => F[Unit]
+      release: (R, ExitCase) => F[Unit]
   ): Pull[F, INothing, R] = Acquire(Left(resource), release)
 
   private[fs2] def acquireCancelable[F[_], R](
       resource: Poll[F] => F[R],
-      release: (R, Resource.ExitCase) => F[Unit]
+      release: (R, ExitCase) => F[Unit]
   )(implicit F: MonadCancel[F, Throwable]): Pull[F, INothing, R] =
     Acquire(Right((resource, F)), release)
 
@@ -178,17 +178,17 @@ object Pull extends PullLowPriority {
   def bracketCase[F[_], O, A, B](
       acquire: Pull[F, O, A],
       use: A => Pull[F, O, B],
-      release: (A, Resource.ExitCase) => Pull[F, O, Unit]
+      release: (A, ExitCase) => Pull[F, O, Unit]
   ): Pull[F, O, B] =
     acquire.flatMap { a =>
       val used =
         try use(a)
-        catch { case NonFatal(t) => Pull.Result.Fail(t) }
+        catch { case NonFatal(t) => Result.Fail(t) }
       used.transformWith { result =>
-        val exitCase: Resource.ExitCase = result match {
-          case Result.Succeeded(_)      => Resource.ExitCase.Succeeded
-          case Result.Fail(err)         => Resource.ExitCase.Errored(err)
-          case Result.Interrupted(_, _) => Resource.ExitCase.Canceled
+        val exitCase: ExitCase = result match {
+          case Result.Succeeded(_)      => ExitCase.Succeeded
+          case Result.Fail(err)         => ExitCase.Errored(err)
+          case Result.Interrupted(_, _) => ExitCase.Canceled
         }
 
         release(a, exitCase).transformWith {
@@ -516,7 +516,7 @@ object Pull extends PullLowPriority {
 
   private final case class Acquire[F[_], R](
       resource: Either[F[R], (Poll[F] => F[R], MonadCancel[F, Throwable])],
-      release: (R, Resource.ExitCase) => F[Unit]
+      release: (R, ExitCase) => F[Unit]
   ) extends AlgEffect[F, R]
 
   private final case class OpenScope(useInterruption: Boolean) extends AlgEffect[Pure, Token]
@@ -526,7 +526,7 @@ object Pull extends PullLowPriority {
   private final case class CloseScope(
       scopeId: Token,
       interruption: Option[Result.Interrupted],
-      exitCase: Resource.ExitCase
+      exitCase: ExitCase
   ) extends AlgEffect[Pure, Unit]
 
   private final case class GetScope[F[_]]() extends AlgEffect[Pure, CompileScope[F]]
@@ -560,11 +560,11 @@ object Pull extends PullLowPriority {
   ): Pull[F, O, Unit] =
     OpenScope(interruptible).flatMap { scopeId =>
       s.transformWith {
-        case Result.Succeeded(_) => CloseScope(scopeId, None, Resource.ExitCase.Succeeded)
+        case Result.Succeeded(_) => CloseScope(scopeId, None, ExitCase.Succeeded)
         case interrupted @ Result.Interrupted(_, _) =>
-          CloseScope(scopeId, Some(interrupted), Resource.ExitCase.Canceled)
+          CloseScope(scopeId, Some(interrupted), ExitCase.Canceled)
         case Result.Fail(err) =>
-          CloseScope(scopeId, None, Resource.ExitCase.Errored(err)).transformWith {
+          CloseScope(scopeId, None, ExitCase.Errored(err)).transformWith {
             case Result.Succeeded(_) => Result.Fail(err)
             case Result.Fail(err0)   => Result.Fail(CompositeFailure(err, err0, Nil))
             case Result.Interrupted(interruptedScopeId, _) =>
@@ -586,7 +586,7 @@ object Pull extends PullLowPriority {
    * Reason for this is unlike interruption of `F` type (e.g. IO) we need to find
    * recovery point where stream evaluation has to continue in Stream algebra.
    *
-   * As such the `Token` is passed to Pull.Result.Interrupted as glue between Pull that allows pass-along
+   * As such the `Token` is passed to Result.Interrupted as glue between Pull that allows pass-along
    * the information to correctly compute recovery point after interruption was signalled via `CompileScope`.
    *
    * This token indicates scope of the computation where interruption actually happened.
@@ -618,13 +618,13 @@ object Pull extends PullLowPriority {
         stream: Pull[G, X, Unit]
     ): F[R[G, X]] =
       viewL(stream) match {
-        case _: Pull.Result.Succeeded[_] =>
+        case _: Result.Succeeded[_] =>
           F.pure(Done(scope))
 
-        case failed: Pull.Result.Fail =>
+        case failed: Result.Fail =>
           F.raiseError(failed.error)
 
-        case interrupted: Pull.Result.Interrupted =>
+        case interrupted: Result.Interrupted =>
           F.pure(Interrupted(interrupted.context, interrupted.deferredError))
 
         case view: View[G, X, y] =>
@@ -642,7 +642,7 @@ object Pull extends PullLowPriority {
           view.step match {
             case output: Output[_] =>
               interruptGuard(scope)(
-                F.pure(Out(output.values, scope, view.next(Pull.Result.unit)))
+                F.pure(Out(output.values, scope, view.next(Result.unit)))
               )
 
             case mout: MapOutput[g, z, x] => // y = Unit
@@ -741,7 +741,7 @@ object Pull extends PullLowPriority {
                       case Left(acq)        => translation(acq)
                       case Right((acq, mc)) => p(translation(mc.uncancelable(acq)))
                     },
-                  (r: r, ec: Resource.ExitCase) => translation(acquire.release(r, ec))
+                  (r: r, ec: ExitCase) => translation(acquire.release(r, ec))
                 )
 
                 onScope.flatMap { outcome =>
@@ -767,7 +767,7 @@ object Pull extends PullLowPriority {
                   if (scope.parent.isEmpty)
                     extendedTopLevelScope match {
                       case None    => false.pure[F]
-                      case Some(s) => s.close(Resource.ExitCase.Succeeded).rethrow.as(true)
+                      case Some(s) => s.close(ExitCase.Succeeded).rethrow.as(true)
                     }
                   else F.pure(false)
                 maybeCloseExtendedScope.flatMap { closedExtendedScope =>
@@ -784,7 +784,7 @@ object Pull extends PullLowPriority {
               }
 
             case close: CloseScope =>
-              def closeAndGo(toClose: CompileScope[F], ec: Resource.ExitCase) =
+              def closeAndGo(toClose: CompileScope[F], ec: ExitCase) =
                 toClose.close(ec).flatMap { r =>
                   toClose.openAncestor.flatMap { ancestor =>
                     val res = close.interruption match {
@@ -817,7 +817,7 @@ object Pull extends PullLowPriority {
                   else if (extendLastTopLevelScope && toClose.parent.flatMap(_.parent).isEmpty)
                     // Request to close the current top-level scope - if we're supposed to extend
                     // it instead, leave the scope open and pass it to the continuation
-                    extendedTopLevelScope.traverse_(_.close(Resource.ExitCase.Succeeded).rethrow) *>
+                    extendedTopLevelScope.traverse_(_.close(ExitCase.Succeeded).rethrow) *>
                       toClose.openAncestor.flatMap { ancestor =>
                         go(ancestor, Some(toClose), translation, view.next(Result.unit))
                       }
@@ -863,7 +863,7 @@ object Pull extends PullLowPriority {
     uncons(p).flatMap {
       case None => Result.unit
 
-      case Some((chunk, Pull.Result.Succeeded(_))) if chunk.size == 1 =>
+      case Some((chunk, Result.Succeeded(_))) if chunk.size == 1 =>
         // nb: If tl is Pure, there's no need to propagate flatMap through the tail. Hence, we
         // check if hd has only a single element, and if so, process it directly instead of folding.
         // This allows recursive infinite streams of the form `def s: Stream[Pure,O] = Stream(o).flatMap { _ => s }`
@@ -899,22 +899,19 @@ object Pull extends PullLowPriority {
       interruption: Result.Interrupted
   ): Pull[F, O, Unit] =
     viewL(stream) match {
-      case _: Pull.Result.Succeeded[_] =>
-        interruption
-      case failed: Pull.Result.Fail =>
-        Result.Fail(
-          CompositeFailure
-            .fromList(interruption.deferredError.toList :+ failed.error)
-            .getOrElse(failed.error)
-        )
       case interrupted: Result.Interrupted => interrupted // impossible
+      case _: Result.Succeeded[_]          => interruption
+      case failed: Result.Fail =>
+        val mixed = CompositeFailure
+          .fromList(interruption.deferredError.toList :+ failed.error)
+          .getOrElse(failed.error)
+        Result.Fail(mixed)
 
       case view: View[F, O, _] =>
         view.step match {
           case CloseScope(scopeId, _, _) =>
             // Inner scope is getting closed b/c a parent was interrupted
-            CloseScope(scopeId, Some(interruption), Resource.ExitCase.Canceled)
-              .transformWith(view.next)
+            CloseScope(scopeId, Some(interruption), ExitCase.Canceled).transformWith(view.next)
           case _ =>
             // all other cases insert interruption cause
             view.next(interruption)
