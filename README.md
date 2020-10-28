@@ -20,6 +20,8 @@ Prior to the 0.9 release in 2016, FS2 was known as `scalaz-stream`, which was ba
 
 ### Getting Started
 
+Blip 
+
 Quick links:
 
 * [Microsite][microsite]
