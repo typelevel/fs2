@@ -21,7 +21,7 @@
 
 package fs2
 
-import cats.{Id, Monad}
+import cats.{Id, Monad, MonadError}
 import cats.effect.SyncIO
 import cats.effect.kernel.{Concurrent, MonadCancelThrow, Poll, Ref, Resource, Sync}
 import cats.syntax.all._
@@ -120,34 +120,33 @@ object Compiler extends CompilerLowPriority {
   }
 
   private[fs2] trait TargetLowPriority {
-    // TODO Delete this once SyncIO has a MonadCancelThrow instance
-    implicit def forSyncIO: Target[SyncIO] = new Target[SyncIO] {
-      def pure[A](a: A): SyncIO[A] = SyncIO.pure(a)
-      def handleErrorWith[A](fa: SyncIO[A])(f: Throwable => SyncIO[A]): SyncIO[A] =
-        fa.handleErrorWith(f)
-      def raiseError[A](e: Throwable): SyncIO[A] = SyncIO.raiseError(e)
-      def flatMap[A, B](fa: SyncIO[A])(f: A => SyncIO[B]): SyncIO[B] = fa.flatMap(f)
-      def tailRecM[A, B](a: A)(f: A => SyncIO[Either[A, B]]): SyncIO[B] =
-        Monad[SyncIO].tailRecM(a)(f)
-      def canceled: SyncIO[Unit] = SyncIO.unit
-      def forceR[A, B](fa: SyncIO[A])(fb: SyncIO[B]): SyncIO[B] = fa *> fb
-      def onCancel[A](fa: SyncIO[A], fin: SyncIO[Unit]): SyncIO[A] = fa
-      def uncancelable[A](f: Poll[SyncIO] => SyncIO[A]): SyncIO[A] = f(idPoll)
-      private val idPoll: Poll[SyncIO] = new Poll[SyncIO] { def apply[X](fx: SyncIO[X]) = fx }
-      def ref[A](a: A): SyncIO[Ref[SyncIO, A]] = Ref[SyncIO].of(a)
-      private[fs2] def interruptContext(root: Token): Option[SyncIO[InterruptContext[SyncIO]]] =
-        None
-    }
-
-    implicit def forSync[F[_]: Sync: MonadCancelThrow]: Target[F] = new SyncTarget
-
-    protected abstract class MonadCancelTarget[F[_]](implicit F: MonadCancelThrow[F])
+    protected abstract class MonadErrorTarget[F[_]](implicit F: MonadError[F, Throwable])
         extends Target[F] {
       def pure[A](a: A): F[A] = F.pure(a)
       def handleErrorWith[A](fa: F[A])(f: Throwable => F[A]): F[A] = F.handleErrorWith(fa)(f)
       def raiseError[A](e: Throwable): F[A] = F.raiseError(e)
       def flatMap[A, B](fa: F[A])(f: A => F[B]): F[B] = F.flatMap(fa)(f)
       def tailRecM[A, B](a: A)(f: A => F[Either[A, B]]): F[B] = F.tailRecM(a)(f)
+    }
+
+    def uncancelable[F[_]](implicit F: Sync[F]): Target[F] = new MonadErrorTarget[F]()(F) {
+      def canceled: F[Unit] = F.unit
+      def forceR[A, B](fa: F[A])(fb: F[B]): F[B] = fa *> fb
+      def onCancel[A](fa: F[A], fin: F[Unit]): F[A] = fa
+      def uncancelable[A](f: Poll[F] => F[A]): F[A] = f(idPoll)
+      private val idPoll: Poll[F] = new Poll[F] { def apply[X](fx: F[X]) = fx }
+      def ref[A](a: A): F[Ref[F, A]] = Ref[F].of(a)
+      private[fs2] def interruptContext(root: Token): Option[F[InterruptContext[F]]] = None
+    }
+
+    // TODO Delete this once SyncIO has a MonadCancelThrow instance
+    implicit def forSyncIO: Target[SyncIO] = uncancelable[SyncIO]
+
+    implicit def forSync[F[_]](sync: Sync[F], monadCancel: MonadCancelThrow[F]): Target[F] =
+      new SyncTarget[F]()(sync, monadCancel)
+
+    protected abstract class MonadCancelTarget[F[_]](implicit F: MonadCancelThrow[F])
+        extends MonadErrorTarget[F]()(F) {
       def canceled: F[Unit] = F.canceled
       def forceR[A, B](fa: F[A])(fb: F[B]): F[B] = F.forceR(fa)(fb)
       def onCancel[A](fa: F[A], fin: F[Unit]): F[A] = F.onCancel(fa, fin)
@@ -166,7 +165,7 @@ object Compiler extends CompilerLowPriority {
 
     private final class ConcurrentTarget[F[_]](
         protected implicit val F: Concurrent[F]
-    ) extends MonadCancelTarget[F] {
+    ) extends MonadCancelTarget[F]()(F) {
       def ref[A](a: A): F[Ref[F, A]] = F.ref(a)
       private[fs2] def interruptContext(root: Token): Option[F[InterruptContext[F]]] = Some(
         InterruptContext(root, F.unit)
