@@ -3586,6 +3586,54 @@ object Stream extends StreamLowPriority {
     suspend(go(s))
   }
 
+  /** Creates a stream by successively applying `f` until a `None` is returned, emitting
+    * each output `O` and using each output `S` as input to the next invocation of `f`.
+    * Compared to [[unfold]], `f` can still emit last elements at the last iteration.
+    *
+    * @example {{{
+    * scala> Stream.paginate(0)(i => if (i < 5) (i -> Some(i+1)) else (i -> None)).toList
+    * res0: List[Int] = List(0, 1, 2, 3, 4, 5)
+    * }}}
+    */
+  def paginate[F[x] >: Pure[x], S, O](s: S)(f: S => (O, Option[S])): Stream[F, O] = {
+    def go(s: S): Stream[F, O] =
+      f(s) match {
+        case (o, Some(s)) => emit(o) ++ go(s)
+        case (o, None)    => emit(o)
+      }
+    suspend(go(s))
+  }
+
+  /** Like [[paginate]] but each invocation of `f` provides a chunk of output.
+    *
+    * @example {{{
+    * scala> Stream.paginateChunk(0)(i => if (i < 5) (Chunk.seq(List.fill(i)(i)) -> Some(i+1)) else (Chunk.seq(List.fill(i)(i)) -> None)).toList
+    * res0: List[Int] = List(1, 2, 2, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 5)
+    * }}}
+    */
+  def paginateChunk[F[x] >: Pure[x], S, O](s: S)(f: S => (Chunk[O], Option[S])): Stream[F, O] =
+    paginate(s)(f).flatMap(chunk)
+
+  /** Like [[paginate]], but takes an effectful function. */
+  def paginateEval[F[_], S, O](s: S)(f: S => F[(O, Option[S])]): Stream[F, O] = {
+    def go(s: S): Stream[F, O] =
+      eval(f(s)).flatMap {
+        case (o, Some(s)) => emit(o) ++ go(s)
+        case (o, None)    => emit(o)
+      }
+    suspend(go(s))
+  }
+
+  /** Like [[paginateChunk]], but takes an effectful function. */
+  def paginateChunkEval[F[_], S, O](s: S)(f: S => F[(Chunk[O], Option[S])]): Stream[F, O] = {
+    def go(s: S): Stream[F, O] =
+      eval(f(s)).flatMap {
+        case (c, Some(s)) => chunk(c) ++ go(s)
+        case (c, None)    => chunk(c)
+      }
+    suspend(go(s))
+  }
+
   /** Creates a stream by successively applying `f` to a `S`, emitting
     * each output `O` and using each output `S` as input to the next invocation of `f`
     * if it is Some, or terminating on None
