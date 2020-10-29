@@ -672,12 +672,23 @@ object Pull extends PullLowPriority {
       def goView(frgx: F[R[G, X]], view: Cont[Unit, G, X]): F[R[G, X]] =
         frgx.attempt.flatMap(_.fold(goErr(_, view), viewRunner(view)))
 
-      def goMapOutput[Z](mout: MapOutput[G, Z, X], view: Cont[Unit, G, X]): F[R[G, X]] = {
-        val mo: Pull[G, X, Unit] = innerMapOutput[G, Z, X](mout.stream, mout.fun)
-        val str = new Bind[G, X, Unit, Unit](mo) {
-          def cont(r: Result[Unit]) = view(r)
+      def goBind(inner: Pull[G, X, Unit], view: View[G, X, Unit]): F[R[G, X]] = {
+        lazy val runner: RunR[G, X, F[R[G, X]]] = new RunR[G, X, F[R[G, X]]] {
+          def done(doneScope: CompileScope[F]): F[R[G, X]] =
+            go(doneScope, extendedTopLevelScope, translation, view.next(Result.unit))
+
+          def out(head: Chunk[X], scope: CompileScope[F], tail: Pull[G, X, Unit]): F[R[G, X]] = {
+            val contTail = new Bind[G, X, Unit, Unit](tail) {
+              def cont(r: Result[Unit]) = view.next(r)
+            }
+            F.pure(Out[G, X](head, scope, contTail))
+          }
+
+          def interrupted(tok: Token, err: Option[Throwable]): F[R[G, X]] =
+            go(scope, extendedTopLevelScope, translation, view.next(Result.Interrupted(tok, err)))
         }
-        go(scope, extendedTopLevelScope, translation, str)
+        go(scope, extendedTopLevelScope, translation, inner).attempt
+          .flatMap(_.fold(goErr(_, view), runner))
       }
 
       def goTranslate[H[_]](tst: Translate[H, G, X], view: Cont[Unit, G, X]): F[R[G, X]] = {
@@ -862,10 +873,7 @@ object Pull extends PullLowPriority {
 
             case mout: MapOutput[g, z, x] => // y = Unit
               val mo: Pull[g, X, Unit] = innerMapOutput[g, z, X](mout.stream, mout.fun)
-              val str = new Bind[g, X, Unit, Unit](mo) {
-                def cont(r: Result[Unit]) = view(r).asInstanceOf[Pull[g, X, Unit]]
-              }
-              go(scope, extendedTopLevelScope, translation, str)
+              goBind(mo, view.asInstanceOf[View[g, X, Unit]])
 
             case tst: Translate[h, g, x] =>
               val composed: h ~> F = translation.asInstanceOf[g ~> F].compose[h](tst.fk)
