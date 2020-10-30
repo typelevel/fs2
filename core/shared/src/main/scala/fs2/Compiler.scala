@@ -56,18 +56,13 @@ private[fs2] trait CompilerLowPriority2 {
 }
 
 private[fs2] trait CompilerLowPriority1 extends CompilerLowPriority2 {
-  implicit def target[F[_]: Compiler.Target]: Compiler[F, F] =
+  implicit def target[F[_]](implicit F: Compiler.Target[F]): Compiler[F, F] =
     new Compiler[F, F] {
       val target: Monad[F] = implicitly
       def apply[O, B](
           stream: Pull[F, O, Unit],
           init: B
-      )(foldChunk: (B, Chunk[O]) => B): F[B] =
-        Resource
-          .Bracket[F]
-          .bracketCase(CompileScope.newRoot[F])(scope =>
-            Pull.compile[F, O, B](stream, scope, false, init)(foldChunk)
-          )((scope, ec) => scope.close(ec).rethrow)
+      )(foldChunk: (B, Chunk[O]) => B): F[B] = F.compile(stream, init, foldChunk)
     }
 }
 
@@ -114,12 +109,18 @@ object Compiler extends CompilerLowPriority {
         .unsafeRunSync()
   }
 
-  sealed trait Target[F[_]] extends MonadCancelThrow[F] {
-    def ref[A](a: A): F[Ref[F, A]]
+  sealed trait Target[F[_]] extends MonadError[F, Throwable] {
+    private[fs2] def ref[A](a: A): F[Ref[F, A]]
+    private[fs2] def compile[O, Out](
+        p: Pull[F, O, Unit],
+        init: Out,
+        foldChunk: (Out, Chunk[O]) => Out
+    ): F[Out]
+    private[fs2] def uncancelable[A](poll: Poll[F] => F[A]): F[A]
     private[fs2] def interruptContext(root: Token): Option[F[InterruptContext[F]]]
   }
 
-  private[fs2] trait TargetLowPriority {
+  private[fs2] trait TargetLowPriority0 {
     protected abstract class MonadErrorTarget[F[_]](implicit F: MonadError[F, Throwable])
         extends Target[F] {
       def pure[A](a: A): F[A] = F.pure(a)
@@ -129,32 +130,63 @@ object Compiler extends CompilerLowPriority {
       def tailRecM[A, B](a: A)(f: A => F[Either[A, B]]): F[B] = F.tailRecM(a)(f)
     }
 
-    def uncancelable[F[_]](implicit F: Sync[F]): Target[F] = new MonadErrorTarget[F]()(F) {
-      def canceled: F[Unit] = F.unit
-      def forceR[A, B](fa: F[A])(fb: F[B]): F[B] = fa *> fb
-      def onCancel[A](fa: F[A], fin: F[Unit]): F[A] = fa
-      def uncancelable[A](f: Poll[F] => F[A]): F[A] = f(idPoll)
+    implicit def uncancelable[F[_]](implicit F: Sync[F]): Target[F] = new MonadErrorTarget[F]()(F) {
+      private[fs2] def uncancelable[A](f: Poll[F] => F[A]): F[A] = f(idPoll)
       private val idPoll: Poll[F] = new Poll[F] { def apply[X](fx: F[X]) = fx }
-      def ref[A](a: A): F[Ref[F, A]] = Ref[F].of(a)
+      private[fs2] def compile[O, Out](
+          p: Pull[F, O, Unit],
+          init: Out,
+          foldChunk: (Out, Chunk[O]) => Out
+      ): F[Out] =
+        CompileScope
+          .newRoot[F](this)
+          .flatMap(scope =>
+            Pull
+              .compile[F, O, Out](p, scope, false, init)(foldChunk)
+              .redeemWith(
+                t =>
+                  scope
+                    .close(Resource.ExitCase.Errored(t))
+                    .map {
+                      case Left(ts) => CompositeFailure(t, ts)
+                      case Right(_) => t
+                    }
+                    .flatMap(raiseError),
+                out =>
+                  scope.close(Resource.ExitCase.Succeeded).flatMap {
+                    case Left(ts) => raiseError(ts)
+                    case Right(_) => pure(out)
+                  }
+              )
+          )
+
+      private[fs2] def ref[A](a: A): F[Ref[F, A]] = Ref[F].of(a)
       private[fs2] def interruptContext(root: Token): Option[F[InterruptContext[F]]] = None
     }
+  }
 
-    // TODO Delete this once SyncIO has a MonadCancelThrow instance
-    implicit def forSyncIO: Target[SyncIO] = uncancelable[SyncIO]
+  private[fs2] trait TargetLowPriority extends TargetLowPriority0 {
 
     implicit def forSync[F[_]](sync: Sync[F], monadCancel: MonadCancelThrow[F]): Target[F] =
       new SyncTarget[F]()(sync, monadCancel)
 
     protected abstract class MonadCancelTarget[F[_]](implicit F: MonadCancelThrow[F])
         extends MonadErrorTarget[F]()(F) {
-      def canceled: F[Unit] = F.canceled
-      def forceR[A, B](fa: F[A])(fb: F[B]): F[B] = F.forceR(fa)(fb)
-      def onCancel[A](fa: F[A], fin: F[Unit]): F[A] = F.onCancel(fa, fin)
-      def uncancelable[A](f: Poll[F] => F[A]): F[A] = F.uncancelable(f)
+      private[fs2] def uncancelable[A](f: Poll[F] => F[A]): F[A] = F.uncancelable(f)
+      private[fs2] def compile[O, Out](
+          p: Pull[F, O, Unit],
+          init: Out,
+          foldChunk: (Out, Chunk[O]) => Out
+      ): F[Out] =
+        Resource
+          .Bracket[F]
+          .bracketCase(CompileScope.newRoot[F](this))(scope =>
+            Pull.compile[F, O, Out](p, scope, false, init)(foldChunk)
+          )((scope, ec) => scope.close(ec).rethrow)
     }
 
     private final class SyncTarget[F[_]: Sync: MonadCancelThrow] extends MonadCancelTarget[F] {
-      def ref[A](a: A): F[Ref[F, A]] = Ref[F].of(a)
+      private[fs2] def ref[A](a: A): F[Ref[F, A]] = Ref[F].of(a)
       private[fs2] def interruptContext(root: Token): Option[F[InterruptContext[F]]] = None
     }
   }
@@ -166,7 +198,7 @@ object Compiler extends CompilerLowPriority {
     private final class ConcurrentTarget[F[_]](
         protected implicit val F: Concurrent[F]
     ) extends MonadCancelTarget[F]()(F) {
-      def ref[A](a: A): F[Ref[F, A]] = F.ref(a)
+      private[fs2] def ref[A](a: A): F[Ref[F, A]] = F.ref(a)
       private[fs2] def interruptContext(root: Token): Option[F[InterruptContext[F]]] = Some(
         InterruptContext(root, F.unit)
       )
