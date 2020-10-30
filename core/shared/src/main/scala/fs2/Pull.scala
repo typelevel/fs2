@@ -603,7 +603,7 @@ object Pull extends PullLowPriority {
       initScope: CompileScope[F],
       extendLastTopLevelScope: Boolean,
       init: B
-  )(g: (B, Chunk[O]) => B)(implicit
+  )(foldChunk: (B, Chunk[O]) => B)(implicit
       F: MonadError[F, Throwable]
   ): F[B] = {
 
@@ -873,7 +873,11 @@ object Pull extends PullLowPriority {
       go[F, O](scope, None, initFk, stream).flatMap {
         case Done(_) => F.pure(accB)
         case out: Out[f, o] =>
-          try outerLoop(out.scope, g(accB, out.head), out.tail.asInstanceOf[Pull[f, O, Unit]])
+          try outerLoop(
+            out.scope,
+            foldChunk(accB, out.head),
+            out.tail.asInstanceOf[Pull[f, O, Unit]]
+          )
           catch {
             case NonFatal(e) =>
               val handled = viewL(out.tail) match {
