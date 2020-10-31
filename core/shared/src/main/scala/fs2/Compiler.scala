@@ -29,7 +29,21 @@ import cats.syntax.all._
 import fs2.internal._
 import scala.annotation.implicitNotFound
 
-/** Type class which describes compilation of a `Stream[F, O]` to a `G[*]`. */
+/** Provides compilation of a `Stream[F, O]` to a `G[*]`.
+  *
+  * In the most common case, `F = G = IO` or another "fully featured" effect type. However, there
+  * are other common instantiations like `F = Pure, G = Id`, which allows compiling a
+  * `Stream[Pure, A]` in to pure values.
+  *
+  * For the common case where `F = G`, the `target` implicit constructor provides an instance of
+  * `Compiler[F, F]` -- `target` requires a `Compiler.Target[F]` instance. The `Compiler.Target[F]` is a
+  * super charged `MonadErrorThrow[F]`, providing additional capabilities needed for stream compilation.
+  * `Compiler.Target[F]` instances are given for all `F[_]` which have:
+  *  - `Concurrent[F]` instances
+  *  - both `MonadCancelThrow[F]` and `Sync[F]` intances
+  *  - only `Sync[F]` instances
+  * Support for stream interruption requires compilation to an effect which has a `Concurrent` instance.
+  */
 @implicitNotFound(
   "Cannot find an implicit Compiler[F, G]. This typically means you need a Concurrent[F] in scope"
 )
