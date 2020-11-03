@@ -613,6 +613,18 @@ object Pull extends PullLowPriority {
         extends R[G, X]
     case class Interrupted(scopeId: Token, err: Option[Throwable]) extends R[Pure, INothing]
 
+    trait RunR[G[_], X, End] extends (R[G, X] => End) {
+      def apply(r: R[G, X]): End = r match {
+        case Done(scope)               => done(scope)
+        case Out(head, scope, tail)    => out(head, scope, tail)
+        case Interrupted(scopeId, err) => interrupted(scopeId, err)
+      }
+
+      def done(scope: CompileScope[F]): End
+      def out(head: Chunk[X], scope: CompileScope[F], tail: Pull[G, X, Unit]): End
+      def interrupted(scopeId: Token, err: Option[Throwable]): End
+    }
+
     def go[G[_], X](
         scope: CompileScope[F],
         extendedTopLevelScope: Option[CompileScope[F]],
@@ -653,6 +665,9 @@ object Pull extends PullLowPriority {
             }
         }
 
+      def goErr(err: Throwable, view: View[G, X, _]): F[R[G, X]] =
+        go(scope, extendedTopLevelScope, translation, view.next(Result.Fail(err)))
+
       def goMapOutput[Z](mout: MapOutput[G, Z, X], view: View[G, X, Unit]): F[R[G, X]] = {
         val mo: Pull[G, X, Unit] = innerMapOutput[G, Z, X](mout.stream, mout.fun)
         val str = new Bind[G, X, Unit, Unit](mo) {
@@ -673,16 +688,29 @@ object Pull extends PullLowPriority {
       }
 
       def goStep[Y](u: Step[G, Y], view: View[G, X, Option[StepStop[G, Y]]]): F[R[G, X]] = {
-        def outGo(out: Out[G, Y]): F[R[G, X]] = {
-          // if we originally swapped scopes we want to return the original
-          // scope back to the go as that is the scope that is expected to be here.
-          val nextScope = if (u.scope.isEmpty) out.scope else scope
-          interruptGuard(nextScope, view) {
-            val result: Result[Option[StepStop[G, Y]]] = {
-              val uncons = (out.head, out.scope.id, out.tail)
-              Result.Succeeded(Some(uncons))
+
+        class StepRunR(stepScope: CompileScope[F]) extends RunR[G, Y, F[R[G, X]]] {
+
+          def done(scope: CompileScope[F]): F[R[G, X]] =
+            interruptGuard(scope, view) {
+              val result = Result.Succeeded(None)
+              go(scope, extendedTopLevelScope, translation, view.next(result))
             }
-            go(nextScope, extendedTopLevelScope, translation, view.next(result))
+
+          def out(head: Chunk[Y], outScope: CompileScope[F], tail: Pull[G, Y, Unit]): F[R[G, X]] = {
+            // if we originally swapped scopes we want to return the original
+            // scope back to the go as that is the scope that is expected to be here.
+            val nextScope = if (u.scope.isEmpty) outScope else scope
+            interruptGuard(nextScope, view) {
+              val stop: StepStop[G, Y] = (head, outScope.id, tail)
+              val result = Result.Succeeded(Some(stop))
+              go(nextScope, extendedTopLevelScope, translation, view.next(result))
+            }
+          }
+
+          def interrupted(scopeId: Token, err: Option[Throwable]): F[R[G, X]] = {
+            val cont = view.next(Result.Interrupted(scopeId, err))
+            go(scope, extendedTopLevelScope, translation, cont)
           }
         }
 
@@ -693,21 +721,7 @@ object Pull extends PullLowPriority {
         }
         stepScopeF.flatMap { stepScope =>
           val runInner = go[G, Y](stepScope, extendedTopLevelScope, translation, u.stream)
-          runInner.attempt.flatMap {
-            case Right(Done(scope)) =>
-              interruptGuard(scope, view) {
-                val result = Result.Succeeded(None)
-                go(scope, extendedTopLevelScope, translation, view.next(result))
-              }
-            case Right(out: Out[_, _]) => outGo(out)
-
-            case Right(Interrupted(scopeId, err)) =>
-              val cont = view.next(Result.Interrupted(scopeId, err))
-              go(scope, extendedTopLevelScope, translation, cont)
-
-            case Left(err) =>
-              go(scope, extendedTopLevelScope, translation, view.next(Result.Fail(err)))
-          }
+          runInner.attempt.flatMap(_.fold(goErr(_, view), new StepRunR(stepScope)))
         }
       }
 
