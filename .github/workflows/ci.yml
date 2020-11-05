@@ -36,7 +36,7 @@ jobs:
           fetch-depth: 0
 
       - name: Setup Java and Scala
-        uses: olafurpg/setup-scala@v5
+        uses: olafurpg/setup-scala@v10
         with:
           java-version: ${{ matrix.java }}
 
@@ -118,7 +118,7 @@ jobs:
           fetch-depth: 0
 
       - name: Setup Java and Scala
-        uses: olafurpg/setup-scala@v5
+        uses: olafurpg/setup-scala@v10
         with:
           java-version: ${{ matrix.java }}
 

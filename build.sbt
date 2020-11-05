@@ -125,7 +125,8 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
     // Libraries not yet cross-built for Dotty
     libraryDependencies ++= Seq(
       "org.typelevel" %%% "cats-core" % "2.2.0",
-      "org.typelevel" %%% "cats-laws" % "2.2.0" % "test"
+      ("org.typelevel" %%% "cats-laws" % "2.2.0" % "test")
+        .exclude("org.scalacheck", "scalacheck_2.13")
     )
   )
   .settings(dottyLibrarySettings)
@@ -134,11 +135,13 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
     // Libraries cross-built for Dotty
     libraryDependencies ++= Seq(
       "org.typelevel" %%% "cats-effect" % "3.0.0-M2",
-      "org.typelevel" %%% "cats-effect-laws" % "3.0.0-M2" % "test",
-      "org.typelevel" %%% "cats-effect-testkit" % "3.0.0-M2" % "test",
-      "org.scodec" %%% "scodec-bits" % "1.1.20",
-      "org.typelevel" %%% "scalacheck-effect-munit" % "0.2.0" % "test",
-      "org.typelevel" %%% "munit-cats-effect-3" % "0.7.0" % "test"
+      ("org.typelevel" %%% "cats-effect-laws" % "3.0.0-M2" % "test")
+        .exclude("org.scalacheck", "scalacheck_2.13"),
+      ("org.typelevel" %%% "cats-effect-testkit" % "3.0.0-M2" % "test")
+        .exclude("org.scalacheck", "scalacheck_2.13"),
+      "org.scodec" %%% "scodec-bits" % "1.1.21",
+      "org.typelevel" %%% "scalacheck-effect-munit" % "0.4.0" % "test",
+      "org.typelevel" %%% "munit-cats-effect-3" % "0.8.0" % "test"
     )
   )
 
