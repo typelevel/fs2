@@ -167,7 +167,8 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   ),
   ProblemFilters.exclude[DirectMissingMethodProblem](
     "fs2.io.tls.TLSParameters#DefaultTLSParameters.this"
-  )
+  ),
+  ProblemFilters.exclude[NewMixinForwarderProblem]("fs2.Stream#LowPrioCompiler.resourceInstance")
 )
 
 lazy val root = project
