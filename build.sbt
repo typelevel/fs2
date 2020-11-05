@@ -193,7 +193,7 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
         .exclude("org.scalacheck", "scalacheck_2.13"),
       "org.typelevel" %%% "cats-effect" % "2.2.0",
       ("org.typelevel" %%% "cats-effect-laws" % "2.2.0" % "test")
-        .exclude("org.scalacheck", "scalacheck_2.13"),
+        .exclude("org.scalacheck", "scalacheck_2.13")
     )
   )
   .settings(dottyLibrarySettings)
