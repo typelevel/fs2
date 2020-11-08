@@ -786,8 +786,8 @@ object Pull extends PullLowPriority {
       }
 
       def goCloseScope(close: CloseScope, view: Cont[Unit, G, X]): F[R[G, X]] = {
-        def closeAndGo(toClose: CompileScope[F], ec: ExitCase) =
-          toClose.close(ec).flatMap { r =>
+        def closeAndGo(toClose: CompileScope[F]) =
+          toClose.close(close.exitCase).flatMap { r =>
             toClose.openAncestor.flatMap { ancestor =>
               val res = close.interruption match {
                 case None => Result.fromEither(r)
@@ -823,7 +823,7 @@ object Pull extends PullLowPriority {
                 toClose.openAncestor.flatMap { ancestor =>
                   go(ancestor, Some(toClose), translation, view(Result.unit))
                 }
-            else closeAndGo(toClose, close.exitCase)
+            else closeAndGo(toClose)
           case None =>
             // scope already closed, continue with current scope
             val result = close.interruption.getOrElse(Result.unit)
