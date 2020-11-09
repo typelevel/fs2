@@ -10,7 +10,7 @@ addCommandAlias(
 addCommandAlias("testJVM", ";coreJVM/test;io/test;reactiveStreams/test;benchmark/test")
 addCommandAlias("testJS", "coreJS/test")
 
-ThisBuild / baseVersion := "2.4"
+ThisBuild / baseVersion := "2.5"
 
 ThisBuild / organization := "co.fs2"
 ThisBuild / organizationName := "Functional Streams for Scala"
@@ -29,7 +29,8 @@ ThisBuild / githubWorkflowJavaVersions := Seq("adopt@1.11")
 
 ThisBuild / githubWorkflowPublishTargetBranches := Seq(
   RefPredicate.Equals(Ref.Branch("main")),
-  RefPredicate.Equals(Ref.Branch("develop"))
+  RefPredicate.Equals(Ref.Branch("develop")),
+  RefPredicate.StartsWith(Ref.Tag("v"))
 )
 
 ThisBuild / githubWorkflowBuild := Seq(
