@@ -18,12 +18,7 @@ ThisBuild / organizationName := "Functional Streams for Scala"
 ThisBuild / homepage := Some(url("https://github.com/typelevel/fs2"))
 ThisBuild / startYear := Some(2013)
 
-ThisBuild / crossScalaVersions := Seq("2.13.3", "2.12.10", "0.27.0-RC1", "3.0.0-M1")
-
-ThisBuild / versionIntroduced := Map(
-  "0.27.0-RC1" -> "2.4.99",
-  "3.0.0-M1" -> "2.4.99"
-)
+ThisBuild / crossScalaVersions := Seq("2.13.3", "2.12.10")
 
 ThisBuild / githubWorkflowJavaVersions := Seq("adopt@1.11")
 
@@ -187,18 +182,20 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
     inConfig(IntegrationTest)(org.scalafmt.sbt.ScalafmtPlugin.scalafmtConfigSettings)
   )
   .settings(
-    name := "fs2-core"
+    name := "fs2-core",
+    libraryDependencies ++= Seq(
+      "org.typelevel" %%% "cats-core" % "2.2.0",
+      "org.typelevel" %%% "cats-laws" % "2.2.0" % Test,
+      "org.typelevel" %%% "cats-effect" % "2.2.0",
+      "org.typelevel" %%% "cats-effect-laws" % "2.2.0" % Test
+    )
   )
   .settings(dottyLibrarySettings)
   .settings(dottyJsSettings(ThisBuild / crossScalaVersions))
   .settings(
     // Libraries cross-built for Dotty
     libraryDependencies ++= Seq(
-      "org.typelevel" %%% "cats-core" % "2.3.0-M2",
-      "org.typelevel" %%% "cats-laws" % "2.3.0-M2" % Test,
-      "org.typelevel" %%% "cats-effect" % "2.3.0-M1",
-      "org.typelevel" %%% "cats-effect-laws" % "2.3.0-M1" % Test,
-      "org.scodec" %%% "scodec-bits" % "1.1.21",
+     "org.scodec" %%% "scodec-bits" % "1.1.21",
       "org.typelevel" %%% "scalacheck-effect-munit" % "0.5.0" % Test,
       "org.typelevel" %%% "munit-cats-effect-2" % "0.9.0" % Test
     )
