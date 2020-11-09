@@ -18,10 +18,11 @@ ThisBuild / organizationName := "Functional Streams for Scala"
 ThisBuild / homepage := Some(url("https://github.com/typelevel/fs2"))
 ThisBuild / startYear := Some(2013)
 
-ThisBuild / crossScalaVersions := Seq("2.13.3", "2.12.10", "0.27.0-RC1")
+ThisBuild / crossScalaVersions := Seq("2.13.3", "2.12.10", "0.27.0-RC1", "3.0.0-M1")
 
 ThisBuild / versionIntroduced := Map(
-  "0.27.0-RC1" -> "3.0.0"
+  "0.27.0-RC1" -> "3.0.0",
+  "3.0.0-M1" -> "3.0.0"
 )
 
 ThisBuild / githubWorkflowJavaVersions := Seq("adopt@1.11")
@@ -121,27 +122,21 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
     Compile / scalafmt / unmanagedSources := (Compile / scalafmt / unmanagedSources).value
       .filterNot(_.toString.endsWith("Not.scala")),
     Test / scalafmt / unmanagedSources := (Test / scalafmt / unmanagedSources).value
-      .filterNot(_.toString.endsWith("Not.scala")),
-    // Libraries not yet cross-built for Dotty
-    libraryDependencies ++= Seq(
-      "org.typelevel" %%% "cats-core" % "2.2.0",
-      ("org.typelevel" %%% "cats-laws" % "2.2.0" % "test")
-        .exclude("org.scalacheck", "scalacheck_2.13")
-    )
+      .filterNot(_.toString.endsWith("Not.scala"))
   )
   .settings(dottyLibrarySettings)
   .settings(dottyJsSettings(ThisBuild / crossScalaVersions))
   .settings(
     // Libraries cross-built for Dotty
     libraryDependencies ++= Seq(
-      "org.typelevel" %%% "cats-effect" % "3.0.0-M2",
-      ("org.typelevel" %%% "cats-effect-laws" % "3.0.0-M2" % "test")
-        .exclude("org.scalacheck", "scalacheck_2.13"),
-      ("org.typelevel" %%% "cats-effect-testkit" % "3.0.0-M2" % "test")
-        .exclude("org.scalacheck", "scalacheck_2.13"),
+      "org.typelevel" %%% "cats-core" % "2.3.0-M2",
+      "org.typelevel" %%% "cats-laws" % "2.3.0-M2" % Test,
+      "org.typelevel" %%% "cats-effect" % "3.0.0-M3",
+      "org.typelevel" %%% "cats-effect-laws" % "3.0.0-M3" % Test,
+      "org.typelevel" %%% "cats-effect-testkit" % "3.0.0-M3" % Test,
       "org.scodec" %%% "scodec-bits" % "1.1.21",
-      "org.typelevel" %%% "scalacheck-effect-munit" % "0.4.0" % "test",
-      "org.typelevel" %%% "munit-cats-effect-3" % "0.8.0" % "test"
+      "org.typelevel" %%% "scalacheck-effect-munit" % "0.5.0" % Test,
+      "org.typelevel" %%% "munit-cats-effect-3" % "0.9.0" % Test
     )
   )
 
@@ -165,7 +160,7 @@ lazy val coreJS = core.js
     scalaJSStage in Test := FastOptStage,
     jsEnv := new org.scalajs.jsenv.nodejs.NodeJSEnv(),
     scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule)),
-    crossScalaVersions := crossScalaVersions.value.filterNot(_.startsWith("0."))
+    crossScalaVersions := crossScalaVersions.value.filter(_.startsWith("2."))
   )
 
 lazy val io = project
@@ -198,7 +193,7 @@ lazy val reactiveStreams = project
     libraryDependencies ++= Seq(
       "org.reactivestreams" % "reactive-streams" % "1.0.3",
       "org.reactivestreams" % "reactive-streams-tck" % "1.0.3" % "test",
-      ("org.scalatestplus" %% "testng-6-7" % "3.2.2.0" % "test").withDottyCompat(scalaVersion.value)
+      ("org.scalatestplus" %% "testng-6-7" % "3.2.3.0" % "test").withDottyCompat(scalaVersion.value)
     ),
     OsgiKeys.exportPackage := Seq("fs2.interop.reactivestreams.*"),
     OsgiKeys.privatePackage := Seq(),

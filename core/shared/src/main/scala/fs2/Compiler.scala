@@ -193,10 +193,8 @@ object Compiler extends CompilerLowPriority {
           foldChunk: (Out, Chunk[O]) => Out
       ): F[Out] =
         Resource
-          .Bracket[F]
-          .bracketCase(CompileScope.newRoot[F](this))(scope =>
-            Pull.compile[F, O, Out](p, scope, false, init)(foldChunk)
-          )((scope, ec) => scope.close(ec).rethrow)
+          .makeCase(CompileScope.newRoot[F](this))((scope, ec) => scope.close(ec).rethrow)
+          .use(scope => Pull.compile[F, O, Out](p, scope, false, init)(foldChunk))
     }
 
     private final class SyncTarget[F[_]: Sync: MonadCancelThrow] extends MonadCancelTarget[F] {

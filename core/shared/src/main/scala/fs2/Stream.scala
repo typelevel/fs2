@@ -701,8 +701,8 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * res0: List[Int] = List(1, 2, 3, 4)
     * }}}
     */
-  def debug(
-      formatter: O => String = (o: O @annotation.unchecked.uncheckedVariance) => o.toString,
+  def debug[O2 >: O](
+      formatter: O2 => String = (o2: O2) => o2.toString,
       logger: String => Unit = println(_)
   ): Stream[F, O] =
     map { o =>
@@ -722,9 +722,8 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * res0: List[Int] = List(1, 2, 3, 4, 5, 6)
     * }}}
     */
-  def debugChunks(
-      formatter: Chunk[O] => String = (os: Chunk[O] @annotation.unchecked.uncheckedVariance) =>
-        os.toString,
+  def debugChunks[O2 >: O](
+      formatter: Chunk[O2] => String = (os: Chunk[O2]) => os.toString,
       logger: String => Unit = println(_)
   ): Stream[F, O] =
     chunks.flatMap { os =>
