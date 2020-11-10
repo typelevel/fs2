@@ -674,8 +674,7 @@ object Pull extends PullLowPriority {
 
       def goMapOutput[Z](mout: MapOutput[G, Z, X], view: Cont[Unit, G, X]): F[R[G, X]] = {
         val inner: Pull[G, X, Unit] = innerMapOutput(mout.stream, mout.fun)
-        go(scope, extendedTopLevelScope, translation, inner).attempt
-          .flatMap(_.fold(goErr(_, view), viewRunner(view)))
+        goView(go(scope, extendedTopLevelScope, translation, inner), view)
       }
 
       def goTranslate[H[_]](tst: Translate[H, G, X], view: Cont[Unit, G, X]): F[R[G, X]] = {
@@ -858,8 +857,9 @@ object Pull extends PullLowPriority {
                 F.pure(Out(output.values, scope, view(Result.unit)))
               )
 
-            case mout: MapOutput[g, z, x] => // y = Unit
-              goMapOutput(mout.asInstanceOf[MapOutput[G, z, X]], view.asInstanceOf[Cont[Unit, G, X]])
+            case moutx: MapOutput[g, z, x] => // y = Unit
+              val mout = moutx.asInstanceOf[MapOutput[G, z, X]]
+              goMapOutput(mout, view.asInstanceOf[Cont[Unit, G, X]])
 
             case tst: Translate[h, g, x] =>
               val composed: h ~> F = translation.asInstanceOf[g ~> F].compose[h](tst.fk)
