@@ -672,28 +672,10 @@ object Pull extends PullLowPriority {
       def goView(frgx: F[R[G, X]], view: Cont[Unit, G, X]): F[R[G, X]] =
         frgx.attempt.flatMap(_.fold(goErr(_, view), viewRunner(view)))
 
-      def goBind(inner: Pull[G, X, Unit], view: Cont[Unit, G, X]): F[R[G, X]] = {
-        lazy val runner: RunR[G, X, F[R[G, X]]] = new RunR[G, X, F[R[G, X]]] {
-          def done(doneScope: CompileScope[F]): F[R[G, X]] =
-            go(doneScope, extendedTopLevelScope, translation, view(Result.unit))
-
-          def out(head: Chunk[X], scope: CompileScope[F], tail: Pull[G, X, Unit]): F[R[G, X]] = {
-            val contTail = new Bind[G, X, Unit, Unit](tail) {
-              def cont(r: Result[Unit]) = view(r)
-            }
-            F.pure(Out[G, X](head, scope, contTail))
-          }
-
-          def interrupted(tok: Token, err: Option[Throwable]): F[R[G, X]] =
-            go(scope, extendedTopLevelScope, translation, view(Result.Interrupted(tok, err)))
-        }
-        go(scope, extendedTopLevelScope, translation, inner).attempt
-          .flatMap(_.fold(goErr(_, view), runner))
-      }
-
       def goMapOutput[Z](mout: MapOutput[G, Z, X], view: Cont[Unit, G, X]): F[R[G, X]] = {
-        val mo: Pull[G, X, Unit] = innerMapOutput(mout.stream, mout.fun)
-        goBind(mo, view)
+        val inner: Pull[G, X, Unit] = innerMapOutput(mout.stream, mout.fun)
+        go(scope, extendedTopLevelScope, translation, inner).attempt
+          .flatMap(_.fold(goErr(_, view), viewRunner(view)))
       }
 
       def goTranslate[H[_]](tst: Translate[H, G, X], view: Cont[Unit, G, X]): F[R[G, X]] = {
