@@ -592,16 +592,16 @@ private[fs2] object FreeC {
       freeC: FreeC[F, O, Unit],
       f: O => FreeC[F2, O2, Unit]
   ): FreeC[F2, O2, Unit] =
-    uncons(freeC).flatMap {
+    Step(freeC, None).flatMap {
       case None => Result.unit
 
-      case Some((chunk, FreeC.Result.Pure(_))) if chunk.size == 1 =>
+      case Some((chunk, _, FreeC.Result.Pure(_))) if chunk.size == 1 =>
         // nb: If tl is Pure, there's no need to propagate flatMap through the tail. Hence, we
         // check if hd has only a single element, and if so, process it directly instead of folding.
         // This allows recursive infinite streams of the form `def s: Stream[Pure,O] = Stream(o).flatMap { _ => s }`
         f(chunk(0))
 
-      case Some((chunk, tail)) =>
+      case Some((chunk, _, tail)) =>
         def go(idx: Int): FreeC[F2, O2, Unit] =
           if (idx == chunk.size)
             flatMapOutput[F, F2, O, O2](tail, f)
