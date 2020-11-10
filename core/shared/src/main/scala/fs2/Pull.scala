@@ -693,7 +693,7 @@ object Pull extends PullLowPriority {
 
       def goStep[Y](u: Step[G, Y], view: Cont[Option[StepStop[G, Y]], G, X]): F[R[G, X]] = {
 
-        class StepRunR(stepScope: CompileScope[F]) extends RunR[G, Y, F[R[G, X]]] {
+        class StepRunR() extends RunR[G, Y, F[R[G, X]]] {
 
           def done(scope: CompileScope[F]): F[R[G, X]] =
             interruptGuard(scope, view) {
@@ -723,7 +723,7 @@ object Pull extends PullLowPriority {
         }
         stepScopeF.flatMap { stepScope =>
           val runInner = go[G, Y](stepScope, extendedTopLevelScope, translation, u.stream)
-          runInner.attempt.flatMap(_.fold(goErr(_, view), new StepRunR(stepScope)))
+          runInner.attempt.flatMap(_.fold(goErr(_, view), new StepRunR()))
         }
       }
 
