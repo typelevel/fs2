@@ -464,16 +464,55 @@ object Pull extends PullLowPriority {
   }
 
   /* unrolled view of Pull `bind` structure * */
-
   private def viewL[F[_], O](stream: Pull[F, O, Unit]): ViewL[F, O] = {
+
+    def flatMapView[Q, P](fm: FlatMapOutput[F, P, Q]): ViewL[F, Q] = {
+      val st = Step[F, P](fm.stream, None)
+      new View[F, Q, Option[StepStop[F, P]]](st) {
+        def apply(r: Result[Option[StepStop[F, P]]]) = r match {
+          case Result.Succeeded(r) =>
+            try flatMapOutputCont[F, P, Q](fm.fun)(r)
+            catch { case NonFatal(e) => Result.Fail(e) }
+          case res @ Result.Interrupted(_, _) => res
+          case res @ Result.Fail(_)           => res
+        }
+      }
+    }
+
+    def flatMapOutBind[Q, P](
+        fmout: FlatMapOutput[F, P, Q],
+        b: Bind[F, Q, Unit, Unit]
+    ): View[F, Q, Option[StepStop[F, P]]] = {
+      type X = Option[StepStop[F, P]]
+      val step = Step(fmout.stream, None)
+      val del = b.delegate
+      new View[F, Q, X](step) {
+        def apply(zr: Result[X]): Pull[F, Q, Unit] = {
+          val iccc = zr match {
+            case Result.Succeeded(r) =>
+              try flatMapOutputCont(fmout.fun)(r)
+              catch { case NonFatal(e) => Result.Fail(e) }
+            case res @ Result.Interrupted(_, _) => res
+            case res @ Result.Fail(_)           => res
+          }
+          new Bind[F, Q, Unit, Unit](iccc) {
+            override val delegate: Bind[F, Q, Unit, Unit] = del
+            def cont(yr: Result[Unit]): Pull[F, Q, Unit] = delegate.cont(yr)
+          }
+        }
+      }
+    }
 
     @tailrec
     def mk(free: Pull[F, O, Unit]): ViewL[F, O] =
       free match {
-        case r: Result[Unit]       => r
-        case e: Action[F, O, Unit] => new EvalView[F, O](e)
+        case r: Result[Unit]           => r
+        case f: FlatMapOutput[F, p, O] => flatMapView(f)
+        case e: Action[F, O, Unit]     => new EvalView[F, O](e)
         case b: Bind[F, O, y, Unit] =>
           b.step match {
+            case fmout: FlatMapOutput[g, p, O] =>
+              flatMapOutBind[O, p](fmout, b.asInstanceOf[Bind[g, O, Unit, Unit]])
             case e: Action[F, O, y2] => new BindView(e, b)
             case r: Result[_]        => mk(b.cont(r.asInstanceOf[Result[y]]))
             case c: Bind[F, O, x, _] => mk(new BindBind[F, O, x, y](c, b.delegate))
@@ -503,6 +542,11 @@ object Pull extends PullLowPriority {
   private final case class MapOutput[F[_], O, P](
       stream: Pull[F, O, Unit],
       fun: O => P
+  ) extends Action[F, P, Unit]
+
+  private final case class FlatMapOutput[+F[_], O, +P](
+      stream: Pull[F, O, Unit],
+      fun: O => Pull[F, P, Unit]
   ) extends Action[F, P, Unit]
 
   /** Steps through the stream, providing either `uncons` or `stepLeg`.
@@ -654,6 +698,12 @@ object Pull extends PullLowPriority {
               case i: InScope[k, c] =>
                 InScope[k, D](innerMapOutput(i.stream, fun), i.useInterruption)
               case m: MapOutput[k, b, c] => innerMapOutput(m.stream, fun.compose(m.fun))
+
+              case fm: FlatMapOutput[k, b, c] =>
+                // end result: a Pull[K, D, x]
+                val innerCont: b => Pull[k, D, Unit] =
+                  (x: b) => innerMapOutput[k, c, D](fm.fun(x), fun)
+                FlatMapOutput[k, b, D](fm.stream, innerCont)
             }
             new Bind[K, D, x, Unit](mstep) {
               def cont(r: Result[x]) = innerMapOutput(v(r), fun)
@@ -903,7 +953,7 @@ object Pull extends PullLowPriority {
                 go[h, x](scope, extendedTopLevelScope, composed, tst.stream)
 
               F.map(runInner) {
-                case out: Out[h, x]            => Out[g, x](out.head, out.scope, Translate(out.tail, tst.fk))
+                case out: Out[h, x]            => Out[g, x](out.head, out.scope, translate(out.tail, tst.fk))
                 case dd @ Done(_)              => dd
                 case inter @ Interrupted(_, _) => inter
               }
@@ -965,44 +1015,35 @@ object Pull extends PullLowPriority {
     outerLoop(initScope, init, stream)
   }
 
-  private[fs2] def flatMapOutput[F[_], F2[x] >: F[x], O, O2](
-      p: Pull[F, O, Unit],
-      f: O => Pull[F2, O2, Unit]
-  ): Pull[F2, O2, Unit] =
-    Step(p, None).flatMap {
+  private[this] def flatMapOutputCont[F[_], O, P](
+      fun: O => Pull[F, P, Unit]
+  )(unc: Option[StepStop[F, O]]): Pull[F, P, Unit] =
+    unc match {
       case None => Result.unit
 
       case Some((chunk, _, Result.Succeeded(_))) if chunk.size == 1 =>
         // nb: If tl is Pure, there's no need to propagate flatMap through the tail. Hence, we
         // check if hd has only a single element, and if so, process it directly instead of folding.
         // This allows recursive infinite streams of the form `def s: Stream[Pure,O] = Stream(o).flatMap { _ => s }`
-        f(chunk(0))
+        fun(chunk(0))
 
       case Some((chunk, _, tail)) =>
-        def go(idx: Int): Pull[F2, O2, Unit] =
+        def go(idx: Int): Pull[F, P, Unit] =
           if (idx == chunk.size)
-            flatMapOutput[F, F2, O, O2](tail, f)
+            FlatMapOutput[F, O, P](tail, fun)
           else
-            f(chunk(idx)).transformWith {
+            fun(chunk(idx)).transformWith {
               case Result.Succeeded(_) => go(idx + 1)
               case Result.Fail(err)    => Result.Fail(err)
               case interruption @ Result.Interrupted(_, _) =>
-                flatMapOutput[F, F2, O, O2](interruptBoundary(tail, interruption), f)
+                FlatMapOutput[F, O, P](interruptBoundary(tail, interruption), fun)
             }
 
         go(0)
     }
 
-  /** Inject interruption to the tail used in flatMap.
-    * Assures that close of the scope is invoked if at the flatMap tail, otherwise switches evaluation to `interrupted` path
-    *
-    * @param stream             tail to inject interruption into
-    * @param interruptedScope   scopeId to interrupt
-    * @param interruptedError   Additional finalizer errors
-    * @tparam F
-    * @tparam O
-    * @return
-    */
+  /* Inject interruption to the tail used in flatMap.  Assures that close of the scope
+   * is invoked if at the flatMap tail, otherwise switches evaluation to `interrupted` path*/
   private[this] def interruptBoundary[F[_], O](
       stream: Pull[F, O, Unit],
       interruption: Result.Interrupted
@@ -1027,11 +1068,27 @@ object Pull extends PullLowPriority {
         }
     }
 
+  private[fs2] def flatMapOutput[F[_], F2[x] >: F[x], O, O2](
+      p: Pull[F, O, Unit],
+      f: O => Pull[F2, O2, Unit]
+  ): Pull[F2, O2, Unit] =
+    p match {
+      case r: Result[_]          => r
+      case a: AlgEffect[F, Unit] => a
+      case _                     => FlatMapOutput(p, f)
+    }
+
   private[fs2] def translate[F[_], G[_], O](
       stream: Pull[F, O, Unit],
       fK: F ~> G
   ): Pull[G, O, Unit] =
-    Translate(stream, fK)
+    stream match {
+      case r: Result[_] => r
+      case t: Translate[e, f, _] =>
+        translate[e, G, O](t.stream, t.fk.andThen(fK.asInstanceOf[f ~> G]))
+      case o: Output[_] => o
+      case _            => Translate(stream, fK)
+    }
 
   /* Applies the outputs of this pull to `f` and returns the result in a new `Pull`. */
   private[fs2] def mapOutput[F[_], O, P](
