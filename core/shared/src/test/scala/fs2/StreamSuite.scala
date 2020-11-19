@@ -23,6 +23,7 @@ package fs2
 
 import scala.concurrent.duration._
 
+import cats.{Id, ~>}
 import cats.data.Chain
 import cats.effect.{IO, Outcome, Resource, SyncIO}
 import cats.effect.kernel.{Deferred, Ref}
@@ -450,6 +451,20 @@ class StreamSuite extends Fs2Suite {
   property("mapChunks") {
     forAll { (s: Stream[Pure, Int]) =>
       assertEquals(s.mapChunks(identity).chunks.toList, s.chunks.toList)
+    }
+  }
+
+  group("translate") {
+    test("should translate elements in a segment but no more") {
+
+      val pre = Stream.emits[IO, Int](List(1, 2))
+      val inf = Stream.emits[Id, Int](List(3, 4))
+      val pos = Stream.emits[IO, Int](List(5, 6))
+      val fk: Id ~> IO = new (Id ~> IO) {
+        def apply[A](a: A): IO[A] = IO(a)
+      }
+      val result: Stream[IO, Int] = pre ++ inf.translate(fk) ++ pos
+      result.compile.toList.assertEquals(List(1, 2, 3, 4, 5, 6))
     }
   }
 

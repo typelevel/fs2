@@ -505,6 +505,11 @@ object Pull extends PullLowPriority {
       fun: O => P
   ) extends Action[F, P, Unit]
 
+  private final case class FlatMapOutput[F[_], O, P](
+      stream: Pull[F, O, Unit],
+      fun: O => Pull[F, P, Unit]
+  ) extends Action[F, P, Unit]
+
   /** Steps through the stream, providing either `uncons` or `stepLeg`.
     * Yields to head in form of chunk, then id of the scope that was active after step evaluated and tail of the `stream`.
     *
@@ -654,11 +659,78 @@ object Pull extends PullLowPriority {
               case i: InScope[k, c] =>
                 InScope[k, D](innerMapOutput(i.stream, fun), i.useInterruption)
               case m: MapOutput[k, b, c] => innerMapOutput(m.stream, fun.compose(m.fun))
+
+              case fm: FlatMapOutput[k, b, c] =>
+                // end result: a Pull[K, D, x]
+                val innerCont: b => Pull[k, D, Unit] =
+                  (x: b) => innerMapOutput[k, c, D](fm.fun(x), fun)
+                FlatMapOutput[k, b, D](fm.stream, innerCont)
             }
             new Bind[K, D, x, Unit](mstep) {
               def cont(r: Result[x]) = innerMapOutput(v(r), fun)
             }
         }
+
+      def innerFlatMapOutput[K[_], C, D](
+          stream: Pull[K, C, Unit],
+          fun: C => Pull[K, D, Unit]
+      ): Pull[K, D, Unit] = {
+        /* Inject interruption to the tail used in flatMap. Assures that we close the scope
+         * at the flatMap tail,  otherwise switches evaluation to `interrupted` path*/
+        def interruptBoundary(
+            stream: Pull[K, C, Unit],
+            interruption: Result.Interrupted
+        ): Pull[K, C, Unit] =
+          viewL(stream) match {
+            case interrupted: Result.Interrupted => interrupted // impossible
+            case _: Result.Succeeded[_]          => interruption
+            case failed: Result.Fail =>
+              interruption.deferredError match {
+                case Some(intErr) => Result.Fail(CompositeFailure(intErr, failed.error))
+                case None         => failed
+              }
+
+            case view: View[K, C, _] =>
+              view.step match {
+                case CloseScope(scopeId, _, _) =>
+                  // Inner scope is getting closed b/c a parent was interrupted
+                  CloseScope(scopeId, Some(interruption), ExitCase.Canceled).transformWith(view)
+                case _ =>
+                  // all other cases insert interruption cause
+                  view(interruption)
+              }
+          }
+
+        def goChunk(idx: Int, chunk: Chunk[C], tail: Pull[K, C, Unit]): Pull[K, D, Unit] =
+          if (idx == chunk.size)
+            stepFlatMap(tail)
+          else
+            fun(chunk(idx)).transformWith {
+              case Result.Succeeded(_) => goChunk(idx + 1, chunk, tail)
+              case Result.Fail(err)    => Result.Fail(err)
+              case interruption @ Result.Interrupted(_, _) =>
+                stepFlatMap(interruptBoundary(tail, interruption))
+            }
+
+        def stepFlatMap(str: Pull[K, C, Unit]): Pull[K, D, Unit] =
+          Step(str, None).flatMap {
+            case None => Result.unit
+
+            case Some((chunk, _, Result.Succeeded(_))) if chunk.size == 1 =>
+              // nb: If tl is Pure, there's no need to propagate flatMap through the tail. Hence, we
+              // check if hd has only a single element, and if so, process it directly instead of folding.
+              // This allows recursive infinite streams of the form `def s: Stream[Pure,O] = Stream(o).flatMap { _ => s }`
+              fun(chunk(0))
+
+            case Some((chunk, _, tail)) if chunk.isEmpty =>
+              stepFlatMap(tail)
+
+            case Some((chunk, _, tail)) =>
+              goChunk(0, chunk, tail)
+          }
+
+        stepFlatMap(stream)
+      }
 
       def goErr(err: Throwable, view: Cont[Nothing, G, X]): F[R[G, X]] =
         go(scope, extendedTopLevelScope, translation, view(Result.Fail(err)))
@@ -897,13 +969,17 @@ object Pull extends PullLowPriority {
               }
               go(scope, extendedTopLevelScope, translation, str)
 
+            case fmout: FlatMapOutput[g, z, x] => // y = Unit
+              val mo: Pull[g, X, Unit] = innerFlatMapOutput[g, z, X](fmout.stream, fmout.fun)
+              goView(go(scope, extendedTopLevelScope, translation, mo), view)
+
             case tst: Translate[h, g, x] =>
               val composed: h ~> F = translation.asInstanceOf[g ~> F].compose[h](tst.fk)
               val runInner: F[R[h, x]] =
                 go[h, x](scope, extendedTopLevelScope, composed, tst.stream)
 
               F.map(runInner) {
-                case out: Out[h, x]            => Out[g, x](out.head, out.scope, Translate(out.tail, tst.fk))
+                case out: Out[h, x]            => Out[g, x](out.head, out.scope, translate(out.tail, tst.fk))
                 case dd @ Done(_)              => dd
                 case inter @ Interrupted(_, _) => inter
               }
@@ -969,69 +1045,22 @@ object Pull extends PullLowPriority {
       p: Pull[F, O, Unit],
       f: O => Pull[F2, O2, Unit]
   ): Pull[F2, O2, Unit] =
-    Step(p, None).flatMap {
-      case None => Result.unit
-
-      case Some((chunk, _, Result.Succeeded(_))) if chunk.size == 1 =>
-        // nb: If tl is Pure, there's no need to propagate flatMap through the tail. Hence, we
-        // check if hd has only a single element, and if so, process it directly instead of folding.
-        // This allows recursive infinite streams of the form `def s: Stream[Pure,O] = Stream(o).flatMap { _ => s }`
-        f(chunk(0))
-
-      case Some((chunk, _, tail)) =>
-        def go(idx: Int): Pull[F2, O2, Unit] =
-          if (idx == chunk.size)
-            flatMapOutput[F, F2, O, O2](tail, f)
-          else
-            f(chunk(idx)).transformWith {
-              case Result.Succeeded(_) => go(idx + 1)
-              case Result.Fail(err)    => Result.Fail(err)
-              case interruption @ Result.Interrupted(_, _) =>
-                flatMapOutput[F, F2, O, O2](interruptBoundary(tail, interruption), f)
-            }
-
-        go(0)
-    }
-
-  /** Inject interruption to the tail used in flatMap.
-    * Assures that close of the scope is invoked if at the flatMap tail, otherwise switches evaluation to `interrupted` path
-    *
-    * @param stream             tail to inject interruption into
-    * @param interruptedScope   scopeId to interrupt
-    * @param interruptedError   Additional finalizer errors
-    * @tparam F
-    * @tparam O
-    * @return
-    */
-  private[this] def interruptBoundary[F[_], O](
-      stream: Pull[F, O, Unit],
-      interruption: Result.Interrupted
-  ): Pull[F, O, Unit] =
-    viewL(stream) match {
-      case interrupted: Result.Interrupted => interrupted // impossible
-      case _: Result.Succeeded[_]          => interruption
-      case failed: Result.Fail =>
-        val mixed = CompositeFailure
-          .fromList(interruption.deferredError.toList :+ failed.error)
-          .getOrElse(failed.error)
-        Result.Fail(mixed)
-
-      case view: View[F, O, _] =>
-        view.step match {
-          case CloseScope(scopeId, _, _) =>
-            // Inner scope is getting closed b/c a parent was interrupted
-            CloseScope(scopeId, Some(interruption), ExitCase.Canceled).transformWith(view)
-          case _ =>
-            // all other cases insert interruption cause
-            view(interruption)
-        }
+    p match {
+      case r: Result[_]          => r
+      case a: AlgEffect[F, Unit] => a
+      case _                     => FlatMapOutput(p, f)
     }
 
   private[fs2] def translate[F[_], G[_], O](
       stream: Pull[F, O, Unit],
       fK: F ~> G
   ): Pull[G, O, Unit] =
-    Translate(stream, fK)
+    stream match {
+      case r: Result[_]          => r
+      case t: Translate[e, f, _] => translate[e, G, O](t.stream, fK.compose(t.fk))
+      case o: Output[_]          => o
+      case _                     => Translate(stream, fK)
+    }
 
   /* Applies the outputs of this pull to `f` and returns the result in a new `Pull`. */
   private[fs2] def mapOutput[F[_], O, P](
