@@ -2853,13 +2853,26 @@ object Stream extends StreamLowPriority {
 
   /** Light weight alternative to `awakeEvery` that sleeps for duration `d` before each pulled element.
     */
-  def awakeDelay[F[x] >: Pure[x]](
-      d: FiniteDuration
+  def awakeDelay[F[_]](
+      period: FiniteDuration
   )(implicit t: Temporal[F]): Stream[F, FiniteDuration] =
-    Stream.eval(t.monotonic.map(_.toNanos)).flatMap { start =>
-      fixedDelay[F](d) >> Stream
-        .eval(t.monotonic.map(_.toNanos).map(now => (now - start).nanos))
+    Stream.eval(t.monotonic).flatMap { start =>
+      fixedDelay[F](period) >> Stream.eval(t.monotonic.map(_ - start))
     }
+
+  /** Discrete stream that every `d` emits elapsed duration
+    * since the start time of stream consumption.
+    * 
+    * Missed periods are dampened to a single tick.
+    *
+    * For example: `awakeEvery[IO](5 seconds)` will
+    * return (approximately) `5s, 10s, 15s`, and will lie dormant
+    * between emitted values.
+    *
+    * @param period duration between emits of the resulting stream
+    */
+  def awakeEvery[F[_]: Temporal](period: FiniteDuration): Stream[F, FiniteDuration] =
+    awakeEvery(period, true)
 
   /** Discrete stream that every `d` emits elapsed duration
     * since the start time of stream consumption.
@@ -2868,14 +2881,14 @@ object Stream extends StreamLowPriority {
     * return (approximately) `5s, 10s, 15s`, and will lie dormant
     * between emitted values.
     *
-    * @param d FiniteDuration between emits of the resulting stream
+    * @param period duration between emits of the resulting stream
+    * @param dampen whether missed periods result in 1 emitted tick or 1 per missed period, see [[fixedRate]] for more info
     */
-  def awakeEvery[F[x] >: Pure[x]](
-      d: FiniteDuration
+  def awakeEvery[F[_]](
+      period: FiniteDuration, dampen: Boolean
   )(implicit t: Temporal[F]): Stream[F, FiniteDuration] =
-    Stream.eval(t.monotonic.map(_.toNanos)).flatMap { start =>
-      fixedRate[F](d) >> Stream
-        .eval(t.monotonic.map(_.toNanos).map(now => (now - start).nanos))
+    Stream.eval(t.monotonic).flatMap { start =>
+      fixedRate[F](period, dampen) >> Stream.eval(t.monotonic.map(_ - start))
     }
 
   /** Creates a stream that emits a resource allocated by an effect, ensuring the resource is
@@ -3064,27 +3077,51 @@ object Stream extends StreamLowPriority {
     * This difference can roughly be thought of as the difference between `scheduleWithFixedDelay` and
     * `scheduleAtFixedRate` in `java.util.concurrent.Scheduler`.
     *
-    * Alias for `sleep(d).repeat`.
+    * Alias for `sleep(period).repeat`.
     */
-  def fixedDelay[F[_]](d: FiniteDuration)(implicit t: Temporal[F]): Stream[F, Unit] =
-    sleep(d).repeat
+  def fixedDelay[F[_]](period: FiniteDuration)(implicit t: Temporal[F]): Stream[F, Unit] =
+    sleep(period).repeat
 
-  /** Discrete stream that emits a unit every `d`.
+  /** Discrete stream that emits a unit every `d`, with missed period ticks dampened.
     *
     * See [[fixedDelay]] for an alternative that sleeps `d` between elements.
     *
-    * @param d FiniteDuration between emits of the resulting stream
+    * @param period duration between emits of the resulting stream
     */
-  def fixedRate[F[_]](d: FiniteDuration)(implicit t: Temporal[F]): Stream[F, Unit] = {
-    def now: Stream[F, Long] = Stream.eval(t.monotonic.map(_.toNanos))
-    def go(started: Long): Stream[F, Unit] =
-      now.flatMap { finished =>
-        val elapsed = finished - started
-        Stream.sleep_(d - elapsed.nanos) ++ now.flatMap { started =>
-          Stream.emit(()) ++ go(started)
+  def fixedRate[F[_]](period: FiniteDuration)(implicit t: Temporal[F]): Stream[F, Unit] =
+    fixedRate(period, true)
+
+  /** Discrete stream that emits a unit every `d`.
+   * 
+    * See [[fixedDelay]] for an alternative that sleeps `d` between elements.
+    * 
+    * This operation differs in that the time between ticks should roughly be equal to the specified period, regardless
+    * of how much time it takes to process that tick downstream. For example, with a 1 second period and a task that takes 100ms,
+    * the task would run at timestamps, 1s, 2s, 3s, etc. when using `fixedRate >> task` whereas it would run at timestamps 
+    * 1s, 2.1s, 3.2s, etc. when using `fixedDelay >> task`.
+    * 
+    * In the case where task processing takes longer than a single period, 1 or more ticks are immediately emitted to "catch-up".
+    * The `dampen` parameter controls whether a single tick is emitted or whether one per missed period is emitted.
+    *
+    * @param period period between emits of the resulting stream
+    * @param dampen true if a single unit should be emitted when multiple periods have passed since last execution, false if a unit for each period should be emitted
+    */
+  def fixedRate[F[_]](period: FiniteDuration, dampen: Boolean)(implicit F: Temporal[F]): Stream[F, Unit] = {
+    val periodMillis = period.toMillis
+    def getNow: Stream[F, Long] = Stream.eval(F.monotonic.map(_.toMillis))
+    def go(t: Long): Stream[F, Unit] =
+      getNow.flatMap { now =>
+        val next = t + periodMillis
+        if (next <= now) {
+          val cnt = (now - next + periodMillis - 1) / periodMillis
+          val out = if (cnt < 0) Stream.empty else if (cnt == 0 || dampen) Stream.emit(()) else Stream.emit(()).repeatN(cnt)
+          out ++ go(next)
+        } else {
+          val toSleep = next - now
+          Stream.sleep_(toSleep.millis) ++ Stream.emit(()) ++ go(next)
         }
       }
-    now.flatMap(go)
+    getNow.flatMap(go)
   }
 
   private[fs2] final class PartiallyAppliedFromOption[F[_]](
