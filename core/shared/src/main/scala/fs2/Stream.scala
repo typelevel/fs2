@@ -2862,7 +2862,7 @@ object Stream extends StreamLowPriority {
 
   /** Discrete stream that every `d` emits elapsed duration
     * since the start time of stream consumption.
-    * 
+    *
     * Missed periods are dampened to a single tick.
     *
     * For example: `awakeEvery[IO](5 seconds)` will
@@ -2885,7 +2885,8 @@ object Stream extends StreamLowPriority {
     * @param dampen whether missed periods result in 1 emitted tick or 1 per missed period, see [[fixedRate]] for more info
     */
   def awakeEvery[F[_]](
-      period: FiniteDuration, dampen: Boolean
+      period: FiniteDuration,
+      dampen: Boolean
   )(implicit t: Temporal[F]): Stream[F, FiniteDuration] =
     Stream.eval(t.monotonic).flatMap { start =>
       fixedRate[F](period, dampen) >> Stream.eval(t.monotonic.map(_ - start))
@@ -3092,21 +3093,23 @@ object Stream extends StreamLowPriority {
     fixedRate(period, true)
 
   /** Discrete stream that emits a unit every `d`.
-   * 
+    *
     * See [[fixedDelay]] for an alternative that sleeps `d` between elements.
-    * 
+    *
     * This operation differs in that the time between ticks should roughly be equal to the specified period, regardless
     * of how much time it takes to process that tick downstream. For example, with a 1 second period and a task that takes 100ms,
-    * the task would run at timestamps, 1s, 2s, 3s, etc. when using `fixedRate >> task` whereas it would run at timestamps 
+    * the task would run at timestamps, 1s, 2s, 3s, etc. when using `fixedRate >> task` whereas it would run at timestamps
     * 1s, 2.1s, 3.2s, etc. when using `fixedDelay >> task`.
-    * 
+    *
     * In the case where task processing takes longer than a single period, 1 or more ticks are immediately emitted to "catch-up".
     * The `dampen` parameter controls whether a single tick is emitted or whether one per missed period is emitted.
     *
     * @param period period between emits of the resulting stream
     * @param dampen true if a single unit should be emitted when multiple periods have passed since last execution, false if a unit for each period should be emitted
     */
-  def fixedRate[F[_]](period: FiniteDuration, dampen: Boolean)(implicit F: Temporal[F]): Stream[F, Unit] = {
+  def fixedRate[F[_]](period: FiniteDuration, dampen: Boolean)(implicit
+      F: Temporal[F]
+  ): Stream[F, Unit] = {
     val periodMillis = period.toMillis
     def getNow: Stream[F, Long] = Stream.eval(F.monotonic.map(_.toMillis))
     def go(t: Long): Stream[F, Unit] =
@@ -3114,7 +3117,10 @@ object Stream extends StreamLowPriority {
         val next = t + periodMillis
         if (next <= now) {
           val cnt = (now - next + periodMillis - 1) / periodMillis
-          val out = if (cnt < 0) Stream.empty else if (cnt == 0 || dampen) Stream.emit(()) else Stream.emit(()).repeatN(cnt)
+          val out =
+            if (cnt < 0) Stream.empty
+            else if (cnt == 0 || dampen) Stream.emit(())
+            else Stream.emit(()).repeatN(cnt)
           out ++ go(next)
         } else {
           val toSleep = next - now
