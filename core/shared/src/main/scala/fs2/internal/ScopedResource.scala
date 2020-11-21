@@ -24,7 +24,7 @@ package fs2.internal
 import cats.effect.kernel.Resource
 import cats.implicits._
 
-import fs2.{Compiler, Scope}
+import fs2.Compiler
 
 /** Represents a resource acquired during stream interpretation.
   *
@@ -93,7 +93,7 @@ private[fs2] sealed abstract class ScopedResource[F[_]] {
     * Yields to `Some(lease)`, if this resource was successfully leased, and scope must bind `lease.cancel` it when not needed anymore.
     * or to `None` when this resource cannot be leased because resource is already released.
     */
-  def lease: F[Option[Scope.Lease[F]]]
+  def lease: F[Option[Lease[F]]]
 }
 
 private[internal] object ScopedResource {
@@ -156,7 +156,7 @@ private[internal] object ScopedResource {
           }
         }.flatten
 
-      def lease: F[Option[Scope.Lease[F]]] =
+      def lease: F[Option[Lease[F]]] =
         state.modify { s =>
           if (s.open)
             s.copy(leases = s.leases + 1) -> Some(TheLease)
@@ -164,7 +164,7 @@ private[internal] object ScopedResource {
             s -> None
         }
 
-      private[this] object TheLease extends Scope.Lease[F] {
+      private[this] object TheLease extends Lease[F] {
         def cancel: F[Either[Throwable, Unit]] =
           state
             .modify { s =>

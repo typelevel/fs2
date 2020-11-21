@@ -3203,7 +3203,7 @@ object Stream extends StreamLowPriority {
   /** Gets the current scope, allowing manual leasing or interruption.
     * This is a low-level method and generally should not be used by user code.
     */
-  def getScope[F[x] >: Pure[x]]: Stream[F, Scope[F]] =
+  private def getScope[F[x] >: Pure[x]]: Stream[F, Scope[F]] =
     new Stream(Pull.getScope[F].flatMap(Pull.output1(_)))
 
   /** A stream that never emits and never terminates.
@@ -4007,7 +4007,7 @@ object Stream extends StreamLowPriority {
       * If you are not pulling from multiple streams, consider using `uncons`.
       */
     def stepLeg: Pull[F, INothing, Option[StepLeg[F, O]]] =
-      Pull.getScopeInternal[F].flatMap { scope =>
+      Pull.getScope[F].flatMap { scope =>
         new StepLeg[F, O](Chunk.empty, scope.id, self.underlying).stepLeg
       }
 

@@ -64,7 +64,7 @@ private[fs2] trait CompilerLowPriority2 {
           init: B
       )(foldChunk: (B, Chunk[O]) => B): Resource[F, B] =
         Resource
-          .makeCase(CompileScope.newRoot[F])((scope, ec) => scope.close(ec).rethrow)
+          .makeCase(Scope.newRoot[F])((scope, ec) => scope.close(ec).rethrow)
           .evalMap(scope => Pull.compile(stream, scope, true, init)(foldChunk))
     }
 }
@@ -152,7 +152,7 @@ object Compiler extends CompilerLowPriority {
           init: Out,
           foldChunk: (Out, Chunk[O]) => Out
       ): F[Out] =
-        CompileScope
+        Scope
           .newRoot[F](this)
           .flatMap(scope =>
             Pull
@@ -193,7 +193,7 @@ object Compiler extends CompilerLowPriority {
           foldChunk: (Out, Chunk[O]) => Out
       ): F[Out] =
         Resource
-          .makeCase(CompileScope.newRoot[F](this))((scope, ec) => scope.close(ec).rethrow)
+          .makeCase(Scope.newRoot[F](this))((scope, ec) => scope.close(ec).rethrow)
           .use(scope => Pull.compile[F, O, Out](p, scope, false, init)(foldChunk))
     }
 
