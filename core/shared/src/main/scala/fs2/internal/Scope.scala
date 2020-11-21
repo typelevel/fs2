@@ -444,7 +444,8 @@ private[fs2] final class Scope[F[_]] private (
             lease
           }
         }
-      case _: Scope.State.Closed[F] => F.raiseError(new RuntimeException("Scope closed at time of lease"))
+      case _: Scope.State.Closed[F] =>
+        F.raiseError(new RuntimeException("Scope closed at time of lease"))
     }
 
   override def toString =
