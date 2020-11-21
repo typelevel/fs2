@@ -3641,7 +3641,7 @@ object Stream extends StreamLowPriority {
         // and that it must be released once the inner stream terminates or fails.
         def runInner(inner: Stream[F, O], outerScope: Scope[F]): F[Unit] =
           F.uncancelable { _ =>
-            outerScope.leaseOrError.flatMap { lease =>
+            outerScope.lease.flatMap { lease =>
               available.acquire >>
                 incrementRunning >>
                 F.start {

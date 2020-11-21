@@ -219,7 +219,7 @@ object Pull extends PullLowPriority {
   )(implicit F: MonadError[F, Throwable]): Pull[F, INothing, Stream[F, O]] =
     for {
       scope <- Pull.getScope[F]
-      lease <- Pull.eval(scope.leaseOrError)
+      lease <- Pull.eval(scope.lease)
     } yield s.onFinalize(lease.cancel.redeemWith(F.raiseError(_), _ => F.unit))
 
   /** Repeatedly uses the output of the pull as input for the next step of the pull.

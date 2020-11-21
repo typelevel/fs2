@@ -283,7 +283,7 @@ private[fs2] final class Scope[F[_]] private (
     go(self, Chain.empty)
   }
 
-  /** finds ancestor of this scope given `scopeId` * */
+  /** Finds ancestor of this scope given `scopeId`. */
   def findSelfOrAncestor(scopeId: Token): Option[Scope[F]] = {
     @tailrec
     def go(curr: Scope[F]): Option[Scope[F]] =
@@ -296,7 +296,7 @@ private[fs2] final class Scope[F[_]] private (
     go(self)
   }
 
-  /** finds scope in child hierarchy of current scope * */
+  /** Finds scope in child hierarchy of current scope. */
   def findSelfOrChild(scopeId: Token): F[Option[Scope[F]]] = {
     def go(scopes: Chain[Scope[F]]): F[Option[Scope[F]]] =
       scopes.uncons match {
@@ -369,45 +369,6 @@ private[fs2] final class Scope[F[_]] private (
       }
   }
 
-  /** Leases the resources of this scope until the returned lease is cancelled.
-    *
-    * Note that this leases all resources in this scope, resources in all parent scopes (up to root)
-    * and resources of all child scopes.
-    *
-    * `None` is returned if this scope is already closed. Otherwise a lease is returned,
-    * which must be cancelled. Upon cancellation, resource finalizers may be run, depending on the
-    * state of the owning scopes.
-    *
-    * Resources may be finalized during the execution of this method and before the lease has been acquired
-    * for a resource. In such an event, the already finalized resource won't be leased. As such, it is
-    * important to call `lease` only when all resources are known to be non-finalized / non-finalizing.
-    *
-    * When the lease is returned, all resources available at the time `lease` was called have been
-    * successfully leased.
-    */
-  def lease: F[Option[Lease[F]]] =
-    state.get.flatMap {
-      case s: Scope.State.Open[F] =>
-        val allScopes = (s.children :+ self) ++ ancestors
-        Traverse[Chain].flatTraverse(allScopes)(_.resources).flatMap { allResources =>
-          TraverseFilter[Chain].traverseFilter(allResources)(r => r.lease).map { allLeases =>
-            val lease = new Lease[F] {
-              def cancel: F[Either[Throwable, Unit]] =
-                traverseError[Lease[F]](allLeases, _.cancel)
-            }
-            Some(lease)
-          }
-        }
-      case _: Scope.State.Closed[F] => F.pure(None)
-    }
-
-  /** Like [[lease]], but fails with an error if the scope is closed. */
-  def leaseOrError: F[Lease[F]] =
-    lease.flatMap {
-      case Some(l) => F.pure(l)
-      case None    => F.raiseError(new Throwable("Scope closed at time of lease"))
-    }
-
   def interruptWhen(haltWhen: F[Either[Throwable, Unit]]): F[Fiber[F, Throwable, Unit]] =
     interruptible match {
       case None =>
@@ -452,6 +413,38 @@ private[fs2] final class Scope[F[_]] private (
         f.attempt.map(_.leftMap(t => Outcome.Errored(t)))
       case Some(iCtx) =>
         iCtx.eval(f)
+    }
+
+  /** Leases the resources of this scope until the returned lease is cancelled.
+    *
+    * Note that this leases all resources in this scope, resources in all parent scopes (up to root)
+    * and resources of all child scopes.
+    *
+    * An error is raised if this scope is already closed. Otherwise a lease is returned,
+    * which must be cancelled. Upon cancellation, resource finalizers may be run, depending on the
+    * state of the owning scopes.
+    *
+    * Resources may be finalized during the execution of this method and before the lease has been acquired
+    * for a resource. In such an event, the already finalized resource won't be leased. As such, it is
+    * important to call `lease` only when all resources are known to be non-finalized / non-finalizing.
+    *
+    * When the lease is returned, all resources available at the time `lease` was called have been
+    * successfully leased.
+    */
+  def lease: F[Lease[F]] =
+    state.get.flatMap {
+      case s: Scope.State.Open[F] =>
+        val allScopes = (s.children :+ self) ++ ancestors
+        Traverse[Chain].flatTraverse(allScopes)(_.resources).flatMap { allResources =>
+          TraverseFilter[Chain].traverseFilter(allResources)(r => r.lease).map { allLeases =>
+            val lease = new Lease[F] {
+              def cancel: F[Either[Throwable, Unit]] =
+                traverseError[Lease[F]](allLeases, _.cancel)
+            }
+            lease
+          }
+        }
+      case _: Scope.State.Closed[F] => F.raiseError(new RuntimeException("Scope closed at time of lease"))
     }
 
   override def toString =
