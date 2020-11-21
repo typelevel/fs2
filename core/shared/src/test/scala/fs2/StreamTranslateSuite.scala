@@ -153,16 +153,16 @@ class StreamTranslateSuite extends Fs2Suite {
       .drain
   }
 
-  test("translateInterruptible".only) {
+  test("translateInterruptible") {
     type Eff[A] = cats.data.EitherT[IO, String, A]
     val Eff = Async[Eff]
     Stream
       .eval(Eff.never)
       .merge(Stream.eval(Eff.delay(1)).delayBy(5.millis).repeat)
       .interruptAfter(10.millis)
-      .translateInterruptible(new (Eff ~> IO) {
+      .translate(new (Eff ~> IO) {
         def apply[X](eff: Eff[X]) = eff.value.flatMap {
-          case Left(t) => IO.raiseError(new RuntimeException(t))
+          case Left(t)  => IO.raiseError(new RuntimeException(t))
           case Right(x) => IO.pure(x)
         }
       })

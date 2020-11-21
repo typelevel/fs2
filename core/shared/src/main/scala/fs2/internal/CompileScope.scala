@@ -396,10 +396,12 @@ private[fs2] final class CompileScope[F[_]] private (
           new IllegalStateException("Scope#interrupt called for Scope that cannot be interrupted")
         )
       case Some(iCtx) =>
-        val outcome: F[InterruptionOutcome] = haltWhen.map(_.fold(
-          t => Outcome.Errored(t),
-          _ => Outcome.Succeeded[Id, Throwable, Token](iCtx.interruptRoot)
-        ))
+        val outcome: F[InterruptionOutcome] = haltWhen.map(
+          _.fold(
+            t => Outcome.Errored(t),
+            _ => Outcome.Succeeded[Id, Throwable, Token](iCtx.interruptRoot)
+          )
+        )
         iCtx.completeWhen(outcome)
     }
 
