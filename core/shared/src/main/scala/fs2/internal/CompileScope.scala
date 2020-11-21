@@ -25,7 +25,7 @@ import scala.annotation.tailrec
 
 import cats.{Id, Traverse, TraverseFilter}
 import cats.data.Chain
-import cats.effect.kernel.{Outcome, Poll, Ref, Resource}
+import cats.effect.kernel.{Fiber, Outcome, Poll, Ref, Resource}
 import cats.syntax.all._
 
 import fs2.{Compiler, CompositeFailure, Scope}
@@ -389,19 +389,18 @@ private[fs2] final class CompileScope[F[_]] private (
       case _: CompileScope.State.Closed[F] => F.pure(None)
     }
 
-  // See docs on [[Scope#interrupt]]
-  def interrupt(cause: Either[Throwable, Unit]): F[Unit] =
+  def interruptWhen(haltWhen: F[Either[Throwable, Unit]]): F[Fiber[F, Throwable, Unit]] =
     interruptible match {
       case None =>
         F.raiseError(
           new IllegalStateException("Scope#interrupt called for Scope that cannot be interrupted")
         )
       case Some(iCtx) =>
-        val outcome: InterruptionOutcome = cause.fold(
+        val outcome: F[InterruptionOutcome] = haltWhen.map(_.fold(
           t => Outcome.Errored(t),
           _ => Outcome.Succeeded[Id, Throwable, Token](iCtx.interruptRoot)
-        )
-        iCtx.complete(outcome)
+        ))
+        iCtx.completeWhen(outcome)
     }
 
   /** Checks if current scope is interrupted.

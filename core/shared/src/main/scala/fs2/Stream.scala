@@ -1607,10 +1607,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   def interruptWhen[F2[x] >: F[x]: Concurrent](
       haltOnSignal: F2[Either[Throwable, Unit]]
   ): Stream[F2, O] =
-    // This doesn't work b/c concurrently is impemented via interruptWhen
-    concurrently(Stream.eval(haltOnSignal).flatMap(c => Pull.interrupt(c).stream)).interruptScope
-    // This doesn't work b/c the interrupt occurs on the inner stream, not the overall stream
-    // (Stream.supervise(haltOnSignal.flatMap(c => Pull.interrupt[F2, Nothing](c).stream.compile.drain)) >> this).interruptScope
+    (Pull.interruptWhen(haltOnSignal) >> this.pull.echo).stream.interruptScope
 
   /** Creates a scope that may be interrupted by calling scope#interrupt.
     */

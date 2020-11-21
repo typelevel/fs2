@@ -528,7 +528,7 @@ object Pull extends PullLowPriority {
       useInterruption: Boolean
   ) extends Action[F, O, Unit]
 
-  private final case class Interrupt[+F[_], +O](cause: Either[Throwable, Unit]) extends Action[F, O, Unit]
+  private final case class InterruptWhen[+F[_], +O](haltOnSignal: F[Either[Throwable, Unit]]) extends Action[F, O, Unit]
 
   // `InterruptedScope` contains id of the scope currently being interrupted
   // together with any errors accumulated during interruption process
@@ -560,7 +560,7 @@ object Pull extends PullLowPriority {
     */
   private[fs2] def interruptScope[F[_], O](s: Pull[F, O, Unit]): Pull[F, O, Unit] = InScope(s, true)
 
-  private[fs2] def interrupt[F[_], O](cause: Either[Throwable, Unit]): Pull[F, O, Unit] = Interrupt(cause)
+  private[fs2] def interruptWhen[F[_], O](haltOnSignal: F[Either[Throwable, Unit]]): Pull[F, O, Unit] = InterruptWhen(haltOnSignal)
 
   private[fs2] def uncons[F[_], X, O](
       s: Pull[F, O, Unit]
@@ -900,8 +900,20 @@ object Pull extends PullLowPriority {
               val uu = inScope.stream.asInstanceOf[Pull[g, X, Unit]]
               goInScope(uu, inScope.useInterruption, view.asInstanceOf[View[g, X, Unit]])
 
-            case int: Interrupt[g, X] =>
-              scope.interrupt(int.cause) *> go(scope, extendedTopLevelScope, translation, view(Result.unit))
+            case int: InterruptWhen[g, X] =>
+              val onScope = scope.acquireResource(_ => scope.interruptWhen(translation(int.haltOnSignal)),
+                (f: Fiber[F, Throwable, Unit], _: ExitCase) => f.cancel
+              )
+              val cont = onScope.flatMap { outcome =>
+                val result = outcome match {
+                  case Outcome.Succeeded(Right(_))      => Result.Succeeded(())
+                  case Outcome.Succeeded(Left(scopeId)) => Result.Interrupted(scopeId, None)
+                  case Outcome.Canceled()               => Result.Interrupted(scope.id, None)
+                  case Outcome.Errored(err)             => Result.Fail(err)
+                }
+                go(scope, extendedTopLevelScope, translation, view(result))
+              }
+              interruptGuard(scope, view)(cont)
 
             case close: CloseScope =>
               goCloseScope(close, view.asInstanceOf[View[G, X, Unit]])

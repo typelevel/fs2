@@ -55,20 +55,6 @@ abstract class Scope[F[_]] {
       case Some(l) => F.pure(l)
       case None    => F.raiseError(new Throwable("Scope closed at time of lease"))
     }
-
-  /** Interrupts evaluation of the current scope. Only scopes previously indicated with Stream.interruptScope may be interrupted.
-    * For other scopes this will fail.
-    *
-    * Interruption is final and may take two forms:
-    *
-    * When invoked on right side, that will interrupt only current scope evaluation, and will resume when control is given
-    * to next scope.
-    *
-    * When invoked on left side, then this will inject given throwable like it will be caused by stream evaluation,
-    * and then, without any error handling the whole stream will fail with supplied throwable.
-    */
-  @deprecated("Unsound in presence of translate - use Pull.interrupt instead", "3.0")
-  def interrupt(cause: Either[Throwable, Unit]): F[Unit]
 }
 
 object Scope {

@@ -153,7 +153,7 @@ class StreamTranslateSuite extends Fs2Suite {
       .drain
   }
 
-  test("translateInterruptible") {
+  test("translateInterruptible".only) {
     type Eff[A] = cats.data.EitherT[IO, String, A]
     val Eff = Async[Eff]
     Stream
