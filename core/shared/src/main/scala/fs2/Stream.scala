@@ -1552,7 +1552,11 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   def interruptAfter[F2[x] >: F[x]: Temporal](
       duration: FiniteDuration
   ): Stream[F2, O] =
-    interruptWhen[F2](Stream.sleep_[F2](duration) ++ Stream(true))
+    // interruptWhen[F2](Stream.sleep_[F2](duration) ++ Stream(true))
+    Stream.eval(Concurrent[F2].deferred[Either[Throwable, Unit]]).flatMap { d =>
+      val interrupt = Temporal[F2].sleep(duration) *> d.complete(Right(()))
+      interruptWhen[F2](d).concurrently(Stream.eval(interrupt))
+    }
 
   /** Let through the `s2` branch as long as the `s1` branch is `false`,
     * listening asynchronously for the left branch to become `true`.
@@ -1603,10 +1607,10 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   def interruptWhen[F2[x] >: F[x]: Concurrent](
       haltOnSignal: F2[Either[Throwable, Unit]]
   ): Stream[F2, O] =
-    Stream
-      .getScope[F2]
-      .flatMap(scope => Stream.supervise(haltOnSignal.flatMap(scope.interrupt)) >> this)
-      .interruptScope
+    // This doesn't work b/c concurrently is impemented via interruptWhen
+    concurrently(Stream.eval(haltOnSignal).flatMap(c => Pull.interrupt(c).stream)).interruptScope
+    // This doesn't work b/c the interrupt occurs on the inner stream, not the overall stream
+    // (Stream.supervise(haltOnSignal.flatMap(c => Pull.interrupt[F2, Nothing](c).stream.compile.drain)) >> this).interruptScope
 
   /** Creates a scope that may be interrupted by calling scope#interrupt.
     */

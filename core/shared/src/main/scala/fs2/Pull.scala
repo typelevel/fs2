@@ -528,6 +528,8 @@ object Pull extends PullLowPriority {
       useInterruption: Boolean
   ) extends Action[F, O, Unit]
 
+  private final case class Interrupt[+F[_], +O](cause: Either[Throwable, Unit]) extends Action[F, O, Unit]
+
   // `InterruptedScope` contains id of the scope currently being interrupted
   // together with any errors accumulated during interruption process
   private final case class CloseScope(
@@ -557,6 +559,8 @@ object Pull extends PullLowPriority {
     * Note that this may fail with `Interrupted` when interruption occurred
     */
   private[fs2] def interruptScope[F[_], O](s: Pull[F, O, Unit]): Pull[F, O, Unit] = InScope(s, true)
+
+  private[fs2] def interrupt[F[_], O](cause: Either[Throwable, Unit]): Pull[F, O, Unit] = Interrupt(cause)
 
   private[fs2] def uncons[F[_], X, O](
       s: Pull[F, O, Unit]
@@ -895,6 +899,9 @@ object Pull extends PullLowPriority {
             case inScope: InScope[g, X] =>
               val uu = inScope.stream.asInstanceOf[Pull[g, X, Unit]]
               goInScope(uu, inScope.useInterruption, view.asInstanceOf[View[g, X, Unit]])
+
+            case int: Interrupt[g, X] =>
+              scope.interrupt(int.cause) *> go(scope, extendedTopLevelScope, translation, view(Result.unit))
 
             case close: CloseScope =>
               goCloseScope(close, view.asInstanceOf[View[G, X, Unit]])
