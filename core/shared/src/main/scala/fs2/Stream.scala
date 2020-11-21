@@ -1552,11 +1552,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   def interruptAfter[F2[x] >: F[x]: Temporal](
       duration: FiniteDuration
   ): Stream[F2, O] =
-    // interruptWhen[F2](Stream.sleep_[F2](duration) ++ Stream(true))
-    Stream.eval(Concurrent[F2].deferred[Either[Throwable, Unit]]).flatMap { d =>
-      val interrupt = Temporal[F2].sleep(duration) *> d.complete(Right(()))
-      interruptWhen[F2](d).concurrently(Stream.eval(interrupt))
-    }
+    interruptWhen[F2](Stream.sleep_[F2](duration) ++ Stream(true))
 
   /** Let through the `s2` branch as long as the `s1` branch is `false`,
     * listening asynchronously for the left branch to become `true`.
