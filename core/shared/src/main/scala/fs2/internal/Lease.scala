@@ -24,7 +24,7 @@ package fs2.internal
 /** Represents one or more resources that were leased from a scope, causing their
   * lifetimes to be extended until `cancel` is invoked on this lease.
   */
-abstract class Lease[F[_]] {
+private[fs2] abstract class Lease[F[_]] {
 
   /** Cancels the lease of all resources tracked by this lease.
     *
