@@ -47,7 +47,7 @@ abstract class Scope[F[_]] {
     * When the lease is returned, all resources available at the time `lease` was called have been
     * successfully leased.
     */
-  def lease: F[Option[Scope.Lease[F]]]
+  protected def lease: F[Option[Scope.Lease[F]]]
 
   /** Like [[lease]], but fails with an error if the scope is closed. */
   def leaseOrError(implicit F: MonadError[F, Throwable]): F[Scope.Lease[F]] =

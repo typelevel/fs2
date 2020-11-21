@@ -528,8 +528,8 @@ object Pull extends PullLowPriority {
       useInterruption: Boolean
   ) extends Action[F, O, Unit]
 
-  private final case class InterruptWhen[+F[_], +O](haltOnSignal: F[Either[Throwable, Unit]])
-      extends Action[F, O, Unit]
+  private final case class InterruptWhen[+F[_]](haltOnSignal: F[Either[Throwable, Unit]])
+      extends AlgEffect[F, Unit]
 
   // `InterruptedScope` contains id of the scope currently being interrupted
   // together with any errors accumulated during interruption process
@@ -923,7 +923,7 @@ object Pull extends PullLowPriority {
               val uu = inScope.stream.asInstanceOf[Pull[g, X, Unit]]
               goInScope(uu, inScope.useInterruption, view.asInstanceOf[View[g, X, Unit]])
 
-            case int: InterruptWhen[g, X] =>
+            case int: InterruptWhen[g] =>
               goInterruptWhen(translation(int.haltOnSignal), view)
 
             case close: CloseScope =>
