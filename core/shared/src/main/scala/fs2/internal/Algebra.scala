@@ -333,7 +333,7 @@ private[fs2] object FreeC {
 
   final case class InterruptWhen[+F[_]](haltOnSignal: F[Either[Throwable, Unit]])
       extends AlgEffect[F, Unit]
-      
+
   private[fs2] def interruptWhen[F[_], O](
       haltOnSignal: F[Either[Throwable, Unit]]
   ): FreeC[F, O, Unit] = InterruptWhen(haltOnSignal)
@@ -580,7 +580,10 @@ private[fs2] object FreeC {
 
             case int: InterruptWhen[F] =>
               interruptGuard(scope) {
-                val acq = scope.acquireResource[Fiber[F, Unit]](scope.interruptWhen(int.haltOnSignal), (f, _) => f.cancel)
+                val acq = scope.acquireResource[Fiber[F, Unit]](
+                  scope.interruptWhen(int.haltOnSignal),
+                  (f, _) => f.cancel
+                )
                 F.flatMap(acq) { _ =>
                   resume(Result.unit)
                 }
@@ -678,10 +681,10 @@ private[fs2] object FreeC {
         // if interruption has to be supported concurrent for G has to be passed
         case a: Acquire[F, r] =>
           Acquire[G, r](fK(a.resource), (r, ec) => fK(a.release(r, ec)))
-        case e: Eval[F, R]  => Eval[G, R](fK(e.value))
-        case OpenScope(_)   => OpenScope[G](concurrent)
-        case c: CloseScope  => c
-        case g: GetScope[_] => g
+        case e: Eval[F, R]       => Eval[G, R](fK(e.value))
+        case OpenScope(_)        => OpenScope[G](concurrent)
+        case c: CloseScope       => c
+        case g: GetScope[_]      => g
         case i: InterruptWhen[_] => InterruptWhen[G](fK(i.haltOnSignal))
       }
 

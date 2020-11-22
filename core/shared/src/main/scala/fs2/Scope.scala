@@ -67,7 +67,10 @@ abstract class Scope[F[_]] {
     * When invoked on left side, then this will inject given throwable like it will be caused by stream evaluation,
     * and then, without any error handling the whole stream will fail with supplied throwable.
     */
-  @deprecated("Unsound when used with translateInterruptible - use Stream.interruptWhen instead", "2.4.6")
+  @deprecated(
+    "Unsound when used with translateInterruptible - use Stream.interruptWhen instead",
+    "2.4.6"
+  )
   def interrupt(cause: Either[Throwable, Unit]): F[Unit]
 }
 
