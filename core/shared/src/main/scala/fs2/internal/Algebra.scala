@@ -22,7 +22,7 @@
 package fs2.internal
 
 import cats.{MonadError, ~>}
-import cats.effect.{Concurrent, ExitCase, Fiber}
+import cats.effect.{Concurrent, ExitCase}
 import cats.syntax.all._
 import fs2.{Chunk, CompositeFailure, INothing, Pure => PureK, Stream}
 import fs2.internal.FreeC.{Result, ViewL}
@@ -440,6 +440,12 @@ private[fs2] object FreeC {
               case Some(Right(scopeId)) =>
                 go(scope, extendedTopLevelScope, view.next(Result.Interrupted(scopeId, None)))
             }
+
+          def handleInterruptWhen(haltOnSignal: F[Either[Throwable, Unit]]) = {
+            val acq = scope.acquireResourceC(scope.interruptWhen(haltOnSignal))((f, _) => f.cancel)
+            F.flatMap(acq)(_ => resume(Result.unit.asInstanceOf[Result[y]]))
+          }
+
           view.step match {
             case output: Output[X] =>
               interruptGuard(scope)(
@@ -578,15 +584,9 @@ private[fs2] object FreeC {
                   go(scope, extendedTopLevelScope, view.next(result))
               }
 
-            case int: InterruptWhen[F] =>
+            case int: InterruptWhen[f] =>
               interruptGuard(scope) {
-                val acq = scope.acquireResource[Fiber[F, Unit]](
-                  scope.interruptWhen(int.haltOnSignal),
-                  (f, _) => f.cancel
-                )
-                F.flatMap(acq) { _ =>
-                  resume(Result.unit)
-                }
+                handleInterruptWhen(int.haltOnSignal)
               }
           }
       }

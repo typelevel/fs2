@@ -196,6 +196,10 @@ private[fs2] final class CompileScope[F[_]] private (
     }
   }
 
+  def acquireResourceC[R](fr: F[R])(
+      release: (R, ExitCase[Throwable]) => F[Unit]
+  ): F[Either[Throwable, R]] = acquireResource(fr, release)
+
   /** Unregisters the child scope identified by the supplied id.
     *
     * As a result of unregistering a child scope, its resources are no longer
