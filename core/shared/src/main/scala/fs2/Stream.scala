@@ -1603,10 +1603,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   def interruptWhen[F2[x] >: F[x]: Concurrent](
       haltOnSignal: F2[Either[Throwable, Unit]]
   ): Stream[F2, O] =
-    Stream
-      .getScope[F2]
-      .flatMap(scope => Stream.supervise(haltOnSignal.flatMap(scope.interrupt)) >> this)
-      .interruptScope
+    (Pull.interruptWhen(haltOnSignal) >> this.pull.echo).stream.interruptScope
 
   /** Creates a scope that may be interrupted by calling scope#interrupt.
     */
@@ -3252,7 +3249,7 @@ object Stream extends StreamLowPriority {
   /** Gets the current scope, allowing manual leasing or interruption.
     * This is a low-level method and generally should not be used by user code.
     */
-  def getScope[F[x] >: Pure[x]]: Stream[F, Scope[F]] =
+  private def getScope[F[x] >: Pure[x]]: Stream[F, Scope[F]] =
     new Stream(Pull.getScope[F].flatMap(Pull.output1(_)))
 
   /** A stream that never emits and never terminates.
@@ -3694,7 +3691,7 @@ object Stream extends StreamLowPriority {
         // and that it must be released once the inner stream terminates or fails.
         def runInner(inner: Stream[F, O], outerScope: Scope[F]): F[Unit] =
           F.uncancelable { _ =>
-            outerScope.leaseOrError.flatMap { lease =>
+            outerScope.lease.flatMap { lease =>
               available.acquire >>
                 incrementRunning >>
                 F.start {
@@ -4056,7 +4053,7 @@ object Stream extends StreamLowPriority {
       * If you are not pulling from multiple streams, consider using `uncons`.
       */
     def stepLeg: Pull[F, INothing, Option[StepLeg[F, O]]] =
-      Pull.getScopeInternal[F].flatMap { scope =>
+      Pull.getScope[F].flatMap { scope =>
         new StepLeg[F, O](Chunk.empty, scope.id, self.underlying).stepLeg
       }
 

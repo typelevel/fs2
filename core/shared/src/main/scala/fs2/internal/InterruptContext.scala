@@ -22,7 +22,7 @@
 package fs2.internal
 
 import cats.{Applicative, Id}
-import cats.effect.kernel.{Concurrent, Deferred, Outcome, Ref}
+import cats.effect.kernel.{Concurrent, Deferred, Fiber, Outcome, Ref}
 import cats.effect.kernel.implicits._
 import cats.syntax.all._
 import InterruptContext.InterruptionOutcome
@@ -45,8 +45,11 @@ final private[fs2] case class InterruptContext[F[_]](
     cancelParent: F[Unit]
 )(implicit F: Concurrent[F]) { self =>
 
-  def complete(outcome: InterruptionOutcome): F[Unit] =
+  private def complete(outcome: InterruptionOutcome): F[Unit] =
     ref.update(_.orElse(Some(outcome))).guarantee(deferred.complete(outcome).void)
+
+  def completeWhen(outcome: F[InterruptionOutcome]): F[Fiber[F, Throwable, Unit]] =
+    F.start(outcome.flatMap(complete))
 
   /** Creates a [[InterruptContext]] for a child scope which can be interruptible as well.
     *
