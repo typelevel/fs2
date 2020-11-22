@@ -24,7 +24,7 @@ package fs2
 import scala.concurrent.duration._
 
 import cats.~>
-import cats.effect.IO
+import cats.effect.{Async, IO}
 import org.scalacheck.effect.PropF.forAllF
 
 class StreamTranslateSuite extends Fs2Suite {
