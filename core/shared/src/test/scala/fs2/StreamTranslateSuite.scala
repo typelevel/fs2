@@ -24,7 +24,7 @@ package fs2
 import scala.concurrent.duration._
 
 import cats.~>
-import cats.effect.IO
+import cats.effect.{Async, IO}
 import org.scalacheck.effect.PropF.forAllF
 
 class StreamTranslateSuite extends Fs2Suite {
@@ -154,13 +154,19 @@ class StreamTranslateSuite extends Fs2Suite {
   }
 
   test("translateInterruptible") {
+    type Eff[A] = cats.data.EitherT[IO, String, A]
+    val Eff = Async[Eff]
     Stream
-      .eval(IO.never)
-      .merge(Stream.eval(IO(1)).delayBy(5.millis).repeat)
+      .eval(Eff.never)
+      .merge(Stream.eval(Eff.delay(1)).delayBy(5.millis).repeat)
       .interruptAfter(10.millis)
-      .translateInterruptible(cats.arrow.FunctionK.id[IO])
+      .translateInterruptible(new (Eff ~> IO) {
+        def apply[X](eff: Eff[X]) = eff.value.flatMap {
+          case Left(t)  => IO.raiseError(new RuntimeException(t))
+          case Right(x) => IO.pure(x)
+        }
+      })
       .compile
       .drain
   }
-
 }

@@ -25,7 +25,7 @@ import scala.annotation.tailrec
 
 import cats.{Traverse, TraverseFilter}
 import cats.data.Chain
-import cats.effect.{Concurrent, ExitCase, Sync}
+import cats.effect.{Concurrent, ExitCase, Fiber, Sync}
 import cats.effect.concurrent.{Deferred, Ref}
 import cats.syntax.all._
 import fs2.{CompositeFailure, Pure, Scope}
@@ -364,6 +364,22 @@ private[fs2] final class CompileScope[F[_]] private (
         F.guarantee(iCtx.deferred.complete(interruptCause).attempt.void) {
           iCtx.ref.update(_.orElse(Some(interruptCause)))
         }
+    }
+
+  def interruptWhen(haltWhen: F[Either[Throwable, Unit]]): F[Fiber[F, Unit]] =
+    interruptible match {
+      case None =>
+        F.raiseError(
+          new IllegalStateException("Scope#interrupt called for Scope that cannot be interrupted")
+        )
+      case Some(iCtx) =>
+        // note that we guard interruption here by Attempt to prevent failure on multiple sets.
+        iCtx.concurrent.start(haltWhen.flatMap { cause =>
+          val interruptCause = cause.map(_ => iCtx.interruptRoot)
+          F.guarantee(iCtx.deferred.complete(interruptCause).attempt.void) {
+            iCtx.ref.update(_.orElse(Some(interruptCause)))
+          }
+        })
     }
 
   /** Checks if current scope is interrupted.

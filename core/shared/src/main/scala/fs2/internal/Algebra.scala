@@ -22,7 +22,7 @@
 package fs2.internal
 
 import cats.{MonadError, ~>}
-import cats.effect.{Concurrent, ExitCase}
+import cats.effect.{Concurrent, ExitCase, Fiber}
 import cats.syntax.all._
 import fs2.{Chunk, CompositeFailure, INothing, Pure => PureK, Stream}
 import fs2.internal.FreeC.{Result, ViewL}
@@ -331,6 +331,13 @@ private[fs2] object FreeC {
 
   final case class GetScope[F[_]]() extends AlgEffect[PureK, CompileScope[F]]
 
+  final case class InterruptWhen[+F[_]](haltOnSignal: F[Either[Throwable, Unit]])
+      extends AlgEffect[F, Unit]
+      
+  private[fs2] def interruptWhen[F[_], O](
+      haltOnSignal: F[Either[Throwable, Unit]]
+  ): FreeC[F, O, Unit] = InterruptWhen(haltOnSignal)
+
   def output1[O](value: O): FreeC[PureK, O, Unit] = Output(Chunk.singleton(value))
 
   def stepLeg[F[_], O](leg: Stream.StepLeg[F, O]): FreeC[F, Nothing, Option[Stream.StepLeg[F, O]]] =
@@ -570,6 +577,14 @@ private[fs2] object FreeC {
                   val result = close.interruption.getOrElse(Result.unit)
                   go(scope, extendedTopLevelScope, view.next(result))
               }
+
+            case int: InterruptWhen[F] =>
+              interruptGuard(scope) {
+                val acq = scope.acquireResource[Fiber[F, Unit]](scope.interruptWhen(int.haltOnSignal), (f, _) => f.cancel)
+                F.flatMap(acq) { _ =>
+                  resume(Result.unit)
+                }
+              }
           }
       }
 
@@ -667,6 +682,7 @@ private[fs2] object FreeC {
         case OpenScope(_)   => OpenScope[G](concurrent)
         case c: CloseScope  => c
         case g: GetScope[_] => g
+        case i: InterruptWhen[_] => InterruptWhen[G](fK(i.haltOnSignal))
       }
 
     def translateStep[X](next: FreeC[F, X, Unit], isMainLevel: Boolean): FreeC[G, X, Unit] =

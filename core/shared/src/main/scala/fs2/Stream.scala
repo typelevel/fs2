@@ -1594,10 +1594,7 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
   def interruptWhen[F2[x] >: F[x]](
       haltOnSignal: F2[Either[Throwable, Unit]]
   )(implicit F2: Concurrent[F2]): Stream[F2, O] =
-    Stream
-      .getScope[F2]
-      .flatMap(scope => Stream.supervise(haltOnSignal.flatMap(scope.interrupt)) >> this)
-      .interruptScope
+    (new Pull(FreeC.interruptWhen(haltOnSignal)) >> this.pull.echo).stream.interruptScope
 
   /** Creates a scope that may be interrupted by calling scope#interrupt.
     */
