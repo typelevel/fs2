@@ -3125,7 +3125,7 @@ object Stream extends StreamLowPriority {
     getMonotonicMillis.flatMap { now =>
       val next = t + periodMillis
       if (next <= now) {
-        val cnt = (now - next + periodMillis - 1) / periodMillis
+        val cnt = (now - t - 1) / periodMillis
         val out =
           if (cnt < 0) Stream.empty
           else if (cnt == 0 || dampen) Stream.emit(())
