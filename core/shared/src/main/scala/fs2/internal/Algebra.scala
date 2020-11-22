@@ -331,6 +331,13 @@ private[fs2] object FreeC {
 
   final case class GetScope[F[_]]() extends AlgEffect[PureK, CompileScope[F]]
 
+  final case class InterruptWhen[+F[_]](haltOnSignal: F[Either[Throwable, Unit]])
+      extends AlgEffect[F, Unit]
+
+  private[fs2] def interruptWhen[F[_], O](
+      haltOnSignal: F[Either[Throwable, Unit]]
+  ): FreeC[F, O, Unit] = InterruptWhen(haltOnSignal)
+
   def output1[O](value: O): FreeC[PureK, O, Unit] = Output(Chunk.singleton(value))
 
   def stepLeg[F[_], O](leg: Stream.StepLeg[F, O]): FreeC[F, Nothing, Option[Stream.StepLeg[F, O]]] =
@@ -433,6 +440,12 @@ private[fs2] object FreeC {
               case Some(Right(scopeId)) =>
                 go(scope, extendedTopLevelScope, view.next(Result.Interrupted(scopeId, None)))
             }
+
+          def handleInterruptWhen(haltOnSignal: F[Either[Throwable, Unit]]) = {
+            val acq = scope.acquireResourceC(scope.interruptWhen(haltOnSignal))((f, _) => f.cancel)
+            F.flatMap(acq)(_ => resume(Result.unit.asInstanceOf[Result[y]]))
+          }
+
           view.step match {
             case output: Output[X] =>
               interruptGuard(scope)(
@@ -570,6 +583,11 @@ private[fs2] object FreeC {
                   val result = close.interruption.getOrElse(Result.unit)
                   go(scope, extendedTopLevelScope, view.next(result))
               }
+
+            case int: InterruptWhen[f] =>
+              interruptGuard(scope) {
+                handleInterruptWhen(int.haltOnSignal)
+              }
           }
       }
 
@@ -663,10 +681,11 @@ private[fs2] object FreeC {
         // if interruption has to be supported concurrent for G has to be passed
         case a: Acquire[F, r] =>
           Acquire[G, r](fK(a.resource), (r, ec) => fK(a.release(r, ec)))
-        case e: Eval[F, R]  => Eval[G, R](fK(e.value))
-        case OpenScope(_)   => OpenScope[G](concurrent)
-        case c: CloseScope  => c
-        case g: GetScope[_] => g
+        case e: Eval[F, R]       => Eval[G, R](fK(e.value))
+        case OpenScope(_)        => OpenScope[G](concurrent)
+        case c: CloseScope       => c
+        case g: GetScope[_]      => g
+        case i: InterruptWhen[_] => InterruptWhen[G](fK(i.haltOnSignal))
       }
 
     def translateStep[X](next: FreeC[F, X, Unit], isMainLevel: Boolean): FreeC[G, X, Unit] =
