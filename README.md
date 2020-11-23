@@ -3,7 +3,7 @@ FS2: Functional Streams for Scala
 
 [![Continuous Integration](https://github.com/functional-streams-for-scala/fs2/workflows/Continuous%20Integration/badge.svg)](https://github.com/functional-streams-for-scala/fs2/actions?query=workflow%3A%22Continuous+Integration%22)
 [![Gitter Chat](https://badges.gitter.im/functional-streams-for-scala/fs2.svg)](https://gitter.im/functional-streams-for-scala/fs2)
-[![Latest version](https://img.shields.io/maven-central/v/co.fs2/fs2-core_2.12.svg)](https://index.scala-lang.org/functional-streams-for-scala/fs2/fs2-core)
+[![Maven Central](https://img.shields.io/maven-central/v/co.fs2/fs2-core_2.12)](https://maven-badges.herokuapp.com/maven-central/co.fs2/fs2-core_2.12)
 
 ### Overview
 
@@ -43,22 +43,22 @@ If upgrading from the 1.0 series, see the [release notes for 2.0.0](https://gith
 
 ```
 // available for 2.12, 2.13
-libraryDependencies += "co.fs2" %% "fs2-core" % "2.4.4" // For cats 2 and cats-effect 2
+libraryDependencies += "co.fs2" %% "fs2-core" % "<version>" // For cats 2 and cats-effect 2
 
 // optional I/O library
-libraryDependencies += "co.fs2" %% "fs2-io" % "2.4.4"
+libraryDependencies += "co.fs2" %% "fs2-io" % "<version>"
 
 // optional reactive streams interop
-libraryDependencies += "co.fs2" %% "fs2-reactive-streams" % "2.4.4"
+libraryDependencies += "co.fs2" %% "fs2-reactive-streams" % "<version>"
 
 // optional experimental library
-libraryDependencies += "co.fs2" %% "fs2-experimental" % "2.4.4"
+libraryDependencies += "co.fs2" %% "fs2-experimental" % "<version>"
 ```
 
 The fs2-core library is also supported on Scala.js:
 
 ```
-libraryDependencies += "co.fs2" %%% "fs2-core" % "2.4.4"
+libraryDependencies += "co.fs2" %%% "fs2-core" % "<version>"
 ```
 
 There are [detailed migration guides](https://github.com/functional-streams-for-scala/fs2/blob/main/docs/) for migrating from older versions.
