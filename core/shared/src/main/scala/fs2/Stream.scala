@@ -2282,7 +2282,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     }.stream
 
   /** Like `scan` but `f` is applied to each chunk of the source stream.
-    * The resulting chunk is emitted and the result of the chunk is used in the
+    * The resulting chunk is emitted while the resulting state is used in the
     * next invocation of `f`.
     *
     * Many stateful pipes can be implemented efficiently (i.e., supporting fusion) with this method.
@@ -4014,7 +4014,7 @@ object Stream extends StreamLowPriority {
       }
 
     /** Like `scan` but `f` is applied to each chunk of the source stream.
-      * The resulting chunk is emitted and the result of the chunk is used in the
+      * The resulting chunk is emitted while the resulting state is used in the
       * next invocation of `f`. The final state value is returned as the result of the pull.
       */
     def scanChunks[S, O2](init: S)(f: (S, Chunk[O]) => (S, Chunk[O2])): Pull[F, O2, S] =
