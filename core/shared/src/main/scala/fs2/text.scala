@@ -213,12 +213,13 @@ object text {
     }
 
     def go(stream: Stream[F, String], buffer: String, first: Boolean): Pull[F, String, Unit] =
-      stream.pull.uncons flatMap {
-        case None => if(first) Pull.done else Pull.output1(buffer)
+      stream.pull.uncons.flatMap {
+        case None => if (first) Pull.done else Pull.output1(buffer)
         case Some((chunk, stream)) =>
-          val (b, vector) = chunk.foldLeft((buffer, Vector.empty[String])) { case ((b, lines), el) =>
-            val (finished, notFinished) = linesFromString(b + el)
-            (notFinished, lines ++ finished)
+          val (b, vector) = chunk.foldLeft((buffer, Vector.empty[String])) {
+            case ((b, lines), el) =>
+              val (finished, notFinished) = linesFromString(b + el)
+              (notFinished, lines ++ finished)
           }
           Pull.output(Chunk.vector(vector)) >> go(stream, b, first = false)
       }
