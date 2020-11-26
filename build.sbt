@@ -27,11 +27,9 @@ ThisBuild / versionIntroduced := Map(
 
 ThisBuild / githubWorkflowJavaVersions := Seq("adopt@1.11")
 
-ThisBuild / githubWorkflowPublishTargetBranches := Seq(
-  RefPredicate.Equals(Ref.Branch("main")),
-  RefPredicate.Equals(Ref.Branch("develop")),
-  RefPredicate.StartsWith(Ref.Tag("v"))
-)
+ThisBuild / spiewakCiReleaseSnapshots := true
+
+ThisBuild / spiewakMainBranches := List("main", "develop")
 
 ThisBuild / githubWorkflowBuild := Seq(
   WorkflowStep.Sbt(List("fmtCheck", "compile")),
@@ -40,22 +38,6 @@ ThisBuild / githubWorkflowBuild := Seq(
   WorkflowStep.Sbt(List("mimaReportBinaryIssues")),
   WorkflowStep.Sbt(List("project coreJVM", "it:test"))
 )
-
-ThisBuild / githubWorkflowEnv ++= Map(
-  "SONATYPE_USERNAME" -> "fs2-ci",
-  "SONATYPE_PASSWORD" -> s"$${{ secrets.SONATYPE_PASSWORD }}",
-  "PGP_SECRET" -> s"$${{ secrets.PGP_SECRET }}"
-)
-
-ThisBuild / githubWorkflowTargetTags += "v*"
-
-ThisBuild / githubWorkflowPublishPreamble +=
-  WorkflowStep.Run(
-    List("echo $PGP_SECRET | base64 -d | gpg --import"),
-    name = Some("Import signing key")
-  )
-
-ThisBuild / githubWorkflowPublish := Seq(WorkflowStep.Sbt(List("release")))
 
 ThisBuild / scmInfo := Some(
   ScmInfo(url("https://github.com/typelevel/fs2"), "git@github.com:typelevel/fs2.git")
@@ -175,7 +157,7 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
 
 lazy val root = project
   .in(file("."))
-  .settings(noPublishSettings)
+  .enablePlugins(NoPublishPlugin, SonatypeCiRelease)
   .aggregate(coreJVM, coreJS, io, reactiveStreams, benchmark, experimental)
 
 lazy val IntegrationTest = config("it").extend(Test)
@@ -187,13 +169,9 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
   .settings(
     inConfig(IntegrationTest)(org.scalafmt.sbt.ScalafmtPlugin.scalafmtConfigSettings)
   )
-  .settings(
-    name := "fs2-core"
-  )
-  .settings(dottyLibrarySettings)
   .settings(dottyJsSettings(ThisBuild / crossScalaVersions))
   .settings(
-    // Libraries cross-built for Dotty
+    name := "fs2-core",
     libraryDependencies ++= Seq(
       "org.typelevel" %%% "cats-core" % "2.3.0-M2",
       "org.typelevel" %%% "cats-laws" % "2.3.0-M2" % Test,
@@ -276,8 +254,7 @@ lazy val reactiveStreams = project
 
 lazy val benchmark = project
   .in(file("benchmark"))
-  .enablePlugins(JmhPlugin)
-  .settings(noPublishSettings)
+  .enablePlugins(JmhPlugin, NoPublishPlugin)
   .settings(
     name := "fs2-benchmark",
     Test / run / javaOptions := (Test / run / javaOptions).value
@@ -287,9 +264,7 @@ lazy val benchmark = project
 
 lazy val microsite = project
   .in(file("site"))
-  .enablePlugins(MicrositesPlugin)
-  .disablePlugins(MimaPlugin)
-  .settings(noPublishSettings)
+  .enablePlugins(MicrositesPlugin, NoPublishPlugin)
   .settings(
     micrositeName := "fs2",
     micrositeDescription := "Purely functional, effectful, resource-safe, concurrent streams for Scala",
@@ -306,9 +281,7 @@ lazy val microsite = project
         "home",
         Map("title" -> "Home", "section" -> "home", "position" -> "0")
       )
-    )
-  )
-  .settings(
+    ),
     scalacOptions in Compile ~= {
       _.filterNot("-Ywarn-unused-import" == _)
         .filterNot("-Ywarn-unused" == _)
