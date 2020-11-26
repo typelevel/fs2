@@ -212,60 +212,18 @@ object text {
       (out, carry)
     }
 
-    def extractLines(
-        buffer: Vector[String],
-        chunk: Chunk[String],
-        pendingLineFeed: Boolean
-    ): (Chunk[String], Vector[String], Boolean) = {
-      @tailrec
-      def go(
-          remainingInput: Vector[String],
-          buffer: Vector[String],
-          output: Vector[String],
-          pendingLineFeed: Boolean
-      ): (Chunk[String], Vector[String], Boolean) =
-        if (remainingInput.isEmpty)
-          (Chunk.indexedSeq(output), buffer, pendingLineFeed)
-        else {
-          val next = remainingInput.head
-          if (pendingLineFeed)
-            if (next.headOption == Some('\n')) {
-              val out = (buffer.init :+ buffer.last.init).mkString
-              go(next.tail +: remainingInput.tail, Vector.empty, output :+ out, false)
-            } else
-              go(remainingInput, buffer, output, false)
-          else {
-            val (out, carry) = linesFromString(next)
-            val pendingLF =
-              if (carry.nonEmpty) carry.last == '\r' else pendingLineFeed
-            go(
-              remainingInput.tail,
-              if (out.isEmpty) buffer :+ carry else Vector(carry),
-              if (out.isEmpty) output
-              else output ++ ((buffer :+ out.head).mkString +: out.tail),
-              pendingLF
-            )
+    def go(stream: Stream[F, String], buffer: String, first: Boolean): Pull[F, String, Unit] =
+      stream.pull.uncons flatMap {
+        case None => if(first) Pull.done else Pull.output1(buffer)
+        case Some((chunk, stream)) =>
+          val (b, vector) = chunk.foldLeft((buffer, Vector.empty[String])) { case ((b, lines), el) =>
+            val (finished, notFinished) = linesFromString(b + el)
+            (notFinished, lines ++ finished)
           }
-        }
-      go(chunk.toVector, buffer, Vector.empty, pendingLineFeed)
-    }
-
-    def go(
-        buffer: Vector[String],
-        pendingLineFeed: Boolean,
-        s: Stream[F, String]
-    ): Pull[F, String, Unit] =
-      s.pull.uncons.flatMap {
-        case Some((chunk, s)) =>
-          val (toOutput, newBuffer, newPendingLineFeed) =
-            extractLines(buffer, chunk, pendingLineFeed)
-          Pull.output(toOutput) >> go(newBuffer, newPendingLineFeed, s)
-        case None if buffer.nonEmpty =>
-          Pull.output1(buffer.mkString)
-        case None => Pull.done
+          Pull.output(Chunk.vector(vector)) >> go(stream, b, first = false)
       }
 
-    s => go(Vector.empty, false, s).stream
+    s => go(s, "", first = true).stream
   }
 
   /** Functions for working with base 64. */
