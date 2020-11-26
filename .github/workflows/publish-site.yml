@@ -17,10 +17,12 @@ jobs:
       - uses: actions/checkout@v2.1.0
 
       - name: "Install Nix ❄️"
-        uses: nixbuild/nix-quick-install-action@v2
+        uses: cachix/install-nix-action@v12
+        with:
+          skip_adding_nixpkgs_channel: true
 
       - name: "Install Cachix ❄️"
-        uses: cachix/cachix-action@v6
+        uses: cachix/cachix-action@v8
         with:
           name: fs2-site
           signingKey: "${{ secrets.CACHIX_SIGNING_KEY }}"

@@ -3,7 +3,7 @@ FS2: Functional Streams for Scala
 
 [![Continuous Integration](https://github.com/functional-streams-for-scala/fs2/workflows/Continuous%20Integration/badge.svg)](https://github.com/functional-streams-for-scala/fs2/actions?query=workflow%3A%22Continuous+Integration%22)
 [![Gitter Chat](https://badges.gitter.im/functional-streams-for-scala/fs2.svg)](https://gitter.im/functional-streams-for-scala/fs2)
-[![Latest version](https://img.shields.io/maven-central/v/co.fs2/fs2-core_2.12.svg)](https://index.scala-lang.org/functional-streams-for-scala/fs2/fs2-core)
+[![Maven Central](https://img.shields.io/maven-central/v/co.fs2/fs2-core_2.12)](https://maven-badges.herokuapp.com/maven-central/co.fs2/fs2-core_2.12)
 
 ### Overview
 
@@ -42,20 +42,20 @@ If upgrading from the 2.x series, see the [release notes for 3.0.0-M1](https://g
 
 
 ```
-// available for 2.12, 2.13, 0.27
-libraryDependencies += "co.fs2" %% "fs2-core" % "3.0.0-M1"
+// available for 2.12, 2.13
+libraryDependencies += "co.fs2" %% "fs2-core" % "<version>" // For cats 2 and cats-effect 2
 
 // optional I/O library
-libraryDependencies += "co.fs2" %% "fs2-io" % "3.0.0-M1"
+libraryDependencies += "co.fs2" %% "fs2-io" % "<version>"
 
 // optional reactive streams interop
-libraryDependencies += "co.fs2" %% "fs2-reactive-streams" % "3.0.0-M1"
+libraryDependencies += "co.fs2" %% "fs2-reactive-streams" % "<version>"
 ```
 
 The fs2-core library is also supported on Scala.js:
 
 ```
-libraryDependencies += "co.fs2" %%% "fs2-core" % "3.0.0-M1"
+libraryDependencies += "co.fs2" %%% "fs2-core" % "<version>"
 ```
 
 There are [detailed migration guides](https://github.com/functional-streams-for-scala/fs2/blob/main/docs/) for migrating from older versions.
@@ -128,6 +128,7 @@ Here's a (non-exhaustive) list of companies that use FS2 in production. Don't se
 * [Disney Streaming](https://www.disneyplus.com)
 * [Formedix](https://www.formedix.com/)
 * [HiFi](https://hi.fi/)
+* [ITV](https://itv.com/)
 * [OVO Energy](https://www.ovoenergy.com)
 * [Ocado Technology](https://www.ocadogroup.com/technology/technology-pioneers)
 * [Teikametrics](https://www.teikametrics.com)
