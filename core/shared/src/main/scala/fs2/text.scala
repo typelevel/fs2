@@ -189,45 +189,52 @@ object text {
 
   /** Transforms a stream of `String` such that each emitted `String` is a line from the input. */
   def lines[F[_]]: Pipe[F, String, String] = {
-    def linesFromString(string: String): (Vector[String], String) = {
-      var i = 0
-      var start = 0
-      var out = Vector.empty[String]
+    def fillBuffers(
+        stringBuilder: StringBuilder,
+        linesBuffer: mutable.Buffer[String],
+        string: String
+    ) {
+      val l = stringBuilder.length()
+      var i =
+        if (l > 0 && stringBuilder(l - 1) == '\r' && string.nonEmpty && string(0) == '\n') {
+          stringBuilder.deleteCharAt(l - 1)
+          linesBuffer += stringBuilder.result()
+          stringBuilder.clear()
+          1
+        } else 0
+
       while (i < string.size) {
         string(i) match {
           case '\n' =>
-            out = out :+ string.substring(start, i)
-            start = i + 1
-          case '\r' =>
-            if (i + 1 < string.size && string(i + 1) == '\n') {
-              out = out :+ string.substring(start, i)
-              start = i + 2
-              i += 1
-            }
-          case _ =>
-            ()
+            linesBuffer += stringBuilder.result()
+            stringBuilder.clear()
+          case '\r' if i + 1 < string.size && string(i + 1) == '\n' =>
+            linesBuffer += stringBuilder.result()
+            stringBuilder.clear()
+            i += 1
+          case other =>
+            stringBuilder.append(other)
         }
         i += 1
       }
-      val carry = string.substring(start, string.size)
-      (out, carry)
     }
 
-    def go(stream: Stream[F, String], buffer: String, first: Boolean): Pull[F, String, Unit] =
+    def go(
+        stream: Stream[F, String],
+        stringBuilder: StringBuilder,
+        first: Boolean
+    ): Pull[F, String, Unit] =
       stream.pull.uncons.flatMap {
-        case None => if (first) Pull.done else Pull.output1(buffer)
+        case None => if (first) Pull.done else Pull.output1(stringBuilder.result())
         case Some((chunk, stream)) =>
-          var b = buffer
-          val mutBuffer = new mutable.ArrayBuffer[String]()
+          val linesBuffer = new mutable.ArrayBuffer[String]()
           chunk.foreach { string =>
-            val (finished, notFinished) = linesFromString(b + string)
-            b = notFinished
-            mutBuffer ++= finished
+            fillBuffers(stringBuilder, linesBuffer, string)
           }
-          Pull.output(Chunk.buffer(mutBuffer)) >> go(stream, b, first = false)
+          Pull.output(Chunk.buffer(linesBuffer)) >> go(stream, stringBuilder, first = false)
       }
 
-    s => go(s, "", first = true).stream
+    s => go(s, new mutable.StringBuilder(), first = true).stream
   }
 
   /** Functions for working with base 64. */
