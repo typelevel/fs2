@@ -33,7 +33,7 @@ class LinesBenchmark {
   var asciiLineSize: Int = _
   @Param(Array("4", "16", "64"))
   var chunkSize: Int = _
-  val lines = 100
+  val lines = 250
 
   var stringStream: Stream[IO, String] = _
   @Setup
@@ -47,8 +47,9 @@ class LinesBenchmark {
 
         ((string + "\n") * lines)
           .grouped(chunkSize)
-          .foldLeft(Stream[IO, String]()) { case (acc, string) =>
-            acc ++ Stream.chunk(Chunk.singleton(string))
+          .grouped(chunkSize)
+          .foldLeft(Stream[IO, String]()) { case (acc, strings) =>
+            acc ++ Stream.chunk(Chunk.seq(strings))
           }
       }
 
