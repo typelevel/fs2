@@ -177,7 +177,7 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
       "org.typelevel" %%% "cats-effect" % "2.3.0-M1",
       "org.typelevel" %%% "cats-effect-laws" % "2.3.0-M1" % Test,
       "org.scodec" %%% "scodec-bits" % "1.1.21",
-      "org.typelevel" %%% "scalacheck-effect-munit" % "0.5.0" % Test,
+      "org.typelevel" %%% "scalacheck-effect-munit" % "0.6.0" % Test,
       "org.typelevel" %%% "munit-cats-effect-2" % "0.9.0" % Test
     )
   )
