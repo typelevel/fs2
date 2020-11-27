@@ -26,8 +26,9 @@ import java.nio.charset.Charset
 
 import scala.annotation.tailrec
 import scala.collection.mutable.Builder
-
 import scodec.bits.{Bases, ByteVector}
+
+import scala.collection.mutable
 
 /** Provides utilities for working with streams of text (e.g., encoding byte streams to strings). */
 object text {
@@ -216,12 +217,14 @@ object text {
       stream.pull.uncons.flatMap {
         case None => if (first) Pull.done else Pull.output1(buffer)
         case Some((chunk, stream)) =>
-          val (b, vector) = chunk.foldLeft((buffer, Vector.empty[String])) {
-            case ((b, lines), el) =>
-              val (finished, notFinished) = linesFromString(b + el)
-              (notFinished, lines ++ finished)
+          var b = buffer
+          val mutBuffer = new mutable.ArrayBuffer[String]()
+          chunk.foreach { string =>
+            val (finished, notFinished) = linesFromString(b + string)
+            b = notFinished
+            mutBuffer ++= finished
           }
-          Pull.output(Chunk.vector(vector)) >> go(stream, b, first = false)
+          Pull.output(Chunk.buffer(mutBuffer)) >> go(stream, b, first = false)
       }
 
     s => go(s, "", first = true).stream
