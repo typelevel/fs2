@@ -18,10 +18,11 @@ ThisBuild / organizationName := "Functional Streams for Scala"
 ThisBuild / homepage := Some(url("https://github.com/typelevel/fs2"))
 ThisBuild / startYear := Some(2013)
 
-ThisBuild / crossScalaVersions := Seq("2.13.3", "2.12.10", "3.0.0-M1")
+ThisBuild / crossScalaVersions := Seq("3.0.0-M1", "3.0.0-M2", "2.12.10", "2.13.4")
 
 ThisBuild / versionIntroduced := Map(
-  "3.0.0-M1" -> "2.4.99"
+  "3.0.0-M1" -> "2.4.99",
+  "3.0.0-M2" -> "2.4.99"
 )
 
 ThisBuild / githubWorkflowJavaVersions := Seq("adopt@1.11")
@@ -174,11 +175,11 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
     libraryDependencies ++= Seq(
       "org.typelevel" %%% "cats-core" % "2.3.0",
       "org.typelevel" %%% "cats-laws" % "2.3.0" % Test,
-      "org.typelevel" %%% "cats-effect" % "2.3.0-M1",
-      "org.typelevel" %%% "cats-effect-laws" % "2.3.0-M1" % Test,
-      "org.scodec" %%% "scodec-bits" % "1.1.21",
-      "org.typelevel" %%% "scalacheck-effect-munit" % "0.5.0" % Test,
-      "org.typelevel" %%% "munit-cats-effect-2" % "0.9.0" % Test
+      "org.typelevel" %%% "cats-effect" % "2.3.0",
+      "org.typelevel" %%% "cats-effect-laws" % "2.3.0" % Test,
+      "org.scodec" %%% "scodec-bits" % "1.1.22",
+      "org.typelevel" %%% "scalacheck-effect-munit" % "0.6.0" % Test,
+      "org.typelevel" %%% "munit-cats-effect-2" % "0.10.0" % Test
     )
   )
 
