@@ -3049,7 +3049,9 @@ object Stream extends StreamLowPriority {
     * If you'd like a 'discrete' stream that will actually block until `d` has elapsed,
     * use `awakeEvery` instead.
     */
-  def every[F[_]](d: FiniteDuration)(implicit clock: Clock[F], F: Functor[F]): Stream[F, Boolean] = {
+  def every[F[_]](
+      d: FiniteDuration
+  )(implicit clock: Clock[F], F: Functor[F]): Stream[F, Boolean] = {
     def go(lastSpikeNanos: Long): Stream[F, Boolean] =
       Stream.eval(clock.monotonic.map(_.toNanos)).flatMap { now =>
         if ((now - lastSpikeNanos) > d.toNanos) Stream.emit(true) ++ go(now)
