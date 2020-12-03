@@ -445,6 +445,24 @@ object Pull extends PullLowPriority {
     def apply(r: Result[Unit]): Pull[F, O, Unit] = r
   }
 
+  private final class BindView[+F[_], +O, Y](step: Action[F, O, Y], b: Bind[F, O, Y, Unit])
+      extends View[F, O, Y](step) {
+    def apply(r: Result[Y]): Pull[F, O, Unit] = b.cont(r)
+  }
+
+  private class BindBind[F[_], O, X, Y](
+      bb: Bind[F, O, X, Y],
+      delegate: Bind[F, O, Y, Unit]
+  ) extends Bind[F, O, X, Unit](bb.step) { self =>
+
+    def cont(zr: Result[X]): Pull[F, O, Unit] =
+      new Bind[F, O, Y, Unit](bb.cont(zr)) {
+        override val delegate: Bind[F, O, Y, Unit] = self.delegate
+        def cont(yr: Result[Y]): Pull[F, O, Unit] = delegate.cont(yr)
+      }
+
+  }
+
   /* unrolled view of Pull `bind` structure * */
 
   private def viewL[F[_], O](stream: Pull[F, O, Unit]): ViewL[F, O] = {
@@ -456,23 +474,9 @@ object Pull extends PullLowPriority {
         case e: Action[F, O, Unit] => new EvalView[F, O](e)
         case b: Bind[F, O, y, Unit] =>
           b.step match {
-            case r: Result[_] =>
-              val ry: Result[y] = r.asInstanceOf[Result[y]]
-              mk(b.cont(ry))
-            case e: Action[F, O, y2] =>
-              new View[F, O, y2](e) {
-                def apply(r: Result[y2]): Pull[F, O, Unit] = b.cont(r.asInstanceOf[Result[y]])
-              }
-            case bb: Bind[F, O, x, _] =>
-              val nb = new Bind[F, O, x, Unit](bb.step) {
-                private[this] val bdel: Bind[F, O, y, Unit] = b.delegate
-                def cont(zr: Result[x]): Pull[F, O, Unit] =
-                  new Bind[F, O, y, Unit](bb.cont(zr).asInstanceOf[Pull[F, O, y]]) {
-                    override val delegate: Bind[F, O, y, Unit] = bdel
-                    def cont(yr: Result[y]): Pull[F, O, Unit] = delegate.cont(yr)
-                  }
-              }
-              mk(nb)
+            case e: Action[F, O, y2] => new BindView(e, b)
+            case r: Result[_]        => mk(b.cont(r.asInstanceOf[Result[y]]))
+            case c: Bind[F, O, x, _] => mk(new BindBind[F, O, x, y](c, b.delegate))
           }
       }
 
