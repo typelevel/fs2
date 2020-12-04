@@ -483,7 +483,7 @@ object Pull extends PullLowPriority {
         fmout: FlatMapOutput[F, P, Q],
         b: Bind[F, Q, Unit, Unit]
     ): Bind[F, Q, Unit, Unit] = {
-      val inner = innerFlatMapOutput(fmout.stream, fmout.fun)
+      val inner = Step(fmout.stream, None).flatMap(flatMapOutputCont(fmout.fun))
       val del = b.delegate
       new Bind[F, Q, Unit, Unit](inner) {
         override val delegate: Bind[F, Q, Unit, Unit] = del
@@ -941,11 +941,6 @@ object Pull extends PullLowPriority {
               }
               go(scope, extendedTopLevelScope, translation, str)
 
-            case fmout: FlatMapOutput[g, z, x] => // y = Unit
-              val mo: Pull[g, X, Unit] = innerFlatMapOutput[g, z, X](fmout.stream, fmout.fun)
-              val fgrx = go(scope, extendedTopLevelScope, translation, mo)
-              goView(fgrx, view)
-
             case tst: Translate[h, g, x] =>
               val composed: h ~> F = translation.asInstanceOf[g ~> F].compose[h](tst.fk)
               val runInner: F[R[h, x]] =
@@ -1014,12 +1009,6 @@ object Pull extends PullLowPriority {
     outerLoop(initScope, init, stream)
   }
 
-  private[this] def innerFlatMapOutput[F[_], O, O2](
-      p: Pull[F, O, Unit],
-      f: O => Pull[F, O2, Unit]
-  ): Pull[F, O2, Unit] =
-    Step(p, None).flatMap(flatMapOutputCont(f))
-
   private[this] def flatMapOutputCont[F[_], O, P](
       fun: O => Pull[F, P, Unit]
   )(unc: Option[StepStop[F, O]]): Pull[F, P, Unit] = unc match {
@@ -1034,13 +1023,13 @@ object Pull extends PullLowPriority {
     case Some((chunk, _, tail)) =>
       def go(idx: Int): Pull[F, P, Unit] =
         if (idx == chunk.size)
-          innerFlatMapOutput[F, O, P](tail, fun)
+          FlatMapOutput[F, O, P](tail, fun)
         else
           fun(chunk(idx)).transformWith {
             case Result.Succeeded(_) => go(idx + 1)
             case Result.Fail(err)    => Result.Fail(err)
             case interruption @ Result.Interrupted(_, _) =>
-              innerFlatMapOutput[F, O, P](interruptBoundary(tail, interruption), fun)
+              FlatMapOutput[F, O, P](interruptBoundary(tail, interruption), fun)
           }
 
       go(0)
