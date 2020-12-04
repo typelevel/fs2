@@ -21,7 +21,6 @@
 
 package fs2
 
-import scala.annotation.tailrec
 import scala.concurrent.duration.FiniteDuration
 import scala.util.control.NonFatal
 
@@ -481,8 +480,8 @@ object Pull extends PullLowPriority {
     }
 
     def flatMapOutBind[Q, P](
-      fmout: FlatMapOutput[F, P, Q],
-      b: Bind[F, Q, Unit, Unit]
+        fmout: FlatMapOutput[F, P, Q],
+        b: Bind[F, Q, Unit, Unit]
     ): Bind[F, Q, Unit, Unit] = {
       val inner = innerFlatMapOutput(fmout.stream, fmout.fun)
       val del = b.delegate
@@ -492,25 +491,29 @@ object Pull extends PullLowPriority {
       }
     }
 
-    @tailrec
-    def mk(free: Pull[F, O, Unit]): ViewL[F, O] =
+    var result: ViewL[F, O] = null
+    var free: Pull[F, O, Unit] = stream
+    while (result == null)
       free match {
-        case r: Result[Unit]           => r
-        case f: FlatMapOutput[F, p, O] => flatMapView(f)
-        case e: Action[F, O, Unit]     => new EvalView[F, O](e)
+        case r: Result[Unit] =>
+          result = r
+        case f: FlatMapOutput[F, p, O] =>
+          result = flatMapView(f)
+        case e: Action[F, O, Unit] =>
+          result = new EvalView[F, O](e)
         case b: Bind[F, O, y, Unit] =>
           b.step match {
+            case r: Result[_] =>
+              free = b.cont(r.asInstanceOf[Result[y]])
             case fmout: FlatMapOutput[g, p, O] =>
-              val rr = flatMapOutBind[O, p](fmout, b.asInstanceOf[Bind[F, O, Unit, Unit]])
-              mk(rr)
-
-            case e: Action[F, O, y2] => new BindView(e, b)
-            case r: Result[_]        => mk(b.cont(r.asInstanceOf[Result[y]]))
-            case c: Bind[F, O, x, _] => mk(new BindBind[F, O, x, y](c, b.delegate))
+              free = flatMapOutBind[O, p](fmout, b.asInstanceOf[Bind[g, O, Unit, Unit]])
+            case e: Action[F, O, y2] =>
+              result = new BindView(e, b)
+            case c: Bind[F, O, x, _] =>
+              free = new BindBind[F, O, x, y](c, b.delegate)
           }
       }
-
-    mk(stream)
+    result
   }
 
   /* An Action is an atomic instruction that can perform effects in `F`
