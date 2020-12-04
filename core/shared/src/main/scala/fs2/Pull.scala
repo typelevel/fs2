@@ -1087,10 +1087,11 @@ object Pull extends PullLowPriority {
       fK: F ~> G
   ): Pull[G, O, Unit] =
     stream match {
-      case r: Result[_]          => r
-      case t: Translate[e, f, _] => translate[e, G, O](t.stream, fK.compose(t.fk))
-      case o: Output[_]          => o
-      case _                     => Translate(stream, fK)
+      case r: Result[_] => r
+      case t: Translate[e, f, _] =>
+        translate[e, G, O](t.stream, t.fk.andThen(fK.asInstanceOf[f ~> G]))
+      case o: Output[_] => o
+      case _            => Translate(stream, fK)
     }
 
   /* Applies the outputs of this pull to `f` and returns the result in a new `Pull`. */
