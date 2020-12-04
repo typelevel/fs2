@@ -468,7 +468,6 @@ object Pull extends PullLowPriority {
     def flatMapView[Q, P](fm: FlatMapOutput[F, P, Q]): ViewL[F, Q] = {
       val st = Step[F, P](fm.stream, None)
       new View[F, Q, Option[StepStop[F, P]]](st) {
-
         def apply(r: Result[Option[StepStop[F, P]]]) = r match {
           case Result.Succeeded(r) =>
             try flatMapOutputCont[F, P, Q](fm.fun)(r)
@@ -482,12 +481,24 @@ object Pull extends PullLowPriority {
     def flatMapOutBind[Q, P](
         fmout: FlatMapOutput[F, P, Q],
         b: Bind[F, Q, Unit, Unit]
-    ): Bind[F, Q, Unit, Unit] = {
-      val inner = Step(fmout.stream, None).flatMap(flatMapOutputCont(fmout.fun))
+    ): View[F, Q, Option[StepStop[F, P]]] = {
+      type X = Option[StepStop[F, P]]
+      val step = Step(fmout.stream, None)
       val del = b.delegate
-      new Bind[F, Q, Unit, Unit](inner) {
-        override val delegate: Bind[F, Q, Unit, Unit] = del
-        def cont(yr: Result[Unit]): Pull[F, Q, Unit] = b.cont(yr)
+      new View[F, Q, X](step) {
+        def apply(zr: Result[X]): Pull[F, Q, Unit] = {
+          val iccc = zr match {
+            case Result.Succeeded(r) =>
+              try flatMapOutputCont(fmout.fun)(r)
+              catch { case NonFatal(e) => Result.Fail(e) }
+            case res @ Result.Interrupted(_, _) => res
+            case res @ Result.Fail(_)           => res
+          }
+          new Bind[F, Q, Unit, Unit](iccc) {
+            override val delegate: Bind[F, Q, Unit, Unit] = del
+            def cont(yr: Result[Unit]): Pull[F, Q, Unit] = delegate.cont(yr)
+          }
+        }
       }
     }
 
@@ -506,7 +517,7 @@ object Pull extends PullLowPriority {
             case r: Result[_] =>
               free = b.cont(r.asInstanceOf[Result[y]])
             case fmout: FlatMapOutput[g, p, O] =>
-              free = flatMapOutBind[O, p](fmout, b.asInstanceOf[Bind[g, O, Unit, Unit]])
+              result = flatMapOutBind[O, p](fmout, b.asInstanceOf[Bind[g, O, Unit, Unit]])
             case e: Action[F, O, y2] =>
               result = new BindView(e, b)
             case c: Bind[F, O, x, _] =>
