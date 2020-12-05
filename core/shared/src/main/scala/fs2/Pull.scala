@@ -21,6 +21,7 @@
 
 package fs2
 
+import scala.annotation.tailrec
 import scala.concurrent.duration.FiniteDuration
 import scala.util.control.NonFatal
 
@@ -502,29 +503,23 @@ object Pull extends PullLowPriority {
       }
     }
 
-    var result: ViewL[F, O] = null
-    var free: Pull[F, O, Unit] = stream
-    while (result == null)
+    @tailrec
+    def mk(free: Pull[F, O, Unit]): ViewL[F, O] =
       free match {
-        case r: Result[Unit] =>
-          result = r
-        case f: FlatMapOutput[F, p, O] =>
-          result = flatMapView(f)
-        case e: Action[F, O, Unit] =>
-          result = new EvalView[F, O](e)
+        case r: Result[Unit]           => r
+        case f: FlatMapOutput[F, p, O] => flatMapView(f)
+        case e: Action[F, O, Unit]     => new EvalView[F, O](e)
         case b: Bind[F, O, y, Unit] =>
           b.step match {
-            case r: Result[_] =>
-              free = b.cont(r.asInstanceOf[Result[y]])
             case fmout: FlatMapOutput[g, p, O] =>
-              result = flatMapOutBind[O, p](fmout, b.asInstanceOf[Bind[g, O, Unit, Unit]])
-            case e: Action[F, O, y2] =>
-              result = new BindView(e, b)
-            case c: Bind[F, O, x, _] =>
-              free = new BindBind[F, O, x, y](c, b.delegate)
+              flatMapOutBind[O, p](fmout, b.asInstanceOf[Bind[g, O, Unit, Unit]])
+            case e: Action[F, O, y2] => new BindView(e, b)
+            case r: Result[_]        => mk(b.cont(r.asInstanceOf[Result[y]]))
+            case c: Bind[F, O, x, _] => mk(new BindBind[F, O, x, y](c, b.delegate))
           }
       }
-    result
+
+    mk(stream)
   }
 
   /* An Action is an atomic instruction that can perform effects in `F`
