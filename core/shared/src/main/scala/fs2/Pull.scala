@@ -463,56 +463,56 @@ object Pull extends PullLowPriority {
 
   }
 
+  private class FlatMapView[F[_], P, O](fm: FlatMapOutput[F, P, O])
+      extends View[F, O, Option[StepStop[F, P]]](Step[F, P](fm.stream, None)) {
+
+    def apply(r: Result[Option[StepStop[F, P]]]): Pull[F, O, Unit] =
+      r match {
+        case Result.Succeeded(r) =>
+          try flatMapOutputCont[F, P, O](fm.fun)(r)
+          catch { case NonFatal(e) => Result.Fail(e) }
+        case res @ Result.Interrupted(_, _) => res
+        case res @ Result.Fail(_)           => res
+      }
+  }
+
+  private class FlatMapBindView[F[_], P, O](
+      fmout: FlatMapOutput[F, P, O],
+      b: Bind[F, O, Unit, Unit]
+  ) extends View[F, O, Option[StepStop[F, P]]](
+        Step(fmout.stream, None)
+      ) {
+    private val del = b.delegate
+
+    def apply(zr: Result[Option[StepStop[F, P]]]): Pull[F, O, Unit] = {
+      val iccc = zr match {
+        case Result.Succeeded(r) =>
+          try flatMapOutputCont(fmout.fun)(r)
+          catch { case NonFatal(e) => Result.Fail(e) }
+        case res @ Result.Interrupted(_, _) => res
+        case res @ Result.Fail(_)           => res
+      }
+      new Bind[F, O, Unit, Unit](iccc) {
+        override val delegate: Bind[F, O, Unit, Unit] = del
+        def cont(yr: Result[Unit]): Pull[F, O, Unit] = delegate.cont(yr)
+      }
+    }
+  }
+
   /* unrolled view of Pull `bind` structure * */
   private def viewL[F[_], O](stream: Pull[F, O, Unit]): ViewL[F, O] = {
-
-    def flatMapView[Q, P](fm: FlatMapOutput[F, P, Q]): ViewL[F, Q] = {
-      val st = Step[F, P](fm.stream, None)
-      new View[F, Q, Option[StepStop[F, P]]](st) {
-        def apply(r: Result[Option[StepStop[F, P]]]) = r match {
-          case Result.Succeeded(r) =>
-            try flatMapOutputCont[F, P, Q](fm.fun)(r)
-            catch { case NonFatal(e) => Result.Fail(e) }
-          case res @ Result.Interrupted(_, _) => res
-          case res @ Result.Fail(_)           => res
-        }
-      }
-    }
-
-    def flatMapOutBind[Q, P](
-        fmout: FlatMapOutput[F, P, Q],
-        b: Bind[F, Q, Unit, Unit]
-    ): View[F, Q, Option[StepStop[F, P]]] = {
-      type X = Option[StepStop[F, P]]
-      val step = Step(fmout.stream, None)
-      val del = b.delegate
-      new View[F, Q, X](step) {
-        def apply(zr: Result[X]): Pull[F, Q, Unit] = {
-          val iccc = zr match {
-            case Result.Succeeded(r) =>
-              try flatMapOutputCont(fmout.fun)(r)
-              catch { case NonFatal(e) => Result.Fail(e) }
-            case res @ Result.Interrupted(_, _) => res
-            case res @ Result.Fail(_)           => res
-          }
-          new Bind[F, Q, Unit, Unit](iccc) {
-            override val delegate: Bind[F, Q, Unit, Unit] = del
-            def cont(yr: Result[Unit]): Pull[F, Q, Unit] = delegate.cont(yr)
-          }
-        }
-      }
-    }
 
     @tailrec
     def mk(free: Pull[F, O, Unit]): ViewL[F, O] =
       free match {
         case r: Result[Unit]           => r
-        case f: FlatMapOutput[F, p, O] => flatMapView(f)
+        case f: FlatMapOutput[F, p, O] => new FlatMapView[F, p, O](f)
         case e: Action[F, O, Unit]     => new EvalView[F, O](e)
         case b: Bind[F, O, y, Unit] =>
           b.step match {
             case fmout: FlatMapOutput[g, p, O] =>
-              flatMapOutBind[O, p](fmout, b.asInstanceOf[Bind[g, O, Unit, Unit]])
+              val bbb = b.asInstanceOf[Bind[g, O, Unit, Unit]]
+              new FlatMapBindView[g, p, O](fmout, bbb)
             case e: Action[F, O, y2] => new BindView(e, b)
             case r: Result[_]        => mk(b.cont(r.asInstanceOf[Result[y]]))
             case c: Bind[F, O, x, _] => mk(new BindBind[F, O, x, y](c, b.delegate))
