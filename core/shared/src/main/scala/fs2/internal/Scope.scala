@@ -79,7 +79,7 @@ import fs2.internal.InterruptContext.InterruptionOutcome
   *                       that eventually allows interruption while eval is evaluating.
   */
 private[fs2] final class Scope[F[_]] private (
-    val id: Token,
+    val id: Unique,
     val parent: Option[Scope[F]],
     val interruptible: Option[InterruptContext[F]],
     private val state: Ref[F, Scope.State[F]]
@@ -118,7 +118,7 @@ private[fs2] final class Scope[F[_]] private (
      *     or as a result of interrupting this scope. But it should not propagate its own interruption to this scope.
      *
      */
-    val createScope: F[Scope[F]] = Token[F].flatMap { newScopeId =>
+    val createScope: F[Scope[F]] = F.unique.flatMap { newScopeId =>
       self.interruptible match {
         case None =>
           val optFCtx = if (interruptible) F.interruptContext(newScopeId) else None
@@ -169,7 +169,7 @@ private[fs2] final class Scope[F[_]] private (
   def acquireResource[R](
       acquire: Poll[F] => F[R],
       release: (R, Resource.ExitCase) => F[Unit]
-  ): F[Outcome[Id, Throwable, Either[Token, R]]] =
+  ): F[Outcome[Id, Throwable, Either[Unique, R]]] =
     interruptibleEval[Either[Throwable, R]] {
       ScopedResource.create[F].flatMap { resource =>
         F.uncancelable { poll =>
@@ -197,9 +197,9 @@ private[fs2] final class Scope[F[_]] private (
       case Left(Outcome.Errored(t)) => Outcome.Errored(t)
       case Left(Outcome.Canceled()) => Outcome.Canceled()
       case Left(Outcome.Succeeded(token)) =>
-        Outcome.Succeeded[Id, Throwable, Either[Token, R]](Left(token))
+        Outcome.Succeeded[Id, Throwable, Either[Unique, R]](Left(token))
       case Right(Left(t))  => Outcome.Errored(t)
-      case Right(Right(r)) => Outcome.Succeeded[Id, Throwable, Either[Token, R]](Right(r))
+      case Right(Right(r)) => Outcome.Succeeded[Id, Throwable, Either[Unique, R]](Right(r))
     }
 
   /** Unregisters the child scope identified by the supplied id.
@@ -207,7 +207,7 @@ private[fs2] final class Scope[F[_]] private (
     * As a result of unregistering a child scope, its resources are no longer
     * reachable from its parent.
     */
-  private def releaseChildScope(id: Token): F[Unit] =
+  private def releaseChildScope(id: Unique): F[Unit] =
     state.update {
       case s: Scope.State.Open[F]   => s.unregisterChild(id)
       case s: Scope.State.Closed[F] => s
@@ -284,7 +284,7 @@ private[fs2] final class Scope[F[_]] private (
   }
 
   /** Finds ancestor of this scope given `scopeId`. */
-  def findSelfOrAncestor(scopeId: Token): Option[Scope[F]] = {
+  def findSelfOrAncestor(scopeId: Unique): Option[Scope[F]] = {
     @tailrec
     def go(curr: Scope[F]): Option[Scope[F]] =
       if (curr.id == scopeId) Some(curr)
@@ -297,7 +297,7 @@ private[fs2] final class Scope[F[_]] private (
   }
 
   /** Finds scope in child hierarchy of current scope. */
-  def findSelfOrChild(scopeId: Token): F[Option[Scope[F]]] = {
+  def findSelfOrChild(scopeId: Unique): F[Option[Scope[F]]] = {
     def go(scopes: Chain[Scope[F]]): F[Option[Scope[F]]] =
       scopes.uncons match {
         case None => F.pure(None)
@@ -326,7 +326,7 @@ private[fs2] final class Scope[F[_]] private (
   /** Tries to shift from the current scope with the given ScopeId, if one exists.
     * If not, throws an error.
     */
-  def shiftScope(scopeId: Token, context: => String): F[Scope[F]] =
+  def shiftScope(scopeId: Unique, context: => String): F[Scope[F]] =
     findStepScope(scopeId).flatMap {
       case Some(scope) => F.pure(scope)
       case None =>
@@ -349,7 +349,7 @@ private[fs2] final class Scope[F[_]] private (
     * - check if id is parent or any of its children
     * - traverse all known scope ids, starting from the root.
     */
-  def findStepScope(scopeId: Token): F[Option[Scope[F]]] = {
+  def findStepScope(scopeId: Unique): F[Option[Scope[F]]] = {
     @tailrec
     def go(scope: Scope[F]): Scope[F] =
       scope.parent match {
@@ -379,7 +379,7 @@ private[fs2] final class Scope[F[_]] private (
         val outcome: F[InterruptionOutcome] = haltWhen.map(
           _.fold(
             t => Outcome.Errored(t),
-            _ => Outcome.Succeeded[Id, Throwable, Token](iCtx.interruptRoot)
+            _ => Outcome.Succeeded[Id, Throwable, Unique](iCtx.interruptRoot)
           )
         )
         iCtx.completeWhen(outcome)
@@ -455,7 +455,7 @@ private[fs2] final class Scope[F[_]] private (
 private[fs2] object Scope {
 
   private def apply[F[_]](
-      id: Token,
+      id: Unique,
       parent: Option[Scope[F]],
       interruptible: Option[InterruptContext[F]]
   )(implicit F: Compiler.Target[F]): F[Scope[F]] =
@@ -463,8 +463,8 @@ private[fs2] object Scope {
       .map(state => new Scope[F](id, parent, interruptible, state))
 
   /** Creates a new root scope. */
-  def newRoot[F[_]: Compiler.Target]: F[Scope[F]] =
-    Token[F].flatMap(apply[F](_, None, None))
+  def newRoot[F[_]](implicit F: Compiler.Target[F]): F[Scope[F]] =
+    F.unique.flatMap(apply[F](_, None, None))
 
   private sealed trait State[F[_]]
   private object State {
@@ -479,7 +479,7 @@ private[fs2] object Scope {
       */
     case class Open[F[_]](resources: Chain[ScopedResource[F]], children: Chain[Scope[F]])
         extends State[F] { self =>
-      def unregisterChild(id: Token): State[F] =
+      def unregisterChild(id: Unique): State[F] =
         self.children.deleteFirst(_.id == id) match {
           case Some((_, newChildren)) => self.copy(children = newChildren)
           case None                   => self

@@ -26,7 +26,7 @@ import cats.effect.kernel.{Concurrent, Deferred, Outcome, Ref}
 import cats.effect.kernel.implicits._
 
 import fs2._
-import fs2.internal.Token
+import fs2.internal.Unique
 
 import scala.annotation.tailrec
 import scala.collection.immutable.{Queue => ScalaQueue}
@@ -94,7 +94,7 @@ private[fs2] object PubSub {
     ).map(state => new PubSubAsync(strategy, state))
 
   private final case class Publisher[F[_], A](
-      token: Token,
+      token: Unique,
       i: A,
       signal: Deferred[F, Unit]
   ) {
@@ -103,7 +103,7 @@ private[fs2] object PubSub {
   }
 
   private final case class Subscriber[F[_], A, Selector](
-      token: Token,
+      token: Unique,
       selector: Selector,
       signal: Deferred[F, A]
   ) {
@@ -220,24 +220,24 @@ private[fs2] object PubSub {
         (ps2, action >> result)
       }.flatten
 
-    private def clearPublisher(token: Token)(outcome: Outcome[F, _, _]): F[Unit] =
+    private def clearPublisher(token: Unique)(outcome: Outcome[F, _, _]): F[Unit] =
       outcome match {
         case _: Outcome.Succeeded[F, _, _] => Applicative[F].unit
         case Outcome.Errored(_) | Outcome.Canceled() =>
           state.update(ps => ps.copy(publishers = ps.publishers.filterNot(_.token == token)))
       }
 
-    private def clearSubscriber(token: Token): F[Unit] =
+    private def clearSubscriber(token: Unique): F[Unit] =
       state.update(ps => ps.copy(subscribers = ps.subscribers.filterNot(_.token == token)))
 
-    private def clearSubscriberOnCancel(token: Token)(outcome: Outcome[F, _, _]): F[Unit] =
+    private def clearSubscriberOnCancel(token: Unique)(outcome: Outcome[F, _, _]): F[Unit] =
       outcome match {
         case _: Outcome.Succeeded[F, _, _]           => Applicative[F].unit
         case Outcome.Errored(_) | Outcome.Canceled() => clearSubscriber(token)
       }
 
     def publish(i: I): F[Unit] =
-      (F.deferred[Unit], Token[F]).tupled.flatMap { case (deferred, token) =>
+      (F.deferred[Unit], Unique[F]).tupled.flatMap { case (deferred, token) =>
         update { ps =>
           if (strategy.accepts(i, ps.queue)) {
             val ps1 = publish_(i, ps)
@@ -263,7 +263,7 @@ private[fs2] object PubSub {
       }
 
     def get(selector: Selector): F[O] =
-      (F.deferred[O], Token[F]).tupled.flatMap { case (deferred, token) =>
+      (F.deferred[O], Unique[F]).tupled.flatMap { case (deferred, token) =>
         update { ps =>
           tryGet_(selector, ps) match {
             case (ps, None) =>
@@ -281,7 +281,7 @@ private[fs2] object PubSub {
       }
 
     def getStream(selector: Selector): Stream[F, O] =
-      Stream.bracket(Token[F])(clearSubscriber).flatMap { token =>
+      Stream.bracket(Unique[F])(clearSubscriber).flatMap { token =>
         def get_ =
           F.deferred[O].flatMap { deferred =>
             update { ps =>
@@ -545,7 +545,7 @@ private[fs2] object PubSub {
           last: A,
           lastStamp: Long,
           outOfOrder: Map[Long, (Long, A)],
-          seen: Set[Token]
+          seen: Set[Unique]
       )
 
       /** Strategy providing possibility for a discrete `get` in correct order.
@@ -559,8 +559,8 @@ private[fs2] object PubSub {
       def strategy[A](
           stamp: Long,
           start: A
-      ): PubSub.Strategy[(Long, (Long, A)), A, State[A], Option[Token]] =
-        new PubSub.Strategy[(Long, (Long, A)), A, State[A], Option[Token]] {
+      ): PubSub.Strategy[(Long, (Long, A)), A, State[A], Option[Unique]] =
+        new PubSub.Strategy[(Long, (Long, A)), A, State[A], Option[Unique]] {
           def initial: State[A] =
             State(start, stamp, Map.empty, Set.empty)
 
@@ -582,7 +582,7 @@ private[fs2] object PubSub {
             }
           }
 
-          def get(selector: Option[Token], state: State[A]): (State[A], Option[A]) =
+          def get(selector: Option[Unique], state: State[A]): (State[A], Option[A]) =
             selector match {
               case None => (state, Some(state.last))
               case Some(token) =>
@@ -593,13 +593,13 @@ private[fs2] object PubSub {
           def empty(state: State[A]): Boolean =
             false
 
-          def subscribe(selector: Option[Token], state: State[A]): (State[A], Boolean) =
+          def subscribe(selector: Option[Unique], state: State[A]): (State[A], Boolean) =
             selector match {
               case None    => (state, false)
               case Some(_) => (state, true)
             }
 
-          def unsubscribe(selector: Option[Token], state: State[A]): State[A] =
+          def unsubscribe(selector: Option[Unique], state: State[A]): State[A] =
             selector match {
               case None        => state
               case Some(token) => state.copy(seen = state.seen - token)
@@ -617,7 +617,7 @@ private[fs2] object PubSub {
         */
       final case class State[S](
           qs: S,
-          inspected: Set[Token]
+          inspected: Set[Unique]
       )
 
       /** Allows to enhance the supplied strategy by ability to inspect the state.
@@ -629,8 +629,8 @@ private[fs2] object PubSub {
         */
       def strategy[I, O, S: Eq, Sel](
           strategy: PubSub.Strategy[I, O, S, Sel]
-      ): PubSub.Strategy[I, Either[S, O], State[S], Either[Option[Token], Sel]] =
-        new PubSub.Strategy[I, Either[S, O], State[S], Either[Option[Token], Sel]] {
+      ): PubSub.Strategy[I, Either[S, O], State[S], Either[Option[Unique], Sel]] =
+        new PubSub.Strategy[I, Either[S, O], State[S], Either[Option[Unique], Sel]] {
           def initial: State[S] =
             State(strategy.initial, Set.empty)
 
@@ -644,7 +644,7 @@ private[fs2] object PubSub {
           }
 
           def get(
-              selector: Either[Option[Token], Sel],
+              selector: Either[Option[Unique], Sel],
               state: State[S]
           ): (State[S], Option[Either[S, O]]) =
             selector match {
@@ -656,7 +656,7 @@ private[fs2] object PubSub {
                   (state.copy(inspected = state.inspected + token), Some(Left(state.qs)))
               case Right(sel) =>
                 val (s, r) = strategy.get(sel, state.qs)
-                val tokens: Set[Token] = if (Eq[S].eqv(state.qs, s)) state.inspected else Set.empty
+                val tokens: Set[Unique] = if (Eq[S].eqv(state.qs, s)) state.inspected else Set.empty
                 (State(s, tokens), r.map(Right(_)))
             }
 
@@ -664,7 +664,7 @@ private[fs2] object PubSub {
             strategy.empty(state.qs)
 
           def subscribe(
-              selector: Either[Option[Token], Sel],
+              selector: Either[Option[Unique], Sel],
               state: State[S]
           ): (State[S], Boolean) =
             selector match {
@@ -674,13 +674,13 @@ private[fs2] object PubSub {
                 val (s, result) = strategy.subscribe(sel, state.qs)
                 (state.copy(qs = s), result)
             }
-          def unsubscribe(selector: Either[Option[Token], Sel], state: State[S]): State[S] =
+          def unsubscribe(selector: Either[Option[Unique], Sel], state: State[S]): State[S] =
             selector match {
               case Left(None)        => state
               case Left(Some(token)) => state.copy(inspected = state.inspected - token)
               case Right(sel) =>
                 val qs1 = strategy.unsubscribe(sel, state.qs)
-                val tokens: Set[Token] =
+                val tokens: Set[Unique] =
                   if (cats.Eq[S].eqv(state.qs, qs1)) state.inspected else Set.empty
                 State(qs1, tokens)
             }

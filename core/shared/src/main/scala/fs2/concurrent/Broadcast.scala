@@ -23,7 +23,7 @@ package fs2.concurrent
 
 import cats.effect.kernel.Concurrent
 
-import fs2.internal.Token
+import fs2.internal.Unique
 import fs2._
 
 /** Provides mechanisms for broadcast distribution of elements to multiple streams. */
@@ -64,7 +64,7 @@ object Broadcast {
       .eval(PubSub(PubSub.Strategy.closeDrainFirst(strategy[Chunk[O]](minReady))))
       .flatMap { pubSub =>
         def subscriber =
-          Stream.bracket(Token[F])(pubSub.unsubscribe).flatMap { selector =>
+          Stream.bracket(Unique[F])(pubSub.unsubscribe).flatMap { selector =>
             pubSub
               .getStream(selector)
               .unNoneTerminate
@@ -105,25 +105,25 @@ object Broadcast {
   private sealed trait State[O] {
     def awaitSub: Boolean
     def isEmpty: Boolean
-    def subscribers: Set[Token]
+    def subscribers: Set[Unique]
   }
 
   private object State {
-    case class AwaitSub[O](subscribers: Set[Token]) extends State[O] {
+    case class AwaitSub[O](subscribers: Set[Unique]) extends State[O] {
       def awaitSub = true
       def isEmpty = false
     }
 
-    case class Empty[O](subscribers: Set[Token]) extends State[O] {
+    case class Empty[O](subscribers: Set[Unique]) extends State[O] {
       def awaitSub = false
       def isEmpty = true
     }
     case class Processing[O](
-        subscribers: Set[Token],
+        subscribers: Set[Unique],
         // added when we enter to Processing state, and removed whenever sub takes current `O`
-        processing: Set[Token],
+        processing: Set[Unique],
         // removed when subscriber requests another `O` but already seen `current`
-        remains: Set[Token],
+        remains: Set[Unique],
         current: O
     ) extends State[O] {
       def awaitSub = false
@@ -131,8 +131,8 @@ object Broadcast {
     }
   }
 
-  private def strategy[O](minReady: Int): PubSub.Strategy[O, O, State[O], Token] =
-    new PubSub.Strategy[O, O, State[O], Token] {
+  private def strategy[O](minReady: Int): PubSub.Strategy[O, O, State[O], Unique] =
+    new PubSub.Strategy[O, O, State[O], Unique] {
       def initial: State[O] =
         State.AwaitSub(Set.empty)
 
@@ -147,7 +147,7 @@ object Broadcast {
           current = i
         )
 
-      def get(selector: Token, queueState: State[O]): (State[O], Option[O]) =
+      def get(selector: Unique, queueState: State[O]): (State[O], Option[O]) =
         queueState match {
           case State.AwaitSub(subscribers) =>
             val nextSubs = subscribers + selector
@@ -170,10 +170,10 @@ object Broadcast {
 
       def empty(queueState: State[O]): Boolean = queueState.isEmpty
 
-      def subscribe(selector: Token, queueState: State[O]): (State[O], Boolean) =
+      def subscribe(selector: Unique, queueState: State[O]): (State[O], Boolean) =
         (queueState, false)
 
-      def unsubscribe(selector: Token, queueState: State[O]): State[O] =
+      def unsubscribe(selector: Unique, queueState: State[O]): State[O] =
         queueState match {
           case State.AwaitSub(subscribers) => State.AwaitSub(subscribers - selector)
           case State.Empty(subscribers)    => State.Empty(subscribers - selector)

@@ -421,7 +421,7 @@ object Pull extends PullLowPriority {
       *                      Instead throwing errors immediately during interruption,
       *                      signalling of the errors may be deferred until the Interruption resumes.
       */
-    final case class Interrupted(context: Token, deferredError: Option[Throwable])
+    final case class Interrupted(context: Unique, deferredError: Option[Throwable])
         extends Result[INothing] {
       override def map[R](f: INothing => R): Result[R] = this
     }
@@ -555,10 +555,10 @@ object Pull extends PullLowPriority {
     * @param stream             Stream to step
     * @param scopeId            If scope has to be changed before this step is evaluated, id of the scope must be supplied
     */
-  private final case class Step[+F[_], X](stream: Pull[F, X, Unit], scope: Option[Token])
+  private final case class Step[+F[_], X](stream: Pull[F, X, Unit], scope: Option[Unique])
       extends Action[Pure, INothing, Option[StepStop[F, X]]]
 
-  private type StepStop[+F[_], +X] = (Chunk[X], Token, Pull[F, X, Unit])
+  private type StepStop[+F[_], +X] = (Chunk[X], Unique, Pull[F, X, Unit])
 
   /* The `AlgEffect` trait is for operations on the `F` effect that create no `O` output.
    * They are related to resources and scopes. */
@@ -582,7 +582,7 @@ object Pull extends PullLowPriority {
   // `InterruptedScope` contains id of the scope currently being interrupted
   // together with any errors accumulated during interruption process
   private final case class CloseScope(
-      scopeId: Token,
+      scopeId: Unique,
       interruption: Option[Result.Interrupted],
       exitCase: ExitCase
   ) extends AlgEffect[Pure, Unit]
@@ -623,7 +623,7 @@ object Pull extends PullLowPriority {
    * Reason for this is unlike interruption of `F` type (e.g. IO) we need to find
    * recovery point where stream evaluation has to continue in Stream algebra.
    *
-   * As such the `Token` is passed to Result.Interrupted as glue between Pull that allows pass-along
+   * As such the `Unique` is passed to Result.Interrupted as glue between Pull that allows pass-along
    * the information to correctly compute recovery point after interruption was signalled via `Scope`.
    *
    * This token indicates scope of the computation where interruption actually happened.
@@ -646,7 +646,7 @@ object Pull extends PullLowPriority {
     case class Done(scope: Scope[F]) extends R[Pure, INothing]
     case class Out[+G[_], +X](head: Chunk[X], scope: Scope[F], tail: Pull[G, X, Unit])
         extends R[G, X]
-    case class Interrupted(scopeId: Token, err: Option[Throwable]) extends R[Pure, INothing]
+    case class Interrupted(scopeId: Unique, err: Option[Throwable]) extends R[Pure, INothing]
 
     type Cont[-Y, +G[_], +X] = Result[Y] => Pull[G, X, Unit]
 
@@ -659,7 +659,7 @@ object Pull extends PullLowPriority {
 
       def done(scope: Scope[F]): End
       def out(head: Chunk[X], scope: Scope[F], tail: Pull[G, X, Unit]): End
-      def interrupted(scopeId: Token, err: Option[Throwable]): End
+      def interrupted(scopeId: Unique, err: Option[Throwable]): End
     }
 
     def go[G[_], X](
@@ -725,7 +725,7 @@ object Pull extends PullLowPriority {
             F.pure(Out[G, X](head, scope, contTail))
           }
 
-          def interrupted(tok: Token, err: Option[Throwable]): F[R[G, X]] =
+          def interrupted(tok: Unique, err: Option[Throwable]): F[R[G, X]] =
             go(scope, extendedTopLevelScope, translation, view(Result.Interrupted(tok, err)))
         }
 
@@ -772,7 +772,7 @@ object Pull extends PullLowPriority {
             }
           }
 
-          def interrupted(scopeId: Token, err: Option[Throwable]): F[R[G, X]] =
+          def interrupted(scopeId: Unique, err: Option[Throwable]): F[R[G, X]] =
             go(scope, extendedTopLevelScope, translation, view(Result.Interrupted(scopeId, err)))
         }
 
@@ -845,7 +845,7 @@ object Pull extends PullLowPriority {
           useInterruption: Boolean,
           view: View[G, X, Unit]
       ): F[R[G, X]] = {
-        def boundToScope(scopeId: Token): Pull[G, X, Unit] = new Bind[G, X, Unit, Unit](stream) {
+        def boundToScope(scopeId: Unique): Pull[G, X, Unit] = new Bind[G, X, Unit, Unit](stream) {
           def cont(r: Result[Unit]) = r match {
             case Result.Succeeded(_) =>
               CloseScope(scopeId, None, ExitCase.Succeeded)

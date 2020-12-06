@@ -27,7 +27,7 @@ import cats.data.OptionT
 import cats.effect.kernel.Concurrent
 import cats.effect.kernel.{Deferred, Ref}
 import cats.syntax.all._
-import fs2.internal.Token
+import fs2.internal.Unique
 
 /** Pure holder of a single value of type `A` that can be read in the effect `F`. */
 trait Signal[F[_], A] {
@@ -103,7 +103,7 @@ object SignallingRef {
   /** Builds a `SignallingRef` for for effect `F`, initialized to the supplied value.
     */
   def of[F[_], A](initial: A)(implicit F: Concurrent[F]): F[SignallingRef[F, A]] = {
-    case class State(value: A, lastUpdate: Long, listeners: Map[Token, Deferred[F, (A, Long)]])
+    case class State(value: A, lastUpdate: Long, listeners: Map[Unique, Deferred[F, (A, Long)]])
 
     F.ref(State(initial, 0L, Map.empty))
       .map { state =>
@@ -124,7 +124,7 @@ object SignallingRef {
           def continuous: Stream[F, A] = Stream.repeatEval(get)
 
           def discrete: Stream[F, A] = {
-            def go(id: Token, lastSeen: Long): Stream[F, A] = {
+            def go(id: Unique, lastSeen: Long): Stream[F, A] = {
               def getNext: F[(A, Long)] =
                 F.deferred[(A, Long)].flatMap { wait =>
                   state.modify { case state @ State(value, lastUpdate, listeners) =>
@@ -140,10 +140,10 @@ object SignallingRef {
               }
             }
 
-            def cleanup(id: Token): F[Unit] =
+            def cleanup(id: Unique): F[Unit] =
               state.update(s => s.copy(listeners = s.listeners - id))
 
-            Stream.bracket(Token[F])(cleanup).flatMap { id =>
+            Stream.bracket(Unique[F])(cleanup).flatMap { id =>
               Stream.eval(state.get).flatMap { state =>
                 Stream.emit(state.value) ++ go(id, state.lastUpdate)
               }

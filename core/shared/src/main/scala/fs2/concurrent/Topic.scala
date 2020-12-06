@@ -26,7 +26,7 @@ import cats.Eq
 import cats.effect.kernel.Concurrent
 import cats.syntax.all._
 
-import fs2.internal.{SizedQueue, Token}
+import fs2.internal.{SizedQueue, Unique}
 
 /** Asynchronous Topic.
   *
@@ -107,10 +107,10 @@ object Topic {
     PubSub(PubSub.Strategy.Inspectable.strategy(Strategy.boundedSubscribers(initial)))
       .map { pubSub =>
         new Topic[F, A] {
-          def subscriber(size: Int): Stream[F, ((Token, Int), Stream[F, SizedQueue[A]])] =
+          def subscriber(size: Int): Stream[F, ((Unique, Int), Stream[F, SizedQueue[A]])] =
             Stream
               .bracket(
-                Token[F]
+                Unique[F]
                   .tupleRight(size)
                   .flatTap(selector => pubSub.subscribe(Right(selector)))
               )(selector => pubSub.unsubscribe(Right(selector)))
@@ -148,7 +148,7 @@ object Topic {
 
           def subscribers: Stream[F, Int] =
             Stream
-              .bracket(Token[F])(token => pubSub.unsubscribe(Left(Some(token))))
+              .bracket(Unique[F])(token => pubSub.unsubscribe(Left(Some(token))))
               .flatMap { token =>
                 pubSub.getStream(Left(Some(token))).flatMap {
                   case Left(s)  => Stream.emit(s.subscribers.size)
@@ -162,7 +162,7 @@ object Topic {
   private[fs2] object Strategy {
     final case class State[A](
         last: A,
-        subscribers: Map[(Token, Int), SizedQueue[A]]
+        subscribers: Map[(Unique, Int), SizedQueue[A]]
     )
 
     /** Strategy for topic, where every subscriber can specify max size of queued elements.
@@ -173,8 +173,8 @@ object Topic {
       */
     def boundedSubscribers[F[_], A](
         start: A
-    ): PubSub.Strategy[A, SizedQueue[A], State[A], (Token, Int)] =
-      new PubSub.Strategy[A, SizedQueue[A], State[A], (Token, Int)] {
+    ): PubSub.Strategy[A, SizedQueue[A], State[A], (Unique, Int)] =
+      new PubSub.Strategy[A, SizedQueue[A], State[A], (Unique, Int)] {
         def initial: State[A] = State(start, Map.empty)
 
         def accepts(i: A, state: State[A]): Boolean =
@@ -187,10 +187,10 @@ object Topic {
           )
 
         // Register empty queue
-        def regEmpty(selector: (Token, Int), state: State[A]): State[A] =
+        def regEmpty(selector: (Unique, Int), state: State[A]): State[A] =
           state.copy(subscribers = state.subscribers + (selector -> SizedQueue.empty))
 
-        def get(selector: (Token, Int), state: State[A]): (State[A], Option[SizedQueue[A]]) =
+        def get(selector: (Unique, Int), state: State[A]): (State[A], Option[SizedQueue[A]]) =
           state.subscribers.get(selector) match {
             case None =>
               (state, Some(SizedQueue.empty)) // Prevent register, return empty
@@ -202,13 +202,13 @@ object Topic {
         def empty(state: State[A]): Boolean =
           false
 
-        def subscribe(selector: (Token, Int), state: State[A]): (State[A], Boolean) =
+        def subscribe(selector: (Unique, Int), state: State[A]): (State[A], Boolean) =
           (
             state.copy(subscribers = state.subscribers + (selector -> SizedQueue.one(state.last))),
             true
           )
 
-        def unsubscribe(selector: (Token, Int), state: State[A]): State[A] =
+        def unsubscribe(selector: (Unique, Int), state: State[A]): State[A] =
           state.copy(subscribers = state.subscribers - selector)
       }
   }
