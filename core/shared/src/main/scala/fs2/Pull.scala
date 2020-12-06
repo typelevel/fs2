@@ -539,7 +539,7 @@ object Pull extends PullLowPriority {
       fk: G ~> F
   ) extends Action[F, O, Unit]
 
-  private final case class MapOutput[F[_], O, P](
+  private final case class MapOutput[+F[_], O, +P](
       stream: Pull[F, O, Unit],
       fun: O => P
   ) extends Action[F, P, Unit]
@@ -734,10 +734,8 @@ object Pull extends PullLowPriority {
 
       def goMapOutput[Z](mout: MapOutput[G, Z, X], view: Cont[Unit, G, X]): F[R[G, X]] = {
         val mo: Pull[G, X, Unit] = innerMapOutput[G, Z, X](mout.stream, mout.fun)
-        val str = new Bind[G, X, Unit, Unit](mo) {
-          def cont(r: Result[Unit]) = view(r)
-        }
-        go(scope, extendedTopLevelScope, translation, str)
+        val fgrx = go(scope, extendedTopLevelScope, translation, mo)
+        goView(fgrx, view)
       }
 
       def goTranslate[H[_]](tst: Translate[H, G, X], view: Cont[Unit, G, X]): F[R[G, X]] = {
@@ -941,11 +939,7 @@ object Pull extends PullLowPriority {
               )
 
             case mout: MapOutput[g, z, x] => // y = Unit
-              val mo: Pull[g, X, Unit] = innerMapOutput[g, z, X](mout.stream, mout.fun)
-              val str = new Bind[g, X, Unit, Unit](mo) {
-                def cont(r: Result[Unit]) = view(r).asInstanceOf[Pull[g, X, Unit]]
-              }
-              go(scope, extendedTopLevelScope, translation, str)
+              goMapOutput[z](mout, view)
 
             case tst: Translate[h, g, x] =>
               val composed: h ~> F = translation.asInstanceOf[g ~> F].compose[h](tst.fk)
