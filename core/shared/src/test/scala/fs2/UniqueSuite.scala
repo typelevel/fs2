@@ -21,23 +21,23 @@
 
 package fs2
 
-import fs2.internal.Token
+import fs2.internal.Unique
 import cats.effect.SyncIO
 
-class TokenSuite extends Fs2Suite {
-  test("Tokens are unique") {
+class UniqueSuite extends Fs2Suite {
+  test("Uniques are unique") {
     for {
-      a <- Token[SyncIO]
-      b <- Token[SyncIO]
+      a <- Unique.sync[SyncIO]
+      b <- Unique.sync[SyncIO]
     } yield assertNotEquals(a, b)
   }
 
-  test("Tokens are stable") {
-    Token[SyncIO].map(t => assertEquals(t, t))
+  test("Uniques are stable") {
+    Unique.sync[SyncIO].map(t => assertEquals(t, t))
   }
 
-  test("Tokens are referentially transparent") {
-    val token = Token[SyncIO]
+  test("Uniques are referentially transparent") {
+    val token = Unique.sync[SyncIO]
     for {
       a <- token
       b <- token

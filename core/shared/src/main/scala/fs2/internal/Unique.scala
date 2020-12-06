@@ -21,39 +21,40 @@
 
 package fs2.internal
 
+import cats.Applicative
 import cats.syntax.all._
-import fs2.Compiler
+import cats.effect.{Concurrent, Sync}
 
 /** Represents a unique identifier (using object equality). */
-final class Token private () extends Serializable {
-  override def toString: String = s"Token(${hashCode.toHexString})"
+final class Unique private () extends Serializable {
+  override def toString: String = s"Unique(${hashCode.toHexString})"
 }
 
-object Token {
+object Unique {
 
-  /** Token provides uniqueness by relying on object equality,
-    * which means that `new Token` is actually a side-effect
+  /** Unique provides uniqueness by relying on object equality,
+    * which means that `new Unique` is actually a side-effect
     * in this case.
     *
     * We want to make sure we preserve referential transparency when
-    * using tokens, but imposing a `Sync` bound is not desirable here,
+    * using instrances, but imposing a `Sync` bound is not desirable here,
     * since it forces a very strong constraint on user code for
     * something that is not only an internal implementation detail,
     * but also has zero impact on meaningful behaviour for the user,
     * unlike for example internal concurrency.
     *
-    * Furthermore, token creation has the following properties:
+    * Furthermore, `Unique` creation has the following properties:
     * - it's synchronous
     * - it's infallible
     * - it's not created in contexts that affect stack safety such as iteration
     *
     * Given all these reasons, we suspend it via `flatMap` instead of
     * using `Sync[F].delay`. Do not try this at home.
-    *
-    * Note: The `Compiler.Target` bound only resolves if `F` has an
-    * instance of `Sync` or `Concurrent`, meaning that `flatMap` is
-    * guaranteed to suspend.
     */
-  def apply[F[_]: Compiler.Target]: F[Token] =
-    ().pure[F].map(_ => new Token)
+  def apply[F[_]: Concurrent]: F[Unique] = mk
+
+  def sync[F[_]: Sync]: F[Unique] = mk
+
+  private def mk[F[_]: Applicative] =
+    ().pure[F].map(_ => new Unique)
 }

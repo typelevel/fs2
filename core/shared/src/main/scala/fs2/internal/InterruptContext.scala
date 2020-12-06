@@ -41,7 +41,7 @@ import InterruptContext.InterruptionOutcome
 final private[fs2] case class InterruptContext[F[_]](
     deferred: Deferred[F, InterruptionOutcome],
     ref: Ref[F, Option[InterruptionOutcome]],
-    interruptRoot: Token,
+    interruptRoot: Unique,
     cancelParent: F[Unit]
 )(implicit F: Concurrent[F]) { self =>
 
@@ -64,7 +64,7 @@ final private[fs2] case class InterruptContext[F[_]](
     */
   def childContext(
       interruptible: Boolean,
-      newScopeId: Token
+      newScopeId: Unique
   ): F[InterruptContext[F]] =
     if (interruptible) {
       self.deferred.get.start.flatMap { fiber =>
@@ -93,10 +93,10 @@ final private[fs2] case class InterruptContext[F[_]](
 
 private[fs2] object InterruptContext {
 
-  type InterruptionOutcome = Outcome[Id, Throwable, Token]
+  type InterruptionOutcome = Outcome[Id, Throwable, Unique]
 
   def apply[F[_]](
-      newScopeId: Token,
+      newScopeId: Unique,
       cancelParent: F[Unit]
   )(implicit F: Concurrent[F]): F[InterruptContext[F]] =
     for {

@@ -60,7 +60,7 @@ private[fs2] sealed abstract class ScopedResource[F[_]] {
 
   /** Id of the resource
     */
-  def id: Token
+  def id: Unique
 
   /** Depending on resource state this will either release resource, or when resource was not yet fully
     * acquired, this will schedule releasing of the resource at earliest opportunity, that is when:
@@ -121,10 +121,10 @@ private[internal] object ScopedResource {
   def create[F[_]](implicit F: Compiler.Target[F]): F[ScopedResource[F]] =
     for {
       state <- F.ref[State[F]](initial)
-      token <- Token[F]
+      token <- F.unique
     } yield new ScopedResource[F] {
 
-      override val id: Token = token
+      override val id: Unique = token
 
       private[this] val pru: F[Either[Throwable, Unit]] =
         (Right(()): Either[Throwable, Unit]).pure[F]

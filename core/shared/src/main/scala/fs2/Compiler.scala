@@ -124,6 +124,7 @@ object Compiler extends CompilerLowPriority {
   }
 
   sealed trait Target[F[_]] extends MonadError[F, Throwable] {
+    private[fs2] def unique: F[Unique]
     private[fs2] def ref[A](a: A): F[Ref[F, A]]
     private[fs2] def compile[O, Out](
         p: Pull[F, O, Unit],
@@ -131,7 +132,7 @@ object Compiler extends CompilerLowPriority {
         foldChunk: (Out, Chunk[O]) => Out
     ): F[Out]
     private[fs2] def uncancelable[A](poll: Poll[F] => F[A]): F[A]
-    private[fs2] def interruptContext(root: Token): Option[F[InterruptContext[F]]]
+    private[fs2] def interruptContext(root: Unique): Option[F[InterruptContext[F]]]
   }
 
   private[fs2] trait TargetLowPriority0 {
@@ -145,6 +146,7 @@ object Compiler extends CompilerLowPriority {
     }
 
     implicit def uncancelable[F[_]](implicit F: Sync[F]): Target[F] = new MonadErrorTarget[F]()(F) {
+      private[fs2] def unique: F[Unique] = Unique.sync[F]
       private[fs2] def uncancelable[A](f: Poll[F] => F[A]): F[A] = f(idPoll)
       private val idPoll: Poll[F] = new Poll[F] { def apply[X](fx: F[X]) = fx }
       private[fs2] def compile[O, Out](
@@ -175,7 +177,7 @@ object Compiler extends CompilerLowPriority {
           )
 
       private[fs2] def ref[A](a: A): F[Ref[F, A]] = Ref[F].of(a)
-      private[fs2] def interruptContext(root: Token): Option[F[InterruptContext[F]]] = None
+      private[fs2] def interruptContext(root: Unique): Option[F[InterruptContext[F]]] = None
     }
   }
 
@@ -198,8 +200,9 @@ object Compiler extends CompilerLowPriority {
     }
 
     private final class SyncTarget[F[_]: Sync: MonadCancelThrow] extends MonadCancelTarget[F] {
+      private[fs2] def unique: F[Unique] = Unique.sync[F]
       private[fs2] def ref[A](a: A): F[Ref[F, A]] = Ref[F].of(a)
-      private[fs2] def interruptContext(root: Token): Option[F[InterruptContext[F]]] = None
+      private[fs2] def interruptContext(root: Unique): Option[F[InterruptContext[F]]] = None
     }
   }
 
@@ -210,8 +213,9 @@ object Compiler extends CompilerLowPriority {
     private final class ConcurrentTarget[F[_]](
         protected implicit val F: Concurrent[F]
     ) extends MonadCancelTarget[F]()(F) {
+      private[fs2] def unique: F[Unique] = Unique[F]
       private[fs2] def ref[A](a: A): F[Ref[F, A]] = F.ref(a)
-      private[fs2] def interruptContext(root: Token): Option[F[InterruptContext[F]]] = Some(
+      private[fs2] def interruptContext(root: Unique): Option[F[InterruptContext[F]]] = Some(
         InterruptContext(root, F.unit)
       )
     }
