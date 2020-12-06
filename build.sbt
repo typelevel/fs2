@@ -118,7 +118,13 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
       "org.scodec" %%% "scodec-bits" % "1.1.22",
       "org.typelevel" %%% "scalacheck-effect-munit" % "0.6.0" % Test,
       "org.typelevel" %%% "munit-cats-effect-3" % "0.11.0" % Test
-    )
+    ),
+    Compile / unmanagedSourceDirectories ++= {
+      val major = if (isDotty.value) "-3" else "-2"
+      List(CrossType.Pure, CrossType.Full).flatMap(
+        _.sharedSrcDir(baseDirectory.value, "main").toList.map(f => file(f.getPath + major))
+      )
+    }
   )
 
 lazy val coreJVM = core.jvm
