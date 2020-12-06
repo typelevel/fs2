@@ -1864,12 +1864,9 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
           }
         }
 
-      val atRunEnd: F2[Unit] = for {
-        _ <- signalInterruption // interrupt so the upstreams have chance to complete
-        left <- resultL.get
-        right <- resultR.get
-        r <- F.fromEither(CompositeFailure.fromResults(left, right))
-      } yield r
+      val atRunEnd: F2[Unit] = // interrupt so the upstreams have chance to complete
+        signalInterruption >>
+          F.both(resultL.get.rethrow, resultR.get.rethrow).void
 
       val runStreams = runStream(this, resultL).start >> runStream(that, resultR).start
 
