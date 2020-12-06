@@ -26,6 +26,7 @@ package file
 import scala.concurrent.duration._
 
 import cats.effect.kernel.{Async, Resource, Sync}
+import cats.effect.std.Hotswap
 import cats.syntax.all._
 
 import java.io.IOException
