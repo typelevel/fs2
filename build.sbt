@@ -157,7 +157,7 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
 
 lazy val root = project
   .in(file("."))
-  .enablePlugins(NoPublishPlugin, SonatypeCiRelease)
+  .enablePlugins(NoPublishPlugin, SonatypeCiReleasePlugin)
   .aggregate(coreJVM, coreJS, io, reactiveStreams, benchmark, experimental)
 
 lazy val IntegrationTest = config("it").extend(Test)
