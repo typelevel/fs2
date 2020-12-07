@@ -30,12 +30,12 @@ import cats.{Eval => _, _}
 import cats.data.Ior
 import cats.effect.SyncIO
 import cats.effect.kernel._
-import cats.effect.std.Semaphore
+import cats.effect.std.{Queue, Semaphore}
 import cats.effect.kernel.implicits._
 import cats.implicits.{catsSyntaxEither => _, _}
 
 import fs2.compat._
-import fs2.concurrent._
+import fs2.concurrent.{Queue => _, _}
 import fs2.internal._
 
 /** A stream producing output of type `O` and which may evaluate `F` effects.
@@ -649,7 +649,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       Stream.eval(F.ref[Option[O]](None)).flatMap { ref =>
         val enqueueLatest: F2[Unit] =
           ref.getAndSet(None).flatMap {
-            case v @ Some(_) => queue.enqueue1(v)
+            case v @ Some(_) => queue.offer(v)
             case None        => F.unit
           }
 
@@ -664,9 +664,9 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
           }
 
         val in: Stream[F2, Unit] = chunks.evalMap(onChunk) ++
-          Stream.exec(enqueueLatest >> queue.enqueue1(None))
+          Stream.exec(enqueueLatest >> queue.offer(None))
 
-        val out: Stream[F2, O] = queue.dequeue.unNoneTerminate
+        val out: Stream[F2, O] = Stream.repeatEval(queue.take).unNoneTerminate
 
         out.concurrently(in)
       }
@@ -1833,12 +1833,12 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       // then close te queue (by putting a None in it)
       val doneAndClose: F2[Unit] = otherSideDone.getAndSet(true).flatMap {
         // complete only if other side is done too.
-        case true  => resultQ.enqueue1(None)
+        case true  => resultQ.offer(None)
         case false => F.unit
       }
 
       // stream that is generated from pumping out the elements of the queue.
-      val pumpFromQueue: Stream[F2, O2] = resultQ.dequeue.unNoneTerminate.flatten
+      val pumpFromQueue: Stream[F2, O2] = Stream.repeatEval(resultQ.take).unNoneTerminate.flatten
 
       // action to interrupt the processing of both streams by completing interrupt
       // We need to use `attempt` because `interruption` may already be completed.
@@ -1847,7 +1847,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       def go(s: Stream[F2, O2], guard: Semaphore[F2]): Pull[F2, O2, Unit] =
         Pull.eval(guard.acquire) >> s.pull.uncons.flatMap {
           case Some((hd, tl)) =>
-            val enq = resultQ.enqueue1(Some(Stream.chunk(hd).onFinalize(guard.release)))
+            val enq = resultQ.offer(Some(Stream.chunk(hd).onFinalize(guard.release)))
             Pull.eval(enq) >> go(tl, guard)
           case None => Pull.done
         }
@@ -1986,7 +1986,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       def forkOnElem(o: O): F2[Stream[F2, Unit]] =
         for {
           value <- F.deferred[Either[Throwable, O2]]
-          enqueue = queue.enqueue1(Some(value.get)).as {
+          enqueue = queue.offer(Some(value.get)).as {
             Stream.eval(f(o).attempt.flatMap(value.complete(_).void))
           }
           eit <- F.race(dequeueDone.get, enqueue)
@@ -1998,10 +1998,12 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       val background = this
         .evalMap(forkOnElem)
         .parJoin(maxConcurrent)
-        .onFinalize(F.race(dequeueDone.get, queue.enqueue1(None)).void)
+        .onFinalize(F.race(dequeueDone.get, queue.offer(None)).void)
 
       val foreground =
-        queue.dequeue.unNoneTerminate
+        Stream
+          .repeatEval(queue.take)
+          .unNoneTerminate
           .evalMap(identity)
           .rethrow
           .onFinalize(dequeueDone.complete(()).void)
@@ -2100,9 +2102,11 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       n: Int
   ): Stream[F2, O] =
     Stream.eval(Queue.bounded[F2, Option[Chunk[O]]](n)).flatMap { queue =>
-      queue.dequeue.unNoneTerminate
+      Stream
+        .repeatEval(queue.take)
+        .unNoneTerminate
         .flatMap(Stream.chunk(_))
-        .concurrently(chunks.noneTerminate.covary[F2].through(queue.enqueue))
+        .concurrently(chunks.noneTerminate.covary[F2].foreach(queue.offer))
     }
 
   /** Rechunks the stream such that output chunks are within `[inputChunk.size * minFactor, inputChunk.size * maxFactor]`.
@@ -3549,26 +3553,30 @@ object Stream extends StreamLowPriority {
         Stream.eval(Queue.unbounded[F, Option[Chunk[O]]]).flatMap { outQ =>
           Stream.eval(Queue.unbounded[F, Option[Chunk[O]]]).flatMap { sinkQ =>
             def inputStream =
-              self.chunks.noneTerminate.evalTap(sinkQ.enqueue1).evalMap {
+              self.chunks.noneTerminate.evalTap(sinkQ.offer).evalMap {
                 case Some(_) => guard.acquire
                 case None    => F.unit
               }
 
             def sinkStream =
-              sinkQ.dequeue.unNoneTerminate
+              Stream
+                .repeatEval(sinkQ.take)
+                .unNoneTerminate
                 .flatMap { chunk =>
                   Stream.chunk(chunk) ++
-                    Stream.exec(outQ.enqueue1(Some(chunk)))
+                    Stream.exec(outQ.offer(Some(chunk)))
                 }
                 .through(p) ++
-                Stream.exec(outQ.enqueue1(None))
+                Stream.exec(outQ.offer(None))
 
             def runner =
               sinkStream.concurrently(inputStream) ++
-                Stream.exec(outQ.enqueue1(None))
+                Stream.exec(outQ.offer(None))
 
             def outputStream =
-              outQ.dequeue.unNoneTerminate
+              Stream
+                .repeatEval(outQ.take)
+                .unNoneTerminate
                 .flatMap { chunk =>
                   Stream.chunk(chunk) ++
                     Stream.exec(guard.release)
@@ -3652,7 +3660,7 @@ object Stream extends StreamLowPriority {
         // starts with 1 because outer stream is running by default
         running <- SignallingRef(1L)
         // sync queue assures we won't overload heap when resulting stream is not able to catchup with inner streams
-        outputQ <- Queue.synchronousNoneTerminated[F, Chunk[O]]
+        outputQ <- fs2.concurrent.Queue.synchronousNoneTerminated[F, Chunk[O]]
       } yield {
         // stops the join evaluation
         // all the streams will be terminated. If err is supplied, that will get attached to any error currently present
