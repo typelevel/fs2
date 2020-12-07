@@ -1866,7 +1866,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
 
       val atRunEnd: F2[Unit] = // interrupt so the upstreams have chance to complete
         signalInterruption >>
-          F.guarantee(resultL.get.rethrow, resultR.get.rethrow)
+          F.both(resultL.get.rethrow, resultR.get.rethrow).void
 
       val runStreams = runStream(this, resultL).start >> runStream(that, resultR).start
 
