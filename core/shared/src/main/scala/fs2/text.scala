@@ -27,8 +27,6 @@ import java.nio.charset.Charset
 import scala.collection.mutable.{ArrayBuffer, Builder}
 import scodec.bits.{Bases, ByteVector}
 
-import scala.collection.mutable
-
 /** Provides utilities for working with streams of text (e.g., encoding byte streams to strings). */
 object text {
   private val utf8Charset = Charset.forName("UTF-8")
@@ -188,61 +186,52 @@ object text {
 
   /** Transforms a stream of `String` such that each emitted `String` is a line from the input. */
   def lines[F[_]]: Pipe[F, String, String] = {
-    def linesFromString(
-        vector: Vector[String],
+    def fillBuffers(
+        stringBuilder: StringBuilder,
+        linesBuffer: ArrayBuffer[String],
         string: String
-    ): (Vector[String], ArrayBuffer[String]) = {
-      val buffer = ArrayBuffer.empty[String]
-      var v = vector
-      val l = v.length
-      var (i, start) =
-        if (l > 0 && v(l - 1).lastOption.contains('\r') && string.nonEmpty && string(0) == '\n') {
-          buffer += v.updated(l - 1, v(l - 1).dropRight(1)).mkString
-          v = Vector.empty
-          (1, 1)
-        } else (0, 0)
+    ): Unit = {
+      val l = stringBuilder.length()
+      var i =
+        if (l > 0 && stringBuilder(l - 1) == '\r' && string.nonEmpty && string(0) == '\n') {
+          stringBuilder.deleteCharAt(l - 1)
+          linesBuffer += stringBuilder.result()
+          stringBuilder.clear()
+          1
+        } else 0
+
       while (i < string.size) {
         string(i) match {
           case '\n' =>
-            v :+= string.substring(start, i)
-            buffer += v.mkString
-            v = Vector.empty
-            start = i + 1
-          case '\r' =>
-            if (i + 1 < string.size && string(i + 1) == '\n') {
-              v :+= string.substring(start, i)
-              buffer += v.mkString
-              v = Vector.empty
-              start = i + 2
-              i += 1
-            }
-          case _ =>
-            ()
+            linesBuffer += stringBuilder.result()
+            stringBuilder.clear()
+          case '\r' if i + 1 < string.size && string(i + 1) == '\n' =>
+            linesBuffer += stringBuilder.result()
+            stringBuilder.clear()
+            i += 1
+          case other =>
+            stringBuilder.append(other)
         }
         i += 1
       }
-      (v :+ string.substring(start, string.size), buffer)
     }
 
     def go(
         stream: Stream[F, String],
-        vector: Vector[String],
+        stringBuilder: StringBuilder,
         first: Boolean
     ): Pull[F, String, Unit] =
       stream.pull.uncons.flatMap {
-        case None => if (first) Pull.done else Pull.output1(vector.mkString)
+        case None => if (first) Pull.done else Pull.output1(stringBuilder.result())
         case Some((chunk, stream)) =>
-          var b = vector
-          val mutBuffer = new mutable.ArrayBuffer[String]()
+          val linesBuffer = ArrayBuffer.empty[String]
           chunk.foreach { string =>
-            val (notFinished, finished) = linesFromString(b, string)
-            b = notFinished
-            mutBuffer ++= finished
+            fillBuffers(stringBuilder, linesBuffer, string)
           }
-          Pull.output(Chunk.buffer(mutBuffer)) >> go(stream, b, first = false)
+          Pull.output(Chunk.buffer(linesBuffer)) >> go(stream, stringBuilder, first = false)
       }
 
-    s => go(s, Vector.empty, first = true).stream
+    s => Stream.suspend(go(s, new StringBuilder(), first = true).stream)
   }
 
   /** Functions for working with base 64. */
