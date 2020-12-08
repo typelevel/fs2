@@ -404,7 +404,7 @@ class StreamSuite extends Fs2Suite {
               Stream
                 .unfold(0)(i => (i + 1, i + 1).some)
                 .flatMap(i => Stream.sleep_[IO](50.milliseconds) ++ Stream.emit(i))
-                .through(q.offer),
+                .foreach(q.offer),
               Stream.repeatEval(q.take).drain
             ).parJoin(2)
           }
