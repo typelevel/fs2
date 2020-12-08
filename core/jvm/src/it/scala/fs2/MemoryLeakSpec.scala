@@ -165,12 +165,6 @@ class MemoryLeakSpec extends FunSuite {
     Stream.constant(Stream.empty[IO]).parJoin(5)
   }
 
-  leakTest("dangling dequeue") {
-    Stream
-      .eval(Queue.unbounded[IO, Int])
-      .flatMap(q => Stream.constant(1).flatMap(_ => Stream.empty.mergeHaltBoth(q.dequeue)))
-  }
-
   leakTest("awakeEvery") {
     Stream.awakeEvery[IO](1.millis).flatMap(_ => Stream.eval(IO.unit))
   }
@@ -214,26 +208,6 @@ class MemoryLeakSpec extends FunSuite {
       .flatMap(_ => Stream.emits(Seq()))
       .map(x => x)
       .repeat
-  }
-
-  leakTest("queue") {
-    Stream
-      .eval(Queue.bounded[IO, Either[Throwable, Option[Int]]](10))
-      .flatMap { queue =>
-        queue
-          .dequeueChunk(Int.MaxValue)
-          .rethrow
-          .unNoneTerminate
-          .concurrently(
-            Stream
-              .constant(1, 128)
-              .covary[IO]
-              .noneTerminate
-              .attempt
-              .evalMap(queue.enqueue1(_))
-          )
-          .evalMap(_ => IO.unit)
-      }
   }
 
   leakTest("progress merge") {

@@ -3660,7 +3660,7 @@ object Stream extends StreamLowPriority {
         // starts with 1 because outer stream is running by default
         running <- SignallingRef(1L)
         // sync queue assures we won't overload heap when resulting stream is not able to catchup with inner streams
-        outputQ <- fs2.concurrent.Queue.synchronousNoneTerminated[F, Chunk[O]]
+        outputQ <- Queue.synchronous[F, Option[Chunk[O]]]
       } yield {
         // stops the join evaluation
         // all the streams will be terminated. If err is supplied, that will get attached to any error currently present
@@ -3671,7 +3671,7 @@ object Stream extends StreamLowPriority {
                 Some(Some(CompositeFailure(err0, err)))
               }
             case _ => Some(rslt)
-          } >> outputQ.enqueue1(None)
+          } >> outputQ.offer(None).start.void
 
         val incrementRunning: F[Unit] = running.update(_ + 1)
         val decrementRunning: F[Unit] =
@@ -3690,8 +3690,9 @@ object Stream extends StreamLowPriority {
             case Left(err) => stop(Some(err)) >> decrementRunning
           }
 
-        val extractFromQueue: Stream[F, O] = outputQ.dequeue.flatMap(Stream.chunk(_))
-        def insertToQueue(str: Stream[F, O]) = str.chunks.evalMap(s => outputQ.enqueue1(Some(s)))
+        val extractFromQueue: Stream[F, O] =
+          Stream.repeatEval(outputQ.take).unNoneTerminate.flatMap(Stream.chunk(_))
+        def insertToQueue(str: Stream[F, O]) = str.chunks.evalMap(s => outputQ.offer(Some(s)))
 
         // runs one inner stream, each stream is forked.
         // terminates when killSignal is true
