@@ -29,12 +29,24 @@ class Scala3Suite extends Fs2Suite {
     }
 
     test("toIArray") {
-      assert(java.util.Arrays.equals(Chunk(1, 2, 3).toIArray.asInstanceOf[Array[Int]], Array(1, 2, 3)))
+      assert(
+        java.util.Arrays.equals(Chunk(1, 2, 3).toIArray.asInstanceOf[Array[Int]], Array(1, 2, 3))
+      )
     }
-    
+
     test("fromIArray andThen toIArray is identity") {
       val arr = IArray(1, 2, 3)
-      assert(Chunk.fromIArray(arr).toIArray.asInstanceOf[Array[Int]] eq arr.asInstanceOf[Array[Int]])
+      assert(
+        Chunk.fromIArray(arr).toIArray.asInstanceOf[Array[Int]] eq arr.asInstanceOf[Array[Int]]
+      )
+    }
+  }
+
+  group("compilation") {
+    test("IArray") {
+      val x: IArray[Int] = Stream(1, 2, 3).to(IArray)
+      assertEquals(x.foldRight(Nil: List[Int])(_ :: _), List(1, 2, 3))
+      Stream(1, 2, 3).compile.to(IArray)
     }
   }
 }
