@@ -67,10 +67,12 @@ private[fs2] trait ChunkCompanionPlatform { self: Chunk.type =>
     array(arraySeq.unsafeArray.asInstanceOf[Array[O]])
 
   /** Creates a chunk backed by an immutable array.
-   */
+    */
   def fromIArray[O: ClassTag](arr: IArray[O]): Chunk[O] = new IArrayChunk(arr, 0, arr.length)
 
-  final class IArrayChunk[O](values: IArray[O], offset: Int, length: Int)(implicit ct: ClassTag[O]) extends Chunk[O] with KnownElementType[O] {
+  final class IArrayChunk[O](values: IArray[O], offset: Int, length: Int)(implicit ct: ClassTag[O])
+      extends Chunk[O]
+      with KnownElementType[O] {
     require(offset >= 0 && offset <= values.size)
     require(length >= 0 && length <= values.size)
     require(offset + length >= 0 && offset + length <= values.size)
