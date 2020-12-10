@@ -186,6 +186,12 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
       List(CrossType.Pure, CrossType.Full).flatMap(
         _.sharedSrcDir(baseDirectory.value, "main").toList.map(f => file(f.getPath + major))
       )
+    },
+    Test / unmanagedSourceDirectories ++= {
+      val major = if (isDotty.value) "-3" else "-2"
+      List(CrossType.Pure, CrossType.Full).flatMap(
+        _.sharedSrcDir(baseDirectory.value, "test").toList.map(f => file(f.getPath + major))
+      )
     }
   )
 

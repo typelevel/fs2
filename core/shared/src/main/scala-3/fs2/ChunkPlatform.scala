@@ -50,6 +50,7 @@ private[fs2] trait ChunkPlatform[+O] { self: Chunk[O] =>
         buf.result()
     }
 
+  def toIArray[O2 >: O: ClassTag]: IArray[O2] = IArray.unsafeFromArray(toArray)
 }
 
 private[fs2] trait ChunkCompanionPlatform { self: Chunk.type =>
@@ -65,4 +66,46 @@ private[fs2] trait ChunkCompanionPlatform { self: Chunk.type =>
   def arraySeq[O](arraySeq: immutable.ArraySeq[O]): Chunk[O] =
     array(arraySeq.unsafeArray.asInstanceOf[Array[O]])
 
+  /** Creates a chunk backed by an immutable array.
+   */
+  def fromIArray[O: ClassTag](arr: IArray[O]): Chunk[O] = new IArrayChunk(arr, 0, arr.length)
+
+  final class IArrayChunk[O](values: IArray[O], offset: Int, length: Int)(using ct: ClassTag[O]) extends Chunk[O] with KnownElementType[O] {
+    require(offset >= 0 && offset <= values.size)
+    require(length >= 0 && length <= values.size)
+    require(offset + length >= 0 && offset + length <= values.size)
+
+    def elementClassTag = ct
+    def size = length
+    def apply(i: Int) = values(offset + i)
+    def at(i: Int) = values(offset + i)
+
+    def copyToArray[O2 >: O](xs: Array[O2], start: Int): Unit =
+      if (xs.getClass eq ct.wrap.runtimeClass)
+        System.arraycopy(values, offset, xs, start, length)
+      else {
+        values.iterator.slice(offset, offset + length).copyToArray(xs, start)
+        ()
+      }
+
+    override def drop(n: Int): Chunk[O] =
+      if (n <= 0) this
+      else if (n >= size) Chunk.empty
+      else IArrayChunk(values, offset + n, length - n)
+
+    override def take(n: Int): Chunk[O] =
+      if (n <= 0) Chunk.empty
+      else if (n >= size) this
+      else IArrayChunk(values, offset, n)
+
+    protected def splitAtChunk_(n: Int): (Chunk[O], Chunk[O]) =
+      IArrayChunk(values, offset, n) -> IArrayChunk(values, offset + n, length - n)
+
+    override def toArray[O2 >: O: ClassTag]: Array[O2] =
+      values.slice(offset, offset + length).asInstanceOf[Array[O2]]
+
+    override def toIArray[O2 >: O: ClassTag]: IArray[O2] =
+      if (offset == 0 && length == values.length) values
+      else super.toIArray[O2]
+  }
 }
