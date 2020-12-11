@@ -33,20 +33,16 @@ private[fs2] trait ChunkPlatform[+O] { self: Chunk[O] =>
     ArraySeq.unsafeWrapArray[O2](array)
   }
 
-  def toArraySeqUntagged: ArraySeq[O] =
-    self match {
-      // case knownType: Chunk.KnownElementType[O] => toArraySeq[O](knownType.elementClassTag) TODO
-      case _ =>
-        val buf = ArraySeq.untagged.newBuilder[O]
-        buf.sizeHint(size)
-        var i = 0
-        while (i < size) {
-          buf += apply(i)
-          i += 1
-        }
-        buf.result()
+  def toArraySeqUntagged: ArraySeq[O] = {
+    val buf = ArraySeq.untagged.newBuilder[O]
+    buf.sizeHint(size)
+    var i = 0
+    while (i < size) {
+      buf += apply(i)
+      i += 1
     }
-
+    buf.result()
+  }
 }
 
 private[fs2] trait ChunkCompanionPlatform { self: Chunk.type =>
