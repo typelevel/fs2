@@ -386,7 +386,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     def loop(s: Stream[F, O], acc: Chunk.Queue[O]): Pull[F, Chunk[O], Unit] =
       s.pull.uncons.flatMap {
         case Some((hd, tl)) => loop(tl, acc :+ hd)
-        case None           => Pull.output1(acc.toChunk)
+        case None           => Pull.output1(acc)
       }
     loop(this, Chunk.Queue.empty).stream
   }
@@ -437,13 +437,13 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       s.pull.uncons.flatMap {
         case None =>
           if (allowFewerTotal && nextChunk.size > 0)
-            Pull.output1(nextChunk.toChunk)
+            Pull.output1(nextChunk)
           else
             Pull.done
         case Some((hd, tl)) =>
           val next = nextChunk :+ hd
           if (next.size >= n)
-            Pull.output1(next.toChunk) >> go(Chunk.Queue.empty, tl)
+            Pull.output1(next) >> go(Chunk.Queue.empty, tl)
           else
             go(next, tl)
       }
@@ -1334,7 +1334,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
         case None =>
           current
             .map { case (k1, out) =>
-              if (out.size == 0) Pull.done else Pull.output1((k1, out.toChunk))
+              if (out.size == 0) Pull.done else Pull.output1((k1, out))
             }
             .getOrElse(Pull.done)
       }
@@ -1355,7 +1355,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
           Pull.output(Chunk.seq(acc)) >> go(Some((k1, newOut)), s)
         else {
           val (prefix, suffix) = chunk.splitAt(limit - out.size)
-          Pull.output(Chunk.seq(acc :+ ((k1, (out :+ prefix).toChunk)))) >> go(
+          Pull.output(Chunk.seq(acc :+ ((k1, out :+ prefix)))) >> go(
             Some((k1, Chunk.Queue(suffix))),
             s
           )
@@ -1370,9 +1370,9 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
             acc
           else if (newOut.size > limit) {
             val (prefix, suffix) = matching.splitAt(limit - out.size)
-            acc :+ ((k1, (out :+ prefix).toChunk)) :+ ((k1, suffix))
+            acc :+ ((k1, out :+ prefix)) :+ ((k1, suffix))
           } else
-            acc :+ ((k1, (out :+ matching).toChunk))
+            acc :+ ((k1, out :+ matching))
         }
         val nonMatching = chunk.drop(differsAt)
         // nonMatching is guaranteed to be non-empty here, because we know the last element of the chunk doesn't have
@@ -1434,7 +1434,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
             : Pull[F2, Chunk[O], Unit] =
           timedPull.uncons.flatMap {
             case None =>
-              Pull.output1(acc.toChunk).whenA(acc.nonEmpty)
+              Pull.output1(acc).whenA(acc.nonEmpty)
             case Some((e, next)) =>
               def resetTimerAndGo(q: Chunk.Queue[O]) =
                 timedPull.timeout(timeout) >> go(q, next)
@@ -1442,7 +1442,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
               e match {
                 case Left(_) =>
                   if (acc.nonEmpty)
-                    Pull.output1(acc.toChunk) >> resetTimerAndGo(Chunk.Queue.empty)
+                    Pull.output1(acc) >> resetTimerAndGo(Chunk.Queue.empty)
                   else
                     go(Chunk.Queue.empty, next, hasTimedOut = true)
                 case Right(c) if hasTimedOut =>
@@ -1456,7 +1456,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
                   if (newAcc.size < n)
                     go(newAcc, next)
                   else {
-                    val (toEmit, rest) = resize(newAcc.toChunk, Pull.done)
+                    val (toEmit, rest) = resize(newAcc, Pull.done)
                     toEmit >> resetTimerAndGo(Chunk.Queue(rest))
                   }
               }
@@ -1722,7 +1722,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   /** Applies the specified pure function to each chunk in this stream.
     *
     * @example {{{
-    * scala> Stream(1, 2, 3).append(Stream(4, 5, 6)).mapChunks { c => val ints = c.toInts; for (i <- 0 until ints.values.size) ints.values(i) = 0; ints }.toList
+    * scala> Stream(1, 2, 3).append(Stream(4, 5, 6)).mapChunks { c => val ints = c.toArraySlice; for (i <- 0 until ints.values.size) ints.values(i) = 0; ints }.toList
     * res0: List[Int] = List(0, 0, 0, 0, 0, 0)
     * }}}
     */
@@ -2128,14 +2128,14 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
             nextSize(hd).flatMap { size =>
               if (acc.size < size) go(acc :+ hd, size.some, tl)
               else if (acc.size == size)
-                Pull.output(acc.toChunk) >> go(Chunk.Queue(hd), size.some, tl)
+                Pull.output(acc) >> go(Chunk.Queue(hd), size.some, tl)
               else {
-                val (out, rem) = acc.toChunk.splitAt(size - 1)
+                val (out, rem) = acc.splitAt(size - 1)
                 Pull.output(out) >> go(Chunk.Queue(rem, hd), None, tl)
               }
             }
           case None =>
-            Pull.output(acc.toChunk)
+            Pull.output(acc)
         }
       }
 
@@ -2397,7 +2397,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     *
     * @example {{{
     * scala> Stream.range(0, 10).split(_ % 4 == 0).toList
-    * res0: List[Chunk[Int]] = List(empty, Chunk(1, 2, 3), Chunk(5, 6, 7), Chunk(9))
+    * res0: List[Chunk[Int]] = List(Chunk(), Chunk(1, 2, 3), Chunk(5, 6, 7), Chunk(9))
     * }}}
     */
   def split(f: O => Boolean): Stream[F, Chunk[O]] = {
@@ -2409,10 +2409,10 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
             case Some(idx) =>
               val pfx = hd.take(idx)
               val b2 = buffer :+ pfx
-              Pull.output1(b2.toChunk) >> go(Chunk.Queue.empty, tl.cons(hd.drop(idx + 1)))
+              Pull.output1(b2) >> go(Chunk.Queue.empty, tl.cons(hd.drop(idx + 1)))
           }
         case None =>
-          if (buffer.nonEmpty) Pull.output1(buffer.toChunk)
+          if (buffer.nonEmpty) Pull.output1(buffer)
           else Pull.done
       }
     go(Chunk.Queue.empty, this).stream
@@ -3845,14 +3845,14 @@ object Stream extends StreamLowPriority {
         s.pull.uncons.flatMap {
           case None =>
             if (allowFewer && acc.nonEmpty)
-              Pull.pure(Some((acc.toChunk, Stream.empty)))
+              Pull.pure(Some((acc, Stream.empty)))
             else Pull.pure(None)
           case Some((hd, tl)) =>
             if (hd.size < n) go(acc :+ hd, n - hd.size, tl)
-            else if (hd.size == n) Pull.pure(Some((acc :+ hd).toChunk -> tl))
+            else if (hd.size == n) Pull.pure(Some((acc :+ hd) -> tl))
             else {
               val (pfx, sfx) = hd.splitAt(n)
-              Pull.pure(Some((acc :+ pfx).toChunk -> tl.cons(sfx)))
+              Pull.pure(Some((acc :+ pfx) -> tl.cons(sfx)))
             }
         }
       if (n <= 0) Pull.pure(Some((Chunk.empty, self)))

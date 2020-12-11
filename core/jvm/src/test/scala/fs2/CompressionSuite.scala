@@ -112,7 +112,7 @@ class CompressionSuite extends Fs2Suite {
       )
       val expected = deflateStream(getBytes(s), level, strategy, nowrap).toVector
       Stream
-        .chunk[IO, Byte](Chunk.bytes(getBytes(s)))
+        .chunk[IO, Byte](Chunk.array(getBytes(s)))
         .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
         .through(
           deflate(
@@ -139,7 +139,7 @@ class CompressionSuite extends Fs2Suite {
           flushMode: DeflateParams.FlushMode
       ) =>
         Stream
-          .chunk[IO, Byte](Chunk.bytes(getBytes(s)))
+          .chunk[IO, Byte](Chunk.array(getBytes(s)))
           .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
           .through(
             deflate(
@@ -157,7 +157,7 @@ class CompressionSuite extends Fs2Suite {
           .flatMap { deflated =>
             val expected = inflateStream(deflated, nowrap).toVector
             Stream
-              .chunk[IO, Byte](Chunk.bytes(deflated))
+              .chunk[IO, Byte](Chunk.array(deflated))
               .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
               .through(inflate(InflateParams(header = ZLibParams.Header(nowrap))))
               .compile
@@ -170,7 +170,7 @@ class CompressionSuite extends Fs2Suite {
   test("inflate input (deflated larger than inflated)") {
     Stream
       .chunk[IO, Byte](
-        Chunk.bytes(
+        Chunk.array(
           getBytes(
             "꒔諒ᇂ즆ᰃ遇ኼ㎐만咘똠ᯈ䕍쏮쿻ࣇ㦲䷱瘫椪⫐褽睌쨘꛹騏蕾☦余쒧꺠ܝ猸b뷈埣ꂓ琌ཬ隖㣰忢鐮橀쁚誅렌폓㖅ꋹ켗餪庺Đ懣㫍㫌굦뢲䅦苮Ѣқ闭䮚ū﫣༶漵>껆拦휬콯耙腒䔖돆圹Ⲷ曩ꀌ㒈"
           )
@@ -189,7 +189,7 @@ class CompressionSuite extends Fs2Suite {
       .flatMap { deflated =>
         val expected = new String(inflateStream(deflated, false))
         Stream
-          .chunk[IO, Byte](Chunk.bytes(deflated))
+          .chunk[IO, Byte](Chunk.array(deflated))
           .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
           .through(inflate(InflateParams(header = ZLibParams.Header(false))))
           .compile
@@ -209,7 +209,7 @@ class CompressionSuite extends Fs2Suite {
           flushMode: DeflateParams.FlushMode
       ) =>
         Stream
-          .chunk[IO, Byte](Chunk.bytes(getBytes(s)))
+          .chunk[IO, Byte](Chunk.array(getBytes(s)))
           .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
           .through(
             deflate(
@@ -238,7 +238,7 @@ class CompressionSuite extends Fs2Suite {
                    |kinds of values they compute."
                    |-- Pierce, Benjamin C. (2002). Types and Programming Languages""")
     Stream
-      .chunk[IO, Byte](Chunk.bytes(uncompressed))
+      .chunk[IO, Byte](Chunk.array(uncompressed))
       .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
       .through(deflate(DeflateParams(level = DeflateParams.Level.NINE)))
       .compile
@@ -252,7 +252,7 @@ class CompressionSuite extends Fs2Suite {
     val deflater = deflate[IO](DeflateParams(bufferSize = chunkSize))
     val inflater = inflate[IO](InflateParams(bufferSize = chunkSize))
     val stream = Stream
-      .chunk[IO, Byte](Chunk.Bytes(1.to(bytesIn).map(_.toByte).toArray))
+      .chunk[IO, Byte](Chunk.array(1.to(bytesIn).map(_.toByte).toArray))
       .through(deflater)
       .through(inflater)
     for {
@@ -282,7 +282,7 @@ class CompressionSuite extends Fs2Suite {
         val expectedComment = Option(toEncodableComment(s))
         val expectedMTime = Option(Instant.ofEpochSecond(epochSeconds.toLong))
         Stream
-          .chunk(Chunk.bytes(s.getBytes))
+          .chunk(Chunk.array(s.getBytes))
           .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
           .through(
             gzip[IO](
@@ -327,7 +327,7 @@ class CompressionSuite extends Fs2Suite {
         val expectedComment = Option(toEncodableComment(s))
         val expectedMTime = Option(Instant.ofEpochSecond(epochSeconds.toLong))
         Stream
-          .chunk(Chunk.bytes(s.getBytes))
+          .chunk(Chunk.array(s.getBytes))
           .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
           .through(
             gzip[IO](
@@ -372,7 +372,7 @@ class CompressionSuite extends Fs2Suite {
         val expectedComment = Option(toEncodableComment(s))
         val expectedMTime = Option(Instant.ofEpochSecond(epochSeconds.toLong))
         Stream
-          .chunk(Chunk.bytes(s.getBytes))
+          .chunk(Chunk.array(s.getBytes))
           .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
           .through(
             gzip[IO](
@@ -414,7 +414,7 @@ class CompressionSuite extends Fs2Suite {
           epochSeconds: Int
       ) =>
         Stream
-          .chunk[IO, Byte](Chunk.bytes(s.getBytes))
+          .chunk[IO, Byte](Chunk.array(s.getBytes))
           .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
           .through(
             gzip(
@@ -456,7 +456,7 @@ class CompressionSuite extends Fs2Suite {
                    |kinds of values they compute."
                    |-- Pierce, Benjamin C. (2002). Types and Programming Languages""")
     Stream
-      .chunk[IO, Byte](Chunk.bytes(uncompressed))
+      .chunk[IO, Byte](Chunk.array(uncompressed))
       .through(gzip(2048))
       .compile
       .toVector
@@ -506,7 +506,7 @@ class CompressionSuite extends Fs2Suite {
       0x4d, 0xcd, 0x2b, 0xc9, 0xcc, 0x4b, 0x57, 0x08, 0x72, 0x73, 0x56, 0x30, 0xb4, 0x34, 0x35,
       0xe2, 0x02, 0x00, 0x57, 0xb3, 0x5e, 0x6d, 0x23, 0x00, 0x00, 0x00).map(_.toByte)
     Stream
-      .chunk(Chunk.bytes(compressed))
+      .chunk(Chunk.array(compressed))
       .through(
         gunzip[IO]()
       )
@@ -528,7 +528,7 @@ class CompressionSuite extends Fs2Suite {
     val gzipStream = gzip[IO](bufferSize = chunkSize)
     val gunzipStream = gunzip[IO](bufferSize = chunkSize)
     val stream = Stream
-      .chunk[IO, Byte](Chunk.Bytes(1.to(bytesIn).map(_.toByte).toArray))
+      .chunk[IO, Byte](Chunk.array(1.to(bytesIn).map(_.toByte).toArray))
       .through(gzipStream)
       .through(gunzipStream)
       .flatMap(_.content)

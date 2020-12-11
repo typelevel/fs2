@@ -60,6 +60,12 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] { self =>
   /** Returns the element at the specified index. Throws if index is < 0 or >= size. */
   def apply(i: Int): O
 
+  /** Returns the concatenation of this chunk with the supplied chunk. */
+  def ++[O2 >: O](that: Chunk[O2]): Chunk[O2] = this match {
+    case q: Chunk.Queue[O] => q :+ that
+    case _ => Chunk.Queue(this, that)
+  }
+
   /** More efficient version of `filter(pf.isDefinedAt).map(pf)`. */
   def collect[O2](pf: PartialFunction[O, O2]): Chunk[O2] = {
     val b = collection.mutable.Buffer.newBuilder[O2]
@@ -76,6 +82,10 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] { self =>
 
   /** Copies the elements of this chunk in to the specified array at the specified start index. */
   def copyToArray[O2 >: O](xs: Array[O2], start: Int = 0): Unit
+
+  /** Converts this chunk to a chunk backed by a single array. */
+  def compact[O2 >: O](implicit ct: ClassTag[O2]): Chunk.ArraySlice[O2] =
+    Chunk.ArraySlice(toArray[O2], 0, size)
 
   /** Drops the first `n` elements of this chunk. */
   def drop(n: Int): Chunk[O] = splitAt(n)._2
@@ -187,7 +197,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] { self =>
       arr(i) = f(apply(i))
       i += 1
     }
-    Chunk.boxed(arr.asInstanceOf[Array[O2]])
+    Chunk.array(arr.asInstanceOf[Array[O2]])
   }
 
   /** Maps the supplied stateful function over each element, outputting the final state and the accumulated outputs.
@@ -261,42 +271,22 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] { self =>
   /** Copies the elements of this chunk to an array. */
   def toArray[O2 >: O: ClassTag]: Array[O2] = {
     val arr = new Array[O2](size)
-    var i = 0
-    while (i < size) { arr(i) = apply(i); i += 1 }
+    copyToArray(arr, 0)
     arr
   }
 
-  /** Converts this chunk to a `Chunk.Booleans`, allowing access to the underlying array of elements.
-    * If this chunk is already backed by an unboxed array of booleans, this method runs in constant time.
-    * Otherwise, this method will copy of the elements of this chunk in to a single array.
-    */
-  def toBooleans[B >: O](implicit ev: B =:= Boolean): Chunk.Booleans = {
-    val _ = ev // Convince scalac that ev is used
+  def toArraySlice[O2 >: O](implicit ct: ClassTag[O2]): Chunk.ArraySlice[O2] =
     this match {
-      case c: Chunk.Booleans => c
-      case _ =>
-        Chunk.Booleans(this.asInstanceOf[Chunk[Boolean]].toArray, 0, size)
+      case as: Chunk.ArraySlice[_] if ct.wrap.runtimeClass eq as.getClass => as.asInstanceOf[Chunk.ArraySlice[O2]]
+      case _ => Chunk.ArraySlice(toArray, 0, size)
     }
-  }
-
-  /** Converts this chunk to a `Chunk.Bytes`, allowing access to the underlying array of elements.
-    * If this chunk is already backed by an unboxed array of bytes, this method runs in constant time.
-    * Otherwise, this method will copy of the elements of this chunk in to a single array.
-    */
-  def toBytes[B >: O](implicit ev: B =:= Byte): Chunk.Bytes = {
-    val _ = ev // Convince scalac that ev is used
-    this match {
-      case c: Chunk.Bytes => c
-      case _              => Chunk.Bytes(this.asInstanceOf[Chunk[Byte]].toArray, 0, size)
-    }
-  }
 
   /** Converts this chunk to a `java.nio.ByteBuffer`. */
   def toByteBuffer[B >: O](implicit ev: B =:= Byte): JByteBuffer = {
     val _ = ev // Convince scalac that ev is used
     this match {
-      case c: Chunk.Bytes =>
-        JByteBuffer.wrap(c.values, c.offset, c.length)
+      case c: Chunk.ArraySlice[_] =>
+        JByteBuffer.wrap(c.values.asInstanceOf[Array[Byte]], c.offset, c.length)
       case c: Chunk.ByteBuffer =>
         val b = c.buf.asReadOnlyBuffer
         if (c.offset == 0 && b.position() == 0 && c.size == b.limit()) b
@@ -307,69 +297,6 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] { self =>
         }
       case _ =>
         JByteBuffer.wrap(this.asInstanceOf[Chunk[Byte]].toArray, 0, size)
-    }
-  }
-
-  /** Converts this chunk to a `Chunk.Shorts`, allowing access to the underlying array of elements.
-    * If this chunk is already backed by an unboxed array of bytes, this method runs in constant time.
-    * Otherwise, this method will copy of the elements of this chunk in to a single array.
-    */
-  def toShorts[B >: O](implicit ev: B =:= Short): Chunk.Shorts = {
-    val _ = ev // Convince scalac that ev is used
-    this match {
-      case c: Chunk.Shorts => c
-      case _ =>
-        Chunk.Shorts(this.asInstanceOf[Chunk[Short]].toArray, 0, size)
-    }
-  }
-
-  /** Converts this chunk to a `Chunk.Ints`, allowing access to the underlying array of elements.
-    * If this chunk is already backed by an unboxed array of bytes, this method runs in constant time.
-    * Otherwise, this method will copy of the elements of this chunk in to a single array.
-    */
-  def toInts[B >: O](implicit ev: B =:= Int): Chunk.Ints = {
-    val _ = ev // Convince scalac that ev is used
-    this match {
-      case c: Chunk.Ints => c
-      case _             => Chunk.Ints(this.asInstanceOf[Chunk[Int]].toArray, 0, size)
-    }
-  }
-
-  /** Converts this chunk to a `Chunk.Longs`, allowing access to the underlying array of elements.
-    * If this chunk is already backed by an unboxed array of longs, this method runs in constant time.
-    * Otherwise, this method will copy of the elements of this chunk in to a single array.
-    */
-  def toLongs[B >: O](implicit ev: B =:= Long): Chunk.Longs = {
-    val _ = ev // Convince scalac that ev is used
-    this match {
-      case c: Chunk.Longs => c
-      case _              => Chunk.Longs(this.asInstanceOf[Chunk[Long]].toArray, 0, size)
-    }
-  }
-
-  /** Converts this chunk to a `Chunk.Floats`, allowing access to the underlying array of elements.
-    * If this chunk is already backed by an unboxed array of doubles, this method runs in constant time.
-    * Otherwise, this method will copy of the elements of this chunk in to a single array.
-    */
-  def toFloats[B >: O](implicit ev: B =:= Float): Chunk.Floats = {
-    val _ = ev // Convince scalac that ev is used
-    this match {
-      case c: Chunk.Floats => c
-      case _ =>
-        Chunk.Floats(this.asInstanceOf[Chunk[Float]].toArray, 0, size)
-    }
-  }
-
-  /** Converts this chunk to a `Chunk.Doubles`, allowing access to the underlying array of elements.
-    * If this chunk is already backed by an unboxed array of doubles, this method runs in constant time.
-    * Otherwise, this method will copy of the elements of this chunk in to a single array.
-    */
-  def toDoubles[B >: O](implicit ev: B =:= Double): Chunk.Doubles = {
-    val _ = ev // Convince scalac that ev is used
-    this match {
-      case c: Chunk.Doubles => c
-      case _ =>
-        Chunk.Doubles(this.asInstanceOf[Chunk[Double]].toArray, 0, size)
     }
   }
 
@@ -426,15 +353,6 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] { self =>
       case other                    => BitVector.view(other.asInstanceOf[Chunk[Byte]].toArray)
     }
   }
-
-  /** Returns true if this chunk is known to have elements of type `B`.
-    * This is determined by checking if the chunk type mixes in `Chunk.KnownElementType`.
-    */
-  def knownElementType[B](implicit classTag: ClassTag[B]): Boolean =
-    this match {
-      case ket: Chunk.KnownElementType[_] if ket.elementClassTag eq classTag => true
-      case _                                                                 => false
-    }
 
   /** Zips this chunk the the supplied chunk, returning a chunk of tuples.
     */
@@ -502,11 +420,6 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] { self =>
 }
 
 object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
-
-  /** Optional mix-in that provides the class tag of the element type in a chunk. */
-  trait KnownElementType[A] extends Chunk[A] {
-    def elementClassTag: ClassTag[A]
-  }
 
   private val empty_ : Chunk[Nothing] = new EmptyChunk
   private final class EmptyChunk extends Chunk[Nothing] {
@@ -694,20 +607,13 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
 
   /** Creates a chunk backed by an array. */
   def array[O](values: Array[O]): Chunk[O] =
-    values.size match {
+    array(values, 0, values.length)
+
+  def array[O](values: Array[O], offset: Int, length: Int): Chunk[O] =
+    length match {
       case 0 => empty
-      case 1 => singleton(values(0))
-      case _ =>
-        values match {
-          case a: Array[Boolean] => booleans(a)
-          case a: Array[Byte]    => bytes(a)
-          case a: Array[Short]   => shorts(a)
-          case a: Array[Int]     => ints(a)
-          case a: Array[Long]    => longs(a)
-          case a: Array[Float]   => floats(a)
-          case a: Array[Double]  => doubles(a)
-          case _                 => boxed(values)
-        }
+      case 1 => singleton(values(offset))
+      case _ => ArraySlice(values, offset, length)
     }
 
   private def checkBounds(values: Array[_], offset: Int, length: Int): Unit = {
@@ -717,17 +623,14 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
     require(end >= 0 && end <= values.size)
   }
 
-  /** Creates a chunk backed by an array. If `O` is a primitive type, elements will be boxed. */
-  def boxed[O](values: Array[O]): Chunk[O] = Boxed(values, 0, values.length)
-
-  /** Creates a chunk backed by a subsequence of an array. If `A` is a primitive type, elements will be boxed. */
-  def boxed[O](values: Array[O], offset: Int, length: Int): Chunk[O] =
-    Boxed(values, offset, length)
-
-  final case class Boxed[O](values: Array[O], offset: Int, length: Int) extends Chunk[O] {
+  final case class ArraySlice[O](values: Array[O], offset: Int, length: Int) extends Chunk[O] {
     checkBounds(values, offset, length)
     def size = length
     def apply(i: Int) = values(offset + i)
+
+    override def compact[O2 >: O](implicit ct: ClassTag[O2]): ArraySlice[O2] =
+      if ((ct.wrap.runtimeClass eq values.getClass) && offset == 0 && length == values.length) this.asInstanceOf[ArraySlice[O2]]
+      else super.compact
 
     def copyToArray[O2 >: O](xs: Array[O2], start: Int): Unit =
       if (xs.isInstanceOf[Array[AnyRef]])
@@ -738,118 +641,27 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
       }
 
     protected def splitAtChunk_(n: Int): (Chunk[O], Chunk[O]) =
-      Boxed(values, offset, n) -> Boxed(values, offset + n, length - n)
+      ArraySlice(values, offset, n) -> ArraySlice(values, offset + n, length - n)
 
     override def drop(n: Int): Chunk[O] =
       if (n <= 0) this
       else if (n >= size) Chunk.empty
-      else Boxed(values, offset + n, length - n)
+      else ArraySlice(values, offset + n, length - n)
 
     override def take(n: Int): Chunk[O] =
       if (n <= 0) Chunk.empty
       else if (n >= size) this
-      else Boxed(values, offset, n)
+      else ArraySlice(values, offset, n)
   }
-  object Boxed {
-    def apply[O](values: Array[O]): Boxed[O] = Boxed(values, 0, values.length)
-  }
-
-  /** Creates a chunk backed by an array of booleans. */
-  def booleans(values: Array[Boolean]): Chunk[Boolean] =
-    Booleans(values, 0, values.length)
-
-  /** Creates a chunk backed by a subsequence of an array of booleans. */
-  def booleans(values: Array[Boolean], offset: Int, length: Int): Chunk[Boolean] =
-    Booleans(values, offset, length)
-
-  final case class Booleans(values: Array[Boolean], offset: Int, length: Int)
-      extends Chunk[Boolean]
-      with KnownElementType[Boolean] {
-    checkBounds(values, offset, length)
-    def elementClassTag = ClassTag.Boolean
-    def size = length
-    def apply(i: Int) = values(offset + i)
-    def at(i: Int) = values(offset + i)
-
-    def copyToArray[O2 >: Boolean](xs: Array[O2], start: Int): Unit =
-      if (xs.isInstanceOf[Array[Boolean]])
-        System.arraycopy(values, offset, xs, start, length)
-      else {
-        values.iterator.slice(offset, offset + length).copyToArray(xs, start)
-        ()
-      }
-
-    override def drop(n: Int): Chunk[Boolean] =
-      if (n <= 0) this
-      else if (n >= size) Chunk.empty
-      else Booleans(values, offset + n, length - n)
-
-    override def take(n: Int): Chunk[Boolean] =
-      if (n <= 0) Chunk.empty
-      else if (n >= size) this
-      else Booleans(values, offset, n)
-
-    protected def splitAtChunk_(n: Int): (Chunk[Boolean], Chunk[Boolean]) =
-      Booleans(values, offset, n) -> Booleans(values, offset + n, length - n)
-    override def toArray[O2 >: Boolean: ClassTag]: Array[O2] =
-      values.slice(offset, offset + length).asInstanceOf[Array[O2]]
-  }
-  object Booleans {
-    def apply(values: Array[Boolean]): Booleans =
-      Booleans(values, 0, values.length)
-  }
-
-  /** Creates a chunk backed by an array of bytes. */
-  def bytes(values: Array[Byte]): Chunk[Byte] = Bytes(values, 0, values.length)
-
-  /** Creates a chunk backed by a subsequence of an array of bytes. */
-  def bytes(values: Array[Byte], offset: Int, length: Int): Chunk[Byte] =
-    Bytes(values, offset, length)
-
-  final case class Bytes(values: Array[Byte], offset: Int, length: Int)
-      extends Chunk[Byte]
-      with KnownElementType[Byte] {
-    checkBounds(values, offset, length)
-    def elementClassTag = ClassTag.Byte
-    def size = length
-    def apply(i: Int) = values(offset + i)
-    def at(i: Int) = values(offset + i)
-
-    def copyToArray[O2 >: Byte](xs: Array[O2], start: Int): Unit =
-      if (xs.isInstanceOf[Array[Byte]])
-        System.arraycopy(values, offset, xs, start, length)
-      else {
-        values.iterator.slice(offset, offset + length).copyToArray(xs, start)
-        ()
-      }
-
-    override def drop(n: Int): Chunk[Byte] =
-      if (n <= 0) this
-      else if (n >= size) Chunk.empty
-      else Bytes(values, offset + n, length - n)
-
-    override def take(n: Int): Chunk[Byte] =
-      if (n <= 0) Chunk.empty
-      else if (n >= size) this
-      else Bytes(values, offset, n)
-
-    protected def splitAtChunk_(n: Int): (Chunk[Byte], Chunk[Byte]) =
-      Bytes(values, offset, n) -> Bytes(values, offset + n, length - n)
-    override def toArray[O2 >: Byte: ClassTag]: Array[O2] =
-      values.slice(offset, offset + length).asInstanceOf[Array[O2]]
-  }
-
-  object Bytes {
-    def apply(values: Array[Byte]): Bytes = Bytes(values, 0, values.length)
+  object ArraySlice {
+    def apply[O](values: Array[O]): ArraySlice[O] = ArraySlice(values, 0, values.length)
   }
 
   sealed abstract class Buffer[A <: Buffer[A, B, C], B <: JBuffer, C: ClassTag](
       buf: B,
       val offset: Int,
       val size: Int
-  ) extends Chunk[C]
-      with KnownElementType[C] {
-    def elementClassTag: ClassTag[C] = implicitly[ClassTag[C]]
+  ) extends Chunk[C] {
     def readOnly(b: B): B
     def buffer(b: B): A
     def get(b: B, n: Int): C
@@ -1151,278 +963,12 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
   /** Creates a chunk backed by an byte buffer, bounded by the current position and limit */
   def byteBuffer(buf: JByteBuffer): Chunk[Byte] = ByteBuffer(buf)
 
-  /** Creates a chunk backed by an array of shorts. */
-  def shorts(values: Array[Short]): Chunk[Short] =
-    Shorts(values, 0, values.length)
-
-  /** Creates a chunk backed by a subsequence of an array of shorts. */
-  def shorts(values: Array[Short], offset: Int, length: Int): Chunk[Short] =
-    Shorts(values, offset, length)
-
-  final case class Shorts(values: Array[Short], offset: Int, length: Int)
-      extends Chunk[Short]
-      with KnownElementType[Short] {
-    checkBounds(values, offset, length)
-    def elementClassTag = ClassTag.Short
-    def size = length
-    def apply(i: Int) = values(offset + i)
-    def at(i: Int) = values(offset + i)
-
-    def copyToArray[O2 >: Short](xs: Array[O2], start: Int): Unit =
-      if (xs.isInstanceOf[Array[Short]])
-        System.arraycopy(values, offset, xs, start, length)
-      else {
-        values.iterator.slice(offset, offset + length).copyToArray(xs, start)
-        ()
-      }
-
-    override def drop(n: Int): Chunk[Short] =
-      if (n <= 0) this
-      else if (n >= size) Chunk.empty
-      else Shorts(values, offset + n, length - n)
-
-    override def take(n: Int): Chunk[Short] =
-      if (n <= 0) Chunk.empty
-      else if (n >= size) this
-      else Shorts(values, offset, n)
-
-    protected def splitAtChunk_(n: Int): (Chunk[Short], Chunk[Short]) =
-      Shorts(values, offset, n) -> Shorts(values, offset + n, length - n)
-    override def toArray[O2 >: Short: ClassTag]: Array[O2] =
-      values.slice(offset, offset + length).asInstanceOf[Array[O2]]
-  }
-  object Shorts {
-    def apply(values: Array[Short]): Shorts = Shorts(values, 0, values.length)
-  }
-
-  /** Creates a chunk backed by an array of ints. */
-  def ints(values: Array[Int]): Chunk[Int] = Ints(values, 0, values.length)
-
-  /** Creates a chunk backed by a subsequence of an array of ints. */
-  def ints(values: Array[Int], offset: Int, length: Int): Chunk[Int] =
-    Ints(values, offset, length)
-
-  final case class Ints(values: Array[Int], offset: Int, length: Int)
-      extends Chunk[Int]
-      with KnownElementType[Int] {
-    checkBounds(values, offset, length)
-    def elementClassTag = ClassTag.Int
-    def size = length
-    def apply(i: Int) = values(offset + i)
-    def at(i: Int) = values(offset + i)
-
-    def copyToArray[O2 >: Int](xs: Array[O2], start: Int): Unit =
-      if (xs.isInstanceOf[Array[Int]])
-        System.arraycopy(values, offset, xs, start, length)
-      else {
-        values.iterator.slice(offset, offset + length).copyToArray(xs, start)
-        ()
-      }
-
-    override def drop(n: Int): Chunk[Int] =
-      if (n <= 0) this
-      else if (n >= size) Chunk.empty
-      else Ints(values, offset + n, length - n)
-
-    override def take(n: Int): Chunk[Int] =
-      if (n <= 0) Chunk.empty
-      else if (n >= size) this
-      else Ints(values, offset, n)
-
-    protected def splitAtChunk_(n: Int): (Chunk[Int], Chunk[Int]) =
-      Ints(values, offset, n) -> Ints(values, offset + n, length - n)
-    override def toArray[O2 >: Int: ClassTag]: Array[O2] =
-      values.slice(offset, offset + length).asInstanceOf[Array[O2]]
-  }
-  object Ints {
-    def apply(values: Array[Int]): Ints = Ints(values, 0, values.length)
-  }
-
-  /** Creates a chunk backed by an array of longs. */
-  def longs(values: Array[Long]): Chunk[Long] = Longs(values, 0, values.length)
-
-  /** Creates a chunk backed by a subsequence of an array of ints. */
-  def longs(values: Array[Long], offset: Int, length: Int): Chunk[Long] =
-    Longs(values, offset, length)
-
-  final case class Longs(values: Array[Long], offset: Int, length: Int)
-      extends Chunk[Long]
-      with KnownElementType[Long] {
-    checkBounds(values, offset, length)
-    def elementClassTag = ClassTag.Long
-    def size = length
-    def apply(i: Int) = values(offset + i)
-    def at(i: Int) = values(offset + i)
-
-    def copyToArray[O2 >: Long](xs: Array[O2], start: Int): Unit =
-      if (xs.isInstanceOf[Array[Long]])
-        System.arraycopy(values, offset, xs, start, length)
-      else {
-        values.iterator.slice(offset, offset + length).copyToArray(xs, start)
-        ()
-      }
-
-    override def drop(n: Int): Chunk[Long] =
-      if (n <= 0) this
-      else if (n >= size) Chunk.empty
-      else Longs(values, offset + n, length - n)
-
-    override def take(n: Int): Chunk[Long] =
-      if (n <= 0) Chunk.empty
-      else if (n >= size) this
-      else Longs(values, offset, n)
-
-    protected def splitAtChunk_(n: Int): (Chunk[Long], Chunk[Long]) =
-      Longs(values, offset, n) -> Longs(values, offset + n, length - n)
-    override def toArray[O2 >: Long: ClassTag]: Array[O2] =
-      values.slice(offset, offset + length).asInstanceOf[Array[O2]]
-  }
-  object Longs {
-    def apply(values: Array[Long]): Longs = Longs(values, 0, values.length)
-  }
-
-  /** Creates a chunk backed by an array of floats. */
-  def floats(values: Array[Float]): Chunk[Float] =
-    Floats(values, 0, values.length)
-
-  /** Creates a chunk backed by a subsequence of an array of floats. */
-  def floats(values: Array[Float], offset: Int, length: Int): Chunk[Float] =
-    Floats(values, offset, length)
-
-  final case class Floats(values: Array[Float], offset: Int, length: Int)
-      extends Chunk[Float]
-      with KnownElementType[Float] {
-    checkBounds(values, offset, length)
-    def elementClassTag = ClassTag.Float
-    def size = length
-    def apply(i: Int) = values(offset + i)
-    def at(i: Int) = values(offset + i)
-
-    def copyToArray[O2 >: Float](xs: Array[O2], start: Int): Unit =
-      if (xs.isInstanceOf[Array[Float]])
-        System.arraycopy(values, offset, xs, start, length)
-      else {
-        values.iterator.slice(offset, offset + length).copyToArray(xs, start)
-        ()
-      }
-
-    override def drop(n: Int): Chunk[Float] =
-      if (n <= 0) this
-      else if (n >= size) Chunk.empty
-      else Floats(values, offset + n, length - n)
-
-    override def take(n: Int): Chunk[Float] =
-      if (n <= 0) Chunk.empty
-      else if (n >= size) this
-      else Floats(values, offset, n)
-
-    protected def splitAtChunk_(n: Int): (Chunk[Float], Chunk[Float]) =
-      Floats(values, offset, n) -> Floats(values, offset + n, length - n)
-    override def toArray[O2 >: Float: ClassTag]: Array[O2] =
-      values.slice(offset, offset + length).asInstanceOf[Array[O2]]
-  }
-  object Floats {
-    def apply(values: Array[Float]): Floats = Floats(values, 0, values.length)
-  }
-
-  /** Creates a chunk backed by an array of doubles. */
-  def doubles(values: Array[Double]): Chunk[Double] =
-    Doubles(values, 0, values.length)
-
-  /** Creates a chunk backed by a subsequence of an array of doubles. */
-  def doubles(values: Array[Double], offset: Int, length: Int): Chunk[Double] =
-    Doubles(values, offset, length)
-
-  final case class Doubles(values: Array[Double], offset: Int, length: Int)
-      extends Chunk[Double]
-      with KnownElementType[Double] {
-    checkBounds(values, offset, length)
-    def elementClassTag = ClassTag.Double
-    def size = length
-    def apply(i: Int) = values(offset + i)
-    def at(i: Int) = values(offset + i)
-
-    def copyToArray[O2 >: Double](xs: Array[O2], start: Int): Unit =
-      if (xs.isInstanceOf[Array[Double]])
-        System.arraycopy(values, offset, xs, start, length)
-      else {
-        values.iterator.slice(offset, offset + length).copyToArray(xs, start)
-        ()
-      }
-
-    override def drop(n: Int): Chunk[Double] =
-      if (n <= 0) this
-      else if (n >= size) Chunk.empty
-      else Doubles(values, offset + n, length - n)
-
-    override def take(n: Int): Chunk[Double] =
-      if (n <= 0) Chunk.empty
-      else if (n >= size) this
-      else Doubles(values, offset, n)
-
-    protected def splitAtChunk_(n: Int): (Chunk[Double], Chunk[Double]) =
-      Doubles(values, offset, n) -> Doubles(values, offset + n, length - n)
-    override def toArray[O2 >: Double: ClassTag]: Array[O2] =
-      values.slice(offset, offset + length).asInstanceOf[Array[O2]]
-  }
-  object Doubles {
-    def apply(values: Array[Double]): Doubles =
-      Doubles(values, 0, values.length)
-  }
-
-  /** Creates a chunk backed by an array of chars. */
-  def chars(values: Array[Char]): Chunk[Char] =
-    Chars(values, 0, values.length)
-
-  /** Creates a chunk backed by a subsequence of an array of chars. */
-  def chars(values: Array[Char], offset: Int, length: Int): Chunk[Char] =
-    Chars(values, offset, length)
-
-  final case class Chars(values: Array[Char], offset: Int, length: Int)
-      extends Chunk[Char]
-      with KnownElementType[Char] {
-    checkBounds(values, offset, length)
-    def elementClassTag = ClassTag.Char
-    def size = length
-    def apply(i: Int) = values(offset + i)
-    def at(i: Int) = values(offset + i)
-
-    def copyToArray[O2 >: Char](xs: Array[O2], start: Int): Unit =
-      if (xs.isInstanceOf[Array[Char]])
-        System.arraycopy(values, offset, xs, start, length)
-      else {
-        values.iterator.slice(offset, offset + length).copyToArray(xs, start)
-        ()
-      }
-
-    override def drop(n: Int): Chunk[Char] =
-      if (n <= 0) this
-      else if (n >= size) Chunk.empty
-      else Chars(values, offset + n, length - n)
-
-    override def take(n: Int): Chunk[Char] =
-      if (n <= 0) Chunk.empty
-      else if (n >= size) this
-      else Chars(values, offset, n)
-
-    protected def splitAtChunk_(n: Int): (Chunk[Char], Chunk[Char]) =
-      Chars(values, offset, n) -> Chars(values, offset + n, length - n)
-    override def toArray[O2 >: Char: ClassTag]: Array[O2] =
-      values.slice(offset, offset + length).asInstanceOf[Array[O2]]
-  }
-  object Chars {
-    def apply(values: Array[Char]): Chars =
-      Chars(values, 0, values.length)
-  }
-
   /** Creates a chunk backed by a byte vector. */
   def byteVector(bv: ByteVector): Chunk[Byte] =
     ByteVectorChunk(bv)
 
   final case class ByteVectorChunk(toByteVector: ByteVector)
-      extends Chunk[Byte]
-      with Chunk.KnownElementType[Byte] {
-    def elementClassTag = ClassTag.Byte
+      extends Chunk[Byte] {
 
     def apply(i: Int): Byte =
       toByteVector(i.toLong)
@@ -1458,54 +1004,16 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
   }
 
   /** Concatenates the specified sequence of chunks in to a single chunk, avoiding boxing. */
-  def concat[A](chunks: GSeq[Chunk[A]]): Chunk[A] =
+  def concat[A: ClassTag](chunks: GSeq[Chunk[A]]): Chunk[A] =
     concat(chunks, chunks.foldLeft(0)(_ + _.size))
 
   /** Concatenates the specified sequence of chunks in to a single chunk, avoiding boxing.
     * The `totalSize` parameter must be equal to the sum of the size of each chunk or
     * otherwise an exception may be thrown.
     */
-  def concat[A](chunks: GSeq[Chunk[A]], totalSize: Int): Chunk[A] =
+  def concat[A: ClassTag](chunks: GSeq[Chunk[A]], totalSize: Int): Chunk[A] =
     if (totalSize == 0)
       Chunk.empty
-    else if (chunks.forall(c => c.knownElementType[Boolean] || c.forall(_.isInstanceOf[Boolean])))
-      concatBooleans(chunks.asInstanceOf[GSeq[Chunk[Boolean]]], totalSize).asInstanceOf[Chunk[A]]
-    else if (chunks.forall(c => c.knownElementType[Byte] || c.forall(_.isInstanceOf[Byte])))
-      concatBytes(chunks.asInstanceOf[GSeq[Chunk[Byte]]], totalSize).asInstanceOf[Chunk[A]]
-    else if (chunks.forall(c => c.knownElementType[Float] || c.forall(_.isInstanceOf[Float])))
-      concatFloats(chunks.asInstanceOf[GSeq[Chunk[Float]]], totalSize).asInstanceOf[Chunk[A]]
-    else if (chunks.forall(c => c.knownElementType[Double] || c.forall(_.isInstanceOf[Double])))
-      concatDoubles(chunks.asInstanceOf[GSeq[Chunk[Double]]], totalSize).asInstanceOf[Chunk[A]]
-    else if (chunks.forall(c => c.knownElementType[Short] || c.forall(_.isInstanceOf[Short])))
-      concatShorts(chunks.asInstanceOf[GSeq[Chunk[Short]]], totalSize).asInstanceOf[Chunk[A]]
-    else if (chunks.forall(c => c.knownElementType[Int] || c.forall(_.isInstanceOf[Int])))
-      concatInts(chunks.asInstanceOf[GSeq[Chunk[Int]]], totalSize).asInstanceOf[Chunk[A]]
-    else if (chunks.forall(c => c.knownElementType[Long] || c.forall(_.isInstanceOf[Long])))
-      concatLongs(chunks.asInstanceOf[GSeq[Chunk[Long]]], totalSize).asInstanceOf[Chunk[A]]
-    else if (chunks.forall(c => c.knownElementType[Char] || c.forall(_.isInstanceOf[Char])))
-      concatChars(chunks.asInstanceOf[GSeq[Chunk[Char]]], totalSize).asInstanceOf[Chunk[A]]
-    else {
-      val arr = new Array[Any](totalSize)
-      var offset = 0
-      chunks.foreach { c =>
-        if (!c.isEmpty) {
-          c.copyToArray(arr, offset)
-          offset += c.size
-        }
-      }
-      Chunk.boxed(arr.asInstanceOf[Array[A]])
-    }
-
-  /** Concatenates the specified sequence of chunks in to a single unboxed chunk.
-    * The `totalSize` parameter must be equal to the sum of the size of each chunk or
-    * otherwise an exception may be thrown.
-    */
-  private def concatUnboxed[A: reflect.ClassTag](
-      chunks: GSeq[Chunk[A]],
-      totalSize: Int,
-      mkChunk: Array[A] => Chunk[A]
-  ): Chunk[A] =
-    if (totalSize == 0) Chunk.empty
     else {
       val arr = new Array[A](totalSize)
       var offset = 0
@@ -1515,96 +1023,8 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
           offset += c.size
         }
       }
-      mkChunk(arr)
+      Chunk.array(arr)
     }
-
-  /** Concatenates the specified sequence of boolean chunks in to a single chunk. */
-  def concatBooleans(chunks: GSeq[Chunk[Boolean]]): Chunk[Boolean] =
-    concatBooleans(chunks, chunks.foldLeft(0)(_ + _.size))
-
-  /** Concatenates the specified sequence of boolean chunks in to a single chunk.
-    * The `totalSize` parameter must be equal to the sum of the size of each chunk or
-    * otherwise an exception may be thrown.
-    */
-  def concatBooleans(chunks: GSeq[Chunk[Boolean]], totalSize: Int): Chunk[Boolean] =
-    concatUnboxed(chunks, totalSize, Chunk.booleans)
-
-  /** Concatenates the specified sequence of byte chunks in to a single chunk. */
-  def concatBytes(chunks: GSeq[Chunk[Byte]]): Chunk[Byte] =
-    concatBytes(chunks, chunks.foldLeft(0)(_ + _.size))
-
-  /** Concatenates the specified sequence of byte chunks in to a single chunk.
-    * The `totalSize` parameter must be equal to the sum of the size of each chunk or
-    * otherwise an exception may be thrown.
-    */
-  def concatBytes(chunks: GSeq[Chunk[Byte]], totalSize: Int): Chunk[Byte] =
-    concatUnboxed(chunks, totalSize, Chunk.bytes)
-
-  /** Concatenates the specified sequence of float chunks in to a single chunk. */
-  def concatFloats(chunks: GSeq[Chunk[Float]]): Chunk[Float] =
-    concatFloats(chunks, chunks.foldLeft(0)(_ + _.size))
-
-  /** Concatenates the specified sequence of float chunks in to a single chunk.
-    * The `totalSize` parameter must be equal to the sum of the size of each chunk or
-    * otherwise an exception may be thrown.
-    */
-  def concatFloats(chunks: GSeq[Chunk[Float]], totalSize: Int): Chunk[Float] =
-    concatUnboxed(chunks, totalSize, Chunk.floats)
-
-  /** Concatenates the specified sequence of double chunks in to a single chunk. */
-  def concatDoubles(chunks: GSeq[Chunk[Double]]): Chunk[Double] =
-    concatDoubles(chunks, chunks.foldLeft(0)(_ + _.size))
-
-  /** Concatenates the specified sequence of double chunks in to a single chunk.
-    * The `totalSize` parameter must be equal to the sum of the size of each chunk or
-    * otherwise an exception may be thrown.
-    */
-  def concatDoubles(chunks: GSeq[Chunk[Double]], totalSize: Int): Chunk[Double] =
-    concatUnboxed(chunks, totalSize, Chunk.doubles)
-
-  /** Concatenates the specified sequence of short chunks in to a single chunk. */
-  def concatShorts(chunks: GSeq[Chunk[Short]]): Chunk[Short] =
-    concatShorts(chunks, chunks.foldLeft(0)(_ + _.size))
-
-  /** Concatenates the specified sequence of short chunks in to a single chunk.
-    * The `totalSize` parameter must be equal to the sum of the size of each chunk or
-    * otherwise an exception may be thrown.
-    */
-  def concatShorts(chunks: GSeq[Chunk[Short]], totalSize: Int): Chunk[Short] =
-    concatUnboxed(chunks, totalSize, Chunk.shorts)
-
-  /** Concatenates the specified sequence of int chunks in to a single chunk. */
-  def concatInts(chunks: GSeq[Chunk[Int]]): Chunk[Int] =
-    concatInts(chunks, chunks.foldLeft(0)(_ + _.size))
-
-  /** Concatenates the specified sequence of int chunks in to a single chunk.
-    * The `totalSize` parameter must be equal to the sum of the size of each chunk or
-    * otherwise an exception may be thrown.
-    */
-  def concatInts(chunks: GSeq[Chunk[Int]], totalSize: Int): Chunk[Int] =
-    concatUnboxed(chunks, totalSize, Chunk.ints)
-
-  /** Concatenates the specified sequence of long chunks in to a single chunk. */
-  def concatLongs(chunks: GSeq[Chunk[Long]]): Chunk[Long] =
-    concatLongs(chunks, chunks.foldLeft(0)(_ + _.size))
-
-  /** Concatenates the specified sequence of long chunks in to a single chunk.
-    * The `totalSize` parameter must be equal to the sum of the size of each chunk or
-    * otherwise an exception may be thrown.
-    */
-  def concatLongs(chunks: GSeq[Chunk[Long]], totalSize: Int): Chunk[Long] =
-    concatUnboxed(chunks, totalSize, Chunk.longs)
-
-  /** Concatenates the specified sequence of char chunks in to a single chunk. */
-  def concatChars(chunks: GSeq[Chunk[Char]]): Chunk[Char] =
-    concatChars(chunks, chunks.foldLeft(0)(_ + _.size))
-
-  /** Concatenates the specified sequence of char chunks in to a single chunk.
-    * The `totalSize` parameter must be equal to the sum of the size of each chunk or
-    * otherwise an exception may be thrown.
-    */
-  def concatChars(chunks: GSeq[Chunk[Char]], totalSize: Int): Chunk[Char] =
-    concatUnboxed(chunks, totalSize, Chunk.chars)
 
   /** Creates a chunk consisting of the elements of `queue`.
     */
@@ -1692,7 +1112,7 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
         Chunk.buffer(buf.result())
       }
       override def combineK[A](x: Chunk[A], y: Chunk[A]): Chunk[A] =
-        Chunk.concat(x :: y :: Nil)
+        x ++ y
       override def traverse: Traverse[Chunk] = this
       override def traverse[F[_], A, B](
           fa: Chunk[A]
@@ -1810,26 +1230,33 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
     *
     * This is similar to a queue of individual elements but chunk structure is maintained.
     */
-  final class Queue[A] private (val chunks: SQueue[Chunk[A]], val size: Int) {
-    def isEmpty: Boolean = size == 0
-    def nonEmpty: Boolean = size > 0
-
-    def iterator: Iterator[A] = chunks.iterator.flatMap(_.iterator)
+  final class Queue[+O] private (val chunks: SQueue[Chunk[O]], val size: Int) extends Chunk[O] {
+    override def iterator: Iterator[O] = chunks.iterator.flatMap(_.iterator)
 
     /** Prepends a chunk to the start of this chunk queue. */
-    def +:(c: Chunk[A]): Queue[A] = new Queue(c +: chunks, c.size + size)
+    def +:[O2 >: O](c: Chunk[O2]): Queue[O2] = new Queue(c +: chunks, c.size + size)
 
     /** Appends a chunk to the end of this chunk queue. */
-    def :+(c: Chunk[A]): Queue[A] = new Queue(chunks :+ c, size + c.size)
+    def :+[O2 >: O](c: Chunk[O2]): Queue[O2] = new Queue(chunks :+ c, size + c.size)
 
-    /** check to see if this starts with the items in the given seq
-      * should be the same as take(seq.size).toChunk == Chunk.seq(seq)
+    def apply(i: Int): O = {
+      if (i < 0 || i >= size) throw new IndexOutOfBoundsException()
+      def go(chunks: SQueue[Chunk[O]], offset: Int): O = {
+        val head = chunks.head
+        if (offset < head.size) head(offset)
+        else go(chunks.tail, offset - head.size)
+      }
+      go(chunks, i)
+    }
+
+    /** Check to see if this starts with the items in the given seq
+      * should be the same as take(seq.size).toChunk == Chunk.seq(seq).
       */
-    def startsWith(seq: Seq[A]): Boolean = {
+    def startsWith[O2 >: O](seq: Seq[O2]): Boolean = {
       val iter = seq.iterator
 
       @annotation.tailrec
-      def check(chunks: SQueue[Chunk[A]], idx: Int): Boolean =
+      def check(chunks: SQueue[Chunk[O]], idx: Int): Boolean =
         if (!iter.hasNext) true
         else if (chunks.isEmpty) false
         else {
@@ -1847,13 +1274,12 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
       check(chunks, 0)
     }
 
-    /** Takes the first `n` elements of this chunk queue in a way that preserves chunk structure. */
-    def take(n: Int): Queue[A] =
+    override def take(n: Int): Queue[O] =
       if (n <= 0) Queue.empty
       else if (n >= size) this
       else {
         @tailrec
-        def go(acc: SQueue[Chunk[A]], rem: SQueue[Chunk[A]], toTake: Int): Queue[A] =
+        def go(acc: SQueue[Chunk[O]], rem: SQueue[Chunk[O]], toTake: Int): Queue[O] =
           if (toTake <= 0) new Queue(acc, n)
           else {
             val (next, tail) = rem.dequeue
@@ -1866,15 +1292,15 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
       }
 
     /** Takes the right-most `n` elements of this chunk queue in a way that preserves chunk structure. */
-    def takeRight(n: Int): Queue[A] = if (n <= 0) Queue.empty else drop(size - n)
+    def takeRight(n: Int): Queue[O] = if (n <= 0) Queue.empty else drop(size - n)
 
     /** Drops the first `n` elements of this chunk queue in a way that preserves chunk structure. */
-    def drop(n: Int): Queue[A] =
+    override def drop(n: Int): Queue[O] =
       if (n <= 0) this
       else if (n >= size) Queue.empty
       else {
         @tailrec
-        def go(rem: SQueue[Chunk[A]], toDrop: Int): Queue[A] =
+        def go(rem: SQueue[Chunk[O]], toDrop: Int): Queue[O] =
           if (toDrop <= 0) new Queue(rem, size - n)
           else {
             val next = rem.head
@@ -1887,32 +1313,33 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
       }
 
     /** Drops the right-most `n` elements of this chunk queue in a way that preserves chunk structure. */
-    def dropRight(n: Int): Queue[A] = if (n <= 0) this else take(size - n)
+    def dropRight(n: Int): Queue[O] = if (n <= 0) this else take(size - n)
 
-    /** Converts this chunk queue to a single chunk, copying all chunks to a single chunk. */
-    def toChunk: Chunk[A] = Chunk.concat(chunks, size)
-
-    override def equals(that: Any): Boolean =
-      that match {
-        case that: Queue[_] => size == that.size && chunks == that.chunks
-        case _              => false
+    def copyToArray[O2 >: O](xs: Array[O2], start: Int): Unit = {
+      def go(chunks: SQueue[Chunk[O]], offset: Int): Unit = {
+        if (chunks.nonEmpty) {
+          val head = chunks.head
+          head.copyToArray(xs, offset)
+          go(chunks.tail, offset + head.size)
+        }
       }
+      go(chunks, start)
+    }
 
-    override def hashCode: Int = chunks.hashCode
-
-    override def toString: String = chunks.mkString("Queue(", ", ", ")")
+    protected def splitAtChunk_(n: Int): (Chunk[O], Chunk[O]) =
+      (take(n), drop(n))
   }
 
   object Queue {
     private val empty_ = new Queue(collection.immutable.Queue.empty, 0)
-    def empty[A]: Queue[A] = empty_.asInstanceOf[Queue[A]]
-    def apply[A](chunks: Chunk[A]*): Queue[A] = chunks.foldLeft(empty[A])(_ :+ _)
+    def empty[O]: Queue[O] = empty_.asInstanceOf[Queue[O]]
+    def apply[O](chunks: Chunk[O]*): Queue[O] = chunks.foldLeft(empty[O])(_ :+ _)
   }
 
-  def newBuilder[A]: Collector.Builder[A, Chunk[A]] =
-    new Collector.Builder[A, Chunk[A]] {
-      private[this] var queue = Chunk.Queue.empty[A]
-      def +=(c: Chunk[A]): Unit = queue = queue :+ c
-      def result: Chunk[A] = queue.toChunk
+  def newBuilder[O]: Collector.Builder[O, Chunk[O]] =
+    new Collector.Builder[O, Chunk[O]] {
+      private[this] var acc = Chunk.Queue.empty[O]
+      def +=(c: Chunk[O]): Unit = acc = acc :+ c
+      def result: Chunk[O] = acc
     }
 }

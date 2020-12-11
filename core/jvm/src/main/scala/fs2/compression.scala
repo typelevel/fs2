@@ -26,6 +26,8 @@ import java.nio.charset.StandardCharsets
 import java.time.Instant
 import java.util.zip._
 
+import scala.reflect.ClassTag
+
 import cats.effect.kernel.Sync
 
 /** Provides utilities for compressing/decompressing byte streams. */
@@ -219,7 +221,7 @@ object compression {
       deflatedBuffer: Array[Byte],
       isFinalChunk: Boolean
   ): Pull[F, Byte, Unit] = {
-    val bytesChunk = chunk.toBytes
+    val bytesChunk = chunk.toArraySlice
     deflater.setInput(
       bytesChunk.values,
       bytesChunk.offset,
@@ -363,7 +365,7 @@ object compression {
       chunk: Chunk[Byte],
       inflatedBuffer: Array[Byte]
   ): Pull[F, Byte, Unit] = {
-    val bytesChunk = chunk.toBytes
+    val bytesChunk = chunk.toArraySlice
     inflater.setInput(
       bytesChunk.values,
       bytesChunk.offset,
@@ -384,7 +386,7 @@ object compression {
           inflater.getRemaining match {
             case bytesRemaining if bytesRemaining > 0 =>
               Pull.output(
-                Chunk.Bytes(
+                Chunk.array(
                   bytesChunk.values,
                   bytesChunk.offset + bytesChunk.length - bytesRemaining,
                   bytesRemaining
@@ -401,7 +403,7 @@ object compression {
               case bytesRemaining if bytesRemaining > 0 =>
                 Pull.output(copyAsChunkBytes(inflatedBuffer, inflatedBytes)) >>
                   Pull.output(
-                    Chunk.Bytes(
+                    Chunk.array(
                       bytesChunk.values,
                       bytesChunk.offset + bytesChunk.length - bytesRemaining,
                       bytesRemaining
@@ -731,7 +733,7 @@ object compression {
       contentCrc32: CRC32,
       inflater: Inflater
   )(implicit SyncF: Sync[F]) =
-    (mandatoryHeaderChunk.size, mandatoryHeaderChunk.toBytes.values) match {
+    (mandatoryHeaderChunk.size, mandatoryHeaderChunk.toArraySlice.values) match {
       case (
             `gzipHeaderBytes`,
             Array(
@@ -928,7 +930,7 @@ object compression {
             case Some((optionalExtraFieldLengthChunk, streamAfterOptionalExtraFieldLength)) =>
               (
                 optionalExtraFieldLengthChunk.size,
-                optionalExtraFieldLengthChunk.toBytes.values
+                optionalExtraFieldLengthChunk.toArraySlice.values
               ) match {
                 case (
                       `gzipOptionalExtraFieldLengthBytes`,
@@ -940,7 +942,7 @@ object compression {
                     .unconsN(optionalExtraFieldLength)
                     .flatMap {
                       case Some((optionalExtraFieldChunk, streamAfterOptionalExtraField)) =>
-                        val fieldBytes = optionalExtraFieldChunk.toBytes
+                        val fieldBytes = optionalExtraFieldChunk.toArraySlice
                         crc32.update(fieldBytes.values, fieldBytes.offset, fieldBytes.length)
                         Pull.output1(streamAfterOptionalExtraField)
                       case None =>
@@ -970,14 +972,14 @@ object compression {
   ): Stream[F, Byte] => Stream[F, (Option[String], Stream[F, Byte])] =
     stream =>
       if (isPresent)
-        unconsUntil[F, Byte](_ == zeroByte, fieldBytesSoftLimit)(stream).flatMap {
+        unconsUntil[F, Byte](_ == zeroByte, fieldBytesSoftLimit).apply(stream).flatMap {
           case Some((chunk, rest)) =>
             Pull.output1(
               (
                 if (chunk.isEmpty)
                   Some("")
                 else {
-                  val bytesChunk = chunk.toBytes
+                  val bytesChunk = chunk.toArraySlice
                   crc32.update(bytesChunk.values, bytesChunk.offset, bytesChunk.length)
                   Some(
                     new String(
@@ -1062,7 +1064,7 @@ object compression {
                     if (last.nonEmpty) Pull.output(last) >> streamUntilTrailer(next)(rest)
                     else streamUntilTrailer(next)(rest)
                   else
-                    streamUntilTrailer(Chunk.concatBytes(List(last.toBytes, next.toBytes)))(rest)
+                    streamUntilTrailer(Chunk.Queue(last, next))(rest)
                 else if (last.nonEmpty)
                   Pull.output(last) >> Pull.output(next) >>
                     streamUntilTrailer(Chunk.empty[Byte])(rest)
@@ -1084,7 +1086,7 @@ object compression {
     *
     * `Pull.pure(None)` is returned if the end of the source stream is reached.
     */
-  private def unconsUntil[F[_], O](
+  private def unconsUntil[F[_], O: ClassTag](
       predicate: O => Boolean,
       softLimit: Int
   ): Stream[F, O] => Pull[F, INothing, Option[(Chunk[O], Stream[F, O])]] =
@@ -1101,11 +1103,11 @@ object compression {
             hd.indexWhere(predicate) match {
               case Some(i) =>
                 val (pfx, sfx) = hd.splitAt(i)
-                Pull.pure(Some(Chunk.concat((pfx :: acc).reverse) -> tl.cons(sfx)))
+                Pull.pure(Some(Chunk.Queue((pfx :: acc).reverse: _*) -> tl.cons(sfx)))
               case None =>
                 val newSize = size + hd.size
                 if (newSize < softLimit) go(hd :: acc, tl, newSize)
-                else Pull.pure(Some(Chunk.concat((hd :: acc).reverse) -> tl))
+                else Pull.pure(Some(Chunk.Queue((hd :: acc).reverse: _*) -> tl))
             }
         }
 
@@ -1187,14 +1189,14 @@ object compression {
     moveAsChunkBytes(values, values.length)
 
   private def moveAsChunkBytes(values: Array[Byte], length: Int): Chunk[Byte] =
-    if (length > 0) Chunk.Bytes(values, 0, length)
+    if (length > 0) Chunk.array(values, 0, length)
     else Chunk.empty[Byte]
 
   private def copyAsChunkBytes(values: Array[Byte], length: Int): Chunk[Byte] =
     if (length > 0) {
       val target = new Array[Byte](length)
       System.arraycopy(values, 0, target, 0, length)
-      Chunk.Bytes(target, 0, length)
+      Chunk.array(target, 0, length)
     } else Chunk.empty[Byte]
 
   private def unsignedToInt(lsb: Byte, msb: Byte): Int =
