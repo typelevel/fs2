@@ -75,7 +75,7 @@ private[tls] object InputOutputBuffer {
           }
           .flatMap { in =>
             Sync[F].delay {
-              val bs = data.toBytes
+              val bs = data.toArraySlice
               in.put(bs.values, bs.offset, bs.size)
               ()
             }
@@ -106,7 +106,7 @@ private[tls] object InputOutputBuffer {
               val dest = new Array[Byte](sz)
               out.get(dest)
               out.compact()
-              Chunk.bytes(dest)
+              Chunk.array(dest)
             }
         }
 

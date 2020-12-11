@@ -74,8 +74,8 @@ package object io {
     F.blocking(is.read(buf)).map { numBytes =>
       if (numBytes < 0) None
       else if (numBytes == 0) Some(Chunk.empty)
-      else if (numBytes < buf.size) Some(Chunk.bytes(buf.slice(0, numBytes)))
-      else Some(Chunk.bytes(buf))
+      else if (numBytes < buf.size) Some(Chunk.array(buf.slice(0, numBytes)))
+      else Some(Chunk.array(buf))
     }
 
   private def readInputStreamGeneric[F[_]](

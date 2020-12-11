@@ -129,7 +129,7 @@ object FileHandle {
           val len = chan.read(buf, offset)
           if (len < 0) None
           else if (len == 0) Some(Chunk.empty)
-          else Some(Chunk.bytes(buf.array, 0, len))
+          else Some(Chunk.array(buf.array, 0, len))
         }
 
       override def size: F[Long] =
@@ -148,6 +148,6 @@ object FileHandle {
         F.blocking(f.release())
 
       override def write(bytes: Chunk[Byte], offset: Long): F[Int] =
-        F.blocking(chan.write(bytes.toBytes.toByteBuffer, offset))
+        F.blocking(chan.write(bytes.toByteBuffer, offset))
     }
 }

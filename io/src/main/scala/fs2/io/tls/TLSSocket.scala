@@ -79,11 +79,11 @@ object TLSSocket {
         readSem.permit.use { _ =>
           def go(acc: Chunk.Queue[Byte]): F[Option[Chunk[Byte]]] = {
             val toRead = numBytes - acc.size
-            if (toRead <= 0) Applicative[F].pure(Some(acc.toChunk))
+            if (toRead <= 0) Applicative[F].pure(Some(acc))
             else
               read0(toRead, timeout).flatMap {
                 case Some(chunk) => go(acc :+ chunk): F[Option[Chunk[Byte]]]
-                case None        => Applicative[F].pure(Some(acc.toChunk)): F[Option[Chunk[Byte]]]
+                case None        => Applicative[F].pure(Some(acc)): F[Option[Chunk[Byte]]]
               }
           }
           go(Chunk.Queue.empty)

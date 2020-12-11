@@ -112,7 +112,7 @@ class TLSSocketSuite extends TLSSuite {
     }
 
     test("echo") {
-      val msg = Chunk.bytes(("Hello, world! " * 20000).getBytes)
+      val msg = Chunk.array(("Hello, world! " * 20000).getBytes)
 
       val setup = for {
         socketGroup <- SocketGroup[IO]()
