@@ -41,11 +41,11 @@ class ByteBufferChunkBenchmark {
 
   @Benchmark
   def bytesToArrayIndirect(): Array[Byte] =
-    Chunk.bytes(bbIndirect.array).toArray
+    Chunk.array(bbIndirect.array).toArray
 
   @Benchmark
   def bytesToArrayDirect(): Array[Byte] =
-    Chunk.bytes {
+    Chunk.array {
       val arr = new Array[Byte](bbDirect.remaining)
       bbDirect.slice.get(arr, 0, bbDirect.remaining)
       arr
@@ -53,11 +53,11 @@ class ByteBufferChunkBenchmark {
 
   @Benchmark
   def bytesToByteBufferIndirect(): ByteBuffer =
-    Chunk.bytes(bbIndirect.array).toByteBuffer
+    Chunk.array(bbIndirect.array).toByteBuffer
 
   @Benchmark
   def bytesToByteBufferDirect(): ByteBuffer =
-    Chunk.bytes {
+    Chunk.array {
       val arr = new Array[Byte](bbDirect.remaining)
       bbDirect.slice.get(arr, 0, bbDirect.remaining)
       arr
