@@ -28,12 +28,7 @@ import scodec.bits.ByteVector
 import java.nio.{
   Buffer => JBuffer,
   CharBuffer => JCharBuffer,
-  ByteBuffer => JByteBuffer,
-  ShortBuffer => JShortBuffer,
-  IntBuffer => JIntBuffer,
-  DoubleBuffer => JDoubleBuffer,
-  LongBuffer => JLongBuffer,
-  FloatBuffer => JFloatBuffer
+  ByteBuffer => JByteBuffer
 }
 
 import org.scalacheck.{Arbitrary, Cogen, Gen, Shrink}
@@ -129,49 +124,16 @@ trait ChunkGenerators extends ChunkGeneratorsLowPriority {
   implicit val byteChunkArbitrary: Arbitrary[Chunk[Byte]] =
     Arbitrary(byteChunkGenerator)
 
-  val shortBufferChunkGenerator: Gen[Chunk[Short]] =
-    jbufferChunkGenerator[Short, JShortBuffer](
-      arbitrary[Short],
-      Chunk.shortBuffer _,
-      (n, values) => JByteBuffer.allocateDirect(n * 2).asShortBuffer.put(values),
-      JShortBuffer.wrap _
-    )
-
-  val longBufferChunkGenerator: Gen[Chunk[Long]] =
-    jbufferChunkGenerator[Long, JLongBuffer](
-      arbitrary[Long],
-      Chunk.longBuffer _,
-      (n, values) => JByteBuffer.allocateDirect(n * 8).asLongBuffer.put(values),
-      JLongBuffer.wrap _
-    )
-
   val intArrayChunkGenerator: Gen[Chunk[Int]] =
     arrayChunkGenerator(arbitrary[Int])
-
-  val intBufferChunkGenerator: Gen[Chunk[Int]] =
-    jbufferChunkGenerator[Int, JIntBuffer](
-      arbitrary[Int],
-      Chunk.intBuffer _,
-      (n, values) => JByteBuffer.allocateDirect(n * 4).asIntBuffer.put(values),
-      JIntBuffer.wrap _
-    )
 
   val intChunkGenerator: Gen[Chunk[Int]] =
     Gen.frequency(
       8 -> chunkGenerator(arbitrary[Int]),
-      1 -> intArrayChunkGenerator,
-      1 -> intBufferChunkGenerator
+      1 -> intArrayChunkGenerator
     )
   implicit val intChunkArbitrary: Arbitrary[Chunk[Int]] =
     Arbitrary(intChunkGenerator)
-
-  val doubleBufferChunkGenerator: Gen[Chunk[Double]] =
-    jbufferChunkGenerator[Double, JDoubleBuffer](
-      arbitrary[Double],
-      Chunk.doubleBuffer _,
-      (n, values) => JByteBuffer.allocateDirect(n * 8).asDoubleBuffer.put(values),
-      JDoubleBuffer.wrap _
-    )
 
   val charBufferChunkGenerator: Gen[Chunk[Char]] =
     jbufferChunkGenerator[Char, JCharBuffer](

@@ -28,7 +28,6 @@ import cats.laws.discipline.{AlternativeTests, MonadTests, TraverseFilterTests, 
 import org.scalacheck.{Arbitrary, Cogen, Gen}
 import org.scalacheck.Prop.forAll
 import scala.reflect.ClassTag
-import scala.util.control.NonFatal
 
 class ChunkSuite extends Fs2Suite {
   override def scalaCheckTestParameters =
@@ -166,11 +165,6 @@ class ChunkSuite extends Fs2Suite {
 
   testChunk[Byte](byteBufferChunkGenerator, "ByteBuffer", "Byte")
   testChunk[Byte](byteVectorChunkGenerator, "ByteVector", "Byte")
-  testChunk[Short](shortBufferChunkGenerator, "ShortBuffer", "Short")
-  testChunk[Int](intBufferChunkGenerator, "IntBuffer", "Int")
-  testChunk[Long](longBufferChunkGenerator, "LongBuffer", "Long")
-  testChunk[Double](doubleBufferChunkGenerator, "DoubleBuffer", "Double", false)
-  // testChunk[Float](floatBufferChunkGenerator, "FloatBuffer", "Float", false)
   testChunk[Char](charBufferChunkGenerator, "CharBuffer", "Char")
 
   group("scanLeftCarry") {
