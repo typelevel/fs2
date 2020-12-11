@@ -26,11 +26,7 @@ import scala.collection.immutable.{Queue => SQueue}
 import scala.collection.{mutable, IndexedSeq => GIndexedSeq, Seq => GSeq}
 import scala.reflect.ClassTag
 import scodec.bits.{BitVector, ByteVector}
-import java.nio.{
-  Buffer => JBuffer,
-  ByteBuffer => JByteBuffer,
-  CharBuffer => JCharBuffer
-}
+import java.nio.{Buffer => JBuffer, ByteBuffer => JByteBuffer, CharBuffer => JCharBuffer}
 
 import cats.{Alternative, Applicative, Eq, Eval, Monad, Traverse, TraverseFilter}
 import cats.data.{Chain, NonEmptyList}
@@ -58,7 +54,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] { self =>
   /** Returns the concatenation of this chunk with the supplied chunk. */
   def ++[O2 >: O](that: Chunk[O2]): Chunk[O2] = this match {
     case q: Chunk.Queue[O] => q :+ that
-    case _ => Chunk.Queue(this, that)
+    case _                 => Chunk.Queue(this, that)
   }
 
   /** More efficient version of `filter(pf.isDefinedAt).map(pf)`. */
@@ -272,7 +268,8 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] { self =>
 
   def toArraySlice[O2 >: O](implicit ct: ClassTag[O2]): Chunk.ArraySlice[O2] =
     this match {
-      case as: Chunk.ArraySlice[_] if ct.wrap.runtimeClass eq as.getClass => as.asInstanceOf[Chunk.ArraySlice[O2]]
+      case as: Chunk.ArraySlice[_] if ct.wrap.runtimeClass eq as.getClass =>
+        as.asInstanceOf[Chunk.ArraySlice[O2]]
       case _ => Chunk.ArraySlice(toArray, 0, size)
     }
 
@@ -624,7 +621,8 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
     def apply(i: Int) = values(offset + i)
 
     override def compact[O2 >: O](implicit ct: ClassTag[O2]): ArraySlice[O2] =
-      if ((ct.wrap.runtimeClass eq values.getClass) && offset == 0 && length == values.length) this.asInstanceOf[ArraySlice[O2]]
+      if ((ct.wrap.runtimeClass eq values.getClass) && offset == 0 && length == values.length)
+        this.asInstanceOf[ArraySlice[O2]]
       else super.compact
 
     def copyToArray[O2 >: O](xs: Array[O2], start: Int): Unit =
@@ -772,8 +770,7 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
   def byteVector(bv: ByteVector): Chunk[Byte] =
     ByteVectorChunk(bv)
 
-  final case class ByteVectorChunk(toByteVector: ByteVector)
-      extends Chunk[Byte] {
+  final case class ByteVectorChunk(toByteVector: ByteVector) extends Chunk[Byte] {
 
     def apply(i: Int): Byte =
       toByteVector(i.toLong)
@@ -1121,13 +1118,12 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
     def dropRight(n: Int): Queue[O] = if (n <= 0) this else take(size - n)
 
     def copyToArray[O2 >: O](xs: Array[O2], start: Int): Unit = {
-      def go(chunks: SQueue[Chunk[O]], offset: Int): Unit = {
+      def go(chunks: SQueue[Chunk[O]], offset: Int): Unit =
         if (chunks.nonEmpty) {
           val head = chunks.head
           head.copyToArray(xs, offset)
           go(chunks.tail, offset + head.size)
         }
-      }
       go(chunks, start)
     }
 

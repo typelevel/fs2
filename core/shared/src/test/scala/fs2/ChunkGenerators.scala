@@ -25,11 +25,7 @@ import cats.data.Chain
 import scala.reflect.ClassTag
 import scala.collection.immutable.{Stream => StdStream}
 import scodec.bits.ByteVector
-import java.nio.{
-  Buffer => JBuffer,
-  CharBuffer => JCharBuffer,
-  ByteBuffer => JByteBuffer
-}
+import java.nio.{Buffer => JBuffer, CharBuffer => JCharBuffer, ByteBuffer => JByteBuffer}
 
 import org.scalacheck.{Arbitrary, Cogen, Gen, Shrink}
 import Arbitrary.arbitrary

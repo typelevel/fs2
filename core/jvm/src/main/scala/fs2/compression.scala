@@ -972,41 +972,44 @@ object compression {
   ): Stream[F, Byte] => Stream[F, (Option[String], Stream[F, Byte])] =
     stream =>
       if (isPresent)
-        unconsUntil[F, Byte](_ == zeroByte, fieldBytesSoftLimit).apply(stream).flatMap {
-          case Some((chunk, rest)) =>
-            Pull.output1(
-              (
-                if (chunk.isEmpty)
-                  Some("")
-                else {
-                  val bytesChunk = chunk.toArraySlice
-                  crc32.update(bytesChunk.values, bytesChunk.offset, bytesChunk.length)
-                  Some(
-                    new String(
-                      bytesChunk.values,
-                      bytesChunk.offset,
-                      bytesChunk.length,
-                      StandardCharsets.ISO_8859_1
+        unconsUntil[F, Byte](_ == zeroByte, fieldBytesSoftLimit)
+          .apply(stream)
+          .flatMap {
+            case Some((chunk, rest)) =>
+              Pull.output1(
+                (
+                  if (chunk.isEmpty)
+                    Some("")
+                  else {
+                    val bytesChunk = chunk.toArraySlice
+                    crc32.update(bytesChunk.values, bytesChunk.offset, bytesChunk.length)
+                    Some(
+                      new String(
+                        bytesChunk.values,
+                        bytesChunk.offset,
+                        bytesChunk.length,
+                        StandardCharsets.ISO_8859_1
+                      )
                     )
-                  )
-                },
-                rest
-                  .dropWhile { byte =>
-                    // Will also call crc32.update(byte) for the zeroByte dropped hereafter.
-                    crc32.update(byte.toInt)
-                    byte != zeroByte
-                  }
-                  .drop(1)
+                  },
+                  rest
+                    .dropWhile { byte =>
+                      // Will also call crc32.update(byte) for the zeroByte dropped hereafter.
+                      crc32.update(byte.toInt)
+                      byte != zeroByte
+                    }
+                    .drop(1)
+                )
               )
-            )
-          case None =>
-            Pull.output1(
-              (
-                Option.empty[String],
-                Stream.raiseError(new ZipException(s"Failed to read $fieldName field"))
+            case None =>
+              Pull.output1(
+                (
+                  Option.empty[String],
+                  Stream.raiseError(new ZipException(s"Failed to read $fieldName field"))
+                )
               )
-            )
-        }.stream
+          }
+          .stream
       else Stream.emit((Option.empty[String], stream))
 
   private def _gunzip_validateHeader[F[_]](
