@@ -975,7 +975,7 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
 
   object Queue {
     private val empty_ = new Queue(collection.immutable.Queue.empty, 0)
-    private def empty[O]: Queue[O] = empty_.asInstanceOf[Queue[O]]
+    def empty[O]: Queue[O] = empty_.asInstanceOf[Queue[O]]
     def singleton[O](c: Chunk[O]): Queue[O] = new Queue(collection.immutable.Queue(c), c.size)
     def apply[O](chunks: Chunk[O]*): Queue[O] = chunks.foldLeft(empty[O])(_ :+ _)
   }

@@ -2391,7 +2391,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     *
     * @example {{{
     * scala> Stream.range(0, 10).split(_ % 4 == 0).toList
-    * res0: List[Chunk[Int]] = List(Chunk(), Chunk(1, 2, 3), Chunk(5, 6, 7), Chunk(9))
+    * res0: List[Chunk[Int]] = List(empty, Chunk(1, 2, 3), Chunk(5, 6, 7), Chunk(9))
     * }}}
     */
   def split(f: O => Boolean): Stream[F, Chunk[O]] = {
