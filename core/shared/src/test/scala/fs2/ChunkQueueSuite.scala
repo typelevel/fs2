@@ -44,7 +44,6 @@ class ChunkQueueSuite extends Fs2Suite {
     forAll { (chunks: List[Chunk[Int]], n: Int) =>
       val result = Chunk.Queue(chunks: _*).takeRight(n)
       assertEquals(result.toList, chunks.flatMap(_.toList).takeRight(n))
-      assert(result.chunks.size <= chunks.size)
     }
   }
 
@@ -52,7 +51,6 @@ class ChunkQueueSuite extends Fs2Suite {
     forAll { (chunks: List[Chunk[Int]], n: Int) =>
       val result = Chunk.Queue(chunks: _*).dropRight(n)
       assertEquals(result.toList, chunks.flatMap(_.toList).dropRight(n))
-      assert(result.chunks.size <= chunks.size)
     }
   }
 

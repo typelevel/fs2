@@ -1067,7 +1067,7 @@ object compression {
                     if (last.nonEmpty) Pull.output(last) >> streamUntilTrailer(next)(rest)
                     else streamUntilTrailer(next)(rest)
                   else
-                    streamUntilTrailer(Chunk.Queue(last, next))(rest)
+                    streamUntilTrailer(last ++ next)(rest)
                 else if (last.nonEmpty)
                   Pull.output(last) >> Pull.output(next) >>
                     streamUntilTrailer(Chunk.empty[Byte])(rest)
@@ -1106,11 +1106,11 @@ object compression {
             hd.indexWhere(predicate) match {
               case Some(i) =>
                 val (pfx, sfx) = hd.splitAt(i)
-                Pull.pure(Some(Chunk.Queue((pfx :: acc).reverse: _*) -> tl.cons(sfx)))
+                Pull.pure(Some(Chunk.concat((pfx :: acc).reverse) -> tl.cons(sfx)))
               case None =>
                 val newSize = size + hd.size
                 if (newSize < softLimit) go(hd :: acc, tl, newSize)
-                else Pull.pure(Some(Chunk.Queue((hd :: acc).reverse: _*) -> tl))
+                else Pull.pure(Some(Chunk.concat((hd :: acc).reverse) -> tl))
             }
         }
 

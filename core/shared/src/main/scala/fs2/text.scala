@@ -142,26 +142,26 @@ object text {
       }
 
     def processByteOrderMark(
-        buffer: Chunk.Queue[Byte] /* or null which we use as an Optional type to avoid boxing */,
+        buffer: Chunk[Byte] /* or null which we use as an Optional type to avoid boxing */,
         s: Stream[F, Chunk[Byte]]
     ): Pull[F, String, Unit] =
       s.pull.uncons1.flatMap {
         case Some((hd, tl)) =>
           val newBuffer0 =
             if (buffer ne null) buffer
-            else Chunk.Queue.empty[Byte]
+            else Chunk.empty[Byte]
 
-          val newBuffer: Chunk.Queue[Byte] = newBuffer0 :+ hd
+          val newBuffer: Chunk[Byte] = newBuffer0 ++ hd
           if (newBuffer.size >= 3) {
             val rem =
               if (newBuffer.startsWith(utf8BomSeq)) newBuffer.drop(3)
               else newBuffer
-            doPull(Chunk.empty, Stream.emits(rem.chunks) ++ tl)
+            doPull(Chunk.empty, Stream.emit(rem.compact) ++ tl)
           } else
             processByteOrderMark(newBuffer, tl)
         case None =>
           if (buffer ne null)
-            doPull(Chunk.empty, Stream.emits(buffer.chunks))
+            doPull(Chunk.empty, Stream.emit(buffer.compact))
           else Pull.done
       }
 
