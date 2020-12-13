@@ -870,17 +870,17 @@ object Pull extends PullLowPriority {
               case Some(s) => s.close(ExitCase.Succeeded).rethrow.as(true)
             }
           else F.pure(false)
-        val runner = new BuildR[G, X, End]
-        val tail = for {
-          closedExtendedScope <- maybeCloseExtendedScope
-          newExtendedScope = if (closedExtendedScope) None else extendedTopLevelScope
-          childScope <- scope.open(useInterruption).rethrow
-          bts = boundToScope(childScope.id)
-          fgrx <- go(childScope, newExtendedScope, translation, runner, bts)
-        } yield fgrx
 
-        val inner = interruptGuard(scope, view, runner)(tail)
-        inner.attempt.flatMap(_.fold(goErr(_, view), _.apply(new ViewRunner(view))))
+        val runner = new BuildR[G, X, End]
+
+        val tail = maybeCloseExtendedScope.flatMap { closedExtendedScope =>
+          val newExtendedScope = if (closedExtendedScope) None else extendedTopLevelScope
+          scope.open(useInterruption).rethrow.flatMap { childScope =>
+            go(childScope, newExtendedScope, translation, runner, boundToScope(childScope.id))
+          }
+        }
+        val frgx1 = interruptGuard(scope, view, runner)(tail)
+        frgx1.attempt.flatMap(_.fold(goErr(_, view), _.apply(new ViewRunner(view))))
       }
 
       def goCloseScope(close: CloseScope, view: Cont[Unit, G, X]): F[End] = {
