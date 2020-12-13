@@ -570,9 +570,10 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
 
   /** Creates a chunk backed by a mutable `ArraySeq`.
     */
-  def arraySeq[O](arraySeq: mutable.ArraySeq[O]): Chunk[O] =
-    array(arraySeq.array.asInstanceOf[Array[Any]])(arraySeq.elemTag.asInstanceOf[ClassTag[Any]])
-      .asInstanceOf[Chunk[O]]
+  def arraySeq[O](arraySeq: mutable.ArraySeq[O]): Chunk[O] = {
+    val arr = arraySeq.array.asInstanceOf[Array[O]]
+    array(arr)(ClassTag(arr.getClass.getComponentType))
+  }
 
   /** Creates a chunk backed by a `Chain`. */
   def chain[O](c: Chain[O]): Chunk[O] =

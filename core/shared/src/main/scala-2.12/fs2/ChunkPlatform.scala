@@ -22,6 +22,7 @@
 package fs2
 
 import scala.collection.mutable.WrappedArray
+import scala.reflect.ClassTag
 
 private[fs2] trait ChunkPlatform[+O] { self: Chunk[O] => }
 
@@ -35,7 +36,8 @@ private[fs2] trait ChunkCompanionPlatform { self: Chunk.type =>
 
   /** Creates a chunk backed by a `WrappedArray`
     */
-  def wrappedArray[O](wrappedArray: WrappedArray[O]): Chunk[O] =
-    array(wrappedArray.array.asInstanceOf[Array[O]])
-
+  def wrappedArray[O](wrappedArray: WrappedArray[O]): Chunk[O] = {
+    val arr = wrappedArray.array.asInstanceOf[Array[O]]
+    array(arr)(ClassTag(arr.getClass.getComponentType))
+  }
 }
