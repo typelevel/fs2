@@ -210,7 +210,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] { self =>
       arr(i) = f(apply(i))
       i += 1
     }
-    Chunk.array(arr.asInstanceOf[Array[O2]])
+    Chunk.array(arr).asInstanceOf[Chunk[O2]]
   }
 
   /** Maps the supplied stateful function over each element, outputting the final state and the accumulated outputs.
@@ -227,7 +227,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] { self =>
       s = s2
       i += 1
     }
-    s -> Chunk.array(arr.asInstanceOf[Array[O2]])
+    s -> Chunk.array(arr).asInstanceOf[Chunk[O2]]
   }
 
   /** False if size is zero, true otherwise. */
@@ -266,7 +266,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] { self =>
       j += 1
     }
 
-    Chunk.array(arr.asInstanceOf[Array[O2]]) -> acc
+    Chunk.array(arr).asInstanceOf[Chunk[O2]] -> acc
   }
 
   /** Splits this chunk in to two chunks at the specified index. */
@@ -392,7 +392,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] { self =>
       arr(i) = f(apply(i), that.apply(i))
       i += 1
     }
-    Chunk.array(arr.asInstanceOf[Array[O3]])
+    Chunk.array(arr).asInstanceOf[Chunk[O3]]
   }
 
   /** Zips the elements of the input chunk with its indices, and returns the new chunk.
@@ -571,7 +571,8 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
   /** Creates a chunk backed by a mutable `ArraySeq`.
     */
   def arraySeq[O](arraySeq: mutable.ArraySeq[O]): Chunk[O] =
-    array(arraySeq.array.asInstanceOf[Array[O]])
+    array(arraySeq.array.asInstanceOf[Array[Any]])(arraySeq.elemTag.asInstanceOf[ClassTag[Any]])
+      .asInstanceOf[Chunk[O]]
 
   /** Creates a chunk backed by a `Chain`. */
   def chain[O](c: Chain[O]): Chunk[O] =
@@ -628,18 +629,19 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
   def apply[O](os: O*): Chunk[O] = seq(os)
 
   /** Creates a chunk backed by an array. */
-  def array[O](values: Array[O]): Chunk[O] =
+  def array[O: ClassTag](values: Array[O]): Chunk[O] =
     array(values, 0, values.length)
 
   /** Creates a chunk backed by a slice of an array. */
-  def array[O](values: Array[O], offset: Int, length: Int): Chunk[O] =
+  def array[O: ClassTag](values: Array[O], offset: Int, length: Int): Chunk[O] =
     length match {
       case 0 => empty
       case 1 => singleton(values(offset))
       case _ => ArraySlice(values, offset, length)
     }
 
-  final case class ArraySlice[O](values: Array[O], offset: Int, length: Int) extends Chunk[O] {
+  case class ArraySlice[O](values: Array[O], offset: Int, length: Int)(implicit ct: ClassTag[O])
+      extends Chunk[O] {
     require(
       offset >= 0 && offset <= values.size && length >= 0 && length <= values.size && offset + length <= values.size
     )
@@ -653,7 +655,7 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
       else super.compact
 
     def copyToArray[O2 >: O](xs: Array[O2], start: Int): Unit =
-      if (xs.isInstanceOf[Array[AnyRef]])
+      if (xs.getClass eq ct.wrap.runtimeClass)
         System.arraycopy(values, offset, xs, start, length)
       else {
         values.iterator.slice(offset, offset + length).copyToArray(xs, start)
@@ -674,7 +676,7 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
       else ArraySlice(values, offset, n)
   }
   object ArraySlice {
-    def apply[O](values: Array[O]): ArraySlice[O] = ArraySlice(values, 0, values.length)
+    def apply[O: ClassTag](values: Array[O]): ArraySlice[O] = ArraySlice(values, 0, values.length)
   }
 
   sealed abstract class Buffer[A <: Buffer[A, B, C], B <: JBuffer, C: ClassTag](
