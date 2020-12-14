@@ -24,10 +24,10 @@ package interop
 package reactivestreams
 
 import cats.effect.kernel._
-import cats.effect.std.Dispatcher
+import cats.effect.std.{Dispatcher, Queue}
 import cats.syntax.all._
 
-import fs2.concurrent.{Queue, SignallingRef}
+import fs2.concurrent.SignallingRef
 import org.reactivestreams._
 
 /** Implementation of a `org.reactivestreams.Subscription`.
@@ -54,7 +54,7 @@ private[reactivestreams] final class StreamSubscription[F[_], A](
     def subscriptionPipe: Pipe[F, A, A] =
       in => {
         def go(s: Stream[F, A]): Pull[F, A, Unit] =
-          Pull.eval(requests.dequeue1).flatMap {
+          Pull.eval(requests.take).flatMap {
             case Infinite => s.pull.echo
             case Finite(n) =>
               s.pull.take(n).flatMap {
@@ -96,7 +96,7 @@ private[reactivestreams] final class StreamSubscription[F[_], A](
       else F.raiseError(new IllegalArgumentException(s"3.9 - invalid number of elements [$n]"))
 
     val prog = cancelled.get
-      .ifM(ifTrue = F.unit, ifFalse = request.flatMap(requests.enqueue1).handleErrorWith(onError))
+      .ifM(ifTrue = F.unit, ifFalse = request.flatMap(requests.offer).handleErrorWith(onError))
 
     dispatcher.unsafeRunAndForget(prog)
   }

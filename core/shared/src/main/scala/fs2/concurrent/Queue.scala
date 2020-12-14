@@ -99,6 +99,7 @@ trait Dequeue[F[_], A] {
   * a queue may have a bound on its size, in which case enqueuing may
   * block (be delayed asynchronously) until there is an offsetting dequeue.
   */
+@deprecated("Use cats.effect.std.Queue instead", "3.0.0")
 trait Queue[F[_], A]
     extends Enqueue[F, A]
     with Dequeue1[F, A]
@@ -149,6 +150,7 @@ trait NoneTerminatedQueue[F[_], A]
     }
 }
 
+@deprecated("Use cats.effect.std.Queue instead", "3.0.0")
 object Queue {
 
   /** Creates a queue with no size bound. */
