@@ -370,11 +370,12 @@ object SocketGroup {
     * https://openjdk.java.net/projects/nio/resources/AsynchronousIo.html for more
     * information on NIO thread pooling.
     */
-  def apply[F[_]: Sync](
+  def apply[F[_]](
       nonBlockingThreadCount: Int = 0,
       nonBlockingThreadFactory: ThreadFactory =
         ThreadFactories.named("fs2-socket-group-non-blocking", true)
-  ): Resource[F, SocketGroup] =
+  )(implicit F: Network[F]): Resource[F, SocketGroup] = {
+    import F.async
     Resource(Sync[F].blocking {
       val threadCount =
         if (nonBlockingThreadCount <= 0) Runtime.getRuntime.availableProcessors
@@ -383,4 +384,6 @@ object SocketGroup {
       val group = new SocketGroup(acg)
       (group, Sync[F].blocking(acg.shutdown()))
     })
+  }
+
 }

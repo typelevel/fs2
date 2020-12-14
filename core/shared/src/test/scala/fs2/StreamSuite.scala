@@ -24,15 +24,15 @@ package fs2
 import scala.concurrent.duration._
 
 import cats.data.Chain
-import cats.effect.{IO, Outcome, Resource, SyncIO}
-import cats.effect.kernel.{Deferred, Ref}
+import cats.effect.{Deferred, IO, Outcome, Ref, Resource, SyncIO}
+import cats.effect.std.Queue
 import cats.syntax.all._
 import org.scalacheck.Gen
 import org.scalacheck.Arbitrary.arbitrary
 import org.scalacheck.Prop.forAll
 import org.scalacheck.effect.PropF.forAllF
 
-import fs2.concurrent.{Queue, SignallingRef}
+import fs2.concurrent.SignallingRef
 
 class StreamSuite extends Fs2Suite {
 
@@ -404,8 +404,8 @@ class StreamSuite extends Fs2Suite {
               Stream
                 .unfold(0)(i => (i + 1, i + 1).some)
                 .flatMap(i => Stream.sleep_[IO](50.milliseconds) ++ Stream.emit(i))
-                .through(q.enqueue),
-              q.dequeue.drain
+                .foreach(q.offer),
+              Stream.repeatEval(q.take).drain
             ).parJoin(2)
           }
       }

@@ -27,9 +27,9 @@ import java.io.{IOException, InputStream}
 import cats.syntax.all._
 import cats.effect.kernel.{Async, Outcome, Resource}
 import cats.effect.kernel.implicits._
-import cats.effect.std.Dispatcher
+import cats.effect.std.{Dispatcher, Queue}
 
-import fs2.concurrent.{Queue, SignallingRef}
+import fs2.concurrent.SignallingRef
 
 private[io] object JavaInputOutputStream {
 
@@ -53,7 +53,7 @@ private[io] object JavaInputOutputStream {
         upState: SignallingRef[F, UpStreamState],
         result: Option[Throwable]
     ): F[Unit] =
-      upState.set(UpStreamState(done = true, err = result)) >> queue.enqueue1(Left(result))
+      upState.set(UpStreamState(done = true, err = result)) >> queue.offer(Left(result))
 
     /* Takes source and runs it through queue, interrupting when dnState signals stream is done.
      * Note when the exception in stream is encountered the exception is emitted on the left to the queue
@@ -68,7 +68,7 @@ private[io] object JavaInputOutputStream {
         dnState: SignallingRef[F, DownStreamState]
     ): F[Unit] =
       source.chunks
-        .evalMap(ch => queue.enqueue1(Right(ch.toArraySlice)))
+        .evalMap(ch => queue.offer(Right(ch.toArraySlice)))
         .interruptWhen(dnState.discrete.map(_.isDone).filter(identity))
         .compile
         .drain
@@ -128,7 +128,7 @@ private[io] object JavaInputOutputStream {
                 F.raiseError[Int](new IOException("Stream is in failed state", err))
               case _ =>
                 // Ready is guaranteed at this time to be empty
-                queue.dequeue1.flatMap {
+                queue.take.flatMap {
                   case Left(None) =>
                     dnState
                       .update(setDone(None))
