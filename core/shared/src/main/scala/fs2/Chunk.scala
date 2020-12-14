@@ -35,13 +35,26 @@ import cats.syntax.all._
 /** Strict, finite sequence of values that allows index-based random access of elements.
   *
   * `Chunk`s can be created from a variety of collection types using methods on the `Chunk` companion
-  * (e.g., `Chunk.vector`, `Chunk.seq`, `Chunk.array`). Additionally, the `Chunk` companion
-  * defines a subtype of `Chunk` for each primitive type, using an unboxed primitive array.
-  * To work with unboxed arrays, use methods like `toBytes` to convert a `Chunk[Byte]` to a `Chunk.Bytes`
-  * and then access the array directly.
+  * (e.g., `Chunk.array`, `Chunk.seq`, `Chunk.vector`).
   *
-  * The operations on `Chunk` are all defined strictly. For example, `c.map(f).map(g).map(h)` results in
-  * intermediate chunks being created (1 per call to `map`).
+  * Chunks can be appended via the `++` method. The returned chunk is a composite of the input
+  * chunks -- that is, there's no copying of the source chunks. For example, `Chunk(1, 2) ++ Chunk(3, 4) ++ Chunk(5, 6)`
+  * returns a `Chunk.Queue(Chunk(1, 2), Chunk(3, 4), Chunk(5, 6))`. As a result, indexed based lookup of
+  * an appended chunk is `O(number of underlying chunks)`. In the worse case, where each constituent chunk
+  * has size 1, indexed lookup is `O(size)`. To restore `O(1)` lookup, call `compact`, which copies all the underlying
+  * chunk elements to a single array backed chunk. Note `compact` requires a `ClassTag` of the element type.
+  *
+  * Alternatively, a collection of chunks can be directly copied to a new array backed chunk via
+  * `Chunk.concat(chunks)`. Like `compact`, `Chunk.concat` requires a `ClassTag` for the element type.
+  *
+  * Various subtypes of `Chunk` are exposed for efficiency reasons:
+  *   - `Chunk.Singleton`
+  *   - `Chunk.ArraySlice`
+  *   - `Chunk.Queue`
+  *
+  * In particular, calling `.toArraySlice` on a chunk returns a `Chunk.ArraySlice`, which provides
+  * access to the underlying backing array, along with an offset and length, referring to a slice
+  * of that array.
   */
 abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] { self =>
 
@@ -51,7 +64,9 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] { self =>
   /** Returns the element at the specified index. Throws if index is < 0 or >= size. */
   def apply(i: Int): O
 
-  /** Returns the concatenation of this chunk with the supplied chunk. */
+  /** Returns the a chunk which consists of the elements of this chunk and the elements of
+    * the supplied chunk. This operation is amortized O(1).
+    */
   def ++[O2 >: O](that: Chunk[O2]): Chunk[O2] =
     if (isEmpty) that
     else
@@ -195,7 +210,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] { self =>
       arr(i) = f(apply(i))
       i += 1
     }
-    Chunk.array(arr.asInstanceOf[Array[O2]])
+    Chunk.array(arr).asInstanceOf[Chunk[O2]]
   }
 
   /** Maps the supplied stateful function over each element, outputting the final state and the accumulated outputs.
@@ -212,7 +227,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] { self =>
       s = s2
       i += 1
     }
-    s -> Chunk.array(arr.asInstanceOf[Array[O2]])
+    s -> Chunk.array(arr).asInstanceOf[Chunk[O2]]
   }
 
   /** False if size is zero, true otherwise. */
@@ -251,7 +266,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] { self =>
       j += 1
     }
 
-    Chunk.array(arr.asInstanceOf[Array[O2]]) -> acc
+    Chunk.array(arr).asInstanceOf[Chunk[O2]] -> acc
   }
 
   /** Splits this chunk in to two chunks at the specified index. */
@@ -377,7 +392,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] { self =>
       arr(i) = f(apply(i), that.apply(i))
       i += 1
     }
-    Chunk.array(arr.asInstanceOf[Array[O3]])
+    Chunk.array(arr).asInstanceOf[Chunk[O3]]
   }
 
   /** Zips the elements of the input chunk with its indices, and returns the new chunk.
@@ -555,8 +570,10 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
 
   /** Creates a chunk backed by a mutable `ArraySeq`.
     */
-  def arraySeq[O](arraySeq: mutable.ArraySeq[O]): Chunk[O] =
-    array(arraySeq.array.asInstanceOf[Array[O]])
+  def arraySeq[O](arraySeq: mutable.ArraySeq[O]): Chunk[O] = {
+    val arr = arraySeq.array.asInstanceOf[Array[O]]
+    array(arr)(ClassTag(arr.getClass.getComponentType))
+  }
 
   /** Creates a chunk backed by a `Chain`. */
   def chain[O](c: Chain[O]): Chunk[O] =
@@ -594,7 +611,6 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
       else if (n >= size) Chunk.empty
       else buffer(b.drop(n))
 
-    /** Creates an iterator that iterates the elements of this chunk. The returned iterator is not thread safe. */
     override def iterator: Iterator[O] =
       b.iterator
 
@@ -614,25 +630,23 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
   def apply[O](os: O*): Chunk[O] = seq(os)
 
   /** Creates a chunk backed by an array. */
-  def array[O](values: Array[O]): Chunk[O] =
+  def array[O: ClassTag](values: Array[O]): Chunk[O] =
     array(values, 0, values.length)
 
-  def array[O](values: Array[O], offset: Int, length: Int): Chunk[O] =
+  /** Creates a chunk backed by a slice of an array. */
+  def array[O: ClassTag](values: Array[O], offset: Int, length: Int): Chunk[O] =
     length match {
       case 0 => empty
       case 1 => singleton(values(offset))
       case _ => ArraySlice(values, offset, length)
     }
 
-  private def checkBounds(values: Array[_], offset: Int, length: Int): Unit = {
-    require(offset >= 0 && offset <= values.size)
-    require(length >= 0 && length <= values.size)
-    val end = offset + length
-    require(end >= 0 && end <= values.size)
-  }
+  case class ArraySlice[O](values: Array[O], offset: Int, length: Int)(implicit ct: ClassTag[O])
+      extends Chunk[O] {
+    require(
+      offset >= 0 && offset <= values.size && length >= 0 && length <= values.size && offset + length <= values.size
+    )
 
-  final case class ArraySlice[O](values: Array[O], offset: Int, length: Int) extends Chunk[O] {
-    checkBounds(values, offset, length)
     def size = length
     def apply(i: Int) = values(offset + i)
 
@@ -642,7 +656,7 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
       else super.compact
 
     def copyToArray[O2 >: O](xs: Array[O2], start: Int): Unit =
-      if (xs.isInstanceOf[Array[AnyRef]])
+      if (xs.getClass eq ct.wrap.runtimeClass)
         System.arraycopy(values, offset, xs, start, length)
       else {
         values.iterator.slice(offset, offset + length).copyToArray(xs, start)
@@ -663,7 +677,7 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
       else ArraySlice(values, offset, n)
   }
   object ArraySlice {
-    def apply[O](values: Array[O]): ArraySlice[O] = ArraySlice(values, 0, values.length)
+    def apply[O: ClassTag](values: Array[O]): ArraySlice[O] = ArraySlice(values, 0, values.length)
   }
 
   sealed abstract class Buffer[A <: Buffer[A, B, C], B <: JBuffer, C: ClassTag](
@@ -733,7 +747,7 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
       new CharBuffer(buf, buf.position, buf.remaining)
   }
 
-  final case class CharBuffer(buf: JCharBuffer, override val offset: Int, override val size: Int)
+  case class CharBuffer(buf: JCharBuffer, override val offset: Int, override val size: Int)
       extends Buffer[CharBuffer, JCharBuffer, Char](buf, offset, size) {
     def readOnly(b: JCharBuffer): JCharBuffer =
       b.asReadOnlyBuffer()
@@ -760,7 +774,7 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
       new ByteBuffer(buf, buf.position, buf.remaining)
   }
 
-  final case class ByteBuffer private (
+  case class ByteBuffer private (
       buf: JByteBuffer,
       override val offset: Int,
       override val size: Int
@@ -786,7 +800,7 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
   def byteVector(bv: ByteVector): Chunk[Byte] =
     ByteVectorChunk(bv)
 
-  final case class ByteVectorChunk(toByteVector: ByteVector) extends Chunk[Byte] {
+  private case class ByteVectorChunk(toByteVector: ByteVector) extends Chunk[Byte] {
 
     def apply(i: Int): Byte =
       toByteVector(i.toLong)
@@ -977,7 +991,9 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
     private val empty_ = new Queue(collection.immutable.Queue.empty, 0)
     def empty[O]: Queue[O] = empty_.asInstanceOf[Queue[O]]
     def singleton[O](c: Chunk[O]): Queue[O] = new Queue(collection.immutable.Queue(c), c.size)
-    def apply[O](chunks: Chunk[O]*): Queue[O] = chunks.foldLeft(empty[O])(_ :+ _)
+    def apply[O](chunks: Chunk[O]*): Queue[O] =
+      if (chunks.isEmpty) empty
+      else chunks.tail.foldLeft(singleton(chunks.head))(_ :+ _)
   }
 
   def newBuilder[O]: Collector.Builder[O, Chunk[O]] =
@@ -986,9 +1002,19 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
       def +=(c: Chunk[O]): Unit = acc = acc ++ c
       def result: Chunk[O] = acc
     }
-  implicit def eqInstance[A: Eq]: Eq[Chunk[A]] =
+
+  implicit def eqInstance[A](implicit A: Eq[A]): Eq[Chunk[A]] =
     new Eq[Chunk[A]] {
-      def eqv(c1: Chunk[A], c2: Chunk[A]) = c1 == c2
+      def eqv(c1: Chunk[A], c2: Chunk[A]) =
+        c1.size == c2.size && {
+          var i = 0
+          var result = true
+          while (result && i < c1.size) {
+            result = A.eqv(c1(i), c2(i))
+            i += 1
+          }
+          result
+        }
     }
 
   /** `Traverse`, `Monad`, `Alternative`, and `TraverseFilter` instance for `Chunk`.
