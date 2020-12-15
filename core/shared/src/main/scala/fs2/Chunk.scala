@@ -64,7 +64,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] { self =>
   /** Returns the element at the specified index. Throws if index is < 0 or >= size. */
   def apply(i: Int): O
 
-  /** Returns the a chunk which consists of the elements of this chunk and the elements of
+  /** Returns a chunk which consists of the elements of this chunk and the elements of
     * the supplied chunk. This operation is amortized O(1).
     */
   def ++[O2 >: O](that: Chunk[O2]): Chunk[O2] =
