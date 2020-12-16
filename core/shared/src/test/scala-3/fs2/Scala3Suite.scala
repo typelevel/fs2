@@ -21,23 +21,32 @@
 
 package fs2
 
-import scala.collection.mutable.WrappedArray
-import scala.reflect.ClassTag
+class Scala3Suite extends Fs2Suite {
 
-private[fs2] trait ChunkPlatform[+O] { self: Chunk[O] => }
-
-private[fs2] trait ChunkCompanionPlatform { self: Chunk.type =>
-
-  protected def platformIterable[O](i: Iterable[O]): Option[Chunk[O]] =
-    i match {
-      case a: WrappedArray[O] => Some(wrappedArray(a))
-      case _                  => None
+  group("chunk") {
+    test("iarray") {
+      assertEquals(Chunk.iarray(IArray(1, 2, 3)), Chunk(1, 2, 3))
     }
 
-  /** Creates a chunk backed by a `WrappedArray`
-    */
-  def wrappedArray[O](wrappedArray: WrappedArray[O]): Chunk[O] = {
-    val arr = wrappedArray.array.asInstanceOf[Array[O]]
-    array(arr)(ClassTag(arr.getClass.getComponentType))
+    test("toIArray") {
+      assert(
+        java.util.Arrays.equals(Chunk(1, 2, 3).toIArray.asInstanceOf[Array[Int]], Array(1, 2, 3))
+      )
+    }
+
+    test("iarray andThen toIArray is identity") {
+      val arr = IArray(1, 2, 3)
+      assert(
+        Chunk.iarray(arr).toIArray.asInstanceOf[Array[Int]] eq arr.asInstanceOf[Array[Int]]
+      )
+    }
+  }
+
+  group("compilation") {
+    test("IArray") {
+      val x: IArray[Int] = Stream(1, 2, 3).to(IArray)
+      assertEquals(x.foldRight(Nil: List[Int])(_ :: _), List(1, 2, 3))
+      Stream(1, 2, 3).compile.to(IArray)
+    }
   }
 }

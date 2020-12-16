@@ -557,7 +557,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
     property("2") {
       forAll { (s: Stream[Pure, Double]) =>
         val predicate = (i: Double) => i - i.floor < 0.5
-        val s2 = s.mapChunks(c => Chunk.doubles(c.toArray))
+        val s2 = s.mapChunks(c => Chunk.array(c.toArray))
         assertEquals(s2.filter(predicate).toList, s2.toList.filter(predicate))
       }
     }
@@ -565,7 +565,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
     property("3") {
       forAll { (s: Stream[Pure, Byte]) =>
         val predicate = (b: Byte) => b < 0
-        val s2 = s.mapChunks(c => Chunk.bytes(c.toArray))
+        val s2 = s.mapChunks(c => Chunk.array(c.toArray))
         assertEquals(s2.filter(predicate).toList, s2.toList.filter(predicate))
       }
     }
@@ -573,7 +573,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
     property("4") {
       forAll { (s: Stream[Pure, Boolean]) =>
         val predicate = (b: Boolean) => !b
-        val s2 = s.mapChunks(c => Chunk.booleans(c.toArray))
+        val s2 = s.mapChunks(c => Chunk.array(c.toArray))
         assertEquals(s2.filter(predicate).toList, s2.toList.filter(predicate))
       }
     }
@@ -1309,7 +1309,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
     assertEquals(
       Stream
         .unfoldChunk(4L) { s =>
-          if (s > 0) Some((Chunk.longs(Array[Long](s, s)), s - 1))
+          if (s > 0) Some((Chunk.array(Array[Long](s, s)), s - 1))
           else None
         }
         .toList,
@@ -1329,7 +1329,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
     Stream
       .unfoldChunkEval(true)(s =>
         SyncIO.pure(
-          if (s) Some((Chunk.booleans(Array[Boolean](s)), false))
+          if (s) Some((Chunk.array(Array[Boolean](s)), false))
           else None
         )
       )

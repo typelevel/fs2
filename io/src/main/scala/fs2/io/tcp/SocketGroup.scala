@@ -250,12 +250,12 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup) {
           F.async.delay {
             val read = buff.position()
             val result =
-              if (read == 0) Chunk.bytes(Array.empty)
+              if (read == 0) Chunk.empty
               else {
                 val dest = new Array[Byte](read)
                 (buff: Buffer).flip()
                 buff.get(dest)
-                Chunk.bytes(dest)
+                Chunk.array(dest)
               }
             (buff: Buffer).clear()
             result

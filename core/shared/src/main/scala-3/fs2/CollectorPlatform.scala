@@ -49,6 +49,14 @@ private[fs2] trait CollectorPlatform { self: Collector.type =>
     })
   }
 
+  implicit def supportsIArray[A: ClassTag](a: IArray.type): Collector.Aux[A, IArray[A]] = {
+    val _ = a
+    new Collector[A] {
+      type Out = IArray[A]
+      def newBuilder = supportsArray[A](Array).newBuilder.mapResult(IArray.unsafeFromArray)
+    }
+  }
+
   private[fs2] trait BuilderPlatform { self: Collector.Builder.type =>
     def fromFactory[A, C[_], B](f: Factory[A, C[B]]): Builder[A, C[B]] =
       fromBuilder(f.newBuilder)

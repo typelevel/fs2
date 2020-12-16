@@ -33,21 +33,25 @@ private[fs2] trait ChunkPlatform[+O] { self: Chunk[O] =>
     ArraySeq.unsafeWrapArray[O2](array)
   }
 
-  def toArraySeqUntagged: ArraySeq[O] =
-    self match {
-      case knownType: Chunk.KnownElementType[o] =>
-        knownType.toArraySeq[o](knownType.elementClassTag).asInstanceOf[ArraySeq[O]] // Not safe
-      case _ =>
-        val buf = ArraySeq.untagged.newBuilder[O]
-        buf.sizeHint(size)
-        var i = 0
-        while (i < size) {
-          buf += apply(i)
-          i += 1
-        }
-        buf.result()
+  def toArraySeqUntagged: ArraySeq[O] = {
+    val buf = ArraySeq.untagged.newBuilder[O]
+    buf.sizeHint(size)
+    var i = 0
+    while (i < size) {
+      buf += apply(i)
+      i += 1
     }
+    buf.result()
+  }
 
+  def toIArray[O2 >: O: ClassTag]: IArray[O2] = IArray.unsafeFromArray(toArray)
+
+  def toIArraySlice[O2 >: O](implicit ct: ClassTag[O2]): Chunk.IArraySlice[O2] =
+    this match {
+      case as: Chunk.IArraySlice[_] if ct.wrap.runtimeClass eq as.getClass =>
+        as.asInstanceOf[Chunk.IArraySlice[O2]]
+      case _ => new Chunk.IArraySlice(IArray.unsafeFromArray(toArray(ct)), 0, size)
+    }
 }
 
 private[fs2] trait ChunkCompanionPlatform { self: Chunk.type =>
@@ -60,7 +64,55 @@ private[fs2] trait ChunkCompanionPlatform { self: Chunk.type =>
 
   /** Creates a chunk backed by an immutable `ArraySeq`.
     */
-  def arraySeq[O](arraySeq: immutable.ArraySeq[O]): Chunk[O] =
-    array(arraySeq.unsafeArray.asInstanceOf[Array[O]])
+  def arraySeq[O](arraySeq: immutable.ArraySeq[O]): Chunk[O] = {
+    val arr = arraySeq.unsafeArray.asInstanceOf[Array[O]]
+    array(arr)(ClassTag[O](arr.getClass.getComponentType))
+  }
 
+  /** Creates a chunk backed by an immutable array.
+    */
+  def iarray[O: ClassTag](arr: IArray[O]): Chunk[O] = new IArraySlice(arr, 0, arr.length)
+
+  /** Creates a chunk backed by a slice of an immutable array.
+    */
+  def iarray[O: ClassTag](arr: IArray[O], offset: Int, length: Int): Chunk[O] =
+    new IArraySlice(arr, offset, length)
+
+  case class IArraySlice[O](values: IArray[O], offset: Int, length: Int)(implicit ct: ClassTag[O])
+      extends Chunk[O] {
+    require(
+      offset >= 0 && offset <= values.size && length >= 0 && length <= values.size && offset + length <= values.size
+    )
+
+    def size = length
+    def apply(i: Int) = values(offset + i)
+
+    def copyToArray[O2 >: O](xs: Array[O2], start: Int): Unit =
+      if (xs.getClass eq ct.wrap.runtimeClass)
+        System.arraycopy(values, offset, xs, start, length)
+      else {
+        values.iterator.slice(offset, offset + length).copyToArray(xs, start)
+        ()
+      }
+
+    override def drop(n: Int): Chunk[O] =
+      if (n <= 0) this
+      else if (n >= size) Chunk.empty
+      else IArraySlice(values, offset + n, length - n)
+
+    override def take(n: Int): Chunk[O] =
+      if (n <= 0) Chunk.empty
+      else if (n >= size) this
+      else IArraySlice(values, offset, n)
+
+    protected def splitAtChunk_(n: Int): (Chunk[O], Chunk[O]) =
+      IArraySlice(values, offset, n) -> IArraySlice(values, offset + n, length - n)
+
+    override def toArray[O2 >: O: ClassTag]: Array[O2] =
+      values.slice(offset, offset + length).asInstanceOf[Array[O2]]
+
+    override def toIArray[O2 >: O: ClassTag]: IArray[O2] =
+      if (offset == 0 && length == values.length) values
+      else super.toIArray[O2]
+  }
 }

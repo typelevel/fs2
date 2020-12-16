@@ -368,7 +368,7 @@ class StreamZipSuite extends Fs2Suite {
 
   group("regressions") {
     test("#1089") {
-      (Stream.chunk(Chunk.bytes(Array.fill(2000)(1.toByte))) ++ Stream.eval(
+      (Stream.chunk(Chunk.array(Array.fill(2000)(1.toByte))) ++ Stream.eval(
         IO.never[Byte]
       )).take(2000).chunks.compile.toVector
     }

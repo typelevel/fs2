@@ -27,7 +27,7 @@ class ChunkQueueSuite extends Fs2Suite {
   test("take") {
     forAll { (chunks: List[Chunk[Int]], n: Int) =>
       val result = Chunk.Queue(chunks: _*).take(n)
-      assertEquals(result.toChunk.toList, chunks.flatMap(_.toList).take(n))
+      assertEquals(result.toList, chunks.flatMap(_.toList).take(n))
       assert(result.chunks.size <= chunks.size)
     }
   }
@@ -35,7 +35,7 @@ class ChunkQueueSuite extends Fs2Suite {
   test("drop") {
     forAll { (chunks: List[Chunk[Int]], n: Int) =>
       val result = Chunk.Queue(chunks: _*).drop(n)
-      assertEquals(result.toChunk.toList, chunks.flatMap(_.toList).drop(n))
+      assertEquals(result.toList, chunks.flatMap(_.toList).drop(n))
       assert(result.chunks.size <= chunks.size)
     }
   }
@@ -43,16 +43,14 @@ class ChunkQueueSuite extends Fs2Suite {
   test("takeRight") {
     forAll { (chunks: List[Chunk[Int]], n: Int) =>
       val result = Chunk.Queue(chunks: _*).takeRight(n)
-      assertEquals(result.toChunk.toList, chunks.flatMap(_.toList).takeRight(n))
-      assert(result.chunks.size <= chunks.size)
+      assertEquals(result.toList, chunks.flatMap(_.toList).takeRight(n))
     }
   }
 
   test("dropRight") {
     forAll { (chunks: List[Chunk[Int]], n: Int) =>
       val result = Chunk.Queue(chunks: _*).dropRight(n)
-      assertEquals(result.toChunk.toList, chunks.flatMap(_.toList).dropRight(n))
-      assert(result.chunks.size <= chunks.size)
+      assertEquals(result.toList, chunks.flatMap(_.toList).dropRight(n))
     }
   }
 
@@ -84,7 +82,7 @@ class ChunkQueueSuite extends Fs2Suite {
         assert(queue.startsWith(prefix))
       }
 
-      val viaTake = queue.take(items.size).toChunk == Chunk.seq(items)
+      val viaTake = queue.take(items.size) == Chunk.seq(items)
       val computed = flattened.startsWith(items)
       assertEquals(computed, viaTake)
       // here is another way to express the law:

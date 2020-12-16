@@ -29,7 +29,6 @@ import cats.effect.kernel.{Async, Outcome, Resource}
 import cats.effect.kernel.implicits._
 import cats.effect.std.{Dispatcher, Queue}
 
-import fs2.Chunk.Bytes
 import fs2.concurrent.SignallingRef
 
 private[io] object JavaInputOutputStream {
@@ -44,13 +43,13 @@ private[io] object JavaInputOutputStream {
       }
   }
   private final case class Done(rslt: Option[Throwable]) extends DownStreamState
-  private final case class Ready(rem: Option[Bytes]) extends DownStreamState
+  private final case class Ready(rem: Option[Chunk.ArraySlice[Byte]]) extends DownStreamState
 
   def toInputStream[F[_]](
       source: Stream[F, Byte]
   )(implicit F: Async[F]): Resource[F, InputStream] = {
     def markUpstreamDone(
-        queue: Queue[F, Either[Option[Throwable], Bytes]],
+        queue: Queue[F, Either[Option[Throwable], Chunk.ArraySlice[Byte]]],
         upState: SignallingRef[F, UpStreamState],
         result: Option[Throwable]
     ): F[Unit] =
@@ -64,12 +63,12 @@ private[io] object JavaInputOutputStream {
      */
     def processInput(
         source: Stream[F, Byte],
-        queue: Queue[F, Either[Option[Throwable], Bytes]],
+        queue: Queue[F, Either[Option[Throwable], Chunk.ArraySlice[Byte]]],
         upState: SignallingRef[F, UpStreamState],
         dnState: SignallingRef[F, DownStreamState]
     ): F[Unit] =
       source.chunks
-        .evalMap(ch => queue.offer(Right(ch.toBytes)))
+        .evalMap(ch => queue.offer(Right(ch.toArraySlice)))
         .interruptWhen(dnState.discrete.map(_.isDone).filter(identity))
         .compile
         .drain
@@ -87,23 +86,23 @@ private[io] object JavaInputOutputStream {
         dest: Array[Byte],
         off: Int,
         len: Int,
-        queue: Queue[F, Either[Option[Throwable], Bytes]],
+        queue: Queue[F, Either[Option[Throwable], Chunk.ArraySlice[Byte]]],
         dnState: SignallingRef[F, DownStreamState]
     ): F[Int] = {
       // in case current state has any data available from previous read
       // this will cause the data to be acquired, state modified and chunk returned
       // won't modify state if the data cannot be acquired
-      def tryGetChunk(s: DownStreamState): (DownStreamState, Option[Bytes]) =
+      def tryGetChunk(s: DownStreamState): (DownStreamState, Option[Chunk.ArraySlice[Byte]]) =
         s match {
           case Done(None)    => s -> None
           case Done(Some(_)) => s -> None
           case Ready(None)   => s -> None
           case Ready(Some(bytes)) =>
-            val cloned = Chunk.Bytes(bytes.toArray)
+            val cloned = Chunk.ArraySlice(bytes.toArray)
             if (bytes.size <= len) Ready(None) -> Some(cloned)
             else {
               val (out, rem) = cloned.splitAt(len)
-              Ready(Some(rem.toBytes)) -> Some(out.toBytes)
+              Ready(Some(rem.toArraySlice)) -> Some(out.toArraySlice)
             }
         }
 
@@ -143,7 +142,7 @@ private[io] object JavaInputOutputStream {
                       if (bytes.size <= len) bytes -> None
                       else {
                         val (out, rem) = bytes.splitAt(len)
-                        out.toBytes -> rem.toBytes.some
+                        out.toArraySlice -> rem.toArraySlice.some
                       }
                     F.delay {
                       Array.copy(copy.values, copy.offset, dest, off, copy.size)
@@ -196,7 +195,7 @@ private[io] object JavaInputOutputStream {
       Resource
         .liftF(
           (
-            Queue.synchronous[F, Either[Option[Throwable], Bytes]],
+            Queue.synchronous[F, Either[Option[Throwable], Chunk.ArraySlice[Byte]]],
             SignallingRef.of[F, UpStreamState](UpStreamState(done = false, err = None)),
             SignallingRef.of[F, DownStreamState](Ready(None))
           ).tupled

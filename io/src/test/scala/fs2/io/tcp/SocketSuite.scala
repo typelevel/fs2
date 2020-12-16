@@ -47,7 +47,7 @@ class SocketSuite extends Fs2Suite {
 
   group("tcp") {
     test("echo requests - each concurrent client gets back what it sent") {
-      val message = Chunk.bytes("fs2.rocks".getBytes)
+      val message = Chunk.array("fs2.rocks".getBytes)
       val clientCount = 20L
 
       Stream
@@ -86,7 +86,7 @@ class SocketSuite extends Fs2Suite {
     }
 
     test("readN yields chunks of the requested size") {
-      val message = Chunk.bytes("123456789012345678901234567890".getBytes)
+      val message = Chunk.array("123456789012345678901234567890".getBytes)
       val sizes = Vector(1, 2, 3, 4, 3, 2, 1)
 
       Stream
@@ -119,7 +119,7 @@ class SocketSuite extends Fs2Suite {
     }
 
     test("write - concurrent calls do not cause a WritePendingException") {
-      val message = Chunk.bytes(("123456789012345678901234567890" * 10000).getBytes)
+      val message = Chunk.array(("123456789012345678901234567890" * 10000).getBytes)
 
       Stream
         .resource(setup)

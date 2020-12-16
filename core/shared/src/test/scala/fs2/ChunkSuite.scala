@@ -28,7 +28,6 @@ import cats.laws.discipline.{AlternativeTests, MonadTests, TraverseFilterTests, 
 import org.scalacheck.{Arbitrary, Cogen, Gen}
 import org.scalacheck.Prop.forAll
 import scala.reflect.ClassTag
-import scala.util.control.NonFatal
 
 class ChunkSuite extends Fs2Suite {
   override def scalaCheckTestParameters =
@@ -57,8 +56,8 @@ class ChunkSuite extends Fs2Suite {
       // Varargs on Scala.js use a scala.scalajs.js.WrappedArray, which
       // ends up falling through to the Chunk.indexedSeq constructor
       if (isJVM) {
-        assert(Chunk(1, 2, 3).isInstanceOf[Chunk.Ints])
-        assert(Chunk("Hello", "world").isInstanceOf[Chunk.Boxed[_]])
+        assert(Chunk(1, 2, 3).isInstanceOf[Chunk.ArraySlice[_]])
+        assert(Chunk("Hello", "world").isInstanceOf[Chunk.ArraySlice[_]])
       }
     }
 
@@ -69,10 +68,7 @@ class ChunkSuite extends Fs2Suite {
     test("Array casts in Chunk.seq are safe") {
       val as = collection.mutable.ArraySeq[Int](0, 1, 2)
       val c = Chunk.seq(as)
-      try assert(c.isInstanceOf[Chunk.Boxed[_]]) // 2.11/2.12
-      catch {
-        case NonFatal(_) => assert(c.isInstanceOf[Chunk.Ints]) // 2.13+
-      }
+      assert(c.isInstanceOf[Chunk.ArraySlice[_]])
     }
   }
 
@@ -165,27 +161,10 @@ class ChunkSuite extends Fs2Suite {
     def empty: Char = 0
   }
 
-  testChunk[Byte](byteChunkGenerator, "Bytes", "Byte")
-  testChunk[Short](shortChunkGenerator, "Shorts", "Short")
   testChunk[Int](intChunkGenerator, "Ints", "Int")
-  testChunk[Long](longChunkGenerator, "Longs", "Long")
-  // Don't test traverse on Double or Float. They have naughty monoids.
-  // Also, occasionally, a NaN value will show up in the generated functions, which then causes
-  // laws tests to fail when comparing `Chunk(NaN)` to `Chunk(NaN)` -- for purposes of these tests
-  // only, we redefine equality to consider two `NaN` values as equal.
-  implicit val doubleEq: Eq[Double] = Eq.instance[Double]((x, y) => (x.isNaN && y.isNaN) || x == y)
-  testChunk[Double](doubleChunkGenerator, "Doubles", "Double", false)
-  implicit val floatEq: Eq[Float] = Eq.instance[Float]((x, y) => (x.isNaN && y.isNaN) || x == y)
-  testChunk[Float](floatChunkGenerator, "Floats", "Float", false)
-  testChunk[Char](charChunkGenerator, "Unspecialized", "Char")
 
   testChunk[Byte](byteBufferChunkGenerator, "ByteBuffer", "Byte")
   testChunk[Byte](byteVectorChunkGenerator, "ByteVector", "Byte")
-  testChunk[Short](shortBufferChunkGenerator, "ShortBuffer", "Short")
-  testChunk[Int](intBufferChunkGenerator, "IntBuffer", "Int")
-  testChunk[Long](longBufferChunkGenerator, "LongBuffer", "Long")
-  testChunk[Double](doubleBufferChunkGenerator, "DoubleBuffer", "Double", false)
-  testChunk[Float](floatBufferChunkGenerator, "FloatBuffer", "Float", false)
   testChunk[Char](charBufferChunkGenerator, "CharBuffer", "Char")
 
   group("scanLeftCarry") {
@@ -198,20 +177,6 @@ class ChunkSuite extends Fs2Suite {
     test("returns all results and last result for multiple elements") {
       assertEquals(Chunk(2, 3).scanLeftCarry(1)(_ + _), ((Chunk(3, 6), 6)))
     }
-  }
-
-  group("concat primitives") {
-    def testEmptyConcat[A](mkChunk: List[Chunk[A]] => Chunk[A]) =
-      assertEquals(mkChunk(List(Chunk.empty, Chunk.empty)), Chunk.empty)
-
-    test("booleans")(testEmptyConcat(Chunk.concatBooleans))
-    test("bytes")(testEmptyConcat(Chunk.concatBytes))
-    test("floats")(testEmptyConcat(Chunk.concatFloats))
-    test("doubles")(testEmptyConcat(Chunk.concatDoubles))
-    test("shorts")(testEmptyConcat(Chunk.concatShorts))
-    test("ints")(testEmptyConcat(Chunk.concatInts))
-    test("longs")(testEmptyConcat(Chunk.concatLongs))
-    test("chars")(testEmptyConcat(Chunk.concatChars))
   }
 
   test("map andThen toArray") {
@@ -242,8 +207,8 @@ class ChunkSuite extends Fs2Suite {
     )
   }
 
-  test("Boxed toArray - regression #1745") {
-    Chunk.Boxed(Array[Any](0)).asInstanceOf[Chunk[Int]].toArray[Any]
-    Chunk.Boxed(Array[Any](0)).asInstanceOf[Chunk[Int]].toArray[Int]
+  test("ArraySlice toArray - regression #1745") {
+    Chunk.ArraySlice(Array[Any](0)).asInstanceOf[Chunk[Int]].toArray[Any]
+    Chunk.ArraySlice(Array[Any](0)).asInstanceOf[Chunk[Int]].toArray[Int]
   }
 }

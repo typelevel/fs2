@@ -42,7 +42,7 @@ class HashSuite extends Fs2Suite {
         str.getBytes
           .grouped(n)
           .foldLeft(Stream.empty.covaryOutput[Byte])((acc, c) =>
-            acc ++ Stream.chunk(Chunk.bytes(c))
+            acc ++ Stream.chunk(Chunk.array(c))
           )
 
     assertEquals(s.through(h).toList, digest(algo, str))
@@ -64,7 +64,7 @@ class HashSuite extends Fs2Suite {
   test("zero or one output") {
     forAll { (lb: List[Array[Byte]]) =>
       val size = lb
-        .foldLeft(Stream.empty.covaryOutput[Byte])((acc, b) => acc ++ Stream.chunk(Chunk.bytes(b)))
+        .foldLeft(Stream.empty.covaryOutput[Byte])((acc, b) => acc ++ Stream.chunk(Chunk.array(b)))
         .through(sha1)
         .toList
         .size
@@ -76,7 +76,7 @@ class HashSuite extends Fs2Suite {
     val s = Stream
       .range(1, 100)
       .covary[IO]
-      .flatMap(i => Stream.chunk(Chunk.bytes(i.toString.getBytes)))
+      .flatMap(i => Stream.chunk(Chunk.array(i.toString.getBytes)))
       .through(sha512)
     for {
       once <- s.compile.toVector

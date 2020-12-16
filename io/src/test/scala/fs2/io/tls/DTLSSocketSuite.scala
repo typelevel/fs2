@@ -34,7 +34,7 @@ import fs2.io.udp.{Packet, Socket, SocketGroup}
 class DTLSSocketSuite extends TLSSuite {
   group("DTLSSocket") {
     test("echo") {
-      val msg = Chunk.bytes("Hello, world!".getBytes)
+      val msg = Chunk.array("Hello, world!".getBytes)
 
       def address(s: Socket[IO]) =
         Resource

@@ -114,10 +114,10 @@ object text {
         bldr += new String(allBytes, utf8Charset)
         Chunk.empty
       } else if (splitAt == 0)
-        Chunk.bytes(allBytes)
+        Chunk.array(allBytes)
       else {
         bldr += new String(allBytes.take(splitAt), utf8Charset)
-        Chunk.bytes(allBytes.drop(splitAt))
+        Chunk.array(allBytes.drop(splitAt))
       }
     }
 
@@ -170,11 +170,11 @@ object text {
 
   /** Encodes a stream of `String` in to a stream of bytes using the given charset. */
   def encode[F[_]](charset: Charset): Pipe[F, String, Byte] =
-    _.mapChunks(c => c.flatMap(s => Chunk.bytes(s.getBytes(charset))))
+    _.mapChunks(c => c.flatMap(s => Chunk.array(s.getBytes(charset))))
 
   /** Encodes a stream of `String` in to a stream of `Chunk[Byte]` using the given charset. */
   def encodeC[F[_]](charset: Charset): Pipe[F, String, Chunk[Byte]] =
-    _.mapChunks(_.map(s => Chunk.bytes(s.getBytes(charset))))
+    _.mapChunks(_.map(s => Chunk.array(s.getBytes(charset))))
 
   /** Encodes a stream of `String` in to a stream of bytes using the UTF-8 charset. */
   def utf8Encode[F[_]]: Pipe[F, String, Byte] =

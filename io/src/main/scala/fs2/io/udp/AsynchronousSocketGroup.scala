@@ -237,7 +237,7 @@ private[udp] object AsynchronousSocketGroup {
             val bytes = new Array[Byte](readBuffer.remaining)
             readBuffer.get(bytes)
             (readBuffer: Buffer).clear()
-            reader(Right(Packet(src, Chunk.bytes(bytes))))
+            reader(Right(Packet(src, Chunk.array(bytes))))
             true
           }
         } catch {
@@ -254,7 +254,7 @@ private[udp] object AsynchronousSocketGroup {
       ): Unit = {
         val writerPacket = {
           val bytes = {
-            val srcBytes = packet.bytes.toBytes
+            val srcBytes = packet.bytes.toArraySlice
             if (srcBytes.size == srcBytes.values.size) srcBytes.values
             else {
               val destBytes = new Array[Byte](srcBytes.size)

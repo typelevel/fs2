@@ -44,7 +44,7 @@ class UdpSuite extends Fs2Suite {
 
   group("udp") {
     test("echo one") {
-      val msg = Chunk.bytes("Hello, world!".getBytes)
+      val msg = Chunk.array("Hello, world!".getBytes)
       mkSocketGroup
         .flatMap { socketGroup =>
           Stream
@@ -72,7 +72,7 @@ class UdpSuite extends Fs2Suite {
     }
 
     test("echo lots") {
-      val msgs = (1 to 20).toVector.map(n => Chunk.bytes(("Hello, world! " + n).getBytes))
+      val msgs = (1 to 20).toVector.map(n => Chunk.array(("Hello, world! " + n).getBytes))
       val numClients = 50
       val numParallelClients = 10
       val expected = Vector
@@ -115,7 +115,7 @@ class UdpSuite extends Fs2Suite {
     test("multicast".ignore) {
       // Fails often based on routing table of host machine
       val group = InetAddress.getByName("232.10.10.10")
-      val msg = Chunk.bytes("Hello, world!".getBytes)
+      val msg = Chunk.array("Hello, world!".getBytes)
       mkSocketGroup
         .flatMap { socketGroup =>
           Stream

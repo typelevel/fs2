@@ -70,7 +70,7 @@ class CompressionBenchmark {
 
   private def lastThrough(input: Array[Byte], pipe: Pipe[IO, Byte, Byte]): Byte =
     Stream
-      .chunk[IO, Byte](Chunk.bytes(input))
+      .chunk[IO, Byte](Chunk.array(input))
       .through(pipe)
       .compile
       .last
@@ -79,7 +79,7 @@ class CompressionBenchmark {
 
   private def lastThrough2(input: Array[Byte], pipe: Pipe[IO, Byte, GunzipResult[IO]]): Byte =
     Stream
-      .chunk[IO, Byte](Chunk.bytes(input))
+      .chunk[IO, Byte](Chunk.array(input))
       .through(pipe)
       .flatMap(_.content)
       .compile
@@ -118,7 +118,7 @@ object CompressionBenchmark {
 
   private def through(input: Array[Byte], pipe: Pipe[IO, Byte, Byte]): Array[Byte] =
     Stream
-      .chunk[IO, Byte](Chunk.bytes(input))
+      .chunk[IO, Byte](Chunk.array(input))
       .through(pipe)
       .compile
       .to(Array)

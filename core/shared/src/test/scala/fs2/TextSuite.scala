@@ -34,7 +34,7 @@ class TextSuite extends Fs2Suite {
     super.scalaCheckTestParameters.withMinSuccessfulTests(1000)
 
   group("utf8Decoder") {
-    def utf8Bytes(s: String): Chunk[Byte] = Chunk.bytes(s.getBytes("UTF-8"))
+    def utf8Bytes(s: String): Chunk[Byte] = Chunk.array(s.getBytes("UTF-8"))
     def utf8String(bs: Chunk[Byte]): String = new String(bs.toArray, "UTF-8")
 
     def genStringNoBom: Gen[String] = Arbitrary.arbitrary[String].filterNot(_.startsWith("\ufeff"))
@@ -55,7 +55,7 @@ class TextSuite extends Fs2Suite {
 
     def checkBytes(is: Int*): Unit =
       (1 to 6).foreach { n =>
-        val bytes = Chunk.bytes(is.map(_.toByte).toArray)
+        val bytes = Chunk.array(is.map(_.toByte).toArray)
         assertEquals(
           Stream
             .chunk(bytes)
@@ -68,7 +68,7 @@ class TextSuite extends Fs2Suite {
       }
 
     def checkBytes2(is: Int*): Unit = {
-      val bytes = Chunk.bytes(is.map(_.toByte).toArray)
+      val bytes = Chunk.array(is.map(_.toByte).toArray)
       assertEquals(
         Stream(bytes).flatMap(Stream.chunk).through(utf8Decode).toList.mkString,
         utf8String(bytes)
@@ -139,13 +139,13 @@ class TextSuite extends Fs2Suite {
       val bom = Chunk[Byte](0xef.toByte, 0xbb.toByte, 0xbf.toByte)
       property("single chunk") {
         forAll(genStringNoBom) { (s: String) =>
-          val c = Chunk.concat(List(bom, utf8Bytes(s)))
+          val c = bom ++ utf8Bytes(s)
           assertEquals(Stream.chunk(c).through(text.utf8Decode).compile.string, s)
         }
       }
       property("spanning chunks") {
         forAll(genStringNoBom) { (s: String) =>
-          val c = Chunk.concat(List(bom, utf8Bytes(s)))
+          val c = bom ++ utf8Bytes(s)
           assertEquals(Stream.emits(c.toArray[Byte]).through(text.utf8Decode).compile.string, s)
         }
       }
@@ -283,7 +283,7 @@ class TextSuite extends Fs2Suite {
   property("base64Encode") {
     forAll { (bs: List[Array[Byte]]) =>
       assertEquals(
-        bs.map(Chunk.bytes).foldMap(Stream.chunk).through(text.base64.encode).compile.string,
+        bs.map(Chunk.array(_)).foldMap(Stream.chunk).through(text.base64.encode).compile.string,
         bs.map(ByteVector.view(_)).foldLeft(ByteVector.empty)(_ ++ _).toBase64
       )
     }
@@ -294,7 +294,7 @@ class TextSuite extends Fs2Suite {
     property("base64Encode andThen base64Decode") {
       forAll { (bs: List[Array[Byte]], unchunked: Boolean, rechunkSeed: Long) =>
         assertEquals(
-          bs.map(Chunk.bytes)
+          bs.map(Chunk.array(_))
             .foldMap(Stream.chunk)
             .through(text.base64.encode)
             .through {
@@ -339,7 +339,7 @@ class TextSuite extends Fs2Suite {
     property("optional padding") {
       forAll { (bs: List[Array[Byte]]) =>
         assertEquals(
-          bs.map(Chunk.bytes)
+          bs.map(Chunk.array(_))
             .foldMap(Stream.chunk)
             .through(text.base64.encode)
             .map(_.takeWhile(_ != '='))

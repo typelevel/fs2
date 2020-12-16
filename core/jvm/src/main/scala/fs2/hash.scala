@@ -56,10 +56,10 @@ object hash {
       Stream.suspend {
         in.chunks
           .fold(digest) { (d, c) =>
-            val bytes = c.toBytes
+            val bytes = c.toArraySlice
             d.update(bytes.values, bytes.offset, bytes.size)
             d
           }
-          .flatMap(d => Stream.chunk(Chunk.bytes(d.digest())))
+          .flatMap(d => Stream.chunk(Chunk.array(d.digest())))
       }
 }

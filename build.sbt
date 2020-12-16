@@ -18,10 +18,9 @@ ThisBuild / organizationName := "Functional Streams for Scala"
 ThisBuild / homepage := Some(url("https://github.com/typelevel/fs2"))
 ThisBuild / startYear := Some(2013)
 
-ThisBuild / crossScalaVersions := Seq("3.0.0-M1", "3.0.0-M2", "2.12.10", "2.13.4")
+ThisBuild / crossScalaVersions := Seq("3.0.0-M2", "2.12.10", "2.13.4")
 
 ThisBuild / versionIntroduced := Map(
-  "3.0.0-M1" -> "3.0.0",
   "3.0.0-M2" -> "3.0.0"
 )
 
@@ -123,6 +122,12 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
       val major = if (isDotty.value) "-3" else "-2"
       List(CrossType.Pure, CrossType.Full).flatMap(
         _.sharedSrcDir(baseDirectory.value, "main").toList.map(f => file(f.getPath + major))
+      )
+    },
+    Test / unmanagedSourceDirectories ++= {
+      val major = if (isDotty.value) "-3" else "-2"
+      List(CrossType.Pure, CrossType.Full).flatMap(
+        _.sharedSrcDir(baseDirectory.value, "test").toList.map(f => file(f.getPath + major))
       )
     }
   )
