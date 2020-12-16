@@ -230,6 +230,21 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] { self =>
     s -> Chunk.array(arr).asInstanceOf[Chunk[O2]]
   }
 
+  /** Maps the supplied function over each element and returns a chunk of just the defined results. */
+  def mapFilter[O2](f: O => Option[O2]): Chunk[O2] = {
+    val sz = size
+    val b = collection.mutable.Buffer.newBuilder[O2]
+    b.sizeHint(sz)
+    var i = 0
+    while (i < sz) {
+      val o = f(apply(i))
+      if (o.isDefined)
+        b += o.get
+      i += 1
+    }
+    Chunk.buffer(b.result())
+  }
+
   /** False if size is zero, true otherwise. */
   final def nonEmpty: Boolean = size > 0
 
@@ -376,6 +391,98 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] { self =>
       case other                    => BitVector.view(other.asInstanceOf[Chunk[Byte]].toArray)
     }
   }
+
+  def traverse[F[_], O2](f: O => F[O2])(implicit F: Applicative[F]): F[Chunk[O2]] =
+    if (isEmpty) F.pure(Chunk.empty[O2])
+    else {
+      // we branch out by this factor
+      val width = 128
+      // By making a tree here we don't blow the stack
+      // even if the Chunk is very long
+      // by construction, this is never called with start == end
+      def loop(start: Int, end: Int): Eval[F[Chain[O2]]] =
+        if (end - start <= width) {
+          // Here we are at the leafs of the trees
+          // we don't use map2Eval since it is always
+          // at most width in size.
+          var flist = f(apply(end - 1)).map(_ :: Nil)
+          var idx = end - 2
+          while (start <= idx) {
+            flist = F.map2(f(apply(idx)), flist)(_ :: _)
+            idx = idx - 1
+          }
+          Eval.now(flist.map(Chain.fromSeq(_)))
+        } else {
+          // we have width + 1 or more nodes left
+          val step = (end - start) / width
+
+          var fchain = Eval.defer(loop(start, start + step))
+          var start0 = start + step
+          var end0 = start0 + step
+
+          while (start0 < end) {
+            // Make sure these are vals, to avoid capturing mutable state
+            // in the lazy context of Eval
+            val end1 = math.min(end, end0)
+            val start1 = start0
+            fchain = fchain.flatMap(F.map2Eval(_, Eval.defer(loop(start1, end1)))(_.concat(_)))
+            start0 = start0 + step
+            end0 = end0 + step
+          }
+          fchain
+        }
+
+      F.map(loop(0, size).value)(Chunk.chain)
+    }
+
+  def traverseFilter[F[_], O2](f: O => F[Option[O2]])(implicit F: Applicative[F]): F[Chunk[O2]] =
+    if (isEmpty) F.pure(Chunk.empty[O2])
+    else {
+      // we branch out by this factor
+      val width = 128
+      // By making a tree here we don't blow the stack
+      // even if the Chunk is very long
+      // by construction, this is never called with start == end
+      def loop(start: Int, end: Int): Eval[F[Chain[O2]]] =
+        if (end - start <= width) {
+          // Here we are at the leafs of the trees
+          // we don't use map2Eval since it is always
+          // at most width in size.
+          var flist = f(apply(end - 1)).map {
+            case Some(a) => a :: Nil
+            case None    => Nil
+          }
+          var idx = end - 2
+          while (start <= idx) {
+            flist = F.map2(f(apply(idx)), flist) { (optO2, list) =>
+              if (optO2.isDefined) optO2.get :: list
+              else list
+            }
+            idx = idx - 1
+          }
+          Eval.now(flist.map(Chain.fromSeq(_)))
+        } else {
+          // we have width + 1 or more nodes left
+          val step = (end - start) / width
+
+          var fchain = Eval.defer(loop(start, start + step))
+          var start0 = start + step
+          var end0 = start0 + step
+
+          while (start0 < end) {
+            // Make sure these are vals, to avoid capturing mutable state
+            // in the lazy context of Eval
+            val end1 = math.min(end, end0)
+            val start1 = start0
+            fchain = fchain.flatMap(F.map2Eval(_, Eval.defer(loop(start1, end1)))(_.concat(_)))
+            start0 = start0 + step
+            end0 = end0 + step
+          }
+          fchain
+        }
+
+      F.map(loop(0, size).value)(Chunk.chain)
+    }
 
   /** Zips this chunk the the supplied chunk, returning a chunk of tuples.
     */
@@ -1072,113 +1179,10 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
       override def traverse: Traverse[Chunk] = this
       override def traverse[F[_], A, B](
           fa: Chunk[A]
-      )(f: A => F[B])(implicit F: Applicative[F]): F[Chunk[B]] =
-        if (fa.isEmpty) F.pure(Chunk.empty[B])
-        else {
-          // we branch out by this factor
-          val width = 128
-          // By making a tree here we don't blow the stack
-          // even if the Chunk is very long
-          // by construction, this is never called with start == end
-          def loop(start: Int, end: Int): Eval[F[Chain[B]]] =
-            if (end - start <= width) {
-              // Here we are at the leafs of the trees
-              // we don't use map2Eval since it is always
-              // at most width in size.
-              var flist = f(fa(end - 1)).map(_ :: Nil)
-              var idx = end - 2
-              while (start <= idx) {
-                flist = F.map2(f(fa(idx)), flist)(_ :: _)
-                idx = idx - 1
-              }
-              Eval.now(flist.map(Chain.fromSeq(_)))
-            } else {
-              // we have width + 1 or more nodes left
-              val step = (end - start) / width
-
-              var fchain = Eval.defer(loop(start, start + step))
-              var start0 = start + step
-              var end0 = start0 + step
-
-              while (start0 < end) {
-                // Make sure these are vals, to avoid capturing mutable state
-                // in the lazy context of Eval
-                val end1 = math.min(end, end0)
-                val start1 = start0
-                fchain = fchain.flatMap(F.map2Eval(_, Eval.defer(loop(start1, end1)))(_.concat(_)))
-                start0 = start0 + step
-                end0 = end0 + step
-              }
-              fchain
-            }
-
-          F.map(loop(0, fa.size).value)(Chunk.chain)
-        }
-
+      )(f: A => F[B])(implicit F: Applicative[F]): F[Chunk[B]] = fa.traverse(f)
       override def traverseFilter[F[_], A, B](
           fa: Chunk[A]
-      )(f: A => F[Option[B]])(implicit F: Applicative[F]): F[Chunk[B]] =
-        if (fa.isEmpty) F.pure(Chunk.empty[B])
-        else {
-          // we branch out by this factor
-          val width = 128
-          // By making a tree here we don't blow the stack
-          // even if the Chunk is very long
-          // by construction, this is never called with start == end
-          def loop(start: Int, end: Int): Eval[F[Chain[B]]] =
-            if (end - start <= width) {
-              // Here we are at the leafs of the trees
-              // we don't use map2Eval since it is always
-              // at most width in size.
-              var flist = f(fa(end - 1)).map {
-                case Some(a) => a :: Nil
-                case None    => Nil
-              }
-              var idx = end - 2
-              while (start <= idx) {
-                flist = F.map2(f(fa(idx)), flist) { (optB, list) =>
-                  if (optB.isDefined) optB.get :: list
-                  else list
-                }
-                idx = idx - 1
-              }
-              Eval.now(flist.map(Chain.fromSeq(_)))
-            } else {
-              // we have width + 1 or more nodes left
-              val step = (end - start) / width
-
-              var fchain = Eval.defer(loop(start, start + step))
-              var start0 = start + step
-              var end0 = start0 + step
-
-              while (start0 < end) {
-                // Make sure these are vals, to avoid capturing mutable state
-                // in the lazy context of Eval
-                val end1 = math.min(end, end0)
-                val start1 = start0
-                fchain = fchain.flatMap(F.map2Eval(_, Eval.defer(loop(start1, end1)))(_.concat(_)))
-                start0 = start0 + step
-                end0 = end0 + step
-              }
-              fchain
-            }
-
-          F.map(loop(0, fa.size).value)(Chunk.chain)
-        }
-
-      override def mapFilter[A, B](fa: Chunk[A])(f: A => Option[B]): Chunk[B] = {
-        val size = fa.size
-        val b = collection.mutable.Buffer.newBuilder[B]
-        b.sizeHint(size)
-        var i = 0
-        while (i < size) {
-          val o = f(fa(i))
-          if (o.isDefined)
-            b += o.get
-          i += 1
-        }
-        Chunk.buffer(b.result())
-      }
+      )(f: A => F[Option[B]])(implicit F: Applicative[F]): F[Chunk[B]] = fa.traverseFilter(f)
+      override def mapFilter[A, B](fa: Chunk[A])(f: A => Option[B]): Chunk[B] = fa.mapFilter(f)
     }
-
 }
