@@ -1023,41 +1023,6 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
       go(chunks, i)
     }
 
-    override def take(n: Int): Queue[O] =
-      if (n <= 0) Queue.empty
-      else if (n >= size) this
-      else {
-        @tailrec
-        def go(acc: SQueue[Chunk[O]], rem: SQueue[Chunk[O]], toTake: Int): Queue[O] =
-          if (toTake <= 0) new Queue(acc, n)
-          else {
-            val (next, tail) = rem.dequeue
-            val nextSize = next.size
-            if (nextSize < toTake) go(acc :+ next, tail, toTake - nextSize)
-            else if (nextSize == toTake) new Queue(acc :+ next, n)
-            else new Queue(acc :+ next.take(toTake), n)
-          }
-        go(SQueue.empty, chunks, n)
-      }
-
-    /** Drops the first `n` elements of this chunk queue in a way that preserves chunk structure. */
-    override def drop(n: Int): Queue[O] =
-      if (n <= 0) this
-      else if (n >= size) Queue.empty
-      else {
-        @tailrec
-        def go(rem: SQueue[Chunk[O]], toDrop: Int): Queue[O] =
-          if (toDrop <= 0) new Queue(rem, size - n)
-          else {
-            val next = rem.head
-            val nextSize = next.size
-            if (nextSize < toDrop) go(rem.tail, toDrop - nextSize)
-            else if (nextSize == toDrop) new Queue(rem.tail, size - n)
-            else new Queue(next.drop(toDrop) +: rem.tail, size - n)
-          }
-        go(chunks, n)
-      }
-
     def copyToArray[O2 >: O](xs: Array[O2], start: Int): Unit = {
       def go(chunks: SQueue[Chunk[O]], offset: Int): Unit =
         if (chunks.nonEmpty) {
@@ -1068,8 +1033,53 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
       go(chunks, start)
     }
 
-    protected def splitAtChunk_(n: Int): (Chunk[O], Chunk[O]) =
-      (take(n), drop(n))
+    override def take(n: Int): Queue[O] =
+      if (n <= 0) Queue.empty
+      else if (n >= size) this
+      else {
+        @tailrec
+        def go(acc: SQueue[Chunk[O]], rem: SQueue[Chunk[O]], toTake: Int): Queue[O] =
+          if (toTake <= 0) new Queue(acc, n)
+          else {
+            val (next, tail) = rem.dequeue
+            val nextSize = next.size
+            if (nextSize <= toTake) go(acc :+ next, tail, toTake - nextSize)
+            else new Queue(acc :+ next.take(toTake), n)
+          }
+        go(SQueue.empty, chunks, n)
+      }
+
+    override def drop(n: Int): Queue[O] =
+      if (n <= 0) this
+      else if (n >= size) Queue.empty
+      else {
+        @tailrec
+        def go(rem: SQueue[Chunk[O]], toDrop: Int): Queue[O] =
+          if (toDrop <= 0) new Queue(rem, size - n)
+          else {
+            val next = rem.head
+            val nextSize = next.size
+            if (nextSize <= toDrop) go(rem.tail, toDrop - nextSize)
+            else new Queue(next.drop(toDrop) +: rem.tail, size - n)
+          }
+        go(chunks, n)
+      }
+
+    protected def splitAtChunk_(n: Int): (Chunk[O], Chunk[O]) = {
+      @tailrec
+      def go(taken: SQueue[Chunk[O]], rem: SQueue[Chunk[O]], toDrop: Int): (Queue[O], Queue[O]) =
+        if (toDrop <= 0) (new Queue(taken, n), new Queue(rem, size - n))
+        else {
+          val next = rem.head
+          val nextSize = next.size
+          if (nextSize <= toDrop) go(taken :+ next, rem.tail, toDrop - nextSize)
+          else {
+            val (pfx, sfx) = next.splitAtChunk_(toDrop)
+            (new Queue(taken :+ pfx, n), new Queue(sfx +: rem.tail, size - n))
+          }
+        }
+      go(SQueue.empty, chunks, n)
+    }
 
     override def startsWith[O2 >: O](seq: Seq[O2]): Boolean = {
       val iter = seq.iterator
