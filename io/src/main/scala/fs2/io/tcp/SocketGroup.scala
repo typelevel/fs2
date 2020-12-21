@@ -98,7 +98,7 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup) {
         )
       }
 
-    Resource.liftF(setup.flatMap(connect)).flatMap(apply(_))
+    Resource.eval(setup.flatMap(connect)).flatMap(apply(_))
   }
 
   /** Stream that binds to the specified address and provides a connection for,
@@ -125,7 +125,8 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup) {
       reuseAddress: Boolean = true,
       receiveBufferSize: Int = 256 * 1024,
       additionalSocketOptions: List[SocketOptionMapping[_]] = List.empty
-  )(implicit F: Network[F]): Stream[F, Resource[F, Socket[F]]] =
+  )(implicit F: Network[F]): Stream[F, Resource[F, Socket[F]]] = {
+    import F.async
     Stream
       .resource(
         serverResource(
@@ -136,6 +137,7 @@ final class SocketGroup(channelGroup: AsynchronousChannelGroup) {
         )
       )
       .flatMap { case (_, clients) => clients }
+  }
 
   /** Like [[server]] but provides the `InetSocketAddress` of the bound server socket before providing accepted sockets.
     * The inner stream emits one socket for each client that connects to the server.

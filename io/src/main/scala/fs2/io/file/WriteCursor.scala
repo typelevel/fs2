@@ -24,11 +24,11 @@ package io
 package file
 
 import cats.{Monad, ~>}
-import cats.syntax.all._
-import cats.effect.kernel.{Resource, Sync}
-
-import java.nio.file._
 import cats.arrow.FunctionK
+import cats.syntax.all._
+import cats.effect.kernel.{Async, Resource}
+
+import java.nio.file.{Files => _, _}
 
 /** Associates a `FileHandle` with an offset in to the file.
   *
@@ -71,16 +71,16 @@ final case class WriteCursor[F[_]](file: FileHandle[F], offset: Long) {
 object WriteCursor {
 
   @deprecated("Use Files[F].writeCursor", "3.0.0")
-  def fromPath[F[_]: Sync](
+  def fromPath[F[_]: Async](
       path: Path,
       flags: Seq[OpenOption] = List(StandardOpenOption.CREATE)
   ): Resource[F, WriteCursor[F]] =
-    SyncFiles[F].writeCursor(path, flags)
+    Files[F].writeCursor(path, flags)
 
   @deprecated("Use Files[F].writeCursorFromFileHandle", "3.0.0")
-  def fromFileHandle[F[_]: Sync](
+  def fromFileHandle[F[_]: Async](
       file: FileHandle[F],
       append: Boolean
   ): F[WriteCursor[F]] =
-    SyncFiles[F].writeCursorFromFileHandle(file, append)
+    Files[F].writeCursorFromFileHandle(file, append)
 }

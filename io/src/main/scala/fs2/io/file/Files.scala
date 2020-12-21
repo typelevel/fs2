@@ -37,14 +37,11 @@ import java.util.stream.{Stream => JStream}
 
 import fs2.io.CollectionCompat._
 
-/** Provides basic capabilities related to working with files.
+/** Provides operations related to working with files in the effect `F`.
   *
-  * Normally, the [[Files]] capability should be used instead, which extends this trait
-  * with a few additional operations. `SyncFiles[F]` provides operations that only
-  * require synchronous effects -- * e.g., `SyncFiles[SyncIO]` has an instance whereas
-  * `Files[SyncIO]` does not.
+  * An instance is available for any effect `F` which has an `Async[F]` instance.
   */
-sealed trait SyncFiles[F[_]] {
+trait Files[F[_]] {
 
   /** Copies a file from the source to the target path,
     *
@@ -96,6 +93,45 @@ sealed trait SyncFiles[F[_]] {
     */
   def exists(path: Path, flags: Seq[LinkOption] = Seq.empty): F[Boolean]
 
+  /** Tests whether a file is a directory.
+    *
+    * The options sequence may be used to indicate how symbolic links are handled for the case that the file is a symbolic link.
+    * By default, symbolic links are followed and the file attribute of the final target of the link is read.
+    * If the option NOFOLLOW_LINKS is present then symbolic links are not followed.
+    *
+    * Where is it required to distinguish an I/O exception from the case that the
+    * file is not a directory then the file attributes can be read with the
+    * readAttributes method and the file type tested with the BasicFileAttributes.isDirectory() method.
+    *
+    * @param path the path to the file to test
+    * @param options - options indicating how symbolic links are handled
+    * @return true if the file is a directory; false if the file does not exist, is not a directory, or it cannot be determined if the file is a directory or not.
+    */
+  def isDirectory(
+      path: Path,
+      linkOption: Seq[LinkOption] = Nil
+  ): F[Boolean]
+
+  /** Tests whether a file is a regular file with opaque content.
+    *
+    * The options sequence may be used to indicate how symbolic links are handled for the case that
+    * the file is a symbolic link. By default, symbolic links are followed and the file
+    * attribute of the final target of the link is read. If the option NOFOLLOW_LINKS is present
+    * then symbolic links are not followed.
+    *
+    * Where is it required to distinguish an I/O exception from the case that the file is
+    * not a regular file then the file attributes can be read with the readAttributes
+    * method and the file type tested with the BasicFileAttributes.isRegularFile() method.
+    *
+    * @param path the path to the file
+    * @param options options indicating how symbolic links are handled
+    * @return true if the file is a regular file; false if the file does not exist, is not a regular file, or it cannot be determined if the file is a regular file or not.
+    */
+  def isFile(
+      path: Path,
+      linkOption: Seq[LinkOption] = Nil
+  ): F[Boolean]
+
   /** Moves (or renames) a file from the source to the target path.
     *
     * By default, the move fails if the target file already exists or is a symbolic link.
@@ -137,6 +173,22 @@ sealed trait SyncFiles[F[_]] {
   /** Returns the size of a file (in bytes).
     */
   def size(path: Path): F[Long]
+
+  /** Returns an infinite stream of data from the file at the specified path.
+    * Starts reading from the specified offset and upon reaching the end of the file,
+    * polls every `pollDuration` for additional updates to the file.
+    *
+    * Read operations are limited to emitting chunks of the specified chunk size
+    * but smaller chunks may occur.
+    *
+    * If an error occurs while reading from the file, the overall stream fails.
+    */
+  def tail(
+      path: Path,
+      chunkSize: Int,
+      offset: Long = 0L,
+      pollDelay: FiniteDuration = 1.second
+  ): Stream[F, Byte]
 
   /** Creates a [[Resource]] which can be used to create a temporary file.
     *  The file is created during resource allocation, and removed during its release.
@@ -180,6 +232,24 @@ sealed trait SyncFiles[F[_]] {
     */
   def walk(start: Path, maxDepth: Int, options: Seq[FileVisitOption] = Seq.empty): Stream[F, Path]
 
+  /** Creates a [[Watcher]] for the default file system.
+    *
+    * The watcher is returned as a resource. To use the watcher, lift the resource to a stream,
+    * watch or register 1 or more paths, and then return `watcher.events()`.
+    */
+  def watcher: Resource[F, Watcher[F]]
+
+  /** Watches a single path.
+    *
+    * Alias for creating a watcher and watching the supplied path, releasing the watcher when the resulting stream is finalized.
+    */
+  def watch(
+      path: Path,
+      types: Seq[Watcher.EventType] = Nil,
+      modifiers: Seq[WatchEvent.Modifier] = Nil,
+      pollTimeout: FiniteDuration = 1.second
+  ): Stream[F, Watcher.Event]
+
   /** Writes all data to the file at the specified `java.nio.file.Path`.
     *
     * Adds the WRITE flag to any other `OpenOption` flags specified. By default, also adds the CREATE flag.
@@ -208,53 +278,26 @@ sealed trait SyncFiles[F[_]] {
       append: Boolean
   ): F[WriteCursor[F]]
 
-  /** Tests whether a file is a directory.
+  /** Writes all data to a sequence of files, each limited in size to `limit`.
     *
-    * The options sequence may be used to indicate how symbolic links are handled for the case that the file is a symbolic link.
-    * By default, symbolic links are followed and the file attribute of the final target of the link is read.
-    * If the option NOFOLLOW_LINKS is present then symbolic links are not followed.
-    *
-    * Where is it required to distinguish an I/O exception from the case that the
-    * file is not a directory then the file attributes can be read with the
-    * readAttributes method and the file type tested with the BasicFileAttributes.isDirectory() method.
-    *
-    * @param path the path to the file to test
-    * @param options - options indicating how symbolic links are handled
-    * @return true if the file is a directory; false if the file does not exist, is not a directory, or it cannot be determined if the file is a directory or not.
+    * The `computePath` operation is used to compute the path of the first file
+    * and every subsequent file. Typically, the next file should be determined
+    * by analyzing the current state of the filesystem -- e.g., by looking at all
+    * files in a directory and generating a unique name.
     */
-  def isDirectory(
-      path: Path,
-      linkOption: Seq[LinkOption] = Nil
-  ): F[Boolean]
-
-  /** Tests whether a file is a regular file with opaque content.
-    *
-    * The options sequence may be used to indicate how symbolic links are handled for the case that
-    * the file is a symbolic link. By default, symbolic links are followed and the file
-    * attribute of the final target of the link is read. If the option NOFOLLOW_LINKS is present
-    * then symbolic links are not followed.
-    *
-    * Where is it required to distinguish an I/O exception from the case that the file is
-    * not a regular file then the file attributes can be read with the readAttributes
-    * method and the file type tested with the BasicFileAttributes.isRegularFile() method.
-    *
-    * @param path the path to the file
-    * @param options options indicating how symbolic links are handled
-    * @return true if the file is a regular file; false if the file does not exist, is not a regular file, or it cannot be determined if the file is a regular file or not.
-    */
-  def isFile(
-      path: Path,
-      linkOption: Seq[LinkOption] = Nil
-  ): F[Boolean]
-
+  def writeRotate(
+      computePath: F[Path],
+      limit: Long,
+      flags: Seq[StandardOpenOption] = List(StandardOpenOption.CREATE)
+  ): Pipe[F, Byte, INothing]
 }
 
-object SyncFiles {
-  def apply[F[_]](implicit F: SyncFiles[F]): F.type = F
+object Files {
+  def apply[F[_]](implicit F: Files[F]): F.type = F
 
-  implicit def forSync[F[_]: Sync]: SyncFiles[F] = new Impl[F]
+  implicit def forAsync[F[_]: Async]: Files[F] = new AsyncFiles[F]
 
-  private[file] class Impl[F[_]: Sync] extends SyncFiles[F] {
+  private final class AsyncFiles[F[_]: Async] extends Files[F] {
 
     def copy(source: Path, target: Path, flags: Seq[CopyOption]): F[Path] =
       Sync[F].blocking(JFiles.copy(source, target, flags: _*))
@@ -324,6 +367,22 @@ object SyncFiles {
     def exists(path: Path, flags: Seq[LinkOption]): F[Boolean] =
       Sync[F].blocking(JFiles.exists(path, flags: _*))
 
+    def isDirectory(
+        path: Path,
+        linkOption: Seq[LinkOption]
+    ): F[Boolean] =
+      Sync[F].delay(
+        JFiles.isDirectory(path, linkOption: _*)
+      )
+
+    def isFile(
+        path: Path,
+        linkOption: Seq[LinkOption]
+    ): F[Boolean] =
+      Sync[F].delay(
+        JFiles.isRegularFile(path, linkOption: _*)
+      )
+
     def move(source: Path, target: Path, flags: Seq[CopyOption]): F[Path] =
       Sync[F].blocking(JFiles.move(source, target, flags: _*))
 
@@ -356,6 +415,11 @@ object SyncFiles {
 
     def size(path: Path): F[Long] =
       Sync[F].blocking(JFiles.size(path))
+
+    def tail(path: Path, chunkSize: Int, offset: Long, pollDelay: FiniteDuration): Stream[F, Byte] =
+      Stream.resource(readCursor(path)).flatMap { cursor =>
+        cursor.seek(offset).tail(chunkSize, pollDelay).void.stream
+      }
 
     def tempFile(
         dir: Option[Path],
@@ -402,6 +466,19 @@ object SyncFiles {
         _.iterator.asScala
       )
 
+    def watcher: Resource[F, Watcher[F]] = Watcher.default
+
+    def watch(
+        path: Path,
+        types: Seq[Watcher.EventType],
+        modifiers: Seq[WatchEvent.Modifier],
+        pollTimeout: FiniteDuration
+    ): Stream[F, Watcher.Event] =
+      Stream
+        .resource(Watcher.default)
+        .evalTap(_.watch(path, types, modifiers))
+        .flatMap(_.events(pollTimeout))
+
     def writeAll(
         path: Path,
         flags: Seq[StandardOpenOption] = List(StandardOpenOption.CREATE)
@@ -418,7 +495,7 @@ object SyncFiles {
       open(path, StandardOpenOption.WRITE :: flags.toList).flatMap { fileHandle =>
         val size = if (flags.contains(StandardOpenOption.APPEND)) fileHandle.size else 0L.pure[F]
         val cursor = size.map(s => WriteCursor(fileHandle, s))
-        Resource.liftF(cursor)
+        Resource.eval(cursor)
       }
 
     def writeCursorFromFileHandle(
@@ -427,104 +504,6 @@ object SyncFiles {
     ): F[WriteCursor[F]] =
       if (append) file.size.map(s => WriteCursor(file, s)) else WriteCursor(file, 0L).pure[F]
 
-    def isDirectory(
-        path: Path,
-        linkOption: Seq[LinkOption]
-    ): F[Boolean] =
-      Sync[F].delay(
-        JFiles.isDirectory(path, linkOption: _*)
-      )
-
-    def isFile(
-        path: Path,
-        linkOption: Seq[LinkOption]
-    ): F[Boolean] =
-      Sync[F].delay(
-        JFiles.isRegularFile(path, linkOption: _*)
-      )
-
-  }
-}
-
-/** Provides operations related to working with files in the effect `F`.
-  *
-  * An instance is available for any effect `F` which has an `Async[F]` instance.
-  */
-trait Files[F[_]] extends SyncFiles[F] {
-
-  /** Returns an infinite stream of data from the file at the specified path.
-    * Starts reading from the specified offset and upon reaching the end of the file,
-    * polls every `pollDuration` for additional updates to the file.
-    *
-    * Read operations are limited to emitting chunks of the specified chunk size
-    * but smaller chunks may occur.
-    *
-    * If an error occurs while reading from the file, the overall stream fails.
-    */
-  def tail(
-      path: Path,
-      chunkSize: Int,
-      offset: Long = 0L,
-      pollDelay: FiniteDuration = 1.second
-  ): Stream[F, Byte]
-
-  /** Creates a [[Watcher]] for the default file system.
-    *
-    * The watcher is returned as a resource. To use the watcher, lift the resource to a stream,
-    * watch or register 1 or more paths, and then return `watcher.events()`.
-    */
-  def watcher: Resource[F, Watcher[F]]
-
-  /** Watches a single path.
-    *
-    * Alias for creating a watcher and watching the supplied path, releasing the watcher when the resulting stream is finalized.
-    */
-  def watch(
-      path: Path,
-      types: Seq[Watcher.EventType] = Nil,
-      modifiers: Seq[WatchEvent.Modifier] = Nil,
-      pollTimeout: FiniteDuration = 1.second
-  ): Stream[F, Watcher.Event]
-
-  /** Writes all data to a sequence of files, each limited in size to `limit`.
-    *
-    * The `computePath` operation is used to compute the path of the first file
-    * and every subsequent file. Typically, the next file should be determined
-    * by analyzing the current state of the filesystem -- e.g., by looking at all
-    * files in a directory and generating a unique name.
-    */
-  def writeRotate(
-      computePath: F[Path],
-      limit: Long,
-      flags: Seq[StandardOpenOption] = List(StandardOpenOption.CREATE)
-  ): Pipe[F, Byte, INothing]
-}
-
-object Files {
-  def apply[F[_]](implicit F: Files[F]): F.type = F
-
-  implicit def forAsync[F[_]: Async]: Files[F] = new AsyncFiles[F]
-
-  private final class AsyncFiles[F[_]: Async] extends SyncFiles.Impl[F] with Files[F] {
-
-    def tail(path: Path, chunkSize: Int, offset: Long, pollDelay: FiniteDuration): Stream[F, Byte] =
-      Stream.resource(readCursor(path)).flatMap { cursor =>
-        cursor.seek(offset).tail(chunkSize, pollDelay).void.stream
-      }
-
-    def watcher: Resource[F, Watcher[F]] = Watcher.default
-
-    def watch(
-        path: Path,
-        types: Seq[Watcher.EventType],
-        modifiers: Seq[WatchEvent.Modifier],
-        pollTimeout: FiniteDuration
-    ): Stream[F, Watcher.Event] =
-      Stream
-        .resource(Watcher.default)
-        .evalTap(_.watch(path, types, modifiers))
-        .flatMap(_.events(pollTimeout))
-
     def writeRotate(
         computePath: F[Path],
         limit: Long,
@@ -532,7 +511,7 @@ object Files {
     ): Pipe[F, Byte, INothing] = {
       def openNewFile: Resource[F, FileHandle[F]] =
         Resource
-          .liftF(computePath)
+          .eval(computePath)
           .flatMap(p => open(p, StandardOpenOption.WRITE :: flags.toList))
 
       def newCursor(file: FileHandle[F]): F[WriteCursor[F]] =

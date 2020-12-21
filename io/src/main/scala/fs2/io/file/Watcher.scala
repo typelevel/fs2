@@ -151,7 +151,7 @@ object Watcher {
   /** Creates a watcher for the default file system. */
   def default[F[_]](implicit F: Async[F]): Resource[F, Watcher[F]] =
     Resource
-      .liftF(F.blocking(FileSystems.getDefault))
+      .eval(F.blocking(FileSystems.getDefault))
       .flatMap(fromFileSystem(_))
 
   /** Creates a watcher for the supplied file system. */

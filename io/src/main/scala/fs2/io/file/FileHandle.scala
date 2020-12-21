@@ -27,7 +27,7 @@ import java.nio.ByteBuffer
 import java.nio.channels.{FileChannel, FileLock}
 import java.nio.file.{OpenOption, Path}
 
-import cats.effect.kernel.{Resource, Sync}
+import cats.effect.kernel.{Async, Resource, Sync}
 
 /** Provides the ability to read/write/lock/inspect a file in the effect `F`.
   */
@@ -100,12 +100,12 @@ trait FileHandle[F[_]] {
 object FileHandle {
 
   @deprecated("Use Files[F].open", "3.0.0")
-  def fromPath[F[_]: Sync](path: Path, flags: Seq[OpenOption]): Resource[F, FileHandle[F]] =
-    SyncFiles[F].open(path, flags)
+  def fromPath[F[_]: Async](path: Path, flags: Seq[OpenOption]): Resource[F, FileHandle[F]] =
+    Files[F].open(path, flags)
 
   @deprecated("Use Files[F].openFileChannel", "3.0.0")
-  def fromFileChannel[F[_]: Sync](channel: F[FileChannel]): Resource[F, FileHandle[F]] =
-    SyncFiles[F].openFileChannel(channel)
+  def fromFileChannel[F[_]: Async](channel: F[FileChannel]): Resource[F, FileHandle[F]] =
+    Files[F].openFileChannel(channel)
 
   /** Creates a `FileHandle[F]` from a `java.nio.channels.FileChannel`. */
   private[file] def make[F[_]](

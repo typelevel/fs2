@@ -193,7 +193,7 @@ private[io] object JavaInputOutputStream {
      */
     Dispatcher[F].flatMap { dispatcher =>
       Resource
-        .liftF(
+        .eval(
           (
             Queue.synchronous[F, Either[Option[Throwable], Chunk.ArraySlice[Byte]]],
             SignallingRef.of[F, UpStreamState](UpStreamState(done = false, err = None)),

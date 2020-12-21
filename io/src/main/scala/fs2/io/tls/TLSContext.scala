@@ -128,7 +128,7 @@ object TLSContext {
       )(implicit F: Network[F]): Resource[F, TLSSocket[F]] = {
         import F.async
         Resource
-          .liftF(
+          .eval(
             engine(
               new TLSEngine.Binding[F] {
                 def write(data: Chunk[Byte], timeout: Option[FiniteDuration]): F[Unit] =
@@ -181,7 +181,7 @@ object TLSContext {
       )(implicit F: Network[F]): Resource[F, DTLSSocket[F]] = {
         import F.async
         Resource
-          .liftF(
+          .eval(
             engine(
               new TLSEngine.Binding[F] {
                 def write(data: Chunk[Byte], timeout: Option[FiniteDuration]): F[Unit] =

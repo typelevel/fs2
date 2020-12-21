@@ -28,9 +28,9 @@ import scala.concurrent.duration.FiniteDuration
 import cats.{Functor, ~>}
 import cats.arrow.FunctionK
 import cats.syntax.all._
-import cats.effect.kernel.{Resource, Sync, Temporal}
+import cats.effect.kernel.{Async, Resource, Temporal}
 
-import java.nio.file._
+import java.nio.file.{Files => _, _}
 
 /** Associates a `FileHandle` with an offset in to the file.
   *
@@ -104,9 +104,9 @@ final case class ReadCursor[F[_]](file: FileHandle[F], offset: Long) {
 object ReadCursor {
 
   @deprecated("Use Files[F].readCursor", "3.0.0")
-  def fromPath[F[_]: Sync](
+  def fromPath[F[_]: Async](
       path: Path,
       flags: Seq[OpenOption] = Nil
   ): Resource[F, ReadCursor[F]] =
-    SyncFiles[F].readCursor(path, flags)
+    Files[F].readCursor(path, flags)
 }
