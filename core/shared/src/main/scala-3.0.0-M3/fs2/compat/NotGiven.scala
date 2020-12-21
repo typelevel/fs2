@@ -21,5 +21,5 @@
 
 package fs2.compat
 
-type Not[+A] = scala.util.Not[A]
-val Not = scala.util.Not
+type NotGiven[+A] = scala.util.NotGiven[A]
+val NotGiven = scala.util.NotGiven

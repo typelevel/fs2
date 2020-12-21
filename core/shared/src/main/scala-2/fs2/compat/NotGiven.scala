@@ -23,14 +23,14 @@ package fs2.compat
 
 // Scala 2 port of https://github.com/dotty-staging/dotty/blob/3217bc14a309718a79a4d7a99553664974a8d754/library/src-bootstrapped/scala/util/Not.scala
 
-final class Not[+A] private ()
+final class NotGiven[+A] private ()
 
-private[compat] trait NotLowPriority {
-  implicit def default[A]: Not[A] = Not.value
+private[compat] trait NotGivenLowPriority {
+  implicit def default[A]: NotGiven[A] = NotGiven.value
 }
 
-object Not extends NotLowPriority {
-  val value: Not[Nothing] = new Not[Nothing]
-  implicit def amb1[A](implicit ev: A): Not[A] = ???
-  implicit def amb2[A](implicit ev: A): Not[A] = ???
+object NotGiven extends NotGivenLowPriority {
+  val value: NotGiven[Nothing] = new NotGiven[Nothing]
+  implicit def amb1[A](implicit ev: A): NotGiven[A] = ???
+  implicit def amb2[A](implicit ev: A): NotGiven[A] = ???
 }

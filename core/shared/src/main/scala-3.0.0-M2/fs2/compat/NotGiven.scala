@@ -19,40 +19,7 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2
+package fs2.compat
 
-import cats.Functor
-import cats.effect.{MonadCancelThrow, Resource, Sync}
-import cats.effect.kernel.Ref
-import cats.syntax.all._
-
-trait Logger[F[_]] {
-  def log(e: LogEvent): F[Unit]
-
-  def logInfo(msg: String): Stream[F, Nothing] = Stream.exec(log(LogEvent.Info(msg)))
-
-  def logLifecycle(tag: String)(implicit F: MonadCancelThrow[F]): Stream[F, Unit] =
-    Stream.resource(logLifecycleR(tag))
-
-  def logLifecycleR(tag: String)(implicit F: Functor[F]): Resource[F, Unit] =
-    Resource.make(log(LogEvent.Acquired(tag)))(_ => log(LogEvent.Released(tag)))
-
-  def get: F[List[LogEvent]]
-}
-
-object Logger {
-  def apply[F[_]: Sync]: F[Logger[F]] =
-    Ref[F].of(Nil: List[LogEvent]).map { ref =>
-      new Logger[F] {
-        def log(e: LogEvent): F[Unit] = ref.update(acc => e :: acc)
-        def get: F[List[LogEvent]] = ref.get.map(_.reverse)
-      }
-    }
-}
-
-sealed trait LogEvent
-object LogEvent {
-  final case class Acquired(tag: String) extends LogEvent
-  final case class Released(tag: String) extends LogEvent
-  final case class Info(message: String) extends LogEvent
-}
+type NotGiven[+A] = scala.util.Not[A]
+val NotGiven = scala.util.Not

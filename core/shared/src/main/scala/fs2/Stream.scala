@@ -1205,7 +1205,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     */
   def flatMap[F2[x] >: F[x], O2](
       f: O => Stream[F2, O2]
-  )(implicit ev: Not[O <:< Nothing]): Stream[F2, O2] = {
+  )(implicit ev: NotGiven[O <:< Nothing]): Stream[F2, O2] = {
     val _ = ev
     new Stream(Pull.flatMapOutput[F, F2, O, O2](underlying, (o: O) => f(o).underlying))
   }
@@ -1213,7 +1213,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   /** Alias for `flatMap(_ => s2)`. */
   def >>[F2[x] >: F[x], O2](
       s2: => Stream[F2, O2]
-  )(implicit ev: Not[O <:< Nothing]): Stream[F2, O2] =
+  )(implicit ev: NotGiven[O <:< Nothing]): Stream[F2, O2] =
     flatMap(_ => s2)
 
   /** Flattens a stream of streams in to a single stream by concatenating each stream.
@@ -3401,7 +3401,7 @@ object Stream extends StreamLowPriority {
   def repeatEval[F[_], O](fo: F[O]): Stream[F, O] = eval(fo).repeat
 
   /** Converts the supplied resource in to a singleton stream. */
-  def resource[F[_]: Applicative, O](r: Resource[F, O]): Stream[F, O] =
+  def resource[F[_]: MonadCancelThrow, O](r: Resource[F, O]): Stream[F, O] =
     resourceWeak(r).scope
 
   /** Like [[resource]] but does not introduce a scope, allowing finalization to occur after
@@ -3409,18 +3409,18 @@ object Stream extends StreamLowPriority {
     *
     * Scopes can be manually introduced via [[scope]] if desired.
     */
-  def resourceWeak[F[_]: Applicative, O](r: Resource[F, O]): Stream[F, O] =
-    r.preinterpret match {
-      case r: Resource.Allocate[f, o] =>
+  def resourceWeak[F[_]: MonadCancelThrow, O](r: Resource[F, O]): Stream[F, O] =
+    r match {
+      case Resource.Allocate(resource) =>
         Stream
-          .bracketCaseWeak[f, (o, Resource.ExitCase => f[Unit])](r.resource) {
+          .bracketFullWeak(resource) {
             case ((_, release), e) => release(e)
           }
           .map(_._1)
-      case r: Resource.Bind[f, x, o] =>
-        resourceWeak[f, x](r.source).flatMap(o => resourceWeak[f, o](r.fs(o)))
-      case r: Resource.Suspend[f, o] =>
-        Stream.eval(r.resource).flatMap(resourceWeak[f, o])(Not.value)
+      case Resource.Bind(source, f) =>
+        resourceWeak(source).flatMap(o => resourceWeak(f(o)))
+      case Resource.Eval(fo) => Stream.eval(fo)
+      case Resource.Pure(o) => Stream.emit(o)
     }
 
   /** Retries `fo` on failure, returning a singleton stream with the
