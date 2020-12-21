@@ -3413,14 +3413,14 @@ object Stream extends StreamLowPriority {
     r match {
       case Resource.Allocate(resource) =>
         Stream
-          .bracketFullWeak(resource) {
-            case ((_, release), e) => release(e)
+          .bracketFullWeak(resource) { case ((_, release), e) =>
+            release(e)
           }
           .map(_._1)
       case Resource.Bind(source, f) =>
         resourceWeak(source).flatMap(o => resourceWeak(f(o)))
       case Resource.Eval(fo) => Stream.eval(fo)
-      case Resource.Pure(o) => Stream.emit(o)
+      case Resource.Pure(o)  => Stream.emit(o)
     }
 
   /** Retries `fo` on failure, returning a singleton stream with the
