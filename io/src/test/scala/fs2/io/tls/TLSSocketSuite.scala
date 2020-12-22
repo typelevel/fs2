@@ -38,7 +38,7 @@ class TLSSocketSuite extends TLSSuite {
     group("google") {
       def googleSetup(protocol: String) =
         for {
-          tlsContext <- Resource.eval(TLSContext.system[IO])
+          tlsContext <- Resource.eval(Network[IO].tlsContext.system)
           socketGroup <- Network[IO].tcpSocketGroup
           socket <- socketGroup.client(new InetSocketAddress("google.com", 443))
           tlsSocket <- tlsContext.client(

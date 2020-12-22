@@ -26,8 +26,8 @@ package tls
 import cats.effect.IO
 
 abstract class TLSSuite extends Fs2Suite {
-  def testTlsContext: IO[TLSContext] =
-    TLSContext.fromKeyStoreResource[IO](
+  def testTlsContext: IO[TLSContext[IO]] =
+    Network[IO].tlsContext.fromKeyStoreResource(
       "keystore.jks",
       "password".toCharArray,
       "password".toCharArray

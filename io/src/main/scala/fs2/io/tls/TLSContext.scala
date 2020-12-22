@@ -39,7 +39,7 @@ import javax.net.ssl.{
 }
 
 import cats.Applicative
-import cats.effect.kernel.Resource
+import cats.effect.kernel.{Async, Resource}
 import cats.syntax.all._
 
 import fs2.io.tcp.Socket
@@ -48,263 +48,282 @@ import java.util.function.BiFunction
 
 /** Allows creation of [[TLSSocket]]s.
   */
-sealed trait TLSContext {
+sealed trait TLSContext[F[_]] {
 
   /** Creates a `TLSSocket` in client mode, using the supplied parameters.
     * Internal debug logging of the session can be enabled by passing a logger.
     */
-  def client[F[_]](
+  def client(
       socket: Socket[F],
       params: TLSParameters = TLSParameters.Default,
       logger: Option[String => F[Unit]] = None
-  )(implicit F: Network[F]): Resource[F, TLSSocket[F]]
+  ): Resource[F, TLSSocket[F]]
 
   /** Creates a `TLSSocket` in server mode, using the supplied parameters.
     * Internal debug logging of the session can be enabled by passing a logger.
     */
-  def server[F[_]](
+  def server(
       socket: Socket[F],
       params: TLSParameters = TLSParameters.Default,
       logger: Option[String => F[Unit]] = None
-  )(implicit F: Network[F]): Resource[F, TLSSocket[F]]
+  ): Resource[F, TLSSocket[F]]
 
   /** Creates a `DTLSSocket` in client mode, using the supplied parameters.
     * Internal debug logging of the session can be enabled by passing a logger.
     */
-  def dtlsClient[F[_]](
+  def dtlsClient(
       socket: udp.Socket[F],
       remoteAddress: InetSocketAddress,
       params: TLSParameters = TLSParameters.Default,
       logger: Option[String => F[Unit]] = None
-  )(implicit F: Network[F]): Resource[F, DTLSSocket[F]]
+  ): Resource[F, DTLSSocket[F]]
 
   /** Creates a `DTLSSocket` in server mode, using the supplied parameters.
     * Internal debug logging of the session can be enabled by passing a logger.
     */
-  def dtlsServer[F[_]](
+  def dtlsServer(
       socket: udp.Socket[F],
       remoteAddress: InetSocketAddress,
       params: TLSParameters = TLSParameters.Default,
       logger: Option[String => F[Unit]] = None
-  )(implicit F: Network[F]): Resource[F, DTLSSocket[F]]
+  ): Resource[F, DTLSSocket[F]]
 }
 
 object TLSContext {
 
-  /** Creates a `TLSContext` from an `SSLContext`. */
-  def fromSSLContext(
-      ctx: SSLContext
-  ): TLSContext =
-    new TLSContext {
-      def client[F[_]](
-          socket: Socket[F],
-          params: TLSParameters,
-          logger: Option[String => F[Unit]]
-      )(implicit F: Network[F]): Resource[F, TLSSocket[F]] =
-        mkSocket(
-          socket,
-          true,
-          params,
-          logger
-        )
+  trait Builder[F[_]] {
+    def fromSSLContext(ctx: SSLContext): TLSContext[F]
 
-      def server[F[_]](
-          socket: Socket[F],
-          params: TLSParameters,
-          logger: Option[String => F[Unit]]
-      )(implicit F: Network[F]): Resource[F, TLSSocket[F]] =
-        mkSocket(
-          socket,
-          false,
-          params,
-          logger
-        )
+    /** Creates a `TLSContext` which trusts all certificates. */
+    def insecure: F[TLSContext[F]]
 
-      private def mkSocket[F[_]](
-          socket: Socket[F],
-          clientMode: Boolean,
-          params: TLSParameters,
-          logger: Option[String => F[Unit]]
-      )(implicit F: Network[F]): Resource[F, TLSSocket[F]] = {
-        import F.async
-        Resource
-          .eval(
-            engine(
-              new TLSEngine.Binding[F] {
-                def write(data: Chunk[Byte], timeout: Option[FiniteDuration]): F[Unit] =
-                  socket.write(data, timeout)
-                def read(maxBytes: Int, timeout: Option[FiniteDuration]): F[Option[Chunk[Byte]]] =
-                  socket.read(maxBytes, timeout)
-              },
-              clientMode,
+    /** Creates a `TLSContext` from the system default `SSLContext`. */
+    def system: F[TLSContext[F]]
+
+    /** Creates a `TLSContext` from the specified key store file. */
+    def fromKeyStoreFile(
+        file: Path,
+        storePassword: Array[Char],
+        keyPassword: Array[Char]
+    ): F[TLSContext[F]]
+
+    /** Creates a `TLSContext` from the specified class path resource. */
+    def fromKeyStoreResource(
+        resource: String,
+        storePassword: Array[Char],
+        keyPassword: Array[Char]
+    ): F[TLSContext[F]]
+
+    /** Creates a `TLSContext` from the specified key store. */
+    def fromKeyStore(
+        keyStore: KeyStore,
+        keyPassword: Array[Char]
+    ): F[TLSContext[F]]
+  }
+
+  object Builder {
+    def forAsync[F[_]: Async]: Builder[F] = new AsyncBuilder
+
+    /** Creates a `TLSContext` from an `SSLContext`. */
+    private final class AsyncBuilder[F[_]: Async] extends Builder[F] {
+
+      def fromSSLContext(
+          ctx: SSLContext
+      ): TLSContext[F] =
+        new TLSContext[F] {
+          def client(
+              socket: Socket[F],
+              params: TLSParameters,
+              logger: Option[String => F[Unit]]
+          ): Resource[F, TLSSocket[F]] =
+            mkSocket(
+              socket,
+              true,
               params,
               logger
             )
-          )
-          .flatMap(engine => TLSSocket(socket, engine))
-      }
 
-      def dtlsClient[F[_]](
-          socket: udp.Socket[F],
-          remoteAddress: InetSocketAddress,
-          params: TLSParameters,
-          logger: Option[String => F[Unit]]
-      )(implicit F: Network[F]): Resource[F, DTLSSocket[F]] =
-        mkDtlsSocket(
-          socket,
-          remoteAddress,
-          true,
-          params,
-          logger
-        )
-
-      def dtlsServer[F[_]](
-          socket: udp.Socket[F],
-          remoteAddress: InetSocketAddress,
-          params: TLSParameters,
-          logger: Option[String => F[Unit]]
-      )(implicit F: Network[F]): Resource[F, DTLSSocket[F]] =
-        mkDtlsSocket(
-          socket,
-          remoteAddress,
-          false,
-          params,
-          logger
-        )
-
-      private def mkDtlsSocket[F[_]](
-          socket: udp.Socket[F],
-          remoteAddress: InetSocketAddress,
-          clientMode: Boolean,
-          params: TLSParameters,
-          logger: Option[String => F[Unit]]
-      )(implicit F: Network[F]): Resource[F, DTLSSocket[F]] = {
-        import F.async
-        Resource
-          .eval(
-            engine(
-              new TLSEngine.Binding[F] {
-                def write(data: Chunk[Byte], timeout: Option[FiniteDuration]): F[Unit] =
-                  if (data.isEmpty) Applicative[F].unit
-                  else socket.write(Packet(remoteAddress, data), timeout)
-                def read(maxBytes: Int, timeout: Option[FiniteDuration]): F[Option[Chunk[Byte]]] =
-                  socket.read(timeout).map(p => Some(p.bytes))
-              },
-              clientMode,
+          def server(
+              socket: Socket[F],
+              params: TLSParameters,
+              logger: Option[String => F[Unit]]
+          ): Resource[F, TLSSocket[F]] =
+            mkSocket(
+              socket,
+              false,
               params,
               logger
             )
-          )
-          .flatMap(engine => DTLSSocket(socket, remoteAddress, engine))
-      }
 
-      private def engine[F[_]](
-          binding: TLSEngine.Binding[F],
-          clientMode: Boolean,
-          params: TLSParameters,
-          logger: Option[String => F[Unit]]
-      )(implicit F: Network[F]): F[TLSEngine[F]] = {
-        import F.async
-        val sslEngine = F.async.blocking {
-          val engine = ctx.createSSLEngine()
-          engine.setUseClientMode(clientMode)
-          engine.setSSLParameters(params.toSSLParameters)
-          params.handshakeApplicationProtocolSelector
-            .foreach { f =>
-              import fs2.io.CollectionCompat._
-              engine.setHandshakeApplicationProtocolSelector(
-                new BiFunction[SSLEngine, java.util.List[String], String] {
-                  def apply(engine: SSLEngine, protocols: java.util.List[String]): String =
-                    f(engine, protocols.asScala.toList)
-                }
+          private def mkSocket(
+              socket: Socket[F],
+              clientMode: Boolean,
+              params: TLSParameters,
+              logger: Option[String => F[Unit]]
+          ): Resource[F, TLSSocket[F]] =
+            Resource
+              .eval(
+                engine(
+                  new TLSEngine.Binding[F] {
+                    def write(data: Chunk[Byte], timeout: Option[FiniteDuration]): F[Unit] =
+                      socket.write(data, timeout)
+                    def read(maxBytes: Int, timeout: Option[FiniteDuration])
+                        : F[Option[Chunk[Byte]]] =
+                      socket.read(maxBytes, timeout)
+                  },
+                  clientMode,
+                  params,
+                  logger
+                )
               )
+              .flatMap(engine => TLSSocket(socket, engine))
+
+          def dtlsClient(
+              socket: udp.Socket[F],
+              remoteAddress: InetSocketAddress,
+              params: TLSParameters,
+              logger: Option[String => F[Unit]]
+          ): Resource[F, DTLSSocket[F]] =
+            mkDtlsSocket(
+              socket,
+              remoteAddress,
+              true,
+              params,
+              logger
+            )
+
+          def dtlsServer(
+              socket: udp.Socket[F],
+              remoteAddress: InetSocketAddress,
+              params: TLSParameters,
+              logger: Option[String => F[Unit]]
+          ): Resource[F, DTLSSocket[F]] =
+            mkDtlsSocket(
+              socket,
+              remoteAddress,
+              false,
+              params,
+              logger
+            )
+
+          private def mkDtlsSocket(
+              socket: udp.Socket[F],
+              remoteAddress: InetSocketAddress,
+              clientMode: Boolean,
+              params: TLSParameters,
+              logger: Option[String => F[Unit]]
+          ): Resource[F, DTLSSocket[F]] =
+            Resource
+              .eval(
+                engine(
+                  new TLSEngine.Binding[F] {
+                    def write(data: Chunk[Byte], timeout: Option[FiniteDuration]): F[Unit] =
+                      if (data.isEmpty) Applicative[F].unit
+                      else socket.write(Packet(remoteAddress, data), timeout)
+                    def read(maxBytes: Int, timeout: Option[FiniteDuration])
+                        : F[Option[Chunk[Byte]]] =
+                      socket.read(timeout).map(p => Some(p.bytes))
+                  },
+                  clientMode,
+                  params,
+                  logger
+                )
+              )
+              .flatMap(engine => DTLSSocket(socket, remoteAddress, engine))
+
+          private def engine(
+              binding: TLSEngine.Binding[F],
+              clientMode: Boolean,
+              params: TLSParameters,
+              logger: Option[String => F[Unit]]
+          ): F[TLSEngine[F]] = {
+            val sslEngine = Async[F].blocking {
+              val engine = ctx.createSSLEngine()
+              engine.setUseClientMode(clientMode)
+              engine.setSSLParameters(params.toSSLParameters)
+              params.handshakeApplicationProtocolSelector
+                .foreach { f =>
+                  import fs2.io.CollectionCompat._
+                  engine.setHandshakeApplicationProtocolSelector(
+                    new BiFunction[SSLEngine, java.util.List[String], String] {
+                      def apply(engine: SSLEngine, protocols: java.util.List[String]): String =
+                        f(engine, protocols.asScala.toList)
+                    }
+                  )
+                }
+              engine
             }
-          engine
+            sslEngine.flatMap(TLSEngine[F](_, binding, logger))
+          }
         }
-        sslEngine.flatMap(TLSEngine[F](_, binding, logger))
+
+      def insecure: F[TLSContext[F]] =
+        Async[F]
+          .blocking {
+            val ctx = SSLContext.getInstance("TLS")
+            val tm = new X509TrustManager {
+              def checkClientTrusted(x: Array[X509Certificate], y: String): Unit = {}
+              def checkServerTrusted(x: Array[X509Certificate], y: String): Unit = {}
+              def getAcceptedIssuers(): Array[X509Certificate] = Array()
+            }
+            ctx.init(null, Array(tm), null)
+            ctx
+          }
+          .map(fromSSLContext(_))
+
+      def system: F[TLSContext[F]] =
+        Async[F].blocking(SSLContext.getDefault).map(fromSSLContext(_))
+
+      def fromKeyStoreFile(
+          file: Path,
+          storePassword: Array[Char],
+          keyPassword: Array[Char]
+      ): F[TLSContext[F]] = {
+        val load = Async[F].blocking(new FileInputStream(file.toFile): InputStream)
+        val stream = Resource.make(load)(s => Async[F].blocking(s.close))
+        fromKeyStoreStream(stream, storePassword, keyPassword)
       }
+
+      def fromKeyStoreResource(
+          resource: String,
+          storePassword: Array[Char],
+          keyPassword: Array[Char]
+      ): F[TLSContext[F]] = {
+        val load = Async[F].blocking(getClass.getClassLoader.getResourceAsStream(resource))
+        val stream = Resource.make(load)(s => Async[F].blocking(s.close))
+        fromKeyStoreStream(stream, storePassword, keyPassword)
+      }
+
+      private def fromKeyStoreStream(
+          stream: Resource[F, InputStream],
+          storePassword: Array[Char],
+          keyPassword: Array[Char]
+      ): F[TLSContext[F]] =
+        stream.use { s =>
+          Async[F]
+            .blocking {
+              val keyStore = KeyStore.getInstance(KeyStore.getDefaultType)
+              keyStore.load(s, storePassword)
+              keyStore
+            }
+            .flatMap(fromKeyStore(_, keyPassword))
+        }
+
+      def fromKeyStore(
+          keyStore: KeyStore,
+          keyPassword: Array[Char]
+      ): F[TLSContext[F]] =
+        Async[F]
+          .blocking {
+            val kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm)
+            kmf.init(keyStore, keyPassword)
+            val tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm)
+            tmf.init(keyStore)
+            val sslContext = SSLContext.getInstance("TLS")
+            sslContext.init(kmf.getKeyManagers, tmf.getTrustManagers, null)
+            sslContext
+          }
+          .map(fromSSLContext(_))
     }
-
-  /** Creates a `TLSContext` which trusts all certificates. */
-  def insecure[F[_]](implicit F: Network[F]): F[TLSContext] = {
-    import F.async
-    F.async
-      .blocking {
-        val ctx = SSLContext.getInstance("TLS")
-        val tm = new X509TrustManager {
-          def checkClientTrusted(x: Array[X509Certificate], y: String): Unit = {}
-          def checkServerTrusted(x: Array[X509Certificate], y: String): Unit = {}
-          def getAcceptedIssuers(): Array[X509Certificate] = Array()
-        }
-        ctx.init(null, Array(tm), null)
-        ctx
-      }
-      .map(fromSSLContext(_))
-  }
-
-  /** Creates a `TLSContext` from the system default `SSLContext`. */
-  def system[F[_]](implicit F: Network[F]): F[TLSContext] = {
-    import F.async
-    F.async.blocking(SSLContext.getDefault).map(fromSSLContext(_))
-  }
-
-  /** Creates a `TLSContext` from the specified key store file. */
-  def fromKeyStoreFile[F[_]](
-      file: Path,
-      storePassword: Array[Char],
-      keyPassword: Array[Char]
-  )(implicit F: Network[F]): F[TLSContext] = {
-    import F.async
-    val load = F.async.blocking(new FileInputStream(file.toFile): InputStream)
-    val stream = Resource.make(load)(s => F.async.blocking(s.close))
-    fromKeyStoreStream(stream, storePassword, keyPassword)
-  }
-
-  /** Creates a `TLSContext` from the specified class path resource. */
-  def fromKeyStoreResource[F[_]](
-      resource: String,
-      storePassword: Array[Char],
-      keyPassword: Array[Char]
-  )(implicit F: Network[F]): F[TLSContext] = {
-    import F.async
-    val load = F.async.blocking(getClass.getClassLoader.getResourceAsStream(resource))
-    val stream = Resource.make(load)(s => F.async.blocking(s.close))
-    fromKeyStoreStream(stream, storePassword, keyPassword)
-  }
-
-  private def fromKeyStoreStream[F[_]](
-      stream: Resource[F, InputStream],
-      storePassword: Array[Char],
-      keyPassword: Array[Char]
-  )(implicit F: Network[F]): F[TLSContext] = {
-    import F.async
-    stream.use { s =>
-      F.async
-        .blocking {
-          val keyStore = KeyStore.getInstance(KeyStore.getDefaultType)
-          keyStore.load(s, storePassword)
-          keyStore
-        }
-        .flatMap(fromKeyStore(_, keyPassword))
-    }
-  }
-
-  /** Creates a `TLSContext` from the specified key store. */
-  def fromKeyStore[F[_]](
-      keyStore: KeyStore,
-      keyPassword: Array[Char]
-  )(implicit F: Network[F]): F[TLSContext] = {
-    import F.async
-    F.async
-      .blocking {
-        val kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm)
-        kmf.init(keyStore, keyPassword)
-        val tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm)
-        tmf.init(keyStore)
-        val sslContext = SSLContext.getInstance("TLS")
-        sslContext.init(kmf.getKeyManagers, tmf.getTrustManagers, null)
-        sslContext
-      }
-      .map(fromSSLContext(_))
   }
 }

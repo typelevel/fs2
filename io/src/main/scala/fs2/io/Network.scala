@@ -24,6 +24,8 @@ package io
 
 import cats.effect.kernel.{Async, Resource}
 
+import tls.TLSContext
+
 /** Provides the ability to work with TCP, UDP, and TLS.
   *
   * @example {{{
@@ -42,10 +44,11 @@ import cats.effect.kernel.{Async, Resource}
   * An instance is available for any effect `F` which has an `Async[F]` instance.
   */
 sealed trait Network[F[_]] {
-  private[io] implicit val async: Async[F] // TODO remove
-
   def tcpSocketGroup: Resource[F, tcp.SocketGroup[F]] // TODO add config params here?
+
   def udpSocketGroup: Resource[F, udp.SocketGroup[F]]
+
+  def tlsContext: TLSContext.Builder[F]
 }
 
 object Network {
@@ -53,8 +56,8 @@ object Network {
 
   implicit def forAsync[F[_]](implicit F: Async[F]): Network[F] =
     new Network[F] {
-      val async = F
       def tcpSocketGroup: Resource[F, tcp.SocketGroup[F]] = tcp.SocketGroup.forAsync[F]()
       def udpSocketGroup: Resource[F, udp.SocketGroup[F]] = udp.SocketGroup.forAsync[F]
+      def tlsContext: TLSContext.Builder[F] = TLSContext.Builder.forAsync[F]
     }
 }

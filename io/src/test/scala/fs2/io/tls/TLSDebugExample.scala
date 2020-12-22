@@ -31,7 +31,7 @@ import cats.syntax.all._
 
 object TLSDebug {
   def debug[F[_]: Async](
-      tlsContext: TLSContext,
+      tlsContext: TLSContext[F],
       address: InetSocketAddress
   ): F[String] =
     Network[F].tcpSocketGroup.use { socketGroup =>
@@ -57,7 +57,7 @@ object TLSDebug {
 class TLSDebugTest extends Fs2Suite {
 
   def run(address: InetSocketAddress): IO[Unit] =
-    TLSContext.system[IO].flatMap { ctx =>
+    Network[IO].tlsContext.system.flatMap { ctx =>
       TLSDebug
         .debug[IO](ctx, address)
         .flatMap(l => IO(println(l)))
