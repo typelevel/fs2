@@ -31,8 +31,6 @@ import javax.net.ssl.{SNIHostName, SSLContext}
 import cats.effect.{IO, Resource}
 import cats.syntax.all._
 
-import fs2.io.tcp.SocketGroup
-
 class TLSSocketSuite extends TLSSuite {
   val size = 8192
 
@@ -40,10 +38,10 @@ class TLSSocketSuite extends TLSSuite {
     group("google") {
       def googleSetup(protocol: String) =
         for {
-          tlsContext <- Resource.liftF(TLSContext.system[IO])
-          socketGroup <- SocketGroup[IO]()
-          socket <- socketGroup.client[IO](new InetSocketAddress("google.com", 443))
-          tlsSocket <- tlsContext.client[IO](
+          tlsContext <- Resource.eval(TLSContext.system[IO])
+          socketGroup <- Network[IO].tcpSocketGroup
+          socket <- socketGroup.client(new InetSocketAddress("google.com", 443))
+          tlsSocket <- tlsContext.client(
             socket,
             TLSParameters(
               serverNames = List(new SNIHostName("www.google.com")).some,
@@ -115,13 +113,13 @@ class TLSSocketSuite extends TLSSuite {
       val msg = Chunk.array(("Hello, world! " * 20000).getBytes)
 
       val setup = for {
-        socketGroup <- SocketGroup[IO]()
-        tlsContext <- Resource.liftF(testTlsContext)
+        socketGroup <- Network[IO].tcpSocketGroup
+        tlsContext <- Resource.eval(testTlsContext)
         inetAddress = new InetSocketAddress(InetAddress.getByName(null), 0)
-        addressAndConnections <- socketGroup.serverResource[IO](inetAddress)
+        addressAndConnections <- socketGroup.serverResource(inetAddress)
         (serverAddress, connections) = addressAndConnections
         server = connections.flatMap(c => Stream.resource(c.flatMap(tlsContext.server(_))))
-        client <- socketGroup.client[IO](serverAddress).flatMap(tlsContext.client(_))
+        client <- socketGroup.client(serverAddress).flatMap(tlsContext.client(_))
       } yield server -> client
 
       Stream

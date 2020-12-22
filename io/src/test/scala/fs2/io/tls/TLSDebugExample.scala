@@ -26,8 +26,6 @@ package tls
 import java.net.InetSocketAddress
 import javax.net.ssl.SNIHostName
 
-import fs2.io.tcp.SocketGroup
-
 import cats.effect.{Async, IO}
 import cats.syntax.all._
 
@@ -36,8 +34,8 @@ object TLSDebug {
       tlsContext: TLSContext,
       address: InetSocketAddress
   ): F[String] =
-    SocketGroup[F]().use { socketGroup =>
-      socketGroup.client[F](address).use { rawSocket =>
+    Network[F].tcpSocketGroup.use { socketGroup =>
+      socketGroup.client(address).use { rawSocket =>
         tlsContext
           .client(
             rawSocket,

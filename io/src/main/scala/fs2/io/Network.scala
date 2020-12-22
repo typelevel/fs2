@@ -22,7 +22,7 @@
 package fs2
 package io
 
-import cats.effect.kernel.Async
+import cats.effect.kernel.{Async, Resource}
 
 /** Provides the ability to work with TCP, UDP, and TLS.
   *
@@ -30,7 +30,7 @@ import cats.effect.kernel.Async
   * import fs2.Stream
   * import fs2.io.{Network, udp}
   *
-  * def send[F[_]: Network](socketGroup: udp.SocketGroup, packet: udp.Packet): F[Unit] =
+  * def send[F[_]: Network](socketGroup: udp.SocketGroup[F], packet: udp.Packet): F[Unit] =
   *   socketGroup.open().use { socket =>
   *     socket.write(packet)
   *   }
@@ -42,12 +42,19 @@ import cats.effect.kernel.Async
   * An instance is available for any effect `F` which has an `Async[F]` instance.
   */
 sealed trait Network[F[_]] {
-  private[io] implicit val async: Async[F]
+  private[io] implicit val async: Async[F] // TODO remove
+
+  def tcpSocketGroup: Resource[F, tcp.SocketGroup[F]] // TODO add config params here?
+  def udpSocketGroup: Resource[F, udp.SocketGroup[F]]
 }
 
 object Network {
   def apply[F[_]](implicit F: Network[F]): F.type = F
 
   implicit def forAsync[F[_]](implicit F: Async[F]): Network[F] =
-    new Network[F] { val async = F }
+    new Network[F] {
+      val async = F
+      def tcpSocketGroup: Resource[F, tcp.SocketGroup[F]] = tcp.SocketGroup.forAsync[F]()
+      def udpSocketGroup: Resource[F, udp.SocketGroup[F]] = udp.SocketGroup.forAsync[F]
+    }
 }

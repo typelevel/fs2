@@ -39,8 +39,8 @@ import cats.syntax.all._
 import CollectionCompat._
 
 class UdpSuite extends Fs2Suite {
-  def mkSocketGroup: Stream[IO, SocketGroup] =
-    Stream.resource(SocketGroup[IO])
+  def mkSocketGroup: Stream[IO, SocketGroup[IO]] =
+    Stream.resource(Network[IO].udpSocketGroup)
 
   group("udp") {
     test("echo one") {
@@ -48,7 +48,7 @@ class UdpSuite extends Fs2Suite {
       mkSocketGroup
         .flatMap { socketGroup =>
           Stream
-            .resource(socketGroup.open[IO]())
+            .resource(socketGroup.open())
             .flatMap { serverSocket =>
               Stream.eval(serverSocket.localAddress).map(_.getPort).flatMap { serverPort =>
                 val serverAddress = new InetSocketAddress("localhost", serverPort)
@@ -56,7 +56,7 @@ class UdpSuite extends Fs2Suite {
                   .reads()
                   .evalMap(packet => serverSocket.write(packet))
                   .drain
-                val client = Stream.resource(socketGroup.open[IO]()).flatMap { clientSocket =>
+                val client = Stream.resource(socketGroup.open()).flatMap { clientSocket =>
                   Stream(Packet(serverAddress, msg))
                     .through(clientSocket.writes())
                     .drain ++ Stream.eval(clientSocket.read())
@@ -83,7 +83,7 @@ class UdpSuite extends Fs2Suite {
       mkSocketGroup
         .flatMap { socketGroup =>
           Stream
-            .resource(socketGroup.open[IO]())
+            .resource(socketGroup.open())
             .flatMap { serverSocket =>
               Stream.eval(serverSocket.localAddress).map(_.getPort).flatMap { serverPort =>
                 val serverAddress = new InetSocketAddress("localhost", serverPort)
@@ -91,7 +91,7 @@ class UdpSuite extends Fs2Suite {
                   .reads()
                   .evalMap(packet => serverSocket.write(packet))
                   .drain
-                val client = Stream.resource(socketGroup.open[IO]()).flatMap { clientSocket =>
+                val client = Stream.resource(socketGroup.open()).flatMap { clientSocket =>
                   Stream
                     .emits(msgs.map(msg => Packet(serverAddress, msg)))
                     .flatMap { msg =>
@@ -120,7 +120,7 @@ class UdpSuite extends Fs2Suite {
         .flatMap { socketGroup =>
           Stream
             .resource(
-              socketGroup.open[IO](
+              socketGroup.open(
                 protocolFamily = Some(StandardProtocolFamily.INET),
                 multicastTTL = Some(1)
               )
@@ -139,7 +139,7 @@ class UdpSuite extends Fs2Suite {
                     .reads()
                     .evalMap(packet => serverSocket.write(packet))
                     .drain
-                val client = Stream.resource(socketGroup.open[IO]()).flatMap { clientSocket =>
+                val client = Stream.resource(socketGroup.open()).flatMap { clientSocket =>
                   Stream(Packet(new InetSocketAddress(group, serverPort), msg))
                     .through(clientSocket.writes())
                     .drain ++ Stream.eval(clientSocket.read())
@@ -158,7 +158,7 @@ class UdpSuite extends Fs2Suite {
       mkSocketGroup
         .flatMap { socketGroup =>
           Stream
-            .resource(socketGroup.open[IO]())
+            .resource(socketGroup.open())
             .flatMap(socket => socket.reads(timeout = Some(50.millis)))
         }
         .compile

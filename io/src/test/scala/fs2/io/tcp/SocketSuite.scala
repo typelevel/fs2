@@ -31,18 +31,18 @@ import java.net.InetAddress
 import cats.effect.IO
 
 class SocketSuite extends Fs2Suite {
-  def mkSocketGroup: Stream[IO, SocketGroup] =
-    Stream.resource(SocketGroup[IO]())
+  def mkSocketGroup: Stream[IO, SocketGroup[IO]] =
+    Stream.resource(Network[IO].tcpSocketGroup)
 
   val timeout = 30.seconds
 
   val setup = for {
-    socketGroup <- SocketGroup[IO]()
+    socketGroup <- Network[IO].tcpSocketGroup
     defaultAddress = new InetSocketAddress(InetAddress.getByName(null), 0)
-    serverSetup <- socketGroup.serverResource[IO](defaultAddress)
+    serverSetup <- socketGroup.serverResource(defaultAddress)
     (bindAddress, serverConnections) = serverSetup
     server = serverConnections.flatMap(Stream.resource(_))
-    clients = Stream.resource(socketGroup.client[IO](bindAddress)).repeat
+    clients = Stream.resource(socketGroup.client(bindAddress)).repeat
   } yield (server -> clients)
 
   group("tcp") {
