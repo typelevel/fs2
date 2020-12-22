@@ -109,12 +109,10 @@ object SocketGroup {
 
   /** Creates a `SocketGroup`.
     *
-    * The supplied `blocker` is used for networking calls other than
-    * reads/writes. All reads and writes are performed on a non-blocking thread pool
+    * All reads and writes are performed on a non-blocking thread pool
     * associated with the `SocketGroup`. The non-blocking thread pool is sized to
-    * the number of available processors but that can be overridden by supplying
-    * a value for `nonBlockingThreadCount`. See
-    * https://openjdk.java.net/projects/nio/resources/AsynchronousIo.html for more
+    * the number of available processors if nonBlockingThreadCount is <= 0.
+    * See https://openjdk.java.net/projects/nio/resources/AsynchronousIo.html for more
     * information on NIO thread pooling.
     */
   def forAsync[F[_]: Async](
