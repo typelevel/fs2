@@ -30,43 +30,41 @@ To get started, let's write a client program that connects to a server, sends a 
 
 ```scala mdoc
 import fs2.{Chunk, Stream}
-import fs2.io.tcp.{Socket, SocketGroup}
-import cats.effect.{Blocker, Concurrent, ContextShift, Sync}
+import fs2.io.Network
+import cats.effect.MonadCancelThrow
+import cats.effect.std.Console
 import cats.syntax.all._
 import java.net.InetSocketAddress
 
-def client[F[_]: Concurrent: ContextShift]: F[Unit] =
-  Blocker[F].use { blocker =>
-    SocketGroup[F](blocker).use { socketGroup =>
-      socketGroup.client(new InetSocketAddress("localhost", 5555)).use { socket =>
-        socket.write(Chunk.bytes("Hello, world!".getBytes)) >>
-          socket.read(8192).flatMap { response =>
-            Sync[F].delay(println(s"Response: $response"))
-          }
-      }
+def client[F[_]: MonadCancelThrow: Console: Network]: F[Unit] =
+  Network[F].tcpSocketGroup.use { socketGroup =>
+    socketGroup.client(new InetSocketAddress("localhost", 5555)).use { socket =>
+      socket.write(Chunk.array("Hello, world!".getBytes)) >>
+        socket.read(8192).flatMap { response =>
+          Console[F].println(s"Response: $response")
+        }
     }
   }
 ```
 
-To open a socket that's connected to `localhost:5555`, we need to use the `client` method on `SocketGroup`. Besides providing ways to create sockets, a `SocketGroup` provides a runtime environment for processing network events for the sockets it creates. Hence, the `apply` method of `SocketGroup` returns a `Resource[F, SocketGroup]`, which ensures the runtime environment is shutdown safely after usage of the group and all sockets created from it has finished. To create a `SocketGroup`, we needed a `Blocker`, which is also created inline here. Normally, a single `Blocker` and a single `SocketGroup` is created at startup and used for the lifetime of the application. To stress this, we can rewrite our TCP client example in this way:
+To open a socket that's connected to `localhost:5555`, we need to use the `client` method on `SocketGroup`. Besides providing ways to create sockets, a `SocketGroup` provides a runtime environment for processing network events for the sockets it creates. Creating a `SocketGroup` is accomplished by calling `Network[IO].tcpSocketGroup`, which returns a `Resource[F, SocketGroup]`. The resource ensures the runtime environment is shutdown safely after usage of the group and all sockets created from it have finished. Normally, a single `SocketGroup` is created at startup and used for the lifetime of the application. To stress this, we can rewrite our TCP client example in this way:
 
 ```scala mdoc
-import cats.effect.{ExitCode, IO, IOApp}
+import cats.effect.{IO, IOApp, MonadCancelThrow}
+import cats.effect.std.Console
+import fs2.io.Network
+import fs2.io.tcp.SocketGroup
 
-object ClientApp extends IOApp {
+object ClientApp extends IOApp.Simple {
 
-  def run(args: List[String]): IO[ExitCode] =
-    Blocker[IO].use { blocker =>
-      SocketGroup[IO](blocker).use { socketGroup =>
-        client[IO](socketGroup)
-      }
-    }.as(ExitCode.Success)
+  def run: IO[Unit] =
+    Network[IO].tcpSocketGroup.use(client(_))
 
-  def client[F[_]: Concurrent: ContextShift](socketGroup: SocketGroup): F[Unit] =
+  def client[F[_]: MonadCancelThrow: Console](socketGroup: SocketGroup[F]): F[Unit] =
     socketGroup.client(new InetSocketAddress("localhost", 5555)).use { socket =>
-      socket.write(Chunk.bytes("Hello, world!".getBytes)) >>
+      socket.write(Chunk.array("Hello, world!".getBytes)) >>
         socket.read(8192).flatMap { response =>
-          Sync[F].delay(println(s"Response: $response"))
+          Console[F].println(s"Response: $response")
         }
     }
 }
@@ -78,41 +76,40 @@ Note we aren't doing any binary message framing or packetization in this example
 
 ```scala mdoc
 import fs2.text
+import cats.effect.MonadCancelThrow
 
-def client[F[_]: Concurrent: ContextShift](socketGroup: SocketGroup): Stream[F, Unit] =
+def client[F[_]: MonadCancelThrow: Console](socketGroup: SocketGroup[F]): Stream[F, Unit] =
   Stream.resource(socketGroup.client(new InetSocketAddress("localhost", 5555))).flatMap { socket =>
     Stream("Hello, world!")
       .through(text.utf8Encode)
-      .through(socket.writes())
-      .drain ++
+      .through(socket.writes()) ++
         socket.reads(8192)
           .through(text.utf8Decode)
           .evalMap { response =>
-            Sync[F].delay(println(s"Response: $response"))
+            Console[F].println(s"Response: $response")
           }
   }
 ```
 
-The structure changes a bit. First, the socket resource is immediately lifted in to a stream via `Stream.resource`. Second, we create a single `Stream[Pure, String]`, transform it with `text.utf8Encode` to turn it in to a `Stream[Pure, Byte]`, and then transform it again with `socket.writes()` which turns it in to a `Stream[F, Unit]`. The `socket.writes` method returns a pipe that writes each underlying chunk of the input stream to the socket. The resulting stream is drained since we don't use the unit values, giving us a `Stream[F, Nothing]`.
+The structure changes a bit. First, the socket resource is immediately lifted in to a stream via `Stream.resource`. Second, we create a single `Stream[Pure, String]`, transform it with `text.utf8Encode` to turn it in to a `Stream[Pure, Byte]`, and then transform it again with `socket.writes()` which turns it in to a `Stream[F, Unit]`. The `socket.writes` method returns a pipe that writes each underlying chunk of the input stream to the socket, giving us a `Stream[F, Nothing]`.
 
 We then append a stream that reads a response -- we do this via `socket.reads(8192)`, which gives us a `Stream[F, Byte]` that terminates when the socket is closed or it receives an end of input indication. We transform that stream with `text.utf8Decode`, which gives us a `Stream[F, String]`. We then print each received response to the console.
 
 This program won't end until the server side closes the socket or indicates there's no more data to be read. To fix this, we need a protocol that both the client and server agree on. Since we are working with text, let's use a simple protocol where each frame (or "packet" or "message") is terminated with a `\n`. We'll have to update both the write side and the read side of our client.
 
 ```scala mdoc:nest
-def client[F[_]: Concurrent: ContextShift](socketGroup: SocketGroup): Stream[F, Unit] =
+def client[F[_]: MonadCancelThrow: Console](socketGroup: SocketGroup[F]): Stream[F, Unit] =
   Stream.resource(socketGroup.client(new InetSocketAddress("localhost", 5555))).flatMap { socket =>
     Stream("Hello, world!")
       .interleave(Stream.constant("\n"))
       .through(text.utf8Encode)
-      .through(socket.writes())
-      .drain ++
+      .through(socket.writes()) ++
         socket.reads(8192)
           .through(text.utf8Decode)
           .through(text.lines)
           .head
           .evalMap { response =>
-            Sync[F].delay(println(s"Response: $response"))
+            Console[F].println(s"Response: $response")
           }
   }
 ```
@@ -125,11 +122,12 @@ If a TCP connection cannot be established, `socketGroup.client` fails with a `ja
 
 ```scala mdoc:nest
 import scala.concurrent.duration._
-import cats.effect.Timer
+import cats.effect.Temporal
+import fs2.io.tcp.Socket
 import java.net.ConnectException
 
-def connect[F[_]: Concurrent: ContextShift: Timer](
-    socketGroup: SocketGroup, 
+def connect[F[_]: Temporal](
+    socketGroup: SocketGroup[F], 
     address: InetSocketAddress): Stream[F, Socket[F]] =
   Stream.resource(socketGroup.client(address))
     .handleErrorWith {
@@ -137,31 +135,32 @@ def connect[F[_]: Concurrent: ContextShift: Timer](
         connect(socketGroup, address).delayBy(5.seconds)
     }
 
-def client[F[_]: Concurrent: ContextShift: Timer](socketGroup: SocketGroup): Stream[F, Unit] =
+def client[F[_]: Temporal: Console](socketGroup: SocketGroup[F]): Stream[F, Unit] =
   connect(socketGroup, new InetSocketAddress("localhost", 5555)).flatMap { socket =>
     Stream("Hello, world!")
       .interleave(Stream.constant("\n"))
       .through(text.utf8Encode)
-      .through(socket.writes())
-      .drain ++
+      .through(socket.writes()) ++
         socket.reads(8192)
           .through(text.utf8Decode)
           .through(text.lines)
           .head
           .evalMap { response =>
-            Sync[F].delay(println(s"Response: $response"))
+            Console[F].println(s"Response: $response")
           }
   }
 ```
 
-We've extract the `socketGroup.client` call in to a new method called `connect`. The connect method attempts to create a client and handles the `ConnectException`. Upon encountering the exception, we call `connect` recursively after a 5 second delay. Because we are using `delayBy`, we needed to add a `Timer` constraint to `F`. This same pattern could be used for more advanced retry strategies -- e.g., exponential delays and failing after a fixed number of attempts. Streams that call methods on `Socket` can fail with exceptions due to loss of the underlying TCP connection. Such exceptions can be handled in a similar manner.
+We've extract the `socketGroup.client` call in to a new method called `connect`. The connect method attempts to create a client and handles the `ConnectException`. Upon encountering the exception, we call `connect` recursively after a 5 second delay. Because we are using `delayBy`, we needed to add a `Temporal` constraint to `F`. This same pattern could be used for more advanced retry strategies -- e.g., exponential delays and failing after a fixed number of attempts. Streams that call methods on `Socket` can fail with exceptions due to loss of the underlying TCP connection. Such exceptions can be handled in a similar manner.
 
 ### Servers
 
 Now let's implement a server application that communicates with the client app we just built. The server app will be a simple echo server -- for each line of text it receives, it will reply with the same line.
 
 ```scala mdoc
-def echoServer[F[_]: Concurrent: ContextShift](socketGroup: SocketGroup): F[Unit] =
+import cats.effect.Concurrent
+
+def echoServer[F[_]: Concurrent](socketGroup: SocketGroup[F]): F[Unit] =
   socketGroup.server(new InetSocketAddress(5555)).map { clientResource =>
     Stream.resource(clientResource).flatMap { client =>
       client.reads(8192)
@@ -200,13 +199,13 @@ UDP support works much the same way as TCP. The `fs2.io.udp.Socket` trait provid
 Adapting the TCP client example for UDP gives us the following:
 
 ```scala mdoc:reset
-import fs2.{Chunk, text, Stream}
-import fs2.io.udp.{Packet, Socket, SocketGroup}
-import cats.effect.{Concurrent, ContextShift, Sync}
-import cats.syntax.all._
+import fs2.{Stream, text}
+import fs2.io.udp.{Packet, SocketGroup}
+import cats.effect.Concurrent
+import cats.effect.std.Console
 import java.net.InetSocketAddress
 
-def client[F[_]: Concurrent: ContextShift](socketGroup: SocketGroup): F[Unit] = {
+def client[F[_]: Concurrent: Console](socketGroup: SocketGroup[F]): F[Unit] = {
   val address = new InetSocketAddress("localhost", 5555)
   Stream.resource(socketGroup.open()).flatMap { socket =>
     Stream("Hello, world!")
@@ -219,7 +218,7 @@ def client[F[_]: Concurrent: ContextShift](socketGroup: SocketGroup): F[Unit] = 
           .flatMap(packet => Stream.chunk(packet.bytes))
           .through(text.utf8Decode)
           .evalMap { response =>
-            Sync[F].delay(println(s"Response: $response"))
+            Console[F].println(s"Response: $response")
           }
   }.compile.drain
 }
@@ -228,7 +227,7 @@ def client[F[_]: Concurrent: ContextShift](socketGroup: SocketGroup): F[Unit] = 
 When writing, we map each chunk of bytes to a `Packet`, which includes the destination address of the packet. When reading, we convert the `Stream[F, Packet]` to a `Stream[F, Byte]` via `flatMap(packet => Stream.chunk(packet.bytes))`. Otherwise, the example is unchanged.
 
 ```scala mdoc
-def echoServer[F[_]: Concurrent: ContextShift](socketGroup: SocketGroup): F[Unit] =
+def echoServer[F[_]: Concurrent](socketGroup: SocketGroup[F]): F[Unit] =
   Stream.resource(socketGroup.open(new InetSocketAddress(5555))).flatMap { socket =>
     socket.reads().through(socket.writes())
   }.compile.drain
@@ -238,12 +237,12 @@ The UDP server implementation is much different than the TCP server implementati
 
 ## TLS
 
-The `fs2.io.tls` package provides support for TLS over TCP and DTLS over UDP, built on top of `javax.net.ssl`. TLS over TCP is provided by the `TLSSocket` trait, which is instantiated by methods on `TLSContext`. A `TLSContext` provides cryptographic material used in TLS session establishment -- e.g., the set of certificates that are trusted (sometimes referred to as a trust store) and optionally, the set of certificates identifying this application (sometimes referred to as a key store). The `TLSContext` companion provides many ways to construct a `TLSContext` -- for example:
-- `TLSContext.system(blocker)` - delegates to `javax.net.ssl.SSLContext.getDefault`, which uses the JDK default set of trusted certificates
-- `TLSContext.fromKeyStoreFile(pathToFile, storePassword, keyPassword, blocker)` - loads a Java Key Store file
-- `TLSContext.insecure(blocker)` - trusts all certificates - note: this is dangerously insecure - only use for quick tests
+The `fs2.io.tls` package provides support for TLS over TCP and DTLS over UDP, built on top of `javax.net.ssl`. TLS over TCP is provided by the `TLSSocket` trait, which is instantiated by methods on `TLSContext`. A `TLSContext` provides cryptographic material used in TLS session establishment -- e.g., the set of certificates that are trusted (sometimes referred to as a trust store) and optionally, the set of certificates identifying this application (sometimes referred to as a key store). The `TLSContext.Builder` trait provides many ways to construct a `TLSContext` -- for example:
+- `system(blocker)` - delegates to `javax.net.ssl.SSLContext.getDefault`, which uses the JDK default set of trusted certificates
+- `fromKeyStoreFile(pathToFile, storePassword, keyPassword, blocker)` - loads a Java Key Store file
+- `insecure(blocker)` - trusts all certificates - note: this is dangerously insecure - only use for quick tests
 
-A `TLSContext` is typically created at application startup and used for all sockets for the lifetime of the application. Once a `TLSContext` has been created, the `client` and `server` methods are used to create `TLSSocket` instances (and `dtlsClient` / `dtlsServer` methods for `DTLSSocket`). In each case, a regular socket must be provided, which the `TLSSocket` will use for performing the TLS handshake as well as transmitting and receiving encrypted data. `TLSSocket` extends `fs2.io.tcp.Socket`, making the addition of TLS support a drop in replacement for a program using `fs2-io`.
+A `TLSContext` is typically created at application startup, via `Network[F].tlsContext`, and used for all sockets for the lifetime of the application. Once a `TLSContext` has been created, the `client` and `server` methods are used to create `TLSSocket` instances (and `dtlsClient` / `dtlsServer` methods for `DTLSSocket`). In each case, a regular socket must be provided, which the `TLSSocket` will use for performing the TLS handshake as well as transmitting and receiving encrypted data. `TLSSocket` extends `fs2.io.tcp.Socket`, making the addition of TLS support a drop in replacement for a program using `fs2-io`.
 
 Adapting the TCP echo client for TLS looks like this:
 
@@ -251,27 +250,27 @@ Adapting the TCP echo client for TLS looks like this:
 import fs2.{Chunk, Stream, text}
 import fs2.io.tcp.SocketGroup
 import fs2.io.tls.TLSContext
-import cats.effect.{Concurrent, ContextShift, Sync}
+import cats.effect.MonadCancelThrow
+import cats.effect.std.Console
 import cats.syntax.all._
 import java.net.InetSocketAddress
 
-def client[F[_]: Concurrent: ContextShift](
-  socketGroup: SocketGroup,
-  tlsContext: TLSContext): Stream[F, Unit] = {
+def client[F[_]: MonadCancelThrow: Console](
+  socketGroup: SocketGroup[F],
+  tlsContext: TLSContext[F]): Stream[F, Unit] = {
   val address = new InetSocketAddress("localhost", 5555)
   Stream.resource(socketGroup.client(address)).flatMap { underlyingSocket =>
     Stream.resource(tlsContext.client(underlyingSocket)).flatMap { socket =>
       Stream("Hello, world!")
         .interleave(Stream.constant("\n"))
         .through(text.utf8Encode)
-        .through(socket.writes())
-        .drain ++
+        .through(socket.writes()) ++
           socket.reads(8192)
             .through(text.utf8Decode)
             .through(text.lines)
             .head
             .evalMap { response =>
-              Sync[F].delay(println(s"Response: $response"))
+              Console[F].println(s"Response: $response")
             }
     }
   }
@@ -289,11 +288,11 @@ import fs2.io.tls.{TLSParameters, TLSSocket}
 import cats.effect.Resource
 import javax.net.ssl.SNIHostName
 
-def tlsClientWithSni[F[_]: Concurrent: ContextShift](
-  socketGroup: SocketGroup,
-  tlsContext: TLSContext,
+def tlsClientWithSni[F[_]: MonadCancelThrow](
+  socketGroup: SocketGroup[F],
+  tlsContext: TLSContext[F],
   address: InetSocketAddress): Resource[F, TLSSocket[F]] =
-  socketGroup.client[F](address).flatMap { underlyingSocket =>
+  socketGroup.client(address).flatMap { underlyingSocket =>
     tlsContext.client(
       underlyingSocket,
       TLSParameters(
@@ -313,12 +312,12 @@ In this example, we've configured the TLS session to require TLS 1.3 and we've a
 In the following example, we extract various information about the session, in order to help debug TLS connections.
 
 ```scala mdoc
-def debug[F[_]: Concurrent: ContextShift](
-    socketGroup: SocketGroup,
-    tlsContext: TLSContext,
+def debug[F[_]: MonadCancelThrow](
+    socketGroup: SocketGroup[F],
+    tlsContext: TLSContext[F],
     address: InetSocketAddress
 ): F[String] =
-  socketGroup.client[F](address).use { underlyingSocket =>
+  socketGroup.client(address).use { underlyingSocket =>
     tlsContext
       .client(
         underlyingSocket,
@@ -350,28 +349,27 @@ The `fs2.io.file` package object also provides many ways to interact with the fi
 
 # Console Operations
 
-Writing to the console is often as simple as `s.evalMap(o => IO(println(o)))`. This works fine for quick tests but can be problematic in large applications. The call to `println` blocks until data can be written to the output stream for standard out. This can cause fairness issues with other, non-blocking, operations running on the main thread pool. For such situations, `fs2-io` provides a couple of utilities:
+Writing to the console is often as simple as `s.evalMap(o => IO.println(o))`. This works fine for quick tests but can be problematic in large applications. The call to `println` blocks until data can be written to the output stream for standard out. This can cause fairness issues with other, non-blocking, operations running on the main thread pool. For such situations, `fs2-io` provides a couple of utilities:
 
 ```scala
-def stdoutLines[F[_]: Sync: ContextShift, O: Show](
-    blocker: Blocker,
+def stdoutLines[F[_]: Sync, O: Show](
     charset: Charset = utf8Charset
 ): Pipe[F, O, INothing]
 
-def stdout[F[_]: Sync: ContextShift](blocker: Blocker): Pipe[F, Byte, INothing]
+def stdout[F[_]: Sync]: Pipe[F, Byte, INothing]
 ```
 
-Both of these pipes are provided in the `fs2.io` package object. Both wrap calls to the console with a `blocker.delay` to avoid fairness issues. The `stdoutLines` method uses a `Show[O]` instance to convert the stream elements to strings. Note these pipes may be more expensive than simplying doing a blocking println, depending on the application. We're trading fairness for the overhead of shifting execution to a blocking thread pool.
+Both of these pipes are provided in the `fs2.io` package object.  The `stdoutLines` method uses a `Show[O]` instance to convert the stream elements to strings.
 
 The `fs2.io` package object also provides a couple of utilities for reading values from the console:
 
 ```scala
-def stdin[F[_]: Sync: ContextShift](bufSize: Int, blocker: Blocker): Stream[F, Byte]
+def stdin[F[_]: Sync](bufSize: Int): Stream[F, Byte]
 
-def stdinUtf8[F[_]: Sync: ContextShift](bufSize: Int, blocker: Blocker): Stream[F, String]
+def stdinUtf8[F[_]: Sync](bufSize: Int): Stream[F, String]
 ```
 
-Like the output variants, these operations perform blocking reads on a blocking pool.
+Like the output variants, these operations perform blocking reads on the blocking pool.
 
 # Java Stream Interop
 

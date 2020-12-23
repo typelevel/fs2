@@ -104,6 +104,8 @@ eff.toList
 Here's a complete example of running an effectful stream. We'll explain this in a minute:
 
 ```scala mdoc
+import cats.effect.unsafe.implicits.global
+
 eff.compile.toVector.unsafeRunSync()
 ```
 
@@ -135,13 +137,7 @@ FS2 streams are chunked internally for performance. You can construct an individ
 ```scala mdoc
 import fs2.Chunk
 
-val s1c = Stream.chunk(Chunk.doubles(Array(1.0, 2.0, 3.0)))
-
-s1c.mapChunks { ds =>
-  val doubles = ds.toDoubles
-  /* do things unboxed using doubles.{values,size} */
- doubles
-}
+val s1c = Stream.chunk(Chunk.array(Array(1.0, 2.0, 3.0)))
 ```
 
 Note: FS2 used to provide an alternative to `Chunk` which was potentially infinite and supported fusion of arbitrary operations. This type was called `Segment`.
@@ -182,7 +178,7 @@ val err3 = Stream.eval(IO(throw new Exception("error in effect!!!")))
 All these fail when running:
 
 ```scala mdoc
-try err.compile.toList.unsafeRunSync catch { case e: Exception => println(e) }
+try err.compile.toList.unsafeRunSync() catch { case e: Exception => println(e) }
 ```
 
 ```scala mdoc
@@ -239,12 +235,12 @@ FS2 guarantees _once and only once_ semantics for resource cleanup actions intro
 
 ### Exercises Stream Building
 
-Implement `repeat`, which repeats a stream indefinitely, `drain`, which strips all output from a stream, `eval_`, which runs an effect and ignores its output, and `attempt`, which catches any errors produced by a stream:
+Implement `repeat`, which repeats a stream indefinitely, `drain`, which strips all output from a stream, `exec`, which runs an effect and ignores its output, and `attempt`, which catches any errors produced by a stream:
 
 ```scala mdoc
 Stream(1,0).repeat.take(6).toList
 Stream(1,2,3).drain.toList
-Stream.eval_(IO(println("!!"))).compile.toVector.unsafeRunSync()
+Stream.exec(IO.println("!!")).compile.toVector.unsafeRunSync()
 (Stream(1,2) ++ Stream(3).map(_ => throw new Exception("nooo!!!"))).attempt.toList
 ```
 
@@ -262,7 +258,7 @@ def tk[F[_],O](n: Long): Pipe[F,O,O] =
     if (n <= 0) None
     else Some(c => c.size match {
       case m if m < n => (n - m, c)
-      case m => (0, c.take(n.toInt))
+      case _ => (0, c.take(n.toInt))
     })
   }
 
@@ -309,7 +305,7 @@ def tk[F[_],O](n: Long): Pipe[F,O,O] = {
       case Some((hd,tl)) =>
         hd.size match {
           case m if m <= n => Pull.output(hd) >> go(tl, n - m)
-          case m => Pull.output(hd.take(n.toInt)) >> Pull.done
+          case _ => Pull.output(hd.take(n.toInt)) >> Pull.done
         }
       case None => Pull.done
     }
@@ -384,9 +380,8 @@ Stream(1,2,3).merge(Stream.eval(IO { Thread.sleep(200); 4 })).compile.toVector.u
 Oops, we need a `cats.effect.ContextShift[IO]` in implicit scope. Let's add that:
 
 ```scala mdoc
-import cats.effect.{ContextShift, IO}
-
-implicit val ioContextShift: ContextShift[IO] = IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
+import cats.effect.IO
+import cats.effect.unsafe.implicits.global
 
 Stream(1,2,3).merge(Stream.eval(IO { Thread.sleep(200); 4 })).compile.toVector.unsafeRunSync()
 ```
@@ -426,13 +421,10 @@ In the following example we will see how `interruptWhen` helps us to describe su
 First of all we will need to set up the environment with some imports and declare some implicit values.
 ```scala mdoc:reset
 import fs2.Stream
-import cats.effect.IO
-import cats.effect.concurrent.Deferred
-import scala.concurrent.ExecutionContext
+import cats.effect.{Deferred, IO}
+import cats.effect.unsafe.implicits.global
 import scala.concurrent.duration._
 
-implicit val contextShift = IO.contextShift(ExecutionContext.global)
-implicit val timer = IO.timer(ExecutionContext.global)
 ```
 
 The example looks like this:
@@ -450,7 +442,7 @@ val program =
       .concurrently(switcher)
   }
 
-program.compile.drain.unsafeRunSync
+program.compile.drain.unsafeRunSync()
 ```
 
 Let's take this line by line now, so we can understand what's going on.
@@ -490,7 +482,7 @@ val program1 =
     metered(1.second).
     interruptAfter(5.seconds)
 
-program1.compile.drain.unsafeRunSync
+program1.compile.drain.unsafeRunSync()
 ```
 
 ### Talking to the external world
@@ -510,7 +502,7 @@ These are easy to deal with. Just wrap these effects in a `Stream.eval`:
 ```scala mdoc
 def destroyUniverse(): Unit = { println("BOOOOM!!!"); } // stub implementation
 
-val s = Stream.eval_(IO { destroyUniverse() }) ++ Stream("...moving on")
+val s = Stream.exec(IO { destroyUniverse() }) ++ Stream("...moving on")
 s.compile.toVector.unsafeRunSync()
 ```
 
@@ -520,7 +512,7 @@ The way you bring synchronous effects into your effect type may differ. `Sync.de
 import cats.effect.Sync
 
 val T = Sync[IO]
-val s2 = Stream.eval_(T.delay { destroyUniverse() }) ++ Stream("...moving on")
+val s2 = Stream.exec(T.delay { destroyUniverse() }) ++ Stream("...moving on")
 s2.compile.toVector.unsafeRunSync()
 ```
 
@@ -545,7 +537,7 @@ trait Connection {
 That is, we provide a `Connection` with two callbacks (or a single callback that accepts an `Either`), and at some point later, the callback will be invoked _once_. The `cats.effect.Async` trait provides a handy function in these situations:
 
 ```Scala
-trait Async[F[_]] extends MonadError[F, Throwable] {
+trait Async[F[_]] extends Sync[F] with Temporal[F] {
   ...
   /**
    Create an `F[A]` from an asynchronous computation, which takes the form
@@ -553,7 +545,7 @@ trait Async[F[_]] extends MonadError[F, Throwable] {
    to translate from a callback-based API to a straightforward monadic
    version.
    */
-  def async[A](register: (Either[Throwable,A] => Unit) => Unit): F[A]
+  def async_[A](register: (Either[Throwable,A] => Unit) => Unit): F[A]
 }
 ```
 
@@ -567,9 +559,7 @@ val c = new Connection {
   }
 }
 
-val bytes = cats.effect.Async[IO].async[Array[Byte]] { (cb: Either[Throwable,Array[Byte]] => Unit) =>
-  c.readBytesE(cb)
-}
+val bytes = IO.async_[Array[Byte]] { cb => c.readBytesE(cb) }
 
 Stream.eval(bytes).map(_.toList).compile.toVector.unsafeRunSync()
 ```
@@ -588,8 +578,8 @@ Let's look at a complete example:
 
 ```scala mdoc:reset
 import fs2._
-import fs2.concurrent._
-import cats.effect.{ConcurrentEffect, ContextShift, IO}
+import cats.effect.Async
+import cats.effect.std.{Dispatcher, Queue}
 
 type Row = List[String]
 type RowOrError = Either[Throwable, Row]
@@ -598,21 +588,20 @@ trait CSVHandle {
   def withRows(cb: RowOrError => Unit): Unit
 }
 
-def rows[F[_]](h: CSVHandle)(implicit F: ConcurrentEffect[F], cs: ContextShift[F]): Stream[F,Row] = {
+def rows[F[_]](h: CSVHandle)(implicit F: Async[F]): Stream[F,Row] = {
   for {
-    q <- Stream.eval(Queue.noneTerminated[F, RowOrError])
-    // Reminder: F.delay takes a lazy (by-name) argument. The block passed here doesn't get evaluated inside this `for`, 
-    //  but rather when the `rows` Stream is eventually interpreted
+    dispatcher <- Stream.resource(Dispatcher[F])
+    q <- Stream.eval(Queue.unbounded[F, Option[RowOrError]])
     _ <- Stream.eval { F.delay {
-      def enqueue(v: Option[RowOrError]): Unit = F.runAsync(q.enqueue1(v))(_ => IO.unit).unsafeRunSync()
+      def enqueue(v: Option[RowOrError]): Unit = dispatcher.unsafeRunAndForget(q.offer(v))
 
       // Fill the data - withRows blocks while reading the file, asynchronously invoking the callback we pass to it on every row
       h.withRows(e => enqueue(Some(e))) 
       // Upon returning from withRows, signal that our stream has ended.
       enqueue(None)
-    } }
-    // Because `q` is a `NoneTerminatedQueue`, the `dequeue` stream will terminate when it comes upon a `None` value that was enqueued
-    row <- q.dequeue.rethrow
+    }}
+    // Due to `fromQueueNoneTerminated`, the stream will terminate when it encounters a `None` value
+    row <- Stream.fromQueueNoneTerminated(q).rethrow
   } yield row
 }
 ```
@@ -636,14 +625,7 @@ You may require the following imports:
 ```scala mdoc:reset
 import fs2._
 import fs2.interop.reactivestreams._
-import cats.effect.{ContextShift, IO}
-import scala.concurrent.ExecutionContext
-```
-
-A `ContextShift` instance is necessary when working with `IO`
-
-```scala mdoc
-implicit val contextShift: ContextShift[IO] = IO.contextShift(ExecutionContext.global)
+import cats.effect.{IO, Resource}
 ```
 
 To convert a `Stream` into a downstream unicast `org.reactivestreams.Publisher`:
@@ -656,8 +638,10 @@ stream.toUnicastPublisher
 To convert an upstream `org.reactivestreams.Publisher` into a `Stream`:
 
 ```scala mdoc
-val publisher: StreamUnicastPublisher[IO, Int] = Stream(1, 2, 3).covary[IO].toUnicastPublisher
-publisher.toStream[IO]
+val publisher: Resource[IO, StreamUnicastPublisher[IO, Int]] = Stream(1, 2, 3).covary[IO].toUnicastPublisher
+publisher.use { p =>
+  p.toStream[IO].compile.toList
+}
 ```
 
 A unicast publisher must have a single subscriber only.
@@ -696,6 +680,8 @@ Let's look at some examples of how this plays out, starting with the synchronous
 ```scala mdoc:reset
 import fs2._
 import cats.effect.IO
+import cats.effect.unsafe.implicits.global
+
 case object Err extends Throwable
 
 (Stream(1) ++ Stream(2).map(_ => throw Err)).take(1).toList
@@ -722,9 +708,6 @@ Stream(1).covary[IO].
 That covers synchronous interrupts. Let's look at asynchronous interrupts. Ponder what the result of `merged` will be in this example:
 
 ```scala mdoc
-import cats.effect.ContextShift
-
-implicit lazy val ioContextShift: ContextShift[IO] = IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
 val s1 = (Stream(1) ++ Stream(2)).covary[IO]
 val s2 = (Stream.empty ++ Stream.raiseError[IO](Err)).handleErrorWith { e => println(e); Stream.raiseError[IO](e) }
 val merged = s1 merge s2 take 1
