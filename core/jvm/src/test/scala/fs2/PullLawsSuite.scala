@@ -29,6 +29,7 @@ import cats.syntax.all._
 
 import org.scalacheck.{Arbitrary, Prop}
 
+// TODO Adopt CE3 test runners when available (https://github.com/typelevel/cats-effect/issues/1438) and move back to shared directory
 class PullLawsSuite extends Fs2Suite {
 
   implicit def eqIo[A: Eq]: Eq[IO[A]] =
