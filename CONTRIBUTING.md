@@ -30,7 +30,7 @@ Remember to follow the [code of conduct][coc] in online and offline discourse.
 
 ### Prerequisites
 
-You'll need JDK 11, [sbt][sbt], [Node.JS][node] (for running ScalaJS tests) and [Jekyll][jekyll] (for building the microsite).
+You'll need JDK 11, [sbt][sbt], [Node.js][node] (for running Scala.js tests) and [Jekyll][jekyll] (for building the microsite).
 
 We use several sbt plugins to build and check the project, including [MiMa (Migration Manager)][mima], [scalafmt][scalafmt] and [sbt-microsites][sbt-microsites].
 
