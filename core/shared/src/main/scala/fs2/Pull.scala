@@ -1118,8 +1118,10 @@ private[fs2] class PullMonadErrorInstance[F[_], O] extends MonadError[Pull[F, O,
 
 private[fs2] class PullSyncInstance[F[_], O](implicit F: Sync[F])
     extends PullMonadErrorInstance[F, O]
-    with Sync[Pull[F, O, *]] {
+    with Sync[Pull[F, O, *]]
+    with MonadCancel.Uncancelable[Pull[F, O, *], Throwable] {
   def monotonic: Pull[F, O, FiniteDuration] = Pull.eval(F.monotonic)
   def realTime: Pull[F, O, FiniteDuration] = Pull.eval(F.realTime)
   def suspend[A](hint: Sync.Type)(thunk: => A): Pull[F, O, A] = Pull.eval(F.suspend(hint)(thunk))
+  def forceR[A, B](fa: Pull[F, O, A])(fb: Pull[F, O, B]): Pull[F, O, B] = flatMap(fa)(_ => fb)
 }
