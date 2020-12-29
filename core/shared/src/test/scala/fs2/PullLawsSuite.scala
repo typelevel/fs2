@@ -19,26 +19,58 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-// TODO
-// package fs2
+package fs2
 
-// import cats.Eq
-// import cats.effect.IO
-// import cats.effect.laws.discipline.arbitrary._
-// import cats.effect.laws.util.TestContext
-// import cats.effect.laws.util.TestInstances._
-// import cats.syntax.all._
-// import cats.effect.laws.discipline._
+import cats.Eq
+import cats.effect.{Concurrent, Deferred, IO}
+import cats.effect.laws.{MonadCancelTests, SyncTests}
+import cats.effect.testkit.SyncTypeGenerators._
+import cats.syntax.all._
 
-// class PullLawsSuite extends Fs2Suite {
-//   implicit val ec: TestContext = TestContext()
+import org.scalacheck.{Arbitrary, Prop}
 
-//   implicit def eqPull[O: Eq, R: Eq]: Eq[Pull[IO, O, R]] = {
-//     def normalize(p: Pull[IO, O, R]): IO[Vector[Either[O, R]]] =
-//       p.mapOutput(Either.left(_)).flatMap(r => Pull.output1(Right(r))).stream.compile.toVector
+class PullLawsSuite extends Fs2Suite {
 
-//     Eq.instance((x, y) => Eq.eqv(normalize(x), normalize(y)))
-//   }
+  implicit def eqIo[A: Eq]: Eq[IO[A]] =
+    Eq.instance((x, y) =>
+      Eq[Either[Throwable, A]].eqv(x.attempt.unsafeRunSync(), y.attempt.unsafeRunSync())
+    )
 
-//   checkAll("Sync[Pull[F, O, *]]", SyncTests[Pull[IO, Int, *]].sync[Int, Int, Int])
-// }
+  implicit def eqThrowable: Eq[Throwable] = Eq.fromUniversalEquals
+
+  // TODO: Get a real arbitrary instance from cats-effect testkit
+  implicit def arbIo[A: Arbitrary]: Arbitrary[IO[A]] =
+    Arbitrary(Arbitrary.arbitrary[A].map(IO.pure))
+
+  def toStreamAndResult[F[_]: Concurrent, O, R](pull: Pull[F, O, R]): F[(Stream[F, O], F[R])] =
+    Deferred[F, R].map { result =>
+      (pull.flatMap(r => Pull.eval(result.complete(r).void)).stream, result.get)
+    }
+
+  implicit def pullToProp[O](pull: Pull[IO, O, Boolean]): Prop =
+    Prop(
+      toStreamAndResult(pull)
+        .flatMap { case (stream, result) =>
+          stream.compile.drain >> result
+        }
+        .unsafeRunSync()
+    )
+
+  implicit def eqPull[O: Eq, R: Eq]: Eq[Pull[IO, O, R]] = {
+    def run(p: Pull[IO, O, R]): IO[(List[O], R)] =
+      for {
+        (stream, result) <- toStreamAndResult(p)
+        output <- stream.compile.toList
+        r <- result
+      } yield (output, r)
+
+    Eq.instance((x, y) => Eq.eqv(run(x), run(y)))
+  }
+
+  checkAll("Sync[Pull[F, O, *]]", SyncTests[Pull[IO, Int, *]].sync[Int, Int, Int])
+  // Note: SyncTests should include MonadCancelTests but do not currently, so we run the monad cancel tests manually
+  checkAll(
+    "MonadCancelThrow[Pull[F, O, *]]",
+    MonadCancelTests[Pull[IO, Int, *], Throwable].monadCancel[Int, Int, Int]
+  )
+}
