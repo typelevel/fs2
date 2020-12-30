@@ -23,15 +23,13 @@ package fs2
 
 import cats.Eq
 import cats.effect.{Concurrent, Deferred, IO}
-import cats.effect.laws.{MonadCancelTests, SyncTests}
-import cats.effect.kernel.testkit.TestContext
-import cats.effect.kernel.testkit.SyncTypeGenerators._
-import cats.effect.testkit.CatsEffectInstances
+import cats.effect.laws.SyncTests
+import cats.effect.testkit.TestInstances
 import cats.syntax.all._
 
 import org.scalacheck.Prop
 
-class PullLawsSuite extends Fs2Suite with CatsEffectInstances {
+class PullLawsSuite extends Fs2Suite with TestInstances {
 
   def toStreamAndResult[F[_]: Concurrent, O, R](pull: Pull[F, O, R]): F[(Stream[F, O], F[R])] =
     Deferred[F, R].map { result =>
@@ -56,13 +54,7 @@ class PullLawsSuite extends Fs2Suite with CatsEffectInstances {
   }
 
   {
-    implicit val ticker: Ticker = Ticker(TestContext())
-
+    implicit val ticker: Ticker = Ticker()
     checkAll("Sync[Pull[F, O, *]]", SyncTests[Pull[IO, Int, *]].sync[Int, Int, Int])
-    // Note: SyncTests should include MonadCancelTests but do not currently, so we run the monad cancel tests manually
-    checkAll(
-      "MonadCancelThrow[Pull[F, O, *]]",
-      MonadCancelTests[Pull[IO, Int, *], Throwable].monadCancel[Int, Int, Int]
-    )
   }
 }

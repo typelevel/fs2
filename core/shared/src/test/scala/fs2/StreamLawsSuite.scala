@@ -23,13 +23,12 @@ package fs2
 
 import cats.Eq
 import cats.effect.IO
-import cats.effect.kernel.testkit.TestContext
-import cats.effect.testkit.CatsEffectInstances
+import cats.effect.testkit.TestInstances
 import cats.laws.discipline._
 import cats.laws.discipline.arbitrary._
 
-class StreamLawsSuite extends Fs2Suite with CatsEffectInstances {
-  implicit val ticker: Ticker = Ticker(TestContext())
+class StreamLawsSuite extends Fs2Suite with TestInstances {
+  implicit val ticker: Ticker = Ticker()
 
   implicit def eqStream[O: Eq]: Eq[Stream[IO, O]] =
     Eq.instance((x, y) =>
