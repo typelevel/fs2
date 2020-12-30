@@ -873,19 +873,16 @@ object Pull extends PullLowPriority {
               }
           }
         }
-        val maybeCloseExtendedScope: F[Boolean] =
+        val maybeCloseExtendedScope: F[Option[Scope[F]]] =
           // If we're opening a new top-level scope (aka, direct descendant of root),
           // close the current extended top-level scope if it is defined.
-          if (scope.parent.isEmpty)
-            extendedTopLevelScope match {
-              case None    => false.pure[F]
-              case Some(s) => s.close(ExitCase.Succeeded).rethrow.as(true)
-            }
-          else F.pure(false)
+          if (scope.isRoot && extendedTopLevelScope.isDefined)
+            extendedTopLevelScope.traverse_(_.close(ExitCase.Succeeded).rethrow).as(None)
+          else
+            F.pure(extendedTopLevelScope)
 
         val vrun = new ViewRunner(view)
-        val tail = maybeCloseExtendedScope.flatMap { closedExtendedScope =>
-          val newExtendedScope = if (closedExtendedScope) None else extendedTopLevelScope
+        val tail = maybeCloseExtendedScope.flatMap { newExtendedScope =>
           scope.open(useInterruption).rethrow.flatMap { childScope =>
             go(childScope, newExtendedScope, translation, vrun, boundToScope(childScope.id))
           }
@@ -894,44 +891,43 @@ object Pull extends PullLowPriority {
       }
 
       def goCloseScope(close: CloseScope, view: Cont[Unit, G, X]): F[End] = {
-        def closeAndGo(toClose: Scope[F]) =
-          toClose.close(close.exitCase).flatMap { r =>
-            toClose.openAncestor.flatMap { ancestor =>
-              val res = close.interruption match {
-                case None => Result.fromEither(r)
-                case Some(Result.Interrupted(interruptedScopeId, err)) =>
-                  def err1 = CompositeFailure.fromList(r.swap.toOption.toList ++ err.toList)
-                  if (ancestor.findSelfOrAncestor(interruptedScopeId).isDefined)
-                    // we still have scopes to interrupt, lets build interrupted tail
-                    Result.Interrupted(interruptedScopeId, err1)
-                  else
-                    // interrupts scope was already interrupted, resume operation
-                    err1 match {
-                      case None      => Result.unit
-                      case Some(err) => Result.Fail(err)
-                    }
-              }
-              go(ancestor, extendedTopLevelScope, translation, endRunner, view(res))
-            }
+        def closeResult(r: Either[Throwable, Unit], ancestor: Scope[F]): Result[Unit] =
+          close.interruption match {
+            case None => Result.fromEither(r)
+            case Some(Result.Interrupted(interruptedScopeId, err)) =>
+              def err1 = CompositeFailure.fromList(r.swap.toOption.toList ++ err.toList)
+              if (ancestor.descendsFrom(interruptedScopeId))
+                // we still have scopes to interrupt, lets build interrupted tail
+                Result.Interrupted(interruptedScopeId, err1)
+              else
+                // interrupts scope was already interrupted, resume operation
+                err1 match {
+                  case None      => Result.unit
+                  case Some(err) => Result.Fail(err)
+                }
           }
 
-        val scopeToClose: F[Option[Scope[F]]] = scope
-          .findSelfOrAncestor(close.scopeId)
-          .pure[F]
-          .orElse(scope.findSelfOrChild(close.scopeId))
-        scopeToClose.flatMap {
+        scope.findInLineage(close.scopeId).flatMap {
+          case Some(toClose) if toClose.isRoot =>
+            // Impossible - don't close root scope as a result of a `CloseScope` call
+            go(scope, extendedTopLevelScope, translation, endRunner, view(Result.unit))
+
+          case Some(toClose) if extendLastTopLevelScope && toClose.level == 1 =>
+            // Request to close the current top-level scope - if we're supposed to extend
+            // it instead, leave the scope open and pass it to the continuation
+            extendedTopLevelScope.traverse_(_.close(ExitCase.Succeeded).rethrow) *>
+              toClose.openAncestor.flatMap { ancestor =>
+                go(ancestor, Some(toClose), translation, endRunner, view(Result.unit))
+              }
+
           case Some(toClose) =>
-            if (toClose.parent.isEmpty)
-              // Impossible - don't close root scope as a result of a `CloseScope` call
-              go(scope, extendedTopLevelScope, translation, endRunner, view(Result.unit))
-            else if (extendLastTopLevelScope && toClose.parent.flatMap(_.parent).isEmpty)
-              // Request to close the current top-level scope - if we're supposed to extend
-              // it instead, leave the scope open and pass it to the continuation
-              extendedTopLevelScope.traverse_(_.close(ExitCase.Succeeded).rethrow) *>
-                toClose.openAncestor.flatMap { ancestor =>
-                  go(ancestor, Some(toClose), translation, endRunner, view(Result.unit))
-                }
-            else closeAndGo(toClose)
+            toClose.close(close.exitCase).flatMap { r =>
+              toClose.openAncestor.flatMap { ancestor =>
+                val res = closeResult(r, ancestor)
+                go(ancestor, extendedTopLevelScope, translation, endRunner, view(res))
+              }
+            }
+
           case None =>
             // scope already closed, continue with current scope
             val result = close.interruption.getOrElse(Result.unit)

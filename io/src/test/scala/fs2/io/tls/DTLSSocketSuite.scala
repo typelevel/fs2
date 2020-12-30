@@ -29,7 +29,7 @@ import java.net.InetSocketAddress
 
 import cats.effect.{IO, Resource}
 
-import fs2.io.udp.{Packet, Socket, SocketGroup}
+import fs2.io.udp.{Packet, Socket}
 
 class DTLSSocketSuite extends TLSSuite {
   group("DTLSSocket") {
@@ -38,15 +38,15 @@ class DTLSSocketSuite extends TLSSuite {
 
       def address(s: Socket[IO]) =
         Resource
-          .liftF(s.localAddress)
+          .eval(s.localAddress)
           .map(a => new InetSocketAddress("localhost", a.getPort))
 
       val setup = for {
-        tlsContext <- Resource.liftF(testTlsContext)
-        socketGroup <- SocketGroup[IO]
-        serverSocket <- socketGroup.open[IO]()
+        tlsContext <- Resource.eval(testTlsContext)
+        socketGroup <- Network[IO].udpSocketGroup
+        serverSocket <- socketGroup.open()
         serverAddress <- address(serverSocket)
-        clientSocket <- socketGroup.open[IO]()
+        clientSocket <- socketGroup.open()
         clientAddress <- address(clientSocket)
         tlsServerSocket <- tlsContext.dtlsServer(serverSocket, clientAddress, logger = logger)
         tlsClientSocket <- tlsContext.dtlsClient(clientSocket, serverAddress, logger = logger)

@@ -26,18 +26,16 @@ package tls
 import java.net.InetSocketAddress
 import javax.net.ssl.SNIHostName
 
-import fs2.io.tcp.SocketGroup
-
 import cats.effect.{Async, IO}
 import cats.syntax.all._
 
 object TLSDebug {
   def debug[F[_]: Async](
-      tlsContext: TLSContext,
+      tlsContext: TLSContext[F],
       address: InetSocketAddress
   ): F[String] =
-    SocketGroup[F]().use { socketGroup =>
-      socketGroup.client[F](address).use { rawSocket =>
+    Network[F].tcpSocketGroup.use { socketGroup =>
+      socketGroup.client(address).use { rawSocket =>
         tlsContext
           .client(
             rawSocket,
@@ -59,7 +57,7 @@ object TLSDebug {
 class TLSDebugTest extends Fs2Suite {
 
   def run(address: InetSocketAddress): IO[Unit] =
-    TLSContext.system[IO].flatMap { ctx =>
+    Network[IO].tlsContext.system.flatMap { ctx =>
       TLSDebug
         .debug[IO](ctx, address)
         .flatMap(l => IO(println(l)))
