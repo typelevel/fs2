@@ -45,7 +45,8 @@ class PullLawsSuite extends Fs2Suite with TestInstances {
   implicit def eqPull[O: Eq, R: Eq](implicit ticker: Ticker): Eq[Pull[IO, O, R]] = {
     def run(p: Pull[IO, O, R]): IO[(List[O], R)] =
       for {
-        (stream, result) <- toStreamAndResult(p)
+        streamAndResult <- toStreamAndResult(p)
+        (stream, result) = streamAndResult
         output <- stream.compile.toList
         r <- result
       } yield (output, r)
