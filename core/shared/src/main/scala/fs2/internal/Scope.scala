@@ -80,14 +80,27 @@ import fs2.internal.InterruptContext.InterruptionOutcome
   */
 private[fs2] final class Scope[F[_]] private (
     val id: Unique,
-    val parent: Option[Scope[F]],
-    val interruptible: Option[InterruptContext[F]],
+    private val parent: Option[Scope[F]],
+    interruptible: Option[InterruptContext[F]],
     private val state: Ref[F, Scope.State[F]]
 )(implicit val F: Compiler.Target[F]) { self =>
 
-  /** Registers supplied resource in this scope.
-    * Returns false and makes no registration if this scope has been closed.
+  def isRoot: Boolean = parent.isEmpty
+
+  /** Gives the level or distance of this scope from the root,
+    * where the root has level 0, its children level 1, etc.
     */
+  def level: Int = {
+    @tailrec def go(scope: Scope[F], acc: Int): Int = scope.parent match {
+      case None    => acc
+      case Some(s) => go(s, acc + 1)
+    }
+    go(this, 0)
+  }
+
+  /* Registers supplied resource in this scope.
+   * Returns false and makes no registration if this scope has been closed.
+   */
   private def register(resource: ScopedResource[F]): F[Boolean] =
     state.modify {
       case s: Scope.State.Open[F]   => (s.copy(resources = resource +: s.resources), true)
@@ -283,8 +296,12 @@ private[fs2] final class Scope[F[_]] private (
     go(self, Chain.empty)
   }
 
+  /** @returns true if the given `scopeId` identifies an ancestor of this scope, or false otherwise.
+    */
+  def descendsFrom(scopeId: Unique): Boolean = findSelfOrAncestor(scopeId).isDefined
+
   /** Finds ancestor of this scope given `scopeId`. */
-  def findSelfOrAncestor(scopeId: Unique): Option[Scope[F]] = {
+  private def findSelfOrAncestor(scopeId: Unique): Option[Scope[F]] = {
     @tailrec
     def go(curr: Scope[F]): Option[Scope[F]] =
       if (curr.id == scopeId) Some(curr)
@@ -296,8 +313,15 @@ private[fs2] final class Scope[F[_]] private (
     go(self)
   }
 
+  /** Looks for the scopeId in this scope lineage, that being either
+    * its ancestors or its descendants, but not lateral branches.
+    * (brothers, uncles, nephews, etc)
+    */
+  def findInLineage(scopeId: Unique): F[Option[Scope[F]]] =
+    findSelfOrAncestor(scopeId).pure[F].orElse(findSelfOrChild(scopeId))
+
   /** Finds scope in child hierarchy of current scope. */
-  def findSelfOrChild(scopeId: Unique): F[Option[Scope[F]]] = {
+  private def findSelfOrChild(scopeId: Unique): F[Option[Scope[F]]] = {
     def go(scopes: Chain[Scope[F]]): F[Option[Scope[F]]] =
       scopes.uncons match {
         case None => F.pure(None)
