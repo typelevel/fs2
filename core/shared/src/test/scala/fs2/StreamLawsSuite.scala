@@ -19,38 +19,37 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-// package fs2
+package fs2
 
-// import cats.Eq
-// import cats.effect.IO
-// import cats.effect.laws.discipline.arbitrary._
-// import cats.effect.laws.util.TestContext
-// import cats.effect.laws.util.TestInstances._
-// import cats.syntax.all._
-// import cats.laws.discipline._
-// import cats.laws.discipline.arbitrary._
+import cats.Eq
+import cats.effect.IO
+import cats.effect.kernel.testkit.TestContext
+import cats.effect.testkit.CatsEffectInstances
+import cats.laws.discipline._
+import cats.laws.discipline.arbitrary._
 
-// class StreamLawsSuite extends Fs2Suite {
-//   implicit val ec: TestContext = TestContext()
+class StreamLawsSuite extends Fs2Suite with CatsEffectInstances {
+  implicit val ticker: Ticker = Ticker(TestContext())
 
-//   implicit def eqStream[O: Eq]: Eq[Stream[IO, O]] =
-//     Eq.instance((x, y) =>
-//       Eq[IO[Vector[Either[Throwable, O]]]]
-//         .eqv(x.attempt.compile.toVector, y.attempt.compile.toVector)
-//     )
+  implicit def eqStream[O: Eq]: Eq[Stream[IO, O]] =
+    Eq.instance((x, y) =>
+      Eq[IO[Vector[Either[Throwable, O]]]]
+        .eqv(x.attempt.compile.toVector, y.attempt.compile.toVector)
+    )
 
-//   checkAll(
-//     "MonadError[Stream[F, *], Throwable]",
-//     MonadErrorTests[Stream[IO, *], Throwable].monadError[Int, Int, Int]
-//   )
-//   checkAll(
-//     "FunctorFilter[Stream[F, *]]",
-//     FunctorFilterTests[Stream[IO, *]].functorFilter[String, Int, Int]
-//   )
-//   checkAll("MonoidK[Stream[F, *]]", MonoidKTests[Stream[IO, *]].monoidK[Int])
-//   checkAll("Defer[Stream[F, *]]", DeferTests[Stream[IO, *]].defer[Int])
-//   checkAll(
-//     "Align[Stream[F, *]]",
-//     AlignTests[Stream[IO, *]].align[Int, Int, Int, Int]
-//   )
-// }
+  checkAll(
+    "MonadError[Stream[F, *], Throwable]",
+    MonadErrorTests[Stream[IO, *], Throwable].monadError[Int, Int, Int]
+  )
+  checkAll(
+    "FunctorFilter[Stream[F, *]]",
+    FunctorFilterTests[Stream[IO, *]].functorFilter[String, Int, Int]
+  )
+  checkAll("MonoidK[Stream[F, *]]", MonoidKTests[Stream[IO, *]].monoidK[Int])
+  checkAll("Defer[Stream[F, *]]", DeferTests[Stream[IO, *]].defer[Int])
+  checkAll(
+    "Align[Stream[F, *]]",
+    AlignTests[Stream[IO, *]].align[Int, Int, Int, Int]
+  )
+}
+

@@ -26,7 +26,7 @@ import scala.concurrent.ExecutionContext
 
 import cats.effect.IO
 import cats.effect.unsafe.{IORuntime, Scheduler}
-import cats.effect.testkit.TestContext
+import cats.effect.kernel.testkit.TestContext
 
 import munit.{CatsEffectSuite, ScalaCheckEffectSuite}
 import org.typelevel.discipline.Laws

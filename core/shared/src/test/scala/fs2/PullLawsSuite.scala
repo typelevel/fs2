@@ -24,40 +24,27 @@ package fs2
 import cats.Eq
 import cats.effect.{Concurrent, Deferred, IO}
 import cats.effect.laws.{MonadCancelTests, SyncTests}
-import cats.effect.testkit.SyncTypeGenerators._
+import cats.effect.kernel.testkit.TestContext
+import cats.effect.kernel.testkit.SyncTypeGenerators._
+import cats.effect.testkit.CatsEffectInstances
 import cats.syntax.all._
 
-import org.scalacheck.{Arbitrary, Prop}
+import org.scalacheck.Prop
 
-// TODO Adopt CE3 test runners when available (https://github.com/typelevel/cats-effect/issues/1438) and move back to shared directory
-class PullLawsSuite extends Fs2Suite {
-
-  implicit def eqIo[A: Eq]: Eq[IO[A]] =
-    Eq.instance((x, y) =>
-      Eq[Either[Throwable, A]].eqv(x.attempt.unsafeRunSync(), y.attempt.unsafeRunSync())
-    )
-
-  implicit def eqThrowable: Eq[Throwable] = Eq.fromUniversalEquals
-
-  // TODO: Get a real arbitrary instance from cats-effect testkit
-  implicit def arbIo[A: Arbitrary]: Arbitrary[IO[A]] =
-    Arbitrary(Arbitrary.arbitrary[A].map(IO.pure))
+class PullLawsSuite extends Fs2Suite with CatsEffectInstances {
 
   def toStreamAndResult[F[_]: Concurrent, O, R](pull: Pull[F, O, R]): F[(Stream[F, O], F[R])] =
     Deferred[F, R].map { result =>
       (pull.flatMap(r => Pull.eval(result.complete(r).void)).stream, result.get)
     }
 
-  implicit def pullToProp[O](pull: Pull[IO, O, Boolean]): Prop =
-    Prop(
-      toStreamAndResult(pull)
-        .flatMap { case (stream, result) =>
-          stream.compile.drain >> result
-        }
-        .unsafeRunSync()
-    )
+  implicit def pullToProp[O](pull: Pull[IO, O, Boolean])(implicit ticker: Ticker): Prop =
+    toStreamAndResult(pull)
+      .flatMap { case (stream, result) =>
+        stream.compile.drain >> result
+      }
 
-  implicit def eqPull[O: Eq, R: Eq]: Eq[Pull[IO, O, R]] = {
+  implicit def eqPull[O: Eq, R: Eq](implicit ticker: Ticker): Eq[Pull[IO, O, R]] = {
     def run(p: Pull[IO, O, R]): IO[(List[O], R)] =
       for {
         (stream, result) <- toStreamAndResult(p)
@@ -68,10 +55,14 @@ class PullLawsSuite extends Fs2Suite {
     Eq.instance((x, y) => Eq.eqv(run(x), run(y)))
   }
 
-  checkAll("Sync[Pull[F, O, *]]", SyncTests[Pull[IO, Int, *]].sync[Int, Int, Int])
-  // Note: SyncTests should include MonadCancelTests but do not currently, so we run the monad cancel tests manually
-  checkAll(
-    "MonadCancelThrow[Pull[F, O, *]]",
-    MonadCancelTests[Pull[IO, Int, *], Throwable].monadCancel[Int, Int, Int]
-  )
+  {
+    implicit val ticker: Ticker = Ticker(TestContext())
+
+    checkAll("Sync[Pull[F, O, *]]", SyncTests[Pull[IO, Int, *]].sync[Int, Int, Int])
+    // Note: SyncTests should include MonadCancelTests but do not currently, so we run the monad cancel tests manually
+    checkAll(
+      "MonadCancelThrow[Pull[F, O, *]]",
+      MonadCancelTests[Pull[IO, Int, *], Throwable].monadCancel[Int, Int, Int]
+    )
+  }
 }

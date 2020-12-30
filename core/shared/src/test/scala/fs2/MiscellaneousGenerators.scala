@@ -38,3 +38,4 @@ trait MiscellaneousGenerators {
   def smallLists[A](genA: Gen[A]): Gen[List[A]] =
     Gen.posNum[Int].flatMap(n0 => Gen.listOfN(n0 % 20, genA))
 }
+
