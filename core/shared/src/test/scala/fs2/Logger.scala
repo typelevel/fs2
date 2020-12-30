@@ -22,8 +22,8 @@
 package fs2
 
 import cats.Functor
-import cats.effect.{MonadCancelThrow, Resource, Sync}
 import cats.effect.kernel.Ref
+import cats.effect.{MonadCancel, Resource, Sync}
 import cats.syntax.all._
 
 trait Logger[F[_]] {
@@ -31,7 +31,7 @@ trait Logger[F[_]] {
 
   def logInfo(msg: String): Stream[F, Nothing] = Stream.exec(log(LogEvent.Info(msg)))
 
-  def logLifecycle(tag: String)(implicit F: MonadCancelThrow[F]): Stream[F, Unit] =
+  def logLifecycle(tag: String)(implicit F: MonadCancel[F, _]): Stream[F, Unit] =
     Stream.resource(logLifecycleR(tag))
 
   def logLifecycleR(tag: String)(implicit F: Functor[F]): Resource[F, Unit] =
