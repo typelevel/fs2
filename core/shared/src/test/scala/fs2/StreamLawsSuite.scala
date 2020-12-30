@@ -51,4 +51,3 @@ class StreamLawsSuite extends Fs2Suite with TestInstances {
     AlignTests[Stream[IO, *]].align[Int, Int, Int, Int]
   )
 }
-
