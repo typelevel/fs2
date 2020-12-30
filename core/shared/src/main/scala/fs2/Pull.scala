@@ -159,13 +159,14 @@ object Pull extends PullLowPriority {
   private[fs2] def acquire[F[_], R](
       resource: F[R],
       release: (R, ExitCase) => F[Unit]
-  ): Pull[F, INothing, R] = Acquire(Left(resource), release)
+  ): Pull[F, INothing, R] =
+    Acquire(resource, release, cancelable = false)
 
   private[fs2] def acquireCancelable[F[_], R](
       resource: Poll[F] => F[R],
       release: (R, ExitCase) => F[Unit]
-  )(implicit F: MonadCancel[F, Throwable]): Pull[F, INothing, R] =
-    Acquire(Right((resource, F)), release)
+  )(implicit F: MonadCancel[F, _]): Pull[F, INothing, R] =
+    Acquire(F.uncancelable(resource), release, cancelable = true)
 
   /** Like [[eval]] but if the effectful value fails, the exception is returned in a `Left`
     * instead of failing the pull.
@@ -527,8 +528,9 @@ object Pull extends PullLowPriority {
   private final case class Eval[+F[_], R](value: F[R]) extends AlgEffect[F, R]
 
   private final case class Acquire[F[_], R](
-      resource: Either[F[R], (Poll[F] => F[R], MonadCancel[F, Throwable])],
-      release: (R, ExitCase) => F[Unit]
+      resource: F[R],
+      release: (R, ExitCase) => F[Unit],
+      cancelable: Boolean
   ) extends AlgEffect[F, R]
 
   private final case class InScope[+F[_], +O](
@@ -809,14 +811,12 @@ object Pull extends PullLowPriority {
           go(scope, extendedTopLevelScope, translation, endRunner, view(result))
         }
 
-      def goAcquire[Rsrc](acquire: Acquire[G, Rsrc], view: Cont[Rsrc, G, X]): F[End] = {
-        val onScope = scope.acquireResource[Rsrc](
-          p =>
-            acquire.resource match {
-              case Left(acq)        => translation(acq)
-              case Right((acq, mc)) => p(translation(mc.uncancelable(acq)))
-            },
-          (r: Rsrc, ec: ExitCase) => translation(acquire.release(r, ec))
+      def goAcquire[R](acquire: Acquire[G, R], view: Cont[R, G, X]): F[End] = {
+        val onScope = scope.acquireResource[R](
+          poll =>
+            if (acquire.cancelable) poll(translation(acquire.resource))
+            else translation(acquire.resource),
+          (resource, exit) => translation(acquire.release(resource, exit))
         )
 
         val cont = onScope.flatMap { outcome =>
