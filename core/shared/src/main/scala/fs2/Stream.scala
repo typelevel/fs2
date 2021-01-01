@@ -968,12 +968,12 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
 
   /** Enqueues the elements of this stream to the supplied queue.
     */
-  def enqueue[F2[x] >: F[x], O2 >: O](queue: Queue[F2, O2]): Stream[F2, Nothing] =
+  def enqueueUnterminated[F2[x] >: F[x], O2 >: O](queue: Queue[F2, O2]): Stream[F2, Nothing] =
     this.foreach(queue.offer)
 
   /** Enqueues the chunks of this stream to the supplied queue.
     */
-  def enqueueChunks[F2[x] >: F[x], O2 >: O](
+  def enqueueUnterminatedChunks[F2[x] >: F[x], O2 >: O](
       queue: Queue[F2, Chunk[O2]]
   ): Stream[F2, Nothing] =
     this.chunks.foreach(queue.offer)
@@ -3226,7 +3226,7 @@ object Stream extends StreamLowPriority {
     * All elements that are available, up to the specified limit,
     * are dequeued and emitted as a single chunk.
     */
-  def fromQueue[F[_]: Functor, A](queue: Queue[F, A], limit: Int = Int.MaxValue): Stream[F, A] =
+  def fromQueueUnterminated[F[_]: Functor, A](queue: Queue[F, A], limit: Int = Int.MaxValue): Stream[F, A] =
     fromQueueNoneTerminatedChunk_[F, A](
       queue.take.map(a => Some(Chunk.singleton(a))),
       queue.tryTake.map(_.map(a => Some(Chunk.singleton(a)))),
@@ -3238,7 +3238,7 @@ object Stream extends StreamLowPriority {
     * All elements that are available, up to the specified limit,
     * are dequeued and emitted as a single chunk.
     */
-  def fromQueueChunk[F[_]: Functor, A](
+  def fromQueueUnterminatedChunk[F[_]: Functor, A](
       queue: Queue[F, Chunk[A]],
       limit: Int = Int.MaxValue
   ): Stream[F, A] =
