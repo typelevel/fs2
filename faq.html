@@ -29,7 +29,7 @@
 
 <p>But what does it mean to “run” programs in Option?  “Running” an algebraic programs amounts to transforming the carrier type (<code class="language-plaintext highlighter-rouge">Option[A]</code>), into a different type (say <code class="language-plaintext highlighter-rouge">A</code>). The shape of this transformation depends on the shape of the language, and in the case of <code class="language-plaintext highlighter-rouge">Option</code>, it’s basically <code class="language-plaintext highlighter-rouge">getOrElse</code> or <code class="language-plaintext highlighter-rouge">fold</code>.</p>
 
-<p>This trasformation function is called an eliminator.  These functions transform your algebra type to another type, and correspond to our notion of “running”.</p>
+<p>This transformation function is called an eliminator. These functions transform your algebra type to another type, and correspond to our notion of “running”.</p>
 
 <p>Unsurprisingly, <code class="language-plaintext highlighter-rouge">Stream</code> also follows this pattern:</p>
 
