@@ -32,7 +32,7 @@ Basically it's a way to write programs in a mini-language (in this case the `Opt
 
 But what does it mean to "run" programs in Option?  "Running" an algebraic programs amounts to transforming the carrier type (`Option[A]`), into a different type (say `A`). The shape of this transformation depends on the shape of the language, and in the case of `Option`, it's basically `getOrElse` or `fold`.
 
-This trasformation function is called an eliminator.  These functions transform your algebra type to another type, and correspond to our notion of "running".  
+This transformation function is called an eliminator. These functions transform your algebra type to another type, and correspond to our notion of "running".  
 
 Unsurprisingly, `Stream` also follows this pattern:
 
