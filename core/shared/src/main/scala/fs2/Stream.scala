@@ -3209,6 +3209,30 @@ object Stream extends StreamLowPriority {
 
   /** Returns a stream of elements from the supplied queue.
     *
+    * All elements that are available, up to the specified limit,
+    * are dequeued and emitted as a single chunk.
+    */
+  def fromQueue[F[_]: Functor, A](queue: Queue[F, A], limit: Int = Int.MaxValue): Stream[F, A] =
+    fromQueueNoneTerminatedChunk_[F, A](
+      queue.take.map(a => Some(Chunk.singleton(a))),
+      queue.tryTake.map(_.map(a => Some(Chunk.singleton(a)))),
+      limit
+    )
+
+  /** Returns a stream of elements from the supplied queue.
+    *
+    * All elements that are available, up to the specified limit,
+    * are dequeued and emitted as a single chunk.
+    */
+  def fromQueueChunk[F[_]: Functor, A](queue: Queue[F, Chunk[A]], limit: Int = Int.MaxValue): Stream[F, A] =
+    fromQueueNoneTerminatedChunk_[F, A](
+      queue.take.map(Some(_)),
+      queue.tryTake.map(_.map(Some(_))),
+      limit
+    )
+
+  /** Returns a stream of elements from the supplied queue.
+    *
     * The stream terminates upon dequeuing a `None`.
     *
     * All elements that are available, up to the specified limit,
