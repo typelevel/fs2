@@ -3224,7 +3224,10 @@ object Stream extends StreamLowPriority {
     * All elements that are available, up to the specified limit,
     * are dequeued and emitted as a single chunk.
     */
-  def fromQueueChunk[F[_]: Functor, A](queue: Queue[F, Chunk[A]], limit: Int = Int.MaxValue): Stream[F, A] =
+  def fromQueueChunk[F[_]: Functor, A](
+      queue: Queue[F, Chunk[A]],
+      limit: Int = Int.MaxValue
+  ): Stream[F, A] =
     fromQueueNoneTerminatedChunk_[F, A](
       queue.take.map(Some(_)),
       queue.tryTake.map(_.map(Some(_))),
