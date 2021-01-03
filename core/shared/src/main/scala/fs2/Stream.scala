@@ -2940,7 +2940,7 @@ object Stream extends StreamLowPriority {
   def bracketFull[F[x] >: Pure[x], R](
       acquire: Poll[F] => F[R]
   )(release: (R, Resource.ExitCase) => F[Unit])(implicit
-      F: MonadCancel[F, Throwable]
+      F: MonadCancel[F, _]
   ): Stream[F, R] =
     bracketFullWeak(acquire)(release).scope
 
@@ -2950,9 +2950,9 @@ object Stream extends StreamLowPriority {
   def bracketFullWeak[F[x] >: Pure[x], R](
       acquire: Poll[F] => F[R]
   )(release: (R, Resource.ExitCase) => F[Unit])(implicit
-      F: MonadCancel[F, Throwable]
+      F: MonadCancel[F, _]
   ): Stream[F, R] =
-    new Stream(Pull.acquireCancelable[F, R](acquire, release).flatMap(Pull.output1(_)))
+    new Stream(Pull.acquireCancelable[F, R](acquire, release).flatMap(Pull.output1))
 
   /** Creates a pure stream that emits the elements of the supplied chunk.
     *
@@ -3401,7 +3401,7 @@ object Stream extends StreamLowPriority {
   def repeatEval[F[_], O](fo: F[O]): Stream[F, O] = eval(fo).repeat
 
   /** Converts the supplied resource in to a singleton stream. */
-  def resource[F[_]: MonadCancelThrow, O](r: Resource[F, O]): Stream[F, O] =
+  def resource[F[_], O](r: Resource[F, O])(implicit F: MonadCancel[F, _]): Stream[F, O] =
     resourceWeak(r).scope
 
   /** Like [[resource]] but does not introduce a scope, allowing finalization to occur after
@@ -3409,12 +3409,12 @@ object Stream extends StreamLowPriority {
     *
     * Scopes can be manually introduced via [[scope]] if desired.
     */
-  def resourceWeak[F[_]: MonadCancelThrow, O](r: Resource[F, O]): Stream[F, O] =
+  def resourceWeak[F[_], O](r: Resource[F, O])(implicit F: MonadCancel[F, _]): Stream[F, O] =
     r match {
       case Resource.Allocate(resource) =>
         Stream
-          .bracketFullWeak(resource) { case ((_, release), e) =>
-            release(e)
+          .bracketFullWeak(resource) { case ((_, release), exit) =>
+            release(exit)
           }
           .map(_._1)
       case Resource.Bind(source, f) =>
