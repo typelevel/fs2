@@ -196,8 +196,8 @@ class QueueSuite extends Fs2Suite {
           f <- q.peek1.start
           g <- q.peek1.start
           _ <- q.enqueue1(42)
-          x <- f.joinAndEmbedNever
-          y <- g.joinAndEmbedNever
+          x <- f.joinWithNever
+          y <- g.joinWithNever
         } yield List(x, y)
       )
       .compile
@@ -213,11 +213,11 @@ class QueueSuite extends Fs2Suite {
           q <- InspectableQueue.unbounded[IO, Int]
           f <- q.peek1.product(q.dequeue1).start
           _ <- q.enqueue1(42)
-          x <- f.joinAndEmbedNever
+          x <- f.joinWithNever
           g <- q.peek1.product(q.dequeue1).product(q.peek1.product(q.dequeue1)).start
           _ <- q.enqueue1(43)
           _ <- q.enqueue1(44)
-          yz <- g.joinAndEmbedNever
+          yz <- g.joinWithNever
           (y, z) = yz
         } yield List(x, y, z)
       )
@@ -236,8 +236,8 @@ class QueueSuite extends Fs2Suite {
           g <- q.peek1.start
           _ <- q.enqueue1(42)
           b <- q.offer1(43)
-          x <- f.joinAndEmbedNever
-          y <- g.joinAndEmbedNever
+          x <- f.joinWithNever
+          y <- g.joinWithNever
           z <- q.dequeue1
         } yield List(b, x, y, z)
       )
@@ -255,8 +255,8 @@ class QueueSuite extends Fs2Suite {
           f <- q.peek1.start
           g <- q.peek1.start
           _ <- q.enqueue1(42)
-          x <- f.joinAndEmbedNever
-          y <- g.joinAndEmbedNever
+          x <- f.joinWithNever
+          y <- g.joinWithNever
           b <- q.offer1(43)
           z <- q.peek1
         } yield List(b, x, y, z)

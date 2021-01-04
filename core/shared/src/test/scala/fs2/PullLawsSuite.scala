@@ -19,26 +19,43 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-// TODO
-// package fs2
+package fs2
 
-// import cats.Eq
-// import cats.effect.IO
-// import cats.effect.laws.discipline.arbitrary._
-// import cats.effect.laws.util.TestContext
-// import cats.effect.laws.util.TestInstances._
-// import cats.syntax.all._
-// import cats.effect.laws.discipline._
+import cats.Eq
+import cats.effect.{Concurrent, Deferred, IO}
+import cats.effect.laws.SyncTests
+import cats.effect.testkit.TestInstances
+import cats.syntax.all._
 
-// class PullLawsSuite extends Fs2Suite {
-//   implicit val ec: TestContext = TestContext()
+import org.scalacheck.Prop
 
-//   implicit def eqPull[O: Eq, R: Eq]: Eq[Pull[IO, O, R]] = {
-//     def normalize(p: Pull[IO, O, R]): IO[Vector[Either[O, R]]] =
-//       p.mapOutput(Either.left(_)).flatMap(r => Pull.output1(Right(r))).stream.compile.toVector
+class PullLawsSuite extends Fs2Suite with TestInstances {
 
-//     Eq.instance((x, y) => Eq.eqv(normalize(x), normalize(y)))
-//   }
+  def toStreamAndResult[F[_]: Concurrent, O, R](pull: Pull[F, O, R]): F[(Stream[F, O], F[R])] =
+    Deferred[F, R].map { result =>
+      (pull.flatMap(r => Pull.eval(result.complete(r).void)).stream, result.get)
+    }
 
-//   checkAll("Sync[Pull[F, O, *]]", SyncTests[Pull[IO, Int, *]].sync[Int, Int, Int])
-// }
+  implicit def pullToProp[O](pull: Pull[IO, O, Boolean])(implicit ticker: Ticker): Prop =
+    toStreamAndResult(pull)
+      .flatMap { case (stream, result) =>
+        stream.compile.drain >> result
+      }
+
+  implicit def eqPull[O: Eq, R: Eq](implicit ticker: Ticker): Eq[Pull[IO, O, R]] = {
+    def run(p: Pull[IO, O, R]): IO[(List[O], R)] =
+      for {
+        streamAndResult <- toStreamAndResult(p)
+        (stream, result) = streamAndResult
+        output <- stream.compile.toList
+        r <- result
+      } yield (output, r)
+
+    Eq.instance((x, y) => Eq.eqv(run(x), run(y)))
+  }
+
+  {
+    implicit val ticker: Ticker = Ticker()
+    checkAll("Sync[Pull[F, O, *]]", SyncTests[Pull[IO, Int, *]].sync[Int, Int, Int])
+  }
+}

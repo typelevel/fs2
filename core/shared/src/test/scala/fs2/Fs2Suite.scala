@@ -26,13 +26,13 @@ import scala.concurrent.ExecutionContext
 
 import cats.effect.IO
 import cats.effect.unsafe.{IORuntime, Scheduler}
-import cats.effect.testkit.TestContext
+import cats.effect.kernel.testkit.TestContext
 
-import munit.{CatsEffectSuite, ScalaCheckEffectSuite}
-import org.typelevel.discipline.Laws
+import munit.{CatsEffectSuite, DisciplineSuite, ScalaCheckEffectSuite}
 
 abstract class Fs2Suite
     extends CatsEffectSuite
+    with DisciplineSuite
     with ScalaCheckEffectSuite
     with TestPlatform
     with Generators {
@@ -112,8 +112,4 @@ abstract class Fs2Suite
     (0 until countRegistered).foreach(_ => munitTestsBuffer.remove(countBefore))
     registered.foreach(t => munitTestsBuffer += t.withName(s"$name - ${t.name}"))
   }
-
-  protected def checkAll(name: String, ruleSet: Laws#RuleSet): Unit =
-    for ((id, prop) <- ruleSet.all.properties)
-      property(s"${name}.${id}")(prop)
 }

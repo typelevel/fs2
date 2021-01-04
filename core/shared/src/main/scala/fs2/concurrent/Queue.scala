@@ -375,6 +375,7 @@ object Queue {
 }
 
 /** Extension of [[Queue]] that allows peeking and inspection of the current size. */
+@deprecated("Use cats.effect.std.Queue instead", "3.0.0")
 trait InspectableQueue[F[_], A] extends Queue[F, A] {
 
   /** Returns the element which would be dequeued next,
@@ -400,6 +401,7 @@ trait InspectableQueue[F[_], A] extends Queue[F, A] {
   def getSize: F[Int]
 }
 
+@deprecated("Use cats.effect.std.Queue instead", "3.0.0")
 object InspectableQueue {
 
   /** Creates a queue with no size bound. */

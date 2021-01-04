@@ -70,6 +70,10 @@ private[fs2] trait CompilerLowPriority2 {
 }
 
 private[fs2] trait CompilerLowPriority1 extends CompilerLowPriority2 {
+
+  /** Provides a `Compiler[F, F]` instance for an effect `F` which has a `Compiler.Target`
+    * instance (i.e., either a `Concurrent` or `Sync` instance).
+    */
   implicit def target[F[_]](implicit F: Compiler.Target[F]): Compiler[F, F] =
     new Compiler[F, F] {
       val target: Monad[F] = implicitly
@@ -123,6 +127,10 @@ object Compiler extends CompilerLowPriority {
         .unsafeRunSync()
   }
 
+  /** Type class that describes the effect used during stream compilation.
+    * Instances exist for all effects which have either a `Concurrent` instance or
+    * a `Sync` instance.
+    */
   sealed trait Target[F[_]] extends MonadError[F, Throwable] {
     private[fs2] def unique: F[Unique]
     private[fs2] def ref[A](a: A): F[Ref[F, A]]
@@ -135,7 +143,7 @@ object Compiler extends CompilerLowPriority {
     private[fs2] def interruptContext(root: Unique): Option[F[InterruptContext[F]]]
   }
 
-  private[fs2] trait TargetLowPriority0 {
+  private[fs2] trait TargetLowPriority {
     protected abstract class MonadErrorTarget[F[_]](implicit F: MonadError[F, Throwable])
         extends Target[F] {
       def pure[A](a: A): F[A] = F.pure(a)
@@ -144,47 +152,6 @@ object Compiler extends CompilerLowPriority {
       def flatMap[A, B](fa: F[A])(f: A => F[B]): F[B] = F.flatMap(fa)(f)
       def tailRecM[A, B](a: A)(f: A => F[Either[A, B]]): F[B] = F.tailRecM(a)(f)
     }
-
-    implicit def uncancelable[F[_]](implicit F: Sync[F]): Target[F] = new MonadErrorTarget[F]()(F) {
-      private[fs2] def unique: F[Unique] = Unique.sync[F]
-      private[fs2] def uncancelable[A](f: Poll[F] => F[A]): F[A] = f(idPoll)
-      private val idPoll: Poll[F] = new Poll[F] { def apply[X](fx: F[X]) = fx }
-      private[fs2] def compile[O, Out](
-          p: Pull[F, O, Unit],
-          init: Out,
-          foldChunk: (Out, Chunk[O]) => Out
-      ): F[Out] =
-        Scope
-          .newRoot[F](this)
-          .flatMap(scope =>
-            Pull
-              .compile[F, O, Out](p, scope, false, init)(foldChunk)
-              .redeemWith(
-                t =>
-                  scope
-                    .close(Resource.ExitCase.Errored(t))
-                    .map {
-                      case Left(ts) => CompositeFailure(t, ts)
-                      case Right(_) => t
-                    }
-                    .flatMap(raiseError),
-                out =>
-                  scope.close(Resource.ExitCase.Succeeded).flatMap {
-                    case Left(ts) => raiseError(ts)
-                    case Right(_) => pure(out)
-                  }
-              )
-          )
-
-      private[fs2] def ref[A](a: A): F[Ref[F, A]] = Ref[F].of(a)
-      private[fs2] def interruptContext(root: Unique): Option[F[InterruptContext[F]]] = None
-    }
-  }
-
-  private[fs2] trait TargetLowPriority extends TargetLowPriority0 {
-
-    implicit def forSync[F[_]](sync: Sync[F], monadCancel: MonadCancelThrow[F]): Target[F] =
-      new SyncTarget[F]()(sync, monadCancel)
 
     protected abstract class MonadCancelTarget[F[_]](implicit F: MonadCancelThrow[F])
         extends MonadErrorTarget[F]()(F) {
@@ -199,17 +166,17 @@ object Compiler extends CompilerLowPriority {
           .use(scope => Pull.compile[F, O, Out](p, scope, false, init)(foldChunk))
     }
 
-    private final class SyncTarget[F[_]: Sync: MonadCancelThrow] extends MonadCancelTarget[F] {
+    private final class SyncTarget[F[_]: Sync] extends MonadCancelTarget[F] {
       private[fs2] def unique: F[Unique] = Unique.sync[F]
       private[fs2] def ref[A](a: A): F[Ref[F, A]] = Ref[F].of(a)
       private[fs2] def interruptContext(root: Unique): Option[F[InterruptContext[F]]] = None
     }
+
+    implicit def forSync[F[_]: Sync]: Target[F] =
+      new SyncTarget
   }
 
   object Target extends TargetLowPriority {
-    implicit def forConcurrent[F[_]: Concurrent]: Target[F] =
-      new ConcurrentTarget
-
     private final class ConcurrentTarget[F[_]](
         protected implicit val F: Concurrent[F]
     ) extends MonadCancelTarget[F]()(F) {
@@ -219,5 +186,8 @@ object Compiler extends CompilerLowPriority {
         InterruptContext(root, F.unit)
       )
     }
+
+    implicit def forConcurrent[F[_]: Concurrent]: Target[F] =
+      new ConcurrentTarget
   }
 }
