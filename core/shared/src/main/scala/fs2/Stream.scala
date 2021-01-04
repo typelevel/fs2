@@ -966,14 +966,28 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   ): Stream[F2, Either[O, O2]] =
     map(Left(_)).merge(that.map(Right(_)))
 
+  /** Enqueues the elements of this stream to the supplied queue.
+    */
+  def enqueueUnterminated[F2[x] >: F[x], O2 >: O](queue: Queue[F2, O2]): Stream[F2, Nothing] =
+    this.foreach(queue.offer)
+
+  /** Enqueues the chunks of this stream to the supplied queue.
+    */
+  def enqueueUnterminatedChunks[F2[x] >: F[x], O2 >: O](
+      queue: Queue[F2, Chunk[O2]]
+  ): Stream[F2, Nothing] =
+    this.chunks.foreach(queue.offer)
+
   /** Enqueues the elements of this stream to the supplied queue and enqueues `None` when this stream terminates.
     */
-  def enqueue[F2[x] >: F[x], O2 >: O](queue: Queue[F2, Option[O2]]): Stream[F2, Nothing] =
+  def enqueueNoneTerminated[F2[x] >: F[x], O2 >: O](
+      queue: Queue[F2, Option[O2]]
+  ): Stream[F2, Nothing] =
     this.noneTerminate.foreach(queue.offer)
 
   /** Enqueues the chunks of this stream to the supplied queue and enqueues `None` when this stream terminates.
     */
-  def enqueueChunks[F2[x] >: F[x], O2 >: O](
+  def enqueueNoneTerminatedChunks[F2[x] >: F[x], O2 >: O](
       queue: Queue[F2, Option[Chunk[O2]]]
   ): Stream[F2, Nothing] =
     this.chunks.noneTerminate.foreach(queue.offer)
@@ -2109,7 +2123,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     Stream.eval(Queue.bounded[F2, Option[Chunk[O]]](n)).flatMap { queue =>
       Stream
         .fromQueueNoneTerminatedChunk(queue)
-        .concurrently(enqueueChunks(queue))
+        .concurrently(enqueueNoneTerminatedChunks(queue))
     }
 
   /** Rechunks the stream such that output chunks are within `[inputChunk.size * minFactor, inputChunk.size * maxFactor]`.
@@ -3206,6 +3220,36 @@ object Stream extends StreamLowPriority {
     */
   def fromBlockingIterator[F[_]]: PartiallyAppliedFromIterator[F] =
     new PartiallyAppliedFromIterator(blocking = true)
+
+  /** Returns a stream of elements from the supplied queue.
+    *
+    * All elements that are available, up to the specified limit,
+    * are dequeued and emitted as a single chunk.
+    */
+  def fromQueueUnterminated[F[_]: Functor, A](
+      queue: Queue[F, A],
+      limit: Int = Int.MaxValue
+  ): Stream[F, A] =
+    fromQueueNoneTerminatedChunk_[F, A](
+      queue.take.map(a => Some(Chunk.singleton(a))),
+      queue.tryTake.map(_.map(a => Some(Chunk.singleton(a)))),
+      limit
+    )
+
+  /** Returns a stream of elements from the supplied queue.
+    *
+    * All elements that are available, up to the specified limit,
+    * are dequeued and emitted as a single chunk.
+    */
+  def fromQueueUnterminatedChunk[F[_]: Functor, A](
+      queue: Queue[F, Chunk[A]],
+      limit: Int = Int.MaxValue
+  ): Stream[F, A] =
+    fromQueueNoneTerminatedChunk_[F, A](
+      queue.take.map(Some(_)),
+      queue.tryTake.map(_.map(Some(_))),
+      limit
+    )
 
   /** Returns a stream of elements from the supplied queue.
     *
