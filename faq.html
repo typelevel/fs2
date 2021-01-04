@@ -6,7 +6,7 @@
 <ul>
   <li>Add <code class="language-plaintext highlighter-rouge">-Ydelambdafy:inline</code> to REPL arguments</li>
   <li>In Ammonite, run <code class="language-plaintext highlighter-rouge">interp.configureCompiler(_.settings.Ydelambdafy.tryToSetColon(List("inline")))</code></li>
-  <li>In SBT, add <code class="language-plaintext highlighter-rouge">scalacOptions in Console += "-Ydelambdafy:inline"</code></li>
+  <li>In SBT, add <code class="language-plaintext highlighter-rouge">scalacOptions in console += "-Ydelambdafy:inline"</code> to <code class="language-plaintext highlighter-rouge">build.sbt</code></li>
   <li>Instead of calling <code class="language-plaintext highlighter-rouge">s.unsafeRunSync</code>, call <code class="language-plaintext highlighter-rouge">s.unsafeRunAsync(println)</code> or <code class="language-plaintext highlighter-rouge">Await.result(s.unsafeToFuture, timeout)</code></li>
 </ul>
 
