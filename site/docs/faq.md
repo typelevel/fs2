@@ -9,7 +9,7 @@ position: 4
 
 ### Why does stream evaluation sometimes hang in the REPL?
 
-Sometimes, stream programs that call `unsafeRunSync` or other blocking operations hang in the REPL. This is a result of the Scala 2.12's lambda encoding and is tracked in [SI-9076](https://issues.scala-lang.org/browse/SI-9076). There are various workarounds:
+In versions of Scala between 2.12.0 and 2.13.1, stream programs that call `unsafeRunSync` or other blocking operations sometimes hang in the REPL. This is a result of Scala's lambda encoding and was tracked in [SI-9076](https://issues.scala-lang.org/browse/SI-9076). The issue was fixed in Scala 2.13.2 (see [scala/scala#8748](https://github.com/scala/scala/pull/8748). If you are already using Scala 2.13.0 or 2.13.1, the easiest solution may be to upgrade to 2.13.2 or higher. If you cannot change Scala versions, there are various workarounds:
  - Add `-Ydelambdafy:inline` to REPL arguments
  - In Ammonite, run `interp.configureCompiler(_.settings.Ydelambdafy.tryToSetColon(List("inline")))`
  - In SBT, add `scalacOptions in console += "-Ydelambdafy:inline"` to `build.sbt`
