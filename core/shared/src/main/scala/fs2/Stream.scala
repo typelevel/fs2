@@ -1004,7 +1004,10 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     */
   def bufferThrough[F2[x] >: F[x]: Concurrent, O2 >: O](mkQueue: MakeQueue[F2]): Stream[F2, O2] =
     Stream.eval(mkQueue.create[Option[Either[Throwable, O2]]]).flatMap { queue =>
-      Stream.fromQueueNoneTerminated(queue).rethrow.concurrently(this.attempt.enqueueNoneTerminated(queue))
+      Stream
+        .fromQueueNoneTerminated(queue)
+        .rethrow
+        .concurrently(this.attempt.enqueueNoneTerminated(queue))
     }
 
   /** Buffers the chunks of this stream through a queue that is created by the supplied builder,
@@ -1012,9 +1015,14 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * after both this stream terminates and all chunks are emitted. Errors from this stream are
     * propagated to the new stream.
     */
-  def bufferChunksThrough[F2[x] >: F[x]: Concurrent, O2 >: O](mkQueue: MakeQueue[F2]): Stream[F2, O2] =
+  def bufferChunksThrough[F2[x] >: F[x]: Concurrent, O2 >: O](
+      mkQueue: MakeQueue[F2]
+  ): Stream[F2, O2] =
     Stream.eval(mkQueue.create[Option[Chunk[Either[Throwable, O2]]]]).flatMap { queue =>
-      Stream.fromQueueNoneTerminatedChunk(queue).rethrow.concurrently(this.attempt.enqueueNoneTerminatedChunks(queue))
+      Stream
+        .fromQueueNoneTerminatedChunk(queue)
+        .rethrow
+        .concurrently(this.attempt.enqueueNoneTerminatedChunks(queue))
     }
 
   /** Alias for `flatMap(o => Stream.eval(f(o)))`.
