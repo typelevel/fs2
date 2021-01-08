@@ -346,24 +346,17 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     go(Nil, false, this).stream
   }
 
-  /** Buffers the elements of this stream through a queue that is created by the supplied builder,
-    * and returns a new stream that consumes the elements from that queue. The new stream terminates
-    * after both this stream terminates and all elements are emitted. Errors from this stream are
-    * propagated to the new stream.
-    */
-  def bufferThrough[F2[x] >: F[x]: Concurrent, O2 >: O](mkQueue: MakeQueue[F2]): Stream[F2, O2] =
-    Stream.eval(mkQueue.create[Option[O2]]).flatMap { queue =>
-      Stream
-        .fromQueueNoneTerminated(queue)
-        .concurrently(this.enqueueNoneTerminated(queue))
-    }
+  // A builder for queues.
+  trait MakeQueue[F[_]] {
+    def create[A]: F[Queue[F, A]]
+  }
 
   /** Buffers the chunks of this stream through a queue that is created by the supplied builder,
     * and returns a new stream that consumes the chunks from that queue. The new stream terminates
     * after both this stream terminates and all chunks are emitted. Errors from this stream are
     * propagated to the new stream.
     */
-  def bufferChunksThrough[F2[x] >: F[x]: Concurrent, O2 >: O](
+  def bufferThrough[F2[x] >: F[x]: Concurrent, O2 >: O](
       mkQueue: MakeQueue[F2]
   ): Stream[F2, O2] =
     Stream.eval(mkQueue.create[Option[Chunk[O2]]]).flatMap { queue =>
@@ -1017,11 +1010,6 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       queue: Queue[F2, Option[Chunk[O2]]]
   ): Stream[F2, Nothing] =
     this.chunks.noneTerminate.foreach(queue.offer)
-
-  // A builder for queues.
-  trait MakeQueue[F[_]] {
-    def create[A]: F[Queue[F, A]]
-  }
 
   /** Alias for `flatMap(o => Stream.eval(f(o)))`.
     *
