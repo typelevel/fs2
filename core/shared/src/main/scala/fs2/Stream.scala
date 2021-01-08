@@ -992,6 +992,29 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   ): Stream[F2, Nothing] =
     this.chunks.noneTerminate.foreach(queue.offer)
 
+  // A builder for queues.
+  trait MakeQueue[F[_]] {
+    def create[A]: F[Queue[F, A]]
+  }
+
+  /** Buffers the elements of this stream through a queue that is created by the supplied builder,
+    * and returns a new stream that consumes the elements from that queue. The new stream terminates
+    * after this stream terminates and all elements are processed.
+    */
+  def bufferThrough[F2[x] >: F[x]: Concurrent, O2 >: O](mkQueue: MakeQueue[F2]): Stream[F2, O2] =
+    Stream.eval(mkQueue.create[Option[O2]]).flatMap { queue =>
+      this.enqueueNoneTerminated(queue).concurrently(Stream.fromQueueNoneTerminated(queue))
+    }
+
+  /** Buffers the chunks of this stream through a queue that is created by the supplied builder,
+    * and returns a new stream that consumes the chunks from that queue. The new stream terminates
+    * after this stream terminates and all chunks are processed.
+    */
+  def bufferChunksThrough[F2[x] >: F[x]: Concurrent, O2 >: O](mkQueue: MakeQueue[F2]): Stream[F2, O2] =
+    Stream.eval(mkQueue.create[Option[Chunk[O2]]]).flatMap { queue =>
+      this.enqueueNoneTerminatedChunks(queue).concurrently(Stream.fromQueueNoneTerminatedChunk(queue))
+    }
+
   /** Alias for `flatMap(o => Stream.eval(f(o)))`.
     *
     * @example {{{
