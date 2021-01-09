@@ -550,26 +550,17 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   )(implicit F: Concurrent[F2]): Stream[F2, O] = {
     val fstream: F2[Stream[F2, O]] = for {
       interrupt <- F.deferred[Unit]
-      doneR <- F.deferred[Either[Throwable, Unit]]
     } yield {
       def runR: F2[Unit] =
-        that.interruptWhen(interrupt.get.attempt).compile.drain.attempt.flatMap { r =>
-          doneR.complete(r) >> {
-            if (r.isLeft)
-              interrupt
-                .complete(())
-                .void // interrupt only if this failed otherwise give change to `this` to finalize
-            else F.unit
-          }
+        that.compile.drain.attempt.flatMap { r =>
+          if (r.isLeft)
+            interrupt
+              .complete(())
+              .void // interrupt only if this failed otherwise give change to `this` to finalize
+          else F.unit
         }
 
-      // stop background process but await for it to finalise with a result
-      val stopBack: F2[Unit] = interrupt.complete(()) >> doneR.get.flatMap(
-        F.fromEither
-      )
-
-      Stream.bracket(runR.start)(_ => stopBack) >>
-        this.interruptWhen(interrupt.get.attempt)
+      Stream.eval(runR.start) >> this.interruptWhen(interrupt.get.attempt)
     }
 
     Stream.eval(fstream).flatten

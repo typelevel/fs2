@@ -22,6 +22,7 @@
 package fs2
 
 import cats.effect.{IO, IOApp}
+import cats.syntax.all._
 
 /** This should run forever, with each failed inner stream getting handled - no error should
   * ever make it to the outer handler.
@@ -32,14 +33,20 @@ import cats.effect.{IO, IOApp}
   */
 object Bug2197 extends IOApp.Simple {
 
+  val s = Stream.eval[IO, Boolean](IO.delay(true)) ++ Stream.raiseError[IO](new RuntimeException)
+
+  // this will terminate successfully
   def run: IO[Unit] =
-    Stream(Stream(()) ++ Stream.raiseError[IO](new RuntimeException)).repeat
-      .flatMap { s =>
-        s.prefetch
-          .handleErrorWith(t => Stream.eval(IO.println(s"Inner stream failed: $t")))
-          .flatMap(_ => Stream.empty)
+    Stream.suspend {
+      // for debugging, separates runs
+      println("---- new run ----")
+      Stream(s).flatMap { s =>
+        // the flatMap is crucial
+        s.prefetch.flatMap(x => {
+          Stream(x)
+        })
       }
+    }.repeat
       .compile
       .drain
-      .handleErrorWith(t => IO.println(s"Outer stream failed: $t"))
 }
