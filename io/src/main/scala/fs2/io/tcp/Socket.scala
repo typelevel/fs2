@@ -25,7 +25,7 @@ package tcp
 
 import scala.concurrent.duration._
 
-import java.net.SocketAddress
+import com.comcast.ip4s.{IpAddress, SocketAddress}
 
 /** Provides the ability to read/write from a TCP socket in the effect `F`.
   *
@@ -72,10 +72,10 @@ trait Socket[F[_]] {
   def close: F[Unit]
 
   /** Asks for the remote address of the peer. */
-  def remoteAddress: F[SocketAddress]
+  def remoteAddress: F[SocketAddress[IpAddress]]
 
   /** Asks for the local address of the socket. */
-  def localAddress: F[SocketAddress]
+  def localAddress: F[SocketAddress[IpAddress]]
 
   /** Writes `bytes` to the peer. If `timeout` is provided
     * and the operation does not complete in the specified duration,

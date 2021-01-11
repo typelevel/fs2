@@ -25,10 +25,9 @@ package tcp
 
 import scala.concurrent.duration._
 
-import java.net.InetSocketAddress
-import java.net.InetAddress
-
 import cats.effect.IO
+
+import com.comcast.ip4s._
 
 class SocketSuite extends Fs2Suite {
   def mkSocketGroup: Stream[IO, SocketGroup[IO]] =
@@ -38,8 +37,7 @@ class SocketSuite extends Fs2Suite {
 
   val setup = for {
     socketGroup <- Network[IO].tcpSocketGroup
-    defaultAddress = new InetSocketAddress(InetAddress.getByName(null), 0)
-    serverSetup <- socketGroup.serverResource(defaultAddress)
+    serverSetup <- socketGroup.serverResource(address = Some(ip"127.0.0.1"))
     (bindAddress, serverConnections) = serverSetup
     server = serverConnections.flatMap(Stream.resource(_))
     clients = Stream.resource(socketGroup.client(bindAddress)).repeat

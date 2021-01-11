@@ -34,11 +34,11 @@ import fs2.io.Network
 import cats.effect.MonadCancelThrow
 import cats.effect.std.Console
 import cats.syntax.all._
-import java.net.InetSocketAddress
+import com.comcast.ip4s._
 
 def client[F[_]: MonadCancelThrow: Console: Network]: F[Unit] =
   Network[F].tcpSocketGroup.use { socketGroup =>
-    socketGroup.client(new InetSocketAddress("localhost", 5555)).use { socket =>
+    socketGroup.client(SocketAddress(host"localhost", port"5555")).use { socket =>
       socket.write(Chunk.array("Hello, world!".getBytes)) >>
         socket.read(8192).flatMap { response =>
           Console[F].println(s"Response: $response")
@@ -61,7 +61,7 @@ object ClientApp extends IOApp.Simple {
     Network[IO].tcpSocketGroup.use(client(_))
 
   def client[F[_]: MonadCancelThrow: Console](socketGroup: SocketGroup[F]): F[Unit] =
-    socketGroup.client(new InetSocketAddress("localhost", 5555)).use { socket =>
+    socketGroup.client(SocketAddress(host"localhost", port"5555")).use { socket =>
       socket.write(Chunk.array("Hello, world!".getBytes)) >>
         socket.read(8192).flatMap { response =>
           Console[F].println(s"Response: $response")
@@ -79,7 +79,7 @@ import fs2.text
 import cats.effect.MonadCancelThrow
 
 def client[F[_]: MonadCancelThrow: Console](socketGroup: SocketGroup[F]): Stream[F, Unit] =
-  Stream.resource(socketGroup.client(new InetSocketAddress("localhost", 5555))).flatMap { socket =>
+  Stream.resource(socketGroup.client(SocketAddress(host"localhost", port"5555"))).flatMap { socket =>
     Stream("Hello, world!")
       .through(text.utf8Encode)
       .through(socket.writes()) ++
@@ -99,7 +99,7 @@ This program won't end until the server side closes the socket or indicates ther
 
 ```scala mdoc:nest
 def client[F[_]: MonadCancelThrow: Console](socketGroup: SocketGroup[F]): Stream[F, Unit] =
-  Stream.resource(socketGroup.client(new InetSocketAddress("localhost", 5555))).flatMap { socket =>
+  Stream.resource(socketGroup.client(SocketAddress(host"localhost", port"5555"))).flatMap { socket =>
     Stream("Hello, world!")
       .interleave(Stream.constant("\n"))
       .through(text.utf8Encode)
@@ -128,7 +128,7 @@ import java.net.ConnectException
 
 def connect[F[_]: Temporal](
     socketGroup: SocketGroup[F], 
-    address: InetSocketAddress): Stream[F, Socket[F]] =
+    address: SocketAddress[Host]): Stream[F, Socket[F]] =
   Stream.resource(socketGroup.client(address))
     .handleErrorWith {
       case _: ConnectException =>
@@ -136,7 +136,7 @@ def connect[F[_]: Temporal](
     }
 
 def client[F[_]: Temporal: Console](socketGroup: SocketGroup[F]): Stream[F, Unit] =
-  connect(socketGroup, new InetSocketAddress("localhost", 5555)).flatMap { socket =>
+  connect(socketGroup, SocketAddress(host"localhost", port"5555")).flatMap { socket =>
     Stream("Hello, world!")
       .interleave(Stream.constant("\n"))
       .through(text.utf8Encode)
@@ -161,7 +161,7 @@ Now let's implement a server application that communicates with the client app w
 import cats.effect.Concurrent
 
 def echoServer[F[_]: Concurrent](socketGroup: SocketGroup[F]): F[Unit] =
-  socketGroup.server(new InetSocketAddress(5555)).map { clientResource =>
+  socketGroup.server(port = Some(port"5555")).map { clientResource =>
     Stream.resource(clientResource).flatMap { client =>
       client.reads(8192)
         .through(text.utf8Decode)
@@ -194,7 +194,7 @@ The [fs2-chat](https://github.com/functional-streams-for-scala/fs2-chat) sample 
 
 ## UDP
 
-UDP support works much the same way as TCP. The `fs2.io.udp.Socket` trait provides mechanisms for reading and writing UDP datagrams. UDP sockets are created via the `open` method on `fs2.io.udp.SocketGroup`. Unlike TCP, there's no differentiation between client and server sockets. Additionally, since UDP is a packet based protocol, read and write operations use `fs2.io.udp.Packet` values, which consist of a `Chunk[Byte]` and an `InetSocketAddress`. A packet is equivalent to a UDP datagram.
+UDP support works much the same way as TCP. The `fs2.io.udp.Socket` trait provides mechanisms for reading and writing UDP datagrams. UDP sockets are created via the `open` method on `fs2.io.udp.SocketGroup`. Unlike TCP, there's no differentiation between client and server sockets. Additionally, since UDP is a packet based protocol, read and write operations use `fs2.io.udp.Packet` values, which consist of a `Chunk[Byte]` and a `SocketAddress[IpAddress]`. A packet is equivalent to a UDP datagram.
 
 Adapting the TCP client example for UDP gives us the following:
 
@@ -203,10 +203,10 @@ import fs2.{Stream, text}
 import fs2.io.udp.{Packet, SocketGroup}
 import cats.effect.Concurrent
 import cats.effect.std.Console
-import java.net.InetSocketAddress
+import com.comcast.ip4s._
 
 def client[F[_]: Concurrent: Console](socketGroup: SocketGroup[F]): F[Unit] = {
-  val address = new InetSocketAddress("localhost", 5555)
+  val address = SocketAddress(ip"127.0.0.1", port"5555")
   Stream.resource(socketGroup.open()).flatMap { socket =>
     Stream("Hello, world!")
       .through(text.utf8Encode)
@@ -228,7 +228,7 @@ When writing, we map each chunk of bytes to a `Packet`, which includes the desti
 
 ```scala mdoc
 def echoServer[F[_]: Concurrent](socketGroup: SocketGroup[F]): F[Unit] =
-  Stream.resource(socketGroup.open(new InetSocketAddress(5555))).flatMap { socket =>
+  Stream.resource(socketGroup.open(port = Some(port"5555"))).flatMap { socket =>
     socket.reads().through(socket.writes())
   }.compile.drain
 ```
@@ -253,13 +253,12 @@ import fs2.io.tls.TLSContext
 import cats.effect.MonadCancelThrow
 import cats.effect.std.Console
 import cats.syntax.all._
-import java.net.InetSocketAddress
+import com.comcast.ip4s._
 
 def client[F[_]: MonadCancelThrow: Console](
   socketGroup: SocketGroup[F],
   tlsContext: TLSContext[F]): Stream[F, Unit] = {
-  val address = new InetSocketAddress("localhost", 5555)
-  Stream.resource(socketGroup.client(address)).flatMap { underlyingSocket =>
+  Stream.resource(socketGroup.client(SocketAddress(host"localhost", port"5555"))).flatMap { underlyingSocket =>
     Stream.resource(tlsContext.client(underlyingSocket)).flatMap { socket =>
       Stream("Hello, world!")
         .interleave(Stream.constant("\n"))
@@ -291,13 +290,13 @@ import javax.net.ssl.SNIHostName
 def tlsClientWithSni[F[_]: MonadCancelThrow](
   socketGroup: SocketGroup[F],
   tlsContext: TLSContext[F],
-  address: InetSocketAddress): Resource[F, TLSSocket[F]] =
+  address: SocketAddress[Host]): Resource[F, TLSSocket[F]] =
   socketGroup.client(address).flatMap { underlyingSocket =>
     tlsContext.client(
       underlyingSocket,
       TLSParameters(
         protocols = Some(List("TLSv1.3")),
-        serverNames = Some(List(new SNIHostName(address.getHostName)))
+        serverNames = Some(List(new SNIHostName(address.host.toString)))
       )
     )
   }
@@ -315,13 +314,13 @@ In the following example, we extract various information about the session, in o
 def debug[F[_]: MonadCancelThrow](
     socketGroup: SocketGroup[F],
     tlsContext: TLSContext[F],
-    address: InetSocketAddress
+    address: SocketAddress[Host]
 ): F[String] =
   socketGroup.client(address).use { underlyingSocket =>
     tlsContext
       .client(
         underlyingSocket,
-        TLSParameters(serverNames = Some(List(new SNIHostName(address.getHostName))))
+        TLSParameters(serverNames = Some(List(new SNIHostName(address.host.toString))))
       )
       .use { tlsSocket =>
         tlsSocket.write(Chunk.empty) >>

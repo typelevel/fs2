@@ -25,7 +25,7 @@ package tcp
 
 import scala.concurrent.duration._
 
-import java.net.{InetSocketAddress, SocketAddress, StandardSocketOptions}
+import java.net.{InetSocketAddress, StandardSocketOptions}
 import java.nio.{Buffer, ByteBuffer}
 import java.nio.channels.{
   AsynchronousCloseException,
@@ -40,6 +40,8 @@ import java.util.concurrent.{ThreadFactory, TimeUnit}
 import cats.syntax.all._
 import cats.effect.kernel.{Async, Ref, Resource, Sync}
 import cats.effect.std.Semaphore
+
+import com.comcast.ip4s.{Host, IpAddress, Port, SocketAddress}
 
 import fs2.internal.ThreadFactories
 
@@ -59,7 +61,7 @@ trait SocketGroup[F[_]] {
     * @param noDelay              whether tcp no-delay flag is set  (see `java.net.StandardSocketOptions.TCP_NODELAY`)
     */
   def client(
-      to: InetSocketAddress,
+      to: SocketAddress[Host],
       reuseAddress: Boolean = true,
       sendBufferSize: Int = 256 * 1024,
       receiveBufferSize: Int = 256 * 1024,
@@ -81,28 +83,31 @@ trait SocketGroup[F[_]] {
     * that emits a single socket. Failures that occur in an inner stream do *NOT* cause
     * the outer stream to fail.
     *
-    * @param address            address to accept connections from
+    * @param address            address to accept connections from; none for all interfaces
+    * @param port               port to bind
     * @param maxQueued          number of queued requests before they will become rejected by server
     *                           (supply <= 0 for unbounded)
     * @param reuseAddress       whether address may be reused (see `java.net.StandardSocketOptions.SO_REUSEADDR`)
     * @param receiveBufferSize  size of receive buffer (see `java.net.StandardSocketOptions.SO_RCVBUF`)
     */
   def server(
-      address: InetSocketAddress,
+      address: Option[Host] = None,
+      port: Option[Port] = None,
       reuseAddress: Boolean = true,
       receiveBufferSize: Int = 256 * 1024,
       additionalSocketOptions: List[SocketOptionMapping[_]] = List.empty
   ): Stream[F, Resource[F, Socket[F]]]
 
-  /** Like [[server]] but provides the `InetSocketAddress` of the bound server socket before providing accepted sockets.
+  /** Like [[server]] but provides the `SocketAddress` of the bound server socket before providing accepted sockets.
     * The inner stream emits one socket for each client that connects to the server.
     */
   def serverResource(
-      address: InetSocketAddress,
+      address: Option[Host] = None,
+      port: Option[Port] = None,
       reuseAddress: Boolean = true,
       receiveBufferSize: Int = 256 * 1024,
       additionalSocketOptions: List[SocketOptionMapping[_]] = List.empty
-  ): Resource[F, (InetSocketAddress, Stream[F, Resource[F, Socket[F]]])]
+  ): Resource[F, (SocketAddress[IpAddress], Stream[F, Resource[F, Socket[F]]])]
 }
 
 object SocketGroup {
@@ -133,7 +138,7 @@ object SocketGroup {
       extends SocketGroup[F] {
 
     def client(
-        to: InetSocketAddress,
+        to: SocketAddress[Host],
         reuseAddress: Boolean,
         sendBufferSize: Int,
         receiveBufferSize: Int,
@@ -157,24 +162,27 @@ object SocketGroup {
         }
 
       def connect(ch: AsynchronousSocketChannel): F[AsynchronousSocketChannel] =
-        Async[F].async_[AsynchronousSocketChannel] { cb =>
-          ch.connect(
-            to,
-            null,
-            new CompletionHandler[Void, Void] {
-              def completed(result: Void, attachment: Void): Unit =
-                cb(Right(ch))
-              def failed(rsn: Throwable, attachment: Void): Unit =
-                cb(Left(rsn))
-            }
-          )
+        to.resolve[F].flatMap { ip =>
+          Async[F].async_[AsynchronousSocketChannel] { cb =>
+            ch.connect(
+              ip.toInetSocketAddress,
+              null,
+              new CompletionHandler[Void, Void] {
+                def completed(result: Void, attachment: Void): Unit =
+                  cb(Right(ch))
+                def failed(rsn: Throwable, attachment: Void): Unit =
+                  cb(Left(rsn))
+              }
+            )
+          }
         }
 
       Resource.eval(setup.flatMap(connect)).flatMap(apply(_))
     }
 
     def server(
-        address: InetSocketAddress,
+        address: Option[Host],
+        port: Option[Port],
         reuseAddress: Boolean,
         receiveBufferSize: Int,
         additionalSocketOptions: List[SocketOptionMapping[_]]
@@ -183,6 +191,7 @@ object SocketGroup {
         .resource(
           serverResource(
             address,
+            port,
             reuseAddress,
             receiveBufferSize,
             additionalSocketOptions
@@ -191,24 +200,33 @@ object SocketGroup {
         .flatMap { case (_, clients) => clients }
 
     def serverResource(
-        address: InetSocketAddress,
+        address: Option[Host],
+        port: Option[Port],
         reuseAddress: Boolean,
         receiveBufferSize: Int,
         additionalSocketOptions: List[SocketOptionMapping[_]]
-    ): Resource[F, (InetSocketAddress, Stream[F, Resource[F, Socket[F]]])] = {
+    ): Resource[F, (SocketAddress[IpAddress], Stream[F, Resource[F, Socket[F]]])] = {
 
-      val setup: F[AsynchronousServerSocketChannel] = Async[F].blocking {
-        val ch = AsynchronousChannelProvider
-          .provider()
-          .openAsynchronousServerSocketChannel(channelGroup)
-        ch.setOption[java.lang.Boolean](StandardSocketOptions.SO_REUSEADDR, reuseAddress)
-        ch.setOption[Integer](StandardSocketOptions.SO_RCVBUF, receiveBufferSize)
-        additionalSocketOptions.foreach { case SocketOptionMapping(option, value) =>
-          ch.setOption(option, value)
+      val setup: F[AsynchronousServerSocketChannel] =
+        address.traverse(_.resolve[F]).flatMap { addr =>
+          Async[F].blocking {
+            val ch = AsynchronousChannelProvider
+              .provider()
+              .openAsynchronousServerSocketChannel(channelGroup)
+            ch.setOption[java.lang.Boolean](StandardSocketOptions.SO_REUSEADDR, reuseAddress)
+            ch.setOption[Integer](StandardSocketOptions.SO_RCVBUF, receiveBufferSize)
+            additionalSocketOptions.foreach { case SocketOptionMapping(option, value) =>
+              ch.setOption(option, value)
+            }
+            ch.bind(
+              new InetSocketAddress(
+                addr.map(_.toInetAddress).orNull,
+                port.map(_.value).getOrElse(0)
+              )
+            )
+            ch
+          }
         }
-        ch.bind(address)
-        ch
-      }
 
       def cleanup(sch: AsynchronousServerSocketChannel): F[Unit] =
         Async[F].blocking(if (sch.isOpen) sch.close())
@@ -247,7 +265,8 @@ object SocketGroup {
       }
 
       Resource.make(setup)(cleanup).map { sch =>
-        val localAddress = sch.getLocalAddress.asInstanceOf[InetSocketAddress]
+        val jLocalAddress = sch.getLocalAddress.asInstanceOf[java.net.InetSocketAddress]
+        val localAddress = SocketAddress.fromInetSocketAddress(jLocalAddress)
         (localAddress, acceptIncoming(sch))
       }
     }
@@ -388,10 +407,18 @@ object SocketGroup {
             def writes(timeout: Option[FiniteDuration]): Pipe[F, Byte, INothing] =
               _.chunks.foreach(write(_, timeout))
 
-            def localAddress: F[SocketAddress] =
-              Async[F].blocking(ch.getLocalAddress)
-            def remoteAddress: F[SocketAddress] =
-              Async[F].blocking(ch.getRemoteAddress)
+            def localAddress: F[SocketAddress[IpAddress]] =
+              Async[F].blocking(
+                SocketAddress.fromInetSocketAddress(
+                  ch.getLocalAddress.asInstanceOf[InetSocketAddress]
+                )
+              )
+            def remoteAddress: F[SocketAddress[IpAddress]] =
+              Async[F].blocking(
+                SocketAddress.fromInetSocketAddress(
+                  ch.getRemoteAddress.asInstanceOf[InetSocketAddress]
+                )
+              )
             def isOpen: F[Boolean] = Async[F].blocking(ch.isOpen)
             def close: F[Unit] = Async[F].blocking(ch.close())
             def endOfOutput: F[Unit] =

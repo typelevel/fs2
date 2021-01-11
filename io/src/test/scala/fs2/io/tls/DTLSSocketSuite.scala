@@ -25,9 +25,8 @@ package tls
 
 import scala.concurrent.duration._
 
-import java.net.InetSocketAddress
-
 import cats.effect.{IO, Resource}
+import com.comcast.ip4s._
 
 import fs2.io.udp.{Packet, Socket}
 
@@ -39,7 +38,7 @@ class DTLSSocketSuite extends TLSSuite {
       def address(s: Socket[IO]) =
         Resource
           .eval(s.localAddress)
-          .map(a => new InetSocketAddress("localhost", a.getPort))
+          .map(a => SocketAddress(ip"127.0.0.1", a.port))
 
       val setup = for {
         tlsContext <- Resource.eval(testTlsContext)

@@ -25,7 +25,9 @@ package udp
 
 import scala.concurrent.duration.FiniteDuration
 
-import java.net.{InetAddress, InetSocketAddress, NetworkInterface}
+import java.net.NetworkInterface
+
+import com.comcast.ip4s._
 
 /** Provides the ability to read/write from a UDP socket in the effect `F`.
   *
@@ -69,40 +71,28 @@ trait Socket[F[_]] {
   def writes(timeout: Option[FiniteDuration] = None): Pipe[F, Packet, INothing]
 
   /** Returns the local address of this udp socket. */
-  def localAddress: F[InetSocketAddress]
+  def localAddress: F[SocketAddress[IpAddress]]
 
   /** Closes this socket. */
   def close: F[Unit]
 
   /** Joins a multicast group on a specific network interface.
     *
-    * @param group address of group to join
+    * @param join group to join
     * @param interface network interface upon which to listen for datagrams
     */
-  def join(group: InetAddress, interface: NetworkInterface): F[AnySourceGroupMembership]
-
-  /** Joins a source specific multicast group on a specific network interface.
-    *
-    * @param group address of group to join
-    * @param interface network interface upon which to listen for datagrams
-    * @param source limits received packets to those sent by the source
-    */
-  def join(group: InetAddress, interface: NetworkInterface, source: InetAddress): F[GroupMembership]
+  def join(join: MulticastJoin[IpAddress], interface: NetworkInterface): F[GroupMembership]
 
   /** Result of joining a multicast group on a UDP socket. */
   trait GroupMembership {
 
     /** Leaves the multicast group, resulting in no further packets from this group being read. */
     def drop: F[Unit]
-  }
-
-  /** Result of joining an any-source multicast group on a UDP socket. */
-  trait AnySourceGroupMembership extends GroupMembership {
 
     /** Blocks packets from the specified source address. */
-    def block(source: InetAddress): F[Unit]
+    def block(source: IpAddress): F[Unit]
 
     /** Unblocks packets from the specified source address. */
-    def unblock(source: InetAddress): F[Unit]
+    def unblock(source: IpAddress): F[Unit]
   }
 }

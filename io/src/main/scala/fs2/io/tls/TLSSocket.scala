@@ -25,13 +25,14 @@ package tls
 
 import scala.concurrent.duration._
 
-import java.net.SocketAddress
 import javax.net.ssl.SSLSession
 
 import cats.Applicative
 import cats.effect.std.Semaphore
 import cats.effect.kernel._
 import cats.syntax.all._
+
+import com.comcast.ip4s.{IpAddress, SocketAddress}
 
 import fs2.io.tcp.Socket
 
@@ -104,10 +105,10 @@ object TLSSocket {
       def endOfInput: F[Unit] =
         engine.stopUnwrap >> socket.endOfInput
 
-      def localAddress: F[SocketAddress] =
+      def localAddress: F[SocketAddress[IpAddress]] =
         socket.localAddress
 
-      def remoteAddress: F[SocketAddress] =
+      def remoteAddress: F[SocketAddress[IpAddress]] =
         socket.remoteAddress
 
       def beginHandshake: F[Unit] =

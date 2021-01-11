@@ -23,18 +23,14 @@ package fs2
 package io
 package udp
 
-import java.net.{
-  Inet4Address,
-  InetAddress,
-  InetSocketAddress,
-  NetworkInterface,
-  StandardProtocolFamily
-}
+import java.net.{Inet4Address, NetworkInterface, StandardProtocolFamily}
 import java.nio.channels.InterruptedByTimeoutException
 import scala.concurrent.duration._
 
 import cats.effect.IO
 import cats.syntax.all._
+
+import com.comcast.ip4s._
 
 import CollectionCompat._
 
@@ -50,8 +46,8 @@ class UdpSuite extends Fs2Suite {
           Stream
             .resource(socketGroup.open())
             .flatMap { serverSocket =>
-              Stream.eval(serverSocket.localAddress).map(_.getPort).flatMap { serverPort =>
-                val serverAddress = new InetSocketAddress("localhost", serverPort)
+              Stream.eval(serverSocket.localAddress).map(_.port).flatMap { serverPort =>
+                val serverAddress = SocketAddress(ip"127.0.0.1", serverPort)
                 val server = serverSocket
                   .reads()
                   .evalMap(packet => serverSocket.write(packet))
@@ -85,8 +81,8 @@ class UdpSuite extends Fs2Suite {
           Stream
             .resource(socketGroup.open())
             .flatMap { serverSocket =>
-              Stream.eval(serverSocket.localAddress).map(_.getPort).flatMap { serverPort =>
-                val serverAddress = new InetSocketAddress("localhost", serverPort)
+              Stream.eval(serverSocket.localAddress).map(_.port).flatMap { serverPort =>
+                val serverAddress = SocketAddress(ip"127.0.0.1", serverPort)
                 val server = serverSocket
                   .reads()
                   .evalMap(packet => serverSocket.write(packet))
@@ -114,7 +110,8 @@ class UdpSuite extends Fs2Suite {
 
     test("multicast".ignore) {
       // Fails often based on routing table of host machine
-      val group = InetAddress.getByName("232.10.10.10")
+      val group = mip"232.10.10.10"
+      val groupJoin = MulticastJoin.asm(group)
       val msg = Chunk.array("Hello, world!".getBytes)
       mkSocketGroup
         .flatMap { socketGroup =>
@@ -126,21 +123,21 @@ class UdpSuite extends Fs2Suite {
               )
             )
             .flatMap { serverSocket =>
-              Stream.eval(serverSocket.localAddress).map(_.getPort).flatMap { serverPort =>
+              Stream.eval(serverSocket.localAddress).map(_.port).flatMap { serverPort =>
                 val v4Interfaces =
                   NetworkInterface.getNetworkInterfaces.asScala.toList.filter { interface =>
                     interface.getInetAddresses.asScala.exists(_.isInstanceOf[Inet4Address])
                   }
                 val server = Stream
                   .exec(
-                    v4Interfaces.traverse_(interface => serverSocket.join(group, interface))
+                    v4Interfaces.traverse_(interface => serverSocket.join(groupJoin, interface))
                   ) ++
                   serverSocket
                     .reads()
                     .evalMap(packet => serverSocket.write(packet))
                     .drain
                 val client = Stream.resource(socketGroup.open()).flatMap { clientSocket =>
-                  Stream(Packet(new InetSocketAddress(group, serverPort), msg))
+                  Stream(Packet(SocketAddress(group.address, serverPort), msg))
                     .through(clientSocket.writes())
                     .drain ++ Stream.eval(clientSocket.read())
                 }

@@ -26,7 +26,6 @@ package tls
 import scala.concurrent.duration._
 
 import java.io.{FileInputStream, InputStream}
-import java.net.InetSocketAddress
 import java.nio.file.Path
 import java.security.KeyStore
 import java.security.cert.X509Certificate
@@ -41,6 +40,8 @@ import javax.net.ssl.{
 import cats.Applicative
 import cats.effect.kernel.{Async, Resource}
 import cats.syntax.all._
+
+import com.comcast.ip4s.{IpAddress, SocketAddress}
 
 import fs2.io.tcp.Socket
 import fs2.io.udp.Packet
@@ -73,7 +74,7 @@ sealed trait TLSContext[F[_]] {
     */
   def dtlsClient(
       socket: udp.Socket[F],
-      remoteAddress: InetSocketAddress,
+      remoteAddress: SocketAddress[IpAddress],
       params: TLSParameters = TLSParameters.Default,
       logger: Option[String => F[Unit]] = None
   ): Resource[F, DTLSSocket[F]]
@@ -83,7 +84,7 @@ sealed trait TLSContext[F[_]] {
     */
   def dtlsServer(
       socket: udp.Socket[F],
-      remoteAddress: InetSocketAddress,
+      remoteAddress: SocketAddress[IpAddress],
       params: TLSParameters = TLSParameters.Default,
       logger: Option[String => F[Unit]] = None
   ): Resource[F, DTLSSocket[F]]
@@ -180,7 +181,7 @@ object TLSContext {
 
           def dtlsClient(
               socket: udp.Socket[F],
-              remoteAddress: InetSocketAddress,
+              remoteAddress: SocketAddress[IpAddress],
               params: TLSParameters,
               logger: Option[String => F[Unit]]
           ): Resource[F, DTLSSocket[F]] =
@@ -194,7 +195,7 @@ object TLSContext {
 
           def dtlsServer(
               socket: udp.Socket[F],
-              remoteAddress: InetSocketAddress,
+              remoteAddress: SocketAddress[IpAddress],
               params: TLSParameters,
               logger: Option[String => F[Unit]]
           ): Resource[F, DTLSSocket[F]] =
@@ -208,7 +209,7 @@ object TLSContext {
 
           private def mkDtlsSocket(
               socket: udp.Socket[F],
-              remoteAddress: InetSocketAddress,
+              remoteAddress: SocketAddress[IpAddress],
               clientMode: Boolean,
               params: TLSParameters,
               logger: Option[String => F[Unit]]

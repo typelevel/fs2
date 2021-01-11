@@ -25,11 +25,12 @@ package tls
 
 import scala.concurrent.duration._
 
-import java.net.{InetAddress, InetSocketAddress}
 import javax.net.ssl.{SNIHostName, SSLContext}
 
 import cats.effect.{IO, Resource}
 import cats.syntax.all._
+
+import com.comcast.ip4s._
 
 class TLSSocketSuite extends TLSSuite {
   val size = 8192
@@ -40,7 +41,7 @@ class TLSSocketSuite extends TLSSuite {
         for {
           tlsContext <- Resource.eval(Network[IO].tlsContext.system)
           socketGroup <- Network[IO].tcpSocketGroup
-          socket <- socketGroup.client(new InetSocketAddress("google.com", 443))
+          socket <- socketGroup.client(SocketAddress(host"google.com", port"443"))
           tlsSocket <- tlsContext.client(
             socket,
             TLSParameters(
@@ -115,8 +116,7 @@ class TLSSocketSuite extends TLSSuite {
       val setup = for {
         socketGroup <- Network[IO].tcpSocketGroup
         tlsContext <- Resource.eval(testTlsContext)
-        inetAddress = new InetSocketAddress(InetAddress.getByName(null), 0)
-        addressAndConnections <- socketGroup.serverResource(inetAddress)
+        addressAndConnections <- socketGroup.serverResource(Some(ip"127.0.0.1"))
         (serverAddress, connections) = addressAndConnections
         server = connections.flatMap(c => Stream.resource(c.flatMap(tlsContext.server(_))))
         client <- socketGroup.client(serverAddress).flatMap(tlsContext.client(_))

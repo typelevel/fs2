@@ -42,6 +42,8 @@ import java.util.concurrent.{ConcurrentLinkedQueue, CountDownLatch}
 
 import cats.effect.kernel.{Resource, Sync}
 
+import com.comcast.ip4s._
+
 import CollectionCompat._
 
 /** Supports read/write operations on an arbitrary number of UDP sockets using a shared selector thread.
@@ -233,11 +235,12 @@ private[udp] object AsynchronousSocketGroup {
           if (src eq null)
             false
           else {
+            val srcAddr = SocketAddress.fromInetSocketAddress(src)
             (readBuffer: Buffer).flip()
             val bytes = new Array[Byte](readBuffer.remaining)
             readBuffer.get(bytes)
             (readBuffer: Buffer).clear()
-            reader(Right(Packet(src, Chunk.array(bytes))))
+            reader(Right(Packet(srcAddr, Chunk.array(bytes))))
             true
           }
         } catch {
@@ -262,7 +265,7 @@ private[udp] object AsynchronousSocketGroup {
               destBytes
             }
           }
-          new WriterPacket(packet.remote, ByteBuffer.wrap(bytes))
+          new WriterPacket(packet.remote.toInetSocketAddress, ByteBuffer.wrap(bytes))
         }
         onSelectorThread {
           val channel = key.channel.asInstanceOf[DatagramChannel]

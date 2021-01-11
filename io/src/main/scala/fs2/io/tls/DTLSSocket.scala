@@ -25,12 +25,14 @@ package tls
 
 import scala.concurrent.duration._
 
-import java.net.{InetAddress, InetSocketAddress, NetworkInterface}
+import java.net.NetworkInterface
 import javax.net.ssl.SSLSession
 
 import cats.Applicative
 import cats.effect.kernel.{Async, Resource, Sync}
 import cats.syntax.all._
+
+import com.comcast.ip4s._
 
 import fs2.io.udp.{Packet, Socket}
 
@@ -53,14 +55,14 @@ object DTLSSocket {
 
   private[tls] def apply[F[_]: Async](
       socket: Socket[F],
-      remoteAddress: InetSocketAddress,
+      remoteAddress: SocketAddress[IpAddress],
       engine: TLSEngine[F]
   ): Resource[F, DTLSSocket[F]] =
     Resource.make(mk(socket, remoteAddress, engine))(_.close)
 
   private def mk[F[_]: Async](
       socket: Socket[F],
-      remoteAddress: InetSocketAddress,
+      remoteAddress: SocketAddress[IpAddress],
       engine: TLSEngine[F]
   ): F[DTLSSocket[F]] =
     Applicative[F].pure {
@@ -79,15 +81,9 @@ object DTLSSocket {
 
         def writes(timeout: Option[FiniteDuration] = None): Pipe[F, Packet, INothing] =
           _.foreach(write(_, timeout))
-        def localAddress: F[InetSocketAddress] = socket.localAddress
+        def localAddress: F[SocketAddress[IpAddress]] = socket.localAddress
         def close: F[Unit] = socket.close
-        def join(group: InetAddress, interface: NetworkInterface): F[AnySourceGroupMembership] =
-          Sync[F].raiseError(new RuntimeException("DTLSSocket does not support multicast"))
-        def join(
-            group: InetAddress,
-            interface: NetworkInterface,
-            source: InetAddress
-        ): F[GroupMembership] =
+        def join(join: MulticastJoin[IpAddress], interface: NetworkInterface): F[GroupMembership] =
           Sync[F].raiseError(new RuntimeException("DTLSSocket does not support multicast"))
         def beginHandshake: F[Unit] = engine.beginHandshake
         def session: F[SSLSession] = engine.session

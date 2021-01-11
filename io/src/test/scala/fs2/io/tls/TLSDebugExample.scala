@@ -23,45 +23,48 @@ package fs2
 package io
 package tls
 
-import java.net.InetSocketAddress
 import javax.net.ssl.SNIHostName
 
 import cats.effect.{Async, IO}
 import cats.syntax.all._
 
+import com.comcast.ip4s._
+
 object TLSDebug {
   def debug[F[_]: Async](
       tlsContext: TLSContext[F],
-      address: InetSocketAddress
+      host: SocketAddress[Hostname]
   ): F[String] =
     Network[F].tcpSocketGroup.use { socketGroup =>
-      socketGroup.client(address).use { rawSocket =>
-        tlsContext
-          .client(
-            rawSocket,
-            TLSParameters(serverNames = Some(List(new SNIHostName(address.getHostName))))
-          )
-          .use { tlsSocket =>
-            tlsSocket.write(Chunk.empty) >>
-              tlsSocket.session.map { session =>
-                s"Cipher suite: ${session.getCipherSuite}\r\n" +
-                  "Peer certificate chain:\r\n" + session.getPeerCertificates.zipWithIndex
-                    .map { case (cert, idx) => s"Certificate $idx: $cert" }
-                    .mkString("\r\n")
-              }
-          }
+      host.resolve.flatMap { socketAddress =>
+        socketGroup.client(socketAddress).use { rawSocket =>
+          tlsContext
+            .client(
+              rawSocket,
+              TLSParameters(serverNames = Some(List(new SNIHostName(host.host.toString))))
+            )
+            .use { tlsSocket =>
+              tlsSocket.write(Chunk.empty) >>
+                tlsSocket.session.map { session =>
+                  s"Cipher suite: ${session.getCipherSuite}\r\n" +
+                    "Peer certificate chain:\r\n" + session.getPeerCertificates.zipWithIndex
+                      .map { case (cert, idx) => s"Certificate $idx: $cert" }
+                      .mkString("\r\n")
+                }
+            }
+        }
       }
     }
 }
 
 class TLSDebugTest extends Fs2Suite {
 
-  def run(address: InetSocketAddress): IO[Unit] =
+  def run(address: SocketAddress[Hostname]): IO[Unit] =
     Network[IO].tlsContext.system.flatMap { ctx =>
       TLSDebug
         .debug[IO](ctx, address)
         .flatMap(l => IO(println(l)))
     }
 
-  test("google")(run(new InetSocketAddress("google.com", 443)))
+  test("google")(run(SocketAddress(host"google.com", port"443")))
 }
