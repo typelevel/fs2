@@ -25,7 +25,7 @@ package udp
 
 import scala.concurrent.duration.FiniteDuration
 
-import java.net.{InetSocketAddress, NetworkInterface, ProtocolFamily, StandardSocketOptions}
+import java.net.{InetSocketAddress, NetworkInterface, ProtocolFamily}
 import java.nio.channels.{ClosedChannelException, DatagramChannel}
 
 import cats.effect.kernel.{Async, Resource}
@@ -39,26 +39,14 @@ trait SocketGroup[F[_]] {
     *
     * @param address              address to bind to; defaults to all interfaces
     * @param port                 port to bind to; defaults to an ephemeral port
-    * @param reuseAddress         whether address has to be reused (see `java.net.StandardSocketOptions.SO_REUSEADDR`)
-    * @param sendBufferSize       size of send buffer  (see `java.net.StandardSocketOptions.SO_SNDBUF`)
-    * @param receiveBufferSize    size of receive buffer (see `java.net.StandardSocketOptions.SO_RCVBUF`)
-    * @param allowBroadcast       whether broadcast messages are allowed to be sent; defaults to true
+    * @param options              socket options to apply to the underlying socket
     * @param protocolFamily       protocol family to use when opening the supporting `DatagramChannel`
-    * @param multicastInterface   network interface for sending multicast packets
-    * @param multicastTTL         time to live of sent multicast packets
-    * @param multicastLoopback    whether sent multicast packets should be looped back to this host
     */
   def open(
       address: Option[Host] = None,
       port: Option[Port] = None,
-      reuseAddress: Boolean = false,
-      sendBufferSize: Option[Int] = None,
-      receiveBufferSize: Option[Int] = None,
-      allowBroadcast: Boolean = true,
-      protocolFamily: Option[ProtocolFamily] = None,
-      multicastInterface: Option[NetworkInterface] = None,
-      multicastTTL: Option[Int] = None,
-      multicastLoopback: Boolean = true
+      options: List[SocketOption] = Nil,
+      protocolFamily: Option[ProtocolFamily] = None
   ): Resource[F, Socket[F]]
 }
 
@@ -73,39 +61,15 @@ object SocketGroup {
     def open(
         address: Option[Host],
         port: Option[Port],
-        reuseAddress: Boolean,
-        sendBufferSize: Option[Int],
-        receiveBufferSize: Option[Int],
-        allowBroadcast: Boolean,
-        protocolFamily: Option[ProtocolFamily],
-        multicastInterface: Option[NetworkInterface],
-        multicastTTL: Option[Int],
-        multicastLoopback: Boolean
+        options: List[SocketOption],
+        protocolFamily: Option[ProtocolFamily]
     ): Resource[F, Socket[F]] =
       Resource.eval(address.traverse(_.resolve[F])).flatMap { addr =>
         val mkChannel = Async[F].blocking {
           val channel = protocolFamily
             .map(pf => DatagramChannel.open(pf))
             .getOrElse(DatagramChannel.open())
-          channel.setOption[java.lang.Boolean](StandardSocketOptions.SO_REUSEADDR, reuseAddress)
-          sendBufferSize.foreach { sz =>
-            channel.setOption[Integer](StandardSocketOptions.SO_SNDBUF, sz)
-          }
-          receiveBufferSize.foreach { sz =>
-            channel.setOption[Integer](StandardSocketOptions.SO_RCVBUF, sz)
-          }
-          channel.setOption[java.lang.Boolean](StandardSocketOptions.SO_BROADCAST, allowBroadcast)
-          multicastInterface.foreach { iface =>
-            channel.setOption[NetworkInterface](StandardSocketOptions.IP_MULTICAST_IF, iface)
-          }
-          multicastTTL.foreach { ttl =>
-            channel.setOption[Integer](StandardSocketOptions.IP_MULTICAST_TTL, ttl)
-          }
-          channel
-            .setOption[java.lang.Boolean](
-              StandardSocketOptions.IP_MULTICAST_LOOP,
-              multicastLoopback
-            )
+          options.foreach(o => channel.setOption[o.Value](o.key, o.value))
           channel.bind(
             new InetSocketAddress(addr.map(_.toInetAddress).orNull, port.map(_.value).getOrElse(0))
           )

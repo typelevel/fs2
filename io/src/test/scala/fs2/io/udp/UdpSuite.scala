@@ -118,8 +118,8 @@ class UdpSuite extends Fs2Suite {
           Stream
             .resource(
               socketGroup.open(
-                protocolFamily = Some(StandardProtocolFamily.INET),
-                multicastTTL = Some(1)
+                options = List(SocketOption.multicastTtl(1)),
+                protocolFamily = Some(StandardProtocolFamily.INET)
               )
             )
             .flatMap { serverSocket =>

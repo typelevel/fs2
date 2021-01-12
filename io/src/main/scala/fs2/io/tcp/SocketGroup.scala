@@ -25,7 +25,7 @@ package tcp
 
 import scala.concurrent.duration._
 
-import java.net.{InetSocketAddress, StandardSocketOptions}
+import java.net.InetSocketAddress
 import java.nio.{Buffer, ByteBuffer}
 import java.nio.channels.{
   AsynchronousCloseException,
@@ -53,21 +53,12 @@ trait SocketGroup[F[_]] {
   /** Opens a connection to the specified server represented as a [[Socket]].
     * The connection is closed when the resource is released.
     *
-    * @param to                   address of remote server
-    * @param reuseAddress         whether address may be reused (see `java.net.StandardSocketOptions.SO_REUSEADDR`)
-    * @param sendBufferSize       size of send buffer  (see `java.net.StandardSocketOptions.SO_SNDBUF`)
-    * @param receiveBufferSize    size of receive buffer  (see `java.net.StandardSocketOptions.SO_RCVBUF`)
-    * @param keepAlive            whether keep-alive on tcp is used (see `java.net.StandardSocketOptions.SO_KEEPALIVE`)
-    * @param noDelay              whether tcp no-delay flag is set  (see `java.net.StandardSocketOptions.TCP_NODELAY`)
+    * @param to      address of remote server
+    * @param options socket options to apply to the underlying socket
     */
   def client(
       to: SocketAddress[Host],
-      reuseAddress: Boolean = true,
-      sendBufferSize: Int = 256 * 1024,
-      receiveBufferSize: Int = 256 * 1024,
-      keepAlive: Boolean = false,
-      noDelay: Boolean = false,
-      additionalSocketOptions: List[SocketOptionMapping[_]] = List.empty
+      options: List[SocketOption] = List.empty
   ): Resource[F, Socket[F]]
 
   /** Stream that binds to the specified address and provides a connection for,
@@ -85,17 +76,12 @@ trait SocketGroup[F[_]] {
     *
     * @param address            address to accept connections from; none for all interfaces
     * @param port               port to bind
-    * @param maxQueued          number of queued requests before they will become rejected by server
-    *                           (supply <= 0 for unbounded)
-    * @param reuseAddress       whether address may be reused (see `java.net.StandardSocketOptions.SO_REUSEADDR`)
-    * @param receiveBufferSize  size of receive buffer (see `java.net.StandardSocketOptions.SO_RCVBUF`)
+    * @param options socket options to apply to the underlying socket
     */
   def server(
       address: Option[Host] = None,
       port: Option[Port] = None,
-      reuseAddress: Boolean = true,
-      receiveBufferSize: Int = 256 * 1024,
-      additionalSocketOptions: List[SocketOptionMapping[_]] = List.empty
+      options: List[SocketOption] = List.empty
   ): Stream[F, Resource[F, Socket[F]]]
 
   /** Like [[server]] but provides the `SocketAddress` of the bound server socket before providing accepted sockets.
@@ -104,9 +90,7 @@ trait SocketGroup[F[_]] {
   def serverResource(
       address: Option[Host] = None,
       port: Option[Port] = None,
-      reuseAddress: Boolean = true,
-      receiveBufferSize: Int = 256 * 1024,
-      additionalSocketOptions: List[SocketOptionMapping[_]] = List.empty
+      options: List[SocketOption] = List.empty
   ): Resource[F, (SocketAddress[IpAddress], Stream[F, Resource[F, Socket[F]]])]
 }
 
@@ -139,24 +123,14 @@ object SocketGroup {
 
     def client(
         to: SocketAddress[Host],
-        reuseAddress: Boolean,
-        sendBufferSize: Int,
-        receiveBufferSize: Int,
-        keepAlive: Boolean,
-        noDelay: Boolean,
-        additionalSocketOptions: List[SocketOptionMapping[_]]
+        options: List[SocketOption]
     ): Resource[F, Socket[F]] = {
       def setup: F[AsynchronousSocketChannel] =
         Async[F].blocking {
           val ch =
             AsynchronousChannelProvider.provider().openAsynchronousSocketChannel(channelGroup)
-          ch.setOption[java.lang.Boolean](StandardSocketOptions.SO_REUSEADDR, reuseAddress)
-          ch.setOption[Integer](StandardSocketOptions.SO_SNDBUF, sendBufferSize)
-          ch.setOption[Integer](StandardSocketOptions.SO_RCVBUF, receiveBufferSize)
-          ch.setOption[java.lang.Boolean](StandardSocketOptions.SO_KEEPALIVE, keepAlive)
-          ch.setOption[java.lang.Boolean](StandardSocketOptions.TCP_NODELAY, noDelay)
-          additionalSocketOptions.foreach { case SocketOptionMapping(option, value) =>
-            ch.setOption(option, value)
+          options.foreach { opt =>
+            ch.setOption[opt.Value](opt.key, opt.value)
           }
           ch
         }
@@ -183,18 +157,14 @@ object SocketGroup {
     def server(
         address: Option[Host],
         port: Option[Port],
-        reuseAddress: Boolean,
-        receiveBufferSize: Int,
-        additionalSocketOptions: List[SocketOptionMapping[_]]
+        options: List[SocketOption]
     ): Stream[F, Resource[F, Socket[F]]] =
       Stream
         .resource(
           serverResource(
             address,
             port,
-            reuseAddress,
-            receiveBufferSize,
-            additionalSocketOptions
+            options
           )
         )
         .flatMap { case (_, clients) => clients }
@@ -202,9 +172,7 @@ object SocketGroup {
     def serverResource(
         address: Option[Host],
         port: Option[Port],
-        reuseAddress: Boolean,
-        receiveBufferSize: Int,
-        additionalSocketOptions: List[SocketOptionMapping[_]]
+        options: List[SocketOption]
     ): Resource[F, (SocketAddress[IpAddress], Stream[F, Resource[F, Socket[F]]])] = {
 
       val setup: F[AsynchronousServerSocketChannel] =
@@ -213,10 +181,8 @@ object SocketGroup {
             val ch = AsynchronousChannelProvider
               .provider()
               .openAsynchronousServerSocketChannel(channelGroup)
-            ch.setOption[java.lang.Boolean](StandardSocketOptions.SO_REUSEADDR, reuseAddress)
-            ch.setOption[Integer](StandardSocketOptions.SO_RCVBUF, receiveBufferSize)
-            additionalSocketOptions.foreach { case SocketOptionMapping(option, value) =>
-              ch.setOption(option, value)
+            options.foreach { opt =>
+              ch.setOption[opt.Value](opt.key, opt.value)
             }
             ch.bind(
               new InetSocketAddress(

@@ -40,7 +40,9 @@ class SocketSuite extends Fs2Suite {
     serverSetup <- socketGroup.serverResource(address = Some(ip"127.0.0.1"))
     (bindAddress, serverConnections) = serverSetup
     server = serverConnections.flatMap(Stream.resource(_))
-    clients = Stream.resource(socketGroup.client(bindAddress)).repeat
+    clients = Stream
+      .resource(socketGroup.client(bindAddress, options = List(SocketOption.sendBufferSize(10000))))
+      .repeat
   } yield (server -> clients)
 
   group("tcp") {
