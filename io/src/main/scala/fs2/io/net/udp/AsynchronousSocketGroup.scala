@@ -24,9 +24,6 @@ package io
 package net
 package udp
 
-import scala.collection.mutable.PriorityQueue
-import scala.concurrent.duration.FiniteDuration
-
 import java.io.IOException
 import java.net.InetSocketAddress
 import java.nio.{Buffer, ByteBuffer}
@@ -34,7 +31,6 @@ import java.nio.channels.{
   CancelledKeyException,
   ClosedChannelException,
   DatagramChannel,
-  InterruptedByTimeoutException,
   SelectionKey,
   Selector
 }
@@ -79,28 +75,9 @@ private[udp] object AsynchronousSocketGroup {
 
   private def unsafe: AsynchronousSocketGroup =
     new AsynchronousSocketGroup {
-      class Timeout(val expiry: Long, onTimeout: () => Unit) {
-        private var done: Boolean = false
-        def cancel(): Unit = done = true
-        def timedOut(): Unit =
-          if (!done) {
-            done = true
-            onTimeout()
-          }
-      }
-
-      object Timeout {
-        def apply(duration: FiniteDuration)(onTimeout: => Unit): Timeout =
-          new Timeout(System.currentTimeMillis + duration.toMillis, () => onTimeout)
-        implicit val ordTimeout: Ordering[Timeout] =
-          Ordering.by[Timeout, Long](_.expiry)
-      }
-
       private class Attachment(
-          readers: ArrayDeque[(Long, Either[Throwable, Packet] => Unit, Option[Timeout])] =
-            new ArrayDeque(),
-          writers: ArrayDeque[(Long, (WriterPacket, Option[Throwable] => Unit), Option[Timeout])] =
-            new ArrayDeque()
+          readers: ArrayDeque[(Long, Either[Throwable, Packet] => Unit)] = new ArrayDeque(),
+          writers: ArrayDeque[(Long, (WriterPacket, Option[Throwable] => Unit))] = new ArrayDeque()
       ) {
         def hasReaders: Boolean = !readers.isEmpty
 
@@ -111,28 +88,25 @@ private[udp] object AsynchronousSocketGroup {
         def dequeueReader: Option[Either[Throwable, Packet] => Unit] =
           if (readers.isEmpty) None
           else {
-            val (_, reader, timeout) = readers.pop()
-            timeout.foreach(_.cancel())
+            val (_, reader) = readers.pop()
             Some(reader)
           }
 
         def queueReader(
             id: Long,
-            reader: Either[Throwable, Packet] => Unit,
-            timeout: Option[Timeout]
+            reader: Either[Throwable, Packet] => Unit
         ): () => Unit =
           if (closed) {
             reader(Left(new ClosedChannelException))
-            timeout.foreach(_.cancel())
             () => ()
           } else {
-            val r = (id, reader, timeout)
+            val r = (id, reader)
             readers.add(r)
             () => { readers.remove(r); () }
           }
 
         def cancelReader(id: Long): Unit = {
-          readers.removeIf { case (rid, _, _) => id == rid }
+          readers.removeIf { case (rid, _) => id == rid }
           ()
         }
 
@@ -145,41 +119,36 @@ private[udp] object AsynchronousSocketGroup {
         def dequeueWriter: Option[(WriterPacket, Option[Throwable] => Unit)] =
           if (writers.isEmpty) None
           else {
-            val (_, w, timeout) = writers.pop()
-            timeout.foreach(_.cancel())
+            val (_, w) = writers.pop()
             Some(w)
           }
 
         def queueWriter(
             id: Long,
-            writer: (WriterPacket, Option[Throwable] => Unit),
-            timeout: Option[Timeout]
+            writer: (WriterPacket, Option[Throwable] => Unit)
         ): () => Unit =
           if (closed) {
             writer._2(Some(new ClosedChannelException))
-            timeout.foreach(_.cancel())
             () => ()
           } else {
-            val w = (id, writer, timeout)
+            val w = (id, writer)
             writers.add(w)
             () => { writers.remove(w); () }
           }
 
         def close(): Unit = {
-          readers.iterator.asScala.foreach { case (_, cb, t) =>
+          readers.iterator.asScala.foreach { case (_, cb) =>
             cb(Left(new ClosedChannelException))
-            t.foreach(_.cancel())
           }
           readers.clear
-          writers.iterator.asScala.foreach { case (_, (_, cb), t) =>
+          writers.iterator.asScala.foreach { case (_, (_, cb)) =>
             cb(Some(new ClosedChannelException))
-            t.foreach(_.cancel())
           }
           writers.clear
         }
 
         def cancelWriter(id: Long): Unit = {
-          writers.removeIf { case (rid, _, _) => id == rid }
+          writers.removeIf { case (rid, _) => id == rid }
           ()
         }
       }
@@ -193,7 +162,6 @@ private[udp] object AsynchronousSocketGroup {
       @volatile private var closed = false
       private val pendingThunks: ConcurrentLinkedQueue[() => Unit] =
         new ConcurrentLinkedQueue()
-      private val pendingTimeouts: PriorityQueue[Timeout] = new PriorityQueue()
       private val readBuffer = ByteBuffer.allocate(1 << 16)
 
       override def register(channel: DatagramChannel): Context = {
@@ -220,19 +188,10 @@ private[udp] object AsynchronousSocketGroup {
         onSelectorThread {
           val channel = key.channel.asInstanceOf[DatagramChannel]
           var cancelReader: () => Unit = null
-          val timeout: Option[FiniteDuration] = None // TODO
-          val t = timeout.map { t0 =>
-            Timeout(t0) {
-              cb(Left(new InterruptedByTimeoutException))
-              if (cancelReader ne null) cancelReader()
-            }
-          }
           if (attachment.hasReaders) {
-            cancelReader = attachment.queueReader(readerId, cb, t)
-            t.foreach(t => pendingTimeouts += t)
+            cancelReader = attachment.queueReader(readerId, cb)
           } else if (!read1(channel, cb)) {
-            cancelReader = attachment.queueReader(readerId, cb, t)
-            t.foreach(t => pendingTimeouts += t)
+            cancelReader = attachment.queueReader(readerId, cb)
             try {
               key.interestOps(key.interestOps | SelectionKey.OP_READ); ()
             } catch {
@@ -273,7 +232,6 @@ private[udp] object AsynchronousSocketGroup {
           cb: Option[Throwable] => Unit
       ): () => Unit = {
         val writerId = ids.getAndIncrement()
-        val timeout: Option[FiniteDuration] = None // TODO
         val writerPacket = {
           val bytes = {
             val srcBytes = packet.bytes.toArraySlice
@@ -290,18 +248,10 @@ private[udp] object AsynchronousSocketGroup {
         onSelectorThread {
           val channel = key.channel.asInstanceOf[DatagramChannel]
           var cancelWriter: () => Unit = null
-          val t = timeout.map { t0 =>
-            Timeout(t0) {
-              cb(Some(new InterruptedByTimeoutException))
-              if (cancelWriter ne null) cancelWriter()
-            }
-          }
           if (attachment.hasWriters) {
-            cancelWriter = attachment.queueWriter(writerId, (writerPacket, cb), t)
-            t.foreach(t => pendingTimeouts += t)
+            cancelWriter = attachment.queueWriter(writerId, (writerPacket, cb))
           } else if (!write1(channel, writerPacket, cb)) {
-            cancelWriter = attachment.queueWriter(writerId, (writerPacket, cb), t)
-            t.foreach(t => pendingTimeouts += t)
+            cancelWriter = attachment.queueWriter(writerId, (writerPacket, cb))
             try {
               key.interestOps(key.interestOps | SelectionKey.OP_WRITE); ()
             } catch {
@@ -368,10 +318,7 @@ private[udp] object AsynchronousSocketGroup {
           def run = {
             while (!closed && !Thread.currentThread.isInterrupted) {
               runPendingThunks()
-              val timeout = pendingTimeouts.headOption.map { t =>
-                (t.expiry - System.currentTimeMillis).max(0L)
-              }
-              selector.select(timeout.getOrElse(0L))
+              selector.select(0L)
               val selectedKeys = selector.selectedKeys.iterator
               while (selectedKeys.hasNext) {
                 val key = selectedKeys.next
@@ -402,13 +349,6 @@ private[udp] object AsynchronousSocketGroup {
                 } catch {
                   case _: CancelledKeyException => // Ignore; key was closed
                 }
-              }
-              val now = System.currentTimeMillis
-              var nextTimeout = pendingTimeouts.headOption
-              while (nextTimeout.isDefined && nextTimeout.get.expiry <= now) {
-                nextTimeout.get.timedOut()
-                pendingTimeouts.dequeue()
-                nextTimeout = pendingTimeouts.headOption
               }
             }
             close()
