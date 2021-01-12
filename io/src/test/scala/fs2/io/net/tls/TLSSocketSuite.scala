@@ -63,7 +63,7 @@ class TLSSocketSuite extends TLSSuite {
               Stream(googleDotCom)
                 .covary[IO]
                 .through(text.utf8Encode)
-                .through(tlsSocket.writes()) ++
+                .through(tlsSocket.writes) ++
                 tlsSocket
                   .reads(size)
                   .through(text.utf8Decode)
@@ -82,7 +82,7 @@ class TLSSocketSuite extends TLSSuite {
             .flatMap { socket =>
               val send = Stream(googleDotCom)
                 .through(text.utf8Encode)
-                .through(socket.writes())
+                .through(socket.writes)
               val receive = socket
                 .reads(size)
                 .through(text.utf8Decode)

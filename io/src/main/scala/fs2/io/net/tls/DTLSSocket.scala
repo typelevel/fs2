@@ -24,8 +24,6 @@ package io
 package net
 package tls
 
-import scala.concurrent.duration._
-
 import java.net.NetworkInterface
 import javax.net.ssl.SSLSession
 
@@ -69,19 +67,19 @@ object DTLSSocket {
     Applicative[F].pure {
       new DTLSSocket[F] {
 
-        def read(timeout: Option[FiniteDuration] = None): F[Packet] =
-          engine.read(Int.MaxValue, timeout).flatMap {
+        def read: F[Packet] =
+          engine.read(Int.MaxValue).flatMap {
             case Some(bytes) => Applicative[F].pure(Packet(remoteAddress, bytes))
-            case None        => read(timeout)
+            case None        => read
           }
 
-        def reads(timeout: Option[FiniteDuration] = None): Stream[F, Packet] =
-          Stream.repeatEval(read(timeout))
-        def write(packet: Packet, timeout: Option[FiniteDuration] = None): F[Unit] =
-          engine.write(packet.bytes, timeout)
+        def reads: Stream[F, Packet] =
+          Stream.repeatEval(read)
+        def write(packet: Packet): F[Unit] =
+          engine.write(packet.bytes)
 
-        def writes(timeout: Option[FiniteDuration] = None): Pipe[F, Packet, INothing] =
-          _.foreach(write(_, timeout))
+        def writes: Pipe[F, Packet, INothing] =
+          _.foreach(write)
         def localAddress: F[SocketAddress[IpAddress]] = socket.localAddress
         def close: F[Unit] = socket.close
         def join(join: MulticastJoin[IpAddress], interface: NetworkInterface): F[GroupMembership] =

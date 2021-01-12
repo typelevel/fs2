@@ -24,52 +24,36 @@ package io
 package net
 package udp
 
-import scala.concurrent.duration.FiniteDuration
-
 import java.net.NetworkInterface
 
 import com.comcast.ip4s._
 
 /** Provides the ability to read/write from a UDP socket in the effect `F`.
-  *
-  * To construct a `Socket`, use the methods in the [[fs2.io.udp]] package object.
   */
 trait Socket[F[_]] {
 
   /** Reads a single packet from this udp socket.
-    *
-    * If `timeout` is specified, then resulting `F` will fail with `java.nio.channels.InterruptedByTimeoutException`
-    * if read was not satisfied in given timeout.
     */
-  def read(timeout: Option[FiniteDuration] = None): F[Packet]
+  def read: F[Packet]
 
   /** Reads packets received from this udp socket.
     *
     * Note that multiple `reads` may execute at same time, causing each evaluation to receive fair
     * amount of messages.
     *
-    * If `timeout` is specified, then resulting stream will fail with `java.nio.channels.InterruptedByTimeoutException`
-    * if a read was not satisfied in given timeout.
-    *
     * @return stream of packets
     */
-  def reads(timeout: Option[FiniteDuration] = None): Stream[F, Packet]
+  def reads: Stream[F, Packet]
 
   /** Write a single packet to this udp socket.
     *
-    * If `timeout` is specified, then resulting `F` will fail with `java.nio.channels.InterruptedByTimeoutException`
-    * if write was not completed in given timeout.
-    *
     * @param packet  Packet to write
     */
-  def write(packet: Packet, timeout: Option[FiniteDuration] = None): F[Unit]
+  def write(packet: Packet): F[Unit]
 
   /** Writes supplied packets to this udp socket.
-    *
-    * If `timeout` is specified, then resulting pipe will fail with `java.nio.channels.InterruptedByTimeoutException`
-    * if a write was not completed in given timeout.
     */
-  def writes(timeout: Option[FiniteDuration] = None): Pipe[F, Packet, INothing]
+  def writes: Pipe[F, Packet, INothing]
 
   /** Returns the local address of this udp socket. */
   def localAddress: F[SocketAddress[IpAddress]]

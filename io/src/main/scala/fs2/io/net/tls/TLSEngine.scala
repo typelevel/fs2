@@ -24,8 +24,6 @@ package io
 package net
 package tls
 
-import scala.concurrent.duration.FiniteDuration
-
 import javax.net.ssl.{SSLEngine, SSLEngineResult, SSLSession}
 
 import cats.Applicative
@@ -43,14 +41,14 @@ private[tls] trait TLSEngine[F[_]] {
   def session: F[SSLSession]
   def stopWrap: F[Unit]
   def stopUnwrap: F[Unit]
-  def write(data: Chunk[Byte], timeout: Option[FiniteDuration]): F[Unit]
-  def read(maxBytes: Int, timeout: Option[FiniteDuration]): F[Option[Chunk[Byte]]]
+  def write(data: Chunk[Byte]): F[Unit]
+  def read(maxBytes: Int): F[Option[Chunk[Byte]]]
 }
 
 private[tls] object TLSEngine {
   trait Binding[F[_]] {
-    def write(data: Chunk[Byte], timeout: Option[FiniteDuration]): F[Unit]
-    def read(maxBytes: Int, timeout: Option[FiniteDuration]): F[Option[Chunk[Byte]]]
+    def write(data: Chunk[Byte]): F[Unit]
+    def read(maxBytes: Int): F[Option[Chunk[Byte]]]
   }
 
   def apply[F[_]: Async](
@@ -81,72 +79,72 @@ private[tls] object TLSEngine {
       def stopWrap = Sync[F].delay(engine.closeOutbound())
       def stopUnwrap = Sync[F].delay(engine.closeInbound()).attempt.void
 
-      def write(data: Chunk[Byte], timeout: Option[FiniteDuration]): F[Unit] =
-        writeSemaphore.permit.use(_ => write0(data, timeout))
+      def write(data: Chunk[Byte]): F[Unit] =
+        writeSemaphore.permit.use(_ => write0(data))
 
-      private def write0(data: Chunk[Byte], timeout: Option[FiniteDuration]): F[Unit] =
-        wrapBuffer.input(data) >> wrap(timeout)
+      private def write0(data: Chunk[Byte]): F[Unit] =
+        wrapBuffer.input(data) >> wrap
 
       /** Performs a wrap operation on the underlying engine. */
-      private def wrap(timeout: Option[FiniteDuration]): F[Unit] =
+      private def wrap: F[Unit] =
         wrapBuffer
           .perform(engine.wrap(_, _))
           .flatTap(result => log(s"wrap result: $result"))
           .flatMap { result =>
             result.getStatus match {
               case SSLEngineResult.Status.OK =>
-                doWrite(timeout) >> {
+                doWrite >> {
                   result.getHandshakeStatus match {
                     case SSLEngineResult.HandshakeStatus.NOT_HANDSHAKING =>
                       wrapBuffer.inputRemains
-                        .flatMap(x => wrap(timeout).whenA(x > 0 && result.bytesConsumed > 0))
+                        .flatMap(x => wrap.whenA(x > 0 && result.bytesConsumed > 0))
                     case _ =>
                       handshakeSemaphore.permit
-                        .use(_ => stepHandshake(result, true, timeout)) >> wrap(timeout)
+                        .use(_ => stepHandshake(result, true)) >> wrap
                   }
                 }
               case SSLEngineResult.Status.BUFFER_UNDERFLOW =>
-                doWrite(timeout)
+                doWrite
               case SSLEngineResult.Status.BUFFER_OVERFLOW =>
-                wrapBuffer.expandOutput >> wrap(timeout)
+                wrapBuffer.expandOutput >> wrap
               case SSLEngineResult.Status.CLOSED =>
                 stopWrap >> stopUnwrap
             }
           }
 
-      private def doWrite(timeout: Option[FiniteDuration]): F[Unit] =
+      private def doWrite: F[Unit] =
         wrapBuffer.output(Int.MaxValue).flatMap { out =>
           if (out.isEmpty) Applicative[F].unit
-          else binding.write(out, timeout)
+          else binding.write(out)
         }
 
-      def read(maxBytes: Int, timeout: Option[FiniteDuration]): F[Option[Chunk[Byte]]] =
-        readSemaphore.permit.use(_ => read0(maxBytes, timeout))
+      def read(maxBytes: Int): F[Option[Chunk[Byte]]] =
+        readSemaphore.permit.use(_ => read0(maxBytes))
 
       private def initialHandshakeDone: F[Boolean] =
         Sync[F].delay(engine.getSession.getCipherSuite != "SSL_NULL_WITH_NULL_NULL")
 
-      private def read0(maxBytes: Int, timeout: Option[FiniteDuration]): F[Option[Chunk[Byte]]] =
+      private def read0(maxBytes: Int): F[Option[Chunk[Byte]]] =
         // Check if the initial handshake has finished -- if so, read; otherwise, handshake and then read
         initialHandshakeDone.ifM(
           dequeueUnwrap(maxBytes).flatMap { out =>
-            if (out.isEmpty) read1(maxBytes, timeout) else Applicative[F].pure(out)
+            if (out.isEmpty) read1(maxBytes) else Applicative[F].pure(out)
           },
-          write(Chunk.empty, None) >> read1(maxBytes, timeout)
+          write(Chunk.empty) >> read1(maxBytes)
         )
 
-      private def read1(maxBytes: Int, timeout: Option[FiniteDuration]): F[Option[Chunk[Byte]]] =
-        binding.read(maxBytes.max(engine.getSession.getPacketBufferSize), timeout).flatMap {
+      private def read1(maxBytes: Int): F[Option[Chunk[Byte]]] =
+        binding.read(maxBytes.max(engine.getSession.getPacketBufferSize)).flatMap {
           case Some(c) =>
-            unwrapBuffer.input(c) >> unwrap(maxBytes, timeout).flatMap {
+            unwrapBuffer.input(c) >> unwrap(maxBytes).flatMap {
               case s @ Some(_) => Applicative[F].pure(s)
-              case None        => read1(maxBytes, timeout)
+              case None        => read1(maxBytes)
             }
           case None => Applicative[F].pure(None)
         }
 
       /** Performs an unwrap operation on the underlying engine. */
-      private def unwrap(maxBytes: Int, timeout: Option[FiniteDuration]): F[Option[Chunk[Byte]]] =
+      private def unwrap(maxBytes: Int): F[Option[Chunk[Byte]]] =
         unwrapBuffer
           .perform(engine.unwrap(_, _))
           .flatTap(result => log(s"unwrap result: $result"))
@@ -157,20 +155,19 @@ private[tls] object TLSEngine {
                   case SSLEngineResult.HandshakeStatus.NOT_HANDSHAKING =>
                     unwrapBuffer.inputRemains
                       .map(_ > 0 && result.bytesConsumed > 0)
-                      .ifM(unwrap(maxBytes, timeout), dequeueUnwrap(maxBytes))
+                      .ifM(unwrap(maxBytes), dequeueUnwrap(maxBytes))
                   case SSLEngineResult.HandshakeStatus.FINISHED =>
-                    unwrap(maxBytes, timeout)
+                    unwrap(maxBytes)
                   case _ =>
                     handshakeSemaphore.permit
-                      .use(_ => stepHandshake(result, false, timeout)) >> unwrap(
-                      maxBytes,
-                      timeout
+                      .use(_ => stepHandshake(result, false)) >> unwrap(
+                      maxBytes
                     )
                 }
               case SSLEngineResult.Status.BUFFER_UNDERFLOW =>
                 dequeueUnwrap(maxBytes)
               case SSLEngineResult.Status.BUFFER_OVERFLOW =>
-                unwrapBuffer.expandOutput >> unwrap(maxBytes, timeout)
+                unwrapBuffer.expandOutput >> unwrap(maxBytes)
               case SSLEngineResult.Status.CLOSED =>
                 stopWrap >> stopUnwrap >> dequeueUnwrap(maxBytes)
             }
@@ -184,69 +181,67 @@ private[tls] object TLSEngine {
         */
       private def stepHandshake(
           result: SSLEngineResult,
-          lastOperationWrap: Boolean,
-          timeout: Option[FiniteDuration]
+          lastOperationWrap: Boolean
       ): F[Unit] =
         result.getHandshakeStatus match {
           case SSLEngineResult.HandshakeStatus.NOT_HANDSHAKING =>
             Applicative[F].unit
           case SSLEngineResult.HandshakeStatus.FINISHED =>
             unwrapBuffer.inputRemains.flatMap { remaining =>
-              if (remaining > 0) unwrapHandshake(timeout)
+              if (remaining > 0) unwrapHandshake
               else Applicative[F].unit
             }
           case SSLEngineResult.HandshakeStatus.NEED_TASK =>
-            sslEngineTaskRunner.runDelegatedTasks >> (if (lastOperationWrap) wrapHandshake(timeout)
-                                                      else unwrapHandshake(timeout))
+            sslEngineTaskRunner.runDelegatedTasks >> (if (lastOperationWrap) wrapHandshake
+                                                      else unwrapHandshake)
           case SSLEngineResult.HandshakeStatus.NEED_WRAP =>
-            wrapHandshake(timeout)
+            wrapHandshake
           case SSLEngineResult.HandshakeStatus.NEED_UNWRAP =>
             unwrapBuffer.inputRemains.flatMap { remaining =>
               if (remaining > 0 && result.getStatus != SSLEngineResult.Status.BUFFER_UNDERFLOW)
-                unwrapHandshake(timeout)
+                unwrapHandshake
               else
-                binding.read(engine.getSession.getPacketBufferSize, timeout).flatMap {
-                  case Some(c) => unwrapBuffer.input(c) >> unwrapHandshake(timeout)
+                binding.read(engine.getSession.getPacketBufferSize).flatMap {
+                  case Some(c) => unwrapBuffer.input(c) >> unwrapHandshake
                   case None    => stopWrap >> stopUnwrap
                 }
             }
           case SSLEngineResult.HandshakeStatus.NEED_UNWRAP_AGAIN =>
-            unwrapHandshake(timeout)
+            unwrapHandshake
         }
 
       /** Performs a wrap operation as part of handshaking. */
-      private def wrapHandshake(timeout: Option[FiniteDuration]): F[Unit] =
+      private def wrapHandshake: F[Unit] =
         wrapBuffer
           .perform(engine.wrap(_, _))
           .flatTap(result => log(s"wrapHandshake result: $result"))
           .flatMap { result =>
             result.getStatus match {
               case SSLEngineResult.Status.OK | SSLEngineResult.Status.BUFFER_UNDERFLOW =>
-                doWrite(timeout) >> stepHandshake(
+                doWrite >> stepHandshake(
                   result,
-                  true,
-                  timeout
+                  true
                 )
               case SSLEngineResult.Status.BUFFER_OVERFLOW =>
-                wrapBuffer.expandOutput >> wrapHandshake(timeout)
+                wrapBuffer.expandOutput >> wrapHandshake
               case SSLEngineResult.Status.CLOSED =>
                 stopWrap >> stopUnwrap
             }
           }
 
       /** Performs an unwrap operation as part of handshaking. */
-      private def unwrapHandshake(timeout: Option[FiniteDuration]): F[Unit] =
+      private def unwrapHandshake: F[Unit] =
         unwrapBuffer
           .perform(engine.unwrap(_, _))
           .flatTap(result => log(s"unwrapHandshake result: $result"))
           .flatMap { result =>
             result.getStatus match {
               case SSLEngineResult.Status.OK =>
-                stepHandshake(result, false, timeout)
+                stepHandshake(result, false)
               case SSLEngineResult.Status.BUFFER_UNDERFLOW =>
-                stepHandshake(result, false, timeout)
+                stepHandshake(result, false)
               case SSLEngineResult.Status.BUFFER_OVERFLOW =>
-                unwrapBuffer.expandOutput >> unwrapHandshake(timeout)
+                unwrapBuffer.expandOutput >> unwrapHandshake
               case SSLEngineResult.Status.CLOSED =>
                 stopWrap >> stopUnwrap
             }

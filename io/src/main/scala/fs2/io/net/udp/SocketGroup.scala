@@ -24,8 +24,6 @@ package io
 package net
 package udp
 
-import scala.concurrent.duration.FiniteDuration
-
 import java.net.{InetSocketAddress, NetworkInterface, ProtocolFamily}
 import java.nio.channels.{ClosedChannelException, DatagramChannel}
 
@@ -94,17 +92,27 @@ object SocketGroup {
               SocketAddress.fromInetSocketAddress(addr)
             }
 
-          def read(timeout: Option[FiniteDuration]): F[Packet] =
-            Async[F].async_[Packet](cb => asg.read(ctx, timeout, result => cb(result)))
+          def read: F[Packet] =
+            Async[F].async[Packet] { cb =>
+              Async[F].delay {
+                val cancel = asg.read(ctx, result => cb(result))
+                Some(Async[F].delay((cancel())))
+              }
+            }
 
-          def reads(timeout: Option[FiniteDuration]): Stream[F, Packet] =
-            Stream.repeatEval(read(timeout))
+          def reads: Stream[F, Packet] =
+            Stream.repeatEval(read)
 
-          def write(packet: Packet, timeout: Option[FiniteDuration]): F[Unit] =
-            Async[F].async_[Unit](cb => asg.write(ctx, packet, timeout, t => cb(t.toLeft(()))))
+          def write(packet: Packet): F[Unit] =
+            Async[F].async[Unit] { cb =>
+              Async[F].delay {
+                val cancel = asg.write(ctx, packet, t => cb(t.toLeft(())))
+                Some(Async[F].delay(cancel()))
+              }
+            }
 
-          def writes(timeout: Option[FiniteDuration]): Pipe[F, Packet, INothing] =
-            _.foreach(write(_, timeout))
+          def writes: Pipe[F, Packet, INothing] =
+            _.foreach(write)
 
           def close: F[Unit] = Async[F].blocking(asg.close(ctx))
 

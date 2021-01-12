@@ -57,7 +57,7 @@ class SocketSuite extends Fs2Suite {
           val echoServer = server.map { socket =>
             socket
               .reads(1024)
-              .through(socket.writes())
+              .through(socket.writes)
               .onFinalize(socket.endOfOutput)
           }.parJoinUnbounded
 
@@ -66,7 +66,7 @@ class SocketSuite extends Fs2Suite {
             .map { socket =>
               Stream
                 .chunk(message)
-                .through(socket.writes())
+                .through(socket.writes)
                 .onFinalize(socket.endOfOutput) ++
                 socket
                   .reads(1024)
@@ -96,7 +96,7 @@ class SocketSuite extends Fs2Suite {
           val junkServer = server.map { socket =>
             Stream
               .chunk(message)
-              .through(socket.writes())
+              .through(socket.writes)
               .onFinalize(socket.endOfOutput)
           }.parJoinUnbounded
 

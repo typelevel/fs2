@@ -56,13 +56,12 @@ class DTLSSocketSuite extends TLSSuite {
         .resource(setup)
         .flatMap { case (serverSocket, clientSocket, serverAddress) =>
           val echoServer =
-            serverSocket
-              .reads()
+            serverSocket.reads
               .foreach(serverSocket.write(_))
           val echoClient = Stream.eval {
             IO.sleep(500.millis) >>
               clientSocket.write(Packet(serverAddress, msg)) >>
-              clientSocket.read()
+              clientSocket.read
           }
 
           echoClient.concurrently(echoServer)

@@ -24,8 +24,6 @@ package io
 package net
 package tls
 
-import scala.concurrent.duration._
-
 import java.io.{FileInputStream, InputStream}
 import java.nio.file.Path
 import java.security.KeyStore
@@ -167,11 +165,10 @@ object TLSContext {
               .eval(
                 engine(
                   new TLSEngine.Binding[F] {
-                    def write(data: Chunk[Byte], timeout: Option[FiniteDuration]): F[Unit] =
-                      socket.write(data, timeout)
-                    def read(maxBytes: Int, timeout: Option[FiniteDuration])
-                        : F[Option[Chunk[Byte]]] =
-                      socket.read(maxBytes, timeout)
+                    def write(data: Chunk[Byte]): F[Unit] =
+                      socket.write(data)
+                    def read(maxBytes: Int): F[Option[Chunk[Byte]]] =
+                      socket.read(maxBytes)
                   },
                   clientMode,
                   params,
@@ -219,12 +216,11 @@ object TLSContext {
               .eval(
                 engine(
                   new TLSEngine.Binding[F] {
-                    def write(data: Chunk[Byte], timeout: Option[FiniteDuration]): F[Unit] =
+                    def write(data: Chunk[Byte]): F[Unit] =
                       if (data.isEmpty) Applicative[F].unit
-                      else socket.write(Packet(remoteAddress, data), timeout)
-                    def read(maxBytes: Int, timeout: Option[FiniteDuration])
-                        : F[Option[Chunk[Byte]]] =
-                      socket.read(timeout).map(p => Some(p.bytes))
+                      else socket.write(Packet(remoteAddress, data))
+                    def read(maxBytes: Int): F[Option[Chunk[Byte]]] =
+                      socket.read.map(p => Some(p.bytes))
                   },
                   clientMode,
                   params,

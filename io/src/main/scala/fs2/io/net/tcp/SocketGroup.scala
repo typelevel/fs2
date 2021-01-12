@@ -24,8 +24,6 @@ package io
 package net
 package tcp
 
-import scala.concurrent.duration._
-
 import java.net.InetSocketAddress
 import java.nio.{Buffer, ByteBuffer}
 import java.nio.channels.{
@@ -36,7 +34,7 @@ import java.nio.channels.{
 }
 import java.nio.channels.AsynchronousChannelGroup
 import java.nio.channels.spi.AsynchronousChannelProvider
-import java.util.concurrent.{ThreadFactory, TimeUnit}
+import java.util.concurrent.ThreadFactory
 
 import cats.syntax.all._
 import cats.effect.kernel.{Async, Ref, Resource, Sync}
@@ -244,21 +242,14 @@ object SocketGroup {
       val socket = (Semaphore[F](1), Semaphore[F](1), Ref[F].of(ByteBuffer.allocate(0))).mapN {
         (readSemaphore, writeSemaphore, bufferRef) =>
           // Reads data to remaining capacity of supplied ByteBuffer
-          // Also measures time the read took returning this as tuple
-          // of (bytes_read, read_duration)
-          def readChunk(buff: ByteBuffer, timeoutMs: Long): F[(Int, Long)] =
-            Async[F].async_[(Int, Long)] { cb =>
-              val started = System.currentTimeMillis()
+          def readChunk(buff: ByteBuffer): F[Int] =
+            Async[F].async_[Int] { cb =>
               ch.read(
                 buff,
-                timeoutMs,
-                TimeUnit.MILLISECONDS,
                 (),
                 new CompletionHandler[Integer, Unit] {
-                  def completed(result: Integer, attachment: Unit): Unit = {
-                    val took = System.currentTimeMillis() - started
-                    cb(Right((result, took)))
-                  }
+                  def completed(result: Integer, attachment: Unit): Unit =
+                    cb(Right(result))
                   def failed(err: Throwable, attachment: Unit): Unit =
                     cb(Left(err))
                 }
@@ -297,60 +288,47 @@ object SocketGroup {
               result
             }
 
-          def read0(max: Int, timeout: Option[FiniteDuration]): F[Option[Chunk[Byte]]] =
+          def read0(max: Int): F[Option[Chunk[Byte]]] =
             readSemaphore.permit.use { _ =>
               getBufferOf(max).flatMap { buff =>
-                readChunk(buff, timeout.map(_.toMillis).getOrElse(0L)).flatMap { case (read, _) =>
+                readChunk(buff).flatMap { read =>
                   if (read < 0) Async[F].pure(None)
                   else releaseBuffer(buff).map(Some(_))
                 }
               }
             }
 
-          def readN0(max: Int, timeout: Option[FiniteDuration]): F[Option[Chunk[Byte]]] =
+          def readN0(max: Int): F[Option[Chunk[Byte]]] =
             readSemaphore.permit.use { _ =>
               getBufferOf(max).flatMap { buff =>
-                def go(timeoutMs: Long): F[Option[Chunk[Byte]]] =
-                  readChunk(buff, timeoutMs).flatMap { case (readBytes, took) =>
+                def go: F[Option[Chunk[Byte]]] =
+                  readChunk(buff).flatMap { readBytes =>
                     if (readBytes < 0 || buff.position() >= max)
                       // read is done
                       releaseBuffer(buff).map(Some(_))
-                    else go((timeoutMs - took).max(0))
+                    else go
                   }
-
-                go(timeout.map(_.toMillis).getOrElse(0L))
+                go
               }
             }
 
-          def write0(bytes: Chunk[Byte], timeout: Option[FiniteDuration]): F[Unit] = {
-            def go(buff: ByteBuffer, remains: Long): F[Unit] =
+          def write0(bytes: Chunk[Byte]): F[Unit] = {
+            def go(buff: ByteBuffer): F[Unit] =
               Async[F]
-                .async_[Option[Long]] { cb =>
-                  val start = System.currentTimeMillis()
+                .async_[Unit] { cb =>
                   ch.write(
                     buff,
-                    remains,
-                    TimeUnit.MILLISECONDS,
                     (),
                     new CompletionHandler[Integer, Unit] {
                       def completed(result: Integer, attachment: Unit): Unit =
-                        cb(
-                          Right(
-                            if (buff.remaining() <= 0) None
-                            else Some(System.currentTimeMillis() - start)
-                          )
-                        )
+                        cb(Right(()))
                       def failed(err: Throwable, attachment: Unit): Unit =
                         cb(Left(err))
                     }
                   )
                 }
-                .flatMap {
-                  case None       => Async[F].unit
-                  case Some(took) => go(buff, (remains - took).max(0))
-                }
             writeSemaphore.permit.use { _ =>
-              go(bytes.toByteBuffer, timeout.map(_.toMillis).getOrElse(0L))
+              go(bytes.toByteBuffer)
             }
           }
 
@@ -358,21 +336,21 @@ object SocketGroup {
           ///////////////////////////////////
 
           new Socket[F] {
-            def readN(numBytes: Int, timeout: Option[FiniteDuration]): F[Option[Chunk[Byte]]] =
-              readN0(numBytes, timeout)
-            def read(maxBytes: Int, timeout: Option[FiniteDuration]): F[Option[Chunk[Byte]]] =
-              read0(maxBytes, timeout)
-            def reads(maxBytes: Int, timeout: Option[FiniteDuration]): Stream[F, Byte] =
-              Stream.eval(read(maxBytes, timeout)).flatMap {
+            def readN(numBytes: Int): F[Option[Chunk[Byte]]] =
+              readN0(numBytes)
+            def read(maxBytes: Int): F[Option[Chunk[Byte]]] =
+              read0(maxBytes)
+            def reads(maxBytes: Int): Stream[F, Byte] =
+              Stream.eval(read(maxBytes)).flatMap {
                 case Some(bytes) =>
-                  Stream.chunk(bytes) ++ reads(maxBytes, timeout)
+                  Stream.chunk(bytes) ++ reads(maxBytes)
                 case None => Stream.empty
               }
 
-            def write(bytes: Chunk[Byte], timeout: Option[FiniteDuration]): F[Unit] =
-              write0(bytes, timeout)
-            def writes(timeout: Option[FiniteDuration]): Pipe[F, Byte, INothing] =
-              _.chunks.foreach(write(_, timeout))
+            def write(bytes: Chunk[Byte]): F[Unit] =
+              write0(bytes)
+            def writes: Pipe[F, Byte, INothing] =
+              _.chunks.foreach(write)
 
             def localAddress: F[SocketAddress[IpAddress]] =
               Async[F].blocking(

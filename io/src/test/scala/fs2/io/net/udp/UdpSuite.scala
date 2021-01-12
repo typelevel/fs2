@@ -25,8 +25,6 @@ package net
 package udp
 
 import java.net.{Inet4Address, NetworkInterface, StandardProtocolFamily}
-import java.nio.channels.InterruptedByTimeoutException
-import scala.concurrent.duration._
 
 import cats.effect.IO
 import cats.syntax.all._
@@ -49,14 +47,13 @@ class UdpSuite extends Fs2Suite {
             .flatMap { serverSocket =>
               Stream.eval(serverSocket.localAddress).map(_.port).flatMap { serverPort =>
                 val serverAddress = SocketAddress(ip"127.0.0.1", serverPort)
-                val server = serverSocket
-                  .reads()
+                val server = serverSocket.reads
                   .evalMap(packet => serverSocket.write(packet))
                   .drain
                 val client = Stream.resource(socketGroup.open()).flatMap { clientSocket =>
                   Stream(Packet(serverAddress, msg))
-                    .through(clientSocket.writes())
-                    .drain ++ Stream.eval(clientSocket.read())
+                    .through(clientSocket.writes)
+                    .drain ++ Stream.eval(clientSocket.read)
                 }
                 server.mergeHaltBoth(client)
               }
@@ -84,15 +81,14 @@ class UdpSuite extends Fs2Suite {
             .flatMap { serverSocket =>
               Stream.eval(serverSocket.localAddress).map(_.port).flatMap { serverPort =>
                 val serverAddress = SocketAddress(ip"127.0.0.1", serverPort)
-                val server = serverSocket
-                  .reads()
+                val server = serverSocket.reads
                   .evalMap(packet => serverSocket.write(packet))
                   .drain
                 val client = Stream.resource(socketGroup.open()).flatMap { clientSocket =>
                   Stream
                     .emits(msgs.map(msg => Packet(serverAddress, msg)))
                     .flatMap { msg =>
-                      Stream.exec(clientSocket.write(msg)) ++ Stream.eval(clientSocket.read())
+                      Stream.exec(clientSocket.write(msg)) ++ Stream.eval(clientSocket.read)
                     }
                 }
                 val clients = Stream
@@ -133,14 +129,13 @@ class UdpSuite extends Fs2Suite {
                   .exec(
                     v4Interfaces.traverse_(interface => serverSocket.join(groupJoin, interface))
                   ) ++
-                  serverSocket
-                    .reads()
+                  serverSocket.reads
                     .evalMap(packet => serverSocket.write(packet))
                     .drain
                 val client = Stream.resource(socketGroup.open()).flatMap { clientSocket =>
                   Stream(Packet(SocketAddress(group.address, serverPort), msg))
-                    .through(clientSocket.writes())
-                    .drain ++ Stream.eval(clientSocket.read())
+                    .through(clientSocket.writes)
+                    .drain ++ Stream.eval(clientSocket.read)
                 }
                 server.mergeHaltBoth(client)
               }
@@ -150,18 +145,6 @@ class UdpSuite extends Fs2Suite {
         .lastOrError
         .map(_.bytes)
         .assertEquals(msg)
-    }
-
-    test("timeouts supported") {
-      mkSocketGroup
-        .flatMap { socketGroup =>
-          Stream
-            .resource(socketGroup.open())
-            .flatMap(socket => socket.reads(timeout = Some(50.millis)))
-        }
-        .compile
-        .drain
-        .intercept[InterruptedByTimeoutException]
     }
   }
 }
