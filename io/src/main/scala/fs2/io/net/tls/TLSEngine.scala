@@ -21,6 +21,7 @@
 
 package fs2
 package io
+package net
 package tls
 
 import scala.concurrent.duration.FiniteDuration

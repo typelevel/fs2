@@ -21,6 +21,7 @@
 
 package fs2
 package io
+package net
 package tcp
 
 import scala.concurrent.duration._

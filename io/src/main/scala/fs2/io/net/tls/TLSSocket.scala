@@ -21,6 +21,7 @@
 
 package fs2
 package io
+package net
 package tls
 
 import scala.concurrent.duration._
@@ -34,7 +35,7 @@ import cats.syntax.all._
 
 import com.comcast.ip4s.{IpAddress, SocketAddress}
 
-import fs2.io.tcp.Socket
+import fs2.io.net.tcp.Socket
 
 /** TCP socket that supports encryption via TLS.
   *

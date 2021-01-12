@@ -21,6 +21,7 @@
 
 package fs2
 package io
+package net
 package tls
 
 import scala.concurrent.duration._
@@ -28,7 +29,7 @@ import scala.concurrent.duration._
 import cats.effect.{IO, Resource}
 import com.comcast.ip4s._
 
-import fs2.io.udp.{Packet, Socket}
+import fs2.io.net.udp.{Packet, Socket}
 
 class DTLSSocketSuite extends TLSSuite {
   group("DTLSSocket") {

@@ -21,6 +21,7 @@
 
 package fs2
 package io
+package net
 package tls
 
 import scala.concurrent.duration._
@@ -34,7 +35,7 @@ import cats.syntax.all._
 
 import com.comcast.ip4s._
 
-import fs2.io.udp.{Packet, Socket}
+import fs2.io.net.udp.{Packet, Socket}
 
 /** UDP socket that supports encryption via DTLS.
   *

@@ -21,6 +21,7 @@
 
 package fs2
 package io
+package net
 
 /** Provides support for UDP networking. */
 package object udp

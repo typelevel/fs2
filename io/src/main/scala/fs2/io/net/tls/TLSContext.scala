@@ -21,6 +21,7 @@
 
 package fs2
 package io
+package net
 package tls
 
 import scala.concurrent.duration._
@@ -43,8 +44,8 @@ import cats.syntax.all._
 
 import com.comcast.ip4s.{IpAddress, SocketAddress}
 
-import fs2.io.tcp.Socket
-import fs2.io.udp.Packet
+import fs2.io.net.tcp.Socket
+import fs2.io.net.udp.Packet
 import java.util.function.BiFunction
 
 /** Allows creation of [[TLSSocket]]s.

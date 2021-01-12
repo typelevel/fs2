@@ -19,7 +19,7 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2.io
+package fs2.io.net
 
 import java.net.{SocketOption => JSocketOption}
 import java.net.StandardSocketOptions

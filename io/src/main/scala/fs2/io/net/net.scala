@@ -19,15 +19,8 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2
-package io
-package udp
+package fs2.io
 
-import com.comcast.ip4s.{IpAddress, SocketAddress}
+/** Provides support for doing network I/O -- TCP, UDP, and TLS. */
+package object net
 
-/** A single packet to send to the specified remote address or received from the specified address.
-  *
-  * @param remote   remote party to send/receive packet to/from
-  * @param bytes    data to send/receive
-  */
-final case class Packet(remote: SocketAddress[IpAddress], bytes: Chunk[Byte])

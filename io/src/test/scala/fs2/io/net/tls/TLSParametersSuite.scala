@@ -21,27 +21,33 @@
 
 package fs2
 package io
+package net
 package tls
 
-import javax.net.ssl.SSLEngine
-
-import cats.Applicative
-import cats.effect.Sync
-import cats.syntax.all._
-
-private[tls] trait SSLEngineTaskRunner[F[_]] {
-  def runDelegatedTasks: F[Unit]
-}
-
-private[tls] object SSLEngineTaskRunner {
-  def apply[F[_]](
-      engine: SSLEngine
-  )(implicit F: Sync[F]): SSLEngineTaskRunner[F] =
-    new SSLEngineTaskRunner[F] {
-      def runDelegatedTasks: F[Unit] =
-        F.blocking(Option(engine.getDelegatedTask)).flatMap {
-          case None       => Applicative[F].unit
-          case Some(task) => F.blocking(task.run) >> runDelegatedTasks
-        }
+class TLSParametersSuite extends TLSSuite {
+  group("toSSLParameters") {
+    test("no client auth when wantClientAuth=false and needClientAuth=false") {
+      val params = TLSParameters(wantClientAuth = false, needClientAuth = false).toSSLParameters
+      assert(!params.getWantClientAuth)
+      assert(!params.getNeedClientAuth)
     }
+
+    test("wantClientAuth when wantClientAuth=true and needClientAuth=false") {
+      val params = TLSParameters(wantClientAuth = true, needClientAuth = false).toSSLParameters
+      assert(params.getWantClientAuth)
+      assert(!params.getNeedClientAuth)
+    }
+
+    test("needClientAuth when wantClientAuth=false and needClientAuth=true") {
+      val params = TLSParameters(wantClientAuth = false, needClientAuth = true).toSSLParameters
+      assert(!params.getWantClientAuth)
+      assert(params.getNeedClientAuth)
+    }
+
+    test("needClientAuth when wantClientAuth=true and needClientAuth=true") {
+      val params = TLSParameters(wantClientAuth = true, needClientAuth = true).toSSLParameters
+      assert(!params.getWantClientAuth)
+      assert(params.getNeedClientAuth)
+    }
+  }
 }

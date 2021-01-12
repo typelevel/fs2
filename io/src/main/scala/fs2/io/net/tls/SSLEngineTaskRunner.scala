@@ -21,6 +21,28 @@
 
 package fs2
 package io
+package net
+package tls
 
-/** Provides support for TCP networking. */
-package object tcp
+import javax.net.ssl.SSLEngine
+
+import cats.Applicative
+import cats.effect.Sync
+import cats.syntax.all._
+
+private[tls] trait SSLEngineTaskRunner[F[_]] {
+  def runDelegatedTasks: F[Unit]
+}
+
+private[tls] object SSLEngineTaskRunner {
+  def apply[F[_]](
+      engine: SSLEngine
+  )(implicit F: Sync[F]): SSLEngineTaskRunner[F] =
+    new SSLEngineTaskRunner[F] {
+      def runDelegatedTasks: F[Unit] =
+        F.blocking(Option(engine.getDelegatedTask)).flatMap {
+          case None       => Applicative[F].unit
+          case Some(task) => F.blocking(task.run) >> runDelegatedTasks
+        }
+    }
+}

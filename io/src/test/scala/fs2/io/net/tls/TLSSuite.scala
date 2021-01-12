@@ -21,32 +21,18 @@
 
 package fs2
 package io
+package net
 package tls
 
-class TLSParametersSuite extends TLSSuite {
-  group("toSSLParameters") {
-    test("no client auth when wantClientAuth=false and needClientAuth=false") {
-      val params = TLSParameters(wantClientAuth = false, needClientAuth = false).toSSLParameters
-      assert(!params.getWantClientAuth)
-      assert(!params.getNeedClientAuth)
-    }
+import cats.effect.IO
 
-    test("wantClientAuth when wantClientAuth=true and needClientAuth=false") {
-      val params = TLSParameters(wantClientAuth = true, needClientAuth = false).toSSLParameters
-      assert(params.getWantClientAuth)
-      assert(!params.getNeedClientAuth)
-    }
+abstract class TLSSuite extends Fs2Suite {
+  def testTlsContext: IO[TLSContext[IO]] =
+    Network[IO].tlsContext.fromKeyStoreResource(
+      "keystore.jks",
+      "password".toCharArray,
+      "password".toCharArray
+    )
 
-    test("needClientAuth when wantClientAuth=false and needClientAuth=true") {
-      val params = TLSParameters(wantClientAuth = false, needClientAuth = true).toSSLParameters
-      assert(!params.getWantClientAuth)
-      assert(params.getNeedClientAuth)
-    }
-
-    test("needClientAuth when wantClientAuth=true and needClientAuth=true") {
-      val params = TLSParameters(wantClientAuth = true, needClientAuth = true).toSSLParameters
-      assert(!params.getWantClientAuth)
-      assert(params.getNeedClientAuth)
-    }
-  }
+  val logger = None // Some((msg: String) => IO(println(s"\u001b[33m${msg}\u001b[0m")))
 }

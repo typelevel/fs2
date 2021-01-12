@@ -21,17 +21,14 @@
 
 package fs2
 package io
-package tls
+package net
+package udp
 
-import cats.effect.IO
+import com.comcast.ip4s.{IpAddress, SocketAddress}
 
-abstract class TLSSuite extends Fs2Suite {
-  def testTlsContext: IO[TLSContext[IO]] =
-    Network[IO].tlsContext.fromKeyStoreResource(
-      "keystore.jks",
-      "password".toCharArray,
-      "password".toCharArray
-    )
-
-  val logger = None // Some((msg: String) => IO(println(s"\u001b[33m${msg}\u001b[0m")))
-}
+/** A single packet to send to the specified remote address or received from the specified address.
+  *
+  * @param remote   remote party to send/receive packet to/from
+  * @param bytes    data to send/receive
+  */
+final case class Packet(remote: SocketAddress[IpAddress], bytes: Chunk[Byte])

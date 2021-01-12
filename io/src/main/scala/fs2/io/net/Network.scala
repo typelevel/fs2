@@ -21,12 +21,13 @@
 
 package fs2
 package io
+package net
 
 import cats.effect.kernel.{Async, Resource}
 import java.util.concurrent.ThreadFactory
 
 import fs2.internal.ThreadFactories
-import fs2.io.tls.TLSContext
+import fs2.io.net.tls.TLSContext
 
 /** Provides the ability to work with TCP, UDP, and TLS.
   *
