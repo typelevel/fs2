@@ -36,6 +36,7 @@ import java.nio.channels.{
 }
 import java.util.ArrayDeque
 import java.util.concurrent.{ConcurrentLinkedQueue, CountDownLatch}
+import java.util.concurrent.atomic.AtomicLong
 
 import cats.effect.kernel.{Resource, Sync}
 
@@ -71,7 +72,7 @@ private[udp] object AsynchronousSocketGroup {
   private class WriterPacket(val remote: InetSocketAddress, val bytes: ByteBuffer)
 
   def apply[F[_]: Sync]: Resource[F, AsynchronousSocketGroup] =
-    Resource.make(Sync[F].blocking(unsafe))(g => Sync[F].blocking(g.close()))
+    Resource.make(Sync[F].delay(unsafe))(g => Sync[F].delay(g.close()))
 
   private def unsafe: AsynchronousSocketGroup =
     new AsynchronousSocketGroup {
@@ -155,7 +156,7 @@ private[udp] object AsynchronousSocketGroup {
 
       type Context = SelectionKey
 
-      private val ids = new java.util.concurrent.atomic.AtomicLong(Long.MinValue)
+      private val ids = new AtomicLong(Long.MinValue)
 
       private val selector = Selector.open()
       private val closeLock = new Object

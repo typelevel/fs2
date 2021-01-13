@@ -64,7 +64,7 @@ object SocketGroup {
         protocolFamily: Option[ProtocolFamily]
     ): Resource[F, Socket[F]] =
       Resource.eval(address.traverse(_.resolve[F])).flatMap { addr =>
-        val mkChannel = Async[F].blocking {
+        val mkChannel = Async[F].delay {
           val channel = protocolFamily
             .map(pf => DatagramChannel.open(pf))
             .getOrElse(DatagramChannel.open())
@@ -80,7 +80,7 @@ object SocketGroup {
     private def mkSocket(
         channel: DatagramChannel
     ): F[Socket[F]] =
-      Async[F].blocking {
+      Async[F].delay {
         new Socket[F] {
           private val ctx = asg.register(channel)
 
@@ -114,23 +114,23 @@ object SocketGroup {
           def writes: Pipe[F, Packet, INothing] =
             _.foreach(write)
 
-          def close: F[Unit] = Async[F].blocking(asg.close(ctx))
+          def close: F[Unit] = Async[F].delay(asg.close(ctx))
 
           def join(
               join: MulticastJoin[IpAddress],
               interface: NetworkInterface
           ): F[GroupMembership] =
-            Async[F].blocking {
+            Async[F].delay {
               val membership = join.fold(
                 j => channel.join(j.group.address.toInetAddress, interface),
                 j => channel.join(j.group.address.toInetAddress, interface, j.source.toInetAddress)
               )
               new GroupMembership {
-                def drop = Async[F].blocking(membership.drop)
+                def drop = Async[F].delay(membership.drop)
                 def block(source: IpAddress) =
-                  Async[F].blocking { membership.block(source.toInetAddress); () }
+                  Async[F].delay { membership.block(source.toInetAddress); () }
                 def unblock(source: IpAddress) =
-                  Async[F].blocking { membership.unblock(source.toInetAddress); () }
+                  Async[F].delay { membership.unblock(source.toInetAddress); () }
                 override def toString = "GroupMembership"
               }
             }
