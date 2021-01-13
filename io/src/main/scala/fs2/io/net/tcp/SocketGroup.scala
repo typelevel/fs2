@@ -163,8 +163,7 @@ object SocketGroup {
       val setup: F[AsynchronousServerSocketChannel] =
         address.traverse(_.resolve[F]).flatMap { addr =>
           Async[F].delay {
-            val ch = AsynchronousChannelProvider
-              .provider
+            val ch = AsynchronousChannelProvider.provider
               .openAsynchronousServerSocketChannel(channelGroup)
             options.foreach { opt =>
               ch.setOption[opt.Value](opt.key, opt.value)
