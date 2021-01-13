@@ -24,9 +24,7 @@ package io
 package net
 
 import cats.effect.kernel.{Async, Resource}
-import java.util.concurrent.ThreadFactory
 
-import fs2.internal.ThreadFactories
 import fs2.io.net.tls.TLSContext
 
 /** Provides the ability to work with TCP, UDP, and TLS.
@@ -52,22 +50,12 @@ sealed trait Network[F[_]] {
     *
     * The `SocketGroup` supports both server and client sockets. When the resource is used,
     * a fixed thread pool is created and used to initialize a `java.nio.channels.AsynchronousChannelGroup`.
-    * All network reads/writes occur on this fixed thread pool. The pool size is set to the number
-    * of processors returned by `Runtime.getRuntime.availableProcessors`. To customize this,
-    * use `tcpSocketGroupWithConfig`.
+    * All network reads/writes occur on this fixed thread pool.
     *
     * When the socket group is finalized, the fixed thread pool is terminated and any future reads/writes
     * on sockets created by the socket group will fail.
     */
   def tcpSocketGroup: Resource[F, tcp.SocketGroup[F]]
-
-  /** Like `tcpSocketGroup` but allows configuration of the fixed size thread pool used for NIO.
-    */
-  def tcpSocketGroupWithConfig(
-      nonBlockingThreadCount: Int = 0,
-      nonBlockingThreadFactory: ThreadFactory =
-        ThreadFactories.named("fs2-socket-group-non-blocking", true)
-  ): Resource[F, tcp.SocketGroup[F]]
 
   /** Returns a UDP `SocketGroup` as a resource.
     *
@@ -91,12 +79,7 @@ object Network {
 
   implicit def forAsync[F[_]](implicit F: Async[F]): Network[F] =
     new Network[F] {
-      def tcpSocketGroup: Resource[F, tcp.SocketGroup[F]] = tcp.SocketGroup.forAsync[F]()
-      def tcpSocketGroupWithConfig(
-          nonBlockingThreadCount: Int,
-          nonBlockingThreadFactory: ThreadFactory
-      ): Resource[F, tcp.SocketGroup[F]] =
-        tcp.SocketGroup.forAsync[F](nonBlockingThreadCount, nonBlockingThreadFactory)
+      def tcpSocketGroup: Resource[F, tcp.SocketGroup[F]] = tcp.SocketGroup.forAsync[F]
       def udpSocketGroup: Resource[F, udp.SocketGroup[F]] = udp.SocketGroup.forAsync[F]
       def tlsContext: TLSContext.Builder[F] = TLSContext.Builder.forAsync[F]
     }
