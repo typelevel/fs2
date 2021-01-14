@@ -40,6 +40,7 @@ import java.util.concurrent.atomic.AtomicLong
 import com.comcast.ip4s._
 
 import CollectionCompat._
+import java.util.concurrent.ThreadFactory
 
 /** Supports read/write operations on an arbitrary number of UDP sockets using a shared selector thread.
   *
@@ -58,7 +59,7 @@ private[net] trait AsynchronousDatagramSocketGroup {
       cb: Option[Throwable] => Unit
   ): () => Unit
   def close(ctx: Context): Unit
-  protected def close(): Unit
+  def close(): Unit
 }
 
 private[net] object AsynchronousDatagramSocketGroup {
@@ -68,7 +69,7 @@ private[net] object AsynchronousDatagramSocketGroup {
    */
   private class WriterDatagram(val remote: InetSocketAddress, val bytes: ByteBuffer)
 
-  def unsafeMake: AsynchronousDatagramSocketGroup =
+  def unsafe(threadFactory: ThreadFactory): AsynchronousDatagramSocketGroup =
     new AsynchronousDatagramSocketGroup {
       private class Attachment(
           readers: ArrayDeque[(Long, Either[Throwable, Datagram] => Unit)] = new ArrayDeque(),
@@ -308,9 +309,8 @@ private[net] object AsynchronousDatagramSocketGroup {
         }
       }
 
-      private val selectorThread: Thread = internal.ThreadFactories
-        .named("fs2-udp-selector", true)
-        .newThread(new Runnable {
+      private val selectorThread: Thread =
+        threadFactory.newThread(new Runnable {
           def run = {
             while (!closed && !Thread.currentThread.isInterrupted) {
               runPendingThunks()
