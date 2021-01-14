@@ -33,7 +33,7 @@ import cats.syntax.all._
 
 import com.comcast.ip4s.{IpAddress, SocketAddress}
 
-import fs2.io.net.tcp.Socket
+import fs2.io.net.Socket
 
 /** TCP socket that supports encryption via TLS.
   *
@@ -60,7 +60,7 @@ object TLSSocket {
       socket: Socket[F],
       engine: TLSEngine[F]
   ): Resource[F, TLSSocket[F]] =
-    Resource.make(mk(socket, engine))(_.close)
+    Resource.make(mk(socket, engine))(_ => engine.stopWrap >> engine.stopUnwrap)
 
   private def mk[F[_]: Async](
       socket: Socket[F],
@@ -118,9 +118,6 @@ object TLSSocket {
 
       def applicationProtocol: F[String] =
         engine.applicationProtocol
-
-      def close: F[Unit] =
-        engine.stopWrap >> engine.stopUnwrap >> socket.close
 
       def isOpen: F[Boolean] = socket.isOpen
     }

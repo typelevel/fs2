@@ -22,7 +22,6 @@
 package fs2
 package io
 package net
-package tcp
 
 import com.comcast.ip4s.{IpAddress, SocketAddress}
 
@@ -53,9 +52,6 @@ trait Socket[F[_]] {
   def endOfOutput: F[Unit]
 
   def isOpen: F[Boolean]
-
-  /** Closes the connection corresponding to this `Socket`. */
-  def close: F[Unit]
 
   /** Asks for the remote address of the peer. */
   def remoteAddress: F[SocketAddress[IpAddress]]

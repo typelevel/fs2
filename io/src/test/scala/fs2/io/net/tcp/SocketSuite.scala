@@ -31,18 +31,16 @@ import cats.effect.IO
 import com.comcast.ip4s._
 
 class SocketSuite extends Fs2Suite {
-  def mkSocketGroup: Stream[IO, SocketGroup[IO]] =
-    Stream.resource(Network[IO].tcpSocketGroup)
 
   val timeout = 30.seconds
 
+  val network = Network.create[IO]
+
   val setup = for {
-    socketGroup <- Network[IO].tcpSocketGroup
-    serverSetup <- socketGroup.serverResource(address = Some(ip"127.0.0.1"))
-    (bindAddress, serverConnections) = serverSetup
-    server = serverConnections.flatMap(Stream.resource(_))
+    serverSetup <- network.serverResource(address = Some(ip"127.0.0.1"))
+    (bindAddress, server) = serverSetup
     clients = Stream
-      .resource(socketGroup.client(bindAddress, options = List(SocketOption.sendBufferSize(10000))))
+      .resource(network.client(bindAddress, options = List(SocketOption.sendBufferSize(10000))))
       .repeat
   } yield (server -> clients)
 

@@ -33,13 +33,11 @@ import cats.syntax.all._
 
 import com.comcast.ip4s._
 
-import fs2.io.net.udp.{Packet, Socket}
-
 /** UDP socket that supports encryption via DTLS.
   *
   * To construct a `DTLSSocket`, use the `dtlsClient` and `dtlsServer` methods on `TLSContext`.
   */
-sealed trait DTLSSocket[F[_]] extends Socket[F] {
+sealed trait DTLSSocket[F[_]] extends DatagramSocket[F] {
 
   /** Initiates handshaking -- either the initial or a renegotiation. */
   def beginHandshake: F[Unit]
@@ -53,35 +51,34 @@ sealed trait DTLSSocket[F[_]] extends Socket[F] {
 object DTLSSocket {
 
   private[tls] def apply[F[_]: Async](
-      socket: Socket[F],
+      socket: DatagramSocket[F],
       remoteAddress: SocketAddress[IpAddress],
       engine: TLSEngine[F]
   ): Resource[F, DTLSSocket[F]] =
-    Resource.make(mk(socket, remoteAddress, engine))(_.close)
+    Resource.make(mk(socket, remoteAddress, engine))(_ => engine.stopWrap >> engine.stopUnwrap)
 
   private def mk[F[_]: Async](
-      socket: Socket[F],
+      socket: DatagramSocket[F],
       remoteAddress: SocketAddress[IpAddress],
       engine: TLSEngine[F]
   ): F[DTLSSocket[F]] =
     Applicative[F].pure {
       new DTLSSocket[F] {
 
-        def read: F[Packet] =
+        def read: F[Datagram] =
           engine.read(Int.MaxValue).flatMap {
-            case Some(bytes) => Applicative[F].pure(Packet(remoteAddress, bytes))
+            case Some(bytes) => Applicative[F].pure(Datagram(remoteAddress, bytes))
             case None        => read
           }
 
-        def reads: Stream[F, Packet] =
+        def reads: Stream[F, Datagram] =
           Stream.repeatEval(read)
-        def write(packet: Packet): F[Unit] =
-          engine.write(packet.bytes)
+        def write(datagram: Datagram): F[Unit] =
+          engine.write(datagram.bytes)
 
-        def writes: Pipe[F, Packet, INothing] =
+        def writes: Pipe[F, Datagram, INothing] =
           _.foreach(write)
         def localAddress: F[SocketAddress[IpAddress]] = socket.localAddress
-        def close: F[Unit] = socket.close
         def join(join: MulticastJoin[IpAddress], interface: NetworkInterface): F[GroupMembership] =
           Sync[F].raiseError(new RuntimeException("DTLSSocket does not support multicast"))
         def beginHandshake: F[Unit] = engine.beginHandshake

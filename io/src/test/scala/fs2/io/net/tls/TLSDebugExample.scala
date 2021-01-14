@@ -33,39 +33,40 @@ import com.comcast.ip4s._
 
 object TLSDebug {
   def debug[F[_]: Async](
+      network: Network[F],
       tlsContext: TLSContext[F],
       host: SocketAddress[Hostname]
   ): F[String] =
-    Network[F].tcpSocketGroup.use { socketGroup =>
-      host.resolve.flatMap { socketAddress =>
-        socketGroup.client(socketAddress).use { rawSocket =>
-          tlsContext
-            .client(
-              rawSocket,
-              TLSParameters(serverNames = Some(List(new SNIHostName(host.host.toString))))
-            )
-            .use { tlsSocket =>
-              tlsSocket.write(Chunk.empty) >>
-                tlsSocket.session.map { session =>
-                  s"Cipher suite: ${session.getCipherSuite}\r\n" +
-                    "Peer certificate chain:\r\n" + session.getPeerCertificates.zipWithIndex
-                      .map { case (cert, idx) => s"Certificate $idx: $cert" }
-                      .mkString("\r\n")
-                }
-            }
-        }
+    host.resolve.flatMap { socketAddress =>
+      network.client(socketAddress).use { rawSocket =>
+        tlsContext
+          .client(
+            rawSocket,
+            TLSParameters(serverNames = Some(List(new SNIHostName(host.host.toString))))
+          )
+          .use { tlsSocket =>
+            tlsSocket.write(Chunk.empty) >>
+              tlsSocket.session.map { session =>
+                s"Cipher suite: ${session.getCipherSuite}\r\n" +
+                  "Peer certificate chain:\r\n" + session.getPeerCertificates.zipWithIndex
+                    .map { case (cert, idx) => s"Certificate $idx: $cert" }
+                    .mkString("\r\n")
+              }
+          }
       }
     }
 }
 
 class TLSDebugTest extends Fs2Suite {
 
-  def run(address: SocketAddress[Hostname]): IO[Unit] =
-    Network[IO].tlsContext.system.flatMap { ctx =>
+  def run(address: SocketAddress[Hostname]): IO[Unit] = {
+    val network = Network.create[IO]
+    network.tlsContext.system.flatMap { ctx =>
       TLSDebug
-        .debug[IO](ctx, address)
+        .debug[IO](network, ctx, address)
         .flatMap(l => IO(println(l)))
     }
+  }
 
   test("google")(run(SocketAddress(host"google.com", port"443")))
 }

@@ -42,8 +42,6 @@ import cats.syntax.all._
 
 import com.comcast.ip4s.{IpAddress, SocketAddress}
 
-import fs2.io.net.tcp.Socket
-import fs2.io.net.udp.Packet
 import java.util.function.BiFunction
 
 /** Allows creation of [[TLSSocket]]s.
@@ -72,7 +70,7 @@ sealed trait TLSContext[F[_]] {
     * Internal debug logging of the session can be enabled by passing a logger.
     */
   def dtlsClient(
-      socket: udp.Socket[F],
+      socket: DatagramSocket[F],
       remoteAddress: SocketAddress[IpAddress],
       params: TLSParameters = TLSParameters.Default,
       logger: Option[String => F[Unit]] = None
@@ -82,7 +80,7 @@ sealed trait TLSContext[F[_]] {
     * Internal debug logging of the session can be enabled by passing a logger.
     */
   def dtlsServer(
-      socket: udp.Socket[F],
+      socket: DatagramSocket[F],
       remoteAddress: SocketAddress[IpAddress],
       params: TLSParameters = TLSParameters.Default,
       logger: Option[String => F[Unit]] = None
@@ -178,7 +176,7 @@ object TLSContext {
               .flatMap(engine => TLSSocket(socket, engine))
 
           def dtlsClient(
-              socket: udp.Socket[F],
+              socket: DatagramSocket[F],
               remoteAddress: SocketAddress[IpAddress],
               params: TLSParameters,
               logger: Option[String => F[Unit]]
@@ -192,7 +190,7 @@ object TLSContext {
             )
 
           def dtlsServer(
-              socket: udp.Socket[F],
+              socket: DatagramSocket[F],
               remoteAddress: SocketAddress[IpAddress],
               params: TLSParameters,
               logger: Option[String => F[Unit]]
@@ -206,7 +204,7 @@ object TLSContext {
             )
 
           private def mkDtlsSocket(
-              socket: udp.Socket[F],
+              socket: DatagramSocket[F],
               remoteAddress: SocketAddress[IpAddress],
               clientMode: Boolean,
               params: TLSParameters,
@@ -218,7 +216,7 @@ object TLSContext {
                   new TLSEngine.Binding[F] {
                     def write(data: Chunk[Byte]): F[Unit] =
                       if (data.isEmpty) Applicative[F].unit
-                      else socket.write(Packet(remoteAddress, data))
+                      else socket.write(Datagram(remoteAddress, data))
                     def read(maxBytes: Int): F[Option[Chunk[Byte]]] =
                       socket.read.map(p => Some(p.bytes))
                   },

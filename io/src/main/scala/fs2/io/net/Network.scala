@@ -25,47 +25,81 @@ package net
 
 import cats.effect.kernel.{Async, Resource}
 
+import com.comcast.ip4s.{Host, IpAddress, Port, SocketAddress}
+
+import fs2.internal.ThreadFactories
 import fs2.io.net.tls.TLSContext
+
+import java.net.ProtocolFamily
+import java.nio.channels.AsynchronousChannelGroup
 
 /** Provides the ability to work with TCP, UDP, and TLS.
   *
   * @example {{{
   * import fs2.Stream
-  * import fs2.io.{Network, udp}
+  * import fs2.io.net.{Datagram, Network}
   *
-  * def send[F[_]: Network](packet: udp.Packet): F[Unit] =
-  *   Network[F].udpSocketGroup.open().use { socket =>
+  * def send[F[_]: Network](datagram: Datagram): F[Unit] =
+  *   Network[F].openDatagramSocket().use { socket =>
   *     socket.write(packet)
   *   }
   * }}}
   *
   * In this example, the `F[_]` parameter to `send` requires the `Network` constraint instead
-  * of requiring the much more powerful `Async`.
+  * of requiring the much more powerful `Async` constraint.
   *
   * An instance of `Network` is available for any effect `F` which has an `Async[F]` instance.
   */
 sealed trait Network[F[_]] {
 
-  /** Returns a TCP `SocketGroup` as a resource.
+  /** Opens a TCP connection to the specified server.
     *
-    * The `SocketGroup` supports both server and client sockets. When the resource is used,
-    * a fixed thread pool is created and used to initialize a `java.nio.channels.AsynchronousChannelGroup`.
-    * All network reads/writes occur on this fixed thread pool.
+    * The connection is closed when the resource is released.
     *
-    * When the socket group is finalized, the fixed thread pool is terminated and any future reads/writes
-    * on sockets created by the socket group will fail.
+    * @param to      address of remote server
+    * @param options socket options to apply to the underlying socket
     */
-  def tcpSocketGroup: Resource[F, tcp.SocketGroup[F]]
+  def client(
+      to: SocketAddress[Host],
+      options: List[SocketOption] = List.empty
+  ): Resource[F, Socket[F]]
 
-  /** Returns a UDP `SocketGroup` as a resource.
+  /** Creates a TCP server bound to specified address/port and returns a stream of
+    * client sockets -- one per client that connects to the bound address/port.
     *
-    * The `SocketGroup` supports both receiving and sending UDP datagrams.
-    * When the resource is acquired, a dedicated thread is started, which
-    * performs all non-blocking network calls. When the resource is finalized,
-    * the thread is terminated and any sockets opened from the socket group
-    * are closed.
+    * When the stream terminates, all open connections will terminate as well.
+    *
+    * @param address            address to accept connections from; none for all interfaces
+    * @param port               port to bind
+    * @param options socket options to apply to the underlying socket
     */
-  def udpSocketGroup: Resource[F, udp.SocketGroup[F]]
+  def server(
+      address: Option[Host] = None,
+      port: Option[Port] = None,
+      options: List[SocketOption] = List.empty
+  ): Stream[F, Socket[F]]
+
+  /** Like [[server]] but provides the `SocketAddress` of the bound server socket before providing accepted sockets.
+    */
+  def serverResource(
+      address: Option[Host] = None,
+      port: Option[Port] = None,
+      options: List[SocketOption] = List.empty
+  ): Resource[F, (SocketAddress[IpAddress], Stream[F, Socket[F]])]
+
+  /** Creates a UDP socket bound to the specified address.
+    *
+    * @param address              address to bind to; defaults to all interfaces
+    * @param port                 port to bind to; defaults to an ephemeral port
+    * @param options              socket options to apply to the underlying socket
+    * @param protocolFamily       protocol family to use when opening the supporting `DatagramChannel`
+    */
+  def openDatagramSocket(
+      address: Option[Host] = None,
+      port: Option[Port] = None,
+      options: List[SocketOption] = Nil,
+      protocolFamily: Option[ProtocolFamily] = None
+  ): Resource[F, DatagramSocket[F]]
 
   /** Returns a builder for `TLSContext[F]` values.
     *
@@ -75,12 +109,45 @@ sealed trait Network[F[_]] {
 }
 
 object Network {
+  private lazy val acg = AsynchronousChannelGroup.withFixedThreadPool(
+    1,
+    ThreadFactories.named("fs2-tcp-socket-group", true)
+  )
+  private lazy val adsg = AsynchronousDatagramSocketGroup.unsafeMake
+
   def apply[F[_]](implicit F: Network[F]): F.type = F
 
-  implicit def forAsync[F[_]](implicit F: Async[F]): Network[F] =
+  def create[F[_]](implicit F: Async[F]): Network[F] =
     new Network[F] {
-      def tcpSocketGroup: Resource[F, tcp.SocketGroup[F]] = tcp.SocketGroup.forAsync[F]
-      def udpSocketGroup: Resource[F, udp.SocketGroup[F]] = udp.SocketGroup.forAsync[F]
+      private lazy val socketGroup = new SocketGroup[F](acg)
+      private lazy val datagramSocketGroup = new DatagramSocketGroup[F](adsg)
+
+      def client(
+          to: SocketAddress[Host],
+          options: List[SocketOption]
+      ): Resource[F, Socket[F]] = socketGroup.client(to, options)
+
+      def server(
+          address: Option[Host],
+          port: Option[Port],
+          options: List[SocketOption]
+      ): Stream[F, Socket[F]] = socketGroup.server(address, port, options)
+
+      def serverResource(
+          address: Option[Host],
+          port: Option[Port],
+          options: List[SocketOption]
+      ): Resource[F, (SocketAddress[IpAddress], Stream[F, Socket[F]])] =
+        socketGroup.serverResource(address, port, options)
+
+      def openDatagramSocket(
+          address: Option[Host],
+          port: Option[Port],
+          options: List[SocketOption],
+          protocolFamily: Option[ProtocolFamily]
+      ): Resource[F, DatagramSocket[F]] =
+        datagramSocketGroup.open(address, port, options, protocolFamily)
+
       def tlsContext: TLSContext.Builder[F] = TLSContext.Builder.forAsync[F]
     }
 }

@@ -22,7 +22,6 @@
 package fs2
 package io
 package net
-package udp
 
 import java.net.NetworkInterface
 
@@ -30,36 +29,33 @@ import com.comcast.ip4s._
 
 /** Provides the ability to read/write from a UDP socket in the effect `F`.
   */
-trait Socket[F[_]] {
+trait DatagramSocket[F[_]] {
 
-  /** Reads a single packet from this udp socket.
+  /** Reads a single datagram from this udp socket.
     */
-  def read: F[Packet]
+  def read: F[Datagram]
 
-  /** Reads packets received from this udp socket.
+  /** Reads datagrams received from this udp socket.
     *
     * Note that multiple `reads` may execute at same time, causing each evaluation to receive fair
     * amount of messages.
     *
-    * @return stream of packets
+    * @return stream of datagrams
     */
-  def reads: Stream[F, Packet]
+  def reads: Stream[F, Datagram]
 
-  /** Write a single packet to this udp socket.
+  /** Writes a single datagram to this udp socket.
     *
-    * @param packet  Packet to write
+    * @param datagram datagram to write
     */
-  def write(packet: Packet): F[Unit]
+  def write(datagram: Datagram): F[Unit]
 
-  /** Writes supplied packets to this udp socket.
+  /** Writes supplied datagrams to this udp socket.
     */
-  def writes: Pipe[F, Packet, INothing]
+  def writes: Pipe[F, Datagram, INothing]
 
   /** Returns the local address of this udp socket. */
   def localAddress: F[SocketAddress[IpAddress]]
-
-  /** Closes this socket. */
-  def close: F[Unit]
 
   /** Joins a multicast group on a specific network interface.
     *
@@ -71,13 +67,13 @@ trait Socket[F[_]] {
   /** Result of joining a multicast group on a UDP socket. */
   trait GroupMembership {
 
-    /** Leaves the multicast group, resulting in no further packets from this group being read. */
+    /** Leaves the multicast group, resulting in no further datagrams from this group being read. */
     def drop: F[Unit]
 
-    /** Blocks packets from the specified source address. */
+    /** Blocks datagrams from the specified source address. */
     def block(source: IpAddress): F[Unit]
 
-    /** Unblocks packets from the specified source address. */
+    /** Unblocks datagrams from the specified source address. */
     def unblock(source: IpAddress): F[Unit]
   }
 }

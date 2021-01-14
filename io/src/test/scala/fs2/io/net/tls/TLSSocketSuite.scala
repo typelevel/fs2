@@ -36,13 +36,14 @@ import com.comcast.ip4s._
 class TLSSocketSuite extends TLSSuite {
   val size = 8192
 
+  val network = Network.create[IO]
+
   group("TLSSocket") {
     group("google") {
       def googleSetup(protocol: String) =
         for {
-          tlsContext <- Resource.eval(Network[IO].tlsContext.system)
-          socketGroup <- Network[IO].tcpSocketGroup
-          socket <- socketGroup.client(SocketAddress(host"google.com", port"443"))
+          tlsContext <- Resource.eval(network.tlsContext.system)
+          socket <- network.client(SocketAddress(host"google.com", port"443"))
           tlsSocket <- tlsContext.client(
             socket,
             TLSParameters(
@@ -115,13 +116,11 @@ class TLSSocketSuite extends TLSSuite {
       val msg = Chunk.array(("Hello, world! " * 20000).getBytes)
 
       val setup = for {
-        socketGroup <- Network[IO].tcpSocketGroup
         tlsContext <- Resource.eval(testTlsContext)
-        addressAndConnections <- socketGroup.serverResource(Some(ip"127.0.0.1"))
-        (serverAddress, connections) = addressAndConnections
-        server = connections.flatMap(c => Stream.resource(c.flatMap(tlsContext.server(_))))
-        client <- socketGroup.client(serverAddress).flatMap(tlsContext.client(_))
-      } yield server -> client
+        addressAndConnections <- network.serverResource(Some(ip"127.0.0.1"))
+        (serverAddress, server) = addressAndConnections
+        client <- network.client(serverAddress).flatMap(tlsContext.client(_))
+      } yield server.flatMap(s => Stream.resource(tlsContext.server(s))) -> client
 
       Stream
         .resource(setup)

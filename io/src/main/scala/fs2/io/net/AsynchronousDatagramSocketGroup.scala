@@ -22,7 +22,6 @@
 package fs2
 package io
 package net
-package udp
 
 import java.io.IOException
 import java.net.InetSocketAddress
@@ -38,55 +37,51 @@ import java.util.ArrayDeque
 import java.util.concurrent.{ConcurrentLinkedQueue, CountDownLatch}
 import java.util.concurrent.atomic.AtomicLong
 
-import cats.effect.kernel.{Resource, Sync}
-
 import com.comcast.ip4s._
 
 import CollectionCompat._
 
 /** Supports read/write operations on an arbitrary number of UDP sockets using a shared selector thread.
   *
-  * Each `AsynchronousSocketGroup` is assigned a single daemon thread that performs all read/write operations.
+  * Each `AsynchronousDatagramSocketGroup` is assigned a single daemon thread that performs all read/write operations.
   */
-private[udp] sealed trait AsynchronousSocketGroup {
-  private[udp] type Context
-  private[udp] def register(channel: DatagramChannel): Context
-  private[udp] def read(
+private[net] trait AsynchronousDatagramSocketGroup {
+  type Context
+  def register(channel: DatagramChannel): Context
+  def read(
       ctx: Context,
-      cb: Either[Throwable, Packet] => Unit
+      cb: Either[Throwable, Datagram] => Unit
   ): () => Unit
-  private[udp] def write(
+  def write(
       ctx: Context,
-      packet: Packet,
+      datagram: Datagram,
       cb: Option[Throwable] => Unit
   ): () => Unit
-  private[udp] def close(ctx: Context): Unit
+  def close(ctx: Context): Unit
   protected def close(): Unit
 }
 
-private[udp] object AsynchronousSocketGroup {
+private[net] object AsynchronousDatagramSocketGroup {
   /*
    * Used to avoid copying between Chunk[Byte] and ByteBuffer during writes within the selector thread,
    * as it can be expensive depending on particular implementation of Chunk.
    */
-  private class WriterPacket(val remote: InetSocketAddress, val bytes: ByteBuffer)
+  private class WriterDatagram(val remote: InetSocketAddress, val bytes: ByteBuffer)
 
-  def apply[F[_]: Sync]: Resource[F, AsynchronousSocketGroup] =
-    Resource.make(Sync[F].delay(unsafe))(g => Sync[F].delay(g.close()))
-
-  private def unsafe: AsynchronousSocketGroup =
-    new AsynchronousSocketGroup {
+  def unsafeMake: AsynchronousDatagramSocketGroup =
+    new AsynchronousDatagramSocketGroup {
       private class Attachment(
-          readers: ArrayDeque[(Long, Either[Throwable, Packet] => Unit)] = new ArrayDeque(),
-          writers: ArrayDeque[(Long, (WriterPacket, Option[Throwable] => Unit))] = new ArrayDeque()
+          readers: ArrayDeque[(Long, Either[Throwable, Datagram] => Unit)] = new ArrayDeque(),
+          writers: ArrayDeque[(Long, (WriterDatagram, Option[Throwable] => Unit))] =
+            new ArrayDeque()
       ) {
         def hasReaders: Boolean = !readers.isEmpty
 
-        def peekReader: Option[Either[Throwable, Packet] => Unit] =
+        def peekReader: Option[Either[Throwable, Datagram] => Unit] =
           if (readers.isEmpty) None
           else Some(readers.peek()._2)
 
-        def dequeueReader: Option[Either[Throwable, Packet] => Unit] =
+        def dequeueReader: Option[Either[Throwable, Datagram] => Unit] =
           if (readers.isEmpty) None
           else {
             val (_, reader) = readers.pop()
@@ -95,7 +90,7 @@ private[udp] object AsynchronousSocketGroup {
 
         def queueReader(
             id: Long,
-            reader: Either[Throwable, Packet] => Unit
+            reader: Either[Throwable, Datagram] => Unit
         ): () => Unit =
           if (closed) {
             reader(Left(new ClosedChannelException))
@@ -113,11 +108,11 @@ private[udp] object AsynchronousSocketGroup {
 
         def hasWriters: Boolean = !writers.isEmpty
 
-        def peekWriter: Option[(WriterPacket, Option[Throwable] => Unit)] =
+        def peekWriter: Option[(WriterDatagram, Option[Throwable] => Unit)] =
           if (writers.isEmpty) None
           else Some(writers.peek()._2)
 
-        def dequeueWriter: Option[(WriterPacket, Option[Throwable] => Unit)] =
+        def dequeueWriter: Option[(WriterDatagram, Option[Throwable] => Unit)] =
           if (writers.isEmpty) None
           else {
             val (_, w) = writers.pop()
@@ -126,7 +121,7 @@ private[udp] object AsynchronousSocketGroup {
 
         def queueWriter(
             id: Long,
-            writer: (WriterPacket, Option[Throwable] => Unit)
+            writer: (WriterDatagram, Option[Throwable] => Unit)
         ): () => Unit =
           if (closed) {
             writer._2(Some(new ClosedChannelException))
@@ -181,7 +176,7 @@ private[udp] object AsynchronousSocketGroup {
 
       override def read(
           key: SelectionKey,
-          cb: Either[Throwable, Packet] => Unit
+          cb: Either[Throwable, Datagram] => Unit
       ): () => Unit = {
         val readerId = ids.getAndIncrement()
         val attachment = key.attachment.asInstanceOf[Attachment]
@@ -206,7 +201,7 @@ private[udp] object AsynchronousSocketGroup {
 
       private def read1(
           channel: DatagramChannel,
-          reader: Either[Throwable, Packet] => Unit
+          reader: Either[Throwable, Datagram] => Unit
       ): Boolean =
         try {
           val src = channel.receive(readBuffer).asInstanceOf[InetSocketAddress]
@@ -218,7 +213,7 @@ private[udp] object AsynchronousSocketGroup {
             val bytes = new Array[Byte](readBuffer.remaining)
             readBuffer.get(bytes)
             (readBuffer: Buffer).clear()
-            reader(Right(Packet(srcAddr, Chunk.array(bytes))))
+            reader(Right(Datagram(srcAddr, Chunk.array(bytes))))
             true
           }
         } catch {
@@ -229,13 +224,13 @@ private[udp] object AsynchronousSocketGroup {
 
       override def write(
           key: SelectionKey,
-          packet: Packet,
+          datagram: Datagram,
           cb: Option[Throwable] => Unit
       ): () => Unit = {
         val writerId = ids.getAndIncrement()
-        val writerPacket = {
+        val writerDatagram = {
           val bytes = {
-            val srcBytes = packet.bytes.toArraySlice
+            val srcBytes = datagram.bytes.toArraySlice
             if (srcBytes.size == srcBytes.values.size) srcBytes.values
             else {
               val destBytes = new Array[Byte](srcBytes.size)
@@ -243,16 +238,16 @@ private[udp] object AsynchronousSocketGroup {
               destBytes
             }
           }
-          new WriterPacket(packet.remote.toInetSocketAddress, ByteBuffer.wrap(bytes))
+          new WriterDatagram(datagram.remote.toInetSocketAddress, ByteBuffer.wrap(bytes))
         }
         val attachment = key.attachment.asInstanceOf[Attachment]
         onSelectorThread {
           val channel = key.channel.asInstanceOf[DatagramChannel]
           var cancelWriter: () => Unit = null
           if (attachment.hasWriters) {
-            cancelWriter = attachment.queueWriter(writerId, (writerPacket, cb))
-          } else if (!write1(channel, writerPacket, cb)) {
-            cancelWriter = attachment.queueWriter(writerId, (writerPacket, cb))
+            cancelWriter = attachment.queueWriter(writerId, (writerDatagram, cb))
+          } else if (!write1(channel, writerDatagram, cb)) {
+            cancelWriter = attachment.queueWriter(writerId, (writerDatagram, cb))
             try {
               key.interestOps(key.interestOps | SelectionKey.OP_WRITE); ()
             } catch {
@@ -266,11 +261,11 @@ private[udp] object AsynchronousSocketGroup {
 
       private def write1(
           channel: DatagramChannel,
-          packet: WriterPacket,
+          datagram: WriterDatagram,
           cb: Option[Throwable] => Unit
       ): Boolean =
         try {
-          val sent = channel.send(packet.bytes, packet.remote)
+          val sent = channel.send(datagram.bytes, datagram.remote)
           if (sent > 0) {
             cb(None)
             true
@@ -358,6 +353,6 @@ private[udp] object AsynchronousSocketGroup {
         })
       selectorThread.start()
 
-      override def toString = "AsynchronousSocketGroup"
+      override def toString = "AsynchronousDatagramSocketGroup"
     }
 }

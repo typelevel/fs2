@@ -34,30 +34,26 @@ import com.comcast.ip4s._
 import CollectionCompat._
 
 class UdpSuite extends Fs2Suite {
-  def mkSocketGroup: Stream[IO, SocketGroup[IO]] =
-    Stream.resource(Network[IO].udpSocketGroup)
+  val network = Network.create[IO]
 
   group("udp") {
     test("echo one") {
       val msg = Chunk.array("Hello, world!".getBytes)
-      mkSocketGroup
-        .flatMap { socketGroup =>
-          Stream
-            .resource(socketGroup.open())
-            .flatMap { serverSocket =>
-              Stream.eval(serverSocket.localAddress).map(_.port).flatMap { serverPort =>
-                val serverAddress = SocketAddress(ip"127.0.0.1", serverPort)
-                val server = serverSocket.reads
-                  .evalMap(packet => serverSocket.write(packet))
-                  .drain
-                val client = Stream.resource(socketGroup.open()).flatMap { clientSocket =>
-                  Stream(Packet(serverAddress, msg))
-                    .through(clientSocket.writes)
-                    .drain ++ Stream.eval(clientSocket.read)
-                }
-                server.mergeHaltBoth(client)
-              }
+      Stream
+        .resource(network.openDatagramSocket())
+        .flatMap { serverSocket =>
+          Stream.eval(serverSocket.localAddress).map(_.port).flatMap { serverPort =>
+            val serverAddress = SocketAddress(ip"127.0.0.1", serverPort)
+            val server = serverSocket.reads
+              .evalMap(packet => serverSocket.write(packet))
+              .drain
+            val client = Stream.resource(network.openDatagramSocket()).flatMap { clientSocket =>
+              Stream(Datagram(serverAddress, msg))
+                .through(clientSocket.writes)
+                .drain ++ Stream.eval(clientSocket.read)
             }
+            server.mergeHaltBoth(client)
+          }
         }
         .compile
         .lastOrError
@@ -74,30 +70,27 @@ class UdpSuite extends Fs2Suite {
         .flatten
         .sorted
 
-      mkSocketGroup
-        .flatMap { socketGroup =>
-          Stream
-            .resource(socketGroup.open())
-            .flatMap { serverSocket =>
-              Stream.eval(serverSocket.localAddress).map(_.port).flatMap { serverPort =>
-                val serverAddress = SocketAddress(ip"127.0.0.1", serverPort)
-                val server = serverSocket.reads
-                  .evalMap(packet => serverSocket.write(packet))
-                  .drain
-                val client = Stream.resource(socketGroup.open()).flatMap { clientSocket =>
-                  Stream
-                    .emits(msgs.map(msg => Packet(serverAddress, msg)))
-                    .flatMap { msg =>
-                      Stream.exec(clientSocket.write(msg)) ++ Stream.eval(clientSocket.read)
-                    }
+      Stream
+        .resource(network.openDatagramSocket())
+        .flatMap { serverSocket =>
+          Stream.eval(serverSocket.localAddress).map(_.port).flatMap { serverPort =>
+            val serverAddress = SocketAddress(ip"127.0.0.1", serverPort)
+            val server = serverSocket.reads
+              .evalMap(packet => serverSocket.write(packet))
+              .drain
+            val client = Stream.resource(network.openDatagramSocket()).flatMap { clientSocket =>
+              Stream
+                .emits(msgs.map(msg => Datagram(serverAddress, msg)))
+                .flatMap { msg =>
+                  Stream.exec(clientSocket.write(msg)) ++ Stream.eval(clientSocket.read)
                 }
-                val clients = Stream
-                  .constant(client)
-                  .take(numClients.toLong)
-                  .parJoin(numParallelClients)
-                server.mergeHaltBoth(clients)
-              }
             }
+            val clients = Stream
+              .constant(client)
+              .take(numClients.toLong)
+              .parJoin(numParallelClients)
+            server.mergeHaltBoth(clients)
+          }
         }
         .compile
         .toVector
@@ -110,36 +103,33 @@ class UdpSuite extends Fs2Suite {
       val group = mip"232.10.10.10"
       val groupJoin = MulticastJoin.asm(group)
       val msg = Chunk.array("Hello, world!".getBytes)
-      mkSocketGroup
-        .flatMap { socketGroup =>
-          Stream
-            .resource(
-              socketGroup.open(
-                options = List(SocketOption.multicastTtl(1)),
-                protocolFamily = Some(StandardProtocolFamily.INET)
-              )
-            )
-            .flatMap { serverSocket =>
-              Stream.eval(serverSocket.localAddress).map(_.port).flatMap { serverPort =>
-                val v4Interfaces =
-                  NetworkInterface.getNetworkInterfaces.asScala.toList.filter { interface =>
-                    interface.getInetAddresses.asScala.exists(_.isInstanceOf[Inet4Address])
-                  }
-                val server = Stream
-                  .exec(
-                    v4Interfaces.traverse_(interface => serverSocket.join(groupJoin, interface))
-                  ) ++
-                  serverSocket.reads
-                    .evalMap(packet => serverSocket.write(packet))
-                    .drain
-                val client = Stream.resource(socketGroup.open()).flatMap { clientSocket =>
-                  Stream(Packet(SocketAddress(group.address, serverPort), msg))
-                    .through(clientSocket.writes)
-                    .drain ++ Stream.eval(clientSocket.read)
-                }
-                server.mergeHaltBoth(client)
+      Stream
+        .resource(
+          network.openDatagramSocket(
+            options = List(SocketOption.multicastTtl(1)),
+            protocolFamily = Some(StandardProtocolFamily.INET)
+          )
+        )
+        .flatMap { serverSocket =>
+          Stream.eval(serverSocket.localAddress).map(_.port).flatMap { serverPort =>
+            val v4Interfaces =
+              NetworkInterface.getNetworkInterfaces.asScala.toList.filter { interface =>
+                interface.getInetAddresses.asScala.exists(_.isInstanceOf[Inet4Address])
               }
+            val server = Stream
+              .exec(
+                v4Interfaces.traverse_(interface => serverSocket.join(groupJoin, interface))
+              ) ++
+              serverSocket.reads
+                .evalMap(packet => serverSocket.write(packet))
+                .drain
+            val client = Stream.resource(network.openDatagramSocket()).flatMap { clientSocket =>
+              Stream(Datagram(SocketAddress(group.address, serverPort), msg))
+                .through(clientSocket.writes)
+                .drain ++ Stream.eval(clientSocket.read)
             }
+            server.mergeHaltBoth(client)
+          }
         }
         .compile
         .lastOrError
