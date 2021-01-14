@@ -30,8 +30,6 @@ import cats.effect.{IO, Resource}
 import com.comcast.ip4s._
 
 class DTLSSocketSuite extends TLSSuite {
-  val network = Network.create[IO]
-
   group("DTLSSocket") {
     test("echo") {
       val msg = Chunk.array("Hello, world!".getBytes)
@@ -43,9 +41,9 @@ class DTLSSocketSuite extends TLSSuite {
 
       val setup = for {
         tlsContext <- Resource.eval(testTlsContext)
-        serverSocket <- network.openDatagramSocket()
+        serverSocket <- Network[IO].openDatagramSocket()
         serverAddress <- address(serverSocket)
-        clientSocket <- network.openDatagramSocket()
+        clientSocket <- Network[IO].openDatagramSocket()
         clientAddress <- address(clientSocket)
         tlsServerSocket <- tlsContext.dtlsServer(serverSocket, clientAddress, logger = logger)
         tlsClientSocket <- tlsContext.dtlsClient(clientSocket, serverAddress, logger = logger)

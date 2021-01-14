@@ -34,20 +34,18 @@ import com.comcast.ip4s._
 import CollectionCompat._
 
 class UdpSuite extends Fs2Suite {
-  val network = Network.create[IO]
-
   group("udp") {
     test("echo one") {
       val msg = Chunk.array("Hello, world!".getBytes)
       Stream
-        .resource(network.openDatagramSocket())
+        .resource(Network[IO].openDatagramSocket())
         .flatMap { serverSocket =>
           Stream.eval(serverSocket.localAddress).map(_.port).flatMap { serverPort =>
             val serverAddress = SocketAddress(ip"127.0.0.1", serverPort)
             val server = serverSocket.reads
               .evalMap(packet => serverSocket.write(packet))
               .drain
-            val client = Stream.resource(network.openDatagramSocket()).flatMap { clientSocket =>
+            val client = Stream.resource(Network[IO].openDatagramSocket()).flatMap { clientSocket =>
               Stream(Datagram(serverAddress, msg))
                 .through(clientSocket.writes)
                 .drain ++ Stream.eval(clientSocket.read)
@@ -71,14 +69,14 @@ class UdpSuite extends Fs2Suite {
         .sorted
 
       Stream
-        .resource(network.openDatagramSocket())
+        .resource(Network[IO].openDatagramSocket())
         .flatMap { serverSocket =>
           Stream.eval(serverSocket.localAddress).map(_.port).flatMap { serverPort =>
             val serverAddress = SocketAddress(ip"127.0.0.1", serverPort)
             val server = serverSocket.reads
               .evalMap(packet => serverSocket.write(packet))
               .drain
-            val client = Stream.resource(network.openDatagramSocket()).flatMap { clientSocket =>
+            val client = Stream.resource(Network[IO].openDatagramSocket()).flatMap { clientSocket =>
               Stream
                 .emits(msgs.map(msg => Datagram(serverAddress, msg)))
                 .flatMap { msg =>
@@ -105,7 +103,7 @@ class UdpSuite extends Fs2Suite {
       val msg = Chunk.array("Hello, world!".getBytes)
       Stream
         .resource(
-          network.openDatagramSocket(
+          Network[IO].openDatagramSocket(
             options = List(SocketOption.multicastTtl(1)),
             protocolFamily = Some(StandardProtocolFamily.INET)
           )
@@ -123,7 +121,7 @@ class UdpSuite extends Fs2Suite {
               serverSocket.reads
                 .evalMap(packet => serverSocket.write(packet))
                 .drain
-            val client = Stream.resource(network.openDatagramSocket()).flatMap { clientSocket =>
+            val client = Stream.resource(Network[IO].openDatagramSocket()).flatMap { clientSocket =>
               Stream(Datagram(SocketAddress(group.address, serverPort), msg))
                 .through(clientSocket.writes)
                 .drain ++ Stream.eval(clientSocket.read)

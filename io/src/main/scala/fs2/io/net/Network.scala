@@ -117,7 +117,7 @@ object Network {
 
   def apply[F[_]](implicit F: Network[F]): F.type = F
 
-  def create[F[_]](implicit F: Async[F]): Network[F] =
+  implicit def forAsync[F[_]](implicit F: Async[F]): Network[F] =
     new Network[F] {
       private lazy val socketGroup = new SocketGroup[F](acg)
       private lazy val datagramSocketGroup = new DatagramSocketGroup[F](adsg)

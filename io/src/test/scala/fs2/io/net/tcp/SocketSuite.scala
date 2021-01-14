@@ -34,13 +34,11 @@ class SocketSuite extends Fs2Suite {
 
   val timeout = 30.seconds
 
-  val network = Network.create[IO]
-
   val setup = for {
-    serverSetup <- network.serverResource(address = Some(ip"127.0.0.1"))
+    serverSetup <- Network[IO].serverResource(address = Some(ip"127.0.0.1"))
     (bindAddress, server) = serverSetup
     clients = Stream
-      .resource(network.client(bindAddress, options = List(SocketOption.sendBufferSize(10000))))
+      .resource(Network[IO].client(bindAddress, options = List(SocketOption.sendBufferSize(10000))))
       .repeat
   } yield (server -> clients)
 

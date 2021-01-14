@@ -26,19 +26,18 @@ package tls
 
 import javax.net.ssl.SNIHostName
 
-import cats.effect.{Async, IO}
+import cats.effect.{IO, MonadCancelThrow}
 import cats.syntax.all._
 
 import com.comcast.ip4s._
 
 object TLSDebug {
-  def debug[F[_]: Async](
-      network: Network[F],
+  def debug[F[_]: MonadCancelThrow: Dns: Network](
       tlsContext: TLSContext[F],
       host: SocketAddress[Hostname]
   ): F[String] =
     host.resolve.flatMap { socketAddress =>
-      network.client(socketAddress).use { rawSocket =>
+      Network[F].client(socketAddress).use { rawSocket =>
         tlsContext
           .client(
             rawSocket,
@@ -59,14 +58,12 @@ object TLSDebug {
 
 class TLSDebugTest extends Fs2Suite {
 
-  def run(address: SocketAddress[Hostname]): IO[Unit] = {
-    val network = Network.create[IO]
-    network.tlsContext.system.flatMap { ctx =>
+  def run(address: SocketAddress[Hostname]): IO[Unit] =
+    Network[IO].tlsContext.system.flatMap { ctx =>
       TLSDebug
-        .debug[IO](network, ctx, address)
+        .debug[IO](ctx, address)
         .flatMap(l => IO(println(l)))
     }
-  }
 
   test("google")(run(SocketAddress(host"google.com", port"443")))
 }
