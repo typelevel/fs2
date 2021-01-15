@@ -18,7 +18,7 @@ ThisBuild / organizationName := "Functional Streams for Scala"
 ThisBuild / homepage := Some(url("https://github.com/typelevel/fs2"))
 ThisBuild / startYear := Some(2013)
 
-ThisBuild / crossScalaVersions := Seq("3.0.0-M2", "3.0.0-M3", "2.12.10", "2.13.4")
+ThisBuild / crossScalaVersions := Seq("3.0.0-M2", "3.0.0-M3", "2.12.13", "2.13.4")
 
 ThisBuild / versionIntroduced := Map(
   "3.0.0-M2" -> "2.4.99",
