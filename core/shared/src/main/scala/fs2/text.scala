@@ -191,7 +191,7 @@ object text {
         linesBuffer: ArrayBuffer[String],
         string: String
     ): Unit = {
-      val l = stringBuilder.length()
+      val l = stringBuilder.length
       var i =
         if (l > 0 && stringBuilder(l - 1) == '\r' && string.nonEmpty && string(0) == '\n') {
           stringBuilder.deleteCharAt(l - 1)
