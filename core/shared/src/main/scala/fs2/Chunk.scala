@@ -694,22 +694,26 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
 
   /** Creates a chunk backed by an array. */
   def array[O](values: Array[O]): Chunk[O] =
-    values.size match {
+    array(values, 0, values.length)
+
+  /** Creates a chunk backed by an array. */
+  def array[O](values: Array[O], offset: Int, length: Int): Chunk[O] =
+    length match {
       case 0 => empty
-      case 1 => singleton(values(0))
+      case 1 => singleton(values(offset))
       case _ =>
         values match {
-          case a: Array[Boolean] => booleans(a)
-          case a: Array[Byte]    => bytes(a)
-          case a: Array[Short]   => shorts(a)
-          case a: Array[Int]     => ints(a)
-          case a: Array[Long]    => longs(a)
-          case a: Array[Float]   => floats(a)
-          case a: Array[Double]  => doubles(a)
-          case _                 => boxed(values)
+          case a: Array[Boolean] => booleans(a, offset, length)
+          case a: Array[Byte]    => bytes(a, offset, length)
+          case a: Array[Short]   => shorts(a, offset, length)
+          case a: Array[Int]     => ints(a, offset, length)
+          case a: Array[Long]    => longs(a, offset, length)
+          case a: Array[Float]   => floats(a, offset, length)
+          case a: Array[Double]  => doubles(a, offset, length)
+          case a: Array[Char]    => chars(a, offset, length)
+          case _                 => boxed(values, offset, length)
         }
     }
-
   private def checkBounds(values: Array[_], offset: Int, length: Int): Unit = {
     require(offset >= 0 && offset <= values.size)
     require(length >= 0 && length <= values.size)
@@ -1434,7 +1438,7 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
       if (xs.isInstanceOf[Array[Byte]])
         toByteVector.copyToArray(xs.asInstanceOf[Array[Byte]], start)
       else {
-        toByteVector.toIndexedSeq.copyToArray(xs)
+        toByteVector.toIndexedSeq.copyToArray(xs, start)
         ()
       }
 
@@ -1468,23 +1472,23 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
   def concat[A](chunks: GSeq[Chunk[A]], totalSize: Int): Chunk[A] =
     if (totalSize == 0)
       Chunk.empty
-    else if (chunks.forall(c => c.knownElementType[Boolean] || c.forall(_.isInstanceOf[Boolean])))
+    else if (chunks.forall(c => c.knownElementType[Boolean] || c.isEmpty)) {
       concatBooleans(chunks.asInstanceOf[GSeq[Chunk[Boolean]]], totalSize).asInstanceOf[Chunk[A]]
-    else if (chunks.forall(c => c.knownElementType[Byte] || c.forall(_.isInstanceOf[Byte])))
+    } else if (chunks.forall(c => c.knownElementType[Byte] || c.isEmpty)) {
       concatBytes(chunks.asInstanceOf[GSeq[Chunk[Byte]]], totalSize).asInstanceOf[Chunk[A]]
-    else if (chunks.forall(c => c.knownElementType[Float] || c.forall(_.isInstanceOf[Float])))
+    } else if (chunks.forall(c => c.knownElementType[Float] || c.isEmpty)) {
       concatFloats(chunks.asInstanceOf[GSeq[Chunk[Float]]], totalSize).asInstanceOf[Chunk[A]]
-    else if (chunks.forall(c => c.knownElementType[Double] || c.forall(_.isInstanceOf[Double])))
+    } else if (chunks.forall(c => c.knownElementType[Double] || c.isEmpty)) {
       concatDoubles(chunks.asInstanceOf[GSeq[Chunk[Double]]], totalSize).asInstanceOf[Chunk[A]]
-    else if (chunks.forall(c => c.knownElementType[Short] || c.forall(_.isInstanceOf[Short])))
+    } else if (chunks.forall(c => c.knownElementType[Short] || c.isEmpty)) {
       concatShorts(chunks.asInstanceOf[GSeq[Chunk[Short]]], totalSize).asInstanceOf[Chunk[A]]
-    else if (chunks.forall(c => c.knownElementType[Int] || c.forall(_.isInstanceOf[Int])))
+    } else if (chunks.forall(c => c.knownElementType[Int] || c.isEmpty)) {
       concatInts(chunks.asInstanceOf[GSeq[Chunk[Int]]], totalSize).asInstanceOf[Chunk[A]]
-    else if (chunks.forall(c => c.knownElementType[Long] || c.forall(_.isInstanceOf[Long])))
+    } else if (chunks.forall(c => c.knownElementType[Long] || c.isEmpty)) {
       concatLongs(chunks.asInstanceOf[GSeq[Chunk[Long]]], totalSize).asInstanceOf[Chunk[A]]
-    else if (chunks.forall(c => c.knownElementType[Char] || c.forall(_.isInstanceOf[Char])))
+    } else if (chunks.forall(c => c.knownElementType[Char] || c.isEmpty)) {
       concatChars(chunks.asInstanceOf[GSeq[Chunk[Char]]], totalSize).asInstanceOf[Chunk[A]]
-    else {
+    } else {
       val arr = new Array[Any](totalSize)
       var offset = 0
       chunks.foreach { c =>

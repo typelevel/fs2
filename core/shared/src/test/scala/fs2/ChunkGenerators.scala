@@ -79,7 +79,7 @@ trait ChunkGeneratorsLowPriority extends ChunkGeneratorsLowPriority1 {
         as <- Gen.listOf(genA)
         offset <- Gen.chooseNum(0, as.size / 2)
         len <- Gen.chooseNum(0, as.size - offset)
-      } yield Chunk.boxed(as.toArray, offset, len))
+      } yield Chunk.array(as.toArray, offset, len))
     )
 }
 
