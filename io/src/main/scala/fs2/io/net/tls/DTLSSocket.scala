@@ -21,24 +21,23 @@
 
 package fs2
 package io
+package net
 package tls
 
-import scala.concurrent.duration._
-
-import java.net.{InetAddress, InetSocketAddress, NetworkInterface}
+import java.net.NetworkInterface
 import javax.net.ssl.SSLSession
 
 import cats.Applicative
 import cats.effect.kernel.{Async, Resource, Sync}
 import cats.syntax.all._
 
-import fs2.io.udp.{Packet, Socket}
+import com.comcast.ip4s._
 
 /** UDP socket that supports encryption via DTLS.
   *
   * To construct a `DTLSSocket`, use the `dtlsClient` and `dtlsServer` methods on `TLSContext`.
   */
-sealed trait DTLSSocket[F[_]] extends Socket[F] {
+sealed trait DTLSSocket[F[_]] extends DatagramSocket[F] {
 
   /** Initiates handshaking -- either the initial or a renegotiation. */
   def beginHandshake: F[Unit]
@@ -52,42 +51,35 @@ sealed trait DTLSSocket[F[_]] extends Socket[F] {
 object DTLSSocket {
 
   private[tls] def apply[F[_]: Async](
-      socket: Socket[F],
-      remoteAddress: InetSocketAddress,
+      socket: DatagramSocket[F],
+      remoteAddress: SocketAddress[IpAddress],
       engine: TLSEngine[F]
   ): Resource[F, DTLSSocket[F]] =
-    Resource.make(mk(socket, remoteAddress, engine))(_.close)
+    Resource.make(mk(socket, remoteAddress, engine))(_ => engine.stopWrap >> engine.stopUnwrap)
 
   private def mk[F[_]: Async](
-      socket: Socket[F],
-      remoteAddress: InetSocketAddress,
+      socket: DatagramSocket[F],
+      remoteAddress: SocketAddress[IpAddress],
       engine: TLSEngine[F]
   ): F[DTLSSocket[F]] =
     Applicative[F].pure {
       new DTLSSocket[F] {
 
-        def read(timeout: Option[FiniteDuration] = None): F[Packet] =
-          engine.read(Int.MaxValue, timeout).flatMap {
-            case Some(bytes) => Applicative[F].pure(Packet(remoteAddress, bytes))
-            case None        => read(timeout)
+        def read: F[Datagram] =
+          engine.read(Int.MaxValue).flatMap {
+            case Some(bytes) => Applicative[F].pure(Datagram(remoteAddress, bytes))
+            case None        => read
           }
 
-        def reads(timeout: Option[FiniteDuration] = None): Stream[F, Packet] =
-          Stream.repeatEval(read(timeout))
-        def write(packet: Packet, timeout: Option[FiniteDuration] = None): F[Unit] =
-          engine.write(packet.bytes, timeout)
+        def reads: Stream[F, Datagram] =
+          Stream.repeatEval(read)
+        def write(datagram: Datagram): F[Unit] =
+          engine.write(datagram.bytes)
 
-        def writes(timeout: Option[FiniteDuration] = None): Pipe[F, Packet, INothing] =
-          _.foreach(write(_, timeout))
-        def localAddress: F[InetSocketAddress] = socket.localAddress
-        def close: F[Unit] = socket.close
-        def join(group: InetAddress, interface: NetworkInterface): F[AnySourceGroupMembership] =
-          Sync[F].raiseError(new RuntimeException("DTLSSocket does not support multicast"))
-        def join(
-            group: InetAddress,
-            interface: NetworkInterface,
-            source: InetAddress
-        ): F[GroupMembership] =
+        def writes: Pipe[F, Datagram, INothing] =
+          _.foreach(write)
+        def localAddress: F[SocketAddress[IpAddress]] = socket.localAddress
+        def join(join: MulticastJoin[IpAddress], interface: NetworkInterface): F[GroupMembership] =
           Sync[F].raiseError(new RuntimeException("DTLSSocket does not support multicast"))
         def beginHandshake: F[Unit] = engine.beginHandshake
         def session: F[SSLSession] = engine.session

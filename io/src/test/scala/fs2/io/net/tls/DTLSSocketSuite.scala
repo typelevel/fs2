@@ -21,32 +21,29 @@
 
 package fs2
 package io
+package net
 package tls
 
 import scala.concurrent.duration._
 
-import java.net.InetSocketAddress
-
 import cats.effect.{IO, Resource}
-
-import fs2.io.udp.{Packet, Socket}
+import com.comcast.ip4s._
 
 class DTLSSocketSuite extends TLSSuite {
   group("DTLSSocket") {
     test("echo") {
       val msg = Chunk.array("Hello, world!".getBytes)
 
-      def address(s: Socket[IO]) =
+      def address(s: DatagramSocket[IO]) =
         Resource
           .eval(s.localAddress)
-          .map(a => new InetSocketAddress("localhost", a.getPort))
+          .map(a => SocketAddress(ip"127.0.0.1", a.port))
 
       val setup = for {
         tlsContext <- Resource.eval(testTlsContext)
-        socketGroup <- Network[IO].udpSocketGroup
-        serverSocket <- socketGroup.open()
+        serverSocket <- Network[IO].openDatagramSocket()
         serverAddress <- address(serverSocket)
-        clientSocket <- socketGroup.open()
+        clientSocket <- Network[IO].openDatagramSocket()
         clientAddress <- address(clientSocket)
         tlsServerSocket <- tlsContext.dtlsServer(serverSocket, clientAddress, logger = logger)
         tlsClientSocket <- tlsContext.dtlsClient(clientSocket, serverAddress, logger = logger)
@@ -56,13 +53,12 @@ class DTLSSocketSuite extends TLSSuite {
         .resource(setup)
         .flatMap { case (serverSocket, clientSocket, serverAddress) =>
           val echoServer =
-            serverSocket
-              .reads()
+            serverSocket.reads
               .foreach(serverSocket.write(_))
           val echoClient = Stream.eval {
             IO.sleep(500.millis) >>
-              clientSocket.write(Packet(serverAddress, msg)) >>
-              clientSocket.read()
+              clientSocket.write(Datagram(serverAddress, msg)) >>
+              clientSocket.read
           }
 
           echoClient.concurrently(echoServer)

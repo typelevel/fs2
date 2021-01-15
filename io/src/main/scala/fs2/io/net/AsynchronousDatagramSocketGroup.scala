@@ -21,10 +21,7 @@
 
 package fs2
 package io
-package udp
-
-import scala.collection.mutable.PriorityQueue
-import scala.concurrent.duration.FiniteDuration
+package net
 
 import java.io.IOException
 import java.net.InetSocketAddress
@@ -33,152 +30,135 @@ import java.nio.channels.{
   CancelledKeyException,
   ClosedChannelException,
   DatagramChannel,
-  InterruptedByTimeoutException,
   SelectionKey,
   Selector
 }
 import java.util.ArrayDeque
 import java.util.concurrent.{ConcurrentLinkedQueue, CountDownLatch}
+import java.util.concurrent.atomic.AtomicLong
 
-import cats.effect.kernel.{Resource, Sync}
+import com.comcast.ip4s._
 
 import CollectionCompat._
+import java.util.concurrent.ThreadFactory
 
 /** Supports read/write operations on an arbitrary number of UDP sockets using a shared selector thread.
   *
-  * Each `AsynchronousSocketGroup` is assigned a single daemon thread that performs all read/write operations.
+  * Each `AsynchronousDatagramSocketGroup` is assigned a single daemon thread that performs all read/write operations.
   */
-private[udp] sealed trait AsynchronousSocketGroup {
-  private[udp] type Context
-  private[udp] def register(channel: DatagramChannel): Context
-  private[udp] def read(
+private[net] trait AsynchronousDatagramSocketGroup {
+  type Context
+  def register(channel: DatagramChannel): Context
+  def read(
       ctx: Context,
-      timeout: Option[FiniteDuration],
-      cb: Either[Throwable, Packet] => Unit
-  ): Unit
-  private[udp] def write(
+      cb: Either[Throwable, Datagram] => Unit
+  ): () => Unit
+  def write(
       ctx: Context,
-      packet: Packet,
-      timeout: Option[FiniteDuration],
+      datagram: Datagram,
       cb: Option[Throwable] => Unit
-  ): Unit
-  private[udp] def close(ctx: Context): Unit
-  protected def close(): Unit
+  ): () => Unit
+  def close(ctx: Context): Unit
+  def close(): Unit
 }
 
-private[udp] object AsynchronousSocketGroup {
+private[net] object AsynchronousDatagramSocketGroup {
   /*
    * Used to avoid copying between Chunk[Byte] and ByteBuffer during writes within the selector thread,
    * as it can be expensive depending on particular implementation of Chunk.
    */
-  private class WriterPacket(val remote: InetSocketAddress, val bytes: ByteBuffer)
+  private class WriterDatagram(val remote: InetSocketAddress, val bytes: ByteBuffer)
 
-  def apply[F[_]: Sync]: Resource[F, AsynchronousSocketGroup] =
-    Resource.make(Sync[F].blocking(unsafe))(g => Sync[F].blocking(g.close()))
-
-  private def unsafe: AsynchronousSocketGroup =
-    new AsynchronousSocketGroup {
-      class Timeout(val expiry: Long, onTimeout: () => Unit) {
-        private var done: Boolean = false
-        def cancel(): Unit = done = true
-        def timedOut(): Unit =
-          if (!done) {
-            done = true
-            onTimeout()
-          }
-      }
-
-      object Timeout {
-        def apply(duration: FiniteDuration)(onTimeout: => Unit): Timeout =
-          new Timeout(System.currentTimeMillis + duration.toMillis, () => onTimeout)
-        implicit val ordTimeout: Ordering[Timeout] =
-          Ordering.by[Timeout, Long](_.expiry)
-      }
-
+  def unsafe(threadFactory: ThreadFactory): AsynchronousDatagramSocketGroup =
+    new AsynchronousDatagramSocketGroup {
       private class Attachment(
-          readers: ArrayDeque[(Either[Throwable, Packet] => Unit, Option[Timeout])] =
-            new ArrayDeque(),
-          writers: ArrayDeque[((WriterPacket, Option[Throwable] => Unit), Option[Timeout])] =
+          readers: ArrayDeque[(Long, Either[Throwable, Datagram] => Unit)] = new ArrayDeque(),
+          writers: ArrayDeque[(Long, (WriterDatagram, Option[Throwable] => Unit))] =
             new ArrayDeque()
       ) {
         def hasReaders: Boolean = !readers.isEmpty
 
-        def peekReader: Option[Either[Throwable, Packet] => Unit] =
+        def peekReader: Option[Either[Throwable, Datagram] => Unit] =
           if (readers.isEmpty) None
-          else Some(readers.peek()._1)
+          else Some(readers.peek()._2)
 
-        def dequeueReader: Option[Either[Throwable, Packet] => Unit] =
+        def dequeueReader: Option[Either[Throwable, Datagram] => Unit] =
           if (readers.isEmpty) None
           else {
-            val (reader, timeout) = readers.pop()
-            timeout.foreach(_.cancel())
+            val (_, reader) = readers.pop()
             Some(reader)
           }
 
         def queueReader(
-            reader: Either[Throwable, Packet] => Unit,
-            timeout: Option[Timeout]
+            id: Long,
+            reader: Either[Throwable, Datagram] => Unit
         ): () => Unit =
           if (closed) {
             reader(Left(new ClosedChannelException))
-            timeout.foreach(_.cancel())
             () => ()
           } else {
-            val r = (reader, timeout)
+            val r = (id, reader)
             readers.add(r)
             () => { readers.remove(r); () }
           }
 
+        def cancelReader(id: Long): Unit = {
+          readers.removeIf { case (rid, _) => id == rid }
+          ()
+        }
+
         def hasWriters: Boolean = !writers.isEmpty
 
-        def peekWriter: Option[(WriterPacket, Option[Throwable] => Unit)] =
+        def peekWriter: Option[(WriterDatagram, Option[Throwable] => Unit)] =
           if (writers.isEmpty) None
-          else Some(writers.peek()._1)
+          else Some(writers.peek()._2)
 
-        def dequeueWriter: Option[(WriterPacket, Option[Throwable] => Unit)] =
+        def dequeueWriter: Option[(WriterDatagram, Option[Throwable] => Unit)] =
           if (writers.isEmpty) None
           else {
-            val (w, timeout) = writers.pop()
-            timeout.foreach(_.cancel())
+            val (_, w) = writers.pop()
             Some(w)
           }
 
         def queueWriter(
-            writer: (WriterPacket, Option[Throwable] => Unit),
-            timeout: Option[Timeout]
+            id: Long,
+            writer: (WriterDatagram, Option[Throwable] => Unit)
         ): () => Unit =
           if (closed) {
             writer._2(Some(new ClosedChannelException))
-            timeout.foreach(_.cancel())
             () => ()
           } else {
-            val w = (writer, timeout)
+            val w = (id, writer)
             writers.add(w)
             () => { writers.remove(w); () }
           }
 
         def close(): Unit = {
-          readers.iterator.asScala.foreach { case (cb, t) =>
+          readers.iterator.asScala.foreach { case (_, cb) =>
             cb(Left(new ClosedChannelException))
-            t.foreach(_.cancel())
           }
           readers.clear
-          writers.iterator.asScala.foreach { case ((_, cb), t) =>
+          writers.iterator.asScala.foreach { case (_, (_, cb)) =>
             cb(Some(new ClosedChannelException))
-            t.foreach(_.cancel())
           }
           writers.clear
+        }
+
+        def cancelWriter(id: Long): Unit = {
+          writers.removeIf { case (rid, _) => id == rid }
+          ()
         }
       }
 
       type Context = SelectionKey
+
+      private val ids = new AtomicLong(Long.MinValue)
 
       private val selector = Selector.open()
       private val closeLock = new Object
       @volatile private var closed = false
       private val pendingThunks: ConcurrentLinkedQueue[() => Unit] =
         new ConcurrentLinkedQueue()
-      private val pendingTimeouts: PriorityQueue[Timeout] = new PriorityQueue()
       private val readBuffer = ByteBuffer.allocate(1 << 16)
 
       override def register(channel: DatagramChannel): Context = {
@@ -197,25 +177,18 @@ private[udp] object AsynchronousSocketGroup {
 
       override def read(
           key: SelectionKey,
-          timeout: Option[FiniteDuration],
-          cb: Either[Throwable, Packet] => Unit
-      ): Unit =
+          cb: Either[Throwable, Datagram] => Unit
+      ): () => Unit = {
+        val readerId = ids.getAndIncrement()
+        val attachment = key.attachment.asInstanceOf[Attachment]
+
         onSelectorThread {
           val channel = key.channel.asInstanceOf[DatagramChannel]
-          val attachment = key.attachment.asInstanceOf[Attachment]
           var cancelReader: () => Unit = null
-          val t = timeout.map { t0 =>
-            Timeout(t0) {
-              cb(Left(new InterruptedByTimeoutException))
-              if (cancelReader ne null) cancelReader()
-            }
-          }
           if (attachment.hasReaders) {
-            cancelReader = attachment.queueReader(cb, t)
-            t.foreach(t => pendingTimeouts += t)
+            cancelReader = attachment.queueReader(readerId, cb)
           } else if (!read1(channel, cb)) {
-            cancelReader = attachment.queueReader(cb, t)
-            t.foreach(t => pendingTimeouts += t)
+            cancelReader = attachment.queueReader(readerId, cb)
             try {
               key.interestOps(key.interestOps | SelectionKey.OP_READ); ()
             } catch {
@@ -224,20 +197,24 @@ private[udp] object AsynchronousSocketGroup {
           }
         }(cb(Left(new ClosedChannelException)))
 
+        () => onSelectorThread(attachment.cancelReader(readerId))(())
+      }
+
       private def read1(
           channel: DatagramChannel,
-          reader: Either[Throwable, Packet] => Unit
+          reader: Either[Throwable, Datagram] => Unit
       ): Boolean =
         try {
           val src = channel.receive(readBuffer).asInstanceOf[InetSocketAddress]
           if (src eq null)
             false
           else {
+            val srcAddr = SocketAddress.fromInetSocketAddress(src)
             (readBuffer: Buffer).flip()
             val bytes = new Array[Byte](readBuffer.remaining)
             readBuffer.get(bytes)
             (readBuffer: Buffer).clear()
-            reader(Right(Packet(src, Chunk.array(bytes))))
+            reader(Right(Datagram(srcAddr, Chunk.array(bytes))))
             true
           }
         } catch {
@@ -248,13 +225,13 @@ private[udp] object AsynchronousSocketGroup {
 
       override def write(
           key: SelectionKey,
-          packet: Packet,
-          timeout: Option[FiniteDuration],
+          datagram: Datagram,
           cb: Option[Throwable] => Unit
-      ): Unit = {
-        val writerPacket = {
+      ): () => Unit = {
+        val writerId = ids.getAndIncrement()
+        val writerDatagram = {
           val bytes = {
-            val srcBytes = packet.bytes.toArraySlice
+            val srcBytes = datagram.bytes.toArraySlice
             if (srcBytes.size == srcBytes.values.size) srcBytes.values
             else {
               val destBytes = new Array[Byte](srcBytes.size)
@@ -262,24 +239,16 @@ private[udp] object AsynchronousSocketGroup {
               destBytes
             }
           }
-          new WriterPacket(packet.remote, ByteBuffer.wrap(bytes))
+          new WriterDatagram(datagram.remote.toInetSocketAddress, ByteBuffer.wrap(bytes))
         }
+        val attachment = key.attachment.asInstanceOf[Attachment]
         onSelectorThread {
           val channel = key.channel.asInstanceOf[DatagramChannel]
-          val attachment = key.attachment.asInstanceOf[Attachment]
           var cancelWriter: () => Unit = null
-          val t = timeout.map { t0 =>
-            Timeout(t0) {
-              cb(Some(new InterruptedByTimeoutException))
-              if (cancelWriter ne null) cancelWriter()
-            }
-          }
           if (attachment.hasWriters) {
-            cancelWriter = attachment.queueWriter((writerPacket, cb), t)
-            t.foreach(t => pendingTimeouts += t)
-          } else if (!write1(channel, writerPacket, cb)) {
-            cancelWriter = attachment.queueWriter((writerPacket, cb), t)
-            t.foreach(t => pendingTimeouts += t)
+            cancelWriter = attachment.queueWriter(writerId, (writerDatagram, cb))
+          } else if (!write1(channel, writerDatagram, cb)) {
+            cancelWriter = attachment.queueWriter(writerId, (writerDatagram, cb))
             try {
               key.interestOps(key.interestOps | SelectionKey.OP_WRITE); ()
             } catch {
@@ -287,15 +256,17 @@ private[udp] object AsynchronousSocketGroup {
             }
           }
         }(cb(Some(new ClosedChannelException)))
+
+        () => onSelectorThread(attachment.cancelWriter(writerId))(())
       }
 
       private def write1(
           channel: DatagramChannel,
-          packet: WriterPacket,
+          datagram: WriterDatagram,
           cb: Option[Throwable] => Unit
       ): Boolean =
         try {
-          val sent = channel.send(packet.bytes, packet.remote)
+          val sent = channel.send(datagram.bytes, datagram.remote)
           if (sent > 0) {
             cb(None)
             true
@@ -338,16 +309,12 @@ private[udp] object AsynchronousSocketGroup {
         }
       }
 
-      private val selectorThread: Thread = internal.ThreadFactories
-        .named("fs2-udp-selector", true)
-        .newThread(new Runnable {
+      private val selectorThread: Thread =
+        threadFactory.newThread(new Runnable {
           def run = {
             while (!closed && !Thread.currentThread.isInterrupted) {
               runPendingThunks()
-              val timeout = pendingTimeouts.headOption.map { t =>
-                (t.expiry - System.currentTimeMillis).max(0L)
-              }
-              selector.select(timeout.getOrElse(0L))
+              selector.select(0L)
               val selectedKeys = selector.selectedKeys.iterator
               while (selectedKeys.hasNext) {
                 val key = selectedKeys.next
@@ -379,13 +346,6 @@ private[udp] object AsynchronousSocketGroup {
                   case _: CancelledKeyException => // Ignore; key was closed
                 }
               }
-              val now = System.currentTimeMillis
-              var nextTimeout = pendingTimeouts.headOption
-              while (nextTimeout.isDefined && nextTimeout.get.expiry <= now) {
-                nextTimeout.get.timedOut()
-                pendingTimeouts.dequeue()
-                nextTimeout = pendingTimeouts.headOption
-              }
             }
             close()
             runPendingThunks()
@@ -393,6 +353,6 @@ private[udp] object AsynchronousSocketGroup {
         })
       selectorThread.start()
 
-      override def toString = "AsynchronousSocketGroup"
+      override def toString = "AsynchronousDatagramSocketGroup"
     }
 }

@@ -21,25 +21,27 @@
 
 package fs2
 package io
+package net
 package tls
 
-import java.net.InetSocketAddress
 import javax.net.ssl.SNIHostName
 
-import cats.effect.{Async, IO}
+import cats.effect.{IO, MonadCancelThrow}
 import cats.syntax.all._
 
+import com.comcast.ip4s._
+
 object TLSDebug {
-  def debug[F[_]: Async](
+  def debug[F[_]: MonadCancelThrow: Dns: Network](
       tlsContext: TLSContext[F],
-      address: InetSocketAddress
+      host: SocketAddress[Hostname]
   ): F[String] =
-    Network[F].tcpSocketGroup.use { socketGroup =>
-      socketGroup.client(address).use { rawSocket =>
+    host.resolve.flatMap { socketAddress =>
+      Network[F].client(socketAddress).use { rawSocket =>
         tlsContext
           .client(
             rawSocket,
-            TLSParameters(serverNames = Some(List(new SNIHostName(address.getHostName))))
+            TLSParameters(serverNames = Some(List(new SNIHostName(host.host.toString))))
           )
           .use { tlsSocket =>
             tlsSocket.write(Chunk.empty) >>
@@ -56,12 +58,12 @@ object TLSDebug {
 
 class TLSDebugTest extends Fs2Suite {
 
-  def run(address: InetSocketAddress): IO[Unit] =
+  def run(address: SocketAddress[Hostname]): IO[Unit] =
     Network[IO].tlsContext.system.flatMap { ctx =>
       TLSDebug
         .debug[IO](ctx, address)
         .flatMap(l => IO(println(l)))
     }
 
-  test("google")(run(new InetSocketAddress("google.com", 443)))
+  test("google")(run(SocketAddress(host"google.com", port"443")))
 }

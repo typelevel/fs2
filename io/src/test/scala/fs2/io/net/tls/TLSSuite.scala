@@ -21,6 +21,19 @@
 
 package fs2
 package io
+package net
+package tls
 
-/** Provides support for TCP networking. */
-package object tcp
+import cats.effect.IO
+
+abstract class TLSSuite extends Fs2Suite {
+  def testTlsContext: IO[TLSContext[IO]] =
+    Network[IO].tlsContext
+      .fromKeyStoreResource(
+        "keystore.jks",
+        "password".toCharArray,
+        "password".toCharArray
+      )
+
+  val logger = None // Some((msg: String) => IO(println(s"\u001b[33m${msg}\u001b[0m")))
+}

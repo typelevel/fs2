@@ -21,12 +21,10 @@
 
 package fs2
 package io
+package net
 package tls
 
-import scala.concurrent.duration._
-
 import java.io.{FileInputStream, InputStream}
-import java.net.InetSocketAddress
 import java.nio.file.Path
 import java.security.KeyStore
 import java.security.cert.X509Certificate
@@ -42,8 +40,8 @@ import cats.Applicative
 import cats.effect.kernel.{Async, Resource}
 import cats.syntax.all._
 
-import fs2.io.tcp.Socket
-import fs2.io.udp.Packet
+import com.comcast.ip4s.{IpAddress, SocketAddress}
+
 import java.util.function.BiFunction
 
 /** Allows creation of [[TLSSocket]]s.
@@ -72,8 +70,8 @@ sealed trait TLSContext[F[_]] {
     * Internal debug logging of the session can be enabled by passing a logger.
     */
   def dtlsClient(
-      socket: udp.Socket[F],
-      remoteAddress: InetSocketAddress,
+      socket: DatagramSocket[F],
+      remoteAddress: SocketAddress[IpAddress],
       params: TLSParameters = TLSParameters.Default,
       logger: Option[String => F[Unit]] = None
   ): Resource[F, DTLSSocket[F]]
@@ -82,8 +80,8 @@ sealed trait TLSContext[F[_]] {
     * Internal debug logging of the session can be enabled by passing a logger.
     */
   def dtlsServer(
-      socket: udp.Socket[F],
-      remoteAddress: InetSocketAddress,
+      socket: DatagramSocket[F],
+      remoteAddress: SocketAddress[IpAddress],
       params: TLSParameters = TLSParameters.Default,
       logger: Option[String => F[Unit]] = None
   ): Resource[F, DTLSSocket[F]]
@@ -165,11 +163,10 @@ object TLSContext {
               .eval(
                 engine(
                   new TLSEngine.Binding[F] {
-                    def write(data: Chunk[Byte], timeout: Option[FiniteDuration]): F[Unit] =
-                      socket.write(data, timeout)
-                    def read(maxBytes: Int, timeout: Option[FiniteDuration])
-                        : F[Option[Chunk[Byte]]] =
-                      socket.read(maxBytes, timeout)
+                    def write(data: Chunk[Byte]): F[Unit] =
+                      socket.write(data)
+                    def read(maxBytes: Int): F[Option[Chunk[Byte]]] =
+                      socket.read(maxBytes)
                   },
                   clientMode,
                   params,
@@ -179,8 +176,8 @@ object TLSContext {
               .flatMap(engine => TLSSocket(socket, engine))
 
           def dtlsClient(
-              socket: udp.Socket[F],
-              remoteAddress: InetSocketAddress,
+              socket: DatagramSocket[F],
+              remoteAddress: SocketAddress[IpAddress],
               params: TLSParameters,
               logger: Option[String => F[Unit]]
           ): Resource[F, DTLSSocket[F]] =
@@ -193,8 +190,8 @@ object TLSContext {
             )
 
           def dtlsServer(
-              socket: udp.Socket[F],
-              remoteAddress: InetSocketAddress,
+              socket: DatagramSocket[F],
+              remoteAddress: SocketAddress[IpAddress],
               params: TLSParameters,
               logger: Option[String => F[Unit]]
           ): Resource[F, DTLSSocket[F]] =
@@ -207,8 +204,8 @@ object TLSContext {
             )
 
           private def mkDtlsSocket(
-              socket: udp.Socket[F],
-              remoteAddress: InetSocketAddress,
+              socket: DatagramSocket[F],
+              remoteAddress: SocketAddress[IpAddress],
               clientMode: Boolean,
               params: TLSParameters,
               logger: Option[String => F[Unit]]
@@ -217,12 +214,11 @@ object TLSContext {
               .eval(
                 engine(
                   new TLSEngine.Binding[F] {
-                    def write(data: Chunk[Byte], timeout: Option[FiniteDuration]): F[Unit] =
+                    def write(data: Chunk[Byte]): F[Unit] =
                       if (data.isEmpty) Applicative[F].unit
-                      else socket.write(Packet(remoteAddress, data), timeout)
-                    def read(maxBytes: Int, timeout: Option[FiniteDuration])
-                        : F[Option[Chunk[Byte]]] =
-                      socket.read(timeout).map(p => Some(p.bytes))
+                      else socket.write(Datagram(remoteAddress, data))
+                    def read(maxBytes: Int): F[Option[Chunk[Byte]]] =
+                      socket.read.map(p => Some(p.bytes))
                   },
                   clientMode,
                   params,

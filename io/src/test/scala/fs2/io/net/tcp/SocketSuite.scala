@@ -21,28 +21,25 @@
 
 package fs2
 package io
+package net
 package tcp
 
 import scala.concurrent.duration._
 
-import java.net.InetSocketAddress
-import java.net.InetAddress
-
 import cats.effect.IO
 
+import com.comcast.ip4s._
+
 class SocketSuite extends Fs2Suite {
-  def mkSocketGroup: Stream[IO, SocketGroup[IO]] =
-    Stream.resource(Network[IO].tcpSocketGroup)
 
   val timeout = 30.seconds
 
   val setup = for {
-    socketGroup <- Network[IO].tcpSocketGroup
-    defaultAddress = new InetSocketAddress(InetAddress.getByName(null), 0)
-    serverSetup <- socketGroup.serverResource(defaultAddress)
-    (bindAddress, serverConnections) = serverSetup
-    server = serverConnections.flatMap(Stream.resource(_))
-    clients = Stream.resource(socketGroup.client(bindAddress)).repeat
+    serverSetup <- Network[IO].serverResource(address = Some(ip"127.0.0.1"))
+    (bindAddress, server) = serverSetup
+    clients = Stream
+      .resource(Network[IO].client(bindAddress, options = List(SocketOption.sendBufferSize(10000))))
+      .repeat
   } yield (server -> clients)
 
   group("tcp") {
@@ -56,7 +53,7 @@ class SocketSuite extends Fs2Suite {
           val echoServer = server.map { socket =>
             socket
               .reads(1024)
-              .through(socket.writes())
+              .through(socket.writes)
               .onFinalize(socket.endOfOutput)
           }.parJoinUnbounded
 
@@ -65,7 +62,7 @@ class SocketSuite extends Fs2Suite {
             .map { socket =>
               Stream
                 .chunk(message)
-                .through(socket.writes())
+                .through(socket.writes)
                 .onFinalize(socket.endOfOutput) ++
                 socket
                   .reads(1024)
@@ -95,7 +92,7 @@ class SocketSuite extends Fs2Suite {
           val junkServer = server.map { socket =>
             Stream
               .chunk(message)
-              .through(socket.writes())
+              .through(socket.writes)
               .onFinalize(socket.endOfOutput)
           }.parJoinUnbounded
 

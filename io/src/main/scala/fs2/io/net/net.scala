@@ -19,20 +19,7 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2.io.tcp
+package fs2.io
 
-import java.net.SocketOption
-
-/** Key-value pair of [[SocketOption]] and a corresponding value* */
-final case class SocketOptionMapping[A](key: SocketOption[A], value: A)
-object SocketOptionMapping {
-  def boolean(
-      key: SocketOption[java.lang.Boolean],
-      value: Boolean
-  ): SocketOptionMapping[java.lang.Boolean] =
-    SocketOptionMapping(key, value)
-  def integer(
-      key: SocketOption[java.lang.Integer],
-      value: Int
-  ): SocketOptionMapping[java.lang.Integer] = SocketOptionMapping(key, value)
-}
+/** Provides support for doing network I/O -- TCP, UDP, and TLS. */
+package object net

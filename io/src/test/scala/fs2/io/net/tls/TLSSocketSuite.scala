@@ -21,15 +21,17 @@
 
 package fs2
 package io
+package net
 package tls
 
 import scala.concurrent.duration._
 
-import java.net.{InetAddress, InetSocketAddress}
 import javax.net.ssl.{SNIHostName, SSLContext}
 
 import cats.effect.{IO, Resource}
 import cats.syntax.all._
+
+import com.comcast.ip4s._
 
 class TLSSocketSuite extends TLSSuite {
   val size = 8192
@@ -39,8 +41,7 @@ class TLSSocketSuite extends TLSSuite {
       def googleSetup(protocol: String) =
         for {
           tlsContext <- Resource.eval(Network[IO].tlsContext.system)
-          socketGroup <- Network[IO].tcpSocketGroup
-          socket <- socketGroup.client(new InetSocketAddress("google.com", 443))
+          socket <- Network[IO].client(SocketAddress(host"google.com", port"443"))
           tlsSocket <- tlsContext.client(
             socket,
             TLSParameters(
@@ -61,7 +62,7 @@ class TLSSocketSuite extends TLSSuite {
               Stream(googleDotCom)
                 .covary[IO]
                 .through(text.utf8Encode)
-                .through(tlsSocket.writes()) ++
+                .through(tlsSocket.writes) ++
                 tlsSocket
                   .reads(size)
                   .through(text.utf8Decode)
@@ -80,7 +81,7 @@ class TLSSocketSuite extends TLSSuite {
             .flatMap { socket =>
               val send = Stream(googleDotCom)
                 .through(text.utf8Encode)
-                .through(socket.writes())
+                .through(socket.writes)
               val receive = socket
                 .reads(size)
                 .through(text.utf8Decode)
@@ -113,14 +114,11 @@ class TLSSocketSuite extends TLSSuite {
       val msg = Chunk.array(("Hello, world! " * 20000).getBytes)
 
       val setup = for {
-        socketGroup <- Network[IO].tcpSocketGroup
         tlsContext <- Resource.eval(testTlsContext)
-        inetAddress = new InetSocketAddress(InetAddress.getByName(null), 0)
-        addressAndConnections <- socketGroup.serverResource(inetAddress)
-        (serverAddress, connections) = addressAndConnections
-        server = connections.flatMap(c => Stream.resource(c.flatMap(tlsContext.server(_))))
-        client <- socketGroup.client(serverAddress).flatMap(tlsContext.client(_))
-      } yield server -> client
+        addressAndConnections <- Network[IO].serverResource(Some(ip"127.0.0.1"))
+        (serverAddress, server) = addressAndConnections
+        client <- Network[IO].client(serverAddress).flatMap(tlsContext.client(_))
+      } yield server.flatMap(s => Stream.resource(tlsContext.server(s))) -> client
 
       Stream
         .resource(setup)
