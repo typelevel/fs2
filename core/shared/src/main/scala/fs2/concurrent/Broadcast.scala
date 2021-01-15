@@ -39,12 +39,12 @@ object Broadcast {
     * faster workers. If this is not desired, consider using the `prefetch` and `prefetchN` combinators on workers to compensate
     * for slower workers.
     *
-    * Often this combinator is used together with parJoin, such as :
+    * Often this combinator is used together with parJoin, such as:
     *
     * {{{
-    *   Stream(1,2,3,4).broadcast.map { worker =>
-    *     worker.evalMap { o => IO.println("1:" + o.toString) }
-    *   }.take(3).parJoinUnbounded.compile.drain.unsafeRunSync
+    *   Stream(1,2,3,4).covary[IO].broadcast.zipWithIndex.map { case (worker, idx) =>
+    *     worker.evalMap { o => IO(println(s"$idx: $o")) }
+    *   }.take(3).parJoinUnbounded.compile.drain.unsafeRunSync()
     * }}}
     *
     * Note that in the example, above the workers are not guaranteed to see all elements emitted. This is

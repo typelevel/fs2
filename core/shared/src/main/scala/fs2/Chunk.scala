@@ -919,7 +919,7 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
       if (xs.isInstanceOf[Array[Byte]])
         toByteVector.copyToArray(xs.asInstanceOf[Array[Byte]], start)
       else {
-        toByteVector.toIndexedSeq.copyToArray(xs)
+        toByteVector.toIndexedSeq.copyToArray(xs, start)
         ()
       }
 
