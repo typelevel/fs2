@@ -92,8 +92,8 @@ object TLSSocket {
       def read(maxBytes: Int): F[Option[Chunk[Byte]]] =
         readSem.permit.use(_ => read0(maxBytes))
 
-      def reads(maxBytes: Int): Stream[F, Byte] =
-        Stream.repeatEval(read(maxBytes)).unNoneTerminate.flatMap(Stream.chunk)
+      def reads: Stream[F, Byte] =
+        Stream.repeatEval(read(8192)).unNoneTerminate.flatMap(Stream.chunk)
 
       def writes: Pipe[F, Byte, INothing] =
         _.chunks.foreach(write)

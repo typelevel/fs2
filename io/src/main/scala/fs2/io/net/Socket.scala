@@ -38,19 +38,19 @@ trait Socket[F[_]] {
 
   /** Reads up to `maxBytes` from the peer.
     *
-    * Returns `None` if no byte is read upon reaching the end of the stream.
+    * Returns `None` if the "end of stream" is reached, indicating there will be no more bytes sent.
     */
   def read(maxBytes: Int): F[Option[Chunk[Byte]]]
 
-  /** Reads stream of bytes from this socket with `read` semantics. Terminates when eof is received.
-    */
-  def reads(maxBytes: Int): Stream[F, Byte]
-
   /** Reads exactly `numBytes` from the peer in a single chunk.
     *
-    * When returned size of bytes is < `numBytes` that indicates end-of-stream has been reached.
+    * Returns `None` if the "end of stream" is reached. May return a chunk with size < `numBytes` upon
+    * reaching the end of the stream.
     */
   def readN(numBytes: Int): F[Option[Chunk[Byte]]]
+
+  /** Reads bytes from the socket as a stream. */
+  def reads: Stream[F, Byte]
 
   /** Indicates that this channel will not read more data. Causes `End-Of-Stream` be signalled to `available`. */
   def endOfInput: F[Unit]
@@ -93,7 +93,8 @@ object Socket {
       writeSemaphore: Semaphore[F]
   )(implicit F: Async[F])
       extends Socket[F] {
-    private[this] var readBuffer: ByteBuffer = ByteBuffer.allocateDirect(8192)
+    private[this] final val defaultReadSize = 8192
+    private[this] var readBuffer: ByteBuffer = ByteBuffer.allocateDirect(defaultReadSize)
 
     private def getBufferForRead(size: Int): F[ByteBuffer] = F.delay {
       if (readBuffer.capacity() < size)
@@ -140,13 +141,6 @@ object Socket {
         }
       }
 
-    def reads(maxBytes: Int): Stream[F, Byte] =
-      Stream.eval(read(maxBytes)).flatMap {
-        case Some(bytes) =>
-          Stream.chunk(bytes) ++ reads(maxBytes)
-        case None => Stream.empty
-      }
-
     def readN(max: Int): F[Option[Chunk[Byte]]] =
       readSemaphore.permit.use { _ =>
         getBufferForRead(max).flatMap { buffer =>
@@ -159,6 +153,9 @@ object Socket {
           go
         }
       }
+
+    def reads: Stream[F, Byte] =
+      Stream.repeatEval(read(defaultReadSize)).unNoneTerminate.flatMap(Stream.chunk)
 
     def write(bytes: Chunk[Byte]): F[Unit] = {
       def go(buff: ByteBuffer): F[Unit] =

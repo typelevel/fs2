@@ -64,7 +64,7 @@ class TLSSocketSuite extends TLSSuite {
                 .through(text.utf8Encode)
                 .through(tlsSocket.writes) ++
                 tlsSocket
-                  .reads(size)
+                  .reads
                   .through(text.utf8Decode)
                   .through(text.lines)
             }
@@ -83,7 +83,7 @@ class TLSSocketSuite extends TLSSuite {
                 .through(text.utf8Encode)
                 .through(socket.writes)
               val receive = socket
-                .reads(size)
+                .reads
                 .through(text.utf8Decode)
                 .through(text.lines)
 
@@ -124,12 +124,12 @@ class TLSSocketSuite extends TLSSuite {
         .resource(setup)
         .flatMap { case (server, clientSocket) =>
           val echoServer = server.map { socket =>
-            socket.reads(size).chunks.foreach(socket.write(_))
+            socket.reads.chunks.foreach(socket.write(_))
           }.parJoinUnbounded
 
           val client =
             Stream.exec(clientSocket.write(msg)) ++
-              clientSocket.reads(size).take(msg.size.toLong)
+              clientSocket.reads.take(msg.size.toLong)
 
           client.concurrently(echoServer)
         }
