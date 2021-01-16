@@ -120,10 +120,11 @@ object Socket {
         val result =
           if (read == 0) Chunk.empty
           else {
-            val dest = new Array[Byte](read)
+            val dest = ByteBuffer.allocateDirect(read)
             (buffer: Buffer).flip()
-            buffer.get(dest)
-            Chunk.array(dest)
+            dest.put(buffer)
+            (dest: Buffer).flip()
+            Chunk.byteBuffer(dest)
           }
         (buffer: Buffer).clear()
         result
@@ -162,17 +163,16 @@ object Socket {
     def write(bytes: Chunk[Byte]): F[Unit] = {
       def go(buff: ByteBuffer): F[Unit] =
         F.async_[Int] { cb =>
-            ch.write(
-              buff,
-              null,
-              new IntCallbackHandler(cb)
-            )
-          }
-          .flatMap { written =>
-            if (written >= 0 && buff.remaining() > 0)
-              go(buff)
-            else F.unit
-          }
+          ch.write(
+            buff,
+            null,
+            new IntCallbackHandler(cb)
+          )
+        }.flatMap { written =>
+          if (written >= 0 && buff.remaining() > 0)
+            go(buff)
+          else F.unit
+        }
       writeSemaphore.permit.use { _ =>
         go(bytes.toByteBuffer)
       }
