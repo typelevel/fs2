@@ -93,7 +93,7 @@ object Socket {
       writeSemaphore: Semaphore[F]
   )(implicit F: Async[F])
       extends Socket[F] {
-    private var readBuffer: ByteBuffer = ByteBuffer.allocateDirect(8192)
+    private[this] var readBuffer: ByteBuffer = ByteBuffer.allocateDirect(8192)
 
     private def getBufferForRead(size: Int): F[ByteBuffer] = F.delay {
       if (readBuffer.capacity() < size)
