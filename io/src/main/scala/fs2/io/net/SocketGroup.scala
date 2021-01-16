@@ -24,7 +24,6 @@ package io
 package net
 
 import java.net.InetSocketAddress
-import java.nio.{Buffer, ByteBuffer}
 import java.nio.channels.{
   AsynchronousCloseException,
   AsynchronousServerSocketChannel,
@@ -35,8 +34,7 @@ import java.nio.channels.AsynchronousChannelGroup
 import java.nio.channels.spi.AsynchronousChannelProvider
 
 import cats.syntax.all._
-import cats.effect.kernel.{Async, Ref, Resource}
-import cats.effect.std.Semaphore
+import cats.effect.kernel.{Async, Resource}
 
 import com.comcast.ip4s.{Host, IpAddress, Port, SocketAddress}
 
@@ -116,7 +114,7 @@ private[net] object SocketGroup {
           }
         }
 
-      Resource.eval(setup.flatMap(connect)).flatMap(apply(_))
+      Resource.eval(setup.flatMap(connect)).flatMap(Socket.forAsync(_))
     }
 
     def server(
@@ -180,7 +178,7 @@ private[net] object SocketGroup {
 
           Stream.eval(acceptChannel.attempt).flatMap {
             case Left(_)         => Stream.empty[F]
-            case Right(accepted) => Stream.resource(apply(accepted))
+            case Right(accepted) => Stream.resource(Socket.forAsync(accepted))
           } ++ go
         }
 
@@ -199,149 +197,6 @@ private[net] object SocketGroup {
         val localAddress = SocketAddress.fromInetSocketAddress(jLocalAddress)
         (localAddress, acceptIncoming(sch))
       }
-    }
-
-    private def apply(
-        ch: AsynchronousSocketChannel
-    ): Resource[F, Socket[F]] = {
-      val socket = (Semaphore[F](1), Semaphore[F](1), Ref[F].of(ByteBuffer.allocate(0))).mapN {
-        (readSemaphore, writeSemaphore, bufferRef) =>
-          // Reads data to remaining capacity of supplied ByteBuffer
-          def readChunk(buff: ByteBuffer): F[Int] =
-            Async[F].async_[Int] { cb =>
-              ch.read(
-                buff,
-                (),
-                new CompletionHandler[Integer, Unit] {
-                  def completed(result: Integer, attachment: Unit): Unit =
-                    cb(Right(result))
-                  def failed(err: Throwable, attachment: Unit): Unit =
-                    cb(Left(err))
-                }
-              )
-            }
-
-          // gets buffer of desired capacity, ready for the first read operation
-          // If the buffer does not have desired capacity it is resized (recreated)
-          // buffer is also reset to be ready to be written into.
-          def getBufferOf(sz: Int): F[ByteBuffer] =
-            bufferRef.get.flatMap { buff =>
-              if (buff.capacity() < sz)
-                Async[F].delay(ByteBuffer.allocate(sz)).flatTap(bufferRef.set)
-              else
-                Async[F].delay {
-                  (buff: Buffer).clear()
-                  (buff: Buffer).limit(sz)
-                  buff
-                }
-            }
-
-          // When the read operation is done, this will read up to buffer's position bytes from the buffer
-          // this expects the buffer's position to be at bytes read + 1
-          def releaseBuffer(buff: ByteBuffer): F[Chunk[Byte]] =
-            Async[F].delay {
-              val read = buff.position()
-              val result =
-                if (read == 0) Chunk.empty
-                else {
-                  val dest = new Array[Byte](read)
-                  (buff: Buffer).flip()
-                  buff.get(dest)
-                  Chunk.array(dest)
-                }
-              (buff: Buffer).clear()
-              result
-            }
-
-          def read0(max: Int): F[Option[Chunk[Byte]]] =
-            readSemaphore.permit.use { _ =>
-              getBufferOf(max).flatMap { buff =>
-                readChunk(buff).flatMap { read =>
-                  if (read < 0) Async[F].pure(None)
-                  else releaseBuffer(buff).map(Some(_))
-                }
-              }
-            }
-
-          def readN0(max: Int): F[Option[Chunk[Byte]]] =
-            readSemaphore.permit.use { _ =>
-              getBufferOf(max).flatMap { buff =>
-                def go: F[Option[Chunk[Byte]]] =
-                  readChunk(buff).flatMap { readBytes =>
-                    if (readBytes < 0 || buff.position() >= max)
-                      // read is done
-                      releaseBuffer(buff).map(Some(_))
-                    else go
-                  }
-                go
-              }
-            }
-
-          def write0(bytes: Chunk[Byte]): F[Unit] = {
-            def go(buff: ByteBuffer): F[Unit] =
-              Async[F]
-                .async_[Unit] { cb =>
-                  ch.write(
-                    buff,
-                    (),
-                    new CompletionHandler[Integer, Unit] {
-                      def completed(result: Integer, attachment: Unit): Unit =
-                        cb(Right(()))
-                      def failed(err: Throwable, attachment: Unit): Unit =
-                        cb(Left(err))
-                    }
-                  )
-                }
-            writeSemaphore.permit.use { _ =>
-              go(bytes.toByteBuffer)
-            }
-          }
-
-          ///////////////////////////////////
-          ///////////////////////////////////
-
-          new Socket[F] {
-            def readN(numBytes: Int): F[Option[Chunk[Byte]]] =
-              readN0(numBytes)
-            def read(maxBytes: Int): F[Option[Chunk[Byte]]] =
-              read0(maxBytes)
-            def reads(maxBytes: Int): Stream[F, Byte] =
-              Stream.eval(read(maxBytes)).flatMap {
-                case Some(bytes) =>
-                  Stream.chunk(bytes) ++ reads(maxBytes)
-                case None => Stream.empty
-              }
-
-            def write(bytes: Chunk[Byte]): F[Unit] =
-              write0(bytes)
-            def writes: Pipe[F, Byte, INothing] =
-              _.chunks.foreach(write)
-
-            def localAddress: F[SocketAddress[IpAddress]] =
-              Async[F].delay(
-                SocketAddress.fromInetSocketAddress(
-                  ch.getLocalAddress.asInstanceOf[InetSocketAddress]
-                )
-              )
-            def remoteAddress: F[SocketAddress[IpAddress]] =
-              Async[F].delay(
-                SocketAddress.fromInetSocketAddress(
-                  ch.getRemoteAddress.asInstanceOf[InetSocketAddress]
-                )
-              )
-            def isOpen: F[Boolean] = Async[F].delay(ch.isOpen)
-            def close: F[Unit] = Async[F].delay(ch.close())
-            def endOfOutput: F[Unit] =
-              Async[F].delay {
-                ch.shutdownOutput(); ()
-              }
-            def endOfInput: F[Unit] =
-              Async[F].delay {
-                ch.shutdownInput(); ()
-              }
-          }
-      }
-      Resource.make(socket)(_ => Async[F].delay(if (ch.isOpen) ch.close else ()))
     }
   }
 }
