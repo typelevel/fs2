@@ -109,18 +109,13 @@ object Socket {
         ch.read(
           buffer,
           null,
-          new CompletionHandler[Integer, AnyRef] {
-            def completed(result: Integer, attachment: AnyRef): Unit =
-              cb(Right(result))
-            def failed(err: Throwable, attachment: AnyRef): Unit =
-              cb(Left(err))
-          }
+          new IntCallbackHandler(cb)
         )
       }
 
     /** Copies the contents of the supplied buffer to a `Chunk[Byte]` and clears the buffer contents. */
     private def releaseBuffer(buffer: ByteBuffer): F[Chunk[Byte]] =
-      Async[F].delay {
+      F.delay {
         val read = buffer.position()
         val result =
           if (read == 0) Chunk.empty
@@ -138,7 +133,7 @@ object Socket {
       readSemaphore.permit.use { _ =>
         getBufferForRead(max).flatMap { buffer =>
           readChunk(buffer).flatMap { read =>
-            if (read < 0) Async[F].pure(None)
+            if (read < 0) F.pure(None)
             else releaseBuffer(buffer).map(Some(_))
           }
         }
@@ -157,7 +152,6 @@ object Socket {
           def go: F[Option[Chunk[Byte]]] =
             readChunk(buffer).flatMap { readBytes =>
               if (readBytes < 0 || buffer.position() >= max)
-                // read is done
                 releaseBuffer(buffer).map(Some(_))
               else go
             }
@@ -167,18 +161,17 @@ object Socket {
 
     def write(bytes: Chunk[Byte]): F[Unit] = {
       def go(buff: ByteBuffer): F[Unit] =
-        Async[F]
-          .async_[Unit] { cb =>
+        F.async_[Int] { cb =>
             ch.write(
               buff,
-              (),
-              new CompletionHandler[Integer, Unit] {
-                def completed(result: Integer, attachment: Unit): Unit =
-                  cb(Right(()))
-                def failed(err: Throwable, attachment: Unit): Unit =
-                  cb(Left(err))
-              }
+              null,
+              new IntCallbackHandler(cb)
             )
+          }
+          .flatMap { written =>
+            if (written >= 0 && buff.remaining() > 0)
+              go(buff)
+            else F.unit
           }
       writeSemaphore.permit.use { _ =>
         go(bytes.toByteBuffer)
@@ -189,26 +182,37 @@ object Socket {
       _.chunks.foreach(write)
 
     def localAddress: F[SocketAddress[IpAddress]] =
-      Async[F].delay(
+      F.delay(
         SocketAddress.fromInetSocketAddress(
           ch.getLocalAddress.asInstanceOf[InetSocketAddress]
         )
       )
+
     def remoteAddress: F[SocketAddress[IpAddress]] =
-      Async[F].delay(
+      F.delay(
         SocketAddress.fromInetSocketAddress(
           ch.getRemoteAddress.asInstanceOf[InetSocketAddress]
         )
       )
-    def isOpen: F[Boolean] = Async[F].delay(ch.isOpen)
-    def close: F[Unit] = Async[F].delay(ch.close())
+
+    def isOpen: F[Boolean] = F.delay(ch.isOpen)
+
     def endOfOutput: F[Unit] =
-      Async[F].delay {
+      F.delay {
         ch.shutdownOutput(); ()
       }
+
     def endOfInput: F[Unit] =
-      Async[F].delay {
+      F.delay {
         ch.shutdownInput(); ()
       }
+  }
+
+  private final class IntCallbackHandler[A](cb: Either[Throwable, Int] => Unit)
+      extends CompletionHandler[Integer, AnyRef] {
+    def completed(result: Integer, attachment: AnyRef): Unit =
+      cb(Right(result))
+    def failed(err: Throwable, attachment: AnyRef): Unit =
+      cb(Left(err))
   }
 }
