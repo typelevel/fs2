@@ -100,7 +100,6 @@ class SocketSuite extends Fs2Suite {
                 Stream
                   .emits(sizes)
                   .evalMap(socket.readN(_))
-                  .unNone
                   .map(_.size)
               }
               .take(sizes.length.toLong)

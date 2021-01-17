@@ -44,10 +44,9 @@ trait Socket[F[_]] {
 
   /** Reads exactly `numBytes` from the peer in a single chunk.
     *
-    * Returns `None` if the "end of stream" is reached. May return a chunk with size < `numBytes` upon
-    * reaching the end of the stream.
+    * Returns a chunk with size < `numBytes` upon reaching the end of the stream.
     */
-  def readN(numBytes: Int): F[Option[Chunk[Byte]]]
+  def readN(numBytes: Int): F[Chunk[Byte]]
 
   /** Reads bytes from the socket as a stream. */
   def reads: Stream[F, Byte]
@@ -96,13 +95,16 @@ object Socket {
     private[this] final val defaultReadSize = 8192
     private[this] var readBuffer: ByteBuffer = ByteBuffer.allocateDirect(defaultReadSize)
 
-    private def getBufferForRead(size: Int): F[ByteBuffer] = F.delay {
-      if (readBuffer.capacity() < size)
-        readBuffer = ByteBuffer.allocateDirect(size)
-      else
-        (readBuffer: Buffer).limit(size)
-      readBuffer
-    }
+    private def withReadBuffer[A](size: Int)(f: ByteBuffer => F[A]): F[A] =
+      readSemaphore.permit.use { _ =>
+        F.delay {
+          if (readBuffer.capacity() < size)
+            readBuffer = ByteBuffer.allocateDirect(size)
+          else
+            (readBuffer: Buffer).limit(size)
+          f(readBuffer)
+        }.flatten
+      }
 
     /** Performs a single channel read operation in to the supplied buffer. */
     private def readChunk(buffer: ByteBuffer): F[Int] =
@@ -132,26 +134,22 @@ object Socket {
       }
 
     def read(max: Int): F[Option[Chunk[Byte]]] =
-      readSemaphore.permit.use { _ =>
-        getBufferForRead(max).flatMap { buffer =>
-          readChunk(buffer).flatMap { read =>
-            if (read < 0) F.pure(None)
-            else releaseBuffer(buffer).map(Some(_))
-          }
+      withReadBuffer(max) { buffer =>
+        readChunk(buffer).flatMap { read =>
+          if (read < 0) F.pure(None)
+          else releaseBuffer(buffer).map(Some(_))
         }
       }
 
-    def readN(max: Int): F[Option[Chunk[Byte]]] =
-      readSemaphore.permit.use { _ =>
-        getBufferForRead(max).flatMap { buffer =>
-          def go: F[Option[Chunk[Byte]]] =
-            readChunk(buffer).flatMap { readBytes =>
-              if (readBytes < 0 || buffer.position() >= max)
-                releaseBuffer(buffer).map(Some(_))
-              else go
-            }
-          go
-        }
+    def readN(max: Int): F[Chunk[Byte]] =
+      withReadBuffer(max) { buffer =>
+        def go: F[Chunk[Byte]] =
+          readChunk(buffer).flatMap { readBytes =>
+            if (readBytes < 0 || buffer.position() >= max)
+              releaseBuffer(buffer)
+            else go
+          }
+        go
       }
 
     def reads: Stream[F, Byte] =
