@@ -75,15 +75,15 @@ object TLSSocket {
       private def read0(maxBytes: Int): F[Option[Chunk[Byte]]] =
         engine.read(maxBytes)
 
-      def readN(numBytes: Int): F[Option[Chunk[Byte]]] =
+      def readN(numBytes: Int): F[Chunk[Byte]] =
         readSem.permit.use { _ =>
-          def go(acc: Chunk[Byte]): F[Option[Chunk[Byte]]] = {
+          def go(acc: Chunk[Byte]): F[Chunk[Byte]] = {
             val toRead = numBytes - acc.size
-            if (toRead <= 0) Applicative[F].pure(Some(acc))
+            if (toRead <= 0) Applicative[F].pure(acc)
             else
               read0(toRead).flatMap {
-                case Some(chunk) => go(acc ++ chunk): F[Option[Chunk[Byte]]]
-                case None        => Applicative[F].pure(Some(acc)): F[Option[Chunk[Byte]]]
+                case Some(chunk) => go(acc ++ chunk)
+                case None        => Applicative[F].pure(acc)
               }
           }
           go(Chunk.empty)
@@ -92,8 +92,8 @@ object TLSSocket {
       def read(maxBytes: Int): F[Option[Chunk[Byte]]] =
         readSem.permit.use(_ => read0(maxBytes))
 
-      def reads(maxBytes: Int): Stream[F, Byte] =
-        Stream.repeatEval(read(maxBytes)).unNoneTerminate.flatMap(Stream.chunk)
+      def reads: Stream[F, Byte] =
+        Stream.repeatEval(read(8192)).unNoneTerminate.flatMap(Stream.chunk)
 
       def writes: Pipe[F, Byte, INothing] =
         _.chunks.foreach(write)

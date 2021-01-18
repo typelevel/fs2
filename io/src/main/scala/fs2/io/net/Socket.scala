@@ -24,6 +24,13 @@ package io
 package net
 
 import com.comcast.ip4s.{IpAddress, SocketAddress}
+import cats.effect.{Async, Resource}
+import cats.effect.std.Semaphore
+import cats.syntax.all._
+
+import java.net.InetSocketAddress
+import java.nio.channels.{AsynchronousSocketChannel, CompletionHandler}
+import java.nio.{Buffer, ByteBuffer}
 
 /** Provides the ability to read/write from a TCP socket in the effect `F`.
   */
@@ -31,19 +38,18 @@ trait Socket[F[_]] {
 
   /** Reads up to `maxBytes` from the peer.
     *
-    * Returns `None` if no byte is read upon reaching the end of the stream.
+    * Returns `None` if the "end of stream" is reached, indicating there will be no more bytes sent.
     */
   def read(maxBytes: Int): F[Option[Chunk[Byte]]]
 
-  /** Reads stream of bytes from this socket with `read` semantics. Terminates when eof is received.
-    */
-  def reads(maxBytes: Int): Stream[F, Byte]
-
   /** Reads exactly `numBytes` from the peer in a single chunk.
     *
-    * When returned size of bytes is < `numBytes` that indicates end-of-stream has been reached.
+    * Returns a chunk with size < `numBytes` upon reaching the end of the stream.
     */
-  def readN(numBytes: Int): F[Option[Chunk[Byte]]]
+  def readN(numBytes: Int): F[Chunk[Byte]]
+
+  /** Reads bytes from the socket as a stream. */
+  def reads: Stream[F, Byte]
 
   /** Indicates that this channel will not read more data. Causes `End-Of-Stream` be signalled to `available`. */
   def endOfInput: F[Unit]
@@ -68,4 +74,140 @@ trait Socket[F[_]] {
   /** Writes the supplied stream of bytes to this socket via `write` semantics.
     */
   def writes: Pipe[F, Byte, INothing]
+}
+
+object Socket {
+  private[net] def forAsync[F[_]: Async](
+      ch: AsynchronousSocketChannel
+  ): Resource[F, Socket[F]] =
+    Resource.make {
+      (Semaphore[F](1), Semaphore[F](1)).mapN { (readSemaphore, writeSemaphore) =>
+        new AsyncSocket[F](ch, readSemaphore, writeSemaphore)
+      }
+    }(_ => Async[F].delay(if (ch.isOpen) ch.close else ()))
+
+  private final class AsyncSocket[F[_]](
+      ch: AsynchronousSocketChannel,
+      readSemaphore: Semaphore[F],
+      writeSemaphore: Semaphore[F]
+  )(implicit F: Async[F])
+      extends Socket[F] {
+    private[this] final val defaultReadSize = 8192
+    private[this] var readBuffer: ByteBuffer = ByteBuffer.allocateDirect(defaultReadSize)
+
+    private def withReadBuffer[A](size: Int)(f: ByteBuffer => F[A]): F[A] =
+      readSemaphore.permit.use { _ =>
+        F.delay {
+          if (readBuffer.capacity() < size)
+            readBuffer = ByteBuffer.allocateDirect(size)
+          else
+            (readBuffer: Buffer).limit(size)
+          f(readBuffer)
+        }.flatten
+      }
+
+    /** Performs a single channel read operation in to the supplied buffer. */
+    private def readChunk(buffer: ByteBuffer): F[Int] =
+      F.async_[Int] { cb =>
+        ch.read(
+          buffer,
+          null,
+          new IntCallbackHandler(cb)
+        )
+      }
+
+    /** Copies the contents of the supplied buffer to a `Chunk[Byte]` and clears the buffer contents. */
+    private def releaseBuffer(buffer: ByteBuffer): F[Chunk[Byte]] =
+      F.delay {
+        val read = buffer.position()
+        val result =
+          if (read == 0) Chunk.empty
+          else {
+            val dest = ByteBuffer.allocateDirect(read)
+            (buffer: Buffer).flip()
+            dest.put(buffer)
+            (dest: Buffer).flip()
+            Chunk.byteBuffer(dest)
+          }
+        (buffer: Buffer).clear()
+        result
+      }
+
+    def read(max: Int): F[Option[Chunk[Byte]]] =
+      withReadBuffer(max) { buffer =>
+        readChunk(buffer).flatMap { read =>
+          if (read < 0) F.pure(None)
+          else releaseBuffer(buffer).map(Some(_))
+        }
+      }
+
+    def readN(max: Int): F[Chunk[Byte]] =
+      withReadBuffer(max) { buffer =>
+        def go: F[Chunk[Byte]] =
+          readChunk(buffer).flatMap { readBytes =>
+            if (readBytes < 0 || buffer.position() >= max)
+              releaseBuffer(buffer)
+            else go
+          }
+        go
+      }
+
+    def reads: Stream[F, Byte] =
+      Stream.repeatEval(read(defaultReadSize)).unNoneTerminate.flatMap(Stream.chunk)
+
+    def write(bytes: Chunk[Byte]): F[Unit] = {
+      def go(buff: ByteBuffer): F[Unit] =
+        F.async_[Int] { cb =>
+          ch.write(
+            buff,
+            null,
+            new IntCallbackHandler(cb)
+          )
+        }.flatMap { written =>
+          if (written >= 0 && buff.remaining() > 0)
+            go(buff)
+          else F.unit
+        }
+      writeSemaphore.permit.use { _ =>
+        go(bytes.toByteBuffer)
+      }
+    }
+
+    def writes: Pipe[F, Byte, INothing] =
+      _.chunks.foreach(write)
+
+    def localAddress: F[SocketAddress[IpAddress]] =
+      F.delay(
+        SocketAddress.fromInetSocketAddress(
+          ch.getLocalAddress.asInstanceOf[InetSocketAddress]
+        )
+      )
+
+    def remoteAddress: F[SocketAddress[IpAddress]] =
+      F.delay(
+        SocketAddress.fromInetSocketAddress(
+          ch.getRemoteAddress.asInstanceOf[InetSocketAddress]
+        )
+      )
+
+    def isOpen: F[Boolean] = F.delay(ch.isOpen)
+
+    def endOfOutput: F[Unit] =
+      F.delay {
+        ch.shutdownOutput(); ()
+      }
+
+    def endOfInput: F[Unit] =
+      F.delay {
+        ch.shutdownInput(); ()
+      }
+  }
+
+  private final class IntCallbackHandler[A](cb: Either[Throwable, Int] => Unit)
+      extends CompletionHandler[Integer, AnyRef] {
+    def completed(result: Integer, attachment: AnyRef): Unit =
+      cb(Right(result))
+    def failed(err: Throwable, attachment: AnyRef): Unit =
+      cb(Left(err))
+  }
 }
