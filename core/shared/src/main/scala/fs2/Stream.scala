@@ -2403,7 +2403,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     require(size > 0, "size must be > 0")
     require(step > 0, "step must be > 0")
 
-    def stepNotSmallerThanSize(s: Stream[F, O]): Pull[F,SQueue[O],Unit] =
+    def stepNotSmallerThanSize(s: Stream[F, O]): Pull[F, SQueue[O], Unit] =
       s.pull
         .unconsN(step, true)
         .flatMap {
@@ -2413,7 +2413,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
             Pull.output1(out) >> stepNotSmallerThanSize(tl)
         }
 
-    def stepSmallerThanSize(s: Stream[F,O], window: SQueue[O]): Pull[F,SQueue[O],Unit] =
+    def stepSmallerThanSize(s: Stream[F, O], window: SQueue[O]): Pull[F, SQueue[O], Unit] =
       s.pull
         .unconsN(step, true)
         .flatMap {
@@ -2424,7 +2424,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
         }
 
     val resultPull =
-      if(step < size)
+      if (step < size)
         this.pull
           .unconsN(size, true)
           .flatMap {
