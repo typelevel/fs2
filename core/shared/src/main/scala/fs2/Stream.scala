@@ -22,6 +22,7 @@
 package fs2
 
 import scala.annotation.tailrec
+import scala.collection.immutable.{Queue => SQueue}
 import scala.concurrent.TimeoutException
 import scala.concurrent.duration._
 import java.io.PrintStream
@@ -2384,27 +2385,57 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * }}}
     * @throws scala.IllegalArgumentException if `n` <= 0
     */
-  def sliding(n: Int): Stream[F, collection.immutable.Queue[O]] = {
-    require(n > 0, "n must be > 0")
-    def go(
-        window: collection.immutable.Queue[O],
-        s: Stream[F, O]
-    ): Pull[F, collection.immutable.Queue[O], Unit] =
-      s.pull.uncons.flatMap {
-        case None => Pull.done
-        case Some((hd, tl)) =>
-          val (out, carry) = hd.scanLeftCarry(window)((w, i) => w.dequeue._2.enqueue(i))
-          Pull.output(out) >> go(carry, tl)
-      }
-    this.pull
-      .unconsN(n, true)
-      .flatMap {
-        case None => Pull.done
-        case Some((hd, tl)) =>
-          val window = hd.foldLeft(collection.immutable.Queue.empty[O])(_.enqueue(_))
-          Pull.output1(window) >> go(window, tl)
-      }
-      .stream
+  def sliding(n: Int): Stream[F, collection.immutable.Queue[O]] = sliding(n, 1)
+
+  /** Groups inputs in fixed size chunks by passing a "sliding window"
+    * of size with step over them. If the input contains less than or equal to
+    * `size` elements, only one chunk of this size will be emitted.
+    *
+    * @example {{{
+    * scala> Stream(1, 2, 3, 4, 5).sliding(2, 3).toList
+    * res0: List[scala.collection.immutable.Queue[Int]] = List(Queue(1, 2), Queue(4, 5))
+    * scala> Stream(1, 2, 3, 4, 5).sliding(3, 2).toList
+    * res1: List[scala.collection.immutable.Queue[Int]] = List(Queue(1, 2, 3), Queue(3, 4, 5))
+    * }}}
+    * @throws scala.IllegalArgumentException if `size` <= 0 | `step` <= 0
+    */
+  def sliding(size: Int, step: Int): Stream[F, collection.immutable.Queue[O]] = {
+    require(size > 0, "size must be > 0")
+    require(step > 0, "step must be > 0")
+
+    def stepNotSmallerThanSize(s: Stream[F, O]): Pull[F,SQueue[O],Unit] =
+      s.pull
+        .unconsN(step, true)
+        .flatMap {
+          case None => Pull.done
+          case Some((hd, tl)) =>
+            val out = hd.take(size).foldLeft(SQueue.empty[O])(_.enqueue(_))
+            Pull.output1(out) >> stepNotSmallerThanSize(tl)
+        }
+
+    def stepSmallerThanSize(s: Stream[F,O], window: SQueue[O]): Pull[F,SQueue[O],Unit] =
+      s.pull
+        .unconsN(step, true)
+        .flatMap {
+          case None => Pull.done
+          case Some((hd, tl)) =>
+            val out = hd.foldLeft(window)(_.enqueue(_))
+            Pull.output1(out) >> stepSmallerThanSize(tl, out.drop(step))
+        }
+
+    val resultPull =
+      if(step < size)
+        this.pull
+          .unconsN(size, true)
+          .flatMap {
+            case None => Pull.done
+            case Some((hd, tl)) =>
+              val out = hd.foldLeft(SQueue.empty[O])(_.enqueue(_))
+              Pull.output1(out) >> stepSmallerThanSize(tl, out.drop(step))
+          }
+      else stepNotSmallerThanSize(this)
+
+    resultPull.stream
   }
 
   /** Starts this stream and cancels it as finalization of the returned stream.
