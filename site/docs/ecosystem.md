@@ -1,9 +1,4 @@
----
-layout: page
-title:  "Ecosystem"
-section: "ecosystem"
-position: 6
----
+# Ecosystem
 
 ### Typelevel Dependencies
 

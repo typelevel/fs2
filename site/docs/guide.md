@@ -1,10 +1,3 @@
----
-layout: page
-title:  "Guide"
-section: "guide"
-position: 1
----
-
 <!--
 This markdown file contains code examples which can be compiled using mdoc. Switch to `project docs`, then do `mdoc`. Output is produced in `docs/`.
 -->
@@ -601,13 +594,13 @@ trait CSVHandle {
 def rows[F[_]](h: CSVHandle)(implicit F: ConcurrentEffect[F], cs: ContextShift[F]): Stream[F,Row] = {
   for {
     q <- Stream.eval(Queue.noneTerminated[F, RowOrError])
-    // Reminder: F.delay takes a lazy (by-name) argument. The block passed here doesn't get evaluated inside this `for`, 
+    // Reminder: F.delay takes a lazy (by-name) argument. The block passed here doesn't get evaluated inside this `for`,
     //  but rather when the `rows` Stream is eventually interpreted
     _ <- Stream.eval { F.delay {
       def enqueue(v: Option[RowOrError]): Unit = F.runAsync(q.enqueue1(v))(_ => IO.unit).unsafeRunSync()
 
       // Fill the data - withRows blocks while reading the file, asynchronously invoking the callback we pass to it on every row
-      h.withRows(e => enqueue(Some(e))) 
+      h.withRows(e => enqueue(Some(e)))
       // Upon returning from withRows, signal that our stream has ended.
       enqueue(None)
     } }

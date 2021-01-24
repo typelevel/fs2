@@ -1,9 +1,4 @@
----
-layout: page
-title:  "I/O"
-section: "io"
-position: 3
----
+# I/O
 
 The `fs2-io` library provides support for performing input and output on the JVM (not Scala.js). This includes:
 - [Networking](#networking)
@@ -129,7 +124,7 @@ import cats.effect.Timer
 import java.net.ConnectException
 
 def connect[F[_]: Concurrent: ContextShift: Timer](
-    socketGroup: SocketGroup, 
+    socketGroup: SocketGroup,
     address: InetSocketAddress): Stream[F, Socket[F]] =
   Stream.resource(socketGroup.client(address))
     .handleErrorWith {
