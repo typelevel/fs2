@@ -62,7 +62,7 @@ import cats.data.Ior.Both
   * === Special properties for streams ===
   *
   * There are some special properties or cases of streams:
-  *  - A stream is '''finite''', or if we can reach the end after a limited number of pull steps,
+  *  - A stream is '''finite''' if we can reach the end after a limited number of pull steps,
   *    which may yield a finite number of values. It is '''empty''' if it terminates and yields no values.
   *  - A '''singleton''' stream is a stream that ends after yielding one single value.
   *  - A '''pure''' stream is one in which the `F` is [[Pure]], which indicates that it evaluates no effects.
