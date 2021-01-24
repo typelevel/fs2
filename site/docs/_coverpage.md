@@ -9,6 +9,4 @@
 - Concurrency primitives such as Topic, Signal and Queue.
 - Stateful transformations.
 
-
-
-[Getting started](getstarted/install.md)
+[Get Started](getstarted/install.md)
