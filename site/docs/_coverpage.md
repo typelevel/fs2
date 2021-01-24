@@ -1,4 +1,6 @@
-# Fs2
+![logo](_media/logo.png ':size=15%')
+
+# FS2
 
 > Purely functional, effectful, resource-safe, concurrent streams for Scala
 

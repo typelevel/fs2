@@ -40,5 +40,4 @@ Note that this pattern is also used for `Stream.pull`
 
 ### What is the difference between Stream and Pull?
 
-{:.responsive-pic}
-![Stream and Pull](../img/stream-and-pull.png)
+![Stream and Pull](_media/stream-and-pull.png)
