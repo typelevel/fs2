@@ -66,7 +66,7 @@ jobs:
       - run: 'sbt ++${{ matrix.scala }} ''project coreJVM'' it:test'
 
       - if: matrix.scala == '2.13.4'
-        run: sbt ++${{ matrix.scala }} docs/mdoc
+        run: sbt ++${{ matrix.scala }} microsite/mdoc
 
       - name: Compress target directories
         run: tar cf targets.tar experimental/target target core/js/target core/jvm/target io/target reactive-streams/target benchmark/target project/target

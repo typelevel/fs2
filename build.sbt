@@ -306,7 +306,7 @@ lazy val microsite = project
 
 ThisBuild / githubWorkflowBuildPostamble ++= List(
   WorkflowStep.Sbt(
-    List("docs/mdoc"),
+    List("microsite/mdoc"),
     cond = Some(s"matrix.scala == '2.13.4'")
   )
 )
