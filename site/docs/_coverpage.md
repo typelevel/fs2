@@ -11,4 +11,4 @@
 
 
 
-[Getting started](guide.md)
+[Getting started](getstarted/install.md)
