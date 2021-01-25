@@ -2436,7 +2436,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
             var w = window
             var (heads, tails) = (prev ++ hd).toQueue.splitAt(step)
             while (tails.nonEmpty) {
-              val wind = w ++ heads.take(size - step)
+              val wind = w ++ heads.take(step)
               buffer += wind
               w = wind.drop(step)
               heads = tails.take(step)
