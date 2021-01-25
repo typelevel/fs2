@@ -31,6 +31,7 @@ import java.nio.{Buffer => JBuffer, ByteBuffer => JByteBuffer, CharBuffer => JCh
 import cats.{Alternative, Applicative, Eq, Eval, Monad, Traverse, TraverseFilter}
 import cats.data.{Chain, NonEmptyList}
 import cats.syntax.all._
+import cats.effect.std.Queue
 
 /** Strict, finite sequence of values that allows index-based random access of elements.
   *
@@ -368,6 +369,18 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] { self =>
       buf.sizeHint(size)
       var i = 0
       while (i < size) {
+        buf += apply(i)
+        i += 1
+      }
+      buf.result()
+    }
+
+  def toQueue: SQueue[O] =
+    if(isEmpty) SQueue.empty
+    else {
+      val buf = SQueue.newBuilder[O]
+      var i = 0
+      while(i < size) {
         buf += apply(i)
         i += 1
       }

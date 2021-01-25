@@ -2419,7 +2419,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
             if(prev.isEmpty) Pull.done
             else Pull.output1(SQueue.from(prev.take(size).iterator))
           case Some((hd, tl)) =>
-            val (out, rem) = stepNotSmallerThanSizeChunk(SQueue.from((prev ++ hd).iterator), SQueue.empty)
+            val (out, rem) = stepNotSmallerThanSizeChunk((prev ++ hd).toQueue, SQueue.empty)
             Pull.output(Chunk.seq(out)) >> stepNotSmallerThanSize(tl, Chunk.seq(rem))
         }
 
@@ -2440,9 +2440,9 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
         .flatMap {
           case None =>
             if(prev.isEmpty) Pull.done
-            else Pull.output1((window ++ SQueue.from(prev.iterator)).take(size))
+            else Pull.output1((window ++ prev.toQueue).take(size))
           case Some((hd, tl)) =>
-            val (out, rem, w) = stepSmallerThanSizeChunk(SQueue.from((prev ++ hd).iterator), SQueue.empty, window)
+            val (out, rem, w) = stepSmallerThanSizeChunk((prev ++ hd).toQueue, SQueue.empty, window)
             Pull.output(Chunk.seq(out)) >> stepSmallerThanSize(tl, w, Chunk.seq(rem))
         }
 
@@ -2453,7 +2453,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
           .flatMap {
             case None => Pull.done
             case Some((hd, tl)) =>
-              val out = hd.foldLeft(SQueue.empty[O])(_.enqueue(_))
+              val out = hd.toQueue
               Pull.output1(out) >> stepSmallerThanSize(tl, out.drop(step), Chunk.empty)
           }
       else stepNotSmallerThanSize(this, Chunk.empty)
