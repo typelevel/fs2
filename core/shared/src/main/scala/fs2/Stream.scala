@@ -2409,7 +2409,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
         .flatMap {
           case None =>
             if (prev.isEmpty) Pull.done
-            else Pull.output1(SQueue.from(prev.take(size).iterator))
+            else Pull.output1(prev.take(size).toQueue)
           case Some((hd, tl)) =>
             val buffer = ArrayBuffer.empty[SQueue[O]]
             var (heads, tails) = (prev ++ hd).toQueue.splitAt(step)
