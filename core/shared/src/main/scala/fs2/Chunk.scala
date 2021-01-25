@@ -376,11 +376,11 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] { self =>
     }
 
   def toQueue: SQueue[O] =
-    if(isEmpty) SQueue.empty
+    if (isEmpty) SQueue.empty
     else {
       val buf = SQueue.newBuilder[O]
       var i = 0
-      while(i < size) {
+      while (i < size) {
         buf += apply(i)
         i += 1
       }

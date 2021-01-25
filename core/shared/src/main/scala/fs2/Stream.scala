@@ -2405,16 +2405,15 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     require(step > 0, "step must be > 0")
 
     def stepNotSmallerThanSize(s: Stream[F, O], prev: Chunk[O]): Pull[F, SQueue[O], Unit] =
-      s.pull
-        .uncons
+      s.pull.uncons
         .flatMap {
           case None =>
-            if(prev.isEmpty) Pull.done
+            if (prev.isEmpty) Pull.done
             else Pull.output1(SQueue.from(prev.take(size).iterator))
           case Some((hd, tl)) =>
             val buffer = ArrayBuffer.empty[SQueue[O]]
             var (heads, tails) = (prev ++ hd).toQueue.splitAt(step)
-            while(tails.nonEmpty) {
+            while (tails.nonEmpty) {
               buffer += heads.take(size)
               heads = tails.take(step)
               tails = tails.drop(step)
@@ -2422,19 +2421,22 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
             Pull.output(Chunk.buffer(buffer)) >> stepNotSmallerThanSize(tl, Chunk.seq(heads))
         }
 
-    def stepSmallerThanSize(s: Stream[F, O], window: SQueue[O], prev: Chunk[O]): Pull[F, SQueue[O], Unit] =
-      s.pull
-        .uncons
+    def stepSmallerThanSize(
+        s: Stream[F, O],
+        window: SQueue[O],
+        prev: Chunk[O]
+    ): Pull[F, SQueue[O], Unit] =
+      s.pull.uncons
         .flatMap {
           case None =>
-            if(prev.isEmpty) Pull.done
+            if (prev.isEmpty) Pull.done
             else Pull.output1((window ++ prev.toQueue).take(size))
           case Some((hd, tl)) =>
             val buffer = ArrayBuffer.empty[SQueue[O]]
             var w = window
             var (heads, tails) = (prev ++ hd).toQueue.splitAt(step)
-            while(tails.nonEmpty) {
-              val wind = w ++ heads.take(size-step)
+            while (tails.nonEmpty) {
+              val wind = w ++ heads.take(size - step)
               buffer += wind
               w = wind.drop(step)
               heads = tails.take(step)
