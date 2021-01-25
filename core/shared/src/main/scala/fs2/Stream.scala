@@ -38,6 +38,7 @@ import cats.implicits.{catsSyntaxEither => _, _}
 import fs2.compat._
 import fs2.concurrent.{Queue => _, _}
 import fs2.internal._
+import scala.collection.mutable.ArrayBuffer
 
 /** A stream producing output of type `O` and which may evaluate `F` effects.
   *
@@ -2423,17 +2424,6 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
             Pull.output(Chunk.seq(out)) >> stepNotSmallerThanSize(tl, Chunk.seq(rem))
         }
 
-    @tailrec
-    def stepSmallerThanSizeChunk(rem: SQueue[O], acc: SQueue[SQueue[O]], window: SQueue[O]): (SQueue[SQueue[O]], SQueue[O], SQueue[O]) = {
-      val (heads, tails) = rem.splitAt(step)
-
-      if(tails.isEmpty) (acc, heads, window)
-      else {
-        val w = window ++ heads.take(size-step)
-        stepSmallerThanSizeChunk(tails, acc :+ w, w.drop(step))
-      }
-    }
-
     def stepSmallerThanSize(s: Stream[F, O], window: SQueue[O], prev: Chunk[O]): Pull[F, SQueue[O], Unit] =
       s.pull
         .uncons
@@ -2442,8 +2432,18 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
             if(prev.isEmpty) Pull.done
             else Pull.output1((window ++ prev.toQueue).take(size))
           case Some((hd, tl)) =>
-            val (out, rem, w) = stepSmallerThanSizeChunk((prev ++ hd).toQueue, SQueue.empty, window)
-            Pull.output(Chunk.seq(out)) >> stepSmallerThanSize(tl, w, Chunk.seq(rem))
+            val buffer = ArrayBuffer.empty[SQueue[O]]
+            var w = window
+            var (heads, tails) = (prev ++ hd).toQueue.splitAt(step)
+            while(tails.nonEmpty) {
+              val wind = w ++ heads.take(size-step)
+              buffer += wind
+              w = wind.drop(step)
+              heads = tails.take(step)
+              tails = tails.drop(step)
+            }
+
+            Pull.output(Chunk.buffer(buffer)) >> stepSmallerThanSize(tl, w, Chunk.seq(heads))
         }
 
     val resultPull =
