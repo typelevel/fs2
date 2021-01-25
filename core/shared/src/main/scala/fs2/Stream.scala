@@ -2423,14 +2423,27 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
             Pull.output(Chunk.seq(out)) >> stepNotSmallerThanSize(tl, Chunk.seq(rem))
         }
 
-    def stepSmallerThanSize(s: Stream[F, O], window: SQueue[O]): Pull[F, SQueue[O], Unit] =
+    @tailrec
+    def stepSmallerThanSizeChunk(rem: SQueue[O], acc: SQueue[SQueue[O]], window: SQueue[O]): (SQueue[SQueue[O]], SQueue[O], SQueue[O]) = {
+      val (heads, tails) = rem.splitAt(step)
+
+      if(tails.isEmpty) (acc, heads, window)
+      else {
+        val w = window ++ heads.take(size-step)
+        stepSmallerThanSizeChunk(tails, acc :+ w, w.drop(step))
+      }
+    }
+
+    def stepSmallerThanSize(s: Stream[F, O], window: SQueue[O], prev: Chunk[O]): Pull[F, SQueue[O], Unit] =
       s.pull
-        .unconsN(step, true)
+        .uncons
         .flatMap {
-          case None => Pull.done
+          case None =>
+            if(prev.isEmpty) Pull.done
+            else Pull.output1((window ++ SQueue.from(prev.iterator)).take(size))
           case Some((hd, tl)) =>
-            val out = hd.foldLeft(window)(_.enqueue(_))
-            Pull.output1(out) >> stepSmallerThanSize(tl, out.drop(step))
+            val (out, rem, w) = stepSmallerThanSizeChunk(SQueue.from((prev ++ hd).iterator), SQueue.empty, window)
+            Pull.output(Chunk.seq(out)) >> stepSmallerThanSize(tl, w, Chunk.seq(rem))
         }
 
     val resultPull =
@@ -2441,7 +2454,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
             case None => Pull.done
             case Some((hd, tl)) =>
               val out = hd.foldLeft(SQueue.empty[O])(_.enqueue(_))
-              Pull.output1(out) >> stepSmallerThanSize(tl, out.drop(step))
+              Pull.output1(out) >> stepSmallerThanSize(tl, out.drop(step), Chunk.empty)
           }
       else stepNotSmallerThanSize(this, Chunk.empty)
 
