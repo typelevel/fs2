@@ -31,7 +31,6 @@ import java.nio.{Buffer => JBuffer, ByteBuffer => JByteBuffer, CharBuffer => JCh
 import cats.{Alternative, Applicative, Eq, Eval, Monad, Traverse, TraverseFilter}
 import cats.data.{Chain, NonEmptyList}
 import cats.syntax.all._
-import cats.effect.std.Queue
 
 /** Strict, finite sequence of values that allows index-based random access of elements.
   *
