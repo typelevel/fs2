@@ -574,7 +574,8 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
     def copyToArray[O2 >: O](xs: Array[O2], start: Int): Unit = xs(start) = value
     protected def splitAtChunk_(n: Int): (Chunk[O], Chunk[O]) =
       if (n == 0) (Chunk.empty, this)
-      else (this, Chunk.empty)
+      else if (n == 1) (this, Chunk.empty)
+      else sys.error("impossible")
     override def map[O2](f: O => O2): Chunk[O2] = singleton(f(value))
   }
 
