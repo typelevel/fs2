@@ -2382,11 +2382,11 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     *
     * @example {{{
     * scala> Stream(1, 2, 3, 4).sliding(2).toList
-    * res0: List[scala.collection.immutable.Queue[Int]] = List(Queue(1, 2), Queue(2, 3), Queue(3, 4))
+    * res0: List[fs2.Chunk[Int]] = List(Chunk(1, 2), Chunk(2, 3), Chunk(3, 4))
     * }}}
     * @throws scala.IllegalArgumentException if `n` <= 0
     */
-  def sliding(n: Int): Stream[F, collection.immutable.Queue[O]] = sliding(n, 1)
+  def sliding(n: Int): Stream[F, Chunk[O]] = sliding(n, 1)
 
   /** Groups inputs in fixed size chunks by passing a "sliding window"
     * of size with step over them. If the input contains less than or equal to
@@ -2394,47 +2394,48 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     *
     * @example {{{
     * scala> Stream(1, 2, 3, 4, 5).sliding(2, 3).toList
-    * res0: List[scala.collection.immutable.Queue[Int]] = List(Queue(1, 2), Queue(4, 5))
+    * res0: List[fs2.Chunk[Int]] = List(Chunk(1, 2), Chunk(4, 5))
     * scala> Stream(1, 2, 3, 4, 5).sliding(3, 2).toList
-    * res1: List[scala.collection.immutable.Queue[Int]] = List(Queue(1, 2, 3), Queue(3, 4, 5))
+    * res1: List[fs2.Chunk[Int]] = List(Chunk(1, 2, 3), Chunk(3, 4, 5))
     * }}}
     * @throws scala.IllegalArgumentException if `size` <= 0 | `step` <= 0
     */
-  def sliding(size: Int, step: Int): Stream[F, collection.immutable.Queue[O]] = {
+  def sliding(size: Int, step: Int): Stream[F, Chunk[O]] = {
     require(size > 0, "size must be > 0")
     require(step > 0, "step must be > 0")
 
-    def stepNotSmallerThanSize(s: Stream[F, O], prev: Chunk[O]): Pull[F, SQueue[O], Unit] =
+    def stepNotSmallerThanSize(s: Stream[F, O], prev: Chunk[O]): Pull[F, Chunk[O], Unit] =
       s.pull.uncons
         .flatMap {
           case None =>
             if (prev.isEmpty) Pull.done
-            else Pull.output1(prev.take(size).toQueue)
+            else Pull.output1(prev.take(size))
           case Some((hd, tl)) =>
-            val buffer = ArrayBuffer.empty[SQueue[O]]
-            var (heads, tails) = (prev ++ hd).toQueue.splitAt(step)
+            val buffer = ArrayBuffer.empty[Chunk[O]]
+            var (heads, tails) = (prev ++ hd).splitAt(step)
             while (tails.nonEmpty) {
               buffer += heads.take(size)
-              heads = tails.take(step)
-              tails = tails.drop(step)
+              val (nHeads, nTails) = tails.splitAt(step)
+              heads = nHeads
+              tails = nTails
             }
-            Pull.output(Chunk.buffer(buffer)) >> stepNotSmallerThanSize(tl, Chunk.seq(heads))
+            Pull.output(Chunk.buffer(buffer)) >> stepNotSmallerThanSize(tl, heads)
         }
 
     def stepSmallerThanSize(
         s: Stream[F, O],
-        window: SQueue[O],
+        window: Chunk[O],
         prev: Chunk[O]
-    ): Pull[F, SQueue[O], Unit] =
+    ): Pull[F, Chunk[O], Unit] =
       s.pull.uncons
         .flatMap {
           case None =>
             if (prev.isEmpty) Pull.done
-            else Pull.output1((window ++ prev.toQueue).take(size))
+            else Pull.output1((window ++ prev).take(size))
           case Some((hd, tl)) =>
-            val buffer = ArrayBuffer.empty[SQueue[O]]
+            val buffer = ArrayBuffer.empty[Chunk[O]]
             var w = window
-            var (heads, tails) = (prev ++ hd).toQueue.splitAt(step)
+            var (heads, tails) = (prev ++ hd).splitAt(step)
             while (tails.nonEmpty) {
               val wind = w ++ heads.take(step)
               buffer += wind
@@ -2443,7 +2444,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
               tails = tails.drop(step)
             }
 
-            Pull.output(Chunk.buffer(buffer)) >> stepSmallerThanSize(tl, w, Chunk.seq(heads))
+            Pull.output(Chunk.buffer(buffer)) >> stepSmallerThanSize(tl, w, heads)
         }
 
     val resultPull =
@@ -2453,10 +2454,9 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
           .flatMap {
             case None => Pull.done
             case Some((hd, tl)) =>
-              val out = hd.toQueue
-              Pull.output1(out) >> stepSmallerThanSize(tl, out.drop(step), Chunk.empty)
+              Pull.output1(hd) >> stepSmallerThanSize(tl, hd.drop(step), Chunk.Queue.empty)
           }
-      else stepNotSmallerThanSize(this, Chunk.empty)
+      else stepNotSmallerThanSize(this, Chunk.Queue.empty)
 
     resultPull.stream
   }

@@ -374,18 +374,6 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] { self =>
       buf.result()
     }
 
-  def toQueue: SQueue[O] =
-    if (isEmpty) SQueue.empty
-    else {
-      val buf = SQueue.newBuilder[O]
-      var i = 0
-      while (i < size) {
-        buf += apply(i)
-        i += 1
-      }
-      buf.result()
-    }
-
   /** Converts this chunk to a scodec-bits ByteVector. */
   def toByteVector[B >: O](implicit ev: B =:= Byte): ByteVector = {
     val _ = ev // convince scalac that ev is used
@@ -585,7 +573,8 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
       if (i == 0) value else throw new IndexOutOfBoundsException()
     def copyToArray[O2 >: O](xs: Array[O2], start: Int): Unit = xs(start) = value
     protected def splitAtChunk_(n: Int): (Chunk[O], Chunk[O]) =
-      sys.error("impossible")
+      if(n == 0) (Chunk.empty, this)
+      else (this, Chunk.empty)
     override def map[O2](f: O => O2): Chunk[O2] = singleton(f(value))
   }
 
