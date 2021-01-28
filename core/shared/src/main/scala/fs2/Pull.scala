@@ -226,8 +226,12 @@ object Pull extends PullLowPriority {
   /** Repeatedly uses the output of the pull as input for the next step of the pull.
     * Halts when a step terminates with `None` or `Pull.raiseError`.
     */
-  def loop[F[_], O, R](f: R => Pull[F, O, Option[R]]): R => Pull[F, O, Option[R]] =
-    r => f(r).flatMap(_.map(loop(f)).getOrElse(Pull.pure(None)))
+  def loop[F[_], O, R](f: R => Pull[F, O, Option[R]]): R => Pull[F, O, Unit] =
+    (r: R) =>
+      f(r).flatMap {
+        case None    => Pull.done
+        case Some(s) => loop(f)(s)
+      }
 
   /** Outputs a single value. */
   def output1[F[x] >: Pure[x], O](o: O): Pull[F, O, Unit] = Output(Chunk.singleton(o))

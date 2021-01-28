@@ -3600,7 +3600,6 @@ object Stream extends StreamLowPriority {
         val (o, sOpt) = f(s)
         Pull.output1(o) >> Pull.pure(sOpt)
       }(s)
-      .void
       .stream
 
   /** Like [[unfoldLoop]], but takes an effectful function. */
@@ -3611,7 +3610,6 @@ object Stream extends StreamLowPriority {
           Pull.output1(o) >> Pull.pure(sOpt)
         }
       )(s)
-      .void
       .stream
 
   /** Provides syntax for streams that are invariant in `F` and `O`. */
@@ -3714,7 +3712,7 @@ object Stream extends StreamLowPriority {
     def repeatPull[O2](
         f: Stream.ToPull[F, O] => Pull[F, O2, Option[Stream[F, O]]]
     ): Stream[F, O2] =
-      Pull.loop(f.andThen(_.map(_.map(_.pull))))(pull).void.stream
+      Pull.loop(f.andThen(_.map(_.map(_.pull))))(pull).stream
   }
 
   /** Provides syntax for streams of streams. */
@@ -4587,7 +4585,6 @@ object Stream extends StreamLowPriority {
         .loop[F, O, StepLeg[F, O]](leg => Pull.output(leg.head).flatMap(_ => leg.stepLeg))(
           self.setHead(Chunk.empty)
         )
-        .void
         .stream
 
     /** Replaces head of this leg. Useful when the head was not fully consumed. */
