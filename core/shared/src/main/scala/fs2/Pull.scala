@@ -574,9 +574,9 @@ object Pull extends PullLowPriority {
       haltOnSignal: F[Either[Throwable, Unit]]
   ): Pull[F, O, Unit] = InterruptWhen(haltOnSignal)
 
-  private[fs2] def uncons[F[_], X, O](
+  private[fs2] def uncons[F[_], O](
       s: Pull[F, O, Unit]
-  ): Pull[F, X, Option[(Chunk[O], Pull[F, O, Unit])]] =
+  ): Pull[F, INothing, Option[(Chunk[O], Pull[F, O, Unit])]] =
     Step(s, None).map(_.map { case (h, _, t) => (h, t.asInstanceOf[Pull[F, O, Unit]]) })
 
   private type Cont[-Y, +G[_], +X] = Result[Y] => Pull[G, X, Unit]
