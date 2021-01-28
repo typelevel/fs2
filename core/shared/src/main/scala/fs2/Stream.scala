@@ -22,6 +22,7 @@
 package fs2
 
 import scala.annotation.tailrec
+import scala.collection.immutable.{Queue => SQueue}
 import scala.concurrent.TimeoutException
 import scala.concurrent.duration._
 import java.io.PrintStream
@@ -37,6 +38,7 @@ import cats.implicits.{catsSyntaxEither => _, _}
 import fs2.compat._
 import fs2.concurrent.{Queue => _, _}
 import fs2.internal._
+import scala.collection.mutable.ArrayBuffer
 
 /** A stream producing output of type `O` and which may evaluate `F` effects.
   *
@@ -2380,31 +2382,83 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     *
     * @example {{{
     * scala> Stream(1, 2, 3, 4).sliding(2).toList
-    * res0: List[scala.collection.immutable.Queue[Int]] = List(Queue(1, 2), Queue(2, 3), Queue(3, 4))
+    * res0: List[fs2.Chunk[Int]] = List(Chunk(1, 2), Chunk(2, 3), Chunk(3, 4))
     * }}}
     * @throws scala.IllegalArgumentException if `n` <= 0
     */
-  def sliding(n: Int): Stream[F, collection.immutable.Queue[O]] = {
-    require(n > 0, "n must be > 0")
-    def go(
-        window: collection.immutable.Queue[O],
-        s: Stream[F, O]
-    ): Pull[F, collection.immutable.Queue[O], Unit] =
-      s.pull.uncons.flatMap {
-        case None => Pull.done
-        case Some((hd, tl)) =>
-          val (out, carry) = hd.scanLeftCarry(window)((w, i) => w.dequeue._2.enqueue(i))
-          Pull.output(out) >> go(carry, tl)
-      }
-    this.pull
-      .unconsN(n, true)
-      .flatMap {
-        case None => Pull.done
-        case Some((hd, tl)) =>
-          val window = hd.foldLeft(collection.immutable.Queue.empty[O])(_.enqueue(_))
-          Pull.output1(window) >> go(window, tl)
-      }
-      .stream
+  def sliding(n: Int): Stream[F, Chunk[O]] = sliding(n, 1)
+
+  /** Groups inputs in fixed size chunks by passing a "sliding window"
+    * of size with step over them. If the input contains less than or equal to
+    * `size` elements, only one chunk of this size will be emitted.
+    *
+    * @example {{{
+    * scala> Stream(1, 2, 3, 4, 5).sliding(2, 3).toList
+    * res0: List[fs2.Chunk[Int]] = List(Chunk(1, 2), Chunk(4, 5))
+    * scala> Stream(1, 2, 3, 4, 5).sliding(3, 2).toList
+    * res1: List[fs2.Chunk[Int]] = List(Chunk(1, 2, 3), Chunk(3, 4, 5))
+    * }}}
+    * @throws scala.IllegalArgumentException if `size` <= 0 | `step` <= 0
+    */
+  def sliding(size: Int, step: Int): Stream[F, Chunk[O]] = {
+    require(size > 0, "size must be > 0")
+    require(step > 0, "step must be > 0")
+
+    def stepNotSmallerThanSize(s: Stream[F, O], prev: Chunk[O]): Pull[F, Chunk[O], Unit] =
+      s.pull.uncons
+        .flatMap {
+          case None =>
+            if (prev.isEmpty) Pull.done
+            else Pull.output1(prev.take(size))
+          case Some((hd, tl)) =>
+            val buffer = ArrayBuffer.empty[Chunk[O]]
+            var (heads, tails) = (prev ++ hd).splitAt(step)
+            while (tails.nonEmpty) {
+              buffer += heads.take(size)
+              val (nHeads, nTails) = tails.splitAt(step)
+              heads = nHeads
+              tails = nTails
+            }
+            Pull.output(Chunk.buffer(buffer)) >> stepNotSmallerThanSize(tl, heads)
+        }
+
+    def stepSmallerThanSize(
+        s: Stream[F, O],
+        window: Chunk[O],
+        prev: Chunk[O]
+    ): Pull[F, Chunk[O], Unit] =
+      s.pull.uncons
+        .flatMap {
+          case None =>
+            if (prev.isEmpty) Pull.done
+            else Pull.output1((window ++ prev).take(size))
+          case Some((hd, tl)) =>
+            val buffer = ArrayBuffer.empty[Chunk[O]]
+            var w = window
+            var (heads, tails) = (prev ++ hd).splitAt(step)
+            while (tails.nonEmpty) {
+              val wind = w ++ heads.take(step)
+              buffer += wind
+              w = wind.drop(step)
+              heads = tails.take(step)
+              tails = tails.drop(step)
+            }
+
+            Pull.output(Chunk.buffer(buffer)) >> stepSmallerThanSize(tl, w, heads)
+        }
+
+    val resultPull =
+      if (step < size)
+        this.pull
+          .unconsN(size, true)
+          .flatMap {
+            case None => Pull.done
+            case Some((hd, tl)) =>
+              Pull.output1(hd) >> stepSmallerThanSize(tl, hd.drop(step), Chunk.Queue.empty)
+          }
+      else stepNotSmallerThanSize(this, Chunk.Queue.empty)
+
+    resultPull.stream
   }
 
   /** Starts this stream and cancels it as finalization of the returned stream.
