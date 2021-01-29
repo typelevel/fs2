@@ -315,6 +315,8 @@ ThisBuild / githubWorkflowAddedJobs += WorkflowJob(
   id = "site",
   name = "Deploy site",
   needs = List("publish"),
+  javas = (ThisBuild / githubWorkflowJavaVersions).value.toList,
+  scalas = (ThisBuild / scalaVersion).value :: Nil,
   cond = """
   | always() &&
   | needs.build.result == 'success' &&
