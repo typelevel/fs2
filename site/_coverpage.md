@@ -2,11 +2,11 @@
 
 # FS2
 
-> Purely functional, effectful, resource-safe, concurrent streams for Scala
+> Functional, effectful, concurrent streams for Scala
 
-- I/O (networking, files) computations in constant memory.
-- Resource safety and effects evaluation.
-- Concurrency primitives such as Topic, Signal and Queue.
-- Stateful transformations.
+- I/O (networking, files) computations in constant memory
+- Stateful transformations
+- Resource safety and effect evaluation
+- Built on [Cats Effect](https://typelevel.org/cats-effect/) and powers [http4s](https://http4s.org), [skunk](https://tpolecat.github.io/skunk/), and [doobie](https://tpolecat.github.io/doobie/)
 
 [Get Started](getstarted/install.md)
