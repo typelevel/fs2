@@ -55,15 +55,7 @@ jobs:
       - name: Check that workflows are up to date
         run: sbt ++${{ matrix.scala }} githubWorkflowCheck
 
-      - run: sbt ++${{ matrix.scala }} fmtCheck compile
-
-      - run: sbt ++${{ matrix.scala }} testJVM
-
-      - run: sbt ++${{ matrix.scala }} testJS
-
-      - run: sbt ++${{ matrix.scala }} mimaReportBinaryIssues
-
-      - run: 'sbt ++${{ matrix.scala }} ''project coreJVM'' it:test'
+      - run: 'sbt ++${{ matrix.scala }} fmtCheck test mimaReportBinaryIssues coreJVM/it:test'
 
       - if: matrix.scala == '2.13.4'
         run: sbt ++${{ matrix.scala }} microsite/mdoc
@@ -158,7 +150,7 @@ jobs:
   site:
     name: Deploy site
     needs: [publish]
-    if: always() && needs.build.result == 'success' && (needs.publish.result == 'success' || github.ref == 'refs/heads/docs-deploy')
+    if: always() && needs.build.result == 'success' && (needs.publish.result == 'success' && github.ref == 'refs/heads/main')
     strategy:
       matrix:
         os: [ubuntu-latest]
