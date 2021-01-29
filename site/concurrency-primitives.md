@@ -1,10 +1,3 @@
----
-layout: page
-title:  "Concurrency Primitives"
-section: "concurrency-primitives"
-position: 2
----
-
 # Concurrency Primitives
 
 In the [`fs2.concurrent` package](https://github.com/functional-streams-for-scala/fs2/blob/series/1.0/core/shared/src/main/scala/fs2/concurrent/) you'll find a bunch of useful concurrency primitives built on the concurrency primitives defined in `cats.effect.concurrent`:
@@ -90,7 +83,7 @@ class EventService[F[_]](eventsTopic: Topic[F, Event], interrupter: SignallingRe
       Stream.awakeEvery[F](1.second)
         .zipRight(Stream.eval(timer.clock.realTime(TimeUnit.MILLISECONDS).map(t => Text(t.toString))).repeat)
     )
-  
+
     val quitEvent = Stream.eval(eventsTopic.publish1(Quit))
 
     (textEvents.take(15) ++ quitEvent ++ textEvents).interruptWhen(interrupter)

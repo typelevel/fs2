@@ -1,9 +1,4 @@
----
-layout: page
-title:  "I/O"
-section: "io"
-position: 3
----
+# I/O
 
 The `fs2-io` library provides support for performing input and output on the JVM (not Scala.js). This includes:
 - [Networking](#networking)
@@ -64,7 +59,7 @@ def client[F[_]: MonadCancelThrow: Console: Network]: Stream[F, Unit] =
     Stream("Hello, world!")
       .through(text.utf8Encode)
       .through(socket.writes) ++
-        socket.reads(8192)
+        socket.reads
           .through(text.utf8Decode)
           .foreach { response =>
             Console[F].println(s"Response: $response")
@@ -74,7 +69,7 @@ def client[F[_]: MonadCancelThrow: Console: Network]: Stream[F, Unit] =
 
 The structure changes a bit. First, the socket resource is immediately lifted in to a stream via `Stream.resource`. Second, we create a single `Stream[Pure, String]`, transform it with `text.utf8Encode` to turn it in to a `Stream[Pure, Byte]`, and then transform it again with `socket.writes` which turns it in to a `Stream[F, Unit]`. The `socket.writes` method returns a pipe that writes each underlying chunk of the input stream to the socket, giving us a `Stream[F, Nothing]`.
 
-We then append a stream that reads a response -- we do this via `socket.reads(8192)`, which gives us a `Stream[F, Byte]` that terminates when the socket is closed or it receives an end of input indication. We transform that stream with `text.utf8Decode`, which gives us a `Stream[F, String]`. We then print each received response to the console.
+We then append a stream that reads a response -- we do this via `socket.reads`, which gives us a `Stream[F, Byte]` that terminates when the socket is closed or it receives an end of input indication. We transform that stream with `text.utf8Decode`, which gives us a `Stream[F, String]`. We then print each received response to the console.
 
 This program won't end until the server side closes the socket or indicates there's no more data to be read. To fix this, we need a protocol that both the client and server agree on. Since we are working with text, let's use a simple protocol where each frame (or "packet" or "message") is terminated with a `\n`. We'll have to update both the write side and the read side of our client.
 
@@ -85,7 +80,7 @@ def client[F[_]: MonadCancelThrow: Console: Network]: Stream[F, Unit] =
       .interleave(Stream.constant("\n"))
       .through(text.utf8Encode)
       .through(socket.writes) ++
-        socket.reads(8192)
+        socket.reads
           .through(text.utf8Decode)
           .through(text.lines)
           .head
@@ -120,7 +115,7 @@ def client[F[_]: Temporal: Console: Network]: Stream[F, Unit] =
       .interleave(Stream.constant("\n"))
       .through(text.utf8Encode)
       .through(socket.writes) ++
-        socket.reads(8192)
+        socket.reads
           .through(text.utf8Decode)
           .through(text.lines)
           .head
@@ -141,7 +136,7 @@ import cats.effect.Concurrent
 
 def echoServer[F[_]: Concurrent: Network]: F[Unit] =
   Network[F].server(port = Some(port"5555")).map { client =>
-    client.reads(8192)
+    client.reads
       .through(text.utf8Decode)
       .through(text.lines)
       .interleave(Stream.constant("\n"))
@@ -162,7 +157,7 @@ The pattern of `Network[F].server(address).map(handleClient).parJoin(maxConcurre
 A simpler echo server could be implemented with this core logic:
 
 ```scala
-client.reads(8192).through(client.writes)
+client.reads.through(client.writes)
 ```
 
 However, such an implementation would echo bytes back to the client as they are received instead of only echoing back full lines of text.
@@ -240,7 +235,7 @@ def client[F[_]: MonadCancelThrow: Console: Network](
         .interleave(Stream.constant("\n"))
         .through(text.utf8Encode)
         .through(socket.writes) ++
-          socket.reads(8192)
+          socket.reads
             .through(text.utf8Decode)
             .through(text.lines)
             .head

@@ -1,10 +1,3 @@
----
-layout: page
-title:  "Guide"
-section: "guide"
-position: 1
----
-
 <!--
 This markdown file contains code examples which can be compiled using mdoc. Switch to `project docs`, then do `mdoc`. Output is produced in `docs/`.
 -->
@@ -195,13 +188,15 @@ The `handleErrorWith` method lets us catch any of these errors:
 err.handleErrorWith { e => Stream.emit(e.getMessage) }.compile.toList.unsafeRunSync()
 ```
 
-The `handleErrorWith` method function parameter is invoked when a stream terminates, and the stream is completed in failure.  In the following stream the second element will result in division by zero, causing an ArithmeticException:
+Note that even when using `handleErrorWith` (or `attempt`) the stream will be terminated after the error and no more values will be pulled. In the following example, the integer 4 is never pulled from the stream.
 
 ```scala mdoc
-(Stream(1,2,3,4) ++ Stream.eval(IO.pure(5))).map(i => i / (i % 2)).handleErrorWith{ _ => Stream(0) }
-```
+val err4 = Stream(1,2,3).covary[IO] ++
+  Stream.raiseError[IO](new Exception("bad things!")) ++
+  Stream.eval(IO(4))
 
-The result will be a stream with a single integer zero.
+err4.handleErrorWith { _ => Stream(0) }.compile.toList.unsafeRunSync()
+```
 
 _Note: Don't use `handleErrorWith` for doing resource cleanup; use `bracket` as discussed in the next section. Also see [this section of the appendix](#a1) for more details._
 
@@ -596,7 +591,7 @@ def rows[F[_]](h: CSVHandle)(implicit F: Async[F]): Stream[F,Row] = {
       def enqueue(v: Option[RowOrError]): Unit = dispatcher.unsafeRunAndForget(q.offer(v))
 
       // Fill the data - withRows blocks while reading the file, asynchronously invoking the callback we pass to it on every row
-      h.withRows(e => enqueue(Some(e))) 
+      h.withRows(e => enqueue(Some(e)))
       // Upon returning from withRows, signal that our stream has ended.
       enqueue(None)
     }}

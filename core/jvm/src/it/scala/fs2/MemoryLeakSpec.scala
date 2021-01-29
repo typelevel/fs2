@@ -20,8 +20,8 @@ class MemoryLeakSpec extends FunSuite {
   case class LeakTestParams(
       warmupIterations: Int = 3,
       samplePeriod: FiniteDuration = 1.seconds,
-      monitorPeriod: FiniteDuration = 30.seconds,
-      limitTotalBytesIncrease: Long = 20 * 1024 * 1024,
+      monitorPeriod: FiniteDuration = 10.seconds,
+      limitTotalBytesIncreasePerSecond: Long = 700000,
       limitConsecutiveIncreases: Int = 10
   )
 
@@ -51,7 +51,7 @@ class MemoryLeakSpec extends FunSuite {
           monitorHeap(
             params.warmupIterations,
             params.samplePeriod,
-            params.limitTotalBytesIncrease,
+            params.limitTotalBytesIncreasePerSecond,
             params.limitConsecutiveIncreases
           ),
           IO.sleep(params.monitorPeriod)
@@ -67,14 +67,14 @@ class MemoryLeakSpec extends FunSuite {
   private def monitorHeap(
       warmupIterations: Int,
       samplePeriod: FiniteDuration,
-      limitTotalBytesIncrease: Long,
+      limitTotalBytesIncreasePerSecond: Long,
       limitConsecutiveIncreases: Int
   ): IO[Path] = {
     def warmup(iterationsLeft: Int): IO[Path] =
       if (iterationsLeft > 0) IO.sleep(samplePeriod) >> warmup(iterationsLeft - 1)
-      else heapUsed.flatMap(x => go(x, x, 0))
+      else heapUsed.flatMap(x => go(x, x, 0, System.currentTimeMillis()))
 
-    def go(initial: Long, last: Long, positiveCount: Int): IO[Path] =
+    def go(initial: Long, last: Long, positiveCount: Int, started: Long): IO[Path] =
       IO.sleep(samplePeriod) >>
         heapUsed.flatMap { bytes =>
           val deltaSinceStart = bytes - initial
@@ -87,11 +87,14 @@ class MemoryLeakSpec extends FunSuite {
           println(
             f"Heap: ${printBytes(bytes)}%12.12s total, ${printDelta(deltaSinceStart)}%12.12s since start, ${printDelta(deltaSinceLast)}%12.12s in last ${samplePeriod}"
           )
-          if (deltaSinceStart > limitTotalBytesIncrease) dumpHeap
+          if (
+            deltaSinceStart > limitTotalBytesIncreasePerSecond * ((System
+              .currentTimeMillis() - started) / 1000)
+          ) dumpHeap
           else if (deltaSinceLast > 0)
             if (positiveCount > limitConsecutiveIncreases) dumpHeap
-            else go(initial, bytes, positiveCount + 1)
-          else go(initial, bytes, 0)
+            else go(initial, bytes, positiveCount + 1, started)
+          else go(initial, bytes, 0, started)
         }
 
     warmup(warmupIterations)

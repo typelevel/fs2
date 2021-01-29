@@ -22,3 +22,5 @@ project/metals.sbt
 project/project
 .vscode
 .bsp
+node_modules
+package-lock.json
