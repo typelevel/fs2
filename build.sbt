@@ -32,11 +32,7 @@ ThisBuild / spiewakCiReleaseSnapshots := true
 ThisBuild / spiewakMainBranches := List("main", "develop")
 
 ThisBuild / githubWorkflowBuild := Seq(
-  WorkflowStep.Sbt(List("fmtCheck", "compile")),
-  WorkflowStep.Sbt(List("testJVM")),
-  WorkflowStep.Sbt(List("testJS")),
-  WorkflowStep.Sbt(List("mimaReportBinaryIssues")),
-  WorkflowStep.Sbt(List("project coreJVM", "it:test"))
+  WorkflowStep.Sbt(List("fmtCheck", "test", "mimaReportBinaryIssues", "coreJVM/it:test"))
 )
 
 ThisBuild / scmInfo := Some(
@@ -320,7 +316,7 @@ ThisBuild / githubWorkflowAddedJobs += WorkflowJob(
   cond = """
   | always() &&
   | needs.build.result == 'success' &&
-  | (needs.publish.result == 'success' || github.ref == 'refs/heads/docs-deploy')
+  | (needs.publish.result == 'success' && github.ref == 'refs/heads/main')
   """.stripMargin.trim.linesIterator.mkString.some,
   steps = githubWorkflowGeneratedDownloadSteps.value.toList :+
     WorkflowStep.Use(
