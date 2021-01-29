@@ -15,34 +15,33 @@ A typical use case of a `fs2.concurrent.Queue[F, A]`, also quite useful to commu
 q1 has a buffer size of 1 while q2 has a buffer size of 100 so you will notice the buffering when  pulling elements out of the q2.
 
 ```scala
-import cats.syntax.all._
-import cats.effect.{Concurrent, ExitCode, IO, IOApp, Timer}
-import fs2.concurrent.Queue
+import cats.effect.{Concurrent, IO, IOApp}
+import cats.effect.std.{Console, Queue}
 import fs2.Stream
 
 import scala.concurrent.duration._
 
-class Buffering[F[_]](q1: Queue[F, Int], q2: Queue[F, Int])(implicit F: Concurrent[F]) {
+class Buffering[F[_]: Concurrent: Console](q1: Queue[F, Int], q2: Queue[F, Int]) {
 
   def start: Stream[F, Unit] =
     Stream(
-      Stream.range(0, 1000).covary[F].through(q1.enqueue),
-      q1.dequeue.through(q2.enqueue),
-      //.map won't work here as you're trying to map a pure value with a side effect. Use `evalMap` instead.
-      q2.dequeue.evalMap(n => F.delay(println(s"Pulling out $n from Queue #2")))
+      Stream.range(0, 1000).covary[F].foreach(q1.offer),
+      Stream.repeatEval(q1.take).foreach(q2.offer),
+      //.map won't work here as you're trying to map a pure value with a side effect. Use `foreach` instead.
+      Stream.repeatEval(q2.take).foreach(n => Console[F].println(s"Pulling out $n from Queue #2"))
     ).parJoin(3)
 }
 
-object Fifo extends IOApp {
+object Fifo extends IOApp.Simple {
 
-  override def run(args: List[String]): IO[ExitCode] = {
+  def run: IO[Unit] = {
     val stream = for {
       q1 <- Stream.eval(Queue.bounded[IO, Int](1))
       q2 <- Stream.eval(Queue.bounded[IO, Int](100))
       bp = new Buffering[IO](q1, q2)
-      _  <- Stream.sleep_[IO](5.seconds) concurrently bp.start.drain
+      _  <- Stream.sleep[IO](5.seconds) concurrently bp.start.drain
     } yield ()
-    stream.compile.drain.as(ExitCode.Success)
+    stream.compile.drain
   }
 }
 ```
@@ -65,7 +64,7 @@ The program ends after 15 seconds when the signal interrupts the publishing of m
 import scala.concurrent.duration._
 import scala.language.higherKinds
 import java.util.concurrent.TimeUnit
-import cats.effect.{Concurrent, ExitCode, IO, IOApp, Timer}
+import cats.effect.{Concurrent, IO, IOApp}
 import cats.syntax.all._
 import fs2.{Pipe, Stream}
 import fs2.concurrent.{SignallingRef, Topic}
@@ -75,8 +74,7 @@ case class Text(value: String) extends Event
 case object Quit extends Event
 
 class EventService[F[_]](eventsTopic: Topic[F, Event], interrupter: SignallingRef[F, Boolean])(
-  implicit F: Concurrent[F],
-  timer: Timer[F]
+  implicit F: Concurrent[F]
 ) {
 
   // Publishing 15 text events, then single Quit event, and still publishing text events
@@ -93,11 +91,11 @@ class EventService[F[_]](eventsTopic: Topic[F, Event], interrupter: SignallingRe
 
   // Creating 3 subscribers in a different period of time and join them to run concurrently
   def startSubscribers: Stream[F, Unit] = {
-    def processEvent(subscriberNumber: Int): Pipe[F, Event, Unit] =
-      _.flatMap {
+    def processEvent(subscriberNumber: Int): Pipe[F, Event, INothing] =
+      _.foreach {
         case e @ Text(_) =>
-           Stream.eval(F.delay(println(s"Subscriber #$subscriberNumber processing event: $e")))
-       case Quit => Stream.eval(interrupter.set(true))
+           F.delay(println(s"Subscriber #$subscriberNumber processing event: $e"))
+       case Quit => interrupter.set(true)
      }
 
     val events: Stream[F, Event] =
@@ -111,7 +109,7 @@ class EventService[F[_]](eventsTopic: Topic[F, Event], interrupter: SignallingRe
   }
 }
 
-object PubSub extends IOApp {
+object PubSub extends IOApp.Simple {
 
   val program = for {
     topic <- Stream.eval(Topic[IO, Event](Text("Initial Event")))
@@ -120,15 +118,13 @@ object PubSub extends IOApp {
     _ <- service.startPublisher.concurrently(service.startSubscribers)
   } yield ()
 
-  override def run(args: List[String]): IO[ExitCode] =
-    program.compile.drain.as(ExitCode.Success)
-  }
+  def run: IO[Unit] = program.compile.drain
 }
 ```
 
 ### Shared Resource
 
-When multiple processes try to access a precious resource you might want to constraint the number of accesses. Here is where `cats.effect.concurrent.Semaphore[F]` comes in useful.
+When multiple processes try to access a precious resource you might want to constraint the number of accesses. Here is where `cats.effect.std.Semaphore[F]` comes in useful.
 
 Three processes are trying to access a shared resource at the same time but only one at a time will be granted access and the next process have to wait until the resource gets available again (availability is one as indicated by the semaphore counter).
 
@@ -156,15 +152,14 @@ Once R1 was done R3 started processing immediately showing no availability.
 Finally, R3 was done showing an availability of one once again.
 
 ```scala
-import cats.effect.{Concurrent, ExitCode, IO, IOApp}
-import cats.effect.concurrent.Semaphore
+import cats.effect.{IO, IOApp, Temporal}
+import cats.effect.std.Semaphore
 import cats.syntax.all._
 import fs2.Stream
 
-import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration._
 
-class PreciousResource[F[_]: Concurrent: Timer](name: String, s: Semaphore[F]) {
+class PreciousResource[F[_]: Temporal](name: String, s: Semaphore[F]) {
 
   def use: Stream[F, Unit] = {
     for {
@@ -178,17 +173,17 @@ class PreciousResource[F[_]: Concurrent: Timer](name: String, s: Semaphore[F]) {
   }
 }
 
-object Resources extends IOApp {
+object Resources extends IOApp.Simple {
 
-  override def run(args: List[String]): IO[ExitCode] = {
+  def run: IO[Unit] = {
     val stream = for {
       s   <- Stream.eval(Semaphore[IO](1))
       r1  = new PreciousResource[IO]("R1", s)
       r2  = new PreciousResource[IO]("R2", s)
       r3  = new PreciousResource[IO]("R3", s)
-      _   <- Stream(r1.use, r2.use, r3.use).parJoin(3).drain
+      _   <- Stream(r1.use, r2.use, r3.use).parJoin(3)
     } yield ()
-    stream.compile.drain.as(ExitCode.Success)
+    stream.compile.drain
   }
 }
 ```

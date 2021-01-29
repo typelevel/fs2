@@ -39,7 +39,7 @@
 
 * [Stream Fusion, to Completeness](https://arxiv.org/abs/1612.06668), by Oleg Kyseliov et al. In _Principles of Programming Languages (POPL)_, January 2017. [DBLP](https://dblp.uni-trier.de/rec/bibtex/conf/popl/KiselyovBPS17).
 
-* [Iteratees](okmij.org/ftp/Haskell/Iteratee/describe.pdf), by Oleg Kyseliov, in _International Symposium of Functional and Logic Programming (FLOPS)_. [DBLP](https://dblp.uni-trier.de/rec/bibtex/conf/flops/Kiselyov12). [Author's webpage](http://okmij.org/ftp/Haskell/Iteratee/).
+* [Iteratees](http://okmij.org/ftp/Haskell/Iteratee/describe.pdf), by Oleg Kyseliov, in _International Symposium of Functional and Logic Programming (FLOPS)_. [DBLP](https://dblp.uni-trier.de/rec/bibtex/conf/flops/Kiselyov12). [Author's webpage](http://okmij.org/ftp/Haskell/Iteratee/).
 
 
 #### Related Scala Libraries
