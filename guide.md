@@ -262,9 +262,9 @@ If you have to acquire a resource and want to guarantee that some cleanup action
 val count = new java.util.concurrent.atomic.AtomicLong(0)
 // count: java.util.concurrent.atomic.AtomicLong = 0
 val acquire = IO { println("incremented: " + count.incrementAndGet); () }
-// acquire: IO[Unit] = IO$1077305713
+// acquire: IO[Unit] = IO$1077065313
 val release = IO { println("decremented: " + count.decrementAndGet); () }
-// release: IO[Unit] = IO$1561430866
+// release: IO[Unit] = IO$78129702
 ```
 
 ```scala
@@ -458,7 +458,7 @@ Oops, we need a `cats.effect.ContextShift[IO]` in implicit scope. Let's add that
 import cats.effect.{ContextShift, IO}
 
 implicit val ioContextShift: ContextShift[IO] = IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
-// ioContextShift: ContextShift[IO] = cats.effect.internals.IOContextShift@13eb8951
+// ioContextShift: ContextShift[IO] = cats.effect.internals.IOContextShift@4000be6b
 
 Stream(1,2,3).merge(Stream.eval(IO { Thread.sleep(200); 4 })).compile.toVector.unsafeRunSync()
 // res41: Vector[Int] = Vector(1, 2, 3, 4)
@@ -505,9 +505,9 @@ import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
 
 implicit val contextShift = IO.contextShift(ExecutionContext.global)
-// contextShift: cats.effect.ContextShift[IO] = cats.effect.internals.IOContextShift@4b84a2f5
+// contextShift: cats.effect.ContextShift[IO] = cats.effect.internals.IOContextShift@5e932363
 implicit val timer = IO.timer(ExecutionContext.global)
-// timer: cats.effect.Timer[IO] = cats.effect.internals.IOTimer@7a0aef63
+// timer: cats.effect.Timer[IO] = cats.effect.internals.IOTimer@45e9663
 ```
 
 The example looks like this:
@@ -527,10 +527,10 @@ val program =
 // program: Stream[IO[x], Unit] = Stream(..)
 
 program.compile.drain.unsafeRunSync
-// 02:20:40.176688
-// 02:20:41.177056
-// 02:20:42.178282
-// 02:20:43.179841
+// 02:58:57.136768
+// 02:58:58.137471
+// 02:58:59.137889
+// 02:59:00.139061
 ```
 
 Let's take this line by line now, so we can understand what's going on.
@@ -572,10 +572,10 @@ val program1 =
 // program1: Stream[IO[x], Unit] = Stream(..)
 
 program1.compile.drain.unsafeRunSync
-// 02:20:45.182978
-// 02:20:46.184088
-// 02:20:47.185064
-// 02:20:48.186047
+// 02:59:02.139970
+// 02:59:03.141157
+// 02:59:04.142854
+// 02:59:05.143943
 ```
 
 ### Talking to the external world
@@ -608,7 +608,7 @@ The way you bring synchronous effects into your effect type may differ. `Sync.de
 import cats.effect.Sync
 
 val T = Sync[IO]
-// T: Sync[IO] = cats.effect.IOInstances$$anon$3@3758d1c7
+// T: Sync[IO] = cats.effect.IOInstances$$anon$3@32252e27
 val s2 = Stream.eval_(T.delay { destroyUniverse() }) ++ Stream("...moving on")
 // s2: Stream[IO[x], String] = Stream(..)
 s2.compile.toVector.unsafeRunSync()
@@ -663,7 +663,7 @@ val c = new Connection {
 val bytes = cats.effect.Async[IO].async[Array[Byte]] { (cb: Either[Throwable,Array[Byte]] => Unit) =>
   c.readBytesE(cb)
 }
-// bytes: IO[Array[Byte]] = IO$1309685001
+// bytes: IO[Array[Byte]] = IO$108590137
 
 Stream.eval(bytes).map(_.toList).compile.toVector.unsafeRunSync()
 // res47: Vector[List[Byte]] = Vector(List(0, 1, 2))
@@ -739,7 +739,7 @@ A `ContextShift` instance is necessary when working with `IO`
 
 ```scala
 implicit val contextShift: ContextShift[IO] = IO.contextShift(ExecutionContext.global)
-// contextShift: ContextShift[IO] = cats.effect.internals.IOContextShift@76ece3cf
+// contextShift: ContextShift[IO] = cats.effect.internals.IOContextShift@4137f593
 ```
 
 To convert a `Stream` into a downstream unicast `org.reactivestreams.Publisher`:
@@ -748,14 +748,14 @@ To convert a `Stream` into a downstream unicast `org.reactivestreams.Publisher`:
 val stream = Stream(1, 2, 3).covary[IO]
 // stream: Stream[IO, Int] = Stream(..)
 stream.toUnicastPublisher
-// res50: StreamUnicastPublisher[IO[A], Int] = fs2.interop.reactivestreams.StreamUnicastPublisher@4141b7ec
+// res50: StreamUnicastPublisher[IO[A], Int] = fs2.interop.reactivestreams.StreamUnicastPublisher@55b62107
 ```
 
 To convert an upstream `org.reactivestreams.Publisher` into a `Stream`:
 
 ```scala
 val publisher: StreamUnicastPublisher[IO, Int] = Stream(1, 2, 3).covary[IO].toUnicastPublisher
-// publisher: StreamUnicastPublisher[IO, Int] = fs2.interop.reactivestreams.StreamUnicastPublisher@52438f50
+// publisher: StreamUnicastPublisher[IO, Int] = fs2.interop.reactivestreams.StreamUnicastPublisher@7debce81
 publisher.toStream[IO]
 // res51: Stream[IO, Int] = Stream(..)
 ```
