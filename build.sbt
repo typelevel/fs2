@@ -175,7 +175,7 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
       "org.typelevel" %%% "cats-effect-laws" % "2.3.1" % Test,
       "org.scodec" %%% "scodec-bits" % "1.1.23",
       "org.typelevel" %%% "scalacheck-effect-munit" % "0.7.0" % Test,
-      "org.typelevel" %%% "munit-cats-effect-2" % "0.12.0" % Test
+      "org.typelevel" %%% "munit-cats-effect-2" % "0.13.0" % Test
     ),
     Compile / unmanagedSourceDirectories ++= {
       val major = if (isDotty.value) "-3" else "-2"
