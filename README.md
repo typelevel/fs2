@@ -28,7 +28,7 @@ Quick links:
 * API docs: [fs2-core][core-api], [fs2-io][io-api], [fs2-reactive-streams][rx-api], [fs2-experimental][experimental-api]
 * [Docs and getting help](#docs)
 
-[microsite]: http://fs2.io/index.html
+[microsite]: http://fs2.io
 [core-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-core_2.12/2.4.4/fs2-core_2.12-2.4.4-javadoc.jar/!/fs2/index.html
 [io-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-io_2.12/2.4.4/fs2-io_2.12-2.4.4-javadoc.jar/!/fs2/io/index.html
 [rx-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-reactive-streams_2.12/2.4.4/fs2-reactive-streams_2.12-2.4.4-javadoc.jar/!/fs2/interop/reactivestreams/index.html
