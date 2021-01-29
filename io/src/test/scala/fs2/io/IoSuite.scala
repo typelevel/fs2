@@ -26,6 +26,7 @@ import java.util.concurrent.Executors
 import cats.effect.{Blocker, ContextShift, IO, Resource}
 import fs2.Fs2Suite
 import scala.concurrent.ExecutionContext
+import org.scalacheck.{Arbitrary, Gen, Shrink}
 import org.scalacheck.effect.PropF.forAllF
 
 class IoSuite extends Fs2Suite {
@@ -120,6 +121,30 @@ class IoSuite extends Fs2Suite {
               .toVector
           }
           .map(it => assert(it.size == 5))
+      }
+    }
+
+    test("emits chunks of the configured size") {
+      case class ChunkSize(value: Int)
+      val defaultPipedInputStreamBufferSize = 1024 // private in PipedInputStream.DEFAULT_PIPE_SIZE
+      implicit val arbChunkSize: Arbitrary[ChunkSize] = Arbitrary {
+        Gen.chooseNum(defaultPipedInputStreamBufferSize + 1, 65536).map(ChunkSize)
+      }
+      implicit val shrinkChunkSize: Shrink[ChunkSize] =
+        Shrink.xmap[Int, ChunkSize](ChunkSize, _.value) {
+          Shrink.shrinkIntegral[Int].suchThat(_ > defaultPipedInputStreamBufferSize)
+        }
+
+      forAllF { (chunkSize: ChunkSize) =>
+        val bytes: Array[Byte] =
+          fs2.Stream.emit(0: Byte).repeat.take((chunkSize.value + 1).toLong).compile.to(Array)
+
+        Blocker[IO].use { blocker =>
+          readOutputStream[IO](blocker, chunkSize.value) { (os: OutputStream) =>
+            blocker.delay[IO, Unit](os.write(bytes))
+          }.chunks.head.compile.lastOrError
+            .map(chunk => assertEquals(chunk.size, chunkSize.value))
+        }
       }
     }
   }
