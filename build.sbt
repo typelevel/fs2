@@ -113,7 +113,7 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
       "org.typelevel" %%% "cats-effect-testkit" % "3.0-65-7c98c86" % Test,
       "org.scodec" %%% "scodec-bits" % "1.1.23",
       "org.typelevel" %%% "scalacheck-effect-munit" % "0.7.0" % Test,
-      "org.typelevel" %%% "munit-cats-effect-3" % "0.12.0" % Test,
+      "org.typelevel" %%% "munit-cats-effect-3" % "0.13.0" % Test,
       "org.typelevel" %%% "discipline-munit" % "1.0.4" % Test
     ),
     Compile / unmanagedSourceDirectories ++= {
