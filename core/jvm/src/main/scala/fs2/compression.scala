@@ -261,7 +261,7 @@ object compression {
       crc32: Option[CRC32],
       deflatedBuffer: Array[Byte]
   ): Stream[F, Byte] => Pull[F, Byte, Unit] =
-    _.pull.unconsNonEmpty.flatMap {
+    _.pull.uncons.flatMap {
       case Some((inflatedChunk, inflatedStream)) =>
         _deflate_chunk(
           deflateParams,
@@ -341,7 +341,7 @@ object compression {
     in =>
       Stream.suspend {
         val inflatedBuffer = new Array[Byte](inflateParams.bufferSizeOrMinimum)
-        in.pull.unconsNonEmpty.flatMap {
+        in.pull.uncons.flatMap {
           case Some((deflatedChunk, deflatedStream)) =>
             _inflate_chunk(
               inflater,
@@ -426,7 +426,7 @@ object compression {
       crc32: Option[CRC32],
       inflatedBuffer: Array[Byte]
   )(implicit SyncF: Sync[F]): Stream[F, Byte] => Pull[F, Byte, Unit] =
-    _.pull.unconsNonEmpty.flatMap {
+    _.pull.uncons.flatMap {
       case Some((deflatedChunk, deflatedStream)) =>
         _inflate_chunk(
           inflater,
@@ -1059,7 +1059,7 @@ object compression {
           } else Pull.raiseError(new ZipException("Failed to read trailer (1)"))
 
         def streamUntilTrailer(last: Chunk[Byte]): Stream[F, Byte] => Pull[F, Byte, Unit] =
-          _.pull.unconsNonEmpty
+          _.pull.uncons
             .flatMap {
               case Some((next, rest)) =>
                 if (inflater.finished())

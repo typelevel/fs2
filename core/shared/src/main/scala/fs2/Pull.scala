@@ -495,6 +495,7 @@ object Pull extends PullLowPriority {
    */
   private abstract class Action[+F[_], +O, +R] extends Pull[F, O, R]
 
+  /* A Pull Action to emit a non-empty chunk of outputs */
   private final case class Output[+O](values: Chunk[O]) extends Action[Pure, O, Unit]
 
   /* A translation point, that wraps an inner stream written in another effect
@@ -578,6 +579,11 @@ object Pull extends PullLowPriority {
       haltOnSignal: F[Either[Throwable, Unit]]
   ): Pull[F, O, Unit] = InterruptWhen(haltOnSignal)
 
+  /* Pull transformation that takes the given stream (pull), unrolls it until it either:
+   * - Reaches the end of the stream, and returns None; or
+   * - Reaches an Output action, and emits Some pair with
+   *   the non-empty chunk of values and the rest of the stream.
+   */
   private[fs2] def uncons[F[_], O](
       s: Pull[F, O, Unit]
   ): Pull[F, INothing, Option[(Chunk[O], Pull[F, O, Unit])]] =
