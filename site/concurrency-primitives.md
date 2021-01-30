@@ -6,7 +6,35 @@ In the [`fs2.concurrent` package](https://github.com/functional-streams-for-scal
 - `Topic[F, A]`
 - `Signal[F, A]`
 
-These data structures could be very handy in a few cases. See below examples of each of them originally taken from [gvolpe examples](https://github.com/gvolpe/advanced-http4s/tree/master/src/main/scala/com/github/gvolpe/fs2):
+## Simple Examples
+
+### Topic
+
+(based on [Pera Villega](https://perevillega.com/)'s example [here](https://underscore.io/blog/posts/2018/03/20/fs2.html))
+
+Topic implements the publish-subscribe pattern. In the following example, `publisher` and `subscriber` are started concurrently with the publisher continuously publishing the string `"1"` to the topic and the subscriber consuming it until it received four elements, including the initial element, the string `"Topic start"`.
+
+```scala
+import cats.effect.{ConcurrentEffect, ContextShift, IO}
+import fs2.Stream
+import fs2.concurrent.Topic
+
+import scala.concurrent.ExecutionContextExecutor
+
+implicit val ec: ExecutionContextExecutor = scala.concurrent.ExecutionContext.global
+implicit val cs: ContextShift[IO] = IO.contextShift(ec)
+implicit val c: ConcurrentEffect[IO] = IO.ioConcurrentEffect
+
+Topic("Topic start").flatMap { topic =>
+  val publisher = Stream.emit("1").repeat.covary[IO].through(topic.publish)
+  val subscriber = topic.subscribe(10).take(4)
+  subscriber.concurrently(publisher).compile.toVector
+}.unsafeRunSync()
+```
+
+## Advanced Examples
+
+These data structures could be very handy in more complex cases. See below examples of each of them originally taken from [gvolpe examples](https://github.com/gvolpe/advanced-http4s/tree/master/src/main/scala/com/github/gvolpe/fs2):
 
 ### FIFO (First IN / First OUT)
 
