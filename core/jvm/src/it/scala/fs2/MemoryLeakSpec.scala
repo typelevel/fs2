@@ -89,7 +89,7 @@ class MemoryLeakSpec extends FunSuite {
           )
           if (
             deltaSinceStart > limitTotalBytesIncreasePerSecond * ((System
-              .currentTimeMillis() - started) / 1000)
+              .currentTimeMillis() - started) / 1000.0)
           ) dumpHeap
           else if (deltaSinceLast > 0)
             if (positiveCount > limitConsecutiveIncreases) dumpHeap
