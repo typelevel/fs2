@@ -578,10 +578,23 @@ object Pull extends PullLowPriority {
       haltOnSignal: F[Either[Throwable, Unit]]
   ): Pull[F, O, Unit] = InterruptWhen(haltOnSignal)
 
+  private[fs2] def cons[F[_], O](c: Chunk[O], p: Pull[F, O, Unit]): Pull[F, O, Unit] =
+    if (c.isEmpty) p else Output(c) >> p
+
   private[fs2] def uncons[F[_], O](
       s: Pull[F, O, Unit]
   ): Pull[F, INothing, Option[(Chunk[O], Pull[F, O, Unit])]] =
     Step(s, None).map(_.map { case (h, _, t) => (h, t.asInstanceOf[Pull[F, O, Unit]]) })
+
+  private[fs2] def unconsNonEmptyChunk[F[_], O](
+      s: Pull[F, O, Unit]
+  ): Pull[F, INothing, Option[(Chunk[O], Pull[F, O, Unit])]] =
+    Pull.uncons(s).flatMap {
+      case Some((hd, tl)) =>
+        if (hd.nonEmpty) Pull.pure(Some((hd, tl)))
+        else unconsNonEmptyChunk(tl)
+      case None => Pull.pure(None)
+    }
 
   private type Cont[-Y, +G[_], +X] = Result[Y] => Pull[G, X, Unit]
 
