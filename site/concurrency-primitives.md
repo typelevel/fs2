@@ -32,6 +32,32 @@ Topic("Topic start").flatMap { topic =>
 }.unsafeRunSync()
 ```
 
+### Signal
+
+`Signal` can be used as a means of communication between two different streams. In the following example `s1` is a stream that emits the current time every second and is interrupted when the signal has value of `true`. `s2` is a stream that sleeps for four seconds before assigning `true` to the signal. This leads to `s1` being interrupted.
+
+(Note that `SignallingRef` extends `Signal`)
+
+```scala
+import cats.effect.{ConcurrentEffect, ContextShift, IO, Timer}
+import fs2.Stream
+import fs2.concurrent.SignallingRef
+
+import scala.concurrent.ExecutionContextExecutor
+import scala.concurrent.duration._
+
+implicit val ec: ExecutionContextExecutor = scala.concurrent.ExecutionContext.global
+implicit val cs: ContextShift[IO] = IO.contextShift(ec)
+implicit val c: ConcurrentEffect[IO] = IO.ioConcurrentEffect
+implicit val timer: Timer[IO] = IO.timer(ec)
+
+SignallingRef.in(false).flatMap { signal: SignallingRef[IO, Boolean] =>
+  val s1 = Stream.awakeEvery[IO](1.second).interruptWhen(signal)
+  val s2 = Stream.sleep(4.seconds) >> Stream.eval(signal.set(true))
+  s1.concurrently(s2).compile.toVector
+}.unsafeRunSync()
+```
+
 ## Advanced Examples
 
 These data structures could be very handy in more complex cases. See below examples of each of them originally taken from [gvolpe examples](https://github.com/gvolpe/advanced-http4s/tree/master/src/main/scala/com/github/gvolpe/fs2):
