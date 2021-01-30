@@ -26,7 +26,7 @@ implicit val cs: ContextShift[IO] = IO.contextShift(ec)
 implicit val c: ConcurrentEffect[IO] = IO.ioConcurrentEffect
 
 Topic("Topic start").flatMap { topic =>
-  val publisher = Stream.emit("1").repeat.covary[IO].through(topic.publish)
+  val publisher = Stream.constant("1").covary[IO].through(topic.publish)
   val subscriber = topic.subscribe(10).take(4)
   subscriber.concurrently(publisher).compile.toVector
 }.unsafeRunSync()
