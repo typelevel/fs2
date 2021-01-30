@@ -468,7 +468,7 @@ Stream(1,2,3).merge(Stream.eval(IO { Thread.sleep(200); 4 })).compile.toVector.u
 // res40: Vector[Int] = Vector(1, 2, 3, 4)
 ```
 
-The `merge` function supports concurrency. FS2 has a number of other useful concurrency functions like `concurrently` (runs another stream concurrently and discards its output), `interrupt` (halts if the left branch produces `false`), `either` (like `merge` but returns an `Either`), `mergeHaltBoth` (halts if either branch halts), and others.
+The `merge` function supports concurrency. FS2 has a number of other useful concurrency functions like `concurrently` (runs another stream concurrently and discards its output), `interruptWhen` (halts if the left branch produces `true`), `either` (like `merge` but returns an `Either`), `mergeHaltBoth` (halts if either branch halts), and others.
 
 The function `parJoin` runs multiple streams concurrently. The signature is:
 
@@ -525,10 +525,10 @@ val program =
 // program: Stream[IO[x], Unit] = Stream(..)
 
 program.compile.drain.unsafeRunSync()
-// 00:46:39.055077
-// 00:46:40.053906
-// 00:46:41.052053
-// 00:46:42.052057
+// 14:09:07.203204
+// 14:09:08.201534
+// 14:09:09.200949
+// 14:09:10.201172
 ```
 
 Let's take this line by line now, so we can understand what's going on.
@@ -570,11 +570,11 @@ val program1 =
 // program1: Stream[IO[x], Unit] = Stream(..)
 
 program1.compile.drain.unsafeRunSync()
-// 00:46:44.049148
-// 00:46:45.048469
-// 00:46:46.048601
-// 00:46:47.049170
-// 00:46:48.047983
+// 14:09:12.200165
+// 14:09:13.200041
+// 14:09:14.200934
+// 14:09:15.201162
+// 14:09:16.199726
 ```
 
 ### Talking to the external world
@@ -607,7 +607,7 @@ The way you bring synchronous effects into your effect type may differ. `Sync.de
 import cats.effect.Sync
 
 val T = Sync[IO]
-// T: cats.effect.kernel.Async[IO] = cats.effect.IO$$anon$1@34d53ec7
+// T: cats.effect.kernel.Async[IO] = cats.effect.IO$$anon$1@2a38cfba
 val s2 = Stream.exec(T.delay { destroyUniverse() }) ++ Stream("...moving on")
 // s2: Stream[IO[x], String] = Stream(..)
 s2.compile.toVector.unsafeRunSync()
@@ -740,13 +740,13 @@ stream.toUnicastPublisher
 //   source = Bind(
 //     source = Bind(
 //       source = Allocate(
-//         resource = cats.effect.kernel.Resource$$$Lambda$7475/0x00000008024b2040@1d61ecc8
+//         resource = cats.effect.kernel.Resource$$$Lambda$7500/0x00000008024cb040@6d09d14
 //       ),
-//       fs = cats.effect.kernel.Resource$$Lambda$7854/0x00000008025f3040@3eb0dab9
+//       fs = cats.effect.kernel.Resource$$Lambda$7885/0x0000000802613040@37105b4d
 //     ),
-//     fs = cats.effect.std.Dispatcher$$$Lambda$7855/0x0000000802600040@522983f6
+//     fs = cats.effect.std.Dispatcher$$$Lambda$7886/0x0000000802612840@216bfd30
 //   ),
-//   fs = cats.effect.kernel.Resource$$Lambda$7854/0x00000008025f3040@7b0e6d0
+//   fs = cats.effect.kernel.Resource$$Lambda$7885/0x0000000802613040@5fe8e33e
 // )
 ```
 
@@ -758,19 +758,19 @@ val publisher: Resource[IO, StreamUnicastPublisher[IO, Int]] = Stream(1, 2, 3).c
 //   source = Bind(
 //     source = Bind(
 //       source = Allocate(
-//         resource = cats.effect.kernel.Resource$$$Lambda$7475/0x00000008024b2040@33d02827
+//         resource = cats.effect.kernel.Resource$$$Lambda$7500/0x00000008024cb040@16d1ed66
 //       ),
-//       fs = cats.effect.kernel.Resource$$Lambda$7854/0x00000008025f3040@3356deeb
+//       fs = cats.effect.kernel.Resource$$Lambda$7885/0x0000000802613040@e380d91
 //     ),
-//     fs = cats.effect.std.Dispatcher$$$Lambda$7855/0x0000000802600040@ca64a8e
+//     fs = cats.effect.std.Dispatcher$$$Lambda$7886/0x0000000802612840@444f0c01
 //   ),
-//   fs = cats.effect.kernel.Resource$$Lambda$7854/0x00000008025f3040@60702117
+//   fs = cats.effect.kernel.Resource$$Lambda$7885/0x0000000802613040@449bafc9
 // )
 publisher.use { p =>
   p.toStream[IO].compile.toList
 }
 // res50: IO[List[Int]] = Uncancelable(
-//   body = cats.effect.IO$$$Lambda$7599/0x0000000802523040@693b4343
+//   body = cats.effect.IO$$$Lambda$7624/0x000000080253c040@2fb13323
 // )
 ```
 
