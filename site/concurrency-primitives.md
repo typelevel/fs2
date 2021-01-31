@@ -21,9 +21,7 @@ import cats.effect.unsafe.implicits.global
 import fs2.Stream
 import fs2.concurrent.Topic
 
-val topic: IO[Topic[IO, String]] = Topic("Topic start")(Concurrent[IO])
-
-topic.flatMap { topic =>
+Topic[IO, String]("Topic start").flatMap { topic =>
   val publisher = Stream.constant("1").covary[IO].through(topic.publish)
   val subscriber = topic.subscribe(10).take(4)
   subscriber.concurrently(publisher).compile.toVector
@@ -44,11 +42,9 @@ import fs2.concurrent.SignallingRef
 
 import scala.concurrent.duration._
 
-val signal: IO[SignallingRef[IO, Boolean]] = SignallingRef.of(false)(Concurrent[IO])
-  
-signal.flatMap { signal =>
+SignallingRef[IO, Boolean](false).flatMap { signal =>
   val s1 = Stream.awakeEvery[IO](1.second).interruptWhen(signal)
-  val s2 = Stream.sleep(4.seconds)(Temporal[IO]) >> Stream.eval(signal.set(true))
+  val s2 = Stream.sleep[IO](4.seconds) >> Stream.eval(signal.set(true))
   s1.concurrently(s2).compile.toVector
 }.unsafeRunSync()
 ```
@@ -58,14 +54,14 @@ signal.flatMap { signal =>
 In the following example `Stream.fromQueueNoneTerminated` is used to create a stream from a `cats.effect.std.Queue`. This snippet returns `List(1,2,3)`: the stream will emit the first three values that the queue returns (`Some(1), Some(2), Some(3)`) and be interrupted afterwards, when the queue returns `None`.
 
 ```scala mdoc:silent
+import cats.effect.IO
 import cats.effect.std.Queue
 import cats.effect.unsafe.implicits.global
-import cats.effect.{Concurrent, IO}
 import cats.syntax.all._
 import fs2.Stream
 
 val program = for {
-  queue <- Queue.unbounded[IO, Option[Int]](Concurrent[IO])
+  queue <- Queue.unbounded[IO, Option[Int]]
   streamFromQueue = Stream.fromQueueNoneTerminated(queue) // Stream is terminated when None is returned from queue
   _ <- Seq(Some(1), Some(2), Some(3), None).map(queue.offer).sequence
   result <- streamFromQueue.compile.toList
