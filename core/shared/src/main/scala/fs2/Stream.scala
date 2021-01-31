@@ -2629,17 +2629,17 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     */
   def withFilter(f: O => Boolean) = this.filter(f)
 
-  private type ZipWithCont[G[_], I, O2, R] =
-    Either[(Chunk[I], Stream[G, I]), Stream[G, I]] => Pull[G, O2, Option[R]]
+  private type ZipWithLeft[G[_], I, O2] = (Chunk[I], Stream[G, I]) => Pull[G, O2, Unit]
 
   private def zipWith_[F2[x] >: F[x], O2 >: O, O3, O4](that: Stream[F2, O3])(
-      k1: ZipWithCont[F2, O2, O4, INothing],
-      k2: ZipWithCont[F2, O3, O4, INothing]
+      k1: ZipWithLeft[F2, O2, O4],
+      k2: ZipWithLeft[F2, O3, O4],
+      k3: Stream[F2, O3] => Pull[F2, O4, Unit]
   )(f: (O2, O3) => O4): Stream[F2, O4] = {
     def go(
         leg1: Stream.StepLeg[F2, O2],
         leg2: Stream.StepLeg[F2, O3]
-    ): Pull[F2, O4, Option[INothing]] = {
+    ): Pull[F2, O4, Unit] = {
       val l1h = leg1.head
       val l2h = leg2.head
       val out = l1h.zipWith(l2h)(f)
@@ -2647,32 +2647,29 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
         if (l1h.size > l2h.size) {
           val extra1 = l1h.drop(l2h.size)
           leg2.stepLeg.flatMap {
-            case None      => k1(Left((extra1, leg1.stream)))
+            case None      => k1(extra1, leg1.stream)
             case Some(tl2) => go(leg1.setHead(extra1), tl2)
           }
         } else {
           val extra2 = l2h.drop(l1h.size)
           leg1.stepLeg.flatMap {
-            case None      => k2(Left((extra2, leg2.stream)))
+            case None      => k2(extra2, leg2.stream)
             case Some(tl1) => go(tl1, leg2.setHead(extra2))
           }
         }
       }
     }
 
-    covaryAll[F2, O2].pull.stepLeg
-      .flatMap {
-        case Some(leg1) =>
-          that.pull.stepLeg
-            .flatMap {
-              case Some(leg2) => go(leg1, leg2)
-              case None       => k1(Left((leg1.head, leg1.stream)))
-            }
+    covaryAll[F2, O2].pull.stepLeg.flatMap {
+      case Some(leg1) =>
+        that.pull.stepLeg
+          .flatMap {
+            case Some(leg2) => go(leg1, leg2)
+            case None       => k1(leg1.head, leg1.stream)
+          }
 
-        case None => k2(Right(that))
-      }
-      .void
-      .stream
+      case None => k3(that)
+    }.stream
   }
 
   /** Determinsitically zips elements, terminating when the ends of both branches
@@ -2701,37 +2698,27 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   def zipAllWith[F2[x] >: F[x], O2 >: O, O3, O4](
       that: Stream[F2, O3]
   )(pad1: O2, pad2: O3)(f: (O2, O3) => O4): Stream[F2, O4] = {
-    def cont1(
-        z: Either[(Chunk[O2], Stream[F2, O2]), Stream[F2, O2]]
-    ): Pull[F2, O4, Option[INothing]] = {
-      def contLeft(s: Stream[F2, O2]): Pull[F2, O4, Option[INothing]] =
-        s.pull.uncons.flatMap {
-          case None => Pull.pure(None)
-          case Some((hd, tl)) =>
-            Pull.output(hd.map(o => f(o, pad2))) >> contLeft(tl)
-        }
-      z match {
-        case Left((hd, tl)) =>
+    def cont1(hd: Chunk[O2], tl: Stream[F2, O2]): Pull[F2, O4, Unit] =
+      Pull.output(hd.map(o => f(o, pad2))) >> contLeft(tl)
+
+    def contLeft(s: Stream[F2, O2]): Pull[F2, O4, Unit] =
+      s.pull.uncons.flatMap {
+        case None => Pull.done
+        case Some((hd, tl)) =>
           Pull.output(hd.map(o => f(o, pad2))) >> contLeft(tl)
-        case Right(h) => contLeft(h)
       }
-    }
-    def cont2(
-        z: Either[(Chunk[O3], Stream[F2, O3]), Stream[F2, O3]]
-    ): Pull[F2, O4, Option[INothing]] = {
-      def contRight(s: Stream[F2, O3]): Pull[F2, O4, Option[INothing]] =
-        s.pull.uncons.flatMap {
-          case None => Pull.pure(None)
-          case Some((hd, tl)) =>
-            Pull.output(hd.map(o2 => f(pad1, o2))) >> contRight(tl)
-        }
-      z match {
-        case Left((hd, tl)) =>
+
+    def cont2(hd: Chunk[O3], tl: Stream[F2, O3]): Pull[F2, O4, Unit] =
+      Pull.output(hd.map(o2 => f(pad1, o2))) >> contRight(tl)
+
+    def contRight(s: Stream[F2, O3]): Pull[F2, O4, Unit] =
+      s.pull.uncons.flatMap {
+        case None => Pull.done
+        case Some((hd, tl)) =>
           Pull.output(hd.map(o2 => f(pad1, o2))) >> contRight(tl)
-        case Right(h) => contRight(h)
       }
-    }
-    zipWith_[F2, O2, O3, O4](that)(cont1, cont2)(f)
+
+    zipWith_[F2, O2, O3, O4](that)(cont1, cont2, contRight)(f)
   }
 
   /** Determinsitically zips elements, terminating when the end of either branch is reached naturally.
@@ -2781,7 +2768,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   def zipWith[F2[x] >: F[x], O2 >: O, O3, O4](
       that: Stream[F2, O3]
   )(f: (O2, O3) => O4): Stream[F2, O4] =
-    zipWith_[F2, O2, O3, O4](that)(_ => Pull.pure(None), _ => Pull.pure(None))(f)
+    zipWith_[F2, O2, O3, O4](that)((_, _) => Pull.done, (_, _) => Pull.done, _ => Pull.done)(f)
 
   /** Zips the elements of the input stream with its indices, and returns the new stream.
     *
@@ -4753,13 +4740,17 @@ object Stream extends StreamLowPriority {
   implicit def alignInstance[F[_]]: Align[Stream[F, *]] =
     new Align[Stream[F, *]] {
 
-      private type ZipWithCont[G[_], O2, L, R] =
-        Either[(Chunk[O2], Stream[G, O2]), Stream[G, O2]] => Pull[G, Ior[L, R], Unit]
+      private type ZipWithLeft[G[_], O2, L, R] =
+        (Chunk[O2], Stream[G, O2]) => Pull[G, Ior[L, R], Unit]
 
       private def alignWith_[F2[x] >: F[x], O2, O3](
           fa: Stream[F2, O2],
           fb: Stream[F2, O3]
-      )(k1: ZipWithCont[F2, O2, O2, O3], k2: ZipWithCont[F2, O3, O2, O3])(
+      )(
+          k1: ZipWithLeft[F2, O2, O2, O3],
+          k2: ZipWithLeft[F2, O3, O2, O3],
+          k3: Stream[F2, O3] => Pull[F2, Ior[O2, O3], Unit]
+      )(
           f: (O2, O3) => Ior[O2, O3]
       ): Stream[F2, Ior[O2, O3]] = {
         def go(
@@ -4773,31 +4764,28 @@ object Stream extends StreamLowPriority {
             if (l1h.size > l2h.size) {
               val extra1 = l1h.drop(l2h.size)
               leg2.stepLeg.flatMap {
-                case None      => k1(Left((extra1, leg1.stream)))
+                case None      => k1(extra1, leg1.stream)
                 case Some(tl2) => go(leg1.setHead(extra1), tl2)
               }
             } else {
               val extra2 = l2h.drop(l1h.size)
               leg1.stepLeg.flatMap {
-                case None      => k2(Left((extra2, leg2.stream)))
+                case None      => k2(extra2, leg2.stream)
                 case Some(tl1) => go(tl1, leg2.setHead(extra2))
               }
             }
           }
         }
-        fa.pull.stepLeg
-          .flatMap {
-            case Some(leg1) =>
-              fb.pull.stepLeg
-                .flatMap {
-                  case Some(leg2) => go(leg1, leg2)
-                  case None       => k1(Left((leg1.head, leg1.stream)))
-                }
+        fa.pull.stepLeg.flatMap {
+          case Some(leg1) =>
+            fb.pull.stepLeg
+              .flatMap {
+                case Some(leg2) => go(leg1, leg2)
+                case None       => k1(leg1.head, leg1.stream)
+              }
 
-            case None => k2(Right(fb))
-          }
-          .void
-          .stream
+          case None => k3(fb)
+        }.stream
       }
 
       override def functor: Functor[Stream[F, *]] = Functor[Stream[F, *]]
@@ -4805,14 +4793,13 @@ object Stream extends StreamLowPriority {
       override def align[A, B](fa: Stream[F, A], fb: Stream[F, B]): Stream[F, Ior[A, B]] = {
 
         def echoIor[T, U](s: Stream[F, T], f: T => U) = s.map(f).pull.echo
-        def contFor[T, U](cs: (Chunk[T], Stream[F, T]), f: T => U) = {
-          val (chunk, stream) = cs
+        def contFor[T, U](chunk: Chunk[T], stream: Stream[F, T], f: T => U) =
           Pull.output(chunk.map(f)) >> echoIor(stream, f)
-        }
 
         alignWith_(fa, fb)(
-          _.fold(contFor(_, Ior.left[A, B]), echoIor(_, Ior.left[A, B])),
-          _.fold(contFor(_, Ior.right[A, B]), echoIor(_, Ior.right[A, B]))
+          contFor(_, _, Ior.left[A, B]),
+          contFor(_, _, Ior.right[A, B]),
+          echoIor(_, Ior.right[A, B])
         )(Ior.Both[A, B](_, _))
       }
     }
