@@ -23,7 +23,7 @@ This is the official FS2 guide. It gives an overview of the library and its feat
 * [Talking to the external world](#talking-to-the-external-world)
 * [Reactive streams](#reactive-streams)
 * [Learning more](#learning-more)
-* [Appendix: How interruption of streams works](#a1)
+* [Appendixes](#appendixes)
 
 _Unless otherwise noted, the type `Stream` mentioned in this document refers to the type `fs2.Stream` and NOT `scala.collection.immutable.Stream`._
 
@@ -525,11 +525,10 @@ val program =
 // program: Stream[IO[x], Unit] = Stream(..)
 
 program.compile.drain.unsafeRunSync()
-// 16:46:40.919550
-// 16:46:41.922465
-// 16:46:42.917319
-// 16:46:43.916872
-// 16:46:44.915980
+// 16:47:44.763559
+// 16:47:45.762163
+// 16:47:46.761358
+// 16:47:47.760145
 ```
 
 Let's take this line by line now, so we can understand what's going on.
@@ -571,11 +570,11 @@ val program1 =
 // program1: Stream[IO[x], Unit] = Stream(..)
 
 program1.compile.drain.unsafeRunSync()
-// 16:46:45.929558
-// 16:46:46.930037
-// 16:46:47.929988
-// 16:46:48.929921
-// 16:46:49.929055
+// 16:47:49.764431
+// 16:47:50.764358
+// 16:47:51.764340
+// 16:47:52.764191
+// 16:47:53.763732
 ```
 
 ### Talking to the external world
@@ -608,7 +607,7 @@ The way you bring synchronous effects into your effect type may differ. `Sync.de
 import cats.effect.Sync
 
 val T = Sync[IO]
-// T: cats.effect.kernel.Async[IO] = cats.effect.IO$$anon$1@434b3531
+// T: cats.effect.kernel.Async[IO] = cats.effect.IO$$anon$1@737b7c75
 val s2 = Stream.exec(T.delay { destroyUniverse() }) ++ Stream("...moving on")
 // s2: Stream[IO[x], String] = Stream(..)
 s2.compile.toVector.unsafeRunSync()
@@ -741,13 +740,13 @@ stream.toUnicastPublisher
 //   source = Bind(
 //     source = Bind(
 //       source = Allocate(
-//         resource = cats.effect.kernel.Resource$$$Lambda$7487/0x0000000802472040@2ed99e4b
+//         resource = cats.effect.kernel.Resource$$$Lambda$7485/0x00000008024cb840@7a2f0c1e
 //       ),
-//       fs = cats.effect.kernel.Resource$$Lambda$7881/0x0000000802633840@5dfb298
+//       fs = cats.effect.kernel.Resource$$Lambda$7858/0x0000000802620840@22caf10d
 //     ),
-//     fs = cats.effect.std.Dispatcher$$$Lambda$7882/0x0000000802632840@2d5f9a3a
+//     fs = cats.effect.std.Dispatcher$$$Lambda$7859/0x0000000802621040@50de8fc3
 //   ),
-//   fs = cats.effect.kernel.Resource$$Lambda$7881/0x0000000802633840@34ba9215
+//   fs = cats.effect.kernel.Resource$$Lambda$7858/0x0000000802620840@5dcc63c0
 // )
 ```
 
@@ -759,19 +758,19 @@ val publisher: Resource[IO, StreamUnicastPublisher[IO, Int]] = Stream(1, 2, 3).c
 //   source = Bind(
 //     source = Bind(
 //       source = Allocate(
-//         resource = cats.effect.kernel.Resource$$$Lambda$7487/0x0000000802472040@7f1f8b83
+//         resource = cats.effect.kernel.Resource$$$Lambda$7485/0x00000008024cb840@eb239ed
 //       ),
-//       fs = cats.effect.kernel.Resource$$Lambda$7881/0x0000000802633840@1f55844f
+//       fs = cats.effect.kernel.Resource$$Lambda$7858/0x0000000802620840@30de8998
 //     ),
-//     fs = cats.effect.std.Dispatcher$$$Lambda$7882/0x0000000802632840@52a3bdbb
+//     fs = cats.effect.std.Dispatcher$$$Lambda$7859/0x0000000802621040@61d2510b
 //   ),
-//   fs = cats.effect.kernel.Resource$$Lambda$7881/0x0000000802633840@7e1ea4c6
+//   fs = cats.effect.kernel.Resource$$Lambda$7858/0x0000000802620840@7b21c73d
 // )
 publisher.use { p =>
   p.toStream[IO].compile.toList
 }
 // res50: IO[List[Int]] = Uncancelable(
-//   body = cats.effect.IO$$$Lambda$7610/0x0000000802556040@11bcd10
+//   body = cats.effect.IO$$$Lambda$7608/0x0000000802546040@53bc74ac
 // )
 ```
 
@@ -792,7 +791,9 @@ Want to learn more?
 
 Also feel free to come discuss and ask/answer questions in [the gitter channel](https://gitter.im/functional-streams-for-scala/fs2) and/or on StackOverflow using [the tag FS2](http://stackoverflow.com/tags/fs2).
 
-### <a id="a1"></a> Appendix A1: How interruption of streams works
+### Appendixes
+
+#### Appendix A1: How interruption of streams works
 
 In FS2, a stream can terminate in one of three ways:
 
