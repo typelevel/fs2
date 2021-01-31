@@ -23,7 +23,7 @@ This is the official FS2 guide. It gives an overview of the library and its feat
 * [Talking to the external world](#talking-to-the-external-world)
 * [Reactive streams](#reactive-streams)
 * [Learning more](#learning-more)
-* [Appendix: How interruption of streams works](#a1)
+* [Appendixes](#appendixes)
 
 _Unless otherwise noted, the type `Stream` mentioned in this document refers to the type `fs2.Stream` and NOT `scala.collection.immutable.Stream`._
 
@@ -656,7 +656,9 @@ Want to learn more?
 
 Also feel free to come discuss and ask/answer questions in [the gitter channel](https://gitter.im/functional-streams-for-scala/fs2) and/or on StackOverflow using [the tag FS2](http://stackoverflow.com/tags/fs2).
 
-### <a id="a1"></a> Appendix A1: How interruption of streams works
+### Appendixes
+
+#### Appendix A1: How interruption of streams works
 
 In FS2, a stream can terminate in one of three ways:
 
