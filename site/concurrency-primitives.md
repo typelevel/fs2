@@ -1,10 +1,11 @@
 # Concurrency Primitives
 
-In the [`fs2.concurrent` package](https://github.com/functional-streams-for-scala/fs2/blob/series/1.0/core/shared/src/main/scala/fs2/concurrent/) you'll find a bunch of useful concurrency primitives built on the concurrency primitives defined in `cats.effect.concurrent`:
+In the [`fs2.concurrent` package](https://github.com/functional-streams-for-scala/fs2/blob/series/1.0/core/shared/src/main/scala/fs2/concurrent/) you'll find a bunch of useful concurrency primitives built on the concurrency primitives defined in `cats.effect.concurrent`. For example:
 
-- `Queue[F, A]`
 - `Topic[F, A]`
 - `Signal[F, A]`
+
+Beyond these, `Stream` also provides functions to interact with cats-effect's `Queue`. 
 
 ## Simple Examples
 
@@ -50,6 +51,27 @@ signal.flatMap { signal =>
   val s2 = Stream.sleep(4.seconds)(Temporal[IO]) >> Stream.eval(signal.set(true))
   s1.concurrently(s2).compile.toVector
 }.unsafeRunSync()
+```
+
+### Queue
+
+In the following example `Stream.fromQueueNoneTerminated` is used to create a stream from a `cats.effect.std.Queue`. This snippet returns `List(1,2,3)`: the stream will emit the first three values that the queue returns (`Some(1), Some(2), Some(3)`) and be interrupted afterwards, when the queue returns `None`.
+
+```scala mdoc:silent
+import cats.effect.std.Queue
+import cats.effect.unsafe.implicits.global
+import cats.effect.{Concurrent, IO}
+import cats.syntax.all._
+import fs2.Stream
+
+val program = for {
+  queue <- Queue.unbounded[IO, Option[Int]](Concurrent[IO])
+  streamFromQueue = Stream.fromQueueNoneTerminated(queue) // Stream is terminated when None is returned from queue
+  _ <- Seq(Some(1), Some(2), Some(3), None).map(queue.offer).sequence
+  result <- streamFromQueue.compile.toList
+} yield result
+
+program.unsafeRunSync()
 ```
 
 ## Advanced Examples
