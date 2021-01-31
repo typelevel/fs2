@@ -14,18 +14,15 @@ In the [`fs2.concurrent` package](https://github.com/functional-streams-for-scal
 
 Topic implements the publish-subscribe pattern. In the following example, `publisher` and `subscriber` are started concurrently with the publisher continuously publishing the string `"1"` to the topic and the subscriber consuming it until it received four elements, including the initial element, the string `"Topic start"`.
 
-```scala
-import cats.effect.{ConcurrentEffect, ContextShift, IO}
+```scala mdoc:silent
+import cats.effect._
+import cats.effect.unsafe.implicits.global
 import fs2.Stream
 import fs2.concurrent.Topic
 
-import scala.concurrent.ExecutionContextExecutor
+val topic: IO[Topic[IO, String]] = Topic("Topic start")(Concurrent[IO])
 
-implicit val ec: ExecutionContextExecutor = scala.concurrent.ExecutionContext.global
-implicit val cs: ContextShift[IO] = IO.contextShift(ec)
-implicit val c: ConcurrentEffect[IO] = IO.ioConcurrentEffect
-
-Topic("Topic start").flatMap { topic =>
+topic.flatMap { topic =>
   val publisher = Stream.constant("1").covary[IO].through(topic.publish)
   val subscriber = topic.subscribe(10).take(4)
   subscriber.concurrently(publisher).compile.toVector
@@ -38,22 +35,19 @@ Topic("Topic start").flatMap { topic =>
 
 (Note that `SignallingRef` extends `Signal`)
 
-```scala
-import cats.effect.{ConcurrentEffect, ContextShift, IO, Timer}
+```scala mdoc:silent
+import cats.effect._
+import cats.effect.unsafe.implicits.global
 import fs2.Stream
 import fs2.concurrent.SignallingRef
 
-import scala.concurrent.ExecutionContextExecutor
 import scala.concurrent.duration._
 
-implicit val ec: ExecutionContextExecutor = scala.concurrent.ExecutionContext.global
-implicit val cs: ContextShift[IO] = IO.contextShift(ec)
-implicit val c: ConcurrentEffect[IO] = IO.ioConcurrentEffect
-implicit val timer: Timer[IO] = IO.timer(ec)
-
-SignallingRef.in(false).flatMap { signal: SignallingRef[IO, Boolean] =>
+val signal: IO[SignallingRef[IO, Boolean]] = SignallingRef.of(false)(Concurrent[IO])
+  
+signal.flatMap { signal =>
   val s1 = Stream.awakeEvery[IO](1.second).interruptWhen(signal)
-  val s2 = Stream.sleep(4.seconds) >> Stream.eval(signal.set(true))
+  val s2 = Stream.sleep(4.seconds)(Temporal[IO]) >> Stream.eval(signal.set(true))
   s1.concurrently(s2).compile.toVector
 }.unsafeRunSync()
 ```
