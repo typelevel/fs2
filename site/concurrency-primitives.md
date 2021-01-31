@@ -1,11 +1,11 @@
 # Concurrency Primitives
 
-In the [`fs2.concurrent` package](https://github.com/functional-streams-for-scala/fs2/blob/series/1.0/core/shared/src/main/scala/fs2/concurrent/) you'll find a bunch of useful concurrency primitives built on the concurrency primitives defined in `cats.effect.concurrent`. For example:
+In the [`fs2.concurrent` package](https://github.com/functional-streams-for-scala/fs2/blob/series/1.0/core/shared/src/main/scala/fs2/concurrent/) you'll find a bunch of useful concurrency primitives built on the concurrency primitives defined in `cats-effect`. For example:
 
 - `Topic[F, A]`
 - `Signal[F, A]`
 
-Beyond these, `Stream` also provides functions to interact with cats-effect's `Queue`. 
+In addition, `Stream` provides functions to interact with cats-effect's `Queue`. 
 
 ## Simple Examples
 
