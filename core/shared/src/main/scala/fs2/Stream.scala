@@ -321,6 +321,9 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * }}}
     */
   def bufferBy(f: O => Boolean): Stream[F, O] = {
+    def dumpBuffer(bb: List[Chunk[O]]): Pull[F, O, Unit] =
+      bb.reverse.foldLeft(Pull.done: Pull[F, O, Unit])((acc, c) => acc >> Pull.output(c))
+
     def go(buffer: List[Chunk[O]], last: Boolean, s: Stream[F, O]): Pull[F, O, Unit] =
       s.pull.uncons.flatMap {
         case Some((hd, tl)) =>
@@ -334,16 +337,10 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
             }
           if (out.isEmpty)
             go(Chunk.vector(buf) :: buffer, newLast, tl)
-          else {
-            val outBuffer =
-              buffer.reverse.foldLeft(Pull.pure(()).covaryOutput[O])((acc, c) =>
-                acc >> Pull.output(c)
-              )
-            val outAll = out.reverse.foldLeft(outBuffer)((acc, c) => acc >> Pull.output(c))
-            outAll >> go(List(Chunk.vector(buf)), newLast, tl)
-          }
-        case None =>
-          buffer.reverse.foldLeft(Pull.pure(()).covaryOutput[O])((acc, c) => acc >> Pull.output(c))
+          else
+            dumpBuffer(buffer) >> dumpBuffer(out) >> go(List(Chunk.vector(buf)), newLast, tl)
+
+        case None => dumpBuffer(buffer)
       }
     go(Nil, false, this).stream
   }
