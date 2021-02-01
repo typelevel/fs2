@@ -587,6 +587,14 @@ object Pull extends PullLowPriority {
   ): Pull[F, INothing, Option[(Chunk[O], Pull[F, O, Unit])]] =
     Step(s, None).map(_.map { case (h, _, t) => (h, t.asInstanceOf[Pull[F, O, Unit]]) })
 
+  private[fs2] def onCons[F[_], O, O2, R](s: Pull[F, O, Unit])(
+      fun: Option[(Chunk[O], Pull[F, O, Unit])] => Pull[F, O2, R]
+  ): Pull[F, O2, R] =
+    Step(s, None).flatMap {
+      case None              => fun(None)
+      case Some((hd, _, tl)) => fun(Some((hd, tl)))
+    }
+
   private type Cont[-Y, +G[_], +X] = Result[Y] => Pull[G, X, Unit]
 
   /* Left-folds the output of a stream.
