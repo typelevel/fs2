@@ -81,7 +81,7 @@ import scala.collection.mutable.ArrayBuffer
   * A method of the `Stream` class is '''pure''' if it can be applied to pure streams. Such methods are identified
   * in that their signature includes no type-class constraint (or implicit parameter) on the `F` method.
   * Pure methods in `Stream[F, O]` can be projected ''naturally'' to methods in the `List` class, which means
-  * that we can applying the stream's method and converting the result to a list gets the same result as
+  * that applying the stream's method and converting the result to a list gets the same result as
   * first converting the stream to a list, and then applying list methods.
   *
   * Some methods that project directly to list are `map`, `filter`, `takeWhile`, etc.
