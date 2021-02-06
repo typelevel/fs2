@@ -97,6 +97,84 @@ abstract class Topic[F[_], A] { self =>
 
 object Topic {
 
+  def newApply[F[_], A](initial: A)(implicit F: Concurrent[F]): F[Topic[F, A]] = {
+    // Id identifying each subscriber uniquely
+    class ID
+
+    sealed trait Subscriber {
+      def publish(a: A): F[Unit]
+      def id: ID
+      def subscribe: Stream[F, A]
+      def subscribeSize: Stream[F, (A, Int)]
+      def unSubscribe: F[Unit]
+    }
+
+
+      F.ref(initial -> Vector.empty[Subscriber])
+      .flatMap { state =>
+        SignallingRef[F, Int](0).map { subSignal =>
+          def mkSubscriber(maxQueued: Int): F[Subscriber] =
+            for {
+              q <- InspectableQueue.bounded[F, A](maxQueued)
+              firstA <- F.deferred[A]
+              done <- F.deferred[Boolean]
+              sub = new Subscriber {
+                def unSubscribe: F[Unit] =
+                  for {
+                    _ <- state.update {
+                      case (a, subs) => a -> subs.filterNot(_.id == id)
+                    }
+                    _ <- subSignal.update(_ - 1)
+                    _ <- done.complete(true)
+                  } yield ()
+                def subscribe: Stream[F, A] = Stream.eval(firstA.get) ++ q.dequeue
+                def publish(a: A): F[Unit] =
+                  q.offer1(a).flatMap { offered =>
+                    if (offered) F.unit
+                    else {
+                      Stream.eval(done.get)
+                        .interruptWhen(q.size.map(_ < maxQueued))
+                        .last
+                        .flatMap {
+                          case None    => Stream.eval(publish(a))
+                          case Some(_) => Stream.empty
+                        }
+                        .compile
+                        .drain
+                    }
+                  }
+
+                def subscribeSize: Stream[F, (A, Int)] =
+                  Stream.eval(firstA.get).map(_ -> 0) ++ q.dequeue.zip(Stream.repeatEval(q.getSize))
+                val id: ID = new ID
+              }
+              a <- state.modify { case (a, s) => (a, s :+ sub) -> a }
+              _ <- subSignal.update(_ + 1)
+              _ <- firstA.complete(a)
+            } yield sub
+
+          new Topic[F, A] {
+            def publish: Pipe[F, A, Unit] =
+              _.flatMap(a => Stream.eval(publish1(a)))
+
+            def subscribers: Stream[F, Int] = subSignal.discrete
+
+            def publish1(a: A): F[Unit] =
+              state.modify {
+                case (_, subs) =>
+                  (a, subs) -> subs.traverse_(_.publish(a))
+              }.flatten
+
+            def subscribe(maxQueued: Int): Stream[F, A] =
+              Stream.bracket(mkSubscriber(maxQueued))(_.unSubscribe).flatMap(_.subscribe)
+
+            def subscribeSize(maxQueued: Int): Stream[F, (A, Int)] =
+              Stream.bracket(mkSubscriber(maxQueued))(_.unSubscribe).flatMap(_.subscribeSize)
+          }
+        }
+      }
+  }
+
   /** Constructs a `Topic` for a provided `Concurrent` datatype. The
     * `initial` value is immediately published.
     */
