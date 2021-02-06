@@ -3683,36 +3683,23 @@ object Stream extends StreamLowPriority {
       Stream.eval(Semaphore[F](maxQueued - 1L)).flatMap { guard =>
         Stream.eval(Queue.unbounded[F, Option[Chunk[O]]]).flatMap { outQ =>
           Stream.eval(Queue.unbounded[F, Option[Chunk[O]]]).flatMap { sinkQ =>
-            def inputStream =
+            val sinkIn =
               self.chunks.noneTerminate.evalTap(sinkQ.offer).evalMap {
                 case Some(_) => guard.acquire
                 case None    => F.unit
               }
 
-            def sinkStream =
-              Stream
-                .repeatEval(sinkQ.take)
-                .unNoneTerminate
-                .flatMap { chunk =>
-                  Stream.chunk(chunk) ++
-                    Stream.exec(outQ.offer(Some(chunk)))
-                }
-                .through(p) ++
-                Stream.exec(outQ.offer(None))
+            def outEnque(ch: Chunk[O]): Stream[F, O] =
+              Stream.chunk(ch) ++ Stream.exec(outQ.offer(Some(ch)))
 
-            def runner =
-              sinkStream.concurrently(inputStream) ++
-                Stream.exec(outQ.offer(None))
+            val closeOutQ = Stream.exec(outQ.offer(None))
 
-            def outputStream =
-              Stream
-                .repeatEval(outQ.take)
-                .unNoneTerminate
-                .flatMap { chunk =>
-                  Stream.chunk(chunk) ++
-                    Stream.exec(guard.release)
-                }
+            def releaseChunk(ch: Chunk[O]): Stream[F, O] =
+              Stream.chunk(ch) ++ Stream.exec(guard.release)
 
+            val sinkOut = Stream.repeatEval(sinkQ.take).unNoneTerminate.flatMap(outEnque)
+            val outputStream = Stream.repeatEval(outQ.take).unNoneTerminate.flatMap(releaseChunk)
+            val runner = (p(sinkOut) ++ closeOutQ).concurrently(sinkIn) ++ closeOutQ
             outputStream.concurrently(runner)
           }
         }
