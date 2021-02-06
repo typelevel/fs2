@@ -87,6 +87,7 @@ abstract class Topic[F[_], A] { self =>
 
 object Topic {
 
+  /** Constructs a Topic */
   def apply[F[_], A](implicit F: Concurrent[F]): F[Topic[F, A]] = {
     // TODO is LongMap fine here, vs Map[Unique, Queue] ?
     // whichever way we go, standardise Topic and Signal
@@ -133,122 +134,6 @@ object Topic {
           def subscribe(maxQueued: Int): Stream[F, A] =
             Stream.resource(mkSubscriber(maxQueued)).flatten
         }
-      }
-  }
-
-  /** Constructs a `Topic` for a provided `Concurrent` datatype. The
-    * `initial` value is immediately published.
-    */
-  def apply_[F[_], A](initial: A)(implicit F: Concurrent[F]): F[Topic[F, A]] = {
-    implicit def eqInstance: Eq[Strategy.State[A]] =
-      Eq.instance[Strategy.State[A]](_.subscribers.keySet == _.subscribers.keySet)
-
-    PubSub(PubSub.Strategy.Inspectable.strategy(Strategy.boundedSubscribers(initial)))
-      .map { pubSub =>
-        new Topic[F, A] {
-          def subscriber(size: Int): Stream[F, ((Unique, Int), Stream[F, SizedQueue[A]])] =
-            Stream
-              .bracket(
-                Unique[F]
-                  .tupleRight(size)
-                  .flatTap(selector => pubSub.subscribe(Right(selector)))
-              )(selector => pubSub.unsubscribe(Right(selector)))
-              .map { selector =>
-                selector ->
-                  pubSub.getStream(Right(selector)).flatMap {
-                    case Right(q) => Stream.emit(q)
-                    case Left(_)  => Stream.empty // impossible
-                  }
-              }
-
-          def publish: Pipe[F, A, Unit] =
-            _.evalMap(publish1)
-
-          def publish1(a: A): F[Unit] =
-            pubSub.publish(a)
-
-          def subscribe(maxQueued: Int): Stream[F, A] =
-            subscriber(maxQueued).flatMap { case (_, s) => s.flatMap(q => Stream.emits(q.toQueue)) }
-
-          def subscribeSize(maxQueued: Int): Stream[F, (A, Int)] =
-            subscriber(maxQueued).flatMap { case (selector, stream) =>
-              stream
-                .flatMap { q =>
-                  Stream.emits(q.toQueue.zipWithIndex.map { case (a, idx) => (a, q.size - idx) })
-                }
-                .evalMap { case (a, remQ) =>
-                  pubSub.get(Left(None)).map {
-                    case Left(s) =>
-                      (a, s.subscribers.get(selector).map(_.size + remQ).getOrElse(remQ))
-                    case Right(_) => (a, -1) // impossible
-                  }
-                }
-            }
-
-          def subscribers: Stream[F, Int] =
-            Stream
-              .bracket(Unique[F])(token => pubSub.unsubscribe(Left(Some(token))))
-              .flatMap { token =>
-                pubSub.getStream(Left(Some(token))).flatMap {
-                  case Left(s)  => Stream.emit(s.subscribers.size)
-                  case Right(_) => Stream.empty //impossible
-                }
-              }
-        }
-      }
-  }
-
-  private[fs2] object Strategy {
-    final case class State[A](
-        last: A,
-        subscribers: Map[(Unique, Int), SizedQueue[A]]
-    )
-
-    /** Strategy for topic, where every subscriber can specify max size of queued elements.
-      * If that subscription is exceeded any other `publish` to the topic will hold,
-      * until such subscriber disappears, or consumes more elements.
-      *
-      * @param initial Initial value of the topic.
-      */
-    def boundedSubscribers[F[_], A](
-        start: A
-    ): PubSub.Strategy[A, SizedQueue[A], State[A], (Unique, Int)] =
-      new PubSub.Strategy[A, SizedQueue[A], State[A], (Unique, Int)] {
-        def initial: State[A] = State(start, Map.empty)
-
-        def accepts(i: A, state: State[A]): Boolean =
-          state.subscribers.forall { case ((_, max), q) => q.size < max }
-
-        def publish(i: A, state: State[A]): State[A] =
-          State(
-            last = i,
-            subscribers = state.subscribers.map { case (k, v) => (k, v :+ i) }
-          )
-
-        // Register empty queue
-        def regEmpty(selector: (Unique, Int), state: State[A]): State[A] =
-          state.copy(subscribers = state.subscribers + (selector -> SizedQueue.empty))
-
-        def get(selector: (Unique, Int), state: State[A]): (State[A], Option[SizedQueue[A]]) =
-          state.subscribers.get(selector) match {
-            case None =>
-              (state, Some(SizedQueue.empty)) // Prevent register, return empty
-            case r @ Some(q) =>
-              if (q.isEmpty) (state, None)
-              else (regEmpty(selector, state), r)
-          }
-
-        def empty(state: State[A]): Boolean =
-          false
-
-        def subscribe(selector: (Unique, Int), state: State[A]): (State[A], Boolean) =
-          (
-            state.copy(subscribers = state.subscribers + (selector -> SizedQueue.one(state.last))),
-            true
-          )
-
-        def unsubscribe(selector: (Unique, Int), state: State[A]): State[A] =
-          state.copy(subscribers = state.subscribers - selector)
       }
   }
 }
