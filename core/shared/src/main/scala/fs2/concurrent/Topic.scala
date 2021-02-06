@@ -97,7 +97,7 @@ abstract class Topic[F[_], A] { self =>
 
 object Topic {
 
-  def newApply[F[_], A](initial: A)(implicit F: Concurrent[F]): F[Topic[F, A]] = {
+  def apply[F[_], A](initial: A)(implicit F: Concurrent[F]): F[Topic[F, A]] = {
     sealed trait Subscriber {
       def publish(a: A): F[Unit]
       def id: Unique
@@ -162,7 +162,7 @@ object Topic {
   /** Constructs a `Topic` for a provided `Concurrent` datatype. The
     * `initial` value is immediately published.
     */
-  def apply[F[_], A](initial: A)(implicit F: Concurrent[F]): F[Topic[F, A]] = {
+  def apply_[F[_], A](initial: A)(implicit F: Concurrent[F]): F[Topic[F, A]] = {
     implicit def eqInstance: Eq[Strategy.State[A]] =
       Eq.instance[Strategy.State[A]](_.subscribers.keySet == _.subscribers.keySet)
 
