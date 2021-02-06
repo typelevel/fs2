@@ -37,7 +37,6 @@ class TopicSuite extends Fs2Suite {
           .map(_ -> 0.until(count).toVector)
           .toMap
 
-
       val publisher =
         Stream
           .range(0, count)
@@ -58,11 +57,13 @@ class TopicSuite extends Fs2Suite {
       def consume(i: Int, sub: Stream[IO, Int]) =
         sub.take(count.toLong).foldMap(Vector(_)).tupleLeft(i)
 
-      subscriptions.flatMap {
-        _.map { case (id, sub) => consume(id, sub) }
-          .append(publisher.drain)
-          .parJoin(subs + 1)
-      }.compile
+      subscriptions
+        .flatMap {
+          _.map { case (id, sub) => consume(id, sub) }
+            .append(publisher.drain)
+            .parJoin(subs + 1)
+        }
+        .compile
         .toVector
         .map { result =>
           assertEquals(result.toMap.size, subs)

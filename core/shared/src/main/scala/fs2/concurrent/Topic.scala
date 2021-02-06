@@ -27,8 +27,7 @@ import cats.syntax.all._
 import cats.effect.std.Queue
 import scala.collection.immutable.LongMap
 
-/**
-  * Topic allows you to distribute `A`s published by an arbitrary
+/** Topic allows you to distribute `A`s published by an arbitrary
   * number of publishers to an arbitrary number of subscribers.
   *
   * Topic has built-in back-pressure support implemented as a maximum
@@ -36,7 +35,6 @@ import scala.collection.immutable.LongMap
   *
   * Once that bound is hit, publishing may semantically block until
   * the lagging subscriber consumes some of its queued elements.
-  *
   */
 abstract class Topic[F[_], A] { self =>
 
@@ -57,7 +55,6 @@ abstract class Topic[F[_], A] { self =>
     * A semantically blocked publish can be interrupted, but there is
     * no guarantee of atomicity, and it could result in the `A` being
     * received by some subscribers only.
-    *
     */
   def publish1(a: A): F[Unit]
 
@@ -75,8 +72,7 @@ abstract class Topic[F[_], A] { self =>
     */
   def subscribe(maxQueued: Int): Stream[F, A]
 
-  /**
-    * Like `subscribe`, but represents the subscription explicitly as
+  /** Like `subscribe`, but represents the subscription explicitly as
     * a `Resource` which returns after the subscriber is subscribed,
     * but before it has started pulling elements.
     */
@@ -117,15 +113,16 @@ object Topic {
             }
 
           def subscribeAwait(maxQueued: Int): Resource[F, Stream[F, A]] =
-            Resource.eval(Queue.bounded[F, A](maxQueued))
+            Resource
+              .eval(Queue.bounded[F, A](maxQueued))
               .flatMap { q =>
                 val subscribe = state.modify { case (subs, id) =>
                   (subs.updated(id, q), id + 1) -> id
                 } <* subscriberCount.update(_ + 1)
 
                 def unsubscribe(id: Long) =
-                  state.update {
-                    case (subs, nextId) => (subs - id, nextId)
+                  state.update { case (subs, nextId) =>
+                    (subs - id, nextId)
                   } >> subscriberCount.update(_ - 1)
 
                 Resource
