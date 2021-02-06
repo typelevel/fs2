@@ -88,11 +88,6 @@ abstract class Topic[F[_], A] { self =>
 object Topic {
 
   def apply[F[_], A](implicit F: Concurrent[F]): F[Topic[F, A]] = {
-
-    sealed trait Subscriber {
-      def subscribe: Stream[F, A]
-    }
-
     // TODO is LongMap fine here, vs Map[Unique, Queue] ?
     // whichever way we go, standardise Topic and Signal
     case class State(subs: LongMap[InspectableQueue[F, A]], nextId: Long)
@@ -103,7 +98,7 @@ object Topic {
       .product(SignallingRef[F, Int](0))
       .map { case (state, subscriberCount) =>
 
-        def mkSubscriber(maxQueued: Int): Resource[F, Subscriber] =
+        def mkSubscriber(maxQueued: Int): Resource[F, Stream[F, A]] =
           Resource.make {
             InspectableQueue.bounded[F, A](maxQueued).flatMap { q =>
               state.modify { case State(subs, id) =>
@@ -114,11 +109,7 @@ object Topic {
               state.update {
                 case State(subs, nextId) => State(subs - id, nextId)
               } >> subscriberCount.update(_ - 1)
-          }.map { case (latestA, q) =>
-              new Subscriber {
-                def subscribe: Stream[F, A] = q.dequeue
-              }
-          }
+          }.map { case (_, q) => q.dequeue }
 
         new Topic[F, A] {
           def publish: Pipe[F, A, Unit] =
@@ -140,7 +131,7 @@ object Topic {
              .uncancelable
 
           def subscribe(maxQueued: Int): Stream[F, A] =
-            Stream.resource(mkSubscriber(maxQueued)).flatMap(_.subscribe)
+            Stream.resource(mkSubscriber(maxQueued)).flatten
         }
       }
   }
