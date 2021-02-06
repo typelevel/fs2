@@ -24,7 +24,9 @@ package concurrent
 
 import cats.Eq
 import cats.effect.kernel.Concurrent
+import cats.effect.implicits._
 import cats.syntax.all._
+import scala.collection.immutable.LongMap
 
 import fs2.internal.{SizedQueue, Unique}
 
@@ -98,6 +100,7 @@ abstract class Topic[F[_], A] { self =>
 object Topic {
 
   def apply[F[_], A](initial: A)(implicit F: Concurrent[F]): F[Topic[F, A]] = {
+
     sealed trait Subscriber {
       def publish(a: A): F[Unit]
       def id: Unique
@@ -106,8 +109,13 @@ object Topic {
       def unSubscribe: F[Unit]
     }
 
+    case class State(init: A, subs: LongMap[InspectableQueue[F, A]], nextId: Long)
 
-    F.ref(initial -> Vector.empty[Subscriber])
+    val initialState = State(initial, LongMap.empty, 1L)
+
+
+
+    F.ref(initialState)
       .product(SignallingRef[F, Int](0))
       .map { case (state, subscriberCount) =>
 
@@ -116,11 +124,17 @@ object Topic {
             q <- InspectableQueue.bounded[F, A](maxQueued)
             firstA <- F.deferred[A]
             id_ <- Unique[F]
+            (a, id__) <- state.modify { case State(a, subs, nextId) =>
+              State(a, subs + (nextId -> q), nextId + 1) -> (a, nextId)
+            }
+            _ <- subscriberCount.update(_ + 1)
+            _ <- firstA.complete(a)
+
             sub = new Subscriber {
               def unSubscribe: F[Unit] =
                 for {
                   _ <- state.update {
-                    case (a, subs) => a -> subs.filterNot(_.id == id)
+                    case State(a, subs, nextId) => State(a, subs - id__, nextId)
                   }
                   _ <- subscriberCount.update(_ - 1)
                 } yield ()
@@ -133,9 +147,6 @@ object Topic {
 
               val id = id_
             }
-            a <- state.modify { case (a, s) => (a, s :+ sub) -> a }
-            _ <- subscriberCount.update(_ + 1)
-            _ <- firstA.complete(a)
           } yield sub
 
         new Topic[F, A] {
@@ -146,9 +157,16 @@ object Topic {
 
           def publish1(a: A): F[Unit] =
             state.modify {
-              case (_, subs) =>
-                (a, subs) -> subs.traverse_(_.publish(a))
+              case State(_, subs, nextId) =>
+                val newState = State(a, subs, nextId)
+                var publishToAll = F.unit
+                subs.foreachValue { q =>
+                  publishToAll = publishToAll >> q.enqueue1(a)
+                }
+
+                newState -> publishToAll
             }.flatten
+             .uncancelable
 
           def subscribe(maxQueued: Int): Stream[F, A] =
             Stream.bracket(mkSubscriber(maxQueued))(_.unSubscribe).flatMap(_.subscribe)
