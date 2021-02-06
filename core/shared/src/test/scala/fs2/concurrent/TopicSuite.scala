@@ -27,19 +27,19 @@ import cats.effect.IO
 import scala.concurrent.duration._
 
 class TopicSuite extends Fs2Suite {
-  test("subscribers see all elements published".only) {
+  test("subscribers see all elements published") {
     Topic[IO, Int].flatMap { topic =>
       val count = 100
       val subs = 10
-
       val expected =
         0
-          .to(subs - 1)
-          .map(idx => idx -> 0.to(count - 1).toVector)
+          .until(subs)
+          .map(_ -> 0.until(count).toVector)
           .toMap
 
       // use subscribeAwait to get rid of this sleep
-      val publisher = Stream.sleep[IO](1.second) ++ Stream
+      val publisher = Stream.sleep_[IO](1.second) ++
+      Stream
         .range(0, count)
         .covary[IO]
         .through(topic.publish)
@@ -52,6 +52,7 @@ class TopicSuite extends Fs2Suite {
         .map(idx => subscriber.map(idx -> _))
         .append(publisher.drain)
         .parJoin(subs + 1)
+        .interruptAfter(5.seconds)
         .compile
         .toVector
         .map { result =>
@@ -71,13 +72,13 @@ class TopicSuite extends Fs2Suite {
         val publisher = Stream.sleep[IO](1.second) ++ Stream
           .range(0, count)
           .covary[IO]
-          .flatMap(i => Stream.eval(signal.set(i)).map(_ => i))
+          .evalTap(i => signal.set(i))
           .through(topic.publish)
         val subscriber = topic
           .subscribe(1)
-          .take(count + 1L)
-          .flatMap(is => Stream.eval(signal.get).map(is -> _))
-          .fold(Vector.empty[(Int, Int)])(_ :+ _)
+          .take(count.toLong)
+          .zip(Stream.repeatEval(signal.get))
+          .foldMap(Vector(_))
 
         Stream
           .range(0, subs)
