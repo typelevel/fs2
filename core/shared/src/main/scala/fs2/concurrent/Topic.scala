@@ -23,30 +23,41 @@ package fs2
 package concurrent
 
 import cats.effect._
-import cats.effect.implicits._
 import cats.syntax.all._
 import cats.effect.std.Queue
 import scala.collection.immutable.LongMap
 
 /**
-  * Topic allows you to distribute `A`s published by an arbitrary number of publishers to an arbitrary number of subscribers.
+  * Topic allows you to distribute `A`s published by an arbitrary
+  * number of publishers to an arbitrary number of subscribers.
   *
-  * Topic has built-in back-pressure support implemented as a maximum bound (`maxQueued`) that a subscriber is allowed to enqueue.
-  * Once that bound is hit, publishing may semantically block until the lagging subscriber consumes some of its queued elements.
+  * Topic has built-in back-pressure support implemented as a maximum
+  * bound (`maxQueued`) that a subscriber is allowed to enqueue.
+  *
+  * Once that bound is hit, publishing may semantically block until
+  * the lagging subscriber consumes some of its queued elements.
   *
   */
 abstract class Topic[F[_], A] { self =>
 
-  /** Publishes elements from source of `A` to this topic and emits a unit for each element published.
+  /** Publishes elements from source of `A` to this topic and emits a
+    * unit for each element published.
     * [[Pipe]] equivalent of `publish1`.
+    *
+    * TODO return `Nothing` for consistency?
     */
   def publish: Pipe[F, A, Unit]
 
   /** Publishes one `A` to topic.
     *
-    * This waits until `a` is published to all subscribers.
-    * If any of the subscribers is over the `maxQueued` limit, this will wait to complete until that subscriber processes
-    * enough of its elements such that `a` is enqueued.
+    * If any of the subscribers is over the `maxQueued` limit, this
+    * will wait to complete until that subscriber processes enough of
+    * its elements such that `a` is enqueued.
+    *
+    * A semantically blocked publish can be interrupted, but there is
+    * no guarantee of atomicity, and it could result in the `A` being
+    * received by some subscribers only.
+    *
     */
   def publish1(a: A): F[Unit]
 
@@ -84,29 +95,27 @@ abstract class Topic[F[_], A] { self =>
 object Topic {
 
   /** Constructs a Topic */
-  def apply[F[_], A](implicit F: Concurrent[F]): F[Topic[F, A]] = {
-    // TODO is LongMap fine here, vs Map[Unique, Queue] ?
-    // whichever way we go, standardise Topic and Signal
-    case class State(subs: LongMap[Queue[F, A]], nextId: Long)
-
-    val initialState = State(LongMap.empty, 1L)
-
-    F.ref(initialState)
+  def apply[F[_], A](implicit F: Concurrent[F]): F[Topic[F, A]] =
+    F.ref(LongMap.empty[Queue[F, A]] -> 1L)
       .product(SignallingRef[F, Int](0))
       .map { case (state, subscriberCount) =>
 
         def mkSubscriber(maxQueued: Int): Resource[F, Stream[F, A]] =
-          Resource.make {
-            Queue.bounded[F, A](maxQueued).flatMap { q =>
-              state.modify { case State(subs, id) =>
-                State(subs + (id -> q), id + 1) -> (id, q)
-              } <* subscriberCount.update(_ + 1)
+          Resource.eval(Queue.bounded[F, A](maxQueued))
+            .flatMap { q =>
+              val subscribe = state.modify { case (subs, id) =>
+                  (subs.updated(id, q), id + 1) -> id
+                } <* subscriberCount.update(_ + 1)
+
+              def unsubscribe(id: Long) =
+                state.update {
+                  case (subs, nextId) => (subs - id, nextId)
+                } >> subscriberCount.update(_ - 1)
+
+              Resource
+                .make(subscribe)(unsubscribe)
+                .as(Stream.fromQueueUnterminated(q))
             }
-          } { case (id, _) =>
-              state.update {
-                case State(subs, nextId) => State(subs - id, nextId)
-              } >> subscriberCount.update(_ - 1)
-          }.map { case (_, q) => Stream.fromQueueUnterminated(q) }
 
         new Topic[F, A] {
           def publish: Pipe[F, A, Unit] =
@@ -115,21 +124,16 @@ object Topic {
           def subscribers: Stream[F, Int] = subscriberCount.discrete
 
           def publish1(a: A): F[Unit] =
-            state.modify {
-              case State(subs, nextId) =>
-                val newState = State(subs, nextId)
-                var publishToAll = F.unit
-                subs.foreachValue { q =>
-                  publishToAll = publishToAll >> q.offer(a)
-                }
-
-                newState -> publishToAll
-            }.flatten
-             .uncancelable
+            state.get.flatMap { case (subs, _) =>
+              subs.foldLeft(F.unit) { case (op, (_, q)) =>
+                op >> q.offer(a)
+              }
+            }
 
           def subscribe(maxQueued: Int): Stream[F, A] =
             Stream.resource(mkSubscriber(maxQueued)).flatten
         }
       }
-  }
+
+
 }
