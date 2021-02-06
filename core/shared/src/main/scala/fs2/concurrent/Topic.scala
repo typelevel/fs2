@@ -24,6 +24,7 @@ package concurrent
 
 import cats.Eq
 import cats.effect.kernel.Concurrent
+import cats.effect.Resource
 import cats.effect.implicits._
 import cats.syntax.all._
 import scala.collection.immutable.LongMap
@@ -104,41 +105,37 @@ object Topic {
     sealed trait Subscriber {
       def subscribe: Stream[F, A]
       def subscribeSize: Stream[F, (A, Int)]
-      def unSubscribe: F[Unit]
     }
 
+    // TODO is LongMap fine here, vs Map[Unique, Queue] ?
+    // whichever way we go, standardise Topic and Signal
     case class State(latestA: A, subs: LongMap[InspectableQueue[F, A]], nextId: Long)
 
     val initialState = State(initial, LongMap.empty, 1L)
-
-
 
     F.ref(initialState)
       .product(SignallingRef[F, Int](0))
       .map { case (state, subscriberCount) =>
 
-        def mkSubscriber(maxQueued: Int): F[Subscriber] =
-          for {
-            q <- InspectableQueue.bounded[F, A](maxQueued)
-            (latestA, id) <- state.modify { case State(latestA, subs, id) =>
-              State(latestA, subs + (id -> q), id + 1) -> (latestA, id)
+        def mkSubscriber(maxQueued: Int): Resource[F, Subscriber] =
+          Resource.make {
+            InspectableQueue.bounded[F, A](maxQueued).flatMap { q =>
+              state.modify { case State(latestA, subs, id) =>
+                State(latestA, subs + (id -> q), id + 1) -> (id, latestA, q)
+              } <* subscriberCount.update(_ + 1)
             }
-            _ <- subscriberCount.update(_ + 1)
+          } { case (id, _, _) =>
+              state.update {
+                case State(a, subs, nextId) => State(a, subs - id, nextId)
+              } >> subscriberCount.update(_ - 1)
+          }.map { case (_, latestA, q) =>
+              new Subscriber {
+                def subscribe: Stream[F, A] = Stream.emit(latestA) ++ q.dequeue
 
-            sub = new Subscriber {
-              def unSubscribe: F[Unit] =
-                for {
-                  _ <- state.update {
-                    case State(a, subs, nextId) => State(a, subs - id, nextId)
-                  }
-                  _ <- subscriberCount.update(_ - 1)
-                } yield ()
-              def subscribe: Stream[F, A] = Stream.emit(latestA) ++ q.dequeue
-
-              def subscribeSize: Stream[F, (A, Int)] =
-                Stream.emit(latestA).map(_ -> 0) ++ q.dequeue.zip(Stream.repeatEval(q.getSize))
-            }
-          } yield sub
+                def subscribeSize: Stream[F, (A, Int)] =
+                  Stream.emit(latestA).map(_ -> 0) ++ q.dequeue.zip(Stream.repeatEval(q.getSize))
+              }
+          }
 
         new Topic[F, A] {
           def publish: Pipe[F, A, Unit] =
@@ -160,10 +157,10 @@ object Topic {
              .uncancelable
 
           def subscribe(maxQueued: Int): Stream[F, A] =
-            Stream.bracket(mkSubscriber(maxQueued))(_.unSubscribe).flatMap(_.subscribe)
+            Stream.resource(mkSubscriber(maxQueued)).flatMap(_.subscribe)
 
           def subscribeSize(maxQueued: Int): Stream[F, (A, Int)] =
-            Stream.bracket(mkSubscriber(maxQueued))(_.unSubscribe).flatMap(_.subscribeSize)
+            Stream.resource(mkSubscriber(maxQueued)).flatMap(_.subscribeSize)
         }
       }
   }
