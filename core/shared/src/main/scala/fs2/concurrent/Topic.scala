@@ -74,11 +74,6 @@ abstract class Topic[F[_], A] { self =>
     */
   def subscribe(maxQueued: Int): Stream[F, A]
 
-  /** Like [[subscribe]] but emits an approximate number of queued elements for this subscription
-    * with each emitted `A` value.
-    */
-  def subscribeSize(maxQueued: Int): Stream[F, (A, Int)]
-
   /** Signal of current active subscribers.
     */
   def subscribers: Stream[F, Int]
@@ -93,8 +88,6 @@ abstract class Topic[F[_], A] { self =>
       def subscribe(maxQueued: Int): Stream[F, B] =
         self.subscribe(maxQueued).map(f)
       def subscribers: Stream[F, Int] = self.subscribers
-      def subscribeSize(maxQueued: Int): Stream[F, (B, Int)] =
-        self.subscribeSize(maxQueued).map { case (a, i) => f(a) -> i }
     }
 }
 
@@ -104,7 +97,6 @@ object Topic {
 
     sealed trait Subscriber {
       def subscribe: Stream[F, A]
-      def subscribeSize: Stream[F, (A, Int)]
     }
 
     // TODO is LongMap fine here, vs Map[Unique, Queue] ?
@@ -131,9 +123,6 @@ object Topic {
           }.map { case (_, latestA, q) =>
               new Subscriber {
                 def subscribe: Stream[F, A] = Stream.emit(latestA) ++ q.dequeue
-
-                def subscribeSize: Stream[F, (A, Int)] =
-                  Stream.emit(latestA).map(_ -> 0) ++ q.dequeue.zip(Stream.repeatEval(q.getSize))
               }
           }
 
@@ -158,9 +147,6 @@ object Topic {
 
           def subscribe(maxQueued: Int): Stream[F, A] =
             Stream.resource(mkSubscriber(maxQueued)).flatMap(_.subscribe)
-
-          def subscribeSize(maxQueued: Int): Stream[F, (A, Int)] =
-            Stream.resource(mkSubscriber(maxQueued)).flatMap(_.subscribeSize)
         }
       }
   }
