@@ -38,8 +38,6 @@ import fs2.internal.{SizedQueue, Unique}
   * Topic has built-in back-pressure support implemented as maximum bound (`maxQueued`) that a subscriber is allowed to enqueue.
   * Once that bound is hit, publishing may semantically block until the lagging subscriber consumes some of its queued elements.
   *
-  * Additionally the subscriber has possibility to terminate whenever size of enqueued elements is over certain size
-  * by using `subscribeSize`.
   */
 abstract class Topic[F[_], A] { self =>
 
@@ -60,10 +58,6 @@ abstract class Topic[F[_], A] { self =>
     *
     * Pulling on the returned stream opens a "subscription", which allows up to
     * `maxQueued` elements to be enqueued as a result of publication.
-    *
-    * The first element in the stream is always the last published `A` at the time
-    * the stream is first pulled from, followed by each published `A` value from that
-    * point forward.
     *
     * If at any point, the queue backing the subscription has `maxQueued` elements in it,
     * any further publications semantically block until elements are dequeued from the
