@@ -1,12 +1,78 @@
 # Concurrency Primitives
 
-In the [`fs2.concurrent` package](https://github.com/functional-streams-for-scala/fs2/blob/series/1.0/core/shared/src/main/scala/fs2/concurrent/) you'll find a bunch of useful concurrency primitives built on the concurrency primitives defined in `cats.effect.concurrent`:
+In the [`fs2.concurrent` package](https://github.com/functional-streams-for-scala/fs2/blob/series/1.0/core/shared/src/main/scala/fs2/concurrent/) you'll find a bunch of useful concurrency primitives built on the concurrency primitives defined in `cats-effect`. For example:
 
-- `Queue[F, A]`
 - `Topic[F, A]`
 - `Signal[F, A]`
 
-These data structures could be very handy in a few cases. See below examples of each of them originally taken from [gvolpe examples](https://github.com/gvolpe/advanced-http4s/tree/master/src/main/scala/com/github/gvolpe/fs2):
+In addition, `Stream` provides functions to interact with cats-effect's `Queue`. 
+
+## Simple Examples
+
+### Topic
+
+(based on [Pera Villega](https://perevillega.com/)'s example [here](https://underscore.io/blog/posts/2018/03/20/fs2.html))
+
+Topic implements the publish-subscribe pattern. In the following example, `publisher` and `subscriber` are started concurrently with the publisher continuously publishing the string `"1"` to the topic and the subscriber consuming it until it received four elements, including the initial element, the string `"Topic start"`.
+
+```scala mdoc:silent
+import cats.effect._
+import cats.effect.unsafe.implicits.global
+import fs2.Stream
+import fs2.concurrent.Topic
+
+Topic[IO, String]("Topic start").flatMap { topic =>
+  val publisher = Stream.constant("1").covary[IO].through(topic.publish)
+  val subscriber = topic.subscribe(10).take(4)
+  subscriber.concurrently(publisher).compile.toVector
+}.unsafeRunSync()
+```
+
+### Signal
+
+`Signal` can be used as a means of communication between two different streams. In the following example `s1` is a stream that emits the current time every second and is interrupted when the signal has value of `true`. `s2` is a stream that sleeps for four seconds before assigning `true` to the signal. This leads to `s1` being interrupted.
+
+(Note that `SignallingRef` extends `Signal`)
+
+```scala mdoc:silent
+import cats.effect._
+import cats.effect.unsafe.implicits.global
+import fs2.Stream
+import fs2.concurrent.SignallingRef
+
+import scala.concurrent.duration._
+
+SignallingRef[IO, Boolean](false).flatMap { signal =>
+  val s1 = Stream.awakeEvery[IO](1.second).interruptWhen(signal)
+  val s2 = Stream.sleep[IO](4.seconds) >> Stream.eval(signal.set(true))
+  s1.concurrently(s2).compile.toVector
+}.unsafeRunSync()
+```
+
+### Queue
+
+In the following example `Stream.fromQueueNoneTerminated` is used to create a stream from a `cats.effect.std.Queue`. This snippet returns `List(1,2,3)`: the stream will emit the first three values that the queue returns (`Some(1), Some(2), Some(3)`) and be interrupted afterwards, when the queue returns `None`.
+
+```scala mdoc:silent
+import cats.effect.IO
+import cats.effect.std.Queue
+import cats.effect.unsafe.implicits.global
+import cats.syntax.all._
+import fs2.Stream
+
+val program = for {
+  queue <- Queue.unbounded[IO, Option[Int]]
+  streamFromQueue = Stream.fromQueueNoneTerminated(queue) // Stream is terminated when None is returned from queue
+  _ <- Seq(Some(1), Some(2), Some(3), None).map(queue.offer).sequence
+  result <- streamFromQueue.compile.toList
+} yield result
+
+program.unsafeRunSync()
+```
+
+## Advanced Examples
+
+These data structures could be very handy in more complex cases. See below examples of each of them originally taken from [gvolpe examples](https://github.com/gvolpe/advanced-http4s/tree/master/src/main/scala/com/github/gvolpe/fs2):
 
 ### FIFO (First IN / First OUT)
 
