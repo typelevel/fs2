@@ -23,7 +23,7 @@ package fs2
 package concurrent
 
 import cats.syntax.all._
-import cats.effect.IO
+import cats.effect.{IO, Resource}
 import scala.concurrent.duration._
 
 class TopicSuite extends Fs2Suite {
@@ -37,23 +37,32 @@ class TopicSuite extends Fs2Suite {
           .map(_ -> 0.until(count).toVector)
           .toMap
 
-      // use subscribeAwait to get rid of this sleep
-      val publisher = Stream.sleep_[IO](1.second) ++
-      Stream
-        .range(0, count)
-        .covary[IO]
-        .through(topic.publish)
 
-      val subscriber =
-        topic.subscribe(Int.MaxValue).take(count.toLong).foldMap(Vector(_))
+      val publisher =
+        Stream
+          .range(0, count)
+          .covary[IO]
+          .through(topic.publish)
 
-      Stream
-        .range(0, subs)
-        .map(idx => subscriber.map(idx -> _))
-        .append(publisher.drain)
-        .parJoin(subs + 1)
-        .interruptAfter(5.seconds)
-        .compile
+      // Makes sure all subs are registered before consuming
+      val subscriptions =
+        Stream
+          .range(0, subs)
+          .covary[IO]
+          .foldMap { i =>
+            Stream
+              .resource(topic.subscribeAwait(Int.MaxValue))
+              .tupleLeft(i)
+          }
+
+      def consume(i: Int, sub: Stream[IO, Int]) =
+        sub.take(count.toLong).foldMap(Vector(_)).tupleLeft(i)
+
+      subscriptions.flatMap {
+        _.map { case (id, sub) => consume(id, sub) }
+          .append(publisher.drain)
+          .parJoin(subs + 1)
+      }.compile
         .toVector
         .map { result =>
           assertEquals(result.toMap.size, subs)
