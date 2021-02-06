@@ -75,6 +75,13 @@ abstract class Topic[F[_], A] { self =>
     */
   def subscribe(maxQueued: Int): Stream[F, A]
 
+  /**
+    * Like `subscribe`, but represents the subscription explicitly as
+    * a `Resource` which returns after the subscriber is subscribed,
+    * but before it has started pulling elements.
+    */
+  def subscribeAwait(maxQueued: Int): Resource[F, Stream[F, A]]
+
   /** Signal of current active subscribers.
     */
   def subscribers: Stream[F, Int]
@@ -88,6 +95,8 @@ abstract class Topic[F[_], A] { self =>
       def publish1(b: B): F[Unit] = self.publish1(g(b))
       def subscribe(maxQueued: Int): Stream[F, B] =
         self.subscribe(maxQueued).map(f)
+      def subscribeAwait(maxQueued: Int): Resource[F, Stream[F, B]] =
+        self.subscribeAwait(maxQueued).map(_.map(f))
       def subscribers: Stream[F, Int] = self.subscribers
     }
 }
@@ -99,30 +108,7 @@ object Topic {
     F.ref(LongMap.empty[Queue[F, A]] -> 1L)
       .product(SignallingRef[F, Int](0))
       .map { case (state, subscriberCount) =>
-
-        def mkSubscriber(maxQueued: Int): Resource[F, Stream[F, A]] =
-          Resource.eval(Queue.bounded[F, A](maxQueued))
-            .flatMap { q =>
-              val subscribe = state.modify { case (subs, id) =>
-                  (subs.updated(id, q), id + 1) -> id
-                } <* subscriberCount.update(_ + 1)
-
-              def unsubscribe(id: Long) =
-                state.update {
-                  case (subs, nextId) => (subs - id, nextId)
-                } >> subscriberCount.update(_ - 1)
-
-              Resource
-                .make(subscribe)(unsubscribe)
-                .as(Stream.fromQueueUnterminated(q))
-            }
-
         new Topic[F, A] {
-          def publish: Pipe[F, A, Unit] =
-            _.flatMap(a => Stream.eval(publish1(a)))
-
-          def subscribers: Stream[F, Int] = subscriberCount.discrete
-
           def publish1(a: A): F[Unit] =
             state.get.flatMap { case (subs, _) =>
               subs.foldLeft(F.unit) { case (op, (_, q)) =>
@@ -130,10 +116,30 @@ object Topic {
               }
             }
 
+          def subscribeAwait(maxQueued: Int): Resource[F, Stream[F, A]] =
+            Resource.eval(Queue.bounded[F, A](maxQueued))
+              .flatMap { q =>
+                val subscribe = state.modify { case (subs, id) =>
+                  (subs.updated(id, q), id + 1) -> id
+                } <* subscriberCount.update(_ + 1)
+
+                def unsubscribe(id: Long) =
+                  state.update {
+                    case (subs, nextId) => (subs - id, nextId)
+                  } >> subscriberCount.update(_ - 1)
+
+                Resource
+                  .make(subscribe)(unsubscribe)
+                  .as(Stream.fromQueueUnterminated(q))
+              }
+
+          def publish: Pipe[F, A, Unit] =
+            _.flatMap(a => Stream.eval(publish1(a)))
+
           def subscribe(maxQueued: Int): Stream[F, A] =
-            Stream.resource(mkSubscriber(maxQueued)).flatten
+            Stream.resource(subscribeAwait(maxQueued)).flatten
+
+          def subscribers: Stream[F, Int] = subscriberCount.discrete
         }
       }
-
-
 }
