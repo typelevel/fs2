@@ -25,6 +25,7 @@ package concurrent
 import cats.effect._
 import cats.syntax.all._
 import cats.effect.std.Queue
+import fs2.concurrent.{Queue => _}
 import scala.collection.immutable.LongMap
 
 /** Topic allows you to distribute `A`s published by an arbitrary
