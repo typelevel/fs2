@@ -24,8 +24,7 @@ package concurrent
 
 import cats.effect._
 import cats.syntax.all._
-import cats.effect.std.Queue
-import fs2.concurrent.{Queue => _}
+import cats.effect.std.{Queue => Q}
 import scala.collection.immutable.LongMap
 
 /** Topic allows you to distribute `A`s published by an arbitrary
@@ -102,7 +101,7 @@ object Topic {
 
   /** Constructs a Topic */
   def apply[F[_], A](implicit F: Concurrent[F]): F[Topic[F, A]] =
-    F.ref(LongMap.empty[Queue[F, A]] -> 1L)
+    F.ref(LongMap.empty[Q[F, A]] -> 1L)
       .product(SignallingRef[F, Int](0))
       .map { case (state, subscriberCount) =>
         new Topic[F, A] {
@@ -115,7 +114,7 @@ object Topic {
 
           def subscribeAwait(maxQueued: Int): Resource[F, Stream[F, A]] =
             Resource
-              .eval(Queue.bounded[F, A](maxQueued))
+              .eval(Q.bounded[F, A](maxQueued))
               .flatMap { q =>
                 val subscribe = state.modify { case (subs, id) =>
                   (subs.updated(id, q), id + 1) -> id
