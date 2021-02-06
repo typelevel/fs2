@@ -107,54 +107,54 @@ object Topic {
     }
 
 
-      F.ref(initial -> Vector.empty[Subscriber])
-      .flatMap { state =>
-        SignallingRef[F, Int](0).map { subSignal =>
-          def mkSubscriber(maxQueued: Int): F[Subscriber] =
-            for {
-              q <- InspectableQueue.bounded[F, A](maxQueued)
-              firstA <- F.deferred[A]
-              id_ <- Unique[F]
-              sub = new Subscriber {
-                def unSubscribe: F[Unit] =
-                  for {
-                    _ <- state.update {
-                      case (a, subs) => a -> subs.filterNot(_.id == id)
-                    }
-                    _ <- subSignal.update(_ - 1)
-                  } yield ()
-                def subscribe: Stream[F, A] = Stream.eval(firstA.get) ++ q.dequeue
-                def publish(a: A): F[Unit] =
-                  q.enqueue1(a)
+    F.ref(initial -> Vector.empty[Subscriber])
+      .product(SignallingRef[F, Int](0))
+      .map { case (state, subscriberCount) =>
 
-                def subscribeSize: Stream[F, (A, Int)] =
-                  Stream.eval(firstA.get).map(_ -> 0) ++ q.dequeue.zip(Stream.repeatEval(q.getSize))
+        def mkSubscriber(maxQueued: Int): F[Subscriber] =
+          for {
+            q <- InspectableQueue.bounded[F, A](maxQueued)
+            firstA <- F.deferred[A]
+            id_ <- Unique[F]
+            sub = new Subscriber {
+              def unSubscribe: F[Unit] =
+                for {
+                  _ <- state.update {
+                    case (a, subs) => a -> subs.filterNot(_.id == id)
+                  }
+                  _ <- subscriberCount.update(_ - 1)
+                } yield ()
+              def subscribe: Stream[F, A] = Stream.eval(firstA.get) ++ q.dequeue
+              def publish(a: A): F[Unit] =
+                q.enqueue1(a)
 
-                val id = id_
-              }
-              a <- state.modify { case (a, s) => (a, s :+ sub) -> a }
-              _ <- subSignal.update(_ + 1)
-              _ <- firstA.complete(a)
-            } yield sub
+              def subscribeSize: Stream[F, (A, Int)] =
+                Stream.eval(firstA.get).map(_ -> 0) ++ q.dequeue.zip(Stream.repeatEval(q.getSize))
 
-          new Topic[F, A] {
-            def publish: Pipe[F, A, Unit] =
-              _.flatMap(a => Stream.eval(publish1(a)))
+              val id = id_
+            }
+            a <- state.modify { case (a, s) => (a, s :+ sub) -> a }
+            _ <- subscriberCount.update(_ + 1)
+            _ <- firstA.complete(a)
+          } yield sub
 
-            def subscribers: Stream[F, Int] = subSignal.discrete
+        new Topic[F, A] {
+          def publish: Pipe[F, A, Unit] =
+            _.flatMap(a => Stream.eval(publish1(a)))
 
-            def publish1(a: A): F[Unit] =
-              state.modify {
-                case (_, subs) =>
-                  (a, subs) -> subs.traverse_(_.publish(a))
-              }.flatten
+          def subscribers: Stream[F, Int] = subscriberCount.discrete
 
-            def subscribe(maxQueued: Int): Stream[F, A] =
-              Stream.bracket(mkSubscriber(maxQueued))(_.unSubscribe).flatMap(_.subscribe)
+          def publish1(a: A): F[Unit] =
+            state.modify {
+              case (_, subs) =>
+                (a, subs) -> subs.traverse_(_.publish(a))
+            }.flatten
 
-            def subscribeSize(maxQueued: Int): Stream[F, (A, Int)] =
-              Stream.bracket(mkSubscriber(maxQueued))(_.unSubscribe).flatMap(_.subscribeSize)
-          }
+          def subscribe(maxQueued: Int): Stream[F, A] =
+            Stream.bracket(mkSubscriber(maxQueued))(_.unSubscribe).flatMap(_.subscribe)
+
+          def subscribeSize(maxQueued: Int): Stream[F, (A, Int)] =
+            Stream.bracket(mkSubscriber(maxQueued))(_.unSubscribe).flatMap(_.subscribeSize)
         }
       }
   }
