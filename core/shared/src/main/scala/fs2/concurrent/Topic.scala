@@ -114,7 +114,6 @@ object Topic {
             for {
               q <- InspectableQueue.bounded[F, A](maxQueued)
               firstA <- F.deferred[A]
-              done <- F.deferred[Boolean]
               id_ <- Unique[F]
               sub = new Subscriber {
                 def unSubscribe: F[Unit] =
@@ -123,24 +122,10 @@ object Topic {
                       case (a, subs) => a -> subs.filterNot(_.id == id)
                     }
                     _ <- subSignal.update(_ - 1)
-                    _ <- done.complete(true)
                   } yield ()
                 def subscribe: Stream[F, A] = Stream.eval(firstA.get) ++ q.dequeue
                 def publish(a: A): F[Unit] =
-                  q.offer1(a).flatMap { offered =>
-                    if (offered) F.unit
-                    else {
-                      Stream.eval(done.get)
-                        .interruptWhen(q.size.map(_ < maxQueued))
-                        .last
-                        .flatMap {
-                          case None    => Stream.eval(publish(a))
-                          case Some(_) => Stream.empty
-                        }
-                        .compile
-                        .drain
-                    }
-                  }
+                  q.enqueue1(a)
 
                 def subscribeSize: Stream[F, (A, Int)] =
                   Stream.eval(firstA.get).map(_ -> 0) ++ q.dequeue.zip(Stream.repeatEval(q.getSize))
