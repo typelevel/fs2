@@ -102,14 +102,12 @@ object Topic {
   def apply[F[_], A](initial: A)(implicit F: Concurrent[F]): F[Topic[F, A]] = {
 
     sealed trait Subscriber {
-      def publish(a: A): F[Unit]
-      def id: Unique
       def subscribe: Stream[F, A]
       def subscribeSize: Stream[F, (A, Int)]
       def unSubscribe: F[Unit]
     }
 
-    case class State(init: A, subs: LongMap[InspectableQueue[F, A]], nextId: Long)
+    case class State(latestA: A, subs: LongMap[InspectableQueue[F, A]], nextId: Long)
 
     val initialState = State(initial, LongMap.empty, 1L)
 
@@ -122,30 +120,23 @@ object Topic {
         def mkSubscriber(maxQueued: Int): F[Subscriber] =
           for {
             q <- InspectableQueue.bounded[F, A](maxQueued)
-            firstA <- F.deferred[A]
-            id_ <- Unique[F]
-            (a, id__) <- state.modify { case State(a, subs, nextId) =>
-              State(a, subs + (nextId -> q), nextId + 1) -> (a, nextId)
+            (latestA, id) <- state.modify { case State(latestA, subs, id) =>
+              State(latestA, subs + (id -> q), id + 1) -> (latestA, id)
             }
             _ <- subscriberCount.update(_ + 1)
-            _ <- firstA.complete(a)
 
             sub = new Subscriber {
               def unSubscribe: F[Unit] =
                 for {
                   _ <- state.update {
-                    case State(a, subs, nextId) => State(a, subs - id__, nextId)
+                    case State(a, subs, nextId) => State(a, subs - id, nextId)
                   }
                   _ <- subscriberCount.update(_ - 1)
                 } yield ()
-              def subscribe: Stream[F, A] = Stream.eval(firstA.get) ++ q.dequeue
-              def publish(a: A): F[Unit] =
-                q.enqueue1(a)
+              def subscribe: Stream[F, A] = Stream.emit(latestA) ++ q.dequeue
 
               def subscribeSize: Stream[F, (A, Int)] =
-                Stream.eval(firstA.get).map(_ -> 0) ++ q.dequeue.zip(Stream.repeatEval(q.getSize))
-
-              val id = id_
+                Stream.emit(latestA).map(_ -> 0) ++ q.dequeue.zip(Stream.repeatEval(q.getSize))
             }
           } yield sub
 
