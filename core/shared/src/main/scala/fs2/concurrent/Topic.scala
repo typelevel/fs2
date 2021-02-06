@@ -22,20 +22,16 @@
 package fs2
 package concurrent
 
-import cats.Eq
-import cats.effect.kernel.Concurrent
-import cats.effect.Resource
+import cats.effect._
 import cats.effect.implicits._
 import cats.syntax.all._
+import cats.effect.std.Queue
 import scala.collection.immutable.LongMap
 
-import fs2.internal.{SizedQueue, Unique}
-
-/** Asynchronous Topic.
+/**
+  * Topic allows you to distribute `A`s published by an arbitrary number of publishers to an arbitrary number of subscribers.
   *
-  * Topic allows you to distribute `A` published by arbitrary number of publishers to arbitrary number of subscribers.
-  *
-  * Topic has built-in back-pressure support implemented as maximum bound (`maxQueued`) that a subscriber is allowed to enqueue.
+  * Topic has built-in back-pressure support implemented as a maximum bound (`maxQueued`) that a subscriber is allowed to enqueue.
   * Once that bound is hit, publishing may semantically block until the lagging subscriber consumes some of its queued elements.
   *
   */
@@ -91,7 +87,7 @@ object Topic {
   def apply[F[_], A](implicit F: Concurrent[F]): F[Topic[F, A]] = {
     // TODO is LongMap fine here, vs Map[Unique, Queue] ?
     // whichever way we go, standardise Topic and Signal
-    case class State(subs: LongMap[InspectableQueue[F, A]], nextId: Long)
+    case class State(subs: LongMap[Queue[F, A]], nextId: Long)
 
     val initialState = State(LongMap.empty, 1L)
 
@@ -101,7 +97,7 @@ object Topic {
 
         def mkSubscriber(maxQueued: Int): Resource[F, Stream[F, A]] =
           Resource.make {
-            InspectableQueue.bounded[F, A](maxQueued).flatMap { q =>
+            Queue.bounded[F, A](maxQueued).flatMap { q =>
               state.modify { case State(subs, id) =>
                 State(subs + (id -> q), id + 1) -> (id, q)
               } <* subscriberCount.update(_ + 1)
@@ -110,7 +106,7 @@ object Topic {
               state.update {
                 case State(subs, nextId) => State(subs - id, nextId)
               } >> subscriberCount.update(_ - 1)
-          }.map { case (_, q) => q.dequeue }
+          }.map { case (_, q) => Stream.fromQueueUnterminated(q) }
 
         new Topic[F, A] {
           def publish: Pipe[F, A, Unit] =
@@ -124,7 +120,7 @@ object Topic {
                 val newState = State(subs, nextId)
                 var publishToAll = F.unit
                 subs.foreachValue { q =>
-                  publishToAll = publishToAll >> q.enqueue1(a)
+                  publishToAll = publishToAll >> q.offer(a)
                 }
 
                 newState -> publishToAll
