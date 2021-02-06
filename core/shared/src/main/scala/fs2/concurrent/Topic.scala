@@ -98,12 +98,9 @@ abstract class Topic[F[_], A] { self =>
 object Topic {
 
   def newApply[F[_], A](initial: A)(implicit F: Concurrent[F]): F[Topic[F, A]] = {
-    // Id identifying each subscriber uniquely
-    class ID
-
     sealed trait Subscriber {
       def publish(a: A): F[Unit]
-      def id: ID
+      def id: Unique
       def subscribe: Stream[F, A]
       def subscribeSize: Stream[F, (A, Int)]
       def unSubscribe: F[Unit]
@@ -118,6 +115,7 @@ object Topic {
               q <- InspectableQueue.bounded[F, A](maxQueued)
               firstA <- F.deferred[A]
               done <- F.deferred[Boolean]
+              id_ <- Unique[F]
               sub = new Subscriber {
                 def unSubscribe: F[Unit] =
                   for {
@@ -146,7 +144,8 @@ object Topic {
 
                 def subscribeSize: Stream[F, (A, Int)] =
                   Stream.eval(firstA.get).map(_ -> 0) ++ q.dequeue.zip(Stream.repeatEval(q.getSize))
-                val id: ID = new ID
+
+                val id = id_
               }
               a <- state.modify { case (a, s) => (a, s :+ sub) -> a }
               _ <- subSignal.update(_ + 1)
