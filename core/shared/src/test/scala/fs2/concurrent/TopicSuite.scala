@@ -23,7 +23,7 @@ package fs2
 package concurrent
 
 import cats.syntax.all._
-import cats.effect.{IO, Resource}
+import cats.effect.IO
 import scala.concurrent.duration._
 
 class TopicSuite extends Fs2Suite {
@@ -43,7 +43,7 @@ class TopicSuite extends Fs2Suite {
           .covary[IO]
           .through(topic.publish)
 
-      // Makes sure all subs are registered before consuming
+      // Ensures all subs are registered before consuming
       val subscriptions =
         Stream
           .range(0, subs)
