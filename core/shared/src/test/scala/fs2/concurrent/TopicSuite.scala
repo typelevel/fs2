@@ -27,18 +27,25 @@ import cats.effect.IO
 import scala.concurrent.duration._
 
 class TopicSuite extends Fs2Suite {
-  test("subscribers see all elements published") {
-    Topic[IO, Int](-1).flatMap { topic =>
+  test("subscribers see all elements published".only) {
+    Topic[IO, Int].flatMap { topic =>
       val count = 100
       val subs = 10
+
+      val expected =
+        0
+          .to(subs - 1)
+          .map(idx => idx -> 0.to(count - 1).toVector)
+          .toMap
+
+      // use subscribeAwait to get rid of this sleep
       val publisher = Stream.sleep[IO](1.second) ++ Stream
         .range(0, count)
         .covary[IO]
         .through(topic.publish)
+
       val subscriber =
-        topic.subscribe(Int.MaxValue).take(count + 1.toLong).fold(Vector.empty[Int]) {
-          _ :+ _
-        }
+        topic.subscribe(Int.MaxValue).take(count.toLong).foldMap(Vector(_))
 
       Stream
         .range(0, subs)
@@ -48,9 +55,6 @@ class TopicSuite extends Fs2Suite {
         .compile
         .toVector
         .map { result =>
-          val expected = (for { i <- 0 until subs } yield i).map { idx =>
-            idx -> (for { i <- -1 until count } yield i).toVector
-          }.toMap
           assertEquals(result.toMap.size, subs)
           assertEquals(result.toMap, expected)
         }
@@ -59,7 +63,7 @@ class TopicSuite extends Fs2Suite {
 
   test("synchronous publish".flaky) {
     // TODO I think there's a race condition on the signal in this test
-    Topic[IO, Int](-1).flatMap { topic =>
+    Topic[IO, Int].flatMap { topic =>
       SignallingRef[IO, Int](0).flatMap { signal =>
         val count = 100
         val subs = 10
@@ -100,7 +104,7 @@ class TopicSuite extends Fs2Suite {
   test("discrete-size-signal-is-discrete") {
     def p =
       Stream
-        .eval(Topic[IO, Int](0))
+        .eval(Topic[IO, Int])
         .flatMap { topic =>
           def subscribers = topic.subscribers
           def subscribe =
@@ -117,7 +121,7 @@ class TopicSuite extends Fs2Suite {
   }
 
   test("unregister subscribers under concurrent load".ignore) {
-    Topic[IO, Int](0)
+    Topic[IO, Int]
       .flatMap { topic =>
         Stream
           .range(0, 500)

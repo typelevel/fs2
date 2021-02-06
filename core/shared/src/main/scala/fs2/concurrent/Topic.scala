@@ -87,7 +87,7 @@ abstract class Topic[F[_], A] { self =>
 
 object Topic {
 
-  def apply[F[_], A](initial: A)(implicit F: Concurrent[F]): F[Topic[F, A]] = {
+  def apply[F[_], A](implicit F: Concurrent[F]): F[Topic[F, A]] = {
 
     sealed trait Subscriber {
       def subscribe: Stream[F, A]
@@ -95,9 +95,9 @@ object Topic {
 
     // TODO is LongMap fine here, vs Map[Unique, Queue] ?
     // whichever way we go, standardise Topic and Signal
-    case class State(latestA: A, subs: LongMap[InspectableQueue[F, A]], nextId: Long)
+    case class State(subs: LongMap[InspectableQueue[F, A]], nextId: Long)
 
-    val initialState = State(initial, LongMap.empty, 1L)
+    val initialState = State(LongMap.empty, 1L)
 
     F.ref(initialState)
       .product(SignallingRef[F, Int](0))
@@ -106,17 +106,17 @@ object Topic {
         def mkSubscriber(maxQueued: Int): Resource[F, Subscriber] =
           Resource.make {
             InspectableQueue.bounded[F, A](maxQueued).flatMap { q =>
-              state.modify { case State(latestA, subs, id) =>
-                State(latestA, subs + (id -> q), id + 1) -> (id, latestA, q)
+              state.modify { case State(subs, id) =>
+                State(subs + (id -> q), id + 1) -> (id, q)
               } <* subscriberCount.update(_ + 1)
             }
-          } { case (id, _, _) =>
+          } { case (id, _) =>
               state.update {
-                case State(a, subs, nextId) => State(a, subs - id, nextId)
+                case State(subs, nextId) => State(subs - id, nextId)
               } >> subscriberCount.update(_ - 1)
-          }.map { case (_, latestA, q) =>
+          }.map { case (latestA, q) =>
               new Subscriber {
-                def subscribe: Stream[F, A] = Stream.emit(latestA) ++ q.dequeue
+                def subscribe: Stream[F, A] = q.dequeue
               }
           }
 
@@ -128,8 +128,8 @@ object Topic {
 
           def publish1(a: A): F[Unit] =
             state.modify {
-              case State(_, subs, nextId) =>
-                val newState = State(a, subs, nextId)
+              case State(subs, nextId) =>
+                val newState = State(subs, nextId)
                 var publishToAll = F.unit
                 subs.foreachValue { q =>
                   publishToAll = publishToAll >> q.enqueue1(a)
