@@ -13,7 +13,7 @@ In addition, `Stream` provides functions to interact with cats-effect's `Queue`.
 
 (based on [Pera Villega](https://perevillega.com/)'s example [here](https://underscore.io/blog/posts/2018/03/20/fs2.html))
 
-Topic implements the publish-subscribe pattern. In the following example, `publisher` and `subscriber` are started concurrently with the publisher continuously publishing the string `"1"` to the topic and the subscriber consuming it until it received four elements, including the initial element, the string `"Topic start"`.
+Topic implements the publish-subscribe pattern. In the following example, `publisher` and `subscriber` are started concurrently with the publisher continuously publishing the string `"1"` to the topic and the subscriber consuming it until it has received four elements.
 
 ```scala
 import cats.effect._
@@ -21,7 +21,7 @@ import cats.effect.unsafe.implicits.global
 import fs2.Stream
 import fs2.concurrent.Topic
 
-Topic[IO, String]("Topic start").flatMap { topic =>
+Topic[IO, String].flatMap { topic =>
   val publisher = Stream.constant("1").covary[IO].through(topic.publish)
   val subscriber = topic.subscribe(10).take(4)
   subscriber.concurrently(publisher).compile.toVector
@@ -119,7 +119,7 @@ Having a Kafka like system built on top of concurrency primitives is possible by
 The program ends after 15 seconds when the signal interrupts the publishing of more events given that the final streaming merge halts on the end of its left stream (the publisher).
 
 ```
-- Subscriber #1 should receive 15 events + the initial empty event
+- Subscriber #1 should receive 15 events
 - Subscriber #2 should receive 10 events
 - Subscriber #3 should receive 5 events
 - Publisher sends Quit event
@@ -129,10 +129,9 @@ The program ends after 15 seconds when the signal interrupts the publishing of m
 ```scala
 import scala.concurrent.duration._
 import scala.language.higherKinds
-import java.util.concurrent.TimeUnit
 import cats.effect.{Concurrent, IO, IOApp}
 import cats.syntax.all._
-import fs2.{Pipe, Stream}
+import fs2.{Pipe, Stream, INothing}
 import fs2.concurrent.{SignallingRef, Topic}
 
 sealed trait Event
@@ -140,14 +139,14 @@ case class Text(value: String) extends Event
 case object Quit extends Event
 
 class EventService[F[_]](eventsTopic: Topic[F, Event], interrupter: SignallingRef[F, Boolean])(
-  implicit F: Concurrent[F]
+  implicit F: Temporal[F], console: Console[F]
 ) {
 
   // Publishing 15 text events, then single Quit event, and still publishing text events
   def startPublisher: Stream[F, Unit] = {
     val textEvents = eventsTopic.publish(
       Stream.awakeEvery[F](1.second)
-        .zipRight(Stream.eval(timer.clock.realTime(TimeUnit.MILLISECONDS).map(t => Text(t.toString))).repeat)
+        .zipRight(Stream.repeatEval(Clock[F].realTime.map(t => Text(t.toString))))
     )
 
     val quitEvent = Stream.eval(eventsTopic.publish1(Quit))
@@ -160,7 +159,7 @@ class EventService[F[_]](eventsTopic: Topic[F, Event], interrupter: SignallingRe
     def processEvent(subscriberNumber: Int): Pipe[F, Event, INothing] =
       _.foreach {
         case e @ Text(_) =>
-           F.delay(println(s"Subscriber #$subscriberNumber processing event: $e"))
+           console.println(s"Subscriber #$subscriberNumber processing event: $e")
        case Quit => interrupter.set(true)
      }
 
@@ -178,7 +177,7 @@ class EventService[F[_]](eventsTopic: Topic[F, Event], interrupter: SignallingRe
 object PubSub extends IOApp.Simple {
 
   val program = for {
-    topic <- Stream.eval(Topic[IO, Event](Text("Initial Event")))
+    topic <- Stream.eval(Topic[IO, Event])
     signal <- Stream.eval(SignallingRef[IO, Boolean](false))
     service = new EventService[IO](topic, signal)
     _ <- service.startPublisher.concurrently(service.startSubscribers)
