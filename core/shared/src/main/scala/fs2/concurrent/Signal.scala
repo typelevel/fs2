@@ -123,6 +123,7 @@ object SignallingRef {
 
           def continuous: Stream[F, A] = Stream.repeatEval(get)
 
+          // TODO is there any change to use LongMap here as well?
           def discrete: Stream[F, A] = {
             def go(id: Unique, lastSeen: Long): Stream[F, A] = {
               def getNext: F[(A, Long)] =
