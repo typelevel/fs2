@@ -30,11 +30,12 @@ import scala.collection.immutable.LongMap
 /** Topic allows you to distribute `A`s published by an arbitrary
   * number of publishers to an arbitrary number of subscribers.
   *
-  * Topic has built-in back-pressure support implemented as a maximum
-  * bound (`maxQueued`) that a subscriber is allowed to enqueue.
+  * Topic has built-in back-pressure support implemented as the maximum
+  * number of elements (`maxQueued`) that a subscriber is allowed to enqueue.
   *
-  * Once that bound is hit, publishing may semantically block until
-  * the lagging subscriber consumes some of its queued elements.
+  * Once that bound is hit, any publishing action will semantically
+  * block until the lagging subscriber consumes some of its queued
+  * elements.
   */
 abstract class Topic[F[_], A] { self =>
 
@@ -48,13 +49,18 @@ abstract class Topic[F[_], A] { self =>
 
   /** Publishes one `A` to topic.
     *
-    * If any of the subscribers is over the `maxQueued` limit, this
-    * will wait to complete until that subscriber processes enough of
-    * its elements such that `a` is enqueued.
+    * This operation does not complete until after the given element
+    * has been enqued on all subscribers, which means that if any
+    * subscriber is at its `maxQueued` limit, `publish1` will
+    * semantically block until that subscriber consumes an element.
     *
-    * A semantically blocked publish can be interrupted, but there is
+    * A semantically blocked publication can be interrupted, but there is
     * no guarantee of atomicity, and it could result in the `A` being
     * received by some subscribers only.
+    *
+    * Note: if `publish1` is called concurrently by multiple producers,
+    * different subscribers may receive messages from different producers
+    * in a different order.
     */
   def publish1(a: A): F[Unit]
 
