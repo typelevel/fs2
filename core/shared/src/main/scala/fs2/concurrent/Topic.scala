@@ -39,13 +39,10 @@ import scala.collection.immutable.LongMap
   */
 abstract class Topic[F[_], A] { self =>
 
-  /** Publishes elements from source of `A` to this topic and emits a
-    * unit for each element published.
+  /** Publishes elements from source of `A` to this topic.
     * [[Pipe]] equivalent of `publish1`.
-    *
-    * TODO return `Nothing` for consistency?
     */
-  def publish: Pipe[F, A, Unit]
+  def publish: Pipe[F, A, Nothing]
 
   /** Publishes one `A` to topic.
     *
@@ -93,7 +90,7 @@ abstract class Topic[F[_], A] { self =>
     */
   def imap[B](f: A => B)(g: B => A): Topic[F, B] =
     new Topic[F, B] {
-      def publish: Pipe[F, B, Unit] = sfb => self.publish(sfb.map(g))
+      def publish: Pipe[F, B, Nothing] = sfb => self.publish(sfb.map(g))
       def publish1(b: B): F[Unit] = self.publish1(g(b))
       def subscribe(maxQueued: Int): Stream[F, B] =
         self.subscribe(maxQueued).map(f)
@@ -136,8 +133,8 @@ object Topic {
                   .as(Stream.fromQueueUnterminated(q))
               }
 
-          def publish: Pipe[F, A, Unit] =
-            _.evalMap(publish1)
+          def publish: Pipe[F, A, Nothing] =
+            _.evalMap(publish1).drain
 
           def subscribe(maxQueued: Int): Stream[F, A] =
             Stream.resource(subscribeAwait(maxQueued)).flatten
