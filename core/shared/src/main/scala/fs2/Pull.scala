@@ -515,16 +515,23 @@ object Pull extends PullLowPriority {
       fun: O => Pull[F, P, Unit]
   ) extends Action[F, P, Unit]
 
-  /** Steps through the stream, providing either `uncons` or `stepLeg`.
+  /** Steps through the given inner stream, until the first `Output` is reached.
+    * It returns the possible `uncons`.
     * Yields to head in form of chunk, then id of the scope that was active after step evaluated and tail of the `stream`.
     *
     * @param stream             Stream to step
-    * @param scopeId            If scope has to be changed before this step is evaluated, id of the scope must be supplied
     */
-  private final case class Step[+F[_], X](stream: Pull[F, X, Unit], scope: Option[Unique])
-      extends Action[Pure, INothing, Option[StepStop[F, X]]]
+  private final case class StepCons[+F[_], +O](stream: Pull[F, O, Unit])
+      extends Action[Pure, INothing, Option[(Chunk[O], Pull[F, O, Unit])]]
 
-  private type StepStop[+F[_], +X] = (Chunk[X], Unique, Pull[F, X, Unit])
+  /** Steps through the stream, providing a `stepLeg`.
+    * Yields to head in form of chunk, then id of the scope that was active after step evaluated and tail of the `stream`.
+    *
+    * @param stream             Stream to step
+    * @param scopeId            scope has to be changed before this step is evaluated, id of the scope must be supplied
+    */
+  private final case class StepLeg[+F[_], O](stream: Pull[F, O, Unit], scope: Unique)
+      extends Action[Pure, INothing, Option[Stream.StepLeg[F, O]]]
 
   /* The `AlgEffect` trait is for operations on the `F` effect that create no `O` output.
    * They are related to resources and scopes. */
@@ -559,9 +566,7 @@ object Pull extends PullLowPriority {
   private[fs2] def stepLeg[F[_], O](
       leg: Stream.StepLeg[F, O]
   ): Pull[F, Nothing, Option[Stream.StepLeg[F, O]]] =
-    Step[F, O](leg.next, Some(leg.scopeId)).map {
-      _.map { case (h, id, t) => new Stream.StepLeg[F, O](h, id, t) }
-    }
+    StepLeg[F, O](leg.next, leg.scopeId)
 
   /** Wraps supplied pull in new scope, that will be opened before this pull is evaluated
     * and closed once this pull either finishes its evaluation or when it fails.
@@ -577,15 +582,15 @@ object Pull extends PullLowPriority {
       haltOnSignal: F[Either[Throwable, Unit]]
   ): Pull[F, O, Unit] = InterruptWhen(haltOnSignal)
 
+  private type Cons[+F[_], +O] = (Chunk[O], Pull[F, O, Unit])
+
   /* Pull transformation that takes the given stream (pull), unrolls it until it either:
    * - Reaches the end of the stream, and returns None; or
    * - Reaches an Output action, and emits Some pair with
    *   the non-empty chunk of values and the rest of the stream.
    */
-  private[fs2] def uncons[F[_], O](
-      s: Pull[F, O, Unit]
-  ): Pull[F, INothing, Option[(Chunk[O], Pull[F, O, Unit])]] =
-    Step(s, None).map(_.map { case (h, _, t) => (h, t.asInstanceOf[Pull[F, O, Unit]]) })
+  private[fs2] def uncons[F[_], O](s: Pull[F, O, Unit]): Pull[F, INothing, Option[Cons[F, O]]] =
+    StepCons(s)
 
   private type Cont[-Y, +G[_], +X] = Result[Y] => Pull[G, X, Unit]
 
@@ -657,7 +662,8 @@ object Pull extends PullLowPriority {
                 catch { case NonFatal(t) => Result.Fail(t) }
               case t: Translate[l, k, C] => // k= K
                 Translate[l, k, D](innerMapOutput[l, C, D](t.stream, fun), t.fk)
-              case s: Step[k, _]      => s
+              case s: StepCons[k, _]  => s
+              case s: StepLeg[k, _]   => s
               case a: AlgEffect[k, _] => a
               case i: InScope[k, c] =>
                 InScope[k, D](innerMapOutput(i.stream, fun), i.useInterruption)
@@ -711,41 +717,41 @@ object Pull extends PullLowPriority {
         go(scope, extendedTopLevelScope, translation, new ViewRunner(view), mo)
       }
 
-      def goStep[Y](u: Step[G, Y], view: Cont[Option[StepStop[G, Y]], G, X]): F[End] = {
-
-        class StepRunR() extends Run[G, Y, F[End]] {
-
-          def done(scope: Scope[F]): F[End] =
-            interruptGuard(scope, view, endRunner) {
-              val result = Result.Succeeded(None)
-              go(scope, extendedTopLevelScope, translation, endRunner, view(result))
-            }
-
-          def out(head: Chunk[Y], outScope: Scope[F], tail: Pull[G, Y, Unit]): F[End] = {
-            // if we originally swapped scopes we want to return the original
-            // scope back to the go as that is the scope that is expected to be here.
-            val nextScope = if (u.scope.isEmpty) outScope else scope
-            interruptGuard(nextScope, view, endRunner) {
-              val stop: StepStop[G, Y] = (head, outScope.id, tail)
-              val result = Result.Succeeded(Some(stop))
-              go(nextScope, extendedTopLevelScope, translation, endRunner, view(result))
-            }
+      abstract class StepRunR[Y, S](view: Cont[Option[S], G, X]) extends Run[G, Y, F[End]] {
+        def done(scope: Scope[F]): F[End] =
+          interruptGuard(scope, view, endRunner) {
+            go(scope, extendedTopLevelScope, translation, endRunner, view(Result.Succeeded(None)))
           }
 
-          def interrupted(scopeId: Unique, err: Option[Throwable]): F[End] = {
-            val next = view(Result.Interrupted(scopeId, err))
-            go(scope, extendedTopLevelScope, translation, endRunner, next)
+        def interrupted(scopeId: Unique, err: Option[Throwable]): F[End] = {
+          val next = view(Result.Interrupted(scopeId, err))
+          go(scope, extendedTopLevelScope, translation, endRunner, next)
+        }
+
+        def fail(e: Throwable): F[End] = goErr(e, view)
+      }
+
+      class StepConsRunR[Y](view: Cont[Option[Cons[G, Y]], G, X])
+          extends StepRunR[Y, Cons[G, Y]](view) {
+
+        def out(head: Chunk[Y], outScope: Scope[F], tail: Pull[G, Y, Unit]): F[End] =
+          // For a StepCons, we continue in same Scope at which we ended compilation of inner stream
+          interruptGuard(outScope, view, endRunner) {
+            val result = Result.Succeeded(Some((head, tail)))
+            go(outScope, extendedTopLevelScope, translation, endRunner, view(result))
           }
+      }
 
-          def fail(e: Throwable): F[End] = goErr(e, view)
-        }
+      class StepLegRunR[Y](view: Cont[Option[Stream.StepLeg[G, Y]], G, X])
+          extends StepRunR[Y, Stream.StepLeg[G, Y]](view) {
 
-        // if scope was specified in step, try to find it, otherwise use the current scope.
-        val stepScopeF: F[Scope[F]] = u.scope match {
-          case None          => F.pure(scope)
-          case Some(scopeId) => scope.shiftScope(scopeId, u.toString)
-        }
-        stepScopeF.flatMap(go(_, extendedTopLevelScope, translation, new StepRunR(), u.stream))
+        def out(head: Chunk[Y], outScope: Scope[F], tail: Pull[G, Y, Unit]): F[End] =
+          // StepLeg: we shift back to the scope at which we were
+          // before we started to interpret the Leg's inner stream.
+          interruptGuard(scope, view, endRunner) {
+            val result = Result.Succeeded(Some(new Stream.StepLeg(head, outScope.id, tail)))
+            go(scope, extendedTopLevelScope, translation, endRunner, view(result))
+          }
       }
 
       def goFlatMapOut[Y](fmout: FlatMapOutput[G, Y, X], view: View[G, X, Unit]): F[End] = {
@@ -974,9 +980,16 @@ object Pull extends PullLowPriority {
               }
               go[h, x, End](scope, extendedTopLevelScope, composed, translateRunner, tst.stream)
 
-            case uU: Step[g, y] =>
-              val u: Step[G, y] = uU.asInstanceOf[Step[G, y]]
-              goStep(u, view.asInstanceOf[View[G, X, Option[StepStop[G, y]]]])
+            case u: StepCons[G, y] =>
+              val v = view.asInstanceOf[View[G, X, Option[Cons[G, y]]]]
+              // a StepCons is run on the same scope, without shifting.
+              go(scope, extendedTopLevelScope, translation, new StepConsRunR(v), u.stream)
+
+            case u: StepLeg[G, y] =>
+              val v = view.asInstanceOf[View[G, X, Option[Stream.StepLeg[G, y]]]]
+              scope
+                .shiftScope(u.scope, u.toString)
+                .flatMap(go(_, extendedTopLevelScope, translation, new StepLegRunR(v), u.stream))
 
             case eval: Eval[G, r] =>
               goEval[r](eval, view.asInstanceOf[View[G, X, r]])
