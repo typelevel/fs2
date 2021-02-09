@@ -4573,7 +4573,7 @@ object Stream extends StreamLowPriority {
     * Once the stream will stop to be interleaved (merged), then `stream` allows to return to normal stream
     * invocation.
     */
-  final class StepLeg[F[_], O](
+  final class StepLeg[+F[_], O](
       val head: Chunk[O],
       private[fs2] val scopeId: Unique,
       private[fs2] val next: Pull[F, O, Unit]
