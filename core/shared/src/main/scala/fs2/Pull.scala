@@ -521,7 +521,7 @@ object Pull extends PullLowPriority {
     *
     * @param stream             Stream to step
     */
-  private final case class StepCons[+F[_], +O](stream: Pull[F, O, Unit])
+  private final case class Uncons[+F[_], +O](stream: Pull[F, O, Unit])
       extends Action[Pure, INothing, Option[(Chunk[O], Pull[F, O, Unit])]]
 
   /** Steps through the stream, providing a `stepLeg`.
@@ -582,15 +582,15 @@ object Pull extends PullLowPriority {
       haltOnSignal: F[Either[Throwable, Unit]]
   ): Pull[F, O, Unit] = InterruptWhen(haltOnSignal)
 
-  private type Cons[+F[_], +O] = (Chunk[O], Pull[F, O, Unit])
-
   /* Pull transformation that takes the given stream (pull), unrolls it until it either:
    * - Reaches the end of the stream, and returns None; or
    * - Reaches an Output action, and emits Some pair with
    *   the non-empty chunk of values and the rest of the stream.
    */
-  private[fs2] def uncons[F[_], O](s: Pull[F, O, Unit]): Pull[F, INothing, Option[Cons[F, O]]] =
-    StepCons(s)
+  private[fs2] def uncons[F[_], O](
+      s: Pull[F, O, Unit]
+  ): Pull[F, INothing, Option[(Chunk[O], Pull[F, O, Unit])]] =
+    Uncons(s)
 
   private type Cont[-Y, +G[_], +X] = Result[Y] => Pull[G, X, Unit]
 
@@ -662,7 +662,7 @@ object Pull extends PullLowPriority {
                 catch { case NonFatal(t) => Result.Fail(t) }
               case t: Translate[l, k, C] => // k= K
                 Translate[l, k, D](innerMapOutput[l, C, D](t.stream, fun), t.fk)
-              case s: StepCons[k, _]  => s
+              case s: Uncons[k, _]    => s
               case s: StepLeg[k, _]   => s
               case a: AlgEffect[k, _] => a
               case i: InScope[k, c] =>
@@ -731,11 +731,11 @@ object Pull extends PullLowPriority {
         def fail(e: Throwable): F[End] = goErr(e, view)
       }
 
-      class StepConsRunR[Y](view: Cont[Option[Cons[G, Y]], G, X])
-          extends StepRunR[Y, Cons[G, Y]](view) {
+      class UnconsRunR[Y](view: Cont[Option[(Chunk[Y], Pull[G, Y, Unit])], G, X])
+          extends StepRunR[Y, (Chunk[Y], Pull[G, Y, Unit])](view) {
 
         def out(head: Chunk[Y], outScope: Scope[F], tail: Pull[G, Y, Unit]): F[End] =
-          // For a StepCons, we continue in same Scope at which we ended compilation of inner stream
+          // For a Uncons, we continue in same Scope at which we ended compilation of inner stream
           interruptGuard(outScope, view, endRunner) {
             val result = Result.Succeeded(Some((head, tail)))
             go(outScope, extendedTopLevelScope, translation, endRunner, view(result))
@@ -980,10 +980,10 @@ object Pull extends PullLowPriority {
               }
               go[h, x, End](scope, extendedTopLevelScope, composed, translateRunner, tst.stream)
 
-            case u: StepCons[G, y] =>
-              val v = view.asInstanceOf[View[G, X, Option[Cons[G, y]]]]
-              // a StepCons is run on the same scope, without shifting.
-              go(scope, extendedTopLevelScope, translation, new StepConsRunR(v), u.stream)
+            case u: Uncons[G, y] =>
+              val v = view.asInstanceOf[View[G, X, Option[(Chunk[y], Pull[G, y, Unit])]]]
+              // a Uncons is run on the same scope, without shifting.
+              go(scope, extendedTopLevelScope, translation, new UnconsRunR(v), u.stream)
 
             case u: StepLeg[G, y] =>
               val v = view.asInstanceOf[View[G, X, Option[Stream.StepLeg[G, y]]]]
