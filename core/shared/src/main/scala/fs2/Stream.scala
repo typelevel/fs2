@@ -1531,6 +1531,29 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   ]: Concurrent, O2 >: O]: Resource[F2, Signal[F2, Option[O2]]] =
     map(Some(_): Option[O2]).holdResource(None)
 
+  /** Fallbacks to the given stream if the current stream is empty.
+   *
+   * @example {{{
+   * scala> Stream.empty.ifEmpty(Stream(1, 2, 3)).toList
+   * res0: List[Int] = List(1, 2, 3)
+   * }}}
+   */
+  def ifEmpty[F2[x] >: F[x], O2 >: O](fallback: => Stream[F2, O2]): Stream[F2, O2] =
+    this.pull.uncons.flatMap {
+      case Some((hd, tl)) => Pull.output(hd) >> tl.underlying
+      case None           => fallback.underlying
+    }.stream
+
+  /** Outputs a singleton pure stream if the current stream is empty.
+   *
+   * @example {{{
+   * scala> Stream.empty.ifEmptyEmit(0).toList
+   * res0: List[Int] = List(0)
+   * }}}
+   */
+  def ifEmptyEmit[O2 >: O](o: => O2): Stream[F, O2] =
+    ifEmpty(Stream.emit(o))
+
   /** Deterministically interleaves elements, starting on the left, terminating when the end of either branch is reached naturally.
     *
     * @example {{{
