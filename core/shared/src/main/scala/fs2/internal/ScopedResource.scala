@@ -56,7 +56,7 @@ import fs2.Compiler
   * Note that every method which may potentially call a resource finalizer returns `F[Either[Throwable, Unit]]`
   * instead of `F[Unit]`` to make sure any errors that occur when releasing the resource are properly handled.
   */
-private[fs2] sealed abstract class ScopedResource[F[_]] {
+private[internal] sealed abstract class ScopedResource[F[_]] {
 
   /** Id of the resource
     */

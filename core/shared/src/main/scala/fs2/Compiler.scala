@@ -65,7 +65,7 @@ private[fs2] trait CompilerLowPriority2 {
       )(foldChunk: (B, Chunk[O]) => B): Resource[F, B] =
         Resource
           .makeCase(Scope.newRoot[F])((scope, ec) => scope.close(ec).rethrow)
-          .evalMap(scope => Pull.compile(stream, scope, true, init)(foldChunk))
+          .evalMap(scope => PullCompile.compile(stream, scope, true, init)(foldChunk))
     }
 }
 
@@ -163,7 +163,7 @@ object Compiler extends CompilerLowPriority {
       ): F[Out] =
         Resource
           .makeCase(Scope.newRoot[F](this))((scope, ec) => scope.close(ec).rethrow)
-          .use(scope => Pull.compile[F, O, Out](p, scope, false, init)(foldChunk))
+          .use(scope => PullCompile.compile[F, O, Out](p, scope, false, init)(foldChunk))
     }
 
     private final class SyncTarget[F[_]: Sync] extends MonadCancelTarget[F] {
