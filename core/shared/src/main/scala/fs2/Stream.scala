@@ -3381,12 +3381,6 @@ object Stream extends StreamLowPriority {
   def iterateEval[F[_], A](start: A)(f: A => F[A]): Stream[F, A] =
     emit(start) ++ eval(f(start)).flatMap(iterateEval(_)(f))
 
-  /** Gets the current scope, allowing manual leasing or interruption.
-    * This is a low-level method and generally should not be used by user code.
-    */
-  private def getScope[F[x] >: Pure[x]]: Stream[F, Scope[F]] =
-    new Stream(Pull.getScope[F].flatMap(Pull.output1(_)))
-
   /** A stream that never emits and never terminates.
     */
   def never[F[_]](implicit F: Concurrent[F]): Stream[F, Nothing] =
@@ -3833,10 +3827,13 @@ object Stream extends StreamLowPriority {
             }
           }
 
+        def runInnerScope(inner: Stream[F, O]): Stream[F, Unit] =
+          new Stream(Pull.getScope[F].flatMap((o: Scope[F]) => Pull.eval(runInner(inner, o))))
+
         // runs the outer stream, interrupts when kill == true, and then decrements the `running`
         def runOuter: F[Unit] =
           outer
-            .flatMap(inner => Stream.getScope[F].evalMap(outerScope => runInner(inner, outerScope)))
+            .flatMap(runInnerScope)
             .interruptWhen(done.map(_.nonEmpty))
             .compile
             .drain
