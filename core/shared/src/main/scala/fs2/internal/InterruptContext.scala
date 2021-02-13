@@ -22,7 +22,7 @@
 package fs2.internal
 
 import cats.{Applicative, Id}
-import cats.effect.kernel.{Concurrent, Deferred, Fiber, Outcome, Ref}
+import cats.effect.kernel.{Concurrent, Deferred, Fiber, Outcome, Ref, Unique}
 import cats.effect.kernel.implicits._
 import cats.syntax.all._
 import InterruptContext.InterruptionOutcome
@@ -41,7 +41,7 @@ import InterruptContext.InterruptionOutcome
 final private[fs2] case class InterruptContext[F[_]](
     deferred: Deferred[F, InterruptionOutcome],
     ref: Ref[F, Option[InterruptionOutcome]],
-    interruptRoot: Unique,
+    interruptRoot: Unique.Token,
     cancelParent: F[Unit]
 )(implicit F: Concurrent[F]) { self =>
 
@@ -64,7 +64,7 @@ final private[fs2] case class InterruptContext[F[_]](
     */
   def childContext(
       interruptible: Boolean,
-      newScopeId: Unique
+      newScopeId: Unique.Token
   ): F[InterruptContext[F]] =
     if (interruptible) {
       self.deferred.get.start.flatMap { fiber =>
@@ -93,10 +93,10 @@ final private[fs2] case class InterruptContext[F[_]](
 
 private[fs2] object InterruptContext {
 
-  type InterruptionOutcome = Outcome[Id, Throwable, Unique]
+  type InterruptionOutcome = Outcome[Id, Throwable, Unique.Token]
 
   def apply[F[_]](
-      newScopeId: Unique,
+      newScopeId: Unique.Token,
       cancelParent: F[Unit]
   )(implicit F: Concurrent[F]): F[InterruptContext[F]] =
     for {

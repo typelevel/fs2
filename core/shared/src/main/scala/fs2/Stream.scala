@@ -4256,9 +4256,9 @@ object Stream extends StreamLowPriority {
         pull: Pull.Timed[F, O] => Pull[F, O2, R]
     )(implicit F: Temporal[F]): Pull[F, O2, R] =
       Pull
-        .eval(Unique[F].mproduct(id => SignallingRef.of(id -> 0.millis)))
+        .eval(F.unique.mproduct(id => SignallingRef.of(id -> 0.millis)))
         .flatMap { case (initial, time) =>
-          def timeouts: Stream[F, Unique] =
+          def timeouts: Stream[F, Unique.Token] =
             time.discrete
               .dropWhile { case (id, _) => id == initial }
               .switchMap { case (id, duration) =>
@@ -4270,7 +4270,7 @@ object Stream extends StreamLowPriority {
                   Stream.empty
               }
 
-          def output: Stream[F, Either[Unique, Chunk[O]]] =
+          def output: Stream[F, Either[Unique.Token, Chunk[O]]] =
             timeouts
               .map(_.asLeft)
               .mergeHaltR(self.chunks.map(_.asRight))
@@ -4282,16 +4282,16 @@ object Stream extends StreamLowPriority {
                     .collect { case (currentTimeout, _) if currentTimeout == id => timeout }
               }
 
-          def toTimedPull(s: Stream[F, Either[Unique, Chunk[O]]]): Pull.Timed[F, O] =
+          def toTimedPull(s: Stream[F, Either[Unique.Token, Chunk[O]]]): Pull.Timed[F, O] =
             new Pull.Timed[F, O] {
-              type Timeout = Unique
+              type Timeout = Unique.Token
 
               def uncons: Pull[F, INothing, Option[(Either[Timeout, Chunk[O]], Pull.Timed[F, O])]] =
                 s.pull.uncons1
                   .map(_.map { case (r, next) => r -> toTimedPull(next) })
 
               def timeout(t: FiniteDuration): Pull[F, INothing, Unit] = Pull.eval {
-                Unique[F].tupleRight(t).flatMap(time.set)
+                F.unique.tupleRight(t).flatMap(time.set)
               }
             }
 
@@ -4572,7 +4572,7 @@ object Stream extends StreamLowPriority {
     */
   final class StepLeg[+F[_], O](
       val head: Chunk[O],
-      private[fs2] val scopeId: Unique,
+      private[fs2] val scopeId: Unique.Token,
       private[fs2] val next: Pull[F, O, Unit]
   ) { self =>
 

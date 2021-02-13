@@ -21,7 +21,7 @@
 
 package fs2.internal
 
-import cats.effect.kernel.Resource
+import cats.effect.kernel.{Resource, Unique}
 import cats.implicits._
 
 import fs2.Compiler
@@ -60,7 +60,7 @@ private[fs2] sealed abstract class ScopedResource[F[_]] {
 
   /** Id of the resource
     */
-  def id: Unique
+  def id: Unique.Token
 
   /** Depending on resource state this will either release resource, or when resource was not yet fully
     * acquired, this will schedule releasing of the resource at earliest opportunity, that is when:
@@ -124,7 +124,7 @@ private[internal] object ScopedResource {
       token <- F.unique
     } yield new ScopedResource[F] {
 
-      override val id: Unique = token
+      override val id: Unique.Token = token
 
       private[this] val pru: F[Either[Throwable, Unit]] =
         (Right(()): Either[Throwable, Unit]).pure[F]

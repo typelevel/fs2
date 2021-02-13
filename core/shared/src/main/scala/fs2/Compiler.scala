@@ -23,7 +23,7 @@ package fs2
 
 import cats.{Id, Monad, MonadError}
 import cats.effect.SyncIO
-import cats.effect.kernel.{Concurrent, MonadCancelThrow, Poll, Ref, Resource, Sync}
+import cats.effect.kernel.{Concurrent, MonadCancelThrow, Poll, Ref, Resource, Sync, Unique}
 import cats.syntax.all._
 
 import fs2.internal._
@@ -132,7 +132,7 @@ object Compiler extends CompilerLowPriority {
     * a `Sync` instance.
     */
   sealed trait Target[F[_]] extends MonadError[F, Throwable] {
-    private[fs2] def unique: F[Unique]
+    private[fs2] def unique: F[Unique.Token]
     private[fs2] def ref[A](a: A): F[Ref[F, A]]
     private[fs2] def compile[O, Out](
         p: Pull[F, O, Unit],
@@ -140,7 +140,7 @@ object Compiler extends CompilerLowPriority {
         foldChunk: (Out, Chunk[O]) => Out
     ): F[Out]
     private[fs2] def uncancelable[A](poll: Poll[F] => F[A]): F[A]
-    private[fs2] def interruptContext(root: Unique): Option[F[InterruptContext[F]]]
+    private[fs2] def interruptContext(root: Unique.Token): Option[F[InterruptContext[F]]]
   }
 
   private[fs2] trait TargetLowPriority {
@@ -167,9 +167,9 @@ object Compiler extends CompilerLowPriority {
     }
 
     private final class SyncTarget[F[_]: Sync] extends MonadCancelTarget[F] {
-      private[fs2] def unique: F[Unique] = Unique.sync[F]
+      private[fs2] def unique: F[Unique.Token] = Sync[F].unique
       private[fs2] def ref[A](a: A): F[Ref[F, A]] = Ref[F].of(a)
-      private[fs2] def interruptContext(root: Unique): Option[F[InterruptContext[F]]] = None
+      private[fs2] def interruptContext(root: Unique.Token): Option[F[InterruptContext[F]]] = None
     }
 
     implicit def forSync[F[_]: Sync]: Target[F] =
@@ -180,9 +180,9 @@ object Compiler extends CompilerLowPriority {
     private final class ConcurrentTarget[F[_]](
         protected implicit val F: Concurrent[F]
     ) extends MonadCancelTarget[F]()(F) {
-      private[fs2] def unique: F[Unique] = Unique[F]
+      private[fs2] def unique: F[Unique.Token] = Concurrent[F].unique
       private[fs2] def ref[A](a: A): F[Ref[F, A]] = F.ref(a)
-      private[fs2] def interruptContext(root: Unique): Option[F[InterruptContext[F]]] = Some(
+      private[fs2] def interruptContext(root: Unique.Token): Option[F[InterruptContext[F]]] = Some(
         InterruptContext(root, F.unit)
       )
     }
