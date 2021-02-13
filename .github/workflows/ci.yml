@@ -26,7 +26,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest]
-        scala: [3.0.0-M2, 3.0.0-M3, 2.12.10, 2.13.4]
+        scala: [3.0.0-M2, 3.0.0-M3, 2.12.13, 2.13.4]
         java: [adopt@1.11]
     runs-on: ${{ matrix.os }}
     steps:
@@ -55,15 +55,10 @@ jobs:
       - name: Check that workflows are up to date
         run: sbt ++${{ matrix.scala }} githubWorkflowCheck
 
-      - run: sbt ++${{ matrix.scala }} fmtCheck compile
+      - run: 'sbt ++${{ matrix.scala }} fmtCheck test mimaReportBinaryIssues coreJVM/it:test'
 
-      - run: sbt ++${{ matrix.scala }} testJVM
-
-      - run: sbt ++${{ matrix.scala }} testJS
-
-      - run: sbt ++${{ matrix.scala }} mimaReportBinaryIssues
-
-      - run: 'sbt ++${{ matrix.scala }} ''project coreJVM'' it:test'
+      - if: matrix.scala == '2.13.4'
+        run: sbt ++${{ matrix.scala }} microsite/mdoc
 
       - name: Compress target directories
         run: tar cf targets.tar target core/js/target core/jvm/target io/target reactive-streams/target benchmark/target project/target
@@ -127,12 +122,12 @@ jobs:
           tar xf targets.tar
           rm targets.tar
 
-      - name: Download target directories (2.12.10)
+      - name: Download target directories (2.12.13)
         uses: actions/download-artifact@v2
         with:
-          name: target-${{ matrix.os }}-2.12.10-${{ matrix.java }}
+          name: target-${{ matrix.os }}-2.12.13-${{ matrix.java }}
 
-      - name: Inflate target directories (2.12.10)
+      - name: Inflate target directories (2.12.13)
         run: |
           tar xf targets.tar
           rm targets.tar
@@ -151,3 +146,60 @@ jobs:
         run: echo $PGP_SECRET | base64 -d | gpg --import
 
       - run: sbt ++${{ matrix.scala }} release
+
+  site:
+    name: Deploy site
+    needs: [publish]
+    if: always() && needs.build.result == 'success' && (needs.publish.result == 'success' && github.ref == 'refs/heads/main')
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+        scala: [2.13.4]
+        java: [adopt@1.11]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Download target directories (3.0.0-M2)
+        uses: actions/download-artifact@v2
+        with:
+          name: target-${{ matrix.os }}-3.0.0-M2-${{ matrix.java }}
+
+      - name: Inflate target directories (3.0.0-M2)
+        run: |
+          tar xf targets.tar
+          rm targets.tar
+
+      - name: Download target directories (3.0.0-M3)
+        uses: actions/download-artifact@v2
+        with:
+          name: target-${{ matrix.os }}-3.0.0-M3-${{ matrix.java }}
+
+      - name: Inflate target directories (3.0.0-M3)
+        run: |
+          tar xf targets.tar
+          rm targets.tar
+
+      - name: Download target directories (2.12.13)
+        uses: actions/download-artifact@v2
+        with:
+          name: target-${{ matrix.os }}-2.12.13-${{ matrix.java }}
+
+      - name: Inflate target directories (2.12.13)
+        run: |
+          tar xf targets.tar
+          rm targets.tar
+
+      - name: Download target directories (2.13.4)
+        uses: actions/download-artifact@v2
+        with:
+          name: target-${{ matrix.os }}-2.13.4-${{ matrix.java }}
+
+      - name: Inflate target directories (2.13.4)
+        run: |
+          tar xf targets.tar
+          rm targets.tar
+
+      - name: Deploy site
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          publish_dir: ./target/website
+          github_token: ${{ secrets.GITHUB_TOKEN }}

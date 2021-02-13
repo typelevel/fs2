@@ -18,7 +18,7 @@ ThisBuild / organizationName := "Functional Streams for Scala"
 ThisBuild / homepage := Some(url("https://github.com/typelevel/fs2"))
 ThisBuild / startYear := Some(2013)
 
-ThisBuild / crossScalaVersions := Seq("3.0.0-M2", "3.0.0-M3", "2.12.10", "2.13.4")
+ThisBuild / crossScalaVersions := Seq("3.0.0-M2", "3.0.0-M3", "2.12.13", "2.13.4")
 
 ThisBuild / versionIntroduced := Map(
   "3.0.0-M2" -> "3.0.0",
@@ -32,11 +32,7 @@ ThisBuild / spiewakCiReleaseSnapshots := true
 ThisBuild / spiewakMainBranches := List("main", "develop")
 
 ThisBuild / githubWorkflowBuild := Seq(
-  WorkflowStep.Sbt(List("fmtCheck", "compile")),
-  WorkflowStep.Sbt(List("testJVM")),
-  WorkflowStep.Sbt(List("testJS")),
-  WorkflowStep.Sbt(List("mimaReportBinaryIssues")),
-  WorkflowStep.Sbt(List("project coreJVM", "it:test"))
+  WorkflowStep.Sbt(List("fmtCheck", "test", "mimaReportBinaryIssues", "coreJVM/it:test"))
 )
 
 ThisBuild / scmInfo := Some(
@@ -110,15 +106,15 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
   .settings(
     name := "fs2-core",
     libraryDependencies ++= Seq(
-      "org.typelevel" %%% "cats-core" % "2.3.1",
-      "org.typelevel" %%% "cats-laws" % "2.3.1" % Test,
-      "org.typelevel" %%% "cats-effect" % "3.0-65-7c98c86",
-      "org.typelevel" %%% "cats-effect-laws" % "3.0-65-7c98c86" % Test,
-      "org.typelevel" %%% "cats-effect-testkit" % "3.0-65-7c98c86" % Test,
+      "org.typelevel" %%% "cats-core" % "2.4.1",
+      "org.typelevel" %%% "cats-laws" % "2.4.1" % Test,
+      "org.typelevel" %%% "cats-effect" % "3.0-193-3231190",
+      "org.typelevel" %%% "cats-effect-laws" % "3.0-193-3231190" % Test,
+      "org.typelevel" %%% "cats-effect-testkit" % "3.0-193-3231190" % Test,
       "org.scodec" %%% "scodec-bits" % "1.1.23",
       "org.typelevel" %%% "scalacheck-effect-munit" % "0.7.0" % Test,
-      "org.typelevel" %%% "munit-cats-effect-3" % "0.12.0" % Test,
-      "org.typelevel" %%% "discipline-munit" % "1.0.4" % Test
+      "org.typelevel" %%% "munit-cats-effect-3" % "0.13.0" % Test,
+      "org.typelevel" %%% "discipline-munit" % "1.0.5" % Test
     ),
     Compile / unmanagedSourceDirectories ++= {
       val major = if (isDotty.value) "-3" else "-2"
@@ -161,6 +157,7 @@ lazy val io = project
   .enablePlugins(SbtOsgi)
   .settings(
     name := "fs2-io",
+    libraryDependencies += "com.comcast" %% "ip4s-core" % "3.0.0-M1",
     Test / fork := true,
     OsgiKeys.exportPackage := Seq("fs2.io.*"),
     OsgiKeys.privatePackage := Seq(),
@@ -214,32 +211,47 @@ lazy val benchmark = project
   .dependsOn(io)
 
 lazy val microsite = project
-  .in(file("site"))
-  .enablePlugins(MicrositesPlugin, NoPublishPlugin)
+  .in(file("mdoc"))
   .settings(
-    micrositeName := "fs2",
-    micrositeDescription := "Purely functional, effectful, resource-safe, concurrent streams for Scala",
-    micrositeGithubOwner := "typelevel",
-    micrositeGithubRepo := "fs2",
-    micrositePushSiteWith := GitHub4s,
-    micrositeGithubToken := sys.env.get("GITHUB_TOKEN"),
-    micrositeBaseUrl := "",
-    micrositeHighlightTheme := "atom-one-light",
-    micrositeExtraMdFilesOutput := resourceManaged.value / "main" / "jekyll",
-    micrositeExtraMdFiles := Map(
-      file("README.md") -> ExtraMdFileConfig(
-        "index.md",
-        "home",
-        Map("title" -> "Home", "section" -> "home", "position" -> "0")
-      )
+    mdocIn := file("site"),
+    mdocOut := file("target/website"),
+    mdocVariables := Map(
+      "version" -> version.value,
+      "scalaVersions" -> crossScalaVersions.value
+        .map(v => s"- **$v**")
+        .mkString("\n")
     ),
-    scalacOptions in Compile ~= {
-      _.filterNot("-Ywarn-unused-import" == _)
-        .filterNot("-Ywarn-unused" == _)
-        .filterNot("-Xlint" == _)
-        .filterNot("-Xfatal-warnings" == _)
-    },
-    scalacOptions in Compile += "-Ydelambdafy:inline",
-    githubWorkflowArtifactUpload := false
+    githubWorkflowArtifactUpload := false,
+    fatalWarningsInCI := false
   )
   .dependsOn(coreJVM, io, reactiveStreams)
+  .enablePlugins(MdocPlugin, NoPublishPlugin)
+
+ThisBuild / githubWorkflowBuildPostamble ++= List(
+  WorkflowStep.Sbt(
+    List("microsite/mdoc"),
+    cond = Some(s"matrix.scala == '2.13.4'")
+  )
+)
+
+ThisBuild / githubWorkflowAddedJobs += WorkflowJob(
+  id = "site",
+  name = "Deploy site",
+  needs = List("publish"),
+  javas = (ThisBuild / githubWorkflowJavaVersions).value.toList,
+  scalas = (ThisBuild / scalaVersion).value :: Nil,
+  cond = """
+  | always() &&
+  | needs.build.result == 'success' &&
+  | (needs.publish.result == 'success' && github.ref == 'refs/heads/main')
+  """.stripMargin.trim.linesIterator.mkString.some,
+  steps = githubWorkflowGeneratedDownloadSteps.value.toList :+
+    WorkflowStep.Use(
+      UseRef.Public("peaceiris", "actions-gh-pages", "v3"),
+      name = Some(s"Deploy site"),
+      params = Map(
+        "publish_dir" -> "./target/website",
+        "github_token" -> "${{ secrets.GITHUB_TOKEN }}"
+      )
+    )
+)

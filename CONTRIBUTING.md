@@ -30,7 +30,7 @@ Remember to follow the [code of conduct][coc] in online and offline discourse.
 
 ### Prerequisites
 
-You'll need JDK 11, [sbt][sbt], [Node.JS][node] (for running ScalaJS tests) and [Jekyll][jekyll] (for building the microsite).
+You'll need JDK 11, [sbt][sbt], [Node.js][node] (for running Scala.js tests) and [Jekyll][jekyll] (for building the microsite).
 
 We use several sbt plugins to build and check the project, including [MiMa (Migration Manager)][mima], [scalafmt][scalafmt] and [sbt-microsites][sbt-microsites].
 
@@ -87,31 +87,12 @@ If you run into any problems with tests, binary compatibility or other issues, f
 
 ### Website
 
-To build the microsite, use the `microsite/makeMicrosite` task in sbt. Then, go to `site/target/site`, and run a HTTP server on the port of your choice:
-
-```bash
-sbt:root> microsite/makeMicrosite
-info: Compiled in 24s (0 errors, 0 warnings)
-[info] Configuration file: /Users/contributor/dev/fs2/site/target/scala-2.13/resource_managed/main/jekyll/_config.yml
-[info]             Source: /Users/contributor/dev/fs2/site/target/scala-2.13/resource_managed/main/jekyll
-[info]        Destination: /Users/contributor/dev/fs2/site/target/jekyll
-[info]  Incremental build: disabled. Enable with --incremental
-[info]       Generating...
-[info]                     done in 0.592 seconds.
-[info]  Auto-regeneration: disabled. Use --watch to enable.
-[success] Total time: 29 s, completed Jan 24, 2020, 2:36:31 PM
-sbt:root> exit
-[info] shutting down sbt server
-
-$ cd site/target/site
-$ python -m SimpleHTTPServer 4000 . # Any other server would do
-Serving HTTP on 0.0.0.0 port 4000 ...
-```
-
+To see how to build the microsite, check [here][fs2-build-site].
 
 [fs2-issues]: https://github.com/functional-streams-for-scala/fs2/issues
 [fs2-pulls]: https://github.com/functional-streams-for-scala/fs2/pulls
 [fs2-dev]: https://gitter.im/functional-streams-for-scala/fs2-dev
+[fs2-build-site]: https://github.com/LLCampos/fs2/blob/main/build-site.md
 [coc]: https://github.com/functional-streams-for-scala/fs2/blob/main/CODE_OF_CONDUCT.md
 [sbt]: https://www.scala-sbt.org
 [mima]: https://github.com/lightbend/mima
