@@ -864,6 +864,15 @@ class StreamCombinatorsSuite extends Fs2Suite {
 
   property("head")(forAll((s: Stream[Pure, Int]) => assertEquals(s.head.toList, s.toList.take(1))))
 
+  group("ifEmpty") {
+    test("when empty") {
+      assertEquals(Stream().ifEmptyEmit(0).compile.toList, List(0))
+    }
+    test("when nonEmpty") {
+      assertEquals(Stream(1).ifEmptyEmit(0).compile.toList, List(1))
+    }
+  }
+
   group("interleave") {
     test("interleave left/right side infinite") {
       val ones = Stream.constant("1")
