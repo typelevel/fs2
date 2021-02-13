@@ -33,14 +33,14 @@ import fs2.internal._
 import Resource.ExitCase
 import Pull._
 
-/** A `p: Pull[F,O,R]` reads values from one or more streams, returns a
-  * result of type `R`, and produces a `Stream[F,O]` when calling `p.stream`.
+/** A `p: Pull[F,O,C]` reads values from one or more streams, returns a
+  * carry-over value of type `C`, and produces a `Stream[F,O]` when calling `p.stream`.
   *
   * Any resources acquired by `p` are freed following the call to `stream`.
   *
   * Laws:
   *
-  * `Pull` forms a monad in `R` with `pure` and `flatMap`:
+  * `Pull` forms a monad in `C` with `pure` and `flatMap`:
   *   - `pure >=> f == f`
   *   - `f >=> pure == f`
   *   - `(f >=> g) >=> h == f >=> (g >=> h)`
@@ -49,13 +49,13 @@ import Pull._
   * `raiseError` is caught by `handleErrorWith`:
   *   - `handleErrorWith(raiseError(e))(f) == f(e)`
   */
-sealed abstract class Pull[+F[_], +O, +R] {
+sealed abstract class Pull[+F[_], +O, +C] {
 
   /** Alias for `_.map(_ => o2)`. */
-  def as[R2](r2: R2): Pull[F, O, R2] = map(_ => r2)
+  def as[D](r2: D): Pull[F, O, D] = map(_ => r2)
 
   /** Returns a pull with the result wrapped in `Right`, or an error wrapped in `Left` if the pull has failed. */
-  def attempt: Pull[F, O, Either[Throwable, R]] =
+  def attempt: Pull[F, O, Either[Throwable, C]] =
     map(r => Right(r)).handleErrorWith(t => Result.Succeeded(Left(t)))
 
   /** Interpret this `Pull` to produce a `Stream`, introducing a scope.
@@ -63,7 +63,7 @@ sealed abstract class Pull[+F[_], +O, +R] {
     * May only be called on pulls which return a `Unit` result type. Use `p.void.stream` to explicitly
     * ignore the result type of the pull.
     */
-  def stream(implicit ev: R <:< Unit): Stream[F, O] = {
+  def stream(implicit ev: C <:< Unit): Stream[F, O] = {
     val _ = ev
     new Stream(Pull.scope(this.asInstanceOf[Pull[F, O, Unit]]))
   }
@@ -76,15 +76,15 @@ sealed abstract class Pull[+F[_], +O, +R] {
     * May only be called on pulls which return a `Unit` result type. Use `p.void.stream` to explicitly
     * ignore the result type of the pull.
     */
-  def streamNoScope(implicit ev: R <:< Unit): Stream[F, O] = {
+  def streamNoScope(implicit ev: C <:< Unit): Stream[F, O] = {
     val _ = ev
     new Stream(this.asInstanceOf[Pull[F, O, Unit]])
   }
 
-  /** Applies the resource of this pull to `f` and returns the result. */
-  def flatMap[F2[x] >: F[x], O2 >: O, R2](f: R => Pull[F2, O2, R2]): Pull[F2, O2, R2] =
-    new Bind[F2, O2, R, R2](this) {
-      def cont(e: Result[R]): Pull[F2, O2, R2] =
+  /** Applies the carry-over result of this pull to `f` and returns the result. */
+  def flatMap[F2[x] >: F[x], O2 >: O, D](f: C => Pull[F2, O2, D]): Pull[F2, O2, D] =
+    new Bind[F2, O2, C, D](this) {
+      def cont(e: Result[C]): Pull[F2, O2, D] =
         e match {
           case Result.Succeeded(r) =>
             try f(r)
@@ -95,9 +95,9 @@ sealed abstract class Pull[+F[_], +O, +R] {
     }
 
   /** Alias for `flatMap(_ => p2)`. */
-  def >>[F2[x] >: F[x], O2 >: O, R2](p2: => Pull[F2, O2, R2]): Pull[F2, O2, R2] =
-    new Bind[F2, O2, R, R2](this) {
-      def cont(r: Result[R]): Pull[F2, O2, R2] =
+  def >>[F2[x] >: F[x], O2 >: O, D](p2: => Pull[F2, O2, D]): Pull[F2, O2, D] =
+    new Bind[F2, O2, C, D](this) {
+      def cont(r: Result[C]): Pull[F2, O2, D] =
         r match {
           case _: Result.Succeeded[_] => p2
           case r: Result.Interrupted  => r
@@ -106,33 +106,33 @@ sealed abstract class Pull[+F[_], +O, +R] {
     }
 
   /** Lifts this pull to the specified effect type. */
-  def covary[F2[x] >: F[x]]: Pull[F2, O, R] = this
+  def covary[F2[x] >: F[x]]: Pull[F2, O, C] = this
 
   /** Lifts this pull to the specified effect type, output type, and resource type. */
-  def covaryAll[F2[x] >: F[x], O2 >: O, R2 >: R]: Pull[F2, O2, R2] = this
+  def covaryAll[F2[x] >: F[x], O2 >: O, D >: C]: Pull[F2, O2, D] = this
 
   /** Lifts this pull to the specified output type. */
-  def covaryOutput[O2 >: O]: Pull[F, O2, R] = this
+  def covaryOutput[O2 >: O]: Pull[F, O2, C] = this
 
   /** Lifts this pull to the specified resource type. */
-  def covaryResource[R2 >: R]: Pull[F, O, R2] = this
+  def covaryResource[D >: C]: Pull[F, O, D] = this
 
   /** Applies the resource of this pull to `f` and returns the result in a new `Pull`. */
-  def map[R2](f: R => R2): Pull[F, O, R2] =
-    new Bind[F, O, R, R2](this) {
-      def cont(r: Result[R]) = r.map(f)
+  def map[D](f: C => D): Pull[F, O, D] =
+    new Bind[F, O, C, D](this) {
+      def cont(r: Result[C]) = r.map(f)
     }
 
   /** Run `p2` after `this`, regardless of errors during `this`, then reraise any errors encountered during `this`. */
-  def onComplete[F2[x] >: F[x], O2 >: O, R2 >: R](p2: => Pull[F2, O2, R2]): Pull[F2, O2, R2] =
+  def onComplete[F2[x] >: F[x], O2 >: O, D >: C](p2: => Pull[F2, O2, D]): Pull[F2, O2, D] =
     handleErrorWith(e => p2 >> Result.Fail(e)) >> p2
 
   /** If `this` terminates with `Pull.raiseError(e)`, invoke `h(e)`. */
-  def handleErrorWith[F2[x] >: F[x], O2 >: O, R2 >: R](
-      h: Throwable => Pull[F2, O2, R2]
-  ): Pull[F2, O2, R2] =
-    new Bind[F2, O2, R2, R2](this) {
-      def cont(e: Result[R2]): Pull[F2, O2, R2] =
+  def handleErrorWith[F2[x] >: F[x], O2 >: O, D >: C](
+      h: Throwable => Pull[F2, O2, D]
+  ): Pull[F2, O2, D] =
+    new Bind[F2, O2, D, D](this) {
+      def cont(e: Result[D]): Pull[F2, O2, D] =
         e match {
           case Result.Fail(e) =>
             try h(e)
@@ -141,11 +141,11 @@ sealed abstract class Pull[+F[_], +O, +R] {
         }
     }
 
-  private[Pull] def transformWith[F2[x] >: F[x], O2 >: O, R2](
-      f: Result[R] => Pull[F2, O2, R2]
-  ): Pull[F2, O2, R2] =
-    new Bind[F2, O2, R, R2](this) {
-      def cont(r: Result[R]): Pull[F2, O2, R2] =
+  private[Pull] def transformWith[F2[x] >: F[x], O2 >: O, D](
+      f: Result[C] => Pull[F2, O2, D]
+  ): Pull[F2, O2, D] =
+    new Bind[F2, O2, C, D](this) {
+      def cont(r: Result[C]): Pull[F2, O2, D] =
         try f(r)
         catch { case NonFatal(e) => Result.Fail(e) }
     }
@@ -156,25 +156,25 @@ sealed abstract class Pull[+F[_], +O, +R] {
 
 object Pull extends PullLowPriority {
 
-  private[fs2] def acquire[F[_], R](
-      resource: F[R],
-      release: (R, ExitCase) => F[Unit]
-  ): Pull[F, INothing, R] =
+  private[fs2] def acquire[F[_], C](
+      resource: F[C],
+      release: (C, ExitCase) => F[Unit]
+  ): Pull[F, INothing, C] =
     Acquire(resource, release, cancelable = false)
 
-  private[fs2] def acquireCancelable[F[_], R](
-      resource: Poll[F] => F[R],
-      release: (R, ExitCase) => F[Unit]
-  )(implicit F: MonadCancel[F, _]): Pull[F, INothing, R] =
+  private[fs2] def acquireCancelable[F[_], C](
+      resource: Poll[F] => F[C],
+      release: (C, ExitCase) => F[Unit]
+  )(implicit F: MonadCancel[F, _]): Pull[F, INothing, C] =
     Acquire(F.uncancelable(resource), release, cancelable = true)
 
   /** Like [[eval]] but if the effectful value fails, the exception is returned in a `Left`
     * instead of failing the pull.
     */
-  def attemptEval[F[_], R](fr: F[R]): Pull[F, INothing, Either[Throwable, R]] =
-    Eval[F, R](fr)
-      .map(r => Right(r): Either[Throwable, R])
-      .handleErrorWith(t => Result.Succeeded[Either[Throwable, R]](Left(t)))
+  def attemptEval[F[_], C](fr: F[C]): Pull[F, INothing, Either[Throwable, C]] =
+    Eval[F, C](fr)
+      .map(r => Right(r): Either[Throwable, C])
+      .handleErrorWith(t => Result.Succeeded[Either[Throwable, C]](Left(t)))
 
   def bracketCase[F[_], O, A, B](
       acquire: Pull[F, O, A],
@@ -208,8 +208,8 @@ object Pull extends PullLowPriority {
     Result.unit
 
   /** Evaluates the supplied effectful value and returns the result as the resource of the returned pull. */
-  def eval[F[_], R](fr: F[R]): Pull[F, INothing, R] =
-    Eval[F, R](fr)
+  def eval[F[_], C](fr: F[C]): Pull[F, INothing, C] =
+    Eval[F, C](fr)
 
   /** Extends the scope of the currently open resources to the specified stream, preventing them
     * from being finalized until after `s` completes execution, even if the returned pull is converted
@@ -226,8 +226,8 @@ object Pull extends PullLowPriority {
   /** Repeatedly uses the output of the pull as input for the next step of the pull.
     * Halts when a step terminates with `None` or `Pull.raiseError`.
     */
-  def loop[F[_], O, R](f: R => Pull[F, O, Option[R]]): R => Pull[F, O, Unit] =
-    (r: R) =>
+  def loop[F[_], O, C](f: C => Pull[F, O, Option[C]]): C => Pull[F, O, Unit] =
+    (r: C) =>
       f(r).flatMap {
         case None    => Pull.done
         case Some(s) => loop(f)(s)
@@ -241,7 +241,7 @@ object Pull extends PullLowPriority {
     if (os.isEmpty) Pull.done else Output[O](os)
 
   /** Pull that outputs nothing and has result of `r`. */
-  def pure[F[x] >: Pure[x], R](r: R): Pull[F, INothing, R] =
+  def pure[F[x] >: Pure[x], C](r: C): Pull[F, INothing, C] =
     Result.Succeeded(r)
 
   /** Reads and outputs nothing, and fails with the given error.
@@ -279,9 +279,9 @@ object Pull extends PullLowPriority {
   /** Returns a pull that evaluates the supplied by-name each time the pull is used,
     * allowing use of a mutable value in pull computations.
     */
-  def suspend[F[x] >: Pure[x], O, R](p: => Pull[F, O, R]): Pull[F, O, R] =
-    new Bind[F, O, Unit, R](Result.unit) {
-      def cont(r: Result[Unit]): Pull[F, O, R] = p
+  def suspend[F[x] >: Pure[x], O, C](p: => Pull[F, O, C]): Pull[F, O, C] =
+    new Bind[F, O, Unit, C](Result.unit) {
+      def cont(r: Result[Unit]): Pull[F, O, C] = p
     }
 
   /** An abstraction for writing `Pull` computations that can timeout
@@ -294,7 +294,7 @@ object Pull extends PullLowPriority {
     * yourStream.pull.timed(tp => ...).stream
     * }}}
     *
-    * The argument to `timed` is a `Pull.Timed[F, O] => Pull[F, O2, R]`
+    * The argument to `timed` is a `Pull.Timed[F, O] => Pull[F, O2, C]`
     * function, which describes the pulling logic and is often recursive,
     * with shape:
     *
@@ -377,7 +377,7 @@ object Pull extends PullLowPriority {
    *
    * A Pull can be one of the following:
    *  - A Result - the end result of pulling. This may have ended in:
-   *    - Succeeded with a result of type R.
+   *    - Succeeded with a carry-over result of type C.
    *    - Failed with an exception
    *    - Interrupted from another thread with a known `scopeId`
    *
@@ -386,35 +386,34 @@ object Pull extends PullLowPriority {
    *
    *  - A single Action, which can be one of following:
    *
-   *    - Eval (or lift) an effectful operation of type `F[R]`
-   *    - Output some values of type O.
+   *    - Eval (or lift) an effectful operation of type `F[C]`.
+   *    - Output a chunk of values of type O.
    *    - Acquire a new resource and add its cleanup to the current scope.
    *    - Open, Close, or Access to the resource scope.
-   *    - side-Step or fork to a different computation
    */
 
   /** A Result, or terminal, indicates how a pull or Free evaluation ended.
     * A Pull may have succeeded with a result, failed with an exception,
     * or interrupted from another concurrent pull.
     */
-  private sealed abstract class Result[+R]
-      extends Pull[Pure, INothing, R]
+  private sealed abstract class Result[+C]
+      extends Pull[Pure, INothing, C]
       with ViewL[Pure, INothing]
 
   private object Result {
     val unit: Result[Unit] = Result.Succeeded(())
 
-    def fromEither[R](either: Either[Throwable, R]): Result[R] =
+    def fromEither[C](either: Either[Throwable, C]): Result[C] =
       either.fold(Result.Fail(_), Result.Succeeded(_))
 
-    final case class Succeeded[+R](r: R) extends Result[R] {
-      override def map[R2](f: R => R2): Result[R2] =
+    final case class Succeeded[+C](r: C) extends Result[C] {
+      override def map[D](f: C => D): Result[D] =
         try Succeeded(f(r))
         catch { case NonFatal(err) => Fail(err) }
     }
 
     final case class Fail(error: Throwable) extends Result[INothing] {
-      override def map[R](f: INothing => R): Result[R] = this
+      override def map[D](f: INothing => D): Result[D] = this
     }
 
     /** Signals that Pull evaluation was interrupted.
@@ -428,13 +427,13 @@ object Pull extends PullLowPriority {
       */
     final case class Interrupted(context: Unique.Token, deferredError: Option[Throwable])
         extends Result[INothing] {
-      override def map[R](f: INothing => R): Result[R] = this
+      override def map[D](f: INothing => D): Result[D] = this
     }
   }
 
-  private abstract class Bind[+F[_], +O, X, +R](val step: Pull[F, O, X]) extends Pull[F, O, R] {
-    def cont(r: Result[X]): Pull[F, O, R]
-    def delegate: Bind[F, O, X, R] = this
+  private abstract class Bind[+F[_], +O, X, +C](val step: Pull[F, O, X]) extends Pull[F, O, C] {
+    def cont(r: Result[X]): Pull[F, O, C]
+    def delegate: Bind[F, O, X, C] = this
   }
 
   /** Unrolled view of a `Pull` structure. may be `Result` or `EvalBind`
@@ -490,10 +489,10 @@ object Pull extends PullLowPriority {
   /* An Action is an atomic instruction that can perform effects in `F`
    * to generate by-product outputs of type `O`.
    *
-   * Each operation also generates an output of type `R` that is used
+   * Each operation also generates a carry-over result of type `C` that is used
    * as control information for the rest of the interpretation or compilation.
    */
-  private abstract class Action[+F[_], +O, +R] extends Pull[F, O, R]
+  private abstract class Action[+F[_], +O, +C] extends Pull[F, O, C]
 
   /* A Pull Action to emit a non-empty chunk of outputs */
   private final case class Output[+O](values: Chunk[O]) extends Action[Pure, O, Unit]
@@ -535,15 +534,15 @@ object Pull extends PullLowPriority {
 
   /* The `AlgEffect` trait is for operations on the `F` effect that create no `O` output.
    * They are related to resources and scopes. */
-  private sealed abstract class AlgEffect[+F[_], R] extends Action[F, INothing, R]
+  private sealed abstract class AlgEffect[+F[_], C] extends Action[F, INothing, C]
 
-  private final case class Eval[+F[_], R](value: F[R]) extends AlgEffect[F, R]
+  private final case class Eval[+F[_], C](value: F[C]) extends AlgEffect[F, C]
 
-  private final case class Acquire[F[_], R](
-      resource: F[R],
-      release: (R, ExitCase) => F[Unit],
+  private final case class Acquire[F[_], C](
+      resource: F[C],
+      release: (C, ExitCase) => F[Unit],
       cancelable: Boolean
-  ) extends AlgEffect[F, R]
+  ) extends AlgEffect[F, C]
 
   private final case class InScope[+F[_], +O](
       stream: Pull[F, O, Unit],
@@ -825,8 +824,8 @@ object Pull extends PullLowPriority {
           go(scope, extendedTopLevelScope, translation, endRunner, view(result))
         }
 
-      def goAcquire[R](acquire: Acquire[G, R], view: Cont[R, G, X]): F[End] = {
-        val onScope = scope.acquireResource[R](
+      def goAcquire[C](acquire: Acquire[G, C], view: Cont[C, G, X]): F[End] = {
+        val onScope = scope.acquireResource[C](
           poll =>
             if (acquire.cancelable) poll(translation(acquire.resource))
             else translation(acquire.resource),
