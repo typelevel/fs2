@@ -84,7 +84,7 @@ sealed abstract class Pull[+F[_], +O, +R] {
   /** Applies the resource of this pull to `f` and returns the result. */
   def flatMap[F2[x] >: F[x], O2 >: O, R2](f: R => Pull[F2, O2, R2]): Pull[F2, O2, R2] =
     new Bind[F2, O2, R, R2](this) {
-      def cont(e: Result[R]): Pull[F2, O2, R2] =
+      def cont(e: Terminal[R]): Pull[F2, O2, R2] =
         e match {
           case Succeeded(r) =>
             try f(r)
@@ -97,7 +97,7 @@ sealed abstract class Pull[+F[_], +O, +R] {
   /** Alias for `flatMap(_ => p2)`. */
   def >>[F2[x] >: F[x], O2 >: O, R2](p2: => Pull[F2, O2, R2]): Pull[F2, O2, R2] =
     new Bind[F2, O2, R, R2](this) {
-      def cont(r: Result[R]): Pull[F2, O2, R2] =
+      def cont(r: Terminal[R]): Pull[F2, O2, R2] =
         r match {
           case _: Succeeded[_] => p2
           case r: Interrupted  => r
@@ -120,7 +120,7 @@ sealed abstract class Pull[+F[_], +O, +R] {
   /** Applies the resource of this pull to `f` and returns the result in a new `Pull`. */
   def map[R2](f: R => R2): Pull[F, O, R2] =
     new Bind[F, O, R, R2](this) {
-      def cont(r: Result[R]) = r.map(f)
+      def cont(r: Terminal[R]) = r.map(f)
     }
 
   /** Run `p2` after `this`, regardless of errors during `this`, then reraise any errors encountered during `this`. */
@@ -132,7 +132,7 @@ sealed abstract class Pull[+F[_], +O, +R] {
       h: Throwable => Pull[F2, O2, R2]
   ): Pull[F2, O2, R2] =
     new Bind[F2, O2, R2, R2](this) {
-      def cont(e: Result[R2]): Pull[F2, O2, R2] =
+      def cont(e: Terminal[R2]): Pull[F2, O2, R2] =
         e match {
           case Fail(e) =>
             try h(e)
@@ -142,10 +142,10 @@ sealed abstract class Pull[+F[_], +O, +R] {
     }
 
   private[Pull] def transformWith[F2[x] >: F[x], O2 >: O, R2](
-      f: Result[R] => Pull[F2, O2, R2]
+      f: Terminal[R] => Pull[F2, O2, R2]
   ): Pull[F2, O2, R2] =
     new Bind[F2, O2, R, R2](this) {
-      def cont(r: Result[R]): Pull[F2, O2, R2] =
+      def cont(r: Terminal[R]): Pull[F2, O2, R2] =
         try f(r)
         catch { case NonFatal(e) => Fail(e) }
     }
@@ -204,7 +204,7 @@ object Pull extends PullLowPriority {
     }
 
   /** The completed `Pull`. Reads and outputs nothing. */
-  private val unit: Result[Unit] = Succeeded(())
+  private val unit: Terminal[Unit] = Succeeded(())
 
   /** The completed `Pull`. Reads and outputs nothing. */
   val done: Pull[Pure, INothing, Unit] = unit
@@ -279,7 +279,7 @@ object Pull extends PullLowPriority {
     */
   def suspend[F[x] >: Pure[x], O, R](p: => Pull[F, O, R]): Pull[F, O, R] =
     new Bind[F, O, Unit, R](unit) {
-      def cont(r: Result[Unit]): Pull[F, O, R] = p
+      def cont(r: Terminal[Unit]): Pull[F, O, R] = p
     }
 
   /** An abstraction for writing `Pull` computations that can timeout
@@ -374,7 +374,7 @@ object Pull extends PullLowPriority {
   /* Implementation notes:
    *
    * A Pull can be one of the following:
-   *  - A Result - the end result of pulling. This may have ended in:
+   *  - A Terminal - the end result of pulling. This may have ended in:
    *    - Succeeded with a result of type R.
    *    - Failed with an exception
    *    - Interrupted from another thread with a known `scopeId`
@@ -391,25 +391,25 @@ object Pull extends PullLowPriority {
    *    - side-Step or fork to a different computation
    */
 
-  /** A Result, or terminal, indicates how a pull or Free evaluation ended.
+  /** A Terminal, or terminal, indicates how a pull or Free evaluation ended.
     * A Pull may have succeeded with a result, failed with an exception,
     * or interrupted from another concurrent pull.
     */
-  private sealed abstract class Result[+R]
+  private sealed abstract class Terminal[+R]
       extends Pull[Pure, INothing, R]
       with ViewL[Pure, INothing]
 
-  private def resultEither[R](either: Either[Throwable, R]): Result[R] =
+  private def resultEither[R](either: Either[Throwable, R]): Terminal[R] =
     either.fold(Fail(_), Succeeded(_))
 
-  private final case class Succeeded[+R](r: R) extends Result[R] {
-    override def map[R2](f: R => R2): Result[R2] =
+  private final case class Succeeded[+R](r: R) extends Terminal[R] {
+    override def map[R2](f: R => R2): Terminal[R2] =
       try Succeeded(f(r))
       catch { case NonFatal(err) => Fail(err) }
   }
 
-  private final case class Fail(error: Throwable) extends Result[INothing] {
-    override def map[R](f: INothing => R): Result[R] = this
+  private final case class Fail(error: Throwable) extends Terminal[INothing] {
+    override def map[R](f: INothing => R): Terminal[R] = this
   }
 
   /** Signals that Pull evaluation was interrupted.
@@ -422,31 +422,31 @@ object Pull extends PullLowPriority {
     *                      signalling of the errors may be deferred until the Interruption resumes.
     */
   private final case class Interrupted(context: Unique.Token, deferredError: Option[Throwable])
-      extends Result[INothing] {
-    override def map[R](f: INothing => R): Result[R] = this
+      extends Terminal[INothing] {
+    override def map[R](f: INothing => R): Terminal[R] = this
   }
 
   private abstract class Bind[+F[_], +O, X, +R](val step: Pull[F, O, X]) extends Pull[F, O, R] {
-    def cont(r: Result[X]): Pull[F, O, R]
+    def cont(r: Terminal[X]): Pull[F, O, R]
     def delegate: Bind[F, O, X, R] = this
   }
 
-  /** Unrolled view of a `Pull` structure. may be `Result` or `EvalBind`
+  /** Unrolled view of a `Pull` structure. may be `Terminal` or `EvalBind`
     */
   private sealed trait ViewL[+F[_], +O]
 
   private sealed abstract case class View[+F[_], +O, X](step: Action[F, O, X])
       extends ViewL[F, O]
-      with (Result[X] => Pull[F, O, Unit]) {
-    def apply(r: Result[X]): Pull[F, O, Unit]
+      with (Terminal[X] => Pull[F, O, Unit]) {
+    def apply(r: Terminal[X]): Pull[F, O, Unit]
   }
   private final class EvalView[+F[_], +O](step: Action[F, O, Unit]) extends View[F, O, Unit](step) {
-    def apply(r: Result[Unit]): Pull[F, O, Unit] = r
+    def apply(r: Terminal[Unit]): Pull[F, O, Unit] = r
   }
 
   private final class BindView[+F[_], +O, Y](step: Action[F, O, Y], val b: Bind[F, O, Y, Unit])
       extends View[F, O, Y](step) {
-    def apply(r: Result[Y]): Pull[F, O, Unit] = b.cont(r)
+    def apply(r: Terminal[Y]): Pull[F, O, Unit] = b.cont(r)
   }
 
   private class BindBind[F[_], O, X, Y](
@@ -454,10 +454,10 @@ object Pull extends PullLowPriority {
       delegate: Bind[F, O, Y, Unit]
   ) extends Bind[F, O, X, Unit](bb.step) { self =>
 
-    def cont(zr: Result[X]): Pull[F, O, Unit] =
+    def cont(zr: Terminal[X]): Pull[F, O, Unit] =
       new Bind[F, O, Y, Unit](bb.cont(zr)) {
         override val delegate: Bind[F, O, Y, Unit] = self.delegate
-        def cont(yr: Result[Y]): Pull[F, O, Unit] = delegate.cont(yr)
+        def cont(yr: Terminal[Y]): Pull[F, O, Unit] = delegate.cont(yr)
       }
 
   }
@@ -468,12 +468,12 @@ object Pull extends PullLowPriority {
     @tailrec
     def mk(free: Pull[F, O, Unit]): ViewL[F, O] =
       free match {
-        case r: Result[Unit]       => r
+        case r: Terminal[Unit]     => r
         case e: Action[F, O, Unit] => new EvalView[F, O](e)
         case b: Bind[F, O, y, Unit] =>
           b.step match {
             case e: Action[F, O, y2] => new BindView(e, b)
-            case r: Result[_]        => mk(b.cont(r))
+            case r: Terminal[_]      => mk(b.cont(r))
             case c: Bind[F, O, x, _] => mk(new BindBind[F, O, x, y](c, b.delegate))
           }
       }
@@ -586,7 +586,7 @@ object Pull extends PullLowPriority {
   ): Pull[F, INothing, Option[(Chunk[O], Pull[F, O, Unit])]] =
     Uncons(s)
 
-  private type Cont[-Y, +G[_], +X] = Result[Y] => Pull[G, X, Unit]
+  private type Cont[-Y, +G[_], +X] = Terminal[Y] => Pull[G, X, Unit]
 
   /* Left-folds the output of a stream.
    *
@@ -648,7 +648,7 @@ object Pull extends PullLowPriority {
 
       def innerMapOutput[K[_], C, D](stream: Pull[K, C, Unit], fun: C => D): Pull[K, D, Unit] =
         viewL(stream) match {
-          case r: Result[_] => r.asInstanceOf[Result[Unit]]
+          case r: Terminal[_] => r.asInstanceOf[Terminal[Unit]]
           case v: View[K, C, x] =>
             val mstep: Pull[K, D, x] = (v.step: Action[K, C, x]) match {
               case o: Output[C] =>
@@ -670,7 +670,7 @@ object Pull extends PullLowPriority {
                 FlatMapOutput[k, b, D](fm.stream, innerCont)
             }
             new Bind[K, D, x, Unit](mstep) {
-              def cont(r: Result[x]) = innerMapOutput(v(r), fun)
+              def cont(r: Terminal[x]) = innerMapOutput(v(r), fun)
             }
         }
 
@@ -690,7 +690,7 @@ object Pull extends PullLowPriority {
             pred match {
               case vrun: ViewRunner =>
                 val nacc = new Bind[G, X, Unit, Unit](acc) {
-                  def cont(r: Result[Unit]) = vrun.view(r)
+                  def cont(r: Terminal[Unit]) = vrun.view(r)
                 }
                 outLoop(nacc, vrun.prevRunner)
               case _ => pred.out(head, scope, acc)
@@ -793,7 +793,7 @@ object Pull extends PullLowPriority {
                 val del = bv.b.asInstanceOf[Bind[G, X, Unit, Unit]].delegate
                 new Bind[G, X, Unit, Unit](fmoc) {
                   override val delegate: Bind[G, X, Unit, Unit] = del
-                  def cont(yr: Result[Unit]): Pull[G, X, Unit] = delegate.cont(yr)
+                  def cont(yr: Terminal[Unit]): Pull[G, X, Unit] = delegate.cont(yr)
                 }
             }
 
@@ -866,7 +866,7 @@ object Pull extends PullLowPriority {
       ): F[End] = {
         def boundToScope(scopeId: Unique.Token): Pull[G, X, Unit] =
           new Bind[G, X, Unit, Unit](stream) {
-            def cont(r: Result[Unit]) = r match {
+            def cont(r: Terminal[Unit]) = r match {
               case Succeeded(_) =>
                 CloseScope(scopeId, None, ExitCase.Succeeded)
               case interrupted @ Interrupted(_, _) =>
@@ -900,7 +900,7 @@ object Pull extends PullLowPriority {
       }
 
       def goCloseScope(close: CloseScope, view: Cont[Unit, G, X]): F[End] = {
-        def closeResult(r: Either[Throwable, Unit], ancestor: Scope[F]): Result[Unit] =
+        def closeTerminal(r: Either[Throwable, Unit], ancestor: Scope[F]): Terminal[Unit] =
           close.interruption match {
             case None => resultEither(r)
             case Some(Interrupted(interruptedScopeId, err)) =>
@@ -932,7 +932,7 @@ object Pull extends PullLowPriority {
           case Some(toClose) =>
             toClose.close(close.exitCase).flatMap { r =>
               toClose.openAncestor.flatMap { ancestor =>
-                val res = closeResult(r, ancestor)
+                val res = closeTerminal(r, ancestor)
                 go(ancestor, extendedTopLevelScope, translation, endRunner, view(res))
               }
             }
@@ -1059,7 +1059,7 @@ object Pull extends PullLowPriority {
       f: O => Pull[F2, O2, Unit]
   ): Pull[F2, O2, Unit] =
     p match {
-      case r: Result[_]          => r
+      case r: Terminal[_]        => r
       case a: AlgEffect[F, Unit] => a
       case _                     => FlatMapOutput(p, f)
     }
@@ -1069,7 +1069,7 @@ object Pull extends PullLowPriority {
       fK: F ~> G
   ): Pull[G, O, Unit] =
     stream match {
-      case r: Result[_] => r
+      case r: Terminal[_] => r
       case t: Translate[e, f, _] =>
         translate[e, G, O](t.stream, t.fk.andThen(fK.asInstanceOf[f ~> G]))
       case o: Output[_] => o
@@ -1082,7 +1082,7 @@ object Pull extends PullLowPriority {
       fun: O => P
   ): Pull[F, P, Unit] =
     stream match {
-      case r: Result[_]          => r
+      case r: Terminal[_]        => r
       case a: AlgEffect[F, _]    => a
       case t: Translate[g, f, _] => Translate[g, f, P](mapOutput(t.stream, fun), t.fk)
       case m: MapOutput[f, q, o] => MapOutput(m.stream, fun.compose(m.fun))
