@@ -26,6 +26,7 @@ If you have a project you'd like to include in this list, either [click here](ht
 * [fs2-crypto](https://github.com/Spinoco/fs2-crypto): TLS support for fs2.
 * [fs2-data](https://github.com/satabin/fs2-data): A set of data parsers and manipulation libraries for various formats for fs2.
 * [fs2-elastic](https://github.com/amarrella/fs2-elastic): Simple client for Elasticsearch.
+* [fs2-es](https://sloshy.github.io/fs2-es/): Event-sourcing and event-driven state management utilities using FS2.
 * [fs2-ftp](https://github.com/regis-leray/fs2-ftp): Simple client for Ftp/Ftps/Sftp using fs2 and cats-effect.
 * [fs2-google-pubsub](https://github.com/permutive/fs2-google-pubsub): A [Google Cloud Pub/Sub](https://cloud.google.com/pubsub/) implementation using fs2 and cats-effect.
 * [fs2-grpc](https://github.com/fiadliel/fs2-grpc): gRPC implementation for FS2 / Cats Effect.
@@ -47,6 +48,7 @@ If you have a project you'd like to include in this list, either [click here](ht
 * [neotypes](https://github.com/neotypes/neotypes): A Scala lightweight, type-safe & asynchronous driver for neo4j. Support streaming queries using fs2.
 * [neutron](https://github.com/cr-org/neutron): Apache Pulsar bindings for fs2.
 * [prox](https://vigoo.github.io/prox/): A library for working with system processes
+* [pure-aws](https://github.com/rewards-network/pure-aws): Pure-functional AWS clients including FS2 streaming support.
 * [redis4cats](https://redis4cats.profunktor.dev/): Redis client built on top of fs2 and cats effect.
 * [scarctic](https://gitlab.com/lJoublanc/scarctic): fs2-based driver for [MAN/AHL's Arctic](https://github.com/manahl/arctic) data store.
 * [scodec-protocols](https://github.com/scodec/scodec-protocols): A library for working with libpcap files. Contains many interesting pipes (e.g., working with time series and playing back streams at various rates).
