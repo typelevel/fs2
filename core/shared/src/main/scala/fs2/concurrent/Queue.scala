@@ -26,7 +26,7 @@ import cats.{Applicative, ApplicativeError, Eq, Functor, Id}
 import cats.effect.kernel.Concurrent
 import cats.syntax.all._
 
-import fs2.internal.{SizedQueue, Unique}
+import fs2.internal.SizedQueue
 
 /** Provides the ability to enqueue elements to a `Queue`. */
 trait Enqueue[F[_], A] {
@@ -479,7 +479,7 @@ object InspectableQueue {
 
         def peek1: F[A] =
           Concurrent[F]
-            .bracket(Unique[F]) { token =>
+            .bracket(F.unique) { token =>
               def take: F[A] =
                 pubSub.get(Left(Some(token))).flatMap {
                   case Left(s) =>
@@ -501,7 +501,7 @@ object InspectableQueue {
 
         def size: Stream[F, Int] =
           Stream
-            .bracket(Unique[F])(token => pubSub.unsubscribe(Left(Some(token))))
+            .bracket(F.unique)(token => pubSub.unsubscribe(Left(Some(token))))
             .flatMap { token =>
               pubSub.getStream(Left(Some(token))).flatMap {
                 case Left(s)  => Stream.emit(sizeOf(s))
