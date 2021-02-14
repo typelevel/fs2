@@ -105,6 +105,19 @@ sealed abstract class Pull[+F[_], +O, +R] {
         }
     }
 
+  /** Appends the given `post` pull after `this` pull.
+    * This is like `*>` except that the `post` pull is eagerly evaluated.
+    */
+  def *>[F2[x] >: F[x], O2 >: O, R2](p2: Pull[F2, O2, R2]): Pull[F2, O2, R2] =
+    new Bind[F2, O2, R, R2](this) {
+      def cont(r: Terminal[R]): Pull[F2, O2, R2] =
+        r match {
+          case _: Succeeded[_] => p2
+          case r: Interrupted  => r
+          case r: Fail         => r
+        }
+    }
+
   /** Lifts this pull to the specified effect type. */
   def covary[F2[x] >: F[x]]: Pull[F2, O, R] = this
 
