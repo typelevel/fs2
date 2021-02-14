@@ -157,7 +157,7 @@ lazy val io = project
   .enablePlugins(SbtOsgi)
   .settings(
     name := "fs2-io",
-    libraryDependencies += "com.comcast" %% "ip4s-core" % "3.0.0-M1",
+    libraryDependencies += "com.comcast" %% "ip4s-core" % "3.0.0-RC1",
     Test / fork := true,
     OsgiKeys.exportPackage := Seq("fs2.io.*"),
     OsgiKeys.privatePackage := Seq(),
