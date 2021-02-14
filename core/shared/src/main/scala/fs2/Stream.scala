@@ -1357,10 +1357,10 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       val differsAt = chunk.indexWhere(v => eq.neqv(f(v), k1)).getOrElse(-1)
       if (differsAt == -1) {
         // whole chunk matches the current key, add this chunk to the accumulated output
-        val newOut: Chunk[O] = out ++ chunk
-        if (newOut.size < limit)
-          Pull.output(Chunk.seq(acc)) >> go(Some((k1, newOut)), s)
-        else {
+        if (out.size + chunk.size < limit) {
+          val newCurrent = Some((k1, out ++ chunk))
+          Pull.output(Chunk.seq(acc)) >> go(newCurrent, s)
+        } else {
           val (prefix, suffix) = chunk.splitAt(limit - out.size)
           Pull.output(Chunk.seq(acc :+ ((k1, out ++ prefix)))) >> go(
             Some((k1, suffix)),
@@ -1372,10 +1372,10 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
         // split the chunk into the bit where the keys match and the bit where they don't
         val matching = chunk.take(differsAt)
         val newAcc = {
-          val newOut = out ++ matching
-          if (newOut.size == 0)
+          val newOutSize = out.size + matching.size
+          if (newOutSize == 0)
             acc
-          else if (newOut.size > limit) {
+          else if (newOutSize > limit) {
             val (prefix, suffix) = matching.splitAt(limit - out.size)
             acc :+ ((k1, out ++ prefix)) :+ ((k1, suffix))
           } else
