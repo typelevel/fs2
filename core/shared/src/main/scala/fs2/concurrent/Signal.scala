@@ -109,7 +109,7 @@ object SignallingRef {
     )
 
     F.ref(State(initial, 0L, LongMap.empty))
-      .product(Ref.of(1L))
+      .product(F.ref(1L))
       .map { case (state, ids) =>
         def newId = ids.getAndUpdate(_ + 1)
 
