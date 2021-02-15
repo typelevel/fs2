@@ -105,7 +105,7 @@ object SignallingRef {
     case class State(
         value: A,
         lastUpdate: Long,
-        listeners: LongMap[Deferred[F, (A, Long)]],
+        listeners: LongMap[Deferred[F, (A, Long)]]
     )
 
     F.ref(State(initial, 0L, LongMap.empty))
