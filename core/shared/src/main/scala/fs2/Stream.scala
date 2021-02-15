@@ -841,7 +841,8 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * res0: Vector[INothing] = Vector()
     * }}}
     */
-  def drain: Stream[F, INothing] = this.mapChunks(_ => Chunk.empty)
+  def drain: Stream[F, INothing] =
+    this.repeatPull(_.uncons.flatMap(uc => Pull.pure(uc.map(_._2))))
 
   /** Drops `n` elements of the input, then echoes the rest.
     *
