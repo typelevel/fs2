@@ -141,15 +141,6 @@ sealed abstract class Pull[+F[_], +O, +R] {
         }
     }
 
-  private[Pull] def transformWith[F2[x] >: F[x], O2 >: O, R2](
-      f: Terminal[R] => Pull[F2, O2, R2]
-  ): Pull[F2, O2, R2] =
-    new Bind[F2, O2, R, R2](this) {
-      def cont(r: Terminal[R]): Pull[F2, O2, R2] =
-        try f(r)
-        catch { case NonFatal(e) => Fail(e) }
-    }
-
   /** Discards the result type of this pull. */
   def void: Pull[F, O, Unit] = as(())
 }
@@ -185,14 +176,14 @@ object Pull extends PullLowPriority {
       val used =
         try use(a)
         catch { case NonFatal(t) => Fail(t) }
-      used.transformWith { result =>
+      transformWith(used) { result =>
         val exitCase: ExitCase = result match {
           case Succeeded(_)      => ExitCase.Succeeded
           case Fail(err)         => ExitCase.Errored(err)
           case Interrupted(_, _) => ExitCase.Canceled
         }
 
-        release(a, exitCase).transformWith {
+        transformWith(release(a, exitCase)) {
           case Fail(t2) =>
             result match {
               case Fail(tres) => Fail(CompositeFailure(tres, t2))
@@ -768,7 +759,7 @@ object Pull extends PullLowPriority {
               if (idx == chunk.size)
                 FlatMapOutput[G, Y, X](tail, fun)
               else {
-                try fun(chunk(idx)).transformWith {
+                try transformWith(fun(chunk(idx))) {
                   case Succeeded(_) => go(idx + 1)
                   case Fail(err)    => Fail(err)
                   case interruption @ Interrupted(_, _) =>
@@ -872,7 +863,7 @@ object Pull extends PullLowPriority {
               case interrupted @ Interrupted(_, _) =>
                 CloseScope(scopeId, Some(interrupted), ExitCase.Canceled)
               case Fail(err) =>
-                CloseScope(scopeId, None, ExitCase.Errored(err)).transformWith {
+                transformWith(CloseScope(scopeId, None, ExitCase.Errored(err))) {
                   case Succeeded(_) => Fail(err)
                   case Fail(err0)   => Fail(CompositeFailure(err, err0, Nil))
                   case Interrupted(interruptedScopeId, _) =>
@@ -1047,7 +1038,8 @@ object Pull extends PullLowPriority {
         view.step match {
           case CloseScope(scopeId, _, _) =>
             // Inner scope is getting closed b/c a parent was interrupted
-            CloseScope(scopeId, Some(interruption), ExitCase.Canceled).transformWith(view)
+            val cl: Pull[F, O, Unit] = CloseScope(scopeId, Some(interruption), ExitCase.Canceled)
+            transformWith(cl)(view)
           case _ =>
             // all other cases insert interruption cause
             view(interruption)
@@ -1087,6 +1079,15 @@ object Pull extends PullLowPriority {
       case t: Translate[g, f, _] => Translate[g, f, P](mapOutput(t.stream, fun), t.fk)
       case m: MapOutput[f, q, o] => MapOutput(m.stream, fun.compose(m.fun))
       case _                     => MapOutput(stream, fun)
+    }
+
+  private[this] def transformWith[F[_], O, R, S](p: Pull[F, O, R])(
+      f: Terminal[R] => Pull[F, O, S]
+  ): Pull[F, O, S] =
+    new Bind[F, O, R, S](p) {
+      def cont(r: Terminal[R]): Pull[F, O, S] =
+        try f(r)
+        catch { case NonFatal(e) => Fail(e) }
     }
 
   /** Provides syntax for pure pulls based on `cats.Id`. */
