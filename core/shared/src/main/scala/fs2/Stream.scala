@@ -1606,7 +1606,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       interruptR <- Stream.eval(F.deferred[Unit])
       runR =
         haltWhenTrue
-          .takeWhile(!_)
+          .exists(x => x)
           .interruptWhen(interruptR.get.attempt)
           .compile
           .drain
