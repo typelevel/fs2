@@ -850,29 +850,27 @@ object Pull extends PullLowPriority {
         interruptGuard(scope, view, endRunner)(cont)
       }
 
+      def endScope(scopeId: Unique.Token, result: Terminal[Unit]): Pull[G, X, Unit] = result match {
+        case Succeeded(_) =>
+          CloseScope(scopeId, None, ExitCase.Succeeded)
+        case interrupted @ Interrupted(_, _) =>
+          CloseScope(scopeId, Some(interrupted), ExitCase.Canceled)
+        case Fail(err) =>
+          val close = CloseScope(scopeId, None, ExitCase.Errored(err))
+          transformWith(close) {
+            case Succeeded(_) => Fail(err)
+            case Fail(err0)   => Fail(CompositeFailure(err, err0, Nil))
+            case Interrupted(interruptedScopeId, _) =>
+              sys.error(
+                s"Impossible, cannot interrupt when closing failed scope: $scopeId, $interruptedScopeId, $err"
+              )
+          }
+      }
       def goInScope(
           stream: Pull[G, X, Unit],
           useInterruption: Boolean,
           view: Cont[Unit, G, X]
       ): F[End] = {
-        def boundToScope(scopeId: Unique.Token): Pull[G, X, Unit] =
-          new Bind[G, X, Unit, Unit](stream) {
-            def cont(r: Terminal[Unit]) = r match {
-              case Succeeded(_) =>
-                CloseScope(scopeId, None, ExitCase.Succeeded)
-              case interrupted @ Interrupted(_, _) =>
-                CloseScope(scopeId, Some(interrupted), ExitCase.Canceled)
-              case Fail(err) =>
-                transformWith(CloseScope(scopeId, None, ExitCase.Errored(err))) {
-                  case Succeeded(_) => Fail(err)
-                  case Fail(err0)   => Fail(CompositeFailure(err, err0, Nil))
-                  case Interrupted(interruptedScopeId, _) =>
-                    sys.error(
-                      s"Impossible, cannot interrupt when closing failed scope: $scopeId, $interruptedScopeId, $err"
-                    )
-                }
-            }
-          }
         val maybeCloseExtendedScope: F[Option[Scope[F]]] =
           // If we're opening a new top-level scope (aka, direct descendant of root),
           // close the current extended top-level scope if it is defined.
@@ -884,7 +882,10 @@ object Pull extends PullLowPriority {
         val vrun = new ViewRunner(view)
         val tail = maybeCloseExtendedScope.flatMap { newExtendedScope =>
           scope.open(useInterruption).rethrow.flatMap { childScope =>
-            go(childScope, newExtendedScope, translation, vrun, boundToScope(childScope.id))
+            val bb = new Bind[G, X, Unit, Unit](stream) {
+              def cont(r: Terminal[Unit]): Pull[G, X, Unit] = endScope(childScope.id, r)
+            }
+            go(childScope, newExtendedScope, translation, vrun, bb)
           }
         }
         interruptGuard(scope, view, vrun)(tail)
