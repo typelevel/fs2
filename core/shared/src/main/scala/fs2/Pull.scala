@@ -855,24 +855,13 @@ object Pull extends PullLowPriority {
           useInterruption: Boolean,
           view: Cont[Unit, G, X]
       ): F[End] = {
-        def boundToScope(scopeId: Unique.Token): Pull[G, X, Unit] =
-          new Bind[G, X, Unit, Unit](stream) {
-            def cont(r: Terminal[Unit]) = r match {
-              case Succeeded(_) =>
-                CloseScope(scopeId, None, ExitCase.Succeeded)
-              case interrupted @ Interrupted(_, _) =>
-                CloseScope(scopeId, Some(interrupted), ExitCase.Canceled)
-              case Fail(err) =>
-                transformWith(CloseScope(scopeId, None, ExitCase.Errored(err))) {
-                  case Succeeded(_) => Fail(err)
-                  case Fail(err0)   => Fail(CompositeFailure(err, err0, Nil))
-                  case Interrupted(interruptedScopeId, _) =>
-                    sys.error(
-                      s"Impossible, cannot interrupt when closing failed scope: $scopeId, $interruptedScopeId, $err"
-                    )
-                }
-            }
+        def endScope(scopeId: Unique.Token, result: Terminal[Unit]): Pull[G, X, Unit] =
+          result match {
+            case Succeeded(_)              => CloseScope(scopeId, None, ExitCase.Succeeded)
+            case inter @ Interrupted(_, _) => CloseScope(scopeId, Some(inter), ExitCase.Canceled)
+            case Fail(err)                 => CloseScope(scopeId, None, ExitCase.Errored(err))
           }
+
         val maybeCloseExtendedScope: F[Option[Scope[F]]] =
           // If we're opening a new top-level scope (aka, direct descendant of root),
           // close the current extended top-level scope if it is defined.
@@ -884,13 +873,29 @@ object Pull extends PullLowPriority {
         val vrun = new ViewRunner(view)
         val tail = maybeCloseExtendedScope.flatMap { newExtendedScope =>
           scope.open(useInterruption).rethrow.flatMap { childScope =>
-            go(childScope, newExtendedScope, translation, vrun, boundToScope(childScope.id))
+            val bb = new Bind[G, X, Unit, Unit](stream) {
+              def cont(r: Terminal[Unit]): Pull[G, X, Unit] = endScope(childScope.id, r)
+            }
+            go(childScope, newExtendedScope, translation, vrun, bb)
           }
         }
         interruptGuard(scope, view, vrun)(tail)
       }
 
       def goCloseScope(close: CloseScope, view: Cont[Unit, G, X]): F[End] = {
+        def addError(err: Throwable, res: Terminal[Unit]): Terminal[Unit] = res match {
+          case Succeeded(_) => Fail(err)
+          case Fail(err0)   => Fail(CompositeFailure(err, err0, Nil))
+          // Note: close.interruption.isSome IF-AND-ONLY-IF close.exitCase is ExitCase.Cancelled
+          case Interrupted(_, _) => sys.error(s"Impossible, cannot interrupt here")
+        }
+
+        def viewCont(res: Terminal[Unit]): Pull[G, X, Unit] =
+          close.exitCase match {
+            case ExitCase.Errored(err) => view(addError(err, res))
+            case _                     => view(res)
+          }
+
         def closeTerminal(r: Either[Throwable, Unit], ancestor: Scope[F]): Terminal[Unit] =
           close.interruption match {
             case None => resultEither(r)
@@ -910,28 +915,28 @@ object Pull extends PullLowPriority {
         scope.findInLineage(close.scopeId).flatMap {
           case Some(toClose) if toClose.isRoot =>
             // Impossible - don't close root scope as a result of a `CloseScope` call
-            go(scope, extendedTopLevelScope, translation, endRunner, view(unit))
+            go(scope, extendedTopLevelScope, translation, endRunner, viewCont(unit))
 
           case Some(toClose) if extendLastTopLevelScope && toClose.level == 1 =>
             // Request to close the current top-level scope - if we're supposed to extend
             // it instead, leave the scope open and pass it to the continuation
             extendedTopLevelScope.traverse_(_.close(ExitCase.Succeeded).rethrow) *>
               toClose.openAncestor.flatMap { ancestor =>
-                go(ancestor, Some(toClose), translation, endRunner, view(unit))
+                go(ancestor, Some(toClose), translation, endRunner, viewCont(unit))
               }
 
           case Some(toClose) =>
             toClose.close(close.exitCase).flatMap { r =>
               toClose.openAncestor.flatMap { ancestor =>
                 val res = closeTerminal(r, ancestor)
-                go(ancestor, extendedTopLevelScope, translation, endRunner, view(res))
+                go(ancestor, extendedTopLevelScope, translation, endRunner, viewCont(res))
               }
             }
 
           case None =>
             // scope already closed, continue with current scope
             val result = close.interruption.getOrElse(unit)
-            go(scope, extendedTopLevelScope, translation, endRunner, view(result))
+            go(scope, extendedTopLevelScope, translation, endRunner, viewCont(result))
         }
       }
 
