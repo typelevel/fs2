@@ -543,31 +543,28 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * res0: Option[Int] = Some(9)
     * }}}
     */
-  def concurrently[F2[x] >: F[x], O2](
-      that: Stream[F2, O2]
+  def concurrently[F2[x] >: F[x]](
+      that: Stream[F2, INothing]
   )(implicit F: Concurrent[F2]): Stream[F2, O] = {
     val fstream: F2[Stream[F2, O]] = for {
       interrupt <- F.deferred[Unit]
       doneR <- F.deferred[Either[Throwable, Unit]]
     } yield {
-      def runR: F2[Unit] =
-        that.interruptWhen(interrupt.get.attempt).compile.drain.attempt.flatMap { r =>
-          doneR.complete(r) >> {
-            if (r.isLeft)
-              interrupt
-                .complete(())
-                .void // interrupt only if this failed otherwise give change to `this` to finalize
-            else F.unit
-          }
+      // interrupt only if this failed otherwise give change to `this` to finalize
+      val stop: F2[Unit] = interrupt.complete(()).void
+
+      def watch[A](str: Stream[F2, A]): Stream[F2, A] =
+        str.interruptWhen(interrupt.get.attempt)
+
+      def startR: F2[Unit] =
+        watch(that).compile.drain.attempt.flatMap { r =>
+          doneR.complete(r) >> (if (r.isLeft) stop else F.unit)
         }
 
       // stop background process but await for it to finalise with a result
-      val stopBack: F2[Unit] = interrupt.complete(()) >> doneR.get.flatMap(
-        F.fromEither
-      )
+      val stopBack: F2[Unit] = interrupt.complete(()) >> doneR.get.flatMap(F.fromEither)
 
-      Stream.bracket(runR.start)(_ => stopBack) >>
-        this.interruptWhen(interrupt.get.attempt)
+      Stream.bracket(startR.start)(_ => stopBack) >> watch(this)
     }
 
     Stream.eval(fstream).flatten
@@ -661,7 +658,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
               }
           }
 
-        val in: Stream[F2, Unit] = chunks.evalMap(onChunk) ++
+        val in: Stream[F2, INothing] = chunks.evalMap(onChunk).drain ++
           Stream.exec(enqueueLatest >> queue.offer(None))
 
         val out: Stream[F2, O] = Stream.fromQueueNoneTerminated(queue)
@@ -1504,7 +1501,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       initial: O2
   ): Stream[F2, Signal[F2, O2]] =
     Stream.eval(SignallingRef.of[F2, O2](initial)).flatMap { sig =>
-      Stream(sig).concurrently(evalMap(sig.set))
+      Stream(sig).concurrently(evalMap(sig.set).drain)
     }
 
   /** Like [[hold]] but does not require an initial value, and hence all output elements are wrapped in `Some`. */
@@ -1518,7 +1515,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   ): Resource[F2, Signal[F2, O2]] =
     Stream
       .eval(SignallingRef.of[F2, O2](initial))
-      .flatMap(sig => Stream(sig).concurrently(evalMap(sig.set)))
+      .flatMap(sig => Stream(sig).concurrently(evalMap(sig.set).drain))
       .compile
       .resource
       .lastOrError
@@ -2044,7 +2041,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
           .rethrow
           .onFinalize(dequeueDone.complete(()).void)
 
-      foreground.concurrently(background)
+      foreground.concurrently(background.drain)
     }
     Stream.eval(fstream).flatten
   }
@@ -3719,7 +3716,7 @@ object Stream extends StreamLowPriority {
 
             val sinkOut = Stream.repeatEval(sinkQ.take).unNoneTerminate.flatMap(outEnque)
             val outputStream = Stream.repeatEval(outQ.take).unNoneTerminate.flatMap(releaseChunk)
-            val runner = (p(sinkOut) ++ closeOutQ).concurrently(sinkIn) ++ closeOutQ
+            val runner = (p(sinkOut) ++ closeOutQ).concurrently(sinkIn.drain) ++ closeOutQ
             outputStream.concurrently(runner)
           }
         }

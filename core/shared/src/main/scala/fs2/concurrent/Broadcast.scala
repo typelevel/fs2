@@ -75,7 +75,7 @@ object Broadcast {
             .evalMap(chunk => pubSub.publish(Some(chunk)))
             .onFinalize(pubSub.publish(None))
 
-        Stream.constant(subscriber).concurrently(publish)
+        Stream.constant(subscriber).concurrently(publish.drain)
       }
   }
 

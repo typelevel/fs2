@@ -74,6 +74,7 @@ object Balance {
         source.chunks
           .evalMap(chunk => pubSub.publish(Some(chunk)))
           .onFinalize(pubSub.publish(None))
+          .drain
 
       Stream.constant(subscriber).concurrently(push)
     }
