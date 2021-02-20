@@ -71,8 +71,8 @@ object Broadcast {
           }
 
         def publish =
-          source.chunks
-            .evalMap(chunk => pubSub.publish(Some(chunk)))
+          source
+            .foreachChunk(chunk => pubSub.publish(Some(chunk)))
             .onFinalize(pubSub.publish(None))
 
         Stream.constant(subscriber).concurrently(publish)
