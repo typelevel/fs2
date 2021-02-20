@@ -62,6 +62,7 @@ class TLSSocketSuite extends TLSSuite {
                             .through(text.utf8Encode)
                             .through(tlsSocket.writes())
                             .drain ++
+                            Stream.eval_(tlsSocket.endOfOutput) ++
                             tlsSocket
                               .reads(8192)
                               .through(text.utf8Decode)
