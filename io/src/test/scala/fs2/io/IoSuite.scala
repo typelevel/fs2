@@ -86,7 +86,7 @@ class IoSuite extends Fs2Suite {
       }
     }
 
-    test("Doesn't deadlock with size-1 ContextShift thread pool") {
+    test("Doesn't deadlock with size-1 thread pool") {
       val ioRuntime: IORuntime = {
         val compute = {
           val pool = Executors.newFixedThreadPool(1)
@@ -106,7 +106,7 @@ class IoSuite extends Fs2Suite {
         )
       }
       def write(os: OutputStream): IO[Unit] =
-        IO {
+        IO.blocking {
           os.write(1)
           os.write(1)
           os.write(1)
