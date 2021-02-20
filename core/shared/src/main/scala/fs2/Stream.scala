@@ -967,7 +967,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   def enqueueUnterminatedChunks[F2[x] >: F[x], O2 >: O](
       queue: Queue[F2, Chunk[O2]]
   ): Stream[F2, Nothing] =
-    execMapChunk(queue.offer(_))
+    execMapChunk(queue.offer)
 
   /** Enqueues the elements of this stream to the supplied queue and enqueues `None` when this stream terminates.
     */
@@ -1307,12 +1307,6 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   def foreach[F2[x] >: F[x]](f: O => F2[Unit]): Stream[F2, INothing] =
     flatMap(o => Stream.exec(f(o)))
 
-  /** Like `foreach`, but it applies the effects to all the elements of each chunk
-    * at a time.
-    */
-  def execMap[F2[x] >: F[x]: Applicative, O2](f: O => F2[O2]): Stream[F2, INothing] =
-    execMapChunk((ch: Chunk[O]) => ch.traverse_(f))
-
   /** Performs the given consume action on each chunk of outputs emitted by this stream,
     * and discard them without emitting anything.
     *
@@ -1525,7 +1519,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       initial: O2
   ): Stream[F2, Signal[F2, O2]] =
     Stream.eval(SignallingRef.of[F2, O2](initial)).flatMap { sig =>
-      Stream(sig).concurrently(foreach(sig.set(_)))
+      Stream(sig).concurrently(evalMap(sig.set))
     }
 
   /** Like [[hold]] but does not require an initial value, and hence all output elements are wrapped in `Some`. */
@@ -1539,7 +1533,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   ): Resource[F2, Signal[F2, O2]] =
     Stream
       .eval(SignallingRef.of[F2, O2](initial))
-      .flatMap(sig => Stream(sig).concurrently(foreach(sig.set(_))))
+      .flatMap(sig => Stream(sig).concurrently(evalMap(sig.set)))
       .compile
       .resource
       .lastOrError
@@ -2117,12 +2111,18 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   )(f: (O2, O3) => O4): Stream[F2, O4] =
     this.parZip(that).map(f.tupled)
 
-  /** Pause this stream when `pauseWhenTrue` emits `true`, resuming when `false` is emitted. */
+  /** Pause this stream when `pauseWhenTrue` emits `true`, resuming when `false` is emitted.
+    *
+    * Note that these pauses only happen between Chunks of the output, but we do not pause
+    * the stream in between elements in a same chunk.
+    */
   def pauseWhen[F2[x] >: F[x]: Concurrent](
       pauseWhenTrue: Stream[F2, Boolean]
   ): Stream[F2, O] =
     Stream.eval(SignallingRef[F2, Boolean](false)).flatMap { pauseSignal =>
-      def writer = pauseWhenTrue.execMap(pauseSignal.set)
+      // Note that the writer is a silent stream (has no outputs), of which
+      // we only care to know when the the end is reached */
+      def writer = pauseWhenTrue.execMapChunk(ch => pauseSignal.set(ch.last.get))
 
       pauseWhen(pauseSignal).mergeHaltBoth(writer)
     }
@@ -3734,7 +3734,6 @@ object Stream extends StreamLowPriority {
             val sinkOut = Stream.repeatEval(sinkQ.take).unNoneTerminate.flatMap(outEnque)
             val outputStream = Stream.repeatEval(outQ.take).unNoneTerminate.flatMap(releaseChunk)
             val runner = (p(sinkOut) ++ closeOutQ).concurrently(sinkIn) ++ closeOutQ
-
             outputStream.concurrently(runner)
           }
         }

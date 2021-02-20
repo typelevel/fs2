@@ -134,7 +134,7 @@ object Topic {
               }
 
           def publish: Pipe[F, A, Nothing] =
-            _.execMap(publish1)
+            _.evalMap(publish1).drain
 
           def subscribe(maxQueued: Int): Stream[F, A] =
             Stream.resource(subscribeAwait(maxQueued)).flatten

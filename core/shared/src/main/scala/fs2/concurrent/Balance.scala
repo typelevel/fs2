@@ -70,9 +70,9 @@ object Balance {
           .getStream(chunkSize)
           .unNoneTerminate
           .flatMap(Stream.chunk)
-      def push =
-        source.chunks
-          .evalMap(chunk => pubSub.publish(Some(chunk)))
+      def push: Stream[F, INothing] =
+        source
+          .execMapChunk(chunk => pubSub.publish(Some(chunk)))
           .onFinalize(pubSub.publish(None))
 
       Stream.constant(subscriber).concurrently(push)
