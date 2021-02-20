@@ -67,8 +67,8 @@ private[io] object JavaInputOutputStream {
         upState: SignallingRef[F, UpStreamState],
         dnState: SignallingRef[F, DownStreamState]
     ): F[Unit] =
-      source.chunks
-        .evalMap(ch => queue.offer(Right(ch.toArraySlice)))
+      source
+        .execMapChunk(ch => queue.offer(Right(ch.toArraySlice)))
         .interruptWhen(dnState.discrete.map(_.isDone).filter(identity))
         .compile
         .drain

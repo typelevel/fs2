@@ -70,9 +70,9 @@ object Broadcast {
               .flatMap(Stream.chunk)
           }
 
-        def publish =
-          source.chunks
-            .evalMap(chunk => pubSub.publish(Some(chunk)))
+        val publish: Stream[F, INothing] =
+          source
+            .execMapChunk(chunk => pubSub.publish(Some(chunk)))
             .onFinalize(pubSub.publish(None))
 
         Stream.constant(subscriber).concurrently(publish)
