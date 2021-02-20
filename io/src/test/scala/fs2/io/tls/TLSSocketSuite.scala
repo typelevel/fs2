@@ -130,8 +130,8 @@ class TLSSocketSuite extends TLSSuite {
                     serverNames = Some(List(new SNIHostName("www.google.com")))
                   )
                   // logger = Some((m: String) =>
-                  //   IO.delay(println(s"${Console.MAGENTA}[TLS] $m${Console.RESET}"))
-                  // )
+                  //  IO.delay(println(s"${Console.MAGENTA}[TLS] $m${Console.RESET}"))
+                  //)
                 )
                 .use { socket =>
                   val send = Stream("GET / HTTP/1.1\r\nHost: www.google.com\r\n\r\n")
@@ -146,7 +146,7 @@ class TLSSocketSuite extends TLSSuite {
                     .concurrently(send.delayBy(100.millis))
                     .compile
                     .string
-                    .map(it => assert(it == "HTTP/1.1 200 OK"))
+                    .map(it => assertEquals(it, "HTTP/1.1 200 OK"))
                 }
             }
           }

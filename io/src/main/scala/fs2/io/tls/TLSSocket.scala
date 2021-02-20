@@ -95,10 +95,10 @@ object TLSSocket {
         _.chunks.evalMap(write(_, timeout))
 
       def endOfOutput: F[Unit] =
-        engine.stopWrap >> socket.endOfOutput
+        socket.endOfOutput
 
       def endOfInput: F[Unit] =
-        engine.stopUnwrap >> socket.endOfInput
+        socket.endOfInput
 
       def localAddress: F[SocketAddress] =
         socket.localAddress
