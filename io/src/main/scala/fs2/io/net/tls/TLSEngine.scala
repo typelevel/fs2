@@ -108,7 +108,7 @@ private[tls] object TLSEngine {
               case SSLEngineResult.Status.BUFFER_OVERFLOW =>
                 wrapBuffer.expandOutput >> wrap
               case SSLEngineResult.Status.CLOSED =>
-                stopWrap >> stopUnwrap
+                stopWrap
             }
           }
 
@@ -126,12 +126,16 @@ private[tls] object TLSEngine {
 
       private def read0(maxBytes: Int): F[Option[Chunk[Byte]]] =
         // Check if the initial handshake has finished -- if so, read; otherwise, handshake and then read
-        initialHandshakeDone.ifM(
-          dequeueUnwrap(maxBytes).flatMap { out =>
-            if (out.isEmpty) read1(maxBytes) else Applicative[F].pure(out)
-          },
-          write(Chunk.empty) >> read1(maxBytes)
-        )
+        dequeueUnwrap(maxBytes).flatMap { out =>
+          if (out.isEmpty)
+            initialHandshakeDone.ifM(
+              read1(maxBytes),
+              write(Chunk.empty) >> dequeueUnwrap(maxBytes).flatMap { out =>
+                if (out.isEmpty) read1(maxBytes) else Applicative[F].pure(out)
+              }
+            )
+          else Applicative[F].pure(out)
+        }
 
       private def read1(maxBytes: Int): F[Option[Chunk[Byte]]] =
         binding.read(maxBytes.max(engine.getSession.getPacketBufferSize)).flatMap {
@@ -203,7 +207,10 @@ private[tls] object TLSEngine {
               else
                 binding.read(engine.getSession.getPacketBufferSize).flatMap {
                   case Some(c) => unwrapBuffer.input(c) >> unwrapHandshake
-                  case None    => stopWrap >> stopUnwrap
+                  case None =>
+                    unwrapBuffer.inputRemains.flatMap(x =>
+                      if (x > 0) Applicative[F].unit else stopUnwrap
+                    )
                 }
             }
           case SSLEngineResult.HandshakeStatus.NEED_UNWRAP_AGAIN =>

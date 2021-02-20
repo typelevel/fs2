@@ -134,7 +134,7 @@ package object io {
     val mkOutput: Resource[F, (OutputStream, InputStream)] =
       Resource.make(Sync[F].delay {
         val os = new PipedOutputStream()
-        val is = new PipedInputStream(os)
+        val is = new PipedInputStream(os, chunkSize)
         (os: OutputStream, is: InputStream)
       })(ois =>
         Sync[F].blocking {

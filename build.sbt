@@ -21,8 +21,8 @@ ThisBuild / startYear := Some(2013)
 ThisBuild / crossScalaVersions := Seq("3.0.0-M3", "3.0.0-RC1", "2.12.13", "2.13.4")
 
 ThisBuild / versionIntroduced := Map(
-  "3.0.0-M2" -> "3.0.0",
-  "3.0.0-M3" -> "3.0.0"
+  "3.0.0-M3" -> "3.0.0",
+  "3.0.0-RC1" -> "3.0.0"
 )
 
 ThisBuild / githubWorkflowJavaVersions := Seq("adopt@1.11")

@@ -99,10 +99,10 @@ object TLSSocket {
         _.chunks.foreach(write)
 
       def endOfOutput: F[Unit] =
-        engine.stopWrap >> socket.endOfOutput
+        socket.endOfOutput
 
       def endOfInput: F[Unit] =
-        engine.stopUnwrap >> socket.endOfInput
+        socket.endOfInput
 
       def localAddress: F[SocketAddress[IpAddress]] =
         socket.localAddress
