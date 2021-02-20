@@ -130,10 +130,12 @@ private[tls] object TLSEngine {
         // Check if the initial handshake has finished -- if so, read; otherwise, handshake and then read
         dequeueUnwrap(maxBytes).flatMap { out =>
           if (out.isEmpty)
-            initialHandshakeDone.ifM(read1(maxBytes, timeout), 
+            initialHandshakeDone.ifM(
+              read1(maxBytes, timeout),
               write(Chunk.empty, None) >> dequeueUnwrap(maxBytes).flatMap { out =>
                 if (out.isEmpty) read1(maxBytes, timeout) else Applicative[F].pure(out)
-              })
+              }
+            )
           else Applicative[F].pure(out)
         }
 
@@ -209,7 +211,10 @@ private[tls] object TLSEngine {
               else
                 binding.read(engine.getSession.getPacketBufferSize, timeout).flatMap {
                   case Some(c) => unwrapBuffer.input(c) >> unwrapHandshake(timeout)
-                  case None    => unwrapBuffer.inputRemains.flatMap(x => if (x > 0) Applicative[F].unit else stopUnwrap)
+                  case None =>
+                    unwrapBuffer.inputRemains.flatMap(x =>
+                      if (x > 0) Applicative[F].unit else stopUnwrap
+                    )
                 }
             }
           case SSLEngineResult.HandshakeStatus.NEED_UNWRAP_AGAIN =>
