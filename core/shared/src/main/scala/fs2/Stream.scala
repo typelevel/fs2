@@ -1653,29 +1653,32 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * scala> Stream(1, 2, 3, 4, 5).intersperse(0).toList
     * res0: List[Int] = List(1, 0, 2, 0, 3, 0, 4, 0, 5)
     * }}}
+    *
+    * This method preserves the Chunking structure of `this` stream.
     */
-  def intersperse[O2 >: O](separator: O2): Stream[F, O2] =
-    this.pull.echo1.flatMap {
-      case None => Pull.done
-      case Some(s) =>
-        s.repeatPull {
-          _.uncons.flatMap {
-            case None => Pull.pure(None)
-            case Some((hd, tl)) =>
-              val interspersed = {
-                val bldr = Vector.newBuilder[O2]
-                bldr.sizeHint(hd.size * 2)
-                hd.foreach { o =>
-                  bldr += separator
-                  bldr += o
-                }
-                Chunk.vector(bldr.result())
-              }
-              Pull.output(interspersed) >> Pull.pure(Some(tl))
-          }
-        }.pull
-          .echo
+  def intersperse[O2 >: O](separator: O2): Stream[F, O2] = {
+    def doChunk(hd: Chunk[O], isFirst: Boolean): Chunk[O2] = {
+      val bldr = Vector.newBuilder[O2]
+      bldr.sizeHint(hd.size * 2 + (if (isFirst) 1 else 0))
+      val iter = hd.iterator
+      if (isFirst)
+        bldr += iter.next()
+      iter.foreach { o =>
+        bldr += separator
+        bldr += o
+      }
+      Chunk.vector(bldr.result())
+    }
+    def go(str: Stream[F, O]): Pull[F, O2, Unit] =
+      str.pull.uncons.flatMap {
+        case None           => Pull.done
+        case Some((hd, tl)) => Pull.output(doChunk(hd, false)) >> go(tl)
+      }
+    this.pull.uncons.flatMap {
+      case None           => Pull.done
+      case Some((hd, tl)) => Pull.output(doChunk(hd, true)) >> go(tl)
     }.stream
+  }
 
   /** Returns the last element of this stream, if non-empty.
     *
