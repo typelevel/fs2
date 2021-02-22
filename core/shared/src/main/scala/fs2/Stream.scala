@@ -3410,7 +3410,7 @@ object Stream extends StreamLowPriority {
 
   /** A stream that never emits and never terminates.
     */
-  def never[F[_]](implicit F: Concurrent[F]): Stream[F, Nothing] =
+  def never[F[_]](implicit F: Spawn[F]): Stream[F, Nothing] =
     Stream.eval(F.never)
 
   /** Creates a stream that, when run, fails with the supplied exception.
@@ -3567,7 +3567,7 @@ object Stream extends StreamLowPriority {
     */
   def supervise[F[_], A](
       fa: F[A]
-  )(implicit F: Concurrent[F]): Stream[F, Fiber[F, Throwable, A]] =
+  )(implicit F: Spawn[F]): Stream[F, Fiber[F, Throwable, A]] =
     bracket(F.start(fa))(_.cancel)
 
   /** Returns a stream that evaluates the supplied by-name each time the stream is used,
