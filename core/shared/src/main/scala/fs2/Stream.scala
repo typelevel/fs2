@@ -1798,28 +1798,26 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     */
   def switchMap[F2[x] >: F[x], O2](
       f: O => Stream[F2, O2]
-  )(implicit F: Concurrent[F2]): Stream[F2, O2] =
-    Stream.force(Semaphore[F2](1).flatMap { guard =>
-      F.ref[Option[Deferred[F2, Unit]]](None).map { haltRef =>
-        def runInner(o: O, halt: Deferred[F2, Unit]): Stream[F2, O2] =
-          Stream.eval(guard.acquire) >> // guard inner to prevent parallel inner streams
-            f(o).interruptWhen(halt.get.attempt) ++ Stream.exec(guard.release)
+  )(implicit F: Concurrent[F2]): Stream[F2, O2] = {
+    val fstream = for {
+      guard <- Semaphore[F2](1)
+      haltRef <- F.ref[Option[Deferred[F2, Unit]]](None)
+    } yield {
+      def runInner(o: O, halt: Deferred[F2, Unit]): Stream[F2, O2] =
+        Stream.eval(guard.acquire) >> // guard inner to prevent parallel inner streams
+          f(o).interruptWhen(halt.get.attempt) ++ Stream.exec(guard.release)
 
-        this
-          .evalMap { o =>
-            F.deferred[Unit].flatMap { halt =>
-              haltRef
-                .getAndSet(halt.some)
-                .flatMap {
-                  case None       => F.unit
-                  case Some(last) => last.complete(()).void // interrupt the previous one
-                }
-                .as(runInner(o, halt))
-            }
-          }
-          .parJoin(2)
-      }
-    })
+      def haltedF(o: O): F2[Stream[F2, O2]] =
+        for {
+          halt <- F.deferred[Unit]
+          prev <- haltRef.getAndSet(halt.some)
+          _ <- prev.traverse_(_.complete(())) // interrupt previous one if any
+        } yield runInner(o, halt)
+
+      this.evalMap(haltedF).parJoin(2)
+    }
+    Stream.force(fstream)
+  }
 
   /** Interleaves the two inputs nondeterministically. The output stream
     * halts after BOTH `s1` and `s2` terminate normally, or in the event
