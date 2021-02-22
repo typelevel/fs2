@@ -31,7 +31,7 @@ object Ex {
   def res(name: String) =
     Resource.make(
       IO.println(s"opening $name")
-        .as(IO.sleep(scala.util.Random.nextInt(1000).millis) >> IO.println(s"$name executed"))
+        .as(IO(scala.util.Random.nextInt(1000).millis).flatMap(IO.sleep) >> IO.println(s"$name executed"))
     )(_ => IO.println(s"closing $name"))
 
   // problem:
@@ -85,4 +85,14 @@ object Ex {
   // 0 executed
   // closing 1
   // closing 0
+
+  def e =
+    Stream
+      .resource(res("thingy"))
+      .repeat
+      .take(5)
+      .mapAsyncUnordered(100)(identity)
+      .compile
+      .drain
+      .unsafeRunSync()
 }
