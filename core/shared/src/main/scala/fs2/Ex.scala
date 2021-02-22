@@ -28,16 +28,18 @@ import cats.syntax.all._
 
 object Ex {
 
+  def sleepRandom = IO(scala.util.Random.nextInt(1000).millis).flatMap(IO.sleep)
+
   def res(name: String) =
     Resource.make(
-      IO.println(s"opening $name")
-        .as(IO(scala.util.Random.nextInt(1000).millis).flatMap(IO.sleep) >> IO.println(s"$name executed"))
+      sleepRandom >> IO.println(s"opening $name")
+        .as(sleepRandom >> IO.println(s"$name executed"))
     )(_ => IO.println(s"closing $name"))
 
   // problem:
   //  you want all the subscriptions opened before any subscriber starts,
   //  but close them timely
-  // solution:
+
   def a =
     Stream
       .range(0, 6)
@@ -62,6 +64,7 @@ object Ex {
     .mapAsyncUnordered(100)(identity)
     .compile.drain.unsafeRunSync()
 
+  // Not always true
   // scala> Ex.b
   // opening a
   // opening b
