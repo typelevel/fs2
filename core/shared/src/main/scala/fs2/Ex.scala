@@ -33,8 +33,9 @@ object Ex {
 
   def res(name: String) =
     Resource.make(
-      sleepRandom >> IO.println(s"opening $name")
-        .as(sleepRandom >> IO.println(s"$name executed"))
+      sleepRandom >> IO.println(s"opening $name").as {
+        Stream.eval(sleepRandom >> IO.println(s"$name executed"))
+      }
     )(_ => IO.println(s"closing $name"))
 
   // problem:
@@ -47,22 +48,22 @@ object Ex {
       .covary[IO]
       .foldMap(i => Stream.resource(res(i.toString)))
       .flatMap(
-        _.mapAsyncUnordered(100)(identity)
+        _.parJoinUnbounded
       )
       .compile
       .drain
       .unsafeRunSync()
 
   def b = (Stream.resource(res("a")) ++ Stream
-    .resource(res("b"))).mapAsyncUnordered(100)(identity).compile.drain.unsafeRunSync()
+    .resource(res("b"))).parJoinUnbounded.compile.drain.unsafeRunSync()
 
   def c = (Stream.resource(res("a")) ++ Stream
-    .resource(res("b"))).evalMap(identity).compile.drain.unsafeRunSync()
+    .resource(res("b"))).flatten.compile.drain.unsafeRunSync()
 
   def d = Stream.resource {
     (0 until 2).toList.traverse(i => res(i.toString))
   }.flatMap(Stream.emits)
-    .mapAsyncUnordered(100)(identity)
+    .parJoinUnbounded
     .compile.drain.unsafeRunSync()
 
   // Not always true
@@ -95,7 +96,7 @@ object Ex {
       .resource(res("thingy"))
       .repeat
       .take(5)
-      .mapAsyncUnordered(100)(identity)
+      .parJoinUnbounded
       .compile
       .drain
       .unsafeRunSync()
@@ -112,7 +113,7 @@ object Ex {
         Stream
           .resource(res(i.toString))
           .evalTap(_ => barrier.await) // works, but what about interruption
-          .evalMap(identity) // in the general case, the consumer stream
+          .flatten // in the general case, the consumer stream
       }.parJoinUnbounded
     }.compile.drain.unsafeRunSync()
 
@@ -126,7 +127,8 @@ object Ex {
         .flatMap(
           _
             .append(Stream.exec(wait.complete(()).void))
-            .mapAsyncUnordered(100)(x => wait.get >> x)
+            .map(x => Stream.exec(wait.get) ++ x)
+            .parJoinUnbounded
         )
     }.compile
      .drain
@@ -153,31 +155,30 @@ object Ex {
   // closing 4
 
 
-  // not possible to test interruption with this shape because of the independent
-  // problem with IO.canceled, need to go to Stream
+  def aplusI =
+    Stream.eval(IO.ref(0)).flatMap { count =>
+      Stream.eval(IO.deferred[Unit]).flatMap { wait =>
+        Stream
+          .range(0, 6)
+          .covary[IO]
+          .foldMap(i => Stream.resource(res(i.toString)))
+          .flatMap(
+            _
+              .append(Stream.exec(wait.complete(()).void))
 
-  // def aplusI =
-  //   Stream.eval(IO.ref(0)).flatMap { count =>
-  //   Stream.eval(IO.deferred[Unit]).flatMap { wait =>
-  //     Stream
-  //       .range(0, 6)
-  //       .covary[IO]
-  //       .foldMap(i => Stream.resource(res(i.toString)))
-  //       .flatMap(
-  //         _
-  //           .append(Stream.exec(wait.complete(()).void))
-  //           .mapAsyncUnordered(100) { x =>
-  //             count.updateAndGet(_ + 1).flatMap { c =>
-  //               if (c == 2) IO.println("cancelling 2") >> IO.canceled
-  //               else wait.get >> x
-  //             }
-  //           }
-  //       )
-  //   }
-  //   }
-  //     .compile
-  //     .drain
-  //     .unsafeRunSync()
+            .map { x =>
+              val y = Stream.exec(wait.get) ++ x
+              Stream.eval(count.updateAndGet(_ + 1)).flatMap { c =>
+                if (c == 2) y.interruptAfter(30.millis)
+                else y
+              }
+            }.parJoinUnbounded
+          )
+      }
+    }
+      .compile
+      .drain
+      .unsafeRunSync()
 
 
   // as a separate problem, this doesn't work (never terminates)
