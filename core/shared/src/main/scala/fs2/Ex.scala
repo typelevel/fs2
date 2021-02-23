@@ -25,6 +25,7 @@ import cats.effect._
 import cats.effect.unsafe.implicits.global
 import scala.concurrent.duration._
 import cats.syntax.all._
+import cats.effect.std.CyclicBarrier
 
 object Ex {
 
@@ -98,4 +99,92 @@ object Ex {
       .compile
       .drain
       .unsafeRunSync()
+
+  // works in the happy path
+  // but interruption here is super tricky.
+  // interrupting the whole op is fine
+  // but when one of the subscriber gets interrupted,
+  // if the interruption happens very early, the count changes
+  // leading to potential deadlock
+  def f =
+    Stream.eval(CyclicBarrier[IO](5)).flatMap { barrier =>
+      Stream.range(0, 5).map { i =>
+        Stream
+          .resource(res(i.toString))
+          .evalTap(_ => barrier.await) // works, but what about interruption
+          .evalMap(identity) // in the general case, the consumer stream
+      }.parJoinUnbounded
+    }.compile.drain.unsafeRunSync()
+
+ 
+  def aplus =
+    Stream.eval(IO.deferred[Unit]).flatMap { wait =>
+      Stream
+        .range(0, 6)
+        .covary[IO]
+        .foldMap(i => Stream.resource(res(i.toString)))
+        .flatMap(
+          _
+            .append(Stream.exec(wait.complete(()).void))
+            .mapAsyncUnordered(100)(x => wait.get >> x)
+        )
+    }.compile
+     .drain
+     .unsafeRunSync()
+
+  // scala> Ex.aplus
+  // opening 0
+  // opening 1
+  // opening 2
+  // opening 3
+  // opening 4
+  // opening 5
+  // 3 executed
+  // closing 3
+  // 1 executed
+  // closing 1
+  // 5 executed
+  // closing 5
+  // 0 executed
+  // closing 0
+  // 2 executed
+  // closing 2
+  // 4 executed
+  // closing 4
+
+
+  // not possible to test interruption with this shape because of the independent
+  // problem with IO.canceled, need to go to Stream
+
+  // def aplusI =
+  //   Stream.eval(IO.ref(0)).flatMap { count =>
+  //   Stream.eval(IO.deferred[Unit]).flatMap { wait =>
+  //     Stream
+  //       .range(0, 6)
+  //       .covary[IO]
+  //       .foldMap(i => Stream.resource(res(i.toString)))
+  //       .flatMap(
+  //         _
+  //           .append(Stream.exec(wait.complete(()).void))
+  //           .mapAsyncUnordered(100) { x =>
+  //             count.updateAndGet(_ + 1).flatMap { c =>
+  //               if (c == 2) IO.println("cancelling 2") >> IO.canceled
+  //               else wait.get >> x
+  //             }
+  //           }
+  //       )
+  //   }
+  //   }
+  //     .compile
+  //     .drain
+  //     .unsafeRunSync()
+
+
+  // as a separate problem, this doesn't work (never terminates)
+  def foo = Stream.range(0, 3).covary[IO].mapAsyncUnordered(100) { i =>
+    if (i == 2) IO.canceled.onCancel(IO.println("cancelled"))
+    else IO.sleep(500.millis) >> IO.println(i)
+  }.compile.drain.unsafeRunSync()
+
+
 }
