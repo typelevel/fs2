@@ -34,7 +34,7 @@ object Ex {
   def res(name: String) =
     Resource.make(
       sleepRandom >> IO.println(s"opening $name").as {
-        Stream.eval(sleepRandom >> IO.println(s"$name executed"))
+        Stream.eval(IO.println(s"starting $name")) ++ Stream.eval(sleepRandom) ++ Stream(IO.println(s"$name executed"))
       }
     )(_ => IO.println(s"closing $name"))
 
