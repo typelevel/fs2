@@ -27,16 +27,19 @@ import scala.concurrent.duration._
 import cats.syntax.all._
 import cats.effect.std.CyclicBarrier
 
+// scenarios to build broacastThrough on top of Topic
+// specifically making sure all pipes receive every element
 object Ex {
 
   def sleepRandom = IO(scala.util.Random.nextInt(1000).millis).flatMap(IO.sleep)
 
   def res(name: String) =
     Resource.make(
-      sleepRandom >> IO.println(s"opening $name").as {
-        Stream.eval(IO.println(s"starting $name")) ++ Stream.eval(sleepRandom) ++ Stream(IO.println(s"$name executed"))
-      }
+      sleepRandom >> IO.println(s"opening $name")
     )(_ => IO.println(s"closing $name"))
+  .as {
+        Stream.eval(IO.println(s"starting $name"))  ++ Stream.eval(sleepRandom) ++ Stream.eval(IO.println(s"$name executed"))
+      }
 
   // problem:
   //  you want all the subscriptions opened before any subscriber starts,
@@ -117,7 +120,8 @@ object Ex {
       }.parJoinUnbounded
     }.compile.drain.unsafeRunSync()
 
- 
+
+  // works, and should behave properly with interruption too (conceptually)
   def aplus =
     Stream.eval(IO.deferred[Unit]).flatMap { wait =>
       Stream
@@ -155,6 +159,7 @@ object Ex {
   // closing 4
 
 
+  // works, tests the scenario where one of the pipes interrupts the subscription
   def aplusI =
     Stream.eval(IO.ref(0)).flatMap { count =>
       Stream.eval(IO.deferred[Unit]).flatMap { wait =>
@@ -165,13 +170,13 @@ object Ex {
           .flatMap(
             _
               .append(Stream.exec(wait.complete(()).void))
-
-            .map { x =>
-              val y = Stream.exec(wait.get) ++ x
-              Stream.eval(count.updateAndGet(_ + 1)).flatMap { c =>
-                if (c == 2) y.interruptAfter(30.millis)
-                else y
-              }
+              .map { x =>
+                val y = Stream.exec(wait.get) ++ x
+                Stream.eval(count.updateAndGet(_ + 1)).flatMap { c =>
+                  // simulates a pipe that interrupts one of the subs immediately
+                  if (c == 2) y.interruptAfter(30.millis)
+                  else y
+                }
             }.parJoinUnbounded
           )
       }
@@ -186,6 +191,5 @@ object Ex {
     if (i == 2) IO.canceled.onCancel(IO.println("cancelled"))
     else IO.sleep(500.millis) >> IO.println(i)
   }.compile.drain.unsafeRunSync()
-
 
 }
