@@ -3869,12 +3869,12 @@ object Stream extends StreamLowPriority {
 
         // awaits when all streams (outer + inner) finished,
         // and then collects result of the stream (outer + inner) execution
-        def signalResult: F[Unit] =
-          done.get.flatMap(_.flatten.fold[F[Unit]](F.unit)(F.raiseError))
+        def signalResult: F[Unit] = done.get.flatMap(_.flatten.fold[F[Unit]](F.unit)(F.raiseError))
 
         val endOuter: F[Unit] = stop(None) >> awaitWhileRunning >> signalResult
+        val background: F[Unit] = F.guarantee(F.start(runOuter).void, endOuter)
 
-        Stream.bracket(F.start(runOuter))(_ => endOuter) >> extractFromQueue
+        Stream.exec(background) ++ extractFromQueue
       }
 
       Stream.eval(fstream).flatten
