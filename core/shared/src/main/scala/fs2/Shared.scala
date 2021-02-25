@@ -39,30 +39,34 @@ object Shared {
 
     MonadCancel[Resource[F, *]].uncancelable { _ =>
       for {
-        shared <- Resource.eval(resource.allocated.flatMap { case (a, fin) =>
-          F.ref[Option[State]](Some(State(a, fin, 0))).map { state =>
-            def acquire: F[A] =
-              state.modify {
-                case Some(st) => (Some(st.addPermit), F.pure(st.value))
-                case None =>
-                  (None, F.raiseError[A](new Throwable("finalization has already occurred")))
-              }.flatten
+        underlying <- Resource.eval(resource.allocated)
+        state <- Resource.eval(F.ref[Option[State]](Some(State(underlying._1, underlying._2, 0))))
+        shared = new Shared[F, A] {
+          def acquire: F[A] =
+            state.modify {
+              case Some(st) => 
+                println("acquired")
+                (Some(st.addPermit), F.pure(st.value))
+              case None =>
+                (None, F.raiseError[A](new Throwable("finalization has already occurred")))
+            }.flatten
 
-            def release: F[Unit] =
-              state.modify {
-                case Some(st) if st.permits > 1 => (Some(st.releasePermit), F.unit)
-                case Some(st)                   => (None, st.finalizer)
-                case None                       => (None, F.raiseError[Unit](new Throwable("can't finalize")))
-              }.flatten
+          def release: F[Unit] =
+            state.modify {
+              case Some(st) if st.permits > 1 => 
+                println("released with many")
+                (Some(st.releasePermit), F.unit)
+              case Some(st)                   => 
+                println("released with one")
+                (None, st.finalizer)
+              case None                       => (None, F.raiseError[Unit](new Throwable("can't finalize")))
+            }.flatten
 
-            new Shared[F, A] {
-              override def resource: Resource[F, A] =
-                Resource.make(acquire)(_ => release)
-            }
-          }
-        })
-        a <- shared.resource
-      } yield (shared, a)
+          override def resource: Resource[F, A] =
+            Resource.make(acquire)(_ => release)
+        }
+        _ <- shared.resource
+      } yield shared -> underlying._1
     }
   }
 }
