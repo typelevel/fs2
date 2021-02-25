@@ -68,7 +68,7 @@ trait SocketGroup[F[_]] {
       address: Option[Host] = None,
       port: Option[Port] = None,
       options: List[SocketOption] = List.empty
-  ): Stream[F, Socket[F]]
+  ): Stream[F, Shared[F, Socket[F]]]
 
   /** Like [[server]] but provides the `SocketAddress` of the bound server socket before providing accepted sockets.
     */
@@ -76,7 +76,7 @@ trait SocketGroup[F[_]] {
       address: Option[Host] = None,
       port: Option[Port] = None,
       options: List[SocketOption] = List.empty
-  ): Resource[F, (SocketAddress[IpAddress], Stream[F, Socket[F]])]
+  ): Resource[F, (SocketAddress[IpAddress], Stream[F, Shared[F, Socket[F]]])]
 }
 
 private[net] object SocketGroup {
@@ -98,30 +98,32 @@ private[net] object SocketGroup {
           ch
         }
 
-      def connect(ch: AsynchronousSocketChannel): F[AsynchronousSocketChannel] =
-        to.resolve[F].flatMap { ip =>
-          Async[F].async_[AsynchronousSocketChannel] { cb =>
-            ch.connect(
-              ip.toInetSocketAddress,
-              null,
-              new CompletionHandler[Void, Void] {
-                def completed(result: Void, attachment: Void): Unit =
-                  cb(Right(ch))
-                def failed(rsn: Throwable, attachment: Void): Unit =
-                  cb(Left(rsn))
-              }
-            )
-          }
+      def connect(ch: AsynchronousSocketChannel): Resource[F, AsynchronousSocketChannel] =
+        Resource.eval(to.resolve[F]).flatMap { ip =>
+          Resource.make {
+            Async[F].async_[AsynchronousSocketChannel] { cb =>
+              ch.connect(
+                ip.toInetSocketAddress,
+                null,
+                new CompletionHandler[Void, Void] {
+                  def completed(result: Void, attachment: Void): Unit =
+                    cb(Right(ch))
+                  def failed(rsn: Throwable, attachment: Void): Unit =
+                    cb(Left(rsn))
+                }
+              )
+            }
+          }(ch => Async[F].delay(if (ch.isOpen()) ch.close() else ()))
         }
 
-      Resource.eval(setup.flatMap(connect)).flatMap(Socket.forAsync(_))
+      Resource.eval(setup).flatMap(connect).evalMap(Socket.forAsync(_))
     }
 
     def server(
         address: Option[Host],
         port: Option[Port],
         options: List[SocketOption]
-    ): Stream[F, Socket[F]] =
+    ): Stream[F, Shared[F, Socket[F]]] =
       Stream
         .resource(
           serverResource(
@@ -136,7 +138,7 @@ private[net] object SocketGroup {
         address: Option[Host],
         port: Option[Port],
         options: List[SocketOption]
-    ): Resource[F, (SocketAddress[IpAddress], Stream[F, Socket[F]])] = {
+    ): Resource[F, (SocketAddress[IpAddress], Stream[F, Shared[F, Socket[F]]])] = {
 
       val setup: F[AsynchronousServerSocketChannel] =
         address.traverse(_.resolve[F]).flatMap { addr =>
@@ -161,24 +163,29 @@ private[net] object SocketGroup {
 
       def acceptIncoming(
           sch: AsynchronousServerSocketChannel
-      ): Stream[F, Socket[F]] = {
-        def go: Stream[F, Socket[F]] = {
-          def acceptChannel: F[AsynchronousSocketChannel] =
-            Async[F].async_[AsynchronousSocketChannel] { cb =>
-              sch.accept(
-                null,
-                new CompletionHandler[AsynchronousSocketChannel, Void] {
-                  def completed(ch: AsynchronousSocketChannel, attachment: Void): Unit =
-                    cb(Right(ch))
-                  def failed(rsn: Throwable, attachment: Void): Unit =
-                    cb(Left(rsn))
-                }
-              )
-            }
+      ): Stream[F, Shared[F, Socket[F]]] = {
+        def go: Stream[F, Shared[F, Socket[F]]] = {
+          def acceptChannel: Resource[F, Shared[F, Socket[F]]] = {
+            val acceptResource = Resource.make {
+              Async[F].async_[AsynchronousSocketChannel] { cb =>
+                sch.accept(
+                  null,
+                  new CompletionHandler[AsynchronousSocketChannel, Void] {
+                    def completed(ch: AsynchronousSocketChannel, attachment: Void): Unit =
+                      cb(Right(ch))
+                    def failed(rsn: Throwable, attachment: Void): Unit =
+                      cb(Left(rsn))
+                  }
+                )
+              }
+            }(ch => Async[F].delay(if (ch.isOpen()) ch.close() else ()))
 
-          Stream.eval(acceptChannel.attempt).flatMap {
+            Shared.allocate(acceptResource.evalMap(Socket.forAsync(_))).map(_._1)
+          }
+
+          Stream.resource(acceptChannel.attempt).flatMap {
             case Left(_)         => Stream.empty[F]
-            case Right(accepted) => Stream.resource(Socket.forAsync(accepted))
+            case Right(accepted) => Stream(accepted)
           } ++ go
         }
 

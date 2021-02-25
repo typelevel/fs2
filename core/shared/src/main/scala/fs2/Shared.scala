@@ -22,7 +22,6 @@
 package fs2
 
 import cats.effect._
-import cats.effect.kernel.Resource
 import cats.syntax.all._
 
 sealed trait Shared[F[_], A] {
