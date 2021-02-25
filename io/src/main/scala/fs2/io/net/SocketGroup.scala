@@ -100,18 +100,20 @@ private[net] object SocketGroup {
 
       def connect(ch: AsynchronousSocketChannel): Resource[F, AsynchronousSocketChannel] =
         Resource.eval(to.resolve[F]).flatMap { ip =>
-          Resource.make {
-            Async[F].async_[AsynchronousSocketChannel] { cb =>
-              ch.connect(
-                ip.toInetSocketAddress,
-                null,
-                new CompletionHandler[Void, Void] {
-                  def completed(result: Void, attachment: Void): Unit =
-                    cb(Right(ch))
-                  def failed(rsn: Throwable, attachment: Void): Unit =
-                    cb(Left(rsn))
-                }
-              )
+          Resource.makeFull[F, AsynchronousSocketChannel] { poll =>
+            poll {
+              Async[F].async_[AsynchronousSocketChannel] { cb =>
+                ch.connect(
+                  ip.toInetSocketAddress,
+                  null,
+                  new CompletionHandler[Void, Void] {
+                    def completed(result: Void, attachment: Void): Unit =
+                      cb(Right(ch))
+                    def failed(rsn: Throwable, attachment: Void): Unit =
+                      cb(Left(rsn))
+                  }
+                )
+              }
             }
           }(ch => Async[F].delay(if (ch.isOpen()) ch.close() else ()))
         }
@@ -166,17 +168,19 @@ private[net] object SocketGroup {
       ): Stream[F, Shared[F, Socket[F]]] = {
         def go: Stream[F, Shared[F, Socket[F]]] = {
           def acceptChannel: Resource[F, Shared[F, Socket[F]]] = {
-            val acceptResource = Resource.make {
-              Async[F].async_[AsynchronousSocketChannel] { cb =>
-                sch.accept(
-                  null,
-                  new CompletionHandler[AsynchronousSocketChannel, Void] {
-                    def completed(ch: AsynchronousSocketChannel, attachment: Void): Unit =
-                      cb(Right(ch))
-                    def failed(rsn: Throwable, attachment: Void): Unit =
-                      cb(Left(rsn))
-                  }
-                )
+            val acceptResource = Resource.makeFull[F, AsynchronousSocketChannel] { poll =>
+              poll {
+                Async[F].async_[AsynchronousSocketChannel] { cb =>
+                  sch.accept(
+                    null,
+                    new CompletionHandler[AsynchronousSocketChannel, Void] {
+                      def completed(ch: AsynchronousSocketChannel, attachment: Void): Unit =
+                        cb(Right(ch))
+                      def failed(rsn: Throwable, attachment: Void): Unit =
+                        cb(Left(rsn))
+                    }
+                  )
+                }
               }
             }(ch => Async[F].delay(if (ch.isOpen()) ch.close() else ()))
 
