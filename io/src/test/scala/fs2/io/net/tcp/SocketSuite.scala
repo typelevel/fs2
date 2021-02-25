@@ -50,10 +50,12 @@ class SocketSuite extends Fs2Suite {
       Stream
         .resource(setup)
         .flatMap { case (server, clients) =>
-          val echoServer = server.map { socket =>
-            socket.reads
-              .through(socket.writes)
-              .onFinalize(socket.endOfOutput)
+          val echoServer = server.map { shared =>
+            Stream.resource(shared.resource).flatMap { socket =>
+              socket.reads
+                .through(socket.writes)
+                .onFinalize(socket.endOfOutput)
+            }
           }.parJoinUnbounded
 
           val msgClients = clients
@@ -86,11 +88,13 @@ class SocketSuite extends Fs2Suite {
       Stream
         .resource(setup)
         .flatMap { case (server, clients) =>
-          val junkServer = server.map { socket =>
-            Stream
-              .chunk(message)
-              .through(socket.writes)
-              .onFinalize(socket.endOfOutput)
+          val junkServer = server.map { shared =>
+            Stream.resource(shared.resource).flatMap { socket =>
+              Stream
+                .chunk(message)
+                .through(socket.writes)
+                .onFinalize(socket.endOfOutput)
+            }
           }.parJoinUnbounded
 
           val client =
@@ -117,7 +121,9 @@ class SocketSuite extends Fs2Suite {
       Stream
         .resource(setup)
         .flatMap { case (server, clients) =>
-          val readOnlyServer = server.map(_.reads).parJoinUnbounded
+          val readOnlyServer = server.map { shared =>
+            Stream.resource(shared.resource).flatMap(_.reads)
+          }.parJoinUnbounded
           val client =
             clients.take(1).flatMap { socket =>
               // concurrent writes
