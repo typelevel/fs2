@@ -30,7 +30,7 @@ import cats.{Eval => _, _}
 import cats.data.Ior
 import cats.effect.SyncIO
 import cats.effect.kernel._
-import cats.effect.std.{Queue, Semaphore, CyclicBarrier}
+import cats.effect.std.{Queue, Semaphore}
 import cats.effect.kernel.implicits._
 import cats.implicits.{catsSyntaxEither => _, _}
 
@@ -250,26 +250,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   def broadcastThrough[F2[x] >: F[x]: Concurrent, O2](
       pipes: Pipe[F2, O, O2]*
   ): Stream[F2, O2] =
-    Stream.eval {
-      (
-        CyclicBarrier[F2](pipes.length),
-        Topic[F2, Option[Chunk[O]]]
-      ).tupled
-    }.flatMap { case (barrier, topic) =>
-        Stream(pipes: _*)
-          .map { pipe =>
-            Stream.resource(topic.subscribeAwait(1))
-              .flatMap { sub =>
-                // crucial that awaiting on the barrier is not passed to
-                // the pipe, so that the pipe cannot interrupt it and alter
-                // the barrier count
-                Stream.exec(barrier.await) ++
-                sub.unNoneTerminate.flatMap(Stream.chunk).through(pipe)
-              }
-          }.parJoinUnbounded
-           .concurrently(chunks.noneTerminate.through(topic.publish))
-    }
-
+    through(Broadcast.through(pipes: _*))
 
   /** Variant of `broadcastTo` that broadcasts to `maxConcurrent` instances of the supplied pipe.
     */
