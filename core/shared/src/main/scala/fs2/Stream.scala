@@ -3812,6 +3812,8 @@ object Stream extends StreamLowPriority {
             case _ => Some(rslt)
           } >> outputQ.offer(None).start.void
 
+        def untilDone[A](str: Stream[F, A]) = str.interruptWhen(done.map(_.nonEmpty))
+
         val incrementRunning: F[Unit] = running.update(_ + 1)
         val decrementRunning: F[Unit] =
           running.modify { n =>
@@ -3820,7 +3822,7 @@ object Stream extends StreamLowPriority {
           }.flatten
 
         // "block" and await until the `running` counter drops to zero.
-        val awaitWhileRunning: F[Unit] = running.discrete.dropWhile(_ > 0).take(1).compile.drain
+        val awaitWhileRunning: F[Unit] = running.discrete.forall(_ > 0).compile.drain
 
         // signals that a running stream, either inner or ourer, finished with or without failure.
         def endWithResult(result: Either[Throwable, Unit]): F[Unit] =
@@ -3829,9 +3831,7 @@ object Stream extends StreamLowPriority {
             case Left(err) => stop(Some(err)) >> decrementRunning
           }
 
-        val extractFromQueue: Stream[F, O] =
-          Stream.fromQueueNoneTerminatedChunk(outputQ)
-        def insertToQueue(str: Stream[F, O]) = str.chunks.evalMap(s => outputQ.offer(Some(s)))
+        def insertToQueue(str: Stream[F, O]) = str.chunks.foreach(s => outputQ.offer(Some(s)))
 
         // runs one inner stream, each stream is forked.
         // terminates when killSignal is true
@@ -3846,7 +3846,7 @@ object Stream extends StreamLowPriority {
                 F.start {
                   // Note that the `interrupt` must be AFTER the enqueue to the sync queue,
                   // otherwise the process may hang to enqueue last item while being interrupted
-                  val backInsertions = insertToQueue(inner).interruptWhen(done.map(_.nonEmpty))
+                  val backInsertions = untilDone(insertToQueue(inner))
                   for {
                     r <- backInsertions.compile.drain.attempt
                     cancelResult <- lease.cancel
@@ -3857,27 +3857,21 @@ object Stream extends StreamLowPriority {
             }
           }
 
-        def runInnerScope(inner: Stream[F, O]): Stream[F, Unit] =
-          new Stream(Pull.getScope[F].flatMap((o: Scope[F]) => Pull.eval(runInner(inner, o))))
+        def runInnerScope(inner: Stream[F, O]): Stream[F, INothing] =
+          new Stream(Pull.getScope[F].flatMap((sc: Scope[F]) => Pull.eval(runInner(inner, sc))))
 
         // runs the outer stream, interrupts when kill == true, and then decrements the `running`
         def runOuter: F[Unit] =
-          outer
-            .flatMap(runInnerScope)
-            .interruptWhen(done.map(_.nonEmpty))
-            .compile
-            .drain
-            .attempt
-            .flatMap(endWithResult)
+          untilDone(outer.flatMap(runInnerScope)).compile.drain.attempt.flatMap(endWithResult)
 
         // awaits when all streams (outer + inner) finished,
         // and then collects result of the stream (outer + inner) execution
-        def signalResult: F[Unit] =
-          done.get.flatMap(_.flatten.fold[F[Unit]](F.unit)(F.raiseError))
-
+        def signalResult: F[Unit] = done.get.flatMap(_.flatten.fold[F[Unit]](F.unit)(F.raiseError))
         val endOuter: F[Unit] = stop(None) >> awaitWhileRunning >> signalResult
 
-        Stream.bracket(F.start(runOuter))(_ => endOuter) >> extractFromQueue
+        val backEnqueue = Stream.bracket(F.start(runOuter))(_ => endOuter)
+
+        backEnqueue >> Stream.fromQueueNoneTerminatedChunk(outputQ)
       }
 
       Stream.eval(fstream).flatten
