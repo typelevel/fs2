@@ -324,31 +324,28 @@ object Ex {
 
 
   def p3 = {
-    def logEventually(s: String) =
-      // IO(scala.util.Random.nextInt(1000).millis)
-      //   .flatMap(IO.sleep) >>
-      IO.sleep(1.second) >> IO.println(s)
-    
+    def open = IO.sleep(1.second) >> IO.println("open")
+    def close = (_: Unit) => IO.println("close")
+    def use = (_: Unit) => IO.println("use")
 
-    def res(name: String) =
-      Resource.make(
-        logEventually(s"opening $name")
-      )(_ => IO.println(s"closing $name"))
-        .as {
-          Stream.eval(logEventually(s"$name executed"))
-        }
-
-//
-
-    Stream.resource(res("a"))
-    Stream.bracket(IO.sleep(1.second) >> IO.println("opening"))(_ => IO.println("closing"))
-      .as(Stream.eval(IO.println("using")))
-      .flatten
+    IO.println("Example with Stream.bracket") >>
+    Stream
+      .bracket(open)(close)
+      .evalMap(use)
       .interruptAfter(200.millis)
-      .compile
-      .drain
+      .compile.drain >>
+    IO.println("Example with Stream.resource") >>
+    Stream
+      .resource(Resource.make(open)(close))
+      .evalMap(use)
+      .interruptAfter(200.millis)
+      .compile.drain
   }.unsafeRunSync()
 
-
-
+  // scala> Ex.p3
+  // Example with Stream.bracket
+  // open
+  // close
+  // Example with Stream.resource
+  // open
 }
