@@ -184,7 +184,7 @@ private[net] object SocketGroup {
 
           val sharedSocket = Shared.allocate(acceptChannel.evalMap(Socket.forAsync(_)))
           Stream.resource(sharedSocket.attempt).flatMap {
-            case Left(_) => Stream.empty[F]
+            case Left(_)            => Stream.empty[F]
             case Right((shared, _)) => Stream(shared)
           } ++ go
         }
