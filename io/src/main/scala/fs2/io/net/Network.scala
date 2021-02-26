@@ -132,14 +132,21 @@ object Network {
           address: Option[Host],
           port: Option[Port],
           options: List[SocketOption]
-      ): Stream[F, Shared[F, Socket[F]]] = globalSocketGroup.server(address, port, options)
+      ): Stream[F, Socket[F]] = globalSocketGroup.server(address, port, options)
 
       def serverResource(
           address: Option[Host],
           port: Option[Port],
           options: List[SocketOption]
-      ): Resource[F, (SocketAddress[IpAddress], Stream[F, Shared[F, Socket[F]]])] =
+      ): Resource[F, (SocketAddress[IpAddress], Stream[F, Socket[F]])] =
         globalSocketGroup.serverResource(address, port, options)
+
+      // def serverResourceShared(
+      //     address: Option[Host],
+      //     port: Option[Port],
+      //     options: List[SocketOption]
+      // ): Resource[F, (SocketAddress[IpAddress], Stream[F, Shared[F, Socket[F]]])] =
+      //   globalSocketGroup.serverResourceShared(address, port, options)
 
       def openDatagramSocket(
           address: Option[Host],

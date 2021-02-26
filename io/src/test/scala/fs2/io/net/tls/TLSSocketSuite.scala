@@ -117,12 +117,7 @@ class TLSSocketSuite extends TLSSuite {
         addressAndConnections <- Network[IO].serverResource(Some(ip"127.0.0.1"))
         (serverAddress, server) = addressAndConnections
         client <- Network[IO].client(serverAddress).flatMap(tlsContext.client(_))
-      } yield {
-        val tlsServer = server.flatMap { shared =>
-          Stream.resource(shared.resource.flatMap(tlsContext.server(_)))
-        }
-        tlsServer -> client
-      }
+      } yield server.flatMap(s => Stream.resource(tlsContext.server(s))) -> client
 
       Stream
         .resource(setup)

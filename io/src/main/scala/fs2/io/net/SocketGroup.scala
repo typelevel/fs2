@@ -68,7 +68,7 @@ trait SocketGroup[F[_]] {
       address: Option[Host] = None,
       port: Option[Port] = None,
       options: List[SocketOption] = List.empty
-  ): Stream[F, Shared[F, Socket[F]]]
+  ): Stream[F, Socket[F]]
 
   /** Like [[server]] but provides the `SocketAddress` of the bound server socket before providing accepted sockets.
     */
@@ -76,7 +76,7 @@ trait SocketGroup[F[_]] {
       address: Option[Host] = None,
       port: Option[Port] = None,
       options: List[SocketOption] = List.empty
-  ): Resource[F, (SocketAddress[IpAddress], Stream[F, Shared[F, Socket[F]]])]
+  ): Resource[F, (SocketAddress[IpAddress], Stream[F, Socket[F]])]
 }
 
 private[net] object SocketGroup {
@@ -123,7 +123,7 @@ private[net] object SocketGroup {
         address: Option[Host],
         port: Option[Port],
         options: List[SocketOption]
-    ): Stream[F, Shared[F, Socket[F]]] =
+    ): Stream[F, Socket[F]] =
       Stream
         .resource(
           serverResource(
@@ -138,8 +138,16 @@ private[net] object SocketGroup {
         address: Option[Host],
         port: Option[Port],
         options: List[SocketOption]
-    ): Resource[F, (SocketAddress[IpAddress], Stream[F, Shared[F, Socket[F]]])] = {
+    ): Resource[F, (SocketAddress[IpAddress], Stream[F, Socket[F]])] =
+      serverResourceShared(address, port, options).map { case (addr, clients) =>
+        (addr, clients.flatMap(shared => Stream.resource(shared.resource)))
+      }
 
+    def serverResourceShared(
+        address: Option[Host],
+        port: Option[Port],
+        options: List[SocketOption]
+    ): Resource[F, (SocketAddress[IpAddress], Stream[F, Shared[F, Socket[F]]])] = {
       val setup: F[AsynchronousServerSocketChannel] =
         address.traverse(_.resolve[F]).flatMap { addr =>
           Async[F].delay {
