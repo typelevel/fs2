@@ -77,6 +77,12 @@ trait SocketGroup[F[_]] {
       port: Option[Port] = None,
       options: List[SocketOption] = List.empty
   ): Resource[F, (SocketAddress[IpAddress], Stream[F, Socket[F]])]
+
+  def serverResourceShared(
+      address: Option[Host],
+      port: Option[Port],
+      options: List[SocketOption]
+  ): Resource[F, (SocketAddress[IpAddress], Stream[F, Shared[F, Socket[F]]])]
 }
 
 private[net] object SocketGroup {
