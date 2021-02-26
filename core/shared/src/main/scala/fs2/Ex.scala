@@ -26,6 +26,7 @@ import cats.effect.unsafe.implicits.global
 import scala.concurrent.duration._
 import cats.syntax.all._
 import cats.effect.std.CyclicBarrier
+import fs2.concurrent.Topic
 
 // scenarios to build broacastThrough on top of Topic
 // specifically making sure all pipes receive every element
@@ -45,146 +46,10 @@ object Ex {
   //  you want all the subscriptions opened before any subscriber starts,
   //  but close them timely
 
-  def a =
-    Stream
-      .range(0, 6)
-      .covary[IO]
-      .foldMap(i => Stream.resource(res(i.toString)))
-      .flatMap(
-        _.parJoinUnbounded
-      )
-      .compile
-      .drain
-      .unsafeRunSync()
-
-  def b = (Stream.resource(res("a")) ++ Stream
-    .resource(res("b"))).parJoinUnbounded.compile.drain.unsafeRunSync()
-
-  def c = (Stream.resource(res("a")) ++ Stream
-    .resource(res("b"))).flatten.compile.drain.unsafeRunSync()
-
-  def d = Stream.resource {
-    (0 until 2).toList.traverse(i => res(i.toString))
-  }.flatMap(Stream.emits)
-    .parJoinUnbounded
-    .compile.drain.unsafeRunSync()
-
-  // Not always true
-  // scala> Ex.b
-  // opening a
-  // opening b
-  // a executed
-  // closing a
-  // b executed
-  // closing b
-
-  // scala> Ex.c
-  // opening a
-  // a executed
-  // closing a
-  // opening b
-  // b executed
-  // closing b
-
-  // scala> Ex.d
-  // opening 0
-  // opening 1
-  // 1 executed
-  // 0 executed
-  // closing 1
-  // closing 0
-
-  def e =
-    Stream
-      .resource(res("thingy"))
-      .repeat
-      .take(5)
-      .parJoinUnbounded
-      .compile
-      .drain
-      .unsafeRunSync()
-
-  // works in the happy path
-  // but interruption here is super tricky.
-  // interrupting the whole op is fine
-  // but when one of the subscriber gets interrupted,
-  // if the interruption happens very early, the count changes
-  // leading to potential deadlock
-  def f =
-    Stream.eval(CyclicBarrier[IO](5)).flatMap { barrier =>
-      Stream.range(0, 5).map { i =>
-        Stream
-          .resource(res(i.toString))
-          .evalTap(_ => barrier.await) // works, but what about interruption
-          .flatten // in the general case, the consumer stream
-      }.parJoinUnbounded
-    }.compile.drain.unsafeRunSync()
-
-  // works, should work properly with interruption
-    def fplus =
-    Stream.eval(CyclicBarrier[IO](6)).flatMap { barrier =>
-      Stream.range(0, 6).map { i =>
-        Stream
-          .resource(res(i.toString))
-          .flatMap { sub =>
-            def pipe[A]: Pipe[IO, A, A] = x => x
-
-            // crucial that awaiting on the barrier
-            // is not passed to the pipe, so that the pipe cannot
-            // interrupt it
-            Stream.eval(barrier.await) ++ sub.through(pipe)
-          }
-      }.parJoinUnbounded
-    }.compile.drain.unsafeRunSync()
-
-  // works, internal interruption (the pipe interrupts)
-  def fplusI =
-    Stream.eval(IO.ref(0)).flatMap { count =>
-      Stream.eval(CyclicBarrier[IO](6)).flatMap { barrier =>
-        Stream.range(0, 6).map { i =>
-          Stream
-            .resource(res(i.toString))
-            .flatMap { sub =>
-              def pipe[A]: Pipe[IO, A, A] =  {x =>
-                Stream.eval(count.updateAndGet(_ + 1)).flatMap { c =>
-                  // simulates a pipe that interrupts one of the subs immediately
-                  if (c == 2) x.interruptAfter(30.millis)
-                  else x
-                }
-              }
-              // crucial that awaiting on the barrier
-              // is not passed to the pipe, so that the pipe cannot
-              // interrupt it
-              Stream.eval(barrier.await) ++ sub.through(pipe)
-            }
-        }.parJoinUnbounded
-      }
-    } .compile.drain.unsafeRunSync()
-
-
-  // suffers from the same bug as aplusII.
-  // Not a big deal for `broadcastThrough`, but needs investigation
-  def fplusII =
-    Stream.eval(CyclicBarrier[IO](6)).flatMap { barrier =>
-      Stream.range(0, 6).map { i =>
-        Stream
-          .resource(res(i.toString))
-          .flatMap { sub =>
-            def pipe[A]: Pipe[IO, A, A] = x => x
-
-            // crucial that awaiting on the barrier
-            // is not passed to the pipe, so that the pipe cannot
-            // interrupt it
-            Stream.eval(barrier.await) ++ sub.through(pipe)
-          }
-      }.parJoinUnbounded
-    }.interruptAfter(30.millis).compile.drain.unsafeRunSync()
-
-
-
-
+    /////////////////////////
+  // Technique number 1, deferred + append
   // works, and should behave properly with interruption too (conceptually)
-  def aplus =
+  def a =
     Stream.eval(IO.deferred[Unit]).flatMap { wait =>
       Stream
         .range(0, 6)
@@ -222,7 +87,7 @@ object Ex {
 
 
   // works, tests the scenario where one of the pipes interrupts the subscription
-  def aplusI =
+  def aa =
     Stream.eval(IO.ref(0)).flatMap { count =>
       Stream.eval(IO.deferred[Unit]).flatMap { wait =>
         Stream
@@ -249,7 +114,7 @@ object Ex {
 
   // external interruption, testing shutdown
   // leaks a single resource (independent bug I think)
-  def aplusII =
+  def aaa =
     Stream.eval(IO.deferred[Unit]).flatMap { wait =>
       Stream
         .range(0, 6)
@@ -267,18 +132,73 @@ object Ex {
       .unsafeRunSync()
 
 
-  def ex = (
-    Stream.eval(IO.sleep(2.seconds).onCancel(IO.println("canceled"))) ++ Stream.repeatEval(IO.println("hello")).metered(500.millis).interruptAfter(1.second)
-  ).compile.drain.unsafeRunSync()
+  ////////////////////////////////////////////
+  // Technique no 2, Barrier
+  // works, should work properly with interruption
+    def b =
+    Stream.eval(CyclicBarrier[IO](6)).flatMap { barrier =>
+      Stream.range(0, 6).map { i =>
+        Stream
+          .resource(res(i.toString))
+          .flatMap { sub =>
+            def pipe[A]: Pipe[IO, A, A] = x => x
 
-  def ex2 = (
-    Stream.eval(IO.sleep(2.seconds).onCancel(IO.println("canceled"))) ++ Stream.repeatEval(IO.println("hello")).metered(500.millis)
-  ).interruptAfter(1.second).compile.drain.unsafeRunSync()
+            // crucial that awaiting on the barrier
+            // is not passed to the pipe, so that the pipe cannot
+            // interrupt it
+            Stream.eval(barrier.await) ++ sub.through(pipe)
+          }
+      }.parJoinUnbounded
+    }.compile.drain.unsafeRunSync()
+
+  // works, internal interruption (the pipe interrupts)
+  def bb =
+    Stream.eval(IO.ref(0)).flatMap { count =>
+      Stream.eval(CyclicBarrier[IO](6)).flatMap { barrier =>
+        Stream.range(0, 6).map { i =>
+          Stream
+            .resource(res(i.toString))
+            .flatMap { sub =>
+              def pipe[A]: Pipe[IO, A, A] =  {x =>
+                Stream.eval(count.updateAndGet(_ + 1)).flatMap { c =>
+                  // simulates a pipe that interrupts one of the subs immediately
+                  if (c == 2) x.interruptAfter(30.millis)
+                  else x
+                }
+              }
+              // crucial that awaiting on the barrier
+              // is not passed to the pipe, so that the pipe cannot
+              // interrupt it
+              Stream.eval(barrier.await) ++ sub.through(pipe)
+            }
+        }.parJoinUnbounded
+      }
+    } .compile.drain.unsafeRunSync()
 
 
+  // suffers from the same bug as aplusII.
+  // Not a big deal for `broadcastThrough`, but needs investigation
+  def bbb =
+    Stream.eval(CyclicBarrier[IO](6)).flatMap { barrier =>
+      Stream.range(0, 6).map { i =>
+        Stream
+          .resource(res(i.toString))
+          .flatMap { sub =>
+            def pipe[A]: Pipe[IO, A, A] = x => x
+
+            // crucial that awaiting on the barrier
+            // is not passed to the pipe, so that the pipe cannot
+            // interrupt it
+            Stream.eval(barrier.await) ++ sub.through(pipe)
+          }
+      }.parJoinUnbounded
+    }.interruptAfter(30.millis).compile.drain.unsafeRunSync()
 
 
-  // as a separate problem, this doesn't work (never terminates)
+  ///// found bugs & problems
+
+
+  // Problem 1, IO.canceled causes deadlock
   def p1 = Stream.range(0, 3).covary[IO].mapAsyncUnordered(100) { i =>
     if (i == 2) IO.canceled.onCancel(IO.println("cancelled"))
     else IO.sleep(500.millis) >> IO.println(i)
@@ -288,42 +208,9 @@ object Ex {
   // 1
   // hangs
 
-  // as a separate problem, this doens't work (leaks a single resource)
+
+  // problem 2, finalizer doesn't get called with Stream.resource
   def p2 = {
-    def logEventually(s: String) =
-      IO(scala.util.Random.nextInt(1000).millis)
-        .flatMap(IO.sleep) >> IO.println(s)
-    
-
-    def res(name: String) =
-      Resource.make(
-        logEventually(s"opening $name")
-      )(_ => IO.println(s"closing $name"))
-        .as {
-          Stream.eval(logEventually(s"$name executed"))
-        }
-
-    (Stream.resource(res("a")) ++ Stream.resource(res("b")))
-      .parJoinUnbounded
-      .interruptAfter(200.millis)
-      .compile
-      .drain
-  }.unsafeRunSync()
-
-  // scala> Ex.p2
-  // opening a
-
-  // scala> Ex.p2
-  // opening a
-
-  // scala> Ex.p2
-  // opening a
-
-  // scala> Ex.p2
-  // opening a
-
-
-  def p3 = {
     def open = IO.sleep(1.second) >> IO.println("open")
     def close = (_: Unit) => IO.println("close")
     def use = (_: Unit) => IO.println("use")
@@ -341,11 +228,61 @@ object Ex {
       .interruptAfter(200.millis)
       .compile.drain
   }.unsafeRunSync()
-
-  // scala> Ex.p3
   // Example with Stream.bracket
   // open
   // close
   // Example with Stream.resource
   // open
+
+
+  // problem 3 (potentially related) topic does or doesn't receive messages depending on resource scoping
+  // ok, actually this isn't a bug (but it's undesired): basically if you publish to a topic when there are no subs, elements get lost
+  def p3 = {
+    IO.println("subscribe inside flatMap") >>
+    Topic[IO, Int].flatMap { t =>
+      Stream
+        .resource(t.subscribeAwait(Int.MaxValue))
+        .flatMap { sub =>
+          sub
+            .concurrently(Stream.range(0, 5).covary[IO].through(t.publish))
+        }
+        .interruptAfter(3.seconds) // not required to repro
+        .compile.toList.flatMap(IO.println)
+    } >>
+    IO.println("subscribe after flatMap") >>
+    Topic[IO, Int].flatMap { t =>
+      Stream
+        .resource(t.subscribeAwait(Int.MaxValue))
+        .flatMap(x => x)
+        .debug()
+        .concurrently(Stream.range(0, 5).covary[IO].through(t.publish)) // parJoin exhibits the same issue
+        .interruptAfter(3.seconds) // not required to repro
+        .compile.toList.flatMap(IO.println)
+    }
+  }.unsafeRunSync()
+
+
+  def oo = Stream.eval(Topic[IO, Int]).flatMap { t =>
+    Stream
+      .resource(t.subscribeAwait(Int.MaxValue))
+      .flatMap(sub => sub)
+      .debug()
+      .concurrently(Stream.range(0, 5).covary[IO].through(t.publish))
+  }
+    .interruptAfter(3.seconds) // not required to repro
+    .compile.drain.unsafeRunSync()
+
+  def ooo = Stream.eval(Topic[IO, Int]).flatMap { t =>
+    Stream
+      .resource(t.subscribeAwait(Int.MaxValue))
+      .flatMap { sub =>
+        sub.debug().concurrently(Stream.range(0, 5).covary[IO].through(t.publish))
+      }
+      
+  } .interruptAfter(3.seconds) // not required to repro
+    .compile.drain.unsafeRunSync()
+
+
+  
+
 }
