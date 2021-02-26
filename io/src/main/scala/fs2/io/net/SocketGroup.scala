@@ -165,31 +165,27 @@ private[net] object SocketGroup {
           sch: AsynchronousServerSocketChannel
       ): Stream[F, Shared[F, Socket[F]]] = {
         def go: Stream[F, Shared[F, Socket[F]]] = {
-          def acceptChannel: F[AsynchronousSocketChannel] =
-            Async[F].async_[AsynchronousSocketChannel] { cb =>
-              sch.accept(
-                null,
-                new CompletionHandler[AsynchronousSocketChannel, Void] {
-                  def completed(ch: AsynchronousSocketChannel, attachment: Void): Unit =
-                    cb(Right(ch))
-                  def failed(rsn: Throwable, attachment: Void): Unit =
-                    cb(Left(rsn))
-                }
-              )
-            }
-
-          Stream.eval(acceptChannel.attempt).flatMap {
-            case Left(_) => Stream.empty[F]
-            case Right(accepted) =>
-              val socketResource = Resource
-                .make(Async[F].pure(accepted))(ch =>
-                  Async[F].delay(
-                    if (ch.isOpen()) ch.close()
-                    else ()
+          def acceptChannel: Resource[F, AsynchronousSocketChannel] =
+            Resource.makeFull[F, AsynchronousSocketChannel] { poll =>
+              poll {
+                Async[F].async_[AsynchronousSocketChannel] { cb =>
+                  sch.accept(
+                    null,
+                    new CompletionHandler[AsynchronousSocketChannel, Void] {
+                      def completed(ch: AsynchronousSocketChannel, attachment: Void): Unit =
+                        cb(Right(ch))
+                      def failed(rsn: Throwable, attachment: Void): Unit =
+                        cb(Left(rsn))
+                    }
                   )
-                )
-                .evalMap(Socket.forAsync(_))
-              Stream.resource(Shared.allocate(socketResource)).map(_._1)
+                }
+              }
+            }(ch => Async[F].delay(if (ch.isOpen()) ch.close() else ()))
+
+          val sharedSocket = Shared.allocate(acceptChannel.evalMap(Socket.forAsync(_)))
+          Stream.resource(sharedSocket.attempt).flatMap {
+            case Left(_) => Stream.empty[F]
+            case Right((shared, _)) => Stream(shared)
           } ++ go
         }
 

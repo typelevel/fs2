@@ -37,9 +37,9 @@ object Shared {
       def releasePermit: State = copy(permits = permits - 1)
     }
 
-    MonadCancel[Resource[F, *]].uncancelable { _ =>
+    MonadCancel[Resource[F, *]].uncancelable { poll =>
       for {
-        underlying <- Resource.eval(resource.allocated)
+        underlying <- poll(Resource.eval(resource.allocated))
         state <- Resource.eval(F.ref[Option[State]](Some(State(underlying._1, underlying._2, 0))))
         shared = new Shared[F, A] {
           def acquire: F[A] =
