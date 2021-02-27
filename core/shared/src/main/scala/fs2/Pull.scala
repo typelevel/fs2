@@ -157,13 +157,14 @@ object Pull extends PullLowPriority {
       resource: Poll[F] => F[R],
       release: (R, ExitCase) => F[Unit]
   )(implicit F: MonadCancel[F, _]): Pull[F, INothing, R] =
-    Acquire((store: R => Unit) =>
-      F.uncancelable { poll =>
-        resource(poll).map { r =>
-          store(r)
-          r
-        }
-      },
+    Acquire(
+      (store: R => Unit) =>
+        F.uncancelable { poll =>
+          resource(poll).map { r =>
+            store(r)
+            r
+          }
+        },
       release,
       cancelable = true
     )
@@ -844,8 +845,7 @@ object Pull extends PullLowPriority {
           view: Cont[Unit, G, X]
       ): F[End] = {
         val onScope = scope.acquireResource(
-          (_: Poll[F], (_: Fiber[F, Throwable, Unit] => Unit)) =>
-             scope.interruptWhen(haltOnSignal),
+          (_: Poll[F], (_: Fiber[F, Throwable, Unit] => Unit)) => scope.interruptWhen(haltOnSignal),
           (f: Fiber[F, Throwable, Unit], _: ExitCase) => f.cancel
         )
         val cont = onScope.flatMap { outcome =>
