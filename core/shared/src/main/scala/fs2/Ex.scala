@@ -25,7 +25,7 @@ import cats.effect._
 import cats.effect.unsafe.implicits.global
 import scala.concurrent.duration._
 import cats.syntax.all._
-import cats.effect.std.CyclicBarrier
+import cats.effect.std.{CyclicBarrier, CountDownLatch}
 import fs2.concurrent.Topic
 
 // scenarios to build broacastThrough on top of Topic
@@ -235,54 +235,56 @@ object Ex {
   // open
 
 
-  // problem 3 (potentially related) topic does or doesn't receive messages depending on resource scoping
-  // ok, actually this isn't a bug (but it's undesired): basically if you publish to a topic when there are no subs, elements get lost
-  def p3 = {
-    IO.println("subscribe inside flatMap") >>
-    Topic[IO, Int].flatMap { t =>
-      Stream
-        .resource(t.subscribeAwait(Int.MaxValue))
-        .flatMap { sub =>
-          sub
-            .concurrently(Stream.range(0, 5).covary[IO].through(t.publish))
-        }
-        .interruptAfter(3.seconds) // not required to repro
-        .compile.toList.flatMap(IO.println)
-    } >>
-    IO.println("subscribe after flatMap") >>
-    Topic[IO, Int].flatMap { t =>
-      Stream
-        .resource(t.subscribeAwait(Int.MaxValue))
-        .flatMap(x => x)
-        .debug()
-        .concurrently(Stream.range(0, 5).covary[IO].through(t.publish)) // parJoin exhibits the same issue
-        .interruptAfter(3.seconds) // not required to repro
-        .compile.toList.flatMap(IO.println)
+  // def e =
+  //   Stream
+  //     .range(0, 15)
+  //     .covary[IO]
+  //     .metered(1.second)
+  //     .debug(v => s"In $v")
+  //     .interruptAfter(5.seconds)
+  //     .broadcastThrough(
+  //       (_: Stream[IO, Int]).metered(2.seconds).debug(v => s"A: $v"),
+  //       (_: Stream[IO, Int]).metered(2.seconds).debug(v => s"B: $v"),
+  //     )
+  //     .compile.drain.unsafeRunSync()
+
+  def broadcastThrough[A, B](
+    pipes: Pipe[IO, A, B]*
+  ): Pipe[IO, A, B] = { in =>
+    Stream.eval {
+      (
+        CountDownLatch[IO](pipes.length),
+        fs2.concurrent.Topic[IO, Option[Chunk[A]]]
+      ).tupled
+    }.flatMap { case (latch, topic) =>
+        Stream(pipes: _*)
+          .map { pipe =>
+            Stream.resource(topic.subscribeAwait(1))
+              .flatMap { sub =>
+                // crucial that awaiting on the latch is not passed to
+                // the pipe, so that the pipe cannot interrupt it and alter
+                // the latch count
+                Stream.exec(latch.release >> latch.await) ++
+                sub.unNoneTerminate.flatMap(Stream.chunk).through(pipe)
+              }
+          }
+          .parJoinUnbounded
+          .concurrently  {
+            Stream.eval(latch.await) ++
+            in.chunks.noneTerminate.through(topic.publish)
+          }
     }
-  }.unsafeRunSync()
-
-
-  def oo = Stream.eval(Topic[IO, Int]).flatMap { t =>
-    Stream
-      .resource(t.subscribeAwait(Int.MaxValue))
-      .flatMap(sub => sub)
-      .debug()
-      .concurrently(Stream.range(0, 5).covary[IO].through(t.publish))
   }
-    .interruptAfter(3.seconds) // not required to repro
-    .compile.drain.unsafeRunSync()
 
-  def ooo = Stream.eval(Topic[IO, Int]).flatMap { t =>
+  def o =
     Stream
-      .resource(t.subscribeAwait(Int.MaxValue))
-      .flatMap { sub =>
-        sub.debug().concurrently(Stream.range(0, 5).covary[IO].through(t.publish))
-      }
-      
-  } .interruptAfter(3.seconds) // not required to repro
-    .compile.drain.unsafeRunSync()
-
-
-  
+      .range(0, 10)
+      .covary[IO]
+      .through(
+        broadcastThrough[Int, Int](
+          _.filter(_ % 2 == 0).debug(v => s"even $v"),
+          _.filter(_ % 2 != 0).debug(v => s"odd $v"),
+        )
+      ).interruptAfter(2.seconds).compile.drain.unsafeRunSync()
 
 }
