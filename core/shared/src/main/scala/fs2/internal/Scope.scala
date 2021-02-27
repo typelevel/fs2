@@ -187,6 +187,15 @@ private[fs2] final class Scope[F[_]] private (
     interruptibleEval[Either[Throwable, R]] {
       ScopedResource.create[F].flatMap { resource =>
         F.uncancelable { poll =>
+          // If the stream gets interrupted, but poll *hasn't* being
+          // called by the user in the original bracketFull, which
+          // happens in the very common case of translating a
+          // Resource.make, the finaliser was getting lost, because
+          // poll(translate(uncancelable(_ => res))) will not cancel res
+          // but the overall op will be canceled
+          //   The only way to track it is with an impure `var`, because
+          // of mapK and translation preventing Ref without needing both
+          // F ~> G and G ~> F
           @volatile var res: Option[R] = None
 
          F.onCancel(
