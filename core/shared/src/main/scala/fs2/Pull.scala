@@ -845,7 +845,7 @@ object Pull extends PullLowPriority {
           view: Cont[Unit, G, X]
       ): F[End] = {
         val onScope = scope.acquireResource(
-          (_: Poll[F], (_: Fiber[F, Throwable, Unit] => Unit)) => scope.interruptWhen(haltOnSignal),
+          (_: Poll[F], _: (Fiber[F, Throwable, Unit] => Unit)) => scope.interruptWhen(haltOnSignal),
           (f: Fiber[F, Throwable, Unit], _: ExitCase) => f.cancel
         )
         val cont = onScope.flatMap { outcome =>
