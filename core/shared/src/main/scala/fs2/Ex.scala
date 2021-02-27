@@ -39,8 +39,9 @@ object Ex {
       sleepRandom >> IO.println(s"opening $name")
     )(_ => IO.println(s"closing $name"))
   .as {
-        Stream.eval(IO.println(s"starting $name"))  ++ Stream.eval(sleepRandom) ++ Stream.eval(IO.println(s"$name executed"))
-      }
+    Stream.eval(IO.println(s"starting $name"))  ++ Stream.eval(sleepRandom) ++ Stream.eval(IO.println(s"$name executed"))
+  }
+      
 
   // problem:
   //  you want all the subscriptions opened before any subscriber starts,
@@ -363,6 +364,38 @@ match {
 
     }.timeoutTo(1.second, IO.unit)
 
+  }.unsafeRunSync()
+
+    def e3 = {
+    IO.uncancelable { poll =>
+
+      @volatile var res: Option[Int] = None // new java.util.concurrent.atomic.AtomicReference[Option[Int]]
+
+      // can't exploit that they're both `IO`, `F` and `G` reality
+      val action = IO.uncancelable { poll =>
+        (IO.sleep(2.seconds).onCancel(IO.println("cancelled")).flatTap(_ => IO.println("I made it")).as(1)) // user
+          .map { r =>
+            //res.set(r.some)
+            res = r.some
+            println(s"value of ${res.get}")
+          }
+
+      }.onCancel(IO.println("eventually cancelled"))
+
+      poll(action)
+        .onCancel {
+          IO.unit.flatMap { _ =>
+            res match {
+                case None => IO.println("not propagated")
+                case Some(r) => IO.println(s"$r still needs releasing")
+              }
+            }
+          }
+          .redeemWith(
+            e => IO.println(e), // fail
+            r => IO.println(s"register resource $r") // register resource
+          )
+    }.timeoutTo(1.second, IO.unit)
   }.unsafeRunSync()
 
 
