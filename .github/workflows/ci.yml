@@ -26,7 +26,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest]
-        scala: [3.0.0-M3, 3.0.0-RC1, 2.12.13, 2.13.4]
+        scala: [3.0.0-M3, 3.0.0-RC1, 2.13.5, 2.13.4]
         java: [adopt@1.11]
     runs-on: ${{ matrix.os }}
     steps:
