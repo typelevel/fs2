@@ -287,4 +287,85 @@ object Ex {
         )
       ).interruptAfter(2.seconds).compile.drain.unsafeRunSync()
 
+  def e = {
+    IO.uncancelable { poll =>
+
+      @volatile var res: Option[Int] = None // new java.util.concurrent.atomic.AtomicReference[Option[Int]]
+
+      // can't exploit that they're both `IO`, `F` and `G` reality
+      val action = IO.uncancelable { poll =>
+        (IO.sleep(2.seconds).onCancel(IO.println("cancelled")).flatTap(_ => IO.println("I made it")).as(1)) // user
+          .map { r =>
+            //res.set(r.some)
+            res = r.some
+            println(s"value of ${res.get}")
+          }
+
+      }.onCancel(IO.println("eventually cancelled"))
+
+      action.start.flatMap { fib =>
+        poll(fib.joinWith(IO.canceled >> IO.never))
+          .onCancel {
+            fib.cancel >> IO.println("yooo") >> IO.unit.flatMap { _ =>
+//              res.get
+              res 
+
+match {
+                case None => IO.println("not propagated")
+                case Some(r) => IO.println(s"$r still needs releasing")
+              }
+            }
+          }
+          .redeemWith(
+            e => IO.println(e), // fail
+            r => IO.println(s"register resource $r") // register resource
+          )
+      }
+
+    }.timeoutTo(1.second, IO.unit)
+
+  }.unsafeRunSync()
+
+  def e2 = {
+    IO.uncancelable { poll =>
+
+      @volatile var res: Option[Int] = None // new java.util.concurrent.atomic.AtomicReference[Option[Int]]
+
+      // can't exploit that they're both `IO`, `F` and `G` reality
+      val action = IO.uncancelable { poll =>
+        poll((IO.sleep(2.seconds)).onCancel(IO.println("cancelled")).flatTap(_ => IO.println("I made it")).as(1)) // user
+          .map { r =>
+            //res.set(r.some)
+            res = r.some
+            println(s"value of ${res.get}")
+          }
+
+      }.onCancel(IO.println("eventually cancelled"))
+
+      action.start.flatMap { fib =>
+        poll(fib.joinWith(IO.canceled >> IO.never))
+          .onCancel {
+            fib.cancel >> IO.println("yooo") >> IO.unit.flatMap { _ =>
+//              res.get
+              res 
+
+match {
+                case None => IO.println("action got cancelled")
+                case Some(r) => IO.println(s"$r still needs releasing")
+              }
+            }
+          }
+          .redeemWith(
+            e => IO.println(e), // fail
+            r => IO.println(s"register resource $r") // register resource
+          )
+      }
+
+    }.timeoutTo(1.second, IO.unit)
+
+  }.unsafeRunSync()
+
+
+
 }
+
