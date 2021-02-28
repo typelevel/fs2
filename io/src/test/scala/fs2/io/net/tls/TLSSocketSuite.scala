@@ -63,6 +63,7 @@ class TLSSocketSuite extends TLSSuite {
                 .covary[IO]
                 .through(text.utf8Encode)
                 .through(tlsSocket.writes) ++
+                Stream.exec(tlsSocket.endOfOutput) ++
                 tlsSocket.reads
                   .through(text.utf8Decode)
                   .through(text.lines)

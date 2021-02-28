@@ -1606,7 +1606,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       interruptR <- Stream.eval(F.deferred[Unit])
       runR =
         haltWhenTrue
-          .takeWhile(!_)
+          .exists(x => x)
           .interruptWhen(interruptR.get.attempt)
           .compile
           .drain
@@ -1653,29 +1653,32 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * scala> Stream(1, 2, 3, 4, 5).intersperse(0).toList
     * res0: List[Int] = List(1, 0, 2, 0, 3, 0, 4, 0, 5)
     * }}}
+    *
+    * This method preserves the Chunking structure of `this` stream.
     */
-  def intersperse[O2 >: O](separator: O2): Stream[F, O2] =
-    this.pull.echo1.flatMap {
-      case None => Pull.done
-      case Some(s) =>
-        s.repeatPull {
-          _.uncons.flatMap {
-            case None => Pull.pure(None)
-            case Some((hd, tl)) =>
-              val interspersed = {
-                val bldr = Vector.newBuilder[O2]
-                bldr.sizeHint(hd.size * 2)
-                hd.foreach { o =>
-                  bldr += separator
-                  bldr += o
-                }
-                Chunk.vector(bldr.result())
-              }
-              Pull.output(interspersed) >> Pull.pure(Some(tl))
-          }
-        }.pull
-          .echo
+  def intersperse[O2 >: O](separator: O2): Stream[F, O2] = {
+    def doChunk(hd: Chunk[O], isFirst: Boolean): Chunk[O2] = {
+      val bldr = Vector.newBuilder[O2]
+      bldr.sizeHint(hd.size * 2 + (if (isFirst) 1 else 0))
+      val iter = hd.iterator
+      if (isFirst)
+        bldr += iter.next()
+      iter.foreach { o =>
+        bldr += separator
+        bldr += o
+      }
+      Chunk.vector(bldr.result())
+    }
+    def go(str: Stream[F, O]): Pull[F, O2, Unit] =
+      str.pull.uncons.flatMap {
+        case None           => Pull.done
+        case Some((hd, tl)) => Pull.output(doChunk(hd, false)) >> go(tl)
+      }
+    this.pull.uncons.flatMap {
+      case None           => Pull.done
+      case Some((hd, tl)) => Pull.output(doChunk(hd, true)) >> go(tl)
     }.stream
+  }
 
   /** Returns the last element of this stream, if non-empty.
     *
@@ -1798,28 +1801,26 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     */
   def switchMap[F2[x] >: F[x], O2](
       f: O => Stream[F2, O2]
-  )(implicit F: Concurrent[F2]): Stream[F2, O2] =
-    Stream.force(Semaphore[F2](1).flatMap { guard =>
-      F.ref[Option[Deferred[F2, Unit]]](None).map { haltRef =>
-        def runInner(o: O, halt: Deferred[F2, Unit]): Stream[F2, O2] =
-          Stream.eval(guard.acquire) >> // guard inner to prevent parallel inner streams
-            f(o).interruptWhen(halt.get.attempt) ++ Stream.exec(guard.release)
+  )(implicit F: Concurrent[F2]): Stream[F2, O2] = {
+    val fstream = for {
+      guard <- Semaphore[F2](1)
+      haltRef <- F.ref[Option[Deferred[F2, Unit]]](None)
+    } yield {
+      def runInner(o: O, halt: Deferred[F2, Unit]): Stream[F2, O2] =
+        Stream.eval(guard.acquire) >> // guard inner to prevent parallel inner streams
+          f(o).interruptWhen(halt.get.attempt) ++ Stream.exec(guard.release)
 
-        this
-          .evalMap { o =>
-            F.deferred[Unit].flatMap { halt =>
-              haltRef
-                .getAndSet(halt.some)
-                .flatMap {
-                  case None       => F.unit
-                  case Some(last) => last.complete(()).void // interrupt the previous one
-                }
-                .as(runInner(o, halt))
-            }
-          }
-          .parJoin(2)
-      }
-    })
+      def haltedF(o: O): F2[Stream[F2, O2]] =
+        for {
+          halt <- F.deferred[Unit]
+          prev <- haltRef.getAndSet(halt.some)
+          _ <- prev.traverse_(_.complete(())) // interrupt previous one if any
+        } yield runInner(o, halt)
+
+      this.evalMap(haltedF).parJoin(2)
+    }
+    Stream.force(fstream)
+  }
 
   /** Interleaves the two inputs nondeterministically. The output stream
     * halts after BOTH `s1` and `s2` terminate normally, or in the event
@@ -3412,7 +3413,7 @@ object Stream extends StreamLowPriority {
 
   /** A stream that never emits and never terminates.
     */
-  def never[F[_]](implicit F: Concurrent[F]): Stream[F, Nothing] =
+  def never[F[_]](implicit F: Spawn[F]): Stream[F, Nothing] =
     Stream.eval(F.never)
 
   /** Creates a stream that, when run, fails with the supplied exception.
@@ -3569,7 +3570,7 @@ object Stream extends StreamLowPriority {
     */
   def supervise[F[_], A](
       fa: F[A]
-  )(implicit F: Concurrent[F]): Stream[F, Fiber[F, Throwable, A]] =
+  )(implicit F: Spawn[F]): Stream[F, Fiber[F, Throwable, A]] =
     bracket(F.start(fa))(_.cancel)
 
   /** Returns a stream that evaluates the supplied by-name each time the stream is used,
@@ -3811,6 +3812,8 @@ object Stream extends StreamLowPriority {
             case _ => Some(rslt)
           } >> outputQ.offer(None).start.void
 
+        def untilDone[A](str: Stream[F, A]) = str.interruptWhen(done.map(_.nonEmpty))
+
         val incrementRunning: F[Unit] = running.update(_ + 1)
         val decrementRunning: F[Unit] =
           running.modify { n =>
@@ -3819,7 +3822,7 @@ object Stream extends StreamLowPriority {
           }.flatten
 
         // "block" and await until the `running` counter drops to zero.
-        val awaitWhileRunning: F[Unit] = running.discrete.dropWhile(_ > 0).take(1).compile.drain
+        val awaitWhileRunning: F[Unit] = running.discrete.forall(_ > 0).compile.drain
 
         // signals that a running stream, either inner or ourer, finished with or without failure.
         def endWithResult(result: Either[Throwable, Unit]): F[Unit] =
@@ -3828,9 +3831,7 @@ object Stream extends StreamLowPriority {
             case Left(err) => stop(Some(err)) >> decrementRunning
           }
 
-        val extractFromQueue: Stream[F, O] =
-          Stream.fromQueueNoneTerminatedChunk(outputQ)
-        def insertToQueue(str: Stream[F, O]) = str.chunks.evalMap(s => outputQ.offer(Some(s)))
+        def insertToQueue(str: Stream[F, O]) = str.chunks.foreach(s => outputQ.offer(Some(s)))
 
         // runs one inner stream, each stream is forked.
         // terminates when killSignal is true
@@ -3845,7 +3846,7 @@ object Stream extends StreamLowPriority {
                 F.start {
                   // Note that the `interrupt` must be AFTER the enqueue to the sync queue,
                   // otherwise the process may hang to enqueue last item while being interrupted
-                  val backInsertions = insertToQueue(inner).interruptWhen(done.map(_.nonEmpty))
+                  val backInsertions = untilDone(insertToQueue(inner))
                   for {
                     r <- backInsertions.compile.drain.attempt
                     cancelResult <- lease.cancel
@@ -3856,27 +3857,21 @@ object Stream extends StreamLowPriority {
             }
           }
 
-        def runInnerScope(inner: Stream[F, O]): Stream[F, Unit] =
-          new Stream(Pull.getScope[F].flatMap((o: Scope[F]) => Pull.eval(runInner(inner, o))))
+        def runInnerScope(inner: Stream[F, O]): Stream[F, INothing] =
+          new Stream(Pull.getScope[F].flatMap((sc: Scope[F]) => Pull.eval(runInner(inner, sc))))
 
         // runs the outer stream, interrupts when kill == true, and then decrements the `running`
         def runOuter: F[Unit] =
-          outer
-            .flatMap(runInnerScope)
-            .interruptWhen(done.map(_.nonEmpty))
-            .compile
-            .drain
-            .attempt
-            .flatMap(endWithResult)
+          untilDone(outer.flatMap(runInnerScope)).compile.drain.attempt.flatMap(endWithResult)
 
         // awaits when all streams (outer + inner) finished,
         // and then collects result of the stream (outer + inner) execution
-        def signalResult: F[Unit] =
-          done.get.flatMap(_.flatten.fold[F[Unit]](F.unit)(F.raiseError))
-
+        def signalResult: F[Unit] = done.get.flatMap(_.flatten.fold[F[Unit]](F.unit)(F.raiseError))
         val endOuter: F[Unit] = stop(None) >> awaitWhileRunning >> signalResult
 
-        Stream.bracket(F.start(runOuter))(_ => endOuter) >> extractFromQueue
+        val backEnqueue = Stream.bracket(F.start(runOuter))(_ => endOuter)
+
+        backEnqueue >> Stream.fromQueueNoneTerminatedChunk(outputQ)
       }
 
       Stream.eval(fstream).flatten

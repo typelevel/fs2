@@ -24,8 +24,9 @@ package concurrent
 
 import cats.{Applicative, Functor, Invariant}
 import cats.data.OptionT
-import cats.effect.kernel.{Concurrent, Deferred, Ref, Unique}
+import cats.effect.kernel.{Concurrent, Deferred, Ref}
 import cats.syntax.all._
+import scala.collection.immutable.LongMap
 
 /** Pure holder of a single value of type `A` that can be read in the effect `F`. */
 trait Signal[F[_], A] {
@@ -104,15 +105,18 @@ object SignallingRef {
     case class State(
         value: A,
         lastUpdate: Long,
-        listeners: Map[Unique.Token, Deferred[F, (A, Long)]]
+        listeners: LongMap[Deferred[F, (A, Long)]]
     )
 
-    F.ref(State(initial, 0L, Map.empty))
-      .map { state =>
+    F.ref(State(initial, 0L, LongMap.empty))
+      .product(F.ref(1L))
+      .map { case (state, ids) =>
+        def newId = ids.getAndUpdate(_ + 1)
+
         def updateAndNotify[B](state: State, f: A => (A, B)): (State, F[B]) = {
           val (newValue, result) = f(state.value)
           val lastUpdate = state.lastUpdate + 1
-          val newState = State(newValue, lastUpdate, Map.empty)
+          val newState = State(newValue, lastUpdate, LongMap.empty)
           val notifyListeners = state.listeners.values.toVector.traverse_ { listener =>
             listener.complete(newValue -> lastUpdate)
           }
@@ -125,9 +129,8 @@ object SignallingRef {
 
           def continuous: Stream[F, A] = Stream.repeatEval(get)
 
-          // TODO is there any change to use LongMap here as well?
           def discrete: Stream[F, A] = {
-            def go(id: Unique.Token, lastSeen: Long): Stream[F, A] = {
+            def go(id: Long, lastSeen: Long): Stream[F, A] = {
               def getNext: F[(A, Long)] =
                 F.deferred[(A, Long)].flatMap { wait =>
                   state.modify { case state @ State(value, lastUpdate, listeners) =>
@@ -143,10 +146,10 @@ object SignallingRef {
               }
             }
 
-            def cleanup(id: Unique.Token): F[Unit] =
+            def cleanup(id: Long): F[Unit] =
               state.update(s => s.copy(listeners = s.listeners - id))
 
-            Stream.bracket(F.unique)(cleanup).flatMap { id =>
+            Stream.bracket(newId)(cleanup).flatMap { id =>
               Stream.eval(state.get).flatMap { state =>
                 Stream.emit(state.value) ++ go(id, state.lastUpdate)
               }
