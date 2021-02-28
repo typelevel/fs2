@@ -26,7 +26,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest]
-        scala: [3.0.0-M3, 3.0.0-RC1, 2.12.13, 2.13.4]
+        scala: [3.0.0-M3, 3.0.0-RC1, 2.12.13, 2.13.5]
         java: [adopt@1.11]
     runs-on: ${{ matrix.os }}
     steps:
@@ -57,7 +57,7 @@ jobs:
 
       - run: sbt ++${{ matrix.scala }} fmtCheck test mimaReportBinaryIssues
 
-      - if: matrix.scala == '2.13.4'
+      - if: matrix.scala == '2.13.5'
         run: sbt ++${{ matrix.scala }} microsite/mdoc
 
       - name: Compress target directories
@@ -76,7 +76,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest]
-        scala: [2.13.4]
+        scala: [2.13.5]
         java: [adopt@1.11]
     runs-on: ${{ matrix.os }}
     steps:
@@ -132,12 +132,12 @@ jobs:
           tar xf targets.tar
           rm targets.tar
 
-      - name: Download target directories (2.13.4)
+      - name: Download target directories (2.13.5)
         uses: actions/download-artifact@v2
         with:
-          name: target-${{ matrix.os }}-2.13.4-${{ matrix.java }}
+          name: target-${{ matrix.os }}-2.13.5-${{ matrix.java }}
 
-      - name: Inflate target directories (2.13.4)
+      - name: Inflate target directories (2.13.5)
         run: |
           tar xf targets.tar
           rm targets.tar
@@ -154,7 +154,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest]
-        scala: [2.13.4]
+        scala: [2.13.5]
         java: [adopt@1.11]
     runs-on: ${{ matrix.os }}
     steps:
@@ -188,12 +188,12 @@ jobs:
           tar xf targets.tar
           rm targets.tar
 
-      - name: Download target directories (2.13.4)
+      - name: Download target directories (2.13.5)
         uses: actions/download-artifact@v2
         with:
-          name: target-${{ matrix.os }}-2.13.4-${{ matrix.java }}
+          name: target-${{ matrix.os }}-2.13.5-${{ matrix.java }}
 
-      - name: Inflate target directories (2.13.4)
+      - name: Inflate target directories (2.13.5)
         run: |
           tar xf targets.tar
           rm targets.tar

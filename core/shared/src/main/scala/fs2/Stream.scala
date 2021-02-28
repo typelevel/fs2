@@ -1115,7 +1115,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * Note: The result Stream will consist of chunks that are empty or 1-element-long.
     * If you want to operate on chunks after using it, consider buffering, e.g. by using [[buffer]].
     */
-  def evalFilter[F2[x] >: F[x]: Functor](f: O => F2[Boolean]): Stream[F2, O] =
+  def evalFilter[F2[x] >: F[x]](f: O => F2[Boolean]): Stream[F2, O] =
     flatMap(o => Stream.eval(f(o)).ifM(Stream.emit(o), Stream.empty))
 
   /** Like `filter`, but allows filtering based on an effect, with up to [[maxConcurrent]] concurrently running effects.
@@ -1135,7 +1135,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * Note: The result Stream will consist of chunks that are empty or 1-element-long.
     * If you want to operate on chunks after using it, consider buffering, e.g. by using [[buffer]].
     */
-  def evalFilterNot[F2[x] >: F[x]: Functor](f: O => F2[Boolean]): Stream[F2, O] =
+  def evalFilterNot[F2[x] >: F[x]](f: O => F2[Boolean]): Stream[F2, O] =
     flatMap(o => Stream.eval(f(o)).ifM(Stream.empty, Stream.emit(o)))
 
   /** Like `filterNot`, but allows filtering based on an effect, with up to [[maxConcurrent]] concurrently running effects.
@@ -1624,7 +1624,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     } yield res
 
   /** Alias for `interruptWhen(haltWhenTrue.get)`. */
-  def interruptWhen[F2[x] >: F[x]: Concurrent](
+  def interruptWhen[F2[x] >: F[x]](
       haltWhenTrue: Deferred[F2, Either[Throwable, Unit]]
   ): Stream[F2, O] =
     interruptWhen(haltWhenTrue.get)
@@ -1637,7 +1637,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
 
   /** Interrupts the stream, when `haltOnSignal` finishes its evaluation.
     */
-  def interruptWhen[F2[x] >: F[x]: Concurrent](
+  def interruptWhen[F2[x] >: F[x]](
       haltOnSignal: F2[Either[Throwable, Unit]]
   ): Stream[F2, O] =
     (Pull.interruptWhen(haltOnSignal) >> this.pull.echo).stream.interruptScope
@@ -2183,7 +2183,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
 
   /** Rechunks the stream such that output chunks are within [inputChunk.size * minFactor, inputChunk.size * maxFactor].
     */
-  def rechunkRandomly[F2[x] >: F[x]: Sync](
+  def rechunkRandomly[F2[x] >: F[x]](
       minFactor: Double = 0.1,
       maxFactor: Double = 2.0
   ): Stream[F2, O] =
