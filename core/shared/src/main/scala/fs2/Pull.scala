@@ -121,7 +121,7 @@ sealed abstract class Pull[+F[_], +O, +R] {
 
   /** Applies the result of this pull to `f` and returns the result.
     *
-    * This method returns a new composed pull. The semantics of this pull
+    * This method returns a new composed pull, which will do as follows:
     *
     * - If `this` pull succeeds with a result `r` of type R, the `f` function
     *   is applied to `r`, to build a new pull `f(r)`, and the result pull
@@ -129,6 +129,8 @@ sealed abstract class Pull[+F[_], +O, +R] {
     *   just as the new pull `f(r)` does.
     * - If `this` pull fails or is interrupted, then the composed pull
     *   terminates with that same failure or interruption.
+    * - If evaluating `f(r)` to build the throws an exception, the result
+    *   is a pull that fails with that exception.
     *
     * The composed pull emits all outputs emitted by `this` pull,
     * and if successful will start emitting the outputs from the generated pull.
@@ -167,9 +169,10 @@ sealed abstract class Pull[+F[_], +O, +R] {
     * This allows defining pulls recursively.
     *
     * This operation does not add or remove any resource scope boundaries.
-    * The `post` pull will run on the same scope on which the compilation of
-    * this pull ends. The composed pull will end on whatever scope the `post`
-    * pull ended on.
+    * The `post` pull runs on the same scope in which `this` pull ended.
+    * The composed pull ends on whatever scope the `post` pull does.
+    *
+    * This is equivalent to `.flatMap(_ => post)`
     */
   def >>[F2[x] >: F[x], O2 >: O, S](post: => Pull[F2, O2, S]): Pull[F2, O2, S] =
     new Bind[F2, O2, R, S](this) {
@@ -288,26 +291,28 @@ sealed abstract class Pull[+F[_], +O, +R] {
       def cont(r: Terminal[R]) = r.map(f)
     }
 
-  /** Discards the result type of this pull.
+  /** Discards the result of this pull.
     *
-    * If `this` pull ends in success, its result is discarded and the resulting
-    * pull simply returns a unit value `()`. Otherwise, the _voided_ pull just
-    * does the same as `this` pull does.
+    * If `this` pull ends in success, its result is discarded and the _voided_
+    * pull returns the unit `()` value. Otherwise, the voided pull just does
+    * the same as `this` pull does.
     *
     * Alias for `this.map(_ => () )`.
-    *
-    * This is equivalent to `Functor[Pull[F, O, *]].void(this)`
     */
   def void: Pull[F, O, Unit] = as(())
 
-  /** Alias for `_.map(_ => o2)`.
+  /** Replaces the result of this pull with the given constant value.
+    * If `this` pull succeeds, then its result is discarded and the resulting
+    * pull succeeds with the `s` value as its result.
+    * Otherwise, if `this` pull fails or is interrupted, then the result pull
+    * ends the same way.
     *
-    * This is equivalent to `Functor[Pull[F, O, *]].as(this, constant)`
+    * Alias for `_.map(_ => o2)`.
     *
-    * @tparam S     The type of the constant,
-    * @param  value the new result value of the pull
+    * @tparam S The type of the constant,
+    * @param  s The new result value of the pull
     */
-  def as[S](value: S): Pull[F, O, S] = map(_ => value)
+  def as[S](s: S): Pull[F, O, S] = map(_ => s)
 
 }
 
@@ -320,11 +325,8 @@ object Pull extends PullLowPriority {
     */
   val done: Pull[Pure, INothing, Unit] = unit
 
-  /** Lifts a constant result value into an atomic pull that always terminates
-    * successfully with the given value as its result. This pull performs no
-    * effects and emits no outputs.
-    *
-    * This is the `pure` function of the Applicative instance for Pull.
+  /** Creates an atomic pull that performs no effects, emits no outputs,
+    * and terminates successfully with the supplied value as its result.
     */
   def pure[F[_], R](r: R): Pull[F, INothing, R] = Succeeded(r)
 
@@ -336,12 +338,9 @@ object Pull extends PullLowPriority {
     */
   def raiseError[F[_]: RaiseThrowable](err: Throwable): Pull[F, INothing, INothing] = Fail(err)
 
-  /** Lifts the effectful computation `F[R]` into an atomic pull that performs
-    * that single effect, emits no outputs, and whose result is that of the
-    * given effectful computation `fr`.
-    *
-    * If the `fr` action fails with an error, the resulting pull fails with
-    * that error..
+  /** Creates an atomic pull that evaluates the supplied effect `fr`, emits no
+    * outputs, and terminates with the result of the effect.
+    * If the `fr` effect fails with an error, the new pull fails with that error.
     */
   def eval[F[_], R](fr: F[R]): Pull[F, INothing, R] = Eval[F, R](fr)
 
@@ -354,9 +353,8 @@ object Pull extends PullLowPriority {
     */
   def output1[F[x] >: Pure[x], O](o: O): Pull[F, O, Unit] = Output(Chunk.singleton(o))
 
-  /** Lifts the given chunk of output values into an atomic pull that performs
-    * no effects, emits that chunk of outputs, and terminates successfully
-    * with a unit result.
+  /** Creates a pull that emits the elements of the given chunk, all in the chunk.
+    * The new pull performs no effects terminates successfully with a unit result.
     */
   def output[F[x] >: Pure[x], O](os: Chunk[O]): Pull[Pure, O, Unit] =
     if (os.isEmpty) Pull.done else Output[O](os)
