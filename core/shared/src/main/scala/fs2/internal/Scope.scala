@@ -27,7 +27,6 @@ import cats.{Id, Traverse, TraverseFilter}
 import cats.data.Chain
 import cats.effect.kernel.{Fiber, Outcome, Poll, Ref, Resource, Unique}
 import cats.syntax.all._
-import cats.effect.implicits._
 
 import fs2.{Compiler, CompositeFailure}
 import fs2.internal.InterruptContext.InterruptionOutcome
