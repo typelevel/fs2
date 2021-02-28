@@ -351,17 +351,14 @@ object Pull extends PullLowPriority {
     *
     * _Note_ using singleton chunks is not memory efficient. If possible,
     * use the chunk-based `output` method instead.
-    *
-    * @tparam O the type of the output of the generated chunk.
-    * @tparam F the effect type of the pull. This is given as a convenience for
-    *         the API users, much like the type parameter in the `Option.empty`
-    *         method, to avoid defaulting on `Nothing`. Note, however, that the
-    *         returned pull performs no effects.
     */
   def output1[F[x] >: Pure[x], O](o: O): Pull[F, O, Unit] = Output(Chunk.singleton(o))
 
-  /** Outputs a chunk of values. */
-  def output[O](os: Chunk[O]): Pull[Pure, O, Unit] =
+  /** Lifts the given chunk of output values into an atomic pull that performs
+    * no effects, emits that chunk of outputs, and terminates successfully
+    * with a unit result.
+    */
+  def output[F[x] >: Pure[x], O](os: Chunk[O]): Pull[Pure, O, Unit] =
     if (os.isEmpty) Pull.done else Output[O](os)
 
   private[fs2] def acquire[F[_], R](
