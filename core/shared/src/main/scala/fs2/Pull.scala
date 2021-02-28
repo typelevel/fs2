@@ -40,26 +40,29 @@ import Pull._
   * or c) terminate because it was cancelled by another process,
   * or d) not terminate.
   *
-  * Much like the `IO` values from the `cats-effect` library,
-  * `Pull` values are pure, immutable values. They preserve referential
-  * transparency and are usable in functional programming.
-  * of a sequence of potentially side effectful computation.
+  * Like types from other effect libraries, pulls are pure andimmutable values.
+  * They preserve referential transparency and can be used in functional programming.
   *
-  * A pull emits the output values not one-at-a-time, but one-chunk at a time.
+  * === Chunking ===
+  *
+  * The Output values of a pull are emitted not one by one, but in chunks.
+  * A Chunk is an immutable sequence with constant indexed lookup. For example,
+  * a pull  `p: Pull[F, Byte, R]` internally operates and emits `Chunk[Byte]`
+  * values, which can wrap unboxed byte arrays -- avoiding boxing/unboxing costs.
+  * The Pull API provides mechanisms for working at both the chunk level and
+  * the individual element level. Generally, working at the chunk level will
+  * result in better performance but at the cost of more complex implementations
+  *
   * A pull only emits non-empty chunks.
   *
-  * === Pulls variations
+  * However, chunks are not merely an operational matter of efficiency. Each
+  * pull is emitted from a chunk atomically, which is to say, any errors or
+  * interruptions in a pull can only happen between chunks, not within a
+  * chunk. For instance, if creating a new chunk of values fails (raises an
+  * uncaught exception) while creating an intermediate value, then it fails
+  * to create the entire chunk and previous values are discarded.
   *
-  * There are some special types of Pull, which are reflected on the arguments of its type parameters:
-  *
-  * A '''pure''' pull is one that performs no effectful actions.
-  * The type of a pure pull has the `F` effect type  bound to `Nothing`.
-  * _Note_ that type `Nothing` is polykinded type, so it can also be
-  * applied as an argument to the type parameter `F[_]`.
-  * Nevertheless, for the sake of clarity, in `fs2` we use the type alias
-  * `type Pure[A] = Nothing` to represent a pure pull as `Pull[Pure, O, R]`.
-  *
-  * === Evaluation and Compilation ===
+  * === Evaluation ===
   *
   * Like other functional effect types (e.g. `IO` in Cats Effect), a pull
   * describes a process. It is not a running process nor a handle for the
@@ -102,8 +105,12 @@ import Pull._
   *   - `handleErrorWith(raiseError(e))(f) == f(e)`
   *
   * @tparam F[_] the type of functional effects that can be performed by this pull.
-  *           An effect type of `Nothing`, also known in `fs2` by the alias `Pure`,
-  *           indicates that this pull perform no effectful actions.
+  *         An effect type of `Nothing`, also known in `fs2` by the alias `Pure`,
+  *         indicates that this pull perform no effectful actions.
+  *         _Note_ that type `Nothing` is polykinded type, so it can also be
+  *         applied as an argument to the type parameter `F[_]`.
+  *         Nevertheless, for the sake of clarity, in `fs2` we use the type alias
+  *         `type Pure[A] = Nothing` to represent a pure pull as `Pull[Pure, O, R]`.
   * @tparam O The outputs emitted by this Pull. An output type of `Nothing` means
   *           that this pull does not emit any outputs.
   * @tparam R The type of result returned by this Pull if it terminates successfully.
