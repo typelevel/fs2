@@ -1630,7 +1630,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     interruptWhen(haltWhenTrue.get)
 
   /** Alias for `interruptWhen(haltWhenTrue.discrete)`. */
-  def interruptWhen[F2[x] >: F[x] : Concurrent](
+  def interruptWhen[F2[x] >: F[x]: Concurrent](
       haltWhenTrue: Signal[F2, Boolean]
   ): Stream[F2, O] =
     interruptWhen(haltWhenTrue.discrete)
