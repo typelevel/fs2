@@ -649,7 +649,7 @@ object Pull extends PullLowPriority {
 
       def innerMapOutput[K[_], C, D](stream: Pull[K, C, Unit], fun: C => D): Pull[K, D, Unit] =
         viewL(stream) match {
-          case r: Terminal[_] => r.asInstanceOf[Terminal[Unit]]
+          case r: Terminal[Unit] => r
           case v: View[K, C, x] =>
             val mstep: Pull[K, D, x] = (v.step: Action[K, C, x]) match {
               case o: Output[C] =>
@@ -979,16 +979,14 @@ object Pull extends PullLowPriority {
               }
               go[h, X, End](scope, extendedTopLevelScope, composed, translateRunner, tst.stream)
 
-            case u: Uncons[G, y] =>
-              val v = view.asInstanceOf[View[G, X, Option[(Chunk[y], Pull[G, y, Unit])]]]
+            case u: Uncons[G, X] =>
               // a Uncons is run on the same scope, without shifting.
-              go(scope, extendedTopLevelScope, translation, new UnconsRunR(v), u.stream)
+              go(scope, extendedTopLevelScope, translation, new UnconsRunR[X](view), u.stream)
 
-            case u: StepLeg[G, y] =>
-              val v = view.asInstanceOf[View[G, X, Option[Stream.StepLeg[G, y]]]]
-              scope
-                .shiftScope(u.scope, u.toString)
-                .flatMap(go(_, extendedTopLevelScope, translation, new StepLegRunR(v), u.stream))
+            case u: StepLeg[G, X] =>
+              scope.shiftScope(u.scope, u.toString).flatMap { step =>
+                go(step, extendedTopLevelScope, translation, new StepLegRunR[X](view), u.stream)
+              }
 
             case _: GetScope[_] =>
               val result = Succeeded(scope.asInstanceOf[y])
@@ -1076,11 +1074,10 @@ object Pull extends PullLowPriority {
       fK: F ~> G
   ): Pull[G, O, Unit] =
     stream match {
-      case r: Terminal[_] => r
-      case t: Translate[e, f, _] =>
-        translate[e, G, O](t.stream, t.fk.andThen(fK.asInstanceOf[f ~> G]))
-      case o: Output[_] => o
-      case _            => Translate(stream, fK)
+      case r: Terminal[_]        => r
+      case t: Translate[e, F, _] => translate[e, G, O](t.stream, t.fk.andThen(fK))
+      case o: Output[_]          => o
+      case _                     => Translate(stream, fK)
     }
 
   /* Applies the outputs of this pull to `f` and returns the result in a new `Pull`. */
