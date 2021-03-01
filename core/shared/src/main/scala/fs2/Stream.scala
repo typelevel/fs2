@@ -245,13 +245,6 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   ): Stream[F2, O2] =
     through(Broadcast.through(pipes: _*))
 
-  /** Variant of `broadcastTo` that broadcasts to `maxConcurrent` instances of the supplied pipe.
-    */
-  def broadcastThrough[F2[x] >: F[x]: Concurrent, O2](
-      maxConcurrent: Int
-  )(pipe: Pipe[F2, O, O2]): Stream[F2, O2] =
-    this.broadcastThrough[F2, O2](List.fill(maxConcurrent)(pipe): _*)
-
   /** Behaves like the identity function, but requests `n` elements at a time from the input.
     *
     * @example {{{
