@@ -2603,11 +2603,6 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       }
     }
 
-  /** Converts a `Stream[F, Nothing]` to a `Stream[F, Unit]` which emits a single `()` after this stream completes.
-    */
-  def unitary(implicit ev: O <:< Nothing): Stream[F, Unit] =
-    this.asInstanceOf[Stream[F, Nothing]] ++ Stream.emit(())
-
   /** Alias for [[filter]]
     * Implemented to enable filtering in for comprehensions
     */
@@ -3712,8 +3707,16 @@ object Stream extends StreamLowPriority {
       Pull.loop(f.andThen(_.map(_.map(_.pull))))(pull).stream
   }
 
+  implicit final class NothingStreamOps[F[_]](private val self: Stream[F, Nothing]) extends AnyVal {
+
+    /** Converts a `Stream[F, Nothing]` to a `Stream[F, Unit]` which emits a single `()` after this stream completes.
+      */
+    def unitary: Stream[F, Unit] =
+      self ++ Stream.emit(())
+  }
+  
   implicit final class StringStreamOps[F[_]](private val self: Stream[F, String]) extends AnyVal {
-    
+
     /** Writes this stream of strings to the supplied `PrintStream`, emitting a unit
       * for each line that was written.
       */
