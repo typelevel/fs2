@@ -2479,6 +2479,22 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     resultPull.stream
   }
 
+  /** Groups inputs in Tuple2. If the input contains less than 2 elements
+    * no elements will be emitted.
+    *
+    * @example {{{
+    * scala> Stream(1, 2, 3, 4).sliding2.toList
+    * res0: List[(Int, Int)] = List((1,2), (2,3), (3,4))
+    * scala> Stream(1).sliding2.toList
+    * res1: List[(Int, Int)] = List()
+    * }}}
+    * @throws scala.IllegalArgumentException if `n` <= 0
+    */
+  def sliding2: Stream[F, (O, O)] =
+    sliding(2).collect {
+      case chunk if chunk.size == 2 => (chunk(0), chunk(1))
+    }
+
   /** Starts this stream and cancels it as finalization of the returned stream.
     */
   def spawn[F2[x] >: F[x]: Concurrent]: Stream[F2, Fiber[F2, Throwable, Unit]] =
