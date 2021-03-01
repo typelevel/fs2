@@ -233,13 +233,6 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     *
     * @param pipes    Pipes that will concurrently process the work.
     */
-  def broadcastTo[F2[x] >: F[x]: Concurrent](
-      pipes: Pipe[F2, O, Nothing]*
-  ): Stream[F2, INothing] =
-    this.through(Broadcast.through(pipes: _*))
-
-  /** Alias for `through(Broadcast.through(pipes))`.
-    */
   def broadcastThrough[F2[x] >: F[x]: Concurrent, O2](
       pipes: Pipe[F2, O, O2]*
   ): Stream[F2, O2] =
