@@ -58,29 +58,6 @@ sealed abstract class Pull[+F[_], +O, +R] {
   def attempt: Pull[F, O, Either[Throwable, R]] =
     map(r => Right(r)).handleErrorWith(t => Succeeded(Left(t)))
 
-  /** Interpret this `Pull` to produce a `Stream`, introducing a scope.
-    *
-    * May only be called on pulls which return a `Unit` result type. Use `p.void.stream` to explicitly
-    * ignore the result type of the pull.
-    */
-  def stream(implicit ev: R <:< Unit): Stream[F, O] = {
-    val _ = ev
-    new Stream(Pull.scope(this.asInstanceOf[Pull[F, O, Unit]]))
-  }
-
-  /** Interpret this `Pull` to produce a `Stream` without introducing a scope.
-    *
-    * Only use this if you know a scope is not needed. Scope introduction is generally harmless and the risk
-    * of not introducing a scope is a memory leak in streams that otherwise would execute in constant memory.
-    *
-    * May only be called on pulls which return a `Unit` result type. Use `p.void.stream` to explicitly
-    * ignore the result type of the pull.
-    */
-  def streamNoScope(implicit ev: R <:< Unit): Stream[F, O] = {
-    val _ = ev
-    new Stream(this.asInstanceOf[Pull[F, O, Unit]])
-  }
-
   /** Applies the resource of this pull to `f` and returns the result. */
   def flatMap[F2[x] >: F[x], O2 >: O, R2](f: R => Pull[F2, O2, R2]): Pull[F2, O2, R2] =
     new Bind[F2, O2, R, R2](this) {
@@ -146,6 +123,28 @@ sealed abstract class Pull[+F[_], +O, +R] {
 }
 
 object Pull extends PullLowPriority {
+
+  implicit final class StreamPullOps[F[_], O](private val pull: Pull[F, O, Unit]) extends AnyVal {
+
+    /** Interpret this `Pull` to produce a `Stream`, introducing a scope.
+      *
+      * May only be called on pulls which return a `Unit` result type.
+      * Use `p.void.stream` to explicitly toignore the result of the pull.
+      */
+    def stream: Stream[F, O] = new Stream(Pull.scope(pull))
+
+    /** Interpret this `Pull` to produce a `Stream` without introducing a scope.
+      *
+      * Only use this if you know a scope is not needed. Scope introduction is
+      * generally harmless and the risk of not introducing a scope is a memory
+      *  leak in streams that otherwise would execute in constant memory.
+      *
+      * May only be called on pulls which return a `Unit` result type.
+      * Use `p.void.stream` to explicitly ignore the result of the pull.
+      */
+    def streamNoScope: Stream[F, O] = new Stream(pull)
+
+  }
 
   private[fs2] def acquire[F[_], R](
       resource: F[R],
