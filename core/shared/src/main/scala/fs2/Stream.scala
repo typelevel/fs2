@@ -2619,38 +2619,6 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   def unitary(implicit ev: O <:< Nothing): Stream[F, Unit] =
     this.asInstanceOf[Stream[F, Nothing]] ++ Stream.emit(())
 
-  /** Filters any 'None'.
-    *
-    * @example {{{
-    * scala> Stream(Some(1), Some(2), None, Some(3), None).unNone.toList
-    * res0: List[Int] = List(1, 2, 3)
-    * }}}
-    */
-  def unNone[O2](implicit ev: O <:< Option[O2]): Stream[F, O2] = {
-    val _ = ev // Convince scalac that ev is used
-    this.asInstanceOf[Stream[F, Option[O2]]].collect { case Some(o2) => o2 }
-  }
-
-  /** Halts the input stream at the first `None`.
-    *
-    * @example {{{
-    * scala> Stream(Some(1), Some(2), None, Some(3), None).unNoneTerminate.toList
-    * res0: List[Int] = List(1, 2)
-    * }}}
-    */
-  def unNoneTerminate[O2](implicit ev: O <:< Option[O2]): Stream[F, O2] =
-    this.repeatPull {
-      _.uncons.flatMap {
-        case None => Pull.pure(None)
-        case Some((hd, tl)) =>
-          hd.indexWhere(_.isEmpty) match {
-            case Some(0)   => Pull.pure(None)
-            case Some(idx) => Pull.output(hd.take(idx).map(_.get)).as(None)
-            case None      => Pull.output(hd.map(_.get)).as(Some(tl))
-          }
-      }
-    }
-
   /** Alias for [[filter]]
     * Implemented to enable filtering in for comprehensions
     */
@@ -3755,6 +3723,39 @@ object Stream extends StreamLowPriority {
       Pull.loop(f.andThen(_.map(_.map(_.pull))))(pull).stream
   }
 
+  implicit final class OptionStreamOps[F[_], O](private val self: Stream[F, Option[O]]) extends AnyVal {
+
+    /** Filters any 'None'.
+      *
+      * @example {{{
+      * scala> Stream(Some(1), Some(2), None, Some(3), None).unNone.toList
+      * res0: List[Int] = List(1, 2, 3)
+      * }}}
+      */
+    def unNone: Stream[F, O] =
+      self.collect { case Some(o2) => o2 }
+
+    /** Halts the input stream at the first `None`.
+      *
+      * @example {{{
+      * scala> Stream(Some(1), Some(2), None, Some(3), None).unNoneTerminate.toList
+      * res0: List[Int] = List(1, 2)
+      * }}}
+      */
+    def unNoneTerminate: Stream[F, O] =
+      self.repeatPull {
+        _.uncons.flatMap {
+          case None => Pull.pure(None)
+          case Some((hd, tl)) =>
+            hd.indexWhere(_.isEmpty) match {
+              case Some(0)   => Pull.pure(None)
+              case Some(idx) => Pull.output(hd.take(idx).map(_.get)).as(None)
+              case None      => Pull.output(hd.map(_.get)).as(Some(tl))
+            }
+        }
+      }
+  }
+
   /** Provides syntax for streams of streams. */
   implicit final class NestedStreamOps[F[_], O](private val outer: Stream[F, Stream[F, O]])
       extends AnyVal {
@@ -4676,6 +4677,8 @@ object Stream extends StreamLowPriority {
       lhs(left).stream.mergeHaltBoth(rhs(right).stream)
     }
   }
+
+
 
   /** Provides operations on effectful pipes for syntactic convenience. */
   implicit final class PipeOps[F[_], I, O](private val self: Pipe[F, I, O]) extends AnyVal {
