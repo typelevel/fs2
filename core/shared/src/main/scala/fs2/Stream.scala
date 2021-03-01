@@ -1705,17 +1705,6 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       case None    => Pull.output1(fallback)
     }.stream
 
-  /** Writes this stream of strings to the supplied `PrintStream`, emitting a unit
-    * for each line that was written.
-    */
-  def lines[F2[x] >: F[x]](
-      out: PrintStream
-  )(implicit F: Sync[F2], ev: O <:< String): Stream[F2, INothing] = {
-    val _ = ev
-    val src = this.asInstanceOf[Stream[F2, String]]
-    src.foreach(str => F.blocking(out.println(str)))
-  }
-
   /** Applies the specified pure function to each input and emits the result.
     *
     * @example {{{
@@ -3721,6 +3710,17 @@ object Stream extends StreamLowPriority {
         f: Stream.ToPull[F, O] => Pull[F, O2, Option[Stream[F, O]]]
     ): Stream[F, O2] =
       Pull.loop(f.andThen(_.map(_.map(_.pull))))(pull).stream
+  }
+
+  implicit final class StringStreamOps[F[_]](private val self: Stream[F, String]) extends AnyVal {
+    
+    /** Writes this stream of strings to the supplied `PrintStream`, emitting a unit
+      * for each line that was written.
+      */
+    def lines[F2[x] >: F[x]](
+        out: PrintStream
+    )(implicit F: Sync[F2]): Stream[F2, INothing] =
+      self.foreach(str => F.blocking(out.println(str)))
   }
 
   implicit final class OptionStreamOps[F[_], O](private val self: Stream[F, Option[O]]) extends AnyVal {
