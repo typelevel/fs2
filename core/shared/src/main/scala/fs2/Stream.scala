@@ -212,26 +212,22 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   def broadcast[F2[x] >: F[x]: Concurrent]: Stream[F2, Stream[F2, O]] =
     through(Broadcast(1))
 
-  /** Like [[broadcast]] but instead of providing a stream of sources, runs each pipe.
+  /** Broadcasts every value of the stream through the pipes provided
+    * as arguments.
     *
-    * The pipes are run concurrently with each other. Hence, the parallelism factor is equal
-    * to the number of pipes.
-    * Each pipe may have a different implementation, if required; for example one pipe may
-    * process elements while another may send elements for processing to another machine.
+    * Each pipe can have a different implementation if required, and
+    * they are all guaranteed to see every `O` pulled from the source
+    * stream.
     *
-    * Each pipe is guaranteed to see all `O` pulled from the source stream, unlike `broadcast`,
-    * where workers see only the elements after the start of each worker evaluation.
+    * The pipes are all run concurrently with each other, but note
+    * that elements are pulled from the source as chunks, and the next
+    * chunk is pulled only when all pipes are done with processing the
+    * current chunk, which prevents faster pipes from getting too far ahead.
     *
-    * Note: the resulting stream will not emit values, even if the pipes do.
-    * If you need to emit `Unit` values, consider using `broadcastThrough`.
-    *
-    * Note:  Elements are pulled as chunks from the source and the next chunk is pulled when all
-    * workers are done with processing the current chunk. This behaviour may slow down processing
-    * of incoming chunks by faster workers.
-    * If this is not desired, consider using the `prefetch` and `prefetchN` combinators on workers
-    * to compensate for slower workers.
-    *
-    * @param pipes    Pipes that will concurrently process the work.
+    * In other words, this behaviour slows down processing of incoming
+    * chunks by faster pipes until the slower ones have caught up. If
+    * this is not desired, consider using the `prefetch` and
+    * `prefetchN` combinators on the slow pipes.
     */
   def broadcastThrough[F2[x] >: F[x]: Concurrent, O2](
       pipes: Pipe[F2, O, O2]*
