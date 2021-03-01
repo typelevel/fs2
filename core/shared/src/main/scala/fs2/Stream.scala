@@ -3714,7 +3714,7 @@ object Stream extends StreamLowPriority {
     def unitary: Stream[F, Unit] =
       self ++ Stream.emit(())
   }
-  
+
   implicit final class StringStreamOps[F[_]](private val self: Stream[F, String]) extends AnyVal {
 
     /** Writes this stream of strings to the supplied `PrintStream`, emitting a unit
@@ -3726,7 +3726,8 @@ object Stream extends StreamLowPriority {
       self.foreach(str => F.blocking(out.println(str)))
   }
 
-  implicit final class OptionStreamOps[F[_], O](private val self: Stream[F, Option[O]]) extends AnyVal {
+  implicit final class OptionStreamOps[F[_], O](private val self: Stream[F, Option[O]])
+      extends AnyVal {
 
     /** Filters any 'None'.
       *
@@ -4680,8 +4681,6 @@ object Stream extends StreamLowPriority {
       lhs(left).stream.mergeHaltBoth(rhs(right).stream)
     }
   }
-
-
 
   /** Provides operations on effectful pipes for syntactic convenience. */
   implicit final class PipeOps[F[_], I, O](private val self: Pipe[F, I, O]) extends AnyVal {
