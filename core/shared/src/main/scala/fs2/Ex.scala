@@ -210,32 +210,6 @@ object Ex {
   // hangs
 
 
-  // problem 2, finalizer doesn't get called with Stream.resource
-  def p2 = {
-    def open = IO.sleep(1.second) >> IO.println("open")
-    def close = (_: Unit) => IO.println("close")
-    def use = (_: Unit) => IO.println("use")
-
-    IO.println("Example with Stream.bracket") >>
-    Stream
-      .bracket(open)(close)
-      .evalMap(use)
-      .interruptAfter(200.millis)
-      .compile.drain >>
-    IO.println("Example with Stream.resource") >>
-    Stream
-      .resource(Resource.make(open)(close))
-      .evalMap(use)
-      .interruptAfter(200.millis)
-      .compile.drain
-  }.unsafeRunSync()
-  // Example with Stream.bracket
-  // open
-  // close
-  // Example with Stream.resource
-  // open
-
-
   // def e =
   //   Stream
   //     .range(0, 15)
