@@ -23,6 +23,7 @@ package fs2
 package concurrent
 
 import cats.effect._
+import cats.effect.implicits._
 import cats.syntax.all._
 import cats.effect.std.{Queue => Q}
 import scala.collection.immutable.LongMap
@@ -108,12 +109,14 @@ object Topic {
       .product(SignallingRef[F, Int](0))
       .map { case (state, subscriberCount) =>
         new Topic[F, A] {
+          def p(s: String) = ().pure[F].map(_ => println(s))
+
           def publish1(a: A): F[Unit] =
             state.get.flatMap { case (subs, _) =>
-              subs.foldLeft(F.unit) { case (op, (_, q)) =>
-                op >> q.offer(a)
+              subs.foldLeft(F.unit) { case (op, (id, q)) =>
+                op >> p(s"enqueue $a to $id") >> q.offer(a).onCancel(p(s"publication of $a to $id cancelled")) >> p(s"enqueued $a to $id") 
               }
-            }
+            } >> p(s"publication of $a terminated \n \n")
 
           def subscribeAwait(maxQueued: Int): Resource[F, Stream[F, A]] =
             Resource
@@ -125,6 +128,7 @@ object Topic {
 
                 def unsubscribe(id: Long) =
                   state.update { case (subs, nextId) =>
+                    println(s"about to remove $id")
                     (subs - id, nextId)
                   } >> subscriberCount.update(_ - 1)
 
