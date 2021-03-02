@@ -24,11 +24,13 @@ package concurrent
 
 import cats.effect.IO
 import org.scalacheck.effect.PropF.forAllF
+import scala.concurrent.duration._
+import cats.syntax.all._
 
 class BroadcastSuite extends Fs2Suite {
   test("all subscribers see all elements") {
     forAllF { (source: Stream[Pure, Int], concurrent0: Int) =>
-      val concurrent = (concurrent0 % 20).abs
+      val concurrent = (concurrent0 % 20).abs.max(1)
       val expected = source.compile.toVector.map(_.toString)
 
       def pipe(idx: Int): Pipe[IO, Int, (Int, String)] =
@@ -38,13 +40,44 @@ class BroadcastSuite extends Fs2Suite {
         .broadcastThrough((0 until concurrent).map(idx => pipe(idx)): _*)
         .compile
         .toVector
-        .map(_.groupBy(_._1).map { case (k, v) => (k, v.map(_._2).toVector) })
+        .map(_.foldMap { case (k, v) => Map(k -> Vector(v)) }.values)
         .map { result =>
           if (expected.nonEmpty) {
             assertEquals(result.size, concurrent)
-            result.values.foreach(it => assertEquals(it, expected))
-          } else
-            assert(result.values.isEmpty)
+            result.foreach(it => assertEquals(it, expected))
+          } else assert(result.isEmpty)
+        }
+    }
+  }
+
+  test("all subscribers see all elements, pipe immediately interrupted") {
+    forAllF { (source: Stream[Pure, Int], concurrent0: Int) =>
+      val concurrent = (concurrent0 % 20).abs.max(2)
+      val interruptedPipe = scala.util.Random.nextInt(concurrent)
+      val expected = source.compile.toVector.map(_.toString)
+
+      def pipe(idx: Int): Pipe[IO, Int, (Int, String)] =
+        _.map(i => (idx, i.toString))
+
+      def pipes =
+        (0 until concurrent)
+          .map { idx =>
+            if (idx == interruptedPipe)
+              (s: Stream[IO, Int]) => s.through(pipe(idx)).interruptAfter(1.nano)
+            else pipe(idx)
+          }
+
+      source
+        .broadcastThrough(pipes:_*)
+        .compile
+        .toVector
+        .timeout(5.seconds)
+        .map(_.foldMap { case (k, v) => Map(k -> Vector(v)) }.values)
+        .map { result =>
+          if (expected.nonEmpty) {
+            assertEquals(result.size, concurrent - 1)
+            result.foreach(it => assertEquals(it, expected))
+          } else assert(result.isEmpty)
         }
     }
   }
