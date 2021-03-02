@@ -127,10 +127,18 @@ object Topic {
                 } <* subscriberCount.update(_ + 1)
 
                 def unsubscribe(id: Long) =
-                  state.update { case (subs, nextId) =>
+                  state.modify { case (subs, nextId) =>
                     println(s"about to remove $id")
-                    (subs - id, nextId)
-                  } >> subscriberCount.update(_ - 1)
+                    def drainQueue: F[Unit] =
+                      subs.get(id).traverse_ { q =>
+                        q.tryTake.flatMap {
+                          case None => F.unit
+                          case Some(_) => drainQueue
+                        }
+                      }
+
+                    (subs - id, nextId) -> drainQueue
+                  }.flatten >> subscriberCount.update(_ - 1)
 
                 Resource
                   .make(subscribe)(unsubscribe)

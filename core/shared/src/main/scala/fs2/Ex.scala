@@ -25,7 +25,7 @@ import cats.effect._
 import cats.effect.unsafe.implicits.global
 import scala.concurrent.duration._
 import cats.syntax.all._
-import cats.effect.std.{CyclicBarrier, CountDownLatch}
+import cats.effect.std.{CyclicBarrier, CountDownLatch, Queue}
 import fs2.concurrent.Topic
 
 // scenarios to build broacastThrough on top of Topic
@@ -219,6 +219,64 @@ object Ex {
 
       ).covary[IO].parJoinUnbounded
     }.interruptAfter(15.seconds)
-    .compile.drain.unsafeRunSync()
+      .compile.drain.unsafeRunSync()
+
+  def p3 =
+    Stream.eval(
+      for {
+        q1 <- Queue.bounded[IO, Int](1)
+        q2 <- Queue.bounded[IO, Int](1)
+        state <- IO.ref(List(q1, q2))
+      } yield (state, q1, q2)
+    ).flatMap { case (state, q1, q2) =>
+
+      def produce =
+        Stream.range(0, 5000).evalMap { a =>
+          state.get.flatMap { subs =>
+
+            // subs.foldLeft(IO.unit) { case (op, q) =>
+            //   IO.println(s"enqueue $a") >> q.offer(a).onCancel(IO.println(s"publication of $a cancelled")) >> IO.println(s"enqueued $a")
+            // }
+
+            // subs.zipWithIndex.traverse { case (q, i) =>
+
+            //   IO.println(s"enqueue $a for $i") >> q.offer(a).onCancel(IO.println(s"publication of $a to $i cancelled")) >> IO.println(s"enqueued $a to $i")
+            // }
+            //            q1.offer(a)
+
+                        subs.foldLeft(IO.unit) { case (op, q) =>
+                          op >> IO.println(s"enqueue $a") >> q.offer(a).onCancel(IO.println(s"publication of $a cancelled")) >> IO.println(s"enqueued $a")
+            }
+
+          }
+        }
+
+        def consume1 =
+//          Stream.repeatEval(q1.take).debug(v => s"Sub AAA received $v")
+          Stream.fromQueueUnterminated(q1).debug(v => s"Sub AAA received $v")
+
+        def consume2 =
+          Stream.fromQueueUnterminated(q2).debug(v => s"Sub BBB received $v")
+
+        def stop = Stream.exec {
+          IO.sleep(2.seconds) >> state.update { case subs =>
+            println(s"about to remove sub AAA")
+            subs.tail
+          }
+        }
+
+        Stream(
+          Stream.sleep_[IO](200.millis) ++ produce.drain,
+          consume1,
+          consume2.interruptAfter(2.seconds) ++ stop,
+        ).parJoinUnbounded
+        .interruptAfter(30.seconds)
+
+
+        // Stream(
+        //   Stream.range(0, 2000).covary[IO].debug(v => s"Sub AAA received $v"),
+        //   Stream.range(0, 2000).covary[IO].debug(v => s"Sub BBB received $v").interruptAfter(1.second),
+        // ).parJoinUnbounded.interruptAfter(15.seconds)
+      }.compile.drain.unsafeRunSync()
 }
 
