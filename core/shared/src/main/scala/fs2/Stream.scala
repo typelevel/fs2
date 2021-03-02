@@ -230,6 +230,11 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
         ).tupled
       }
       .flatMap { case (latch, topic) =>
+        def produce = chunks.noneTerminate.through(topic.publish)
+
+        def consume(pipe: Pipe[F2, O, O2]): Pipe[F2, Option[Chunk[O]], O2] =
+          _.unNoneTerminate.flatMap(Stream.chunk).through(pipe)
+
         Stream(pipes: _*)
           .map { pipe =>
             Stream
@@ -238,15 +243,11 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
                 // crucial that awaiting on the latch is not passed to
                 // the pipe, so that the pipe cannot interrupt it and alter
                 // the latch count
-                Stream.exec(latch.release >> latch.await) ++
-                  sub.unNoneTerminate.flatMap(Stream.chunk).through(pipe)
+                Stream.exec(latch.release >> latch.await) ++ sub.through(consume(pipe))
               }
           }
           .parJoinUnbounded
-          .concurrently {
-            Stream.eval(latch.await) ++
-              chunks.noneTerminate.through(topic.publish)
-          }
+          .concurrently(Stream.eval(latch.await) ++ produce)
       }
 
   /** Behaves like the identity function, but requests `n` elements at a time from the input.
