@@ -68,15 +68,15 @@ class BroadcastSuite extends Fs2Suite {
           }
 
       source
-        .broadcastThrough(pipes:_*)
+        .broadcastThrough(pipes: _*)
         .compile
         .toVector
         .timeout(5.seconds)
         .map(_.foldMap { case (k, v) => Map(k -> Vector(v)) }.removed(interruptedPipe).values)
         .map { result =>
           if (expected.nonEmpty) {
-           assertEquals(result.size, concurrent - 1)
-           result.foreach(it => assertEquals(it, expected))
+            assertEquals(result.size, concurrent - 1)
+            result.foreach(it => assertEquals(it, expected))
           } else assert(result.isEmpty)
         }
     }

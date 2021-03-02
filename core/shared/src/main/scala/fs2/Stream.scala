@@ -30,7 +30,7 @@ import cats.{Eval => _, _}
 import cats.data.Ior
 import cats.effect.SyncIO
 import cats.effect.kernel._
-import cats.effect.std.{Queue, Semaphore, CountDownLatch}
+import cats.effect.std.{CountDownLatch, Queue, Semaphore}
 import cats.effect.kernel.implicits._
 import cats.implicits.{catsSyntaxEither => _, _}
 
@@ -222,29 +222,32 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   def broadcastThrough[F2[x] >: F[x]: Concurrent, O2](
       pipes: Pipe[F2, O, O2]*
   ): Stream[F2, O2] =
-    Stream.eval {
-      (
-        CountDownLatch[F2](pipes.length),
-        fs2.concurrent.Topic[F2, Option[Chunk[O]]]
-      ).tupled
-    }.flatMap { case (latch, topic) =>
+    Stream
+      .eval {
+        (
+          CountDownLatch[F2](pipes.length),
+          fs2.concurrent.Topic[F2, Option[Chunk[O]]]
+        ).tupled
+      }
+      .flatMap { case (latch, topic) =>
         Stream(pipes: _*)
           .map { pipe =>
-            Stream.resource(topic.subscribeAwait(1))
+            Stream
+              .resource(topic.subscribeAwait(1))
               .flatMap { sub =>
                 // crucial that awaiting on the latch is not passed to
                 // the pipe, so that the pipe cannot interrupt it and alter
                 // the latch count
                 Stream.exec(latch.release >> latch.await) ++
-                sub.unNoneTerminate.flatMap(Stream.chunk).through(pipe)
+                  sub.unNoneTerminate.flatMap(Stream.chunk).through(pipe)
               }
           }
           .parJoinUnbounded
-          .concurrently  {
+          .concurrently {
             Stream.eval(latch.await) ++
-            chunks.noneTerminate.through(topic.publish)
+              chunks.noneTerminate.through(topic.publish)
           }
-    }
+      }
 
   /** Behaves like the identity function, but requests `n` elements at a time from the input.
     *

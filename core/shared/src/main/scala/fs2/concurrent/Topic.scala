@@ -133,7 +133,7 @@ object Topic {
                     def drainQueue: F[Unit] =
                       subs.get(id).traverse_ { q =>
                         q.tryTake.flatMap {
-                          case None => F.unit
+                          case None    => F.unit
                           case Some(_) => drainQueue
                         }
                       }
