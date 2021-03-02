@@ -72,7 +72,7 @@ class BroadcastSuite extends Fs2Suite {
         .compile
         .toVector
         .timeout(5.seconds)
-        .map(_.foldMap { case (k, v) => Map(k -> Vector(v)) }.removed(interruptedPipe).values)
+        .map(x => (x.foldMap { case (k, v) => Map(k -> Vector(v)) } - interruptedPipe).values)
         .map { result =>
           if (expected.nonEmpty) {
             assertEquals(result.size, concurrent - 1)
