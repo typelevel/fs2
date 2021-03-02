@@ -256,8 +256,6 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
           }
     }
 
-
-
   /** Behaves like the identity function, but requests `n` elements at a time from the input.
     *
     * @example {{{

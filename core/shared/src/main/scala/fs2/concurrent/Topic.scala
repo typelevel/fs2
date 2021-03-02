@@ -23,7 +23,6 @@ package fs2
 package concurrent
 
 import cats.effect._
-import cats.effect.implicits._
 import cats.syntax.all._
 import cats.effect.std.{Queue => Q}
 import scala.collection.immutable.LongMap
@@ -112,7 +111,7 @@ object Topic {
 
           def publish1(a: A): F[Unit] =
             state.get.flatMap { case (subs, _) =>
-              subs.foldLeft(F.unit) { case (op, (id, q)) =>
+              subs.foldLeft(F.unit) { case (op, (_, q)) =>
                 op >> q.offer(a)
               }
             }
