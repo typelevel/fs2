@@ -202,16 +202,6 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   ): Stream[F2, Either[Throwable, O]] =
     attempt ++ delays.flatMap(delay => Stream.sleep_(delay) ++ attempt)
 
-  /** Returns a stream of streams where each inner stream sees all elements of the
-    * source stream (after the inner stream has started evaluation).
-    * For example, `src.broadcast.take(2)` results in two
-    * inner streams, each of which see every element of the source.
-    *
-    * Alias for `through(Broadcast(1))`./
-    */
-  def broadcast[F2[x] >: F[x]: Concurrent]: Stream[F2, Stream[F2, O]] =
-    through(Broadcast(1))
-
   /** Broadcasts every value of the stream through the pipes provided
     * as arguments.
     *
