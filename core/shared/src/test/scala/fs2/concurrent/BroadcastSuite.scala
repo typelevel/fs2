@@ -52,7 +52,7 @@ class BroadcastSuite extends Fs2Suite {
 
   test("all subscribers see all elements, pipe immediately interrupted") {
     forAllF { (source: Stream[Pure, Int], concurrent0: Int) =>
-      val concurrent = (concurrent0 % 20).abs.max(2)
+      val concurrent = (concurrent0 % 20).abs.max(1)
       val interruptedPipe = scala.util.Random.nextInt(concurrent)
       val expected = source.compile.toVector.map(_.toString)
 
@@ -72,11 +72,11 @@ class BroadcastSuite extends Fs2Suite {
         .compile
         .toVector
         .timeout(5.seconds)
-        .map(_.foldMap { case (k, v) => Map(k -> Vector(v)) }.values)
+        .map(_.foldMap { case (k, v) => Map(k -> Vector(v)) }.removed(interruptedPipe).values)
         .map { result =>
           if (expected.nonEmpty) {
-            assertEquals(result.size, concurrent - 1)
-            result.foreach(it => assertEquals(it, expected))
+           assertEquals(result.size, concurrent - 1)
+           result.foreach(it => assertEquals(it, expected))
           } else assert(result.isEmpty)
         }
     }

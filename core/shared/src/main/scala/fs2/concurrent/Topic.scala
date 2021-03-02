@@ -109,14 +109,13 @@ object Topic {
       .product(SignallingRef[F, Int](0))
       .map { case (state, subscriberCount) =>
         new Topic[F, A] {
-          def p(s: String) = ().pure[F].map(_ => println(s))
 
           def publish1(a: A): F[Unit] =
             state.get.flatMap { case (subs, _) =>
               subs.foldLeft(F.unit) { case (op, (id, q)) =>
-                op >> p(s"enqueue $a to $id") >> q.offer(a).onCancel(p(s"publication of $a to $id cancelled")) >> p(s"enqueued $a to $id") 
+                op >> q.offer(a)
               }
-            } >> p(s"publication of $a terminated \n \n")
+            }
 
           def subscribeAwait(maxQueued: Int): Resource[F, Stream[F, A]] =
             Resource
@@ -128,7 +127,10 @@ object Topic {
 
                 def unsubscribe(id: Long) =
                   state.modify { case (subs, nextId) =>
-                    println(s"about to remove $id")
+                    // _After_ we remove the bounded queue for this
+                    // subscriber, we need to drain it to unblock to
+                    // publish loop which might have already enqueued
+                    // something.
                     def drainQueue: F[Unit] =
                       subs.get(id).traverse_ { q =>
                         q.tryTake.flatMap {
