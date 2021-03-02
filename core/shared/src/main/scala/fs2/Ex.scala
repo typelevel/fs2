@@ -259,14 +259,14 @@ object Ex {
       ).tupled
     }.flatMap { case (latch, topic) =>
         Stream(pipes: _*)
-          .map { pipe =>
+          .zipWithIndex
+          .map { case (pipe, idx) =>
             Stream.resource(topic.subscribeAwait(1))
               .flatMap { sub =>
                 // crucial that awaiting on the latch is not passed to
                 // the pipe, so that the pipe cannot interrupt it and alter
                 // the latch count
-                Stream.exec(latch.release >> latch.await) ++
-                sub.unNoneTerminate.flatMap(Stream.chunk).through(pipe)
+                Stream.exec(latch.release >> latch.await <* IO.println(s"latch acquired by $idx")) ++ sub.unNoneTerminate.flatMap(Stream.chunk).through(pipe)
               }
           }
           .parJoinUnbounded
@@ -288,6 +288,18 @@ object Ex {
         )
       ).interruptAfter(2.seconds).compile.drain.unsafeRunSync()
 
+
+  def o2 =
+    Stream
+      .range(0, 10)
+      .covary[IO]
+      .through(
+        broadcastThrough[Int, Int](
+          _.filter(_ % 2 == 0).debug(v => s"even $v"),
+          _.filter(_ % 2 != 0).debug(v => s"odd $v"),
+          _.debug(v => s"id $v").interruptAfter(2.nanos)
+        )
+      ).interruptAfter(5.seconds).compile.drain.unsafeRunSync()
 
 }
 
