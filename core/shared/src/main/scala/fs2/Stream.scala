@@ -30,7 +30,7 @@ import cats.{Eval => _, _}
 import cats.data.Ior
 import cats.effect.SyncIO
 import cats.effect.kernel._
-import cats.effect.std.{Queue, Semaphore}
+import cats.effect.std.{CountDownLatch, Queue, Semaphore}
 import cats.effect.kernel.implicits._
 import cats.implicits.{catsSyntaxEither => _, _}
 
@@ -202,62 +202,53 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   ): Stream[F2, Either[Throwable, O]] =
     attempt ++ delays.flatMap(delay => Stream.sleep_(delay) ++ attempt)
 
-  /** Returns a stream of streams where each inner stream sees all elements of the
-    * source stream (after the inner stream has started evaluation).
-    * For example, `src.broadcast.take(2)` results in two
-    * inner streams, each of which see every element of the source.
+  /** Broadcasts every value of the stream through the pipes provided
+    * as arguments.
     *
-    * Alias for `through(Broadcast(1))`./
-    */
-  def broadcast[F2[x] >: F[x]: Concurrent]: Stream[F2, Stream[F2, O]] =
-    through(Broadcast(1))
-
-  /** Like [[broadcast]] but instead of providing a stream of sources, runs each pipe.
+    * Each pipe can have a different implementation if required, and
+    * they are all guaranteed to see every `O` pulled from the source
+    * stream.
     *
-    * The pipes are run concurrently with each other. Hence, the parallelism factor is equal
-    * to the number of pipes.
-    * Each pipe may have a different implementation, if required; for example one pipe may
-    * process elements while another may send elements for processing to another machine.
+    * The pipes are all run concurrently with each other, but note
+    * that elements are pulled from the source as chunks, and the next
+    * chunk is pulled only when all pipes are done with processing the
+    * current chunk, which prevents faster pipes from getting too far ahead.
     *
-    * Each pipe is guaranteed to see all `O` pulled from the source stream, unlike `broadcast`,
-    * where workers see only the elements after the start of each worker evaluation.
-    *
-    * Note: the resulting stream will not emit values, even if the pipes do.
-    * If you need to emit `Unit` values, consider using `broadcastThrough`.
-    *
-    * Note:  Elements are pulled as chunks from the source and the next chunk is pulled when all
-    * workers are done with processing the current chunk. This behaviour may slow down processing
-    * of incoming chunks by faster workers.
-    * If this is not desired, consider using the `prefetch` and `prefetchN` combinators on workers
-    * to compensate for slower workers.
-    *
-    * @param pipes    Pipes that will concurrently process the work.
-    */
-  def broadcastTo[F2[x] >: F[x]: Concurrent](
-      pipes: Pipe[F2, O, Nothing]*
-  ): Stream[F2, INothing] =
-    this.through(Broadcast.through(pipes: _*))
-
-  /** Variant of `broadcastTo` that broadcasts to `maxConcurrent` instances of a single pipe.
-    */
-  def broadcastTo[F2[x] >: F[x]: Concurrent](
-      maxConcurrent: Int
-  )(pipe: Pipe[F2, O, Nothing]): Stream[F2, INothing] =
-    this.broadcastTo[F2](List.fill(maxConcurrent)(pipe): _*)
-
-  /** Alias for `through(Broadcast.through(pipes))`.
+    * In other words, this behaviour slows down processing of incoming
+    * chunks by faster pipes until the slower ones have caught up. If
+    * this is not desired, consider using the `prefetch` and
+    * `prefetchN` combinators on the slow pipes.
     */
   def broadcastThrough[F2[x] >: F[x]: Concurrent, O2](
       pipes: Pipe[F2, O, O2]*
   ): Stream[F2, O2] =
-    through(Broadcast.through(pipes: _*))
+    Stream
+      .eval {
+        (
+          CountDownLatch[F2](pipes.length),
+          fs2.concurrent.Topic[F2, Option[Chunk[O]]]
+        ).tupled
+      }
+      .flatMap { case (latch, topic) =>
+        def produce = chunks.noneTerminate.through(topic.publish)
 
-  /** Variant of `broadcastTo` that broadcasts to `maxConcurrent` instances of the supplied pipe.
-    */
-  def broadcastThrough[F2[x] >: F[x]: Concurrent, O2](
-      maxConcurrent: Int
-  )(pipe: Pipe[F2, O, O2]): Stream[F2, O2] =
-    this.broadcastThrough[F2, O2](List.fill(maxConcurrent)(pipe): _*)
+        def consume(pipe: Pipe[F2, O, O2]): Pipe[F2, Option[Chunk[O]], O2] =
+          _.unNoneTerminate.flatMap(Stream.chunk).through(pipe)
+
+        Stream(pipes: _*)
+          .map { pipe =>
+            Stream
+              .resource(topic.subscribeAwait(1))
+              .flatMap { sub =>
+                // crucial that awaiting on the latch is not passed to
+                // the pipe, so that the pipe cannot interrupt it and alter
+                // the latch count
+                Stream.exec(latch.release >> latch.await) ++ sub.through(consume(pipe))
+              }
+          }
+          .parJoinUnbounded
+          .concurrently(Stream.eval(latch.await) ++ produce)
+      }
 
   /** Behaves like the identity function, but requests `n` elements at a time from the input.
     *

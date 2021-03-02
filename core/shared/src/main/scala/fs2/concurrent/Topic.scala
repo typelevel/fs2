@@ -108,6 +108,7 @@ object Topic {
       .product(SignallingRef[F, Int](0))
       .map { case (state, subscriberCount) =>
         new Topic[F, A] {
+
           def publish1(a: A): F[Unit] =
             state.get.flatMap { case (subs, _) =>
               subs.foldLeft(F.unit) { case (op, (_, q)) =>
@@ -124,9 +125,18 @@ object Topic {
                 } <* subscriberCount.update(_ + 1)
 
                 def unsubscribe(id: Long) =
-                  state.update { case (subs, nextId) =>
-                    (subs - id, nextId)
-                  } >> subscriberCount.update(_ - 1)
+                  state.modify { case (subs, nextId) =>
+                    // _After_ we remove the bounded queue for this
+                    // subscriber, we need to drain it to unblock to
+                    // publish loop which might have already enqueued
+                    // something.
+                    def drainQueue: F[Unit] =
+                      subs.get(id).traverse_ { q =>
+                        q.tryTake.iterateUntil(_.isEmpty)
+                      }
+
+                    (subs - id, nextId) -> drainQueue
+                  }.flatten >> subscriberCount.update(_ - 1)
 
                 Resource
                   .make(subscribe)(unsubscribe)
