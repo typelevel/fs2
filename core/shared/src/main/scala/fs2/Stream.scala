@@ -2038,6 +2038,11 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     Stream.eval(fstream).flatten
   }
 
+  def prevParEvalMapUnordered[F2[x] >: F[x]: Concurrent, O2](
+      maxConcurrent: Int
+  )(f: O => F2[O2]): Stream[F2, O2] =
+    map(o => Stream.eval(f(o))).parJoin(maxConcurrent)
+
   /** Like [[Stream#evalMap]], but will evaluate effects in parallel, emitting the results
     * downstream. The number of concurrent effects is limited by the `maxConcurrent` parameter.
     *
@@ -2049,12 +2054,31 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * res0: Unit = ()
     * }}}
     */
-  def parEvalMapUnordered[F2[x] >: F[
-    x
-  ]: Concurrent, O2](
+  def parEvalMapUnordered[F2[x] >: F[x]: Concurrent, O2](
       maxConcurrent: Int
   )(f: O => F2[O2]): Stream[F2, O2] =
-    map(o => Stream.eval(f(o))).parJoin(maxConcurrent)
+    Stream
+      .eval {
+        (
+          Semaphore[F2](maxConcurrent),
+          Queue.bounded[F2, Option[O2]](1)
+        ).tupled
+      }
+      .flatMap { case (semaphore, queue) =>
+        Stream
+          .fromQueueNoneTerminated(queue)
+          .concurrently {
+            noneTerminate
+              .flatMap { opt =>
+                Stream.exec {
+                  opt.fold(queue.offer(none)) { el =>
+                    val running = f(el).flatMap(result => queue.offer(result.some))
+                    semaphore.acquire >> running.guarantee(semaphore.release).start.void
+                  }
+                }
+              }
+          }
+      }
 
   /** Concurrent zip.
     *
