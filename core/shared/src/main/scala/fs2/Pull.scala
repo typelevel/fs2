@@ -612,9 +612,7 @@ object Pull extends PullLowPriority {
 
   private sealed abstract case class View[+F[_], +O, X](step: Action[F, O, X])
       extends ViewL[F, O]
-      with (Terminal[X] => Pull[F, O, Unit]) {
-    def apply(r: Terminal[X]): Pull[F, O, Unit]
-  }
+      with (Terminal[X] => Pull[F, O, Unit])
 
   private final class EvalView[+F[_], +O](step: Action[F, O, Unit]) extends View[F, O, Unit](step) {
     def apply(r: Terminal[Unit]): Pull[F, O, Unit] = r
@@ -706,7 +704,7 @@ object Pull extends PullLowPriority {
 
   private final case class Eval[+F[_], R](value: F[R]) extends AlgEffect[F, R]
 
-  private final case class Acquire[F[_], R](
+  private final case class Acquire[+F[_], R](
       resource: (R => Unit) => F[R],
       release: (R, ExitCase) => F[Unit],
       cancelable: Boolean
@@ -1143,16 +1141,18 @@ object Pull extends PullLowPriority {
               }
               go[h, X, End](scope, extendedTopLevelScope, composed, translateRunner, tst.stream)
 
-            case u: Uncons[G, y] =>
+            case u0: Uncons[g, y] =>
+              val u = u0.asInstanceOf[Uncons[G, y]]
               val v = view.asInstanceOf[View[G, X, Option[(Chunk[y], Pull[G, y, Unit])]]]
               // a Uncons is run on the same scope, without shifting.
               go(scope, extendedTopLevelScope, translation, new UnconsRunR(v), u.stream)
 
-            case u: StepLeg[G, y] =>
+            case s0: StepLeg[g, y] =>
+              val s = s0.asInstanceOf[StepLeg[G, y]]
               val v = view.asInstanceOf[View[G, X, Option[Stream.StepLeg[G, y]]]]
               scope
-                .shiftScope(u.scope, u.toString)
-                .flatMap(go(_, extendedTopLevelScope, translation, new StepLegRunR(v), u.stream))
+                .shiftScope(s.scope, s.toString)
+                .flatMap(go(_, extendedTopLevelScope, translation, new StepLegRunR(v), s.stream))
 
             case _: GetScope[_] =>
               val result = Succeeded(scope.asInstanceOf[y])
@@ -1160,7 +1160,7 @@ object Pull extends PullLowPriority {
 
             case mout: MapOutput[g, z, X] => goMapOutput[z](mout, view)
             case eval: Eval[G, r]         => goEval[r](eval, view)
-            case acquire: Acquire[G, _]   => goAcquire(acquire, view)
+            case acquire: Acquire[G, y]   => goAcquire(acquire, view)
             case inScope: InScope[g, X]   => goInScope(inScope.stream, inScope.useInterruption, view)
             case int: InterruptWhen[g]    => goInterruptWhen(translation(int.haltOnSignal), view)
             case close: CloseScope        => goCloseScope(close, view)
@@ -1189,7 +1189,8 @@ object Pull extends PullLowPriority {
               case Fail(e2)     => F.raiseError(CompositeFailure(e2, e))
               case Interrupted(_, err) =>
                 F.raiseError(err.fold(e)(t => CompositeFailure(e, t)))
-              case v: View[F, O, Unit] =>
+              case v0: View[F, O, _] =>
+                val v = v0.asInstanceOf[View[F, O, Unit]]
                 go[F, O, B](scope, None, initFk, self, v(Fail(e)))
             }
         }
