@@ -186,32 +186,6 @@ sealed abstract class Pull[+F[_], +O, +R] {
         }
     }
 
-  /** Interprets this pull to produce a stream. This method introduces a resource
-    * scope, to ensure any resources acquired by this pull are released in due
-    * course, even if the resulting stream does not terminate successfully.
-    *
-    * May only be called on pulls which return a `Unit` result type. Use
-    * `p.void.stream` to explicitly ignore the result type of the pull.
-    */
-  def stream(implicit ev: R <:< Unit): Stream[F, O] = {
-    val _ = ev
-    new Stream(Pull.scope(this.asInstanceOf[Pull[F, O, Unit]]))
-  }
-
-  /** Interpret this `Pull` to produce a `Stream` without introducing a scope.
-    *
-    * Only use this if you know a scope is not needed. Scope introduction is
-    * generally harmless and the risk of not introducing a scope is a memory leak
-    * in streams that otherwise would execute in constant memory.
-    *
-    * May only be called on pulls whose result type is `Unit`.
-    * Use `p.void.stream` to explicitly  ignore the result of a pull.
-    */
-  def streamNoScope(implicit ev: R <:< Unit): Stream[F, O] = {
-    val _ = ev
-    new Stream(this.asInstanceOf[Pull[F, O, Unit]])
-  }
-
   /** Allows to recover from any error raised by the evaluation of this pull.
     * This method returns a composed pull with the following semantics:
     * - If an error occurs, the supplied function is used to build a new handler
@@ -310,6 +284,29 @@ sealed abstract class Pull[+F[_], +O, +R] {
 }
 
 object Pull extends PullLowPriority {
+
+  implicit final class StreamPullOps[F[_], O](private val self: Pull[F, O, Unit]) extends AnyVal {
+
+    /** Interprets this pull to produce a stream. This method introduces a resource
+      * scope, to ensure any resources acquired by this pull are released in due
+      * course, even if the resulting stream does not terminate successfully.
+      *
+      * May only be called on pulls which return a `Unit` result type. Use
+      * `p.void.stream` to explicitly ignore the result type of the pull.
+      */
+    def stream: Stream[F, O] = new Stream(Pull.scope(self))
+
+    /** Interpret this `Pull` to produce a `Stream` without introducing a scope.
+      *
+      * Only use this if you know a scope is not needed. Scope introduction is
+      * generally harmless and the risk of not introducing a scope is a memory leak
+      * in streams that otherwise would execute in constant memory.
+      *
+      * May only be called on pulls whose result type is `Unit`.
+      * Use `p.void.stream` to explicitly  ignore the result of a pull.
+      */
+    def streamNoScope: Stream[F, O] = new Stream(self)
+  }
 
   private[this] val unit: Terminal[Unit] = Succeeded(())
 
