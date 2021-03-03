@@ -233,12 +233,16 @@ class BracketSuite extends Fs2Suite {
 
     def newState = Ref[IO].of(0L -> Chain.empty[Resource.ExitCase])
 
-    def bracketed(state: Ref[IO, (Long, Chain[Resource.ExitCase])]) =
+    def bracketed(state: Ref[IO, (Long, Chain[Resource.ExitCase])], nondet: Boolean = false) = {
+      def wait =
+        IO(scala.util.Random.nextInt(50).millis).flatMap(IO.sleep).whenA(nondet)
+
       bracketCase {
-        state.update { case (l, ecs) => (l + 1) -> ecs }
+        wait >> state.update { case (l, ecs) => (l + 1) -> ecs }
       } { (_, ec) =>
         state.update { case (l, ecs) => (l - 1) -> (ecs :+ ec) }
       }
+    }
 
     if (!runOnlyEarlyTerminationTests) {
       test("normal termination") {
@@ -279,10 +283,10 @@ class BracketSuite extends Fs2Suite {
       forAllF { (s0: Stream[Pure, Int]) =>
         newState
           .flatMap { state =>
-            val s = bracketed(state).flatMap(_ => s0 ++ Stream.never[IO])
+            val s = bracketed(state, nondet = true).flatMap(_ => s0 ++ Stream.never[IO])
 
             s.compile.drain.background.use { _ =>
-              IO.sleep(50.millis)
+              IO.sleep(20.millis)
             } >> state.get.map { case (count, ecs) =>
               assertEquals(count, 0L)
               assert(ecs.forall(_ == Resource.ExitCase.Canceled))
@@ -296,9 +300,9 @@ class BracketSuite extends Fs2Suite {
       forAllF { (s0: Stream[Pure, Int]) =>
         newState
           .flatMap { state =>
-            val s = bracketed(state).flatMap(_ => s0 ++ Stream.never[IO])
+            val s = bracketed(state, nondet = true).flatMap(_ => s0 ++ Stream.never[IO])
 
-            s.interruptAfter(50.millis).compile.drain >> state.get.map { case (count, ecs) =>
+            s.interruptAfter(20.millis).compile.drain >> state.get.map { case (count, ecs) =>
               assertEquals(count, 0L)
               assert(ecs.forall(_ == Resource.ExitCase.Canceled))
             }

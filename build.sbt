@@ -18,7 +18,7 @@ ThisBuild / organizationName := "Functional Streams for Scala"
 ThisBuild / homepage := Some(url("https://github.com/typelevel/fs2"))
 ThisBuild / startYear := Some(2013)
 
-ThisBuild / crossScalaVersions := Seq("3.0.0-M3", "3.0.0-RC1", "2.12.13", "2.13.4")
+ThisBuild / crossScalaVersions := Seq("3.0.0-M3", "3.0.0-RC1", "2.12.13", "2.13.5")
 
 ThisBuild / versionIntroduced := Map(
   "3.0.0-M3" -> "3.0.0",
@@ -231,7 +231,7 @@ lazy val microsite = project
 ThisBuild / githubWorkflowBuildPostamble ++= List(
   WorkflowStep.Sbt(
     List("microsite/mdoc"),
-    cond = Some(s"matrix.scala == '2.13.4'")
+    cond = Some(s"matrix.scala == '2.13.5'")
   )
 )
 

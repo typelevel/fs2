@@ -180,13 +180,37 @@ private[fs2] final class Scope[F[_]] private (
     * leased in `parJoin`. But even then the order of the lease of the resources respects acquisition of the resources that leased them.
     */
   def acquireResource[R](
-      acquire: Poll[F] => F[R],
+      acquire: (Poll[F], R => Unit) => F[R],
       release: (R, Resource.ExitCase) => F[Unit]
   ): F[Outcome[Id, Throwable, Either[Unique.Token, R]]] =
     interruptibleEval[Either[Throwable, R]] {
       ScopedResource.create[F].flatMap { resource =>
         F.uncancelable { poll =>
-          acquire(poll).redeemWith(
+          // If the stream gets interrupted, but poll *hasn't* being
+          // called by the user in the original bracketFull, which
+          // happens in the very common case of translating a
+          // Resource.make, the finaliser was getting lost, because
+          // poll(translate(uncancelable(_ => res))) will not cancel res
+          // but the overall op will be canceled
+          //   The only way to track it is with an impure `var`, because
+          // of mapK and translation preventing Ref without needing both
+          // F ~> G and G ~> F
+          @volatile var res: Option[R] = None
+
+          F.onCancel(
+            acquire(poll, (r: R) => res = r.some),
+            F.unit.flatMap { _ =>
+              res match {
+                case None => F.unit
+                // TODO
+                // which exit case is the correct one here? canceled or
+                // succeeded? current test says canceled, and the
+                // overall op is canceled, but the op whose release
+                // we're running did complete
+                case Some(r) => release(r, Resource.ExitCase.Canceled)
+              }
+            }
+          ).redeemWith(
             t => F.pure(Left(t)),
             r => {
               val finalizer = (ec: Resource.ExitCase) => release(r, ec)

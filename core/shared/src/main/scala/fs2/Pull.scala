@@ -191,7 +191,7 @@ sealed abstract class Pull[+F[_], +O, +R] {
     * course, even if the resulting stream does not terminate successfully.
     *
     * May only be called on pulls which return a `Unit` result type. Use
-    *  `p.void.stream` to explicitly ignore the result type of the pull.
+    * `p.void.stream` to explicitly ignore the result type of the pull.
     */
   def stream(implicit ev: R <:< Unit): Stream[F, O] = {
     val _ = ev
@@ -356,13 +356,23 @@ object Pull extends PullLowPriority {
       resource: F[R],
       release: (R, ExitCase) => F[Unit]
   ): Pull[F, INothing, R] =
-    Acquire(resource, release, cancelable = false)
+    Acquire((_: R => Unit) => resource, release, cancelable = false)
 
   private[fs2] def acquireCancelable[F[_], R](
       resource: Poll[F] => F[R],
       release: (R, ExitCase) => F[Unit]
   )(implicit F: MonadCancel[F, _]): Pull[F, INothing, R] =
-    Acquire(F.uncancelable(resource), release, cancelable = true)
+    Acquire(
+      (store: R => Unit) =>
+        F.uncancelable { poll =>
+          resource(poll).map { r =>
+            store(r)
+            r
+          }
+        },
+      release,
+      cancelable = true
+    )
 
   /** Like [[eval]] but if the effectful value fails, the exception is returned
     * in a `Left` instead of failing the pull.
@@ -700,7 +710,7 @@ object Pull extends PullLowPriority {
   private final case class Eval[+F[_], R](value: F[R]) extends AlgEffect[F, R]
 
   private final case class Acquire[F[_], R](
-      resource: F[R],
+      resource: (R => Unit) => F[R],
       release: (R, ExitCase) => F[Unit],
       cancelable: Boolean
   ) extends AlgEffect[F, R]
@@ -979,9 +989,9 @@ object Pull extends PullLowPriority {
 
       def goAcquire[R](acquire: Acquire[G, R], view: Cont[R, G, X]): F[End] = {
         val onScope = scope.acquireResource[R](
-          poll =>
-            if (acquire.cancelable) poll(translation(acquire.resource))
-            else translation(acquire.resource),
+          (poll, store) =>
+            if (acquire.cancelable) poll(translation(acquire.resource(store)))
+            else translation(acquire.resource(_ => ())),
           (resource, exit) => translation(acquire.release(resource, exit))
         )
 
@@ -1002,7 +1012,7 @@ object Pull extends PullLowPriority {
           view: Cont[Unit, G, X]
       ): F[End] = {
         val onScope = scope.acquireResource(
-          _ => scope.interruptWhen(haltOnSignal),
+          (_: Poll[F], _: (Fiber[F, Throwable, Unit] => Unit)) => scope.interruptWhen(haltOnSignal),
           (f: Fiber[F, Throwable, Unit], _: ExitCase) => f.cancel
         )
         val cont = onScope.flatMap { outcome =>
