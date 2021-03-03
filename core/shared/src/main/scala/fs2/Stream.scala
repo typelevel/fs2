@@ -655,7 +655,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
 
       def go(tl: Pull[F2, O, Unit]): Pull[F2, INothing, Unit] =
         Pull.uncons(tl).flatMap {
-          // Note: hd is non-empty, so hd.last.get is sage
+          // Note: hd is non-empty, so hd.last.get is safe
           case Some((hd, tl)) => Pull.eval(enqueueItem(hd.last.get)) >> go(tl)
           case None           => Pull.eval(enqueueLatest >> queue.offer(None))
         }
