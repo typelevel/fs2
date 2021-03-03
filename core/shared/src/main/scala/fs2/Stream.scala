@@ -1704,17 +1704,6 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       case None    => Pull.output1(fallback)
     }.stream
 
-  /** Writes this stream of strings to the supplied `PrintStream`, emitting a unit
-    * for each line that was written.
-    */
-  def lines[F2[x] >: F[x]](
-      out: PrintStream
-  )(implicit F: Sync[F2], ev: O <:< String): Stream[F2, INothing] = {
-    val _ = ev
-    val src = this.asInstanceOf[Stream[F2, String]]
-    src.foreach(str => F.blocking(out.println(str)))
-  }
-
   /** Applies the specified pure function to each input and emits the result.
     *
     * @example {{{
@@ -2610,43 +2599,6 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       _.uncons1.flatMap {
         case None           => Pull.pure(None)
         case Some((hd, tl)) => Pull.output1(hd).as(Some(tl))
-      }
-    }
-
-  /** Converts a `Stream[F, Nothing]` to a `Stream[F, Unit]` which emits a single `()` after this stream completes.
-    */
-  def unitary(implicit ev: O <:< Nothing): Stream[F, Unit] =
-    this.asInstanceOf[Stream[F, Nothing]] ++ Stream.emit(())
-
-  /** Filters any 'None'.
-    *
-    * @example {{{
-    * scala> Stream(Some(1), Some(2), None, Some(3), None).unNone.toList
-    * res0: List[Int] = List(1, 2, 3)
-    * }}}
-    */
-  def unNone[O2](implicit ev: O <:< Option[O2]): Stream[F, O2] = {
-    val _ = ev // Convince scalac that ev is used
-    this.asInstanceOf[Stream[F, Option[O2]]].collect { case Some(o2) => o2 }
-  }
-
-  /** Halts the input stream at the first `None`.
-    *
-    * @example {{{
-    * scala> Stream(Some(1), Some(2), None, Some(3), None).unNoneTerminate.toList
-    * res0: List[Int] = List(1, 2)
-    * }}}
-    */
-  def unNoneTerminate[O2](implicit ev: O <:< Option[O2]): Stream[F, O2] =
-    this.repeatPull {
-      _.uncons.flatMap {
-        case None => Pull.pure(None)
-        case Some((hd, tl)) =>
-          hd.indexWhere(_.isEmpty) match {
-            case Some(0)   => Pull.pure(None)
-            case Some(idx) => Pull.output(hd.take(idx).map(_.get)).as(None)
-            case None      => Pull.output(hd.map(_.get)).as(Some(tl))
-          }
       }
     }
 
@@ -3757,6 +3709,59 @@ object Stream extends StreamLowPriority {
         f: Stream.ToPull[F, O] => Pull[F, O2, Option[Stream[F, O]]]
     ): Stream[F, O2] =
       Pull.loop(f.andThen(_.map(_.map(_.pull))))(pull).stream
+  }
+
+  implicit final class NothingStreamOps[F[_]](private val self: Stream[F, Nothing]) extends AnyVal {
+
+    /** Converts a `Stream[F, Nothing]` to a `Stream[F, Unit]` which emits a single `()` after this stream completes.
+      */
+    def unitary: Stream[F, Unit] =
+      self ++ Stream.emit(())
+  }
+
+  implicit final class StringStreamOps[F[_]](private val self: Stream[F, String]) extends AnyVal {
+
+    /** Writes this stream of strings to the supplied `PrintStream`, emitting a unit
+      * for each line that was written.
+      */
+    def lines[F2[x] >: F[x]](
+        out: PrintStream
+    )(implicit F: Sync[F2]): Stream[F2, INothing] =
+      self.foreach(str => F.blocking(out.println(str)))
+  }
+
+  implicit final class OptionStreamOps[F[_], O](private val self: Stream[F, Option[O]])
+      extends AnyVal {
+
+    /** Filters any 'None'.
+      *
+      * @example {{{
+      * scala> Stream(Some(1), Some(2), None, Some(3), None).unNone.toList
+      * res0: List[Int] = List(1, 2, 3)
+      * }}}
+      */
+    def unNone: Stream[F, O] =
+      self.collect { case Some(o2) => o2 }
+
+    /** Halts the input stream at the first `None`.
+      *
+      * @example {{{
+      * scala> Stream(Some(1), Some(2), None, Some(3), None).unNoneTerminate.toList
+      * res0: List[Int] = List(1, 2)
+      * }}}
+      */
+    def unNoneTerminate: Stream[F, O] =
+      self.repeatPull {
+        _.uncons.flatMap {
+          case None => Pull.pure(None)
+          case Some((hd, tl)) =>
+            hd.indexWhere(_.isEmpty) match {
+              case Some(0)   => Pull.pure(None)
+              case Some(idx) => Pull.output(hd.take(idx).map(_.get)).as(None)
+              case None      => Pull.output(hd.map(_.get)).as(Some(tl))
+            }
+        }
+      }
   }
 
   /** Provides syntax for streams of streams. */
