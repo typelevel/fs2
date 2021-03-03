@@ -608,7 +608,7 @@ object Pull extends PullLowPriority {
       with (Terminal[X] => Pull[F, O, Unit]) {
     def apply(r: Terminal[X]): Pull[F, O, Unit]
   }
- 
+
   private final class EvalView[+F[_], +O](step: Action[F, O, Unit]) extends View[F, O, Unit](step) {
     def apply(r: Terminal[Unit]): Pull[F, O, Unit] = r
   }
@@ -1192,8 +1192,8 @@ object Pull extends PullLowPriority {
   }
 
   /** Inject interruption to the tail used in `flatMap`. Assures that close of the scope
-   * is invoked if at the flatMap tail, otherwise switches evaluation to `interrupted` path.
-   */
+    * is invoked if at the flatMap tail, otherwise switches evaluation to `interrupted` path.
+    */
   private[this] def interruptBoundary[F[_], O](
       stream: Pull[F, O, Unit],
       interruption: Interrupted
