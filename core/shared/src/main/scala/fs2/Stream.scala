@@ -4603,7 +4603,7 @@ object Stream extends StreamLowPriority {
     * Once the stream will stop to be interleaved (merged), then `stream` allows to return to normal stream
     * invocation.
     */
-  final class StepLeg[+F[_], O](
+  final class StepLeg[+F[_], +O](
       val head: Chunk[O],
       private[fs2] val scopeId: Unique.Token,
       private[fs2] val next: Pull[F, O, Unit]
@@ -4623,8 +4623,8 @@ object Stream extends StreamLowPriority {
         .stream
 
     /** Replaces head of this leg. Useful when the head was not fully consumed. */
-    def setHead(nextHead: Chunk[O]): StepLeg[F, O] =
-      new StepLeg[F, O](nextHead, scopeId, next)
+    def setHead[O2 >: O](nextHead: Chunk[O2]): StepLeg[F, O2] =
+      new StepLeg[F, O2](nextHead, scopeId, next)
 
     /** Provides an `uncons`-like operation on this leg of the stream. */
     def stepLeg: Pull[F, INothing, Option[StepLeg[F, O]]] =
