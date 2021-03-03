@@ -704,7 +704,7 @@ object Pull extends PullLowPriority {
 
   private final case class Eval[+F[_], R](value: F[R]) extends AlgEffect[F, R]
 
-  private final case class Acquire[F[_], R](
+  private final case class Acquire[+F[_], R](
       resource: (R => Unit) => F[R],
       release: (R, ExitCase) => F[Unit],
       cancelable: Boolean
@@ -1160,7 +1160,7 @@ object Pull extends PullLowPriority {
 
             case mout: MapOutput[g, z, X] => goMapOutput[z](mout, view)
             case eval: Eval[G, r]         => goEval[r](eval, view)
-            case acquire0: Acquire[g, _]  => goAcquire(acquire0.asInstanceOf[Acquire[G, y]], view)
+            case acquire: Acquire[G, y]   => goAcquire(acquire, view)
             case inScope: InScope[g, X]   => goInScope(inScope.stream, inScope.useInterruption, view)
             case int: InterruptWhen[g]    => goInterruptWhen(translation(int.haltOnSignal), view)
             case close: CloseScope        => goCloseScope(close, view)
