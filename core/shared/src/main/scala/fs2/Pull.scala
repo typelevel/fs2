@@ -696,7 +696,7 @@ object Pull extends PullLowPriority {
     * @param stream             Stream to step
     * @param scopeId            scope has to be changed before this step is evaluated, id of the scope must be supplied
     */
-  private final case class StepLeg[+F[_], O](stream: Pull[F, O, Unit], scope: Unique.Token)
+  private final case class StepLeg[+F[_], +O](stream: Pull[F, O, Unit], scope: Unique.Token)
       extends Action[Pure, INothing, Option[Stream.StepLeg[F, O]]]
 
   /* The `AlgEffect` trait is for operations on the `F` effect that create no `O` output. */
