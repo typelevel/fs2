@@ -2061,36 +2061,36 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       .eval {
         (
           Semaphore[F2](maxConcurrent),
-          Queue.bounded[F2, Option[O2]](1),
-          Deferred[F2, Unit]
+          Queue.bounded[F2, O2](1),
+          Deferred[F2, Unit],
+          Deferred[F2, Either[Throwable, Unit]]
         ).tupled
       }
-      .flatMap { case (semaphore, queue, seenNone) =>
+      .flatMap { case (semaphore, queue, seenNone, halter) =>
         val completeQueue =
           seenNone.tryGet
             .flatMap(_.fold(false.pure[F2])(_ => semaphore.available.map(_ == maxConcurrent)))
-            .flatMap(bool => if (bool) queue.offer(none) else ().pure[F2])
+            .flatMap(bool => if (bool) halter.complete(().asRight).void else ().pure[F2])
 
-        Stream
-          .fromQueueNoneTerminated(queue)
-          .concurrently {
-            noneTerminate
-              .flatMap { opt =>
-                Stream.exec {
-                  val nonAction = semaphore.permit.use(_ => seenNone.complete(())) *> completeQueue
-                  opt.fold(nonAction) { el =>
-                    val running =
-                      f(el)
-                        .flatMap(result => queue.offer(result.some))
-                        .guarantee(semaphore.release *> completeQueue)
-                        .start
-                        .void
+        val pullExecAndOutput =
+          noneTerminate
+            .flatMap { opt =>
+              Stream.exec {
+                val nonAction = semaphore.permit.use(_ => seenNone.complete(())) *> completeQueue
+                opt.fold(nonAction) { el =>
+                  val running =
+                    f(el)
+                      .flatMap(result => queue.offer(result))
+                      .guarantee(semaphore.release *> completeQueue)
+                      .start
+                      .void
 
-                    semaphore.acquire >> running
-                  }
+                  semaphore.acquire >> running
                 }
               }
-          }
+            }
+
+        Stream.fromQueueUnterminated(queue).interruptWhen(halter).concurrently(pullExecAndOutput)
       }
 
   /** Concurrent zip.
