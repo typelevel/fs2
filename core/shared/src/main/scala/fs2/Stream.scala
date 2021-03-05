@@ -2081,7 +2081,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
                   val running =
                     f(el)
                       .flatMap(result => queue.offer(result))
-                      .onError(ex => halter.complete(ex.asLeft).void)
+                      .onError { case ex => halter.complete(ex.asLeft).void }
                       .guarantee(semaphore.release *> completeQueue)
                       .start
                       .void
