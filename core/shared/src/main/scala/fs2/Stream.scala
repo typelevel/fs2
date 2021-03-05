@@ -35,7 +35,7 @@ import cats.effect.kernel.implicits._
 import cats.implicits.{catsSyntaxEither => _, _}
 
 import fs2.compat._
-import fs2.concurrent.{Queue => _, _}
+import fs2.concurrent._
 import fs2.internal._
 import scala.collection.mutable.ArrayBuffer
 
