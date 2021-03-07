@@ -83,8 +83,6 @@ trait Channel[F[_], A] {
 object Channel {
   type Closed = Closed.type
   object Closed
-  private final val closed: Either[Closed, Unit] = Left(Closed)
-  private final val open: Either[Closed, Unit] = Right(())
 
   def bounded[F[_], A](capacity: Int)(implicit F: Concurrent[F]): F[Channel[F, A]] = {
     // TODO Vector vs ScalaQueue
@@ -96,7 +94,9 @@ object Channel {
       closed: Boolean
     )
 
-    F.ref(State(Vector.empty, 0, None, Vector.empty, false)).map { state =>
+    val initial = State(Vector.empty, 0, None, Vector.empty, false)
+
+    (F.ref(initial), F.deferred[Unit]).mapN { (state, closedGate) =>
       new Channel[F, A] {
         def send(a: A) =
           F.deferred[Unit].flatMap { producer =>
@@ -126,14 +126,14 @@ object Channel {
             case State(values, size, waiting, producers, closed @ false) =>
               (
                 State(values, size, None, producers, true),
-                notifyStream(waiting)
+                notifyStream(waiting) <* signalClosure
               )
           }.flatten.uncancelable
 
-        def isClosed: F[Boolean] = ???
-        def closed: F[Unit] = ???
+        def isClosed = closedGate.tryGet.map(_.isDefined)
+        def closed = closedGate.get
 
-        def stream: Stream[F, A] = consumeLoop.stream
+        def stream = consumeLoop.stream
 
         def consumeLoop: Pull[F, A, Unit]  =
           Pull.eval {
@@ -170,8 +170,13 @@ object Channel {
 
         def unblock(producers: Vector[Deferred[F, Unit]]) =
           Pull.eval(producers.traverse_(_.complete(())))
+
+        def signalClosure = closedGate.complete(())
       }
     }
   }
 
+  // allocate once
+  private final val closed: Either[Closed, Unit] = Left(Closed)
+  private final val open: Either[Closed, Unit] = Right(())
 }
