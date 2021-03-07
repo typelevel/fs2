@@ -2003,16 +2003,16 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       maxConcurrent: Int
   )(f: O => F2[O2])(implicit F: Concurrent[F2]): Stream[F2, O2] = {
     val fstream: F2[Stream[F2, O2]] = for {
-      queue <- Queue.bounded[F2, Option[F2[Either[Throwable, O2]]]](maxConcurrent)
-      dequeueDone <- F.deferred[Unit]
+      chan <- Channel.bounded[F2, F2[Either[Throwable, O2]]](maxConcurrent)
+      chanReadDone <- F.deferred[Unit]
     } yield {
       def forkOnElem(o: O): F2[Stream[F2, Unit]] =
         for {
           value <- F.deferred[Either[Throwable, O2]]
-          enqueue = queue.offer(Some(value.get)).as {
+          send = chan.send(value.get).as {
             Stream.eval(f(o).attempt.flatMap(value.complete(_).void))
           }
-          eit <- F.race(dequeueDone.get, enqueue)
+          eit <- chanReadDone.get.race(send)
         } yield eit match {
           case Left(())      => Stream.empty
           case Right(stream) => stream
@@ -2021,14 +2021,14 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       val background = this
         .evalMap(forkOnElem)
         .parJoin(maxConcurrent)
-        .onFinalize(F.race(dequeueDone.get, queue.offer(None)).void)
+        .onFinalize(chanReadDone.get.race(chan.close).void)
 
       val foreground =
-        Stream
-          .fromQueueNoneTerminated(queue)
+        chan
+          .stream
           .evalMap(identity)
           .rethrow
-          .onFinalize(dequeueDone.complete(()).void)
+          .onFinalize(chanReadDone.complete(()).void)
 
       foreground.concurrently(background)
     }
