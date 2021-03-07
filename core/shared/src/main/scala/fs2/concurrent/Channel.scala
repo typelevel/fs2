@@ -44,6 +44,8 @@ object Channel {
       new Channel[F, A] {
         def send(a: A): F[Unit] =
           state.modify {
+            case s @ State(_, _, closed) if closed == true =>
+              s -> F.unit
             case State(values, wait, closed) =>
               State(values :+ a, None, closed) -> wait.traverse_(_.complete(()))
           }.flatten
@@ -51,6 +53,8 @@ object Channel {
 
         def close: F[Unit] =
           state.modify {
+            case s @ State(_, _, closed) if closed == true =>
+              s -> F.unit
             case State(values, wait, _) =>
               State(values, None, true) -> wait.traverse_(_.complete(()))
           }.flatten.uncancelable
