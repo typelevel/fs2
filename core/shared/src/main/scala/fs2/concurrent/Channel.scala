@@ -30,7 +30,7 @@ import cats.syntax.all._
 trait Channel[F[_], A] {
   def send(a: A): F[Unit]
   def close: F[Unit]
-  def get: Pull[F, A, Unit]
+  def stream: Stream[F, A]
 }
 object Channel {
   def create[F[_], A](implicit F: Concurrent[F]): F[Channel[F, A]] = {
@@ -55,7 +55,7 @@ object Channel {
               State(values, None, true) -> wait.traverse_(_.complete(()))
           }.flatten.uncancelable
 
-        def get: Pull[F, A, Unit]  =
+        def consume : Pull[F, A, Unit]  =
           Pull.eval {
             F.deferred[Unit].flatMap { wait =>
               state.modify {
@@ -64,13 +64,13 @@ object Channel {
                     val newSt = State(Vector(), None, closed)
                     val emit = Pull.output(Chunk.vector(values))
                     val action =
-                      emit >> get.unlessA(closed)
+                      emit >> consume.unlessA(closed)
 
                     newSt -> action
                   } else {
                     val newSt = State(values, wait.some, closed)
                     val action =
-                      (Pull.eval(wait.get) >> get).unlessA(closed)
+                      (Pull.eval(wait.get) >> consume).unlessA(closed)
 
                     newSt -> action
                   }
@@ -78,6 +78,7 @@ object Channel {
             }
           }.flatten
 
+        def stream: Stream[F, A] = consume.stream
       }
     }
   }
