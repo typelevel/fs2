@@ -632,28 +632,28 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       d: FiniteDuration
   )(implicit F: Temporal[F2]): Stream[F2, O] = Stream.force {
     for {
-      queue <- Queue.bounded[F2, Option[O]](1)
+      chan <- Channel.bounded[F2, O](1)
       ref <- F.ref[Option[O]](None)
     } yield {
-      val enqueueLatest: F2[Unit] =
-        ref.getAndSet(None).flatMap(prev => if (prev.isEmpty) F.unit else queue.offer(prev))
+      val sendLatest: F2[Unit] =
+        ref.getAndSet(None).flatMap(_.traverse_(chan.send))
 
-      def enqueueItem(o: O): F2[Unit] =
+      def sendItem(o: O): F2[Unit] =
         ref.getAndSet(Some(o)).flatMap {
-          case None    => F.start(F.sleep(d) >> enqueueLatest).void
+          case None    => (F.sleep(d) >> sendLatest).start.void
           case Some(_) => F.unit
         }
 
       def go(tl: Pull[F2, O, Unit]): Pull[F2, INothing, Unit] =
         Pull.uncons(tl).flatMap {
           // Note: hd is non-empty, so hd.last.get is safe
-          case Some((hd, tl)) => Pull.eval(enqueueItem(hd.last.get)) >> go(tl)
-          case None           => Pull.eval(enqueueLatest >> queue.offer(None))
+          case Some((hd, tl)) => Pull.eval(sendItem(hd.last.get)) >> go(tl)
+          case None           => Pull.eval(sendLatest >> chan.close.void)
         }
 
-      val debouncedEnqueue: Stream[F2, INothing] = new Stream(go(this.underlying))
+      val debouncedSend: Stream[F2, INothing] = new Stream(go(this.underlying))
 
-      Stream.fromQueueNoneTerminated(queue).concurrently(debouncedEnqueue)
+      chan.stream.concurrently(debouncedSend)
     }
   }
 
@@ -1849,7 +1849,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       resultL <- F.deferred[Either[Throwable, Unit]]
       resultR <- F.deferred[Either[Throwable, Unit]]
       otherSideDone <- F.ref[Boolean](false)
-      resultQ <- Queue.unbounded[F2, Option[Stream[F2, O2]]]
+      resultChan <- Channel.unbounded[F2, Stream[F2, O2]]
     } yield {
 
       def watchInterrupted(str: Stream[F2, O2]): Stream[F2, O2] =
