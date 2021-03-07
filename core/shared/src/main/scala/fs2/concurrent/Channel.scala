@@ -48,7 +48,6 @@ import cats.syntax.all._
  * producer blocks, and not the maximum number of elements that will
  * be received by `stream`.
  *
- *
  * `close` encodes graceful shutdown: when the Channel gets closed,
  * `stream` will terminate naturally after consuming all currently encoded
  * elements, including the ones by producers blocked on a bound.
@@ -83,6 +82,12 @@ trait Channel[F[_], A] {
 object Channel {
   type Closed = Closed.type
   object Closed
+
+  def unbounded[F[_]: Concurrent, A]: F[Channel[F, A]] =
+    bounded(Int.MaxValue)
+
+  def synchronous[F[_]: Concurrent, A]: F[Channel[F, A]] =
+    bounded(0)
 
   def bounded[F[_], A](capacity: Int)(implicit F: Concurrent[F]): F[Channel[F, A]] = {
     // TODO Vector vs ScalaQueue
