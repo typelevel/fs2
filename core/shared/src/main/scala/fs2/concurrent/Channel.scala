@@ -92,31 +92,36 @@ object Channel {
     case class State(
       values: Vector[A],
       size: Int,
-      wait_ : Option[Deferred[F, Unit]],
+      waiting: Option[Deferred[F, Unit]],
       producers: Vector[(A, Deferred[F, Unit])],
       closed: Boolean
     )
 
     F.ref(State(Vector.empty, 0, None, Vector.empty, false)).map { state =>
       new Channel[F, A] {
+
+        def notifyStream(waitForChanges: Option[Deferred[F, Unit]]) =
+          waitForChanges.traverse(_.complete(())).as(Channel.open)
+
+        def waitOnBound(producer: Deferred[F, Unit], poll: Poll[F]) =
+          poll(producer.get).onCancel {
+            state.update { s =>
+              s.copy(producers = s.producers.filter(_._2 ne producer))
+            }
+          }
+
         def send(a: A) =
           F.deferred[Unit].flatMap { producer =>
             F.uncancelable { poll =>
               state.modify {
                 case s @ State(_, _, _, _, closed) if closed == true =>
                   s -> Channel.closed.pure[F]
-                case State(values, size, wait, producers, closed) if size < capacity =>
+                case State(values, size, waiting, producers, closed) if size < capacity =>
                   State(values :+ a, size + 1, None, producers, closed) ->
-                    wait.traverse(_.complete(())).as(Channel.open)
-                case State(values, size, wait, producers, closed) =>
-                  val cleanup = state.update { s =>
-                    s.copy(producers = s.producers.filter(_._2 ne producer))
-                  }
-                  val action = {
-                    wait.traverse(_.complete(())) >> poll(producer.get).onCancel(cleanup)
-                  }.as(Channel.open)
-
-                  State(values, size, None, producers :+ (a -> producer), closed) -> action
+                    notifyStream(waiting)
+                case State(values, size, waiting, producers, closed) if size >= capacity =>
+                  State(values, size, None, producers :+ (a -> producer), closed) ->
+                    (notifyStream(waiting) <* waitOnBound(producer, poll))
               }.flatten
             }
           }
@@ -125,15 +130,15 @@ object Channel {
           state.modify {
             case s @ State(_, _, _, _, closed) if closed == true =>
               s -> Channel.closed.pure[F]
-            case State(values, size, wait, producers, _) =>
-              State(values, size, None, producers, true) -> wait.traverse_(_.complete(())).as(Channel.open)
+            case State(values, size, waiting, producers, _) =>
+              State(values, size, None, producers, true) -> notifyStream(waiting)
           }.flatten.uncancelable
 
         def consume : Pull[F, A, Unit]  =
           Pull.eval {
             F.deferred[Unit].flatMap { newWait =>
               state.modify {
-                case State(values, size, wait@_, producers, closed) =>
+                case State(values, size, ignorePreviousWaiting@_, producers, closed) =>
                   if (values.nonEmpty || producers.nonEmpty) {
                     val newSt = State(Vector(), 0, None, Vector.empty, closed)
                     // TODO add values from producers, and notify them
