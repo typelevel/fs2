@@ -76,7 +76,6 @@ import cats.syntax.all._
 trait Channel[F[_], A] {
   def send(a: A): F[Either[Channel.Closed, Unit]]
   def stream: Stream[F, A]
-
   def close: F[Either[Channel.Closed, Unit]]
   def isClosed: F[Boolean]
   def closed: F[Unit]
@@ -99,6 +98,65 @@ object Channel {
 
     F.ref(State(Vector.empty, 0, None, Vector.empty, false)).map { state =>
       new Channel[F, A] {
+        def send(a: A) =
+          F.deferred[Unit].flatMap { producer =>
+            F.uncancelable { poll =>
+              state.modify {
+                case s @ State(_, _, _, _, closed @ true) =>
+                  (s, Channel.closed.pure[F])
+                case State(values, size, waiting, producers, closed @ false) =>
+                  if (size < capacity)
+                    (
+                      State(values :+ a, size + 1, None, producers, false),
+                      notifyStream(waiting)
+                    )
+                  else
+                    (
+                      State(values, size, None, producers :+ (a -> producer), false),
+                      notifyStream(waiting) <* waitOnBound(producer, poll)
+                    )
+              }.flatten
+            }
+          }
+
+        def close =
+          state.modify {
+            case s @ State(_, _, _, _, closed @ true) =>
+              (s, Channel.closed.pure[F])
+            case State(values, size, waiting, producers, closed @ false) =>
+              (
+                State(values, size, None, producers, true),
+                notifyStream(waiting)
+              )
+          }.flatten.uncancelable
+
+        def isClosed: F[Boolean] = ???
+        def closed: F[Unit] = ???
+
+        def stream: Stream[F, A] = consumeLoop.stream
+
+        def consumeLoop: Pull[F, A, Unit]  =
+          Pull.eval {
+            F.deferred[Unit].flatMap { waiting =>
+              state.modify {
+                case State(values, size, ignorePreviousWaiting @ _, producers, closed) =>
+                  if (values.nonEmpty || producers.nonEmpty) {
+                    val (extraValues, blocked) = producers.separateFoldable
+                    val toEmit = Chunk.vector(values ++ extraValues)
+
+                    (
+                      State(Vector(), 0, None, Vector.empty, closed),
+                      Pull.output(toEmit) >> unblock(blocked) >> consumeLoop
+                    )
+                  } else {
+                    (
+                      State(values, size, waiting.some, producers, closed),
+                      (Pull.eval(waiting.get) >> consumeLoop).unlessA(closed)
+                    )
+                  }
+              }
+            }
+          }.flatten
 
         def notifyStream(waitForChanges: Option[Deferred[F, Unit]]) =
           waitForChanges.traverse(_.complete(())).as(Channel.open)
@@ -110,58 +168,8 @@ object Channel {
             }
           }
 
-        def send(a: A) =
-          F.deferred[Unit].flatMap { producer =>
-            F.uncancelable { poll =>
-              state.modify {
-                case s @ State(_, _, _, _, closed) if closed == true =>
-                  s -> Channel.closed.pure[F]
-                case State(values, size, waiting, producers, closed) if size < capacity =>
-                  State(values :+ a, size + 1, None, producers, closed) ->
-                    notifyStream(waiting)
-                case State(values, size, waiting, producers, closed) if size >= capacity =>
-                  State(values, size, None, producers :+ (a -> producer), closed) ->
-                    (notifyStream(waiting) <* waitOnBound(producer, poll))
-              }.flatten
-            }
-          }
-
-        def close =
-          state.modify {
-            case s @ State(_, _, _, _, closed) if closed == true =>
-              s -> Channel.closed.pure[F]
-            case State(values, size, waiting, producers, _) =>
-              State(values, size, None, producers, true) -> notifyStream(waiting)
-          }.flatten.uncancelable
-
-        def consume : Pull[F, A, Unit]  =
-          Pull.eval {
-            F.deferred[Unit].flatMap { newWait =>
-              state.modify {
-                case State(values, size, ignorePreviousWaiting@_, producers, closed) =>
-                  if (values.nonEmpty || producers.nonEmpty) {
-                    val newSt = State(Vector(), 0, None, Vector.empty, closed)
-                    // TODO add values from producers, and notify them
-                    val emit = Pull.output(Chunk.vector(values))
-                    val action =
-                      emit >> consume
-
-                    newSt -> action
-                  } else {
-                    val newSt = State(values, size, newWait.some, producers, closed)
-                    val action =
-                      (Pull.eval(newWait.get) >> consume).unlessA(closed)
-
-                    newSt -> action
-                  }
-              }
-            }
-          }.flatten
-
-         def stream: Stream[F, A] = consume.stream
-
-        def isClosed: F[Boolean] = ???
-        def closed: F[Unit] = ???
+        def unblock(producers: Vector[Deferred[F, Unit]]) =
+          Pull.eval(producers.traverse_(_.complete(())))
       }
     }
   }
