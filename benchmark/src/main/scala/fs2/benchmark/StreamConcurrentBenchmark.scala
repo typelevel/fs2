@@ -44,5 +44,13 @@ class StreamConcurrentBenchmark {
   def parEvalMapUnordered(): Unit =
     getStream.parEvalMapUnordered(1)(_ => IO(())).compile.drain.unsafeRunSync()
 
+  @Benchmark
+  def parEvalMap(): Unit =
+    getStream.parEvalMap(1)(_ => IO(())).compile.drain.unsafeRunSync()
+
+  @Benchmark
+  def prevParEvalMap(): Unit =
+    getStream.prevParEvalMap(1)(_ => IO(())).compile.drain.unsafeRunSync()
+
   private def getStream: Stream[IO, Unit] = Stream.constant(()).take(n).covary[IO]
 }

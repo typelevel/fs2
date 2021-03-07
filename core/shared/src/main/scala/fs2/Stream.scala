@@ -38,6 +38,7 @@ import fs2.compat._
 import fs2.concurrent.{Queue => _, _}
 import fs2.internal._
 import scala.collection.mutable.ArrayBuffer
+import scala.collection.immutable.TreeMap
 
 /** A stream producing output of type `O` and which may evaluate `F` effects.
   *
@@ -1989,20 +1990,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   )(implicit F2: Applicative[F2]): Stream[F2, O] =
     new Stream(Pull.acquire[F2, Unit](F2.unit, (_, ec) => f(ec)).flatMap(_ => underlying))
 
-  /** Like [[Stream#evalMap]], but will evaluate effects in parallel, emitting the results
-    * downstream in the same order as the input stream. The number of concurrent effects
-    * is limited by the `maxConcurrent` parameter.
-    *
-    * See [[Stream#parEvalMapUnordered]] if there is no requirement to retain the order of
-    * the original stream.
-    *
-    * @example {{{
-    * scala> import cats.effect.IO, cats.effect.unsafe.implicits.global
-    * scala> Stream(1,2,3,4).covary[IO].parEvalMap(2)(i => IO(println(i))).compile.drain.unsafeRunSync()
-    * res0: Unit = ()
-    * }}}
-    */
-  def parEvalMap[F2[x] >: F[x], O2](
+  def prevParEvalMap[F2[x] >: F[x], O2](
       maxConcurrent: Int
   )(f: O => F2[O2])(implicit F: Concurrent[F2]): Stream[F2, O2] = {
     val fstream: F2[Stream[F2, O2]] = for {
@@ -2038,6 +2026,56 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     Stream.eval(fstream).flatten
   }
 
+  /** Like [[Stream#evalMap]], but will evaluate effects in parallel, emitting the results
+    * downstream in the same order as the input stream. The number of concurrent effects
+    * is limited by the `maxConcurrent` parameter.
+    *
+    * See [[Stream#parEvalMapUnordered]] if there is no requirement to retain the order of
+    * the original stream.
+    *
+    * @example {{{
+    * scala> import cats.effect.IO, cats.effect.unsafe.implicits.global
+    * scala> Stream(1,2,3,4).covary[IO].parEvalMap(2)(i => IO(println(i))).compile.drain.unsafeRunSync()
+    * res0: Unit = ()
+    * }}}
+    */
+  def parEvalMap[F2[x] >: F[x], O2](
+      maxConcurrent: Int
+  )(f: O => F2[O2])(implicit F: Concurrent[F2]): Stream[F2, O2] = {
+    def reorder(stream: Stream[F2, (O2, Long)], ind: Int, acc: TreeMap[Long, O2]): Pull[F2, O2, Unit] =
+      stream
+        .pull
+        .uncons1
+        .flatMap {
+          case None =>
+            Pull.output(Chunk.iterable(acc.toIterable.map(_._2)))
+          case Some(((el, l), tail)) =>
+            val nAcc = acc + (l -> el)
+            if(nAcc.firstKey == ind) Pull.output1(nAcc(ind)) >> reorder(tail, ind + 1, nAcc.drop(1))
+            else reorder(tail, ind, nAcc)
+        }
+
+    Stream
+      .eval(Ref[F2].of(TreeMap.empty[Long, Deferred[F2, Unit]])) // review: LongMap
+      .flatMap { ref =>
+        zipWithIndex
+          .covary[F2]
+          .evalTap { el =>
+            val register = Deferred[F2, Unit].flatMap(d => ref.update(_ + (el._2 -> d)))
+            val block = ref.get.flatMap(t => t.to(el._2 - maxConcurrent).toList.traverse(_._2.get))
+            register *> block
+          }
+          .parEvalMapUnordered(maxConcurrent)(el => (f(el._1)).tupleRight(el._2))
+          .evalTap { el =>
+            val unregister = ref.update(_ - el._2)
+            val unblock = ref.get.flatMap(t => t(el._2).complete(()))
+            unblock *> unregister
+          }
+          .through(stream => reorder(stream, 0, TreeMap.empty).stream)
+      }
+  }
+
+  
   def prevParEvalMapUnordered[F2[x] >: F[x]: Concurrent, O2](
       maxConcurrent: Int
   )(f: O => F2[O2]): Stream[F2, O2] =
