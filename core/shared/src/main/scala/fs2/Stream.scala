@@ -2123,10 +2123,11 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   def prefetchN[F2[x] >: F[x]: Concurrent](
       n: Int
   ): Stream[F2, O] =
-    Stream.eval(Queue.bounded[F2, Option[Chunk[O]]](n)).flatMap { queue =>
-      Stream
-        .fromQueueNoneTerminatedChunk(queue)
-        .concurrently(enqueueNoneTerminatedChunks(queue))
+    Stream.eval(Channel.bounded[F2, Chunk[O]](n)).flatMap { chan =>
+      chan.stream.flatMap(Stream.chunk).concurrently {
+        // chunks.evalMap(chan.send) ++ Stream.exec(chan.close) TODO choose
+        (chunks ++ Stream.exec(chan.close.void)).evalMap(chan.send)
+      }
     }
 
   /** Rechunks the stream such that output chunks are within `[inputChunk.size * minFactor, inputChunk.size * maxFactor]`.
