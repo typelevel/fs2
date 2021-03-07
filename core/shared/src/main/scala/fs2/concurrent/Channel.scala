@@ -87,11 +87,11 @@ object Channel {
   def bounded[F[_], A](capacity: Int)(implicit F: Concurrent[F]): F[Channel[F, A]] = {
     // TODO Vector vs ScalaQueue
     case class State(
-      values: Vector[A],
-      size: Int,
-      waiting: Option[Deferred[F, Unit]],
-      producers: Vector[(A, Deferred[F, Unit])],
-      closed: Boolean
+        values: Vector[A],
+        size: Int,
+        waiting: Option[Deferred[F, Unit]],
+        producers: Vector[(A, Deferred[F, Unit])],
+        closed: Boolean
     )
 
     val initial = State(Vector.empty, 0, None, Vector.empty, false)
@@ -104,6 +104,7 @@ object Channel {
               state.modify {
                 case s @ State(_, _, _, _, closed @ true) =>
                   (s, Channel.closed.pure[F])
+
                 case State(values, size, waiting, producers, closed @ false) =>
                   if (size < capacity)
                     (
@@ -120,22 +121,27 @@ object Channel {
           }
 
         def close =
-          state.modify {
-            case s @ State(_, _, _, _, closed @ true) =>
-              (s, Channel.closed.pure[F])
-            case State(values, size, waiting, producers, closed @ false) =>
-              (
-                State(values, size, None, producers, true),
-                notifyStream(waiting) <* signalClosure
-              )
-          }.flatten.uncancelable
+          state
+            .modify {
+              case s @ State(_, _, _, _, closed @ true) =>
+                (s, Channel.closed.pure[F])
+
+              case State(values, size, waiting, producers, closed @ false) =>
+                (
+                  State(values, size, None, producers, true),
+                  notifyStream(waiting) <* signalClosure
+                )
+            }
+            .flatten
+            .uncancelable
 
         def isClosed = closedGate.tryGet.map(_.isDefined)
+
         def closed = closedGate.get
 
         def stream = consumeLoop.stream
 
-        def consumeLoop: Pull[F, A, Unit]  =
+        def consumeLoop: Pull[F, A, Unit] =
           Pull.eval {
             F.deferred[Unit].flatMap { waiting =>
               state.modify {
