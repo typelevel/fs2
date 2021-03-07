@@ -32,22 +32,41 @@ import cats.syntax.all._
  * `send` can be called concurrently by multiple producers, and it may
  * semantically block if the Channel is bounded or synchronous.
  *
- * `stream` cannot be called concurrently by multiple consumers, if you do so, one of the consumers might become permanently deadlocked. It is possible to call `stream` again once the previous one has terminated, but be aware that some element might get lost in the process, e.g if the first call to stream got 5 elements off the channel, and terminated after emitting 2, when the second call to stream starts it won't see those 3 elements.
- * the behaviour is undefined if you do so.
+ * `stream` cannot be called concurrently by multiple consumers, if
+ * you do so, one of the consumers might become permanently
+ * deadlocked. It is possible to call `stream` again once the previous
+ * one has terminated, but be aware that some element might get lost
+ * in the process, e.g if the first call to stream got 5 elements off
+ * the channel, and terminated after emitting 2, when the second call
+ * to stream starts it won't see those 3 elements.
+ *
  * Every time `stream` is pulled, it will serve all the elements that
  * are queued up in a single chunk, including those from producers
  * that might be semantically blocked on a bounded channel, which will
  * then become unblocked.
  *
- * TODO is this latter decision the correct semantics? it also affects
- * what happens during closure, i.e. whether blocked elements are
- * processed before closing or left there. Consistency with
- * `noneTerminated` says they should be processed in that case. it can
- * also change the behaviour of blocked producers if you try to drain
- * the channel as a way to unblock them, like in topic.
- * In addition, we could have close complete the blocked producers, to avoid having to drain
- * the channel in the Topic scenario, however it's unclear whether they should complete with
- * Closed or Unit, because in the general we don't know if a subsequent call to `stream` is going to arrive, and we ideally want to only return Closed if the elements are discarded
+ *
+ * `close` encodes graceful shutdown: when the channel gets closed,
+ * `stream` will terminate naturally after consuming all currently encoded
+ * elements, including the ones by producers blocked on a bound.
+ * "Termination" here means that `stream` will no longer wait for new
+ * elements on the Channel, and not that it will be interrupted while
+ * performing another action: if you want to interrupt `stream`
+ * immediately, without first processing enqueued elements, you should
+ * use `interruptWhen` on it instead.
+ *
+ * After a call to `close`, any further calls to `send` or `close` will be no-ops.
+ *
+ * Note that `close` does not automatically unblock producers which
+ * might be blocked on a bound, they will only become unblocked if
+ * `stream` is executing. In other words, if `close` is called while
+ * `stream` is executing, blocked producers will eventually become
+ * unblocked, before `stream` terminates and further `send` calls
+ * become no-ops. However, if `close` is called after `stream` has
+ * terminated (e.g because it was interrupted, or had a `.take(n)`),
+ * then blocked producers will stay blocked unless they get explicitly
+ * unblocked, either by a further call to `stream` to drain the
+ * Channel, or by a a `race` with `closed`.
  *
  */
 
