@@ -3806,7 +3806,7 @@ object Stream extends StreamLowPriority {
         // starts with 1 because outer stream is running by default
         running <- SignallingRef(1L)
         // sync queue assures we won't overload heap when resulting stream is not able to catchup with inner streams
-        outputQ <- Queue.synchronous[F, Option[Chunk[O]]]
+        outputChan <- Channel.synchronous[F, Chunk[O]]
       } yield {
         // stops the join evaluation
         // all the streams will be terminated. If err is supplied, that will get attached to any error currently present
@@ -3817,7 +3817,7 @@ object Stream extends StreamLowPriority {
                 Some(Some(CompositeFailure(err0, err)))
               }
             case _ => Some(rslt)
-          } >> outputQ.offer(None).start.void
+          } >> outputChan.close.start.void // TODO is the starting really necessary here? probably needed because of the queue.offer(None) which could block
 
         def untilDone[A](str: Stream[F, A]) = str.interruptWhen(done.map(_.nonEmpty))
 
@@ -3838,7 +3838,7 @@ object Stream extends StreamLowPriority {
             case Left(err) => stop(Some(err)) >> decrementRunning
           }
 
-        def insertToQueue(str: Stream[F, O]) = str.chunks.foreach(s => outputQ.offer(Some(s)))
+        def sendToChannel(str: Stream[F, O]) = str.chunks.foreach(x => outputChan.send(x).void)
 
         // runs one inner stream, each stream is forked.
         // terminates when killSignal is true
@@ -3851,9 +3851,9 @@ object Stream extends StreamLowPriority {
               available.acquire >>
                 incrementRunning >>
                 F.start {
-                  // Note that the `interrupt` must be AFTER the enqueue to the sync queue,
-                  // otherwise the process may hang to enqueue last item while being interrupted
-                  val backInsertions = untilDone(insertToQueue(inner))
+                  // Note that the `interrupt` must be AFTER the send to the sync channel,
+                  // otherwise the process may hang to send last item while being interrupted
+                  val backInsertions = untilDone(sendToChannel(inner))
                   for {
                     r <- backInsertions.compile.drain.attempt
                     cancelResult <- lease.cancel
@@ -3878,7 +3878,7 @@ object Stream extends StreamLowPriority {
 
         val backEnqueue = Stream.bracket(F.start(runOuter))(_ => endOuter)
 
-        backEnqueue >> Stream.fromQueueNoneTerminatedChunk(outputQ)
+        backEnqueue >> outputChan.stream.flatMap(Stream.chunk)
       }
 
       Stream.eval(fstream).flatten
