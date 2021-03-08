@@ -1796,8 +1796,10 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     } yield {
       def runInner(o: O, halt: Deferred[F2, Unit]): Stream[F2, O2] =
         Stream.eval(guard.acquire) >> // guard inner to prevent parallel inner streams
-          Stream.eval(().pure[F2].map(_ => println("running inner - switchMap"))) >> // TODO remove after debugging
-          f(o).interruptWhen(halt.get.attempt) ++ Stream.exec(guard.release)
+ Stream.eval(().pure[F2].map(_ => println("running inner - switchMap"))) >> // TODO remove after debugging
+      f(o).interruptWhen(halt.get.attempt)
+        .onFinalize(().pure[F2].map(_ => println("inner stream from switchMap complete"))) ++ // TODO remove
+      Stream.exec(guard.release)
 
       def haltedF(o: O): F2[Stream[F2, O2]] =
         for {
@@ -4317,7 +4319,7 @@ object Stream extends StreamLowPriority {
                   Stream.sleep(duration).as(id)
                 else
                   Stream.empty
-              }.debug() // TODO remove after debugging
+              }//.debug() // TODO remove after debugging
 
           def output: Stream[F, Either[Unique.Token, Chunk[O]]] =
             timeouts
@@ -4341,7 +4343,7 @@ object Stream extends StreamLowPriority {
 
               def timeout(t: FiniteDuration): Pull[F, INothing, Unit] = Pull.eval {
                 F.unique.tupleRight(t)
-                  .flatTap(v => ().pure[F].map(_ => println(s"emitting timeout ${v._1}"))) // TODO delete
+//                  .flatTap(v => ().pure[F].map(_ => println(s"emitting timeout ${v._1}"))) // TODO delete
                   .flatMap(time.set)
               }
             }
