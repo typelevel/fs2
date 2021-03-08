@@ -1796,7 +1796,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     } yield {
       def runInner(o: O, halt: Deferred[F2, Unit]): Stream[F2, O2] =
         Stream.eval(guard.acquire) >> // guard inner to prevent parallel inner streams
-          Stream.eval(().pure[F2].map(_ => println("running inner"))) >> // TODO remove after debugging
+          Stream.eval(().pure[F2].map(_ => println("running inner - switchMap"))) >> // TODO remove after debugging
           f(o).interruptWhen(halt.get.attempt) ++ Stream.exec(guard.release)
 
       def haltedF(o: O): F2[Stream[F2, O2]] =
@@ -3842,7 +3842,7 @@ object Stream extends StreamLowPriority {
           }
 
         def sendToChannel(str: Stream[F, O]) = str.chunks.foreach(x =>
-          ().pure[F].map(_ => println("sending element")) >> // TODO remove
+          ().pure[F].map(_ => println(s"sending element $x")) >> // TODO remove
           outputChan.send(x).void
         )
 
@@ -3870,12 +3870,20 @@ object Stream extends StreamLowPriority {
             }
           }
 
-        def runInnerScope(inner: Stream[F, O]): Stream[F, INothing] =
-          new Stream(Pull.getScope[F].flatMap((sc: Scope[F]) => Pull.eval(runInner(inner, sc))))
+        def runInnerScope(inner: Stream[F, O]): Stream[F, INothing] = {
+          // TODO remove
+          println("call runInnerScope")
+          new Stream(Pull.getScope[F].flatMap((sc: Scope[F]) => Pull.eval(
+            ().pure[F].map(_ => println("about to call runInner parjoin")) >> //TODO remove
+            runInner(inner, sc)))
+          )
+        }
 
         // runs the outer stream, interrupts when kill == true, and then decrements the `running`
         def runOuter: F[Unit] =
-          untilDone(outer.flatMap(runInnerScope)).compile.drain.attempt.flatMap(endWithResult)
+          untilDone(outer
+            .debug(v => s"inner stream in parJoin $v") // TODO remove
+            .flatMap(runInnerScope)).compile.drain.attempt.flatMap(endWithResult)
 
         // awaits when all streams (outer + inner) finished,
         // and then collects result of the stream (outer + inner) execution
@@ -3945,6 +3953,7 @@ object Stream extends StreamLowPriority {
     /** Runs this fallible stream and returns the emitted elements in a vector. Note: this method is only available on fallible streams. */
     def toVector: Either[Throwable, Vector[O]] = to(Vector)
   }
+
 
   /** Projection of a `Stream` providing various ways to get a `Pull` from the `Stream`. */
   final class ToPull[F[_], O] private[Stream] (
@@ -4331,7 +4340,9 @@ object Stream extends StreamLowPriority {
                   .map(_.map { case (r, next) => r -> toTimedPull(next) })
 
               def timeout(t: FiniteDuration): Pull[F, INothing, Unit] = Pull.eval {
-                F.unique.tupleRight(t).flatMap(time.set)
+                F.unique.tupleRight(t)
+                  .flatTap(v => ().pure[F].map(_ => println(s"emitting timeout ${v._1}"))) // TODO delete
+                  .flatMap(time.set)
               }
             }
 

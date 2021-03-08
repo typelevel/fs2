@@ -74,5 +74,5 @@ object Ex {
             sig.set("bar", 150.millis) >> IO.sleep(200.millis) >> IO.println("elem") >>
             sig.set("baz", 150.millis) >> IO.sleep(200.millis) >> IO.println("elem")
           }
-      }.unsafeRunSync()
+      }.unsafeToFuture()
 }
