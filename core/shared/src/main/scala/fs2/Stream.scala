@@ -2056,13 +2056,13 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
         }
 
     Stream
-      .eval(Ref[F2].of(TreeMap.empty[Long, Deferred[F2, Unit]])) // review: LongMap
+      .eval(Ref[F2].of(TreeMap.empty[Long, Deferred[F2, Unit]]))
       .flatMap { ref =>
         zipWithIndex
           .covary[F2]
           .evalTap { el =>
             val register = Deferred[F2, Unit].flatMap(d => ref.update(_ + (el._2 -> d)))
-            val block = ref.get.flatMap(t => t.to(el._2 - maxConcurrent).toList.traverse(_._2.get))
+            val block = ref.get.flatMap(t => t.get(el._2 - maxConcurrent).fold(().pure[F2])(_.get))
             register *> block
           }
           .parEvalMapUnordered(maxConcurrent)(el => (f(el._1)).tupleRight(el._2))
