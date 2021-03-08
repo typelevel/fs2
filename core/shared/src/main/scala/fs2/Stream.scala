@@ -4300,7 +4300,7 @@ object Stream extends StreamLowPriority {
                   Stream.sleep(duration).as(id)
                 else
                   Stream.empty
-              }
+              }.debug() // TODO remove after debugging
 
           def output: Stream[F, Either[Unique.Token, Chunk[O]]] =
             timeouts
