@@ -26,7 +26,7 @@ object Ex {
   import cats.effect.unsafe.implicits.global
   import scala.concurrent.duration._
 
-  val s = (Stream("elem") ++ Stream.sleep_[IO](200.millis)).repeat.take(5)
+  val s = (Stream("elem") ++ Stream.sleep_[IO](200.millis)).repeat.take(3)
   def e =
     s.pull
       .timed { timedPull =>
@@ -39,16 +39,4 @@ object Ex {
         }
         go(timedPull)
       }.stream.debug().compile.toVector.flatMap(IO.println).unsafeToFuture()
-
-  def e2 =
-    Stream(Stream.sleep[IO](200.millis).debug(v => s"inner"))
-      .repeat
-      .take(5)
-      .covary[IO]
-      .metered(100.millis)
-      .switchMap(x => x)
-      .debug(v => s"outer")
-      .compile
-      .drain
-      .unsafeToFuture()
 }
