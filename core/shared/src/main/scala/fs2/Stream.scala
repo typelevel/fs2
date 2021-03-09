@@ -223,33 +223,58 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   def broadcastThrough[F2[x] >: F[x]: Concurrent, O2](
       pipes: Pipe[F2, O, O2]*
   ): Stream[F2, O2] =
-    Stream
-      .eval {
-        (
-          CountDownLatch[F2](pipes.length),
-          fs2.concurrent.Topic[F2, Option[Chunk[O]]]
-        ).tupled
-      }
-      .flatMap { case (latch, topic) =>
-        def produce = chunks.noneTerminate.through(topic.publish)
+    Stream.eval {
+      Vector.fill(pipes.length)(Channel.boundedBC[F2, Chunk[O]](1)).sequence
+    }.flatMap { channels =>
+      def log(s: String) = ().pure[F2].map(_ => println(s))
+      def close = channels.traverse_(_.close.void)
 
-        def consume(pipe: Pipe[F2, O, O2]): Pipe[F2, Option[Chunk[O]], O2] =
-          _.unNoneTerminate.flatMap(Stream.chunk).through(pipe)
-
-        Stream(pipes: _*)
-          .map { pipe =>
-            Stream
-              .resource(topic.subscribeAwait(1))
-              .flatMap { sub =>
-                // crucial that awaiting on the latch is not passed to
-                // the pipe, so that the pipe cannot interrupt it and alter
-                // the latch count
-                Stream.exec(latch.release >> latch.await) ++ sub.through(consume(pipe))
-              }
-          }
-          .parJoinUnbounded
-          .concurrently(Stream.eval(latch.await) ++ produce)
+      def produce = (chunks ++ Stream.exec(close)).evalMap { chunk =>
+        channels.traverse_(_.send(chunk))
       }
+
+      Stream.emits(
+        pipes.zipWithIndex
+      ).map { case (pipe, i) =>
+          val chan = channels(i)
+          Stream.exec(log("start")) ++
+          chan
+            .stream
+            .flatMap(Stream.chunk)
+            .through(pipe)
+            .onFinalize {
+              log(s"about to close $i") >> chan.close >> chan.stream.compile.drain
+            }
+      }.parJoinUnbounded
+        .concurrently(produce)
+    }
+    // Stream
+    //   .eval {
+    //     (
+    //       CountDownLatch[F2](pipes.length),
+    //       fs2.concurrent.Topic[F2, Option[Chunk[O]]]
+    //     ).tupled
+    //   }
+    //   .flatMap { case (latch, topic) =>
+    //     def produce = chunks.noneTerminate.through(topic.publish)
+
+    //     def consume(pipe: Pipe[F2, O, O2]): Pipe[F2, Option[Chunk[O]], O2] =
+    //       _.unNoneTerminate.flatMap(Stream.chunk).through(pipe)
+
+    //     Stream(pipes: _*)
+    //       .map { pipe =>
+    //         Stream
+    //           .resource(topic.subscribeAwait(1))
+    //           .flatMap { sub =>
+    //             // crucial that awaiting on the latch is not passed to
+    //             // the pipe, so that the pipe cannot interrupt it and alter
+    //             // the latch count
+    //             Stream.exec(latch.release >> latch.await) ++ sub.through(consume(pipe))
+    //           }
+    //       }
+    //       .parJoinUnbounded
+    //       .concurrently(Stream.eval(latch.await) ++ produce)
+    //   }
 
   /** Behaves like the identity function, but requests `n` elements at a time from the input.
     *
