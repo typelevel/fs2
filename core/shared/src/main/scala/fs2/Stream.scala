@@ -32,6 +32,7 @@ import cats.effect.SyncIO
 import cats.effect.kernel._
 import cats.effect.std.{CountDownLatch, Queue, Semaphore}
 import cats.effect.kernel.implicits._
+import cats.effect.Resource.ExitCase
 import cats.implicits.{catsSyntaxEither => _, _}
 
 import fs2.compat._
@@ -1795,8 +1796,16 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       haltRef <- F.ref[Option[Deferred[F2, Unit]]](None)
     } yield {
       def runInner(o: O, halt: Deferred[F2, Unit]): Stream[F2, O2] =
-        Stream.eval(guard.acquire) >> // guard inner to prevent parallel inner streams
-          f(o).interruptWhen(halt.get.attempt) ++ Stream.exec(guard.release)
+        Stream.bracketFull[F2, Unit](poll => poll(guard.acquire)) {
+          case (_, ExitCase.Succeeded | ExitCase.Canceled) => guard.release
+          case (_, ExitCase.Errored(_)) => F.unit
+        } >> f(o).interruptWhen(halt.get.attempt)
+  //         def bracketFull[F[x] >: Pure[x], R](
+  //     acquire: Poll[F] => F[R]
+  // )(release: (R, Resource.ExitCase) => F[Unit])(implicit
+
+        // Stream.eval(guard.acquire) >> // guard inner to prevent parallel inner streams
+        //   f(o).interruptWhen(halt.get.attempt) ++ Stream.exec(guard.release)
 
       def haltedF(o: O): F2[Stream[F2, O2]] =
         for {
