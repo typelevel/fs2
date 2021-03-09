@@ -27,6 +27,7 @@ import cats.effect.IO
 import cats.effect.kernel.{Deferred, Ref}
 import cats.effect.std.Semaphore
 import cats.syntax.all._
+import fs2.concurrent.{Signal, SignallingRef}
 import org.scalacheck.effect.PropF.forAllF
 
 class StreamSwitchMapSuite extends Fs2Suite {
@@ -145,5 +146,15 @@ class StreamSwitchMapSuite extends Fs2Suite {
       .compile
       .drain
       .intercept[Err]
+  }
+
+  test("doesn't deadlock - PR 1424".only) {
+    Stream
+      .range(1, 100)
+      .covary[IO]
+      .switchMap(Stream.emit)
+      .compile
+      .drain
+      .timeout(5.seconds)
   }
 }
