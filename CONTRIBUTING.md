@@ -92,7 +92,7 @@ To see how to build the microsite, check [here][fs2-build-site].
 [fs2-issues]: https://github.com/functional-streams-for-scala/fs2/issues
 [fs2-pulls]: https://github.com/functional-streams-for-scala/fs2/pulls
 [fs2-dev]: https://gitter.im/functional-streams-for-scala/fs2-dev
-[fs2-build-site]: https://github.com/LLCampos/fs2/blob/main/build-site.md
+[fs2-build-site]: https://github.com/functional-streams-for-scala/fs2/blob/main/build-site.md
 [coc]: https://github.com/functional-streams-for-scala/fs2/blob/main/CODE_OF_CONDUCT.md
 [sbt]: https://www.scala-sbt.org
 [mima]: https://github.com/lightbend/mima

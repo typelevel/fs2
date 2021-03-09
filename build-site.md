@@ -31,7 +31,7 @@ sbt microsite/mdoc --watch
 and docsify in a shell session:
 
 ```
-docsify serve fs2/target/website/
+docsify serve target/website/
 ```
 
 and you'll get an updating preview.
