@@ -188,6 +188,127 @@ object Channel {
   }
 
   // allocate once
+  private[fs2] final val closed: Either[Closed, Unit] = Left(Closed) // TODO make fully private again
+  private[fs2] final val open: Either[Closed, Unit] = Right(())
+}
+
+object ParJoinChannel {
+  type Closed = Closed.type
+  object Closed
+
+  def unbounded[F[_]: Concurrent, A]: F[Channel[F, A]] =
+    bounded(Int.MaxValue)
+
+  def synchronous[F[_]: Concurrent, A]: F[Channel[F, A]] =
+    bounded(0)
+
+  def bounded[F[_], A](capacity: Int)(implicit F: Concurrent[F]): F[Channel[F, A]] = {
+    // TODO Vector vs ScalaQueue
+    case class State(
+        values: Vector[A],
+        size: Int,
+        waiting: Option[Deferred[F, Unit]],
+        producers: Vector[(A, Deferred[F, Unit])],
+        closed: Boolean
+    )
+
+    val initial = State(Vector.empty, 0, None, Vector.empty, false)
+
+    (F.ref(initial), F.deferred[Unit]).mapN { (state, closedGate) =>
+      new Channel[F, A] {
+        def send(a: A) =
+          F.deferred[Unit].flatMap { producer =>
+            F.uncancelable { poll =>
+              state.modify {
+                case s @ State(_, _, _, _, closed @ true) =>
+                  (s, Channel.closed.pure[F])
+
+                case State(values, size, waiting, producers, closed @ false) =>
+                  if (size < capacity) {
+                    println("WRITE: sending elements through branch")
+                    (
+                      State(values :+ a, size + 1, None, producers, false),
+                      notifyStream(waiting)
+                    )
+                  } else {
+                    println(s"WRITE: blocking on send branch, producer $producer")
+                    (
+                      State(values, size, None, producers :+ (a -> producer), false),
+                      notifyStream(waiting) <* waitOnBound(producer, poll)
+                    )
+                  }
+              }.flatten
+            }
+          }
+
+        def close =
+          state
+            .modify {
+              case s @ State(_, _, _, _, closed @ true) =>
+                (s, Channel.closed.pure[F])
+
+              case State(values, size, waiting, producers, closed @ false) =>
+                println("closing")
+                (
+                  State(values, size, None, producers, true),
+                  notifyStream(waiting) <* signalClosure
+                )
+            }
+            .flatten
+            .uncancelable
+
+        def isClosed = closedGate.tryGet.map(_.isDefined)
+
+        def closed = closedGate.get
+
+        def stream = consumeLoop.stream
+
+        def consumeLoop: Pull[F, A, Unit] =
+          Pull.eval {
+            F.deferred[Unit].flatMap { waiting =>
+              state.modify {
+                case State(values, size, ignorePreviousWaiting @ _, producers, closed) =>
+                  if (values.nonEmpty || producers.nonEmpty) {
+                    println(s"READ: Non waiting branch: values $values, producers $producers")
+                    val (extraValues, blocked) = producers.separateFoldable
+                    val toEmit = Chunk.vector(values ++ extraValues)
+
+                    (
+                      State(Vector(), 0, None, Vector.empty, closed),
+                      Pull.output(toEmit) >> unblock(blocked) >> consumeLoop
+                    )
+                  } else {
+                    println(s"READ: Waiting branch: values $values, producers $producers")
+                    (
+                      State(values, size, waiting.some, producers, closed),
+                      (Pull.eval(waiting.get) >> consumeLoop).unlessA(closed)
+                    )
+                  }
+              }
+            }
+          }.flatten
+
+        def notifyStream(waitForChanges: Option[Deferred[F, Unit]]) =
+          waitForChanges.traverse(_.complete(())).as(Channel.open)
+
+        def waitOnBound(producer: Deferred[F, Unit], poll: Poll[F]) =
+          poll(producer.get.guarantee(().pure[F].map(_ => println(s"producer $producer unblocked")))).onCancel { ().pure[F].map(_  => println(s"producer $producer canceled")) >> 
+            state.update { s =>
+              val p = s.producers.filter(_._2 ne producer)
+              println(s"state after cancellation $p for producer $producer, before it was ${s.producers}")
+              s.copy(producers = p)
+            } <* ().pure[F].map(_  => println(s"producer $producer cleanup logic"))
+          }
+
+        def unblock(producers: Vector[Deferred[F, Unit]]) =
+          Pull.eval(producers.traverse_(_.complete(())))
+
+        def signalClosure = closedGate.complete(())
+      }
+    }
+  }
+
+  // allocate once
   private final val closed: Either[Closed, Unit] = Left(Closed)
   private final val open: Either[Closed, Unit] = Right(())
 }

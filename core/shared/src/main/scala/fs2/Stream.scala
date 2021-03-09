@@ -1796,10 +1796,10 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     } yield {
       def runInner(o: O, halt: Deferred[F2, Unit]): Stream[F2, O2] =
         Stream.eval(guard.acquire) >> // guard inner to prevent parallel inner streams
-// Stream.eval(().pure[F2].map(_ => println("running inner - switchMap"))) >> // TODO remove after debugging
-      f(o).interruptWhen(halt.get.attempt) ++
-//        .onFinalize(().pure[F2].map(_ => println("inner stream from switchMap complete"))) ++ // TODO remove
-      Stream.exec(guard.release)
+ Stream.eval(().pure[F2].map(_ => println(s"running inner - switchMap, element $o"))) >> // TODO remove after debugging
+      f(o).interruptWhen(halt.get.attempt.guarantee(().pure[F2].map(_ => println(s"interruption of stream triggered, element $o")))).onFinalize(().pure[F2].map(_ => println(s"inner stream from switchMap complete, element $o"))) ++ Stream.exec(().pure[F2].map(_ => println(s"POST CANCELLATION SWITCHMAP, THIS DOESN'T HAPPEN"))) ++ // TODO remove
+      Stream.exec(guard.release.guarantee(().pure[F2].map(_ => println(s"semaphore unlocked, element $o"))))
+
 
       def haltedF(o: O): F2[Stream[F2, O2]] =
         for {
@@ -3810,7 +3810,8 @@ object Stream extends StreamLowPriority {
         // starts with 1 because outer stream is running by default
         running <- SignallingRef(1L)
         // sync queue assures we won't overload heap when resulting stream is not able to catchup with inner streams
-        outputChan <- Channel.bounded[F, Chunk[O]](1)
+//      outputChan <- ParJoinChannel.bounded[F, Chunk[O]](1)
+        outputChan <- ParJoinChannel.synchronous[F, Chunk[O]]
       } yield {
         // stops the join evaluation
         // all the streams will be terminated. If err is supplied, that will get attached to any error currently present
@@ -3844,8 +3845,9 @@ object Stream extends StreamLowPriority {
           }
 
         def sendToChannel(str: Stream[F, O]) = str.chunks.foreach(x =>
-//          ().pure[F].map(_ => println(s"sending element $x")) >> // TODO remove
-          outputChan.send(x).void
+         ().pure[F].map(_ => println(s"sending element $x")) >> // TODO remove
+           outputChan.send(x).onCancel(().pure[F].map(_ => println("cancelling HEREEEE"))).void >>
+           ().pure[F].map(_ => println(s"element $x sent")) // TODO remove
         )
 
         // runs one inner stream, each stream is forked.
@@ -3863,7 +3865,7 @@ object Stream extends StreamLowPriority {
                   // otherwise the process may hang to send last item while being interrupted
                   val backInsertions = untilDone(sendToChannel(inner))
                   for {
-                    r <- backInsertions.compile.drain.attempt
+                    r <- backInsertions.compile.drain.attempt.onCancel(().pure[F].map(_ => println(s"CRITICAL CANCEL"))) // TODO remove)
                     cancelResult <- lease.cancel
                     _ <- available.release
                     _ <- endWithResult(CompositeFailure.fromResults(r, cancelResult))
@@ -4311,6 +4313,7 @@ object Stream extends StreamLowPriority {
         .flatMap { case (initial, time) =>
           def timeouts: Stream[F, Unique.Token] =
             time.discrete
+              .evalTap(v => ().pure[F].map(_  => println(s"time signal changed to $v"))) // TODO remove
               .dropWhile { case (id, _) => id == initial }
               .switchMap { case (id, duration) =>
                 // We cannot move this check into a `filter`:

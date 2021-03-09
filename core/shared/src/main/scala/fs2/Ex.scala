@@ -27,10 +27,10 @@ object Ex {
   import scala.concurrent.duration._
   import cats.effect.implicits._
   import cats.syntax.all._
+  import fs2.concurrent._
 
 
-
-  val s = (Stream("elem") ++ Stream.sleep_[IO](200.millis)).repeat.take(20)
+  val s = (Stream("elem") ++ Stream.sleep_[IO](200.millis)).repeat.take(5)
   def e =
     s.pull
       .timed { timedPull =>
@@ -88,6 +88,14 @@ object Ex {
       .debug(v => s"outer $v")
       .compile.drain.unsafeToFuture
 
+
+  def e5 = ParJoinChannel.synchronous[IO, Int].flatMap { chan =>
+    chan.stream.concurrently {
+      (Stream.range(0, 5).covary[IO].metered(100.millis) ++ Stream.exec(chan.close.void)).evalMap(x => chan.send(x).void)
+    }.debug(v => s"RECEIVED $v")
+      .compile
+      .drain
+  }.unsafeToFuture()
 
 
 }
