@@ -1577,7 +1577,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   def interruptAfter[F2[x] >: F[x]: Temporal](
       duration: FiniteDuration
   ): Stream[F2, O] =
-    interruptWhen[F2](Stream.sleep_[F2](duration) ++ Stream(true))
+    interruptWhen[F2](Temporal[F2].sleep(duration).attempt)
 
   /** Ties this stream to the given `haltWhenTrue` stream.
     * The resulting stream performs all the effects and emits all the outputs
