@@ -3810,7 +3810,7 @@ object Stream extends StreamLowPriority {
         // starts with 1 because outer stream is running by default
         running <- SignallingRef(1L)
         // sync queue assures we won't overload heap when resulting stream is not able to catchup with inner streams
-        outputChan <- Channel.bounded[F, Chunk[O]](1)
+        outputChan <- Channel.synchronous[F, Chunk[O]]
       } yield {
         // stops the join evaluation
         // all the streams will be terminated. If err is supplied, that will get attached to any error currently present
