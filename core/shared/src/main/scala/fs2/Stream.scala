@@ -3670,9 +3670,18 @@ object Stream extends StreamLowPriority {
 
         val closeOutQ = Stream.exec(outQ.offer(None))
 
-        def sinkOut: Pull[F, O, Unit] = Pull.eval(sinkQ.take).flatMap {
-          case None     => Pull.eval(outQ.offer(None))
-          case Some(ch) => Pull.output(ch) >> Pull.eval(outQ.offer(Some(ch))) >> sinkOut
+        val sinkOut: Stream[F, O] = {
+          def go(s: Stream[F, Option[Chunk[O]]]): Pull[F, O, Unit] =
+            s.pull.uncons1.flatMap {
+              case None =>
+                Pull.done
+              case Some((None, _)) =>
+                Pull.eval(outQ.offer(None))
+              case Some((Some(ch), rest)) =>
+                Pull.output(ch) >> Pull.eval(outQ.offer(Some(ch))) >> go(rest)
+            }
+
+          go(Stream.repeatEval(sinkQ.take)).stream
         }
 
         def outPull: Pull[F, O, Unit] =
@@ -3681,7 +3690,7 @@ object Stream extends StreamLowPriority {
             case Some(ch) => Pull.output(ch) >> Pull.eval(guard.release) >> outPull
           }
 
-        val runner = p(sinkOut.stream).concurrently(sinkIn) ++ closeOutQ
+        val runner = p(sinkOut).concurrently(sinkIn) ++ closeOutQ
 
         new Stream(outPull).concurrently(runner)
       }
