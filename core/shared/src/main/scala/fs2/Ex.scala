@@ -26,20 +26,33 @@ object Ex {
   import cats.effect.unsafe.implicits.global
   import scala.concurrent.duration._
 
-  def e = {
-    Stream 
-      .range(0, 10)
-      .covary[IO]
-      .broadcastThrough[IO, Int](
-        _.filter(_ % 2 == 0).debug(v => s"even $v"),
-        _.filter(_ % 2 != 0).debug(v => s"odd $v"),
-        _.debug(v => s"id $v").interruptAfter(2.nanos)
-      )
-      .compile
-      .drain
-      .flatMap(_ => IO.println("done"))
-      .onCancel(IO.println("deadlocked"))
+  implicit class TM[A](a: IO[A]) {
+    def timeout2(f: FiniteDuration, s: String) =
+      a.racePair(IO.sleep(f)).flatMap {
+        case Left((_, sleeper)) => sleeper.cancel
+        case Right((fiber, _)) => IO.println(s) >> fiber.cancel >> IO.raiseError(new Exception)
+      }
+
   }
-    .timeoutTo(5.seconds, IO.println("timeout")).unsafeToFuture()
+
+  def e = {
+
+    def go: IO[Unit] =
+      Stream
+        .range(0, 10)
+        .covary[IO]
+        .broadcastThrough[IO, Unit](
+          _.evalMap(e => IO.println(s"elem $e received by consumer 0")),
+          _.evalMap(e => IO.println(s"elem $e received by consumer 1")),
+          _.evalMap(e => IO.println(s"elem $e received by consumer 2")).interruptAfter(2.nanos)
+        )
+        .compile
+        .drain
+        .flatMap(_ => IO.println("done \n\n\n"))
+        .onCancel(IO.println("canceled"))
+        .timeout2(5.seconds, "DEADLOCK") >> go
+
+    go
+  }.unsafeToFuture()
 
 }

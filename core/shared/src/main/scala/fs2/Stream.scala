@@ -230,20 +230,24 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       def close = channels.traverse_(_.close.void)
 
       def produce = (chunks ++ Stream.exec(close)).evalMap { chunk =>
-        channels.traverse_(_.send(chunk))
+        channels.zipWithIndex.traverse_ { case (c, i) =>
+          log(s"sending chunk $chunk to channel $i") >>
+          c.send(chunk) >>
+          log(s"sent chunk $chunk to channel $i")
+        } >> log(s"Chunk $chunk sent")
       }
 
       Stream.emits(
         pipes.zipWithIndex
       ).map { case (pipe, i) =>
           val chan = channels(i)
-          Stream.exec(log("start")) ++
+          Stream.exec(log(s"consumer $i started")) ++
           chan
             .stream
             .flatMap(Stream.chunk)
             .through(pipe)
             .onFinalize {
-              log(s"about to close $i") >> chan.close >> chan.stream.compile.drain
+              log(s"about to close $i") >> chan.close >> log(s"closed $i") >> chan.stream.compile.drain
             }
       }.parJoinUnbounded
         .concurrently(produce)
