@@ -41,11 +41,11 @@ object Ex {
       }.stream.debug().compile.toVector.flatMap(IO.println).unsafeToFuture()
 
   def e2 =
-    Stream(Stream.exec(IO.println("inner")) ++ Stream.sleep[IO](400.millis))
+    Stream(Stream.sleep[IO](200.millis).debug(v => s"inner"))
       .repeat
-      .take(10)
+      .take(5)
       .covary[IO]
-      .metered(200.millis)
+      .metered(100.millis)
       .switchMap(x => x)
       .debug(v => s"outer")
       .compile

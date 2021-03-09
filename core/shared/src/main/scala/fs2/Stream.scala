@@ -1796,7 +1796,6 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     } yield {
       def runInner(o: O, halt: Deferred[F2, Unit]): Stream[F2, O2] =
         Stream.eval(guard.acquire) >> // guard inner to prevent parallel inner streams
-          Stream.eval(().pure[F2].map(_ => println("running inner"))) >> // TODO remove after debugging
           f(o).interruptWhen(halt.get.attempt) ++ Stream.exec(guard.release)
 
       def haltedF(o: O): F2[Stream[F2, O2]] =
@@ -3819,8 +3818,7 @@ object Stream extends StreamLowPriority {
                 Some(Some(CompositeFailure(err0, err)))
               }
             case _ => Some(rslt)
-          } >> ().pure[F].map(_ => println("closing")) >> // TODO remove
-        outputChan.close.start.void // TODO is the starting really necessary here? probably needed because of the queue.offer(None) which could block
+          } >> outputChan.close.start.void // TODO is the starting really necessary here? probably needed because of the queue.offer(None) which could block
 
         def untilDone[A](str: Stream[F, A]) = str.interruptWhen(done.map(_.nonEmpty))
 
@@ -3841,10 +3839,7 @@ object Stream extends StreamLowPriority {
             case Left(err) => stop(Some(err)) >> decrementRunning
           }
 
-        def sendToChannel(str: Stream[F, O]) = str.chunks.foreach(x =>
-          ().pure[F].map(_ => println("sending element")) >> // TODO remove
-          outputChan.send(x).void
-        )
+        def sendToChannel(str: Stream[F, O]) = str.chunks.foreach(x => outputChan.send(x).void)
 
         // runs one inner stream, each stream is forked.
         // terminates when killSignal is true
@@ -3884,10 +3879,7 @@ object Stream extends StreamLowPriority {
 
         val backEnqueue = Stream.bracket(F.start(runOuter))(_ => endOuter)
 
-        backEnqueue >> outputChan
-          .stream
-          .debug(v => s"parJoin received $v") // TODO remove
-          .flatMap(Stream.chunk)
+        backEnqueue >> outputChan.stream.flatMap(Stream.chunk)
       }
 
       Stream.eval(fstream).flatten
