@@ -30,7 +30,7 @@ object Ex {
 
 
 
-  val s = (Stream("elem") ++ Stream.sleep_[IO](200.millis)).repeat.take(20)
+  val s = (Stream("elem") ++ Stream.sleep_[IO](200.millis)).repeat.take(5)
   def e =
     s.pull
       .timed { timedPull =>
@@ -75,19 +75,4 @@ object Ex {
             sig.set("baz", 150.millis) >> IO.sleep(200.millis) >> IO.println("elem")
           }
       }.unsafeToFuture()
-
-  def e4 =
-    Stream
-      .range(0, 20)
-      .covary[IO]
-      .metered(100.millis)
-      .map { i =>
-        Stream.sleep[IO](200.millis).as(i).debug(v => s"inner: $v")
-      }
-      .parJoin(2)
-      .debug(v => s"outer $v")
-      .compile.drain.unsafeToFuture
-
-
-
 }
