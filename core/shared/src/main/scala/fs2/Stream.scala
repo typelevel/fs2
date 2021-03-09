@@ -32,6 +32,7 @@ import cats.effect.SyncIO
 import cats.effect.kernel._
 import cats.effect.std.{CountDownLatch, Queue, Semaphore}
 import cats.effect.kernel.implicits._
+import cats.effect.Resource.ExitCase
 import cats.implicits.{catsSyntaxEither => _, _}
 
 import fs2.compat._
@@ -1577,7 +1578,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   def interruptAfter[F2[x] >: F[x]: Temporal](
       duration: FiniteDuration
   ): Stream[F2, O] =
-    interruptWhen[F2](Stream.sleep_[F2](duration) ++ Stream(true))
+    interruptWhen[F2](Temporal[F2].sleep(duration).attempt)
 
   /** Ties this stream to the given `haltWhenTrue` stream.
     * The resulting stream performs all the effects and emits all the outputs
@@ -1794,9 +1795,14 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       guard <- Semaphore[F2](1)
       haltRef <- F.ref[Option[Deferred[F2, Unit]]](None)
     } yield {
+
       def runInner(o: O, halt: Deferred[F2, Unit]): Stream[F2, O2] =
-        Stream.eval(guard.acquire) >> // guard inner to prevent parallel inner streams
-          f(o).interruptWhen(halt.get.attempt) ++ Stream.exec(guard.release)
+        Stream.bracketFull[F2, Unit] { poll =>
+          poll(guard.acquire) // guard inner with a semaphore to prevent parallel inner streams
+        } {
+          case (_, ExitCase.Errored(_)) => F.unit // if there's an error, don't start next stream
+          case _                        => guard.release
+        } >> f(o).interruptWhen(halt.get.attempt)
 
       def haltedF(o: O): F2[Stream[F2, O2]] =
         for {

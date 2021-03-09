@@ -146,4 +146,14 @@ class StreamSwitchMapSuite extends Fs2Suite {
       .drain
       .intercept[Err]
   }
+
+  test("doesn't deadlock - PR 1424") {
+    Stream
+      .range(1, 100)
+      .covary[IO]
+      .switchMap(Stream.emit)
+      .compile
+      .drain
+      .timeout(5.seconds)
+  }
 }
