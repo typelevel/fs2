@@ -1796,9 +1796,9 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     } yield {
       def runInner(o: O, halt: Deferred[F2, Unit]): Stream[F2, O2] =
         Stream.eval(guard.acquire) >> // guard inner to prevent parallel inner streams
-// Stream.eval(().pure[F2].map(_ => println("running inner - switchMap"))) >> // TODO remove after debugging
-      f(o).interruptWhen(halt.get.attempt) ++
-//        .onFinalize(().pure[F2].map(_ => println("inner stream from switchMap complete"))) ++ // TODO remove
+ Stream.eval(().pure[F2].map(_ => println("running inner - switchMap"))) >> // TODO remove after debugging
+      f(o).interruptWhen(halt.get.attempt)
+        .onFinalize(().pure[F2].map(_ => println("inner stream from switchMap complete"))) ++ // TODO remove
       Stream.exec(guard.release)
 
       def haltedF(o: O): F2[Stream[F2, O2]] =
@@ -3821,7 +3821,7 @@ object Stream extends StreamLowPriority {
                 Some(Some(CompositeFailure(err0, err)))
               }
             case _ => Some(rslt)
-          } >> // ().pure[F].map(_ => println("closing")) >> // TODO remove
+          } >> ().pure[F].map(_ => println("closing")) >> // TODO remove
         outputChan.close.start.void // TODO is the starting really necessary here? probably needed because of the queue.offer(None) which could block
 
         def untilDone[A](str: Stream[F, A]) = str.interruptWhen(done.map(_.nonEmpty))
@@ -3844,7 +3844,7 @@ object Stream extends StreamLowPriority {
           }
 
         def sendToChannel(str: Stream[F, O]) = str.chunks.foreach(x =>
-//          ().pure[F].map(_ => println(s"sending element $x")) >> // TODO remove
+          ().pure[F].map(_ => println(s"sending element $x")) >> // TODO remove
           outputChan.send(x).void
         )
 
@@ -3874,9 +3874,9 @@ object Stream extends StreamLowPriority {
 
         def runInnerScope(inner: Stream[F, O]): Stream[F, INothing] = {
           // TODO remove
-//          println("call runInnerScope")
+          println("call runInnerScope")
           new Stream(Pull.getScope[F].flatMap((sc: Scope[F]) => Pull.eval(
-  //          ().pure[F].map(_ => println("about to call runInner parjoin")) >> //TODO remove
+            ().pure[F].map(_ => println("about to call runInner parjoin")) >> //TODO remove
             runInner(inner, sc)))
           )
         }
@@ -3884,7 +3884,7 @@ object Stream extends StreamLowPriority {
         // runs the outer stream, interrupts when kill == true, and then decrements the `running`
         def runOuter: F[Unit] =
           untilDone(outer
-//            .debug(v => s"inner stream in parJoin $v") // TODO remove
+            .debug(v => s"inner stream in parJoin $v") // TODO remove
             .flatMap(runInnerScope)).compile.drain.attempt.flatMap(endWithResult)
 
         // awaits when all streams (outer + inner) finished,
@@ -3896,7 +3896,7 @@ object Stream extends StreamLowPriority {
 
         backEnqueue >> outputChan
           .stream
-//          .debug(v => s"parJoin received $v") // TODO remove
+          .debug(v => s"parJoin received $v") // TODO remove
           .flatMap(Stream.chunk)
       }
 
