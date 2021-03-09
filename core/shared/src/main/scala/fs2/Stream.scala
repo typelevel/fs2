@@ -2030,8 +2030,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
         .onFinalize(chanReadDone.get.race(chan.close).void)
 
       val foreground =
-        chan
-          .stream
+        chan.stream
           .evalMap(identity)
           .rethrow
           .onFinalize(chanReadDone.complete(()).void)
@@ -3656,43 +3655,45 @@ object Stream extends StreamLowPriority {
     /** Send chunks through `p`, allowing up to `maxQueued` pending _chunks_ before blocking `s`. */
     def observeAsync(
         maxQueued: Int
-    )(p: Pipe[F, O, INothing])(implicit F: Concurrent[F]): Stream[F, O] = Stream.force {
+    )(pipe: Pipe[F, O, INothing])(implicit F: Concurrent[F]): Stream[F, O] = Stream.force {
       for {
         guard <- Semaphore[F](maxQueued - 1L)
-        outQ <- Queue.unbounded[F, Option[Chunk[O]]]
-        sinkQ <- Queue.unbounded[F, Option[Chunk[O]]]
+        outChan <- Channel.unbounded[F, Chunk[O]]
+        sinkChan <- Channel.unbounded[F, Chunk[O]]
       } yield {
-        val sinkIn: Stream[F, INothing] =
-          self.repeatPull(_.uncons.flatMap {
-            case None           => Pull.eval(sinkQ.offer(None)).as(None)
-            case Some((hd, tl)) => Pull.eval(sinkQ.offer(Some(hd)) >> guard.acquire).as(Some(tl))
-          })
 
-        val closeOutQ = Stream.exec(outQ.offer(None))
-
-        val sinkOut: Stream[F, O] = {
-          def go(s: Stream[F, Option[Chunk[O]]]): Pull[F, O, Unit] =
-            s.pull.uncons1.flatMap {
-              case None =>
-                Pull.done
-              case Some((None, _)) =>
-                Pull.eval(outQ.offer(None))
-              case Some((Some(ch), rest)) =>
-                Pull.output(ch) >> Pull.eval(outQ.offer(Some(ch))) >> go(rest)
+        val sinkIn: Stream[F, INothing] = {
+          def go(s: Stream[F, O]): Pull[F, INothing, Unit] =
+            s.pull.uncons.flatMap {
+              case None           => Pull.eval(sinkChan.close.void)
+              case Some((hd, tl)) => Pull.eval(sinkChan.send(hd) >> guard.acquire) >> go(tl)
             }
 
-          go(Stream.repeatEval(sinkQ.take)).stream
+          go(self).stream
         }
 
-        def outPull: Pull[F, O, Unit] =
-          Pull.eval(outQ.take).flatMap {
-            case None     => Pull.done
-            case Some(ch) => Pull.output(ch) >> Pull.eval(guard.release) >> outPull
-          }
+        val sinkOut: Stream[F, O] = {
+          def go(s: Stream[F, Chunk[O]]): Pull[F, O, Unit] =
+            s.pull.uncons1.flatMap {
+              case None =>
+                Pull.eval(outChan.close.void)
+              case Some((ch, rest)) =>
+                Pull.output(ch) >> Pull.eval(outChan.send(ch)) >> go(rest)
+            }
 
-        val runner = p(sinkOut).concurrently(sinkIn) ++ closeOutQ
+          go(sinkChan.stream).stream
+        }
 
-        new Stream(outPull).concurrently(runner)
+        val runner =
+          sinkOut.through(pipe).concurrently(sinkIn) ++ Stream.exec(outChan.close.void)
+
+        def outStream =
+          outChan.stream
+            .flatMap { chunk =>
+              Stream.chunk(chunk) ++ Stream.exec(guard.release)
+            }
+
+        outStream.concurrently(runner)
       }
     }
 
