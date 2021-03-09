@@ -1795,17 +1795,14 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       guard <- Semaphore[F2](1)
       haltRef <- F.ref[Option[Deferred[F2, Unit]]](None)
     } yield {
-      def runInner(o: O, halt: Deferred[F2, Unit]): Stream[F2, O2] =
-        Stream.bracketFull[F2, Unit](poll => poll(guard.acquire)) {
-          case (_, ExitCase.Succeeded | ExitCase.Canceled) => guard.release
-          case (_, ExitCase.Errored(_)) => F.unit
-        } >> f(o).interruptWhen(halt.get.attempt)
-  //         def bracketFull[F[x] >: Pure[x], R](
-  //     acquire: Poll[F] => F[R]
-  // )(release: (R, Resource.ExitCase) => F[Unit])(implicit
 
-        // Stream.eval(guard.acquire) >> // guard inner to prevent parallel inner streams
-        //   f(o).interruptWhen(halt.get.attempt) ++ Stream.exec(guard.release)
+      def runInner(o: O, halt: Deferred[F2, Unit]): Stream[F2, O2] =
+        Stream.bracketFull[F2, Unit] { poll =>
+          poll(guard.acquire) // guard inner with a semaphore to prevent parallel inner streams
+        } {
+          case (_, ExitCase.Errored(_)) => F.unit // if there's an error, don't start next stream
+          case _                        => guard.release
+        } >> f(o).interruptWhen(halt.get.attempt)
 
       def haltedF(o: O): F2[Stream[F2, O2]] =
         for {
