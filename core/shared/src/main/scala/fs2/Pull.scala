@@ -947,21 +947,20 @@ object Pull extends PullLowPriority {
             go(scope, extendedTopLevelScope, translation, endRunner, outView(unit))
           }
 
-        def out(head: Chunk[Y], outScope: Scope[F], tail: Pull[G, Y, Unit]): F[End] =
-          interruptGuard(outScope, outView, endRunner) {
-            val fmoc = unconsed(head, tail)
-            val next = outView match {
-              case ev: EvalView[G, X] => fmoc
-              case bv: BindView[G, X, Unit] =>
-                val del = bv.b.asInstanceOf[Bind[G, X, Unit, Unit]].delegate
-                new Bind[G, X, Unit, Unit](fmoc) {
-                  override val delegate: Bind[G, X, Unit, Unit] = del
-                  def cont(yr: Terminal[Unit]): Pull[G, X, Unit] = delegate.cont(yr)
-                }
-            }
-
-            go(outScope, extendedTopLevelScope, translation, endRunner, next)
+        def out(head: Chunk[Y], outScope: Scope[F], tail: Pull[G, Y, Unit]): F[End] = {
+          val fmoc = unconsed(head, tail)
+          val next = outView match {
+            case ev: EvalView[G, X] => fmoc
+            case bv: BindView[G, X, Unit] =>
+              val del = bv.b.asInstanceOf[Bind[G, X, Unit, Unit]].delegate
+              new Bind[G, X, Unit, Unit](fmoc) {
+                override val delegate: Bind[G, X, Unit, Unit] = del
+                def cont(yr: Terminal[Unit]): Pull[G, X, Unit] = delegate.cont(yr)
+              }
           }
+
+          go(outScope, extendedTopLevelScope, translation, endRunner, next)
+        }
 
         def interrupted(scopeId: Unique.Token, err: Option[Throwable]): F[End] = {
           val next = outView(Interrupted(scopeId, err))

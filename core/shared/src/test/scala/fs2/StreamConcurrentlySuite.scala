@@ -149,4 +149,25 @@ class StreamConcurrentlySuite extends Fs2Suite {
     }
   }
 
+  test("bug 2197") {
+    val iterations = 1000
+    Stream
+      .eval((IO.deferred[Unit], IO.ref[Int](0)).tupled)
+      .flatMap { case (done, innerErrorCountRef) =>
+        def handled: IO[Unit] =
+          innerErrorCountRef.modify { old =>
+            (old + 1, if (old < iterations) IO.unit else done.complete(()).void)
+          }.flatten
+        Stream(Stream(()) ++ Stream.raiseError[IO](new Err)).repeat
+          .flatMap { fg =>
+            fg.prefetch.handleErrorWith(_ => Stream.eval(handled)).flatMap(_ => Stream.empty)
+          }
+          .interruptWhen(done.get.attempt)
+          .handleErrorWith(_ => Stream.empty)
+          .drain ++ Stream.eval(innerErrorCountRef.get)
+      }
+      .compile
+      .lastOrError
+      .map(cnt => assert(cnt >= iterations, s"cnt: $cnt, iterations: $iterations"))
+  }
 }
