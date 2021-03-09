@@ -25,10 +25,6 @@ object Ex {
   import cats.effect.IO
   import cats.effect.unsafe.implicits.global
   import scala.concurrent.duration._
-  import cats.effect.implicits._
-  import cats.syntax.all._
-
-
 
   val s = (Stream("elem") ++ Stream.sleep_[IO](200.millis)).repeat.take(5)
   def e =
@@ -55,24 +51,4 @@ object Ex {
       .compile
       .drain
       .unsafeToFuture()
-
-  def e3 =
-    concurrent.SignallingRef[IO, (String, FiniteDuration)]("" -> 0.millis)
-      .flatMap { sig =>
-        sig
-          .discrete
-          .dropWhile(_._1 == "")
-          .switchMap { case (name, duration) =>
-            Stream.exec(IO.println(s"received $name")) ++
-            Stream.sleep[IO](duration).as(name)
-          }.debug(v => s"emitted $v")
-          .compile
-          .drain
-          .background
-          .use { _ =>
-            sig.set("foo", 150.millis) >> IO.sleep(200.millis) >> IO.println("elem") >>
-            sig.set("bar", 150.millis) >> IO.sleep(200.millis) >> IO.println("elem") >>
-            sig.set("baz", 150.millis) >> IO.sleep(200.millis) >> IO.println("elem")
-          }
-      }.unsafeRunSync()
 }
