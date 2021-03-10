@@ -35,7 +35,7 @@ trait Signal[F[_], A] {
     *
     * Updates that are very close together may result in only the last update appearing
     * in the stream. If you want to be notified about every single update, use
-    * a `Queue` instead.
+    * a `Queue` or `Channel` instead.
     */
   def discrete: Stream[F, A]
 

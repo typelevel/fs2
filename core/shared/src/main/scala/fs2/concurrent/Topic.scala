@@ -24,7 +24,6 @@ package concurrent
 
 import cats.effect._
 import cats.syntax.all._
-import cats.effect.std.{Queue => Q}
 import scala.collection.immutable.LongMap
 
 /** Topic allows you to distribute `A`s published by an arbitrary
@@ -104,43 +103,43 @@ object Topic {
 
   /** Constructs a Topic */
   def apply[F[_], A](implicit F: Concurrent[F]): F[Topic[F, A]] =
-    F.ref(LongMap.empty[Q[F, A]] -> 1L)
+    F.ref(LongMap.empty[Channel[F, A]] -> 1L)
       .product(SignallingRef[F, Int](0))
       .map { case (state, subscriberCount) =>
         new Topic[F, A] {
 
           def publish1(a: A): F[Unit] =
             state.get.flatMap { case (subs, _) =>
-              subs.foldLeft(F.unit) { case (op, (_, q)) =>
-                op >> q.offer(a)
+              subs.foldLeft(F.unit) { case (op, (_, chan)) =>
+                op >> chan.send(a).void
               }
             }
 
           def subscribeAwait(maxQueued: Int): Resource[F, Stream[F, A]] =
             Resource
-              .eval(Q.bounded[F, A](maxQueued))
-              .flatMap { q =>
+              .eval(Channel.bounded[F, A](maxQueued))
+              .flatMap { chan =>
                 val subscribe = state.modify { case (subs, id) =>
-                  (subs.updated(id, q), id + 1) -> id
+                  (subs.updated(id, chan), id + 1) -> id
                 } <* subscriberCount.update(_ + 1)
 
                 def unsubscribe(id: Long) =
                   state.modify { case (subs, nextId) =>
-                    // _After_ we remove the bounded queue for this
+                    // _After_ we remove the bounded channel for this
                     // subscriber, we need to drain it to unblock to
                     // publish loop which might have already enqueued
                     // something.
-                    def drainQueue: F[Unit] =
-                      subs.get(id).traverse_ { q =>
-                        q.tryTake.iterateUntil(_.isEmpty)
+                    def drainChannel: F[Unit] =
+                      subs.get(id).traverse_ { chan =>
+                        chan.close >> chan.stream.compile.drain
                       }
 
-                    (subs - id, nextId) -> drainQueue
+                    (subs - id, nextId) -> drainChannel
                   }.flatten >> subscriberCount.update(_ - 1)
 
                 Resource
                   .make(subscribe)(unsubscribe)
-                  .as(Stream.fromQueueUnterminated(q))
+                  .as(chan.stream)
               }
 
           def publish: Pipe[F, A, Nothing] =
