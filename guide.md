@@ -482,7 +482,7 @@ It flattens the nested stream, letting up to `maxOpen` inner streams run at a ti
 
 The `Concurrent` bound on `F` is required anywhere concurrency is used in the library. As mentioned earlier, users can bring their own effect types provided they also supply an `Concurrent` instance in implicit scope.
 
-In addition, there are a number of other concurrency primitives---asynchronous queues, signals, and semaphores. See the [Concurrency Primitives section](concurrency-primitives.html) for more examples. We'll make use of some of these in the next section when discussing how to talk to the external world.
+In addition, there are a number of other concurrency primitives---asynchronous queues, signals, and semaphores. See the [Concurrency Primitives section](concurrency-primitives.md#concurrency-primitives) for more examples. We'll make use of some of these in the next section when discussing how to talk to the external world.
 
 ### Exercises Concurrency
 
@@ -525,10 +525,10 @@ val program =
 // program: Stream[IO[x], Unit] = Stream(..)
 
 program.compile.drain.unsafeRunSync()
-// 13:56:16.588908
-// 13:56:17.589690
-// 13:56:18.588047
-// 13:56:19.588067
+// 11:52:20.220177
+// 11:52:21.219884
+// 11:52:22.220004
+// 11:52:23.219866
 ```
 
 Let's take this line by line now, so we can understand what's going on.
@@ -570,10 +570,10 @@ val program1 =
 // program1: Stream[IO[x], Unit] = Stream(..)
 
 program1.compile.drain.unsafeRunSync()
-// 13:56:21.585736
-// 13:56:22.586169
-// 13:56:23.585632
-// 13:56:24.585993
+// 11:52:25.225359
+// 11:52:26.225037
+// 11:52:27.225321
+// 11:52:28.224758
 ```
 
 ### Talking to the external world
@@ -606,7 +606,7 @@ The way you bring synchronous effects into your effect type may differ. `Sync.de
 import cats.effect.Sync
 
 val T = Sync[IO]
-// T: cats.effect.kernel.Async[IO] = cats.effect.IO$$anon$1@11275c66
+// T: cats.effect.kernel.Async[IO] = cats.effect.IO$$anon$1@78c1bd03
 val s2 = Stream.exec(T.delay { destroyUniverse() }) ++ Stream("...moving on")
 // s2: Stream[IO[x], String] = Stream(..)
 s2.compile.toVector.unsafeRunSync()
@@ -739,13 +739,13 @@ stream.toUnicastPublisher
 //   source = Bind(
 //     source = Bind(
 //       source = Allocate(
-//         resource = cats.effect.kernel.Resource$$$Lambda$7439/0x0000000802493840@3bb2d1fd
+//         resource = cats.effect.kernel.Resource$$$Lambda$7438/0x0000000802499840@19b7fa47
 //       ),
-//       fs = cats.effect.kernel.Resource$$Lambda$7969/0x0000000802688040@1dacb668
+//       fs = cats.effect.kernel.Resource$$Lambda$7966/0x000000080267d040@1bc718c
 //     ),
-//     fs = cats.effect.std.Dispatcher$$$Lambda$7970/0x0000000802688840@420597d0
+//     fs = cats.effect.std.Dispatcher$$$Lambda$7967/0x000000080267c040@2e10a722
 //   ),
-//   fs = cats.effect.kernel.Resource$$Lambda$7969/0x0000000802688040@7f0fe921
+//   fs = cats.effect.kernel.Resource$$Lambda$7966/0x000000080267d040@7c031099
 // )
 ```
 
@@ -757,19 +757,19 @@ val publisher: Resource[IO, StreamUnicastPublisher[IO, Int]] = Stream(1, 2, 3).c
 //   source = Bind(
 //     source = Bind(
 //       source = Allocate(
-//         resource = cats.effect.kernel.Resource$$$Lambda$7439/0x0000000802493840@442db851
+//         resource = cats.effect.kernel.Resource$$$Lambda$7438/0x0000000802499840@13901bde
 //       ),
-//       fs = cats.effect.kernel.Resource$$Lambda$7969/0x0000000802688040@44eb1714
+//       fs = cats.effect.kernel.Resource$$Lambda$7966/0x000000080267d040@77f346ed
 //     ),
-//     fs = cats.effect.std.Dispatcher$$$Lambda$7970/0x0000000802688840@6949525f
+//     fs = cats.effect.std.Dispatcher$$$Lambda$7967/0x000000080267c040@282894c7
 //   ),
-//   fs = cats.effect.kernel.Resource$$Lambda$7969/0x0000000802688040@355f066
+//   fs = cats.effect.kernel.Resource$$Lambda$7966/0x000000080267d040@4044bd1
 // )
 publisher.use { p =>
   p.toStream[IO].compile.toList
 }
 // res50: IO[List[Int]] = Uncancelable(
-//   body = cats.effect.IO$$$Lambda$7445/0x0000000802498040@1524b9a2
+//   body = cats.effect.IO$$$Lambda$7444/0x000000080249e040@16122b79
 // )
 ```
 
