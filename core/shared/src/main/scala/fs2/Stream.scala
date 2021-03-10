@@ -249,7 +249,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
             .flatMap(Stream.chunk)
             .through(pipe)
             .onFinalize {
-              log(s"about to close $i") >> chan.close >> log(s"closed $i") // >> chan.stream.compile.drain >> log(s"drained $i") // for diagnosis
+              log(s"about to close $i") >> chan.close >> log(s"closed $i") >> chan.stream.compile.drain >> log(s"drained $i") // for diagnosis
             }
       }.parJoinUnbounded
         .concurrently(produce)

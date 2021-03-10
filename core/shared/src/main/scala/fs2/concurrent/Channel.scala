@@ -264,17 +264,17 @@ object Channel {
 
                     (
                       State(Vector(), 0, None, Vector.empty, closed),
-                      unblock(blocked) >> Pull.output(toEmit) >> consumeLoop
+                      unblock(blocked).as(Pull.output(toEmit) >> consumeLoop)
                     )
                   } else {
                     println(s"receiving, blocking path, received state $st")
                     (
                       State(values, size, waiting.some, producers, closed),
-                      (Pull.eval(log("receving, blocking path, about to wait") >> waiting.get) >> consumeLoop).unlessA(closed)
+                      (Pull.eval(log("receving, blocking path, about to wait") >> waiting.get) >> consumeLoop).unlessA(closed).pure[F]
                     )
                   }
-              }
-            }
+              }.flatten
+            }.uncancelable.onCancel(log("Canceled in modify loop <<<<<<<<<<"))
           }.flatMap { p =>
             // gets canceled before it can execute the Pull which unblocks the producer
             Pull.eval(log("Doesn't execute")) >> p
@@ -291,7 +291,8 @@ object Channel {
           }
 
         def unblock(producers: Vector[Deferred[F, Unit]]) =
-          Pull.eval(log("receiving, nonblocking path, unblock prods") >> producers.traverse_(_.complete(())).onCancel(log("CANCELED WHEN FULFILLING")))
+          // Pull.eval(log("receiving, nonblocking path, unblock prods") >> 
+            log("helloooo") >> producers.traverse_(_.complete(())).onCancel(log("CANCELED WHEN FULFILLING"))//)
 
         def signalClosure = closedGate.complete(())
       }
