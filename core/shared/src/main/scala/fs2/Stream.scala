@@ -234,7 +234,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       def produce = (chunks ++ Stream.exec(close)).evalMap { chunk =>
         channels.zipWithIndex.traverse_ { case (c, i) =>
           log(s"sending chunk $chunk to channel $i") >>
-          c.send(chunk).onCancel(log(s"canceling $i, blocked on sending $chunk")) >>
+          c.send(chunk).onCancel(log(s"canceling $i, blocked on sending $chunk")) >> // .race(c.closed).void >> // <-- This fixes it
           log(s"sent chunk $chunk to channel $i")
         } >> log(s"Chunk $chunk sent")
       }
@@ -249,7 +249,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
             .flatMap(Stream.chunk)
             .through(pipe)
             .onFinalize {
-              log(s"about to close $i") >> chan.close >> log(s"closed $i") >> chan.stream.compile.drain >> log(s"drained $i")
+              log(s"about to close $i") >> chan.close >> log(s"closed $i") // >> chan.stream.compile.drain >> log(s"drained $i") // for diagnosis
             }
       }.parJoinUnbounded
         .concurrently(produce)

@@ -42,15 +42,15 @@ object Ex {
         .range(0, 10)
         .covary[IO]
         .broadcastThrough[IO, Unit](
-          _.evalMap(e => IO.println(s"elem $e received by consumer 0")).interruptAfter(2.nanos),
-         _.evalMap(e => IO.println(s"elem $e received by consumer 1")),
-         _.evalMap(e => IO.println(s"elem $e received by consumer 2")),
+          _.evalMap(e => IO.println(s"Ex: elem $e received by consumer 0")).interruptAfter(2.nanos),
+         _.evalMap(e => IO.println(s"Ex: elem $e received by consumer 1")),
+         _.evalMap(e => IO.println(s"Ex: elem $e received by consumer 2")),
         )
         .compile
         .drain
-        .flatMap(_ => IO.println("done \n\n\n"))
-        .onCancel(IO.println("canceled"))
-        .timeout2(5.seconds, "DEADLOCK") >> go
+        .flatMap(_ => IO.println("Ex: done \n\n\n"))
+        .onCancel(IO.println("Ex: canceled"))
+        .timeout2(5.seconds, "Ex: DEADLOCK") >> go
 
     go
   }.unsafeToFuture()
