@@ -2125,7 +2125,6 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   ): Stream[F2, O] =
     Stream.eval(Channel.bounded[F2, Chunk[O]](n)).flatMap { chan =>
       chan.stream.flatMap(Stream.chunk).concurrently {
-        // chunks.evalMap(chan.send) ++ Stream.exec(chan.close) TODO choose
         (chunks ++ Stream.exec(chan.close.void)).evalMap(chan.send)
       }
     }
@@ -3646,7 +3645,6 @@ object Stream extends StreamLowPriority {
     def observe(p: Pipe[F, O, INothing])(implicit F: Concurrent[F]): Stream[F, O] =
       observeAsync(1)(p)
 
-    // TODO Channel
     /** Send chunks through `p`, allowing up to `maxQueued` pending _chunks_ before blocking `s`. */
     def observeAsync(
         maxQueued: Int
