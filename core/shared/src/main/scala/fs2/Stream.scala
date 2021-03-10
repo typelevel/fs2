@@ -224,7 +224,9 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       pipes: Pipe[F2, O, O2]*
   ): Stream[F2, O2] =
     Stream.eval {
-      Vector.fill(pipes.length)(Channel.boundedBC[F2, Chunk[O]](1)).sequence
+      val normalChan = Channel.bounded[F2, Chunk[O]](1)
+      val loggedChan = Channel.boundedBC[F2, Chunk[O]](1)
+      (loggedChan +: Vector.fill(pipes.length - 1)(normalChan)).sequence
     }.flatMap { channels =>
       def log(s: String) = ().pure[F2].map(_ => println(s))
       def close = channels.traverse_(_.close.void)

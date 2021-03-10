@@ -43,9 +43,8 @@ object Ex {
         .covary[IO]
         .broadcastThrough[IO, Unit](
           _.evalMap(e => IO.println(s"elem $e received by consumer 0")).interruptAfter(2.nanos),
-          _.evalMap(e => IO.println(s"elem $e received by consumer 1")),
-          _.evalMap(e => IO.println(s"elem $e received by consumer 2")),
-
+         _.evalMap(e => IO.println(s"elem $e received by consumer 1")),
+         _.evalMap(e => IO.println(s"elem $e received by consumer 2")),
         )
         .compile
         .drain
