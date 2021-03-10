@@ -157,15 +157,20 @@ object Channel {
 
                     (
                       State(Vector(), 0, None, Vector.empty, closed),
-                      Pull.output(toEmit) >> unblock(blocked) >> consumeLoop
+                      // unblock needs to execute in F, so we can make it uncancelable
+                      unblock(blocked).as(
+                        Pull.output(toEmit) >> consumeLoop
+                      )
                     )
                   } else {
                     (
                       State(values, size, waiting.some, producers, closed),
-                      (Pull.eval(waiting.get) >> consumeLoop).unlessA(closed)
+                      F.pure(
+                        (Pull.eval(waiting.get) >> consumeLoop).unlessA(closed)
+                      )
                     )
                   }
-              }
+              }.flatten.uncancelable
             }
           }.flatten
 
@@ -180,7 +185,7 @@ object Channel {
           }
 
         def unblock(producers: Vector[Deferred[F, Unit]]) =
-          Pull.eval(producers.traverse_(_.complete(())))
+          producers.traverse_(_.complete(()))
 
         def signalClosure = closedGate.complete(())
       }

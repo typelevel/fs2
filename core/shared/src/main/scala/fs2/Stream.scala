@@ -224,63 +224,27 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       pipes: Pipe[F2, O, O2]*
   ): Stream[F2, O2] =
     Stream.eval {
-      val normalChan = Channel.bounded[F2, Chunk[O]](1)
-      val loggedChan = Channel.boundedBC[F2, Chunk[O]](1)
-      (loggedChan +: Vector.fill(pipes.length - 1)(normalChan)).sequence
+      val chan = Channel.synchronous[F2, Chunk[O]] // TODO synchronoous or bounded(1)
+      Vector.fill(pipes.length)(chan).sequence
     }.flatMap { channels =>
-      def log(s: String) = ().pure[F2].map(_ => println(s))
       def close = channels.traverse_(_.close.void)
-
       def produce = (chunks ++ Stream.exec(close)).evalMap { chunk =>
-        channels.zipWithIndex.traverse_ { case (c, i) =>
-          log(s"sending chunk $chunk to channel $i") >>
-          c.send(chunk).onCancel(log(s"canceling $i, blocked on sending $chunk")) >> // .race(c.closed).void >> // <-- This fixes it
-          log(s"sent chunk $chunk to channel $i")
-        } >> log(s"Chunk $chunk sent")
+        channels.traverse_(_.send(chunk))
       }
 
       Stream.emits(
         pipes.zipWithIndex
       ).map { case (pipe, i) =>
           val chan = channels(i)
-          Stream.exec(log(s"consumer $i started")) ++
+
           chan
             .stream
             .flatMap(Stream.chunk)
             .through(pipe)
-            .onFinalize {
-              log(s"about to close $i") >> chan.close >> log(s"closed $i") >> chan.stream.compile.drain >> log(s"drained $i") // for diagnosis
-            }
+            .onFinalize(chan.close >> chan.stream.compile.drain)
       }.parJoinUnbounded
         .concurrently(produce)
     }
-    // Stream
-    //   .eval {
-    //     (
-    //       CountDownLatch[F2](pipes.length),
-    //       fs2.concurrent.Topic[F2, Option[Chunk[O]]]
-    //     ).tupled
-    //   }
-    //   .flatMap { case (latch, topic) =>
-    //     def produce = chunks.noneTerminate.through(topic.publish)
-
-    //     def consume(pipe: Pipe[F2, O, O2]): Pipe[F2, Option[Chunk[O]], O2] =
-    //       _.unNoneTerminate.flatMap(Stream.chunk).through(pipe)
-
-    //     Stream(pipes: _*)
-    //       .map { pipe =>
-    //         Stream
-    //           .resource(topic.subscribeAwait(1))
-    //           .flatMap { sub =>
-    //             // crucial that awaiting on the latch is not passed to
-    //             // the pipe, so that the pipe cannot interrupt it and alter
-    //             // the latch count
-    //             Stream.exec(latch.release >> latch.await) ++ sub.through(consume(pipe))
-    //           }
-    //       }
-    //       .parJoinUnbounded
-    //       .concurrently(Stream.eval(latch.await) ++ produce)
-    //   }
 
   /** Behaves like the identity function, but requests `n` elements at a time from the input.
     *
