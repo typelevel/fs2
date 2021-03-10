@@ -149,8 +149,8 @@ object Channel {
         def consumeLoop: Pull[F, A, Unit] =
           Pull.eval {
             F.deferred[Unit].flatMap { waiting =>
-              state.modify {
-                case State(values, size, ignorePreviousWaiting @ _, producers, closed) =>
+              state
+                .modify { case State(values, size, ignorePreviousWaiting @ _, producers, closed) =>
                   if (values.nonEmpty || producers.nonEmpty) {
                     val (extraValues, blocked) = producers.separateFoldable
                     val toEmit = Chunk.vector(values ++ extraValues)
@@ -170,7 +170,9 @@ object Channel {
                       )
                     )
                   }
-              }.flatten.uncancelable
+                }
+                .flatten
+                .uncancelable
             }
           }.flatten
 
@@ -220,7 +222,7 @@ object Channel {
 
                 case st @ State(values, size, waiting, producers, closed @ false) =>
                   if (size < capacity) {
-                    println(s"sending, unbounded path, received state $st") 
+                    println(s"sending, unbounded path, received state $st")
                     (
                       State(values :+ a, size + 1, None, producers, false),
                       notifyStream(waiting)
@@ -258,32 +260,39 @@ object Channel {
         def stream = consumeLoop.stream
 
         def consumeLoop: Pull[F, A, Unit] =
-          Pull.eval {
-            F.deferred[Unit].flatMap { waiting =>
-              state.modify {
-                case st @ State(values, size, ignorePreviousWaiting @ _, producers, closed) =>
-                  if (values.nonEmpty || producers.nonEmpty) {
-                    println(s"receiving, immediate path, received state $st")
-                    val (extraValues, blocked) = producers.separateFoldable
-                    val toEmit = Chunk.vector(values ++ extraValues)
+          Pull
+            .eval {
+              F.deferred[Unit]
+                .flatMap { waiting =>
+                  state.modify {
+                    case st @ State(values, size, ignorePreviousWaiting @ _, producers, closed) =>
+                      if (values.nonEmpty || producers.nonEmpty) {
+                        println(s"receiving, immediate path, received state $st")
+                        val (extraValues, blocked) = producers.separateFoldable
+                        val toEmit = Chunk.vector(values ++ extraValues)
 
-                    (
-                      State(Vector(), 0, None, Vector.empty, closed),
-                      unblock(blocked).as(Pull.output(toEmit) >> consumeLoop)
-                    )
-                  } else {
-                    println(s"receiving, blocking path, received state $st")
-                    (
-                      State(values, size, waiting.some, producers, closed),
-                      (Pull.eval(log("receving, blocking path, about to wait") >> waiting.get) >> consumeLoop).unlessA(closed).pure[F]
-                    )
-                  }
-              }.flatten
-            }.uncancelable.onCancel(log("Canceled in modify loop <<<<<<<<<<"))
-          }.flatMap { p =>
-            // gets canceled before it can execute the Pull which unblocks the producer
-            Pull.eval(log("Doesn't execute")) >> p
-          }
+                        (
+                          State(Vector(), 0, None, Vector.empty, closed),
+                          unblock(blocked).as(Pull.output(toEmit) >> consumeLoop)
+                        )
+                      } else {
+                        println(s"receiving, blocking path, received state $st")
+                        (
+                          State(values, size, waiting.some, producers, closed),
+                          (Pull.eval(
+                            log("receving, blocking path, about to wait") >> waiting.get
+                          ) >> consumeLoop).unlessA(closed).pure[F]
+                        )
+                      }
+                  }.flatten
+                }
+                .uncancelable
+                .onCancel(log("Canceled in modify loop <<<<<<<<<<"))
+            }
+            .flatMap { p =>
+              // gets canceled before it can execute the Pull which unblocks the producer
+              Pull.eval(log("Doesn't execute")) >> p
+            }
 
         def notifyStream(waitForChanges: Option[Deferred[F, Unit]]) =
           waitForChanges.traverse(_.complete(())).as(Channel.open)
@@ -296,8 +305,10 @@ object Channel {
           }
 
         def unblock(producers: Vector[Deferred[F, Unit]]) =
-          // Pull.eval(log("receiving, nonblocking path, unblock prods") >> 
-            log("helloooo") >> producers.traverse_(_.complete(())).onCancel(log("CANCELED WHEN FULFILLING"))//)
+          // Pull.eval(log("receiving, nonblocking path, unblock prods") >>
+          log("helloooo") >> producers
+            .traverse_(_.complete(()))
+            .onCancel(log("CANCELED WHEN FULFILLING")) //)
 
         def signalClosure = closedGate.complete(())
       }

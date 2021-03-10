@@ -223,28 +223,32 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   def broadcastThrough[F2[x] >: F[x]: Concurrent, O2](
       pipes: Pipe[F2, O, O2]*
   ): Stream[F2, O2] =
-    Stream.eval {
-      val chan = Channel.synchronous[F2, Chunk[O]] // TODO synchronoous or bounded(1)
-      Vector.fill(pipes.length)(chan).sequence
-    }.flatMap { channels =>
-      def close = channels.traverse_(_.close.void)
-      def produce = (chunks ++ Stream.exec(close)).evalMap { chunk =>
-        channels.traverse_(_.send(chunk))
+    Stream
+      .eval {
+        val chan = Channel.synchronous[F2, Chunk[O]] // TODO synchronoous or bounded(1)
+        Vector.fill(pipes.length)(chan).sequence
       }
+      .flatMap { channels =>
+        def close = channels.traverse_(_.close.void)
+        def produce = (chunks ++ Stream.exec(close)).evalMap { chunk =>
+          channels.traverse_(_.send(chunk))
+        }
 
-      Stream.emits(
-        pipes.zipWithIndex
-      ).map { case (pipe, i) =>
-          val chan = channels(i)
+        Stream
+          .emits(
+            pipes.zipWithIndex
+          )
+          .map { case (pipe, i) =>
+            val chan = channels(i)
 
-          chan
-            .stream
-            .flatMap(Stream.chunk)
-            .through(pipe)
-            .onFinalize(chan.close >> chan.stream.compile.drain)
-      }.parJoinUnbounded
-        .concurrently(produce)
-    }
+            chan.stream
+              .flatMap(Stream.chunk)
+              .through(pipe)
+              .onFinalize(chan.close >> chan.stream.compile.drain)
+          }
+          .parJoinUnbounded
+          .concurrently(produce)
+      }
 
   /** Behaves like the identity function, but requests `n` elements at a time from the input.
     *

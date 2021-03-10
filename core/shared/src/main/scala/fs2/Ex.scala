@@ -30,7 +30,7 @@ object Ex {
     def timeout2(f: FiniteDuration, s: String) =
       a.racePair(IO.sleep(f)).flatMap {
         case Left((_, sleeper)) => sleeper.cancel
-        case Right((fiber, _)) => IO.println(s) >> fiber.cancel >> IO.raiseError(new Exception)
+        case Right((fiber, _))  => IO.println(s) >> fiber.cancel >> IO.raiseError(new Exception)
       }
 
   }
@@ -43,8 +43,8 @@ object Ex {
         .covary[IO]
         .broadcastThrough[IO, Unit](
           _.evalMap(e => IO.println(s"Ex: elem $e received by consumer 0")).interruptAfter(2.nanos),
-         _.evalMap(e => IO.println(s"Ex: elem $e received by consumer 1")),
-         _.evalMap(e => IO.println(s"Ex: elem $e received by consumer 2")),
+          _.evalMap(e => IO.println(s"Ex: elem $e received by consumer 1")),
+          _.evalMap(e => IO.println(s"Ex: elem $e received by consumer 2"))
         )
         .compile
         .drain
