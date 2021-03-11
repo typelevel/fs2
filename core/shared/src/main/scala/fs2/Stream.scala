@@ -39,6 +39,7 @@ import fs2.concurrent.{Queue => _, _}
 import fs2.internal._
 import scala.collection.mutable.ArrayBuffer
 import scala.collection.immutable.TreeMap
+import cats.data.NonEmptyList
 
 /** A stream producing output of type `O` and which may evaluate `F` effects.
   *
@@ -1990,7 +1991,20 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   )(implicit F2: Applicative[F2]): Stream[F2, O] =
     new Stream(Pull.acquire[F2, Unit](F2.unit, (_, ec) => f(ec)).flatMap(_ => underlying))
 
-  def prevParEvalMap[F2[x] >: F[x], O2](
+  /** Like [[Stream#evalMap]], but will evaluate effects in parallel, emitting the results
+    * downstream in the same order as the input stream. The number of concurrent effects
+    * is limited by the `maxConcurrent` parameter.
+    *
+    * See [[Stream#parEvalMapUnordered]] if there is no requirement to retain the order of
+    * the original stream.
+    *
+    * @example {{{
+    * scala> import cats.effect.IO, cats.effect.unsafe.implicits.global
+    * scala> Stream(1,2,3,4).covary[IO].parEvalMap(2)(i => IO(println(i))).compile.drain.unsafeRunSync()
+    * res0: Unit = ()
+    * }}}
+    */
+  def parEvalMap[F2[x] >: F[x], O2](
       maxConcurrent: Int
   )(f: O => F2[O2])(implicit F: Concurrent[F2]): Stream[F2, O2] = {
     val fstream: F2[Stream[F2, O2]] = for {
@@ -2026,56 +2040,6 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     Stream.eval(fstream).flatten
   }
 
-  /** Like [[Stream#evalMap]], but will evaluate effects in parallel, emitting the results
-    * downstream in the same order as the input stream. The number of concurrent effects
-    * is limited by the `maxConcurrent` parameter.
-    *
-    * See [[Stream#parEvalMapUnordered]] if there is no requirement to retain the order of
-    * the original stream.
-    *
-    * @example {{{
-    * scala> import cats.effect.IO, cats.effect.unsafe.implicits.global
-    * scala> Stream(1,2,3,4).covary[IO].parEvalMap(2)(i => IO(println(i))).compile.drain.unsafeRunSync()
-    * res0: Unit = ()
-    * }}}
-    */
-  def parEvalMap[F2[x] >: F[x], O2](
-      maxConcurrent: Int
-  )(f: O => F2[O2])(implicit F: Concurrent[F2]): Stream[F2, O2] = {
-    def reorder(stream: Stream[F2, (O2, Long)], ind: Int, acc: TreeMap[Long, O2]): Pull[F2, O2, Unit] =
-      stream
-        .pull
-        .uncons1
-        .flatMap {
-          case None =>
-            Pull.output(Chunk.iterable(acc.toIterable.map(_._2)))
-          case Some(((el, l), tail)) =>
-            val nAcc = acc + (l -> el)
-            if(nAcc.firstKey == ind) Pull.output1(nAcc(ind)) >> reorder(tail, ind + 1, nAcc.drop(1))
-            else reorder(tail, ind, nAcc)
-        }
-
-    Stream
-      .eval(Ref[F2].of(TreeMap.empty[Long, Deferred[F2, Unit]]))
-      .flatMap { ref =>
-        zipWithIndex
-          .covary[F2]
-          .evalTap { el =>
-            val register = Deferred[F2, Unit].flatMap(d => ref.update(_ + (el._2 -> d)))
-            val block = ref.get.flatMap(t => t.get(el._2 - maxConcurrent).fold(().pure[F2])(_.get))
-            register *> block
-          }
-          .parEvalMapUnordered(maxConcurrent)(el => (f(el._1)).tupleRight(el._2))
-          .evalTap { el =>
-            val unregister = ref.update(_ - el._2)
-            val unblock = ref.get.flatMap(t => t(el._2).complete(()))
-            unblock *> unregister
-          }
-          .through(stream => reorder(stream, 0, TreeMap.empty).stream)
-      }
-  }
-
-  
   def prevParEvalMapUnordered[F2[x] >: F[x]: Concurrent, O2](
       maxConcurrent: Int
   )(f: O => F2[O2]): Stream[F2, O2] =
@@ -2094,32 +2058,46 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     */
   def parEvalMapUnordered[F2[x] >: F[x]: Concurrent, O2](
       maxConcurrent: Int
-  )(f: O => F2[O2]): Stream[F2, O2] =
+  )(f: O => F2[O2]): Stream[F2, O2] = {
+    assert(maxConcurrent > 0, "maxConcurrent must be > 0, was: " + maxConcurrent)
+
     Stream
       .eval {
         (
           Semaphore[F2](maxConcurrent),
-          Queue.bounded[F2, O2](1),
-          Deferred[F2, Unit],
+          Queue.bounded[F2, Option[O2]](1),
+          Ref[F2].of(none[Either[NonEmptyList[Throwable], Unit]]),
           Deferred[F2, Either[Throwable, Unit]]
         ).tupled
       }
-      .flatMap { case (semaphore, queue, seenNone, halter) =>
+      .flatMap { case (semaphore, queue, results, stopReading) =>
         val completeQueue =
-          seenNone.tryGet
-            .flatMap(_.fold(false.pure[F2])(_ => semaphore.available.map(_ == maxConcurrent)))
-            .flatMap(bool => if (bool) halter.complete(().asRight).void else ().pure[F2])
+          for {
+            completed <- results.get
+            avail <- semaphore.available
+            _ <- queue.offer(none).whenA(completed.nonEmpty && avail == maxConcurrent)
+          } yield {}
 
         val pullExecAndOutput =
           noneTerminate
+            .interruptWhen(stopReading)
             .flatMap { opt =>
               Stream.exec {
-                val nonAction = semaphore.permit.use(_ => seenNone.complete(())) *> completeQueue
-                opt.fold(nonAction) { el =>
+                val nonAction = semaphore.permit.use(_ => results.update(_.getOrElse(().asRight).some))
+                opt.fold(nonAction *> completeQueue) { el =>
                   val running =
                     f(el)
-                      .flatMap(result => queue.offer(result))
-                      .onError { case ex => halter.complete(ex.asLeft).void }
+                      .flatMap(result => queue.offer(result.some))
+                      .onError { case ex =>
+                        val update =
+                          results
+                            .update {
+                              case Some(Left(exs)) => exs.prepend(ex).asLeft.some
+                              case _ => NonEmptyList.one(ex).asLeft.some
+                            }
+
+                        stopReading.complete(().asRight) *> update.void
+                      }
                       .guarantee(semaphore.release *> completeQueue)
                       .start
                       .void
@@ -2129,8 +2107,15 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
               }
             }
 
-        Stream.fromQueueUnterminated(queue).interruptWhen(halter).concurrently(pullExecAndOutput)
+        val completeStream =
+          results.get.map {
+            case Some(Left(nel)) => Stream.raiseError[F2](CompositeFailure.fromNel(nel))
+            case _ => Stream.empty
+          }
+
+        Stream.fromQueueNoneTerminated(queue).concurrently(pullExecAndOutput) ++ Stream.force(completeStream)
       }
+    }
 
   /** Concurrent zip.
     *
