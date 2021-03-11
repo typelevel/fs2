@@ -45,21 +45,20 @@ class TopicSuite extends Fs2Suite {
 
       // Ensures all subs are registered before consuming
       val subscriptions =
-        Stream
-          .range(0, subs)
-          .covary[IO]
-          .foldMap { i =>
-            Stream
-              .resource(topic.subscribeAwait(Int.MaxValue))
-              .tupleLeft(i)
-          }
+        Vector
+          .fill(subs)(topic.subscribeAwait(Int.MaxValue))
+          .sequence
+          .map(_.zipWithIndex)
 
       def consume(i: Int, sub: Stream[IO, Int]) =
-        sub.take(count.toLong).foldMap(Vector(_)).tupleLeft(i)
+        sub.foldMap(Vector(_)).tupleLeft(i)
 
-      subscriptions
+      Stream
+        .resource(subscriptions)
         .flatMap {
-          _.map { case (id, sub) => consume(id, sub) }
+          Stream
+            .emits(_)
+            .map { case (sub, id) => consume(id, sub) }
             .append(publisher.drain)
             .parJoin(subs + 1)
         }
@@ -71,6 +70,54 @@ class TopicSuite extends Fs2Suite {
         }
     }
   }
+
+  test("unregister subscribers under concurrent load") {
+    Topic[IO, Int].flatMap { topic =>
+      val count = 100
+      val subs = 10
+      val expected =
+        0
+          .until(subs)
+          .map(_ -> 0.until(count).toVector)
+          .filter(_._1 % 2 == 0) // remove the ones that will be interrupted
+          .toMap
+
+      val publisher =
+        Stream
+          .range(0, count)
+          .covary[IO]
+          .through(topic.publish)
+
+      // Ensures all subs are registered before consuming
+      val subscriptions =
+        Vector
+          .fill(subs)(topic.subscribeAwait(Int.MaxValue))
+          .sequence
+          .map(_.zipWithIndex)
+
+      def consume(i: Int, sub: Stream[IO, Int]) =
+        if (i % 2 == 0)
+          sub.foldMap(Vector(_)).tupleLeft(i)
+        else sub.foldMap(Vector(_)).tupleLeft(i).interruptAfter(1.nano)
+
+      Stream
+        .resource(subscriptions)
+        .flatMap {
+          Stream
+            .emits(_)
+            .map { case (sub, id) => consume(id, sub) }
+            .append(publisher.drain)
+            .parJoin(subs + 1)
+        }
+        .compile
+        .toVector
+        .map { result =>
+          assertEquals(result.toMap.size, subs / 2)
+          assertEquals(result.toMap, expected)
+        }
+    }
+  }
+
 
   test("synchronous publish".flaky) {
     // TODO I think there's a race condition on the signal in this test
@@ -129,18 +176,5 @@ class TopicSuite extends Fs2Suite {
     p.compile.toList
       .map(it => assert(it.size <= 11))
     // if the stream won't be discrete we will get much more size notifications
-  }
-
-  test("unregister subscribers under concurrent load".ignore) {
-    Topic[IO, Int]
-      .flatMap { topic =>
-        Stream
-          .range(0, 500)
-          .map(_ => topic.subscribe(1).interruptWhen(Stream(true)))
-          .parJoinUnbounded
-          .compile
-          .drain >> topic.subscribers.take(1).compile.lastOrError
-      }
-      .assertEquals(0)
   }
 }

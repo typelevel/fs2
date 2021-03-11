@@ -23,6 +23,7 @@ package fs2
 package concurrent
 
 import cats.effect._
+import cats.effect.implicits._
 import cats.syntax.all._
 import scala.collection.immutable.LongMap
 
@@ -40,6 +41,7 @@ abstract class Topic[F[_], A] { self =>
 
   /** Publishes elements from source of `A` to this topic.
     * [[Pipe]] equivalent of `publish1`.
+    * TODO closure
     */
   def publish: Pipe[F, A, Nothing]
 
@@ -84,6 +86,11 @@ abstract class Topic[F[_], A] { self =>
     */
   def subscribers: Stream[F, Int]
 
+ /** TODO scaladoc */
+  def close: F[Unit]
+  def isClosed: F[Boolean]
+  def closed: F[Unit]
+
   /** Returns an alternate view of this `Topic` where its elements are of type `B`,
     * given two functions, `A => B` and `B => A`.
     */
@@ -96,6 +103,9 @@ abstract class Topic[F[_], A] { self =>
       def subscribeAwait(maxQueued: Int): Resource[F, Stream[F, B]] =
         self.subscribeAwait(maxQueued).map(_.map(f))
       def subscribers: Stream[F, Int] = self.subscribers
+      def close: F[Unit] = self.close
+      def isClosed: F[Boolean] = self.isClosed
+      def closed: F[Unit] = self.closed
     }
 }
 
@@ -103,9 +113,11 @@ object Topic {
 
   /** Constructs a Topic */
   def apply[F[_], A](implicit F: Concurrent[F]): F[Topic[F, A]] =
-    F.ref(LongMap.empty[Channel[F, A]] -> 1L)
-      .product(SignallingRef[F, Int](0))
-      .map { case (state, subscriberCount) =>
+    (
+      F.ref(LongMap.empty[Channel[F, A]] -> 1L),
+      SignallingRef[F, Int](0),
+      F.deferred[Unit]
+    ).mapN { case (state, subscriberCount, signalClosure) =>
         new Topic[F, A] {
 
           def publish1(a: A): F[Unit] =
@@ -142,13 +154,23 @@ object Topic {
                   .as(chan.stream)
               }
 
-          def publish: Pipe[F, A, Nothing] =
-            _.evalMap(publish1).drain
+          def publish: Pipe[F, A, Nothing] = in =>
+            (in ++ Stream.exec(close)).evalMap(publish1).drain
 
           def subscribe(maxQueued: Int): Stream[F, A] =
             Stream.resource(subscribeAwait(maxQueued)).flatten
 
           def subscribers: Stream[F, Int] = subscriberCount.discrete
+
+          def close: F[Unit] =
+            state.get.flatMap { case (subs, _) =>
+              subs.foldLeft(F.unit) { case (op, (_, chan)) =>
+                op >> chan.close.void
+              } <* signalClosure.complete(())
+            }.uncancelable
+
+          def closed: F[Unit] = signalClosure.get
+          def isClosed: F[Boolean] = signalClosure.tryGet.map(_.isDefined)
         }
-      }
+    }
 }
