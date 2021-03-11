@@ -225,7 +225,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   ): Stream[F2, O2] =
     Stream
       .eval {
-        val chan = Channel.bounded[F2, Chunk[O]](1)
+        val chan = Channel.synchronous[F2, Chunk[O]]
         Vector.fill(pipes.length)(chan).sequence
       }
       .flatMap { channels =>
