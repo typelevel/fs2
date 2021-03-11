@@ -38,7 +38,6 @@ import fs2.compat._
 import fs2.concurrent.{Queue => _, _}
 import fs2.internal._
 import scala.collection.mutable.ArrayBuffer
-import scala.collection.immutable.TreeMap
 import cats.data.NonEmptyList
 
 /** A stream producing output of type `O` and which may evaluate `F` effects.
@@ -2061,16 +2060,13 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   )(f: O => F2[O2]): Stream[F2, O2] = {
     assert(maxConcurrent > 0, "maxConcurrent must be > 0, was: " + maxConcurrent)
 
-    Stream
-      .eval {
-        (
-          Semaphore[F2](maxConcurrent),
-          Queue.bounded[F2, Option[O2]](1),
-          Ref[F2].of(none[Either[NonEmptyList[Throwable], Unit]]),
-          Deferred[F2, Either[Throwable, Unit]]
-        ).tupled
-      }
-      .flatMap { case (semaphore, queue, results, stopReading) =>
+    val action =
+      (
+        Semaphore[F2](maxConcurrent),
+        Queue.bounded[F2, Option[O2]](1),
+        Ref[F2].of(none[Either[NonEmptyList[Throwable], Unit]]),
+        Deferred[F2, Either[Throwable, Unit]]
+      ).mapN { (semaphore, queue, results, stopReading) =>
         val completeQueue =
           for {
             completed <- results.get
@@ -2118,6 +2114,8 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
 
         Stream.fromQueueNoneTerminated(queue).concurrently(pullExecAndOutput) ++ completeStream
       }
+
+    Stream.force(action)
   }
 
   /** Concurrent zip.

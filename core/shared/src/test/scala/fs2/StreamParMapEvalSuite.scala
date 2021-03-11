@@ -31,7 +31,7 @@ class StreamParMapEvalSuite extends Fs2Suite {
 
   private def sleepAndEmit(i: Int) = IO.sleep(i.millis).as(i)
   private def sleepLimit10AndEmit(i: Int) = IO.sleep(math.abs(i % 10).millis).as(i)
-  
+
   property("whole stream should preserve size") {
     forAll { (s: Stream[Pure, Int], n: Int) =>
       val conc = (math.abs(n % 5)) + 1
@@ -59,9 +59,15 @@ class StreamParMapEvalSuite extends Fs2Suite {
   // }
 
   property("parallels one iteration") {
-    val io = Stream.constant(()).take(100).covary[IO].parEvalMap(100)(_ => IO.sleep(100.millis)).compile.drain
+    val io = Stream
+      .constant(())
+      .take(100)
+      .covary[IO]
+      .parEvalMap(100)(_ => IO.sleep(100.millis))
+      .compile
+      .drain
     val dur = Clock[IO].timed(io).unsafeRunSync()._1.toMillis
-    assert(100 < dur && dur < 10_000)
+    assert(100 < dur && dur < 1000)
   }
 
   test("sorts by execution time") {
@@ -73,7 +79,8 @@ class StreamParMapEvalSuite extends Fs2Suite {
   test("all that launched before before error should remain") {
     val before = List(70, 60, 50).map(sleepAndEmit)
     val after = List(30, 20, 10).map(sleepAndEmit)
-    val list = before :+ IO.sleep(10.millis) *> IO.raiseError(new IllegalArgumentException) :++ after
+    val error = IO.sleep(10.millis) *> IO.raiseError(new IllegalArgumentException)
+    val list = before :+ error :++ after
     val s = Stream.emits(list).covary[IO].parEvalMapUnordered(5)(identity)
 
     val recovered = s.compile.toList.recover(ex => List(-1)).unsafeRunSync()
@@ -81,13 +88,12 @@ class StreamParMapEvalSuite extends Fs2Suite {
 
     assertEquals(recovered, List(-1))
     // three options possible:
-    val bool1 = masked == List(20,30,50,60,70)
-    val bool2 = masked == List(30,20,50,60,70)
-    val bool3 = masked == List(30,50,60,70)
+    val bool1 = masked == List(20, 30, 50, 60, 70)
+    val bool2 = masked == List(30, 20, 50, 60, 70)
+    val bool3 = masked == List(30, 50, 60, 70)
 
     assert(bool1 || bool2 || bool3)
   }
 
-  
   // (++ should have weird bahavior?)
 }
