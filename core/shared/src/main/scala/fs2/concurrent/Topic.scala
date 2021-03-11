@@ -86,7 +86,7 @@ abstract class Topic[F[_], A] { self =>
     */
   def subscribers: Stream[F, Int]
 
- /** TODO scaladoc */
+  /** TODO scaladoc */
   def close: F[Unit]
   def isClosed: F[Boolean]
   def closed: F[Unit]
@@ -118,59 +118,58 @@ object Topic {
       SignallingRef[F, Int](0),
       F.deferred[Unit]
     ).mapN { case (state, subscriberCount, signalClosure) =>
-        new Topic[F, A] {
+      new Topic[F, A] {
 
-          def publish1(a: A): F[Unit] =
-            state.get.flatMap { case (subs, _) =>
-              subs.foldLeft(F.unit) { case (op, (_, chan)) =>
-                op >> chan.send(a).void
-              }
+        def publish1(a: A): F[Unit] =
+          state.get.flatMap { case (subs, _) =>
+            subs.foldLeft(F.unit) { case (op, (_, chan)) =>
+              op >> chan.send(a).void
+            }
+          }
+
+        def subscribeAwait(maxQueued: Int): Resource[F, Stream[F, A]] =
+          Resource
+            .eval(Channel.bounded[F, A](maxQueued))
+            .flatMap { chan =>
+              val subscribe = state.modify { case (subs, id) =>
+                (subs.updated(id, chan), id + 1) -> id
+              } <* subscriberCount.update(_ + 1)
+
+              def unsubscribe(id: Long) =
+                state.modify { case (subs, nextId) =>
+                  // _After_ we remove the bounded channel for this
+                  // subscriber, we need to drain it to unblock to
+                  // publish loop which might have already enqueued
+                  // something.
+                  def drainChannel: F[Unit] =
+                    subs.get(id).traverse_ { chan =>
+                      chan.close >> chan.stream.compile.drain
+                    }
+
+                  (subs - id, nextId) -> drainChannel
+                }.flatten >> subscriberCount.update(_ - 1)
+
+              Resource
+                .make(subscribe)(unsubscribe)
+                .as(chan.stream)
             }
 
-          def subscribeAwait(maxQueued: Int): Resource[F, Stream[F, A]] =
-            Resource
-              .eval(Channel.bounded[F, A](maxQueued))
-              .flatMap { chan =>
-                val subscribe = state.modify { case (subs, id) =>
-                  (subs.updated(id, chan), id + 1) -> id
-                } <* subscriberCount.update(_ + 1)
+        def publish: Pipe[F, A, Nothing] = in => (in ++ Stream.exec(close)).evalMap(publish1).drain
 
-                def unsubscribe(id: Long) =
-                  state.modify { case (subs, nextId) =>
-                    // _After_ we remove the bounded channel for this
-                    // subscriber, we need to drain it to unblock to
-                    // publish loop which might have already enqueued
-                    // something.
-                    def drainChannel: F[Unit] =
-                      subs.get(id).traverse_ { chan =>
-                        chan.close >> chan.stream.compile.drain
-                      }
+        def subscribe(maxQueued: Int): Stream[F, A] =
+          Stream.resource(subscribeAwait(maxQueued)).flatten
 
-                    (subs - id, nextId) -> drainChannel
-                  }.flatten >> subscriberCount.update(_ - 1)
+        def subscribers: Stream[F, Int] = subscriberCount.discrete
 
-                Resource
-                  .make(subscribe)(unsubscribe)
-                  .as(chan.stream)
-              }
+        def close: F[Unit] =
+          state.get.flatMap { case (subs, _) =>
+            subs.foldLeft(F.unit) { case (op, (_, chan)) =>
+              op >> chan.close.void
+            } <* signalClosure.complete(())
+          }.uncancelable
 
-          def publish: Pipe[F, A, Nothing] = in =>
-            (in ++ Stream.exec(close)).evalMap(publish1).drain
-
-          def subscribe(maxQueued: Int): Stream[F, A] =
-            Stream.resource(subscribeAwait(maxQueued)).flatten
-
-          def subscribers: Stream[F, Int] = subscriberCount.discrete
-
-          def close: F[Unit] =
-            state.get.flatMap { case (subs, _) =>
-              subs.foldLeft(F.unit) { case (op, (_, chan)) =>
-                op >> chan.close.void
-              } <* signalClosure.complete(())
-            }.uncancelable
-
-          def closed: F[Unit] = signalClosure.get
-          def isClosed: F[Boolean] = signalClosure.tryGet.map(_.isDefined)
-        }
+        def closed: F[Unit] = signalClosure.get
+        def isClosed: F[Boolean] = signalClosure.tryGet.map(_.isDefined)
+      }
     }
 }
