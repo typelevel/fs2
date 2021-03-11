@@ -2082,9 +2082,9 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
           noneTerminate
             .interruptWhen(stopReading)
             .flatMap { opt =>
-              Stream.exec {
-                val nonAction = semaphore.permit.use(_ => results.update(_.getOrElse(().asRight).some))
-                opt.fold(nonAction *> completeQueue) { el =>
+              val onNone = semaphore.permit.use(_ => results.update(_.getOrElse(().asRight).some))
+              val action =
+                opt.fold(onNone *> completeQueue) { el =>
                   val running =
                     f(el)
                       .flatMap(result => queue.offer(result.some))
@@ -2093,7 +2093,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
                           results
                             .update {
                               case Some(Left(exs)) => exs.prepend(ex).asLeft.some
-                              case _ => NonEmptyList.one(ex).asLeft.some
+                              case _               => NonEmptyList.one(ex).asLeft.some
                             }
 
                         stopReading.complete(().asRight) *> update.void
@@ -2104,18 +2104,21 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
 
                   semaphore.acquire >> running
                 }
-              }
+
+              Stream.exec(action)
             }
 
         val completeStream =
-          results.get.map {
-            case Some(Left(nel)) => Stream.raiseError[F2](CompositeFailure.fromNel(nel))
-            case _ => Stream.empty
+          Stream.force {
+            results.get.map {
+              case Some(Left(nel)) => Stream.raiseError[F2](CompositeFailure.fromNel(nel))
+              case _               => Stream.empty
+            }
           }
 
-        Stream.fromQueueNoneTerminated(queue).concurrently(pullExecAndOutput) ++ Stream.force(completeStream)
+        Stream.fromQueueNoneTerminated(queue).concurrently(pullExecAndOutput) ++ completeStream
       }
-    }
+  }
 
   /** Concurrent zip.
     *
