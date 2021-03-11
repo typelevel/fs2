@@ -41,7 +41,7 @@ abstract class Topic[F[_], A] { self =>
 
   /** Publishes elements from source of `A` to this topic.
     * [[Pipe]] equivalent of `publish1`.
-    * TODO closure
+    * TODO closure docs, if we keep it
     */
   def publish: Pipe[F, A, Nothing]
 
@@ -59,6 +59,8 @@ abstract class Topic[F[_], A] { self =>
     * Note: if `publish1` is called concurrently by multiple producers,
     * different subscribers may receive messages from different producers
     * in a different order.
+    *
+    * TODO should this return an Either[Closed, Unit]
     */
   def publish1(a: A): F[Unit]
 
@@ -154,6 +156,7 @@ object Topic {
                 .as(chan.stream)
             }
 
+        // TODO should be stop `in` if the topic is closed elsewhere?
         def publish: Pipe[F, A, Nothing] = in => (in ++ Stream.exec(close)).evalMap(publish1).drain
 
         def subscribe(maxQueued: Int): Stream[F, A] =
