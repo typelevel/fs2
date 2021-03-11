@@ -55,4 +55,16 @@ object Ex {
     go
   }.unsafeToFuture()
 
+  def e2 =
+    Stream
+      .range(0, 10)
+      .covary[IO]
+      .metered(200.millis)
+      .onFinalize(IO.println("upstream done"))
+      .interruptAfter(20.millis) // change to 250 and both get printed, not just the second
+      .onFinalize(IO.println("downstream done"))
+//      .interruptAfter(1.nanos) // however add this and none do
+      .compile
+      .drain
+      .unsafeToFuture()
 }
