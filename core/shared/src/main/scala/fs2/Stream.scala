@@ -2074,26 +2074,28 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
             _ <- queue.offer(none).whenA(completed.nonEmpty && avail == maxConcurrent)
           } yield {}
 
+        def updateRef(rslt: Option[Throwable]) =
+          rslt
+            .fold(results.update(_.getOrElse(().asRight).some)) { ex =>
+              results
+                .update {
+                  case Some(Left(exs)) => exs.prepend(ex).asLeft.some
+                  case _               => NonEmptyList.one(ex).asLeft.some
+                }
+            }
+            .void
+
         val pullExecAndOutput =
           noneTerminate
             .interruptWhen(stopReading)
             .flatMap { opt =>
-              val onNone = semaphore.permit.use(_ => results.update(_.getOrElse(().asRight).some))
+              val onNone = semaphore.permit.use(_ => updateRef(none))
               val action =
                 opt.fold(onNone *> completeQueue) { el =>
                   val running =
                     f(el)
                       .flatMap(result => queue.offer(result.some))
-                      .onError { case ex =>
-                        val update =
-                          results
-                            .update {
-                              case Some(Left(exs)) => exs.prepend(ex).asLeft.some
-                              case _               => NonEmptyList.one(ex).asLeft.some
-                            }
-
-                        stopReading.complete(().asRight) *> update.void
-                      }
+                      .onError { case ex => stopReading.complete(().asRight) *> updateRef(ex.some) }
                       .guarantee(semaphore.release *> completeQueue)
                       .start
                       .void
@@ -2103,6 +2105,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
 
               Stream.exec(action)
             }
+            .handleErrorWith(ex => Stream.exec(updateRef(ex.some)))
 
         val completeStream =
           Stream.force {

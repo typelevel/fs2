@@ -22,78 +22,89 @@
 package fs2
 
 import cats.effect.IO
-import org.scalacheck.Prop.forAll
 import scala.concurrent.duration._
 import cats.syntax.all._
 import cats.effect.Clock
+import org.scalacheck.effect.PropF.forAllF
 
 class StreamParMapEvalSuite extends Fs2Suite {
 
+  private val ioThrow = IO.raiseError(new IllegalArgumentException)
   private def sleepAndEmit(i: Int) = IO.sleep(i.millis).as(i)
   private def sleepLimit10AndEmit(i: Int) = IO.sleep(math.abs(i % 10).millis).as(i)
 
-  property("whole stream should preserve size") {
-    forAll { (s: Stream[Pure, Int], n: Int) =>
-      val conc = (math.abs(n % 5)) + 1
-      val io = s.covary[IO].parEvalMapUnordered(conc)(sleepLimit10AndEmit).compile.toList
-      val result = io.unsafeRunSync()
-      assertEquals(result.size, s.toList.size)
+  property("toList values") {
+    test("paralleled .sorted equals") {
+      forAllF { (s: Stream[Pure, Int]) =>
+        s.covary[IO]
+          .parEvalMapUnordered(Int.MaxValue)(sleepLimit10AndEmit)
+          .compile
+          .toList
+          .map(_.sorted)
+          .assertEquals(s.toList.sorted)
+      }
+    }
+
+    test("no parallelism - no shuffle") {
+      forAllF { (s: Stream[Pure, Int]) =>
+        s.covary[IO]
+          .parEvalMapUnordered(1)(sleepLimit10AndEmit)
+          .compile
+          .toList
+          .assertEquals(s.toList)
+      }
     }
   }
 
-  property("no parallelism - no shuffle") {
-    forAll { (s: Stream[Pure, Int]) =>
-      val io = s.covary[IO].parEvalMapUnordered(1)(sleepLimit10AndEmit).compile.toList
-      assertEquals(io.unsafeRunSync(), s.toList)
-    }
-  }
-
-  // property("stream should get shuffled with n distance") { wrong!
-  //   forAll { (s: Stream[Pure, Int], n: Int) =>
-  //     val conc = (math.abs(n % 5)) + 1
-  //     val io = s.covary[IO].parEvalMapUnordered(conc)(sleepLimit10AndEmit).compile.toList
-  //     val result = io.unsafeRunSync()
-  //     val list = s.toList
-  //     assert(result.toList.zipWithIndex.forall { case(i, ind) => list.slice(ind - conc, ind + conc).contains(i) })
-  //   }
-  // }
-
-  property("parallels one iteration") {
-    val io = Stream
-      .constant(())
-      .take(100)
-      .covary[IO]
-      .parEvalMap(100)(_ => IO.sleep(100.millis))
-      .compile
-      .drain
-    val dur = Clock[IO].timed(io).unsafeRunSync()._1.toMillis
-    assert(100 < dur && dur < 1000)
+  test("parallels one iteration") {
+    val s = Stream.constant(()).take(100).covary[IO].parEvalMap(100)(_ => IO.sleep(100.millis))
+    val io = s.compile.drain
+    Clock[IO].timed(io).map(_._1.toMillis).map(dur => 100 < dur && dur < 1000).assert
   }
 
   test("sorts by execution time") {
     val s = Stream(100, 50, 0, 0).covary[IO]
-    val result = s.parEvalMapUnordered(5)(sleepAndEmit).compile.toList.unsafeRunSync()
-    assertEquals(result, List(0, 0, 50, 100))
+    s.parEvalMapUnordered(5)(sleepAndEmit).compile.toList.assertEquals(List(0, 0, 50, 100))
+  }
+
+  test("reads End Of Stream, but later an error occures - should result in error") {
+    val sleep50 = sleepAndEmit(50)
+    val raise25 = IO.sleep(25.millis) *> IO.raiseError(new IllegalArgumentException)
+
+    val s = Stream(sleep50, sleep50, raise25).covary[IO].parEvalMapUnordered(4)(identity)
+    s.compile.drain.intercept[IllegalArgumentException]
   }
 
   test("all that launched before before error should remain") {
-    val before = List(70, 60, 50).map(sleepAndEmit)
-    val after = List(30, 20, 10).map(sleepAndEmit)
-    val error = IO.sleep(10.millis) *> IO.raiseError(new IllegalArgumentException)
-    val list = before :+ error :++ after
-    val s = Stream.emits(list).covary[IO].parEvalMapUnordered(5)(identity)
+    val before = Stream(70, 60, 50).map(sleepAndEmit)
+    val error = Stream(IO.sleep(10.millis) *> ioThrow)
+    val after = Stream(40, 20, 10).map(sleepAndEmit)
+    val s = (before ++ error ++ after).covary[IO].parEvalMapUnordered(5)(identity)
 
-    val recovered = s.compile.toList.recover(ex => List(-1)).unsafeRunSync()
-    val masked = s.mask.compile.toList.unsafeRunSync()
-
-    assertEquals(recovered, List(-1))
-    // three options possible:
-    val bool1 = masked == List(20, 30, 50, 60, 70)
-    val bool2 = masked == List(30, 20, 50, 60, 70)
-    val bool3 = masked == List(30, 50, 60, 70)
-
-    assert(bool1 || bool2 || bool3)
+    s.compile.drain.intercept[IllegalArgumentException] *>
+      s.mask
+        .compile
+        .toList
+        .map { masked =>
+          // after incoming stream catches error, before it reads interruption deffered
+          // it can either(bool1) read from incoming stream or not read(bool3)
+          val bool1 = masked == List(20, 40, 50, 60, 70) 
+          val bool2 = masked == List(40, 50, 60, 70)
+          bool1 || bool2
+        }
+        .assert
   }
 
-  // (++ should have weird bahavior?)
+  test("all errors in stream should combine to CompositeFailure") {
+    val three = Stream.emit(()).repeatN(3).covary[IO]
+    val waitRaise = Stream.sleep_[IO](25.millis) ++ Stream.raiseError[IO](new IllegalArgumentException)
+
+    (three ++ waitRaise)
+      .parEvalMapUnordered(4)(_ => IO.sleep(50.millis) *> ioThrow)
+      .compile
+      .drain
+      .intercept[CompositeFailure]
+      .map(ex => ex.tail.length == 3)
+      .assert
+  }
 }
