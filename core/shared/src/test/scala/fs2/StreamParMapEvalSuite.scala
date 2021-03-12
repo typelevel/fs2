@@ -82,24 +82,20 @@ class StreamParMapEvalSuite extends Fs2Suite {
     val s = (before ++ error ++ after).covary[IO].parEvalMapUnordered(5)(identity)
 
     s.compile.drain.intercept[IllegalArgumentException] *>
-      s.mask
-        .compile
-        .toList
-        .map { masked =>
-          // after incoming stream catches error, before it reads interruption deffered
-          // it can either(bool1) read from incoming stream or not read(bool3)
-          val bool1 = masked == List(20, 40, 50, 60, 70) 
-          val bool2 = masked == List(40, 50, 60, 70)
-          bool1 || bool2
-        }
-        .assert
+      s.mask.compile.toList.map { masked =>
+        // after incoming stream catches error, before it reads interruption deffered
+        // it can either(bool1) read from incoming stream or not read(bool3)
+        val bool1 = masked == List(20, 40, 50, 60, 70)
+        val bool2 = masked == List(40, 50, 60, 70)
+        bool1 || bool2
+      }.assert
   }
 
   test("all errors in stream should combine to CompositeFailure") {
     val three = Stream.emit(()).repeatN(3).covary[IO]
-    val waitRaise = Stream.sleep_[IO](25.millis) ++ Stream.raiseError[IO](new IllegalArgumentException)
+    val rise = Stream.sleep_[IO](25.millis) ++ Stream.raiseError[IO](new IllegalArgumentException)
 
-    (three ++ waitRaise)
+    (three ++ rise)
       .parEvalMapUnordered(4)(_ => IO.sleep(50.millis) *> ioThrow)
       .compile
       .drain
