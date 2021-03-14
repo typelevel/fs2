@@ -2087,25 +2087,21 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
 
         val pullExecAndOutput =
           noneTerminate
-            .interruptWhen(stopReading)
-            .flatMap { opt =>
-              val onNone = semaphore.permit.use(_ => updateRef(none))
-              val action =
-                opt.fold(onNone *> completeQueue) { el =>
-                  val running =
-                    f(el)
-                      .flatMap(result => queue.offer(result.some))
-                      .onError { case ex => stopReading.complete(().asRight) *> updateRef(ex.some) }
-                      .guarantee(semaphore.release *> completeQueue)
-                      .start
-                      .void
-
-                  semaphore.acquire >> running
-                }
-
-              Stream.exec(action)
-            }
             .handleErrorWith(ex => Stream.exec(updateRef(ex.some)))
+            .interruptWhen(stopReading)
+            .evalMap { 
+              case None => semaphore.permit.use(_ => updateRef(none)) *> completeQueue
+              case Some(el) =>
+                val running =
+                  f(el)
+                    .flatMap(result => queue.offer(result.some))
+                    .onError { case ex => stopReading.complete(().asRight) *> updateRef(ex.some) }
+                    .guarantee(semaphore.release *> completeQueue)
+                    .start
+                    .void
+
+                semaphore.acquire >> running
+            }
 
         val completeStream =
           Stream.force {
