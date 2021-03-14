@@ -103,4 +103,13 @@ class StreamParMapEvalSuite extends Fs2Suite {
       .map(ex => ex.tail.length == 3)
       .assert
   }
+
+  test("elements should be provided with opportunity to finish their executions") {
+    val three = Stream.emit(()).repeatN(3).covary[IO]
+    val rise = Stream.sleep_[IO](25.millis) ++ Stream.raiseError[IO](new IllegalArgumentException)
+
+    val s = (three ++ rise).parEvalMapUnordered(4)(_ => IO.sleep(50.millis))
+    s.compile.drain.intercept[IllegalArgumentException] *>
+      s.mask.compile.toList.assertEquals(List((),(),()))
+  }
 }
