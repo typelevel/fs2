@@ -60,9 +60,8 @@ abstract class Topic[F[_], A] { self =>
     * different subscribers may receive messages from different producers
     * in a different order.
     *
-    * TODO should this return an Either[Closed, Unit]
     */
-  def publish1(a: A): F[Unit]
+  def publish1(a: A): F[Either[Topic.Closed, Unit]]
 
   /** Subscribes for `A` values that are published to this topic.
     *
@@ -89,7 +88,7 @@ abstract class Topic[F[_], A] { self =>
   def subscribers: Stream[F, Int]
 
   /** TODO scaladoc */
-  def close: F[Unit]
+  def close: F[Either[Topic.Closed, Unit]]
   def isClosed: F[Boolean]
   def closed: F[Unit]
 
@@ -99,19 +98,22 @@ abstract class Topic[F[_], A] { self =>
   def imap[B](f: A => B)(g: B => A): Topic[F, B] =
     new Topic[F, B] {
       def publish: Pipe[F, B, Nothing] = sfb => self.publish(sfb.map(g))
-      def publish1(b: B): F[Unit] = self.publish1(g(b))
+      def publish1(b: B): F[Either[Topic.Closed, Unit]] = self.publish1(g(b))
       def subscribe(maxQueued: Int): Stream[F, B] =
         self.subscribe(maxQueued).map(f)
       def subscribeAwait(maxQueued: Int): Resource[F, Stream[F, B]] =
         self.subscribeAwait(maxQueued).map(_.map(f))
       def subscribers: Stream[F, Int] = self.subscribers
-      def close: F[Unit] = self.close
+      def close: F[Either[Topic.Closed, Unit]] = self.close
       def isClosed: F[Boolean] = self.isClosed
       def closed: F[Unit] = self.closed
     }
 }
 
 object Topic {
+  type Closed = Closed.type
+  object Closed
+
 
   /** Constructs a Topic */
   def apply[F[_], A](implicit F: Concurrent[F]): F[Topic[F, A]] =
@@ -122,11 +124,15 @@ object Topic {
     ).mapN { case (state, subscriberCount, signalClosure) =>
       new Topic[F, A] {
 
-        def publish1(a: A): F[Unit] =
-          state.get.flatMap { case (subs, _) =>
-            subs.foldLeft(F.unit) { case (op, (_, chan)) =>
-              op >> chan.send(a).void
-            }
+        def publish1(a: A): F[Either[Topic.Closed, Unit]] =
+          signalClosure.tryGet.flatMap {
+            case Some(_) => Topic.closed.pure[F]
+            case None =>
+              state.get.flatMap { case (subs, _) =>
+                subs.foldLeft(F.unit) { case (op, (_, chan)) =>
+                  op >> chan.send(a).void
+                }.as(Topic.rightUnit)
+              }
           }
 
         def subscribeAwait(maxQueued: Int): Resource[F, Stream[F, A]] =
@@ -156,23 +162,35 @@ object Topic {
                 .as(chan.stream)
             }
 
-        // TODO should be stop `in` if the topic is closed elsewhere?
-        def publish: Pipe[F, A, Nothing] = in => (in ++ Stream.exec(close)).evalMap(publish1).drain
+        def publish: Pipe[F, A, INothing] =  { in =>
+          (in ++ Stream.exec(close.void))
+            .evalMap(publish1)
+            .takeWhile(_.isRight)
+            .drain
+        }
 
         def subscribe(maxQueued: Int): Stream[F, A] =
           Stream.resource(subscribeAwait(maxQueued)).flatten
 
         def subscribers: Stream[F, Int] = subscriberCount.discrete
 
-        def close: F[Unit] =
-          state.get.flatMap { case (subs, _) =>
-            subs.foldLeft(F.unit) { case (op, (_, chan)) =>
-              op >> chan.close.void
-            } <* signalClosure.complete(())
-          }.uncancelable
+        def close: F[Either[Topic.Closed, Unit]] = {
+          signalClosure.complete(()).flatMap { completedNow  =>
+            val result = if (completedNow) Topic.rightUnit else Topic.closed
+
+            state.get.flatMap { case (subs, _) =>
+              subs.foldLeft(F.unit) { case (op, (_, chan)) =>
+                op >> chan.close.void
+              }
+            }.as(result)
+          }
+        }.uncancelable
 
         def closed: F[Unit] = signalClosure.get
         def isClosed: F[Boolean] = signalClosure.tryGet.map(_.isDefined)
       }
     }
+
+  private final val closed: Either[Closed, Unit] = Left(Closed)
+  private final val rightUnit: Either[Closed, Unit] = Right(())
 }

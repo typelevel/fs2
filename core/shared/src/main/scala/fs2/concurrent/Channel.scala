@@ -177,7 +177,7 @@ object Channel {
           }.flatten
 
         def notifyStream(waitForChanges: Option[Deferred[F, Unit]]) =
-          waitForChanges.traverse(_.complete(())).as(Channel.open)
+          waitForChanges.traverse(_.complete(())).as(rightUnit)
 
         def waitOnBound(producer: Deferred[F, Unit], poll: Poll[F]) =
           poll(producer.get).onCancel {
@@ -196,7 +196,7 @@ object Channel {
 
   // allocate once
   private final val closed: Either[Closed, Unit] = Left(Closed)
-  private final val open: Either[Closed, Unit] = Right(())
+  private final val rightUnit: Either[Closed, Unit] = Right(())
 
   def boundedBC[F[_], A](capacity: Int)(implicit F: Concurrent[F]): F[Channel[F, A]] = {
     def log(s: String) = ().pure[F].map(_ => println(s))
@@ -295,7 +295,7 @@ object Channel {
             }
 
         def notifyStream(waitForChanges: Option[Deferred[F, Unit]]) =
-          waitForChanges.traverse(_.complete(())).as(Channel.open)
+          waitForChanges.traverse(_.complete(())).as(Channel.rightUnit)
 
         def waitOnBound(producer: Deferred[F, Unit], poll: Poll[F]) =
           poll(producer.get).onCancel {
