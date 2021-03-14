@@ -59,7 +59,6 @@ abstract class Topic[F[_], A] { self =>
     * Note: if `publish1` is called concurrently by multiple producers,
     * different subscribers may receive messages from different producers
     * in a different order.
-    *
     */
   def publish1(a: A): F[Either[Topic.Closed, Unit]]
 
@@ -114,7 +113,6 @@ object Topic {
   type Closed = Closed.type
   object Closed
 
-
   /** Constructs a Topic */
   def apply[F[_], A](implicit F: Concurrent[F]): F[Topic[F, A]] =
     (
@@ -129,9 +127,11 @@ object Topic {
             case Some(_) => Topic.closed.pure[F]
             case None =>
               state.get.flatMap { case (subs, _) =>
-                subs.foldLeft(F.unit) { case (op, (_, chan)) =>
-                  op >> chan.send(a).void
-                }.as(Topic.rightUnit)
+                subs
+                  .foldLeft(F.unit) { case (op, (_, chan)) =>
+                    op >> chan.send(a).void
+                  }
+                  .as(Topic.rightUnit)
               }
           }
 
@@ -162,7 +162,7 @@ object Topic {
                 .as(chan.stream)
             }
 
-        def publish: Pipe[F, A, INothing] =  { in =>
+        def publish: Pipe[F, A, INothing] = { in =>
           (in ++ Stream.exec(close.void))
             .evalMap(publish1)
             .takeWhile(_.isRight)
@@ -174,17 +174,21 @@ object Topic {
 
         def subscribers: Stream[F, Int] = subscriberCount.discrete
 
-        def close: F[Either[Topic.Closed, Unit]] = {
-          signalClosure.complete(()).flatMap { completedNow  =>
-            val result = if (completedNow) Topic.rightUnit else Topic.closed
+        def close: F[Either[Topic.Closed, Unit]] =
+          signalClosure
+            .complete(())
+            .flatMap { completedNow =>
+              val result = if (completedNow) Topic.rightUnit else Topic.closed
 
-            state.get.flatMap { case (subs, _) =>
-              subs.foldLeft(F.unit) { case (op, (_, chan)) =>
-                op >> chan.close.void
-              }
-            }.as(result)
-          }
-        }.uncancelable
+              state.get
+                .flatMap { case (subs, _) =>
+                  subs.foldLeft(F.unit) { case (op, (_, chan)) =>
+                    op >> chan.close.void
+                  }
+                }
+                .as(result)
+            }
+            .uncancelable
 
         def closed: F[Unit] = signalClosure.get
         def isClosed: F[Boolean] = signalClosure.tryGet.map(_.isDefined)
