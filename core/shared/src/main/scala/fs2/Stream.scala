@@ -2060,54 +2060,72 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   )(f: O => F2[O2]): Stream[F2, O2] = {
     assert(maxConcurrent > 0, "maxConcurrent must be > 0, was: " + maxConcurrent)
 
+    val initialState = (Set.empty[Fiber[F2, Throwable, Unit]], none[Either[NonEmptyList[Throwable], Unit]])
     val action =
       (
         Semaphore[F2](maxConcurrent),
         Queue.bounded[F2, Option[O2]](1),
-        Ref[F2].of(none[Either[NonEmptyList[Throwable], Unit]]),
+        Ref[F2].of(initialState),
         Deferred[F2, Either[Throwable, Unit]]
-      ).mapN { (semaphore, queue, results, stopReading) =>
-        val completeQueue =
-          for {
-            completed <- results.get
-            avail <- semaphore.available
-            _ <- queue.offer(none).whenA(completed.nonEmpty && avail == maxConcurrent)
-          } yield {}
+      ).mapN { (semaphore, queue, state, stopReading) =>
+        val completeOuter =
+          state.get.flatMap { case (fibers, completion) =>
+            queue.offer(none).whenA(fibers.isEmpty && completion.nonEmpty)
+          }
 
-        def updateRef(rslt: Option[Throwable]) =
-          rslt
-            .fold(results.update(_.getOrElse(().asRight).some)) { ex =>
-              results
-                .update {
-                  case Some(Left(exs)) => exs.prepend(ex).asLeft.some
-                  case _               => NonEmptyList.one(ex).asLeft.some
-                }
+        val succeed =
+          state.update {
+            case (fibers, None) => (fibers, ().asRight.some)
+            case other => other
+          }
+
+        def failed(ex: Throwable) =
+          state
+            .modify {
+              case (fibers, None) => ((Set.empty, NonEmptyList.one(ex).asLeft.some), fibers)
+              case (fibers, Some(Right(()))) => ((Set.empty, NonEmptyList.one(ex).asLeft.some), fibers)
+              case (fibers, Some(Left(nel))) => ((Set.empty, nel.prepend(ex).asLeft.some), fibers)
             }
+            .flatMap(_.toList.parTraverse(_.cancel))
             .void
+
+        def addFiber(fiber: Fiber[F2, Throwable, Unit]) =
+          state.modify {
+            case (fibers, None) => (((fibers + fiber), none), false)
+            case (fibers, prev @ Some(Right(()))) => (((fibers + fiber), prev), false)
+            case prev @ (_, Some(Left(_))) => (prev, true)
+          }
+
+        def removeFiber(fiber: Fiber[F2, Throwable, Unit]) =
+          state.update(_.leftMap(_ - fiber))
 
         val pullExecAndOutput =
           noneTerminate
-            .handleErrorWith(ex => Stream.exec(updateRef(ex.some)))
             .interruptWhen(stopReading)
             .evalMap { 
-              case None => semaphore.permit.use(_ => updateRef(none)) *> completeQueue
+              case None => succeed *> completeOuter
               case Some(el) =>
                 val running =
                   f(el)
                     .flatMap(result => queue.offer(result.some))
-                    .onError { case ex => stopReading.complete(().asRight) *> updateRef(ex.some) }
-                    .guarantee(semaphore.release *> completeQueue)
+                    .onError { case ex => stopReading.complete(().asRight) *> failed(ex) }
                     .start
+                    .flatMap(fb => addFiber(fb).tupleLeft(fb))
+                    .flatMap { case (fb, isShouldCancel) =>
+                      val fin = (fb.join *> semaphore.release *> removeFiber(fb) *> completeOuter).start
+                      fb.cancel.whenA(isShouldCancel) *> fin
+                    }
                     .void
 
                 semaphore.acquire >> running
             }
+            .handleErrorWith(ex => Stream.exec(failed(ex)))
 
         val completeStream =
           Stream.force {
-            results.get.map {
-              case Some(Left(nel)) => Stream.raiseError[F2](CompositeFailure.fromNel(nel))
-              case _               => Stream.empty
+            state.get.map {
+              case (_, Some(Left(nel))) => Stream.raiseError[F2](CompositeFailure.fromNel(nel))
+              case _                    => Stream.empty
             }
           }
 

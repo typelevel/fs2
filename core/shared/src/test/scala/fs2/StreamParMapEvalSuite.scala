@@ -110,6 +110,6 @@ class StreamParMapEvalSuite extends Fs2Suite {
 
     val s = (three ++ rise).parEvalMapUnordered(4)(_ => IO.sleep(50.millis))
     s.compile.drain.intercept[IllegalArgumentException] *>
-      s.mask.compile.toList.assertEquals(List((),(),()))
+      s.mask.compile.toList.assertEquals(List((), (), ()))
   }
 }
