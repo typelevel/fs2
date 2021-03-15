@@ -149,7 +149,7 @@ class EventService[F[_]](eventsTopic: Topic[F, Event], interrupter: SignallingRe
         .zipRight(Stream.repeatEval(Clock[F].realTime.map(t => Text(t.toString))))
     )
 
-    val quitEvent = Stream.eval(eventsTopic.publish1(Quit))
+    val quitEvent = Stream.eval(eventsTopic.publish1(Quit).void)
 
     (textEvents.take(15) ++ quitEvent ++ textEvents).interruptWhen(interrupter)
   }
