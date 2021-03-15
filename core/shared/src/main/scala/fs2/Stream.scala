@@ -32,6 +32,7 @@ import cats.effect.kernel._
 import cats.effect.std.{Queue, Semaphore}
 import cats.effect.kernel.implicits._
 import cats.effect.Resource.ExitCase
+import cats.effect.kernel.Outcome.Succeeded
 import cats.implicits.{catsSyntaxEither => _, _}
 import fs2.compat._
 import fs2.concurrent._
@@ -1432,10 +1433,17 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
                   }
               }
 
+            def waitN(s: Semaphore[F2]) =
+              F.guaranteeCase(s.acquireN(n)){
+                case Succeeded(_) => s.releaseN(n)
+                case _ => F.unit
+              }
+
             def acquireSupplyUpToNWithin(n: Long, timeout: FiniteDuration): F2[Long] =
+              // in JS cancellation doesn't always seem to run, so race conditions should restore state on their own
               F.race(
                 F.sleep(timeout),
-                supply.acquireN(n)
+                waitN(supply)
               ).flatMap {
                 case Left(_) =>
                   supply.acquire.flatMap { _ =>
@@ -1448,7 +1456,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
                     }
                   }
                 case Right(_) =>
-                  F.pure(n)
+                  supply.acquireN(n) *> F.pure(n)
               }
 
             def dequeueN(n: Int): F2[Option[Vector[O]]] =
