@@ -2126,7 +2126,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
                         case Outcome.Succeeded(fa) =>
                           removeFiber(fb) *> fa.flatMap(a => queue.offer(a.some))
                         case Outcome.Errored(e) =>
-                          stopReading.complete(().asRight) *> failed(e, fb.some)
+                          failed(e, fb.some) *> stopReading.complete(().asRight).void
                         case Outcome.Canceled() => removeFiber(fb)
                       }
                     (handle *> semaphore.release *> completeOuter).start
