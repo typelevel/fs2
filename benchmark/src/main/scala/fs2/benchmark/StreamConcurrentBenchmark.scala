@@ -32,17 +32,35 @@ class StreamConcurrentBenchmark {
   @Param(Array("10", "1000"))
   var n: Int = _
 
-  @Benchmark
-  def eval(): Unit =
-    getStream.evalMap(_ => IO(())).compile.drain.unsafeRunSync()
+  @Param(Array("1"))
+  var fibN: Int = _
+
+  private def fib(n: Long): Long =
+    if (n < 2) 1
+    else fib(n - 1) + fib(n - 2)
+
+  private def dummyLoad = IO.delay(fib(fibN))
 
   @Benchmark
-  def prevParEvalMapUnordered(): Unit =
-    getStream.prevParEvalMapUnordered(1)(_ => IO(())).compile.drain.unsafeRunSync()
+  def evalMap(): Unit =
+    execute(getStream.evalMap(_ => dummyLoad))
 
   @Benchmark
-  def parEvalMapUnordered(): Unit =
-    getStream.parEvalMapUnordered(1)(_ => IO(())).compile.drain.unsafeRunSync()
+  def prevParEvalMapUnordered1(): Unit =
+    execute(getStream.prevParEvalMapUnordered(1)(_ => dummyLoad))
+
+  @Benchmark
+  def parEvalMapUnordered1(): Unit =
+    execute(getStream.parEvalMapUnordered(1)(_ => dummyLoad))
+
+  @Benchmark
+  def prevParEvalMapUnordered10(): Unit =
+    execute(getStream.prevParEvalMapUnordered(10)(_ => dummyLoad))
+
+  @Benchmark
+  def parEvalMapUnordered10(): Unit =
+    execute(getStream.parEvalMapUnordered(10)(_ => dummyLoad))
 
   private def getStream: Stream[IO, Unit] = Stream.constant(()).take(n).covary[IO]
+  private def execute(s: Stream[IO, Long]) = s.compile.drain.unsafeRunSync()
 }

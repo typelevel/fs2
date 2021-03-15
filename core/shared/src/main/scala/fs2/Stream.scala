@@ -2060,7 +2060,8 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   )(f: O => F2[O2]): Stream[F2, O2] = {
     assert(maxConcurrent > 0, "maxConcurrent must be > 0, was: " + maxConcurrent)
 
-    val initialState = (Set.empty[Fiber[F2, Throwable, O2]], none[Either[NonEmptyList[Throwable], Unit]])
+    val initialResult = none[Either[NonEmptyList[Throwable], Unit]]
+    val initialState = (Set.empty[Fiber[F2, Throwable, O2]], initialResult)
     val action =
       (
         Semaphore[F2](maxConcurrent),
@@ -2076,16 +2077,16 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
         val succeed =
           state.update {
             case (fibers, None) => (fibers, ().asRight.some)
-            case other => other
+            case other          => other
           }
 
         def failed(ex: Throwable, fb: Option[Fiber[F2, Throwable, O2]]) =
           state
-            .modify { case(fibers, result) =>
+            .modify { case (fibers, result) =>
               val nFibers = fb.fold(fibers)(fibers - _)
               val nResult = result match {
                 case Some(Left(nel)) => nel.prepend(ex).asLeft
-                case _ => NonEmptyList.one(ex).asLeft
+                case _               => NonEmptyList.one(ex).asLeft
               }
               ((nFibers, nResult.some), nFibers)
             }
@@ -2095,7 +2096,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
         def addFiber(fiber: Fiber[F2, Throwable, O2]) =
           state.modify {
             case prev @ (_, Some(Left(_))) => (prev, true)
-            case (fibers, prev) => (((fibers + fiber), prev), false)
+            case (fibers, prev)            => (((fibers + fiber), prev), false)
           }
 
         def removeFiber(fiber: Fiber[F2, Throwable, O2]) =
@@ -2112,12 +2113,11 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
         val pullExecAndOutput =
           noneTerminate
             .interruptWhen(stopReading)
-            .evalMap { 
+            .evalMap {
               case None => succeed *> completeOuter
               case Some(el) =>
                 val running =
-                  f(el)
-                    .start
+                  f(el).start
                     .mproduct(fb => addFiber(fb))
                     .flatMap { case (fb, isShouldCancel) =>
                       fb.cancel.whenA(isShouldCancel).as(fb)
@@ -2125,8 +2125,10 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
                     .flatMap { fb =>
                       val handle =
                         fb.join.flatMap {
-                          case Outcome.Succeeded(fa) => removeFiber(fb) *> fa.flatMap(a => queue.offer(a.some))
-                          case Outcome.Errored(e) => stopReading.complete(().asRight) *> failed(e, fb.some)
+                          case Outcome.Succeeded(fa) =>
+                            removeFiber(fb) *> fa.flatMap(a => queue.offer(a.some))
+                          case Outcome.Errored(e) =>
+                            stopReading.complete(().asRight) *> failed(e, fb.some)
                           case Outcome.Canceled() => removeFiber(fb)
                         }
                       (handle *> semaphore.release *> completeOuter).start
