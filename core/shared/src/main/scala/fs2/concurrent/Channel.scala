@@ -72,7 +72,7 @@ import cats.syntax.all._
  *
  */
 
-trait Channel[F[_], A] {
+sealed trait Channel[F[_], A] {
   def send(a: A): F[Either[Channel.Closed, Unit]]
   def stream: Stream[F, A]
   def close: F[Either[Channel.Closed, Unit]]
