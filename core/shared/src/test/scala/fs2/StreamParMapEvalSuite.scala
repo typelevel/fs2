@@ -26,6 +26,9 @@ import scala.concurrent.duration._
 import cats.syntax.all._
 import cats.effect.Clock
 import org.scalacheck.effect.PropF.forAllF
+import cats.effect.kernel.Deferred
+// import org.scalacheck.Prop.exists
+// import org.scalacheck.Prop.propBoolean
 
 class StreamParMapEvalSuite extends Fs2Suite {
 
@@ -45,6 +48,19 @@ class StreamParMapEvalSuite extends Fs2Suite {
       }
     }
 
+    // test("existsF shuffled, when concurrent") {
+    //   exists { (s: Stream[Pure, Int]) =>
+    //     s.toList.length > 1 ==>
+    //       s.covary[IO]
+    //         .parEvalMapUnordered(Int.MaxValue)(sleepLimit10AndEmit)
+    //         .compile
+    //         .toList
+    //         .map(_ != s.toList)
+    //         .assert
+    //         .unsafeRunSync()
+    //   }
+    // }
+
     test("no parallelism - no shuffle") {
       forAllF { (s: Stream[Pure, Int]) =>
         s.covary[IO]
@@ -56,10 +72,10 @@ class StreamParMapEvalSuite extends Fs2Suite {
     }
   }
 
-  test("parallels one iteration") {
-    val s = Stream.constant(()).take(100).covary[IO].parEvalMap(100)(_ => IO.sleep(100.millis))
-    val io = s.compile.drain
-    Clock[IO].timed(io).map(_._1.toMillis).map(dur => 100 < dur && dur < 1000).assert
+  test("time reduces proportional to parallelism, when sleep + parEvalMapUnordered") {
+    val s = Stream.constant(()).take(100).covary[IO]
+    val io = s.parEvalMapUnordered(100)(_ => IO.sleep(100.millis)).compile.drain
+    Clock[IO].timed(io).map(_._1.toMillis).map(dur => 100 < dur && dur < 500).assert
   }
 
   test("sorts by execution time") {
@@ -75,41 +91,33 @@ class StreamParMapEvalSuite extends Fs2Suite {
     s.compile.drain.intercept[IllegalArgumentException]
   }
 
-  test("all that launched before before error should remain") {
-    val before = Stream(70, 60, 50).map(sleepAndEmit)
-    val error = Stream(IO.sleep(10.millis) *> ioThrow)
-    val after = Stream(40, 20, 10).map(sleepAndEmit)
-    val s = (before ++ error ++ after).covary[IO].parEvalMapUnordered(5)(identity)
+  test("all that completed before before error should remain, after - cancelled") {
+    Deferred[IO, Unit].flatMap { case (d1) =>
+      val before = Stream(sleepAndEmit(50) <* d1.complete(()))
+      val error = Stream(IO.sleep(40.millis) *> ioThrow)
+      val after = Stream(30, 20).map(sleepAndEmit)
+      val s = (before ++ error ++ after).covary[IO].parEvalMapUnordered(Int.MaxValue)(identity)
 
-    s.compile.drain.intercept[IllegalArgumentException] *>
-      s.mask.compile.toList.map { masked =>
-        // after incoming stream catches error, before it reads interruption deffered
-        // it can either(bool1) read from incoming stream or not read(bool3)
-        val bool1 = masked == List(20, 40, 50, 60, 70)
-        val bool2 = masked == List(40, 50, 60, 70)
-        bool1 || bool2
-      }.assert
+      s.compile.drain.intercept[IllegalArgumentException] *>
+        (s.mask.compile.toList, d1.tryGet).mapN { case (masked, isCompleted) =>
+          masked == List(20, 30) && isCompleted.isEmpty
+        }.assert
+    }
   }
 
-  test("all errors in stream should combine to CompositeFailure") {
-    val three = Stream.emit(()).repeatN(3).covary[IO]
-    val rise = Stream.sleep_[IO](25.millis) ++ Stream.raiseError[IO](new IllegalArgumentException)
+  // Requires existsF
+  // test("all errors in stream should combine to CompositeFailure") {
+  //   def sleepF(i: Int) = IO.sleep(i.nanos) *> IO.raiseError(new IllegalArgumentException)
+  //   def noSleepF(i: Int) = IO.raiseError(new IllegalArgumentException)
 
-    (three ++ rise)
-      .parEvalMapUnordered(4)(_ => IO.sleep(50.millis) *> ioThrow)
-      .compile
-      .drain
-      .intercept[CompositeFailure]
-      .map(ex => ex.tail.length == 3)
-      .assert
-  }
+  //   def getStream(f: Int => IO[Unit]) =
+  //     Stream.emits(10_000.to(1_000, -1))
+  //       .covary[IO]
+  //       .parEvalMapUnordered(Int.MaxValue)(f)
+  //       .compile
+  //       .drain
+  //       .intercept[CompositeFailure]
 
-  test("elements should be provided with opportunity to finish their executions") {
-    val three = Stream.emit(()).repeatN(3).covary[IO]
-    val rise = Stream.sleep_[IO](25.millis) ++ Stream.raiseError[IO](new IllegalArgumentException)
-
-    val s = (three ++ rise).parEvalMapUnordered(4)(_ => IO.sleep(50.millis))
-    s.compile.drain.intercept[IllegalArgumentException] *>
-      s.mask.compile.toList.assertEquals(List((), (), ()))
-  }
+  //   getStream(noSleepF)
+  // }
 }
