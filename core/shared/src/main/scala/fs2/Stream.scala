@@ -2136,9 +2136,9 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
               semaphore.acquire >> running
             }
             .onFinalizeCase {
-              case ExitCase.Succeeded => succeed *> completeOuter
+              case ExitCase.Succeeded   => succeed *> completeOuter
               case ExitCase.Errored(ex) => failed(ex, none)
-              case ExitCase.Canceled => ().pure[F2]
+              case ExitCase.Canceled    => ().pure[F2]
             }
 
         Stream.fromQueueNoneTerminated(queue).concurrently(pullExecAndOutput) ++ completeStream
