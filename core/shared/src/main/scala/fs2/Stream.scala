@@ -2080,10 +2080,10 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
             case other          => other
           }
 
-        def failed(ex: Throwable, fb: Option[Fiber[F2, Throwable, O2]]) =
+        def failed(ex: Throwable, fiber: Option[Fiber[F2, Throwable, O2]]) =
           state
             .modify { case (fibers, result) =>
-              val nFibers = fb.fold(fibers)(fibers - _)
+              val nFibers = fiber.fold(fibers)(fibers - _)
               val nResult = result match {
                 case Some(Left(nel)) => nel.prepend(ex).asLeft
                 case _               => NonEmptyList.one(ex).asLeft
