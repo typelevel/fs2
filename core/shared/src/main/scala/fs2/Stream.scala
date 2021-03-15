@@ -30,6 +30,7 @@ import cats.{Eval => _, _}
 import cats.data.Ior
 import cats.effect.SyncIO
 import cats.effect.kernel._
+import cats.effect.kernel.Resource.ExitCase
 import cats.effect.std.{CountDownLatch, Queue, Semaphore}
 import cats.effect.kernel.implicits._
 import cats.implicits.{catsSyntaxEither => _, _}
@@ -2111,33 +2112,34 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
           }
 
         val pullExecAndOutput =
-          noneTerminate
-            .interruptWhen(stopReading)
-            .evalMap {
-              case None => succeed *> completeOuter
-              case Some(el) =>
-                val running =
-                  f(el).start
-                    .mproduct(fb => addFiber(fb))
-                    .flatMap { case (fb, isShouldCancel) =>
-                      fb.cancel.whenA(isShouldCancel).as(fb)
-                    }
-                    .flatMap { fb =>
-                      val handle =
-                        fb.join.flatMap {
-                          case Outcome.Succeeded(fa) =>
-                            removeFiber(fb) *> fa.flatMap(a => queue.offer(a.some))
-                          case Outcome.Errored(e) =>
-                            stopReading.complete(().asRight) *> failed(e, fb.some)
-                          case Outcome.Canceled() => removeFiber(fb)
-                        }
-                      (handle *> semaphore.release *> completeOuter).start
-                    }
-                    .void
+          interruptWhen(stopReading)
+            .evalMap { el =>
+              val running =
+                f(el).start
+                  .mproduct(fb => addFiber(fb))
+                  .flatMap { case (fb, isShouldCancel) =>
+                    fb.cancel.whenA(isShouldCancel).as(fb)
+                  }
+                  .flatMap { fb =>
+                    val handle =
+                      fb.join.flatMap {
+                        case Outcome.Succeeded(fa) =>
+                          removeFiber(fb) *> fa.flatMap(a => queue.offer(a.some))
+                        case Outcome.Errored(e) =>
+                          stopReading.complete(().asRight) *> failed(e, fb.some)
+                        case Outcome.Canceled() => removeFiber(fb)
+                      }
+                    (handle *> semaphore.release *> completeOuter).start
+                  }
+                  .void
 
-                semaphore.acquire >> running
+              semaphore.acquire >> running
             }
-            .handleErrorWith(ex => Stream.exec(failed(ex, none)))
+            .onFinalizeCase {
+              case ExitCase.Succeeded => succeed *> completeOuter
+              case ExitCase.Errored(ex) => failed(ex, none)
+              case ExitCase.Canceled => ().pure[F2]
+            }
 
         Stream.fromQueueNoneTerminated(queue).concurrently(pullExecAndOutput) ++ completeStream
       }
