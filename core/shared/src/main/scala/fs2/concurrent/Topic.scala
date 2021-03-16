@@ -41,11 +41,13 @@ abstract class Topic[F[_], A] { self =>
 
   /** Publishes elements from source of `A` to this topic.
     * [[Pipe]] equivalent of `publish1`.
-    * TODO closure docs, if we keep it
+    * Closes the topic when the input stream terminates.
+    * Especially useful when the topic has a single producer.
     */
   def publish: Pipe[F, A, Nothing]
 
   /** Publishes one `A` to topic.
+    * No-op if the channel is closed, see [[close]] for further info.
     *
     * This operation does not complete until after the given element
     * has been enqued on all subscribers, which means that if any
@@ -86,9 +88,30 @@ abstract class Topic[F[_], A] { self =>
     */
   def subscribers: Stream[F, Int]
 
-  /** TODO scaladoc */
+  /** This method achieves graceful shutdown: when the topics gets
+    * closed, its subscribers will terminate naturally after consuming all
+    * currently enqueued elements.
+    *
+    * "Termination" here means that subscribers no longer
+    * wait for new elements on the topic, and not that they will be
+    * interrupted while performing another action: if you want to
+    * interrupt a subscriber, without first processing enqueued
+    * elements, you should use `interruptWhen` on it instead.
+    *
+    * After a call to `close`, any further calls to `publish1` or `close`
+    * will be no-ops.
+    *
+    * Note that `close` does not automatically unblock producers which
+    * might be blocked on a bound, they will only become unblocked
+    * if/when subscribers naturally finish to consume the respective elements.
+    * You can `race` the publish with `close` to interrupt them immediately.
+    */
   def close: F[Either[Topic.Closed, Unit]]
+
+  /** Returns true if this topic is closed */
   def isClosed: F[Boolean]
+
+  /** Semantically blocks until the topic gets closed. */
   def closed: F[Unit]
 
   /** Returns an alternate view of this `Topic` where its elements are of type `B`,

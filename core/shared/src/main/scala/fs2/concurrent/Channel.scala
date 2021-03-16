@@ -26,12 +26,11 @@ import cats.effect._
 import cats.effect.implicits._
 import cats.syntax.all._
 
-/**
- * Stream aware, multiple producer, single consumer closeable channel.
- */
+/** Stream aware, multiple producer, single consumer closeable channel.
+  */
 sealed trait Channel[F[_], A] {
-  /**
-    * Sends an element through this channel.
+
+  /** Sends an element through this channel.
     *
     * It can be called concurrently by multiple producers, and it may
     * semantically block if the channel is bounded or synchronous.
@@ -40,8 +39,7 @@ sealed trait Channel[F[_], A] {
     */
   def send(a: A): F[Either[Channel.Closed, Unit]]
 
-  /**
-    * The stream of elements sent through this channel.
+  /** The stream of elements sent through this channel.
     * It terminates if [[close]] is called and all elements in the channel
     * have been emitted (see [[close]] for futher info).
     *
@@ -65,9 +63,7 @@ sealed trait Channel[F[_], A] {
     */
   def stream: Stream[F, A]
 
-
-  /**
-    * This method achieves graceful shutdown: when the channel gets
+  /** This method achieves graceful shutdown: when the channel gets
     * closed, `stream` will terminate naturally after consuming all
     * currently enqueued elements, including the ones by producers blocked
     * on a bound.
