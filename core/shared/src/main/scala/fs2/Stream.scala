@@ -2130,7 +2130,8 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   ): Stream[F2, O] =
     Stream.eval(Channel.bounded[F2, Chunk[O]](n)).flatMap { chan =>
       chan.stream.flatMap(Stream.chunk).concurrently {
-        (chunks ++ Stream.exec(chan.close.void)).evalMap(chan.send)
+        chunks.through(chan.sendAll)
+
       }
     }
 

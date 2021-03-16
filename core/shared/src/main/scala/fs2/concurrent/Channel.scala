@@ -30,6 +30,12 @@ import cats.syntax.all._
   */
 sealed trait Channel[F[_], A] {
 
+  /** Sends all the elements of the input stream through this channel,
+    * and closes it after.
+    * Especially useful if the channel is single producer.
+    */
+  def sendAll: Pipe[F, A, Nothing]
+
   /** Sends an element through this channel.
     *
     * It can be called concurrently by multiple producers, and it may
@@ -123,6 +129,14 @@ object Channel {
 
     (F.ref(initial), F.deferred[Unit]).mapN { (state, closedGate) =>
       new Channel[F, A] {
+
+        def sendAll: Pipe[F, A, Nothing] = { in =>
+          (in ++ Stream.exec(close.void))
+            .evalMap(send)
+            .takeWhile(_.isRight)
+            .drain
+        }
+
         def send(a: A) =
           F.deferred[Unit].flatMap { producer =>
             F.uncancelable { poll =>
@@ -233,6 +247,13 @@ object Channel {
 
     (F.ref(initial), F.deferred[Unit]).mapN { (state, closedGate) =>
       new Channel[F, A] {
+        def sendAll: Pipe[F, A, Nothing] = { in =>
+          (in ++ Stream.exec(close.void))
+            .evalMap(send)
+            .takeWhile(_.isRight)
+            .drain
+        }
+
         def send(a: A) =
           F.deferred[Unit].flatMap { producer =>
             F.uncancelable { poll =>
