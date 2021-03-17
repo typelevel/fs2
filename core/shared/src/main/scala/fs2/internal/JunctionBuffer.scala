@@ -19,9 +19,9 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2
+package fs2.internal
 
-private case class JunctionBuffer[T](
+private[fs2] case class JunctionBuffer[T](
     data: Vector[T],
     endOfSupply: Option[Either[Throwable, Unit]],
     endOfDemand: Option[Either[Throwable, Unit]]
