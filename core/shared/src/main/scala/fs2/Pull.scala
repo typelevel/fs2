@@ -783,6 +783,19 @@ object Pull extends PullLowPriority {
       def fail(e: Throwable): End
     }
 
+    type CallRun[G[_], X, End] = Run[G, X, End] => End
+
+    class BuildR[G[_], X, End] extends Run[G, X, F[CallRun[G, X, F[End]]]] {
+      def fail(e: Throwable) = F.raiseError(e)
+
+      def done(scope: Scope[F]) =
+        F.pure((cont: Run[G, X, F[End]]) => cont.done(scope))
+      def out(head: Chunk[X], scope: Scope[F], tail: Pull[G, X, Unit]) =
+        F.pure((cont: Run[G, X, F[End]]) => cont.out(head, scope, tail))
+      def interrupted(scopeId: Unique.Token, err: Option[Throwable]) =
+        F.pure((cont: Run[G, X, F[End]]) => cont.interrupted(scopeId, err))
+    }
+
     def go[G[_], X, End](
         scope: Scope[F],
         extendedTopLevelScope: Option[Scope[F]],
@@ -871,7 +884,8 @@ object Pull extends PullLowPriority {
 
       def goMapOutput[Z](mout: MapOutput[G, Z, X], view: Cont[Unit, G, X]): F[End] = {
         val mo: Pull[G, X, Unit] = innerMapOutput[G, Z, X](mout.stream, mout.fun)
-        go(scope, extendedTopLevelScope, translation, new ViewRunner(view), mo)
+        val inner = go(scope, extendedTopLevelScope, translation, new BuildR[G, X, End], mo)
+        inner.attempt.flatMap(_.fold(goErr(_, view), _.apply(new ViewRunner(view))))
       }
 
       abstract class StepRunR[Y, S](view: Cont[Option[S], G, X]) extends Run[G, Y, F[End]] {
@@ -1144,14 +1158,19 @@ object Pull extends PullLowPriority {
               val u = u0.asInstanceOf[Uncons[G, y]]
               val v = view.asInstanceOf[View[G, X, Option[(Chunk[y], Pull[G, y, Unit])]]]
               // a Uncons is run on the same scope, without shifting.
-              go(scope, extendedTopLevelScope, translation, new UnconsRunR(v), u.stream)
+
+              val runr = new BuildR[G, y, End]
+              val inner = go(scope, extendedTopLevelScope, translation, runr, u.stream)
+              inner.attempt.flatMap(_.fold(goErr(_, view), _.apply(new UnconsRunR(v))))
 
             case s0: StepLeg[g, y] =>
               val s = s0.asInstanceOf[StepLeg[G, y]]
               val v = view.asInstanceOf[View[G, X, Option[Stream.StepLeg[G, y]]]]
-              scope
-                .shiftScope(s.scope, s.toString)
-                .flatMap(go(_, extendedTopLevelScope, translation, new StepLegRunR(v), s.stream))
+              scope.shiftScope(s.scope, s.toString).flatMap { stepScope =>
+                val runr = new BuildR[G, y, End]
+                val inner = go(stepScope, extendedTopLevelScope, translation, runr, s.stream)
+                inner.attempt.flatMap(_.fold(goErr(_, view), _.apply(new StepLegRunR(v))))
+              }
 
             case _: GetScope[_] =>
               val result = Succeeded(scope.asInstanceOf[y])
