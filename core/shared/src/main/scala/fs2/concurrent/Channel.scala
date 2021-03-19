@@ -116,7 +116,6 @@ object Channel {
     bounded(0)
 
   def bounded[F[_], A](capacity: Int)(implicit F: Concurrent[F]): F[Channel[F, A]] = {
-    // TODO Vector vs ScalaQueue
     case class State(
         values: Vector[A],
         size: Int,
