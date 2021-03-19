@@ -121,6 +121,13 @@ class MemoryLeakSpec extends FunSuite {
       .groupWithin(Int.MaxValue, 1.millis)
   }
 
+  leakTest("groupWithin --- Issue 2328") {
+    Stream
+      .range(0, 1_000_000)
+      .covary[IO]
+      .groupWithin(256, 1.second)
+  }
+
   leakTest("topic continuous publish") {
     Stream
       .eval(Topic[IO, Int])
