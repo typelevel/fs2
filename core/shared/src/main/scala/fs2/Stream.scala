@@ -2920,7 +2920,7 @@ object Stream extends StreamLowPriority {
       dampen: Boolean
   )(implicit t: Temporal[F]): Stream[F, FiniteDuration] =
     Stream.eval(t.monotonic).flatMap { start =>
-      fixedRate_[F](period.toMillis, start.toMillis, dampen) >> Stream.eval(
+      fixedRate_[F](period, start, dampen) >> Stream.eval(
         t.monotonic.map(_ - start)
       )
     }
@@ -3145,30 +3145,29 @@ object Stream extends StreamLowPriority {
   def fixedRate[F[_]](period: FiniteDuration, dampen: Boolean)(implicit
       F: Temporal[F]
   ): Stream[F, Unit] =
-    Stream.eval(F.monotonic.map(_.toMillis)).flatMap(t => fixedRate_(period.toMillis, t, dampen))
-
-  private def getMonotonicMillis[F[_]](implicit F: Temporal[F]): Stream[F, Long] =
-    Stream.eval(F.monotonic.map(_.toMillis))
+    Stream.eval(F.monotonic).flatMap(t => fixedRate_(period, t, dampen))
 
   private def fixedRate_[F[_]: Temporal](
-      periodMillis: Long,
-      t: Long,
-      dampen: Boolean,
+      period: FiniteDuration,
+      t: FiniteDuration,
+      dampen: Boolean
   ): Stream[F, Unit] =
-    getMonotonicMillis.flatMap { now =>
-      val next = t + periodMillis
-      if (next <= now) {
-        val cnt = (now - t - 1) / periodMillis
-        val out =
-          if (cnt < 0) Stream.empty
-          else if (cnt == 0 || dampen) Stream.emit(())
-          else Stream.emit(()).repeatN(cnt)
-        out ++ fixedRate_(periodMillis, next, dampen)
-      } else {
-        val toSleep = next - now
-        Stream.sleep_(toSleep.millis) ++ Stream.emit(()) ++ fixedRate_(periodMillis, next, dampen)
+    if (period.toNanos == 0) Stream(()).repeat
+    else
+      Stream.eval(Temporal[F].monotonic).flatMap { now =>
+        val next = t + period
+        if (next <= now) {
+          val cnt = (now.toNanos - t.toNanos - 1) / period.toNanos
+          val out =
+            if (cnt < 0) Stream.empty
+            else if (cnt == 0 || dampen) Stream.emit(())
+            else Stream.emit(()).repeatN(cnt)
+          out ++ fixedRate_(period, next, dampen)
+        } else {
+          val toSleep = next - now
+          Stream.sleep_(toSleep) ++ Stream.emit(()) ++ fixedRate_(period, next, dampen)
+        }
       }
-    }
 
   private[fs2] final class PartiallyAppliedFromOption[F[_]](
       private val dummy: Boolean
