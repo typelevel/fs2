@@ -3149,24 +3149,23 @@ object Stream extends StreamLowPriority {
 
   private def fixedRate_[F[_]: Temporal](
       period: FiniteDuration,
-      t: FiniteDuration,
+      lastAwakeAt: FiniteDuration,
       dampen: Boolean
   ): Stream[F, Unit] =
     if (period.toNanos == 0) Stream(()).repeat
     else
       Stream.eval(Temporal[F].monotonic).flatMap { now =>
-        val next = t + period
-        if (next <= now) {
-          val cnt = (now.toNanos - t.toNanos - 1) / period.toNanos
-          val out =
-            if (cnt < 0) Stream.empty
-            else if (cnt == 0 || dampen) Stream.emit(())
-            else Stream.emit(()).repeatN(cnt)
-          out ++ fixedRate_(period, next, dampen)
-        } else {
-          val toSleep = next - now
-          Stream.sleep_(toSleep) ++ Stream.emit(()) ++ fixedRate_(period, next, dampen)
-        }
+        val next = lastAwakeAt + period
+        val step =
+          if (next > now) Stream.sleep(next - now)
+          else {
+            (now.toNanos - lastAwakeAt.toNanos - 1) / period.toNanos match {
+              case count if count < 0            => Stream.empty
+              case count if count == 0 || dampen => Stream.emit(())
+              case count                         => Stream.emit(()).repeatN(count)
+            }
+          }
+        step ++ fixedRate_(period, next, dampen)
       }
 
   private[fs2] final class PartiallyAppliedFromOption[F[_]](
