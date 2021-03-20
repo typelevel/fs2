@@ -2920,7 +2920,7 @@ object Stream extends StreamLowPriority {
       dampen: Boolean
   )(implicit t: Temporal[F]): Stream[F, FiniteDuration] =
     Stream.eval(t.monotonic).flatMap { start =>
-      fixedRate_[F](period.toMillis, dampen, start.toMillis) >> Stream.eval(
+      fixedRate_[F](period.toMillis, start.toMillis, dampen) >> Stream.eval(
         t.monotonic.map(_ - start)
       )
     }
@@ -3145,15 +3145,15 @@ object Stream extends StreamLowPriority {
   def fixedRate[F[_]](period: FiniteDuration, dampen: Boolean)(implicit
       F: Temporal[F]
   ): Stream[F, Unit] =
-    Stream.eval(F.monotonic.map(_.toMillis)).flatMap(t => fixedRate_(period.toMillis, dampen, t))
+    Stream.eval(F.monotonic.map(_.toMillis)).flatMap(t => fixedRate_(period.toMillis, t, dampen))
 
   private def getMonotonicMillis[F[_]](implicit F: Temporal[F]): Stream[F, Long] =
     Stream.eval(F.monotonic.map(_.toMillis))
 
   private def fixedRate_[F[_]: Temporal](
       periodMillis: Long,
+      t: Long,
       dampen: Boolean,
-      t: Long
   ): Stream[F, Unit] =
     getMonotonicMillis.flatMap { now =>
       val next = t + periodMillis
@@ -3163,10 +3163,10 @@ object Stream extends StreamLowPriority {
           if (cnt < 0) Stream.empty
           else if (cnt == 0 || dampen) Stream.emit(())
           else Stream.emit(()).repeatN(cnt)
-        out ++ fixedRate_(periodMillis, dampen, next)
+        out ++ fixedRate_(periodMillis, next, dampen)
       } else {
         val toSleep = next - now
-        Stream.sleep_(toSleep.millis) ++ Stream.emit(()) ++ fixedRate_(periodMillis, dampen, next)
+        Stream.sleep_(toSleep.millis) ++ Stream.emit(()) ++ fixedRate_(periodMillis, next, dampen)
       }
     }
 
