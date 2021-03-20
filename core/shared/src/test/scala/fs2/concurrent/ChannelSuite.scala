@@ -29,20 +29,52 @@ import scala.concurrent.duration._
 import org.scalacheck.effect.PropF.forAllF
 
 class ChannelSuite extends Fs2Suite {
-  test("Identity transformation through channel") {
+  test("Channel receives all elements and closes") {
     forAllF { (source: Stream[Pure, Int]) =>
       Channel.unbounded[IO, Int].flatMap { chan =>
-        chan.stream.concurrently {
-          source
-            .covary[IO]
-            .rechunkRandomly()
-            .through(chan.sendAll)
-        }.compile
+        chan.stream
+          .concurrently {
+            source
+              .covary[IO]
+              .rechunkRandomly()
+              .through(chan.sendAll)
+          }
+          .compile
           .toVector
           .assertEquals(source.compile.toVector)
       }
 
     }
+  }
+
+  test("Slow consumer doesn't lose elements") {
+    forAllF { (source: Stream[Pure, Int]) =>
+      Channel.unbounded[IO, Int].flatMap { chan =>
+        chan.stream
+          .metered(1.millis)
+          .concurrently {
+            source
+              .covary[IO]
+              .rechunkRandomly()
+              .through(chan.sendAll)
+          }
+          .compile
+          .toVector
+          .assertEquals(source.compile.toVector)
+      }
+    }
+  }
+
+  test("Queued elements arrive in a single chunk") {
+    val v = Vector(1, 2, 3)
+    val p = for {
+      chan <- Channel.unbounded[IO, Int]
+      _ <- v.traverse(chan.send)
+      _ <- chan.close
+      res <- chan.stream.chunks.take(1).compile.lastOrError
+    } yield res.toVector
+
+    p.assertEquals(v)
   }
 
 }
