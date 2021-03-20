@@ -59,6 +59,36 @@ class StreamCombinatorsSuite extends Fs2Suite {
         .take(200)
       Stream(s, s, s, s, s).parJoin(5).compile.drain
     }
+
+    test("short periods, no underflow") {
+      val input = Stream.range(0, 10)
+      input
+        .covary[IO]
+        .metered(1.nanos)
+        .compile
+        .toVector
+        .assertEquals(input.compile.toVector)
+    }
+
+    test("very short periods, no underflow") {
+      val input = Stream.range(0, 10)
+      input
+        .covary[IO]
+        .metered(0.3.nanos)
+        .compile
+        .toVector
+        .assertEquals(input.compile.toVector)
+    }
+
+    test("zero-length periods, no underflow") {
+      val input = Stream.range(0, 10)
+      input
+        .covary[IO]
+        .metered(0.nanos)
+        .compile
+        .toVector
+        .assertEquals(input.compile.toVector)
+    }
   }
 
   group("buffer") {
