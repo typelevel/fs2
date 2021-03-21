@@ -143,19 +143,19 @@ object Topic {
       SignallingRef[F, Int](0),
       F.deferred[Unit]
     ).mapN { case (state, subscriberCount, signalClosure) =>
-      new Topic[F, A] {
+        new Topic[F, A] {
+
+          def foreach[B](lm: LongMap[B])(f: B => F[Unit]) =
+            lm.foldLeft(F.unit) { case (op, (_, b)) => op >> f(b) }
 
         def publish1(a: A): F[Either[Topic.Closed, Unit]] =
           signalClosure.tryGet.flatMap {
             case Some(_) => Topic.closed.pure[F]
             case None =>
-              state.get.flatMap { case (subs, _) =>
-                subs
-                  .foldLeft(F.unit) { case (op, (_, chan)) =>
-                    op >> chan.send(a).void
-                  }
-                  .as(Topic.rightUnit)
-              }
+              state
+                .get
+                .flatMap { case (subs, _) => foreach(subs)(_.send(a).void) }
+                .as(Topic.rightUnit)
           }
 
         def subscribeAwait(maxQueued: Int): Resource[F, Stream[F, A]] =
@@ -204,11 +204,7 @@ object Topic {
               val result = if (completedNow) Topic.rightUnit else Topic.closed
 
               state.get
-                .flatMap { case (subs, _) =>
-                  subs.foldLeft(F.unit) { case (op, (_, chan)) =>
-                    op >> chan.close.void
-                  }
-                }
+                .flatMap { case (subs, _) => foreach(subs)(_.close.void) }
                 .as(result)
             }
             .uncancelable
