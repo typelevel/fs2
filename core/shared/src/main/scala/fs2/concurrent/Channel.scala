@@ -185,13 +185,23 @@ object Channel {
               state
                 .modify { case State(values, size, ignorePreviousWaiting @ _, producers, closed) =>
                   if (values.nonEmpty || producers.nonEmpty) {
-                    val (extraValues, blocked) = producers.separateFoldable
-                    val toEmit = Chunk.vector(values ++ extraValues)
+                    var unblock_ = F.unit
+                    var allValues_ = values
+
+                    producers.foreach { case (value, producer) =>
+                      allValues_ = allValues_ :+ value
+                      unblock_ = unblock_ >> producer.complete(()).void
+                    }
+
+                    val unblock = unblock_
+                    val allValues = allValues_
+
+                    val toEmit = Chunk.vector(allValues)
 
                     (
                       State(Vector(), 0, None, Vector.empty, closed),
                       // unblock needs to execute in F, so we can make it uncancelable
-                      unblock(blocked).as(
+                      unblock.as(
                         Pull.output(toEmit) >> consumeLoop
                       )
                     )
@@ -218,9 +228,6 @@ object Channel {
               s.copy(producers = s.producers.filter(_._2 ne producer))
             }
           }
-
-        def unblock(producers: Vector[Deferred[F, Unit]]) =
-          producers.traverse_(_.complete(()))
 
         def signalClosure = closedGate.complete(())
       }
