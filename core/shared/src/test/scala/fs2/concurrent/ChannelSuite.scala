@@ -107,5 +107,4 @@ class ChannelSuite extends Fs2Suite {
     p.assertEquals(v)
   }
 
-
 }
