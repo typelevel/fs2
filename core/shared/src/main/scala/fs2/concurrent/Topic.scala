@@ -143,17 +143,16 @@ object Topic {
       SignallingRef[F, Int](0),
       F.deferred[Unit]
     ).mapN { case (state, subscriberCount, signalClosure) =>
-        new Topic[F, A] {
+      new Topic[F, A] {
 
-          def foreach[B](lm: LongMap[B])(f: B => F[Unit]) =
-            lm.foldLeft(F.unit) { case (op, (_, b)) => op >> f(b) }
+        def foreach[B](lm: LongMap[B])(f: B => F[Unit]) =
+          lm.foldLeft(F.unit) { case (op, (_, b)) => op >> f(b) }
 
         def publish1(a: A): F[Either[Topic.Closed, Unit]] =
           signalClosure.tryGet.flatMap {
             case Some(_) => Topic.closed.pure[F]
             case None =>
-              state
-                .get
+              state.get
                 .flatMap { case (subs, _) => foreach(subs)(_.send(a).void) }
                 .as(Topic.rightUnit)
           }
