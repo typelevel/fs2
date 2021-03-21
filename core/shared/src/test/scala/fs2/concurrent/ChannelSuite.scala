@@ -43,7 +43,6 @@ class ChannelSuite extends Fs2Suite {
           .toVector
           .assertEquals(source.compile.toVector)
       }
-
     }
   }
 
@@ -52,6 +51,24 @@ class ChannelSuite extends Fs2Suite {
       Channel.unbounded[IO, Int].flatMap { chan =>
         chan.stream
           .metered(1.millis)
+          .concurrently {
+            source
+              .covary[IO]
+              .rechunkRandomly()
+              .through(chan.sendAll)
+          }
+          .compile
+          .toVector
+          .assertEquals(source.compile.toVector)
+      }
+    }
+  }
+
+  test("Blocked producers get dequeued") {
+    forAllF { (source: Stream[Pure, Int]) =>
+      Channel.synchronous[IO, Int].flatMap { chan =>
+        chan.stream
+          .metered(1.milli)
           .concurrently {
             source
               .covary[IO]
@@ -76,5 +93,19 @@ class ChannelSuite extends Fs2Suite {
 
     p.assertEquals(v)
   }
+
+  test("Timely closure") {
+    val v = Vector(1, 2, 3)
+    val p = for {
+      chan <- Channel.unbounded[IO, Int]
+      _ <- v.traverse(chan.send)
+      _ <- chan.close
+      _ <- v.traverse(chan.send)
+      res <- chan.stream.compile.toVector
+    } yield res
+
+    p.assertEquals(v)
+  }
+
 
 }
