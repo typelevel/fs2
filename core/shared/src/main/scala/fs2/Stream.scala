@@ -3833,7 +3833,7 @@ object Stream extends StreamLowPriority {
                 Some(Some(CompositeFailure(err0, err)))
               }
             case _ => Some(rslt)
-          } >> outputChan.close.start.void // TODO is the starting really necessary here? probably needed because of the queue.offer(None) which could block
+          } >> outputChan.close.void
 
         def untilDone[A](str: Stream[F, A]) = str.interruptWhen(done.map(_.nonEmpty))
 
