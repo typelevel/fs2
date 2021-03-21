@@ -30,7 +30,7 @@ import cats.{Eval => _, _}
 import cats.data.Ior
 import cats.effect.SyncIO
 import cats.effect.kernel._
-import cats.effect.std.{CountDownLatch, Queue, Semaphore}
+import cats.effect.std.{Queue, Semaphore}
 import cats.effect.kernel.implicits._
 import cats.effect.Resource.ExitCase
 import cats.implicits.{catsSyntaxEither => _, _}
@@ -226,15 +226,15 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     Stream
       .eval {
         (
-          CountDownLatch[F2](pipes.length),
-          fs2.concurrent.Topic[F2, Option[Chunk[O]]]
+          cats.effect.std.CountDownLatch[F2](pipes.length),
+          fs2.concurrent.Topic[F2, Chunk[O]]
         ).tupled
       }
       .flatMap { case (latch, topic) =>
-        def produce = chunks.noneTerminate.through(topic.publish)
+        def produce = chunks.through(topic.publish)
 
-        def consume(pipe: Pipe[F2, O, O2]): Pipe[F2, Option[Chunk[O]], O2] =
-          _.unNoneTerminate.flatMap(Stream.chunk).through(pipe)
+        def consume(pipe: Pipe[F2, O, O2]): Pipe[F2, Chunk[O], O2] =
+          _.flatMap(Stream.chunk).through(pipe)
 
         Stream(pipes: _*)
           .map { pipe =>
@@ -633,28 +633,28 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       d: FiniteDuration
   )(implicit F: Temporal[F2]): Stream[F2, O] = Stream.force {
     for {
-      queue <- Queue.bounded[F2, Option[O]](1)
+      chan <- Channel.bounded[F2, O](1)
       ref <- F.ref[Option[O]](None)
     } yield {
-      val enqueueLatest: F2[Unit] =
-        ref.getAndSet(None).flatMap(prev => if (prev.isEmpty) F.unit else queue.offer(prev))
+      val sendLatest: F2[Unit] =
+        ref.getAndSet(None).flatMap(_.traverse_(chan.send))
 
-      def enqueueItem(o: O): F2[Unit] =
+      def sendItem(o: O): F2[Unit] =
         ref.getAndSet(Some(o)).flatMap {
-          case None    => F.start(F.sleep(d) >> enqueueLatest).void
+          case None    => (F.sleep(d) >> sendLatest).start.void
           case Some(_) => F.unit
         }
 
       def go(tl: Pull[F2, O, Unit]): Pull[F2, INothing, Unit] =
         Pull.uncons(tl).flatMap {
           // Note: hd is non-empty, so hd.last.get is safe
-          case Some((hd, tl)) => Pull.eval(enqueueItem(hd.last.get)) >> go(tl)
-          case None           => Pull.eval(enqueueLatest >> queue.offer(None))
+          case Some((hd, tl)) => Pull.eval(sendItem(hd.last.get)) >> go(tl)
+          case None           => Pull.eval(sendLatest >> chan.close.void)
         }
 
-      val debouncedEnqueue: Stream[F2, INothing] = new Stream(go(this.underlying))
+      val debouncedSend: Stream[F2, INothing] = new Stream(go(this.underlying))
 
-      Stream.fromQueueNoneTerminated(queue).concurrently(debouncedEnqueue)
+      chan.stream.concurrently(debouncedSend)
     }
   }
 
@@ -1855,7 +1855,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       resultL <- F.deferred[Either[Throwable, Unit]]
       resultR <- F.deferred[Either[Throwable, Unit]]
       otherSideDone <- F.ref[Boolean](false)
-      resultQ <- Queue.unbounded[F2, Option[Stream[F2, O2]]]
+      resultChan <- Channel.unbounded[F2, Stream[F2, O2]]
     } yield {
 
       def watchInterrupted(str: Stream[F2, O2]): Stream[F2, O2] =
@@ -1865,12 +1865,9 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       // then close te queue (by putting a None in it)
       val doneAndClose: F2[Unit] = otherSideDone.getAndSet(true).flatMap {
         // complete only if other side is done too.
-        case true  => resultQ.offer(None)
+        case true  => resultChan.close.void
         case false => F.unit
       }
-
-      // stream that is generated from pumping out the elements of the queue.
-      val pumpFromQueue: Stream[F2, O2] = Stream.fromQueueNoneTerminated(resultQ).flatten
 
       // action to interrupt the processing of both streams by completing interrupt
       // We need to use `attempt` because `interruption` may already be completed.
@@ -1879,8 +1876,8 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       def go(s: Stream[F2, O2], guard: Semaphore[F2]): Pull[F2, O2, Unit] =
         Pull.eval(guard.acquire) >> s.pull.uncons.flatMap {
           case Some((hd, tl)) =>
-            val enq = resultQ.offer(Some(Stream.chunk(hd).onFinalize(guard.release)))
-            Pull.eval(enq) >> go(tl, guard)
+            val send = resultChan.send(Stream.chunk(hd).onFinalize(guard.release))
+            Pull.eval(send) >> go(tl, guard)
           case None => Pull.done
         }
 
@@ -1905,7 +1902,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
 
       val runStreams = runStream(this, resultL).start >> runStream(that, resultR).start
 
-      Stream.bracket(runStreams)(_ => atRunEnd) >> watchInterrupted(pumpFromQueue)
+      Stream.bracket(runStreams)(_ => atRunEnd) >> watchInterrupted(resultChan.stream.flatten)
     }
     Stream.eval(fstream).flatten
   }
@@ -2012,16 +2009,16 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       maxConcurrent: Int
   )(f: O => F2[O2])(implicit F: Concurrent[F2]): Stream[F2, O2] = {
     val fstream: F2[Stream[F2, O2]] = for {
-      queue <- Queue.bounded[F2, Option[F2[Either[Throwable, O2]]]](maxConcurrent)
-      dequeueDone <- F.deferred[Unit]
+      chan <- Channel.bounded[F2, F2[Either[Throwable, O2]]](maxConcurrent)
+      chanReadDone <- F.deferred[Unit]
     } yield {
       def forkOnElem(o: O): F2[Stream[F2, Unit]] =
         for {
           value <- F.deferred[Either[Throwable, O2]]
-          enqueue = queue.offer(Some(value.get)).as {
+          send = chan.send(value.get).as {
             Stream.eval(f(o).attempt.flatMap(value.complete(_).void))
           }
-          eit <- F.race(dequeueDone.get, enqueue)
+          eit <- chanReadDone.get.race(send)
         } yield eit match {
           case Left(())      => Stream.empty
           case Right(stream) => stream
@@ -2030,14 +2027,13 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       val background = this
         .evalMap(forkOnElem)
         .parJoin(maxConcurrent)
-        .onFinalize(F.race(dequeueDone.get, queue.offer(None)).void)
+        .onFinalize(chanReadDone.get.race(chan.close).void)
 
       val foreground =
-        Stream
-          .fromQueueNoneTerminated(queue)
+        chan.stream
           .evalMap(identity)
           .rethrow
-          .onFinalize(dequeueDone.complete(()).void)
+          .onFinalize(chanReadDone.complete(()).void)
 
       foreground.concurrently(background)
     }
@@ -2132,10 +2128,11 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   def prefetchN[F2[x] >: F[x]: Concurrent](
       n: Int
   ): Stream[F2, O] =
-    Stream.eval(Queue.bounded[F2, Option[Chunk[O]]](n)).flatMap { queue =>
-      Stream
-        .fromQueueNoneTerminatedChunk(queue)
-        .concurrently(enqueueNoneTerminatedChunks(queue))
+    Stream.eval(Channel.bounded[F2, Chunk[O]](n)).flatMap { chan =>
+      chan.stream.flatMap(Stream.chunk).concurrently {
+        chunks.through(chan.sendAll)
+
+      }
     }
 
   /** Rechunks the stream such that output chunks are within `[inputChunk.size * minFactor, inputChunk.size * maxFactor]`.
@@ -3655,34 +3652,45 @@ object Stream extends StreamLowPriority {
     /** Send chunks through `p`, allowing up to `maxQueued` pending _chunks_ before blocking `s`. */
     def observeAsync(
         maxQueued: Int
-    )(p: Pipe[F, O, INothing])(implicit F: Concurrent[F]): Stream[F, O] = Stream.force {
+    )(pipe: Pipe[F, O, INothing])(implicit F: Concurrent[F]): Stream[F, O] = Stream.force {
       for {
         guard <- Semaphore[F](maxQueued - 1L)
-        outQ <- Queue.unbounded[F, Option[Chunk[O]]]
-        sinkQ <- Queue.unbounded[F, Option[Chunk[O]]]
+        outChan <- Channel.unbounded[F, Chunk[O]]
+        sinkChan <- Channel.unbounded[F, Chunk[O]]
       } yield {
-        val sinkIn: Stream[F, INothing] =
-          self.repeatPull(_.uncons.flatMap {
-            case None           => Pull.eval(sinkQ.offer(None)).as(None)
-            case Some((hd, tl)) => Pull.eval(sinkQ.offer(Some(hd)) >> guard.acquire).as(Some(tl))
-          })
 
-        val closeOutQ = Stream.exec(outQ.offer(None))
+        val sinkIn: Stream[F, INothing] = {
+          def go(s: Stream[F, O]): Pull[F, INothing, Unit] =
+            s.pull.uncons.flatMap {
+              case None           => Pull.eval(sinkChan.close.void)
+              case Some((hd, tl)) => Pull.eval(sinkChan.send(hd) >> guard.acquire) >> go(tl)
+            }
 
-        def sinkOut: Pull[F, O, Unit] = Pull.eval(sinkQ.take).flatMap {
-          case None     => Pull.eval(outQ.offer(None))
-          case Some(ch) => Pull.output(ch) >> Pull.eval(outQ.offer(Some(ch))) >> sinkOut
+          go(self).stream
         }
 
-        def outPull: Pull[F, O, Unit] =
-          Pull.eval(outQ.take).flatMap {
-            case None     => Pull.done
-            case Some(ch) => Pull.output(ch) >> Pull.eval(guard.release) >> outPull
-          }
+        val sinkOut: Stream[F, O] = {
+          def go(s: Stream[F, Chunk[O]]): Pull[F, O, Unit] =
+            s.pull.uncons1.flatMap {
+              case None =>
+                Pull.eval(outChan.close.void)
+              case Some((ch, rest)) =>
+                Pull.output(ch) >> Pull.eval(outChan.send(ch)) >> go(rest)
+            }
 
-        val runner = p(sinkOut.stream).concurrently(sinkIn) ++ closeOutQ
+          go(sinkChan.stream).stream
+        }
 
-        new Stream(outPull).concurrently(runner)
+        val runner =
+          sinkOut.through(pipe).concurrently(sinkIn) ++ Stream.exec(outChan.close.void)
+
+        def outStream =
+          outChan.stream
+            .flatMap { chunk =>
+              Stream.chunk(chunk) ++ Stream.exec(guard.release)
+            }
+
+        outStream.concurrently(runner)
       }
     }
 
@@ -3812,7 +3820,7 @@ object Stream extends StreamLowPriority {
         // starts with 1 because outer stream is running by default
         running <- SignallingRef(1L)
         // sync queue assures we won't overload heap when resulting stream is not able to catchup with inner streams
-        outputQ <- Queue.synchronous[F, Option[Chunk[O]]]
+        outputChan <- Channel.synchronous[F, Chunk[O]]
       } yield {
         // stops the join evaluation
         // all the streams will be terminated. If err is supplied, that will get attached to any error currently present
@@ -3823,7 +3831,7 @@ object Stream extends StreamLowPriority {
                 Some(Some(CompositeFailure(err0, err)))
               }
             case _ => Some(rslt)
-          } >> outputQ.offer(None).start.void
+          } >> outputChan.close.void
 
         def untilDone[A](str: Stream[F, A]) = str.interruptWhen(done.map(_.nonEmpty))
 
@@ -3844,7 +3852,7 @@ object Stream extends StreamLowPriority {
             case Left(err) => stop(Some(err)) >> decrementRunning
           }
 
-        def insertToQueue(str: Stream[F, O]) = str.chunks.foreach(s => outputQ.offer(Some(s)))
+        def sendToChannel(str: Stream[F, O]) = str.chunks.foreach(x => outputChan.send(x).void)
 
         // runs one inner stream, each stream is forked.
         // terminates when killSignal is true
@@ -3857,9 +3865,9 @@ object Stream extends StreamLowPriority {
               available.acquire >>
                 incrementRunning >>
                 F.start {
-                  // Note that the `interrupt` must be AFTER the enqueue to the sync queue,
-                  // otherwise the process may hang to enqueue last item while being interrupted
-                  val backInsertions = untilDone(insertToQueue(inner))
+                  // Note that the `interrupt` must be AFTER the send to the sync channel,
+                  // otherwise the process may hang to send last item while being interrupted
+                  val backInsertions = untilDone(sendToChannel(inner))
                   for {
                     r <- backInsertions.compile.drain.attempt
                     cancelResult <- lease.cancel
@@ -3884,7 +3892,7 @@ object Stream extends StreamLowPriority {
 
         val backEnqueue = Stream.bracket(F.start(runOuter))(_ => endOuter)
 
-        backEnqueue >> Stream.fromQueueNoneTerminatedChunk(outputQ)
+        backEnqueue >> outputChan.stream.flatMap(Stream.chunk)
       }
 
       Stream.eval(fstream).flatten
