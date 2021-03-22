@@ -359,14 +359,13 @@ object Pull extends PullLowPriority {
       resource: Poll[F] => F[R],
       release: (R, ExitCase) => F[Unit]
   )(implicit F: MonadCancel[F, _]): Pull[F, INothing, R] =
-    Acquire(
-      (store: R => Unit) =>
-        F.uncancelable { poll =>
-          resource(poll).map { r =>
-            store(r)
-            r
-          }
-        },
+    Acquire((store: R => Unit) =>
+      F.uncancelable { poll =>
+        resource(poll).map { r =>
+          store(r)
+          r
+        }
+      },
       release,
       cancelable = true
     )
