@@ -140,7 +140,6 @@ object Compiler extends CompilerLowPriority {
         foldChunk: (Out, Chunk[O]) => Out
     ): F[Out]
     private[fs2] def uncancelable[A](poll: Poll[F] => F[A]): F[A]
-    private[fs2] def onCancel[A](fa: F[A], fin: F[Unit]): F[A]
     private[fs2] def interruptContext(root: Unique.Token): Option[F[InterruptContext[F]]]
   }
 
@@ -157,7 +156,6 @@ object Compiler extends CompilerLowPriority {
     protected abstract class MonadCancelTarget[F[_]](implicit F: MonadCancelThrow[F])
         extends MonadErrorTarget[F]()(F) {
       private[fs2] def uncancelable[A](f: Poll[F] => F[A]): F[A] = F.uncancelable(f)
-      private[fs2] def onCancel[A](fa: F[A], fin: F[Unit]): F[A] = F.onCancel(fa, fin)
       private[fs2] def compile[O, Out](
           p: Pull[F, O, Unit],
           init: Out,

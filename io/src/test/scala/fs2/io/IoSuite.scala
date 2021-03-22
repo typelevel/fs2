@@ -24,7 +24,7 @@ package fs2.io
 import java.io.{ByteArrayInputStream, InputStream, OutputStream}
 import java.util.concurrent.Executors
 import cats.effect.IO
-import cats.effect.unsafe.IORuntime
+import cats.effect.unsafe.{IORuntime, IORuntimeConfig}
 import fs2.Fs2Suite
 import fs2.Err
 import scala.concurrent.ExecutionContext
@@ -102,7 +102,8 @@ class IoSuite extends Fs2Suite {
             compute._2.apply()
             blocking._2.apply()
             scheduler._2.apply()
-          }
+          },
+          IORuntimeConfig()
         )
       }
       def write(os: OutputStream): IO[Unit] =
