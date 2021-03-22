@@ -25,7 +25,7 @@ import scala.concurrent.duration._
 import scala.concurrent.ExecutionContext
 
 import cats.effect.IO
-import cats.effect.unsafe.{IORuntime, Scheduler}
+import cats.effect.unsafe.{IORuntime, IORuntimeConfig, Scheduler}
 import cats.effect.kernel.testkit.TestContext
 
 import munit.{CatsEffectSuite, DisciplineSuite, ScalaCheckEffectSuite}
@@ -71,7 +71,7 @@ abstract class Fs2Suite
       def monotonicNanos() = ctx.now().toNanos
     }
 
-    val runtime = IORuntime(ctx, ctx, scheduler, () => ())
+    val runtime = IORuntime(ctx, ctx, scheduler, () => (), IORuntimeConfig())
 
     (ctx, runtime)
   }

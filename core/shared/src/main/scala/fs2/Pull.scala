@@ -694,7 +694,6 @@ object Pull extends PullLowPriority {
 
   private final case class Eval[+F[_], R](value: F[R]) extends AlgEffect[F, R]
 
-
   private final case class Acquire[+F[_], R](
       resource: F[R],
       release: (R, ExitCase) => F[Unit],
