@@ -10,6 +10,8 @@ addCommandAlias(
 addCommandAlias("testJVM", ";coreJVM/test;io/test;reactiveStreams/test;benchmark/test")
 addCommandAlias("testJS", "coreJS/test")
 
+Global / onChangedBuildSource := ReloadOnSourceChanges
+
 ThisBuild / baseVersion := "3.0"
 
 ThisBuild / organization := "co.fs2"
