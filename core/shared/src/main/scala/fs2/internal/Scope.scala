@@ -180,31 +180,13 @@ private[fs2] final class Scope[F[_]] private (
     * leased in `parJoin`. But even then the order of the lease of the resources respects acquisition of the resources that leased them.
     */
   def acquireResource[R](
-      acquire: (Poll[F], R => Unit) => F[R],
+      acquire: Poll[F] => F[R],
       release: (R, Resource.ExitCase) => F[Unit]
   ): F[Outcome[Id, Throwable, Either[Unique.Token, R]]] =
     interruptibleEval[Either[Throwable, R]] {
       ScopedResource.create[F].flatMap { resource =>
         F.uncancelable { poll =>
-          @volatile var res: Option[R] = None
-
-         F.onCancel(
-            acquire(poll, (r: R) =>
-              res = r.some
-            ),
-           F.unit.flatMap { _ =>
-             res match {
-               case None => F.unit
-               // TODO
-               // which exit case is the correct one here? canceled or
-               // succeeded? current test says canceled, and the
-               // overall op is canceled, but the op whose release
-               // we're running did complete
-               case Some(r) => release(r, Resource.ExitCase.Canceled)
-             }
-           }
-         )
-          .redeemWith(
+          acquire(poll).redeemWith(
             t => F.pure(Left(t)),
             r => {
               val finalizer = (ec: Resource.ExitCase) => release(r, ec)
