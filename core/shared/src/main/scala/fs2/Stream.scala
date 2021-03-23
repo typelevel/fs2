@@ -30,7 +30,8 @@ import cats.{Eval => _, _}
 import cats.data.Ior
 import cats.effect.SyncIO
 import cats.effect.kernel._
-import cats.effect.std.{Queue, Semaphore}
+import cats.effect.std.{CountDownLatch, Queue, Semaphore}
+import cats.effect.kernel.Resource.ExitCase
 import cats.effect.kernel.implicits._
 import cats.effect.Resource.ExitCase
 import cats.implicits.{catsSyntaxEither => _, _}
@@ -39,6 +40,7 @@ import fs2.compat._
 import fs2.concurrent._
 import fs2.internal._
 import scala.collection.mutable.ArrayBuffer
+import cats.data.NonEmptyList
 
 /** A stream producing output of type `O` and which may evaluate `F` effects.
   *
@@ -2040,6 +2042,11 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     Stream.eval(fstream).flatten
   }
 
+  def prevParEvalMapUnordered[F2[x] >: F[x]: Concurrent, O2](
+      maxConcurrent: Int
+  )(f: O => F2[O2]): Stream[F2, O2] =
+    map(o => Stream.eval(f(o))).parJoin(maxConcurrent)
+
   /** Like [[Stream#evalMap]], but will evaluate effects in parallel, emitting the results
     * downstream. The number of concurrent effects is limited by the `maxConcurrent` parameter.
     *
@@ -2051,12 +2058,96 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * res0: Unit = ()
     * }}}
     */
-  def parEvalMapUnordered[F2[x] >: F[
-    x
-  ]: Concurrent, O2](
+  def parEvalMapUnordered[F2[x] >: F[x]: Concurrent, O2](
       maxConcurrent: Int
-  )(f: O => F2[O2]): Stream[F2, O2] =
-    map(o => Stream.eval(f(o))).parJoin(maxConcurrent)
+  )(f: O => F2[O2]): Stream[F2, O2] = {
+    assert(maxConcurrent > 0, "maxConcurrent must be > 0, was: " + maxConcurrent)
+
+    val initialResult = none[Either[NonEmptyList[Throwable], Unit]]
+    val initialState = (Set.empty[Fiber[F2, Throwable, O2]], initialResult)
+    val action =
+      (
+        Semaphore[F2](maxConcurrent),
+        Queue.bounded[F2, Option[O2]](1),
+        Ref[F2].of(initialState),
+        Deferred[F2, Either[Throwable, Unit]]
+      ).mapN { (semaphore, queue, state, stopReading) =>
+        val completeOuter =
+          state.get.flatMap { case (fibers, completion) =>
+            queue.offer(none).whenA(fibers.isEmpty && completion.nonEmpty)
+          }
+
+        val succeed =
+          state.update {
+            case (fibers, None) => (fibers, ().asRight.some)
+            case other          => other
+          }
+
+        def failed(ex: Throwable, fiber: Option[Fiber[F2, Throwable, O2]]) =
+          state
+            .modify { case (fibers, result) =>
+              val nFibers = fiber.fold(fibers)(fibers - _)
+              val nResult = result match {
+                case Some(Left(nel)) => nel.prepend(ex).asLeft
+                case _               => NonEmptyList.one(ex).asLeft
+              }
+              ((nFibers, nResult.some), nFibers)
+            }
+            .flatMap(_.toList.parTraverse(_.cancel))
+            .void
+
+        def addFiber(fiber: Fiber[F2, Throwable, O2]) =
+          state.modify {
+            case prev @ (_, Some(Left(_))) => (prev, true)
+            case (fibers, prev)            => (((fibers + fiber), prev), false)
+          }
+
+        def removeFiber(fiber: Fiber[F2, Throwable, O2]) =
+          state.update(_.leftMap(_ - fiber))
+
+        val completeStream =
+          Stream.force {
+            state.get.map {
+              case (_, Some(Left(nel))) => Stream.raiseError[F2](CompositeFailure.fromNel(nel))
+              case _                    => Stream.empty
+            }
+          }
+
+        val pullExecAndOutput =
+          interruptWhen(stopReading)
+            .evalMap { el =>
+              val running =
+                f(el).start
+                  .mproduct(fb => addFiber(fb))
+                  .flatMap { case (fb, isShouldCancel) =>
+                    fb.cancel.whenA(isShouldCancel).as(fb)
+                  }
+                  .flatMap { fb =>
+                    val handle =
+                      fb.join.flatMap {
+                        case Outcome.Succeeded(fa) =>
+                          removeFiber(fb) *> fa.flatMap(a => queue.offer(a.some))
+                        case Outcome.Errored(e) =>
+                          failed(e, fb.some) *> stopReading.complete(().asRight).void
+                        case Outcome.Canceled() => removeFiber(fb)
+                      }
+                    (handle *> semaphore.release *> completeOuter).start
+                  }
+                  .void
+
+              semaphore.acquire >> running
+            }
+            .onFinalizeCase {
+              case ExitCase.Succeeded   => succeed *> completeOuter
+              case ExitCase.Errored(ex) => failed(ex, none)
+              case ExitCase.Canceled    => ().pure[F2]
+            }
+
+        Stream.fromQueueNoneTerminated(queue).concurrently(pullExecAndOutput) ++ completeStream
+      }
+
+    Stream.force(action)
+  }
 
   /** Concurrent zip.
     *
