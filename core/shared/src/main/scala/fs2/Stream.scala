@@ -2063,63 +2063,66 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   )(f: O => F2[O2]): Stream[F2, O2] = {
     assert(maxConcurrent > 0, "maxConcurrent must be > 0, was: " + maxConcurrent)
 
+    // One is taken by inner stream read.
+    val concurrency = if (maxConcurrent == Int.MaxValue) Int.MaxValue else maxConcurrent + 1
     val action =
       (
-        Semaphore[F2](maxConcurrent),
+        Semaphore[F2](concurrency),
         Queue.bounded[F2, Option[O2]](1),
         Ref[F2].of(none[Either[NonEmptyList[Throwable], Unit]]),
         Deferred[F2, Either[Throwable, Unit]]
-      ).mapN { (semaphore, queue, state, stopReading) =>
+      ).mapN { (semaphore, queue, result, stopReading) =>
         val completeOuter =
-          state.get
-            .product(semaphore.available)
-            .flatMap { case (completion, available) =>
-              queue.offer(none).whenA(completion.nonEmpty && available == maxConcurrent)
-            }
+          semaphore.release *>
+            semaphore.available
+              .product(result.get)
+              .flatMap { case (available, completion) =>
+                queue.offer(none).whenA(completion.nonEmpty && available == concurrency)
+              }
 
         val succeed =
-          state.update {
+          result.update {
             case None  => ().asRight.some
             case other => other
           }
 
         def failed(ex: Throwable) =
-          stopReading.complete(().asRight).void *>
-            state.update {
-              case Some(Left(nel)) => nel.prepend(ex).asLeft.some
-              case _               => NonEmptyList.one(ex).asLeft.some
-            }
+          result.update {
+            case Some(Left(nel)) => nel.prepend(ex).asLeft.some
+            case _               => NonEmptyList.one(ex).asLeft.some
+          }
 
         val completeStream =
           Stream.force {
-            state.get.map {
+            result.get.map {
               case Some(Left(nel)) => Stream.raiseError[F2](CompositeFailure.fromNel(nel))
               case _               => Stream.empty
             }
           }
 
         val pullExecAndOutput =
-          interruptWhen(stopReading)
-            .evalMap { el =>
-              val running =
-                f(el).attempt
-                  .race(stopReading.get)
-                  .flatMap {
-                    case Left(Left(ex)) => failed(ex)
-                    case Left(Right(a)) => queue.offer(a.some)
-                    case Right(_)       => ().pure[F2]
-                  }
-                  .guarantee(semaphore.release *> completeOuter)
-                  .start
-                  .void
+          Stream.exec(semaphore.acquire) ++
+            interruptWhen(stopReading)
+              .evalMap { el =>
+                val running =
+                  f(el).attempt
+                    .race(stopReading.get)
+                    .flatMap {
+                      case Left(Left(ex)) => stopReading.complete(().asRight) *> failed(ex)
+                      case Left(Right(a)) => queue.offer(a.some)
+                      case Right(_)       => ().pure[F2]
+                    }
+                    .guarantee(completeOuter)
+                    .start
+                    .void
 
-              semaphore.acquire *> running
-            }
-            .onFinalizeCase {
-              case ExitCase.Succeeded   => succeed *> completeOuter
-              case ExitCase.Errored(ex) => failed(ex) *> completeOuter
-              case ExitCase.Canceled    => ().pure[F2]
-            }
+                semaphore.acquire *> running
+              }
+              .onFinalizeCase {
+                case ExitCase.Succeeded   => succeed *> completeOuter
+                case ExitCase.Errored(ex) => failed(ex) *> completeOuter
+                case ExitCase.Canceled    => ().pure[F2]
+              }
 
         Stream.fromQueueNoneTerminated(queue).concurrently(pullExecAndOutput) ++ completeStream
       }
