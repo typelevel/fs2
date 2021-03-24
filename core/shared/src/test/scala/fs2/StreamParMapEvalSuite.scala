@@ -93,14 +93,14 @@ class StreamParMapEvalSuite extends Fs2Suite {
 
   test("all that completed before before error should remain, after - cancelled") {
     Deferred[IO, Unit].flatMap { case (d1) =>
-      val before = Stream(sleepAndEmit(50) <* d1.complete(()))
-      val error = Stream(IO.sleep(40.millis) *> ioThrow)
-      val after = Stream(30, 20).map(sleepAndEmit)
+      val before = Stream(sleepAndEmit(100) <* d1.complete(()))
+      val error = Stream(IO.sleep(80.millis) *> ioThrow)
+      val after = Stream(60, 40).map(sleepAndEmit)
       val s = (before ++ error ++ after).covary[IO].parEvalMapUnordered(Int.MaxValue)(identity)
 
       s.compile.drain.intercept[IllegalArgumentException] *>
         (s.mask.compile.toList, d1.tryGet).mapN { case (masked, isCompleted) =>
-          masked == List(20, 30) && isCompleted.isEmpty
+          masked == List(40, 60) && isCompleted.isEmpty
         }.assert
     }
   }
