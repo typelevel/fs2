@@ -2072,7 +2072,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
         Ref[F2].of(none[Either[NonEmptyList[Throwable], Unit]]),
         Deferred[F2, Either[Throwable, Unit]]
       ).mapN { (semaphore, queue, result, stopReading) =>
-        val completeOuter =
+        val releaseAndCheckCompletion =
           semaphore.release *>
             semaphore.available
               .product(result.get)
@@ -2087,10 +2087,11 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
           }
 
         def failed(ex: Throwable) =
-          result.update {
-            case Some(Left(nel)) => nel.prepend(ex).asLeft.some
-            case _               => NonEmptyList.one(ex).asLeft.some
-          }
+          stopReading.complete(().asRight) *>
+            result.update {
+              case Some(Left(nel)) => nel.prepend(ex).asLeft.some
+              case _               => NonEmptyList.one(ex).asLeft.some
+            }
 
         val completeStream =
           Stream.force {
@@ -2108,19 +2109,19 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
                   f(el).attempt
                     .race(stopReading.get)
                     .flatMap {
-                      case Left(Left(ex)) => stopReading.complete(().asRight) *> failed(ex)
+                      case Left(Left(ex)) => failed(ex)
                       case Left(Right(a)) => queue.offer(a.some)
                       case Right(_)       => ().pure[F2]
                     }
-                    .guarantee(completeOuter)
+                    .guarantee(releaseAndCheckCompletion)
                     .start
                     .void
 
                 semaphore.acquire *> running
               }
               .onFinalizeCase {
-                case ExitCase.Succeeded   => succeed *> completeOuter
-                case ExitCase.Errored(ex) => failed(ex) *> completeOuter
+                case ExitCase.Succeeded   => succeed *> releaseAndCheckCompletion
+                case ExitCase.Errored(ex) => failed(ex) *> releaseAndCheckCompletion
                 case ExitCase.Canceled    => ().pure[F2]
               }
 
