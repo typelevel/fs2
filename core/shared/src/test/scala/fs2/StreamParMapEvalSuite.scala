@@ -85,7 +85,7 @@ class StreamParMapEvalSuite extends Fs2Suite {
         either <- IO.race(IO.sleep(500.millis), fib.join)
         _ <- d1.complete(())
         outcome <- fib.joinWithNever
-      } yield either.isLeft && outcome == ()
+      } yield either.isLeft
 
     action.assert
   }

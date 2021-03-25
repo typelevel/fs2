@@ -2068,7 +2068,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     val action =
       (
         Semaphore[F2](concurrency),
-        Queue.bounded[F2, Option[O2]](1),
+        Queue.bounded[F2, Option[O2]](concurrency),
         Ref[F2].of(none[Either[NonEmptyList[Throwable], Unit]]),
         Deferred[F2, Either[Throwable, Unit]]
       ).mapN { (semaphore, queue, result, stopReading) =>
