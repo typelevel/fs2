@@ -207,21 +207,18 @@ class StreamParJoinSuite extends Fs2Suite {
   }
 
   test("issue-2332") {
-    val ref = Ref[IO].of(0)
-    val clock = Clock[IO]
-    val sleepAndTime = IO.sleep(100.millis) >> clock.realTime
-    def stream(s: Stream[IO, Unit], par: Int, ref: Ref[IO, Int]) =
-      s.parEvalMap(par)(_ => sleepAndTime)
-        .sliding(2)
-        .map(durs => durs(1).minus(durs(0)))
-        .evalMap(diff => ref.update(_ + 1).whenA(diff >= 50.millis))
-
-    (ref, ref, ref).tupled
-      .flatMap { case (r1, r2, r3) =>
-        val s = Stream(()).repeatN(4).covary[IO]
-        val io = stream(s, 4, r1).merge(stream(s, 4, r2)).through(stream(_, 8, r3)).compile.drain
-        io *> (r1.get, r2.get, r3.get).tupled
+    val s = Stream(()).repeatN(4).covary[IO]
+    val par4 = s.map(IO.delay(_)).parEvalMap(4)(identity)
+    Vector.fill(8)(Deferred[IO, Unit])
+      .sequence
+      .flatMap { defs =>
+        val merged = par4.merge(par4)
+        merged
+          .zipWithIndex
+          .parEvalMap(8) { case (_, i) => defs(i.toInt).complete(()) *> IO.never }
+          .compile.drain.start *> defs.traverse(_.get).as(true)
       }
-      .assertEquals((0, 0, 0))
+      .timeout(1.second)
+      .assert
   }
 }
