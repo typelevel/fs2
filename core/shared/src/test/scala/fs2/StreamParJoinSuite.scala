@@ -27,7 +27,6 @@ import cats.effect.IO
 import cats.effect.kernel.{Deferred, Ref}
 import cats.syntax.all._
 import org.scalacheck.effect.PropF.forAllF
-import cats.effect.kernel.Clock
 
 class StreamParJoinSuite extends Fs2Suite {
   test("no concurrency") {
@@ -209,14 +208,16 @@ class StreamParJoinSuite extends Fs2Suite {
   test("issue-2332") {
     val s = Stream(()).repeatN(4).covary[IO]
     val par4 = s.map(IO.delay(_)).parEvalMap(4)(identity)
-    Vector.fill(8)(Deferred[IO, Unit])
+    Vector
+      .fill(8)(Deferred[IO, Unit])
       .sequence
       .flatMap { defs =>
         val merged = par4.merge(par4)
-        merged
-          .zipWithIndex
+        merged.zipWithIndex
           .parEvalMap(8) { case (_, i) => defs(i.toInt).complete(()) *> IO.never }
-          .compile.drain.start *> defs.traverse(_.get).as(true)
+          .compile
+          .drain
+          .start *> defs.traverse(_.get).as(true)
       }
       .timeout(1.second)
       .assert
