@@ -23,13 +23,11 @@ package fs2
 
 import cats.effect.IO
 import scala.concurrent.duration._
-import cats.syntax.all._
-import cats.effect.Clock
+import cats.implicits._
 import org.scalacheck.effect.PropF.forAllF
-import cats.effect.kernel.Deferred
+import cats.effect.Deferred
 import cats.effect.Resource
 import cats.effect.Resource.ExitCase
-import cats.effect.kernel.Outcome.Succeeded
 import cats.effect.kernel.Outcome.Canceled
 import cats.effect.kernel.Outcome.Errored
 import cats.data.NonEmptyList
@@ -84,7 +82,7 @@ class StreamParMapEvalSuite extends Fs2Suite {
         _ <- alloc.get
         either <- IO.race(IO.sleep(500.millis), fib.join)
         _ <- d1.complete(())
-        outcome <- fib.joinWithNever
+        _ <- fib.joinWithNever
       } yield either.isLeft
 
     action.assert
@@ -100,6 +98,7 @@ class StreamParMapEvalSuite extends Fs2Suite {
         fib <- stream(defs).compile.drain.start
         _ <- defs.take(100).traverse(_.get)
         either <- IO.race(IO.sleep(500.millis), defs.last.get)
+        _ <- fib.cancel
       } yield either.isLeft
 
     action.assert
