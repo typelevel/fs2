@@ -25,4 +25,12 @@ private[fs2] case class JunctionBuffer[T](
     data: Vector[T],
     endOfSupply: Option[Either[Throwable, Unit]],
     endOfDemand: Option[Either[Throwable, Unit]]
-)
+) {
+  def splitAt(n: Int): (JunctionBuffer[T], JunctionBuffer[T]) =
+    if (this.data.size >= n) {
+      val (head, tail) = this.data.splitAt(n.toInt)
+      (this.copy(tail), this.copy(head))
+    } else {
+      (this.copy(Vector.empty), this)
+    }
+}

@@ -1434,7 +1434,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
             case _            => F.unit
           }
 
-        def acquireSupplyUpToNWithin(n: Long, timeout: FiniteDuration): F2[Long] =
+        def acquireSupplyUpToNWithin(n: Long): F2[Long] =
           // in JS cancellation doesn't always seem to run, so race conditions should restore state on their own
           F.race(
             F.sleep(timeout),
@@ -1452,16 +1452,9 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
           }
 
         def dequeueN(n: Int): F2[Option[Vector[O]]] =
-          acquireSupplyUpToNWithin(n.toLong, timeout).flatMap { n =>
+          acquireSupplyUpToNWithin(n.toLong).flatMap { n =>
             buffer
-              .modify { buf =>
-                if (buf.data.size >= n) {
-                  val (head, tail) = buf.data.splitAt(n.toInt)
-                  (buf.copy(tail), buf.copy(head))
-                } else {
-                  (buf.copy(Vector.empty), buf)
-                }
-              }
+              .modify(_.splitAt(n.toInt))
               .flatMap { buf =>
                 demand.releaseN(buf.data.size.toLong).flatMap { _ =>
                   buf.endOfSupply match {
@@ -1496,20 +1489,19 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
         }
 
         fs2.Stream
-          .eval(enqueueAsync)
-          .flatMap { upstream =>
+          .bracketCase(enqueueAsync) { case (upstream, exitCase) =>
+            val ending = exitCase match {
+              case ExitCase.Succeeded  => Right(())
+              case ExitCase.Errored(e) => Left(e)
+              case ExitCase.Canceled   => Right(())
+            }
+            endDemand(ending) *> upstream.cancel
+          }
+          .flatMap { _ =>
             fs2.Stream
               .eval(dequeueN(n))
               .repeat
               .collectWhile { case Some(data) => Chunk.vector(data) }
-              .onFinalizeCase { exitCase =>
-                val ending = exitCase match {
-                  case ExitCase.Succeeded  => Right(())
-                  case ExitCase.Errored(e) => Left(e)
-                  case ExitCase.Canceled   => Right(())
-                }
-                endDemand(ending) *> upstream.cancel
-              }
           }
       }
     }
