@@ -1412,7 +1412,22 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   def groupWithin[F2[x] >: F[x]](
       n: Int,
       timeout: FiniteDuration
-  )(implicit F: Temporal[F2]): Stream[F2, Chunk[O]] =
+  )(implicit F: Temporal[F2]): Stream[F2, Chunk[O]] = {
+
+    case class JunctionBuffer[T](
+        data: Vector[T],
+        endOfSupply: Option[Either[Throwable, Unit]],
+        endOfDemand: Option[Either[Throwable, Unit]]
+    ) {
+      def splitAt(n: Int): (JunctionBuffer[T], JunctionBuffer[T]) =
+        if (this.data.size >= n) {
+          val (head, tail) = this.data.splitAt(n.toInt)
+          (this.copy(tail), this.copy(head))
+        } else {
+          (this.copy(Vector.empty), this)
+        }
+    }
+
     fs2.Stream.force {
       for {
         demand <- Semaphore[F2](n.toLong)
@@ -1505,6 +1520,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
           }
       }
     }
+  }
 
   /** If `this` terminates with `Stream.raiseError(e)`, invoke `h(e)`.
     *
