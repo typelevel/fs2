@@ -19,34 +19,44 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2.benchmark
+package fs2
+package benchmark
 
 import cats.effect.IO
-import cats.effect.unsafe.implicits.global
-import fs2.Stream
-import org.openjdk.jmh.annotations.{Benchmark, OperationsPerInvocation, Scope, State}
+import org.openjdk.jmh.annotations.{Benchmark, Param, Scope, State}
 
 import scala.concurrent.duration._
-
-object GroupWithinBenchmark {
-  final val N = 1000000
-  final val bufferSize = 256
-  final val bufferWindow = 4.seconds
-}
 
 @State(Scope.Thread)
 class GroupWithinBenchmark {
 
-  import GroupWithinBenchmark._
+  /*  For Branch 2.5.x
+  import cats.effect.{Timer, ContextShift}
+  import scala.concurrent.ExecutionContext
+  lazy protected implicit val ioTimer: Timer[IO] = IO.timer(ExecutionContext.global)
+
+  lazy protected implicit val ioContextShift: ContextShift[IO] =
+    IO.contextShift(ExecutionContext.global)
+   */
+
+  // only for branch 3.x
+  import cats.effect.unsafe.implicits.global
+
+  val bufferWindow = 100.micros
+
+  @Param(Array("100", "10000", "100000"))
+  var rangeLength: Int = _
+
+  @Param(Array("16", "256", "4096"))
+  var bufferSize: Int = _
 
   @Benchmark
-  @OperationsPerInvocation(N)
   def groupWithin(): Unit =
     Stream
-      .range(0, N)
+      .range(0, rangeLength)
       .covary[IO]
       .groupWithin(bufferSize, bufferWindow)
       .compile
       .drain
-      .unsafeRunSync
+      .unsafeRunSync()
 }
