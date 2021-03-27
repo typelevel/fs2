@@ -43,6 +43,7 @@ If you have a project you'd like to include in this list, either [click here](ht
 * [fs2-ssh](https://github.com/slamdata/fs2-ssh): A wrapper around Apache SSHD targeting cats-effect and fs2.
 * [fs2-zk](https://github.com/Spinoco/fs2-zk): Simple Apache Zookeeper bindings for fs2.
 * [http4s](http://http4s.org/): Minimal, idiomatic Scala interface for HTTP services using fs2.
+* [mongo4cats](https://github.com/Kirill5k/mongo4cats): Mongo DB Scala client wrapper for Cats Effect & FS2.
 * [mongosaur](https://gitlab.com/lJoublanc/mongosaur): fs2-based MongoDB driver.
 * [mysql-binlog-stream](https://github.com/laserdisc-io/mysql-binlog-stream): Stream MySQL binlog events with FS2
 * [neotypes](https://github.com/neotypes/neotypes): A Scala lightweight, type-safe & asynchronous driver for neo4j. Support streaming queries using fs2.
