@@ -115,7 +115,7 @@ class CompressionSuite extends Fs2Suite {
         .chunk[IO, Byte](Chunk.array(getBytes(s)))
         .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
         .through(
-          deflate(
+          Compression[IO].deflate(
             DeflateParams(
               level = DeflateParams.Level(level),
               strategy = DeflateParams.Strategy(strategy),
@@ -142,7 +142,7 @@ class CompressionSuite extends Fs2Suite {
           .chunk[IO, Byte](Chunk.array(getBytes(s)))
           .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
           .through(
-            deflate(
+            Compression[IO].deflate(
               DeflateParams(
                 bufferSize = 32 * 1024,
                 header = if (nowrap) ZLibParams.Header.GZIP else ZLibParams.Header.ZLIB,
@@ -159,7 +159,7 @@ class CompressionSuite extends Fs2Suite {
             Stream
               .chunk[IO, Byte](Chunk.array(deflated))
               .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
-              .through(inflate(InflateParams(header = ZLibParams.Header(nowrap))))
+              .through(Compression[IO].inflate(InflateParams(header = ZLibParams.Header(nowrap))))
               .compile
               .toVector
               .assertEquals(expected)
@@ -178,7 +178,7 @@ class CompressionSuite extends Fs2Suite {
       )
       .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
       .through(
-        deflate(
+        Compression[IO].deflate(
           DeflateParams(
             header = ZLibParams.Header.ZLIB
           )
@@ -191,7 +191,7 @@ class CompressionSuite extends Fs2Suite {
         Stream
           .chunk[IO, Byte](Chunk.array(deflated))
           .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
-          .through(inflate(InflateParams(header = ZLibParams.Header(false))))
+          .through(Compression[IO].inflate(InflateParams(header = ZLibParams.Header(false))))
           .compile
           .to(Array)
           .map(new String(_))
@@ -212,7 +212,7 @@ class CompressionSuite extends Fs2Suite {
           .chunk[IO, Byte](Chunk.array(getBytes(s)))
           .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
           .through(
-            deflate(
+            Compression[IO].deflate(
               DeflateParams(
                 bufferSize = 32 * 1024,
                 header = if (nowrap) ZLibParams.Header.GZIP else ZLibParams.Header.ZLIB,
@@ -223,7 +223,7 @@ class CompressionSuite extends Fs2Suite {
             )
           )
           .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
-          .through(inflate(InflateParams(header = ZLibParams.Header(nowrap))))
+          .through(Compression[IO].inflate(InflateParams(header = ZLibParams.Header(nowrap))))
           .compile
           .to(Array)
           .map(it => assert(it.sameElements(getBytes(s))))
@@ -240,7 +240,7 @@ class CompressionSuite extends Fs2Suite {
     Stream
       .chunk[IO, Byte](Chunk.array(uncompressed))
       .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
-      .through(deflate(DeflateParams(level = DeflateParams.Level.NINE)))
+      .through(Compression[IO].deflate(DeflateParams(level = DeflateParams.Level.NINE)))
       .compile
       .toVector
       .map(compressed => assert(compressed.length < uncompressed.length))
@@ -249,8 +249,8 @@ class CompressionSuite extends Fs2Suite {
   test("deflate and inflate are reusable") {
     val bytesIn: Int = 1024 * 1024
     val chunkSize = 1024
-    val deflater = deflate[IO](DeflateParams(bufferSize = chunkSize))
-    val inflater = inflate[IO](InflateParams(bufferSize = chunkSize))
+    val deflater = Compression[IO].deflate(DeflateParams(bufferSize = chunkSize))
+    val inflater = Compression[IO].inflate(InflateParams(bufferSize = chunkSize))
     val stream = Stream
       .chunk[IO, Byte](Chunk.array(1.to(bytesIn).map(_.toByte).toArray))
       .through(deflater)
@@ -285,7 +285,7 @@ class CompressionSuite extends Fs2Suite {
           .chunk(Chunk.array(s.getBytes))
           .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
           .through(
-            gzip[IO](
+            Compression[IO].gzip(
               fileName = Some(s),
               modificationTime = Some(Instant.ofEpochSecond(epochSeconds.toLong)),
               comment = Some(s),
@@ -300,7 +300,7 @@ class CompressionSuite extends Fs2Suite {
           )
           .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
           .through(
-            gunzip[IO](8192)
+            Compression[IO].gunzip(8192)
           )
           .flatMap { gunzipResult =>
             assertEquals(gunzipResult.fileName, expectedFileName)
@@ -330,7 +330,7 @@ class CompressionSuite extends Fs2Suite {
           .chunk(Chunk.array(s.getBytes))
           .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
           .through(
-            gzip[IO](
+            Compression[IO].gzip(
               fileName = Some(s),
               modificationTime = Some(Instant.ofEpochSecond(epochSeconds.toLong)),
               comment = Some(s),
@@ -345,7 +345,7 @@ class CompressionSuite extends Fs2Suite {
           )
           .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
           .through(
-            gunzip[IO](509)
+            Compression[IO].gunzip(509)
           )
           .flatMap { gunzipResult =>
             assertEquals(gunzipResult.fileName, expectedFileName)
@@ -375,7 +375,7 @@ class CompressionSuite extends Fs2Suite {
           .chunk(Chunk.array(s.getBytes))
           .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
           .through(
-            gzip[IO](
+            Compression[IO].gzip(
               fileName = Some(s),
               modificationTime = Some(Instant.ofEpochSecond(epochSeconds.toLong)),
               comment = Some(s),
@@ -390,7 +390,7 @@ class CompressionSuite extends Fs2Suite {
           )
           .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
           .through(
-            gunzip[IO](1031)
+            Compression[IO].gunzip(1031)
           )
           .flatMap { gunzipResult =>
             assertEquals(gunzipResult.fileName, expectedFileName)
@@ -417,7 +417,7 @@ class CompressionSuite extends Fs2Suite {
           .chunk[IO, Byte](Chunk.array(s.getBytes))
           .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
           .through(
-            gzip(
+            Compression[IO].gzip(
               fileName = Some(s),
               modificationTime = Some(Instant.ofEpochSecond(epochSeconds.toLong)),
               comment = Some(s),
@@ -457,7 +457,7 @@ class CompressionSuite extends Fs2Suite {
                    |-- Pierce, Benjamin C. (2002). Types and Programming Languages""")
     Stream
       .chunk[IO, Byte](Chunk.array(uncompressed))
-      .through(gzip(2048))
+      .through(Compression[IO].gzip(2048))
       .compile
       .toVector
       .map(compressed => assert(compressed.length < uncompressed.length))
@@ -474,9 +474,9 @@ class CompressionSuite extends Fs2Suite {
     val expectedComment = Option(toEncodableComment(longString))
     Stream
       .chunk(Chunk.empty[Byte])
-      .through(gzip[IO](8192, fileName = Some(longString), comment = Some(longString)))
+      .through(Compression[IO].gzip(8192, fileName = Some(longString), comment = Some(longString)))
       .unchunk // ensure chunk sizes are less than file name and comment size soft limits
-      .through(gunzip[IO](8192))
+      .through(Compression[IO].gunzip(8192))
       .flatMap { gunzipResult =>
         assert(
           gunzipResult.fileName
@@ -508,7 +508,7 @@ class CompressionSuite extends Fs2Suite {
     Stream
       .chunk(Chunk.array(compressed))
       .through(
-        gunzip[IO]()
+        Compression[IO].gunzip()
       )
       .flatMap { gunzipResult =>
         assertEquals(gunzipResult.fileName, expectedFileName)
@@ -525,8 +525,8 @@ class CompressionSuite extends Fs2Suite {
   test("gzip and gunzip are reusable") {
     val bytesIn: Int = 1024 * 1024
     val chunkSize = 1024
-    val gzipStream = gzip[IO](bufferSize = chunkSize)
-    val gunzipStream = gunzip[IO](bufferSize = chunkSize)
+    val gzipStream = Compression[IO].gzip(bufferSize = chunkSize)
+    val gunzipStream = Compression[IO].gunzip(bufferSize = chunkSize)
     val stream = Stream
       .chunk[IO, Byte](Chunk.array(1.to(bytesIn).map(_.toByte).toArray))
       .through(gzipStream)
