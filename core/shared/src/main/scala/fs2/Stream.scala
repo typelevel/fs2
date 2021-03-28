@@ -3306,7 +3306,7 @@ object Stream extends StreamLowPriority {
     * }}}
     */
   def range[F[x] >: Pure[x], O: Numeric](start: O, stopExclusive: O): Stream[F, O] =
-    range(start, stopExclusive, Numeric[O].one)
+    range(start, stopExclusive, implicitly[Numeric[O]].one)
 
   /** Lazily produce the sequence `[start, start + step, start + 2 * step, ..., stopExclusive)`.
     * If you want to produce the sequence in one chunk, instead of lazily, use
@@ -3320,7 +3320,7 @@ object Stream extends StreamLowPriority {
   def range[F[x] >: Pure[x], O: Numeric](start: O, stopExclusive: O, step: O): Stream[F, O] = {
     import Numeric.Implicits._
     import Ordering.Implicits._
-    val zero = Numeric[O].zero
+    val zero = implicitly[Numeric[O]].zero
     def go(o: O): Stream[F, O] =
       if (
         (step > zero && o < stopExclusive && start < stopExclusive) ||
