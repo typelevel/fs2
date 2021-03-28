@@ -30,7 +30,7 @@ import cats.data.Ior
 import cats.effect.SyncIO
 import cats.effect.kernel._
 import cats.effect.kernel.implicits._
-import cats.effect.std.{Console, Queue, Random, Semaphore}
+import cats.effect.std.{Console, Queue, Semaphore}
 import cats.effect.Resource.ExitCase
 import cats.syntax.all._
 

@@ -1104,21 +1104,6 @@ class StreamCombinatorsSuite extends Fs2Suite {
     }
   }
 
-  test("random") {
-    val x = Random.scalaUtilRandom[SyncIO].flatMap { implicit r =>
-      Stream.random[SyncIO].take(100).compile.toList
-    }
-    (x, x).tupled.map { case (first, second) =>
-      assertNotEquals(first, second)
-    }
-  }
-
-  test("randomSeeded") {
-    val x = Stream.randomSeeded(1L).take(100).toList
-    val y = Stream.randomSeeded(1L).take(100).toList
-    assertEquals(x, y)
-  }
-
   test("range") {
     assertEquals(Stream.range(0, 100).toList, List.range(0, 100))
     assertEquals(Stream.range(0, 1).toList, List.range(0, 1))
