@@ -85,9 +85,13 @@ final private[fs2] case class InterruptContext[F[_]](
     } else copy(cancelParent = Applicative[F].unit).pure[F]
 
   def eval[A](fa: F[A]): F[Either[InterruptionOutcome, A]] =
-    F.race(deferred.get, fa.attempt).map {
-      case Right(result) => result.leftMap(Outcome.Errored(_))
-      case Left(other)   => Left(other)
+    ref.get.flatMap {
+      case Some(outcome) => F.pure(Left(outcome))
+      case None =>
+        F.race(deferred.get, fa.attempt).map {
+          case Right(result) => result.leftMap(Outcome.Errored(_))
+          case Left(other)   => Left(other)
+        }
     }
 }
 
