@@ -3296,38 +3296,37 @@ object Stream extends StreamLowPriority {
   def raiseError[F[_]: RaiseThrowable](e: Throwable): Stream[F, INothing] =
     new Stream(Pull.raiseError(e))
 
-  /** Creates a random stream of integers using a random seed.
-    */
-  def random[F[_]](implicit F: Random[F]): Stream[F, Int] =
-    Stream.repeatEval(F.nextInt)
-
-  /** Creates a random stream of integers using the supplied seed.
-    * Returns a pure stream, as the pseudo random number generator is
-    * deterministic based on the supplied seed.
-    */
-  def randomSeeded[F[x] >: Pure[x]](seed: Long): Stream[F, Int] =
-    Stream.suspend {
-      val r = new scala.util.Random(seed)
-      def go: Stream[F, Int] = Stream.emit(r.nextInt()) ++ go
-      go
-    }
-
-  /** Lazily produce the range `[start, stopExclusive)`. If you want to produce
-    * the sequence in one chunk, instead of lazily, use
+  /** Lazily produces the sequence `[start, start + 1, start + 2, ..., stopExclusive)`.
+    * If you want to produce the sequence in one chunk, instead of lazily, use
     * `emits(start until stopExclusive)`.
+    *
+    * @example {{{
+    * scala> Stream.range(10, 20).toList
+    * res0: List[Int] = List(10, 11, 12, 13, 14, 15, 16, 17, 18, 19)
+    * }}}
+    */
+  def range[F[x] >: Pure[x], O: Numeric](start: O, stopExclusive: O): Stream[F, O] =
+    range(start, stopExclusive, Numeric[O].one)
+
+  /** Lazily produce the sequence `[start, start + step, start + 2 * step, ..., stopExclusive)`.
+    * If you want to produce the sequence in one chunk, instead of lazily, use
+    * `emits(start until stopExclusive by step)`.
     *
     * @example {{{
     * scala> Stream.range(10, 20, 2).toList
     * res0: List[Int] = List(10, 12, 14, 16, 18)
     * }}}
     */
-  def range[F[x] >: Pure[x]](start: Int, stopExclusive: Int, by: Int = 1): Stream[F, Int] = {
-    def go(i: Int): Stream[F, Int] =
+  def range[F[x] >: Pure[x], O: Numeric](start: O, stopExclusive: O, step: O): Stream[F, O] = {
+    import Numeric.Implicits._
+    import Ordering.Implicits._
+    val zero = Numeric[O].zero
+    def go(o: O): Stream[F, O] =
       if (
-        (by > 0 && i < stopExclusive && start < stopExclusive) ||
-        (by < 0 && i > stopExclusive && start > stopExclusive)
+        (step > zero && o < stopExclusive && start < stopExclusive) ||
+        (step < zero && o > stopExclusive && start > stopExclusive)
       )
-        emit(i) ++ go(i + by)
+        emit(o) ++ go(o + step)
       else empty
     go(start)
   }
