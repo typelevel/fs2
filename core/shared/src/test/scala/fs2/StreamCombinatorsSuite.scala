@@ -33,6 +33,7 @@ import org.scalacheck.Prop.forAll
 import org.scalacheck.effect.PropF.forAllF
 
 import fs2.concurrent.SignallingRef
+import cats.effect.std.Random
 
 class StreamCombinatorsSuite extends Fs2Suite {
 
@@ -1104,7 +1105,9 @@ class StreamCombinatorsSuite extends Fs2Suite {
   }
 
   test("random") {
-    val x = Stream.random[SyncIO].take(100).compile.toList
+    val x = Random.scalaUtilRandom[SyncIO].flatMap { implicit r =>
+      Stream.random[SyncIO].take(100).compile.toList
+    }
     (x, x).tupled.map { case (first, second) =>
       assertNotEquals(first, second)
     }

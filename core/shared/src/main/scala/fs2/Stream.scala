@@ -24,16 +24,15 @@ package fs2
 import scala.annotation.tailrec
 import scala.concurrent.TimeoutException
 import scala.concurrent.duration._
-import java.io.PrintStream
 
 import cats.{Eval => _, _}
 import cats.data.Ior
 import cats.effect.SyncIO
 import cats.effect.kernel._
-import cats.effect.std.{Queue, Semaphore}
 import cats.effect.kernel.implicits._
+import cats.effect.std.{Console, Queue, Random, Semaphore}
 import cats.effect.Resource.ExitCase
-import cats.implicits.{catsSyntaxEither => _, _}
+import cats.syntax.all._
 
 import fs2.compat._
 import fs2.concurrent._
@@ -2057,6 +2056,13 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       }
     }
 
+  /** Prints each element of this stream to standard out, converting each element to a `String` via `Show`. */
+  def printlns[F2[x] >: F[x], O2 >: O](implicit
+      F: Console[F2],
+      showO: Show[O2] = Show.fromToString[O2]
+  ): Stream[F2, INothing] =
+    covaryAll[F2, O2].map(_.show).foreach(F.println)
+
   /** Rechunks the stream such that output chunks are within `[inputChunk.size * minFactor, inputChunk.size * maxFactor]`.
     * The pseudo random generator is deterministic based on the supplied seed.
     */
@@ -2289,23 +2295,6 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     */
   def scope: Stream[F, O] =
     new Stream(Pull.scope(underlying))
-
-  /** Writes this stream to the supplied `PrintStream`, converting each element to a `String` via `Show`,
-    * emitting a unit for each line written.
-    */
-  def showLines[F2[x] >: F[x], O2 >: O](
-      out: PrintStream
-  )(implicit F: Sync[F2], showO: Show[O2]): Stream[F2, INothing] =
-    covaryAll[F2, O2].map(_.show).lines(out)
-
-  /** Writes this stream to standard out, converting each element to a `String` via `Show`,
-    * emitting a unit for each line written.
-    */
-  def showLinesStdOut[F2[x] >: F[x], O2 >: O](implicit
-      F: Sync[F2],
-      showO: Show[O2]
-  ): Stream[F2, INothing] =
-    showLines[F2, O2](Console.out)
 
   /** Groups inputs in fixed size chunks by passing a "sliding window"
     * of size `n` over them. If the input contains less than or equal to
@@ -2929,10 +2918,12 @@ object Stream extends StreamLowPriority {
     * Note that the actual granularity of these elapsed times depends on the OS, for instance
     * the OS may only update the current time every ten milliseconds or so.
     */
-  def duration[F[x] >: Pure[x]](implicit F: Sync[F]): Stream[F, FiniteDuration] =
-    Stream.eval(F.delay(System.nanoTime)).flatMap { t0 =>
-      Stream.repeatEval(F.delay((System.nanoTime - t0).nanos))
+  def duration[F[_]](implicit F: Clock[F]): Stream[F, FiniteDuration] = {
+    implicit val applicativeF: Applicative[F] = F.applicative
+    Stream.eval(F.monotonic).flatMap { t0 =>
+      Stream.repeatEval(F.monotonic.map(t => t - t0))
     }
+  }
 
   /** Creates a singleton pure stream that emits the supplied value.
     *
@@ -3307,11 +3298,8 @@ object Stream extends StreamLowPriority {
 
   /** Creates a random stream of integers using a random seed.
     */
-  def random[F[_]](implicit F: Sync[F]): Stream[F, Int] =
-    Stream.eval(F.delay(new scala.util.Random())).flatMap { r =>
-      def go: Stream[F, Int] = Stream.emit(r.nextInt()) ++ go
-      go
-    }
+  def random[F[_]](implicit F: Random[F]): Stream[F, Int] =
+    Stream.repeatEval(F.nextInt)
 
   /** Creates a random stream of integers using the supplied seed.
     * Returns a pure stream, as the pseudo random number generator is
@@ -3564,7 +3552,7 @@ object Stream extends StreamLowPriority {
       *
       * @example {{{
       * scala> import cats.effect.IO, cats.effect.unsafe.implicits.global
-      * scala> Stream(1, 2, 3).covary[IO].observe(_.showLinesStdOut).map(_ + 1).compile.toVector.unsafeRunSync()
+      * scala> Stream(1, 2, 3).covary[IO].observe(_.printlns).map(_ + 1).compile.toVector.unsafeRunSync()
       * res0: Vector[Int] = Vector(2, 3, 4)
       * }}}
       */
@@ -3651,17 +3639,6 @@ object Stream extends StreamLowPriority {
       */
     def unitary: Stream[F, Unit] =
       self ++ Stream.emit(())
-  }
-
-  implicit final class StringStreamOps[F[_]](private val self: Stream[F, String]) extends AnyVal {
-
-    /** Writes this stream of strings to the supplied `PrintStream`, emitting a unit
-      * for each line that was written.
-      */
-    def lines[F2[x] >: F[x]](
-        out: PrintStream
-    )(implicit F: Sync[F2]): Stream[F2, INothing] =
-      self.foreach(str => F.blocking(out.println(str)))
   }
 
   implicit final class OptionStreamOps[F[_], O](private val self: Stream[F, Option[O]])
