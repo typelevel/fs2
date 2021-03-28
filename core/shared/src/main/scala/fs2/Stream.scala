@@ -24,16 +24,16 @@ package fs2
 import scala.annotation.tailrec
 import scala.concurrent.TimeoutException
 import scala.concurrent.duration._
-import java.io.PrintStream
+
 import cats.{Eval => _, _}
 import cats.data.Ior
 import cats.effect.{Concurrent, SyncIO}
 import cats.effect.kernel._
-import cats.effect.std.{Queue, Semaphore}
 import cats.effect.kernel.implicits._
+import cats.effect.std.{Console, Queue, Semaphore}
 import cats.effect.Resource.ExitCase
-import cats.effect.kernel.Outcome.Succeeded
-import cats.implicits.{catsSyntaxEither => _, _}
+import cats.syntax.all._
+
 import fs2.compat._
 import fs2.concurrent._
 import fs2.internal._
@@ -740,84 +740,6 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       }
       .stream
 
-  /** Like [[balance]] but uses an unlimited chunk size.
-    *
-    * Alias for `through(Balance(Int.MaxValue))`.
-    */
-  def balanceAvailable[F2[x] >: F[x]: Concurrent]: Stream[F2, Stream[F2, O]] =
-    through(Balance[F2, O](Int.MaxValue))
-
-  /** Returns a stream of streams where each inner stream sees an even portion of the
-    * elements of the source stream relative to the number of inner streams taken from
-    * the outer stream. For example, `src.balance(chunkSize).take(2)` results in two
-    * inner streams, each which see roughly half of the elements of the source stream.
-    *
-    * The `chunkSize` parameter specifies the maximum chunk size from the source stream
-    * that should be passed to an inner stream. For completely fair distribution of elements,
-    * use a chunk size of 1. For best performance, use a chunk size of `Int.MaxValue`.
-    *
-    * See [[fs2.concurrent.Balance.apply]] for more details.
-    *
-    * Alias for `through(Balance(chunkSize))`.
-    */
-  def balance[F2[x] >: F[x]: Concurrent](
-      chunkSize: Int
-  ): Stream[F2, Stream[F2, O]] =
-    through(Balance(chunkSize))
-
-  /** Like [[balance]] but instead of providing a stream of sources, runs each pipe.
-    *
-    * The pipes are run concurrently with each other. Hence, the parallelism factor is equal
-    * to the number of pipes.
-    * Each pipe may have a different implementation, if required; for example one pipe may
-    * process elements while another may send elements for processing to another machine.
-    *
-    * Each pipe is guaranteed to see all `O` pulled from the source stream, unlike `broadcast`,
-    * where workers see only the elements after the start of each worker evaluation.
-    *
-    * Note: the resulting stream will not emit values, even if the pipes do.
-    * If you need to emit `Unit` values, consider using `balanceThrough`.
-    *
-    * @param chunkSize max size of chunks taken from the source stream
-    * @param pipes pipes that will concurrently process the work
-    */
-  def balanceTo[F2[x] >: F[x]: Concurrent](
-      chunkSize: Int
-  )(pipes: Pipe[F2, O, Nothing]*): Stream[F2, INothing] =
-    balanceThrough[F2, INothing](chunkSize)(pipes: _*)
-
-  /** Variant of `balanceTo` that broadcasts to `maxConcurrent` instances of a single pipe.
-    *
-    * @param chunkSize max size of chunks taken from the source stream
-    * @param maxConcurrent maximum number of pipes to run concurrently
-    * @param pipe pipe to use to process elements
-    */
-  def balanceTo[F2[x] >: F[x]: Concurrent](chunkSize: Int, maxConcurrent: Int)(
-      pipe: Pipe[F2, O, INothing]
-  ): Stream[F2, Unit] =
-    balanceThrough[F2, INothing](chunkSize, maxConcurrent)(pipe)
-
-  /** Alias for `through(Balance.through(chunkSize)(pipes)`.
-    */
-  def balanceThrough[F2[x] >: F[x]: Concurrent, O2](
-      chunkSize: Int
-  )(pipes: Pipe[F2, O, O2]*): Stream[F2, O2] =
-    through(Balance.through[F2, O, O2](chunkSize)(pipes: _*))
-
-  /** Variant of `balanceThrough` that takes number of concurrency required and single pipe.
-    *
-    * @param chunkSize max size of chunks taken from the source stream
-    * @param maxConcurrent maximum number of pipes to run concurrently
-    * @param pipe pipe to use to process elements
-    */
-  def balanceThrough[F2[x] >: F[x]: Concurrent, O2](
-      chunkSize: Int,
-      maxConcurrent: Int
-  )(
-      pipe: Pipe[F2, O, O2]
-  ): Stream[F2, O2] =
-    balanceThrough[F2, O2](chunkSize)((0 until maxConcurrent).map(_ => pipe): _*)
-
   /** Removes all output values from this stream.
     *
     * Often used with `merge` to run one side of the merge for its effect
@@ -1445,8 +1367,8 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
 
         def waitN(s: Semaphore[F2]) =
           F.guaranteeCase(s.acquireN(n.toLong)) {
-            case Succeeded(_) => s.releaseN(n.toLong)
-            case _            => F.unit
+            case Outcome.Succeeded(_) => s.releaseN(n.toLong)
+            case _                    => F.unit
           }
 
         def acquireSupplyUpToNWithin(n: Long): F2[Long] =
@@ -2194,6 +2116,13 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       }
     }
 
+  /** Prints each element of this stream to standard out, converting each element to a `String` via `Show`. */
+  def printlns[F2[x] >: F[x], O2 >: O](implicit
+      F: Console[F2],
+      showO: Show[O2] = Show.fromToString[O2]
+  ): Stream[F2, INothing] =
+    foreach((o: O2) => F.println(o.show))
+
   /** Rechunks the stream such that output chunks are within `[inputChunk.size * minFactor, inputChunk.size * maxFactor]`.
     * The pseudo random generator is deterministic based on the supplied seed.
     */
@@ -2426,23 +2355,6 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     */
   def scope: Stream[F, O] =
     new Stream(Pull.scope(underlying))
-
-  /** Writes this stream to the supplied `PrintStream`, converting each element to a `String` via `Show`,
-    * emitting a unit for each line written.
-    */
-  def showLines[F2[x] >: F[x], O2 >: O](
-      out: PrintStream
-  )(implicit F: Sync[F2], showO: Show[O2]): Stream[F2, INothing] =
-    covaryAll[F2, O2].map(_.show).lines(out)
-
-  /** Writes this stream to standard out, converting each element to a `String` via `Show`,
-    * emitting a unit for each line written.
-    */
-  def showLinesStdOut[F2[x] >: F[x], O2 >: O](implicit
-      F: Sync[F2],
-      showO: Show[O2]
-  ): Stream[F2, INothing] =
-    showLines[F2, O2](Console.out)
 
   /** Groups inputs in fixed size chunks by passing a "sliding window"
     * of size `n` over them. If the input contains less than or equal to
@@ -3066,10 +2978,12 @@ object Stream extends StreamLowPriority {
     * Note that the actual granularity of these elapsed times depends on the OS, for instance
     * the OS may only update the current time every ten milliseconds or so.
     */
-  def duration[F[x] >: Pure[x]](implicit F: Sync[F]): Stream[F, FiniteDuration] =
-    Stream.eval(F.delay(System.nanoTime)).flatMap { t0 =>
-      Stream.repeatEval(F.delay((System.nanoTime - t0).nanos))
+  def duration[F[_]](implicit F: Clock[F]): Stream[F, FiniteDuration] = {
+    implicit val applicativeF: Applicative[F] = F.applicative
+    Stream.eval(F.monotonic).flatMap { t0 =>
+      Stream.repeatEval(F.monotonic.map(t => t - t0))
     }
+  }
 
   /** Creates a singleton pure stream that emits the supplied value.
     *
@@ -3442,41 +3356,37 @@ object Stream extends StreamLowPriority {
   def raiseError[F[_]: RaiseThrowable](e: Throwable): Stream[F, INothing] =
     new Stream(Pull.raiseError(e))
 
-  /** Creates a random stream of integers using a random seed.
-    */
-  def random[F[_]](implicit F: Sync[F]): Stream[F, Int] =
-    Stream.eval(F.delay(new scala.util.Random())).flatMap { r =>
-      def go: Stream[F, Int] = Stream.emit(r.nextInt()) ++ go
-      go
-    }
-
-  /** Creates a random stream of integers using the supplied seed.
-    * Returns a pure stream, as the pseudo random number generator is
-    * deterministic based on the supplied seed.
-    */
-  def randomSeeded[F[x] >: Pure[x]](seed: Long): Stream[F, Int] =
-    Stream.suspend {
-      val r = new scala.util.Random(seed)
-      def go: Stream[F, Int] = Stream.emit(r.nextInt()) ++ go
-      go
-    }
-
-  /** Lazily produce the range `[start, stopExclusive)`. If you want to produce
-    * the sequence in one chunk, instead of lazily, use
+  /** Lazily produces the sequence `[start, start + 1, start + 2, ..., stopExclusive)`.
+    * If you want to produce the sequence in one chunk, instead of lazily, use
     * `emits(start until stopExclusive)`.
+    *
+    * @example {{{
+    * scala> Stream.range(10, 20).toList
+    * res0: List[Int] = List(10, 11, 12, 13, 14, 15, 16, 17, 18, 19)
+    * }}}
+    */
+  def range[F[x] >: Pure[x], O: Numeric](start: O, stopExclusive: O): Stream[F, O] =
+    range(start, stopExclusive, implicitly[Numeric[O]].one)
+
+  /** Lazily produce the sequence `[start, start + step, start + 2 * step, ..., stopExclusive)`.
+    * If you want to produce the sequence in one chunk, instead of lazily, use
+    * `emits(start until stopExclusive by step)`.
     *
     * @example {{{
     * scala> Stream.range(10, 20, 2).toList
     * res0: List[Int] = List(10, 12, 14, 16, 18)
     * }}}
     */
-  def range[F[x] >: Pure[x]](start: Int, stopExclusive: Int, by: Int = 1): Stream[F, Int] = {
-    def go(i: Int): Stream[F, Int] =
+  def range[F[x] >: Pure[x], O: Numeric](start: O, stopExclusive: O, step: O): Stream[F, O] = {
+    import Numeric.Implicits._
+    import Ordering.Implicits._
+    val zero = implicitly[Numeric[O]].zero
+    def go(o: O): Stream[F, O] =
       if (
-        (by > 0 && i < stopExclusive && start < stopExclusive) ||
-        (by < 0 && i > stopExclusive && start > stopExclusive)
+        (step > zero && o < stopExclusive && start < stopExclusive) ||
+        (step < zero && o > stopExclusive && start > stopExclusive)
       )
-        emit(i) ++ go(i + by)
+        emit(o) ++ go(o + step)
       else empty
     go(start)
   }
@@ -3701,7 +3611,7 @@ object Stream extends StreamLowPriority {
       *
       * @example {{{
       * scala> import cats.effect.IO, cats.effect.unsafe.implicits.global
-      * scala> Stream(1, 2, 3).covary[IO].observe(_.showLinesStdOut).map(_ + 1).compile.toVector.unsafeRunSync()
+      * scala> Stream(1, 2, 3).covary[IO].observe(_.printlns).map(_ + 1).compile.toVector.unsafeRunSync()
       * res0: Vector[Int] = Vector(2, 3, 4)
       * }}}
       */
@@ -3788,17 +3698,6 @@ object Stream extends StreamLowPriority {
       */
     def unitary: Stream[F, Unit] =
       self ++ Stream.emit(())
-  }
-
-  implicit final class StringStreamOps[F[_]](private val self: Stream[F, String]) extends AnyVal {
-
-    /** Writes this stream of strings to the supplied `PrintStream`, emitting a unit
-      * for each line that was written.
-      */
-    def lines[F2[x] >: F[x]](
-        out: PrintStream
-    )(implicit F: Sync[F2]): Stream[F2, INothing] =
-      self.foreach(str => F.blocking(out.println(str)))
   }
 
   implicit final class OptionStreamOps[F[_], O](private val self: Stream[F, Option[O]])

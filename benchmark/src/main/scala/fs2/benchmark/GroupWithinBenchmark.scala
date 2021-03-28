@@ -20,24 +20,43 @@
  */
 
 package fs2
-package concurrent
+package benchmark
 
 import cats.effect.IO
-import org.scalacheck.effect.PropF.forAllF
+import org.openjdk.jmh.annotations.{Benchmark, Param, Scope, State}
 
-class BalanceSuite extends Fs2Suite {
-  test("all elements are processed") {
-    forAllF { (source: Stream[Pure, Int], concurrent0: Int, chunkSize0: Int) =>
-      val concurrent = (concurrent0 % 20).abs + 1
-      val chunkSize = (chunkSize0.abs % 20).abs + 1
-      val expected = source.toVector.map(_.toLong).sorted
-      source
-        .covary[IO]
-        .balanceThrough(chunkSize = chunkSize, maxConcurrent = concurrent)(_.map(_.toLong))
-        .compile
-        .toVector
-        .map(_.sorted)
-        .assertEquals(expected)
-    }
-  }
+import scala.concurrent.duration._
+
+@State(Scope.Thread)
+class GroupWithinBenchmark {
+
+  /*  For Branch 2.5.x
+  import cats.effect.{Timer, ContextShift}
+  import scala.concurrent.ExecutionContext
+  lazy protected implicit val ioTimer: Timer[IO] = IO.timer(ExecutionContext.global)
+
+  lazy protected implicit val ioContextShift: ContextShift[IO] =
+    IO.contextShift(ExecutionContext.global)
+   */
+
+  // only for branch 3.x
+  import cats.effect.unsafe.implicits.global
+
+  val bufferWindow = 100.micros
+
+  @Param(Array("100", "10000", "100000"))
+  var rangeLength: Int = _
+
+  @Param(Array("16", "256", "4096"))
+  var bufferSize: Int = _
+
+  @Benchmark
+  def groupWithin(): Unit =
+    Stream
+      .range(0, rangeLength)
+      .covary[IO]
+      .groupWithin(bufferSize, bufferWindow)
+      .compile
+      .drain
+      .unsafeRunSync()
 }
