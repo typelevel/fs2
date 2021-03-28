@@ -2061,7 +2061,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       F: Console[F2],
       showO: Show[O2] = Show.fromToString[O2]
   ): Stream[F2, INothing] =
-    covaryAll[F2, O2].map(_.show).foreach(F.println)
+    foreach( (o: O2) => F.println(o.show))
 
   /** Rechunks the stream such that output chunks are within `[inputChunk.size * minFactor, inputChunk.size * maxFactor]`.
     * The pseudo random generator is deterministic based on the supplied seed.
