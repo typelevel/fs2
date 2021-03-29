@@ -25,7 +25,7 @@ import cats.effect.IO
 import scala.concurrent.duration._
 import cats.implicits._
 import org.scalacheck.effect.PropF.forAllF
-import cats.effect.Deferred
+import cats.effect.std.CountDownLatch
 import cats.effect.Resource
 import cats.effect.Resource.ExitCase
 import cats.effect.kernel.Outcome.Canceled
@@ -34,11 +34,11 @@ import cats.data.NonEmptyList
 
 class StreamParMapEvalSuite extends Fs2Suite {
 
-  val d = Deferred[IO, Unit]
+  val l = CountDownLatch[IO](1)
 
   val Illegal = new IllegalArgumentException
 
-  def err(aDef: IO[Unit]) = aDef *> IO.raiseError(Illegal)
+  def err(action: IO[Unit]) = action *> IO.raiseError(Illegal)
 
   property("toList values") {
     def sleepLimit10AndEmit(i: Int) = IO.sleep(math.abs(i % 10).millis).as(i)
@@ -72,16 +72,17 @@ class StreamParMapEvalSuite extends Fs2Suite {
   }
 
   test("waits for element completion") {
-    def stream(d1: Deferred[IO, Unit], alloc: Deferred[IO, Unit]) =
-      (Stream(d1.get) ++ Stream.exec(alloc.complete(()).void)).parEvalMapUnordered(2)(identity)
+    def stream(executed: CountDownLatch[IO], launched: CountDownLatch[IO]) =
+      (Stream(executed.await) ++ Stream.exec(launched.release.void))
+        .parEvalMapUnordered(2)(identity)
 
     val action =
       for {
-        (d1, alloc) <- (d, d).tupled
-        fib <- stream(d1, alloc).compile.drain.start
-        _ <- alloc.get
+        (executed, launched) <- (l, l).tupled
+        fib <- stream(executed, launched).compile.drain.start
+        _ <- launched.await
         either <- IO.race(IO.sleep(500.millis), fib.join)
-        _ <- d1.complete(())
+        _ <- executed.release
         _ <- fib.joinWithNever
       } yield either.isLeft
 
@@ -89,15 +90,15 @@ class StreamParMapEvalSuite extends Fs2Suite {
   }
 
   test("should launch exactly maxConcurrent") {
-    def stream(defs: List[Deferred[IO, Unit]]) =
-      Stream.emits(defs).covary[IO].parEvalMapUnordered(100)(_.complete(()) *> IO.never)
+    def stream(defs: List[CountDownLatch[IO]]) =
+      Stream.emits(defs).covary[IO].parEvalMapUnordered(100)(_.release *> IO.never)
 
     val action =
       for {
-        defs <- List.fill(101)(d).sequence
+        defs <- List.fill(101)(l).sequence
         fib <- stream(defs).compile.drain.start
-        _ <- defs.take(100).traverse(_.get)
-        either <- IO.race(IO.sleep(500.millis), defs.last.get)
+        _ <- defs.take(100).traverse(_.await)
+        either <- IO.race(IO.sleep(500.millis), defs.last.await)
         _ <- fib.cancel
       } yield either.isLeft
 
@@ -105,17 +106,17 @@ class StreamParMapEvalSuite extends Fs2Suite {
   }
 
   test("single error in incoming should cancel executing") {
-    def stream(d: Deferred[IO, Unit]) = {
-      val nev = Stream(IO.never.onCancel(d.complete(()).void))
+    def stream(cancelled: CountDownLatch[IO]) = {
+      val nev = Stream(IO.never.onCancel(cancelled.release))
       val s = nev ++ Stream.raiseError[IO](Illegal)
       s.parEvalMapUnordered(2)(identity)
     }
 
     val action =
       for {
-        d1 <- d
-        fib <- stream(d1).compile.drain.start
-        _ <- d1.get
+        cancelled <- l
+        fib <- stream(cancelled).compile.drain.start
+        _ <- cancelled.await
         outcome <- fib.join
       } yield outcome match {
         case Errored(Illegal) => true
@@ -126,16 +127,16 @@ class StreamParMapEvalSuite extends Fs2Suite {
   }
 
   test("single error in executing should cancel other executing") {
-    def stream(d: Deferred[IO, Unit]) =
-      Stream(IO.never[Unit].onCancel(d.complete(()).void), IO.raiseError[Unit](Illegal))
+    def stream(cancelled: CountDownLatch[IO]) =
+      Stream(IO.never[Unit].onCancel(cancelled.release), IO.raiseError[Unit](Illegal))
         .covary[IO]
         .parEvalMapUnordered(2)(identity)
 
     val action =
       for {
-        d1 <- d
-        fib <- stream(d1).compile.drain.start
-        _ <- d1.get
+        cancelled <- l
+        fib <- stream(cancelled).compile.drain.start
+        _ <- cancelled.await
         outcome <- fib.join
       } yield outcome match {
         case Errored(Illegal) => true
@@ -146,18 +147,20 @@ class StreamParMapEvalSuite extends Fs2Suite {
   }
 
   test("two errors in execution should be combined to CompositeError") {
-    def stream(d1: Deferred[IO, Unit], alloc: Deferred[IO, Unit]) =
+    def stream(errsThrow: CountDownLatch[IO], errsLaunched: CountDownLatch[IO]) =
       for {
-        _ <- Stream(err(d1.get), err(d1.get), IO.unit).covary[IO].parEvalMapUnordered(3)(identity)
-        _ <- Stream.eval(alloc.complete(()))
+        _ <- Stream(err(errsThrow.await), err(errsThrow.await), IO.unit)
+          .covary[IO]
+          .parEvalMapUnordered(3)(identity)
+        _ <- Stream.eval(errsLaunched.release)
       } yield {}
 
     val action =
       for {
-        (d1, alloc) <- (d, d).tupled
-        fib <- stream(d1, alloc).compile.drain.start
-        _ <- alloc.get
-        _ <- d1.complete(())
+        (errsThrow, errsLaunched) <- (l, l).tupled
+        fib <- stream(errsThrow, errsLaunched).compile.drain.start
+        _ <- errsLaunched.await
+        _ <- errsThrow.release
         outcome <- fib.join
       } yield outcome match {
         case Errored(CompositeFailure(Illegal, NonEmptyList(Illegal, List()))) => true
@@ -168,30 +171,34 @@ class StreamParMapEvalSuite extends Fs2Suite {
   }
 
   test("resources before and after parEvalMapUnordered should be freed") {
-    def res(d: Deferred[IO, Unit]) =
+    def res(cleanup: CountDownLatch[IO]) =
       Resource
         .makeCase(IO.unit) {
-          case ((), ExitCase.Canceled) => d.complete(()).void
+          case ((), ExitCase.Canceled) => cleanup.release
           case _                       => IO.unit
         }
 
-    def stream(d1: Deferred[IO, Unit], d2: Deferred[IO, Unit], alloc: Deferred[IO, Unit]) =
+    def stream(
+        resCleanup1: CountDownLatch[IO],
+        resCleanup2: CountDownLatch[IO],
+        resAckuired: CountDownLatch[IO]
+    ) =
       for {
-        _ <- Stream.resource(res(d1))
+        _ <- Stream.resource(res(resCleanup1))
         _ <- Stream(IO.never[Unit], IO.unit).covary[IO].parEvalMapUnordered(10)(identity)
-        _ <- Stream.resource(res(d2))
-        _ <- Stream.eval(alloc.complete(()))
+        _ <- Stream.resource(res(resCleanup2))
+        _ <- Stream.eval(resAckuired.release)
         _ <- Stream.eval(IO.never[Unit])
       } yield {}
 
     val action =
       for {
-        (d1, d2, alloc) <- (d, d, d).tupled
-        fib <- stream(d1, d2, alloc).compile.drain.start
-        _ <- alloc.get
+        (resCleanup1, resCleanup2, resAckuired) <- (l, l, l).tupled
+        fib <- stream(resCleanup1, resCleanup2, resAckuired).compile.drain.start
+        _ <- resAckuired.await
         _ <- fib.cancel
-        _ <- d1.get.timeout(1.second)
-        _ <- d2.get.timeout(1.second)
+        _ <- resCleanup1.await.timeout(1.second)
+        _ <- resCleanup2.await.timeout(1.second)
         outcome <- fib.join
       } yield outcome match {
         case Canceled() => true
