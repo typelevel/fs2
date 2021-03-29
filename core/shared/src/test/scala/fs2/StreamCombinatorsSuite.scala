@@ -33,7 +33,6 @@ import org.scalacheck.Prop.forAll
 import org.scalacheck.effect.PropF.forAllF
 
 import fs2.concurrent.SignallingRef
-import cats.effect.std.Random
 
 class StreamCombinatorsSuite extends Fs2Suite {
 
