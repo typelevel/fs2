@@ -27,11 +27,10 @@ import scala.concurrent.duration._
 
 import cats.{Eval => _, _}
 import cats.data.Ior
-import cats.effect.SyncIO
 import cats.effect.kernel._
 import cats.effect.kernel.implicits._
+import cats.effect.kernel.Resource.ExitCase
 import cats.effect.std.{Console, Queue, Semaphore}
-import cats.effect.Resource.ExitCase
 import cats.syntax.all._
 
 import fs2.compat._

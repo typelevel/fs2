@@ -22,7 +22,7 @@
 package fs2
 
 import cats.{Id, Monad, MonadError}
-import cats.effect.SyncIO
+//import cats.effect.SyncIO
 import cats.effect.kernel.{Concurrent, MonadCancelThrow, Poll, Ref, Resource, Sync, Unique}
 import cats.syntax.all._
 
