@@ -77,14 +77,15 @@ class StreamParMapEvalSuite extends Fs2Suite {
         .parEvalMapUnordered(2)(identity)
 
     val action =
-      for {
-        (executed, launched) <- (l, l).tupled
-        fib <- stream(executed, launched).compile.drain.start
-        _ <- launched.await
-        either <- IO.race(IO.sleep(500.millis), fib.join)
-        _ <- executed.release
-        _ <- fib.joinWithNever
-      } yield either.isLeft
+      (l, l).tupled.flatMap { case (executed, launched) =>
+        for {
+          fib <- stream(executed, launched).compile.drain.start
+          _ <- launched.await
+          either <- IO.race(IO.sleep(500.millis), fib.join)
+          _ <- executed.release
+          _ <- fib.joinWithNever
+        } yield either.isLeft
+      }
 
     action.assert
   }
@@ -156,15 +157,16 @@ class StreamParMapEvalSuite extends Fs2Suite {
       } yield {}
 
     val action =
-      for {
-        (errsThrow, errsLaunched) <- (l, l).tupled
-        fib <- stream(errsThrow, errsLaunched).compile.drain.start
-        _ <- errsLaunched.await
-        _ <- errsThrow.release
-        outcome <- fib.join
-      } yield outcome match {
-        case Errored(CompositeFailure(Illegal, NonEmptyList(Illegal, List()))) => true
-        case _                                                                 => false
+      (l, l).tupled.flatMap { case (errsThrow, errsLaunched) =>
+        for {
+          fib <- stream(errsThrow, errsLaunched).compile.drain.start
+          _ <- errsLaunched.await
+          _ <- errsThrow.release
+          outcome <- fib.join
+        } yield outcome match {
+          case Errored(CompositeFailure(Illegal, NonEmptyList(Illegal, List()))) => true
+          case _                                                                 => false
+        }
       }
 
     action.assert
@@ -192,17 +194,18 @@ class StreamParMapEvalSuite extends Fs2Suite {
       } yield {}
 
     val action =
-      for {
-        (resCleanup1, resCleanup2, resAckuired) <- (l, l, l).tupled
-        fib <- stream(resCleanup1, resCleanup2, resAckuired).compile.drain.start
-        _ <- resAckuired.await
-        _ <- fib.cancel
-        _ <- resCleanup1.await.timeout(1.second)
-        _ <- resCleanup2.await.timeout(1.second)
-        outcome <- fib.join
-      } yield outcome match {
-        case Canceled() => true
-        case _          => false
+      (l, l, l).tupled.flatMap { case (resCleanup1, resCleanup2, resAckuired) =>
+        for {
+          fib <- stream(resCleanup1, resCleanup2, resAckuired).compile.drain.start
+          _ <- resAckuired.await
+          _ <- fib.cancel
+          _ <- resCleanup1.await.timeout(1.second)
+          _ <- resCleanup2.await.timeout(1.second)
+          outcome <- fib.join
+        } yield outcome match {
+          case Canceled() => true
+          case _          => false
+        }
       }
 
     action.assert
