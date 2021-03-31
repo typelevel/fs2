@@ -1,4 +1,3 @@
-import microsites.ExtraMdFileConfig
 import com.typesafe.tools.mima.core._
 import sbtcrossproject.crossProject
 
