@@ -445,6 +445,13 @@ class StreamSuite extends Fs2Suite {
 
       assertEquals(unfoldTree(1).flatten.take(10).toList, List.tabulate(10)(_ + 1))
     }
+
+    test("regression #2353 - stack safety of map") {
+      def loop(str: Stream[Pure, Int], i: Int): Stream[Pure, Int] =
+        if (i == 0) str else loop(str.map((x: Int) => x + 1), i - 1)
+
+      loop(Stream.emit(1), 10000).compile.toList //
+    }
   }
 
   property("mapChunks") {
