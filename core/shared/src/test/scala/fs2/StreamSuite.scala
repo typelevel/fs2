@@ -21,6 +21,7 @@
 
 package fs2
 
+import scala.annotation.tailrec
 import scala.concurrent.duration._
 
 import cats.data.Chain
@@ -444,6 +445,14 @@ class StreamSuite extends Fs2Suite {
         Tree(seed, Stream(seed + 1).map(unfoldTree))
 
       assertEquals(unfoldTree(1).flatten.take(10).toList, List.tabulate(10)(_ + 1))
+    }
+
+    test("regression #2353 - stack safety of map") {
+      @tailrec
+      def loop(str: Stream[Pure, Int], i: Int): Stream[Pure, Int] =
+        if (i == 0) str else loop(str.map((x: Int) => x + 1), i - 1)
+
+      loop(Stream.emit(1), 10000).compile.toList //
     }
   }
 

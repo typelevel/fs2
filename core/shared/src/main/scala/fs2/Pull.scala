@@ -25,6 +25,7 @@ import scala.annotation.tailrec
 import scala.concurrent.duration.FiniteDuration
 import scala.util.control.NonFatal
 
+import cats.data.AndThen
 import cats.{Eval => _, _}
 import cats.effect.kernel._
 import cats.syntax.all._
@@ -299,6 +300,7 @@ object Pull extends PullLowPriority {
     /** Interpret this `Pull` to produce a `Stream` without introducing a scope.
       *
       * Only use this if you know a scope is not needed. Scope introduction is
+      *
       * generally harmless and the risk of not introducing a scope is a memory leak
       * in streams that otherwise would execute in constant memory.
       *
@@ -662,7 +664,7 @@ object Pull extends PullLowPriority {
 
   private final case class MapOutput[+F[_], O, +P](
       stream: Pull[F, O, Unit],
-      fun: O => P
+      fun: AndThen[O, P]
   ) extends Action[F, P, Unit]
 
   private final case class FlatMapOutput[+F[_], O, +P](
@@ -1266,8 +1268,8 @@ object Pull extends PullLowPriority {
       case r: Terminal[_]        => r
       case a: AlgEffect[F, _]    => a
       case t: Translate[g, f, _] => Translate[g, f, P](mapOutput(t.stream, fun), t.fk)
-      case m: MapOutput[f, q, o] => MapOutput(m.stream, fun.compose(m.fun))
-      case _                     => MapOutput(stream, fun)
+      case m: MapOutput[f, q, o] => MapOutput(m.stream, m.fun.andThen(fun))
+      case _                     => MapOutput(stream, AndThen(fun))
     }
 
   private[this] def transformWith[F[_], O, R, S](p: Pull[F, O, R])(
