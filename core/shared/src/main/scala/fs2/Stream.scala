@@ -295,8 +295,25 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     */
   def bufferAll: Stream[F, O] = bufferBy(_ => true)
 
-  /** Behaves like the identity stream, but requests elements from its
-    * input in blocks that end whenever the predicate switches from true to false.
+  /** Emits the outputs from this stream in a different chunk structure.
+    *
+    * In the resulting stream, a chunk ends and the next chunk begins between any
+    * two consecutive outputs of this chunk, at which the predicate switches off,
+    * i.e., is `true` for the first output and `false` for the second one.
+    *
+    * The resulting stream holds the outputs from this stream in a  _buffer_,
+    * and emits none of them until it reaches a switch-off point.
+    * Once it does, it dumps all buffered elements in a single chunk, emits this
+    * chunk, and restarts buffering from the switch-off point.
+    *
+    * This method modifies the sequencing of effects and outputs: while a new
+    * chunk is being buffered, it performs all the effects from this stream until
+    * it reaches a chunk with a switch-off point. Once it does, it emits the chunk
+    * with the buffered outputs, _after_ it has performed those effects.
+    *
+    * This method can introduce a space leak: if the predicate never switches off,
+    * the resulting stream just hoards all the outputs from this stream in its
+    * buffer, which grows without bound, until and unless this stream ends.
     *
     * @example {{{
     * scala> import cats.effect.SyncIO
