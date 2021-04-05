@@ -1621,7 +1621,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   def interruptWhen[F2[x] >: F[x]](
       haltOnSignal: F2[Either[Throwable, Unit]]
   ): Stream[F2, O] =
-    (Pull.interruptWhen(haltOnSignal) >> this.pull.echo).stream.interruptScope
+    (Pull.interruptWhen(haltOnSignal) >> this.pull.echo).streamNoScope.interruptScope
 
   /** Creates a scope that may be interrupted by calling scope#interrupt.
     */
