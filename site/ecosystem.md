@@ -29,7 +29,7 @@ If you have a project you'd like to include in this list, either [click here](ht
 * [fs2-es](https://sloshy.github.io/fs2-es/): Event-sourcing and event-driven state management utilities using FS2.
 * [fs2-ftp](https://github.com/regis-leray/fs2-ftp): Simple client for Ftp/Ftps/Sftp using fs2 and cats-effect.
 * [fs2-google-pubsub](https://github.com/permutive/fs2-google-pubsub): A [Google Cloud Pub/Sub](https://cloud.google.com/pubsub/) implementation using fs2 and cats-effect.
-* [fs2-grpc](https://github.com/fiadliel/fs2-grpc): gRPC implementation for FS2 / Cats Effect.
+* [fs2-grpc](https://github.com/typelevel/fs2-grpc): gRPC implementation for FS2 / Cats Effect.
 * [fs2-http](https://github.com/Spinoco/fs2-http): Http server and client library implemented in fs2.
 * [fs2-jms](https://github.com/kiambogo/fs2-jms): Java Messaging Service (JMS) connectors for FS2 streams
 * Apache Kafka integrations
