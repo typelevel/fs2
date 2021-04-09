@@ -142,6 +142,7 @@ def echoServer[F[_]: Concurrent: Network]: F[Unit] =
       .interleave(Stream.constant("\n"))
       .through(text.utf8Encode)
       .through(client.writes)
+      .handleErrorWith(_ => Stream.empty) // handle errors of client sockets
   }.parJoin(100).compile.drain
 ```
 
@@ -151,6 +152,8 @@ We map over this infinite stream of clients and provide the logic for handling a
 we read from the client socket, UTF-8 decode the received bytes, extract individual lines, and then write each line back to the client. This logic is implemented as a single `Stream[F, Unit]`.
 
 Since we mapped over the infinite client stream, we end up with a `Stream[F, Stream[F, Unit]]`. We flatten this to a single `Stream[F, Unit]` via `parJoin(100)`, which runs up to 100 of the inner streams concurrently. As inner streams finish, new inner streams are pulled from the source. Hence, `parJoin` is controlling the maximum number of concurrent client requests our server processes.
+
+In joining all these streams together, be prudent to handle errors in the client streams.
 
 The pattern of `Network[F].server(address).map(handleClient).parJoin(maxConcurrentClients)` is very common when working with server sockets.
 

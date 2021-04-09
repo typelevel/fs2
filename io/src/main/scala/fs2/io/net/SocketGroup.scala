@@ -59,6 +59,7 @@ trait SocketGroup[F[_]] {
     * client sockets -- one per client that connects to the bound address/port.
     *
     * When the stream terminates, all open connections will terminate as well.
+    * Because of this, make sure to handle errors in the client socket Streams.
     *
     * @param address            address to accept connections from; none for all interfaces
     * @param port               port to bind
@@ -71,6 +72,8 @@ trait SocketGroup[F[_]] {
   ): Stream[F, Socket[F]]
 
   /** Like [[server]] but provides the `SocketAddress` of the bound server socket before providing accepted sockets.
+    *
+    * Make sure to handle errors in the client socket Streams.
     */
   def serverResource(
       address: Option[Host] = None,
