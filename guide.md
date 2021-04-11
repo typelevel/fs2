@@ -525,10 +525,10 @@ val program =
 // program: Stream[IO[x], Unit] = Stream(..)
 
 program.compile.drain.unsafeRunSync()
-// 21:44:52.449869
-// 21:44:53.454047
-// 21:44:54.447784
-// 21:44:55.448482
+// 09:34:28.829185
+// 09:34:29.827633
+// 09:34:30.827343
+// 09:34:31.827010
 ```
 
 Let's take this line by line now, so we can understand what's going on.
@@ -570,10 +570,10 @@ val program1 =
 // program1: Stream[IO[x], Unit] = Stream(..)
 
 program1.compile.drain.unsafeRunSync()
-// 21:44:57.451110
-// 21:44:58.451097
-// 21:44:59.451009
-// 21:45:00.451084
+// 09:34:33.829979
+// 09:34:34.829866
+// 09:34:35.829907
+// 09:34:36.829859
 ```
 
 ### Talking to the external world
@@ -606,7 +606,7 @@ The way you bring synchronous effects into your effect type may differ. `Sync.de
 import cats.effect.Sync
 
 val T = Sync[IO]
-// T: cats.effect.kernel.Async[IO] = cats.effect.IO$$anon$2@1ec52a79
+// T: cats.effect.kernel.Async[IO] = cats.effect.IO$$anon$2@25766106
 val s2 = Stream.exec(T.delay { destroyUniverse() }) ++ Stream("...moving on")
 // s2: Stream[IO[x], String] = Stream(..)
 s2.compile.toVector.unsafeRunSync()
@@ -739,13 +739,13 @@ stream.toUnicastPublisher
 //   source = Bind(
 //     source = Bind(
 //       source = Allocate(
-//         resource = cats.effect.kernel.Resource$$$Lambda$7508/0x0000000802413040@3664c70f
+//         resource = cats.effect.kernel.Resource$$$Lambda$7512/0x000000080244c040@72dffa82
 //       ),
-//       fs = cats.effect.kernel.Resource$$Lambda$8069/0x0000000802695840@9a27e5c
+//       fs = cats.effect.kernel.Resource$$Lambda$8061/0x000000080269d840@415668ab
 //     ),
-//     fs = cats.effect.std.Dispatcher$$$Lambda$8070/0x0000000802694840@ee10aa0
+//     fs = cats.effect.std.Dispatcher$$$Lambda$8062/0x000000080269c840@4531161a
 //   ),
-//   fs = cats.effect.kernel.Resource$$Lambda$8069/0x0000000802695840@1f437eb5
+//   fs = cats.effect.kernel.Resource$$Lambda$8061/0x000000080269d840@287bb72f
 // )
 ```
 
@@ -757,19 +757,19 @@ val publisher: Resource[IO, StreamUnicastPublisher[IO, Int]] = Stream(1, 2, 3).c
 //   source = Bind(
 //     source = Bind(
 //       source = Allocate(
-//         resource = cats.effect.kernel.Resource$$$Lambda$7508/0x0000000802413040@13f7edcc
+//         resource = cats.effect.kernel.Resource$$$Lambda$7512/0x000000080244c040@1ad02943
 //       ),
-//       fs = cats.effect.kernel.Resource$$Lambda$8069/0x0000000802695840@17458fd1
+//       fs = cats.effect.kernel.Resource$$Lambda$8061/0x000000080269d840@6f6737f9
 //     ),
-//     fs = cats.effect.std.Dispatcher$$$Lambda$8070/0x0000000802694840@64ce8322
+//     fs = cats.effect.std.Dispatcher$$$Lambda$8062/0x000000080269c840@204f4e5e
 //   ),
-//   fs = cats.effect.kernel.Resource$$Lambda$8069/0x0000000802695840@5b3a6554
+//   fs = cats.effect.kernel.Resource$$Lambda$8061/0x000000080269d840@14c471bf
 // )
 publisher.use { p =>
   p.toStream[IO].compile.toList
 }
 // res50: IO[List[Int]] = Uncancelable(
-//   body = cats.effect.IO$$$Lambda$7514/0x0000000802432040@5cc80575
+//   body = cats.effect.IO$$$Lambda$7518/0x0000000802450840@3ac7672
 // )
 ```
 
