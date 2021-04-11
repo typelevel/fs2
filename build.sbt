@@ -110,9 +110,9 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
     libraryDependencies ++= Seq(
       "org.typelevel" %%% "cats-core" % "2.5.0",
       "org.typelevel" %%% "cats-laws" % "2.5.0" % Test,
-      "org.typelevel" %%% "cats-effect" % "3.0.1",
-      "org.typelevel" %%% "cats-effect-laws" % "3.0.1" % Test,
-      "org.typelevel" %%% "cats-effect-testkit" % "3.0.1" % Test,
+      "org.typelevel" %%% "cats-effect" % "3.0.2",
+      "org.typelevel" %%% "cats-effect-laws" % "3.0.2" % Test,
+      "org.typelevel" %%% "cats-effect-testkit" % "3.0.2" % Test,
       "org.scodec" %%% "scodec-bits" % "1.1.25",
       "org.typelevel" %%% "scalacheck-effect-munit" % "1.0.0" % Test,
       "org.typelevel" %%% "munit-cats-effect-3" % "1.0.1" % Test,
