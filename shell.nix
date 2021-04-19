@@ -1,30 +1,43 @@
+{ java ? "openjdk11" }:
+
 let
-  # Override the java version of sbt package
+  jdk = pkgs.${java};
+
   config = {
-    packageOverrides = pkgs: rec {
-      sbt = pkgs.sbt.overrideAttrs (
+    packageOverrides = p: rec {
+      sbt = p.sbt.overrideAttrs (
         old: rec {
-          version = "1.3.12";
+          version = "1.4.6";
+
+          src = builtins.fetchurl {
+            url    = "https://github.com/sbt/sbt/releases/download/v${version}/sbt-${version}.tgz";
+            sha256 = "194xdz55cq4w7jlxl8df9vacil37jahimav620878q4ng67g59l6";
+          };
 
           patchPhase = ''
-            echo -java-home ${pkgs.openjdk11} >> conf/sbtopts
+            echo -java-home ${jdk} >> conf/sbtopts
           '';
         }
       );
     };
   };
 
-  nixpkgs = fetchTarball {
-    name   = "NixOS-unstable-08-06-2020";
-    url    = "https://github.com/NixOS/nixpkgs-channels/archive/dcb64ea42e6.tar.gz";
-    sha256 = "0i77sgs0gic6pwbkvk9lbpfshgizdrqyh18law2ji1409azc09w0";
+  nixpkgs = builtins.fetchTarball {
+    name   = "nixos-unstable-2021-01-03";
+    url    = "https://github.com/NixOS/nixpkgs/archive/56bb1b0f7a3.tar.gz";
+    sha256 = "1wl5yglgj3ajbf2j4dzgsxmgz7iqydfs514w73fs9a6x253wzjbs";
   };
+
   pkgs = import nixpkgs { inherit config; };
 in
   pkgs.mkShell {
-    buildInputs = with pkgs; [
-      jekyll # 4.1.0
-      openjdk11 # 11.0.6-internal
-      sbt # 1.3.12
+    buildInputs = [
+      jdk
+      pkgs.nodejs-14_x
+      pkgs.sbt
     ];
+
+    shellHook = ''
+      npm i docsify-cli
+    '';
   }

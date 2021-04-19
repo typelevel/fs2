@@ -1,16 +1,39 @@
+/*
+ * Copyright (c) 2013 Functional Streams for Scala
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of
+ * this software and associated documentation files (the "Software"), to deal in
+ * the Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+ * the Software, and to permit persons to whom the Software is furnished to do so,
+ * subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+ * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+ * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+ * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+
 package fs2
 
 import scala.concurrent.duration._
 
 import cats.effect.IO
-import cats.effect.concurrent.{Deferred, Semaphore}
-import cats.implicits._
+import cats.effect.kernel.Deferred
+import cats.effect.std.Semaphore
+import cats.syntax.all._
+import org.scalacheck.effect.PropF.forAllF
 
 class StreamInterruptSuite extends Fs2Suite {
   val interruptRepeatCount = if (isJVM) 25 else 1
 
   test("1 - can interrupt a hung eval") {
-    forAllAsync { (s: Stream[Pure, Int]) =>
+    forAllF { (s: Stream[Pure, Int]) =>
       val interruptSoon = Stream.sleep_[IO](50.millis).compile.drain.attempt
       Stream
         .eval(Semaphore[IO](0))
@@ -19,21 +42,21 @@ class StreamInterruptSuite extends Fs2Suite {
         }
         .compile
         .toList
-        .map(it => assert(it == Nil))
+        .assertEquals(Nil)
     }
   }
 
   test("2 - termination successful when stream doing interruption is hung") {
-    forAllAsync { (s: Stream[Pure, Int]) =>
+    forAllF { (s: Stream[Pure, Int]) =>
       Stream
         .eval(Semaphore[IO](0))
         .flatMap { semaphore =>
-          val interrupt = Stream.emit(true) ++ Stream.eval_(semaphore.release)
+          val interrupt = Stream.emit(true) ++ Stream.exec(semaphore.release)
           s.covary[IO].evalMap(_ => semaphore.acquire).interruptWhen(interrupt)
         }
         .compile
         .toList
-        .map(it => assert(it == Nil))
+        .assertEquals(Nil)
     }
   }
 
@@ -126,18 +149,18 @@ class StreamInterruptSuite extends Fs2Suite {
     }
 
     test("10 - terminates when interruption stream is infinitely false") {
-      forAllAsync { (s: Stream[Pure, Int]) =>
+      forAllF { (s: Stream[Pure, Int]) =>
         s.covary[IO]
           .interruptWhen(Stream.constant(false))
           .compile
           .toList
-          .map(it => assert(it == s.toList))
+          .assertEquals(s.toList)
       }
     }
   }
 
   test("11 - both streams hung") {
-    forAllAsync { (s: Stream[Pure, Int]) =>
+    forAllF { (s: Stream[Pure, Int]) =>
       Stream
         .eval(Semaphore[IO](0))
         .flatMap { barrier =>
@@ -164,16 +187,16 @@ class StreamInterruptSuite extends Fs2Suite {
   }
 
   test("12 - interruption of stream that never terminates in flatMap") {
-    forAllAsync { (s: Stream[Pure, Int]) =>
+    forAllF { (s: Stream[Pure, Int]) =>
       val interrupt = Stream.sleep_[IO](50.millis).compile.drain.attempt
       Stream
         .eval(Semaphore[IO](0))
         .flatMap { semaphore =>
-          s.covary[IO].interruptWhen(interrupt) >> Stream.eval_(semaphore.acquire)
+          s.covary[IO].interruptWhen(interrupt) >> Stream.exec(semaphore.acquire)
         }
         .compile
         .toList
-        .map(it => assert(it == Nil))
+        .assertEquals(Nil)
     }
   }
 
@@ -189,7 +212,7 @@ class StreamInterruptSuite extends Fs2Suite {
   test(
     "13 - failure from interruption signal will be propagated to main stream even when flatMap stream is hung"
   ) {
-    forAllAsync { (s: Stream[Pure, Int]) =>
+    forAllF { (s: Stream[Pure, Int]) =>
       val interrupt = Stream.sleep_[IO](50.millis) ++ Stream.raiseError[IO](new Err)
       Stream
         .eval(Semaphore[IO](0))
@@ -197,12 +220,13 @@ class StreamInterruptSuite extends Fs2Suite {
           Stream(1)
             .append(s)
             .covary[IO]
-            .interruptWhen(interrupt)
-            .flatMap(_ => Stream.eval_(semaphore.acquire))
+            .interruptWhen(interrupt.covaryOutput[Boolean])
+            .flatMap(_ => Stream.exec(semaphore.acquire))
         }
         .compile
         .toList
-        .assertThrows[Err]
+        .intercept[Err]
+        .void
     }
   }
 
@@ -213,11 +237,11 @@ class StreamInterruptSuite extends Fs2Suite {
       .append(Stream(5))
       .compile
       .toList
-      .map(it => assert(it == List(5)))
+      .assertEquals(List(5))
   }
 
   test("14a - interrupt evalMap and then resume on append") {
-    forAllAsync { (s: Stream[Pure, Int]) =>
+    forAllF { (s: Stream[Pure, Int]) =>
       val expected = s.toList
       val interrupt = IO.sleep(50.millis).attempt
       s.covary[IO]
@@ -227,12 +251,12 @@ class StreamInterruptSuite extends Fs2Suite {
         .append(s)
         .compile
         .toList
-        .map(it => assert(it == expected))
+        .assertEquals(expected)
     }
   }
 
   test("14b - interrupt evalMap+collect and then resume on append") {
-    forAllAsync { (s: Stream[Pure, Int]) =>
+    forAllF { (s: Stream[Pure, Int]) =>
       val expected = s.toList
       val interrupt = IO.sleep(50.millis).attempt
       s.covary[IO]
@@ -242,12 +266,12 @@ class StreamInterruptSuite extends Fs2Suite {
         .collect { case Some(v) => v }
         .compile
         .toList
-        .map(it => assert(it == expected))
+        .assertEquals(expected)
     }
   }
 
   test("15 - interruption works when flatMap is followed by collect") {
-    forAllAsync { (s: Stream[Pure, Int]) =>
+    forAllF { (s: Stream[Pure, Int]) =>
       val expected = s.toList
       val interrupt = Stream.sleep_[IO](20.millis).compile.drain.attempt
       s.covary[IO]
@@ -262,11 +286,11 @@ class StreamInterruptSuite extends Fs2Suite {
         .collect { case Some(i) => i }
         .compile
         .toList
-        .map(it => assert(it == expected))
+        .assertEquals(expected)
     }
   }
 
-  test("16 - if a pipe is interrupted, it will not restart evaluation") {
+  test("16 - issue #1179 - if a pipe is interrupted, it will not restart evaluation") {
     def p: Pipe[IO, Int, Int] = {
       def loop(acc: Int, s: Stream[IO, Int]): Pull[IO, Int, Unit] =
         s.pull.uncons1.flatMap {
@@ -276,13 +300,13 @@ class StreamInterruptSuite extends Fs2Suite {
       in => loop(0, in).stream
     }
     Stream
-      .unfold(0)(i => Some((i, i + 1)))
+      .iterate(0)(_ + 1)
       .flatMap(Stream.emit(_).delayBy[IO](10.millis))
       .interruptWhen(Stream.emit(true).delayBy[IO](150.millis))
       .through(p)
       .compile
-      .toList
-      .map(result => assert(result == (result.headOption.toList ++ result.tail.filter(_ != 0))))
+      .lastOrError
+      .map(it => assertNotEquals(it, 0))
   }
 
   test("17 - minimal resume on append with pull") {
@@ -302,7 +326,7 @@ class StreamInterruptSuite extends Fs2Suite {
       .append(Stream(5))
       .compile
       .toList
-      .map(it => assert(it == List(5)))
+      .assertEquals(List(5))
   }
 
   test("18 - resume with append after evalMap interruption") {
@@ -313,23 +337,24 @@ class StreamInterruptSuite extends Fs2Suite {
       .append(Stream(5))
       .compile
       .toList
-      .map(it => assert(it == List(5)))
+      .assertEquals(List(5))
+
   }
 
   test("19 - interrupted eval is cancelled") {
     Deferred[IO, Unit]
       .flatMap { latch =>
         Stream
-          .eval(latch.get.guarantee(latch.complete(())))
+          .eval(latch.get.guarantee(latch.complete(()).void))
           .interruptAfter(200.millis)
           .compile
-          .drain >> latch.get.as(true)
+          .drain >> latch.get
       }
       .timeout(3.seconds)
   }
 
   test("20 - nested-interrupt") {
-    forAllAsync { (s: Stream[Pure, Int]) =>
+    forAllF { (s: Stream[Pure, Int]) =>
       val expected = s.toList
       Stream
         .eval(Semaphore[IO](0))
@@ -349,29 +374,29 @@ class StreamInterruptSuite extends Fs2Suite {
         }
         .compile
         .toList
-        .map(it => assert(it == expected))
+        .assertEquals(expected)
     }
   }
 
   test("21 - nested-interrupt - interrupt in outer scope interrupts the inner scope") {
     Stream
-      .eval(IO.async[Unit](_ => ()))
-      .interruptWhen(IO.async[Either[Throwable, Unit]](_ => ()))
+      .eval(IO.never[Unit])
+      .interruptWhen(IO.never[Either[Throwable, Unit]])
       .interruptWhen(IO(Right(()): Either[Throwable, Unit]))
       .compile
       .toList
-      .map(it => assert(it == Nil))
+      .assertEquals(Nil)
   }
 
   test("22 - nested-interrupt - interrupt in enclosing scope recovers") {
     Stream
-      .eval(IO.async[Unit](_ => ()))
-      .interruptWhen(IO.async[Either[Throwable, Unit]](_ => ()))
+      .eval(IO.never)
+      .interruptWhen(IO.never[Either[Throwable, Unit]])
       .append(Stream(1).delayBy[IO](10.millis))
       .interruptWhen(IO(Right(()): Either[Throwable, Unit]))
       .append(Stream(2))
       .compile
       .toList
-      .map(it => assert(it == List(2)))
+      .assertEquals(List(2))
   }
 }

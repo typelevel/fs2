@@ -1,15 +1,39 @@
+/*
+ * Copyright (c) 2013 Functional Streams for Scala
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of
+ * this software and associated documentation files (the "Software"), to deal in
+ * the Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+ * the Software, and to permit persons to whom the Software is furnished to do so,
+ * subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+ * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+ * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+ * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+
 package fs2
 
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.duration._
+import scala.concurrent.ExecutionContext
 
-import cats.effect.{ContextShift, IO, Sync, SyncIO, Timer}
-import cats.implicits._
-import munit.{Location, ScalaCheckSuite}
-import org.typelevel.discipline.Laws
+import cats.effect.IO
+import cats.effect.unsafe.{IORuntime, IORuntimeConfig, Scheduler}
+import cats.effect.kernel.testkit.TestContext
+
+import munit.{CatsEffectSuite, DisciplineSuite, ScalaCheckEffectSuite}
 
 abstract class Fs2Suite
-    extends ScalaCheckSuite
-    with AsyncPropertySupport
+    extends CatsEffectSuite
+    with DisciplineSuite
+    with ScalaCheckEffectSuite
     with TestPlatform
     with Generators {
 
@@ -20,36 +44,53 @@ abstract class Fs2Suite
 
   override def munitFlakyOK = true
 
-  val executionContext: ExecutionContext = ExecutionContext.global
-  implicit val timerIO: Timer[IO] = IO.timer(executionContext)
-  implicit val contextShiftIO: ContextShift[IO] =
-    IO.contextShift(executionContext)
+  override val munitExecutionContext: ExecutionContext = ExecutionContext.global
 
-  /** Provides various ways to make test assertions on an `F[A]`. */
-  implicit class Asserting[F[_], A](private val self: F[A]) {
+  implicit class Deterministically[F[_], A](private val self: IO[A]) {
 
-    /**
-      * Asserts that the `F[A]` fails with an exception of type `E`.
+    /** Allows to run an IO deterministically through TextContext.
+      * Assumes you want to run the IO to completion, if you need to step through execution,
+      * you will have to do it manually, starting from `createDeterministicRuntime`
       */
-    def assertThrows[E <: Throwable](implicit
-        F: Sync[F],
-        ct: reflect.ClassTag[E],
-        loc: Location
-    ): F[Unit] =
-      self.attempt.flatMap {
-        case Left(_: E) => F.pure(())
-        case Left(t) =>
-          F.delay(
-            fail(
-              s"Expected an exception of type ${ct.runtimeClass.getName} but got an exception: $t"
-            )
-          )
-        case Right(a) =>
-          F.delay(
-            fail(s"Expected an exception of type ${ct.runtimeClass.getName} but got a result: $a")
-          )
-      }
+    def ticked: Deterministic[A] = Deterministic(self)
   }
+
+  case class Deterministic[A](fa: IO[A])
+
+  /* Creates a new environment for deterministic tests which require stepping through */
+  protected def createDeterministicRuntime: (TestContext, IORuntime) = {
+    val ctx = TestContext()
+
+    val scheduler = new Scheduler {
+      def sleep(delay: FiniteDuration, action: Runnable): Runnable = {
+        val cancel = ctx.schedule(delay, action)
+        new Runnable { def run() = cancel() }
+      }
+
+      def nowMillis() = ctx.now().toMillis
+      def monotonicNanos() = ctx.now().toNanos
+    }
+
+    val runtime = IORuntime(ctx, ctx, scheduler, () => (), IORuntimeConfig())
+
+    (ctx, runtime)
+  }
+
+  override def munitValueTransforms: List[ValueTransform] =
+    super.munitValueTransforms ++ List(
+      munitDeterministicIOTransform
+    )
+
+  private val munitDeterministicIOTransform: ValueTransform =
+    new ValueTransform(
+      "Deterministic IO",
+      { case e: Deterministic[_] =>
+        val (ctx, runtime) = createDeterministicRuntime
+        val r = e.fa.unsafeToFuture()(runtime)
+        ctx.tickAll(3.days)
+        r
+      }
+    )
 
   /** Returns a stream that has a 10% chance of failing with an error on each output value. */
   protected def spuriousFail[F[_]: RaiseThrowable, O](s: Stream[F, O]): Stream[F, O] =
@@ -57,7 +98,7 @@ abstract class Fs2Suite
       val counter = new java.util.concurrent.atomic.AtomicLong(0L)
       s.flatMap { o =>
         val i = counter.incrementAndGet
-        if (i % (math.random * 10 + 1).toInt == 0L) Stream.raiseError[F](new Err)
+        if (i % (math.random() * 10 + 1).toInt == 0L) Stream.raiseError[F](new Err)
         else Stream.emit(o)
       }
     }
@@ -71,21 +112,4 @@ abstract class Fs2Suite
     (0 until countRegistered).foreach(_ => munitTestsBuffer.remove(countBefore))
     registered.foreach(t => munitTestsBuffer += t.withName(s"$name - ${t.name}"))
   }
-
-  protected def checkAll(name: String, ruleSet: Laws#RuleSet): Unit =
-    for ((id, prop) <- ruleSet.all.properties)
-      property(s"${name}.${id}")(prop)
-
-  override def munitValueTransforms: List[ValueTransform] =
-    super.munitValueTransforms ++ List(munitIOTransform, munitSyncIOTransform)
-
-  // From https://github.com/scalameta/munit/pull/134
-  private val munitIOTransform: ValueTransform =
-    new ValueTransform("IO", { case e: IO[_] => e.unsafeToFuture() })
-
-  private val munitSyncIOTransform: ValueTransform =
-    new ValueTransform(
-      "SyncIO",
-      { case e: SyncIO[_] => Future(e.unsafeRunSync())(executionContext) }
-    )
 }

@@ -1,14 +1,37 @@
+/*
+ * Copyright (c) 2013 Functional Streams for Scala
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of
+ * this software and associated documentation files (the "Software"), to deal in
+ * the Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+ * the Software, and to permit persons to whom the Software is furnished to do so,
+ * subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+ * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+ * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+ * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+
 package fs2
 
 import scala.concurrent.duration._
 
 import cats.effect.IO
-import cats.effect.concurrent.{Deferred, Ref, Semaphore}
-import cats.implicits._
+import cats.effect.kernel.{Deferred, Ref}
+import cats.effect.std.Semaphore
+import cats.syntax.all._
+import org.scalacheck.effect.PropF.forAllF
 
 class StreamSwitchMapSuite extends Fs2Suite {
   test("flatMap equivalence when switching never occurs") {
-    forAllAsync { (s: Stream[Pure, Int]) =>
+    forAllF { (s: Stream[Pure, Int]) =>
       val expected = s.toList
       Stream
         .eval(Semaphore[IO](1))
@@ -20,12 +43,12 @@ class StreamSwitchMapSuite extends Fs2Suite {
         }
         .compile
         .toList
-        .map(it => assert(it == expected))
+        .assertEquals(expected)
     }
   }
 
   test("inner stream finalizer always runs before switching") {
-    forAllAsync { (s: Stream[Pure, Int]) =>
+    forAllF { (s: Stream[Pure, Int]) =>
       Stream
         .eval(Ref[IO].of(true))
         .flatMap { ref =>
@@ -45,24 +68,25 @@ class StreamSwitchMapSuite extends Fs2Suite {
   }
 
   test("when primary stream terminates, inner stream continues") {
-    forAllAsync { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
+    forAllF { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
       val expected = s1.last.unNoneTerminate.flatMap(s => s2 ++ Stream(s)).toList
       s1.covary[IO]
         .switchMap(s => Stream.sleep_[IO](25.millis) ++ s2 ++ Stream.emit(s))
         .compile
         .toList
-        .map(it => assert(it == expected))
+        .assertEquals(expected)
     }
   }
 
   test("when inner stream fails, overall stream fails") {
-    forAllAsync { (s0: Stream[Pure, Int]) =>
+    forAllF { (s0: Stream[Pure, Int]) =>
       val s = Stream(0) ++ s0
       s.delayBy[IO](25.millis)
         .switchMap(_ => Stream.raiseError[IO](new Err))
         .compile
         .drain
-        .assertThrows[Err]
+        .intercept[Err]
+        .void
     }
   }
 
@@ -79,18 +103,18 @@ class StreamSwitchMapSuite extends Fs2Suite {
       }
       .compile
       .drain
-      .assertThrows[Err]
+      .intercept[Err]
   }
 
   test("when inner stream fails, inner stream finalizer run before the primary one") {
-    forAllAsync { (s0: Stream[Pure, Int]) =>
+    forAllF { (s0: Stream[Pure, Int]) =>
       val s = Stream(0) ++ s0
       Stream
         .eval(Deferred[IO, Boolean])
         .flatMap { verdict =>
           Stream.eval(Ref[IO].of(false)).flatMap { innerReleased =>
             s.delayBy[IO](25.millis)
-              .onFinalize(innerReleased.get.flatMap(inner => verdict.complete(inner)))
+              .onFinalize(innerReleased.get.flatMap(inner => verdict.complete(inner).void))
               .switchMap(_ => Stream.raiseError[IO](new Err).onFinalize(innerReleased.set(true)))
               .attempt
               .drain ++
@@ -99,7 +123,8 @@ class StreamSwitchMapSuite extends Fs2Suite {
         }
         .compile
         .drain
-        .assertThrows[Err]
+        .intercept[Err]
+        .void
     }
   }
 
@@ -119,6 +144,16 @@ class StreamSwitchMapSuite extends Fs2Suite {
       }
       .compile
       .drain
-      .assertThrows[Err]
+      .intercept[Err]
+  }
+
+  test("doesn't deadlock - PR 1424") {
+    Stream
+      .range(1, 100)
+      .covary[IO]
+      .switchMap(Stream.emit)
+      .compile
+      .drain
+      .timeout(5.seconds)
   }
 }

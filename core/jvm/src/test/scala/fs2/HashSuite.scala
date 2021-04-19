@@ -1,7 +1,28 @@
+/*
+ * Copyright (c) 2013 Functional Streams for Scala
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of
+ * this software and associated documentation files (the "Software"), to deal in
+ * the Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+ * the Software, and to permit persons to whom the Software is furnished to do so,
+ * subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+ * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+ * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+ * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+
 package fs2
 
 import cats.effect.IO
-import cats.implicits._
+import cats.syntax.all._
 import java.security.MessageDigest
 import org.scalacheck.Gen
 import org.scalacheck.Prop.forAll
@@ -21,10 +42,10 @@ class HashSuite extends Fs2Suite {
         str.getBytes
           .grouped(n)
           .foldLeft(Stream.empty.covaryOutput[Byte])((acc, c) =>
-            acc ++ Stream.chunk(Chunk.bytes(c))
+            acc ++ Stream.chunk(Chunk.array(c))
           )
 
-    assert(s.through(h).toList == digest(algo, str))
+    assertEquals(s.through(h).toList, digest(algo, str))
   }
 
   group("digests") {
@@ -37,17 +58,17 @@ class HashSuite extends Fs2Suite {
   }
 
   test("empty input") {
-    assert(Stream.empty.through(sha1).toList.size == 20)
+    assertEquals(Stream.empty.through(sha1).toList.size, 20)
   }
 
   test("zero or one output") {
     forAll { (lb: List[Array[Byte]]) =>
       val size = lb
-        .foldLeft(Stream.empty.covaryOutput[Byte])((acc, b) => acc ++ Stream.chunk(Chunk.bytes(b)))
+        .foldLeft(Stream.empty.covaryOutput[Byte])((acc, b) => acc ++ Stream.chunk(Chunk.array(b)))
         .through(sha1)
         .toList
         .size
-      assert(size == 20)
+      assertEquals(size, 20)
     }
   }
 
@@ -55,13 +76,11 @@ class HashSuite extends Fs2Suite {
     val s = Stream
       .range(1, 100)
       .covary[IO]
-      .flatMap(i => Stream.chunk(Chunk.bytes(i.toString.getBytes)))
+      .flatMap(i => Stream.chunk(Chunk.array(i.toString.getBytes)))
       .through(sha512)
-    (for {
+    for {
       once <- s.compile.toVector
       oneHundred <- Vector.fill(100)(s.compile.toVector).parSequence
-    } yield (once, oneHundred)).map {
-      case (once, oneHundred) => assert(oneHundred == Vector.fill(100)(once))
-    }
+    } yield assertEquals(oneHundred, Vector.fill(100)(once))
   }
 }

@@ -1,34 +1,49 @@
-import microsites.ExtraMdFileConfig
 import com.typesafe.tools.mima.core._
-import sbtrelease.Version
 import sbtcrossproject.crossProject
-
-val ReleaseTag = """^release/([\d\.]+a?)$""".r
 
 addCommandAlias("fmt", "; compile:scalafmt; test:scalafmt; it:scalafmt; scalafmtSbt")
 addCommandAlias(
   "fmtCheck",
   "; compile:scalafmtCheck; test:scalafmtCheck; it:scalafmtCheck; scalafmtSbtCheck"
 )
+addCommandAlias("testJVM", ";coreJVM/test;io/test;reactiveStreams/test;benchmark/test")
+addCommandAlias("testJS", "coreJS/test")
 
-crossScalaVersions in ThisBuild := Seq("2.13.2", "2.12.10")
-scalaVersion in ThisBuild := crossScalaVersions.value.head
+Global / onChangedBuildSource := ReloadOnSourceChanges
 
-githubWorkflowJavaVersions in ThisBuild := Seq("adopt@1.11")
-githubWorkflowPublishTargetBranches in ThisBuild := Seq(RefPredicate.Equals(Ref.Branch("main")))
-githubWorkflowBuild in ThisBuild := Seq(
-  WorkflowStep.Sbt(List("fmtCheck", "compile")),
-  WorkflowStep.Sbt(List("testJVM")),
-  WorkflowStep.Sbt(List("testJS")),
-  WorkflowStep.Sbt(List("doc", "mimaReportBinaryIssues")),
-  WorkflowStep.Sbt(List(";project coreJVM;it:test"))
+ThisBuild / baseVersion := "3.0"
+
+ThisBuild / organization := "co.fs2"
+ThisBuild / organizationName := "Functional Streams for Scala"
+
+ThisBuild / homepage := Some(url("https://github.com/typelevel/fs2"))
+ThisBuild / startYear := Some(2013)
+
+ThisBuild / crossScalaVersions := Seq("3.0.0-RC1", "3.0.0-RC2", "2.12.13", "2.13.5")
+
+ThisBuild / githubWorkflowJavaVersions := Seq("adopt@1.11")
+
+ThisBuild / spiewakCiReleaseSnapshots := true
+
+ThisBuild / spiewakMainBranches := List("main", "series/2.5.x")
+
+ThisBuild / githubWorkflowBuild := Seq(
+  WorkflowStep.Sbt(List("fmtCheck", "test", "mimaReportBinaryIssues"))
+  // WorkflowStep.Sbt(List("coreJVM/it:test")) // Memory leak tests fail intermittently on CI
 )
-githubWorkflowEnv in ThisBuild ++= Map(
-  "SONATYPE_USERNAME" -> "fs2-ci",
-  "SONATYPE_PASSWORD" -> s"$${{ secrets.SONATYPE_PASSWORD }}"
+
+ThisBuild / scmInfo := Some(
+  ScmInfo(url("https://github.com/typelevel/fs2"), "git@github.com:typelevel/fs2.git")
 )
 
-lazy val contributors = Seq(
+ThisBuild / licenses := List(("MIT", url("http://opensource.org/licenses/MIT")))
+
+ThisBuild / testFrameworks += new TestFramework("munit.Framework")
+ThisBuild / doctestTestFramework := DoctestTestFramework.ScalaCheck
+
+ThisBuild / publishGithubUser := "mpilquist"
+ThisBuild / publishFullName := "Michael Pilquist"
+ThisBuild / developers ++= List(
   "pchiusano" -> "Paul Chiusano",
   "pchlupacek" -> "Pavel Chlupáček",
   "SystemFw" -> "Fabio Labella",
@@ -37,248 +52,41 @@ lazy val contributors = Seq(
   "fthomas" -> "Frank Thomas",
   "runarorama" -> "Rúnar Ó. Bjarnason",
   "jedws" -> "Jed Wesley-Smith",
-  "mpilquist" -> "Michael Pilquist",
   "durban" -> "Daniel Urban"
-)
-
-lazy val commonSettingsBase = Seq(
-  organization := "co.fs2",
-  scalacOptions ++= Seq(
-    "-feature",
-    "-deprecation",
-    "-language:implicitConversions,higherKinds",
-    "-Xfatal-warnings"
-  ) ++
-    (scalaBinaryVersion.value match {
-      case v if v.startsWith("2.13") =>
-        List("-Xlint", "-Ywarn-unused")
-      case v if v.startsWith("2.12") =>
-        List("-Ypartial-unification")
-      case other => sys.error(s"Unsupported scala version: $other")
-    }),
-  scalacOptions in (Compile, console) ~= {
-    _.filterNot("-Ywarn-unused" == _)
-      .filterNot("-Xlint" == _)
-      .filterNot("-Xfatal-warnings" == _)
-  },
-  // Disable fatal warnings for test compilation because sbt-doctest generated tests
-  // generate warnings which lead to test failures.
-  scalacOptions in (Test, compile) ~= {
-    _.filterNot("-Xfatal-warnings" == _)
-  },
-  scalacOptions in (Compile, console) += "-Ydelambdafy:inline",
-  scalacOptions in (Test, console) := (scalacOptions in (Compile, console)).value,
-  javaOptions in (Test, run) ++= Seq("-Xms64m", "-Xmx64m"),
-  libraryDependencies ++= Seq(
-    compilerPlugin("org.typelevel" %% "kind-projector" % "0.10.3"),
-    "org.typelevel" %%% "cats-core" % "2.1.1",
-    "org.typelevel" %%% "cats-laws" % "2.1.1" % "test",
-    "org.typelevel" %%% "cats-effect" % "2.1.4",
-    "org.typelevel" %%% "cats-effect-laws" % "2.1.4" % "test",
-    "org.scalacheck" %%% "scalacheck" % "1.14.3" % "test",
-    "org.scalameta" %%% "munit-scalacheck" % "0.7.9" % "test"
-  ),
-  testFrameworks += new TestFramework("munit.Framework"),
-  scmInfo := Some(
-    ScmInfo(
-      url("https://github.com/functional-streams-for-scala/fs2"),
-      "git@github.com:functional-streams-for-scala/fs2.git"
-    )
-  ),
-  homepage := Some(url("https://github.com/functional-streams-for-scala/fs2")),
-  licenses += ("MIT", url("http://opensource.org/licenses/MIT")),
-  initialCommands := s"""
-    import fs2._, cats.effect._, cats.effect.implicits._, cats.implicits._
-    import scala.concurrent.ExecutionContext.Implicits.global, scala.concurrent.duration._
-    implicit val contextShiftIO: ContextShift[IO] = IO.contextShift(global)
-    implicit val timerIO: Timer[IO] = IO.timer(global)
-  """,
-  doctestTestFramework := DoctestTestFramework.ScalaCheck
-) ++ scaladocSettings ++ publishingSettings ++ releaseSettings
-
-lazy val commonSettings = commonSettingsBase ++ testSettings
-lazy val crossCommonSettings = commonSettingsBase ++ crossTestSettings
-
-lazy val commonTestSettings = Seq(
-  javaOptions in Test ++= (Seq(
-    "-Dscala.concurrent.context.minThreads=8",
-    "-Dscala.concurrent.context.numThreads=8",
-    "-Dscala.concurrent.context.maxThreads=8"
-  ) ++ (sys.props.get("fs2.test.travis") match {
-    case Some(value) =>
-      Seq(s"-Dfs2.test.travis=true")
-    case None => Seq()
-  })),
-  parallelExecution in Test := false,
-  publishArtifact in Test := true
-)
-lazy val testSettings =
-  (fork in Test := true) +:
-    commonTestSettings
-
-lazy val crossTestSettings =
-  (fork in Test := crossProjectPlatform.value != JSPlatform) +:
-    commonTestSettings
-
-lazy val mdocSettings = Seq(
-  scalacOptions in Compile ~= {
-    _.filterNot("-Ywarn-unused-import" == _)
-      .filterNot("-Ywarn-unused" == _)
-      .filterNot("-Xlint" == _)
-      .filterNot("-Xfatal-warnings" == _)
-  },
-  scalacOptions in Compile += "-Ydelambdafy:inline"
-)
-
-def scmBranch(v: String): String = {
-  val Some(ver) = Version(v)
-  if (ver.qualifier.exists(_ == "-SNAPSHOT"))
-    // support branch (0.9.0-SNAPSHOT -> series/0.9)
-    s"series/${ver.copy(subversions = ver.subversions.take(1), qualifier = None).string}"
-  else
-    // release tag (0.9.0-M2 -> v0.9.0-M2)
-    s"v${ver.string}"
+).map { case (username, fullName) =>
+  Developer(username, fullName, s"@$username", url(s"https://github.com/$username"))
 }
 
-lazy val scaladocSettings = Seq(
-  scalacOptions in (Compile, doc) ++= Seq(
-    "-doc-source-url",
-    s"${scmInfo.value.get.browseUrl}/tree/${scmBranch(version.value)}€{FILE_PATH}.scala",
-    "-sourcepath",
-    baseDirectory.in(LocalRootProject).value.getAbsolutePath,
-    "-implicits",
-    "-implicits-sound-shadowing",
-    "-implicits-show-all"
-  ),
-  scalacOptions in (Compile, doc) ~= { _.filterNot(_ == "-Xfatal-warnings") },
-  autoAPIMappings := true
-)
+ThisBuild / fatalWarningsInCI := false
 
-lazy val publishingSettings = Seq(
-  publishTo := {
-    val nexus = "https://oss.sonatype.org/"
-    if (version.value.trim.endsWith("SNAPSHOT"))
-      Some("snapshots".at(nexus + "content/repositories/snapshots"))
-    else
-      Some("releases".at(nexus + "service/local/staging/deploy/maven2"))
-  },
-  credentials ++= (for {
-    username <- Option(System.getenv().get("SONATYPE_USERNAME"))
-    password <- Option(System.getenv().get("SONATYPE_PASSWORD"))
-  } yield Credentials(
-    "Sonatype Nexus Repository Manager",
-    "oss.sonatype.org",
-    username,
-    password
-  )).toSeq,
-  publishMavenStyle := true,
-  pomIncludeRepository := { _ => false },
-  pomExtra := {
-    <developers>
-      {
-      for ((username, name) <- contributors)
-        yield <developer>
-        <id>{username}</id>
-        <name>{name}</name>
-        <url>http://github.com/{username}</url>
-      </developer>
-    }
-    </developers>
-  },
-  pomPostProcess := { node =>
-    import scala.xml._
-    import scala.xml.transform._
-    def stripIf(f: Node => Boolean) =
-      new RewriteRule {
-        override def transform(n: Node) =
-          if (f(n)) NodeSeq.Empty else n
-      }
-    val stripTestScope = stripIf(n => n.label == "dependency" && (n \ "scope").text == "test")
-    new RuleTransformer(stripTestScope).transform(node)(0)
-  },
-  gpgWarnOnFailure := version.value.endsWith("SNAPSHOT")
+ThisBuild / Test / javaOptions ++= Seq(
+  "-Dscala.concurrent.context.minThreads=8",
+  "-Dscala.concurrent.context.numThreads=8",
+  "-Dscala.concurrent.context.maxThreads=8"
 )
+ThisBuild / Test / run / javaOptions ++= Seq("-Xms64m", "-Xmx64m")
+ThisBuild / Test / parallelExecution := false
 
-lazy val commonJsSettings = Seq(
-  scalaJSLinkerConfig ~= { config =>
-    // https://github.com/scala-js/scala-js/issues/2798
-    try {
-      scala.util.Properties.isJavaAtLeast("1.8")
-      config
-    } catch {
-      case _: NumberFormatException =>
-        config.withParallel(false)
-    }
-  },
-  scalaJSStage in Test := FastOptStage,
-  jsEnv := new org.scalajs.jsenv.nodejs.NodeJSEnv(),
-  scalacOptions in Compile += {
-    val dir = project.base.toURI.toString.replaceFirst("[^/]+/?$", "")
-    val url =
-      "https://raw.githubusercontent.com/functional-streams-for-scala/fs2"
-    s"-P:scalajs:mapSourceURI:$dir->$url/${scmBranch(version.value)}/"
-  },
-  scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule))
-)
+ThisBuild / initialCommands := s"""
+    import fs2._, cats.effect._, cats.effect.implicits._, cats.effect.unsafe.implicits.global, cats.syntax.all._, scala.concurrent.duration._
+  """
 
-lazy val noPublish = Seq(
-  publish := {},
-  publishLocal := {},
-  publishArtifact := false
-)
-
-lazy val releaseSettings = Seq(
-  releaseCrossBuild := true
-)
-
-lazy val mimaSettings = Seq(
-  mimaPreviousArtifacts := {
-    List("2.0.0", "2.3.0").map { pv =>
-      organization.value % (normalizedName.value + "_" + scalaBinaryVersion.value) % pv
-    }.toSet
-  },
-  mimaBinaryIssueFilters ++= Seq(
-    // These methods were only used internally between Stream and Pull: they were private to fs2.
-    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Stream.fromFreeC"),
-    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Stream.get$extension"),
-    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Stream#IdOps.self$extension"),
-    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Pull.get$extension"),
-    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Pull.get"),
-    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Stream.get$extension"),
-    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Stream.get"),
-    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Pull.fromFreeC"),
-    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Pull.get$extension"),
-    // No bincompat on internal package
-    ProblemFilters.exclude[Problem]("fs2.internal.*"),
-    // Mima reports all ScalaSignature changes as errors, despite the fact that they don't cause bincompat issues when version swapping (see https://github.com/lightbend/mima/issues/361)
-    ProblemFilters.exclude[IncompatibleSignatureProblem]("*"),
-    // .to(sink) syntax was removed in 1.0.2 and has been hidden in all 2.x releases behind private[fs2], hence it's safe to remove
-    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Stream.to"),
-    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Stream.to$extension"),
-    ProblemFilters.exclude[DirectMissingMethodProblem](
-      "fs2.interop.reactivestreams.StreamSubscriber#FSM.stream"
-    ), // FSM is package private
-    ProblemFilters.exclude[Problem]("fs2.io.tls.TLSEngine.*"), // private[fs2] type
-    ProblemFilters.exclude[Problem]("fs2.io.tls.TLSEngine#*"),
-    ProblemFilters.exclude[DirectMissingMethodProblem](
-      "fs2.io.tls.TLSSocket.fs2$io$tls$TLSSocket$$binding$default$2"
-    ),
-    ProblemFilters.exclude[DirectMissingMethodProblem](
-      "fs2.io.tls.TLSSocket.fs2$io$tls$TLSSocket$$binding$default$3"
-    ),
-    // InputOutputBuffer is private[tls]
-    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.tls.InputOutputBuffer.output"),
-    ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.io.tls.InputOutputBuffer.output")
-  )
+ThisBuild / mimaBinaryIssueFilters ++= Seq(
+  // No bincompat on internal package
+  ProblemFilters.exclude[Problem]("fs2.internal.*"),
+  // Mima reports all ScalaSignature changes as errors, despite the fact that they don't cause bincompat issues when version swapping (see https://github.com/lightbend/mima/issues/361)
+  ProblemFilters.exclude[IncompatibleSignatureProblem]("*"),
+  ProblemFilters.exclude[IncompatibleMethTypeProblem]("fs2.Pull#MapOutput.apply"),
+  ProblemFilters.exclude[IncompatibleResultTypeProblem]("fs2.Pull#MapOutput.fun"),
+  ProblemFilters.exclude[IncompatibleMethTypeProblem]("fs2.Pull#MapOutput.copy"),
+  ProblemFilters.exclude[IncompatibleResultTypeProblem]("fs2.Pull#MapOutput.copy$default$2"),
+  ProblemFilters.exclude[IncompatibleMethTypeProblem]("fs2.Pull#MapOutput.this")
 )
 
 lazy val root = project
   .in(file("."))
-  .disablePlugins(MimaPlugin)
-  .settings(commonSettings)
-  .settings(mimaSettings)
-  .settings(noPublish)
-  .aggregate(coreJVM, coreJS, io, reactiveStreams, benchmark, experimental, microsite)
+  .enablePlugins(NoPublishPlugin, SonatypeCiReleasePlugin)
+  .aggregate(coreJVM, coreJS, io, reactiveStreams, benchmark)
 
 lazy val IntegrationTest = config("it").extend(Test)
 
@@ -289,17 +97,45 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
   .settings(
     inConfig(IntegrationTest)(org.scalafmt.sbt.ScalafmtPlugin.scalafmtConfigSettings)
   )
-  .settings(crossCommonSettings: _*)
   .settings(
     name := "fs2-core",
-    sourceDirectories in (Compile, scalafmt) += baseDirectory.value / "../shared/src/main/scala",
-    libraryDependencies += "org.scodec" %%% "scodec-bits" % "1.1.17"
+    Compile / scalafmt / unmanagedSources := (Compile / scalafmt / unmanagedSources).value
+      .filterNot(_.toString.endsWith("NotGiven.scala")),
+    Test / scalafmt / unmanagedSources := (Test / scalafmt / unmanagedSources).value
+      .filterNot(_.toString.endsWith("NotGiven.scala"))
   )
-  .jsSettings(commonJsSettings: _*)
+  .settings(dottyJsSettings(ThisBuild / crossScalaVersions))
+  .settings(
+    name := "fs2-core",
+    libraryDependencies ++= Seq(
+      "org.typelevel" %%% "cats-core" % "2.5.0",
+      "org.typelevel" %%% "cats-laws" % "2.5.0" % Test,
+      "org.typelevel" %%% "cats-effect" % "3.0.2",
+      "org.typelevel" %%% "cats-effect-laws" % "3.0.2" % Test,
+      "org.typelevel" %%% "cats-effect-testkit" % "3.0.2" % Test,
+      "org.scodec" %%% "scodec-bits" % "1.1.25",
+      "org.typelevel" %%% "scalacheck-effect-munit" % "1.0.0" % Test,
+      "org.typelevel" %%% "munit-cats-effect-3" % "1.0.1" % Test,
+      "org.typelevel" %%% "discipline-munit" % "1.0.7" % Test
+    ),
+    Compile / unmanagedSourceDirectories ++= {
+      val major = if (isDotty.value) "-3" else "-2"
+      List(CrossType.Pure, CrossType.Full).flatMap(
+        _.sharedSrcDir(baseDirectory.value, "main").toList.map(f => file(f.getPath + major))
+      )
+    },
+    Test / unmanagedSourceDirectories ++= {
+      val major = if (isDotty.value) "-3" else "-2"
+      List(CrossType.Pure, CrossType.Full).flatMap(
+        _.sharedSrcDir(baseDirectory.value, "test").toList.map(f => file(f.getPath + major))
+      )
+    }
+  )
 
 lazy val coreJVM = core.jvm
   .enablePlugins(SbtOsgi)
   .settings(
+    Test / fork := true,
     OsgiKeys.exportPackage := Seq("fs2.*"),
     OsgiKeys.privatePackage := Seq(),
     OsgiKeys.importPackage := {
@@ -309,17 +145,22 @@ lazy val coreJVM = core.jvm
     OsgiKeys.additionalHeaders := Map("-removeheaders" -> "Include-Resource,Private-Package"),
     osgiSettings
   )
-  .settings(mimaSettings)
 
-lazy val coreJS = core.js.disablePlugins(DoctestPlugin, MimaPlugin)
+lazy val coreJS = core.js
+  .disablePlugins(DoctestPlugin)
+  .settings(
+    scalaJSStage in Test := FastOptStage,
+    jsEnv := new org.scalajs.jsenv.nodejs.NodeJSEnv(),
+    scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule))
+  )
 
 lazy val io = project
   .in(file("io"))
   .enablePlugins(SbtOsgi)
-  .settings(commonSettings)
-  .settings(mimaSettings)
   .settings(
     name := "fs2-io",
+    libraryDependencies += "com.comcast" %% "ip4s-core" % "3.0.1",
+    Test / fork := true,
     OsgiKeys.exportPackage := Seq("fs2.io.*"),
     OsgiKeys.privatePackage := Seq(),
     OsgiKeys.importPackage := {
@@ -338,17 +179,14 @@ lazy val io = project
 lazy val reactiveStreams = project
   .in(file("reactive-streams"))
   .enablePlugins(SbtOsgi)
-  .settings(commonSettings)
   .settings(
+    name := "fs2-reactive-streams",
+    Test / fork := true,
     libraryDependencies ++= Seq(
       "org.reactivestreams" % "reactive-streams" % "1.0.3",
       "org.reactivestreams" % "reactive-streams-tck" % "1.0.3" % "test",
-      "org.scalatestplus" %% "testng-6-7" % "3.2.0.0" % "test"
-    )
-  )
-  .settings(mimaSettings)
-  .settings(
-    name := "fs2-reactive-streams",
+      ("org.scalatestplus" %% "testng-6-7" % "3.2.7.0" % "test").withDottyCompat(scalaVersion.value)
+    ),
     OsgiKeys.exportPackage := Seq("fs2.interop.reactivestreams.*"),
     OsgiKeys.privatePackage := Seq(),
     OsgiKeys.importPackage := {
@@ -366,65 +204,56 @@ lazy val reactiveStreams = project
 
 lazy val benchmark = project
   .in(file("benchmark"))
-  .disablePlugins(MimaPlugin)
-  .settings(commonSettings)
-  .settings(noPublish)
+  .enablePlugins(JmhPlugin, NoPublishPlugin)
   .settings(
     name := "fs2-benchmark",
-    javaOptions in (Test, run) := (javaOptions in (Test, run)).value
+    Test / run / javaOptions := (Test / run / javaOptions).value
       .filterNot(o => o.startsWith("-Xmx") || o.startsWith("-Xms")) ++ Seq("-Xms256m", "-Xmx256m")
   )
-  .enablePlugins(JmhPlugin)
   .dependsOn(io)
 
 lazy val microsite = project
-  .in(file("site"))
-  .enablePlugins(MicrositesPlugin)
-  .disablePlugins(MimaPlugin)
-  .settings(commonSettings)
-  .settings(noPublish)
+  .in(file("mdoc"))
   .settings(
-    micrositeName := "fs2",
-    micrositeDescription := "Purely functional, effectful, resource-safe, concurrent streams for Scala",
-    micrositeGithubOwner := "functional-streams-for-scala",
-    micrositeGithubRepo := "fs2",
-    micrositePushSiteWith := GitHub4s,
-    micrositeGithubToken := sys.env.get("GITHUB_TOKEN"),
-    micrositeBaseUrl := "",
-    micrositeHighlightTheme := "atom-one-light",
-    micrositeExtraMdFilesOutput := resourceManaged.value / "main" / "jekyll",
-    micrositeExtraMdFiles := Map(
-      file("README.md") -> ExtraMdFileConfig(
-        "index.md",
-        "home",
-        Map("title" -> "Home", "section" -> "home", "position" -> "0")
+    mdocIn := file("site"),
+    mdocOut := file("target/website"),
+    mdocVariables := Map(
+      "version" -> version.value,
+      "scalaVersions" -> crossScalaVersions.value
+        .map(v => s"- **$v**")
+        .mkString("\n")
+    ),
+    githubWorkflowArtifactUpload := false,
+    fatalWarningsInCI := false
+  )
+  .dependsOn(coreJVM, io, reactiveStreams)
+  .enablePlugins(MdocPlugin, NoPublishPlugin)
+
+ThisBuild / githubWorkflowBuildPostamble ++= List(
+  WorkflowStep.Sbt(
+    List("microsite/mdoc"),
+    cond = Some(s"matrix.scala == '2.13.5'")
+  )
+)
+
+ThisBuild / githubWorkflowAddedJobs += WorkflowJob(
+  id = "site",
+  name = "Deploy site",
+  needs = List("publish"),
+  javas = (ThisBuild / githubWorkflowJavaVersions).value.toList,
+  scalas = (ThisBuild / scalaVersion).value :: Nil,
+  cond = """
+  | always() &&
+  | needs.build.result == 'success' &&
+  | (needs.publish.result == 'success' && github.ref == 'refs/heads/main')
+  """.stripMargin.trim.linesIterator.mkString.some,
+  steps = githubWorkflowGeneratedDownloadSteps.value.toList :+
+    WorkflowStep.Use(
+      UseRef.Public("peaceiris", "actions-gh-pages", "v3"),
+      name = Some(s"Deploy site"),
+      params = Map(
+        "publish_dir" -> "./target/website",
+        "github_token" -> "${{ secrets.GITHUB_TOKEN }}"
       )
     )
-  )
-  .settings(mdocSettings)
-  .dependsOn(coreJVM, io, reactiveStreams)
-
-lazy val experimental = project
-  .in(file("experimental"))
-  .enablePlugins(SbtOsgi)
-  .settings(commonSettings)
-  .settings(mimaSettings)
-  .settings(
-    name := "fs2-experimental",
-    OsgiKeys.exportPackage := Seq("fs2.experimental.*"),
-    OsgiKeys.privatePackage := Seq(),
-    OsgiKeys.importPackage := {
-      val Some((major, minor)) = CrossVersion.partialVersion(scalaVersion.value)
-      Seq(
-        s"""scala.*;version="[$major.$minor,$major.${minor + 1})"""",
-        """fs2.*;version="${Bundle-Version}"""",
-        "*"
-      )
-    },
-    OsgiKeys.additionalHeaders := Map("-removeheaders" -> "Include-Resource,Private-Package"),
-    osgiSettings
-  )
-  .dependsOn(coreJVM % "compile->compile;test->test")
-
-addCommandAlias("testJVM", ";coreJVM/test;io/test;reactiveStreams/test;benchmark/test")
-addCommandAlias("testJS", "coreJS/test")
+)

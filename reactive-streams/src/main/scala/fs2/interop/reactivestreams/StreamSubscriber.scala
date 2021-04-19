@@ -1,50 +1,69 @@
+/*
+ * Copyright (c) 2013 Functional Streams for Scala
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of
+ * this software and associated documentation files (the "Software"), to deal in
+ * the Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+ * the Software, and to permit persons to whom the Software is furnished to do so,
+ * subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+ * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+ * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+ * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+
 package fs2
 package interop
 package reactivestreams
 
 import cats._
-import cats.effect._
-import cats.effect.concurrent.{Deferred, Ref}
-import cats.implicits._
+import cats.effect.kernel.{Async, Deferred, Ref}
+import cats.effect.std.Dispatcher
+import cats.syntax.all._
+
 import org.reactivestreams._
 
-/**
-  * Implementation of a `org.reactivestreams.Subscriber`.
+/** Implementation of a `org.reactivestreams.Subscriber`.
   *
   * This is used to obtain a `fs2.Stream` from an upstream reactivestreams system.
   *
   * @see [[https://github.com/reactive-streams/reactive-streams-jvm#2-subscriber-code]]
   */
-final class StreamSubscriber[F[_]: ConcurrentEffect, A](val sub: StreamSubscriber.FSM[F, A])
-    extends Subscriber[A] {
+final class StreamSubscriber[F[_], A](
+    val sub: StreamSubscriber.FSM[F, A],
+    dispatcher: Dispatcher[F]
+)(implicit
+    F: ApplicativeError[F, Throwable]
+) extends Subscriber[A] {
 
   /** Called by an upstream reactivestreams system */
   def onSubscribe(s: Subscription): Unit = {
     nonNull(s)
-    sub.onSubscribe(s).unsafeRunAsync
+    dispatcher.unsafeRunSync(sub.onSubscribe(s).attempt.void)
   }
 
   /** Called by an upstream reactivestreams system */
   def onNext(a: A): Unit = {
     nonNull(a)
-    sub.onNext(a).unsafeRunAsync
+    dispatcher.unsafeRunSync(sub.onNext(a).attempt.void)
   }
 
   /** Called by an upstream reactivestreams system */
-  def onComplete(): Unit = sub.onComplete.unsafeRunAsync
+  def onComplete(): Unit =
+    dispatcher.unsafeRunSync(sub.onComplete.attempt.void)
 
   /** Called by an upstream reactivestreams system */
   def onError(t: Throwable): Unit = {
     nonNull(t)
-    sub.onError(t).unsafeRunAsync
+    dispatcher.unsafeRunSync(sub.onError(t).attempt.void)
   }
-
-  /** Obtain a fs2.Stream */
-  @deprecated(
-    "subscribing to a publisher prior to pulling the stream is unsafe if interrupted",
-    "2.2.3"
-  )
-  def stream: Stream[F, A] = stream(().pure[F])
 
   def stream(subscribe: F[Unit]): Stream[F, A] = sub.stream(subscribe)
 
@@ -52,8 +71,8 @@ final class StreamSubscriber[F[_]: ConcurrentEffect, A](val sub: StreamSubscribe
 }
 
 object StreamSubscriber {
-  def apply[F[_]: ConcurrentEffect, A]: F[StreamSubscriber[F, A]] =
-    fsm[F, A].map(new StreamSubscriber(_))
+  def apply[F[_]: Async, A](dispatcher: Dispatcher[F]): F[StreamSubscriber[F, A]] =
+    fsm[F, A].map(new StreamSubscriber(_, dispatcher))
 
   /** A finite state machine describing the subscriber */
   private[reactivestreams] trait FSM[F[_], A] {
@@ -85,7 +104,7 @@ object StreamSubscriber {
         .unNoneTerminate
   }
 
-  private[reactivestreams] def fsm[F[_], A](implicit F: Concurrent[F]): F[FSM[F, A]] = {
+  private[reactivestreams] def fsm[F[_], A](implicit F: Async[F]): F[FSM[F, A]] = {
     type Out = Either[Throwable, Option[A]]
 
     sealed trait Input
@@ -115,30 +134,31 @@ object StreamSubscriber {
             o -> (F.delay(s.cancel) >> F.raiseError(err))
         }
         case OnNext(a) => {
-          case WaitingOnUpstream(s, r) => Idle(s) -> r.complete(a.some.asRight)
+          case WaitingOnUpstream(s, r) => Idle(s) -> r.complete(a.some.asRight).void
           case DownstreamCancellation  => DownstreamCancellation -> F.unit
           case o                       => o -> F.raiseError(new Error(s"received record [$a] in invalid state [$o]"))
         }
         case OnComplete => {
-          case WaitingOnUpstream(_, r) => UpstreamCompletion -> r.complete(None.asRight)
+          case WaitingOnUpstream(_, r) => UpstreamCompletion -> r.complete(None.asRight).void
           case _                       => UpstreamCompletion -> F.unit
         }
         case OnError(e) => {
-          case WaitingOnUpstream(_, r) => UpstreamError(e) -> r.complete(e.asLeft)
+          case WaitingOnUpstream(_, r) => UpstreamError(e) -> r.complete(e.asLeft).void
           case _                       => UpstreamError(e) -> F.unit
         }
         case OnFinalize => {
           case WaitingOnUpstream(sub, r) =>
-            DownstreamCancellation -> (F.delay(sub.cancel) >> r.complete(None.asRight))
+            DownstreamCancellation -> (F.delay(sub.cancel) >> r.complete(None.asRight)).void
           case Idle(sub) => DownstreamCancellation -> F.delay(sub.cancel)
           case o         => o -> F.unit
         }
         case OnDequeue(r) => {
           case Uninitialized          => RequestBeforeSubscription(r) -> F.unit
           case Idle(sub)              => WaitingOnUpstream(sub, r) -> F.delay(sub.request(1))
-          case err @ UpstreamError(e) => err -> r.complete(e.asLeft)
-          case UpstreamCompletion     => UpstreamCompletion -> r.complete(None.asRight)
-          case o                      => o -> r.complete((new Error(s"received request in invalid state [$o]")).asLeft)
+          case err @ UpstreamError(e) => err -> r.complete(e.asLeft).void
+          case UpstreamCompletion     => UpstreamCompletion -> r.complete(None.asRight).void
+          case o =>
+            o -> r.complete((new Error(s"received request in invalid state [$o]")).asLeft).void
         }
       }
 

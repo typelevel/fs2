@@ -1,15 +1,32 @@
+/*
+ * Copyright (c) 2013 Functional Streams for Scala
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of
+ * this software and associated documentation files (the "Software"), to deal in
+ * the Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+ * the Software, and to permit persons to whom the Software is furnished to do so,
+ * subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+ * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+ * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+ * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+
 package notfs2
 
 import fs2._
 
 import cats.{Applicative, Id}
-import cats.effect.{ContextShift, IO, Resource, Timer}
+import cats.effect.{IO, Resource}
 
 object ThisModuleShouldCompile {
-  implicit val timerIO: Timer[IO] = IO.timer(scala.concurrent.ExecutionContext.Implicits.global)
-  implicit val contextShiftIO: ContextShift[IO] =
-    IO.contextShift(scala.concurrent.ExecutionContext.Implicits.global)
-
   /* Some checks that `.pull` can be used without annotations */
   Stream(1, 2, 3, 4).through(_.take(2))
   Stream.eval(IO.pure(1)).through(_.take(2))
@@ -72,8 +89,8 @@ object ThisModuleShouldCompile {
 
   // Ensure that Stream#flatMap is favored over cats's flatMap
   {
-    import cats.implicits._
-    1 |+| 1 // Mask unused warning from cats.implicits._ import
+    import cats.syntax.all._
+    1 |+| 1 // Mask unused warning from cats.syntax.all._ import
     Stream(1, 2, 3).flatMap(i => Stream.eval(IO.pure(i)))
     (Stream(1, 2, 3).flatMap(i => Stream.eval(IO(i)))): Stream[IO, Int]
   }
@@ -93,4 +110,6 @@ object ThisModuleShouldCompile {
   Stream.empty[Id].covaryOutput[Byte].compile.to(Chunk): Chunk[Byte]
 
   Stream(1, 2, 3).compile.to(Set)
+  Stream(1, 2, 3).to(List)
+  Stream(1, 2, 3).covary[Fallible].to(List)
 }

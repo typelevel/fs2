@@ -1,11 +1,33 @@
+/*
+ * Copyright (c) 2013 Functional Streams for Scala
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of
+ * this software and associated documentation files (the "Software"), to deal in
+ * the Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+ * the Software, and to permit persons to whom the Software is furnished to do so,
+ * subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+ * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+ * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+ * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+
 package fs2
 package concurrent
 
 import cats.effect.IO
-import cats.effect.concurrent.Ref
-import cats.implicits._
+import cats.effect.kernel.Ref
+import cats.syntax.all._
 // import cats.laws.discipline.{ApplicativeTests, FunctorTests}
 import scala.concurrent.duration._
+import org.scalacheck.effect.PropF.forAllF
 
 class SignalSuite extends Fs2Suite {
   override def scalaCheckTestParameters =
@@ -17,7 +39,7 @@ class SignalSuite extends Fs2Suite {
     predicate.flatMap(passed => if (passed) IO.unit else IO.sleep(5.millis) >> waitFor(predicate))
 
   test("get/set/discrete") {
-    forAllAsync { (vs0: List[Long]) =>
+    forAllF { (vs0: List[Long]) =>
       val vs = vs0.map(n => if (n == 0) 1 else n)
       SignallingRef[IO, Long](0L).flatMap { s =>
         Ref.of[IO, Long](0).flatMap { r =>
@@ -38,7 +60,7 @@ class SignalSuite extends Fs2Suite {
 
   test("discrete") {
     // verifies that discrete always receives the most recent value, even when updates occur rapidly
-    forAllAsync { (v0: Long, vsTl: List[Long]) =>
+    forAllF { (v0: Long, vsTl: List[Long]) =>
       val vs = v0 :: vsTl
       SignallingRef[IO, Long](0L).flatMap { s =>
         Ref.of[IO, Long](0L).flatMap { r =>
@@ -57,8 +79,42 @@ class SignalSuite extends Fs2Suite {
     }
   }
 
+  test("access cannot be used twice") {
+    for {
+      s <- SignallingRef[IO, Long](0L)
+      access <- s.access
+      (v, set) = access
+      v1 = v + 1
+      v2 = v1 + 1
+      r1 <- set(v1)
+      r2 <- set(v2)
+      r3 <- s.get
+    } yield {
+      assert(r1)
+      assert(!r2)
+      assertEquals(r3, v1)
+    }
+  }
+
+  test("access updates discrete") {
+    SignallingRef[IO, Int](0).flatMap { s =>
+      def cas: IO[Unit] =
+        s.access.flatMap { case (v, set) =>
+          set(v + 1).ifM(IO.unit, cas)
+        }
+
+      def updates =
+        s.discrete.takeWhile(_ != 1).compile.drain
+
+      updates.start.flatMap { fiber =>
+        cas >> fiber.join.timeout(5.seconds)
+      }
+    }
+  }
+
   test("holdOption") {
-    Stream.range(1, 10).covary[IO].holdOption.compile.drain
+    val s = Stream.range(1, 10).covary[IO].holdOption
+    s.compile.drain
   }
 
   // TODO - Port laws tests once we have a compatible version of cats-laws

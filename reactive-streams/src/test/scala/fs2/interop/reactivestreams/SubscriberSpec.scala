@@ -1,3 +1,24 @@
+/*
+ * Copyright (c) 2013 Functional Streams for Scala
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of
+ * this software and associated documentation files (the "Software"), to deal in
+ * the Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+ * the Software, and to permit persons to whom the Software is furnished to do so,
+ * subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+ * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+ * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+ * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+
 package fs2
 package interop
 package reactivestreams
@@ -5,7 +26,8 @@ package reactivestreams
 import java.util.concurrent.atomic.AtomicInteger
 
 import cats.effect._
-import cats.implicits._
+import cats.effect.unsafe.implicits.global
+
 import org.reactivestreams._
 import org.reactivestreams.tck.SubscriberWhiteboxVerification.{
   SubscriberPuppet,
@@ -16,23 +38,19 @@ import org.reactivestreams.tck.{
   SubscriberWhiteboxVerification,
   TestEnvironment
 }
-import org.scalatestplus.testng.TestNGSuiteLike
 
-import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
 
 final class SubscriberWhiteboxSpec
     extends SubscriberWhiteboxVerification[Int](new TestEnvironment(1000L))
-    with TestNGSuiteLike {
-  implicit val ctx: ContextShift[IO] =
-    IO.contextShift(ExecutionContext.global)
+    with UnsafeTestNGSuite {
 
   private val counter = new AtomicInteger()
 
   def createSubscriber(
       p: SubscriberWhiteboxVerification.WhiteboxSubscriberProbe[Int]
   ): Subscriber[Int] =
-    StreamSubscriber[IO, Int]
+    StreamSubscriber[IO, Int](dispatcher)
       .map(s => new WhiteboxSubscriber(s, p))
       .unsafeRunSync()
 
@@ -72,17 +90,16 @@ final class WhiteboxSubscriber[A](sub: StreamSubscriber[IO, A], probe: WhiteboxS
 
 final class SubscriberBlackboxSpec
     extends SubscriberBlackboxVerification[Int](new TestEnvironment(1000L))
-    with TestNGSuiteLike {
-  val timer = IO.timer(ExecutionContext.global)
-  implicit val ctx: ContextShift[IO] = IO.contextShift(ExecutionContext.global)
+    with UnsafeTestNGSuite {
 
   private val counter = new AtomicInteger()
 
-  def createSubscriber(): StreamSubscriber[IO, Int] = StreamSubscriber[IO, Int].unsafeRunSync()
+  def createSubscriber(): StreamSubscriber[IO, Int] =
+    StreamSubscriber[IO, Int](dispatcher).unsafeRunSync()
 
   override def triggerRequest(s: Subscriber[_ >: Int]): Unit = {
     val req = s.asInstanceOf[StreamSubscriber[IO, Int]].sub.dequeue1
-    (Stream.eval(timer.sleep(100.milliseconds) >> req)).compile.drain.unsafeRunAsync(_ => ())
+    (Stream.eval(IO.sleep(100.milliseconds) >> req)).compile.drain.unsafeRunAsync(_ => ())
   }
 
   def createElement(i: Int): Int = counter.incrementAndGet()

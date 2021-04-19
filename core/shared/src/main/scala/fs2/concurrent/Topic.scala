@@ -1,49 +1,73 @@
+/*
+ * Copyright (c) 2013 Functional Streams for Scala
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of
+ * this software and associated documentation files (the "Software"), to deal in
+ * the Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+ * the Software, and to permit persons to whom the Software is furnished to do so,
+ * subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+ * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+ * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+ * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+
 package fs2
 package concurrent
 
-import cats.Eq
+import cats.effect._
+import cats.effect.implicits._
 import cats.syntax.all._
-import cats.effect.{Concurrent, Sync}
+import scala.collection.immutable.LongMap
 
-import fs2.internal.{SizedQueue, Token}
-
-/**
-  * Asynchronous Topic.
+/** Topic allows you to distribute `A`s published by an arbitrary
+  * number of publishers to an arbitrary number of subscribers.
   *
-  * Topic allows you to distribute `A` published by arbitrary number of publishers to arbitrary number of subscribers.
+  * Topic has built-in back-pressure support implemented as the maximum
+  * number of elements (`maxQueued`) that a subscriber is allowed to enqueue.
   *
-  * Topic has built-in back-pressure support implemented as maximum bound (`maxQueued`) that a subscriber is allowed to enqueue.
-  * Once that bound is hit, publishing may semantically block until the lagging subscriber consumes some of its queued elements.
-  *
-  * Additionally the subscriber has possibility to terminate whenever size of enqueued elements is over certain size
-  * by using `subscribeSize`.
+  * Once that bound is hit, any publishing action will semantically
+  * block until the lagging subscriber consumes some of its queued
+  * elements.
   */
 abstract class Topic[F[_], A] { self =>
 
-  /**
-    * Publishes elements from source of `A` to this topic.
+  /** Publishes elements from source of `A` to this topic.
     * [[Pipe]] equivalent of `publish1`.
+    * Closes the topic when the input stream terminates.
+    * Especially useful when the topic has a single producer.
     */
-  def publish: Pipe[F, A, Unit]
+  def publish: Pipe[F, A, Nothing]
 
-  /**
-    * Publishes one `A` to topic.
+  /** Publishes one `A` to topic.
+    * No-op if the channel is closed, see [[close]] for further info.
     *
-    * This waits until `a` is published to all subscribers.
-    * If any of the subscribers is over the `maxQueued` limit, this will wait to complete until that subscriber processes
-    * enough of its elements such that `a` is enqueued.
+    * This operation does not complete until after the given element
+    * has been enqued on all subscribers, which means that if any
+    * subscriber is at its `maxQueued` limit, `publish1` will
+    * semantically block until that subscriber consumes an element.
+    *
+    * A semantically blocked publication can be interrupted, but there is
+    * no guarantee of atomicity, and it could result in the `A` being
+    * received by some subscribers only.
+    *
+    * Note: if `publish1` is called concurrently by multiple producers,
+    * different subscribers may receive messages from different producers
+    * in a different order.
     */
-  def publish1(a: A): F[Unit]
+  def publish1(a: A): F[Either[Topic.Closed, Unit]]
 
-  /**
-    * Subscribes for `A` values that are published to this topic.
+  /** Subscribes for `A` values that are published to this topic.
     *
     * Pulling on the returned stream opens a "subscription", which allows up to
     * `maxQueued` elements to be enqueued as a result of publication.
-    *
-    * The first element in the stream is always the last published `A` at the time
-    * the stream is first pulled from, followed by each published `A` value from that
-    * point forward.
     *
     * If at any point, the queue backing the subscription has `maxQueued` elements in it,
     * any further publications semantically block until elements are dequeued from the
@@ -54,161 +78,141 @@ abstract class Topic[F[_], A] { self =>
     */
   def subscribe(maxQueued: Int): Stream[F, A]
 
-  /**
-    * Like [[subscribe]] but emits an approximate number of queued elements for this subscription
-    * with each emitted `A` value.
+  /** Like `subscribe`, but represents the subscription explicitly as
+    * a `Resource` which returns after the subscriber is subscribed,
+    * but before it has started pulling elements.
     */
-  def subscribeSize(maxQueued: Int): Stream[F, (A, Int)]
+  def subscribeAwait(maxQueued: Int): Resource[F, Stream[F, A]]
 
-  /**
-    * Signal of current active subscribers.
+  /** Signal of current active subscribers.
     */
   def subscribers: Stream[F, Int]
 
-  /**
-    * Returns an alternate view of this `Topic` where its elements are of type `B`,
+  /** This method achieves graceful shutdown: when the topics gets
+    * closed, its subscribers will terminate naturally after consuming all
+    * currently enqueued elements.
+    *
+    * "Termination" here means that subscribers no longer
+    * wait for new elements on the topic, and not that they will be
+    * interrupted while performing another action: if you want to
+    * interrupt a subscriber, without first processing enqueued
+    * elements, you should use `interruptWhen` on it instead.
+    *
+    * After a call to `close`, any further calls to `publish1` or `close`
+    * will be no-ops.
+    *
+    * Note that `close` does not automatically unblock producers which
+    * might be blocked on a bound, they will only become unblocked
+    * if/when subscribers naturally finish to consume the respective elements.
+    * You can `race` the publish with `close` to interrupt them immediately.
+    */
+  def close: F[Either[Topic.Closed, Unit]]
+
+  /** Returns true if this topic is closed */
+  def isClosed: F[Boolean]
+
+  /** Semantically blocks until the topic gets closed. */
+  def closed: F[Unit]
+
+  /** Returns an alternate view of this `Topic` where its elements are of type `B`,
     * given two functions, `A => B` and `B => A`.
     */
   def imap[B](f: A => B)(g: B => A): Topic[F, B] =
     new Topic[F, B] {
-      def publish: Pipe[F, B, Unit] = sfb => self.publish(sfb.map(g))
-      def publish1(b: B): F[Unit] = self.publish1(g(b))
+      def publish: Pipe[F, B, Nothing] = sfb => self.publish(sfb.map(g))
+      def publish1(b: B): F[Either[Topic.Closed, Unit]] = self.publish1(g(b))
       def subscribe(maxQueued: Int): Stream[F, B] =
         self.subscribe(maxQueued).map(f)
+      def subscribeAwait(maxQueued: Int): Resource[F, Stream[F, B]] =
+        self.subscribeAwait(maxQueued).map(_.map(f))
       def subscribers: Stream[F, Int] = self.subscribers
-      def subscribeSize(maxQueued: Int): Stream[F, (B, Int)] =
-        self.subscribeSize(maxQueued).map { case (a, i) => f(a) -> i }
+      def close: F[Either[Topic.Closed, Unit]] = self.close
+      def isClosed: F[Boolean] = self.isClosed
+      def closed: F[Unit] = self.closed
     }
 }
 
 object Topic {
+  type Closed = Closed.type
+  object Closed
 
-  /**
-    * Constructs a `Topic` for a provided `Concurrent` datatype. The
-    * `initial` value is immediately published.
-    */
-  def apply[F[_], A](initial: A)(implicit F: Concurrent[F]): F[Topic[F, A]] =
-    in[F, F, A](initial)
+  /** Constructs a Topic */
+  def apply[F[_], A](implicit F: Concurrent[F]): F[Topic[F, A]] =
+    (
+      F.ref(LongMap.empty[Channel[F, A]] -> 1L),
+      SignallingRef[F, Int](0),
+      F.deferred[Unit]
+    ).mapN { case (state, subscriberCount, signalClosure) =>
+      new Topic[F, A] {
 
-  /**
-    * Constructs a `Topic` for a provided `Concurrent` datatype.
-    * Like [[apply]], but a `Topic` state is initialized using another effect constructor
-    */
-  def in[G[_], F[_], A](initial: A)(implicit F: Concurrent[F], G: Sync[G]): G[Topic[F, A]] = {
-    implicit def eqInstance: Eq[Strategy.State[A]] =
-      Eq.instance[Strategy.State[A]](_.subscribers.keySet == _.subscribers.keySet)
+        def foreach[B](lm: LongMap[B])(f: B => F[Unit]) =
+          lm.foldLeft(F.unit) { case (op, (_, b)) => op >> f(b) }
 
-    PubSub
-      .in[G]
-      .from(PubSub.Strategy.Inspectable.strategy(Strategy.boundedSubscribers(initial)))
-      .map { pubSub =>
-        new Topic[F, A] {
-          def subscriber(size: Int): Stream[F, ((Token, Int), Stream[F, SizedQueue[A]])] =
-            Stream
-              .bracket(
-                Sync[F]
-                  .delay((new Token, size))
-                  .flatTap(selector => pubSub.subscribe(Right(selector)))
-              )(selector => pubSub.unsubscribe(Right(selector)))
-              .map { selector =>
-                selector ->
-                  pubSub.getStream(Right(selector)).flatMap {
-                    case Right(q) => Stream.emit(q)
-                    case Left(_)  => Stream.empty // impossible
-                  }
-              }
-
-          def publish: Pipe[F, A, Unit] =
-            _.evalMap(publish1)
-
-          def publish1(a: A): F[Unit] =
-            pubSub.publish(a)
-
-          def subscribe(maxQueued: Int): Stream[F, A] =
-            subscriber(maxQueued).flatMap { case (_, s) => s.flatMap(q => Stream.emits(q.toQueue)) }
-
-          def subscribeSize(maxQueued: Int): Stream[F, (A, Int)] =
-            subscriber(maxQueued).flatMap {
-              case (selector, stream) =>
-                stream
-                  .flatMap { q =>
-                    Stream.emits(q.toQueue.zipWithIndex.map { case (a, idx) => (a, q.size - idx) })
-                  }
-                  .evalMap {
-                    case (a, remQ) =>
-                      pubSub.get(Left(None)).map {
-                        case Left(s) =>
-                          (a, s.subscribers.get(selector).map(_.size + remQ).getOrElse(remQ))
-                        case Right(_) => (a, -1) // impossible
-                      }
-                  }
-            }
-
-          def subscribers: Stream[F, Int] =
-            Stream
-              .bracket(Sync[F].delay(new Token))(token => pubSub.unsubscribe(Left(Some(token))))
-              .flatMap { token =>
-                pubSub.getStream(Left(Some(token))).flatMap {
-                  case Left(s)  => Stream.emit(s.subscribers.size)
-                  case Right(_) => Stream.empty //impossible
-                }
-              }
-        }
-      }
-  }
-
-  private[fs2] object Strategy {
-    final case class State[A](
-        last: A,
-        subscribers: Map[(Token, Int), SizedQueue[A]]
-    )
-
-    /**
-      * Strategy for topic, where every subscriber can specify max size of queued elements.
-      * If that subscription is exceeded any other `publish` to the topic will hold,
-      * until such subscriber disappears, or consumes more elements.
-      *
-      * @param initial Initial value of the topic.
-      */
-    def boundedSubscribers[F[_], A](
-        start: A
-    ): PubSub.Strategy[A, SizedQueue[A], State[A], (Token, Int)] =
-      new PubSub.Strategy[A, SizedQueue[A], State[A], (Token, Int)] {
-        def initial: State[A] = State(start, Map.empty)
-
-        def accepts(i: A, state: State[A]): Boolean =
-          state.subscribers.forall { case ((_, max), q) => q.size < max }
-
-        def publish(i: A, state: State[A]): State[A] =
-          State(
-            last = i,
-            subscribers = state.subscribers.map { case (k, v) => (k, v :+ i) }
-          )
-
-        // Register empty queue
-        def regEmpty(selector: (Token, Int), state: State[A]): State[A] =
-          state.copy(subscribers = state.subscribers + (selector -> SizedQueue.empty))
-
-        def get(selector: (Token, Int), state: State[A]): (State[A], Option[SizedQueue[A]]) =
-          state.subscribers.get(selector) match {
+        def publish1(a: A): F[Either[Topic.Closed, Unit]] =
+          signalClosure.tryGet.flatMap {
+            case Some(_) => Topic.closed.pure[F]
             case None =>
-              (state, Some(SizedQueue.empty)) // Prevent register, return empty
-            case r @ Some(q) =>
-              if (q.isEmpty) (state, None)
-              else (regEmpty(selector, state), r)
+              state.get
+                .flatMap { case (subs, _) => foreach(subs)(_.send(a).void) }
+                .as(Topic.rightUnit)
           }
 
-        def empty(state: State[A]): Boolean =
-          false
+        def subscribeAwait(maxQueued: Int): Resource[F, Stream[F, A]] =
+          Resource
+            .eval(Channel.bounded[F, A](maxQueued))
+            .flatMap { chan =>
+              val subscribe = state.modify { case (subs, id) =>
+                (subs.updated(id, chan), id + 1) -> id
+              } <* subscriberCount.update(_ + 1)
 
-        def subscribe(selector: (Token, Int), state: State[A]): (State[A], Boolean) =
-          (
-            state.copy(subscribers = state.subscribers + (selector -> SizedQueue.one(state.last))),
-            true
-          )
+              def unsubscribe(id: Long) =
+                state.modify { case (subs, nextId) =>
+                  // _After_ we remove the bounded channel for this
+                  // subscriber, we need to drain it to unblock to
+                  // publish loop which might have already enqueued
+                  // something.
+                  def drainChannel: F[Unit] =
+                    subs.get(id).traverse_ { chan =>
+                      chan.close >> chan.stream.compile.drain
+                    }
 
-        def unsubscribe(selector: (Token, Int), state: State[A]): State[A] =
-          state.copy(subscribers = state.subscribers - selector)
+                  (subs - id, nextId) -> drainChannel
+                }.flatten >> subscriberCount.update(_ - 1)
+
+              Resource
+                .make(subscribe)(unsubscribe)
+                .as(chan.stream)
+            }
+
+        def publish: Pipe[F, A, INothing] = { in =>
+          (in ++ Stream.exec(close.void))
+            .evalMap(publish1)
+            .takeWhile(_.isRight)
+            .drain
+        }
+
+        def subscribe(maxQueued: Int): Stream[F, A] =
+          Stream.resource(subscribeAwait(maxQueued)).flatten
+
+        def subscribers: Stream[F, Int] = subscriberCount.discrete
+
+        def close: F[Either[Topic.Closed, Unit]] =
+          signalClosure
+            .complete(())
+            .flatMap { completedNow =>
+              val result = if (completedNow) Topic.rightUnit else Topic.closed
+
+              state.get
+                .flatMap { case (subs, _) => foreach(subs)(_.close.void) }
+                .as(result)
+            }
+            .uncancelable
+
+        def closed: F[Unit] = signalClosure.get
+        def isClosed: F[Boolean] = signalClosure.tryGet.map(_.isDefined)
       }
-  }
+    }
+
+  private final val closed: Either[Closed, Unit] = Left(Closed)
+  private final val rightUnit: Either[Closed, Unit] = Right(())
 }

@@ -12,11 +12,13 @@ on:
     branches: ['*']
   push:
     branches: ['*']
+    tags: [v*]
 
 env:
   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-  SONATYPE_USERNAME: fs2-ci
+  SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
   SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
+  PGP_SECRET: ${{ secrets.PGP_SECRET }}
 
 jobs:
   build:
@@ -24,283 +26,180 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest]
-        scala: [2.13.2, 2.12.10]
+        scala: [3.0.0-RC1, 3.0.0-RC2, 2.12.13, 2.13.5]
         java: [adopt@1.11]
     runs-on: ${{ matrix.os }}
     steps:
-      - name: Checkout current branch (fast)
+      - name: Checkout current branch (full)
         uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
 
       - name: Setup Java and Scala
-        uses: olafurpg/setup-scala@v5
+        uses: olafurpg/setup-scala@v10
         with:
           java-version: ${{ matrix.java }}
 
-      - name: Cache ivy2
-        uses: actions/cache@v1
-        with:
-          path: ~/.ivy2/cache
-          key: ${{ runner.os }}-sbt-ivy-cache-${{ hashFiles('**/*.sbt') }}-${{ hashFiles('project/build.properties') }}
-
-      - name: Cache coursier (generic)
-        uses: actions/cache@v1
-        with:
-          path: ~/.coursier/cache/v1
-          key: ${{ runner.os }}-generic-sbt-coursier-cache-${{ hashFiles('**/*.sbt') }}-${{ hashFiles('project/build.properties') }}
-
-      - name: Cache coursier (linux)
-        if: contains(runner.os, 'linux')
-        uses: actions/cache@v1
-        with:
-          path: ~/.cache/coursier/v1
-          key: ${{ runner.os }}-sbt-coursier-cache-${{ hashFiles('**/*.sbt') }}-${{ hashFiles('project/build.properties') }}
-
-      - name: Cache coursier (macOS)
-        if: contains(runner.os, 'macos')
-        uses: actions/cache@v1
-        with:
-          path: ~/Library/Caches/Coursier/v1
-          key: ${{ runner.os }}-sbt-coursier-cache-${{ hashFiles('**/*.sbt') }}-${{ hashFiles('project/build.properties') }}
-
-      - name: Cache coursier (windows)
-        if: contains(runner.os, 'windows')
-        uses: actions/cache@v1
-        with:
-          path: ~/AppData/Local/Coursier/Cache/v1
-          key: ${{ runner.os }}-sbt-coursier-cache-${{ hashFiles('**/*.sbt') }}-${{ hashFiles('project/build.properties') }}
-
       - name: Cache sbt
-        uses: actions/cache@v1
+        uses: actions/cache@v2
         with:
-          path: ~/.sbt
-          key: ${{ runner.os }}-sbt-cache-${{ hashFiles('**/*.sbt') }}-${{ hashFiles('project/build.properties') }}
+          path: |
+            ~/.sbt
+            ~/.ivy2/cache
+            ~/.coursier/cache/v1
+            ~/.cache/coursier/v1
+            ~/AppData/Local/Coursier/Cache/v1
+            ~/Library/Caches/Coursier/v1
+          key: ${{ runner.os }}-sbt-cache-v2-${{ hashFiles('**/*.sbt') }}-${{ hashFiles('project/build.properties') }}
 
       - name: Check that workflows are up to date
         run: sbt ++${{ matrix.scala }} githubWorkflowCheck
 
-      - run: sbt ++${{ matrix.scala }} fmtCheck compile
+      - run: sbt ++${{ matrix.scala }} fmtCheck test mimaReportBinaryIssues
 
-      - run: sbt ++${{ matrix.scala }} testJVM
+      - if: matrix.scala == '2.13.5'
+        run: sbt ++${{ matrix.scala }} microsite/mdoc
 
-      - run: sbt ++${{ matrix.scala }} testJS
+      - name: Compress target directories
+        run: tar cf targets.tar target core/js/target core/jvm/target io/target reactive-streams/target benchmark/target project/target
 
-      - run: sbt ++${{ matrix.scala }} doc mimaReportBinaryIssues
-
-      - run: 'sbt ++${{ matrix.scala }} '';project coreJVM;it:test'''
-
-      - name: Upload target directory 'experimental/target' (${{ matrix.scala }})
-        uses: actions/upload-artifact@v1
+      - name: Upload target directories
+        uses: actions/upload-artifact@v2
         with:
-          name: target-${{ matrix.os }}-${{ matrix.scala }}-${{ matrix.java }}-experimental_target
-          path: experimental/target
-
-      - name: Upload target directory 'target' (${{ matrix.scala }})
-        uses: actions/upload-artifact@v1
-        with:
-          name: target-${{ matrix.os }}-${{ matrix.scala }}-${{ matrix.java }}-target
-          path: target
-
-      - name: Upload target directory 'core/js/target' (${{ matrix.scala }})
-        uses: actions/upload-artifact@v1
-        with:
-          name: target-${{ matrix.os }}-${{ matrix.scala }}-${{ matrix.java }}-core_js_target
-          path: core/js/target
-
-      - name: Upload target directory 'site/target' (${{ matrix.scala }})
-        uses: actions/upload-artifact@v1
-        with:
-          name: target-${{ matrix.os }}-${{ matrix.scala }}-${{ matrix.java }}-site_target
-          path: site/target
-
-      - name: Upload target directory 'core/jvm/target' (${{ matrix.scala }})
-        uses: actions/upload-artifact@v1
-        with:
-          name: target-${{ matrix.os }}-${{ matrix.scala }}-${{ matrix.java }}-core_jvm_target
-          path: core/jvm/target
-
-      - name: Upload target directory 'io/target' (${{ matrix.scala }})
-        uses: actions/upload-artifact@v1
-        with:
-          name: target-${{ matrix.os }}-${{ matrix.scala }}-${{ matrix.java }}-io_target
-          path: io/target
-
-      - name: Upload target directory 'reactive-streams/target' (${{ matrix.scala }})
-        uses: actions/upload-artifact@v1
-        with:
-          name: target-${{ matrix.os }}-${{ matrix.scala }}-${{ matrix.java }}-reactive-streams_target
-          path: reactive-streams/target
-
-      - name: Upload target directory 'benchmark/target' (${{ matrix.scala }})
-        uses: actions/upload-artifact@v1
-        with:
-          name: target-${{ matrix.os }}-${{ matrix.scala }}-${{ matrix.java }}-benchmark_target
-          path: benchmark/target
-
-      - name: Upload target directory 'project/target'
-        uses: actions/upload-artifact@v1
-        with:
-          name: target-${{ matrix.os }}-${{ matrix.java }}-project_target
-          path: project/target
+          name: target-${{ matrix.os }}-${{ matrix.scala }}-${{ matrix.java }}
+          path: targets.tar
 
   publish:
     name: Publish Artifacts
     needs: [build]
-    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main')
+    if: github.event_name != 'pull_request' && (startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/series/2.5.x')
     strategy:
       matrix:
         os: [ubuntu-latest]
-        scala: [2.13.2]
+        scala: [2.13.5]
         java: [adopt@1.11]
     runs-on: ${{ matrix.os }}
     steps:
-      - name: Checkout current branch (fast)
+      - name: Checkout current branch (full)
         uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
 
       - name: Setup Java and Scala
-        uses: olafurpg/setup-scala@v5
+        uses: olafurpg/setup-scala@v10
         with:
           java-version: ${{ matrix.java }}
 
-      - name: Cache ivy2
-        uses: actions/cache@v1
-        with:
-          path: ~/.ivy2/cache
-          key: ${{ runner.os }}-sbt-ivy-cache-${{ hashFiles('**/*.sbt') }}-${{ hashFiles('project/build.properties') }}
-
-      - name: Cache coursier (generic)
-        uses: actions/cache@v1
-        with:
-          path: ~/.coursier/cache/v1
-          key: ${{ runner.os }}-generic-sbt-coursier-cache-${{ hashFiles('**/*.sbt') }}-${{ hashFiles('project/build.properties') }}
-
-      - name: Cache coursier (linux)
-        if: contains(runner.os, 'linux')
-        uses: actions/cache@v1
-        with:
-          path: ~/.cache/coursier/v1
-          key: ${{ runner.os }}-sbt-coursier-cache-${{ hashFiles('**/*.sbt') }}-${{ hashFiles('project/build.properties') }}
-
-      - name: Cache coursier (macOS)
-        if: contains(runner.os, 'macos')
-        uses: actions/cache@v1
-        with:
-          path: ~/Library/Caches/Coursier/v1
-          key: ${{ runner.os }}-sbt-coursier-cache-${{ hashFiles('**/*.sbt') }}-${{ hashFiles('project/build.properties') }}
-
-      - name: Cache coursier (windows)
-        if: contains(runner.os, 'windows')
-        uses: actions/cache@v1
-        with:
-          path: ~/AppData/Local/Coursier/Cache/v1
-          key: ${{ runner.os }}-sbt-coursier-cache-${{ hashFiles('**/*.sbt') }}-${{ hashFiles('project/build.properties') }}
-
       - name: Cache sbt
-        uses: actions/cache@v1
+        uses: actions/cache@v2
         with:
-          path: ~/.sbt
-          key: ${{ runner.os }}-sbt-cache-${{ hashFiles('**/*.sbt') }}-${{ hashFiles('project/build.properties') }}
+          path: |
+            ~/.sbt
+            ~/.ivy2/cache
+            ~/.coursier/cache/v1
+            ~/.cache/coursier/v1
+            ~/AppData/Local/Coursier/Cache/v1
+            ~/Library/Caches/Coursier/v1
+          key: ${{ runner.os }}-sbt-cache-v2-${{ hashFiles('**/*.sbt') }}-${{ hashFiles('project/build.properties') }}
 
-      - name: Download target directory 'experimental/target' (2.13.2)
-        uses: actions/download-artifact@v1
+      - name: Download target directories (3.0.0-RC1)
+        uses: actions/download-artifact@v2
         with:
-          name: target-${{ matrix.os }}-2.13.2-${{ matrix.java }}-experimental_target
-          path: experimental/target
+          name: target-${{ matrix.os }}-3.0.0-RC1-${{ matrix.java }}
 
-      - name: Download target directory 'experimental/target' (2.12.10)
-        uses: actions/download-artifact@v1
+      - name: Inflate target directories (3.0.0-RC1)
+        run: |
+          tar xf targets.tar
+          rm targets.tar
+
+      - name: Download target directories (3.0.0-RC2)
+        uses: actions/download-artifact@v2
         with:
-          name: target-${{ matrix.os }}-2.12.10-${{ matrix.java }}-experimental_target
-          path: experimental/target
+          name: target-${{ matrix.os }}-3.0.0-RC2-${{ matrix.java }}
 
-      - name: Download target directory 'target' (2.13.2)
-        uses: actions/download-artifact@v1
+      - name: Inflate target directories (3.0.0-RC2)
+        run: |
+          tar xf targets.tar
+          rm targets.tar
+
+      - name: Download target directories (2.12.13)
+        uses: actions/download-artifact@v2
         with:
-          name: target-${{ matrix.os }}-2.13.2-${{ matrix.java }}-target
-          path: target
+          name: target-${{ matrix.os }}-2.12.13-${{ matrix.java }}
 
-      - name: Download target directory 'target' (2.12.10)
-        uses: actions/download-artifact@v1
+      - name: Inflate target directories (2.12.13)
+        run: |
+          tar xf targets.tar
+          rm targets.tar
+
+      - name: Download target directories (2.13.5)
+        uses: actions/download-artifact@v2
         with:
-          name: target-${{ matrix.os }}-2.12.10-${{ matrix.java }}-target
-          path: target
+          name: target-${{ matrix.os }}-2.13.5-${{ matrix.java }}
 
-      - name: Download target directory 'core/js/target' (2.13.2)
-        uses: actions/download-artifact@v1
+      - name: Inflate target directories (2.13.5)
+        run: |
+          tar xf targets.tar
+          rm targets.tar
+
+      - name: Import signing key
+        run: echo $PGP_SECRET | base64 -d | gpg --import
+
+      - run: sbt ++${{ matrix.scala }} release
+
+  site:
+    name: Deploy site
+    needs: [publish]
+    if: always() && needs.build.result == 'success' && (needs.publish.result == 'success' && github.ref == 'refs/heads/main')
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+        scala: [2.13.5]
+        java: [adopt@1.11]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Download target directories (3.0.0-RC1)
+        uses: actions/download-artifact@v2
         with:
-          name: target-${{ matrix.os }}-2.13.2-${{ matrix.java }}-core_js_target
-          path: core/js/target
+          name: target-${{ matrix.os }}-3.0.0-RC1-${{ matrix.java }}
 
-      - name: Download target directory 'core/js/target' (2.12.10)
-        uses: actions/download-artifact@v1
+      - name: Inflate target directories (3.0.0-RC1)
+        run: |
+          tar xf targets.tar
+          rm targets.tar
+
+      - name: Download target directories (3.0.0-RC2)
+        uses: actions/download-artifact@v2
         with:
-          name: target-${{ matrix.os }}-2.12.10-${{ matrix.java }}-core_js_target
-          path: core/js/target
+          name: target-${{ matrix.os }}-3.0.0-RC2-${{ matrix.java }}
 
-      - name: Download target directory 'site/target' (2.13.2)
-        uses: actions/download-artifact@v1
+      - name: Inflate target directories (3.0.0-RC2)
+        run: |
+          tar xf targets.tar
+          rm targets.tar
+
+      - name: Download target directories (2.12.13)
+        uses: actions/download-artifact@v2
         with:
-          name: target-${{ matrix.os }}-2.13.2-${{ matrix.java }}-site_target
-          path: site/target
+          name: target-${{ matrix.os }}-2.12.13-${{ matrix.java }}
 
-      - name: Download target directory 'site/target' (2.12.10)
-        uses: actions/download-artifact@v1
+      - name: Inflate target directories (2.12.13)
+        run: |
+          tar xf targets.tar
+          rm targets.tar
+
+      - name: Download target directories (2.13.5)
+        uses: actions/download-artifact@v2
         with:
-          name: target-${{ matrix.os }}-2.12.10-${{ matrix.java }}-site_target
-          path: site/target
+          name: target-${{ matrix.os }}-2.13.5-${{ matrix.java }}
 
-      - name: Download target directory 'core/jvm/target' (2.13.2)
-        uses: actions/download-artifact@v1
+      - name: Inflate target directories (2.13.5)
+        run: |
+          tar xf targets.tar
+          rm targets.tar
+
+      - name: Deploy site
+        uses: peaceiris/actions-gh-pages@v3
         with:
-          name: target-${{ matrix.os }}-2.13.2-${{ matrix.java }}-core_jvm_target
-          path: core/jvm/target
-
-      - name: Download target directory 'core/jvm/target' (2.12.10)
-        uses: actions/download-artifact@v1
-        with:
-          name: target-${{ matrix.os }}-2.12.10-${{ matrix.java }}-core_jvm_target
-          path: core/jvm/target
-
-      - name: Download target directory 'io/target' (2.13.2)
-        uses: actions/download-artifact@v1
-        with:
-          name: target-${{ matrix.os }}-2.13.2-${{ matrix.java }}-io_target
-          path: io/target
-
-      - name: Download target directory 'io/target' (2.12.10)
-        uses: actions/download-artifact@v1
-        with:
-          name: target-${{ matrix.os }}-2.12.10-${{ matrix.java }}-io_target
-          path: io/target
-
-      - name: Download target directory 'reactive-streams/target' (2.13.2)
-        uses: actions/download-artifact@v1
-        with:
-          name: target-${{ matrix.os }}-2.13.2-${{ matrix.java }}-reactive-streams_target
-          path: reactive-streams/target
-
-      - name: Download target directory 'reactive-streams/target' (2.12.10)
-        uses: actions/download-artifact@v1
-        with:
-          name: target-${{ matrix.os }}-2.12.10-${{ matrix.java }}-reactive-streams_target
-          path: reactive-streams/target
-
-      - name: Download target directory 'benchmark/target' (2.13.2)
-        uses: actions/download-artifact@v1
-        with:
-          name: target-${{ matrix.os }}-2.13.2-${{ matrix.java }}-benchmark_target
-          path: benchmark/target
-
-      - name: Download target directory 'benchmark/target' (2.12.10)
-        uses: actions/download-artifact@v1
-        with:
-          name: target-${{ matrix.os }}-2.12.10-${{ matrix.java }}-benchmark_target
-          path: benchmark/target
-
-      - name: Download target directory 'project/target'
-        uses: actions/download-artifact@v1
-        with:
-          name: target-${{ matrix.os }}-${{ matrix.java }}-project_target
-          path: project/target
-
-      - name: Publish project
-        run: sbt ++${{ matrix.scala }} +publish
+          publish_dir: ./target/website
+          github_token: ${{ secrets.GITHUB_TOKEN }}

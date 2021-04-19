@@ -1,31 +1,55 @@
+/*
+ * Copyright (c) 2013 Functional Streams for Scala
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of
+ * this software and associated documentation files (the "Software"), to deal in
+ * the Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+ * the Software, and to permit persons to whom the Software is furnished to do so,
+ * subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+ * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+ * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+ * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+
 package fs2
 
 import scala.concurrent.duration._
 
 import cats.effect.IO
-import cats.effect.concurrent.{Deferred, Ref, Semaphore}
-import cats.implicits._
+import cats.effect.kernel.{Deferred, Ref}
+import cats.effect.std.Semaphore
+import cats.syntax.all._
+import org.scalacheck.effect.PropF.forAllF
 
 class StreamConcurrentlySuite extends Fs2Suite {
 
   test("when background stream terminates, overall stream continues") {
-    forAllAsync { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
+    forAllF { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
       val expected = s1.toList
       s1.delayBy[IO](25.millis)
         .concurrently(s2)
         .compile
         .toList
-        .map(it => assert(it == expected))
+        .assertEquals(expected)
     }
   }
 
   test("when background stream fails, overall stream fails") {
-    forAllAsync { (s: Stream[Pure, Int]) =>
+    forAllF { (s: Stream[Pure, Int]) =>
       s.delayBy[IO](25.millis)
         .concurrently(Stream.raiseError[IO](new Err))
         .compile
         .drain
-        .assertThrows[Err]
+        .intercept[Err]
+        .void
     }
   }
 
@@ -40,11 +64,11 @@ class StreamConcurrentlySuite extends Fs2Suite {
       }
       .compile
       .drain
-      .assertThrows[Err]
+      .intercept[Err]
   }
 
   test("when primary stream terminates, background stream is terminated") {
-    forAllAsync { (s: Stream[Pure, Int]) =>
+    forAllF { (s: Stream[Pure, Int]) =>
       Stream
         .eval(Semaphore[IO](0))
         .flatMap { semaphore =>
@@ -59,7 +83,7 @@ class StreamConcurrentlySuite extends Fs2Suite {
   }
 
   test("when background stream fails, primary stream fails even when hung") {
-    forAllAsync { (s: Stream[Pure, Int]) =>
+    forAllF { (s: Stream[Pure, Int]) =>
       Stream
         .eval(Deferred[IO, Unit])
         .flatMap { gate =>
@@ -71,12 +95,13 @@ class StreamConcurrentlySuite extends Fs2Suite {
         }
         .compile
         .drain
-        .assertThrows[Err]
+        .intercept[Err]
+        .void
     }
   }
 
   test("run finalizers of background stream and properly handle exception") {
-    forAllAsync { (s: Stream[Pure, Int]) =>
+    forAllF { (s: Stream[Pure, Int]) =>
       Ref
         .of[IO, Boolean](false)
         .flatMap { runnerRun =>
@@ -91,7 +116,7 @@ class StreamConcurrentlySuite extends Fs2Suite {
                       finRef.update(_ :+ "Inner") >> // signal finalizer invoked
                       IO.raiseError[Unit](new Err) // signal a failure
                   ) >> // flag the concurrently had chance to start, as if the `s` will be empty `runner` may not be evaluated at all.
-                  Stream.eval_(halt.complete(())) // immediately interrupt the outer stream
+                  Stream.exec(halt.complete(()).void) // immediately interrupt the outer stream
 
               Stream
                 .bracket(IO.unit)(_ => finRef.update(_ :+ "Outer"))
@@ -106,14 +131,14 @@ class StreamConcurrentlySuite extends Fs2Suite {
                       if (runnerStarted) IO {
                         // finalizers shall be called in correct order and
                         // exception shall be thrown
-                        assert(finalizers == List("Inner", "Outer"))
+                        assertEquals(finalizers, List("Inner", "Outer"))
                         assert(r.swap.toOption.get.isInstanceOf[Err])
                       }
                       else
                         IO {
                           // still the outer finalizer shall be run, but there is no failure in `s`
-                          assert(finalizers == List("Outer"))
-                          assert(r == Right(()))
+                          assertEquals(finalizers, List("Outer"))
+                          assertEquals(r, Right(()))
                         }
                     }
                   }
@@ -124,4 +149,25 @@ class StreamConcurrentlySuite extends Fs2Suite {
     }
   }
 
+  test("bug 2197") {
+    val iterations = 1000
+    Stream
+      .eval((IO.deferred[Unit], IO.ref[Int](0)).tupled)
+      .flatMap { case (done, innerErrorCountRef) =>
+        def handled: IO[Unit] =
+          innerErrorCountRef.modify { old =>
+            (old + 1, if (old < iterations) IO.unit else done.complete(()).void)
+          }.flatten
+        Stream(Stream(()) ++ Stream.raiseError[IO](new Err)).repeat
+          .flatMap { fg =>
+            fg.prefetch.handleErrorWith(_ => Stream.eval(handled)).flatMap(_ => Stream.empty)
+          }
+          .interruptWhen(done.get.attempt)
+          .handleErrorWith(_ => Stream.empty)
+          .drain ++ Stream.eval(innerErrorCountRef.get)
+      }
+      .compile
+      .lastOrError
+      .map(cnt => assert(cnt >= iterations, s"cnt: $cnt, iterations: $iterations"))
+  }
 }

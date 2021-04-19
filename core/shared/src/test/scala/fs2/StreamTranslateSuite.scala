@@ -1,25 +1,47 @@
+/*
+ * Copyright (c) 2013 Functional Streams for Scala
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of
+ * this software and associated documentation files (the "Software"), to deal in
+ * the Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+ * the Software, and to permit persons to whom the Software is furnished to do so,
+ * subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+ * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+ * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+ * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+
 package fs2
 
 import scala.concurrent.duration._
 
 import cats.~>
-import cats.effect.IO
+import cats.effect.{Async, IO}
+import org.scalacheck.effect.PropF.forAllF
 
 class StreamTranslateSuite extends Fs2Suite {
   test("1 - id") {
-    forAllAsync { (s: Stream[Pure, Int]) =>
+    forAllF { (s: Stream[Pure, Int]) =>
       val expected = s.toList
       s.covary[IO]
         .flatMap(i => Stream.eval(IO.pure(i)))
         .translate(cats.arrow.FunctionK.id[IO])
         .compile
         .toList
-        .map(it => assert(it == expected))
+        .assertEquals(expected)
     }
   }
 
   test("2") {
-    forAllAsync { (s: Stream[Pure, Int]) =>
+    forAllF { (s: Stream[Pure, Int]) =>
       val expected = s.toList
       s.covary[Function0]
         .flatMap(i => Stream.eval(() => i))
@@ -29,12 +51,12 @@ class StreamTranslateSuite extends Fs2Suite {
         })
         .compile
         .toList
-        .map(it => assert(it == expected))
+        .assertEquals(expected)
     }
   }
 
   test("3 - ok to have multiple translates") {
-    forAllAsync { (s: Stream[Pure, Int]) =>
+    forAllF { (s: Stream[Pure, Int]) =>
       val expected = s.toList
       s.covary[Function0]
         .flatMap(i => Stream.eval(() => i))
@@ -49,7 +71,7 @@ class StreamTranslateSuite extends Fs2Suite {
         })
         .compile
         .toList
-        .map(it => assert(it == expected))
+        .assertEquals(expected)
     }
   }
 
@@ -63,7 +85,7 @@ class StreamTranslateSuite extends Fs2Suite {
       })
       .compile
       .toList
-      .map(it => assert(it == List((1, 1))))
+      .assertEquals(List((1, 1)))
   }
 
   test("5 - ok to translate a step leg that emits multiple chunks") {
@@ -80,7 +102,7 @@ class StreamTranslateSuite extends Fs2Suite {
       })
       .compile
       .toList
-      .map(it => assert(it == List(1, 2)))
+      .assertEquals(List(1, 2))
   }
 
   test("6 - ok to translate step leg that has uncons in its structure") {
@@ -101,7 +123,7 @@ class StreamTranslateSuite extends Fs2Suite {
       })
       .compile
       .toList
-      .map(it => assert(it == List(2, 3, 3, 4)))
+      .assertEquals(List(2, 3, 3, 4))
   }
 
   test("7 - ok to translate step leg that is forced back in to a stream") {
@@ -119,26 +141,32 @@ class StreamTranslateSuite extends Fs2Suite {
       })
       .compile
       .toList
-      .map(it => assert(it == List(1, 2)))
+      .assertEquals(List(1, 2))
   }
 
   test("stack safety") {
     Stream
       .repeatEval(IO(0))
-      .translate(new (IO ~> IO) { def apply[X](x: IO[X]) = IO.suspend(x) })
+      .translate(new (IO ~> IO) { def apply[X](x: IO[X]) = IO.defer(x) })
       .take(if (isJVM) 1000000 else 10000)
       .compile
       .drain
   }
 
   test("translateInterruptible") {
+    type Eff[A] = cats.data.EitherT[IO, String, A]
+    val Eff = Async[Eff]
     Stream
-      .eval(IO.never)
-      .merge(Stream.eval(IO(1)).delayBy(5.millis).repeat)
+      .eval(Eff.never)
+      .merge(Stream.eval(Eff.delay(1)).delayBy(5.millis).repeat)
       .interruptAfter(10.millis)
-      .translateInterruptible(cats.arrow.FunctionK.id[IO])
+      .translate(new (Eff ~> IO) {
+        def apply[X](eff: Eff[X]) = eff.value.flatMap {
+          case Left(t)  => IO.raiseError(new RuntimeException(t))
+          case Right(x) => IO.pure(x)
+        }
+      })
       .compile
       .drain
   }
-
 }

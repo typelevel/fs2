@@ -1,23 +1,29 @@
 package fs2
 
-import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
 
 import java.lang.management.ManagementFactory
 import java.nio.file.{Files, Path}
 
-import cats.effect.{ContextShift, IO, Timer}
-import cats.implicits._
+import cats.effect.IO
+import cats.effect.unsafe.implicits.global
+import cats.syntax.all._
 
-import munit.FunSuite
+import munit.{FunSuite, TestOptions}
 
 import fs2.concurrent._
 
 class MemoryLeakSpec extends FunSuite {
 
-  lazy protected implicit val ioContextShift: ContextShift[IO] =
-    IO.contextShift(ExecutionContext.global)
-  lazy protected implicit val ioTimer: Timer[IO] = IO.timer(ExecutionContext.global)
+  override def munitFlakyOK = true
+
+  case class LeakTestParams(
+      warmupIterations: Int = 3,
+      samplePeriod: FiniteDuration = 1.seconds,
+      monitorPeriod: FiniteDuration = 10.seconds,
+      limitTotalBytesIncreasePerSecond: Long = 700000,
+      limitConsecutiveIncreases: Int = 10
+  )
 
   private def heapUsed: IO[Long] =
     IO {
@@ -29,18 +35,26 @@ class MemoryLeakSpec extends FunSuite {
     }
 
   protected def leakTest[O](
-      name: String,
-      warmupIterations: Int = 3,
-      samplePeriod: FiniteDuration = 3.seconds,
-      monitorPeriod: FiniteDuration = 30.seconds,
-      limitBytesIncrease: Long = 20 * 1024 * 1024
-  )(stream: => Stream[IO, O]): Unit =
+      name: TestOptions,
+      params: LeakTestParams = LeakTestParams()
+  )(stream: => Stream[IO, O]): Unit = leakTestF(name, params)(stream.compile.drain)
+
+  protected def leakTestF(
+      name: TestOptions,
+      params: LeakTestParams = LeakTestParams()
+  )(f: => IO[Unit]): Unit =
     test(name) {
+      println(s"Running leak test ${name.name}")
       IO.race(
-        stream.compile.drain,
+        f,
         IO.race(
-          monitorHeap(warmupIterations, samplePeriod, limitBytesIncrease),
-          IO.sleep(monitorPeriod)
+          monitorHeap(
+            params.warmupIterations,
+            params.samplePeriod,
+            params.limitTotalBytesIncreasePerSecond,
+            params.limitConsecutiveIncreases
+          ),
+          IO.sleep(params.monitorPeriod)
         )
       ).map {
         case Left(_)         => ()
@@ -53,18 +67,34 @@ class MemoryLeakSpec extends FunSuite {
   private def monitorHeap(
       warmupIterations: Int,
       samplePeriod: FiniteDuration,
-      limitBytesIncrease: Long
+      limitTotalBytesIncreasePerSecond: Long,
+      limitConsecutiveIncreases: Int
   ): IO[Path] = {
     def warmup(iterationsLeft: Int): IO[Path] =
       if (iterationsLeft > 0) IO.sleep(samplePeriod) >> warmup(iterationsLeft - 1)
-      else heapUsed.flatMap(go)
+      else heapUsed.flatMap(x => go(x, x, 0, System.currentTimeMillis()))
 
-    def go(initial: Long): IO[Path] =
+    def go(initial: Long, last: Long, positiveCount: Int, started: Long): IO[Path] =
       IO.sleep(samplePeriod) >>
         heapUsed.flatMap { bytes =>
-          val delta = bytes - initial
-          if (delta > limitBytesIncrease) dumpHeap
-          else go(initial)
+          val deltaSinceStart = bytes - initial
+          val deltaSinceLast = bytes - last
+          def printBytes(x: Long) = f"$x%,d"
+          def printDelta(x: Long) = {
+            val pfx = if (x > 0) "+" else ""
+            s"$pfx${printBytes(x)}"
+          }
+          println(
+            f"Heap: ${printBytes(bytes)}%12.12s total, ${printDelta(deltaSinceStart)}%12.12s since start, ${printDelta(deltaSinceLast)}%12.12s in last ${samplePeriod}"
+          )
+          if (
+            deltaSinceStart > limitTotalBytesIncreasePerSecond * ((System
+              .currentTimeMillis() - started) / 1000.0)
+          ) dumpHeap
+          else if (deltaSinceLast > 0)
+            if (positiveCount > limitConsecutiveIncreases) dumpHeap
+            else go(initial, bytes, positiveCount + 1, started)
+          else go(initial, bytes, 0, started)
         }
 
     warmup(warmupIterations)
@@ -91,19 +121,16 @@ class MemoryLeakSpec extends FunSuite {
       .groupWithin(Int.MaxValue, 1.millis)
   }
 
-  leakTest("groupWithin 2") {
-    def a: Stream[IO, Chunk[Int]] =
-      Stream
-        .eval(IO.never)
-        .covary[IO]
-        .groupWithin(Int.MaxValue, 1.second)
-        .interruptAfter(100.millis) ++ a
-    a
+  leakTest("groupWithin --- Issue 2328") {
+    Stream
+      .range(0, 1_000_000)
+      .covary[IO]
+      .groupWithin(256, 1.second)
   }
 
   leakTest("topic continuous publish") {
     Stream
-      .eval(Topic[IO, Int](-1))
+      .eval(Topic[IO, Int])
       .flatMap(topic => Stream.repeatEval(topic.publish1(1)))
   }
 
@@ -140,18 +167,12 @@ class MemoryLeakSpec extends FunSuite {
   }
 
   leakTest("drain onComplete") {
-    val s = Stream.repeatEval(IO(1)).pull.echo.stream.drain ++ Stream.eval_(IO(println("done")))
+    val s = Stream.repeatEval(IO(1)).pull.echo.stream.drain ++ Stream.exec(IO.unit)
     Stream.empty.covary[IO].merge(s)
   }
 
   leakTest("parJoin") {
     Stream.constant(Stream.empty[IO]).parJoin(5)
-  }
-
-  leakTest("dangling dequeue") {
-    Stream
-      .eval(Queue.unbounded[IO, Int])
-      .flatMap(q => Stream.constant(1).flatMap(_ => Stream.empty.mergeHaltBoth(q.dequeue)))
   }
 
   leakTest("awakeEvery") {
@@ -180,7 +201,6 @@ class MemoryLeakSpec extends FunSuite {
           cnt = (cnt + 1) % 1000000
           if (cnt == 0) {
             val now = System.currentTimeMillis
-            println("Elapsed: " + (now - start))
             start = now
           }
         })
@@ -200,34 +220,13 @@ class MemoryLeakSpec extends FunSuite {
       .repeat
   }
 
-  leakTest("queue") {
-    Stream
-      .eval(Queue.bounded[IO, Either[Throwable, Option[Int]]](10))
-      .flatMap { queue =>
-        queue
-          .dequeueChunk(Int.MaxValue)
-          .rethrow
-          .unNoneTerminate
-          .concurrently(
-            Stream
-              .constant(1, 128)
-              .covary[IO]
-              .noneTerminate
-              .attempt
-              .evalMap(queue.enqueue1(_))
-          )
-          .evalMap(_ => IO.unit)
-      }
-
-  }
-
   leakTest("progress merge") {
     val progress = Stream.constant(1, 128).covary[IO]
     progress.merge(progress)
   }
 
   leakTest("hung merge") {
-    val hung = Stream.eval(IO.async[Int](_ => ()))
+    val hung = Stream.eval(IO.never)
     val progress = Stream.constant(1, 128).covary[IO]
     hung.merge(progress)
   }
@@ -237,9 +236,8 @@ class MemoryLeakSpec extends FunSuite {
     Stream
       .fixedDelay[IO](1.milliseconds)
       .zip(sources)
-      .flatMap {
-        case (_, s) =>
-          s.map(Stream.constant(_).covary[IO]).parJoinUnbounded
+      .flatMap { case (_, s) =>
+        s.map(Stream.constant(_).covary[IO]).parJoinUnbounded
       }
   }
 

@@ -1,10 +1,31 @@
+/*
+ * Copyright (c) 2013 Functional Streams for Scala
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of
+ * this software and associated documentation files (the "Software"), to deal in
+ * the Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+ * the Software, and to permit persons to whom the Software is furnished to do so,
+ * subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+ * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+ * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+ * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+
 package fs2
 package io
 
 import scala.concurrent.duration._
 
-import cats.effect._
-import cats.implicits._
+import cats.effect.kernel._
+import cats.syntax.all._
 import java.nio.file._
 import java.nio.file.attribute.BasicFileAttributes
 import java.util.concurrent.TimeUnit
@@ -12,13 +33,11 @@ import fs2.concurrent.SignallingRef
 
 import CollectionCompat._
 
-/**
-  * Allows watching the file system for changes to directories and files by using the platform's `WatchService`.
+/** Allows watching the file system for changes to directories and files by using the platform's `WatchService`.
   */
 sealed abstract class Watcher[F[_]] {
 
-  /**
-    * Registers for events on the specified path.
+  /** Registers for events on the specified path.
     *
     * This is more feature-rich than the platform's `Path#register`. The supplied path may be
     * a file or directory and events may raised for all descendants of the path. Use [[register]] for
@@ -39,8 +58,7 @@ sealed abstract class Watcher[F[_]] {
       modifiers: Seq[WatchEvent.Modifier] = Nil
   ): F[F[Unit]]
 
-  /**
-    * Registers for events on the specified path.
+  /** Registers for events on the specified path.
     *
     * This is a low-level abstraction on the platform's `Path#register`. The supplied path must be
     * a directory and events are raised for only direct descendants of the path. Use [[watch]] for
@@ -61,8 +79,7 @@ sealed abstract class Watcher[F[_]] {
       modifiers: Seq[WatchEvent.Modifier] = Nil
   ): F[F[Unit]]
 
-  /**
-    * Stream of events for paths that have been registered or watched.
+  /** Stream of events for paths that have been registered or watched.
     *
     * @param pollTimeout amount of time for which the underlying platform is polled for events
     */
@@ -99,8 +116,7 @@ object Watcher {
     final case class Overflow(count: Int) extends Event
     final case class NonStandard(event: WatchEvent[_], registeredDirectory: Path) extends Event
 
-    /**
-      * Converts a NIO `WatchEvent` to an FS2 `Watcher.Event`.
+    /** Converts a NIO `WatchEvent` to an FS2 `Watcher.Event`.
       *
       * @param e event to convert
       * @param registeredDirectory path of the directory for which the event's path is relative
@@ -133,20 +149,17 @@ object Watcher {
   }
 
   /** Creates a watcher for the default file system. */
-  def default[F[_]](
-      blocker: Blocker
-  )(implicit F: Concurrent[F], cs: ContextShift[F]): Resource[F, Watcher[F]] =
+  def default[F[_]](implicit F: Async[F]): Resource[F, Watcher[F]] =
     Resource
-      .liftF(blocker.delay(FileSystems.getDefault))
-      .flatMap(fromFileSystem(blocker, _))
+      .eval(F.blocking(FileSystems.getDefault))
+      .flatMap(fromFileSystem(_))
 
   /** Creates a watcher for the supplied file system. */
   def fromFileSystem[F[_]](
-      blocker: Blocker,
       fs: FileSystem
-  )(implicit F: Concurrent[F], cs: ContextShift[F]): Resource[F, Watcher[F]] =
-    Resource(blocker.delay(fs.newWatchService).flatMap { ws =>
-      fromWatchService(blocker, ws).map(w => w -> blocker.delay(ws.close))
+  )(implicit F: Async[F]): Resource[F, Watcher[F]] =
+    Resource(F.blocking(fs.newWatchService).flatMap { ws =>
+      fromWatchService(ws).map(w => w -> F.blocking(ws.close))
     })
 
   private case class Registration[F[_]](
@@ -160,28 +173,26 @@ object Watcher {
 
   /** Creates a watcher for the supplied NIO `WatchService`. */
   def fromWatchService[F[_]](
-      blocker: Blocker,
       ws: WatchService
-  )(implicit F: Concurrent[F], cs: ContextShift[F]): F[Watcher[F]] =
-    SignallingRef[F, Map[WatchKey, Registration[F]]](Map.empty)
-      .map(new DefaultWatcher(blocker, ws, _))
+  )(implicit F: Async[F]): F[Watcher[F]] =
+    SignallingRef
+      .of[F, Map[WatchKey, Registration[F]]](Map.empty)
+      .map(new DefaultWatcher(ws, _))
 
   private class DefaultWatcher[F[_]](
-      blocker: Blocker,
       ws: WatchService,
       registrations: SignallingRef[F, Map[WatchKey, Registration[F]]]
   )(implicit
-      F: Concurrent[F],
-      cs: ContextShift[F]
+      F: Async[F]
   ) extends Watcher[F] {
     private def isDir(p: Path): F[Boolean] =
-      blocker.delay(Files.isDirectory(p))
+      F.blocking(Files.isDirectory(p))
 
     private def track(key: WatchKey, r: Registration[F]): F[F[Unit]] =
       registrations
         .update(_.updated(key, r))
         .as {
-          blocker.delay(key.cancel) >> registrations.modify { s =>
+          F.blocking(key.cancel) >> registrations.modify { s =>
             (s - key) -> s.get(key).map(_.cleanup).getOrElse(F.unit)
           }.flatten
         }
@@ -209,7 +220,7 @@ object Watcher {
           )
         else if (types.contains(EventType.Created)) (types, false)
         else (EventType.Created +: types, true)
-      val dirs: F[List[Path]] = blocker.delay {
+      val dirs: F[List[Path]] = F.blocking {
         var dirs: List[Path] = Nil
         Files.walkFileTree(
           path,
@@ -267,7 +278,7 @@ object Watcher {
         types: Seq[Watcher.EventType],
         modifiers: Seq[WatchEvent.Modifier]
     ): F[WatchKey] =
-      blocker.delay {
+      F.blocking {
         val typesWithDefaults =
           if (types.isEmpty)
             List(EventType.Created, EventType.Deleted, EventType.Modified, EventType.Overflow)
@@ -292,12 +303,11 @@ object Watcher {
             if (reg.map(_.recurse).getOrElse(false)) {
               val created = events.collect { case Event.Created(p, _) => p }
               def watchIfDirectory(p: Path): F[(F[Unit], List[Event])] =
-                blocker
-                  .delay(Files.isDirectory(p))
+                F.blocking(Files.isDirectory(p))
                   .ifM(
                     watch(p, Seq(EventType.Created), reg.map(_.modifiers).getOrElse(Nil)).flatMap {
                       cancel =>
-                        val events: F[List[Event]] = blocker.delay {
+                        val events: F[List[Event]] = F.blocking {
                           var dirs: List[Path] = Nil
                           Files.list(p).forEach(d => dirs = d :: dirs)
                           dirs.map(Event.Created(_, 1))
@@ -328,7 +338,7 @@ object Watcher {
     private def unfilteredEvents(
         pollTimeout: FiniteDuration
     ): Stream[F, (WatchKey, List[Event])] = {
-      val poll: F[Option[(WatchKey, List[Event])]] = blocker.delay {
+      val poll: F[Option[(WatchKey, List[Event])]] = F.blocking {
         val key = ws.poll(pollTimeout.toMillis, TimeUnit.MILLISECONDS)
         if (key eq null) None
         else {
