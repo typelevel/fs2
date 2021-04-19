@@ -666,14 +666,12 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   def metered[F2[x] >: F[x]: Temporal](rate: FiniteDuration): Stream[F2, O] =
     Stream.fixedRate[F2](rate).zipRight(this)
 
-  /**
-   * Provides the same functionality as [[metered]] but begins immediately instead of waiting for `rate`
-   */
+  /** Provides the same functionality as [[metered]] but begins immediately instead of waiting for `rate`
+    */
   def meteredStartImmediately[F2[x] >: F[x]: Temporal](rate: FiniteDuration): Stream[F2, O] =
     (Stream.emit(()) ++ Stream.fixedRate[F2](rate)).zipRight(this)
 
-  /**
-    * Logs the elements of this stream as they are pulled.
+  /** Logs the elements of this stream as they are pulled.
     *
     * By default, `toString` is called on each element and the result is printed
     * to standard out. To change formatting, supply a value for the `formatter`

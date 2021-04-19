@@ -1018,7 +1018,8 @@ class StreamCombinatorsSuite extends Fs2Suite {
   }
 
   test("metered should not start immediately") {
-    Stream.emit[IO, Int](1)
+    Stream
+      .emit[IO, Int](1)
       .repeatN(10)
       .metered(1.second)
       .interruptAfter(500.milliseconds)
@@ -1029,7 +1030,8 @@ class StreamCombinatorsSuite extends Fs2Suite {
   }
 
   test("meteredStartImmediately should start immediately") {
-    Stream.emit[IO, Int](1)
+    Stream
+      .emit[IO, Int](1)
       .repeatN(10)
       .meteredStartImmediately(1.second)
       .interruptAfter(500.milliseconds)
