@@ -50,4 +50,39 @@ class PullSuite extends Fs2Suite {
       }
     }
   }
+
+  property("loop") {
+    forAll { (list: List[Int]) =>
+      def customOutput(s: List[Int]): Pull[Fallible, Int, Option[List[Int]]] =
+        s match {
+          case head :: tail => Pull.output1(head).as(Some(tail))
+          case Nil          => Pull.pure(None)
+        }
+
+      val result = Pull.loop(customOutput)(list).stream.compile.toList
+
+      assertEquals(result, Right(list))
+    }
+  }
+
+  property("loopEither") {
+    forAll { (list: List[Int]) =>
+      def customOutputReturnsString(s: List[Int]): Pull[Fallible, Int, Either[List[Int], String]] =
+        s match {
+          case head :: tail => Pull.output1(head).as(Left(tail))
+          case Nil          => Pull.pure(Right("done"))
+        }
+
+      val result =
+        Pull
+          .loopEither(customOutputReturnsString)(list)
+          .map(v => assert(v == "done"))
+          .void
+          .stream
+          .compile
+          .toList
+
+      assertEquals(result, Right(list))
+    }
+  }
 }
