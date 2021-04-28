@@ -120,7 +120,7 @@ object UnixSocket {
           F.delay {
             val read = buff.position()
             val result =
-              if (read == 0) Chunk.array(Array.empty)
+              if (read == 0) Chunk.empty
               else {
                 val dest = new Array[Byte](read)
                 (buff: Buffer).flip()
