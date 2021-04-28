@@ -209,7 +209,7 @@ lazy val unixSocket = project
     name := "fs2-unixsocket",
     Test / fork := true,
     libraryDependencies ++= Seq(
-      "com.github.jnr" %  "jnr-unixsocket" % "0.33"
+      "com.github.jnr" % "jnr-unixsocket" % "0.33"
     ),
     OsgiKeys.exportPackage := Seq("fs2.io.unixsocket"),
     OsgiKeys.privatePackage := Seq(),
@@ -223,7 +223,8 @@ lazy val unixSocket = project
     },
     OsgiKeys.additionalHeaders := Map("-removeheaders" -> "Include-Resource,Private-Package"),
     osgiSettings
-  ).dependsOn(io)
+  )
+  .dependsOn(io)
 
 lazy val benchmark = project
   .in(file("benchmark"))
