@@ -205,6 +205,7 @@ lazy val reactiveStreams = project
 lazy val unixSocket = project
   .in(file("unixsocket"))
   .enablePlugins(SbtOsgi)
+  .disablePlugins(MimaPlugin) // Reenable after a release
   .settings(
     name := "fs2-unixsocket",
     Test / fork := true,
