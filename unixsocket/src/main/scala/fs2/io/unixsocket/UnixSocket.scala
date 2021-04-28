@@ -19,7 +19,7 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2.unixsocket
+package fs2.io.unixsocket
 
 import cats.implicits._
 import cats.effect._
