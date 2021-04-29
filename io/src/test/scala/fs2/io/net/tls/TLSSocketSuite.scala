@@ -32,6 +32,7 @@ import cats.effect.{IO, Resource}
 import cats.syntax.all._
 
 import com.comcast.ip4s._
+import java.security.Security
 
 class TLSSocketSuite extends TLSSuite {
   val size = 8192
@@ -100,8 +101,18 @@ class TLSSocketSuite extends TLSSuite {
             .catchNonFatal(SSLContext.getInstance(protocol))
             .isRight
 
+        val enabled: Boolean =
+          Either
+            .catchNonFatal {
+              val disabledAlgorithms = Security.getProperty("jdk.tls.disabledAlgorithms")
+              !disabledAlgorithms.contains(protocol)
+            }
+            .getOrElse(false)
+
         if (!supportedByPlatform)
           test(s"$protocol - not supported by this platform".ignore) {}
+        else if (!enabled)
+          test(s"$protocol - disabled on this platform".ignore) {}
         else {
           writesBeforeReading(protocol)
           readsBeforeWriting(protocol)
