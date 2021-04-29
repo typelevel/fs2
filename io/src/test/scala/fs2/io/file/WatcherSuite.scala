@@ -26,6 +26,7 @@ package file
 import scala.concurrent.duration._
 
 import cats.effect.IO
+import cats.syntax.all._
 
 import java.nio.file.{Files => JFiles, _}
 
@@ -67,6 +68,28 @@ class WatcherSuite extends Fs2Suite with BaseFileSuite {
         .compile
         .drain
     }
+  }
+
+  test("supports watching multiple files") {
+    Stream
+      .resource((Watcher.default[IO], tempFile, tempFile).tupled)
+      .flatMap { case (w, f1, f2) =>
+        w.events()
+          .scan(0) {
+            case (cnt, Watcher.Event.Modified(_, _)) =>
+              cnt + 1
+            case (cnt, _) =>
+              cnt
+          }
+          .takeWhile(_ < 2)
+          .concurrently(
+            smallDelay ++ Stream
+              .exec(List(f1, f2).traverse(f => w.watch(f, modifiers = modifiers)).void) ++
+              smallDelay ++ Stream.eval(modify(f1)) ++ smallDelay ++ Stream.eval(modify(f2))
+          )
+      }
+      .compile
+      .drain
   }
 
   group("supports watching a directory") {
