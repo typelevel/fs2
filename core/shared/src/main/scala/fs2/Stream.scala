@@ -222,7 +222,8 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     */
   def broadcastThrough[F2[x] >: F[x]: Concurrent, O2](
       pipes: Pipe[F2, O, O2]*
-  ): Stream[F2, O2] =
+  ): Stream[F2, O2] = {
+    assert(pipes.nonEmpty, s"pipes should not be empty")
     Stream
       .eval {
         (
@@ -250,6 +251,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
           .parJoinUnbounded
           .concurrently(Stream.eval(latch.await) ++ produce)
       }
+  }
 
   /** Behaves like the identity function, but requests `n` elements at a time from the input.
     *
