@@ -27,6 +27,8 @@ import cats.syntax.all._
 import fs2.internal._
 import fs2.internal.FreeC.{Eval, Result}
 
+import scala.concurrent.duration.{FiniteDuration, TimeUnit}
+
 /** A `p: Pull[F,O,R]` reads values from one or more streams, returns a
   * result of type `R`, and produces a `Stream[F,O]` when calling `p.stream`.
   *
@@ -210,6 +212,25 @@ object Pull extends PullLowPriority {
     val _ = ev
     new PullSyncInstance[F, O]
   }
+
+  /* `Clock` instance for `Pull`. */
+  implicit def clockInstance[F[_], O](implicit clock: Clock[F]): Clock[Pull[F, O, *]] =
+    new Clock[Pull[F, O, *]] {
+      def realTime(unit: TimeUnit): Pull[F, O, Long] =
+        Pull.eval(clock.realTime(unit))
+
+      def monotonic(unit: TimeUnit): Pull[F, O, Long] =
+        Pull.eval(clock.monotonic(unit))
+    }
+
+  /* `Timer` instance for `Pull`. */
+  implicit def timerInstance[F[_], O](implicit timer: Timer[F]): Timer[Pull[F, O, *]] =
+    new Timer[Pull[F, O, *]] {
+      val clock: Clock[Pull[F, O, *]] = clockInstance
+
+      def sleep(duration: FiniteDuration): Pull[F, O, Unit] =
+        Pull.eval(timer.sleep(duration))
+    }
 
   /** `FunctionK` instance for `F ~> Pull[F, INothing, *]`
     *
