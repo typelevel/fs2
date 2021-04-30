@@ -323,7 +323,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] { self =>
   def toByteBuffer[B >: O](implicit ev: B =:= Byte): JByteBuffer = {
     val _ = ev // Convince scalac that ev is used
     this match {
-      case c: Chunk.ArraySlice[_] =>
+      case c: Chunk.ArraySlice[_] if c.values.isInstanceOf[Array[Byte]] =>
         JByteBuffer.wrap(c.values.asInstanceOf[Array[Byte]], c.offset, c.length)
       case c: Chunk.ByteBuffer =>
         val b = c.buf.asReadOnlyBuffer
