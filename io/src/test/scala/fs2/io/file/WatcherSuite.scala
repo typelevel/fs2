@@ -26,6 +26,7 @@ package file
 import scala.concurrent.duration._
 
 import cats.effect.IO
+import cats.syntax.all._
 
 import java.nio.file.{Files => JFiles, _}
 
@@ -63,6 +64,59 @@ class WatcherSuite extends Fs2Suite with BaseFileSuite {
               true
             )
             .concurrently(smallDelay ++ Stream.eval(IO(JFiles.delete(f))))
+        }
+        .compile
+        .drain
+    }
+  }
+
+  group("supports watching multiple files") {
+    test("dynamic registration with multiple files in same directory") {
+      Stream
+        .resource((Watcher.default[IO], tempDirectory).tupled)
+        .flatMap { case (w, dir) =>
+          val f1 = dir.resolve("f1")
+          val f2 = dir.resolve("f2")
+          w.events()
+            .scan(0) {
+              case (cnt, Watcher.Event.Created(_, _)) =>
+                cnt + 1
+              case (cnt, _) =>
+                cnt
+            }
+            .takeWhile(_ < 2)
+            .concurrently(
+              smallDelay ++ Stream
+                .exec(List(f1, f2).traverse(f => w.watch(f, modifiers = modifiers)).void) ++
+                smallDelay ++ Stream.eval(modify(f1)) ++ smallDelay ++ Stream.eval(modify(f2))
+            )
+        }
+        .compile
+        .drain
+    }
+
+    test(
+      "unregistration of a file in a directory does not impact other file watches in same directory"
+    ) {
+      Stream
+        .resource((Watcher.default[IO], tempDirectory).tupled)
+        .flatMap { case (w, dir) =>
+          val f1 = dir.resolve("f1")
+          val f2 = dir.resolve("f2")
+          w.events()
+            .scan(Nil: List[Path]) {
+              case (acc, Watcher.Event.Created(p, _)) =>
+                p :: acc
+              case (acc, _) =>
+                acc
+            }
+            .takeWhile(_ != List(f1))
+            .concurrently(
+              smallDelay ++ Stream
+                .exec(
+                  w.watch(f1, modifiers = modifiers) *> w.watch(f2, modifiers = modifiers).flatten
+                ) ++ smallDelay ++ Stream.eval(modify(f2)) ++ smallDelay ++ Stream.eval(modify(f1))
+            )
         }
         .compile
         .drain
@@ -111,7 +165,7 @@ class WatcherSuite extends Fs2Suite with BaseFileSuite {
   }
 
   private def smallDelay: Stream[IO, Nothing] =
-    Stream.sleep_[IO](1000.millis)
+    Stream.sleep_[IO](100.millis)
 
   // Tries to load the Oracle specific SensitivityWatchEventModifier to increase sensitivity of polling
   private val modifiers: Seq[WatchEvent.Modifier] = {
