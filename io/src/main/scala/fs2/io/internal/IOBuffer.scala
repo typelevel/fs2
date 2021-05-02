@@ -56,6 +56,41 @@ private[io] final class IOBuffer(private[this] val capacity: Int) { self =>
       res
     }
 
+    override def read(b: Array[Byte], off: Int, len: Int): Int = {
+      var offset = off
+      var length = len
+
+      var success = false
+      var res = 0
+      var cont = true
+
+      while (cont) {
+        self.synchronized {
+          if (head != tail) {
+            val available = tail - head
+            val toRead = math.min(available, length)
+            System.arraycopy(buffer, head % capacity, b, offset, toRead)
+            head += toRead
+            offset += toRead
+            length -= toRead
+            res += toRead
+            success = true
+            if (length == 0) {
+              cont = false
+            }
+          } else if (closed) {
+            cont = false
+          }
+        }
+
+        if (cont) {
+          Thread.sleep(100L)
+        }
+      }
+
+      if (success) res else -1
+    }
+
     override def close(): Unit = self.synchronized {
       closed = true
     }
