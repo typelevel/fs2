@@ -147,6 +147,19 @@ class IoSuite extends Fs2Suite {
         }
       }
     }
+
+    test("PipedInput/OutputStream used to track threads, fs2 reimplementation works") {
+      Blocker[IO].use { blocker =>
+        readOutputStream(blocker, 1024) { os =>
+          blocker.delay {
+            val t = new Thread(() => os.write(123))
+            t.start
+            t.join
+            Thread.sleep(100L)
+          }
+        }.compile.drain.map(_ => assert(true))
+      }
+    }
   }
 
   group("unsafeReadInputStream") {

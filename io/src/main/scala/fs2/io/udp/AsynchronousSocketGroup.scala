@@ -338,7 +338,7 @@ private[udp] object AsynchronousSocketGroup {
         }
       }
 
-      private val selectorThread: Thread = internal.ThreadFactories
+      private val selectorThread: Thread = fs2.internal.ThreadFactories
         .named("fs2-udp-selector", true)
         .newThread(new Runnable {
           def run = {
