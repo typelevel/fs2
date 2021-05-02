@@ -105,6 +105,36 @@ private[io] final class IOBuffer(private[this] val capacity: Int) { self =>
             buffer(tail % capacity) = (b & 0xff).toByte
             tail += 1
             cont = false
+          } else if (closed) {
+            cont = false
+          }
+        }
+
+        if (cont) {
+          Thread.sleep(100L)
+        }
+      }
+    }
+
+    override def write(b: Array[Byte], off: Int, len: Int): Unit = {
+      var offset = off
+      var length = len
+
+      var cont = true
+      while (cont) {
+        self.synchronized {
+          if (tail - head < capacity) {
+            val available = capacity - (tail - head)
+            val toWrite = math.min(available, length)
+            System.arraycopy(b, offset, buffer, tail % capacity, toWrite)
+            tail += toWrite
+            offset += toWrite
+            length -= toWrite
+            if (length == 0) {
+              cont = false
+            }
+          } else if (closed) {
+            cont = false
           }
         }
 
