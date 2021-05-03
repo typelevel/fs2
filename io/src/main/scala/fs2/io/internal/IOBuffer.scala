@@ -22,6 +22,7 @@
 package fs2.io.internal
 
 import java.io.{InputStream, OutputStream}
+import java.util.concurrent.Semaphore
 
 private[io] final class IOBuffer(private[this] val capacity: Int) { self =>
 
@@ -32,8 +33,13 @@ private[io] final class IOBuffer(private[this] val capacity: Int) { self =>
 
   private[this] var closed: Boolean = false
 
+  private[this] val readerPermit: Semaphore = new Semaphore(1)
+  private[this] val writerPermit: Semaphore = new Semaphore(1)
+
   val inputStream: InputStream = new InputStream {
     def read(): Int = {
+      readerPermit.acquire()
+
       var res = 0
       var cont = true
       while (cont) {
@@ -41,15 +47,18 @@ private[io] final class IOBuffer(private[this] val capacity: Int) { self =>
           if (head != tail) {
             res = buffer(head % capacity) & 0xff
             head += 1
+            writerPermit.release()
+            readerPermit.release()
             cont = false
           } else if (closed) {
             res = -1
+            readerPermit.release()
             cont = false
           }
         }
 
         if (cont) {
-          Thread.sleep(100L)
+          readerPermit.acquire()
         }
       }
 
@@ -57,6 +66,8 @@ private[io] final class IOBuffer(private[this] val capacity: Int) { self =>
     }
 
     override def read(b: Array[Byte], off: Int, len: Int): Int = {
+      readerPermit.acquire()
+
       var offset = off
       var length = len
 
@@ -75,16 +86,19 @@ private[io] final class IOBuffer(private[this] val capacity: Int) { self =>
             length -= toRead
             res += toRead
             success = true
+            writerPermit.release()
             if (length == 0) {
+              readerPermit.release()
               cont = false
             }
           } else if (closed) {
+            readerPermit.release()
             cont = false
           }
         }
 
         if (cont) {
-          Thread.sleep(100L)
+          readerPermit.acquire()
         }
       }
 
@@ -93,6 +107,8 @@ private[io] final class IOBuffer(private[this] val capacity: Int) { self =>
 
     override def close(): Unit = self.synchronized {
       closed = true
+      readerPermit.release()
+      writerPermit.release()
     }
   }
 
@@ -104,14 +120,17 @@ private[io] final class IOBuffer(private[this] val capacity: Int) { self =>
           if (tail - head < capacity) {
             buffer(tail % capacity) = (b & 0xff).toByte
             tail += 1
+            readerPermit.release()
+            writerPermit.release()
             cont = false
           } else if (closed) {
+            writerPermit.release()
             cont = false
           }
         }
 
         if (cont) {
-          Thread.sleep(100L)
+          writerPermit.acquire()
         }
       }
     }
@@ -130,22 +149,26 @@ private[io] final class IOBuffer(private[this] val capacity: Int) { self =>
             tail += toWrite
             offset += toWrite
             length -= toWrite
+            readerPermit.release()
             if (length == 0) {
+              writerPermit.release()
               cont = false
             }
           } else if (closed) {
+            readerPermit.release()
             cont = false
           }
         }
 
         if (cont) {
-          Thread.sleep(100L)
+          writerPermit.acquire()
         }
       }
     }
 
     override def close(): Unit = self.synchronized {
       closed = true
+      readerPermit.release()
     }
   }
 }
