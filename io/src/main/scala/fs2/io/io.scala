@@ -133,7 +133,7 @@ package object io {
   ): Stream[F, Byte] = {
     val mkOutput: Resource[F, (OutputStream, InputStream)] =
       Resource.make(Sync[F].delay {
-        val buf = new internal.IOBuffer(chunkSize)
+        val buf = new internal.InputOutputBuffer(chunkSize)
         (buf.outputStream, buf.inputStream)
       })(ois =>
         Sync[F].blocking {

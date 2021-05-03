@@ -24,7 +24,7 @@ package fs2.io.internal
 import java.io.{InputStream, OutputStream}
 import java.util.concurrent.Semaphore
 
-private[io] final class IOBuffer(private[this] val capacity: Int) { self =>
+private[io] final class InputOutputBuffer(private[this] val capacity: Int) { self =>
 
   private[this] val buffer: Array[Byte] = new Array(capacity)
 
