@@ -105,6 +105,10 @@ private[io] final class InputOutputBuffer(private[this] val capacity: Int) { sel
       readerPermit.release()
       writerPermit.release()
     }
+
+    override def available(): Int = self.synchronized {
+      if (closed) 0 else tail - head
+    }
   }
 
   val outputStream: OutputStream = new OutputStream {
