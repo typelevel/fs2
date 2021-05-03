@@ -55,29 +55,42 @@ private[io] final class InputOutputBuffer(private[this] val capacity: Int) { sel
 
   val inputStream: InputStream = new InputStream {
     def read(): Int = {
+      // Obtain permission to read from the buffer. Used for backpressuring
+      // readers when the buffer is empty.
       readerPermit.acquire()
 
       while (true) {
         self.synchronized {
           if (head != tail) {
+            // There is at least one byte to read.
             val byte = buffer(head % capacity) & 0xff
+            // The byte is marked as read by advancing the head of the
+            // circular buffer.
             head += 1
+            // Notify a writer that some space has been freed up in the buffer.
             writerPermit.release()
+            // Notify a next reader.
             readerPermit.release()
             return byte
           } else if (closed) {
+            // The Input/OutputStream pipe has been closed. Release the obtained
+            // permit such that future readers are not blocked forever.
             readerPermit.release()
             return -1
           }
         }
 
+        // There is nothing to be read from the buffer at this moment.
+        // Wait until notified by a writer.
         readerPermit.acquire()
       }
 
+      // Unreachable code.
       -1
     }
 
     override def read(b: Array[Byte], off: Int, len: Int): Int = {
+      // This branching satisfies the InputStream#read interface.
       if (b eq null) throw new NullPointerException("Cannot read into a null byte array")
       else if (off < 0)
         throw new IndexOutOfBoundsException(s"Negative offset into the byte array: $off")
@@ -87,11 +100,19 @@ private[io] final class InputOutputBuffer(private[this] val capacity: Int) { sel
           s"Specified length is greater than the remaining length of the byte array after the offset: len = $len, capacity = ${b.length - off}"
         )
 
+      // Obtain permission to read from the buffer. Used for backpressuring
+      // readers when the buffer is empty.
       readerPermit.acquire()
 
+      // Variables used to track the progress of the reading. It can happen that
+      // the current contents of the buffer cannot fulfill the read request and
+      // it needs to be done in several iterations after more data has been
+      // written into the buffer.
       var offset = off
       var length = len
 
+      // This method needs to return the number of read bytes, or -1 if the read
+      // was unsuccessful.
       var success = false
       var res = 0
       var cont = true
@@ -99,26 +120,39 @@ private[io] final class InputOutputBuffer(private[this] val capacity: Int) { sel
       while (cont) {
         self.synchronized {
           if (head != tail) {
+            // There is at least one byte available for reading.
             val available = tail - head
+            // Check whether the whole read request can be fulfilled right now,
+            // or just a part of it.
             val toRead = math.min(available, length)
+            // Transfer the bytes to the provided byte array.
             System.arraycopy(buffer, head % capacity, b, offset, toRead)
+            // The bytes are marked as read by advancing the head of the
+            // circular buffer.
             head += toRead
+            // Read request bookkeeping.
             offset += toRead
             length -= toRead
             res += toRead
             success = true
+            // Notify a writer that some space has been freed up in the buffer.
             writerPermit.release()
             if (length == 0) {
+              // Notify a next reader.
               readerPermit.release()
               cont = false
             }
           } else if (closed) {
+            // The Input/OutputStream pipe has been closed. Release the obtained
+            // permit such that future writers are not blocked forever.
             readerPermit.release()
             cont = false
           }
         }
 
         if (cont) {
+          // There is nothing to be read from the buffer at this moment.
+          // Wait until notified by a writer.
           readerPermit.acquire()
         }
       }
@@ -128,6 +162,9 @@ private[io] final class InputOutputBuffer(private[this] val capacity: Int) { sel
 
     override def close(): Unit = self.synchronized {
       closed = true
+      // Immediately notify the first registered reader/writer. The rest will
+      // be notified by the read/write mechanism which takes into account the
+      // state of the Input/OutputStream.
       readerPermit.release()
       writerPermit.release()
     }
@@ -139,24 +176,38 @@ private[io] final class InputOutputBuffer(private[this] val capacity: Int) { sel
 
   val outputStream: OutputStream = new OutputStream {
     def write(b: Int): Unit = {
-      while (true)
+      // Obtain permission to write to the buffer. Used for backpressuring
+      // writers when the buffer is full.
+      writerPermit.acquire()
+
+      while (true) {
         self.synchronized {
           if (tail - head < capacity) {
+            // There is capacity for at least one byte to be written.
             buffer(tail % capacity) = (b & 0xff).toByte
+            // The byte is marked as written by advancing the tail of the
+            // circular buffer.
             tail += 1
+            // Notify a reader that there is new data in the buffer.
             readerPermit.release()
+            // Notify a next writer.
             writerPermit.release()
             return
           } else if (closed) {
+            // The Input/OutputStream pipe has been closed. Release the obtained
+            // permit such that future writers are not blocked forever.
             writerPermit.release()
             return
           }
         }
 
-      writerPermit.acquire()
+        // The buffer is currently full. Wait until notified by a reader.
+        writerPermit.acquire()
+      }
     }
 
     override def write(b: Array[Byte], off: Int, len: Int): Unit = {
+      // This branching satisfies the OutputStream#write interface.
       if (b eq null) throw new NullPointerException("Cannot read into a null byte array")
       else if (off < 0)
         throw new IndexOutOfBoundsException(s"Negative offset into the byte array: $off")
@@ -167,35 +218,59 @@ private[io] final class InputOutputBuffer(private[this] val capacity: Int) { sel
           s"Specified length is greater than the remaining length of the byte array after the offset: len = $len, capacity = ${b.length - off}"
         )
 
+      // Obtain permission to write to the buffer. Used for backpressuring
+      // writers when the buffer is full.
       writerPermit.acquire()
 
+      // Variables used to track the progress of the writing. It can happen that
+      // the current leftover capacity of the buffer cannot fulfill the write
+      // request and it needs to be done in several iterations after more data
+      // has been written into the buffer.
       var offset = off
       var length = len
 
       while (true) {
         self.synchronized {
           if (tail - head < capacity) {
+            // There is capacity for at least one byte to be written.
             val available = capacity - (tail - head)
+            // Check whether the whole write request can be fulfilled right now,
+            // or just a part of it.
             val toWrite = math.min(available, length)
+            // Transfer the bytes to the provided byte array.
             System.arraycopy(b, offset, buffer, tail % capacity, toWrite)
+            // The bytes are marked as written by advancing the tail of the
+            // circular buffer.
             tail += toWrite
+            // Write request bookkeeping.
             offset += toWrite
             length -= toWrite
+            // Notify a reader that there is new data in the buffer.
             readerPermit.release()
             if (length == 0) {
+              // Notify a next writer.
+              writerPermit.release()
               return
             }
           } else if (closed) {
+            // The Input/OutputStream pipe has been closed. Release the obtained
+            // permit such that future writers are not blocked forever.
+            writerPermit.release()
             return
           }
         }
 
+        // The buffer is currently full. Wait until notified by a reader.
         writerPermit.acquire()
       }
     }
 
     override def close(): Unit = self.synchronized {
       closed = true
+      // Immediately notify the first registered reader/writer. The rest will
+      // be notified by the read/write mechanism which takes into account the
+      // state of the Input/OutputStream.
+      writerPermit.release()
       readerPermit.release()
     }
   }
