@@ -130,8 +130,7 @@ private[io] final class InputOutputBuffer(private[this] val capacity: Int) { sel
       var offset = off
       var length = len
 
-      var cont = true
-      while (cont) {
+      while (true) {
         self.synchronized {
           if (tail - head < capacity) {
             val available = capacity - (tail - head)
@@ -142,18 +141,14 @@ private[io] final class InputOutputBuffer(private[this] val capacity: Int) { sel
             length -= toWrite
             readerPermit.release()
             if (length == 0) {
-              writerPermit.release()
-              cont = false
+              return
             }
           } else if (closed) {
-            readerPermit.release()
-            cont = false
+            return
           }
         }
 
-        if (cont) {
-          writerPermit.acquire()
-        }
+        writerPermit.acquire()
       }
     }
 
