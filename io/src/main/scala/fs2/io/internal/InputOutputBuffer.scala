@@ -24,9 +24,9 @@ package fs2.io.internal
 import java.io.{InputStream, OutputStream}
 import java.util.concurrent.Semaphore
 
-/** Thread safe circular byte buffer which connects a [[java.io.OutputStream]]
-  * to a [[java.io.OutputStream]] in a memory efficient manner, without copying
-  * bytes unnecessarily.
+/** Thread safe circular byte buffer which pipes a [[java.io.OutputStream]]
+  * through a [[java.io.InputStream]] in a memory efficient manner, without
+  * copying bytes unnecessarily.
   *
   * @note As per the interfaces of the [[java.io]] classes, all of the
   * operations are blocking in nature and extra care should be taken when using
