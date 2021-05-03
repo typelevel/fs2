@@ -26,6 +26,7 @@ import cats.effect.kernel.{Async, Outcome, Resource, Sync}
 import cats.effect.kernel.implicits._
 import cats.effect.kernel.Deferred
 import cats.syntax.all._
+import fs2.io.internal.InputOutputBuffer
 
 import java.io.{InputStream, OutputStream}
 import java.nio.charset.Charset
@@ -133,7 +134,7 @@ package object io {
   ): Stream[F, Byte] = {
     val mkOutput: Resource[F, (OutputStream, InputStream)] =
       Resource.make(Sync[F].delay {
-        val buf = new internal.InputOutputBuffer(chunkSize)
+        val buf = new InputOutputBuffer(chunkSize)
         (buf.outputStream, buf.inputStream)
       })(ois =>
         Sync[F].blocking {
