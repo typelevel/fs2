@@ -61,6 +61,15 @@ private[io] final class InputOutputBuffer(private[this] val capacity: Int) { sel
     }
 
     override def read(b: Array[Byte], off: Int, len: Int): Int = {
+      if (b eq null) throw new NullPointerException("Cannot read into a null byte array")
+      else if (off < 0)
+        throw new IndexOutOfBoundsException(s"Negative offset into the byte array: $off")
+      else if (len < 0) throw new IndexOutOfBoundsException(s"Negative read length specified: $len")
+      else if (len > b.length - off)
+        throw new IndexOutOfBoundsException(
+          s"Specified length is greater than the remaining length of the byte array after the offset: len = $len, capacity = ${b.length - off}"
+        )
+
       readerPermit.acquire()
 
       var offset = off
@@ -131,6 +140,18 @@ private[io] final class InputOutputBuffer(private[this] val capacity: Int) { sel
     }
 
     override def write(b: Array[Byte], off: Int, len: Int): Unit = {
+      if (b eq null) throw new NullPointerException("Cannot read into a null byte array")
+      else if (off < 0)
+        throw new IndexOutOfBoundsException(s"Negative offset into the byte array: $off")
+      else if (len < 0)
+        throw new IndexOutOfBoundsException(s"Negative write length specified: $len")
+      else if (len > b.length - off)
+        throw new IndexOutOfBoundsException(
+          s"Specified length is greater than the remaining length of the byte array after the offset: len = $len, capacity = ${b.length - off}"
+        )
+
+      writerPermit.acquire()
+
       var offset = off
       var length = len
 
