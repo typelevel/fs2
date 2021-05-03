@@ -40,29 +40,24 @@ private[io] final class InputOutputBuffer(private[this] val capacity: Int) { sel
     def read(): Int = {
       readerPermit.acquire()
 
-      var res = 0
-      var cont = true
-      while (cont) {
+      while (true) {
         self.synchronized {
           if (head != tail) {
-            res = buffer(head % capacity) & 0xff
+            val byte = buffer(head % capacity) & 0xff
             head += 1
             writerPermit.release()
             readerPermit.release()
-            cont = false
+            return byte
           } else if (closed) {
-            res = -1
             readerPermit.release()
-            cont = false
+            return -1
           }
         }
 
-        if (cont) {
-          readerPermit.acquire()
-        }
+        readerPermit.acquire()
       }
 
-      res
+      -1
     }
 
     override def read(b: Array[Byte], off: Int, len: Int): Int = {
@@ -114,25 +109,21 @@ private[io] final class InputOutputBuffer(private[this] val capacity: Int) { sel
 
   val outputStream: OutputStream = new OutputStream {
     def write(b: Int): Unit = {
-      var cont = true
-      while (cont) {
+      while (true)
         self.synchronized {
           if (tail - head < capacity) {
             buffer(tail % capacity) = (b & 0xff).toByte
             tail += 1
             readerPermit.release()
             writerPermit.release()
-            cont = false
+            return
           } else if (closed) {
             writerPermit.release()
-            cont = false
+            return
           }
         }
 
-        if (cont) {
-          writerPermit.acquire()
-        }
-      }
+      writerPermit.acquire()
     }
 
     override def write(b: Array[Byte], off: Int, len: Int): Unit = {
