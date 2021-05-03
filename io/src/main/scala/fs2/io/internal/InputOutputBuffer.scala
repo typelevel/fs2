@@ -24,6 +24,23 @@ package fs2.io.internal
 import java.io.{InputStream, OutputStream}
 import java.util.concurrent.Semaphore
 
+/** Thread safe circular byte buffer which connects a [[java.io.OutputStream]]
+  * to a [[java.io.OutputStream]] in a memory efficient manner, without copying
+  * bytes unnecessarily.
+  *
+  * @note As per the interfaces of the [[java.io]] classes, all of the
+  * operations are blocking in nature and extra care should be taken when using
+  * the exposed input/output streams. Thread safety is ensured by
+  * synchronizing on individual objects of this class.
+  *
+  * This is, in spirit, a clean room reimplementation of the
+  * [[java.io.PipedInputStream]] and [[java.io.PipedOutputStream]] pair of
+  * classes which can be used to achieve similar functionality, without the
+  * thread bookkeeping which is confusing in a multi threaded environment like
+  * the effect systems in which this code runs.
+  *
+  * @param capacity the capacity of the allocated circular buffer
+  */
 private[io] final class InputOutputBuffer(private[this] val capacity: Int) { self =>
 
   private[this] val buffer: Array[Byte] = new Array(capacity)
