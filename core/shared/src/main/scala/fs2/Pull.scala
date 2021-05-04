@@ -633,14 +633,14 @@ object Pull extends PullLowPriority {
     @tailrec
     def mk(free: Pull[F, O, Unit]): ViewL[F, O] =
       free match {
-        case r: Terminal[Unit]     => r
         case e: Action[F, O, Unit] => new EvalView[F, O](e)
         case b: Bind[F, O, y, Unit] =>
           b.step match {
+            case c: Bind[F, O, x, _] => mk(new BindBind[F, O, x, y](c, b.delegate))
             case e: Action[F, O, y2] => new BindView(e, b)
             case r: Terminal[_]      => mk(b.cont(r))
-            case c: Bind[F, O, x, _] => mk(new BindBind[F, O, x, y](c, b.delegate))
           }
+        case r: Terminal[Unit] => r
       }
 
     mk(stream)
@@ -1243,8 +1243,8 @@ object Pull extends PullLowPriority {
       f: O => Pull[F2, O2, Unit]
   ): Pull[F2, O2, Unit] =
     p match {
-      case r: Terminal[_]        => r
       case a: AlgEffect[F, Unit] => a
+      case r: Terminal[_]        => r
       case _                     => FlatMapOutput(p, f)
     }
 
@@ -1253,11 +1253,11 @@ object Pull extends PullLowPriority {
       fK: F ~> G
   ): Pull[G, O, Unit] =
     stream match {
-      case r: Terminal[_] => r
       case t: Translate[e, f, _] =>
         translate[e, G, O](t.stream, t.fk.andThen(fK.asInstanceOf[f ~> G]))
-      case o: Output[_] => o
-      case _            => Translate(stream, fK)
+      case o: Output[_]   => o
+      case r: Terminal[_] => r
+      case _              => Translate(stream, fK)
     }
 
   /* Applies the outputs of this pull to `f` and returns the result in a new `Pull`. */
@@ -1266,10 +1266,10 @@ object Pull extends PullLowPriority {
       fun: O => P
   ): Pull[F, P, Unit] =
     stream match {
-      case r: Terminal[_]        => r
       case a: AlgEffect[F, _]    => a
       case t: Translate[g, f, _] => Translate[g, f, P](mapOutput(t.stream, fun), t.fk)
       case m: MapOutput[f, q, o] => MapOutput(m.stream, m.fun.andThen(fun))
+      case r: Terminal[_]        => r
       case _                     => MapOutput(stream, AndThen(fun))
     }
 
