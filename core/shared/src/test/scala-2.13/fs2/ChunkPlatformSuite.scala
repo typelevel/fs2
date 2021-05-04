@@ -31,7 +31,7 @@ import Arbitrary.arbitrary
 
 class ChunkPlatformSuite extends Fs2Suite {
 
-  @nowarn("cat=unused")
+  @nowarn("cat=unused-params")
   private implicit def genArraySeq[A: Arbitrary: ClassTag]: Arbitrary[ArraySeq[A]] =
     Arbitrary(Gen.listOf(arbitrary[A]).map(ArraySeq.from))
   private implicit def genMutableArraySeq[A: Arbitrary: ClassTag]: Arbitrary[mutable.ArraySeq[A]] =

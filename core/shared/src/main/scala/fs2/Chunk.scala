@@ -320,8 +320,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] { self =>
     }
 
   /** Converts this chunk to a `java.nio.ByteBuffer`. */
-  def toByteBuffer[B >: O](implicit ev: B =:= Byte): JByteBuffer = {
-    val _ = ev // Convince scalac that ev is used
+  def toByteBuffer[B >: O](implicit ev: B =:= Byte): JByteBuffer =
     this match {
       case c: Chunk.ArraySlice[_] if c.values.isInstanceOf[Array[Byte]] =>
         JByteBuffer.wrap(c.values.asInstanceOf[Array[Byte]], c.offset, c.length)
@@ -336,7 +335,6 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] { self =>
       case _ =>
         JByteBuffer.wrap(this.asInstanceOf[Chunk[Byte]].toArray, 0, size)
     }
-  }
 
   /** Converts this chunk to a NonEmptyList */
   def toNel: Option[NonEmptyList[O]] =
@@ -375,22 +373,18 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] { self =>
     }
 
   /** Converts this chunk to a scodec-bits ByteVector. */
-  def toByteVector[B >: O](implicit ev: B =:= Byte): ByteVector = {
-    val _ = ev // convince scalac that ev is used
+  def toByteVector[B >: O](implicit ev: B =:= Byte): ByteVector =
     this match {
       case c: Chunk.ByteVectorChunk => c.toByteVector
       case other                    => ByteVector.view(other.asInstanceOf[Chunk[Byte]].toArray)
     }
-  }
 
   /** Converts this chunk to a scodec-bits BitVector. */
-  def toBitVector[B >: O](implicit ev: B =:= Byte): BitVector = {
-    val _ = ev // convince scalac that ev is used
+  def toBitVector[B >: O](implicit ev: B =:= Byte): BitVector =
     this match {
       case c: Chunk.ByteVectorChunk => c.toByteVector.bits
       case other                    => BitVector.view(other.asInstanceOf[Chunk[Byte]].toArray)
     }
-  }
 
   def traverse[F[_], O2](f: O => F[O2])(implicit F: Applicative[F]): F[Chunk[O2]] =
     if (isEmpty) F.pure(Chunk.empty[O2])

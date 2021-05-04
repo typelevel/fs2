@@ -328,7 +328,7 @@ object Pull extends PullLowPriority {
     * The `F` type must be explicitly provided (e.g., via `raiseError[IO]`
     * or `raiseError[Fallible]`).
     */
-  @nowarn("cat=unused")
+  @nowarn("cat=unused-params")
   def raiseError[F[_]: RaiseThrowable](err: Throwable): Pull[F, INothing, INothing] = Fail(err)
 
   /** Creates a pull that evaluates the supplied effect `fr`, emits no
