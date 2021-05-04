@@ -21,7 +21,7 @@
 
 package fs2
 
-import scala.annotation.tailrec
+import scala.annotation.{nowarn, tailrec}
 import scala.concurrent.duration.FiniteDuration
 import scala.util.control.NonFatal
 
@@ -328,6 +328,7 @@ object Pull extends PullLowPriority {
     * The `F` type must be explicitly provided (e.g., via `raiseError[IO]`
     * or `raiseError[Fallible]`).
     */
+  @nowarn("cat=unused")
   def raiseError[F[_]: RaiseThrowable](err: Throwable): Pull[F, INothing, INothing] = Fail(err)
 
   /** Creates a pull that evaluates the supplied effect `fr`, emits no
@@ -956,7 +957,7 @@ object Pull extends PullLowPriority {
         def out(head: Chunk[Y], outScope: Scope[F], tail: Pull[G, Y, Unit]): F[End] = {
           val fmoc = unconsed(head, tail)
           val next = outView match {
-            case ev: EvalView[G, X] => fmoc
+            case _: EvalView[G, X] => fmoc
             case bv: BindView[G, X, Unit] =>
               val del = bv.b.asInstanceOf[Bind[G, X, Unit, Unit]].delegate
               new Bind[G, X, Unit, Unit](fmoc) {
