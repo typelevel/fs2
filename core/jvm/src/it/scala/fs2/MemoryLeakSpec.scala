@@ -1,5 +1,6 @@
 package fs2
 
+import scala.annotation.nowarn
 import scala.concurrent.duration._
 
 import java.lang.management.ManagementFactory
@@ -13,6 +14,7 @@ import munit.{FunSuite, TestOptions}
 
 import fs2.concurrent._
 
+@nowarn("cat=w-flag-dead-code")
 class MemoryLeakSpec extends FunSuite {
 
   override def munitFlakyOK = true

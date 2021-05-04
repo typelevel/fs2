@@ -21,7 +21,7 @@
 
 package fs2
 
-import scala.annotation.tailrec
+import scala.annotation.{nowarn, tailrec}
 import scala.concurrent.duration._
 
 import cats.data.Chain
@@ -35,6 +35,7 @@ import org.scalacheck.effect.PropF.forAllF
 
 import fs2.concurrent.SignallingRef
 
+@nowarn("cat=w-flag-dead-code")
 class StreamSuite extends Fs2Suite {
 
   group("basics") {

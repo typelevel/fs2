@@ -21,7 +21,7 @@
 
 package fs2
 
-import scala.annotation.tailrec
+import scala.annotation.{nowarn, tailrec}
 import scala.concurrent.TimeoutException
 import scala.concurrent.duration._
 
@@ -1121,12 +1121,11 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * res0: List[Int] = List(1, 2, 2, 3, 3, 3)
     * }}}
     */
+  @nowarn("cat=unused-params")
   def flatMap[F2[x] >: F[x], O2](
       f: O => Stream[F2, O2]
-  )(implicit ev: NotGiven[O <:< Nothing]): Stream[F2, O2] = {
-    val _ = ev
+  )(implicit ev: NotGiven[O <:< Nothing]): Stream[F2, O2] =
     new Stream(Pull.flatMapOutput[F, F2, O, O2](underlying, (o: O) => f(o).underlying))
-  }
 
   /** Alias for `flatMap(_ => s2)`. */
   def >>[F2[x] >: F[x], O2](
@@ -2252,8 +2251,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   def rethrow[F2[x] >: F[x], O2](implicit
       ev: O <:< Either[Throwable, O2],
       rt: RaiseThrowable[F2]
-  ): Stream[F2, O2] = {
-    val _ = ev // Convince scalac that ev is used
+  ): Stream[F2, O2] =
     this.asInstanceOf[Stream[F, Either[Throwable, O2]]].chunks.flatMap { c =>
       val firstError = c.collectFirst { case Left(err) => err }
       firstError match {
@@ -2261,7 +2259,6 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
         case Some(h) => Stream.raiseError[F2](h)
       }
     }
-  }
 
   /** Left fold which outputs all intermediate results.
     *
@@ -3675,7 +3672,6 @@ object Stream extends StreamLowPriority {
         left: Pipe[F, L, INothing],
         right: Pipe[F, R, INothing]
     )(implicit F: Concurrent[F], ev: O <:< Either[L, R]): Stream[F, Either[L, R]] = {
-      val _ = ev
       val src = self.asInstanceOf[Stream[F, Either[L, R]]]
       src
         .observe(_.collect { case Left(l) => l }.through(left))
@@ -4492,10 +4488,8 @@ object Stream extends StreamLowPriority {
       * res0: String = Hello world!
       * }}}
       */
-    def string(implicit ev: O <:< String): G[String] = {
-      val _ = ev
+    def string(implicit ev: O <:< String): G[String] =
       new Stream(underlying).asInstanceOf[Stream[F, String]].compile.to(Collector.string)
-    }
 
     /** Compiles this stream into a value of the target effect type `F` by collecting
       * all of the output values in a collection.
