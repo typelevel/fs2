@@ -41,7 +41,7 @@ import java.util.concurrent.Semaphore
   *
   * @param capacity the capacity of the allocated circular buffer
   */
-private[io] final class InputOutputBuffer(private[this] val capacity: Int) { self =>
+private[io] final class PipedStreamBuffer(private[this] val capacity: Int) { self =>
 
   private[this] val buffer: Array[Byte] = new Array(capacity)
 
