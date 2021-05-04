@@ -819,10 +819,10 @@ object Pull extends PullLowPriority {
           case r: Terminal[_] => r.asInstanceOf[Terminal[Unit]]
           case v: View[K, C, x] =>
             val mstep: Pull[K, D, x] = (v.step: Action[K, C, x]) match {
-              case o: Output[C] =>
+              case o: Output[_] =>
                 try Output(o.values.map(fun))
                 catch { case NonFatal(t) => Fail(t) }
-              case t: Translate[l, k, C] => // k= K
+              case t: Translate[l, k, _] => // k= K
                 Translate[l, k, D](innerMapOutput[l, C, D](t.stream, fun), t.fk)
               case s: Uncons[k, _]    => s
               case s: StepLeg[k, _]   => s
@@ -1129,10 +1129,10 @@ object Pull extends PullLowPriority {
                 endRunner.out(output.values, scope, view(unit))
               )
 
-            case fmout: FlatMapOutput[g, z, X] => // y = Unit
+            case fmout: FlatMapOutput[g, z, _] => // y = Unit
               goFlatMapOut[z](fmout, view.asInstanceOf[View[g, X, Unit]])
 
-            case tst: Translate[h, g, X] => // y = Unit
+            case tst: Translate[h, g, _] => // y = Unit
               val composed: h ~> F = translation.asInstanceOf[g ~> F].compose[h](tst.fk)
 
               val translateRunner: Run[h, X, F[End]] = new Run[h, X, F[End]] {
@@ -1168,10 +1168,10 @@ object Pull extends PullLowPriority {
               val result = Succeeded(scope.asInstanceOf[y])
               go(scope, extendedTopLevelScope, translation, endRunner, view(result))
 
-            case mout: MapOutput[g, z, X] => goMapOutput[z](mout, view)
+            case mout: MapOutput[g, z, _] => goMapOutput[z](mout, view)
             case eval: Eval[G, r]         => goEval[r](eval, view)
             case acquire: Acquire[G, y]   => goAcquire(acquire, view)
-            case inScope: InScope[g, X]   => goInScope(inScope.stream, inScope.useInterruption, view)
+            case inScope: InScope[g, _]   => goInScope(inScope.stream, inScope.useInterruption, view)
             case int: InterruptWhen[g]    => goInterruptWhen(translation(int.haltOnSignal), view)
             case close: CloseScope        => goCloseScope(close, view)
           }
