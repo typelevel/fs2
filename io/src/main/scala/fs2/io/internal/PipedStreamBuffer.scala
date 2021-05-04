@@ -161,12 +161,14 @@ private[io] final class PipedStreamBuffer(private[this] val capacity: Int) { sel
     }
 
     override def close(): Unit = self.synchronized {
-      closed = true
-      // Immediately notify the first registered reader/writer. The rest will
-      // be notified by the read/write mechanism which takes into account the
-      // state of the Input/OutputStream.
-      readerPermit.release()
-      writerPermit.release()
+      if (!closed) {
+        closed = true
+        // Immediately notify the first registered reader/writer. The rest will
+        // be notified by the read/write mechanism which takes into account the
+        // state of the Input/OutputStream.
+        readerPermit.release()
+        writerPermit.release()
+      }
     }
 
     override def available(): Int = self.synchronized {
@@ -266,12 +268,14 @@ private[io] final class PipedStreamBuffer(private[this] val capacity: Int) { sel
     }
 
     override def close(): Unit = self.synchronized {
-      closed = true
-      // Immediately notify the first registered reader/writer. The rest will
-      // be notified by the read/write mechanism which takes into account the
-      // state of the Input/OutputStream.
-      writerPermit.release()
-      readerPermit.release()
+      if (!closed) {
+        closed = true
+        // Immediately notify the first registered reader/writer. The rest will
+        // be notified by the read/write mechanism which takes into account the
+        // state of the Input/OutputStream.
+        writerPermit.release()
+        readerPermit.release()
+      }
     }
   }
 }
