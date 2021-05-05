@@ -149,7 +149,10 @@ private[io] final class PipedStreamBuffer(private[this] val capacity: Int) { sel
           }
         }
 
-        if (cont) {
+        // We need to be careful not to block the thread if the pipe has been
+        // closed, otherwise we risk a deadlock. When the pipe is closed, this
+        // reader will loop again and execute the correct logic.
+        if (!closed && cont) {
           // There is nothing to be read from the buffer at this moment.
           // Wait until notified by a writer.
           readerPermit.acquire()
@@ -262,7 +265,12 @@ private[io] final class PipedStreamBuffer(private[this] val capacity: Int) { sel
         }
 
         // The buffer is currently full. Wait until notified by a reader.
-        writerPermit.acquire()
+        // We need to be careful not to block the thread if the pipe has been
+        // closed, otherwise we risk a deadlock. When the pipe is closed, this
+        // writer will loop again and execute the correct logic.
+        if (!closed) {
+          writerPermit.acquire()
+        }
       }
     }
 
