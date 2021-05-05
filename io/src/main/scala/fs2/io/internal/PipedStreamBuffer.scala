@@ -22,7 +22,6 @@
 package fs2.io.internal
 
 import java.io.{InputStream, OutputStream}
-import java.util.concurrent.Semaphore
 
 /** Thread safe circular byte buffer which pipes a [[java.io.OutputStream]]
   * through a [[java.io.InputStream]] in a memory efficient manner, without
@@ -50,8 +49,8 @@ private[io] final class PipedStreamBuffer(private[this] val capacity: Int) { sel
 
   private[this] var closed: Boolean = false
 
-  private[this] val readerPermit: Semaphore = new Semaphore(1)
-  private[this] val writerPermit: Semaphore = new Semaphore(1)
+  private[this] val readerPermit: Synchronizer = new Synchronizer()
+  private[this] val writerPermit: Synchronizer = new Synchronizer()
 
   val inputStream: InputStream = new InputStream {
     def read(): Int = {
