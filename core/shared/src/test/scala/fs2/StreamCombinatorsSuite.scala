@@ -90,7 +90,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
         .assertEquals(input.compile.toVector)
     }
 
-    test("dampening".only) {
+    test("dampening") {
       val count = 10L
       val period = 10.millis
       Stream
