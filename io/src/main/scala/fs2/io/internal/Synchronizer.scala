@@ -23,18 +23,28 @@ package fs2.io.internal
 
 import java.util.concurrent.locks.AbstractQueuedSynchronizer
 
+/** An alternative implementation of [[java.util.concurrent.Semaphore]] which
+  * holds ''at most'' 1 permit. In the case that this synchronizer is not
+  * acquired, any calls to [[Synchronizer#release]] will ''not'' increase the
+  * permit count, i.e. this synchronizer can still only be acquired by a
+  * ''single'' thread calling [[Synchronizer#acquire]].
+  */
 private final class Synchronizer {
   private[this] val underlying = new AbstractQueuedSynchronizer {
+    // There is 1 available permit when the synchronizer is constructed.
     setState(1)
 
     override def tryAcquire(arg: Int): Boolean = compareAndSetState(1, 0)
 
     override def tryRelease(arg: Int): Boolean = {
+      // Unconditionally make 1 permit available for taking. This operation
+      // limits the available permits to at most 1 at any time.
       setState(1)
       true
     }
   }
 
+  @throws[InterruptedException]
   def acquire(): Unit = underlying.acquireInterruptibly(0)
 
   def release(): Unit = {
