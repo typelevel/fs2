@@ -3128,14 +3128,14 @@ object Stream extends StreamLowPriority {
         if (next > now)
           Stream.sleep(next - now) ++ fixedRate_(period, next, dampen)
         else {
-        val ticks = (now.toNanos - lastAwakeAt.toNanos - 1) / period.toNanos
-        val step =
-          ticks match {
-            case count if count < 0            => Stream.empty
-            case count if count == 0 || dampen => Stream.emit(())
-            case count                         => Stream.emit(()).repeatN(count)
-          }
-        step ++ fixedRate_(period, lastAwakeAt + (period * ticks), dampen)
+          val ticks = (now.toNanos - lastAwakeAt.toNanos - 1) / period.toNanos
+          val step =
+            ticks match {
+              case count if count < 0            => Stream.empty
+              case count if count == 0 || dampen => Stream.emit(())
+              case count                         => Stream.emit(()).repeatN(count)
+            }
+          step ++ fixedRate_(period, lastAwakeAt + (period * ticks), dampen)
         }
       }
 
@@ -4307,8 +4307,7 @@ object Stream extends StreamLowPriority {
       private val underlying: Pull[F, O, Unit]
   )(implicit compiler: Compiler[F, G]) {
 
-    /**
-      * Compiles this stream to a count of the elements in the target effect type `G`.
+    /** Compiles this stream to a count of the elements in the target effect type `G`.
       */
     def count: G[Long] = foldChunks(0L)((acc, chunk) => acc + chunk.size)
 
