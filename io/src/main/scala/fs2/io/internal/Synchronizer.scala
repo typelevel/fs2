@@ -21,12 +21,24 @@
 
 package fs2.io.internal
 
-import java.util.concurrent.Semaphore
+import java.util.concurrent.locks.AbstractQueuedSynchronizer
 
 private final class Synchronizer {
-  private[this] val underlying: Semaphore = new Semaphore(1)
+  private[this] val underlying = new AbstractQueuedSynchronizer {
+    setState(1)
 
-  def acquire(): Unit = underlying.acquire()
+    override def tryAcquire(arg: Int): Boolean = compareAndSetState(1, 0)
 
-  def release(): Unit = underlying.release()
+    override def tryRelease(arg: Int): Boolean = {
+      setState(1)
+      true
+    }
+  }
+
+  def acquire(): Unit = underlying.acquireInterruptibly(0)
+
+  def release(): Unit = {
+    underlying.release(0)
+    ()
+  }
 }
