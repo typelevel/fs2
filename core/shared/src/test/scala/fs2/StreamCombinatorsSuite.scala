@@ -89,6 +89,22 @@ class StreamCombinatorsSuite extends Fs2Suite {
         .toVector
         .assertEquals(input.compile.toVector)
     }
+
+    test("dampening".only) {
+      val count = 10L
+      val period = 10.millis
+      Stream
+        .awakeEvery[IO](period)
+        .take(count)
+        .mapAccumulate(0L)((acc, o) => (acc + 1, o))
+        .evalMap { case (i, o) => IO.sleep(if (i == 2) 5 * period else 0.seconds).as(o) }
+        .compile
+        .toVector
+        .map { v =>
+          val elapsed = v.last - v.head
+          assert(elapsed > count * period)
+        }
+    }
   }
 
   group("buffer") {
