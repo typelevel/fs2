@@ -22,8 +22,8 @@
 package fs2
 package concurrent
 
-import cats.effect._
-import cats.effect.implicits._
+import cats.effect.kernel._
+import cats.effect.kernel.implicits._
 import cats.syntax.all._
 
 /** Stream aware, multiple producer, single consumer closeable channel.
