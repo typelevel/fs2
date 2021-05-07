@@ -316,23 +316,36 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     def dumpBuffer(bb: ListBuffer[Chunk[O]], rest: => Pull[F, O, Unit]): Pull[F, O, Unit] =
       if (bb.isEmpty) rest else Pull.output(bb.head) >> dumpBuffer(bb.tail, rest)
 
+    type BB = (Vector[O], Boolean)
+
+    def processChunk(hd: Chunk[O], last: Boolean): (ListBuffer[Chunk[O]], Chunk[O], Boolean) = {
+      val out = ListBuffer.empty[Chunk[O]]
+      val initBB = (Vector.empty[O], last)
+
+      def stepBB(bb: BB, i: O): BB = {
+        val (buf, prev) = bb
+        val cur = f(i)
+        if (!cur && preva) {
+          out += Chunk.vector(buf :+ i)
+          (Vector.empty, cur)
+        } else (buf :+ i, cur)
+      }
+
+      val (buf, newLast) = hd.foldLeft(initBB)(stepBB)
+      val ch = Chunk.vector(buf)
+
+      (out, ch, newLast)
+    }
+
     def go(buffer: ListBuffer[Chunk[O]], last: Boolean, s: Stream[F, O]): Pull[F, O, Unit] =
       s.pull.uncons.flatMap {
         case Some((hd, tl)) =>
-          val out = ListBuffer.empty[Chunk[O]]
-          val (buf, newLast) =
-            hd.foldLeft((Vector.empty[O], last)) { case ((buf, last), i) =>
-              val cur = f(i)
-              if (!cur && last) {
-                out += Chunk.vector(buf :+ i)
-                (Vector.empty, cur)
-              } else (buf :+ i, cur)
-            }
+          val (out, ch, newLast) = processChunk(hd, last)
           if (out.isEmpty) {
-            buffer += Chunk.vector(buf)
+            buffer += ch
             go(buffer, newLast, tl)
           } else
-            dumpBuffer(buffer, dumpBuffer(out, go(ListBuffer(Chunk.vector(buf)), newLast, tl)))
+            dumpBuffer(buffer, dumpBuffer(out, go(ListBuffer(ch), newLast, tl)))
 
         case None => dumpBuffer(buffer, Pull.done)
       }
