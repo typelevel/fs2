@@ -195,7 +195,7 @@ object Watcher {
         .as {
           registrations.modify { s =>
             val filtered = s.filterNot(_ == r)
-            val cleanup = s.find(_ == r).map(_.cleanup).getOrElse(F.unit)
+            val cleanup = if (s.contains(r)) r.cleanup else F.unit
             val cancelKey =
               if (filtered.forall(_.key != r.key)) F.blocking(r.key.cancel) else F.unit
             filtered -> (cancelKey *> cleanup)
@@ -306,13 +306,11 @@ object Watcher {
         case ((key, events), registrations) =>
           val regs = registrations.filter(_.key == key)
           val filteredEvents = events.filter { e =>
-            regs.foldLeft(false) { (acc, reg) =>
-              acc || {
-                val singleFileMatch = reg.singleFile && Event.pathOf(e) == Some(reg.path)
-                val dirMatch =
-                  !reg.singleFile && !(e.isInstanceOf[Event.Created] && reg.suppressCreated)
-                singleFileMatch || dirMatch
-              }
+            regs.exists { reg =>
+              val singleFileMatch = reg.singleFile && Event.pathOf(e) == Some(reg.path)
+              val dirMatch =
+                !reg.singleFile && !(e.isInstanceOf[Event.Created] && reg.suppressCreated)
+              singleFileMatch || dirMatch
             }
           }
           val recurse: Stream[F, Event] =
@@ -338,11 +336,11 @@ object Watcher {
               val subregisters: F[List[Event]] =
                 created.traverse(watchIfDirectory).flatMap { x =>
                   val (cancels, events) = x.separate
-                  val cancelAll: F[Unit] = cancels.sequence.void
                   val updateRegistration: F[Unit] = this.registrations.update { m =>
-                    val idx = m.indexWhere(_.key == key) // TODO indexOf(_)
+                    val idx = m.indexWhere(_.key == key)
                     if (idx >= 0) {
                       val existing = m(idx)
+                      val cancelAll: F[Unit] = cancels.sequence.void
                       m.updated(idx, existing.copy(cleanup = existing.cleanup >> cancelAll))
                     } else m
                   }.void
