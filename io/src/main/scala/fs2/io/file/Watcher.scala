@@ -327,9 +327,9 @@ object Watcher {
                       regs.headOption.map(_.modifiers).getOrElse(Nil)
                     ).flatMap { cancel =>
                       val events: F[List[Event]] = F.blocking {
-                        var dirs: List[Path] = Nil
-                        Files.list(p).forEach(d => dirs = d :: dirs)
-                        dirs.map(Event.Created(_, 1))
+                        var evs: List[Event.Created] = Nil
+                        Files.list(p).forEach(d => evs = Event.Created(d, 1) :: evs)
+                        evs
                       }
                       events.map(cancel -> _)
                     },
