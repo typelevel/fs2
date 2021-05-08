@@ -21,6 +21,7 @@
 
 package fs2
 
+import scala.annotation.nowarn
 import scala.collection.immutable.ArraySeq
 import scala.collection.{immutable, mutable}
 import scala.reflect.ClassTag
@@ -30,6 +31,7 @@ import Arbitrary.arbitrary
 
 class ChunkPlatformSuite extends Fs2Suite {
 
+  @nowarn("cat=unused-params")
   private implicit def genArraySeq[A: Arbitrary: ClassTag]: Arbitrary[ArraySeq[A]] =
     Arbitrary(Gen.listOf(arbitrary[A]).map(ArraySeq.from))
   private implicit def genMutableArraySeq[A: Arbitrary: ClassTag]: Arbitrary[mutable.ArraySeq[A]] =

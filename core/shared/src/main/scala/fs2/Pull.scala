@@ -21,7 +21,7 @@
 
 package fs2
 
-import scala.annotation.tailrec
+import scala.annotation.{nowarn, tailrec}
 import scala.concurrent.duration.FiniteDuration
 import scala.util.control.NonFatal
 
@@ -328,6 +328,7 @@ object Pull extends PullLowPriority {
     * The `F` type must be explicitly provided (e.g., via `raiseError[IO]`
     * or `raiseError[Fallible]`).
     */
+  @nowarn("cat=unused-params")
   def raiseError[F[_]: RaiseThrowable](err: Throwable): Pull[F, INothing, INothing] = Fail(err)
 
   /** Creates a pull that evaluates the supplied effect `fr`, emits no
@@ -632,14 +633,14 @@ object Pull extends PullLowPriority {
     @tailrec
     def mk(free: Pull[F, O, Unit]): ViewL[F, O] =
       free match {
-        case r: Terminal[Unit]     => r
         case e: Action[F, O, Unit] => new EvalView[F, O](e)
         case b: Bind[F, O, y, Unit] =>
           b.step match {
+            case c: Bind[F, O, x, _] => mk(new BindBind[F, O, x, y](c, b.delegate))
             case e: Action[F, O, y2] => new BindView(e, b)
             case r: Terminal[_]      => mk(b.cont(r))
-            case c: Bind[F, O, x, _] => mk(new BindBind[F, O, x, y](c, b.delegate))
           }
+        case r: Terminal[Unit] => r
       }
 
     mk(stream)
@@ -819,10 +820,10 @@ object Pull extends PullLowPriority {
           case r: Terminal[_] => r.asInstanceOf[Terminal[Unit]]
           case v: View[K, C, x] =>
             val mstep: Pull[K, D, x] = (v.step: Action[K, C, x]) match {
-              case o: Output[C] =>
+              case o: Output[_] =>
                 try Output(o.values.map(fun))
                 catch { case NonFatal(t) => Fail(t) }
-              case t: Translate[l, k, C] => // k= K
+              case t: Translate[l, k, _] => // k= K
                 Translate[l, k, D](innerMapOutput[l, C, D](t.stream, fun), t.fk)
               case s: Uncons[k, _]    => s
               case s: StepLeg[k, _]   => s
@@ -956,7 +957,7 @@ object Pull extends PullLowPriority {
         def out(head: Chunk[Y], outScope: Scope[F], tail: Pull[G, Y, Unit]): F[End] = {
           val fmoc = unconsed(head, tail)
           val next = outView match {
-            case ev: EvalView[G, X] => fmoc
+            case _: EvalView[G, X] => fmoc
             case bv: BindView[G, X, Unit] =>
               val del = bv.b.asInstanceOf[Bind[G, X, Unit, Unit]].delegate
               new Bind[G, X, Unit, Unit](fmoc) {
@@ -1129,10 +1130,10 @@ object Pull extends PullLowPriority {
                 endRunner.out(output.values, scope, view(unit))
               )
 
-            case fmout: FlatMapOutput[g, z, X] => // y = Unit
+            case fmout: FlatMapOutput[g, z, _] => // y = Unit
               goFlatMapOut[z](fmout, view.asInstanceOf[View[g, X, Unit]])
 
-            case tst: Translate[h, g, X] => // y = Unit
+            case tst: Translate[h, g, _] => // y = Unit
               val composed: h ~> F = translation.asInstanceOf[g ~> F].compose[h](tst.fk)
 
               val translateRunner: Run[h, X, F[End]] = new Run[h, X, F[End]] {
@@ -1168,10 +1169,10 @@ object Pull extends PullLowPriority {
               val result = Succeeded(scope.asInstanceOf[y])
               go(scope, extendedTopLevelScope, translation, endRunner, view(result))
 
-            case mout: MapOutput[g, z, X] => goMapOutput[z](mout, view)
+            case mout: MapOutput[g, z, _] => goMapOutput[z](mout, view)
             case eval: Eval[G, r]         => goEval[r](eval, view)
             case acquire: Acquire[G, y]   => goAcquire(acquire, view)
-            case inScope: InScope[g, X]   => goInScope(inScope.stream, inScope.useInterruption, view)
+            case inScope: InScope[g, _]   => goInScope(inScope.stream, inScope.useInterruption, view)
             case int: InterruptWhen[g]    => goInterruptWhen(translation(int.haltOnSignal), view)
             case close: CloseScope        => goCloseScope(close, view)
           }
@@ -1242,8 +1243,8 @@ object Pull extends PullLowPriority {
       f: O => Pull[F2, O2, Unit]
   ): Pull[F2, O2, Unit] =
     p match {
-      case r: Terminal[_]        => r
       case a: AlgEffect[F, Unit] => a
+      case r: Terminal[_]        => r
       case _                     => FlatMapOutput(p, f)
     }
 
@@ -1252,11 +1253,11 @@ object Pull extends PullLowPriority {
       fK: F ~> G
   ): Pull[G, O, Unit] =
     stream match {
-      case r: Terminal[_] => r
       case t: Translate[e, f, _] =>
         translate[e, G, O](t.stream, t.fk.andThen(fK.asInstanceOf[f ~> G]))
-      case o: Output[_] => o
-      case _            => Translate(stream, fK)
+      case o: Output[_]   => o
+      case r: Terminal[_] => r
+      case _              => Translate(stream, fK)
     }
 
   /* Applies the outputs of this pull to `f` and returns the result in a new `Pull`. */
@@ -1265,10 +1266,10 @@ object Pull extends PullLowPriority {
       fun: O => P
   ): Pull[F, P, Unit] =
     stream match {
-      case r: Terminal[_]        => r
       case a: AlgEffect[F, _]    => a
       case t: Translate[g, f, _] => Translate[g, f, P](mapOutput(t.stream, fun), t.fk)
       case m: MapOutput[f, q, o] => MapOutput(m.stream, m.fun.andThen(fun))
+      case r: Terminal[_]        => r
       case _                     => MapOutput(stream, AndThen(fun))
     }
 

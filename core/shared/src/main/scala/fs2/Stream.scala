@@ -21,7 +21,7 @@
 
 package fs2
 
-import scala.annotation.tailrec
+import scala.annotation.{nowarn, tailrec}
 import scala.concurrent.TimeoutException
 import scala.concurrent.duration._
 
@@ -222,7 +222,8 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     */
   def broadcastThrough[F2[x] >: F[x]: Concurrent, O2](
       pipes: Pipe[F2, O, O2]*
-  ): Stream[F2, O2] =
+  ): Stream[F2, O2] = {
+    assert(pipes.nonEmpty, s"pipes should not be empty")
     Stream
       .eval {
         (
@@ -250,6 +251,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
           .parJoinUnbounded
           .concurrently(Stream.eval(latch.await) ++ produce)
       }
+  }
 
   /** Behaves like the identity function, but requests `n` elements at a time from the input.
     *
@@ -1119,12 +1121,11 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * res0: List[Int] = List(1, 2, 2, 3, 3, 3)
     * }}}
     */
+  @nowarn("cat=unused-params")
   def flatMap[F2[x] >: F[x], O2](
       f: O => Stream[F2, O2]
-  )(implicit ev: NotGiven[O <:< Nothing]): Stream[F2, O2] = {
-    val _ = ev
+  )(implicit ev: NotGiven[O <:< Nothing]): Stream[F2, O2] =
     new Stream(Pull.flatMapOutput[F, F2, O, O2](underlying, (o: O) => f(o).underlying))
-  }
 
   /** Alias for `flatMap(_ => s2)`. */
   def >>[F2[x] >: F[x], O2](
@@ -2250,8 +2251,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   def rethrow[F2[x] >: F[x], O2](implicit
       ev: O <:< Either[Throwable, O2],
       rt: RaiseThrowable[F2]
-  ): Stream[F2, O2] = {
-    val _ = ev // Convince scalac that ev is used
+  ): Stream[F2, O2] =
     this.asInstanceOf[Stream[F, Either[Throwable, O2]]].chunks.flatMap { c =>
       val firstError = c.collectFirst { case Left(err) => err }
       firstError match {
@@ -2259,7 +2259,6 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
         case Some(h) => Stream.raiseError[F2](h)
       }
     }
-  }
 
   /** Left fold which outputs all intermediate results.
     *
@@ -3126,16 +3125,18 @@ object Stream extends StreamLowPriority {
     else
       Stream.eval(Temporal[F].monotonic).flatMap { now =>
         val next = lastAwakeAt + period
-        val step =
-          if (next > now) Stream.sleep(next - now)
-          else {
-            (now.toNanos - lastAwakeAt.toNanos - 1) / period.toNanos match {
+        if (next > now)
+          Stream.sleep(next - now) ++ fixedRate_(period, next, dampen)
+        else {
+          val ticks = (now.toNanos - lastAwakeAt.toNanos - 1) / period.toNanos
+          val step =
+            ticks match {
               case count if count < 0            => Stream.empty
               case count if count == 0 || dampen => Stream.emit(())
               case count                         => Stream.emit(()).repeatN(count)
             }
-          }
-        step ++ fixedRate_(period, next, dampen)
+          step ++ fixedRate_(period, lastAwakeAt + (period * ticks), dampen)
+        }
       }
 
   private[fs2] final class PartiallyAppliedFromOption[F[_]](
@@ -3673,7 +3674,6 @@ object Stream extends StreamLowPriority {
         left: Pipe[F, L, INothing],
         right: Pipe[F, R, INothing]
     )(implicit F: Concurrent[F], ev: O <:< Either[L, R]): Stream[F, Either[L, R]] = {
-      val _ = ev
       val src = self.asInstanceOf[Stream[F, Either[L, R]]]
       src
         .observe(_.collect { case Left(l) => l }.through(left))
@@ -4307,7 +4307,11 @@ object Stream extends StreamLowPriority {
       private val underlying: Pull[F, O, Unit]
   )(implicit compiler: Compiler[F, G]) {
 
-    /** Compiles this stream in to a value of the target effect type `F` and
+    /** Compiles this stream to a count of the elements in the target effect type `G`.
+      */
+    def count: G[Long] = foldChunks(0L)((acc, chunk) => acc + chunk.size)
+
+    /** Compiles this stream in to a value of the target effect type `G` and
       * discards any output values of the stream.
       *
       * To access the output values of the stream, use one of the other compilation methods --
@@ -4315,14 +4319,14 @@ object Stream extends StreamLowPriority {
       */
     def drain: G[Unit] = foldChunks(())((_, _) => ())
 
-    /** Compiles this stream in to a value of the target effect type `F` by folding
+    /** Compiles this stream in to a value of the target effect type `G` by folding
       * the output values together, starting with the provided `init` and combining the
       * current value with each output value.
       */
     def fold[B](init: B)(f: (B, O) => B): G[B] =
       foldChunks(init)((acc, c) => c.foldLeft(acc)(f))
 
-    /** Compiles this stream in to a value of the target effect type `F` by folding
+    /** Compiles this stream in to a value of the target effect type `G` by folding
       * the output chunks together, starting with the provided `init` and combining the
       * current value with each output chunk.
       *
@@ -4357,7 +4361,7 @@ object Stream extends StreamLowPriority {
     def foldSemigroup(implicit O: Semigroup[O]): G[Option[O]] =
       fold(Option.empty[O])((acc, o) => acc.map(O.combine(_, o)).orElse(Some(o)))
 
-    /** Compiles this stream in to a value of the target effect type `F`,
+    /** Compiles this stream in to a value of the target effect type `G`,
       * returning `None` if the stream emitted no values and returning the
       * last value emitted wrapped in `Some` if values were emitted.
       *
@@ -4373,7 +4377,7 @@ object Stream extends StreamLowPriority {
     def last: G[Option[O]] =
       foldChunks(Option.empty[O])((acc, c) => c.last.orElse(acc))
 
-    /** Compiles this stream in to a value of the target effect type `F`,
+    /** Compiles this stream in to a value of the target effect type `G`,
       * raising a `NoSuchElementException` if the stream emitted no values
       * and returning the last value emitted otherwise.
       *
@@ -4392,7 +4396,7 @@ object Stream extends StreamLowPriority {
       last.flatMap(_.fold(G.raiseError(new NoSuchElementException): G[O])(G.pure))
 
     /** Gives access to the whole compilation api, where the result is
-      * expressed as a `cats.effect.Resource`, instead of bare `F`.
+      * expressed as a `cats.effect.Resource`, instead of bare `G`.
       *
       * {{{
       *  import fs2._
@@ -4490,12 +4494,10 @@ object Stream extends StreamLowPriority {
       * res0: String = Hello world!
       * }}}
       */
-    def string(implicit ev: O <:< String): G[String] = {
-      val _ = ev
+    def string(implicit ev: O <:< String): G[String] =
       new Stream(underlying).asInstanceOf[Stream[F, String]].compile.to(Collector.string)
-    }
 
-    /** Compiles this stream into a value of the target effect type `F` by collecting
+    /** Compiles this stream into a value of the target effect type `G` by collecting
       * all of the output values in a collection.
       *
       * Collection building is done via an explicitly passed `Collector`.
@@ -4530,7 +4532,7 @@ object Stream extends StreamLowPriority {
       } yield builder.result
     }
 
-    /** Compiles this stream in to a value of the target effect type `F` by logging
+    /** Compiles this stream in to a value of the target effect type `G` by logging
       * the output values to a `List`. Equivalent to `to[List]`.
       *
       * When this method has returned, the stream has not begun execution -- this method simply
@@ -4544,7 +4546,7 @@ object Stream extends StreamLowPriority {
       */
     def toList: G[List[O]] = to(List)
 
-    /** Compiles this stream in to a value of the target effect type `F` by logging
+    /** Compiles this stream in to a value of the target effect type `G` by logging
       * the output values to a `Vector`. Equivalent to `to[Vector]`.
       *
       * When this method has returned, the stream has not begun execution -- this method simply

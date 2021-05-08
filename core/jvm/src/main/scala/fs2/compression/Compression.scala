@@ -779,7 +779,7 @@ object Compression {
     ): Stream[F, Byte] => Stream[F, (Option[String], Stream[F, Byte])] =
       stream =>
         if (isPresent)
-          unconsUntil[F, Byte](_ == zeroByte, fieldBytesSoftLimit)
+          unconsUntil[Byte](_ == zeroByte, fieldBytesSoftLimit)
             .apply(stream)
             .flatMap {
               case Some((chunk, rest)) =>
@@ -896,7 +896,7 @@ object Compression {
       *
       * `Pull.pure(None)` is returned if the end of the source stream is reached.
       */
-    private def unconsUntil[F[_], O: ClassTag](
+    private def unconsUntil[O: ClassTag](
         predicate: O => Boolean,
         softLimit: Int
     ): Stream[F, O] => Pull[F, INothing, Option[(Chunk[O], Stream[F, O])]] =
