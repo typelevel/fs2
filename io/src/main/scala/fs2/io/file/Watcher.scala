@@ -316,7 +316,7 @@ object Watcher {
             }
           }
           val recurse: Stream[F, Event] =
-            if (regs.map(_.recurse).foldLeft(false)(_ || _)) {
+            if (regs.exists(_.recurse)) {
               val created = events.collect { case Event.Created(p, _) => p }
               def watchIfDirectory(p: Path): F[(F[Unit], List[Event])] =
                 F.blocking(Files.isDirectory(p))
