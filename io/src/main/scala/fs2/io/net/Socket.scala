@@ -154,7 +154,8 @@ object Socket {
       ch: AsynchronousSocketChannel,
       readSemaphore: Semaphore[F],
       writeSemaphore: Semaphore[F]
-  )(implicit F: Async[F]) extends Socket.BufferedReads[F](readSemaphore) {
+  )(implicit F: Async[F])
+      extends Socket.BufferedReads[F](readSemaphore) {
     protected def readChunk(buffer: ByteBuffer): F[Int] =
       F.async_[Int] { cb =>
         ch.read(
