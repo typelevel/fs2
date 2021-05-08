@@ -414,11 +414,17 @@ object Pull extends PullLowPriority {
   /** Repeatedly uses the output of the pull as input for the next step of the
     * pull. Halts when a step terminates with `None` or `Pull.raiseError`.
     */
-  def loop[F[_], O, R](f: R => Pull[F, O, Option[R]]): R => Pull[F, O, Unit] = {
-    val ef = (r: R) => f(r).map(_.fold(().asRight[R])(_.asLeft))
-    loopEither(ef)
-  }
+  def loop[F[_], O, R](f: R => Pull[F, O, Option[R]]): R => Pull[F, O, Unit] =
+    (r: R) =>
+      f(r).flatMap {
+        case None    => Pull.done
+        case Some(s) => loop(f)(s)
+      }
 
+  /** Intantiates with a state. Repeatedly uses the left value of the result of
+    * the pull as input for the next step. The Pull terminates when a step terminates with
+    * `Right` or `Pull.raiseError`.
+    */
   def loopEither[F[_], O, S, R](f: S => Pull[F, O, Either[S, R]]): S => Pull[F, O, R] =
     (s: S) =>
       f(s).flatMap {
