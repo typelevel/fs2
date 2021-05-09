@@ -22,10 +22,12 @@ trait UnixSockets[F[_]] {
   /** Listens to the specified path for connections and emits a `Socket` for each connection.
     *
     * Note: the path referred to by `address` must not exist or otherwise binding will fail
-    * indicating the address is already in use. To force binding in such a case, pass `force = true`,
+    * indicating the address is already in use. To force binding in such a case, pass `deleteIfExists = true`,
     * which will first delete the path.
+    * 
+    * By default, the path is deleted when the server closes. To override this, pass `deleteOnClose = false`.
     */
-  def server(address: UnixSocketAddress, force: Boolean = false): Stream[F, Socket[F]]
+  def server(address: UnixSocketAddress, deleteIfExists: Boolean = false, deleteOnClose: Boolean = true): Stream[F, Socket[F]]
 }
 
 object UnixSockets {
@@ -41,9 +43,9 @@ object UnixSockets {
         .eval(F.delay(UnixSocketChannel.open(address.toJnr)))
         .flatMap(makeSocket[F](_))
 
-    def server(address: UnixSocketAddress, force: Boolean): Stream[F, Socket[F]] = {
+    def server(address: UnixSocketAddress, deleteIfExists: Boolean, deleteOnClose: Boolean): Stream[F, Socket[F]] = {
       def setup =
-        Files[F].deleteIfExists(Paths.get(address.path)).whenA(force) *>
+        Files[F].deleteIfExists(Paths.get(address.path)).whenA(deleteIfExists) *>
           F.blocking {
             val serverChannel = UnixServerSocketChannel.open()
             serverChannel.configureBlocking(false)
@@ -53,7 +55,8 @@ object UnixSockets {
           }
 
       def cleanup(sch: UnixServerSocketChannel): F[Unit] =
-        F.blocking(sch.close())
+        F.blocking(sch.close()) *>
+          Files[F].deleteIfExists(Paths.get(address.path)).whenA(deleteOnClose)
 
       def acceptIncoming(sch: UnixServerSocketChannel): Stream[F, Socket[F]] = {
         def go: Stream[F, Socket[F]] = {

@@ -11,7 +11,7 @@ class UnixSocketsSuite extends Fs2Suite {
     val address = UnixSocketAddress("fs2-unix-sockets-test.sock")
 
     val server = UnixSockets[IO]
-      .server(address, force = true)
+      .server(address)
       .map { client =>
         client.reads.through(client.writes)
       }
