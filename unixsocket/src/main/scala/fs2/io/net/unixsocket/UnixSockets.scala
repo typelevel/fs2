@@ -24,10 +24,14 @@ trait UnixSockets[F[_]] {
     * Note: the path referred to by `address` must not exist or otherwise binding will fail
     * indicating the address is already in use. To force binding in such a case, pass `deleteIfExists = true`,
     * which will first delete the path.
-    * 
+    *
     * By default, the path is deleted when the server closes. To override this, pass `deleteOnClose = false`.
     */
-  def server(address: UnixSocketAddress, deleteIfExists: Boolean = false, deleteOnClose: Boolean = true): Stream[F, Socket[F]]
+  def server(
+      address: UnixSocketAddress,
+      deleteIfExists: Boolean = false,
+      deleteOnClose: Boolean = true
+  ): Stream[F, Socket[F]]
 }
 
 object UnixSockets {
@@ -43,7 +47,11 @@ object UnixSockets {
         .eval(F.delay(UnixSocketChannel.open(address.toJnr)))
         .flatMap(makeSocket[F](_))
 
-    def server(address: UnixSocketAddress, deleteIfExists: Boolean, deleteOnClose: Boolean): Stream[F, Socket[F]] = {
+    def server(
+        address: UnixSocketAddress,
+        deleteIfExists: Boolean,
+        deleteOnClose: Boolean
+    ): Stream[F, Socket[F]] = {
       def setup =
         Files[F].deleteIfExists(Paths.get(address.path)).whenA(deleteIfExists) *>
           F.blocking {
