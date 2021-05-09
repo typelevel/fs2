@@ -86,7 +86,7 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
 lazy val root = project
   .in(file("."))
   .enablePlugins(NoPublishPlugin, SonatypeCiReleasePlugin)
-  .aggregate(coreJVM, coreJS, io, reactiveStreams, unixSocket, benchmark)
+  .aggregate(coreJVM, coreJS, io, reactiveStreams, unixsocket, benchmark)
 
 lazy val IntegrationTest = config("it").extend(Test)
 
@@ -202,7 +202,7 @@ lazy val reactiveStreams = project
   )
   .dependsOn(coreJVM % "compile->compile;test->test")
 
-lazy val unixSocket = project
+lazy val unixsocket = project
   .in(file("unixsocket"))
   .enablePlugins(SbtOsgi)
   .disablePlugins(MimaPlugin) // Reenable after a release
@@ -212,7 +212,7 @@ lazy val unixSocket = project
     libraryDependencies ++= Seq(
       "com.github.jnr" % "jnr-unixsocket" % "0.33"
     ),
-    OsgiKeys.exportPackage := Seq("fs2.io.unixsocket"),
+    OsgiKeys.exportPackage := Seq("fs2.io.net.unixsocket"),
     OsgiKeys.privatePackage := Seq(),
     OsgiKeys.importPackage := {
       val Some((major, minor)) = CrossVersion.partialVersion(scalaVersion.value)
@@ -225,7 +225,7 @@ lazy val unixSocket = project
     OsgiKeys.additionalHeaders := Map("-removeheaders" -> "Include-Resource,Private-Package"),
     osgiSettings
   )
-  .dependsOn(io)
+  .dependsOn(io, coreJVM % "compile->compile;test->test")
 
 lazy val benchmark = project
   .in(file("benchmark"))

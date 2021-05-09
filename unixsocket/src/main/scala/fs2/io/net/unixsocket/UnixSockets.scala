@@ -43,7 +43,7 @@ object UnixSockets {
 
     def server(address: UnixSocketAddress, force: Boolean): Stream[F, Socket[F]] = {
       def setup =
-        Files[F].delete(Paths.get(address.path)).whenA(force) *>
+        Files[F].deleteIfExists(Paths.get(address.path)).whenA(force) *>
           F.blocking {
             val serverChannel = UnixServerSocketChannel.open()
             serverChannel.configureBlocking(false)
