@@ -3,6 +3,7 @@ package fs2.io.net.unixsocket
 import cats.effect.kernel.{Async, Resource}
 import cats.effect.std.Semaphore
 import cats.syntax.all._
+import com.comcast.ip4s.{IpAddress, SocketAddress}
 import fs2.{Chunk, Stream}
 import fs2.io.file.Files
 import fs2.io.net.Socket
@@ -11,12 +12,20 @@ import java.nio.file.{Path, Paths}
 import jnr.unixsocket.UnixServerSocketChannel
 import jnr.unixsocket.impl.AbstractNativeSocketChannel
 
+/** Capability of workings with AF_UNIX sockets. */
 trait UnixSockets[F[_]] {
 
+  /** Returns a resource which opens a unix socket to the specified path.
+    */
   def client(address: UnixSocketAddress): Resource[F, Socket[F]]
 
-  def server(address: UnixSocketAddress): Stream[F, Socket[F]]
-
+  /** Listens to the specified path for connections and emits a `Socket` for each connection.
+    *
+    * Note: the path referred to by `address` must not exist or otherwise binding will fail
+    * indicating the address is already in use. To force binding in such a case, pass `force = true`,
+    * which will first delete the path.
+    */
+  def server(address: UnixSocketAddress, force: Boolean = false): Stream[F, Socket[F]]
 }
 
 object UnixSockets {
@@ -32,15 +41,9 @@ object UnixSockets {
         .eval(F.delay(UnixSocketChannel.open(address.toJnr)))
         .flatMap(makeSocket[F](_))
 
-    def server(address: UnixSocketAddress): Stream[F, Socket[F]] = {
-      def setup = Files[F]
-        .exists(Paths.get(address.path))
-        .ifM(
-          F.raiseError(
-            new RuntimeException(
-              "Socket Location Already Exists, Server cannot create Socket Location when location already exists."
-            )
-          ),
+    def server(address: UnixSocketAddress, force: Boolean): Stream[F, Socket[F]] = {
+      def setup =
+        Files[F].delete(Paths.get(address.path)).whenA(force) *>
           F.blocking {
             val serverChannel = UnixServerSocketChannel.open()
             serverChannel.configureBlocking(false)
@@ -48,13 +51,9 @@ object UnixSockets {
             sock.bind(address.toJnr)
             serverChannel
           }
-        )
 
       def cleanup(sch: UnixServerSocketChannel): F[Unit] =
-        F.blocking {
-          if (sch.isOpen) sch.close()
-          if (sch.isRegistered()) println("Server Still Registered")
-        }
+        F.blocking(sch.close())
 
       def acceptIncoming(sch: UnixServerSocketChannel): Stream[F, Socket[F]] = {
         def go: Stream[F, Socket[F]] = {
@@ -107,23 +106,10 @@ object UnixSockets {
       }
     }
 
-    // TODO move
-    import com.comcast.ip4s.{IpAddress => IpAddress4s, SocketAddress => SocketAddress4s}
-    import java.net.InetSocketAddress
-    def localAddress: F[SocketAddress4s[IpAddress4s]] =
-      F.blocking {
-        // TODO this is always? null
-        SocketAddress4s.fromInetSocketAddress(
-          ch.getLocalAddress.asInstanceOf[InetSocketAddress]
-        )
-      }
-    def remoteAddress: F[SocketAddress4s[IpAddress4s]] =
-      F.blocking {
-        // TODO this throws class cast exception
-        SocketAddress4s.fromInetSocketAddress(
-          ch.getRemoteAddress.asInstanceOf[InetSocketAddress]
-        )
-      }
+    def localAddress: F[SocketAddress[IpAddress]] = raiseIpAddressError
+    def remoteAddress: F[SocketAddress[IpAddress]] = raiseIpAddressError
+    private def raiseIpAddressError[A]: F[A] =
+      F.raiseError(new UnsupportedOperationException("UnixSockets do not use IP addressing"))
 
     def isOpen: F[Boolean] = F.blocking(ch.isOpen)
     def close: F[Unit] = F.blocking(ch.close())
