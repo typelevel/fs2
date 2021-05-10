@@ -32,7 +32,7 @@ import java.nio.ByteBuffer
 import java.nio.channels.SocketChannel
 import java.nio.file.Paths
 
-/** Capability of workings with AF_UNIX sockets. */
+/** Capability of working with AF_UNIX sockets. */
 trait UnixSockets[F[_]] {
 
   /** Returns a resource which opens a unix socket to the specified path.
