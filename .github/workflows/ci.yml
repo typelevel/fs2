@@ -27,7 +27,7 @@ jobs:
       matrix:
         os: [ubuntu-latest]
         scala: [3.0.0-RC2, 3.0.0-RC3, 2.12.13, 2.13.5]
-        java: [adopt@1.11]
+        java: [adopt@1.16]
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout current branch (full)
@@ -77,7 +77,7 @@ jobs:
       matrix:
         os: [ubuntu-latest]
         scala: [2.13.5]
-        java: [adopt@1.11]
+        java: [adopt@1.16]
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout current branch (full)
@@ -155,7 +155,7 @@ jobs:
       matrix:
         os: [ubuntu-latest]
         scala: [2.13.5]
-        java: [adopt@1.11]
+        java: [adopt@1.16]
     runs-on: ${{ matrix.os }}
     steps:
       - name: Download target directories (3.0.0-RC2)

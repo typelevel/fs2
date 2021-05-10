@@ -21,12 +21,34 @@
 
 package fs2.io.net.unixsocket
 
-import java.io.File
-import java.nio.file.Path
+import cats.effect.kernel.Async
+import jnr.unixsocket.{
+  UnixServerSocketChannel,
+  UnixSocketChannel,
+  UnixSocketAddress => JnrUnixSocketAddress
+}
 
-case class UnixSocketAddress(path: String)
+object JnrUnixSockets {
 
-object UnixSocketAddress {
-  def apply(path: Path): UnixSocketAddress = apply(path.toFile())
-  def apply(path: File): UnixSocketAddress = apply(path.getPath())
+  lazy val supported: Boolean =
+    try {
+      Class.forName("jnr.unixsocket.UnixSocketChannel")
+      true
+    } catch {
+      case _: ClassNotFoundException => false
+    }
+
+  implicit def forAsync[F[_]](implicit F: Async[F]): UnixSockets[F] =
+    new UnixSockets.AsyncUnixSockets[F] {
+      protected def openChannel(address: UnixSocketAddress) =
+        F.delay(UnixSocketChannel.open(new JnrUnixSocketAddress(address.path)))
+
+      protected def openServerChannel(address: UnixSocketAddress) = F.blocking {
+        val serverChannel = UnixServerSocketChannel.open()
+        serverChannel.configureBlocking(false)
+        val sock = serverChannel.socket()
+        sock.bind(new JnrUnixSocketAddress(address.path))
+        (F.blocking(serverChannel.accept()), F.blocking(serverChannel.close()))
+      }
+    }
 }

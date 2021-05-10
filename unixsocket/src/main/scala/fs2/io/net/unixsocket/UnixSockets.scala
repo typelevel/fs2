@@ -1,3 +1,24 @@
+/*
+ * Copyright (c) 2013 Functional Streams for Scala
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of
+ * this software and associated documentation files (the "Software"), to deal in
+ * the Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+ * the Software, and to permit persons to whom the Software is furnished to do so,
+ * subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+ * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+ * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+ * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+
 package fs2.io.net.unixsocket
 
 import cats.effect.kernel.{Async, Resource}
@@ -8,9 +29,8 @@ import fs2.{Chunk, Stream}
 import fs2.io.file.Files
 import fs2.io.net.Socket
 import java.nio.ByteBuffer
-import java.nio.file.{Path, Paths}
-import jnr.unixsocket.UnixServerSocketChannel
-import jnr.unixsocket.impl.AbstractNativeSocketChannel
+import java.nio.channels.SocketChannel
+import java.nio.file.Paths
 
 /** Capability of workings with AF_UNIX sockets. */
 trait UnixSockets[F[_]] {
@@ -35,16 +55,24 @@ trait UnixSockets[F[_]] {
 }
 
 object UnixSockets {
-
   def apply[F[_]](implicit F: UnixSockets[F]): UnixSockets[F] = F
 
-  implicit def forAsync[F[_]](implicit F: Async[F]): UnixSockets[F] = new UnixSockets[F] {
+  implicit def forAsync[F[_]](implicit F: Async[F]): UnixSockets[F] =
+    if (JdkUnixSockets.supported) JdkUnixSockets.forAsync
+    else if (JnrUnixSockets.supported) JnrUnixSockets.forAsync
+    else
+      throw new UnsupportedOperationException(
+        """Must either run on JDK 16+ or have "com.github.jnr" % "jnr-unixsocket" % <version> on the classpath"""
+      )
 
-    import jnr.unixsocket.UnixSocketChannel
+  private[unixsocket] abstract class AsyncUnixSockets[F[_]](implicit F: Async[F])
+      extends UnixSockets[F] {
+    protected def openChannel(address: UnixSocketAddress): F[SocketChannel]
+    protected def openServerChannel(address: UnixSocketAddress): F[(F[SocketChannel], F[Unit])]
 
     def client(address: UnixSocketAddress): Resource[F, Socket[F]] =
       Resource
-        .eval(F.delay(UnixSocketChannel.open(address.toJnr)))
+        .eval(openChannel(address))
         .flatMap(makeSocket[F](_))
 
     def server(
@@ -54,23 +82,16 @@ object UnixSockets {
     ): Stream[F, Socket[F]] = {
       def setup =
         Files[F].deleteIfExists(Paths.get(address.path)).whenA(deleteIfExists) *>
-          F.blocking {
-            val serverChannel = UnixServerSocketChannel.open()
-            serverChannel.configureBlocking(false)
-            val sock = serverChannel.socket()
-            sock.bind(address.toJnr)
-            serverChannel
-          }
+          openServerChannel(address)
 
-      def cleanup(sch: UnixServerSocketChannel): F[Unit] =
-        F.blocking(sch.close()) *>
+      def cleanup(closeChannel: F[Unit]): F[Unit] =
+        closeChannel *>
           Files[F].deleteIfExists(Paths.get(address.path)).whenA(deleteOnClose)
 
-      def acceptIncoming(sch: UnixServerSocketChannel): Stream[F, Socket[F]] = {
+      def acceptIncoming(accept: F[SocketChannel]): Stream[F, Socket[F]] = {
         def go: Stream[F, Socket[F]] = {
-          def acceptChannel: F[UnixSocketChannel] =
-            F.blocking {
-              val ch = sch.accept()
+          def acceptChannel: F[SocketChannel] =
+            accept.map { ch =>
               ch.configureBlocking(false)
               ch
             }
@@ -83,12 +104,14 @@ object UnixSockets {
         go
       }
 
-      Stream.resource(Resource.make(setup)(cleanup)).flatMap(acceptIncoming)
+      Stream
+        .resource(Resource.make(setup) { case (_, closeChannel) => cleanup(closeChannel) })
+        .flatMap { case (accept, _) => acceptIncoming(accept) }
     }
   }
 
   private def makeSocket[F[_]: Async](
-      ch: AbstractNativeSocketChannel
+      ch: SocketChannel
   ): Resource[F, Socket[F]] =
     Resource.make {
       (Semaphore[F](1), Semaphore[F](1)).mapN { (readSemaphore, writeSemaphore) =>
@@ -97,7 +120,7 @@ object UnixSockets {
     }(_ => Async[F].delay(if (ch.isOpen) ch.close else ()))
 
   private final class AsyncSocket[F[_]](
-      ch: AbstractNativeSocketChannel,
+      ch: SocketChannel,
       readSemaphore: Semaphore[F],
       writeSemaphore: Semaphore[F]
   )(implicit F: Async[F])

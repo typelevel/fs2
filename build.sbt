@@ -21,7 +21,7 @@ ThisBuild / startYear := Some(2013)
 
 ThisBuild / crossScalaVersions := Seq("3.0.0-RC2", "3.0.0-RC3", "2.12.13", "2.13.5")
 
-ThisBuild / githubWorkflowJavaVersions := Seq("adopt@1.11")
+ThisBuild / githubWorkflowJavaVersions := Seq("adopt@1.16")
 
 ThisBuild / spiewakCiReleaseSnapshots := true
 
@@ -205,12 +205,12 @@ lazy val reactiveStreams = project
 lazy val unixsocket = project
   .in(file("unixsocket"))
   .enablePlugins(SbtOsgi)
-  .disablePlugins(MimaPlugin) // Reenable after a release
+  // .disablePlugins(MimaPlugin) // Reenable after a release
   .settings(
     name := "fs2-unixsocket",
     Test / fork := true,
     libraryDependencies ++= Seq(
-      "com.github.jnr" % "jnr-unixsocket" % "0.33"
+      "com.github.jnr" % "jnr-unixsocket" % "0.33" % Optional
     ),
     OsgiKeys.exportPackage := Seq("fs2.io.net.unixsocket"),
     OsgiKeys.privatePackage := Seq(),
