@@ -1026,7 +1026,6 @@ class StreamCombinatorsSuite extends Fs2Suite {
       .compile
       .toList
       .map(results => assert(results.isEmpty))
-      .unsafeRunAndForget()
   }
 
   test("meteredStartImmediately should start immediately") {
