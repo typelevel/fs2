@@ -50,4 +50,61 @@ class PullSuite extends Fs2Suite {
       }
     }
   }
+
+  property("loop") {
+    forAll { (list: List[Int]) =>
+      def customOutput(s: List[Int]): Pull[Pure, Int, Option[List[Int]]] =
+        s match {
+          case head :: tail => Pull.output1(head).as(Some(tail))
+          case Nil          => Pull.pure(None)
+        }
+
+      val result = Pull.loop(customOutput)(list).stream.compile.toList
+
+      assertEquals(result, list)
+    }
+  }
+
+  test("loop is stack safe") {
+    val stackUnsafeSize = if (isJVM) 1000000 else 10000
+    def func(s: Int): Pull[Pure, INothing, Option[Int]] =
+      s match {
+        case `stackUnsafeSize` => Pull.pure(None)
+        case _                 => Pull.pure(Some(s + 1))
+      }
+
+    Pull.loop(func)(0).stream.compile.drain
+  }
+
+  property("loopEither") {
+    forAll { (list: List[Int], rightValue: String) =>
+      def customOutputReturnsString(s: List[Int]): Pull[Pure, Int, Either[List[Int], String]] =
+        s match {
+          case head :: tail => Pull.output1(head).as(Left(tail))
+          case Nil          => Pull.pure(Right(rightValue))
+        }
+
+      val result =
+        Pull
+          .loopEither(customOutputReturnsString)(list)
+          .map(v => assert(v == rightValue))
+          .void
+          .stream
+          .compile
+          .toList
+
+      assertEquals(result, list)
+    }
+  }
+
+  test("loopEither is stack safe") {
+    val stackUnsafeSize = if (isJVM) 1000000 else 10000
+    def func(s: Int): Pull[Pure, INothing, Either[Int, Unit]] =
+      s match {
+        case `stackUnsafeSize` => Pull.pure(Right(()))
+        case _                 => Pull.pure(Left(s + 1))
+      }
+
+    Pull.loopEither(func)(0).stream.compile.drain
+  }
 }

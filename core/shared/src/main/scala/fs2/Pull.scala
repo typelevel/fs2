@@ -422,6 +422,17 @@ object Pull extends PullLowPriority {
         case Some(s) => loop(f)(s)
       }
 
+  /** Intantiates with a state. Repeatedly uses the left value of the result of
+    * the pull as input for the next step. The Pull terminates when a step terminates with
+    * `Right` or `Pull.raiseError`.
+    */
+  def loopEither[F[_], O, S, R](f: S => Pull[F, O, Either[S, R]]): S => Pull[F, O, R] =
+    (s: S) =>
+      f(s).flatMap {
+        case Left(ns) => loopEither(f)(ns)
+        case Right(r) => Pull.pure(r)
+      }
+
   private[fs2] def fail[F[_]](err: Throwable): Pull[F, INothing, INothing] = Fail(err)
 
   final class PartiallyAppliedFromEither[F[_]] {
