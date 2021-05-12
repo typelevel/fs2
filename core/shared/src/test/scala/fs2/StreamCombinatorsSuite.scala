@@ -1037,7 +1037,6 @@ class StreamCombinatorsSuite extends Fs2Suite {
       .compile
       .toList
       .map(results => assert(results.size == 1))
-      .unsafeRunAndForget()
   }
 
   test("mapAsyncUnordered") {
