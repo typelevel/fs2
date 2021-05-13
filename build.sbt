@@ -21,7 +21,7 @@ ThisBuild / startYear := Some(2013)
 
 ThisBuild / crossScalaVersions := Seq("3.0.0-RC2", "3.0.0-RC3", "2.12.13", "2.13.5")
 
-ThisBuild / githubWorkflowJavaVersions := Seq("adopt@1.11")
+ThisBuild / githubWorkflowJavaVersions := Seq("adopt@1.16")
 
 ThisBuild / spiewakCiReleaseSnapshots := true
 
@@ -161,7 +161,10 @@ lazy val io = project
   .enablePlugins(SbtOsgi)
   .settings(
     name := "fs2-io",
-    libraryDependencies += "com.comcast" %% "ip4s-core" % "3.0.2",
+    libraryDependencies ++= Seq(
+      "com.comcast" %% "ip4s-core" % "3.0.2",
+      "com.github.jnr" % "jnr-unixsocket" % "0.33" % Optional
+    ),
     Test / fork := true,
     OsgiKeys.exportPackage := Seq("fs2.io.*"),
     OsgiKeys.privatePackage := Seq(),

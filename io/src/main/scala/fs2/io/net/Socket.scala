@@ -86,10 +86,8 @@ object Socket {
       }
     }(_ => Async[F].delay(if (ch.isOpen) ch.close else ()))
 
-  private final class AsyncSocket[F[_]](
-      ch: AsynchronousSocketChannel,
-      readSemaphore: Semaphore[F],
-      writeSemaphore: Semaphore[F]
+  private[net] abstract class BufferedReads[F[_]](
+      readSemaphore: Semaphore[F]
   )(implicit F: Async[F])
       extends Socket[F] {
     private[this] final val defaultReadSize = 8192
@@ -107,14 +105,7 @@ object Socket {
       }
 
     /** Performs a single channel read operation in to the supplied buffer. */
-    private def readChunk(buffer: ByteBuffer): F[Int] =
-      F.async_[Int] { cb =>
-        ch.read(
-          buffer,
-          null,
-          new IntCallbackHandler(cb)
-        )
-      }
+    protected def readChunk(buffer: ByteBuffer): F[Int]
 
     /** Copies the contents of the supplied buffer to a `Chunk[Byte]` and clears the buffer contents. */
     private def releaseBuffer(buffer: ByteBuffer): F[Chunk[Byte]] =
@@ -155,6 +146,25 @@ object Socket {
     def reads: Stream[F, Byte] =
       Stream.repeatEval(read(defaultReadSize)).unNoneTerminate.flatMap(Stream.chunk)
 
+    def writes: Pipe[F, Byte, INothing] =
+      _.chunks.foreach(write)
+  }
+
+  private final class AsyncSocket[F[_]](
+      ch: AsynchronousSocketChannel,
+      readSemaphore: Semaphore[F],
+      writeSemaphore: Semaphore[F]
+  )(implicit F: Async[F])
+      extends Socket.BufferedReads[F](readSemaphore) {
+    protected def readChunk(buffer: ByteBuffer): F[Int] =
+      F.async_[Int] { cb =>
+        ch.read(
+          buffer,
+          null,
+          new IntCallbackHandler(cb)
+        )
+      }
+
     def write(bytes: Chunk[Byte]): F[Unit] = {
       def go(buff: ByteBuffer): F[Unit] =
         F.async_[Int] { cb =>
@@ -172,9 +182,6 @@ object Socket {
         go(bytes.toByteBuffer)
       }
     }
-
-    def writes: Pipe[F, Byte, INothing] =
-      _.chunks.foreach(write)
 
     def localAddress: F[SocketAddress[IpAddress]] =
       F.delay(
