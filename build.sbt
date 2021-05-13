@@ -80,7 +80,9 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   ProblemFilters.exclude[IncompatibleResultTypeProblem]("fs2.Pull#MapOutput.fun"),
   ProblemFilters.exclude[IncompatibleMethTypeProblem]("fs2.Pull#MapOutput.copy"),
   ProblemFilters.exclude[IncompatibleResultTypeProblem]("fs2.Pull#MapOutput.copy$default$2"),
-  ProblemFilters.exclude[IncompatibleMethTypeProblem]("fs2.Pull#MapOutput.this")
+  ProblemFilters.exclude[IncompatibleMethTypeProblem]("fs2.Pull#MapOutput.this"),
+  ProblemFilters.exclude[Problem]("fs2.io.Watcher#Registration.*"),
+  ProblemFilters.exclude[Problem]("fs2.io.Watcher#DefaultWatcher.*")
 )
 
 lazy val root = project
