@@ -930,9 +930,13 @@ object Pull extends PullLowPriority {
       }
 
       def goFlatMapOut[Y](fmout: FlatMapOutput[G, Y, X], view: View[G, X, Unit]): F[End] = {
+        val runr = new BuildR[G, Y, End]
         val stepRunR = new FlatMapR(view, fmout.fun)
+
         // The F.unit is needed because otherwise an stack overflow occurs.
-        F.unit >> go(scope, extendedTopLevelScope, translation, stepRunR, fmout.stream)
+        F.unit >>
+          go(scope, extendedTopLevelScope, translation, runr, fmout.stream).attempt
+            .flatMap(_.fold(goErr(_, view), _.apply(stepRunR)))
       }
 
       class FlatMapR[Y](outView: View[G, X, Unit], fun: Y => Pull[G, X, Unit])
