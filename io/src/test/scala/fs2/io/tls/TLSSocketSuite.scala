@@ -30,15 +30,33 @@ import java.net.{InetAddress, InetSocketAddress}
 import javax.net.ssl.{SNIHostName, SSLContext}
 
 import cats.effect.{Blocker, IO}
+import cats.syntax.all._
 
 import fs2.io.tcp.SocketGroup
+
+import java.security.Security
 
 class TLSSocketSuite extends TLSSuite {
   group("TLSSocket") {
     group("google") {
       List("TLSv1", "TLSv1.1", "TLSv1.2", "TLSv1.3").foreach { protocol =>
-        if (!supportedByPlatform(protocol))
+        val supportedByPlatform: Boolean =
+          Either
+            .catchNonFatal(SSLContext.getInstance(protocol))
+            .isRight
+
+        val enabled: Boolean =
+          Either
+            .catchNonFatal {
+              val disabledAlgorithms = Security.getProperty("jdk.tls.disabledAlgorithms")
+              !disabledAlgorithms.contains(protocol)
+            }
+            .getOrElse(false)
+
+        if (!supportedByPlatform)
           test(s"$protocol - not supported by this platform".ignore) {}
+        else if (!enabled)
+          test(s"$protocol - disabled on this platform".ignore) {}
         else
           test(protocol) {
             Blocker[IO].use { blocker =>
@@ -155,12 +173,4 @@ class TLSSocketSuite extends TLSSuite {
       }
     }
   }
-
-  private def supportedByPlatform(protocol: String): Boolean =
-    try {
-      SSLContext.getInstance(protocol)
-      true
-    } catch {
-      case NonFatal(_) => false
-    }
 }
