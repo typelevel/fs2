@@ -19,7 +19,7 @@ ThisBuild / organizationName := "Functional Streams for Scala"
 ThisBuild / homepage := Some(url("https://github.com/typelevel/fs2"))
 ThisBuild / startYear := Some(2013)
 
-ThisBuild / crossScalaVersions := Seq("3.0.0-RC2", "3.0.0-RC3", "2.12.13", "2.13.5")
+ThisBuild / crossScalaVersions := Seq("3.0.0", "2.12.13", "2.13.5")
 
 ThisBuild / githubWorkflowJavaVersions := Seq("adopt@1.16")
 
@@ -110,15 +110,15 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
   .settings(
     name := "fs2-core",
     libraryDependencies ++= Seq(
-      "org.typelevel" %%% "cats-core" % "2.6.0",
-      "org.typelevel" %%% "cats-laws" % "2.6.0" % Test,
-      "org.typelevel" %%% "cats-effect" % "3.1.0",
-      "org.typelevel" %%% "cats-effect-laws" % "3.1.0" % Test,
-      "org.typelevel" %%% "cats-effect-testkit" % "3.1.0" % Test,
-      "org.scodec" %%% "scodec-bits" % "1.1.26",
-      "org.typelevel" %%% "scalacheck-effect-munit" % "1.0.1" % Test,
-      "org.typelevel" %%% "munit-cats-effect-3" % "1.0.2" % Test,
-      "org.typelevel" %%% "discipline-munit" % "1.0.8" % Test
+      "org.typelevel" %%% "cats-core" % "2.6.1",
+      "org.typelevel" %%% "cats-laws" % "2.6.1" % Test,
+      "org.typelevel" %%% "cats-effect" % "3.1.1",
+      "org.typelevel" %%% "cats-effect-laws" % "3.1.1" % Test,
+      "org.typelevel" %%% "cats-effect-testkit" % "3.1.1" % Test,
+      "org.scodec" %%% "scodec-bits" % "1.1.27",
+      "org.typelevel" %%% "scalacheck-effect-munit" % "1.0.2" % Test,
+      "org.typelevel" %%% "munit-cats-effect-3" % "1.0.3" % Test,
+      "org.typelevel" %%% "discipline-munit" % "1.0.9" % Test
     ),
     Compile / unmanagedSourceDirectories ++= {
       val major = if (isDotty.value) "-3" else "-2"
@@ -162,7 +162,7 @@ lazy val io = project
   .settings(
     name := "fs2-io",
     libraryDependencies ++= Seq(
-      "com.comcast" %% "ip4s-core" % "3.0.2",
+      "com.comcast" %% "ip4s-core" % "3.0.3",
       "com.github.jnr" % "jnr-unixsocket" % "0.38.6" % Optional
     ),
     Test / fork := true,
@@ -190,7 +190,7 @@ lazy val reactiveStreams = project
     libraryDependencies ++= Seq(
       "org.reactivestreams" % "reactive-streams" % "1.0.3",
       "org.reactivestreams" % "reactive-streams-tck" % "1.0.3" % "test",
-      ("org.scalatestplus" %% "testng-6-7" % "3.2.8.0" % "test").withDottyCompat(scalaVersion.value)
+      ("org.scalatestplus" %% "testng-6-7" % "3.2.8.0" % "test").cross(CrossVersion.for3Use2_13)
     ),
     OsgiKeys.exportPackage := Seq("fs2.interop.reactivestreams.*"),
     OsgiKeys.privatePackage := Seq(),
