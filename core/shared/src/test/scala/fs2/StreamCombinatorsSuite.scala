@@ -23,7 +23,6 @@ package fs2
 
 import scala.concurrent.duration._
 import scala.concurrent.TimeoutException
-
 import cats.effect.{IO, SyncIO}
 import cats.effect.kernel.Ref
 import cats.effect.std.Semaphore
@@ -1032,6 +1031,28 @@ class StreamCombinatorsSuite extends Fs2Suite {
         r.compile.toVector.map(_.size).assertEquals(1)
       }
     }
+  }
+
+  test("metered should not start immediately") {
+    Stream
+      .emit[IO, Int](1)
+      .repeatN(10)
+      .metered(1.second)
+      .interruptAfter(500.milliseconds)
+      .compile
+      .toList
+      .map(results => assert(results.isEmpty))
+  }
+
+  test("meteredStartImmediately should start immediately") {
+    Stream
+      .emit[IO, Int](1)
+      .repeatN(10)
+      .meteredStartImmediately(1.second)
+      .interruptAfter(500.milliseconds)
+      .compile
+      .toList
+      .map(results => assert(results.size == 1))
   }
 
   test("mapAsyncUnordered") {
