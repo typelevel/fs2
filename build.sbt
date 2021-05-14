@@ -190,7 +190,7 @@ lazy val reactiveStreams = project
     libraryDependencies ++= Seq(
       "org.reactivestreams" % "reactive-streams" % "1.0.3",
       "org.reactivestreams" % "reactive-streams-tck" % "1.0.3" % "test",
-      ("org.scalatestplus" %% "testng-6-7" % "3.2.8.0" % "test").cross(CrossVersion.for3Use2_13)
+      ("org.scalatestplus" %% "testng-6-7" % "3.2.9.0" % "test").cross(CrossVersion.for3Use2_13)
     ),
     OsgiKeys.exportPackage := Seq("fs2.interop.reactivestreams.*"),
     OsgiKeys.privatePackage := Seq(),
