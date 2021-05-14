@@ -250,4 +250,8 @@ class MemoryLeakSpec extends FunSuite {
   leakTest("attempts + pull") {
     Stream.eval(IO.unit).attempts(Stream.constant(1.second)).head.repeat
   }
+
+  leakTest("flatMap + map + flatMap".only) {
+    Stream.constant(()).flatMap(_ => Stream(())).map(identity).flatMap(_ => Stream.empty)
+  }
 }
