@@ -18,7 +18,7 @@ ThisBuild / organizationName := "Functional Streams for Scala"
 ThisBuild / homepage := Some(url("https://github.com/typelevel/fs2"))
 ThisBuild / startYear := Some(2013)
 
-ThisBuild / crossScalaVersions := Seq("3.0.0-RC2", "3.0.0-RC3", "2.12.13", "2.13.5")
+ThisBuild / crossScalaVersions := Seq("3.0.0", "2.12.13", "2.13.5")
 
 ThisBuild / githubWorkflowJavaVersions := Seq("adopt@1.11")
 
@@ -164,13 +164,13 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
   .settings(
     name := "fs2-core",
     libraryDependencies ++= Seq(
-      "org.typelevel" %%% "cats-core" % "2.6.0",
-      "org.typelevel" %%% "cats-laws" % "2.6.0" % Test,
-      "org.typelevel" %%% "cats-effect" % "2.5.0",
-      "org.typelevel" %%% "cats-effect-laws" % "2.5.0" % Test,
-      "org.scodec" %%% "scodec-bits" % "1.1.26",
-      "org.typelevel" %%% "scalacheck-effect-munit" % "1.0.1" % Test,
-      "org.typelevel" %%% "munit-cats-effect-2" % "1.0.2" % Test
+      "org.typelevel" %%% "cats-core" % "2.6.1",
+      "org.typelevel" %%% "cats-laws" % "2.6.1" % Test,
+      "org.typelevel" %%% "cats-effect" % "2.5.1",
+      "org.typelevel" %%% "cats-effect-laws" % "2.5.1" % Test,
+      "org.scodec" %%% "scodec-bits" % "1.1.27",
+      "org.typelevel" %%% "scalacheck-effect-munit" % "1.0.2" % Test,
+      "org.typelevel" %%% "munit-cats-effect-2" % "1.0.3" % Test
     ),
     Compile / unmanagedSourceDirectories ++= {
       val major = if (isDotty.value) "-3" else "-2"
@@ -197,7 +197,7 @@ lazy val coreJVM = core.jvm
 lazy val coreJS = core.js
   .disablePlugins(DoctestPlugin)
   .settings(
-    scalaJSStage in Test := FastOptStage,
+    Test / scalaJSStage := FastOptStage,
     jsEnv := new org.scalajs.jsenv.nodejs.NodeJSEnv(),
     scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule))
   )
@@ -231,7 +231,7 @@ lazy val reactiveStreams = project
     libraryDependencies ++= Seq(
       "org.reactivestreams" % "reactive-streams" % "1.0.3",
       "org.reactivestreams" % "reactive-streams-tck" % "1.0.3" % "test",
-      ("org.scalatestplus" %% "testng-6-7" % "3.2.3.0" % "test").withDottyCompat(scalaVersion.value)
+      ("org.scalatestplus" %% "testng-6-7" % "3.2.3.0" % "test").cross(CrossVersion.for3Use2_13)
     ),
     OsgiKeys.exportPackage := Seq("fs2.interop.reactivestreams.*"),
     OsgiKeys.privatePackage := Seq(),
