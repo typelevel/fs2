@@ -525,10 +525,10 @@ val program =
 // program: Stream[IO[x], Unit] = Stream(..)
 
 program.compile.drain.unsafeRunSync()
-// 17:27:02.685585652
-// 17:27:03.683871826
-// 17:27:04.683476549
-// 17:27:05.683529166
+// 01:54:09.827487359
+// 01:54:10.825074370
+// 01:54:11.824478474
+// 01:54:12.824562912
 ```
 
 Let's take this line by line now, so we can understand what's going on.
@@ -570,10 +570,10 @@ val program1 =
 // program1: Stream[IO[x], Unit] = Stream(..)
 
 program1.compile.drain.unsafeRunSync()
-// 17:27:07.681921310
-// 17:27:08.682142226
-// 17:27:09.682145244
-// 17:27:10.681987062
+// 01:54:14.824200862
+// 01:54:15.824142722
+// 01:54:16.823938210
+// 01:54:17.824038513
 ```
 
 ### Talking to the external world
@@ -606,7 +606,7 @@ The way you bring synchronous effects into your effect type may differ. `Sync.de
 import cats.effect.Sync
 
 val T = Sync[IO]
-// T: cats.effect.kernel.Async[IO] = cats.effect.IO$$anon$2@22441e68
+// T: cats.effect.kernel.Async[IO] = cats.effect.IO$$anon$2@2a1bfddb
 val s2 = Stream.exec(T.delay { destroyUniverse() }) ++ Stream("...moving on")
 // s2: Stream[IO[x], String] = Stream(..)
 s2.compile.toVector.unsafeRunSync()
@@ -673,7 +673,7 @@ package which has nice FS2 bindings to Java NIO libraries, using exactly this ap
 
 The nice thing about callback-y APIs that invoke their callbacks once is that throttling/back-pressure can be handled within FS2 itself. If you don't want more values, just don't read them, and they won't be produced! But sometimes you'll be dealing with a callback-y API which invokes callbacks you provide it _more than once_. Perhaps it's a streaming API of some sort and it invokes your callback whenever new data is available. In these cases, you can use an asynchronous queue to broker between the nice stream processing world of FS2 and the external API, and use whatever ad hoc mechanism that API provides for throttling of the producer.
 
-_Note:_ Some of these APIs don't provide any means of throttling the producer, in which case you either have to accept possibly unbounded memory usage (if the producer and consumer operate at very different rates), or use blocking concurrency primitives like `fs2.concurrent.Queue.bounded` or the primitives in `java.util.concurrent`.
+_Note:_ Some of these APIs don't provide any means of throttling the producer, in which case you either have to accept possibly unbounded memory usage (if the producer and consumer operate at very different rates), or use blocking concurrency primitives like `cats.effect.std.Queue.bounded` or the primitives in `java.util.concurrent`.
 
 Let's look at a complete example:
 
@@ -739,13 +739,13 @@ stream.toUnicastPublisher
 //   source = Bind(
 //     source = Bind(
 //       source = Allocate(
-//         resource = cats.effect.kernel.Resource$$$Lambda$7474/0x00000008023c3ce0@b40dd1f
+//         resource = cats.effect.kernel.Resource$$$Lambda$7489/0x00000008023c8f60@51ffac8b
 //       ),
-//       fs = cats.effect.kernel.Resource$$Lambda$8017/0x0000000802521b70@60d6a5ab
+//       fs = cats.effect.kernel.Resource$$Lambda$8043/0x00000008025279d8@18cd102b
 //     ),
-//     fs = cats.effect.std.Dispatcher$$$Lambda$8018/0x0000000802521f40@44561faa
+//     fs = cats.effect.std.Dispatcher$$$Lambda$8044/0x000000080252c000@64c671b2
 //   ),
-//   fs = cats.effect.kernel.Resource$$Lambda$8017/0x0000000802521b70@5a510930
+//   fs = cats.effect.kernel.Resource$$Lambda$8043/0x00000008025279d8@3762f8a4
 // )
 ```
 
@@ -757,19 +757,19 @@ val publisher: Resource[IO, StreamUnicastPublisher[IO, Int]] = Stream(1, 2, 3).c
 //   source = Bind(
 //     source = Bind(
 //       source = Allocate(
-//         resource = cats.effect.kernel.Resource$$$Lambda$7474/0x00000008023c3ce0@76856756
+//         resource = cats.effect.kernel.Resource$$$Lambda$7489/0x00000008023c8f60@3cf52110
 //       ),
-//       fs = cats.effect.kernel.Resource$$Lambda$8017/0x0000000802521b70@24cfe83f
+//       fs = cats.effect.kernel.Resource$$Lambda$8043/0x00000008025279d8@1c7259f2
 //     ),
-//     fs = cats.effect.std.Dispatcher$$$Lambda$8018/0x0000000802521f40@57b26d79
+//     fs = cats.effect.std.Dispatcher$$$Lambda$8044/0x000000080252c000@2b99af62
 //   ),
-//   fs = cats.effect.kernel.Resource$$Lambda$8017/0x0000000802521b70@1a171a4
+//   fs = cats.effect.kernel.Resource$$Lambda$8043/0x00000008025279d8@c660459
 // )
 publisher.use { p =>
   p.toStream[IO].compile.toList
 }
 // res50: IO[List[Int]] = Uncancelable(
-//   body = cats.effect.IO$$$Lambda$7480/0x00000008023c5a20@430be088
+//   body = cats.effect.IO$$$Lambda$7495/0x00000008023caca0@71396144
 // )
 ```
 
