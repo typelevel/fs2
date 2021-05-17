@@ -26,7 +26,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest]
-        scala: [3.0.0, 2.12.13, 2.13.5]
+        scala: [3.0.0, 2.12.13, 2.13.6]
         java: [adopt@1.16]
     runs-on: ${{ matrix.os }}
     steps:
@@ -57,7 +57,7 @@ jobs:
 
       - run: sbt ++${{ matrix.scala }} fmtCheck test mimaReportBinaryIssues
 
-      - if: matrix.scala == '2.13.5'
+      - if: matrix.scala == '2.13.6'
         run: sbt ++${{ matrix.scala }} microsite/mdoc
 
       - name: Compress target directories
@@ -76,7 +76,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest]
-        scala: [2.13.5]
+        scala: [2.13.6]
         java: [adopt@1.16]
     runs-on: ${{ matrix.os }}
     steps:
@@ -144,7 +144,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest]
-        scala: [2.13.5]
+        scala: [2.13.6]
         java: [adopt@1.16]
     runs-on: ${{ matrix.os }}
     steps:
