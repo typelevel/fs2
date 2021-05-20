@@ -254,4 +254,12 @@ class MemoryLeakSpec extends FunSuite {
   leakTest("flatMap + map + flatMap") {
     Stream.constant(()).flatMap(_ => Stream(())).map(identity).flatMap(_ => Stream.empty)
   }
+
+  leakTest("broadcastThrough identity") {
+    def pipe: Pipe[IO, Unit, Unit] = _.map(identity)
+
+    Stream
+      .constant(())
+      .broadcastThrough(pipe)
+  }
 }

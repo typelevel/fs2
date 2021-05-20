@@ -1063,16 +1063,18 @@ object Pull extends PullLowPriority {
           else
             F.pure(extendedTopLevelScope)
 
+        val runner = new BuildR[G, X, End]
         val vrun = new ViewRunner(view)
         val tail = maybeCloseExtendedScope.flatMap { newExtendedScope =>
           scope.open(useInterruption).rethrow.flatMap { childScope =>
             val bb = new Bind[G, X, Unit, Unit](stream) {
               def cont(r: Terminal[Unit]): Pull[G, X, Unit] = endScope(childScope.id, r)
             }
-            go(childScope, newExtendedScope, translation, vrun, bb)
+            go(childScope, newExtendedScope, translation, runner, bb)
           }
         }
-        interruptGuard(scope, view, vrun)(tail)
+        interruptGuard(scope, view, runner)(tail).attempt
+          .flatMap(_.fold(goErr(_, view), _.apply(vrun)))
       }
 
       def goCloseScope(close: CloseScope, view: Cont[Unit, G, X]): F[End] = {
