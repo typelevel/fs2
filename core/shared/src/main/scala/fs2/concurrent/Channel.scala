@@ -209,7 +209,8 @@ object Channel {
                     (
                       State(values, size, waiting.some, producers, closed),
                       F.pure(
-                        (Pull.eval(waiting.get) >> consumeLoop).unlessA(closed)
+                        if (closed) Pull.done
+                        else (Pull.eval(waiting.get) >> consumeLoop)
                       )
                     )
                   }
