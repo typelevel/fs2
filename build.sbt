@@ -28,8 +28,12 @@ ThisBuild / spiewakCiReleaseSnapshots := true
 ThisBuild / spiewakMainBranches := List("main", "series/2.5.x")
 
 ThisBuild / githubWorkflowBuild := Seq(
-  WorkflowStep.Sbt(List("fmtCheck", "test", "mimaReportBinaryIssues"))
+  WorkflowStep.Sbt(List("fmtCheck", "test", "mimaReportBinaryIssues")),
   // WorkflowStep.Sbt(List("coreJVM/it:test")) // Memory leak tests fail intermittently on CI
+  WorkflowStep.Run(
+    List("cd scalafix", "sbt test"),
+    name = Some("Scalafix tests")
+  )
 )
 
 ThisBuild / scmInfo := Some(
