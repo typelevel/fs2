@@ -38,7 +38,8 @@ lazy val input = project.settings(
 lazy val output = project.settings(
   publish / skip := true,
   libraryDependencies ++= Seq(
-    "co.fs2" %% "fs2-core" % "1.0.0"
+    "co.fs2" %% "fs2-core" % "1.0.0",
+    "com.typesafe.akka" %% "akka-stream" % "2.5.21"
   )
 )
 
