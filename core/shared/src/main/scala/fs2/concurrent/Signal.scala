@@ -95,6 +95,30 @@ abstract class SignallingRef[F[_], A] extends Ref[F, A] with Signal[F, A]
 
 object SignallingRef {
 
+  private[fs2] final class PartiallyApplied[F[_]](
+      private val dummy: Boolean = true
+  ) extends AnyVal {
+
+    /** @see [[SignallingRef.of]]
+      */
+    def of[A](initial: A)(implicit F: Concurrent[F]): F[SignallingRef[F, A]] =
+      SignallingRef.of(initial)
+  }
+
+  /** Builds a `SignallingRef` value for data types that are [[Concurrent]]
+    *
+    * This builder uses the
+    * [[https://typelevel.org/cats/guidelines.html#partially-applied-type-params Partially-Applied Type]]
+    * technique.
+    *
+    * {{{
+    *   SignallingRef[IO].of(10L) <-> SignallingRef.of[IO, Long](10L)
+    * }}}
+    *
+    * @see [[of]]
+    */
+  def apply[F[_]]: PartiallyApplied[F] = new PartiallyApplied[F]
+
   /** Alias for `of`. */
   def apply[F[_]: Concurrent, A](initial: A): F[SignallingRef[F, A]] =
     of(initial)
