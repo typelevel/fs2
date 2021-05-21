@@ -15,8 +15,10 @@ inThisBuild(
     scalaVersion := V.scala212,
     addCompilerPlugin(scalafixSemanticdb),
     scalacOptions ++= List(
-      "-Yrangepos"
-    )
+      "-Yrangepos",
+      "-target:jvm-1.8"
+    ),
+    javacOptions ++= Seq("-source", "1.8", "-target", "1.8")
   )
 )
 
