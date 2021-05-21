@@ -58,6 +58,7 @@ jobs:
       - run: sbt --client '++${{ matrix.scala }}; fmtCheck; test; mimaReportBinaryIssues'
 
       - name: Scalafix tests
+        if: matrix.scala == '2.13.5'
         run: |
           cd scalafix
           sbt test
