@@ -391,7 +391,7 @@ object StreamAppRules {
       tpl.copy(
         inits = tpl.inits :+ Init(Type.Name("IOApp"), Name("IOApp"), List()),
         stats = addProgramRun(tpl.stats)).toString()
-    )
+    ) + Patch.addLeft(tpl, "extends ")
 
   private[this] def replaceStats(stats: List[Stat]): List[Patch] =
     stats.flatMap{
