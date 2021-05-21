@@ -14,15 +14,15 @@ We welcome all kinds of contribution, including but not limited to:
 
 Writing documentation is valuable for learning, so if you find some explanation insufficient, overly complicated or incorrect, it's a perfect opportunity to make a change to it!
 
-If at any point you run into problems, you can always ask a question on [the fs2-dev Gitter channel][fs2-dev].
+If at any point you run into problems, you can always ask a question on [the fs2-dev channel on the Typelevel Discord][fs2-dev].
 
 ## How to submit a change
 
-If you see something worth adding, make the relevant changes in a fork of the source code and [submit a pull request to the project](fs2-pulls). If you don't know what you could help with, take a look at [the issues marked as "help wanted"][low-hanging-fruit] or ask on [Gitter][fs2-dev].
+If you see something worth adding, make the relevant changes in a fork of the source code and [submit a pull request to the project](fs2-pulls). If you don't know what you could help with, take a look at [the issues marked as "help wanted"][low-hanging-fruit] or ask on [Discord][fs2-dev].
 
 We follow similar rules to [the cats-effect project's](https://github.com/typelevel/cats-effect#development).
 Most importantly, any contributions are expected to be made in the form of [GitHub pull requests to the FS2 repository][fs2-pulls].
-Usually it takes two approvals for a change to be merged. If it takes too long to get it approved, feel free to ask on [the Gitter channel][fs2-dev].
+Usually it takes two approvals for a change to be merged. If it takes too long to get it approved, feel free to ask on [Discord][fs2-dev].
 
 Remember to follow the [code of conduct][coc] in online and offline discourse.
 
@@ -83,7 +83,7 @@ sbt:root> fmtCheck; test; doc; mimaReportBinaryIssues; docs/mdoc; microsite/make
 
 That will check the formatting, run all tests on the supported platforms, report any binary compatibility issues (as detected by [MiMa][mima]) and build the site.
 
-If you run into any problems with tests, binary compatibility or other issues, feel free to ask questions on [the Gitter channel][fs2-dev].
+If you run into any problems with tests, binary compatibility or other issues, feel free to ask questions on [Discord][fs2-dev].
 
 ### Website
 
@@ -91,7 +91,7 @@ To see how to build the microsite, check [here][fs2-build-site].
 
 [fs2-issues]: https://github.com/functional-streams-for-scala/fs2/issues
 [fs2-pulls]: https://github.com/functional-streams-for-scala/fs2/pulls
-[fs2-dev]: https://gitter.im/functional-streams-for-scala/fs2-dev
+[fs2-dev]: https://discord.gg/72TuGwdRbW
 [fs2-build-site]: https://github.com/functional-streams-for-scala/fs2/blob/main/build-site.md
 [coc]: https://github.com/functional-streams-for-scala/fs2/blob/main/CODE_OF_CONDUCT.md
 [sbt]: https://www.scala-sbt.org

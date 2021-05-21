@@ -8,7 +8,7 @@ Everyone is expected to follow the [Scala Code of Conduct](https://www.scala-lan
 
 Any questions, concerns, or moderation requests please contact a member of the project.
 
-- Michael Pilquist [Email](mailto:mpilquist@gmail.com) [Twitter](https://twitter.com/mpilquist) [GitHub / Gitter](https://github.com/mpilquist)
-- Pavel Chlupacek [GitHub / Gitter](https://github.com/pchlupacek)
-- Fabio Labella [GitHub / Gitter](https://github.com/systemfw)
+- Michael Pilquist [Email](mailto:mpilquist@gmail.com) [Twitter](https://twitter.com/mpilquist) [GitHub](https://github.com/mpilquist)
+- Pavel Chlupacek [GitHub](https://github.com/pchlupacek)
+- Fabio Labella [GitHub](https://github.com/systemfw)
 
