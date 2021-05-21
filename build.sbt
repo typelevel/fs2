@@ -33,7 +33,7 @@ ThisBuild / githubWorkflowBuild := Seq(
   WorkflowStep.Sbt(List("fmtCheck", "test", "mimaReportBinaryIssues")),
   // WorkflowStep.Sbt(List("coreJVM/it:test")) // Memory leak tests fail intermittently on CI
   WorkflowStep.Run(
-    List("cd scalafix", "sbt test"),
+    List("cd scalafix", "sbt testCI"),
     name = Some("Scalafix tests"),
     cond = Some(s"matrix.scala == '$NewScala'")
   )

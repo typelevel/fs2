@@ -61,3 +61,8 @@ lazy val tests = project
   )
   .dependsOn(rules)
   .enablePlugins(ScalafixTestkitPlugin)
+
+addCommandAlias(
+  "testCI",
+  "; set (output / Compile / compile / skip) := true; test; set (output / Compile / compile / skip) := false;"
+)

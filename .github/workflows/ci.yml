@@ -61,7 +61,7 @@ jobs:
         if: matrix.scala == '2.13.5'
         run: |
           cd scalafix
-          sbt test
+          sbt testCI
 
       - if: matrix.scala == '2.13.6'
         run: sbt --client '++${{ matrix.scala }}; microsite/mdoc'
