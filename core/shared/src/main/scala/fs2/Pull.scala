@@ -1198,7 +1198,9 @@ object Pull extends PullLowPriority {
 
     val initFk: F ~> F = cats.arrow.FunctionK.id[F]
 
-    class OuterRun(accB: B) extends Run[F, O, F[B]] { self =>
+    class OuterRun(initB: B) extends Run[F, O, F[B]] { self =>
+      private[this] var accB: B = initB
+
       override def done(scope: Scope[F]): F[B] = F.pure(accB)
 
       override def fail(e: Throwable): F[B] = F.raiseError(e)
@@ -1208,8 +1210,8 @@ object Pull extends PullLowPriority {
 
       override def out(head: Chunk[O], scope: Scope[F], tail: Pull[F, O, Unit]): F[B] =
         try {
-          val nrunner = new OuterRun(foldChunk(accB, head))
-          go[F, O, B](scope, None, initFk, nrunner, tail)
+          accB = foldChunk(accB, head)
+          go[F, O, B](scope, None, initFk, self, tail)
         } catch {
           case NonFatal(e) =>
             viewL(tail) match {
