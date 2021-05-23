@@ -184,6 +184,65 @@ object text {
   def utf8EncodeC[F[_]]: Pipe[F, String, Chunk[Byte]] =
     encodeC(utf8Charset)
 
+  sealed abstract class LineEnding(val value: String)
+  object LineEnding {
+//    case object CR extends LineEnding("\r")  looking at the existing code this won't be produced so leaving it out for now
+    case object LF extends LineEnding("\n")
+    case object CRLF extends LineEnding("\r\n")
+    case object EOF extends LineEnding("")
+  }
+
+  /** Transforms a stream of `String` such that each emitted `String` is a line from the input. */
+  def linesWithEndings[F[_]]: Pipe[F, String, (String,LineEnding)] = {
+    import LineEnding._
+    def fillBuffers(
+        stringBuilder: StringBuilder,
+        linesBuffer: ArrayBuffer[(String,LineEnding)],
+        string: String
+    ): Unit = {
+      val l = stringBuilder.length
+      var i =
+        if (l > 0 && stringBuilder(l - 1) == '\r' && string.nonEmpty && string(0) == '\n') {
+          stringBuilder.deleteCharAt(l - 1)
+          linesBuffer += (stringBuilder.result() -> CRLF)
+          stringBuilder.clear()
+          1
+        } else 0
+
+      while (i < string.size) {
+        string(i) match {
+          case '\n' =>
+            linesBuffer += (stringBuilder.result() -> LF)
+            stringBuilder.clear()
+          case '\r' if i + 1 < string.size && string(i + 1) == '\n' =>
+            linesBuffer += (stringBuilder.result() -> CRLF)
+            stringBuilder.clear()
+            i += 1
+          case other =>
+            stringBuilder.append(other)
+        }
+        i += 1
+      }
+    }
+
+    def go(
+        stream: Stream[F, String],
+        stringBuilder: StringBuilder,
+        first: Boolean
+    ): Pull[F, (String, LineEnding), Unit] =
+      stream.pull.uncons.flatMap {
+        case None => if (first) Pull.done else Pull.output1(stringBuilder.result() -> LineEnding.EOF)
+        case Some((chunk, stream)) =>
+          val linesBuffer = ArrayBuffer.empty[(String,LineEnding)]
+          chunk.foreach { string =>
+            fillBuffers(stringBuilder, linesBuffer, string)
+          }
+          Pull.output(Chunk.buffer(linesBuffer)) >> go(stream, stringBuilder, first = false)
+      }
+
+    s => Stream.suspend(go(s, new StringBuilder(), first = true).stream)
+  }
+
   /** Transforms a stream of `String` such that each emitted `String` is a line from the input. */
   def lines[F[_]]: Pipe[F, String, String] = {
     def fillBuffers(
