@@ -106,7 +106,6 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
     Test / scalafmt / unmanagedSources := (Test / scalafmt / unmanagedSources).value
       .filterNot(_.toString.endsWith("NotGiven.scala"))
   )
-  .settings(dottyJsSettings(ThisBuild / crossScalaVersions))
   .settings(
     name := "fs2-core",
     libraryDependencies ++= Seq(
