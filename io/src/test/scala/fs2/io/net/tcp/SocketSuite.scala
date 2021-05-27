@@ -24,11 +24,9 @@ package io
 package net
 package tcp
 
-import scala.concurrent.duration._
-
 import cats.effect.IO
-
 import com.comcast.ip4s._
+import scala.concurrent.duration._
 
 class SocketSuite extends Fs2Suite {
 
@@ -130,6 +128,43 @@ class SocketSuite extends Fs2Suite {
         }
         .compile
         .drain
+    }
+
+    test("options - should work with socket options") {
+      val opts = List(
+        SocketOption.keepAlive(true),
+        SocketOption.receiveBufferSize(1024),
+        SocketOption.reuseAddress(true),
+        SocketOption.reusePort(true),
+        SocketOption.sendBufferSize(1024),
+        SocketOption.noDelay(true)
+      )
+      val setup = for {
+        serverSetup <- Network[IO].serverResource(Some(ip"127.0.0.1"), None, opts)
+        (bindAddress, server) = serverSetup
+        client <- Network[IO].client(bindAddress, opts)
+      } yield (server, client)
+
+      val msg = "hello"
+
+      Stream
+        .resource(setup)
+        .flatMap { case (server, client) =>
+          val echoServer = server.map { socket =>
+            socket.reads.through(socket.writes).onFinalize(socket.endOfOutput)
+          }.parJoinUnbounded
+          val echoClient =
+            Stream
+              .eval(client.write(Chunk.array(msg.getBytes)))
+              .onFinalize(client.endOfOutput)
+              .drain ++ client.reads.chunkAll.map(chunk => new String(chunk.toArray))
+          echoClient.concurrently(echoServer)
+        }
+        .compile
+        .toVector
+        .map { msgs =>
+          assertEquals(msgs, Vector(msg))
+        }
     }
   }
 }

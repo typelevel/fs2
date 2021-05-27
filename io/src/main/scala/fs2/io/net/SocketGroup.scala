@@ -144,11 +144,8 @@ private[net] object SocketGroup {
       val setup: F[AsynchronousServerSocketChannel] =
         address.traverse(_.resolve[F]).flatMap { addr =>
           Async[F].delay {
-            val ch = AsynchronousChannelProvider.provider
-              .openAsynchronousServerSocketChannel(channelGroup)
-            options.foreach { opt =>
-              ch.setOption[opt.Value](opt.key, opt.value)
-            }
+            val ch =
+              AsynchronousChannelProvider.provider.openAsynchronousServerSocketChannel(channelGroup)
             ch.bind(
               new InetSocketAddress(
                 addr.map(_.toInetAddress).orNull,
@@ -179,9 +176,15 @@ private[net] object SocketGroup {
               )
             }
 
+          def setOpts(ch: AsynchronousSocketChannel) =
+            Async[F].delay {
+              options.foreach(o => ch.setOption(o.key, o.value))
+            }
+
           Stream.eval(acceptChannel.attempt).flatMap {
-            case Left(_)         => Stream.empty[F]
-            case Right(accepted) => Stream.resource(Socket.forAsync(accepted))
+            case Left(_) => Stream.empty[F]
+            case Right(accepted) =>
+              Stream.resource(Socket.forAsync(accepted).evalTap(_ => setOpts(accepted)))
           } ++ go
         }
 
