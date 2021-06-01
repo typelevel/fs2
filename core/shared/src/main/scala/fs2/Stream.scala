@@ -2396,14 +2396,13 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
             else Pull.output1(prev.take(size))
           case Some((hd, tl)) =>
             val buffer = ArrayBuffer.empty[Chunk[O]]
-            var (heads, tails) = (prev ++ hd).splitAt(step)
-            while (heads.size == step || tails.nonEmpty) {
-              buffer += heads.take(size)
-              val (nHeads, nTails) = tails.splitAt(step)
-              heads = nHeads
-              tails = nTails
+            var current = prev ++ hd
+            while (current.size >= step) {
+              val (nHeads, nTails) = current.splitAt(step)
+              buffer += nHeads.take(size)
+              current = nTails
             }
-            Pull.output(Chunk.buffer(buffer)) >> stepNotSmallerThanSize(tl, heads)
+            Pull.output(Chunk.buffer(buffer)) >> stepNotSmallerThanSize(tl, current)
         }
 
     def stepSmallerThanSize(
