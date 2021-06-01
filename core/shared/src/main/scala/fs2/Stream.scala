@@ -2420,10 +2420,11 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
             var w = window
             var current = prev ++ hd
             while (current.size >= step) {
-              val wind = w ++ current.take(step)
+              val (head, tail) = current.splitAt(step)
+              val wind = w ++ head
               buffer += wind
               w = wind.drop(step)
-              current = current.drop(step)
+              current = tail
             }
 
             Pull.output(Chunk.buffer(buffer)) >> stepSmallerThanSize(tl, w, current)
