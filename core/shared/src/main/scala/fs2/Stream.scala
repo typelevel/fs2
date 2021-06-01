@@ -2418,16 +2418,15 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
           case Some((hd, tl)) =>
             val buffer = ArrayBuffer.empty[Chunk[O]]
             var w = window
-            var (heads, tails) = (prev ++ hd).splitAt(step)
-            while (tails.nonEmpty) {
-              val wind = w ++ heads.take(step)
+            var current = prev ++ hd
+            while (current.size >= step) {
+              val wind = w ++ current.take(step)
               buffer += wind
               w = wind.drop(step)
-              heads = tails.take(step)
-              tails = tails.drop(step)
+              current = current.drop(step)
             }
 
-            Pull.output(Chunk.buffer(buffer)) >> stepSmallerThanSize(tl, w, heads)
+            Pull.output(Chunk.buffer(buffer)) >> stepSmallerThanSize(tl, w, current)
         }
 
     val resultPull =
