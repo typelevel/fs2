@@ -2397,7 +2397,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
           case Some((hd, tl)) =>
             val buffer = ArrayBuffer.empty[Chunk[O]]
             var (heads, tails) = (prev ++ hd).splitAt(step)
-            while (tails.nonEmpty) {
+            while (heads.size == step || tails.nonEmpty) {
               buffer += heads.take(size)
               val (nHeads, nTails) = tails.splitAt(step)
               heads = nHeads

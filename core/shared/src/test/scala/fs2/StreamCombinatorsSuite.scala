@@ -25,6 +25,7 @@ import scala.concurrent.duration._
 import scala.concurrent.TimeoutException
 import cats.effect.{IO, SyncIO}
 import cats.effect.kernel.Ref
+import cats.effect.std.Queue
 import cats.effect.std.Semaphore
 import cats.syntax.all._
 import org.scalacheck.Gen
@@ -32,6 +33,7 @@ import org.scalacheck.Prop.forAll
 import org.scalacheck.effect.PropF.forAllF
 
 import fs2.concurrent.SignallingRef
+import cats.effect.kernel.Deferred
 
 class StreamCombinatorsSuite extends Fs2Suite {
 
@@ -1302,6 +1304,40 @@ class StreamCombinatorsSuite extends Fs2Suite {
         s.sliding(size, step).toList.map(_.toList),
         s.toList.sliding(size, step).map(_.toList).toList
       )
+    }
+  }
+
+  test("sliding issue-2428") {
+    
+    val ds = Vector.fill(3)(Deferred[IO, Unit]).sequence
+    (ds, ds).tupled.map { case (ins, outs) =>
+
+      def doPull(s: Stream[IO, Int]): Pull[IO, Boolean, Unit] =
+        s.pull.uncons1.flatMap {
+          case Some((i, tail)) =>
+            val x =
+              for {
+                in <- ins.get(i+1).map(_.tryGet).getOrElse(none.pure[IO]).map(_.isEmpty)
+                out <- outs.get(i+1).map(_.tryGet).getOrElse(none.pure[IO]).map(_.isEmpty)
+              } yield in && out
+
+            Pull.eval(x).flatMap {
+              case true => doPull(tail)
+              case false => Pull.output1(false)
+            }
+          case None => Pull.output1(true)
+        }
+
+      Stream.emits(0 to 2)
+        .unchunk
+        .evalTap(ind => ins(ind).complete(()))
+        .sliding(1)
+        .map(_.head.get)
+        .evalTap(ind => outs(ind).complete(()))
+        .through(doPull(_).stream)
+        .compile
+        .lastOrError
+        .assert
     }
   }
 
