@@ -1307,37 +1307,30 @@ class StreamCombinatorsSuite extends Fs2Suite {
     }
   }
 
-  test("sliding issue-2428") {
-    
-    val ds = Vector.fill(3)(Deferred[IO, Unit]).sequence
-    (ds, ds).tupled.map { case (ins, outs) =>
+  test("sliding shouldn't swallow last issue-2428") {
+    forAllF { (n0: Int, n1: Int) =>
+      val streamSize = (n0 % 1000).abs + 1
+      val size = (n1 % 20).abs + 1
 
-      def doPull(s: Stream[IO, Int]): Pull[IO, Boolean, Unit] =
-        s.pull.uncons1.flatMap {
-          case Some((i, tail)) =>
-            val x =
-              for {
-                in <- ins.get(i+1).map(_.tryGet).getOrElse(none.pure[IO]).map(_.isEmpty)
-                out <- outs.get(i+1).map(_.tryGet).getOrElse(none.pure[IO]).map(_.isEmpty)
-              } yield in && out
+      val action =
+        Vector.fill(streamSize)(Deferred[IO, Unit]).sequence.map { seenArr =>
+          def peek(ind: Int)(f: Option[Unit] => Boolean) =
+            seenArr.get(ind).fold(true.pure[IO])(_.tryGet.map(f))
 
-            Pull.eval(x).flatMap {
-              case true => doPull(tail)
-              case false => Pull.output1(false)
+          Stream
+            .emits(0 until streamSize)
+            .unchunk
+            .evalTap(seenArr(_).complete(()))
+            .sliding(size)
+            .evalMap { chunk =>
+              val viewed = chunk.map(i => peek(i)(_.nonEmpty))
+              val notViewed = Chunk.singleton(peek(chunk.head.get + size)(_.isEmpty))
+              (viewed ++ notViewed).sequence
             }
-          case None => Pull.output1(true)
+            .flatMap(Stream.chunk)
         }
 
-      Stream.emits(0 to 2)
-        .unchunk
-        .evalTap(ind => ins(ind).complete(()))
-        .sliding(1)
-        .map(_.head.get)
-        .evalTap(ind => outs(ind).complete(()))
-        .through(doPull(_).stream)
-        .compile
-        .lastOrError
-        .assert
+      Stream.force(action).compile.fold(true)(_ && _).assert
     }
   }
 
