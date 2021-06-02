@@ -974,7 +974,7 @@ object Pull extends PullLowPriority {
           val next = outView match {
             case _: EvalView[G, X] => fmoc
             case bv: BindView[G, X, Unit] =>
-              val del = bv.b.asInstanceOf[Bind[G, X, Unit, Unit]].delegate
+              val del = bv.b.delegate
               new Bind[G, X, Unit, Unit](fmoc) {
                 override val delegate: Bind[G, X, Unit, Unit] = del
                 def cont(yr: Terminal[Unit]): Pull[G, X, Unit] = delegate.cont(yr)
@@ -1215,13 +1215,10 @@ object Pull extends PullLowPriority {
         } catch {
           case NonFatal(e) =>
             viewL(tail) match {
-              case Succeeded(_) => F.raiseError(e)
-              case Fail(e2)     => F.raiseError(CompositeFailure(e2, e))
-              case Interrupted(_, err) =>
-                F.raiseError(err.fold(e)(t => CompositeFailure(e, t)))
-              case v0: View[F, O, _] =>
-                val v = v0.asInstanceOf[View[F, O, Unit]]
-                go[F, O, B](scope, None, initFk, self, v(Fail(e)))
+              case Succeeded(_)        => F.raiseError(e)
+              case Fail(e2)            => F.raiseError(CompositeFailure(e2, e))
+              case Interrupted(_, err) => F.raiseError(err.fold(e)(t => CompositeFailure(e, t)))
+              case v: View[F, O, _]    => go[F, O, B](scope, None, initFk, self, v(Fail(e)))
             }
         }
     }
