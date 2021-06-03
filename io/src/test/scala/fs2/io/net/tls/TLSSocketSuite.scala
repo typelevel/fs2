@@ -160,7 +160,10 @@ class TLSSocketSuite extends TLSSuite {
           .client(serverAddress)
           .flatMap(
             clientContext
-              .client(_, TLSParameters.apply(endpointIdentificationAlgorithm = Some("HTTPS"))) //makes test fail
+              .client(
+                _,
+                TLSParameters.apply(endpointIdentificationAlgorithm = Some("HTTPS"))
+              ) //makes test fail if using X509TrustManager, passes if using X509ExtendedTrustManager
           )
       } yield server.flatMap(s => Stream.resource(tlsContext.server(s))) -> client
 
