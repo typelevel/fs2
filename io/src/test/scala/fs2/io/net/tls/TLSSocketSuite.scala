@@ -148,7 +148,7 @@ class TLSSocketSuite extends TLSSuite {
         .assertEquals(msg)
     }
 
-    test("echo fail?") {
+    test("echo insecure client with Endpoint verification") {
       val msg = Chunk.array(("Hello, world! " * 20000).getBytes)
 
       val setup = for {
@@ -161,7 +161,6 @@ class TLSSocketSuite extends TLSSuite {
           .flatMap(
             clientContext
               .client(_, TLSParameters.apply(endpointIdentificationAlgorithm = Some("HTTPS"))) //makes test fail
-              //.client(_, TLSParameters.Default)
           )
       } yield server.flatMap(s => Stream.resource(tlsContext.server(s))) -> client
 
