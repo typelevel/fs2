@@ -654,7 +654,7 @@ object Pull extends PullLowPriority {
         case b: Bind[F, O, y, Unit] =>
           b.step match {
             case c: Bind[F, O, x, _] => mk(new BindBind[F, O, x, y](c.step, c.delegate, b.delegate))
-            case e: Action[F, O, y2] => new BindView(e, b)
+            case e: Action[F, O, y2] => new BindView(e, b.delegate)
             case r: Terminal[_]      => mk(b.cont(r))
           }
         case r: Terminal[Unit] => r
@@ -951,17 +951,17 @@ object Pull extends PullLowPriority {
           }
       }
 
-      def goFlatMapOut[Y](fmout: FlatMapOutput[G, Y, X], view: View[G, X, Unit]): F[End] = {
+      def goFlatMapOut[Y](fmout: FlatMapOutput[G, Y, X], view: Cont[Unit, G, X]): F[End] = {
         val runr = new BuildR[G, Y, End]
-        val stepRunR = new FlatMapR(view, fmout.fun)
+        val flatMapR = new FlatMapR(view, fmout.fun)
 
         // The F.unit is needed because otherwise an stack overflow occurs.
         F.unit >>
           go(scope, extendedTopLevelScope, translation, runr, fmout.stream).attempt
-            .flatMap(_.fold(goErr(_, view), _.apply(stepRunR)))
+            .flatMap(_.fold(goErr(_, view), _.apply(flatMapR)))
       }
 
-      class FlatMapR[Y](outView: View[G, X, Unit], fun: Y => Pull[G, X, Unit])
+      class FlatMapR[Y](outView: Cont[Unit, G, X], fun: Y => Pull[G, X, Unit])
           extends Run[G, Y, F[End]] {
         private[this] def unconsed(chunk: Chunk[Y], tail: Pull[G, Y, Unit]): Pull[G, X, Unit] =
           if (chunk.size == 1 && tail.isInstanceOf[Succeeded[_]])
@@ -994,15 +994,9 @@ object Pull extends PullLowPriority {
         def out(head: Chunk[Y], outScope: Scope[F], tail: Pull[G, Y, Unit]): F[End] = {
           val fmoc = unconsed(head, tail)
           val next = outView match {
-            case _: EvalView[G, X] => fmoc
-            case bv: BindView[G, X, Unit] =>
-              val del = bv.b.delegate
-              new Bind[G, X, Unit, Unit](fmoc) {
-                override val delegate: Bind[G, X, Unit, Unit] = del
-                def cont(yr: Terminal[Unit]): Pull[G, X, Unit] = delegate.cont(yr)
-              }
+            case _: EvalView[G, X]        => fmoc
+            case bv: BindView[G, X, Unit] => new DelegateBind[G, X, Unit](fmoc, bv.b.delegate)
           }
-
           go(outScope, extendedTopLevelScope, translation, endRunner, next)
         }
 
