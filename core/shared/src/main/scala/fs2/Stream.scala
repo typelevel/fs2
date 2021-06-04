@@ -2396,14 +2396,13 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
             else Pull.output1(prev.take(size))
           case Some((hd, tl)) =>
             val buffer = ArrayBuffer.empty[Chunk[O]]
-            var (heads, tails) = (prev ++ hd).splitAt(step)
-            while (tails.nonEmpty) {
-              buffer += heads.take(size)
-              val (nHeads, nTails) = tails.splitAt(step)
-              heads = nHeads
-              tails = nTails
+            var current = prev ++ hd
+            while (current.size >= step) {
+              val (nHeads, nTails) = current.splitAt(step)
+              buffer += nHeads.take(size)
+              current = nTails
             }
-            Pull.output(Chunk.buffer(buffer)) >> stepNotSmallerThanSize(tl, heads)
+            Pull.output(Chunk.buffer(buffer)) >> stepNotSmallerThanSize(tl, current)
         }
 
     def stepSmallerThanSize(
@@ -2419,16 +2418,16 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
           case Some((hd, tl)) =>
             val buffer = ArrayBuffer.empty[Chunk[O]]
             var w = window
-            var (heads, tails) = (prev ++ hd).splitAt(step)
-            while (tails.nonEmpty) {
-              val wind = w ++ heads.take(step)
+            var current = prev ++ hd
+            while (current.size >= step) {
+              val (head, tail) = current.splitAt(step)
+              val wind = w ++ head
               buffer += wind
               w = wind.drop(step)
-              heads = tails.take(step)
-              tails = tails.drop(step)
+              current = tail
             }
 
-            Pull.output(Chunk.buffer(buffer)) >> stepSmallerThanSize(tl, w, heads)
+            Pull.output(Chunk.buffer(buffer)) >> stepSmallerThanSize(tl, w, current)
         }
 
     val resultPull =

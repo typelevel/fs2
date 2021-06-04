@@ -25,6 +25,7 @@ import scala.concurrent.duration._
 import scala.concurrent.TimeoutException
 import cats.effect.{IO, SyncIO}
 import cats.effect.kernel.Ref
+import cats.effect.std.Queue
 import cats.effect.std.Semaphore
 import cats.syntax.all._
 import org.scalacheck.Gen
@@ -32,6 +33,7 @@ import org.scalacheck.Prop.forAll
 import org.scalacheck.effect.PropF.forAllF
 
 import fs2.concurrent.SignallingRef
+import cats.effect.kernel.Deferred
 
 class StreamCombinatorsSuite extends Fs2Suite {
 
@@ -1302,6 +1304,35 @@ class StreamCombinatorsSuite extends Fs2Suite {
         s.sliding(size, step).toList.map(_.toList),
         s.toList.sliding(size, step).map(_.toList).toList
       )
+    }
+  }
+
+  test("sliding shouldn't swallow last issue-2428") {
+    forAllF { (n0: Int, n1: Int, n2: Int) =>
+      val streamSize = (n0 % 1000).abs + 1
+      val size = (n1 % 20).abs + 1
+      val step = (n2 % 20).abs + 1
+
+      val action =
+        Vector.fill(streamSize)(Deferred[IO, Unit]).sequence.map { seenArr =>
+          def peek(ind: Int)(f: Option[Unit] => Boolean) =
+            seenArr.get(ind).fold(true.pure[IO])(_.tryGet.map(f))
+
+          Stream
+            .emits(0 until streamSize)
+            .unchunk
+            .evalTap(seenArr(_).complete(()))
+            .sliding(size, step)
+            .evalMap { chunk =>
+              val next = chunk.head.get + size + step - 1
+              val viewed = chunk.map(i => peek(i)(_.nonEmpty))
+              val notViewed = Chunk.singleton(peek(next)(_.isEmpty))
+              (notViewed ++ viewed).sequence
+            }
+            .flatMap(Stream.chunk)
+        }
+
+      Stream.force(action).compile.fold(true)(_ && _).assert
     }
   }
 
