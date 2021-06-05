@@ -168,7 +168,7 @@ lazy val io = project
     name := "fs2-io",
     libraryDependencies ++= Seq(
       "com.comcast" %% "ip4s-core" % "3.0.3",
-      "com.github.jnr" % "jnr-unixsocket" % "0.38.7" % Optional
+      "com.github.jnr" % "jnr-unixsocket" % "0.38.8" % Optional
     ),
     Test / fork := true,
     OsgiKeys.exportPackage := Seq("fs2.io.*"),
