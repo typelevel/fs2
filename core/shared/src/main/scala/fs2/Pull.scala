@@ -906,34 +906,6 @@ object Pull extends PullLowPriority {
             go(scope, extendedTopLevelScope, translation, runner, view(result))
         }
 
-      def innerMapOutput[K[_], C, D](stream: Pull[K, C, Unit], fun: C => D): Pull[K, D, Unit] =
-        viewL(stream) match {
-          case action: Action[K, C, x] =>
-            val v = contP.asInstanceOf[ContP[x, K, C, Unit]]
-            val mstep: Pull[K, D, x] = action match {
-              case o: Output[_] =>
-                try Output(o.values.map(fun))
-                catch { case NonFatal(t) => Fail(t) }
-              case t: Translate[l, k, _] => // k= K
-                Translate[l, k, D](innerMapOutput[l, C, D](t.stream, fun), t.fk)
-              case s: Uncons[k, _]    => s
-              case s: StepLeg[k, _]   => s
-              case a: AlgEffect[k, _] => a
-              case i: InScope[k, c] =>
-                InScope[k, D](innerMapOutput(i.stream, fun), i.useInterruption)
-              case m: MapOutput[k, b, c] => innerMapOutput(m.stream, fun.compose(m.fun))
-
-              case fm: FlatMapOutput[k, b, c] =>
-                val innerCont: b => Pull[k, D, Unit] =
-                  (x: b) => innerMapOutput[k, c, D](fm.fun(x), fun)
-                FlatMapOutput[k, b, D](fm.stream, innerCont)
-            }
-            new Bind[K, D, x, Unit](mstep) {
-              def cont(r: Terminal[x]) = innerMapOutput(v(r), fun)
-            }
-          case r: Terminal[_] => r.asInstanceOf[Terminal[Unit]]
-        }
-
       def goErr(err: Throwable, view: Cont[Nothing, G, X]): F[End] =
         go(scope, extendedTopLevelScope, translation, runner, view(Fail(err)))
 
@@ -961,8 +933,8 @@ object Pull extends PullLowPriority {
       }
 
       def goMapOutput[Z](mout: MapOutput[G, Z, X], view: Cont[Unit, G, X]): F[End] = {
-        val mo: Pull[G, X, Unit] = innerMapOutput[G, Z, X](mout.stream, mout.fun)
-        go(scope, extendedTopLevelScope, translation, new ViewRunner(view), mo)
+        val mapRun = new MapOutR(view, mout.fun)
+        go(scope, extendedTopLevelScope, translation, mapRun, mout.stream)
       }
 
       abstract class StepRunR[Y, S](view: Cont[Option[S], G, X]) extends Run[G, Y, F[End]] {
@@ -1004,6 +976,30 @@ object Pull extends PullLowPriority {
         // The F.unit is needed because otherwise an stack overflow occurs.
         F.unit >>
           go(scope, extendedTopLevelScope, translation, new FlatMapR(view, fmout.fun), fmout.stream)
+
+      class MapOutR[Y](view: Cont[Unit, G, X], fun: AndThen[Y, X]) extends Run[G, Y, F[End]] {
+
+        def done(scope: Scope[F]): F[End] =
+          go(scope, extendedTopLevelScope, translation, runner, view(unit))
+
+        def interrupted(inter: Interrupted): F[End] =
+          go(scope, extendedTopLevelScope, translation, runner, view(inter))
+
+        def fail(e: Throwable): F[End] = goErr(e, view)
+
+        def out(head: Chunk[Y], scope: Scope[F], tail: Pull[G, Y, Unit]): F[End] =
+          try {
+            val mappedHead: Chunk[X] = head.map(fun)
+            val mappedTail = mapOutput(tail, fun)
+            val handledTail = transformWith(mappedTail) {
+              case interruption @ Interrupted(_, _) =>
+                MapOutput[G, Y, X](interruptBoundary(tail, interruption), fun)
+              case r => r
+            }
+            val next = bindView(handledTail, view)
+            runner.out(mappedHead, scope, next)
+          } catch { case NonFatal(e) => fail(e) }
+      }
 
       class FlatMapR[Y](view: Cont[Unit, G, X], fun: Y => Pull[G, X, Unit])
           extends Run[G, Y, F[End]] {
