@@ -657,14 +657,28 @@ object Pull extends PullLowPriority {
   // This class is not created by combinators in public Pull API, only during compilation
   private class BindBind[F[_], O, X, Y](
       step: Pull[F, O, X],
-      bb: Bind[F, O, X, Y],
-      del: Bind[F, O, Y, Unit]
+      val bb: Bind[F, O, X, Y],
+      val del: Bind[F, O, Y, Unit]
   ) extends Bind[F, O, X, Unit](step) {
-    def cont(zr: Terminal[X]): Pull[F, O, Unit] = bb.cont(zr) match {
-      case t: Terminal[_] =>
-        try del.cont(t)
-        catch { case NonFatal(e) => Fail(e) }
-      case x => new DelegateBind(x, del)
+    def cont(tx: Terminal[X]): Pull[F, O, Unit] =
+      try bindBindAux(this, tx)
+      catch { case NonFatal(e) => Fail(e) }
+  }
+
+  @tailrec
+  private def bindBindAux[F[_], O, X, Y](
+      bibi: BindBind[F, O, X, Y],
+      tx: Terminal[X]
+  ): Pull[F, O, Unit] = {
+    val py: Pull[F, O, Y] = bibi.bb.cont(tx)
+    py match {
+      case ty: Terminal[_] =>
+        bibi.del match {
+          case cici: BindBind[F, O, r, Y] =>
+            bindBindAux[F, O, r, Y](cici, ty)
+          case _ => bibi.del.cont(ty)
+        }
+      case x => new DelegateBind(x, bibi.del)
     }
   }
 
