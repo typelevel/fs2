@@ -9,9 +9,9 @@ name: Continuous Integration
 
 on:
   pull_request:
-    branches: ['*']
+    branches: ['**']
   push:
-    branches: ['*']
+    branches: ['**']
     tags: [v*]
 
 env:
@@ -53,12 +53,12 @@ jobs:
           key: ${{ runner.os }}-sbt-cache-v2-${{ hashFiles('**/*.sbt') }}-${{ hashFiles('project/build.properties') }}
 
       - name: Check that workflows are up to date
-        run: sbt ++${{ matrix.scala }} githubWorkflowCheck
+        run: sbt --client '++${{ matrix.scala }}; githubWorkflowCheck'
 
-      - run: 'sbt ++${{ matrix.scala }} fmtCheck test mimaReportBinaryIssues coreJVM/it:test'
+      - run: 'sbt --client ''++${{ matrix.scala }}; fmtCheck; test; mimaReportBinaryIssues; coreJVM/it:test'''
 
       - if: matrix.scala == '2.13.4'
-        run: sbt ++${{ matrix.scala }} microsite/mdoc
+        run: sbt --client '++${{ matrix.scala }}; microsite/mdoc'
 
       - name: Compress target directories
         run: tar cf targets.tar experimental/target target core/js/target core/jvm/target io/target reactive-streams/target benchmark/target project/target
@@ -135,7 +135,7 @@ jobs:
       - name: Import signing key
         run: echo $PGP_SECRET | base64 -d | gpg --import
 
-      - run: sbt ++${{ matrix.scala }} release
+      - run: sbt --client '++${{ matrix.scala }}; release'
 
   site:
     name: Deploy site

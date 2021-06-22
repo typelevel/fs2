@@ -160,7 +160,6 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
   .settings(
     inConfig(IntegrationTest)(org.scalafmt.sbt.ScalafmtPlugin.scalafmtConfigSettings)
   )
-  .settings(dottyJsSettings(ThisBuild / crossScalaVersions))
   .settings(
     name := "fs2-core",
     libraryDependencies ++= Seq(
