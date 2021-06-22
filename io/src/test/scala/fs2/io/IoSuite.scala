@@ -23,7 +23,7 @@ package fs2.io
 
 import java.io.{ByteArrayInputStream, InputStream, OutputStream}
 import java.util.concurrent.Executors
-import cats.effect.{Blocker, ContextShift, IO, Resource}
+import cats.effect.{Blocker, IO, Resource}
 import fs2.Fs2Suite
 import scala.concurrent.ExecutionContext
 import org.scalacheck.{Arbitrary, Gen, Shrink}
@@ -77,7 +77,7 @@ class IoSuite extends Fs2Suite {
         val chunkSize = (chunkSize0 % 20).abs + 1
         Blocker[IO].use { blocker =>
           readOutputStream[IO](blocker, chunkSize)((os: OutputStream) =>
-            IO(os.close()) *> IO.never
+            blocker.delay(os.close()) *> IO.never
           ).compile.toVector
             .map(it => assert(it == Vector.empty))
         }
@@ -98,12 +98,14 @@ class IoSuite extends Fs2Suite {
     }
 
     test("Doesn't deadlock with size-1 ContextShift thread pool") {
-      val pool = Resource
-        .make(IO(Executors.newFixedThreadPool(1)))(ec => IO(ec.shutdown()))
-        .map(ExecutionContext.fromExecutor)
-        .map(IO.contextShift)
-      def write(os: OutputStream): IO[Unit] =
-        IO {
+      val pool =
+        Resource
+          .make(IO(Executors.newSingleThreadExecutor()))(e => IO(e.shutdown()))
+          .map(ExecutionContext.fromExecutor)
+          .map(IO.contextShift)
+
+      def write(blocker: Blocker, os: OutputStream): IO[Unit] =
+        blocker.delay {
           os.write(1)
           os.write(1)
           os.write(1)
@@ -111,16 +113,22 @@ class IoSuite extends Fs2Suite {
           os.write(1)
           os.write(1)
         }
-      Blocker[IO].use { blocker =>
-        // Note: name `munitContextShift` is important because it shadows the outer implicit, preventing ambiguity
-        pool
-          .use { implicit munitContextShift: ContextShift[IO] =>
-            readOutputStream[IO](blocker, chunkSize = 1)(write)
-              .take(5)
-              .compile
-              .toVector
-          }
-          .map(it => assert(it.size == 5))
+
+      val poolBlockerResource =
+        for {
+          p <- pool
+          b <- Blocker[IO]
+        } yield (p, b)
+
+      poolBlockerResource.use { case (pool, blocker) =>
+        implicit val munitContextShift = pool
+
+        readOutputStream[IO](blocker, chunkSize = 1)(write(blocker, _))
+          .take(5)
+          .compile
+          .toVector
+          .map(_.size)
+          .assertEquals(5)
       }
     }
 
