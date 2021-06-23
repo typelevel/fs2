@@ -23,7 +23,7 @@ package fs2.io
 
 import java.io.{ByteArrayInputStream, InputStream, OutputStream}
 import java.util.concurrent.Executors
-import cats.effect.IO
+import cats.effect.{IO, Resource}
 import cats.effect.unsafe.{IORuntime, IORuntimeConfig}
 import fs2.Fs2Suite
 import fs2.Err
@@ -87,9 +87,9 @@ class IoSuite extends Fs2Suite {
     }
 
     test("Doesn't deadlock with size-1 thread pool") {
-      val ioRuntime: IORuntime = {
+      def singleThreadedRuntime(): IORuntime = {
         val compute = {
-          val pool = Executors.newFixedThreadPool(1)
+          val pool = Executors.newSingleThreadExecutor()
           (ExecutionContext.fromExecutor(pool), () => pool.shutdown())
         }
         val blocking = IORuntime.createDefaultBlockingExecutionContext()
@@ -106,6 +106,9 @@ class IoSuite extends Fs2Suite {
           IORuntimeConfig()
         )
       }
+
+      val runtime = Resource.make(IO(singleThreadedRuntime()))(rt => IO(rt.shutdown()))
+
       def write(os: OutputStream): IO[Unit] =
         IO.blocking {
           os.write(1)
@@ -115,6 +118,7 @@ class IoSuite extends Fs2Suite {
           os.write(1)
           os.write(1)
         }
+
       val prog = readOutputStream[IO](chunkSize = 1)(write)
         .take(5)
         .compile
@@ -122,8 +126,9 @@ class IoSuite extends Fs2Suite {
         .map(_.size)
         .assertEquals(5)
 
-      prog
-        .unsafeToFuture()(ioRuntime) // run explicitly so we can override the runtime
+      runtime.use { rt =>
+        IO.fromFuture(IO(prog.unsafeToFuture()(rt)))
+      }
     }
 
     test("emits chunks of the configured size") {
