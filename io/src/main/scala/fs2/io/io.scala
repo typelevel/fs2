@@ -35,7 +35,9 @@ import cats.effect.{
 import cats.effect.implicits._
 import cats.effect.concurrent.Deferred
 import cats.syntax.all._
-import java.io.{InputStream, OutputStream, PipedInputStream, PipedOutputStream}
+import fs2.io.internal.PipedStreamBuffer
+
+import java.io.{InputStream, OutputStream}
 import java.nio.charset.Charset
 
 /** Provides various ways to work with streams that perform IO.
@@ -157,9 +159,8 @@ package object io {
   ): Stream[F, Byte] = {
     val mkOutput: Resource[F, (OutputStream, InputStream)] =
       Resource.make(Sync[F].delay {
-        val os = new PipedOutputStream()
-        val is = new PipedInputStream(os, chunkSize)
-        (os: OutputStream, is: InputStream)
+        val buf = new PipedStreamBuffer(chunkSize)
+        (buf.outputStream, buf.inputStream)
       })(ois =>
         blocker.delay {
           // Piped(I/O)Stream implementations cant't throw on close, no need to nest the handling here.
