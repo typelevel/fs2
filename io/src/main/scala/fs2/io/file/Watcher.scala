@@ -153,7 +153,7 @@ object Watcher {
       blocker: Blocker
   )(implicit F: Concurrent[F], cs: ContextShift[F]): Resource[F, Watcher[F]] =
     Resource
-      .liftF(blocker.delay(FileSystems.getDefault))
+      .eval(blocker.delay(FileSystems.getDefault))
       .flatMap(fromFileSystem(blocker, _))
 
   /** Creates a watcher for the supplied file system. */

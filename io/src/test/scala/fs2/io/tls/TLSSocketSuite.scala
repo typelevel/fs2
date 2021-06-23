@@ -23,7 +23,6 @@ package fs2
 package io
 package tls
 
-import scala.util.control.NonFatal
 import scala.concurrent.duration._
 
 import java.net.{InetAddress, InetSocketAddress}
@@ -126,7 +125,7 @@ class TLSSocketSuite extends TLSSuite {
                       )
                       .flatMap { clientSocketTls =>
                         Stream.eval_(clientSocketTls.write(msg)) ++
-                          clientSocketTls.reads(8192).take(msg.size)
+                          clientSocketTls.reads(8192).take(msg.size.toLong)
                       }
                   }
 

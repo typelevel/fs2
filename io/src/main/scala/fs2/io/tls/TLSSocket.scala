@@ -112,9 +112,6 @@ object TLSSocket {
       def session: F[SSLSession] =
         engine.session
 
-      def applicationProtocol: F[String] =
-        engine.applicationProtocol
-
       def close: F[Unit] =
         engine.stopWrap >> engine.stopUnwrap >> socket.close
 

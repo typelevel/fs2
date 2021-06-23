@@ -49,7 +49,7 @@ final class PublisherToSubscriberSpec extends Fs2Suite {
   test("should cancel upstream if downstream completes") {
     forAll { (as: Seq[Int], bs: Seq[Int]) =>
       val subscriberStream =
-        Stream.emits(as ++ bs).covary[IO].toUnicastPublisher.toStream[IO].take(as.size)
+        Stream.emits(as ++ bs).covary[IO].toUnicastPublisher.toStream[IO].take(as.size.toLong)
 
       assert(subscriberStream.compile.toVector.unsafeRunSync() == (as.toVector))
     }

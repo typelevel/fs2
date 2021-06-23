@@ -77,6 +77,7 @@ private[tls] object InputOutputBuffer {
             Sync[F].delay {
               val bs = data.toBytes
               in.put(bs.values, bs.offset, bs.size)
+              ()
             }
           }
 

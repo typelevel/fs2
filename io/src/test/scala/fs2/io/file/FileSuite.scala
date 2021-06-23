@@ -512,8 +512,8 @@ class FileSuite extends BaseFileSuite {
             val path = counter.modify(i => (i + 1, i)).map(i => dir.resolve(i.toString))
             val write = Stream(0x42.toByte).repeat
               .buffer(bufferSize)
-              .take(totalBytes)
-              .through(file.writeRotate[IO](path, rotateLimit, bec))
+              .take(totalBytes.toLong)
+              .through(file.writeRotate[IO](path, rotateLimit.toLong, bec))
               .compile
               .drain
             val verify = file

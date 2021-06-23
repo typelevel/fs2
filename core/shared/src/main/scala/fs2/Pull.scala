@@ -27,6 +27,7 @@ import cats.syntax.all._
 import fs2.internal._
 import fs2.internal.FreeC.{Eval, Result}
 
+import scala.annotation.nowarn
 import scala.concurrent.duration.{FiniteDuration, TimeUnit}
 
 /** A `p: Pull[F,O,R]` reads values from one or more streams, returns a
@@ -173,6 +174,7 @@ object Pull extends PullLowPriority {
     *
     * The `F` type must be explicitly provided (e.g., via `raiseError[IO]` or `raiseError[Fallible]`).
     */
+  @nowarn("cat=unused-params")
   def raiseError[F[_]: RaiseThrowable](err: Throwable): Pull[F, INothing, INothing] =
     new Pull(Result.Fail(err))
 

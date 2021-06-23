@@ -281,14 +281,14 @@ class CompressionSuite extends Fs2Suite {
       ) =>
         val expectedFileName = Option(toEncodableFileName(s))
         val expectedComment = Option(toEncodableComment(s))
-        val expectedMTime = Option(Instant.ofEpochSecond(epochSeconds))
+        val expectedMTime = Option(Instant.ofEpochSecond(epochSeconds.toLong))
         Stream
           .chunk(Chunk.bytes(s.getBytes))
           .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
           .through(
             gzip[IO](
               fileName = Some(s),
-              modificationTime = Some(Instant.ofEpochSecond(epochSeconds)),
+              modificationTime = Some(Instant.ofEpochSecond(epochSeconds.toLong)),
               comment = Some(s),
               DeflateParams(
                 bufferSize = 8192,
@@ -326,14 +326,14 @@ class CompressionSuite extends Fs2Suite {
       ) =>
         val expectedFileName = Option(toEncodableFileName(s))
         val expectedComment = Option(toEncodableComment(s))
-        val expectedMTime = Option(Instant.ofEpochSecond(epochSeconds))
+        val expectedMTime = Option(Instant.ofEpochSecond(epochSeconds.toLong))
         Stream
           .chunk(Chunk.bytes(s.getBytes))
           .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
           .through(
             gzip[IO](
               fileName = Some(s),
-              modificationTime = Some(Instant.ofEpochSecond(epochSeconds)),
+              modificationTime = Some(Instant.ofEpochSecond(epochSeconds.toLong)),
               comment = Some(s),
               DeflateParams(
                 bufferSize = 1031,
@@ -371,14 +371,14 @@ class CompressionSuite extends Fs2Suite {
       ) =>
         val expectedFileName = Option(toEncodableFileName(s))
         val expectedComment = Option(toEncodableComment(s))
-        val expectedMTime = Option(Instant.ofEpochSecond(epochSeconds))
+        val expectedMTime = Option(Instant.ofEpochSecond(epochSeconds.toLong))
         Stream
           .chunk(Chunk.bytes(s.getBytes))
           .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
           .through(
             gzip[IO](
               fileName = Some(s),
-              modificationTime = Some(Instant.ofEpochSecond(epochSeconds)),
+              modificationTime = Some(Instant.ofEpochSecond(epochSeconds.toLong)),
               comment = Some(s),
               DeflateParams(
                 bufferSize = 509,
@@ -420,7 +420,7 @@ class CompressionSuite extends Fs2Suite {
           .through(
             gzip(
               fileName = Some(s),
-              modificationTime = Some(Instant.ofEpochSecond(epochSeconds)),
+              modificationTime = Some(Instant.ofEpochSecond(epochSeconds.toLong)),
               comment = Some(s),
               DeflateParams(
                 bufferSize = 1024,

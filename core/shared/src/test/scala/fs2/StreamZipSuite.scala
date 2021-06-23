@@ -21,6 +21,7 @@
 
 package fs2
 
+import scala.annotation.nowarn
 import scala.concurrent.duration._
 
 import cats.effect.{ContextShift, IO, Timer}
@@ -30,6 +31,7 @@ import cats.syntax.all._
 import org.scalacheck.Prop.forAll
 import org.scalacheck.effect.PropF.forAllF
 
+@nowarn("msg=dead code following this construct")
 class StreamZipSuite extends Fs2Suite {
 
   group("zip") {

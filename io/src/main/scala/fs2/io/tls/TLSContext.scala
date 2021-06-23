@@ -128,7 +128,7 @@ object TLSContext {
           logger: Option[String => F[Unit]]
       ): Resource[F, TLSSocket[F]] =
         Resource
-          .liftF(
+          .eval(
             engine(
               new TLSEngine.Binding[F] {
                 def write(data: Chunk[Byte], timeout: Option[FiniteDuration]): F[Unit] =
@@ -180,7 +180,7 @@ object TLSContext {
           logger: Option[String => F[Unit]]
       ): Resource[F, DTLSSocket[F]] =
         Resource
-          .liftF(
+          .eval(
             engine(
               new TLSEngine.Binding[F] {
                 def write(data: Chunk[Byte], timeout: Option[FiniteDuration]): F[Unit] =

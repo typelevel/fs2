@@ -90,7 +90,7 @@ class SocketSuite extends Fs2Suite {
           .flatMap { socketGroup =>
             Stream(echoServer(socketGroup).drain, clients(socketGroup))
               .parJoin(2)
-              .take(clientCount)
+              .take(clientCount.toLong)
           }
           .compile
           .toVector
@@ -143,7 +143,7 @@ class SocketSuite extends Fs2Suite {
           .flatMap { socketGroup =>
             Stream(junkServer(socketGroup), klient(socketGroup))
               .parJoin(2)
-              .take(sizes.length)
+              .take(sizes.length.toLong)
           }
           .compile
           .toVector
@@ -162,7 +162,7 @@ class SocketSuite extends Fs2Suite {
         socketGroup
           .serverResource[IO](new InetSocketAddress(InetAddress.getByName(null), 0))
           .flatMap { case (address, _) =>
-            Resource.liftF(localBindAddress.complete(address))
+            Resource.eval(localBindAddress.complete(address))
           }
 
       mkSocketGroup

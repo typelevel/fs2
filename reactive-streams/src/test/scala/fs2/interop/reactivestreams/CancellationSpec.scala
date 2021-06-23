@@ -50,7 +50,7 @@ class CancellationSpec extends Fs2Suite {
     var i = 0
     val b = new AtomicBoolean(false)
     while (i < attempts) {
-      val sub = StreamSubscription(Sub[Int](b), s).unsafeRunSync
+      val sub = StreamSubscription(Sub[Int](b), s).unsafeRunSync()
       sub.unsafeStart()
       sub.cancel()
       sub.request(1)
@@ -65,7 +65,7 @@ class CancellationSpec extends Fs2Suite {
     var i = 0
     val b = new AtomicBoolean(false)
     while (i < attempts) {
-      val sub = StreamSubscription(Sub[Int](b), s).unsafeRunSync
+      val sub = StreamSubscription(Sub[Int](b), s).unsafeRunSync()
       sub.unsafeStart()
       sub.cancel()
       sub.cancel()

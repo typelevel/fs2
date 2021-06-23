@@ -51,8 +51,10 @@ class ChunkBenchmark {
   }
 
   @Benchmark
-  def concat(): Unit =
+  def concat(): Unit = {
     Chunk.concat(chunkSeq, sizeHint)
+    ()
+  }
 
   @Benchmark
   def traverse(): Boolean = {
