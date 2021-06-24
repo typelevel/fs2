@@ -21,7 +21,7 @@
 
 package fs2.io.internal
 
-import java.io.{InputStream, OutputStream}
+import java.io.{InputStream, InterruptedIOException, OutputStream}
 
 /** Thread safe circular byte buffer which pipes a [[java.io.OutputStream]]
   * through a [[java.io.InputStream]] in a memory efficient manner, without
@@ -56,7 +56,11 @@ private[io] final class PipedStreamBuffer(private[this] val capacity: Int) { sel
     def read(): Int = {
       // Obtain permission to read from the buffer. Used for backpressuring
       // readers when the buffer is empty.
-      readerPermit.acquire()
+      try readerPermit.acquire()
+      catch {
+        case _: InterruptedException =>
+          throw new InterruptedIOException()
+      }
 
       while (true) {
         self.synchronized {
@@ -81,7 +85,11 @@ private[io] final class PipedStreamBuffer(private[this] val capacity: Int) { sel
 
         // There is nothing to be read from the buffer at this moment.
         // Wait until notified by a writer.
-        readerPermit.acquire()
+        try readerPermit.acquire()
+        catch {
+          case _: InterruptedException =>
+            throw new InterruptedIOException()
+        }
       }
 
       // Unreachable code.
@@ -101,7 +109,11 @@ private[io] final class PipedStreamBuffer(private[this] val capacity: Int) { sel
 
       // Obtain permission to read from the buffer. Used for backpressuring
       // readers when the buffer is empty.
-      readerPermit.acquire()
+      try readerPermit.acquire()
+      catch {
+        case _: InterruptedException =>
+          throw new InterruptedIOException()
+      }
 
       // Variables used to track the progress of the reading. It can happen that
       // the current contents of the buffer cannot fulfill the read request and
@@ -155,7 +167,11 @@ private[io] final class PipedStreamBuffer(private[this] val capacity: Int) { sel
         if (!closed && cont) {
           // There is nothing to be read from the buffer at this moment.
           // Wait until notified by a writer.
-          readerPermit.acquire()
+          try readerPermit.acquire()
+          catch {
+            case _: InterruptedException =>
+              throw new InterruptedIOException()
+          }
         }
       }
 
@@ -182,7 +198,11 @@ private[io] final class PipedStreamBuffer(private[this] val capacity: Int) { sel
     def write(b: Int): Unit = {
       // Obtain permission to write to the buffer. Used for backpressuring
       // writers when the buffer is full.
-      writerPermit.acquire()
+      try writerPermit.acquire()
+      catch {
+        case _: InterruptedException =>
+          throw new InterruptedIOException()
+      }
 
       while (true) {
         self.synchronized {
@@ -206,7 +226,11 @@ private[io] final class PipedStreamBuffer(private[this] val capacity: Int) { sel
         }
 
         // The buffer is currently full. Wait until notified by a reader.
-        writerPermit.acquire()
+        try writerPermit.acquire()
+        catch {
+          case _: InterruptedException =>
+            throw new InterruptedIOException()
+        }
       }
     }
 
@@ -224,7 +248,11 @@ private[io] final class PipedStreamBuffer(private[this] val capacity: Int) { sel
 
       // Obtain permission to write to the buffer. Used for backpressuring
       // writers when the buffer is full.
-      writerPermit.acquire()
+      try writerPermit.acquire()
+      catch {
+        case _: InterruptedException =>
+          throw new InterruptedIOException()
+      }
 
       // Variables used to track the progress of the writing. It can happen that
       // the current leftover capacity of the buffer cannot fulfill the write
@@ -269,7 +297,11 @@ private[io] final class PipedStreamBuffer(private[this] val capacity: Int) { sel
         // closed, otherwise we risk a deadlock. When the pipe is closed, this
         // writer will loop again and execute the correct logic.
         if (!closed) {
-          writerPermit.acquire()
+          try writerPermit.acquire()
+          catch {
+            case _: InterruptedException =>
+              throw new InterruptedIOException()
+          }
         }
       }
     }
