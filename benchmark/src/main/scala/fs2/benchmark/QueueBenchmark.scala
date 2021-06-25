@@ -43,8 +43,10 @@ class QueueBenchmark {
     Queue
       .unbounded[IO, Int]
       .flatMap { q =>
-        Concurrent[IO].start(Stream.constant(1, n).take(size).through(q.enqueue).compile.drain) >>
-          q.dequeue.take(size).compile.drain
+        Concurrent[IO].start(
+          Stream.constant(1, n).take(size.toLong).through(q.enqueue).compile.drain
+        ) >>
+          q.dequeue.take(size.toLong).compile.drain
       }
       .unsafeRunSync()
 
@@ -54,9 +56,9 @@ class QueueBenchmark {
       .unbounded[IO, Chunk[Int]]
       .flatMap { q =>
         Concurrent[IO].start(
-          Stream.constant(1, n).take(size).chunks.through(q.enqueue).compile.drain
+          Stream.constant(1, n).take(size.toLong).chunks.through(q.enqueue).compile.drain
         ) >>
-          q.dequeue.flatMap(Stream.chunk).take(size).compile.drain
+          q.dequeue.flatMap(Stream.chunk).take(size.toLong).compile.drain
       }
       .unsafeRunSync()
 }

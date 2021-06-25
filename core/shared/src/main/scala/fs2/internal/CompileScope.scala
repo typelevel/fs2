@@ -179,7 +179,7 @@ private[fs2] final class CompileScope[F[_]] private (
     F.uncancelable {
       F.flatMap(F.attempt(fr)) {
         case Right(r) =>
-          val finalizer = (ec: ExitCase[Throwable]) => F.suspend(release(r, ec))
+          val finalizer = (ec: ExitCase[Throwable]) => F.defer(release(r, ec))
           F.flatMap(resource.acquired(finalizer)) { result =>
             if (result.exists(identity)) {
               F.flatMap(register(resource)) {

@@ -28,11 +28,14 @@ import cats.effect.concurrent.Ref
 import cats.syntax.all._
 import org.scalacheck.effect.PropF.forAllF
 
+import scala.annotation.nowarn
+
 class StreamObserveSuite extends Fs2Suite {
   trait Observer {
     def apply[F[_]: Concurrent, O](s: Stream[F, O])(observation: Pipe[F, O, Unit]): Stream[F, O]
   }
 
+  @nowarn("msg=dead code following this construct")
   def observationTests(label: String, observer: Observer): Unit =
     group(label) {
       test("basic functionality") {

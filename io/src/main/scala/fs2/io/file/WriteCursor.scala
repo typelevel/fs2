@@ -24,11 +24,13 @@ package io
 package file
 
 import cats.{Monad, ~>}
-import cats.syntax.all._
+import cats.arrow.FunctionK
 import cats.effect.{Blocker, ContextShift, Resource, Sync}
+import cats.syntax.all._
+
+import scala.annotation.nowarn
 
 import java.nio.file._
-import cats.arrow.FunctionK
 
 /** Associates a `FileHandle` with an offset in to the file.
   *
@@ -84,13 +86,14 @@ object WriteCursor {
       fileHandle =>
         val size = if (flags.contains(StandardOpenOption.APPEND)) fileHandle.size else 0L.pure[F]
         val cursor = size.map(s => WriteCursor(fileHandle, s))
-        Resource.liftF(cursor)
+        Resource.eval(cursor)
     }
 
   /** Returns a `WriteCursor` for the specified file handle.
     *
     * If `append` is true, the offset is initialized to the current size of the file.
     */
+  @nowarn("cat=unused-params")
   def fromFileHandle[F[_]: Sync: ContextShift](
       file: FileHandle[F],
       append: Boolean

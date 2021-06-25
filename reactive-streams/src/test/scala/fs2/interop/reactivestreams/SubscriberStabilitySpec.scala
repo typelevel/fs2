@@ -24,7 +24,6 @@ package interop
 package reactivestreams
 
 import cats.effect._
-import cats.implicits._
 
 import java.nio.ByteBuffer
 import org.reactivestreams._
@@ -85,7 +84,7 @@ class SubscriberStabilitySpec extends Fs2Suite {
       def tailRecM[A, B](a: A)(f: A => IO[Either[A, B]]): IO[B] =
         io.tailRecM(a)(f)
       def suspend[A](thunk: => IO[A]): IO[A] =
-        io.suspend(thunk)
+        io.defer(thunk)
     }
 
     val publisher = new Publisher[ByteBuffer] {

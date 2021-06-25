@@ -447,7 +447,7 @@ private[fs2] object FreeC {
           }
 
           view.step match {
-            case output: Output[X] =>
+            case output: Output[_] =>
               interruptGuard(scope)(
                 F.pure(Out(output.values, scope, view.next(FreeC.Result.unit)))
               )

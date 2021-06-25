@@ -136,10 +136,10 @@ class IoSuite extends Fs2Suite {
       case class ChunkSize(value: Int)
       val defaultPipedInputStreamBufferSize = 1024 // private in PipedInputStream.DEFAULT_PIPE_SIZE
       implicit val arbChunkSize: Arbitrary[ChunkSize] = Arbitrary {
-        Gen.chooseNum(defaultPipedInputStreamBufferSize + 1, 65536).map(ChunkSize)
+        Gen.chooseNum(defaultPipedInputStreamBufferSize + 1, 65536).map(ChunkSize(_))
       }
       implicit val shrinkChunkSize: Shrink[ChunkSize] =
-        Shrink.xmap[Int, ChunkSize](ChunkSize, _.value) {
+        Shrink.xmap[Int, ChunkSize](ChunkSize(_), _.value) {
           Shrink.shrinkIntegral[Int].suchThat(_ > defaultPipedInputStreamBufferSize)
         }
 

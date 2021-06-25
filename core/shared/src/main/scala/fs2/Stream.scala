@@ -31,7 +31,7 @@ import fs2.internal.FreeC.{Acquire, Eval, GetScope, Output, Result}
 import fs2.internal._
 import java.io.PrintStream
 
-import scala.annotation.tailrec
+import scala.annotation.{nowarn, tailrec}
 import scala.concurrent.TimeoutException
 import scala.concurrent.duration._
 import cats.data.Ior
@@ -1058,6 +1058,7 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
 
   /** Alias for `evalMapChunk(o => f(o).as(o))`.
     */
+  @nowarn("cat=unused-params")
   def evalTapChunk[F2[x] >: F[x]: Functor: Applicative, O2](f: O => F2[O2]): Stream[F2, O] =
     evalMapChunk(o => f(o).as(o))
 
@@ -1095,6 +1096,7 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
     * Note: The result Stream will consist of chunks that are empty or 1-element-long.
     * If you want to operate on chunks after using it, consider buffering, e.g. by using [[buffer]].
     */
+  @nowarn("cat=unused-params")
   def evalFilter[F2[x] >: F[x]: Functor](f: O => F2[Boolean]): Stream[F2, O] =
     flatMap(o => Stream.eval(f(o)).ifM(Stream.emit(o), Stream.empty))
 
@@ -1113,6 +1115,7 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
     * Note: The result Stream will consist of chunks that are empty or 1-element-long.
     * If you want to operate on chunks after using it, consider buffering, e.g. by using [[buffer]].
     */
+  @nowarn("cat=unused-params")
   def evalFilterNot[F2[x] >: F[x]: Functor](f: O => F2[Boolean]): Stream[F2, O] =
     flatMap(o => Stream.eval(f(o)).ifM(Stream.empty, Stream.emit(o)))
 
@@ -2274,6 +2277,7 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
 
   /** Rechunks the stream such that output chunks are within [inputChunk.size * minFactor, inputChunk.size * maxFactor].
     */
+  @nowarn("cat=unused-params")
   def rechunkRandomly[F2[x] >: F[x]: Sync](
       minFactor: Double = 0.1,
       maxFactor: Double = 2.0
@@ -3380,6 +3384,7 @@ object Stream extends StreamLowPriority {
     * res0: Either[Throwable,Unit] = Left(java.lang.RuntimeException)
     * }}}
     */
+  @nowarn("cat=unused-params")
   def raiseError[F[_]: RaiseThrowable](e: Throwable): Stream[F, INothing] =
     new Stream(Result.Fail(e))
 

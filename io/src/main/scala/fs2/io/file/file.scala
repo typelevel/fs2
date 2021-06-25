@@ -111,7 +111,7 @@ package object file {
   ): Pipe[F, Byte, Unit] = {
     def openNewFile: Resource[F, FileHandle[F]] =
       Resource
-        .liftF(computePath)
+        .eval(computePath)
         .flatMap(p => FileHandle.fromPath(p, blocker, StandardOpenOption.WRITE :: flags.toList))
 
     def newCursor(file: FileHandle[F]): F[WriteCursor[F]] =
@@ -260,6 +260,7 @@ package object file {
           }
         }
       )
+      ()
     }
 
   /** Returns the size of a file (in bytes).

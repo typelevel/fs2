@@ -94,7 +94,7 @@ class UdpSuite extends Fs2Suite {
                 }
                 val clients = Stream
                   .constant(client)
-                  .take(numClients)
+                  .take(numClients.toLong)
                   .parJoin(numParallelClients)
                 server.mergeHaltBoth(clients)
               }

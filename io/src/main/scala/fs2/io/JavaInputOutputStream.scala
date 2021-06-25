@@ -190,7 +190,7 @@ private[io] object JavaInputOutputStream {
      *                        that downstream has been terminated that in turn kills upstream
      */
     Resource
-      .liftF(
+      .eval(
         (
           Queue.synchronous[F, Either[Option[Throwable], Bytes]],
           SignallingRef[F, UpStreamState](UpStreamState(done = false, err = None)),
