@@ -2654,24 +2654,16 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       that: Stream[F2, O3]
   )(pad1: O2, pad2: O3)(f: (O2, O3) => O4): Stream[F2, O4] = {
     def cont1(hd: Chunk[O2], tl: Stream[F2, O2]): Pull[F2, O4, Unit] =
-      Pull.output(hd.map(o => f(o, pad2))) >> contLeft(tl)
-
-    def contLeft(s: Stream[F2, O2]): Pull[F2, O4, Unit] =
-      s.pull.uncons.flatMap {
-        case None => Pull.done
-        case Some((hd, tl)) =>
-          Pull.output(hd.map(o => f(o, pad2))) >> contLeft(tl)
-      }
+      Pull.output(hd.map(o1 => f(o1, pad2))) >> contLeft(tl)
 
     def cont2(hd: Chunk[O3], tl: Stream[F2, O3]): Pull[F2, O4, Unit] =
       Pull.output(hd.map(o2 => f(pad1, o2))) >> contRight(tl)
 
+    def contLeft(s: Stream[F2, O2]): Pull[F2, O4, Unit] =
+      Pull.mapOutput(s.pull.echo, f(_, pad2))
+
     def contRight(s: Stream[F2, O3]): Pull[F2, O4, Unit] =
-      s.pull.uncons.flatMap {
-        case None => Pull.done
-        case Some((hd, tl)) =>
-          Pull.output(hd.map(o2 => f(pad1, o2))) >> contRight(tl)
-      }
+      Pull.mapOutput(s.pull.echo, f(pad1, _))
 
     zipWith_[F2, O2, O3, O4](that)(cont1, cont2, contRight)(f)
   }
