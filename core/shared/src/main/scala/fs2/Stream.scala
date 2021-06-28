@@ -131,7 +131,7 @@ import scala.collection.mutable.ArrayBuffer
   * produces a singly-chunked stream from any input stream `s`.
   *
   * For instance, for a stream `s` and a function `f: A => B`,
-  * - the result of `s.map(f)` is a Stream with the same _chunking_ as the `s`; wheras...
+  * - the result of `s.map(f)` is a Stream with the same _chunking_ as the `s`; whereas...
   * - the result of `s.flatMap(x => S.emit(f(x)))` is a Stream structured as a sequence of singleton chunks.
   * The latter is using the definition of `map` that is derived from the `Monad` instance.
   *
