@@ -14,13 +14,11 @@ inThisBuild(
     ),
     scalaVersion := V.scala212,
     addCompilerPlugin(scalafixSemanticdb),
-    scalacOptions ++= List(
-      "-Yrangepos"
-    )
+    scalacOptions ++= List("-Yrangepos")
   )
 )
 
-skip in publish := true
+publish / skip := true
 
 lazy val rules = project.settings(
   moduleName := "scalafix",
@@ -28,7 +26,7 @@ lazy val rules = project.settings(
 )
 
 lazy val input = project.settings(
-  skip in publish := true,
+  publish / skip := true,
   libraryDependencies ++= Seq(
     "co.fs2" %% "fs2-core" % "0.10.6",
     "com.typesafe.akka" %% "akka-stream" % "2.5.21"
@@ -36,24 +34,31 @@ lazy val input = project.settings(
 )
 
 lazy val output = project.settings(
-  skip in publish := true,
+  publish / skip := true,
   libraryDependencies ++= Seq(
-    "co.fs2" %% "fs2-core" % "1.0.0"
+    "co.fs2" %% "fs2-core" % "1.0.0",
+    "com.typesafe.akka" %% "akka-stream" % "2.5.21"
   )
 )
 
 lazy val tests = project
   .settings(
-    skip in publish := true,
-    libraryDependencies += "ch.epfl.scala" % "scalafix-testkit" % V.scalafixVersion % Test cross CrossVersion.full,
-    compile.in(Compile) := 
-      compile.in(Compile).dependsOn(compile.in(input, Compile)).value,
+    publish / skip := true,
+    libraryDependencies += ("ch.epfl.scala" % "scalafix-testkit" % V.scalafixVersion % Test)
+      .cross(CrossVersion.full),
+    Compile / compile :=
+      (Compile / compile).dependsOn(input / Compile / compile).value,
     scalafixTestkitOutputSourceDirectories :=
-      sourceDirectories.in(output, Compile).value,
+      (output / Compile / sourceDirectories).value,
     scalafixTestkitInputSourceDirectories :=
-      sourceDirectories.in(input, Compile).value,
+      (input / Compile / sourceDirectories).value,
     scalafixTestkitInputClasspath :=
-      fullClasspath.in(input, Compile).value,
+      (input / Compile / fullClasspath).value
   )
   .dependsOn(rules)
   .enablePlugins(ScalafixTestkitPlugin)
+
+addCommandAlias(
+  "testCI",
+  "; set (output / Compile / compile / skip) := true; test; set (output / Compile / compile / skip) := false;"
+)

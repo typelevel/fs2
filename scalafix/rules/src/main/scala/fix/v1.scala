@@ -168,7 +168,7 @@ object ConcurrentDataTypesRules {
       case cancellableGetMatcher(Term.Select(_, s)) =>
         Patch.replaceTree(s, "get")
       case timedGetMatcher(s @ Term.Apply(Term.Select(pre, Term.Name("timedGet")), List(d, _))) =>
-        Patch.replaceTree(s, s"${pre}.timeout($d)")
+        Patch.replaceTree(s, s"${pre}.get.timeout($d)") + Patch.addGlobalImport(importer"cats.effect.syntax.concurrent._")
 
       // Signal
       case t @ immutableSignalMatcher(_: Term.Name) =>
@@ -391,7 +391,7 @@ object StreamAppRules {
       tpl.copy(
         inits = tpl.inits :+ Init(Type.Name("IOApp"), Name("IOApp"), List()),
         stats = addProgramRun(tpl.stats)).toString()
-    )
+    ) + Patch.addLeft(tpl, "extends ")
 
   private[this] def replaceStats(stats: List[Stat]): List[Patch] =
     stats.flatMap{

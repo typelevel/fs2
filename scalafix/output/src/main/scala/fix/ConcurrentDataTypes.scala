@@ -10,9 +10,10 @@ import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration._
 import cats.effect.concurrent
 import cats.effect.concurrent.{ Deferred, Ref, Semaphore }
+import cats.effect.syntax.concurrent._
 import fs2.concurrent.{ Signal, SignallingRef }
 
-abstract class ConcurrentDataTypes[F[_]: Effect] {
+abstract class ConcurrentDataTypes[F[_]: ConcurrentEffect: Timer] {
   // Ref
   val ref: F[Ref[F, Int]] = Ref.of(1)
   Ref.of[F, Int](1)
@@ -31,7 +32,7 @@ abstract class ConcurrentDataTypes[F[_]: Effect] {
   val f2: F[Deferred[F, Int]] = promise
   e.map(_.get)
   def scheduler: Timer[F]
-  e.map(_.timeout(1.second))
+  e.map(_.get.timeout(1.second))
 
   // Semaphore
   val s: F[concurrent.Semaphore[F]] = cats.effect.concurrent.Semaphore(1)
