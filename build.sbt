@@ -191,7 +191,7 @@ lazy val coreJS = core.js
 
 lazy val io = crossProject(JVMPlatform, JSPlatform)
   .in(file("io"))
-  .enablePlugins(SbtOsgi)
+  .enablePlugins(SbtOsgi, ScalablyTypedConverterPlugin)
   .settings(
     name := "fs2-io",
     libraryDependencies += "com.comcast" %%% "ip4s-core" % "3.0.3",
@@ -212,7 +212,10 @@ lazy val io = crossProject(JVMPlatform, JSPlatform)
     Test / fork := true,
     libraryDependencies += "com.github.jnr" % "jnr-unixsocket" % "0.38.8" % Optional
   )
-  .jsSettings(Test / scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule)))
+  .jsSettings(
+    scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule)),
+    Compile / npmDependencies += "@types/node" -> "15.12.5"
+  )
   .dependsOn(core % "compile->compile;test->test")
 
 lazy val reactiveStreams = project
