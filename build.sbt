@@ -191,7 +191,8 @@ lazy val coreJS = core.js
 
 lazy val io = crossProject(JVMPlatform, JSPlatform)
   .in(file("io"))
-  .enablePlugins(SbtOsgi, ScalablyTypedConverterPlugin)
+  .enablePlugins(SbtOsgi)
+  .jsConfigure(_.enablePlugins(ScalablyTypedConverterPlugin))
   .settings(
     name := "fs2-io",
     libraryDependencies += "com.comcast" %%% "ip4s-core" % "3.0.3",
