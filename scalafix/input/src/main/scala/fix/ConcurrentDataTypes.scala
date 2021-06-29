@@ -12,7 +12,7 @@ import fs2.async.{Ref, refOf, _}
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration._
 
-abstract class ConcurrentDataTypes[F[_]: Effect] {
+abstract class ConcurrentDataTypes[F[_]: ConcurrentEffect: Timer] {
   // Ref
   val ref: F[Ref[F, Int]] = Ref(1)
   refOf[F, Int](1)

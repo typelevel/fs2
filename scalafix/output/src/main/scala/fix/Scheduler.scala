@@ -6,7 +6,7 @@ import fs2._
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration._
 
-abstract class SchedulerTimer[F[_]: Effect] {
+abstract class SchedulerTimer[F[_]: ConcurrentEffect: Timer] {
 
   val scheduler: Timer[F]
   val duration = 1.second

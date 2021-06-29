@@ -19,7 +19,9 @@ ThisBuild / organizationName := "Functional Streams for Scala"
 ThisBuild / homepage := Some(url("https://github.com/typelevel/fs2"))
 ThisBuild / startYear := Some(2013)
 
-ThisBuild / crossScalaVersions := Seq("3.0.0", "2.12.14", "2.13.6")
+val NewScala = "2.13.6"
+
+ThisBuild / crossScalaVersions := Seq("3.0.0", "2.12.14", NewScala)
 
 ThisBuild / githubWorkflowJavaVersions := Seq("adopt@1.16")
 
@@ -28,8 +30,13 @@ ThisBuild / spiewakCiReleaseSnapshots := true
 ThisBuild / spiewakMainBranches := List("main", "series/2.5.x")
 
 ThisBuild / githubWorkflowBuild := Seq(
-  WorkflowStep.Sbt(List("fmtCheck", "test", "mimaReportBinaryIssues"))
+  WorkflowStep.Sbt(List("fmtCheck", "test", "mimaReportBinaryIssues")),
   // WorkflowStep.Sbt(List("coreJVM/it:test")) // Memory leak tests fail intermittently on CI
+  WorkflowStep.Run(
+    List("cd scalafix", "sbt testCI"),
+    name = Some("Scalafix tests"),
+    cond = Some(s"matrix.scala == '$NewScala'")
+  )
 )
 
 ThisBuild / scmInfo := Some(
