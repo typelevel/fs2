@@ -23,7 +23,7 @@ package fs2.internal
 
 import scala.annotation.tailrec
 
-import cats.{Id, Traverse, TraverseFilter}
+import cats.{Id, Traverse}
 import cats.data.Chain
 import cats.effect.kernel.{Fiber, Outcome, Poll, Ref, Resource, Unique}
 import cats.syntax.all._
@@ -456,20 +456,17 @@ private[fs2] final class Scope[F[_]] private (
     * successfully leased.
     */
   def lease: F[Lease[F]] =
-    state.get.flatMap {
-      case s: Scope.State.Open[F] =>
-        val allScopes = (s.children :+ self) ++ ancestors
-        Traverse[Chain].flatTraverse(allScopes)(_.resources).flatMap { allResources =>
-          TraverseFilter[Chain].traverseFilter(allResources)(r => r.lease).map { allLeases =>
-            val lease = new Lease[F] {
-              def cancel: F[Either[Throwable, Unit]] =
-                traverseError[Lease[F]](allLeases, _.cancel)
-            }
-            lease
-          }
-        }
-      case _: Scope.State.Closed[F] =>
-        F.raiseError(new RuntimeException("Scope closed at time of lease"))
+    for {
+      children <- (state.get.flatMap[Chain[Scope[F]]] {
+        case x: Scope.State.Open[F] => F.pure(x.children)
+        case _: Scope.State.Closed[F] =>
+          F.raiseError(new RuntimeException("Scope closed at time of lease"))
+      })
+      allScopes = (children :+ self) ++ ancestors
+      allResources <- allScopes.flatTraverse(_.resources)
+      allLeases <- allResources.traverseFilter(_.lease)
+    } yield new Lease[F] {
+      def cancel: F[Either[Throwable, Unit]] = traverseError[Lease[F]](allLeases, _.cancel)
     }
 
   override def toString =
