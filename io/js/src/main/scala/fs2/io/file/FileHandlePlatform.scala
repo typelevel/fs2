@@ -47,10 +47,12 @@ private[file] trait FileHandlePlatform {
         F.raiseError(new UnsupportedOperationException)
 
       override def read(numBytes: Int, offset: Long): F[Option[Chunk[Byte]]] =
-        F.fromPromise(F.delay(fd.read(new ArrayBuffer(numBytes), offset.toDouble, numBytes))).map { res =>
-          if (res.bytesRead < 0) None
-          else if (res.bytesRead == 0) Some(Chunk.empty)
-          else Some(Chunk.byteBuffer(TypedArrayBuffer.wrap(res.buffer).limit(res.bytesRead.toInt)))
+        F.fromPromise(F.delay(fd.read(new ArrayBuffer(numBytes), offset.toDouble, numBytes))).map {
+          res =>
+            if (res.bytesRead < 0) None
+            else if (res.bytesRead == 0) Some(Chunk.empty)
+            else
+              Some(Chunk.byteBuffer(TypedArrayBuffer.wrap(res.buffer).limit(res.bytesRead.toInt)))
         }
 
       override def size: F[Long] =
