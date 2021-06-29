@@ -40,7 +40,7 @@ private[io] trait WatcherPlatform { self: Watcher.type =>
   type WatchEventModifier = java.nio.file.WatchEvent.Modifier
 
   private[io] trait EventTypePlatform {
-    def toWatchEventKind(et: EventType): WatchEvent.Kind[_] =
+    def toWatchEventKind(et: Watcher.EventType): WatchEvent.Kind[_] =
       et match {
         case EventType.Created           => StandardWatchEventKinds.ENTRY_CREATE
         case EventType.Modified          => StandardWatchEventKinds.ENTRY_MODIFY
@@ -103,7 +103,7 @@ private[io] trait WatcherPlatform { self: Watcher.type =>
       path: Path,
       singleFile: Boolean,
       key: WatchKey,
-      types: Seq[EventType],
+      types: Seq[Watcher.EventType],
       modifiers: Seq[WatchEvent.Modifier],
       recurse: Boolean,
       suppressCreated: Boolean,
@@ -152,7 +152,7 @@ private[io] trait WatcherPlatform { self: Watcher.type =>
 
     private def watchDirectory(
         path: Path,
-        types: Seq[EventType],
+        types: Seq[Watcher.EventType],
         modifiers: Seq[WatchEvent.Modifier]
     ): F[F[Unit]] = {
       val (supplementedTypes, suppressCreated) =
