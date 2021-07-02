@@ -19,7 +19,8 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2.io
+package fs2
+package io
 
 import java.io.{ByteArrayInputStream, InputStream, OutputStream}
 import java.util.concurrent.Executors
@@ -166,6 +167,42 @@ class IoSuite extends Fs2Suite {
             Thread.sleep(100L)
           }
         }.compile.drain.map(_ => assert(true))
+      }
+    }
+
+    test("different chunk sizes function correctly") {
+
+      def test(blocker: Blocker, chunkSize: Int): Pipe[IO, Byte, Byte] = source => {
+        readOutputStream(blocker, chunkSize) { os =>
+          source.through(writeOutputStream(IO.delay(os), blocker, true)).compile.drain
+        }
+      }
+
+      def source(chunkSize: Int, bufferSize: Int): Stream[Pure, Byte] =
+        Stream.range(65, 75).map(_.toByte).repeat.take(chunkSize.toLong * 2).buffer(bufferSize)
+
+      forAllF { (chunkSize0: Int, bufferSize0: Int) =>
+        val chunkSize = (chunkSize0 % 512).abs + 1
+        val bufferSize = (bufferSize0 % 511).abs + 1
+
+        val src = source(chunkSize, bufferSize)
+
+        Blocker[IO].use { blocker =>
+          src
+            .through(text.utf8Decode)
+            .foldMonoid
+            .flatMap { expected =>
+              src
+                .through(test(blocker, chunkSize))
+                .through(text.utf8Decode)
+                .foldMonoid
+                .evalMap { actual =>
+                  IO(assertEquals(actual, expected))
+                }
+            }
+            .compile
+            .drain
+        }
       }
     }
   }
