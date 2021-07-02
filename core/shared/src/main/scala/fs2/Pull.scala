@@ -337,6 +337,10 @@ object Pull extends PullLowPriority {
     */
   def eval[F[_], R](fr: F[R]): Pull[F, INothing, R] = Eval[F, R](fr)
 
+  /** Creates a pull that waits for the duration `d` */
+  def sleep[F[_]](d: FiniteDuration)(implicit t: Temporal[F]): Pull[F, INothing, Unit] =
+    Pull.eval(t.sleep(d))
+
   /** Lifts the given output value `O` into a pull that performs no
     * effects, emits that single output in a singleton chunk, and always
     * terminates successfully with a unit result.
