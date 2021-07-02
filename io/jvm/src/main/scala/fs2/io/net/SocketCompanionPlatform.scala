@@ -32,7 +32,7 @@ import java.net.InetSocketAddress
 import java.nio.channels.{AsynchronousSocketChannel, CompletionHandler}
 import java.nio.{Buffer, ByteBuffer}
 
-private[net] trait SocketPlatform {
+private[net] trait SocketCompanionPlatform {
   private[net] def forAsync[F[_]: Async](
       ch: AsynchronousSocketChannel
   ): Resource[F, Socket[F]] =

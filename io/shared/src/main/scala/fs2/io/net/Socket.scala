@@ -69,4 +69,4 @@ trait Socket[F[_]] {
   def writes: Pipe[F, Byte, INothing]
 }
 
-object Socket extends SocketPlatform
+object Socket extends SocketCompanionPlatform
