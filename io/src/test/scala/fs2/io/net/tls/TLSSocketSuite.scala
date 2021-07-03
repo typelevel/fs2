@@ -43,13 +43,13 @@ class TLSSocketSuite extends TLSSuite {
         for {
           tlsContext <- Resource.eval(Network[IO].tlsContext.system)
           socket <- Network[IO].client(SocketAddress(host"google.com", port"443"))
-          tlsSocket <- tlsContext.client(
-            socket,
+          tlsSocket <- tlsContext.clientBuilder(socket)
+            .withParameters(
             TLSParameters(
               serverNames = List(new SNIHostName("www.google.com")).some,
               protocols = List(protocol).some
-            )
-          )
+            ))
+            .build
         } yield tlsSocket
 
       val googleDotCom = "GET / HTTP/1.1\r\nHost: www.google.com\r\n\r\n"
@@ -158,12 +158,13 @@ class TLSSocketSuite extends TLSSuite {
         (serverAddress, server) = addressAndConnections
         client <- Network[IO]
           .client(serverAddress)
-          .flatMap(
+          .flatMap(s =>
             clientContext
-              .client(
-                _,
+              .clientBuilder(s)
+              .withParameters(
                 TLSParameters.apply(endpointIdentificationAlgorithm = Some("HTTPS"))
               ) //makes test fail if using X509TrustManager, passes if using X509ExtendedTrustManager
+              .build
           )
       } yield server.flatMap(s => Stream.resource(tlsContext.server(s))) -> client
 

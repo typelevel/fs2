@@ -39,10 +39,9 @@ object TLSDebug {
     host.resolve.flatMap { socketAddress =>
       Network[F].client(socketAddress).use { rawSocket =>
         tlsContext
-          .client(
-            rawSocket,
-            TLSParameters(serverNames = Some(List(new SNIHostName(host.host.toString))))
-          )
+          .clientBuilder(rawSocket)
+          .withParameters(TLSParameters(serverNames = Some(List(new SNIHostName(host.host.toString)))))
+          .build
           .use { tlsSocket =>
             tlsSocket.write(Chunk.empty) >>
               tlsSocket.session.map { session =>
