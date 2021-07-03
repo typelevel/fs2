@@ -126,11 +126,11 @@ private[tls] object TLSEngine {
 
       private def read0(maxBytes: Int): F[Option[Chunk[Byte]]] =
         // Check if the initial handshake has finished -- if so, read; otherwise, handshake and then read
-        dequeueUnwrap(maxBytes).flatMap { out =>
+        unwrapThenTakeUnwrapped(maxBytes).flatMap { out =>
           if (out.isEmpty)
             initialHandshakeDone.ifM(
               read1(maxBytes),
-              write(Chunk.empty) >> dequeueUnwrap(maxBytes).flatMap { out =>
+              write(Chunk.empty) >> unwrapThenTakeUnwrapped(maxBytes).flatMap { out =>
                 if (out.isEmpty) read1(maxBytes) else Applicative[F].pure(out)
               }
             )
@@ -159,7 +159,7 @@ private[tls] object TLSEngine {
                   case SSLEngineResult.HandshakeStatus.NOT_HANDSHAKING =>
                     unwrapBuffer.inputRemains
                       .map(_ > 0 && result.bytesConsumed > 0)
-                      .ifM(unwrap(maxBytes), dequeueUnwrap(maxBytes))
+                      .ifM(unwrap(maxBytes), takeUnwrapped(maxBytes))
                   case SSLEngineResult.HandshakeStatus.FINISHED =>
                     unwrap(maxBytes)
                   case _ =>
@@ -169,16 +169,19 @@ private[tls] object TLSEngine {
                     )
                 }
               case SSLEngineResult.Status.BUFFER_UNDERFLOW =>
-                dequeueUnwrap(maxBytes)
+                takeUnwrapped(maxBytes)
               case SSLEngineResult.Status.BUFFER_OVERFLOW =>
                 unwrapBuffer.expandOutput >> unwrap(maxBytes)
               case SSLEngineResult.Status.CLOSED =>
-                stopWrap >> stopUnwrap >> dequeueUnwrap(maxBytes)
+                stopWrap >> stopUnwrap >> takeUnwrapped(maxBytes)
             }
           }
 
-      private def dequeueUnwrap(maxBytes: Int): F[Option[Chunk[Byte]]] =
+      private def takeUnwrapped(maxBytes: Int): F[Option[Chunk[Byte]]] =
         unwrapBuffer.output(maxBytes).map(out => if (out.isEmpty) None else Some(out))
+
+      private def unwrapThenTakeUnwrapped(maxBytes: Int): F[Option[Chunk[Byte]]] =
+        unwrapBuffer.inputRemains.map(_ > 0).ifM(unwrap(maxBytes), takeUnwrapped(maxBytes))
 
       /** Determines what to do next given the result of a handshake operation.
         * Must be called with `handshakeSem`.
