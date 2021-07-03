@@ -43,12 +43,14 @@ class TLSSocketSuite extends TLSSuite {
         for {
           tlsContext <- Resource.eval(Network[IO].tlsContext.system)
           socket <- Network[IO].client(SocketAddress(host"google.com", port"443"))
-          tlsSocket <- tlsContext.clientBuilder(socket)
+          tlsSocket <- tlsContext
+            .clientBuilder(socket)
             .withParameters(
-            TLSParameters(
-              serverNames = List(new SNIHostName("www.google.com")).some,
-              protocols = List(protocol).some
-            ))
+              TLSParameters(
+                serverNames = List(new SNIHostName("www.google.com")).some,
+                protocols = List(protocol).some
+              )
+            )
             .build
         } yield tlsSocket
 

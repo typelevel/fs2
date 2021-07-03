@@ -45,8 +45,14 @@ class DTLSSocketSuite extends TLSSuite {
         serverAddress <- address(serverSocket)
         clientSocket <- Network[IO].openDatagramSocket()
         clientAddress <- address(clientSocket)
-        tlsServerSocket <- tlsContext.dtlsServerBuilder(serverSocket, clientAddress).withLogger(logger).build
-        tlsClientSocket <- tlsContext.dtlsClientBuilder(clientSocket, serverAddress).withLogger(logger).build
+        tlsServerSocket <- tlsContext
+          .dtlsServerBuilder(serverSocket, clientAddress)
+          .withLogger(logger)
+          .build
+        tlsClientSocket <- tlsContext
+          .dtlsClientBuilder(clientSocket, serverAddress)
+          .withLogger(logger)
+          .build
       } yield (tlsServerSocket, tlsClientSocket, serverAddress)
 
       Stream

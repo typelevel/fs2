@@ -40,7 +40,9 @@ object TLSDebug {
       Network[F].client(socketAddress).use { rawSocket =>
         tlsContext
           .clientBuilder(rawSocket)
-          .withParameters(TLSParameters(serverNames = Some(List(new SNIHostName(host.host.toString)))))
+          .withParameters(
+            TLSParameters(serverNames = Some(List(new SNIHostName(host.host.toString))))
+          )
           .build
           .use { tlsSocket =>
             tlsSocket.write(Chunk.empty) >>
