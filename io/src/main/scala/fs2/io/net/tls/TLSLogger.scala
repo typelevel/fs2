@@ -19,22 +19,11 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2
-package io
-package net
-package tls
+package fs2.io.net.tls
 
-import cats.effect.IO
+sealed trait TLSLogger[+F[_]]
 
-abstract class TLSSuite extends Fs2Suite {
-  def testTlsContext: IO[TLSContext[IO]] =
-    Network[IO].tlsContext
-      .fromKeyStoreResource(
-        "keystore.jks",
-        "password".toCharArray,
-        "password".toCharArray
-      )
-
-  val logger = TLSLogger.Disabled
-  // val logger = TLSLogger.Enabled(msg => IO(println(s"\u001b[33m${msg}\u001b[0m")))
+object TLSLogger {
+  case object Disabled extends TLSLogger[Nothing]
+  case class Enabled[F[_]](log: (=> String) => F[Unit]) extends TLSLogger[F]
 }

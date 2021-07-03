@@ -54,7 +54,7 @@ private[tls] object TLSEngine {
   def apply[F[_]: Async](
       engine: SSLEngine,
       binding: Binding[F],
-      logger: Option[String => F[Unit]] = None
+      logger: TLSLogger[F]
   ): F[TLSEngine[F]] =
     for {
       wrapBuffer <- InputOutputBuffer[F](
@@ -70,8 +70,13 @@ private[tls] object TLSEngine {
       handshakeSemaphore <- Semaphore[F](1)
       sslEngineTaskRunner = SSLEngineTaskRunner[F](engine)
     } yield new TLSEngine[F] {
-      private def log(msg: String): F[Unit] =
-        logger.map(_(msg)).getOrElse(Applicative[F].unit)
+      private val doLog: (() => String) => F[Unit] =
+        logger match {
+          case e: TLSLogger.Enabled[_] => msg => e.log(msg())
+          case TLSLogger.Disabled      => _ => Applicative[F].unit
+        }
+
+      private def log(msg: => String): F[Unit] = doLog(() => msg)
 
       def beginHandshake = Sync[F].delay(engine.beginHandshake())
       def session = Sync[F].delay(engine.getSession())

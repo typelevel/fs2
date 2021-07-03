@@ -95,7 +95,16 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   ProblemFilters.exclude[MissingClassProblem]("fs2.Pull$CloseScope$"),
   ProblemFilters.exclude[ReversedAbstractMethodProblem]("fs2.Pull#CloseScope.*"),
   ProblemFilters.exclude[Problem]("fs2.io.Watcher#Registration.*"),
-  ProblemFilters.exclude[Problem]("fs2.io.Watcher#DefaultWatcher.*")
+  ProblemFilters.exclude[Problem]("fs2.io.Watcher#DefaultWatcher.*"),
+  ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.io.net.tls.TLSContext.clientBuilder"),
+  ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.io.net.tls.TLSContext.serverBuilder"),
+  ProblemFilters.exclude[ReversedMissingMethodProblem](
+    "fs2.io.net.tls.TLSContext.dtlsClientBuilder"
+  ),
+  ProblemFilters.exclude[ReversedMissingMethodProblem](
+    "fs2.io.net.tls.TLSContext.dtlsServerBuilder"
+  ),
+  ProblemFilters.exclude[Problem]("fs2.io.net.tls.TLSEngine*")
 )
 
 lazy val root = project
