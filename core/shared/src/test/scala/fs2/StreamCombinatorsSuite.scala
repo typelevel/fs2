@@ -25,7 +25,6 @@ import scala.concurrent.duration._
 import scala.concurrent.TimeoutException
 import cats.effect.{IO, SyncIO}
 import cats.effect.kernel.Ref
-import cats.effect.std.Queue
 import cats.effect.std.Semaphore
 import cats.syntax.all._
 import org.scalacheck.Gen
@@ -1316,7 +1315,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
       val action =
         Vector.fill(streamSize)(Deferred[IO, Unit]).sequence.map { seenArr =>
           def peek(ind: Int)(f: Option[Unit] => Boolean) =
-            seenArr.get(ind).fold(true.pure[IO])(_.tryGet.map(f))
+            seenArr.get(ind.toLong).fold(true.pure[IO])(_.tryGet.map(f))
 
           Stream
             .emits(0 until streamSize)

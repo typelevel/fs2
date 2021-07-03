@@ -33,8 +33,7 @@ import javax.net.ssl.{
   SSLContext,
   SSLEngine,
   TrustManagerFactory,
-  X509ExtendedTrustManager,
-  X509TrustManager
+  X509ExtendedTrustManager
 }
 import cats.Applicative
 import cats.effect.kernel.{Async, Resource}
@@ -354,43 +353,43 @@ object TLSContext {
     }
   }
 
-  sealed trait SocketBuilder[F[_], Socket[_[_]]] {
-    def withParameters(params: TLSParameters): SocketBuilder[F, Socket]
-    def withLogging(log: (=> String) => F[Unit]): SocketBuilder[F, Socket]
-    def withoutLogging: SocketBuilder[F, Socket]
-    def withLogger(logger: TLSLogger[F]): SocketBuilder[F, Socket]
-    private[TLSContext] def withOldLogging(log: Option[String => F[Unit]]): SocketBuilder[F, Socket]
-    def build: Resource[F, Socket[F]]
+  sealed trait SocketBuilder[F[_], S[_[_]]] {
+    def withParameters(params: TLSParameters): SocketBuilder[F, S]
+    def withLogging(log: (=> String) => F[Unit]): SocketBuilder[F, S]
+    def withoutLogging: SocketBuilder[F, S]
+    def withLogger(logger: TLSLogger[F]): SocketBuilder[F, S]
+    private[TLSContext] def withOldLogging(log: Option[String => F[Unit]]): SocketBuilder[F, S]
+    def build: Resource[F, S[F]]
   }
 
   object SocketBuilder {
-    private[TLSContext] type Build[F[_], Socket[_[_]]] =
-      (TLSParameters, TLSLogger[F]) => Resource[F, Socket[F]]
+    private[TLSContext] type Build[F[_], S[_[_]]] =
+      (TLSParameters, TLSLogger[F]) => Resource[F, S[F]]
 
-    private[TLSContext] def apply[F[_], Socket[_[_]]](
-        mkSocket: Build[F, Socket]
-    ): SocketBuilder[F, Socket] =
+    private[TLSContext] def apply[F[_], S[_[_]]](
+        mkSocket: Build[F, S]
+    ): SocketBuilder[F, S] =
       instance(mkSocket, TLSParameters.Default, TLSLogger.Disabled)
 
-    private def instance[F[_], Socket[_[_]]](
-        mkSocket: Build[F, Socket],
+    private def instance[F[_], S[_[_]]](
+        mkSocket: Build[F, S],
         params: TLSParameters,
         logger: TLSLogger[F]
-    ): SocketBuilder[F, Socket] =
-      new SocketBuilder[F, Socket] {
-        def withParameters(params: TLSParameters): SocketBuilder[F, Socket] =
+    ): SocketBuilder[F, S] =
+      new SocketBuilder[F, S] {
+        def withParameters(params: TLSParameters): SocketBuilder[F, S] =
           instance(mkSocket, params, logger)
-        def withLogging(log: (=> String) => F[Unit]): SocketBuilder[F, Socket] =
+        def withLogging(log: (=> String) => F[Unit]): SocketBuilder[F, S] =
           withLogger(TLSLogger.Enabled(log))
-        def withoutLogging: SocketBuilder[F, Socket] =
+        def withoutLogging: SocketBuilder[F, S] =
           withLogger(TLSLogger.Disabled)
-        def withLogger(logger: TLSLogger[F]): SocketBuilder[F, Socket] =
+        def withLogger(logger: TLSLogger[F]): SocketBuilder[F, S] =
           instance(mkSocket, params, logger)
         private[TLSContext] def withOldLogging(
             log: Option[String => F[Unit]]
-        ): SocketBuilder[F, Socket] =
+        ): SocketBuilder[F, S] =
           log.map(f => withLogging(m => f(m))).getOrElse(withoutLogging)
-        def build: Resource[F, Socket[F]] =
+        def build: Resource[F, S[F]] =
           mkSocket(params, logger)
       }
   }

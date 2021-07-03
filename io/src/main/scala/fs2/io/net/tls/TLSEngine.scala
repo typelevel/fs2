@@ -72,8 +72,8 @@ private[tls] object TLSEngine {
     } yield new TLSEngine[F] {
       private val doLog: (() => String) => F[Unit] =
         logger match {
-          case TLSLogger.Enabled(f) => msg => f(msg())
-          case TLSLogger.Disabled   => _ => Applicative[F].unit
+          case e: TLSLogger.Enabled[_] => msg => e.log(msg())
+          case TLSLogger.Disabled      => _ => Applicative[F].unit
         }
 
       private def log(msg: => String): F[Unit] = doLog(() => msg)
