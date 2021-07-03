@@ -316,7 +316,7 @@ The `ReadCursor` type pairs a `FileHandle[F]` with a byte offset in to the file.
 
 Similarly, `WriteCursor` pairs a `FileHandle[F]` with a byte offset. The methods on `WriteCursor` use the offset as the position to write the next chunk of bytes, returning an updated cursor.
 
-The `fs2.io.file` package object also provides many ways to interact with the file system -- moving files, creating directories, walking all paths in a diretory tree, watching directories for changes, etc.
+The `fs2.io.file` package object also provides many ways to interact with the file system -- moving files, creating directories, walking all paths in a directory tree, watching directories for changes, etc.
 
 # Console Operations
 
