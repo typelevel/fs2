@@ -90,7 +90,7 @@ private[net] trait SocketCompanionPlatform {
       sock: netMod.Socket,
       buffer: SignallingRef[F, Chunk[Byte]],
       readSemaphore: Semaphore[F],
-      closed: Deferred[F, Either[Throwable, Unit]],
+      closed: Deferred[F, Either[Throwable, Unit]]
   )(implicit F: Async[F])
       extends Socket[F] {
 
