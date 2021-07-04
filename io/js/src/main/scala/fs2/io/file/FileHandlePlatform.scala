@@ -30,7 +30,7 @@ import scala.scalajs.js.typedarray.ArrayBuffer
 import scala.scalajs.js.typedarray.TypedArrayBuffer
 import scala.scalajs.js.typedarray.TypedArrayBufferOps._
 
-private[file] trait FileHandlePlatform {
+private[file] trait FileHandleCompanionPlatform {
   private[file] def make[F[_]](
       fd: fsPromisesMod.FileHandle
   )(implicit F: Async[F]): FileHandle[F] =

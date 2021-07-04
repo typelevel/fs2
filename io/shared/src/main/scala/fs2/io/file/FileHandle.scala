@@ -91,4 +91,4 @@ trait FileHandle[F[_]] {
   def write(bytes: Chunk[Byte], offset: Long): F[Int]
 }
 
-object FileHandle extends FileHandlePlatform
+object FileHandle extends FileHandleCompanionPlatform
