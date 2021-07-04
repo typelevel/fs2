@@ -36,8 +36,8 @@ trait TLSEnginePlatform { self: TLSEngine.type =>
 
   def apply[F[_]: Async](
       engine: SSLEngine,
-      binding: TLSEngine.Binding[F],
-      logger: Option[String => F[Unit]] = None
+      binding: Binding[F],
+      logger: TLSLogger[F]
   ): F[TLSEngine[F]] =
     for {
       wrapBuffer <- InputOutputBuffer[F](
@@ -53,8 +53,13 @@ trait TLSEnginePlatform { self: TLSEngine.type =>
       handshakeSemaphore <- Semaphore[F](1)
       sslEngineTaskRunner = SSLEngineTaskRunner[F](engine)
     } yield new TLSEngine[F] {
-      private def log(msg: String): F[Unit] =
-        logger.map(_(msg)).getOrElse(Applicative[F].unit)
+      private val doLog: (() => String) => F[Unit] =
+        logger match {
+          case e: TLSLogger.Enabled[_] => msg => e.log(msg())
+          case TLSLogger.Disabled      => _ => Applicative[F].unit
+        }
+
+      private def log(msg: => String): F[Unit] = doLog(() => msg)
 
       def beginHandshake = Sync[F].delay(engine.beginHandshake())
       def session = Sync[F].delay(engine.getSession())
@@ -109,11 +114,11 @@ trait TLSEnginePlatform { self: TLSEngine.type =>
 
       private def read0(maxBytes: Int): F[Option[Chunk[Byte]]] =
         // Check if the initial handshake has finished -- if so, read; otherwise, handshake and then read
-        dequeueUnwrap(maxBytes).flatMap { out =>
+        unwrapThenTakeUnwrapped(maxBytes).flatMap { out =>
           if (out.isEmpty)
             initialHandshakeDone.ifM(
               read1(maxBytes),
-              write(Chunk.empty) >> dequeueUnwrap(maxBytes).flatMap { out =>
+              write(Chunk.empty) >> unwrapThenTakeUnwrapped(maxBytes).flatMap { out =>
                 if (out.isEmpty) read1(maxBytes) else Applicative[F].pure(out)
               }
             )
@@ -142,7 +147,7 @@ trait TLSEnginePlatform { self: TLSEngine.type =>
                   case SSLEngineResult.HandshakeStatus.NOT_HANDSHAKING =>
                     unwrapBuffer.inputRemains
                       .map(_ > 0 && result.bytesConsumed > 0)
-                      .ifM(unwrap(maxBytes), dequeueUnwrap(maxBytes))
+                      .ifM(unwrap(maxBytes), takeUnwrapped(maxBytes))
                   case SSLEngineResult.HandshakeStatus.FINISHED =>
                     unwrap(maxBytes)
                   case _ =>
@@ -152,16 +157,19 @@ trait TLSEnginePlatform { self: TLSEngine.type =>
                     )
                 }
               case SSLEngineResult.Status.BUFFER_UNDERFLOW =>
-                dequeueUnwrap(maxBytes)
+                takeUnwrapped(maxBytes)
               case SSLEngineResult.Status.BUFFER_OVERFLOW =>
                 unwrapBuffer.expandOutput >> unwrap(maxBytes)
               case SSLEngineResult.Status.CLOSED =>
-                stopWrap >> stopUnwrap >> dequeueUnwrap(maxBytes)
+                stopWrap >> stopUnwrap >> takeUnwrapped(maxBytes)
             }
           }
 
-      private def dequeueUnwrap(maxBytes: Int): F[Option[Chunk[Byte]]] =
+      private def takeUnwrapped(maxBytes: Int): F[Option[Chunk[Byte]]] =
         unwrapBuffer.output(maxBytes).map(out => if (out.isEmpty) None else Some(out))
+
+      private def unwrapThenTakeUnwrapped(maxBytes: Int): F[Option[Chunk[Byte]]] =
+        unwrapBuffer.inputRemains.map(_ > 0).ifM(unwrap(maxBytes), takeUnwrapped(maxBytes))
 
       /** Determines what to do next given the result of a handshake operation.
         * Must be called with `handshakeSem`.

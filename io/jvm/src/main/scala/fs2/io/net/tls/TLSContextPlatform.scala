@@ -55,35 +55,17 @@ private[tls] trait TLSContextPlatform { self: TLSContext.type =>
           ctx: SSLContext
       ): TLSContext[F] =
         new UnsealedTLSContext[F] {
-          def client(
-              socket: Socket[F],
-              params: TLSParameters,
-              logger: Option[String => F[Unit]]
-          ): Resource[F, TLSSocket[F]] =
-            mkSocket(
-              socket,
-              true,
-              params,
-              logger
-            )
+          def clientBuilder(socket: Socket[F]) =
+            SocketBuilder((p, l) => mkSocket(socket, true, p, l))
 
-          def server(
-              socket: Socket[F],
-              params: TLSParameters,
-              logger: Option[String => F[Unit]]
-          ): Resource[F, TLSSocket[F]] =
-            mkSocket(
-              socket,
-              false,
-              params,
-              logger
-            )
+          def serverBuilder(socket: Socket[F]) =
+            SocketBuilder((p, l) => mkSocket(socket, false, p, l))
 
           private def mkSocket(
               socket: Socket[F],
               clientMode: Boolean,
               params: TLSParameters,
-              logger: Option[String => F[Unit]]
+              logger: TLSLogger[F]
           ): Resource[F, TLSSocket[F]] =
             Resource
               .eval(
@@ -101,40 +83,24 @@ private[tls] trait TLSContextPlatform { self: TLSContext.type =>
               )
               .flatMap(engine => TLSSocket(socket, engine))
 
-          def dtlsClient(
+          def dtlsClientBuilder(
               socket: DatagramSocket[F],
-              remoteAddress: SocketAddress[IpAddress],
-              params: TLSParameters,
-              logger: Option[String => F[Unit]]
-          ): Resource[F, DTLSSocket[F]] =
-            mkDtlsSocket(
-              socket,
-              remoteAddress,
-              true,
-              params,
-              logger
-            )
+              remoteAddress: SocketAddress[IpAddress]
+          ) =
+            SocketBuilder((p, l) => mkDtlsSocket(socket, remoteAddress, true, p, l))
 
-          def dtlsServer(
+          def dtlsServerBuilder(
               socket: DatagramSocket[F],
-              remoteAddress: SocketAddress[IpAddress],
-              params: TLSParameters,
-              logger: Option[String => F[Unit]]
-          ): Resource[F, DTLSSocket[F]] =
-            mkDtlsSocket(
-              socket,
-              remoteAddress,
-              false,
-              params,
-              logger
-            )
+              remoteAddress: SocketAddress[IpAddress]
+          ) =
+            SocketBuilder((p, l) => mkDtlsSocket(socket, remoteAddress, false, p, l))
 
           private def mkDtlsSocket(
               socket: DatagramSocket[F],
               remoteAddress: SocketAddress[IpAddress],
               clientMode: Boolean,
               params: TLSParameters,
-              logger: Option[String => F[Unit]]
+              logger: TLSLogger[F]
           ): Resource[F, DTLSSocket[F]] =
             Resource
               .eval(
@@ -157,7 +123,7 @@ private[tls] trait TLSContextPlatform { self: TLSContext.type =>
               binding: TLSEngine.Binding[F],
               clientMode: Boolean,
               params: TLSParameters,
-              logger: Option[String => F[Unit]]
+              logger: TLSLogger[F]
           ): F[TLSEngine[F]] = {
             val sslEngine = Async[F].blocking {
               val engine = ctx.createSSLEngine()

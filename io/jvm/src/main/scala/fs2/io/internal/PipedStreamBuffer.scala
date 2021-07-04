@@ -137,7 +137,7 @@ private[io] final class PipedStreamBuffer(private[this] val capacity: Int) { sel
             // or just a part of it.
             val toRead = math.min(available, length)
             // Transfer the bytes to the provided byte array.
-            System.arraycopy(buffer, head % capacity, b, offset, toRead)
+            circularRead(buffer, head, capacity, b, offset, toRead)
             // The bytes are marked as read by advancing the head of the
             // circular buffer.
             head += toRead
@@ -191,6 +191,35 @@ private[io] final class PipedStreamBuffer(private[this] val capacity: Int) { sel
 
     override def available(): Int = self.synchronized {
       if (closed) 0 else tail - head
+    }
+
+    /** Reads bytes from a circular buffer by copying them into a regular
+      * buffer.
+      *
+      * @param src the source circular buffer
+      * @param srcPos the offset into the source circular buffer
+      * @param srcCap the capacity of the source circular buffer
+      * @param dst the destination buffer
+      * @param dstPos the offset into the destination buffer
+      * @param length the number of bytes to be transferred
+      */
+    private[this] def circularRead(
+        src: Array[Byte],
+        srcPos: Int,
+        srcCap: Int,
+        dst: Array[Byte],
+        dstPos: Int,
+        length: Int
+    ): Unit = {
+      val srcOffset = srcPos % srcCap
+      if (srcOffset + length >= srcCap) {
+        val batch1 = srcCap - srcOffset
+        val batch2 = length - batch1
+        System.arraycopy(src, srcOffset, dst, dstPos, batch1)
+        System.arraycopy(src, 0, dst, dstPos + batch1, batch2)
+      } else {
+        System.arraycopy(src, srcOffset, dst, dstPos, length)
+      }
     }
   }
 
@@ -270,7 +299,7 @@ private[io] final class PipedStreamBuffer(private[this] val capacity: Int) { sel
             // or just a part of it.
             val toWrite = math.min(available, length)
             // Transfer the bytes to the provided byte array.
-            System.arraycopy(b, offset, buffer, tail % capacity, toWrite)
+            circularWrite(b, offset, buffer, tail, capacity, toWrite)
             // The bytes are marked as written by advancing the tail of the
             // circular buffer.
             tail += toWrite
@@ -314,6 +343,35 @@ private[io] final class PipedStreamBuffer(private[this] val capacity: Int) { sel
         // state of the Input/OutputStream.
         writerPermit.release()
         readerPermit.release()
+      }
+    }
+
+    /** Writes bytes into a circular buffer by copying them from a regular
+      * buffer.
+      *
+      * @param src the source buffer
+      * @param srcPos the offset into the source buffer
+      * @param dst the destination circular buffer
+      * @param dstPos the offset into the destination circular buffer
+      * @param dstCap the capacity of the destination circular buffer
+      * @param length the number of bytes to be transferred
+      */
+    private[this] def circularWrite(
+        src: Array[Byte],
+        srcPos: Int,
+        dst: Array[Byte],
+        dstPos: Int,
+        dstCap: Int,
+        length: Int
+    ): Unit = {
+      val dstOffset = dstPos % dstCap
+      if (dstOffset + length >= dstCap) {
+        val batch1 = dstCap - dstOffset
+        val batch2 = length - batch1
+        System.arraycopy(src, srcPos, dst, dstOffset, batch1)
+        System.arraycopy(src, srcPos + batch1, dst, 0, batch2)
+      } else {
+        System.arraycopy(src, srcPos, dst, dstOffset, length)
       }
     }
   }

@@ -31,43 +31,85 @@ import com.comcast.ip4s.{IpAddress, SocketAddress}
   */
 sealed trait TLSContext[F[_]] {
 
-  /** Creates a `TLSSocket` in client mode, using the supplied parameters.
-    * Internal debug logging of the session can be enabled by passing a logger.
-    */
+  /** Creates a `TLSSocket` builder in client mode. */
+  def client(socket: Socket[F]): Resource[F, TLSSocket[F]] =
+    clientBuilder(socket).build
+
+  /** Creates a `TLSSocket` builder in client mode, allowing optional parameters to be configured. */
+  def clientBuilder(socket: Socket[F]): TLSContext.SocketBuilder[F, TLSSocket]
+
+  @deprecated("Use client(socket) or clientBuilder(socket).with(...).build", "3.0.6")
   def client(
       socket: Socket[F],
       params: TLSParameters = TLSParameters.Default,
       logger: Option[String => F[Unit]] = None
-  ): Resource[F, TLSSocket[F]]
+  ): Resource[F, TLSSocket[F]] =
+    clientBuilder(socket).withParameters(params).withOldLogging(logger).build
 
-  /** Creates a `TLSSocket` in server mode, using the supplied parameters.
-    * Internal debug logging of the session can be enabled by passing a logger.
-    */
+  /** Creates a `TLSSocket` builder in server mode. */
+  def server(socket: Socket[F]): Resource[F, TLSSocket[F]] =
+    serverBuilder(socket).build
+
+  /** Creates a `TLSSocket` builder in server mode, allowing optional parameters to be configured. */
+  def serverBuilder(socket: Socket[F]): TLSContext.SocketBuilder[F, TLSSocket]
+
+  @deprecated("Use server(socket) or serverBuilder(socket).with(...).build", "3.0.6")
   def server(
       socket: Socket[F],
       params: TLSParameters = TLSParameters.Default,
       logger: Option[String => F[Unit]] = None
-  ): Resource[F, TLSSocket[F]]
+  ): Resource[F, TLSSocket[F]] =
+    serverBuilder(socket).withParameters(params).withOldLogging(logger).build
 
-  /** Creates a `DTLSSocket` in client mode, using the supplied parameters.
-    * Internal debug logging of the session can be enabled by passing a logger.
-    */
+  /** Creates a `DTLSSocket` builder in client mode. */
+  def dtlsClient(
+      socket: DatagramSocket[F],
+      remoteAddress: SocketAddress[IpAddress]
+  ): Resource[F, DTLSSocket[F]] =
+    dtlsClientBuilder(socket, remoteAddress).build
+
+  /** Creates a `DTLSSocket` builder in client mode, allowing optional parameters to be configured. */
+  def dtlsClientBuilder(
+      socket: DatagramSocket[F],
+      remoteAddress: SocketAddress[IpAddress]
+  ): TLSContext.SocketBuilder[F, DTLSSocket]
+
+  @deprecated(
+    "Use dtlsClient(socket, remoteAddress) or dtlsClientBuilder(socket, remoteAddress).with(...).build",
+    "3.0.6"
+  )
   def dtlsClient(
       socket: DatagramSocket[F],
       remoteAddress: SocketAddress[IpAddress],
       params: TLSParameters = TLSParameters.Default,
       logger: Option[String => F[Unit]] = None
-  ): Resource[F, DTLSSocket[F]]
+  ): Resource[F, DTLSSocket[F]] =
+    dtlsClientBuilder(socket, remoteAddress).withParameters(params).withOldLogging(logger).build
 
-  /** Creates a `DTLSSocket` in server mode, using the supplied parameters.
-    * Internal debug logging of the session can be enabled by passing a logger.
-    */
+  /** Creates a `DTLSSocket` builder in server mode. */
+  def dtlsServer(
+      socket: DatagramSocket[F],
+      remoteAddress: SocketAddress[IpAddress]
+  ): Resource[F, DTLSSocket[F]] =
+    dtlsServerBuilder(socket, remoteAddress).build
+
+  /** Creates a `DTLSSocket` builder in client mode, allowing optional parameters to be configured. */
+  def dtlsServerBuilder(
+      socket: DatagramSocket[F],
+      remoteAddress: SocketAddress[IpAddress]
+  ): TLSContext.SocketBuilder[F, DTLSSocket]
+
+  @deprecated(
+    "Use dtlsServer(socket, remoteAddress) or dtlsClientBuilder(socket, remoteAddress).with(...).build",
+    "3.0.6"
+  )
   def dtlsServer(
       socket: DatagramSocket[F],
       remoteAddress: SocketAddress[IpAddress],
       params: TLSParameters = TLSParameters.Default,
       logger: Option[String => F[Unit]] = None
-  ): Resource[F, DTLSSocket[F]]
+  ): Resource[F, DTLSSocket[F]] =
+    dtlsServerBuilder(socket, remoteAddress).withParameters(params).withOldLogging(logger).build
 }
 
 object TLSContext extends TLSContextPlatform {
@@ -106,5 +148,46 @@ object TLSContext extends TLSContextPlatform {
 
   object Builder extends BuilderPlatform {
     def forAsync[F[_]: Async]: Builder[F] = new AsyncBuilder
+  }
+
+  sealed trait SocketBuilder[F[_], S[_[_]]] {
+    def withParameters(params: TLSParameters): SocketBuilder[F, S]
+    def withLogging(log: (=> String) => F[Unit]): SocketBuilder[F, S]
+    def withoutLogging: SocketBuilder[F, S]
+    def withLogger(logger: TLSLogger[F]): SocketBuilder[F, S]
+    private[TLSContext] def withOldLogging(log: Option[String => F[Unit]]): SocketBuilder[F, S]
+    def build: Resource[F, S[F]]
+  }
+
+  object SocketBuilder {
+    private[tls] type Build[F[_], S[_[_]]] =
+      (TLSParameters, TLSLogger[F]) => Resource[F, S[F]]
+
+    private[tls] def apply[F[_], S[_[_]]](
+        mkSocket: Build[F, S]
+    ): SocketBuilder[F, S] =
+      instance(mkSocket, TLSParameters.Default, TLSLogger.Disabled)
+
+    private def instance[F[_], S[_[_]]](
+        mkSocket: Build[F, S],
+        params: TLSParameters,
+        logger: TLSLogger[F]
+    ): SocketBuilder[F, S] =
+      new SocketBuilder[F, S] {
+        def withParameters(params: TLSParameters): SocketBuilder[F, S] =
+          instance(mkSocket, params, logger)
+        def withLogging(log: (=> String) => F[Unit]): SocketBuilder[F, S] =
+          withLogger(TLSLogger.Enabled(log))
+        def withoutLogging: SocketBuilder[F, S] =
+          withLogger(TLSLogger.Disabled)
+        def withLogger(logger: TLSLogger[F]): SocketBuilder[F, S] =
+          instance(mkSocket, params, logger)
+        private[TLSContext] def withOldLogging(
+            log: Option[String => F[Unit]]
+        ): SocketBuilder[F, S] =
+          log.map(f => withLogging(m => f(m))).getOrElse(withoutLogging)
+        def build: Resource[F, S[F]] =
+          mkSocket(params, logger)
+      }
   }
 }
