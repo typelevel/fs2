@@ -33,7 +33,7 @@ sealed trait SocketOption {
   val value: Value
 }
 
-object SocketOption extends SocketOptionPlatform {
+object SocketOption extends SocketOptionCompanionPlatform {
   def apply[A](key0: Key[A], value0: A): SocketOption = new SocketOption {
     type Value = A
     val key = key0

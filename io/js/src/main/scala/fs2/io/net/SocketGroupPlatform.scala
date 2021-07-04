@@ -23,4 +23,103 @@ package fs2
 package io
 package net
 
-private[net] trait SocketGroupPlatform
+import cats.effect.kernel.Async
+import cats.effect.kernel.Resource
+import cats.syntax.all._
+import cats.effect.syntax.all._
+import com.comcast.ip4s.{Host, SocketAddress}
+import com.comcast.ip4s.{Host, Port}
+import cats.effect.kernel.Resource
+import com.comcast.ip4s.{Host, IpAddress, Port, SocketAddress}
+import typings.node.netMod
+import cats.effect.std.Queue
+import cats.effect.std.Dispatcher
+
+import scala.scalajs.js
+import scala.scalajs.js.JSConverters._
+import typings.node.nodeStrings
+
+private[net] trait SocketGroupCompanionPlatform { self: SocketGroup.type =>
+
+  private[net] final class AsyncSocketGroup[F[_]](implicit F: Async[F])
+      extends AbstractAsyncSocketGroup[F] {
+
+    private def setSocketOptions(options: List[SocketOption])(socket: netMod.Socket): F[Unit] =
+      options.traverse(option => option.key.set(socket, option.value)).void
+
+    override def client(
+        to: SocketAddress[Host],
+        options: List[SocketOption]
+    ): Resource[F, Socket[F]] =
+      Resource
+        .eval(for {
+          socket <- F.delay(new netMod.Socket)
+          _ <- setSocketOptions(options)(socket)
+          _ <- F.async_[Unit] { cb =>
+            socket.connect(to.port.value.toDouble, to.host.toString, () => cb(Right(())))
+          }
+        } yield socket)
+        .flatMap(Socket.forAsync[F])
+
+    override def serverResource(
+        address: Option[Host],
+        port: Option[Port],
+        options: List[SocketOption]
+    ): Resource[F, (SocketAddress[IpAddress], Stream[F, Socket[F]])] =
+      for {
+        dispatcher <- Dispatcher[F]
+        queue <- Queue.unbounded[F, netMod.Socket].toResource
+        errored <- F.deferred[js.JavaScriptException].toResource
+        server <- Resource.make(
+          F
+            .delay(
+              netMod.createServer(
+                None.orUndefined,
+                sock => dispatcher.unsafeRunAndForget(queue.offer(sock))
+              )
+            )
+        )(server =>
+          F.async_[Unit] { cb =>
+            if (server.listening)
+              server.close(e => cb(e.toLeft(()).leftMap(js.JavaScriptException)))
+            else
+              cb(Right(()))
+          }
+        )
+        _ <- F
+          .delay(
+            server.once_error(
+              nodeStrings.error,
+              e => dispatcher.unsafeRunAndForget(errored.complete(js.JavaScriptException(e)))
+            )
+          )
+          .toResource
+        _ <- F
+          .async_[Unit] { cb =>
+            server.listen(
+              address.foldLeft(
+                port.foldLeft(netMod.ListenOptions())((opts, port) =>
+                  opts.setPort(port.value.toDouble)
+                )
+              )((opts, host) => opts.setHost(host.toString)),
+              () => cb(Right(()))
+            )
+          }
+          .toResource
+        ipAddress <- F
+          .delay(server.address())
+          .map { address =>
+            val info = address.asInstanceOf[netMod.AddressInfo]
+            SocketAddress(IpAddress.fromString(info.address).get, Port.fromInt(info.port.toInt).get)
+          }
+          .toResource
+        sockets = Stream
+          .fromQueueUnterminated(queue)
+          .evalTap(setSocketOptions(options))
+          .flatMap(sock => Stream.resource(Socket.forAsync(sock)))
+          .concurrently(Stream.eval(errored.get.flatMap(F.raiseError[Unit])))
+      } yield (ipAddress, sockets)
+
+  }
+
+}

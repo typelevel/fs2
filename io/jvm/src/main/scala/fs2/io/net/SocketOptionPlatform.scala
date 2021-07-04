@@ -27,7 +27,7 @@ import java.net.StandardSocketOptions
 import java.lang.{Boolean => JBoolean, Integer => JInt}
 import java.net.NetworkInterface
 
-private[net] trait SocketOptionPlatform {
+private[net] trait SocketOptionCompanionPlatform {
   type Key[A] = JSocketOption[A]
 
   def boolean(key: JSocketOption[JBoolean], value: Boolean): SocketOption =

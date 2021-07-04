@@ -21,6 +21,39 @@
 
 package fs2.io.net
 
-private[net] trait SocketOptionPlatform {
-  type Key[A] = String
+import typings.node.BufferEncoding
+import typings.node.netMod
+import scala.concurrent.duration.FiniteDuration
+import cats.effect.kernel.Sync
+
+private[net] trait SocketOptionCompanionPlatform { self: SocketOption.type =>
+  sealed trait Key[A] {
+    private[net] def set[F[_]: Sync](sock: netMod.Socket, value: A): F[Unit]
+  }
+
+  private object Encoding extends Key[BufferEncoding] {
+    override private[net] def set[F[_]: Sync](sock: netMod.Socket, value: BufferEncoding): F[Unit] =
+      Sync[F].delay(sock.setEncoding(value))
+  }
+
+  private object KeepAlive extends Key[Boolean] {
+    override private[net] def set[F[_]: Sync](sock: netMod.Socket, value: Boolean): F[Unit] =
+      Sync[F].delay(sock.setKeepAlive(value))
+  }
+
+  private object NoDelay extends Key[Boolean] {
+    override private[net] def set[F[_]: Sync](sock: netMod.Socket, value: Boolean): F[Unit] =
+      Sync[F].delay(sock.setNoDelay(value))
+  }
+
+  private object Timeout extends Key[FiniteDuration] {
+    override private[net] def set[F[_]: Sync](sock: netMod.Socket, value: FiniteDuration): F[Unit] =
+      Sync[F].delay(sock.setTimeout(value.toMillis.toDouble))
+  }
+
+  def encoding(value: BufferEncoding): SocketOption = apply(Encoding, value)
+  def keepAlive(value: Boolean): SocketOption = apply(KeepAlive, value)
+  def noDelay(value: Boolean): SocketOption = apply(NoDelay, value)
+  def timeout(value: FiniteDuration): SocketOption = apply(Timeout, value)
+
 }

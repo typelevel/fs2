@@ -38,12 +38,12 @@ import cats.effect.kernel.{Async, Resource}
 
 import com.comcast.ip4s.{Host, IpAddress, Port, SocketAddress}
 
-private[net] trait SocketGroupPlatform {
+private[net] trait SocketGroupCompanionPlatform { self: SocketGroup.type =>
   private[fs2] def unsafe[F[_]: Async](channelGroup: AsynchronousChannelGroup): SocketGroup[F] =
     new AsyncSocketGroup[F](channelGroup)
 
   private final class AsyncSocketGroup[F[_]: Async](channelGroup: AsynchronousChannelGroup)
-      extends SocketGroup[F] {
+      extends AbstractAsyncSocketGroup[F] {
 
     def client(
         to: SocketAddress[Host],
@@ -75,21 +75,6 @@ private[net] trait SocketGroupPlatform {
 
       Resource.eval(setup.flatMap(connect)).flatMap(Socket.forAsync(_))
     }
-
-    def server(
-        address: Option[Host],
-        port: Option[Port],
-        options: List[SocketOption]
-    ): Stream[F, Socket[F]] =
-      Stream
-        .resource(
-          serverResource(
-            address,
-            port,
-            options
-          )
-        )
-        .flatMap { case (_, clients) => clients }
 
     def serverResource(
         address: Option[Host],
