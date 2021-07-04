@@ -56,7 +56,7 @@ private[fs2] object ByteChunkOps {
       new Uint8Array(ab, 0, ab.byteLength)
     }
 
-    def toBuffer: Buffer = bufferMod.Buffer.from(toArrayBuffer)
+    def toBuffer: Buffer = bufferMod.Buffer.from(toUint8Array)
 
   }
 
