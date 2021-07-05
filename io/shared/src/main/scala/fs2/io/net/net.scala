@@ -22,4 +22,4 @@
 package fs2.io
 
 /** Provides support for doing network I/O -- TCP, UDP, and TLS. */
-package object net
+package object net extends netplatform

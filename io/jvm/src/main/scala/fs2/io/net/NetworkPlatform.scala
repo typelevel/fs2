@@ -66,15 +66,13 @@ private[net] trait NetworkPlatform[F[_]] {
 
 }
 
-private[net] trait NetworkSingletonPlatform { self: Network.type =>
+private[net] trait NetworkCompanionPlatform { self: Network.type =>
   private lazy val globalAcg = AsynchronousChannelGroup.withFixedThreadPool(
     1,
     ThreadFactories.named("fs2-global-tcp", true)
   )
   private lazy val globalAdsg =
     AsynchronousDatagramSocketGroup.unsafe(ThreadFactories.named("fs2-global-udp", true))
-
-  def apply[F[_]](implicit F: Network[F]): F.type = F
 
   implicit def forAsync[F[_]](implicit F: Async[F]): Network[F] =
     new UnsealedNetwork[F] {

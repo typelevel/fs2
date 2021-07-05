@@ -27,7 +27,7 @@ import com.comcast.ip4s._
 
 /** Provides the ability to read/write from a UDP socket in the effect `F`.
   */
-trait DatagramSocket[F[_]] {
+trait DatagramSocket[F[_]] extends DatagramSocketPlatform[F] {
 
   /** Reads a single datagram from this udp socket.
     */
@@ -66,17 +66,11 @@ trait DatagramSocket[F[_]] {
   ): F[GroupMembership]
 
   /** Result of joining a multicast group on a UDP socket. */
-  trait GroupMembership {
+  trait GroupMembership extends GroupMembershipPlatform {
 
     /** Leaves the multicast group, resulting in no further datagrams from this group being read. */
     def drop: F[Unit]
-
-    /** Blocks datagrams from the specified source address. */
-    def block(source: IpAddress): F[Unit]
-
-    /** Unblocks datagrams from the specified source address. */
-    def unblock(source: IpAddress): F[Unit]
   }
 }
 
-object DatagramSocket extends DatagramSocketPlatform
+object DatagramSocket extends DatagramSocketCompanionPlatform

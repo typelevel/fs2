@@ -23,6 +23,54 @@ package fs2
 package io
 package net
 
+import cats.effect.kernel.Async
+import cats.effect.kernel.Resource
+import com.comcast.ip4s.{Host, Port}
+import fs2.io.net.tls.TLSContext
+import com.comcast.ip4s.{Host, Port}
+import cats.effect.kernel.Resource
+import com.comcast.ip4s.{Host, IpAddress, Port, SocketAddress}
+import cats.effect.kernel.Resource
+import com.comcast.ip4s.{Host, SocketAddress}
+
 private[net] trait NetworkPlatform[F[_]]
 
-private[net] trait NetworkSingletonPlatform
+private[net] trait NetworkCompanionPlatform { self: Network.type =>
+  implicit def forAsync[F[_]](implicit F: Async[F]): Network[F] =
+    new UnsealedNetwork[F] {
+
+      private lazy val socketGroup = SocketGroup.forAsync[F]
+      private lazy val datagramSocketGroup = DatagramSocketGroup.forAsync[F]
+
+      override def client(
+          to: SocketAddress[Host],
+          options: List[SocketOption]
+      ): Resource[F, Socket[F]] =
+        socketGroup.client(to, options)
+
+      override def server(
+          address: Option[Host],
+          port: Option[Port],
+          options: List[SocketOption]
+      ): Stream[F, Socket[F]] =
+        socketGroup.server(address, port, options)
+
+      override def serverResource(
+          address: Option[Host],
+          port: Option[Port],
+          options: List[SocketOption]
+      ): Resource[F, (SocketAddress[IpAddress], Stream[F, Socket[F]])] =
+        socketGroup.serverResource(address, port, options)
+
+      override def openDatagramSocket(
+          address: Option[Host],
+          port: Option[Port],
+          options: List[DatagramSocketOption],
+          protocolFamily: Option[DatagramSocketGroup.ProtocolFamily]
+      ): Resource[F, DatagramSocket[F]] =
+        datagramSocketGroup.openDatagramSocket(address, port, options, protocolFamily)
+
+      override def tlsContext: TLSContext.Builder[F] = ???
+
+    }
+}

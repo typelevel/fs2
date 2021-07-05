@@ -58,6 +58,8 @@ sealed trait Network[F[_]]
   def tlsContext: TLSContext.Builder[F]
 }
 
-object Network extends NetworkSingletonPlatform {
+object Network extends NetworkCompanionPlatform {
   private[net] trait UnsealedNetwork[F[_]] extends Network[F]
+
+  def apply[F[_]](implicit F: Network[F]): F.type = F
 }

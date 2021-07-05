@@ -31,7 +31,7 @@ import cats.syntax.all._
 
 import com.comcast.ip4s._
 
-private[net] trait DatagramSocketGroupPlatform {
+private[net] trait DatagramSocketGroupCompanionPlatform {
   type ProtocolFamily = java.net.ProtocolFamily
 
   def unsafe[F[_]: Async](adsg: AsynchronousDatagramSocketGroup): DatagramSocketGroup[F] =

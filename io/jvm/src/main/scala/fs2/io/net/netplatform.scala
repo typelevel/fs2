@@ -19,23 +19,9 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2
-package io
-package net
+package fs2.io.net
 
-import com.comcast.ip4s.IpAddress
-
-private[net] trait DatagramSocketPlatform[F[_]] {
-  private[net] trait GroupMembershipPlatform {
-
-    /** Blocks datagrams from the specified source address. */
-    def block(source: IpAddress): F[Unit]
-
-    /** Unblocks datagrams from the specified source address. */
-    def unblock(source: IpAddress): F[Unit]
-  }
-}
-
-private[net] trait DatagramSocketCompanionPlatform {
-  type NetworkInterface = java.net.NetworkInterface
+private[io] trait netplatform {
+  type DatagramSocketOption = SocketOption
+  val DatagramSocketOption = SocketOption
 }

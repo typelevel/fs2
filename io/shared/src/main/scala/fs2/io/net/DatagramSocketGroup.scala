@@ -38,9 +38,9 @@ trait DatagramSocketGroup[F[_]] {
   def openDatagramSocket(
       address: Option[Host] = None,
       port: Option[Port] = None,
-      options: List[SocketOption] = Nil,
+      options: List[DatagramSocketOption] = Nil,
       protocolFamily: Option[DatagramSocketGroup.ProtocolFamily] = None
   ): Resource[F, DatagramSocket[F]]
 }
 
-private[net] object DatagramSocketGroup extends DatagramSocketGroupPlatform
+private[net] object DatagramSocketGroup extends DatagramSocketGroupCompanionPlatform

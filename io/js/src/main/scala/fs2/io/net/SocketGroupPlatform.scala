@@ -41,6 +41,8 @@ import typings.node.nodeStrings
 
 private[net] trait SocketGroupCompanionPlatform { self: SocketGroup.type =>
 
+  private[net] def forAsync[F[_]: Async]: SocketGroup[F] = new AsyncSocketGroup[F]
+
   private[net] final class AsyncSocketGroup[F[_]](implicit F: Async[F])
       extends AbstractAsyncSocketGroup[F] {
 
