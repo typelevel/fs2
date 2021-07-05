@@ -3234,7 +3234,12 @@ object Stream extends StreamLowPriority {
       limit
     )
 
-  private[fs2] def fromQueueUnterminated[F[_]: Functor, A](
+  /** Returns a stream of elements from the supplied queue.
+    *
+    * All elements that are available, up to the specified limit,
+    * are dequeued and emitted as a single chunk.
+    */
+  def fromQueueUnterminated[F[_]: Functor, A](
       queue: Queue[F, A],
       limit: Int
   ): Stream[F, A] = fromQueueUnterminated(queue: QueueSource[F, A], limit)
@@ -3254,7 +3259,12 @@ object Stream extends StreamLowPriority {
       limit
     )
 
-  private[fs2] def fromQueueUnterminatedChunk[F[_]: Functor, A](
+  /** Returns a stream of elements from the supplied queue.
+    *
+    * All elements that are available, up to the specified limit,
+    * are dequeued and emitted as a single chunk.
+    */
+  def fromQueueUnterminatedChunk[F[_]: Functor, A](
       queue: Queue[F, Chunk[A]],
       limit: Int
   ): Stream[F, A] = fromQueueUnterminatedChunk(queue: QueueSource[F, Chunk[A]], limit)
@@ -3276,7 +3286,14 @@ object Stream extends StreamLowPriority {
       limit
     )
 
-  private[fs2] def fromQueueNoneTerminated[F[_]: Functor, A](
+  /** Returns a stream of elements from the supplied queue.
+    *
+    * The stream terminates upon dequeuing a `None`.
+    *
+    * All elements that are available, up to the specified limit,
+    * are dequeued and emitted as a single chunk.
+    */
+  def fromQueueNoneTerminated[F[_]: Functor, A](
       queue: Queue[F, Option[A]],
       limit: Int
   ): Stream[F, A] = fromQueueNoneTerminated(queue: QueueSource[F, Option[A]], limit)
@@ -3294,7 +3311,14 @@ object Stream extends StreamLowPriority {
   ): Stream[F, A] =
     fromQueueNoneTerminatedChunk_(queue.take, queue.tryTake, limit)
 
-  private[fs2] def fromQueueNoneTerminatedChunk[F[_], A](
+  /** Returns a stream of elements from the supplied queue.
+    *
+    * The stream terminates upon dequeuing a `None`.
+    *
+    * All elements that are available, up to the specified limit,
+    * are dequeued and emitted as a single chunk.
+    */
+  def fromQueueNoneTerminatedChunk[F[_], A](
       queue: Queue[F, Option[Chunk[A]]],
       limit: Int
   ): Stream[F, A] = fromQueueNoneTerminatedChunk(queue: QueueSource[F, Option[Chunk[A]]], limit)
