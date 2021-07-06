@@ -22,8 +22,7 @@
 package fs2.io.internal
 
 import fs2.Chunk
-import typings.node.Buffer
-import typings.node.bufferMod
+import fs2.js.node.bufferMod
 
 import scala.scalajs.js.typedarray.{ArrayBuffer, TypedArrayBuffer, Uint8Array}
 import scala.scalajs.js.typedarray.TypedArrayBufferOps._
@@ -36,7 +35,7 @@ private[fs2] object ByteChunkOps {
   implicit def toUint8ArrayOps(uint8Array: Uint8Array): Uint8ArrayOps = new Uint8ArrayOps(
     uint8Array
   )
-  implicit def toBufferOps(buffer: Buffer): BufferOps = new BufferOps(buffer)
+  implicit def toBufferOps(buffer: bufferMod.global.Buffer): BufferOps = new BufferOps(buffer)
 
   private[fs2] final class ByteChunkOps(val chunk: Chunk[Byte]) extends AnyVal {
 
@@ -56,7 +55,7 @@ private[fs2] object ByteChunkOps {
       new Uint8Array(ab, 0, ab.byteLength)
     }
 
-    def toBuffer: Buffer = bufferMod.Buffer.from(toUint8Array)
+    def toBuffer: bufferMod.global.Buffer = bufferMod.Buffer.from(toUint8Array)
 
   }
 
@@ -68,7 +67,7 @@ private[fs2] object ByteChunkOps {
     def toChunk: Chunk[Byte] = uint8Array.buffer.toChunk
   }
 
-  private[fs2] final class BufferOps(val buffer: Buffer) extends AnyVal {
+  private[fs2] final class BufferOps(val buffer: bufferMod.global.Buffer) extends AnyVal {
     def toChunk: Chunk[Byte] = Chunk.byteBuffer(
       TypedArrayBuffer.wrap(
         buffer.buffer.slice(

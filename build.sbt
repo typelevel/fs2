@@ -209,7 +209,7 @@ lazy val coreJS = core.js
 lazy val io = crossProject(JVMPlatform, JSPlatform)
   .in(file("io"))
   .enablePlugins(SbtOsgi)
-  .jsConfigure(_.enablePlugins(ScalablyTypedConverterPlugin))
+  .jsConfigure(_.enablePlugins(ScalablyTypedConverterGenSourcePlugin))
   .settings(
     name := "fs2-io",
     libraryDependencies += "com.comcast" %%% "ip4s-core" % "3.0.3",
@@ -232,7 +232,9 @@ lazy val io = crossProject(JVMPlatform, JSPlatform)
   )
   .jsSettings(
     scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule)),
-    Compile / npmDependencies += "@types/node" -> "15.12.5"
+    Compile / npmDependencies += "@types/node" -> "16.0.0",
+    useYarn := true,
+    stOutputPackage := "fs2.js"
   )
   .dependsOn(core % "compile->compile;test->test")
 

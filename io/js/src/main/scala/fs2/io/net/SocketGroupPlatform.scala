@@ -33,11 +33,10 @@ import com.comcast.ip4s.Host
 import com.comcast.ip4s.IpAddress
 import com.comcast.ip4s.Port
 import com.comcast.ip4s.SocketAddress
-import typings.node.netMod
-import typings.node.nodeStrings
+import fs2.js.node.netMod
+import fs2.js.node.nodeStrings
 
 import scala.scalajs.js
-import scala.scalajs.js.JSConverters._
 
 private[net] trait SocketGroupCompanionPlatform { self: SocketGroup.type =>
 

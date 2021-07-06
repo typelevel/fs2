@@ -29,7 +29,7 @@ import com.comcast.ip4s.{IpAddress, MulticastJoin}
 import fs2.io.internal.ByteChunkOps._
 
 import scala.scalajs.js
-import typings.node.dgramMod
+import fs2.js.node.dgramMod
 import cats.syntax.all._
 import cats.effect.syntax.all._
 import com.comcast.ip4s.Port
@@ -38,7 +38,7 @@ import com.comcast.ip4s.SourceSpecificMulticastJoin
 import cats.effect.std.Queue
 import cats.effect.std.Dispatcher
 import cats.effect.kernel.Resource
-import typings.node.nodeStrings
+import fs2.js.node.nodeStrings
 
 private[net] trait DatagramSocketPlatform[F[_]] {
   private[net] trait GroupMembershipPlatform
