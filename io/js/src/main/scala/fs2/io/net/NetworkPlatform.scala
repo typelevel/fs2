@@ -25,13 +25,11 @@ package net
 
 import cats.effect.kernel.Async
 import cats.effect.kernel.Resource
-import com.comcast.ip4s.{Host, Port}
+import com.comcast.ip4s.Host
+import com.comcast.ip4s.IpAddress
+import com.comcast.ip4s.Port
+import com.comcast.ip4s.SocketAddress
 import fs2.io.net.tls.TLSContext
-import com.comcast.ip4s.{Host, Port}
-import cats.effect.kernel.Resource
-import com.comcast.ip4s.{Host, IpAddress, Port, SocketAddress}
-import cats.effect.kernel.Resource
-import com.comcast.ip4s.{Host, SocketAddress}
 
 private[net] trait NetworkPlatform[F[_]]
 

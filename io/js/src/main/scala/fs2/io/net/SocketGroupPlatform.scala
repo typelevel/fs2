@@ -25,19 +25,19 @@ package net
 
 import cats.effect.kernel.Async
 import cats.effect.kernel.Resource
-import cats.syntax.all._
-import cats.effect.syntax.all._
-import com.comcast.ip4s.{Host, SocketAddress}
-import com.comcast.ip4s.{Host, Port}
-import cats.effect.kernel.Resource
-import com.comcast.ip4s.{Host, IpAddress, Port, SocketAddress}
-import typings.node.netMod
-import cats.effect.std.Queue
 import cats.effect.std.Dispatcher
+import cats.effect.std.Queue
+import cats.effect.syntax.all._
+import cats.syntax.all._
+import com.comcast.ip4s.Host
+import com.comcast.ip4s.IpAddress
+import com.comcast.ip4s.Port
+import com.comcast.ip4s.SocketAddress
+import typings.node.netMod
+import typings.node.nodeStrings
 
 import scala.scalajs.js
 import scala.scalajs.js.JSConverters._
-import typings.node.nodeStrings
 
 private[net] trait SocketGroupCompanionPlatform { self: SocketGroup.type =>
 
@@ -55,7 +55,9 @@ private[net] trait SocketGroupCompanionPlatform { self: SocketGroup.type =>
     ): Resource[F, Socket[F]] =
       Resource
         .eval(for {
-          socket <- F.delay(new netMod.Socket)
+          socket <- F.delay(
+            new netMod.Socket(netMod.SocketConstructorOpts().setAllowHalfOpen(true))
+          )
           _ <- setSocketOptions(options)(socket)
           _ <- F.async_[Unit] { cb =>
             socket.connect(to.port.value.toDouble, to.host.toString, () => cb(Right(())))
@@ -76,7 +78,7 @@ private[net] trait SocketGroupCompanionPlatform { self: SocketGroup.type =>
           F
             .delay(
               netMod.createServer(
-                None.orUndefined,
+                netMod.ServerOpts().setPauseOnConnect(true).setAllowHalfOpen(true),
                 sock => dispatcher.unsafeRunAndForget(queue.offer(sock))
               )
             )
@@ -100,9 +102,7 @@ private[net] trait SocketGroupCompanionPlatform { self: SocketGroup.type =>
           .async_[Unit] { cb =>
             server.listen(
               address.foldLeft(
-                port.foldLeft(netMod.ListenOptions())((opts, port) =>
-                  opts.setPort(port.value.toDouble)
-                )
+                netMod.ListenOptions().setPort(port.fold(0.0)(_.value.toDouble))
               )((opts, host) => opts.setHost(host.toString)),
               () => cb(Right(()))
             )

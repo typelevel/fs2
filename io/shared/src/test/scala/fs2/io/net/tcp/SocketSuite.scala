@@ -28,7 +28,7 @@ import cats.effect.IO
 import com.comcast.ip4s._
 import scala.concurrent.duration._
 
-class SocketSuite extends Fs2Suite {
+class SocketSuite extends Fs2Suite with SocketSuitePlatform {
 
   val timeout = 30.seconds
 
@@ -36,7 +36,9 @@ class SocketSuite extends Fs2Suite {
     serverSetup <- Network[IO].serverResource(address = Some(ip"127.0.0.1"))
     (bindAddress, server) = serverSetup
     clients = Stream
-      .resource(Network[IO].client(bindAddress, options = List(SocketOption.sendBufferSize(10000))))
+      .resource(
+        Network[IO].client(bindAddress, options = setupOptionsPlatform)
+      )
       .repeat
   } yield (server -> clients)
 
@@ -133,12 +135,8 @@ class SocketSuite extends Fs2Suite {
     test("options - should work with socket options") {
       val opts = List(
         SocketOption.keepAlive(true),
-        SocketOption.receiveBufferSize(1024),
-        SocketOption.reuseAddress(true),
-        SocketOption.reusePort(true),
-        SocketOption.sendBufferSize(1024),
         SocketOption.noDelay(true)
-      )
+      ) ++ optionsPlatform
       val setup = for {
         serverSetup <- Network[IO].serverResource(Some(ip"127.0.0.1"), None, opts)
         (bindAddress, server) = serverSetup
