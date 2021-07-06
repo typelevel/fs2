@@ -22,7 +22,7 @@
 package fs2.io.net.tcp
 
 trait SocketSuitePlatform {
-  
+
   val setupOptionsPlatform = Nil
   val optionsPlatform = Nil
 
