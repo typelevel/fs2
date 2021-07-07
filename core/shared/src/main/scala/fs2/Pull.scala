@@ -350,6 +350,13 @@ object Pull extends PullLowPriority {
     */
   def output1[F[x] >: Pure[x], O](o: O): Pull[F, O, Unit] = Output(Chunk.singleton(o))
 
+  /** Lifts the given optional value `O` into a pull that performs no
+    * effects, emits the content of that option, and always
+    * terminates successfully with a unit result.
+    */
+  def outputOption[F[x] >: Pure[x], O](opt: Option[O]): Pull[Pure, O, Unit] =
+    output(Chunk.fromOption(opt))
+
   /** Creates a pull that emits the elements of the given chunk.
     * The new pull performs no effects and terminates successfully with a unit result.
     */
