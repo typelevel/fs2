@@ -36,7 +36,7 @@ trait TLSEnginePlatform { self: TLSEngine.type =>
 
   def apply[F[_]: Async](
       engine: SSLEngine,
-      binding: Binding[F],
+      binding: TLSEngine.Binding[F],
       logger: TLSLogger[F]
   ): F[TLSEngine[F]] =
     for {
