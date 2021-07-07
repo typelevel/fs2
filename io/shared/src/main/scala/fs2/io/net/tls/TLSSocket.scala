@@ -45,6 +45,6 @@ sealed trait TLSSocket[F[_]] extends Socket[F] {
   def applicationProtocol: F[String]
 }
 
-object TLSSocket extends TLSSocketPlatform {
+object TLSSocket extends TLSSocketCompanionPlatform {
   private[tls] trait UnsealedTLSSocket[F[_]] extends TLSSocket[F]
 }

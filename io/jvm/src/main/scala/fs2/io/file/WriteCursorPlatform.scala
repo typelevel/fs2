@@ -27,7 +27,7 @@ import cats.effect.kernel.{Async, Resource}
 
 import java.nio.file.{Files => _, _}
 
-private[file] trait WriteCursorPlatform {
+private[file] trait WriteCursorCompanionPlatform {
   @deprecated("Use Files[F].writeCursorFromFileHandle", "3.0.0")
   def fromFileHandle[F[_]: Async](
       file: FileHandle[F],

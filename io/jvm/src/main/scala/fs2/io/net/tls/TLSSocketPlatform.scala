@@ -33,7 +33,7 @@ import com.comcast.ip4s.{IpAddress, SocketAddress}
 
 import fs2.io.net.Socket
 
-private[tls] trait TLSSocketPlatform { self: TLSSocket.type =>
+private[tls] trait TLSSocketCompanionPlatform { self: TLSSocket.type =>
   type SSLSession = javax.net.ssl.SSLSession
 
   private[tls] def apply[F[_]: Async](

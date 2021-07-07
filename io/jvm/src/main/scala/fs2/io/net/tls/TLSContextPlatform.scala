@@ -40,13 +40,89 @@ import cats.syntax.all._
 import com.comcast.ip4s.{IpAddress, SocketAddress}
 
 import java.util.function.BiFunction
+import java.nio.file.Path
 
-private[tls] trait TLSContextPlatform { self: TLSContext.type =>
-  type SSLContext = javax.net.ssl.SSLContext
-  type KeyStore = java.security.KeyStore
-  type Path = java.nio.file.Path
+private[tls] trait TLSContextPlatform[F[_]] {
 
-  private[tls] trait BuilderPlatform {
+  /** Creates a `DTLSSocket` builder in client mode. */
+  def dtlsClient(
+      socket: DatagramSocket[F],
+      remoteAddress: SocketAddress[IpAddress]
+  ): Resource[F, DTLSSocket[F]] =
+    dtlsClientBuilder(socket, remoteAddress).build
+
+  /** Creates a `DTLSSocket` builder in client mode, allowing optional parameters to be configured. */
+  def dtlsClientBuilder(
+      socket: DatagramSocket[F],
+      remoteAddress: SocketAddress[IpAddress]
+  ): TLSContext.SocketBuilder[F, DTLSSocket]
+
+  @deprecated(
+    "Use dtlsClient(socket, remoteAddress) or dtlsClientBuilder(socket, remoteAddress).with(...).build",
+    "3.0.6"
+  )
+  def dtlsClient(
+      socket: DatagramSocket[F],
+      remoteAddress: SocketAddress[IpAddress],
+      params: TLSParameters = TLSParameters.Default,
+      logger: Option[String => F[Unit]] = None
+  ): Resource[F, DTLSSocket[F]] =
+    dtlsClientBuilder(socket, remoteAddress).withParameters(params).withOldLogging(logger).build
+
+  /** Creates a `DTLSSocket` builder in server mode. */
+  def dtlsServer(
+      socket: DatagramSocket[F],
+      remoteAddress: SocketAddress[IpAddress]
+  ): Resource[F, DTLSSocket[F]] =
+    dtlsServerBuilder(socket, remoteAddress).build
+
+  /** Creates a `DTLSSocket` builder in client mode, allowing optional parameters to be configured. */
+  def dtlsServerBuilder(
+      socket: DatagramSocket[F],
+      remoteAddress: SocketAddress[IpAddress]
+  ): TLSContext.SocketBuilder[F, DTLSSocket]
+
+  @deprecated(
+    "Use dtlsServer(socket, remoteAddress) or dtlsClientBuilder(socket, remoteAddress).with(...).build",
+    "3.0.6"
+  )
+  def dtlsServer(
+      socket: DatagramSocket[F],
+      remoteAddress: SocketAddress[IpAddress],
+      params: TLSParameters = TLSParameters.Default,
+      logger: Option[String => F[Unit]] = None
+  ): Resource[F, DTLSSocket[F]] =
+    dtlsServerBuilder(socket, remoteAddress).withParameters(params).withOldLogging(logger).build
+
+}
+
+private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
+
+  private[tls] trait BuilderPlatform[F[_]] {
+    def fromSSLContext(ctx: SSLContext): TLSContext[F]
+
+    /** Creates a `TLSContext` from the specified key store file. */
+    def fromKeyStoreFile(
+        file: Path,
+        storePassword: Array[Char],
+        keyPassword: Array[Char]
+    ): F[TLSContext[F]]
+
+    /** Creates a `TLSContext` from the specified class path resource. */
+    def fromKeyStoreResource(
+        resource: String,
+        storePassword: Array[Char],
+        keyPassword: Array[Char]
+    ): F[TLSContext[F]]
+
+    /** Creates a `TLSContext` from the specified key store. */
+    def fromKeyStore(
+        keyStore: KeyStore,
+        keyPassword: Array[Char]
+    ): F[TLSContext[F]]
+  }
+
+  private[tls] trait BuilderCompanionPlatform {
 
     /** Creates a `TLSContext` from an `SSLContext`. */
     private[tls] final class AsyncBuilder[F[_]: Async] extends Builder[F] {

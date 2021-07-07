@@ -41,11 +41,10 @@ import fs2.js.node.nodeStrings
 
 import scala.annotation.nowarn
 import scala.scalajs.js
-import scala.util.control.NoStackTrace
+
+private[net] trait SocketPlatform[F[_]]
 
 private[net] trait SocketCompanionPlatform {
-
-  final case object TransmissionError extends RuntimeException with NoStackTrace
 
   private[net] def forAsync[F[_]](
       sock: netMod.Socket
@@ -106,9 +105,6 @@ private[net] trait SocketCompanionPlatform {
 
     override def reads: Stream[F, Byte] =
       Stream.repeatEval(read(1, Int.MaxValue)).takeWhile(_.nonEmpty).flatMap(Stream.chunk)
-
-    override def endOfInput: F[Unit] =
-      F.raiseError(new UnsupportedOperationException)
 
     override def endOfOutput: F[Unit] = F.delay(sock.end())
 

@@ -99,4 +99,4 @@ final case class ReadCursor[F[_]](file: FileHandle[F], offset: Long) {
     }
 }
 
-object ReadCursor extends ReadCursorPlatform
+object ReadCursor extends ReadCursorCompanionPlatform

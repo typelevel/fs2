@@ -27,7 +27,7 @@ import com.comcast.ip4s.{IpAddress, SocketAddress}
 
 /** Provides the ability to read/write from a TCP socket in the effect `F`.
   */
-trait Socket[F[_]] {
+trait Socket[F[_]] extends SocketPlatform[F] {
 
   /** Reads up to `maxBytes` from the peer.
     *
@@ -43,9 +43,6 @@ trait Socket[F[_]] {
 
   /** Reads bytes from the socket as a stream. */
   def reads: Stream[F, Byte]
-
-  /** Indicates that this channel will not read more data. Causes `End-Of-Stream` be signalled to `available`. */
-  def endOfInput: F[Unit]
 
   /** Indicates to peer, we are done writing. * */
   def endOfOutput: F[Unit]

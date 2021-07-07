@@ -25,26 +25,49 @@ package net
 package tls
 
 import java.net.NetworkInterface
+import javax.net.ssl.SSLSession
 
-import cats.effect.kernel.Async
+import cats.Applicative
+import cats.effect.kernel.{Async, Resource, Sync}
 import cats.syntax.all._
 
 import com.comcast.ip4s._
 
-private[tls] trait DTLSSocketPlatform { self: DTLSSocket.type =>
-  type SSLSession = javax.net.ssl.SSLSession
+/** UDP socket that supports encryption via DTLS.
+  *
+  * To construct a `DTLSSocket`, use the `dtlsClient` and `dtlsServer` methods on `TLSContext`.
+  */
+sealed trait DTLSSocket[F[_]] extends DatagramSocket[F] {
 
-  private[tls] def mk[F[_]: Async](
+  /** Initiates handshaking -- either the initial or a renegotiation. */
+  def beginHandshake: F[Unit]
+
+  /** Provides access to the current `SSLSession` for purposes of querying
+    * session info such as the negotiated cipher suite or the peer certificate.
+    */
+  def session: F[SSLSession]
+}
+
+object DTLSSocket {
+
+  private[tls] def apply[F[_]: Async](
+      socket: DatagramSocket[F],
+      remoteAddress: SocketAddress[IpAddress],
+      engine: TLSEngine[F]
+  ): Resource[F, DTLSSocket[F]] =
+    Resource.make(mk(socket, remoteAddress, engine))(_ => engine.stopWrap >> engine.stopUnwrap)
+
+  private def mk[F[_]: Async](
       socket: DatagramSocket[F],
       remoteAddress: SocketAddress[IpAddress],
       engine: TLSEngine[F]
   ): F[DTLSSocket[F]] =
-    Async[F].pure {
-      new UnsealedDTLSSocket[F] {
+    Applicative[F].pure {
+      new DTLSSocket[F] {
 
         def read: F[Datagram] =
           engine.read(Int.MaxValue).flatMap {
-            case Some(bytes) => Async[F].pure(Datagram(remoteAddress, bytes))
+            case Some(bytes) => Applicative[F].pure(Datagram(remoteAddress, bytes))
             case None        => read
           }
 
@@ -57,7 +80,7 @@ private[tls] trait DTLSSocketPlatform { self: DTLSSocket.type =>
           _.foreach(write)
         def localAddress: F[SocketAddress[IpAddress]] = socket.localAddress
         def join(join: MulticastJoin[IpAddress], interface: NetworkInterface): F[GroupMembership] =
-          Async[F].raiseError(new RuntimeException("DTLSSocket does not support multicast"))
+          Sync[F].raiseError(new RuntimeException("DTLSSocket does not support multicast"))
         def beginHandshake: F[Unit] = engine.beginHandshake
         def session: F[SSLSession] = engine.session
       }

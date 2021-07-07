@@ -25,11 +25,10 @@ package net
 package tls
 
 import cats.effect.kernel.{Async, Resource}
-import com.comcast.ip4s.{IpAddress, SocketAddress}
 
 /** Allows creation of [[TLSSocket]]s.
   */
-sealed trait TLSContext[F[_]] {
+sealed trait TLSContext[F[_]] extends TLSContextPlatform[F] {
 
   /** Creates a `TLSSocket` builder in client mode. */
   def client(socket: Socket[F]): Resource[F, TLSSocket[F]] =
@@ -61,63 +60,13 @@ sealed trait TLSContext[F[_]] {
   ): Resource[F, TLSSocket[F]] =
     serverBuilder(socket).withParameters(params).withOldLogging(logger).build
 
-  /** Creates a `DTLSSocket` builder in client mode. */
-  def dtlsClient(
-      socket: DatagramSocket[F],
-      remoteAddress: SocketAddress[IpAddress]
-  ): Resource[F, DTLSSocket[F]] =
-    dtlsClientBuilder(socket, remoteAddress).build
-
-  /** Creates a `DTLSSocket` builder in client mode, allowing optional parameters to be configured. */
-  def dtlsClientBuilder(
-      socket: DatagramSocket[F],
-      remoteAddress: SocketAddress[IpAddress]
-  ): TLSContext.SocketBuilder[F, DTLSSocket]
-
-  @deprecated(
-    "Use dtlsClient(socket, remoteAddress) or dtlsClientBuilder(socket, remoteAddress).with(...).build",
-    "3.0.6"
-  )
-  def dtlsClient(
-      socket: DatagramSocket[F],
-      remoteAddress: SocketAddress[IpAddress],
-      params: TLSParameters = TLSParameters.Default,
-      logger: Option[String => F[Unit]] = None
-  ): Resource[F, DTLSSocket[F]] =
-    dtlsClientBuilder(socket, remoteAddress).withParameters(params).withOldLogging(logger).build
-
-  /** Creates a `DTLSSocket` builder in server mode. */
-  def dtlsServer(
-      socket: DatagramSocket[F],
-      remoteAddress: SocketAddress[IpAddress]
-  ): Resource[F, DTLSSocket[F]] =
-    dtlsServerBuilder(socket, remoteAddress).build
-
-  /** Creates a `DTLSSocket` builder in client mode, allowing optional parameters to be configured. */
-  def dtlsServerBuilder(
-      socket: DatagramSocket[F],
-      remoteAddress: SocketAddress[IpAddress]
-  ): TLSContext.SocketBuilder[F, DTLSSocket]
-
-  @deprecated(
-    "Use dtlsServer(socket, remoteAddress) or dtlsClientBuilder(socket, remoteAddress).with(...).build",
-    "3.0.6"
-  )
-  def dtlsServer(
-      socket: DatagramSocket[F],
-      remoteAddress: SocketAddress[IpAddress],
-      params: TLSParameters = TLSParameters.Default,
-      logger: Option[String => F[Unit]] = None
-  ): Resource[F, DTLSSocket[F]] =
-    dtlsServerBuilder(socket, remoteAddress).withParameters(params).withOldLogging(logger).build
 }
 
-object TLSContext extends TLSContextPlatform {
+object TLSContext extends TLSContextCompanionPlatform {
 
   private[tls] trait UnsealedTLSContext[F[_]] extends TLSContext[F]
 
-  trait Builder[F[_]] {
-    def fromSSLContext(ctx: SSLContext): TLSContext[F]
+  trait Builder[F[_]] extends BuilderPlatform[F] {
 
     /** Creates a `TLSContext` which trusts all certificates. */
     def insecure: F[TLSContext[F]]
@@ -125,28 +74,9 @@ object TLSContext extends TLSContextPlatform {
     /** Creates a `TLSContext` from the system default `SSLContext`. */
     def system: F[TLSContext[F]]
 
-    /** Creates a `TLSContext` from the specified key store file. */
-    def fromKeyStoreFile(
-        file: Path,
-        storePassword: Array[Char],
-        keyPassword: Array[Char]
-    ): F[TLSContext[F]]
-
-    /** Creates a `TLSContext` from the specified class path resource. */
-    def fromKeyStoreResource(
-        resource: String,
-        storePassword: Array[Char],
-        keyPassword: Array[Char]
-    ): F[TLSContext[F]]
-
-    /** Creates a `TLSContext` from the specified key store. */
-    def fromKeyStore(
-        keyStore: KeyStore,
-        keyPassword: Array[Char]
-    ): F[TLSContext[F]]
   }
 
-  object Builder extends BuilderPlatform {
+  object Builder extends BuilderCompanionPlatform {
     def forAsync[F[_]: Async]: Builder[F] = new AsyncBuilder
   }
 
@@ -155,7 +85,7 @@ object TLSContext extends TLSContextPlatform {
     def withLogging(log: (=> String) => F[Unit]): SocketBuilder[F, S]
     def withoutLogging: SocketBuilder[F, S]
     def withLogger(logger: TLSLogger[F]): SocketBuilder[F, S]
-    private[TLSContext] def withOldLogging(log: Option[String => F[Unit]]): SocketBuilder[F, S]
+    private[tls] def withOldLogging(log: Option[String => F[Unit]]): SocketBuilder[F, S]
     def build: Resource[F, S[F]]
   }
 
@@ -182,7 +112,7 @@ object TLSContext extends TLSContextPlatform {
           withLogger(TLSLogger.Disabled)
         def withLogger(logger: TLSLogger[F]): SocketBuilder[F, S] =
           instance(mkSocket, params, logger)
-        private[TLSContext] def withOldLogging(
+        private[tls] def withOldLogging(
             log: Option[String => F[Unit]]
         ): SocketBuilder[F, S] =
           log.map(f => withLogging(m => f(m))).getOrElse(withoutLogging)

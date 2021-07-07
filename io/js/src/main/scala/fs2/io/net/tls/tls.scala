@@ -19,28 +19,9 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2
-package io
-package net
-package tls
+package fs2.io.net
 
-/** Provides the ability to establish and communicate over a TLS session.
-  *
-  * This is a functional wrapper of the JDK `SSLEngine`.
-  */
-private[tls] trait TLSEngine[F[_]] {
-  def beginHandshake: F[Unit]
-  def applicationProtocol: F[String]
-  def session: F[TLSEngine.SSLSession]
-  def stopWrap: F[Unit]
-  def stopUnwrap: F[Unit]
-  def write(data: Chunk[Byte]): F[Unit]
-  def read(maxBytes: Int): F[Option[Chunk[Byte]]]
-}
-
-private[tls] object TLSEngine extends TLSEnginePlatform {
-  trait Binding[F[_]] {
-    def write(data: Chunk[Byte]): F[Unit]
-    def read(maxBytes: Int): F[Option[Chunk[Byte]]]
-  }
+package object tls {
+  type SSLContext = fs2.js.node.tlsMod.SecureContext
+  type SSLSession = fs2.js.node.bufferMod.global.Buffer
 }

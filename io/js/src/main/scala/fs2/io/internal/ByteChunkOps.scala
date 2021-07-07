@@ -69,12 +69,12 @@ private[fs2] object ByteChunkOps {
 
   private[fs2] final class BufferOps(val buffer: bufferMod.global.Buffer) extends AnyVal {
     def toChunk: Chunk[Byte] = Chunk.byteBuffer(
-      TypedArrayBuffer.wrap(
-        buffer.buffer.slice(
+      TypedArrayBuffer
+        .wrap(
+          buffer.buffer.asInstanceOf[ArrayBuffer],
           buffer.byteOffset.toInt,
-          buffer.byteOffset.toInt + buffer.byteLength.toInt
+          buffer.byteLength.toInt
         )
-      )
     )
   }
 }

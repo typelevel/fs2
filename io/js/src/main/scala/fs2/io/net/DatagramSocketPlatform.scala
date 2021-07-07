@@ -23,26 +23,27 @@ package fs2
 package io
 package net
 
+import cats.data.EitherT
 import cats.effect.kernel.Async
-import com.comcast.ip4s.{IpAddress, SocketAddress}
-import com.comcast.ip4s.{IpAddress, MulticastJoin}
+import cats.effect.kernel.Deferred
+import cats.effect.kernel.Resource
+import cats.effect.std.Dispatcher
+import cats.effect.std.Queue
+import cats.effect.syntax.all._
+import cats.syntax.all._
+import com.comcast.ip4s.AnySourceMulticastJoin
+import com.comcast.ip4s.IpAddress
+import com.comcast.ip4s.MulticastJoin
+import com.comcast.ip4s.Port
+import com.comcast.ip4s.SocketAddress
+import com.comcast.ip4s.SourceSpecificMulticastJoin
 import fs2.io.internal.ByteChunkOps._
 import fs2.io.internal.EventEmitterOps._
+import fs2.js.node.bufferMod
+import fs2.js.node.dgramMod
+import fs2.js.node.nodeStrings
 
 import scala.scalajs.js
-import fs2.js.node.dgramMod
-import cats.syntax.all._
-import cats.effect.syntax.all._
-import com.comcast.ip4s.Port
-import com.comcast.ip4s.AnySourceMulticastJoin
-import com.comcast.ip4s.SourceSpecificMulticastJoin
-import cats.effect.std.Queue
-import cats.effect.std.Dispatcher
-import cats.effect.kernel.Resource
-import fs2.js.node.nodeStrings
-import fs2.js.node.bufferMod
-import cats.effect.kernel.Deferred
-import cats.data.EitherT
 
 private[net] trait DatagramSocketPlatform[F[_]] {
   private[net] trait GroupMembershipPlatform

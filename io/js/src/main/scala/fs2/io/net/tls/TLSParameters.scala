@@ -19,8 +19,23 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2.io
+package fs2
+package io
+package net
+package tls
 
-package object file {
-  type Path = String
+/** Parameters used in creation of a TLS/DTLS session.
+  * See `javax.net.ssl.SSLParameters` for detailed documentation on each parameter.
+  *
+  * Note: `applicationProtocols`, `enableRetransmissions`, `maximumPacketSize`, and
+  * `handshakeApplicationProtocolSelector` require Java 9+.
+  */
+sealed trait TLSParameters {}
+
+object TLSParameters {
+  val Default: TLSParameters = TLSParameters()
+
+  def apply(): TLSParameters = DefaultTLSParameters()
+
+  private case class DefaultTLSParameters() extends TLSParameters
 }

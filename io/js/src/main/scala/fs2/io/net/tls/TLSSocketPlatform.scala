@@ -24,6 +24,10 @@ package io
 package net
 package tls
 
-private[tls] trait TLSSocketPlatform {
-  type SSLSession = Any // TODO
+import cats.effect.kernel.Async
+
+private[tls] trait TLSSocketCompanionPlatform { self: TLSSocket.type =>
+  type SSLSession = fs2.js.node.bufferMod.global.Buffer
+
+  def mk[F[_]: Async](socket: Socket[F]): TLSSocket[F] = ???
 }

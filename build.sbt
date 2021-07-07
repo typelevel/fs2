@@ -105,10 +105,6 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
     "fs2.io.net.tls.TLSContext.dtlsServerBuilder"
   ),
   ProblemFilters.exclude[Problem]("fs2.io.net.tls.TLSEngine*"),
-  ProblemFilters.exclude[MissingClassProblem]("fs2.io.Watcher$Registration$"),
-  ProblemFilters.exclude[MissingClassProblem]("fs2.io.Watcher$Registration"),
-  ProblemFilters.exclude[MissingClassProblem]("fs2.io.Watcher$DefaultWatcher"),
-  ProblemFilters.exclude[MissingClassProblem]("fs2.io.file.Files$AsyncFiles"),
   ProblemFilters.exclude[MissingClassProblem]("fs2.io.net.Socket$IntCallbackHandler"),
   ProblemFilters.exclude[MissingClassProblem]("fs2.io.net.Socket$BufferedReads"),
   ProblemFilters.exclude[MissingClassProblem](
@@ -117,16 +113,12 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   ProblemFilters.exclude[MissingClassProblem]("fs2.io.net.SocketGroup$AsyncSocketGroup"),
   ProblemFilters.exclude[MissingClassProblem]("fs2.io.net.Socket$AsyncSocket"),
   ProblemFilters.exclude[MissingTypesProblem]("fs2.io.net.unixsocket.UnixSockets$AsyncSocket"),
-  ProblemFilters.exclude[NewMixinForwarderProblem]("fs2.io.net.tls.TLSParameters.toSSLParameters"),
-  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.net.tls.TLSParameters.$init$"),
   ProblemFilters.exclude[MissingClassProblem]("fs2.io.net.tls.TLSContext$Builder$AsyncBuilder"),
-  ProblemFilters.exclude[NewMixinForwarderProblem]("fs2.io.net.Network.socketGroup$default$1"),
-  ProblemFilters.exclude[NewMixinForwarderProblem]("fs2.io.net.Network.socketGroup$default$2"),
-  ProblemFilters.exclude[NewMixinForwarderProblem](
-    "fs2.io.net.Network.datagramSocketGroup$default$1"
-  ),
+  ProblemFilters.exclude[NewMixinForwarderProblem]("fs2.io.net.Network.*"),
   ProblemFilters.exclude[MissingClassProblem]("fs2.io.net.unixsocket.UnixSockets$AsyncSocket"),
-  ProblemFilters.exclude[MissingClassProblem]("fs2.io.net.unixsocket.UnixSockets$AsyncUnixSockets")
+  ProblemFilters.exclude[MissingClassProblem]("fs2.io.net.unixsocket.UnixSockets$AsyncUnixSockets"),
+  ProblemFilters.exclude[NewMixinForwarderProblem]("fs2.io.net.tls.TLSContext.*"),
+  ProblemFilters.exclude[InheritedNewAbstractMethodProblem]("fs2.io.net.tls.TLSContext.*")
 )
 
 lazy val root = project
@@ -233,7 +225,8 @@ lazy val io = crossProject(JVMPlatform, JSPlatform)
     scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule)),
     Compile / npmDependencies += "@types/node" -> "16.0.0",
     useYarn := true,
-    stOutputPackage := "fs2.js"
+    stOutputPackage := "fs2.js",
+    stStdlib := List("es2020")
   )
   .dependsOn(core % "compile->compile;test->test")
 

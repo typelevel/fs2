@@ -24,14 +24,18 @@ package io
 package net
 package tls
 
+import java.security.AlgorithmConstraints
+import javax.net.ssl.{SNIMatcher, SNIServerName, SSLEngine, SSLParameters}
+
+import CollectionCompat._
+
 /** Parameters used in creation of a TLS/DTLS session.
   * See `javax.net.ssl.SSLParameters` for detailed documentation on each parameter.
   *
   * Note: `applicationProtocols`, `enableRetransmissions`, `maximumPacketSize`, and
   * `handshakeApplicationProtocolSelector` require Java 9+.
   */
-sealed trait TLSParameters extends TLSParametersPlatform {
-  import TLSParameters._
+sealed trait TLSParameters {
   val algorithmConstraints: Option[AlgorithmConstraints]
   val applicationProtocols: Option[List[String]]
   val cipherSuites: Option[List[String]]
@@ -45,9 +49,32 @@ sealed trait TLSParameters extends TLSParametersPlatform {
   val needClientAuth: Boolean
   val wantClientAuth: Boolean
   val handshakeApplicationProtocolSelector: Option[(SSLEngine, List[String]) => String]
+
+  /**  Converts to a `javax.net.ssl.SSLParameters` instance.
+    *
+    * `needClientAuth` and `wantClientAuth` are mutually exclusive on `SSLParameters`. If both set on this `TLSParameters`, then `needClientAuth` takes precedence.
+    */
+  def toSSLParameters: SSLParameters = {
+    val p = new SSLParameters()
+    algorithmConstraints.foreach(p.setAlgorithmConstraints)
+    applicationProtocols.foreach(ap => p.setApplicationProtocols(ap.toArray))
+    cipherSuites.foreach(cs => p.setCipherSuites(cs.toArray))
+    enableRetransmissions.foreach(p.setEnableRetransmissions)
+    endpointIdentificationAlgorithm.foreach(p.setEndpointIdentificationAlgorithm)
+    maximumPacketSize.foreach(p.setMaximumPacketSize)
+    protocols.foreach(ps => p.setProtocols(ps.toArray))
+    serverNames.foreach(sn => p.setServerNames(sn.asJava))
+    sniMatchers.foreach(sm => p.setSNIMatchers(sm.asJava))
+    p.setUseCipherSuitesOrder(useCipherSuitesOrder)
+    if (needClientAuth)
+      p.setNeedClientAuth(needClientAuth)
+    else if (wantClientAuth)
+      p.setWantClientAuth(wantClientAuth)
+    p
+  }
 }
 
-object TLSParameters extends TLSParametersSingletonPlatform {
+object TLSParameters {
   val Default: TLSParameters = TLSParameters()
 
   def apply(

@@ -19,21 +19,31 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2.io.file
+package fs2
+package io
+package net
+package tls
 
-private[file] trait FilesPlatform[F[_]] {
-  type Path = String
-  // TODO
-  type CopyOption = Any
-  type FileAttribute[A] = Any
-  type FileVisitOption = Any
-  type LinkOption = Any
-  type OpenOption = Any
-  type PosixFilePermission = Any
-  type StandardOpenOption = Any
-  val StandardOpenOptionCreate = ()
-  type WatchEvent[A] = Any
-  type WatchEventModifier = Any
+import javax.net.ssl.SSLEngine
+
+import cats.effect.Sync
+
+private[tls] trait SSLEngineTaskRunner[F[_]] {
+  def runDelegatedTasks: F[Unit]
 }
 
-private[file] trait FilesSingletonPlatform
+private[tls] object SSLEngineTaskRunner {
+  def apply[F[_]](
+      engine: SSLEngine
+  )(implicit F: Sync[F]): SSLEngineTaskRunner[F] =
+    new SSLEngineTaskRunner[F] {
+      def runDelegatedTasks: F[Unit] =
+        F.blocking {
+          while ({
+            val task = engine.getDelegatedTask
+            if (task ne null) task.run
+            task ne null
+          }) {}
+        }
+    }
+}

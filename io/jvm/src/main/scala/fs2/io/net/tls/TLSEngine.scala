@@ -24,19 +24,36 @@ package io
 package net
 package tls
 
-import javax.net.ssl.{SSLEngine, SSLEngineResult}
+import javax.net.ssl.{SSLEngine, SSLEngineResult, SSLSession}
 
 import cats.Applicative
 import cats.effect.kernel.{Async, Sync}
 import cats.effect.std.Semaphore
 import cats.syntax.all._
 
-trait TLSEnginePlatform { self: TLSEngine.type =>
-  type SSLSession = javax.net.ssl.SSLSession
+/** Provides the ability to establish and communicate over a TLS session.
+  *
+  * This is a functional wrapper of the JDK `SSLEngine`.
+  */
+private[tls] trait TLSEngine[F[_]] {
+  def beginHandshake: F[Unit]
+  def applicationProtocol: F[String]
+  def session: F[SSLSession]
+  def stopWrap: F[Unit]
+  def stopUnwrap: F[Unit]
+  def write(data: Chunk[Byte]): F[Unit]
+  def read(maxBytes: Int): F[Option[Chunk[Byte]]]
+}
+
+private[tls] object TLSEngine {
+  trait Binding[F[_]] {
+    def write(data: Chunk[Byte]): F[Unit]
+    def read(maxBytes: Int): F[Option[Chunk[Byte]]]
+  }
 
   def apply[F[_]: Async](
       engine: SSLEngine,
-      binding: TLSEngine.Binding[F],
+      binding: Binding[F],
       logger: TLSLogger[F]
   ): F[TLSEngine[F]] =
     for {

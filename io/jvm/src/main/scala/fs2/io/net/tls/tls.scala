@@ -19,19 +19,9 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2
-package io
+package fs2.io.net
 
-private[io] trait WatcherPlatform { self: Watcher.type =>
-  type Path = String
-  // TODO
-  type WatchEvent[A] = Any
-  type WatchEventKind[A] = Any
-  type WatchEventModifier = Any
-
-  private[io] def watchEventContext[A](event: WatchEvent[A]): A = ???
-
-  private[io] trait EventTypePlatform
-  private[io] trait EventPlatform
-
+package object tls {
+  type SSLContext = javax.net.ssl.SSLContext
+  type SSLSession = javax.net.ssl.SSLSession
 }

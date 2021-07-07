@@ -23,4 +23,4 @@ package fs2
 package io
 package file
 
-private[file] trait WriteCursorPlatform
+private[file] trait WriteCursorCompanionPlatform

@@ -29,6 +29,44 @@ import java.nio.file.{OpenOption, Path}
 
 import cats.effect.kernel.{Async, Resource, Sync}
 
+private[file] trait FileHandlePlatform[F[_]] {
+
+  /** Opaque type representing an exclusive lock on a file. */
+  type Lock
+
+  /** Acquire an exclusive lock on the underlying file.
+    * @return a lock object which can be used to unlock the file.
+    */
+  def lock: F[Lock]
+
+  /** Acquire a lock on the specified region of the underlying file.
+    * @param position the start of the region to lock.
+    * @param size the size of the region to lock.
+    * @param shared to request a shared lock across process boundaries (may be converted to an exclusive lock on some operating systems).
+    * @return a lock object which can be used to unlock the region.
+    */
+  def lock(position: Long, size: Long, shared: Boolean): F[Lock]
+
+  /** Attempt to acquire an exclusive lock on the underlying file.
+    * @return if the lock could be acquired, a lock object which can be used to unlock the file.
+    */
+  def tryLock: F[Option[Lock]]
+
+  /** Attempt to acquire a lock on the specified region of the underlying file.
+    * @param position the start of the region to lock.
+    * @param size the size of the region to lock.
+    * @param shared to request a shared lock across process boundaries (may be converted to an exclusive lock on some operating systems).
+    * @return if the lock could be acquired, a lock object which can be used to unlock the region.
+    */
+  def tryLock(position: Long, size: Long, shared: Boolean): F[Option[Lock]]
+
+  /** Unlock the (exclusive or regional) lock represented by the supplied `Lock`.
+    * @param lock the lock object which represents the locked file or region.
+    */
+  def unlock(lock: Lock): F[Unit]
+
+}
+
 private[file] trait FileHandleCompanionPlatform {
   @deprecated("Use Files[F].open", "3.0.0")
   def fromPath[F[_]: Async](path: Path, flags: Seq[OpenOption]): Resource[F, FileHandle[F]] =

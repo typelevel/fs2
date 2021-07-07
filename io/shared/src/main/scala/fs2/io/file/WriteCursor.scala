@@ -65,4 +65,4 @@ final case class WriteCursor[F[_]](file: FileHandle[F], offset: Long) {
     }
 }
 
-object WriteCursor extends WriteCursorPlatform
+object WriteCursor extends WriteCursorCompanionPlatform

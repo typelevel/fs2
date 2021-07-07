@@ -30,21 +30,16 @@ import scala.scalajs.js.typedarray.ArrayBuffer
 import scala.scalajs.js.typedarray.TypedArrayBuffer
 import scala.scalajs.js.typedarray.TypedArrayBufferOps._
 
+private[file] trait FileHandlePlatform[F[_]]
+
 private[file] trait FileHandleCompanionPlatform {
   private[file] def make[F[_]](
       fd: fsPromisesMod.FileHandle
   )(implicit F: Async[F]): FileHandle[F] =
     new FileHandle[F] {
-      type Lock = Unit
 
       override def force(metaData: Boolean): F[Unit] =
         F.fromPromise(F.delay(fsPromisesMod.fdatasync(fd)))
-
-      override def lock: F[Lock] =
-        F.raiseError(new UnsupportedOperationException)
-
-      override def lock(position: Long, size: Long, shared: Boolean): F[Lock] =
-        F.raiseError(new UnsupportedOperationException)
 
       override def read(numBytes: Int, offset: Long): F[Option[Chunk[Byte]]] =
         F.fromPromise(F.delay(fd.read(new ArrayBuffer(numBytes), offset.toDouble, numBytes))).map {
@@ -60,15 +55,6 @@ private[file] trait FileHandleCompanionPlatform {
 
       override def truncate(size: Long): F[Unit] =
         F.fromPromise(F.delay(fd.truncate(size.toDouble)))
-
-      override def tryLock: F[Option[Lock]] =
-        F.raiseError(new UnsupportedOperationException)
-
-      override def tryLock(position: Long, size: Long, shared: Boolean): F[Option[Lock]] =
-        F.raiseError(new UnsupportedOperationException)
-
-      override def unlock(f: Lock): F[Unit] =
-        F.raiseError(new UnsupportedOperationException)
 
       override def write(bytes: Chunk[Byte], offset: Long): F[Int] =
         F.fromPromise(F.delay(fd.write(bytes.toByteBuffer.arrayBuffer(), offset.toDouble)))

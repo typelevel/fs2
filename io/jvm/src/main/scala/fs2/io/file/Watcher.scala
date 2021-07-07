@@ -32,15 +32,71 @@ import java.util.concurrent.TimeUnit
 
 import CollectionCompat._
 
-private[io] trait WatcherPlatform { self: Watcher.type =>
+/** Allows watching the file system for changes to directories and files by using the platform's `WatchService`.
+  */
+sealed abstract class Watcher[F[_]] {
 
-  type Path = java.nio.file.Path
-  type WatchEvent[A] = java.nio.file.WatchEvent[A]
-  type WatchEventKind[A] = java.nio.file.WatchEvent.Kind[A]
-  type WatchEventModifier = java.nio.file.WatchEvent.Modifier
+  /** Registers for events on the specified path.
+    *
+    * This is more feature-rich than the platform's `Path#register`. The supplied path may be
+    * a file or directory and events may raised for all descendants of the path. Use [[register]] for
+    * a lower-level API.
+    *
+    * Returns a cancellation task that unregisters the path for events. Unregistration is optional -
+    * the `Watcher` will free all resources when it is finalized. Unregistration is only needed
+    * when a `Watcher` will continue to be used after unregistration.
+    *
+    * @param path file or directory to watch for events
+    * @param types event types to register for; if `Nil`, all standard event types are registered
+    * @param modifiers modifiers to pass to the underlying `WatchService` when registering
+    * @return unregistration task
+    */
+  def watch(
+      path: Path,
+      types: Seq[Watcher.EventType] = Nil,
+      modifiers: Seq[WatchEvent.Modifier] = Nil
+  ): F[F[Unit]]
 
-  private[io] trait EventTypePlatform {
-    def toWatchEventKind(et: Watcher.EventType): WatchEvent.Kind[_] =
+  /** Registers for events on the specified path.
+    *
+    * This is a low-level abstraction on the platform's `Path#register`. The supplied path must be
+    * a directory and events are raised for only direct descendants of the path. Use [[watch]] for
+    * a higher level API.
+    *
+    * Returns a cancellation task that unregisters the path for events. Unregistration is optional -
+    * the `Watcher` will free all resources when it is finalized. Unregistration is only needed
+    * when a `Watcher` will continue to be used after unregistration.
+    *
+    * @param path directory to watch for events
+    * @param types event types to register for; if `Nil`, all standard event types are registered
+    * @param modifiers modifiers to pass to the underlying `WatchService` when registering
+    * @return unregistration task
+    */
+  def register(
+      path: Path,
+      types: Seq[Watcher.EventType] = Nil,
+      modifiers: Seq[WatchEvent.Modifier] = Nil
+  ): F[F[Unit]]
+
+  /** Stream of events for paths that have been registered or watched.
+    *
+    * @param pollTimeout amount of time for which the underlying platform is polled for events
+    */
+  def events(pollTimeout: FiniteDuration = 1.second): Stream[F, Watcher.Event]
+}
+
+object Watcher {
+
+  /** Type of event raised by `Watcher`. Supports the standard events types as well as arbitrary non-standard types (via `NonStandard`). */
+  sealed abstract class EventType
+  object EventType {
+    case object Created extends EventType
+    case object Deleted extends EventType
+    case object Modified extends EventType
+    case object Overflow extends EventType
+    final case class NonStandard(kind: WatchEvent.Kind[_]) extends EventType
+
+    def toWatchEventKind(et: EventType): WatchEvent.Kind[_] =
       et match {
         case EventType.Created           => StandardWatchEventKinds.ENTRY_CREATE
         case EventType.Modified          => StandardWatchEventKinds.ENTRY_MODIFY
@@ -50,7 +106,14 @@ private[io] trait WatcherPlatform { self: Watcher.type =>
       }
   }
 
-  private[io] trait EventPlatform {
+  /** Event raised by `Watcher`. Supports standard events as well as arbitrary non-standard events (via `NonStandard`). */
+  sealed abstract class Event
+  object Event {
+    final case class Created(path: Path, count: Int) extends Event
+    final case class Deleted(path: Path, count: Int) extends Event
+    final case class Modified(path: Path, count: Int) extends Event
+    final case class Overflow(count: Int) extends Event
+    final case class NonStandard(event: WatchEvent[_], registeredDirectory: Path) extends Event
 
     /** Converts a NIO `WatchEvent` to an FS2 `Watcher.Event`.
       *
@@ -82,7 +145,6 @@ private[io] trait WatcherPlatform { self: Watcher.type =>
             Some(registeredDirectory.resolve(e.context.asInstanceOf[Path]))
           else None
       }
-
   }
 
   /** Creates a watcher for the default file system. */
@@ -103,7 +165,7 @@ private[io] trait WatcherPlatform { self: Watcher.type =>
       path: Path,
       singleFile: Boolean,
       key: WatchKey,
-      types: Seq[Watcher.EventType],
+      types: Seq[EventType],
       modifiers: Seq[WatchEvent.Modifier],
       recurse: Boolean,
       suppressCreated: Boolean,
@@ -152,7 +214,7 @@ private[io] trait WatcherPlatform { self: Watcher.type =>
 
     private def watchDirectory(
         path: Path,
-        types: Seq[Watcher.EventType],
+        types: Seq[EventType],
         modifiers: Seq[WatchEvent.Modifier]
     ): F[F[Unit]] = {
       val (supplementedTypes, suppressCreated) =

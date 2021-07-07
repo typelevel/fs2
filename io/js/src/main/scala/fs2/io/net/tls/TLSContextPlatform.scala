@@ -26,26 +26,14 @@ package tls
 
 import cats.effect.kernel.Async
 
-private[tls] trait TLSContextPlatform { self: TLSContext.type =>
-  // TODO
-  type SSLContext = Any
-  type KeyStore = Any
-  type Path = String
+private[tls] trait TLSContextPlatform[F[_]]
 
-  private[tls] trait BuilderPlatform {
+private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
+
+  private[tls] trait BuilderPlatform[F[_]]
+
+  private[tls] trait BuilderCompanionPlatform {
     private[tls] final class AsyncBuilder[F[_]: Async] extends Builder[F] {
-      def fromKeyStore(keyStore: KeyStore, keyPassword: Array[Char]): F[TLSContext[F]] = ???
-      def fromKeyStoreFile(
-          file: Path,
-          storePassword: Array[Char],
-          keyPassword: Array[Char]
-      ): F[TLSContext[F]] = ???
-      def fromKeyStoreResource(
-          resource: String,
-          storePassword: Array[Char],
-          keyPassword: Array[Char]
-      ): F[TLSContext[F]] = ???
-      def fromSSLContext(ctx: SSLContext): TLSContext[F] = ???
       def insecure: F[TLSContext[F]] = ???
       def system: F[TLSContext[F]] = ???
     }

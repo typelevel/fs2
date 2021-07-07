@@ -26,7 +26,7 @@ package file
 import java.nio.file.{Files => _, _}
 import cats.effect.kernel.{Async, Resource}
 
-private[file] trait ReadCursorPlatform {
+private[file] trait ReadCursorCompanionPlatform {
   @deprecated("Use Files[F].readCursor", "3.0.0")
   def fromPath[F[_]: Async](
       path: Path,

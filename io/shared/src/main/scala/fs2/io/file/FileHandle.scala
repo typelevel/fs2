@@ -25,28 +25,12 @@ package file
 
 /** Provides the ability to read/write/lock/inspect a file in the effect `F`.
   */
-trait FileHandle[F[_]] {
-
-  /** Opaque type representing an exclusive lock on a file. */
-  type Lock
+trait FileHandle[F[_]] extends FileHandlePlatform[F] {
 
   /** Force any updates for the underlying file to storage.
     * @param metaData If true, also attempts to force file metadata updates to storage.
     */
   def force(metaData: Boolean): F[Unit]
-
-  /** Acquire an exclusive lock on the underlying file.
-    * @return a lock object which can be used to unlock the file.
-    */
-  def lock: F[Lock]
-
-  /** Acquire a lock on the specified region of the underlying file.
-    * @param position the start of the region to lock.
-    * @param size the size of the region to lock.
-    * @param shared to request a shared lock across process boundaries (may be converted to an exclusive lock on some operating systems).
-    * @return a lock object which can be used to unlock the region.
-    */
-  def lock(position: Long, size: Long, shared: Boolean): F[Lock]
 
   /** Read the specified number of bytes at a particular offset.
     * @param numBytes the number of bytes to read.
@@ -64,24 +48,6 @@ trait FileHandle[F[_]] {
     * @param size the size of the file after truncation.
     */
   def truncate(size: Long): F[Unit]
-
-  /** Attempt to acquire an exclusive lock on the underlying file.
-    * @return if the lock could be acquired, a lock object which can be used to unlock the file.
-    */
-  def tryLock: F[Option[Lock]]
-
-  /** Attempt to acquire a lock on the specified region of the underlying file.
-    * @param position the start of the region to lock.
-    * @param size the size of the region to lock.
-    * @param shared to request a shared lock across process boundaries (may be converted to an exclusive lock on some operating systems).
-    * @return if the lock could be acquired, a lock object which can be used to unlock the region.
-    */
-  def tryLock(position: Long, size: Long, shared: Boolean): F[Option[Lock]]
-
-  /** Unlock the (exclusive or regional) lock represented by the supplied `Lock`.
-    * @param lock the lock object which represents the locked file or region.
-    */
-  def unlock(lock: Lock): F[Unit]
 
   /** Write the specified bytes at a particular offset.
     * @param bytes the bytes to write to the `FileHandle`.

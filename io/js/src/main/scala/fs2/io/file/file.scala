@@ -19,6 +19,8 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2.io.net.tls
+package fs2.io
 
-private[tls] trait SSLEngineTaskRunnerPlatform
+package object file {
+  type Path = fs2.js.node.fsMod.PathLike
+}
