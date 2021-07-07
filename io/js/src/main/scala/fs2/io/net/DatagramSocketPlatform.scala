@@ -56,7 +56,9 @@ private[net] trait DatagramSocketCompanionPlatform {
   )(implicit F: Async[F]): Resource[F, DatagramSocket[F]] =
     for {
       dispatcher <- Dispatcher[F]
-      queue <- Queue.circularBuffer[F, Datagram](1024).toResource // TODO how to set this? Or, bad design?
+      queue <- Queue
+        .circularBuffer[F, Datagram](1024)
+        .toResource // TODO how to set this? Or, bad design?
       error <- F.deferred[Throwable].toResource
       _ <- registerListener2[bufferMod.global.Buffer, dgramMod.RemoteInfo](
         sock,
