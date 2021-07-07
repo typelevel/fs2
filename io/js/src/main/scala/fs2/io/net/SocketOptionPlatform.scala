@@ -51,7 +51,7 @@ private[net] trait SocketOptionCompanionPlatform { self: SocketOption.type =>
       Sync[F].delay(sock.setTimeout(value.toMillis.toDouble))
   }
 
-  // def encoding(value: BufferEncoding): SocketOption = apply(Encoding, value)
+  def encoding(value: BufferEncoding): SocketOption = apply(Encoding, value)
   def keepAlive(value: Boolean): SocketOption = apply(KeepAlive, value)
   def noDelay(value: Boolean): SocketOption = apply(NoDelay, value)
   def timeout(value: FiniteDuration): SocketOption = apply(Timeout, value)
