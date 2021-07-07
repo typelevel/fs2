@@ -113,7 +113,7 @@ private[net] trait SocketCompanionPlatform {
     override def endOfOutput: F[Unit] = F.delay(sock.end())
 
     override def isOpen: F[Boolean] =
-      F.delay(sock.asInstanceOf[js.Dynamic].readyState == "open": @nowarn)
+      F.delay(sock.asInstanceOf[js.Dynamic].readyState.asInstanceOf[String] == "open")
 
     override def remoteAddress: F[SocketAddress[IpAddress]] =
       F.delay(sock.remoteAddress.toOption.flatMap(SocketAddress.fromStringIp).get)
