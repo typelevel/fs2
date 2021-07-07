@@ -24,16 +24,12 @@ package io
 package net
 package udp
 
-import java.net.{Inet4Address, NetworkInterface, StandardProtocolFamily}
-
 import cats.effect.IO
 import cats.syntax.all._
 
 import com.comcast.ip4s._
 
-import CollectionCompat._
-
-class UdpSuite extends Fs2Suite {
+class UdpSuite extends Fs2Suite with UdpSuitePlatform {
   group("udp") {
     test("echo one") {
       val msg = Chunk.array("Hello, world!".getBytes)
@@ -104,16 +100,12 @@ class UdpSuite extends Fs2Suite {
       Stream
         .resource(
           Network[IO].openDatagramSocket(
-            options = List(SocketOption.multicastTtl(1)),
-            protocolFamily = Some(StandardProtocolFamily.INET)
+            options = List(DatagramSocketOption.multicastTtl(1)),
+            protocolFamily = Some(v4ProtocolFamily)
           )
         )
         .flatMap { serverSocket =>
           Stream.eval(serverSocket.localAddress).map(_.port).flatMap { serverPort =>
-            val v4Interfaces =
-              NetworkInterface.getNetworkInterfaces.asScala.toList.filter { interface =>
-                interface.getInetAddresses.asScala.exists(_.isInstanceOf[Inet4Address])
-              }
             val server = Stream
               .exec(
                 v4Interfaces.traverse_(interface => serverSocket.join(groupJoin, interface))

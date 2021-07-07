@@ -27,6 +27,7 @@ import cats.effect.kernel.Async
 import com.comcast.ip4s.{IpAddress, SocketAddress}
 import com.comcast.ip4s.{IpAddress, MulticastJoin}
 import fs2.io.internal.ByteChunkOps._
+import fs2.io.internal.EventEmitterOps._
 
 import scala.scalajs.js
 import fs2.js.node.dgramMod
@@ -39,6 +40,9 @@ import cats.effect.std.Queue
 import cats.effect.std.Dispatcher
 import cats.effect.kernel.Resource
 import fs2.js.node.nodeStrings
+import fs2.js.node.bufferMod
+import cats.effect.kernel.Deferred
+import cats.data.EitherT
 
 private[net] trait DatagramSocketPlatform[F[_]] {
   private[net] trait GroupMembershipPlatform
@@ -50,38 +54,49 @@ private[net] trait DatagramSocketCompanionPlatform {
   private[net] def forAsync[F[_]](
       sock: dgramMod.Socket
   )(implicit F: Async[F]): Resource[F, DatagramSocket[F]] =
-    Dispatcher[F].flatMap { dispatcher =>
-      Resource.make(
-        for {
-          queue <- Queue.circularBuffer[F, Datagram](1)
-          _ <- F.delay {
-            sock.on_message(
-              nodeStrings.message,
-              (buffer, info) =>
-                dispatcher.unsafeRunAndForget(
-                  queue.offer(
-                    Datagram(
-                      SocketAddress(
-                        IpAddress.fromString(info.address).get,
-                        Port.fromInt(info.port.toInt).get
-                      ),
-                      buffer.toChunk
-                    )
-                  )
-                )
+    for {
+      dispatcher <- Dispatcher[F]
+      queue <- Queue.circularBuffer[F, Datagram](1024).toResource // TODO how to set this? Or, bad design?
+      error <- F.deferred[Throwable].toResource
+      _ <- registerListener2[bufferMod.global.Buffer, dgramMod.RemoteInfo](
+        sock,
+        nodeStrings.message
+      )(_.on_message(_, _)) { (buffer, info) =>
+        dispatcher.unsafeRunAndForget(
+          queue.offer(
+            Datagram(
+              SocketAddress(
+                IpAddress.fromString(info.address).get,
+                Port.fromInt(info.port.toInt).get
+              ),
+              buffer.toChunk
             )
-          }
-        } yield new AsyncDatagramSocket(sock, queue)
-      )(_ => F.delay(sock.close()))
-    }
+          )
+        )
+      }
+      _ <- registerListener[js.Error](sock, nodeStrings.error)(_.on_error(_, _)) { e =>
+        dispatcher.unsafeRunAndForget(error.complete(js.JavaScriptException(e)))
+      }
+      socket <- Resource.make(F.pure(new AsyncDatagramSocket(sock, queue, error)))(_ =>
+        F.delay(sock.close())
+      )
+    } yield socket
 
-  private final class AsyncDatagramSocket[F[_]](sock: dgramMod.Socket, queue: Queue[F, Datagram])(
-      implicit F: Async[F]
+  private final class AsyncDatagramSocket[F[_]](
+      sock: dgramMod.Socket,
+      queue: Queue[F, Datagram],
+      error: Deferred[F, Throwable]
+  )(implicit
+      F: Async[F]
   ) extends DatagramSocket[F] {
 
-    override def read: F[Datagram] = queue.take
+    override def read: F[Datagram] = EitherT(
+      queue.take.race(error.get.flatMap(F.raiseError[Datagram]))
+    ).merge
 
-    override def reads: Stream[F, Datagram] = Stream.fromQueueUnterminated(queue)
+    override def reads: Stream[F, Datagram] = Stream
+      .fromQueueUnterminated(queue)
+      .concurrently(Stream.eval(error.get.flatMap(F.raiseError[Datagram])))
 
     override def write(datagram: Datagram): F[Unit] = F.async_ { cb =>
       sock.send(

@@ -44,6 +44,7 @@ private[fs2] object EventEmitterOps {
     )
 
   def registerListener[A] = new RegisterListenerPartiallyApplied[A]
+  def registerListener2[A, B] = new RegisterListener2PartiallyApplied[A, B]
 
   final class RegisterListenerPartiallyApplied[A](private val dummy: Boolean = false)
       extends AnyVal {
@@ -51,6 +52,24 @@ private[fs2] object EventEmitterOps {
     def apply[F[_]: Sync, E, V](emitter: E, event: V)(
         register: (E, V, js.Function1[A, Unit]) => Unit
     )(callback: js.Function1[A, Unit]): Resource[F, Unit] =
+      Resource.make(Sync[F].delay(register(emitter, event, callback)))(_ =>
+        Sync[F].delay(
+          emitter
+            .asInstanceOf[eventsMod.EventEmitter]
+            .removeListener(
+              event.asInstanceOf[String],
+              callback.asInstanceOf[js.Function1[js.Any, Unit]]
+            )
+        )
+      )
+  }
+
+  final class RegisterListener2PartiallyApplied[A, B](private val dummy: Boolean = false)
+      extends AnyVal {
+
+    def apply[F[_]: Sync, E, V](emitter: E, event: V)(
+        register: (E, V, js.Function2[A, B, Unit]) => Unit
+    )(callback: js.Function2[A, B, Unit]): Resource[F, Unit] =
       Resource.make(Sync[F].delay(register(emitter, event, callback)))(_ =>
         Sync[F].delay(
           emitter
