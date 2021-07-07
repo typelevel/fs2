@@ -24,7 +24,6 @@ val NewScala = "2.13.6"
 ThisBuild / crossScalaVersions := Seq("3.0.0", "2.12.14", NewScala)
 
 ThisBuild / githubWorkflowJavaVersions := Seq("adopt@1.16")
-ThisBuild / githubWorkflowBuildMatrixFailFast := Some(false)
 
 ThisBuild / spiewakCiReleaseSnapshots := true
 
