@@ -2118,6 +2118,8 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
                       })
                     }
                   }
+                  .attempt
+                  .void
               }
             }
         }
@@ -2130,11 +2132,12 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
           .compile
           .fold(F2.unit)(_ >> _.join)
           .flatten
-          .void
           .guaranteeCase {
             case ExitCase.Error(err) => stop(Left(err))
             case _                   => stop(Right(()))
           }
+          .attempt
+          .void
 
       // awaits when all streams (outer + inner) finished,
       // and then collects result of the stream (outer + inner) execution
