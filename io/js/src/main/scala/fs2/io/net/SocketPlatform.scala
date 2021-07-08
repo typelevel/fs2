@@ -62,7 +62,7 @@ private[net] trait SocketCompanionPlatform {
       buffer <- SignallingRef.of(Chunk.empty[Byte]).toResource
       read <- Semaphore[F](1).toResource
       ended <- F.deferred[Either[Throwable, Unit]].toResource
-      (listeners, _) <- Hotswap(Resource.unit[F]) // Dummy, we'll use swap method below
+      listeners <- Hotswap(Resource.unit[F]).map(_._1) // Dummy, we'll use swap method below
       socket <- Resource.make(
         F.delay(new AsyncSocket[F](underlying, listeners, buffer, read, ended, dispatcher))
       ) { _ =>
