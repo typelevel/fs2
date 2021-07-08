@@ -266,7 +266,7 @@ class TextSuite extends Fs2Suite {
       }
     }
 
-    property("grouped in 3 characater chunks") {
+    property("grouped in 3 character chunks") {
       forAll { (lines0: Stream[Pure, String]) =>
         val lines = lines0.map(escapeCrLf)
         val s = lines.intersperse("\r\n").toList.mkString.grouped(3).toList
@@ -275,6 +275,51 @@ class TextSuite extends Fs2Suite {
         else {
           assertEquals(Stream.emits(s).through(text.lines).toList, lines.toList)
           assertEquals(Stream.emits(s).unchunk.through(text.lines).toList, lines.toList)
+        }
+      }
+    }
+  }
+
+  group("linesWithEndings") {
+    def escapeCrLf(s: String): String =
+      s.replaceAll("\r\n", "<CRLF>").replaceAll("\n", "<LF>").replaceAll("\r", "<CR>")
+
+    def expected(ending: LineEnding, originalLines: Stream[Pure, String]): List[(String,LineEnding)] = {
+      val v = originalLines.toVector
+      (v.dropRight(1).map(_ -> ending) ++ v.takeRight(1).map(_ -> LineEnding.EOF)).toList
+    }
+
+    property("newlines appear in between chunks") {
+      forAll { (lines0: Stream[Pure, String]) =>
+        val lines = lines0.map(escapeCrLf)
+        def assertEnding(ending: LineEnding): Unit = {
+          assertEquals(lines.intersperse(ending.value).through(text.linesWithEndings).toList, expected(ending, lines))
+        }
+        assertEnding(LineEnding.CRLF)
+        assertEnding(LineEnding.LF)
+      }
+    }
+
+    property("single string") {
+      forAll { (lines0: Stream[Pure, String]) =>
+        val lines = lines0.map(escapeCrLf)
+        if (lines.toList.nonEmpty) {
+          val s = lines.intersperse("\r\n").toList.mkString
+          assertEquals(Stream.emit(s).through(text.linesWithEndings).toList, expected(LineEnding.CRLF, lines))
+        }
+      }
+    }
+
+    property("grouped in 3 character chunks") {
+      forAll { (lines0: Stream[Pure, String]) =>
+        val lines = lines0.map(escapeCrLf)
+        val s = lines.intersperse("\r\n").toList.mkString.grouped(3).toList
+        if (s.isEmpty)
+          assertEquals(Stream.emits(s).through(text.linesWithEndings).toList, Nil)
+        else {
+          val expectedLines = expected(LineEnding.CRLF, lines)
+          assertEquals(Stream.emits(s).through(text.linesWithEndings).toList, expectedLines)
+          assertEquals(Stream.emits(s).unchunk.through(text.linesWithEndings).toList, expectedLines)
         }
       }
     }
