@@ -41,8 +41,15 @@ import fs2.js.node.nodeStrings
 
 import scala.annotation.nowarn
 import scala.scalajs.js
+import cats.effect.std.Hotswap
+import cats.effect.kernel.Ref
+import cats.effect.kernel.Deferred
 
-private[net] trait SocketPlatform[F[_]]
+private[net] trait SocketPlatform[F[_]] {
+  private[net] def underlying: F[netMod.Socket]
+  // This lets us swap in a TLS Socket
+  private[net] def swap(socket: netMod.Socket): F[Unit]
+}
 
 private[net] trait SocketCompanionPlatform {
 
@@ -51,47 +58,60 @@ private[net] trait SocketCompanionPlatform {
   )(implicit F: Async[F]): Resource[F, Socket[F]] =
     for {
       dispatcher <- Dispatcher[F]
+      underlying <- F.ref(sock).toResource
       buffer <- SignallingRef.of(Chunk.empty[Byte]).toResource
       read <- Semaphore[F](1).toResource
       ended <- F.deferred[Either[Throwable, Unit]].toResource
-      _ <- registerListener[Buffer](sock, nodeStrings.data)(_.on_data(_, _)) { data =>
-        dispatcher.unsafeRunAndForget(
-          buffer.update { buffer =>
-            buffer ++ data.toChunk
-          }
-        )
+      (listeners, _) <- Hotswap(Resource.unit[F]) // Dummy, we'll use swap method below
+      socket <- Resource.make(
+        F.delay(new AsyncSocket[F](underlying, listeners, buffer, read, ended, dispatcher))
+      ) { _ =>
+        F.delay {
+          if (!sock.destroyed)
+            sock.asInstanceOf[js.Dynamic].destroy(): @nowarn
+        }
       }
-      _ <- registerListener0(sock, nodeStrings.end)(_.on_end(_, _)) { () =>
-        dispatcher.unsafeRunAndForget(ended.complete(Right(())))
-      }
-      _ <- registerListener[js.Error](sock, nodeStrings.error)(_.on_error(_, _)) { error =>
-        dispatcher.unsafeRunAndForget(
-          ended.complete(Left(js.JavaScriptException(error)))
-        )
-      }
-      socket <- Resource.make(F.delay(new AsyncSocket[F](sock, buffer, read, ended.get.rethrow))) {
-        _ =>
-          F.delay {
-            if (!sock.destroyed)
-              sock.asInstanceOf[js.Dynamic].destroy(): @nowarn
-          }
-      }
+      _ <- socket.swap(sock).toResource
     } yield socket
 
   private final class AsyncSocket[F[_]](
-      sock: netMod.Socket,
+      sock: Ref[F, netMod.Socket],
+      listeners: Hotswap[F, Unit],
       buffer: SignallingRef[F, Chunk[Byte]],
       readSemaphore: Semaphore[F],
-      ended: F[Unit]
+      ended: Deferred[F, Either[Throwable, Unit]],
+      dispatcher: Dispatcher[F]
   )(implicit F: Async[F])
       extends Socket[F] {
+
+    private[net] def underlying: F[netMod.Socket] = sock.get
+
+    private[net] def swap(nextSock: netMod.Socket): F[Unit] = readSemaphore.permit.use { _ =>
+      listeners.swap {
+        registerListener[Buffer](nextSock, nodeStrings.data)(_.on_data(_, _)) { data =>
+          dispatcher.unsafeRunAndForget(
+            buffer.update { buffer =>
+              buffer ++ data.toChunk
+            }
+          )
+        } >> registerListener0(nextSock, nodeStrings.end)(_.on_end(_, _)) { () =>
+          dispatcher.unsafeRunAndForget(ended.complete(Right(())))
+        } >> registerListener[js.Error](nextSock, nodeStrings.error)(_.on_error(_, _)) { error =>
+          dispatcher.unsafeRunAndForget(
+            ended.complete(Left(js.JavaScriptException(error)))
+          )
+        }
+      } >> sock.set(nextSock)
+    }
 
     private def read(minBytes: Int, maxBytes: Int): F[Chunk[Byte]] =
       readSemaphore.permit.use { _ =>
         (Stream.eval(buffer.get) ++
-          (Stream.bracket(F.delay(sock.resume()))(_ => F.delay(sock.pause())) >> buffer.discrete))
+          (Stream.bracket(sock.get.flatTap(s => F.delay(s.resume())))(sock =>
+            F.delay(sock.pause())
+          ) >> buffer.discrete))
           .filter(_.size >= minBytes)
-          .merge(Stream.eval(ended))
+          .merge(Stream.eval(ended.get.rethrow))
           .head
           .compile
           .drain *> buffer.modify(_.splitAt(maxBytes).swap)
@@ -106,24 +126,28 @@ private[net] trait SocketCompanionPlatform {
     override def reads: Stream[F, Byte] =
       Stream.repeatEval(read(1, Int.MaxValue)).takeWhile(_.nonEmpty).flatMap(Stream.chunk)
 
-    override def endOfOutput: F[Unit] = F.delay(sock.end())
+    override def endOfOutput: F[Unit] = sock.get.flatMap(s => F.delay(s.end()))
 
-    override def isOpen: F[Boolean] =
+    override def isOpen: F[Boolean] = sock.get.flatMap { sock =>
       F.delay(sock.asInstanceOf[js.Dynamic].readyState.asInstanceOf[String] == "open")
+    }
 
     override def remoteAddress: F[SocketAddress[IpAddress]] =
-      F.delay(sock.remoteAddress.toOption.flatMap(SocketAddress.fromStringIp).get)
+      sock.get.flatMap(sock =>
+        F.delay(sock.remoteAddress.toOption.flatMap(SocketAddress.fromStringIp).get)
+      )
 
     override def localAddress: F[SocketAddress[IpAddress]] =
-      F.delay(SocketAddress.fromStringIp(sock.localAddress).get)
+      sock.get.flatMap(sock => F.delay(SocketAddress.fromStringIp(sock.localAddress).get))
 
-    override def write(bytes: Chunk[Byte]): F[Unit] =
+    override def write(bytes: Chunk[Byte]): F[Unit] = sock.get.flatMap { sock =>
       F.async_[Unit] { cb =>
         sock.write(
           bytes.toUint8Array,
           e => cb(e.toLeft(()).leftMap(js.JavaScriptException(_)))
         ): @nowarn
       }.void
+    }
 
     override def writes: Pipe[F, Byte, INothing] =
       _.chunks.foreach(write)

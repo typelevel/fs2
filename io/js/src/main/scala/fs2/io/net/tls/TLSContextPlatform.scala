@@ -25,17 +25,48 @@ package net
 package tls
 
 import cats.effect.kernel.Async
+import fs2.js.node.tlsMod
+import cats.effect.kernel.Resource
 
 private[tls] trait TLSContextPlatform[F[_]]
 
 private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
 
-  private[tls] trait BuilderPlatform[F[_]]
+  private[tls] trait BuilderPlatform[F[_]] {
+    def fromSSLContext(context: SSLContext): TLSContext[F]
+    def fromSecureContext(context: tlsMod.SecureContext): TLSContext[F]
+  }
 
   private[tls] trait BuilderCompanionPlatform {
     private[tls] final class AsyncBuilder[F[_]: Async] extends Builder[F] {
-      def insecure: F[TLSContext[F]] = ???
-      def system: F[TLSContext[F]] = ???
+
+      def fromSSLContext(context: SSLContext): TLSContext[F] = fromSecureContext(context)
+
+      def fromSecureContext(context: tlsMod.SecureContext): TLSContext[F] =
+        new UnsealedTLSContext[F] {
+
+          override def clientBuilder(socket: Socket[F]): SocketBuilder[F, TLSSocket] =
+            SocketBuilder(mkSocket(socket, true, _, _))
+
+          override def serverBuilder(socket: Socket[F]): SocketBuilder[F, TLSSocket] =
+            SocketBuilder(mkSocket(socket, false, _, _))
+
+          private def mkSocket(
+              socket: Socket[F],
+              clientMode: Boolean,
+              params: TLSParameters,
+              logger: TLSLogger[F]
+          ): Resource[F, TLSSocket[F]] =
+            TLSSocket.forAsync(
+              socket,
+              params
+                .toTLSSocketOptions(context)
+                .setIsServer(!clientMode)
+                .setEnableTrace(logger != TLSLogger.Disabled)
+            )
+        }
+
+      def system: F[TLSContext[F]] = Async[F].delay(fromSecureContext(tlsMod.createSecureContext()))
     }
   }
 }

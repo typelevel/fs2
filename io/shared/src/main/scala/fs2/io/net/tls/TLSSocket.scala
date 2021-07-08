@@ -30,19 +30,13 @@ import fs2.io.net.Socket
   *
   * To construct a `TLSSocket`, use the `client` and `server` methods on `TLSContext`.
   */
-sealed trait TLSSocket[F[_]] extends Socket[F] {
-
-  /** Initiates handshaking -- either the initial or a renegotiation. */
-  def beginHandshake: F[Unit]
+sealed trait TLSSocket[F[_]] extends Socket[F] with TLSSocketPlatform[F] {
 
   /** Provides access to the current `SSLSession` for purposes of querying
     * session info such as the negotiated cipher suite or the peer certificate.
     */
-  def session: F[TLSSocket.SSLSession]
+  def session: F[SSLSession]
 
-  /** Provides access to the current application protocol that has been negotiated.
-    */
-  def applicationProtocol: F[String]
 }
 
 object TLSSocket extends TLSSocketCompanionPlatform {

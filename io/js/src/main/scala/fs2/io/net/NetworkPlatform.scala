@@ -68,7 +68,7 @@ private[net] trait NetworkCompanionPlatform { self: Network.type =>
       ): Resource[F, DatagramSocket[F]] =
         datagramSocketGroup.openDatagramSocket(address, port, options, protocolFamily)
 
-      override def tlsContext: TLSContext.Builder[F] = ???
+      override def tlsContext: TLSContext.Builder[F] = TLSContext.Builder.forAsync
 
     }
 }

@@ -24,40 +24,46 @@ package io
 package net
 package tls
 
+import cats.effect.IO
+import scala.scalajs.js
+import scala.scalajs.js.annotation._
+import fs2.js.node.bufferMod
+import fs2.js.node.fsPromisesMod
 import fs2.js.node.tlsMod
-import scala.scalajs.js.JSConverters._
-import scala.scalajs.js.|
-import scala.scalajs.js.typedarray.Uint8Array
 
-/** Parameters used in creation of a TLS/DTLS session.
-  * See `javax.net.ssl.SSLParameters` for detailed documentation on each parameter.
-  *
-  * Note: `applicationProtocols`, `enableRetransmissions`, `maximumPacketSize`, and
-  * `handshakeApplicationProtocolSelector` require Java 9+.
-  */
-sealed trait TLSParameters {
-  val applicationProtocols: Option[List[String]]
-
-  private[tls] def toTLSSocketOptions(context: tlsMod.SecureContext): tlsMod.TLSSocketOptions = {
-    val options = tlsMod.TLSSocketOptions().setSecureContext(context)
-    applicationProtocols.foreach(protocols =>
-      options.setALPNProtocols(protocols.view.map(x => x: String | Uint8Array).toJSArray)
+abstract class TLSSuite extends Fs2Suite {
+  def testTlsContext: IO[TLSContext[IO]] = IO
+    .fromPromise(
+      IO(fsPromisesMod.readFile("io/shared/src/test/resources/keystore.jks"))
     )
-    options
-  }
+    .map(JKS.toPem(_, "password")("server"))
+    .map { certKey =>
+      Network[IO].tlsContext.fromSecureContext(
+        tlsMod.createSecureContext(
+          tlsMod
+            .SecureContextOptions()
+            .setCert(certKey.cert)
+            .setKey(certKey.key)
+            .setPassphrase("password")
+        )
+      )
+    }
+
+  val logger = TLSLogger.Disabled
+  // val logger = TLSLogger.Enabled(msg => IO(println(s"\u001b[33m${msg}\u001b[0m")))
 
 }
 
-object TLSParameters {
-  val Default: TLSParameters = TLSParameters()
+@js.native
+@JSImport("jks-js", JSImport.Namespace)
+object JKS extends js.Any {
 
-  def apply(
-      applicationProtocols: Option[List[String]] = None
-  ): TLSParameters = DefaultTLSParameters(
-    applicationProtocols
-  )
+  @js.native
+  trait CertKey extends js.Any {
+    def cert: String = js.native
+    def key: String = js.native
+  }
 
-  private case class DefaultTLSParameters(
-      applicationProtocols: Option[List[String]]
-  ) extends TLSParameters
+  def toPem(buffer: bufferMod.global.Buffer, password: String): js.Dictionary[CertKey] = js.native
+
 }

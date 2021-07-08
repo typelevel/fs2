@@ -224,9 +224,11 @@ lazy val io = crossProject(JVMPlatform, JSPlatform)
   .jsSettings(
     scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule)),
     Compile / npmDependencies += "@types/node" -> "16.0.0",
+    Test / npmDependencies += "jks-js" -> "1.0.1",
     useYarn := true,
     stOutputPackage := "fs2.js",
-    stStdlib := List("es2020")
+    stStdlib := List("es2020"),
+    stIgnore += "jks-js"
   )
   .dependsOn(core % "compile->compile;test->test")
 

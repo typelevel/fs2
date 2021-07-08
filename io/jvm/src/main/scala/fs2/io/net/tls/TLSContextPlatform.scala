@@ -101,6 +101,9 @@ private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
   private[tls] trait BuilderPlatform[F[_]] {
     def fromSSLContext(ctx: SSLContext): TLSContext[F]
 
+    /** Creates a `TLSContext` which trusts all certificates. */
+    def insecure: F[TLSContext[F]]
+
     /** Creates a `TLSContext` from the specified key store file. */
     def fromKeyStoreFile(
         file: Path,

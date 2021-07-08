@@ -25,9 +25,63 @@ package net
 package tls
 
 import cats.effect.kernel.Async
+import cats.effect.kernel.Resource
+import cats.effect.std.Dispatcher
+import cats.effect.syntax.all._
+import cats.syntax.all._
+import com.comcast.ip4s.IpAddress
+import com.comcast.ip4s.SocketAddress
+import fs2.io.internal.EventEmitterOps._
+import fs2.js.node.netMod
+import fs2.js.node.nodeStrings
+import fs2.js.node.tlsMod
+
+private[tls] trait TLSSocketPlatform[F[_]]
 
 private[tls] trait TLSSocketCompanionPlatform { self: TLSSocket.type =>
-  type SSLSession = fs2.js.node.bufferMod.global.Buffer
 
-  def mk[F[_]: Async](socket: Socket[F]): TLSSocket[F] = ???
+  private[tls] def forAsync[F[_]](
+      socket: Socket[F],
+      options: tlsMod.TLSSocketOptions
+  )(implicit F: Async[F]): Resource[F, TLSSocket[F]] =
+    for {
+      sock <- socket.underlying.toResource
+      tlsSock <- Resource.make(for {
+        tlsSock <- F.delay(new tlsMod.TLSSocket(sock, options))
+        _ <- socket.swap(tlsSock.asInstanceOf[netMod.Socket])
+      } yield tlsSock)(_ => socket.swap(sock)) // Swap back when we're done
+      dispatcher <- Dispatcher[F]
+      deferredSession <- F.deferred[SSLSession].toResource
+      _ <- registerListener[SSLSession](tlsSock, nodeStrings.session)(_.on_session(_, _)) {
+        session =>
+          dispatcher.unsafeRunAndForget(deferredSession.complete(session))
+      }
+    } yield new AsyncTLSSocket(socket, deferredSession.get)
+
+  private[tls] final class AsyncTLSSocket[F[_]](socket: Socket[F], val session: F[SSLSession])
+      extends UnsealedTLSSocket[F] {
+
+    override private[net] def underlying: F[netMod.Socket] = socket.underlying
+
+    override private[net] def swap(nextSock: netMod.Socket): F[Unit] = socket.swap(nextSock)
+
+    override def read(maxBytes: Int): F[Option[Chunk[Byte]]] = socket.read(maxBytes)
+
+    override def readN(numBytes: Int): F[Chunk[Byte]] = socket.readN(numBytes)
+
+    override def reads: Stream[F, Byte] = socket.reads
+
+    override def endOfOutput: F[Unit] = socket.endOfOutput
+
+    override def isOpen: F[Boolean] = socket.isOpen
+
+    override def remoteAddress: F[SocketAddress[IpAddress]] = socket.remoteAddress
+
+    override def localAddress: F[SocketAddress[IpAddress]] = socket.localAddress
+
+    override def write(bytes: Chunk[Byte]): F[Unit] = socket.write(bytes)
+
+    override def writes: Pipe[F, Byte, INothing] = socket.writes
+
+  }
 }

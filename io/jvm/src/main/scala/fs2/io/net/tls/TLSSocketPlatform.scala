@@ -33,8 +33,17 @@ import com.comcast.ip4s.{IpAddress, SocketAddress}
 
 import fs2.io.net.Socket
 
+private[tls] trait TLSSocketPlatform[F[_]] {
+
+  /** Initiates handshaking -- either the initial or a renegotiation. */
+  def beginHandshake: F[Unit]
+
+  /** Provides access to the current application protocol that has been negotiated.
+    */
+  def applicationProtocol: F[String]
+}
+
 private[tls] trait TLSSocketCompanionPlatform { self: TLSSocket.type =>
-  type SSLSession = javax.net.ssl.SSLSession
 
   private[tls] def apply[F[_]: Async](
       socket: Socket[F],
