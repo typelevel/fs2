@@ -28,7 +28,7 @@ import scala.reflect.ClassTag
 import scodec.bits.{BitVector, ByteVector}
 import java.nio.{Buffer => JBuffer, ByteBuffer => JByteBuffer, CharBuffer => JCharBuffer}
 
-import cats.{Alternative, Applicative, Eq, Eval, Monad, Traverse, TraverseFilter}
+import cats.{Alternative, Applicative, Eq, Eval, Monad, Monoid, Traverse, TraverseFilter}
 import cats.data.{Chain, NonEmptyList}
 import cats.syntax.all._
 
@@ -1127,6 +1127,9 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
           result
         }
     }
+
+  implicit def monoidInstance[A]: Monoid[Chunk[A]] =
+    instance.algebra
 
   /** `Traverse`, `Monad`, `Alternative`, and `TraverseFilter` instance for `Chunk`.
     */
