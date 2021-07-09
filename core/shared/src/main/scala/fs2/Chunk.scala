@@ -56,7 +56,8 @@ import cats.syntax.all._
   * access to the underlying backing array, along with an offset and length, referring to a slice
   * of that array.
   */
-abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] { self =>
+abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRuntimePlatform[O] {
+  self =>
 
   /** Returns the number of elements in this chunk. */
   def size: Int
@@ -543,7 +544,10 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] { self =>
     iterator.mkString("Chunk(", ", ", ")")
 }
 
-object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
+object Chunk
+    extends CollectorK[Chunk]
+    with ChunkCompanionPlatform
+    with ChunkCompanionRuntimePlatform {
 
   private val empty_ : Chunk[Nothing] = new EmptyChunk
   private final class EmptyChunk extends Chunk[Nothing] {

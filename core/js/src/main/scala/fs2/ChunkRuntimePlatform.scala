@@ -19,29 +19,39 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2.io.internal
+package fs2
 
-import fs2.Chunk
-import fs2.js.node.bufferMod
+import scala.scalajs.js.typedarray.ArrayBuffer
+import scala.scalajs.js.typedarray.TypedArrayBuffer
+import scala.scalajs.js.typedarray.Uint8Array
+import scala.scalajs.js.typedarray.TypedArrayBufferOps._
 
-import scala.scalajs.js.typedarray.{ArrayBuffer, TypedArrayBuffer}
+trait ChunkRuntimePlatform[+O] { self: Chunk[O] =>
 
-private[fs2] object ByteChunkOps {
-  implicit def toByteChunkOps(chunk: Chunk[Byte]): ByteChunkOps = new ByteChunkOps(chunk)
-  implicit def toBufferOps(buffer: bufferMod.global.Buffer): BufferOps = new BufferOps(buffer)
-
-  private[fs2] final class ByteChunkOps(val chunk: Chunk[Byte]) extends AnyVal {
-    def toBuffer: bufferMod.global.Buffer = bufferMod.Buffer.from(chunk.toUint8Array)
+  def toJSArrayBuffer[B >: O](implicit ev: B =:= Byte): ArrayBuffer = {
+    val bb = toByteBuffer[B]
+    if (bb.hasArrayBuffer())
+      bb.arrayBuffer()
+    else {
+      val ab = new ArrayBuffer(bb.remaining())
+      TypedArrayBuffer.wrap(ab).put(bb)
+      ab
+    }
   }
 
-  private[fs2] final class BufferOps(val buffer: bufferMod.global.Buffer) extends AnyVal {
-    def toChunk: Chunk[Byte] = Chunk.byteBuffer(
-      TypedArrayBuffer
-        .wrap(
-          buffer.buffer.asInstanceOf[ArrayBuffer],
-          buffer.byteOffset.toInt,
-          buffer.byteLength.toInt
-        )
-    )
+  def toUint8Array[B >: O](implicit ev: B =:= Byte): Uint8Array = {
+    val ab = toJSArrayBuffer[B]
+    new Uint8Array(ab, 0, ab.byteLength)
   }
+
+}
+
+trait ChunkCompanionRuntimePlatform { self: Chunk.type =>
+
+  def jsArrayBuffer(buffer: ArrayBuffer): Chunk[Byte] =
+    byteBuffer(TypedArrayBuffer.wrap(buffer))
+
+  def uint8Array(array: Uint8Array): Chunk[Byte] =
+    jsArrayBuffer(array.buffer)
+
 }

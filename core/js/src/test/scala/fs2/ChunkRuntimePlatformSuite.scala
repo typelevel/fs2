@@ -19,29 +19,40 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2.io.internal
+package fs2
 
-import fs2.Chunk
-import fs2.js.node.bufferMod
+import org.scalacheck.Arbitrary
+import org.scalacheck.Gen
+import org.scalacheck.Prop.forAll
 
-import scala.scalajs.js.typedarray.{ArrayBuffer, TypedArrayBuffer}
+class ChunkRuntimePlatformSuite extends Fs2Suite {
+  override def scalaCheckTestParameters =
+    super.scalaCheckTestParameters
+      .withMinSuccessfulTests(if (isJVM) 100 else 25)
+      .withWorkers(1)
 
-private[fs2] object ByteChunkOps {
-  implicit def toByteChunkOps(chunk: Chunk[Byte]): ByteChunkOps = new ByteChunkOps(chunk)
-  implicit def toBufferOps(buffer: bufferMod.global.Buffer): BufferOps = new BufferOps(buffer)
+  // Override to remove from implicit scope
+  override val byteChunkArbitrary = Arbitrary(???)
 
-  private[fs2] final class ByteChunkOps(val chunk: Chunk[Byte]) extends AnyVal {
-    def toBuffer: bufferMod.global.Buffer = bufferMod.Buffer.from(chunk.toUint8Array)
-  }
+  def testByteChunk(
+      genChunk: Gen[Chunk[Byte]],
+      name: String
+  ): Unit =
+    group(s"$name") {
+      implicit val implicitChunkArb: Arbitrary[Chunk[Byte]] = Arbitrary(genChunk)
+      property("JSArrayBuffer conversion is idempotent") {
+        forAll { (c: Chunk[Byte]) =>
+          assertEquals(Chunk.jsArrayBuffer(c.toJSArrayBuffer), c)
+        }
+      }
+      property("Uint8Array conversion is idempotent") {
+        forAll { (c: Chunk[Byte]) =>
+          assertEquals(Chunk.uint8Array(c.toUint8Array), c)
+        }
+      }
+    }
 
-  private[fs2] final class BufferOps(val buffer: bufferMod.global.Buffer) extends AnyVal {
-    def toChunk: Chunk[Byte] = Chunk.byteBuffer(
-      TypedArrayBuffer
-        .wrap(
-          buffer.buffer.asInstanceOf[ArrayBuffer],
-          buffer.byteOffset.toInt,
-          buffer.byteLength.toInt
-        )
-    )
-  }
+  testByteChunk(byteBufferChunkGenerator, "ByteBuffer")
+  testByteChunk(byteVectorChunkGenerator, "ByteVector")
+
 }
