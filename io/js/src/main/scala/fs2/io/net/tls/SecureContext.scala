@@ -73,7 +73,7 @@ object SecureContext {
     ecdhCurve.foreach(options.setEcdhCurve)
     honorCipherOrder.foreach(options.setHonorCipherOrder)
     key
-      .map(_.view.map[bufferMod.global.Buffer | tlsMod.KeyObject](_.toJS).toJSArray)
+      .map(_.view.map(_.toJS: bufferMod.global.Buffer | tlsMod.KeyObject).toJSArray)
       .foreach(options.setKey(_))
     maxVersion.map(_.toJS).foreach(options.setMaxVersion)
     minVersion.map(_.toJS).foreach(options.setMinVersion)
