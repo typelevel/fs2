@@ -54,9 +54,10 @@ private[tls] trait TLSSocketCompanionPlatform { self: TLSSocket.type =>
       } yield tlsSock)(_ => socket.swap(sock)) // Swap back when we're done
       dispatcher <- Dispatcher[F]
       deferredSession <- F.deferred[SSLSession].toResource
-      _ <- registerListener[bufferMod.global.Buffer](tlsSock, nodeStrings.session)(_.on_session(_, _)) {
-        session =>
-          dispatcher.unsafeRunAndForget(deferredSession.complete(session.toChunk))
+      _ <- registerListener[bufferMod.global.Buffer](tlsSock, nodeStrings.session)(
+        _.on_session(_, _)
+      ) { session =>
+        dispatcher.unsafeRunAndForget(deferredSession.complete(session.toChunk))
       }
     } yield new AsyncTLSSocket(socket, deferredSession.get)
 
