@@ -280,7 +280,7 @@ class TextSuite extends Fs2Suite {
     }
   }
 
-  property("base64Encode") {
+  property("base64.encode") {
     forAll { (bs: List[Array[Byte]]) =>
       assertEquals(
         bs.map(Chunk.array(_)).foldMap(Stream.chunk).through(text.base64.encode).compile.string,
@@ -289,9 +289,9 @@ class TextSuite extends Fs2Suite {
     }
   }
 
-  group("base64Decode") {
+  group("base64.decode") {
 
-    property("base64Encode andThen base64Decode") {
+    property("base64.encode andThen base64.decode") {
       forAll { (bs: List[Array[Byte]], unchunked: Boolean, rechunkSeed: Long) =>
         assertEquals(
           bs.map(Chunk.array(_))
@@ -386,6 +386,15 @@ class TextSuite extends Fs2Suite {
         assertEquals(
           decoded,
           Right(byteVectors.foldLeft(ByteVector.empty)(_ ++ _))
+        )
+      }
+    }
+
+    property("encode") {
+      forAll { (bs: List[Array[Byte]]) =>
+        assertEquals(
+          Stream.emits(bs.map(Chunk.array(_))).flatMap(Stream.chunk).through(text.hex.encode).compile.string,
+          bs.foldLeft(ByteVector.empty)((acc, arr) => acc ++ ByteVector.view(arr)).toHex
         )
       }
     }
