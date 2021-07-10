@@ -559,6 +559,9 @@ object Chunk extends CollectorK[Chunk] with ChunkCompanionPlatform {
   /** Chunk with no elements. */
   def empty[A]: Chunk[A] = empty_
 
+  /** Creates a singleton chunk or returns an empty one */
+  def fromOption[O](opt: Option[O]): Chunk[O] = opt.map(singleton).getOrElse(empty_)
+
   /** Creates a chunk consisting of a single element. */
   def singleton[O](o: O): Chunk[O] = new Singleton(o)
   final class Singleton[O](val value: O) extends Chunk[O] {
