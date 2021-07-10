@@ -29,76 +29,113 @@ import scala.scalajs.js.|
 import scala.scalajs.js.JSConverters._
 import cats.syntax.all._
 import fs2.internal.jsdeps.node.bufferMod
+import scala.concurrent.duration.FiniteDuration
 
 /** A facade for Node.js `tls.SecureContext` */
-sealed trait SecureContext
+sealed trait SecureContext {
+  private[tls] def toJS = this.asInstanceOf[tlsMod.SecureContext]
+}
 
 object SecureContext {
   def default: SecureContext = fromJS(tlsMod.createSecureContext())
 
   /** @see [[https://nodejs.org/api/tls.html#tls_tls_createsecurecontext_options]] */
   def apply(
-      ca: Seq[Either[Chunk[Byte], String]] = Seq.empty,
-      cert: Seq[Either[Chunk[Byte], String]] = Seq.empty,
+      ca: Option[Seq[Either[Chunk[Byte], String]]] = None,
+      cert: Option[Seq[Either[Chunk[Byte], String]]] = None,
       ciphers: Option[String] = None,
       clientCertEngine: Option[String] = None,
-      crl: Seq[Either[Chunk[Byte], String]] = Seq.empty,
+      crl: Option[Seq[Either[Chunk[Byte], String]]] = None,
       dhparam: Option[Either[Chunk[Byte], String]] = None,
-      ecdhCurve: Option[String],
-      honorCipherOrder: Option[Boolean],
-      key: Seq[Key] = Seq.empty,
+      ecdhCurve: Option[String] = None,
+      honorCipherOrder: Option[Boolean] = None,
+      key: Option[Seq[Key]] = None,
       maxVersion: Option[SecureVersion] = None,
       minVersion: Option[SecureVersion] = None,
-      passphrase: Option[String],
-      pfx: Seq[Pfx] = Seq.empty,
+      passphrase: Option[String] = None,
+      pfx: Option[Seq[Pfx]] = None,
       privateKeyEngine: Option[String] = None,
       privateKeyIdentifier: Option[String] = None,
-      secureOptions: Option[Long],
-      sessionIdContext: Option[String],
-      sessionTimeout: Option[Int],
-      sigalgs: Option[String],
-      ticketKeys: Option[Chunk[Byte]]
+      secureOptions: Option[Long] = None,
+      sessionIdContext: Option[String] = None,
+      sessionTimeout: Option[FiniteDuration] = None,
+      sigalgs: Option[String] = None,
+      ticketKeys: Option[Chunk[Byte]] = None
   ): SecureContext = {
     val options = tlsMod.SecureContextOptions()
 
-    def liftEither(x: Either[Chunk[Byte], String]) = x
-      .bimap(
-        _.toBuffer: String | bufferMod.global.Buffer,
-        x => x: String | bufferMod.global.Buffer
-      )
-      .merge
-
-    def liftSeq(x: Seq[Either[Chunk[Byte], String]]) =
-      x.view.map(liftEither).toJSArray
-
-    if (ca.nonEmpty) options.ca = liftSeq(ca)
-    if (cert.nonEmpty) options.cert = liftSeq(cert)
+    ca.map(toJS).foreach(options.setCa(_))
+    cert.map(toJS).foreach(options.setCert(_))
     ciphers.foreach(options.setCiphers)
     clientCertEngine.foreach(options.setClientCertEngine)
-    if (crl.nonEmpty) options.crl = liftSeq(crl)
-    dhparam.foreach(x => options.dhparam = liftEither(x))
+    crl.map(toJS).foreach(options.setCrl(_))
+    dhparam.map(toJS).foreach(options.setDhparam)
     ecdhCurve.foreach(options.setEcdhCurve)
     honorCipherOrder.foreach(options.setHonorCipherOrder)
-    if (key.nonEmpty) options.key = key.view.map { case Key(pem, passphrase) =>
-      val key = tlsMod.KeyObject(liftEither(pem))
-      passphrase.foreach(key.setPassphrase)
-      key: bufferMod.global.Buffer | tlsMod.KeyObject
-    }.toJSArray
-    options.maxVersion
+    key
+      .map(_.view.map[bufferMod.global.Buffer | tlsMod.KeyObject](_.toJS).toJSArray)
+      .foreach(options.setKey(_))
+    maxVersion.map(_.toJS).foreach(options.setMaxVersion)
+    minVersion.map(_.toJS).foreach(options.setMinVersion)
+    passphrase.foreach(options.setPassphrase)
+    pfx.map(_.view.map(_.toJS))
+    privateKeyEngine.foreach(options.setPrivateKeyEngine)
+    privateKeyIdentifier.foreach(options.setPrivateKeyIdentifier)
+    secureOptions.map(_.toDouble).foreach(options.setSecureOptions)
+    sessionIdContext.foreach(options.setSessionIdContext)
+    sessionTimeout.map(_.toSeconds.toDouble).foreach(options.setSessionTimeout)
+    sigalgs.foreach(options.setSigalgs)
+    ticketKeys.map(_.toBuffer).foreach(options.setTicketKeys)
 
     fromJS(tlsMod.createSecureContext(options))
   }
 
   def fromJS(secureContext: js.Any): SecureContext = secureContext.asInstanceOf[SecureContext]
 
-  sealed abstract class SecureVersion
+  sealed abstract class SecureVersion {
+    private[SecureContext] def toJS: tlsMod.SecureVersion
+  }
   object SecureVersion {
-    case object TLSv1 extends SecureVersion
-    case object `TLSv1.1` extends SecureVersion
-    case object `TLSv1.2` extends SecureVersion
-    case object `TLSv1.3` extends SecureVersion
+    case object TLSv1 extends SecureVersion {
+      def toJS = tlsMod.SecureVersion.TLSv1
+    }
+    case object `TLSv1.1` extends SecureVersion {
+      def toJS = tlsMod.SecureVersion.TLSv1Dot1
+    }
+    case object `TLSv1.2` extends SecureVersion {
+      def toJS = tlsMod.SecureVersion.TLSv1Dot2
+    }
+    case object `TLSv1.3` extends SecureVersion {
+      def toJS = tlsMod.SecureVersion.TLSv1Dot3
+    }
   }
 
-  final case class Key(pem: Either[Chunk[Byte], String], passphrase: Option[String] = None)
-  final case class Pfx(buf: Either[Chunk[Byte], String], passphrase: Option[String] = None)
+  final case class Key(pem: Either[Chunk[Byte], String], passphrase: Option[String] = None) {
+    def toJS = {
+      val key = tlsMod.KeyObject(SecureContext.toJS(pem))
+      passphrase.foreach(key.setPassphrase)
+      key
+    }
+  }
+
+  final case class Pfx(buf: Either[Chunk[Byte], String], passphrase: Option[String] = None) {
+    def toJS = {
+      val pfx = tlsMod.PxfObject(SecureContext.toJS(buf))
+      passphrase.foreach(pfx.setPassphrase)
+      pfx
+    }
+  }
+
+  private def toJS(x: Either[Chunk[Byte], String]): String | bufferMod.global.Buffer = x
+    .bimap(
+      _.toBuffer: String | bufferMod.global.Buffer,
+      x => x: String | bufferMod.global.Buffer
+    )
+    .merge
+
+  private def toJS(
+      x: Seq[Either[Chunk[Byte], String]]
+  ): js.Array[String | bufferMod.global.Buffer] =
+    x.view.map(toJS).toJSArray
+
 }
