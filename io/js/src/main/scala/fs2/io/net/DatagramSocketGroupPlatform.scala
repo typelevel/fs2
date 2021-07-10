@@ -27,7 +27,7 @@ import cats.effect.kernel.Async
 import cats.effect.kernel.Resource
 import cats.syntax.all._
 import com.comcast.ip4s.{Host, Port}
-import fs2.js.node.dgramMod
+import fs2.internal.jsdeps.node.dgramMod
 
 private[net] trait DatagramSocketGroupCompanionPlatform {
   type ProtocolFamily = dgramMod.SocketType

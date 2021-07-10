@@ -226,7 +226,7 @@ lazy val io = crossProject(JVMPlatform, JSPlatform)
     Compile / npmDependencies += "@types/node" -> "16.0.0",
     Test / npmDependencies += "jks-js" -> "1.0.1",
     useYarn := true,
-    stOutputPackage := "fs2.js",
+    stOutputPackage := "fs2.internal.jsdeps",
     stStdlib := List("es2020"),
     stIgnore += "jks-js"
   )

@@ -31,10 +31,12 @@ import cats.effect.syntax.all._
 import cats.syntax.all._
 import com.comcast.ip4s.IpAddress
 import com.comcast.ip4s.SocketAddress
+import fs2.io.internal.ByteChunkOps._
 import fs2.io.internal.EventEmitterOps._
-import fs2.js.node.netMod
-import fs2.js.node.nodeStrings
-import fs2.js.node.tlsMod
+import fs2.internal.jsdeps.node.netMod
+import fs2.internal.jsdeps.node.nodeStrings
+import fs2.internal.jsdeps.node.tlsMod
+import fs2.internal.jsdeps.node.bufferMod
 
 private[tls] trait TLSSocketPlatform[F[_]]
 
@@ -52,9 +54,9 @@ private[tls] trait TLSSocketCompanionPlatform { self: TLSSocket.type =>
       } yield tlsSock)(_ => socket.swap(sock)) // Swap back when we're done
       dispatcher <- Dispatcher[F]
       deferredSession <- F.deferred[SSLSession].toResource
-      _ <- registerListener[SSLSession](tlsSock, nodeStrings.session)(_.on_session(_, _)) {
+      _ <- registerListener[bufferMod.global.Buffer](tlsSock, nodeStrings.session)(_.on_session(_, _)) {
         session =>
-          dispatcher.unsafeRunAndForget(deferredSession.complete(session))
+          dispatcher.unsafeRunAndForget(deferredSession.complete(session.toChunk))
       }
     } yield new AsyncTLSSocket(socket, deferredSession.get)
 

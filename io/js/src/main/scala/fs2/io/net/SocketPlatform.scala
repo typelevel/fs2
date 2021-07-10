@@ -35,9 +35,9 @@ import com.comcast.ip4s.SocketAddress
 import fs2.concurrent.SignallingRef
 import fs2.io.internal.ByteChunkOps._
 import fs2.io.internal.EventEmitterOps._
-import fs2.js.node.bufferMod.global.Buffer
-import fs2.js.node.netMod
-import fs2.js.node.nodeStrings
+import fs2.internal.jsdeps.node.bufferMod.global.Buffer
+import fs2.internal.jsdeps.node.netMod
+import fs2.internal.jsdeps.node.nodeStrings
 
 import scala.annotation.nowarn
 import scala.scalajs.js

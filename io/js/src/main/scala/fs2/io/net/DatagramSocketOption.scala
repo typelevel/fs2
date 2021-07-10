@@ -23,7 +23,7 @@ package fs2
 package io
 package net
 
-import fs2.js.node.dgramMod
+import fs2.internal.jsdeps.node.dgramMod
 import cats.effect.kernel.Sync
 
 /** Specifies a socket option on a TCP/UDP socket.

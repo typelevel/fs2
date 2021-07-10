@@ -23,7 +23,7 @@ package fs2
 package io
 package file
 
-import fs2.js.node.fsPromisesMod
+import fs2.internal.jsdeps.node.fsPromisesMod
 import cats.effect.kernel.Async
 import cats.syntax.all._
 import scala.scalajs.js.typedarray.ArrayBuffer

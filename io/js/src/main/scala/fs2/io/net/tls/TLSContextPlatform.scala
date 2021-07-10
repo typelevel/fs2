@@ -25,7 +25,7 @@ package net
 package tls
 
 import cats.effect.kernel.Async
-import fs2.js.node.tlsMod
+import fs2.internal.jsdeps.node.tlsMod
 import cats.effect.kernel.Resource
 
 private[tls] trait TLSContextPlatform[F[_]]
@@ -33,14 +33,11 @@ private[tls] trait TLSContextPlatform[F[_]]
 private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
 
   private[tls] trait BuilderPlatform[F[_]] {
-    def fromSSLContext(context: SSLContext): TLSContext[F]
     def fromSecureContext(context: tlsMod.SecureContext): TLSContext[F]
   }
 
   private[tls] trait BuilderCompanionPlatform {
     private[tls] final class AsyncBuilder[F[_]: Async] extends Builder[F] {
-
-      def fromSSLContext(context: SSLContext): TLSContext[F] = fromSecureContext(context)
 
       def fromSecureContext(context: tlsMod.SecureContext): TLSContext[F] =
         new UnsealedTLSContext[F] {

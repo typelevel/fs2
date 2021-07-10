@@ -19,9 +19,9 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2.io.net
+package fs2
+package io.net
 
 package object tls {
-  type SSLContext = fs2.js.node.tlsMod.SecureContext
-  type SSLSession = fs2.js.node.bufferMod.global.Buffer
+  type SSLSession = Chunk[Byte]
 }

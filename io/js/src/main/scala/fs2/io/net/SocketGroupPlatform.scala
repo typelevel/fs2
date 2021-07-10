@@ -33,8 +33,8 @@ import com.comcast.ip4s.Host
 import com.comcast.ip4s.IpAddress
 import com.comcast.ip4s.Port
 import com.comcast.ip4s.SocketAddress
-import fs2.js.node.netMod
-import fs2.js.node.nodeStrings
+import fs2.internal.jsdeps.node.netMod
+import fs2.internal.jsdeps.node.nodeStrings
 
 import scala.scalajs.js
 

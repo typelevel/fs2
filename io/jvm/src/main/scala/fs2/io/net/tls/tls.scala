@@ -22,6 +22,5 @@
 package fs2.io.net
 
 package object tls {
-  type SSLContext = javax.net.ssl.SSLContext
   type SSLSession = javax.net.ssl.SSLSession
 }

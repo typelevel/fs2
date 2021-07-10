@@ -24,16 +24,13 @@ package io
 package net
 package tls
 
-import fs2.js.node.tlsMod
+import fs2.internal.jsdeps.node.tlsMod
 import scala.scalajs.js.JSConverters._
 import scala.scalajs.js.|
 import scala.scalajs.js.typedarray.Uint8Array
 
 /** Parameters used in creation of a TLS/DTLS session.
   * See `javax.net.ssl.SSLParameters` for detailed documentation on each parameter.
-  *
-  * Note: `applicationProtocols`, `enableRetransmissions`, `maximumPacketSize`, and
-  * `handshakeApplicationProtocolSelector` require Java 9+.
   */
 sealed trait TLSParameters {
   val applicationProtocols: Option[List[String]]

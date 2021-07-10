@@ -19,8 +19,27 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2.io
+package fs2
+package io.file
 
-package object file {
-  type Path = fs2.js.node.fsMod.PathLike
+import fs2.internal.jsdeps.node.fsMod.PathLike
+import fs2.io.internal.ByteChunkOps._
+
+sealed abstract class Path {
+  private[file] def toPathLike: PathLike
+}
+
+object Path {
+
+  def apply(path: String): Path = StringPath(path)
+  def apply(path: Chunk[Byte]): Path = BufferPath(path)
+
+  private final case class StringPath(path: String) extends Path {
+    override private[file] def toPathLike: PathLike = path.asInstanceOf[PathLike]
+  }
+
+  private final case class BufferPath(path: Chunk[Byte]) extends Path {
+    override private[file] def toPathLike: PathLike = path.toBuffer.asInstanceOf[PathLike]
+  }
+
 }

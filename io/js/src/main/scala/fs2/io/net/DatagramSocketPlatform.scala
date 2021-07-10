@@ -39,9 +39,9 @@ import com.comcast.ip4s.SocketAddress
 import com.comcast.ip4s.SourceSpecificMulticastJoin
 import fs2.io.internal.ByteChunkOps._
 import fs2.io.internal.EventEmitterOps._
-import fs2.js.node.bufferMod
-import fs2.js.node.dgramMod
-import fs2.js.node.nodeStrings
+import fs2.internal.jsdeps.node.bufferMod
+import fs2.internal.jsdeps.node.dgramMod
+import fs2.internal.jsdeps.node.nodeStrings
 
 import scala.scalajs.js
 

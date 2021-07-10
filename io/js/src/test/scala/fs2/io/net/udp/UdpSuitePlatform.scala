@@ -27,12 +27,12 @@ package udp
 import cats.effect.IO
 import cats.syntax.all._
 
-import fs2.js.node.osMod
+import fs2.internal.jsdeps.node.osMod
 
-import fs2.js.node.dgramMod
+import fs2.internal.jsdeps.node.dgramMod
 
 import scala.scalajs.js
-import fs2.js.node.nodeStrings
+import fs2.internal.jsdeps.node.nodeStrings
 
 trait UdpSuitePlatform extends Fs2Suite {
 

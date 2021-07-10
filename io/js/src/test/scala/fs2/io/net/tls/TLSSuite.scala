@@ -27,9 +27,9 @@ package tls
 import cats.effect.IO
 import scala.scalajs.js
 import scala.scalajs.js.annotation._
-import fs2.js.node.bufferMod
-import fs2.js.node.fsPromisesMod
-import fs2.js.node.tlsMod
+import fs2.internal.jsdeps.node.bufferMod
+import fs2.internal.jsdeps.node.fsPromisesMod
+import fs2.internal.jsdeps.node.tlsMod
 
 abstract class TLSSuite extends Fs2Suite {
   def testTlsContext: IO[TLSContext[IO]] = IO

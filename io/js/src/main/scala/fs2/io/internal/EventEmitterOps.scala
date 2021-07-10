@@ -23,7 +23,7 @@ package fs2.io.internal
 
 import cats.effect.kernel.Resource
 import cats.effect.kernel.Sync
-import fs2.js.node.eventsMod
+import fs2.internal.jsdeps.node.eventsMod
 
 import scala.scalajs.js
 

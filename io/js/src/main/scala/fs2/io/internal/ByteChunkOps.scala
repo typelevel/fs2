@@ -22,7 +22,7 @@
 package fs2.io.internal
 
 import fs2.Chunk
-import fs2.js.node.bufferMod
+import fs2.internal.jsdeps.node.bufferMod
 
 import scala.scalajs.js.typedarray.{ArrayBuffer, TypedArrayBuffer}
 

@@ -21,8 +21,8 @@
 
 package fs2.io.net
 
-import fs2.js.node.bufferMod.global.BufferEncoding
-import fs2.js.node.netMod
+import fs2.internal.jsdeps.node.bufferMod.global.BufferEncoding
+import fs2.internal.jsdeps.node.netMod
 import scala.concurrent.duration.FiniteDuration
 import cats.effect.kernel.Sync
 
