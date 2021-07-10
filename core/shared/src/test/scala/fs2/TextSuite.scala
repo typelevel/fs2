@@ -393,7 +393,12 @@ class TextSuite extends Fs2Suite {
     property("encode") {
       forAll { (bs: List[Array[Byte]]) =>
         assertEquals(
-          Stream.emits(bs.map(Chunk.array(_))).flatMap(Stream.chunk).through(text.hex.encode).compile.string,
+          Stream
+            .emits(bs.map(Chunk.array(_)))
+            .flatMap(Stream.chunk)
+            .through(text.hex.encode)
+            .compile
+            .string,
           bs.foldLeft(ByteVector.empty)((acc, arr) => acc ++ ByteVector.view(arr)).toHex
         )
       }
