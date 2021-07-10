@@ -414,7 +414,7 @@ object text {
             .append(alphabet.toChar(fourth))
           idx = idx + 3
         }
-        (bldr: Buffer).flip
+        (bldr: Buffer).flip()
         val out = bldr.toString
         if (mod == 0)
           (out, ByteVector.empty)
