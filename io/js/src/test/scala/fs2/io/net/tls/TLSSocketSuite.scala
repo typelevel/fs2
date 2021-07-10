@@ -24,31 +24,41 @@ package io
 package net
 package tls
 
-import cats.effect.IO
-import cats.effect.Resource
-import com.comcast.ip4s._
-
 import scala.concurrent.duration._
+
+import cats.effect.{IO, Resource}
+import cats.syntax.all._
+
+import com.comcast.ip4s._
 
 class TLSSocketSuite extends TLSSuite {
   val size = 8192
 
   group("TLSSocket") {
     group("google") {
-      def googleSetup =
+      def googleSetup(protocol: SecureContext.SecureVersion) =
         for {
-          tlsContext <- Resource.eval(Network[IO].tlsContext.system)
+          tlsContext <- Resource.pure(
+            Network[IO].tlsContext.fromSecureContext(
+              SecureContext(minVersion = protocol.some, maxVersion = protocol.some)
+            )
+          )
           socket <- Network[IO].client(SocketAddress(host"google.com", port"443"))
-          tlsSocket <- tlsContext.client(socket)
+          tlsSocket <- tlsContext
+            .clientBuilder(socket)
+            .withParameters(
+              TLSParameters(servername = "www.google.com".some)
+            )
+            .build
         } yield tlsSocket
 
       val googleDotCom = "GET / HTTP/1.1\r\nHost: www.google.com\r\n\r\n"
       val httpOk = "HTTP/1.1 200 OK"
 
-      def writesBeforeReading() =
-        test(s"client writes before reading") {
+      def writesBeforeReading(protocol: SecureContext.SecureVersion) =
+        test(s"$protocol - client writes before reading") {
           Stream
-            .resource(googleSetup)
+            .resource(googleSetup(protocol))
             .flatMap { tlsSocket =>
               Stream(googleDotCom)
                 .covary[IO]
@@ -65,10 +75,10 @@ class TLSSocketSuite extends TLSSuite {
             .assertEquals(httpOk)
         }
 
-      def readsBeforeWriting() =
-        test(s"client reads before writing") {
+      def readsBeforeWriting(protocol: SecureContext.SecureVersion) =
+        test(s"$protocol - client reads before writing") {
           Stream
-            .resource(googleSetup)
+            .resource(googleSetup(protocol))
             .flatMap { socket =>
               val send = Stream(googleDotCom)
                 .through(text.utf8Encode)
@@ -85,8 +95,11 @@ class TLSSocketSuite extends TLSSuite {
             .assertEquals(httpOk)
         }
 
-      writesBeforeReading()
-      readsBeforeWriting()
+      import SecureContext.SecureVersion._
+      List(TLSv1, `TLSv1.1`, `TLSv1.2`, `TLSv1.3`).foreach { protocol =>
+        writesBeforeReading(protocol)
+        readsBeforeWriting(protocol)
+      }
     }
 
     test("echo") {
@@ -96,7 +109,18 @@ class TLSSocketSuite extends TLSSuite {
         tlsContext <- Resource.eval(testTlsContext)
         addressAndConnections <- Network[IO].serverResource(Some(ip"127.0.0.1"))
         (serverAddress, server) = addressAndConnections
-        client <- Network[IO].client(serverAddress).flatMap(tlsContext.client(_))
+        client <- Network[IO]
+          .client(serverAddress)
+          .flatMap(
+            tlsContext
+              .clientBuilder(_)
+              .withParameters(
+                TLSParameters(checkServerIdentity =
+                  Some((sn, _) => Either.cond(sn == "localhost", (), new RuntimeException()))
+                )
+              )
+              .build
+          )
       } yield server.flatMap(s => Stream.resource(tlsContext.server(s))) -> client
 
       Stream
@@ -116,5 +140,6 @@ class TLSSocketSuite extends TLSSuite {
         .to(Chunk)
         .assertEquals(msg)
     }
+
   }
 }

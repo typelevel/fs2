@@ -32,11 +32,14 @@ import fs2.internal.jsdeps.node.bufferMod
 import scala.concurrent.duration.FiniteDuration
 
 /** A facade for Node.js `tls.SecureContext` */
-sealed trait SecureContext {
-  private[tls] def toJS = this.asInstanceOf[tlsMod.SecureContext]
-}
+@js.native
+sealed trait SecureContext extends js.Object
 
 object SecureContext {
+  private[tls] implicit final class ops(private val context: SecureContext) extends AnyVal {
+    private[tls] def toJS = context.asInstanceOf[tlsMod.SecureContext]
+  }
+
   def default: SecureContext = fromJS(tlsMod.createSecureContext())
 
   /** @see [[https://nodejs.org/api/tls.html#tls_tls_createsecurecontext_options]] */
@@ -137,5 +140,4 @@ object SecureContext {
       x: Seq[Either[Chunk[Byte], String]]
   ): js.Array[String | bufferMod.global.Buffer] =
     x.view.map(toJS).toJSArray
-
 }

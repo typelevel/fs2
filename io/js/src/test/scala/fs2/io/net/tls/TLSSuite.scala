@@ -25,11 +25,11 @@ package net
 package tls
 
 import cats.effect.IO
+import cats.syntax.all._
 import scala.scalajs.js
 import scala.scalajs.js.annotation._
 import fs2.internal.jsdeps.node.bufferMod
 import fs2.internal.jsdeps.node.fsPromisesMod
-import fs2.internal.jsdeps.node.tlsMod
 
 abstract class TLSSuite extends Fs2Suite {
   def testTlsContext: IO[TLSContext[IO]] = IO
@@ -39,12 +39,10 @@ abstract class TLSSuite extends Fs2Suite {
     .map(JKS.toPem(_, "password")("server"))
     .map { certKey =>
       Network[IO].tlsContext.fromSecureContext(
-        tlsMod.createSecureContext(
-          tlsMod
-            .SecureContextOptions()
-            .setCert(certKey.cert)
-            .setKey(certKey.key)
-            .setPassphrase("password")
+        SecureContext(
+          ca = List(certKey.cert.asRight).some,
+          cert = List(certKey.cert.asRight).some,
+          key = List(SecureContext.Key(certKey.key.asRight, "password".some)).some
         )
       )
     }
