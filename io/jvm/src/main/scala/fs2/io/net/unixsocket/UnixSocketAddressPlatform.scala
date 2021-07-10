@@ -21,6 +21,10 @@
 
 package fs2.io.net.unixsocket
 
-case class UnixSocketAddress(path: String)
+import java.io.File
+import java.nio.file.Path
 
-object UnixSocketAddress extends UnixSocketAddressCompanionPlatform
+private[unixsocket] trait UnixSocketAddressCompanionPlatform { self: UnixSocketAddress.type =>
+  def apply(path: Path): UnixSocketAddress = apply(path.toFile())
+  def apply(path: File): UnixSocketAddress = apply(path.getPath())
+}

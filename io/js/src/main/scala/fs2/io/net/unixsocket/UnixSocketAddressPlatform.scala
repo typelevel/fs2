@@ -21,6 +21,4 @@
 
 package fs2.io.net.unixsocket
 
-case class UnixSocketAddress(path: String)
-
-object UnixSocketAddress extends UnixSocketAddressCompanionPlatform
+private[unixsocket] trait UnixSocketAddressCompanionPlatform

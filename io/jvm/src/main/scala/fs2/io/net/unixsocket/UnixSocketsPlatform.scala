@@ -32,7 +32,7 @@ import java.nio.ByteBuffer
 import java.nio.channels.SocketChannel
 import java.nio.file.Paths
 
-private[unixsocket] trait UnixSocketsPlatform {
+private[unixsocket] trait UnixSocketsCompanionPlatform {
   implicit def forAsync[F[_]](implicit F: Async[F]): UnixSockets[F] =
     if (JdkUnixSockets.supported) JdkUnixSockets.forAsync
     else if (JnrUnixSockets.supported) JnrUnixSockets.forAsync

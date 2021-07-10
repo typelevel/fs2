@@ -21,4 +21,4 @@
 
 package fs2.io.net.unixsocket
 
-private[unixsocket] trait UnixSocketsPlatform
+private[unixsocket] trait UnixSocketsCompanionPlatform

@@ -47,6 +47,6 @@ trait UnixSockets[F[_]] {
   ): Stream[F, Socket[F]]
 }
 
-object UnixSockets extends UnixSocketsPlatform {
+object UnixSockets extends UnixSocketsCompanionPlatform {
   def apply[F[_]](implicit F: UnixSockets[F]): UnixSockets[F] = F
 }
