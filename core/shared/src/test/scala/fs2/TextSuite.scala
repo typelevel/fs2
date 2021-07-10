@@ -33,7 +33,7 @@ class TextSuite extends Fs2Suite {
   override def scalaCheckTestParameters =
     super.scalaCheckTestParameters.withMinSuccessfulTests(1000)
 
-  group("utf8Decoder") {
+  group("utf8.decoder") {
     def utf8Bytes(s: String): Chunk[Byte] = Chunk.array(s.getBytes("UTF-8"))
     def utf8String(bs: Chunk[Byte]): String = new String(bs.toArray, "UTF-8")
 
@@ -47,7 +47,7 @@ class TextSuite extends Fs2Suite {
               .chunk(utf8Bytes(c.toString))
               .chunkLimit(n)
               .flatMap(Stream.chunk)
-              .through(utf8Decode)
+              .through(utf8.decode)
               .toList,
             List(c.toString)
           )
@@ -61,7 +61,7 @@ class TextSuite extends Fs2Suite {
             .chunk(bytes)
             .chunkLimit(n)
             .flatMap(Stream.chunk)
-            .through(utf8Decode)
+            .through(utf8.decode)
             .toList,
           List(utf8String(bytes))
         )
@@ -70,7 +70,7 @@ class TextSuite extends Fs2Suite {
     def checkBytes2(is: Int*): Unit = {
       val bytes = Chunk.array(is.map(_.toByte).toArray)
       assertEquals(
-        Stream(bytes).flatMap(Stream.chunk).through(utf8Decode).toList.mkString,
+        Stream(bytes).flatMap(Stream.chunk).through(utf8.decode).toList.mkString,
         utf8String(bytes)
       )
     }
@@ -90,18 +90,18 @@ class TextSuite extends Fs2Suite {
       forAll(Gen.listOf(genStringNoBom)) { (l0: List[String]) =>
         val l = l0.filter(_.nonEmpty)
         assertEquals(
-          Stream(l: _*).map(utf8Bytes).flatMap(Stream.chunk).through(utf8Decode).toList,
+          Stream(l: _*).map(utf8Bytes).flatMap(Stream.chunk).through(utf8.decode).toList,
           l
         )
-        assertEquals(Stream(l0: _*).map(utf8Bytes).through(utf8DecodeC).toList, l0)
+        assertEquals(Stream(l0: _*).map(utf8Bytes).through(utf8.decodeC).toList, l0)
       }
     }
 
-    property("utf8Encode andThen utf8Decode = id") {
+    property("utf8Encode andThen utf8.decode = id") {
       forAll(genStringNoBom) { (s: String) =>
-        assertEquals(Stream(s).through(utf8EncodeC).through(utf8DecodeC).toList, List(s))
+        assertEquals(Stream(s).through(utf8.encodeC).through(utf8.decodeC).toList, List(s))
         if (s.nonEmpty)
-          assertEquals(Stream(s).through(utf8Encode).through(utf8Decode).toList, List(s))
+          assertEquals(Stream(s).through(utf8.encode).through(utf8.decode).toList, List(s))
       }
     }
 
@@ -112,7 +112,7 @@ class TextSuite extends Fs2Suite {
             .chunk(utf8Bytes(s))
             .chunkLimit(1)
             .flatMap(Stream.chunk)
-            .through(utf8Decode)
+            .through(utf8.decode)
             .compile
             .string,
           s
@@ -127,7 +127,7 @@ class TextSuite extends Fs2Suite {
             .chunk(utf8Bytes(s))
             .chunkLimit(n)
             .flatMap(Stream.chunk)
-            .through(utf8Decode)
+            .through(utf8.decode)
             .compile
             .string,
           s
@@ -140,13 +140,13 @@ class TextSuite extends Fs2Suite {
       property("single chunk") {
         forAll(genStringNoBom) { (s: String) =>
           val c = bom ++ utf8Bytes(s)
-          assertEquals(Stream.chunk(c).through(text.utf8Decode).compile.string, s)
+          assertEquals(Stream.chunk(c).through(text.utf8.decode).compile.string, s)
         }
       }
       property("spanning chunks") {
         forAll(genStringNoBom) { (s: String) =>
           val c = bom ++ utf8Bytes(s)
-          assertEquals(Stream.emits(c.toArray[Byte]).through(text.utf8Decode).compile.string, s)
+          assertEquals(Stream.emits(c.toArray[Byte]).through(text.utf8.decode).compile.string, s)
         }
       }
     }
@@ -369,4 +369,25 @@ class TextSuite extends Fs2Suite {
     }
   }
 
+  group("hex") {
+    def rechunkStrings[F[_]](in: Stream[F, String]): Stream[F, String] =
+      in.flatMap(s => Stream.emits(s))
+        .rechunkRandomly()
+        .chunks
+        .map(chars => new String(chars.toArray))
+
+    property("decode") {
+      forAll { (bs: List[Array[Byte]]) =>
+        val byteVectors = bs.map(a => ByteVector.view(a))
+        val strings = byteVectors.map(_.toHex)
+        val source = Stream.emits(strings)
+        val decoded =
+          rechunkStrings(source).covary[Fallible].through(text.hex.decode).compile.to(ByteVector)
+        assertEquals(
+          decoded,
+          Right(byteVectors.foldLeft(ByteVector.empty)(_ ++ _))
+        )
+      }
+    }
+  }
 }

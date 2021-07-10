@@ -41,9 +41,9 @@ object text {
     /** Converts UTF-8 encoded `Chunk[Byte]` inputs to `String`. */
     def decodeC[F[_]]: Pipe[F, Chunk[Byte], String] = {
       /*
-      * Returns the number of continuation bytes if `b` is an ASCII byte or a
-      * leading byte of a multi-byte sequence, and -1 otherwise.
-      */
+       * Returns the number of continuation bytes if `b` is an ASCII byte or a
+       * leading byte of a multi-byte sequence, and -1 otherwise.
+       */
       def continuationBytes(b: Byte): Int =
         if ((b & 0x80) == 0x00) 0 // ASCII byte
         else if ((b & 0xe0) == 0xc0) 1 // leading byte of a 2 byte seq
@@ -52,19 +52,19 @@ object text {
         else -1 // continuation byte or garbage
 
       /*
-      * Returns the length of an incomplete multi-byte sequence at the end of
-      * `bs`. If `bs` ends with an ASCII byte or a complete multi-byte sequence,
-      * 0 is returned.
-      */
+       * Returns the length of an incomplete multi-byte sequence at the end of
+       * `bs`. If `bs` ends with an ASCII byte or a complete multi-byte sequence,
+       * 0 is returned.
+       */
       def lastIncompleteBytes(bs: Array[Byte]): Int = {
         /*
-        * This is logically the same as this
-        * code, but written in a low level way
-        * to avoid any allocations and just do array
-        * access
-        *
-        *
-        *
+         * This is logically the same as this
+         * code, but written in a low level way
+         * to avoid any allocations and just do array
+         * access
+         *
+         *
+         *
           val lastThree = bs.drop(0.max(bs.size - 3)).toArray.reverseIterator
           lastThree
             .map(continuationBytes)
@@ -77,7 +77,7 @@ object text {
             }
             .getOrElse(0)
 
-        */
+         */
 
         val minIdx = 0.max(bs.length - 3)
         var idx = bs.length - 1
@@ -479,7 +479,9 @@ object text {
     def decode[F[_]: RaiseThrowable]: Pipe[F, String, Byte] =
       decodeWithAlphabet(Bases.Alphabets.HexLowercase)
 
-    def decodeWithAlphabet[F[_]: RaiseThrowable](alphabet: Bases.HexAlphabet): Pipe[F, String, Byte] = {
+    def decodeWithAlphabet[F[_]: RaiseThrowable](
+        alphabet: Bases.HexAlphabet
+    ): Pipe[F, String, Byte] = {
       // Adapted from scodec-bits, licensed under 3-clause BSD
       def decode1(str: String, hi0: Int, midByte0: Boolean): (Chunk[Byte], Int, Boolean) = {
         val bldr = ByteBuffer.allocate((str.size + 1) / 2)
@@ -514,7 +516,8 @@ object text {
             if (acc.size + hd.size < 2) dropPrefix(tl, acc + hd)
             else {
               val str = acc + hd
-              val withoutPrefix = if (str.startsWith("0x") || str.startsWith("0X")) str.substring(2) else str
+              val withoutPrefix =
+                if (str.startsWith("0x") || str.startsWith("0X")) str.substring(2) else str
               go(tl.cons1(withoutPrefix), 0, false)
             }
           case None =>
@@ -526,7 +529,8 @@ object text {
             val (out, newHi, newMidByte) = decode1(hd, hi, midByte)
             Pull.output(out) >> go(tl, newHi, newMidByte)
           case None =>
-            if (midByte) Pull.raiseError(new IllegalArgumentException("Nibble left over")) else Pull.done
+            if (midByte) Pull.raiseError(new IllegalArgumentException("Nibble left over"))
+            else Pull.done
         }
       s => dropPrefix(s, "").stream
     }
