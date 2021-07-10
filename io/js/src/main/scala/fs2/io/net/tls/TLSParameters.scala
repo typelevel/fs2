@@ -134,6 +134,7 @@ object TLSParameters {
     ): js.Function2[String, js.Function2[js.Error | Null, tlsMod.SecureContext, Unit], Unit] = {
       (servername, cb) =>
         dispatcher.unsafeRunAndForget {
+          import SecureContext.ops
           apply(servername).flatMap {
             case Left(ex)         => F.delay(cb(js.Error(ex.getMessage), null))
             case Right(Some(ctx)) => F.delay(cb(null, ctx.toJS))

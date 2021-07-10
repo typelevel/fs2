@@ -55,6 +55,7 @@ private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
               params: TLSParameters,
               logger: TLSLogger[F]
           ): Resource[F, TLSSocket[F]] = Dispatcher[F].flatMap { dispatcher =>
+            import SecureContext.ops
             if (clientMode) {
               val options = params
                 .toConnectionOptions(dispatcher)
