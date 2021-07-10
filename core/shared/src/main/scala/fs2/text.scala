@@ -21,7 +21,7 @@
 
 package fs2
 
-import java.nio.{Buffer, CharBuffer}
+import java.nio.{Buffer, ByteBuffer, CharBuffer}
 import java.nio.charset.Charset
 
 import scala.collection.mutable.{ArrayBuffer, Builder}
@@ -480,20 +480,55 @@ object text {
       decodeWithAlphabet(Bases.Alphabets.HexLowercase)
 
     def decodeWithAlphabet[F[_]: RaiseThrowable](alphabet: Bases.HexAlphabet): Pipe[F, String, Byte] = {
-      def go(s: Stream[F, String], carry: String): Pull[F, Byte, Unit] =
+      // Adapted from scodec-bits, licensed under 3-clause BSD
+      def decode1(str: String, hi0: Int, midByte0: Boolean): (Chunk[Byte], Int, Boolean) = {
+        val bldr = ByteBuffer.allocate((str.size + 1) / 2)
+        var idx, count = 0
+        var hi = hi0
+        var midByte = midByte0
+        while (idx < str.length) {
+          val c = str(idx)
+          if (!alphabet.ignore(c))
+            try {
+              val nibble = alphabet.toIndex(c)
+              if (midByte) {
+                bldr.put((hi | nibble).toByte)
+                midByte = false
+              } else {
+                hi = (nibble << 4).toByte.toInt
+                midByte = true
+              }
+              count += 1
+            } catch {
+              case _: IllegalArgumentException =>
+                throw new IllegalArgumentException(s"Invalid hexadecimal character '$c'")
+            }
+          idx += 1
+        }
+        (bldr: Buffer).flip()
+        (Chunk.byteVector(ByteVector(bldr)), hi, midByte)
+      }
+      def dropPrefix(s: Stream[F, String], acc: String): Pull[F, Byte, Unit] =
         s.pull.uncons1.flatMap {
           case Some((hd, tl)) =>
-            val s = carry ++ hd
-            // TODO this is wrong as we need to account for whitespace when computing carry
-            val (toParse, newCarry) = if (s.size % 2 == 0) (s, "") else (s.init, s.last.toString)
-            ByteVector.fromHexDescriptive(toParse, alphabet) match {
-              case Left(err) => Pull.raiseError(new IllegalArgumentException(err))
-              case Right(out) => Pull.output(Chunk.byteVector(out)) >> go(tl, newCarry)
+            if (acc.size + hd.size < 2) dropPrefix(tl, acc + hd)
+            else {
+              val str = acc + hd
+              val withoutPrefix = if (str.startsWith("0x") || str.startsWith("0X")) str.substring(2) else str
+              go(tl.cons1(withoutPrefix), 0, false)
             }
           case None =>
-            if (carry.isEmpty) Pull.done else Pull.raiseError(new IllegalArgumentException("Nibble left over"))
+            Pull.done
         }
-      s => go(s, "").stream
+      def go(s: Stream[F, String], hi: Int, midByte: Boolean): Pull[F, Byte, Unit] =
+        s.pull.uncons1.flatMap {
+          case Some((hd, tl)) =>
+            val (out, newHi, newMidByte) = decode1(hd, hi, midByte)
+            Pull.output(out) >> go(tl, newHi, newMidByte)
+          case None =>
+            if (midByte) Pull.raiseError(new IllegalArgumentException("Nibble left over")) else Pull.done
+        }
+      s => dropPrefix(s, "").stream
     }
 
     def encode[F[_]]: Pipe[F, Byte, String] =
