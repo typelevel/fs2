@@ -105,20 +105,23 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
     "fs2.io.net.tls.TLSContext.dtlsServerBuilder"
   ),
   ProblemFilters.exclude[Problem]("fs2.io.net.tls.TLSEngine*"),
+  // start #2453 cross-build fs2.io for scala.js
+  // private implementation classes
   ProblemFilters.exclude[MissingClassProblem]("fs2.io.net.Socket$IntCallbackHandler"),
   ProblemFilters.exclude[MissingClassProblem]("fs2.io.net.Socket$BufferedReads"),
+  ProblemFilters.exclude[MissingClassProblem]("fs2.io.net.SocketGroup$AsyncSocketGroup"),
+  ProblemFilters.exclude[MissingClassProblem]("fs2.io.net.Socket$AsyncSocket"),
   ProblemFilters.exclude[MissingClassProblem](
     "fs2.io.net.DatagramSocketGroup$AsyncDatagramSocketGroup"
   ),
-  ProblemFilters.exclude[MissingClassProblem]("fs2.io.net.SocketGroup$AsyncSocketGroup"),
-  ProblemFilters.exclude[MissingClassProblem]("fs2.io.net.Socket$AsyncSocket"),
-  ProblemFilters.exclude[MissingTypesProblem]("fs2.io.net.unixsocket.UnixSockets$AsyncSocket"),
-  ProblemFilters.exclude[MissingClassProblem]("fs2.io.net.tls.TLSContext$Builder$AsyncBuilder"),
-  ProblemFilters.exclude[NewMixinForwarderProblem]("fs2.io.net.Network.*"),
   ProblemFilters.exclude[MissingClassProblem]("fs2.io.net.unixsocket.UnixSockets$AsyncSocket"),
   ProblemFilters.exclude[MissingClassProblem]("fs2.io.net.unixsocket.UnixSockets$AsyncUnixSockets"),
+  ProblemFilters.exclude[MissingClassProblem]("fs2.io.net.tls.TLSContext$Builder$AsyncBuilder"),
+  // sealed traits
+  ProblemFilters.exclude[NewMixinForwarderProblem]("fs2.io.net.Network.*"),
   ProblemFilters.exclude[NewMixinForwarderProblem]("fs2.io.net.tls.TLSContext.*"),
   ProblemFilters.exclude[InheritedNewAbstractMethodProblem]("fs2.io.net.tls.TLSContext.*")
+  // end #2453
 )
 
 lazy val root = project
