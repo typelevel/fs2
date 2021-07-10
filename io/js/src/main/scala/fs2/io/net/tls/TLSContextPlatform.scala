@@ -27,6 +27,7 @@ package tls
 import cats.effect.kernel.Async
 import fs2.internal.jsdeps.node.tlsMod
 import cats.effect.kernel.Resource
+import cats.effect.std.Dispatcher
 
 private[tls] trait TLSContextPlatform[F[_]]
 
@@ -53,14 +54,22 @@ private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
               clientMode: Boolean,
               params: TLSParameters,
               logger: TLSLogger[F]
-          ): Resource[F, TLSSocket[F]] =
-            TLSSocket.forAsync(
-              socket,
-              params
-                .toTLSSocketOptions(context)
-                .setIsServer(!clientMode)
+          ): Resource[F, TLSSocket[F]] = Dispatcher[F].flatMap { dispatcher =>
+            if (clientMode) {
+              val options = params
+                .toConnectionOptions(dispatcher)
+                .setSecureContext(context)
                 .setEnableTrace(logger != TLSLogger.Disabled)
-            )
+              TLSSocket.forAsync(socket, sock => tlsMod.connect(options.setSocket(sock)))
+            } else {
+              val options = params
+                .toTLSSocketOptions(dispatcher)
+                .setSecureContext(context)
+                .setEnableTrace(logger != TLSLogger.Disabled)
+                .setIsServer(true)
+              TLSSocket.forAsync(socket, sock => new tlsMod.TLSSocket(sock, options))
+            }
+          }
         }
 
       def system: F[TLSContext[F]] = Async[F].delay(fromSecureContext(tlsMod.createSecureContext()))

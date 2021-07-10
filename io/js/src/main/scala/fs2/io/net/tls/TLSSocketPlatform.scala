@@ -44,12 +44,12 @@ private[tls] trait TLSSocketCompanionPlatform { self: TLSSocket.type =>
 
   private[tls] def forAsync[F[_]](
       socket: Socket[F],
-      options: tlsMod.TLSSocketOptions
+      mk: netMod.Socket => tlsMod.TLSSocket
   )(implicit F: Async[F]): Resource[F, TLSSocket[F]] =
     for {
       sock <- socket.underlying.toResource
       tlsSock <- Resource.make(for {
-        tlsSock <- F.delay(new tlsMod.TLSSocket(sock, options))
+        tlsSock <- F.delay(mk(sock))
         _ <- socket.swap(tlsSock.asInstanceOf[netMod.Socket])
       } yield tlsSock)(_ => socket.swap(sock)) // Swap back when we're done
       dispatcher <- Dispatcher[F]

@@ -24,37 +24,148 @@ package io
 package net
 package tls
 
+import fs2.io.internal.ByteChunkOps._
 import fs2.internal.jsdeps.node.tlsMod
 import scala.scalajs.js.JSConverters._
+import scala.scalajs.js
 import scala.scalajs.js.|
 import scala.scalajs.js.typedarray.Uint8Array
+import cats.syntax.all._
+import cats.effect.kernel.Async
+import cats.effect.std.Dispatcher
 
-/** Parameters used in creation of a TLS/DTLS session.
-  * See `javax.net.ssl.SSLParameters` for detailed documentation on each parameter.
+/** Parameters used in creation of a TLS session.
+  * See [[https://nodejs.org/api/tls.html]] for detailed documentation on each parameter.
   */
 sealed trait TLSParameters {
-  val applicationProtocols: Option[List[String]]
+  val requestCert: Option[Boolean]
+  val rejectUnauthorized: Option[Boolean]
+  val alpnProtocols: Option[List[String]]
+  val sniCallback: Option[TLSParameters.SNICallback]
 
-  private[tls] def toTLSSocketOptions(context: tlsMod.SecureContext): tlsMod.TLSSocketOptions = {
-    val options = tlsMod.TLSSocketOptions().setSecureContext(context)
-    applicationProtocols.foreach(protocols =>
-      options.setALPNProtocols(protocols.view.map(x => x: String | Uint8Array).toJSArray)
-    )
+  val session: Option[SSLSession]
+  val requestOCSP: Option[Boolean]
+
+  val pskCallback: Option[TLSParameters.PSKCallback]
+  val servername: Option[String]
+  val checkServerIdentity: Option[TLSParameters.CheckServerIdentity]
+  val minDHSize: Option[Int]
+
+  private[tls] def toTLSSocketOptions[F[_]: Async](
+      dispatcher: Dispatcher[F]
+  ): tlsMod.TLSSocketOptions = {
+    val options = tlsMod.TLSSocketOptions()
+    setCommonOptions(options, dispatcher)
+    session.map(_.toBuffer).foreach(options.setSession)
+    requestOCSP.foreach(options.setRequestOCSP)
     options
   }
 
+  private[tls] def toConnectionOptions[F[_]: Async](
+      dispatcher: Dispatcher[F]
+  ): tlsMod.ConnectionOptions = {
+    val options = tlsMod.ConnectionOptions()
+    setCommonOptions(options, dispatcher)
+    session.map(_.toBuffer).foreach(options.setSession)
+    pskCallback.map(_.toJS).foreach(options.setPskCallback(_))
+    servername.foreach(options.setServername)
+    checkServerIdentity.map(_.toJS).foreach(options.setCheckServerIdentity(_))
+    minDHSize.map(_.toDouble).foreach(options.setMinDHSize)
+    options
+  }
+
+  private def setCommonOptions[F[_]: Async](
+      options: tlsMod.CommonConnectionOptions,
+      dispatcher: Dispatcher[F]
+  ): Unit = {
+    requestCert.foreach(options.setRequestCert)
+    rejectUnauthorized.foreach(options.setRejectUnauthorized)
+    alpnProtocols
+      .map(_.map(x => x: String | Uint8Array).toJSArray)
+      .foreach(options.setALPNProtocols(_))
+    sniCallback.map(_.toJS(dispatcher)).foreach(options.setSNICallback(_))
+  }
 }
 
 object TLSParameters {
   val Default: TLSParameters = TLSParameters()
 
   def apply(
-      applicationProtocols: Option[List[String]] = None
+      requestCert: Option[Boolean] = None,
+      rejectUnauthorized: Option[Boolean] = None,
+      alpnProtocols: Option[List[String]] = None,
+      sniCallback: Option[TLSParameters.SNICallback] = None,
+      session: Option[SSLSession] = None,
+      requestOCSP: Option[Boolean] = None,
+      pskCallback: Option[TLSParameters.PSKCallback] = None,
+      servername: Option[String] = None,
+      checkServerIdentity: Option[TLSParameters.CheckServerIdentity] = None,
+      minDHSize: Option[Int] = None
   ): TLSParameters = DefaultTLSParameters(
-    applicationProtocols
+    requestCert,
+    rejectUnauthorized,
+    alpnProtocols,
+    sniCallback,
+    session,
+    requestOCSP,
+    pskCallback,
+    servername,
+    checkServerIdentity,
+    minDHSize
   )
 
   private case class DefaultTLSParameters(
-      applicationProtocols: Option[List[String]]
+      requestCert: Option[Boolean],
+      rejectUnauthorized: Option[Boolean],
+      alpnProtocols: Option[List[String]],
+      sniCallback: Option[TLSParameters.SNICallback],
+      session: Option[SSLSession],
+      requestOCSP: Option[Boolean],
+      pskCallback: Option[TLSParameters.PSKCallback],
+      servername: Option[String],
+      checkServerIdentity: Option[TLSParameters.CheckServerIdentity],
+      minDHSize: Option[Int]
   ) extends TLSParameters
+
+  trait SNICallback {
+    def apply[F[_]: Async](servername: String): F[Either[Throwable, Option[SecureContext]]]
+    def toJS[F[_]](dispatcher: Dispatcher[F])(implicit
+        F: Async[F]
+    ): js.Function2[String, js.Function2[js.Error | Null, tlsMod.SecureContext, Unit], Unit] = {
+      (servername, cb) =>
+        dispatcher.unsafeRunAndForget {
+          apply(servername).flatMap {
+            case Left(ex)         => F.delay(cb(js.Error(ex.getMessage), null))
+            case Right(Some(ctx)) => F.delay(cb(null, ctx.toJS))
+            case Right(None)      => F.delay(cb(null, null))
+          }
+        }
+    }
+  }
+
+  trait PSKCallback {
+    def apply(hint: Option[String]): Option[PSKCallbackNegotation]
+
+    private[TLSParameters] def toJS
+        : js.Function1[String | Null, tlsMod.PSKCallbackNegotation | Null] = { hint =>
+      apply(Option(hint.asInstanceOf[String])).map(_.toJS).getOrElse(null)
+    }
+  }
+
+  final case class PSKCallbackNegotation(psk: Chunk[Byte], identity: String) {
+    private[TLSParameters] def toJS = tlsMod.PSKCallbackNegotation(identity, psk.toUint8Array)
+  }
+
+  trait CheckServerIdentity {
+    def apply(servername: String, cert: Chunk[Byte]): Either[Throwable, Unit]
+
+    private[TLSParameters] def toJS
+        : js.Function2[String, tlsMod.PeerCertificate, js.UndefOr[js.Error]] = {
+      (servername, cert) =>
+        apply(servername, cert.raw.toChunk) match {
+          case Left(ex) => js.Error(ex.getMessage)
+          case _        => ()
+        }
+    }
+  }
 }

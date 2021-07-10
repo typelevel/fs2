@@ -24,13 +24,11 @@ package io
 package net
 package tls
 
-import scala.concurrent.duration._
-
-import cats.effect.{IO, Resource}
-import cats.syntax.all._
-
+import cats.effect.IO
+import cats.effect.Resource
 import com.comcast.ip4s._
-import java.security.Security
+
+import scala.concurrent.duration._
 
 class TLSSocketSuite extends TLSSuite {
   val size = 8192
