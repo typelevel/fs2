@@ -1,8 +1,8 @@
 # Install
 
-The latest version for Cats Effect 3 is `3.0.0`, which supports Cats Effect 3 and is cross built for Scala 2.12, 2.13, and 3.0.
+The latest version for Cats Effect 3 is `3.0.6`, which supports Cats Effect 3 and is cross built for Scala 2.12, 2.13, and 3.0.
 
-The latest version for Cats Effect 2 is `2.5.3`, which supports Cats Effect 2 and is similarly cross built for various Scala versions.
+The latest version for Cats Effect 2 is `2.5.9`, which supports Cats Effect 2 and is similarly cross built for various Scala versions.
 
 ### Dependencies <!-- {docsify-ignore} -->
 
