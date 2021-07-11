@@ -57,19 +57,19 @@ import com.comcast.ip4s._
 def client[F[_]: MonadCancelThrow: Console: Network]: Stream[F, Unit] =
   Stream.resource(Network[F].client(SocketAddress(host"localhost", port"5555"))).flatMap { socket =>
     Stream("Hello, world!")
-      .through(text.utf8.encode)
+      .through(text.utf8Encode)
       .through(socket.writes) ++
         socket.reads
-          .through(text.utf8.decode)
+          .through(text.utf8Decode)
           .foreach { response =>
             Console[F].println(s"Response: $response")
           }
   }
 ```
 
-The structure changes a bit. First, the socket resource is immediately lifted in to a stream via `Stream.resource`. Second, we create a single `Stream[Pure, String]`, transform it with `text.utf8.encode` to turn it in to a `Stream[Pure, Byte]`, and then transform it again with `socket.writes` which turns it in to a `Stream[F, Unit]`. The `socket.writes` method returns a pipe that writes each underlying chunk of the input stream to the socket, giving us a `Stream[F, Nothing]`.
+The structure changes a bit. First, the socket resource is immediately lifted in to a stream via `Stream.resource`. Second, we create a single `Stream[Pure, String]`, transform it with `text.utf8Encode` to turn it in to a `Stream[Pure, Byte]`, and then transform it again with `socket.writes` which turns it in to a `Stream[F, Unit]`. The `socket.writes` method returns a pipe that writes each underlying chunk of the input stream to the socket, giving us a `Stream[F, Nothing]`.
 
-We then append a stream that reads a response -- we do this via `socket.reads`, which gives us a `Stream[F, Byte]` that terminates when the socket is closed or it receives an end of input indication. We transform that stream with `text.utf8.decode`, which gives us a `Stream[F, String]`. We then print each received response to the console.
+We then append a stream that reads a response -- we do this via `socket.reads`, which gives us a `Stream[F, Byte]` that terminates when the socket is closed or it receives an end of input indication. We transform that stream with `text.utf8Decode`, which gives us a `Stream[F, String]`. We then print each received response to the console.
 
 This program won't end until the server side closes the socket or indicates there's no more data to be read. To fix this, we need a protocol that both the client and server agree on. Since we are working with text, let's use a simple protocol where each frame (or "packet" or "message") is terminated with a `\n`. We'll have to update both the write side and the read side of our client.
 
@@ -78,10 +78,10 @@ def client[F[_]: MonadCancelThrow: Console: Network]: Stream[F, Unit] =
   Stream.resource(Network[F].client(SocketAddress(host"localhost", port"5555"))).flatMap { socket =>
     Stream("Hello, world!")
       .interleave(Stream.constant("\n"))
-      .through(text.utf8.encode)
+      .through(text.utf8Encode)
       .through(socket.writes) ++
         socket.reads
-          .through(text.utf8.decode)
+          .through(text.utf8Decode)
           .through(text.lines)
           .head
           .foreach { response =>
@@ -90,7 +90,7 @@ def client[F[_]: MonadCancelThrow: Console: Network]: Stream[F, Unit] =
   }
 ```
 
-To update the write side, we added `.interleave(Stream.constant("\n"))` before doing UTF8 encoding. This results in every input string being followed by a `"\n"`. On the read side, we transformed the output of `utf8.decode` with `text.lines`, which emits the strings between newlines. Finally, we call `head` to take the first full line of output. Note that we discard the rest of the `reads` stream after processing the first full line. This results in the socket getting closed and cleaned up correctly.
+To update the write side, we added `.interleave(Stream.constant("\n"))` before doing UTF8 encoding. This results in every input string being followed by a `"\n"`. On the read side, we transformed the output of `utf8Decode` with `text.lines`, which emits the strings between newlines. Finally, we call `head` to take the first full line of output. Note that we discard the rest of the `reads` stream after processing the first full line. This results in the socket getting closed and cleaned up correctly.
 
 #### Handling Connection Errors
 
@@ -113,10 +113,10 @@ def client[F[_]: Temporal: Console: Network]: Stream[F, Unit] =
   connect(SocketAddress(host"localhost", port"5555")).flatMap { socket =>
     Stream("Hello, world!")
       .interleave(Stream.constant("\n"))
-      .through(text.utf8.encode)
+      .through(text.utf8Encode)
       .through(socket.writes) ++
         socket.reads
-          .through(text.utf8.decode)
+          .through(text.utf8Decode)
           .through(text.lines)
           .head
           .foreach { response =>
@@ -137,10 +137,10 @@ import cats.effect.Concurrent
 def echoServer[F[_]: Concurrent: Network]: F[Unit] =
   Network[F].server(port = Some(port"5555")).map { client =>
     client.reads
-      .through(text.utf8.decode)
+      .through(text.utf8Decode)
       .through(text.lines)
       .interleave(Stream.constant("\n"))
-      .through(text.utf8.encode)
+      .through(text.utf8Encode)
       .through(client.writes)
       .handleErrorWith(_ => Stream.empty) // handle errors of client sockets
   }.parJoin(100).compile.drain
@@ -184,14 +184,14 @@ def client[F[_]: Concurrent: Console: Network]: F[Unit] = {
   val address = SocketAddress(ip"127.0.0.1", port"5555")
   Stream.resource(Network[F].openDatagramSocket()).flatMap { socket =>
     Stream("Hello, world!")
-      .through(text.utf8.encode)
+      .through(text.utf8Encode)
       .chunks
       .map(data => Datagram(address, data))
       .through(socket.writes)
       .drain ++
         socket.reads
           .flatMap(datagram => Stream.chunk(datagram.bytes))
-          .through(text.utf8.decode)
+          .through(text.utf8Decode)
           .foreach { response =>
             Console[F].println(s"Response: $response")
           }
@@ -236,10 +236,10 @@ def client[F[_]: MonadCancelThrow: Console: Network](
     Stream.resource(tlsContext.client(underlyingSocket)).flatMap { socket =>
       Stream("Hello, world!")
         .interleave(Stream.constant("\n"))
-        .through(text.utf8.encode)
+        .through(text.utf8Encode)
         .through(socket.writes) ++
           socket.reads
-            .through(text.utf8.decode)
+            .through(text.utf8Decode)
             .through(text.lines)
             .head
             .foreach { response =>
@@ -265,14 +265,13 @@ def tlsClientWithSni[F[_]: MonadCancelThrow: Network](
   tlsContext: TLSContext[F],
   address: SocketAddress[Host]): Resource[F, TLSSocket[F]] =
   Network[F].client(address).flatMap { underlyingSocket =>
-    tlsContext.clientBuilder(
-      underlyingSocket
-    ).withParameters(
+    tlsContext.client(
+      underlyingSocket,
       TLSParameters(
         protocols = Some(List("TLSv1.3")),
         serverNames = Some(List(new SNIHostName(address.host.toString)))
       )
-    ).build
+    )
   }
 ```
 
@@ -291,11 +290,10 @@ def debug[F[_]: MonadCancelThrow: Network](
 ): F[String] =
   Network[F].client(address).use { underlyingSocket =>
     tlsContext
-      .clientBuilder(underlyingSocket)
-      .withParameters(
+      .client(
+        underlyingSocket,
         TLSParameters(serverNames = Some(List(new SNIHostName(address.host.toString))))
       )
-      .build
       .use { tlsSocket =>
         tlsSocket.write(Chunk.empty) >>
           tlsSocket.session.map { session =>
@@ -310,26 +308,7 @@ def debug[F[_]: MonadCancelThrow: Network](
 
 # Files
 
-The `fs2.io.file` package provides support for working with files. The README example demonstrates the two simplest use cases -- incrementally reading from a file with `fs2.io.file.readAll` and incrementally writing to a file with `fs2.io.file.writeAll`. Another example is generating the SHA-256 digest of a file and writing it as hexadecimal in a sibling file:
-
-```scala
-import cats.effect.Concurrent
-import fs2.{hash, text}
-import fs2.io.file.Files
-import java.nio.file.Path
-
-def writeDigest[F[_]: Files: Concurrent](path: Path): F[Path] = {
-  val target = path.resolve(".sha256")
-  Files[F].readAll(path, 8192)
-    .through(hash.sha256)
-    .through(text.hex.encode)
-    .through(text.utf8.encode)
-    .through(Files[F].writeAll(target))
-    .compile
-    .drain
-    .as(target)
-}
-```
+The `fs2.io.file` package provides support for working with files. The README example demonstrates the two simplest use cases -- incrementally reading from a file with `fs2.io.file.readAll` and incrementally writing to a file with `fs2.io.file.writeAll`.
 
 For more complex use cases, there are a few types available -- `FileHandle`, `ReadCursor`, and `WriteCursor`. A `FileHandle[F]` represents an open file and provides various methods for interacting with the file -- reading data, writing data, querying the size, etc. -- all in the effect `F`. Constructing a `FileHandle[F]` is accomplished by calling `FileHandle.fromPath(path, blocker)`, passing a `java.nio.file.Path` value indicating which file to open.
 
