@@ -479,6 +479,7 @@ object text {
     def decode[F[_]: RaiseThrowable]: Pipe[F, String, Byte] =
       decodeWithAlphabet(Bases.Alphabets.HexLowercase)
 
+    /** Like `decode` but takes a hex alphabet. */
     def decodeWithAlphabet[F[_]: RaiseThrowable](
         alphabet: Bases.HexAlphabet
     ): Pipe[F, String, Byte] = {
@@ -535,9 +536,13 @@ object text {
       s => dropPrefix(s, "").stream
     }
 
+    /** Encodes a byte stream in to a stream of hexadecimal text.
+      * The default hex alphabet is used by this pipe.
+      */
     def encode[F[_]]: Pipe[F, Byte, String] =
       encodeWithAlphabet(Bases.Alphabets.HexLowercase)
 
+    /** Like `encode` but takes a hex alphabet. */
     def encodeWithAlphabet[F[_]](alphabet: Bases.HexAlphabet): Pipe[F, Byte, String] =
       _.chunks.map(c => c.toByteVector.toHex(alphabet))
   }
