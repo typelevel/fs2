@@ -6,8 +6,8 @@ addCommandAlias(
   "fmtCheck",
   "; compile:scalafmtCheck; test:scalafmtCheck; it:scalafmtCheck; scalafmtSbtCheck"
 )
-addCommandAlias("testJVM", ";coreJVM/test;io/test;reactiveStreams/test;benchmark/test")
-addCommandAlias("testJS", "coreJS/test")
+addCommandAlias("testJVM", ";rootJVM/test")
+addCommandAlias("testJS", "rootJS/test")
 
 Global / onChangedBuildSource := ReloadOnSourceChanges
 
@@ -104,13 +104,36 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   ProblemFilters.exclude[ReversedMissingMethodProblem](
     "fs2.io.net.tls.TLSContext.dtlsServerBuilder"
   ),
-  ProblemFilters.exclude[Problem]("fs2.io.net.tls.TLSEngine*")
+  ProblemFilters.exclude[Problem]("fs2.io.net.tls.TLSEngine*"),
+  // start #2453 cross-build fs2.io for scala.js
+  // private implementation classes
+  ProblemFilters.exclude[MissingClassProblem]("fs2.io.net.Socket$IntCallbackHandler"),
+  ProblemFilters.exclude[MissingClassProblem]("fs2.io.net.Socket$BufferedReads"),
+  ProblemFilters.exclude[MissingClassProblem]("fs2.io.net.SocketGroup$AsyncSocketGroup"),
+  ProblemFilters.exclude[MissingClassProblem]("fs2.io.net.Socket$AsyncSocket"),
+  ProblemFilters.exclude[MissingClassProblem](
+    "fs2.io.net.DatagramSocketGroup$AsyncDatagramSocketGroup"
+  ),
+  ProblemFilters.exclude[MissingClassProblem]("fs2.io.net.unixsocket.UnixSockets$AsyncSocket"),
+  ProblemFilters.exclude[MissingClassProblem]("fs2.io.net.unixsocket.UnixSockets$AsyncUnixSockets"),
+  ProblemFilters.exclude[MissingClassProblem]("fs2.io.net.tls.TLSContext$Builder$AsyncBuilder"),
+  // sealed traits
+  ProblemFilters.exclude[NewMixinForwarderProblem]("fs2.io.net.Network.*"),
+  ProblemFilters.exclude[NewMixinForwarderProblem]("fs2.io.net.tls.TLSContext.*"),
+  ProblemFilters.exclude[InheritedNewAbstractMethodProblem]("fs2.io.net.tls.TLSContext.*")
+  // end #2453
 )
 
 lazy val root = project
   .in(file("."))
   .enablePlugins(NoPublishPlugin, SonatypeCiReleasePlugin)
-  .aggregate(coreJVM, coreJS, io, reactiveStreams, benchmark)
+  .aggregate(coreJVM, coreJS, io.jvm, io.js, reactiveStreams, benchmark)
+
+lazy val rootJVM = project
+  .in(file("."))
+  .enablePlugins(NoPublishPlugin)
+  .aggregate(coreJVM, io.jvm, reactiveStreams, benchmark)
+lazy val rootJS = project.in(file(".")).enablePlugins(NoPublishPlugin).aggregate(coreJS, io.js)
 
 lazy val IntegrationTest = config("it").extend(Test)
 
@@ -177,16 +200,13 @@ lazy val coreJS = core.js
     scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule))
   )
 
-lazy val io = project
+lazy val io = crossProject(JVMPlatform, JSPlatform)
   .in(file("io"))
   .enablePlugins(SbtOsgi)
+  .jsConfigure(_.enablePlugins(ScalablyTypedConverterGenSourcePlugin))
   .settings(
     name := "fs2-io",
-    libraryDependencies ++= Seq(
-      "com.comcast" %% "ip4s-core" % "3.0.3",
-      "com.github.jnr" % "jnr-unixsocket" % "0.38.8" % Optional
-    ),
-    Test / fork := true,
+    libraryDependencies += "com.comcast" %%% "ip4s-core" % "3.0.3",
     OsgiKeys.exportPackage := Seq("fs2.io.*"),
     OsgiKeys.privatePackage := Seq(),
     OsgiKeys.importPackage := {
@@ -200,7 +220,20 @@ lazy val io = project
     OsgiKeys.additionalHeaders := Map("-removeheaders" -> "Include-Resource,Private-Package"),
     osgiSettings
   )
-  .dependsOn(coreJVM % "compile->compile;test->test")
+  .jvmSettings(
+    Test / fork := true,
+    libraryDependencies += "com.github.jnr" % "jnr-unixsocket" % "0.38.8" % Optional
+  )
+  .jsSettings(
+    scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule)),
+    Compile / npmDependencies += "@types/node" -> "16.0.0",
+    Test / npmDependencies += "jks-js" -> "1.0.1",
+    useYarn := true,
+    stOutputPackage := "fs2.internal.jsdeps",
+    stStdlib := List("es2020"),
+    stIgnore += "jks-js"
+  )
+  .dependsOn(core % "compile->compile;test->test")
 
 lazy val reactiveStreams = project
   .in(file("reactive-streams"))
@@ -236,7 +269,7 @@ lazy val benchmark = project
     Test / run / javaOptions := (Test / run / javaOptions).value
       .filterNot(o => o.startsWith("-Xmx") || o.startsWith("-Xms")) ++ Seq("-Xms256m", "-Xmx256m")
   )
-  .dependsOn(io)
+  .dependsOn(io.jvm)
 
 lazy val microsite = project
   .in(file("mdoc"))
@@ -252,7 +285,7 @@ lazy val microsite = project
     githubWorkflowArtifactUpload := false,
     fatalWarningsInCI := false
   )
-  .dependsOn(coreJVM, io, reactiveStreams)
+  .dependsOn(coreJVM, io.jvm, reactiveStreams)
   .enablePlugins(MdocPlugin, NoPublishPlugin)
 
 ThisBuild / githubWorkflowBuildPostamble ++= List(
