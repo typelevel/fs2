@@ -15,12 +15,12 @@ object Converter extends IOApp.Simple {
       (f - 32.0) * (5.0/9.0)
 
     Files[IO].readAll(Paths.get("testdata/fahrenheit.txt"), 4096)
-      .through(text.utf8Decode)
+      .through(text.utf8.decode)
       .through(text.lines)
       .filter(s => !s.trim.isEmpty && !s.startsWith("//"))
       .map(line => fahrenheitToCelsius(line.toDouble).toString)
       .intersperse("\n")
-      .through(text.utf8Encode)
+      .through(text.utf8.encode)
       .through(Files[IO].writeAll(Paths.get("testdata/celsius.txt")))
   }
 
