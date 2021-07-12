@@ -204,7 +204,7 @@ lazy val coreJS = core.js
 
 lazy val node = project
   .in(file("node"))
-  .enablePlugins(ScalablyTypedConverterGenSourcePlugin)
+  .enablePlugins(SbtOsgi, ScalablyTypedConverterGenSourcePlugin)
   .disablePlugins(MimaPlugin)
   .settings(
     name := "fs2-node",
@@ -215,7 +215,19 @@ lazy val node = project
     Compile / npmDependencies += "@types/node" -> "16.0.0",
     useYarn := true,
     stOutputPackage := "fs2.internal.jsdeps",
-    stStdlib := List("es2020")
+    stStdlib := List("es2020"),
+    OsgiKeys.exportPackage := Seq("fs2.internal.jsdeps.*"),
+    OsgiKeys.privatePackage := Seq(),
+    OsgiKeys.importPackage := {
+      val Some((major, minor)) = CrossVersion.partialVersion(scalaVersion.value)
+      Seq(
+        s"""scala.*;version="[$major.$minor,$major.${minor + 1})"""",
+        """fs2.*;version="${Bundle-Version}"""",
+        "*"
+      )
+    },
+    OsgiKeys.additionalHeaders := Map("-removeheaders" -> "Include-Resource,Private-Package"),
+    osgiSettings
   )
 
 lazy val io = crossProject(JVMPlatform, JSPlatform)
