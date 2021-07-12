@@ -10,6 +10,7 @@ addCommandAlias("testJVM", ";rootJVM/test")
 addCommandAlias("testJS", "rootJS/test")
 
 Global / onChangedBuildSource := ReloadOnSourceChanges
+Global / stQuiet := true
 
 ThisBuild / baseVersion := "3.0"
 
