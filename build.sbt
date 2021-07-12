@@ -205,6 +205,7 @@ lazy val coreJS = core.js
 lazy val node = project
   .in(file("node"))
   .enablePlugins(ScalablyTypedConverterGenSourcePlugin)
+  .disablePlugins(MimaPlugin)
   .settings(
     name := "fs2-node",
     scalacOptions += "-nowarn",
