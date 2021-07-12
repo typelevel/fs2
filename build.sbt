@@ -202,7 +202,7 @@ lazy val coreJS = core.js
 
 lazy val io = crossProject(JVMPlatform, JSPlatform)
   .in(file("io"))
-  .enablePlugins(SbtOsgi)
+  .jvmConfigure(_.enablePlugins(SbtOsgi))
   .jsConfigure(_.enablePlugins(ScalablyTypedConverterGenSourcePlugin))
   .settings(
     name := "fs2-io",
