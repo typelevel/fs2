@@ -10,6 +10,7 @@ addCommandAlias("testJVM", ";rootJVM/test")
 addCommandAlias("testJS", "rootJS/test")
 
 Global / onChangedBuildSource := ReloadOnSourceChanges
+Global / stQuiet := true
 
 ThisBuild / baseVersion := "3.0"
 
@@ -127,13 +128,14 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
 lazy val root = project
   .in(file("."))
   .enablePlugins(NoPublishPlugin, SonatypeCiReleasePlugin)
-  .aggregate(coreJVM, coreJS, io.jvm, io.js, reactiveStreams, benchmark)
+  .aggregate(coreJVM, coreJS, io.jvm, node, io.js, reactiveStreams, benchmark)
 
 lazy val rootJVM = project
   .in(file("."))
   .enablePlugins(NoPublishPlugin)
   .aggregate(coreJVM, io.jvm, reactiveStreams, benchmark)
-lazy val rootJS = project.in(file(".")).enablePlugins(NoPublishPlugin).aggregate(coreJS, io.js)
+lazy val rootJS =
+  project.in(file(".")).enablePlugins(NoPublishPlugin).aggregate(coreJS, node, io.js)
 
 lazy val IntegrationTest = config("it").extend(Test)
 
@@ -200,10 +202,25 @@ lazy val coreJS = core.js
     scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule))
   )
 
+lazy val node = project
+  .in(file("node"))
+  .enablePlugins(ScalablyTypedConverterGenSourcePlugin)
+  .settings(
+    name := "fs2-node",
+    scalacOptions += "-nowarn",
+    Compile / doc / sources := Nil,
+    Compile / packageDoc / publishArtifact := false,
+    scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule)),
+    Compile / npmDependencies += "@types/node" -> "16.0.0",
+    useYarn := true,
+    stOutputPackage := "fs2.internal.jsdeps",
+    stStdlib := List("es2020")
+  )
+
 lazy val io = crossProject(JVMPlatform, JSPlatform)
   .in(file("io"))
   .enablePlugins(SbtOsgi)
-  .jsConfigure(_.enablePlugins(ScalablyTypedConverterGenSourcePlugin))
+  .jsConfigure(_.enablePlugins(ScalaJSBundlerPlugin))
   .settings(
     name := "fs2-io",
     libraryDependencies += "com.comcast" %%% "ip4s-core" % "3.0.3",
@@ -226,14 +243,11 @@ lazy val io = crossProject(JVMPlatform, JSPlatform)
   )
   .jsSettings(
     scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule)),
-    Compile / npmDependencies += "@types/node" -> "16.0.0",
-    Test / npmDependencies += "jks-js" -> "1.0.1",
-    useYarn := true,
-    stOutputPackage := "fs2.internal.jsdeps",
-    stStdlib := List("es2020"),
-    stIgnore += "jks-js"
+    Test / npmDevDependencies += "jks-js" -> "1.0.1",
+    useYarn := true
   )
   .dependsOn(core % "compile->compile;test->test")
+  .jsConfigure(_.dependsOn(node))
 
 lazy val reactiveStreams = project
   .in(file("reactive-streams"))
