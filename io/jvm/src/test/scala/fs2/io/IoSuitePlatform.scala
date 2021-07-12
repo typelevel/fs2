@@ -115,12 +115,12 @@ class IoSuitePlatform extends Fs2Suite {
         val src = source(chunkSize, bufferSize)
 
         src
-          .through(text.utf8Decode)
+          .through(text.utf8.decode)
           .foldMonoid
           .flatMap { expected =>
             src
               .through(test(chunkSize))
-              .through(text.utf8Decode)
+              .through(text.utf8.decode)
               .foldMonoid
               .evalMap { actual =>
                 IO(assertEquals(actual, expected))

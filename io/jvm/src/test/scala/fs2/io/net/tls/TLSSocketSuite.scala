@@ -64,11 +64,11 @@ class TLSSocketSuite extends TLSSuite {
             .flatMap { tlsSocket =>
               Stream(googleDotCom)
                 .covary[IO]
-                .through(text.utf8Encode)
+                .through(text.utf8.encode)
                 .through(tlsSocket.writes) ++
                 Stream.exec(tlsSocket.endOfOutput) ++
                 tlsSocket.reads
-                  .through(text.utf8Decode)
+                  .through(text.utf8.decode)
                   .through(text.lines)
             }
             .head
@@ -83,10 +83,10 @@ class TLSSocketSuite extends TLSSuite {
             .resource(googleSetup(protocol))
             .flatMap { socket =>
               val send = Stream(googleDotCom)
-                .through(text.utf8Encode)
+                .through(text.utf8.encode)
                 .through(socket.writes)
               val receive = socket.reads
-                .through(text.utf8Decode)
+                .through(text.utf8.decode)
                 .through(text.lines)
 
               receive.concurrently(send.delayBy(100.millis))

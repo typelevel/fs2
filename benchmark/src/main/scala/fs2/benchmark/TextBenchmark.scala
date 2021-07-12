@@ -44,7 +44,7 @@ class TextBenchmark {
   def asciiDecode(): String =
     Stream
       .emits(asciiBytes)
-      .through(text.utf8Decode[IO])
+      .through(text.utf8.decode[IO])
       .compile
       .last
       .unsafeRunSync()
