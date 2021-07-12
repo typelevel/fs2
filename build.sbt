@@ -205,9 +205,9 @@ lazy val coreJS = core.js
 lazy val node = project
   .in(file("node"))
   .enablePlugins(SbtOsgi, ScalablyTypedConverterGenSourcePlugin)
-  .disablePlugins(MimaPlugin)
   .settings(
     name := "fs2-node",
+    mimaPreviousArtifacts := Set.empty,
     scalacOptions += "-nowarn",
     Compile / doc / sources := Nil,
     Compile / packageDoc / publishArtifact := false,
