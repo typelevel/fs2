@@ -44,6 +44,7 @@ import scala.scalajs.js
 import cats.effect.std.Hotswap
 import cats.effect.kernel.Ref
 import cats.effect.kernel.Deferred
+import com.comcast.ip4s.Port
 
 private[net] trait SocketPlatform[F[_]] {
   private[net] def underlying: F[netMod.Socket]
@@ -133,12 +134,18 @@ private[net] trait SocketCompanionPlatform {
     }
 
     override def remoteAddress: F[SocketAddress[IpAddress]] =
-      sock.get.flatMap(sock =>
-        F.delay(sock.remoteAddress.toOption.flatMap(SocketAddress.fromStringIp).get)
-      )
+      for {
+        sock <- sock.get
+        remoteIp <- F.delay(sock.remoteAddress.toOption.flatMap(IpAddress.fromString).get)
+        remotePort <- F.delay(sock.remotePort.toOption.map(_.toInt).flatMap(Port.fromInt).get)
+      } yield SocketAddress(remoteIp, remotePort)
 
     override def localAddress: F[SocketAddress[IpAddress]] =
-      sock.get.flatMap(sock => F.delay(SocketAddress.fromStringIp(sock.localAddress).get))
+      for {
+        sock <- sock.get
+        remoteIp <- F.delay(IpAddress.fromString(sock.localAddress).get)
+        remotePort <- F.delay(Port.fromInt(sock.localPort.toInt).get)
+      } yield SocketAddress(remoteIp, remotePort)
 
     override def write(bytes: Chunk[Byte]): F[Unit] = sock.get.flatMap { sock =>
       F.async_[Unit] { cb =>
