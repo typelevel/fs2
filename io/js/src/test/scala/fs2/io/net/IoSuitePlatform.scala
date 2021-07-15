@@ -28,6 +28,7 @@ import fs2.io.internal.ByteChunkOps._
 import fs2.internal.jsdeps.node.streamMod
 import org.scalacheck.Arbitrary
 import org.scalacheck.effect.PropF.forAllF
+import scala.scalajs.js
 
 import fs2.internal.jsdeps.node.bufferMod.global.Buffer
 
@@ -39,7 +40,7 @@ class IoSuitePlatform extends Fs2Suite {
 
   test("fromReadable") {
     forAllF { bytes: Buffer =>
-      fromReadable[IO](streamMod.Readable.from(bytes)).compile.toVector.assertEquals(bytes.toChunk.toVector)
+      fromReadable[IO](IO(streamMod.Readable.from(bytes.asInstanceOf[js.Iterable[js.Any]]))).compile.toVector.assertEquals(bytes.toChunk.toVector)
     }
   }
 
