@@ -158,6 +158,15 @@ class SocketSuite extends Fs2Suite with SocketSuitePlatform {
         .drain
     }
 
+    test("errors - should be captured in the effect") {
+      (for {
+        bindAddress <- Network[IO].serverResource(Some(ip"127.0.0.1")).use(s => IO.pure(s._1))
+        _ <- Network[IO].client(bindAddress).use { client =>
+          client.write(Chunk.array("hello world".getBytes()))
+        }
+      } yield ()).attempt.map(r => assert(r.isLeft))
+    }
+
     test("options - should work with socket options") {
       val opts = List(
         SocketOption.keepAlive(true),

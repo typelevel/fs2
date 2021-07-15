@@ -35,6 +35,7 @@ import com.comcast.ip4s.Port
 import com.comcast.ip4s.SocketAddress
 import fs2.internal.jsdeps.node.netMod
 import fs2.internal.jsdeps.node.nodeStrings
+import fs2.io.internal.EventEmitterOps._
 
 import scala.scalajs.js
 
@@ -58,9 +59,20 @@ private[net] trait SocketGroupCompanionPlatform { self: SocketGroup.type =>
             new netMod.Socket(netMod.SocketConstructorOpts().setAllowHalfOpen(true))
           )
           _ <- setSocketOptions(options)(socket)
-          _ <- F.async_[Unit] { cb =>
-            socket.connect(to.port.value.toDouble, to.host.toString, () => cb(Right(())))
-          }
+          error <- F.deferred[Throwable]
+          _ <- Dispatcher[F]
+            .flatMap { dispatcher =>
+              registerListener[js.Error](socket, nodeStrings.error)(_.once_error(_, _)) { e =>
+                dispatcher.unsafeRunAndForget(error.complete(js.JavaScriptException(e)))
+              }
+            }
+            .use { _ =>
+              error.get
+                .race(F.async_[Unit] { cb =>
+                  socket.connect(to.port.value.toDouble, to.host.toString, () => cb(Right(())))
+                })
+                .rethrow
+            }
         } yield socket)
         .flatMap(Socket.forAsync[F])
 
@@ -89,14 +101,9 @@ private[net] trait SocketGroupCompanionPlatform { self: SocketGroup.type =>
               cb(Right(()))
           }
         )
-        _ <- F
-          .delay(
-            server.once_error(
-              nodeStrings.error,
-              e => dispatcher.unsafeRunAndForget(errored.complete(js.JavaScriptException(e)))
-            )
-          )
-          .toResource
+        _ <- registerListener[js.Error](server, nodeStrings.error)(_.once_error(_, _)) { e =>
+          dispatcher.unsafeRunAndForget(errored.complete(js.JavaScriptException(e)))
+        }
         _ <- F
           .async_[Unit] { cb =>
             server.listen(
