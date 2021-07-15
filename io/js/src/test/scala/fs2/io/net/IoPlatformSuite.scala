@@ -24,25 +24,27 @@ package io
 
 import cats.effect.IO
 import fs2.Fs2Suite
-import fs2.io.internal.ByteChunkOps._
-import fs2.internal.jsdeps.node.streamMod
-import org.scalacheck.Arbitrary
 import org.scalacheck.effect.PropF.forAllF
-import scala.scalajs.js
 
-import fs2.internal.jsdeps.node.bufferMod.global.Buffer
+class IoPlatformSuite extends Fs2Suite {
 
-class IoSuitePlatform extends Fs2Suite {
+  test("to/from Readable") {
+    forAllF { bytes: Stream[Pure, Byte] =>
+      toReadable(bytes.covary[IO]).use { readable =>
+        fromReadable(IO.pure(readable)).compile.toVector.assertEquals(bytes.compile.toVector)
+      }
+    }
+  }
 
-  implicit val arbitraryBuffer = Arbitrary(
-    Arbitrary.arbitrary[Array[Byte]].map(Chunk.array(_).toBuffer)
-  )
-
-  test("fromReadable") {
-    forAllF { bytes: Buffer =>
-      fromReadable[IO](
-        IO(streamMod.Readable.from(bytes.asInstanceOf[js.Iterable[js.Any]]))
-      ).compile.toVector.assertEquals(bytes.toChunk.toVector)
+  test("mk/from Writable") {
+    forAllF { bytes: Stream[Pure, Byte] =>
+      mkWritable[IO].use { case (writable, stream) =>
+        stream
+          .concurrently(bytes.covary[IO].through(fromWritable(IO.pure(writable))))
+          .compile
+          .toVector
+          .assertEquals(bytes.compile.toVector)
+      }
     }
   }
 
