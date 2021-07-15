@@ -160,10 +160,10 @@ class SocketSuite extends Fs2Suite with SocketSuitePlatform {
     }
 
     test("errors - should be captured in the effect") {
-      (for {
+      (for { // Connection refused
         bindAddress <- Network[IO].serverResource(Some(ip"127.0.0.1")).use(s => IO.pure(s._1))
         _ <- Network[IO].client(bindAddress).use(_ => IO.unit)
-      } yield ()).attempt.map(r => assert(r.isLeft)) >> (for {
+      } yield ()).attempt.map(r => assert(r.isLeft)) >> (for { // Address already in use
         bindAddress <- Network[IO].serverResource(Some(ip"127.0.0.1")).map(_._1)
         _ <- Network[IO].serverResource(Some(bindAddress.host), Some(bindAddress.port))
       } yield ()).attempt.use(r => IO(assert(r.isLeft)))
