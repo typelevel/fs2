@@ -40,7 +40,9 @@ class IoSuitePlatform extends Fs2Suite {
 
   test("fromReadable") {
     forAllF { bytes: Buffer =>
-      fromReadable[IO](IO(streamMod.Readable.from(bytes.asInstanceOf[js.Iterable[js.Any]]))).compile.toVector.assertEquals(bytes.toChunk.toVector)
+      fromReadable[IO](
+        IO(streamMod.Readable.from(bytes.asInstanceOf[js.Iterable[js.Any]]))
+      ).compile.toVector.assertEquals(bytes.toChunk.toVector)
     }
   }
 

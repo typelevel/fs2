@@ -34,8 +34,8 @@ final class Path(private val path: String) extends AnyVal {
   def normalize: Path = Path(pathMod.normalize(path))
   def relativeTo(that: Path): Path = Path(pathMod.relative(this.path, that.path))
 
-  def / (that: Path): Path = Path.join(this, that)
-  
+  def /(that: Path): Path = Path.join(this, that)
+
   override def toString: String = path
 
   private[file] def toPathLike: fsMod.PathLike = path.asInstanceOf[fsMod.PathLike]
@@ -43,7 +43,7 @@ final class Path(private val path: String) extends AnyVal {
 
 object Path {
   def apply(path: String): Path = new Path(path)
-  
+
   def join(paths: Path*): Path = Path(pathMod.join(paths.map(_.path): _*))
   def resolve(paths: Path*): Path = Path(pathMod.resolve(paths.map(_.path): _*))
 }

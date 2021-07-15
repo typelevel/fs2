@@ -27,7 +27,7 @@ import java.time.Instant
 import cats.effect.kernel.Resource
 
 sealed trait PosixFiles[F[_]] {
-  
+
   import PosixFiles._
 
   def access(path: Path, mode: AccessMode = AccessMode.F_OK): F[Boolean]
@@ -41,14 +41,22 @@ sealed trait PosixFiles[F[_]] {
   def lchown(path: Path, uid: Long, guid: Long): F[Unit]
 
   def link(existingPath: Path, newPath: Path): F[Unit]
-  
+
   def lstat(path: Path): F[Stats]
 
-  def mkdir(path: Path, recursive: Boolean = false, mode: FileAccessMode = FileAccessMode.Default): F[Path]
+  def mkdir(
+      path: Path,
+      recursive: Boolean = false,
+      mode: FileAccessMode = FileAccessMode.Default
+  ): F[Path]
 
   def mkdtemp(prefix: Path): F[Path]
 
-  def open(path: Path, flags: OpenMode = OpenMode.O_RDONLY, mode: FileAccessMode = FileAccessMode.OpenDefault): F[FileHandle[F]]
+  def open(
+      path: Path,
+      flags: OpenMode = OpenMode.O_RDONLY,
+      mode: FileAccessMode = FileAccessMode.OpenDefault
+  ): F[FileHandle[F]]
 
   def opendir(path: Path): Stream[F, Path]
 
@@ -62,7 +70,13 @@ sealed trait PosixFiles[F[_]] {
 
   def rename(oldPath: Path, newPath: Path): F[Unit]
 
-  def rm(path: Path, force: Boolean = false, maxRetries: Int = 0, recursive: Boolean = false, retryDelay: FiniteDuration = 100.milliseconds): F[Unit]
+  def rm(
+      path: Path,
+      force: Boolean = false,
+      maxRetries: Int = 0,
+      recursive: Boolean = false,
+      retryDelay: FiniteDuration = 100.milliseconds
+  ): F[Unit]
 
   def rmdir(path: Path, maxRetries: Int = 0, retryDelay: FiniteDuration = 100.milliseconds): F[Unit]
 
@@ -70,16 +84,22 @@ sealed trait PosixFiles[F[_]] {
 
   def unlink(path: Path): F[Unit]
 
-  def writeCursor(path: Path, flags: OpenMode = OpenMode.O_WRONLY | OpenMode.O_CREAT): Resource[F, WriteCursor[F]]
+  def writeCursor(
+      path: Path,
+      flags: OpenMode = OpenMode.O_WRONLY | OpenMode.O_CREAT
+  ): Resource[F, WriteCursor[F]]
 
-  def writeFile(path: Path, flags: OpenMode = OpenMode.O_WRONLY | OpenMode.O_CREAT): Pipe[F, Byte, INothing]
+  def writeFile(
+      path: Path,
+      flags: OpenMode = OpenMode.O_WRONLY | OpenMode.O_CREAT
+  ): Pipe[F, Byte, INothing]
 
 }
 
 object PosixFiles {
 
   final class AccessMode private (private val mode: Int) extends AnyVal {
-    def | (that: AccessMode) = AccessMode(this.mode | that.mode)
+    def |(that: AccessMode) = AccessMode(this.mode | that.mode)
   }
   object AccessMode {
     private def apply(mode: Int) = new AccessMode(mode)
@@ -90,7 +110,7 @@ object PosixFiles {
   }
 
   final class CopyMode private (private val mode: Int) extends AnyVal {
-    def | (that: CopyMode) = CopyMode(this.mode | that.mode)
+    def |(that: CopyMode) = CopyMode(this.mode | that.mode)
   }
   object CopyMode {
     def apply(mode: Int) = new CopyMode(mode)
@@ -102,7 +122,7 @@ object PosixFiles {
   }
 
   final class OpenMode private (private val mode: Int) extends AnyVal {
-    def | (that: OpenMode) = OpenMode(this.mode | that.mode)
+    def |(that: OpenMode) = OpenMode(this.mode | that.mode)
   }
   object OpenMode {
     private def apply(mode: Int) = new OpenMode(mode)
@@ -124,7 +144,7 @@ object PosixFiles {
   }
 
   final class FileMode private (private val mode: Int) extends AnyVal {
-    def | (that: FileMode) = FileMode(this.mode | that.mode)
+    def |(that: FileMode) = FileMode(this.mode | that.mode)
     def `type`: FileTypeMode = FileTypeMode(FileTypeMode.S_IFMT.mode & mode)
     def access: FileAccessMode = FileAccessMode(~FileTypeMode.S_IFMT.mode & mode)
   }
@@ -135,7 +155,7 @@ object PosixFiles {
   }
 
   final class FileTypeMode private (private[file] val mode: Int) extends AnyVal {
-    def | (that: FileTypeMode) = FileTypeMode(this.mode | that.mode)
+    def |(that: FileTypeMode) = FileTypeMode(this.mode | that.mode)
   }
 
   object FileTypeMode {
@@ -151,7 +171,7 @@ object PosixFiles {
   }
 
   final class FileAccessMode private (private[file] val mode: Int) extends AnyVal {
-    def | (that: FileAccessMode) = FileAccessMode(this.mode | that.mode)
+    def |(that: FileAccessMode) = FileAccessMode(this.mode | that.mode)
   }
   object FileAccessMode {
     private[file] def apply(mode: Int) = new FileAccessMode(mode)
