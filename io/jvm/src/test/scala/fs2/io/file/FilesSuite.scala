@@ -74,10 +74,10 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
         .flatMap { path =>
           Stream("Hello", " world!")
             .covary[IO]
-            .through(text.utf8Encode)
+            .through(text.utf8.encode)
             .through(Files[IO].writeAll(path)) ++ Files[IO]
             .readAll(path, 4096)
-            .through(text.utf8Decode)
+            .through(text.utf8.decode)
         }
         .compile
         .foldMonoid
@@ -88,11 +88,11 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
       Stream
         .resource(tempFile)
         .flatMap { path =>
-          val src = Stream("Hello", " world!").covary[IO].through(text.utf8Encode)
+          val src = Stream("Hello", " world!").covary[IO].through(text.utf8.encode)
           src.through(Files[IO].writeAll(path)) ++
             src.through(Files[IO].writeAll(path, List(StandardOpenOption.APPEND))) ++ Files[IO]
               .readAll(path, 4096)
-              .through(text.utf8Decode)
+              .through(text.utf8.decode)
         }
         .compile
         .foldMonoid

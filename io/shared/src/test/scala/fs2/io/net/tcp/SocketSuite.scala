@@ -132,6 +132,32 @@ class SocketSuite extends Fs2Suite with SocketSuitePlatform {
         .drain
     }
 
+    test("addresses - should match across client and server sockets") {
+      Stream
+        .resource(setup)
+        .flatMap { case (server, clients) =>
+          val serverSocketAddresses = server.evalMap { socket =>
+            socket.endOfOutput *> socket.localAddress.product(socket.remoteAddress)
+          }
+
+          val clientSocketAddresses =
+            clients
+              .take(1)
+              .evalMap { socket =>
+                socket.endOfOutput *> socket.localAddress.product(socket.remoteAddress)
+              }
+
+          serverSocketAddresses.parZip(clientSocketAddresses).map {
+            case ((serverLocal, serverRemote), (clientLocal, clientRemote)) =>
+              assertEquals(clientRemote, serverLocal)
+              assertEquals(clientLocal, serverRemote)
+          }
+
+        }
+        .compile
+        .drain
+    }
+
     test("options - should work with socket options") {
       val opts = List(
         SocketOption.keepAlive(true),

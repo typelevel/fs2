@@ -45,7 +45,7 @@ Quick links:
 
 You can find a list of libraries and integrations with data stores built on top of FS2 here: [https://fs2.io/#/ecosystem](https://fs2.io/#/ecosystem).
 
-If you have a project you'd like to include in this list, either open a PR or let us know in [the gitter channel](https://gitter.im/functional-streams-for-scala/fs2) and we'll add a link to it.
+If you have a project you'd like to include in this list, please open a PR or let us know in [the Discord channel](https://discord.gg/9V8FZTVZ9R) and we'll add a link to it.
 
 ### Acknowledgments ###
 

@@ -138,6 +138,6 @@ package object io extends ioplatform {
 
   /** Stream of `String` read asynchronously from standard input decoded in UTF-8. */
   def stdinUtf8[F[_]: Sync](bufSize: Int): Stream[F, String] =
-    stdin(bufSize).through(text.utf8Decode)
+    stdin(bufSize).through(text.utf8.decode)
 
 }

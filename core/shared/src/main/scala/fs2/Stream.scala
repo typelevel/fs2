@@ -2547,7 +2547,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   /** Transforms this stream using the given `Pipe`.
     *
     * @example {{{
-    * scala> Stream("Hello", "world").through(text.utf8Encode).toVector.toArray
+    * scala> Stream("Hello", "world").through(text.utf8.encode).toVector.toArray
     * res0: Array[Byte] = Array(72, 101, 108, 108, 111, 119, 111, 114, 108, 100)
     * }}}
     */
