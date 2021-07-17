@@ -38,7 +38,7 @@ final class Path(private val path: String) extends AnyVal {
 
   override def toString: String = path
 
-  private[file] def toPathLike: fsMod.PathLike = path.asInstanceOf[fsMod.PathLike]
+  private[file] def toJS: fsMod.PathLike = path.asInstanceOf[fsMod.PathLike]
 }
 
 object Path {

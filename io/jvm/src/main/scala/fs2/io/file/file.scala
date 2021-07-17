@@ -33,6 +33,8 @@ import scala.concurrent.duration._
 /** Provides support for working with files. */
 package object file {
 
+  type Path = java.nio.file.Path
+
   @deprecated("Use Files[F].readAll", "3.0.0")
   def readAll[F[_]: Async](
       path: Path,
