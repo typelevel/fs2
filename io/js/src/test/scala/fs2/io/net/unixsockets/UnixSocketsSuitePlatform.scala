@@ -19,11 +19,11 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2.io.net.unixsocket
+package fs2
+package io.net.unixsocket
 
-import fs2.io.file.Path
+import cats.effect.IO
 
-private[unixsocket] trait UnixSocketAddressCompanionPlatform { self: UnixSocketAddress.type =>
-  // Cannot use apply b/c of AnyVal-related erasure
-  def of(path: Path): UnixSocketAddress = apply(path.toString)
+trait UnixSocketsSuitePlatform { self: UnixSocketsSuite =>
+  testProvider("node.js")(UnixSockets.forAsync[IO])
 }

@@ -35,6 +35,7 @@ import com.comcast.ip4s.Port
 import com.comcast.ip4s.SocketAddress
 import fs2.internal.jsdeps.node.netMod
 import fs2.internal.jsdeps.node.nodeStrings
+import fs2.io.internal.EventEmitterOps._
 
 import scala.scalajs.js
 
@@ -89,14 +90,9 @@ private[net] trait SocketGroupCompanionPlatform { self: SocketGroup.type =>
               cb(Right(()))
           }
         )
-        _ <- F
-          .delay(
-            server.once_error(
-              nodeStrings.error,
-              e => dispatcher.unsafeRunAndForget(errored.complete(js.JavaScriptException(e)))
-            )
-          )
-          .toResource
+        _ <- registerListener[js.Error](server, nodeStrings.error)(_.once_error(_, _)) { e =>
+          dispatcher.unsafeRunAndForget(errored.complete(js.JavaScriptException(e)))
+        }
         _ <- F
           .async_[Unit] { cb =>
             server.listen(
