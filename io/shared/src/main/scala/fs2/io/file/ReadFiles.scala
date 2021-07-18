@@ -55,7 +55,12 @@ sealed trait ReadFiles[F[_]] {
     *
     * If an error occurs while reading from the file, the overall stream fails.
     */
-  def tail(path: Path, chunkSize: Int, offset: Long, pollDelay: FiniteDuration): Stream[F, Byte]
+  def tail(
+      path: Path,
+      chunkSize: Int,
+      offset: Long = 0L,
+      pollDelay: FiniteDuration
+  ): Stream[F, Byte]
 
 }
 

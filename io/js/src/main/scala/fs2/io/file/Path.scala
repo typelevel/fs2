@@ -24,6 +24,10 @@ package io.file
 
 import fs2.internal.jsdeps.node.pathMod
 import fs2.internal.jsdeps.node.fsMod
+import cats.kernel.Monoid
+import cats.kernel.Order
+import cats.kernel.Hash
+import fs2.internal.jsdeps.node.osMod
 
 final class Path(private val path: String) extends AnyVal {
   def basename: Path = Path(pathMod.basename(path))
@@ -46,4 +50,25 @@ object Path {
 
   def join(paths: Path*): Path = Path(pathMod.join(paths.map(_.path): _*))
   def resolve(paths: Path*): Path = Path(pathMod.resolve(paths.map(_.path): _*))
+
+  val empty = Path("")
+  val tmpdir = Path(osMod.tmpdir())
+
+  implicit def instances: Monoid[Path] with Order[Path] with Hash[Path] = algebra
+
+  private object algebra extends Monoid[Path] with Order[Path] with Hash[Path] {
+
+    override def empty: Path = Path.empty
+
+    override def combine(x: Path, y: Path): Path = x / y
+
+    override def combineAll(as: IterableOnce[Path]): Path = Path.join(as.iterator.toSeq: _*)
+
+    override def eqv(x: Path, y: Path): Boolean = x.path == y.path
+
+    override def compare(x: Path, y: Path): Int = x.path.compare(y.path)
+
+    override def hash(x: Path): Int = x.path.hashCode()
+
+  }
 }

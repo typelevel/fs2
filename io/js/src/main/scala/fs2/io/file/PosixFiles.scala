@@ -26,15 +26,19 @@ package file
 import cats.effect.kernel.Async
 import cats.effect.kernel.Resource
 import cats.syntax.all._
-import fs2.internal.jsdeps.node.fsPromisesMod
 import fs2.internal.jsdeps.node.fsMod
-import fs2.io.file.ReadFiles.UnsealedReadFiles
+import fs2.internal.jsdeps.node.fsPromisesMod
+import fs2.internal.jsdeps.node.pathMod
+import fs2.internal.jsdeps.node.streamMod
 import fs2.io.file.ReadFiles.TemporalReadFiles
+import fs2.io.file.ReadFiles.UnsealedReadFiles
 
 import java.time.Instant
 import scala.concurrent.duration._
-import fs2.internal.jsdeps.node.streamMod
 
+/** Enables interacting with the file system in a way modeled on Node.js `fs` module which in turn is modeled on standard POSIX functions.
+  * @see [[https://nodejs.org/api/fs.html]]
+  */
 sealed trait PosixFiles[F[_]] extends UnsealedReadFiles[F] {
 
   import PosixFiles._
@@ -59,21 +63,19 @@ sealed trait PosixFiles[F[_]] extends UnsealedReadFiles[F] {
       mode: FileAccessMode = FileAccessMode.Default
   ): F[Path]
 
-  def mkdtemp(prefix: Path): F[Path]
+  def mkdtemp(path: Path = Path.tmpdir, prefix: String = ""): Resource[F, Path]
 
   def open(
       path: Path,
-      flags: OpenMode = OpenMode.O_RDONLY,
+      flags: Flags = Flags.r,
       mode: FileAccessMode = FileAccessMode.OpenDefault
   ): Resource[F, FileHandle[F]]
 
   def opendir(path: Path): Stream[F, Path]
 
-  def readCursor(path: Path, flags: OpenMode = OpenMode.O_RDONLY): Resource[F, ReadCursor[F]]
+  def readCursor(path: Path, flags: Flags = Flags.r): Resource[F, ReadCursor[F]]
 
-  def readAll(path: Path, flags: OpenMode = OpenMode.O_RDONLY): Stream[F, Byte]
-
-  def readRange(path: Path, chunkSize: Int, start: Long, end: Long): Stream[F, Byte]
+  def readAll(path: Path, flags: Flags = Flags.r): Stream[F, Byte]
 
   def readlink(path: Path): F[Path]
 
@@ -95,67 +97,81 @@ sealed trait PosixFiles[F[_]] extends UnsealedReadFiles[F] {
 
   def unlink(path: Path): F[Unit]
 
-  def writeCursor(
-      path: Path,
-      flags: OpenMode = OpenMode.O_WRONLY | OpenMode.O_CREAT
-  ): Resource[F, WriteCursor[F]]
+  def walk(path: Path, maxDepth: Int = Int.MaxValue): Stream[F, Path]
 
   def writeAll(
       path: Path,
-      flags: OpenMode = OpenMode.O_WRONLY | OpenMode.O_CREAT
+      flags: Flags = Flags.w,
+      mode: FileAccessMode = FileAccessMode.OpenDefault
   ): Pipe[F, Byte, INothing]
 
+  def writeCursor(
+      path: Path,
+      flags: Flags = Flags.w,
+      mode: FileAccessMode = FileAccessMode.OpenDefault
+  ): Resource[F, WriteCursor[F]]
+
+  def writeCursorFromFileHandle(
+      file: FileHandle[F],
+      append: Boolean
+  ): F[WriteCursor[F]]
+
+  def writeRotate(
+      computePath: F[Path],
+      limit: Long,
+      flags: Flags = Flags.w,
+      mode: FileAccessMode = FileAccessMode.OpenDefault
+  ): Pipe[F, Byte, INothing]
 }
 
 object PosixFiles {
+  def apply[F[_]](implicit F: PosixFiles[F]): F.type = F
 
   final class AccessMode private (private[file] val mode: Long) extends AnyVal {
     def |(that: AccessMode) = AccessMode(this.mode | that.mode)
+    def >=(that: AccessMode) = (this.mode & ~that.mode) == 0
   }
   object AccessMode {
     private def apply(mode: Long) = new AccessMode(mode)
-    val F_OK = AccessMode(0)
-    val R_OK = AccessMode(1 << 2)
-    val W_OK = AccessMode(1 << 1)
-    val X_OK = AccessMode(1 << 0)
+    val F_OK = AccessMode(fsMod.constants.F_OK.toLong)
+    val R_OK = AccessMode(fsMod.constants.R_OK.toLong)
+    val W_OK = AccessMode(fsMod.constants.W_OK.toLong)
+    val X_OK = AccessMode(fsMod.constants.X_OK.toLong)
   }
 
   final class CopyMode private (private[file] val mode: Long) extends AnyVal {
     def |(that: CopyMode) = CopyMode(this.mode | that.mode)
+    def >=(that: CopyMode) = (this.mode & ~that.mode) == 0
   }
   object CopyMode {
     def apply(mode: Long) = new CopyMode(mode)
-    val COPYFILE_EXCL = CopyMode(1)
-    val COPYFILE_FICLONE = CopyMode(2)
-    val COPYFILE_FICLONE_FORCE = CopyMode(4)
+    val COPYFILE_EXCL = CopyMode(fsMod.constants.COPYFILE_EXCL.toLong)
+    val COPYFILE_FICLONE = CopyMode(fsMod.constants.COPYFILE_FICLONE.toLong)
+    val COPYFILE_FICLONE_FORCE = CopyMode(fsMod.constants.COPYFILE_FICLONE_FORCE.toLong)
 
     private[file] val Default = CopyMode(0)
   }
 
-  final class OpenMode private (private[file] val mode: Long) extends AnyVal {
-    def |(that: OpenMode) = OpenMode(this.mode | that.mode)
-  }
-  object OpenMode {
-    private def apply(mode: Long) = new OpenMode(mode)
-    val O_RDONLY = OpenMode(0)
-    val O_WRONLY = OpenMode(1 << 0)
-    val O_RDWR = OpenMode(1 << 1)
-    val O_CREAT = OpenMode(1 << 9)
-    val O_EXCL = OpenMode(1 << 11)
-    val O_NOCTTY = OpenMode(1 << 17)
-    val O_TRUNC = OpenMode(1 << 10)
-    val O_APPEND = OpenMode(1 << 3)
-    val O_DIRECTORY = OpenMode(1 << 20)
-    val O_NOATIME = OpenMode(1 << 18)
-    val O_NOFOLLOW = OpenMode(1 << 17)
-    val O_DSYNC = OpenMode(1 << 12)
-    val O_SYMLINK = OpenMode(1 << 21)
-    val O_DIRECT = OpenMode(1 << 14)
-    val O_NONBLOCK = OpenMode(1 << 11)
+  sealed abstract class Flags
+  object Flags {
+    case object a extends Flags
+    case object ax extends Flags
+    case object `a+` extends Flags
+    case object `ax+` extends Flags
+    case object `as` extends Flags
+    case object `as+` extends Flags
+    case object r extends Flags
+    case object `r+` extends Flags
+    case object `rs+` extends Flags
+    case object w extends Flags
+    case object wx extends Flags
+    case object `w+` extends Flags
+    case object `wx+` extends Flags
   }
 
   final class FileMode private (private val mode: Long) extends AnyVal {
     def |(that: FileMode) = FileMode(this.mode | that.mode)
+    def >=(that: FileMode) = (this.mode & ~that.mode) == 0
     def `type`: FileTypeMode = FileTypeMode(FileTypeMode.S_IFMT.mode & mode)
     def access: FileAccessMode = FileAccessMode(~FileTypeMode.S_IFMT.mode & mode)
   }
@@ -167,22 +183,24 @@ object PosixFiles {
 
   final class FileTypeMode private (private[file] val mode: Long) extends AnyVal {
     def |(that: FileTypeMode) = FileTypeMode(this.mode | that.mode)
+    def >=(that: FileTypeMode) = (this.mode & ~that.mode) == 0
   }
 
   object FileTypeMode {
     private[file] def apply(mode: Long) = new FileTypeMode(mode)
-    val S_IFREG = FileTypeMode(1 << 15)
-    val S_IFDIR = FileTypeMode(1 << 14)
-    val S_IFCHR = FileTypeMode(1 << 13)
-    val S_IFBLK = S_IFDIR | S_IFCHR
-    val S_IFIFO = FileTypeMode(1 << 12)
-    val S_IFLNK = S_IFREG | S_IFCHR
-    val S_IFSOCK = S_IFREG | S_IFDIR
-    val S_IFMT = S_IFREG | S_IFDIR | S_IFCHR | S_IFIFO
+    val S_IFREG = FileTypeMode(fsMod.constants.S_IFREG.toLong)
+    val S_IFDIR = FileTypeMode(fsMod.constants.S_IFDIR.toLong)
+    val S_IFCHR = FileTypeMode(fsMod.constants.S_IFCHR.toLong)
+    val S_IFBLK = FileTypeMode(fsMod.constants.S_IFBLK.toLong)
+    val S_IFIFO = FileTypeMode(fsMod.constants.S_IFIFO.toLong)
+    val S_IFLNK = FileTypeMode(fsMod.constants.S_IFLNK.toLong)
+    val S_IFSOCK = FileTypeMode(fsMod.constants.S_IFSOCK.toLong)
+    val S_IFMT = FileTypeMode(fsMod.constants.S_IFMT.toLong)
   }
 
   final class FileAccessMode private (private[file] val mode: Long) extends AnyVal {
     def |(that: FileAccessMode) = FileAccessMode(this.mode | that.mode)
+    def >=(that: FileAccessMode) = (this.mode & ~that.mode) == 0
   }
   object FileAccessMode {
     private[file] def apply(mode: Long) = new FileAccessMode(mode)
@@ -265,18 +283,24 @@ object PosixFiles {
         )
       ).map(_.fold(path)(Path(_)))
 
-    override def mkdtemp(prefix: Path): F[Path] =
-      F.fromPromise(F.delay(fsPromisesMod.mkdtemp(prefix.toString()))).map(Path(_))
+    override def mkdtemp(path: Path, prefix: String): Resource[F, Path] =
+      Resource
+        .make(
+          F.fromPromise(F.delay(fsPromisesMod.mkdtemp(path.toString + pathMod.sep + prefix)))
+            .map(Path(_))
+        )(
+          rm(_, force = true, recursive = true)
+        )
 
     override def open(
         path: Path,
-        flags: OpenMode,
+        flags: Flags,
         mode: FileAccessMode
     ): Resource[F, FileHandle[F]] =
       Resource
         .make(
           F.fromPromise(
-            F.delay(fsPromisesMod.open(path.toJS, flags.mode.toDouble, mode.mode.toDouble))
+            F.delay(fsPromisesMod.open(path.toJS, flags.toString, mode.mode.toDouble))
           )
         )(fd => F.fromPromise(F.delay(fd.close())))
         .map(FileHandle.make[F])
@@ -291,25 +315,41 @@ object PosixFiles {
             .repeatEval(F.fromPromise(F.delay(dir.read())))
             .map(dirent => Option(dirent.asInstanceOf[fsMod.Dirent]))
             .unNoneTerminate
-            .map(dirent => Path(dirent.name))
+            .map(dirent => path / Path(dirent.name))
         }
 
     override def readCursor(path: Path): Resource[F, ReadCursor[F]] =
-      readCursor(path, OpenMode.O_RDONLY)
+      readCursor(path, Flags.r)
 
-    override def readCursor(path: Path, flags: OpenMode): Resource[F, ReadCursor[F]] =
-      open(path, flags | OpenMode.O_RDONLY).map(ReadCursor(_, 0L))
+    override def readCursor(path: Path, flags: Flags): Resource[F, ReadCursor[F]] =
+      open(path, flags).map(ReadCursor(_, 0L))
 
     override def readAll(path: Path, chunkSize: Int): Stream[F, Byte] =
-      readAll(path, OpenMode.O_RDONLY)
+      readAll(path, Flags.r)
 
-    override def readAll(path: Path, flags: OpenMode): Stream[F, Byte] =
+    override def readAll(path: Path, flags: Flags): Stream[F, Byte] =
       fromReadable(
         F.delay(
           fsMod
             .createReadStream(
               path.toJS,
-              fsMod.ReadStreamOptions().setMode((flags | OpenMode.O_RDONLY).mode.toDouble)
+              fsMod.ReadStreamOptions().setFlags(flags.toString)
+            )
+            .asInstanceOf[streamMod.Readable]
+        )
+      )
+
+    override def readRange(path: Path, chunkSize: Int, start: Long, end: Long): Stream[F, Byte] =
+      fromReadable(
+        F.delay(
+          fsMod
+            .createReadStream(
+              path.toJS,
+              fsMod
+                .ReadStreamOptions()
+                .setFlags(Flags.r.toString)
+                .setStart(start.toDouble)
+                .setEnd((end - 1).toDouble)
             )
             .asInstanceOf[streamMod.Readable]
         )
@@ -364,18 +404,53 @@ object PosixFiles {
     override def unlink(path: Path): F[Unit] =
       F.fromPromise(F.delay(fsPromisesMod.unlink(path.toJS)))
 
-    override def writeCursor(path: Path, flags: OpenMode): Resource[F, WriteCursor[F]] =
-      open(path, flags | OpenMode.O_WRONLY).map(WriteCursor(_, 0L))
+    override def walk(path: Path, maxDepth: Int): Stream[F, Path] =
+      Stream.emit(path) ++ (if (maxDepth > 0)
+                              Stream.eval(stat(path)).filter(_.isDirectory) >> opendir(path)
+                                .flatMap(walk(_, maxDepth - 1))
+                            else Stream.empty)
 
-    override def writeAll(path: Path, flags: OpenMode): Pipe[F, Byte, INothing] =
+    override def writeCursor(
+        path: Path,
+        flags: Flags,
+        mode: FileAccessMode
+    ): Resource[F, WriteCursor[F]] =
+      open(path, flags, mode).map(WriteCursor(_, 0L))
+
+    override def writeAll(path: Path, flags: Flags, mode: FileAccessMode): Pipe[F, Byte, INothing] =
       fromWritable(
         F.delay(
           fsMod
-            .createWriteStream(path.toJS, fsMod.StreamOptions().setMode(flags.mode.toDouble))
+            .createWriteStream(
+              path.toJS,
+              fsMod.StreamOptions().setFlags(flags.toString).setMode(mode.mode.toDouble)
+            )
             .asInstanceOf[streamMod.Writable]
         )
       )
 
+    override def writeCursorFromFileHandle(
+        file: FileHandle[F],
+        append: Boolean
+    ): F[WriteCursor[F]] =
+      if (append) file.size.map(s => WriteCursor(file, s)) else WriteCursor(file, 0L).pure[F]
+
+    override def writeRotate(
+        computePath: F[Path],
+        limit: Long,
+        flags: Flags,
+        mode: FileAccessMode
+    ): Pipe[F, Byte, INothing] = {
+      def openNewFile: Resource[F, FileHandle[F]] =
+        Resource
+          .eval(computePath)
+          .flatMap(p => open(p, flags, mode))
+
+      def newCursor(file: FileHandle[F]): F[WriteCursor[F]] =
+        writeCursorFromFileHandle(file, flags.toString.contains('a'))
+
+      internal.WriteRotate(openNewFile, newCursor, limit)
+    }
   }
 
   private final class WrappedJSStats(private val stats: fsMod.Stats) extends Stats {
