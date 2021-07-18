@@ -20,7 +20,8 @@
  */
 
 package fs2
-package io.file
+package io
+package file
 
 import cats.kernel.Hash
 import cats.kernel.Monoid
@@ -28,7 +29,7 @@ import cats.kernel.Order
 import fs2.internal.jsdeps.node.fsMod
 import fs2.internal.jsdeps.node.osMod
 import fs2.internal.jsdeps.node.pathMod
-import fs2.internal._
+import CollectionCompat._
 
 final class Path(private val path: String) extends AnyVal {
   def basename: Path = Path(pathMod.basename(path))
