@@ -41,10 +41,10 @@ import scala.scalajs.js.|
 
 private[fs2] trait ioplatform {
 
-  def fromReadable[F[_]](readable: F[streamMod.Readable])(implicit F: Async[F]): Stream[F, Byte] =
+  def fromReadable[F[_]](readable: F[Readable])(implicit F: Async[F]): Stream[F, Byte] =
     Stream
       .resource(for {
-        readable <- Resource.makeCase(readable) {
+        readable <- Resource.makeCase(readable.map(_.asInstanceOf[streamMod.Readable])) {
           case (readable, Resource.ExitCase.Succeeded) => F.delay(readable.destroy())
           case (readable, Resource.ExitCase.Errored(ex)) =>
             F.delay(readable.destroy(js.Error(ex.getMessage())))
@@ -73,7 +73,7 @@ private[fs2] trait ioplatform {
           )
       }
 
-  def toReadable[F[_]](s: Stream[F, Byte])(implicit F: Async[F]): Resource[F, streamMod.Readable] =
+  def toReadable[F[_]](s: Stream[F, Byte])(implicit F: Async[F]): Resource[F, Readable] =
     for {
       dispatcher <- Dispatcher[F]
       semaphore <- Semaphore[F](1).toResource
@@ -107,13 +107,13 @@ private[fs2] trait ioplatform {
       } { readable =>
         F.delay(if (!readable.readableEnded) readable.destroy())
       }
-    } yield readable
+    } yield readable.asInstanceOf[Readable]
 
   def fromWritable[F[_]](
-      writable: F[streamMod.Writable]
+      writable: F[Writable]
   )(implicit F: Async[F]): Pipe[F, Byte, INothing] =
     in =>
-      Stream.eval(writable).flatMap { writable =>
+      Stream.eval(writable.map(_.asInstanceOf[streamMod.Writable])).flatMap { writable =>
         def go(
             s: Stream[F, Byte]
         ): Pull[F, INothing, Unit] = s.pull.uncons.flatMap {
@@ -134,7 +134,7 @@ private[fs2] trait ioplatform {
         }.drain
       }
 
-  def mkWritable[F[_]](implicit F: Async[F]): Resource[F, (streamMod.Writable, Stream[F, Byte])] =
+  def mkWritable[F[_]](implicit F: Async[F]): Resource[F, (Writable, Stream[F, Byte])] =
     for {
       dispatcher <- Dispatcher[F]
       queue <- Queue.synchronous[F, Option[Chunk[Byte]]].toResource
@@ -197,6 +197,6 @@ private[fs2] trait ioplatform {
       stream = Stream
         .fromQueueNoneTerminatedChunk(queue)
         .concurrently(Stream.eval(error.get.flatMap(F.raiseError[Unit])))
-    } yield (writable, stream)
+    } yield (writable.asInstanceOf[Writable], stream)
 
 }

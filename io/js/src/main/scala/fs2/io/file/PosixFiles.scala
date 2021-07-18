@@ -335,7 +335,7 @@ object PosixFiles {
               path.toJS,
               fsMod.ReadStreamOptions().setFlags(flags.toString)
             )
-            .asInstanceOf[streamMod.Readable]
+            .asInstanceOf[Readable]
         )
       )
 
@@ -351,7 +351,7 @@ object PosixFiles {
                 .setStart(start.toDouble)
                 .setEnd((end - 1).toDouble)
             )
-            .asInstanceOf[streamMod.Readable]
+            .asInstanceOf[Readable]
         )
       )
 
@@ -425,7 +425,7 @@ object PosixFiles {
               path.toJS,
               fsMod.StreamOptions().setFlags(flags.toString).setMode(mode.mode.toDouble)
             )
-            .asInstanceOf[streamMod.Writable]
+            .asInstanceOf[Writable]
         )
       )
 
