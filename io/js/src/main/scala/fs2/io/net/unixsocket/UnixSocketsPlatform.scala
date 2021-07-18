@@ -77,11 +77,13 @@ private[unixsocket] trait UnixSocketsCompanionPlatform {
                 cb(Right(()))
             }
           )
-          _ <- Stream.resource(
-            registerListener[js.Error](server, nodeStrings.error)(_.once_error(_, _)) { e =>
-              dispatcher.unsafeRunAndForget(errored.complete(js.JavaScriptException(e)))
-            }
-          )
+          _ <- Stream
+            .resource(
+              registerListener[js.Error](server, nodeStrings.error)(_.once_error(_, _)) { e =>
+                dispatcher.unsafeRunAndForget(errored.complete(js.JavaScriptException(e)))
+              }
+            )
+            .concurrently(Stream.eval(errored.get.flatMap(F.raiseError[Unit])))
           _ <- Stream.bracket(
             if (deleteIfExists) PosixFiles[F].rm(Path(address.path), force = true) else F.unit
           )(_ => if (deleteOnClose) PosixFiles[F].rm(Path(address.path), force = true) else F.unit)
@@ -97,7 +99,6 @@ private[unixsocket] trait UnixSocketsCompanionPlatform {
           socket <- Stream
             .fromQueueUnterminated(queue)
             .flatMap(sock => Stream.resource(Socket.forAsync(sock)))
-            .concurrently(Stream.eval(errored.get.flatMap(F.raiseError[Unit])))
         } yield socket
 
     }

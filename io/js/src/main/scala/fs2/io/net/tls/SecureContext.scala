@@ -100,21 +100,21 @@ object SecureContext {
   }
   object SecureVersion {
     case object TLSv1 extends SecureVersion {
-      def toJS = tlsMod.SecureVersion.TLSv1
+      private[SecureContext] def toJS = tlsMod.SecureVersion.TLSv1
     }
     case object `TLSv1.1` extends SecureVersion {
-      def toJS = tlsMod.SecureVersion.TLSv1Dot1
+      private[SecureContext] def toJS = tlsMod.SecureVersion.TLSv1Dot1
     }
     case object `TLSv1.2` extends SecureVersion {
-      def toJS = tlsMod.SecureVersion.TLSv1Dot2
+      private[SecureContext] def toJS = tlsMod.SecureVersion.TLSv1Dot2
     }
     case object `TLSv1.3` extends SecureVersion {
-      def toJS = tlsMod.SecureVersion.TLSv1Dot3
+      private[SecureContext] def toJS = tlsMod.SecureVersion.TLSv1Dot3
     }
   }
 
   final case class Key(pem: Either[Chunk[Byte], String], passphrase: Option[String] = None) {
-    def toJS = {
+    private[SecureContext] def toJS = {
       val key = tlsMod.KeyObject(SecureContext.toJS(pem))
       passphrase.foreach(key.setPassphrase)
       key
@@ -122,7 +122,7 @@ object SecureContext {
   }
 
   final case class Pfx(buf: Either[Chunk[Byte], String], passphrase: Option[String] = None) {
-    def toJS = {
+    private[SecureContext] def toJS = {
       val pfx = tlsMod.PxfObject(SecureContext.toJS(buf))
       passphrase.foreach(pfx.setPassphrase)
       pfx
