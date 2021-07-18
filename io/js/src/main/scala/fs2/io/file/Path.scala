@@ -22,12 +22,13 @@
 package fs2
 package io.file
 
-import fs2.internal.jsdeps.node.pathMod
-import fs2.internal.jsdeps.node.fsMod
+import cats.kernel.Hash
 import cats.kernel.Monoid
 import cats.kernel.Order
-import cats.kernel.Hash
+import fs2.internal.jsdeps.node.fsMod
 import fs2.internal.jsdeps.node.osMod
+import fs2.internal.jsdeps.node.pathMod
+import fs2.internal._
 
 final class Path(private val path: String) extends AnyVal {
   def basename: Path = Path(pathMod.basename(path))
@@ -62,7 +63,7 @@ object Path {
 
     override def combine(x: Path, y: Path): Path = x / y
 
-    override def combineAll(as: IterableOnce[Path]): Path = Path.join(as.iterator.toSeq: _*)
+    override def combineAll(as: IterableOnce[Path]): Path = Path.join(as.toSeq: _*)
 
     override def eqv(x: Path, y: Path): Boolean = x.path == y.path
 
