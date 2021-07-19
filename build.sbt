@@ -128,14 +128,14 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
 lazy val root = project
   .in(file("."))
   .enablePlugins(NoPublishPlugin, SonatypeCiReleasePlugin)
-  .aggregate(coreJVM, coreJS, io.jvm, node, io.js, reactiveStreams, benchmark)
+  .aggregate(coreJVM, coreJS, io.jvm, node.js, io.js, reactiveStreams, benchmark)
 
 lazy val rootJVM = project
   .in(file("."))
   .enablePlugins(NoPublishPlugin)
   .aggregate(coreJVM, io.jvm, reactiveStreams, benchmark)
 lazy val rootJS =
-  project.in(file(".")).enablePlugins(NoPublishPlugin).aggregate(coreJS, node, io.js)
+  project.in(file(".")).enablePlugins(NoPublishPlugin).aggregate(coreJS, node.js, io.js)
 
 lazy val IntegrationTest = config("it").extend(Test)
 
@@ -201,9 +201,9 @@ lazy val coreJS = core.js
     scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule))
   )
 
-lazy val node = project
+lazy val node = crossProject(JSPlatform)
   .in(file("node"))
-  .enablePlugins(SbtOsgi, ScalablyTypedConverterGenSourcePlugin)
+  .enablePlugins(ScalablyTypedConverterGenSourcePlugin)
   .settings(
     name := "fs2-node",
     mimaPreviousArtifacts := Set.empty,
@@ -214,19 +214,7 @@ lazy val node = project
     Compile / npmDependencies += "@types/node" -> "16.0.0",
     useYarn := true,
     stOutputPackage := "fs2.internal.jsdeps",
-    stStdlib := List("es2020"),
-    OsgiKeys.exportPackage := Seq("fs2.internal.jsdeps.*"),
-    OsgiKeys.privatePackage := Seq(),
-    OsgiKeys.importPackage := {
-      val Some((major, minor)) = CrossVersion.partialVersion(scalaVersion.value)
-      Seq(
-        s"""scala.*;version="[$major.$minor,$major.${minor + 1})"""",
-        """fs2.*;version="${Bundle-Version}"""",
-        "*"
-      )
-    },
-    OsgiKeys.additionalHeaders := Map("-removeheaders" -> "Include-Resource,Private-Package"),
-    osgiSettings
+    stStdlib := List("es2020")
   )
 
 lazy val io = crossProject(JVMPlatform, JSPlatform)
@@ -259,7 +247,7 @@ lazy val io = crossProject(JVMPlatform, JSPlatform)
     useYarn := true
   )
   .dependsOn(core % "compile->compile;test->test")
-  .jsConfigure(_.dependsOn(node))
+  .jsConfigure(_.dependsOn(node.js))
 
 lazy val reactiveStreams = project
   .in(file("reactive-streams"))
