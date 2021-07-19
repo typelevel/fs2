@@ -1053,7 +1053,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   def evalFilter[F2[x] >: F[x]](f: O => F2[Boolean]): Stream[F2, O] =
     flatMap(o => Stream.eval(f(o)).ifM(Stream.emit(o), Stream.empty))
 
-  /** Like `filter`, but allows filtering based on an effect, with up to [[maxConcurrent]] concurrently running effects.
+  /** Like `filter`, but allows filtering based on an effect, with up to `maxConcurrent` concurrently running effects.
     * The ordering of emitted elements is unchanged.
     */
   def evalFilterAsync[F2[x] >: F[
@@ -1073,7 +1073,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   def evalFilterNot[F2[x] >: F[x]](f: O => F2[Boolean]): Stream[F2, O] =
     flatMap(o => Stream.eval(f(o)).ifM(Stream.empty, Stream.emit(o)))
 
-  /** Like `filterNot`, but allows filtering based on an effect, with up to [[maxConcurrent]] concurrently running effects.
+  /** Like `filterNot`, but allows filtering based on an effect, with up to `maxConcurrent` concurrently running effects.
     * The ordering of emitted elements is unchanged.
     */
   def evalFilterNotAsync[F2[x] >: F[
@@ -1156,7 +1156,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     flatMap(_ => s2)
 
   /** Flattens a stream of streams in to a single stream by concatenating each stream.
-    * See [[parJoin]] and [[parJoinUnbounded]] for concurrent flattening of 'n' streams.
+    * See `parJoin` and `parJoinUnbounded` for concurrent flattening of 'n' streams.
     */
   def flatten[F2[x] >: F[x], O2](implicit ev: O <:< Stream[F2, O2]): Stream[F2, O2] =
     flatMap(i => ev(i))
@@ -2559,7 +2559,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   )(f: (Stream[F, O], Stream[F2, O2]) => Stream[F2, O3]): Stream[F2, O3] =
     f(this, s2)
 
-  /** Fails this stream with a [[TimeoutException]] if it does not complete within given `timeout`. */
+  /** Fails this stream with a `TimeoutException` if it does not complete within given `timeout`. */
   def timeout[F2[x] >: F[x]: Temporal](
       timeout: FiniteDuration
   ): Stream[F2, O] =
@@ -2893,7 +2893,7 @@ object Stream extends StreamLowPriority {
     * between emitted values.
     *
     * @param period duration between emits of the resulting stream
-    * @param dampen whether missed periods result in 1 emitted tick or 1 per missed period, see [[fixedRate]] for more info
+    * @param dampen whether missed periods result in 1 emitted tick or 1 per missed period, see `fixedRate` for more info
     */
   def awakeEvery[F[_]](
       period: FiniteDuration,
@@ -3483,7 +3483,7 @@ object Stream extends StreamLowPriority {
   /** Like [[resource]] but does not introduce a scope, allowing finalization to occur after
     * subsequent appends or other scope-preserving transformations.
     *
-    * Scopes can be manually introduced via [[scope]] if desired.
+    * Scopes can be manually introduced via [[Stream#scope]] if desired.
     */
   def resourceWeak[F[_], O](r: Resource[F, O])(implicit F: MonadCancel[F, _]): Stream[F, O] =
     r match {

@@ -129,7 +129,7 @@ package object file {
   ): F[Boolean] =
     Files[F].exists(path, flags)
 
-  /** Get file permissions as set of [[PosixFilePermission]]
+  /** Get file permissions as set of `PosixFilePermission`.
     *
     * This will only work for POSIX supporting file systems
     */
@@ -140,7 +140,7 @@ package object file {
   ): F[Set[PosixFilePermission]] =
     Files[F].permissions(path, flags)
 
-  /** Set file permissions from set of [[PosixFilePermission]]
+  /** Set file permissions from set of `PosixFilePermission`.
     *
     * This will only work for POSIX supporting file systems
     */
@@ -273,13 +273,13 @@ package object file {
   ): F[Path] =
     Files[F].createDirectories(path, flags)
 
-  /** Creates a stream of [[Path]]s inside a directory.
+  /** Creates a stream of `Path`s inside a directory.
     */
   @deprecated("Use Files[F].directoryStream", "3.0.0")
   def directoryStream[F[_]: Async](path: Path): Stream[F, Path] =
     Files[F].directoryStream(path)
 
-  /** Creates a stream of [[Path]]s inside a directory, filtering the results by the given predicate.
+  /** Creates a stream of `Path`s inside a directory, filtering the results by the given predicate.
     */
   @deprecated("Use Files[F].directoryStream", "3.0.0")
   def directoryStream[F[_]: Async](
@@ -288,7 +288,7 @@ package object file {
   ): Stream[F, Path] =
     Files[F].directoryStream(path, filter)
 
-  /** Creates a stream of [[Path]]s inside a directory which match the given glob.
+  /** Creates a stream of `Path`s inside a directory which match the given glob.
     */
   @deprecated("Use Files[F].directoryStream", "3.0.0")
   def directoryStream[F[_]: Async](
@@ -297,13 +297,13 @@ package object file {
   ): Stream[F, Path] =
     Files[F].directoryStream(path, glob)
 
-  /** Creates a stream of [[Path]]s contained in a given file tree. Depth is unlimited.
+  /** Creates a stream of `Path`s contained in a given file tree. Depth is unlimited.
     */
   @deprecated("Use Files[F].walk", "3.0.0")
   def walk[F[_]: Async](start: Path): Stream[F, Path] =
     Files[F].walk(start)
 
-  /** Creates a stream of [[Path]]s contained in a given file tree, respecting the supplied options. Depth is unlimited.
+  /** Creates a stream of `Path`s contained in a given file tree, respecting the supplied options. Depth is unlimited.
     */
   @deprecated("Use Files[F].walk", "3.0.0")
   def walk[F[_]: Async](
@@ -312,7 +312,7 @@ package object file {
   ): Stream[F, Path] =
     Files[F].walk(start, options)
 
-  /** Creates a stream of [[Path]]s contained in a given file tree down to a given depth.
+  /** Creates a stream of `Path`s contained in a given file tree down to a given depth.
     */
   @deprecated("Use Files[F].walk", "3.0.0")
   def walk[F[_]: Async](

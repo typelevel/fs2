@@ -652,7 +652,8 @@ object Pull extends PullLowPriority {
   ): Pull[F, O, Unit] =
     view match {
       case _: EvalView[F, O] => fmoc
-      case bv: BindView[F, O, Unit] =>
+      case bv0: BindView[F, O, _] =>
+        val bv = bv0.asInstanceOf[BindView[F, O, Unit]]
         fmoc match {
           case r: Terminal[Unit] =>
             try bv(r)
@@ -676,7 +677,7 @@ object Pull extends PullLowPriority {
       catch { case NonFatal(e) => Fail(e) }
   }
 
-  @tailrec
+  @tailrec @nowarn("cat=unchecked")
   private def bindBindAux[F[_], O, X, Y](
       bibi: BindBind[F, O, X, Y],
       tx: Terminal[X]
