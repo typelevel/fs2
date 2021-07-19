@@ -72,15 +72,15 @@ trait Files[F[_]] {
     */
   def deleteDirectoryRecursively(path: Path, options: Set[FileVisitOption] = Set.empty): F[Unit]
 
-  /** Creates a stream of [[Path]]s inside a directory.
+  /** Creates a stream of `Path`s inside a directory.
     */
   def directoryStream(path: Path): Stream[F, Path]
 
-  /** Creates a stream of [[Path]]s inside a directory, filtering the results by the given predicate.
+  /** Creates a stream of `Path`s inside a directory, filtering the results by the given predicate.
     */
   def directoryStream(path: Path, filter: Path => Boolean): Stream[F, Path]
 
-  /** Creates a stream of [[Path]]s inside a directory which match the given glob.
+  /** Creates a stream of `Path`s inside a directory which match the given glob.
     */
   def directoryStream(path: Path, glob: String): Stream[F, Path]
 
@@ -144,7 +144,7 @@ trait Files[F[_]] {
   /** Creates a `FileHandle` for the supplied `FileChannel`. */
   def openFileChannel(channel: F[FileChannel]): Resource[F, FileHandle[F]]
 
-  /** Get file permissions as set of [[PosixFilePermission]].
+  /** Get file permissions as set of `PosixFilePermission`.
     *
     * Note: this will only work for POSIX supporting file systems.
     */
@@ -164,7 +164,7 @@ trait Files[F[_]] {
     */
   def readRange(path: Path, chunkSize: Int, start: Long, end: Long): Stream[F, Byte]
 
-  /** Set file permissions from set of [[PosixFilePermission]].
+  /** Set file permissions from set of `PosixFilePermission`.
     *
     * Note: this will only work for POSIX supporting file systems.
     */
@@ -190,7 +190,7 @@ trait Files[F[_]] {
       pollDelay: FiniteDuration = 1.second
   ): Stream[F, Byte]
 
-  /** Creates a [[Resource]] which can be used to create a temporary file.
+  /** Creates a `Resource` which can be used to create a temporary file.
     *  The file is created during resource allocation, and removed during its release.
     *
     * @param dir the directory which the temporary file will be created in. Pass in None to use the default system temp directory
@@ -206,7 +206,7 @@ trait Files[F[_]] {
       attributes: Seq[FileAttribute[_]] = Seq.empty
   ): Resource[F, Path]
 
-  /** Creates a [[Resource]] which can be used to create a temporary directory.
+  /** Creates a `Resource` which can be used to create a temporary directory.
     *  The directory is created during resource allocation, and removed during its release.
     *
     * @param dir the directory which the temporary directory will be created in. Pass in None to use the default system temp directory
@@ -220,15 +220,15 @@ trait Files[F[_]] {
       attributes: Seq[FileAttribute[_]] = Seq.empty
   ): Resource[F, Path]
 
-  /** Creates a stream of [[Path]]s contained in a given file tree. Depth is unlimited.
+  /** Creates a stream of `Path`s contained in a given file tree. Depth is unlimited.
     */
   def walk(start: Path): Stream[F, Path]
 
-  /** Creates a stream of [[Path]]s contained in a given file tree, respecting the supplied options. Depth is unlimited.
+  /** Creates a stream of `Path`s contained in a given file tree, respecting the supplied options. Depth is unlimited.
     */
   def walk(start: Path, options: Seq[FileVisitOption]): Stream[F, Path]
 
-  /** Creates a stream of [[Path]]s contained in a given file tree down to a given depth.
+  /** Creates a stream of `Path`s contained in a given file tree down to a given depth.
     */
   def walk(start: Path, maxDepth: Int, options: Seq[FileVisitOption] = Seq.empty): Stream[F, Path]
 

@@ -148,13 +148,6 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
   )
   .settings(
     name := "fs2-core",
-    Compile / scalafmt / unmanagedSources := (Compile / scalafmt / unmanagedSources).value
-      .filterNot(_.toString.endsWith("NotGiven.scala")),
-    Test / scalafmt / unmanagedSources := (Test / scalafmt / unmanagedSources).value
-      .filterNot(_.toString.endsWith("NotGiven.scala"))
-  )
-  .settings(
-    name := "fs2-core",
     libraryDependencies ++= Seq(
       "org.typelevel" %%% "cats-core" % "2.6.1",
       "org.typelevel" %%% "cats-laws" % "2.6.1" % Test,
@@ -167,17 +160,23 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
       "org.typelevel" %%% "discipline-munit" % "1.0.9" % Test
     ),
     Compile / unmanagedSourceDirectories ++= {
-      val major = if (isDotty.value) "-3" else "-2"
+      val major = if (scalaVersion.value.startsWith("3")) "-3" else "-2"
       List(CrossType.Pure, CrossType.Full).flatMap(
         _.sharedSrcDir(baseDirectory.value, "main").toList.map(f => file(f.getPath + major))
       )
     },
     Test / unmanagedSourceDirectories ++= {
-      val major = if (isDotty.value) "-3" else "-2"
+      val major = if (scalaVersion.value.startsWith("3")) "-3" else "-2"
       List(CrossType.Pure, CrossType.Full).flatMap(
         _.sharedSrcDir(baseDirectory.value, "test").toList.map(f => file(f.getPath + major))
       )
-    }
+    },
+    Compile / doc / scalacOptions ++= (if (scalaVersion.value.startsWith("2.")) Seq("-nowarn")
+                                       else Nil),
+    Compile / scalafmt / unmanagedSources := (Compile / scalafmt / unmanagedSources).value
+      .filterNot(_.toString.endsWith("NotGiven.scala")),
+    Test / scalafmt / unmanagedSources := (Test / scalafmt / unmanagedSources).value
+      .filterNot(_.toString.endsWith("NotGiven.scala"))
   )
 
 lazy val coreJVM = core.jvm

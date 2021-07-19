@@ -105,7 +105,7 @@ object SignallingRef {
       SignallingRef.of(initial)
   }
 
-  /** Builds a `SignallingRef` value for data types that are [[Concurrent]]
+  /** Builds a `SignallingRef` value for data types that are `Concurrent`.
     *
     * This builder uses the
     * [[https://typelevel.org/cats/guidelines.html#partially-applied-type-params Partially-Applied Type]]
