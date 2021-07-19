@@ -19,11 +19,33 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2.io.net.unixsocket
+package fs2
+package io
 
-import fs2.io.file.Path
+import cats.effect.IO
+import fs2.Fs2Suite
+import org.scalacheck.effect.PropF.forAllF
 
-private[unixsocket] trait UnixSocketAddressCompanionPlatform { self: UnixSocketAddress.type =>
-  // Cannot use apply b/c of AnyVal-related erasure
-  def of(path: Path): UnixSocketAddress = apply(path.toString)
+class IoPlatformSuite extends Fs2Suite {
+
+  test("to/from Readable") {
+    forAllF { bytes: Stream[Pure, Byte] =>
+      toReadable(bytes.covary[IO]).use { readable =>
+        fromReadable(IO.pure(readable)).compile.toVector.assertEquals(bytes.compile.toVector)
+      }
+    }
+  }
+
+  test("mk/from Writable") {
+    forAllF { bytes: Stream[Pure, Byte] =>
+      mkWritable[IO].use { case (writable, stream) =>
+        stream
+          .concurrently(bytes.covary[IO].through(fromWritable(IO.pure(writable))))
+          .compile
+          .toVector
+          .assertEquals(bytes.compile.toVector)
+      }
+    }
+  }
+
 }

@@ -19,11 +19,18 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2.io.net.unixsocket
+package fs2.io
 
-import fs2.io.file.Path
+import scala.scalajs.js
 
-private[unixsocket] trait UnixSocketAddressCompanionPlatform { self: UnixSocketAddress.type =>
-  // Cannot use apply b/c of AnyVal-related erasure
-  def of(path: Path): UnixSocketAddress = apply(path.toString)
-}
+/** A facade for Node.js `stream.Readable`. Cast to/from your own bindings.
+  * @see [[https://nodejs.org/api/stream.html]]
+  */
+@js.native
+sealed trait Readable extends js.Object
+
+/** A facade for Node.js `stream.Writable`. Cast to/from your own bindings.
+  * @see [[https://nodejs.org/api/stream.html]]
+  */
+@js.native
+sealed trait Writable extends js.Object

@@ -32,7 +32,7 @@ import scala.concurrent.ExecutionContext
 import org.scalacheck.{Arbitrary, Gen, Shrink}
 import org.scalacheck.effect.PropF.forAllF
 
-class IoSuitePlatform extends Fs2Suite {
+class IoPlatformSuite extends Fs2Suite {
 
   group("readOutputStream") {
     test("writes data and terminates when `f` returns") {

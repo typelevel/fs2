@@ -19,11 +19,10 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2.io.net.unixsocket
+package fs2.io.file
 
-import fs2.io.file.Path
+import cats.effect.kernel.Async
 
-private[unixsocket] trait UnixSocketAddressCompanionPlatform { self: UnixSocketAddress.type =>
-  // Cannot use apply b/c of AnyVal-related erasure
-  def of(path: Path): UnixSocketAddress = apply(path.toString)
+private[file] trait ReadFilesCompanionPlatform {
+  implicit def forAsync[F[_]: Async]: ReadFiles[F] = Files.forAsync[F]
 }

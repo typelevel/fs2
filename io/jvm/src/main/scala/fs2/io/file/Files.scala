@@ -28,6 +28,8 @@ import scala.concurrent.duration._
 import cats.effect.kernel.{Async, Resource, Sync}
 import cats.effect.std.Hotswap
 import cats.syntax.all._
+import fs2.io.file.ReadFiles.UnsealedReadFiles
+import fs2.io.file.ReadFiles.TemporalReadFiles
 
 import java.io.IOException
 import java.nio.channels.FileChannel
@@ -41,7 +43,7 @@ import fs2.io.CollectionCompat._
   *
   * An instance is available for any effect `F` which has an `Async[F]` instance.
   */
-trait Files[F[_]] {
+trait Files[F[_]] extends UnsealedReadFiles[F] {
 
   /** Copies a file from the source to the target path,
     *
@@ -153,6 +155,10 @@ trait Files[F[_]] {
   /** Reads all data from the file at the specified `java.nio.file.Path`.
     */
   def readAll(path: Path, chunkSize: Int): Stream[F, Byte]
+
+  /** Returns a `ReadCursor` for the specified path.
+    */
+  def readCursor(path: Path): Resource[F, ReadCursor[F]] = readCursor(path, Nil)
 
   /** Returns a `ReadCursor` for the specified path. The `READ` option is added to the supplied flags.
     */
@@ -297,7 +303,7 @@ object Files {
 
   implicit def forAsync[F[_]: Async]: Files[F] = new AsyncFiles[F]
 
-  private final class AsyncFiles[F[_]: Async] extends Files[F] {
+  private final class AsyncFiles[F[_]: Async] extends TemporalReadFiles[F] with Files[F] {
 
     def copy(source: Path, target: Path, flags: Seq[CopyOption]): F[Path] =
       Sync[F].blocking(JFiles.copy(source, target, flags: _*))
@@ -405,21 +411,11 @@ object Files {
         ReadCursor(fileHandle, 0L)
       }
 
-    def readRange(path: Path, chunkSize: Int, start: Long, end: Long): Stream[F, Byte] =
-      Stream.resource(readCursor(path)).flatMap { cursor =>
-        cursor.seek(start).readUntil(chunkSize, end).void.stream
-      }
-
     def setPermissions(path: Path, permissions: Set[PosixFilePermission]): F[Path] =
       Sync[F].blocking(JFiles.setPosixFilePermissions(path, permissions.asJava))
 
     def size(path: Path): F[Long] =
       Sync[F].blocking(JFiles.size(path))
-
-    def tail(path: Path, chunkSize: Int, offset: Long, pollDelay: FiniteDuration): Stream[F, Byte] =
-      Stream.resource(readCursor(path)).flatMap { cursor =>
-        cursor.seek(offset).tail(chunkSize, pollDelay).void.stream
-      }
 
     def tempFile(
         dir: Option[Path],
@@ -517,40 +513,7 @@ object Files {
       def newCursor(file: FileHandle[F]): F[WriteCursor[F]] =
         writeCursorFromFileHandle(file, flags.contains(StandardOpenOption.APPEND))
 
-      def go(
-          fileHotswap: Hotswap[F, FileHandle[F]],
-          cursor: WriteCursor[F],
-          acc: Long,
-          s: Stream[F, Byte]
-      ): Pull[F, Unit, Unit] = {
-        val toWrite = (limit - acc).min(Int.MaxValue.toLong).toInt
-        s.pull.unconsLimit(toWrite).flatMap {
-          case Some((hd, tl)) =>
-            val newAcc = acc + hd.size
-            cursor.writePull(hd).flatMap { nc =>
-              if (newAcc >= limit)
-                Pull
-                  .eval {
-                    fileHotswap
-                      .swap(openNewFile)
-                      .flatMap(newCursor)
-                  }
-                  .flatMap(nc => go(fileHotswap, nc, 0L, tl))
-              else
-                go(fileHotswap, nc, newAcc, tl)
-            }
-          case None => Pull.done
-        }
-      }
-
-      in =>
-        Stream
-          .resource(Hotswap(openNewFile))
-          .flatMap { case (fileHotswap, fileHandle) =>
-            Stream.eval(newCursor(fileHandle)).flatMap { cursor =>
-              go(fileHotswap, cursor, 0L, in).stream.drain
-            }
-          }
+      internal.WriteRotate(openNewFile, newCursor, limit)
     }
   }
 

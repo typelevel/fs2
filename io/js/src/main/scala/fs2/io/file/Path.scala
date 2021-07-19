@@ -20,26 +20,57 @@
  */
 
 package fs2
-package io.file
+package io
+package file
 
-import fs2.internal.jsdeps.node.fsMod.PathLike
-import fs2.io.internal.ByteChunkOps._
+import cats.kernel.Hash
+import cats.kernel.Monoid
+import cats.kernel.Order
+import fs2.internal.jsdeps.node.fsMod
+import fs2.internal.jsdeps.node.osMod
+import fs2.internal.jsdeps.node.pathMod
+import CollectionCompat._
 
-sealed abstract class Path {
-  private[file] def toPathLike: PathLike
+final class Path(private val path: String) extends AnyVal {
+  def basename: Path = Path(pathMod.basename(path))
+  def basename(ext: String): Path = Path(pathMod.basename(path, ext))
+  def dirname: Path = Path(pathMod.dirname(path))
+  def extname: String = pathMod.extname(path)
+  def isAbsolute: Boolean = pathMod.isAbsolute(path)
+  def normalize: Path = Path(pathMod.normalize(path))
+  def relativeTo(that: Path): Path = Path(pathMod.relative(this.path, that.path))
+
+  def /(that: Path): Path = Path.join(this, that)
+
+  override def toString: String = path
+
+  private[file] def toJS: fsMod.PathLike = path.asInstanceOf[fsMod.PathLike]
 }
 
 object Path {
+  def apply(path: String): Path = new Path(path)
 
-  def apply(path: String): Path = StringPath(path)
-  def apply(path: Chunk[Byte]): Path = BufferPath(path)
+  def join(paths: Path*): Path = Path(pathMod.join(paths.map(_.path): _*))
+  def resolve(paths: Path*): Path = Path(pathMod.resolve(paths.map(_.path): _*))
 
-  private final case class StringPath(path: String) extends Path {
-    override private[file] def toPathLike: PathLike = path.asInstanceOf[PathLike]
+  val empty = Path("")
+  val tmpdir = Path(osMod.tmpdir())
+
+  implicit def instances: Monoid[Path] with Order[Path] with Hash[Path] = algebra
+
+  private object algebra extends Monoid[Path] with Order[Path] with Hash[Path] {
+
+    override def empty: Path = Path.empty
+
+    override def combine(x: Path, y: Path): Path = x / y
+
+    override def combineAll(as: IterableOnce[Path]): Path = Path.join(as.toSeq: _*)
+
+    override def eqv(x: Path, y: Path): Boolean = x.path == y.path
+
+    override def compare(x: Path, y: Path): Int = x.path.compare(y.path)
+
+    override def hash(x: Path): Int = x.path.hashCode()
+
   }
-
-  private final case class BufferPath(path: Chunk[Byte]) extends Path {
-    override private[file] def toPathLike: PathLike = path.toBuffer.asInstanceOf[PathLike]
-  }
-
 }

@@ -24,6 +24,8 @@ package fs2.io
 import scala.collection.JavaConverters._
 
 private[fs2] object CollectionCompat {
+  type IterableOnce[+A] = TraversableOnce[A]
+
   implicit class JIteratorOps[A](private val self: java.util.Iterator[A]) extends AnyVal {
     def asScala: Iterator[A] = asScalaIterator(self)
   }

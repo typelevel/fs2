@@ -26,7 +26,7 @@ import scala.concurrent.duration._
 
 import cats.effect.IO
 
-class UnixSocketsSuite extends Fs2Suite {
+class UnixSocketsSuite extends Fs2Suite with UnixSocketsSuitePlatform {
 
   def testProvider(provider: String)(implicit sockets: UnixSockets[IO]) =
     test(s"echoes - $provider") {
@@ -52,6 +52,4 @@ class UnixSocketsSuite extends Fs2Suite {
         .compile
         .drain
     }
-  if (JdkUnixSockets.supported) testProvider("jdk")(JdkUnixSockets.forAsync[IO])
-  if (JnrUnixSockets.supported) testProvider("jnr")(JnrUnixSockets.forAsync[IO])
 }

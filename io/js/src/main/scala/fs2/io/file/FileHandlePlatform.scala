@@ -23,12 +23,11 @@ package fs2
 package io
 package file
 
-import fs2.internal.jsdeps.node.fsPromisesMod
 import cats.effect.kernel.Async
 import cats.syntax.all._
-import scala.scalajs.js.typedarray.ArrayBuffer
-import scala.scalajs.js.typedarray.TypedArrayBuffer
-import scala.scalajs.js.typedarray.TypedArrayBufferOps._
+import fs2.internal.jsdeps.node.fsPromisesMod
+
+import scala.scalajs.js.typedarray.Uint8Array
 
 private[file] trait FileHandlePlatform[F[_]]
 
@@ -42,12 +41,13 @@ private[file] trait FileHandleCompanionPlatform {
         F.fromPromise(F.delay(fsPromisesMod.fdatasync(fd)))
 
       override def read(numBytes: Int, offset: Long): F[Option[Chunk[Byte]]] =
-        F.fromPromise(F.delay(fd.read(new ArrayBuffer(numBytes), offset.toDouble, numBytes))).map {
-          res =>
-            if (res.bytesRead < 0) None
-            else if (res.bytesRead == 0) Some(Chunk.empty)
-            else
-              Some(Chunk.byteBuffer(TypedArrayBuffer.wrap(res.buffer).limit(res.bytesRead.toInt)))
+        F.fromPromise(
+          F.delay(fd.read(new Uint8Array(numBytes), 0, numBytes.toDouble, offset.toDouble))
+        ).map { res =>
+          if (res.bytesRead < 0) None
+          else if (res.bytesRead == 0) Some(Chunk.empty)
+          else
+            Some(Chunk.uint8Array(res.buffer).take(res.bytesRead.toInt))
         }
 
       override def size: F[Long] =
@@ -57,7 +57,8 @@ private[file] trait FileHandleCompanionPlatform {
         F.fromPromise(F.delay(fd.truncate(size.toDouble)))
 
       override def write(bytes: Chunk[Byte], offset: Long): F[Int] =
-        F.fromPromise(F.delay(fd.write(bytes.toByteBuffer.arrayBuffer(), offset.toDouble)))
-          .map(_.bytesWritten.toInt)
+        F.fromPromise(
+          F.delay(fd.write(bytes.toUint8Array, 0, bytes.size.toDouble, offset.toDouble))
+        ).map(_.bytesWritten.toInt)
     }
 }
