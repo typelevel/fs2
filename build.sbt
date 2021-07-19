@@ -209,7 +209,6 @@ lazy val node = crossProject(JSPlatform)
     mimaPreviousArtifacts := Set.empty,
     scalacOptions += "-nowarn",
     Compile / doc / sources := Nil,
-    Compile / packageDoc / publishArtifact := false,
     scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule)),
     Compile / npmDependencies += "@types/node" -> "16.0.0",
     useYarn := true,
