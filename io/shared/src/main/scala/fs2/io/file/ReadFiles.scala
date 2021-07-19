@@ -64,7 +64,9 @@ sealed trait ReadFiles[F[_]] {
 
 }
 
-object ReadFiles {
+object ReadFiles extends ReadFilesCompanionPlatform {
+
+  def apply[F[_]](implicit read: ReadFiles[F]): ReadFiles[F] = read
 
   private[file] trait UnsealedReadFiles[F[_]] extends ReadFiles[F]
 
