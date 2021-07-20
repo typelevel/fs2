@@ -131,7 +131,7 @@ private[fs2] trait ioplatform {
               }
             } >> go(tail)
           case None =>
-            Pull.eval(F.async_[Unit](cb => writable.end(() => cb(Right(()))))) >> Pull.done
+            Pull.eval(F.async_[Unit](cb => writable.end(() => cb(Right(())))))
         }
 
         go(in).stream.handleErrorWith { ex =>
