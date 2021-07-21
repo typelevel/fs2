@@ -45,7 +45,11 @@ private[fs2] trait ioplatform {
     Stream
       .resource(for {
         readable <- Resource.makeCase(readable.map(_.asInstanceOf[streamMod.Readable])) {
-          case (readable, Resource.ExitCase.Succeeded) => F.delay(readable.destroy())
+          case (readable, Resource.ExitCase.Succeeded) =>
+            if (!readable.readableEnded)
+              F.delay(readable.destroy())
+            else
+              F.unit
           case (readable, Resource.ExitCase.Errored(ex)) =>
             F.delay(readable.destroy(js.Error(ex.getMessage())))
           case (readable, Resource.ExitCase.Canceled) => F.delay(readable.destroy())
@@ -126,7 +130,8 @@ private[fs2] trait ioplatform {
                 )
               }
             } >> go(tail)
-          case None => Pull.eval(F.delay(writable.end())) >> Pull.done
+          case None =>
+            Pull.eval(F.async_[Unit](cb => writable.end(() => cb(Right(())))))
         }
 
         go(in).stream.handleErrorWith { ex =>
