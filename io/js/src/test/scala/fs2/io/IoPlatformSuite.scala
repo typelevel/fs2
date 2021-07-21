@@ -33,7 +33,7 @@ class IoPlatformSuite extends Fs2Suite {
       bytes
         .through(toReadable[IO])
         .flatMap { readable =>
-          fromReadable(IO.pure(readable))
+          readReadable(IO.pure(readable))
         }
         .compile
         .toVector
@@ -43,8 +43,8 @@ class IoPlatformSuite extends Fs2Suite {
 
   test("mk/from Writable") {
     forAllF { bytes: Stream[Pure, Byte] =>
-      mkWritable[IO] { writable =>
-        bytes.covary[IO].through(fromWritable(IO.pure(writable))).compile.drain
+      readWritable[IO] { writable =>
+        bytes.covary[IO].through(writeWritable(IO.pure(writable))).compile.drain
       }.compile.toVector.assertEquals(bytes.compile.toVector)
     }
   }

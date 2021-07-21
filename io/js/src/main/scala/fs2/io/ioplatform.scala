@@ -41,7 +41,7 @@ import scala.scalajs.js.|
 
 private[fs2] trait ioplatform {
 
-  def fromReadable[F[_]](readable: F[Readable])(implicit F: Async[F]): Stream[F, Byte] =
+  def readReadable[F[_]](readable: F[Readable])(implicit F: Async[F]): Stream[F, Byte] =
     Stream
       .resource(for {
         readable <- Resource.makeCase(readable.map(_.asInstanceOf[streamMod.Readable])) {
@@ -112,7 +112,7 @@ private[fs2] trait ioplatform {
       }
     } yield readable.asInstanceOf[Readable]
 
-  def fromWritable[F[_]](
+  def writeWritable[F[_]](
       writable: F[Writable]
   )(implicit F: Async[F]): Pipe[F, Byte, INothing] =
     in =>
@@ -137,7 +137,7 @@ private[fs2] trait ioplatform {
         }.drain
       }
 
-  def mkWritable[F[_]: Async](f: Writable => F[Unit]): Stream[F, Byte] =
+  def readWritable[F[_]: Async](f: Writable => F[Unit]): Stream[F, Byte] =
     Stream.resource(mkWritable).flatMap { case (writable, stream) =>
       stream.concurrently(Stream.eval(f(writable)))
     }
