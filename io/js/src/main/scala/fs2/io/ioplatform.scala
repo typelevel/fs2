@@ -48,10 +48,10 @@ private[fs2] trait ioplatform {
       .resource(for {
         readable <- Resource.makeCase(readable.map(_.asInstanceOf[streamMod.Readable])) {
           case (readable, Resource.ExitCase.Succeeded) =>
-            if (!readable.readableEnded & destroyIfNotEnded)
-              F.delay(readable.destroy())
-            else
-              F.unit
+            F.delay {
+              if (!readable.readableEnded & destroyIfNotEnded)
+                readable.destroy()
+            }
           case (readable, Resource.ExitCase.Errored(ex)) =>
             F.delay(readable.destroy(js.Error(ex.getMessage())))
           case (readable, Resource.ExitCase.Canceled) => F.delay(readable.destroy())
