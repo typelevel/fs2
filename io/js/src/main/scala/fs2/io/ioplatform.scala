@@ -73,7 +73,10 @@ private[fs2] trait ioplatform {
           )
       }
 
-  def toReadable[F[_]](s: Stream[F, Byte])(implicit F: Async[F]): Resource[F, Readable] =
+  def toReadable[F[_]: Async]: Pipe[F, Byte, Readable] =
+    s => Stream.resource(toReadableResource(s))
+
+  def toReadableResource[F[_]](s: Stream[F, Byte])(implicit F: Async[F]): Resource[F, Readable] =
     for {
       dispatcher <- Dispatcher[F]
       semaphore <- Semaphore[F](1).toResource
@@ -134,7 +137,12 @@ private[fs2] trait ioplatform {
         }.drain
       }
 
-  def mkWritable[F[_]](implicit F: Async[F]): Resource[F, (Writable, Stream[F, Byte])] =
+  def mkWritable[F[_]: Async](f: Writable => F[Unit]): Stream[F, Byte] =
+    Stream.resource(mkWritable).flatMap { case (writable, stream) =>
+      stream.concurrently(Stream.eval(f(writable)))
+    }
+
+  private def mkWritable[F[_]](implicit F: Async[F]): Resource[F, (Writable, Stream[F, Byte])] =
     for {
       dispatcher <- Dispatcher[F]
       queue <- Queue.synchronous[F, Option[Chunk[Byte]]].toResource
