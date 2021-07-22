@@ -132,7 +132,7 @@ sealed abstract class Pull[+F[_], +O, +R] {
     *   just as the new pull `f(r)` does.
     * - If `this` pull fails or is interrupted, then the composed pull
     *   terminates with that same failure or interruption.
-    * - If evaluating `f(r)` to build the throws an exception, the result
+    * - If evaluating `f(r)` to build the pull throws an exception, the result
     *   is a pull that fails with that exception.
     *
     * The composed pull emits all outputs emitted by `this` pull,
