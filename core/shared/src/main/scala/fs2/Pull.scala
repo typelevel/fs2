@@ -214,7 +214,7 @@ sealed abstract class Pull[+F[_], +O, +R] {
     *   success, error, interruption, is how the combined pull ends.
     *
     * - If `this` pull fails, the `post` pull is run next. If the `post` pull
-    *   ends fails or is interrupted, that is how the combined pull ends.
+    *   ends, fails, or is interrupted, that is how the combined pull ends.
     *   However, if the `post` pull succeeds, then the combined `onComplete` pull
     *   fails again with the error that was raised from `this` pull.
     *
