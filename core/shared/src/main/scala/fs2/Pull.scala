@@ -218,7 +218,7 @@ sealed abstract class Pull[+F[_], +O, +R] {
     *   However, if the `post` pull succeeds, then the combined `onComplete` pull
     *   fails again with the error that was raised from `this` pull.
     *
-    * - If `this` pull is interrupted, then the `post` error is never run
+    * - If `this` pull is interrupted, then the `post` pull is never run
     *   and the combined pull ends with that same interruption.
     */
   def onComplete[F2[x] >: F[x], O2 >: O, R2](post: => Pull[F2, O2, R2]): Pull[F2, O2, R2] =
