@@ -243,7 +243,7 @@ sealed abstract class Pull[+F[_], +O, +R] {
   def attempt: Pull[F, O, Either[Throwable, R]] =
     map(r => Right(r)).handleErrorWith(t => Succeeded(Left(t)))
 
-  /** Maps the result of this pull with the `f` mapping funciton.
+  /** Maps the result of this pull with the `f` mapping function.
     *
     * If `this` pull ends in success with a result `r`, then the function `f`
     * is applied to its result `r`, and the image `f(r)` is the result of the
