@@ -192,7 +192,7 @@ sealed abstract class Pull[+F[_], +O, +R] {
     * - If an error occurs, the supplied function is used to build a new handler
     *   pull, and it starts running it. However, the pull cannot be resumed from
     *   the point at which the error arose.
-    * - If no error is raised, the resulting  pull just does what `this` pull does.
+    * - If no error is raised, the resulting pull just does what `this` pull does.
     */
   def handleErrorWith[F2[x] >: F[x], O2 >: O, R2 >: R](
       handler: Throwable => Pull[F2, O2, R2]
@@ -248,7 +248,7 @@ sealed abstract class Pull[+F[_], +O, +R] {
     * If `this` pull ends in success with a result `r`, then the function `f`
     * is applied to its result `r`, and the image `f(r)` is the result of the
     * mapped pull. However, if the evaluation of `f(r)` throws an error, the
-    * mapped  pull fails with that error.
+    * mapped pull fails with that error.
     *
     * Note: for some simple cases of Pull, the  `map` function may be eagerly
     * applied, or discarded, _before_ the pull starts being run.
@@ -305,7 +305,7 @@ object Pull extends PullLowPriority {
       * in streams that otherwise would execute in constant memory.
       *
       * May only be called on pulls whose result type is `Unit`.
-      * Use `p.void.stream` to explicitly  ignore the result of a pull.
+      * Use `p.void.stream` to explicitly ignore the result of a pull.
       */
     def streamNoScope: Stream[F, O] = new Stream(self)
   }
