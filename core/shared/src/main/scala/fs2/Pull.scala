@@ -250,7 +250,7 @@ sealed abstract class Pull[+F[_], +O, +R] {
     * mapped pull. However, if the evaluation of `f(r)` throws an error, the
     * mapped pull fails with that error.
     *
-    * Note: for some simple cases of Pull, the  `map` function may be eagerly
+    * Note: for some simple cases of Pull, the `map` function may be eagerly
     * applied, or discarded, _before_ the pull starts being run.
     *
     * If `this` pull terminates abnormally, so does the mapped pull.
