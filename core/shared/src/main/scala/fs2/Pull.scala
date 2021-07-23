@@ -1306,10 +1306,16 @@ object Pull extends PullLowPriority {
   private[this] def transformWith[F[_], O, R, S](p: Pull[F, O, R])(
       f: Terminal[R] => Pull[F, O, S]
   ): Pull[F, O, S] =
-    new Bind[F, O, R, S](p) {
-      def cont(r: Terminal[R]): Pull[F, O, S] =
+    p match {
+      case r: Terminal[R] =>
         try f(r)
         catch { case NonFatal(e) => Fail(e) }
+      case _ =>
+        new Bind[F, O, R, S](p) {
+          def cont(r: Terminal[R]): Pull[F, O, S] =
+            try f(r)
+            catch { case NonFatal(e) => Fail(e) }
+        }
     }
 
   /** Provides syntax for pure pulls based on `cats.Id`. */
