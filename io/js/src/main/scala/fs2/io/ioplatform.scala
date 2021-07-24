@@ -65,6 +65,9 @@ private[fs2] trait ioplatform {
         _ <- registerListener0(readable, nodeStrings.end)(_.on_end(_, _)) { () =>
           dispatcher.unsafeRunAndForget(ended.complete(Right(())))
         }
+        _ <- registerListener0(readable, nodeStrings.close)(_.on_close(_, _)) { () =>
+          dispatcher.unsafeRunAndForget(ended.complete(Right(())))
+        }
         _ <- registerListener[js.Error](readable, nodeStrings.error)(_.on_error(_, _)) { e =>
           dispatcher.unsafeRunAndForget(ended.complete(Left(js.JavaScriptException(e))))
         }
@@ -193,19 +196,18 @@ private[fs2] trait ioplatform {
               }
               .setDestroy { (writable, err, cb) =>
                 dispatcher.unsafeRunAndForget {
-                  Option(err).fold(F.unit) { err =>
-                    error
-                      .complete(js.JavaScriptException(err))
-                      .attempt
-                      .flatMap(e =>
-                        F.delay(
-                          cb(
-                            e.left.toOption
-                              .fold[js.Error | Null](null)(e => js.Error(e.getMessage()))
-                          )
+                  error
+                    .complete(js.JavaScriptException(err))
+                    .attempt
+                    .flatMap(e =>
+                      F.delay(
+                        cb(
+                          e.left.toOption
+                            .fold[js.Error | Null](null)(e => js.Error(e.getMessage()))
                         )
                       )
-                  }
+                    )
+
                 }
               }
           )
