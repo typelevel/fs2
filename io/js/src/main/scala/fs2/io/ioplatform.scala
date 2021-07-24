@@ -26,7 +26,6 @@ import cats.effect.kernel.Async
 import cats.effect.kernel.Resource
 import cats.effect.std.Dispatcher
 import cats.effect.std.Queue
-import cats.effect.std.Semaphore
 import cats.effect.syntax.all._
 import cats.syntax.all._
 import fs2.internal.jsdeps.node.bufferMod
@@ -88,28 +87,13 @@ private[fs2] trait ioplatform {
   def toReadableResource[F[_]](s: Stream[F, Byte])(implicit F: Async[F]): Resource[F, Readable] =
     for {
       dispatcher <- Dispatcher[F]
-      semaphore <- Semaphore[F](1).toResource
-      ref <- F.ref(s).toResource
-      read = semaphore.permit.use { _ =>
-        Pull
-          .eval(ref.get)
-          .flatMap(_.pull.uncons)
-          .flatMap {
-            case Some((head, tail)) =>
-              Pull.eval(ref.set(tail)) >> Pull.output(head)
-            case None =>
-              Pull.done
-          }
-          .stream
-          .chunks
-          .compile
-          .last
-      }
+      queue <- Queue.synchronous[F, Option[Chunk[Byte]]].toResource
+      _ <- s.enqueueNoneTerminatedChunks(queue).compile.drain.background
       readable <- Resource.make {
         F.pure {
           new streamMod.Readable(streamMod.ReadableOptions().setRead { (readable, size) =>
             dispatcher.unsafeRunAndForget(
-              read.attempt.flatMap {
+              queue.take.attempt.flatMap {
                 case Left(ex)     => F.delay(readable.destroy(js.Error(ex.getMessage)))
                 case Right(chunk) => F.delay(readable.push(chunk.map(_.toUint8Array).orNull)).void
               }
