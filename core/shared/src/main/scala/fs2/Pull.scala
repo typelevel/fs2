@@ -617,26 +617,24 @@ object Pull extends PullLowPriority {
     override def map[R](f: INothing => R): Terminal[R] = this
   }
 
-  private abstract class Bind[+F[_], +O, X, +R](val step: Pull[F, O, X]) extends Pull[F, O, R] {
+  private sealed trait ContP[-Y, +F[_], +O, +X] extends (Terminal[Y] => Pull[F, O, X]) {
+    def apply(r: Terminal[Y]): Pull[F, O, X] = cont(r)
+    protected def cont(r: Terminal[Y]): Pull[F, O, X]
+  }
+
+  private object IdContP extends ContP[Unit, Pure, INothing, Unit] {
+    def cont(r: Terminal[Unit]): Pull[Pure, INothing, Unit] = r
+  }
+
+  private abstract class Bind[+F[_], +O, X, +R](val step: Pull[F, O, X])
+      extends Pull[F, O, R]
+      with ContP[X, F, O, R] {
     def cont(r: Terminal[X]): Pull[F, O, R]
     def delegate: Bind[F, O, X, R] = this
   }
 
   /* Unrolled view of a `Pull` structure. */
   private sealed trait ViewL[+F[_], +O]
-
-  private sealed abstract case class View[+F[_], +O, X](step: Action[F, O, X])
-      extends ViewL[F, O]
-      with (Terminal[X] => Pull[F, O, Unit])
-
-  private final class EvalView[+F[_], +O](step: Action[F, O, Unit]) extends View[F, O, Unit](step) {
-    def apply(r: Terminal[Unit]): Pull[F, O, Unit] = r
-  }
-
-  private final class BindView[+F[_], +O, Y](step: Action[F, O, Y], val b: Bind[F, O, Y, Unit])
-      extends View[F, O, Y](step) {
-    def apply(r: Terminal[Y]): Pull[F, O, Unit] = b.cont(r)
-  }
 
   // This class is not created by the combinators in the public Pull API, only during compilation
   private class DelegateBind[F[_], O, Y](
@@ -651,14 +649,13 @@ object Pull extends PullLowPriority {
       view: Cont[Unit, F, O]
   ): Pull[F, O, Unit] =
     view match {
-      case _: EvalView[F, O] => fmoc
-      case bv0: BindView[F, O, _] =>
-        val bv = bv0.asInstanceOf[BindView[F, O, Unit]]
+      case IdContP => fmoc
+      case bv: Bind[F, O, Unit, Unit] =>
         fmoc match {
           case r: Terminal[Unit] =>
             try bv(r)
             catch { case NonFatal(e) => Fail(e) }
-          case _ => new DelegateBind[F, O, Unit](fmoc, bv.b.delegate)
+          case _ => new DelegateBind[F, O, Unit](fmoc, bv.delegate)
         }
       case _ =>
         new Bind[F, O, Unit, Unit](fmoc) {
@@ -700,7 +697,7 @@ object Pull extends PullLowPriority {
    * Each operation also generates an output of type `R` that is used
    * as control information for the rest of the interpretation or compilation.
    */
-  private abstract class Action[+F[_], +O, +R] extends Pull[F, O, R]
+  private abstract class Action[+F[_], +O, +R] extends Pull[F, O, R] with ViewL[F, O]
 
   /* An action that emits a non-empty chunk of outputs. */
   private final case class Output[+O](values: Chunk[O]) extends Action[Pure, O, Unit]
@@ -832,17 +829,22 @@ object Pull extends PullLowPriority {
   )(foldChunk: (B, Chunk[O]) => B)(implicit
       F: MonadError[F, Throwable]
   ): F[B] = {
+    var contP: ContP[Any, Nothing, INothing, Unit] = null
 
     @tailrec
     def viewL[G[_], X](free: Pull[G, X, Unit]): ViewL[G, X] =
       free match {
-        case e: Action[G, X, Unit] => new EvalView[G, X](e)
+        case e: Action[G, X, Unit] =>
+          contP = IdContP.asInstanceOf[ContP[Any, Nothing, INothing, Unit]]
+          e
         case b: Bind[G, X, y, Unit] =>
           b.step match {
             case c: Bind[G, X, x, _] =>
               viewL(new BindBind[G, X, x, y](c.step, c.delegate, b.delegate))
-            case e: Action[G, X, y2] => new BindView(e, b.delegate)
-            case r: Terminal[_]      => viewL(b.cont(r))
+            case e: Action[G, X, y2] =>
+              contP = b.delegate.asInstanceOf[ContP[Any, Nothing, INothing, Unit]]
+              e
+            case r: Terminal[_] => viewL(b.cont(r))
           }
         case r: Terminal[Unit] => r
       }
@@ -862,8 +864,9 @@ object Pull extends PullLowPriority {
             .getOrElse(failed.error)
           Fail(mixed)
 
-        case view: View[G, X, _] =>
-          view.step match {
+        case action: Action[G, X, x] =>
+          val view = contP.asInstanceOf[Cont[x, G, X]]
+          action match {
             case cs: CloseScope =>
               // Inner scope is getting closed b/c a parent was interrupted
               val cl: Pull[G, X, Unit] = CanceledScope(cs.scopeId, interruption)
@@ -889,7 +892,7 @@ object Pull extends PullLowPriority {
         stream: Pull[G, X, Unit]
     ): F[End] = {
 
-      def interruptGuard(scope: Scope[F], view: Cont[Nothing, G, X])(next: => F[End]): F[End] =
+      def interruptGuard(scope: Scope[F], view: Cont[INothing, G, X])(next: => F[End]): F[End] =
         scope.isInterrupted.flatMap {
           case None => next
           case Some(outcome) =>
@@ -904,8 +907,9 @@ object Pull extends PullLowPriority {
       def innerMapOutput[K[_], C, D](stream: Pull[K, C, Unit], fun: C => D): Pull[K, D, Unit] =
         viewL(stream) match {
           case r: Terminal[_] => r.asInstanceOf[Terminal[Unit]]
-          case v: View[K, C, x] =>
-            val mstep: Pull[K, D, x] = (v.step: Action[K, C, x]) match {
+          case action: Action[K, C, x] =>
+            val v = contP.asInstanceOf[ContP[x, K, C, Unit]]
+            val mstep: Pull[K, D, x] = action match {
               case o: Output[_] =>
                 try Output(o.values.map(fun))
                 catch { case NonFatal(t) => Fail(t) }
@@ -919,7 +923,6 @@ object Pull extends PullLowPriority {
               case m: MapOutput[k, b, c] => innerMapOutput(m.stream, fun.compose(m.fun))
 
               case fm: FlatMapOutput[k, b, c] =>
-                // end result: a Pull[K, D, x]
                 val innerCont: b => Pull[k, D, Unit] =
                   (x: b) => innerMapOutput[k, c, D](fm.fun(x), fun)
                 FlatMapOutput[k, b, D](fm.stream, innerCont)
@@ -1185,15 +1188,16 @@ object Pull extends PullLowPriority {
         case failed: Fail     => runner.fail(failed.error)
         case int: Interrupted => runner.interrupted(int)
 
-        case view: View[G, X, y] =>
-          view.step match {
+        case action: Action[G, X, y] =>
+          val view: Cont[y, G, X] = contP.asInstanceOf[Cont[y, G, X]]
+          action match {
             case output: Output[_] =>
               interruptGuard(scope, view)(
                 runner.out(output.values, scope, view(unit))
               )
 
             case fmout: FlatMapOutput[g, z, _] => // y = Unit
-              goFlatMapOut[z](fmout, view.asInstanceOf[View[g, X, Unit]])
+              goFlatMapOut[z](fmout, view.asInstanceOf[Cont[Unit, g, X]])
 
             case tst: Translate[h, g, _] => // y = Unit
               val composed: h ~> F = translation.asInstanceOf[g ~> F].compose[h](tst.fk)
@@ -1209,13 +1213,13 @@ object Pull extends PullLowPriority {
 
             case u0: Uncons[g, y] =>
               val u = u0.asInstanceOf[Uncons[G, y]]
-              val v = view.asInstanceOf[View[G, X, Option[(Chunk[y], Pull[G, y, Unit])]]]
+              val v = view.asInstanceOf[Cont[Option[(Chunk[y], Pull[G, y, Unit])], G, X]]
               // a Uncons is run on the same scope, without shifting.
               go(scope, extendedTopLevelScope, translation, new UnconsRunR(v), u.stream)
 
             case s0: StepLeg[g, y] =>
               val s = s0.asInstanceOf[StepLeg[G, y]]
-              val v = view.asInstanceOf[View[G, X, Option[Stream.StepLeg[G, y]]]]
+              val v = view.asInstanceOf[Cont[Option[Stream.StepLeg[G, y]], G, X]]
               scope.shiftScope(s.scope, s.toString).flatMap { stepScope =>
                 go(stepScope, extendedTopLevelScope, translation, new StepLegRunR(v), s.stream)
               }
@@ -1256,7 +1260,9 @@ object Pull extends PullLowPriority {
               case Succeeded(_)        => F.raiseError(e)
               case Fail(e2)            => F.raiseError(CompositeFailure(e2, e))
               case Interrupted(_, err) => F.raiseError(err.fold(e)(t => CompositeFailure(e, t)))
-              case v: View[F, O, _]    => go[F, O, B](scope, None, initFk, self, v(Fail(e)))
+              case _: Action[F, O, _] =>
+                val v = contP.asInstanceOf[ContP[Unit, F, O, Unit]]
+                go[F, O, B](scope, None, initFk, self, v(Fail(e)))
             }
         }
     }
