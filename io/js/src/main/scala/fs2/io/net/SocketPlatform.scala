@@ -25,138 +25,100 @@ package net
 
 import cats.data.OptionT
 import cats.effect.kernel.Async
+import cats.effect.kernel.Ref
 import cats.effect.kernel.Resource
-import cats.effect.std.Dispatcher
 import cats.effect.std.Semaphore
-import cats.effect.syntax.all._
 import cats.syntax.all._
 import com.comcast.ip4s.IpAddress
-import com.comcast.ip4s.SocketAddress
-import fs2.concurrent.SignallingRef
-import fs2.io.internal.ByteChunkOps._
-import fs2.io.internal.EventEmitterOps._
-import fs2.internal.jsdeps.node.bufferMod.global.Buffer
-import fs2.internal.jsdeps.node.netMod
-import fs2.internal.jsdeps.node.nodeStrings
-
-import scala.annotation.nowarn
-import scala.scalajs.js
-import cats.effect.std.Hotswap
-import cats.effect.kernel.Ref
-import cats.effect.kernel.Deferred
 import com.comcast.ip4s.Port
+import com.comcast.ip4s.SocketAddress
+import fs2.internal.jsdeps.node.netMod
+import fs2.internal.jsdeps.node.streamMod
 
-private[net] trait SocketPlatform[F[_]] {
-  private[net] def underlying: F[netMod.Socket]
-  // This lets us swap in a TLS Socket
-  private[net] def swap(socket: netMod.Socket): F[Unit]
-}
+import scala.scalajs.js
+
+private[net] trait SocketPlatform[F[_]]
 
 private[net] trait SocketCompanionPlatform {
 
   private[net] def forAsync[F[_]](
       sock: netMod.Socket
   )(implicit F: Async[F]): Resource[F, Socket[F]] =
-    for {
-      dispatcher <- Dispatcher[F]
-      underlying <- F.ref(sock).toResource
-      buffer <- SignallingRef.of(Chunk.empty[Byte]).toResource
-      read <- Semaphore[F](1).toResource
-      ended <- F.deferred[Either[Throwable, Unit]].toResource
-      listeners <- Hotswap(Resource.unit[F]).map(_._1) // Dummy, we'll use swap method below
-      socket <- Resource.make(
-        F.delay(new AsyncSocket[F](underlying, listeners, buffer, read, ended, dispatcher))
-      ) { _ =>
-        F.delay {
-          if (!sock.destroyed)
-            sock.asInstanceOf[js.Dynamic].destroy(): @nowarn
-        }
+    Resource.make {
+      (
+        Semaphore[F](1),
+        F.ref(readReadable(F.delay(sock.asInstanceOf[Readable]), destroyIfNotEnded = false))
+      ).mapN(new AsyncSocket[F](sock, _, _))
+    } { _ =>
+      F.delay {
+        if (!sock.destroyed)
+          sock.asInstanceOf[streamMod.Readable].destroy()
       }
-      _ <- socket.swap(sock).toResource
-    } yield socket
+    }
 
-  private final class AsyncSocket[F[_]](
-      sock: Ref[F, netMod.Socket],
-      listeners: Hotswap[F, Unit],
-      buffer: SignallingRef[F, Chunk[Byte]],
+  private[net] class AsyncSocket[F[_]](
+      sock: netMod.Socket,
       readSemaphore: Semaphore[F],
-      ended: Deferred[F, Either[Throwable, Unit]],
-      dispatcher: Dispatcher[F]
+      readStream: Ref[F, Stream[F, Byte]]
   )(implicit F: Async[F])
       extends Socket[F] {
 
-    private[net] def underlying: F[netMod.Socket] = sock.get
-
-    private[net] def swap(nextSock: netMod.Socket): F[Unit] = readSemaphore.permit.use { _ =>
-      listeners.swap {
-        registerListener[Buffer](nextSock, nodeStrings.data)(_.on_data(_, _)) { data =>
-          dispatcher.unsafeRunAndForget(
-            buffer.update { buffer =>
-              buffer ++ data.toChunk
-            }
-          )
-        } >> registerListener0(nextSock, nodeStrings.end)(_.on_end(_, _)) { () =>
-          dispatcher.unsafeRunAndForget(ended.complete(Right(())))
-        } >> registerListener[js.Error](nextSock, nodeStrings.error)(_.on_error(_, _)) { error =>
-          dispatcher.unsafeRunAndForget(
-            ended.complete(Left(js.JavaScriptException(error)))
-          )
-        }
-      } >> sock.set(nextSock)
-    }
-
-    private def read(minBytes: Int, maxBytes: Int): F[Chunk[Byte]] =
+    private def read(
+        f: Stream[F, Byte] => Pull[F, INothing, Option[(Chunk[Byte], Stream[F, Byte])]]
+    ): F[Option[Chunk[Byte]]] =
       readSemaphore.permit.use { _ =>
-        (Stream.eval(buffer.get) ++
-          (Stream.bracket(sock.get.flatTap(s => F.delay(s.resume())))(sock =>
-            F.delay(sock.pause())
-          ) >> buffer.discrete))
-          .filter(_.size >= minBytes)
-          .merge(Stream.eval(ended.get.rethrow))
-          .head
+        Pull
+          .eval(readStream.get)
+          .flatMap(f)
+          .flatMap {
+            case Some((chunk, tail)) =>
+              Pull.eval(readStream.set(tail)) >> Pull.output1(chunk)
+            case None => Pull.done
+          }
+          .stream
           .compile
-          .drain *> buffer.modify(_.splitAt(maxBytes).swap)
+          .last
       }
 
     override def read(maxBytes: Int): F[Option[Chunk[Byte]]] =
-      OptionT.liftF(read(1, maxBytes)).filter(_.nonEmpty).value
+      read(_.pull.unconsLimit(maxBytes))
 
     override def readN(numBytes: Int): F[Chunk[Byte]] =
-      read(numBytes, numBytes)
+      OptionT(read(_.pull.unconsN(numBytes))).getOrElse(Chunk.empty)
 
-    override def reads: Stream[F, Byte] =
-      Stream.repeatEval(read(1, Int.MaxValue)).takeWhile(_.nonEmpty).flatMap(Stream.chunk)
-
-    override def endOfOutput: F[Unit] = sock.get.flatMap(s => F.delay(s.end()))
-
-    override def isOpen: F[Boolean] = sock.get.flatMap { sock =>
-      F.delay(sock.asInstanceOf[js.Dynamic].readyState.asInstanceOf[String] == "open")
+    override def reads: Stream[F, Byte] = Stream.resource(readSemaphore.permit).flatMap { _ =>
+      Stream
+        .eval(readStream.get)
+        .flatten
+        // Reset the stream to a direct wrapper around the socket
+        .onFinalize(
+          readStream
+            .set(readReadable(F.delay(sock.asInstanceOf[Readable]), destroyIfNotEnded = false))
+        )
     }
+
+    override def endOfOutput: F[Unit] = F.delay(sock.end())
+
+    override def isOpen: F[Boolean] =
+      F.delay(sock.asInstanceOf[js.Dynamic].readyState.asInstanceOf[String] == "open")
 
     override def remoteAddress: F[SocketAddress[IpAddress]] =
       for {
-        sock <- sock.get
-        remoteIp <- F.delay(sock.remoteAddress.toOption.flatMap(IpAddress.fromString).get)
-        remotePort <- F.delay(sock.remotePort.toOption.map(_.toInt).flatMap(Port.fromInt).get)
-      } yield SocketAddress(remoteIp, remotePort)
+        ip <- F.delay(sock.remoteAddress.toOption.flatMap(IpAddress.fromString).get)
+        port <- F.delay(sock.remotePort.toOption.map(_.toInt).flatMap(Port.fromInt).get)
+      } yield SocketAddress(ip, port)
 
     override def localAddress: F[SocketAddress[IpAddress]] =
       for {
-        sock <- sock.get
-        remoteIp <- F.delay(IpAddress.fromString(sock.localAddress).get)
-        remotePort <- F.delay(Port.fromInt(sock.localPort.toInt).get)
-      } yield SocketAddress(remoteIp, remotePort)
+        ip <- F.delay(IpAddress.fromString(sock.localAddress).get)
+        port <- F.delay(Port.fromInt(sock.localPort.toInt).get)
+      } yield SocketAddress(ip, port)
 
-    override def write(bytes: Chunk[Byte]): F[Unit] = sock.get.flatMap { sock =>
-      F.async_[Unit] { cb =>
-        sock.write(
-          bytes.toUint8Array,
-          e => cb(e.toLeft(()).leftMap(js.JavaScriptException(_)))
-        ): @nowarn
-      }.void
-    }
+    override def write(bytes: Chunk[Byte]): F[Unit] =
+      Stream.chunk(bytes).through(writes).compile.drain
 
     override def writes: Pipe[F, Byte, INothing] =
-      _.chunks.foreach(write)
+      writeWritable(sock.asInstanceOf[Writable].pure, endAfterUse = false)
   }
+
 }
