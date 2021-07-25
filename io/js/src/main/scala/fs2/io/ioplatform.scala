@@ -53,26 +53,29 @@ private[fs2] trait ioplatform {
             }
           case (readable, Resource.ExitCase.Errored(ex)) =>
             F.delay(readable.destroy(js.Error(ex.getMessage())))
-          case (readable, Resource.ExitCase.Canceled) => F.delay(readable.destroy())
+          case (readable, Resource.ExitCase.Canceled) =>
+            F.delay(readable.destroy())
         }
         dispatcher <- Dispatcher[F]
-        queue <- Queue.synchronous[F, Unit].toResource
-        ended <- F.deferred[Either[Throwable, Unit]].toResource
+        queue <- Queue.synchronous[F, Option[Unit]].toResource
+        error <- F.deferred[Throwable].toResource
         _ <- registerListener0(readable, nodeStrings.readable)(_.on_readable(_, _)) { () =>
-          dispatcher.unsafeRunAndForget(queue.offer(()))
+          dispatcher.unsafeRunAndForget(queue.offer(Some(())))
         }
         _ <- registerListener0(readable, nodeStrings.end)(_.on_end(_, _)) { () =>
-          dispatcher.unsafeRunAndForget(ended.complete(Right(())))
+          dispatcher.unsafeRunAndForget(queue.offer(None))
         }
         _ <- registerListener0(readable, nodeStrings.close)(_.on_close(_, _)) { () =>
-          dispatcher.unsafeRunAndForget(ended.complete(Right(())))
+          dispatcher.unsafeRunAndForget(queue.offer(None))
         }
         _ <- registerListener[js.Error](readable, nodeStrings.error)(_.on_error(_, _)) { e =>
-          dispatcher.unsafeRunAndForget(ended.complete(Left(js.JavaScriptException(e))))
+          dispatcher.unsafeRunAndForget(error.complete(js.JavaScriptException(e)))
         }
-      } yield (readable, queue, ended))
-      .flatMap { case (readable, queue, ended) =>
-        Stream.fromQueueUnterminated(queue).interruptWhen(ended) >>
+      } yield (readable, queue, error))
+      .flatMap { case (readable, queue, error) =>
+        Stream
+          .fromQueueNoneTerminated(queue)
+          .concurrently(Stream.eval(error.get.flatMap(F.raiseError[Unit]))) >>
           Stream.evalUnChunk(
             F.delay(
               Option(readable.read().asInstanceOf[bufferMod.global.Buffer])
@@ -204,4 +207,92 @@ private[fs2] trait ioplatform {
         .concurrently(Stream.eval(error.get.flatMap(F.raiseError[Unit])))
     } yield (writable.asInstanceOf[Writable], stream)
 
+  def toDuplexAndRead[F[_]](f: Duplex => F[Unit])(implicit F: Async[F]): Pipe[F, Byte, Byte] =
+    in =>
+      Stream
+        .resource(for {
+          dispatcher <- Dispatcher[F]
+          readQueue <- Queue.synchronous[F, Option[Chunk[Byte]]].toResource
+          writeQueue <- Queue.synchronous[F, Option[Chunk[Byte]]].toResource
+          error <- F.deferred[Throwable].toResource
+          duplex <- Resource.make {
+            F.delay {
+              new streamMod.Duplex(
+                streamMod
+                  .DuplexOptions()
+                  .setRead { (duplex, size) =>
+                    val readable = duplex.asInstanceOf[streamMod.Readable]
+                    dispatcher.unsafeRunAndForget(
+                      readQueue.take.attempt.flatMap {
+                        case Left(ex) =>
+                          F.delay(readable.destroy(js.Error(ex.getMessage)))
+                        case Right(chunk) =>
+                          F.delay(readable.push(chunk.map(_.toUint8Array).orNull)).void
+                      }
+                    )
+                  }
+                  .setWrite { (duplex, chunk, encoding, cb) =>
+                    dispatcher.unsafeRunAndForget(
+                      writeQueue
+                        .offer(Some(Chunk.uint8Array(chunk.asInstanceOf[Uint8Array])))
+                        .attempt
+                        .flatMap(e =>
+                          F.delay(
+                            cb(
+                              e.left.toOption
+                                .fold[js.Error | Null](null)(e => js.Error(e.getMessage()))
+                            )
+                          )
+                        )
+                    )
+                  }
+                  .setFinal { (duplex, cb) =>
+                    dispatcher.unsafeRunAndForget(
+                      writeQueue
+                        .offer(None)
+                        .attempt
+                        .flatMap(e =>
+                          F.delay(
+                            cb(
+                              e.left.toOption
+                                .fold[js.Error | Null](null)(e => js.Error(e.getMessage()))
+                            )
+                          )
+                        )
+                    )
+                  }
+                  .setDestroy { (duplex, err, cb) =>
+                    dispatcher.unsafeRunAndForget {
+                      error
+                        .complete(js.JavaScriptException(err))
+                        .attempt
+                        .flatMap(e =>
+                          F.delay(
+                            cb(
+                              e.left.toOption
+                                .fold[js.Error | Null](null)(e => js.Error(e.getMessage()))
+                            )
+                          )
+                        )
+
+                    }
+                  }
+              )
+            }
+          } { duplex =>
+            F.delay {
+              val readable = duplex.asInstanceOf[streamMod.Readable]
+              val writable = duplex.asInstanceOf[streamMod.Writable]
+              if (!readable.readableEnded | !writable.writableEnded)
+                readable.destroy()
+            }
+          }
+          drainIn = in.enqueueNoneTerminatedChunks(readQueue).drain
+          out = Stream
+            .fromQueueNoneTerminatedChunk(writeQueue)
+            .concurrently(Stream.eval(error.get.flatMap(F.raiseError[Unit])))
+        } yield (duplex, drainIn, out))
+        .flatMap { case (duplex, in, out) =>
+          Stream.eval(f(duplex.asInstanceOf[Duplex])).drain.merge(in).merge(out)
+        }
 }

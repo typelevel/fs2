@@ -49,4 +49,22 @@ class IoPlatformSuite extends Fs2Suite {
     }
   }
 
+  test("toDuplexAndRead") {
+    forAllF { (bytes1: Stream[Pure, Byte], bytes2: Stream[Pure, Byte]) =>
+      bytes1
+        .through {
+          toDuplexAndRead[IO] { duplex =>
+            readReadable[IO](IO.pure(duplex))
+              .merge(bytes2.covary[IO].through(writeWritable[IO](IO.pure(duplex))))
+              .compile
+              .toVector
+              .assertEquals(bytes1.compile.toVector)
+          }
+        }
+        .compile
+        .toVector
+        .assertEquals(bytes2.compile.toVector)
+    }
+  }
+
 }
