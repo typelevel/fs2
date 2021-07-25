@@ -139,7 +139,7 @@ private[fs2] trait ioplatform {
         Stream.eval(f(duplex)).drain.merge(out)
       }
 
-  private def mkDuplex[F[_]](
+  private[io] def mkDuplex[F[_]](
       in: Stream[F, Byte]
   )(implicit F: Async[F]): Resource[F, (Duplex, Stream[F, Byte])] =
     for {
