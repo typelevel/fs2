@@ -28,15 +28,17 @@ import cats.effect.kernel.Async
 import cats.effect.kernel.Resource
 import cats.effect.std.Dispatcher
 import cats.effect.syntax.all._
+import cats.syntax.all._
 import fs2.concurrent.SignallingRef
 import fs2.internal.jsdeps.node.bufferMod
+import fs2.internal.jsdeps.node.eventsMod
 import fs2.internal.jsdeps.node.netMod
-import fs2.internal.jsdeps.node.nodeStrings
 import fs2.internal.jsdeps.node.streamMod
 import fs2.internal.jsdeps.node.tlsMod
 import fs2.io.internal.ByteChunkOps._
-import fs2.io.internal.EventEmitterOps._
 import fs2.io.internal.SuspendedStream
+
+import scala.scalajs.js
 
 private[tls] trait TLSSocketPlatform[F[_]]
 
@@ -44,27 +46,45 @@ private[tls] trait TLSSocketCompanionPlatform { self: TLSSocket.type =>
 
   private[tls] def forAsync[F[_]](
       socket: Socket[F],
-      upgrade: streamMod.Duplex => F[tlsMod.TLSSocket]
+      upgrade: (
+          streamMod.Duplex,
+          js.Function1[bufferMod.global.Buffer, Unit],
+          js.Function1[js.Error, Unit]
+      ) => F[tlsMod.TLSSocket]
   )(implicit F: Async[F]): Resource[F, TLSSocket[F]] =
     for {
+      dispatcher <- Dispatcher[F]
       duplexOut <- mkDuplex(socket.reads)
       (duplex, out) = duplexOut
       _ <- out.through(socket.writes).compile.drain.background
-      tlsSock <- upgrade(duplex.asInstanceOf[streamMod.Duplex]).toResource
+      sessionRef <- SignallingRef[F].of(Option.empty[SSLSession]).toResource
+      sessionListener = { session =>
+        dispatcher.unsafeRunAndForget(sessionRef.set(Some(session.toChunk)))
+      }: js.Function1[bufferMod.global.Buffer, Unit]
+      errorDef <- F.deferred[Throwable].toResource
+      errorListener = { error =>
+        dispatcher.unsafeRunAndForget(errorDef.complete(js.JavaScriptException(error)))
+      }: js.Function1[js.Error, Unit]
+      tlsSock <- Resource.make {
+        upgrade(duplex.asInstanceOf[streamMod.Duplex], sessionListener, errorListener)
+      } { tlsSock =>
+        F.delay {
+          val eventEmitter = tlsSock.asInstanceOf[eventsMod.EventEmitter]
+          eventEmitter.removeListener(
+            "session",
+            sessionListener.asInstanceOf[js.Function1[Any, Unit]]
+          )
+          eventEmitter.removeListener("error", errorListener.asInstanceOf[js.Function1[Any, Unit]])
+        }
+      }
       readStream <- SuspendedStream(
         readReadable(
           F.delay(tlsSock.asInstanceOf[Readable]),
           destroyIfNotEnded = false,
           destroyIfCanceled = false
         )
-      )
-      dispatcher <- Dispatcher[F]
-      sessionRef <- SignallingRef[F].of(Option.empty[SSLSession]).toResource
-      _ <- registerListener[bufferMod.global.Buffer](tlsSock, nodeStrings.session)(
-        _.on_session(_, _)
-      ) { session =>
-        dispatcher.unsafeRunAndForget(sessionRef.set(Some(session.toChunk)))
-      }
+      ).race(errorDef.get.flatMap(F.raiseError[SuspendedStream[F, Byte]]).toResource)
+        .map(_.merge)
     } yield new AsyncTLSSocket(
       tlsSock,
       readStream,
