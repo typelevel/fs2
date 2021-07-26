@@ -33,6 +33,7 @@ import fs2.concurrent.SignallingRef
 import fs2.internal.jsdeps.node.bufferMod
 import fs2.internal.jsdeps.node.eventsMod
 import fs2.internal.jsdeps.node.netMod
+import fs2.internal.jsdeps.node.nodeStrings
 import fs2.internal.jsdeps.node.streamMod
 import fs2.internal.jsdeps.node.tlsMod
 import fs2.io.internal.ByteChunkOps._
@@ -46,11 +47,7 @@ private[tls] trait TLSSocketCompanionPlatform { self: TLSSocket.type =>
 
   private[tls] def forAsync[F[_]](
       socket: Socket[F],
-      upgrade: (
-          streamMod.Duplex,
-          js.Function1[bufferMod.global.Buffer, Unit],
-          js.Function1[js.Error, Unit]
-      ) => F[tlsMod.TLSSocket]
+      upgrade: streamMod.Duplex => tlsMod.TLSSocket
   )(implicit F: Async[F]): Resource[F, TLSSocket[F]] =
     for {
       dispatcher <- Dispatcher[F]
@@ -66,7 +63,12 @@ private[tls] trait TLSSocketCompanionPlatform { self: TLSSocket.type =>
         dispatcher.unsafeRunAndForget(errorDef.complete(js.JavaScriptException(error)))
       }: js.Function1[js.Error, Unit]
       tlsSock <- Resource.make {
-        upgrade(duplex.asInstanceOf[streamMod.Duplex], sessionListener, errorListener)
+        F.delay {
+          val tlsSock = upgrade(duplex.asInstanceOf[streamMod.Duplex])
+          tlsSock.on_session(nodeStrings.session, sessionListener)
+          tlsSock.asInstanceOf[netMod.Socket].on_error(nodeStrings.error, errorListener)
+          tlsSock
+        }
       } { tlsSock =>
         F.delay {
           val eventEmitter = tlsSock.asInstanceOf[eventsMod.EventEmitter]
@@ -82,7 +84,7 @@ private[tls] trait TLSSocketCompanionPlatform { self: TLSSocket.type =>
           F.delay(tlsSock.asInstanceOf[Readable]),
           destroyIfNotEnded = false,
           destroyIfCanceled = false
-        )
+        ).concurrently(Stream.eval(errorDef.get.flatMap(F.raiseError[Unit])))
       ).race(errorDef.get.flatMap(F.raiseError[SuspendedStream[F, Byte]]).toResource)
         .map(_.merge)
     } yield new AsyncTLSSocket(
