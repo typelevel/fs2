@@ -25,9 +25,15 @@ package net
 
 import cats.effect.kernel.Async
 import cats.effect.kernel.Resource
+import cats.effect.syntax.all._
 import cats.syntax.all._
-import com.comcast.ip4s.{Host, Port}
+import com.comcast.ip4s.Host
+import com.comcast.ip4s.Port
 import fs2.internal.jsdeps.node.dgramMod
+import fs2.internal.jsdeps.node.eventsMod
+import fs2.internal.jsdeps.node.nodeStrings
+
+import scala.scalajs.js
 
 private[net] trait DatagramSocketGroupCompanionPlatform {
   type ProtocolFamily = dgramMod.SocketType
@@ -48,20 +54,32 @@ private[net] trait DatagramSocketGroupCompanionPlatform {
         port: Option[Port],
         options: List[DatagramSocketOption],
         protocolFamily: Option[ProtocolFamily]
-    ): Resource[F, DatagramSocket[F]] = Resource
-      .eval {
-        for {
-          sock <- F.delay(dgramMod.createSocket(protocolFamily.getOrElse(dgramMod.SocketType.udp4)))
-          _ <- F.async_[Unit] { cb =>
-            val options = port.foldLeft(
-              address.foldLeft(dgramMod.BindOptions())((opt, addr) => opt.setAddress(addr.toString))
-            )((opt, port) => opt.setPort(port.value.toDouble))
-            sock.bind(options, () => cb(Right(())))
+    ): Resource[F, DatagramSocket[F]] = for {
+      sock <- F
+        .delay(dgramMod.createSocket(protocolFamily.getOrElse(dgramMod.SocketType.udp4)))
+        .flatTap(setSocketOptions(options))
+        .toResource
+      socket <- DatagramSocket.forAsync[F](sock)
+      _ <- F
+        .async_[Unit] { cb =>
+          val errorListener: js.Function1[js.Error, Unit] = { error =>
+            cb(Left(js.JavaScriptException(error)))
           }
-          _ <- setSocketOptions(options)(sock)
-        } yield sock
-      }
-      .flatMap(DatagramSocket.forAsync[F])
-
+          sock.once_error(nodeStrings.error, errorListener)
+          val options = port.foldLeft(
+            address.foldLeft(dgramMod.BindOptions())((opt, addr) => opt.setAddress(addr.toString))
+          )((opt, port) => opt.setPort(port.value.toDouble))
+          sock.bind(
+            options,
+            { () =>
+              sock
+                .asInstanceOf[eventsMod.EventEmitter]
+                .removeListener("error", errorListener.asInstanceOf[js.Function1[Any, Unit]])
+              cb(Right(()))
+            }
+          )
+        }
+        .toResource
+    } yield socket
   }
 }
