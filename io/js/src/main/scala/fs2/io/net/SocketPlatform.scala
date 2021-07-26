@@ -31,12 +31,12 @@ import cats.syntax.all._
 import com.comcast.ip4s.IpAddress
 import com.comcast.ip4s.Port
 import com.comcast.ip4s.SocketAddress
+import fs2.internal.jsdeps.node.eventsMod
 import fs2.internal.jsdeps.node.netMod
 import fs2.internal.jsdeps.node.streamMod
 import fs2.io.internal.SuspendedStream
 
 import scala.scalajs.js
-import fs2.internal.jsdeps.node.eventsMod
 
 private[net] trait SocketPlatform[F[_]]
 
@@ -69,7 +69,6 @@ private[net] trait SocketCompanionPlatform {
             )
           go()
         }
-
       }
     }.map(new AsyncSocket(sock, _))
       .onFinalize {
