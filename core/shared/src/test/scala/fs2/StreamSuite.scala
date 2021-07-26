@@ -133,10 +133,10 @@ class StreamSuite extends Fs2Suite {
         }
       }
 
-      property("chunks.flatMap(chunk) identity") {
+      property("chunks.unchunks identity") {
         forAll { (v: Vector[Vector[Int]]) =>
           val s = if (v.isEmpty) Stream.empty else v.map(Stream.emits).reduce(_ ++ _)
-          assertEquals(s.chunks.flatMap(Stream.chunk).toVector, v.flatten)
+          assertEquals(s.chunks.unchunks.toVector, v.flatten)
         }
       }
     }

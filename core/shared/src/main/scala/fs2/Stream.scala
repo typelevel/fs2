@@ -2596,6 +2596,10 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       }
     }
 
+  /** Flattens a stream of chunks. Inverse of [[chunks]]. */
+  def unchunks[O2](implicit ev: O <:< Chunk[O2]): Stream[F, O2] =
+    flatMap(Stream.chunk(_))
+
   /** Alias for [[filter]]
     * Implemented to enable filtering in for comprehensions
     */
