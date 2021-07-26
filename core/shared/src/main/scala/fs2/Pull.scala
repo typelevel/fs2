@@ -694,24 +694,6 @@ object Pull extends PullLowPriority {
     }
   }
 
-  private def viewL[F[_], O](stream: Pull[F, O, Unit]): ViewL[F, O] = {
-
-    @tailrec
-    def mk(free: Pull[F, O, Unit]): ViewL[F, O] =
-      free match {
-        case e: Action[F, O, Unit] => new EvalView[F, O](e)
-        case b: Bind[F, O, y, Unit] =>
-          b.step match {
-            case c: Bind[F, O, x, _] => mk(new BindBind[F, O, x, y](c.step, c.delegate, b.delegate))
-            case e: Action[F, O, y2] => new BindView(e, b.delegate)
-            case r: Terminal[_]      => mk(b.cont(r))
-          }
-        case r: Terminal[Unit] => r
-      }
-
-    mk(stream)
-  }
-
   /* An action is an instruction that can perform effects in `F`
    * to generate by-product outputs of type `O`.
    *
@@ -850,6 +832,47 @@ object Pull extends PullLowPriority {
   )(foldChunk: (B, Chunk[O]) => B)(implicit
       F: MonadError[F, Throwable]
   ): F[B] = {
+
+    @tailrec
+    def viewL[G[_], X](free: Pull[G, X, Unit]): ViewL[G, X] =
+      free match {
+        case e: Action[G, X, Unit] => new EvalView[G, X](e)
+        case b: Bind[G, X, y, Unit] =>
+          b.step match {
+            case c: Bind[G, X, x, _] =>
+              viewL(new BindBind[G, X, x, y](c.step, c.delegate, b.delegate))
+            case e: Action[G, X, y2] => new BindView(e, b.delegate)
+            case r: Terminal[_]      => viewL(b.cont(r))
+          }
+        case r: Terminal[Unit] => r
+      }
+
+    /* Inject interruption to the tail used in `flatMap`. Assures that close of the scope
+     * is invoked if at the flatMap tail, otherwise switches evaluation to `interrupted` path. */
+    def interruptBoundary[G[_], X](
+        stream: Pull[G, X, Unit],
+        interruption: Interrupted
+    ): Pull[G, X, Unit] =
+      viewL(stream) match {
+        case interrupted: Interrupted => interrupted // impossible
+        case _: Succeeded[_]          => interruption
+        case failed: Fail =>
+          val mixed = CompositeFailure
+            .fromList(interruption.deferredError.toList :+ failed.error)
+            .getOrElse(failed.error)
+          Fail(mixed)
+
+        case view: View[G, X, _] =>
+          view.step match {
+            case cs: CloseScope =>
+              // Inner scope is getting closed b/c a parent was interrupted
+              val cl: Pull[G, X, Unit] = CanceledScope(cs.scopeId, interruption)
+              transformWith(cl)(view)
+            case _ =>
+              // all other cases insert interruption cause
+              view(interruption)
+          }
+      }
 
     trait Run[G[_], X, End] {
       def done(scope: Scope[F]): End
@@ -1240,33 +1263,6 @@ object Pull extends PullLowPriority {
 
     go[F, O, B](initScope, None, initFk, new OuterRun(init), stream)
   }
-
-  /* Inject interruption to the tail used in `flatMap`. Assures that close of the scope
-   * is invoked if at the flatMap tail, otherwise switches evaluation to `interrupted` path. */
-  private[this] def interruptBoundary[F[_], O](
-      stream: Pull[F, O, Unit],
-      interruption: Interrupted
-  ): Pull[F, O, Unit] =
-    viewL(stream) match {
-      case interrupted: Interrupted => interrupted // impossible
-      case _: Succeeded[_]          => interruption
-      case failed: Fail =>
-        val mixed = CompositeFailure
-          .fromList(interruption.deferredError.toList :+ failed.error)
-          .getOrElse(failed.error)
-        Fail(mixed)
-
-      case view: View[F, O, _] =>
-        view.step match {
-          case cs: CloseScope =>
-            // Inner scope is getting closed b/c a parent was interrupted
-            val cl: Pull[F, O, Unit] = CanceledScope(cs.scopeId, interruption)
-            transformWith(cl)(view)
-          case _ =>
-            // all other cases insert interruption cause
-            view(interruption)
-        }
-    }
 
   private[fs2] def flatMapOutput[F[_], F2[x] >: F[x], O, O2](
       p: Pull[F, O, Unit],
