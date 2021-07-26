@@ -391,7 +391,8 @@ class StreamZipSuite extends Fs2Suite {
       Stream
         .range(0, 10000)
         .covary[IO]
-        .chunkLimit(1).unchunks
+        .chunkLimit(1)
+        .unchunks
         .prefetch
         .flatMap(_ => Stream.empty)
         .mapChunks(identity)

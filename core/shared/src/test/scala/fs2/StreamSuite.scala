@@ -316,7 +316,8 @@ class StreamSuite extends Fs2Suite {
           .range(0, 3)
           .covary[SyncIO]
           .append(Stream.raiseError[SyncIO](new Err))
-          .chunkLimit(1).unchunks
+          .chunkLimit(1)
+          .unchunks
           .pull
           .echo
           .stream
@@ -331,7 +332,10 @@ class StreamSuite extends Fs2Suite {
             Stream
               .range(0, 3)
               .covary[IO] ++ Stream.raiseError[IO](new Err)
-          }.chunkLimit(1).unchunks.pull.echo
+          }.chunkLimit(1)
+            .unchunks
+            .pull
+            .echo
             .handleErrorWith(_ => Pull.eval(counter.increment))
             .stream
             .compile

@@ -1319,7 +1319,8 @@ class StreamCombinatorsSuite extends Fs2Suite {
 
           Stream
             .emits(0 until streamSize)
-            .chunkLimit(1).unchunks
+            .chunkLimit(1)
+            .unchunks
             .evalTap(seenArr(_).complete(()))
             .sliding(size, step)
             .evalMap { chunk =>

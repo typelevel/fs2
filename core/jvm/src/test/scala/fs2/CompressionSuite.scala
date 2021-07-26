@@ -475,7 +475,8 @@ class CompressionSuite extends Fs2Suite {
     Stream
       .chunk(Chunk.empty[Byte])
       .through(Compression[IO].gzip(8192, fileName = Some(longString), comment = Some(longString)))
-      .chunkLimit(1).unchunks // ensure chunk sizes are less than file name and comment size soft limits
+      .chunkLimit(1)
+      .unchunks // ensure chunk sizes are less than file name and comment size soft limits
       .through(Compression[IO].gunzip(8192))
       .flatMap { gunzipResult =>
         assert(

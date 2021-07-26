@@ -313,7 +313,8 @@ class StreamInterruptSuite extends Fs2Suite {
     val interrupt = IO.sleep(100.millis).attempt
     Stream(1)
       .covary[IO]
-      .chunkLimit(1).unchunks
+      .chunkLimit(1)
+      .unchunks
       .interruptWhen(interrupt)
       .pull
       .uncons

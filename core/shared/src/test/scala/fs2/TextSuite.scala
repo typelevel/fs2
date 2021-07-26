@@ -274,7 +274,10 @@ class TextSuite extends Fs2Suite {
           assertEquals(Stream.emits(s).through(text.lines).toList, Nil)
         else {
           assertEquals(Stream.emits(s).through(text.lines).toList, lines.toList)
-          assertEquals(Stream.emits(s).chunkLimit(1).unchunks.through(text.lines).toList, lines.toList)
+          assertEquals(
+            Stream.emits(s).chunkLimit(1).unchunks.through(text.lines).toList,
+            lines.toList
+          )
         }
       }
     }
