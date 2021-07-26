@@ -36,6 +36,7 @@ import fs2.internal.jsdeps.node.streamMod
 import fs2.io.internal.SuspendedStream
 
 import scala.scalajs.js
+import fs2.internal.jsdeps.node.eventsMod
 
 private[net] trait SocketPlatform[F[_]]
 
@@ -50,8 +51,27 @@ private[net] trait SocketCompanionPlatform {
         destroyIfNotEnded = false,
         destroyIfCanceled = false
       )
-    )
-      .map(new AsyncSocket(sock, _))
+    ).evalTap { _ =>
+      // Block until an error listener is registered
+      F.async_[Unit] { cb =>
+        val emitter = sock.asInstanceOf[eventsMod.EventEmitter]
+        if (emitter.listenerCount("error") > 0)
+          cb(Right(()))
+        else {
+          def go(): Unit =
+            emitter.once(
+              "newListener",
+              eventName =>
+                if (eventName.asInstanceOf[String] == "error")
+                  cb(Right(()))
+                else
+                  go()
+            )
+          go()
+        }
+
+      }
+    }.map(new AsyncSocket(sock, _))
       .onFinalize {
         F.delay {
           if (!sock.destroyed)
