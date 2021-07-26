@@ -23,17 +23,17 @@ package fs2
 package io
 package net
 
+import cats.data.Kleisli
 import cats.data.OptionT
 import cats.effect.kernel.Async
-import cats.effect.kernel.Ref
 import cats.effect.kernel.Resource
-import cats.effect.std.Semaphore
 import cats.syntax.all._
 import com.comcast.ip4s.IpAddress
 import com.comcast.ip4s.Port
 import com.comcast.ip4s.SocketAddress
 import fs2.internal.jsdeps.node.netMod
 import fs2.internal.jsdeps.node.streamMod
+import fs2.io.internal.SuspendedStream
 
 import scala.scalajs.js
 
@@ -44,41 +44,37 @@ private[net] trait SocketCompanionPlatform {
   private[net] def forAsync[F[_]](
       sock: netMod.Socket
   )(implicit F: Async[F]): Resource[F, Socket[F]] =
-    Resource.make {
-      (
-        Semaphore[F](1),
-        F.ref(readReadable(F.delay(sock.asInstanceOf[Readable]), destroyIfNotEnded = false))
-      ).mapN(new AsyncSocket[F](sock, _, _))
-    } { _ =>
-      F.delay {
-        if (!sock.destroyed)
-          sock.asInstanceOf[streamMod.Readable].destroy()
+    SuspendedStream(
+      readReadable(
+        F.delay(sock.asInstanceOf[Readable]),
+        destroyIfNotEnded = false,
+        destroyIfCanceled = false
+      )
+    )
+      .map(new AsyncSocket(sock, _))
+      .onFinalize {
+        F.delay {
+          if (!sock.destroyed)
+            sock.asInstanceOf[streamMod.Readable].destroy()
+        }
       }
-    }
 
   private[net] class AsyncSocket[F[_]](
       sock: netMod.Socket,
-      readSemaphore: Semaphore[F],
-      readStream: Ref[F, Stream[F, Byte]]
+      readStream: SuspendedStream[F, Byte]
   )(implicit F: Async[F])
       extends Socket[F] {
 
     private def read(
-        f: Stream[F, Byte] => Pull[F, INothing, Option[(Chunk[Byte], Stream[F, Byte])]]
+        f: Stream[F, Byte] => Pull[F, Chunk[Byte], Option[(Chunk[Byte], Stream[F, Byte])]]
     ): F[Option[Chunk[Byte]]] =
-      readSemaphore.permit.use { _ =>
-        Pull
-          .eval(readStream.get)
-          .flatMap(f)
-          .flatMap {
-            case Some((chunk, tail)) =>
-              Pull.eval(readStream.set(tail)) >> Pull.output1(chunk)
-            case None => Pull.done
-          }
-          .stream
-          .compile
-          .last
-      }
+      readStream
+        .getAndUpdate(Kleisli(f).andThen {
+          case Some((chunk, tail)) => Pull.output1(chunk).as(tail)
+          case None                => Pull.pure(Stream.empty)
+        }.run)
+        .compile
+        .last
 
     override def read(maxBytes: Int): F[Option[Chunk[Byte]]] =
       read(_.pull.unconsLimit(maxBytes))
@@ -86,16 +82,7 @@ private[net] trait SocketCompanionPlatform {
     override def readN(numBytes: Int): F[Chunk[Byte]] =
       OptionT(read(_.pull.unconsN(numBytes))).getOrElse(Chunk.empty)
 
-    override def reads: Stream[F, Byte] = Stream.resource(readSemaphore.permit).flatMap { _ =>
-      Stream
-        .eval(readStream.get)
-        .flatten
-        // Reset the stream to a direct wrapper around the socket
-        .onFinalize(
-          readStream
-            .set(readReadable(F.delay(sock.asInstanceOf[Readable]), destroyIfNotEnded = false))
-        )
-    }
+    override def reads: Stream[F, Byte] = readStream.stream
 
     override def endOfOutput: F[Unit] = F.delay(sock.end())
 

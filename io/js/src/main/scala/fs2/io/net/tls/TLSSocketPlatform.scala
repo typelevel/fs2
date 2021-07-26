@@ -25,10 +25,8 @@ package net
 package tls
 
 import cats.effect.kernel.Async
-import cats.effect.kernel.Ref
 import cats.effect.kernel.Resource
 import cats.effect.std.Dispatcher
-import cats.effect.std.Semaphore
 import cats.effect.syntax.all._
 import fs2.concurrent.SignallingRef
 import fs2.internal.jsdeps.node.bufferMod
@@ -38,6 +36,7 @@ import fs2.internal.jsdeps.node.streamMod
 import fs2.internal.jsdeps.node.tlsMod
 import fs2.io.internal.ByteChunkOps._
 import fs2.io.internal.EventEmitterOps._
+import fs2.io.internal.SuspendedStream
 
 private[tls] trait TLSSocketPlatform[F[_]]
 
@@ -45,12 +44,19 @@ private[tls] trait TLSSocketCompanionPlatform { self: TLSSocket.type =>
 
   private[tls] def forAsync[F[_]](
       socket: Socket[F],
-      upgrade: streamMod.Duplex => tlsMod.TLSSocket
+      upgrade: streamMod.Duplex => F[tlsMod.TLSSocket]
   )(implicit F: Async[F]): Resource[F, TLSSocket[F]] =
     for {
       (duplex, out) <- mkDuplex(socket.reads)
       _ <- out.through(socket.writes).compile.drain.background
-      tlsSock = upgrade(duplex.asInstanceOf[streamMod.Duplex])
+      tlsSock <- upgrade(duplex.asInstanceOf[streamMod.Duplex]).toResource
+      readStream <- SuspendedStream(
+        readReadable(
+          F.delay(tlsSock.asInstanceOf[Readable]),
+          destroyIfNotEnded = false,
+          destroyIfCanceled = false
+        )
+      )
       dispatcher <- Dispatcher[F]
       sessionRef <- SignallingRef[F].of(Option.empty[SSLSession]).toResource
       _ <- registerListener[bufferMod.global.Buffer](tlsSock, nodeStrings.session)(
@@ -58,22 +64,16 @@ private[tls] trait TLSSocketCompanionPlatform { self: TLSSocket.type =>
       ) { session =>
         dispatcher.unsafeRunAndForget(sessionRef.set(Some(session.toChunk)))
       }
-      readSeamphore <- Semaphore[F](1).toResource
-      readStream <- F
-        .ref(readReadable(F.delay(tlsSock.asInstanceOf[Readable]), destroyIfNotEnded = false))
-        .toResource
     } yield new AsyncTLSSocket(
       tlsSock,
-      readSeamphore,
       readStream,
       sessionRef.discrete.unNone.take(1).compile.lastOrError
     )
 
   private[tls] final class AsyncTLSSocket[F[_]: Async](
       sock: tlsMod.TLSSocket,
-      readSemaphore: Semaphore[F],
-      readStream: Ref[F, Stream[F, Byte]],
+      readStream: SuspendedStream[F, Byte],
       val session: F[SSLSession]
-  ) extends Socket.AsyncSocket[F](sock.asInstanceOf[netMod.Socket], readSemaphore, readStream)
+  ) extends Socket.AsyncSocket[F](sock.asInstanceOf[netMod.Socket], readStream)
       with UnsealedTLSSocket[F]
 }

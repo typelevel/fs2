@@ -39,7 +39,7 @@ private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
   }
 
   private[tls] trait BuilderCompanionPlatform {
-    private[tls] final class AsyncBuilder[F[_]: Async] extends Builder[F] {
+    private[tls] final class AsyncBuilder[F[_]](implicit F: Async[F]) extends Builder[F] {
 
       def fromSecureContext(context: SecureContext): TLSContext[F] =
         new UnsealedTLSContext[F] {
@@ -64,7 +64,7 @@ private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
                 .setEnableTrace(logger != TLSLogger.Disabled)
               TLSSocket.forAsync(
                 socket,
-                sock => tlsMod.connect(options.setSocket(sock.asInstanceOf[netMod.Socket]))
+                sock => F.delay(tlsMod.connect(options.setSocket(sock.asInstanceOf[netMod.Socket])))
               )
             } else {
               val options = params
@@ -74,7 +74,7 @@ private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
                 .setIsServer(true)
               TLSSocket.forAsync(
                 socket,
-                sock => new tlsMod.TLSSocket(sock.asInstanceOf[netMod.Socket], options)
+                sock => F.delay(new tlsMod.TLSSocket(sock.asInstanceOf[netMod.Socket], options))
               )
             }
           }

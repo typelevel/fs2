@@ -40,7 +40,11 @@ import scala.scalajs.js.|
 
 private[fs2] trait ioplatform {
 
-  def readReadable[F[_]](readable: F[Readable], destroyIfNotEnded: Boolean = true)(implicit
+  def readReadable[F[_]](
+      readable: F[Readable],
+      destroyIfNotEnded: Boolean = true,
+      destroyIfCanceled: Boolean = true
+  )(implicit
       F: Async[F]
   ): Stream[F, Byte] =
     Stream
@@ -54,7 +58,10 @@ private[fs2] trait ioplatform {
           case (readable, Resource.ExitCase.Errored(ex)) =>
             F.delay(readable.destroy(js.Error(ex.getMessage())))
           case (readable, Resource.ExitCase.Canceled) =>
-            F.delay(readable.destroy())
+            if (destroyIfCanceled)
+              F.delay(readable.destroy())
+            else
+              F.unit
         }
         dispatcher <- Dispatcher[F]
         queue <- Queue.synchronous[F, Option[Unit]].toResource
