@@ -53,28 +53,25 @@ private[net] trait SocketGroupCompanionPlatform { self: SocketGroup.type =>
         to: SocketAddress[Host],
         options: List[SocketOption]
     ): Resource[F, Socket[F]] =
-      Resource
-        .eval(for {
-          socket <- F.delay(
+      for {
+        sock <- F
+          .delay(
             new netMod.Socket(netMod.SocketConstructorOpts().setAllowHalfOpen(true))
           )
-          _ <- setSocketOptions(options)(socket)
-          error <- F.deferred[Throwable]
-          _ <- Dispatcher[F]
-            .flatMap { dispatcher =>
-              registerListener[js.Error](socket, nodeStrings.error)(_.once_error(_, _)) { e =>
-                dispatcher.unsafeRunAndForget(error.complete(js.JavaScriptException(e)))
-              }
-            }
-            .use { _ =>
-              error.get
-                .race(F.async_[Unit] { cb =>
-                  socket.connect(to.port.value.toDouble, to.host.toString, () => cb(Right(())))
-                })
-                .rethrow
-            }
-        } yield socket)
-        .flatMap(Socket.forAsync[F])
+          .flatTap(setSocketOptions(options))
+          .toResource
+        socket <- Socket.forAsync(sock)
+        _ <- F
+          .async[Unit] { cb =>
+            registerListener[js.Error](sock, nodeStrings.error)(_.once_error(_, _)) { error =>
+              cb(Left(js.JavaScriptException(error)))
+            }.evalTap(_ =>
+              F.delay(sock.connect(to.port.value.toDouble, to.host.toString, () => cb(Right(()))))
+            ).allocated
+              .map { case ((), cancel) => Some(cancel) }
+          }
+          .toResource
+      } yield socket
 
     override def serverResource(
         address: Option[Host],
