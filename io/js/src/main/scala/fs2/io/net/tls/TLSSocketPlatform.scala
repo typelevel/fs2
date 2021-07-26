@@ -47,7 +47,8 @@ private[tls] trait TLSSocketCompanionPlatform { self: TLSSocket.type =>
       upgrade: streamMod.Duplex => F[tlsMod.TLSSocket]
   )(implicit F: Async[F]): Resource[F, TLSSocket[F]] =
     for {
-      (duplex, out) <- mkDuplex(socket.reads)
+      duplexOut <- mkDuplex(socket.reads)
+      (duplex, out) = duplexOut
       _ <- out.through(socket.writes).compile.drain.background
       tlsSock <- upgrade(duplex.asInstanceOf[streamMod.Duplex]).toResource
       readStream <- SuspendedStream(
