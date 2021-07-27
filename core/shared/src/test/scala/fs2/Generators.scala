@@ -32,7 +32,7 @@ trait Generators extends ChunkGenerators {
       Gen.frequency(
         1 -> Gen.const(Stream.empty),
         5 -> smallLists(genA).map(as => Stream.emits(as)),
-        5 -> smallLists(genA).map(as => Stream.emits(as).unchunk),
+        5 -> smallLists(genA).map(as => Stream.emits(as).chunkLimit(1).unchunks),
         5 -> smallLists(smallLists(genA))
           .map(_.foldLeft(Stream.empty.covaryOutput[A])((acc, as) => acc ++ Stream.emits(as))),
         5 -> smallLists(smallLists(genA))
@@ -48,7 +48,7 @@ trait Generators extends ChunkGenerators {
     Arbitrary(
       Gen.frequency(
         10 -> arbitrary[List[O]].map(os => Stream.emits(os).take(10)),
-        10 -> arbitrary[List[O]].map(os => Stream.emits(os).take(10).unchunk),
+        10 -> arbitrary[List[O]].map(os => Stream.emits(os).take(10).chunkLimit(1).unchunks),
         5 -> arbitrary[F[O]].map(fo => Stream.eval(fo)),
         1 -> (for {
           acquire <- arbitrary[F[O]]

@@ -133,10 +133,10 @@ class StreamSuite extends Fs2Suite {
         }
       }
 
-      property("chunks.flatMap(chunk) identity") {
+      property("chunks.unchunks identity") {
         forAll { (v: Vector[Vector[Int]]) =>
           val s = if (v.isEmpty) Stream.empty else v.map(Stream.emits).reduce(_ ++ _)
-          assertEquals(s.chunks.flatMap(Stream.chunk).toVector, v.flatten)
+          assertEquals(s.chunks.unchunks.toVector, v.flatten)
         }
       }
     }
@@ -316,7 +316,8 @@ class StreamSuite extends Fs2Suite {
           .range(0, 3)
           .covary[SyncIO]
           .append(Stream.raiseError[SyncIO](new Err))
-          .unchunk
+          .chunkLimit(1)
+          .unchunks
           .pull
           .echo
           .stream
@@ -331,7 +332,10 @@ class StreamSuite extends Fs2Suite {
             Stream
               .range(0, 3)
               .covary[IO] ++ Stream.raiseError[IO](new Err)
-          }.unchunk.pull.echo
+          }.chunkLimit(1)
+            .unchunks
+            .pull
+            .echo
             .handleErrorWith(_ => Pull.eval(counter.increment))
             .stream
             .compile

@@ -2582,12 +2582,8 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     new Stream(Pull.translate[F2, G, O](underlying, u))
 
   /** Converts the input to a stream of 1-element chunks.
-    *
-    * @example {{{
-    * scala> (Stream(1,2,3) ++ Stream(4,5,6)).unchunk.chunks.toList
-    * res0: List[Chunk[Int]] = List(Chunk(1), Chunk(2), Chunk(3), Chunk(4), Chunk(5), Chunk(6))
-    * }}}
     */
+  @deprecated("Use .chunkLimit(1).unchunks instead.", "3.0.7")
   def unchunk: Stream[F, O] =
     this.repeatPull {
       _.uncons1.flatMap {
@@ -2595,6 +2591,10 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
         case Some((hd, tl)) => Pull.output1(hd).as(Some(tl))
       }
     }
+
+  /** Flattens a stream of chunks. Inverse of [[chunks]]. */
+  def unchunks[O2](implicit ev: O <:< Chunk[O2]): Stream[F, O2] =
+    flatMap(Stream.chunk(_))
 
   /** Alias for [[filter]]
     * Implemented to enable filtering in for comprehensions
