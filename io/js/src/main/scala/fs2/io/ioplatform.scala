@@ -26,7 +26,6 @@ import cats.effect.kernel.Async
 import cats.effect.kernel.Resource
 import cats.effect.std.Dispatcher
 import cats.effect.std.Queue
-import cats.effect.std.Semaphore
 import cats.effect.syntax.all._
 import cats.syntax.all._
 import fs2.internal.jsdeps.node.bufferMod
@@ -41,34 +40,49 @@ import scala.scalajs.js.|
 
 private[fs2] trait ioplatform {
 
-  def fromReadable[F[_]](readable: F[Readable])(implicit F: Async[F]): Stream[F, Byte] =
+  def readReadable[F[_]](
+      readable: F[Readable],
+      destroyIfNotEnded: Boolean = true,
+      destroyIfCanceled: Boolean = true
+  )(implicit
+      F: Async[F]
+  ): Stream[F, Byte] =
     Stream
       .resource(for {
         readable <- Resource.makeCase(readable.map(_.asInstanceOf[streamMod.Readable])) {
           case (readable, Resource.ExitCase.Succeeded) =>
-            if (!readable.readableEnded)
+            F.delay {
+              if (!readable.readableEnded & destroyIfNotEnded)
+                readable.destroy()
+            }
+          case (readable, Resource.ExitCase.Errored(ex)) =>
+            F.delay(readable.destroy(js.Error(ex.getMessage())))
+          case (readable, Resource.ExitCase.Canceled) =>
+            if (destroyIfCanceled)
               F.delay(readable.destroy())
             else
               F.unit
-          case (readable, Resource.ExitCase.Errored(ex)) =>
-            F.delay(readable.destroy(js.Error(ex.getMessage())))
-          case (readable, Resource.ExitCase.Canceled) => F.delay(readable.destroy())
         }
         dispatcher <- Dispatcher[F]
-        queue <- Queue.synchronous[F, Unit].toResource
-        ended <- F.deferred[Either[Throwable, Unit]].toResource
+        queue <- Queue.synchronous[F, Option[Unit]].toResource
+        error <- F.deferred[Throwable].toResource
         _ <- registerListener0(readable, nodeStrings.readable)(_.on_readable(_, _)) { () =>
-          dispatcher.unsafeRunAndForget(queue.offer(()))
+          dispatcher.unsafeRunAndForget(queue.offer(Some(())))
         }
         _ <- registerListener0(readable, nodeStrings.end)(_.on_end(_, _)) { () =>
-          dispatcher.unsafeRunAndForget(ended.complete(Right(())))
+          dispatcher.unsafeRunAndForget(queue.offer(None))
+        }
+        _ <- registerListener0(readable, nodeStrings.close)(_.on_close(_, _)) { () =>
+          dispatcher.unsafeRunAndForget(queue.offer(None))
         }
         _ <- registerListener[js.Error](readable, nodeStrings.error)(_.on_error(_, _)) { e =>
-          dispatcher.unsafeRunAndForget(ended.complete(Left(js.JavaScriptException(e))))
+          dispatcher.unsafeRunAndForget(error.complete(js.JavaScriptException(e)))
         }
-      } yield (readable, queue, ended))
-      .flatMap { case (readable, queue, ended) =>
-        Stream.fromQueueUnterminated(queue).interruptWhen(ended) >>
+      } yield (readable, queue, error))
+      .flatMap { case (readable, queue, error) =>
+        Stream
+          .fromQueueNoneTerminated(queue)
+          .concurrently(Stream.eval(error.get.flatMap(F.raiseError[Unit]))) >>
           Stream.evalUnChunk(
             F.delay(
               Option(readable.read().asInstanceOf[bufferMod.global.Buffer])
@@ -77,44 +91,25 @@ private[fs2] trait ioplatform {
           )
       }
 
-  def toReadable[F[_]](s: Stream[F, Byte])(implicit F: Async[F]): Resource[F, Readable] =
-    for {
-      dispatcher <- Dispatcher[F]
-      semaphore <- Semaphore[F](1).toResource
-      ref <- F.ref(s).toResource
-      read = semaphore.permit.use { _ =>
-        Pull
-          .eval(ref.get)
-          .flatMap(_.pull.uncons)
-          .flatMap {
-            case Some((head, tail)) =>
-              Pull.eval(ref.set(tail)) >> Pull.output(head)
-            case None =>
-              Pull.done
-          }
-          .stream
-          .chunks
-          .compile
-          .last
-      }
-      readable <- Resource.make {
-        F.pure {
-          new streamMod.Readable(streamMod.ReadableOptions().setRead { (readable, size) =>
-            dispatcher.unsafeRunAndForget(
-              read.attempt.flatMap {
-                case Left(ex)     => F.delay(readable.destroy(js.Error(ex.getMessage)))
-                case Right(chunk) => F.delay(readable.push(chunk.map(_.toUint8Array).orNull)).void
-              }
+  def toReadable[F[_]](implicit F: Async[F]): Pipe[F, Byte, Readable] =
+    in =>
+      Stream.resource(mkDuplex(in)).flatMap { case (duplex, out) =>
+        Stream
+          .emit(duplex)
+          .merge(out.drain)
+          .concurrently(
+            Stream.eval(
+              F.async_[Unit](cb => duplex.asInstanceOf[streamMod.Writable].end(() => cb(Right(()))))
             )
-          })
-        }
-      } { readable =>
-        F.delay(if (!readable.readableEnded) readable.destroy())
+          )
       }
-    } yield readable.asInstanceOf[Readable]
 
-  def fromWritable[F[_]](
-      writable: F[Writable]
+  def toReadableResource[F[_]: Async](s: Stream[F, Byte]): Resource[F, Readable] =
+    s.through(toReadable).compile.resource.lastOrError
+
+  def writeWritable[F[_]](
+      writable: F[Writable],
+      endAfterUse: Boolean = true
   )(implicit F: Async[F]): Pipe[F, Byte, INothing] =
     in =>
       Stream.eval(writable.map(_.asInstanceOf[streamMod.Writable])).flatMap { writable =>
@@ -131,7 +126,10 @@ private[fs2] trait ioplatform {
               }
             } >> go(tail)
           case None =>
-            Pull.eval(F.async_[Unit](cb => writable.end(() => cb(Right(())))))
+            if (endAfterUse)
+              Pull.eval(F.async_[Unit](cb => writable.end(() => cb(Right(())))))
+            else
+              Pull.done
         }
 
         go(in).stream.handleErrorWith { ex =>
@@ -139,69 +137,98 @@ private[fs2] trait ioplatform {
         }.drain
       }
 
-  def mkWritable[F[_]](implicit F: Async[F]): Resource[F, (Writable, Stream[F, Byte])] =
+  def readWritable[F[_]: Async](f: Writable => F[Unit]): Stream[F, Byte] =
+    Stream.empty.through(toDuplexAndRead(f))
+
+  def toDuplexAndRead[F[_]: Async](f: Duplex => F[Unit]): Pipe[F, Byte, Byte] =
+    in =>
+      Stream.resource(mkDuplex(in)).flatMap { case (duplex, out) =>
+        Stream.eval(f(duplex)).drain.merge(out)
+      }
+
+  private[io] def mkDuplex[F[_]](
+      in: Stream[F, Byte]
+  )(implicit F: Async[F]): Resource[F, (Duplex, Stream[F, Byte])] =
     for {
       dispatcher <- Dispatcher[F]
-      queue <- Queue.synchronous[F, Option[Chunk[Byte]]].toResource
+      readQueue <- Queue.bounded[F, Option[Chunk[Byte]]](1).toResource
+      writeQueue <- Queue.synchronous[F, Option[Chunk[Byte]]].toResource
       error <- F.deferred[Throwable].toResource
-      writable <- Resource.make {
-        F.pure {
-          new streamMod.Writable(
+      duplex <- Resource.make {
+        F.delay {
+          new streamMod.Duplex(
             streamMod
-              .WritableOptions()
-              .setWrite { (writable, chunk, encoding, cb) =>
+              .DuplexOptions()
+              .setRead { (duplex, size) =>
+                val readable = duplex.asInstanceOf[streamMod.Readable]
                 dispatcher.unsafeRunAndForget(
-                  queue
+                  readQueue.take.attempt.flatMap {
+                    case Left(ex) =>
+                      F.delay(readable.destroy(js.Error(ex.getMessage)))
+                    case Right(chunk) =>
+                      F.delay(readable.push(chunk.map(_.toUint8Array).orNull)).void
+                  }
+                )
+              }
+              .setWrite { (duplex, chunk, encoding, cb) =>
+                dispatcher.unsafeRunAndForget(
+                  writeQueue
                     .offer(Some(Chunk.uint8Array(chunk.asInstanceOf[Uint8Array])))
                     .attempt
                     .flatMap(e =>
                       F.delay(
                         cb(
-                          e.left.toOption.fold[js.Error | Null](null)(e => js.Error(e.getMessage()))
+                          e.left.toOption
+                            .fold[js.Error | Null](null)(e => js.Error(e.getMessage()))
                         )
                       )
                     )
                 )
               }
-              .setFinal { (writable, cb) =>
+              .setFinal { (duplex, cb) =>
                 dispatcher.unsafeRunAndForget(
-                  queue
+                  writeQueue
                     .offer(None)
                     .attempt
                     .flatMap(e =>
                       F.delay(
                         cb(
-                          e.left.toOption.fold[js.Error | Null](null)(e => js.Error(e.getMessage()))
+                          e.left.toOption
+                            .fold[js.Error | Null](null)(e => js.Error(e.getMessage()))
                         )
                       )
                     )
                 )
               }
-              .setDestroy { (writable, err, cb) =>
+              .setDestroy { (duplex, err, cb) =>
                 dispatcher.unsafeRunAndForget {
-                  Option(err).fold(F.unit) { err =>
-                    error
-                      .complete(js.JavaScriptException(err))
-                      .attempt
-                      .flatMap(e =>
-                        F.delay(
-                          cb(
-                            e.left.toOption
-                              .fold[js.Error | Null](null)(e => js.Error(e.getMessage()))
-                          )
+                  error
+                    .complete(js.JavaScriptException(err))
+                    .attempt
+                    .flatMap(e =>
+                      F.delay(
+                        cb(
+                          e.left.toOption
+                            .fold[js.Error | Null](null)(e => js.Error(e.getMessage()))
                         )
                       )
-                  }
+                    )
+
                 }
               }
           )
         }
-      } { writable =>
-        F.delay(if (!writable.writableEnded) writable.destroy())
+      } { duplex =>
+        F.delay {
+          val readable = duplex.asInstanceOf[streamMod.Readable]
+          val writable = duplex.asInstanceOf[streamMod.Writable]
+          if (!readable.readableEnded | !writable.writableEnded)
+            readable.destroy()
+        }
       }
-      stream = Stream
-        .fromQueueNoneTerminatedChunk(queue)
+      drainIn = in.enqueueNoneTerminatedChunks(readQueue).drain
+      out = Stream
+        .fromQueueNoneTerminatedChunk(writeQueue)
         .concurrently(Stream.eval(error.get.flatMap(F.raiseError[Unit])))
-    } yield (writable.asInstanceOf[Writable], stream)
-
+    } yield (duplex.asInstanceOf[Duplex], drainIn.merge(out))
 }

@@ -34,3 +34,9 @@ sealed trait Readable extends js.Object
   */
 @js.native
 sealed trait Writable extends js.Object
+
+/** A facade for Node.js `stream.Duplex`. Cast to/from your own bindings.
+  * @see [[https://nodejs.org/api/stream.html]]
+  */
+@js.native
+sealed trait Duplex extends js.Object with Readable with Writable

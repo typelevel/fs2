@@ -25,9 +25,10 @@ package net
 package tls
 
 import cats.effect.kernel.Async
-import fs2.internal.jsdeps.node.tlsMod
 import cats.effect.kernel.Resource
 import cats.effect.std.Dispatcher
+import fs2.internal.jsdeps.node.netMod
+import fs2.internal.jsdeps.node.tlsMod
 
 private[tls] trait TLSContextPlatform[F[_]]
 
@@ -38,7 +39,7 @@ private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
   }
 
   private[tls] trait BuilderCompanionPlatform {
-    private[tls] final class AsyncBuilder[F[_]: Async] extends Builder[F] {
+    private[tls] final class AsyncBuilder[F[_]](implicit F: Async[F]) extends Builder[F] {
 
       def fromSecureContext(context: SecureContext): TLSContext[F] =
         new UnsealedTLSContext[F] {
@@ -56,19 +57,26 @@ private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
               logger: TLSLogger[F]
           ): Resource[F, TLSSocket[F]] = Dispatcher[F].flatMap { dispatcher =>
             import SecureContext.ops
+
             if (clientMode) {
               val options = params
                 .toConnectionOptions(dispatcher)
                 .setSecureContext(context.toJS)
                 .setEnableTrace(logger != TLSLogger.Disabled)
-              TLSSocket.forAsync(socket, sock => tlsMod.connect(options.setSocket(sock)))
+              TLSSocket.forAsync(
+                socket,
+                sock => tlsMod.connect(options.setSocket(sock.asInstanceOf[netMod.Socket]))
+              )
             } else {
               val options = params
                 .toTLSSocketOptions(dispatcher)
                 .setSecureContext(context.toJS)
                 .setEnableTrace(logger != TLSLogger.Disabled)
                 .setIsServer(true)
-              TLSSocket.forAsync(socket, sock => new tlsMod.TLSSocket(sock, options))
+              TLSSocket.forAsync(
+                socket,
+                sock => new tlsMod.TLSSocket(sock.asInstanceOf[netMod.Socket], options)
+              )
             }
           }
         }
