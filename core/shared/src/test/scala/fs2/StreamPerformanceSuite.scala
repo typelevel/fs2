@@ -263,7 +263,7 @@ class StreamPerformanceSuite extends Fs2Suite {
             .emits(Vector.range(0, N))
             .map(i => i)
             .chunks
-            .flatMap(Stream.chunk(_))
+            .unchunks
             .toVector,
           Vector.range(0, N)
         )

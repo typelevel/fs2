@@ -82,7 +82,7 @@ private[tls] trait TLSSocketCompanionPlatform { self: TLSSocket.type =>
         readSem.permit.use(_ => read0(maxBytes))
 
       def reads: Stream[F, Byte] =
-        Stream.repeatEval(read(8192)).unNoneTerminate.flatMap(Stream.chunk)
+        Stream.repeatEval(read(8192)).unNoneTerminate.unchunks
 
       def writes: Pipe[F, Byte, INothing] =
         _.chunks.foreach(write)

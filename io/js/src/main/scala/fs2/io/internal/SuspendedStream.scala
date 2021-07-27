@@ -67,5 +67,5 @@ private[io] object SuspendedStream {
   private def streamFromQueue[F[_]: Concurrent, O](
       queue: Queue[F, Option[Either[Throwable, Chunk[O]]]]
   ): Stream[F, O] =
-    Stream.fromQueueNoneTerminated(queue).rethrow.flatMap(Stream.chunk)
+    Stream.fromQueueNoneTerminated(queue).rethrow.unchunks
 }

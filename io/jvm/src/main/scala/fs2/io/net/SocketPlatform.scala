@@ -104,7 +104,7 @@ private[net] trait SocketCompanionPlatform {
       }
 
     def reads: Stream[F, Byte] =
-      Stream.repeatEval(read(defaultReadSize)).unNoneTerminate.flatMap(Stream.chunk)
+      Stream.repeatEval(read(defaultReadSize)).unNoneTerminate.unchunks
 
     def writes: Pipe[F, Byte, INothing] =
       _.chunks.foreach(write)
