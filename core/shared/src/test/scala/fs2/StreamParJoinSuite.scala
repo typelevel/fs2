@@ -146,7 +146,7 @@ class StreamParJoinSuite extends Fs2Suite {
   }
 
   group("hangs") {
-    val full = Stream.constant(42).chunks.evalTap(_ => IO.cede).flatMap(Stream.chunk)
+    val full = Stream.constant(42).chunks.evalTap(_ => IO.cede).unchunks
     val hang = Stream.repeatEval(IO.never[Unit])
     val hang2: Stream[IO, Nothing] = full.drain
     val hang3: Stream[IO, Nothing] =

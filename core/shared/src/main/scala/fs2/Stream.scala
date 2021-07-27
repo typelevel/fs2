@@ -235,7 +235,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
         def produce = chunks.through(topic.publish)
 
         def consume(pipe: Pipe[F2, O, O2]): Pipe[F2, Chunk[O], O2] =
-          _.flatMap(Stream.chunk).through(pipe)
+          _.unchunks.through(pipe)
 
         Stream(pipes: _*)
           .map { pipe =>
@@ -2133,7 +2133,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       n: Int
   ): Stream[F2, O] =
     Stream.eval(Channel.bounded[F2, Chunk[O]](n)).flatMap { chan =>
-      chan.stream.flatMap(Stream.chunk).concurrently {
+      chan.stream.unchunks.concurrently {
         chunks.through(chan.sendAll)
 
       }
@@ -3907,7 +3907,7 @@ object Stream extends StreamLowPriority {
 
         val backEnqueue = Stream.bracket(F.start(runOuter))(_ => endOuter)
 
-        backEnqueue >> outputChan.stream.flatMap(Stream.chunk)
+        backEnqueue >> outputChan.stream.unchunks
       }
 
       Stream.eval(fstream).flatten

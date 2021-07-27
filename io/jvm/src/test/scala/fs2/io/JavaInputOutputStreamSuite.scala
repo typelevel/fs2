@@ -33,7 +33,7 @@ class JavaInputOutputStreamSuite extends Fs2Suite {
   group("ToInputStream") {
     val streamByteGenerator: Gen[Stream[Pure, Byte]] =
       pureStreamGenerator[Chunk[Byte]].arbitrary
-        .map(_.flatMap(Stream.chunk))
+        .map(_.unchunks)
 
     test("arbitrary streams") {
       forAllF(streamByteGenerator) { (stream: Stream[Pure, Byte]) =>

@@ -825,7 +825,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
       val sleep = Stream.sleep_[IO](2 * t)
 
       def chunk(from: Int, size: Int) =
-        Stream.range(from, from + size).chunkAll.flatMap(Stream.chunk)
+        Stream.range(from, from + size).chunkAll.unchunks
 
       // this test example is designed to have good coverage of
       // the chunk manipulation logic in groupWithin
@@ -860,7 +860,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
           def measureEmission[A]: Pipe[IO, A, A] =
             _.chunks
               .evalTap(_ => IO.monotonic.flatMap(ref.set))
-              .flatMap(Stream.chunk)
+              .unchunks
 
           // emits elements after the timeout has expired
           val source =
@@ -890,7 +890,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
           def measureEmission[A]: Pipe[IO, A, A] =
             _.chunks
               .evalTap(_ => IO.monotonic.flatMap(ref.set))
-              .flatMap(Stream.chunk)
+              .unchunks
 
           val source =
             Stream(1, 2, 3) ++
@@ -1329,7 +1329,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
               val notViewed = Chunk.singleton(peek(next)(_.isEmpty))
               (notViewed ++ viewed).sequence
             }
-            .flatMap(Stream.chunk)
+            .unchunks
         }
 
       Stream.force(action).compile.fold(true)(_ && _).assert
@@ -1347,7 +1347,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
         assertEquals(
           s2.chunkLimit(n)
             .intersperse(Chunk.singleton(0))
-            .flatMap(Stream.chunk)
+            .unchunks
             .split(_ == 0)
             .filter(_.nonEmpty)
             .toVector,

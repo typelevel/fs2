@@ -46,7 +46,7 @@ class TextSuite extends Fs2Suite {
             Stream
               .chunk(utf8Bytes(c.toString))
               .chunkLimit(n)
-              .flatMap(Stream.chunk)
+              .unchunks
               .through(utf8.decode)
               .toList,
             List(c.toString)
@@ -60,7 +60,7 @@ class TextSuite extends Fs2Suite {
           Stream
             .chunk(bytes)
             .chunkLimit(n)
-            .flatMap(Stream.chunk)
+            .unchunks
             .through(utf8.decode)
             .toList,
           List(utf8String(bytes))
@@ -70,7 +70,7 @@ class TextSuite extends Fs2Suite {
     def checkBytes2(is: Int*): Unit = {
       val bytes = Chunk.array(is.map(_.toByte).toArray)
       assertEquals(
-        Stream(bytes).flatMap(Stream.chunk).through(utf8.decode).toList.mkString,
+        Stream(bytes).unchunks.through(utf8.decode).toList.mkString,
         utf8String(bytes)
       )
     }
@@ -90,7 +90,7 @@ class TextSuite extends Fs2Suite {
       forAll(Gen.listOf(genStringNoBom)) { (l0: List[String]) =>
         val l = l0.filter(_.nonEmpty)
         assertEquals(
-          Stream(l: _*).map(utf8Bytes).flatMap(Stream.chunk).through(utf8.decode).toList,
+          Stream(l: _*).map(utf8Bytes).unchunks.through(utf8.decode).toList,
           l
         )
         assertEquals(Stream(l0: _*).map(utf8Bytes).through(utf8.decodeC).toList, l0)
@@ -111,7 +111,7 @@ class TextSuite extends Fs2Suite {
           Stream
             .chunk(utf8Bytes(s))
             .chunkLimit(1)
-            .flatMap(Stream.chunk)
+            .unchunks
             .through(utf8.decode)
             .compile
             .string,
@@ -126,7 +126,7 @@ class TextSuite extends Fs2Suite {
           Stream
             .chunk(utf8Bytes(s))
             .chunkLimit(n)
-            .flatMap(Stream.chunk)
+            .unchunks
             .through(utf8.decode)
             .compile
             .string,
@@ -309,7 +309,7 @@ class TextSuite extends Fs2Suite {
               // Add some whitespace
               _.chunks
                 .interleave(Stream(" ", "\r\n", "\n", "  \r\n  ").map(Chunk.singleton).repeat)
-                .flatMap(Stream.chunk)
+                .unchunks
             }
             .through(text.base64.decode[Fallible])
             .compile
@@ -398,7 +398,7 @@ class TextSuite extends Fs2Suite {
         assertEquals(
           Stream
             .emits(bs.map(Chunk.array(_)))
-            .flatMap(Stream.chunk)
+            .unchunks
             .through(text.hex.encode)
             .compile
             .string,
