@@ -23,7 +23,7 @@ package fs2
 package io
 package file2
 
-import cats.effect.kernel.Async
+import cats.effect.Resource
 
 /** Platform-agnostic methods for reading files.
   */
@@ -33,9 +33,9 @@ sealed trait Files[F[_]] {
 
   def readAll(path: Path, chunkSize: Int): Stream[F, Byte]
 
-//   /** Returns a `ReadCursor` for the specified path.
-//     */
-//   def readCursor(path: Path): Resource[F, ReadCursor[F]]
+  /** Returns a `ReadCursor` for the specified path.
+    */
+  def readCursor(path: Path): Resource[F, ReadCursor[F]]
 
 //   /** Reads a range of data synchronously from the file at the specified path.
 //     * `start` is inclusive, `end` is exclusive, so when `start` is 0 and `end` is 2,
@@ -60,9 +60,9 @@ sealed trait Files[F[_]] {
 //   ): Stream[F, Byte]
 }
 
-object Files {
+object Files extends FilesPlatform {
+  private[file2] trait UnsealedFiles[F[_]] extends Files[F]
 
   def apply[F[_]](implicit F: Files[F]): Files[F] = F
 
-  implicit def forAsync[F[_]](implicit F: Async[F]): Files[F] = ???
 }

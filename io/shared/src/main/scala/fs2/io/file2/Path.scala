@@ -56,7 +56,7 @@ object Path extends PathCompanionPlatform {
   }
 
   def apply(first: String, more: String*): Path =
-    if (FileSeparatorChar == PosixFileSeparatorChar) posix(first, more: _*)
+    if (PlatformFileSeparatorChar == PosixFileSeparatorChar) posix(first, more: _*)
     else win32(first, more: _*)
 
   def posix(first: String, more: String*): Path = {
