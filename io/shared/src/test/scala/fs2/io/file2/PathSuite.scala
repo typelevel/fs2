@@ -32,9 +32,9 @@ class PathSuite extends Fs2Suite {
     assertEquals(p("//foo/bar"), p("/foo") / "bar")
   }
   
-  test("win32 construction".ignore) {
+  test("win32 construction") {
     assertEquals(w("foo\\bar"), w("foo") / "bar")
-    assertEquals(w("\\foo\\bar"), w("\\foo") / "bar")
+    assertEquals(w("""\\foo\bar"""), w("""\\foo""") / "bar")
     assertEquals(w("c:\\foo\\bar"), w("c:\\foo") / "bar")
     assertEquals(w("c:foo\\bar"), w("c:foo") / "bar")
   }

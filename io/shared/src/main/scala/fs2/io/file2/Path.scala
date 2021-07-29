@@ -48,6 +48,7 @@ case class Path private (separator: Char, root: String, names: List[Path.Name]) 
 object Path extends PathCompanionPlatform {
   val PlatformFileSeparator: String = PlatformFileSeparatorChar.toString
   val PosixFileSeparatorChar: Char = '/'
+  val Win32FileSeparatorChar: Char = '\\'
 
   case class Name private (value: String)
   private object Name {
@@ -66,8 +67,14 @@ object Path extends PathCompanionPlatform {
     Path(PosixFileSeparatorChar, root, names)
   }
 
+  private val Win32Pattern = """((?:[A-Za-z]:)?\\*)([^\\].*)""".r
   def win32(first: String, more: String*): Path = {
-    ???
+    first match {
+      case Win32Pattern(root, name) =>
+        val names = (name :: more.toList).flatMap(Name.fromString(_, Win32FileSeparatorChar))
+        Path(Win32FileSeparatorChar, Option(root).getOrElse(""), names)
+      case _ =>
+        Path(Win32FileSeparatorChar, "", (first :: more.toList).flatMap(Name.fromString(_, Win32FileSeparatorChar)))
+    }
   }
-    // TODO UNC paths (\\foo\bar), Drives (C:\foo\bar), absolutes (\foo\bar), drive-relatives (C:foo\bar)
 }

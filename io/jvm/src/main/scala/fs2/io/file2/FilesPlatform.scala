@@ -33,6 +33,8 @@ private[fs2] trait FilesPlatform {
   implicit def forAsync[F[_]](implicit F: Async[F]): Files[F] =
     new NioFiles[F](FileSystems.getDefault)
 
+  // TODO with this design, to copy file from 1 VFS to another would require 2 different type class instances
+
   private final class NioFiles[F[_]: Async](fs: FileSystem) extends Files.UnsealedFiles[F] {
     private def toJPath(path: Path): JPath = fs.getPath(path.toString)
 
