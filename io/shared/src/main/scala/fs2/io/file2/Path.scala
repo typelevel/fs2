@@ -66,7 +66,8 @@ object Path extends PathCompanionPlatform {
     Path(PosixFileSeparatorChar, root, names)
   }
 
-  def win32(first: String, more: String*): Path =
+  def win32(first: String, more: String*): Path = {
     ???
+  }
     // TODO UNC paths (\\foo\bar), Drives (C:\foo\bar), absolutes (\foo\bar), drive-relatives (C:foo\bar)
 }
