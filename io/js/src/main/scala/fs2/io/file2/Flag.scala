@@ -25,7 +25,7 @@ package file2
 
 import fs2.internal.jsdeps.node.fsMod
 
-final class Flag(private[file2] val bits: Long) extends AnyVal
+final class Flag private (private[file2] val bits: Long) extends AnyVal
 
 object Flag extends FlagCompanionApi {
   private def apply(bits: Long): Flag = new Flag(bits)

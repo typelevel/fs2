@@ -24,9 +24,11 @@ package fs2.io.file2
 import java.nio.file.OpenOption
 import java.nio.file.StandardOpenOption
 
-case class Flag(option: OpenOption)
+final class Flag private (private[file2] val option: OpenOption) extends AnyVal
 
 object Flag extends FlagCompanionApi {
+  private def apply(option: OpenOption): Flag = new Flag(option)
+
   val Read = Flag(StandardOpenOption.READ)
   val Write = Flag(StandardOpenOption.WRITE)
   val Append = Flag(StandardOpenOption.APPEND)
