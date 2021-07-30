@@ -25,18 +25,16 @@ package file2
 
 import cats.effect.kernel.{Async, Resource, Sync}
 
-import java.nio.file.{FileSystem, FileSystems, OpenOption, Path => JPath, StandardOpenOption}
+import java.nio.file.{OpenOption, Path => JPath, StandardOpenOption}
 import java.nio.channels.FileChannel
 
 private[fs2] trait FilesPlatform {
 
   implicit def forAsync[F[_]](implicit F: Async[F]): Files[F] =
-    new NioFiles[F](FileSystems.getDefault)
+    new NioFiles[F]
 
-  // TODO with this design, to copy file from 1 VFS to another would require 2 different type class instances
-
-  private final class NioFiles[F[_]: Async](fs: FileSystem) extends Files.UnsealedFiles[F] {
-    private def toJPath(path: Path): JPath = fs.getPath(path.toString)
+  private final class NioFiles[F[_]: Async] extends Files.UnsealedFiles[F] {
+    private def toJPath(path: Path): JPath = path.asInstanceOf[NioPath].path
 
     def readAll(path: Path, chunkSize: Int): Stream[F, Byte] =
       Stream.resource(readCursor(path)).flatMap { cursor =>

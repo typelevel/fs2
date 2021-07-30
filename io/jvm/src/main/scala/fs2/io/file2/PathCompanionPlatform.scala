@@ -23,6 +23,9 @@ package fs2
 package io
 package file2
 
+import java.nio.file.{FileSystems, Path => JPath}
+
 private[file2] trait PathCompanionPlatform {
-  val PlatformFileSeparatorChar: Char = java.io.File.separatorChar
+  def apply(path: String): Path = fromNioPath(FileSystems.getDefault.getPath(path))
+  def fromNioPath(path: JPath): Path = new NioPath(path)
 }

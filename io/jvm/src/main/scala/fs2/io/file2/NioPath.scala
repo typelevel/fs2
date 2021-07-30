@@ -23,16 +23,10 @@ package fs2
 package io
 package file2
 
-class PathSuite extends Fs2Suite {
-  test("construction") {
-    assertEquals(Path("foo/bar"), Path("foo") / "bar")
-    assertEquals(Path("/foo/bar"), Path("/foo") / "bar")
-    assertEquals(Path("//foo/bar"), Path("/foo") / "bar")
-  }
-  
-  test("normalize") {
-    assertEquals(Path("foo/bar/baz").normalize, Path("foo/bar/baz"))
-    assertEquals(Path("./foo/bar/baz").normalize, Path("foo/bar/baz"))
-    assertEquals(Path("./foo/../bar/baz").normalize, Path("bar/baz"))
-  }
+import java.nio.file.{Path => JPath}
+
+private[file2] case class NioPath(path: JPath) extends Path.UnsealedPath {
+  def resolve(name: String): Path = new NioPath(path.resolve(name))
+  def normalize: Path = new NioPath(path.normalize())
+  override def toString = path.toString
 }

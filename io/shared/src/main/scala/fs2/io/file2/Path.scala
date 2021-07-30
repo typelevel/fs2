@@ -23,58 +23,13 @@ package fs2
 package io
 package file2
 
-case class Path private (separator: Char, root: String, names: List[Path.Name]) {
-
-  def /(name: String): Path =
-    new Path(separator, root, names ++ Path.Name.fromString(name, separator))
-
-  def normalize: Path = {
-    def loop(remaining: List[Path.Name], acc: List[Path.Name]): Path =
-      remaining match {
-        case Nil => Path(separator, root, acc.reverse)
-        case hd :: tl => 
-          if (hd.value == ".") loop(tl, acc)
-          else if (hd.value == "..") loop(tl, acc.tail)
-          else loop(tl, hd :: acc)
-      }
-    loop(names, Nil)
-  }
-
-  override def toString = {
-    root + names.map(_.value).mkString("", separator.toString, "")
-  }
+sealed trait Path {
+  def /(name: String): Path = resolve(name)
+  def resolve(name: String): Path
+  def normalize: Path
+  def toString: String
 }
 
 object Path extends PathCompanionPlatform {
-  val PlatformFileSeparator: String = PlatformFileSeparatorChar.toString
-  val PosixFileSeparatorChar: Char = '/'
-  val Win32FileSeparatorChar: Char = '\\'
-
-  case class Name private (value: String)
-  private object Name {
-    def fromString(value: String, separator: Char): List[Name] =
-      value.split(separator).filterNot(_.isEmpty).map(Name(_)).toList
-  }
-
-  def apply(first: String, more: String*): Path =
-    if (PlatformFileSeparatorChar == PosixFileSeparatorChar) posix(first, more: _*)
-    else win32(first, more: _*)
-
-  def posix(first: String, more: String*): Path = {
-    val absolute = first.nonEmpty && first.charAt(0) == PosixFileSeparatorChar
-    val root = if (absolute) "/" else ""
-    val names = (first :: more.toList).flatMap(Name.fromString(_, PosixFileSeparatorChar))
-    Path(PosixFileSeparatorChar, root, names)
-  }
-
-  private val Win32Pattern = """((?:[A-Za-z]:)?\\*)([^\\].*)""".r
-  def win32(first: String, more: String*): Path = {
-    first match {
-      case Win32Pattern(root, name) =>
-        val names = (name :: more.toList).flatMap(Name.fromString(_, Win32FileSeparatorChar))
-        Path(Win32FileSeparatorChar, Option(root).getOrElse(""), names)
-      case _ =>
-        Path(Win32FileSeparatorChar, "", (first :: more.toList).flatMap(Name.fromString(_, Win32FileSeparatorChar)))
-    }
-  }
+  private[file2] trait UnsealedPath extends Path
 }
