@@ -21,22 +21,11 @@
 
 package fs2.io.file2
 
-import java.nio.file.OpenOption
-import java.nio.file.StandardOpenOption
-
-case class Flag(option: OpenOption)
-
-object Flag extends FlagCompanionApi {
-  val Read = Flag(StandardOpenOption.READ)
-  val Write = Flag(StandardOpenOption.WRITE)
-  val Append = Flag(StandardOpenOption.APPEND)
-
-  val Truncate = Flag(StandardOpenOption.TRUNCATE_EXISTING)
-  val Create = Flag(StandardOpenOption.CREATE)
-  val CreateNew = Flag(StandardOpenOption.CREATE_NEW)
-
-  val DeleteOnClose = Flag(StandardOpenOption.DELETE_ON_CLOSE)
-  val Sparse = Flag(StandardOpenOption.SPARSE)
-  val Sync = Flag(StandardOpenOption.SYNC)
-  val Dsync = Flag(StandardOpenOption.DSYNC)
+private[file2] trait FlagCompanionApi {
+  val Read: Flag
+  val Write: Flag
+  val Append: Flag
+  val Truncate: Flag
+  val Create: Flag
+  val CreateNew: Flag
 }
