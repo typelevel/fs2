@@ -37,13 +37,10 @@ private[fs2] trait FilesPlatform {
   private final class NioFiles[F[_]: Async] extends Files.UnsealedFiles[F] {
     private def toJPath(path: Path): JPath = path.toNioPath
 
-    def readAll(path: Path, chunkSize: Int, flags: Option[Flags]): Stream[F, Byte] =
+    def readAll(path: Path, chunkSize: Int, flags: Flags): Stream[F, Byte] =
       Stream.resource(readCursor(path, flags)).flatMap { cursor =>
         cursor.readAll(chunkSize).void.stream
       }
-
-    def readCursor(path: Path, flags: Option[Flags]): Resource[F, ReadCursor[F]] =
-      readCursor(path, flags.getOrElse(Flags.DefaultRead))
 
     def readCursor(path: Path, flags: Flags): Resource[F, ReadCursor[F]] =
       open(path, flags).map { fileHandle =>
