@@ -65,11 +65,11 @@ sealed trait Files[F[_]] {
     */
   def writeAll(
       path: Path
-  ): Pipe[F, Byte, INothing] = writeAll(path, None)
+  ): Pipe[F, Byte, INothing] = writeAll(path, Flags.DefaultWrite)
 
   def writeAll(
       path: Path,
-      flags: Option[Flags]
+      flags: Flags
   ): Pipe[F, Byte, INothing]
 
   /** Returns a `WriteCursor` for the specified path.
@@ -79,7 +79,7 @@ sealed trait Files[F[_]] {
     */
   def writeCursor(
       path: Path,
-      flags: Option[Flags]
+      flags: Flags
   ): Resource[F, WriteCursor[F]]
 
   // /** Returns a `WriteCursor` for the specified file handle.

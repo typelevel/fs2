@@ -60,7 +60,7 @@ private[fs2] trait FilesPlatform {
 
     def writeAll(
         path: Path,
-        flags: Option[Flags]
+        flags: Flags
     ): Pipe[F, Byte, INothing] =
       in =>
         Stream
@@ -69,14 +69,12 @@ private[fs2] trait FilesPlatform {
 
     def writeCursor(
         path: Path,
-        flags: Option[Flags]
-    ): Resource[F, WriteCursor[F]] = {
-      val resolvedFlags = flags.getOrElse(Flags.DefaultWrite)
-      open(path, resolvedFlags).flatMap { fileHandle =>
-        val size = if (resolvedFlags.contains(Flag.Append)) fileHandle.size else 0L.pure[F]
+        flags: Flags
+    ): Resource[F, WriteCursor[F]] =
+      open(path, flags).flatMap { fileHandle =>
+        val size = if (flags.contains(Flag.Append)) fileHandle.size else 0L.pure[F]
         val cursor = size.map(s => WriteCursor(fileHandle, s))
         Resource.eval(cursor)
       }
-    }
   }
 }
