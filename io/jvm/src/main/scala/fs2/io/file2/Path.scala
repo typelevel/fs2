@@ -25,10 +25,10 @@ package file2
 
 import java.nio.file.{FileSystems, Path => JPath}
 
-final case class Path private (path: JPath) extends PathApi {
-  def resolve(name: String): Path = new Path(path.resolve(name))
-  def normalize: Path = new Path(path.normalize())
-  override def toString = path.toString
+final case class Path private (toNioPath: JPath) extends PathApi {
+  def resolve(name: String): Path = new Path(toNioPath.resolve(name))
+  def normalize: Path = new Path(toNioPath.normalize())
+  override def toString = toNioPath.toString
 }
 
 object Path extends PathCompanionApi {

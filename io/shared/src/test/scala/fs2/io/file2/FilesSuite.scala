@@ -23,16 +23,17 @@ package fs2
 package io
 package file2
 
-class PathSuite extends Fs2Suite {
-  test("construction") {
-    assertEquals(Path("foo/bar"), Path("foo") / "bar")
-    assertEquals(Path("/foo/bar"), Path("/foo") / "bar")
-    assertEquals(Path("//foo/bar"), Path("/foo") / "bar")
-  }
+import cats.effect.IO
 
-  test("normalize") {
-    assertEquals(Path("foo/bar/baz").normalize, Path("foo/bar/baz"))
-    assertEquals(Path("./foo/bar/baz").normalize, Path("foo/bar/baz"))
-    assertEquals(Path("./foo/../bar/baz").normalize, Path("bar/baz"))
+class FilesSuite extends BaseFileSuite {
+  group("readAll") {
+    test("retrieves whole content of a file") {
+      Stream
+        .resource(tempFile.evalMap(modify))
+        .flatMap(path => Files[IO].readAll(path))
+        .compile
+        .count
+        .assertEquals(4L)
+    }
   }
 }

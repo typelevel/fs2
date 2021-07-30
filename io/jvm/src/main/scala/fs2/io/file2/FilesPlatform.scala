@@ -24,8 +24,9 @@ package io
 package file2
 
 import cats.effect.kernel.{Async, Resource, Sync}
+import cats.syntax.all._
 
-import java.nio.file.{OpenOption, Path => JPath, StandardOpenOption}
+import java.nio.file.{Path => JPath}
 import java.nio.channels.FileChannel
 
 private[fs2] trait FilesPlatform {
@@ -34,26 +35,46 @@ private[fs2] trait FilesPlatform {
     new NioFiles[F]
 
   private final class NioFiles[F[_]: Async] extends Files.UnsealedFiles[F] {
-    private def toJPath(path: Path): JPath = path.path
+    private def toJPath(path: Path): JPath = path.toNioPath
 
-    def readAll(path: Path, chunkSize: Int): Stream[F, Byte] =
-      Stream.resource(readCursor(path)).flatMap { cursor =>
+    def readAll(path: Path, chunkSize: Int, flags: Option[Flags]): Stream[F, Byte] =
+      Stream.resource(readCursor(path, flags)).flatMap { cursor =>
         cursor.readAll(chunkSize).void.stream
       }
 
-    def readCursor(path: Path): Resource[F, ReadCursor[F]] =
-      readCursor(path, Nil)
+    def readCursor(path: Path, flags: Option[Flags]): Resource[F, ReadCursor[F]] =
+      readCursor(path, flags.getOrElse(Flags.DefaultRead))
 
-    def readCursor(path: Path, flags: Seq[OpenOption] = Nil): Resource[F, ReadCursor[F]] =
-      open(path, StandardOpenOption.READ :: flags.toList).map { fileHandle =>
+    def readCursor(path: Path, flags: Flags): Resource[F, ReadCursor[F]] =
+      open(path, flags).map { fileHandle =>
         ReadCursor(fileHandle, 0L)
       }
 
-    def open(path: Path, flags: Seq[OpenOption]): Resource[F, FileHandle[F]] =
-      openFileChannel(Sync[F].blocking(FileChannel.open(toJPath(path), flags: _*)))
+    def open(path: Path, flags: Flags): Resource[F, FileHandle[F]] =
+      openFileChannel(
+        Sync[F].blocking(FileChannel.open(toJPath(path), flags.value.map(_.option): _*))
+      )
 
     def openFileChannel(channel: F[FileChannel]): Resource[F, FileHandle[F]] =
       Resource.make(channel)(ch => Sync[F].blocking(ch.close())).map(ch => FileHandle.make(ch))
 
+    def writeAll(
+        path: Path,
+        flags: Flags
+    ): Pipe[F, Byte, INothing] =
+      in =>
+        Stream
+          .resource(writeCursor(path, flags))
+          .flatMap(_.writeAll(in).void.stream)
+
+    def writeCursor(
+        path: Path,
+        flags: Flags
+    ): Resource[F, WriteCursor[F]] =
+      open(path, flags).flatMap { fileHandle =>
+        val size = if (flags.contains(Flag.Append)) fileHandle.size else 0L.pure[F]
+        val cursor = size.map(s => WriteCursor(fileHandle, s))
+        Resource.eval(cursor)
+      }
   }
 }

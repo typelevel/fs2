@@ -29,13 +29,13 @@ import cats.effect.Resource
   */
 sealed trait Files[F[_]] {
 
-  def readAll(path: Path): Stream[F, Byte] = readAll(path, 64 * 1024)
+  def readAll(path: Path): Stream[F, Byte] = readAll(path, 64 * 1024, None)
 
-  def readAll(path: Path, chunkSize: Int): Stream[F, Byte]
+  def readAll(path: Path, chunkSize: Int, flags: Option[Flags]): Stream[F, Byte]
 
   /** Returns a `ReadCursor` for the specified path.
     */
-  def readCursor(path: Path): Resource[F, ReadCursor[F]]
+  def readCursor(path: Path, flags: Option[Flags]): Resource[F, ReadCursor[F]]
 
 //   /** Reads a range of data synchronously from the file at the specified path.
 //     * `start` is inclusive, `end` is exclusive, so when `start` is 0 and `end` is 2,
@@ -58,6 +58,51 @@ sealed trait Files[F[_]] {
 //       offset: Long = 0L,
 //       pollDelay: FiniteDuration
 //   ): Stream[F, Byte]
+
+  /** Writes all data to the file at the specified `java.nio.file.Path`.
+    *
+    * Adds the WRITE flag to any other `OpenOption` flags specified. By default, also adds the CREATE flag.
+    */
+  def writeAll(
+      path: Path
+  ): Pipe[F, Byte, INothing] = writeAll(path, Flags.DefaultWrite)
+
+  def writeAll(
+      path: Path,
+      flags: Flags
+  ): Pipe[F, Byte, INothing]
+
+  /** Returns a `WriteCursor` for the specified path.
+    *
+    * The `WRITE` option is added to the supplied flags. If the `APPEND` option is present in `flags`,
+    * the offset is initialized to the current size of the file.
+    */
+  def writeCursor(
+      path: Path,
+      flags: Flags
+  ): Resource[F, WriteCursor[F]]
+
+  // /** Returns a `WriteCursor` for the specified file handle.
+  //   *
+  //   * If `append` is true, the offset is initialized to the current size of the file.
+  //   */
+  // def writeCursorFromFileHandle(
+  //     file: FileHandle[F],
+  //     append: Boolean
+  // ): F[WriteCursor[F]]
+
+  // /** Writes all data to a sequence of files, each limited in size to `limit`.
+  //   *
+  //   * The `computePath` operation is used to compute the path of the first file
+  //   * and every subsequent file. Typically, the next file should be determined
+  //   * by analyzing the current state of the filesystem -- e.g., by looking at all
+  //   * files in a directory and generating a unique name.
+  //   */
+  // def writeRotate(
+  //     computePath: F[Path],
+  //     limit: Long,
+  //     flags: Seq[StandardOpenOption] = List(StandardOpenOption.CREATE)
+  // ): Pipe[F, Byte, INothing]
 }
 
 object Files extends FilesPlatform {

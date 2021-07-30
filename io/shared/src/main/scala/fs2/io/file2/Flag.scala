@@ -19,20 +19,13 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2
-package io
-package file2
+package fs2.io.file2
 
-class PathSuite extends Fs2Suite {
-  test("construction") {
-    assertEquals(Path("foo/bar"), Path("foo") / "bar")
-    assertEquals(Path("/foo/bar"), Path("/foo") / "bar")
-    assertEquals(Path("//foo/bar"), Path("/foo") / "bar")
-  }
-
-  test("normalize") {
-    assertEquals(Path("foo/bar/baz").normalize, Path("foo/bar/baz"))
-    assertEquals(Path("./foo/bar/baz").normalize, Path("foo/bar/baz"))
-    assertEquals(Path("./foo/../bar/baz").normalize, Path("bar/baz"))
-  }
+private[file2] trait FlagCompanionApi {
+  val Read: Flag
+  val Write: Flag
+  val Append: Flag
+  val Truncate: Flag
+  val Create: Flag
+  val CreateNew: Flag
 }
