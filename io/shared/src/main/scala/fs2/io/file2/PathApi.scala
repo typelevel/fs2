@@ -29,3 +29,7 @@ private[file2] trait PathApi {
   def normalize: Path
   def toString: String
 }
+
+private[file2] trait PathCompanionApi {
+  def apply(path: String): Path
+}

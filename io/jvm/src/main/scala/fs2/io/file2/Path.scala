@@ -31,7 +31,7 @@ final case class Path private (path: JPath) extends PathApi {
   override def toString = path.toString
 }
 
-object Path {
+object Path extends PathCompanionApi {
   def apply(path: String): Path = fromNioPath(FileSystems.getDefault.getPath(path))
   def fromNioPath(path: JPath): Path = Path(path)
 }
