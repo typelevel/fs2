@@ -56,7 +56,9 @@ private[tls] trait TLSSocketCompanionPlatform { self: TLSSocket.type =>
       _ <- out.through(socket.writes).compile.drain.background
       sessionRef <- SignallingRef[F].of(Option.empty[SSLSession]).toResource
       sessionListener = { session =>
-        dispatcher.unsafeRunAndForget(sessionRef.set(Some(session.toChunk)))
+        dispatcher.unsafeRunAndForget(
+          sessionRef.set(Some(new SSLSession(session.toChunk.toByteVector)))
+        )
       }: js.Function1[bufferMod.global.Buffer, Unit]
       errorDef <- F.deferred[Throwable].toResource
       errorListener = { error =>

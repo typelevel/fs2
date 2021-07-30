@@ -19,9 +19,8 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2
-package io.net
+package fs2.io.net.tls
 
-package object tls {
-  type SSLSession = Chunk[Byte]
-}
+import scodec.bits.ByteVector
+
+final class SSLSession private[tls] (val raw: ByteVector)
