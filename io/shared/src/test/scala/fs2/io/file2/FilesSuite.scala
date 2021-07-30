@@ -23,15 +23,18 @@ package fs2
 package io
 package file2
 
-import java.nio.file.{FileSystems, Path => JPath}
+import cats.effect.IO
 
-final case class Path private (toNioPath: JPath) extends PathApi {
-  def resolve(name: String): Path = new Path(toNioPath.resolve(name))
-  def normalize: Path = new Path(toNioPath.normalize())
-  override def toString = toNioPath.toString
-}
-
-object Path {
-  def apply(path: String): Path = fromNioPath(FileSystems.getDefault.getPath(path))
-  def fromNioPath(path: JPath): Path = Path(path)
+class FilesSuite extends BaseFileSuite {
+  group("readAll") {
+    test("retrieves whole content of a file") {
+      Stream
+        .resource(tempFile.evalMap(modify))
+        .flatMap(path => Files[IO].readAll(path))
+        .map(_ => 1)
+        .compile
+        .foldMonoid
+        .assertEquals(4)
+    }
+  }
 }

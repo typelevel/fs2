@@ -58,6 +58,51 @@ sealed trait Files[F[_]] {
 //       offset: Long = 0L,
 //       pollDelay: FiniteDuration
 //   ): Stream[F, Byte]
+
+  /** Writes all data to the file at the specified `java.nio.file.Path`.
+    *
+    * Adds the WRITE flag to any other `OpenOption` flags specified. By default, also adds the CREATE flag.
+    */
+  def writeAll(
+      path: Path
+  ): Pipe[F, Byte, INothing] = writeAll(path, None)
+
+  def writeAll(
+      path: Path,
+      flags: Option[Flags]
+  ): Pipe[F, Byte, INothing]
+
+  /** Returns a `WriteCursor` for the specified path.
+    *
+    * The `WRITE` option is added to the supplied flags. If the `APPEND` option is present in `flags`,
+    * the offset is initialized to the current size of the file.
+    */
+  def writeCursor(
+      path: Path,
+      flags: Option[Flags]
+  ): Resource[F, WriteCursor[F]]
+
+  // /** Returns a `WriteCursor` for the specified file handle.
+  //   *
+  //   * If `append` is true, the offset is initialized to the current size of the file.
+  //   */
+  // def writeCursorFromFileHandle(
+  //     file: FileHandle[F],
+  //     append: Boolean
+  // ): F[WriteCursor[F]]
+
+  // /** Writes all data to a sequence of files, each limited in size to `limit`.
+  //   *
+  //   * The `computePath` operation is used to compute the path of the first file
+  //   * and every subsequent file. Typically, the next file should be determined
+  //   * by analyzing the current state of the filesystem -- e.g., by looking at all
+  //   * files in a directory and generating a unique name.
+  //   */
+  // def writeRotate(
+  //     computePath: F[Path],
+  //     limit: Long,
+  //     flags: Seq[StandardOpenOption] = List(StandardOpenOption.CREATE)
+  // ): Pipe[F, Byte, INothing]
 }
 
 object Files extends FilesPlatform {
