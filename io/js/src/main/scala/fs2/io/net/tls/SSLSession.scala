@@ -23,4 +23,15 @@ package fs2.io.net.tls
 
 import scodec.bits.ByteVector
 
-final class SSLSession private[tls] (val raw: ByteVector)
+final class SSLSession private[tls] (val raw: ByteVector) {
+
+  override def equals(obj: Any): Boolean = obj match {
+    case that: SSLSession => this.raw == that.raw
+    case _                => false
+  }
+
+  override def hashCode: Int = raw.hashCode
+
+  override def toString: String = s"SSLSession($raw)"
+
+}
