@@ -23,13 +23,15 @@ package fs2
 package io
 package file2
 
-sealed trait Path {
-  def /(name: String): Path = resolve(name)
-  def resolve(name: String): Path
-  def normalize: Path
-  def toString: String
+import java.nio.file.{FileSystems, Path => JPath}
+
+final case class Path private (path: JPath) extends PathApi {
+  def resolve(name: String): Path = new Path(path.resolve(name))
+  def normalize: Path = new Path(path.normalize())
+  override def toString = path.toString
 }
 
-object Path extends PathCompanionPlatform {
-  private[file2] trait UnsealedPath extends Path
+object Path {
+  def apply(path: String): Path = fromNioPath(FileSystems.getDefault.getPath(path))
+  def fromNioPath(path: JPath): Path = Path(path)
 }

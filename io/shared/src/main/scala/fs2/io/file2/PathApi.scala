@@ -23,9 +23,9 @@ package fs2
 package io
 package file2
 
-import java.nio.file.{FileSystems, Path => JPath}
-
-private[file2] trait PathCompanionPlatform {
-  def apply(path: String): Path = fromNioPath(FileSystems.getDefault.getPath(path))
-  def fromNioPath(path: JPath): Path = new NioPath(path)
+private[file2] trait PathApi {
+  def /(name: String): Path = resolve(name)
+  def resolve(name: String): Path
+  def normalize: Path
+  def toString: String
 }
