@@ -23,7 +23,7 @@ package fs2
 package io
 package file2
 
-private[file2] trait PathApi extends Any {
+private[file2] trait PathApi {
   def /(name: String): Path = resolve(name)
   def resolve(name: String): Path
   def normalize: Path
