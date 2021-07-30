@@ -31,10 +31,9 @@ class FilesSuite extends BaseFileSuite {
       Stream
         .resource(tempFile.evalMap(modify))
         .flatMap(path => Files[IO].readAll(path))
-        .map(_ => 1)
         .compile
-        .foldMonoid
-        .assertEquals(4)
+        .count
+        .assertEquals(4L)
     }
   }
 }
