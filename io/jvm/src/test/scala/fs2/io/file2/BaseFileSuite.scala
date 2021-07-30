@@ -34,7 +34,9 @@ import scala.concurrent.duration._
 
 trait BaseFileSuite extends Fs2Suite {
   protected def tempDirectory: Resource[IO, Path] =
-    Resource.make(IO(Path.fromNioPath(JFiles.createTempDirectory("BaseFileSpec"))))(deleteDirectoryRecursively(_))
+    Resource.make(IO(Path.fromNioPath(JFiles.createTempDirectory("BaseFileSpec"))))(
+      deleteDirectoryRecursively(_)
+    )
 
   protected def tempFile: Resource[IO, Path] =
     tempDirectory.evalMap(aFile)

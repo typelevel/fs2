@@ -51,7 +51,9 @@ private[fs2] trait FilesPlatform {
       }
 
     def open(path: Path, flags: Flags): Resource[F, FileHandle[F]] =
-      openFileChannel(Sync[F].blocking(FileChannel.open(toJPath(path), flags.value.map(_.option): _*)))
+      openFileChannel(
+        Sync[F].blocking(FileChannel.open(toJPath(path), flags.value.map(_.option): _*))
+      )
 
     def openFileChannel(channel: F[FileChannel]): Resource[F, FileHandle[F]] =
       Resource.make(channel)(ch => Sync[F].blocking(ch.close())).map(ch => FileHandle.make(ch))

@@ -29,7 +29,7 @@ class PathSuite extends Fs2Suite {
     assertEquals(Path("/foo/bar"), Path("/foo") / "bar")
     assertEquals(Path("//foo/bar"), Path("/foo") / "bar")
   }
-  
+
   test("normalize") {
     assertEquals(Path("foo/bar/baz").normalize, Path("foo/bar/baz"))
     assertEquals(Path("./foo/bar/baz").normalize, Path("foo/bar/baz"))
