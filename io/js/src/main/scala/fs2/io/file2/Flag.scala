@@ -19,13 +19,26 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2.io.file2
+package fs2
+package io
+package file2
 
-private[file2] trait FlagCompanionApi {
-  val Read: Flag
-  val Write: Flag
-  val Append: Flag
-  val Truncate: Flag
-  val Create: Flag
-  val CreateNew: Flag
+import fs2.internal.jsdeps.node.fsMod
+
+final class Flag private (private[file2] val bits: Long) extends AnyVal
+
+object Flag extends FlagCompanionApi {
+  private def apply(bits: Long): Flag = new Flag(bits)
+  private def apply(bits: Double): Flag = Flag(bits.toLong)
+
+  val Read = Flag(fsMod.constants.O_RDONLY)
+  val Write = Flag(fsMod.constants.O_WRONLY)
+  val Append = Flag(fsMod.constants.O_APPEND)
+
+  val Truncate = Flag(fsMod.constants.O_TRUNC)
+  val Create = Flag(fsMod.constants.O_CREAT)
+  val CreateNew = Flag(fsMod.constants.O_CREAT.toLong | fsMod.constants.O_EXCL.toLong)
+
+  val Sync = Flag(fsMod.constants.O_SYNC)
+  val Dsync = Flag(fsMod.constants.O_DSYNC)
 }

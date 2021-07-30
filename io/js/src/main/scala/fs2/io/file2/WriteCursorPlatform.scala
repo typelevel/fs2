@@ -23,15 +23,4 @@ package fs2
 package io
 package file2
 
-import java.nio.file.{FileSystems, Path => JPath}
-
-final case class Path private (toNioPath: JPath) extends PathApi {
-  def resolve(name: String): Path = new Path(toNioPath.resolve(name))
-  def normalize: Path = new Path(toNioPath.normalize())
-  override def toString = toNioPath.toString
-}
-
-object Path extends PathCompanionApi {
-  def apply(path: String): Path = fromNioPath(FileSystems.getDefault.getPath(path))
-  def fromNioPath(path: JPath): Path = Path(path)
-}
+private[file2] trait WriteCursorCompanionPlatform

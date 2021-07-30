@@ -23,15 +23,24 @@ package fs2
 package io
 package file2
 
-import java.nio.file.{FileSystems, Path => JPath}
+import fs2.internal.jsdeps.node.pathMod
+import fs2.internal.jsdeps.node.nodeFsMod
 
-final case class Path private (toNioPath: JPath) extends PathApi {
-  def resolve(name: String): Path = new Path(toNioPath.resolve(name))
-  def normalize: Path = new Path(toNioPath.normalize())
-  override def toString = toNioPath.toString
+final class Path(override val toString: String, private[file2] val fs: nodeFsMod.type)
+    extends PathApi {
+
+  private def withinFs(path: String): Path = new Path(path, fs)
+
+  def resolve(name: String): Path = withinFs(pathMod.resolve(toString, name))
+
+  def normalize: Path = withinFs(pathMod.normalize(toString))
+
 }
 
 object Path extends PathCompanionApi {
-  def apply(path: String): Path = fromNioPath(FileSystems.getDefault.getPath(path))
-  def fromNioPath(path: JPath): Path = Path(path)
+
+  def apply(path: String): Path = new Path(path, nodeFsMod)
+
+  def apply(path: String, fs: Fs): Path = new Path(path, fs.asInstanceOf[nodeFsMod.type])
+
 }

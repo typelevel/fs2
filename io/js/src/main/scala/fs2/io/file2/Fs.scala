@@ -19,19 +19,12 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2
-package io
-package file2
+package fs2.io.file2
 
-import java.nio.file.{FileSystems, Path => JPath}
+import scala.scalajs.js
 
-final case class Path private (toNioPath: JPath) extends PathApi {
-  def resolve(name: String): Path = new Path(toNioPath.resolve(name))
-  def normalize: Path = new Path(toNioPath.normalize())
-  override def toString = toNioPath.toString
-}
-
-object Path extends PathCompanionApi {
-  def apply(path: String): Path = fromNioPath(FileSystems.getDefault.getPath(path))
-  def fromNioPath(path: JPath): Path = Path(path)
-}
+/** A facade for Node.js File system `fs`. Cast to/from your own bindings.
+  * @see [[https://nodejs.org/api/fs.html]]
+  */
+@js.native
+sealed trait Fs extends js.Object
