@@ -98,5 +98,3 @@ final case class ReadCursor[F[_]](file: FileHandle[F], offset: Long) {
       case None                => Pull.eval(t.sleep(pollDelay)) >> tail(chunkSize, pollDelay)
     }
 }
-
-object ReadCursor extends ReadCursorCompanionPlatform

@@ -64,5 +64,3 @@ final case class WriteCursor[F[_]](file: FileHandle[F], offset: Long) {
       case None           => Pull.pure(this)
     }
 }
-
-object WriteCursor extends WriteCursorCompanionPlatform
