@@ -26,7 +26,8 @@ package file2
 import fs2.internal.jsdeps.node.pathMod
 import fs2.internal.jsdeps.node.nodeFsMod
 
-final class Path(override val toString: String, private[file2] val fs: nodeFsMod.type) extends PathApi {
+final class Path(override val toString: String, private[file2] val fs: nodeFsMod.type)
+    extends PathApi {
 
   private def withinFs(path: String): Path = new Path(path, fs)
 
@@ -37,5 +38,9 @@ final class Path(override val toString: String, private[file2] val fs: nodeFsMod
 }
 
 object Path extends PathCompanionApi {
+
   def apply(path: String): Path = new Path(path, nodeFsMod)
+
+  def apply(path: String, fs: Fs): Path = new Path(path, fs.asInstanceOf[nodeFsMod.type])
+
 }
