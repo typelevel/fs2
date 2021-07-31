@@ -44,11 +44,11 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
   /** Returns a `ReadCursor` for the specified path. */
   def readCursor(path: Path, flags: Flags): Resource[F, ReadCursor[F]]
 
-//   /** Reads a range of data synchronously from the file at the specified path.
-//     * `start` is inclusive, `end` is exclusive, so when `start` is 0 and `end` is 2,
-//     * two bytes are read.
-//     */
-//   def readRange(path: Path, chunkSize: Int, start: Long, end: Long): Stream[F, Byte]
+  /** Reads a range of data synchronously from the file at the specified path.
+    * `start` is inclusive, `end` is exclusive, so when `start` is 0 and `end` is 2,
+    * two bytes are read.
+    */
+  def readRange(path: Path, chunkSize: Int, start: Long, end: Long): Stream[F, Byte]
 
 //   /** Returns an infinite stream of data from the file at the specified path.
 //     * Starts reading from the specified offset and upon reaching the end of the file,

@@ -307,6 +307,11 @@ private[file] trait FilesCompanionPlatform {
         cursor.readAll(chunkSize).void.stream
       }
 
+    def readRange(path: Path, chunkSize: Int, start: Long, end: Long): Stream[F, Byte] =
+      Stream.resource(readCursor(path, Flags.Read)).flatMap { cursor =>
+        cursor.seek(start).readUntil(chunkSize, end).void.stream
+      }
+
     def open(path: Path, flags: Flags): Resource[F, FileHandle[F]] =
       openFileChannel(
         Sync[F].blocking(FileChannel.open(toJPath(path), flags.value.map(_.option): _*))
@@ -430,9 +435,7 @@ private[file] trait FilesCompanionPlatform {
       }
 
     def readRange(path: JPath, chunkSize: Int, start: Long, end: Long): Stream[F, Byte] =
-      Stream.resource(readCursor(path)).flatMap { cursor =>
-        cursor.seek(start).readUntil(chunkSize, end).void.stream
-      }
+      readRange(Path.fromNioPath(path), chunkSize, start, end)
 
     def setPermissions(path: JPath, permissions: Set[PosixFilePermission]): F[JPath] =
       Sync[F].blocking(JFiles.setPosixFilePermissions(path, permissions.asJava))
