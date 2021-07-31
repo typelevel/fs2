@@ -107,18 +107,6 @@ private[file] trait FilesPlatform[F[_]] {
       flags: NodeFlags = NodeFlags.w,
       mode: FileAccessMode = FileAccessMode.OpenDefault
   ): Resource[F, WriteCursor[F]]
-
-  def writeCursorFromFileHandle(
-      file: FileHandle[F],
-      append: Boolean
-  ): F[WriteCursor[F]]
-
-  def writeRotate(
-      computePath: F[Path],
-      limit: Long,
-      flags: NodeFlags = NodeFlags.w,
-      mode: FileAccessMode = FileAccessMode.OpenDefault
-  ): Pipe[F, Byte, INothing]
 }
 
 
@@ -277,7 +265,7 @@ private[fs2] trait FilesCompanionPlatform {
         )
       }
 
-    def writeAll(path: Path, flags: Flags): Pipe[F, Byte, INothing] =
+    override def writeAll(path: Path, flags: Flags): Pipe[F, Byte, INothing] =
       in =>
         Stream.resource(open(path, flags)).flatMap { handle =>
           in.through {
@@ -479,23 +467,6 @@ private[fs2] trait FilesCompanionPlatform {
         append: Boolean
     ): F[WriteCursor[F]] =
       if (append) file.size.map(s => WriteCursor(file, s)) else WriteCursor(file, 0L).pure[F]
-
-    override def writeRotate(
-        computePath: F[Path],
-        limit: Long,
-        flags: NodeFlags,
-        mode: FileAccessMode
-    ): Pipe[F, Byte, INothing] = {
-      def openNewFile: Resource[F, FileHandle[F]] =
-        Resource
-          .eval(computePath)
-          .flatMap(p => open(p, flags, mode))
-
-      def newCursor(file: FileHandle[F]): F[WriteCursor[F]] =
-        writeCursorFromFileHandle(file, flags.toString.contains('a'))
-
-      internal.WriteRotate(openNewFile, newCursor, limit)
-    }
   }
 
   private final class WrappedJSStats(private val stats: fsMod.Stats) extends Stats {

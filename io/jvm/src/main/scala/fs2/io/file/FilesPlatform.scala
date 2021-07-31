@@ -316,15 +316,6 @@ private[file] trait FilesCompanionPlatform {
     def openFileChannel(channel: F[FileChannel]): Resource[F, FileHandle[F]] =
       Resource.make(channel)(ch => Sync[F].blocking(ch.close())).map(ch => FileHandle.make(ch))
 
-    def writeAll(
-        path: Path,
-        flags: Flags
-    ): Pipe[F, Byte, INothing] =
-      in =>
-        Stream
-          .resource(writeCursor(path, flags))
-          .flatMap(_.writeAll(in).void.stream)
-
     // ======= DEPRECATED MEMBERS =============
 
     def copy(source: JPath, target: JPath, flags: Seq[CopyOption]): F[JPath] =
@@ -523,12 +514,6 @@ private[file] trait FilesCompanionPlatform {
         val cursor = size.map(s => WriteCursor(fileHandle, s))
         Resource.eval(cursor)
       }
-
-    def writeCursorFromFileHandle(
-        file: FileHandle[F],
-        append: Boolean
-    ): F[WriteCursor[F]] =
-      if (append) file.size.map(s => WriteCursor(file, s)) else WriteCursor(file, 0L).pure[F]
 
     def writeRotate(
         computePath: F[JPath],
