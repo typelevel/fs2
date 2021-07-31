@@ -248,7 +248,7 @@ private[fs2] trait FilesCompanionPlatform {
       )(fd => F.fromPromise(F.delay(fd.close())))
       .map(FileHandle.make[F])
 
-    def readAll(path: Path, chunkSize: Int, flags: Flags): Stream[F, Byte] =
+    override def readAll(path: Path, chunkSize: Int, flags: Flags): Stream[F, Byte] =
       Stream.resource(open(path, flags)).flatMap { handle =>
         readReadable(
           F.delay(
@@ -367,7 +367,7 @@ private[fs2] trait FilesCompanionPlatform {
         )
       )
 
-    def readRange(path: Path, chunkSize: Int, start: Long, end: Long): Stream[F, Byte] =
+    override def readRange(path: Path, chunkSize: Int, start: Long, end: Long): Stream[F, Byte] =
       readReadable(
         F.delay(
           fsMod

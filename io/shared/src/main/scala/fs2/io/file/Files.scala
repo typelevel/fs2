@@ -125,9 +125,19 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
 object Files extends FilesCompanionPlatform {
   private[file] abstract class UnsealedFiles[F[_]: Async] extends Files[F] {
 
+    def readAll(path: Path, chunkSize: Int, flags: Flags): Stream[F, Byte] =
+      Stream.resource(readCursor(path, flags)).flatMap { cursor =>
+        cursor.readAll(chunkSize).void.stream
+      }
+
     def readCursor(path: Path, flags: Flags): Resource[F, ReadCursor[F]] =
       open(path, flags).map { fileHandle =>
         ReadCursor(fileHandle, 0L)
+      }
+
+    def readRange(path: Path, chunkSize: Int, start: Long, end: Long): Stream[F, Byte] =
+      Stream.resource(readCursor(path, Flags.Read)).flatMap { cursor =>
+        cursor.seek(start).readUntil(chunkSize, end).void.stream
       }
 
     def tail(
