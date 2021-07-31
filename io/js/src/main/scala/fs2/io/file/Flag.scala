@@ -42,3 +42,5 @@ object Flag extends FlagCompanionApi {
   val Sync = Flag(fsMod.constants.O_SYNC)
   val Dsync = Flag(fsMod.constants.O_DSYNC)
 }
+
+private[file] trait FlagsCompanionPlatform {}

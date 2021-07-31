@@ -162,7 +162,7 @@ private[file] trait FilesPlatform[F[_]] {
     * two bytes are read.
     */
   def readRange(path: JPath, chunkSize: Int, start: Long, end: Long): Stream[F, Byte]
- 
+
   /** Set file permissions from set of `PosixFilePermission`.
     *
     * Note: this will only work for POSIX supporting file systems.
@@ -500,36 +500,23 @@ private[file] trait FilesCompanionPlatform {
         path: JPath,
         flags: Seq[StandardOpenOption] = List(StandardOpenOption.CREATE)
     ): Pipe[F, Byte, INothing] =
-      in =>
-        Stream
-          .resource(writeCursor(path, flags))
-          .flatMap(_.writeAll(in).void.stream)
+      writeAll(Path.fromNioPath(path), Flags.fromOpenOptions(StandardOpenOption.WRITE +: flags))
 
     def writeCursor(
         path: JPath,
         flags: Seq[OpenOption] = List(StandardOpenOption.CREATE)
     ): Resource[F, WriteCursor[F]] =
-      open(path, StandardOpenOption.WRITE :: flags.toList).flatMap { fileHandle =>
-        val size = if (flags.contains(StandardOpenOption.APPEND)) fileHandle.size else 0L.pure[F]
-        val cursor = size.map(s => WriteCursor(fileHandle, s))
-        Resource.eval(cursor)
-      }
+      writeCursor(Path.fromNioPath(path), Flags.fromOpenOptions(StandardOpenOption.WRITE +: flags))
 
     def writeRotate(
         computePath: F[JPath],
         limit: Long,
         flags: Seq[StandardOpenOption]
-    ): Pipe[F, Byte, INothing] = {
-      def openNewFile: Resource[F, FileHandle[F]] =
-        Resource
-          .eval(computePath)
-          .flatMap(p => open(p, StandardOpenOption.WRITE :: flags.toList))
-
-      def newCursor(file: FileHandle[F]): F[WriteCursor[F]] =
-        writeCursorFromFileHandle(file, flags.contains(StandardOpenOption.APPEND))
-
-      internal.WriteRotate(openNewFile, newCursor, limit)
-    }
+    ): Pipe[F, Byte, INothing] =
+      writeRotate(
+        computePath.map(Path.fromNioPath),
+        limit,
+        Flags.fromOpenOptions(StandardOpenOption.WRITE +: flags)
+      )
   }
-
 }
