@@ -47,7 +47,7 @@ private[file2] trait FilesPlatform {
     def open(path: Path, flags: Flags): Resource[F, FileHandle[F]] = Resource
       .make(
         F.fromPromise(
-          F.delay(fsPromisesMod.open(path.toString, flags.toString, combineFlags(flags)))
+          F.delay(fsPromisesMod.open(path.toString, combineFlags(flags)))
         )
       )(fd => F.fromPromise(F.delay(fd.close())))
       .map(FileHandle.make[F])
