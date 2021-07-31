@@ -31,23 +31,33 @@ import fs2.internal.jsdeps.node.osMod
 import fs2.internal.jsdeps.node.pathMod
 import CollectionCompat._
 
-final class Path(private val path: String) extends AnyVal {
+final class Path(private val path: String) extends PathApi {
+
   def basename: Path = Path(pathMod.basename(path))
   def basename(ext: String): Path = Path(pathMod.basename(path, ext))
   def dirname: Path = Path(pathMod.dirname(path))
   def extname: String = pathMod.extname(path)
   def isAbsolute: Boolean = pathMod.isAbsolute(path)
   def normalize: Path = Path(pathMod.normalize(path))
-  def relativeTo(that: Path): Path = Path(pathMod.relative(this.path, that.path))
+  def relativeTo(that: Path): Path = Path(pathMod.relative(path, that.path))
+  def resolve(name: String): Path = Path(s"$path${pathMod.sep}$name")
+
+  private[file] def toJS: fsMod.PathLike = path.asInstanceOf[fsMod.PathLike]
 
   def /(that: Path): Path = Path.join(this, that)
 
   override def toString: String = path
 
-  private[file] def toJS: fsMod.PathLike = path.asInstanceOf[fsMod.PathLike]
+  override def equals(that: Any) = that match {
+    case p: Path => path == p.path
+    case _       => false
+  }
+
+  override def hashCode = path.hashCode
 }
 
-object Path {
+object Path extends PathCompanionApi {
+
   def apply(path: String): Path = new Path(path)
 
   def join(paths: Path*): Path = Path(pathMod.join(paths.map(_.path): _*))

@@ -21,7 +21,7 @@
 
 package fs2
 package io
-package file2
+package file
 
 class PathSuite extends Fs2Suite {
   test("construction") {

@@ -22,7 +22,7 @@
 package fs2
 package io
 
-import java.nio.file.{Files => _, _}
+import java.nio.file.{Files => _, Path => JPath, _}
 import java.nio.file.attribute.{FileAttribute, PosixFilePermission}
 
 import cats.effect.kernel.{Async, Resource}
@@ -35,7 +35,7 @@ package object file {
 
   @deprecated("Use Files[F].readAll", "3.0.0")
   def readAll[F[_]: Async](
-      path: Path,
+      path: JPath,
       chunkSize: Int
   ): Stream[F, Byte] = Files[F].readAll(path, chunkSize)
 
@@ -45,7 +45,7 @@ package object file {
     */
   @deprecated("Use Files[F].readRange", "3.0.0")
   def readRange[F[_]: Async](
-      path: Path,
+      path: JPath,
       chunkSize: Int,
       start: Long,
       end: Long
@@ -62,7 +62,7 @@ package object file {
     */
   @deprecated("Use Files[F].tail", "3.0.0")
   def tail[F[_]: Async](
-      path: Path,
+      path: JPath,
       chunkSize: Int,
       offset: Long = 0L,
       pollDelay: FiniteDuration = 1.second
@@ -74,7 +74,7 @@ package object file {
     */
   @deprecated("Use Files[F].writeAll", "3.0.0")
   def writeAll[F[_]: Async](
-      path: Path,
+      path: JPath,
       flags: Seq[StandardOpenOption] = List(StandardOpenOption.CREATE)
   ): Pipe[F, Byte, INothing] = Files[F].writeAll(path, flags)
 
@@ -87,7 +87,7 @@ package object file {
     */
   @deprecated("Use Files[F].writeRotate", "3.0.0")
   def writeRotate[F[_]](
-      computePath: F[Path],
+      computePath: F[JPath],
       limit: Long,
       flags: Seq[StandardOpenOption] = List(StandardOpenOption.CREATE)
   )(implicit F: Async[F]): Pipe[F, Byte, INothing] =
@@ -108,7 +108,7 @@ package object file {
     */
   @deprecated("Use Files[F].watch", "3.0.0")
   def watch[F[_]](
-      path: Path,
+      path: JPath,
       types: Seq[Watcher.EventType] = Nil,
       modifiers: Seq[WatchEvent.Modifier] = Nil,
       pollTimeout: FiniteDuration = 1.second
@@ -124,7 +124,7 @@ package object file {
     */
   @deprecated("Use Files[F].exists", "3.0.0")
   def exists[F[_]: Async](
-      path: Path,
+      path: JPath,
       flags: Seq[LinkOption] = Seq.empty
   ): F[Boolean] =
     Files[F].exists(path, flags)
@@ -135,7 +135,7 @@ package object file {
     */
   @deprecated("Use Files[F].permissions", "3.0.0")
   def permissions[F[_]: Async](
-      path: Path,
+      path: JPath,
       flags: Seq[LinkOption] = Seq.empty
   ): F[Set[PosixFilePermission]] =
     Files[F].permissions(path, flags)
@@ -146,9 +146,9 @@ package object file {
     */
   @deprecated("Use Files[F].setPermissions", "3.0.0")
   def setPermissions[F[_]: Async](
-      path: Path,
+      path: JPath,
       permissions: Set[PosixFilePermission]
-  ): F[Path] =
+  ): F[JPath] =
     Files[F].setPermissions(path, permissions)
 
   /** Copies a file from the source to the target path,
@@ -157,10 +157,10 @@ package object file {
     */
   @deprecated("Use Files[F].copy", "3.0.0")
   def copy[F[_]: Async](
-      source: Path,
-      target: Path,
+      source: JPath,
+      target: JPath,
       flags: Seq[CopyOption] = Seq.empty
-  ): F[Path] =
+  ): F[JPath] =
     Files[F].copy(source, target, flags)
 
   /** Deletes a file.
@@ -169,20 +169,20 @@ package object file {
     * This action will fail if the path doesn't exist.
     */
   @deprecated("Use Files[F].delete", "3.0.0")
-  def delete[F[_]: Async](path: Path): F[Unit] =
+  def delete[F[_]: Async](path: JPath): F[Unit] =
     Files[F].delete(path)
 
   /** Like `delete`, but will not fail when the path doesn't exist.
     */
   @deprecated("Use Files[F].deleteIfExists", "3.0.0")
-  def deleteIfExists[F[_]: Async](path: Path): F[Boolean] =
+  def deleteIfExists[F[_]: Async](path: JPath): F[Boolean] =
     Files[F].deleteIfExists(path)
 
   /** Recursively delete a directory
     */
   @deprecated("Use Files[F].deleteDirectoryRecursively", "3.0.0")
   def deleteDirectoryRecursively[F[_]: Async](
-      path: Path,
+      path: JPath,
       options: Set[FileVisitOption] = Set.empty
   ): F[Unit] =
     Files[F].deleteDirectoryRecursively(path, options)
@@ -190,7 +190,7 @@ package object file {
   /** Returns the size of a file (in bytes).
     */
   @deprecated("Use Files[F].size", "3.0.0")
-  def size[F[_]: Async](path: Path): F[Long] =
+  def size[F[_]: Async](path: JPath): F[Long] =
     Files[F].size(path)
 
   /** Moves (or renames) a file from the source to the target path.
@@ -199,10 +199,10 @@ package object file {
     */
   @deprecated("Use Files[F].move", "3.0.0")
   def move[F[_]: Async](
-      source: Path,
-      target: Path,
+      source: JPath,
+      target: JPath,
       flags: Seq[CopyOption] = Seq.empty
-  ): F[Path] =
+  ): F[JPath] =
     Files[F].move(source, target, flags)
 
   /** Creates a stream containing the path of a temporary file.
@@ -211,11 +211,11 @@ package object file {
     */
   @deprecated("Use Stream.resource(Files[F].tempFile(..))", "3.0.0")
   def tempFileStream[F[_]: Async](
-      dir: Path,
+      dir: JPath,
       prefix: String = "",
       suffix: String = ".tmp",
       attributes: Seq[FileAttribute[_]] = Seq.empty
-  ): Stream[F, Path] =
+  ): Stream[F, JPath] =
     Stream.resource(Files[F].tempFile(Some(dir), prefix, suffix, attributes))
 
   /** Creates a resource containing the path of a temporary file.
@@ -224,11 +224,11 @@ package object file {
     */
   @deprecated("Use Files[F].tempFile", "3.0.0")
   def tempFileResource[F[_]: Async](
-      dir: Path,
+      dir: JPath,
       prefix: String = "",
       suffix: String = ".tmp",
       attributes: Seq[FileAttribute[_]] = Seq.empty
-  ): Resource[F, Path] =
+  ): Resource[F, JPath] =
     Files[F].tempFile(Some(dir), prefix, suffix, attributes)
 
   /** Creates a stream containing the path of a temporary directory.
@@ -237,10 +237,10 @@ package object file {
     */
   @deprecated("Use Stream.resource(Files[F].tempDirectory(..))", "3.0.0")
   def tempDirectoryStream[F[_]: Async](
-      dir: Path,
+      dir: JPath,
       prefix: String = "",
       attributes: Seq[FileAttribute[_]] = Seq.empty
-  ): Stream[F, Path] =
+  ): Stream[F, JPath] =
     Stream.resource(Files[F].tempDirectory(Some(dir), prefix, attributes))
 
   /** Creates a resource containing the path of a temporary directory.
@@ -249,76 +249,76 @@ package object file {
     */
   @deprecated("Use Files[F].tempDirectory", "3.0.0")
   def tempDirectoryResource[F[_]: Async](
-      dir: Path,
+      dir: JPath,
       prefix: String = "",
       attributes: Seq[FileAttribute[_]] = Seq.empty
-  ): Resource[F, Path] =
+  ): Resource[F, JPath] =
     Files[F].tempDirectory(Some(dir), prefix, attributes)
 
   /** Creates a new directory at the given path
     */
   @deprecated("Use Files[F].createDirectory", "3.0.0")
   def createDirectory[F[_]: Async](
-      path: Path,
+      path: JPath,
       flags: Seq[FileAttribute[_]] = Seq.empty
-  ): F[Path] =
+  ): F[JPath] =
     Files[F].createDirectory(path, flags)
 
   /** Creates a new directory at the given path and creates all nonexistent parent directories beforehand.
     */
   @deprecated("Use Files[F].createDirectories", "3.0.0")
   def createDirectories[F[_]: Async](
-      path: Path,
+      path: JPath,
       flags: Seq[FileAttribute[_]] = Seq.empty
-  ): F[Path] =
+  ): F[JPath] =
     Files[F].createDirectories(path, flags)
 
   /** Creates a stream of `Path`s inside a directory.
     */
   @deprecated("Use Files[F].directoryStream", "3.0.0")
-  def directoryStream[F[_]: Async](path: Path): Stream[F, Path] =
+  def directoryStream[F[_]: Async](path: JPath): Stream[F, JPath] =
     Files[F].directoryStream(path)
 
   /** Creates a stream of `Path`s inside a directory, filtering the results by the given predicate.
     */
   @deprecated("Use Files[F].directoryStream", "3.0.0")
   def directoryStream[F[_]: Async](
-      path: Path,
-      filter: Path => Boolean
-  ): Stream[F, Path] =
+      path: JPath,
+      filter: JPath => Boolean
+  ): Stream[F, JPath] =
     Files[F].directoryStream(path, filter)
 
   /** Creates a stream of `Path`s inside a directory which match the given glob.
     */
   @deprecated("Use Files[F].directoryStream", "3.0.0")
   def directoryStream[F[_]: Async](
-      path: Path,
+      path: JPath,
       glob: String
-  ): Stream[F, Path] =
+  ): Stream[F, JPath] =
     Files[F].directoryStream(path, glob)
 
   /** Creates a stream of `Path`s contained in a given file tree. Depth is unlimited.
     */
   @deprecated("Use Files[F].walk", "3.0.0")
-  def walk[F[_]: Async](start: Path): Stream[F, Path] =
+  def walk[F[_]: Async](start: JPath): Stream[F, JPath] =
     Files[F].walk(start)
 
   /** Creates a stream of `Path`s contained in a given file tree, respecting the supplied options. Depth is unlimited.
     */
   @deprecated("Use Files[F].walk", "3.0.0")
   def walk[F[_]: Async](
-      start: Path,
+      start: JPath,
       options: Seq[FileVisitOption]
-  ): Stream[F, Path] =
+  ): Stream[F, JPath] =
     Files[F].walk(start, options)
 
   /** Creates a stream of `Path`s contained in a given file tree down to a given depth.
     */
   @deprecated("Use Files[F].walk", "3.0.0")
   def walk[F[_]: Async](
-      start: Path,
+      start: JPath,
       maxDepth: Int,
       options: Seq[FileVisitOption] = Seq.empty
-  ): Stream[F, Path] =
+  ): Stream[F, JPath] =
     Files[F].walk(start, maxDepth, options)
 }

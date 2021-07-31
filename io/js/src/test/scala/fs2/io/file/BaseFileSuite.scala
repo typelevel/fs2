@@ -49,7 +49,7 @@ trait BaseFileSuite {
           _.flatMap { dir =>
             List
               .tabulate(5)(i =>
-                Files[IO].open(dir / Path(s"BaseFileSpecSub$i.tmp"), Flags.w).use(_ => IO.unit)
+                Files[IO].open(dir / Path(s"BaseFileSpecSub$i.tmp"), NodeFlags.w).use(_ => IO.unit)
               )
               .sequence
           }
@@ -63,7 +63,7 @@ trait BaseFileSuite {
       .allocated
       .map(_._1)
       .map(_ / Path("BaseFileSpec.tmp"))
-      .flatTap(Files[IO].open(_, Flags.w).use(_ => IO.unit))
+      .flatTap(Files[IO].open(_, NodeFlags.w).use(_ => IO.unit))
 
   protected def modify(file: Path): IO[Path] =
     Files[IO]
@@ -79,7 +79,7 @@ trait BaseFileSuite {
       .map(_.toByte)
       .covary[IO]
       .metered(250.millis)
-      .through(Files[IO].writeAll(file, Flags.a))
+      .through(Files[IO].writeAll(file, NodeFlags.a))
 
   protected def deleteDirectoryRecursively(dir: Path): IO[Unit] =
     Files[IO].rm(dir, recursive = true)

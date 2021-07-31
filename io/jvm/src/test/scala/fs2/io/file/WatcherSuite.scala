@@ -28,7 +28,7 @@ import scala.concurrent.duration._
 import cats.effect.IO
 import cats.syntax.all._
 
-import java.nio.file.{Files => JFiles, _}
+import java.nio.file.{Files => JFiles, Path => JPath, _}
 
 class WatcherSuite extends Fs2Suite with BaseFileSuite {
   group("supports watching a file") {
@@ -100,11 +100,12 @@ class WatcherSuite extends Fs2Suite with BaseFileSuite {
     ) {
       Stream
         .resource((Watcher.default[IO], tempDirectory).tupled)
-        .flatMap { case (w, dir) =>
+        .flatMap { case (w, dir0) =>
+          val dir = dir0.toNioPath
           val f1 = dir.resolve("f1")
           val f2 = dir.resolve("f2")
           w.events()
-            .scan(Nil: List[Path]) {
+            .scan(Nil: List[JPath]) {
               case (acc, Watcher.Event.Created(p, _)) =>
                 p :: acc
               case (acc, _) =>
@@ -115,7 +116,7 @@ class WatcherSuite extends Fs2Suite with BaseFileSuite {
               smallDelay ++ Stream
                 .exec(
                   w.watch(f1, modifiers = modifiers) *> w.watch(f2, modifiers = modifiers).flatten
-                ) ++ smallDelay ++ Stream.eval(modify(f2)) ++ smallDelay ++ Stream.eval(modify(f1))
+                ) ++ smallDelay ++ Stream.eval(modify(Path.fromNioPath(f2))) ++ smallDelay ++ Stream.eval(modify(Path.fromNioPath(f1)))
             )
         }
         .compile

@@ -300,6 +300,31 @@ private[file] trait FilesCompanionPlatform {
   implicit def forAsync[F[_]: Async]: Files[F] = new AsyncFiles[F]
 
   private final class AsyncFiles[F[_]: Async] extends Files.UnsealedFiles[F] {
+    private def toJPath(path: Path): JPath = path.toNioPath
+
+    def readAll(path: Path, chunkSize: Int, flags: Flags): Stream[F, Byte] =
+      Stream.resource(readCursor(path, flags)).flatMap { cursor =>
+        cursor.readAll(chunkSize).void.stream
+      }
+
+    def open(path: Path, flags: Flags): Resource[F, FileHandle[F]] =
+      openFileChannel(
+        Sync[F].blocking(FileChannel.open(toJPath(path), flags.value.map(_.option): _*))
+      )
+
+    def openFileChannel(channel: F[FileChannel]): Resource[F, FileHandle[F]] =
+      Resource.make(channel)(ch => Sync[F].blocking(ch.close())).map(ch => FileHandle.make(ch))
+
+    def writeAll(
+        path: Path,
+        flags: Flags
+    ): Pipe[F, Byte, INothing] =
+      in =>
+        Stream
+          .resource(writeCursor(path, flags))
+          .flatMap(_.writeAll(in).void.stream)
+
+    // ======= DEPRECATED MEMBERS =============
 
     def copy(source: JPath, target: JPath, flags: Seq[CopyOption]): F[JPath] =
       Sync[F].blocking(JFiles.copy(source, target, flags: _*))
@@ -391,9 +416,6 @@ private[file] trait FilesCompanionPlatform {
     def open(path: JPath, flags: Seq[OpenOption]): Resource[F, FileHandle[F]] =
       openFileChannel(Sync[F].blocking(FileChannel.open(path, flags: _*)))
 
-    def openFileChannel(channel: F[FileChannel]): Resource[F, FileHandle[F]] =
-      Resource.make(channel)(ch => Sync[F].blocking(ch.close())).map(ch => FileHandle.make(ch))
-
     def permissions(path: JPath, flags: Seq[LinkOption]): F[Set[PosixFilePermission]] =
       Sync[F].blocking(JFiles.getPosixFilePermissions(path, flags: _*).asScala)
 
@@ -457,7 +479,7 @@ private[file] trait FilesCompanionPlatform {
             Sync[F].blocking(JFiles.createTempDirectory(prefix, attributes: _*))
         }
       } { p =>
-        deleteDirectoryRecursively(p)
+        deleteDirectoryRecursively(p, Set.empty)
           .recover { case _: NoSuchFileException => () }
       }
 

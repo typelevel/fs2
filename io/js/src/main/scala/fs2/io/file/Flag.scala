@@ -21,28 +21,24 @@
 
 package fs2
 package io
-package file2
+package file
 
-import fs2.internal.jsdeps.node.pathMod
+import fs2.internal.jsdeps.node.fsMod
 
-final class Path(override val toString: String) extends PathApi {
+final class Flag private (private[file] val bits: Long) extends AnyVal
 
-  def resolve(name: String): Path =
-    Path(s"$toString${pathMod.sep}$name")
-  // Path(pathMod.resolve(toString, name))
+object Flag extends FlagCompanionApi {
+  private def apply(bits: Long): Flag = new Flag(bits)
+  private def apply(bits: Double): Flag = Flag(bits.toLong)
 
-  def normalize: Path = Path(pathMod.normalize(toString))
+  val Read = Flag(fsMod.constants.O_RDONLY)
+  val Write = Flag(fsMod.constants.O_WRONLY)
+  val Append = Flag(fsMod.constants.O_APPEND)
 
-  override def equals(that: Any) = that match {
-    case p: Path => toString == p.toString
-    case _       => false
-  }
+  val Truncate = Flag(fsMod.constants.O_TRUNC)
+  val Create = Flag(fsMod.constants.O_CREAT)
+  val CreateNew = Flag(fsMod.constants.O_CREAT.toLong | fsMod.constants.O_EXCL.toLong)
 
-  override def hashCode = toString.hashCode
-}
-
-object Path extends PathCompanionApi {
-
-  def apply(path: String): Path = new Path(path)
-
+  val Sync = Flag(fsMod.constants.O_SYNC)
+  val Dsync = Flag(fsMod.constants.O_DSYNC)
 }

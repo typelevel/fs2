@@ -25,7 +25,7 @@ package file
 
 import java.nio.ByteBuffer
 import java.nio.channels.{FileChannel, FileLock}
-import java.nio.file.{OpenOption, Path}
+import java.nio.file.{OpenOption, Path => JPath}
 
 import cats.effect.kernel.{Async, Resource, Sync}
 
@@ -69,7 +69,7 @@ private[file] trait FileHandlePlatform[F[_]] {
 
 private[file] trait FileHandleCompanionPlatform {
   @deprecated("Use Files[F].open", "3.0.0")
-  def fromPath[F[_]: Async](path: Path, flags: Seq[OpenOption]): Resource[F, FileHandle[F]] =
+  def fromPath[F[_]: Async](path: JPath, flags: Seq[OpenOption]): Resource[F, FileHandle[F]] =
     Files[F].open(path, flags)
 
   @deprecated("Use Files[F].openFileChannel", "3.0.0")

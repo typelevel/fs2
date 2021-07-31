@@ -19,17 +19,15 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2
-package io
-package file2
+package fs2.io.file
 
-private[file2] trait PathApi {
-  def /(name: String): Path = resolve(name)
-  def resolve(name: String): Path
-  def normalize: Path
-  def toString: String
-}
-
-private[file2] trait PathCompanionApi {
-  def apply(path: String): Path
+private[file] trait FlagCompanionApi {
+  val Read: Flag
+  val Write: Flag
+  val Append: Flag
+  val Truncate: Flag
+  val Create: Flag
+  val CreateNew: Flag
+  val Sync: Flag
+  val Dsync: Flag
 }

@@ -23,6 +23,7 @@ package fs2
 package io
 package file
 
+import cats.Monoid
 import cats.effect.kernel.Async
 import cats.effect.kernel.Resource
 import cats.syntax.all._
@@ -63,15 +64,15 @@ private[file] trait FilesPlatform[F[_]] {
 
   def open(
       path: Path,
-      flags: Flags = Flags.r,
+      flags: NodeFlags = NodeFlags.r,
       mode: FileAccessMode = FileAccessMode.OpenDefault
   ): Resource[F, FileHandle[F]]
 
   def opendir(path: Path): Stream[F, Path]
 
-  def readCursor(path: Path, flags: Flags = Flags.r): Resource[F, ReadCursor[F]]
+  def readCursor(path: Path, flags: NodeFlags = NodeFlags.r): Resource[F, ReadCursor[F]]
 
-  def readAll(path: Path, flags: Flags = Flags.r): Stream[F, Byte]
+  def readAll(path: Path, flags: NodeFlags = NodeFlags.r): Stream[F, Byte]
 
   def readlink(path: Path): F[Path]
 
@@ -97,13 +98,13 @@ private[file] trait FilesPlatform[F[_]] {
 
   def writeAll(
       path: Path,
-      flags: Flags = Flags.w,
+      flags: NodeFlags = NodeFlags.w,
       mode: FileAccessMode = FileAccessMode.OpenDefault
   ): Pipe[F, Byte, INothing]
 
   def writeCursor(
       path: Path,
-      flags: Flags = Flags.w,
+      flags: NodeFlags = NodeFlags.w,
       mode: FileAccessMode = FileAccessMode.OpenDefault
   ): Resource[F, WriteCursor[F]]
 
@@ -115,7 +116,7 @@ private[file] trait FilesPlatform[F[_]] {
   def writeRotate(
       computePath: F[Path],
       limit: Long,
-      flags: Flags = Flags.w,
+      flags: NodeFlags = NodeFlags.w,
       mode: FileAccessMode = FileAccessMode.OpenDefault
   ): Pipe[F, Byte, INothing]
 }
@@ -146,21 +147,21 @@ private[file] trait FilesPlatform[F[_]] {
     private[file] val Default = CopyMode(0)
   }
 
-  sealed abstract class Flags
-  object Flags {
-    case object a extends Flags
-    case object ax extends Flags
-    case object `a+` extends Flags
-    case object `ax+` extends Flags
-    case object `as` extends Flags
-    case object `as+` extends Flags
-    case object r extends Flags
-    case object `r+` extends Flags
-    case object `rs+` extends Flags
-    case object w extends Flags
-    case object wx extends Flags
-    case object `w+` extends Flags
-    case object `wx+` extends Flags
+  sealed abstract class NodeFlags
+  object NodeFlags {
+    case object a extends NodeFlags
+    case object ax extends NodeFlags
+    case object `a+` extends NodeFlags
+    case object `ax+` extends NodeFlags
+    case object `as` extends NodeFlags
+    case object `as+` extends NodeFlags
+    case object r extends NodeFlags
+    case object `r+` extends NodeFlags
+    case object `rs+` extends NodeFlags
+    case object w extends NodeFlags
+    case object wx extends NodeFlags
+    case object `w+` extends NodeFlags
+    case object `wx+` extends NodeFlags
   }
 
   final class FileMode private (private val mode: Long) extends AnyVal {
@@ -247,6 +248,54 @@ private[fs2] trait FilesCompanionPlatform {
   private final class AsyncPosixFiles[F[_]](implicit F: Async[F])
       extends UnsealedFiles[F] {
 
+    private def combineFlags(flags: Flags): Double = flags.value
+      .foldMap(_.bits)(new Monoid[Long] {
+        override def combine(x: Long, y: Long): Long = x | y
+        override def empty: Long = 0
+      })
+      .toDouble
+
+    def open(path: Path, flags: Flags): Resource[F, FileHandle[F]] = Resource
+      .make(
+        F.fromPromise(
+          F.delay(fsPromisesMod.open(path.toString, combineFlags(flags)))
+        )
+      )(fd => F.fromPromise(F.delay(fd.close())))
+      .map(FileHandle.make[F])
+
+    def readAll(path: Path, chunkSize: Int, flags: Flags): Stream[F, Byte] =
+      Stream.resource(open(path, flags)).flatMap { handle =>
+        readReadable(
+          F.delay(
+            fsMod
+              .createReadStream(
+                path.toString,
+                fsMod.ReadStreamOptions().setFd(handle.fd).setHighWaterMark(chunkSize.toDouble)
+              )
+              .asInstanceOf[Readable]
+          )
+        )
+      }
+
+    def writeAll(path: Path, flags: Flags): Pipe[F, Byte, INothing] =
+      in =>
+        Stream.resource(open(path, flags)).flatMap { handle =>
+          in.through {
+            writeWritable(
+              F.delay(
+                fsMod
+                  .createWriteStream(
+                    path.toString,
+                    fsMod.StreamOptions().setFd(handle.fd)
+                  )
+                  .asInstanceOf[Writable]
+              )
+            )
+          }
+        }
+
+
+
     override def access(path: Path, mode: AccessMode): F[Boolean] =
       F.fromPromise(F.delay(fsPromisesMod.access(path.toJS, mode.mode.toDouble)))
         .redeem(_ => false, _ => true)
@@ -290,7 +339,7 @@ private[fs2] trait FilesCompanionPlatform {
 
     override def open(
         path: Path,
-        flags: Flags,
+        flags: NodeFlags,
         mode: FileAccessMode
     ): Resource[F, FileHandle[F]] =
       Resource
@@ -303,7 +352,7 @@ private[fs2] trait FilesCompanionPlatform {
 
     override def opendir(path: Path): Stream[F, Path] =
       Stream
-        .bracket(F.fromPromise(F.delay(fsPromisesMod.opendir(path.toString()))))(dir =>
+        .bracket(F.fromPromise(F.delay(fsPromisesMod.opendir(path.toString))))(dir =>
           F.fromPromise(F.delay(dir.close()))
         )
         .flatMap { dir =>
@@ -315,15 +364,15 @@ private[fs2] trait FilesCompanionPlatform {
         }
 
     def readCursor(path: Path): Resource[F, ReadCursor[F]] =
-      readCursor(path, Flags.r)
+      readCursor(path, NodeFlags.r)
 
-    override def readCursor(path: Path, flags: Flags): Resource[F, ReadCursor[F]] =
+    override def readCursor(path: Path, flags: NodeFlags): Resource[F, ReadCursor[F]] =
       open(path, flags).map(ReadCursor(_, 0L))
 
     def readAll(path: Path, chunkSize: Int): Stream[F, Byte] =
-      readAll(path, Flags.r)
+      readAll(path, NodeFlags.r)
 
-    override def readAll(path: Path, flags: Flags): Stream[F, Byte] =
+    override def readAll(path: Path, flags: NodeFlags): Stream[F, Byte] =
       readReadable(
         F.delay(
           fsMod
@@ -343,7 +392,7 @@ private[fs2] trait FilesCompanionPlatform {
               path.toJS,
               fsMod
                 .ReadStreamOptions()
-                .setFlags(Flags.r.toString)
+                .setFlags(NodeFlags.r.toString)
                 .setStart(start.toDouble)
                 .setEnd((end - 1).toDouble)
             )
@@ -408,12 +457,12 @@ private[fs2] trait FilesCompanionPlatform {
 
     override def writeCursor(
         path: Path,
-        flags: Flags,
+        flags: NodeFlags,
         mode: FileAccessMode
     ): Resource[F, WriteCursor[F]] =
       open(path, flags, mode).map(WriteCursor(_, 0L))
 
-    override def writeAll(path: Path, flags: Flags, mode: FileAccessMode): Pipe[F, Byte, INothing] =
+    override def writeAll(path: Path, flags: NodeFlags, mode: FileAccessMode): Pipe[F, Byte, INothing] =
       writeWritable(
         F.delay(
           fsMod
@@ -434,7 +483,7 @@ private[fs2] trait FilesCompanionPlatform {
     override def writeRotate(
         computePath: F[Path],
         limit: Long,
-        flags: Flags,
+        flags: NodeFlags,
         mode: FileAccessMode
     ): Pipe[F, Byte, INothing] = {
       def openNewFile: Resource[F, FileHandle[F]] =

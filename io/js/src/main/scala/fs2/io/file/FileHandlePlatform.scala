@@ -29,13 +29,17 @@ import fs2.internal.jsdeps.node.fsPromisesMod
 
 import scala.scalajs.js.typedarray.Uint8Array
 
-private[file] trait FileHandlePlatform[F[_]]
+private[file] trait FileHandlePlatform[F[_]] {
+  private[file] def fd: fsPromisesMod.FileHandle
+}
 
 private[file] trait FileHandleCompanionPlatform {
   private[file] def make[F[_]](
-      fd: fsPromisesMod.FileHandle
+      _fd: fsPromisesMod.FileHandle
   )(implicit F: Async[F]): FileHandle[F] =
     new FileHandle[F] {
+
+      override private[file] val fd = _fd
 
       override def force(metaData: Boolean): F[Unit] =
         F.fromPromise(F.delay(fsPromisesMod.fdatasync(fd)))

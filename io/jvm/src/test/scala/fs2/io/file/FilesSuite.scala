@@ -38,7 +38,7 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
     test("retrieves whole content of a file") {
       Stream
         .resource(tempFile.evalMap(modify))
-        .flatMap(path => Files[IO].readAll(path, 4096))
+        .flatMap(path => Files[IO].readAll(path))
         .map(_ => 1)
         .compile
         .foldMonoid
@@ -375,10 +375,11 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
       Stream
         .resource(tempFiles(10))
         .flatMap { paths =>
+          val nioPaths = paths.map(_.toNioPath)
           val parent = paths.head.getParent
           Files[IO]
             .directoryStream(parent)
-            .map(path => paths.exists(_.normalize == path.normalize))
+            .map(path => nioPaths.exists(_.normalize == path.normalize))
         }
         .compile
         .fold(true)(_ & _)
@@ -391,7 +392,8 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
       Stream
         .resource(tempFile)
         .flatMap { path =>
-          Files[IO].walk(path.getParent).map(_.normalize == path.normalize)
+          val nioPath = path.toNioPath
+          Files[IO].walk(nioPath.getParent).map(_.normalize == nioPath.normalize)
         }
         .map(_ => 1)
         .compile
@@ -403,10 +405,11 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
       Stream
         .resource(tempFiles(10))
         .flatMap { paths =>
+          val nioPaths = paths.map(_.toNioPath)
           val parent = paths.head.getParent
           Files[IO]
             .walk(parent)
-            .map(path => (parent :: paths).exists(_.normalize == path.normalize))
+            .map(path => (parent :: nioPaths).exists(_.normalize == path.normalize))
         }
         .compile
         .fold(true)(_ & _)
@@ -437,7 +440,7 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
           val write = Stream(0x42.toByte).repeat
             .buffer(bufferSize)
             .take(totalBytes.toLong)
-            .through(Files[IO].writeRotate(path, rotateLimit.toLong))
+            .through(Files[IO].writeRotate(path.map(_.toNioPath), rotateLimit.toLong))
 
           val verify = Files[IO]
             .directoryStream(dir)
