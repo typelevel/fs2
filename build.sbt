@@ -36,7 +36,6 @@ ThisBuild / scmInfo := Some(
 
 ThisBuild / licenses := List(("MIT", url("http://opensource.org/licenses/MIT")))
 
-ThisBuild / testFrameworks += new TestFramework("munit.Framework")
 ThisBuild / doctestTestFramework := DoctestTestFramework.ScalaCheck
 
 ThisBuild / publishGithubUser := "mpilquist"
@@ -165,11 +164,11 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
     libraryDependencies ++= Seq(
       "org.typelevel" %%% "cats-core" % "2.6.1",
       "org.typelevel" %%% "cats-laws" % "2.6.1" % Test,
-      "org.typelevel" %%% "cats-effect" % "2.5.1",
-      "org.typelevel" %%% "cats-effect-laws" % "2.5.1" % Test,
+      "org.typelevel" %%% "cats-effect" % "2.5.2",
+      "org.typelevel" %%% "cats-effect-laws" % "2.5.2" % Test,
       "org.scodec" %%% "scodec-bits" % "1.1.27",
       "org.typelevel" %%% "scalacheck-effect-munit" % "1.0.2" % Test,
-      "org.typelevel" %%% "munit-cats-effect-2" % "1.0.3" % Test
+      "org.typelevel" %%% "munit-cats-effect-2" % "1.0.5" % Test
     )
   )
 
