@@ -406,20 +406,16 @@ private[file] trait FilesCompanionPlatform {
       Sync[F].blocking(JFiles.move(source, target, flags: _*))
 
     def open(path: JPath, flags: Seq[OpenOption]): Resource[F, FileHandle[F]] =
-      openFileChannel(Sync[F].blocking(FileChannel.open(path, flags: _*)))
+      open(Path.fromNioPath(path), Flags.fromOpenOptions(flags))
 
     def permissions(path: JPath, flags: Seq[LinkOption]): F[Set[PosixFilePermission]] =
       Sync[F].blocking(JFiles.getPosixFilePermissions(path, flags: _*).asScala)
 
     def readAll(path: JPath, chunkSize: Int): Stream[F, Byte] =
-      Stream.resource(readCursor(path)).flatMap { cursor =>
-        cursor.readAll(chunkSize).void.stream
-      }
+      readAll(Path.fromNioPath(path), chunkSize, Flags.Read)
 
     def readCursor(path: JPath, flags: Seq[OpenOption] = Nil): Resource[F, ReadCursor[F]] =
-      open(path, StandardOpenOption.READ :: flags.toList).map { fileHandle =>
-        ReadCursor(fileHandle, 0L)
-      }
+      readCursor(Path.fromNioPath(path), Flags.fromOpenOptions(StandardOpenOption.READ +: flags))
 
     def readRange(path: JPath, chunkSize: Int, start: Long, end: Long): Stream[F, Byte] =
       readRange(Path.fromNioPath(path), chunkSize, start, end)
