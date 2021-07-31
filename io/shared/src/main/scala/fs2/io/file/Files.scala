@@ -180,7 +180,7 @@ object Files extends FilesCompanionPlatform {
 
       internal.WriteRotate(openNewFile, newCursor, limit)
     }
- 
+
   }
 
   def apply[F[_]](implicit F: Files[F]): Files[F] = F

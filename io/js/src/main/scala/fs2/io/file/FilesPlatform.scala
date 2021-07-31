@@ -109,132 +109,129 @@ private[file] trait FilesPlatform[F[_]] {
   ): Resource[F, WriteCursor[F]]
 }
 
+final class AccessMode private (private[file] val mode: Long) extends AnyVal {
+  def |(that: AccessMode) = AccessMode(this.mode | that.mode)
+  def >=(that: AccessMode) = (this.mode & ~that.mode) == 0
+}
+object AccessMode {
+  private def apply(mode: Long) = new AccessMode(mode)
+  val F_OK = AccessMode(fsMod.constants.F_OK.toLong)
+  val R_OK = AccessMode(fsMod.constants.R_OK.toLong)
+  val W_OK = AccessMode(fsMod.constants.W_OK.toLong)
+  val X_OK = AccessMode(fsMod.constants.X_OK.toLong)
+}
 
-  final class AccessMode private (private[file] val mode: Long) extends AnyVal {
-    def |(that: AccessMode) = AccessMode(this.mode | that.mode)
-    def >=(that: AccessMode) = (this.mode & ~that.mode) == 0
-  }
-  object AccessMode {
-    private def apply(mode: Long) = new AccessMode(mode)
-    val F_OK = AccessMode(fsMod.constants.F_OK.toLong)
-    val R_OK = AccessMode(fsMod.constants.R_OK.toLong)
-    val W_OK = AccessMode(fsMod.constants.W_OK.toLong)
-    val X_OK = AccessMode(fsMod.constants.X_OK.toLong)
-  }
+final class CopyMode private (private[file] val mode: Long) extends AnyVal {
+  def |(that: CopyMode) = CopyMode(this.mode | that.mode)
+  def >=(that: CopyMode) = (this.mode & ~that.mode) == 0
+}
+object CopyMode {
+  def apply(mode: Long) = new CopyMode(mode)
+  val COPYFILE_EXCL = CopyMode(fsMod.constants.COPYFILE_EXCL.toLong)
+  val COPYFILE_FICLONE = CopyMode(fsMod.constants.COPYFILE_FICLONE.toLong)
+  val COPYFILE_FICLONE_FORCE = CopyMode(fsMod.constants.COPYFILE_FICLONE_FORCE.toLong)
 
-  final class CopyMode private (private[file] val mode: Long) extends AnyVal {
-    def |(that: CopyMode) = CopyMode(this.mode | that.mode)
-    def >=(that: CopyMode) = (this.mode & ~that.mode) == 0
-  }
-  object CopyMode {
-    def apply(mode: Long) = new CopyMode(mode)
-    val COPYFILE_EXCL = CopyMode(fsMod.constants.COPYFILE_EXCL.toLong)
-    val COPYFILE_FICLONE = CopyMode(fsMod.constants.COPYFILE_FICLONE.toLong)
-    val COPYFILE_FICLONE_FORCE = CopyMode(fsMod.constants.COPYFILE_FICLONE_FORCE.toLong)
+  private[file] val Default = CopyMode(0)
+}
 
-    private[file] val Default = CopyMode(0)
-  }
+sealed abstract class NodeFlags
+object NodeFlags {
+  case object a extends NodeFlags
+  case object ax extends NodeFlags
+  case object `a+` extends NodeFlags
+  case object `ax+` extends NodeFlags
+  case object `as` extends NodeFlags
+  case object `as+` extends NodeFlags
+  case object r extends NodeFlags
+  case object `r+` extends NodeFlags
+  case object `rs+` extends NodeFlags
+  case object w extends NodeFlags
+  case object wx extends NodeFlags
+  case object `w+` extends NodeFlags
+  case object `wx+` extends NodeFlags
+}
 
-  sealed abstract class NodeFlags
-  object NodeFlags {
-    case object a extends NodeFlags
-    case object ax extends NodeFlags
-    case object `a+` extends NodeFlags
-    case object `ax+` extends NodeFlags
-    case object `as` extends NodeFlags
-    case object `as+` extends NodeFlags
-    case object r extends NodeFlags
-    case object `r+` extends NodeFlags
-    case object `rs+` extends NodeFlags
-    case object w extends NodeFlags
-    case object wx extends NodeFlags
-    case object `w+` extends NodeFlags
-    case object `wx+` extends NodeFlags
-  }
+final class FileMode private (private val mode: Long) extends AnyVal {
+  def |(that: FileMode) = FileMode(this.mode | that.mode)
+  def >=(that: FileMode) = (this.mode & ~that.mode) == 0
+  def `type`: FileTypeMode = FileTypeMode(FileTypeMode.S_IFMT.mode & mode)
+  def access: FileAccessMode = FileAccessMode(~FileTypeMode.S_IFMT.mode & mode)
+}
+object FileMode {
+  def apply(`type`: FileTypeMode, access: FileAccessMode): FileMode =
+    apply(`type`.mode | access.mode)
+  private[file] def apply(mode: Long) = new FileMode(mode)
+}
 
-  final class FileMode private (private val mode: Long) extends AnyVal {
-    def |(that: FileMode) = FileMode(this.mode | that.mode)
-    def >=(that: FileMode) = (this.mode & ~that.mode) == 0
-    def `type`: FileTypeMode = FileTypeMode(FileTypeMode.S_IFMT.mode & mode)
-    def access: FileAccessMode = FileAccessMode(~FileTypeMode.S_IFMT.mode & mode)
-  }
-  object FileMode {
-    def apply(`type`: FileTypeMode, access: FileAccessMode): FileMode =
-      apply(`type`.mode | access.mode)
-    private[file] def apply(mode: Long) = new FileMode(mode)
-  }
+final class FileTypeMode private (private[file] val mode: Long) extends AnyVal {
+  def |(that: FileTypeMode) = FileTypeMode(this.mode | that.mode)
+  def >=(that: FileTypeMode) = (this.mode & ~that.mode) == 0
+}
 
-  final class FileTypeMode private (private[file] val mode: Long) extends AnyVal {
-    def |(that: FileTypeMode) = FileTypeMode(this.mode | that.mode)
-    def >=(that: FileTypeMode) = (this.mode & ~that.mode) == 0
-  }
+object FileTypeMode {
+  private[file] def apply(mode: Long) = new FileTypeMode(mode)
+  val S_IFREG = FileTypeMode(fsMod.constants.S_IFREG.toLong)
+  val S_IFDIR = FileTypeMode(fsMod.constants.S_IFDIR.toLong)
+  val S_IFCHR = FileTypeMode(fsMod.constants.S_IFCHR.toLong)
+  val S_IFBLK = FileTypeMode(fsMod.constants.S_IFBLK.toLong)
+  val S_IFIFO = FileTypeMode(fsMod.constants.S_IFIFO.toLong)
+  val S_IFLNK = FileTypeMode(fsMod.constants.S_IFLNK.toLong)
+  val S_IFSOCK = FileTypeMode(fsMod.constants.S_IFSOCK.toLong)
+  val S_IFMT = FileTypeMode(fsMod.constants.S_IFMT.toLong)
+}
 
-  object FileTypeMode {
-    private[file] def apply(mode: Long) = new FileTypeMode(mode)
-    val S_IFREG = FileTypeMode(fsMod.constants.S_IFREG.toLong)
-    val S_IFDIR = FileTypeMode(fsMod.constants.S_IFDIR.toLong)
-    val S_IFCHR = FileTypeMode(fsMod.constants.S_IFCHR.toLong)
-    val S_IFBLK = FileTypeMode(fsMod.constants.S_IFBLK.toLong)
-    val S_IFIFO = FileTypeMode(fsMod.constants.S_IFIFO.toLong)
-    val S_IFLNK = FileTypeMode(fsMod.constants.S_IFLNK.toLong)
-    val S_IFSOCK = FileTypeMode(fsMod.constants.S_IFSOCK.toLong)
-    val S_IFMT = FileTypeMode(fsMod.constants.S_IFMT.toLong)
-  }
+final class FileAccessMode private (private[file] val mode: Long) extends AnyVal {
+  def |(that: FileAccessMode) = FileAccessMode(this.mode | that.mode)
+  def >=(that: FileAccessMode) = (this.mode & ~that.mode) == 0
+}
+object FileAccessMode {
+  private[file] def apply(mode: Long) = new FileAccessMode(mode)
+  val S_IRUSR = FileAccessMode(1 << 8)
+  val S_IWUSR = FileAccessMode(1 << 7)
+  val S_IXUSR = FileAccessMode(1 << 6)
+  val S_IRWXU = S_IRUSR | S_IWUSR | S_IXUSR
+  val S_IRGRP = FileAccessMode(1 << 5)
+  val S_IWGRP = FileAccessMode(1 << 4)
+  val S_IXGRP = FileAccessMode(1 << 3)
+  val S_IRWXG = S_IRGRP | S_IWGRP | S_IXGRP
+  val S_IROTH = FileAccessMode(1 << 2)
+  val S_IWOTH = FileAccessMode(1 << 1)
+  val S_IXOTH = FileAccessMode(1 << 0)
+  val S_IRWXO = S_IROTH | S_IWOTH | S_IXOTH
 
-  final class FileAccessMode private (private[file] val mode: Long) extends AnyVal {
-    def |(that: FileAccessMode) = FileAccessMode(this.mode | that.mode)
-    def >=(that: FileAccessMode) = (this.mode & ~that.mode) == 0
-  }
-  object FileAccessMode {
-    private[file] def apply(mode: Long) = new FileAccessMode(mode)
-    val S_IRUSR = FileAccessMode(1 << 8)
-    val S_IWUSR = FileAccessMode(1 << 7)
-    val S_IXUSR = FileAccessMode(1 << 6)
-    val S_IRWXU = S_IRUSR | S_IWUSR | S_IXUSR
-    val S_IRGRP = FileAccessMode(1 << 5)
-    val S_IWGRP = FileAccessMode(1 << 4)
-    val S_IXGRP = FileAccessMode(1 << 3)
-    val S_IRWXG = S_IRGRP | S_IWGRP | S_IXGRP
-    val S_IROTH = FileAccessMode(1 << 2)
-    val S_IWOTH = FileAccessMode(1 << 1)
-    val S_IXOTH = FileAccessMode(1 << 0)
-    val S_IRWXO = S_IROTH | S_IWOTH | S_IXOTH
+  private[file] val Default = S_IRWXU | S_IRWXG | S_IRWXO
+  private[file] val OpenDefault = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH
+}
 
-    private[file] val Default = S_IRWXU | S_IRWXG | S_IRWXO
-    private[file] val OpenDefault = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH
-  }
-
-  sealed trait Stats {
-    def isBlockDevice: Boolean
-    def isCharacterDevice: Boolean
-    def isDirectory: Boolean
-    def isFIFO: Boolean
-    def isFile: Boolean
-    def isSocket: Boolean
-    def isSymbolicLink: Boolean
-    def dev: Long
-    def ino: Long
-    def nlink: Long
-    def uid: Long
-    def gid: Long
-    def rdev: Long
-    def mode: FileMode
-    def size: Long
-    def blksize: Long
-    def blocks: Long
-    def atime: Instant
-    def mtime: Instant
-    def ctime: Instant
-    def birthtime: Instant
-  }
-
+sealed trait Stats {
+  def isBlockDevice: Boolean
+  def isCharacterDevice: Boolean
+  def isDirectory: Boolean
+  def isFIFO: Boolean
+  def isFile: Boolean
+  def isSocket: Boolean
+  def isSymbolicLink: Boolean
+  def dev: Long
+  def ino: Long
+  def nlink: Long
+  def uid: Long
+  def gid: Long
+  def rdev: Long
+  def mode: FileMode
+  def size: Long
+  def blksize: Long
+  def blocks: Long
+  def atime: Instant
+  def mtime: Instant
+  def ctime: Instant
+  def birthtime: Instant
+}
 
 private[fs2] trait FilesCompanionPlatform {
 
   implicit def forAsync[F[_]: Async]: Files[F] = new AsyncPosixFiles[F]
 
-  private final class AsyncPosixFiles[F[_]](implicit F: Async[F])
-      extends UnsealedFiles[F] {
+  private final class AsyncPosixFiles[F[_]](implicit F: Async[F]) extends UnsealedFiles[F] {
 
     private def combineFlags(flags: Flags): Double = flags.value
       .foldMap(_.bits)(new Monoid[Long] {
@@ -281,8 +278,6 @@ private[fs2] trait FilesCompanionPlatform {
             )
           }
         }
-
-
 
     override def access(path: Path, mode: AccessMode): F[Boolean] =
       F.fromPromise(F.delay(fsPromisesMod.access(path.toJS, mode.mode.toDouble)))
@@ -450,7 +445,11 @@ private[fs2] trait FilesCompanionPlatform {
     ): Resource[F, WriteCursor[F]] =
       open(path, flags, mode).map(WriteCursor(_, 0L))
 
-    override def writeAll(path: Path, flags: NodeFlags, mode: FileAccessMode): Pipe[F, Byte, INothing] =
+    override def writeAll(
+        path: Path,
+        flags: NodeFlags,
+        mode: FileAccessMode
+    ): Pipe[F, Byte, INothing] =
       writeWritable(
         F.delay(
           fsMod
