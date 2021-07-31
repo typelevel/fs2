@@ -23,64 +23,53 @@ package fs2
 package io
 package file
 
-import cats.kernel.Hash
-import cats.kernel.Monoid
-import cats.kernel.Order
-import fs2.internal.jsdeps.node.fsMod
-import fs2.internal.jsdeps.node.osMod
 import fs2.internal.jsdeps.node.pathMod
-import CollectionCompat._
 
-final class Path(private val path: String) extends PathApi {
+import scala.annotation.tailrec
 
-  def basename: Path = Path(pathMod.basename(path))
-  def basename(ext: String): Path = Path(pathMod.basename(path, ext))
-  def dirname: Path = Path(pathMod.dirname(path))
-  def extname: String = pathMod.extname(path)
-  def isAbsolute: Boolean = pathMod.isAbsolute(path)
-  def normalize: Path = Path(pathMod.normalize(path))
-  def relativeTo(that: Path): Path = Path(pathMod.relative(path, that.path))
-  def resolve(name: String): Path = Path(s"$path${pathMod.sep}$name")
+final case class Path private (override val toString: String) extends PathApi {
 
-  private[file] def toJS: fsMod.PathLike = path.asInstanceOf[fsMod.PathLike]
+  def /(name: String): Path = Path(pathMod.join(toString, name))
+  def /(path: Path): Path = this / path.toString
 
-  def /(that: Path): Path = Path.join(this, that)
+  def resolve(name: String): Path = resolve(Path(name))
+  def resolve(path: Path): Path = if (path.isAbsolute) path else this / path
 
-  override def toString: String = path
+  def normalize: Path = new Path(pathMod.normalize(toString))
+
+  def isAbsolute: Boolean = pathMod.isAbsolute(toString)
+
+  def absolute: Path = Path(pathMod.resolve(toString))
+
+  def names: Seq[Path] = {
+    @tailrec
+    def go(path: Path, acc: List[Path]): List[Path] =
+      path.parent match {
+        case None => acc
+        case Some(parent) => go(parent, path.fileName :: acc)
+      }
+
+    go(this, Nil)
+  }
+
+  def fileName: Path = Path(pathMod.basename(toString))
+
+  def parent: Option[Path] = {
+    val parsed = pathMod.parse(toString)
+    if (parsed.dir.isEmpty || parsed.base.isEmpty)
+      None
+    else
+      Some(Path(parsed.dir))
+  }
 
   override def equals(that: Any) = that match {
-    case p: Path => path == p.path
+    case p: Path => toString == p.toString
     case _       => false
   }
 
-  override def hashCode = path.hashCode
+  override def hashCode = toString.hashCode
 }
 
 object Path extends PathCompanionApi {
-
   def apply(path: String): Path = new Path(path)
-
-  def join(paths: Path*): Path = Path(pathMod.join(paths.map(_.path): _*))
-  def resolve(paths: Path*): Path = Path(pathMod.resolve(paths.map(_.path): _*))
-
-  val empty = Path("")
-  val tmpdir = Path(osMod.tmpdir())
-
-  implicit def instances: Monoid[Path] with Order[Path] with Hash[Path] = algebra
-
-  private object algebra extends Monoid[Path] with Order[Path] with Hash[Path] {
-
-    override def empty: Path = Path.empty
-
-    override def combine(x: Path, y: Path): Path = x / y
-
-    override def combineAll(as: IterableOnce[Path]): Path = Path.join(as.toSeq: _*)
-
-    override def eqv(x: Path, y: Path): Boolean = x.path == y.path
-
-    override def compare(x: Path, y: Path): Int = x.path.compare(y.path)
-
-    override def hash(x: Path): Int = x.path.hashCode()
-
-  }
 }
