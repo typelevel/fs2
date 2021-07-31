@@ -23,13 +23,46 @@ package fs2
 package io
 package file
 
+import cats.Show
+import cats.kernel.Hash
+import cats.kernel.Monoid
+import cats.kernel.Order
+
 private[file] trait PathApi {
-  def /(name: String): Path = resolve(name)
+
+  def /(name: String): Path
+
+  def /(path: Path): Path
+  
   def resolve(name: String): Path
+
+  def resolve(path: Path): Path
+  
   def normalize: Path
+
+  def isAbsolute: Boolean
+
+  def absolute: Path
+  
+  def names: Seq[Path]
+
+  def fileName: Path
+
+  def parent: Option[Path]
+
   def toString: String
 }
 
 private[file] trait PathCompanionApi {
   def apply(path: String): Path
+
+  implicit def instances: Monoid[Path] with Order[Path] with Hash[Path] with Show[Path] = algebra
+
+  private object algebra extends Monoid[Path] with Order[Path] with Hash[Path] with Show[Path] {
+    val empty: Path = Path("")
+    def combine(x: Path, y: Path): Path = x / y
+    def compare(x: Path, y: Path): Int = x.toString.compare(y.toString)
+    def hash(x: Path): Int = x.hashCode()
+    def show(t: Path): String = t.toString
+  }
 }

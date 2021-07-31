@@ -23,15 +23,40 @@ package fs2
 package io
 package file
 
-import java.nio.file.{FileSystems, Path => JPath}
+import java.nio.file.{FileSystems, Path => JPath, Paths}
 
-final case class Path private (toNioPath: JPath) extends PathApi {
-  def resolve(name: String): Path = new Path(toNioPath.resolve(name))
+final class Path private (val toNioPath: JPath) extends PathApi {
+
+  def /(name: String): Path = Path(Paths.get(toString, name))
+  def /(path: Path): Path = this / path.toString
+
+  def resolve(name: String): Path = Path(toNioPath.resolve(name))
+  def resolve(path: Path): Path = Path(toNioPath.resolve(path.toNioPath))
+
   def normalize: Path = new Path(toNioPath.normalize())
+
+  def isAbsolute: Boolean = toNioPath.isAbsolute()
+
+  def absolute: Path = Path(toNioPath.toAbsolutePath())
+
+  def names: Seq[Path] = List.tabulate(toNioPath.getNameCount())(i => Path(toNioPath.getName(i)))
+
+  def fileName: Path = Path(toNioPath.getFileName())
+
+  def parent: Option[Path] = Option(toNioPath.getParent()).map(Path(_))
+
   override def toString = toNioPath.toString
+
+  override def equals(that: Any) = that match {
+    case p: Path => toNioPath == p.toNioPath
+    case _       => false
+  }
+
+  override def hashCode = toNioPath.hashCode
 }
 
 object Path extends PathCompanionApi {
+  private def apply(path: JPath): Path = new Path(path)
   def apply(path: String): Path = fromNioPath(FileSystems.getDefault.getPath(path))
   def fromNioPath(path: JPath): Path = Path(path)
 }
