@@ -23,4 +23,66 @@ package fs2
 package io
 package file2
 
-private[file2] trait FilesPlatform {}
+import cats.effect.Resource
+import cats.effect.kernel.Async
+import cats.kernel.Monoid
+import cats.syntax.all._
+import fs2.internal.jsdeps.node.fsMod
+import fs2.internal.jsdeps.node.fsPromisesMod
+
+private[file2] trait FilesPlatform {
+
+  implicit def forAsync[F[_]](implicit F: Async[F]): Files[F] =
+    new NodeFiles[F]
+
+  private final class NodeFiles[F[_]](implicit F: Async[F]) extends Files.UnsealedFiles[F] {
+
+    private def combineFlags(flags: Flags): Double = flags.value
+      .foldMap(_.bits)(new Monoid[Long] {
+        override def combine(x: Long, y: Long): Long = x | y
+        override def empty: Long = 0
+      })
+      .toDouble
+
+    def open(path: Path, flags: Flags): Resource[F, FileHandle[F]] = Resource
+      .make(
+        F.fromPromise(
+          F.delay(fsPromisesMod.open(path.toString, flags.toString, combineFlags(flags)))
+        )
+      )(fd => F.fromPromise(F.delay(fd.close())))
+      .map(FileHandle.make[F])
+
+    def readAll(path: Path, chunkSize: Int, flags: Flags): Stream[F, Byte] =
+      Stream.resource(open(path, flags)).flatMap { handle =>
+        readReadable(
+          F.delay(
+            fsMod
+              .createReadStream(
+                path.toString,
+                fsMod.ReadStreamOptions().setFd(handle.fd).setHighWaterMark(chunkSize.toDouble)
+              )
+              .asInstanceOf[Readable]
+          )
+        )
+      }
+
+    def writeAll(path: Path, flags: Flags): Pipe[F, Byte, INothing] =
+      in =>
+        Stream.resource(open(path, flags)).flatMap { handle =>
+          in.through {
+            writeWritable(
+              F.delay(
+                fsMod
+                  .createWriteStream(
+                    path.toString,
+                    fsMod.StreamOptions().setFd(handle.fd)
+                  )
+                  .asInstanceOf[Writable]
+              )
+            )
+          }
+        }
+
+  }
+
+}
