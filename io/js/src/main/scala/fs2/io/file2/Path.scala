@@ -25,13 +25,20 @@ package file2
 
 import fs2.internal.jsdeps.node.pathMod
 
-final class Path(override val toString: String)
-    extends PathApi {
+final class Path(override val toString: String) extends PathApi {
 
-  def resolve(name: String): Path = Path(pathMod.resolve(toString, name))
+  def resolve(name: String): Path =
+    Path(s"$toString${pathMod.sep}$name")
+  // Path(pathMod.resolve(toString, name))
 
   def normalize: Path = Path(pathMod.normalize(toString))
 
+  override def equals(that: Any) = that match {
+    case p: Path => toString == p.toString
+    case _       => false
+  }
+
+  override def hashCode = toString.hashCode
 }
 
 object Path extends PathCompanionApi {

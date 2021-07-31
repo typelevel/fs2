@@ -54,7 +54,7 @@ trait BaseFileSuite extends Fs2Suite {
           _.map(p => Path(p.toString())).flatMap { dir =>
             List
               .tabulate(5)(i =>
-                Files[IO].open(dir / s"BaseFileSpecSub$i.tmp", Flags.DefaultWrite).use(_ => IO.unit)
+                Files[IO].open(dir / s"BaseFileSpecSub$i.tmp", Flags.Write).use(_ => IO.unit)
               )
               .sequence
           }
@@ -69,7 +69,7 @@ trait BaseFileSuite extends Fs2Suite {
       .allocated
       .map(_._1)
       .map(_ / "BaseFileSpec.tmp")
-      .flatTap(Files[IO].open(_, Flags.DefaultWrite).use(_ => IO.unit))
+      .flatTap(Files[IO].open(_, Flags.Write).use(_ => IO.unit))
 
   protected def modify(file: Path): IO[Path] =
     Files[IO]

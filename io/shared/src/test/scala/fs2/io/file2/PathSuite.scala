@@ -27,7 +27,6 @@ class PathSuite extends Fs2Suite {
   test("construction") {
     assertEquals(Path("foo/bar"), Path("foo") / "bar")
     assertEquals(Path("/foo/bar"), Path("/foo") / "bar")
-    assertEquals(Path("//foo/bar"), Path("/foo") / "bar")
   }
 
   test("normalize") {
