@@ -27,18 +27,23 @@ import java.nio.file.StandardOpenOption
 final class Flag private (private[file] val option: OpenOption) extends AnyVal
 
 object Flag extends FlagCompanionApi {
-  private def apply(option: OpenOption): Flag = new Flag(option)
+  def fromOpenOption(option: OpenOption): Flag = new Flag(option)
 
-  val Read = Flag(StandardOpenOption.READ)
-  val Write = Flag(StandardOpenOption.WRITE)
-  val Append = Flag(StandardOpenOption.APPEND)
+  val Read = fromOpenOption(StandardOpenOption.READ)
+  val Write = fromOpenOption(StandardOpenOption.WRITE)
+  val Append = fromOpenOption(StandardOpenOption.APPEND)
 
-  val Truncate = Flag(StandardOpenOption.TRUNCATE_EXISTING)
-  val Create = Flag(StandardOpenOption.CREATE)
-  val CreateNew = Flag(StandardOpenOption.CREATE_NEW)
+  val Truncate = fromOpenOption(StandardOpenOption.TRUNCATE_EXISTING)
+  val Create = fromOpenOption(StandardOpenOption.CREATE)
+  val CreateNew = fromOpenOption(StandardOpenOption.CREATE_NEW)
 
-  val DeleteOnClose = Flag(StandardOpenOption.DELETE_ON_CLOSE)
-  val Sparse = Flag(StandardOpenOption.SPARSE)
-  val Sync = Flag(StandardOpenOption.SYNC)
-  val Dsync = Flag(StandardOpenOption.DSYNC)
+  val DeleteOnClose = fromOpenOption(StandardOpenOption.DELETE_ON_CLOSE)
+  val Sparse = fromOpenOption(StandardOpenOption.SPARSE)
+  val Sync = fromOpenOption(StandardOpenOption.SYNC)
+  val Dsync = fromOpenOption(StandardOpenOption.DSYNC)
+}
+
+private[file] trait FlagsCompanionPlatform {
+  def fromOpenOptions(options: Iterable[OpenOption]): Flags =
+    Flags(options.map(Flag.fromOpenOption(_)).toList)
 }

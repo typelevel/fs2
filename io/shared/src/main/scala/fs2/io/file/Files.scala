@@ -27,10 +27,15 @@ import cats.effect.Resource
 import cats.effect.kernel.Async
 import cats.syntax.all._
 
-/** Platform-agnostic methods for reading files.
+import scala.concurrent.duration._
+
+/** Provides operations related to working with files in the effect `F`.
+  *
+  * An instance is available for any effect `F` which has an `Async[F]` instance.
   */
 sealed trait Files[F[_]] extends FilesPlatform[F] {
 
+  /** Creates a `FileHandle` for the file at the supplied `Path`. */
   def open(path: Path, flags: Flags): Resource[F, FileHandle[F]]
 
   /** Reads all bytes from the file specified. */
@@ -50,21 +55,21 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
     */
   def readRange(path: Path, chunkSize: Int, start: Long, end: Long): Stream[F, Byte]
 
-//   /** Returns an infinite stream of data from the file at the specified path.
-//     * Starts reading from the specified offset and upon reaching the end of the file,
-//     * polls every `pollDuration` for additional updates to the file.
-//     *
-//     * Read operations are limited to emitting chunks of the specified chunk size
-//     * but smaller chunks may occur.
-//     *
-//     * If an error occurs while reading from the file, the overall stream fails.
-//     */
-//   def tail(
-//       path: Path,
-//       chunkSize: Int,
-//       offset: Long = 0L,
-//       pollDelay: FiniteDuration
-//   ): Stream[F, Byte]
+  /** Returns an infinite stream of data from the file at the specified path.
+    * Starts reading from the specified offset and upon reaching the end of the file,
+    * polls every `pollDuration` for additional updates to the file.
+    *
+    * Read operations are limited to emitting chunks of the specified chunk size
+    * but smaller chunks may occur.
+    *
+    * If an error occurs while reading from the file, the overall stream fails.
+    */
+  def tail(
+      path: Path,
+      chunkSize: Int = 64 * 1024,
+      offset: Long = 0L,
+      pollDelay: FiniteDuration = 1.second
+  ): Stream[F, Byte]
 
   /** Writes all data to the file at the specified path.
     *
@@ -87,44 +92,72 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
 
   /** Returns a `WriteCursor` for the specified path.
     *
-    * The `WRITE` option is added to the supplied flags. If the `APPEND` option is present in `flags`,
-    * the offset is initialized to the current size of the file.
+    * The flags must include either `Write` or `Append` or an error will occur.
     */
   def writeCursor(
       path: Path,
       flags: Flags
   ): Resource[F, WriteCursor[F]]
 
-  // /** Returns a `WriteCursor` for the specified file handle.
-  //   *
-  //   * If `append` is true, the offset is initialized to the current size of the file.
-  //   */
-  // def writeCursorFromFileHandle(
-  //     file: FileHandle[F],
-  //     append: Boolean
-  // ): F[WriteCursor[F]]
+  /** Returns a `WriteCursor` for the specified file handle.
+    *
+    * If `append` is true, the offset is initialized to the current size of the file.
+    */
+  def writeCursorFromFileHandle(
+      file: FileHandle[F],
+      append: Boolean
+  ): F[WriteCursor[F]]
 
-  // /** Writes all data to a sequence of files, each limited in size to `limit`.
-  //   *
-  //   * The `computePath` operation is used to compute the path of the first file
-  //   * and every subsequent file. Typically, the next file should be determined
-  //   * by analyzing the current state of the filesystem -- e.g., by looking at all
-  //   * files in a directory and generating a unique name.
-  //   */
-  // def writeRotate(
-  //     computePath: F[Path],
-  //     limit: Long,
-  //     flags: Seq[StandardOpenOption] = List(StandardOpenOption.CREATE)
-  // ): Pipe[F, Byte, INothing]
+  /** Writes all data to a sequence of files, each limited in size to `limit`.
+    *
+    * The `computePath` operation is used to compute the path of the first file
+    * and every subsequent file. Typically, the next file should be determined
+    * by analyzing the current state of the filesystem -- e.g., by looking at all
+    * files in a directory and generating a unique name.
+    */
+  def writeRotate(
+      computePath: F[Path],
+      limit: Long,
+      flags: Flags
+  ): Pipe[F, Byte, INothing]
 }
 
 object Files extends FilesCompanionPlatform {
   private[file] abstract class UnsealedFiles[F[_]: Async] extends Files[F] {
 
+    def readAll(path: Path, chunkSize: Int, flags: Flags): Stream[F, Byte] =
+      Stream.resource(readCursor(path, flags)).flatMap { cursor =>
+        cursor.readAll(chunkSize).void.stream
+      }
+
     def readCursor(path: Path, flags: Flags): Resource[F, ReadCursor[F]] =
       open(path, flags).map { fileHandle =>
         ReadCursor(fileHandle, 0L)
       }
+
+    def readRange(path: Path, chunkSize: Int, start: Long, end: Long): Stream[F, Byte] =
+      Stream.resource(readCursor(path, Flags.Read)).flatMap { cursor =>
+        cursor.seek(start).readUntil(chunkSize, end).void.stream
+      }
+
+    def tail(
+        path: Path,
+        chunkSize: Int,
+        offset: Long,
+        pollDelay: FiniteDuration
+    ): Stream[F, Byte] =
+      Stream.resource(readCursor(path, Flags.Read)).flatMap { cursor =>
+        cursor.seek(offset).tail(chunkSize, pollDelay).void.stream
+      }
+
+    def writeAll(
+        path: Path,
+        flags: Flags
+    ): Pipe[F, Byte, INothing] =
+      in =>
+        Stream
+          .resource(writeCursor(path, flags))
+          .flatMap(_.writeAll(in).void.stream)
 
     def writeCursor(
         path: Path,
@@ -135,6 +168,28 @@ object Files extends FilesCompanionPlatform {
         val cursor = size.map(s => WriteCursor(fileHandle, s))
         Resource.eval(cursor)
       }
+
+    def writeCursorFromFileHandle(
+        file: FileHandle[F],
+        append: Boolean
+    ): F[WriteCursor[F]] =
+      if (append) file.size.map(s => WriteCursor(file, s)) else WriteCursor(file, 0L).pure[F]
+
+    def writeRotate(
+        computePath: F[Path],
+        limit: Long,
+        flags: Flags
+    ): Pipe[F, Byte, INothing] = {
+      def openNewFile: Resource[F, FileHandle[F]] =
+        Resource
+          .eval(computePath)
+          .flatMap(p => open(p, flags))
+
+      def newCursor(file: FileHandle[F]): F[WriteCursor[F]] =
+        writeCursorFromFileHandle(file, flags.contains(Flag.Append))
+
+      internal.WriteRotate(openNewFile, newCursor, limit)
+    }
 
   }
 

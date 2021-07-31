@@ -29,7 +29,6 @@ import cats.effect.kernel.Resource
 import cats.syntax.all._
 import fs2.internal.jsdeps.node.fsMod
 import fs2.internal.jsdeps.node.fsPromisesMod
-import fs2.internal.jsdeps.node.pathMod
 import fs2.io.file.Files.UnsealedFiles
 
 private[file] trait FilesPlatform[F[_]]
@@ -71,13 +70,13 @@ private[fs2] trait FilesCompanionPlatform {
         )
       }
 
-    def readAll(path: Path, chunkSize: Int, flags: Flags): Stream[F, Byte] =
+    override def readAll(path: Path, chunkSize: Int, flags: Flags): Stream[F, Byte] =
       readStream(path, chunkSize, flags)(identity)
 
-    def readRange(path: Path, chunkSize: Int, start: Long, end: Long): Stream[F, Byte] =
+    override def readRange(path: Path, chunkSize: Int, start: Long, end: Long): Stream[F, Byte] =
       readStream(path, chunkSize, Flags.Read)(_.setStart(start.toDouble).setEnd((end - 1).toDouble))
 
-    def writeAll(path: Path, flags: Flags): Pipe[F, Byte, INothing] =
+    override def writeAll(path: Path, flags: Flags): Pipe[F, Byte, INothing] =
       in =>
         Stream.resource(open(path, flags)).flatMap { handle =>
           in.through {

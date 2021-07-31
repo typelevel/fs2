@@ -36,10 +36,6 @@ import java.util.stream.{Stream => JStream}
 
 import fs2.io.CollectionCompat._
 
-/** Provides operations related to working with files in the effect `F`.
-  *
-  * An instance is available for any effect `F` which has an `Async[F]` instance.
-  */
 private[file] trait FilesPlatform[F[_]] {
 
   /** Copies a file from the source to the target path,
@@ -166,7 +162,7 @@ private[file] trait FilesPlatform[F[_]] {
     * two bytes are read.
     */
   def readRange(path: JPath, chunkSize: Int, start: Long, end: Long): Stream[F, Byte]
- 
+
   /** Set file permissions from set of `PosixFilePermission`.
     *
     * Note: this will only work for POSIX supporting file systems.
@@ -189,8 +185,8 @@ private[file] trait FilesPlatform[F[_]] {
   def tail(
       path: JPath,
       chunkSize: Int,
-      offset: Long = 0L,
-      pollDelay: FiniteDuration = 1.second
+      offset: Long,
+      pollDelay: FiniteDuration
   ): Stream[F, Byte]
 
   /** Creates a `Resource` which can be used to create a temporary file.
@@ -300,34 +296,15 @@ private[file] trait FilesCompanionPlatform {
   implicit def forAsync[F[_]: Async]: Files[F] = new AsyncFiles[F]
 
   private final class AsyncFiles[F[_]: Async] extends Files.UnsealedFiles[F] {
-    private def toJPath(path: Path): JPath = path.toNioPath
-
-    def readAll(path: Path, chunkSize: Int, flags: Flags): Stream[F, Byte] =
-      Stream.resource(readCursor(path, flags)).flatMap { cursor =>
-        cursor.readAll(chunkSize).void.stream
-      }
-
-    def readRange(path: Path, chunkSize: Int, start: Long, end: Long): Stream[F, Byte] =
-      Stream.resource(readCursor(path, Flags.Read)).flatMap { cursor =>
-        cursor.seek(start).readUntil(chunkSize, end).void.stream
-      }
 
     def open(path: Path, flags: Flags): Resource[F, FileHandle[F]] =
       openFileChannel(
-        Sync[F].blocking(FileChannel.open(toJPath(path), flags.value.map(_.option): _*))
+        Sync[F].blocking(FileChannel.open(path.toNioPath, flags.value.map(_.option): _*))
       )
 
     def openFileChannel(channel: F[FileChannel]): Resource[F, FileHandle[F]] =
       Resource.make(channel)(ch => Sync[F].blocking(ch.close())).map(ch => FileHandle.make(ch))
 
-    def writeAll(
-        path: Path,
-        flags: Flags
-    ): Pipe[F, Byte, INothing] =
-      in =>
-        Stream
-          .resource(writeCursor(path, flags))
-          .flatMap(_.writeAll(in).void.stream)
 
     // ======= DEPRECATED MEMBERS =============
 
@@ -419,20 +396,16 @@ private[file] trait FilesCompanionPlatform {
       Sync[F].blocking(JFiles.move(source, target, flags: _*))
 
     def open(path: JPath, flags: Seq[OpenOption]): Resource[F, FileHandle[F]] =
-      openFileChannel(Sync[F].blocking(FileChannel.open(path, flags: _*)))
+      open(Path.fromNioPath(path), Flags.fromOpenOptions(flags))
 
     def permissions(path: JPath, flags: Seq[LinkOption]): F[Set[PosixFilePermission]] =
       Sync[F].blocking(JFiles.getPosixFilePermissions(path, flags: _*).asScala)
 
     def readAll(path: JPath, chunkSize: Int): Stream[F, Byte] =
-      Stream.resource(readCursor(path)).flatMap { cursor =>
-        cursor.readAll(chunkSize).void.stream
-      }
+      readAll(Path.fromNioPath(path), chunkSize, Flags.Read)
 
     def readCursor(path: JPath, flags: Seq[OpenOption] = Nil): Resource[F, ReadCursor[F]] =
-      open(path, StandardOpenOption.READ :: flags.toList).map { fileHandle =>
-        ReadCursor(fileHandle, 0L)
-      }
+      readCursor(Path.fromNioPath(path), Flags.fromOpenOptions(StandardOpenOption.READ +: flags))
 
     def readRange(path: JPath, chunkSize: Int, start: Long, end: Long): Stream[F, Byte] =
       readRange(Path.fromNioPath(path), chunkSize, start, end)
@@ -449,9 +422,7 @@ private[file] trait FilesCompanionPlatform {
         offset: Long,
         pollDelay: FiniteDuration
     ): Stream[F, Byte] =
-      Stream.resource(readCursor(path)).flatMap { cursor =>
-        cursor.seek(offset).tail(chunkSize, pollDelay).void.stream
-      }
+      tail(Path.fromNioPath(path), chunkSize, offset, pollDelay)
 
     def tempFile(
         dir: Option[JPath],
@@ -515,42 +486,23 @@ private[file] trait FilesCompanionPlatform {
         path: JPath,
         flags: Seq[StandardOpenOption] = List(StandardOpenOption.CREATE)
     ): Pipe[F, Byte, INothing] =
-      in =>
-        Stream
-          .resource(writeCursor(path, flags))
-          .flatMap(_.writeAll(in).void.stream)
+      writeAll(Path.fromNioPath(path), Flags.fromOpenOptions(StandardOpenOption.WRITE +: flags))
 
     def writeCursor(
         path: JPath,
         flags: Seq[OpenOption] = List(StandardOpenOption.CREATE)
     ): Resource[F, WriteCursor[F]] =
-      open(path, StandardOpenOption.WRITE :: flags.toList).flatMap { fileHandle =>
-        val size = if (flags.contains(StandardOpenOption.APPEND)) fileHandle.size else 0L.pure[F]
-        val cursor = size.map(s => WriteCursor(fileHandle, s))
-        Resource.eval(cursor)
-      }
-
-    def writeCursorFromFileHandle(
-        file: FileHandle[F],
-        append: Boolean
-    ): F[WriteCursor[F]] =
-      if (append) file.size.map(s => WriteCursor(file, s)) else WriteCursor(file, 0L).pure[F]
+      writeCursor(Path.fromNioPath(path), Flags.fromOpenOptions(StandardOpenOption.WRITE +: flags))
 
     def writeRotate(
         computePath: F[JPath],
         limit: Long,
         flags: Seq[StandardOpenOption]
-    ): Pipe[F, Byte, INothing] = {
-      def openNewFile: Resource[F, FileHandle[F]] =
-        Resource
-          .eval(computePath)
-          .flatMap(p => open(p, StandardOpenOption.WRITE :: flags.toList))
-
-      def newCursor(file: FileHandle[F]): F[WriteCursor[F]] =
-        writeCursorFromFileHandle(file, flags.contains(StandardOpenOption.APPEND))
-
-      internal.WriteRotate(openNewFile, newCursor, limit)
-    }
+    ): Pipe[F, Byte, INothing] =
+      writeRotate(
+        computePath.map(Path.fromNioPath),
+        limit,
+        Flags.fromOpenOptions(StandardOpenOption.WRITE +: flags)
+      )
   }
-
 }

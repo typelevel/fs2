@@ -116,7 +116,8 @@ class WatcherSuite extends Fs2Suite with BaseFileSuite {
               smallDelay ++ Stream
                 .exec(
                   w.watch(f1, modifiers = modifiers) *> w.watch(f2, modifiers = modifiers).flatten
-                ) ++ smallDelay ++ Stream.eval(modify(Path.fromNioPath(f2))) ++ smallDelay ++ Stream.eval(modify(Path.fromNioPath(f1)))
+                ) ++ smallDelay ++ Stream.eval(modify(Path.fromNioPath(f2))) ++ smallDelay ++ Stream
+                .eval(modify(Path.fromNioPath(f1)))
             )
         }
         .compile

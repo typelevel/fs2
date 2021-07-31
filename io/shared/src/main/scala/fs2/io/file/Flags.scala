@@ -25,7 +25,7 @@ case class Flags(value: List[Flag]) {
   def contains(flag: Flag): Boolean = value.contains(flag)
 }
 
-object Flags {
+object Flags extends FlagsCompanionPlatform {
   def apply(flags: Flag*): Flags = Flags(flags.toList)
 
   val Read = Flags(Flag.Read)
