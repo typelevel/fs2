@@ -19,10 +19,21 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2.io.file
+package fs2
+package io
+package file
 
-import cats.effect.kernel.Async
+import cats.effect.kernel.Resource
 
-private[file] trait ReadFilesCompanionPlatform {
-  implicit def forAsync[F[_]: Async]: ReadFiles[F] = PosixFiles.forAsync[F]
+/** Platform-agnostic methods for reading files.
+  */
+sealed trait Files[F[_]] extends FilesPlatform[F] {
+
+}
+
+object Files extends FilesCompanionPlatform {
+
+  def apply[F[_]](implicit F: Files[F]): Files[F] = F
+
+  private[file] trait UnsealedFiles[F[_]] extends Files[F]
 }

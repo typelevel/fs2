@@ -30,10 +30,10 @@ import cats.syntax.all._
 import scala.concurrent.duration._
 
 trait BaseFileSuite {
-  import PosixFiles._
+  import Files._
 
   protected def tempDirectory: Resource[IO, Path] =
-    PosixFiles[IO].mkdtemp(prefix = "BaseFileSpec")
+    Files[IO].mkdtemp(prefix = "BaseFileSpec")
 
   protected def tempFile: Resource[IO, Path] =
     tempDirectory.evalMap(aFile)
@@ -44,12 +44,12 @@ trait BaseFileSuite {
   protected def tempFilesHierarchy: Resource[IO, Path] =
     tempDirectory.evalMap { topDir =>
       List
-        .fill(5)(PosixFiles[IO].mkdtemp(topDir, "BaseFileSpec").allocated.map(_._1))
+        .fill(5)(Files[IO].mkdtemp(topDir, "BaseFileSpec").allocated.map(_._1))
         .traverse {
           _.flatMap { dir =>
             List
               .tabulate(5)(i =>
-                PosixFiles[IO].open(dir / Path(s"BaseFileSpecSub$i.tmp"), Flags.w).use(_ => IO.unit)
+                Files[IO].open(dir / Path(s"BaseFileSpecSub$i.tmp"), Flags.w).use(_ => IO.unit)
               )
               .sequence
           }
@@ -58,15 +58,15 @@ trait BaseFileSuite {
     }
 
   protected def aFile(dir: Path): IO[Path] =
-    PosixFiles[IO]
+    Files[IO]
       .mkdtemp(dir)
       .allocated
       .map(_._1)
       .map(_ / Path("BaseFileSpec.tmp"))
-      .flatTap(PosixFiles[IO].open(_, Flags.w).use(_ => IO.unit))
+      .flatTap(Files[IO].open(_, Flags.w).use(_ => IO.unit))
 
   protected def modify(file: Path): IO[Path] =
-    PosixFiles[IO]
+    Files[IO]
       .writeAll(file)
       .apply(Stream.emits(Array[Byte](0, 1, 2, 3)))
       .compile
@@ -79,8 +79,8 @@ trait BaseFileSuite {
       .map(_.toByte)
       .covary[IO]
       .metered(250.millis)
-      .through(PosixFiles[IO].writeAll(file, Flags.a))
+      .through(Files[IO].writeAll(file, Flags.a))
 
   protected def deleteDirectoryRecursively(dir: Path): IO[Unit] =
-    PosixFiles[IO].rm(dir, recursive = true)
+    Files[IO].rm(dir, recursive = true)
 }

@@ -28,12 +28,11 @@ import cats.effect.Resource
 import cats.syntax.all._
 
 import scala.concurrent.duration._
-import fs2.io.file.PosixFiles
 
 trait BaseFileSuite extends Fs2Suite {
 
   protected def tempDirectory: Resource[IO, Path] =
-    PosixFiles[IO].mkdtemp(prefix = "BaseFileSpec").map(p => Path(p.toString()))
+    fs2.io.file.Files[IO].mkdtemp(prefix = "BaseFileSpec").map(p => Path(p.toString()))
 
   protected def tempFile: Resource[IO, Path] =
     tempDirectory.evalMap(aFile)
@@ -45,7 +44,7 @@ trait BaseFileSuite extends Fs2Suite {
     tempDirectory.evalMap { topDir =>
       List
         .fill(5)(
-          PosixFiles[IO]
+          fs2.io.file.Files[IO]
             .mkdtemp(fs2.io.file.Path(topDir.toString), "BaseFileSpec")
             .allocated
             .map(_._1)
@@ -63,7 +62,7 @@ trait BaseFileSuite extends Fs2Suite {
     }
 
   protected def aFile(dir: Path): IO[Path] =
-    PosixFiles[IO]
+    fs2.io.file.Files[IO]
       .mkdtemp(fs2.io.file.Path(dir.toString))
       .map(p => Path(p.toString()))
       .allocated
@@ -88,5 +87,5 @@ trait BaseFileSuite extends Fs2Suite {
       .through(Files[IO].writeAll(file, Flags(Flag.Append)))
 
   protected def deleteDirectoryRecursively(dir: Path): IO[Unit] =
-    PosixFiles[IO].rm(fs2.io.file.Path(dir.toString), recursive = true)
+    fs2.io.file.Files[IO].rm(fs2.io.file.Path(dir.toString), recursive = true)
 }

@@ -29,9 +29,7 @@ import cats.syntax.all._
 import fs2.internal.jsdeps.node.fsMod
 import fs2.internal.jsdeps.node.fsPromisesMod
 import fs2.internal.jsdeps.node.pathMod
-import fs2.internal.jsdeps.node.streamMod
-import fs2.io.file.ReadFiles.TemporalReadFiles
-import fs2.io.file.ReadFiles.UnsealedReadFiles
+import fs2.io.file.Files.UnsealedFiles
 
 import java.time.Instant
 import scala.concurrent.duration._
@@ -39,9 +37,7 @@ import scala.concurrent.duration._
 /** Enables interacting with the file system in a way modeled on Node.js `fs` module which in turn is modeled on standard POSIX functions.
   * @see [[https://nodejs.org/api/fs.html]]
   */
-sealed trait PosixFiles[F[_]] extends UnsealedReadFiles[F] {
-
-  import PosixFiles._
+private[file] trait FilesPlatform[F[_]] {
 
   def access(path: Path, mode: AccessMode = AccessMode.F_OK): F[Boolean]
 
@@ -124,8 +120,6 @@ sealed trait PosixFiles[F[_]] extends UnsealedReadFiles[F] {
   ): Pipe[F, Byte, INothing]
 }
 
-object PosixFiles {
-  def apply[F[_]](implicit F: PosixFiles[F]): F.type = F
 
   final class AccessMode private (private[file] val mode: Long) extends AnyVal {
     def |(that: AccessMode) = AccessMode(this.mode | that.mode)
@@ -245,11 +239,13 @@ object PosixFiles {
     def birthtime: Instant
   }
 
-  implicit def forAsync[F[_]: Async]: PosixFiles[F] = new AsyncPosixFiles[F]
+
+private[fs2] trait FilesCompanionPlatform {
+
+  implicit def forAsync[F[_]: Async]: Files[F] = new AsyncPosixFiles[F]
 
   private final class AsyncPosixFiles[F[_]](implicit F: Async[F])
-      extends TemporalReadFiles[F]
-      with PosixFiles[F] {
+      extends UnsealedFiles[F] {
 
     override def access(path: Path, mode: AccessMode): F[Boolean] =
       F.fromPromise(F.delay(fsPromisesMod.access(path.toJS, mode.mode.toDouble)))
@@ -318,13 +314,13 @@ object PosixFiles {
             .map(dirent => path / Path(dirent.name))
         }
 
-    override def readCursor(path: Path): Resource[F, ReadCursor[F]] =
+    def readCursor(path: Path): Resource[F, ReadCursor[F]] =
       readCursor(path, Flags.r)
 
     override def readCursor(path: Path, flags: Flags): Resource[F, ReadCursor[F]] =
       open(path, flags).map(ReadCursor(_, 0L))
 
-    override def readAll(path: Path, chunkSize: Int): Stream[F, Byte] =
+    def readAll(path: Path, chunkSize: Int): Stream[F, Byte] =
       readAll(path, Flags.r)
 
     override def readAll(path: Path, flags: Flags): Stream[F, Byte] =
@@ -339,7 +335,7 @@ object PosixFiles {
         )
       )
 
-    override def readRange(path: Path, chunkSize: Int, start: Long, end: Long): Stream[F, Byte] =
+    def readRange(path: Path, chunkSize: Int, start: Long, end: Long): Stream[F, Byte] =
       readReadable(
         F.delay(
           fsMod

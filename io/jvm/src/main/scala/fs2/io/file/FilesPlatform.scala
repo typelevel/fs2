@@ -27,12 +27,10 @@ import scala.concurrent.duration._
 
 import cats.effect.kernel.{Async, Resource, Sync}
 import cats.syntax.all._
-import fs2.io.file.ReadFiles.UnsealedReadFiles
-import fs2.io.file.ReadFiles.TemporalReadFiles
 
 import java.io.IOException
 import java.nio.channels.FileChannel
-import java.nio.file.{Files => JFiles, _}
+import java.nio.file.{Files => JFiles, Path => JPath, _}
 import java.nio.file.attribute.{BasicFileAttributes, FileAttribute, PosixFilePermission}
 import java.util.stream.{Stream => JStream}
 
@@ -42,48 +40,48 @@ import fs2.io.CollectionCompat._
   *
   * An instance is available for any effect `F` which has an `Async[F]` instance.
   */
-trait Files[F[_]] extends UnsealedReadFiles[F] {
+private[file] trait FilesPlatform[F[_]] {
 
   /** Copies a file from the source to the target path,
     *
     * By default, the copy fails if the target file already exists or is a symbolic link.
     */
-  def copy(source: Path, target: Path, flags: Seq[CopyOption] = Seq.empty): F[Path]
+  def copy(source: JPath, target: JPath, flags: Seq[CopyOption] = Seq.empty): F[JPath]
 
   /** Creates a new directory at the given path.
     */
-  def createDirectory(path: Path, flags: Seq[FileAttribute[_]] = Seq.empty): F[Path]
+  def createDirectory(path: JPath, flags: Seq[FileAttribute[_]] = Seq.empty): F[JPath]
 
   /** Creates a new directory at the given path and creates all nonexistent parent directories beforehand.
     */
-  def createDirectories(path: Path, flags: Seq[FileAttribute[_]] = Seq.empty): F[Path]
+  def createDirectories(path: JPath, flags: Seq[FileAttribute[_]] = Seq.empty): F[JPath]
 
   /** Deletes a file.
     *
     * If the file is a directory then the directory must be empty for this action to succeed.
     * This action will fail if the path doesn't exist.
     */
-  def delete(path: Path): F[Unit]
+  def delete(path: JPath): F[Unit]
 
   /** Like `delete`, but will not fail when the path doesn't exist.
     */
-  def deleteIfExists(path: Path): F[Boolean]
+  def deleteIfExists(path: JPath): F[Boolean]
 
   /** Recursively delete a directory
     */
-  def deleteDirectoryRecursively(path: Path, options: Set[FileVisitOption] = Set.empty): F[Unit]
+  def deleteDirectoryRecursively(path: JPath, options: Set[FileVisitOption] = Set.empty): F[Unit]
 
   /** Creates a stream of `Path`s inside a directory.
     */
-  def directoryStream(path: Path): Stream[F, Path]
+  def directoryStream(path: JPath): Stream[F, JPath]
 
   /** Creates a stream of `Path`s inside a directory, filtering the results by the given predicate.
     */
-  def directoryStream(path: Path, filter: Path => Boolean): Stream[F, Path]
+  def directoryStream(path: JPath, filter: JPath => Boolean): Stream[F, JPath]
 
   /** Creates a stream of `Path`s inside a directory which match the given glob.
     */
-  def directoryStream(path: Path, glob: String): Stream[F, Path]
+  def directoryStream(path: JPath, glob: String): Stream[F, JPath]
 
   /** Checks if a file exists.
     *
@@ -92,7 +90,7 @@ trait Files[F[_]] extends UnsealedReadFiles[F] {
     * subsequence access will succeed. Care should be taken when using this
     * method in security sensitive applications.
     */
-  def exists(path: Path, flags: Seq[LinkOption] = Seq.empty): F[Boolean]
+  def exists(path: JPath, flags: Seq[LinkOption] = Seq.empty): F[Boolean]
 
   /** Tests whether a file is a directory.
     *
@@ -109,7 +107,7 @@ trait Files[F[_]] extends UnsealedReadFiles[F] {
     * @return true if the file is a directory; false if the file does not exist, is not a directory, or it cannot be determined if the file is a directory or not.
     */
   def isDirectory(
-      path: Path,
+      path: JPath,
       linkOption: Seq[LinkOption] = Nil
   ): F[Boolean]
 
@@ -129,7 +127,7 @@ trait Files[F[_]] extends UnsealedReadFiles[F] {
     * @return true if the file is a regular file; false if the file does not exist, is not a regular file, or it cannot be determined if the file is a regular file or not.
     */
   def isFile(
-      path: Path,
+      path: JPath,
       linkOption: Seq[LinkOption] = Nil
   ): F[Boolean]
 
@@ -137,10 +135,10 @@ trait Files[F[_]] extends UnsealedReadFiles[F] {
     *
     * By default, the move fails if the target file already exists or is a symbolic link.
     */
-  def move(source: Path, target: Path, flags: Seq[CopyOption] = Seq.empty): F[Path]
+  def move(source: JPath, target: JPath, flags: Seq[CopyOption] = Seq.empty): F[JPath]
 
   /** Creates a `FileHandle` for the file at the supplied `Path`. */
-  def open(path: Path, flags: Seq[OpenOption]): Resource[F, FileHandle[F]]
+  def open(path: JPath, flags: Seq[OpenOption]): Resource[F, FileHandle[F]]
 
   /** Creates a `FileHandle` for the supplied `FileChannel`. */
   def openFileChannel(channel: F[FileChannel]): Resource[F, FileHandle[F]]
@@ -149,35 +147,35 @@ trait Files[F[_]] extends UnsealedReadFiles[F] {
     *
     * Note: this will only work for POSIX supporting file systems.
     */
-  def permissions(path: Path, flags: Seq[LinkOption] = Seq.empty): F[Set[PosixFilePermission]]
+  def permissions(path: JPath, flags: Seq[LinkOption] = Seq.empty): F[Set[PosixFilePermission]]
 
   /** Reads all data from the file at the specified `java.nio.file.Path`.
     */
-  def readAll(path: Path, chunkSize: Int): Stream[F, Byte]
+  def readAll(path: JPath, chunkSize: Int): Stream[F, Byte]
 
   /** Returns a `ReadCursor` for the specified path.
     */
-  def readCursor(path: Path): Resource[F, ReadCursor[F]] = readCursor(path, Nil)
+  def readCursor(path: JPath): Resource[F, ReadCursor[F]] = readCursor(path, Nil)
 
   /** Returns a `ReadCursor` for the specified path. The `READ` option is added to the supplied flags.
     */
-  def readCursor(path: Path, flags: Seq[OpenOption] = Nil): Resource[F, ReadCursor[F]]
+  def readCursor(path: JPath, flags: Seq[OpenOption] = Nil): Resource[F, ReadCursor[F]]
 
   /** Reads a range of data synchronously from the file at the specified `java.nio.file.Path`.
     * `start` is inclusive, `end` is exclusive, so when `start` is 0 and `end` is 2,
     * two bytes are read.
     */
-  def readRange(path: Path, chunkSize: Int, start: Long, end: Long): Stream[F, Byte]
-
+  def readRange(path: JPath, chunkSize: Int, start: Long, end: Long): Stream[F, Byte]
+ 
   /** Set file permissions from set of `PosixFilePermission`.
     *
     * Note: this will only work for POSIX supporting file systems.
     */
-  def setPermissions(path: Path, permissions: Set[PosixFilePermission]): F[Path]
+  def setPermissions(path: JPath, permissions: Set[PosixFilePermission]): F[JPath]
 
   /** Returns the size of a file (in bytes).
     */
-  def size(path: Path): F[Long]
+  def size(path: JPath): F[Long]
 
   /** Returns an infinite stream of data from the file at the specified path.
     * Starts reading from the specified offset and upon reaching the end of the file,
@@ -189,7 +187,7 @@ trait Files[F[_]] extends UnsealedReadFiles[F] {
     * If an error occurs while reading from the file, the overall stream fails.
     */
   def tail(
-      path: Path,
+      path: JPath,
       chunkSize: Int,
       offset: Long = 0L,
       pollDelay: FiniteDuration = 1.second
@@ -205,11 +203,11 @@ trait Files[F[_]] extends UnsealedReadFiles[F] {
     * @return a resource containing the path of the temporary file
     */
   def tempFile(
-      dir: Option[Path] = None,
+      dir: Option[JPath] = None,
       prefix: String = "",
       suffix: String = ".tmp",
       attributes: Seq[FileAttribute[_]] = Seq.empty
-  ): Resource[F, Path]
+  ): Resource[F, JPath]
 
   /** Creates a `Resource` which can be used to create a temporary directory.
     *  The directory is created during resource allocation, and removed during its release.
@@ -220,22 +218,22 @@ trait Files[F[_]] extends UnsealedReadFiles[F] {
     * @return a resource containing the path of the temporary directory
     */
   def tempDirectory(
-      dir: Option[Path] = None,
+      dir: Option[JPath] = None,
       prefix: String = "",
       attributes: Seq[FileAttribute[_]] = Seq.empty
-  ): Resource[F, Path]
+  ): Resource[F, JPath]
 
-  /** Creates a stream of `Path`s contained in a given file tree. Depth is unlimited.
+  /** Creates a stream of `JPath`s contained in a given file tree. Depth is unlimited.
     */
-  def walk(start: Path): Stream[F, Path]
+  def walk(start: JPath): Stream[F, JPath]
 
-  /** Creates a stream of `Path`s contained in a given file tree, respecting the supplied options. Depth is unlimited.
+  /** Creates a stream of `JPath`s contained in a given file tree, respecting the supplied options. Depth is unlimited.
     */
-  def walk(start: Path, options: Seq[FileVisitOption]): Stream[F, Path]
+  def walk(start: JPath, options: Seq[FileVisitOption]): Stream[F, JPath]
 
-  /** Creates a stream of `Path`s contained in a given file tree down to a given depth.
+  /** Creates a stream of `JPath`s contained in a given file tree down to a given depth.
     */
-  def walk(start: Path, maxDepth: Int, options: Seq[FileVisitOption] = Seq.empty): Stream[F, Path]
+  def walk(start: JPath, maxDepth: Int, options: Seq[FileVisitOption] = Seq.empty): Stream[F, JPath]
 
   /** Creates a [[Watcher]] for the default file system.
     *
@@ -249,18 +247,18 @@ trait Files[F[_]] extends UnsealedReadFiles[F] {
     * Alias for creating a watcher and watching the supplied path, releasing the watcher when the resulting stream is finalized.
     */
   def watch(
-      path: Path,
+      path: JPath,
       types: Seq[Watcher.EventType] = Nil,
       modifiers: Seq[WatchEvent.Modifier] = Nil,
       pollTimeout: FiniteDuration = 1.second
   ): Stream[F, Watcher.Event]
 
-  /** Writes all data to the file at the specified `java.nio.file.Path`.
+  /** Writes all data to the file at the specified `java.nio.file.JPath`.
     *
     * Adds the WRITE flag to any other `OpenOption` flags specified. By default, also adds the CREATE flag.
     */
   def writeAll(
-      path: Path,
+      path: JPath,
       flags: Seq[StandardOpenOption] = List(StandardOpenOption.CREATE)
   ): Pipe[F, Byte, INothing]
 
@@ -270,7 +268,7 @@ trait Files[F[_]] extends UnsealedReadFiles[F] {
     * the offset is initialized to the current size of the file.
     */
   def writeCursor(
-      path: Path,
+      path: JPath,
       flags: Seq[OpenOption] = List(StandardOpenOption.CREATE)
   ): Resource[F, WriteCursor[F]]
 
@@ -291,36 +289,35 @@ trait Files[F[_]] extends UnsealedReadFiles[F] {
     * files in a directory and generating a unique name.
     */
   def writeRotate(
-      computePath: F[Path],
+      computePath: F[JPath],
       limit: Long,
       flags: Seq[StandardOpenOption] = List(StandardOpenOption.CREATE)
   ): Pipe[F, Byte, INothing]
 }
 
-object Files {
-  def apply[F[_]](implicit F: Files[F]): F.type = F
+private[file] trait FilesCompanionPlatform {
 
   implicit def forAsync[F[_]: Async]: Files[F] = new AsyncFiles[F]
 
-  private final class AsyncFiles[F[_]: Async] extends TemporalReadFiles[F] with Files[F] {
+  private final class AsyncFiles[F[_]: Async] extends Files.UnsealedFiles[F] {
 
-    def copy(source: Path, target: Path, flags: Seq[CopyOption]): F[Path] =
+    def copy(source: JPath, target: JPath, flags: Seq[CopyOption]): F[JPath] =
       Sync[F].blocking(JFiles.copy(source, target, flags: _*))
 
-    def createDirectory(path: Path, flags: Seq[FileAttribute[_]]): F[Path] =
+    def createDirectory(path: JPath, flags: Seq[FileAttribute[_]]): F[JPath] =
       Sync[F].blocking(JFiles.createDirectory(path, flags: _*))
 
-    def createDirectories(path: Path, flags: Seq[FileAttribute[_]]): F[Path] =
+    def createDirectories(path: JPath, flags: Seq[FileAttribute[_]]): F[JPath] =
       Sync[F].blocking(JFiles.createDirectories(path, flags: _*))
 
-    def delete(path: Path): F[Unit] =
+    def delete(path: JPath): F[Unit] =
       Sync[F].blocking(JFiles.delete(path))
 
-    def deleteIfExists(path: Path): F[Boolean] =
+    def deleteIfExists(path: JPath): F[Boolean] =
       Sync[F].blocking(JFiles.deleteIfExists(path))
 
     def deleteDirectoryRecursively(
-        path: Path,
+        path: JPath,
         options: Set[FileVisitOption]
     ): F[Unit] =
       Sync[F].blocking {
@@ -328,12 +325,12 @@ object Files {
           path,
           options.asJava,
           Int.MaxValue,
-          new SimpleFileVisitor[Path] {
-            override def visitFile(path: Path, attrs: BasicFileAttributes): FileVisitResult = {
+          new SimpleFileVisitor[JPath] {
+            override def visitFile(path: JPath, attrs: BasicFileAttributes): FileVisitResult = {
               JFiles.deleteIfExists(path)
               FileVisitResult.CONTINUE
             }
-            override def postVisitDirectory(path: Path, e: IOException): FileVisitResult = {
+            override def postVisitDirectory(path: JPath, e: IOException): FileVisitResult = {
               JFiles.deleteIfExists(path)
               FileVisitResult.CONTINUE
             }
@@ -342,20 +339,20 @@ object Files {
         ()
       }
 
-    def directoryStream(path: Path): Stream[F, Path] =
-      _runJavaCollectionResource[DirectoryStream[Path]](
+    def directoryStream(path: JPath): Stream[F, JPath] =
+      _runJavaCollectionResource[DirectoryStream[JPath]](
         Sync[F].blocking(JFiles.newDirectoryStream(path)),
         _.asScala.iterator
       )
 
-    def directoryStream(path: Path, filter: Path => Boolean): Stream[F, Path] =
-      _runJavaCollectionResource[DirectoryStream[Path]](
-        Sync[F].blocking(JFiles.newDirectoryStream(path, (entry: Path) => filter(entry))),
+    def directoryStream(path: JPath, filter: JPath => Boolean): Stream[F, JPath] =
+      _runJavaCollectionResource[DirectoryStream[JPath]](
+        Sync[F].blocking(JFiles.newDirectoryStream(path, (entry: JPath) => filter(entry))),
         _.asScala.iterator
       )
 
-    def directoryStream(path: Path, glob: String): Stream[F, Path] =
-      _runJavaCollectionResource[DirectoryStream[Path]](
+    def directoryStream(path: JPath, glob: String): Stream[F, JPath] =
+      _runJavaCollectionResource[DirectoryStream[JPath]](
         Sync[F].blocking(JFiles.newDirectoryStream(path, glob)),
         _.asScala.iterator
       )
@@ -363,17 +360,17 @@ object Files {
     private final val pathStreamChunkSize = 16
     private def _runJavaCollectionResource[C <: AutoCloseable](
         javaCollection: F[C],
-        collectionIterator: C => Iterator[Path]
-    ): Stream[F, Path] =
+        collectionIterator: C => Iterator[JPath]
+    ): Stream[F, JPath] =
       Stream
         .resource(Resource.fromAutoCloseable(javaCollection))
         .flatMap(ds => Stream.fromBlockingIterator[F](collectionIterator(ds), pathStreamChunkSize))
 
-    def exists(path: Path, flags: Seq[LinkOption]): F[Boolean] =
+    def exists(path: JPath, flags: Seq[LinkOption]): F[Boolean] =
       Sync[F].blocking(JFiles.exists(path, flags: _*))
 
     def isDirectory(
-        path: Path,
+        path: JPath,
         linkOption: Seq[LinkOption]
     ): F[Boolean] =
       Sync[F].delay(
@@ -381,47 +378,62 @@ object Files {
       )
 
     def isFile(
-        path: Path,
+        path: JPath,
         linkOption: Seq[LinkOption]
     ): F[Boolean] =
       Sync[F].delay(
         JFiles.isRegularFile(path, linkOption: _*)
       )
 
-    def move(source: Path, target: Path, flags: Seq[CopyOption]): F[Path] =
+    def move(source: JPath, target: JPath, flags: Seq[CopyOption]): F[JPath] =
       Sync[F].blocking(JFiles.move(source, target, flags: _*))
 
-    def open(path: Path, flags: Seq[OpenOption]): Resource[F, FileHandle[F]] =
+    def open(path: JPath, flags: Seq[OpenOption]): Resource[F, FileHandle[F]] =
       openFileChannel(Sync[F].blocking(FileChannel.open(path, flags: _*)))
 
     def openFileChannel(channel: F[FileChannel]): Resource[F, FileHandle[F]] =
       Resource.make(channel)(ch => Sync[F].blocking(ch.close())).map(ch => FileHandle.make(ch))
 
-    def permissions(path: Path, flags: Seq[LinkOption]): F[Set[PosixFilePermission]] =
+    def permissions(path: JPath, flags: Seq[LinkOption]): F[Set[PosixFilePermission]] =
       Sync[F].blocking(JFiles.getPosixFilePermissions(path, flags: _*).asScala)
 
-    def readAll(path: Path, chunkSize: Int): Stream[F, Byte] =
+    def readAll(path: JPath, chunkSize: Int): Stream[F, Byte] =
       Stream.resource(readCursor(path)).flatMap { cursor =>
         cursor.readAll(chunkSize).void.stream
       }
 
-    def readCursor(path: Path, flags: Seq[OpenOption] = Nil): Resource[F, ReadCursor[F]] =
+    def readCursor(path: JPath, flags: Seq[OpenOption] = Nil): Resource[F, ReadCursor[F]] =
       open(path, StandardOpenOption.READ :: flags.toList).map { fileHandle =>
         ReadCursor(fileHandle, 0L)
       }
 
-    def setPermissions(path: Path, permissions: Set[PosixFilePermission]): F[Path] =
+    def readRange(path: JPath, chunkSize: Int, start: Long, end: Long): Stream[F, Byte] =
+      Stream.resource(readCursor(path)).flatMap { cursor =>
+        cursor.seek(start).readUntil(chunkSize, end).void.stream
+      }
+
+    def setPermissions(path: JPath, permissions: Set[PosixFilePermission]): F[JPath] =
       Sync[F].blocking(JFiles.setPosixFilePermissions(path, permissions.asJava))
 
-    def size(path: Path): F[Long] =
+    def size(path: JPath): F[Long] =
       Sync[F].blocking(JFiles.size(path))
 
+    def tail(
+        path: JPath,
+        chunkSize: Int,
+        offset: Long,
+        pollDelay: FiniteDuration
+    ): Stream[F, Byte] =
+      Stream.resource(readCursor(path)).flatMap { cursor =>
+        cursor.seek(offset).tail(chunkSize, pollDelay).void.stream
+      }
+
     def tempFile(
-        dir: Option[Path],
+        dir: Option[JPath],
         prefix: String,
         suffix: String,
         attributes: Seq[FileAttribute[_]]
-    ): Resource[F, Path] =
+    ): Resource[F, JPath] =
       Resource.make {
         dir match {
           case Some(dir) =>
@@ -433,10 +445,10 @@ object Files {
       }(deleteIfExists(_).void)
 
     def tempDirectory(
-        dir: Option[Path],
+        dir: Option[JPath],
         prefix: String,
         attributes: Seq[FileAttribute[_]]
-    ): Resource[F, Path] =
+    ): Resource[F, JPath] =
       Resource.make {
         dir match {
           case Some(dir) =>
@@ -449,14 +461,14 @@ object Files {
           .recover { case _: NoSuchFileException => () }
       }
 
-    def walk(start: Path): Stream[F, Path] =
+    def walk(start: JPath): Stream[F, JPath] =
       walk(start, Seq.empty)
 
-    def walk(start: Path, options: Seq[FileVisitOption]): Stream[F, Path] =
+    def walk(start: JPath, options: Seq[FileVisitOption]): Stream[F, JPath] =
       walk(start, Int.MaxValue, options)
 
-    def walk(start: Path, maxDepth: Int, options: Seq[FileVisitOption]): Stream[F, Path] =
-      _runJavaCollectionResource[JStream[Path]](
+    def walk(start: JPath, maxDepth: Int, options: Seq[FileVisitOption]): Stream[F, JPath] =
+      _runJavaCollectionResource[JStream[JPath]](
         Sync[F].blocking(JFiles.walk(start, maxDepth, options: _*)),
         _.iterator.asScala
       )
@@ -464,7 +476,7 @@ object Files {
     def watcher: Resource[F, Watcher[F]] = Watcher.default
 
     def watch(
-        path: Path,
+        path: JPath,
         types: Seq[Watcher.EventType],
         modifiers: Seq[WatchEvent.Modifier],
         pollTimeout: FiniteDuration
@@ -475,7 +487,7 @@ object Files {
         .flatMap(_.events(pollTimeout))
 
     def writeAll(
-        path: Path,
+        path: JPath,
         flags: Seq[StandardOpenOption] = List(StandardOpenOption.CREATE)
     ): Pipe[F, Byte, INothing] =
       in =>
@@ -484,7 +496,7 @@ object Files {
           .flatMap(_.writeAll(in).void.stream)
 
     def writeCursor(
-        path: Path,
+        path: JPath,
         flags: Seq[OpenOption] = List(StandardOpenOption.CREATE)
     ): Resource[F, WriteCursor[F]] =
       open(path, StandardOpenOption.WRITE :: flags.toList).flatMap { fileHandle =>
@@ -500,7 +512,7 @@ object Files {
       if (append) file.size.map(s => WriteCursor(file, s)) else WriteCursor(file, 0L).pure[F]
 
     def writeRotate(
-        computePath: F[Path],
+        computePath: F[JPath],
         limit: Long,
         flags: Seq[StandardOpenOption]
     ): Pipe[F, Byte, INothing] = {

@@ -30,14 +30,13 @@ import scala.concurrent.duration._
 import fs2.internal.jsdeps.node.osMod
 import cats.kernel.Order
 
-class PosixFilesSuite extends Fs2Suite with BaseFileSuite {
-  import PosixFiles._
+class FilesSuite extends Fs2Suite with BaseFileSuite {
 
   group("readAll") {
     test("retrieves whole content of a file") {
       Stream
         .resource(tempFile.evalMap(modify))
-        .flatMap(path => PosixFiles[IO].readAll(path, 4096))
+        .flatMap(path => Files[IO].readAll(path, 4096))
         .map(_ => 1)
         .compile
         .foldMonoid
@@ -49,7 +48,7 @@ class PosixFilesSuite extends Fs2Suite with BaseFileSuite {
     test("reads half of a file") {
       Stream
         .resource(tempFile.evalMap(modify))
-        .flatMap(path => PosixFiles[IO].readRange(path, 4096, 0, 2))
+        .flatMap(path => Files[IO].readRange(path, 4096, 0, 2))
         .map(_ => 1)
         .compile
         .foldMonoid
@@ -58,7 +57,7 @@ class PosixFilesSuite extends Fs2Suite with BaseFileSuite {
     test("reads full file if end is bigger than file size") {
       Stream
         .resource(tempFile.evalMap(modify))
-        .flatMap(path => PosixFiles[IO].readRange(path, 4096, 0, 100))
+        .flatMap(path => Files[IO].readRange(path, 4096, 0, 100))
         .map(_ => 1)
         .compile
         .foldMonoid
@@ -74,7 +73,7 @@ class PosixFilesSuite extends Fs2Suite with BaseFileSuite {
           Stream("Hello", " world!")
             .covary[IO]
             .through(text.utf8.encode)
-            .through(PosixFiles[IO].writeAll(path)) ++ PosixFiles[IO]
+            .through(Files[IO].writeAll(path)) ++ Files[IO]
             .readAll(path, 4096)
             .through(text.utf8.decode)
         }
@@ -88,8 +87,8 @@ class PosixFilesSuite extends Fs2Suite with BaseFileSuite {
         .resource(tempFile)
         .flatMap { path =>
           val src = Stream("Hello", " world!").covary[IO].through(text.utf8.encode)
-          src.through(PosixFiles[IO].writeAll(path)) ++
-            src.through(PosixFiles[IO].writeAll(path, Flags.a)) ++ PosixFiles[IO]
+          src.through(Files[IO].writeAll(path)) ++
+            src.through(Files[IO].writeAll(path, Flags.a)) ++ Files[IO]
               .readAll(path, 4096)
               .through(text.utf8.decode)
         }
@@ -104,7 +103,7 @@ class PosixFilesSuite extends Fs2Suite with BaseFileSuite {
       Stream
         .resource(tempFile)
         .flatMap { path =>
-          PosixFiles[IO]
+          Files[IO]
             .tail(path, 4096, pollDelay = 25.millis)
             .concurrently(modifyLater(path))
         }
@@ -118,18 +117,18 @@ class PosixFilesSuite extends Fs2Suite with BaseFileSuite {
 
   group("exists") {
     test("returns false on a non existent file") {
-      PosixFiles[IO].access(Path("nothing")).assertEquals(false)
+      Files[IO].access(Path("nothing")).assertEquals(false)
     }
     test("returns true on an existing file") {
       tempFile
-        .use(PosixFiles[IO].access(_))
+        .use(Files[IO].access(_))
         .assertEquals(true)
     }
   }
 
   group("permissions") {
     test("should fail for a non existent file") {
-      PosixFiles[IO]
+      Files[IO]
         .stat(Path("nothing"))
         .intercept[Throwable]
     }
@@ -138,8 +137,8 @@ class PosixFilesSuite extends Fs2Suite with BaseFileSuite {
         FileAccessMode.S_IRWXU | FileAccessMode.S_IRWXG | FileAccessMode.S_IROTH | FileAccessMode.S_IXOTH
       tempFile
         .use { p =>
-          PosixFiles[IO].chmod(p, permissions) >>
-            PosixFiles[IO].stat(p).map(_.mode.access)
+          Files[IO].chmod(p, permissions) >>
+            Files[IO].stat(p).map(_.mode.access)
         }
         .assertEquals(permissions)
     }
@@ -147,7 +146,7 @@ class PosixFilesSuite extends Fs2Suite with BaseFileSuite {
 
   group("setPermissions") {
     test("should fail for a non existent file") {
-      PosixFiles[IO]
+      Files[IO]
         .chmod(Path("nothing"), FileAccessMode.Default)
         .intercept[Throwable]
     }
@@ -157,9 +156,9 @@ class PosixFilesSuite extends Fs2Suite with BaseFileSuite {
       tempFile
         .use { p =>
           for {
-            initialPermissions <- PosixFiles[IO].stat(p).map(_.mode.access)
-            _ <- PosixFiles[IO].chmod(p, permissions)
-            updatedPermissions <- PosixFiles[IO].stat(p).map(_.mode.access)
+            initialPermissions <- Files[IO].stat(p).map(_.mode.access)
+            _ <- Files[IO].chmod(p, permissions)
+            updatedPermissions <- Files[IO].stat(p).map(_.mode.access)
           } yield {
             assertNotEquals(initialPermissions, updatedPermissions)
             assertEquals(updatedPermissions, permissions)
@@ -173,8 +172,8 @@ class PosixFilesSuite extends Fs2Suite with BaseFileSuite {
       (tempFile, tempDirectory).tupled
         .use { case (filePath, tempDir) =>
           val newFile = tempDir / Path("newfile")
-          PosixFiles[IO]
-            .copyFile(filePath, newFile) >> PosixFiles[IO].access(newFile)
+          Files[IO]
+            .copyFile(filePath, newFile) >> Files[IO].access(newFile)
         }
         .assertEquals(true)
     }
@@ -184,7 +183,7 @@ class PosixFilesSuite extends Fs2Suite with BaseFileSuite {
     test("should result in non existent file") {
       tempFile
         .use { path =>
-          PosixFiles[IO].rm(path) >> PosixFiles[IO].access(path)
+          Files[IO].rm(path) >> Files[IO].access(path)
         }
         .assertEquals(false)
     }
@@ -192,7 +191,7 @@ class PosixFilesSuite extends Fs2Suite with BaseFileSuite {
 
   group("delete") {
     test("should fail on a non existent file") {
-      PosixFiles[IO]
+      Files[IO]
         .rm(Path("nothing"))
         .intercept[Throwable]
     }
@@ -201,9 +200,9 @@ class PosixFilesSuite extends Fs2Suite with BaseFileSuite {
   group("deleteDirectoryRecursively") {
     test("should remove a non-empty directory") {
       val testPath = Path("a")
-      PosixFiles[IO].mkdir(testPath / Path("b/c"), recursive = true) >>
-        PosixFiles[IO].rm(testPath, recursive = true) >>
-        PosixFiles[IO].access(testPath).assertEquals(false)
+      Files[IO].mkdir(testPath / Path("b/c"), recursive = true) >>
+        Files[IO].rm(testPath, recursive = true) >>
+        Files[IO].access(testPath).assertEquals(false)
     }
   }
 
@@ -211,8 +210,8 @@ class PosixFilesSuite extends Fs2Suite with BaseFileSuite {
     test("should result in the old path being deleted") {
       (tempFile, tempDirectory).tupled
         .use { case (filePath, tempDir) =>
-          PosixFiles[IO].rename(filePath, tempDir / Path("newfile")) >>
-            PosixFiles[IO].access(filePath)
+          Files[IO].rename(filePath, tempDir / Path("newfile")) >>
+            Files[IO].access(filePath)
         }
         .assertEquals(false)
     }
@@ -222,7 +221,7 @@ class PosixFilesSuite extends Fs2Suite with BaseFileSuite {
     test("should return correct size of ay file") {
       tempFile
         .use { path =>
-          modify(path) >> PosixFiles[IO].stat(path).map(_.size)
+          modify(path) >> Files[IO].stat(path).map(_.size)
         }
         .assertEquals(4L)
     }
@@ -232,14 +231,14 @@ class PosixFilesSuite extends Fs2Suite with BaseFileSuite {
     test("should remove the directory following stream closure") {
       Stream
         .resource {
-          PosixFiles[IO]
+          Files[IO]
             .mkdtemp()
-            .evalMap(path => PosixFiles[IO].access(path).tupleRight(path))
+            .evalMap(path => Files[IO].access(path).tupleRight(path))
         }
         .compile
         .lastOrError
         .flatMap { case (existsBefore, path) =>
-          PosixFiles[IO]
+          Files[IO]
             .access(path)
             .tupleLeft(existsBefore)
             .assertEquals(true -> false)
@@ -248,8 +247,8 @@ class PosixFilesSuite extends Fs2Suite with BaseFileSuite {
 
     test("should not fail if the directory is deleted before the stream completes") {
       Stream
-        .resource(PosixFiles[IO].mkdtemp())
-        .evalMap(PosixFiles[IO].rmdir(_))
+        .resource(Files[IO].mkdtemp())
+        .evalMap(Files[IO].rmdir(_))
         .compile
         .lastOrError
     }
@@ -257,7 +256,7 @@ class PosixFilesSuite extends Fs2Suite with BaseFileSuite {
     test("should create the directory in the specified directory") {
       tempDirectory
         .use { tempDir =>
-          val files = PosixFiles[IO]
+          val files = Files[IO]
           files
             .mkdtemp(tempDir)
             .use { directory =>
@@ -269,7 +268,7 @@ class PosixFilesSuite extends Fs2Suite with BaseFileSuite {
 
     test("should create the directory in the default temp directory when dir is not specified") {
 
-      val files = PosixFiles[IO]
+      val files = Files[IO]
 
       files
         .mkdtemp()
@@ -284,9 +283,9 @@ class PosixFilesSuite extends Fs2Suite with BaseFileSuite {
     test("should return in an existing path") {
       tempDirectory
         .use { path =>
-          PosixFiles[IO]
+          Files[IO]
             .mkdir(path / Path("temp"))
-            .bracket(PosixFiles[IO].access(_))(PosixFiles[IO].rmdir(_).void)
+            .bracket(Files[IO].access(_))(Files[IO].rmdir(_).void)
         }
         .assertEquals(true)
     }
@@ -296,10 +295,10 @@ class PosixFilesSuite extends Fs2Suite with BaseFileSuite {
     test("should return in an existing path") {
       tempDirectory
         .use { path =>
-          PosixFiles[IO]
+          Files[IO]
             .mkdir(path / Path("temp/inner"), recursive = true)
-            .bracket(PosixFiles[IO].access(_))(
-              PosixFiles[IO].rm(_, force = true, recursive = true).void
+            .bracket(Files[IO].access(_))(
+              Files[IO].rm(_, force = true, recursive = true).void
             )
         }
         .assertEquals(true)
@@ -310,7 +309,7 @@ class PosixFilesSuite extends Fs2Suite with BaseFileSuite {
     test("returns an empty Stream on an empty directory") {
       tempDirectory
         .use { path =>
-          PosixFiles[IO]
+          Files[IO]
             .opendir(path)
             .compile
             .last
@@ -323,7 +322,7 @@ class PosixFilesSuite extends Fs2Suite with BaseFileSuite {
         .resource(tempFiles(10))
         .flatMap { paths =>
           val parent = paths.head.dirname
-          PosixFiles[IO]
+          Files[IO]
             .opendir(parent)
             .map(path => paths.exists(_.normalize == path.normalize))
         }
@@ -338,7 +337,7 @@ class PosixFilesSuite extends Fs2Suite with BaseFileSuite {
       Stream
         .resource(tempFile)
         .flatMap { path =>
-          PosixFiles[IO].walk(path.dirname).map(_.normalize == path.normalize)
+          Files[IO].walk(path.dirname).map(_.normalize == path.normalize)
         }
         .map(_ => 1)
         .compile
@@ -351,7 +350,7 @@ class PosixFilesSuite extends Fs2Suite with BaseFileSuite {
         .resource(tempFiles(10))
         .flatMap { paths =>
           val parent = paths.head.dirname
-          PosixFiles[IO]
+          Files[IO]
             .walk(parent)
             .map(path => (parent :: paths).exists(_.normalize == path.normalize))
         }
@@ -363,7 +362,7 @@ class PosixFilesSuite extends Fs2Suite with BaseFileSuite {
     test("returns all files in a nested tree correctly") {
       Stream
         .resource(tempFilesHierarchy)
-        .flatMap(topDir => PosixFiles[IO].walk(topDir))
+        .flatMap(topDir => Files[IO].walk(topDir))
         .map(_ => 1)
         .compile
         .foldMonoid
@@ -384,12 +383,12 @@ class PosixFilesSuite extends Fs2Suite with BaseFileSuite {
           val write = Stream(0x42.toByte).repeat
             .buffer(bufferSize)
             .take(totalBytes.toLong)
-            .through(PosixFiles[IO].writeRotate(path, rotateLimit.toLong))
+            .through(Files[IO].writeRotate(path, rotateLimit.toLong))
 
-          val verify = PosixFiles[IO]
+          val verify = Files[IO]
             .opendir(dir)
             .evalMap { path =>
-              PosixFiles[IO].stat(path).map(_.size).tupleLeft(path)
+              Files[IO].stat(path).map(_.size).tupleLeft(path)
             }
 
           write ++ verify
@@ -411,13 +410,13 @@ class PosixFilesSuite extends Fs2Suite with BaseFileSuite {
   group("isDirectory") {
     test("returns false if the path is for a file") {
       tempFile
-        .use(PosixFiles[IO].stat(_).map(_.isDirectory))
+        .use(Files[IO].stat(_).map(_.isDirectory))
         .assertEquals(false)
     }
 
     test("returns true if the path is for a directory") {
       tempDirectory
-        .use(PosixFiles[IO].stat(_).map(_.isDirectory))
+        .use(Files[IO].stat(_).map(_.isDirectory))
         .assertEquals(true)
     }
   }
@@ -425,13 +424,13 @@ class PosixFilesSuite extends Fs2Suite with BaseFileSuite {
   group("isFile") {
     test("returns true if the path is for a file") {
       tempFile
-        .use(PosixFiles[IO].stat(_).map(_.isFile))
+        .use(Files[IO].stat(_).map(_.isFile))
         .assertEquals(true)
     }
 
     test("returns false if the path is for a directory") {
       tempDirectory
-        .use(PosixFiles[IO].stat(_).map(_.isFile))
+        .use(Files[IO].stat(_).map(_.isFile))
         .assertEquals(false)
     }
   }
