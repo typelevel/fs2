@@ -33,12 +33,15 @@ sealed trait Files[F[_]] {
 
   def open(path: Path, flags: Flags): Resource[F, FileHandle[F]]
 
-  def readAll(path: Path): Stream[F, Byte] = readAll(path, 64 * 1024, Flags.DefaultRead)
+  /** Reads all bytes from the file specified. */
+  def readAll(path: Path): Stream[F, Byte] = readAll(path, 64 * 1024, Flags.Read)
 
+  /** Reads all bytes from the file specified, reading in chunks up to the specified limit,
+    * and using the supplied flags to open the file. The flags must contain `Read`.
+    */
   def readAll(path: Path, chunkSize: Int, flags: Flags): Stream[F, Byte]
 
-  /** Returns a `ReadCursor` for the specified path.
-    */
+  /** Returns a `ReadCursor` for the specified path. */
   def readCursor(path: Path, flags: Flags): Resource[F, ReadCursor[F]]
 
 //   /** Reads a range of data synchronously from the file at the specified path.
@@ -63,14 +66,20 @@ sealed trait Files[F[_]] {
 //       pollDelay: FiniteDuration
 //   ): Stream[F, Byte]
 
-  /** Writes all data to the file at the specified `java.nio.file.Path`.
+  /** Writes all data to the file at the specified path.
     *
-    * Adds the WRITE flag to any other `OpenOption` flags specified. By default, also adds the CREATE flag.
+    * The file is created if it does not exist and is truncated.
+    * Use `writeAll(path, Flags.Append)` to append to the end of
+    * the file, or pass other flags to further customize behavior.
     */
   def writeAll(
       path: Path
-  ): Pipe[F, Byte, INothing] = writeAll(path, Flags.DefaultWrite)
+  ): Pipe[F, Byte, INothing] = writeAll(path, Flags.Write)
 
+  /** Writes all data to the file at the specified path, using the
+    * specified flags to open the file. The flags must include either
+    * `Write` or `Append` or an error will occur.
+    */
   def writeAll(
       path: Path,
       flags: Flags

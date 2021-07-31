@@ -28,6 +28,7 @@ case class Flags(value: List[Flag]) {
 object Flags {
   def apply(flags: Flag*): Flags = Flags(flags.toList)
 
-  val DefaultRead = Flags(Flag.Read)
-  val DefaultWrite = Flags(Flag.Write, Flag.Create, Flag.Truncate)
+  val Read = Flags(Flag.Read)
+  val Write = Flags(Flag.Write, Flag.Create, Flag.Truncate)
+  val Append = Flags(Flag.Append, Flag.Create)
 }
