@@ -42,11 +42,6 @@ private[fs2] trait FilesPlatform {
         cursor.readAll(chunkSize).void.stream
       }
 
-    def readCursor(path: Path, flags: Flags): Resource[F, ReadCursor[F]] =
-      open(path, flags).map { fileHandle =>
-        ReadCursor(fileHandle, 0L)
-      }
-
     def open(path: Path, flags: Flags): Resource[F, FileHandle[F]] =
       openFileChannel(
         Sync[F].blocking(FileChannel.open(toJPath(path), flags.value.map(_.option): _*))
@@ -64,14 +59,5 @@ private[fs2] trait FilesPlatform {
           .resource(writeCursor(path, flags))
           .flatMap(_.writeAll(in).void.stream)
 
-    def writeCursor(
-        path: Path,
-        flags: Flags
-    ): Resource[F, WriteCursor[F]] =
-      open(path, flags).flatMap { fileHandle =>
-        val size = if (flags.contains(Flag.Append)) fileHandle.size else 0L.pure[F]
-        val cursor = size.map(s => WriteCursor(fileHandle, s))
-        Resource.eval(cursor)
-      }
   }
 }

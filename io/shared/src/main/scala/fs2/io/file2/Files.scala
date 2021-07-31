@@ -24,10 +24,14 @@ package io
 package file2
 
 import cats.effect.Resource
+import cats.effect.kernel.Async
+import cats.syntax.all._
 
 /** Platform-agnostic methods for reading files.
   */
 sealed trait Files[F[_]] {
+
+  def open(path: Path, flags: Flags): Resource[F, FileHandle[F]]
 
   def readAll(path: Path): Stream[F, Byte] = readAll(path, 64 * 1024, Flags.DefaultRead)
 
@@ -106,7 +110,24 @@ sealed trait Files[F[_]] {
 }
 
 object Files extends FilesPlatform {
-  private[file2] trait UnsealedFiles[F[_]] extends Files[F]
+  private[file2] abstract class UnsealedFiles[F[_]: Async] extends Files[F] {
+
+    def readCursor(path: Path, flags: Flags): Resource[F, ReadCursor[F]] =
+      open(path, flags).map { fileHandle =>
+        ReadCursor(fileHandle, 0L)
+      }
+
+    def writeCursor(
+        path: Path,
+        flags: Flags
+    ): Resource[F, WriteCursor[F]] =
+      open(path, flags).flatMap { fileHandle =>
+        val size = if (flags.contains(Flag.Append)) fileHandle.size else 0L.pure[F]
+        val cursor = size.map(s => WriteCursor(fileHandle, s))
+        Resource.eval(cursor)
+      }
+
+  }
 
   def apply[F[_]](implicit F: Files[F]): Files[F] = F
 

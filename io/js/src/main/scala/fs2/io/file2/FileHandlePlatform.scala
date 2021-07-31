@@ -23,6 +23,46 @@ package fs2
 package io
 package file2
 
-private[file2] trait FileHandlePlatform[F[_]]
+import cats.effect.kernel.Async
+import cats.syntax.all._
+import fs2.internal.jsdeps.node.fsPromisesMod
 
-private[file2] trait FileHandleCompanionPlatform
+import scala.scalajs.js.typedarray.Uint8Array
+
+private[file2] trait FileHandlePlatform[F[_]] {
+  private[file2] def fd: fsPromisesMod.FileHandle
+}
+
+private[file2] trait FileHandleCompanionPlatform {
+  private[file2] def make[F[_]](
+      _fd: fsPromisesMod.FileHandle
+  )(implicit F: Async[F]): FileHandle[F] =
+    new FileHandle[F] {
+
+      override private[file2] val fd = _fd
+
+      override def force(metaData: Boolean): F[Unit] =
+        F.fromPromise(F.delay(fsPromisesMod.fdatasync(fd)))
+
+      override def read(numBytes: Int, offset: Long): F[Option[Chunk[Byte]]] =
+        F.fromPromise(
+          F.delay(fd.read(new Uint8Array(numBytes), 0, numBytes.toDouble, offset.toDouble))
+        ).map { res =>
+          if (res.bytesRead < 0) None
+          else if (res.bytesRead == 0) Some(Chunk.empty)
+          else
+            Some(Chunk.uint8Array(res.buffer).take(res.bytesRead.toInt))
+        }
+
+      override def size: F[Long] =
+        F.fromPromise(F.delay(fd.stat())).map(_.size.toLong)
+
+      override def truncate(size: Long): F[Unit] =
+        F.fromPromise(F.delay(fd.truncate(size.toDouble)))
+
+      override def write(bytes: Chunk[Byte], offset: Long): F[Int] =
+        F.fromPromise(
+          F.delay(fd.write(bytes.toUint8Array, 0, bytes.size.toDouble, offset.toDouble))
+        ).map(_.bytesWritten.toInt)
+    }
+}
