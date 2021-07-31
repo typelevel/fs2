@@ -35,6 +35,7 @@ import scala.concurrent.duration._
   */
 sealed trait Files[F[_]] extends FilesPlatform[F] {
 
+  /** Creates a `FileHandle` for the file at the supplied `Path`. */
   def open(path: Path, flags: Flags): Resource[F, FileHandle[F]]
 
   /** Reads all bytes from the file specified. */
@@ -91,8 +92,7 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
 
   /** Returns a `WriteCursor` for the specified path.
     *
-    * The `WRITE` option is added to the supplied flags. If the `APPEND` option is present in `flags`,
-    * the offset is initialized to the current size of the file.
+    * The flags must include either `Write` or `Append` or an error will occur.
     */
   def writeCursor(
       path: Path,
