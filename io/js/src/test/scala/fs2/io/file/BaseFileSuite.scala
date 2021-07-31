@@ -28,12 +28,20 @@ import cats.effect.Resource
 import cats.syntax.all._
 
 import scala.concurrent.duration._
+import fs2.internal.jsdeps.node.osMod
+import fs2.internal.jsdeps.node.fsMod
+import fs2.internal.jsdeps.node.fsPromisesMod
 
 trait BaseFileSuite {
   import Files._
 
   protected def tempDirectory: Resource[IO, Path] =
-    Files[IO].mkdtemp(prefix = "BaseFileSpec")
+    Resource
+      .make(IO.fromPromise(IO(fsPromisesMod.mkdtemp(osMod.tmpdir())))) { path =>
+        IO.fromPromise(IO(fsPromisesMod.rm(path, fsMod.RmOptions().setRecursive(true))))
+      }
+      .map(_.asInstanceOf[String])
+      .map(Path(_))
 
   protected def tempFile: Resource[IO, Path] =
     tempDirectory.evalMap(aFile)
@@ -44,12 +52,15 @@ trait BaseFileSuite {
   protected def tempFilesHierarchy: Resource[IO, Path] =
     tempDirectory.evalMap { topDir =>
       List
-        .fill(5)(Files[IO].mkdtemp(topDir, "BaseFileSpec").allocated.map(_._1))
+        .fill(5)(
+          IO.fromPromise(IO(fsPromisesMod.mkdtemp((topDir / "BaseFileSpec").toString)))
+            .map(Path(_))
+        )
         .traverse {
           _.flatMap { dir =>
             List
               .tabulate(5)(i =>
-                Files[IO].open(dir / Path(s"BaseFileSpecSub$i.tmp"), NodeFlags.w).use(_ => IO.unit)
+                Files[IO].open(dir / Path(s"BaseFileSpecSub$i.tmp"), Flags.Write).use(_ => IO.unit)
               )
               .sequence
           }
@@ -58,12 +69,10 @@ trait BaseFileSuite {
     }
 
   protected def aFile(dir: Path): IO[Path] =
-    Files[IO]
-      .mkdtemp(dir)
-      .allocated
-      .map(_._1)
+    IO.fromPromise(IO(fsPromisesMod.mkdtemp(dir.toString)))
+      .map(Path(_))
       .map(_ / Path("BaseFileSpec.tmp"))
-      .flatTap(Files[IO].open(_, NodeFlags.w).use(_ => IO.unit))
+      .flatTap(Files[IO].open(_, Flags.Write).use(_ => IO.unit))
 
   protected def modify(file: Path): IO[Path] =
     Files[IO]
@@ -79,8 +88,8 @@ trait BaseFileSuite {
       .map(_.toByte)
       .covary[IO]
       .metered(250.millis)
-      .through(Files[IO].writeAll(file, NodeFlags.a))
+      .through(Files[IO].writeAll(file, Flags.Append))
 
   protected def deleteDirectoryRecursively(dir: Path): IO[Unit] =
-    Files[IO].rm(dir, recursive = true)
+    IO.fromPromise(IO(fsPromisesMod.rm(dir.toString, fsMod.RmOptions().setRecursive(true)))).void
 }
