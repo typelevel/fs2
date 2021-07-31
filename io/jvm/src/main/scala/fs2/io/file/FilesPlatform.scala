@@ -36,10 +36,6 @@ import java.util.stream.{Stream => JStream}
 
 import fs2.io.CollectionCompat._
 
-/** Provides operations related to working with files in the effect `F`.
-  *
-  * An instance is available for any effect `F` which has an `Async[F]` instance.
-  */
 private[file] trait FilesPlatform[F[_]] {
 
   /** Copies a file from the source to the target path,
@@ -189,8 +185,8 @@ private[file] trait FilesPlatform[F[_]] {
   def tail(
       path: JPath,
       chunkSize: Int,
-      offset: Long = 0L,
-      pollDelay: FiniteDuration = 1.second
+      offset: Long,
+      pollDelay: FiniteDuration
   ): Stream[F, Byte]
 
   /** Creates a `Resource` which can be used to create a temporary file.
@@ -449,9 +445,7 @@ private[file] trait FilesCompanionPlatform {
         offset: Long,
         pollDelay: FiniteDuration
     ): Stream[F, Byte] =
-      Stream.resource(readCursor(path)).flatMap { cursor =>
-        cursor.seek(offset).tail(chunkSize, pollDelay).void.stream
-      }
+      tail(Path.fromNioPath(path), chunkSize, offset, pollDelay)
 
     def tempFile(
         dir: Option[JPath],

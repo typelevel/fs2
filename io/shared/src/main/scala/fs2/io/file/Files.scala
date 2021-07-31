@@ -27,7 +27,11 @@ import cats.effect.Resource
 import cats.effect.kernel.Async
 import cats.syntax.all._
 
-/** Platform-agnostic methods for reading files.
+import scala.concurrent.duration._
+
+/** Provides operations related to working with files in the effect `F`.
+  *
+  * An instance is available for any effect `F` which has an `Async[F]` instance.
   */
 sealed trait Files[F[_]] extends FilesPlatform[F] {
 
@@ -50,21 +54,21 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
     */
   def readRange(path: Path, chunkSize: Int, start: Long, end: Long): Stream[F, Byte]
 
-//   /** Returns an infinite stream of data from the file at the specified path.
-//     * Starts reading from the specified offset and upon reaching the end of the file,
-//     * polls every `pollDuration` for additional updates to the file.
-//     *
-//     * Read operations are limited to emitting chunks of the specified chunk size
-//     * but smaller chunks may occur.
-//     *
-//     * If an error occurs while reading from the file, the overall stream fails.
-//     */
-//   def tail(
-//       path: Path,
-//       chunkSize: Int,
-//       offset: Long = 0L,
-//       pollDelay: FiniteDuration
-//   ): Stream[F, Byte]
+  /** Returns an infinite stream of data from the file at the specified path.
+    * Starts reading from the specified offset and upon reaching the end of the file,
+    * polls every `pollDuration` for additional updates to the file.
+    *
+    * Read operations are limited to emitting chunks of the specified chunk size
+    * but smaller chunks may occur.
+    *
+    * If an error occurs while reading from the file, the overall stream fails.
+    */
+  def tail(
+      path: Path,
+      chunkSize: Int = 64 * 1024,
+      offset: Long = 0L,
+      pollDelay: FiniteDuration = 1.second
+  ): Stream[F, Byte]
 
   /** Writes all data to the file at the specified path.
     *
@@ -124,6 +128,16 @@ object Files extends FilesCompanionPlatform {
     def readCursor(path: Path, flags: Flags): Resource[F, ReadCursor[F]] =
       open(path, flags).map { fileHandle =>
         ReadCursor(fileHandle, 0L)
+      }
+
+    def tail(
+        path: Path,
+        chunkSize: Int,
+        offset: Long,
+        pollDelay: FiniteDuration
+    ): Stream[F, Byte] =
+      Stream.resource(readCursor(path, Flags.Read)).flatMap { cursor =>
+        cursor.seek(offset).tail(chunkSize, pollDelay).void.stream
       }
 
     def writeCursor(
