@@ -305,7 +305,6 @@ private[file] trait FilesCompanionPlatform {
     def openFileChannel(channel: F[FileChannel]): Resource[F, FileHandle[F]] =
       Resource.make(channel)(ch => Sync[F].blocking(ch.close())).map(ch => FileHandle.make(ch))
 
-
     // ======= DEPRECATED MEMBERS =============
 
     def copy(source: JPath, target: JPath, flags: Seq[CopyOption]): F[JPath] =
