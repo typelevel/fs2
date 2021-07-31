@@ -23,15 +23,10 @@ package fs2
 package io
 package file2
 
-import fs2.internal.jsdeps.node.fsMod
 import fs2.internal.jsdeps.node.pathMod
-
-import scala.scalajs.js
 
 final class Path(override val toString: String)
     extends PathApi {
-
-  private def withinFs(path: String): Path = new Path(path)
 
   def resolve(name: String): Path = Path(pathMod.resolve(toString, name))
 
