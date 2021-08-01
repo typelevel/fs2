@@ -39,7 +39,7 @@ import java.util.concurrent.TimeUnit
 
 @State(Scope.Thread)
 class StreamBenchmark {
-  @Param(Array("10", "100", "1000", "10000"))
+  @Param(Array("1", "10", "100", "1000", "10000"))
   var n: Int = _
 
   @Benchmark
