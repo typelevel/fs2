@@ -35,7 +35,8 @@ import scala.concurrent.duration._
   */
 sealed trait Files[F[_]] extends FilesPlatform[F] {
 
-  def copy(source: Path, target: Path): F[Unit] = copy(source, target, CopyFlags.empty)
+  def copy(source: Path, target: Path): F[Unit] =
+    copy(source, target, CopyFlags.empty)
 
   def copy(source: Path, target: Path, flags: CopyFlags): F[Unit]
 
