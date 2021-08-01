@@ -39,7 +39,8 @@ private[fs2] trait FilesCompanionPlatform {
 
   private final class NodeFiles[F[_]](implicit F: Async[F]) extends UnsealedFiles[F] {
 
-    override def copy(source: Path, target: Path): F[Unit] = ???
+    override def copy(source: Path, target: Path, flags: CopyFlags): F[Unit] = ???
+    // Note: JVM defaults to failing the copy if target exists, node defaults inverse
 
     private def combineFlags(flags: Flags): Double = flags.value
       .foldMap(_.bits)(new Monoid[Long] {

@@ -297,9 +297,9 @@ private[file] trait FilesCompanionPlatform {
 
   private final class AsyncFiles[F[_]: Async] extends Files.UnsealedFiles[F] {
 
-    def copy(source: Path, target: Path): F[Unit] =
+    def copy(source: Path, target: Path, flags: CopyFlags): F[Unit] =
       Sync[F].blocking {
-        JFiles.copy(source.toNioPath, target.toNioPath)
+        JFiles.copy(source.toNioPath, target.toNioPath, flags.value.map(_.option): _*)
         ()
       }
 
