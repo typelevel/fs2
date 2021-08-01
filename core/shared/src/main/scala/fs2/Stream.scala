@@ -3228,9 +3228,9 @@ object Stream extends StreamLowPriority {
       queue: QueueSource[F, A],
       limit: Int = Int.MaxValue
   ): Stream[F, A] =
-    fromQueueNoneTerminatedChunk_[F, A](
-      queue.take.map(a => Some(Chunk.singleton(a))),
-      queue.tryTake.map(_.map(a => Some(Chunk.singleton(a)))),
+    fromQueueNoneTerminatedSingletons_[F, A](
+      queue.take.map(a => Some(a)),
+      queue.tryTake.map(_.map(a => Some(a))),
       limit
     )
 
@@ -3280,9 +3280,9 @@ object Stream extends StreamLowPriority {
       queue: QueueSource[F, Option[A]],
       limit: Int = Int.MaxValue
   ): Stream[F, A] =
-    fromQueueNoneTerminatedChunk_(
-      queue.take.map(_.map(Chunk.singleton)),
-      queue.tryTake.map(_.map(_.map(Chunk.singleton))),
+    fromQueueNoneTerminatedSingletons_(
+      queue.take,
+      queue.tryTake,
       limit
     )
 
@@ -3322,6 +3322,31 @@ object Stream extends StreamLowPriority {
       queue: Queue[F, Option[Chunk[A]]],
       limit: Int
   ): Stream[F, A] = fromQueueNoneTerminatedChunk(queue: QueueSource[F, Option[Chunk[A]]], limit)
+
+  private def fromQueueNoneTerminatedSingletons_[F[_], A](
+      take: F[Option[A]],
+      tryTake: F[Option[Option[A]]],
+      limit: Int
+  ): Stream[F, A] = {
+    def await: Stream[F, A] =
+      Stream.eval(take).flatMap {
+        case None => Stream.empty
+        case Some(c) =>
+          val builder = collection.mutable.Buffer.newBuilder[A]
+          pump(builder.addOne(c))
+      }
+    def pump(acc: collection.mutable.Builder[A, collection.mutable.Buffer[A]]): Stream[F, A] = {
+      val sz = acc.knownSize
+      if (sz == limit) Stream.emits(acc.result()) ++ await
+      else
+        Stream.eval(tryTake).flatMap {
+          case None          => Stream.emits(acc.result()) ++ await
+          case Some(Some(c)) => pump(acc.addOne(c))
+          case Some(None)    => Stream.emits(acc.result())
+        }
+    }
+    await
+  }
 
   private def fromQueueNoneTerminatedChunk_[F[_], A](
       take: F[Option[Chunk[A]]],
