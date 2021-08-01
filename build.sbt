@@ -125,8 +125,11 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   // sealed traits
   ProblemFilters.exclude[NewMixinForwarderProblem]("fs2.io.net.Network.*"),
   ProblemFilters.exclude[NewMixinForwarderProblem]("fs2.io.net.tls.TLSContext.*"),
-  ProblemFilters.exclude[InheritedNewAbstractMethodProblem]("fs2.io.net.tls.TLSContext.*")
+  ProblemFilters.exclude[InheritedNewAbstractMethodProblem]("fs2.io.net.tls.TLSContext.*"),
   // end #2453
+  ProblemFilters.exclude[NewMixinForwarderProblem]("fs2.io.file.Files.*"),
+  ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.io.file.Files.*"),
+  ProblemFilters.exclude[MissingClassProblem]("fs2.io.file.Files$AsyncFiles")
 )
 
 lazy val root = project
