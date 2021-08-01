@@ -33,17 +33,17 @@ private[file] trait PathApi {
   def /(name: String): Path
 
   def /(path: Path): Path
-  
+
   def resolve(name: String): Path
 
   def resolve(path: Path): Path
-  
+
   def normalize: Path
 
   def isAbsolute: Boolean
 
   def absolute: Path
-  
+
   def names: Seq[Path]
 
   def fileName: Path
