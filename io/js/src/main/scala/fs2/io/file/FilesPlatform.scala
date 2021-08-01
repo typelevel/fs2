@@ -23,7 +23,6 @@ package fs2
 package io
 package file
 
-import cats.Monoid
 import cats.effect.kernel.Async
 import cats.effect.kernel.Resource
 import cats.syntax.all._
@@ -38,16 +37,19 @@ private[fs2] trait FilesCompanionPlatform {
   implicit def forAsync[F[_]: Async]: Files[F] = new NodeFiles[F]
 
   private final class NodeFiles[F[_]](implicit F: Async[F]) extends UnsealedFiles[F] {
+    private def combineFlags(flags: Flags): Double =
+      Flag.monoid.combineAll(flags.value).bits.toDouble
 
-    override def copy(source: Path, target: Path, flags: CopyFlags): F[Unit] = ???
-    // Note: JVM defaults to failing the copy if target exists, node defaults inverse
-
-    private def combineFlags(flags: Flags): Double = flags.value
-      .foldMap(_.bits)(new Monoid[Long] {
-        override def combine(x: Long, y: Long): Long = x | y
-        override def empty: Long = 0
-      })
-      .toDouble
+    override def copy(source: Path, target: Path, flags: CopyFlags): F[Unit] =
+      F.fromPromise(
+        F.delay(
+          fsPromisesMod.copyFile(
+            source.toString,
+            target.toString,
+            CopyFlag.monoid.combineAll(flags.value).jsBits.toDouble
+          )
+        )
+      )
 
     override def open(path: Path, flags: Flags): Resource[F, FileHandle[F]] = Resource
       .make(
@@ -79,7 +81,8 @@ private[fs2] trait FilesCompanionPlatform {
     override def readRange(path: Path, chunkSize: Int, start: Long, end: Long): Stream[F, Byte] =
       readStream(path, chunkSize, Flags.Read)(_.setStart(start.toDouble).setEnd((end - 1).toDouble))
 
-    override def size(path: Path): F[Long] = ???
+    override def size(path: Path): F[Long] =
+      F.fromPromise(F.delay(fsPromisesMod.stat(path.toString))).map(_.size.toLong)
 
     override def writeAll(path: Path, flags: Flags): Pipe[F, Byte, INothing] =
       in =>

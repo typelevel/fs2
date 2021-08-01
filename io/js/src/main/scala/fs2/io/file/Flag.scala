@@ -23,6 +23,7 @@ package fs2
 package io
 package file
 
+import cats.kernel.Monoid
 import fs2.internal.jsdeps.node.fsMod
 
 final class Flag private (private[file] val bits: Long) extends AnyVal
@@ -41,6 +42,11 @@ object Flag extends FlagCompanionApi {
 
   val Sync = Flag(fsMod.constants.O_SYNC)
   val Dsync = Flag(fsMod.constants.O_DSYNC)
+
+  private[file] implicit val monoid: Monoid[Flag] = new Monoid[Flag] {
+    override def combine(x: Flag, y: Flag): Flag = Flag(x.bits | y.bits)
+    override def empty: Flag = Flag(0)
+  }
 }
 
 private[file] trait FlagsCompanionPlatform {}
