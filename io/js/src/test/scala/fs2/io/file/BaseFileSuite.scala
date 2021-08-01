@@ -40,7 +40,7 @@ trait BaseFileSuite {
       .make(IO.fromPromise(IO(fsPromisesMod.mkdtemp(osMod.tmpdir() + "/")))) { path =>
         IO.fromPromise(IO(fsPromisesMod.rm(path, fsMod.RmOptions().setRecursive(true))))
       }
-      .map(_.asInstanceOf[String])
+      .map(_.asInstanceOf[String] + "/")
       .map(Path(_))
 
   protected def tempFile: Resource[IO, Path] =
