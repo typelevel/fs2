@@ -30,6 +30,8 @@ import fs2.internal.jsdeps.node.fsMod
 import fs2.internal.jsdeps.node.fsPromisesMod
 import fs2.io.file.Files.UnsealedFiles
 
+import scala.scalajs.js
+
 private[file] trait FilesPlatform[F[_]]
 
 private[fs2] trait FilesCompanionPlatform {
@@ -62,18 +64,21 @@ private[fs2] trait FilesCompanionPlatform {
     private def readStream(path: Path, chunkSize: Int, flags: Flags)(
         f: fsMod.ReadStreamOptions => fsMod.ReadStreamOptions
     ): Stream[F, Byte] =
-      Stream.resource(open(path, flags)).flatMap { handle =>
-        readReadable(
-          F.delay(
-            fsMod
-              .createReadStream(
-                path.toString,
-                f(fsMod.ReadStreamOptions().setFd(handle.fd).setHighWaterMark(chunkSize.toDouble))
+      readReadable(
+        F.delay(
+          fsMod
+            .createReadStream(
+              path.toString,
+              f(
+                js.Dynamic
+                  .literal(flags = combineFlags(flags))
+                  .asInstanceOf[fsMod.ReadStreamOptions]
+                  .setHighWaterMark(chunkSize.toDouble)
               )
-              .asInstanceOf[Readable]
-          )
+            )
+            .asInstanceOf[Readable]
         )
-      }
+      )
 
     override def readAll(path: Path, chunkSize: Int, flags: Flags): Stream[F, Byte] =
       readStream(path, chunkSize, flags)(identity)
@@ -86,19 +91,19 @@ private[fs2] trait FilesCompanionPlatform {
 
     override def writeAll(path: Path, flags: Flags): Pipe[F, Byte, INothing] =
       in =>
-        Stream.resource(open(path, flags)).flatMap { handle =>
-          in.through {
-            writeWritable(
-              F.delay(
-                fsMod
-                  .createWriteStream(
-                    path.toString,
-                    fsMod.StreamOptions().setFd(handle.fd)
-                  )
-                  .asInstanceOf[Writable]
-              )
+        in.through {
+          writeWritable(
+            F.delay(
+              fsMod
+                .createWriteStream(
+                  path.toString,
+                  js.Dynamic
+                    .literal(flags = combineFlags(flags))
+                    .asInstanceOf[fsMod.StreamOptions]
+                )
+                .asInstanceOf[Writable]
             )
-          }
+          )
         }
 
   }
