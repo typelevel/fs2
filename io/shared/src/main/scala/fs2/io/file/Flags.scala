@@ -30,5 +30,5 @@ object Flags extends FlagsCompanionPlatform {
 
   val Read = Flags(Flag.Read)
   val Write = Flags(Flag.Write, Flag.Create, Flag.Truncate)
-  val Append = Flags(Flag.Append, Flag.Create)
+  val Append = Flags(Flag.Append, Flag.Create, Flag.Write)
 }
