@@ -39,6 +39,8 @@ private[fs2] trait FilesCompanionPlatform {
 
   private final class NodeFiles[F[_]](implicit F: Async[F]) extends UnsealedFiles[F] {
 
+    override def copy(source: Path, target: Path): F[Unit] = ???
+
     private def combineFlags(flags: Flags): Double = flags.value
       .foldMap(_.bits)(new Monoid[Long] {
         override def combine(x: Long, y: Long): Long = x | y
@@ -46,7 +48,7 @@ private[fs2] trait FilesCompanionPlatform {
       })
       .toDouble
 
-    def open(path: Path, flags: Flags): Resource[F, FileHandle[F]] = Resource
+    override def open(path: Path, flags: Flags): Resource[F, FileHandle[F]] = Resource
       .make(
         F.fromPromise(
           F.delay(fsPromisesMod.open(path.toString, combineFlags(flags)))
@@ -75,6 +77,8 @@ private[fs2] trait FilesCompanionPlatform {
 
     override def readRange(path: Path, chunkSize: Int, start: Long, end: Long): Stream[F, Byte] =
       readStream(path, chunkSize, Flags.Read)(_.setStart(start.toDouble).setEnd((end - 1).toDouble))
+
+    override def size(path: Path): F[Long] = ???
 
     override def writeAll(path: Path, flags: Flags): Pipe[F, Byte, INothing] =
       in =>

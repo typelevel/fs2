@@ -297,6 +297,12 @@ private[file] trait FilesCompanionPlatform {
 
   private final class AsyncFiles[F[_]: Async] extends Files.UnsealedFiles[F] {
 
+    def copy(source: Path, target: Path): F[Unit] =
+      Sync[F].blocking {
+        JFiles.copy(source.toNioPath, target.toNioPath)
+        ()
+      }
+
     def open(path: Path, flags: Flags): Resource[F, FileHandle[F]] =
       openFileChannel(
         Sync[F].blocking(FileChannel.open(path.toNioPath, flags.value.map(_.option): _*))
@@ -304,6 +310,9 @@ private[file] trait FilesCompanionPlatform {
 
     def openFileChannel(channel: F[FileChannel]): Resource[F, FileHandle[F]] =
       Resource.make(channel)(ch => Sync[F].blocking(ch.close())).map(ch => FileHandle.make(ch))
+
+    def size(path: Path): F[Long] =
+      Sync[F].blocking(JFiles.size(path.toNioPath))
 
     // ======= DEPRECATED MEMBERS =============
 
@@ -413,7 +422,7 @@ private[file] trait FilesCompanionPlatform {
       Sync[F].blocking(JFiles.setPosixFilePermissions(path, permissions.asJava))
 
     def size(path: JPath): F[Long] =
-      Sync[F].blocking(JFiles.size(path))
+      size(Path.fromNioPath(path))
 
     def tail(
         path: JPath,

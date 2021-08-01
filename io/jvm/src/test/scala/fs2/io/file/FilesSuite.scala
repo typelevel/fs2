@@ -34,6 +34,21 @@ import fs2.io.CollectionCompat._
 import scala.concurrent.duration._
 
 class FilesSuite extends Fs2Suite with BaseFileSuite {
+  group("support non-default filesystems") {
+    import com.google.common.jimfs.{Configuration, Jimfs}
+
+    test("copy from local filesystem to in-memory filesystem") {
+      val fs = Jimfs.newFileSystem(Configuration.unix)
+      tempFile.evalMap(modify).use { src =>
+        val dst = Path.fromNioPath(fs.getPath("copied"))
+        Files[IO].copy(src, dst) *> (Files[IO].size(src), Files[IO].size(dst)).tupled.map {
+          case (srcSize, dstSize) => assertEquals(dstSize, srcSize)
+        }
+      }
+    }
+
+  }
+
   group("readAll") {
     test("retrieves whole content of a file") {
       Stream
@@ -171,9 +186,10 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
     test("returns a path to the new file") {
       (tempFile, tempDirectory).tupled
         .use { case (filePath, tempDir) =>
+          val target = tempDir / "newfile"
           Files[IO]
-            .copy(filePath, tempDir.resolve("newfile"))
-            .flatMap(Files[IO].exists(_))
+            .copy(filePath, target) >>
+            Files[IO].exists(target)
         }
         .assertEquals(true)
     }

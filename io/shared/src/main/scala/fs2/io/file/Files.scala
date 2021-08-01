@@ -35,6 +35,8 @@ import scala.concurrent.duration._
   */
 sealed trait Files[F[_]] extends FilesPlatform[F] {
 
+  def copy(source: Path, target: Path): F[Unit]
+
   /** Creates a `FileHandle` for the file at the supplied `Path`. */
   def open(path: Path, flags: Flags): Resource[F, FileHandle[F]]
 
@@ -54,6 +56,8 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
     * two bytes are read.
     */
   def readRange(path: Path, chunkSize: Int, start: Long, end: Long): Stream[F, Byte]
+
+  def size(path: Path): F[Long]
 
   /** Returns an infinite stream of data from the file at the specified path.
     * Starts reading from the specified offset and upon reaching the end of the file,

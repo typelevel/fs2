@@ -25,7 +25,7 @@ package file
 
 import cats.effect.kernel.{Async, Resource}
 
-import java.nio.file.{Files => _, _}
+import java.nio.file.{Files => _, Path => JPath, _}
 
 private[file] trait WriteCursorCompanionPlatform {
   @deprecated("Use Files[F].writeCursorFromFileHandle", "3.0.0")
@@ -37,7 +37,7 @@ private[file] trait WriteCursorCompanionPlatform {
 
   @deprecated("Use Files[F].writeCursor", "3.0.0")
   def fromPath[F[_]: Async](
-      path: Path,
+      path: JPath,
       flags: Seq[OpenOption] = List(StandardOpenOption.CREATE)
   ): Resource[F, WriteCursor[F]] =
     Files[F].writeCursor(path, flags)
