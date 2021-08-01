@@ -29,6 +29,7 @@ import cats.syntax.all._
 import scala.concurrent.duration._
 
 class FilesSuite extends Fs2Suite with BaseFileSuite {
+
   group("readAll") {
     test("retrieves whole content of a file") {
       Stream
@@ -38,6 +39,16 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
         .compile
         .foldMonoid
         .assertEquals(4)
+    }
+
+    test("suspends errors in the effect") {
+      Stream
+        .eval(tempFile.use(IO.pure))
+        .flatMap(path => Files[IO].readAll(path))
+        .compile
+        .drain
+        .attempt
+        .map(r => assert(r.isLeft))
     }
   }
 
@@ -92,6 +103,23 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
         .compile
         .foldMonoid
         .assertEquals("Hello world!Hello world!")
+    }
+
+    test("suspends errors in the effect") {
+      Stream
+        .resource(tempFile)
+        .flatMap { path =>
+          Stream("Hello", " world!")
+            .covary[IO]
+            .through(text.utf8.encode)
+            .through(Files[IO].writeAll(path, Flags(Flag.CreateNew))) ++ Files[IO]
+            .readAll(path)
+            .through(text.utf8.decode)
+        }
+        .compile
+        .drain
+        .attempt
+        .map(r => assert(r.isLeft))
     }
   }
 

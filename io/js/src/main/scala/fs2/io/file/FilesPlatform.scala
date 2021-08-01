@@ -26,8 +26,10 @@ package file
 import cats.effect.kernel.Async
 import cats.effect.kernel.Resource
 import cats.syntax.all._
+import fs2.internal.jsdeps.node.eventsMod
 import fs2.internal.jsdeps.node.fsMod
 import fs2.internal.jsdeps.node.fsPromisesMod
+import fs2.internal.jsdeps.node.nodeStrings
 import fs2.io.file.Files.UnsealedFiles
 
 import scala.scalajs.js
@@ -65,8 +67,8 @@ private[fs2] trait FilesCompanionPlatform {
         f: fsMod.ReadStreamOptions => fsMod.ReadStreamOptions
     ): Stream[F, Byte] =
       readReadable(
-        F.delay(
-          fsMod
+        F.async_ { cb =>
+          val rs = fsMod
             .createReadStream(
               path.toString,
               f(
@@ -76,8 +78,21 @@ private[fs2] trait FilesCompanionPlatform {
                   .setHighWaterMark(chunkSize.toDouble)
               )
             )
-            .asInstanceOf[Readable]
-        )
+          rs.once_ready(
+            nodeStrings.ready,
+            () => {
+              rs.asInstanceOf[eventsMod.EventEmitter].removeAllListeners()
+              cb(Right(rs.asInstanceOf[Readable]))
+            }
+          )
+          rs.once_error(
+            nodeStrings.error,
+            error => {
+              rs.asInstanceOf[eventsMod.EventEmitter].removeAllListeners()
+              cb(Left(js.JavaScriptException(error)))
+            }
+          )
+        }
       )
 
     override def readAll(path: Path, chunkSize: Int, flags: Flags): Stream[F, Byte] =
@@ -93,16 +108,29 @@ private[fs2] trait FilesCompanionPlatform {
       in =>
         in.through {
           writeWritable(
-            F.delay(
-              fsMod
+            F.async_[Writable] { cb =>
+              val ws = fsMod
                 .createWriteStream(
                   path.toString,
                   js.Dynamic
                     .literal(flags = combineFlags(flags))
                     .asInstanceOf[fsMod.StreamOptions]
                 )
-                .asInstanceOf[Writable]
-            )
+              ws.once_ready(
+                nodeStrings.ready,
+                () => {
+                  ws.asInstanceOf[eventsMod.EventEmitter].removeAllListeners()
+                  cb(Right(ws.asInstanceOf[Writable]))
+                }
+              )
+              ws.once_error(
+                nodeStrings.error,
+                error => {
+                  ws.asInstanceOf[eventsMod.EventEmitter].removeAllListeners()
+                  cb(Left(js.JavaScriptException(error)))
+                }
+              )
+            }
           )
         }
 
