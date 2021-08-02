@@ -53,13 +53,22 @@ private[fs2] trait FilesCompanionPlatform {
             CopyFlag.monoid.combineAll(flags.value).jsBits.toDouble
           )
         )
-      )
+      ).adaptError { case IOException(ex) => ex }
 
     override def createDirectory(path: Path): F[Unit] =
-      ???
+      F.fromPromise(
+        F.delay(
+          fsPromisesMod.mkdir(path.toString)
+        )
+      ).adaptError { case IOException(ex) => ex }
 
     override def createDirectories(path: Path): F[Unit] =
-      ???
+      F.fromPromise(
+        F.delay(
+          fsPromisesMod.mkdir(path.toString, fsMod.MakeDirectoryOptions().setRecursive(true))
+        )
+      ).void
+        .adaptError { case IOException(ex) => ex }
 
     override def delete(path: Path): F[Unit] =
       ???
@@ -72,7 +81,12 @@ private[fs2] trait FilesCompanionPlatform {
         followLinks: Boolean
     ): F[Unit] = ???
 
-    override def exists(path: Path, followLinks: Boolean): F[Boolean] = ???
+    override def exists(path: Path, followLinks: Boolean): F[Boolean] =
+      F.ifM(F.pure(followLinks))(
+        F.fromPromise(F.delay(fsPromisesMod.access(path.toString))).void,
+        F.fromPromise(F.delay(fsPromisesMod.lstat(path.toString))).void
+      ).as(true)
+        .recover { case _ => false }
 
     override def open(path: Path, flags: Flags): Resource[F, FileHandle[F]] = Resource
       .make(
@@ -122,7 +136,9 @@ private[fs2] trait FilesCompanionPlatform {
       readStream(path, chunkSize, Flags.Read)(_.setStart(start.toDouble).setEnd((end - 1).toDouble))
 
     override def size(path: Path): F[Long] =
-      F.fromPromise(F.delay(fsPromisesMod.stat(path.toString))).map(_.size.toLong)
+      F.fromPromise(F.delay(fsPromisesMod.stat(path.toString))).map(_.size.toLong).adaptError {
+        case IOException(ex) => ex
+      }
 
     override def writeAll(path: Path, flags: Flags): Pipe[F, Byte, INothing] =
       in =>
