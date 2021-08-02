@@ -111,6 +111,7 @@ private[file] trait FilesPlatform[F[_]] {
     * @param options - options indicating how symbolic links are handled
     * @return true if the file is a directory; false if the file does not exist, is not a directory, or it cannot be determined if the file is a directory or not.
     */
+  @deprecated("3.1.0", "Use overload which uses fs2.io.file.Path")
   def isDirectory(
       path: JPath,
       linkOption: Seq[LinkOption] = Nil
@@ -131,6 +132,7 @@ private[file] trait FilesPlatform[F[_]] {
     * @param options options indicating how symbolic links are handled
     * @return true if the file is a regular file; false if the file does not exist, is not a regular file, or it cannot be determined if the file is a regular file or not.
     */
+  @deprecated("3.1.0", "Use isRegularFile which uses fs2.io.file.Path")
   def isFile(
       path: JPath,
       linkOption: Seq[LinkOption] = Nil
@@ -364,18 +366,48 @@ private[file] trait FilesCompanionPlatform {
         ()
       }
 
+    def isDirectory(path: Path, followLinks: Boolean): F[Boolean] =
+      Sync[F].delay(
+        JFiles.isDirectory(
+          path.toNioPath,
+          (if (followLinks) Nil else Seq(LinkOption.NOFOLLOW_LINKS)): _*
+        )
+      )
+
+    def isExecutable(path: Path): F[Boolean] =
+      Sync[F].delay(JFiles.isExecutable(path.toNioPath))
+
+    def isHidden(path: Path): F[Boolean] =
+      Sync[F].delay(JFiles.isHidden(path.toNioPath))
+
+    def isReadable(path: Path): F[Boolean] =
+      Sync[F].delay(JFiles.isReadable(path.toNioPath))
+
+    def isRegularFile(path: Path, followLinks: Boolean): F[Boolean] =
+      Sync[F].delay(
+        JFiles.isRegularFile(
+          path.toNioPath,
+          (if (followLinks) Nil else Seq(LinkOption.NOFOLLOW_LINKS)): _*
+        )
+      )
+
+    def isSymbolicLink(path: Path): F[Boolean] =
+      Sync[F].delay(JFiles.isSymbolicLink(path.toNioPath))
+
+    def isWritable(path: Path): F[Boolean] =
+      Sync[F].delay(JFiles.isWritable(path.toNioPath))
+
     def list(path: Path): Stream[F, Path] =
       _runJavaCollectionResource[JStream[JPath]](
         Sync[F].blocking(JFiles.list(path.toNioPath)),
         _.iterator.asScala
       ).map(Path.fromNioPath)
 
-  def list(path: Path, glob: String): Stream[F, Path] =
+    def list(path: Path, glob: String): Stream[F, Path] =
       _runJavaCollectionResource[DirectoryStream[JPath]](
         Sync[F].blocking(JFiles.newDirectoryStream(path.toNioPath, glob)),
         _.iterator.asScala
       ).map(Path.fromNioPath)
-
 
     def open(path: Path, flags: Flags): Resource[F, FileHandle[F]] =
       openFileChannel(

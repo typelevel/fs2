@@ -60,7 +60,7 @@ private[fs2] trait FilesCompanionPlatform {
 
     override def createDirectories(path: Path): F[Unit] =
       ???
- 
+
     override def delete(path: Path): F[Unit] =
       ???
 
@@ -73,6 +73,14 @@ private[fs2] trait FilesCompanionPlatform {
     ): F[Unit] = ???
 
     override def exists(path: Path, followLinks: Boolean): F[Boolean] = ???
+
+    override def isDirectory(path: Path, followLinks: Boolean): F[Boolean] = ???
+    override def isExecutable(path: Path): F[Boolean] = ???
+    override def isHidden(path: Path): F[Boolean] = ???
+    override def isReadable(path: Path): F[Boolean] = ???
+    override def isRegularFile(path: Path, followLinks: Boolean): F[Boolean] = ???
+    override def isSymbolicLink(path: Path): F[Boolean] = ???
+    override def isWritable(path: Path): F[Boolean] = ???
 
     override def list(path: Path): Stream[F, Path] = ???
 
