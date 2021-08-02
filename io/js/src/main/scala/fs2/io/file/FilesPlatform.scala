@@ -60,7 +60,7 @@ private[fs2] trait FilesCompanionPlatform {
 
     override def createDirectories(path: Path): F[Unit] =
       ???
- 
+
     override def delete(path: Path): F[Unit] =
       ???
 
@@ -113,7 +113,7 @@ private[fs2] trait FilesCompanionPlatform {
             }
           )
         }
-      ).adaptError { case IOException(ex) => ex }
+      )
 
     override def readAll(path: Path, chunkSize: Int, flags: Flags): Stream[F, Byte] =
       readStream(path, chunkSize, flags)(identity)
@@ -152,7 +152,7 @@ private[fs2] trait FilesCompanionPlatform {
               )
             }
           )
-        }.adaptError { case IOException(ex) => ex }
+        }
 
   }
 
