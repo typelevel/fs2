@@ -379,7 +379,12 @@ private[file] trait FilesCompanionPlatform {
       deleteRecursively(Path.fromNioPath(path), options.contains(FileVisitOption.FOLLOW_LINKS))
 
     def exists(path: Path, followLinks: Boolean): F[Boolean] =
-      Sync[F].blocking(JFiles.exists(path.toNioPath, (if (followLinks) Nil else Seq(LinkOption.NOFOLLOW_LINKS)): _*))
+      Sync[F].blocking(
+        JFiles.exists(
+          path.toNioPath,
+          (if (followLinks) Nil else Seq(LinkOption.NOFOLLOW_LINKS)): _*
+        )
+      )
 
     def directoryStream(path: JPath): Stream[F, JPath] =
       _runJavaCollectionResource[DirectoryStream[JPath]](
