@@ -25,6 +25,7 @@ package file
 
 import cats.effect.Resource
 import cats.effect.kernel.Async
+import cats.effect.std.Hotswap
 import cats.syntax.all._
 
 import scala.concurrent.duration._
@@ -195,9 +196,41 @@ object Files extends FilesCompanionPlatform {
       def newCursor(file: FileHandle[F]): F[WriteCursor[F]] =
         writeCursorFromFileHandle(file, flags.contains(Flag.Append))
 
-      internal.WriteRotate(openNewFile, newCursor, limit)
-    }
+      def go(
+          fileHotswap: Hotswap[F, FileHandle[F]],
+          cursor: WriteCursor[F],
+          acc: Long,
+          s: Stream[F, Byte]
+      ): Pull[F, Unit, Unit] = {
+        val toWrite = (limit - acc).min(Int.MaxValue.toLong).toInt
+        s.pull.unconsLimit(toWrite).flatMap {
+          case Some((hd, tl)) =>
+            val newAcc = acc + hd.size
+            cursor.writePull(hd).flatMap { nc =>
+              if (newAcc >= limit)
+                Pull
+                  .eval {
+                    fileHotswap
+                      .swap(openNewFile)
+                      .flatMap(newCursor)
+                  }
+                  .flatMap(nc => go(fileHotswap, nc, 0L, tl))
+              else
+                go(fileHotswap, nc, newAcc, tl)
+            }
+          case None => Pull.done
+        }
+      }
 
+      in =>
+        Stream
+          .resource(Hotswap(openNewFile))
+          .flatMap { case (fileHotswap, fileHandle) =>
+            Stream.eval(newCursor(fileHandle)).flatMap { cursor =>
+              go(fileHotswap, cursor, 0L, in).stream.drain
+            }
+          }
+    }
   }
 
   def apply[F[_]](implicit F: Files[F]): Files[F] = F
