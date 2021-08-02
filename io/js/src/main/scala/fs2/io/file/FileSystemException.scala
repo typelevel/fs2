@@ -24,31 +24,39 @@ package io
 package file
 
 import scala.scalajs.js
+import scala.util.control.NoStackTrace
 
-class FileSystemException private[file] (cause: js.JavaScriptException)
-    extends JavaScriptIOException(cause)
+class FileSystemException(message: String = null, cause: Throwable = null)
+    extends IOException(message, cause)
 object FileSystemException {
   private[io] def unapply(cause: js.JavaScriptException): Option[FileSystemException] =
     FileAlreadyExistsException.unapply(cause).orElse(NoSuchFileException.unapply(cause))
 }
 
-class FileAlreadyExistsException private (cause: js.JavaScriptException)
-    extends FileSystemException(cause)
+class FileAlreadyExistsException(message: String = null, cause: Throwable = null)
+    extends FileSystemException(message, cause)
+private class JavaScriptFileAlreadyExistsException(cause: js.JavaScriptException)
+    extends FileAlreadyExistsException(cause = cause)
+    with NoStackTrace
 object FileAlreadyExistsException {
   private[file] def unapply(cause: js.JavaScriptException): Option[FileAlreadyExistsException] =
     cause match {
       case js.JavaScriptException(error: js.Error) if error.message.contains("EEXIST") =>
-        Some(new FileAlreadyExistsException(cause))
+        Some(new JavaScriptFileAlreadyExistsException(cause))
       case _ => None
     }
 }
 
-class NoSuchFileException private (cause: js.JavaScriptException) extends FileSystemException(cause)
+class NoSuchFileException(message: String = null, cause: Throwable = null)
+    extends FileSystemException(message, cause)
+private class JavaScriptNoSuchFileException(cause: js.JavaScriptException)
+    extends NoSuchFileException(cause = cause)
+    with NoStackTrace
 object NoSuchFileException {
   private[file] def unapply(cause: js.JavaScriptException): Option[NoSuchFileException] =
     cause match {
       case js.JavaScriptException(error: js.Error) if error.message.contains("ENOENT") =>
-        Some(new NoSuchFileException(cause))
+        Some(new JavaScriptNoSuchFileException(cause))
       case _ => None
     }
 }
