@@ -28,8 +28,9 @@ import fs2.io.net.UnknownHostException
 import scala.scalajs.js
 
 object IOException {
- private[io] def unapply(cause: js.JavaScriptException): Option[IOException] =
-    SocketException.unapply(cause)
+  private[io] def unapply(cause: js.JavaScriptException): Option[IOException] =
+    SocketException
+      .unapply(cause)
       .orElse(FileSystemException.unapply(cause))
       .orElse(UnknownHostException.unapply(cause))
 }
