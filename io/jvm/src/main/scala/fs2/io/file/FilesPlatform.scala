@@ -142,6 +142,7 @@ private[file] trait FilesPlatform[F[_]] {
     *
     * By default, the move fails if the target file already exists or is a symbolic link.
     */
+  @deprecated("3.1.0", "Use isRegularFile which uses fs2.io.file.Path")
   def move(source: JPath, target: JPath, flags: Seq[CopyOption] = Seq.empty): F[JPath]
 
   /** Creates a `FileHandle` for the file at the supplied `Path`. */
@@ -408,6 +409,12 @@ private[file] trait FilesCompanionPlatform {
         Sync[F].blocking(JFiles.newDirectoryStream(path.toNioPath, glob)),
         _.iterator.asScala
       ).map(Path.fromNioPath)
+
+    def move(source: Path, target: Path, flags: CopyFlags): F[Unit] =
+      Sync[F].blocking {
+        JFiles.move(source.toNioPath, target.toNioPath, flags.value.map(_.option): _*)
+        ()
+      }
 
     def open(path: Path, flags: Flags): Resource[F, FileHandle[F]] =
       openFileChannel(

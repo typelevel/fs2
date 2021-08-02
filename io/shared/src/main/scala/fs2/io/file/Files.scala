@@ -84,6 +84,11 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
     */
   def list(path: Path, glob: String): Stream[F, Path]
 
+  def move(source: Path, target: Path): F[Unit] =
+    copy(source, target, CopyFlags.empty)
+
+  def move(source: Path, target: Path, flags: CopyFlags): F[Unit]
+
   /** Creates a `FileHandle` for the file at the supplied `Path`. */
   def open(path: Path, flags: Flags): Resource[F, FileHandle[F]]
 
