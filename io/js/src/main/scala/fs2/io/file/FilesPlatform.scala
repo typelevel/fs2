@@ -76,6 +76,8 @@ private[fs2] trait FilesCompanionPlatform {
 
     override def list(path: Path): Stream[F, Path] = ???
 
+    override def list(path: Path, glob: String): Stream[F, Path] = ???
+
     override def open(path: Path, flags: Flags): Resource[F, FileHandle[F]] = Resource
       .make(
         F.fromPromise(
