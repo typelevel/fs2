@@ -28,7 +28,6 @@ import scala.concurrent.duration._
 import cats.effect.kernel.{Async, Resource, Sync}
 import cats.syntax.all._
 
-import java.io.IOException
 import java.nio.channels.FileChannel
 import java.nio.file.{Files => JFiles, Path => JPath, _}
 import java.nio.file.attribute.{BasicFileAttributes, FileAttribute, PosixFilePermission}
