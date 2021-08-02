@@ -344,6 +344,12 @@ private[file] trait FilesCompanionPlatform {
         ()
       }
 
+    def list(path: Path): Stream[F, Path] =
+      _runJavaCollectionResource[JStream[JPath]](
+        Sync[F].blocking(JFiles.list(path.toNioPath)),
+        _.iterator.asScala
+      ).map(Path.fromNioPath)
+
     def open(path: Path, flags: Flags): Resource[F, FileHandle[F]] =
       openFileChannel(
         Sync[F].blocking(FileChannel.open(path.toNioPath, flags.value.map(_.option): _*))
@@ -379,7 +385,12 @@ private[file] trait FilesCompanionPlatform {
       deleteRecursively(Path.fromNioPath(path), options.contains(FileVisitOption.FOLLOW_LINKS))
 
     def exists(path: Path, followLinks: Boolean): F[Boolean] =
-      Sync[F].blocking(JFiles.exists(path.toNioPath, (if (followLinks) Nil else Seq(LinkOption.NOFOLLOW_LINKS)): _*))
+      Sync[F].blocking(
+        JFiles.exists(
+          path.toNioPath,
+          (if (followLinks) Nil else Seq(LinkOption.NOFOLLOW_LINKS)): _*
+        )
+      )
 
     def directoryStream(path: JPath): Stream[F, JPath] =
       _runJavaCollectionResource[DirectoryStream[JPath]](

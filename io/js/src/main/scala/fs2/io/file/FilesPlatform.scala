@@ -74,6 +74,8 @@ private[fs2] trait FilesCompanionPlatform {
 
     override def exists(path: Path, followLinks: Boolean): F[Boolean] = ???
 
+    override def list(path: Path): Stream[F, Path] = ???
+
     override def open(path: Path, flags: Flags): Resource[F, FileHandle[F]] = Resource
       .make(
         F.fromPromise(
