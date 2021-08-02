@@ -52,13 +52,19 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
   def deleteIfExists(path: Path): F[Boolean]
 
   def deleteRecursively(
+      path: Path
+  ): F[Unit] = deleteRecursively(path, false)
+
+  def deleteRecursively(
       path: Path,
-      followLinks: Boolean = false
+      followLinks: Boolean
   ): F[Unit]
 
   def exists(path: Path): F[Boolean] = exists(path, true)
 
   def exists(path: Path, followLinks: Boolean): F[Boolean]
+
+  def list(path: Path): Stream[F, Path]
 
   /** Creates a `FileHandle` for the file at the supplied `Path`. */
   def open(path: Path, flags: Flags): Resource[F, FileHandle[F]]

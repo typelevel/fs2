@@ -88,6 +88,8 @@ private[fs2] trait FilesCompanionPlatform {
       ).as(true)
         .recover { case _ => false }
 
+    override def list(path: Path): Stream[F, Path] = ???
+
     override def open(path: Path, flags: Flags): Resource[F, FileHandle[F]] = Resource
       .make(
         F.fromPromise(

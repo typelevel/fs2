@@ -344,6 +344,12 @@ private[file] trait FilesCompanionPlatform {
         ()
       }
 
+    def list(path: Path): Stream[F, Path] =
+      _runJavaCollectionResource[JStream[JPath]](
+        Sync[F].blocking(JFiles.list(path.toNioPath)),
+        _.iterator.asScala
+      ).map(Path.fromNioPath)
+
     def open(path: Path, flags: Flags): Resource[F, FileHandle[F]] =
       openFileChannel(
         Sync[F].blocking(FileChannel.open(path.toNioPath, flags.value.map(_.option): _*))
