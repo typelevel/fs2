@@ -41,14 +41,17 @@ private[file] trait FilesPlatform[F[_]] {
     *
     * By default, the copy fails if the target file already exists or is a symbolic link.
     */
+  @deprecated("3.1.0", "Use overload which uses fs2.io.file.Path")
   def copy(source: JPath, target: JPath, flags: Seq[CopyOption] = Seq.empty): F[JPath]
 
   /** Creates a new directory at the given path.
     */
+  @deprecated("3.1.0", "Use overload which uses fs2.io.file.Path")
   def createDirectory(path: JPath, flags: Seq[FileAttribute[_]] = Seq.empty): F[JPath]
 
   /** Creates a new directory at the given path and creates all nonexistent parent directories beforehand.
     */
+  @deprecated("3.1.0", "Use overload which uses fs2.io.file.Path")
   def createDirectories(path: JPath, flags: Seq[FileAttribute[_]] = Seq.empty): F[JPath]
 
   /** Deletes a file.
@@ -56,26 +59,32 @@ private[file] trait FilesPlatform[F[_]] {
     * If the file is a directory then the directory must be empty for this action to succeed.
     * This action will fail if the path doesn't exist.
     */
+  @deprecated("3.1.0", "Use overload which uses fs2.io.file.Path")
   def delete(path: JPath): F[Unit]
 
   /** Like `delete`, but will not fail when the path doesn't exist.
     */
+  @deprecated("3.1.0", "Use overload which uses fs2.io.file.Path")
   def deleteIfExists(path: JPath): F[Boolean]
 
   /** Recursively delete a directory
     */
+  @deprecated("3.1.0", "Use deleteRecursively")
   def deleteDirectoryRecursively(path: JPath, options: Set[FileVisitOption] = Set.empty): F[Unit]
 
   /** Creates a stream of `Path`s inside a directory.
     */
+  @deprecated("3.1.0", "Use list(path)")
   def directoryStream(path: JPath): Stream[F, JPath]
 
   /** Creates a stream of `Path`s inside a directory, filtering the results by the given predicate.
     */
+  @deprecated("3.1.0", "Use list(path).filter(p)")
   def directoryStream(path: JPath, filter: JPath => Boolean): Stream[F, JPath]
 
   /** Creates a stream of `Path`s inside a directory which match the given glob.
     */
+  @deprecated("3.1.0", "Use list(path, glob)")
   def directoryStream(path: JPath, glob: String): Stream[F, JPath]
 
   /** Checks if a file exists.
@@ -85,6 +94,7 @@ private[file] trait FilesPlatform[F[_]] {
     * subsequence access will succeed. Care should be taken when using this
     * method in security sensitive applications.
     */
+  @deprecated("3.1.0", "Use overload which uses fs2.io.file.Path")
   def exists(path: JPath, flags: Seq[LinkOption] = Seq.empty): F[Boolean]
 
   /** Tests whether a file is a directory.
@@ -133,6 +143,7 @@ private[file] trait FilesPlatform[F[_]] {
   def move(source: JPath, target: JPath, flags: Seq[CopyOption] = Seq.empty): F[JPath]
 
   /** Creates a `FileHandle` for the file at the supplied `Path`. */
+  @deprecated("3.1.0", "Use overload which uses fs2.io.file.Path")
   def open(path: JPath, flags: Seq[OpenOption]): Resource[F, FileHandle[F]]
 
   /** Creates a `FileHandle` for the supplied `FileChannel`. */
@@ -146,20 +157,24 @@ private[file] trait FilesPlatform[F[_]] {
 
   /** Reads all data from the file at the specified `java.nio.file.Path`.
     */
+  @deprecated("3.1.0", "Use overload which uses fs2.io.file.Path")
   def readAll(path: JPath, chunkSize: Int): Stream[F, Byte]
 
   /** Returns a `ReadCursor` for the specified path.
     */
+  @deprecated("3.1.0", "Use overload which uses fs2.io.file.Path")
   def readCursor(path: JPath): Resource[F, ReadCursor[F]] = readCursor(path, Nil)
 
   /** Returns a `ReadCursor` for the specified path. The `READ` option is added to the supplied flags.
     */
+  @deprecated("3.1.0", "Use overload which uses fs2.io.file.Path")
   def readCursor(path: JPath, flags: Seq[OpenOption] = Nil): Resource[F, ReadCursor[F]]
 
   /** Reads a range of data synchronously from the file at the specified `java.nio.file.Path`.
     * `start` is inclusive, `end` is exclusive, so when `start` is 0 and `end` is 2,
     * two bytes are read.
     */
+  @deprecated("3.1.0", "Use overload which uses fs2.io.file.Path")
   def readRange(path: JPath, chunkSize: Int, start: Long, end: Long): Stream[F, Byte]
 
   /** Set file permissions from set of `PosixFilePermission`.
@@ -170,6 +185,7 @@ private[file] trait FilesPlatform[F[_]] {
 
   /** Returns the size of a file (in bytes).
     */
+  @deprecated("3.1.0", "Use overload which uses fs2.io.file.Path")
   def size(path: JPath): F[Long]
 
   /** Returns an infinite stream of data from the file at the specified path.
@@ -181,6 +197,7 @@ private[file] trait FilesPlatform[F[_]] {
     *
     * If an error occurs while reading from the file, the overall stream fails.
     */
+  @deprecated("3.1.0", "Use overload which uses fs2.io.file.Path")
   def tail(
       path: JPath,
       chunkSize: Int,
@@ -252,6 +269,7 @@ private[file] trait FilesPlatform[F[_]] {
     *
     * Adds the WRITE flag to any other `OpenOption` flags specified. By default, also adds the CREATE flag.
     */
+  @deprecated("3.1.0", "Use overload which uses fs2.io.file.Path")
   def writeAll(
       path: JPath,
       flags: Seq[StandardOpenOption] = List(StandardOpenOption.CREATE)
@@ -262,6 +280,7 @@ private[file] trait FilesPlatform[F[_]] {
     * The `WRITE` option is added to the supplied flags. If the `APPEND` option is present in `flags`,
     * the offset is initialized to the current size of the file.
     */
+  @deprecated("3.1.0", "Use overload which uses fs2.io.file.Path")
   def writeCursor(
       path: JPath,
       flags: Seq[OpenOption] = List(StandardOpenOption.CREATE)
@@ -283,6 +302,7 @@ private[file] trait FilesPlatform[F[_]] {
     * by analyzing the current state of the filesystem -- e.g., by looking at all
     * files in a directory and generating a unique name.
     */
+  @deprecated("3.1.0", "Use overload which uses fs2.io.file.Path")
   def writeRotate(
       computePath: F[JPath],
       limit: Long,
