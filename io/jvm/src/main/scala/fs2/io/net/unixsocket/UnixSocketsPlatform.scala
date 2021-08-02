@@ -26,11 +26,10 @@ import cats.effect.std.Semaphore
 import cats.syntax.all._
 import com.comcast.ip4s.{IpAddress, SocketAddress}
 import fs2.{Chunk, Stream}
-import fs2.io.file.Files
+import fs2.io.file.{Files, Path}
 import fs2.io.net.Socket
 import java.nio.ByteBuffer
 import java.nio.channels.SocketChannel
-import java.nio.file.Paths
 
 private[unixsocket] trait UnixSocketsCompanionPlatform {
   implicit def forAsync[F[_]](implicit F: Async[F]): UnixSockets[F] =
@@ -57,12 +56,12 @@ private[unixsocket] trait UnixSocketsCompanionPlatform {
         deleteOnClose: Boolean
     ): Stream[F, Socket[F]] = {
       def setup =
-        Files[F].deleteIfExists(Paths.get(address.path)).whenA(deleteIfExists) *>
+        Files[F].deleteIfExists(Path(address.path)).whenA(deleteIfExists) *>
           openServerChannel(address)
 
       def cleanup(closeChannel: F[Unit]): F[Unit] =
         closeChannel *>
-          Files[F].deleteIfExists(Paths.get(address.path)).whenA(deleteOnClose)
+          Files[F].deleteIfExists(Path(address.path)).whenA(deleteOnClose)
 
       def acceptIncoming(accept: F[SocketChannel]): Stream[F, Socket[F]] = {
         def go: Stream[F, Socket[F]] = {

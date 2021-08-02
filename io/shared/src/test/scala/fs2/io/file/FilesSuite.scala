@@ -24,7 +24,6 @@ package io
 package file
 
 import cats.effect.IO
-import cats.syntax.all._
 
 import scala.concurrent.duration._
 

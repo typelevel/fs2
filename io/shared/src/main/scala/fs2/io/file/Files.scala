@@ -64,7 +64,17 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
 
   def exists(path: Path, followLinks: Boolean): F[Boolean]
 
+  /**
+   * Gets the contents of the specified directory.
+   */
   def list(path: Path): Stream[F, Path]
+
+  /**
+   * Gets the contents of the specified directory whose paths match the supplied glob pattern.
+   * 
+   * Example glob patterns: `*.scala`, `*.{scala,java}`
+   */
+  def list(path: Path, glob: String): Stream[F, Path]
 
   /** Creates a `FileHandle` for the file at the supplied `Path`. */
   def open(path: Path, flags: Flags): Resource[F, FileHandle[F]]

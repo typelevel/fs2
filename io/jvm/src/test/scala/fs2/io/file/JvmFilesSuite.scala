@@ -23,15 +23,8 @@ package fs2
 package io
 package file
 
-import java.nio.file.{Paths, StandardOpenOption}
-import java.nio.file.attribute.PosixFilePermissions
-
 import cats.effect.IO
 import cats.syntax.all._
-
-import fs2.io.CollectionCompat._
-
-import scala.concurrent.duration._
 
 class JvmFilesSuite extends Fs2Suite with BaseFileSuite {
   group("support non-default filesystems") {
