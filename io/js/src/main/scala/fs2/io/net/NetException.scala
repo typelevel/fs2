@@ -25,7 +25,8 @@ package net
 
 import scala.scalajs.js
 
-class SocketException private[net] (cause: js.JavaScriptException) extends IOException(cause)
+class SocketException private[net] (cause: js.JavaScriptException)
+    extends JavaScriptIOException(cause)
 object SocketException {
   private[io] def unapply(cause: js.JavaScriptException): Option[SocketException] =
     BindException.unapply(cause).orElse(ConnectException.unapply(cause))
@@ -47,4 +48,14 @@ object ConnectException {
       Some(new ConnectException(cause))
     case _ => None
   }
+}
+
+class UnknownHostException(cause: js.JavaScriptException) extends JavaScriptIOException(cause)
+object UnknownHostException {
+  private[io] def unapply(cause: js.JavaScriptException): Option[UnknownHostException] =
+    cause match {
+      case js.JavaScriptException(error: js.Error) if error.message.contains("ENOTFOUND") =>
+        Some(new UnknownHostException(cause))
+      case _ => None
+    }
 }

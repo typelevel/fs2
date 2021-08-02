@@ -25,7 +25,8 @@ package file
 
 import scala.scalajs.js
 
-class FileSystemException private[file] (cause: js.JavaScriptException) extends IOException(cause)
+class FileSystemException private[file] (cause: js.JavaScriptException)
+    extends JavaScriptIOException(cause)
 object FileSystemException {
   private[io] def unapply(cause: js.JavaScriptException): Option[FileSystemException] =
     FileAlreadyExistsException.unapply(cause).orElse(NoSuchFileException.unapply(cause))

@@ -166,7 +166,9 @@ class SocketSuite extends Fs2Suite with SocketSuitePlatform {
       } yield ()).intercept[ConnectException] >> (for {
         bindAddress <- Network[IO].serverResource(Some(ip"127.0.0.1")).map(_._1)
         _ <- Network[IO].serverResource(Some(bindAddress.host), Some(bindAddress.port))
-      } yield ()).use_.intercept[BindException]
+      } yield ()).use_.intercept[BindException] >> (for {
+        _ <- Network[IO].client(SocketAddress.fromString("not.example.com:80").get).use_
+      } yield ()).intercept[UnknownHostException]
     }
 
     test("options - should work with socket options") {
