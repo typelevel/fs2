@@ -47,8 +47,7 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
         .flatMap(path => Files[IO].readAll(path))
         .compile
         .drain
-        .attempt
-        .map(r => assert(r.isLeft))
+        .intercept[NoSuchFileException]
     }
   }
 
@@ -112,14 +111,13 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
           Stream("Hello", " world!")
             .covary[IO]
             .through(text.utf8.encode)
-            .through(Files[IO].writeAll(path, Flags(Flag.CreateNew))) ++ Files[IO]
+            .through(Files[IO].writeAll(path, Flags(Flag.Write, Flag.CreateNew))) ++ Files[IO]
             .readAll(path)
             .through(text.utf8.decode)
         }
         .compile
         .drain
-        .attempt
-        .map(r => assert(r.isLeft))
+        .intercept[FileAlreadyExistsException]
     }
   }
 
