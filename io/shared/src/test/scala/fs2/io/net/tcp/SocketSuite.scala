@@ -25,8 +25,8 @@ package net
 package tcp
 
 import cats.effect.IO
-import cats.syntax.all._
 import com.comcast.ip4s._
+
 import scala.concurrent.duration._
 
 class SocketSuite extends Fs2Suite with SocketSuitePlatform {
@@ -160,13 +160,13 @@ class SocketSuite extends Fs2Suite with SocketSuitePlatform {
     }
 
     test("errors - should be captured in the effect") {
-      (for { // Connection refused
+      (for {
         bindAddress <- Network[IO].serverResource(Some(ip"127.0.0.1")).use(s => IO.pure(s._1))
         _ <- Network[IO].client(bindAddress).use(_ => IO.unit)
-      } yield ()).attempt.map(r => assert(r.isLeft)) >> (for { // Address already in use
+      } yield ()).intercept[ConnectException] >> (for {
         bindAddress <- Network[IO].serverResource(Some(ip"127.0.0.1")).map(_._1)
         _ <- Network[IO].serverResource(Some(bindAddress.host), Some(bindAddress.port))
-      } yield ()).attempt.use(r => IO(assert(r.isLeft)))
+      } yield ()).use_.intercept[BindException]
     }
 
     test("options - should work with socket options") {

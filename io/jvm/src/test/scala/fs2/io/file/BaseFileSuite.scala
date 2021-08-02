@@ -26,7 +26,6 @@ package file
 import cats.effect.{IO, Resource}
 import cats.syntax.all._
 
-import java.io.IOException
 import java.nio.file.{Files => JFiles, Path => JPath, _}
 import java.nio.file.attribute.BasicFileAttributes
 

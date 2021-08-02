@@ -53,7 +53,7 @@ private[net] trait SocketGroupCompanionPlatform { self: SocketGroup.type =>
         to: SocketAddress[Host],
         options: List[SocketOption]
     ): Resource[F, Socket[F]] =
-      for {
+      (for {
         sock <- F
           .delay(
             new netMod.Socket(netMod.SocketConstructorOpts().setAllowHalfOpen(true))
@@ -71,14 +71,14 @@ private[net] trait SocketGroupCompanionPlatform { self: SocketGroup.type =>
               .map { case ((), cancel) => Some(cancel) }
           }
           .toResource
-      } yield socket
+      } yield socket).adaptError { case IOException(ex) => ex }
 
     override def serverResource(
         address: Option[Host],
         port: Option[Port],
         options: List[SocketOption]
     ): Resource[F, (SocketAddress[IpAddress], Stream[F, Socket[F]])] =
-      for {
+      (for {
         dispatcher <- Dispatcher[F]
         queue <- Queue.unbounded[F, netMod.Socket].toResource
         error <- F.deferred[Throwable].toResource
@@ -127,7 +127,7 @@ private[net] trait SocketGroupCompanionPlatform { self: SocketGroup.type =>
           .evalTap(setSocketOptions(options))
           .flatMap(sock => Stream.resource(Socket.forAsync(sock)))
           .concurrently(Stream.eval(error.get.flatMap(F.raiseError[Unit])))
-      } yield (ipAddress, sockets)
+      } yield (ipAddress, sockets)).adaptError { case IOException(ex) => ex }
 
   }
 

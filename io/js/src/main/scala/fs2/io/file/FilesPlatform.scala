@@ -62,12 +62,13 @@ private[fs2] trait FilesCompanionPlatform {
         )
       )(fd => F.fromPromise(F.delay(fd.close())))
       .map(FileHandle.make[F])
+      .adaptError { case IOException(ex) => ex }
 
     private def readStream(path: Path, chunkSize: Int, flags: Flags)(
         f: fsMod.ReadStreamOptions => fsMod.ReadStreamOptions
     ): Stream[F, Byte] =
       readReadable(
-        F.async_ { cb =>
+        F.async_[Readable] { cb =>
           val rs = fsMod
             .createReadStream(
               path.toString,
@@ -93,7 +94,7 @@ private[fs2] trait FilesCompanionPlatform {
             }
           )
         }
-      )
+      ).adaptError { case IOException(ex) => ex }
 
     override def readAll(path: Path, chunkSize: Int, flags: Flags): Stream[F, Byte] =
       readStream(path, chunkSize, flags)(identity)
@@ -132,7 +133,7 @@ private[fs2] trait FilesCompanionPlatform {
               )
             }
           )
-        }
+        }.adaptError { case IOException(ex) => ex }
 
   }
 
