@@ -302,6 +302,48 @@ private[file] trait FilesCompanionPlatform {
         ()
       }
 
+    def createDirectory(path: Path): F[Unit] =
+      Sync[F].blocking {
+        JFiles.createDirectory(path.toNioPath)
+        ()
+      }
+
+    def createDirectories(path: Path): F[Unit] =
+      Sync[F].blocking {
+        JFiles.createDirectories(path.toNioPath)
+        ()
+      }
+
+    def delete(path: Path): F[Unit] =
+      Sync[F].blocking(JFiles.delete(path.toNioPath))
+
+    def deleteIfExists(path: Path): F[Boolean] =
+      Sync[F].blocking(JFiles.deleteIfExists(path.toNioPath))
+
+    def deleteRecursively(
+        path: Path,
+        followLinks: Boolean = false
+    ): F[Unit] =
+      Sync[F].blocking {
+        JFiles.walkFileTree(
+          path.toNioPath,
+          (if (followLinks) Set(FileVisitOption.FOLLOW_LINKS)
+           else Set.empty[FileVisitOption]).asJava,
+          Int.MaxValue,
+          new SimpleFileVisitor[JPath] {
+            override def visitFile(path: JPath, attrs: BasicFileAttributes): FileVisitResult = {
+              JFiles.deleteIfExists(path)
+              FileVisitResult.CONTINUE
+            }
+            override def postVisitDirectory(path: JPath, e: IOException): FileVisitResult = {
+              JFiles.deleteIfExists(path)
+              FileVisitResult.CONTINUE
+            }
+          }
+        )
+        ()
+      }
+
     def open(path: Path, flags: Flags): Resource[F, FileHandle[F]] =
       openFileChannel(
         Sync[F].blocking(FileChannel.open(path.toNioPath, flags.value.map(_.option): _*))
@@ -325,33 +367,19 @@ private[file] trait FilesCompanionPlatform {
       Sync[F].blocking(JFiles.createDirectories(path, flags: _*))
 
     def delete(path: JPath): F[Unit] =
-      Sync[F].blocking(JFiles.delete(path))
+      delete(Path.fromNioPath(path))
 
     def deleteIfExists(path: JPath): F[Boolean] =
-      Sync[F].blocking(JFiles.deleteIfExists(path))
+      deleteIfExists(Path.fromNioPath(path))
 
     def deleteDirectoryRecursively(
         path: JPath,
         options: Set[FileVisitOption]
     ): F[Unit] =
-      Sync[F].blocking {
-        JFiles.walkFileTree(
-          path,
-          options.asJava,
-          Int.MaxValue,
-          new SimpleFileVisitor[JPath] {
-            override def visitFile(path: JPath, attrs: BasicFileAttributes): FileVisitResult = {
-              JFiles.deleteIfExists(path)
-              FileVisitResult.CONTINUE
-            }
-            override def postVisitDirectory(path: JPath, e: IOException): FileVisitResult = {
-              JFiles.deleteIfExists(path)
-              FileVisitResult.CONTINUE
-            }
-          }
-        )
-        ()
-      }
+      deleteRecursively(Path.fromNioPath(path), options.contains(FileVisitOption.FOLLOW_LINKS))
+
+    def exists(path: Path, followLinks: Boolean): F[Boolean] =
+      Sync[F].blocking(JFiles.exists(path.toNioPath, (if (followLinks) Nil else Seq(LinkOption.NOFOLLOW_LINKS)): _*))
 
     def directoryStream(path: JPath): Stream[F, JPath] =
       _runJavaCollectionResource[DirectoryStream[JPath]](

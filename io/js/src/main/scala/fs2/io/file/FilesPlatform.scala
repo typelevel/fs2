@@ -55,6 +55,25 @@ private[fs2] trait FilesCompanionPlatform {
         )
       )
 
+    override def createDirectory(path: Path): F[Unit] =
+      ???
+
+    override def createDirectories(path: Path): F[Unit] =
+      ???
+ 
+    override def delete(path: Path): F[Unit] =
+      ???
+
+    override def deleteIfExists(path: Path): F[Boolean] =
+      ???
+
+    override def deleteRecursively(
+        path: Path,
+        followLinks: Boolean
+    ): F[Unit] = ???
+
+    override def exists(path: Path, followLinks: Boolean): F[Boolean] = ???
+
     override def open(path: Path, flags: Flags): Resource[F, FileHandle[F]] = Resource
       .make(
         F.fromPromise(

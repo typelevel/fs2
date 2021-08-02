@@ -201,32 +201,32 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
   //   }
   // }
 
-  // group("deleteIfExists") {
-  //   test("should result in non existent file") {
-  //     tempFile
-  //       .use { path =>
-  //         Files[IO].delete(path) >> Files[IO].exists(path)
-  //       }
-  //       .assertEquals(false)
-  //   }
-  // }
+  group("delete") {
+    test("should fail on a non existent file") {
+      Files[IO]
+        .delete(Path("nothing"))
+        .intercept[Throwable]
+    }
+  }
 
-  // group("delete") {
-  //   test("should fail on a non existent file") {
-  //     Files[IO]
-  //       .delete(Paths.get("nothing"))
-  //       .intercept[Throwable]
-  //   }
-  // }
+  group("deleteIfExists") {
+    test("should result in non existent file") {
+      tempFile
+        .use { path =>
+          Files[IO].delete(path) >> Files[IO].exists(path)
+        }
+        .assertEquals(false)
+    }
+  }
 
-  // group("deleteDirectoryRecursively") {
-  //   test("should remove a non-empty directory") {
-  //     val testPath = Paths.get("a")
-  //     Files[IO].createDirectories(testPath.resolve("b/c")) >>
-  //       Files[IO].deleteDirectoryRecursively(testPath) >>
-  //       Files[IO].exists(testPath).assertEquals(false)
-  //   }
-  // }
+  group("deleteDirectoryRecursively") {
+    test("should remove a non-empty directory") {
+      val testPath = Path("a")
+      Files[IO].createDirectories(testPath / "b" / "c") >>
+        Files[IO].deleteRecursively(testPath) >>
+        Files[IO].exists(testPath).assertEquals(false)
+    }
+  }
 
   // group("move") {
   //   test("should result in the old path being deleted") {

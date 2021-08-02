@@ -41,6 +41,25 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
 
   def copy(source: Path, target: Path, flags: CopyFlags): F[Unit]
 
+  // TODO attributes / permissions?
+  def createDirectory(path: Path): F[Unit]
+
+  // TODO attributes / permissions?
+  def createDirectories(path: Path): F[Unit]
+
+  def delete(path: Path): F[Unit]
+
+  def deleteIfExists(path: Path): F[Boolean]
+
+  def deleteRecursively(
+      path: Path,
+      followLinks: Boolean = false
+  ): F[Unit]
+
+  def exists(path: Path): F[Boolean] = exists(path, true)
+
+  def exists(path: Path, followLinks: Boolean): F[Boolean]
+
   /** Creates a `FileHandle` for the file at the supplied `Path`. */
   def open(path: Path, flags: Flags): Resource[F, FileHandle[F]]
 
