@@ -3333,18 +3333,22 @@ object Stream extends StreamLowPriority {
         case None => Stream.empty
         case Some(c) =>
           val builder = collection.mutable.Buffer.newBuilder[A]
-          pump(builder.addOne(c))
+          builder += c
+          pump(1, builder)
       }
-    def pump(acc: collection.mutable.Builder[A, collection.mutable.Buffer[A]]): Stream[F, A] = {
-      val sz = acc.knownSize
-      if (sz == limit) Stream.emits(acc.result()) ++ await
+    def pump(
+        currSize: Int,
+        acc: collection.mutable.Builder[A, collection.mutable.Buffer[A]]
+    ): Stream[F, A] =
+      if (currSize == limit) Stream.emits(acc.result()) ++ await
       else
         Stream.eval(tryTake).flatMap {
-          case None          => Stream.emits(acc.result()) ++ await
-          case Some(Some(c)) => pump(acc.addOne(c))
-          case Some(None)    => Stream.emits(acc.result())
+          case None => Stream.emits(acc.result()) ++ await
+          case Some(Some(c)) =>
+            acc += c
+            pump(currSize + 1, acc)
+          case Some(None) => Stream.emits(acc.result())
         }
-    }
     await
   }
 
