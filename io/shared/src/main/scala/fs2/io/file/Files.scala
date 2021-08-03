@@ -47,6 +47,38 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
   // TODO attributes / permissions?
   def createDirectories(path: Path): F[Unit]
 
+  // TODO version which doesn't return a resource?
+
+  /** Creates a `Resource` which can be used to create a temporary file.
+    * The file is created during resource allocation, and removed during its release.
+    *
+    * @param dir the directory which the temporary file will be created in. Pass in None to use the default system temp directory
+    * @param prefix the prefix string to be used in generating the file's name
+    * @param suffix the suffix string to be used in generating the file's name
+    * @param attributes an optional list of file attributes to set atomically when creating the file
+    * @return a resource containing the path of the temporary file
+    */
+  def createTempFile(
+      dir: Option[Path] = None,
+      prefix: String = "",
+      suffix: String = ".tmp"
+      // attributes: Seq[FileAttribute[_]] = Seq.empty
+  ): Resource[F, Path]
+
+  /** Creates a `Resource` which can be used to create a temporary directory.
+    * The directory is created during resource allocation, and removed during its release.
+    *
+    * @param dir the directory which the temporary directory will be created in. Pass in None to use the default system temp directory
+    * @param prefix the prefix string to be used in generating the directory's name
+    * @param attributes an optional list of file attributes to set atomically when creating the directory
+    * @return a resource containing the path of the temporary directory
+    */
+  def createTempDirectory(
+      dir: Option[Path] = None,
+      prefix: String = ""
+      // attributes: Seq[FileAttribute[_]] = Seq.empty
+  ): Resource[F, Path]
+
   def delete(path: Path): F[Unit]
 
   def deleteIfExists(path: Path): F[Boolean]
@@ -126,6 +158,15 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
       offset: Long = 0L,
       pollDelay: FiniteDuration = 1.second
   ): Stream[F, Byte]
+
+  /** Creates a stream of paths contained in a given file tree. Depth is unlimited.
+    */
+  def walk(start: Path): Stream[F, Path] =
+    walk(start, Int.MaxValue, false)
+
+  /** Creates a stream of paths contained in a given file tree down to a given depth.
+    */
+  def walk(start: Path, maxDepth: Int, followLinks: Boolean): Stream[F, Path]
 
   /** Writes all data to the file at the specified path.
     *
