@@ -88,9 +88,19 @@ private[fs2] trait FilesCompanionPlatform {
       ).as(true)
         .recover { case _ => false }
 
+    override def isDirectory(path: Path, followLinks: Boolean): F[Boolean] = ???
+    override def isExecutable(path: Path): F[Boolean] = ???
+    override def isHidden(path: Path): F[Boolean] = ???
+    override def isReadable(path: Path): F[Boolean] = ???
+    override def isRegularFile(path: Path, followLinks: Boolean): F[Boolean] = ???
+    override def isSymbolicLink(path: Path): F[Boolean] = ???
+    override def isWritable(path: Path): F[Boolean] = ???
+
     override def list(path: Path): Stream[F, Path] = ???
 
     override def list(path: Path, glob: String): Stream[F, Path] = ???
+
+    override def move(source: Path, target: Path, flags: CopyFlags): F[Unit] = ???
 
     override def open(path: Path, flags: Flags): Resource[F, FileHandle[F]] = Resource
       .make(
