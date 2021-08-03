@@ -24,6 +24,7 @@ package io
 package file
 
 import cats.effect.kernel.{Async, Resource, Sync}
+import cats.syntax.all._
 
 import java.nio.channels.FileChannel
 import java.nio.file.{Files => JFiles, Path => JPath, _}
@@ -65,17 +66,29 @@ private[file] trait FilesCompanionPlatform {
       }
 
     def createTempFile(
-        dir: Option[Path] = None,
-        prefix: String = "",
-        suffix: String = ".tmp"
+        dir: Option[Path],
+        prefix: String,
+        suffix: String
         // attributes: Seq[FileAttribute[_]] = Seq.empty
-    ): Resource[F, Path] = ???
+    ): F[Path] =
+      (dir match {
+        case Some(dir) =>
+          Sync[F].blocking(JFiles.createTempFile(dir.toNioPath, prefix, suffix))
+        case None =>
+          Sync[F].blocking(JFiles.createTempFile(prefix, suffix))
+      }).map(Path.fromNioPath)
 
     def createTempDirectory(
-        dir: Option[Path] = None,
-        prefix: String = ""
+        dir: Option[Path],
+        prefix: String
         // attributes: Seq[FileAttribute[_]] = Seq.empty
-    ): Resource[F, Path] = ???
+    ): F[Path] =
+      (dir match {
+        case Some(dir) =>
+          Sync[F].blocking(JFiles.createTempDirectory(dir.toNioPath, prefix))
+        case None =>
+          Sync[F].blocking(JFiles.createTempDirectory(prefix))
+      }).map(Path.fromNioPath)
 
     def delete(path: Path): F[Unit] =
       Sync[F].blocking(JFiles.delete(path.toNioPath))
@@ -174,6 +187,23 @@ private[file] trait FilesCompanionPlatform {
 
     def size(path: Path): F[Long] =
       Sync[F].blocking(JFiles.size(path.toNioPath))
+
+    def tempFile(
+        dir: Option[Path],
+        prefix: String,
+        suffix: String
+        // attributes: Seq[FileAttribute[_]] = Seq.empty
+    ): Resource[F, Path] =
+      Resource.make(createTempFile(dir, prefix, suffix))(deleteIfExists(_).void)
+
+    def tempDirectory(
+        dir: Option[Path],
+        prefix: String
+        // attributes: Seq[FileAttribute[_]] = Seq.empty
+    ): Resource[F, Path] =
+      Resource.make(createTempDirectory(dir, prefix))(deleteRecursively(_).recover {
+        case _: NoSuchFileException => ()
+      })
 
     def walk(start: Path, maxDepth: Int, followLinks: Boolean): Stream[F, Path] =
       _runJavaCollectionResource[JStream[JPath]](

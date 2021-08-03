@@ -47,37 +47,47 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
   // TODO attributes / permissions?
   def createDirectories(path: Path): F[Unit]
 
-  // TODO version which doesn't return a resource?
+  /** Creates a temporary file.
+    * The created file is not automatically deleted - it is up to the operating system to decide when the file is deleted.
+    * Alternatively, use `tempFile` to get a resource, which is deleted upon resource finalization.
+    */
+  def createTempFile: F[Path] = createTempFile(None, "", ".tmp")
 
-  /** Creates a `Resource` which can be used to create a temporary file.
-    * The file is created during resource allocation, and removed during its release.
+  /** Creates a temporary file.
+    * The created file is not automatically deleted - it is up to the operating system to decide when the file is deleted.
+    * Alternatively, use `tempFile` to get a resource which deletes upon resource finalization.
     *
     * @param dir the directory which the temporary file will be created in. Pass in None to use the default system temp directory
     * @param prefix the prefix string to be used in generating the file's name
     * @param suffix the suffix string to be used in generating the file's name
     * @param attributes an optional list of file attributes to set atomically when creating the file
-    * @return a resource containing the path of the temporary file
     */
   def createTempFile(
-      dir: Option[Path] = None,
-      prefix: String = "",
-      suffix: String = ".tmp"
+      dir: Option[Path],
+      prefix: String,
+      suffix: String
       // attributes: Seq[FileAttribute[_]] = Seq.empty
-  ): Resource[F, Path]
+  ): F[Path]
 
-  /** Creates a `Resource` which can be used to create a temporary directory.
-    * The directory is created during resource allocation, and removed during its release.
+  /** Creates a temporary directory.
+    * The created directory is not automatically deleted - it is up to the operating system to decide when the file is deleted.
+    * Alternatively, use `tempDirectory` to get a resource which deletes upon resource finalization.
+    */
+  def createTempDirectory: F[Path] = createTempDirectory(None, "")
+
+  /** Creates a temporary directory.
+    * The created directory is not automatically deleted - it is up to the operating system to decide when the file is deleted.
+    * Alternatively, use `tempDirectory` to get a resource which deletes upon resource finalization.
     *
     * @param dir the directory which the temporary directory will be created in. Pass in None to use the default system temp directory
     * @param prefix the prefix string to be used in generating the directory's name
     * @param attributes an optional list of file attributes to set atomically when creating the directory
-    * @return a resource containing the path of the temporary directory
     */
   def createTempDirectory(
-      dir: Option[Path] = None,
-      prefix: String = ""
+      dir: Option[Path],
+      prefix: String
       // attributes: Seq[FileAttribute[_]] = Seq.empty
-  ): Resource[F, Path]
+  ): F[Path]
 
   def delete(path: Path): F[Unit]
 
@@ -158,6 +168,49 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
       offset: Long = 0L,
       pollDelay: FiniteDuration = 1.second
   ): Stream[F, Byte]
+
+  /** Creates a temporary file and deletes it upon finalization of the returned resource.
+    *
+    * @param dir the directory which the temporary file will be created in. Pass in None to use the default system temp directory
+    * @param prefix the prefix string to be used in generating the file's name
+    * @param suffix the suffix string to be used in generating the file's name
+    * @param attributes an optional list of file attributes to set atomically when creating the file
+    * @return a resource containing the path of the temporary file
+    */
+  def tempFile: Resource[F, Path] = tempFile(None, "", ".tmp")
+
+  /** Creates a temporary file and deletes it upon finalization of the returned resource.
+    *
+    * @param dir the directory which the temporary file will be created in. Pass in None to use the default system temp directory
+    * @param prefix the prefix string to be used in generating the file's name
+    * @param suffix the suffix string to be used in generating the file's name
+    * @param attributes an optional list of file attributes to set atomically when creating the file
+    * @return a resource containing the path of the temporary file
+    */
+  def tempFile(
+      dir: Option[Path],
+      prefix: String,
+      suffix: String
+      // attributes: Seq[FileAttribute[_]] = Seq.empty
+  ): Resource[F, Path]
+
+  /** Creates a temporary directory and deletes it upon finalization of the returned resource.
+    * @return a resource containing the path of the temporary directory
+    */
+  def tempDirectory: Resource[F, Path] = tempDirectory(None, "")
+
+  /** Creates a temporary directory and deletes it upon finalization of the returned resource.
+    *
+    * @param dir the directory which the temporary directory will be created in. Pass in None to use the default system temp directory
+    * @param prefix the prefix string to be used in generating the directory's name
+    * @param attributes an optional list of file attributes to set atomically when creating the directory
+    * @return a resource containing the path of the temporary directory
+    */
+  def tempDirectory(
+      dir: Option[Path],
+      prefix: String
+      // attributes: Seq[FileAttribute[_]] = Seq.empty
+  ): Resource[F, Path]
 
   /** Creates a stream of paths contained in a given file tree. Depth is unlimited.
     */

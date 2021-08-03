@@ -254,7 +254,7 @@ private[file] trait DeprecatedFilesApi[F[_]] { self: Files[F] =>
     * @param attributes an optional list of file attributes to set atomically when creating the file
     * @return a resource containing the path of the temporary file
     */
-  @deprecated("3.1.0", "Use createTempFile")
+  @deprecated("3.1.0", "Use overload which uses fs2.io.file.Path")
   def tempFile(
       dir: Option[JPath] = None,
       prefix: String = "",
@@ -278,7 +278,7 @@ private[file] trait DeprecatedFilesApi[F[_]] { self: Files[F] =>
     * @param attributes an optional list of file attributes to set atomically when creating the directory
     * @return a resource containing the path of the temporary directory
     */
-  @deprecated("3.1.0", "Use createTempDirectory")
+  @deprecated("3.1.0", "Use overload which uses fs2.io.file.Path")
   def tempDirectory(
       dir: Option[JPath] = None,
       prefix: String = "",
