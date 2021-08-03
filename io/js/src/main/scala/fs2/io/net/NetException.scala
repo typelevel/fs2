@@ -24,27 +24,51 @@ package io
 package net
 
 import scala.scalajs.js
+import scala.util.control.NoStackTrace
 
-class SocketException private[net] (cause: js.JavaScriptException) extends IOException(cause)
+class SocketException(message: String = null, cause: Throwable = null)
+    extends IOException(message, cause)
 object SocketException {
   private[io] def unapply(cause: js.JavaScriptException): Option[SocketException] =
     BindException.unapply(cause).orElse(ConnectException.unapply(cause))
 }
 
-class BindException(cause: js.JavaScriptException) extends SocketException(cause)
+class BindException(message: String = null, cause: Throwable = null)
+    extends SocketException(message, cause)
+private class JavaScriptBindException(cause: js.JavaScriptException)
+    extends BindException(cause = cause)
+    with NoStackTrace
 object BindException {
   private[net] def unapply(cause: js.JavaScriptException): Option[BindException] = cause match {
     case js.JavaScriptException(error: js.Error) if error.message.contains("EADDRINUSE") =>
-      Some(new BindException(cause))
+      Some(new JavaScriptBindException(cause))
     case _ => None
   }
 }
 
-class ConnectException(cause: js.JavaScriptException) extends SocketException(cause)
+class ConnectException(message: String = null, cause: Throwable = null)
+    extends SocketException(message, cause)
+private class JavaScriptConnectException(cause: js.JavaScriptException)
+    extends ConnectException(cause = cause)
+    with NoStackTrace
 object ConnectException {
   private[net] def unapply(cause: js.JavaScriptException): Option[ConnectException] = cause match {
     case js.JavaScriptException(error: js.Error) if error.message.contains("ECONNREFUSED") =>
-      Some(new ConnectException(cause))
+      Some(new JavaScriptConnectException(cause))
     case _ => None
   }
+}
+
+class UnknownHostException(message: String = null, cause: Throwable = null)
+    extends IOException(message, cause)
+private class JavaScriptUnknownException(cause: js.JavaScriptException)
+    extends UnknownHostException(cause = cause)
+    with NoStackTrace
+object UnknownHostException {
+  private[io] def unapply(cause: js.JavaScriptException): Option[UnknownHostException] =
+    cause match {
+      case js.JavaScriptException(error: js.Error) if error.message.contains("ENOTFOUND") =>
+        Some(new JavaScriptUnknownException(cause))
+      case _ => None
+    }
 }

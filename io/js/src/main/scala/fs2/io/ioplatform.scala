@@ -34,6 +34,7 @@ import fs2.internal.jsdeps.node.streamMod
 import fs2.io.internal.ByteChunkOps._
 import fs2.io.internal.EventEmitterOps._
 
+import scala.annotation.nowarn
 import scala.scalajs.js
 import scala.scalajs.js.typedarray.Uint8Array
 import scala.scalajs.js.|
@@ -90,19 +91,25 @@ private[fs2] trait ioplatform {
             )
           )
       }
+      .adaptError { case IOException(ex) => ex }
 
   def toReadable[F[_]](implicit F: Async[F]): Pipe[F, Byte, Readable] =
     in =>
-      Stream.resource(mkDuplex(in)).flatMap { case (duplex, out) =>
-        Stream
-          .emit(duplex)
-          .merge(out.drain)
-          .concurrently(
-            Stream.eval(
-              F.async_[Unit](cb => duplex.asInstanceOf[streamMod.Writable].end(() => cb(Right(()))))
+      Stream
+        .resource(mkDuplex(in))
+        .flatMap { case (duplex, out) =>
+          Stream
+            .emit(duplex)
+            .merge(out.drain)
+            .concurrently(
+              Stream.eval(
+                F.async_[Unit](cb =>
+                  duplex.asInstanceOf[streamMod.Writable].end(() => cb(Right(())))
+                )
+              )
             )
-          )
-      }
+        }
+        .adaptError { case IOException(ex) => ex }
 
   def toReadableResource[F[_]: Async](s: Stream[F, Byte]): Resource[F, Readable] =
     s.through(toReadable).compile.resource.lastOrError
@@ -112,30 +119,33 @@ private[fs2] trait ioplatform {
       endAfterUse: Boolean = true
   )(implicit F: Async[F]): Pipe[F, Byte, INothing] =
     in =>
-      Stream.eval(writable.map(_.asInstanceOf[streamMod.Writable])).flatMap { writable =>
-        def go(
-            s: Stream[F, Byte]
-        ): Pull[F, INothing, Unit] = s.pull.uncons.flatMap {
-          case Some((head, tail)) =>
-            Pull.eval {
-              F.async_[Unit] { cb =>
-                writable.write(
-                  head.toUint8Array: js.Any,
-                  e => cb(e.toLeft(()).leftMap(js.JavaScriptException))
-                )
-              }
-            } >> go(tail)
-          case None =>
-            if (endAfterUse)
-              Pull.eval(F.async_[Unit](cb => writable.end(() => cb(Right(())))))
-            else
-              Pull.done
-        }
+      Stream
+        .eval(writable.map(_.asInstanceOf[streamMod.Writable]))
+        .flatMap { writable =>
+          def go(
+              s: Stream[F, Byte]
+          ): Pull[F, INothing, Unit] = s.pull.uncons.flatMap {
+            case Some((head, tail)) =>
+              Pull.eval {
+                F.async_[Unit] { cb =>
+                  writable.write(
+                    head.toUint8Array: js.Any,
+                    e => cb(e.toLeft(()).leftMap(js.JavaScriptException))
+                  ): @nowarn
+                }
+              } >> go(tail)
+            case None =>
+              if (endAfterUse)
+                Pull.eval(F.async_[Unit](cb => writable.end(() => cb(Right(())))))
+              else
+                Pull.done
+          }
 
-        go(in).stream.handleErrorWith { ex =>
-          Stream.eval(F.delay(writable.destroy(js.Error(ex.getMessage))))
-        }.drain
-      }
+          go(in).stream.handleErrorWith { ex =>
+            Stream.eval(F.delay(writable.destroy(js.Error(ex.getMessage))))
+          }.drain
+        }
+        .adaptError { case IOException(ex) => ex }
 
   def readWritable[F[_]: Async](f: Writable => F[Unit]): Stream[F, Byte] =
     Stream.empty.through(toDuplexAndRead(f))
@@ -159,7 +169,7 @@ private[fs2] trait ioplatform {
           new streamMod.Duplex(
             streamMod
               .DuplexOptions()
-              .setRead { (duplex, size) =>
+              .setRead { (duplex, _) =>
                 val readable = duplex.asInstanceOf[streamMod.Readable]
                 dispatcher.unsafeRunAndForget(
                   readQueue.take.attempt.flatMap {
@@ -170,7 +180,7 @@ private[fs2] trait ioplatform {
                   }
                 )
               }
-              .setWrite { (duplex, chunk, encoding, cb) =>
+              .setWrite { (_, chunk, _, cb) =>
                 dispatcher.unsafeRunAndForget(
                   writeQueue
                     .offer(Some(Chunk.uint8Array(chunk.asInstanceOf[Uint8Array])))
@@ -185,7 +195,7 @@ private[fs2] trait ioplatform {
                     )
                 )
               }
-              .setFinal { (duplex, cb) =>
+              .setFinal { (_, cb) =>
                 dispatcher.unsafeRunAndForget(
                   writeQueue
                     .offer(None)
@@ -200,7 +210,7 @@ private[fs2] trait ioplatform {
                     )
                 )
               }
-              .setDestroy { (duplex, err, cb) =>
+              .setDestroy { (_, err, cb) =>
                 dispatcher.unsafeRunAndForget {
                   error
                     .complete(js.JavaScriptException(err))
@@ -230,5 +240,8 @@ private[fs2] trait ioplatform {
       out = Stream
         .fromQueueNoneTerminatedChunk(writeQueue)
         .concurrently(Stream.eval(error.get.flatMap(F.raiseError[Unit])))
-    } yield (duplex.asInstanceOf[Duplex], drainIn.merge(out))
+    } yield (
+      duplex.asInstanceOf[Duplex],
+      drainIn.merge(out).adaptError { case IOException(ex) => ex }
+    )
 }

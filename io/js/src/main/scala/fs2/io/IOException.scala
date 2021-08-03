@@ -21,16 +21,16 @@
 
 package fs2.io
 
-import scala.scalajs.js
-import scala.util.control.NoStackTrace
-import fs2.io.net.SocketException
 import fs2.io.file.FileSystemException
+import fs2.io.net.SocketException
+import fs2.io.net.UnknownHostException
 
-class IOException private[io] (cause: js.JavaScriptException)
-    extends Exception(cause)
-    with NoStackTrace
+import scala.scalajs.js
 
 object IOException {
   private[io] def unapply(cause: js.JavaScriptException): Option[IOException] =
-    SocketException.unapply(cause).orElse(FileSystemException.unapply(cause))
+    SocketException
+      .unapply(cause)
+      .orElse(FileSystemException.unapply(cause))
+      .orElse(UnknownHostException.unapply(cause))
 }
