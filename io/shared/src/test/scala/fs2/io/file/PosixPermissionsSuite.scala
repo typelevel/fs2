@@ -23,11 +23,9 @@ package fs2
 package io
 package file
 
-import scala.collection.immutable.SeqMap
-
 class PosixPermissionsSuite extends Fs2Suite {
   test("construction") {
-    val cases = SeqMap(
+    val cases = Seq(
       "777" -> "rwxrwxrwx",
       "775" -> "rwxrwxr-x",
       "770" -> "rwxrwx---",
