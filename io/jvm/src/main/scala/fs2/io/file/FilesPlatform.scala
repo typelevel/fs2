@@ -229,23 +229,6 @@ private[file] trait FilesCompanionPlatform {
     def size(path: Path): F[Long] =
       Sync[F].blocking(JFiles.size(path.toNioPath))
 
-    def tempFile(
-        dir: Option[Path],
-        prefix: String,
-        suffix: String,
-        permissions: Option[Permissions]
-    ): Resource[F, Path] =
-      Resource.make(createTempFile(dir, prefix, suffix, permissions))(deleteIfExists(_).void)
-
-    def tempDirectory(
-        dir: Option[Path],
-        prefix: String,
-        permissions: Option[Permissions]
-    ): Resource[F, Path] =
-      Resource.make(createTempDirectory(dir, prefix, permissions))(deleteRecursively(_).recover {
-        case _: NoSuchFileException => ()
-      })
-
     def walk(start: Path, maxDepth: Int, followLinks: Boolean): Stream[F, Path] =
       _runJavaCollectionResource[JStream[JPath]](
         Sync[F].blocking(

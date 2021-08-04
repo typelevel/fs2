@@ -310,6 +310,23 @@ object Files extends FilesCompanionPlatform {
         cursor.seek(offset).tail(chunkSize, pollDelay).void.stream
       }
 
+    def tempFile(
+        dir: Option[Path],
+        prefix: String,
+        suffix: String,
+        permissions: Option[Permissions]
+    ): Resource[F, Path] =
+      Resource.make(createTempFile(dir, prefix, suffix, permissions))(deleteIfExists(_).void)
+
+    def tempDirectory(
+        dir: Option[Path],
+        prefix: String,
+        permissions: Option[Permissions]
+    ): Resource[F, Path] =
+      Resource.make(createTempDirectory(dir, prefix, permissions))(deleteRecursively(_).recover {
+        case _: NoSuchFileException => ()
+      })
+
     def writeAll(
         path: Path,
         flags: Flags
