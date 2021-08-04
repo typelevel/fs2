@@ -95,10 +95,7 @@ private[tls] trait TLSSocketCompanionPlatform { self: TLSSocket.type =>
     } yield new AsyncTLSSocket(
       tlsSock,
       readStream,
-      sessionRef
-        .discrete
-        .unNone
-        .head
+      sessionRef.discrete.unNone.head
         .concurrently(Stream.eval(errorDef.get.flatMap(F.raiseError[Unit])))
         .compile
         .lastOrError
