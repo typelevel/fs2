@@ -41,4 +41,4 @@ trait Writable extends js.Object
 @js.native
 trait Duplex extends js.Object with Readable with Writable
 
-final class StreamDestroyedException private[io] () extends java.io.IOException
+final class StreamDestroyedException private[io] () extends IOException
