@@ -33,6 +33,7 @@ import fs2.internal.jsdeps.node.nodeStrings
 import fs2.internal.jsdeps.node.osMod
 import fs2.io.file.Files.UnsealedFiles
 
+import scala.concurrent.duration._
 import scala.scalajs.js
 
 private[file] trait FilesPlatform[F[_]]
@@ -166,6 +167,9 @@ private[fs2] trait FilesCompanionPlatform {
           false
         }
 
+    override def getLastModifiedTime(path: Path, followLinks: Boolean): F[FiniteDuration] =
+      ???
+
     override def getPosixPermissions(path: Path, followLinks: Boolean): F[PosixPermissions] =
       stat(path, followLinks).flatMap { stats =>
         val value = stats.mode.toInt & 511
@@ -185,7 +189,7 @@ private[fs2] trait FilesCompanionPlatform {
     override def isHidden(path: Path): F[Boolean] = F.pure {
       path.toString match {
         case HiddenPattern() => true
-        case _ => false
+        case _               => false
       }
     }
 
@@ -272,6 +276,9 @@ private[fs2] trait FilesCompanionPlatform {
 
     override def readRange(path: Path, chunkSize: Int, start: Long, end: Long): Stream[F, Byte] =
       readStream(path, chunkSize, Flags.Read)(_.setStart(start.toDouble).setEnd((end - 1).toDouble))
+
+    override def setLastModifiedTime(path: Path, timestamp: FiniteDuration): F[Unit] =
+      ???
 
     override def setPosixPermissions(path: Path, permissions: PosixPermissions): F[Unit] =
       F.fromPromise(F.delay(fsPromisesMod.chmod(path.toString, permissions.value.toDouble)))

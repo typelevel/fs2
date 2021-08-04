@@ -31,7 +31,10 @@ import java.nio.file.{Files => JFiles, Path => JPath, _}
 import java.nio.file.attribute.{BasicFileAttributes, PosixFilePermissions}
 import java.util.stream.{Stream => JStream}
 
+import scala.concurrent.duration._
+
 import fs2.io.CollectionCompat._
+import java.nio.file.attribute.FileTime
 
 private[file] trait FilesPlatform[F[_]] extends DeprecatedFilesApi[F] { self: Files[F] =>
 
@@ -151,6 +154,11 @@ private[file] trait FilesCompanionPlatform {
         )
       )
 
+    def getLastModifiedTime(path: Path, followLinks: Boolean): F[FiniteDuration] =
+      Sync[F].blocking(
+        JFiles.getLastModifiedTime(path.toNioPath).toMillis.millis
+      )
+
     def getPosixPermissions(path: Path, followLinks: Boolean): F[PosixPermissions] =
       Sync[F].blocking(
         PosixPermissions
@@ -221,6 +229,13 @@ private[file] trait FilesCompanionPlatform {
 
     def openFileChannel(channel: F[FileChannel]): Resource[F, FileHandle[F]] =
       Resource.make(channel)(ch => Sync[F].blocking(ch.close())).map(ch => FileHandle.make(ch))
+
+    def setLastModifiedTime(path: Path, timestamp: FiniteDuration): F[Unit] =
+      Sync[F]
+        .blocking(
+          JFiles.setLastModifiedTime(path.toNioPath, FileTime.fromMillis(timestamp.toMillis))
+        )
+        .void
 
     def setPosixPermissions(path: Path, permissions: PosixPermissions): F[Unit] =
       Sync[F]
