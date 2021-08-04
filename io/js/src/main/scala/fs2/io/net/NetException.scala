@@ -28,9 +28,15 @@ import scala.util.control.NoStackTrace
 
 class SocketException(message: String = null, cause: Throwable = null)
     extends IOException(message, cause)
+private class JavaScriptSocketException(cause: js.JavaScriptException)
+    extends SocketException(cause = cause)
+    with NoStackTrace
 object SocketException {
-  private[io] def unapply(cause: js.JavaScriptException): Option[SocketException] =
-    BindException.unapply(cause).orElse(ConnectException.unapply(cause))
+  private[io] def unapply(cause: js.JavaScriptException): Option[SocketException] = cause match {
+    case js.JavaScriptException(error: js.Error) if error.message.contains("ECONNRESET") =>
+      Some(new JavaScriptSocketException(cause))
+    case _ => BindException.unapply(cause).orElse(ConnectException.unapply(cause))
+  }
 }
 
 class BindException(message: String = null, cause: Throwable = null)
@@ -57,6 +63,20 @@ object ConnectException {
       Some(new JavaScriptConnectException(cause))
     case _ => None
   }
+}
+
+class SocketTimeoutException(message: String = null, cause: Throwable = null)
+    extends IOException(message, cause)
+private class JavaScriptSocketTimeoutException(cause: js.JavaScriptException)
+    extends SocketTimeoutException(cause = cause)
+    with NoStackTrace
+object SocketTimeoutException {
+  private[io] def unapply(cause: js.JavaScriptException): Option[SocketTimeoutException] =
+    cause match {
+      case js.JavaScriptException(error: js.Error) if error.message.contains("ETIMEDOUT") =>
+        Some(new JavaScriptSocketTimeoutException(cause))
+      case _ => None
+    }
 }
 
 class UnknownHostException(message: String = null, cause: Throwable = null)
