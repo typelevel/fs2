@@ -58,7 +58,8 @@ object PosixPermissions {
   def fromOctal(s: String): Option[PosixPermissions] =
     try {
       val value = Integer.parseInt(s, 8)
-      if (value < 0 || value > 777) None
+      // 511 = 0o777
+      if (value < 0 || value > 511) None
       else Some(new PosixPermissions(value))
     } catch {
       case _: NumberFormatException => None
