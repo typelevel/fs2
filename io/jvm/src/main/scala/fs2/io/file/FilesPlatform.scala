@@ -28,7 +28,7 @@ import cats.syntax.all._
 
 import java.nio.channels.FileChannel
 import java.nio.file.{Files => JFiles, Path => JPath, _}
-import java.nio.file.attribute.{BasicFileAttributes, FileAttribute, PosixFilePermission}
+import java.nio.file.attribute.BasicFileAttributes
 import java.util.stream.{Stream => JStream}
 
 import fs2.io.CollectionCompat._
@@ -53,41 +53,41 @@ private[file] trait FilesCompanionPlatform {
         ()
       }
 
-    def createDirectory(path: Path): F[Unit] =
+    def createDirectory(path: Path, permissions: Option[Permissions]): F[Unit] =
       Sync[F].blocking {
-        JFiles.createDirectory(path.toNioPath)
+        JFiles.createDirectory(path.toNioPath, permissions.map(_.toNioFileAttribute).toSeq: _*)
         ()
       }
 
-    def createDirectories(path: Path): F[Unit] =
+    def createDirectories(path: Path, permissions: Option[Permissions]): F[Unit] =
       Sync[F].blocking {
-        JFiles.createDirectories(path.toNioPath)
+        JFiles.createDirectories(path.toNioPath, permissions.map(_.toNioFileAttribute).toSeq: _*)
         ()
       }
 
     def createTempFile(
         dir: Option[Path],
         prefix: String,
-        suffix: String
-        // attributes: Seq[FileAttribute[_]] = Seq.empty
+        suffix: String,
+        permissions: Option[Permissions]
     ): F[Path] =
       (dir match {
         case Some(dir) =>
-          Sync[F].blocking(JFiles.createTempFile(dir.toNioPath, prefix, suffix))
+          Sync[F].blocking(JFiles.createTempFile(dir.toNioPath, prefix, suffix, permissions.map(_.toNioFileAttribute).toSeq: _*))
         case None =>
-          Sync[F].blocking(JFiles.createTempFile(prefix, suffix))
+          Sync[F].blocking(JFiles.createTempFile(prefix, suffix, permissions.map(_.toNioFileAttribute).toSeq: _*))
       }).map(Path.fromNioPath)
 
     def createTempDirectory(
         dir: Option[Path],
-        prefix: String
-        // attributes: Seq[FileAttribute[_]] = Seq.empty
+        prefix: String,
+        permissions: Option[Permissions]
     ): F[Path] =
       (dir match {
         case Some(dir) =>
-          Sync[F].blocking(JFiles.createTempDirectory(dir.toNioPath, prefix))
+          Sync[F].blocking(JFiles.createTempDirectory(dir.toNioPath, prefix, permissions.map(_.toNioFileAttribute).toSeq: _*))
         case None =>
-          Sync[F].blocking(JFiles.createTempDirectory(prefix))
+          Sync[F].blocking(JFiles.createTempDirectory(prefix, permissions.map(_.toNioFileAttribute).toSeq: _*))
       }).map(Path.fromNioPath)
 
     def delete(path: Path): F[Unit] =
@@ -191,17 +191,17 @@ private[file] trait FilesCompanionPlatform {
     def tempFile(
         dir: Option[Path],
         prefix: String,
-        suffix: String
-        // attributes: Seq[FileAttribute[_]] = Seq.empty
+        suffix: String,
+        permissions: Option[Permissions]
     ): Resource[F, Path] =
-      Resource.make(createTempFile(dir, prefix, suffix))(deleteIfExists(_).void)
+      Resource.make(createTempFile(dir, prefix, suffix, permissions))(deleteIfExists(_).void)
 
     def tempDirectory(
         dir: Option[Path],
-        prefix: String
-        // attributes: Seq[FileAttribute[_]] = Seq.empty
+        prefix: String,
+        permissions: Option[Permissions]
     ): Resource[F, Path] =
-      Resource.make(createTempDirectory(dir, prefix))(deleteRecursively(_).recover {
+      Resource.make(createTempDirectory(dir, prefix, permissions))(deleteRecursively(_).recover {
         case _: NoSuchFileException => ()
       })
 

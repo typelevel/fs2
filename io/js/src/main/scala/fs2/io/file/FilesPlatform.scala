@@ -55,20 +55,35 @@ private[fs2] trait FilesCompanionPlatform {
         )
       ).adaptError { case IOException(ex) => ex }
 
-    override def createDirectory(path: Path): F[Unit] =
+    // TODO permissions
+    override def createDirectory(path: Path, permissions: Option[Permissions]): F[Unit] =
       F.fromPromise(
         F.delay(
           fsPromisesMod.mkdir(path.toString)
         )
       ).adaptError { case IOException(ex) => ex }
 
-    override def createDirectories(path: Path): F[Unit] =
+    // TODO permissions
+    override def createDirectories(path: Path, permissions: Option[Permissions]): F[Unit] =
       F.fromPromise(
         F.delay(
           fsPromisesMod.mkdir(path.toString, fsMod.MakeDirectoryOptions().setRecursive(true))
         )
       ).void
         .adaptError { case IOException(ex) => ex }
+
+    override def createTempDirectory(
+        dir: Option[Path],
+        prefix: String,
+        permissions: Option[Permissions]
+    ): F[Path] = ???
+
+    override def createTempFile(
+        dir: Option[Path],
+        prefix: String,
+        suffix: String,
+        permissions: Option[Permissions]
+    ): F[Path] = ???
 
     override def delete(path: Path): F[Unit] =
       ???
@@ -153,6 +168,21 @@ private[fs2] trait FilesCompanionPlatform {
       F.fromPromise(F.delay(fsPromisesMod.stat(path.toString))).map(_.size.toLong).adaptError {
         case IOException(ex) => ex
       }
+
+    override def tempDirectory(
+        dir: Option[Path],
+        prefix: String,
+        permissions: Option[Permissions]
+    ): Resource[F, Path] = ???
+
+    override def tempFile(
+        dir: Option[Path],
+        prefix: String,
+        suffix: String,
+        permissions: Option[Permissions]
+    ): Resource[F, Path] = ???
+
+    override def walk(start: Path, maxDepth: Int, followLinks: Boolean): Stream[F, Path] = ???
 
     override def writeAll(path: Path, flags: Flags): Pipe[F, Byte, INothing] =
       in =>

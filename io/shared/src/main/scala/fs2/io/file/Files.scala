@@ -41,17 +41,19 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
 
   def copy(source: Path, target: Path, flags: CopyFlags): F[Unit]
 
-  // TODO attributes / permissions?
-  def createDirectory(path: Path): F[Unit]
+  def createDirectory(path: Path): F[Unit] = createDirectory(path, None)
 
-  // TODO attributes / permissions?
-  def createDirectories(path: Path): F[Unit]
+  def createDirectory(path: Path, permissions: Option[Permissions]): F[Unit]
+
+  def createDirectories(path: Path): F[Unit] = createDirectories(path, None)
+
+  def createDirectories(path: Path, permissions: Option[Permissions]): F[Unit]
 
   /** Creates a temporary file.
     * The created file is not automatically deleted - it is up to the operating system to decide when the file is deleted.
     * Alternatively, use `tempFile` to get a resource, which is deleted upon resource finalization.
     */
-  def createTempFile: F[Path] = createTempFile(None, "", ".tmp")
+  def createTempFile: F[Path] = createTempFile(None, "", ".tmp", None)
 
   /** Creates a temporary file.
     * The created file is not automatically deleted - it is up to the operating system to decide when the file is deleted.
@@ -65,15 +67,15 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
   def createTempFile(
       dir: Option[Path],
       prefix: String,
-      suffix: String
-      // attributes: Seq[FileAttribute[_]] = Seq.empty
+      suffix: String,
+      permissions: Option[Permissions]
   ): F[Path]
 
   /** Creates a temporary directory.
     * The created directory is not automatically deleted - it is up to the operating system to decide when the file is deleted.
     * Alternatively, use `tempDirectory` to get a resource which deletes upon resource finalization.
     */
-  def createTempDirectory: F[Path] = createTempDirectory(None, "")
+  def createTempDirectory: F[Path] = createTempDirectory(None, "", None)
 
   /** Creates a temporary directory.
     * The created directory is not automatically deleted - it is up to the operating system to decide when the file is deleted.
@@ -85,8 +87,8 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
     */
   def createTempDirectory(
       dir: Option[Path],
-      prefix: String
-      // attributes: Seq[FileAttribute[_]] = Seq.empty
+      prefix: String,
+      permissions: Option[Permissions]
   ): F[Path]
 
   def delete(path: Path): F[Unit]
@@ -177,7 +179,7 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
     * @param attributes an optional list of file attributes to set atomically when creating the file
     * @return a resource containing the path of the temporary file
     */
-  def tempFile: Resource[F, Path] = tempFile(None, "", ".tmp")
+  def tempFile: Resource[F, Path] = tempFile(None, "", ".tmp", None)
 
   /** Creates a temporary file and deletes it upon finalization of the returned resource.
     *
@@ -190,14 +192,14 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
   def tempFile(
       dir: Option[Path],
       prefix: String,
-      suffix: String
-      // attributes: Seq[FileAttribute[_]] = Seq.empty
+      suffix: String,
+      permissions: Option[Permissions]
   ): Resource[F, Path]
 
   /** Creates a temporary directory and deletes it upon finalization of the returned resource.
     * @return a resource containing the path of the temporary directory
     */
-  def tempDirectory: Resource[F, Path] = tempDirectory(None, "")
+  def tempDirectory: Resource[F, Path] = tempDirectory(None, "", None)
 
   /** Creates a temporary directory and deletes it upon finalization of the returned resource.
     *
@@ -208,8 +210,8 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
     */
   def tempDirectory(
       dir: Option[Path],
-      prefix: String
-      // attributes: Seq[FileAttribute[_]] = Seq.empty
+      prefix: String,
+      permissions: Option[Permissions]
   ): Resource[F, Path]
 
   /** Creates a stream of paths contained in a given file tree. Depth is unlimited.
