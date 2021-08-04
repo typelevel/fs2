@@ -24,6 +24,7 @@ package fs2.io
 import fs2.io.file.FileSystemException
 import fs2.io.net.SocketException
 import fs2.io.net.UnknownHostException
+import fs2.io.net.tls.SSLException
 
 import scala.scalajs.js
 
@@ -31,6 +32,7 @@ object IOException {
   private[io] def unapply(cause: js.JavaScriptException): Option[IOException] =
     SocketException
       .unapply(cause)
+      .orElse(SSLException.unapply(cause))
       .orElse(FileSystemException.unapply(cause))
       .orElse(UnknownHostException.unapply(cause))
 }
