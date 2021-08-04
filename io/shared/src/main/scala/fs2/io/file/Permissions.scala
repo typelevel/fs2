@@ -27,7 +27,7 @@ sealed trait Permissions extends PermissionsPlatform
 
 import PosixPermission._
 
-final class PosixPermissions private (private val value: Int) extends Permissions {
+final class PosixPermissions private (val value: Int) extends Permissions {
 
   override def equals(that: Any): Boolean = that match {
     case other: PosixPermissions => value == other.value
@@ -87,6 +87,7 @@ object PosixPermissions {
 sealed trait PosixPermission {
   val value: Int
 }
+
 object PosixPermission {
   case object OwnerRead extends PosixPermission { val value = 1 << 8 }
   case object OwnerWrite extends PosixPermission { val value = 1 << 7 }
