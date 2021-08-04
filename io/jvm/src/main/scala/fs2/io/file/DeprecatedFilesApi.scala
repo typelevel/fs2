@@ -42,19 +42,19 @@ private[file] trait DeprecatedFilesApi[F[_]] { self: Files[F] =>
     *
     * By default, the copy fails if the target file already exists or is a symbolic link.
     */
-  @deprecated("3.1.0", "Use overload which uses fs2.io.file.Path")
+  @deprecated("Use overload which uses fs2.io.file.Path", "3.1.0")
   def copy(source: JPath, target: JPath, flags: Seq[CopyOption] = Seq.empty): F[JPath] =
     Sync[F].blocking(JFiles.copy(source, target, flags: _*))
 
   /** Creates a new directory at the given path.
     */
-  @deprecated("3.1.0", "Use overload which uses fs2.io.file.Path")
+  @deprecated("Use overload which uses fs2.io.file.Path", "3.1.0")
   def createDirectory(path: JPath, flags: Seq[FileAttribute[_]] = Seq.empty): F[JPath] =
     Sync[F].blocking(JFiles.createDirectory(path, flags: _*))
 
   /** Creates a new directory at the given path and creates all nonexistent parent directories beforehand.
     */
-  @deprecated("3.1.0", "Use overload which uses fs2.io.file.Path")
+  @deprecated("Use overload which uses fs2.io.file.Path", "3.1.0")
   def createDirectories(path: JPath, flags: Seq[FileAttribute[_]] = Seq.empty): F[JPath] =
     Sync[F].blocking(JFiles.createDirectories(path, flags: _*))
 
@@ -63,25 +63,25 @@ private[file] trait DeprecatedFilesApi[F[_]] { self: Files[F] =>
     * If the file is a directory then the directory must be empty for this action to succeed.
     * This action will fail if the path doesn't exist.
     */
-  @deprecated("3.1.0", "Use overload which uses fs2.io.file.Path")
+  @deprecated("Use overload which uses fs2.io.file.Path", "3.1.0")
   def delete(path: JPath): F[Unit] =
     delete(Path.fromNioPath(path))
 
   /** Like `delete`, but will not fail when the path doesn't exist.
     */
-  @deprecated("3.1.0", "Use overload which uses fs2.io.file.Path")
+  @deprecated("Use overload which uses fs2.io.file.Path", "3.1.0")
   def deleteIfExists(path: JPath): F[Boolean] =
     deleteIfExists(Path.fromNioPath(path))
 
   /** Recursively delete a directory
     */
-  @deprecated("3.1.0", "Use deleteRecursively")
+  @deprecated("Use deleteRecursively", "3.1.0")
   def deleteDirectoryRecursively(path: JPath, options: Set[FileVisitOption] = Set.empty): F[Unit] =
     deleteRecursively(Path.fromNioPath(path), options.contains(FileVisitOption.FOLLOW_LINKS))
 
   /** Creates a stream of `Path`s inside a directory.
     */
-  @deprecated("3.1.0", "Use list(path)")
+  @deprecated("Use list(path)", "3.1.0")
   def directoryStream(path: JPath): Stream[F, JPath] =
     _runJavaCollectionResource[DirectoryStream[JPath]](
       Sync[F].blocking(JFiles.newDirectoryStream(path)),
@@ -90,7 +90,7 @@ private[file] trait DeprecatedFilesApi[F[_]] { self: Files[F] =>
 
   /** Creates a stream of `Path`s inside a directory, filtering the results by the given predicate.
     */
-  @deprecated("3.1.0", "Use list(path).filter(p)")
+  @deprecated("Use list(path).filter(p)", "3.1.0")
   def directoryStream(path: JPath, filter: JPath => Boolean): Stream[F, JPath] =
     _runJavaCollectionResource[DirectoryStream[JPath]](
       Sync[F].blocking(JFiles.newDirectoryStream(path, (entry: JPath) => filter(entry))),
@@ -99,7 +99,7 @@ private[file] trait DeprecatedFilesApi[F[_]] { self: Files[F] =>
 
   /** Creates a stream of `Path`s inside a directory which match the given glob.
     */
-  @deprecated("3.1.0", "Use list(path, glob)")
+  @deprecated("Use list(path, glob)", "3.1.0")
   def directoryStream(path: JPath, glob: String): Stream[F, JPath] =
     _runJavaCollectionResource[DirectoryStream[JPath]](
       Sync[F].blocking(JFiles.newDirectoryStream(path, glob)),
@@ -118,7 +118,7 @@ private[file] trait DeprecatedFilesApi[F[_]] { self: Files[F] =>
     * subsequence access will succeed. Care should be taken when using this
     * method in security sensitive applications.
     */
-  @deprecated("3.1.0", "Use overload which uses fs2.io.file.Path")
+  @deprecated("Use overload which uses fs2.io.file.Path", "3.1.0")
   def exists(path: JPath, flags: Seq[LinkOption] = Seq.empty): F[Boolean] =
     Sync[F].blocking(JFiles.exists(path, flags: _*))
 
@@ -136,7 +136,7 @@ private[file] trait DeprecatedFilesApi[F[_]] { self: Files[F] =>
     * @param options - options indicating how symbolic links are handled
     * @return true if the file is a directory; false if the file does not exist, is not a directory, or it cannot be determined if the file is a directory or not.
     */
-  @deprecated("3.1.0", "Use overload which uses fs2.io.file.Path")
+  @deprecated("Use overload which uses fs2.io.file.Path", "3.1.0")
   def isDirectory(
       path: JPath,
       linkOption: Seq[LinkOption] = Nil
@@ -160,7 +160,7 @@ private[file] trait DeprecatedFilesApi[F[_]] { self: Files[F] =>
     * @param options options indicating how symbolic links are handled
     * @return true if the file is a regular file; false if the file does not exist, is not a regular file, or it cannot be determined if the file is a regular file or not.
     */
-  @deprecated("3.1.0", "Use isRegularFile which uses fs2.io.file.Path")
+  @deprecated("Use isRegularFile which uses fs2.io.file.Path", "3.1.0")
   def isFile(
       path: JPath,
       linkOption: Seq[LinkOption] = Nil
@@ -173,12 +173,12 @@ private[file] trait DeprecatedFilesApi[F[_]] { self: Files[F] =>
     *
     * By default, the move fails if the target file already exists or is a symbolic link.
     */
-  @deprecated("3.1.0", "Use overload which uses fs2.io.file.Path")
+  @deprecated("Use overload which uses fs2.io.file.Path", "3.1.0")
   def move(source: JPath, target: JPath, flags: Seq[CopyOption] = Seq.empty): F[JPath] =
     Sync[F].blocking(JFiles.move(source, target, flags: _*))
 
   /** Creates a `FileHandle` for the file at the supplied `Path`. */
-  @deprecated("3.1.0", "Use overload which uses fs2.io.file.Path")
+  @deprecated("Use overload which uses fs2.io.file.Path", "3.1.0")
   def open(path: JPath, flags: Seq[OpenOption]): Resource[F, FileHandle[F]] =
     open(Path.fromNioPath(path), Flags.fromOpenOptions(flags))
 
@@ -186,24 +186,24 @@ private[file] trait DeprecatedFilesApi[F[_]] { self: Files[F] =>
     *
     * Note: this will only work for POSIX supporting file systems.
     */
-  @deprecated("3.1.0", "Use getPosixPermissions")
+  @deprecated("Use getPosixPermissions", "3.1.0")
   def permissions(path: JPath, flags: Seq[LinkOption] = Seq.empty): F[Set[PosixFilePermission]] =
     Sync[F].blocking(JFiles.getPosixFilePermissions(path, flags: _*).asScala)
 
   /** Reads all data from the file at the specified `java.nio.file.Path`.
     */
-  @deprecated("3.1.0", "Use overload which uses fs2.io.file.Path")
+  @deprecated("Use overload which uses fs2.io.file.Path", "3.1.0")
   def readAll(path: JPath, chunkSize: Int): Stream[F, Byte] =
     readAll(Path.fromNioPath(path), chunkSize, Flags.Read)
 
   /** Returns a `ReadCursor` for the specified path.
     */
-  @deprecated("3.1.0", "Use overload which uses fs2.io.file.Path")
+  @deprecated("Use overload which uses fs2.io.file.Path", "3.1.0")
   def readCursor(path: JPath): Resource[F, ReadCursor[F]] = readCursor(path, Nil)
 
   /** Returns a `ReadCursor` for the specified path. The `READ` option is added to the supplied flags.
     */
-  @deprecated("3.1.0", "Use overload which uses fs2.io.file.Path")
+  @deprecated("Use overload which uses fs2.io.file.Path", "3.1.0")
   def readCursor(path: JPath, flags: Seq[OpenOption] = Nil): Resource[F, ReadCursor[F]] =
     readCursor(Path.fromNioPath(path), Flags.fromOpenOptions(StandardOpenOption.READ +: flags))
 
@@ -211,7 +211,7 @@ private[file] trait DeprecatedFilesApi[F[_]] { self: Files[F] =>
     * `start` is inclusive, `end` is exclusive, so when `start` is 0 and `end` is 2,
     * two bytes are read.
     */
-  @deprecated("3.1.0", "Use overload which uses fs2.io.file.Path")
+  @deprecated("Use overload which uses fs2.io.file.Path", "3.1.0")
   def readRange(path: JPath, chunkSize: Int, start: Long, end: Long): Stream[F, Byte] =
     readRange(Path.fromNioPath(path), chunkSize, start, end)
 
@@ -219,13 +219,13 @@ private[file] trait DeprecatedFilesApi[F[_]] { self: Files[F] =>
     *
     * Note: this will only work for POSIX supporting file systems.
     */
-  @deprecated("3.1.0", "Use setPosixPermissions")
+  @deprecated("Use setPosixPermissions", "3.1.0")
   def setPermissions(path: JPath, permissions: Set[PosixFilePermission]): F[JPath] =
     Sync[F].blocking(JFiles.setPosixFilePermissions(path, permissions.asJava))
 
   /** Returns the size of a file (in bytes).
     */
-  @deprecated("3.1.0", "Use overload which uses fs2.io.file.Path")
+  @deprecated("Use overload which uses fs2.io.file.Path", "3.1.0")
   def size(path: JPath): F[Long] =
     size(Path.fromNioPath(path))
 
@@ -238,7 +238,7 @@ private[file] trait DeprecatedFilesApi[F[_]] { self: Files[F] =>
     *
     * If an error occurs while reading from the file, the overall stream fails.
     */
-  @deprecated("3.1.0", "Use overload which uses fs2.io.file.Path")
+  @deprecated("Use overload which uses fs2.io.file.Path", "3.1.0")
   def tail(
       path: JPath,
       chunkSize: Int,
@@ -256,7 +256,7 @@ private[file] trait DeprecatedFilesApi[F[_]] { self: Files[F] =>
     * @param attributes an optional list of file attributes to set atomically when creating the file
     * @return a resource containing the path of the temporary file
     */
-  @deprecated("3.1.0", "Use overload which uses fs2.io.file.Path")
+  @deprecated("Use overload which uses fs2.io.file.Path", "3.1.0")
   def tempFile(
       dir: Option[JPath] = None,
       prefix: String = "",
@@ -280,7 +280,7 @@ private[file] trait DeprecatedFilesApi[F[_]] { self: Files[F] =>
     * @param attributes an optional list of file attributes to set atomically when creating the directory
     * @return a resource containing the path of the temporary directory
     */
-  @deprecated("3.1.0", "Use overload which uses fs2.io.file.Path")
+  @deprecated("Use overload which uses fs2.io.file.Path", "3.1.0")
   def tempDirectory(
       dir: Option[JPath] = None,
       prefix: String = "",
@@ -300,19 +300,19 @@ private[file] trait DeprecatedFilesApi[F[_]] { self: Files[F] =>
 
   /** Creates a stream of `JPath`s contained in a given file tree. Depth is unlimited.
     */
-  @deprecated("3.1.0", "Use overload which uses fs2.io.file.Path")
+  @deprecated("Use overload which uses fs2.io.file.Path", "3.1.0")
   def walk(start: JPath): Stream[F, JPath] =
     walk(start, Seq.empty)
 
   /** Creates a stream of `JPath`s contained in a given file tree, respecting the supplied options. Depth is unlimited.
     */
-  @deprecated("3.1.0", "Use overload which uses fs2.io.file.Path")
+  @deprecated("Use overload which uses fs2.io.file.Path", "3.1.0")
   def walk(start: JPath, options: Seq[FileVisitOption]): Stream[F, JPath] =
     walk(start, Int.MaxValue, options)
 
   /** Creates a stream of `JPath`s contained in a given file tree down to a given depth.
     */
-  @deprecated("3.1.0", "Use overload which uses fs2.io.file.Path")
+  @deprecated("Use overload which uses fs2.io.file.Path", "3.1.0")
   def walk(
       start: JPath,
       maxDepth: Int,
@@ -349,7 +349,7 @@ private[file] trait DeprecatedFilesApi[F[_]] { self: Files[F] =>
     *
     * Adds the WRITE flag to any other `OpenOption` flags specified. By default, also adds the CREATE flag.
     */
-  @deprecated("3.1.0", "Use overload which uses fs2.io.file.Path")
+  @deprecated("Use overload which uses fs2.io.file.Path", "3.1.0")
   def writeAll(
       path: JPath,
       flags: Seq[StandardOpenOption] = List(StandardOpenOption.CREATE)
@@ -361,7 +361,7 @@ private[file] trait DeprecatedFilesApi[F[_]] { self: Files[F] =>
     * The `WRITE` option is added to the supplied flags. If the `APPEND` option is present in `flags`,
     * the offset is initialized to the current size of the file.
     */
-  @deprecated("3.1.0", "Use overload which uses fs2.io.file.Path")
+  @deprecated("Use overload which uses fs2.io.file.Path", "3.1.0")
   def writeCursor(
       path: JPath,
       flags: Seq[OpenOption] = List(StandardOpenOption.CREATE)
@@ -375,7 +375,7 @@ private[file] trait DeprecatedFilesApi[F[_]] { self: Files[F] =>
     * by analyzing the current state of the filesystem -- e.g., by looking at all
     * files in a directory and generating a unique name.
     */
-  @deprecated("3.1.0", "Use overload which uses fs2.io.file.Path")
+  @deprecated("Use overload which uses fs2.io.file.Path", "3.1.0")
   def writeRotate(
       computePath: F[JPath],
       limit: Long,
