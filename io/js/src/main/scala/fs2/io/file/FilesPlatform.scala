@@ -30,6 +30,7 @@ import fs2.internal.jsdeps.node.eventsMod
 import fs2.internal.jsdeps.node.fsMod
 import fs2.internal.jsdeps.node.fsPromisesMod
 import fs2.internal.jsdeps.node.nodeStrings
+import fs2.internal.jsdeps.node.osMod
 import fs2.io.file.Files.UnsealedFiles
 
 import scala.scalajs.js
@@ -38,9 +39,9 @@ private[file] trait FilesPlatform[F[_]]
 
 private[fs2] trait FilesCompanionPlatform {
 
-  implicit def forAsync[F[_]: Async]: Files[F] = new NodeFiles[F]
+  implicit def forAsync[F[_]: Async]: Files[F] = new AsyncFiles[F]
 
-  private final class NodeFiles[F[_]](implicit F: Async[F]) extends UnsealedFiles[F] {
+  private final class AsyncFiles[F[_]](implicit F: Async[F]) extends UnsealedFiles[F] {
     private def combineFlags(flags: Flags): Double =
       Flag.monoid.combineAll(flags.value).bits.toDouble
 
@@ -55,28 +56,42 @@ private[fs2] trait FilesCompanionPlatform {
         )
       ).adaptError { case IOException(ex) => ex }
 
-    // TODO permissions
-    override def createDirectory(path: Path, permissions: Option[Permissions]): F[Unit] =
+    private def mkdir(path: Path, permissions: Option[Permissions], recursive: Boolean): F[Unit] =
       F.fromPromise(
         F.delay(
-          fsPromisesMod.mkdir(path.toString)
-        )
-      ).adaptError { case IOException(ex) => ex }
-
-    // TODO permissions
-    override def createDirectories(path: Path, permissions: Option[Permissions]): F[Unit] =
-      F.fromPromise(
-        F.delay(
-          fsPromisesMod.mkdir(path.toString, fsMod.MakeDirectoryOptions().setRecursive(true))
+          fsPromisesMod.mkdir(
+            path.toString,
+            permissions
+              .collect { case PosixPermissions(value) =>
+                value.toDouble
+              }
+              .fold(fsMod.MakeDirectoryOptions())(fsMod.MakeDirectoryOptions().setMode(_))
+              .setRecursive(recursive)
+          )
         )
       ).void
         .adaptError { case IOException(ex) => ex }
+
+    override def createDirectory(path: Path, permissions: Option[Permissions]): F[Unit] =
+      mkdir(path, permissions, false)
+
+    override def createDirectories(path: Path, permissions: Option[Permissions]): F[Unit] =
+      mkdir(path, permissions, true)
 
     override def createTempDirectory(
         dir: Option[Path],
         prefix: String,
         permissions: Option[Permissions]
-    ): F[Path] = ???
+    ): F[Path] =
+      F.fromPromise(
+        F.delay(fsPromisesMod.mkdtemp((dir.getOrElse(Path(osMod.tmpdir())) / prefix).toString))
+      ).map(Path(_))
+        .flatTap { path =>
+          permissions
+            .collect { case posix @ PosixPermissions(_) => posix }
+            .fold(F.unit)(setPosixPermissions(path, _))
+        }
+        .adaptError { case IOException(ex) => ex }
 
     override def createTempFile(
         dir: Option[Path],
@@ -85,16 +100,37 @@ private[fs2] trait FilesCompanionPlatform {
         permissions: Option[Permissions]
     ): F[Path] = ???
 
+    private def rmMaybeDir(path: Path): F[Unit] =
+      F.ifM(isDirectory(path))(
+        F.fromPromise(F.delay(fsPromisesMod.rmdir(path.toString))),
+        F.fromPromise(F.delay(fsPromisesMod.rm(path.toString)))
+      ).adaptError { case IOException(ex) => ex }
+
     override def delete(path: Path): F[Unit] =
-      ???
+      rmMaybeDir(path)
 
     override def deleteIfExists(path: Path): F[Boolean] =
-      ???
+      exists(path).flatMap { exists =>
+        if (exists)
+          rmMaybeDir(path).as(exists).recover { case _: NoSuchFileException =>
+            false
+          }
+        else
+          F.pure(exists)
+      }
 
     override def deleteRecursively(
         path: Path,
         followLinks: Boolean
-    ): F[Unit] = ???
+    ): F[Unit] =
+      if (!followLinks)
+        F.fromPromise(
+          F.delay(
+            fsPromisesMod.rm(path.toString, fsMod.RmOptions().setRecursive(true).setForce(true))
+          )
+        ).adaptError { case IOException(ex) => ex }
+      else
+        walk(path, Int.MaxValue, true).evalTap(deleteIfExists).compile.drain
 
     override def exists(path: Path, followLinks: Boolean): F[Boolean] =
       F.ifM(F.pure(followLinks))(
@@ -103,21 +139,78 @@ private[fs2] trait FilesCompanionPlatform {
       ).as(true)
         .recover { case _ => false }
 
-    override def getPosixPermissions(path: Path, followLinks: Boolean): F[PosixPermissions] = ???
+    private def stat(path: Path, followLinks: Boolean = false): F[fsMod.Stats] =
+      F.fromPromise {
+        F.delay {
+          if (followLinks)
+            fsPromisesMod.stat(path.toString)
+          else
+            fsPromisesMod.lstat(path.toString)
+        }
+      }.adaptError { case IOException(ex) => ex }
 
-    override def isDirectory(path: Path, followLinks: Boolean): F[Boolean] = ???
-    override def isExecutable(path: Path): F[Boolean] = ???
+    private def access(path: Path, mode: Double): F[Boolean] =
+      F.fromPromise(F.delay(fsPromisesMod.access(path.toString, mode)))
+        .as(true)
+        .recover { case _ =>
+          false
+        }
+
+    override def getPosixPermissions(path: Path, followLinks: Boolean): F[PosixPermissions] =
+      stat(path, followLinks).flatMap { stats =>
+        val value = stats.mode.toInt & 511
+        F.fromOption(
+          PosixPermissions.fromInt(value),
+          new IOException(s"Illegal PosixPermissions: ${value.toOctalString}")
+        )
+      }
+
+    override def isDirectory(path: Path, followLinks: Boolean): F[Boolean] =
+      stat(path, followLinks).map(_.isDirectory())
+
+    override def isExecutable(path: Path): F[Boolean] =
+      access(path, fsMod.constants.X_OK)
+
     override def isHidden(path: Path): F[Boolean] = ???
-    override def isReadable(path: Path): F[Boolean] = ???
-    override def isRegularFile(path: Path, followLinks: Boolean): F[Boolean] = ???
-    override def isSymbolicLink(path: Path): F[Boolean] = ???
-    override def isWritable(path: Path): F[Boolean] = ???
 
-    override def list(path: Path): Stream[F, Path] = ???
+    override def isReadable(path: Path): F[Boolean] =
+      access(path, fsMod.constants.R_OK)
+
+    override def isRegularFile(path: Path, followLinks: Boolean): F[Boolean] =
+      stat(path, followLinks).map(_.isFile())
+
+    override def isSymbolicLink(path: Path): F[Boolean] =
+      stat(path).map(_.isSymbolicLink())
+
+    override def isWritable(path: Path): F[Boolean] =
+      access(path, fsMod.constants.W_OK)
+
+    override def list(path: Path): Stream[F, Path] =
+      Stream
+        .bracket(F.fromPromise(F.delay(fsPromisesMod.opendir(path.toString))))(dir =>
+          F.fromPromise(F.delay(dir.close()))
+        )
+        .flatMap { dir =>
+          Stream
+            .repeatEval(F.fromPromise(F.delay(dir.read())))
+            .map(Option(_))
+            .unNoneTerminate
+            .map(entry => path / Path(entry.asInstanceOf[fsMod.Dirent].name))
+        }
+        .adaptError { case IOException(ex) => ex }
 
     override def list(path: Path, glob: String): Stream[F, Path] = ???
 
-    override def move(source: Path, target: Path, flags: CopyFlags): F[Unit] = ???
+    override def move(source: Path, target: Path, flags: CopyFlags): F[Unit] =
+      F.ifM(
+        F.ifM(F.pure(flags.contains(CopyFlag.ReplaceExisting)))(
+          F.pure(true),
+          exists(target).map(!_)
+        )
+      )(
+        F.fromPromise(F.delay(fsPromisesMod.rename(source.toString, target.toString))),
+        F.raiseError(new FileAlreadyExistsException)
+      ).adaptError { case IOException(ex) => ex }
 
     override def open(path: Path, flags: Flags): Resource[F, FileHandle[F]] = Resource
       .make(
@@ -166,25 +259,12 @@ private[fs2] trait FilesCompanionPlatform {
     override def readRange(path: Path, chunkSize: Int, start: Long, end: Long): Stream[F, Byte] =
       readStream(path, chunkSize, Flags.Read)(_.setStart(start.toDouble).setEnd((end - 1).toDouble))
 
-    override def setPosixPermissions(path: Path, permissions: PosixPermissions): F[Unit] = ???
+    override def setPosixPermissions(path: Path, permissions: PosixPermissions): F[Unit] =
+      F.fromPromise(F.delay(fsPromisesMod.chmod(path.toString, permissions.value.toDouble)))
+        .adaptError { case IOException(ex) => ex }
 
     override def size(path: Path): F[Long] =
-      F.fromPromise(F.delay(fsPromisesMod.stat(path.toString))).map(_.size.toLong).adaptError {
-        case IOException(ex) => ex
-      }
-
-    override def tempDirectory(
-        dir: Option[Path],
-        prefix: String,
-        permissions: Option[Permissions]
-    ): Resource[F, Path] = ???
-
-    override def tempFile(
-        dir: Option[Path],
-        prefix: String,
-        suffix: String,
-        permissions: Option[Permissions]
-    ): Resource[F, Path] = ???
+      stat(path).map(_.size.toLong)
 
     override def walk(start: Path, maxDepth: Int, followLinks: Boolean): Stream[F, Path] = ???
 

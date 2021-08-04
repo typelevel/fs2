@@ -55,12 +55,17 @@ object PosixPermissions {
   def apply(permissions: PosixPermission*): PosixPermissions =
     new PosixPermissions(permissions.foldLeft(0)(_ | _.value))
 
+  private[file] def unapply(permissions: PosixPermissions): Some[Int] = Some(permissions.value)
+
+  def fromInt(value: Int): Option[PosixPermissions] =
+    // 511 = 0o777
+    if (value < 0 || value > 511) None
+    else Some(new PosixPermissions(value))
+
   def fromOctal(s: String): Option[PosixPermissions] =
     try {
       val value = Integer.parseInt(s, 8)
-      // 511 = 0o777
-      if (value < 0 || value > 511) None
-      else Some(new PosixPermissions(value))
+      fromInt(value)
     } catch {
       case _: NumberFormatException => None
     }
