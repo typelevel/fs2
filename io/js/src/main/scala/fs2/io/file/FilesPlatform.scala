@@ -98,7 +98,17 @@ private[fs2] trait FilesCompanionPlatform {
         prefix: String,
         suffix: String,
         permissions: Option[Permissions]
-    ): F[Path] = ???
+    ): F[Path] =
+      for {
+        dir <- createTempDirectory(dir, prefix, permissions)
+        path = dir / Option(suffix).filter(_.nonEmpty).getOrElse(".tmp")
+        _ <- open(path, Flags.Write).use_
+        _ <- permissions
+          .collect { case posix @ PosixPermissions(_) =>
+            posix
+          }
+          .fold(F.unit)(setPosixPermissions(path, _))
+      } yield path
 
     private def rmMaybeDir(path: Path): F[Unit] =
       F.ifM(isDirectory(path))(
@@ -171,7 +181,8 @@ private[fs2] trait FilesCompanionPlatform {
     override def isExecutable(path: Path): F[Boolean] =
       access(path, fsMod.constants.X_OK)
 
-    override def isHidden(path: Path): F[Boolean] = ???
+    private val hiddenPattern = raw"/(^|\/)\.[^\/\.]/g".r
+    override def isHidden(path: Path): F[Boolean] = F.pure(hiddenPattern.matches(path.toString))
 
     override def isReadable(path: Path): F[Boolean] =
       access(path, fsMod.constants.R_OK)
@@ -198,8 +209,6 @@ private[fs2] trait FilesCompanionPlatform {
             .map(entry => path / Path(entry.asInstanceOf[fsMod.Dirent].name))
         }
         .adaptError { case IOException(ex) => ex }
-
-    override def list(path: Path, glob: String): Stream[F, Path] = ???
 
     override def move(source: Path, target: Path, flags: CopyFlags): F[Unit] =
       F.ifM(
@@ -266,7 +275,42 @@ private[fs2] trait FilesCompanionPlatform {
     override def size(path: Path): F[Long] =
       stat(path).map(_.size.toLong)
 
-    override def walk(start: Path, maxDepth: Int, followLinks: Boolean): Stream[F, Path] = ???
+    override def walk(start: Path, maxDepth: Int, followLinks: Boolean): Stream[F, Path] = {
+
+      def go(start: Path, maxDepth: Int, ancestry: List[(Double, Double)]): Stream[F, Path] =
+        if (maxDepth == 0)
+          Stream.eval(exists(start, followLinks)).as(start)
+        else
+          Stream.eval(stat(start, followLinks = false)).flatMap { stats =>
+            (if (stats.isDirectory())
+               list(start)
+                 .flatMap { path =>
+                   go(path, maxDepth - 1, (stats.dev, stats.ino) :: ancestry)
+                 }
+                 .recoverWith { case _ =>
+                   Stream.empty
+                 }
+             else if (stats.isSymbolicLink() && followLinks)
+               Stream.eval(stat(start, followLinks = true)).flatMap { stats =>
+                 if (!ancestry.contains((stats.dev, stats.ino)))
+                   list(start)
+                     .flatMap { path =>
+                       go(path, maxDepth - 1, (stats.dev, stats.ino) :: ancestry)
+                     }
+                     .recoverWith { case _ =>
+                       Stream.empty
+                     }
+                 else
+                   Stream.raiseError(new FileSystemLoopException(start.toString))
+               }
+             else
+               Stream.empty) ++ Stream.emit(start)
+          }
+
+      Stream.eval(stat(start, followLinks)).flatMap { _ =>
+        go(start, maxDepth, Nil)
+      }
+    }
 
     override def writeAll(path: Path, flags: Flags): Pipe[F, Byte, INothing] =
       in =>

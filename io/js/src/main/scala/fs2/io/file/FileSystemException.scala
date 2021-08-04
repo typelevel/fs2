@@ -30,7 +30,10 @@ class FileSystemException(message: String = null, cause: Throwable = null)
     extends IOException(message, cause)
 object FileSystemException {
   private[io] def unapply(cause: js.JavaScriptException): Option[FileSystemException] =
-    FileAlreadyExistsException.unapply(cause).orElse(NoSuchFileException.unapply(cause))
+    FileAlreadyExistsException
+      .unapply(cause)
+      .orElse(NoSuchFileException.unapply(cause))
+      .orElse(NotDirectoryException.unapply(cause))
 }
 
 class FileAlreadyExistsException(message: String = null, cause: Throwable = null)
@@ -47,6 +50,8 @@ object FileAlreadyExistsException {
     }
 }
 
+class FileSystemLoopException(file: String) extends FileSystemException(file)
+
 class NoSuchFileException(message: String = null, cause: Throwable = null)
     extends FileSystemException(message, cause)
 private class JavaScriptNoSuchFileException(cause: js.JavaScriptException)
@@ -57,6 +62,20 @@ object NoSuchFileException {
     cause match {
       case js.JavaScriptException(error: js.Error) if error.message.contains("ENOENT") =>
         Some(new JavaScriptNoSuchFileException(cause))
+      case _ => None
+    }
+}
+
+class NotDirectoryException(message: String = null, cause: Throwable = null)
+    extends FileSystemException(message, cause)
+private class JavaScriptNotDirectoryException(cause: js.JavaScriptException)
+    extends NotDirectoryException(cause = cause)
+    with NoStackTrace
+object NotDirectoryException {
+  private[file] def unapply(cause: js.JavaScriptException): Option[NotDirectoryException] =
+    cause match {
+      case js.JavaScriptException(error: js.Error) if error.message.contains("ENOTDIR") =>
+        Some(new JavaScriptNotDirectoryException(cause))
       case _ => None
     }
 }
