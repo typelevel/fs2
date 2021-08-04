@@ -23,20 +23,20 @@ package fs2.io
 
 import scala.scalajs.js
 
-/** A facade for Node.js `stream.Readable`. Cast to/from your own bindings.
+/** A facade for Node.js `stream.Readable`. Extend or cast to/from your own bindings.
   * @see [[https://nodejs.org/api/stream.html]]
   */
 @js.native
-sealed trait Readable extends js.Object
+trait Readable extends js.Object
 
-/** A facade for Node.js `stream.Writable`. Cast to/from your own bindings.
+/** A facade for Node.js `stream.Writable`. Extend or cast to/from your own bindings.
   * @see [[https://nodejs.org/api/stream.html]]
   */
 @js.native
-sealed trait Writable extends js.Object
+trait Writable extends js.Object
 
-/** A facade for Node.js `stream.Duplex`. Cast to/from your own bindings.
+/** A facade for Node.js `stream.Duplex`. Extend or cast to/from your own bindings.
   * @see [[https://nodejs.org/api/stream.html]]
   */
 @js.native
-sealed trait Duplex extends js.Object with Readable with Writable
+trait Duplex extends js.Object with Readable with Writable

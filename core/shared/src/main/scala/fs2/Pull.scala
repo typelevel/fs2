@@ -813,6 +813,8 @@ object Pull extends PullLowPriority {
 
   private type Cont[-Y, +G[_], +X] = Terminal[Y] => Pull[G, X, Unit]
 
+  private[this] type Nought[A] = Any
+
   /* Left-folds the output of a stream in to a single value of type `B`.
    *
    * === Interruption ===
@@ -829,20 +831,20 @@ object Pull extends PullLowPriority {
   )(foldChunk: (B, Chunk[O]) => B)(implicit
       F: MonadError[F, Throwable]
   ): F[B] = {
-    var contP: ContP[Any, Nothing, INothing, Unit] = null
+    var contP: ContP[INothing, Nought, Any, Unit] = null
 
     @tailrec
     def viewL[G[_], X](free: Pull[G, X, Unit]): ViewL[G, X] =
       free match {
         case e: Action[G, X, Unit] =>
-          contP = IdContP.asInstanceOf[ContP[Any, Nothing, INothing, Unit]]
+          contP = IdContP
           e
         case b: Bind[G, X, y, Unit] =>
           b.step match {
             case c: Bind[G, X, x, _] =>
               viewL(new BindBind[G, X, x, y](c.step, c.delegate, b.delegate))
             case e: Action[G, X, y2] =>
-              contP = b.delegate.asInstanceOf[ContP[Any, Nothing, INothing, Unit]]
+              contP = b.delegate
               e
             case r: Terminal[_] => viewL(b.cont(r))
           }

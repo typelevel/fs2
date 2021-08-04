@@ -56,7 +56,7 @@ sealed trait TLSParameters {
   ): tlsMod.TLSSocketOptions = {
     val options = tlsMod.TLSSocketOptions()
     setCommonOptions(options, dispatcher)
-    session.map(_.toBuffer).foreach(options.setSession)
+    session.map(s => Chunk.byteVector(s.raw).toBuffer).foreach(options.setSession)
     requestOCSP.foreach(options.setRequestOCSP)
     options
   }
@@ -66,7 +66,7 @@ sealed trait TLSParameters {
   ): tlsMod.ConnectionOptions = {
     val options = tlsMod.ConnectionOptions()
     setCommonOptions(options, dispatcher)
-    session.map(_.toBuffer).foreach(options.setSession)
+    session.map(s => Chunk.byteVector(s.raw).toBuffer).foreach(options.setSession)
     pskCallback.map(_.toJS).foreach(options.setPskCallback(_))
     servername.foreach(options.setServername)
     checkServerIdentity.map(_.toJS).foreach(options.setCheckServerIdentity(_))
