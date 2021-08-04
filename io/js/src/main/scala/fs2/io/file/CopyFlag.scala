@@ -27,7 +27,7 @@ import cats.kernel.Monoid
 import fs2.internal.jsdeps.node.fsMod
 
 final class CopyFlag private (private val bits: Long) extends AnyVal {
-  def jsBits: Long = bits ^ ~CopyFlag.ReplaceExisting.bits // Toggle the inverted bit
+  def jsBits: Long = bits ^ CopyFlag.ReplaceExisting.bits // Toggle the inverted bit
 }
 
 object CopyFlag extends CopyFlagCompanionApi {

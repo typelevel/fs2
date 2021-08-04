@@ -84,7 +84,7 @@ private[unixsocket] trait UnixSocketsCompanionPlatform {
             )
             .concurrently(Stream.eval(errored.get.flatMap(F.raiseError[Unit])))
           _ <- Stream.bracket(
-            if (deleteIfExists) Files[F].deleteIfExists(Path(address.path)) else F.unit
+            if (deleteIfExists) Files[F].deleteIfExists(Path(address.path)).void else F.unit
           )(_ => if (deleteOnClose) Files[F].deleteIfExists(Path(address.path)).void else F.unit)
           _ <- Stream.eval(
             F

@@ -133,7 +133,7 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
   def list(path: Path): Stream[F, Path]
 
   def move(source: Path, target: Path): F[Unit] =
-    copy(source, target, CopyFlags.empty)
+    move(source, target, CopyFlags.empty)
 
   def move(source: Path, target: Path, flags: CopyFlags): F[Unit]
 
