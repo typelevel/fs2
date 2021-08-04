@@ -89,7 +89,9 @@ class WatcherSuite extends Fs2Suite with BaseFileSuite {
             .takeWhile(_ < 2)
             .concurrently(
               smallDelay ++ Stream
-                .exec(List(f1, f2).traverse(f => w.watch(f.toNioPath, modifiers = modifiers)).void) ++
+                .exec(
+                  List(f1, f2).traverse(f => w.watch(f.toNioPath, modifiers = modifiers)).void
+                ) ++
                 smallDelay ++ Stream.eval(modify(f1)) ++ smallDelay ++ Stream.eval(modify(f2))
             )
         }

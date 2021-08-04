@@ -254,8 +254,7 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
     test("should remove the file following stream closure") {
       Stream
         .resource {
-          Files[IO]
-            .tempFile
+          Files[IO].tempFile
             .evalMap(path => Files[IO].exists(path).tupleRight(path))
         }
         .compile
@@ -293,8 +292,7 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
 
       val files = Files[IO]
 
-      files
-        .tempFile
+      files.tempFile
         .use { file =>
           IO(System.getProperty("java.io.tmpdir")).flatMap(dir =>
             files.exists(Path(dir) / file.fileName)
@@ -308,8 +306,7 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
     test("should remove the directory following stream closure") {
       Stream
         .resource {
-          Files[IO]
-            .tempDirectory
+          Files[IO].tempDirectory
             .evalMap(path => Files[IO].exists(path).tupleRight(path))
         }
         .compile
@@ -347,8 +344,7 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
 
       val files = Files[IO]
 
-      files
-        .tempDirectory
+      files.tempDirectory
         .use { directory =>
           IO(System.getProperty("java.io.tmpdir")).flatMap(dir =>
             files.exists(Path(dir).resolve(directory.fileName))
@@ -477,7 +473,7 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
       .toList
       .map { results =>
         val sizes = results
-          .sortBy { case (path, _) => path } (Order[Path].toOrdering)
+          .sortBy { case (path, _) => path }(Order[Path].toOrdering)
           .map { case (_, size) => size }
 
         assertEquals(sizes.size, (totalBytes + rotateLimit - 1) / rotateLimit)
