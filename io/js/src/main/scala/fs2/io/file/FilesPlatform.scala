@@ -84,7 +84,7 @@ private[fs2] trait FilesCompanionPlatform {
         permissions: Option[Permissions]
     ): F[Path] =
       F.fromPromise(
-        F.delay(fsPromisesMod.mkdtemp((dir.getOrElse(Path(osMod.tmpdir())) / prefix).toString))
+        F.delay(fsPromisesMod.mkdtemp((dir.fold(osMod.tmpdir())(_.toString) + Path.sep + prefix)))
       ).map(Path(_))
         .flatTap { path =>
           permissions
@@ -185,7 +185,7 @@ private[fs2] trait FilesCompanionPlatform {
     override def isHidden(path: Path): F[Boolean] = F.pure {
       path.toString match {
         case HiddenPattern() => true
-        case _ => false
+        case _               => false
       }
     }
 

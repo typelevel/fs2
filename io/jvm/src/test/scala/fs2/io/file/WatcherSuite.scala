@@ -35,6 +35,7 @@ class WatcherSuite extends Fs2Suite with BaseFileSuite {
     test("for modifications") {
       Stream
         .resource(tempFile)
+        .map(_.toNioPath)
         .flatMap { f =>
           Files[IO]
             .watch(f, modifiers = modifiers)
@@ -45,7 +46,7 @@ class WatcherSuite extends Fs2Suite with BaseFileSuite {
               },
               true
             )
-            .concurrently(smallDelay ++ Stream.eval(modify(f)))
+            .concurrently(smallDelay ++ Stream.eval(modify(Path.fromNioPath(f))))
         }
         .compile
         .drain
@@ -53,6 +54,7 @@ class WatcherSuite extends Fs2Suite with BaseFileSuite {
     test("for deletions") {
       Stream
         .resource(tempFile)
+        .map(_.toNioPath)
         .flatMap { f =>
           Files[IO]
             .watch(f, modifiers = modifiers)
@@ -87,7 +89,9 @@ class WatcherSuite extends Fs2Suite with BaseFileSuite {
             .takeWhile(_ < 2)
             .concurrently(
               smallDelay ++ Stream
-                .exec(List(f1, f2).traverse(f => w.watch(f, modifiers = modifiers)).void) ++
+                .exec(
+                  List(f1, f2).traverse(f => w.watch(f.toNioPath, modifiers = modifiers)).void
+                ) ++
                 smallDelay ++ Stream.eval(modify(f1)) ++ smallDelay ++ Stream.eval(modify(f2))
             )
         }
@@ -129,6 +133,7 @@ class WatcherSuite extends Fs2Suite with BaseFileSuite {
     test("static recursive watching") {
       Stream
         .resource(tempDirectory)
+        .map(_.toNioPath)
         .flatMap { dir =>
           val a = dir.resolve("a")
           val b = a.resolve("b")
@@ -139,7 +144,7 @@ class WatcherSuite extends Fs2Suite with BaseFileSuite {
                 case Watcher.Event.Modified(_, _) => false
                 case _                            => true
               }
-              .concurrently(smallDelay ++ Stream.eval(modify(b)))
+              .concurrently(smallDelay ++ Stream.eval(modify(Path.fromNioPath(b))))
         }
         .compile
         .drain
@@ -147,6 +152,7 @@ class WatcherSuite extends Fs2Suite with BaseFileSuite {
     test("dynamic recursive watching") {
       Stream
         .resource(tempDirectory)
+        .map(_.toNioPath)
         .flatMap { dir =>
           val a = dir.resolve("a")
           val b = a.resolve("b")
