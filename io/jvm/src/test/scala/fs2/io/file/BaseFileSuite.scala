@@ -32,8 +32,6 @@ import java.nio.file.attribute.BasicFileAttributes
 import scala.concurrent.duration._
 
 trait BaseFileSuite extends Fs2Suite {
-  // TODO delete this
-  implicit def toNioPath(path: Path): JPath = path.toNioPath
 
   protected def tempDirectory: Resource[IO, Path] =
     Resource.make(IO(Path.fromNioPath(JFiles.createTempDirectory("BaseFileSpec"))))(
