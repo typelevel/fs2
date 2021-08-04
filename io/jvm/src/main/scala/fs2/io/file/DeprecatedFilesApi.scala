@@ -29,7 +29,7 @@ import cats.effect.kernel.{Async, Resource, Sync}
 import cats.syntax.all._
 
 import java.nio.file.{Files => JFiles, Path => JPath, _}
-import java.nio.file.attribute.{BasicFileAttributes, FileAttribute, PosixFilePermission}
+import java.nio.file.attribute.{FileAttribute, PosixFilePermission}
 import java.util.stream.{Stream => JStream}
 
 import fs2.io.CollectionCompat._
@@ -186,6 +186,7 @@ private[file] trait DeprecatedFilesApi[F[_]] { self: Files[F] =>
     *
     * Note: this will only work for POSIX supporting file systems.
     */
+  @deprecated("3.1.0", "Use getPosixPermissions")
   def permissions(path: JPath, flags: Seq[LinkOption] = Seq.empty): F[Set[PosixFilePermission]] =
     Sync[F].blocking(JFiles.getPosixFilePermissions(path, flags: _*).asScala)
 
@@ -218,6 +219,7 @@ private[file] trait DeprecatedFilesApi[F[_]] { self: Files[F] =>
     *
     * Note: this will only work for POSIX supporting file systems.
     */
+  @deprecated("3.1.0", "Use setPosixPermissions")
   def setPermissions(path: JPath, permissions: Set[PosixFilePermission]): F[JPath] =
     Sync[F].blocking(JFiles.setPosixFilePermissions(path, permissions.asJava))
 

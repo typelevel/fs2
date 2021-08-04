@@ -28,7 +28,7 @@ import cats.syntax.all._
 
 import java.nio.channels.FileChannel
 import java.nio.file.{Files => JFiles, Path => JPath, _}
-import java.nio.file.attribute.BasicFileAttributes
+import java.nio.file.attribute.{BasicFileAttributes, PosixFilePermissions}
 import java.util.stream.{Stream => JStream}
 
 import fs2.io.CollectionCompat._
@@ -73,9 +73,18 @@ private[file] trait FilesCompanionPlatform {
     ): F[Path] =
       (dir match {
         case Some(dir) =>
-          Sync[F].blocking(JFiles.createTempFile(dir.toNioPath, prefix, suffix, permissions.map(_.toNioFileAttribute).toSeq: _*))
+          Sync[F].blocking(
+            JFiles.createTempFile(
+              dir.toNioPath,
+              prefix,
+              suffix,
+              permissions.map(_.toNioFileAttribute).toSeq: _*
+            )
+          )
         case None =>
-          Sync[F].blocking(JFiles.createTempFile(prefix, suffix, permissions.map(_.toNioFileAttribute).toSeq: _*))
+          Sync[F].blocking(
+            JFiles.createTempFile(prefix, suffix, permissions.map(_.toNioFileAttribute).toSeq: _*)
+          )
       }).map(Path.fromNioPath)
 
     def createTempDirectory(
@@ -85,9 +94,17 @@ private[file] trait FilesCompanionPlatform {
     ): F[Path] =
       (dir match {
         case Some(dir) =>
-          Sync[F].blocking(JFiles.createTempDirectory(dir.toNioPath, prefix, permissions.map(_.toNioFileAttribute).toSeq: _*))
+          Sync[F].blocking(
+            JFiles.createTempDirectory(
+              dir.toNioPath,
+              prefix,
+              permissions.map(_.toNioFileAttribute).toSeq: _*
+            )
+          )
         case None =>
-          Sync[F].blocking(JFiles.createTempDirectory(prefix, permissions.map(_.toNioFileAttribute).toSeq: _*))
+          Sync[F].blocking(
+            JFiles.createTempDirectory(prefix, permissions.map(_.toNioFileAttribute).toSeq: _*)
+          )
       }).map(Path.fromNioPath)
 
     def delete(path: Path): F[Unit] =
@@ -126,6 +143,20 @@ private[file] trait FilesCompanionPlatform {
           path.toNioPath,
           (if (followLinks) Nil else Seq(LinkOption.NOFOLLOW_LINKS)): _*
         )
+      )
+
+    def getPosixPermissions(path: Path, followLinks: Boolean): F[PosixPermissions] =
+      Sync[F].blocking(
+        PosixPermissions
+          .fromString(
+            PosixFilePermissions.toString(
+              JFiles.getPosixFilePermissions(
+                path.toNioPath,
+                (if (followLinks) Nil else Seq(LinkOption.NOFOLLOW_LINKS)): _*
+              )
+            )
+          )
+          .get
       )
 
     def isDirectory(path: Path, followLinks: Boolean): F[Boolean] =
@@ -184,6 +215,16 @@ private[file] trait FilesCompanionPlatform {
 
     def openFileChannel(channel: F[FileChannel]): Resource[F, FileHandle[F]] =
       Resource.make(channel)(ch => Sync[F].blocking(ch.close())).map(ch => FileHandle.make(ch))
+
+    def setPosixPermissions(path: Path, permissions: PosixPermissions): F[Unit] =
+      Sync[F]
+        .blocking(
+          JFiles.setPosixFilePermissions(
+            path.toNioPath,
+            PosixFilePermissions.fromString(permissions.toString)
+          )
+        )
+        .void
 
     def size(path: Path): F[Long] =
       Sync[F].blocking(JFiles.size(path.toNioPath))

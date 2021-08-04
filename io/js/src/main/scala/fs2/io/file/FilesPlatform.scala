@@ -103,6 +103,8 @@ private[fs2] trait FilesCompanionPlatform {
       ).as(true)
         .recover { case _ => false }
 
+    override def getPosixPermissions(path: Path, followLinks: Boolean): F[PosixPermissions] = ???
+
     override def isDirectory(path: Path, followLinks: Boolean): F[Boolean] = ???
     override def isExecutable(path: Path): F[Boolean] = ???
     override def isHidden(path: Path): F[Boolean] = ???
@@ -163,6 +165,8 @@ private[fs2] trait FilesCompanionPlatform {
 
     override def readRange(path: Path, chunkSize: Int, start: Long, end: Long): Stream[F, Byte] =
       readStream(path, chunkSize, Flags.Read)(_.setStart(start.toDouble).setEnd((end - 1).toDouble))
+
+    override def setPosixPermissions(path: Path, permissions: PosixPermissions): F[Unit] = ???
 
     override def size(path: Path): F[Long] =
       F.fromPromise(F.delay(fsPromisesMod.stat(path.toString))).map(_.size.toLong).adaptError {

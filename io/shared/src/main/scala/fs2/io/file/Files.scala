@@ -108,6 +108,12 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
 
   def exists(path: Path, followLinks: Boolean): F[Boolean]
 
+  /** Gets the POSIX permissions of the specified file. */
+  def getPosixPermissions(path: Path): F[PosixPermissions] = getPosixPermissions(path, true)
+
+  /** Gets the POSIX permissions of the specified file. */
+  def getPosixPermissions(path: Path, followLinks: Boolean): F[PosixPermissions]
+
   def isDirectory(path: Path): F[Boolean] = isDirectory(path, true)
   def isDirectory(path: Path, followLinks: Boolean): F[Boolean]
   def isExecutable(path: Path): F[Boolean]
@@ -152,6 +158,8 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
     * two bytes are read.
     */
   def readRange(path: Path, chunkSize: Int, start: Long, end: Long): Stream[F, Byte]
+
+  def setPosixPermissions(path: Path, permissions: PosixPermissions): F[Unit]
 
   def size(path: Path): F[Long]
 
