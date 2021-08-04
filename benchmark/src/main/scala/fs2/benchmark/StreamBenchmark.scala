@@ -23,6 +23,7 @@ package fs2
 package benchmark
 
 import cats.effect.IO
+import cats.effect.std.Queue
 import cats.effect.unsafe.implicits.global
 import org.openjdk.jmh.annotations.{
   Benchmark,
@@ -33,11 +34,12 @@ import org.openjdk.jmh.annotations.{
   Scope,
   State
 }
+
 import java.util.concurrent.TimeUnit
 
 @State(Scope.Thread)
 class StreamBenchmark {
-  @Param(Array("10", "100", "1000", "10000"))
+  @Param(Array("1", "10", "100", "1000", "10000"))
   var n: Int = _
 
   @Benchmark
@@ -121,4 +123,17 @@ class StreamBenchmark {
   @Benchmark
   def evalMaps() =
     Stream.emits(0 until n).evalMapChunk(x => IO(x * 5)).compile.drain.unsafeRunSync()
+
+  @Benchmark
+  def queue() = {
+    val stream = for {
+      queue <- Stream.eval(Queue.unbounded[IO, Option[Int]])
+      par = Stream.emits(0 until n).repeatN(10).evalMap(x => queue.offer(Some(x))) ++ Stream.eval(
+        queue.offer(None)
+      )
+      _ <- Stream.eval(par.compile.drain.start)
+      _ <- Stream.fromQueueNoneTerminated(queue).map(x => x * 2)
+    } yield ()
+    stream.compile.drain.unsafeRunSync()
+  }
 }
