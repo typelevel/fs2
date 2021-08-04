@@ -23,4 +23,5 @@ package fs2.io.net
 
 package object tls {
   type SSLSession = javax.net.ssl.SSLSession
+  type SSLException = javax.net.ssl.SSLException
 }

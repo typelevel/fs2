@@ -34,6 +34,36 @@ object FileSystemException {
       .unapply(cause)
       .orElse(NoSuchFileException.unapply(cause))
       .orElse(NotDirectoryException.unapply(cause))
+      .orElse(DirectoryNotEmptyException.unapply(cause))
+      .orElse(AccessDeniedException.unapply(cause))
+}
+
+class AccessDeniedException(message: String = null, cause: Throwable = null)
+    extends FileSystemException(message, cause)
+private class JavaScriptAccessDeniedException(cause: js.JavaScriptException)
+    extends AccessDeniedException(cause = cause)
+    with NoStackTrace
+object AccessDeniedException {
+  private[file] def unapply(cause: js.JavaScriptException): Option[AccessDeniedException] =
+    cause match {
+      case js.JavaScriptException(error: js.Error) if error.message.contains("EACCES") =>
+        Some(new JavaScriptAccessDeniedException(cause))
+      case _ => None
+    }
+}
+
+class DirectoryNotEmptyException(message: String = null, cause: Throwable = null)
+    extends FileSystemException(message, cause)
+private class JavaScriptDirectoryNotEmptyException(cause: js.JavaScriptException)
+    extends DirectoryNotEmptyException(cause = cause)
+    with NoStackTrace
+object DirectoryNotEmptyException {
+  private[file] def unapply(cause: js.JavaScriptException): Option[DirectoryNotEmptyException] =
+    cause match {
+      case js.JavaScriptException(error: js.Error) if error.message.contains("ENOTEMPTY") =>
+        Some(new JavaScriptDirectoryNotEmptyException(cause))
+      case _ => None
+    }
 }
 
 class FileAlreadyExistsException(message: String = null, cause: Throwable = null)
