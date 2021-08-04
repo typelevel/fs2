@@ -128,12 +128,6 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
     */
   def list(path: Path): Stream[F, Path]
 
-  /** Gets the contents of the specified directory whose paths match the supplied glob pattern.
-    *
-    * Example glob patterns: `*.scala`, `*.{scala,java}`
-    */
-  def list(path: Path, glob: String): Stream[F, Path]
-
   def move(source: Path, target: Path): F[Unit] =
     copy(source, target, CopyFlags.empty)
 

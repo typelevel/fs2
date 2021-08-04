@@ -38,6 +38,12 @@ private[file] trait FilesPlatform[F[_]] extends DeprecatedFilesApi[F] { self: Fi
   /** Creates a `FileHandle` for the supplied NIO `FileChannel`. */
   def openFileChannel(channel: F[FileChannel]): Resource[F, FileHandle[F]]
 
+  /** Gets the contents of the specified directory whose paths match the supplied glob pattern.
+    *
+    * Example glob patterns: `*.scala`, `*.{scala,java}`
+    */
+  def list(path: Path, glob: String): Stream[F, Path]
+
 }
 
 private[file] trait FilesCompanionPlatform {

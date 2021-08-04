@@ -32,12 +32,15 @@ class PosixPermissionsSuite extends Fs2Suite {
       "775" -> "rwxrwxr-x",
       "770" -> "rwxrwx---",
       "510" -> "r-x--x---",
-      "640" -> "rw-r-----",
+      "640" -> "rw-r-----"
     )
     cases.foreach { case (octal, str) =>
       assertEquals(PosixPermissions.fromOctal(octal), PosixPermissions.fromString(str))
       assertEquals(PosixPermissions.fromOctal(octal).getOrElse("").toString, str)
-      assertEquals(PosixPermissions.fromOctal(octal).map(_.value), PosixPermissions.fromString(str).map(_.value))
+      assertEquals(
+        PosixPermissions.fromOctal(octal).map(_.value),
+        PosixPermissions.fromString(str).map(_.value)
+      )
     }
   }
 
