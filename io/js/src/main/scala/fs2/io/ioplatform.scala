@@ -213,7 +213,10 @@ private[fs2] trait ioplatform {
               .setDestroy { (_, err, cb) =>
                 dispatcher.unsafeRunAndForget {
                   error
-                    .complete(js.JavaScriptException(err))
+                    .complete(
+                      Option(err)
+                        .fold[Exception](new StreamDestroyedException)(js.JavaScriptException(_))
+                    )
                     .attempt
                     .flatMap(e =>
                       F.delay(
