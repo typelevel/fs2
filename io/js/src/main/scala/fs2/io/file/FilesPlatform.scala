@@ -181,8 +181,13 @@ private[fs2] trait FilesCompanionPlatform {
     override def isExecutable(path: Path): F[Boolean] =
       access(path, fsMod.constants.X_OK)
 
-    private val hiddenPattern = raw"/(^|\/)\.[^\/\.]/g".r
-    override def isHidden(path: Path): F[Boolean] = F.pure(hiddenPattern.matches(path.toString))
+    private val HiddenPattern = raw"/(^|\/)\.[^\/\.]/g".r
+    override def isHidden(path: Path): F[Boolean] = F.pure {
+      path.toString match {
+        case HiddenPattern() => true
+        case _ => false
+      }
+    }
 
     override def isReadable(path: Path): F[Boolean] =
       access(path, fsMod.constants.R_OK)
