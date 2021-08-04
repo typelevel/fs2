@@ -26,22 +26,18 @@ package file
 import cats.effect.IO
 import cats.effect.Resource
 import cats.syntax.all._
+import fs2.internal.jsdeps.node.fsPromisesMod
+import fs2.internal.jsdeps.node.osMod
 
 import scala.concurrent.duration._
-import fs2.internal.jsdeps.node.osMod
-import fs2.internal.jsdeps.node.fsMod
-import fs2.internal.jsdeps.node.fsPromisesMod
 
 trait BaseFileSuite {
   import Files._
 
+  protected def defaultTempDirectory = IO(Path(osMod.tmpdir()))
+
   protected def tempDirectory: Resource[IO, Path] =
-    Resource
-      .make(IO.fromPromise(IO(fsPromisesMod.mkdtemp(osMod.tmpdir() + "/")))) { path =>
-        IO.fromPromise(IO(fsPromisesMod.rm(path, fsMod.RmOptions().setRecursive(true))))
-      }
-      .map(_.asInstanceOf[String] + "/")
-      .map(Path(_))
+    Files[IO].tempDirectory
 
   protected def tempFile: Resource[IO, Path] =
     tempDirectory.evalMap(aFile)
@@ -69,8 +65,8 @@ trait BaseFileSuite {
     }
 
   protected def aFile(dir: Path): IO[Path] =
-    IO.fromPromise(IO(fsPromisesMod.mkdtemp(dir.toString)))
-      .map(Path(_))
+    Files[IO]
+      .createTempDirectory(Some(dir), "", None)
       .map(_ / Path("BaseFileSpec.tmp"))
       .flatTap(Files[IO].open(_, Flags.Write).use(_ => IO.unit))
 
@@ -91,5 +87,5 @@ trait BaseFileSuite {
       .through(Files[IO].writeAll(file, Flags.Append))
 
   protected def deleteDirectoryRecursively(dir: Path): IO[Unit] =
-    IO.fromPromise(IO(fsPromisesMod.rm(dir.toString, fsMod.RmOptions().setRecursive(true)))).void
+    Files[IO].deleteRecursively(dir)
 }

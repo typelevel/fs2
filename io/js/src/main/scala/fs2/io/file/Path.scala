@@ -71,5 +71,11 @@ final case class Path private (override val toString: String) extends PathApi {
 }
 
 object Path extends PathCompanionApi {
-  def apply(path: String): Path = new Path(path)
+  private[file] val sep = pathMod.sep
+
+  def apply(path: String): Path =
+    if (path.endsWith(sep))
+      new Path(path.dropRight(sep.length))
+    else
+      new Path(path)
 }

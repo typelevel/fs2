@@ -28,6 +28,7 @@ import cats.syntax.all._
 
 import scala.concurrent.duration._
 import cats.kernel.Order
+import cats.Monad
 
 class FilesSuite extends Fs2Suite with BaseFileSuite {
 
@@ -282,7 +283,8 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
           files
             .tempFile(Some(tempDir), "", "", None)
             .use { file =>
-              files.exists(tempDir / file.fileName)
+              // files.exists(tempDir / file.fileName)
+              IO.pure(Monad[Option].iterateUntilM(file)(_.parent)(_ == tempDir).isDefined)
             }
         }
         .assertEquals(true)
@@ -294,8 +296,9 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
 
       files.tempFile
         .use { file =>
-          IO(System.getProperty("java.io.tmpdir")).flatMap(dir =>
-            files.exists(Path(dir) / file.fileName)
+          defaultTempDirectory.map(dir =>
+            // files.exists(dir / file.fileName)
+            Monad[Option].iterateUntilM(file)(_.parent)(_ == dir).isDefined
           )
         }
         .assertEquals(true)
@@ -346,9 +349,7 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
 
       files.tempDirectory
         .use { directory =>
-          IO(System.getProperty("java.io.tmpdir")).flatMap(dir =>
-            files.exists(Path(dir).resolve(directory.fileName))
-          )
+          defaultTempDirectory.flatMap(dir => files.exists(dir / directory.fileName))
         }
         .assertEquals(true)
     }
