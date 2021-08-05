@@ -42,9 +42,9 @@ object BasicFileAttributes {
   private[file] trait UnsealedBasicFileAttributes extends BasicFileAttributes
 }
 
-sealed trait PosixFileAttributes {
+sealed trait PosixFileAttributes extends BasicFileAttributes {
+  def owner: Principal
   def group: Principal
-  def user: Principal
   def permissions: PosixPermissions
 }
 

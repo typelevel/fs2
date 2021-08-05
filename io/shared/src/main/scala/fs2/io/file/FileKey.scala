@@ -23,8 +23,5 @@ package fs2
 package io
 package file
 
-trait FileKey {
-  def toString: String
-  def hashCode: Int
-  def equals(other: Any): Boolean
-}
+/** Opaque identifier for a file -- supplies a sensible equals/hashCode/toString. */
+trait FileKey
