@@ -280,7 +280,7 @@ private[fs2] trait FilesCompanionPlatform {
       readStream(path, chunkSize, Flags.Read)(_.setStart(start.toDouble).setEnd((end - 1).toDouble))
 
     override def setLastModifiedTime(path: Path, timestamp: FiniteDuration): F[Unit] =
-      stat(path, false).map { stats =>
+      stat(path, false).flatMap { stats =>
         F.fromPromise(
           F.delay(fsPromisesMod.utimes(path.toString, stats.atimeMs, timestamp.toMillis.toDouble))
         )
