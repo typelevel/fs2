@@ -167,6 +167,23 @@ private[fs2] trait FilesCompanionPlatform {
           false
         }
 
+    override def getBasicFileAttributes(path: Path, followLinks: Boolean): F[BasicFileAttributes] =
+      stat(path, followLinks).map { stats =>
+        new BasicFileAttributes.UnsealedBasicFileAttributes {
+          def creationTime: FiniteDuration = stats.ctimeMs.milliseconds
+          def fileKey: Option[FileKey] = if (stats.dev != 0 || stats.ino != 0)
+            Some(PosixFileKey(stats.dev.toLong, stats.ino.toLong))
+          else None
+          def isDirectory: Boolean = stats.isDirectory()
+          def isOther: Boolean = !isDirectory && !isRegularFile && !isSymbolicLink
+          def isRegularFile: Boolean = stats.isFile()
+          def isSymbolicLink: Boolean = stats.isSymbolicLink()
+          def lastAccessTime: FiniteDuration = stats.atimeMs.milliseconds
+          def lastModifiedTime: FiniteDuration = stats.mtimeMs.milliseconds
+          def size: Long = stats.size.toLong
+        }
+      }
+
     override def getLastModifiedTime(path: Path, followLinks: Boolean): F[FiniteDuration] =
       stat(path, followLinks).map { stats =>
         stats.mtimeMs.milliseconds
