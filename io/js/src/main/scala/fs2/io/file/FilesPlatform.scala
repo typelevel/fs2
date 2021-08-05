@@ -330,43 +330,6 @@ private[fs2] trait FilesCompanionPlatform {
     override def size(path: Path): F[Long] =
       stat(path).map(_.size.toLong)
 
-    override def walk(start: Path, maxDepth: Int, followLinks: Boolean): Stream[F, Path] = {
-
-      def go(start: Path, maxDepth: Int, ancestry: List[(Double, Double)]): Stream[F, Path] =
-        if (maxDepth == 0)
-          Stream.eval(exists(start, followLinks)).as(start)
-        else
-          Stream.eval(stat(start, followLinks = false)).flatMap { stats =>
-            (if (stats.isDirectory())
-               list(start)
-                 .flatMap { path =>
-                   go(path, maxDepth - 1, (stats.dev, stats.ino) :: ancestry)
-                 }
-                 .recoverWith { case _ =>
-                   Stream.empty
-                 }
-             else if (stats.isSymbolicLink() && followLinks)
-               Stream.eval(stat(start, followLinks = true)).flatMap { stats =>
-                 if (!ancestry.contains((stats.dev, stats.ino)))
-                   list(start)
-                     .flatMap { path =>
-                       go(path, maxDepth - 1, (stats.dev, stats.ino) :: ancestry)
-                     }
-                     .recoverWith { case _ =>
-                       Stream.empty
-                     }
-                 else
-                   Stream.raiseError(new FileSystemLoopException(start.toString))
-               }
-             else
-               Stream.empty) ++ Stream.emit(start)
-          }
-
-      Stream.eval(stat(start, followLinks)).flatMap { _ =>
-        go(start, maxDepth, Nil)
-      }
-    }
-
     override def writeAll(path: Path, flags: Flags): Pipe[F, Byte, INothing] =
       in =>
         in.through {
@@ -396,7 +359,5 @@ private[fs2] trait FilesCompanionPlatform {
             }
           )
         }
-
   }
-
 }

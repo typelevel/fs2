@@ -36,17 +36,33 @@ import scala.concurrent.duration._
   */
 sealed trait Files[F[_]] extends FilesPlatform[F] {
 
+  /** Copies the source to the target, failing if source does not exist or the target already exists.
+    * To replace the existing instead, use `copy(source, target, CopyFlags(CopyFlag.ReplaceExisting))`.
+    */
   def copy(source: Path, target: Path): F[Unit] =
     copy(source, target, CopyFlags.empty)
 
+  /** Copies the source to the target, following any directives supplied in the flags.
+    * By default, an error occurs if the target already exists, though this can be overriden via `CopyFlag.ReplaceExisting`.
+    */
   def copy(source: Path, target: Path, flags: CopyFlags): F[Unit]
 
+  /** Creates the specified directory. Fails if the parent path does not already exist.
+    */
   def createDirectory(path: Path): F[Unit] = createDirectory(path, None)
 
+  /** Creates the specified directory with the specified permissions. Fails if the parent path does not already exist.
+    */
   def createDirectory(path: Path, permissions: Option[Permissions]): F[Unit]
 
+  /** Creates the specified directory and any non-existant parent directories. */
   def createDirectories(path: Path): F[Unit] = createDirectories(path, None)
 
+  /** Creates the specified directory and any parent directories, using the supplied permissions for any directories
+    * that get created as a result of this operation. For example if `/a` exists and
+    * `createDirectories(Path("/a/b/c"), Some(p))` is called, `/a/b` and `/a/b/c` are created with permissions set
+    * to `p` on each (and the permissions of `/a` remain unmodified).
+    */
   def createDirectories(path: Path, permissions: Option[Permissions]): F[Unit]
 
   /** Creates a temporary file.
@@ -59,10 +75,10 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
     * The created file is not automatically deleted - it is up to the operating system to decide when the file is deleted.
     * Alternatively, use `tempFile` to get a resource which deletes upon resource finalization.
     *
-    * @param dir the directory which the temporary file will be created in. Pass in None to use the default system temp directory
+    * @param dir the directory which the temporary file will be created in. Pass none to use the default system temp directory
     * @param prefix the prefix string to be used in generating the file's name
     * @param suffix the suffix string to be used in generating the file's name
-    * @param attributes an optional list of file attributes to set atomically when creating the file
+    * @param permissions permissions to set on the created file
     */
   def createTempFile(
       dir: Option[Path],
@@ -81,9 +97,9 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
     * The created directory is not automatically deleted - it is up to the operating system to decide when the file is deleted.
     * Alternatively, use `tempDirectory` to get a resource which deletes upon resource finalization.
     *
-    * @param dir the directory which the temporary directory will be created in. Pass in None to use the default system temp directory
+    * @param dir the directory which the temporary directory will be created in. Pass none to use the default system temp directory
     * @param prefix the prefix string to be used in generating the directory's name
-    * @param attributes an optional list of file attributes to set atomically when creating the directory
+    * @param permissions permissions to set on the created directory
     */
   def createTempDirectory(
       dir: Option[Path],
@@ -91,25 +107,44 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
       permissions: Option[Permissions]
   ): F[Path]
 
+  /** Deletes the specified file or empty directory, failing if it does not exist. */
   def delete(path: Path): F[Unit]
 
+  /** Deletes the specified file or empty directory, passing if it does not exist. */
   def deleteIfExists(path: Path): F[Boolean]
 
+  /** Deletes the specified file or directory.
+    * If the path is a directory and is non-empty, its contents are recursively deleted.
+    * Symbolic links are not followed (but are deleted).
+    */
   def deleteRecursively(
       path: Path
   ): F[Unit] = deleteRecursively(path, false)
 
+  /** Deletes the specified file or directory.
+    * If the path is a directory and is non-empty, its contents are recursively deleted.
+    * Symbolic links are followed when `followLinks` is true.
+    */
   def deleteRecursively(
       path: Path,
       followLinks: Boolean
   ): F[Unit]
 
+  /** Returns true if the specified path exists.
+    * Symbolic links are followed -- see the overload for more details on links.
+    */
   def exists(path: Path): F[Boolean] = exists(path, true)
 
+  /** Returns true if the specified path exists.
+    * Symbolic links are followed -- used the overload.
+    * For example, if the symbolic link `foo` points to `bar` and `bar` does not exist,
+    * `exists(Path("foo"), true)` returns `false` but `exists(Path("foo"), false)` returns `true`.
+    */
   def exists(path: Path, followLinks: Boolean): F[Boolean]
 
   def getBasicFileAttributes(path: Path): F[BasicFileAttributes] =
     getBasicFileAttributes(path, false)
+
   def getBasicFileAttributes(path: Path, followLinks: Boolean): F[BasicFileAttributes]
 
   def getLastModifiedTime(path: Path): F[FiniteDuration] = getLastModifiedTime(path, true)
