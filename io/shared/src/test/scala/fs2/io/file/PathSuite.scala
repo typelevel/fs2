@@ -23,7 +23,23 @@ package fs2
 package io
 package file
 
+import org.scalacheck.Arbitrary
+import org.scalacheck.Gen
+import cats.kernel.laws.discipline.MonoidTests
+import cats.kernel.laws.discipline.OrderTests
+import cats.kernel.laws.discipline.HashTests
+import org.scalacheck.Cogen
+
 class PathSuite extends Fs2Suite {
+
+  implicit val arbitraryPath: Arbitrary[Path] = Arbitrary(for {
+    names <- Gen.listOf(Gen.alphaNumStr)
+    root <- Gen.oneOf("/", "")
+  } yield names.foldLeft(Path(root))((p, n) => p / Path(n)))
+
+  implicit val cogenPath: Cogen[Path] =
+    Cogen.cogenList[String].contramap(_.names.map(_.toString).toList)
+
   test("construction") {
     assertEquals(Path("foo/bar"), Path("foo") / "bar")
     assertEquals(Path("/foo/bar"), Path("/foo") / "bar")
@@ -43,4 +59,8 @@ class PathSuite extends Fs2Suite {
     assertEquals(Path(".index").extName, "")
     assertEquals(Path(".index.md").extName, ".md")
   }
+
+  checkAll("Monoid[Path]", MonoidTests[Path].monoid)
+  checkAll("Order[Path]", OrderTests[Path].order)
+  checkAll("Hash[Path]", HashTests[Path].hash)
 }

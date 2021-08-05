@@ -29,7 +29,12 @@ import scala.annotation.tailrec
 
 final case class Path private (override val toString: String) extends PathApi {
 
-  def /(name: String): Path = Path(pathMod.join(toString, name))
+  def /(name: String): Path =
+    if (toString.isEmpty & name.isEmpty)
+      Path.instances.empty // Special case to satisfy Monoid laws
+    else
+      Path(pathMod.join(toString, name))
+
   def /(path: Path): Path = this / path.toString
 
   def resolve(name: String): Path = resolve(Path(name))
