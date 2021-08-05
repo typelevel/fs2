@@ -394,7 +394,7 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
     }
   }
 
-  group("directoryStream") {
+  group("list") {
     test("returns an empty Stream on an empty directory") {
       tempDirectory
         .use { path =>
@@ -418,6 +418,15 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
         .compile
         .fold(true)(_ & _)
         .assertEquals(true)
+    }
+
+    test("fail for non-directory") {
+      Stream
+        .resource(tempFile)
+        .flatMap(Files[IO].list)
+        .compile
+        .drain
+        .intercept[NotDirectoryException]
     }
   }
 
