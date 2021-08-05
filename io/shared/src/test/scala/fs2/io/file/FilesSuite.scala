@@ -165,6 +165,15 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
         }
         .assertEquals(permissions)
     }
+    test("innappropriate access should raise AccessDeniedException") {
+      val permissions = PosixPermissions.fromString("r--r--r--").get
+      tempFile
+        .use { p =>
+          Files[IO].setPosixPermissions(p, permissions) >>
+            Files[IO].open(p, Flags.Write).use_.void
+        }
+        .intercept[AccessDeniedException]
+    }
   }
 
   group("setPermissions") {
