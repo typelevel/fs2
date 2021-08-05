@@ -284,7 +284,7 @@ private[fs2] trait FilesCompanionPlatform {
         F.fromPromise(
           F.delay(fsPromisesMod.utimes(path.toString, stats.atimeMs, timestamp.toMillis.toDouble))
         )
-      }
+      }.adaptError { case IOException(ex) => ex }
 
     override def setPosixPermissions(path: Path, permissions: PosixPermissions): F[Unit] =
       F.fromPromise(F.delay(fsPromisesMod.chmod(path.toString, permissions.value.toDouble)))
