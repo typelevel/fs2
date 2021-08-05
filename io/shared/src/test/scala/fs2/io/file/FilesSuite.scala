@@ -215,7 +215,12 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
     test("should fail on a non existent file") {
       Files[IO]
         .delete(Path("nothing"))
-        .intercept[Throwable]
+        .intercept[NoSuchFileException]
+    }
+    test("should fail on a non empty directory") {
+      tempFilesHierarchy.use { p =>
+        Files[IO].delete(p).intercept[DirectoryNotEmptyException]
+      }
     }
   }
 
