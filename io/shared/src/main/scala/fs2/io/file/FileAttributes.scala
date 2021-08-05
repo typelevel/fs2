@@ -26,6 +26,11 @@ package file
 import scala.concurrent.duration.FiniteDuration
 import java.security.Principal
 
+/**
+ * Attributes of a file that are provided by most operating systems and file systems.
+ * 
+ * To get an instance of `BasicFileAttributes`, use `Files[F].getBasicFileAttributes(path)`.
+ */
 sealed trait BasicFileAttributes {
   def creationTime: FiniteDuration
   def fileKey: Option[FileKey]
