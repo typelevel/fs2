@@ -136,7 +136,7 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
   def exists(path: Path): F[Boolean] = exists(path, true)
 
   /** Returns true if the specified path exists.
-    * Symbolic links are followed -- used the overload.
+    * Symbolic links are followed when `followLinks` is true.
     * For example, if the symbolic link `foo` points to `bar` and `bar` does not exist,
     * `exists(Path("foo"), true)` returns `false` but `exists(Path("foo"), false)` returns `true`.
     */
