@@ -34,8 +34,12 @@ import scala.concurrent.duration._
 package object file {
 
   type FileSystemException = java.nio.file.FileSystemException
+  type AccessDeniedException = java.nio.file.AccessDeniedException
+  type DirectoryNotEmptyException = java.nio.file.DirectoryNotEmptyException
   type FileAlreadyExistsException = java.nio.file.FileAlreadyExistsException
+  type FileSystemLoopException = java.nio.file.FileSystemLoopException
   type NoSuchFileException = java.nio.file.NoSuchFileException
+  type NotDirectoryException = java.nio.file.NotDirectoryException
 
   @deprecated("Use Files[F].readAll", "3.0.0")
   def readAll[F[_]: Async](

@@ -26,6 +26,7 @@ package object net {
   type SocketException = java.net.SocketException
   type BindException = java.net.BindException
   type ConnectException = java.net.ConnectException
+  type SocketTimeoutException = java.net.SocketTimeoutException
   type UnknownHostException = java.net.UnknownHostException
   type DatagramSocketOption = SocketOption
   val DatagramSocketOption = SocketOption
