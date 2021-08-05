@@ -108,12 +108,17 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
 
   def exists(path: Path, followLinks: Boolean): F[Boolean]
 
-  def getBasicFileAttributes(path: Path): F[BasicFileAttributes] = getBasicFileAttributes(path, false)
+  def getBasicFileAttributes(path: Path): F[BasicFileAttributes] =
+    getBasicFileAttributes(path, false)
   def getBasicFileAttributes(path: Path, followLinks: Boolean): F[BasicFileAttributes]
 
   def getLastModifiedTime(path: Path): F[FiniteDuration] = getLastModifiedTime(path, true)
 
   def getLastModifiedTime(path: Path, followLinks: Boolean): F[FiniteDuration]
+
+  def getPosixFileAttributes(path: Path): F[PosixFileAttributes] =
+    getPosixFileAttributes(path, false)
+  def getPosixFileAttributes(path: Path, followLinks: Boolean): F[PosixFileAttributes]
 
   /** Gets the POSIX permissions of the specified file. */
   def getPosixPermissions(path: Path): F[PosixPermissions] = getPosixPermissions(path, true)
@@ -159,6 +164,14 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
     * two bytes are read.
     */
   def readRange(path: Path, chunkSize: Int, start: Long, end: Long): Stream[F, Byte]
+
+  def setFileTimes(
+      path: Path,
+      lastModified: Option[FiniteDuration],
+      lastAccess: Option[FiniteDuration],
+      create: Option[FiniteDuration],
+      followLinks: Boolean
+  ): F[Unit]
 
   def setLastModifiedTime(path: Path, timestamp: FiniteDuration): F[Unit]
 
@@ -364,8 +377,6 @@ object Files extends FilesCompanionPlatform {
 
       Stream.eval(getBasicFileAttributes(start, followLinks)) >> go(start, maxDepth, Nil)
     }
-
-
 
     def writeAll(
         path: Path,

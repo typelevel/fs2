@@ -28,7 +28,13 @@ import cats.syntax.all._
 
 import java.nio.channels.FileChannel
 import java.nio.file.{Files => JFiles, Path => JPath, _}
-import java.nio.file.attribute.{BasicFileAttributes => JBasicFileAttributes, PosixFilePermissions}
+import java.nio.file.attribute.{
+  BasicFileAttributes => JBasicFileAttributes,
+  BasicFileAttributeView,
+  PosixFileAttributes => JPosixFileAttributes,
+  PosixFilePermissions
+}
+import java.security.Principal
 import java.util.stream.{Stream => JStream}
 
 import scala.concurrent.duration._
@@ -51,6 +57,8 @@ private[file] trait FilesPlatform[F[_]] extends DeprecatedFilesApi[F] { self: Fi
 private[file] trait FilesCompanionPlatform {
 
   implicit def forAsync[F[_]: Async]: Files[F] = new AsyncFiles[F]
+
+  private case class NioFileKey(value: AnyRef) extends FileKey
 
   private final class AsyncFiles[F[_]](protected implicit val F: Async[F])
       extends Files.UnsealedFiles[F] {
@@ -155,22 +163,25 @@ private[file] trait FilesCompanionPlatform {
 
     def getBasicFileAttributes(path: Path, followLinks: Boolean): F[BasicFileAttributes] =
       Sync[F].blocking(
-        basicFileAttributes(JFiles.readAttributes(path.toNioPath, classOf[JBasicFileAttributes], (if (followLinks) Nil else Seq(LinkOption.NOFOLLOW_LINKS)): _*))
+        new DelegatingBasicFileAttributes(
+          JFiles.readAttributes(
+            path.toNioPath,
+            classOf[JBasicFileAttributes],
+            (if (followLinks) Nil else Seq(LinkOption.NOFOLLOW_LINKS)): _*
+          )
+        )
       )
 
-    private case class NioFileKey(value: AnyRef) extends FileKey
-
-    private def basicFileAttributes(attr: JBasicFileAttributes): BasicFileAttributes = new BasicFileAttributes.UnsealedBasicFileAttributes {
-      def creationTime = attr.creationTime.toMillis.millis
-      def fileKey = Option(attr.fileKey).map(NioFileKey(_))
-      def isDirectory = attr.isDirectory()
-      def isOther = attr.isOther()
-      def isRegularFile = attr.isRegularFile()
-      def isSymbolicLink = attr.isSymbolicLink()
-      def lastAccessTime = attr.lastAccessTime.toMillis.millis
-      def lastModifiedTime = attr.lastModifiedTime.toMillis.millis
-      def size = attr.size
-    }
+    def getPosixFileAttributes(path: Path, followLinks: Boolean): F[PosixFileAttributes] =
+      Sync[F].blocking(
+        new DelegatingPosixFileAttributes(
+          JFiles.readAttributes(
+            path.toNioPath,
+            classOf[JPosixFileAttributes],
+            (if (followLinks) Nil else Seq(LinkOption.NOFOLLOW_LINKS)): _*
+          )
+        )
+      )
 
     def getLastModifiedTime(path: Path, followLinks: Boolean): F[FiniteDuration] =
       Sync[F].blocking(
@@ -248,6 +259,24 @@ private[file] trait FilesCompanionPlatform {
     def openFileChannel(channel: F[FileChannel]): Resource[F, FileHandle[F]] =
       Resource.make(channel)(ch => Sync[F].blocking(ch.close())).map(ch => FileHandle.make(ch))
 
+    def setFileTimes(
+        path: Path,
+        lastModified: Option[FiniteDuration],
+        lastAccess: Option[FiniteDuration],
+        create: Option[FiniteDuration],
+        followLinks: Boolean
+    ): F[Unit] =
+      Sync[F].blocking {
+        val view = JFiles.getFileAttributeView(
+          path.toNioPath,
+          classOf[BasicFileAttributeView],
+          (if (followLinks) Nil else Seq(LinkOption.NOFOLLOW_LINKS)): _*
+        )
+        def toFileTime(opt: Option[FiniteDuration]): FileTime =
+          opt.map(d => FileTime.fromMillis(d.toMillis)).orNull
+        view.setTimes(toFileTime(lastModified), toFileTime(lastAccess), toFileTime(create))
+      }
+
     def setLastModifiedTime(path: Path, timestamp: FiniteDuration): F[Unit] =
       Sync[F]
         .blocking(
@@ -268,18 +297,6 @@ private[file] trait FilesCompanionPlatform {
     def size(path: Path): F[Long] =
       Sync[F].blocking(JFiles.size(path.toNioPath))
 
-    // def walk(start: Path, maxDepth: Int, followLinks: Boolean): Stream[F, Path] =
-    //   _runJavaCollectionResource[JStream[JPath]](
-    //     Sync[F].blocking(
-    //       JFiles.walk(
-    //         start.toNioPath,
-    //         maxDepth,
-    //         (if (followLinks) Seq(FileVisitOption.FOLLOW_LINKS) else Nil): _*
-    //       )
-    //     ),
-    //     _.iterator.asScala
-    //   ).map(Path.fromNioPath)
-
     private final val pathStreamChunkSize = 16
     protected def _runJavaCollectionResource[C <: AutoCloseable](
         javaCollection: F[C],
@@ -288,5 +305,26 @@ private[file] trait FilesCompanionPlatform {
       Stream
         .resource(Resource.fromAutoCloseable(javaCollection))
         .flatMap(ds => Stream.fromBlockingIterator[F](collectionIterator(ds), pathStreamChunkSize))
+  }
+
+  private class DelegatingBasicFileAttributes(attr: JBasicFileAttributes)
+      extends BasicFileAttributes.UnsealedBasicFileAttributes {
+    def creationTime = attr.creationTime.toMillis.millis
+    def fileKey = Option(attr.fileKey).map(NioFileKey(_))
+    def isDirectory = attr.isDirectory
+    def isOther = attr.isOther
+    def isRegularFile = attr.isRegularFile
+    def isSymbolicLink = attr.isSymbolicLink
+    def lastAccessTime = attr.lastAccessTime.toMillis.millis
+    def lastModifiedTime = attr.lastModifiedTime.toMillis.millis
+    def size = attr.size
+  }
+
+  private class DelegatingPosixFileAttributes(attr: JPosixFileAttributes)
+      extends DelegatingBasicFileAttributes(attr)
+      with PosixFileAttributes.UnsealedPosixFileAttributes {
+    def owner: Principal = attr.owner
+    def group: Principal = attr.group
+    def permissions: PosixPermissions = PosixPermissions.fromString(attr.permissions.toString).get
   }
 }
