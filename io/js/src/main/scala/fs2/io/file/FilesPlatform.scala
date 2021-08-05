@@ -280,11 +280,13 @@ private[fs2] trait FilesCompanionPlatform {
       readStream(path, chunkSize, Flags.Read)(_.setStart(start.toDouble).setEnd((end - 1).toDouble))
 
     override def setLastModifiedTime(path: Path, timestamp: FiniteDuration): F[Unit] =
-      stat(path, false).flatMap { stats =>
-        F.fromPromise(
-          F.delay(fsPromisesMod.utimes(path.toString, stats.atimeMs, timestamp.toMillis.toDouble))
-        )
-      }.adaptError { case IOException(ex) => ex }
+      stat(path, false)
+        .flatMap { stats =>
+          F.fromPromise(
+            F.delay(fsPromisesMod.utimes(path.toString, stats.atimeMs, timestamp.toMillis.toDouble))
+          )
+        }
+        .adaptError { case IOException(ex) => ex }
 
     override def setPosixPermissions(path: Path, permissions: PosixPermissions): F[Unit] =
       F.fromPromise(F.delay(fsPromisesMod.chmod(path.toString, permissions.value.toDouble)))

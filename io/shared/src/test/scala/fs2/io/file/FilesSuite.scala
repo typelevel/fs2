@@ -24,11 +24,10 @@ package io
 package file
 
 import cats.effect.IO
+import cats.kernel.Order
 import cats.syntax.all._
 
 import scala.concurrent.duration._
-import cats.kernel.Order
-import cats.Monad
 
 class FilesSuite extends Fs2Suite with BaseFileSuite {
 
@@ -284,7 +283,7 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
             .tempFile(Some(tempDir), "", "", None)
             .use { file =>
               // files.exists(tempDir / file.fileName)
-              IO.pure(Monad[Option].iterateUntilM(file)(_.parent)(_ == tempDir).isDefined)
+              IO.pure(file.startsWith(tempDir))
             }
         }
         .assertEquals(true)
@@ -298,7 +297,7 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
         .use { file =>
           defaultTempDirectory.map(dir =>
             // files.exists(dir / file.fileName)
-            Monad[Option].iterateUntilM(file)(_.parent)(_ == dir).isDefined
+            file.startsWith(dir)
           )
         }
         .assertEquals(true)

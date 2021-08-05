@@ -34,4 +34,13 @@ class PathSuite extends Fs2Suite {
     assertEquals(Path("./foo/bar/baz").normalize, Path("foo/bar/baz"))
     assertEquals(Path("./foo/../bar/baz").normalize, Path("bar/baz"))
   }
+
+  test("extName") {
+    assertEquals(Path("index.html").extName, ".html")
+    assertEquals(Path("index.coffee.md").extName, ".md")
+    assertEquals(Path("index.").extName, ".")
+    assertEquals(Path("index").extName, "")
+    assertEquals(Path(".index").extName, "")
+    assertEquals(Path(".index.md").extName, ".md")
+  }
 }
