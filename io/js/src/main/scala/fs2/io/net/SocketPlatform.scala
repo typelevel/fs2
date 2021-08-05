@@ -38,8 +38,6 @@ import fs2.io.internal.SuspendedStream
 
 import scala.scalajs.js
 
-private[net] trait SocketPlatform[F[_]]
-
 private[net] trait SocketCompanionPlatform {
 
   private[net] def forAsync[F[_]](
@@ -102,6 +100,8 @@ private[net] trait SocketCompanionPlatform {
       OptionT(read(_.pull.unconsN(numBytes))).getOrElse(Chunk.empty)
 
     override def reads: Stream[F, Byte] = readStream.stream
+
+    override def endOfInput: F[Unit] = F.unit
 
     override def endOfOutput: F[Unit] = F.delay(sock.end())
 
