@@ -224,6 +224,7 @@ lazy val node = crossProject(JSPlatform)
     scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule)),
     Compile / npmDependencies += "@types/node" -> "16.0.0",
     useYarn := true,
+    yarnExtraArgs += "--frozen-lockfile",
     stOutputPackage := "fs2.internal.jsdeps",
     stStdlib := List("es2020")
   )
@@ -258,7 +259,8 @@ lazy val io = crossProject(JVMPlatform, JSPlatform)
   .jsSettings(
     scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule)),
     Test / npmDevDependencies += "jks-js" -> "1.0.1",
-    useYarn := true
+    useYarn := true,
+    yarnExtraArgs += "--frozen-lockfile"
   )
   .dependsOn(core % "compile->compile;test->test")
   .jsConfigure(_.dependsOn(node.js))

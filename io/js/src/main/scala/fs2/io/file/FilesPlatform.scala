@@ -33,6 +33,7 @@ import fs2.internal.jsdeps.node.nodeStrings
 import fs2.internal.jsdeps.node.osMod
 import fs2.io.file.Files.UnsealedFiles
 
+import java.security.Principal
 import scala.concurrent.duration._
 import scala.scalajs.js
 
@@ -167,19 +168,39 @@ private[fs2] trait FilesCompanionPlatform {
           false
         }
 
+    override def getBasicFileAttributes(path: Path, followLinks: Boolean): F[BasicFileAttributes] =
+      getPosixFileAttributes(path, followLinks).widen
+
     override def getLastModifiedTime(path: Path, followLinks: Boolean): F[FiniteDuration] =
       stat(path, followLinks).map { stats =>
         stats.mtimeMs.milliseconds
       }
 
-    override def getPosixPermissions(path: Path, followLinks: Boolean): F[PosixPermissions] =
-      stat(path, followLinks).flatMap { stats =>
-        val value = stats.mode.toInt & 511
-        F.fromOption(
-          PosixPermissions.fromInt(value),
-          new IOException(s"Illegal PosixPermissions: ${value.toOctalString}")
-        )
+    def getPosixFileAttributes(path: Path, followLinks: Boolean): F[PosixFileAttributes] =
+      stat(path, followLinks).map { stats =>
+        new PosixFileAttributes.UnsealedPosixFileAttributes {
+          def creationTime: FiniteDuration = stats.ctimeMs.milliseconds
+          def fileKey: Option[FileKey] = if (stats.dev != 0 || stats.ino != 0)
+            Some(PosixFileKey(stats.dev.toLong, stats.ino.toLong))
+          else None
+          def isDirectory: Boolean = stats.isDirectory()
+          def isOther: Boolean = !isDirectory && !isRegularFile && !isSymbolicLink
+          def isRegularFile: Boolean = stats.isFile()
+          def isSymbolicLink: Boolean = stats.isSymbolicLink()
+          def lastAccessTime: FiniteDuration = stats.atimeMs.milliseconds
+          def lastModifiedTime: FiniteDuration = stats.mtimeMs.milliseconds
+          def size: Long = stats.size.toLong
+          def owner: Principal = ???
+          def group: Principal = ???
+          def permissions: PosixPermissions = {
+            val value = stats.mode.toInt & 511
+            PosixPermissions.fromInt(value).get
+          }
+        }
       }
+
+    override def getPosixPermissions(path: Path, followLinks: Boolean): F[PosixPermissions] =
+      getPosixFileAttributes(path, followLinks).map(_.permissions)
 
     override def isDirectory(path: Path, followLinks: Boolean): F[Boolean] =
       stat(path, followLinks).map(_.isDirectory())
@@ -279,14 +300,28 @@ private[fs2] trait FilesCompanionPlatform {
     override def readRange(path: Path, chunkSize: Int, start: Long, end: Long): Stream[F, Byte] =
       readStream(path, chunkSize, Flags.Read)(_.setStart(start.toDouble).setEnd((end - 1).toDouble))
 
-    override def setLastModifiedTime(path: Path, timestamp: FiniteDuration): F[Unit] =
-      stat(path, false)
-        .flatMap { stats =>
-          F.fromPromise(
-            F.delay(fsPromisesMod.utimes(path.toString, stats.atimeMs, timestamp.toMillis.toDouble))
+    override def setFileTimes(
+        path: Path,
+        lastModified: Option[FiniteDuration],
+        lastAccess: Option[FiniteDuration],
+        create: Option[FiniteDuration],
+        followLinks: Boolean
+    ): F[Unit] = stat(path, followLinks)
+      .flatMap { stats =>
+        F.fromPromise(
+          F.delay(
+            fsPromisesMod.utimes(
+              path.toString,
+              lastAccess.fold(stats.atimeMs)(_.toMillis.toDouble),
+              lastModified.fold(stats.mtimeMs)(_.toMillis.toDouble)
+            )
           )
-        }
-        .adaptError { case IOException(ex) => ex }
+        )
+      }
+      .adaptError { case IOException(ex) => ex }
+
+    override def setLastModifiedTime(path: Path, timestamp: FiniteDuration): F[Unit] =
+      ???
 
     override def setPosixPermissions(path: Path, permissions: PosixPermissions): F[Unit] =
       F.fromPromise(F.delay(fsPromisesMod.chmod(path.toString, permissions.value.toDouble)))
