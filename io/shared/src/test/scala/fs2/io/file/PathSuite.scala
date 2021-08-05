@@ -23,12 +23,14 @@ package fs2
 package io
 package file
 
-import org.scalacheck.Arbitrary
-import org.scalacheck.Gen
+import cats.kernel.laws.discipline.HashTests
 import cats.kernel.laws.discipline.MonoidTests
 import cats.kernel.laws.discipline.OrderTests
-import cats.kernel.laws.discipline.HashTests
+import org.scalacheck.Arbitrary
 import org.scalacheck.Cogen
+import org.scalacheck.Gen
+import org.scalacheck.Prop.forAll
+import org.scalacheck.Prop.propBoolean
 
 class PathSuite extends Fs2Suite {
 
@@ -58,6 +60,17 @@ class PathSuite extends Fs2Suite {
     assertEquals(Path("index").extName, "")
     assertEquals(Path(".index").extName, "")
     assertEquals(Path(".index.md").extName, ".md")
+  }
+
+  test("startsWith/endsWith") {
+    forAll { (start: Path, end: Path) =>
+      (start.toString.nonEmpty && end.toString.nonEmpty) ==> {
+        val path = start.resolve(end)
+        // TODO
+        // assert(path.startsWith(start), s"$path doesn't start with $start")
+        assert(path.endsWith(end), s"$path doesn't end with $end")
+      }
+    }
   }
 
   checkAll("Monoid[Path]", MonoidTests[Path].monoid)
