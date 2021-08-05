@@ -23,38 +23,36 @@ package fs2
 package io
 package file
 
-/**
- * Describes the permissions of a file / directory.
- *
- * Note: currently, there is only one subtype -- `PosixPermissions`.
- * More types may be added in the future (e.g. Windows ACLs).
- */
+/** Describes the permissions of a file / directory.
+  *
+  * Note: currently, there is only one subtype -- `PosixPermissions`.
+  * More types may be added in the future (e.g. Windows ACLs).
+  */
 sealed trait Permissions extends PermissionsPlatform
 
 import PosixPermission._
 
-/**
- * Describes POSIX file permissions, where the user, group, and 
- * others are each assigned read, write, and/or execute permissions.
- * 
- * The `toString` method provides a 9 character string where the first
- * three characters indicate user permissions, the next three group permissions,
- * and the final three others permissions. For example, `rwxr-xr--` indicates
- * the owner has read, write and execute, the group as read and execute, and
- * others have read.
- * 
- * The `value` field encodes the permissions in the lowest 9 bits of an integer.
- * bits 8-6 indicate read, write, and execute for the owner, 5-3 for the group,
- * and 2-0 for others. `rwxr-xr--` has the integer value 111101100 = 492.
- * 
- * The `toOctalString` method returns the a 3 digit string, where the first
- * character indicates read, write and execute for the owner, the second digit
- * for the group, and the third digit for others. `rwxr-xr--` has the octal string
- * `754`.
- * 
- * Constructors from strings, octal strings, and integers, as well as explicitly
- * enumerating permissions, are provided in the companion.
- */
+/** Describes POSIX file permissions, where the user, group, and
+  * others are each assigned read, write, and/or execute permissions.
+  *
+  * The `toString` method provides a 9 character string where the first
+  * three characters indicate user permissions, the next three group permissions,
+  * and the final three others permissions. For example, `rwxr-xr--` indicates
+  * the owner has read, write and execute, the group as read and execute, and
+  * others have read.
+  *
+  * The `value` field encodes the permissions in the lowest 9 bits of an integer.
+  * bits 8-6 indicate read, write, and execute for the owner, 5-3 for the group,
+  * and 2-0 for others. `rwxr-xr--` has the integer value 111101100 = 492.
+  *
+  * The `toOctalString` method returns the a 3 digit string, where the first
+  * character indicates read, write and execute for the owner, the second digit
+  * for the group, and the third digit for others. `rwxr-xr--` has the octal string
+  * `754`.
+  *
+  * Constructors from strings, octal strings, and integers, as well as explicitly
+  * enumerating permissions, are provided in the companion.
+  */
 final class PosixPermissions private (val value: Int) extends Permissions {
 
   override def equals(that: Any): Boolean = that match {

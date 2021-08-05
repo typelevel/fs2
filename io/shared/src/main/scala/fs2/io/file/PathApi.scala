@@ -38,6 +38,12 @@ private[file] trait PathApi {
 
   def resolve(path: Path): Path
 
+  def resolveSibling(name: String): Path
+
+  def resolveSibling(path: Path): Path
+
+  def relativize(path: Path): Path
+
   def normalize: Path
 
   def isAbsolute: Boolean
@@ -48,7 +54,17 @@ private[file] trait PathApi {
 
   def fileName: Path
 
+  def extName: String
+
   def parent: Option[Path]
+
+  def startsWith(path: String): Boolean
+
+  def startsWith(path: Path): Boolean
+
+  def endsWith(path: String): Boolean
+
+  def endsWith(path: Path): Boolean
 
   def toString: String
 }

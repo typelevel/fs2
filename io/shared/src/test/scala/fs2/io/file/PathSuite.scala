@@ -23,7 +23,25 @@ package fs2
 package io
 package file
 
+import cats.kernel.laws.discipline.HashTests
+import cats.kernel.laws.discipline.MonoidTests
+import cats.kernel.laws.discipline.OrderTests
+import org.scalacheck.Arbitrary
+import org.scalacheck.Cogen
+import org.scalacheck.Gen
+import org.scalacheck.Prop.forAll
+import org.scalacheck.Prop.propBoolean
+
 class PathSuite extends Fs2Suite {
+
+  implicit val arbitraryPath: Arbitrary[Path] = Arbitrary(for {
+    names <- Gen.listOf(Gen.alphaNumStr)
+    root <- Gen.oneOf("/", "")
+  } yield names.foldLeft(Path(root))((p, n) => p / Path(n)))
+
+  implicit val cogenPath: Cogen[Path] =
+    Cogen.cogenList[String].contramap(_.names.map(_.toString).toList)
+
   test("construction") {
     assertEquals(Path("foo/bar"), Path("foo") / "bar")
     assertEquals(Path("/foo/bar"), Path("/foo") / "bar")
@@ -34,4 +52,28 @@ class PathSuite extends Fs2Suite {
     assertEquals(Path("./foo/bar/baz").normalize, Path("foo/bar/baz"))
     assertEquals(Path("./foo/../bar/baz").normalize, Path("bar/baz"))
   }
+
+  test("extName") {
+    assertEquals(Path("index.html").extName, ".html")
+    assertEquals(Path("index.coffee.md").extName, ".md")
+    assertEquals(Path("index.").extName, ".")
+    assertEquals(Path("index").extName, "")
+    assertEquals(Path(".index").extName, "")
+    assertEquals(Path(".index.md").extName, ".md")
+  }
+
+  test("startsWith/endsWith") {
+    forAll { (start: Path, end: Path) =>
+      (start.toString.nonEmpty && end.toString.nonEmpty) ==> {
+        val path = start.resolve(end)
+        // TODO
+        // assert(path.startsWith(start), s"$path doesn't start with $start")
+        assert(path.endsWith(end), s"$path doesn't end with $end")
+      }
+    }
+  }
+
+  checkAll("Monoid[Path]", MonoidTests[Path].monoid)
+  checkAll("Order[Path]", OrderTests[Path].order)
+  checkAll("Hash[Path]", HashTests[Path].hash)
 }

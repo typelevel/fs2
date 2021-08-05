@@ -24,11 +24,10 @@ package io
 package file
 
 import cats.effect.IO
+import cats.kernel.Order
 import cats.syntax.all._
 
 import scala.concurrent.duration._
-import cats.kernel.Order
-import cats.Monad
 
 class FilesSuite extends Fs2Suite with BaseFileSuite {
 
@@ -166,6 +165,15 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
         }
         .assertEquals(permissions)
     }
+    test("innappropriate access should raise AccessDeniedException") {
+      val permissions = PosixPermissions.fromString("r--r--r--").get
+      tempFile
+        .use { p =>
+          Files[IO].setPosixPermissions(p, permissions) >>
+            Files[IO].open(p, Flags.Write).use_.void
+        }
+        .intercept[AccessDeniedException]
+    }
   }
 
   group("setPermissions") {
@@ -207,7 +215,12 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
     test("should fail on a non existent file") {
       Files[IO]
         .delete(Path("nothing"))
-        .intercept[Throwable]
+        .intercept[NoSuchFileException]
+    }
+    test("should fail on a non empty directory") {
+      tempFilesHierarchy.use { p =>
+        Files[IO].delete(p).intercept[DirectoryNotEmptyException]
+      }
     }
   }
 
@@ -284,7 +297,7 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
             .tempFile(Some(tempDir), "", "", None)
             .use { file =>
               // files.exists(tempDir / file.fileName)
-              IO.pure(Monad[Option].iterateUntilM(file)(_.parent)(_ == tempDir).isDefined)
+              IO.pure(file.startsWith(tempDir))
             }
         }
         .assertEquals(true)
@@ -298,7 +311,7 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
         .use { file =>
           defaultTempDirectory.map(dir =>
             // files.exists(dir / file.fileName)
-            Monad[Option].iterateUntilM(file)(_.parent)(_ == dir).isDefined
+            file.startsWith(dir)
           )
         }
         .assertEquals(true)
@@ -381,7 +394,7 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
     }
   }
 
-  group("directoryStream") {
+  group("list") {
     test("returns an empty Stream on an empty directory") {
       tempDirectory
         .use { path =>
@@ -405,6 +418,15 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
         .compile
         .fold(true)(_ & _)
         .assertEquals(true)
+    }
+
+    test("fail for non-directory") {
+      Stream
+        .resource(tempFile)
+        .flatMap(Files[IO].list)
+        .compile
+        .drain
+        .intercept[NotDirectoryException]
     }
   }
 

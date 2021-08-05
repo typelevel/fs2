@@ -29,11 +29,21 @@ import scala.annotation.tailrec
 
 final case class Path private (override val toString: String) extends PathApi {
 
-  def /(name: String): Path = Path(pathMod.join(toString, name))
+  def /(name: String): Path =
+    if (toString.isEmpty & name.isEmpty)
+      Path.instances.empty // Special case to satisfy Monoid laws
+    else
+      Path(pathMod.join(toString, name))
+
   def /(path: Path): Path = this / path.toString
 
   def resolve(name: String): Path = resolve(Path(name))
   def resolve(path: Path): Path = if (path.isAbsolute) path else this / path
+
+  def resolveSibling(name: String): Path = resolveSibling(Path(name))
+  def resolveSibling(path: Path): Path = parent.fold(path)(_.resolve(path))
+
+  def relativize(path: Path): Path = Path(pathMod.relative(toString, path.toString))
 
   def normalize: Path = new Path(pathMod.normalize(toString))
 
@@ -54,12 +64,27 @@ final case class Path private (override val toString: String) extends PathApi {
 
   def fileName: Path = Path(pathMod.basename(toString))
 
+  def extName: String = pathMod.extname(toString)
+
   def parent: Option[Path] = {
     val parsed = pathMod.parse(toString)
     if (parsed.dir.isEmpty || parsed.base.isEmpty)
       None
     else
       Some(Path(parsed.dir))
+  }
+
+  def startsWith(path: String): Boolean = startsWith(Path(path))
+  def startsWith(path: Path): Boolean =
+    isAbsolute == path.isAbsolute && names.startsWith(path.names)
+
+  def endsWith(path: String): Boolean = endsWith(Path(path))
+  def endsWith(that: Path): Boolean = {
+    val thisNames = this.names
+    val thatNames = that.names
+    (isAbsolute == that.isAbsolute || thisNames.size > thatNames.size) && thisNames.endsWith(
+      thatNames
+    )
   }
 
   override def equals(that: Any) = that match {

@@ -33,6 +33,11 @@ final class Path private (val toNioPath: JPath) extends PathApi {
   def resolve(name: String): Path = Path(toNioPath.resolve(name))
   def resolve(path: Path): Path = Path(toNioPath.resolve(path.toNioPath))
 
+  def resolveSibling(name: String): Path = Path(toNioPath.resolveSibling(name))
+  def resolveSibling(path: Path): Path = Path(toNioPath.resolveSibling(path.toNioPath))
+
+  def relativize(path: Path): Path = Path(path.toNioPath.relativize(path.toNioPath))
+
   def normalize: Path = new Path(toNioPath.normalize())
 
   def isAbsolute: Boolean = toNioPath.isAbsolute()
@@ -43,7 +48,19 @@ final class Path private (val toNioPath: JPath) extends PathApi {
 
   def fileName: Path = Path(toNioPath.getFileName())
 
+  def extName: String = {
+    val fn = fileName.toString
+    val i = fn.lastIndexOf('.')
+    if (i == 0 | i == -1) "" else fn.substring(i)
+  }
+
   def parent: Option[Path] = Option(toNioPath.getParent()).map(Path(_))
+
+  def startsWith(path: String): Boolean = toNioPath.startsWith(path)
+  def startsWith(path: Path): Boolean = toNioPath.startsWith(path.toNioPath)
+
+  def endsWith(path: String): Boolean = toNioPath.endsWith(path)
+  def endsWith(path: Path): Boolean = toNioPath.endsWith(path.toNioPath)
 
   override def toString = toNioPath.toString
 
