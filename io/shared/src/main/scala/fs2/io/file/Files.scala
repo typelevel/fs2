@@ -108,6 +108,9 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
 
   def exists(path: Path, followLinks: Boolean): F[Boolean]
 
+  def getBasicFileAttributes(path: Path): F[BasicFileAttributes] = getBasicFileAttributes(path, false)
+  def getBasicFileAttributes(path: Path, followLinks: Boolean): F[BasicFileAttributes]
+
   def getLastModifiedTime(path: Path): F[FiniteDuration] = getLastModifiedTime(path, true)
 
   def getLastModifiedTime(path: Path, followLinks: Boolean): F[FiniteDuration]
@@ -327,6 +330,43 @@ object Files extends FilesCompanionPlatform {
         case _: NoSuchFileException => ()
       })
 
+    def walk(start: Path, maxDepth: Int, followLinks: Boolean): Stream[F, Path] = {
+
+      def go(start: Path, maxDepth: Int, ancestry: List[Option[FileKey]]): Stream[F, Path] =
+        if (maxDepth == 0)
+          Stream.eval(exists(start, followLinks)).as(start)
+        else
+          Stream.eval(getBasicFileAttributes(start, followLinks = false)).flatMap { attr =>
+            (if (attr.isDirectory)
+               list(start)
+                 .flatMap { path =>
+                   go(path, maxDepth - 1, attr.fileKey :: ancestry)
+                 }
+                 .recoverWith { case _ =>
+                   Stream.empty
+                 }
+             else if (attr.isSymbolicLink && followLinks)
+               Stream.eval(getBasicFileAttributes(start, followLinks = true)).flatMap { attr =>
+                 if (!ancestry.contains(attr.fileKey))
+                   list(start)
+                     .flatMap { path =>
+                       go(path, maxDepth - 1, attr.fileKey :: ancestry)
+                     }
+                     .recoverWith { case _ =>
+                       Stream.empty
+                     }
+                 else
+                   Stream.raiseError(new FileSystemLoopException(start.toString))
+               }
+             else
+               Stream.empty) ++ Stream.emit(start)
+          }
+
+      Stream.eval(getBasicFileAttributes(start, followLinks)) >> go(start, maxDepth, Nil)
+    }
+
+
+
     def writeAll(
         path: Path,
         flags: Flags
@@ -403,5 +443,4 @@ object Files extends FilesCompanionPlatform {
   }
 
   def apply[F[_]](implicit F: Files[F]): Files[F] = F
-
 }

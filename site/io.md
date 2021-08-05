@@ -315,12 +315,11 @@ The `fs2.io.file` package provides support for working with files. The README ex
 ```scala mdoc
 import cats.effect.Concurrent
 import fs2.{hash, text}
-import fs2.io.file.Files
-import java.nio.file.Path
+import fs2.io.file.{Files, Path}
 
 def writeDigest[F[_]: Files: Concurrent](path: Path): F[Path] = {
-  val target = path.resolve(".sha256")
-  Files[F].readAll(path, 8192)
+  val target = Path(path.toString + ".sha256")
+  Files[F].readAll(path)
     .through(hash.sha256)
     .through(text.hex.encode)
     .through(text.utf8.encode)
@@ -331,7 +330,7 @@ def writeDigest[F[_]: Files: Concurrent](path: Path): F[Path] = {
 }
 ```
 
-For more complex use cases, there are a few types available -- `FileHandle`, `ReadCursor`, and `WriteCursor`. A `FileHandle[F]` represents an open file and provides various methods for interacting with the file -- reading data, writing data, querying the size, etc. -- all in the effect `F`. Constructing a `FileHandle[F]` is accomplished by calling `FileHandle.fromPath(path, blocker)`, passing a `java.nio.file.Path` value indicating which file to open.
+For more complex use cases, there are a few types available -- `FileHandle`, `ReadCursor`, and `WriteCursor`. A `FileHandle[F]` represents an open file and provides various methods for interacting with the file -- reading data, writing data, querying the size, etc. -- all in the effect `F`. Constructing a `FileHandle[F]` is accomplished by calling `FileHandle.fromPath(path, blocker)`, passing a `fs2.io.file.Path` value indicating which file to open.
 
 The `ReadCursor` type pairs a `FileHandle[F]` with a byte offset in to the file. The methods on `ReadCursor` provide read operations that start at the current offset and return an updated cursor along with whatever data was read.
 
