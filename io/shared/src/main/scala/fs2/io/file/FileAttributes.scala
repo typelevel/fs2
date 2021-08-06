@@ -48,6 +48,10 @@ object BasicFileAttributes {
   private[file] trait UnsealedBasicFileAttributes extends BasicFileAttributes
 }
 
+// Note: we do not expose owner & group here since node.js doesn't provide easy
+// access to owner/group names, only uid/gid. We could have alternatively read the
+// `unix:uid` and `unix:gid` attributes and supplemented the result here, or made
+// the owner/group operations JVM only.
 sealed trait PosixFileAttributes extends BasicFileAttributes {
   def permissions: PosixPermissions
 }

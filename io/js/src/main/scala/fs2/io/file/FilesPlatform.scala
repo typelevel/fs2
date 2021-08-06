@@ -200,8 +200,6 @@ private[fs2] trait FilesCompanionPlatform {
           def lastAccessTime: FiniteDuration = stats.atimeMs.milliseconds
           def lastModifiedTime: FiniteDuration = stats.mtimeMs.milliseconds
           def size: Long = stats.size.toLong
-          def owner: Principal = ???
-          def group: Principal = ???
           def permissions: PosixPermissions = {
             val value = stats.mode.toInt & 511
             PosixPermissions.fromInt(value).get
