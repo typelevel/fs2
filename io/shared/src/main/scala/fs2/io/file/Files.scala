@@ -345,7 +345,7 @@ object Files extends FilesCompanionPlatform {
 
     def walk(start: Path, maxDepth: Int, followLinks: Boolean): Stream[F, Path] = {
 
-      def go(start: Path, maxDepth: Int, ancestry: List[Option[FileKey]]): Stream[F, Path] =
+      def go(start: Path, maxDepth: Int, ancestry: List[FileKey]): Stream[F, Path] =
         if (maxDepth == 0)
           Stream.eval(exists(start, followLinks)).as(start)
         else
@@ -353,7 +353,7 @@ object Files extends FilesCompanionPlatform {
             (if (attr.isDirectory)
                list(start)
                  .flatMap { path =>
-                   go(path, maxDepth - 1, attr.fileKey :: ancestry)
+                   go(path, maxDepth - 1, attr.fileKey.toList ::: ancestry)
                  }
                  .recoverWith { case _ =>
                    Stream.empty
@@ -363,7 +363,7 @@ object Files extends FilesCompanionPlatform {
                  if (!ancestry.contains(attr.fileKey))
                    list(start)
                      .flatMap { path =>
-                       go(path, maxDepth - 1, attr.fileKey :: ancestry)
+                       go(path, maxDepth - 1, attr.fileKey.toList ::: ancestry)
                      }
                      .recoverWith { case _ =>
                        Stream.empty
