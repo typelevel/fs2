@@ -81,7 +81,7 @@ private[fs2] trait FilesCompanionPlatform {
       mkdir(path, permissions, true)
 
     override def createFile(path: Path, permissions: Option[Permissions]): F[Unit] =
-      ???
+      open(path, Flags(Flag.CreateNew), permissions).use_
 
     override def createTempDirectory(
         dir: Option[Path],
@@ -259,10 +259,29 @@ private[fs2] trait FilesCompanionPlatform {
         F.raiseError(new FileAlreadyExistsException)
       ).adaptError { case IOException(ex) => ex }
 
-    override def open(path: Path, flags: Flags): Resource[F, FileHandle[F]] = Resource
+    override def open(path: Path, flags: Flags): Resource[F, FileHandle[F]] =
+      open(path, flags, None)
+
+    private def open(
+        path: Path,
+        flags: Flags,
+        mode: Option[Permissions]
+    ): Resource[F, FileHandle[F]] = Resource
       .make(
         F.fromPromise(
-          F.delay(fsPromisesMod.open(path.toString, combineFlags(flags)))
+          F.delay(
+            mode
+              .collect { case posix: PosixPermissions =>
+                posix.value.toDouble
+              }
+              .fold(
+                fsPromisesMod
+                  .open(path.toString, combineFlags(flags))
+              )(
+                fsPromisesMod
+                  .open(path.toString, combineFlags(flags), _)
+              )
+          )
         )
       )(fd => F.fromPromise(F.delay(fd.close())))
       .map(FileHandle.make[F])
@@ -327,7 +346,7 @@ private[fs2] trait FilesCompanionPlatform {
       .adaptError { case IOException(ex) => ex }
 
     override def setLastModifiedTime(path: Path, timestamp: FiniteDuration): F[Unit] =
-      ???
+      setFileTimes(path, Some(timestamp), None, None, true)
 
     override def setPosixPermissions(path: Path, permissions: PosixPermissions): F[Unit] =
       F.fromPromise(F.delay(fsPromisesMod.chmod(path.toString, permissions.value.toDouble)))
