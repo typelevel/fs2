@@ -336,7 +336,12 @@ The `ReadCursor` type pairs a `FileHandle[F]` with a byte offset in to the file.
 
 Similarly, `WriteCursor` pairs a `FileHandle[F]` with a byte offset. The methods on `WriteCursor` use the offset as the position to write the next chunk of bytes, returning an updated cursor.
 
-The `fs2.io.file` package object also provides many ways to interact with the file system -- moving files, creating directories, walking all paths in a directory tree, watching directories for changes, etc.
+The `fs2.io.file` package object also provides many ways to interact with the file system -- moving files, creating directories, walking all paths in a directory tree, watching directories for changes, etc. For example, tallying the total number of bytes in a directory tree can be accomplished with a single line of code:
+
+```scala mdoc
+def totalBytes[F[_]: Files: Concurrent](path: Path): F[Long] =
+  Files[F].walk(path).evalMap(p => Files[F].size(p).handleError(_ => 0L)).compile.foldMonoid
+```
 
 # Console Operations
 
