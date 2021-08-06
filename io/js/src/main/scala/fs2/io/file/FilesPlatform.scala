@@ -36,7 +36,6 @@ import fs2.io.file.Files.UnsealedFiles
 import java.security.Principal
 import scala.concurrent.duration._
 import scala.scalajs.js
-import scala.scalajs.js.JSConverters._
 
 private[file] trait FilesPlatform[F[_]]
 
@@ -271,15 +270,17 @@ private[fs2] trait FilesCompanionPlatform {
       .make(
         F.fromPromise(
           F.delay(
-            fsPromisesMod.^.asInstanceOf[js.Dynamic]
-              .open(
-                path.toString,
-                combineFlags(flags),
-                mode.collect { case posix: PosixPermissions =>
-                  posix.value
-                }.orUndefined
+            mode
+              .collect { case posix: PosixPermissions =>
+                posix.value.toDouble
+              }
+              .fold(
+                fsPromisesMod
+                  .open(path.toString, combineFlags(flags))
+              )(
+                fsPromisesMod
+                  .open(path.toString, combineFlags(flags), _)
               )
-              .asInstanceOf[js.Promise[fsPromisesMod.FileHandle]]
           )
         )
       )(fd => F.fromPromise(F.delay(fd.close())))
