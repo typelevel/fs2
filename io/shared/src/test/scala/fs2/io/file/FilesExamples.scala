@@ -62,12 +62,12 @@ object Examples {
       .walk(path)
       .evalMap(p => Files[F].getBasicFileAttributes(p).tupleLeft(p))
       .compile
-      .foldSemigroup { (x, y) =>
-        val featureX = extractFeature(x._2)
-        val featureY = extractFeature(y._2)
+      .foldSemigroup { case (x @ (_, xAttr), y @ (_, yAttr)) =>
+        val featureX = extractFeature(xAttr)
+        val featureY = extractFeature(yAttr)
         if (Order[A].lt(featureX, featureY)) x else y
       }
-      .map(_.map(pa => (pa._1, extractFeature(pa._2))))
+      .map(_.map { case (path, attr) => (path, extractFeature(attr)) })
 
   /** We can also select the greatest feature, and in fact we can derive it from pathWithLeastIn!
     *
