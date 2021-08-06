@@ -68,12 +68,21 @@ object Examples {
 
   /** We can also select the greatest feature, and in fact we can derive it from pathWithLeastIn!
     *
-    * The general idea is to take the inverse of each feature such that when pathWithLeastIn finds the
-    * minimum, we're actually computing the maximum. When we've found a final answer, we have to take the
-    * inverse of the result so that the computed feature is reported correctly. Since we're taking inverses,
-    * we take a `Group` constraint on our feature parameter.
+    * We have two options:
+    * - call pathWithGreatestIn using the inverse of the feature, ensuring to "undo" the inverse on the
+    *   result. This requires a `Group` constraint on A`
+    * - pass a different `Order` instance which reverses the order
+    *
+    * The second option is better for callers and is more general (it doesn't require a `Group[A]` instance).
     */
-  def pathWithGreatestIn[F[_]: Files: Concurrent, A: Order: Group](
+  def pathWithGreatestIn[F[_]: Files: Concurrent, A: Order](
+      path: Path,
+      extractFeature: BasicFileAttributes => A
+  ): F[Option[(Path, A)]] =
+    pathWithLeastIn(path, extractFeature)(Files[F], Concurrent[F], (x, y) => Order[A].compare(y, x))
+
+  /** For completeness, here's what it would look like using `Group`. */
+  def pathWithGreatestInViaGroup[F[_]: Files: Concurrent, A: Order: Group](
       path: Path,
       extractFeature: BasicFileAttributes => A
   ): F[Option[(Path, A)]] =
