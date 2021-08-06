@@ -134,7 +134,8 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   ProblemFilters.exclude[InheritedNewAbstractMethodProblem](
     "fs2.io.file.Files._runJavaCollectionResource"
   ),
-  ProblemFilters.exclude[InheritedNewAbstractMethodProblem]("fs2.io.file.Files.list")
+  ProblemFilters.exclude[InheritedNewAbstractMethodProblem]("fs2.io.file.Files.list"),
+  ProblemFilters.exclude[InheritedNewAbstractMethodProblem]("fs2.io.file.Files.watch")
 )
 
 lazy val root = project
