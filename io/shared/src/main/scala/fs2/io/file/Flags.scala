@@ -31,7 +31,7 @@ case class Flags(value: List[Flag]) {
 
   def contains(flag: Flag): Boolean = value.contains(flag)
 
-  def addIfAbsent(flag: Flag): Flags = 
+  def addIfAbsent(flag: Flag): Flags =
     if (!contains(flag)) Flags(flag :: value) else this
 }
 
