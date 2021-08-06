@@ -26,16 +26,15 @@ package file
 import cats.kernel.Hash
 import cats.Show
 
-/**
- * An opaque, unique identifier for a file.
- * 
- * Paths which have the same `FileKey` (via univerals equals), 
- * as reported by `Files[F].getBasicFileAttributes(path).fileKey`,
- * are guaranteed to reference the same file on the file system.
- * 
- * Note: not all operating systems and file systems support file keys,
- * hence `BasicFileAttributes#fileKey` returns an `Option[FileKey]`.
- */
+/** An opaque, unique identifier for a file.
+  *
+  * Paths which have the same `FileKey` (via univerals equals),
+  * as reported by `Files[F].getBasicFileAttributes(path).fileKey`,
+  * are guaranteed to reference the same file on the file system.
+  *
+  * Note: not all operating systems and file systems support file keys,
+  * hence `BasicFileAttributes#fileKey` returns an `Option[FileKey]`.
+  */
 trait FileKey
 
 object FileKey {
