@@ -233,6 +233,9 @@ private[file] trait FilesCompanionPlatform {
     def isWritable(path: Path): F[Boolean] =
       Sync[F].delay(JFiles.isWritable(path.toNioPath))
 
+    def isSameFile(path1: Path, path2: Path): F[Boolean] =
+      Sync[F].blocking(JFiles.isSameFile(path1.toNioPath, path2.toNioPath))
+
     def list(path: Path): Stream[F, Path] =
       _runJavaCollectionResource[JStream[JPath]](
         Sync[F].blocking(JFiles.list(path.toNioPath)),
