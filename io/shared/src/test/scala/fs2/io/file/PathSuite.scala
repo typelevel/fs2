@@ -53,6 +53,43 @@ class PathSuite extends Fs2Suite {
     assertEquals(Path("./foo/../bar/baz").normalize, Path("bar/baz"))
   }
 
+  test("fileName") {
+    assertEquals(Path("/foo/bar/baz/asdf/quux.html").fileName, Path("quux.html"))
+  }
+
+  test("parent") {
+    assertEquals(Path("/foo/bar/baz/asdf/quux").parent, Some(Path("/foo/bar/baz/asdf")))
+    assertEquals(Path("foo").parent, None)
+  }
+
+  test("isAbsolute") {
+    assert(Path("/foo/bar").isAbsolute)
+    assert(Path("/baz/..").isAbsolute)
+    assert(!Path("qux/").isAbsolute)
+    assert(!Path(".").isAbsolute)
+  }
+
+  test("/") {
+    assertEquals(Path("/foo") / "bar" / "baz/asdf" / "quux" / "..", Path("/foo/bar/baz/asdf"))
+  }
+
+  test("relativize") {
+    assertEquals(
+      Path("/data/orandea/test/aaa").relativize(Path("/data/orandea/impl/bbb")),
+      Path("../../impl/bbb")
+    )
+  }
+
+  test("resolve") {
+    assertEquals(Path("/foo/bar").resolve("./baz"), Path("/foo/bar/baz"))
+    assert(
+      Path("wwwroot")
+        .resolve("static_files/png/")
+        .resolve("../gif/image.gif")
+        .endsWith(Path("wwwroot/static_files/gif/image.gif"))
+    )
+  }
+
   test("extName") {
     assertEquals(Path("index.html").extName, ".html")
     assertEquals(Path("index.coffee.md").extName, ".md")

@@ -27,16 +27,16 @@ import java.nio.file.{FileSystems, Path => JPath, Paths}
 
 final class Path private (val toNioPath: JPath) extends PathApi {
 
-  def /(name: String): Path = Path(Paths.get(toString, name))
+  def /(name: String): Path = Path(Paths.get(toString, name)).normalize
   def /(path: Path): Path = this / path.toString
 
-  def resolve(name: String): Path = Path(toNioPath.resolve(name))
-  def resolve(path: Path): Path = Path(toNioPath.resolve(path.toNioPath))
+  def resolve(name: String): Path = Path(toNioPath.resolve(name)).normalize
+  def resolve(path: Path): Path = Path(toNioPath.resolve(path.toNioPath)).normalize
 
   def resolveSibling(name: String): Path = Path(toNioPath.resolveSibling(name))
   def resolveSibling(path: Path): Path = Path(toNioPath.resolveSibling(path.toNioPath))
 
-  def relativize(path: Path): Path = Path(path.toNioPath.relativize(path.toNioPath))
+  def relativize(path: Path): Path = Path(toNioPath.relativize(path.toNioPath))
 
   def normalize: Path = new Path(toNioPath.normalize())
 
