@@ -315,12 +315,11 @@ The `fs2.io.file` package provides support for working with files. The README ex
 ```scala
 import cats.effect.Concurrent
 import fs2.{hash, text}
-import fs2.io.file.Files
-import java.nio.file.Path
+import fs2.io.file.{Files, Path}
 
 def writeDigest[F[_]: Files: Concurrent](path: Path): F[Path] = {
-  val target = path.resolve(".sha256")
-  Files[F].readAll(path, 8192)
+  val target = Path(path.toString + ".sha256")
+  Files[F].readAll(path)
     .through(hash.sha256)
     .through(text.hex.encode)
     .through(text.utf8.encode)
@@ -331,13 +330,18 @@ def writeDigest[F[_]: Files: Concurrent](path: Path): F[Path] = {
 }
 ```
 
-For more complex use cases, there are a few types available -- `FileHandle`, `ReadCursor`, and `WriteCursor`. A `FileHandle[F]` represents an open file and provides various methods for interacting with the file -- reading data, writing data, querying the size, etc. -- all in the effect `F`. Constructing a `FileHandle[F]` is accomplished by calling `FileHandle.fromPath(path, blocker)`, passing a `java.nio.file.Path` value indicating which file to open.
+For more complex use cases, there are a few types available -- `FileHandle`, `ReadCursor`, and `WriteCursor`. A `FileHandle[F]` represents an open file and provides various methods for interacting with the file -- reading data, writing data, querying the size, etc. -- all in the effect `F`. Constructing a `FileHandle[F]` is accomplished by calling `FileHandle.fromPath(path, blocker)`, passing a `fs2.io.file.Path` value indicating which file to open.
 
 The `ReadCursor` type pairs a `FileHandle[F]` with a byte offset in to the file. The methods on `ReadCursor` provide read operations that start at the current offset and return an updated cursor along with whatever data was read.
 
 Similarly, `WriteCursor` pairs a `FileHandle[F]` with a byte offset. The methods on `WriteCursor` use the offset as the position to write the next chunk of bytes, returning an updated cursor.
 
-The `fs2.io.file` package object also provides many ways to interact with the file system -- moving files, creating directories, walking all paths in a directory tree, watching directories for changes, etc.
+The `fs2.io.file` package object also provides many ways to interact with the file system -- moving files, creating directories, walking all paths in a directory tree, watching directories for changes, etc. For example, tallying the total number of bytes in a directory tree can be accomplished with a single line of code:
+
+```scala
+def totalBytes[F[_]: Files: Concurrent](path: Path): F[Long] =
+  Files[F].walk(path).evalMap(p => Files[F].size(p).handleError(_ => 0L)).compile.foldMonoid
+```
 
 # Console Operations
 

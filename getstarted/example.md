@@ -5,8 +5,7 @@ FS2 is a streaming I/O library. The design goals are compositionality, expressiv
 ```scala
 import cats.effect.{IO, IOApp}
 import fs2.{Stream, text}
-import fs2.io.file.Files
-import java.nio.file.Paths
+import fs2.io.file.{Files, Path}
 
 object Converter extends IOApp.Simple {
 
@@ -14,14 +13,14 @@ object Converter extends IOApp.Simple {
     def fahrenheitToCelsius(f: Double): Double =
       (f - 32.0) * (5.0/9.0)
 
-    Files[IO].readAll(Paths.get("testdata/fahrenheit.txt"), 4096)
+    Files[IO].readAll(Path("testdata/fahrenheit.txt"))
       .through(text.utf8.decode)
       .through(text.lines)
       .filter(s => !s.trim.isEmpty && !s.startsWith("//"))
       .map(line => fahrenheitToCelsius(line.toDouble).toString)
       .intersperse("\n")
       .through(text.utf8.encode)
-      .through(Files[IO].writeAll(Paths.get("testdata/celsius.txt")))
+      .through(Files[IO].writeAll(Path("testdata/celsius.txt")))
   }
 
   def run: IO[Unit] =
