@@ -23,23 +23,27 @@ package fs2
 package io
 package file
 
-import cats.effect.kernel.{Async, Resource}
+import cats.kernel.Monoid
+import fs2.internal.jsdeps.node.fsMod
 
-import java.nio.file.{Files => _, Path => JPath, _}
-
-private[file] trait WriteCursorCompanionPlatform {
-  @deprecated("Use Files[F].writeCursorFromFileHandle", "3.0.0")
-  def fromFileHandle[F[_]: Async](
-      file: FileHandle[F],
-      append: Boolean
-  ): F[WriteCursor[F]] =
-    Files[F].writeCursorFromFileHandle(file, append)
-
-  @deprecated("Use Files[F].writeCursor", "3.0.0")
-  def fromPath[F[_]: Async](
-      path: JPath,
-      flags: Seq[OpenOption] = List(StandardOpenOption.CREATE)
-  ): Resource[F, WriteCursor[F]] =
-    Files[F].writeCursor(path, flags)
-
+final class CopyFlag private (private val bits: Long) extends AnyVal {
+  def jsBits: Long = bits ^ CopyFlag.ReplaceExisting.bits // Toggle the inverted bit
 }
+
+object CopyFlag extends CopyFlagCompanionApi {
+  private def apply(bits: Long): CopyFlag = new CopyFlag(bits)
+  private def apply(bits: Double): CopyFlag = CopyFlag(bits.toLong)
+
+  val ReplaceExisting = CopyFlag(
+    fsMod.constants.COPYFILE_EXCL
+  ) // Reuse this bit with inverted semantics
+  val Reflink = CopyFlag(fsMod.constants.COPYFILE_FICLONE)
+  val ReflinkOrFail = CopyFlag(fsMod.constants.COPYFILE_FICLONE_FORCE)
+
+  private[file] implicit val monoid: Monoid[CopyFlag] = new Monoid[CopyFlag] {
+    override def combine(x: CopyFlag, y: CopyFlag): CopyFlag = CopyFlag(x.bits | y.bits)
+    override def empty: CopyFlag = CopyFlag(0)
+  }
+}
+
+private[file] trait CopyFlagsCompanionPlatform {}

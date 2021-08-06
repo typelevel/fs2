@@ -22,7 +22,7 @@
 package fs2
 package io
 
-import java.io.{IOException, InputStream}
+import java.io.InputStream
 
 import cats.syntax.all._
 import cats.effect.kernel.{Async, Outcome, Resource}

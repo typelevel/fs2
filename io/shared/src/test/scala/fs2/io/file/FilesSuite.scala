@@ -23,26 +23,32 @@ package fs2
 package io
 package file
 
-import java.nio.file.{Paths, StandardOpenOption}
-import java.nio.file.attribute.PosixFilePermissions
-
 import cats.effect.IO
+import cats.kernel.Order
 import cats.syntax.all._
-
-import fs2.io.CollectionCompat._
 
 import scala.concurrent.duration._
 
 class FilesSuite extends Fs2Suite with BaseFileSuite {
+
   group("readAll") {
     test("retrieves whole content of a file") {
       Stream
         .resource(tempFile.evalMap(modify))
-        .flatMap(path => Files[IO].readAll(path, 4096))
+        .flatMap(path => Files[IO].readAll(path))
         .map(_ => 1)
         .compile
         .foldMonoid
         .assertEquals(4)
+    }
+
+    test("suspends errors in the effect") {
+      Stream
+        .eval(tempFile.use(IO.pure))
+        .flatMap(path => Files[IO].readAll(path))
+        .compile
+        .drain
+        .intercept[NoSuchFileException]
     }
   }
 
@@ -76,7 +82,7 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
             .covary[IO]
             .through(text.utf8.encode)
             .through(Files[IO].writeAll(path)) ++ Files[IO]
-            .readAll(path, 4096)
+            .readAll(path)
             .through(text.utf8.decode)
         }
         .compile
@@ -90,13 +96,29 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
         .flatMap { path =>
           val src = Stream("Hello", " world!").covary[IO].through(text.utf8.encode)
           src.through(Files[IO].writeAll(path)) ++
-            src.through(Files[IO].writeAll(path, List(StandardOpenOption.APPEND))) ++ Files[IO]
-              .readAll(path, 4096)
+            src.through(Files[IO].writeAll(path, Flags.Append)) ++ Files[IO]
+              .readAll(path)
               .through(text.utf8.decode)
         }
         .compile
         .foldMonoid
         .assertEquals("Hello world!Hello world!")
+    }
+
+    test("suspends errors in the effect") {
+      Stream
+        .resource(tempFile)
+        .flatMap { path =>
+          Stream("Hello", " world!")
+            .covary[IO]
+            .through(text.utf8.encode)
+            .through(Files[IO].writeAll(path, Flags(Flag.Write, Flag.CreateNew))) ++ Files[IO]
+            .readAll(path)
+            .through(text.utf8.decode)
+        }
+        .compile
+        .drain
+        .intercept[FileAlreadyExistsException]
     }
   }
 
@@ -119,7 +141,7 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
 
   group("exists") {
     test("returns false on a non existent file") {
-      Files[IO].exists(Paths.get("nothing")).assertEquals(false)
+      Files[IO].exists(Path("nothing")).assertEquals(false)
     }
     test("returns true on an existing file") {
       tempFile
@@ -131,34 +153,43 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
   group("permissions") {
     test("should fail for a non existent file") {
       Files[IO]
-        .permissions(Paths.get("nothing"))
-        .intercept[Throwable]
+        .getPosixPermissions(Path("nothing"))
+        .intercept[NoSuchFileException]
     }
     test("should return permissions for existing file") {
-      val permissions = PosixFilePermissions.fromString("rwxrwxr-x").asScala
+      val permissions = PosixPermissions.fromString("rwxrwxr-x").get
       tempFile
         .use { p =>
-          Files[IO].setPermissions(p, permissions) >>
-            Files[IO].permissions(p)
+          Files[IO].setPosixPermissions(p, permissions) >>
+            Files[IO].getPosixPermissions(p)
         }
         .assertEquals(permissions)
+    }
+    test("innappropriate access should raise AccessDeniedException") {
+      val permissions = PosixPermissions.fromString("r--r--r--").get
+      tempFile
+        .use { p =>
+          Files[IO].setPosixPermissions(p, permissions) >>
+            Files[IO].open(p, Flags.Write).use_.void
+        }
+        .intercept[AccessDeniedException]
     }
   }
 
   group("setPermissions") {
     test("should fail for a non existent file") {
       Files[IO]
-        .setPermissions(Paths.get("nothing"), Set.empty)
-        .intercept[Throwable]
+        .setPosixPermissions(Path("nothing"), PosixPermissions())
+        .intercept[NoSuchFileException]
     }
     test("should correctly change file permissions for existing file") {
-      val permissions = PosixFilePermissions.fromString("rwxrwxr-x").asScala
+      val permissions = PosixPermissions.fromString("rwxrwxr-x").get
       tempFile
         .use { p =>
           for {
-            initialPermissions <- Files[IO].permissions(p)
-            _ <- Files[IO].setPermissions(p, permissions)
-            updatedPermissions <- Files[IO].permissions(p)
+            initialPermissions <- Files[IO].getPosixPermissions(p)
+            _ <- Files[IO].setPosixPermissions(p, permissions)
+            updatedPermissions <- Files[IO].getPosixPermissions(p)
           } yield {
             assertNotEquals(initialPermissions, updatedPermissions)
             assertEquals(updatedPermissions, permissions)
@@ -171,11 +202,25 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
     test("returns a path to the new file") {
       (tempFile, tempDirectory).tupled
         .use { case (filePath, tempDir) =>
+          val target = tempDir / "newfile"
           Files[IO]
-            .copy(filePath, tempDir.resolve("newfile"))
-            .flatMap(Files[IO].exists(_))
+            .copy(filePath, target) >>
+            Files[IO].exists(target)
         }
         .assertEquals(true)
+    }
+  }
+
+  group("delete") {
+    test("should fail on a non existent file") {
+      Files[IO]
+        .delete(Path("nothing"))
+        .intercept[NoSuchFileException]
+    }
+    test("should fail on a non empty directory") {
+      tempFilesHierarchy.use { p =>
+        Files[IO].delete(p).intercept[DirectoryNotEmptyException]
+      }
     }
   }
 
@@ -189,19 +234,11 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
     }
   }
 
-  group("delete") {
-    test("should fail on a non existent file") {
-      Files[IO]
-        .delete(Paths.get("nothing"))
-        .intercept[Throwable]
-    }
-  }
-
   group("deleteDirectoryRecursively") {
     test("should remove a non-empty directory") {
-      val testPath = Paths.get("a")
-      Files[IO].createDirectories(testPath.resolve("b/c")) >>
-        Files[IO].deleteDirectoryRecursively(testPath) >>
+      val testPath = Path("a")
+      Files[IO].createDirectories(testPath / "b" / "c") >>
+        Files[IO].deleteRecursively(testPath) >>
         Files[IO].exists(testPath).assertEquals(false)
     }
   }
@@ -210,7 +247,7 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
     test("should result in the old path being deleted") {
       (tempFile, tempDirectory).tupled
         .use { case (filePath, tempDir) =>
-          Files[IO].move(filePath, tempDir.resolve("newfile")) >>
+          Files[IO].move(filePath, tempDir / "newfile") >>
             Files[IO].exists(filePath)
         }
         .assertEquals(false)
@@ -231,8 +268,7 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
     test("should remove the file following stream closure") {
       Stream
         .resource {
-          Files[IO]
-            .tempFile(Some(Paths.get("")))
+          Files[IO].tempFile
             .evalMap(path => Files[IO].exists(path).tupleRight(path))
         }
         .compile
@@ -247,7 +283,7 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
 
     test("should not fail if the file is deleted before the stream completes") {
       Stream
-        .resource(Files[IO].tempFile(Some(Paths.get(""))))
+        .resource(Files[IO].tempFile)
         .evalMap(Files[IO].delete)
         .compile
         .lastOrError
@@ -258,9 +294,10 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
         .use { tempDir =>
           val files = Files[IO]
           files
-            .tempFile(Some(tempDir))
+            .tempFile(Some(tempDir), "", "", None)
             .use { file =>
-              files.exists(tempDir.resolve(file.getFileName))
+              // files.exists(tempDir / file.fileName)
+              IO.pure(file.startsWith(tempDir))
             }
         }
         .assertEquals(true)
@@ -270,11 +307,11 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
 
       val files = Files[IO]
 
-      files
-        .tempFile(None)
+      files.tempFile
         .use { file =>
-          IO(System.getProperty("java.io.tmpdir")).flatMap(dir =>
-            files.exists(Paths.get(dir).resolve(file.getFileName))
+          defaultTempDirectory.map(dir =>
+            // files.exists(dir / file.fileName)
+            file.startsWith(dir)
           )
         }
         .assertEquals(true)
@@ -285,8 +322,7 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
     test("should remove the directory following stream closure") {
       Stream
         .resource {
-          Files[IO]
-            .tempDirectory(Some(Paths.get("")))
+          Files[IO].tempDirectory
             .evalMap(path => Files[IO].exists(path).tupleRight(path))
         }
         .compile
@@ -301,7 +337,7 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
 
     test("should not fail if the directory is deleted before the stream completes") {
       Stream
-        .resource(Files[IO].tempDirectory(Some(Paths.get(""))))
+        .resource(Files[IO].tempDirectory)
         .evalMap(Files[IO].delete)
         .compile
         .lastOrError
@@ -312,9 +348,9 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
         .use { tempDir =>
           val files = Files[IO]
           files
-            .tempDirectory(Some(tempDir))
+            .tempDirectory(Some(tempDir), "", None)
             .use { directory =>
-              files.exists(tempDir.resolve(directory.getFileName))
+              files.exists(tempDir.resolve(directory.fileName))
             }
         }
         .assertEquals(true)
@@ -324,12 +360,9 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
 
       val files = Files[IO]
 
-      files
-        .tempDirectory(None)
+      files.tempDirectory
         .use { directory =>
-          IO(System.getProperty("java.io.tmpdir")).flatMap(dir =>
-            files.exists(Paths.get(dir).resolve(directory.getFileName))
-          )
+          defaultTempDirectory.flatMap(dir => files.exists(dir / directory.fileName))
         }
         .assertEquals(true)
     }
@@ -339,9 +372,10 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
     test("should return in an existing path") {
       tempDirectory
         .use { path =>
+          val temp = path / "temp"
           Files[IO]
-            .createDirectory(path.resolve("temp"))
-            .bracket(Files[IO].exists(_))(Files[IO].deleteIfExists(_).void)
+            .createDirectory(temp)
+            .bracket(_ => Files[IO].exists(temp))(_ => Files[IO].deleteIfExists(temp).void)
         }
         .assertEquals(true)
     }
@@ -351,20 +385,21 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
     test("should return in an existing path") {
       tempDirectory
         .use { path =>
+          val inner = path / "temp" / "inner"
           Files[IO]
-            .createDirectories(path.resolve("temp/inner"))
-            .bracket(Files[IO].exists(_))(Files[IO].deleteIfExists(_).void)
+            .createDirectories(inner)
+            .bracket(_ => Files[IO].exists(inner))(_ => Files[IO].deleteIfExists(inner).void)
         }
         .assertEquals(true)
     }
   }
 
-  group("directoryStream") {
+  group("list") {
     test("returns an empty Stream on an empty directory") {
       tempDirectory
         .use { path =>
           Files[IO]
-            .directoryStream(path)
+            .list(path)
             .compile
             .last
         }
@@ -375,14 +410,23 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
       Stream
         .resource(tempFiles(10))
         .flatMap { paths =>
-          val parent = paths.head.getParent
+          val parent = paths.head.parent.get
           Files[IO]
-            .directoryStream(parent)
+            .list(parent)
             .map(path => paths.exists(_.normalize == path.normalize))
         }
         .compile
         .fold(true)(_ & _)
         .assertEquals(true)
+    }
+
+    test("fail for non-directory") {
+      Stream
+        .resource(tempFile)
+        .flatMap(Files[IO].list)
+        .compile
+        .drain
+        .intercept[NotDirectoryException]
     }
   }
 
@@ -391,7 +435,7 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
       Stream
         .resource(tempFile)
         .flatMap { path =>
-          Files[IO].walk(path.getParent).map(_.normalize == path.normalize)
+          Files[IO].walk(path.parent.get).map(_.normalize == path.normalize)
         }
         .map(_ => 1)
         .compile
@@ -403,7 +447,7 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
       Stream
         .resource(tempFiles(10))
         .flatMap { paths =>
-          val parent = paths.head.getParent
+          val parent = paths.head.parent.get
           Files[IO]
             .walk(parent)
             .map(path => (parent :: paths).exists(_.normalize == path.normalize))
@@ -437,10 +481,10 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
           val write = Stream(0x42.toByte).repeat
             .buffer(bufferSize)
             .take(totalBytes.toLong)
-            .through(Files[IO].writeRotate(path, rotateLimit.toLong))
+            .through(Files[IO].writeRotate(path, rotateLimit.toLong, Flags.Append))
 
           val verify = Files[IO]
-            .directoryStream(dir)
+            .list(dir)
             .evalMap { path =>
               Files[IO].size(path).tupleLeft(path)
             }
@@ -452,7 +496,7 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
       .toList
       .map { results =>
         val sizes = results
-          .sortBy { case (path, _) => path }
+          .sortBy { case (path, _) => path }(Order[Path].toOrdering)
           .map { case (_, size) => size }
 
         assertEquals(sizes.size, (totalBytes + rotateLimit - 1) / rotateLimit)
@@ -478,13 +522,13 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
   group("isFile") {
     test("returns true if the path is for a file") {
       tempFile
-        .use(Files[IO].isFile(_))
+        .use(Files[IO].isRegularFile(_))
         .assertEquals(true)
     }
 
     test("returns false if the path is for a directory") {
       tempDirectory
-        .use(Files[IO].isFile(_))
+        .use(Files[IO].isRegularFile(_))
         .assertEquals(false)
     }
   }

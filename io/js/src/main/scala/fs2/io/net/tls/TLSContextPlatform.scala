@@ -27,6 +27,7 @@ package tls
 import cats.effect.kernel.Async
 import cats.effect.kernel.Resource
 import cats.effect.std.Dispatcher
+import cats.syntax.all._
 import fs2.internal.jsdeps.node.netMod
 import fs2.internal.jsdeps.node.tlsMod
 
@@ -55,30 +56,32 @@ private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
               clientMode: Boolean,
               params: TLSParameters,
               logger: TLSLogger[F]
-          ): Resource[F, TLSSocket[F]] = Dispatcher[F].flatMap { dispatcher =>
-            import SecureContext.ops
+          ): Resource[F, TLSSocket[F]] = Dispatcher[F]
+            .flatMap { dispatcher =>
+              import SecureContext.ops
 
-            if (clientMode) {
-              val options = params
-                .toConnectionOptions(dispatcher)
-                .setSecureContext(context.toJS)
-                .setEnableTrace(logger != TLSLogger.Disabled)
-              TLSSocket.forAsync(
-                socket,
-                sock => tlsMod.connect(options.setSocket(sock.asInstanceOf[netMod.Socket]))
-              )
-            } else {
-              val options = params
-                .toTLSSocketOptions(dispatcher)
-                .setSecureContext(context.toJS)
-                .setEnableTrace(logger != TLSLogger.Disabled)
-                .setIsServer(true)
-              TLSSocket.forAsync(
-                socket,
-                sock => new tlsMod.TLSSocket(sock.asInstanceOf[netMod.Socket], options)
-              )
+              if (clientMode) {
+                val options = params
+                  .toConnectionOptions(dispatcher)
+                  .setSecureContext(context.toJS)
+                  .setEnableTrace(logger != TLSLogger.Disabled)
+                TLSSocket.forAsync(
+                  socket,
+                  sock => tlsMod.connect(options.setSocket(sock.asInstanceOf[netMod.Socket]))
+                )
+              } else {
+                val options = params
+                  .toTLSSocketOptions(dispatcher)
+                  .setSecureContext(context.toJS)
+                  .setEnableTrace(logger != TLSLogger.Disabled)
+                  .setIsServer(true)
+                TLSSocket.forAsync(
+                  socket,
+                  sock => new tlsMod.TLSSocket(sock.asInstanceOf[netMod.Socket], options)
+                )
+              }
             }
-          }
+            .adaptError { case IOException(ex) => ex }
         }
 
       def system: F[TLSContext[F]] = Async[F].delay(fromSecureContext(SecureContext.default))

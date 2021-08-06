@@ -19,27 +19,31 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2
-package io
-package file
+package fs2.io.file
 
-import cats.effect.kernel.{Async, Resource}
+private[file] trait FlagCompanionApi {
 
-import java.nio.file.{Files => _, Path => JPath, _}
+  /** Open file for read access. */
+  val Read: Flag
 
-private[file] trait WriteCursorCompanionPlatform {
-  @deprecated("Use Files[F].writeCursorFromFileHandle", "3.0.0")
-  def fromFileHandle[F[_]: Async](
-      file: FileHandle[F],
-      append: Boolean
-  ): F[WriteCursor[F]] =
-    Files[F].writeCursorFromFileHandle(file, append)
+  /** Open file for write access. */
+  val Write: Flag
 
-  @deprecated("Use Files[F].writeCursor", "3.0.0")
-  def fromPath[F[_]: Async](
-      path: JPath,
-      flags: Seq[OpenOption] = List(StandardOpenOption.CREATE)
-  ): Resource[F, WriteCursor[F]] =
-    Files[F].writeCursor(path, flags)
+  /** When combined with `Write`, writes are done at the end of the file. */
+  val Append: Flag
 
+  /** When combined with `Write`, truncates the file to 0 bytes when opening. */
+  val Truncate: Flag
+
+  /** Creates the file if it does not exist. */
+  val Create: Flag
+
+  /** Creates the file if it does not exist and fails if it already exists. */
+  val CreateNew: Flag
+
+  /** Requires all updates to the file content and metadata be written synchronously to underlying storage. */
+  val Sync: Flag
+
+  /** Requires all updates to the file content be written synchronously to underlying storage. */
+  val Dsync: Flag
 }

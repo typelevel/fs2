@@ -23,23 +23,21 @@ package fs2
 package io
 package file
 
-import cats.effect.kernel.{Async, Resource}
+import cats.effect.IO
+import cats.syntax.all._
 
-import java.nio.file.{Files => _, Path => JPath, _}
+class JvmFilesSuite extends Fs2Suite with BaseFileSuite {
+  group("support non-default filesystems") {
+    import com.google.common.jimfs.{Configuration, Jimfs}
 
-private[file] trait WriteCursorCompanionPlatform {
-  @deprecated("Use Files[F].writeCursorFromFileHandle", "3.0.0")
-  def fromFileHandle[F[_]: Async](
-      file: FileHandle[F],
-      append: Boolean
-  ): F[WriteCursor[F]] =
-    Files[F].writeCursorFromFileHandle(file, append)
-
-  @deprecated("Use Files[F].writeCursor", "3.0.0")
-  def fromPath[F[_]: Async](
-      path: JPath,
-      flags: Seq[OpenOption] = List(StandardOpenOption.CREATE)
-  ): Resource[F, WriteCursor[F]] =
-    Files[F].writeCursor(path, flags)
-
+    test("copy from local filesystem to in-memory filesystem") {
+      val fs = Jimfs.newFileSystem(Configuration.unix)
+      tempFile.evalMap(modify).use { src =>
+        val dst = Path.fromNioPath(fs.getPath("copied"))
+        Files[IO].copy(src, dst) *> (Files[IO].size(src), Files[IO].size(dst)).tupled.map {
+          case (srcSize, dstSize) => assertEquals(dstSize, srcSize)
+        }
+      }
+    }
+  }
 }

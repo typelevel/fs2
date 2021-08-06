@@ -19,27 +19,31 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2
-package io
-package file
+package fs2.io.file
 
-import cats.effect.kernel.{Async, Resource}
+import java.nio.file.OpenOption
+import java.nio.file.StandardOpenOption
 
-import java.nio.file.{Files => _, Path => JPath, _}
+final class Flag private (private[file] val option: OpenOption) extends AnyVal
 
-private[file] trait WriteCursorCompanionPlatform {
-  @deprecated("Use Files[F].writeCursorFromFileHandle", "3.0.0")
-  def fromFileHandle[F[_]: Async](
-      file: FileHandle[F],
-      append: Boolean
-  ): F[WriteCursor[F]] =
-    Files[F].writeCursorFromFileHandle(file, append)
+object Flag extends FlagCompanionApi {
+  def fromOpenOption(option: OpenOption): Flag = new Flag(option)
 
-  @deprecated("Use Files[F].writeCursor", "3.0.0")
-  def fromPath[F[_]: Async](
-      path: JPath,
-      flags: Seq[OpenOption] = List(StandardOpenOption.CREATE)
-  ): Resource[F, WriteCursor[F]] =
-    Files[F].writeCursor(path, flags)
+  val Read = fromOpenOption(StandardOpenOption.READ)
+  val Write = fromOpenOption(StandardOpenOption.WRITE)
+  val Append = fromOpenOption(StandardOpenOption.APPEND)
 
+  val Truncate = fromOpenOption(StandardOpenOption.TRUNCATE_EXISTING)
+  val Create = fromOpenOption(StandardOpenOption.CREATE)
+  val CreateNew = fromOpenOption(StandardOpenOption.CREATE_NEW)
+
+  val DeleteOnClose = fromOpenOption(StandardOpenOption.DELETE_ON_CLOSE)
+  val Sparse = fromOpenOption(StandardOpenOption.SPARSE)
+  val Sync = fromOpenOption(StandardOpenOption.SYNC)
+  val Dsync = fromOpenOption(StandardOpenOption.DSYNC)
+}
+
+private[file] trait FlagsCompanionPlatform {
+  def fromOpenOptions(options: Iterable[OpenOption]): Flags =
+    Flags(options.map(Flag.fromOpenOption(_)).toList)
 }

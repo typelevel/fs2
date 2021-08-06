@@ -177,7 +177,7 @@ class TLSSocketSuite extends TLSSuite {
         }
         .compile
         .to(Chunk)
-        .intercept[Exception]
+        .intercept[SSLException]
     }
 
   }

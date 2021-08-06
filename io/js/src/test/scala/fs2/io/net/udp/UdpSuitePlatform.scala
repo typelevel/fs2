@@ -24,7 +24,6 @@ package io
 package net
 package udp
 
-import cats.effect.IO
 import cats.syntax.all._
 
 import fs2.internal.jsdeps.node.osMod

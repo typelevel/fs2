@@ -19,27 +19,31 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2
-package io
-package file
+package fs2.io.file
 
-import cats.effect.kernel.{Async, Resource}
+/** Flags describing how a file should be opened by `Files[F].open(path, flags)`.
+  *
+  * Common flag combinations are available in the companion (e.g. `Flags.Write`)
+  * Custom combinations are supported via the `apply` method
+  * (e.g., `Flags(Flag.Write, Flag.CreateNew)`).
+  */
+case class Flags(value: List[Flag]) {
 
-import java.nio.file.{Files => _, Path => JPath, _}
+  def contains(flag: Flag): Boolean = value.contains(flag)
 
-private[file] trait WriteCursorCompanionPlatform {
-  @deprecated("Use Files[F].writeCursorFromFileHandle", "3.0.0")
-  def fromFileHandle[F[_]: Async](
-      file: FileHandle[F],
-      append: Boolean
-  ): F[WriteCursor[F]] =
-    Files[F].writeCursorFromFileHandle(file, append)
+  def addIfAbsent(flag: Flag): Flags =
+    if (!contains(flag)) Flags(flag :: value) else this
+}
 
-  @deprecated("Use Files[F].writeCursor", "3.0.0")
-  def fromPath[F[_]: Async](
-      path: JPath,
-      flags: Seq[OpenOption] = List(StandardOpenOption.CREATE)
-  ): Resource[F, WriteCursor[F]] =
-    Files[F].writeCursor(path, flags)
+object Flags extends FlagsCompanionPlatform {
+  def apply(flags: Flag*): Flags = Flags(flags.toList)
 
+  /** Flags used for opening a file for reading. */
+  val Read = Flags(Flag.Read)
+
+  /** Flags used for opening a file for writing, creating it if it doesn't exist, and truncating it. */
+  val Write = Flags(Flag.Write, Flag.Create, Flag.Truncate)
+
+  /** Flags used for opening a file for appending, creating it if it doesn't exist. */
+  val Append = Flags(Flag.Append, Flag.Create, Flag.Write)
 }

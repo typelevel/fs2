@@ -32,8 +32,7 @@ import cats.effect.std.Dispatcher
 import cats.effect.std.Queue
 import fs2.internal.jsdeps.node.nodeStrings
 import fs2.io.internal.EventEmitterOps._
-import fs2.io.file.PosixFiles
-import fs2.io.file.Path
+import fs2.io.file.{Files, Path}
 
 private[unixsocket] trait UnixSocketsCompanionPlatform {
 
@@ -85,8 +84,8 @@ private[unixsocket] trait UnixSocketsCompanionPlatform {
             )
             .concurrently(Stream.eval(errored.get.flatMap(F.raiseError[Unit])))
           _ <- Stream.bracket(
-            if (deleteIfExists) PosixFiles[F].rm(Path(address.path), force = true) else F.unit
-          )(_ => if (deleteOnClose) PosixFiles[F].rm(Path(address.path), force = true) else F.unit)
+            if (deleteIfExists) Files[F].deleteIfExists(Path(address.path)).void else F.unit
+          )(_ => if (deleteOnClose) Files[F].deleteIfExists(Path(address.path)).void else F.unit)
           _ <- Stream.eval(
             F
               .async_[Unit] { cb =>

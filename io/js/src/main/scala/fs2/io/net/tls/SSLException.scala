@@ -19,10 +19,23 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2.io.file
+package fs2
+package io
+package net
+package tls
 
-import cats.effect.kernel.Async
+import scala.scalajs.js
 
-private[file] trait ReadFilesCompanionPlatform {
-  implicit def forAsync[F[_]: Async]: ReadFiles[F] = PosixFiles.forAsync[F]
+class SSLException(message: String = null, cause: Throwable = null)
+    extends IOException(message, cause)
+private class JavaScriptSSLException(cause: js.JavaScriptException)
+    extends SSLException(cause = cause)
+object SSLException {
+  private[io] def unapply(cause: js.JavaScriptException): Option[SSLException] = cause match {
+    case js.JavaScriptException(error: js.Error)
+        if error.message.contains("TLS") || error.message.contains("SSL") =>
+      Some(new JavaScriptSSLException(cause))
+    case _ => None
+  }
+
 }

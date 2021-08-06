@@ -23,54 +23,84 @@ package fs2
 package io
 package file
 
-import cats.kernel.Hash
-import cats.kernel.Monoid
-import cats.kernel.Order
-import fs2.internal.jsdeps.node.fsMod
-import fs2.internal.jsdeps.node.osMod
 import fs2.internal.jsdeps.node.pathMod
-import CollectionCompat._
 
-final class Path(private val path: String) extends AnyVal {
-  def basename: Path = Path(pathMod.basename(path))
-  def basename(ext: String): Path = Path(pathMod.basename(path, ext))
-  def dirname: Path = Path(pathMod.dirname(path))
-  def extname: String = pathMod.extname(path)
-  def isAbsolute: Boolean = pathMod.isAbsolute(path)
-  def normalize: Path = Path(pathMod.normalize(path))
-  def relativeTo(that: Path): Path = Path(pathMod.relative(this.path, that.path))
+import scala.annotation.tailrec
 
-  def /(that: Path): Path = Path.join(this, that)
+final case class Path private (override val toString: String) extends PathApi {
 
-  override def toString: String = path
+  def /(name: String): Path =
+    if (toString.isEmpty & name.isEmpty)
+      Path.instances.empty // Special case to satisfy Monoid laws
+    else
+      Path(pathMod.join(toString, name))
 
-  private[file] def toJS: fsMod.PathLike = path.asInstanceOf[fsMod.PathLike]
+  def /(path: Path): Path = this / path.toString
+
+  def resolve(name: String): Path = resolve(Path(name))
+  def resolve(path: Path): Path = if (path.isAbsolute) path else this / path
+
+  def resolveSibling(name: String): Path = resolveSibling(Path(name))
+  def resolveSibling(path: Path): Path = parent.fold(path)(_.resolve(path))
+
+  def relativize(path: Path): Path = Path(pathMod.relative(toString, path.toString))
+
+  def normalize: Path = new Path(pathMod.normalize(toString))
+
+  def isAbsolute: Boolean = pathMod.isAbsolute(toString)
+
+  def absolute: Path = Path(pathMod.resolve(toString))
+
+  def names: Seq[Path] = {
+    @tailrec
+    def go(path: Path, acc: List[Path]): List[Path] =
+      path.parent match {
+        case None         => acc
+        case Some(parent) => go(parent, path.fileName :: acc)
+      }
+
+    go(this, Nil)
+  }
+
+  def fileName: Path = Path(pathMod.basename(toString))
+
+  def extName: String = pathMod.extname(toString)
+
+  def parent: Option[Path] = {
+    val parsed = pathMod.parse(toString)
+    if (parsed.dir.isEmpty || parsed.base.isEmpty)
+      None
+    else
+      Some(Path(parsed.dir))
+  }
+
+  def startsWith(path: String): Boolean = startsWith(Path(path))
+  def startsWith(path: Path): Boolean =
+    isAbsolute == path.isAbsolute && names.startsWith(path.names)
+
+  def endsWith(path: String): Boolean = endsWith(Path(path))
+  def endsWith(that: Path): Boolean = {
+    val thisNames = this.names
+    val thatNames = that.names
+    (isAbsolute == that.isAbsolute || thisNames.size > thatNames.size) && thisNames.endsWith(
+      thatNames
+    )
+  }
+
+  override def equals(that: Any) = that match {
+    case p: Path => toString == p.toString
+    case _       => false
+  }
+
+  override def hashCode = toString.hashCode
 }
 
-object Path {
-  def apply(path: String): Path = new Path(path)
+object Path extends PathCompanionApi {
+  private[file] val sep = pathMod.sep
 
-  def join(paths: Path*): Path = Path(pathMod.join(paths.map(_.path): _*))
-  def resolve(paths: Path*): Path = Path(pathMod.resolve(paths.map(_.path): _*))
-
-  val empty = Path("")
-  val tmpdir = Path(osMod.tmpdir())
-
-  implicit def instances: Monoid[Path] with Order[Path] with Hash[Path] = algebra
-
-  private object algebra extends Monoid[Path] with Order[Path] with Hash[Path] {
-
-    override def empty: Path = Path.empty
-
-    override def combine(x: Path, y: Path): Path = x / y
-
-    override def combineAll(as: IterableOnce[Path]): Path = Path.join(as.toSeq: _*)
-
-    override def eqv(x: Path, y: Path): Boolean = x.path == y.path
-
-    override def compare(x: Path, y: Path): Int = x.path.compare(y.path)
-
-    override def hash(x: Path): Int = x.path.hashCode()
-
-  }
+  def apply(path: String): Path =
+    if (path.endsWith(sep))
+      new Path(path.dropRight(sep.length))
+    else
+      new Path(path)
 }

@@ -23,23 +23,21 @@ package fs2
 package io
 package file
 
-import cats.effect.kernel.{Async, Resource}
+import cats.kernel.Hash
+import cats.Show
 
-import java.nio.file.{Files => _, Path => JPath, _}
+/** An opaque, unique identifier for a file.
+  *
+  * Paths which have the same `FileKey` (via univerals equals),
+  * as reported by `Files[F].getBasicFileAttributes(path).fileKey`,
+  * are guaranteed to reference the same file on the file system.
+  *
+  * Note: not all operating systems and file systems support file keys,
+  * hence `BasicFileAttributes#fileKey` returns an `Option[FileKey]`.
+  */
+trait FileKey
 
-private[file] trait WriteCursorCompanionPlatform {
-  @deprecated("Use Files[F].writeCursorFromFileHandle", "3.0.0")
-  def fromFileHandle[F[_]: Async](
-      file: FileHandle[F],
-      append: Boolean
-  ): F[WriteCursor[F]] =
-    Files[F].writeCursorFromFileHandle(file, append)
-
-  @deprecated("Use Files[F].writeCursor", "3.0.0")
-  def fromPath[F[_]: Async](
-      path: JPath,
-      flags: Seq[OpenOption] = List(StandardOpenOption.CREATE)
-  ): Resource[F, WriteCursor[F]] =
-    Files[F].writeCursor(path, flags)
-
+object FileKey {
+  implicit val hash: Hash[FileKey] = Hash.fromUniversalHashCode[FileKey]
+  implicit val show: Show[FileKey] = Show.fromToString[FileKey]
 }

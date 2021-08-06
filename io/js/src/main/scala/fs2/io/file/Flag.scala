@@ -23,23 +23,30 @@ package fs2
 package io
 package file
 
-import cats.effect.kernel.{Async, Resource}
+import cats.kernel.Monoid
+import fs2.internal.jsdeps.node.fsMod
 
-import java.nio.file.{Files => _, Path => JPath, _}
+final class Flag private (private[file] val bits: Long) extends AnyVal
 
-private[file] trait WriteCursorCompanionPlatform {
-  @deprecated("Use Files[F].writeCursorFromFileHandle", "3.0.0")
-  def fromFileHandle[F[_]: Async](
-      file: FileHandle[F],
-      append: Boolean
-  ): F[WriteCursor[F]] =
-    Files[F].writeCursorFromFileHandle(file, append)
+object Flag extends FlagCompanionApi {
+  private def apply(bits: Long): Flag = new Flag(bits)
+  private def apply(bits: Double): Flag = Flag(bits.toLong)
 
-  @deprecated("Use Files[F].writeCursor", "3.0.0")
-  def fromPath[F[_]: Async](
-      path: JPath,
-      flags: Seq[OpenOption] = List(StandardOpenOption.CREATE)
-  ): Resource[F, WriteCursor[F]] =
-    Files[F].writeCursor(path, flags)
+  val Read = Flag(fsMod.constants.O_RDONLY)
+  val Write = Flag(fsMod.constants.O_WRONLY)
+  val Append = Flag(fsMod.constants.O_APPEND)
 
+  val Truncate = Flag(fsMod.constants.O_TRUNC)
+  val Create = Flag(fsMod.constants.O_CREAT)
+  val CreateNew = Flag(fsMod.constants.O_CREAT.toLong | fsMod.constants.O_EXCL.toLong)
+
+  val Sync = Flag(fsMod.constants.O_SYNC)
+  val Dsync = Flag(fsMod.constants.O_DSYNC)
+
+  private[file] implicit val monoid: Monoid[Flag] = new Monoid[Flag] {
+    override def combine(x: Flag, y: Flag): Flag = Flag(x.bits | y.bits)
+    override def empty: Flag = Flag(0)
+  }
 }
+
+private[file] trait FlagsCompanionPlatform {}

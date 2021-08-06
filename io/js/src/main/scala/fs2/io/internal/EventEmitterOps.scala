@@ -33,14 +33,15 @@ private[fs2] object EventEmitterOps {
       register: (E, V, js.Function0[Unit]) => Unit
   )(callback: js.Function0[Unit]): Resource[F, Unit] =
     Resource.make(Sync[F].delay(register(emitter, event, callback)))(_ =>
-      Sync[F].delay(
+      Sync[F].delay {
         emitter
           .asInstanceOf[eventsMod.EventEmitter]
           .removeListener(
             event.asInstanceOf[String],
             callback.asInstanceOf[js.Function1[js.Any, Unit]]
           )
-      )
+        ()
+      }
     )
 
   def registerListener[A] = new RegisterListenerPartiallyApplied[A]
@@ -53,14 +54,15 @@ private[fs2] object EventEmitterOps {
         register: (E, V, js.Function1[A, Unit]) => Unit
     )(callback: js.Function1[A, Unit]): Resource[F, Unit] =
       Resource.make(Sync[F].delay(register(emitter, event, callback)))(_ =>
-        Sync[F].delay(
+        Sync[F].delay {
           emitter
             .asInstanceOf[eventsMod.EventEmitter]
             .removeListener(
               event.asInstanceOf[String],
               callback.asInstanceOf[js.Function1[js.Any, Unit]]
             )
-        )
+          ()
+        }
       )
   }
 
@@ -71,14 +73,15 @@ private[fs2] object EventEmitterOps {
         register: (E, V, js.Function2[A, B, Unit]) => Unit
     )(callback: js.Function2[A, B, Unit]): Resource[F, Unit] =
       Resource.make(Sync[F].delay(register(emitter, event, callback)))(_ =>
-        Sync[F].delay(
+        Sync[F].delay {
           emitter
             .asInstanceOf[eventsMod.EventEmitter]
             .removeListener(
               event.asInstanceOf[String],
               callback.asInstanceOf[js.Function1[js.Any, Unit]]
             )
-        )
+          ()
+        }
       )
   }
 

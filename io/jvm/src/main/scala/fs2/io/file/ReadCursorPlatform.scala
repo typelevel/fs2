@@ -23,13 +23,13 @@ package fs2
 package io
 package file
 
-import java.nio.file.{Files => _, _}
+import java.nio.file.{Files => _, Path => JPath, _}
 import cats.effect.kernel.{Async, Resource}
 
 private[file] trait ReadCursorCompanionPlatform {
   @deprecated("Use Files[F].readCursor", "3.0.0")
   def fromPath[F[_]: Async](
-      path: Path,
+      path: JPath,
       flags: Seq[OpenOption] = Nil
   ): Resource[F, ReadCursor[F]] =
     Files[F].readCursor(path, flags)

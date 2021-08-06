@@ -28,7 +28,7 @@ import scala.concurrent.duration._
 import cats.effect.IO
 import cats.syntax.all._
 
-import java.nio.file.{Files => JFiles, _}
+import java.nio.file.WatchEvent
 
 class WatcherSuite extends Fs2Suite with BaseFileSuite {
   group("supports watching a file") {
@@ -37,7 +37,7 @@ class WatcherSuite extends Fs2Suite with BaseFileSuite {
         .resource(tempFile)
         .flatMap { f =>
           Files[IO]
-            .watch(f, modifiers = modifiers)
+            .watch(f, Nil, modifiers, 1.second)
             .takeWhile(
               {
                 case Watcher.Event.Modified(_, _) => false
@@ -55,7 +55,7 @@ class WatcherSuite extends Fs2Suite with BaseFileSuite {
         .resource(tempFile)
         .flatMap { f =>
           Files[IO]
-            .watch(f, modifiers = modifiers)
+            .watch(f, Nil, modifiers, 1.second)
             .takeWhile(
               {
                 case Watcher.Event.Deleted(_, _) => false
@@ -63,7 +63,7 @@ class WatcherSuite extends Fs2Suite with BaseFileSuite {
               },
               true
             )
-            .concurrently(smallDelay ++ Stream.eval(IO(JFiles.delete(f))))
+            .concurrently(smallDelay ++ Stream.eval(Files[IO].delete(f)))
         }
         .compile
         .drain
@@ -87,7 +87,9 @@ class WatcherSuite extends Fs2Suite with BaseFileSuite {
             .takeWhile(_ < 2)
             .concurrently(
               smallDelay ++ Stream
-                .exec(List(f1, f2).traverse(f => w.watch(f, modifiers = modifiers)).void) ++
+                .exec(
+                  List(f1, f2).traverse(f => w.watch(f, Nil, modifiers)).void
+                ) ++
                 smallDelay ++ Stream.eval(modify(f1)) ++ smallDelay ++ Stream.eval(modify(f2))
             )
         }
@@ -101,8 +103,8 @@ class WatcherSuite extends Fs2Suite with BaseFileSuite {
       Stream
         .resource((Watcher.default[IO], tempDirectory).tupled)
         .flatMap { case (w, dir) =>
-          val f1 = dir.resolve("f1")
-          val f2 = dir.resolve("f2")
+          val f1 = dir / "f1"
+          val f2 = dir / "f2"
           w.events()
             .scan(Nil: List[Path]) {
               case (acc, Watcher.Event.Created(p, _)) =>
@@ -114,7 +116,7 @@ class WatcherSuite extends Fs2Suite with BaseFileSuite {
             .concurrently(
               smallDelay ++ Stream
                 .exec(
-                  w.watch(f1, modifiers = modifiers) *> w.watch(f2, modifiers = modifiers).flatten
+                  w.watch(f1, Nil, modifiers) *> w.watch(f2, Nil, modifiers).flatten
                 ) ++ smallDelay ++ Stream.eval(modify(f2)) ++ smallDelay ++ Stream.eval(modify(f1))
             )
         }
@@ -128,11 +130,11 @@ class WatcherSuite extends Fs2Suite with BaseFileSuite {
       Stream
         .resource(tempDirectory)
         .flatMap { dir =>
-          val a = dir.resolve("a")
-          val b = a.resolve("b")
-          Stream.eval(IO(JFiles.createDirectory(a)) >> IO(JFiles.write(b, Array[Byte]()))) ++
+          val a = dir / "a"
+          val b = a / "b"
+          Stream.eval(Files[IO].createDirectory(a) >> Files[IO].createFile(b)) ++
             Files[IO]
-              .watch(dir, modifiers = modifiers)
+              .watch(dir, Nil, modifiers, 1.second)
               .takeWhile {
                 case Watcher.Event.Modified(_, _) => false
                 case _                            => true
@@ -146,17 +148,16 @@ class WatcherSuite extends Fs2Suite with BaseFileSuite {
       Stream
         .resource(tempDirectory)
         .flatMap { dir =>
-          val a = dir.resolve("a")
-          val b = a.resolve("b")
+          val a = dir / "a"
+          val b = a / "b"
           Files[IO]
-            .watch(dir, modifiers = modifiers)
+            .watch(dir, Nil, modifiers, 1.second)
             .takeWhile {
               case Watcher.Event.Created(_, _) => false
               case _                           => true
             }
             .concurrently(
-              smallDelay ++ Stream
-                .eval(IO(JFiles.createDirectory(a)) >> IO(JFiles.write(b, Array[Byte]())))
+              smallDelay ++ Stream.eval(Files[IO].createDirectory(a) >> Files[IO].createFile(b))
             )
         }
         .compile

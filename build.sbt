@@ -125,8 +125,17 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   // sealed traits
   ProblemFilters.exclude[NewMixinForwarderProblem]("fs2.io.net.Network.*"),
   ProblemFilters.exclude[NewMixinForwarderProblem]("fs2.io.net.tls.TLSContext.*"),
-  ProblemFilters.exclude[InheritedNewAbstractMethodProblem]("fs2.io.net.tls.TLSContext.*")
+  ProblemFilters.exclude[InheritedNewAbstractMethodProblem]("fs2.io.net.tls.TLSContext.*"),
   // end #2453
+  ProblemFilters.exclude[NewMixinForwarderProblem]("fs2.io.file.Files.*"),
+  ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.io.file.Files.*"),
+  ProblemFilters.exclude[MissingClassProblem]("fs2.io.file.Files$AsyncFiles"),
+  ProblemFilters.exclude[InheritedNewAbstractMethodProblem]("fs2.io.file.Files.F"),
+  ProblemFilters.exclude[InheritedNewAbstractMethodProblem](
+    "fs2.io.file.Files._runJavaCollectionResource"
+  ),
+  ProblemFilters.exclude[InheritedNewAbstractMethodProblem]("fs2.io.file.Files.list"),
+  ProblemFilters.exclude[InheritedNewAbstractMethodProblem]("fs2.io.file.Files.watch")
 )
 
 lazy val root = project
@@ -216,6 +225,7 @@ lazy val node = crossProject(JSPlatform)
     scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule)),
     Compile / npmDependencies += "@types/node" -> "16.0.0",
     useYarn := true,
+    yarnExtraArgs += "--frozen-lockfile",
     stOutputPackage := "fs2.internal.jsdeps",
     stStdlib := List("es2020")
   )
@@ -242,12 +252,16 @@ lazy val io = crossProject(JVMPlatform, JSPlatform)
   )
   .jvmSettings(
     Test / fork := true,
-    libraryDependencies += "com.github.jnr" % "jnr-unixsocket" % "0.38.8" % Optional
+    libraryDependencies ++= Seq(
+      "com.github.jnr" % "jnr-unixsocket" % "0.38.8" % Optional,
+      "com.google.jimfs" % "jimfs" % "1.2" % Test
+    )
   )
   .jsSettings(
     scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule)),
     Test / npmDevDependencies += "jks-js" -> "1.0.1",
-    useYarn := true
+    useYarn := true,
+    yarnExtraArgs += "--frozen-lockfile"
   )
   .dependsOn(core % "compile->compile;test->test")
   .jsConfigure(_.dependsOn(node.js))

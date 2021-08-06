@@ -23,7 +23,6 @@ package fs2
 package io
 package net
 
-import java.io.IOException
 import java.net.InetSocketAddress
 import java.nio.{Buffer, ByteBuffer}
 import java.nio.channels.{

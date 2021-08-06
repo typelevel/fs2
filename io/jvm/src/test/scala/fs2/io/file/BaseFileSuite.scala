@@ -26,15 +26,19 @@ package file
 import cats.effect.{IO, Resource}
 import cats.syntax.all._
 
-import java.io.IOException
-import java.nio.file.{Files => JFiles, _}
-import java.nio.file.attribute.BasicFileAttributes
+import java.nio.file.{Files => JFiles, Path => JPath, _}
+import java.nio.file.attribute.{BasicFileAttributes => JBasicFileAttributes}
 
 import scala.concurrent.duration._
 
-trait BaseFileSuite {
+trait BaseFileSuite extends Fs2Suite {
+
+  protected def defaultTempDirectory = IO(Path(System.getProperty("java.io.tmpdir")))
+
   protected def tempDirectory: Resource[IO, Path] =
-    Resource.make(IO(JFiles.createTempDirectory("BaseFileSpec")))(deleteDirectoryRecursively(_))
+    Resource.make(IO(Path.fromNioPath(JFiles.createTempDirectory("BaseFileSpec"))))(
+      deleteDirectoryRecursively(_)
+    )
 
   protected def tempFile: Resource[IO, Path] =
     tempDirectory.evalMap(aFile)
@@ -45,20 +49,20 @@ trait BaseFileSuite {
   protected def tempFilesHierarchy: Resource[IO, Path] =
     tempDirectory.evalMap { topDir =>
       List
-        .fill(5)(IO(JFiles.createTempDirectory(topDir, "BaseFileSpec")))
+        .fill(5)(IO(Path.fromNioPath(JFiles.createTempDirectory(topDir.toNioPath, "BaseFileSpec"))))
         .traverse {
           _.flatMap { dir =>
-            IO(JFiles.createTempFile(dir, "BaseFileSpecSub", ".tmp")).replicateA(5)
+            IO(JFiles.createTempFile(dir.toNioPath, "BaseFileSpecSub", ".tmp")).replicateA(5)
           }
         }
         .as(topDir)
     }
 
   protected def aFile(dir: Path): IO[Path] =
-    IO(JFiles.createTempFile(dir, "BaseFileSpec", ".tmp"))
+    IO(Path.fromNioPath(JFiles.createTempFile(dir.toNioPath, "BaseFileSpec", ".tmp")))
 
   protected def modify(file: Path): IO[Path] =
-    IO(JFiles.write(file, Array[Byte](0, 1, 2, 3))).as(file)
+    IO(JFiles.write(file.toNioPath, Array[Byte](0, 1, 2, 3))).as(file)
 
   protected def modifyLater(file: Path): Stream[IO, INothing] =
     Stream
@@ -66,18 +70,18 @@ trait BaseFileSuite {
       .map(_.toByte)
       .covary[IO]
       .metered(250.millis)
-      .through(Files[IO].writeAll(file, StandardOpenOption.APPEND :: Nil))
+      .through(Files[IO].writeAll(file))
 
   protected def deleteDirectoryRecursively(dir: Path): IO[Unit] =
     IO {
       JFiles.walkFileTree(
-        dir,
-        new SimpleFileVisitor[Path] {
-          override def visitFile(path: Path, attrs: BasicFileAttributes) = {
+        dir.toNioPath,
+        new SimpleFileVisitor[JPath] {
+          override def visitFile(path: JPath, attrs: JBasicFileAttributes) = {
             JFiles.delete(path)
             FileVisitResult.CONTINUE
           }
-          override def postVisitDirectory(path: Path, e: IOException) = {
+          override def postVisitDirectory(path: JPath, e: IOException) = {
             JFiles.delete(path)
             FileVisitResult.CONTINUE
           }

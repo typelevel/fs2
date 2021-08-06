@@ -19,6 +19,15 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2.io.net
+package fs2
+package io
+package file
 
-private[io] trait netplatform
+import java.nio.file.attribute.{FileAttribute, PosixFilePermissions}
+
+private[file] trait PermissionsPlatform {
+  def toNioFileAttribute: FileAttribute[_] = this match {
+    case p: PosixPermissions =>
+      PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString(p.toString))
+  }
+}

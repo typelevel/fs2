@@ -21,8 +21,19 @@
 
 package fs2.io.file
 
-import cats.effect.kernel.Async
+import java.nio.file.{CopyOption, StandardCopyOption}
 
-private[file] trait ReadFilesCompanionPlatform {
-  implicit def forAsync[F[_]: Async]: ReadFiles[F] = Files.forAsync[F]
+final class CopyFlag private (private[file] val option: CopyOption) extends AnyVal
+
+object CopyFlag extends CopyFlagCompanionApi {
+  def fromCopyOption(option: CopyOption): CopyFlag = new CopyFlag(option)
+
+  val AtomicMove = fromCopyOption(StandardCopyOption.ATOMIC_MOVE)
+  val CopyAttributes = fromCopyOption(StandardCopyOption.COPY_ATTRIBUTES)
+  val ReplaceExisting = fromCopyOption(StandardCopyOption.REPLACE_EXISTING)
+}
+
+private[file] trait CopyFlagsCompanionPlatform {
+  def fromCopyOptions(options: Iterable[CopyOption]): CopyFlags =
+    CopyFlags(options.map(CopyFlag.fromCopyOption(_)).toList)
 }

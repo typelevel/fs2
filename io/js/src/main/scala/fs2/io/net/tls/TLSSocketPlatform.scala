@@ -62,7 +62,10 @@ private[tls] trait TLSSocketCompanionPlatform { self: TLSSocket.type =>
       }: js.Function1[bufferMod.global.Buffer, Unit]
       errorDef <- F.deferred[Throwable].toResource
       errorListener = { error =>
-        dispatcher.unsafeRunAndForget(errorDef.complete(js.JavaScriptException(error)))
+        val ex = js.JavaScriptException(error)
+        dispatcher.unsafeRunAndForget(
+          errorDef.complete(IOException.unapply(ex).getOrElse(ex))
+        )
       }: js.Function1[js.Error, Unit]
       tlsSock <- Resource.make {
         F.delay {
@@ -92,7 +95,10 @@ private[tls] trait TLSSocketCompanionPlatform { self: TLSSocket.type =>
     } yield new AsyncTLSSocket(
       tlsSock,
       readStream,
-      sessionRef.discrete.unNone.head.compile.lastOrError
+      sessionRef.discrete.unNone.head
+        .concurrently(Stream.eval(errorDef.get.flatMap(F.raiseError[Unit])))
+        .compile
+        .lastOrError
     )
 
   private[tls] final class AsyncTLSSocket[F[_]: Async](

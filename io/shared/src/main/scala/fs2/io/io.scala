@@ -31,6 +31,8 @@ import java.nio.charset.Charset
 /** Provides various ways to work with streams that perform IO.
   */
 package object io extends ioplatform {
+  type IOException = java.io.IOException
+
   private val utf8Charset = Charset.forName("UTF-8")
 
   /** Reads all bytes from the specified `InputStream` with a buffer size of `chunkSize`.
