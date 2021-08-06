@@ -36,6 +36,7 @@ import fs2.io.file.Files.UnsealedFiles
 import java.security.Principal
 import scala.concurrent.duration._
 import scala.scalajs.js
+import scala.scalajs.js.JSConverters._
 
 private[file] trait FilesPlatform[F[_]]
 
@@ -81,7 +82,7 @@ private[fs2] trait FilesCompanionPlatform {
       mkdir(path, permissions, true)
 
     override def createFile(path: Path, permissions: Option[Permissions]): F[Unit] =
-      ???
+      open(path, Flags(Flag.CreateNew), permissions).use_
 
     override def createTempDirectory(
         dir: Option[Path],
@@ -259,10 +260,27 @@ private[fs2] trait FilesCompanionPlatform {
         F.raiseError(new FileAlreadyExistsException)
       ).adaptError { case IOException(ex) => ex }
 
-    override def open(path: Path, flags: Flags): Resource[F, FileHandle[F]] = Resource
+    override def open(path: Path, flags: Flags): Resource[F, FileHandle[F]] =
+      open(path, flags, None)
+
+    private def open(
+        path: Path,
+        flags: Flags,
+        mode: Option[Permissions]
+    ): Resource[F, FileHandle[F]] = Resource
       .make(
         F.fromPromise(
-          F.delay(fsPromisesMod.open(path.toString, combineFlags(flags)))
+          F.delay(
+            fsPromisesMod.^.asInstanceOf[js.Dynamic]
+              .open(
+                path.toString,
+                combineFlags(flags),
+                mode.collect { case posix: PosixPermissions =>
+                  posix.value
+                }.orUndefined
+              )
+              .asInstanceOf[js.Promise[fsPromisesMod.FileHandle]]
+          )
         )
       )(fd => F.fromPromise(F.delay(fd.close())))
       .map(FileHandle.make[F])
