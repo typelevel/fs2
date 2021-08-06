@@ -83,6 +83,13 @@ private[fs2] trait FilesCompanionPlatform {
     override def createFile(path: Path, permissions: Option[Permissions]): F[Unit] =
       open(path, Flags(Flag.CreateNew), permissions).use_
 
+    override def createSymbolicLink(
+        link: Path,
+        target: Path,
+        permissions: Option[Permissions]
+    ): F[Unit] =
+      ???
+
     override def createTempDirectory(
         dir: Option[Path],
         prefix: String,

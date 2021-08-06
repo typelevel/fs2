@@ -74,6 +74,12 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
     */
   def createFile(path: Path, permissions: Option[Permissions]): F[Unit]
 
+  /** Creates a symbolic link which points to the supplied target. */
+  def createSymbolicLink(link: Path, target: Path): F[Unit] = createSymbolicLink(link, target, None)
+
+  /** Creates a symbolic link which points to the supplied target. If defined, the supplied permissions are set on the created link. */
+  def createSymbolicLink(link: Path, target: Path, permissions: Option[Permissions]): F[Unit]
+
   /** Creates a temporary file.
     * The created file is not automatically deleted - it is up to the operating system to decide when the file is deleted.
     * Alternatively, use `tempFile` to get a resource, which is deleted upon resource finalization.
@@ -151,58 +157,105 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
     */
   def exists(path: Path, followLinks: Boolean): F[Boolean]
 
+  /** Gets `BasicFileAttributes` for the supplied path. Symbolic links are not followed. */
   def getBasicFileAttributes(path: Path): F[BasicFileAttributes] =
     getBasicFileAttributes(path, false)
 
+  /** Gets `BasicFileAttributes` for the supplied path. Symbolic links are not followed when `followLinks` is true. */
   def getBasicFileAttributes(path: Path, followLinks: Boolean): F[BasicFileAttributes]
 
+  /** Gets the last modified time of the supplied path.
+    * The last modified time is represented as a duration since the Unix epoch.
+    * Symbolic links are followed.
+    */
   def getLastModifiedTime(path: Path): F[FiniteDuration] = getLastModifiedTime(path, true)
 
+  /** Gets the last modified time of the supplied path.
+    * The last modified time is represented as a duration since the Unix epoch.
+    * Symbolic links are followed when `followLinks` is true.
+    */
   def getLastModifiedTime(path: Path, followLinks: Boolean): F[FiniteDuration]
 
+  /** Gets the POSIX attributes for the supplied path.
+    * Symbolic links are not followed.
+    */
   def getPosixFileAttributes(path: Path): F[PosixFileAttributes] =
     getPosixFileAttributes(path, false)
+
+  /** Gets the POSIX attributes for the supplied path.
+    * Symbolic links are followed when `followLinks` is true.
+    */
   def getPosixFileAttributes(path: Path, followLinks: Boolean): F[PosixFileAttributes]
 
-  /** Gets the POSIX permissions of the specified file. */
+  /** Gets the POSIX permissions of the supplied path.
+    * Symbolic links are followed.
+    */
   def getPosixPermissions(path: Path): F[PosixPermissions] = getPosixPermissions(path, true)
 
-  /** Gets the POSIX permissions of the specified file. */
+  /** Gets the POSIX permissions of the supplied path.
+    * Symbolic links are followed when `followLinks` is true.
+    */
   def getPosixPermissions(path: Path, followLinks: Boolean): F[PosixPermissions]
 
+  /** Returns true if the supplied path exists and is a directory. Symbolic links are followed. */
   def isDirectory(path: Path): F[Boolean] = isDirectory(path, true)
+
+  /** Returns true if the supplied path exists and is a directory. Symbolic links are followed when `followLinks` is true. */
   def isDirectory(path: Path, followLinks: Boolean): F[Boolean]
+
+  /** Returns true if the supplied path exists and is executable. */
   def isExecutable(path: Path): F[Boolean]
+
+  /** Returns true if the supplied path is a hidden file (note: may not check for existence). */
   def isHidden(path: Path): F[Boolean]
+
+  /** Returns true if the supplied path exists and is readable. */
   def isReadable(path: Path): F[Boolean]
+
+  /** Returns true if the supplied path is a regular file. Symbolic links are followed. */
   def isRegularFile(path: Path): F[Boolean] = isRegularFile(path, true)
+
+  /** Returns true if the supplied path is a regular file. Symbolic links are followed when `followLinks` is true. */
   def isRegularFile(path: Path, followLinks: Boolean): F[Boolean]
+
+  /** Returns true if the supplied path is a symbolic link. */
   def isSymbolicLink(path: Path): F[Boolean]
+
+  /** Returns true if the supplied path exists and is writable. */
   def isWritable(path: Path): F[Boolean]
 
+  /** Returns true if the supplied paths reference the same file. */
   def isSameFile(path1: Path, path2: Path): F[Boolean]
 
-  /** Gets the contents of the specified directory.
-    */
+  /** Gets the contents of the specified directory. */
   def list(path: Path): Stream[F, Path]
 
+  /** Moves the source to the target, failing if source does not exist or the target already exists.
+    * To replace the existing instead, use `move(source, target, CopyFlags(CopyFlag.ReplaceExisting))`.
+    */
   def move(source: Path, target: Path): F[Unit] =
     move(source, target, CopyFlags.empty)
 
+  /** Moves the source to the target, following any directives supplied in the flags.
+    * By default, an error occurs if the target already exists, though this can be overriden via `CopyFlag.ReplaceExisting`.
+    */
   def move(source: Path, target: Path, flags: CopyFlags): F[Unit]
 
-  /** Creates a `FileHandle` for the file at the supplied `Path`. */
+  /** Creates a `FileHandle` for the file at the supplied `Path`.
+    * The supplied flags indicate the mode used when opening the file (e.g. read, write, append)
+    * as well as the ability to specify additional options (e.g. automatic deletion at process exit).
+    */
   def open(path: Path, flags: Flags): Resource[F, FileHandle[F]]
 
   /** Reads all bytes from the file specified. */
   def readAll(path: Path): Stream[F, Byte] = readAll(path, 64 * 1024, Flags.Read)
 
   /** Reads all bytes from the file specified, reading in chunks up to the specified limit,
-    * and using the supplied flags to open the file. The flags must contain `Read`.
+    * and using the supplied flags to open the file. The flags must contain `Flag.Read`.
     */
   def readAll(path: Path, chunkSize: Int, flags: Flags): Stream[F, Byte]
 
-  /** Returns a `ReadCursor` for the specified path. */
+  /** Returns a `ReadCursor` for the specified path, using the supplied flags when opening the file. */
   def readCursor(path: Path, flags: Flags): Resource[F, ReadCursor[F]]
 
   /** Reads a range of data synchronously from the file at the specified path.
@@ -211,18 +264,26 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
     */
   def readRange(path: Path, chunkSize: Int, start: Long, end: Long): Stream[F, Byte]
 
+  /** Sets the last modified, last access, and creation time fields of the specified path.
+    *
+    * Times which are supplied as `None` are not modified. E.g., `setTimes(p, Some(t), Some(t), None, false)`
+    * sets the last modified and last access time to `t` and does not change the creation time.
+    *
+    * If the path is a symbolic link and `followLinks` is true, the target of the link as
+    * times set. Otherwise, the link itself has times set.
+    */
   def setFileTimes(
       path: Path,
       lastModified: Option[FiniteDuration],
       lastAccess: Option[FiniteDuration],
-      create: Option[FiniteDuration],
+      creationTime: Option[FiniteDuration],
       followLinks: Boolean
   ): F[Unit]
 
-  def setLastModifiedTime(path: Path, timestamp: FiniteDuration): F[Unit]
-
+  /** Sets the POSIX permissions for the supplied path. Fails on non-POSIX file systems. */
   def setPosixPermissions(path: Path, permissions: PosixPermissions): F[Unit]
 
+  /** Gets the size of the supplied path, failing if it does not exist. */
   def size(path: Path): F[Long]
 
   /** Returns an infinite stream of data from the file at the specified path.
@@ -241,14 +302,7 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
       pollDelay: FiniteDuration = 1.second
   ): Stream[F, Byte]
 
-  /** Creates a temporary file and deletes it upon finalization of the returned resource.
-    *
-    * @param dir the directory which the temporary file will be created in. Pass in None to use the default system temp directory
-    * @param prefix the prefix string to be used in generating the file's name
-    * @param suffix the suffix string to be used in generating the file's name
-    * @param attributes an optional list of file attributes to set atomically when creating the file
-    * @return a resource containing the path of the temporary file
-    */
+  /** Creates a temporary file and deletes it upon finalization of the returned resource. */
   def tempFile: Resource[F, Path] = tempFile(None, "", ".tmp", None)
 
   /** Creates a temporary file and deletes it upon finalization of the returned resource.
@@ -256,7 +310,7 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
     * @param dir the directory which the temporary file will be created in. Pass in None to use the default system temp directory
     * @param prefix the prefix string to be used in generating the file's name
     * @param suffix the suffix string to be used in generating the file's name
-    * @param attributes an optional list of file attributes to set atomically when creating the file
+    * @param permissions permissions to set on the created file
     * @return a resource containing the path of the temporary file
     */
   def tempFile(
@@ -267,7 +321,6 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
   ): Resource[F, Path]
 
   /** Creates a temporary directory and deletes it upon finalization of the returned resource.
-    * @return a resource containing the path of the temporary directory
     */
   def tempDirectory: Resource[F, Path] = tempDirectory(None, "", None)
 
@@ -275,7 +328,7 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
     *
     * @param dir the directory which the temporary directory will be created in. Pass in None to use the default system temp directory
     * @param prefix the prefix string to be used in generating the directory's name
-    * @param attributes an optional list of file attributes to set atomically when creating the directory
+    * @param permissions permissions to set on the created file
     * @return a resource containing the path of the temporary directory
     */
   def tempDirectory(
@@ -284,8 +337,7 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
       permissions: Option[Permissions]
   ): Resource[F, Path]
 
-  /** Creates a stream of paths contained in a given file tree. Depth is unlimited.
-    */
+  /** Creates a stream of paths contained in a given file tree. Depth is unlimited. */
   def walk(start: Path): Stream[F, Path] =
     walk(start, Int.MaxValue, false)
 
@@ -299,36 +351,25 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
     * Use `writeAll(path, Flags.Append)` to append to the end of
     * the file, or pass other flags to further customize behavior.
     */
-  def writeAll(
-      path: Path
-  ): Pipe[F, Byte, INothing] = writeAll(path, Flags.Write)
+  def writeAll(path: Path): Pipe[F, Byte, INothing] = writeAll(path, Flags.Write)
 
   /** Writes all data to the file at the specified path, using the
     * specified flags to open the file. The flags must include either
-    * `Write` or `Append` or an error will occur.
+    * `Flag.Write` or `Flag.Append` or an error will occur.
     */
-  def writeAll(
-      path: Path,
-      flags: Flags
-  ): Pipe[F, Byte, INothing]
+  def writeAll(path: Path, flags: Flags): Pipe[F, Byte, INothing]
 
   /** Returns a `WriteCursor` for the specified path.
     *
-    * The flags must include either `Write` or `Append` or an error will occur.
+    * The flags must include either `Flag.Write` or `Flag.Append` or an error will occur.
     */
-  def writeCursor(
-      path: Path,
-      flags: Flags
-  ): Resource[F, WriteCursor[F]]
+  def writeCursor(path: Path, flags: Flags): Resource[F, WriteCursor[F]]
 
   /** Returns a `WriteCursor` for the specified file handle.
     *
     * If `append` is true, the offset is initialized to the current size of the file.
     */
-  def writeCursorFromFileHandle(
-      file: FileHandle[F],
-      append: Boolean
-  ): F[WriteCursor[F]]
+  def writeCursorFromFileHandle(file: FileHandle[F], append: Boolean): F[WriteCursor[F]]
 
   /** Writes all data to a sequence of files, each limited in size to `limit`.
     *

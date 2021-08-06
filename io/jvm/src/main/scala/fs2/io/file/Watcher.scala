@@ -198,9 +198,6 @@ object Watcher {
   )(implicit
       F: Async[F]
   ) extends Watcher[F] {
-    private def isDir(p: JPath): F[Boolean] =
-      F.blocking(JFiles.isDirectory(p))
-
     private def track(r: Registration[F]): F[F[Unit]] =
       registrations
         .update(rs => r :: rs)

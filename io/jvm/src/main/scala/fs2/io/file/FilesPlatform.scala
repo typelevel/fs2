@@ -105,6 +105,16 @@ private[file] trait FilesCompanionPlatform {
         ()
       }
 
+    def createSymbolicLink(link: Path, target: Path, permissions: Option[Permissions]): F[Unit] =
+      Sync[F].blocking {
+        JFiles.createSymbolicLink(
+          link.toNioPath,
+          target.toNioPath,
+          permissions.map(_.toNioFileAttribute).toSeq: _*
+        )
+        ()
+      }
+
     def createTempFile(
         dir: Option[Path],
         prefix: String,
