@@ -21,25 +21,13 @@
 
 package fs2
 package io
-package file
 
 import scala.concurrent.duration._
 
 import cats.effect.kernel._
 import cats.syntax.all._
-import java.nio.file.{
-  Files => JFiles,
-  FileSystem,
-  FileSystems,
-  FileVisitResult,
-  Path => JPath,
-  SimpleFileVisitor,
-  StandardWatchEventKinds,
-  WatchKey,
-  WatchEvent,
-  WatchService
-}
-import java.nio.file.attribute.{BasicFileAttributes => JBasicFileAttributes}
+import java.nio.file._
+import java.nio.file.attribute.BasicFileAttributes
 import java.util.concurrent.TimeUnit
 
 import CollectionCompat._
@@ -50,7 +38,7 @@ sealed abstract class Watcher[F[_]] {
 
   /** Registers for events on the specified path.
     *
-    * This is more feature-rich than the JVM's `Path#register`. The supplied path may be
+    * This is more feature-rich than the platform's `Path#register`. The supplied path may be
     * a file or directory and events may raised for all descendants of the path. Use [[register]] for
     * a lower-level API.
     *
@@ -132,29 +120,29 @@ object Watcher {
       * @param e event to convert
       * @param registeredDirectory path of the directory for which the event's path is relative
       */
-    def fromWatchEvent(e: WatchEvent[_], registeredDirectory: JPath): Event =
+    def fromWatchEvent(e: WatchEvent[_], registeredDirectory: Path): Event =
       e match {
-        case e: WatchEvent[JPath] @unchecked if e.kind == StandardWatchEventKinds.ENTRY_CREATE =>
-          Event.Created(Path.fromNioPath(registeredDirectory.resolve(e.context)), e.count)
-        case e: WatchEvent[JPath] @unchecked if e.kind == StandardWatchEventKinds.ENTRY_MODIFY =>
-          Event.Modified(Path.fromNioPath(registeredDirectory.resolve(e.context)), e.count)
-        case e: WatchEvent[JPath] @unchecked if e.kind == StandardWatchEventKinds.ENTRY_DELETE =>
-          Event.Deleted(Path.fromNioPath(registeredDirectory.resolve(e.context)), e.count)
+        case e: WatchEvent[Path] @unchecked if e.kind == StandardWatchEventKinds.ENTRY_CREATE =>
+          Event.Created(registeredDirectory.resolve(e.context), e.count)
+        case e: WatchEvent[Path] @unchecked if e.kind == StandardWatchEventKinds.ENTRY_MODIFY =>
+          Event.Modified(registeredDirectory.resolve(e.context), e.count)
+        case e: WatchEvent[Path] @unchecked if e.kind == StandardWatchEventKinds.ENTRY_DELETE =>
+          Event.Deleted(registeredDirectory.resolve(e.context), e.count)
         case e if e.kind == StandardWatchEventKinds.OVERFLOW =>
           Event.Overflow(e.count)
-        case e => Event.NonStandard(e, Path.fromNioPath(registeredDirectory))
+        case e => Event.NonStandard(e, registeredDirectory)
       }
 
     /** Determines the path for which the supplied event references. */
-    private[Watcher] def pathOf(event: Event): Option[JPath] =
+    def pathOf(event: Event): Option[Path] =
       event match {
-        case Event.Created(p, _)  => Some(p.toNioPath)
-        case Event.Deleted(p, _)  => Some(p.toNioPath)
-        case Event.Modified(p, _) => Some(p.toNioPath)
+        case Event.Created(p, _)  => Some(p)
+        case Event.Deleted(p, _)  => Some(p)
+        case Event.Modified(p, _) => Some(p)
         case Event.Overflow(_)    => None
         case Event.NonStandard(e, registeredDirectory) =>
-          if (e.context.isInstanceOf[JPath])
-            Some(registeredDirectory.toNioPath.resolve(e.context.asInstanceOf[JPath]))
+          if (e.context.isInstanceOf[Path])
+            Some(registeredDirectory.resolve(e.context.asInstanceOf[Path]))
           else None
       }
   }
@@ -174,7 +162,7 @@ object Watcher {
     })
 
   private case class Registration[F[_]](
-      path: JPath,
+      path: Path,
       singleFile: Boolean,
       key: WatchKey,
       types: Seq[EventType],
@@ -198,8 +186,8 @@ object Watcher {
   )(implicit
       F: Async[F]
   ) extends Watcher[F] {
-    private def isDir(p: JPath): F[Boolean] =
-      F.blocking(JFiles.isDirectory(p))
+    private def isDir(p: Path): F[Boolean] =
+      F.blocking(Files.isDirectory(p))
 
     private def track(r: Registration[F]): F[F[Unit]] =
       registrations
@@ -219,7 +207,7 @@ object Watcher {
         types: Seq[Watcher.EventType] = Nil,
         modifiers: Seq[WatchEvent.Modifier] = Nil
     ): F[F[Unit]] =
-      Files[F].isDirectory(path).flatMap { dir =>
+      isDir(path).flatMap { dir =>
         if (dir) watchDirectory(path, types, modifiers)
         else watchFile(path, types, modifiers)
       }
@@ -237,12 +225,12 @@ object Watcher {
           )
         else if (types.contains(EventType.Created)) (types, false)
         else (EventType.Created +: types, true)
-      val dirs: F[List[JPath]] = F.blocking {
-        var dirs: List[JPath] = Nil
-        JFiles.walkFileTree(
-          path.toNioPath,
-          new SimpleFileVisitor[JPath] {
-            override def preVisitDirectory(path: JPath, attrs: JBasicFileAttributes) = {
+      val dirs: F[List[Path]] = F.blocking {
+        var dirs: List[Path] = Nil
+        Files.walkFileTree(
+          path,
+          new SimpleFileVisitor[Path] {
+            override def preVisitDirectory(path: Path, attrs: BasicFileAttributes) = {
               dirs = path :: dirs
               FileVisitResult.CONTINUE
             }
@@ -275,10 +263,10 @@ object Watcher {
         types: Seq[Watcher.EventType],
         modifiers: Seq[WatchEvent.Modifier]
     ): F[F[Unit]] =
-      registerUntracked(path.toNioPath.getParent, types, modifiers).flatMap(key =>
+      registerUntracked(path.getParent, types, modifiers).flatMap(key =>
         track(
           Registration(
-            path.toNioPath,
+            path,
             true,
             key,
             types,
@@ -295,12 +283,12 @@ object Watcher {
         types: Seq[Watcher.EventType],
         modifiers: Seq[WatchEvent.Modifier]
     ): F[F[Unit]] =
-      registerUntracked(path.toNioPath, types, modifiers).flatMap(key =>
-        track(Registration(path.toNioPath, false, key, types, modifiers, false, false, F.unit))
+      registerUntracked(path, types, modifiers).flatMap(key =>
+        track(Registration(path, false, key, types, modifiers, false, false, F.unit))
       )
 
     private def registerUntracked(
-        path: JPath,
+        path: Path,
         types: Seq[Watcher.EventType],
         modifiers: Seq[WatchEvent.Modifier]
     ): F[WatchKey] =
@@ -329,8 +317,7 @@ object Watcher {
             if (regs.exists(_.recurse)) {
               val created = events.collect { case Event.Created(p, _) => p }
               def watchIfDirectory(p: Path): F[(F[Unit], List[Event])] =
-                Files[F]
-                  .isDirectory(p)
+                F.blocking(Files.isDirectory(p))
                   .ifM(
                     watch(
                       p,
@@ -339,9 +326,7 @@ object Watcher {
                     ).flatMap { cancel =>
                       val events: F[List[Event]] = F.blocking {
                         var evs: List[Event.Created] = Nil
-                        JFiles
-                          .list(p.toNioPath)
-                          .forEach(d => evs = Event.Created(Path.fromNioPath(d), 1) :: evs)
+                        Files.list(p).forEach(d => evs = Event.Created(d, 1) :: evs)
                         evs
                       }
                       events.map(cancel -> _)
@@ -376,7 +361,7 @@ object Watcher {
         else {
           val events = key.pollEvents.asScala.toList
           key.reset
-          val keyPath = key.watchable.asInstanceOf[JPath]
+          val keyPath = key.watchable.asInstanceOf[Path]
           Some(key -> events.map(evt => Event.fromWatchEvent(evt, keyPath)))
         }
       }

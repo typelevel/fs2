@@ -30,6 +30,8 @@ import cats.syntax.all._
 
 import scala.concurrent.duration._
 
+import fs2.io.{Watcher => DeprecatedWatcher}
+
 /** Provides support for working with files. */
 package object file {
 
@@ -107,7 +109,7 @@ package object file {
     * watch or register 1 or more paths, and then return `watcher.events()`.
     */
   @deprecated("Use Files[F].watcher", "3.0.0")
-  def watcher[F[_]](implicit F: Async[F]): Resource[F, Watcher[F]] =
+  def watcher[F[_]](implicit F: Async[F]): Resource[F, DeprecatedWatcher[F]] =
     Files[F].watcher
 
   /** Watches a single path.
@@ -117,10 +119,10 @@ package object file {
   @deprecated("Use Files[F].watch", "3.0.0")
   def watch[F[_]](
       path: JPath,
-      types: Seq[Watcher.EventType] = Nil,
+      types: Seq[DeprecatedWatcher.EventType] = Nil,
       modifiers: Seq[WatchEvent.Modifier] = Nil,
       pollTimeout: FiniteDuration = 1.second
-  )(implicit F: Async[F]): Stream[F, Watcher.Event] =
+  )(implicit F: Async[F]): Stream[F, DeprecatedWatcher.Event] =
     Files[F].watch(path, types, modifiers, pollTimeout)
 
   /** Checks if a file exists

@@ -66,6 +66,14 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
     */
   def createDirectories(path: Path, permissions: Option[Permissions]): F[Unit]
 
+  /** Creates the specified file. Fails if the parent path does not already exist.
+    */
+  def createFile(path: Path): F[Unit] = createFile(path, None)
+
+  /** Creates the specified file with the specified permissions. Fails if the parent path does not already exist.
+    */
+  def createFile(path: Path, permissions: Option[Permissions]): F[Unit]
+
   /** Creates a temporary file.
     * The created file is not automatically deleted - it is up to the operating system to decide when the file is deleted.
     * Alternatively, use `tempFile` to get a resource, which is deleted upon resource finalization.

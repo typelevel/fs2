@@ -33,6 +33,7 @@ import java.nio.file.attribute.{FileAttribute, PosixFilePermission}
 import java.util.stream.{Stream => JStream}
 
 import fs2.io.CollectionCompat._
+import fs2.io.{Watcher => DeprecatedWatcher}
 
 private[file] trait DeprecatedFilesApi[F[_]] { self: Files[F] =>
 
@@ -328,20 +329,22 @@ private[file] trait DeprecatedFilesApi[F[_]] { self: Files[F] =>
     * The watcher is returned as a resource. To use the watcher, lift the resource to a stream,
     * watch or register 1 or more paths, and then return `watcher.events()`.
     */
-  def watcher: Resource[F, Watcher[F]] = Watcher.default
+  @deprecated("Use Watcher.default", "3.1.0")
+  def watcher: Resource[F, DeprecatedWatcher[F]] = DeprecatedWatcher.default
 
   /** Watches a single path.
     *
     * Alias for creating a watcher and watching the supplied path, releasing the watcher when the resulting stream is finalized.
     */
+  @deprecated("Use overload which uses fs2.io.file.Path", "3.1.0")
   def watch(
       path: JPath,
-      types: Seq[Watcher.EventType] = Nil,
+      types: Seq[DeprecatedWatcher.EventType] = Nil,
       modifiers: Seq[WatchEvent.Modifier] = Nil,
       pollTimeout: FiniteDuration = 1.second
-  ): Stream[F, Watcher.Event] =
+  ): Stream[F, DeprecatedWatcher.Event] =
     Stream
-      .resource(Watcher.default)
+      .resource(DeprecatedWatcher.default)
       .evalTap(_.watch(path, types, modifiers))
       .flatMap(_.events(pollTimeout))
 

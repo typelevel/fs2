@@ -80,6 +80,9 @@ private[fs2] trait FilesCompanionPlatform {
     override def createDirectories(path: Path, permissions: Option[Permissions]): F[Unit] =
       mkdir(path, permissions, true)
 
+    override def createFile(path: Path, permissions: Option[Permissions]): F[Unit] =
+      ???
+
     override def createTempDirectory(
         dir: Option[Path],
         prefix: String,

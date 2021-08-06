@@ -22,6 +22,7 @@
 package fs2.io.file
 
 private[file] trait FlagCompanionApi {
+
   /** Open file for read access. */
   val Read: Flag
 

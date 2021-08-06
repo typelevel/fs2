@@ -52,6 +52,24 @@ private[file] trait FilesPlatform[F[_]] extends DeprecatedFilesApi[F] { self: Fi
     * Example glob patterns: `*.scala`, `*.{scala,java}`
     */
   def list(path: Path, glob: String): Stream[F, Path]
+
+  /** Watches a single path.
+    *
+    * Alias for creating a watcher and watching the supplied path, releasing the watcher when the resulting stream is finalized.
+    */
+  def watch(path: Path): Stream[F, Watcher.Event] =
+    watch(path, Nil, Nil, 1.second)
+
+  /** Watches a single path.
+    *
+    * Alias for creating a watcher and watching the supplied path, releasing the watcher when the resulting stream is finalized.
+    */
+  def watch(
+      path: Path,
+      types: Seq[Watcher.EventType],
+      modifiers: Seq[WatchEvent.Modifier],
+      pollTimeout: FiniteDuration
+  ): Stream[F, Watcher.Event]
 }
 
 private[file] trait FilesCompanionPlatform {
@@ -78,6 +96,12 @@ private[file] trait FilesCompanionPlatform {
     def createDirectories(path: Path, permissions: Option[Permissions]): F[Unit] =
       Sync[F].blocking {
         JFiles.createDirectories(path.toNioPath, permissions.map(_.toNioFileAttribute).toSeq: _*)
+        ()
+      }
+
+    def createFile(path: Path, permissions: Option[Permissions]): F[Unit] =
+      Sync[F].blocking {
+        JFiles.createFile(path.toNioPath, permissions.map(_.toNioFileAttribute).toSeq: _*)
         ()
       }
 
@@ -308,6 +332,19 @@ private[file] trait FilesCompanionPlatform {
       Stream
         .resource(Resource.fromAutoCloseable(javaCollection))
         .flatMap(ds => Stream.fromBlockingIterator[F](collectionIterator(ds), pathStreamChunkSize))
+
+    def createWatcher: Resource[F, Watcher[F]] = Watcher.default
+
+    def watch(
+        path: Path,
+        types: Seq[Watcher.EventType],
+        modifiers: Seq[WatchEvent.Modifier],
+        pollTimeout: FiniteDuration
+    ): Stream[F, Watcher.Event] =
+      Stream
+        .resource(Watcher.default)
+        .evalTap(_.watch(path, types, modifiers))
+        .flatMap(_.events(pollTimeout))
   }
 
   private class DelegatingBasicFileAttributes(attr: JBasicFileAttributes)
