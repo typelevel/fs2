@@ -44,18 +44,22 @@ import java.nio.file.attribute.FileTime
 
 private[file] trait FilesPlatform[F[_]] extends DeprecatedFilesApi[F] { self: Files[F] =>
 
-  /** Creates a `FileHandle` for the supplied NIO `FileChannel`. */
+  /** Creates a `FileHandle` for the supplied NIO `FileChannel`. JVM only. */
   def openFileChannel(channel: F[FileChannel]): Resource[F, FileHandle[F]]
 
   /** Gets the contents of the specified directory whose paths match the supplied glob pattern.
     *
     * Example glob patterns: `*.scala`, `*.{scala,java}`
+    * 
+    * JVM only.
     */
   def list(path: Path, glob: String): Stream[F, Path]
 
   /** Watches a single path.
     *
     * Alias for creating a watcher and watching the supplied path, releasing the watcher when the resulting stream is finalized.
+    * 
+    * JVM only.
     */
   def watch(path: Path): Stream[F, Watcher.Event] =
     watch(path, Nil, Nil, 1.second)
@@ -63,6 +67,8 @@ private[file] trait FilesPlatform[F[_]] extends DeprecatedFilesApi[F] { self: Fi
   /** Watches a single path.
     *
     * Alias for creating a watcher and watching the supplied path, releasing the watcher when the resulting stream is finalized.
+    * 
+    * JVM only.
     */
   def watch(
       path: Path,
