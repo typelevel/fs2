@@ -21,6 +21,12 @@
 
 package fs2.io.file
 
+/** Flags describing how a file should be opened by `Files[F].open(path, flags)`.
+ * 
+  * Common flag combinations are available in the companion (e.g. `Flags.Write`)
+  * Custom combinations are supported via the `apply` method
+  * (e.g., `Flags(Flag.Write, Flag.CreateNew)`).
+  */
 case class Flags(value: List[Flag]) {
   def contains(flag: Flag): Boolean = value.contains(flag)
 }
@@ -28,7 +34,12 @@ case class Flags(value: List[Flag]) {
 object Flags extends FlagsCompanionPlatform {
   def apply(flags: Flag*): Flags = Flags(flags.toList)
 
+  /** Flags used for opening a file for reading. */
   val Read = Flags(Flag.Read)
+
+  /** Flags used for opening a file for writing, creating it if it doesn't exist, and truncating it. */
   val Write = Flags(Flag.Write, Flag.Create, Flag.Truncate)
+
+  /** Flags used for opening a file for appending, creating it if it doesn't exist. */
   val Append = Flags(Flag.Append, Flag.Create, Flag.Write)
 }
