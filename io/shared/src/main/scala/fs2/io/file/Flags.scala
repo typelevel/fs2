@@ -28,7 +28,11 @@ package fs2.io.file
   * (e.g., `Flags(Flag.Write, Flag.CreateNew)`).
   */
 case class Flags(value: List[Flag]) {
+
   def contains(flag: Flag): Boolean = value.contains(flag)
+
+  def addIfAbsent(flag: Flag): Flags = 
+    if (!contains(flag)) Flags(flag :: value) else this
 }
 
 object Flags extends FlagsCompanionPlatform {

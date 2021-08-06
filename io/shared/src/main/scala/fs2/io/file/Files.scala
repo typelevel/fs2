@@ -251,7 +251,7 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
   def readAll(path: Path): Stream[F, Byte] = readAll(path, 64 * 1024, Flags.Read)
 
   /** Reads all bytes from the file specified, reading in chunks up to the specified limit,
-    * and using the supplied flags to open the file. The flags must contain `Flag.Read`.
+    * and using the supplied flags to open the file.
     */
   def readAll(path: Path, chunkSize: Int, flags: Flags): Stream[F, Byte]
 
@@ -354,14 +354,11 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
   def writeAll(path: Path): Pipe[F, Byte, INothing] = writeAll(path, Flags.Write)
 
   /** Writes all data to the file at the specified path, using the
-    * specified flags to open the file. The flags must include either
-    * `Flag.Write` or `Flag.Append` or an error will occur.
+    * specified flags to open the file.
     */
   def writeAll(path: Path, flags: Flags): Pipe[F, Byte, INothing]
 
   /** Returns a `WriteCursor` for the specified path.
-    *
-    * The flags must include either `Flag.Write` or `Flag.Append` or an error will occur.
     */
   def writeCursor(path: Path, flags: Flags): Resource[F, WriteCursor[F]]
 
@@ -394,7 +391,7 @@ object Files extends FilesCompanionPlatform {
       }
 
     def readCursor(path: Path, flags: Flags): Resource[F, ReadCursor[F]] =
-      open(path, flags).map { fileHandle =>
+      open(path, flags.addIfAbsent(Flag.Read)).map { fileHandle =>
         ReadCursor(fileHandle, 0L)
       }
 
@@ -487,7 +484,7 @@ object Files extends FilesCompanionPlatform {
         path: Path,
         flags: Flags
     ): Resource[F, WriteCursor[F]] =
-      open(path, flags).flatMap { fileHandle =>
+      open(path, flags.addIfAbsent(Flag.Write)).flatMap { fileHandle =>
         val size = if (flags.contains(Flag.Append)) fileHandle.size else 0L.pure[F]
         val cursor = size.map(s => WriteCursor(fileHandle, s))
         Resource.eval(cursor)
@@ -507,7 +504,7 @@ object Files extends FilesCompanionPlatform {
       def openNewFile: Resource[F, FileHandle[F]] =
         Resource
           .eval(computePath)
-          .flatMap(p => open(p, flags))
+          .flatMap(p => open(p, flags.addIfAbsent(Flag.Write)))
 
       def newCursor(file: FileHandle[F]): F[WriteCursor[F]] =
         writeCursorFromFileHandle(file, flags.contains(Flag.Append))
