@@ -228,6 +228,9 @@ private[fs2] trait FilesCompanionPlatform {
     override def isWritable(path: Path): F[Boolean] =
       access(path, fsMod.constants.W_OK)
 
+    override def isSameFile(path1: Path, path2: Path): F[Boolean] =
+      F.pure(path1.absolute == path2.absolute)
+
     override def list(path: Path): Stream[F, Path] =
       Stream
         .bracket(F.fromPromise(F.delay(fsPromisesMod.opendir(path.toString))))(dir =>
