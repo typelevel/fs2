@@ -60,7 +60,7 @@ object Examples {
   ): F[Option[(Path, A)]] =
     Files[F]
       .walk(path)
-      .evalMap(p => Files[F].getBasicFileAttributes(p).map(attr => (p, attr)))
+      .evalMap(p => Files[F].getBasicFileAttributes(p).tupleLeft(p))
       .compile
       .foldSemigroup { (x, y) =>
         val featureX = extractFeature(x._2)
