@@ -26,6 +26,7 @@ import cats.syntax.all._
 import cats.effect.kernel.Concurrent
 
 import fs2.io.file._
+import fs2.text
 
 import scala.concurrent.duration._
 
@@ -40,6 +41,17 @@ object Examples {
   /** Tallies the total number of bytes of all files rooted at the supplied path. */
   def totalBytes[F[_]: Files: Concurrent](path: Path): F[Long] =
     Files[F].walk(path).evalMap(p => Files[F].size(p).handleError(_ => 0L)).compile.foldMonoid
+
+  /** Counts the total lines of code in .scala files in the supplied file tree. */
+  def scalaLineCount[F[_]: Files: Concurrent](path: Path): F[Long] =
+    Files[F]
+      .walk(path)
+      .filter(_.extName == ".scala")
+      .flatMap { p =>
+        Files[F].readAll(p).through(text.utf8.decode).through(text.lines).as(1L)
+      }
+      .compile
+      .foldMonoid
 
   /** Now let's have some fun with abstract algebra!
     *
