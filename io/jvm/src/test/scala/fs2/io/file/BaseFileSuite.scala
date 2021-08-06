@@ -27,7 +27,7 @@ import cats.effect.{IO, Resource}
 import cats.syntax.all._
 
 import java.nio.file.{Files => JFiles, Path => JPath, _}
-import java.nio.file.attribute.BasicFileAttributes
+import java.nio.file.attribute.{BasicFileAttributes => JBasicFileAttributes}
 
 import scala.concurrent.duration._
 
@@ -77,7 +77,7 @@ trait BaseFileSuite extends Fs2Suite {
       JFiles.walkFileTree(
         dir.toNioPath,
         new SimpleFileVisitor[JPath] {
-          override def visitFile(path: JPath, attrs: BasicFileAttributes) = {
+          override def visitFile(path: JPath, attrs: JBasicFileAttributes) = {
             JFiles.delete(path)
             FileVisitResult.CONTINUE
           }
