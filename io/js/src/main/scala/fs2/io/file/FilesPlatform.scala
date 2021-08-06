@@ -345,7 +345,7 @@ private[fs2] trait FilesCompanionPlatform {
       .adaptError { case IOException(ex) => ex }
 
     override def setLastModifiedTime(path: Path, timestamp: FiniteDuration): F[Unit] =
-      ???
+      setFileTimes(path, Some(timestamp), None, None, true)
 
     override def setPosixPermissions(path: Path, permissions: PosixPermissions): F[Unit] =
       F.fromPromise(F.delay(fsPromisesMod.chmod(path.toString, permissions.value.toDouble)))
