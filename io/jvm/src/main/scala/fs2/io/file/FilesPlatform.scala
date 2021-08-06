@@ -50,7 +50,7 @@ private[file] trait FilesPlatform[F[_]] extends DeprecatedFilesApi[F] { self: Fi
   /** Gets the contents of the specified directory whose paths match the supplied glob pattern.
     *
     * Example glob patterns: `*.scala`, `*.{scala,java}`
-    * 
+    *
     * JVM only.
     */
   def list(path: Path, glob: String): Stream[F, Path]
@@ -58,7 +58,7 @@ private[file] trait FilesPlatform[F[_]] extends DeprecatedFilesApi[F] { self: Fi
   /** Watches a single path.
     *
     * Alias for creating a watcher and watching the supplied path, releasing the watcher when the resulting stream is finalized.
-    * 
+    *
     * JVM only.
     */
   def watch(path: Path): Stream[F, Watcher.Event] =
@@ -67,7 +67,7 @@ private[file] trait FilesPlatform[F[_]] extends DeprecatedFilesApi[F] { self: Fi
   /** Watches a single path.
     *
     * Alias for creating a watcher and watching the supplied path, releasing the watcher when the resulting stream is finalized.
-    * 
+    *
     * JVM only.
     */
   def watch(

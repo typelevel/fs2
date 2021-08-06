@@ -34,7 +34,7 @@ import cats.Traverse
 /** Provides operations related to working with files in the effect `F`.
   *
   * An instance is available for any effect `F` which has an `Async[F]` instance.
-  * 
+  *
   * The operations on this trait are implemented for both the JVM and Node.js.
   * Some operations only work on POSIX file systems, though such methods generally
   * have "Posix" in their names (e.g. `getPosixPermissions`). A small number of methods
