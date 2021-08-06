@@ -33,9 +33,9 @@ import fs2.internal.jsdeps.node.nodeStrings
 import fs2.internal.jsdeps.node.osMod
 import fs2.io.file.Files.UnsealedFiles
 
-import java.security.Principal
 import scala.concurrent.duration._
 import scala.scalajs.js
+import cats.data.OptionT
 
 private[file] trait FilesPlatform[F[_]]
 
@@ -88,7 +88,13 @@ private[fs2] trait FilesCompanionPlatform {
         target: Path,
         permissions: Option[Permissions]
     ): F[Unit] =
-      ???
+      (F.fromPromise(
+        F.delay(fsPromisesMod.link(target.toString, link.toString))
+      ) >> (permissions match {
+        case Some(PosixPermissions(value)) =>
+          F.fromPromise(F.delay(fsPromisesMod.lchmod(link.toString, value)))
+        case _ => F.unit
+      })).adaptError { case IOException(ex) => ex }
 
     override def createTempDirectory(
         dir: Option[Path],
@@ -276,8 +282,8 @@ private[fs2] trait FilesCompanionPlatform {
         F.fromPromise(
           F.delay(
             mode
-              .collect { case posix: PosixPermissions =>
-                posix.value.toDouble
+              .collect { case PosixPermissions(value) =>
+                value.toDouble
               }
               .fold(
                 fsPromisesMod
@@ -349,9 +355,6 @@ private[fs2] trait FilesCompanionPlatform {
         )
       }
       .adaptError { case IOException(ex) => ex }
-
-    override def setLastModifiedTime(path: Path, timestamp: FiniteDuration): F[Unit] =
-      setFileTimes(path, Some(timestamp), None, None, true)
 
     override def setPosixPermissions(path: Path, permissions: PosixPermissions): F[Unit] =
       F.fromPromise(F.delay(fsPromisesMod.chmod(path.toString, permissions.value.toDouble)))
