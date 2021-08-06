@@ -26,11 +26,6 @@ package udp
 
 import java.net.{Inet4Address, NetworkInterface, StandardProtocolFamily}
 
-import cats.effect.IO
-import cats.syntax.all._
-
-import com.comcast.ip4s._
-
 import CollectionCompat._
 
 trait UdpSuitePlatform extends Fs2Suite {

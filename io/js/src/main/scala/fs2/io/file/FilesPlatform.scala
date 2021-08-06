@@ -35,7 +35,6 @@ import fs2.io.file.Files.UnsealedFiles
 
 import scala.concurrent.duration._
 import scala.scalajs.js
-import cats.data.OptionT
 
 private[file] trait FilesPlatform[F[_]]
 
