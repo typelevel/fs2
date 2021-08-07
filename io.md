@@ -343,6 +343,15 @@ def totalBytes[F[_]: Files: Concurrent](path: Path): F[Long] =
   Files[F].walk(path).evalMap(p => Files[F].size(p).handleError(_ => 0L)).compile.foldMonoid
 ```
 
+As a slightly more complex example, we can count Scala lines of code by combining `walk`, `readAll`, and various parsing operations:
+
+```scala
+def scalaLineCount[F[_]: Files: Concurrent](path: Path): F[Long] =
+  Files[F].walk(path).filter(_.extName == ".scala").flatMap { p =>
+    Files[F].readAll(p).through(text.utf8.decode).through(text.lines).as(1L)
+  }.compile.foldMonoid
+```
+
 # Console Operations
 
 Writing to the console is often as simple as `s.evalMap(o => IO.println(o))`. This works fine for quick tests but can be problematic in large applications. The call to `println` blocks until data can be written to the output stream for standard out. This can cause fairness issues with other, non-blocking, operations running on the main thread pool. For such situations, `fs2-io` provides a couple of utilities:
