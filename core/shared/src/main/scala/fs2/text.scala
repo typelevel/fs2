@@ -180,12 +180,12 @@ object text {
   }
 
   /** Converts UTF-8 encoded byte stream to a stream of `String`. */
-  @deprecated("Use text.utf8.decode", "3.0.7")
+  @deprecated("Use text.utf8.decode", "3.1.0")
   def utf8Decode[F[_]]: Pipe[F, Byte, String] =
     utf8.decode
 
   /** Converts UTF-8 encoded `Chunk[Byte]` inputs to `String`. */
-  @deprecated("Use text.utf8.decodeC", "3.0.7")
+  @deprecated("Use text.utf8.decodeC", "3.1.0")
   def utf8DecodeC[F[_]]: Pipe[F, Chunk[Byte], String] =
     utf8.decodeC
 
@@ -198,12 +198,12 @@ object text {
     _.mapChunks(_.map(s => Chunk.array(s.getBytes(charset))))
 
   /** Encodes a stream of `String` in to a stream of bytes using the UTF-8 charset. */
-  @deprecated("Use text.utf8.encode", "3.0.7")
+  @deprecated("Use text.utf8.encode", "3.1.0")
   def utf8Encode[F[_]]: Pipe[F, String, Byte] =
     utf8.encode
 
   /** Encodes a stream of `String` in to a stream of `Chunk[Byte]` using the UTF-8 charset. */
-  @deprecated("Use text.utf8.encodeC", "3.0.7")
+  @deprecated("Use text.utf8.encodeC", "3.1.0")
   def utf8EncodeC[F[_]]: Pipe[F, String, Chunk[Byte]] =
     utf8.encodeC
 
