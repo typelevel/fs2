@@ -2583,7 +2583,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
 
   /** Converts the input to a stream of 1-element chunks.
     */
-  @deprecated("Use .chunkLimit(1).unchunks instead.", "3.0.7")
+  @deprecated("Use .chunkLimit(1).unchunks instead.", "3.1.0")
   def unchunk: Stream[F, O] =
     this.repeatPull {
       _.uncons1.flatMap {
