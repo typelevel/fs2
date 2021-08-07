@@ -87,7 +87,8 @@ private class JavaScriptUnknownException(cause: js.JavaScriptException)
 object UnknownHostException {
   private[io] def unapply(cause: js.JavaScriptException): Option[UnknownHostException] =
     cause match {
-      case js.JavaScriptException(error: js.Error) if error.message.contains("ENOTFOUND") =>
+      case js.JavaScriptException(error: js.Error)
+          if error.message.contains("ENOTFOUND") || error.message.contains("EAI_AGAIN") =>
         Some(new JavaScriptUnknownException(cause))
       case _ => None
     }
