@@ -197,16 +197,11 @@ object Topic {
         def subscribers: Stream[F, Int] = subscriberCount.discrete
 
         def close: F[Either[Topic.Closed, Unit]] =
-          signalClosure
-            .complete(())
-            .flatMap { completedNow =>
-              val result = if (completedNow) Topic.rightUnit else Topic.closed
-
-              state.get
-                .flatMap { case (subs, _) => foreach(subs)(_.close.void) }
-                .as(result)
-            }
-            .uncancelable
+          (for {
+            completedNow <- signalClosure.complete(())
+            st <- state.get
+            _ <- foreach(st._1)(_.close.void)
+          } yield (if (completedNow) Topic.rightUnit else Topic.closed)).uncancelable
 
         def closed: F[Unit] = signalClosure.get
         def isClosed: F[Boolean] = signalClosure.tryGet.map(_.isDefined)
