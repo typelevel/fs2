@@ -258,6 +258,23 @@ class StreamParJoinSuite extends Fs2Suite {
         }
     }
 
+    test("do not block while evaluating an EitherT.left outer stream") {
+      case object TestException extends Throwable with NoStackTrace
+
+      def f(n: Int): Stream[EitherT[IO, Throwable, *], String] = Stream(n).map(_.toString)
+
+      Stream
+        .eval[EitherT[IO, Throwable, *], Int](EitherT.leftT[IO, Int](TestException))
+        .map(f)
+        .parJoinUnbounded
+        .compile
+        .toList
+        .value
+        .flatMap { actual =>
+          IO(assertEquals(actual, Left(TestException)))
+        }
+    }
+
     test(
       "do not block while evaluating a stream of streams in OptionT[IO, *] in parallel - some"
     ) {
@@ -283,6 +300,21 @@ class StreamParJoinSuite extends Fs2Suite {
         else Stream.eval[OptionT[IO, *], String](OptionT.none)
 
       Stream(1, 2, 3)
+        .map(f)
+        .parJoinUnbounded
+        .compile
+        .toList
+        .value
+        .flatMap { actual =>
+          IO(assertEquals(actual, None))
+        }
+    }
+
+    test("do not block while evaluating an OptionT.none outer stream") {
+      def f(n: Int): Stream[OptionT[IO, *], String] = Stream(n).map(_.toString)
+
+      Stream
+        .eval[OptionT[IO, *], Int](OptionT.none[IO, Int])
         .map(f)
         .parJoinUnbounded
         .compile
