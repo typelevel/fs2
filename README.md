@@ -3,7 +3,7 @@ FS2: Functional Streams for Scala
 
 [![Continuous Integration](https://github.com/functional-streams-for-scala/fs2/workflows/Continuous%20Integration/badge.svg)](https://github.com/functional-streams-for-scala/fs2/actions?query=workflow%3A%22Continuous+Integration%22)
 [![Discord](https://img.shields.io/discord/632277896739946517.svg?label=&logo=discord&logoColor=ffffff&color=404244&labelColor=6A7EC2)](https://discord.gg/9V8FZTVZ9R)
-[![Maven Central](https://img.shields.io/maven-central/v/co.fs2/fs2-core_2.12)](https://maven-badges.herokuapp.com/maven-central/co.fs2/fs2-core_2.12)
+[![Maven Central](https://img.shields.io/maven-central/v/co.fs2/fs2-core_2.13)](https://maven-badges.herokuapp.com/maven-central/co.fs2/fs2-core_2.13)
 
 ### Overview
 
@@ -29,9 +29,9 @@ Quick links:
 * [Docs and getting help](#docs)
 
 [microsite]: http://fs2.io
-[core-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-core_2.12/3.0.4/fs2-core_2.12-3.0.4-javadoc.jar/!/fs2/index.html
-[io-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-io_2.12/3.0.4/fs2-io_2.12-3.0.4-javadoc.jar/!/fs2/io/index.html
-[rx-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-reactive-streams_2.12/3.0.4/fs2-reactive-streams_2.12-3.0.4-javadoc.jar/!/fs2/interop/reactivestreams/index.html
+[core-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-core_2.13/3.1.0/fs2-core_2.13-3.1.0-javadoc.jar/!/fs2/index.html
+[io-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-io_2.13/3.1.0/fs2-io_2.13-3.1.0-javadoc.jar/!/fs2/io/index.html
+[rx-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-reactive-streams_2.13/3.1.0/fs2-reactive-streams_2.13-3.1.0-javadoc.jar/!/fs2/interop/reactivestreams/index.html
 
 ### <a id="docs"></a>Documentation and getting help ###
 
