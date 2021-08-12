@@ -88,7 +88,7 @@ private[fs2] trait FilesCompanionPlatform {
         permissions: Option[Permissions]
     ): F[Unit] =
       (F.fromPromise(
-        F.delay(fsPromisesMod.link(target.toString, link.toString))
+        F.delay(fsPromisesMod.symlink(target.toString, link.toString))
       ) >> (permissions match {
         case Some(PosixPermissions(value)) =>
           F.fromPromise(F.delay(fsPromisesMod.lchmod(link.toString, value)))
