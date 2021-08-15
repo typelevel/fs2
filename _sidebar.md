@@ -5,7 +5,6 @@
 - [Guide](guide.md)
 - [Concurrency Primitives](concurrency-primitives.md)
 - [I/O](io.md)
-- [API Reference](api-reference.md)
 - [FAQ](faq.md)
 - [Documentation](documentation.md)
 - [Adopters](adopters.md)
