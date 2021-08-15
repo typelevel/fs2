@@ -858,16 +858,8 @@ object Pull extends PullLowPriority {
         interruption: Interrupted
     ): Pull[G, X, Unit] =
       viewL(stream) match {
-        case interrupted: Interrupted => interrupted // impossible
-        case _: Succeeded[_]          => interruption
-        case failed: Fail =>
-          val mixed = CompositeFailure
-            .fromList(interruption.deferredError.toList :+ failed.error)
-            .getOrElse(failed.error)
-          Fail(mixed)
-
-        case action: Action[G, X, x] =>
-          val view = contP.asInstanceOf[Cont[x, G, X]]
+        case action: Action[G, X, y] =>
+          val view = contP.asInstanceOf[Cont[y, G, X]]
           action match {
             case cs: CloseScope =>
               // Inner scope is getting closed b/c a parent was interrupted
@@ -877,6 +869,14 @@ object Pull extends PullLowPriority {
               // all other cases insert interruption cause
               view(interruption)
           }
+        case interrupted: Interrupted => interrupted // impossible
+        case _: Succeeded[_]          => interruption
+        case failed: Fail =>
+          val mixed = CompositeFailure
+            .fromList(interruption.deferredError.toList :+ failed.error)
+            .getOrElse(failed.error)
+          Fail(mixed)
+
       }
 
     trait Run[G[_], X, End] {
@@ -908,7 +908,6 @@ object Pull extends PullLowPriority {
 
       def innerMapOutput[K[_], C, D](stream: Pull[K, C, Unit], fun: C => D): Pull[K, D, Unit] =
         viewL(stream) match {
-          case r: Terminal[_] => r.asInstanceOf[Terminal[Unit]]
           case action: Action[K, C, x] =>
             val v = contP.asInstanceOf[ContP[x, K, C, Unit]]
             val mstep: Pull[K, D, x] = action match {
@@ -932,6 +931,7 @@ object Pull extends PullLowPriority {
             new Bind[K, D, x, Unit](mstep) {
               def cont(r: Terminal[x]) = innerMapOutput(v(r), fun)
             }
+          case r: Terminal[_] => r.asInstanceOf[Terminal[Unit]]
         }
 
       def goErr(err: Throwable, view: Cont[Nothing, G, X]): F[End] =
@@ -1186,10 +1186,6 @@ object Pull extends PullLowPriority {
       }
 
       viewL(stream) match {
-        case _: Succeeded[_]  => runner.done(scope)
-        case failed: Fail     => runner.fail(failed.error)
-        case int: Interrupted => runner.interrupted(int)
-
         case action: Action[G, X, y] =>
           val view: Cont[y, G, X] = contP.asInstanceOf[Cont[y, G, X]]
           action match {
@@ -1237,6 +1233,10 @@ object Pull extends PullLowPriority {
             case int: InterruptWhen[g]    => goInterruptWhen(translation(int.haltOnSignal), view)
             case close: CloseScope        => goCloseScope(close, view)
           }
+        case _: Succeeded[_]  => runner.done(scope)
+        case failed: Fail     => runner.fail(failed.error)
+        case int: Interrupted => runner.interrupted(int)
+
       }
     }
 
@@ -1259,12 +1259,12 @@ object Pull extends PullLowPriority {
         } catch {
           case NonFatal(e) =>
             viewL(tail) match {
-              case Succeeded(_)        => F.raiseError(e)
-              case Fail(e2)            => F.raiseError(CompositeFailure(e2, e))
-              case Interrupted(_, err) => F.raiseError(err.fold(e)(t => CompositeFailure(e, t)))
               case _: Action[F, O, _] =>
                 val v = contP.asInstanceOf[ContP[Unit, F, O, Unit]]
                 go[F, O, B](scope, None, initFk, self, v(Fail(e)))
+              case Succeeded(_)        => F.raiseError(e)
+              case Fail(e2)            => F.raiseError(CompositeFailure(e2, e))
+              case Interrupted(_, err) => F.raiseError(err.fold(e)(t => CompositeFailure(e, t)))
             }
         }
     }
