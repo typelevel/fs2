@@ -129,7 +129,7 @@ object TLSParameters {
 
   trait SNICallback {
     def apply[F[_]: Async](servername: String): F[Either[Throwable, Option[SecureContext]]]
-    def toJS[F[_]](dispatcher: Dispatcher[F])(implicit
+    private[TLSParameters] def toJS[F[_]](dispatcher: Dispatcher[F])(implicit
         F: Async[F]
     ): js.Function2[String, js.Function2[js.Error | Null, tlsMod.SecureContext, Unit], Unit] = {
       (servername, cb) =>
