@@ -3276,6 +3276,7 @@ object Stream extends StreamLowPriority {
     * All elements that are available, up to the specified limit,
     * are dequeued and emitted as a single chunk.
     */
+  @nowarn("cat=unused-params")
   def fromQueueNoneTerminated[F[_]: Functor, A](
       queue: QueueSource[F, Option[A]],
       limit: Int = Int.MaxValue
