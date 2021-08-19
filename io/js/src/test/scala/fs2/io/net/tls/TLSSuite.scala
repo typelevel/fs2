@@ -31,6 +31,8 @@ import scala.scalajs.js.annotation._
 import fs2.internal.jsdeps.node.bufferMod
 import fs2.internal.jsdeps.node.fsPromisesMod
 
+import scala.annotation.nowarn
+
 abstract class TLSSuite extends Fs2Suite {
   def testTlsContext: IO[TLSContext[IO]] = IO
     .fromPromise(
@@ -62,6 +64,7 @@ object JKS extends js.Any {
     def key: String = js.native
   }
 
+  @nowarn("cat=unused-params")
   def toPem(buffer: bufferMod.global.Buffer, password: String): js.Dictionary[CertKey] = js.native
 
 }
