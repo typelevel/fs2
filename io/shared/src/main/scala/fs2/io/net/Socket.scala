@@ -44,8 +44,8 @@ trait Socket[F[_]] {
   /** Reads bytes from the socket as a stream. */
   def reads: Stream[F, Byte]
 
-  /** Indicates that this channel will not read more data. Causes `End-Of-Stream` be signalled to `available`.
-    * This is a no-op on Node.js.
+  /** Indicates that this channel will not read more data. Causes `End-Of-Stream` be signalled to
+    * `available`. This is a no-op on Node.js.
     */
   def endOfInput: F[Unit]
 

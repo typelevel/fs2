@@ -36,29 +36,32 @@ import java.util.concurrent.ThreadFactory
 
 private[net] trait NetworkPlatform[F[_]] {
 
-  /** Provides an isolated `SocketGroup[F]` with the specified thread pool configuration.
-    * The resulting socket group is shutdown during resource finalization, resulting in
-    * closure of any sockets that were created.
+  /** Provides an isolated `SocketGroup[F]` with the specified thread pool configuration. The
+    * resulting socket group is shutdown during resource finalization, resulting in closure of any
+    * sockets that were created.
     *
-    * Note: `Network` is a `SocketGroup` so only use this operation if you need explicit
-    * control over the lifecycle of the socket group.
+    * Note: `Network` is a `SocketGroup` so only use this operation if you need explicit control
+    * over the lifecycle of the socket group.
     *
-    * @param threadCount number of threads to allocate in the fixed thread pool backing the NIO channel group
-    * @param threadFactory factory used to create fixed threads
+    * @param threadCount
+    *   number of threads to allocate in the fixed thread pool backing the NIO channel group
+    * @param threadFactory
+    *   factory used to create fixed threads
     */
   def socketGroup(
       threadCount: Int = 1,
       threadFactory: ThreadFactory = ThreadFactories.named("fs2-tcp", true)
   ): Resource[F, SocketGroup[F]]
 
-  /** Provides an isolated `DatagramSocketGroup[F]` with the specified thread configuration.
-    * The resulting socket group is shutdown during resource finalization, resulting in
-    * closure of any sockets that were created.
+  /** Provides an isolated `DatagramSocketGroup[F]` with the specified thread configuration. The
+    * resulting socket group is shutdown during resource finalization, resulting in closure of any
+    * sockets that were created.
     *
     * Note: `Network` is a `DatagramSocketGroup` so only use this operation if you need explicit
     * control over the lifecycle of the socket group.
     *
-    * @param threadFactory factory used to create selector thread
+    * @param threadFactory
+    *   factory used to create selector thread
     */
   def datagramSocketGroup(
       threadFactory: ThreadFactory = ThreadFactories.named("fs2-udp", true)

@@ -38,35 +38,35 @@ trait Compression[F[_]] {
 
   def inflate(inflateParams: InflateParams): Pipe[F, Byte, Byte]
 
-  /** Returns a pipe that incrementally compresses input into the GZIP format
-    * as defined by RFC 1952 at https://www.ietf.org/rfc/rfc1952.txt. Output is
-    * compatible with the GNU utils `gunzip` utility, as well as really anything
-    * else that understands GZIP. Note, however, that the GZIP format is not
-    * "stable" in the sense that all compressors will produce identical output
-    * given identical input. Part of the header seeding is arbitrary and chosen by
-    * the compression implementation. For this reason, the exact bytes produced
-    * by this pipe will differ in insignificant ways from the exact bytes produced
-    * by a tool like the GNU utils `gzip`.
+  /** Returns a pipe that incrementally compresses input into the GZIP format as defined by RFC 1952
+    * at https://www.ietf.org/rfc/rfc1952.txt. Output is compatible with the GNU utils `gunzip`
+    * utility, as well as really anything else that understands GZIP. Note, however, that the GZIP
+    * format is not "stable" in the sense that all compressors will produce identical output given
+    * identical input. Part of the header seeding is arbitrary and chosen by the compression
+    * implementation. For this reason, the exact bytes produced by this pipe will differ in
+    * insignificant ways from the exact bytes produced by a tool like the GNU utils `gzip`.
     *
-    * GZIP wraps a deflate stream with file attributes and stream integrity validation.
-    * Therefore, GZIP is a good choice for compressing finite, complete, readily-available,
-    * continuous or file streams. A simpler deflate stream may be better suited to
-    * real-time, intermittent, fragmented, interactive or discontinuous streams where
-    * network protocols typically provide stream integrity validation.
+    * GZIP wraps a deflate stream with file attributes and stream integrity validation. Therefore,
+    * GZIP is a good choice for compressing finite, complete, readily-available, continuous or file
+    * streams. A simpler deflate stream may be better suited to real-time, intermittent, fragmented,
+    * interactive or discontinuous streams where network protocols typically provide stream
+    * integrity validation.
     *
-    * @param bufferSize The buffer size which will be used to page data
-    *                   into chunks. This will be the chunk size of the
-    *                   output stream. You should set it to be equal to
-    *                   the size of the largest chunk in the input stream.
-    *                   Setting this to a size which is ''smaller'' than
-    *                   the chunks in the input stream will result in
-    *                   performance degradation of roughly 50-75%. Default
-    *                   size is 32 KB.
-    * @param deflateLevel     level the compression level (0-9)
-    * @param deflateStrategy  strategy compression strategy -- see `java.util.zip.Deflater` for details
-    * @param modificationTime optional file modification time
-    * @param fileName         optional file name
-    * @param comment          optional file comment
+    * @param bufferSize
+    *   The buffer size which will be used to page data into chunks. This will be the chunk size of
+    *   the output stream. You should set it to be equal to the size of the largest chunk in the
+    *   input stream. Setting this to a size which is ''smaller'' than the chunks in the input
+    *   stream will result in performance degradation of roughly 50-75%. Default size is 32 KB.
+    * @param deflateLevel
+    *   level the compression level (0-9)
+    * @param deflateStrategy
+    *   strategy compression strategy -- see `java.util.zip.Deflater` for details
+    * @param modificationTime
+    *   optional file modification time
+    * @param fileName
+    *   optional file name
+    * @param comment
+    *   optional file comment
     */
   def gzip(
       bufferSize: Int = 1024 * 32,
@@ -93,26 +93,28 @@ trait Compression[F[_]] {
       )
     )
 
-  /** Returns a pipe that incrementally compresses input into the GZIP format
-    * as defined by RFC 1952 at https://www.ietf.org/rfc/rfc1952.txt. Output is
-    * compatible with the GNU utils `gunzip` utility, as well as really anything
-    * else that understands GZIP. Note, however, that the GZIP format is not
-    * "stable" in the sense that all compressors will produce identical output
-    * given identical input. Part of the header seeding is arbitrary and chosen by
-    * the compression implementation. For this reason, the exact bytes produced
-    * by this pipe will differ in insignificant ways from the exact bytes produced
-    * by a tool like the GNU utils `gzip`.
+  /** Returns a pipe that incrementally compresses input into the GZIP format as defined by RFC 1952
+    * at https://www.ietf.org/rfc/rfc1952.txt. Output is compatible with the GNU utils `gunzip`
+    * utility, as well as really anything else that understands GZIP. Note, however, that the GZIP
+    * format is not "stable" in the sense that all compressors will produce identical output given
+    * identical input. Part of the header seeding is arbitrary and chosen by the compression
+    * implementation. For this reason, the exact bytes produced by this pipe will differ in
+    * insignificant ways from the exact bytes produced by a tool like the GNU utils `gzip`.
     *
-    * GZIP wraps a deflate stream with file attributes and stream integrity validation.
-    * Therefore, GZIP is a good choice for compressing finite, complete, readily-available,
-    * continuous or file streams. A simpler deflate stream may be better suited to
-    * real-time, intermittent, fragmented, interactive or discontinuous streams where
-    * network protocols typically provide stream integrity validation.
+    * GZIP wraps a deflate stream with file attributes and stream integrity validation. Therefore,
+    * GZIP is a good choice for compressing finite, complete, readily-available, continuous or file
+    * streams. A simpler deflate stream may be better suited to real-time, intermittent, fragmented,
+    * interactive or discontinuous streams where network protocols typically provide stream
+    * integrity validation.
     *
-    * @param fileName         optional file name
-    * @param modificationTime optional file modification time
-    * @param comment          optional file comment
-    * @param deflateParams    see [[compression.DeflateParams]]
+    * @param fileName
+    *   optional file name
+    * @param modificationTime
+    *   optional file modification time
+    * @param comment
+    *   optional file comment
+    * @param deflateParams
+    *   see [[compression.DeflateParams]]
     */
   def gzip(
       fileName: Option[String],
@@ -121,21 +123,20 @@ trait Compression[F[_]] {
       deflateParams: DeflateParams
   ): Pipe[F, Byte, Byte]
 
-  /** Returns a pipe that incrementally decompresses input according to the GZIP
-    * format as defined by RFC 1952 at https://www.ietf.org/rfc/rfc1952.txt. Any
-    * errors in decompression will be sequenced as exceptions into the output
-    * stream. Decompression is handled in a streaming and async fashion without
-    * any thread blockage.
+  /** Returns a pipe that incrementally decompresses input according to the GZIP format as defined
+    * by RFC 1952 at https://www.ietf.org/rfc/rfc1952.txt. Any errors in decompression will be
+    * sequenced as exceptions into the output stream. Decompression is handled in a streaming and
+    * async fashion without any thread blockage.
     *
-    * The chunk size here is actually really important. Matching the input stream
-    * largest chunk size, or roughly 8 KB (whichever is larger) is a good rule of
-    * thumb.
+    * The chunk size here is actually really important. Matching the input stream largest chunk
+    * size, or roughly 8 KB (whichever is larger) is a good rule of thumb.
     *
-    * @param bufferSize The bounding size of the input buffer. This should roughly
-    *                   match the size of the largest chunk in the input stream.
-    *                   This will also be the chunk size in the output stream.
-    *                    Default size is 32 KB.
-    * @return See [[compression.GunzipResult]]
+    * @param bufferSize
+    *   The bounding size of the input buffer. This should roughly match the size of the largest
+    *   chunk in the input stream. This will also be the chunk size in the output stream. Default
+    *   size is 32 KB.
+    * @return
+    *   See [[compression.GunzipResult]]
     */
   def gunzip(bufferSize: Int = 1024 * 32): Stream[F, Byte] => Stream[F, GunzipResult[F]] =
     gunzip(
@@ -145,18 +146,18 @@ trait Compression[F[_]] {
       )
     )
 
-  /** Returns a pipe that incrementally decompresses input according to the GZIP
-    * format as defined by RFC 1952 at https://www.ietf.org/rfc/rfc1952.txt. Any
-    * errors in decompression will be sequenced as exceptions into the output
-    * stream. Decompression is handled in a streaming and async fashion without
-    * any thread blockage.
+  /** Returns a pipe that incrementally decompresses input according to the GZIP format as defined
+    * by RFC 1952 at https://www.ietf.org/rfc/rfc1952.txt. Any errors in decompression will be
+    * sequenced as exceptions into the output stream. Decompression is handled in a streaming and
+    * async fashion without any thread blockage.
     *
-    * The chunk size here is actually really important. Matching the input stream
-    * largest chunk size, or roughly 8 KB (whichever is larger) is a good rule of
-    * thumb.
+    * The chunk size here is actually really important. Matching the input stream largest chunk
+    * size, or roughly 8 KB (whichever is larger) is a good rule of thumb.
     *
-    * @param inflateParams See [[compression.InflateParams]]
-    * @return See [[compression.GunzipResult]]
+    * @param inflateParams
+    *   See [[compression.InflateParams]]
+    * @return
+    *   See [[compression.GunzipResult]]
     */
   def gunzip(inflateParams: InflateParams): Stream[F, Byte] => Stream[F, GunzipResult[F]]
 }
@@ -263,9 +264,10 @@ object Compression {
           )
       }
 
-    /** Returns a `Pipe` that inflates (decompresses) its input elements using
-      * a `java.util.zip.Inflater` with the parameter `nowrap`.
-      * @param inflateParams See [[compression.InflateParams]]
+    /** Returns a `Pipe` that inflates (decompresses) its input elements using a
+      * `java.util.zip.Inflater` with the parameter `nowrap`.
+      * @param inflateParams
+      *   See [[compression.InflateParams]]
       */
     def inflate(inflateParams: InflateParams): Pipe[F, Byte, Byte] =
       stream =>
@@ -891,8 +893,8 @@ object Compression {
           streamUntilTrailer(Chunk.empty[Byte])(stream)
         }.stream
 
-    /** Like Stream.unconsN, but returns a chunk of elements that do not satisfy the predicate, splitting chunk as necessary.
-      * Elements will not be dropped after the soft limit is breached.
+    /** Like Stream.unconsN, but returns a chunk of elements that do not satisfy the predicate,
+      * splitting chunk as necessary. Elements will not be dropped after the soft limit is breached.
       *
       * `Pull.pure(None)` is returned if the end of the source stream is reached.
       */

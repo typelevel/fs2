@@ -23,22 +23,21 @@ package fs2.io.internal
 
 import java.io.{InputStream, InterruptedIOException, OutputStream}
 
-/** Thread safe circular byte buffer which pipes a [[java.io.OutputStream]]
-  * through a [[java.io.InputStream]] in a memory efficient manner, without
-  * copying bytes unnecessarily.
+/** Thread safe circular byte buffer which pipes a [[java.io.OutputStream]] through a
+  * [[java.io.InputStream]] in a memory efficient manner, without copying bytes unnecessarily.
   *
-  * @note As per the interfaces of the [[java.io]] classes, all of the
-  * operations are blocking in nature and extra care should be taken when using
-  * the exposed input/output streams. Thread safety is ensured by
-  * synchronizing on individual objects of this class.
+  * @note
+  *   As per the interfaces of the [[java.io]] classes, all of the operations are blocking in nature
+  *   and extra care should be taken when using the exposed input/output streams. Thread safety is
+  *   ensured by synchronizing on individual objects of this class.
   *
-  * This is, in spirit, a clean room reimplementation of the
-  * [[java.io.PipedInputStream]] and [[java.io.PipedOutputStream]] pair of
-  * classes which can be used to achieve similar functionality, without the
-  * thread bookkeeping which is confusing in a multi threaded environment like
-  * the effect systems in which this code runs.
+  * This is, in spirit, a clean room reimplementation of the [[java.io.PipedInputStream]] and
+  * [[java.io.PipedOutputStream]] pair of classes which can be used to achieve similar
+  * functionality, without the thread bookkeeping which is confusing in a multi threaded environment
+  * like the effect systems in which this code runs.
   *
-  * @param capacity the capacity of the allocated circular buffer
+  * @param capacity
+  *   the capacity of the allocated circular buffer
   */
 private[io] final class PipedStreamBuffer(private[this] val capacity: Int) { self =>
 
@@ -193,15 +192,20 @@ private[io] final class PipedStreamBuffer(private[this] val capacity: Int) { sel
       if (closed) 0 else tail - head
     }
 
-    /** Reads bytes from a circular buffer by copying them into a regular
-      * buffer.
+    /** Reads bytes from a circular buffer by copying them into a regular buffer.
       *
-      * @param src the source circular buffer
-      * @param srcPos the offset into the source circular buffer
-      * @param srcCap the capacity of the source circular buffer
-      * @param dst the destination buffer
-      * @param dstPos the offset into the destination buffer
-      * @param length the number of bytes to be transferred
+      * @param src
+      *   the source circular buffer
+      * @param srcPos
+      *   the offset into the source circular buffer
+      * @param srcCap
+      *   the capacity of the source circular buffer
+      * @param dst
+      *   the destination buffer
+      * @param dstPos
+      *   the offset into the destination buffer
+      * @param length
+      *   the number of bytes to be transferred
       */
     private[this] def circularRead(
         src: Array[Byte],
@@ -346,15 +350,20 @@ private[io] final class PipedStreamBuffer(private[this] val capacity: Int) { sel
       }
     }
 
-    /** Writes bytes into a circular buffer by copying them from a regular
-      * buffer.
+    /** Writes bytes into a circular buffer by copying them from a regular buffer.
       *
-      * @param src the source buffer
-      * @param srcPos the offset into the source buffer
-      * @param dst the destination circular buffer
-      * @param dstPos the offset into the destination circular buffer
-      * @param dstCap the capacity of the destination circular buffer
-      * @param length the number of bytes to be transferred
+      * @param src
+      *   the source buffer
+      * @param srcPos
+      *   the offset into the source buffer
+      * @param dst
+      *   the destination circular buffer
+      * @param dstPos
+      *   the offset into the destination circular buffer
+      * @param dstCap
+      *   the capacity of the destination circular buffer
+      * @param length
+      *   the number of bytes to be transferred
       */
     private[this] def circularWrite(
         src: Array[Byte],

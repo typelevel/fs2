@@ -87,7 +87,7 @@ class MemoryLeakSpec extends FunSuite {
             s"$pfx${printBytes(x)}"
           }
           println(
-            f"Heap: ${printBytes(bytes)}%12.12s total, ${printDelta(deltaSinceStart)}%12.12s since start, ${printDelta(deltaSinceLast)}%12.12s in last ${samplePeriod}"
+            f"Heap: ${printBytes(bytes)}%12.12s total, ${printDelta(deltaSinceStart)}%12.12s since start, ${printDelta(deltaSinceLast)}%12.12s in last $samplePeriod"
           )
           if (
             deltaSinceStart > limitTotalBytesIncreasePerSecond * ((System
