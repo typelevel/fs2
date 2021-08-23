@@ -222,7 +222,7 @@ count.get
 
 No matter how you transform an FS2 `Stream` or where any errors occur, the library guarantees that if the resource is acquired via a `bracket`, the release action associated with that `bracket` will be run. Here's the signature of `bracket`:
 
-```Scala
+```scala
 def bracket[F[_], R](acquire: F[R])(release: R => F[Unit]): Stream[F, R]
 ```
 
@@ -385,7 +385,7 @@ The `merge` function supports concurrency. FS2 has a number of other useful conc
 
 The function `parJoin` runs multiple streams concurrently. The signature is:
 
-```Scala
+```scala
 // note Concurrent[F] bound
 import cats.effect.Concurrent
 def parJoin[F[_]: Concurrent,O](maxOpen: Int)(outer: Stream[F, Stream[F, O]]): Stream[F, O]
@@ -401,7 +401,7 @@ In addition, there are a number of other concurrency primitives---asynchronous q
 
 Without looking at the implementations, try implementing `mergeHaltBoth`:
 
-```Scala
+```scala
 type Pipe2[F[_],-I,-I2,+O] = (Stream[F,I], Stream[F,I2]) => Stream[F,O]
 
 /** Like `merge`, but halts as soon as _either_ branch halts. */
@@ -531,7 +531,7 @@ trait Connection {
 
 That is, we provide a `Connection` with two callbacks (or a single callback that accepts an `Either`), and at some point later, the callback will be invoked _once_. The `cats.effect.Async` trait provides a handy function in these situations:
 
-```Scala
+```scala
 trait Async[F[_]] extends Sync[F] with Temporal[F] {
   ...
   /**
