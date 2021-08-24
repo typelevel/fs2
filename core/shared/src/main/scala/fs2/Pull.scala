@@ -1187,11 +1187,11 @@ object Pull extends PullLowPriority {
               val result = Succeeded(scope.asInstanceOf[y])
               go(scope, extendedTopLevelScope, translation, runner, view(result))
 
-            case eval: Eval[G, r]         => goEval[r](eval, view)
-            case acquire: Acquire[G, y]   => goAcquire(acquire, view)
-            case inScope: InScope[g, _]   => goInScope(inScope.stream, inScope.useInterruption, view)
-            case int: InterruptWhen[g]    => goInterruptWhen(translation(int.haltOnSignal), view)
-            case close: CloseScope        => goCloseScope(close, view)
+            case eval: Eval[G, r]       => goEval[r](eval, view)
+            case acquire: Acquire[G, y] => goAcquire(acquire, view)
+            case inScope: InScope[g, _] => goInScope(inScope.stream, inScope.useInterruption, view)
+            case int: InterruptWhen[g]  => goInterruptWhen(translation(int.haltOnSignal), view)
+            case close: CloseScope      => goCloseScope(close, view)
           }
         case _: Succeeded[_]  => runner.done(scope)
         case failed: Fail     => runner.fail(failed.error)
