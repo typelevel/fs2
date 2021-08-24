@@ -12,7 +12,7 @@ addCommandAlias("testJS", "rootJS/test")
 Global / onChangedBuildSource := ReloadOnSourceChanges
 Global / stQuiet := true
 
-ThisBuild / baseVersion := "3.0"
+ThisBuild / baseVersion := "3.1"
 
 ThisBuild / organization := "co.fs2"
 ThisBuild / organizationName := "Functional Streams for Scala"
