@@ -819,7 +819,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
       }
     }
 
-    test("accumulation and splitting") {
+    test("accumulation and splitting".flaky) {
       val t = 200.millis
       val size = 5
       val sleep = Stream.sleep_[IO](2 * t)
