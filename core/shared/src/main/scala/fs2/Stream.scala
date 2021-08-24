@@ -1622,7 +1622,10 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     *   {{{ scala> Stream("Hello", "World!").map(_.size).toList res0: List[Int] = List(5, 6) }}}
     */
   def map[O2](f: O => O2): Stream[F, O2] =
-    Pull.mapOutput(underlying, f).streamNoScope
+    Pull.mapOutput(this, f).streamNoScope
+
+  private def mapNoScope[O2](f: O => O2): Stream[F, O2] =
+    Pull.mapOutputNoScope(this, f).streamNoScope
 
   /** Maps a running total according to `S` and the input with the function `f`.
     *
@@ -2542,10 +2545,10 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       Pull.output(hd.map(o2 => f(pad1, o2))) >> contRight(tl)
 
     def contLeft(s: Stream[F2, O2]): Pull[F2, O4, Unit] =
-      Pull.mapOutput(s.pull.echo, f(_, pad2))
+      Pull.mapOutputNoScope(s, f(_, pad2))
 
     def contRight(s: Stream[F2, O3]): Pull[F2, O4, Unit] =
-      Pull.mapOutput(s.pull.echo, f(pad1, _))
+      Pull.mapOutputNoScope(s, f(pad1, _))
 
     zipWith_[F2, O2, O3, O4](that)(cont1, cont2, contRight)(f)
   }
@@ -3137,6 +3140,7 @@ object Stream extends StreamLowPriority {
     * All elements that are available, up to the specified limit, are dequeued and emitted as a
     * single chunk.
     */
+  @nowarn("cat=unused-params")
   def fromQueueNoneTerminated[F[_]: Functor, A](
       queue: QueueSource[F, Option[A]],
       limit: Int = Int.MaxValue
@@ -3374,7 +3378,7 @@ object Stream extends StreamLowPriority {
           .bracketFullWeak(resource) { case ((_, release), exit) =>
             release(exit)
           }
-          .map(_._1)
+          .mapNoScope(_._1)
       case Resource.Bind(source, f) =>
         resourceWeak(source).flatMap(o => resourceWeak(f(o)))
       case Resource.Eval(fo) => Stream.eval(fo)
