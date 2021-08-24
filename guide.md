@@ -278,7 +278,7 @@ count.get
 
 No matter how you transform an FS2 `Stream` or where any errors occur, the library guarantees that if the resource is acquired via a `bracket`, the release action associated with that `bracket` will be run. Here's the signature of `bracket`:
 
-```Scala
+```scala
 def bracket[F[_], R](acquire: F[R])(release: R => F[Unit]): Stream[F, R]
 ```
 
@@ -472,7 +472,7 @@ The `merge` function supports concurrency. FS2 has a number of other useful conc
 
 The function `parJoin` runs multiple streams concurrently. The signature is:
 
-```Scala
+```scala
 // note Concurrent[F] bound
 import cats.effect.Concurrent
 def parJoin[F[_]: Concurrent,O](maxOpen: Int)(outer: Stream[F, Stream[F, O]]): Stream[F, O]
@@ -488,7 +488,7 @@ In addition, there are a number of other concurrency primitives---asynchronous q
 
 Without looking at the implementations, try implementing `mergeHaltBoth`:
 
-```Scala
+```scala
 type Pipe2[F[_],-I,-I2,+O] = (Stream[F,I], Stream[F,I2]) => Stream[F,O]
 
 /** Like `merge`, but halts as soon as _either_ branch halts. */
@@ -525,10 +525,10 @@ val program =
 // program: Stream[IO[x], Unit] = Stream(..)
 
 program.compile.drain.unsafeRunSync()
-// 14:25:53.824312444
-// 14:25:54.823996671
-// 14:25:55.823377788
-// 14:25:56.823252520
+// 12:45:29.093614200
+// 12:45:30.093708060
+// 12:45:31.092899419
+// 12:45:32.092829178
 ```
 
 Let's take this line by line now, so we can understand what's going on.
@@ -570,10 +570,10 @@ val program1 =
 // program1: Stream[IO[x], Unit] = Stream(..)
 
 program1.compile.drain.unsafeRunSync()
-// 14:25:58.826580597
-// 14:25:59.826687137
-// 14:26:00.826767468
-// 14:26:01.826845107
+// 12:45:34.097971496
+// 12:45:35.097847465
+// 12:45:36.097957854
+// 12:45:37.097637044
 ```
 
 ### Talking to the external world
@@ -606,7 +606,7 @@ The way you bring synchronous effects into your effect type may differ. `Sync.de
 import cats.effect.Sync
 
 val T = Sync[IO]
-// T: cats.effect.kernel.Async[IO] = cats.effect.IO$$anon$4@6286c677
+// T: cats.effect.kernel.Async[IO] = cats.effect.IO$$anon$4@12d51c84
 val s2 = Stream.exec(T.delay { destroyUniverse() }) ++ Stream("...moving on")
 // s2: Stream[IO[x], String] = Stream(..)
 s2.compile.toVector.unsafeRunSync()
@@ -634,7 +634,7 @@ trait Connection {
 
 That is, we provide a `Connection` with two callbacks (or a single callback that accepts an `Either`), and at some point later, the callback will be invoked _once_. The `cats.effect.Async` trait provides a handy function in these situations:
 
-```Scala
+```scala
 trait Async[F[_]] extends Sync[F] with Temporal[F] {
   ...
   /**
@@ -739,13 +739,13 @@ stream.toUnicastPublisher
 //   source = Bind(
 //     source = Bind(
 //       source = Allocate(
-//         resource = cats.effect.kernel.Resource$$$Lambda$19568/0x0000000803c55550@58ad5630
+//         resource = cats.effect.kernel.Resource$$$Lambda$20122/0x0000000803fc4e48@f9a2a9c
 //       ),
-//       fs = cats.effect.kernel.Resource$$Lambda$20107/0x0000000803daeba8@1ba71253
+//       fs = cats.effect.kernel.Resource$$Lambda$20661/0x00000008041143d0@5ba27734
 //     ),
-//     fs = cats.effect.std.Dispatcher$$$Lambda$20108/0x0000000803daef78@4a93c885
+//     fs = cats.effect.std.Dispatcher$$$Lambda$20662/0x00000008041147a0@313640aa
 //   ),
-//   fs = cats.effect.kernel.Resource$$Lambda$20107/0x0000000803daeba8@22631462
+//   fs = cats.effect.kernel.Resource$$Lambda$20661/0x00000008041143d0@3db5ed04
 // )
 ```
 
@@ -757,19 +757,19 @@ val publisher: Resource[IO, StreamUnicastPublisher[IO, Int]] = Stream(1, 2, 3).c
 //   source = Bind(
 //     source = Bind(
 //       source = Allocate(
-//         resource = cats.effect.kernel.Resource$$$Lambda$19568/0x0000000803c55550@67585606
+//         resource = cats.effect.kernel.Resource$$$Lambda$20122/0x0000000803fc4e48@28c618a7
 //       ),
-//       fs = cats.effect.kernel.Resource$$Lambda$20107/0x0000000803daeba8@5d229e8b
+//       fs = cats.effect.kernel.Resource$$Lambda$20661/0x00000008041143d0@3a891d76
 //     ),
-//     fs = cats.effect.std.Dispatcher$$$Lambda$20108/0x0000000803daef78@23c7146d
+//     fs = cats.effect.std.Dispatcher$$$Lambda$20662/0x00000008041147a0@7697060d
 //   ),
-//   fs = cats.effect.kernel.Resource$$Lambda$20107/0x0000000803daeba8@4bcc54aa
+//   fs = cats.effect.kernel.Resource$$Lambda$20661/0x00000008041143d0@6c883b0a
 // )
 publisher.use { p =>
   p.toStream[IO].compile.toList
 }
 // res50: IO[List[Int]] = Uncancelable(
-//   body = cats.effect.IO$$$Lambda$19573/0x0000000803c56ce0@3ce1d2cc,
+//   body = cats.effect.IO$$$Lambda$20127/0x0000000803fc65d8@48ea1de6,
 //   event = cats.effect.tracing.TracingEvent$StackTrace
 // )
 ```
