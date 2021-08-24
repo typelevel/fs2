@@ -135,7 +135,10 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
     "fs2.io.file.Files._runJavaCollectionResource"
   ),
   ProblemFilters.exclude[InheritedNewAbstractMethodProblem]("fs2.io.file.Files.list"),
-  ProblemFilters.exclude[InheritedNewAbstractMethodProblem]("fs2.io.file.Files.watch")
+  ProblemFilters.exclude[InheritedNewAbstractMethodProblem]("fs2.io.file.Files.watch"),
+  ProblemFilters.exclude[MissingClassProblem]("fs2.Pull$MapOutput$"),
+  ProblemFilters.exclude[MissingClassProblem]("fs2.Pull$MapOutput"),
+  ProblemFilters.exclude[IncompatibleMethTypeProblem]("fs2.Pull.mapOutput")
 )
 
 lazy val root = project
