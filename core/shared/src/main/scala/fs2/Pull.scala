@@ -1258,6 +1258,13 @@ object Pull extends PullLowPriority {
   private[fs2] def mapOutput[F[_], O, P](
       s: Stream[F, O],
       f: O => P
+  ): Pull[F, P, Unit] =
+    interruptScope(mapOutputNoScope(s, f))
+
+  /** Like `mapOutput` but does not insert an interruption scope. */
+  private[fs2] def mapOutputNoScope[F[_], O, P](
+      s: Stream[F, O],
+      f: O => P
   ): Pull[F, P, Unit] = {
     def go(s: Stream[F, O]): Pull[F, P, Unit] =
       s.pull.uncons.flatMap {
