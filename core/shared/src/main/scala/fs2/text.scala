@@ -22,8 +22,13 @@
 package fs2
 
 import java.nio.{Buffer, ByteBuffer, CharBuffer}
-import java.nio.charset.Charset
-
+import java.nio.charset.{
+  CharacterCodingException,
+  Charset,
+  CharsetDecoder,
+  MalformedInputException,
+  UnmappableCharacterException
+}
 import scala.collection.mutable.{ArrayBuffer, Builder}
 import scodec.bits.{Bases, ByteVector}
 
@@ -178,6 +183,79 @@ object text {
     def encodeC[F[_]]: Pipe[F, String, Chunk[Byte]] =
       text.encodeC(utf8Charset)
   }
+
+  def decodeCWithCharset[F[_]: RaiseThrowable](
+      charset: Charset
+  ): Pipe[F, Chunk[Byte], String] = {
+
+    def decodeC(
+        decoder: CharsetDecoder,
+        acc: Chunk[Byte],
+        s: Stream[F, Chunk[Byte]],
+        lastOutBuffer: CharBuffer
+    ): Pull[F, String, Unit] =
+      s.pull.uncons1.flatMap { r =>
+        val toDecode = r match {
+          case Some((c, _)) => acc ++ c
+          case None         => acc
+        }
+
+        val isLast = r.isEmpty
+        lastOutBuffer.clear()
+
+        val outBufferSize = (decoder.averageCharsPerByte() * toDecode.size).toInt
+
+        val out =
+          if (outBufferSize > lastOutBuffer.length())
+            CharBuffer.allocate(outBufferSize)
+          else lastOutBuffer
+
+        val inBuffer = toDecode.toByteBuffer
+        val result = decoder.decode(inBuffer, out, isLast)
+        out.flip()
+
+        val nextAcc =
+          if (inBuffer.remaining() > 0) Chunk.byteBuffer(inBuffer.slice) else Chunk.empty
+
+        val rest = r match {
+          case Some((_, tail)) => tail
+          case None            => Stream.empty
+        }
+
+        if (result.isError)
+          Pull.raiseError(
+            if (result.isMalformed) new MalformedInputException(result.length())
+            else if (result.isUnmappable) new UnmappableCharacterException(result.length())
+            else new CharacterCodingException()
+          )
+        // output generated from decoder
+        else if (out.remaining() > 0)
+          Pull.output1(out.toString) >> decodeC(decoder, nextAcc, rest, out)
+        // no output, but more input
+        else if (!isLast) decodeC(decoder, nextAcc, rest, out)
+        // output buffer overrun. try again with a bigger buffer
+        else if (nextAcc.nonEmpty)
+          decodeC(
+            decoder,
+            nextAcc,
+            rest,
+            CharBuffer.allocate(
+              outBufferSize + (decoder.maxCharsPerByte() * nextAcc.size).toInt
+            )
+          )
+        else Pull.done // no more input, no more output
+      }
+
+    { s =>
+      Stream.suspend(Stream.emit(charset.newDecoder())).flatMap { decoder =>
+        decodeC(decoder, Chunk.empty, s, CharBuffer.allocate(0)).stream
+      }
+    }
+
+  }
+
+  def decodeWithCharset[F[_]: RaiseThrowable](charset: Charset): Pipe[F, Byte, String] =
+    _.chunks.through(decodeCWithCharset(charset))
 
   /** Converts UTF-8 encoded byte stream to a stream of `String`. */
   @deprecated("Use text.utf8.decode", "3.1.0")
