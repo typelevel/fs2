@@ -27,6 +27,7 @@ import java.nio.charset.{
   Charset,
   CharsetDecoder,
   MalformedInputException,
+  StandardCharsets,
   UnmappableCharacterException
 }
 import scala.collection.mutable.{ArrayBuffer, Builder}
@@ -184,7 +185,13 @@ object text {
       text.encodeC(utf8Charset)
   }
 
-  def decodeCWithCharset[F[_]: RaiseThrowable](
+  def decodeCWithCharset[F[_]: RaiseThrowable](charset: Charset): Pipe[F, Chunk[Byte], String] =
+    if (charset.name() == StandardCharsets.UTF_8.name())
+      utf8.decodeC
+    else
+      decodeCWithGenericCharset(charset)
+
+  private def decodeCWithGenericCharset[F[_]: RaiseThrowable](
       charset: Charset
   ): Pipe[F, Chunk[Byte], String] = {
 
@@ -201,7 +208,7 @@ object text {
         }
 
         val isLast = r.isEmpty
-        lastOutBuffer.clear()
+        (lastOutBuffer: Buffer).clear()
 
         val outBufferSize = (decoder.averageCharsPerByte() * toDecode.size).toInt
 
@@ -212,7 +219,7 @@ object text {
 
         val inBuffer = toDecode.toByteBuffer
         val result = decoder.decode(inBuffer, out, isLast)
-        out.flip()
+        (out: Buffer).flip()
 
         val nextAcc =
           if (inBuffer.remaining() > 0) Chunk.byteBuffer(inBuffer.slice) else Chunk.empty
