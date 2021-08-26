@@ -1,6 +1,6 @@
 addSbtPlugin("org.scala-js" % "sbt-scalajs" % "1.7.0")
 addSbtPlugin("org.portable-scala" % "sbt-scalajs-crossproject" % "1.1.0")
-addSbtPlugin("com.codecommit" % "sbt-spiewak-sonatype" % "0.21.0")
+addSbtPlugin("com.codecommit" % "sbt-spiewak-sonatype" % "0.22.0")
 addSbtPlugin("org.xerial.sbt" % "sbt-sonatype" % "3.9.9")
 addSbtPlugin("com.github.tkawachi" % "sbt-doctest" % "0.9.9")
 addSbtPlugin("com.typesafe.sbt" % "sbt-osgi" % "0.9.6")
