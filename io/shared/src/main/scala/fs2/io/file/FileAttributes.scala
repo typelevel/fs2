@@ -29,8 +29,8 @@ import scala.concurrent.duration.FiniteDuration
   *
   * To get an instance of `BasicFileAttributes`, use `Files[F].getBasicFileAttributes(path)`.
   *
-  * The `fileKey` operation returns a unique identifier for the file, if the operating system
-  * and file system supports providing such an identifier.
+  * The `fileKey` operation returns a unique identifier for the file, if the operating system and
+  * file system supports providing such an identifier.
   */
 sealed trait BasicFileAttributes {
   def creationTime: FiniteDuration

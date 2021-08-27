@@ -24,7 +24,7 @@ package fs2
 import cats.data.Chain
 import scala.reflect.ClassTag
 import scodec.bits.ByteVector
-import java.nio.{Buffer => JBuffer, CharBuffer => JCharBuffer, ByteBuffer => JByteBuffer}
+import java.nio.{Buffer => JBuffer, ByteBuffer => JByteBuffer, CharBuffer => JCharBuffer}
 
 import org.scalacheck.{Arbitrary, Cogen, Gen}
 import Arbitrary.arbitrary

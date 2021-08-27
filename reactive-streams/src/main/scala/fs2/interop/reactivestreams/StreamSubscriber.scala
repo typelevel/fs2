@@ -34,7 +34,8 @@ import org.reactivestreams._
   *
   * This is used to obtain a `fs2.Stream` from an upstream reactivestreams system.
   *
-  * @see [[https://github.com/reactive-streams/reactive-streams-jvm#2-subscriber-code]]
+  * @see
+  *   [[https://github.com/reactive-streams/reactive-streams-jvm#2-subscriber-code]]
   */
 final class StreamSubscriber[F[_], A](
     val sub: StreamSubscriber.FSM[F, A],
@@ -136,7 +137,7 @@ object StreamSubscriber {
         case OnNext(a) => {
           case WaitingOnUpstream(s, r) => Idle(s) -> r.complete(a.some.asRight).void
           case DownstreamCancellation  => DownstreamCancellation -> F.unit
-          case o                       => o -> F.raiseError(new Error(s"received record [$a] in invalid state [$o]"))
+          case o => o -> F.raiseError(new Error(s"received record [$a] in invalid state [$o]"))
         }
         case OnComplete => {
           case WaitingOnUpstream(_, r) => UpstreamCompletion -> r.complete(None.asRight).void

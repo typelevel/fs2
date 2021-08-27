@@ -33,14 +33,14 @@ trait Signal[F[_], A] {
 
   /** Returns a stream of the updates to this signal.
     *
-    * Updates that are very close together may result in only the last update appearing
-    * in the stream. If you want to be notified about every single update, use
-    * a `Queue` or `Channel` instead.
+    * Updates that are very close together may result in only the last update appearing in the
+    * stream. If you want to be notified about every single update, use a `Queue` or `Channel`
+    * instead.
     */
   def discrete: Stream[F, A]
 
-  /** Returns a stream of the current value of the signal. An element is always
-    * available -- on each pull, the current value is supplied.
+  /** Returns a stream of the current value of the signal. An element is always available -- on each
+    * pull, the current value is supplied.
     */
   def continuous: Stream[F, A]
 
@@ -80,16 +80,13 @@ object Signal extends SignalInstances {
   }
 }
 
-/** Pure holder of a single value of type `A` that can be both read
-  * and updated in the effect `F`.
+/** Pure holder of a single value of type `A` that can be both read and updated in the effect `F`.
   *
-  * The update methods have the same semantics as Ref, as well as
-  * propagating changes to `discrete` (with a last-update-wins policy
-  * in case of very fast updates).
+  * The update methods have the same semantics as Ref, as well as propagating changes to `discrete`
+  * (with a last-update-wins policy in case of very fast updates).
   *
-  * The `access` method differs slightly from `Ref` in that the update
-  * function, in the presence of `discrete`, can return `false` and
-  * need looping even without any other writers.
+  * The `access` method differs slightly from `Ref` in that the update function, in the presence of
+  * `discrete`, can return `false` and need looping even without any other writers.
   */
 abstract class SignallingRef[F[_], A] extends Ref[F, A] with Signal[F, A]
 
@@ -99,7 +96,8 @@ object SignallingRef {
       private val dummy: Boolean = true
   ) extends AnyVal {
 
-    /** @see [[SignallingRef.of]]
+    /** @see
+      *   [[SignallingRef.of]]
       */
     def of[A](initial: A)(implicit F: Concurrent[F]): F[SignallingRef[F, A]] =
       SignallingRef.of(initial)
@@ -115,7 +113,8 @@ object SignallingRef {
     *   SignallingRef[IO].of(10L) <-> SignallingRef.of[IO, Long](10L)
     * }}}
     *
-    * @see [[of]]
+    * @see
+    *   [[of]]
     */
   def apply[F[_]]: PartiallyApplied[F] = new PartiallyApplied[F]
 
@@ -295,16 +294,14 @@ private[concurrent] trait SignalInstances extends SignalLowPriorityInstances {
 private[concurrent] trait SignalLowPriorityInstances {
 
   /** Note that this is not subsumed by [[Signal.applicativeInstance]] because
-    * [[Signal.applicativeInstance]] requires a `Concurrent[F]`
-    * since it non-deterministically zips elements together while our
-    * `Functor` instance has no other constraints.
+    * [[Signal.applicativeInstance]] requires a `Concurrent[F]` since it non-deterministically zips
+    * elements together while our `Functor` instance has no other constraints.
     *
-    * Separating the two instances allows us to make the `Functor` instance
-    * more general.
+    * Separating the two instances allows us to make the `Functor` instance more general.
     *
-    * We put this in a `SignalLowPriorityImplicits` trait to resolve ambiguous
-    * implicits if the [[Signal.applicativeInstance]] is applicable, allowing
-    * the `Applicative` instance to be chosen.
+    * We put this in a `SignalLowPriorityImplicits` trait to resolve ambiguous implicits if the
+    * [[Signal.applicativeInstance]] is applicable, allowing the `Applicative` instance to be
+    * chosen.
     */
   implicit def functorInstance[F[_]: Functor]: Functor[Signal[F, *]] =
     new Functor[Signal[F, *]] {

@@ -41,7 +41,9 @@ private[file] trait FlagCompanionApi {
   /** Creates the file if it does not exist and fails if it already exists. */
   val CreateNew: Flag
 
-  /** Requires all updates to the file content and metadata be written synchronously to underlying storage. */
+  /** Requires all updates to the file content and metadata be written synchronously to underlying
+    * storage.
+    */
   val Sync: Flag
 
   /** Requires all updates to the file content be written synchronously to underlying storage. */

@@ -33,91 +33,85 @@ import fs2.internal._
 import Resource.ExitCase
 import Pull._
 
-/** A purely functional data structure that describes a process. This process
-  * may evaluate actions in an effect type F, emit any number of output values
-  * of type O (or None), and may a) terminate with a single result of type R;
-  * or b) terminate abnormally by raising (inside the effect `F`) an exception,
-  * or c) terminate because it was cancelled by another process,
-  * or d) not terminate.
+/** A purely functional data structure that describes a process. This process may evaluate actions
+  * in an effect type F, emit any number of output values of type O (or None), and may a) terminate
+  * with a single result of type R; or b) terminate abnormally by raising (inside the effect `F`) an
+  * exception, or c) terminate because it was cancelled by another process, or d) not terminate.
   *
-  * Like types from other effect libraries, pulls are pure and immutable values.
-  * They preserve referential transparency.
+  * Like types from other effect libraries, pulls are pure and immutable values. They preserve
+  * referential transparency.
   *
-  * === Chunking ===
+  * ===Chunking===
   *
-  * The output values of a pull are emitted not one by one, but in chunks.
-  * A `Chunk` is an immutable sequence with constant-time indexed lookup. For example,
-  * a pull `p: Pull[F, Byte, R]` internally operates and emits `Chunk[Byte]`
-  * values, which can wrap unboxed byte arrays -- avoiding boxing/unboxing costs.
-  * The `Pull` API provides mechanisms for working at both the chunk level and
-  * the individual element level. Generally, working at the chunk level will
-  * result in better performance but at the cost of more complex implementations
+  * The output values of a pull are emitted not one by one, but in chunks. A `Chunk` is an immutable
+  * sequence with constant-time indexed lookup. For example, a pull `p: Pull[F, Byte, R]` internally
+  * operates and emits `Chunk[Byte]` values, which can wrap unboxed byte arrays -- avoiding
+  * boxing/unboxing costs. The `Pull` API provides mechanisms for working at both the chunk level
+  * and the individual element level. Generally, working at the chunk level will result in better
+  * performance but at the cost of more complex implementations
   *
   * A pull only emits non-empty chunks.
   *
-  * However, chunks are not merely an operational matter of efficiency. Each
-  * pull is emitted from a chunk atomically, which is to say, any errors or
-  * interruptions in a pull can only happen between chunks, not within a
-  * chunk. For instance, if creating a new chunk of values fails (raises an
-  * uncaught exception) while creating an intermediate value, then it fails
-  * to create the entire chunk and previous values are discarded.
+  * However, chunks are not merely an operational matter of efficiency. Each pull is emitted from a
+  * chunk atomically, which is to say, any errors or interruptions in a pull can only happen between
+  * chunks, not within a chunk. For instance, if creating a new chunk of values fails (raises an
+  * uncaught exception) while creating an intermediate value, then it fails to create the entire
+  * chunk and previous values are discarded.
   *
-  * === Evaluation ===
+  * ===Evaluation===
   *
-  * Like other functional effect types (e.g. `cats.effect.IO`), a pull
-  * describes a _process_ or _computation_. It is not a running process nor a
-  * handle for the result of a spawned, running process, like `scala.concurrent.Future`.
+  * Like other functional effect types (e.g. `cats.effect.IO`), a pull describes a _process_ or
+  * _computation_. It is not a running process nor a handle for the result of a spawned, running
+  * process, like `scala.concurrent.Future`.
   *
-  * A pull can be converted to a stream and then compiled to an effectful value.
-  * For a `Pull[F, O, Unit]`, the result of compilation is a combination, via the
-  * monad instance of `F`, of all the actions in the effect `F` present in the pull.
-  * The result of that `F` action is the result of combining the outputs emitted by
-  * the pull, in the order it emits them, using a _fold_ function. Depending on that
-  * function, outputs may be collected into a list (or vector or array or ...),
-  * combined together into a single value, or just discarded altogether (by _draining_
-  * the pull).
+  * A pull can be converted to a stream and then compiled to an effectful value. For a `Pull[F, O,
+  * Unit]`, the result of compilation is a combination, via the monad instance of `F`, of all the
+  * actions in the effect `F` present in the pull. The result of that `F` action is the result of
+  * combining the outputs emitted by the pull, in the order it emits them, using a _fold_ function.
+  * Depending on that function, outputs may be collected into a list (or vector or array or ...),
+  * combined together into a single value, or just discarded altogether (by _draining_ the pull).
   *
-  * Compilation is pull-based, rather than push-based (hence the name of the datatype).
-  * It is the compilation process itself, that determines when the evaluation
-  * of each single effect can proceed or is held back. Effects and outputs later
-  * in the pull are not performed or emitted, _unless and until_ the compilation
-  * calls for them.
+  * Compilation is pull-based, rather than push-based (hence the name of the datatype). It is the
+  * compilation process itself, that determines when the evaluation of each single effect can
+  * proceed or is held back. Effects and outputs later in the pull are not performed or emitted,
+  * _unless and until_ the compilation calls for them.
   *
-  * === Resource scoping ===
+  * ===Resource scoping===
   *
-  * The effects in a `Pull` may operate on resources, which must be retained during
-  * the execution of the pull, may be shared by several pulls, and must be
-  * properly finalised when no longer needed, regardless of whether the pull completed
-  * successfully or not. A pull tracks its resources using '''scopes''', which register
-  * how many pulls are actively using each resource, and finalises resources when no
-  * longer used.
+  * The effects in a `Pull` may operate on resources, which must be retained during the execution of
+  * the pull, may be shared by several pulls, and must be properly finalised when no longer needed,
+  * regardless of whether the pull completed successfully or not. A pull tracks its resources using
+  * '''scopes''', which register how many pulls are actively using each resource, and finalises
+  * resources when no longer used.
   *
-  * Some operations of the `Pull` API can be used to introduce new resource scopes,
-  * or resource boundaries.
+  * Some operations of the `Pull` API can be used to introduce new resource scopes, or resource
+  * boundaries.
   *
-  * === Functional typeclasses ===
+  * ===Functional typeclasses===
   *
-  * The `Pull` data structure is a "free" implementation of `Monad` and has an instance
-  * for `cats.effect.kernel.Sync`.
+  * The `Pull` data structure is a "free" implementation of `Monad` and has an instance for
+  * `cats.effect.kernel.Sync`.
   *
   * For any types `F[_]` and `O`, a `Pull[F, O, *]` holds the following laws:
   *
   *   - `pure >=> f == f`
   *   - `f >=> pure == f`
-  *   - `(f >=> g) >=> h == f >=> (g >=> h)`
-  * where `f >=> g` is defined as `a => a flatMap f flatMap g`
+  *   - `(f >=> g) >=> h == f >=> (g >=> h)` where `f >=> g` is defined as `a => a flatMap f flatMap
+  *     g`
   *   - `handleErrorWith(raiseError(e))(f) == f(e)`
   *
-  * @tparam F[_] the type of effect that can be performed by this pull.
-  *         An effect type of `Nothing`, also known in `fs2` by the alias `Pure`,
-  *         indicates that this pull perform no effectful actions.
-  *         _Note_: `Nothing` is a polykinded type, so it can also be
-  *         applied as an argument to the type parameter `F[_]`.
-  * @tparam O The outputs emitted by this Pull. An output type of `Nothing` means
-  *           that this pull does not emit any outputs.
-  * @tparam R The type of result returned by this Pull upon successful termination.
-  *           An output type of `Nothing` indicates that this pull cannot terminate
-  *           successfully: it may fail, be cancelled, or never terminate.
+  * @tparam F[_]
+  *   the type of effect that can be performed by this pull. An effect type of `Nothing`, also known
+  *   in `fs2` by the alias `Pure`, indicates that this pull perform no effectful actions. _Note_:
+  *   `Nothing` is a polykinded type, so it can also be applied as an argument to the type parameter
+  *   `F[_]`.
+  * @tparam O
+  *   The outputs emitted by this Pull. An output type of `Nothing` means that this pull does not
+  *   emit any outputs.
+  * @tparam R
+  *   The type of result returned by this Pull upon successful termination. An output type of
+  *   `Nothing` indicates that this pull cannot terminate successfully: it may fail, be cancelled,
+  *   or never terminate.
   */
 sealed abstract class Pull[+F[_], +O, +R] {
 
@@ -125,21 +119,20 @@ sealed abstract class Pull[+F[_], +O, +R] {
     *
     * This method returns a new composed pull, which will do as follows:
     *
-    * - If `this` pull succeeds with a result `r` of type R, the `f` function
-    *   is applied to `r`, to build a new pull `f(r)`, and the result pull
-    *   starts running that new pull. The composed pull will terminate (or not)
-    *   just as the new pull `f(r)` does.
-    * - If `this` pull fails or is interrupted, then the composed pull
-    *   terminates with that same failure or interruption.
-    * - If evaluating `f(r)` to build the pull throws an exception, the result
-    *   is a pull that fails with that exception.
+    *   - If `this` pull succeeds with a result `r` of type R, the `f` function is applied to `r`,
+    *     to build a new pull `f(r)`, and the result pull starts running that new pull. The composed
+    *     pull will terminate (or not) just as the new pull `f(r)` does.
+    *   - If `this` pull fails or is interrupted, then the composed pull terminates with that same
+    *     failure or interruption.
+    *   - If evaluating `f(r)` to build the pull throws an exception, the result is a pull that
+    *     fails with that exception.
     *
-    * The composed pull emits all outputs emitted by `this` pull,
-    * and if successful will start emitting the outputs from the generated pull.
+    * The composed pull emits all outputs emitted by `this` pull, and if successful will start
+    * emitting the outputs from the generated pull.
     *
-    * This operation does not modify resource scope boundaries. The generated
-    * `post` pull starts running on the same scope in which `this` pull ended,
-    * and the composed pull will end on the same scope in which `post` pull does.
+    * This operation does not modify resource scope boundaries. The generated `post` pull starts
+    * running on the same scope in which `this` pull ended, and the composed pull will end on the
+    * same scope in which `post` pull does.
     */
   def flatMap[F2[x] >: F[x], O2 >: O, R2](f: R => Pull[F2, O2, R2]): Pull[F2, O2, R2] =
     new Bind[F2, O2, R, R2](this) {
@@ -155,24 +148,22 @@ sealed abstract class Pull[+F[_], +O, +R] {
 
   /** Lazily appends the given `post` pull, to be run after `this` pull.
     *
-    * - If `this` pull succeeds, then its result is discarded, the `post`
-    *   pull is built, and starts running. The result of `post` is
-    *   the result of the composed pull.
+    *   - If `this` pull succeeds, then its result is discarded, the `post` pull is built, and
+    *     starts running. The result of `post` is the result of the composed pull.
     *
-    * - If `this` pull raises an error or is interrupted, the `post` argument is
-    *   not evaluated and the composed pull ends just as `this` pull did.
+    *   - If `this` pull raises an error or is interrupted, the `post` argument is not evaluated and
+    *     the composed pull ends just as `this` pull did.
     *
-    * In both cases, the effectful actions and outputs of the appended pull
-    * consists of those outputs and actions from the first pull, followed by
-    * those from the `post` pull, in the same order as they would come out of each pull.
+    * In both cases, the effectful actions and outputs of the appended pull consists of those
+    * outputs and actions from the first pull, followed by those from the `post` pull, in the same
+    * order as they would come out of each pull.
     *
-    * Since the `post` argument is lazy, this method can be used to build lazy
-    * pulls, which are not built in memory until after the prefix has run.
-    * This allows defining pulls recursively.
+    * Since the `post` argument is lazy, this method can be used to build lazy pulls, which are not
+    * built in memory until after the prefix has run. This allows defining pulls recursively.
     *
-    * This operation does not add or remove any resource scope boundaries.
-    * The `post` pull runs on the same scope in which `this` pull ended.
-    * The composed pull ends on whatever scope the `post` pull does.
+    * This operation does not add or remove any resource scope boundaries. The `post` pull runs on
+    * the same scope in which `this` pull ended. The composed pull ends on whatever scope the `post`
+    * pull does.
     *
     * This is equivalent to `.flatMap(_ => post)`
     */
@@ -186,12 +177,12 @@ sealed abstract class Pull[+F[_], +O, +R] {
         }
     }
 
-  /** Allows to recover from any error raised by the evaluation of this pull.
-    * This method returns a composed pull with the following semantics:
-    * - If an error occurs, the supplied function is used to build a new handler
-    *   pull, and it starts running it. However, the pull cannot be resumed from
-    *   the point at which the error arose.
-    * - If no error is raised, the resulting pull just does what `this` pull does.
+  /** Allows to recover from any error raised by the evaluation of this pull. This method returns a
+    * composed pull with the following semantics:
+    *   - If an error occurs, the supplied function is used to build a new handler pull, and it
+    *     starts running it. However, the pull cannot be resumed from the point at which the error
+    *     arose.
+    *   - If no error is raised, the resulting pull just does what `this` pull does.
     */
   def handleErrorWith[F2[x] >: F[x], O2 >: O, R2 >: R](
       handler: Throwable => Pull[F2, O2, R2]
@@ -208,17 +199,17 @@ sealed abstract class Pull[+F[_], +O, +R] {
 
   /** Run `post` after `this`, regardless of errors during `this`:
     *
-    * - If `this` pull terminates successfully, then its result is discarded
-    *   and the `post` pull is run. However the `post` pull ends, be it in
-    *   success, error, interruption, is how the combined pull ends.
+    *   - If `this` pull terminates successfully, then its result is discarded and the `post` pull
+    *     is run. However the `post` pull ends, be it in success, error, interruption, is how the
+    *     combined pull ends.
     *
-    * - If `this` pull fails, the `post` pull is run next. If the `post` pull
-    *   ends, fails, or is interrupted, that is how the combined pull ends.
-    *   However, if the `post` pull succeeds, then the combined `onComplete` pull
-    *   fails again with the error that was raised from `this` pull.
+    *   - If `this` pull fails, the `post` pull is run next. If the `post` pull ends, fails, or is
+    *     interrupted, that is how the combined pull ends. However, if the `post` pull succeeds,
+    *     then the combined `onComplete` pull fails again with the error that was raised from `this`
+    *     pull.
     *
-    * - If `this` pull is interrupted, then the `post` pull is never run
-    *   and the combined pull ends with that same interruption.
+    *   - If `this` pull is interrupted, then the `post` pull is never run and the combined pull
+    *     ends with that same interruption.
     */
   def onComplete[F2[x] >: F[x], O2 >: O, R2](post: => Pull[F2, O2, R2]): Pull[F2, O2, R2] =
     handleErrorWith(e => post >> Fail(e)) >> post
@@ -235,22 +226,20 @@ sealed abstract class Pull[+F[_], +O, +R] {
   /** Short-hand for `(this: Pull[F, O, R2])`. Used to assist with type inference. */
   def covaryResult[R2 >: R]: Pull[F, O, R2] = this
 
-  /** Returns a pull with the result wrapped in `Right`,
-    * or an error wrapped in `Left` if the pull has raised an error.
-    * If `this` pull is interrupted, the attempted pull ends the same way.
+  /** Returns a pull with the result wrapped in `Right`, or an error wrapped in `Left` if the pull
+    * has raised an error. If `this` pull is interrupted, the attempted pull ends the same way.
     */
   def attempt: Pull[F, O, Either[Throwable, R]] =
     map(r => Right(r)).handleErrorWith(t => Succeeded(Left(t)))
 
   /** Maps the result of this pull with the `f` mapping function.
     *
-    * If `this` pull ends in success with a result `r`, then the function `f`
-    * is applied to its result `r`, and the image `f(r)` is the result of the
-    * mapped pull. However, if the evaluation of `f(r)` throws an error, the
-    * mapped pull fails with that error.
+    * If `this` pull ends in success with a result `r`, then the function `f` is applied to its
+    * result `r`, and the image `f(r)` is the result of the mapped pull. However, if the evaluation
+    * of `f(r)` throws an error, the mapped pull fails with that error.
     *
-    * Note: for some simple cases of Pull, the `map` function may be eagerly
-    * applied, or discarded, _before_ the pull starts being run.
+    * Note: for some simple cases of Pull, the `map` function may be eagerly applied, or discarded,
+    * _before_ the pull starts being run.
     *
     * If `this` pull terminates abnormally, so does the mapped pull.
     */
@@ -261,24 +250,23 @@ sealed abstract class Pull[+F[_], +O, +R] {
 
   /** Discards the result of this pull.
     *
-    * If `this` pull ends in success, its result is discarded and the _voided_
-    * pull returns the unit `()` value. Otherwise, the voided pull just does
-    * the same as `this` pull does.
+    * If `this` pull ends in success, its result is discarded and the _voided_ pull returns the unit
+    * `()` value. Otherwise, the voided pull just does the same as `this` pull does.
     *
     * Alias for `this.map(_ => () )`.
     */
   def void: Pull[F, O, Unit] = as(())
 
-  /** Replaces the result of this pull with the given constant value.
-    * If `this` pull succeeds, then its result is discarded and the resulting
-    * pull succeeds with the `s` value as its result.
-    * Otherwise, if `this` pull fails or is interrupted, then the result pull
-    * ends the same way.
+  /** Replaces the result of this pull with the given constant value. If `this` pull succeeds, then
+    * its result is discarded and the resulting pull succeeds with the `s` value as its result.
+    * Otherwise, if `this` pull fails or is interrupted, then the result pull ends the same way.
     *
     * Alias for `_.map(_ => o2)`.
     *
-    * @tparam S The type of the constant,
-    * @param  s The new result value of the pull
+    * @tparam S
+    *   The type of the constant,
+    * @param s
+    *   The new result value of the pull
     */
   def as[S](s: S): Pull[F, O, S] = map(_ => s)
 }
@@ -287,12 +275,12 @@ object Pull extends PullLowPriority {
 
   implicit final class StreamPullOps[F[_], O](private val self: Pull[F, O, Unit]) extends AnyVal {
 
-    /** Interprets this pull to produce a stream. This method introduces a resource
-      * scope, to ensure any resources acquired by this pull are released in due
-      * course, even if the resulting stream does not terminate successfully.
+    /** Interprets this pull to produce a stream. This method introduces a resource scope, to ensure
+      * any resources acquired by this pull are released in due course, even if the resulting stream
+      * does not terminate successfully.
       *
-      * May only be called on pulls which return a `Unit` result type. Use
-      * `p.void.stream` to explicitly ignore the result type of the pull.
+      * May only be called on pulls which return a `Unit` result type. Use `p.void.stream` to
+      * explicitly ignore the result type of the pull.
       */
     def stream: Stream[F, O] = new Stream(Pull.scope(self))
 
@@ -300,39 +288,39 @@ object Pull extends PullLowPriority {
       *
       * Only use this if you know a scope is not needed. Scope introduction is
       *
-      * generally harmless and the risk of not introducing a scope is a memory leak
-      * in streams that otherwise would execute in constant memory.
+      * generally harmless and the risk of not introducing a scope is a memory leak in streams that
+      * otherwise would execute in constant memory.
       *
-      * May only be called on pulls whose result type is `Unit`.
-      * Use `p.void.stream` to explicitly ignore the result of a pull.
+      * May only be called on pulls whose result type is `Unit`. Use `p.void.stream` to explicitly
+      * ignore the result of a pull.
       */
     def streamNoScope: Stream[F, O] = new Stream(self)
   }
 
   private[this] val unit: Terminal[Unit] = Succeeded(())
 
-  /** A pull that performs no effects, emits no outputs, and
-    * always terminates successfully with a unit result.
+  /** A pull that performs no effects, emits no outputs, and always terminates successfully with a
+    * unit result.
     */
   val done: Pull[Pure, INothing, Unit] = unit
 
-  /** Creates an pull that performs no effects, emits no outputs,
-    * and terminates successfully with the supplied value as its result.
+  /** Creates an pull that performs no effects, emits no outputs, and terminates successfully with
+    * the supplied value as its result.
     */
   def pure[F[_], R](r: R): Pull[F, INothing, R] = Succeeded(r)
 
-  /** Lifts a throwable error into an atomic pull that emits no outputs and
-    * fails with the given error, without any result.
+  /** Lifts a throwable error into an atomic pull that emits no outputs and fails with the given
+    * error, without any result.
     *
-    * The `F` type must be explicitly provided (e.g., via `raiseError[IO]`
-    * or `raiseError[Fallible]`).
+    * The `F` type must be explicitly provided (e.g., via `raiseError[IO]` or
+    * `raiseError[Fallible]`).
     */
   @nowarn("cat=unused-params")
   def raiseError[F[_]: RaiseThrowable](err: Throwable): Pull[F, INothing, INothing] = Fail(err)
 
-  /** Creates a pull that evaluates the supplied effect `fr`, emits no
-    * outputs, and terminates with the result of the effect.
-    * If the `fr` effect fails with an error, the new pull fails with that error.
+  /** Creates a pull that evaluates the supplied effect `fr`, emits no outputs, and terminates with
+    * the result of the effect. If the `fr` effect fails with an error, the new pull fails with that
+    * error.
     */
   def eval[F[_], R](fr: F[R]): Pull[F, INothing, R] = Eval[F, R](fr)
 
@@ -340,24 +328,22 @@ object Pull extends PullLowPriority {
   def sleep[F[_]](d: FiniteDuration)(implicit t: Temporal[F]): Pull[F, INothing, Unit] =
     Pull.eval(t.sleep(d))
 
-  /** Lifts the given output value `O` into a pull that performs no
-    * effects, emits that single output in a singleton chunk, and always
-    * terminates successfully with a unit result.
+  /** Lifts the given output value `O` into a pull that performs no effects, emits that single
+    * output in a singleton chunk, and always terminates successfully with a unit result.
     *
-    * _Note_: using singleton chunks is not efficient. If possible,
-    * use the chunk-based `output` method instead.
+    * _Note_: using singleton chunks is not efficient. If possible, use the chunk-based `output`
+    * method instead.
     */
   def output1[F[x] >: Pure[x], O](o: O): Pull[F, O, Unit] = Output(Chunk.singleton(o))
 
-  /** Lifts the given optional value `O` into a pull that performs no
-    * effects, emits the content of that option, and always
-    * terminates successfully with a unit result.
+  /** Lifts the given optional value `O` into a pull that performs no effects, emits the content of
+    * that option, and always terminates successfully with a unit result.
     */
   def outputOption1[F[x] >: Pure[x], O](opt: Option[O]): Pull[Pure, O, Unit] =
     opt.map(output1).getOrElse(done)
 
-  /** Creates a pull that emits the elements of the given chunk.
-    * The new pull performs no effects and terminates successfully with a unit result.
+  /** Creates a pull that emits the elements of the given chunk. The new pull performs no effects
+    * and terminates successfully with a unit result.
     */
   def output[F[x] >: Pure[x], O](os: Chunk[O]): Pull[Pure, O, Unit] =
     if (os.isEmpty) Pull.done else Output[O](os)
@@ -374,8 +360,8 @@ object Pull extends PullLowPriority {
   )(implicit F: MonadCancel[F, _]): Pull[F, INothing, R] =
     Acquire(F.uncancelable(resource), release, cancelable = true)
 
-  /** Like [[eval]] but if the effectful value fails, the exception is returned
-    * in a `Left` instead of failing the pull.
+  /** Like [[eval]] but if the effectful value fails, the exception is returned in a `Left` instead
+    * of failing the pull.
     */
   def attemptEval[F[_], R](fr: F[R]): Pull[F, INothing, Either[Throwable, R]] =
     Eval[F, R](fr)
@@ -409,10 +395,9 @@ object Pull extends PullLowPriority {
       }
     }
 
-  /** Extends the scope of the currently open resources to the specified stream,
-    * preventing them from being finalized until after `s` completes execution,
-    * even if the returned pull is converted to a stream, compiled, and
-    * evaluated before `s` is compiled and evaluated.
+  /** Extends the scope of the currently open resources to the specified stream, preventing them
+    * from being finalized until after `s` completes execution, even if the returned pull is
+    * converted to a stream, compiled, and evaluated before `s` is compiled and evaluated.
     */
   def extendScopeTo[F[_], O](
       s: Stream[F, O]
@@ -422,8 +407,8 @@ object Pull extends PullLowPriority {
       lease <- Pull.eval(scope.lease)
     } yield s.onFinalize(lease.cancel.redeemWith(F.raiseError(_), _ => F.unit))
 
-  /** Repeatedly uses the output of the pull as input for the next step of the
-    * pull. Halts when a step terminates with `None` or `Pull.raiseError`.
+  /** Repeatedly uses the output of the pull as input for the next step of the pull. Halts when a
+    * step terminates with `None` or `Pull.raiseError`.
     */
   def loop[F[_], O, R](f: R => Pull[F, O, Option[R]]): R => Pull[F, O, Unit] =
     (r: R) =>
@@ -432,9 +417,9 @@ object Pull extends PullLowPriority {
         case Some(s) => loop(f)(s)
       }
 
-  /** Intantiates with a state. Repeatedly uses the left value of the result of
-    * the pull as input for the next step. The Pull terminates when a step terminates with
-    * `Right` or `Pull.raiseError`.
+  /** Intantiates with a state. Repeatedly uses the left value of the result of the pull as input
+    * for the next step. The Pull terminates when a step terminates with `Right` or
+    * `Pull.raiseError`.
     */
   def loopEither[F[_], O, S, R](f: S => Pull[F, O, Either[S, R]]): S => Pull[F, O, R] =
     (s: S) =>
@@ -452,42 +437,38 @@ object Pull extends PullLowPriority {
 
   /** Lifts an Either[Throwable, A] to an effectful Pull[F, A, Unit].
     *
-    * @example {{{
-    * scala> import cats.effect.SyncIO, scala.util.Try
-    * scala> Pull.fromEither[SyncIO](Right(42)).stream.compile.toList.unsafeRunSync()
-    * res0: List[Int] = List(42)
-    * scala> Try(Pull.fromEither[SyncIO](Left(new RuntimeException)).stream.compile.toList.unsafeRunSync())
-    * res1: Try[List[INothing]] = Failure(java.lang.RuntimeException)
-    * }}}
+    * @example
+    *   {{{ scala> import cats.effect.SyncIO, scala.util.Try scala>
+    *   Pull.fromEither[SyncIO](Right(42)).stream.compile.toList.unsafeRunSync() res0: List[Int] =
+    *   List(42) scala> Try(Pull.fromEither[SyncIO](Left(new
+    *   RuntimeException)).stream.compile.toList.unsafeRunSync()) res1: Try[List[INothing]] =
+    *   Failure(java.lang.RuntimeException) }}}
     */
   def fromEither[F[x]] = new PartiallyAppliedFromEither[F]
 
-  /** Gets the current scope, allowing manual leasing or interruption.
-    * This is a low-level method and generally should not be used by user code.
+  /** Gets the current scope, allowing manual leasing or interruption. This is a low-level method
+    * and generally should not be used by user code.
     */
   private[fs2] def getScope[F[_]]: Pull[F, INothing, Scope[F]] = GetScope[F]()
 
-  /** Returns a pull that evaluates the supplied by-name each time the pull is
-    * used, allowing use of a mutable value in pull computations.
+  /** Returns a pull that evaluates the supplied by-name each time the pull is used, allowing use of
+    * a mutable value in pull computations.
     */
   def suspend[F[x] >: Pure[x], O, R](p: => Pull[F, O, R]): Pull[F, O, R] =
     new Bind[F, O, Unit, R](unit) {
       def cont(r: Terminal[Unit]): Pull[F, O, R] = p
     }
 
-  /** An abstraction for writing `Pull` computations that can timeout
-    * while reading from a `Stream`.
+  /** An abstraction for writing `Pull` computations that can timeout while reading from a `Stream`.
     *
-    * A `Pull.Timed` is not created or intepreted directly, but by
-    * calling [[Stream.ToPull.timed]].
+    * A `Pull.Timed` is not created or intepreted directly, but by calling [[Stream.ToPull.timed]].
     *
     * {{{
     * yourStream.pull.timed(tp => ...).stream
     * }}}
     *
-    * The argument to `timed` is a `Pull.Timed[F, O] => Pull[F, O2, R]`
-    * function, which describes the pulling logic and is often recursive,
-    * with shape:
+    * The argument to `timed` is a `Pull.Timed[F, O] => Pull[F, O2, R]` function, which describes
+    * the pulling logic and is often recursive, with shape:
     *
     * {{{
     * def go(timedPull: Pull.Timed[F, A]): Pull[F, B, Unit] =
@@ -498,51 +479,45 @@ object Pull extends PullLowPriority {
     *   }
     * }}}
     *
-    * Where `doSomething` and `doSomethingElse` are `Pull` computations
-    * such as `Pull.output`, in addition to `Pull.Timed.timeout`.
+    * Where `doSomething` and `doSomethingElse` are `Pull` computations such as `Pull.output`, in
+    * addition to `Pull.Timed.timeout`.
     *
-    * See below for detailed descriptions of `timeout` and `uncons`, and
-    * look at the [[Stream.ToPull.timed]] scaladoc for an example of usage.
+    * See below for detailed descriptions of `timeout` and `uncons`, and look at the
+    * [[Stream.ToPull.timed]] scaladoc for an example of usage.
     */
   trait Timed[F[_], O] {
     type Timeout
 
-    /** Waits for either a chunk of elements to be available in the
-      * source stream, or a timeout to trigger. Whichever happens
-      * first is provided as the resource of the returned pull,
-      * alongside a new timed pull that can be used for awaiting
-      * again. A `None` is returned as the resource of the pull upon
-      * reaching the end of the stream.
+    /** Waits for either a chunk of elements to be available in the source stream, or a timeout to
+      * trigger. Whichever happens first is provided as the resource of the returned pull, alongside
+      * a new timed pull that can be used for awaiting again. A `None` is returned as the resource
+      * of the pull upon reaching the end of the stream.
       *
-      * Receiving a timeout is not a fatal event: the evaluation of the
-      * current chunk is not interrupted, and the next timed pull is
-      * still returned for further iteration. The lifetime of timeouts
-      * is handled by explicit calls to the `timeout` method: `uncons`
-      * does not start, restart or cancel any timeouts.
+      * Receiving a timeout is not a fatal event: the evaluation of the current chunk is not
+      * interrupted, and the next timed pull is still returned for further iteration. The lifetime
+      * of timeouts is handled by explicit calls to the `timeout` method: `uncons` does not start,
+      * restart or cancel any timeouts.
       *
-      * Note that the type of timeouts is existential in `Pull.Timed`
-      * (hidden, basically) so you cannot do anything on it except for
-      * pattern matching, which is best done as a `Left(_)` case.
+      * Note that the type of timeouts is existential in `Pull.Timed` (hidden, basically) so you
+      * cannot do anything on it except for pattern matching, which is best done as a `Left(_)`
+      * case.
       */
     def uncons: Pull[F, INothing, Option[(Either[Timeout, Chunk[O]], Pull.Timed[F, O])]]
 
-    /** Asynchronously starts a timeout that will be received by
-      * `uncons` after `t`, and immediately returns.
+    /** Asynchronously starts a timeout that will be received by `uncons` after `t`, and immediately
+      * returns.
       *
-      * Timeouts are resettable: if `timeout` executes whilst a
-      * previous timeout is pending, it will cancel it before starting
-      * the new one, so that there is at most one timeout in flight at
-      * any given time. The implementation guards against stale
-      * timeouts: after resetting a timeout, a subsequent `uncons` is
-      * guaranteed to never receive an old one.
+      * Timeouts are resettable: if `timeout` executes whilst a previous timeout is pending, it will
+      * cancel it before starting the new one, so that there is at most one timeout in flight at any
+      * given time. The implementation guards against stale timeouts: after resetting a timeout, a
+      * subsequent `uncons` is guaranteed to never receive an old one.
       *
-      * Timeouts can be reset to any `t`, longer or shorter than the
-      * previous timeout, but a duration of 0 is treated specially, in
-      * that it will cancel a pending timeout but not start a new one.
+      * Timeouts can be reset to any `t`, longer or shorter than the previous timeout, but a
+      * duration of 0 is treated specially, in that it will cancel a pending timeout but not start a
+      * new one.
       *
-      * Note: the very first execution of `timeout` does not start
-      * running until the first call to `uncons`, but subsequent calls
-      * proceed independently after that.
+      * Note: the very first execution of `timeout` does not start running until the first call to
+      * `uncons`, but subsequent calls proceed independently after that.
       */
     def timeout(t: FiniteDuration): Pull[F, INothing, Unit]
   }
@@ -553,11 +528,10 @@ object Pull extends PullLowPriority {
 
   /** `FunctionK` instance for `F ~> Pull[F, INothing, *]`
     *
-    * @example {{{
-    * scala> import cats.Id
-    * scala> Pull.functionKInstance[Id](42).flatMap(Pull.output1).stream.compile.toList
-    * res0: cats.Id[List[Int]] = List(42)
-    * }}}
+    * @example
+    *   {{{ scala> import cats.Id scala>
+    *   Pull.functionKInstance[Id](42).flatMap(Pull.output1).stream.compile.toList res0:
+    *   cats.Id[List[Int]] = List(42) }}}
     */
   implicit def functionKInstance[F[_]]: F ~> Pull[F, INothing, *] =
     new (F ~> Pull[F, INothing, *]) {
@@ -604,12 +578,14 @@ object Pull extends PullLowPriority {
 
   /** Signals that pull evaluation was interrupted.
     *
-    * @param context Any user specific context that needs to be captured
-    *                during interruption for eventual resume of the operation.
+    * @param context
+    *   Any user specific context that needs to be captured during interruption for eventual resume
+    *   of the operation.
     *
-    * @param deferredError Any errors, accumulated during resume of the interruption.
-    *                      Instead throwing errors immediately during interruption,
-    *                      signalling of the errors may be deferred until the Interruption resumes.
+    * @param deferredError
+    *   Any errors, accumulated during resume of the interruption. Instead throwing errors
+    *   immediately during interruption, signalling of the errors may be deferred until the
+    *   Interruption resumes.
     */
   private final case class Interrupted(context: Unique.Token, deferredError: Option[Throwable])
       extends Terminal[INothing] {
@@ -722,11 +698,13 @@ object Pull extends PullLowPriority {
   private final case class Uncons[+F[_], +O](stream: Pull[F, O, Unit])
       extends Action[Pure, INothing, Option[(Chunk[O], Pull[F, O, Unit])]]
 
-  /** Steps through the stream, providing a `stepLeg`.
-    * Yields to head in form of chunk, then id of the scope that was active after step evaluated and tail of the `stream`.
+  /** Steps through the stream, providing a `stepLeg`. Yields to head in form of chunk, then id of
+    * the scope that was active after step evaluated and tail of the `stream`.
     *
-    * @param stream             Stream to step
-    * @param scopeId            scope has to be changed before this step is evaluated, id of the scope must be supplied
+    * @param stream
+    *   Stream to step
+    * @param scopeId
+    *   scope has to be changed before this step is evaluated, id of the scope must be supplied
     */
   private final case class StepLeg[+F[_], +O](stream: Pull[F, O, Unit], scope: Unique.Token)
       extends Action[Pure, INothing, Option[Stream.StepLeg[F, O]]]
@@ -781,13 +759,13 @@ object Pull extends PullLowPriority {
   ): Pull[F, Nothing, Option[Stream.StepLeg[F, O]]] =
     StepLeg[F, O](leg.next, leg.scopeId)
 
-  /** Wraps supplied pull in new scope, that will be opened before this pull is evaluated
-    * and closed once this pull either finishes its evaluation or when it fails.
+  /** Wraps supplied pull in new scope, that will be opened before this pull is evaluated and closed
+    * once this pull either finishes its evaluation or when it fails.
     */
   private[fs2] def scope[F[_], O](s: Pull[F, O, Unit]): Pull[F, O, Unit] = InScope(s, false)
 
-  /** Like `scope` but allows this scope to be interrupted.
-    * Note that this may fail with `Interrupted` when interruption occurred
+  /** Like `scope` but allows this scope to be interrupted. Note that this may fail with
+    * `Interrupted` when interruption occurred
     */
   private[fs2] def interruptScope[F[_], O](s: Pull[F, O, Unit]): Pull[F, O, Unit] = InScope(s, true)
 

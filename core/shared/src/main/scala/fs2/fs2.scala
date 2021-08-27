@@ -27,8 +27,8 @@ package object fs2 {
     */
   type Pipe[F[_], -I, +O] = Stream[F, I] => Stream[F, O]
 
-  /** A stream transformation that combines two streams in to a single stream,
-    * represented as a function from two streams to a single stream.
+  /** A stream transformation that combines two streams in to a single stream, represented as a
+    * function from two streams to a single stream.
     *
     * `Pipe2`s are typically applied with the `through2` operation on `Stream`.
     */

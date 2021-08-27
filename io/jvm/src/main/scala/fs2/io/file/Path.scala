@@ -27,15 +27,15 @@ import java.nio.file.{FileSystems, Path => JPath, Paths}
 
 /** Path to a file or directory on a file system.
   *
-  * The path API is inspired by the `java.nio.file.Path` API. On the JVM,
-  * a NIO path can be converted to an FS2 path via `Path.fromNioPath(p)`
-  * and likewise an FS2 path can be converted to a NIO path via `p.toNioPath`.
+  * The path API is inspired by the `java.nio.file.Path` API. On the JVM, a NIO path can be
+  * converted to an FS2 path via `Path.fromNioPath(p)` and likewise an FS2 path can be converted to
+  * a NIO path via `p.toNioPath`.
   *
-  * (When using this class on Node.js, the `fromNioPath` and `toNioPath` methods are
-  * not accessible.)
+  * (When using this class on Node.js, the `fromNioPath` and `toNioPath` methods are not
+  * accessible.)
   *
-  * Generally, most methods have the same behavior as their NIO counterparts, though
-  * there are some slight differences -- e.g., `resolve` normalizes.
+  * Generally, most methods have the same behavior as their NIO counterparts, though there are some
+  * slight differences -- e.g., `resolve` normalizes.
   */
 final class Path private (val toNioPath: JPath) extends PathApi {
 

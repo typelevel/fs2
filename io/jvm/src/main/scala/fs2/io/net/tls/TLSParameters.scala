@@ -29,8 +29,8 @@ import javax.net.ssl.{SNIMatcher, SNIServerName, SSLEngine, SSLParameters}
 
 import CollectionCompat._
 
-/** Parameters used in creation of a TLS/DTLS session.
-  * See `javax.net.ssl.SSLParameters` for detailed documentation on each parameter.
+/** Parameters used in creation of a TLS/DTLS session. See `javax.net.ssl.SSLParameters` for
+  * detailed documentation on each parameter.
   *
   * Note: `applicationProtocols`, `enableRetransmissions`, `maximumPacketSize`, and
   * `handshakeApplicationProtocolSelector` require Java 9+.
@@ -50,9 +50,10 @@ sealed trait TLSParameters {
   val wantClientAuth: Boolean
   val handshakeApplicationProtocolSelector: Option[(SSLEngine, List[String]) => String]
 
-  /**  Converts to a `javax.net.ssl.SSLParameters` instance.
+  /** Converts to a `javax.net.ssl.SSLParameters` instance.
     *
-    * `needClientAuth` and `wantClientAuth` are mutually exclusive on `SSLParameters`. If both set on this `TLSParameters`, then `needClientAuth` takes precedence.
+    * `needClientAuth` and `wantClientAuth` are mutually exclusive on `SSLParameters`. If both set
+    * on this `TLSParameters`, then `needClientAuth` takes precedence.
     */
   def toSSLParameters: SSLParameters = {
     val p = new SSLParameters()

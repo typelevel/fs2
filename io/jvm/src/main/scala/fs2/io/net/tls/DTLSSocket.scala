@@ -42,8 +42,8 @@ sealed trait DTLSSocket[F[_]] extends DatagramSocket[F] {
   /** Initiates handshaking -- either the initial or a renegotiation. */
   def beginHandshake: F[Unit]
 
-  /** Provides access to the current `SSLSession` for purposes of querying
-    * session info such as the negotiated cipher suite or the peer certificate.
+  /** Provides access to the current `SSLSession` for purposes of querying session info such as the
+    * negotiated cipher suite or the peer certificate.
     */
   def session: F[SSLSession]
 }
