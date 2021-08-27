@@ -144,14 +144,15 @@ class EventService[F[_]](eventsTopic: Topic[F, Event], interrupter: SignallingRe
 
   // Publishing 15 text events, then single Quit event, and still publishing text events
   def startPublisher: Stream[F, Unit] = {
-    val textEvents = eventsTopic.publish(
+    val textEvents =
       Stream.awakeEvery[F](1.second)
         .zipRight(Stream.repeatEval(Clock[F].realTime.map(t => Text(t.toString))))
-    )
 
-    val quitEvent = Stream.eval(eventsTopic.publish1(Quit).void)
+    val quitEvent = Stream.eval(eventsTopic.publish1(Quit).as(Quit))
 
-    (textEvents.take(15) ++ quitEvent ++ textEvents).interruptWhen(interrupter)
+    (textEvents.take(15) ++ quitEvent ++ textEvents)
+      .through(eventsTopic.publish)
+      .interruptWhen(interrupter)
   }
 
   // Creating 3 subscribers in a different period of time and join them to run concurrently
