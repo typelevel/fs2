@@ -26,8 +26,9 @@ import org.scalacheck.{Arbitrary, Gen}
 import org.scalacheck.Prop.forAll
 import scodec.bits._
 import scodec.bits.Bases.Alphabets.Base64Url
-
 import fs2.text._
+
+import java.nio.charset.StandardCharsets
 
 class TextSuite extends Fs2Suite {
   override def scalaCheckTestParameters =
@@ -404,6 +405,36 @@ class TextSuite extends Fs2Suite {
             .string,
           bs.foldLeft(ByteVector.empty)((acc, arr) => acc ++ ByteVector.view(arr)).toHex
         )
+      }
+    }
+  }
+
+  group("decodeWithCharset") {
+    List(
+      StandardCharsets.UTF_16LE,
+      StandardCharsets.UTF_16BE,
+      StandardCharsets.UTF_16,
+      StandardCharsets.UTF_8
+    ).foreach { charset =>
+      test(s"decode ${charset.toString}") {
+        (1 to 6).foreach { n =>
+          val in = (1 to 50).map(_ => "⁂ boo foo woo ⁋").mkString("")
+          val encoded = in.getBytes(charset)
+          val stream = Stream
+            .chunk(Chunk.array(encoded))
+            .chunkLimit(n)
+            .unchunks
+            .covary[Fallible]
+
+          val out = stream
+            .through(text.decodeWithCharset(charset))
+            .compile
+            .toList
+            .fold(throw _, identity)
+            .mkString("")
+
+          assertEquals(out, in)
+        }
       }
     }
   }
