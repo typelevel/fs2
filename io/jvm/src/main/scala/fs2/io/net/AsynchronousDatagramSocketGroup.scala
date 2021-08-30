@@ -27,7 +27,6 @@ import java.net.InetSocketAddress
 import java.nio.{Buffer, ByteBuffer}
 import java.nio.channels.{
   CancelledKeyException,
-  ClosedChannelException,
   DatagramChannel,
   SelectionKey,
   Selector

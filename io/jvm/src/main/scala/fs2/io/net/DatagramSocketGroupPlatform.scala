@@ -24,7 +24,7 @@ package io
 package net
 
 import java.net.{InetSocketAddress, NetworkInterface}
-import java.nio.channels.{ClosedChannelException, DatagramChannel}
+import java.nio.channels.DatagramChannel
 
 import cats.effect.kernel.{Async, Resource}
 import cats.syntax.all._
