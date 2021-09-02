@@ -21,8 +21,6 @@
 
 package fs2.compression
 
-import java.util.zip._
-
 /** Deflate algorithm parameters.
   */
 sealed trait DeflateParams {
@@ -86,10 +84,10 @@ object DeflateParams {
         case NINE.juzDeflaterLevel    => Level.NINE
       }
 
-    case object DEFAULT extends Level(juzDeflaterLevel = Deflater.DEFAULT_COMPRESSION)
-    case object BEST_SPEED extends Level(juzDeflaterLevel = Deflater.BEST_SPEED)
-    case object BEST_COMPRESSION extends Level(juzDeflaterLevel = Deflater.BEST_COMPRESSION)
-    case object NO_COMPRESSION extends Level(juzDeflaterLevel = Deflater.NO_COMPRESSION)
+    case object DEFAULT extends Level(juzDeflaterLevel = -1)
+    case object BEST_SPEED extends Level(juzDeflaterLevel = 1)
+    case object BEST_COMPRESSION extends Level(juzDeflaterLevel = 9)
+    case object NO_COMPRESSION extends Level(juzDeflaterLevel = 0)
     case object ZERO extends Level(juzDeflaterLevel = 0)
     case object ONE extends Level(juzDeflaterLevel = 1)
     case object TWO extends Level(juzDeflaterLevel = 2)
@@ -111,11 +109,11 @@ object DeflateParams {
         case HUFFMAN_ONLY.juzDeflaterStrategy => Strategy.HUFFMAN_ONLY
       }
 
-    case object DEFAULT extends Strategy(juzDeflaterStrategy = Deflater.DEFAULT_STRATEGY)
-    case object BEST_SPEED extends Strategy(juzDeflaterStrategy = Deflater.HUFFMAN_ONLY)
-    case object BEST_COMPRESSION extends Strategy(juzDeflaterStrategy = Deflater.DEFAULT_STRATEGY)
-    case object FILTERED extends Strategy(juzDeflaterStrategy = Deflater.FILTERED)
-    case object HUFFMAN_ONLY extends Strategy(juzDeflaterStrategy = Deflater.HUFFMAN_ONLY)
+    case object DEFAULT extends Strategy(juzDeflaterStrategy = 0)
+    case object BEST_SPEED extends Strategy(juzDeflaterStrategy = 2)
+    case object BEST_COMPRESSION extends Strategy(juzDeflaterStrategy = 0)
+    case object FILTERED extends Strategy(juzDeflaterStrategy = 1)
+    case object HUFFMAN_ONLY extends Strategy(juzDeflaterStrategy = 2)
   }
 
   sealed abstract class FlushMode(private[compression] val juzDeflaterFlushMode: Int)
@@ -127,12 +125,12 @@ object DeflateParams {
         case FULL_FLUSH.juzDeflaterFlushMode => FlushMode.FULL_FLUSH
       }
 
-    case object DEFAULT extends FlushMode(juzDeflaterFlushMode = Deflater.NO_FLUSH)
-    case object BEST_SPEED extends FlushMode(juzDeflaterFlushMode = Deflater.FULL_FLUSH)
-    case object BEST_COMPRESSION extends FlushMode(juzDeflaterFlushMode = Deflater.NO_FLUSH)
-    case object NO_FLUSH extends FlushMode(juzDeflaterFlushMode = Deflater.NO_FLUSH)
-    case object SYNC_FLUSH extends FlushMode(juzDeflaterFlushMode = Deflater.SYNC_FLUSH)
-    case object FULL_FLUSH extends FlushMode(juzDeflaterFlushMode = Deflater.FULL_FLUSH)
+    case object DEFAULT extends FlushMode(juzDeflaterFlushMode = 0)
+    case object BEST_SPEED extends FlushMode(juzDeflaterFlushMode = 3)
+    case object BEST_COMPRESSION extends FlushMode(juzDeflaterFlushMode = 0)
+    case object NO_FLUSH extends FlushMode(juzDeflaterFlushMode = 0)
+    case object SYNC_FLUSH extends FlushMode(juzDeflaterFlushMode = 2)
+    case object FULL_FLUSH extends FlushMode(juzDeflaterFlushMode = 3)
   }
 
   /** Reasonable defaults for most applications.
