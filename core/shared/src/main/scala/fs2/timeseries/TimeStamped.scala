@@ -350,4 +350,11 @@ object TimeStamped {
       },
       (_, tso) => tso.map(Right(_))
     )
+
+  object syntax {
+    implicit class AtSyntax[A](private val value: A) extends AnyVal {
+      def at(d: FiniteDuration): TimeStamped[A] =
+        TimeStamped(TimeStamp.fromMillis(d.toMillis), value)
+    }
+  }
 }

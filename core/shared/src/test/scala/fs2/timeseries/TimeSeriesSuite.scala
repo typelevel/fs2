@@ -18,22 +18,45 @@
  * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
-
 // Adapted from scodec-protocols, licensed under 3-clause BSD
-package fs2.timeseries
 
-object TimeSeriesPipe {
+package fs2
+package timeseries
 
-  def lift[F[_], A, B](f: A => B): TimeSeriesPipe[F, A, B] =
-    _.map(_.map(_.map(f)))
+import scala.concurrent.duration._
+import TimeStamped.syntax._
 
-  def drainRight[F[_], L, R]: TimeSeriesPipe[F, Either[L, R], L] = _.collect {
-    case tick @ TimeStamped(_, None)    => tick.asInstanceOf[TimeSeriesValue[L]]
-    case TimeStamped(ts, Some(Left(l))) => TimeStamped(ts, Some(l))
-  }
+class TimeSeriesSuite extends Fs2Suite {
 
-  def drainLeft[F[_], L, R]: TimeSeriesPipe[F, Either[L, R], R] = _.collect {
-    case tick @ TimeStamped(_, None)     => tick.asInstanceOf[TimeSeriesValue[R]]
-    case TimeStamped(ts, Some(Right(r))) => TimeStamped(ts, Some(r))
+  def ts(value: Int) = TimeStamped(TimeStamp.fromSeconds(value.toLong), value)
+
+  test("interpolating time ticks in a timestamped stream") {
+    val events = Stream(ts(1), ts(2), ts(3))
+    val withTicksDefault = events.through(TimeSeries.interpolateTicks()).toList
+    assertEquals(
+      withTicksDefault,
+      List(
+        Some(1).at(1.seconds),
+        None.at(2.seconds),
+        Some(2).at(2.seconds),
+        None.at(3.seconds),
+        Some(3).at(3.seconds)
+      )
+    )
+    val withTicks300ms = events.through(TimeSeries.interpolateTicks(300.millis)).toList
+    assertEquals(
+      withTicks300ms,
+      List(
+        Some(1).at(1.second),
+        None.at(1.3.seconds),
+        None.at(1.6.seconds),
+        None.at(1.9.seconds),
+        Some(2).at(2.seconds),
+        None.at(2.2.seconds),
+        None.at(2.5.seconds),
+        None.at(2.8.seconds),
+        Some(3).at(3.seconds)
+      )
+    )
   }
 }

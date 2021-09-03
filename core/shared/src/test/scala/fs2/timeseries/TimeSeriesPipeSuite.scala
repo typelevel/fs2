@@ -18,22 +18,35 @@
  * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
-
 // Adapted from scodec-protocols, licensed under 3-clause BSD
-package fs2.timeseries
 
-object TimeSeriesPipe {
+package fs2
+package timeseries
 
-  def lift[F[_], A, B](f: A => B): TimeSeriesPipe[F, A, B] =
-    _.map(_.map(_.map(f)))
+import scala.concurrent.duration._
 
-  def drainRight[F[_], L, R]: TimeSeriesPipe[F, Either[L, R], L] = _.collect {
-    case tick @ TimeStamped(_, None)    => tick.asInstanceOf[TimeSeriesValue[L]]
-    case TimeStamped(ts, Some(Left(l))) => TimeStamped(ts, Some(l))
-  }
+import TimeStamped.syntax._
 
-  def drainLeft[F[_], L, R]: TimeSeriesPipe[F, Either[L, R], R] = _.collect {
-    case tick @ TimeStamped(_, None)     => tick.asInstanceOf[TimeSeriesValue[R]]
-    case TimeStamped(ts, Some(Right(r))) => TimeStamped(ts, Some(r))
+class TimeSeriesTransducerTest extends Fs2Suite {
+
+  test("support combining two transducers via an either") {
+    val add1: Scan[Unit, Int, Int] = Scan.lift(_ + 1)
+    val add2: Scan[Unit, Int, Int] = Scan.lift(_ + 2)
+    val x: Scan[Unit, Either[Int, Int], Int] = add1.or(add2).imapState(_._1)(u => (u, u))
+    val source: TimeSeries[Pure, Either[Int, Int]] =
+      Stream(
+        Right(1).at(0.seconds),
+        Left(2).at(0.5.seconds),
+        Right(3).at(1.5.seconds)
+      ).through(TimeSeries.interpolateTicks())
+    assertEquals(
+      source.through(TimeSeries.preserve(x).toPipe).toList,
+      List(
+        TimeSeriesValue(TimeStamp.fromMillis(0), 3),
+        TimeSeriesValue(TimeStamp.fromMillis(500), 3),
+        TimeSeriesValue.tick(TimeStamp.fromMillis(1000)),
+        TimeSeriesValue(TimeStamp.fromMillis(1500), 5)
+      )
+    )
   }
 }

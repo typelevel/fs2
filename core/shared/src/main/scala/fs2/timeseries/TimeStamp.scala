@@ -22,19 +22,22 @@
 // Adapted from scodec-protocols, licensed under 3-clause BSD
 package fs2.timeseries
 
+import scala.concurrent.duration.FiniteDuration
+
 import cats.Functor
 import cats.syntax.all._
 import cats.effect.kernel.Clock
 
 final case class TimeStamp(toEpochMilli: Long) extends Ordered[TimeStamp] {
   def +(millis: Long): TimeStamp = TimeStamp(toEpochMilli + millis)
+  def +(duration: FiniteDuration): TimeStamp = TimeStamp(toEpochMilli + duration.toMillis)
   def isBefore(that: TimeStamp): Boolean = toEpochMilli < that.toEpochMilli
   def compare(that: TimeStamp): Int = toEpochMilli.compareTo(that.toEpochMilli)
 }
 
 object TimeStamp {
+  def fromSeconds(seconds: Long): TimeStamp = apply(seconds * 1000L)
+  def fromMillis(millis: Long): TimeStamp = apply(millis)
   def unsafeNow(): TimeStamp = TimeStamp(System.currentTimeMillis())
   def now[F[_]: Functor: Clock]: F[TimeStamp] = Clock[F].realTime.map(d => TimeStamp(d.toMillis))
-
-//   implicit val ordering: Ordering[TimeStamp] = (x, y) => x.toEpochMilli.compare(y.toEpochMilli)
 }
