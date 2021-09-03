@@ -22,9 +22,4 @@
 package fs2
 package io
 
-import cats.effect.kernel.Sync
-import fs2.compression.Compression
-
-private[io] trait compressionplatform {
-  implicit def fs2ioCompressionForSync[F[_]: Sync]: Compression[F] = Compression.forSync
-}
+private[io] trait compressionplatform
