@@ -26,7 +26,7 @@ package compression
   * On JVM an instance is available given a `Sync[F]`.
   * On Node.js an instance is available for `Async[F]` by importing `fs2.io.compression._`.
   */
-trait Compression[F[_]] extends CompressionPlatform[F] {
+sealed trait Compression[F[_]] extends CompressionPlatform[F] {
 
   def deflate(deflateParams: DeflateParams): Pipe[F, Byte, Byte]
 
@@ -35,5 +35,7 @@ trait Compression[F[_]] extends CompressionPlatform[F] {
 }
 
 object Compression extends CompressionCompanionPlatform {
+  private[fs2] trait UnsealedCompression[F[_]] extends Compression[F]
+
   def apply[F[_]](implicit F: Compression[F]): Compression[F] = F
 }

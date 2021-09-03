@@ -33,7 +33,7 @@ import fs2.internal.jsdeps.node.zlibMod
 private[io] trait compressionplatform {
 
   implicit def fs2ioCompressionForAsync[F[_]](implicit F: Async[F]): Compression[F] =
-    new Compression[F] {
+    new Compression.UnsealedCompression[F] {
 
       override def deflate(deflateParams: DeflateParams): Pipe[F, Byte, Byte] = in => {
         val options = zlibMod
