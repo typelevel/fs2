@@ -23,7 +23,6 @@ package fs2
 package compression
 
 import java.time.Instant
-import scala.concurrent.duration._
 
 /** Gunzip decompression results including file properties and
   * decompressed content stream, used as follows:
@@ -44,27 +43,4 @@ case class GunzipResult[F[_]](
     modificationTime: Option[Instant] = None,
     fileName: Option[String] = None,
     comment: Option[String] = None
-) {
-
-  def modificationEpochTime: Option[FiniteDuration] =
-    modificationTime.map(_.toEpochMilli.millis)
-
-}
-
-object GunzipResult {
-
-  def of[F[_]](
-      content: Stream[F, Byte],
-      modificationEpochTime: Option[FiniteDuration],
-      fileName: Option[String] = None,
-      comment: Option[String] = None
-  ): GunzipResult[F] = GunzipResult(
-    content,
-    modificationEpochTime.map { time =>
-      Instant.ofEpochMilli(time.toMillis)
-    },
-    fileName,
-    comment
-  )
-
-}
+)

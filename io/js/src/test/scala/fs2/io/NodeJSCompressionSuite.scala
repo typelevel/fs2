@@ -20,47 +20,43 @@
  */
 
 package fs2
-package compression
+package io
 
-import scala.concurrent.duration._
+import fs2.CompressionSuite
+import fs2.internal.jsdeps.node.zlibMod
+import fs2.io.compression._
+import fs2.io.internal.ByteChunkOps._
 
-/** Gunzip decompression results including file properties and
-  * decompressed content stream, used as follows:
-  *   stream
-  *     .through(gunzip[IO]())
-  *     .flatMap { gunzipResult =>
-  *       // Access properties here.
-  *       gunzipResult.content
-  *     }
-  *
-  * @param content Uncompressed content stream.
-  * @param modificationTime Modification time of compressed file.
-  * @param fileName File name.
-  * @param comment File comment.
-  */
-case class GunzipResult[F[_]](
-    content: Stream[F, Byte],
-    modificationTime: Option[FiniteDuration] = None,
-    fileName: Option[String] = None,
-    comment: Option[String] = None
-) {
+class NodeJSCompressionSuite extends CompressionSuite {
 
-  def modificationEpochTime: Option[FiniteDuration] = modificationTime
+  override def deflateStream(
+      b: Array[Byte],
+      level: Int,
+      strategy: Int,
+      nowrap: Boolean
+  ): Array[Byte] = {
+    val in = Chunk.array(b).toUint8Array
+    val options = zlibMod
+      .ZlibOptions()
+      .setLevel(level.toDouble)
+      .setStrategy(strategy.toDouble)
+    val out =
+      if (nowrap)
+        zlibMod.gzipSync(in, options)
+      else
+        zlibMod.deflateSync(in, options)
+    out.toChunk.toArray
+  }
 
-}
-
-object GunzipResult {
-
-  def of[F[_]](
-      content: Stream[F, Byte],
-      modificationEpochTime: Option[FiniteDuration] = None,
-      fileName: Option[String] = None,
-      comment: Option[String] = None
-  ): GunzipResult[F] = GunzipResult(
-    content,
-    modificationEpochTime,
-    fileName,
-    comment
-  )
+  override def inflateStream(b: Array[Byte], nowrap: Boolean): Array[Byte] = {
+    val in = Chunk.array(b).toUint8Array
+    val options = zlibMod.ZlibOptions()
+    val out =
+      if (nowrap)
+        zlibMod.gunzipSync(in, options)
+      else
+        zlibMod.inflateSync(in, options)
+    out.toChunk.toArray
+  }
 
 }

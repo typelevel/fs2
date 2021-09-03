@@ -19,9 +19,6 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2
-package compression
+package fs2.io
 
-private[compression] trait CompressionPlatform[F[_]]
-
-private[compression] trait CompressionCompanionPlatform
+object compression extends compressionplatform

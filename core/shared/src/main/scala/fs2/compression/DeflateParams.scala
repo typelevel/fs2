@@ -45,7 +45,7 @@ sealed trait DeflateParams {
     */
   val flushMode: DeflateParams.FlushMode
 
-  private[compression] val bufferSizeOrMinimum: Int = bufferSize.max(128)
+  private[fs2] val bufferSizeOrMinimum: Int = bufferSize.max(128)
 }
 
 object DeflateParams {
@@ -67,7 +67,7 @@ object DeflateParams {
       flushMode: DeflateParams.FlushMode
   ) extends DeflateParams
 
-  sealed abstract class Level(private[compression] val juzDeflaterLevel: Int)
+  sealed abstract class Level(private[fs2] val juzDeflaterLevel: Int)
   case object Level {
     private[fs2] def apply(level: Int): Level =
       level match {
@@ -100,7 +100,7 @@ object DeflateParams {
     case object NINE extends Level(juzDeflaterLevel = 9)
   }
 
-  sealed abstract class Strategy(private[compression] val juzDeflaterStrategy: Int)
+  sealed abstract class Strategy(private[fs2] val juzDeflaterStrategy: Int)
   case object Strategy {
     private[fs2] def apply(strategy: Int): Strategy =
       strategy match {
@@ -116,7 +116,7 @@ object DeflateParams {
     case object HUFFMAN_ONLY extends Strategy(juzDeflaterStrategy = 2)
   }
 
-  sealed abstract class FlushMode(private[compression] val juzDeflaterFlushMode: Int)
+  sealed abstract class FlushMode(private[fs2] val juzDeflaterFlushMode: Int)
   case object FlushMode {
     private[fs2] def apply(flushMode: Int): FlushMode =
       flushMode match {

@@ -22,16 +22,13 @@
 package fs2
 package compression
 
-import java.io.EOFException
-import java.nio.charset.StandardCharsets
-import scala.concurrent.duration._
-import java.util.zip._
-
-import scala.reflect.ClassTag
-
 import cats.effect.kernel.Sync
 
+import java.io.EOFException
+import java.nio.charset.StandardCharsets
 import java.time.Instant
+import java.util.zip._
+import scala.reflect.ClassTag
 
 private[compression] trait CompressionPlatform[F[_]] { self: Compression[F] =>
 
@@ -72,14 +69,23 @@ private[compression] trait CompressionPlatform[F[_]] { self: Compression[F] =>
       modificationTime: Option[Instant] = None,
       fileName: Option[String] = None,
       comment: Option[String] = None
-  ): Pipe[F, Byte, Byte] = gzipCrossPlatform(
-    bufferSize,
-    deflateLevel,
-    deflateStrategy,
-    modificationTime.map(_.toEpochMilli.millis),
-    fileName,
-    comment
-  )
+  ): Pipe[F, Byte, Byte] =
+    gzip(
+      fileName = fileName,
+      modificationTime = modificationTime,
+      comment = comment,
+      deflateParams = DeflateParams(
+        bufferSize = bufferSize,
+        header = ZLibParams.Header.GZIP,
+        level = deflateLevel
+          .map(DeflateParams.Level.apply)
+          .getOrElse(DeflateParams.Level.DEFAULT),
+        strategy = deflateStrategy
+          .map(DeflateParams.Strategy.apply)
+          .getOrElse(DeflateParams.Strategy.DEFAULT),
+        flushMode = DeflateParams.FlushMode.DEFAULT
+      )
+    )
 
   /** Returns a pipe that incrementally compresses input into the GZIP format
     * as defined by RFC 1952 at https://www.ietf.org/rfc/rfc1952.txt. Output is
@@ -107,9 +113,46 @@ private[compression] trait CompressionPlatform[F[_]] { self: Compression[F] =>
       modificationTime: Option[Instant],
       comment: Option[String],
       deflateParams: DeflateParams
-  ): Pipe[F, Byte, Byte] =
-    gzip(fileName, modificationTime.map(_.toEpochMilli.millis), comment, deflateParams)
+  ): Pipe[F, Byte, Byte]
 
+  /** Returns a pipe that incrementally decompresses input according to the GZIP
+    * format as defined by RFC 1952 at https://www.ietf.org/rfc/rfc1952.txt. Any
+    * errors in decompression will be sequenced as exceptions into the output
+    * stream. Decompression is handled in a streaming and async fashion without
+    * any thread blockage.
+    *
+    * The chunk size here is actually really important. Matching the input stream
+    * largest chunk size, or roughly 8 KB (whichever is larger) is a good rule of
+    * thumb.
+    *
+    * @param bufferSize The bounding size of the input buffer. This should roughly
+    *                   match the size of the largest chunk in the input stream.
+    *                   This will also be the chunk size in the output stream.
+    *                    Default size is 32 KB.
+    * @return See [[compression.GunzipResult]]
+    */
+  def gunzip(bufferSize: Int = 1024 * 32): Stream[F, Byte] => Stream[F, GunzipResult[F]] =
+    gunzip(
+      InflateParams(
+        bufferSize = bufferSize,
+        header = ZLibParams.Header.GZIP
+      )
+    )
+
+  /** Returns a pipe that incrementally decompresses input according to the GZIP
+    * format as defined by RFC 1952 at https://www.ietf.org/rfc/rfc1952.txt. Any
+    * errors in decompression will be sequenced as exceptions into the output
+    * stream. Decompression is handled in a streaming and async fashion without
+    * any thread blockage.
+    *
+    * The chunk size here is actually really important. Matching the input stream
+    * largest chunk size, or roughly 8 KB (whichever is larger) is a good rule of
+    * thumb.
+    *
+    * @param inflateParams See [[compression.InflateParams]]
+    * @return See [[compression.GunzipResult]]
+    */
+  def gunzip(inflateParams: InflateParams): Stream[F, Byte] => Stream[F, GunzipResult[F]]
 }
 
 private[compression] trait CompressionCompanionPlatform {
@@ -340,10 +383,10 @@ private[compression] trait CompressionCompanionPlatform {
 
     def gzip(
         fileName: Option[String],
-        modificationTime: Option[FiniteDuration],
+        modificationTime: Option[Instant],
         comment: Option[String],
         deflateParams: DeflateParams
-    )(implicit dummy: DummyImplicit): Pipe[F, Byte, Byte] =
+    ): Pipe[F, Byte, Byte] =
       stream =>
         deflateParams match {
           case params: DeflateParams if params.header == ZLibParams.Header.GZIP =>
@@ -379,13 +422,13 @@ private[compression] trait CompressionCompanionPlatform {
 
     private def _gzip_header(
         fileName: Option[String],
-        modificationTime: Option[FiniteDuration],
+        modificationTime: Option[Instant],
         comment: Option[String],
         deflateLevel: Int
     ): Stream[F, Byte] = {
       // See RFC 1952: https://www.ietf.org/rfc/rfc1952.txt
       val secondsSince197001010000: Long =
-        modificationTime.map(_.toSeconds).getOrElse(0)
+        modificationTime.map(_.getEpochSecond).getOrElse(0)
       val header = Array[Byte](
         gzipMagicFirstByte, // ID1: Identification 1
         gzipMagicSecondByte, // ID2: Identification 2
@@ -650,10 +693,10 @@ private[compression] trait CompressionCompanionPlatform {
             )
             .flatMap { case (comment, streamAfterComment) =>
               Stream.emit(
-                GunzipResult.of(
-                  modificationEpochTime =
+                GunzipResult(
+                  modificationTime =
                     if (secondsSince197001010000 != 0)
-                      Some(secondsSince197001010000.seconds)
+                      Some(Instant.ofEpochSecond(secondsSince197001010000))
                     else None,
                   fileName = fileName,
                   comment = comment,
@@ -965,5 +1008,4 @@ private[compression] trait CompressionCompanionPlatform {
     private def unsignedToLong(lsb: Byte, byte2: Byte, byte3: Byte, msb: Byte): Long =
       ((msb.toLong & 0xff) << 24) | ((byte3 & 0xff) << 16) | ((byte2 & 0xff) << 8) | (lsb & 0xff)
   }
-
 }

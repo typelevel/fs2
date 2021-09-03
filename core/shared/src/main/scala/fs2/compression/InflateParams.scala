@@ -32,7 +32,7 @@ sealed trait InflateParams {
     */
   val header: ZLibParams.Header
 
-  private[compression] val bufferSizeOrMinimum: Int = bufferSize.max(128)
+  private[fs2] val bufferSizeOrMinimum: Int = bufferSize.max(128)
 }
 
 object InflateParams {
