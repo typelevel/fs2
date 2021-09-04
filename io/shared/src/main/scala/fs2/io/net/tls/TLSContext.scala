@@ -26,7 +26,7 @@ package tls
 
 import cats.effect.kernel.{Async, Resource}
 
-/** Allows creation of [[TLSSocket]]s.
+/** Allows creation of [[TLSSocket]] s.
   */
 sealed trait TLSContext[F[_]] extends TLSContextPlatform[F] {
 
@@ -34,7 +34,8 @@ sealed trait TLSContext[F[_]] extends TLSContextPlatform[F] {
   def client(socket: Socket[F]): Resource[F, TLSSocket[F]] =
     clientBuilder(socket).build
 
-  /** Creates a `TLSSocket` builder in client mode, allowing optional parameters to be configured. */
+  /** Creates a `TLSSocket` builder in client mode, allowing optional parameters to be configured.
+    */
   def clientBuilder(socket: Socket[F]): TLSContext.SocketBuilder[F, TLSSocket]
 
   @deprecated("Use client(socket) or clientBuilder(socket).with(...).build", "3.0.6")
@@ -49,7 +50,8 @@ sealed trait TLSContext[F[_]] extends TLSContextPlatform[F] {
   def server(socket: Socket[F]): Resource[F, TLSSocket[F]] =
     serverBuilder(socket).build
 
-  /** Creates a `TLSSocket` builder in server mode, allowing optional parameters to be configured. */
+  /** Creates a `TLSSocket` builder in server mode, allowing optional parameters to be configured.
+    */
   def serverBuilder(socket: Socket[F]): TLSContext.SocketBuilder[F, TLSSocket]
 
   @deprecated("Use server(socket) or serverBuilder(socket).with(...).build", "3.0.6")

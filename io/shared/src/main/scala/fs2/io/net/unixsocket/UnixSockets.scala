@@ -35,10 +35,11 @@ trait UnixSockets[F[_]] {
   /** Listens to the specified path for connections and emits a `Socket` for each connection.
     *
     * Note: the path referred to by `address` must not exist or otherwise binding will fail
-    * indicating the address is already in use. To force binding in such a case, pass `deleteIfExists = true`,
-    * which will first delete the path.
+    * indicating the address is already in use. To force binding in such a case, pass
+    * `deleteIfExists = true`, which will first delete the path.
     *
-    * By default, the path is deleted when the server closes. To override this, pass `deleteOnClose = false`.
+    * By default, the path is deleted when the server closes. To override this, pass `deleteOnClose
+    * = false`.
     */
   def server(
       address: UnixSocketAddress,

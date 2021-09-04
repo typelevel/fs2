@@ -32,9 +32,11 @@ import org.reactivestreams._
 
 /** Implementation of a `org.reactivestreams.Subscription`.
   *
-  * This is used by the [[StreamUnicastPublisher]] to send elements from a `fs2.Stream` to a downstream reactivestreams system.
+  * This is used by the [[StreamUnicastPublisher]] to send elements from a `fs2.Stream` to a
+  * downstream reactivestreams system.
   *
-  * @see [[https://github.com/reactive-streams/reactive-streams-jvm#3-subscription-code]]
+  * @see
+  *   [[https://github.com/reactive-streams/reactive-streams-jvm#3-subscription-code]]
   */
 private[reactivestreams] final class StreamSubscription[F[_], A](
     requests: Queue[F, StreamSubscription.Request],
