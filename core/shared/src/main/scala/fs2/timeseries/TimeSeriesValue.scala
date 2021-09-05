@@ -22,12 +22,14 @@
 // Adapted from scodec-protocols, licensed under 3-clause BSD
 package fs2.timeseries
 
+import scala.concurrent.duration._
+
 import cats.Functor
 import cats.effect.kernel.Clock
 
 object TimeSeriesValue {
-  def apply[A](time: TimeStamp, value: A): TimeSeriesValue[A] = TimeStamped(time, Some(value))
-  def tick(time: TimeStamp): TimeSeriesValue[Nothing] = TimeStamped(time, None)
+  def apply[A](time: FiniteDuration, value: A): TimeSeriesValue[A] = TimeStamped(time, Some(value))
+  def tick(time: FiniteDuration): TimeSeriesValue[Nothing] = TimeStamped(time, None)
 
   def unsafeNow[A](value: A): TimeSeriesValue[A] = TimeStamped.unsafeNow(Some(value))
   def now[F[_]: Functor: Clock, A](value: A): F[TimeSeriesValue[A]] = TimeStamped.now(Some(value))

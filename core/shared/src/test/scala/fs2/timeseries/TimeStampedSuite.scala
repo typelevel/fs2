@@ -18,6 +18,7 @@
  * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
+
 // Adapted from scodec-protocols, licensed under 3-clause BSD
 
 package fs2
@@ -113,7 +114,7 @@ class TimeStampedSuite extends Fs2Suite {
   group(
     "support filtering a source of timestamped values such that output is monotonically increasing in time"
   ) {
-    def ts(value: Int) = TimeStamped(TimeStamp.fromSeconds(value.toLong), ())
+    def ts(value: Int) = TimeStamped(value.seconds, ())
     val data = Stream(0, -2, -1, 1, 5, 3, 6).map(ts)
 
     test("supports dropping out-of-order values") {
@@ -141,10 +142,10 @@ class TimeStampedSuite extends Fs2Suite {
   group(
     "support reordering timestamped values over a specified time buffer such that output is monotonically increasing in time"
   ) {
-    def ts(value: Int) = TimeStamped(TimeStamp.fromMillis(value.toLong), value.toLong)
+    def ts(value: Int) = TimeStamped(value.millis, value.toLong)
 
     val onTheSecond = Stream.emits(1 to 10).map(x => ts(x * 1000))
-    val onTheQuarterPast = onTheSecond.map(_.mapTime(t => t + 250))
+    val onTheQuarterPast = onTheSecond.map(_.mapTime(t => t + 250.millis))
 
     test("reorders when all out of order values lie within the buffer time") {
       val inOrder = onTheSecond.interleave(onTheQuarterPast)
@@ -180,7 +181,7 @@ class TimeStampedSuite extends Fs2Suite {
   }
 
   test("support throttling a time stamped source") {
-    def ts(value: Int) = TimeStamped(TimeStamp.fromSeconds(value.toLong), value.toLong)
+    def ts(value: Int) = TimeStamped(value.seconds, value.toLong)
     val source = Stream(ts(0), ts(1), ts(2), ts(3), ts(4)).covary[IO]
     def time[A](f: IO[A]): IO[Long] =
       IO.delay(System.nanoTime()).flatMap { started =>
@@ -201,23 +202,23 @@ class TimeStampedSuite extends Fs2Suite {
     "support lifting a Scan[S, TimeStamped[A], TimeStamped[B]] in to a Scan[S, TimeStamped[Either[A, C]], TimeStamped[Either[B, C]]]"
   ) {
     val source = Stream(
-      TimeStamped(TimeStamp.fromMillis(1), Left(1)),
-      TimeStamped(TimeStamp.fromMillis(2), Right(2)),
-      TimeStamped(TimeStamp.fromMillis(3), Right(3)),
-      TimeStamped(TimeStamp.fromMillis(4), Left(4)),
-      TimeStamped(TimeStamp.fromMillis(5), Left(5)),
-      TimeStamped(TimeStamp.fromMillis(6), Right(6))
+      TimeStamped(1.millis, Left(1)),
+      TimeStamped(2.millis, Right(2)),
+      TimeStamped(3.millis, Right(3)),
+      TimeStamped(4.millis, Left(4)),
+      TimeStamped(5.millis, Left(5)),
+      TimeStamped(6.millis, Right(6))
     )
     val square: Scan[Unit, TimeStamped[Int], TimeStamped[Int]] = Scan.lift(_.map(x => x * x))
     assertEquals(
       source.through(TimeStamped.left(square).toPipe).toVector,
       Vector(
-        TimeStamped(TimeStamp.fromMillis(1), Left(1)),
-        TimeStamped(TimeStamp.fromMillis(2), Right(2)),
-        TimeStamped(TimeStamp.fromMillis(3), Right(3)),
-        TimeStamped(TimeStamp.fromMillis(4), Left(16)),
-        TimeStamped(TimeStamp.fromMillis(5), Left(25)),
-        TimeStamped(TimeStamp.fromMillis(6), Right(6))
+        TimeStamped(1.millis, Left(1)),
+        TimeStamped(2.millis, Right(2)),
+        TimeStamped(3.millis, Right(3)),
+        TimeStamped(4.millis, Left(16)),
+        TimeStamped(5.millis, Left(25)),
+        TimeStamped(6.millis, Right(6))
       )
     )
   }

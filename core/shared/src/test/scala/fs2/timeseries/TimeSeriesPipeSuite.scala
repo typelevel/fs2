@@ -18,6 +18,7 @@
  * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
+
 // Adapted from scodec-protocols, licensed under 3-clause BSD
 
 package fs2
@@ -42,10 +43,10 @@ class TimeSeriesTransducerTest extends Fs2Suite {
     assertEquals(
       source.through(TimeSeries.preserve(x).toPipe).toList,
       List(
-        TimeSeriesValue(TimeStamp.fromMillis(0), 3),
-        TimeSeriesValue(TimeStamp.fromMillis(500), 3),
-        TimeSeriesValue.tick(TimeStamp.fromMillis(1000)),
-        TimeSeriesValue(TimeStamp.fromMillis(1500), 5)
+        TimeSeriesValue(0.millis, 3),
+        TimeSeriesValue(500.millis, 3),
+        TimeSeriesValue.tick(1000.millis),
+        TimeSeriesValue(1500.millis, 5)
       )
     )
   }

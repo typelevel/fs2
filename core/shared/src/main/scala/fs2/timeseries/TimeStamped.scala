@@ -31,19 +31,19 @@ import cats.syntax.all._
 import cats.effect.kernel.{Clock, Temporal}
 
 /** Wrapper that associates a time with a value. */
-case class TimeStamped[+A](time: TimeStamp, value: A) {
+case class TimeStamped[+A](time: FiniteDuration, value: A) {
   def map[B](f: A => B): TimeStamped[B] = copy(value = f(value))
-  def mapTime(f: TimeStamp => TimeStamp): TimeStamped[A] = copy(time = f(time))
+  def mapTime(f: FiniteDuration => FiniteDuration): TimeStamped[A] = copy(time = f(time))
 
   def toTimeSeriesValue: TimeSeriesValue[A] = map(Some.apply)
 }
 
 object TimeStamped {
 
-  def unsafeNow[A](a: A): TimeStamped[A] = TimeStamped(TimeStamp.unsafeNow(), a)
+  def unsafeNow[A](a: A): TimeStamped[A] = TimeStamped(System.currentTimeMillis().millis, a)
 
   def now[F[_]: Functor: Clock, A](a: A): F[TimeStamped[A]] =
-    TimeStamp.now[F].map(t => TimeStamped(t, a))
+    Clock[F].realTime.map(TimeStamped(_, a))
 
   /** Orders values by timestamp -- values with the same timestamp are considered equal. */
   def timeBasedOrdering[A]: Ordering[TimeStamped[A]] = new Ordering[TimeStamped[A]] {
@@ -75,7 +75,7 @@ object TimeStamped {
     */
   def perSecondRate[A, B: Monoid](
       f: A => B
-  ): Scan[(Option[TimeStamp], B), TimeStamped[A], TimeStamped[B]] =
+  ): Scan[(Option[FiniteDuration], B), TimeStamped[A], TimeStamped[B]] =
     rate(1.second)(f)
 
   /** Stream transducer that converts a stream of `TimeStamped[A]` in to a stream of
@@ -90,7 +90,7 @@ object TimeStamped {
     */
   def withPerSecondRate[A, B: Monoid](
       f: A => B
-  ): Scan[(Option[TimeStamp], B), TimeStamped[A], TimeStamped[Either[B, A]]] =
+  ): Scan[(Option[FiniteDuration], B), TimeStamped[A], TimeStamped[Either[B, A]]] =
     withRate(1.second)(f)
 
   /** Stream transducer that converts a stream of `TimeStamped[A]` in to a stream of
@@ -104,7 +104,7 @@ object TimeStamped {
     */
   def rate[A, B: Monoid](
       over: FiniteDuration
-  )(f: A => B): Scan[(Option[TimeStamp], B), TimeStamped[A], TimeStamped[B]] = {
+  )(f: A => B): Scan[(Option[FiniteDuration], B), TimeStamped[A], TimeStamped[B]] = {
     val t = withRate(over)(f)
     Scan(t.initial)(
       (s, tsa) => {
@@ -128,27 +128,26 @@ object TimeStamped {
     */
   def withRate[A, B](over: FiniteDuration)(f: A => B)(implicit
       B: Monoid[B]
-  ): Scan[(Option[TimeStamp], B), TimeStamped[A], TimeStamped[Either[B, A]]] = {
-    val overMillis = over.toMillis
-    Scan[(Option[TimeStamp], B), TimeStamped[A], TimeStamped[Either[B, A]]](None -> B.empty)(
+  ): Scan[(Option[FiniteDuration], B), TimeStamped[A], TimeStamped[Either[B, A]]] = {
+    Scan[(Option[FiniteDuration], B), TimeStamped[A], TimeStamped[Either[B, A]]](None -> B.empty)(
       { case ((end, acc), tsa) =>
         end match {
           case Some(end) =>
-            if (tsa.time.isBefore(end))
+            if (tsa.time < end)
               (Some(end) -> B.combine(acc, f(tsa.value)), Chunk(tsa.map(Right.apply)))
             else {
               val bldr = List.newBuilder[TimeStamped[Either[B, A]]]
               var e2 = end
               var acc2 = acc
-              while (!tsa.time.isBefore(e2)) {
+              while (tsa.time >= e2) {
                 bldr += TimeStamped(e2, Left(acc2))
                 acc2 = B.empty
-                e2 = e2 + overMillis
+                e2 = e2 + over
               }
               bldr += (tsa.map(Right.apply))
               ((Some(e2), f(tsa.value)), Chunk.seq(bldr.result()))
             }
-          case None => ((Some(tsa.time + overMillis), f(tsa.value)), Chunk(tsa.map(Right.apply)))
+          case None => ((Some(tsa.time + over), f(tsa.value)), Chunk(tsa.map(Right.apply)))
         }
       },
       {
@@ -189,14 +188,13 @@ object TimeStamped {
 
       def takeUpto(
           chunk: Chunk[TimeStamped[A]],
-          upto: TimeStamp
+          upto: FiniteDuration
       ): (Chunk[TimeStamped[A]], Chunk[TimeStamped[A]]) = {
-        val uptoMillis = upto.toEpochMilli
-        val toTake = chunk.indexWhere(_.time.toEpochMilli > uptoMillis).getOrElse(chunk.size)
+        val toTake = chunk.indexWhere(_.time > upto).getOrElse(chunk.size)
         chunk.splitAt(toTake)
       }
 
-      def read(upto: TimeStamp): PullFromSourceOrTicks = { (src, ticks) =>
+      def read(upto: FiniteDuration): PullFromSourceOrTicks = { (src, ticks) =>
         src.pull.uncons.flatMap {
           case Some((chunk, tl)) =>
             if (chunk.isEmpty) read(upto)(tl, ticks)
@@ -209,11 +207,11 @@ object TimeStamped {
         }
       }
 
-      def awaitTick(upto: TimeStamp, pending: Chunk[TimeStamped[A]]): PullFromSourceOrTicks = {
+      def awaitTick(upto: FiniteDuration, pending: Chunk[TimeStamped[A]]): PullFromSourceOrTicks = {
         (src, ticks) =>
           ticks.pull.uncons1.flatMap {
             case Some((_, tl)) =>
-              val newUpto = upto + ((1000 / ticksPerSecond) * throttlingFactor).toLong
+              val newUpto = upto + ((1000 / ticksPerSecond) * throttlingFactor).toLong.millis
               val (toOutput, stillPending) = takeUpto(pending, newUpto)
               if (stillPending.isEmpty) {
                 Pull.output(toOutput) >> read(newUpto)(src, tl)
@@ -247,9 +245,9 @@ object TimeStamped {
     * to the writer side of the writer.
     */
   def increasingW[F[_], A]: Pipe[F, TimeStamped[A], Either[TimeStamped[A], TimeStamped[A]]] =
-    _.scanChunks(Long.MinValue) { (last, chunk) =>
+    _.scanChunks(Duration.MinusInf: Duration) { (last, chunk) =>
       chunk.mapAccumulate(last) { (last, tsa) =>
-        val now = tsa.time.toEpochMilli
+        val now = tsa.time
         if (last <= now) (now, Right(tsa)) else (last, Left(tsa))
       }
     }
@@ -297,28 +295,27 @@ object TimeStamped {
       over: FiniteDuration
   ): Pipe[F, TimeStamped[A], TimeStamped[A]] = {
     import scala.collection.immutable.SortedMap
-    val overMillis = over.toMillis
 
-    def outputMapValues(m: SortedMap[Long, Chain[TimeStamped[A]]]) =
+    def outputMapValues(m: SortedMap[FiniteDuration, Chain[TimeStamped[A]]]) =
       Pull.output(
-        Chunk.seq(
-          m.foldLeft(Chain.empty[TimeStamped[A]]) { case (acc, (_, tss)) => acc ++ tss }.toList
+        Chunk.chain(
+          m.foldLeft(Chain.empty[TimeStamped[A]]) { case (acc, (_, tss)) => acc ++ tss }
         )
       )
 
     def go(
-        buffered: SortedMap[Long, Chain[TimeStamped[A]]],
+        buffered: SortedMap[FiniteDuration, Chain[TimeStamped[A]]],
         s: Stream[F, TimeStamped[A]]
     ): Pull[F, TimeStamped[A], Unit] =
       s.pull.uncons.flatMap {
         case Some((hd, tl)) =>
           val all = Chain.fromSeq(hd.toList).foldLeft(buffered) { (acc, tsa) =>
-            val k = tsa.time.toEpochMilli
+            val k = tsa.time
             acc.updated(k, acc.getOrElse(k, Chain.empty) :+ tsa)
           }
           if (all.isEmpty) go(buffered, tl)
           else {
-            val until = all.last._1 - overMillis
+            val until = all.last._1 - over
             val (toOutput, toBuffer) = all.span { case (x, _) => x <= until }
             outputMapValues(toOutput) >> go(toBuffer, tl)
           }
@@ -354,7 +351,7 @@ object TimeStamped {
   object syntax {
     implicit class AtSyntax[A](private val value: A) extends AnyVal {
       def at(d: FiniteDuration): TimeStamped[A] =
-        TimeStamped(TimeStamp.fromMillis(d.toMillis), value)
+        TimeStamped(d, value)
     }
   }
 }

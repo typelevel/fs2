@@ -18,6 +18,7 @@
  * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
+
 // Adapted from scodec-protocols, licensed under 3-clause BSD
 
 package fs2
@@ -28,7 +29,7 @@ import TimeStamped.syntax._
 
 class TimeSeriesSuite extends Fs2Suite {
 
-  def ts(value: Int) = TimeStamped(TimeStamp.fromSeconds(value.toLong), value)
+  def ts(value: Int) = TimeStamped(value.seconds, value)
 
   test("interpolating time ticks in a timestamped stream") {
     val events = Stream(ts(1), ts(2), ts(3))

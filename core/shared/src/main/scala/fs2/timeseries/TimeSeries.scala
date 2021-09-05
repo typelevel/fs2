@@ -61,15 +61,14 @@ object TimeSeries {
   def interpolateTicks[A](
       tickPeriod: FiniteDuration = 1.second
   ): Pipe[Pure, TimeStamped[A], TimeSeriesValue[A]] = {
-    val tickPeriodMillis = tickPeriod.toMillis
     def go(
-        nextTick: TimeStamp,
+        nextTick: FiniteDuration,
         s: Stream[Pure, TimeStamped[A]]
     ): Pull[Pure, TimeSeriesValue[A], Unit] = {
-      def tickTime(x: Int) = nextTick + (x * tickPeriodMillis)
+      def tickTime(x: Int) = nextTick + (x * tickPeriod)
       s.pull.uncons.flatMap {
         case Some((hd, tl)) =>
-          hd.indexWhere(_.time.toEpochMilli >= nextTick.toEpochMilli) match {
+          hd.indexWhere(_.time >= nextTick) match {
             case None =>
               if (hd.isEmpty) Pull.pure(())
               else Pull.output(hd.map(_.toTimeSeriesValue)) >> go(nextTick, tl)
@@ -80,7 +79,7 @@ object TimeSeries {
               // we know suffix is non-empty and suffix.head has a time >= next tick time
               val next = suffix(0)
               val tickCount =
-                ((next.time.toEpochMilli - nextTick.toEpochMilli) / tickPeriodMillis + 1).toInt
+                ((next.time.toMillis - nextTick.toMillis) / tickPeriod.toMillis + 1).toInt
               val tickTimes = (0 until tickCount).map(tickTime)
               val ticks = tickTimes.map(TimeSeriesValue.tick)
               val rest = Pull.output(Chunk.seq(ticks)) >> go(tickTime(tickCount), tl.cons(suffix))
@@ -92,7 +91,7 @@ object TimeSeries {
     in =>
       in.pull.uncons1.flatMap {
         case Some((hd, tl)) =>
-          Pull.output1(hd.toTimeSeriesValue) >> go(hd.time + tickPeriodMillis, tl)
+          Pull.output1(hd.toTimeSeriesValue) >> go(hd.time + tickPeriod, tl)
         case None => Pull.done
       }.stream
   }
