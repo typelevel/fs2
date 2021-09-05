@@ -187,8 +187,8 @@ class TimeStampedSuite extends Fs2Suite {
       IO.delay(System.nanoTime()).flatMap { started =>
         f >> IO.delay(System.nanoTime() - started)
       }
-    val realtime = source.through(TimeStamped.throttle[IO, Long](1.0)).compile.drain
-    val doubletime = source.through(TimeStamped.throttle[IO, Long](2.0)).compile.drain
+    val realtime = source.through(TimeStamped.throttle[IO, Long](1.0, 100.milliseconds)).compile.drain
+    val doubletime = source.through(TimeStamped.throttle[IO, Long](2.0, 100.milliseconds)).compile.drain
 
     time(realtime).map { elapsed =>
       assertEqualsEpsilon(elapsed, 4.seconds.toNanos, 250.millis.toNanos)

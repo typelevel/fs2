@@ -175,10 +175,12 @@ object TimeStamped {
     */
   def throttle[F[_]: Temporal, A](
       throttlingFactor: Double,
-      tickResolution: FiniteDuration = 100.milliseconds
+      tickResolution: FiniteDuration
   ): Pipe[F, TimeStamped[A], TimeStamped[A]] = {
 
     val ticksPerSecond = 1.second.toMillis / tickResolution.toMillis
+
+    require(ticksPerSecond > 0L, "tickResolution must be <= 1 second")
 
     def doThrottle: Pipe2[F, TimeStamped[A], Unit, TimeStamped[A]] = {
 
@@ -194,13 +196,14 @@ object TimeStamped {
       }
 
       def read(upto: FiniteDuration): PullFromSourceOrTicks = { (src, ticks) =>
-        src.pull.uncons.flatMap {
-          case Some((chunk, tl)) =>
-            if (chunk.isEmpty) read(upto)(tl, ticks)
+        src.pull.stepLeg.flatMap {
+          case Some(leg) =>
+            val chunk = leg.head
+            if (chunk.isEmpty) read(upto)(leg.stream, ticks)
             else {
               val (toOutput, pending) = takeUpto(chunk, upto)
-              if (pending.isEmpty) Pull.output(toOutput) >> read(upto)(tl, ticks)
-              else Pull.output(toOutput) >> awaitTick(upto, pending)(tl, ticks)
+              if (pending.isEmpty) Pull.output(toOutput) >> read(upto)(leg.stream, ticks)
+              else Pull.output(toOutput) >> awaitTick(upto, pending)(leg.stream, ticks)
             }
           case None => Pull.done
         }
@@ -208,8 +211,9 @@ object TimeStamped {
 
       def awaitTick(upto: FiniteDuration, pending: Chunk[TimeStamped[A]]): PullFromSourceOrTicks = {
         (src, ticks) =>
-          ticks.pull.uncons1.flatMap {
-            case Some((_, tl)) =>
+          ticks.pull.stepLeg.flatMap {
+            case Some(leg) =>
+              val tl = leg.stream.cons(leg.head.drop(1))
               val newUpto = upto + ((1000 / ticksPerSecond) * throttlingFactor).toLong.millis
               val (toOutput, stillPending) = takeUpto(pending, newUpto)
               if (stillPending.isEmpty) {
@@ -222,9 +226,12 @@ object TimeStamped {
       }
 
       (src, ticks) =>
-        src.pull.uncons1.flatMap {
-          case Some((tsa, tl)) => Pull.output1(tsa) >> read(tsa.time)(tl, ticks)
-          case None            => Pull.done
+        src.pull.stepLeg.flatMap {
+          case Some(leg) =>
+            val head = leg.head(0)
+            val tl = leg.head.drop(1)
+            Pull.output1(head) >> read(head.time)(leg.stream.cons(tl), ticks)
+          case None => Pull.done
         }.stream
     }
 
