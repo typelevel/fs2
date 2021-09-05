@@ -128,7 +128,7 @@ object TimeStamped {
     */
   def withRate[A, B](over: FiniteDuration)(f: A => B)(implicit
       B: Monoid[B]
-  ): Scan[(Option[FiniteDuration], B), TimeStamped[A], TimeStamped[Either[B, A]]] = {
+  ): Scan[(Option[FiniteDuration], B), TimeStamped[A], TimeStamped[Either[B, A]]] =
     Scan[(Option[FiniteDuration], B), TimeStamped[A], TimeStamped[Either[B, A]]](None -> B.empty)(
       { case ((end, acc), tsa) =>
         end match {
@@ -155,7 +155,6 @@ object TimeStamped {
         case (None, _)        => Chunk.empty
       }
     )
-  }
 
   /** Returns a stream that is the throttled version of the source stream.
     *
