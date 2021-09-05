@@ -33,30 +33,30 @@ class TimeSeriesSuite extends Fs2Suite {
 
   test("interpolating time ticks in a timestamped stream") {
     val events = Stream(ts(1), ts(2), ts(3))
-    val withTicksDefault = events.through(TimeSeries.interpolateTicks()).toList
+    val withTicks1s = events.through(TimeSeries.interpolateTicks(1.second)).toList
     assertEquals(
-      withTicksDefault,
+      withTicks1s,
       List(
-        Some(1).at(1.seconds),
-        None.at(2.seconds),
-        Some(2).at(2.seconds),
-        None.at(3.seconds),
-        Some(3).at(3.seconds)
+        Some(1) at 1.seconds,
+        None at 2.seconds,
+        Some(2) at 2.seconds,
+        None at 3.seconds,
+        Some(3) at 3.seconds
       )
     )
     val withTicks300ms = events.through(TimeSeries.interpolateTicks(300.millis)).toList
     assertEquals(
       withTicks300ms,
       List(
-        Some(1).at(1.second),
-        None.at(1.3.seconds),
-        None.at(1.6.seconds),
-        None.at(1.9.seconds),
-        Some(2).at(2.seconds),
-        None.at(2.2.seconds),
-        None.at(2.5.seconds),
-        None.at(2.8.seconds),
-        Some(3).at(3.seconds)
+        Some(1) at 1.second,
+        None at 1.3.seconds,
+        None at 1.6.seconds,
+        None at 1.9.seconds,
+        Some(2) at 2.seconds,
+        None at 2.2.seconds,
+        None at 2.5.seconds,
+        None at 2.8.seconds,
+        Some(3) at 3.seconds
       )
     )
   }

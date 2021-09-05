@@ -34,8 +34,8 @@ object TimeSeries {
   /** Stream of either time ticks (spaced by `tickPeriod`) or values from the source stream. */
   def apply[F[_]: Temporal, A](
       source: Stream[F, TimeStamped[A]],
-      tickPeriod: FiniteDuration = 1.second,
-      reorderOver: FiniteDuration = 100.milliseconds
+      tickPeriod: FiniteDuration,
+      reorderOver: FiniteDuration
   ): TimeSeries[F, A] = {
     val src: TimeSeries[F, A] = source.map(tsa => tsa.map(Some(_): Option[A]))
     val ticks: TimeSeries[F, Nothing] = timeTicks(tickPeriod).map(tsu => tsu.map(_ => None))
@@ -45,8 +45,8 @@ object TimeSeries {
   /** Stream of either time ticks (spaced by `tickPeriod`) or values from the source stream. */
   def lift[F[_]: Temporal, A](
       source: Stream[F, A],
-      tickPeriod: FiniteDuration = 1.second,
-      reorderOver: FiniteDuration = 100.milliseconds
+      tickPeriod: FiniteDuration,
+      reorderOver: FiniteDuration
   ): TimeSeries[F, A] =
     apply(source.map(TimeStamped.unsafeNow), tickPeriod, reorderOver)
 
@@ -59,7 +59,7 @@ object TimeSeries {
     * Ticks are emitted between values from the source stream.
     */
   def interpolateTicks[A](
-      tickPeriod: FiniteDuration = 1.second
+      tickPeriod: FiniteDuration
   ): Pipe[Pure, TimeStamped[A], TimeSeriesValue[A]] = {
     def go(
         nextTick: FiniteDuration,
@@ -96,13 +96,13 @@ object TimeSeries {
       }.stream
   }
 
-  /** Combinator that converts a `Scan[I, O]` in to a `Scan[TimeSeriesValue[I], TimeSeriesValue[O]]` such that
+  /** Combinator that converts a `Scan[S, I, O]` in to a `Scan[S, TimeSeriesValue[I], TimeSeriesValue[O]]` such that
     * timestamps are preserved on elements that flow through the stream.
     */
   def preserve[S, I, O](t: Scan[S, I, O]): Scan[S, TimeSeriesValue[I], TimeSeriesValue[O]] =
     preserveTicks(TimeStamped.preserve(t))
 
-  /** Combinator that converts a `Scan[TimeStamped[A], TimeStamped[B]]` in to a `Scan[TimeSeriesValue[A], TimeSeriesValue[B]]` such that
+  /** Combinator that converts a `Scan[S, TimeStamped[I], TimeStamped[O]]` in to a `Scan[S, TimeSeriesValue[I], TimeSeriesValue[O]]` such that
     * timestamps are preserved on elements that flow through the stream.
     */
   def preserveTicks[S, I, O](
@@ -116,7 +116,7 @@ object TimeSeries {
       (_, tso) => tso.map(Some(_))
     )
 
-  /** Combinator that combines a `Scan[TimeSeriesValue[L],O]` and a `Scan[TimeSeriesValue[R],O]` in to a `Scan[TimeSeriesVlaue[Either[L,R],O]]`.
+  /** Combinator that combines a `Scan[LS, TimeSeriesValue[L], O]` and a `Scan[RS, TimeSeriesValue[R], O]` in to a `Scan[(LS, RS), TimeSeriesVlaue[Either[L, R], O]]`.
     */
   def choice[LS, L, RS, R, O](
       l: Scan[LS, TimeSeriesValue[L], O],

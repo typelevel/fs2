@@ -65,7 +65,7 @@ object TimeStamped {
   def preserve[S, I, O](t: Scan[S, I, O]): Scan[S, TimeStamped[I], TimeStamped[O]] =
     t.lens(_.value, (tsi, o) => tsi.copy(value = o))
 
-  /** Stream transducer that converts a stream of `TimeStamped[A]` in to a stream of
+  /** Scan that converts a stream of `TimeStamped[A]` in to a stream of
     * `TimeStamped[B]` where `B` is an accumulated feature of `A` over a second.
     *
     * For example, the emitted bits per second of a `Stream[F, ByteVector]` can be calculated
@@ -78,7 +78,7 @@ object TimeStamped {
   ): Scan[(Option[FiniteDuration], B), TimeStamped[A], TimeStamped[B]] =
     rate(1.second)(f)
 
-  /** Stream transducer that converts a stream of `TimeStamped[A]` in to a stream of
+  /** Scan that converts a stream of `TimeStamped[A]` in to a stream of
     * `TimeStamped[B Either A]` where `B` is an accumulated feature of `A` over a second.
     *
     * Every incoming `A` is echoed to the output.
@@ -93,7 +93,7 @@ object TimeStamped {
   ): Scan[(Option[FiniteDuration], B), TimeStamped[A], TimeStamped[Either[B, A]]] =
     withRate(1.second)(f)
 
-  /** Stream transducer that converts a stream of `TimeStamped[A]` in to a stream of
+  /** Scan that converts a stream of `TimeStamped[A]` in to a stream of
     * `TimeStamped[B]` where `B` is an accumulated feature of `A` over a specified time period.
     *
     * For example, the emitted bits per second of a `Stream[F, ByteVector]` can be calculated
@@ -115,7 +115,7 @@ object TimeStamped {
     )
   }
 
-  /** Stream transducer that converts a stream of `TimeStamped[A]` in to a stream of
+  /** Scan that converts a stream of `TimeStamped[A]` in to a stream of
     * `TimeStamped[Either[B, A]]` where `B` is an accumulated feature of `A` over a specified time period.
     *
     * Every incoming `A` is echoed to the output.
@@ -231,19 +231,18 @@ object TimeStamped {
     source => (source.through2(Stream.awakeEvery[F](tickResolution).as(())))(doThrottle)
   }
 
-  /** Stream transducer that filters the specified timestamped values to ensure
+  /** Scan that filters the specified timestamped values to ensure
     * the output time stamps are always increasing in time. Other values are
     * dropped.
     */
   def increasing[F[_], A]: Pipe[F, TimeStamped[A], TimeStamped[A]] =
-    increasingW.andThen(_.collect { case Right(out) => out })
+    increasingEither.andThen(_.collect { case Right(out) => out })
 
-  /** Stream transducer that filters the specified timestamped values to ensure
+  /** Scan that filters the specified timestamped values to ensure
     * the output time stamps are always increasing in time. The increasing values
-    * are emitted as output of the writer, while out of order values are written
-    * to the writer side of the writer.
+    * are emitted wrapped in `Right`, while out of order values are emitted in `Left`.
     */
-  def increasingW[F[_], A]: Pipe[F, TimeStamped[A], Either[TimeStamped[A], TimeStamped[A]]] =
+  def increasingEither[F[_], A]: Pipe[F, TimeStamped[A], Either[TimeStamped[A], TimeStamped[A]]] =
     _.scanChunks(Duration.MinusInf: Duration) { (last, chunk) =>
       chunk.mapAccumulate(last) { (last, tsa) =>
         val now = tsa.time
@@ -251,28 +250,28 @@ object TimeStamped {
       }
     }
 
-  /** Stream transducer that reorders a stream of timestamped values that are mostly ordered,
+  /** Scan that reorders a stream of timestamped values that are mostly ordered,
     * using a time based buffer of the specified duration. See [[attemptReorderLocally]] for details.
     *
     * The resulting stream is guaranteed to always emit values in time increasing order.
     * Values may be dropped from the source stream if they were not successfully reordered.
     */
   def reorderLocally[F[_], A](over: FiniteDuration): Pipe[F, TimeStamped[A], TimeStamped[A]] =
-    reorderLocallyW(over).andThen(_.collect { case Right(tsa) => tsa })
+    reorderLocallyEither(over).andThen(_.collect { case Right(tsa) => tsa })
 
-  /** Stream transducer that reorders a stream of timestamped values that are mostly ordered,
+  /** Scan that reorders a stream of timestamped values that are mostly ordered,
     * using a time based buffer of the specified duration. See [[attemptReorderLocally]] for details.
     *
-    * The resulting stream is guaranteed to always emit output values in time increasing order.
-    * Any values that could not be reordered due to insufficient buffer space are emitted on the writer (left)
-    * side.
+    * The resulting stream is guaranteed to always emit output values in time increasing order,
+    * wrapped in `Right`.  Any values that could not be reordered due to insufficient buffer space
+    * are emitted wrapped in `Left`.
     */
-  def reorderLocallyW[F[_], A](
+  def reorderLocallyEither[F[_], A](
       over: FiniteDuration
   ): Pipe[F, TimeStamped[A], Either[TimeStamped[A], TimeStamped[A]]] =
-    attemptReorderLocally(over).andThen(increasingW)
+    attemptReorderLocally(over).andThen(increasingEither)
 
-  /** Stream transducer that reorders timestamped values over a specified duration.
+  /** Scan that reorders timestamped values over a specified duration.
     *
     * Values are kept in an internal buffer. Upon receiving a new value, any buffered
     * values that are timestamped with `value.time - over` are emitted. Other values,
@@ -285,7 +284,7 @@ object TimeStamped {
     * An example of such a structure is the result of merging streams of values generated
     * with `TimeStamped.now`.
     *
-    * Caution: this transducer should only be used on streams that are mostly ordered.
+    * Caution: this scan should only be used on streams that are mostly ordered.
     * In the worst case, if the source is in reverse order, all values in the source
     * will be accumulated in to the buffer until the source halts, and then the
     * values will be emitted in order.

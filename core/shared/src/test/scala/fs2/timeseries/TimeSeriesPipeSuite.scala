@@ -39,7 +39,7 @@ class TimeSeriesTransducerTest extends Fs2Suite {
         Right(1).at(0.seconds),
         Left(2).at(0.5.seconds),
         Right(3).at(1.5.seconds)
-      ).through(TimeSeries.interpolateTicks())
+      ).through(TimeSeries.interpolateTicks(1.second))
     assertEquals(
       source.through(TimeSeries.preserve(x).toPipe).toList,
       List(
