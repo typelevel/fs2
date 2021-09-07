@@ -144,7 +144,7 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
 lazy val root = project
   .in(file("."))
   .enablePlugins(NoPublishPlugin, SonatypeCiReleasePlugin)
-  .aggregate(coreJVM, coreJS, io.jvm, node.js, io.js, reactiveStreams, benchmark)
+  .aggregate(coreJVM, coreJS, io.jvm, node.js, io.js, scodec.jvm, scodec.js, reactiveStreams, benchmark)
 
 lazy val rootJVM = project
   .in(file("."))
@@ -268,6 +268,27 @@ lazy val io = crossProject(JVMPlatform, JSPlatform)
   )
   .dependsOn(core % "compile->compile;test->test")
   .jsConfigure(_.dependsOn(node.js))
+
+lazy val scodec = crossProject(JVMPlatform, JSPlatform)
+  .in(file("scodec"))
+  .enablePlugins(SbtOsgi)
+  .settings(
+    name := "fs2-scodec",
+    libraryDependencies += "org.scodec" %% "scodec-core" % (if (scalaVersion.value.startsWith("2.")) "1.11.8" else "2.0.0"),
+    OsgiKeys.exportPackage := Seq("fs2.interop.scodec.*"),
+    OsgiKeys.privatePackage := Seq(),
+    OsgiKeys.importPackage := {
+      val Some((major, minor)) = CrossVersion.partialVersion(scalaVersion.value)
+      Seq(
+        s"""scala.*;version="[$major.$minor,$major.${minor + 1})"""",
+        """fs2.*;version="${Bundle-Version}"""",
+        "*"
+      )
+    },
+    OsgiKeys.additionalHeaders := Map("-removeheaders" -> "Include-Resource,Private-Package"),
+    osgiSettings
+  )
+  .dependsOn(core % "compile->compile;test->test")
 
 lazy val reactiveStreams = project
   .in(file("reactive-streams"))
