@@ -139,10 +139,10 @@ final class StreamDecoder[+A] private (private val step: StreamDecoder.Step[A]) 
       }
     )
 
-  def handleErrorWith[A2 >: A](f: Throwable => StreamDecoder[A2]): StreamDecoder[A2] = 
+  def handleErrorWith[A2 >: A](f: Throwable => StreamDecoder[A2]): StreamDecoder[A2] =
     new StreamDecoder[A2](
       self.step match {
-        case Empty => Empty
+        case Empty         => Empty
         case Result(a)     => Result(a)
         case Failed(cause) => f(cause).step
         case Decode(g, once, failOnErr) =>
@@ -280,10 +280,12 @@ object StreamDecoder {
     def flatMap[A, B](da: StreamDecoder[A])(f: A => StreamDecoder[B]) = da.flatMap(f)
     def tailRecM[A, B](a: A)(f: A => StreamDecoder[Either[A, B]]): StreamDecoder[B] =
       f(a).flatMap {
-        case Left(a) => tailRecM(a)(f)
+        case Left(a)  => tailRecM(a)(f)
         case Right(b) => pure(b)
       }
-    def handleErrorWith[A](da: StreamDecoder[A])(f: Throwable => StreamDecoder[A]): StreamDecoder[A] = 
+    def handleErrorWith[A](da: StreamDecoder[A])(
+        f: Throwable => StreamDecoder[A]
+    ): StreamDecoder[A] =
       da.handleErrorWith(f)
     def raiseError[A](e: Throwable): StreamDecoder[A] =
       StreamDecoder.raiseError(e)
