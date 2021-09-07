@@ -43,7 +43,7 @@ class ListOfNTest extends Fs2Suite {
     assertEquals(decodedList, ints)
   }
 
-  property("split chunk") {
+  test("split chunk") {
     val (splitChunk1, splitChunk2) = encodedBytes.splitAt(6)
     val splitSource = Stream.chunk(splitChunk1) ++ Stream.chunk(splitChunk2)
     val decodedList = splitSource.through(pipe).compile.lastOrError.unsafeRunSync()
