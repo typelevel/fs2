@@ -1,10 +1,10 @@
 import com.typesafe.tools.mima.core._
 import sbtcrossproject.crossProject
 
-addCommandAlias("fmt", "; compile:scalafmt; test:scalafmt; it:scalafmt; scalafmtSbt")
+addCommandAlias("fmt", "; Compile/scalafmt; Test/scalafmt; IntegrationTest/scalafmt; scalafmtSbt")
 addCommandAlias(
   "fmtCheck",
-  "; compile:scalafmtCheck; test:scalafmtCheck; it:scalafmtCheck; scalafmtSbtCheck"
+  "; Compile/scalafmtCheck; Test/scalafmtCheck; IntegrationTest/scalafmtCheck; scalafmtSbtCheck"
 )
 addCommandAlias("testJVM", ";rootJVM/test")
 addCommandAlias("testJS", "rootJS/test")
@@ -144,7 +144,17 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
 lazy val root = project
   .in(file("."))
   .enablePlugins(NoPublishPlugin, SonatypeCiReleasePlugin)
-  .aggregate(coreJVM, coreJS, io.jvm, node.js, io.js, scodec.jvm, scodec.js, reactiveStreams, benchmark)
+  .aggregate(
+    coreJVM,
+    coreJS,
+    io.jvm,
+    node.js,
+    io.js,
+    scodec.jvm,
+    scodec.js,
+    reactiveStreams,
+    benchmark
+  )
 
 lazy val rootJVM = project
   .in(file("."))
@@ -274,7 +284,9 @@ lazy val scodec = crossProject(JVMPlatform, JSPlatform)
   .enablePlugins(SbtOsgi)
   .settings(
     name := "fs2-scodec",
-    libraryDependencies += "org.scodec" %% "scodec-core" % (if (scalaVersion.value.startsWith("2.")) "1.11.8" else "2.0.0"),
+    libraryDependencies += "org.scodec" %% "scodec-core" % (if (scalaVersion.value.startsWith("2."))
+                                                              "1.11.8"
+                                                            else "2.0.0"),
     OsgiKeys.exportPackage := Seq("fs2.interop.scodec.*"),
     OsgiKeys.privatePackage := Seq(),
     OsgiKeys.importPackage := {
