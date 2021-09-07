@@ -226,11 +226,13 @@ lazy val node = crossProject(JSPlatform)
     scalacOptions += "-nowarn",
     Compile / doc / sources := Nil,
     scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule)),
-    Compile / npmDependencies += "@types/node" -> "16.0.0",
+    Compile / npmDevDependencies += "@types/node" -> "16.7.13",
     useYarn := true,
     yarnExtraArgs += "--frozen-lockfile",
     stOutputPackage := "fs2.internal.jsdeps",
-    stStdlib := List("es2020")
+    stPrivateWithin := Some("fs2"),
+    stStdlib := List("es2020"),
+    stIncludeDev := true
   )
 
 lazy val io = crossProject(JVMPlatform, JSPlatform)
