@@ -301,7 +301,10 @@ lazy val scodec = crossProject(JVMPlatform, JSPlatform)
       )
     },
     OsgiKeys.additionalHeaders := Map("-removeheaders" -> "Include-Resource,Private-Package"),
-    osgiSettings
+    osgiSettings,
+    mimaPreviousArtifacts := mimaPreviousArtifacts.value.filter { v =>
+      VersionNumber(v.revision).matchesSemVer(SemanticSelector(">3.1.1"))
+    }
   )
   .jsSettings(
     scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule))
