@@ -28,6 +28,8 @@ package scodec
 import _root_.scodec.bits.BitVector
 import _root_.scodec.{Encoder, Err}
 
+import cats.Invariant
+
 /** A streaming encoding process, represented as a `Stream[Pure, A] => Pull[Pure, BitVector, Option[(Stream[Pure, A], StreamEncoder[A])]]`.
   */
 final class StreamEncoder[A] private (private val step: StreamEncoder.Step[A]) { self =>
@@ -193,4 +195,9 @@ object StreamEncoder {
 
   /** The encoder that consumes no input and halts with the given error message. */
   def raiseError[A](err: Err): StreamEncoder[A] = raiseError(CodecError(err))
+
+  implicit val instance: Invariant[StreamEncoder] = new Invariant[StreamEncoder] {
+    def imap[A, B](fa: StreamEncoder[A])(f: A => B)(g: B => A): StreamEncoder[B] =
+      fa.xmapc(f)(g)
+  }
 }

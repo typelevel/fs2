@@ -28,6 +28,8 @@ package scodec
 import _root_.scodec.{Attempt, DecodeResult, Decoder, Err, codecs}
 import _root_.scodec.bits.BitVector
 
+import cats.MonadThrow
+
 /** Supports binary decoding of a stream that emits elements as they are decoded.
   *
   * The main purpose of using a `StreamDecoder` over a `scodec.Decoder` is mixing
@@ -134,6 +136,19 @@ final class StreamDecoder[+A] private (private val step: StreamDecoder.Step[A]) 
           Decode(in => g(in).map(_.map(_.flatMap(f))), once, failOnErr)
         case Isolate(bits, decoder) => Isolate(bits, decoder.flatMap(f))
         case Append(x, y)           => Append(x.flatMap(f), () => y().flatMap(f))
+      }
+    )
+
+  def handleErrorWith[A2 >: A](f: Throwable => StreamDecoder[A2]): StreamDecoder[A2] = 
+    new StreamDecoder[A2](
+      self.step match {
+        case Empty => Empty
+        case Result(a)     => Result(a)
+        case Failed(cause) => f(cause).step
+        case Decode(g, once, failOnErr) =>
+          Decode(in => g(in).map(_.map(_.handleErrorWith(f))), once, failOnErr)
+        case Isolate(bits, decoder) => Isolate(bits, decoder.handleErrorWith(f))
+        case Append(x, y)           => Append(x.handleErrorWith(f), () => y().handleErrorWith(f))
       }
     )
 
@@ -259,4 +274,18 @@ object StreamDecoder {
   /** Creates a stream decoder that ignores the specified number of bits. */
   def ignore(bits: Long): StreamDecoder[Nothing] =
     once(codecs.ignore(bits)).flatMap(_ => empty)
+
+  implicit val instance: MonadThrow[StreamDecoder] = new MonadThrow[StreamDecoder] {
+    def pure[A](a: A) = StreamDecoder.emit(a)
+    def flatMap[A, B](da: StreamDecoder[A])(f: A => StreamDecoder[B]) = da.flatMap(f)
+    def tailRecM[A, B](a: A)(f: A => StreamDecoder[Either[A, B]]): StreamDecoder[B] =
+      f(a).flatMap {
+        case Left(a) => tailRecM(a)(f)
+        case Right(b) => pure(b)
+      }
+    def handleErrorWith[A](da: StreamDecoder[A])(f: Throwable => StreamDecoder[A]): StreamDecoder[A] = 
+      da.handleErrorWith(f)
+    def raiseError[A](e: Throwable): StreamDecoder[A] =
+      StreamDecoder.raiseError(e)
+  }
 }
