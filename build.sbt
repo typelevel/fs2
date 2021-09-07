@@ -288,7 +288,7 @@ lazy val scodec = crossProject(JVMPlatform, JSPlatform)
     OsgiKeys.additionalHeaders := Map("-removeheaders" -> "Include-Resource,Private-Package"),
     osgiSettings
   )
-  .dependsOn(core % "compile->compile;test->test")
+  .dependsOn(core % "compile->compile;test->test", io % "test")
 
 lazy val reactiveStreams = project
   .in(file("reactive-streams"))
