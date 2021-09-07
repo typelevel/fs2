@@ -282,11 +282,14 @@ lazy val io = crossProject(JVMPlatform, JSPlatform)
 lazy val scodec = crossProject(JVMPlatform, JSPlatform)
   .in(file("scodec"))
   .enablePlugins(SbtOsgi)
+  .jsConfigure(_.enablePlugins(ScalaJSBundlerPlugin))
   .settings(
     name := "fs2-scodec",
-    libraryDependencies += "org.scodec" %% "scodec-core" % (if (scalaVersion.value.startsWith("2."))
-                                                              "1.11.8"
-                                                            else "2.0.0"),
+    libraryDependencies += "org.scodec" %%% "scodec-core" % (if (
+                                                               scalaVersion.value.startsWith("2.")
+                                                             )
+                                                               "1.11.8"
+                                                             else "2.0.0"),
     OsgiKeys.exportPackage := Seq("fs2.interop.scodec.*"),
     OsgiKeys.privatePackage := Seq(),
     OsgiKeys.importPackage := {
@@ -299,6 +302,9 @@ lazy val scodec = crossProject(JVMPlatform, JSPlatform)
     },
     OsgiKeys.additionalHeaders := Map("-removeheaders" -> "Include-Resource,Private-Package"),
     osgiSettings
+  )
+  .jsSettings(
+    scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule))
   )
   .dependsOn(core % "compile->compile;test->test", io % "test")
 
