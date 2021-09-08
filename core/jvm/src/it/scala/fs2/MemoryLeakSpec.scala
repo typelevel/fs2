@@ -267,4 +267,8 @@ class MemoryLeakSpec extends FunSuite {
     def unfold: Stream[IO, Unit] = Stream.eval(IO.unit).flatMap(_ => Stream.emits(Nil) ++ unfold)
     unfold.map(x => x)
   }
+
+  leakTest("merge + parJoinUnbounded".only) {
+    Stream(Stream.constant(1).covary[IO].merge(Stream())).parJoinUnbounded
+  }
 }
