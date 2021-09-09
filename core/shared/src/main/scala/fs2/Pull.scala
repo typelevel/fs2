@@ -978,13 +978,13 @@ object Pull extends PullLowPriority {
           else {
             def go(idx: Int): Pull[G, X, Unit] =
               if (idx == chunk.size)
-                FlatMapOutput[G, Y, X](tail, fun)
+                flatMapOutput[G, G, Y, X](tail, fun)
               else {
                 try transformWith(fun(chunk(idx))) {
                   case Succeeded(_) => go(idx + 1)
                   case Fail(err)    => Fail(err)
                   case interruption @ Interrupted(_, _) =>
-                    FlatMapOutput[G, Y, X](interruptBoundary(tail, interruption), fun)
+                    flatMapOutput[G, G, Y, X](interruptBoundary(tail, interruption), fun)
                 } catch { case NonFatal(e) => Fail(e) }
               }
 
