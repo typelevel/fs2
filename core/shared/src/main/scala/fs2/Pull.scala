@@ -879,6 +879,18 @@ object Pull extends PullLowPriority {
       def interrupted(inter: Interrupted): End
       def fail(e: Throwable): End
     }
+    type CallRun[G[_], X, End] = Run[G, X, End] => End
+
+    class BuildR[G[_], X, End] extends Run[G, X, F[CallRun[G, X, F[End]]]] {
+      def fail(e: Throwable) = F.raiseError(e)
+
+      def done(scope: Scope[F]) =
+        F.pure((cont: Run[G, X, F[End]]) => cont.done(scope))
+      def out(head: Chunk[X], scope: Scope[F], tail: Pull[G, X, Unit]) =
+        F.pure((cont: Run[G, X, F[End]]) => cont.out(head, scope, tail))
+      def interrupted(i: Interrupted) =
+        F.pure((cont: Run[G, X, F[End]]) => cont.interrupted(i))
+    }
 
     def go[G[_], X, End](
         scope: Scope[F],
@@ -1174,7 +1186,9 @@ object Pull extends PullLowPriority {
               val u = u0.asInstanceOf[Uncons[G, y]]
               val v = view.asInstanceOf[Cont[Option[(Chunk[y], Pull[G, y, Unit])], G, X]]
               // a Uncons is run on the same scope, without shifting.
-              go(scope, extendedTopLevelScope, translation, new UnconsRunR(v), u.stream)
+              val runr = new BuildR[G, y, End]
+              go(scope, extendedTopLevelScope, translation, runr, u.stream).attempt
+                .flatMap(_.fold(goErr(_, view), _.apply(new UnconsRunR(v))))
 
             case s0: StepLeg[g, y] =>
               val s = s0.asInstanceOf[StepLeg[G, y]]

@@ -271,4 +271,12 @@ class MemoryLeakSpec extends FunSuite {
   leakTest("flatMap(flatMap) then uncons") {
     Stream.constant(1).flatMap(s => Stream(s, s).flatMap(s => Stream(s))).drain
   }
+
+  leakTest("onFinalize + flatten + drain") {
+    Stream.constant(1).covary[IO].map(Stream(_).onFinalize(IO.unit)).flatten.drain
+  }
+
+  leakTest("merge + parJoinUnbounded") {
+    Stream(Stream.constant(1).covary[IO].merge(Stream())).parJoinUnbounded
+  }
 }
