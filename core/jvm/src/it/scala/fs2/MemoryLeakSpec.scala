@@ -267,4 +267,8 @@ class MemoryLeakSpec extends FunSuite {
     def unfold: Stream[IO, Unit] = Stream.eval(IO.unit).flatMap(_ => Stream.emits(Nil) ++ unfold)
     unfold.map(x => x)
   }
+
+  leakTest("flatMap(flatMap) then uncons") {
+    Stream.constant(1).flatMap(s => Stream(s, s).flatMap(s => Stream(s))).drain
+  }
 }
