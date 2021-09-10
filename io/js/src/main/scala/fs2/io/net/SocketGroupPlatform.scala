@@ -91,12 +91,14 @@ private[net] trait SocketGroupCompanionPlatform { self: SocketGroup.type =>
               )
             )
         )(server =>
-          F.async_[Unit] { cb =>
+          F.async[Unit] { cb =>
             if (server.listening)
-              server.close(e => cb(e.toLeft(()).leftMap(js.JavaScriptException)))
+              F.delay(server.close(e => cb(e.toLeft(()).leftMap(js.JavaScriptException)))) >> queue
+                .offer(None)
+                .as(None)
             else
-              cb(Right(()))
-          } >> queue.offer(None)
+              F.delay(cb(Right(()))).as(None)
+          }
         )
         _ <- F
           .async_[Unit] { cb =>
