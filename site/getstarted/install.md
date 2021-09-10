@@ -17,10 +17,11 @@ libraryDependencies += "co.fs2" %% "fs2-io" % "<version>"
 libraryDependencies += "co.fs2" %% "fs2-reactive-streams" % "<version>"
 ```
 
-The fs2-core library is also supported on Scala.js:
+The fs2-core as well as fs2-io libraries are also supported on Scala.js:
 
 ```
 libraryDependencies += "co.fs2" %%% "fs2-core" % "<version>"
+libraryDependencies += "co.fs2" %%% "fs2-io" % "<version>"
 ```
 
 Release notes for each release are available on [Github](https://github.com/typelevel/fs2/releases/).
