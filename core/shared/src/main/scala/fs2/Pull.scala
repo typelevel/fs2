@@ -1187,7 +1187,7 @@ object Pull extends PullLowPriority {
               val v = view.asInstanceOf[Cont[Option[(Chunk[y], Pull[G, y, Unit])], G, X]]
               // a Uncons is run on the same scope, without shifting.
               val runr = new BuildR[G, y, End]
-              go(scope, extendedTopLevelScope, translation, runr, u.stream).attempt
+              F.unit >> go(scope, extendedTopLevelScope, translation, runr, u.stream).attempt
                 .flatMap(_.fold(goErr(_, view), _.apply(new UnconsRunR(v))))
 
             case s0: StepLeg[g, y] =>
