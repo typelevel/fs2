@@ -22,10 +22,10 @@
 package fs2
 package concurrent
 
-import cats.{Applicative, FlatMap, Functor, Invariant}
 import cats.data.OptionT
 import cats.effect.kernel.{Concurrent, Deferred, Ref}
 import cats.syntax.all._
+import cats.{Applicative, Functor, Invariant, Monad}
 
 import scala.collection.immutable.LongMap
 
@@ -80,10 +80,11 @@ object Signal extends SignalInstances {
     def interrupt[A](s: Stream[F, A])(implicit F: Concurrent[F]): Stream[F, A] =
       s.interruptWhen(self)
 
-    /** Predicate the supplied effect `f` on this `Signal` being `true`.
+    /** Predicates the supplied effect `f` on this `Signal` being `true`.
       */
-    def predicate(f: F[_])(implicit F: Applicative[F] with FlatMap[F]): F[Unit] =
+    def predicate(f: F[_])(implicit F: Monad[F]): F[Unit] =
       self.get.flatMap(f.whenA)
+
   }
 }
 
