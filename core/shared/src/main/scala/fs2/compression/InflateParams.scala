@@ -19,24 +19,37 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2.io
+package fs2.compression
 
-import fs2.io.file.FileSystemException
-import fs2.io.net.SocketException
-import fs2.io.net.UnknownHostException
-import fs2.io.net.tls.SSLException
+/** Inflate algorithm parameters. */
+sealed trait InflateParams {
 
-import scala.scalajs.js
-import fs2.io.net.SocketTimeoutException
+  /** Size of the internal buffer. Default size is 32 KB.
+    */
+  val bufferSize: Int
 
-object IOException {
-  private[io] def unapply(cause: js.JavaScriptException): Option[IOException] =
-    SocketException
-      .unapply(cause)
-      .orElse(SocketTimeoutException.unapply(cause))
-      .orElse(SSLException.unapply(cause))
-      .orElse(FileSystemException.unapply(cause))
-      .orElse(UnknownHostException.unapply(cause))
+  /** Compression header. Defaults to [[ZLibParams.Header.ZLIB]]
+    */
+  val header: ZLibParams.Header
+
+  private[fs2] val bufferSizeOrMinimum: Int = bufferSize.max(128)
 }
 
-class ClosedChannelException extends IOException
+object InflateParams {
+
+  def apply(
+      bufferSize: Int = 1024 * 32,
+      header: ZLibParams.Header = ZLibParams.Header.ZLIB
+  ): InflateParams =
+    InflateParamsImpl(bufferSize, header)
+
+  /** Reasonable defaults for most applications.
+    */
+  val DEFAULT: InflateParams = InflateParams()
+
+  private case class InflateParamsImpl(
+      bufferSize: Int,
+      header: ZLibParams.Header
+  ) extends InflateParams
+
+}

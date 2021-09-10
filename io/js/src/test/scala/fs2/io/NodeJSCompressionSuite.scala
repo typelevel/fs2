@@ -19,24 +19,47 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2.io
+package fs2
+package io
 
-import fs2.io.file.FileSystemException
-import fs2.io.net.SocketException
-import fs2.io.net.UnknownHostException
-import fs2.io.net.tls.SSLException
+import fs2.CompressionSuite
+import fs2.internal.jsdeps.node.zlibMod
+import fs2.io.compression._
+import fs2.io.internal.ByteChunkOps._
 
-import scala.scalajs.js
-import fs2.io.net.SocketTimeoutException
+class NodeJSCompressionSuite extends CompressionSuite {
 
-object IOException {
-  private[io] def unapply(cause: js.JavaScriptException): Option[IOException] =
-    SocketException
-      .unapply(cause)
-      .orElse(SocketTimeoutException.unapply(cause))
-      .orElse(SSLException.unapply(cause))
-      .orElse(FileSystemException.unapply(cause))
-      .orElse(UnknownHostException.unapply(cause))
+  override def scalaCheckTestParameters =
+    super.scalaCheckTestParameters.withMaxSize(10000)
+
+  override def deflateStream(
+      b: Array[Byte],
+      level: Int,
+      strategy: Int,
+      nowrap: Boolean
+  ): Array[Byte] = {
+    val in = Chunk.array(b).toUint8Array
+    val options = zlibMod
+      .ZlibOptions()
+      .setLevel(level.toDouble)
+      .setStrategy(strategy.toDouble)
+    val out =
+      if (nowrap)
+        zlibMod.gzipSync(in, options)
+      else
+        zlibMod.deflateSync(in, options)
+    out.toChunk.toArray
+  }
+
+  override def inflateStream(b: Array[Byte], nowrap: Boolean): Array[Byte] = {
+    val in = Chunk.array(b).toUint8Array
+    val options = zlibMod.ZlibOptions()
+    val out =
+      if (nowrap)
+        zlibMod.gunzipSync(in, options)
+      else
+        zlibMod.inflateSync(in, options)
+    out.toChunk.toArray
+  }
+
 }
-
-class ClosedChannelException extends IOException

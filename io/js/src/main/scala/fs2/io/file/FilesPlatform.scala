@@ -175,6 +175,7 @@ private[fs2] trait FilesCompanionPlatform {
             fsPromisesMod.lstat(path.toString)
         }
       }.adaptError { case IOException(ex) => ex }
+        .widen
 
     private def access(path: Path, mode: Double): F[Boolean] =
       F.fromPromise(F.delay(fsPromisesMod.access(path.toString, mode)))

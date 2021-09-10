@@ -19,37 +19,23 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2.compression
+package fs2
+package compression
 
-/** Inflate algorithm parameters. */
-sealed trait InflateParams {
+/** Provides the capability to compress/decompress using deflate and gzip.
+  * On JVM an instance is available given a `Sync[F]`.
+  * On Node.js an instance is available for `Async[F]` by importing `fs2.io.compression._`.
+  */
+sealed trait Compression[F[_]] extends CompressionPlatform[F] {
 
-  /** Size of the internal buffer. Default size is 32 KB.
-    */
-  val bufferSize: Int
+  def deflate(deflateParams: DeflateParams): Pipe[F, Byte, Byte]
 
-  /** Compression header. Defaults to [[ZLibParams.Header.ZLIB]]
-    */
-  val header: ZLibParams.Header
+  def inflate(inflateParams: InflateParams): Pipe[F, Byte, Byte]
 
-  private[compression] val bufferSizeOrMinimum: Int = bufferSize.max(128)
 }
 
-object InflateParams {
+object Compression extends CompressionCompanionPlatform {
+  private[fs2] trait UnsealedCompression[F[_]] extends Compression[F]
 
-  def apply(
-      bufferSize: Int = 1024 * 32,
-      header: ZLibParams.Header = ZLibParams.Header.ZLIB
-  ): InflateParams =
-    InflateParamsImpl(bufferSize, header)
-
-  /** Reasonable defaults for most applications.
-    */
-  val DEFAULT: InflateParams = InflateParams()
-
-  private case class InflateParamsImpl(
-      bufferSize: Int,
-      header: ZLibParams.Header
-  ) extends InflateParams
-
+  def apply[F[_]](implicit F: Compression[F]): Compression[F] = F
 }

@@ -138,7 +138,10 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   ProblemFilters.exclude[InheritedNewAbstractMethodProblem]("fs2.io.file.Files.watch"),
   ProblemFilters.exclude[MissingClassProblem]("fs2.Pull$MapOutput$"),
   ProblemFilters.exclude[MissingClassProblem]("fs2.Pull$MapOutput"),
-  ProblemFilters.exclude[IncompatibleMethTypeProblem]("fs2.Pull.mapOutput")
+  ProblemFilters.exclude[IncompatibleMethTypeProblem]("fs2.Pull.mapOutput"),
+  ProblemFilters.exclude[NewMixinForwarderProblem]("fs2.compression.Compression.gzip*"),
+  ProblemFilters.exclude[NewMixinForwarderProblem]("fs2.compression.Compression.gunzip*"),
+  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.compression.Compression.$init$")
 )
 
 lazy val root = project
@@ -167,10 +170,10 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
     libraryDependencies ++= Seq(
       "org.typelevel" %%% "cats-core" % "2.6.1",
       "org.typelevel" %%% "cats-laws" % "2.6.1" % Test,
-      "org.typelevel" %%% "cats-effect" % "3.2.3",
-      "org.typelevel" %%% "cats-effect-laws" % "3.2.3" % Test,
-      "org.typelevel" %%% "cats-effect-testkit" % "3.2.3" % Test,
-      "org.scodec" %%% "scodec-bits" % "1.1.27",
+      "org.typelevel" %%% "cats-effect" % "3.2.8",
+      "org.typelevel" %%% "cats-effect-laws" % "3.2.8" % Test,
+      "org.typelevel" %%% "cats-effect-testkit" % "3.2.8" % Test,
+      "org.scodec" %%% "scodec-bits" % "1.1.28",
       "org.typelevel" %%% "scalacheck-effect-munit" % "1.0.2" % Test,
       "org.typelevel" %%% "munit-cats-effect-3" % "1.0.5" % Test,
       "org.typelevel" %%% "discipline-munit" % "1.0.9" % Test
@@ -226,11 +229,13 @@ lazy val node = crossProject(JSPlatform)
     scalacOptions += "-nowarn",
     Compile / doc / sources := Nil,
     scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule)),
-    Compile / npmDependencies += "@types/node" -> "16.0.0",
+    Compile / npmDevDependencies += "@types/node" -> "16.7.13",
     useYarn := true,
     yarnExtraArgs += "--frozen-lockfile",
     stOutputPackage := "fs2.internal.jsdeps",
-    stStdlib := List("es2020")
+    stPrivateWithin := Some("fs2"),
+    stStdlib := List("es2020"),
+    stIncludeDev := true
   )
 
 lazy val io = crossProject(JVMPlatform, JSPlatform)
@@ -256,7 +261,7 @@ lazy val io = crossProject(JVMPlatform, JSPlatform)
   .jvmSettings(
     Test / fork := true,
     libraryDependencies ++= Seq(
-      "com.github.jnr" % "jnr-unixsocket" % "0.38.8" % Optional,
+      "com.github.jnr" % "jnr-unixsocket" % "0.38.10" % Optional,
       "com.google.jimfs" % "jimfs" % "1.2" % Test
     )
   )

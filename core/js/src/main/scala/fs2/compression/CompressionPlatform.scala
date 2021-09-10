@@ -19,24 +19,9 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2.io
+package fs2
+package compression
 
-import fs2.io.file.FileSystemException
-import fs2.io.net.SocketException
-import fs2.io.net.UnknownHostException
-import fs2.io.net.tls.SSLException
+private[compression] trait CompressionPlatform[F[_]]
 
-import scala.scalajs.js
-import fs2.io.net.SocketTimeoutException
-
-object IOException {
-  private[io] def unapply(cause: js.JavaScriptException): Option[IOException] =
-    SocketException
-      .unapply(cause)
-      .orElse(SocketTimeoutException.unapply(cause))
-      .orElse(SSLException.unapply(cause))
-      .orElse(FileSystemException.unapply(cause))
-      .orElse(UnknownHostException.unapply(cause))
-}
-
-class ClosedChannelException extends IOException
+private[compression] trait CompressionCompanionPlatform
