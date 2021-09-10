@@ -22,9 +22,9 @@
 package fs2
 package compression
 
-/** Provides the capability to compress/decompress using deflate and gzip.
-  * On JVM an instance is available given a `Sync[F]`.
-  * On Node.js an instance is available for `Async[F]` by importing `fs2.io.compression._`.
+/** Provides the capability to compress/decompress using deflate and gzip. On JVM an instance is
+  * available given a `Sync[F]`. On Node.js an instance is available for `Async[F]` by importing
+  * `fs2.io.compression._`.
   */
 sealed trait Compression[F[_]] extends CompressionPlatform[F] {
 

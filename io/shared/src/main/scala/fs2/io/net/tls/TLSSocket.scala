@@ -32,8 +32,8 @@ import fs2.io.net.Socket
   */
 sealed trait TLSSocket[F[_]] extends Socket[F] with TLSSocketPlatform[F] {
 
-  /** Provides access to the current `SSLSession` for purposes of querying
-    * session info such as the negotiated cipher suite or the peer certificate.
+  /** Provides access to the current `SSLSession` for purposes of querying session info such as the
+    * negotiated cipher suite or the peer certificate.
     */
   def session: F[SSLSession]
 

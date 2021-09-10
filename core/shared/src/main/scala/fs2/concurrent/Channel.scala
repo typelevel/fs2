@@ -30,72 +30,59 @@ import cats.syntax.all._
   */
 sealed trait Channel[F[_], A] {
 
-  /** Sends all the elements of the input stream through this channel,
-    * and closes it after.
+  /** Sends all the elements of the input stream through this channel, and closes it after.
     * Especially useful if the channel is single producer.
     */
   def sendAll: Pipe[F, A, Nothing]
 
   /** Sends an element through this channel.
     *
-    * It can be called concurrently by multiple producers, and it may
-    * semantically block if the channel is bounded or synchronous.
+    * It can be called concurrently by multiple producers, and it may semantically block if the
+    * channel is bounded or synchronous.
     *
     * No-op if the channel is closed, see [[close]] for further info.
     */
   def send(a: A): F[Either[Channel.Closed, Unit]]
 
-  /** The stream of elements sent through this channel.
-    * It terminates if [[close]] is called and all elements in the channel
-    * have been emitted (see [[close]] for futher info).
+  /** The stream of elements sent through this channel. It terminates if [[close]] is called and all
+    * elements in the channel have been emitted (see [[close]] for futher info).
     *
-    * This method CANNOT be called concurrently by multiple consumers, if
-    * you do so, one of the consumers might become permanently
-    * deadlocked.
+    * This method CANNOT be called concurrently by multiple consumers, if you do so, one of the
+    * consumers might become permanently deadlocked.
     *
-    * It is possible to call `stream` again once the previous
-    * one has terminated, but be aware that some element might get lost
-    * in the process, e.g if the first call to `stream` got 5 elements off
-    * the channel, and terminated after emitting 2, when the second call
-    * to `stream` starts it won't see those 3 elements.
+    * It is possible to call `stream` again once the previous one has terminated, but be aware that
+    * some element might get lost in the process, e.g if the first call to `stream` got 5 elements
+    * off the channel, and terminated after emitting 2, when the second call to `stream` starts it
+    * won't see those 3 elements.
     *
-    * Every time `stream` is pulled, it will serve all the elements that
-    * are queued up in a single chunk, including those from producers
-    * that might be semantically blocked on a bounded channel, which will
-    * then become unblocked. That is, a bound on a channel represents
-    * the maximum number of elements that can be queued up before a
-    * producer blocks, and not the maximum number of elements that will
-    * be received by `stream` at once.
+    * Every time `stream` is pulled, it will serve all the elements that are queued up in a single
+    * chunk, including those from producers that might be semantically blocked on a bounded channel,
+    * which will then become unblocked. That is, a bound on a channel represents the maximum number
+    * of elements that can be queued up before a producer blocks, and not the maximum number of
+    * elements that will be received by `stream` at once.
     */
   def stream: Stream[F, A]
 
-  /** This method achieves graceful shutdown: when the channel gets
-    * closed, `stream` will terminate naturally after consuming all
-    * currently enqueued elements, including the ones by producers blocked
-    * on a bound.
+  /** This method achieves graceful shutdown: when the channel gets closed, `stream` will terminate
+    * naturally after consuming all currently enqueued elements, including the ones by producers
+    * blocked on a bound.
     *
-    * "Termination" here means that `stream` will no longer
-    * wait for new elements on the channel, and not that it will be
-    * interrupted while performing another action: if you want to
-    * interrupt `stream` immediately, without first processing enqueued
-    * elements, you should use `interruptWhen` on it instead.
+    * "Termination" here means that `stream` will no longer wait for new elements on the channel,
+    * and not that it will be interrupted while performing another action: if you want to interrupt
+    * `stream` immediately, without first processing enqueued elements, you should use
+    * `interruptWhen` on it instead.
     *
-    * After a call to `close`, any further calls to `send` or `close`
-    * will be no-ops.
+    * After a call to `close`, any further calls to `send` or `close` will be no-ops.
     *
-    * Note that `close` does not automatically unblock producers which
-    * might be blocked on a bound, they will only become unblocked if
-    * `stream` is executing.
+    * Note that `close` does not automatically unblock producers which might be blocked on a bound,
+    * they will only become unblocked if `stream` is executing.
     *
-    * In other words, if `close` is called while `stream` is
-    * executing, blocked producers will eventually become unblocked,
-    * before `stream` terminates and further `send` calls become
-    * no-ops.
-    * However, if `close` is called after `stream` has terminated (e.g
-    * because it was interrupted, or had a `.take(n)`), then blocked
-    * producers will stay blocked unless they get explicitly
-    * unblocked, either by a further call to `stream` to drain the
-    * channel, or by a a `race` with `closed`.
+    * In other words, if `close` is called while `stream` is executing, blocked producers will
+    * eventually become unblocked, before `stream` terminates and further `send` calls become
+    * no-ops. However, if `close` is called after `stream` has terminated (e.g because it was
+    * interrupted, or had a `.take(n)`), then blocked producers will stay blocked unless they get
+    * explicitly unblocked, either by a further call to `stream` to drain the channel, or by a a
+    * `race` with `closed`.
     */
   def close: F[Either[Channel.Closed, Unit]]
 
