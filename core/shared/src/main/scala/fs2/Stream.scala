@@ -3922,8 +3922,7 @@ object Stream extends StreamLowPriority {
                         lease.cancel
                           .flatMap(onOutcome(oc, _)) >> available.release >> decrementRunning
                       )
-                      .attempt
-                      .void
+                      .handleError(_ => ())
                   }.void
                 }
             }
@@ -3943,8 +3942,7 @@ object Stream extends StreamLowPriority {
                 .compile
                 .drain
                 .guaranteeCase(onOutcome(_, RightUnit) >> decrementRunning)
-                .attempt
-                .void
+                .handleError(_ => ())
             }
 
           def outcomeJoiner: F[Unit] =
@@ -3962,8 +3960,7 @@ object Stream extends StreamLowPriority {
                 case Outcome.Canceled() =>
                   stop(None) >> output.close.void
               }
-              .attempt
-              .void
+              .handleError(_ => ())
 
           def signalResult(fiber: Fiber[F, Throwable, Unit]): F[Unit] =
             done.get.flatMap { blah =>
