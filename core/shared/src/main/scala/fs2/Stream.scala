@@ -3914,7 +3914,7 @@ object Stream extends StreamLowPriority {
                 .flatMap { lease =>
                   F.start {
                     inner.chunks
-                      .evalMap(s => output.send(s).void)
+                      .foreach(s => output.send(s).void)
                       .interruptWhen(done.map(_.nonEmpty))
                       .compile
                       .drain
@@ -3938,6 +3938,7 @@ object Stream extends StreamLowPriority {
                     Pull.getScope[F].flatMap(outerScope => Pull.eval(runInner(inner, outerScope)))
                   )
                 )
+                .drain
                 .interruptWhen(done.map(_.nonEmpty))
                 .compile
                 .drain
