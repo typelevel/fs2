@@ -38,3 +38,5 @@ object IOException {
       .orElse(FileSystemException.unapply(cause))
       .orElse(UnknownHostException.unapply(cause))
 }
+
+class ClosedChannelException extends IOException

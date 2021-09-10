@@ -31,6 +31,7 @@ import fs2.io.internal.PipedStreamBuffer
 import java.io.{InputStream, OutputStream}
 
 private[fs2] trait ioplatform {
+  type ClosedChannelException = java.nio.channels.ClosedChannelException
 
   /** Pipe that converts a stream of bytes to a stream that will emit a single `java.io.InputStream`,
     * that is closed whenever the resulting stream terminates.
