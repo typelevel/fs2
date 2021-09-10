@@ -38,7 +38,7 @@ private[file] trait FileHandleCompanionPlatform {
     new FileHandle[F] {
 
       override def force(metaData: Boolean): F[Unit] =
-        F.fromPromise(F.delay(fsPromisesMod.fdatasync(fd)))
+        F.fromPromise(F.delay(fd.datasync()))
 
       override def read(numBytes: Int, offset: Long): F[Option[Chunk[Byte]]] =
         F.fromPromise(
