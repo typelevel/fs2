@@ -3890,6 +3890,23 @@ object Stream extends StreamLowPriority {
 
           val awaitWhileRunning: F[Unit] = running.discrete.forall(_ > 0).compile.drain
 
+          def onOutcome(
+              oc: Outcome[F, Throwable, Unit],
+              cancelResult: Either[Throwable, Unit]
+          ): F[Unit] =
+            oc match {
+              case Outcome.Succeeded(fu) =>
+                cancelResult.fold(t => stop(Some(t)), _ => outcomes.send(fu).void)
+
+              case Outcome.Errored(t) =>
+                CompositeFailure
+                  .fromResults(Left(t), cancelResult)
+                  .fold(t => stop(Some(t)), _ => F.unit)
+
+              case Outcome.Canceled() =>
+                cancelResult.fold(t => stop(Some(t)), _ => F.unit)
+            }
+
           def runInner(inner: Stream[F, O], outerScope: Scope[F]): F[Unit] =
             F.uncancelable { _ =>
               outerScope.lease
@@ -3901,32 +3918,17 @@ object Stream extends StreamLowPriority {
                       .interruptWhen(done.map(_.nonEmpty))
                       .compile
                       .drain
-                      .guaranteeCase {
-                        case Outcome.Succeeded(fu) =>
-                          lease.cancel.flatMap {
-                            case Left(t)   => stop(Some(t))
-                            case Right(()) => outcomes.send(fu).void
-                          } >> available.release >> decrementRunning
-
-                        case Outcome.Errored(t) =>
-                          lease.cancel.flatMap { cancelResult =>
-                            (CompositeFailure.fromResults(Left(t), cancelResult) match {
-                              case Left(t)   => stop(Some(t))
-                              case Right(()) => F.unit
-                            })
-                          } >> available.release >> decrementRunning
-
-                        case Outcome.Canceled() =>
-                          lease.cancel.flatMap {
-                            case Left(t)   => stop(Some(t))
-                            case Right(()) => F.unit
-                          } >> available.release >> decrementRunning
-                      }
+                      .guaranteeCase(oc =>
+                        lease.cancel
+                          .flatMap(onOutcome(oc, _)) >> available.release >> decrementRunning
+                      )
                       .attempt
                       .void
                   }.void
                 }
             }
+
+          val RightUnit = Right(())
 
           def runOuter: F[Unit] =
             F.uncancelable { _ =>
@@ -3939,16 +3941,7 @@ object Stream extends StreamLowPriority {
                 .interruptWhen(done.map(_.nonEmpty))
                 .compile
                 .drain
-                .guaranteeCase {
-                  case Outcome.Succeeded(fu) =>
-                    outcomes.send(fu) >> decrementRunning
-
-                  case Outcome.Errored(t) =>
-                    stop(Some(t)) >> decrementRunning
-
-                  case Outcome.Canceled() =>
-                    decrementRunning
-                }
+                .guaranteeCase(onOutcome(_, RightUnit) >> decrementRunning)
                 .attempt
                 .void
             }
