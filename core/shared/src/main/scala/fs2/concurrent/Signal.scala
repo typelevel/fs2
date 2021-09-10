@@ -82,7 +82,7 @@ object Signal extends SignalInstances {
 
     /** Predicates the supplied effect `f` on this `Signal` being `true`.
       */
-    def predicate(f: F[_])(implicit F: Monad[F]): F[Unit] =
+    def predicate[A](f: F[A])(implicit F: Monad[F]): F[Unit] =
       self.get.flatMap(f.whenA)
 
   }
