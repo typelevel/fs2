@@ -23,29 +23,21 @@ package fs2
 
 import cats.effect.SyncIO
 import fs2.compression.Checksum
+import org.scalacheck.effect.PropF.forAllF
+import scodec.bits.BitVector
+import scodec.bits.crc.crc32
 
 class ChecksumSuite extends Fs2Suite {
 
   test("CRC32") {
-    assertEquals(
-      Stream
-        .chunk(Chunk.array(Array[Byte](40, 60, 97, -70)))
+    forAllF { (bytes: Stream[Pure, Byte]) =>
+      bytes
         .through(Checksum[SyncIO].crc32)
         .compile
-        .lastOrError
-        .unsafeRunSync(),
-      1054950477L
-    )
-    assertEquals(
-      Stream
-        .emit("hello world!")
-        .through(text.utf8.encode)
-        .through(Checksum[SyncIO].crc32)
-        .compile
-        .lastOrError
-        .unsafeRunSync(),
-      62177901L
-    )
+        .last
+        .map(_.getOrElse(0))
+        .assertEquals(crc32(BitVector(bytes.compile.toVector)).toLong(false))
+    }
   }
 
 }
