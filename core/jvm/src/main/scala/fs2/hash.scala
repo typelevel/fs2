@@ -48,8 +48,8 @@ object hash {
   def sha512[F[_]]: Pipe[F, Byte, Byte] =
     digest(MessageDigest.getInstance("SHA-512"))
 
-  /** Computes the digest of the source stream, emitting the digest as a chunk
-    * after completion of the source stream.
+  /** Computes the digest of the source stream, emitting the digest as a chunk after completion of
+    * the source stream.
     */
   def digest[F[_]](digest: => MessageDigest): Pipe[F, Byte, Byte] =
     in =>

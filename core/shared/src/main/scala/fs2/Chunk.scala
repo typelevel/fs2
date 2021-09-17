@@ -23,7 +23,7 @@ package fs2
 
 import scala.annotation.tailrec
 import scala.collection.immutable.{Queue => SQueue}
-import scala.collection.{mutable, IndexedSeq => GIndexedSeq, Seq => GSeq}
+import scala.collection.{IndexedSeq => GIndexedSeq, Seq => GSeq, mutable}
 import scala.reflect.ClassTag
 import scodec.bits.{BitVector, ByteVector}
 import java.nio.{Buffer => JBuffer, ByteBuffer => JByteBuffer, CharBuffer => JCharBuffer}
@@ -34,18 +34,20 @@ import cats.syntax.all._
 
 /** Strict, finite sequence of values that allows index-based random access of elements.
   *
-  * `Chunk`s can be created from a variety of collection types using methods on the `Chunk` companion
-  * (e.g., `Chunk.array`, `Chunk.seq`, `Chunk.vector`).
+  * `Chunk`s can be created from a variety of collection types using methods on the `Chunk`
+  * companion (e.g., `Chunk.array`, `Chunk.seq`, `Chunk.vector`).
   *
   * Chunks can be appended via the `++` method. The returned chunk is a composite of the input
-  * chunks -- that is, there's no copying of the source chunks. For example, `Chunk(1, 2) ++ Chunk(3, 4) ++ Chunk(5, 6)`
-  * returns a `Chunk.Queue(Chunk(1, 2), Chunk(3, 4), Chunk(5, 6))`. As a result, indexed based lookup of
-  * an appended chunk is `O(number of underlying chunks)`. In the worse case, where each constituent chunk
-  * has size 1, indexed lookup is `O(size)`. To restore `O(1)` lookup, call `compact`, which copies all the underlying
-  * chunk elements to a single array backed chunk. Note `compact` requires a `ClassTag` of the element type.
+  * chunks -- that is, there's no copying of the source chunks. For example, `Chunk(1, 2) ++
+  * Chunk(3, 4) ++ Chunk(5, 6)` returns a `Chunk.Queue(Chunk(1, 2), Chunk(3, 4), Chunk(5, 6))`. As a
+  * result, indexed based lookup of an appended chunk is `O(number of underlying chunks)`. In the
+  * worse case, where each constituent chunk has size 1, indexed lookup is `O(size)`. To restore
+  * `O(1)` lookup, call `compact`, which copies all the underlying chunk elements to a single array
+  * backed chunk. Note `compact` requires a `ClassTag` of the element type.
   *
   * Alternatively, a collection of chunks can be directly copied to a new array backed chunk via
-  * `Chunk.concat(chunks)`. Like `compact`, `Chunk.concat` requires a `ClassTag` for the element type.
+  * `Chunk.concat(chunks)`. Like `compact`, `Chunk.concat` requires a `ClassTag` for the element
+  * type.
   *
   * Various subtypes of `Chunk` are exposed for efficiency reasons:
   *   - `Chunk.Singleton`
@@ -53,8 +55,8 @@ import cats.syntax.all._
   *   - `Chunk.Queue`
   *
   * In particular, calling `.toArraySlice` on a chunk returns a `Chunk.ArraySlice`, which provides
-  * access to the underlying backing array, along with an offset and length, referring to a slice
-  * of that array.
+  * access to the underlying backing array, along with an offset and length, referring to a slice of
+  * that array.
   */
 abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRuntimePlatform[O] {
   self =>
@@ -65,8 +67,8 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
   /** Returns the element at the specified index. Throws if index is < 0 or >= size. */
   def apply(i: Int): O
 
-  /** Returns a chunk which consists of the elements of this chunk and the elements of
-    * the supplied chunk. This operation is amortized O(1).
+  /** Returns a chunk which consists of the elements of this chunk and the elements of the supplied
+    * chunk. This operation is amortized O(1).
     */
   def ++[O2 >: O](that: Chunk[O2]): Chunk[O2] =
     if (isEmpty) that
@@ -101,7 +103,8 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
   /** Drops the first `n` elements of this chunk. */
   def drop(n: Int): Chunk[O] = splitAt(n)._2
 
-  /** Drops the right-most `n` elements of this chunk queue in a way that preserves chunk structure. */
+  /** Drops the right-most `n` elements of this chunk queue in a way that preserves chunk structure.
+    */
   def dropRight(n: Int): Chunk[O] = if (n <= 0) this else take(size - n)
 
   /** Returns a chunk that has only the elements that satisfy the supplied predicate. */
@@ -117,7 +120,9 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
     Chunk.buffer(b.result())
   }
 
-  /** Returns the first element for which the predicate returns true or `None` if no elements satisfy the predicate. */
+  /** Returns the first element for which the predicate returns true or `None` if no elements
+    * satisfy the predicate.
+    */
   def find(p: O => Boolean): Option[O] = {
     var result: Option[O] = None
     var i = 0
@@ -179,7 +184,9 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
   /** True if size is zero, false otherwise. */
   final def isEmpty: Boolean = size == 0
 
-  /** Creates an iterator that iterates the elements of this chunk. The returned iterator is not thread safe. */
+  /** Creates an iterator that iterates the elements of this chunk. The returned iterator is not
+    * thread safe.
+    */
   def iterator: Iterator[O] =
     new Iterator[O] {
       private[this] var i = 0
@@ -187,8 +194,8 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
       def next() = { val result = apply(i); i += 1; result }
     }
 
-  /** Returns the index of the first element which passes the specified predicate (i.e., `p(i) == true`)
-    * or `None` if no elements pass the predicate.
+  /** Returns the index of the first element which passes the specified predicate (i.e., `p(i) ==
+    * true`) or `None` if no elements pass the predicate.
     */
   def indexWhere(p: O => Boolean): Option[Int] = {
     var i = 0
@@ -214,9 +221,9 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
     Chunk.array(arr).asInstanceOf[Chunk[O2]]
   }
 
-  /** Maps the supplied stateful function over each element, outputting the final state and the accumulated outputs.
-    * The first invocation of `f` uses `init` as the input state value. Each successive invocation uses
-    * the output state of the previous invocation.
+  /** Maps the supplied stateful function over each element, outputting the final state and the
+    * accumulated outputs. The first invocation of `f` uses `init` as the input state value. Each
+    * successive invocation uses the output state of the previous invocation.
     */
   def mapAccumulate[S, O2](init: S)(f: (S, O) => (S, O2)): (S, Chunk[O2]) = {
     val arr = new Array[Any](size)
@@ -231,7 +238,8 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
     s -> Chunk.array(arr).asInstanceOf[Chunk[O2]]
   }
 
-  /** Maps the supplied function over each element and returns a chunk of just the defined results. */
+  /** Maps the supplied function over each element and returns a chunk of just the defined results.
+    */
   def mapFilter[O2](f: O => Option[O2]): Chunk[O2] = {
     val sz = size
     val b = collection.mutable.Buffer.newBuilder[O2]
@@ -249,7 +257,9 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
   /** False if size is zero, true otherwise. */
   final def nonEmpty: Boolean = size > 0
 
-  /** Creates an iterator that iterates the elements of this chunk in reverse order. The returned iterator is not thread safe. */
+  /** Creates an iterator that iterates the elements of this chunk in reverse order. The returned
+    * iterator is not thread safe.
+    */
   def reverseIterator: Iterator[O] =
     new Iterator[O] {
       private[this] var i = self.size - 1
@@ -261,8 +271,8 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
   def scanLeft[O2](z: O2)(f: (O2, O) => O2): Chunk[O2] =
     scanLeft_(z, true)(f)._1
 
-  /** Like `scanLeft` except the final element is emitted as a standalone value instead of as
-    * the last element of the accumulated chunk.
+  /** Like `scanLeft` except the final element is emitted as a standalone value instead of as the
+    * last element of the accumulated chunk.
     *
     * Equivalent to `val b = a.scanLeft(z)(f); val (c, carry) = b.splitAt(b.size - 1)`.
     */
@@ -291,11 +301,13 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
     else if (n >= size) (this, Chunk.empty)
     else splitAtChunk_(n)
 
-  /** Splits this chunk in to two chunks at the specified index `n`, which is guaranteed to be in-bounds. */
+  /** Splits this chunk in to two chunks at the specified index `n`, which is guaranteed to be
+    * in-bounds.
+    */
   protected def splitAtChunk_(n: Int): (Chunk[O], Chunk[O])
 
-  /** Check to see if this starts with the items in the given seq
-    * should be the same as take(seq.size).toChunk == Chunk.seq(seq).
+  /** Check to see if this starts with the items in the given seq should be the same as
+    * take(seq.size).toChunk == Chunk.seq(seq).
     */
   def startsWith[O2 >: O](seq: Seq[O2]): Boolean =
     take(seq.size) == Chunk.seq(seq)
@@ -303,7 +315,8 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
   /** Takes the first `n` elements of this chunk. */
   def take(n: Int): Chunk[O] = splitAt(n)._1
 
-  /** Takes the right-most `n` elements of this chunk queue in a way that preserves chunk structure. */
+  /** Takes the right-most `n` elements of this chunk queue in a way that preserves chunk structure.
+    */
   def takeRight(n: Int): Chunk[O] = if (n <= 0) Chunk.empty else drop(size - n)
 
   /** Copies the elements of this chunk to an array. */
@@ -483,8 +496,8 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
     */
   def zip[O2](that: Chunk[O2]): Chunk[(O, O2)] = zipWith(that)(Tuple2.apply)
 
-  /** Zips this chunk with the supplied chunk, passing each pair to `f`, resulting in
-    * an output chunk.
+  /** Zips this chunk with the supplied chunk, passing each pair to `f`, resulting in an output
+    * chunk.
     */
   def zipWith[O2, O3](that: Chunk[O2])(f: (O, O2) => O3): Chunk[O3] = {
     val sz = size.min(that.size)
@@ -499,10 +512,9 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
 
   /** Zips the elements of the input chunk with its indices, and returns the new chunk.
     *
-    * @example {{{
-    * scala> Chunk("The", "quick", "brown", "fox").zipWithIndex.toList
-    * res0: List[(String, Int)] = List((The,0), (quick,1), (brown,2), (fox,3))
-    * }}}
+    * @example
+    *   {{{ scala> Chunk("The", "quick", "brown", "fox").zipWithIndex.toList res0: List[(String,
+    *   Int)] = List((The,0), (quick,1), (brown,2), (fox,3)) }}}
     */
   def zipWithIndex: Chunk[(O, Int)] = {
     val arr = new Array[(O, Int)](size)
@@ -947,9 +959,9 @@ object Chunk
   def concat[A: ClassTag](chunks: GSeq[Chunk[A]]): Chunk[A] =
     concat(chunks, chunks.foldLeft(0)(_ + _.size))
 
-  /** Concatenates the specified sequence of chunks in to a single chunk, avoiding boxing.
-    * The `totalSize` parameter must be equal to the sum of the size of each chunk or
-    * otherwise an exception may be thrown.
+  /** Concatenates the specified sequence of chunks in to a single chunk, avoiding boxing. The
+    * `totalSize` parameter must be equal to the sum of the size of each chunk or otherwise an
+    * exception may be thrown.
     */
   def concat[A: ClassTag](chunks: GSeq[Chunk[A]], totalSize: Int): Chunk[A] =
     if (totalSize == 0)
@@ -995,8 +1007,8 @@ object Chunk
       (Chunk.buffer(bldr.result()), cur)
     }
 
-  /** A FIFO queue of chunks that provides an O(1) size method and provides the ability to
-    * take and drop individual elements while preserving the chunk structure as much as possible.
+  /** A FIFO queue of chunks that provides an O(1) size method and provides the ability to take and
+    * drop individual elements while preserving the chunk structure as much as possible.
     *
     * This is similar to a queue of individual elements but chunk structure is maintained.
     */

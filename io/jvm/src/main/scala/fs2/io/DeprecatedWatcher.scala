@@ -32,24 +32,29 @@ import java.util.concurrent.TimeUnit
 
 import CollectionCompat._
 
-/** Allows watching the file system for changes to directories and files by using the platform's `WatchService`.
+/** Allows watching the file system for changes to directories and files by using the platform's
+  * `WatchService`.
   */
 sealed abstract class Watcher[F[_]] {
 
   /** Registers for events on the specified path.
     *
-    * This is more feature-rich than the platform's `Path#register`. The supplied path may be
-    * a file or directory and events may raised for all descendants of the path. Use [[register]] for
-    * a lower-level API.
+    * This is more feature-rich than the platform's `Path#register`. The supplied path may be a file
+    * or directory and events may raised for all descendants of the path. Use [[register]] for a
+    * lower-level API.
     *
     * Returns a cancellation task that unregisters the path for events. Unregistration is optional -
-    * the `Watcher` will free all resources when it is finalized. Unregistration is only needed
-    * when a `Watcher` will continue to be used after unregistration.
+    * the `Watcher` will free all resources when it is finalized. Unregistration is only needed when
+    * a `Watcher` will continue to be used after unregistration.
     *
-    * @param path file or directory to watch for events
-    * @param types event types to register for; if `Nil`, all standard event types are registered
-    * @param modifiers modifiers to pass to the underlying `WatchService` when registering
-    * @return unregistration task
+    * @param path
+    *   file or directory to watch for events
+    * @param types
+    *   event types to register for; if `Nil`, all standard event types are registered
+    * @param modifiers
+    *   modifiers to pass to the underlying `WatchService` when registering
+    * @return
+    *   unregistration task
     */
   def watch(
       path: Path,
@@ -59,18 +64,22 @@ sealed abstract class Watcher[F[_]] {
 
   /** Registers for events on the specified path.
     *
-    * This is a low-level abstraction on the platform's `Path#register`. The supplied path must be
-    * a directory and events are raised for only direct descendants of the path. Use [[watch]] for
-    * a higher level API.
+    * This is a low-level abstraction on the platform's `Path#register`. The supplied path must be a
+    * directory and events are raised for only direct descendants of the path. Use [[watch]] for a
+    * higher level API.
     *
     * Returns a cancellation task that unregisters the path for events. Unregistration is optional -
-    * the `Watcher` will free all resources when it is finalized. Unregistration is only needed
-    * when a `Watcher` will continue to be used after unregistration.
+    * the `Watcher` will free all resources when it is finalized. Unregistration is only needed when
+    * a `Watcher` will continue to be used after unregistration.
     *
-    * @param path directory to watch for events
-    * @param types event types to register for; if `Nil`, all standard event types are registered
-    * @param modifiers modifiers to pass to the underlying `WatchService` when registering
-    * @return unregistration task
+    * @param path
+    *   directory to watch for events
+    * @param types
+    *   event types to register for; if `Nil`, all standard event types are registered
+    * @param modifiers
+    *   modifiers to pass to the underlying `WatchService` when registering
+    * @return
+    *   unregistration task
     */
   def register(
       path: Path,
@@ -80,14 +89,17 @@ sealed abstract class Watcher[F[_]] {
 
   /** Stream of events for paths that have been registered or watched.
     *
-    * @param pollTimeout amount of time for which the underlying platform is polled for events
+    * @param pollTimeout
+    *   amount of time for which the underlying platform is polled for events
     */
   def events(pollTimeout: FiniteDuration = 1.second): Stream[F, Watcher.Event]
 }
 
 object Watcher {
 
-  /** Type of event raised by `Watcher`. Supports the standard events types as well as arbitrary non-standard types (via `NonStandard`). */
+  /** Type of event raised by `Watcher`. Supports the standard events types as well as arbitrary
+    * non-standard types (via `NonStandard`).
+    */
   sealed abstract class EventType
   object EventType {
     case object Created extends EventType
@@ -106,7 +118,9 @@ object Watcher {
       }
   }
 
-  /** Event raised by `Watcher`. Supports standard events as well as arbitrary non-standard events (via `NonStandard`). */
+  /** Event raised by `Watcher`. Supports standard events as well as arbitrary non-standard events
+    * (via `NonStandard`).
+    */
   sealed abstract class Event
   object Event {
     final case class Created(path: Path, count: Int) extends Event
@@ -117,8 +131,10 @@ object Watcher {
 
     /** Converts a NIO `WatchEvent` to an FS2 `Watcher.Event`.
       *
-      * @param e event to convert
-      * @param registeredDirectory path of the directory for which the event's path is relative
+      * @param e
+      *   event to convert
+      * @param registeredDirectory
+      *   path of the directory for which the event's path is relative
       */
     def fromWatchEvent(e: WatchEvent[_], registeredDirectory: Path): Event =
       e match {

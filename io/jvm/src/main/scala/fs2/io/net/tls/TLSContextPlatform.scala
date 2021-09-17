@@ -51,7 +51,8 @@ private[tls] trait TLSContextPlatform[F[_]] {
   ): Resource[F, DTLSSocket[F]] =
     dtlsClientBuilder(socket, remoteAddress).build
 
-  /** Creates a `DTLSSocket` builder in client mode, allowing optional parameters to be configured. */
+  /** Creates a `DTLSSocket` builder in client mode, allowing optional parameters to be configured.
+    */
   def dtlsClientBuilder(
       socket: DatagramSocket[F],
       remoteAddress: SocketAddress[IpAddress]
@@ -76,7 +77,8 @@ private[tls] trait TLSContextPlatform[F[_]] {
   ): Resource[F, DTLSSocket[F]] =
     dtlsServerBuilder(socket, remoteAddress).build
 
-  /** Creates a `DTLSSocket` builder in client mode, allowing optional parameters to be configured. */
+  /** Creates a `DTLSSocket` builder in client mode, allowing optional parameters to be configured.
+    */
   def dtlsServerBuilder(
       socket: DatagramSocket[F],
       remoteAddress: SocketAddress[IpAddress]

@@ -27,60 +27,53 @@ import cats.effect.implicits._
 import cats.syntax.all._
 import scala.collection.immutable.LongMap
 
-/** Topic allows you to distribute `A`s published by an arbitrary
-  * number of publishers to an arbitrary number of subscribers.
+/** Topic allows you to distribute `A`s published by an arbitrary number of publishers to an
+  * arbitrary number of subscribers.
   *
-  * Topic has built-in back-pressure support implemented as the maximum
-  * number of elements (`maxQueued`) that a subscriber is allowed to enqueue.
+  * Topic has built-in back-pressure support implemented as the maximum number of elements
+  * (`maxQueued`) that a subscriber is allowed to enqueue.
   *
-  * Once that bound is hit, any publishing action will semantically
-  * block until the lagging subscriber consumes some of its queued
-  * elements.
+  * Once that bound is hit, any publishing action will semantically block until the lagging
+  * subscriber consumes some of its queued elements.
   */
 abstract class Topic[F[_], A] { self =>
 
-  /** Publishes elements from source of `A` to this topic.
-    * [[Pipe]] equivalent of `publish1`.
-    * Closes the topic when the input stream terminates.
-    * Especially useful when the topic has a single producer.
+  /** Publishes elements from source of `A` to this topic. [[Pipe]] equivalent of `publish1`. Closes
+    * the topic when the input stream terminates. Especially useful when the topic has a single
+    * producer.
     */
   def publish: Pipe[F, A, Nothing]
 
-  /** Publishes one `A` to topic.
-    * No-op if the channel is closed, see [[close]] for further info.
+  /** Publishes one `A` to topic. No-op if the channel is closed, see [[close]] for further info.
     *
-    * This operation does not complete until after the given element
-    * has been enqued on all subscribers, which means that if any
-    * subscriber is at its `maxQueued` limit, `publish1` will
+    * This operation does not complete until after the given element has been enqued on all
+    * subscribers, which means that if any subscriber is at its `maxQueued` limit, `publish1` will
     * semantically block until that subscriber consumes an element.
     *
-    * A semantically blocked publication can be interrupted, but there is
-    * no guarantee of atomicity, and it could result in the `A` being
-    * received by some subscribers only.
+    * A semantically blocked publication can be interrupted, but there is no guarantee of atomicity,
+    * and it could result in the `A` being received by some subscribers only.
     *
-    * Note: if `publish1` is called concurrently by multiple producers,
-    * different subscribers may receive messages from different producers
-    * in a different order.
+    * Note: if `publish1` is called concurrently by multiple producers, different subscribers may
+    * receive messages from different producers in a different order.
     */
   def publish1(a: A): F[Either[Topic.Closed, Unit]]
 
   /** Subscribes for `A` values that are published to this topic.
     *
-    * Pulling on the returned stream opens a "subscription", which allows up to
-    * `maxQueued` elements to be enqueued as a result of publication.
+    * Pulling on the returned stream opens a "subscription", which allows up to `maxQueued` elements
+    * to be enqueued as a result of publication.
     *
-    * If at any point, the queue backing the subscription has `maxQueued` elements in it,
-    * any further publications semantically block until elements are dequeued from the
-    * subscription queue.
+    * If at any point, the queue backing the subscription has `maxQueued` elements in it, any
+    * further publications semantically block until elements are dequeued from the subscription
+    * queue.
     *
-    * @param maxQueued maximum number of elements to enqueue to the subscription
-    * queue before blocking publishers
+    * @param maxQueued
+    *   maximum number of elements to enqueue to the subscription queue before blocking publishers
     */
   def subscribe(maxQueued: Int): Stream[F, A]
 
-  /** Like `subscribe`, but represents the subscription explicitly as
-    * a `Resource` which returns after the subscriber is subscribed,
-    * but before it has started pulling elements.
+  /** Like `subscribe`, but represents the subscription explicitly as a `Resource` which returns
+    * after the subscriber is subscribed, but before it has started pulling elements.
     */
   def subscribeAwait(maxQueued: Int): Resource[F, Stream[F, A]]
 
@@ -88,23 +81,19 @@ abstract class Topic[F[_], A] { self =>
     */
   def subscribers: Stream[F, Int]
 
-  /** This method achieves graceful shutdown: when the topics gets
-    * closed, its subscribers will terminate naturally after consuming all
-    * currently enqueued elements.
+  /** This method achieves graceful shutdown: when the topics gets closed, its subscribers will
+    * terminate naturally after consuming all currently enqueued elements.
     *
-    * "Termination" here means that subscribers no longer
-    * wait for new elements on the topic, and not that they will be
-    * interrupted while performing another action: if you want to
-    * interrupt a subscriber, without first processing enqueued
-    * elements, you should use `interruptWhen` on it instead.
+    * "Termination" here means that subscribers no longer wait for new elements on the topic, and
+    * not that they will be interrupted while performing another action: if you want to interrupt a
+    * subscriber, without first processing enqueued elements, you should use `interruptWhen` on it
+    * instead.
     *
-    * After a call to `close`, any further calls to `publish1` or `close`
-    * will be no-ops.
+    * After a call to `close`, any further calls to `publish1` or `close` will be no-ops.
     *
-    * Note that `close` does not automatically unblock producers which
-    * might be blocked on a bound, they will only become unblocked
-    * if/when subscribers naturally finish to consume the respective elements.
-    * You can `race` the publish with `close` to interrupt them immediately.
+    * Note that `close` does not automatically unblock producers which might be blocked on a bound,
+    * they will only become unblocked if/when subscribers naturally finish to consume the respective
+    * elements. You can `race` the publish with `close` to interrupt them immediately.
     */
   def close: F[Either[Topic.Closed, Unit]]
 
@@ -114,8 +103,8 @@ abstract class Topic[F[_], A] { self =>
   /** Semantically blocks until the topic gets closed. */
   def closed: F[Unit]
 
-  /** Returns an alternate view of this `Topic` where its elements are of type `B`,
-    * given two functions, `A => B` and `B => A`.
+  /** Returns an alternate view of this `Topic` where its elements are of type `B`, given two
+    * functions, `A => B` and `B => A`.
     */
   def imap[B](f: A => B)(g: B => A): Topic[F, B] =
     new Topic[F, B] {
