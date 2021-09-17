@@ -938,6 +938,18 @@ object Pull extends PullLowPriority {
         def fail(e: Throwable): F[End] = goErr(e, view)
       }
 
+      class TranslateRunner[H[_]](fk: H ~> G, view: Cont[Unit, G, X]) extends Run[H, X, F[End]] {
+        def done(doneScope: Scope[F]): F[End] =
+          go(doneScope, extendedTopLevelScope, translation, runner, view(unit))
+        def out(head: Chunk[X], scope: Scope[F], tail: Pull[H, X, Unit]): F[End] = {
+          val next = bindView(Translate(tail, fk), view)
+          runner.out(head, scope, next)
+        }
+        def interrupted(inter: Interrupted): F[End] =
+          go(scope, extendedTopLevelScope, translation, runner, view(inter))
+        def fail(e: Throwable): F[End] = runner.fail(e)
+      }
+
       abstract class StepRunR[Y, S](view: Cont[Option[S], G, X]) extends Run[G, Y, F[End]] {
         def done(scope: Scope[F]): F[End] =
           interruptGuard(scope, view) {
@@ -1159,6 +1171,12 @@ object Pull extends PullLowPriority {
       }
 
       viewL(stream) match {
+        case tst: Translate[h, G, _] => // y = Unit
+          val view = contP.asInstanceOf[Cont[Unit, G, X]]
+          val composed: h ~> F = translation.compose[h](tst.fk)
+          val translateRunner: Run[h, X, F[End]] = new TranslateRunner(tst.fk, view)
+          go[h, X, End](scope, extendedTopLevelScope, composed, translateRunner, tst.stream)
+
         case action: Action[G, X, y] =>
           val view: Cont[y, G, X] = contP.asInstanceOf[Cont[y, G, X]]
           action match {
@@ -1169,18 +1187,6 @@ object Pull extends PullLowPriority {
 
             case fmout: FlatMapOutput[g, z, _] => // y = Unit
               goFlatMapOut[z](fmout, view.asInstanceOf[Cont[Unit, g, X]])
-
-            case tst: Translate[h, g, _] => // y = Unit
-              val composed: h ~> F = translation.asInstanceOf[g ~> F].compose[h](tst.fk)
-
-              val translateRunner: Run[h, X, F[End]] = new Run[h, X, F[End]] {
-                def done(scope: Scope[F]): F[End] = runner.done(scope)
-                def out(head: Chunk[X], scope: Scope[F], tail: Pull[h, X, Unit]): F[End] =
-                  runner.out(head, scope, Translate(tail, tst.fk))
-                def interrupted(inter: Interrupted): F[End] = runner.interrupted(inter)
-                def fail(e: Throwable): F[End] = runner.fail(e)
-              }
-              go[h, X, End](scope, extendedTopLevelScope, composed, translateRunner, tst.stream)
 
             case u0: Uncons[g, y] =>
               val u = u0.asInstanceOf[Uncons[G, y]]
