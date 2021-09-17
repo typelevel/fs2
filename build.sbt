@@ -126,6 +126,8 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   ProblemFilters.exclude[NewMixinForwarderProblem]("fs2.io.net.Network.*"),
   ProblemFilters.exclude[NewMixinForwarderProblem]("fs2.io.net.tls.TLSContext.*"),
   ProblemFilters.exclude[InheritedNewAbstractMethodProblem]("fs2.io.net.tls.TLSContext.*"),
+  ProblemFilters.exclude[InheritedNewAbstractMethodProblem]("fs2.Compiler#Target.*"),
+  ProblemFilters.exclude[InheritedNewAbstractMethodProblem]("fs2.Compiler#TargetLowPriority#MonadErrorTarget.*"),
   // end #2453
   ProblemFilters.exclude[NewMixinForwarderProblem]("fs2.io.file.Files.*"),
   ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.io.file.Files.*"),

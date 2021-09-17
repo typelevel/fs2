@@ -131,7 +131,7 @@ object Compiler extends CompilerLowPriority {
     * Instances exist for all effects which have either a `Concurrent` instance or
     * a `Sync` instance.
     */
-  sealed trait Target[F[_]] extends MonadError[F, Throwable] {
+  sealed trait Target[F[_]] extends MonadCancelThrow[F] {
     private[fs2] def unique: F[Unique.Token]
     private[fs2] def ref[A](a: A): F[Ref[F, A]]
     private[fs2] def compile[O, Out](
@@ -139,7 +139,6 @@ object Compiler extends CompilerLowPriority {
         init: Out,
         foldChunk: (Out, Chunk[O]) => Out
     ): F[Out]
-    private[fs2] def uncancelable[A](poll: Poll[F] => F[A]): F[A]
     private[fs2] def interruptContext(root: Unique.Token): Option[F[InterruptContext[F]]]
   }
 
@@ -155,7 +154,11 @@ object Compiler extends CompilerLowPriority {
 
     protected abstract class MonadCancelTarget[F[_]](implicit F: MonadCancelThrow[F])
         extends MonadErrorTarget[F]()(F) {
-      private[fs2] def uncancelable[A](f: Poll[F] => F[A]): F[A] = F.uncancelable(f)
+      def uncancelable[A](f: Poll[F] => F[A]): F[A] = F.uncancelable(f)
+      def canceled: F[Unit] = F.canceled
+      def forceR[A, B](fa: F[A])(fb: F[B]): F[B] = F.forceR(fa)(fb)
+      def onCancel[A](fa: F[A], fin: F[Unit]): F[A] = F.onCancel(fa, fin)
+      def rootCancelScope: cats.effect.kernel.CancelScope = F.rootCancelScope
       private[fs2] def compile[O, Out](
           p: Pull[F, O, Unit],
           init: Out,
@@ -166,7 +169,7 @@ object Compiler extends CompilerLowPriority {
           .use(scope => Pull.compile[F, O, Out](p, scope, false, init)(foldChunk))
     }
 
-    private final class SyncTarget[F[_]: Sync] extends MonadCancelTarget[F] {
+    private final class SyncTarget[F[_]](implicit F: Sync[F]) extends MonadCancelTarget[F]()(F) {
       private[fs2] def unique: F[Unique.Token] = Sync[F].unique
       private[fs2] def ref[A](a: A): F[Ref[F, A]] = Ref[F].of(a)
       private[fs2] def interruptContext(root: Unique.Token): Option[F[InterruptContext[F]]] = None
