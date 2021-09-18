@@ -18,7 +18,8 @@ ThisBuild / organizationName := "Functional Streams for Scala"
 ThisBuild / homepage := Some(url("https://github.com/typelevel/fs2"))
 ThisBuild / startYear := Some(2013)
 
-ThisBuild / crossScalaVersions := Seq("3.0.1", "2.12.14", "2.13.6")
+val Scala213 = "2.13.6"
+ThisBuild / crossScalaVersions := Seq("3.0.2", "2.12.15", Scala213)
 
 ThisBuild / githubWorkflowJavaVersions := Seq("adopt@1.11")
 
@@ -164,9 +165,9 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
     libraryDependencies ++= Seq(
       "org.typelevel" %%% "cats-core" % "2.6.1",
       "org.typelevel" %%% "cats-laws" % "2.6.1" % Test,
-      "org.typelevel" %%% "cats-effect" % "2.5.2",
-      "org.typelevel" %%% "cats-effect-laws" % "2.5.2" % Test,
-      "org.scodec" %%% "scodec-bits" % "1.1.27",
+      "org.typelevel" %%% "cats-effect" % "2.5.4",
+      "org.typelevel" %%% "cats-effect-laws" % "2.5.4" % Test,
+      "org.scodec" %%% "scodec-bits" % "1.1.28",
       "org.typelevel" %%% "scalacheck-effect-munit" % "1.0.2" % Test,
       "org.typelevel" %%% "munit-cats-effect-2" % "1.0.5" % Test
     )
@@ -223,7 +224,7 @@ lazy val reactiveStreams = project
     libraryDependencies ++= Seq(
       "org.reactivestreams" % "reactive-streams" % "1.0.3",
       "org.reactivestreams" % "reactive-streams-tck" % "1.0.3" % "test",
-      ("org.scalatestplus" %% "testng-6-7" % "3.2.3.0" % "test").cross(CrossVersion.for3Use2_13)
+      ("org.scalatestplus" %% "testng-6-7" % "3.2.10.0" % "test").cross(CrossVersion.for3Use2_13)
     ),
     OsgiKeys.exportPackage := Seq("fs2.interop.reactivestreams.*"),
     OsgiKeys.privatePackage := Seq(),
@@ -290,7 +291,7 @@ lazy val microsite = project
 ThisBuild / githubWorkflowBuildPostamble ++= List(
   WorkflowStep.Sbt(
     List("microsite/mdoc"),
-    cond = Some(s"matrix.scala == '2.13.4'")
+    cond = Some(s"matrix.scala == '$Scala213'")
   )
 )
 
