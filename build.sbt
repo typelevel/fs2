@@ -170,9 +170,9 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
     libraryDependencies ++= Seq(
       "org.typelevel" %%% "cats-core" % "2.6.1",
       "org.typelevel" %%% "cats-laws" % "2.6.1" % Test,
-      "org.typelevel" %%% "cats-effect" % "3.2.8",
-      "org.typelevel" %%% "cats-effect-laws" % "3.2.8" % Test,
-      "org.typelevel" %%% "cats-effect-testkit" % "3.2.8" % Test,
+      "org.typelevel" %%% "cats-effect" % "3.2.9",
+      "org.typelevel" %%% "cats-effect-laws" % "3.2.9" % Test,
+      "org.typelevel" %%% "cats-effect-testkit" % "3.2.9" % Test,
       "org.scodec" %%% "scodec-bits" % "1.1.28",
       "org.typelevel" %%% "scalacheck-effect-munit" % "1.0.2" % Test,
       "org.typelevel" %%% "munit-cats-effect-3" % "1.0.5" % Test,
@@ -261,7 +261,7 @@ lazy val io = crossProject(JVMPlatform, JSPlatform)
   .jvmSettings(
     Test / fork := true,
     libraryDependencies ++= Seq(
-      "com.github.jnr" % "jnr-unixsocket" % "0.38.10" % Optional,
+      "com.github.jnr" % "jnr-unixsocket" % "0.38.11" % Optional,
       "com.google.jimfs" % "jimfs" % "1.2" % Test
     )
   )
@@ -283,7 +283,7 @@ lazy val reactiveStreams = project
     libraryDependencies ++= Seq(
       "org.reactivestreams" % "reactive-streams" % "1.0.3",
       "org.reactivestreams" % "reactive-streams-tck" % "1.0.3" % "test",
-      ("org.scalatestplus" %% "testng-6-7" % "3.2.9.0" % "test").cross(CrossVersion.for3Use2_13)
+      ("org.scalatestplus" %% "testng-6-7" % "3.2.10.0" % "test").cross(CrossVersion.for3Use2_13)
     ),
     OsgiKeys.exportPackage := Seq("fs2.interop.reactivestreams.*"),
     OsgiKeys.privatePackage := Seq(),
