@@ -177,7 +177,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   /** Equivalent to `val o2Memoized = o2; _.map(_ => o2Memoized)`.
     *
     * @example
-    *   {{{ scala> Stream(1,2,3).as(0).toList res0: List[Int] = List(0, 0, 0) }}}
+    *   {{{scala> Stream(1,2,3).as(0).toList res0: List[Int] = List(0, 0, 0)}}}
     */
   def as[O2](o2: O2): Stream[F, O2] = map(_ => o2)
 
@@ -332,7 +332,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * equality for comparison.
     *
     * @example
-    *   {{{ scala> Stream(1,1,2,2,2,3,3).changes.toList res0: List[Int] = List(1, 2, 3) }}}
+    *   {{{scala> Stream(1,1,2,2,2,3,3).changes.toList res0: List[Int] = List(1, 2, 3)}}}
     */
   def changes[O2 >: O](implicit eq: Eq[O2]): Stream[F, O2] =
     filterWithPrevious(eq.neqv)
@@ -346,7 +346,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * f(o))).changesBy(_._2).map(_._1)`
     *
     * @example
-    *   {{{ scala> Stream(1,1,2,4,6,9).changesBy(_ % 2).toList res0: List[Int] = List(1, 2, 9) }}}
+    *   {{{scala> Stream(1,1,2,4,6,9).changesBy(_ % 2).toList res0: List[Int] = List(1, 2, 9)}}}
     */
   def changesBy[O2](f: O => O2)(implicit eq: Eq[O2]): Stream[F, O] =
     filterWithPrevious((o1, o2) => eq.neqv(f(o1), f(o2)))
@@ -560,7 +560,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   /** Prepends a single value onto the front of this stream.
     *
     * @example
-    *   {{{ scala> Stream(1,2,3).cons1(0).toList res0: List[Int] = List(0, 1, 2, 3) }}}
+    *   {{{scala> Stream(1,2,3).cons1(0).toList res0: List[Int] = List(0, 1, 2, 3)}}}
     */
   def cons1[O2 >: O](o: O2): Stream[F, O2] =
     cons(Chunk.singleton(o))
@@ -569,7 +569,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     *
     * @example
     *   {{{ scala> import cats.effect.IO scala> Stream.empty.covaryAll[IO,Int] res0: Stream[IO,Int]
-    *   = Stream(..) }}}
+    * = Stream(..) }}}
     */
   def covaryAll[F2[x] >: F[x], O2 >: O]: Stream[F2, O2] = this
 
@@ -722,7 +722,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   /** Drops `n` elements of the input, then echoes the rest.
     *
     * @example
-    *   {{{ scala> Stream.range(0,10).drop(5).toList res0: List[Int] = List(5, 6, 7, 8, 9) }}}
+    *   {{{scala> Stream.range(0,10).drop(5).toList res0: List[Int] = List(5, 6, 7, 8, 9)}}}
     */
   def drop(n: Long): Stream[F, O] =
     this.pull.drop(n).flatMap(_.map(_.pull.echo).getOrElse(Pull.done)).stream
@@ -765,7 +765,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * `s.dropRight(n).toList` is equal to `this.toList.reverse.drop(n).reverse`.
     *
     * @example
-    *   {{{ scala> Stream.range(0,10).dropRight(5).toList res0: List[Int] = List(0, 1, 2, 3, 4) }}}
+    *   {{{scala> Stream.range(0,10).dropRight(5).toList res0: List[Int] = List(0, 1, 2, 3, 4)}}}
     */
   def dropRight(n: Int): Stream[F, O] =
     if (n <= 0) this
@@ -1060,9 +1060,9 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   /** Emits the first input (if any) which matches the supplied predicate.
     *
     * @example
-    *   {{{ scala> Stream.range(1,10).find(_ % 2 == 0).toList res0: List[Int] = List(2) }}}
-    *   '''Pure''' if `s` is a finite pure stream, `s.find(p).toList` is equal to
-    *   `s.toList.find(p).toList`, where the second `toList` is to turn `Option` into `List`.
+    *   {{{scala> Stream.range(1,10).find(_ % 2 == 0).toList res0: List[Int] = List(2)}}} '''Pure'''
+    *   if `s` is a finite pure stream, `s.find(p).toList` is equal to `s.toList.find(p).toList`,
+    *   where the second `toList` is to turn `Option` into `List`.
     */
   def find(f: O => Boolean): Stream[F, O] =
     this.pull
@@ -1101,7 +1101,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * element stream.
     *
     * @example
-    *   {{{ scala> Stream(1, 2, 3, 4, 5).fold(0)(_ + _).toList res0: List[Int] = List(15) }}}
+    *   {{{scala> Stream(1, 2, 3, 4, 5).fold(0)(_ + _).toList res0: List[Int] = List(15)}}}
     */
   def fold[O2](z: O2)(f: (O2, O) => O2): Stream[F, O2] =
     this.pull.fold(z)(f).flatMap(Pull.output1).stream
@@ -1110,7 +1110,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * empty stream if the input is empty, or the never stream if the input is non-terminating.
     *
     * @example
-    *   {{{ scala> Stream(1, 2, 3, 4, 5).fold1(_ + _).toList res0: List[Int] = List(15) }}}
+    *   {{{scala> Stream(1, 2, 3, 4, 5).fold1(_ + _).toList res0: List[Int] = List(15)}}}
     */
   def fold1[O2 >: O](f: (O2, O2) => O2): Stream[F, O2] =
     this.pull.fold1(f).flatMap(_.map(Pull.output1).getOrElse(Pull.done)).stream
@@ -1118,7 +1118,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   /** Alias for `map(f).foldMonoid`.
     *
     * @example
-    *   {{{ scala> Stream(1, 2, 3, 4, 5).foldMap(_ => 1).toList res0: List[Int] = List(5) }}}
+    *   {{{scala> Stream(1, 2, 3, 4, 5).foldMap(_ => 1).toList res0: List[Int] = List(5)}}}
     */
   def foldMap[O2](f: O => O2)(implicit O2: Monoid[O2]): Stream[F, O2] =
     fold(O2.empty)((acc, o) => O2.combine(acc, f(o)))
@@ -1133,7 +1133,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     *     result is equivalent to the `Stream.never`: it never terminates nor yields any value.
     *
     * @example
-    *   {{{ scala> Stream(1, 2, 3, 4, 5).foldMonoid.toList res0: List[Int] = List(15) }}}
+    *   {{{scala> Stream(1, 2, 3, 4, 5).foldMonoid.toList res0: List[Int] = List(15)}}}
     */
   def foldMonoid[O2 >: O](implicit O: Monoid[O2]): Stream[F, O2] =
     fold(O.empty)(O.combine)
@@ -1143,7 +1143,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * or hangs without emitting values if the input is infinite and all inputs match the predicate.
     *
     * @example
-    *   {{{ scala> Stream(1, 2, 3, 4, 5).forall(_ < 10).toList res0: List[Boolean] = List(true) }}}
+    *   {{{scala> Stream(1, 2, 3, 4, 5).forall(_ < 10).toList res0: List[Boolean] = List(true)}}}
     * @return
     *   Either a singleton or a never stream:
     *   - '''If''' `this` yields an element `x` for which `¬ p(x)`, '''then''' a singleton stream
@@ -1400,7 +1400,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   /** Emits the first element of this stream (if non-empty) and then halts.
     *
     * @example
-    *   {{{ scala> Stream(1, 2, 3).head.toList res0: List[Int] = List(1) }}}
+    *   {{{scala> Stream(1, 2, 3).head.toList res0: List[Int] = List(1)}}}
     */
   def head: Stream[F, O] = take(1)
 
@@ -1462,7 +1462,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * evaluated.
     *
     * @example
-    *   {{{ scala> Stream.empty.ifEmptyEmit(0).toList res0: List[Int] = List(0) }}}
+    *   {{{scala> Stream.empty.ifEmptyEmit(0).toList res0: List[Int] = List(0)}}}
     */
   def ifEmptyEmit[O2 >: O](o: => O2): Stream[F, O2] =
     ifEmpty(Stream.emit(o))
@@ -1598,7 +1598,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   /** Returns the last element of this stream, if non-empty.
     *
     * @example
-    *   {{{ scala> Stream(1, 2, 3).last.toList res0: List[Option[Int]] = List(Some(3)) }}}
+    *   {{{scala> Stream(1, 2, 3).last.toList res0: List[Option[Int]] = List(Some(3))}}}
     */
   def last: Stream[F, Option[O]] =
     this.pull.last.flatMap(Pull.output1).stream
@@ -1619,7 +1619,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   /** Applies the specified pure function to each input and emits the result.
     *
     * @example
-    *   {{{ scala> Stream("Hello", "World!").map(_.size).toList res0: List[Int] = List(5, 6) }}}
+    *   {{{scala> Stream("Hello", "World!").map(_.size).toList res0: List[Int] = List(5, 6)}}}
     */
   def map[O2](f: O => O2): Stream[F, O2] =
     Pull.mapOutput(this, f).streamNoScope
@@ -2181,7 +2181,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   /** Left fold which outputs all intermediate results.
     *
     * @example
-    *   {{{ scala> Stream(1,2,3,4).scan(0)(_ + _).toList res0: List[Int] = List(0, 1, 3, 6, 10) }}}
+    *   {{{scala> Stream(1,2,3,4).scan(0)(_ + _).toList res0: List[Int] = List(0, 1, 3, 6, 10)}}}
     *
     * More generally: `Stream().scan(z)(f) == Stream(z)` `Stream(x1).scan(z)(f) == Stream(z,
     * f(z,x1))` `Stream(x1,x2).scan(z)(f) == Stream(z, f(z,x1), f(f(z,x1),x2))` etc
@@ -2200,7 +2200,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   /** Like `[[scan]]`, but uses the first element of the stream as the seed.
     *
     * @example
-    *   {{{ scala> Stream(1,2,3,4).scan1(_ + _).toList res0: List[Int] = List(1, 3, 6, 10) }}}
+    *   {{{scala> Stream(1,2,3,4).scan1(_ + _).toList res0: List[Int] = List(1, 3, 6, 10)}}}
     */
   def scan1[O2 >: O](f: (O2, O2) => O2): Stream[F, O2] =
     this.pull.uncons.flatMap {
@@ -2246,7 +2246,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   /** Folds this stream with the monoid for `O` while emitting all intermediate results.
     *
     * @example
-    *   {{{ scala> Stream(1, 2, 3, 4).scanMonoid.toList res0: List[Int] = List(0, 1, 3, 6, 10) }}}
+    *   {{{scala> Stream(1, 2, 3, 4).scanMonoid.toList res0: List[Int] = List(0, 1, 3, 6, 10)}}}
     */
   def scanMonoid[O2 >: O](implicit O: Monoid[O2]): Stream[F, O2] =
     scan(O.empty)(O.combine)
@@ -2377,14 +2377,14 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   /** Emits all elements of the input except the first one.
     *
     * @example
-    *   {{{ scala> Stream(1,2,3).tail.toList res0: List[Int] = List(2, 3) }}}
+    *   {{{scala> Stream(1,2,3).tail.toList res0: List[Int] = List(2, 3)}}}
     */
   def tail: Stream[F, O] = drop(1)
 
   /** Emits the first `n` elements of this stream.
     *
     * @example
-    *   {{{ scala> Stream.range(0,1000).take(5).toList res0: List[Int] = List(0, 1, 2, 3, 4) }}}
+    *   {{{scala> Stream.range(0,1000).take(5).toList res0: List[Int] = List(0, 1, 2, 3, 4)}}}
     */
   def take(n: Long): Stream[F, O] = this.pull.take(n).void.stream
 
@@ -2724,7 +2724,7 @@ object Stream extends StreamLowPriority {
     *   Stream.attemptEval(SyncIO(10)).compile.toVector.unsafeRunSync() res0:
     *   Vector[Either[Throwable,Int]] = Vector(Right(10)) scala> Stream.attemptEval(SyncIO(throw new
     *   RuntimeException)).compile.toVector.unsafeRunSync() res1: Vector[Either[Throwable,Nothing]]
-    *   = Vector(Left(java.lang.RuntimeException)) }}}
+    * = Vector(Left(java.lang.RuntimeException)) }}}
     */
   def attemptEval[F[x] >: Pure[x], O](fo: F[O]): Stream[F, Either[Throwable, O]] =
     new Stream(Pull.attemptEval(fo).flatMap(Pull.output1))
@@ -2838,7 +2838,7 @@ object Stream extends StreamLowPriority {
   /** Creates a pure stream that emits the elements of the supplied chunk.
     *
     * @example
-    *   {{{ scala> Stream.chunk(Chunk(1,2,3)).toList res0: List[Int] = List(1, 2, 3) }}}
+    *   {{{scala> Stream.chunk(Chunk(1,2,3)).toList res0: List[Int] = List(1, 2, 3)}}}
     */
   def chunk[F[x] >: Pure[x], O](os: Chunk[O]): Stream[F, O] =
     new Stream(Pull.output(os))
@@ -2848,7 +2848,7 @@ object Stream extends StreamLowPriority {
     * Elements are emitted in finite chunks with `chunkSize` number of elements.
     *
     * @example
-    *   {{{ scala> Stream.constant(0).take(5).toList res0: List[Int] = List(0, 0, 0, 0, 0) }}}
+    *   {{{scala> Stream.constant(0).take(5).toList res0: List[Int] = List(0, 0, 0, 0, 0)}}}
     */
   def constant[F[x] >: Pure[x], O](o: O, chunkSize: Int = 256): Stream[F, O] =
     chunk(Chunk.seq(List.fill(chunkSize)(o))).repeat
@@ -2867,14 +2867,14 @@ object Stream extends StreamLowPriority {
   /** Creates a singleton pure stream that emits the supplied value.
     *
     * @example
-    *   {{{ scala> Stream.emit(0).toList res0: List[Int] = List(0) }}}
+    *   {{{scala> Stream.emit(0).toList res0: List[Int] = List(0)}}}
     */
   def emit[F[x] >: Pure[x], O](o: O): Stream[F, O] = new Stream(Pull.output1(o))
 
   /** Creates a pure stream that emits the supplied values.
     *
     * @example
-    *   {{{ scala> Stream.emits(List(1, 2, 3)).toList res0: List[Int] = List(1, 2, 3) }}}
+    *   {{{scala> Stream.emits(List(1, 2, 3)).toList res0: List[Int] = List(1, 2, 3)}}}
     */
   def emits[F[x] >: Pure[x], O](os: scala.collection.Seq[O]): Stream[F, O] =
     os match {
@@ -3322,7 +3322,7 @@ object Stream extends StreamLowPriority {
     * stopExclusive by step)`.
     *
     * @example
-    *   {{{ scala> Stream.range(10, 20, 2).toList res0: List[Int] = List(10, 12, 14, 16, 18) }}}
+    *   {{{scala> Stream.range(10, 20, 2).toList res0: List[Int] = List(10, 12, 14, 16, 18)}}}
     */
   def range[F[x] >: Pure[x], O: Numeric](start: O, stopExclusive: O, step: O): Stream[F, O] = {
     import Numeric.Implicits._
@@ -4349,7 +4349,7 @@ object Stream extends StreamLowPriority {
       * @example
       *   {{{ scala> import cats.effect.SyncIO scala>
       *   Stream.range(0,100).take(5).covary[SyncIO].compile.last.unsafeRunSync() res0: Option[Int]
-      *   = Some(4) }}}
+      * = Some(4) }}}
       */
     def last: G[Option[O]] =
       foldChunks(Option.empty[O])((acc, c) => c.last.orElse(acc))
@@ -4461,7 +4461,7 @@ object Stream extends StreamLowPriority {
       * creation.
       *
       * @example
-      *   {{{ scala> Stream("Hello ", "world!").compile.string res0: String = Hello world! }}}
+      *   {{{scala> Stream("Hello ", "world!").compile.string res0: String = Hello world!}}}
       */
     def string(implicit ev: O <:< String): G[String] =
       new Stream(underlying).asInstanceOf[Stream[F, String]].compile.to(Collector.string)
@@ -4506,7 +4506,7 @@ object Stream extends StreamLowPriority {
       * @example
       *   {{{ scala> import cats.effect.SyncIO scala>
       *   Stream.range(0,100).take(5).covary[SyncIO].compile.toList.unsafeRunSync() res0: List[Int]
-      *   = List(0, 1, 2, 3, 4) }}}
+      * = List(0, 1, 2, 3, 4) }}}
       */
     def toList: G[List[O]] = to(List)
 
@@ -4751,7 +4751,7 @@ object Stream extends StreamLowPriority {
     *
     * @example
     *   {{{ scala> import cats.syntax.all._, scala.util._ scala> Stream("1", "2", "NaN").mapFilter(s
-    *   => Try(s.toInt).toOption).toList res0: List[Int] = List(1, 2) }}}
+    * => Try(s.toInt).toOption).toList res0: List[Int] = List(1, 2) }}}
     */
   implicit def functorFilterInstance[F[_]]: FunctorFilter[Stream[F, *]] =
     new FunctorFilter[Stream[F, *]] {
