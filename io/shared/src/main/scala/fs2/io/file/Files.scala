@@ -270,6 +270,8 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
     */
   def readRange(path: Path, chunkSize: Int, start: Long, end: Long): Stream[F, Byte]
 
+  def realPath(path: Path): F[Path]
+
   /** Sets the last modified, last access, and creation time fields of the specified path.
     *
     * Times which are supplied as `None` are not modified. E.g., `setTimes(p, Some(t), Some(t), None, false)`

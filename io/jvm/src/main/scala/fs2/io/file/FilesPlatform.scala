@@ -302,6 +302,9 @@ private[file] trait FilesCompanionPlatform {
     def openFileChannel(channel: F[FileChannel]): Resource[F, FileHandle[F]] =
       Resource.make(channel)(ch => Sync[F].blocking(ch.close())).map(ch => FileHandle.make(ch))
 
+    def realPath(path: Path): F[Path] =
+      Sync[F].blocking(Path.fromNioPath(path.toNioPath.toRealPath()))
+
     def setFileTimes(
         path: Path,
         lastModified: Option[FiniteDuration],
