@@ -36,7 +36,7 @@ import java.util.concurrent.atomic.AtomicReference
   *
   * @see [[https://github.com/reactive-streams/reactive-streams-jvm#2-subscriber-code]]
   */
-final class StreamSubscriber[F[_]: Async, A](val sub: StreamSubscriber.FSM[F, A])
+final class StreamSubscriber[F[_]: ConcurrentEffect, A](val sub: StreamSubscriber.FSM[F, A])
     extends Subscriber[A] {
 
   /** Called by an upstream reactivestreams system */
@@ -73,7 +73,7 @@ final class StreamSubscriber[F[_]: Async, A](val sub: StreamSubscriber.FSM[F, A]
 }
 
 object StreamSubscriber {
-  def apply[F[_]: Async, A]: F[StreamSubscriber[F, A]] =
+  def apply[F[_]: ConcurrentEffect, A]: F[StreamSubscriber[F, A]] =
     fsm[F, A].map(new StreamSubscriber(_))
 
   /** A finite state machine describing the subscriber */
