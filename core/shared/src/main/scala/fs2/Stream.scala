@@ -201,22 +201,35 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   ): Stream[F2, Either[Throwable, O]] =
     attempt ++ delays.flatMap(delay => Stream.sleep_(delay) ++ attempt)
 
-  /** Broadcasts every value of the stream through the pipes provided
-    * as arguments.
+  /** Feeds the values from this stream (source) to all the given pipes,
+    * which process them in parallel, and coordinates the progress.
     *
-    * Each pipe can have a different implementation if required, and
-    * they are all guaranteed to see every `O` pulled from the source
-    * stream.
+    * The result stream pulls from one instance of `this` stream (the source)
+    * and feeds its output values to each pipe. Source values are fed
+    * one chunk at a time.
     *
-    * The pipes are all run concurrently with each other, but note
-    * that elements are pulled from the source as chunks, and the next
-    * chunk is pulled only when all pipes are done with processing the
-    * current chunk, which prevents faster pipes from getting too far ahead.
+    * Internally, this method uses a buffer to keep the latest chunk pulled
+    * from the source. Once in the buffer, each chunk is available for all pipes
+    * to pull it and start processing it. The following source chunk is not
+    * pulled until the current one is vacated, after all pipes have pulled it.
+    * Thus, no chunk is given to any pipe until after all pipes have started
+    * processing the previous chunk.
     *
-    * In other words, this behaviour slows down processing of incoming
-    * chunks by faster pipes until the slower ones have caught up. If
-    * this is not desired, consider using the `prefetch` and
-    * `prefetchN` combinators on the slow pipes.
+    * The goal here is to keep a balance between the progress of pulling
+    * from each pipe and the source stream, to prevent any of those
+    * getting too far ahead. On the other hand, this can slow down fast
+    * pipes until slower ones catch up. To ameliorate this, consider using
+    * the `prefetch` and `prefetchN` combinators on the slow pipes.
+    *
+    * **Error** Any error raised from the input stream, or from any pipe,
+    * will stop the pulling from `this` stream and from any pipe,
+    * and the error will be raised by the resulting stream.
+    *
+    * **Output**: the result stream collects and emits the outputs emitted
+    * from each pipe, mixed in an unknown way, with these guarantees:
+    * 1. each output chunk was emitted by one pipe exactly once.
+    * 2. chunks from each pipe come out of the resulting stream in the same
+    *    order as they came out of the pipe, and without skipping any chunk.
     */
   def broadcastThrough[F2[x] >: F[x]: Concurrent, O2](
       pipes: Pipe[F2, O, O2]*
