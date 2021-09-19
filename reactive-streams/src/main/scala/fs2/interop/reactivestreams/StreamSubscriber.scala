@@ -23,11 +23,10 @@ package fs2
 package interop
 package reactivestreams
 
-import cats.ApplicativeError
-import cats.effect.{Async, Concurrent}
-import cats.implicits._
-import fs2.Stream
-import org.reactivestreams.{Subscriber, Subscription}
+import cats._
+import cats.effect._
+import cats.syntax.all._
+import org.reactivestreams._
 
 import java.util.concurrent.atomic.AtomicReference
 
@@ -173,25 +172,18 @@ object StreamSubscriber {
     F.delay(new AtomicReference[(State, () => Unit)]((Uninitialized, () => ()))).map { ref =>
       new FSM[F, A] {
         def nextState(in: Input): Unit = {
-          val (_, onSet) = ref.updateAndGet {
-            case (state, _) =>
-              step(in)(state)
+          val (_, effect) = ref.updateAndGet { case (state, _) =>
+            step(in)(state)
           }
-          onSet()
+          effect()
         }
-
         def onSubscribe(s: Subscription): Unit = nextState(OnSubscribe(s))
-
         def onNext(a: A): Unit = nextState(OnNext(a))
-
         def onError(t: Throwable): Unit = nextState(OnError(t))
-
         def onComplete(): Unit = nextState(OnComplete)
-
         def onFinalize: F[Unit] = F.delay(nextState(OnFinalize))
-
         def dequeue1: F[Either[Throwable, Option[A]]] =
-          F.async[Out] { cb =>
+          F.async[Either[Throwable, Option[A]]] { cb =>
             nextState(OnDequeue(out => cb(Right(out))))
           }
       }
