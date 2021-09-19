@@ -75,25 +75,17 @@ package object reactivestreams {
       StreamUnicastPublisher(stream)
   }
 
-  private[interop] implicit class Runner[F[_]: ConcurrentEffect, A](fa: F[A]) {
-    def reportFailure(e: Throwable) =
-      Thread.getDefaultUncaughtExceptionHandler match {
-        case null => e.printStackTrace()
-        case h    => h.uncaughtException(Thread.currentThread(), e)
-      }
+  private[interop] def reportFailure(e: Throwable): Unit =
+    Thread.getDefaultUncaughtExceptionHandler match {
+      case null => e.printStackTrace()
+      case h    => h.uncaughtException(Thread.currentThread(), e)
+    }
 
+  private[interop] implicit class Runner[F[_]: ConcurrentEffect, A](fa: F[A]) {
     def unsafeRunAsync(): Unit =
       fa.runAsync {
         case Left(e)  => IO(reportFailure(e))
         case Right(_) => IO.unit
       }.unsafeRunSync()
-
-    def unsafeRunSync(): Unit = {
-      val io = ConcurrentEffect[F].toIO(fa)
-      io.attempt.unsafeRunSync() match {
-        case Left(failure) => reportFailure(failure)
-        case _             =>
-      }
-    }
   }
 }

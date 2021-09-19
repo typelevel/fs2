@@ -135,13 +135,14 @@ object StreamSubscriber {
             val err = new Error(s"received subscription in invalid state [$o]")
             o -> { () =>
               s.cancel()
-              throw err
+              reportFailure(err)
             }
         }
         case OnNext(a) => {
           case WaitingOnUpstream(s, r) => Idle(s) -> (() => r(a.some.asRight))
           case DownstreamCancellation  => DownstreamCancellation -> (() => ())
-          case o                       => o -> (() => throw new Error(s"received record [$a] in invalid state [$o]"))
+          case o =>
+            o -> (() => reportFailure(new Error(s"received record [$a] in invalid state [$o]")))
         }
         case OnComplete => {
           case WaitingOnUpstream(_, r) => UpstreamCompletion -> (() => r(None.asRight))
