@@ -29,19 +29,22 @@ object JdkUnixSockets {
 
   def supported: Boolean = StandardProtocolFamily.values.size > 2
 
-  implicit def forAsync[F[_]](implicit F: Async[F]): UnixSockets[F] =
-    new UnixSockets.AsyncUnixSockets[F] {
-      protected def openChannel(address: UnixSocketAddress) = F.delay {
-        val ch = SocketChannel.open(StandardProtocolFamily.UNIX)
-        ch.connect(UnixDomainSocketAddress.of(address.path))
-        ch
-      }
+  implicit def forAsync[F[_]: Async]: UnixSockets[F] =
+    new JdkUnixSocketsImpl[F]
+}
 
-      protected def openServerChannel(address: UnixSocketAddress) = F.blocking {
-        val serverChannel = ServerSocketChannel.open(StandardProtocolFamily.UNIX)
-        serverChannel.configureBlocking(false)
-        serverChannel.bind(UnixDomainSocketAddress.of(address.path))
-        (F.blocking(serverChannel.accept()), F.blocking(serverChannel.close()))
-      }
-    }
+private[unixsocket] class JdkUnixSocketsImpl[F[_]](implicit F: Async[F])
+    extends UnixSockets.AsyncUnixSockets[F] {
+  protected def openChannel(address: UnixSocketAddress) = F.delay {
+    val ch = SocketChannel.open(StandardProtocolFamily.UNIX)
+    ch.connect(UnixDomainSocketAddress.of(address.path))
+    ch
+  }
+
+  protected def openServerChannel(address: UnixSocketAddress) = F.blocking {
+    val serverChannel = ServerSocketChannel.open(StandardProtocolFamily.UNIX)
+    serverChannel.configureBlocking(false)
+    serverChannel.bind(UnixDomainSocketAddress.of(address.path))
+    (F.blocking(serverChannel.accept()), F.blocking(serverChannel.close()))
+  }
 }
