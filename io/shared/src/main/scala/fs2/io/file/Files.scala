@@ -270,6 +270,11 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
     */
   def readRange(path: Path, chunkSize: Int, start: Long, end: Long): Stream[F, Byte]
 
+  /** Returns the real path i.e. the actual location of `path`.
+    * The precise definition of this method is implementation dependent but in general
+    * it derives from this path, an absolute path that locates the same file as this path,
+    * but with name elements that represent the actual name of the directories and the file.
+    */
   def realPath(path: Path): F[Path]
 
   /** Sets the last modified, last access, and creation time fields of the specified path.
