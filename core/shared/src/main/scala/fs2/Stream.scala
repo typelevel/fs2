@@ -2072,16 +2072,16 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       val action =
         (
           Semaphore[F2](concurrency.toLong),
-          Queue.bounded[F2, Option[O2]](concurrency),
+          Channel.bounded[F2, O2](concurrency),
           Ref[F2].of(none[Either[NonEmptyList[Throwable], Unit]]),
           Deferred[F2, Either[Throwable, Unit]]
-        ).mapN { (semaphore, queue, result, stopReading) =>
+        ).mapN { (semaphore, channel, result, stopReading) =>
           val releaseAndCheckCompletion =
             semaphore.release *>
               semaphore.available
                 .product(result.get)
                 .flatMap { case (available, completion) =>
-                  queue.offer(none).whenA(completion.nonEmpty && available == concurrency)
+                  channel.close.whenA(completion.nonEmpty && available == concurrency)
                 }
 
           val succeed =
@@ -2116,7 +2116,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
                       .race(stopReading.get)
                       .flatMap {
                         case Left(Left(ex)) => failed(ex)
-                        case Left(Right(a)) => queue.offer(a.some)
+                        case Left(Right(a)) => channel.send(a).void
                         case Right(_)       => ().pure[F2]
                       }
                       .guarantee(releaseAndCheckCompletion)
@@ -2131,7 +2131,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
                   case ExitCase.Canceled    => cancelled *> releaseAndCheckCompletion
                 }
 
-          Stream.fromQueueNoneTerminated(queue).concurrently(pullExecAndOutput) ++ completeStream
+          channel.stream.concurrently(pullExecAndOutput) ++ completeStream
         }
 
       Stream.force(action)
