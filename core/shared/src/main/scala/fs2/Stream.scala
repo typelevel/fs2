@@ -1751,7 +1751,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   ]: Concurrent, O2](
       maxConcurrent: Int
   )(f: O => F2[O2]): Stream[F2, O2] =
-    map(o => Stream.eval(f(o))).parJoin(maxConcurrent)
+    parEvalMapUnordered[F2, O2](maxConcurrent)(f)
 
   /** Applies the specified pure function to each chunk in this stream.
     *
