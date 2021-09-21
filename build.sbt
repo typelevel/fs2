@@ -145,7 +145,13 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   ProblemFilters.exclude[IncompatibleMethTypeProblem]("fs2.Pull.mapOutput"),
   ProblemFilters.exclude[NewMixinForwarderProblem]("fs2.compression.Compression.gzip*"),
   ProblemFilters.exclude[NewMixinForwarderProblem]("fs2.compression.Compression.gunzip*"),
-  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.compression.Compression.$init$")
+  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.compression.Compression.$init$"),
+  ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.Compiler#Target.F"),
+  ProblemFilters.exclude[MissingTypesProblem]("fs2.Compiler$Target$ConcurrentTarget"),
+  ProblemFilters.exclude[IncompatibleResultTypeProblem]("fs2.Compiler#Target#ConcurrentTarget.F"),
+  ProblemFilters.exclude[MissingClassProblem]("fs2.Compiler$TargetLowPriority$MonadCancelTarget"),
+  ProblemFilters.exclude[MissingClassProblem]("fs2.Compiler$TargetLowPriority$MonadErrorTarget"),
+  ProblemFilters.exclude[MissingTypesProblem]("fs2.Compiler$TargetLowPriority$SyncTarget")
 )
 
 lazy val root = project
