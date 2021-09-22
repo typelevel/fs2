@@ -2690,7 +2690,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     zipWith_[F2, O2, O3, O4](that)(cont1, cont2, contRight)(f)
   }
 
-  /** Determinsitically zips elements, terminating when the end of either branch is reached naturally.
+  /** Deterministically zips elements, terminating when the end of either branch is reached naturally.
     *
     * @example {{{
     * scala> Stream(1, 2, 3).zip(Stream(4, 5, 6, 7)).toList
@@ -2726,7 +2726,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   def zipLeft[F2[x] >: F[x], O2](that: Stream[F2, O2]): Stream[F2, O] =
     zipWith(that)((x, _) => x)
 
-  /** Determinsitically zips elements using the specified function,
+  /** Deterministically zips elements using the specified function,
     * terminating when the end of either branch is reached naturally.
     *
     * @example {{{
