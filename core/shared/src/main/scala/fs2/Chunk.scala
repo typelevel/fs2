@@ -81,13 +81,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
   def collect[O2](pf: PartialFunction[O, O2]): Chunk[O2] = {
     val b = collection.mutable.Buffer.newBuilder[O2]
     b.sizeHint(size)
-    var i = 0
-    while (i < size) {
-      val o = apply(i)
-      if (pf.isDefinedAt(o))
-        b += pf(o)
-      i += 1
-    }
+    foreach(o => if (pf.isDefinedAt(o)) b += pf(o))
     Chunk.buffer(b.result())
   }
 
@@ -108,26 +102,13 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
   def filter(p: O => Boolean): Chunk[O] = {
     val b = collection.mutable.Buffer.newBuilder[O]
     b.sizeHint(size)
-    var i = 0
-    while (i < size) {
-      val e = apply(i)
-      if (p(e)) b += e
-      i += 1
-    }
+    foreach(e => if (p(e)) b += e)
     Chunk.buffer(b.result())
   }
 
   /** Returns the first element for which the predicate returns true or `None` if no elements satisfy the predicate. */
-  def find(p: O => Boolean): Option[O] = {
-    var result: Option[O] = None
-    var i = 0
-    while (i < size && result.isEmpty) {
-      val o = apply(i)
-      if (p(o)) result = Some(o)
-      i += 1
-    }
-    result
-  }
+  def find(p: O => Boolean): Option[O] =
+    iterator.find(p)
 
   /** Maps `f` over the elements of this chunk and concatenates the result. */
   def flatMap[O2](f: O => Chunk[O2]): Chunk[O2] =
@@ -143,61 +124,34 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
     }
 
   /** Left-folds the elements of this chunk. */
-  def foldLeft[A](init: A)(f: (A, O) => A): A = {
-    var i = 0
-    var acc = init
-    while (i < size) {
-      acc = f(acc, apply(i))
-      i += 1
-    }
-    acc
-  }
+  def foldLeft[A](init: A)(f: (A, O) => A): A =
+    iterator.foldLeft(init)(f)
 
   /** Returns true if the predicate passes for all elements. */
-  def forall(p: O => Boolean): Boolean = {
-    var i = 0
-    var result = true
-    while (i < size && result) {
-      result = p(apply(i))
-      i += 1
-    }
-    result
-  }
+  def forall(p: O => Boolean): Boolean =
+    iterator.forall(p)
 
   /** Invokes the supplied function for each element of this chunk. */
-  def foreach(f: O => Unit): Unit = {
-    var i = 0
-    while (i < size) {
-      f(apply(i))
-      i += 1
-    }
-  }
+  def foreach(f: O => Unit): Unit
+
+  /** Like `foreach` but includes the index of the element. */
+  def foreachWithIndex(f: (O, Int) => Unit): Unit
 
   /** Gets the first element of this chunk. */
-  def head: Option[O] = if (isEmpty) None else Some(apply(0))
+  def head: Option[O] = if (isEmpty) None else Some(iterator.next())
 
   /** True if size is zero, false otherwise. */
   final def isEmpty: Boolean = size == 0
 
   /** Creates an iterator that iterates the elements of this chunk. The returned iterator is not thread safe. */
-  def iterator: Iterator[O] =
-    new Iterator[O] {
-      private[this] var i = 0
-      def hasNext = i < self.size
-      def next() = { val result = apply(i); i += 1; result }
-    }
+  def iterator: Iterator[O]
 
   /** Returns the index of the first element which passes the specified predicate (i.e., `p(i) == true`)
     * or `None` if no elements pass the predicate.
     */
   def indexWhere(p: O => Boolean): Option[Int] = {
-    var i = 0
-    var result = -1
-    while (result < 0 && i < size) {
-      if (p(apply(i))) result = i
-      i += 1
-    }
-    if (result == -1) None else Some(result)
+    val idx = iterator.indexWhere(p)
+    if (idx < 0) None else Some(idx)
   }
 
   /** Gets the last element of this chunk. */
@@ -206,11 +160,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
   /** Creates a new chunk by applying `f` to each element in this chunk. */
   def map[O2](f: O => O2): Chunk[O2] = {
     val arr = new Array[Any](size)
-    var i = 0
-    while (i < size) {
-      arr(i) = f(apply(i))
-      i += 1
-    }
+    foreachWithIndex((o, i) => arr(i) = f(o))
     Chunk.array(arr).asInstanceOf[Chunk[O2]]
   }
 
@@ -220,13 +170,11 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
     */
   def mapAccumulate[S, O2](init: S)(f: (S, O) => (S, O2)): (S, Chunk[O2]) = {
     val arr = new Array[Any](size)
-    var i = 0
     var s = init
-    while (i < size) {
-      val (s2, o2) = f(s, apply(i))
+    foreachWithIndex { (o, i) =>
+      val (s2, o2) = f(s, o)
       arr(i) = o2
       s = s2
-      i += 1
     }
     s -> Chunk.array(arr).asInstanceOf[Chunk[O2]]
   }
@@ -236,12 +184,9 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
     val sz = size
     val b = collection.mutable.Buffer.newBuilder[O2]
     b.sizeHint(sz)
-    var i = 0
-    while (i < sz) {
-      val o = f(apply(i))
-      if (o.isDefined)
-        b += o.get
-      i += 1
+    foreach { o =>
+      val o2 = f(o)
+      if (o2.isDefined) b += o2.get
     }
     Chunk.buffer(b.result())
   }
@@ -250,12 +195,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
   final def nonEmpty: Boolean = size > 0
 
   /** Creates an iterator that iterates the elements of this chunk in reverse order. The returned iterator is not thread safe. */
-  def reverseIterator: Iterator[O] =
-    new Iterator[O] {
-      private[this] var i = self.size - 1
-      def hasNext = i >= 0
-      def next() = { val result = apply(i); i -= 1; result }
-    }
+  def reverseIterator: Iterator[O]
 
   /** Like `foldLeft` but emits each intermediate result of `f`. */
   def scanLeft[O2](z: O2)(f: (O2, O) => O2): Chunk[O2] =
@@ -274,14 +214,11 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
     var acc = z
     if (emitZero) arr(0) = acc
     var i = if (emitZero) 1 else 0
-    var j = 0
-    while (j < size) {
-      acc = f(acc, apply(j))
+    foreach { o =>
+      acc = f(acc, o)
       arr(i) = acc
       i += 1
-      j += 1
     }
-
     Chunk.array(arr).asInstanceOf[Chunk[O2]] -> acc
   }
 
@@ -351,11 +288,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
     if (isEmpty) Nil
     else {
       val buf = new collection.mutable.ListBuffer[O]
-      var i = 0
-      while (i < size) {
-        buf += apply(i)
-        i += 1
-      }
+      foreach(o => buf += o)
       buf.result()
     }
 
@@ -365,11 +298,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
     else {
       val buf = new collection.immutable.VectorBuilder[O]
       buf.sizeHint(size)
-      var i = 0
-      while (i < size) {
-        buf += apply(i)
-        i += 1
-      }
+      foreach(o => buf += o)
       buf.result()
     }
 
@@ -490,8 +419,8 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
     val sz = size.min(that.size)
     val arr = new Array[Any](sz)
     var i = 0
-    while (i < sz) {
-      arr(i) = f(apply(i), that.apply(i))
+    iterator.zip(that.iterator).foreach { case (o, o2) =>
+      arr(i) = f(o, o2)
       i += 1
     }
     Chunk.array(arr).asInstanceOf[Chunk[O3]]
@@ -506,37 +435,23 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
     */
   def zipWithIndex: Chunk[(O, Int)] = {
     val arr = new Array[(O, Int)](size)
-    var i = 0
-    while (i < size) {
-      arr(i) = (apply(i), i)
-      i += 1
-    }
+    foreachWithIndex((o, i) => arr(i) = (o, i))
     Chunk.array(arr)
   }
 
   override def hashCode: Int = {
     import util.hashing.MurmurHash3
-    var i = 0
     var h = MurmurHash3.stringHash("Chunk")
-    while (i < size) {
-      h = MurmurHash3.mix(h, apply(i).##)
-      i += 1
+    foreach { o =>
+      h = MurmurHash3.mix(h, o.##)
     }
-    MurmurHash3.finalizeHash(h, i)
+    MurmurHash3.finalizeHash(h, size)
   }
 
   override def equals(a: Any): Boolean =
     a match {
       case c: Chunk[_] =>
-        size == c.size && {
-          var i = 0
-          var result = true
-          while (result && i < size) {
-            result = apply(i) == c(i)
-            i += 1
-          }
-          result
-        }
+        size == c.size && iterator.sameElements(c.iterator)
       case _ => false
     }
 
@@ -550,7 +465,7 @@ object Chunk
     with ChunkCompanionRuntimePlatform {
 
   private val empty_ : Chunk[Nothing] = new EmptyChunk
-  private final class EmptyChunk extends Chunk[Nothing] {
+  private final class EmptyChunk extends IndexedChunk[Nothing] {
     def size = 0
     def apply(i: Int) = sys.error(s"Chunk.empty.apply($i)")
     def copyToArray[O2 >: Nothing](xs: Array[O2], start: Int): Unit = ()
@@ -568,7 +483,7 @@ object Chunk
 
   /** Creates a chunk consisting of a single element. */
   def singleton[O](o: O): Chunk[O] = new Singleton(o)
-  final class Singleton[O](val value: O) extends Chunk[O] {
+  final class Singleton[O](val value: O) extends IndexedChunk[O] {
     def size: Int = 1
     def apply(i: Int): O =
       if (i == 0) value else throw new IndexOutOfBoundsException()
@@ -585,7 +500,7 @@ object Chunk
       singleton(v.head)
     else new VectorChunk(v)
 
-  private final class VectorChunk[O](v: Vector[O]) extends Chunk[O] {
+  private final class VectorChunk[O](v: Vector[O]) extends IndexedChunk[O] {
     def size = v.length
     def apply(i: Int) = v(i)
     def copyToArray[O2 >: O](xs: Array[O2], start: Int): Unit = {
@@ -618,7 +533,7 @@ object Chunk
       singleton(s.head) // Use size instead of tail.isEmpty as indexed seqs know their size
     else new IndexedSeqChunk(s)
 
-  private final class IndexedSeqChunk[O](s: GIndexedSeq[O]) extends Chunk[O] {
+  private final class IndexedSeqChunk[O](s: GIndexedSeq[O]) extends IndexedChunk[O] {
     def size = s.length
     def apply(i: Int) = s(i)
     def copyToArray[O2 >: O](xs: Array[O2], start: Int): Unit = {
@@ -705,7 +620,7 @@ object Chunk
     else if (b.size == 1) singleton(b.head)
     else new BufferChunk(b)
 
-  private final class BufferChunk[O](b: collection.mutable.Buffer[O]) extends Chunk[O] {
+  private final class BufferChunk[O](b: collection.mutable.Buffer[O]) extends IndexedChunk[O] {
     def size = b.length
     def apply(i: Int) = b(i)
     def copyToArray[O2 >: O](xs: Array[O2], start: Int): Unit = {
@@ -750,7 +665,7 @@ object Chunk
     }
 
   case class ArraySlice[O](values: Array[O], offset: Int, length: Int)(implicit ct: ClassTag[O])
-      extends Chunk[O] {
+      extends IndexedChunk[O] {
     require(
       offset >= 0 && offset <= values.size && length >= 0 && length <= values.size && offset + length <= values.size
     )
@@ -792,7 +707,7 @@ object Chunk
       buf: B,
       val offset: Int,
       val size: Int
-  ) extends Chunk[C] {
+  ) extends IndexedChunk[C] {
     def readOnly(b: B): B
     def buffer(b: B): A
     def get(b: B, n: Int): C
@@ -908,7 +823,7 @@ object Chunk
   def byteVector(bv: ByteVector): Chunk[Byte] =
     ByteVectorChunk(bv)
 
-  private case class ByteVectorChunk(toByteVector: ByteVector) extends Chunk[Byte] {
+  private case class ByteVectorChunk(toByteVector: ByteVector) extends IndexedChunk[Byte] {
 
     def apply(i: Int): Byte =
       toByteVector(i.toLong)
@@ -1001,7 +916,30 @@ object Chunk
     * This is similar to a queue of individual elements but chunk structure is maintained.
     */
   final class Queue[+O] private (val chunks: SQueue[Chunk[O]], val size: Int) extends Chunk[O] {
-    override def iterator: Iterator[O] = chunks.iterator.flatMap(_.iterator)
+    private[this] var compacted: ArraySlice[O] = null
+
+    override def compact[O2 >: O](implicit ct: ClassTag[O2]): ArraySlice[O2] = {
+      if (compacted eq null)
+        compacted = super.compact[O2].asInstanceOf[ArraySlice[O]]
+      compacted.asInstanceOf[ArraySlice[O2]]
+    }
+
+    def foreach(f: O => Unit): Unit = 
+      chunks.foreach(_.foreach(f))
+
+    def foreachWithIndex(f: (O, Int) => Unit): Unit = {
+      var i = 0
+      chunks.foreach { c =>
+        c.foreach { o =>
+          f(o, i)
+          i += 1
+        }
+      }
+    }
+
+    def iterator: Iterator[O] = chunks.iterator.flatMap(_.iterator)
+
+    def reverseIterator: Iterator[O] = chunks.reverseIterator.flatMap(_.reverseIterator)
 
     override def ++[O2 >: O](that: Chunk[O2]): Chunk[O2] =
       if (that.isEmpty) this
@@ -1192,5 +1130,39 @@ object Chunk
           fa: Chunk[A]
       )(f: A => F[Option[B]])(implicit F: Applicative[F]): F[Chunk[B]] = fa.traverseFilter(f)
       override def mapFilter[A, B](fa: Chunk[A])(f: A => Option[B]): Chunk[B] = fa.mapFilter(f)
+    }
+}
+
+abstract class IndexedChunk[+O] extends Chunk[O] { self =>
+  /** Invokes the supplied function for each element of this chunk. */
+  def foreach(f: O => Unit): Unit = {
+    var i = 0
+    while (i < size) {
+      f(apply(i))
+      i += 1
+    }
+  }
+
+  /** Like `foreach` but includes the index of the element. */
+  def foreachWithIndex(f: (O, Int) => Unit): Unit = {
+    var i = 0
+    while (i < size) {
+      f(apply(i), i)
+      i += 1
+    }
+  }
+
+  def iterator: Iterator[O] =
+    new Iterator[O] {
+      private[this] var i = 0
+      def hasNext = i < self.size
+      def next() = { val result = apply(i); i += 1; result }
+    }
+
+  def reverseIterator: Iterator[O] =
+    new Iterator[O] {
+      private[this] var i = self.size - 1
+      def hasNext = i >= 0
+      def next() = { val result = apply(i); i -= 1; result }
     }
 }
