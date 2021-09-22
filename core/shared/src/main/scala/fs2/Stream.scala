@@ -2080,8 +2080,9 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
             semaphore.release *>
               semaphore.available
                 .product(result.get)
-                .flatMap { case (available, completion) =>
-                  channel.close.whenA(completion.nonEmpty && available == concurrency)
+                .flatMap {
+                  case (`concurrency`, Some(_)) => channel.close.void
+                  case _                        => ().pure[F2]
                 }
 
           val succeed =
@@ -2107,31 +2108,30 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
               }
             }
 
-          val pullExecAndOutput =
+          def forkOnElem(el: O): F2[Unit] =
+            semaphore.acquire *>
+              f(el).attempt
+                .race(stopReading.get)
+                .flatMap {
+                  case Left(Left(ex)) => failed(ex)
+                  case Left(Right(a)) => channel.send(a).void
+                  case Right(_)       => ().pure[F2]
+                }
+                .guarantee(releaseAndCheckCompletion)
+                .start
+                .void
+
+          val background =
             Stream.exec(semaphore.acquire) ++
               interruptWhen(stopReading)
-                .evalMap { el =>
-                  val running =
-                    f(el).attempt
-                      .race(stopReading.get)
-                      .flatMap {
-                        case Left(Left(ex)) => failed(ex)
-                        case Left(Right(a)) => channel.send(a).void
-                        case Right(_)       => ().pure[F2]
-                      }
-                      .guarantee(releaseAndCheckCompletion)
-                      .start
-                      .void
-
-                  semaphore.acquire *> running
-                }
+                .foreach(forkOnElem)
                 .onFinalizeCase {
                   case ExitCase.Succeeded   => succeed *> releaseAndCheckCompletion
                   case ExitCase.Errored(ex) => failed(ex) *> releaseAndCheckCompletion
                   case ExitCase.Canceled    => cancelled *> releaseAndCheckCompletion
                 }
 
-          channel.stream.concurrently(pullExecAndOutput) ++ completeStream
+          channel.stream.concurrently(background) ++ completeStream
         }
 
       Stream.force(action)
