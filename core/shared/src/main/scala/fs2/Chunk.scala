@@ -924,7 +924,7 @@ object Chunk
       compacted.asInstanceOf[ArraySlice[O2]]
     }
 
-    def foreach(f: O => Unit): Unit = 
+    def foreach(f: O => Unit): Unit =
       chunks.foreach(_.foreach(f))
 
     def foreachWithIndex(f: (O, Int) => Unit): Unit = {
@@ -1134,6 +1134,7 @@ object Chunk
 }
 
 abstract class IndexedChunk[+O] extends Chunk[O] { self =>
+
   /** Invokes the supplied function for each element of this chunk. */
   def foreach(f: O => Unit): Unit = {
     var i = 0
