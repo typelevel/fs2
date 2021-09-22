@@ -2074,7 +2074,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
           Semaphore[F2](concurrency.toLong),
           Channel.bounded[F2, O2](concurrency),
           Ref[F2].of(none[Either[NonEmptyList[Throwable], Unit]]),
-          Deferred[F2, Either[Throwable, Unit]]
+          Deferred[F2, Unit]
         ).mapN { (semaphore, channel, result, stopReading) =>
           val releaseAndCheckCompletion =
             semaphore.release *>
@@ -2091,10 +2091,10 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
               case other => other
             }
 
-          val cancelled = stopReading.complete(().asRight) *> succeed
+          val cancelled = stopReading.complete(()) *> succeed
 
           def failed(ex: Throwable) =
-            stopReading.complete(().asRight) *>
+            stopReading.complete(()) *>
               result.update {
                 case Some(Left(nel)) => nel.prepend(ex).asLeft.some
                 case _               => NonEmptyList.one(ex).asLeft.some
@@ -2123,7 +2123,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
 
           val background =
             Stream.exec(semaphore.acquire) ++
-              interruptWhen(stopReading)
+              interruptWhen(stopReading.get.map(_.asRight[Throwable]))
                 .foreach(forkOnElem)
                 .onFinalizeCase {
                   case ExitCase.Succeeded   => succeed *> releaseAndCheckCompletion
