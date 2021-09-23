@@ -114,13 +114,9 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
   def flatMap[O2](f: O => Chunk[O2]): Chunk[O2] =
     if (isEmpty) Chunk.empty
     else {
-      val buf = new collection.mutable.ListBuffer[Chunk[O2]]
-      foreach(o => buf += f(o))
-      val totalSize = buf.foldLeft(0)((acc, c) => acc + c.size)
-      val b = collection.mutable.Buffer.newBuilder[O2]
-      b.sizeHint(totalSize)
-      buf.foreach(c => b ++= c.iterator)
-      Chunk.buffer(b.result())
+      var acc = Chunk.Queue.empty[O2]
+      foreach(o => acc = acc :+ f(o))
+      acc
     }
 
   /** Left-folds the elements of this chunk. */
@@ -916,13 +912,6 @@ object Chunk
     * This is similar to a queue of individual elements but chunk structure is maintained.
     */
   final class Queue[+O] private (val chunks: SQueue[Chunk[O]], val size: Int) extends Chunk[O] {
-    private[this] var compacted: ArraySlice[O] = null
-
-    override def compact[O2 >: O](implicit ct: ClassTag[O2]): ArraySlice[O2] = {
-      if (compacted eq null)
-        compacted = super.compact[O2].asInstanceOf[ArraySlice[O]]
-      compacted.asInstanceOf[ArraySlice[O2]]
-    }
 
     def foreach(f: O => Unit): Unit =
       chunks.foreach(_.foreach(f))
