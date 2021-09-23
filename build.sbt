@@ -141,7 +141,8 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   ProblemFilters.exclude[IncompatibleMethTypeProblem]("fs2.Pull.mapOutput"),
   ProblemFilters.exclude[NewMixinForwarderProblem]("fs2.compression.Compression.gzip*"),
   ProblemFilters.exclude[NewMixinForwarderProblem]("fs2.compression.Compression.gunzip*"),
-  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.compression.Compression.$init$")
+  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.compression.Compression.$init$"),
+  ProblemFilters.exclude[MissingClassProblem]("fs2.Chunk$VectorChunk")
 )
 
 lazy val root = project
