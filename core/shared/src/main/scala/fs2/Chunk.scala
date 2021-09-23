@@ -922,16 +922,18 @@ object Chunk
     */
   final class Queue[+O] private (val chunks: SQueue[Chunk[O]], val size: Int) extends Chunk[O] {
 
-    private[this] lazy val accumulatedLengths: Array[(Int, Chunk[O])] = {
-      val arr = new Array[(Int, Chunk[O])](chunks.size)
+    private[this] lazy val accumulatedLengths: (Array[Int], Array[Chunk[O]]) = {
+      val lens = new Array[Int](chunks.size)
+      val arr   = new Array[Chunk[O]](chunks.size)
       var accLen = 0
       var i = 0
       chunks.foreach { c =>
         accLen += c.size
-        arr(i) = (accLen, c)
+        lens(i) = accLen
+        arr(i) = c
         i += 1
       }
-      arr
+      (lens, arr)
     }
 
     override def foreach(f: O => Unit): Unit =
