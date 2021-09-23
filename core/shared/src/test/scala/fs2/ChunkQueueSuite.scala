@@ -89,4 +89,14 @@ class ChunkQueueSuite extends Fs2Suite {
       assertEquals(computed, queue.startsWith(items))
     }
   }
+
+  test("apply") {
+    forAll { (chunks: List[Chunk[Int]]) =>
+      val queue = Chunk.Queue(chunks: _*)
+      val flat = queue.compact
+      (0 until flat.size).foreach { idx =>
+        assertEquals(queue(idx), flat(idx))
+      }
+    }
+  }
 }

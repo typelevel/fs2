@@ -40,8 +40,8 @@ import cats.syntax.all._
   * Chunks can be appended via the `++` method. The returned chunk is a composite of the input
   * chunks -- that is, there's no copying of the source chunks. For example, `Chunk(1, 2) ++ Chunk(3, 4) ++ Chunk(5, 6)`
   * returns a `Chunk.Queue(Chunk(1, 2), Chunk(3, 4), Chunk(5, 6))`. As a result, indexed based lookup of
-  * an appended chunk is `O(number of underlying chunks)`. In the worse case, where each constituent chunk
-  * has size 1, indexed lookup is `O(size)`. To restore `O(1)` lookup, call `compact`, which copies all the underlying
+  * an appended chunk is `O(log2(number of underlying chunks))`. In the worst case, where each constituent chunk
+  * has size 1, indexed lookup is `O(log2(size))`. To restore `O(1)` lookup, call `compact`, which copies all the underlying
   * chunk elements to a single array backed chunk. Note `compact` requires a `ClassTag` of the element type.
   *
   * Alternatively, a collection of chunks can be directly copied to a new array backed chunk via
@@ -922,6 +922,20 @@ object Chunk
     */
   final class Queue[+O] private (val chunks: SQueue[Chunk[O]], val size: Int) extends Chunk[O] {
 
+    private[this] lazy val accumulatedLengths: (Array[Int], Array[Chunk[O]]) = {
+      val lens = new Array[Int](chunks.size)
+      val arr = new Array[Chunk[O]](chunks.size)
+      var accLen = 0
+      var i = 0
+      chunks.foreach { c =>
+        accLen += c.size
+        lens(i) = accLen
+        arr(i) = c
+        i += 1
+      }
+      (lens, arr)
+    }
+
     override def foreach(f: O => Unit): Unit =
       chunks.foreach(_.foreach(f))
 
@@ -945,19 +959,30 @@ object Chunk
       else new Queue(chunks :+ that, size + that.size)
 
     /** Prepends a chunk to the start of this chunk queue. */
-    def +:[O2 >: O](c: Chunk[O2]): Queue[O2] = new Queue(c +: chunks, c.size + size)
+    def +:[O2 >: O](c: Chunk[O2]): Queue[O2] =
+      if (c.isEmpty) this else new Queue(c +: chunks, c.size + size)
 
     /** Appends a chunk to the end of this chunk queue. */
-    def :+[O2 >: O](c: Chunk[O2]): Queue[O2] = new Queue(chunks :+ c, size + c.size)
+    def :+[O2 >: O](c: Chunk[O2]): Queue[O2] =
+      if (c.isEmpty) this else new Queue(chunks :+ c, size + c.size)
 
     def apply(i: Int): O = {
       if (i < 0 || i >= size) throw new IndexOutOfBoundsException()
-      def go(chunks: SQueue[Chunk[O]], offset: Int): O = {
-        val head = chunks.head
-        if (offset < head.size) head(offset)
-        else go(chunks.tail, offset - head.size)
+      if (i == 0) chunks.head(0)
+      else if (i == size - 1) chunks.last.last.get
+      else {
+        val (lengths, chunks) = accumulatedLengths
+        val j = java.util.Arrays.binarySearch(lengths, i)
+        if (j >= 0) {
+          // The requested index is exactly equal to an accumulated length so the head of the next chunk is the value to return
+          chunks(j + 1)(0)
+        } else {
+          // The requested index is not an exact match but located in the chunk after the returned insertion point
+          val k = -(j + 1)
+          val accLenBefore = if (k == 0) 0 else lengths(k - 1)
+          chunks(k)(i - accLenBefore)
+        }
       }
-      go(chunks, i)
     }
 
     def copyToArray[O2 >: O](xs: Array[O2], start: Int): Unit = {
@@ -1052,10 +1077,10 @@ object Chunk
   object Queue {
     private val empty_ = new Queue(collection.immutable.Queue.empty, 0)
     def empty[O]: Queue[O] = empty_.asInstanceOf[Queue[O]]
-    def singleton[O](c: Chunk[O]): Queue[O] = new Queue(collection.immutable.Queue(c), c.size)
+    def singleton[O](c: Chunk[O]): Queue[O] =
+      if (c.isEmpty) empty else new Queue(collection.immutable.Queue(c), c.size)
     def apply[O](chunks: Chunk[O]*): Queue[O] =
-      if (chunks.isEmpty) empty
-      else chunks.tail.foldLeft(singleton(chunks.head))(_ :+ _)
+      chunks.foldLeft(empty[O])(_ :+ _)
   }
 
   def newBuilder[O]: Collector.Builder[O, Chunk[O]] =
