@@ -924,7 +924,7 @@ object Chunk
 
     private[this] lazy val accumulatedLengths: (Array[Int], Array[Chunk[O]]) = {
       val lens = new Array[Int](chunks.size)
-      val arr   = new Array[Chunk[O]](chunks.size)
+      val arr = new Array[Chunk[O]](chunks.size)
       var accLen = 0
       var i = 0
       chunks.foreach { c =>
@@ -971,24 +971,23 @@ object Chunk
       if (i == 0) chunks.head(0)
       else if (i == size - 1) chunks.last.last.get
       else {
-        val table = accumulatedLengths
+        val (lengths, chunks) = accumulatedLengths
         var lo = 0
-        var hi = table.length - 1
+        var hi = lengths.length - 1
         var mid = (hi - lo) / 2
+        var accLen = 0
         var chunk: Chunk[O] = null
         while (lo <= hi) {
           val delta = hi - lo
           mid = lo + (delta / 2)
-          val entry = table(mid)
-          val accLen = entry._1
-          chunk = entry._2
+          accLen = lengths(mid)
+          chunk = chunks(mid)
           if (i >= accLen) lo = if (delta <= 1) mid + 1 else mid
           else if (i >= accLen - chunk.size) lo = hi + 1
           else hi = mid
         }
-        val (accLen, c) = table(mid)
-        val accLenBefore = accLen - c.size
-        c(i - accLenBefore)
+        val accLenBefore = accLen - chunk.size
+        chunk(i - accLenBefore)
       }
     }
 
