@@ -127,8 +127,11 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
     }
 
   /** Left-folds the elements of this chunk. */
-  def foldLeft[A](init: A)(f: (A, O) => A): A =
-    iterator.foldLeft(init)(f)
+  def foldLeft[A](init: A)(f: (A, O) => A): A = {
+    var res = init
+    foreach(o => res = f(res, o))
+    res
+  }
 
   /** Returns true if the predicate passes for all elements. */
   def forall(p: O => Boolean): Boolean =
@@ -201,9 +204,8 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
 
   /** Maps the supplied function over each element and returns a chunk of just the defined results. */
   def mapFilter[O2](f: O => Option[O2]): Chunk[O2] = {
-    val sz = size
     val b = collection.mutable.Buffer.newBuilder[O2]
-    b.sizeHint(sz)
+    b.sizeHint(size)
     foreach { o =>
       val o2 = f(o)
       if (o2.isDefined) b += o2.get
@@ -275,6 +277,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
     arr
   }
 
+  /** Converts this chunk to a `Chunk.ArraySlice`. */
   def toArraySlice[O2 >: O](implicit ct: ClassTag[O2]): Chunk.ArraySlice[O2] =
     this match {
       case as: Chunk.ArraySlice[_] if ct.wrap.runtimeClass eq as.getClass =>
@@ -467,9 +470,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
   override def hashCode: Int = {
     import util.hashing.MurmurHash3
     var h = MurmurHash3.stringHash("Chunk")
-    foreach { o =>
-      h = MurmurHash3.mix(h, o.##)
-    }
+    foreach(o => h = MurmurHash3.mix(h, o.##))
     MurmurHash3.finalizeHash(h, size)
   }
 
@@ -523,33 +524,7 @@ object Chunk
     if (v.isEmpty) empty
     else if (v.size == 1) // Use size instead of tail.isEmpty as vectors know their size
       singleton(v.head)
-    else new VectorChunk(v)
-
-  private final class VectorChunk[O](v: Vector[O]) extends Chunk[O] {
-    def size = v.length
-    def apply(i: Int) = v(i)
-    def copyToArray[O2 >: O](xs: Array[O2], start: Int): Unit = {
-      v.copyToArray(xs, start)
-      ()
-    }
-    override def toVector = v
-    protected def splitAtChunk_(n: Int): (Chunk[O], Chunk[O]) = {
-      val (fst, snd) = v.splitAt(n)
-      vector(fst) -> vector(snd)
-    }
-
-    override def drop(n: Int): Chunk[O] =
-      if (n <= 0) this
-      else if (n >= size) Chunk.empty
-      else vector(v.drop(n))
-
-    override def take(n: Int): Chunk[O] =
-      if (n <= 0) Chunk.empty
-      else if (n >= size) this
-      else vector(v.take(n))
-
-    override def map[O2](f: O => O2): Chunk[O2] = vector(v.map(f))
-  }
+    else new IndexedSeqChunk(v)
 
   /** Creates a chunk backed by an `IndexedSeq`. */
   def indexedSeq[O](s: GIndexedSeq[O]): Chunk[O] =
@@ -1064,6 +1039,14 @@ object Chunk
 
       check(chunks, 0)
     }
+
+    override def traverse[F[_], O2](f: O => F[O2])(implicit F: Applicative[F]): F[Chunk[O2]] =
+      compactUntagged.traverse(f)
+
+    override def traverseFilter[F[_], O2](f: O => F[Option[O2]])(implicit
+        F: Applicative[F]
+    ): F[Chunk[O2]] =
+      compactUntagged.traverseFilter(f)
   }
 
   object Queue {
@@ -1086,13 +1069,12 @@ object Chunk
     new Eq[Chunk[A]] {
       def eqv(c1: Chunk[A], c2: Chunk[A]) =
         c1.size == c2.size && {
-          var i = 0
-          var result = true
-          while (result && i < c1.size) {
-            result = A.eqv(c1(i), c2(i))
-            i += 1
-          }
-          result
+          val itr1 = c1.iterator
+          val itr2 = c2.iterator
+          var same = true
+          while (same && itr1.hasNext && itr2.hasNext)
+            same = A.eqv(itr1.next(), itr2.next())
+          same
         }
     }
 
