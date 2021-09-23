@@ -972,22 +972,16 @@ object Chunk
       else if (i == size - 1) chunks.last.last.get
       else {
         val (lengths, chunks) = accumulatedLengths
-        var lo = 0
-        var hi = lengths.length - 1
-        var mid = (hi - lo) / 2
-        var accLen = 0
-        var chunk: Chunk[O] = null
-        while (lo <= hi) {
-          val delta = hi - lo
-          mid = lo + (delta / 2)
-          accLen = lengths(mid)
-          chunk = chunks(mid)
-          if (i >= accLen) lo = if (delta <= 1) mid + 1 else mid
-          else if (i >= accLen - chunk.size) lo = hi + 1
-          else hi = mid
+        val j = java.util.Arrays.binarySearch(lengths, i)
+        if (j >= 0) {
+          // The requested index is exactly equal to an accumulated length so the head of the next chunk is the value to return
+          chunks(j + 1)(0)
+        } else {
+          // The requested index is not an exact match but located in the chunk after the returned insertion point 
+          val k = -j + 1
+          val accLenBefore = if (k == 0) 0 else lengths(k - 1)
+          chunks(k)(i - accLenBefore)
         }
-        val accLenBefore = accLen - chunk.size
-        chunk(i - accLenBefore)
       }
     }
 
