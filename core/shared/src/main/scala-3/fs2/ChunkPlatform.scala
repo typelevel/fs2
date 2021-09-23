@@ -79,7 +79,7 @@ private[fs2] trait ChunkCompanionPlatform { self: Chunk.type =>
     new IArraySlice(arr, offset, length)
 
   case class IArraySlice[O](values: IArray[O], offset: Int, length: Int)(implicit ct: ClassTag[O])
-      extends IndexedChunk[O] {
+      extends Chunk[O] {
     require(
       offset >= 0 && offset <= values.size && length >= 0 && length <= values.size && offset + length <= values.size
     )

@@ -92,6 +92,13 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
   def compact[O2 >: O](implicit ct: ClassTag[O2]): Chunk.ArraySlice[O2] =
     Chunk.ArraySlice(toArray[O2], 0, size)
 
+  /** Like `compact` but does not require a `ClassTag`. Elements are boxed and stored in an `Array[Any]`. */
+  def compactUntagged[O2 >: O]: Chunk.ArraySlice[O2] = {
+    val arr = new Array[Any](size)
+    copyToArray(arr, 0)
+    Chunk.array(arr).asInstanceOf[Chunk.ArraySlice[O2]]
+  }
+
   /** Drops the first `n` elements of this chunk. */
   def drop(n: Int): Chunk[O] = splitAt(n)._2
 
@@ -128,10 +135,22 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
     iterator.forall(p)
 
   /** Invokes the supplied function for each element of this chunk. */
-  def foreach(f: O => Unit): Unit
+  def foreach(f: O => Unit): Unit = {
+    var i = 0
+    while (i < size) {
+      f(apply(i))
+      i += 1
+    }
+  }
 
   /** Like `foreach` but includes the index of the element. */
-  def foreachWithIndex(f: (O, Int) => Unit): Unit
+  def foreachWithIndex(f: (O, Int) => Unit): Unit = {
+    var i = 0
+    while (i < size) {
+      f(apply(i), i)
+      i += 1
+    }
+  }
 
   /** Gets the first element of this chunk. */
   def head: Option[O] = if (isEmpty) None else Some(iterator.next())
@@ -140,7 +159,12 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
   final def isEmpty: Boolean = size == 0
 
   /** Creates an iterator that iterates the elements of this chunk. The returned iterator is not thread safe. */
-  def iterator: Iterator[O]
+  def iterator: Iterator[O] =
+    new Iterator[O] {
+      private[this] var i = 0
+      def hasNext = i < self.size
+      def next() = { val result = apply(i); i += 1; result }
+    }
 
   /** Returns the index of the first element which passes the specified predicate (i.e., `p(i) == true`)
     * or `None` if no elements pass the predicate.
@@ -191,7 +215,12 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
   final def nonEmpty: Boolean = size > 0
 
   /** Creates an iterator that iterates the elements of this chunk in reverse order. The returned iterator is not thread safe. */
-  def reverseIterator: Iterator[O]
+  def reverseIterator: Iterator[O] =
+    new Iterator[O] {
+      private[this] var i = self.size - 1
+      def hasNext = i >= 0
+      def next() = { val result = apply(i); i -= 1; result }
+    }
 
   /** Like `foldLeft` but emits each intermediate result of `f`. */
   def scanLeft[O2](z: O2)(f: (O2, O) => O2): Chunk[O2] =
@@ -461,7 +490,7 @@ object Chunk
     with ChunkCompanionRuntimePlatform {
 
   private val empty_ : Chunk[Nothing] = new EmptyChunk
-  private final class EmptyChunk extends IndexedChunk[Nothing] {
+  private final class EmptyChunk extends Chunk[Nothing] {
     def size = 0
     def apply(i: Int) = sys.error(s"Chunk.empty.apply($i)")
     def copyToArray[O2 >: Nothing](xs: Array[O2], start: Int): Unit = ()
@@ -479,7 +508,7 @@ object Chunk
 
   /** Creates a chunk consisting of a single element. */
   def singleton[O](o: O): Chunk[O] = new Singleton(o)
-  final class Singleton[O](val value: O) extends IndexedChunk[O] {
+  final class Singleton[O](val value: O) extends Chunk[O] {
     def size: Int = 1
     def apply(i: Int): O =
       if (i == 0) value else throw new IndexOutOfBoundsException()
@@ -496,7 +525,7 @@ object Chunk
       singleton(v.head)
     else new VectorChunk(v)
 
-  private final class VectorChunk[O](v: Vector[O]) extends IndexedChunk[O] {
+  private final class VectorChunk[O](v: Vector[O]) extends Chunk[O] {
     def size = v.length
     def apply(i: Int) = v(i)
     def copyToArray[O2 >: O](xs: Array[O2], start: Int): Unit = {
@@ -529,7 +558,7 @@ object Chunk
       singleton(s.head) // Use size instead of tail.isEmpty as indexed seqs know their size
     else new IndexedSeqChunk(s)
 
-  private final class IndexedSeqChunk[O](s: GIndexedSeq[O]) extends IndexedChunk[O] {
+  private final class IndexedSeqChunk[O](s: GIndexedSeq[O]) extends Chunk[O] {
     def size = s.length
     def apply(i: Int) = s(i)
     def copyToArray[O2 >: O](xs: Array[O2], start: Int): Unit = {
@@ -616,7 +645,7 @@ object Chunk
     else if (b.size == 1) singleton(b.head)
     else new BufferChunk(b)
 
-  private final class BufferChunk[O](b: collection.mutable.Buffer[O]) extends IndexedChunk[O] {
+  private final class BufferChunk[O](b: collection.mutable.Buffer[O]) extends Chunk[O] {
     def size = b.length
     def apply(i: Int) = b(i)
     def copyToArray[O2 >: O](xs: Array[O2], start: Int): Unit = {
@@ -661,7 +690,7 @@ object Chunk
     }
 
   case class ArraySlice[O](values: Array[O], offset: Int, length: Int)(implicit ct: ClassTag[O])
-      extends IndexedChunk[O] {
+      extends Chunk[O] {
     require(
       offset >= 0 && offset <= values.size && length >= 0 && length <= values.size && offset + length <= values.size
     )
@@ -673,6 +702,11 @@ object Chunk
       if ((ct.wrap.runtimeClass eq values.getClass) && offset == 0 && length == values.length)
         this.asInstanceOf[ArraySlice[O2]]
       else super.compact
+
+    override def compactUntagged[O2 >: O]: ArraySlice[O2] =
+      if ((classOf[Array[Any]] eq values.getClass) && offset == 0 && length == values.length)
+        this.asInstanceOf[ArraySlice[O2]]
+      else super.compactUntagged
 
     def copyToArray[O2 >: O](xs: Array[O2], start: Int): Unit =
       if (xs.getClass eq ct.wrap.runtimeClass)
@@ -703,7 +737,7 @@ object Chunk
       buf: B,
       val offset: Int,
       val size: Int
-  ) extends IndexedChunk[C] {
+  ) extends Chunk[C] {
     def readOnly(b: B): B
     def buffer(b: B): A
     def get(b: B, n: Int): C
@@ -819,7 +853,7 @@ object Chunk
   def byteVector(bv: ByteVector): Chunk[Byte] =
     ByteVectorChunk(bv)
 
-  private case class ByteVectorChunk(toByteVector: ByteVector) extends IndexedChunk[Byte] {
+  private case class ByteVectorChunk(toByteVector: ByteVector) extends Chunk[Byte] {
 
     def apply(i: Int): Byte =
       toByteVector(i.toLong)
@@ -913,10 +947,10 @@ object Chunk
     */
   final class Queue[+O] private (val chunks: SQueue[Chunk[O]], val size: Int) extends Chunk[O] {
 
-    def foreach(f: O => Unit): Unit =
+    override def foreach(f: O => Unit): Unit =
       chunks.foreach(_.foreach(f))
 
-    def foreachWithIndex(f: (O, Int) => Unit): Unit = {
+    override def foreachWithIndex(f: (O, Int) => Unit): Unit = {
       var i = 0
       chunks.foreach { c =>
         c.foreach { o =>
@@ -926,9 +960,9 @@ object Chunk
       }
     }
 
-    def iterator: Iterator[O] = chunks.iterator.flatMap(_.iterator)
+    override def iterator: Iterator[O] = chunks.iterator.flatMap(_.iterator)
 
-    def reverseIterator: Iterator[O] = chunks.reverseIterator.flatMap(_.reverseIterator)
+    override def reverseIterator: Iterator[O] = chunks.reverseIterator.flatMap(_.reverseIterator)
 
     override def ++[O2 >: O](that: Chunk[O2]): Chunk[O2] =
       if (that.isEmpty) this
@@ -1119,40 +1153,5 @@ object Chunk
           fa: Chunk[A]
       )(f: A => F[Option[B]])(implicit F: Applicative[F]): F[Chunk[B]] = fa.traverseFilter(f)
       override def mapFilter[A, B](fa: Chunk[A])(f: A => Option[B]): Chunk[B] = fa.mapFilter(f)
-    }
-}
-
-abstract class IndexedChunk[+O] extends Chunk[O] { self =>
-
-  /** Invokes the supplied function for each element of this chunk. */
-  def foreach(f: O => Unit): Unit = {
-    var i = 0
-    while (i < size) {
-      f(apply(i))
-      i += 1
-    }
-  }
-
-  /** Like `foreach` but includes the index of the element. */
-  def foreachWithIndex(f: (O, Int) => Unit): Unit = {
-    var i = 0
-    while (i < size) {
-      f(apply(i), i)
-      i += 1
-    }
-  }
-
-  def iterator: Iterator[O] =
-    new Iterator[O] {
-      private[this] var i = 0
-      def hasNext = i < self.size
-      def next() = { val result = apply(i); i += 1; result }
-    }
-
-  def reverseIterator: Iterator[O] =
-    new Iterator[O] {
-      private[this] var i = self.size - 1
-      def hasNext = i >= 0
-      def next() = { val result = apply(i); i -= 1; result }
     }
 }
