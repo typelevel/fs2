@@ -454,6 +454,10 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * Chunks from the source stream are split as necessary.
     * If `allowFewer` is true, the last chunk that is emitted may have less than `n` elements.
     *
+    * Note: the emitted chunk may be a composite chunk (i.e., an instance of `Chunk.Queue`) and
+    * hence may not have O(1) lookup by index. Consider calling `.map(_.compact)` if indexed
+    * lookup is important.
+    *
     * @example {{{
     * scala> Stream(1,2,3).repeat.chunkN(2).take(5).toList
     * res0: List[Chunk[Int]] = List(Chunk(1, 2), Chunk(3, 1), Chunk(2, 3), Chunk(1, 2), Chunk(3, 1))
@@ -4079,9 +4083,13 @@ object Stream extends StreamLowPriority {
       }
     }
 
-    /** Like [[uncons]], but returns a chunk of exactly `n` elements, splitting chunk as necessary.
+    /** Like [[uncons]] but returns a chunk of exactly `n` elements, concatenating and splitting as necessary.
       *
       * `Pull.pure(None)` is returned if the end of the source stream is reached.
+      *
+      * Note: the emitted chunk may be a composite chunk (i.e., an instance of `Chunk.Queue`) and
+      * hence may not have O(1) lookup by index. Consider calling `.map(_.compact)` if indexed
+      * lookup is important.
       */
     def unconsN(
         n: Int,
