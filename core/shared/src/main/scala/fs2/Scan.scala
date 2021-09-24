@@ -24,6 +24,7 @@ package fs2
 
 import cats.{Contravariant, Functor}
 import cats.data.AndThen
+import cats.arrow.Strong
 
 /** A stateful transformation of the elements of a stream.
   *
@@ -104,6 +105,15 @@ final class Scan[S, -I, +O](
       initial,
       AndThen[(S, I2), (S, I)] { case (s, i2) => (s, f(i2)) }.andThen(transform_),
       onComplete_
+    )
+
+  def dimap[I2, O2](g: I2 => I)(f: O => O2): Scan[S, I2, O2] =
+    Scan[S, I2, O2](initial)(
+      { (s, i2) =>
+        val (s2, os) = transform(s, g(i2))
+        (s2, os.map(f))
+      },
+      onComplete_.andThen(_.map(f))
     )
 
   /** Transforms the state type. */
@@ -227,7 +237,7 @@ object Scan {
   def stateless[I, O](f: I => Chunk[O]): Scan[Unit, I, O] =
     stateful[Unit, I, O](())((u, i) => (u, f(i)))
 
-  def lift[I, O](f: I => O): Scan[Unit, I, O] =
+  def lift2[I, O](f: I => O): Scan[Unit, I, O] =
     stateless(i => Chunk.singleton(f(i)))
 
   implicit def functor[S, I]: Functor[Scan[S, I, *]] =
@@ -239,4 +249,11 @@ object Scan {
     new Contravariant[Scan[S, *, O]] {
       def contramap[I, I2](s: Scan[S, I, O])(f: I2 => I) = s.contramap(f)
     }
+
+  implicit def strong[S]: Strong[Scan[S, *, *]] = new Strong[Scan[S, *, *]] {
+    def first[A, B, C](fa: Scan[S, A, B]): Scan[S, (A, C), (B, C)] = fa.first
+    def second[A, B, C](fa: Scan[S, A, B]): Scan[S, (C, A), (C, B)] = fa.second
+    def dimap[A, B, C, D](fab: Scan[S, A, B])(f: C => A)(g: B => D): Scan[S,C,D] =
+      fab.dimap(f)(g)
+  }
 }
