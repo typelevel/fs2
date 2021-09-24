@@ -40,7 +40,7 @@ import cats.syntax.all._
   * Chunks can be appended via the `++` method. The returned chunk is a composite of the input
   * chunks -- that is, there's no copying of the source chunks. For example, `Chunk(1, 2) ++ Chunk(3, 4) ++ Chunk(5, 6)`
   * returns a `Chunk.Queue(Chunk(1, 2), Chunk(3, 4), Chunk(5, 6))`. As a result, indexed based lookup of
-  * an appended chunk is `O(log2(number of underlying chunks))`. In the worst case, where each constituent chunk
+  * an appended chunk is amortized `O(log2(number of underlying chunks))`. In the worst case, where each constituent chunk
   * has size 1, indexed lookup is `O(log2(size))`. To restore `O(1)` lookup, call `compact`, which copies all the underlying
   * chunk elements to a single array backed chunk. Note `compact` requires a `ClassTag` of the element type.
   *
