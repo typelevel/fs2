@@ -253,7 +253,7 @@ object Scan {
   implicit def strong[S]: Strong[Scan[S, *, *]] = new Strong[Scan[S, *, *]] {
     def first[A, B, C](fa: Scan[S, A, B]): Scan[S, (A, C), (B, C)] = fa.first
     def second[A, B, C](fa: Scan[S, A, B]): Scan[S, (C, A), (C, B)] = fa.second
-    def dimap[A, B, C, D](fab: Scan[S, A, B])(f: C => A)(g: B => D): Scan[S,C,D] =
+    def dimap[A, B, C, D](fab: Scan[S, A, B])(f: C => A)(g: B => D): Scan[S, C, D] =
       fab.dimap(f)(g)
   }
 }
