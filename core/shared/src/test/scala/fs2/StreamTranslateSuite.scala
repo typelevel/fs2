@@ -40,17 +40,18 @@ class StreamTranslateSuite extends Fs2Suite {
     }
   }
 
-  test("2") {
-    forAllF { (s: Stream[Pure, Int]) =>
-      val expected = s.toList
-      s.covary[Function0]
+  test("2 - Appending another stream after translation") {
+    forAllF { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
+      val expected = (s1 ++ s2).toList
+      val translated: Stream[IO, Int] = s1
+        .covary[Function0]
         .flatMap(i => Stream.eval(() => i))
         .flatMap(i => Stream.eval(() => i))
         .translate(new (Function0 ~> IO) {
           def apply[A](thunk: Function0[A]) = IO(thunk())
         })
-        .compile
-        .toList
+
+      (translated ++ s2.covary[IO]).compile.toList
         .assertEquals(expected)
     }
   }
