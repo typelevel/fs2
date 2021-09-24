@@ -977,7 +977,7 @@ object Chunk
           // The requested index is exactly equal to an accumulated length so the head of the next chunk is the value to return
           chunks(j + 1)(0)
         } else {
-          // The requested index is not an exact match but located in the chunk after the returned insertion point
+          // The requested index is not an exact match but located in the chunk at the returned insertion point
           val k = -(j + 1)
           val accLenBefore = if (k == 0) 0 else lengths(k - 1)
           chunks(k)(i - accLenBefore)
