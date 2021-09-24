@@ -28,7 +28,7 @@ import cats.effect.kernel.Async
 import cats.effect.kernel.Resource
 import cats.effect.std.Dispatcher
 import cats.syntax.all._
-import fs2.internal.jsdeps.node.netMod
+import fs2.internal.jsdeps.node.nodeNetMod
 import fs2.internal.jsdeps.node.tlsMod
 
 private[tls] trait TLSContextPlatform[F[_]]
@@ -67,7 +67,7 @@ private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
                   .setEnableTrace(logger != TLSLogger.Disabled)
                 TLSSocket.forAsync(
                   socket,
-                  sock => tlsMod.connect(options.setSocket(sock.asInstanceOf[netMod.Socket]))
+                  sock => tlsMod.connect(options.setSocket(sock.asInstanceOf[nodeNetMod.Socket]))
                 )
               } else {
                 val options = params
@@ -77,7 +77,7 @@ private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
                   .setIsServer(true)
                 TLSSocket.forAsync(
                   socket,
-                  sock => new tlsMod.TLSSocket(sock.asInstanceOf[netMod.Socket], options)
+                  sock => new tlsMod.TLSSocket(sock.asInstanceOf[nodeNetMod.Socket], options)
                 )
               }
             }

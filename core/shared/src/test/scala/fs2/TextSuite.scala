@@ -94,15 +94,16 @@ class TextSuite extends Fs2Suite {
           Stream(l: _*).map(utf8Bytes).unchunks.through(utf8.decode).toList,
           l
         )
-        assertEquals(Stream(l0: _*).map(utf8Bytes).through(utf8.decodeC).toList, l0)
+        assertEquals(Stream(l: _*).map(utf8Bytes).through(utf8.decodeC).toList, l)
       }
     }
 
     property("utf8Encode andThen utf8.decode = id") {
       forAll(genStringNoBom) { (s: String) =>
-        assertEquals(Stream(s).through(utf8.encodeC).through(utf8.decodeC).toList, List(s))
-        if (s.nonEmpty)
+        if (s.nonEmpty) {
+          assertEquals(Stream(s).through(utf8.encodeC).through(utf8.decodeC).toList, List(s))
           assertEquals(Stream(s).through(utf8.encode).through(utf8.decode).toList, List(s))
+        }
       }
     }
 

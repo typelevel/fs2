@@ -175,6 +175,7 @@ private[fs2] trait FilesCompanionPlatform {
             fsPromisesMod.lstat(path.toString)
         }
       }.adaptError { case IOException(ex) => ex }
+        .widen
 
     private def access(path: Path, mode: Double): F[Boolean] =
       F.fromPromise(F.delay(fsPromisesMod.access(path.toString, mode)))
@@ -334,6 +335,9 @@ private[fs2] trait FilesCompanionPlatform {
 
     override def readRange(path: Path, chunkSize: Int, start: Long, end: Long): Stream[F, Byte] =
       readStream(path, chunkSize, Flags.Read)(_.setStart(start.toDouble).setEnd((end - 1).toDouble))
+
+    def realPath(path: Path): F[Path] =
+      F.fromPromise(F.delay(fsPromisesMod.realpath(path.toString))).map(Path(_))
 
     override def setFileTimes(
         path: Path,

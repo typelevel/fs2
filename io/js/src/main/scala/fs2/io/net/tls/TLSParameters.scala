@@ -56,8 +56,8 @@ sealed trait TLSParameters {
   ): tlsMod.TLSSocketOptions = {
     val options = tlsMod.TLSSocketOptions()
     setCommonOptions(options, dispatcher)
-    session.map(s => Chunk.byteVector(s.raw).toBuffer).foreach(options.setSession)
-    requestOCSP.foreach(options.setRequestOCSP)
+    session.map(s => Chunk.byteVector(s.raw).toBuffer).foreach(options.setSession(_))
+    requestOCSP.foreach(options.setRequestOCSP(_))
     options
   }
 
@@ -66,11 +66,11 @@ sealed trait TLSParameters {
   ): tlsMod.ConnectionOptions = {
     val options = tlsMod.ConnectionOptions()
     setCommonOptions(options, dispatcher)
-    session.map(s => Chunk.byteVector(s.raw).toBuffer).foreach(options.setSession)
+    session.map(s => Chunk.byteVector(s.raw).toBuffer).foreach(options.setSession(_))
     pskCallback.map(_.toJS).foreach(options.setPskCallback(_))
-    servername.foreach(options.setServername)
+    servername.foreach(options.setServername(_))
     checkServerIdentity.map(_.toJS).foreach(options.setCheckServerIdentity(_))
-    minDHSize.map(_.toDouble).foreach(options.setMinDHSize)
+    minDHSize.map(_.toDouble).foreach(options.setMinDHSize(_))
     options
   }
 
@@ -78,8 +78,8 @@ sealed trait TLSParameters {
       options: tlsMod.CommonConnectionOptions,
       dispatcher: Dispatcher[F]
   ): Unit = {
-    requestCert.foreach(options.setRequestCert)
-    rejectUnauthorized.foreach(options.setRejectUnauthorized)
+    requestCert.foreach(options.setRequestCert(_))
+    rejectUnauthorized.foreach(options.setRejectUnauthorized(_))
     alpnProtocols
       .map(_.map(x => x: String | Uint8Array).toJSArray)
       .foreach(options.setALPNProtocols(_))
@@ -131,16 +131,17 @@ object TLSParameters {
     def apply[F[_]: Async](servername: String): F[Either[Throwable, Option[SecureContext]]]
     private[TLSParameters] def toJS[F[_]](dispatcher: Dispatcher[F])(implicit
         F: Async[F]
-    ): js.Function2[String, js.Function2[js.Error | Null, tlsMod.SecureContext, Unit], Unit] = {
-      (servername, cb) =>
-        dispatcher.unsafeRunAndForget {
-          import SecureContext.ops
-          apply(servername).flatMap {
-            case Left(ex)         => F.delay(cb(js.Error(ex.getMessage), null))
-            case Right(Some(ctx)) => F.delay(cb(null, ctx.toJS))
-            case Right(None)      => F.delay(cb(null, null))
-          }
+    ): js.Function2[String, js.Function2[js.Error | Null, js.UndefOr[
+      tlsMod.SecureContext
+    ], Unit], Unit] = { (servername, cb) =>
+      dispatcher.unsafeRunAndForget {
+        import SecureContext.ops
+        apply(servername).flatMap {
+          case Left(ex)         => F.delay(cb(js.Error(ex.getMessage), null))
+          case Right(Some(ctx)) => F.delay(cb(null, ctx.toJS))
+          case Right(None)      => F.delay(cb(null, null))
         }
+      }
     }
   }
 

@@ -19,32 +19,47 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2.io.net.unixsocket
+package fs2
+package io
 
-import cats.effect.kernel.Async
-import java.net.{StandardProtocolFamily, UnixDomainSocketAddress}
-import java.nio.channels.{ServerSocketChannel, SocketChannel}
+import fs2.CompressionSuite
+import fs2.internal.jsdeps.node.zlibMod
+import fs2.io.compression._
+import fs2.io.internal.ByteChunkOps._
 
-object JdkUnixSockets {
+class NodeJSCompressionSuite extends CompressionSuite {
 
-  def supported: Boolean = StandardProtocolFamily.values.size > 2
+  override def scalaCheckTestParameters =
+    super.scalaCheckTestParameters.withMaxSize(10000)
 
-  implicit def forAsync[F[_]: Async]: UnixSockets[F] =
-    new JdkUnixSocketsImpl[F]
-}
-
-private[unixsocket] class JdkUnixSocketsImpl[F[_]](implicit F: Async[F])
-    extends UnixSockets.AsyncUnixSockets[F] {
-  protected def openChannel(address: UnixSocketAddress) = F.delay {
-    val ch = SocketChannel.open(StandardProtocolFamily.UNIX)
-    ch.connect(UnixDomainSocketAddress.of(address.path))
-    ch
+  override def deflateStream(
+      b: Array[Byte],
+      level: Int,
+      strategy: Int,
+      nowrap: Boolean
+  ): Array[Byte] = {
+    val in = Chunk.array(b).toUint8Array
+    val options = zlibMod
+      .ZlibOptions()
+      .setLevel(level.toDouble)
+      .setStrategy(strategy.toDouble)
+    val out =
+      if (nowrap)
+        zlibMod.gzipSync(in, options)
+      else
+        zlibMod.deflateSync(in, options)
+    out.toChunk.toArray
   }
 
-  protected def openServerChannel(address: UnixSocketAddress) = F.blocking {
-    val serverChannel = ServerSocketChannel.open(StandardProtocolFamily.UNIX)
-    serverChannel.configureBlocking(false)
-    serverChannel.bind(UnixDomainSocketAddress.of(address.path))
-    (F.blocking(serverChannel.accept()), F.blocking(serverChannel.close()))
+  override def inflateStream(b: Array[Byte], nowrap: Boolean): Array[Byte] = {
+    val in = Chunk.array(b).toUint8Array
+    val options = zlibMod.ZlibOptions()
+    val out =
+      if (nowrap)
+        zlibMod.gunzipSync(in, options)
+      else
+        zlibMod.inflateSync(in, options)
+    out.toChunk.toArray
   }
+
 }

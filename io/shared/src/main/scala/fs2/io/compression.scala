@@ -19,32 +19,6 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2.io.net.unixsocket
+package fs2.io
 
-import cats.effect.kernel.Async
-import java.net.{StandardProtocolFamily, UnixDomainSocketAddress}
-import java.nio.channels.{ServerSocketChannel, SocketChannel}
-
-object JdkUnixSockets {
-
-  def supported: Boolean = StandardProtocolFamily.values.size > 2
-
-  implicit def forAsync[F[_]: Async]: UnixSockets[F] =
-    new JdkUnixSocketsImpl[F]
-}
-
-private[unixsocket] class JdkUnixSocketsImpl[F[_]](implicit F: Async[F])
-    extends UnixSockets.AsyncUnixSockets[F] {
-  protected def openChannel(address: UnixSocketAddress) = F.delay {
-    val ch = SocketChannel.open(StandardProtocolFamily.UNIX)
-    ch.connect(UnixDomainSocketAddress.of(address.path))
-    ch
-  }
-
-  protected def openServerChannel(address: UnixSocketAddress) = F.blocking {
-    val serverChannel = ServerSocketChannel.open(StandardProtocolFamily.UNIX)
-    serverChannel.configureBlocking(false)
-    serverChannel.bind(UnixDomainSocketAddress.of(address.path))
-    (F.blocking(serverChannel.accept()), F.blocking(serverChannel.close()))
-  }
-}
+object compression extends compressionplatform

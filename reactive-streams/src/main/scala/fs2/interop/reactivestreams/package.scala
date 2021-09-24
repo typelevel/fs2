@@ -51,12 +51,8 @@ package object reactivestreams {
     */
   def fromPublisher[F[_]: Async, A](p: Publisher[A]): Stream[F, A] =
     Stream
-      .resource(Dispatcher[F])
-      .flatMap { dispatcher =>
-        Stream
-          .eval(StreamSubscriber[F, A](dispatcher))
-          .flatMap(s => s.sub.stream(Sync[F].delay(p.subscribe(s))))
-      }
+      .eval(StreamSubscriber[F, A])
+      .flatMap(s => s.sub.stream(Sync[F].delay(p.subscribe(s))))
 
   implicit final class PublisherOps[A](val publisher: Publisher[A]) extends AnyVal {
 

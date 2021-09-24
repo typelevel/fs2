@@ -19,32 +19,37 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2.io.net.unixsocket
+package fs2.compression
 
-import cats.effect.kernel.Async
-import java.net.{StandardProtocolFamily, UnixDomainSocketAddress}
-import java.nio.channels.{ServerSocketChannel, SocketChannel}
+/** Inflate algorithm parameters. */
+sealed trait InflateParams {
 
-object JdkUnixSockets {
+  /** Size of the internal buffer. Default size is 32 KB.
+    */
+  val bufferSize: Int
 
-  def supported: Boolean = StandardProtocolFamily.values.size > 2
+  /** Compression header. Defaults to [[ZLibParams.Header.ZLIB]]
+    */
+  val header: ZLibParams.Header
 
-  implicit def forAsync[F[_]: Async]: UnixSockets[F] =
-    new JdkUnixSocketsImpl[F]
+  private[fs2] val bufferSizeOrMinimum: Int = bufferSize.max(128)
 }
 
-private[unixsocket] class JdkUnixSocketsImpl[F[_]](implicit F: Async[F])
-    extends UnixSockets.AsyncUnixSockets[F] {
-  protected def openChannel(address: UnixSocketAddress) = F.delay {
-    val ch = SocketChannel.open(StandardProtocolFamily.UNIX)
-    ch.connect(UnixDomainSocketAddress.of(address.path))
-    ch
-  }
+object InflateParams {
 
-  protected def openServerChannel(address: UnixSocketAddress) = F.blocking {
-    val serverChannel = ServerSocketChannel.open(StandardProtocolFamily.UNIX)
-    serverChannel.configureBlocking(false)
-    serverChannel.bind(UnixDomainSocketAddress.of(address.path))
-    (F.blocking(serverChannel.accept()), F.blocking(serverChannel.close()))
-  }
+  def apply(
+      bufferSize: Int = 1024 * 32,
+      header: ZLibParams.Header = ZLibParams.Header.ZLIB
+  ): InflateParams =
+    InflateParamsImpl(bufferSize, header)
+
+  /** Reasonable defaults for most applications.
+    */
+  val DEFAULT: InflateParams = InflateParams()
+
+  private case class InflateParamsImpl(
+      bufferSize: Int,
+      header: ZLibParams.Header
+  ) extends InflateParams
+
 }

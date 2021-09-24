@@ -25,13 +25,7 @@ package net
 
 import java.net.InetSocketAddress
 import java.nio.{Buffer, ByteBuffer}
-import java.nio.channels.{
-  CancelledKeyException,
-  ClosedChannelException,
-  DatagramChannel,
-  SelectionKey,
-  Selector
-}
+import java.nio.channels.{CancelledKeyException, DatagramChannel, SelectionKey, Selector}
 import java.util.ArrayDeque
 import java.util.concurrent.{ConcurrentLinkedQueue, CountDownLatch}
 import java.util.concurrent.atomic.AtomicLong

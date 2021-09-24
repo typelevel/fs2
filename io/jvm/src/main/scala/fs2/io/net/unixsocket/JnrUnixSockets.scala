@@ -38,17 +38,20 @@ object JnrUnixSockets {
       case _: ClassNotFoundException => false
     }
 
-  implicit def forAsync[F[_]](implicit F: Async[F]): UnixSockets[F] =
-    new UnixSockets.AsyncUnixSockets[F] {
-      protected def openChannel(address: UnixSocketAddress) =
-        F.delay(UnixSocketChannel.open(new JnrUnixSocketAddress(address.path)))
+  implicit def forAsync[F[_]: Async]: UnixSockets[F] =
+    new JnrUnixSocketsImpl[F]
+}
 
-      protected def openServerChannel(address: UnixSocketAddress) = F.blocking {
-        val serverChannel = UnixServerSocketChannel.open()
-        serverChannel.configureBlocking(false)
-        val sock = serverChannel.socket()
-        sock.bind(new JnrUnixSocketAddress(address.path))
-        (F.blocking(serverChannel.accept()), F.blocking(serverChannel.close()))
-      }
-    }
+private[unixsocket] class JnrUnixSocketsImpl[F[_]](implicit F: Async[F])
+    extends UnixSockets.AsyncUnixSockets[F] {
+  protected def openChannel(address: UnixSocketAddress) =
+    F.delay(UnixSocketChannel.open(new JnrUnixSocketAddress(address.path)))
+
+  protected def openServerChannel(address: UnixSocketAddress) = F.blocking {
+    val serverChannel = UnixServerSocketChannel.open()
+    serverChannel.configureBlocking(false)
+    val sock = serverChannel.socket()
+    sock.bind(new JnrUnixSocketAddress(address.path))
+    (F.blocking(serverChannel.accept()), F.blocking(serverChannel.close()))
+  }
 }

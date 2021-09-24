@@ -19,32 +19,31 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2.io.net.unixsocket
+package fs2
+package benchmark
 
-import cats.effect.kernel.Async
-import java.net.{StandardProtocolFamily, UnixDomainSocketAddress}
-import java.nio.channels.{ServerSocketChannel, SocketChannel}
+import cats.effect.IO
+import cats.effect.unsafe.implicits.global
+import org.openjdk.jmh.annotations.{Benchmark, Param, Scope, State}
 
-object JdkUnixSockets {
+@State(Scope.Thread)
+class ParEvalMapBenchmark {
+  @Param(Array("100", "10000"))
+  var size: Int = _
 
-  def supported: Boolean = StandardProtocolFamily.values.size > 2
+  @Param(Array("10", "100"))
+  var chunkSize: Int = _
 
-  implicit def forAsync[F[_]: Async]: UnixSockets[F] =
-    new JdkUnixSocketsImpl[F]
-}
+  private def dummyLoad = IO.delay(())
 
-private[unixsocket] class JdkUnixSocketsImpl[F[_]](implicit F: Async[F])
-    extends UnixSockets.AsyncUnixSockets[F] {
-  protected def openChannel(address: UnixSocketAddress) = F.delay {
-    val ch = SocketChannel.open(StandardProtocolFamily.UNIX)
-    ch.connect(UnixDomainSocketAddress.of(address.path))
-    ch
-  }
+  @Benchmark
+  def evalMap(): Unit =
+    execute(getStream.evalMap(_ => dummyLoad))
 
-  protected def openServerChannel(address: UnixSocketAddress) = F.blocking {
-    val serverChannel = ServerSocketChannel.open(StandardProtocolFamily.UNIX)
-    serverChannel.configureBlocking(false)
-    serverChannel.bind(UnixDomainSocketAddress.of(address.path))
-    (F.blocking(serverChannel.accept()), F.blocking(serverChannel.close()))
-  }
+  @Benchmark
+  def parEvalMapUnordered10(): Unit =
+    execute(getStream.parEvalMapUnordered(10)(_ => dummyLoad))
+
+  private def getStream: Stream[IO, Unit] = Stream.constant((), chunkSize).take(size).covary[IO]
+  private def execute(s: Stream[IO, Unit]): Unit = s.compile.drain.unsafeRunSync()
 }
