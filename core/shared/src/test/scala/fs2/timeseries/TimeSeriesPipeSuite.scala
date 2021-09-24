@@ -33,7 +33,7 @@ class TimeSeriesTransducerTest extends Fs2Suite {
   test("support combining two transducers via an either") {
     val add1: Scan[Unit, Int, Int] = Scan.lift(_ + 1)
     val add2: Scan[Unit, Int, Int] = Scan.lift(_ + 2)
-    val x: Scan[Unit, Either[Int, Int], Int] = add1.or(add2).imapState(_._1)(u => (u, u))
+    val x: Scan[Unit, Either[Int, Int], Int] = add1.choice(add2).imapState(_._1)(u => (u, u))
     val source: TimeSeries[Pure, Either[Int, Int]] =
       Stream(
         Right(1).at(0.seconds),

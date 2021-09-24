@@ -187,7 +187,7 @@ final class Scan[S, -I, +O](
     * are fed through this scan while elements on the right are fed through the
     * suppplied scan. The outputs are joined together.
     */
-  def or[S2, I2, O2 >: O](that: Scan[S2, I2, O2]): Scan[(S, S2), Either[I, I2], O2] =
+  def choice[S2, I2, O2 >: O](that: Scan[S2, I2, O2]): Scan[(S, S2), Either[I, I2], O2] =
     Scan[(S, S2), Either[I, I2], O2]((initial, that.initial))(
       { case ((s, s2), e) =>
         e match {
@@ -202,8 +202,8 @@ final class Scan[S, -I, +O](
       { case (s, s2) => onComplete(s) ++ that.onComplete(s2) }
     )
 
-  /** Like [[or]] but the output elements are kept separate. */
-  def either[S2, I2, O2](t: Scan[S2, I2, O2]): Scan[(S, S2), Either[I, I2], Either[O, O2]] =
+  /** Like [[choice]] but the output elements are kept separate. */
+  def choose[S2, I2, O2](t: Scan[S2, I2, O2]): Scan[(S, S2), Either[I, I2], Either[O, O2]] =
     Scan[(S, S2), Either[I, I2], Either[O, O2]]((initial, t.initial))(
       { case ((s, s2), e) =>
         e match {

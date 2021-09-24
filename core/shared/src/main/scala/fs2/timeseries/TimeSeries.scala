@@ -70,12 +70,10 @@ object TimeSeries {
         case Some((hd, tl)) =>
           hd.indexWhere(_.time >= nextTick) match {
             case None =>
-              if (hd.isEmpty) Pull.pure(())
-              else Pull.output(hd.map(_.toTimeSeriesValue)) >> go(nextTick, tl)
+              Pull.output(hd.map(_.toTimeSeriesValue)) >> go(nextTick, tl)
             case Some(idx) =>
               val (prefix, suffix) = hd.splitAt(idx)
-              val out =
-                if (prefix.isEmpty) Pull.pure(()) else Pull.output(prefix.map(_.toTimeSeriesValue))
+              val out = Pull.output(prefix.map(_.toTimeSeriesValue))
               // we know suffix is non-empty and suffix.head has a time >= next tick time
               val next = suffix(0)
               val tickCount =

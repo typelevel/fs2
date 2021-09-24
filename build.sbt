@@ -309,7 +309,7 @@ lazy val scodec = crossProject(JVMPlatform, JSPlatform)
     OsgiKeys.additionalHeaders := Map("-removeheaders" -> "Include-Resource,Private-Package"),
     osgiSettings,
     mimaPreviousArtifacts := mimaPreviousArtifacts.value.filter { v =>
-      VersionNumber(v.revision).matchesSemVer(SemanticSelector(">3.1.1"))
+      VersionNumber(v.revision).matchesSemVer(SemanticSelector(">3.2.0"))
     }
   )
   .jsSettings(
