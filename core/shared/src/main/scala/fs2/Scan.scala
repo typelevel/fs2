@@ -237,7 +237,7 @@ object Scan {
   def stateless[I, O](f: I => Chunk[O]): Scan[Unit, I, O] =
     stateful[Unit, I, O](())((u, i) => (u, f(i)))
 
-  def lift2[I, O](f: I => O): Scan[Unit, I, O] =
+  def lift[I, O](f: I => O): Scan[Unit, I, O] =
     stateless(i => Chunk.singleton(f(i)))
 
   implicit def functor[S, I]: Functor[Scan[S, I, *]] =
