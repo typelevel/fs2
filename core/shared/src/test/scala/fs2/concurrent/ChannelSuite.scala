@@ -86,9 +86,9 @@ class ChannelSuite extends Fs2Suite {
     val v = Vector(1, 2, 3)
     val p = for {
       chan <- Channel.unbounded[IO, Int]
-      _ <- v.traverse(chan.send)
-      _ <- chan.close
-      res <- chan.stream.chunks.take(1).compile.lastOrError
+      _    <- v.traverse(chan.send)
+      _    <- chan.close
+      res  <- chan.stream.chunks.take(1).compile.lastOrError
     } yield res.toVector
 
     p.assertEquals(v)
@@ -98,10 +98,10 @@ class ChannelSuite extends Fs2Suite {
     val v = Vector(1, 2, 3)
     val p = for {
       chan <- Channel.unbounded[IO, Int]
-      _ <- v.traverse(chan.send)
-      _ <- chan.close
-      _ <- v.traverse(chan.send)
-      res <- chan.stream.compile.toVector
+      _    <- v.traverse(chan.send)
+      _    <- chan.close
+      _    <- v.traverse(chan.send)
+      res  <- chan.stream.compile.toVector
     } yield res
 
     p.assertEquals(v)

@@ -48,7 +48,7 @@ class PullLawsSuite extends Fs2Suite with TestInstances {
         streamAndResult <- toStreamAndResult(p)
         (stream, result) = streamAndResult
         output <- stream.compile.toList
-        r <- result
+        r      <- result
       } yield (output, r)
 
     Eq.instance((x, y) => Eq.eqv(run(x), run(y)))

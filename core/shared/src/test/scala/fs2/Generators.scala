@@ -53,7 +53,7 @@ trait Generators extends ChunkGenerators {
         1 -> (for {
           acquire <- arbitrary[F[O]]
           release <- arbitrary[F[Unit]]
-          use <- effectfulStreamGenerator[F, O].arbitrary
+          use     <- effectfulStreamGenerator[F, O].arbitrary
         } yield Stream.bracket(acquire)(_ => release).flatMap(_ => use))
       )
     )

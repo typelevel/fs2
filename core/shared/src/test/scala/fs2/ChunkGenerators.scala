@@ -66,9 +66,9 @@ trait ChunkGeneratorsLowPriority extends ChunkGeneratorsLowPriority1 {
       8 -> unspecializedChunkGenerator(genA),
       1 -> Gen.listOf(genA).map(as => Chunk.array(as.toArray)),
       1 -> (for {
-        as <- Gen.listOf(genA)
+        as     <- Gen.listOf(genA)
         offset <- Gen.chooseNum(0, as.size / 2)
-        len <- Gen.chooseNum(0, as.size - offset)
+        len    <- Gen.chooseNum(0, as.size - offset)
       } yield Chunk.array(as.toArray, offset, len))
     )
 }
@@ -78,7 +78,7 @@ trait ChunkGenerators extends ChunkGeneratorsLowPriority with ChunkGeneratorsCom
     for {
       values <- Gen.listOf(genA).map(_.toArray)
       offset <- Gen.chooseNum(0, values.size)
-      sz <- Gen.chooseNum(0, values.size - offset)
+      sz     <- Gen.chooseNum(0, values.size - offset)
     } yield Chunk.array(values, offset, sz)
 
   private def jbufferChunkGenerator[A, B <: JBuffer](
@@ -90,8 +90,8 @@ trait ChunkGenerators extends ChunkGeneratorsLowPriority with ChunkGeneratorsCom
     for {
       values <- Gen.listOf(genA).map(_.toArray)
       n = values.size
-      pos <- Gen.chooseNum(0, n)
-      lim <- Gen.chooseNum(pos, n)
+      pos    <- Gen.chooseNum(0, n)
+      lim    <- Gen.chooseNum(pos, n)
       direct <- arbitrary[Boolean]
       bb = if (direct) native(n, values) else wrap(values)
       _ = bb.position(pos).limit(lim)

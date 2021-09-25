@@ -427,7 +427,7 @@ class StreamSuite extends Fs2Suite {
           )
         }
         // Stream cancelation does not back pressure on canceled acquisitions so give time for the acquire to complete here
-        _ <- IO.sleep(200.milliseconds)
+        _        <- IO.sleep(200.milliseconds)
         released <- ref.get
       } yield assert(released)
     }

@@ -1101,7 +1101,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
 
           for {
             fiber <- stream.compile.drain.start
-            _ <- behaviour.timeout(5.seconds).guarantee(fiber.cancel)
+            _     <- behaviour.timeout(5.seconds).guarantee(fiber.cancel)
           } yield ()
         }
     }

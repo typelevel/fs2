@@ -104,7 +104,7 @@ private[fs2] object InterruptContext {
       cancelParent: F[Unit]
   )(implicit F: Concurrent[F]): F[InterruptContext[F]] =
     for {
-      ref <- F.ref[Option[InterruptionOutcome]](None)
+      ref      <- F.ref[Option[InterruptionOutcome]](None)
       deferred <- F.deferred[InterruptionOutcome]
     } yield InterruptContext[F](
       deferred = deferred,

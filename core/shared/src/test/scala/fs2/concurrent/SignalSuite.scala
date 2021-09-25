@@ -81,7 +81,7 @@ class SignalSuite extends Fs2Suite {
 
   test("access cannot be used twice") {
     for {
-      s <- SignallingRef[IO, Long](0L)
+      s      <- SignallingRef[IO, Long](0L)
       access <- s.access
       (v, set) = access
       v1 = v + 1

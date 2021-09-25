@@ -543,7 +543,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       that: Stream[F2, O2]
   )(implicit F: Concurrent[F2]): Stream[F2, O] = {
     val fstream: F2[Stream[F2, O]] = for {
-      interrupt <- F.deferred[Unit]
+      interrupt  <- F.deferred[Unit]
       backResult <- F.deferred[Either[Throwable, Unit]]
     } yield {
       def watch[A](str: Stream[F2, A]) = str.interruptWhen(interrupt.get.attempt)
@@ -638,7 +638,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   )(implicit F: Temporal[F2]): Stream[F2, O] = Stream.force {
     for {
       chan <- Channel.bounded[F2, O](1)
-      ref <- F.ref[Option[O]](None)
+      ref  <- F.ref[Option[O]](None)
     } yield {
       val sendLatest: F2[Unit] =
         ref.getAndSet(None).flatMap(_.traverse_(chan.send))
@@ -1398,9 +1398,9 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
          * - Supply: counts filled positions for next output chunk */
         def enqueue(t: O): F2[Boolean] =
           for {
-            _ <- demand.acquire
+2            _   <- demand.acquire
             buf <- buffer.modify(buf => (buf.copy(buf.data :+ t), buf))
-            _ <- supply.release
+            _   <- supply.release
           } yield buf.endOfDemand.isEmpty
 
         val dequeueNextOutput: F2[Option[Vector[O]]] = {
@@ -1425,7 +1425,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
               case Right(_) => supply.acquireN(outputLong).as(outputLong)
             }
             buf <- buffer.modify(_.splitAt(acq.toInt))
-            _ <- demand.releaseN(buf.data.size.toLong)
+            _   <- demand.releaseN(buf.data.size.toLong)
             res <- buf.endOfSupply match {
               case Some(Left(error))                  => F.raiseError(error)
               case Some(Right(_)) if buf.data.isEmpty => F.pure(None)
@@ -1801,7 +1801,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       f: O => Stream[F2, O2]
   )(implicit F: Concurrent[F2]): Stream[F2, O2] = {
     val fstream = for {
-      guard <- Semaphore[F2](1)
+      guard   <- Semaphore[F2](1)
       haltRef <- F.ref[Option[Deferred[F2, Unit]]](None)
     } yield {
 
@@ -1817,7 +1817,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
         for {
           halt <- F.deferred[Unit]
           prev <- haltRef.getAndSet(halt.some)
-          _ <- prev.traverse_(_.complete(())) // interrupt previous one if any
+          _    <- prev.traverse_(_.complete(())) // interrupt previous one if any
         } yield runInner(o, halt)
 
       this.evalMap(haltedF).parJoin(2)
@@ -1860,11 +1860,11 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       that: Stream[F2, O2]
   )(implicit F: Concurrent[F2]): Stream[F2, O2] = {
     val fstream: F2[Stream[F2, O2]] = for {
-      interrupt <- F.deferred[Unit]
-      resultL <- F.deferred[Either[Throwable, Unit]]
-      resultR <- F.deferred[Either[Throwable, Unit]]
+      interrupt     <- F.deferred[Unit]
+      resultL       <- F.deferred[Either[Throwable, Unit]]
+      resultR       <- F.deferred[Either[Throwable, Unit]]
       otherSideDone <- F.ref[Boolean](false)
-      resultChan <- Channel.unbounded[F2, Stream[F2, O2]]
+      resultChan    <- Channel.unbounded[F2, Stream[F2, O2]]
     } yield {
 
       def watchInterrupted(str: Stream[F2, O2]): Stream[F2, O2] =
@@ -1903,10 +1903,10 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
         }
 
       val atRunEnd: F2[Unit] = for {
-        _ <- signalInterruption // interrupt so the upstreams have chance to complete
-        left <- resultL.get
+        _     <- signalInterruption // interrupt so the upstreams have chance to complete
+        left  <- resultL.get
         right <- resultR.get
-        r <- F.fromEither(CompositeFailure.fromResults(left, right))
+        r     <- F.fromEither(CompositeFailure.fromResults(left, right))
       } yield r
 
       val runStreams = runStream(this, resultL).start >> runStream(that, resultR).start
@@ -2020,7 +2020,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     if (maxConcurrent === 1) evalMap(f)
     else {
       val fstream: F2[Stream[F2, O2]] = for {
-        chan <- Channel.bounded[F2, F2[Either[Throwable, O2]]](maxConcurrent)
+        chan         <- Channel.bounded[F2, F2[Either[Throwable, O2]]](maxConcurrent)
         chanReadDone <- F.deferred[Unit]
       } yield {
         def forkOnElem(o: O): F2[Stream[F2, Unit]] =
@@ -3790,8 +3790,8 @@ object Stream extends StreamLowPriority {
         maxQueued: Int
     )(pipe: Pipe[F, O, INothing])(implicit F: Concurrent[F]): Stream[F, O] = Stream.force {
       for {
-        guard <- Semaphore[F](maxQueued - 1L)
-        outChan <- Channel.unbounded[F, Chunk[O]]
+        guard    <- Semaphore[F](maxQueued - 1L)
+        outChan  <- Channel.unbounded[F, Chunk[O]]
         sinkChan <- Channel.unbounded[F, Chunk[O]]
       } yield {
 
@@ -3940,12 +3940,12 @@ object Stream extends StreamLowPriority {
       if (maxOpen === 1) outer.flatten
       else {
         val fstream: F[Stream[F, O]] = for {
-          done <- SignallingRef(none[Option[Throwable]])
+          done      <- SignallingRef(none[Option[Throwable]])
           available <- Semaphore(maxOpen.toLong)
           // starts with 1 because outer stream is running by default
-          running <- SignallingRef(1)
+          running  <- SignallingRef(1)
           outcomes <- Channel.unbounded[F, F[Unit]]
-          output <- Channel.synchronous[F, Chunk[O]]
+          output   <- Channel.synchronous[F, Chunk[O]]
         } yield {
           def stop(rslt: Option[Throwable]): F[Unit] =
             done.update {
@@ -4734,7 +4734,7 @@ object Stream extends StreamLowPriority {
       implicit val G: Monad[G] = compiler.target
       // G.unit suspends creation of the mutable builder
       for {
-        _ <- G.unit
+        _       <- G.unit
         builder <- compiler(underlying, collector.newBuilder) { (acc, c) => acc += c; acc }
       } yield builder.result
     }

@@ -79,7 +79,7 @@ class HashSuite extends Fs2Suite {
       .flatMap(i => Stream.chunk(Chunk.array(i.toString.getBytes)))
       .through(sha512)
     for {
-      once <- s.compile.toVector
+      once       <- s.compile.toVector
       oneHundred <- Vector.fill(100)(s.compile.toVector).parSequence
     } yield assertEquals(oneHundred, Vector.fill(100)(once))
   }
