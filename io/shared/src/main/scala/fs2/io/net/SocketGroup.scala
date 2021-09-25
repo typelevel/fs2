@@ -27,8 +27,8 @@ import cats.effect.kernel.Resource
 import com.comcast.ip4s.{Host, IpAddress, Port, SocketAddress}
 import cats.effect.kernel.Async
 
-/** Supports creation of client and server TCP sockets that all share
-  * an underlying non-blocking channel group.
+/** Supports creation of client and server TCP sockets that all share an underlying non-blocking
+  * channel group.
   */
 trait SocketGroup[F[_]] {
 
@@ -36,23 +36,28 @@ trait SocketGroup[F[_]] {
     *
     * The connection is closed when the resource is released.
     *
-    * @param to      address of remote server
-    * @param options socket options to apply to the underlying socket
+    * @param to
+    *   address of remote server
+    * @param options
+    *   socket options to apply to the underlying socket
     */
   def client(
       to: SocketAddress[Host],
       options: List[SocketOption] = List.empty
   ): Resource[F, Socket[F]]
 
-  /** Creates a TCP server bound to specified address/port and returns a stream of
-    * client sockets -- one per client that connects to the bound address/port.
+  /** Creates a TCP server bound to specified address/port and returns a stream of client sockets --
+    * one per client that connects to the bound address/port.
     *
-    * When the stream terminates, all open connections will terminate as well.
-    * Because of this, make sure to handle errors in the client socket Streams.
+    * When the stream terminates, all open connections will terminate as well. Because of this, make
+    * sure to handle errors in the client socket Streams.
     *
-    * @param address            address to accept connections from; none for all interfaces
-    * @param port               port to bind
-    * @param options socket options to apply to the underlying socket
+    * @param address
+    *   address to accept connections from; none for all interfaces
+    * @param port
+    *   port to bind
+    * @param options
+    *   socket options to apply to the underlying socket
     */
   def server(
       address: Option[Host] = None,
@@ -60,7 +65,8 @@ trait SocketGroup[F[_]] {
       options: List[SocketOption] = List.empty
   ): Stream[F, Socket[F]]
 
-  /** Like [[server]] but provides the `SocketAddress` of the bound server socket before providing accepted sockets.
+  /** Like [[server]] but provides the `SocketAddress` of the bound server socket before providing
+    * accepted sockets.
     *
     * Make sure to handle errors in the client socket Streams.
     */

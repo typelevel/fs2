@@ -28,31 +28,40 @@ package file
 trait FileHandle[F[_]] extends FileHandlePlatform[F] {
 
   /** Force any updates for the underlying file to storage.
-    * @param metaData If true, also attempts to force file metadata updates to storage.
+    * @param metaData
+    *   If true, also attempts to force file metadata updates to storage.
     */
   def force(metaData: Boolean): F[Unit]
 
   /** Read the specified number of bytes at a particular offset.
-    * @param numBytes the number of bytes to read.
-    * @param offset the offset from the start of the file.
-    * @return a number of bytes from the file (at most, numBytes in size).
+    * @param numBytes
+    *   the number of bytes to read.
+    * @param offset
+    *   the offset from the start of the file.
+    * @return
+    *   a number of bytes from the file (at most, numBytes in size).
     */
   def read(numBytes: Int, offset: Long): F[Option[Chunk[Byte]]]
 
   /** Report the current size of the file.
-    * @return the size of the file.
+    * @return
+    *   the size of the file.
     */
   def size: F[Long]
 
   /** Truncate the underlying file to the specified size.
-    * @param size the size of the file after truncation.
+    * @param size
+    *   the size of the file after truncation.
     */
   def truncate(size: Long): F[Unit]
 
   /** Write the specified bytes at a particular offset.
-    * @param bytes the bytes to write to the `FileHandle`.
-    * @param offset the offset at which to write the bytes.
-    * @return the number of bytes written.
+    * @param bytes
+    *   the bytes to write to the `FileHandle`.
+    * @param offset
+    *   the offset at which to write the bytes.
+    * @return
+    *   the number of bytes written.
     */
   def write(bytes: Chunk[Byte], offset: Long): F[Int]
 }

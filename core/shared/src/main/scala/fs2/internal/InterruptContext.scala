@@ -27,16 +27,21 @@ import cats.effect.kernel.implicits._
 import cats.syntax.all._
 import InterruptContext.InterruptionOutcome
 
-/** A context of interruption status. This is shared from the parent that was created as interruptible to all
-  * its children. It assures consistent view of the interruption through the stack
-  * @param concurrent   Concurrent, used to create interruption at Eval.
-  *                 If signalled with None, normal interruption is signalled. If signaled with Some(err) failure is signalled.
-  * @param ref      When None, scope is not interrupted,
-  *                 when Some(None) scope was interrupted, and shall continue with `whenInterrupted`
-  *                 when Some(Some(err)) scope has to be terminated with supplied failure.
-  * @param interruptRoot Id of the scope that is root of this interruption and is guaranteed to be a parent of this scope.
-  *                      Once interrupted, this scope must be closed and pull must be signalled to provide recovery of the interruption.
-  * @param cancelParent  Cancels listening on parent's interrupt.
+/** A context of interruption status. This is shared from the parent that was created as
+  * interruptible to all its children. It assures consistent view of the interruption through the
+  * stack
+  * @param concurrent
+  *   Concurrent, used to create interruption at Eval. If signalled with None, normal interruption
+  *   is signalled. If signaled with Some(err) failure is signalled.
+  * @param ref
+  *   When None, scope is not interrupted, when Some(None) scope was interrupted, and shall continue
+  *   with `whenInterrupted` when Some(Some(err)) scope has to be terminated with supplied failure.
+  * @param interruptRoot
+  *   Id of the scope that is root of this interruption and is guaranteed to be a parent of this
+  *   scope. Once interrupted, this scope must be closed and pull must be signalled to provide
+  *   recovery of the interruption.
+  * @param cancelParent
+  *   Cancels listening on parent's interrupt.
   */
 final private[fs2] case class InterruptContext[F[_]](
     deferred: Deferred[F, InterruptionOutcome],
@@ -56,11 +61,13 @@ final private[fs2] case class InterruptContext[F[_]](
     * In case the child scope is interruptible, this will ensure that this scope interrupt will
     * interrupt the child scope as well.
     *
-    * In any case this will make sure that a close of the child scope will not cancel listening
-    * on parent interrupt for this scope.
+    * In any case this will make sure that a close of the child scope will not cancel listening on
+    * parent interrupt for this scope.
     *
-    * @param interruptible  Whether the child scope should be interruptible.
-    * @param newScopeId     The id of the new scope.
+    * @param interruptible
+    *   Whether the child scope should be interruptible.
+    * @param newScopeId
+    *   The id of the new scope.
     */
   def childContext(
       interruptible: Boolean,

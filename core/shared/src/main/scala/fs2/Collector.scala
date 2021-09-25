@@ -27,11 +27,11 @@ import scodec.bits.ByteVector
 
 /** Supports building a result of type `Out` from zero or more `Chunk[A]`.
   *
-  * This is similar to the standard library collection builders but optimized for
-  * building a collection from a stream.
+  * This is similar to the standard library collection builders but optimized for building a
+  * collection from a stream.
   *
-  * The companion object provides implicit conversions (methods starting with `supports`),
-  * which adapts various collections to the `Collector` trait.
+  * The companion object provides implicit conversions (methods starting with `supports`), which
+  * adapts various collections to the `Collector` trait.
   */
 trait Collector[-A] {
   type Out

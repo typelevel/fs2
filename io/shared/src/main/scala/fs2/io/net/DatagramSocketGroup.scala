@@ -30,10 +30,14 @@ trait DatagramSocketGroup[F[_]] {
 
   /** Creates a UDP socket bound to the specified address.
     *
-    * @param address              address to bind to; defaults to all interfaces
-    * @param port                 port to bind to; defaults to an ephemeral port
-    * @param options              socket options to apply to the underlying socket
-    * @param protocolFamily       protocol family to use when opening the supporting `DatagramChannel`
+    * @param address
+    *   address to bind to; defaults to all interfaces
+    * @param port
+    *   port to bind to; defaults to an ephemeral port
+    * @param options
+    *   socket options to apply to the underlying socket
+    * @param protocolFamily
+    *   protocol family to use when opening the supporting `DatagramChannel`
     */
   def openDatagramSocket(
       address: Option[Host] = None,

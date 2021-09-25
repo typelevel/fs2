@@ -36,7 +36,8 @@ import scala.annotation.nowarn
   *
   * This is used to obtain a `fs2.Stream` from an upstream reactivestreams system.
   *
-  * @see [[https://github.com/reactive-streams/reactive-streams-jvm#2-subscriber-code]]
+  * @see
+  *   [[https://github.com/reactive-streams/reactive-streams-jvm#2-subscriber-code]]
   */
 final class StreamSubscriber[F[_], A](
     val sub: StreamSubscriber.FSM[F, A]
@@ -182,7 +183,7 @@ object StreamSubscriber {
           case Idle(sub)              => WaitingOnUpstream(sub, r) -> (() => sub.request(1))
           case err @ UpstreamError(e) => err -> (() => r(e.asLeft))
           case UpstreamCompletion     => UpstreamCompletion -> (() => r(None.asRight))
-          case o                      => o -> (() => r(new Error(s"received request in invalid state [$o]").asLeft))
+          case o => o -> (() => r(new Error(s"received request in invalid state [$o]").asLeft))
         }
       }
 

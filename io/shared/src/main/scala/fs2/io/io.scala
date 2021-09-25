@@ -35,8 +35,8 @@ package object io extends ioplatform {
 
   private val utf8Charset = Charset.forName("UTF-8")
 
-  /** Reads all bytes from the specified `InputStream` with a buffer size of `chunkSize`.
-    * Set `closeAfterUse` to false if the `InputStream` should not be closed after use.
+  /** Reads all bytes from the specified `InputStream` with a buffer size of `chunkSize`. Set
+    * `closeAfterUse` to false if the `InputStream` should not be closed after use.
     */
   def readInputStream[F[_]](
       fis: F[InputStream],
@@ -49,13 +49,12 @@ package object io extends ioplatform {
       closeAfterUse
     )
 
-  /** Reads all bytes from the specified `InputStream` with a buffer size of `chunkSize`.
-    * Set `closeAfterUse` to false if the `InputStream` should not be closed after use.
+  /** Reads all bytes from the specified `InputStream` with a buffer size of `chunkSize`. Set
+    * `closeAfterUse` to false if the `InputStream` should not be closed after use.
     *
-    * Recycles an underlying input buffer for performance. It is safe to call
-    * this as long as whatever consumes this `Stream` does not store the `Chunk`
-    * returned or pipe it to a combinator that does (e.g. `buffer`). Use
-    * `readInputStream` for a safe version.
+    * Recycles an underlying input buffer for performance. It is safe to call this as long as
+    * whatever consumes this `Stream` does not store the `Chunk` returned or pipe it to a combinator
+    * that does (e.g. `buffer`). Use `readInputStream` for a safe version.
     */
   def unsafeReadInputStream[F[_]](
       fis: F[InputStream],
@@ -96,11 +95,11 @@ package object io extends ioplatform {
       Stream.eval(fis).flatMap(useIs)
   }
 
-  /** Writes all bytes to the specified `OutputStream`. Set `closeAfterUse` to false if
-    * the `OutputStream` should not be closed after use.
+  /** Writes all bytes to the specified `OutputStream`. Set `closeAfterUse` to false if the
+    * `OutputStream` should not be closed after use.
     *
-    * Each write operation is performed on the supplied execution context. Writes are
-    * blocking so the execution context should be configured appropriately.
+    * Each write operation is performed on the supplied execution context. Writes are blocking so
+    * the execution context should be configured appropriately.
     */
   def writeOutputStream[F[_]](
       fos: F[OutputStream],
@@ -127,11 +126,11 @@ package object io extends ioplatform {
   def stdout[F[_]: Sync]: Pipe[F, Byte, INothing] =
     writeOutputStream(Sync[F].blocking(System.out), false)
 
-  /** Writes this stream to standard output asynchronously, converting each element to
-    * a sequence of bytes via `Show` and the given `Charset`.
+  /** Writes this stream to standard output asynchronously, converting each element to a sequence of
+    * bytes via `Show` and the given `Charset`.
     *
-    * Each write operation is performed on the supplied execution context. Writes are
-    * blocking so the execution context should be configured appropriately.
+    * Each write operation is performed on the supplied execution context. Writes are blocking so
+    * the execution context should be configured appropriately.
     */
   def stdoutLines[F[_]: Sync, O: Show](
       charset: Charset = utf8Charset

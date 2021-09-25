@@ -48,9 +48,9 @@ abstract class Fs2Suite
 
   implicit class Deterministically[F[_], A](private val self: IO[A]) {
 
-    /** Allows to run an IO deterministically through TextContext.
-      * Assumes you want to run the IO to completion, if you need to step through execution,
-      * you will have to do it manually, starting from `createDeterministicRuntime`
+    /** Allows to run an IO deterministically through TextContext. Assumes you want to run the IO to
+      * completion, if you need to step through execution, you will have to do it manually, starting
+      * from `createDeterministicRuntime`
       */
     def ticked: Deterministic[A] = Deterministic(self)
   }
