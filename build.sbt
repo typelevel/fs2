@@ -126,6 +126,10 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   ProblemFilters.exclude[NewMixinForwarderProblem]("fs2.io.net.Network.*"),
   ProblemFilters.exclude[NewMixinForwarderProblem]("fs2.io.net.tls.TLSContext.*"),
   ProblemFilters.exclude[InheritedNewAbstractMethodProblem]("fs2.io.net.tls.TLSContext.*"),
+  ProblemFilters.exclude[InheritedNewAbstractMethodProblem]("fs2.Compiler#Target.*"),
+  ProblemFilters.exclude[InheritedNewAbstractMethodProblem](
+    "fs2.Compiler#TargetLowPriority#MonadErrorTarget.*"
+  ),
   // end #2453
   ProblemFilters.exclude[NewMixinForwarderProblem]("fs2.io.file.Files.*"),
   ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.io.file.Files.*"),
@@ -142,6 +146,12 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   ProblemFilters.exclude[NewMixinForwarderProblem]("fs2.compression.Compression.gzip*"),
   ProblemFilters.exclude[NewMixinForwarderProblem]("fs2.compression.Compression.gunzip*"),
   ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.compression.Compression.$init$"),
+  ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.Compiler#Target.F"),
+  ProblemFilters.exclude[MissingTypesProblem]("fs2.Compiler$Target$ConcurrentTarget"),
+  ProblemFilters.exclude[IncompatibleResultTypeProblem]("fs2.Compiler#Target#ConcurrentTarget.F"),
+  ProblemFilters.exclude[MissingClassProblem]("fs2.Compiler$TargetLowPriority$MonadCancelTarget"),
+  ProblemFilters.exclude[MissingClassProblem]("fs2.Compiler$TargetLowPriority$MonadErrorTarget"),
+  ProblemFilters.exclude[MissingTypesProblem]("fs2.Compiler$TargetLowPriority$SyncTarget"),
   ProblemFilters.exclude[MissingClassProblem]("fs2.Chunk$VectorChunk")
 )
 
