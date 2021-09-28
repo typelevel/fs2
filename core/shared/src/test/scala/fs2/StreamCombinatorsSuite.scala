@@ -70,7 +70,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
     test("buffer results of evalMap") {
       forAllF { (s: Stream[Pure, Int], n0: Int) =>
         val n = (n0 % 20).abs + 1
-        IO.suspend {
+        IO.defer {
           var counter = 0
           val s2 = s.append(Stream.emits(List.fill(n + 1)(0))).repeat
           s2.evalMap(i => IO { counter += 1; i })
@@ -92,7 +92,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
     test("buffer results of evalMap") {
       forAllF { (s: Stream[Pure, Int]) =>
         val expected = s.toList.size * 2
-        IO.suspend {
+        IO.defer {
           var counter = 0
           s.append(s)
             .evalMap(i => IO { counter += 1; i })
@@ -116,7 +116,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
     test("buffer results of evalMap") {
       forAllF { (s: Stream[Pure, Int]) =>
         val expected = s.toList.size * 2 + 1
-        IO.suspend {
+        IO.defer {
           var counter = 0
           val s2 = s.map(x => if (x == Int.MinValue) x + 1 else x).map(_.abs)
           val s3 = s2.append(Stream.emit(-1)).append(s2).evalMap(i => IO { counter += 1; i })
@@ -965,7 +965,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
 
     test("timing") {
       // should finish in about 3-4 seconds
-      IO.suspend {
+      IO.defer {
         val start = System.currentTimeMillis
         Stream(1, 2, 3)
           .evalMap(i => IO.sleep(1.second).as(i))

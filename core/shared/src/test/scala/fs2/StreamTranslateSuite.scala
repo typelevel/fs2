@@ -147,7 +147,7 @@ class StreamTranslateSuite extends Fs2Suite {
   test("stack safety") {
     Stream
       .repeatEval(IO(0))
-      .translate(new (IO ~> IO) { def apply[X](x: IO[X]) = IO.suspend(x) })
+      .translate(new (IO ~> IO) { def apply[X](x: IO[X]) = IO.defer(x) })
       .take(if (isJVM) 1000000 else 10000)
       .compile
       .drain

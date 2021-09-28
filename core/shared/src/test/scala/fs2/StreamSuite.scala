@@ -235,7 +235,7 @@ class StreamSuite extends Fs2Suite {
       }
 
       test("8") {
-        SyncIO.suspend {
+        SyncIO.defer {
           var i = 0
           Pull
             .pure(1)
@@ -251,7 +251,7 @@ class StreamSuite extends Fs2Suite {
       }
 
       test("9") {
-        SyncIO.suspend {
+        SyncIO.defer {
           var i = 0
           Pull
             .eval(SyncIO(1))
@@ -266,7 +266,7 @@ class StreamSuite extends Fs2Suite {
       }
 
       test("10") {
-        SyncIO.suspend {
+        SyncIO.defer {
           var i = 0
           Pull
             .eval(SyncIO(1))
@@ -285,7 +285,7 @@ class StreamSuite extends Fs2Suite {
       }
 
       test("11") {
-        SyncIO.suspend {
+        SyncIO.defer {
           var i = 0
           Pull
             .eval(SyncIO(???))
@@ -299,7 +299,7 @@ class StreamSuite extends Fs2Suite {
       }
 
       test("12") {
-        SyncIO.suspend {
+        SyncIO.defer {
           var i = 0
           Stream
             .bracket(SyncIO(1))(_ => SyncIO(i += 1))
@@ -312,7 +312,7 @@ class StreamSuite extends Fs2Suite {
       }
 
       test("13") {
-        SyncIO.suspend {
+        SyncIO.defer {
           var i = 0
           Stream
             .range(0, 10)
@@ -340,7 +340,7 @@ class StreamSuite extends Fs2Suite {
       }
 
       test("15") {
-        SyncIO.suspend {
+        SyncIO.defer {
           var i = 0
           (Stream
             .range(0, 3)
