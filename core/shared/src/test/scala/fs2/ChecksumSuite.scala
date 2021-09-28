@@ -21,22 +21,32 @@
 
 package fs2
 
-import cats.effect.SyncIO
-import fs2.compression.Checksum
-import org.scalacheck.effect.PropF.forAllF
+import fs2.compression.checksum
+import org.scalacheck.Prop.forAll
 import scodec.bits.BitVector
-import scodec.bits.crc.crc32
+import scodec.bits.crc
 
 class ChecksumSuite extends Fs2Suite {
 
   test("CRC32") {
-    forAllF { (bytes: Stream[Pure, Byte]) =>
-      bytes
-        .through(Checksum[SyncIO].crc32)
+    forAll { (bytes: Stream[Pure, Byte]) =>
+      val result = bytes
+        .through(checksum.crc32)
         .compile
-        .last
-        .map(_.getOrElse(0))
-        .assertEquals(crc32(BitVector(bytes.compile.toVector)).toLong(false))
+        .toVector
+      val expected = crc.crc32(BitVector(bytes.compile.toVector))
+      assertEquals(BitVector(result), expected)
+    }
+  }
+
+  test("CRC32C") {
+    forAll { (bytes: Stream[Pure, Byte]) =>
+      val result = bytes
+        .through(checksum.crc32c)
+        .compile
+        .toVector
+      val expected = crc.crc32c(BitVector(bytes.compile.toVector))
+      assertEquals(BitVector(result), expected)
     }
   }
 

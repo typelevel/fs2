@@ -20,7 +20,41 @@
  */
 
 package fs2
+package compression
 
-package object compression {
-  private[compression] type CRC32 = java.util.zip.CRC32
+import scodec.bits
+import scodec.bits.crc.CrcBuilder
+import scodec.bits.BitVector
+
+/** Provides various checksums as pipes. */
+object checksum {
+
+  /** Computes a CRC32 checksum.
+    * @see [[scodec.bits.crc.crc32]]
+    */
+  def crc32[F[_]]: Pipe[F, Byte, Byte] = fromCrcBuilder(bits.crc.crc32Builder)
+
+  /** Computes a CRC32C checksum.
+    * @see [[scodec.bits.crc32c]]
+    */
+  def crc32c[F[_]]: Pipe[F, Byte, Byte] = fromCrcBuilder(bits.crc.crc32cBuilder)
+
+  /** Computes a CRC checksum using the specified polynomial.
+    * @see [[scodec.bits.crc]]
+    */
+  def crc[F[_]](
+      poly: BitVector,
+      initial: BitVector,
+      reflectInput: Boolean,
+      reflectOutput: Boolean,
+      finalXor: BitVector
+  ): Pipe[F, Byte, Byte] =
+    fromCrcBuilder(bits.crc.builder(poly, initial, reflectInput, reflectOutput, finalXor))
+
+  private def fromCrcBuilder[F[_]](builder: CrcBuilder[BitVector]): Pipe[F, Byte, Byte] =
+    _.chunks
+      .fold(builder)((builder, bits) => builder.updated(bits.toBitVector))
+      .map(b => Chunk.byteVector(b.result.bytes))
+      .unchunks
+
 }
