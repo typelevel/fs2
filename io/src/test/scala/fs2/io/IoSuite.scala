@@ -28,12 +28,17 @@ import org.scalacheck.{Arbitrary, Gen, Shrink}
 import org.scalacheck.effect.PropF.forAllF
 
 import scala.concurrent.ExecutionContext
+import scala.concurrent.duration._
 
 import java.io.{ByteArrayInputStream, InputStream, OutputStream}
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.Executors
 
 class IoSuite extends Fs2Suite {
+
+  // This suite runs for a long time, this avoids timeouts in CI.
+  override def munitTimeout: Duration = 1.minute
+
   group("readInputStream") {
     test("non-buffered") {
       forAllF { (bytes: Array[Byte], chunkSize0: Int) =>
