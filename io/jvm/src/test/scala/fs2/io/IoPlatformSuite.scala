@@ -189,10 +189,15 @@ class IoPlatformSuite extends Fs2Suite {
 
     def writeToOutputStream(out: OutputStream): IO[Unit] =
       byteStream
-        .through(writeOutputStream(IO(out)))
+        .through(writeOutputStream(IO.pure(out)))
         .compile
         .drain
 
-    readOutputStream[IO](1024 * 8)(writeToOutputStream).compile.drain
+    readOutputStream[IO](1024 * 8)(writeToOutputStream)
+      .chunkN(6 * 50000)
+      .map(c => new String(c.toArray[Byte], StandardCharsets.UTF_8))
+      .foreach(str => IO.pure(str).assertEquals("foobar" * 50000))
+      .compile
+      .drain
   }
 }
