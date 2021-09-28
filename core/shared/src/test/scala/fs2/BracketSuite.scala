@@ -127,7 +127,7 @@ class BracketSuite extends Fs2Suite {
   }
 
   test("finalizer should not be called until necessary") {
-    IO.suspend {
+    IO.defer {
       val buffer = collection.mutable.ListBuffer[String]()
       Stream
         .bracket(IO(buffer += "Acquired")) { _ =>
@@ -186,7 +186,7 @@ class BracketSuite extends Fs2Suite {
 
   group("finalizers are run in LIFO order") {
     test("explicit release") {
-      IO.suspend {
+      IO.defer {
         var o: Vector[Int] = Vector.empty
         (0 until 10)
           .foldLeft(Stream.eval(IO(0))) { (acc, i) =>
@@ -199,7 +199,7 @@ class BracketSuite extends Fs2Suite {
     }
 
     test("scope closure") {
-      IO.suspend {
+      IO.defer {
         var o: Vector[Int] = Vector.empty
         (0 until 10)
           .foldLeft(Stream.emit(1).map(_ => throw new Err): Stream[IO, Int]) { (acc, i) =>

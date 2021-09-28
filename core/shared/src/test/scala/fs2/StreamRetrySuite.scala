@@ -30,7 +30,7 @@ class StreamRetrySuite extends Fs2Suite {
   case class RetryErr(msg: String = "") extends RuntimeException(msg)
 
   test("immediate success") {
-    IO.suspend {
+    IO.defer {
       var attempts = 0
       val job = IO {
         attempts += 1
@@ -44,7 +44,7 @@ class StreamRetrySuite extends Fs2Suite {
   }
 
   test("eventual success") {
-    IO.suspend {
+    IO.defer {
       var failures, successes = 0
       val job = IO {
         if (failures == 5) {
@@ -62,7 +62,7 @@ class StreamRetrySuite extends Fs2Suite {
   }
 
   test("maxRetries") {
-    IO.suspend {
+    IO.defer {
       var failures = 0
       val job = IO {
         failures += 1
@@ -78,7 +78,7 @@ class StreamRetrySuite extends Fs2Suite {
   }
 
   test("fatal") {
-    IO.suspend {
+    IO.defer {
       var failures, successes = 0
       val job = IO {
         if (failures == 5) {
