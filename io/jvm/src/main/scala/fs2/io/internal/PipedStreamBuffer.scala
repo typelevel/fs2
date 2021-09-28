@@ -371,14 +371,7 @@ private[io] final class PipedStreamBuffer(private[this] val capacity: Int) { sel
         System.arraycopy(src, srcPos, dst, dstOffset, batch1)
         System.arraycopy(src, srcPos + batch1, dst, 0, batch2)
       } else {
-        try System.arraycopy(src, srcPos, dst, dstOffset, length)
-        catch {
-          case e: ArrayIndexOutOfBoundsException =>
-            println(
-              s"srcPos = $srcPos, dstPos = $dstPos, dstCap = $dstCap, length = $length, dstOffset = $dstOffset, dstOffset + length = ${dstOffset + length}"
-            )
-            throw e
-        }
+        System.arraycopy(src, srcPos, dst, dstOffset, length)
       }
     }
   }
