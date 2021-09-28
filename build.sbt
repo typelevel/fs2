@@ -22,9 +22,10 @@ ThisBuild / startYear := Some(2013)
 
 val NewScala = "2.13.6"
 
-ThisBuild / crossScalaVersions := Seq("3.0.2", "2.12.14", NewScala)
+ThisBuild / crossScalaVersions := Seq("3.0.2", "2.12.15", NewScala)
 
-ThisBuild / githubWorkflowJavaVersions := Seq("adopt@1.16")
+ThisBuild / githubWorkflowEnv += ("JABBA_INDEX" -> "https://github.com/typelevel/jdk-index/raw/main/index.json")
+ThisBuild / githubWorkflowJavaVersions := Seq("adoptium@17")
 
 ThisBuild / spiewakCiReleaseSnapshots := true
 
@@ -126,6 +127,10 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   ProblemFilters.exclude[NewMixinForwarderProblem]("fs2.io.net.Network.*"),
   ProblemFilters.exclude[NewMixinForwarderProblem]("fs2.io.net.tls.TLSContext.*"),
   ProblemFilters.exclude[InheritedNewAbstractMethodProblem]("fs2.io.net.tls.TLSContext.*"),
+  ProblemFilters.exclude[InheritedNewAbstractMethodProblem]("fs2.Compiler#Target.*"),
+  ProblemFilters.exclude[InheritedNewAbstractMethodProblem](
+    "fs2.Compiler#TargetLowPriority#MonadErrorTarget.*"
+  ),
   // end #2453
   ProblemFilters.exclude[NewMixinForwarderProblem]("fs2.io.file.Files.*"),
   ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.io.file.Files.*"),
@@ -141,7 +146,14 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   ProblemFilters.exclude[IncompatibleMethTypeProblem]("fs2.Pull.mapOutput"),
   ProblemFilters.exclude[NewMixinForwarderProblem]("fs2.compression.Compression.gzip*"),
   ProblemFilters.exclude[NewMixinForwarderProblem]("fs2.compression.Compression.gunzip*"),
-  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.compression.Compression.$init$")
+  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.compression.Compression.$init$"),
+  ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.Compiler#Target.F"),
+  ProblemFilters.exclude[MissingTypesProblem]("fs2.Compiler$Target$ConcurrentTarget"),
+  ProblemFilters.exclude[IncompatibleResultTypeProblem]("fs2.Compiler#Target#ConcurrentTarget.F"),
+  ProblemFilters.exclude[MissingClassProblem]("fs2.Compiler$TargetLowPriority$MonadCancelTarget"),
+  ProblemFilters.exclude[MissingClassProblem]("fs2.Compiler$TargetLowPriority$MonadErrorTarget"),
+  ProblemFilters.exclude[MissingTypesProblem]("fs2.Compiler$TargetLowPriority$SyncTarget"),
+  ProblemFilters.exclude[MissingClassProblem]("fs2.Chunk$VectorChunk")
 )
 
 lazy val root = project
@@ -170,9 +182,9 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
     libraryDependencies ++= Seq(
       "org.typelevel" %%% "cats-core" % "2.6.1",
       "org.typelevel" %%% "cats-laws" % "2.6.1" % Test,
-      "org.typelevel" %%% "cats-effect" % "3.2.8",
-      "org.typelevel" %%% "cats-effect-laws" % "3.2.8" % Test,
-      "org.typelevel" %%% "cats-effect-testkit" % "3.2.8" % Test,
+      "org.typelevel" %%% "cats-effect" % "3.2.9",
+      "org.typelevel" %%% "cats-effect-laws" % "3.2.9" % Test,
+      "org.typelevel" %%% "cats-effect-testkit" % "3.2.9" % Test,
       "org.scodec" %%% "scodec-bits" % "1.1.29",
       "org.typelevel" %%% "scalacheck-effect-munit" % "1.0.2" % Test,
       "org.typelevel" %%% "munit-cats-effect-3" % "1.0.5" % Test,
@@ -244,7 +256,7 @@ lazy val io = crossProject(JVMPlatform, JSPlatform)
   .jsConfigure(_.enablePlugins(ScalaJSBundlerPlugin))
   .settings(
     name := "fs2-io",
-    libraryDependencies += "com.comcast" %%% "ip4s-core" % "3.0.3",
+    libraryDependencies += "com.comcast" %%% "ip4s-core" % "3.0.4",
     OsgiKeys.exportPackage := Seq("fs2.io.*"),
     OsgiKeys.privatePackage := Seq(),
     OsgiKeys.importPackage := {
@@ -261,7 +273,7 @@ lazy val io = crossProject(JVMPlatform, JSPlatform)
   .jvmSettings(
     Test / fork := true,
     libraryDependencies ++= Seq(
-      "com.github.jnr" % "jnr-unixsocket" % "0.38.10" % Optional,
+      "com.github.jnr" % "jnr-unixsocket" % "0.38.11" % Optional,
       "com.google.jimfs" % "jimfs" % "1.2" % Test
     )
   )
@@ -283,7 +295,7 @@ lazy val reactiveStreams = project
     libraryDependencies ++= Seq(
       "org.reactivestreams" % "reactive-streams" % "1.0.3",
       "org.reactivestreams" % "reactive-streams-tck" % "1.0.3" % "test",
-      ("org.scalatestplus" %% "testng-6-7" % "3.2.9.0" % "test").cross(CrossVersion.for3Use2_13)
+      ("org.scalatestplus" %% "testng-6-7" % "3.2.10.0" % "test").cross(CrossVersion.for3Use2_13)
     ),
     OsgiKeys.exportPackage := Seq("fs2.interop.reactivestreams.*"),
     OsgiKeys.privatePackage := Seq(),

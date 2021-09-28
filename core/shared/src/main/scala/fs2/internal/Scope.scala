@@ -397,7 +397,9 @@ private[fs2] final class Scope[F[_]] private (
     interruptible match {
       case None =>
         F.raiseError(
-          new IllegalStateException("Scope#interrupt called for Scope that cannot be interrupted")
+          new IllegalStateException(
+            "Scope#interruptWhen called for Scope that cannot be interrupted. This can happen when a Stream uses Concurrent operations but is compiled with only a Sync constraint."
+          )
         )
       case Some(iCtx) =>
         val outcome: F[InterruptionOutcome] = haltWhen.map(
