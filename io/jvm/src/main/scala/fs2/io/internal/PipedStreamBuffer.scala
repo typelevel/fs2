@@ -66,7 +66,7 @@ private[io] final class PipedStreamBuffer(private[this] val capacity: Int) { sel
         self.synchronized {
           if (head != tail) {
             // There is at least one byte to read.
-            val byte = buffer(head % capacity) & 0xff
+            val byte = buffer(Integer.remainderUnsigned(head, capacity)) & 0xff
             // The byte is marked as read by advancing the head of the
             // circular buffer.
             head += 1
@@ -211,7 +211,7 @@ private[io] final class PipedStreamBuffer(private[this] val capacity: Int) { sel
         dstPos: Int,
         length: Int
     ): Unit = {
-      val srcOffset = srcPos % srcCap
+      val srcOffset = Integer.remainderUnsigned(srcPos, srcCap)
       if (srcOffset + length >= srcCap) {
         val batch1 = srcCap - srcOffset
         val batch2 = length - batch1
@@ -237,7 +237,7 @@ private[io] final class PipedStreamBuffer(private[this] val capacity: Int) { sel
         self.synchronized {
           if (tail - head < capacity) {
             // There is capacity for at least one byte to be written.
-            buffer(tail % capacity) = (b & 0xff).toByte
+            buffer(Integer.remainderUnsigned(tail, capacity)) = (b & 0xff).toByte
             // The byte is marked as written by advancing the tail of the
             // circular buffer.
             tail += 1
@@ -364,7 +364,7 @@ private[io] final class PipedStreamBuffer(private[this] val capacity: Int) { sel
         dstCap: Int,
         length: Int
     ): Unit = {
-      val dstOffset = dstPos % dstCap
+      val dstOffset = Integer.remainderUnsigned(dstPos, dstCap)
       if (dstOffset + length >= dstCap) {
         val batch1 = dstCap - dstOffset
         val batch2 = length - batch1
