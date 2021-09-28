@@ -98,7 +98,7 @@ val eff = Stream.eval(IO { println("BEING RUN!!"); 1 + 1 })
 
 `IO` is an effect type we'll see a lot in these examples. Creating an `IO` has no side effects, and `Stream.eval` doesn't do anything at the time of creation, it's just a description of what needs to happen when the stream is eventually interpreted. Notice the type of `eff` is now `Stream[IO,Int]`.
 
-The `eval` function works for any effect type, not just `IO`. FS2 does not care what effect type you use for your streams. You may use `IO` for effects or bring your own, just by implementing a few interfaces for your effect type (e.g., `cats.MonadError[?, Throwable]`, `cats.effect.Sync`, `cats.effect.Async`, `cats.effect.Concurrent`, and `cats.effect.Effect`). Here's the signature of `eval`:
+The `eval` function works for any effect type, not just `IO`. FS2 does not care what effect type you use for your streams. You may use `IO` for effects or bring your own, just by implementing a few interfaces for your effect type (e.g., `cats.MonadError[?, Throwable]`, `cats.effect.Sync`, `cats.effect.Async`, `cats.effect.Concurrent`). Here's the signature of `eval`:
 
 ```scala
 def eval[F[_],A](f: F[A]): Stream[F,A]
@@ -525,11 +525,10 @@ val program =
 // program: Stream[IO[x], Unit] = Stream(..)
 
 program.compile.drain.unsafeRunSync()
-// 11:56:27.522875274
-// 11:56:28.522521554
-// 11:56:29.521586931
-// 11:56:30.521570013
-// 11:56:31.521044993
+// 11:58:20.644890286
+// 11:58:21.644340945
+// 11:58:22.643195897
+// 11:58:23.643405668
 ```
 
 Let's take this line by line now, so we can understand what's going on.
@@ -571,10 +570,10 @@ val program1 =
 // program1: Stream[IO[x], Unit] = Stream(..)
 
 program1.compile.drain.unsafeRunSync()
-// 11:56:32.528811422
-// 11:56:33.529111807
-// 11:56:34.529063789
-// 11:56:35.529051168
+// 11:58:25.644479318
+// 11:58:26.644519724
+// 11:58:27.644409321
+// 11:58:28.644559722
 ```
 
 ### Talking to the external world
@@ -607,7 +606,7 @@ The way you bring synchronous effects into your effect type may differ. `Sync.de
 import cats.effect.Sync
 
 val T = Sync[IO]
-// T: cats.effect.kernel.Async[IO] = cats.effect.IO$$anon$4@57288cbd
+// T: cats.effect.kernel.Async[IO] = cats.effect.IO$$anon$4@7e28bc15
 val s2 = Stream.exec(T.delay { destroyUniverse() }) ++ Stream("...moving on")
 // s2: Stream[IO[x], String] = Stream(..)
 s2.compile.toVector.unsafeRunSync()
@@ -740,13 +739,13 @@ stream.toUnicastPublisher
 //   source = Bind(
 //     source = Bind(
 //       source = Allocate(
-//         resource = cats.effect.kernel.Resource$$$Lambda$7528/0x000000080221f9f8@355a54cf
+//         resource = cats.effect.kernel.Resource$$$Lambda$7518/0x000000080221ee00@470ac931
 //       ),
-//       fs = cats.effect.kernel.Resource$$Lambda$8062/0x0000000802374000@33139544
+//       fs = cats.effect.kernel.Resource$$Lambda$8044/0x000000080236f238@2f5a7b0c
 //     ),
-//     fs = cats.effect.std.Dispatcher$$$Lambda$8063/0x00000008023743d0@c87367c
+//     fs = cats.effect.std.Dispatcher$$$Lambda$8045/0x000000080236f608@1c4e5c41
 //   ),
-//   fs = cats.effect.kernel.Resource$$Lambda$8062/0x0000000802374000@40085c0c
+//   fs = cats.effect.kernel.Resource$$Lambda$8044/0x000000080236f238@3129753d
 // )
 ```
 
@@ -758,19 +757,19 @@ val publisher: Resource[IO, StreamUnicastPublisher[IO, Int]] = Stream(1, 2, 3).c
 //   source = Bind(
 //     source = Bind(
 //       source = Allocate(
-//         resource = cats.effect.kernel.Resource$$$Lambda$7528/0x000000080221f9f8@3d846f47
+//         resource = cats.effect.kernel.Resource$$$Lambda$7518/0x000000080221ee00@32c70fe5
 //       ),
-//       fs = cats.effect.kernel.Resource$$Lambda$8062/0x0000000802374000@3f6eacc7
+//       fs = cats.effect.kernel.Resource$$Lambda$8044/0x000000080236f238@483d041d
 //     ),
-//     fs = cats.effect.std.Dispatcher$$$Lambda$8063/0x00000008023743d0@461fb30
+//     fs = cats.effect.std.Dispatcher$$$Lambda$8045/0x000000080236f608@3336dc43
 //   ),
-//   fs = cats.effect.kernel.Resource$$Lambda$8062/0x0000000802374000@20277db5
+//   fs = cats.effect.kernel.Resource$$Lambda$8044/0x000000080236f238@40a3d039
 // )
 publisher.use { p =>
   p.toStream[IO].compile.toList
 }
 // res50: IO[List[Int]] = Uncancelable(
-//   body = cats.effect.IO$$$Lambda$7533/0x00000008022253c0@7f3696e1,
+//   body = cats.effect.IO$$$Lambda$7523/0x00000008022205b0@6ffdb29e,
 //   event = cats.effect.tracing.TracingEvent$StackTrace
 // )
 ```
