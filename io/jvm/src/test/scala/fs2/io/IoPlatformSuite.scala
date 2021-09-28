@@ -29,12 +29,16 @@ import org.scalacheck.{Arbitrary, Gen, Shrink}
 import org.scalacheck.effect.PropF.forAllF
 
 import scala.concurrent.ExecutionContext
+import scala.concurrent.duration._
 
 import java.io.OutputStream
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.Executors
 
 class IoPlatformSuite extends Fs2Suite {
+
+  // This suite runs for a long time, this avoids timeouts in CI.
+  override def munitTimeout: Duration = 1.minute
 
   group("readOutputStream") {
     test("writes data and terminates when `f` returns") {
